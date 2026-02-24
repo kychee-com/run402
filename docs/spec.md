@@ -1,0 +1,3666 @@
+Below is a concrete design for a “no-account” cloud NoSQL service backed by DynamoDB, using **x402** as the payment and (optionally) lightweight identity rail—so an agent can spin up a database after a human approves an estimated spend, without anyone opening an AWS account.
+
+---
+
+## What you’re building
+
+A SaaS-style wrapper (call it **AgentDB** / **CloudKV** / **NoSQL-as-a-Tool**) that exposes an HTTP API (and an agent-friendly client/tooling layer) with:
+
+* **Control plane**: create/delete “tables”, set TTL/retention, set budgets, fetch usage & logs
+* **Data plane**: put/get/delete/query items
+* **Payments**: enforced via **x402 (HTTP 402 Payment Required)** so the client/agent can pay programmatically without accounts/sessions/API keys in the traditional sense. ([x402][1])
+* **Underlying storage**: DynamoDB in *your* AWS account(s), but **you do not disclose DynamoDB** in the public API.
+
+Key point: the user doesn’t need an AWS account. **You** are the AWS customer; the user is your customer.
+
+---
+
+## x402 mechanics you’ll use (V2)
+
+x402 gives you a standardized way to say “pay before I serve this request,” entirely over HTTP:
+
+* Server → Client: `402 Payment Required` + `PAYMENT-REQUIRED` header (Base64-encoded JSON describing price & accepted networks)
+* Client → Server: retry same request with `PAYMENT-SIGNATURE` header (Base64-encoded signed payment payload)
+* Server → Client: `200 OK` + `PAYMENT-RESPONSE` header (Base64-encoded settlement response) ([x402][2])
+
+Use an x402 **facilitator** (recommended by the docs) so your service doesn’t have to run chain verification/settlement infra itself; you POST to `/verify` and `/settle`. ([x402][3])
+
+Also, you should enable x402’s **payment-identifier** extension for idempotency so retries don’t double-charge or double-apply writes. ([x402][4])
+
+---
+
+## Public product surface (what you expose)
+
+### Objects
+
+* **Workspace**: implicitly tied to a wallet (payer) or to an issued capability; used for budgets, usage, logs.
+* **Store** (your “table”): `store_id`, schema (key definition), region/tier, TTL policy, budget policy.
+* **Item**: JSON document with required key fields.
+
+### API endpoints (minimal but useful)
+
+**Control plane (low frequency)**
+
+1. **Quote** (free or very cheap, see abuse controls)
+
+* `POST /v1/stores:quote`
+
+  * Input: expected usage (rough), retention, region/tier, schema
+  * Output: price model + estimated cost range + recommended deposit + budget suggestions
+
+2. **Create**
+
+* `POST /v1/stores`
+
+  * Returns 402 with payment requirements unless caller is already funded/authorized
+  * On success returns `store_id`, endpoints, TTL, budget, etc.
+
+3. **Describe / List**
+
+* `GET /v1/stores/{store_id}`
+* `GET /v1/stores`
+
+4. **Budgets**
+
+* `PUT /v1/stores/{store_id}/budget`
+* `GET /v1/stores/{store_id}/budget`
+
+5. **Usage / Costs**
+
+* `GET /v1/usage?store_id=&from=&to=`
+* `GET /v1/receipts?store_id=&from=&to=` (line-item receipts)
+
+6. **Logs**
+
+* `GET /v1/stores/{store_id}/logs?from=&to=&type=audit|ops|errors`
+
+7. **Delete / Expire**
+
+* `DELETE /v1/stores/{store_id}`
+
+**Data plane (potentially high frequency)**
+
+* `PUT /v1/stores/{store_id}/items/{pk}` (optional `sk`)
+* `GET /v1/stores/{store_id}/items/{pk}`
+* `DELETE /v1/stores/{store_id}/items/{pk}`
+* `POST /v1/stores/{store_id}:query` (key-based query, paginated)
+
+---
+
+## What it supports vs. does not support (explicit scope)
+
+### Supported (v1)
+
+* Create/delete “stores” (tables)
+* Primary key:
+
+  * Partition key required (string)
+  * Optional sort key (string)
+* CRUD:
+
+  * Put/Get/Delete
+* Query:
+
+  * Partition-key queries + sort-key range/prefix (if sort key enabled)
+  * Pagination (`limit`, `next_token`)
+* TTL / auto-expiration policy (store-level)
+* Budget enforcement (store-level and workspace-level)
+* Cost visibility:
+
+  * Real-time “metered” usage + receipts
+* Logs:
+
+  * Audit + ops + errors (time-windowed)
+
+### Not supported (v1)
+
+* DynamoDB transactions (ACID multi-item)
+* DynamoDB Streams / triggers / CDC
+* Secondary indexes (GSI/LSI) (unless you add a constrained “1 index” tier later)
+* PartiQL
+* Fine-grained IAM-style permissions (you’re not exposing AWS auth)
+* DAX, global table topology controls (you can offer “multi-region tier” as a product, but don’t expose DynamoDB knobs)
+* Arbitrary scans over entire dataset (you can add a heavily rate-limited “scan” later)
+
+This keeps the surface area “agent-simple” and makes pricing and QoS easier to guarantee.
+
+---
+
+## Under the hood on AWS (implementation choices)
+
+### Storage strategy
+
+To give stronger QoS isolation (and simpler per-store billing), start with:
+
+* **1 DynamoDB table per Store** in your AWS account, on-demand mode
+* Tag each table with `workspace_id`, `store_id`, `tier`, etc. (helps internal attribution)
+
+You can later optimize at scale using a pooled multi-tenant table, but that makes “noisy neighbor” QoS harder.
+
+### Capacity mode
+
+Use **On-Demand** by default (agents don’t know future traffic), and price accordingly. AWS describes how on-demand charges per read/write request unit and storage. ([Amazon Web Services, Inc.][5])
+
+### Optional durability/availability tiers
+
+You can productize two tiers:
+
+1. **Regional Tier**
+
+* Single-region table
+* Underlying DynamoDB Standard SLA: **99.99%** monthly uptime in-region ([Amazon Web Services, Inc.][6])
+
+2. **Multi-Region Tier**
+
+* DynamoDB **Global Tables**
+* Underlying SLA: **99.999%** monthly uptime ([Amazon Web Services, Inc.][6])
+
+(You still must engineer your own API layer to not become the bottleneck—see QoS below.)
+
+---
+
+## Paying over time: the core problem & the clean solution
+
+### The problem
+
+DynamoDB accrues costs even when idle (storage, backups if enabled). If the user never calls you again, you can’t “pull” funds from them unless you have an account/subscription/card on file—which you explicitly don’t want.
+
+### The solution: **Lease + prepaid balance**, enforced by x402
+
+Make every store a **lease-backed resource**:
+
+* At create time, the user pays:
+
+  * a **minimum deposit** (prepaid credit) that covers:
+
+    * N days of baseline storage (and optionally backups)
+    * plus a safety buffer
+* You **meter** actual usage (writes/reads/storage) against that deposit
+* When deposit runs low:
+
+  * API starts returning `402 Payment Required` with a “top-up required” price
+* If they do not top-up by lease expiry:
+
+  * store transitions to `SUSPENDED` (read-only or inaccessible)
+  * after a grace period, you `DELETE` (or export snapshot then delete)
+
+This guarantees you’re never stuck paying AWS indefinitely for an abandoned resource.
+
+### How x402 fits
+
+x402 is the universal “pay now” mechanism when:
+
+* creating a store
+* topping up a lease
+* increasing budgets/limits
+* requesting exports / long-retention logs
+
+x402 is explicitly designed for programmatic payments without accounts/sessions/credentials. ([x402][1])
+
+### Two practical billing modes (offer both)
+
+**Mode A — Simple, pure x402 per-operation (v0 / dev mode)**
+
+* Every data-plane request is individually paywalled via x402.
+* Pros: simplest conceptual model
+* Cons: too many payments for chatty workloads (and awkward for time-based storage)
+
+**Mode B — Recommended: x402 for top-ups, metered usage inside the lease**
+
+* Most data-plane calls do **not** trigger a payment flow as long as balance is positive.
+* Pros: efficient; supports storage charges; better UX for agents
+* Cons: you need a lightweight way to authorize requests without paying each time (see next section)
+
+---
+
+## Auth without “accounts” (but still preventing data theft)
+
+You must ensure a random payer cannot pay you and read someone else’s store.
+
+You have two solid approaches that remain “no account”:
+
+### Option 1: Wallet-as-identity (preferred if you can)
+
+Treat the **payer wallet** as the workspace identity (x402 already assumes wallets are central; the wallet is how buyers sign payloads). ([x402][7])
+
+* On store creation, bind `store_id → owner_wallet`
+* On each request:
+
+  * if it is a paid x402 request, you can recover payer identity during verification
+  * if it is an unpaid request (because they have balance), you need an auth proof
+
+For that “auth proof,” you can adopt x402’s **Sign-In-With-X (SIWX)** extension, which is designed to let clients prove wallet ownership for returning access. ([x402][8])
+Even though SIWX is described as “access previously purchased content without repaying,” you can apply it to “access your already-funded store without re-running payment on every request.”
+
+Practical note: SIWX support appears best in the TypeScript ecosystem; if you need Python-first, you may implement SIWX signing/verification yourself or provide a small local bridge (see agent tooling).
+
+### Option 2: Capability tokens (simpler; very agent-friendly)
+
+When a store is created, return an unguessable `store_secret` (capability) and require:
+
+* `Authorization: Bearer store_secret` for store access
+
+This is not an “account,” but it is a credential. It’s operationally simple, language-agnostic, and lets you keep data-plane calls fast while using x402 only for top-ups.
+
+You can still *also* bind stores to wallets for billing/ownership, but the token is the practical access key.
+
+---
+
+## Cost transparency: quotes, live costs, receipts
+
+You want an agent to tell a human “expected costs” and then proceed automatically.
+
+### 1) Quote endpoint (pre-approval UX)
+
+`POST /v1/stores:quote`
+
+Inputs the agent can reasonably provide:
+
+* retention (hours/days)
+* expected max item size
+* expected ops/day (rough)
+* desired region / tier
+* budget cap (hard)
+
+Output:
+
+* **unit pricing** (reads/writes/storage)
+* estimated daily/monthly under the stated assumptions
+* recommended minimum deposit to avoid suspension
+* “worst-case spend” = your configured budget cap
+
+Under the hood, your unit model should mirror DynamoDB on-demand economics:
+
+* Writes billed in 1 KB chunks; reads billed in 4 KB chunks (strongly consistent) etc. ([Amazon Web Services, Inc.][5])
+  You don’t have to expose the DynamoDB terms; present as “Write Units” and “Read Units.”
+
+### 2) Real-time usage & costs (what the human cares about)
+
+Expose:
+
+* `GET /v1/usage` – aggregated usage + cost estimate by store and time bucket
+* `GET /v1/receipts` – append-only ledger entries:
+
+  * timestamp, operation type, units, $ cost, remaining balance, correlation id
+
+Important implementation detail: **don’t rely on AWS Cost Explorer** for real-time. It’s not real-time and it’s per your AWS account. Instead:
+
+* meter usage at your gateway
+* compute cost in real time using your own pricing config
+* reconcile periodically against AWS bill (FinOps back office)
+
+### 3) Budgets and safety rails
+
+Let the human approve a budget, not a guess.
+
+Examples:
+
+* max $ spend per day
+* max $ spend lifetime per store
+* hard max ops/sec
+* auto-expire after N days unless renewed
+
+When budget would be exceeded, return:
+
+* `402 Payment Required` for a “budget increase / top-up” flow, or
+* `429 / 403` depending on semantics (“rate limit” vs “denied by policy”)
+
+---
+
+## Logs & observability you can expose without AWS
+
+You can provide logs without giving AWS access by treating logs as a first-class API product.
+
+### Log types
+
+1. **Audit log** (who did what)
+
+* store created/deleted
+* budget changes
+* lease top-ups
+* key administrative actions
+
+2. **Ops log** (data-plane)
+
+* request id, operation, key hash (not raw key unless user opts in), item size, latency, outcome, metered units, cost
+
+3. **Error log**
+
+* throttling, validation errors, internal errors
+
+### How users retrieve logs
+
+* `GET /v1/stores/{store_id}/logs?...`
+* Provide:
+
+  * JSONL stream
+  * optional gzip
+  * retention policy by tier (e.g., 7d default, 30d paid)
+
+Also return correlation headers on every response:
+
+* `X-Request-Id`
+* `X-Store-Id`
+* `X-Metered-Units`
+* `X-Estimated-Cost-Usd`
+
+---
+
+## QoS “back-to-back” guarantee: what you can promise credibly
+
+### Upstream guarantees you can lean on (DynamoDB)
+
+AWS DynamoDB SLA (last updated May 14, 2025) commits to:
+
+* **99.99%** monthly uptime for Standard (single-region)
+* **99.999%** monthly uptime for Global Tables ([Amazon Web Services, Inc.][6])
+
+So you can offer tiers whose *data-store component* is backed by those upstream commitments.
+
+### Your gateway must not reduce that too much
+
+If you front with AWS API Gateway, its SLA is **99.95%** per region. ([Amazon Web Services, Inc.][9])
+So if you use it, your end-to-end SLA can’t honestly exceed that without multi-region active-active and careful composition.
+
+A practical architecture for higher availability:
+
+* **Multi-AZ stateless gateway** (containers) behind an ELB
+* optional **multi-region** active-active for your “five nines” tier (with Global Tables underneath)
+
+### What “back-to-back” should mean contractually
+
+Offer a customer-facing SLA that:
+
+1. Mirrors the tier:
+
+   * Regional tier: e.g., 99.9–99.95%
+   * Multi-region tier: higher, if your gateway is multi-region
+2. Defines:
+
+   * Availability measurement
+   * Error definition
+   * credit schedule
+3. Includes a pass-through mechanism:
+
+   * when AWS issues service credits for DynamoDB under its SLA, you use those to fund (part of) your own credits
+
+AWS’s DynamoDB SLA explicitly defines credit tiers and process (service credits against future charges). ([Amazon Web Services, Inc.][6])
+
+---
+
+## Agent experience: how Claude Code (or any coding agent) uses it
+
+### Recommended local component: “AgentDB Broker”
+
+Run a local tool that:
+
+* exposes an agent tool interface (MCP is a natural fit)
+* holds wallet keys (or delegates to a wallet service)
+* enforces human approval policies
+* talks to your cloud API
+
+x402 already documents an MCP server pattern that bridges Claude Desktop to x402-paid APIs. You can reuse that design: the MCP server wraps HTTP calls and handles the 402 → pay → retry flow. ([x402][10])
+
+### Flow
+
+1. Agent: “I need a DB for feature X.”
+2. Broker calls `POST /v1/stores:quote`
+3. Broker shows human something like:
+
+   * “Max spend: $3.00”
+   * “Typical expected: $0.20–$0.80”
+   * “Auto-expires in 7 days unless renewed”
+4. Human approves (one click / terminal prompt)
+5. Broker calls `POST /v1/stores`
+
+   * receives 402 with `PAYMENT-REQUIRED`
+   * pays via x402
+   * retries with `PAYMENT-SIGNATURE`
+6. Broker returns `store_id` + “connection handle” to the agent
+7. Agent uses CRUD/query calls
+8. If balance depleted or lease expired:
+
+   * server returns 402 with top-up requirements
+   * broker prompts human if above an auto-approval threshold, otherwise auto-pays
+
+### Human approval policies
+
+Implement in the broker, not the cloud:
+
+* auto-approve up to $X/day
+* require approval for:
+
+  * tier upgrades (regional → multi-region)
+  * budget increases
+  * retention extension beyond N days
+
+---
+
+## Concrete x402 “PAYMENT-REQUIRED” examples (how you’d structure it)
+
+When payment is required (create store / top-up), your server responds:
+
+* HTTP `402 Payment Required`
+* `PAYMENT-REQUIRED: <base64(PaymentRequired JSON)>`
+
+And that JSON includes an `accepts` list like:
+
+* `scheme: "exact"`
+* `price: "$0.25"`
+* `network: "eip155:8453"` (example)
+* `payTo: "0x..."`
+
+This matches the patterns shown in x402 seller quickstart examples. ([x402][11])
+
+For idempotency on create/put:
+
+* declare the `payment-identifier` extension and require clients to include it. ([x402][4])
+
+---
+
+## How you (the operator) keep paying AWS over time
+
+From your perspective:
+
+* You receive USDC (or other supported assets) over x402
+* AWS bills you monthly in fiat
+
+Operationally you need:
+
+1. **Treasury policy**: convert stablecoins to fiat periodically (daily/weekly) to cover AWS bill and maintain margin
+2. **Reconciliation**:
+
+   * meter-based “expected AWS cost” vs actual AWS invoice
+   * alert on drift (e.g., if you enabled backups or global tables unexpectedly)
+3. **Risk controls**:
+
+   * per-store budget caps enforced at gateway
+   * lease expiration so abandoned stores don’t accumulate cost indefinitely
+
+---
+
+## The “minimal v1” I’d ship first (fastest path)
+
+If you want something that works well for coding agents quickly:
+
+* Regional tier only (single region)
+* On-demand capacity only
+* One-table-per-store (strong isolation)
+* Supported ops: Create, Put/Get/Delete, Query-by-key, List stores, Delete
+* Lease model:
+
+  * default 7-day expiry
+  * top-up to extend
+* Cost transparency:
+
+  * quote + live usage + receipts
+* Logs:
+
+  * ops+audit logs for 7 days
+* x402:
+
+  * enforce on create + top-up + exports
+  * payment-identifier extension on all writes
+
+Then iterate:
+
+* multi-region tier (Global Tables)
+* longer log retention
+* optional backups
+* optional single secondary index tier
+* SIWX-based auth to eliminate capability tokens (if you want wallet-only UX) ([x402][8])
+
+---
+
+If you want, I can also draft:
+
+* a concrete OpenAPI spec for the endpoints above,
+* the metering schema (how you compute units deterministically for each operation),
+* and a reference “AgentDB Broker” MCP tool interface tailored to Claude Code’s workflow (quote → approval → create → use → top-up).
+
+[1]: https://docs.x402.org/ "Welcome to x402 - x402"
+[2]: https://docs.x402.org/core-concepts/http-402 "HTTP 402 - x402"
+[3]: https://docs.x402.org/core-concepts/facilitator "Facilitator - x402"
+[4]: https://docs.x402.org/extensions/payment-identifier "Payment-Identifier (Idempotency) - x402"
+[5]: https://aws.amazon.com/dynamodb/pricing/on-demand/ "Amazon DynamoDB pricing for on-demand capacity – Serverless Distributed NoSQL Database – AWS"
+[6]: https://aws.amazon.com/dynamodb/sla/ "Amazon DynamoDB Service Level Agreement"
+[7]: https://docs.x402.org/core-concepts/wallet "Wallet - x402"
+[8]: https://docs.x402.org/extensions/sign-in-with-x "Sign-In-With-X (SIWX) - x402"
+[9]: https://aws.amazon.com/api-gateway/sla/?utm_source=chatgpt.com "Amazon API Gateway Service Level Agreement"
+[10]: https://docs.x402.org/guides/mcp-server-with-x402 "MCP Server with x402 - x402"
+[11]: https://docs.x402.org/getting-started/quickstart-for-sellers "Quickstart for Sellers - x402"
+
+
+
+Below is a **market research + competitive landscape** for the product you described: an **agent-native cloud NoSQL store** that can be **provisioned and paid for via x402** (HTTP 402 + stablecoin settlement) so users don’t need cloud accounts (AWS/GCP/etc.), and agents can present **pre-approval cost estimates**, enforce **budgets**, and provide **cost/log visibility**.
+
+I’m going to call the product **“AgentDB”** (a brand placeholder). Under the hood you can run DynamoDB, but the analysis assumes you **do not disclose that** publicly.
+
+---
+
+## Executive summary
+
+* The closest “shape” of market today is **serverless databases + BaaS**, where developers expect *instant provisioning, scale-to-zero-ish economics, and predictable pricing controls*. Serverless computing is widely forecast as a large and growing market (estimates vary, but it’s clearly multi‑$B and growing). ([Grand View Research][1])
+* The **NoSQL market** itself is also projected to grow strongly (again, third-party estimates vary, but it’s clearly large and expanding). ([Mordor Intelligence][2])
+* The differentiator is **not “pay per request”** (many already do); it’s **“no signup + agent-native procurement + standardized paywall semantics via x402”**.
+* x402 is positioned specifically as an **open payment protocol** that revives HTTP **402 Payment Required** so clients (including agents) can pay programmatically without accounts/sessions. Coinbase documents x402 as an open protocol it developed, and Cloudflare + Coinbase announced intent to create an **x402 Foundation** (a strong ecosystem signal). ([docs.cdp.coinbase.com][3])
+* Your direct competitive set is led by **Upstash (serverless Redis)**, **Cloudflare KV/D1**, **Turso (distributed SQLite/libSQL)**, **Firebase/Firestore**, and **traditional DynamoDB/NoSQL** offerings, plus “serverless SQL” providers (Neon, CockroachDB, Xata, PlanetScale) that often get used as “the database” even for KV-ish workloads. ([Upstash: Serverless Data Platform][4])
+* Most competitors optimize for **developer onboarding + billing via account**, not for **autonomous agents** that must spin infra up at runtime without humans creating vendor accounts.
+* The biggest product risks are: (1) **x402 adoption timing**, (2) **payment/regulatory + fraud/abuse controls**, (3) **your gateway becoming the SLA bottleneck**, and (4) **“why not just use SQLite locally?”** substitutes.
+
+---
+
+## Market definition: what category are you actually in?
+
+AgentDB sits at the intersection of three existing markets:
+
+1. **Serverless databases / DBaaS / “instant DBs”**
+
+   * Users want fast provisioning, elastic scaling, managed backups, and predictable billing.
+
+2. **BaaS / “backend primitives”** (auth/storage/functions bundled)
+
+   * Supabase and Firebase are reference points here; they sell a *platform*, not just a DB. ([Supabase][5])
+
+3. **Agentic tooling and agent commerce payments**
+
+   * x402 explicitly targets programmatic agent payments via HTTP 402. ([docs.cdp.coinbase.com][3])
+
+A useful framing:
+**AgentDB is “Stripe Checkout for cloud state”**—an agent can request a resource, receive a standardized 402 paywall with pricing, and proceed only after “funds available”.
+
+---
+
+## Key demand drivers
+
+### 1) Developers already prefer serverless “pay for what you use”
+
+Multiple popular database services emphasize usage-based pricing and cost controls:
+
+* **Upstash Redis**: per-request pricing like **$0.20 per 100K requests**, plus storage and bandwidth line items. ([Upstash: Serverless Data Platform][4])
+* **Neon** moved/marketed toward usage-based compute/storage with controls like autoscaling limits and scale-to-zero behavior. ([Neon][6])
+* **Cloudflare KV** and **Firestore** are per-operation/per-storage models with free tiers and then usage-based billing. ([Cloudflare][7])
+
+So the market is already trained to accept “metered database primitives”.
+
+### 2) AI coding agents increase “infra spin-up events”
+
+If coding agents are increasingly used to build/modify software, they will also increasingly be the ones to **instantiate dependencies** (DBs, queues, caches) during iteration cycles.
+
+Even if you ignore “AI market size” forecasts (often noisy), the *qualitative* signal is strong: AI coding tools are mainstream enough to show up as a material business/industry storyline. ([Investors][8])
+
+### 3) Standardization is the unlock: x402 + MCP
+
+x402 is explicitly built around HTTP 402 and standard headers for payment negotiation (`PAYMENT-REQUIRED`, `PAYMENT-SIGNATURE`, etc.). ([docs.x402.org][9])
+Cloudflare’s x402 announcement also explicitly mentions adding x402 support to agent tooling (Agents SDK & MCP servers), which matters a lot for distribution. ([The Cloudflare Blog][10])
+And x402 provides a guide for an MCP server that bridges agents like Claude Desktop to paid x402 APIs. ([docs.x402.org][11])
+
+This is relevant because your “customer” is often **a toolchain** (agent runtime / broker / IDE extension), not a human browsing a pricing page.
+
+---
+
+## Customer segments and best “wedge” use cases
+
+### Segment A — Local coding agents (your example)
+
+**Who:** Claude Code / Cursor / local dev agents, running on a laptop or dev workstation.
+**Job-to-be-done:** “I need a DB now; tell me the max cost; spin it up and keep me safe.”
+
+**What they value most:**
+
+* 30-second provisioning
+* explicit max spend + auto-expire
+* receipts, logs, easy cleanup
+
+**Why they won’t just use a competitor:** because the agent can’t reliably handle “sign up / verify email / add card / create project / copy API keys” flows.
+
+### Segment B — Platform teams enabling internal agents
+
+**Who:** companies building internal coding agents, IT automation, etc.
+**Job:** “Let agents provision safe sandboxes without granting AWS accounts.”
+
+**What they value most:**
+
+* strong audit logs
+* policy controls (budget caps, TTL, retention)
+* SLA and clear support channel
+
+### Segment C — Indie developers / hackathon builders
+
+This segment is less strategic because onboarding friction is already low (they’ll just sign up for Upstash/Turso/Supabase). But it can be a high-velocity GTM channel if you’re in the agent ecosystem early.
+
+---
+
+## Competitive landscape
+
+### 1) Direct substitutes: “serverless KV / NoSQL primitives”
+
+**Upstash (Redis-compatible)**
+
+* Strong “serverless KV” mindshare, simple onboarding, per-request pricing (**$0.20 per 100K requests**, plus storage/bandwidth). ([Upstash: Serverless Data Platform][4])
+* Also markets production add-ons including uptime/SLA, monitoring, etc. ([Upstash: Serverless Data Platform][12])
+* Weakness vs AgentDB: still **account + credential** based, not x402-native.
+
+**Cloudflare KV**
+
+* Clear usage pricing model (reads/writes/storage) and integrates naturally with Workers. ([Cloudflare][7])
+* Weakness vs AgentDB: account required; KV semantics are not the same as a “table” store, and consistency tradeoffs may matter.
+
+**Google Firestore**
+
+* Very popular NoSQL doc store with clear free tier quotas (e.g., reads/writes/deletes per day and 1 GiB storage in free tier). ([Google Cloud][13])
+* Weakness vs AgentDB: account + billing enablement required; pricing can surprise at scale; not agent-native procurement.
+
+**AWS DynamoDB directly**
+
+* Pay-per-request pricing and strong AWS ecosystem; official SLA is **99.99%** for standard tables and **99.999%** for Global Tables. ([Amazon Web Services, Inc.][14])
+* Weakness vs AgentDB: requires AWS account, IAM, billing setup.
+
+### 2) “Agent-adjacent” direct competitor: Turso (distributed SQLite/libSQL)
+
+Turso explicitly positions itself as “scales to millions of agents,” which is unusually on-the-nose for your market. ([turso.tech][15])
+It also has a clear pricing page with usage metrics like “monthly active databases” and read/write limits. ([turso.tech][16])
+
+Turso is a serious competitor because:
+
+* it already owns “agents + database” messaging
+* it feels lightweight and developer-friendly
+* it has a CLI workflow that can map well to agent operations
+
+Weakness vs AgentDB:
+
+* still fundamentally **account + billing**; not x402 procurement
+* different data model (SQLite/libSQL) vs KV/NoSQL semantics (depending on your API design)
+
+### 3) Indirect competitors: serverless SQL used as “the DB anyway”
+
+Many teams will use Postgres/MySQL serverless offerings even for KV-like needs.
+
+* **Neon**: usage-based pricing; emphasizes cost control via autoscaling limits and scale-to-zero. ([Neon][6])
+* **Supabase**: “Postgres + platform” (auth, storage, realtime, edge functions). Pricing starts with paid tiers and includes compute credits. ([Supabase][5])
+* **CockroachDB Serverless**: explicitly advertises a **99.99% uptime SLA** and user-set monthly resource limits to prevent surprise bills. ([cockroachlabs.com][17])
+* **Xata**: Postgres-oriented platform with instance pricing and branching narratives. ([Xata][18])
+* **PlanetScale**: MySQL/Vitess; pricing positioning has shifted toward higher-end plans (at least “starting at $50/month” on the main page at the time of this research). ([planetscale.com][19])
+
+These are not “accountless,” but they set user expectations for:
+
+* branching / preview DBs
+* scale-to-zero
+* guardrails (budget caps)
+
+### 4) Platforms that reduce friction (but still require accounts): Vercel Marketplace Storage
+
+Vercel explicitly positions its Marketplace Storage as a way to provision DBs from providers like **Neon, Upstash, and Supabase** via the Vercel dashboard, with credentials injected into env vars. ([Vercel][20])
+Also noteworthy: **Vercel KV is no longer available**, and Vercel has pointed users toward Marketplace integrations / Upstash. ([Vercel][21])
+
+This matters because Vercel is a distribution channel and “developer workflow owner.” AgentDB could try to become a Marketplace-style primitive for agents instead of for dashboards.
+
+---
+
+## Competitive comparison matrix
+
+Here’s the crispest way to see the whitespace (✅ = strong fit, ⚠️ = partial, ❌ = not really):
+
+| Provider               | “No account needed” |                     Agent-native procurement |                                    Usage-based billing |                                      Built-in spend caps / budgets |                                                  SLA story |
+| ---------------------- | ------------------: | -------------------------------------------: | -----------------------------------------------------: | -----------------------------------------------------------------: | ---------------------------------------------------------: |
+| **AgentDB (you)**      |            ✅ (x402) |                          ✅ (designed for it) |                                                      ✅ |                                                                  ✅ |                                        ✅ (you can tier it) |
+| Upstash                |                   ❌ |                         ⚠️ (can be scripted) | ✅ ($/request) ([Upstash: Serverless Data Platform][4]) |  ⚠️ (some caps/controls) ([Upstash: Serverless Data Platform][22]) | ⚠️ (Prod add-on) ([Upstash: Serverless Data Platform][12]) |
+| Cloudflare KV          |                   ❌ |                                           ⚠️ |                                    ✅ ([Cloudflare][7]) |                                                                 ⚠️ |                                        ⚠️ (platform-level) |
+| Turso                  |                   ❌ | ✅ (agent messaging + CLI) ([turso.tech][15]) |               ✅ (usage + active DB) ([turso.tech][16]) |                                                                 ⚠️ |                                        ⚠️ (plan-dependent) |
+| Firestore              |                   ❌ |                                           ⚠️ |                                 ✅ ([Google Cloud][13]) |                                       ⚠️ (budgets via GCP tooling) |      ✅ (Google Cloud SLAs vary by product; not shown here) |
+| DynamoDB direct        |                   ❌ |                                            ❌ |                    ✅ ([Amazon Web Services, Inc.][23]) |                                              ⚠️ (AWS Budgets etc.) |           ✅ 99.99/99.999 ([Amazon Web Services, Inc.][14]) |
+| CockroachDB Serverless |                   ❌ |                                           ⚠️ |                                                      ✅ | ✅ (“designate a monthly resource limit”) ([cockroachlabs.com][17]) |                          ✅ 99.99 ([cockroachlabs.com][17]) |
+| Supabase               |                   ❌ |                                           ⚠️ |                      ⚠️ (tier + usage) ([Supabase][5]) |                                                                 ⚠️ |                                                  ⚠️ (tier) |
+| Neon                   |                   ❌ |                                           ⚠️ |                                          ✅ ([Neon][6]) |                ✅ (autoscaling limits as cost ceiling) ([Neon][24]) |                                                         ⚠️ |
+
+**The whitespace is real:** basically nobody offers **(no-account + agent-native + budgets + standardized payment negotiation)** out of the box.
+
+---
+
+## Your differentiated value proposition: what you can say that others can’t
+
+### 1) “No signup. No keys. No cloud account. Pay with a wallet.”
+
+Most DB vendors have streamlined onboarding, but it’s still onboarding.
+
+x402 is literally designed to let services charge without accounts/sessions, using HTTP 402 to negotiate payment. ([docs.cdp.coinbase.com][3])
+
+**Positioning line:**
+
+> “AgentDB turns databases into a pay-per-use web primitive. If you can make an HTTP request, you can have a database.”
+
+### 2) “Pre-approval cost estimates + hard caps baked in”
+
+Competitors *can* do budgets, but often via separate cloud billing consoles.
+
+If you make **Quote → Approve → Provision** a first-class flow, you can win the agent use case.
+
+Anchor it to what users already understand:
+
+* CockroachDB emphasizes user-defined monthly limits to avoid surprise bills. ([cockroachlabs.com][17])
+* Neon emphasizes autoscaling limits and scale-to-zero as cost controls. ([Neon][24])
+
+### 3) “Back-to-back QoS guarantee”
+
+You can credibly offer a strong SLA **if** your gateway is engineered to not be the weak link.
+
+AWS DynamoDB’s SLA is explicit about 99.99% (regional) and 99.999% (global tables). ([Amazon Web Services, Inc.][14])
+You can productize your tiers similarly, but the guarantee must be end-to-end.
+
+### 4) “Agent-native receipts & logs”
+
+Some vendors are moving here; e.g., Fauna highlighted observability including cost per query and performance metrics. ([SiliconANGLE][25])
+
+Your opportunity is to make this *not optional* and *not enterprise-only*.
+
+---
+
+## Pricing & packaging: where to land relative to the market
+
+Your pricing must reconcile two facts:
+
+* underlying cloud DB cost is ongoing (storage/retention)
+* per-request micropayments aren’t great UX for chatty workloads unless you use deposits/balances
+
+**Market anchors (examples):**
+
+* Upstash Redis: $0.20 per 100K requests; $0.25/GB storage; bandwidth after free quota. ([Upstash: Serverless Data Platform][4])
+* Cloudflare KV: pricing is expressed per million reads/writes + storage, with included quotas on paid plan. ([Cloudflare][7])
+* Turso: monetizes via “monthly active databases” and row reads/writes limits/overages. ([turso.tech][16])
+* DynamoDB on-demand: billed per request and storage; pricing varies by region/table class. ([Amazon Web Services, Inc.][23])
+
+**What I’d recommend for AgentDB (packaging, not implementation):**
+
+### Plan A — “Ephemeral Agent Store”
+
+* Default TTL (e.g., 7 days)
+* small included storage
+* hard monthly cap set at creation
+* optimized for “agent used it for a task”
+
+### Plan B — “Project Store”
+
+* longer retention
+* backups/export options
+* higher SLA tier option
+* team-sharing keys/capabilities
+
+### Plan C — “Enterprise Sandbox”
+
+* audit log retention
+* SSO / policy integration (even if no “accounts”, you can do enterprise auth at org level)
+* support + custom SLA
+
+**Billing model:**
+
+* require a **prepaid balance / deposit** at create time (via x402)
+* meter against it; on low balance return 402 “top-up required”
+* auto-suspend + delete after expiry/grace period
+
+This is both a **risk control** (no abandoned resources) and a **UX benefit** (agent can keep working until balance is depleted).
+
+---
+
+## Go-to-market: how you actually get adoption
+
+### 1) Lead with an MCP integration + local “Agent Broker”
+
+x402 explicitly supports an MCP server pattern bridging Claude Desktop to paid x402 APIs. ([docs.x402.org][11])
+Cloudflare’s announcement suggests x402 support in agent tooling will be a distribution channel. ([The Cloudflare Blog][10])
+
+**GTM artifact:** “Install one MCP server and your agent can spin up a DB with pre-approved budgets.”
+
+### 2) Sell “procurement automation,” not “a database”
+
+Most teams don’t wake up wanting a new DB vendor; they wake up wanting:
+
+* fewer credentials
+* fewer accounts
+* fewer billing surprises
+* safer automation
+
+That’s your wedge.
+
+### 3) Land via agent ecosystems, expand into platform teams
+
+* Start developer-first
+* Use that to win mindshare
+* Then sell to orgs that are building internal agents and need controlled sandboxes
+
+---
+
+## Risks, objections, and how competitors will respond
+
+### Risk 1 — “x402 adoption is early”
+
+Mitigation:
+
+* keep x402 as the **primary** rail, but be prepared to add optional rails later (Stripe, invoice) for enterprises that can’t use stablecoins.
+* Use the credibility signal: Coinbase describes x402 as a protocol it developed, and Cloudflare + Coinbase announced an x402 Foundation. ([docs.cdp.coinbase.com][3])
+
+### Risk 2 — “Why not just Upstash/Turso?”
+
+This is your hardest objection because they already feel “lightweight” and have clear pricing. ([Upstash: Serverless Data Platform][4])
+
+Your rebuttal must be product-native:
+
+* “Those are great when a human is signing up. We’re built for agents operating at runtime.”
+
+### Risk 3 — “SLA is hard; your gateway is the bottleneck”
+
+If you want a serious SLA, your infra must be multi-region and your API layer must be engineered like a real cloud product. DynamoDB’s SLA is strong, but it won’t cover your gateway failures. ([Amazon Web Services, Inc.][14])
+
+Mitigation:
+
+* separate Regional tier vs Multi-region tier
+* publish status page + incident transparency
+* design for composite SLA
+
+### Risk 4 — Abuse / cost blowups
+
+Your competitors rely on account-level controls; you’ll rely on:
+
+* deposits
+* caps
+* rate limiting
+* auto-expiration
+
+This becomes part of the value proposition.
+
+---
+
+## Market sizing (directional, not gospel)
+
+These numbers vary by methodology; treat them as *context for investor decks*, not precise truth.
+
+* **NoSQL market** estimates: e.g., Mordor Intelligence forecasts growth from **~$15B (2025) to ~$69B (2031)**. ([Mordor Intelligence][2])
+* **Serverless computing market** estimates: e.g., Grand View Research estimates **~$24.5B (2024) → ~$52B (2030)**. ([Grand View Research][1])
+* “Cloud database / DBaaS” market is commonly sized in the tens of billions; one industry summary cites ~**$24B in 2025** with ~20% CAGR to 2030 (directional). ([RT Insights][26])
+
+Your **SAM** is meaningfully smaller:
+
+* developers building cloud apps + agent workflows
+* who want a managed store
+* and are willing to pay for “accountless + automated procurement”
+
+The **SOM** early on is basically: “agent toolchain early adopters” + “internal platform sandboxes”.
+
+---
+
+## Practical positioning statement and “why now”
+
+**Positioning (what I’d put on the homepage):**
+
+> **AgentDB is the database your agent can buy.**
+> Get a production-grade cloud store in seconds with an explicit cost cap, receipts, and logs—no AWS account, no billing setup, no keys copied from dashboards. Pay programmatically via x402 (HTTP 402).
+
+**Why now:** x402 + MCP + agentic workflows create a credible distribution + adoption path that didn’t exist when “micropayments for APIs” was just theory. ([The Cloudflare Blog][10])
+
+---
+
+## Recommended next research / validation steps
+
+If you want to pressure-test this quickly:
+
+1. **Interview 15–20 teams** building internal agents (platform/infra)
+
+   * validate “no cloud accounts for agents” pain is real and budget owners will accept stablecoin rails
+
+2. **Prototype the “Quote → Approve → Provision” UX** in an MCP tool
+
+   * measure conversion vs a control flow that uses Upstash/Turso with accounts
+
+3. **Competitive teardown** on the “cost guardrails” experience
+
+   * CockroachDB’s “never overspend” messaging is strong; Neon’s autoscaling limits are strong; Upstash shows real-time cost and caps. ([cockroachlabs.com][17])
+   * your product should beat them on *agent-native* cost disclosure.
+
+---
+
+* [Investors](https://www.investors.com/news/technology/ibm-stock-anthropic-cobol/?utm_source=chatgpt.com)
+* [Business Insider](https://www.businessinsider.com/anthropic-claude-code-founder-ai-impacts-software-engineer-role-2026-2?utm_source=chatgpt.com)
+* [WIRED](https://www.wired.com/story/vibe-coding-startup-code-metal-raises-series-b-fundraising?utm_source=chatgpt.com)
+* [Reuters](https://www.reuters.com/business/finance/klarna-launch-dollar-backed-stablecoin-race-digital-payments-heats-up-2025-11-25/?utm_source=chatgpt.com)
+* [Financial Times](https://www.ft.com/content/1e22422f-5859-42e0-85ff-7d6fd7869d5c?utm_source=chatgpt.com)
+* [Financial Times](https://www.ft.com/content/37c91e08-d13a-45a7-a3a7-acb43fa5522e?utm_source=chatgpt.com)
+
+[1]: https://www.grandviewresearch.com/industry-analysis/serverless-computing-market-report?utm_source=chatgpt.com "Serverless Computing Market Size | Industry Report, 2030"
+[2]: https://www.mordorintelligence.com/industry-reports/nosql-market?utm_source=chatgpt.com "NoSQL Market Size, Trends, Share & Industry Forecast 2026"
+[3]: https://docs.cdp.coinbase.com/x402/welcome?utm_source=chatgpt.com "Welcome to x402 - Coinbase Developer Documentation"
+[4]: https://upstash.com/docs/redis/overall/pricing?utm_source=chatgpt.com "Pricing & Limits - Upstash Documentation"
+[5]: https://supabase.com/pricing?utm_source=chatgpt.com "Pricing & Fees"
+[6]: https://neon.com/blog/new-usage-based-pricing?utm_source=chatgpt.com "Neon's New Pricing, Explained: Usage-Based With a $5 ..."
+[7]: https://www.cloudflare.com/plans/developer-platform-pricing/?utm_source=chatgpt.com "Workers & Pages Pricing"
+[8]: https://www.investors.com/news/technology/ibm-stock-anthropic-cobol/?utm_source=chatgpt.com "IBM Stock Stung By Anthropic Fears. Analyst Says AI 'Can't Replace' The Mainframe."
+[9]: https://docs.x402.org/core-concepts/http-402?utm_source=chatgpt.com "HTTP 402"
+[10]: https://blog.cloudflare.com/x402/?utm_source=chatgpt.com "Launching the x402 Foundation with Coinbase, and ..."
+[11]: https://docs.x402.org/guides/mcp-server-with-x402?utm_source=chatgpt.com "MCP Server with x402"
+[12]: https://upstash.com/blog/redis-new-pricing?utm_source=chatgpt.com "New Pricing and Increased Limits for Upstash Redis"
+[13]: https://cloud.google.com/firestore/pricing?utm_source=chatgpt.com "Firestore pricing"
+[14]: https://aws.amazon.com/dynamodb/sla/?utm_source=chatgpt.com "Amazon DynamoDB Service Level Agreement"
+[15]: https://turso.tech/?utm_source=chatgpt.com "Turso - Databases Everywhere"
+[16]: https://turso.tech/pricing?utm_source=chatgpt.com "Turso Database Pricing"
+[17]: https://www.cockroachlabs.com/blog/serverless-free/?utm_source=chatgpt.com "CockroachDB Serverless: Free. Seriously."
+[18]: https://xata.io/pricing?utm_source=chatgpt.com "Xata Pricing | Postgres at scale"
+[19]: https://planetscale.com/pricing?utm_source=chatgpt.com "Pricing and plans"
+[20]: https://vercel.com/docs/storage?utm_source=chatgpt.com "Vercel Storage"
+[21]: https://vercel.com/docs/redis?utm_source=chatgpt.com "Redis on Vercel"
+[22]: https://upstash.com/?utm_source=chatgpt.com "Upstash: Serverless Data Platform"
+[23]: https://aws.amazon.com/dynamodb/pricing/?utm_source=chatgpt.com "Amazon DynamoDB Pricing | NoSQL Key-Value Database"
+[24]: https://neon.com/pricing?utm_source=chatgpt.com "Neon pricing"
+[25]: https://siliconangle.com/2023/02/15/fauna-adds-observability-features-serverless-cloud-database/?utm_source=chatgpt.com "Fauna adds observability features to its serverless cloud ..."
+[26]: https://www.rtinsights.com/2025-cloud-database-market-the-year-in-review/?utm_source=chatgpt.com "2025 Cloud Database Market: The Year in Review"
+
+
+Below is a **complete website blueprint** for an x402-powered “accountless cloud NoSQL” product (I’ll keep calling it **AgentDB** as a placeholder name). It includes:
+
+* **Human-facing** marketing + console (costs, budgets, logs, approvals)
+* **Agent-facing** machine-discoverable endpoints + agent-readable docs + MCP surface
+* **Clear separation** between what’s *standard x402* vs *helpful conventions*
+
+I’m assuming:
+
+* You **do not reveal** DynamoDB (or AWS) anywhere in the public UI.
+* You sell **QoS-backed tiers**, with an SLA and transparent status.
+* You enforce “pay over time” via **lease + top-ups** (and/or prepaid balance), using x402’s 402 flow. x402 v2 defines the standard payment headers (`PAYMENT-REQUIRED`, `PAYMENT-SIGNATURE`, `PAYMENT-RESPONSE`). ([docs.x402.org][1])
+
+---
+
+## 1) Domain layout and “surfaces”
+
+Use separate surfaces so agents never have to crawl marketing pages.
+
+### Recommended hostnames
+
+* `agentdb.com` → marketing + docs (human-first)
+* `console.agentdb.com` → wallet-based console (human ops)
+* `api.agentdb.com` → paid API (agent + human SDKs)
+* `status.agentdb.com` → status page (public)
+
+If you want one domain only, keep the same paths, but the separation helps caching, security policy, and “agent readability.”
+
+---
+
+## 2) Global navigation
+
+### Top nav (marketing/docs)
+
+* Product
+* Pricing
+* Docs
+* Security
+* SLA
+* Status
+* Console (CTA)
+* Install for Agents (CTA)
+
+### Console nav
+
+* Overview
+* Stores
+* Approvals
+* Usage & Receipts
+* Logs
+* Budgets & Limits
+* Settings
+
+---
+
+## 3) Sitemap
+
+### Marketing (human-facing)
+
+* `/` Home
+* `/product`
+
+  * `/product/stores`
+  * `/product/agents`
+  * `/product/billing`
+  * `/product/observability`
+  * `/product/qos`
+* `/pricing`
+* `/docs`
+
+  * `/docs/quickstart/agents`
+  * `/docs/quickstart/humans`
+  * `/docs/api`
+  * `/docs/mcp`
+  * `/docs/x402`
+  * `/docs/security`
+  * `/docs/limits`
+* `/security`
+* `/sla`
+* `/status` (links to status site)
+* `/legal`
+
+  * `/legal/terms`
+  * `/legal/privacy`
+  * `/legal/aup`
+  * `/legal/dpa` (optional)
+* `/support` (contact, community, etc.)
+
+### Console (human-facing ops)
+
+* `/` (connect wallet / resume session)
+* `/overview`
+* `/stores`
+* `/stores/{store_id}`
+* `/approvals`
+* `/approvals/{approval_id}` (internal view)
+* `/usage`
+* `/receipts`
+* `/logs`
+* `/budgets`
+* `/settings`
+
+### Public approval flow (human approval initiated by agent)
+
+* `approve.agentdb.com/{approval_id}`
+  (or `console.agentdb.com/approve/{approval_id}`)
+
+### Agent-facing (machine + protocol)
+
+* `api.agentdb.com/.well-known/x402` (x402 discovery manifest — convention; aligns with emerging discovery patterns) ([datatracker.ietf.org][2])
+* `api.agentdb.com/.well-known/mcp.json` (MCP “server card” pattern)
+* `api.agentdb.com/x402/discovery` (tool + pricing catalog; convenience convention used in the ecosystem) ([agent402.dev][3])
+* `api.agentdb.com/mcp` (MCP transport endpoint; optional) ([agent402.dev][3])
+* `api.agentdb.com/openapi.json`
+* `api.agentdb.com/llms.txt` (agent/doc indexing outline; highly recommended)
+* `api.agentdb.com/meta.json` (machine-friendly endpoint map; convenience convention)
+
+---
+
+## 4) Home page design
+
+### Page goal
+
+In <20 seconds, a human should understand:
+
+* “This is a cloud DB for agents”
+* “No AWS accounts”
+* “Costs are pre-approved and capped”
+* “SLA + logs + receipts exist”
+
+### Hero (above the fold)
+
+**Headline:**
+**A cloud database your agent can buy.**
+
+**Subhead:**
+Provision a production-grade store in seconds—no cloud accounts, no API keys, no billing setup.
+Agents get quotes, humans approve a cap, and x402 handles payment over HTTP.
+
+**Primary CTA:** `Install for Agents`
+**Secondary CTA:** `Open Console`
+**Tertiary CTA:** `Read Docs`
+
+**Right-side hero element:** “Approval + provisioning” mini-flow animation:
+
+1. Quote shown
+2. Human approves budget
+3. Store created
+4. Receipts & logs visible
+
+### Section: “How it works”
+
+Four cards:
+
+1. **Quote**: “Estimate cost and set a hard cap”
+2. **Approve**: “One click approval, wallet payment”
+3. **Use**: “Key-value + query API, agent-native”
+4. **Expire**: “Auto-expire so you never pay forever”
+
+### Section: “Built for agent workflows”
+
+* “Works from coding agents (Claude Code, Cursor, CI bots)”
+* “Machine-discoverable endpoints”
+* “MCP integration available”
+
+### Section: “Cost controls you can trust”
+
+* Budgets & limits
+* Receipts / line items
+* Top-up rules
+* Auto-suspend + auto-expire (prevents abandoned cost)
+
+### Section: “QoS you can contract”
+
+* Regional tier SLA
+* Multi-region tier SLA
+* Public status page
+* Incident transparency
+
+### Footer (trust anchors)
+
+* Security summary: encryption at rest, TLS, data isolation model (without naming DynamoDB)
+* Links to: Security, SLA, Status, Legal, Docs
+
+---
+
+## 5) Product pages
+
+### `/product` (overview)
+
+Split into five feature pillars, each linking deeper:
+
+1. **Stores (tables without tables)**
+
+* “Create stores with a primary key (and optional sort key)”
+* “TTL and retention”
+* “Fast CRUD”
+
+2. **Agents**
+
+* “No accounts / no keys”
+* “x402 payment negotiation via HTTP 402”
+* “MCP-compatible tools”
+* “Discovery endpoints”
+
+3. **Billing**
+
+* “Lease + prepaid balance”
+* “Hard caps and top-ups”
+* “Receipts with correlation IDs”
+* “Exportable billing CSV”
+
+4. **Observability**
+
+* “Audit log”
+* “Ops log (latency, units, errors)”
+* “Request IDs”
+* “User-accessible log retention tiers”
+
+5. **QoS**
+
+* “Tiered availability targets”
+* “Backpressure and rate limiting”
+* “Dedicated capacity options (later)”
+
+---
+
+## 6) Pricing page
+
+### Page goal
+
+Pricing must support *human approval* and *agent automation*.
+
+#### Layout
+
+1. **Simple plan cards** (what humans buy)
+2. **Unit pricing** (what agents reason about)
+3. **Calculator** (quote UX)
+4. **Examples** (common workloads)
+
+### Plan cards (example)
+
+* **Dev / Ephemeral**
+
+  * Default TTL: 7 days
+  * Logs: 7 days
+  * SLA: best-effort / basic
+  * Designed for “agent tasks”
+
+* **Project**
+
+  * Longer TTL
+  * Logs: 30 days
+  * SLA: higher
+  * Export tools
+
+* **Production**
+
+  * Multi-region option
+  * Higher SLA
+  * Longer log retention
+  * Priority support
+
+### Unit pricing section
+
+Present these as *AgentDB units*, not cloud-vendor units:
+
+* Read Units
+* Write Units
+* Storage GB-day
+* Log GB-ingested (optional)
+* Export jobs
+
+### Payment model section (critical)
+
+Explain the **lease** model clearly:
+
+* “Stores are leased resources. You pre-fund a balance. Usage and storage draw down that balance. When it’s low, the API returns HTTP 402 with a top-up requirement.”
+
+Tie it to x402 mechanics:
+
+* x402 uses HTTP 402 plus standardized payment headers to negotiate payment (`PAYMENT-REQUIRED`, `PAYMENT-SIGNATURE`, `PAYMENT-RESPONSE`). ([docs.x402.org][1])
+
+### “Cost visibility” promises
+
+* Real-time usage estimates
+* Receipts ledger
+* Alerts: low balance, approaching cap
+
+---
+
+## 7) Docs design
+
+### Docs IA (left-nav)
+
+* **Quickstarts**
+
+  * Agents (MCP)
+  * Agents (REST/OpenAPI)
+  * Humans (Console approvals + monitoring)
+* **Core concepts**
+
+  * Stores, keys, TTL
+  * Budgets, caps, leases
+  * Logs, receipts, request IDs
+  * QoS tiers and SLAs
+* **x402**
+
+  * Payment flow (402 → pay → retry)
+  * Idempotency (payment-identifier)
+  * SIWX sign-in (wallet-based session)
+  * Discovery (Bazaar metadata)
+* **API reference**
+
+  * OpenAPI docs
+  * Examples (curl / TS / Python)
+* **Limits & anti-abuse**
+* **Security**
+* **FAQ**
+
+### Quickstart: Agents (MCP)
+
+Show the exact three-step canonical discovery order (agent-readable, concise), modeled on what’s working in the ecosystem: `/.well-known/mcp.json` → `/x402/discovery` → `/mcp`. ([agent402.dev][3])
+
+### Quickstart: Agents (REST)
+
+* Hit `POST /v1/stores:quote`
+* Create approval request
+* Poll approval status
+* Create store
+* CRUD/query
+* Handle 402 top-ups
+
+### Quickstart: Humans
+
+* Open approval link
+* Review quote & cap
+* Pay deposit/top-up
+* View store in console
+* Watch logs and receipts
+* Delete/expire
+
+---
+
+## 8) Console design (human-facing ops without “accounts”)
+
+### Authentication (no accounts)
+
+Two modes:
+
+1. **Wallet sign-in (recommended)**
+   Use x402 SIWX to prove wallet ownership and issue a session token for the console. SIWX is explicitly designed for repeat access without repaying, by proving wallet control via a signed message. ([docs.x402.org][4])
+
+2. **Capability link (fallback)**
+   If a user doesn’t want wallet sign-in, allow “paste a Workspace Key” (capability token).
+   (This is UX-friendly for devs; you can discourage it for production.)
+
+### Console: Overview screen
+
+Top KPIs:
+
+* Current balance
+* Spend today / week
+* Stores count
+* Active approvals
+* Recent errors (last 24h)
+
+Widgets:
+
+* Usage chart (by day)
+* “Top stores by cost”
+* “Low balance warnings”
+* “Recently created stores (auto-expiring)”
+
+### Console: Stores list
+
+Table-like list with:
+
+* Store name
+* TTL/expiry date
+* Budget cap
+* Current balance allocated
+* Last activity
+* Health indicator
+
+Bulk actions:
+
+* Extend TTL (requires top-up)
+* Delete
+* Export receipts
+
+### Console: Store detail
+
+Tabs:
+
+**A) Overview**
+
+* endpoints
+* region/tier (but described as “Regional / Multi-region”, not vendor region names)
+* TTL and expiry
+* current budget settings
+* last 1h/24h ops + errors
+
+**B) Access**
+
+* store secret / capability token management (rotate)
+* optional IP allowlist (if you add)
+* “Generate agent snippet” (copy/paste)
+
+**C) Usage**
+
+* usage buckets
+* cost estimate by unit type
+* “what changed” highlights (“writes spiked at 14:32”)
+
+**D) Receipts**
+
+* append-only ledger
+* downloadable CSV/JSON
+* correlation IDs
+
+**E) Logs**
+
+* Audit
+* Ops
+* Errors
+  Filters: time range, request id, operation type, status
+
+**F) Settings**
+
+* budgets & caps
+* rate limits
+* retention
+* delete store
+
+### Console: Approvals
+
+Two subviews:
+
+1. **Incoming approvals**
+
+* created by an agent (local broker)
+* show: requested TTL, expected ops, max spend, duration, policy reasons
+
+2. **Approval history**
+
+* approved/denied
+* receipts attached
+
+---
+
+## 9) The “agent asks, human approves” UX (critical flow)
+
+This is the UX that makes your product feel inevitable.
+
+### Step-by-step
+
+1. Agent creates approval request:
+
+* `POST /v1/approvals` with quote + proposed cap + TTL + justification string
+* Server returns:
+
+  * `approval_id`
+  * `approval_url` (human)
+  * `agent_poll_url`
+
+2. Human opens approval URL:
+
+* sees quote breakdown
+* sees “max spend” prominently
+* sees TTL/auto-expire
+* clicks **Approve & Fund**
+
+3. Payment happens via x402:
+
+* if funding required, server returns `402 Payment Required` with `PAYMENT-REQUIRED` header, per x402 v2. ([docs.x402.org][1])
+* browser wallet (or broker) signs payment and retries with `PAYMENT-SIGNATURE`
+* server responds success with `PAYMENT-RESPONSE` ([docs.x402.org][1])
+
+4. Agent polls until approval is `APPROVED`, then provisions store automatically.
+
+### Approval page UI (what to show)
+
+* **Summary**
+
+  * Purpose: “Requested by local coding agent”
+  * Requested cap: **$X maximum**
+  * Expected range: $a–$b
+  * Auto-expire: date/time
+* **Breakdown**
+
+  * Read/Write units estimate
+  * Storage estimate
+  * Log retention (if enabled)
+* **Controls**
+
+  * Approve
+  * Deny
+  * Edit cap (increase/decrease)
+  * Shorten TTL (recommended safe default)
+* **Safety text**
+
+  * “If usage hits the cap, requests will pause until you top up.”
+
+---
+
+## 10) Agent-facing “website”: stable machine endpoints
+
+This is the part most teams miss. Make it boring, stable, cacheable.
+
+### A) `/.well-known/x402` (x402 discovery manifest)
+
+There’s an emerging discovery pattern using a manifest at `/.well-known/x402` and even DNS TXT discovery records pointing to it. ([datatracker.ietf.org][2])
+You don’t need the DNS record day 1, but you should structure the manifest so crawlers and agents can find payable resources.
+
+**Recommended contents** (practical superset):
+
+* api base url
+* OpenAPI url
+* MCP endpoints (if present)
+* supported x402 schemes/networks
+* list of “resources” with price models and schemas
+
+### B) Bazaar metadata (x402-native discovery)
+
+x402 v2 codifies “Bazaar” as an extension where you declare discoverability metadata (schemas/tags/category) in route config so facilitators can index your endpoints and clients can query `/discovery/resources`. ([docs.cdp.coinbase.com][5])
+
+Action for your site/docs:
+
+* Add a docs page: “Discover AgentDB via Bazaar”
+* Make sure your routes include `extensions.bazaar.discoverable: true`
+
+### C) `/.well-known/mcp.json` + `/mcp` (agent tool surface)
+
+In the agent ecosystem, a stable MCP card at `/.well-known/mcp.json` plus a discovery endpoint is proving useful and agent-friendly. ([agent402.dev][3])
+
+If you ship an MCP server:
+
+* `GET /.well-known/mcp.json` → machine metadata
+* `GET /x402/discovery` → tools + schema + prices
+* `POST /mcp` → MCP transport
+
+### D) `llms.txt`
+
+Publish a concise, structured outline of your docs at `/llms.txt` so agents can ingest without crawling everything.
+
+---
+
+## 11) Agent-facing content pages (human-readable, agent-readable)
+
+### `/agents` page (write it like a protocol doc, not marketing)
+
+Structure:
+
+* “Core endpoints” (3–5)
+* “Discovery order”
+* “402 retry rule”
+* “Idempotency rule”
+* “Cost safety rule”
+* “Examples”
+
+Example content (what the page should say, roughly):
+
+* **Discovery order:** `/.well-known/mcp.json` → `/x402/discovery` → `/mcp`
+* **If HTTP 402 returned:** read `PAYMENT-REQUIRED`, pay, retry same call with `PAYMENT-SIGNATURE` (do not mutate args)
+* **Idempotency:** include payment-identifier for write-like operations
+* **Budget safety:** set `max_spend_usd` on approval / store creation
+
+(That aligns with x402’s standard header flow. ([docs.x402.org][1]))
+
+---
+
+## 12) Security, SLA, and Status pages
+
+### `/security`
+
+Content blocks:
+
+* encryption at rest + in transit
+* key management posture (don’t mention AWS)
+* isolation model: “store-level isolation”
+* data retention & deletion guarantees
+* incident response: “how we handle”
+* vulnerability disclosure email
+
+### `/sla`
+
+Define tiers:
+
+* Regional
+* Multi-region
+
+Explain:
+
+* what counts as downtime
+* how credits work (your policy)
+* support response time by tier
+
+### Status site
+
+* current status banner
+* incident history
+* uptime chart
+* API latency chart (p50/p95)
+* subscribe to updates (RSS/email/webhook)
+
+---
+
+## 13) Legal pages
+
+Minimal set:
+
+* Terms
+* Privacy
+* Acceptable Use Policy (AUP)
+
+Optional (if you sell to companies):
+
+* Data Processing Addendum (DPA)
+
+Add an explicit clause about:
+
+* payment finality (stablecoin settlement)
+* dispute resolution for service credits
+
+---
+
+## 14) Concrete “agent-facing endpoints” spec you can hand to engineers
+
+Here’s a minimal set you can implement that makes agents happy immediately (paths only; domains are placeholders):
+
+```txt
+# Agent discovery
+GET  https://api.agentdb.com/.well-known/x402
+GET  https://api.agentdb.com/openapi.json
+GET  https://api.agentdb.com/llms.txt
+GET  https://api.agentdb.com/meta.json
+
+# Optional MCP surface
+GET  https://api.agentdb.com/.well-known/mcp.json
+GET  https://api.agentdb.com/x402/discovery
+POST https://api.agentdb.com/mcp
+
+# Core API (REST)
+POST /v1/stores:quote
+POST /v1/approvals
+GET  /v1/approvals/{approval_id}
+POST /v1/stores
+GET  /v1/stores
+GET  /v1/stores/{store_id}
+PUT  /v1/stores/{store_id}/items/{pk}
+GET  /v1/stores/{store_id}/items/{pk}
+POST /v1/stores/{store_id}:query
+GET  /v1/usage
+GET  /v1/receipts
+GET  /v1/stores/{store_id}/logs
+DELETE /v1/stores/{store_id}
+```
+
+And **payment behavior** for any route that can require funding:
+
+* return `402` with `PAYMENT-REQUIRED`
+* accept retry with `PAYMENT-SIGNATURE`
+* return `PAYMENT-RESPONSE` on success ([docs.x402.org][1])
+
+---
+
+## 15) Copy you can reuse verbatim
+
+### Header CTA
+
+**Install for Agents**
+**Open Console**
+
+### Home hero
+
+**A cloud database your agent can buy.**
+No cloud accounts. No API keys. Hard cost caps, receipts, and logs built in.
+
+### Pricing model explainer
+
+**Lease-based billing:** Stores are pre-funded resources. Usage and storage draw down your balance. When balance is low, requests pause with a standardized HTTP 402 paywall until you top up.
+
+### Trust line
+
+**Transparent costs, predictable behavior:** Every request carries a request ID, metering headers, and is reflected in an exportable receipts ledger.
+
+---
+
+## 16) Implementation notes (what to build first)
+
+If you want the website to be “complete” *and* shippable fast, prioritize:
+
+1. Marketing home + pricing + docs skeleton
+2. Agent quickstart page (`/agents`)
+3. `api` discovery endpoints: `/.well-known/x402`, `openapi.json`, `llms.txt`
+4. Console MVP: Overview, Stores, Receipts, Logs, Approvals
+5. Public approval link flow
+6. Status page
+
+Everything else (SEO polish, case studies, enterprise pages) can come later without breaking the core.
+
+---
+
+If you want, I can produce the **actual first-pass content** for every page (final copy + headings + example screenshots/wireframes in text), and the **exact JSON schemas** for:
+
+* `/.well-known/x402`
+* `/.well-known/mcp.json`
+* `/x402/discovery`
+* `/meta.json`
+* `/llms.txt`
+
+…so your engineers can implement it directly.
+
+[1]: https://docs.x402.org/core-concepts/http-402 "HTTP 402 - x402"
+[2]: https://datatracker.ietf.org/doc/draft-jeftovic-x402-dns-discovery/ "
+            
+    
+        draft-jeftovic-x402-dns-discovery-00 - Discovering x402 Resources via DNS TXT Records
+    
+
+        "
+[3]: https://agent402.dev/ "agent402.dev | MCP Gateway Documentation"
+[4]: https://docs.x402.org/extensions/sign-in-with-x?utm_source=chatgpt.com "Sign-In-With-X (SIWX)"
+[5]: https://docs.cdp.coinbase.com/x402/bazaar "x402 Bazaar (Discovery Layer) - Coinbase Developer Documentation"
+
+
+
+Below is a **copy‑pasteable “website content pack”** for AgentDB (placeholder name) with:
+
+* Human-facing marketing + console UX copy (wallet sign-in, approvals, budgets, receipts, logs)
+* Agent-facing docs (MCP + REST) written in “agent‑readable” style
+* A **Learning** section explaining **x402** (what it is, how it works, why it matters, vision)
+* A **Comparison** page vs common alternatives
+* **Exact JSON Schemas + example instances** for:
+
+  * `/.well-known/mcp.json`
+  * `/x402/discovery`
+  * `/meta.json`
+  * `/llms.txt` (template)
+  * `/.well-known/x402` (manifest used for discovery; aligns with the DNS discovery draft’s well-known path convention) ([IETF Datatracker][1])
+
+Factual grounding for x402 details:
+
+* x402 uses **HTTP 402 Payment Required** and includes payment requirements in a `PAYMENT-REQUIRED` header; clients retry with `PAYMENT-SIGNATURE`. ([Coinbase Developer Docs][2])
+* x402 supports using a **facilitator** to verify/settle payments via `/verify` and `/settle`. ([x402][3])
+* x402 V2 adds wallet-based identity and discovery improvements. ([x402][4])
+* SIWX is CAIP-122 wallet auth to access previously purchased resources without repaying. ([x402][5])
+* Payment-Identifier provides idempotency for safe retries. ([x402][6])
+* Bazaar is a machine-readable discovery layer for payable APIs. ([Coinbase Developer Docs][7])
+
+Competitive comparisons grounded by vendor docs:
+
+* Upstash pricing examples ($0.20 / 100K commands; storage/bandwidth). ([Upstash: Serverless Data Platform][8])
+* Upstash uses endpoint + token for REST and API keys for their developer API. ([Upstash: Serverless Data Platform][9])
+* Turso pricing uses “monthly active databases”, storage/rows read/written line items. ([turso.tech][10])
+* Turso authenticates via API tokens (CLI/API). ([docs.turso.tech][11])
+* Cloudflare KV pricing appears in platform pricing; KV billing is op-based and typically managed via Cloudflare tokens. ([cloudflare.com][12])
+* Firestore has free quota but requires enabling billing to exceed it. ([Google Cloud][13])
+
+---
+
+# 0) Brand + site-wide UX rules
+
+## Brand placeholders
+
+* Product: **AgentDB**
+* Tagline: **“A cloud database your agent can buy.”**
+* Primary CTA: **Install for Agents**
+* Secondary CTA: **Open Console**
+* Tone: technical, compact, no fluff; default to concrete behaviors (caps, TTLs, receipts).
+
+## Site-wide UX rules
+
+* Always show a **Max Spend** number wherever money appears.
+* Always show **Expiry / TTL** wherever a store is shown.
+* Every cost number has a companion link: “How this is calculated”.
+* Every operational surface shows:
+
+  * `Request ID`
+  * `Store ID`
+  * `Metered Units`
+  * `Estimated Cost`
+* Every destructive action has a “Type the store name to confirm” pattern.
+
+---
+
+# 1) File tree / route map
+
+Use this as a Next.js / Remix / SSG content layout.
+
+```
+/marketing
+  /index
+  /product
+  /product/stores
+  /product/agents
+  /product/billing
+  /product/observability
+  /product/qos
+  /pricing
+  /docs
+  /security
+  /sla
+  /status (redirect)
+  /compare
+  /support
+  /legal/terms
+  /legal/privacy
+  /legal/aup
+
+/learn
+  /index
+  /what-is-x402
+  /how-x402-works
+  /x402-for-agents
+  /vision
+  /safety-and-trust
+  /glossary
+  /faq
+
+/console
+  /index (connect wallet / resume)
+  /overview
+  /stores
+  /stores/[store_id]
+  /approvals
+  /usage
+  /receipts
+  /logs
+  /budgets
+  /settings
+
+/api (machine-facing)
+  /.well-known/mcp.json
+  /.well-known/x402
+  /x402/discovery
+  /meta.json
+  /llms.txt
+  /openapi.json
+```
+
+---
+
+# 2) Marketing pages (final first-pass copy + wireframes)
+
+## 2.1 `/` Home
+
+**Meta title:** AgentDB — A cloud database your agent can buy
+**Meta description:** Provision a production-grade store in seconds with explicit cost caps, receipts, and logs. No cloud accounts. x402 payments over HTTP.
+
+### Above the fold (Hero)
+
+**H1:** A cloud database your agent can buy.
+**Subhead:** Spin up durable cloud state in seconds—without creating a cloud account, copying API keys, or setting up billing. Agents request a quote. Humans approve a cap. AgentDB provisions automatically.
+
+**Primary CTA button:** Install for Agents
+**Secondary CTA button:** Open Console
+**Tertiary link:** Read the Agent Quickstart
+
+**Hero callouts (3 bullets):**
+
+* **Hard caps**: “Never spend more than $X unless you approve it.”
+* **Receipts + logs**: “Every operation has a request ID and a line item.”
+* **Auto-expire**: “No abandoned resources billing you forever.”
+
+### Section: How it works (4-step)
+
+**Title:** Built for “agent asks → human approves → done”
+**Cards:**
+
+1. **Quote**
+   “AgentDB returns an estimate range + a maximum spend cap proposal.”
+2. **Approve**
+   “One click approval. Optional wallet sign-in. Fund a lease.”
+3. **Provision**
+   “Store is created and ready. No vendor console needed.”
+4. **Use + Monitor**
+   “CRUD + query, with receipts and logs you can export.”
+
+### Section: What you get
+
+**Title:** Production behaviors, agent-native interface
+**Grid (6 items):**
+
+* Stores with keys + TTL
+* Query by key/range
+* Budget caps + rate limits
+* Usage dashboard + receipts
+* Audit + ops logs
+* SLA tiers + status page
+
+### Section: “Works where your agents run”
+
+**Title:** Use from local coding agents, CI bots, or agent runtimes
+**Copy:** Use AgentDB via REST, OpenAPI, or MCP. For local agents, install the AgentDB Broker so the agent can request approval and proceed safely.
+
+### Section: Trust
+
+**Title:** Safe by default
+**Bullets:**
+
+* Default TTL on every store
+* Default max spend cap
+* Read-only suspension on low balance (configurable)
+* Explicit top-ups, never silent overages
+
+### Footer
+
+Links: Product, Pricing, Docs, Learn x402, Compare, Security, SLA, Status, Legal.
+
+#### Wireframe (ASCII)
+
+```
+┌────────────────────────────────────────────────────────────┐
+│ AgentDB  Product  Pricing  Docs  Learn  Compare  Console    │
+├────────────────────────────────────────────────────────────┤
+│ H1: A cloud database your agent can buy.                    │
+│ Subhead: ...                                                │
+│ [Install for Agents] [Open Console] [Agent Quickstart]      │
+│  • Hard caps  • Receipts+logs  • Auto-expire                │
+├────────────────────────────────────────────────────────────┤
+│  Quote → Approve → Provision → Use + Monitor                │
+├────────────────────────────────────────────────────────────┤
+│ Feature grid (Stores, TTL, Budgets, Receipts, Logs, SLA...) │
+├────────────────────────────────────────────────────────────┤
+│ Trust + Footer links                                        │
+└────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 2.2 `/product` Product overview
+
+**H1:** AgentDB is cloud state you can procure at runtime.
+**Intro:** Most managed databases assume a human will sign up, create projects, and manage credentials. AgentDB assumes an agent needs a database *now*—and a human wants explicit cost control.
+
+### Sections
+
+1. **Stores**
+   “Create stores with a primary key (optional sort key), TTL, and predictable query patterns.”
+   CTA: Explore Stores
+
+2. **Agents**
+   “MCP + REST. Discovery endpoints. Standardized payment negotiation via x402.”
+   CTA: Explore Agents
+
+3. **Billing**
+   “Lease-based resources with top-ups and hard caps.”
+   CTA: Explore Billing
+
+4. **Observability**
+   “Receipts ledger, audit log, ops logs, export.”
+   CTA: Explore Observability
+
+5. **Quality of Service**
+   “Tiered SLA, status transparency, predictable throttling behavior.”
+   CTA: Explore QoS
+
+---
+
+## 2.3 `/product/stores`
+
+**H1:** Stores: simple, durable, key-based state
+**Subhead:** Enough database to build real software. Small enough for agents to use correctly.
+
+### What stores support (v1)
+
+* Create/delete stores
+* Primary key (string), optional sort key (string)
+* Put/get/delete items
+* Query by partition key; optional sort key range/prefix
+* TTL at store level
+* Pagination
+
+### What stores don’t support (v1)
+
+* Multi-item transactions
+* Secondary indexes (GSI/LSI)
+* Full table scans (except limited admin export)
+* Change streams / triggers
+
+### “Design for agent predictability”
+
+**Copy:** Every request returns:
+
+* Request ID
+* Metered units
+* Estimated cost
+* Remaining balance (if applicable)
+
+CTA: “See API reference”
+
+---
+
+## 2.4 `/product/agents`
+
+**H1:** Designed for coding agents and tool brokers
+**Subhead:** Agents discover capabilities and prices, request approval, and proceed without manual setup.
+
+### Integration options
+
+1. **MCP (recommended for agent tooling)**
+
+* Stable discovery endpoints
+* `tools/list` + `tools/call`
+* 402-aware retries
+
+2. **REST / OpenAPI**
+
+* `POST /stores:quote`
+* `POST /approvals`
+* `POST /stores`
+* data-plane CRUD/query
+
+### The approval primitive
+
+**Copy:** Agents should never spend money without an explicit policy. AgentDB supports an “approval request” object so your local broker can ask the human once, then execute safely.
+
+CTA: “Agent Quickstart (MCP)” and “Agent Quickstart (REST)”
+
+---
+
+## 2.5 `/product/billing`
+
+**H1:** Pay over time without subscriptions or accounts
+**Subhead:** Stores are leased resources. You pre-fund, spend down, and renew when needed.
+
+### Billing behaviors
+
+* **Deposit / top-up**: Fund a store or workspace balance.
+* **Spend caps**: Hard daily and lifetime caps (configurable).
+* **Low-balance handling**: Return 402 for top-up; optionally suspend writes first.
+* **Expiry**: Default TTL; explicit extension requires approval.
+
+### Why leases
+
+**Copy:** Storage costs exist even when you aren’t sending requests. The lease model ensures you never keep paying for resources you forgot.
+
+CTA: “See receipts & usage demo”
+
+---
+
+## 2.6 `/product/observability`
+
+**H1:** Cost visibility and logs are first-class
+**Subhead:** If an agent can create infrastructure, you need receipts and logs you can trust.
+
+### Observability surfaces
+
+* **Usage**: time-bucketed units + estimated cost
+* **Receipts**: append-only ledger entries, exportable
+* **Audit log**: creation, deletion, approvals, budget changes
+* **Ops log**: request IDs, latency, errors, units
+
+### Export options
+
+* CSV export for receipts
+* JSONL export for logs
+* Webhook (optional / roadmap)
+
+CTA: “Open Console → Logs”
+
+---
+
+## 2.7 `/product/qos`
+
+**H1:** Quality of service you can contract
+**Subhead:** Tiered availability targets, predictable behavior under load, and transparent status.
+
+### QoS guarantees (what you can safely claim in copy)
+
+* Availability targets by tier (Regional / Multi-region)
+* Rate limiting behavior documented
+* Error taxonomy documented
+* Incident transparency + postmortems
+
+CTA: “Read SLA”
+
+---
+
+## 2.8 `/pricing`
+
+**Meta title:** Pricing — AgentDB
+**H1:** Usage-based pricing with hard caps
+
+### Pricing philosophy
+
+**Copy:** Pricing must be machine-readable and human-approvable. Agents get quotes. Humans approve max spend. Usage draws down funded balance.
+
+### Plan cards (example)
+
+**Ephemeral (Dev)**
+
+* Default TTL: 7 days
+* Logs: 7 days
+* Best-effort support
+
+**Project**
+
+* TTL: configurable
+* Logs: 30 days
+* Higher SLA target
+
+**Production**
+
+* Multi-region option
+* Longer log retention
+* Priority support + credits SLA
+
+### Unit pricing table (template)
+
+* Read Units: $X / million
+* Write Units: $Y / million
+* Storage: $Z / GB-day
+* Logs ingest: $A / GB
+* Export jobs: $B / job
+
+> You can swap these numbers to match your margin and upstream costs.
+
+### Calculator (UI spec)
+
+Inputs:
+
+* items avg size (KB)
+* writes/day
+* reads/day
+* retention days
+* max spend cap
+
+Outputs:
+
+* estimated daily / monthly
+* recommended deposit for N days
+* “worst-case” bound = cap
+
+CTA: “Try Quote API”
+
+---
+
+## 2.9 `/docs` (Docs landing)
+
+**H1:** Documentation
+**Tiles:**
+
+* Agent Quickstart (MCP)
+* Agent Quickstart (REST)
+* Human Quickstart (Approvals + Console)
+* Core Concepts (Stores, Budgets, Leases, Logs)
+* API Reference (OpenAPI)
+* Security + Limits
+
+---
+
+## 2.10 `/security`
+
+**H1:** Security
+**Sections (copy placeholders—do not claim certifications you don’t have):**
+
+* Data encryption (in transit / at rest)
+* Store isolation model
+* Access model (capability tokens + wallet sign-in)
+* Logging and audit
+* Responsible disclosure (security@…)
+* Data deletion and retention
+
+---
+
+## 2.11 `/sla`
+
+**H1:** Service Level Agreement (SLA)
+**Sections:**
+
+* Definitions (availability, downtime)
+* Measurement window
+* Tier targets
+* Credits schedule
+* Exclusions
+* How to claim credits
+* Status page as the source of truth
+
+---
+
+## 2.12 `/status`
+
+Redirect to `status.agentdb.com`
+
+**Copy:** “Live status and incident history.”
+
+---
+
+## 2.13 `/support`
+
+**H1:** Support
+
+* Email support
+* Community link (Discord/Slack)
+* “Report an incident”
+* “Request quota increase”
+* “Enterprise contact”
+
+---
+
+## 2.14 Legal stubs
+
+* `/legal/terms` (Terms of service)
+* `/legal/privacy`
+* `/legal/aup` (Acceptable use)
+
+---
+
+# 3) Learning section (humans): x402, what it enables, vision
+
+This Learning section is grounded in x402’s public docs and ecosystem material, including: “x402 is an open payment standard built around HTTP 402,” the 402/headers handshake, facilitator verify/settle, SIWX, and discovery/Bazaar. ([x402][3])
+
+## 3.1 `/learn` (landing)
+
+**H1:** Learn: x402 and agent-native procurement
+**Subhead:** A practical guide for humans: what x402 is, how it works, and what it unlocks.
+
+**Cards:**
+
+* What is x402?
+* How x402 works (402 → pay → retry)
+* x402 for agents
+* Vision: payments as a native web primitive
+* Safety & trust (caps, receipts, fraud)
+* Glossary + FAQ
+
+---
+
+## 3.2 `/learn/what-is-x402`
+
+**H1:** What is x402?
+**Lead:** x402 is a payment standard that revives HTTP 402 (“Payment Required”) so services can charge for resources over plain HTTP.
+
+### The core idea
+
+* Client requests a resource
+* Server replies “Payment Required” with machine-readable payment instructions
+* Client pays programmatically and retries with proof
+
+### What this replaces
+
+* API key onboarding
+* account creation
+* credit card forms
+* monthly subscriptions for small, metered usage
+
+### Why stablecoins / fast settlement matters (human-friendly)
+
+* Small payments without card fees
+* Programmatic spend by software
+* Global compatibility (wallet-based)
+
+> In AgentDB, x402 is the “checkout” step that an agent can complete safely after you approve a cap.
+
+---
+
+## 3.3 `/learn/how-x402-works`
+
+**H1:** How x402 works (the handshake)
+**Subhead:** If you understand HTTP, you understand x402.
+
+### Step-by-step
+
+1. **Attempt**
+   Client sends a normal HTTP request.
+
+2. **402 Challenge**
+   Server responds with `402 Payment Required` and includes payment requirements in a `PAYMENT-REQUIRED` header.
+
+3. **Payment payload**
+   Client chooses a supported scheme/network and creates a payment payload.
+
+4. **Retry with proof**
+   Client retries the *same request* with `PAYMENT-SIGNATURE`.
+
+5. **Verification/settlement**
+   Server verifies and settles directly or via a facilitator (`/verify` and `/settle`).
+
+6. **Response**
+   Server returns the requested resource, often with a payment receipt header.
+
+### Reliability primitives for real systems
+
+* **Idempotency**: use Payment-Identifier so retries don’t double charge.
+* **Wallet identity**: SIWX allows repeat access without repaying for the same entitlement.
+
+---
+
+## 3.4 `/learn/x402-for-agents`
+
+**H1:** x402 for agents: why this is different from “normal billing”
+**Subhead:** x402 separates payment from identity.
+
+### The agent problem
+
+Agents are great at calling APIs, but terrible at:
+
+* Creating accounts
+* Managing credentials securely
+* Navigating billing portals
+* Predicting and controlling spend
+
+### What x402 enables
+
+* Agents can **discover payable services**
+* Agents can **present explicit prices**
+* Humans can **approve caps**
+* Agents can **pay and proceed** without additional onboarding steps
+
+### Discovery: Bazaar + manifests
+
+* Bazaar is a discovery layer for payable services.
+* Well-known endpoints and metadata make services machine-discoverable.
+
+---
+
+## 3.5 `/learn/vision`
+
+**H1:** Vision: “Payment Required” as a first-class web primitive
+**Subhead:** The web made information frictionless; payments remained a bolt-on. x402 aims to make payments as native as HTTP.
+
+### What changes if this works
+
+* Any service can be “paywallable” at the protocol layer
+* Agents can autonomously buy compute/data/tools under policy
+* “Procurement” becomes an API call, not a contract negotiation
+
+### What AgentDB adds on top
+
+x402 is the payment primitive. AgentDB adds:
+
+* budgets/caps
+* receipts
+* logs
+* leases for time-based costs
+* SLAs for QoS
+
+---
+
+## 3.6 `/learn/safety-and-trust`
+
+**H1:** Safety & trust: how to avoid “agents spending money” problems
+**Sections:**
+
+* Default caps + TTL everywhere
+* Pre-approval flow (human in the loop)
+* Receipts ledger and export
+* Rate limits and anomaly detection
+* Recovery playbooks (suspend, freeze, export, delete)
+
+---
+
+## 3.7 `/learn/glossary`
+
+Terms:
+
+* Store
+* Lease
+* Cap / Budget
+* Receipt
+* Audit log
+* Ops log
+* x402
+* Facilitator
+* SIWX
+* Payment-Identifier
+* Discovery / manifest
+
+---
+
+## 3.8 `/learn/faq`
+
+Examples:
+
+* “Do I need an account?” (No; wallet/capabilities)
+* “Can I cap spend?” (Yes; hard caps)
+* “What happens if I stop paying?” (Suspend → expire → delete)
+* “Can agents create infinite stores?” (No; policy + caps + TTL)
+
+---
+
+# 4) Comparison page vs competition
+
+This page is grounded in vendor pricing/auth docs to keep it factual, not vibes. ([Upstash: Serverless Data Platform][8])
+
+## 4.1 `/compare` (single-page comparison)
+
+**H1:** AgentDB vs common alternatives
+**Lead:** Many products are excellent databases. This comparison focuses on one specific workflow: **an agent provisioning state safely without a human creating vendor accounts**.
+
+### Quick matrix (copy)
+
+| Capability                               | AgentDB | Upstash                                | Turso | Cloudflare KV | Firestore |
+| ---------------------------------------- | ------- | -------------------------------------- | ----- | ------------- | --------- |
+| No signup / no vendor billing setup      | ✅       | ❌                                      | ❌     | ❌             | ❌         |
+| Standardized paywall protocol (HTTP 402) | ✅       | ❌                                      | ❌     | ❌             | ❌         |
+| Human approval + hard spend cap          | ✅       | ⚠️ (budgeting exists, not agent-first) | ⚠️    | ⚠️            | ⚠️        |
+| Receipts ledger (per-request line items) | ✅       | ⚠️                                     | ⚠️    | ⚠️            | ⚠️        |
+| Agent-discoverable pricing endpoint      | ✅       | ❌                                      | ❌     | ❌             | ❌         |
+| Default TTL / auto-expire for safety     | ✅       | ⚠️                                     | ⚠️    | ⚠️            | ⚠️        |
+
+### “What others do well”
+
+**Upstash**
+
+* Very clear pay‑as‑you‑go model (e.g., $0.20 / 100K commands; bandwidth/storage line items). ([Upstash: Serverless Data Platform][8])
+* Access patterns commonly use tokens/endpoints. ([Upstash: Serverless Data Platform][9])
+
+**Turso**
+
+* Pricing aligned to “monthly active databases” and read/write/storage line items. ([turso.tech][10])
+* Platform API and auth tokens for programmatic management. ([docs.turso.tech][11])
+
+**Cloudflare KV**
+
+* Strong edge ecosystem; usage-based KV pricing and platform integration. ([cloudflare.com][12])
+* Token-managed operational model. ([Cloudflare Docs][14])
+
+**Firestore**
+
+* Large ecosystem; free tier quotas, but billing must be enabled for more. ([Google Cloud][13])
+
+### “What AgentDB is optimized for”
+
+* **Agent procurement** as a primitive: Quote → Approve → Provision
+* **Caps + TTL by default**
+* **Protocol-level payment negotiation** (x402 / HTTP 402)
+* **No keys copied from dashboards**
+* **Receipts and logs first-class**
+
+### CTA section
+
+* “Install for Agents”
+* “Read the approval flow”
+* “Try quote API”
+
+---
+
+# 5) Console (human-facing) page copy + wireframes
+
+## 5.1 `/console` Connect / Resume
+
+**H1:** Open Console
+**Subhead:** View stores, approvals, spend caps, receipts, and logs.
+
+Buttons:
+
+* **Connect Wallet**
+* **Paste Workspace Key** (advanced)
+* “What is x402?” link → `/learn/what-is-x402`
+
+**Callout:** “Console access does not grant agents spending authority. Spending requires explicit approval caps.”
+
+Wireframe:
+
+```
+┌─────────────── AgentDB Console ────────────────┐
+│ [Connect Wallet]                               │
+│ [Paste Workspace Key]                          │
+│                                                │
+│ Learn: What is x402?  How approvals work       │
+└────────────────────────────────────────────────┘
+```
+
+---
+
+## 5.2 `/console/overview`
+
+Widgets:
+
+* Balance (workspace)
+* Spend today / last 7 days
+* Active stores count
+* Approvals pending
+* Errors last 24h
+
+Lists:
+
+* “Top stores by cost (7d)”
+* “Recently created stores”
+* “Low balance warnings”
+
+---
+
+## 5.3 `/console/stores` Stores list
+
+Table columns:
+
+* Store Name
+* Store ID
+* Tier (Regional / Multi-region)
+* Expiry
+* Cap (daily / lifetime)
+* Last activity
+* Health
+
+Actions:
+
+* Extend TTL (requires approval/top-up)
+* Delete
+* Export receipts (CSV)
+
+---
+
+## 5.4 `/console/stores/{store_id}` Store details (tabs)
+
+**Tab: Overview**
+
+* Store endpoint
+* Current balance allocated
+* TTL and expiry
+* Caps and limits
+* p50/p95 latency (last 1h)
+* Errors (last 1h/24h)
+
+**Tab: Usage**
+
+* Chart: units over time
+* “Cost drivers” breakdown
+* “Set alert thresholds”
+
+**Tab: Receipts**
+
+* Ledger list:
+
+  * timestamp
+  * op type
+  * metered units
+  * estimated cost
+  * request ID
+
+**Tab: Logs**
+
+* Audit / Ops / Errors
+* Filter by request ID
+
+**Tab: Access**
+
+* Rotate store secret (capability token)
+* Allowed origins / IP allowlist (optional)
+
+**Tab: Settings**
+
+* Update TTL
+* Update caps
+* Delete store
+
+---
+
+## 5.5 `/console/approvals`
+
+Two panes:
+
+* Pending approvals (needs action)
+* History
+
+Approval card contents:
+
+* Requested by: “Local Agent Broker”
+* Purpose string
+* Proposed cap + TTL
+* Estimated range
+* Buttons: Approve & Fund / Deny / Edit cap / Shorten TTL
+
+---
+
+## 5.6 `/console/receipts`
+
+Global receipts ledger:
+
+* filters: store, date range, op type
+* export CSV/JSON
+
+---
+
+## 5.7 `/console/logs`
+
+Global logs explorer:
+
+* filters: store, time range, severity, request ID
+
+---
+
+## 5.8 `/console/budgets`
+
+Workspace-level policies:
+
+* Default TTL for new stores
+* Default max spend
+* Auto-approve thresholds (for the broker)
+* Rate limit defaults
+
+---
+
+# 6) Agent-facing docs (human-readable, agent-readable)
+
+## 6.1 `/docs/quickstart/agents` (landing)
+
+**H1:** Agent Quickstart
+Choose:
+
+* MCP (recommended)
+* REST/OpenAPI
+
+---
+
+## 6.2 `/docs/quickstart/agents-mcp`
+
+**Title:** Agent Quickstart (MCP)
+**This page is intentionally agent-readable.**
+
+### Canonical discovery order
+
+1. `GET https://api.agentdb.com/.well-known/mcp.json`
+2. `GET https://api.agentdb.com/x402/discovery`
+3. Connect MCP transport at `https://api.agentdb.com/mcp`
+
+### 402 retry rule
+
+* If a call returns `402 Payment Required`, complete payment and retry **without changing arguments**.
+
+### Tools you’ll use (example)
+
+* `agentdb.quote_store`
+* `agentdb.request_approval`
+* `agentdb.create_store`
+* `agentdb.put`
+* `agentdb.get`
+* `agentdb.query`
+* `agentdb.logs`
+* `agentdb.receipts`
+
+---
+
+## 6.3 `/docs/quickstart/agents-rest`
+
+**Title:** Agent Quickstart (REST)
+
+### Flow
+
+1. Quote:
+
+```bash
+curl -sS https://api.agentdb.com/v1/stores:quote \
+  -H 'content-type: application/json' \
+  -d '{"ttl_days":7,"expected_ops_per_day":{"read":2000,"write":200},"max_spend_usd":3.00}'
+```
+
+2. Create approval:
+
+```bash
+curl -sS https://api.agentdb.com/v1/approvals \
+  -H 'content-type: application/json' \
+  -d '{"quote_id":"...","purpose":"Need a DB for feature branch test run","max_spend_usd":3.00}'
+```
+
+3. Human approves via `approval_url`
+
+4. Create store (may return 402 if funding required)
+
+* On 402: pay and retry with `PAYMENT-SIGNATURE` (x402)
+
+---
+
+## 6.4 `/docs/x402` (how AgentDB uses x402)
+
+Sections:
+
+* When AgentDB returns 402
+* How to top up
+* Idempotency requirements for writes
+* SIWX vs capability tokens
+
+---
+
+# 7) Machine-facing endpoints: JSON Schemas + example instances
+
+The shapes below intentionally mirror the **de facto** “agent gateway” patterns used in the ecosystem (e.g., `/.well-known/mcp.json`, `/x402/discovery`, `/meta.json`, `/llms.txt`). ([agent402][15])
+
+## 7.1 `/.well-known/mcp.json`
+
+### JSON Schema: `McpServerCard.schema.json`
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://api.agentdb.com/schemas/McpServerCard.schema.json",
+  "title": "MCP Server Card",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["name", "description", "url", "transport", "version", "tools", "payment"],
+  "properties": {
+    "name": { "type": "string", "minLength": 1 },
+    "description": { "type": "string", "minLength": 1 },
+    "url": { "type": "string", "format": "uri" },
+    "transport": {
+      "type": "string",
+      "enum": ["streamable-http", "stdio", "sse", "websocket"]
+    },
+    "version": { "type": "string", "minLength": 1 },
+    "tools": {
+      "type": "array",
+      "minItems": 0,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "description"],
+        "properties": {
+          "name": { "type": "string", "pattern": "^[a-zA-Z0-9._-]+$" },
+          "description": { "type": "string" },
+          "tags": {
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        }
+      }
+    },
+    "payment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["protocol", "network", "asset", "payTo"],
+      "properties": {
+        "protocol": { "type": "string", "const": "x402" },
+        "network": { "type": "string", "minLength": 1 },
+        "asset": { "type": "string", "minLength": 1 },
+        "payTo": { "type": "string", "minLength": 1 },
+        "schemes": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Optional list of supported x402 payment schemes (e.g., exact, credit)."
+        }
+      }
+    }
+  }
+}
+```
+
+### Example instance: `/.well-known/mcp.json`
+
+```json
+{
+  "name": "agentdb-mcp",
+  "description": "AgentDB MCP: create and use durable stores with x402 billing and human approvals.",
+  "url": "https://api.agentdb.com/mcp",
+  "transport": "streamable-http",
+  "version": "0.2.0",
+  "tools": [
+    { "name": "agentdb.quote_store", "description": "Estimate cost range and propose a max spend cap." },
+    { "name": "agentdb.request_approval", "description": "Create a human approval request for a store." },
+    { "name": "agentdb.create_store", "description": "Provision a store after approval/funding." },
+    { "name": "agentdb.put", "description": "Put an item by key." },
+    { "name": "agentdb.get", "description": "Get an item by key." },
+    { "name": "agentdb.query", "description": "Query items by partition key (and sort key conditions, if enabled)." },
+    { "name": "agentdb.receipts", "description": "Fetch receipts (line items) for cost visibility." },
+    { "name": "agentdb.logs", "description": "Fetch audit/ops/error logs for debugging and governance." }
+  ],
+  "payment": {
+    "protocol": "x402",
+    "network": "eip155:8453",
+    "asset": "USDC",
+    "payTo": "0x0000000000000000000000000000000000000000",
+    "schemes": ["exact", "credit"]
+  }
+}
+```
+
+---
+
+## 7.2 `/x402/discovery`
+
+### JSON Schema: `X402Discovery.schema.json`
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://api.agentdb.com/schemas/X402Discovery.schema.json",
+  "title": "x402 Discovery (Tool Catalog)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "server", "policy", "tools"],
+  "properties": {
+    "version": { "type": "string", "minLength": 1 },
+    "server": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "description", "url"],
+      "properties": {
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "url": { "type": "string", "format": "uri" }
+      }
+    },
+    "policy": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "billingMode": { "type": "string" },
+        "byokSupported": { "type": "boolean" },
+        "networkPolicy": { "type": "object", "additionalProperties": true }
+      }
+    },
+    "tools": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "description", "network", "payTo", "inputSchema", "outputSchema"],
+        "properties": {
+          "name": { "type": "string", "pattern": "^[a-zA-Z0-9._-]+$" },
+          "description": { "type": "string" },
+
+          "price": {
+            "type": "string",
+            "description": "Human-readable starting price (e.g., '$0.002') or 'dynamic'."
+          },
+          "priceModel": {
+            "type": "object",
+            "description": "Optional structured price model for non-flat pricing.",
+            "additionalProperties": true
+          },
+
+          "network": { "type": "string" },
+          "payTo": { "type": "string" },
+
+          "billingMode": { "type": "string" },
+          "byokRequired": { "type": "boolean" },
+          "testnetAccess": { "type": "string" },
+
+          "inputSchema": {
+            "type": "object",
+            "description": "JSON Schema for tool input.",
+            "additionalProperties": true
+          },
+          "outputSchema": {
+            "type": "object",
+            "description": "JSON Schema for tool output.",
+            "additionalProperties": true
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+### Example instance: `/x402/discovery`
+
+```json
+{
+  "version": "2",
+  "server": {
+    "name": "agentdb-mcp",
+    "description": "Pay-per-use durable stores for agents with approvals, caps, receipts, and logs.",
+    "url": "https://api.agentdb.com/mcp"
+  },
+  "policy": {
+    "billingMode": "lease_and_usage",
+    "byokSupported": false,
+    "networkPolicy": { "default": "mainnet_only" }
+  },
+  "tools": [
+    {
+      "name": "agentdb.quote_store",
+      "description": "Estimate cost range and propose a max spend cap.",
+      "price": "free",
+      "network": "eip155:8453",
+      "payTo": "0x0000000000000000000000000000000000000000",
+      "billingMode": "n/a",
+      "byokRequired": false,
+      "testnetAccess": "open",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "ttl_days": { "type": "integer", "minimum": 1, "maximum": 365 },
+          "expected_ops_per_day": {
+            "type": "object",
+            "properties": {
+              "read": { "type": "integer", "minimum": 0 },
+              "write": { "type": "integer", "minimum": 0 }
+            },
+            "required": ["read", "write"]
+          },
+          "max_spend_usd": { "type": "number", "minimum": 0 }
+        },
+        "required": ["ttl_days", "expected_ops_per_day", "max_spend_usd"]
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "quote_id": { "type": "string" },
+          "estimated_cost_range_usd": {
+            "type": "object",
+            "properties": {
+              "low": { "type": "number" },
+              "high": { "type": "number" }
+            },
+            "required": ["low", "high"]
+          },
+          "recommended_deposit_usd": { "type": "number" }
+        },
+        "required": ["quote_id", "estimated_cost_range_usd", "recommended_deposit_usd"]
+      }
+    },
+    {
+      "name": "agentdb.create_store",
+      "description": "Provision a store after approval/funding.",
+      "price": "dynamic",
+      "priceModel": {
+        "type": "lease_deposit_plus_usage",
+        "depositMinimumUsd": 1.0,
+        "usage": {
+          "readUnitUsd": 0.0000005,
+          "writeUnitUsd": 0.000002,
+          "storageGbDayUsd": 0.02
+        }
+      },
+      "network": "eip155:8453",
+      "payTo": "0x0000000000000000000000000000000000000000",
+      "billingMode": "lease_and_usage",
+      "byokRequired": false,
+      "testnetAccess": "allowlisted_project_wallets_only",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "approval_id": { "type": "string" },
+          "store_name": { "type": "string", "minLength": 1 },
+          "key_schema": {
+            "type": "object",
+            "properties": {
+              "partitionKey": { "type": "string", "minLength": 1 },
+              "sortKey": { "type": "string", "minLength": 1 }
+            },
+            "required": ["partitionKey"]
+          }
+        },
+        "required": ["approval_id", "store_name", "key_schema"]
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "store_id": { "type": "string" },
+          "endpoint": { "type": "string", "format": "uri" },
+          "expires_at": { "type": "string" }
+        },
+        "required": ["store_id", "endpoint", "expires_at"]
+      }
+    }
+  ]
+}
+```
+
+---
+
+## 7.3 `/meta.json`
+
+### JSON Schema: `Meta.schema.json`
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://api.agentdb.com/schemas/Meta.schema.json",
+  "title": "Machine-friendly Site Metadata",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["name", "description", "endpoints", "endpointDetails", "tools", "robots"],
+  "properties": {
+    "name": { "type": "string" },
+    "description": { "type": "string" },
+    "endpoints": {
+      "type": "object",
+      "additionalProperties": { "type": "string", "format": "uri" }
+    },
+    "endpointDetails": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "methods", "url", "role"],
+        "properties": {
+          "path": { "type": "string" },
+          "methods": { "type": "string" },
+          "url": { "type": "string", "format": "uri" },
+          "role": { "type": "string" }
+        }
+      }
+    },
+    "tools": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "description"],
+        "properties": {
+          "name": { "type": "string" },
+          "description": { "type": "string" },
+          "price": { "type": "string" }
+        }
+      }
+    },
+    "robots": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["llms", "robotsTxt"],
+      "properties": {
+        "llms": { "type": "string", "format": "uri" },
+        "robotsTxt": { "type": "string", "format": "uri" }
+      }
+    }
+  }
+}
+```
+
+### Example instance: `/meta.json`
+
+```json
+{
+  "name": "agentdb-mcp",
+  "description": "AgentDB: durable stores for agents with x402 billing, approvals, caps, receipts, and logs.",
+  "endpoints": {
+    "homepage": "https://agentdb.com/",
+    "console": "https://console.agentdb.com/",
+    "mcp": "https://api.agentdb.com/mcp",
+    "mcpCard": "https://api.agentdb.com/.well-known/mcp.json",
+    "x402Discovery": "https://api.agentdb.com/x402/discovery",
+    "x402Manifest": "https://api.agentdb.com/.well-known/x402",
+    "openapi": "https://api.agentdb.com/openapi.json",
+    "meta": "https://api.agentdb.com/meta.json",
+    "llms": "https://api.agentdb.com/llms.txt",
+    "robotsTxt": "https://api.agentdb.com/robots.txt",
+    "sitemap": "https://agentdb.com/sitemap.xml",
+    "health": "https://api.agentdb.com/health"
+  },
+  "endpointDetails": [
+    {
+      "path": "/mcp",
+      "methods": "POST, GET, DELETE",
+      "url": "https://api.agentdb.com/mcp",
+      "role": "Primary Streamable HTTP MCP transport."
+    },
+    {
+      "path": "/.well-known/mcp.json",
+      "methods": "GET",
+      "url": "https://api.agentdb.com/.well-known/mcp.json",
+      "role": "Canonical MCP server card for discovery."
+    },
+    {
+      "path": "/x402/discovery",
+      "methods": "GET",
+      "url": "https://api.agentdb.com/x402/discovery",
+      "role": "Tool list, schemas, and pricing."
+    },
+    {
+      "path": "/.well-known/x402",
+      "methods": "GET",
+      "url": "https://api.agentdb.com/.well-known/x402",
+      "role": "x402 manifest for discovery tooling and DNS-based discovery."
+    }
+  ],
+  "tools": [
+    { "name": "agentdb.quote_store", "description": "Estimate costs and propose caps.", "price": "free" },
+    { "name": "agentdb.create_store", "description": "Provision a store after approval.", "price": "dynamic" }
+  ],
+  "robots": {
+    "llms": "https://api.agentdb.com/llms.txt",
+    "robotsTxt": "https://api.agentdb.com/robots.txt"
+  }
+}
+```
+
+---
+
+## 7.4 `/llms.txt` template
+
+This is not standardized, but the ecosystem pattern is: a concise outline of canonical discovery endpoints + docs entry points (see agent402). ([agent402][16])
+
+**Example `llms.txt`:**
+
+```txt
+# AgentDB — accountless cloud stores for AI agents with x402 billing.
+
+## Canonical Discovery
+- MCP card: https://api.agentdb.com/.well-known/mcp.json
+- MCP transport: https://api.agentdb.com/mcp
+- x402 discovery: https://api.agentdb.com/x402/discovery
+- x402 manifest: https://api.agentdb.com/.well-known/x402
+- OpenAPI: https://api.agentdb.com/openapi.json
+- Meta: https://api.agentdb.com/meta.json
+
+## Agent Quickstarts
+- MCP quickstart: https://agentdb.com/docs/quickstart/agents-mcp
+- REST quickstart: https://agentdb.com/docs/quickstart/agents-rest
+
+## Human Docs
+- Overview: https://agentdb.com/product
+- Pricing: https://agentdb.com/pricing
+- Learn x402: https://agentdb.com/learn/what-is-x402
+- Compare: https://agentdb.com/compare
+
+## Console
+- Console: https://console.agentdb.com/
+
+## Health
+- API health: https://api.agentdb.com/health
+- Status: https://status.agentdb.com/
+```
+
+---
+
+## 7.5 `/.well-known/x402` manifest (discovery manifest)
+
+This is the manifest URL pattern referenced by the DNS discovery draft (operators may host at `/.well-known/x402`), with JSON format required for manifests. ([IETF Datatracker][1])
+The draft doesn’t prescribe a concrete field schema; so you should publish a **stable, versioned manifest**.
+
+### JSON Schema: `X402Manifest.schema.json`
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://api.agentdb.com/schemas/X402Manifest.schema.json",
+  "title": "x402 Discovery Manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "service", "x402", "resources", "links"],
+  "properties": {
+    "version": {
+      "type": "string",
+      "description": "Manifest schema version.",
+      "pattern": "^x402-manifest\\/\\d+$"
+    },
+    "service": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "description"],
+      "properties": {
+        "name": { "type": "string" },
+        "description": { "type": "string" }
+      }
+    },
+    "x402": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["protocolVersion", "schemes", "networks", "assets"],
+      "properties": {
+        "protocolVersion": { "type": "string", "description": "e.g., '2'" },
+        "schemes": { "type": "array", "items": { "type": "string" } },
+        "networks": { "type": "array", "items": { "type": "string" } },
+        "assets": { "type": "array", "items": { "type": "string" } },
+        "facilitator": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["verifyUrl", "settleUrl"],
+          "properties": {
+            "verifyUrl": { "type": "string", "format": "uri" },
+            "settleUrl": { "type": "string", "format": "uri" }
+          }
+        }
+      }
+    },
+    "resources": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "methods", "description", "payment"],
+        "properties": {
+          "path": { "type": "string" },
+          "methods": {
+            "type": "array",
+            "items": { "type": "string", "enum": ["GET", "POST", "PUT", "PATCH", "DELETE"] }
+          },
+          "description": { "type": "string" },
+          "payment": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["mode"],
+            "properties": {
+              "mode": {
+                "type": "string",
+                "enum": ["none", "exact", "dynamic", "quote_then_pay", "lease_and_usage"]
+              },
+              "priceHint": { "type": "string" },
+              "currency": { "type": "string", "default": "USD" }
+            }
+          }
+        }
+      }
+    },
+    "links": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["x402Discovery", "mcpCard", "mcp", "openapi", "meta", "llms"],
+      "properties": {
+        "x402Discovery": { "type": "string", "format": "uri" },
+        "mcpCard": { "type": "string", "format": "uri" },
+        "mcp": { "type": "string", "format": "uri" },
+        "openapi": { "type": "string", "format": "uri" },
+        "meta": { "type": "string", "format": "uri" },
+        "llms": { "type": "string", "format": "uri" }
+      }
+    }
+  }
+}
+```
+
+### Example instance: `/.well-known/x402`
+
+```json
+{
+  "version": "x402-manifest/1",
+  "service": {
+    "name": "AgentDB API",
+    "description": "Accountless durable stores for agents with x402 billing and human approvals."
+  },
+  "x402": {
+    "protocolVersion": "2",
+    "schemes": ["exact", "credit"],
+    "networks": ["eip155:8453"],
+    "assets": ["USDC"],
+    "facilitator": {
+      "verifyUrl": "https://facilitator.example/verify",
+      "settleUrl": "https://facilitator.example/settle"
+    }
+  },
+  "resources": [
+    {
+      "path": "/v1/stores:quote",
+      "methods": ["POST"],
+      "description": "Return cost estimate range and recommended deposit.",
+      "payment": { "mode": "none" }
+    },
+    {
+      "path": "/v1/approvals",
+      "methods": ["POST"],
+      "description": "Create human approval request (may require payment depending on policy).",
+      "payment": { "mode": "dynamic", "priceHint": "Typically free" }
+    },
+    {
+      "path": "/v1/stores",
+      "methods": ["POST"],
+      "description": "Create store after approval; funds lease and provisions store.",
+      "payment": { "mode": "lease_and_usage", "priceHint": "Deposit + usage", "currency": "USD" }
+    }
+  ],
+  "links": {
+    "x402Discovery": "https://api.agentdb.com/x402/discovery",
+    "mcpCard": "https://api.agentdb.com/.well-known/mcp.json",
+    "mcp": "https://api.agentdb.com/mcp",
+    "openapi": "https://api.agentdb.com/openapi.json",
+    "meta": "https://api.agentdb.com/meta.json",
+    "llms": "https://api.agentdb.com/llms.txt"
+  }
+}
+```
+
+---
+
+# 8) Optional: DNS discovery note (for your Learning + Docs)
+
+If you want to support DNS-based discovery, add a “For operators” note in docs and publish:
+
+```
+_x402.api.agentdb.com TXT "v=x4021;descriptor=api;url=https://api.agentdb.com/.well-known/x402"
+```
+
+The DNS discovery draft describes `_x402` TXT records pointing to an HTTPS manifest URL (often `/.well-known/x402`) and emphasizes TLS validation requirements. ([IETF Datatracker][1])
+
+---
+
+# 9) What I would implement first (so the website matches reality)
+
+To avoid a “pretty website / missing product” mismatch, the minimum implementation that makes every page honest:
+
+1. `/v1/stores:quote` returns real estimates
+2. `/v1/approvals` + approval URL page
+3. `/v1/stores` create + TTL + caps
+4. Receipts ledger endpoint
+5. Logs endpoint (audit + ops at least)
+6. `/.well-known/mcp.json`, `/x402/discovery`, `/meta.json`, `/llms.txt`
+7. Console pages: Stores, Approvals, Receipts, Logs
+
+---
+
+If you want, I can also generate:
+
+* a **full OpenAPI 3.1 spec** for the REST surface (quote/approval/store CRUD/receipts/logs),
+* a matching **MCP tool schema** set (tools/list + tools/call payloads),
+* and a **pixel-level component spec** (design tokens, layout, and concrete UI states for approval flows and low-balance top-ups).
+
+[1]: https://datatracker.ietf.org/doc/draft-jeftovic-x402-dns-discovery/ "
+            
+    
+        draft-jeftovic-x402-dns-discovery-00 - Discovering x402 Resources via DNS TXT Records
+    
+
+        "
+[2]: https://docs.cdp.coinbase.com/x402/core-concepts/how-it-works?utm_source=chatgpt.com "How x402 Works - Coinbase Developer Documentation"
+[3]: https://docs.x402.org/?utm_source=chatgpt.com "Welcome to x402 - x402"
+[4]: https://www.x402.org/writing/x402-v2-launch?utm_source=chatgpt.com "Introducing x402 V2: Evolving the Standard for Internet- ..."
+[5]: https://docs.x402.org/extensions/sign-in-with-x?utm_source=chatgpt.com "Sign-In-With-X (SIWX)"
+[6]: https://docs.x402.org/extensions/payment-identifier?utm_source=chatgpt.com "Payment-Identifier (Idempotency)"
+[7]: https://docs.cdp.coinbase.com/x402/bazaar?utm_source=chatgpt.com "x402 Bazaar (Discovery Layer)"
+[8]: https://upstash.com/docs/redis/overall/pricing?utm_source=chatgpt.com "Pricing & Limits - Upstash Documentation"
+[9]: https://upstash.com/docs/redis/features/restapi?utm_source=chatgpt.com "REST API - Upstash Documentation"
+[10]: https://turso.tech/pricing?utm_source=chatgpt.com "Turso Database Pricing"
+[11]: https://docs.turso.tech/api-reference/authentication?utm_source=chatgpt.com "Authentication"
+[12]: https://www.cloudflare.com/plans/developer-platform-pricing/?utm_source=chatgpt.com "Workers & Pages Pricing"
+[13]: https://cloud.google.com/firestore/pricing?utm_source=chatgpt.com "Firestore pricing"
+[14]: https://developers.cloudflare.com/fundamentals/api/get-started/account-owned-tokens/?utm_source=chatgpt.com "Account API tokens · Cloudflare Fundamentals docs"
+[15]: https://agent402.dev/.well-known/mcp.json "agent402.dev"
+[16]: https://agent402.dev/llms.txt "agent402.dev"
+
+
+elevator pitch:;2;13~AgentDB turns cloud infrastructure into something an AI agent can safely buy.
+
+Today, when a coding agent needs a database, it hits a wall: someone has to create a cloud account, set up billing, click through consoles, manage keys, and then you still risk surprise spend. That friction kills autonomous workflows and makes platform teams say “no” to agents provisioning anything real.
+
+We built AgentDB: a production-grade cloud store that can be provisioned in seconds with **no AWS account, no signup, and no API keys**. It uses the **x402 standard**—HTTP 402 “Payment Required”—so an agent can request a quote, present a maximum spend to a human, get one-click approval, and then automatically provision and operate the database. Every request produces receipts and logs, budgets are hard-enforced, and resources auto-expire so you never pay forever. We offer QoS-backed tiers with an SLA and transparent status.
+
+The wedge is simple: **agent-native procurement** for state. Once you can buy a database over HTTP, you can buy anything—queues, storage, model calls, test environments—under policy. We’re building the default payments-and-governance layer for agentic infrastructure.
+
+
+Below is a **DynamoDB‑CLI‑compatible** design for a `ws402` command that preserves AWS muscle memory as much as possible.
+
+The goal is that for the common CRUD + table lifecycle operations, you can **almost always** do:
+
+* Replace `aws dynamodb` with `ws402 db` (or `ws402 dynamodb`)
+* Keep the rest of the command line the same
+
+Example (yours):
+
+```bash
+aws dynamodb get-item --table-name MyTable --key '{"id":{"S":"123"}}'
+ws402 db get-item  --table-name MyTable --key '{"id":{"S":"123"}}'
+```
+
+---
+
+## 1) CLI identity and compatibility contract
+
+### Command shape (AWS-style)
+
+`ws402 [global options] <service> <operation> [parameters]`
+
+### Service aliases
+
+* `ws402 db ...`  ✅ (short)
+* `ws402 dynamodb ...` ✅ (drop-in mental model)
+
+### Compatibility contract
+
+**For supported operations**, `ws402 db` will:
+
+* Accept the **same parameters** as the AWS CLI DynamoDB command references (AWS CLI v2 style) for the subset we implement (see scope below). ([AWS Documentation][1])
+* Accept DynamoDB **AttributeValue JSON** (`{"S":...,"N":...,"M":...,"L":...}` etc.) exactly as AWS CLI examples and docs describe. ([AWS Documentation][2])
+* Return response JSON shaped like AWS CLI outputs (e.g., `{"Item": ...}`, `{"TableDescription": ...}`), plus optional ws402 extensions under a dedicated field (off by default).
+
+---
+
+## 2) Supported scope (v1)
+
+You asked for “as close as possible” but not 100%. Here’s the intentional scope.
+
+### ✅ Supported control-plane commands (table lifecycle)
+
+| Command                                       | Status      | Notes                                                                                                                                                                                                                       |
+| --------------------------------------------- | ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `list-tables`                                 | ✅           | Supports AWS pagination flags `--starting-token`, `--page-size`, `--max-items`. ([AWS Documentation][3])                                                                                                                    |
+| `describe-table`                              | ✅           | `--table-name` only. ([AWS Documentation][4])                                                                                                                                                                               |
+| `create-table`                                | ✅ (limited) | Supports `--table-name`, `--attribute-definitions`, `--key-schema`, `--billing-mode`. **No GSIs/LSIs/streams** in v1. AWS has many more options; we will error if you try to use unsupported ones. ([AWS Documentation][5]) |
+| `delete-table`                                | ✅           | `--table-name` only. ([AWS Documentation][6])                                                                                                                                                                               |
+| `update-time-to-live`                         | ✅           | Supports `--time-to-live-specification Enabled=...,AttributeName=...` ([AWS Documentation][7])                                                                                                                              |
+| `describe-time-to-live`                       | ✅           | `--table-name` only. ([AWS Documentation][8])                                                                                                                                                                               |
+| `wait table-exists` / `wait table-not-exists` | ✅           | Parity with AWS waiters (behavioral equivalent).                                                                                                                                                                            |
+
+### ✅ Supported data-plane commands (CRUD/query)
+
+| Command            | Status            | Notes                                                                                                                                                         |
+| ------------------ | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `get-item`         | ✅                 | Supports `--key`, `--consistent-read`, `--projection-expression`, `--expression-attribute-names`, `--return-consumed-capacity`. ([AWS Documentation][1])      |
+| `put-item`         | ✅                 | Supports conditional puts and expressions, `--return-values`, `--return-consumed-capacity`. ([AWS Documentation][2])                                          |
+| `update-item`      | ✅                 | Supports `--update-expression`, `--condition-expression`, `--expression-attribute-*`, `--return-values`. ([AWS Documentation][9])                             |
+| `delete-item`      | ✅                 | Supports condition/expression flags and `--return-values`. ([AWS Documentation][10])                                                                          |
+| `query`            | ✅ (no indexes v1) | Supports `--key-condition-expression`, `--filter-expression`, `--projection-expression`, pagination. `--index-name` errors for now. ([AWS Documentation][11]) |
+| `scan`             | ⚠️ guarded        | Supported **only with an explicit ws402 override** (see below), because scans are easy to abuse/costly. AWS supports scan broadly. ([AWS Documentation][12])  |
+| `batch-get-item`   | ✅                 | Supports `--request-items`. ([AWS Documentation][13])                                                                                                         |
+| `batch-write-item` | ✅                 | Supports `--request-items` (PutRequest/DeleteRequest). ([AWS Documentation][14])                                                                              |
+
+### ❌ Not supported in v1 (explicit)
+
+* Transactions: `transact-write-items`, `transact-get-items`
+* Secondary indexes (LSI/GSI) creation/query
+* Streams
+* PartiQL (`execute-statement`, `batch-execute-statement`)
+* Import/export, PITR backups, global tables (unless you choose to add a “multi-region tier” later)
+
+If you call an unsupported operation or pass unsupported flags, you get a **hard error** (never silently ignored).
+
+---
+
+## 3) Global options (AWS-like) + ws402 extensions
+
+### AWS-like global options (supported)
+
+* `--endpoint-url` (points to ws402 API gateway; default configured)
+* `--region` (maps to ws402 “service region”)
+* `--profile` (selects a ws402 profile)
+* `--output`, `--query`, `--no-cli-pager`
+* `--cli-read-timeout`, `--cli-connect-timeout`
+* `--cli-binary-format` (for Binary attributes parity)
+* `--cli-input-json | --cli-input-yaml`, `--generate-cli-skeleton` (optional but recommended for parity)
+
+These appear in AWS CLI DynamoDB command synopses and are worth matching to make scripts portable. ([AWS Documentation][1])
+
+### ws402-specific global extensions (namespaced to avoid collisions)
+
+All ws402-only flags start with `--ws402-` so you can copy/paste AWS CLI commands unchanged and only add ws402 controls when needed.
+
+**Payment + approvals**
+
+* `--ws402-pay ask|auto|never` (default: `ask`)
+* `--ws402-max-pay-usd <float>` (cap for auto-pay)
+* `--ws402-approval ask|auto|never` (default: `ask`)
+* `--ws402-approval-url` (print-only; outputs a URL if approval is required)
+* `--ws402-noninteractive` (never prompt; return machine-readable “payment/approval required” JSON + exit code)
+
+**Resource safety defaults**
+
+* `--ws402-ttl <duration>` (e.g., `7d`, `24h`) for `create-table` if you want explicit per-call TTL
+* `--ws402-max-spend-usd <float>` (hard lifetime cap for the table lease)
+* `--ws402-daily-cap-usd <float>` (optional)
+* `--ws402-include-billing` (adds a `WS402Billing` object to outputs; off by default)
+
+**Scan guardrails**
+
+* `--ws402-allow-scan` (required to run `scan`)
+* `--ws402-scan-max-items <int>` (hard cap)
+* `--ws402-scan-max-mb <int>` (hard cap)
+
+---
+
+## 4) Config that feels like `aws configure`
+
+### `ws402 configure`
+
+Interactive prompt modeled after AWS CLI, but instead of AWS access keys you set payment/policy defaults.
+
+Prompts:
+
+* Default endpoint URL
+* Default region
+* Default output format
+* Default table TTL (e.g., 7d)
+* Default max spend USD (e.g., 3.00)
+* Payment mode (`ask`/`auto`/`never`)
+* Max auto-pay USD
+* Approval policy threshold (optional)
+
+### File format (INI, AWS-like)
+
+Path: `~/.ws402/config`
+
+Example:
+
+```ini
+[default]
+region = us-east-1
+output = json
+endpoint_url = https://api.ws402.example
+ws402_default_ttl = 7d
+ws402_default_max_spend_usd = 3.00
+ws402_pay = ask
+ws402_max_auto_pay_usd = 0.50
+
+[profile work]
+region = eu-west-1
+ws402_default_max_spend_usd = 25.00
+ws402_pay = auto
+ws402_max_auto_pay_usd = 1.00
+```
+
+This preserves the familiar `--profile` workflow from AWS CLI.
+
+---
+
+## 5) DynamoDB JSON compatibility (AttributeValue)
+
+To match AWS CLI, keys and items use DynamoDB AttributeValue objects:
+
+* String: `{"S":"hello"}`
+* Number: `{"N":"123.45"}`
+* Binary (base64): `{"B":"..."}`
+* Map: `{"M": { "a": {"S":"x"} }}`
+* List: `{"L": [ {"S":"x"}, {"N":"1"} ]}`
+* Sets: `{"SS":[...], "NS":[...], "BS":[...]}`
+
+This is exactly the format described in the AWS CLI references for item and expression values. ([AWS Documentation][2])
+
+---
+
+## 6) Payment + approval behavior (the big difference vs AWS)
+
+AWS DynamoDB calls don’t have a payment step. Your wrapper does.
+
+### When ws402 will require payment
+
+* `create-table` (fund the table lease / minimum deposit)
+* Any operation when balance is low or cap would be exceeded
+* Optional: log retention upgrades, TTL extension
+
+### Interactive default (`--ws402-pay ask`)
+
+If the server replies with **HTTP 402 Payment Required** (x402 style), the CLI prints a prompt:
+
+```txt
+Payment required to continue (x402):
+  Operation: db create-table
+  Table: MyTable
+  Required deposit: $1.50
+  Cap (lifetime): $3.00
+Approve & pay now? [y/N]
+```
+
+If approval is required (policy threshold exceeded), CLI prints:
+
+```txt
+Approval required:
+  Estimated range: $0.35–$1.10
+  Cap requested: $3.00
+Open approval link:
+  https://console.ws402.example/approve/ap_...
+```
+
+### Non-interactive mode (`--ws402-noninteractive`)
+
+The CLI exits with:
+
+* exit code `3` = payment required (not paid)
+* exit code `4` = approval required (not granted)
+
+And prints JSON such as:
+
+```json
+{
+  "error": "ApprovalRequired",
+  "approval_url": "https://console.ws402.example/approve/ap_01J...",
+  "requested_cap_usd": 3.0,
+  "estimated_cost_range_usd": {"low": 0.35, "high": 1.10}
+}
+```
+
+This is what you want for **agents**: they can display the quote and route the human to approve.
+
+---
+
+## 7) Command examples (AWS → ws402)
+
+### 7.1 `get-item` (exact drop-in)
+
+AWS CLI flags here include `--table-name`, `--key`, optional `--consistent-read`, `--projection-expression`, etc. ([AWS Documentation][1])
+
+```bash
+ws402 db get-item \
+  --table-name MyTable \
+  --key '{"id":{"S":"123"}}'
+```
+
+### 7.2 `put-item`
+
+AWS CLI synopsis shows `--item`, expression flags, and `--return-values`, etc. ([AWS Documentation][2])
+
+```bash
+ws402 db put-item \
+  --table-name MyTable \
+  --item '{"id":{"S":"123"},"email":{"S":"a@b.com"}}' \
+  --return-consumed-capacity TOTAL
+```
+
+### 7.3 `query`
+
+AWS CLI synopsis includes `--key-condition-expression`, `--expression-attribute-values`, `--filter-expression`, pagination flags. ([AWS Documentation][11])
+
+```bash
+ws402 db query \
+  --table-name MyTable \
+  --key-condition-expression "id = :v" \
+  --expression-attribute-values '{":v":{"S":"123"}}' \
+  --limit 20
+```
+
+### 7.4 `create-table` (AWS-like args, ws402 safety extensions)
+
+AWS CLI `create-table` supports many options. We support the core ones and will reject unsupported ones in v1. ([AWS Documentation][5])
+
+```bash
+ws402 db create-table \
+  --table-name MyTable \
+  --attribute-definitions AttributeName=id,AttributeType=S \
+  --key-schema AttributeName=id,KeyType=HASH \
+  --billing-mode PAY_PER_REQUEST \
+  --ws402-ttl 7d \
+  --ws402-max-spend-usd 3.00
+```
+
+### 7.5 TTL parity (`update-time-to-live` / `describe-time-to-live`)
+
+AWS CLI TTL commands and shorthand syntax are well-defined. ([AWS Documentation][7])
+
+```bash
+ws402 db update-time-to-live \
+  --table-name MyTable \
+  --time-to-live-specification Enabled=true,AttributeName=ttl
+```
+
+```bash
+ws402 db describe-time-to-live --table-name MyTable
+```
+
+### 7.6 `scan` (guarded)
+
+AWS supports scan broadly; it’s paginated and has many flags. ([AWS Documentation][12])
+ws402 requires explicit opt-in:
+
+```bash
+ws402 db scan \
+  --table-name MyTable \
+  --ws402-allow-scan \
+  --ws402-scan-max-items 1000
+```
+
+---
+
+## 8) Output compatibility (AWS-like), with optional ws402 extensions
+
+### Default output (AWS-shaped)
+
+Example `get-item` output (AWS-like):
+
+```json
+{
+  "Item": {
+    "id": {"S":"123"},
+    "email": {"S":"a@b.com"}
+  },
+  "ConsumedCapacity": {
+    "TableName": "MyTable",
+    "CapacityUnits": 0.5
+  }
+}
+```
+
+### Optional ws402 fields (only with `--ws402-include-billing`)
+
+```json
+{
+  "Item": { "...": "..." },
+  "ConsumedCapacity": { "...": "..." },
+  "WS402Billing": {
+    "estimated_cost_usd": 0.0000008,
+    "balance_remaining_usd": 2.41,
+    "cap_remaining_usd": 2.41,
+    "request_id": "req_01J..."
+  }
+}
+```
+
+This keeps compatibility clean by default, while still enabling cost transparency when you want it.
+
+---
+
+## 9) What makes this “AWS-like” in practice
+
+1. **Same command names**: `get-item`, `put-item`, `query`, etc. ([AWS Documentation][1])
+2. **Same parameter names**: `--table-name`, `--key`, `--item`, expression parameters. ([AWS Documentation][1])
+3. **Same DynamoDB JSON shapes** for item/keys/expression values. ([AWS Documentation][2])
+4. **Same pagination ergonomics**: `--starting-token`, `--page-size`, `--max-items`. ([AWS Documentation][3])
+5. **Strict errors** when you use features we haven’t implemented (indexes, transactions) so users don’t think they’re protected when they aren’t.
+
+---
+
+## 10) Next step: do you want *AWS CLI argument parsing exactness*?
+
+If you want *maximum* drop-in compatibility (including odd edge behaviors like shorthand parsing quirks and skeleton generation), the most robust approach is:
+
+* Implement `ws402 db` using the **same parameter models** as the AWS CLI docs for each supported command (synopsis/options).
+* Enforce a **compatibility test suite**:
+
+  * take real AWS CLI DynamoDB examples
+  * run them through `ws402 db ...`
+  * compare request objects and response shapes
+
+If you want, I can produce:
+
+* a **complete command-by-command “supported flags” matrix** (down to every option in each synopsis we support),
+* and a **golden test corpus** built from AWS CLI docs for `get-item`, `put-item`, `query`, `update-item`, `batch-*`, `create-table`, TTL, scan. ([AWS Documentation][1])
+
+[1]: https://docs.aws.amazon.com/cli/latest/reference/dynamodb/get-item.html "get-item — AWS CLI 2.33.8 Command Reference"
+[2]: https://docs.aws.amazon.com/cli/latest/reference/dynamodb/put-item.html "put-item — AWS CLI 2.33.22 Command Reference"
+[3]: https://docs.aws.amazon.com/cli/latest/reference/dynamodb/list-tables.html "list-tables — AWS CLI 2.33.28 Command Reference"
+[4]: https://docs.aws.amazon.com/cli/latest/reference/dynamodb/describe-table.html "describe-table — AWS CLI 2.33.22 Command Reference"
+[5]: https://docs.aws.amazon.com/cli/latest/reference/dynamodb/create-table.html "create-table — AWS CLI 2.33.19 Command Reference"
+[6]: https://docs.aws.amazon.com/cli/latest/reference/dynamodb/delete-table.html "delete-table — AWS CLI 2.33.21 Command Reference"
+[7]: https://docs.aws.amazon.com/cli/latest/reference/dynamodb/update-time-to-live.html "update-time-to-live — AWS CLI 2.33.20 Command Reference"
+[8]: https://docs.aws.amazon.com/cli/latest/reference/dynamodb/describe-time-to-live.html "describe-time-to-live — AWS CLI 2.33.28 Command Reference"
+[9]: https://docs.aws.amazon.com/cli/latest/reference/dynamodb/update-item.html "update-item — AWS CLI 2.33.18 Command Reference"
+[10]: https://docs.aws.amazon.com/cli/latest/reference/dynamodb/delete-item.html "delete-item — AWS CLI 2.33.21 Command Reference"
+[11]: https://docs.aws.amazon.com/cli/latest/reference/dynamodb/query.html "query — AWS CLI 2.33.20 Command Reference"
+[12]: https://docs.aws.amazon.com/cli/latest/reference/dynamodb/scan.html "scan — AWS CLI 2.33.19 Command Reference"
+[13]: https://docs.aws.amazon.com/cli/latest/reference/dynamodb/batch-get-item.html "batch-get-item — AWS CLI 2.33.22 Command Reference"
+[14]: https://docs.aws.amazon.com/cli/latest/reference/dynamodb/batch-write-item.html "batch-write-item — AWS CLI 2.33.19 Command Reference"
+
