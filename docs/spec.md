@@ -3664,3 +3664,526 @@ If you want, I can produce:
 [13]: https://docs.aws.amazon.com/cli/latest/reference/dynamodb/batch-get-item.html "batch-get-item — AWS CLI 2.33.22 Command Reference"
 [14]: https://docs.aws.amazon.com/cli/latest/reference/dynamodb/batch-write-item.html "batch-write-item — AWS CLI 2.33.19 Command Reference"
 
+---
+
+# Founder Interview — Decisions Log (2025-02-25)
+
+The following decisions were made through a structured interview to resolve all open questions in the spec. Every decision here is **binding for the MVP** unless explicitly marked as deferred.
+
+---
+
+## D1. Brand & Identity
+
+| Decision | Value |
+|---|---|
+| **Product name** | **run402** |
+| **Domain** | run402.com |
+| **CLI command** | `run402` (replaces `ws402` from earlier spec) |
+| **Subdomains** | `run402.com` (marketing + docs), `app.run402.com` (API + console) |
+| **Tagline** | **Deferred** — to be brainstormed. Vision is bigger than databases: "databases are just the first in this cloud-for-agents space." The spec placeholder "A cloud database your agent can buy" works for now but should evolve to reflect the full platform. |
+| **Naming convention** | All references to "AgentDB" → **run402**. All references to "ws402" → **run402**. |
+
+### Global rename map (apply throughout all spec sections)
+
+* `AgentDB` → `run402`
+* `ws402` → `run402`
+* `agentdb.com` → `run402.com`
+* `console.agentdb.com` → `app.run402.com`
+* `api.agentdb.com` → `app.run402.com` (single app subdomain)
+* `status.agentdb.com` → `status.run402.com`
+* `approve.agentdb.com` → `app.run402.com/approve`
+* `agentdb-mcp` → `run402-mcp`
+* "Store" (as resource noun) → **"Table"** throughout API, CLI, docs, and marketing
+* `/v1/stores` → `/v1/tables`
+* `/v1/stores/{store_id}` → `/v1/tables/{table_id}`
+* `/v1/stores/{store_id}/items/{pk}` → `/v1/tables/{table_id}/items/{pk}`
+* `/v1/stores/{store_id}:query` → `/v1/tables/{table_id}:query`
+* `/v1/stores/{store_id}/logs` → `/v1/tables/{table_id}/logs`
+* `/v1/stores/{store_id}/budget` → `/v1/tables/{table_id}/budget`
+* `/v1/stores:quote` → `/v1/tables:quote`
+* `store_id` → `table_id`
+* `store_name` → `table_name`
+* `store_secret` → `table_secret`
+* MCP tool names: `agentdb.*` → `run402.*`
+* MCP tool: `agentdb.quote_store` → `run402.quote_table`
+* MCP tool: `agentdb.create_store` → `run402.create_table`
+
+---
+
+## D2. Platform Vision
+
+**Databases are product #1, not the whole product.**
+
+run402 is building toward **full cloud primitives for agents** — a platform where any cloud resource (databases, queues, object storage, compute, caching, DNS) can be provisioned and paid for by agents via x402, without cloud accounts.
+
+**Roadmap vision (order TBD):**
+
+1. **Tables** (DynamoDB-backed KV/NoSQL) — **this MVP**
+2. Queues (SQS-like message queues)
+3. Object storage (S3-like blob storage)
+4. Functions / compute (serverless invocations)
+5. Caching (Redis-like)
+6. DNS / domain management
+
+This means the API namespace `/v1/tables/...` is intentionally scoped. Future services will live at `/v1/queues/...`, `/v1/blobs/...`, etc. The x402 payment and metering layer should be designed as a shared platform concern, not table-specific.
+
+---
+
+## D3. Team & Timeline
+
+| Decision | Value |
+|---|---|
+| **Team size** | Small (2–5 people) |
+| **Composition** | 2–3 fullstack engineers + 1 infra/devops |
+| **Timeline** | **2–6 weeks** to a working MVP |
+| **Priority order** | 1) REST API → 2) CLI (`run402 db`) → 3) MCP server |
+| **Website scope** | Full website from spec (marketing + console + learn section) |
+
+---
+
+## D4. Technical Stack
+
+| Component | Technology | Rationale |
+|---|---|---|
+| **Backend API** | **TypeScript** (Hono or Fastify) | x402 reference implementations are TS-first; MCP SDK is TS-first; shared types across entire stack |
+| **CLI** | **TypeScript** (oclif) | Shared types with API; open-source |
+| **MCP server** | **TypeScript** | Native MCP SDK compatibility |
+| **Client SDK (TS)** | **TypeScript** | Same language as backend; open-source |
+| **Client SDK (Python)** | **Python** | Cover the two most common agent/dev languages |
+| **Frontend (marketing + console)** | **Next.js** (React) | SSR/SSG, large ecosystem |
+| **Repository** | **Monorepo** (Turborepo or Nx) | Shared types, coordinated deploys |
+
+### Monorepo structure (recommended)
+
+```
+run402/
+├── apps/
+│   ├── api/          # Hono/Fastify API server
+│   ├── web/          # Next.js marketing + console
+│   └── mcp/          # MCP server
+├── packages/
+│   ├── core/         # Shared types, schemas, DynamoDB format utils
+│   ├── x402/         # x402 header parsing, facilitator client
+│   ├── metering/     # Metering/ledger logic
+│   ├── cli/          # oclif CLI (run402 db)
+│   ├── sdk-ts/       # TypeScript client SDK (open-source)
+│   └── sdk-py/       # Python client SDK (open-source, separate build)
+├── infra/            # AWS CDK / Terraform / CloudFormation
+├── docs/             # This spec + internal docs
+├── turbo.json
+└── package.json
+```
+
+---
+
+## D5. Infrastructure Architecture
+
+| Component | Technology | Detail |
+|---|---|---|
+| **Compute** | AWS ECS/Fargate | Containerized API server, auto-scaling |
+| **Load balancer** | AWS ALB | Regional, health checks, target groups |
+| **CDN/Edge** | AWS CloudFront | Cache discovery endpoints, DDoS protection, global TLS termination |
+| **Database (customer tables)** | AWS DynamoDB (on-demand) | 1 DynamoDB table per run402 table. Tagged for attribution. |
+| **Database (internal state)** | AWS DynamoDB | Ledger, metering, table metadata, capability tokens |
+| **Region** | **us-east-1** (N. Virginia) | Cheapest, most services, default |
+| **CI/CD** | GitHub Actions | Build, test, deploy to ECS |
+| **Monitoring** | AWS CloudWatch + SNS | Metrics, logs, alarms |
+| **Status page** | Self-hosted (Upptime or Cachet) | status.run402.com |
+
+### Architecture diagram (text)
+
+```
+                    ┌─────────────────┐
+                    │   CloudFront    │
+                    │  (edge cache +  │
+                    │   TLS + DDoS)   │
+                    └────────┬────────┘
+                             │
+                    ┌────────▼────────┐
+                    │      ALB        │
+                    │  (us-east-1)    │
+                    └────────┬────────┘
+                             │
+              ┌──────────────┼──────────────┐
+              │              │              │
+     ┌────────▼───┐  ┌──────▼─────┐  ┌─────▼──────┐
+     │  Fargate   │  │  Fargate   │  │  Fargate   │
+     │  Task #1   │  │  Task #2   │  │  Task #N   │
+     │  (API)     │  │  (API)     │  │  (API)     │
+     └────────┬───┘  └──────┬─────┘  └─────┬──────┘
+              │              │              │
+              └──────────────┼──────────────┘
+                             │
+              ┌──────────────┼──────────────┐
+              │              │              │
+     ┌────────▼───┐  ┌──────▼─────┐  ┌─────▼──────┐
+     │ DynamoDB   │  │ DynamoDB   │  │ DynamoDB   │
+     │ (customer  │  │ (internal: │  │ (customer  │
+     │  tables)   │  │  ledger,   │  │  tables)   │
+     │            │  │  metadata) │  │            │
+     └────────────┘  └────────────┘  └────────────┘
+```
+
+---
+
+## D6. Auth Model
+
+**Both wallet-as-identity AND capability tokens from day 1.**
+
+| Auth method | Used for | How it works |
+|---|---|---|
+| **Capability token** (Bearer) | Data-plane access (CRUD/query) | Table creation returns `table_secret`. Client sends `Authorization: Bearer <table_secret>`. Fast, language-agnostic. |
+| **Wallet identity** (SIWX) | Console sign-in, control-plane ops (list tables, view receipts, manage budgets) | Client proves wallet ownership via SIWX signed message. Server issues a session token. |
+| **x402 payment header** | Creating tables, top-ups | x402 `PAYMENT-SIGNATURE` header inherently proves payer identity during payment flows. |
+
+### Access matrix
+
+| Operation | Capability token | Wallet (SIWX) | x402 payment |
+|---|---|---|---|
+| `PUT /items/{pk}` | Required | — | If balance low |
+| `GET /items/{pk}` | Required | — | If balance low |
+| `POST :query` | Required | — | If balance low |
+| `GET /v1/tables` | — | Required | — |
+| `POST /v1/tables` | — | Required | Required (deposit) |
+| `DELETE /v1/tables/{id}` | — | Required | — |
+| `GET /v1/usage` | — | Required | — |
+| `GET /v1/receipts` | — | Required | — |
+| Console access | — | Required | — |
+
+---
+
+## D7. Blockchain & Payments
+
+| Decision | Value |
+|---|---|
+| **Network** | Base only (eip155:8453) at launch |
+| **Asset** | USDC |
+| **Facilitator** | Coinbase x402 facilitator (hosted). Plan to self-host later for independence. |
+| **Treasury / receiving wallet** | Coinbase Commerce / custody. Secure, managed, reduces hot wallet risk. |
+| **Console wallet provider** | Coinbase Wallet (primary). Featured in connect flow. |
+| **Testnet** | Base Sepolia (testnet mode with fake USDC). Full API works, no real money. |
+
+---
+
+## D8. Product: Tables
+
+| Decision | Value |
+|---|---|
+| **Resource name** | "Table" everywhere (API, CLI, docs, marketing) |
+| **API paths** | `/v1/tables/{table_id}`, `/v1/tables/{table_id}/items/{pk}`, etc. |
+| **API response format** | DynamoDB AttributeValue JSON (`{"Item":{"id":{"S":"123"}}}`) |
+| **Error format** | DynamoDB error codes (`ConditionalCheckFailedException`, `ValidationException`, etc.) |
+| **Expression support** | Full DynamoDB expressions: `update-expression`, `condition-expression`, `filter-expression`, `projection-expression` |
+| **Item size limit** | 400KB (same as DynamoDB) |
+| **Primary key** | Partition key (string, required) + optional sort key (string) |
+| **Capacity mode** | On-demand only |
+
+---
+
+## D9. Product: Tiers
+
+**Two tiers for MVP.**
+
+| | **Ephemeral** | **Project** |
+|---|---|---|
+| Default TTL | 7 days | Configurable (default 90 days) |
+| Log retention | 7 days | 30 days |
+| SLA target | Best-effort | Higher (specific target TBD) |
+| Max storage | 10 GB | 10 GB |
+| Max ops/sec | 1,000 req/s | 1,000 req/s |
+| Max tables per wallet | 50 (shared across tiers) | 50 (shared across tiers) |
+| Backups | No | Optional (roadmap) |
+| Multi-region | No | No (v2) |
+
+---
+
+## D10. Product: Metering & Billing
+
+| Decision | Value |
+|---|---|
+| **Metering approach** | **Synchronous in-request**. Each API request computes cost inline, deducts from balance in a DynamoDB ledger table, rejects if insufficient. |
+| **Pricing** | **Deferred** — needs cost modeling. Must cover DynamoDB on-demand costs (~$1.25/M writes, ~$0.25/M reads, ~$0.25/GB-month storage) plus margin. |
+| **Billing model** | Lease + prepaid balance. Deposit at creation, usage draws down balance, 402 on low balance. |
+| **Free tier** | Testnet mode only (Base Sepolia, fake USDC). No free mainnet tier. |
+
+### Metering flow (per request)
+
+```
+1. Request arrives with Bearer table_secret
+2. Validate token → resolve table_id
+3. Compute expected cost:
+   - Write: ceil(item_size / 1KB) * write_unit_price
+   - Read: ceil(item_size / 4KB) * read_unit_price
+4. Atomic DynamoDB update on ledger:
+   - ConditionExpression: balance >= expected_cost
+   - UpdateExpression: SET balance = balance - expected_cost
+5. If condition fails → return 402 (top-up required)
+6. Execute DynamoDB operation on customer table
+7. Return response with metering headers:
+   - X-Request-Id
+   - X-Table-Id
+   - X-Metered-Units
+   - X-Estimated-Cost-Usd
+   - X-Balance-Remaining-Usd
+```
+
+---
+
+## D11. Product: Lease Expiration
+
+| Phase | Duration | Behavior |
+|---|---|---|
+| **Active** | While balance > 0 | Full read/write access |
+| **Low balance** | Balance < threshold | 402 returned on writes; reads still work; top-up required header included |
+| **Grace period** | **30 days** after balance hits 0 | **Read-only access**. No writes. Top-up required to restore writes. |
+| **Expired** | After grace period ends | **Permanent deletion**. Data is gone. No recovery. |
+
+Notifications at each transition:
+- Balance < 20% → metering header warning
+- Balance = 0 → 402 on all writes, grace period starts
+- Grace period 7 days remaining → (if webhook/email configured)
+- Deletion → final
+
+---
+
+## D12. Product: Approval Flow
+
+**Status: Nice to have (v1.1, not MVP).**
+
+The MVP ships with **direct x402 pay-and-go**:
+- Agent calls `POST /v1/tables:quote` (free)
+- Agent calls `POST /v1/tables` → gets 402 → pays → retries with payment → table created
+
+The approval flow (agent creates approval request → human approves via URL → agent polls) is deferred to v1.1. The quote endpoint still exists for agents to present cost estimates before proceeding.
+
+---
+
+## D13. Safety Limits (Moderate)
+
+| Limit | Value | Enforcement |
+|---|---|---|
+| Max tables per wallet | 50 | Hard reject on create |
+| Max requests/second per table | 1,000 | Rate limiter (429) |
+| Max storage per table | 10 GB | Reject writes when exceeded |
+| Max item size | 400 KB | Reject on put |
+| Max query result size | 1 MB per page | Pagination required |
+| Scan | Requires explicit `--run402-allow-scan` flag in CLI, rate-limited in API | Hard reject without flag |
+| Max batch size | 25 items (DynamoDB parity) | Reject if exceeded |
+
+---
+
+## D14. Open Source Strategy
+
+| Component | License | Rationale |
+|---|---|---|
+| CLI (`run402`) | Open source (MIT or Apache 2.0) | GTM: developers can inspect, trust, contribute |
+| TypeScript SDK | Open source | Adoption: lower barrier to integration |
+| Python SDK | Open source | Adoption: cover both major agent languages |
+| API server | **Closed / proprietary** | Core business value |
+| Infrastructure (CDK/TF) | **Closed / proprietary** | Operational advantage |
+| Website | **Closed / proprietary** | Brand asset |
+
+---
+
+## D15. Community & Support
+
+| Channel | Purpose |
+|---|---|
+| **GitHub Discussions** | Primary community channel, tied to open-source repos. Async, searchable. |
+| **Email** (support@run402.com) | Direct support, enterprise inquiries, security disclosures. |
+
+No Discord or Slack for v1. Keep it simple.
+
+---
+
+## D16. Legal
+
+| Decision | Value |
+|---|---|
+| Entity type | US LLC or Corp |
+| Terms structure | Standard SaaS terms |
+| Payment classification | Payment for services (stablecoin as payment method) |
+| Data handling | Standard DPA available for enterprise customers (roadmap) |
+
+---
+
+## D17. API Endpoints (Final, Post-Rename)
+
+### Control plane
+
+```
+POST   /v1/tables:quote                    # Estimate costs (free)
+POST   /v1/tables                           # Create table (x402 payment)
+GET    /v1/tables                           # List tables (SIWX auth)
+GET    /v1/tables/{table_id}                # Describe table
+DELETE /v1/tables/{table_id}                # Delete table (SIWX auth)
+PUT    /v1/tables/{table_id}/budget         # Update budget
+GET    /v1/tables/{table_id}/budget         # Get budget
+GET    /v1/usage                            # Usage summary
+GET    /v1/receipts                         # Receipts ledger
+GET    /v1/tables/{table_id}/logs           # Logs (audit/ops/errors)
+```
+
+### Data plane
+
+```
+PUT    /v1/tables/{table_id}/items/{pk}     # Put item
+GET    /v1/tables/{table_id}/items/{pk}     # Get item
+DELETE /v1/tables/{table_id}/items/{pk}     # Delete item
+PATCH  /v1/tables/{table_id}/items/{pk}     # Update item (update-expression)
+POST   /v1/tables/{table_id}:query          # Query by key
+POST   /v1/tables/{table_id}:scan           # Scan (guarded)
+POST   /v1/tables/{table_id}:batch-get      # Batch get
+POST   /v1/tables/{table_id}:batch-write    # Batch write
+```
+
+### Discovery (machine-facing)
+
+```
+GET    /.well-known/x402                    # x402 discovery manifest
+GET    /.well-known/mcp.json                # MCP server card
+GET    /x402/discovery                      # Tool catalog + pricing
+POST   /mcp                                 # MCP transport
+GET    /openapi.json                        # OpenAPI spec
+GET    /llms.txt                            # Agent-readable doc outline
+GET    /meta.json                           # Machine-friendly endpoint map
+GET    /health                              # Health check
+```
+
+All hosted at `app.run402.com`.
+
+---
+
+## D18. CLI (Final, Post-Rename)
+
+The CLI command is `run402`. Service alias is `run402 db`.
+
+### Examples (updated)
+
+```bash
+# Get item (DynamoDB drop-in)
+run402 db get-item --table-name MyTable --key '{"id":{"S":"123"}}'
+
+# Put item
+run402 db put-item --table-name MyTable --item '{"id":{"S":"123"},"email":{"S":"a@b.com"}}'
+
+# Query
+run402 db query --table-name MyTable \
+  --key-condition-expression "id = :v" \
+  --expression-attribute-values '{":v":{"S":"123"}}'
+
+# Create table with safety defaults
+run402 db create-table \
+  --table-name MyTable \
+  --attribute-definitions AttributeName=id,AttributeType=S \
+  --key-schema AttributeName=id,KeyType=HASH \
+  --billing-mode PAY_PER_REQUEST \
+  --run402-ttl 7d \
+  --run402-max-spend-usd 3.00
+
+# Configure
+run402 configure
+```
+
+All `--ws402-*` flags are now `--run402-*`.
+
+### Config file path
+
+`~/.run402/config` (replaces `~/.ws402/config`)
+
+---
+
+## D19. MCP Tools (Final, Post-Rename)
+
+```
+run402.quote_table      # Estimate costs and propose caps
+run402.create_table     # Provision a table after funding
+run402.put              # Put an item
+run402.get              # Get an item
+run402.query            # Query by key
+run402.delete           # Delete an item
+run402.receipts         # Fetch receipts
+run402.logs             # Fetch logs
+```
+
+---
+
+## D20. Website Structure (Final)
+
+### run402.com (marketing + docs)
+
+```
+/                           # Home (hero + how it works + features)
+/product                    # Product overview (5 pillars)
+/product/tables             # Tables feature page
+/product/agents             # Agent integration page
+/product/billing            # Lease + billing model page
+/product/observability      # Receipts, logs, metering headers
+/product/qos                # SLA tiers, status, rate limiting
+/pricing                    # Tiers + unit pricing + calculator
+/docs                       # Docs landing
+/docs/quickstart/agents-mcp # Agent quickstart (MCP)
+/docs/quickstart/agents-rest# Agent quickstart (REST)
+/docs/quickstart/humans     # Human quickstart (console)
+/docs/api                   # API reference (OpenAPI)
+/docs/x402                  # How run402 uses x402
+/docs/security              # Security model
+/docs/limits                # Limits & anti-abuse
+/learn                      # x402 education section
+/learn/what-is-x402
+/learn/how-x402-works
+/learn/x402-for-agents
+/learn/vision
+/learn/safety-and-trust
+/learn/glossary
+/learn/faq
+/compare                    # Comparison vs Upstash, Turso, etc.
+/security                   # Security page
+/sla                        # SLA page
+/support                    # Support contacts
+/legal/terms
+/legal/privacy
+/legal/aup
+```
+
+### app.run402.com (API + console)
+
+```
+# Console (Next.js)
+/                           # Connect wallet / resume session
+/overview                   # Dashboard
+/tables                     # Tables list
+/tables/{table_id}          # Table detail (tabs: overview, usage, receipts, logs, access, settings)
+/usage                      # Global usage
+/receipts                   # Global receipts
+/logs                       # Global logs
+/budgets                    # Budget policies
+/settings                   # Account settings
+
+# API (same subdomain)
+/v1/tables/...              # REST API
+/.well-known/...            # Discovery endpoints
+/mcp                        # MCP transport
+/openapi.json               # OpenAPI spec
+/llms.txt                   # Agent-readable outline
+/meta.json                  # Machine metadata
+/health                     # Health check
+```
+
+---
+
+## D21. Summary of Deferred Decisions
+
+| Topic | Status | When to revisit |
+|---|---|---|
+| **Tagline / positioning** | Brainstorm needed | Before website launch |
+| **Unit pricing (actual numbers)** | Cost modeling needed | Before mainnet launch |
+| **Approval flow** | Designed in spec, deferred to v1.1 | After MVP validates core flow |
+| **Multi-region tier** | v2 | After single-region is stable |
+| **Secondary indexes** | v2 | After core query patterns validated |
+| **SLA specific targets** | TBD per tier | Before enterprise sales |
+| **Self-hosted facilitator** | Planned | When Coinbase dependency becomes a concern |
+| **Workspaces** | Not in v1 | When multi-table management becomes painful |
+| **Webhook notifications** | Roadmap | When users request it |
+| **Additional blockchain networks** | Roadmap | Based on user demand |
+
