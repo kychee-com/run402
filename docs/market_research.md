@@ -1,6 +1,6 @@
-Below is a **market research + competitive landscape** for the product you described: an **agent-native cloud NoSQL store** that can be **provisioned and paid for via x402** (HTTP 402 + stablecoin settlement) so users don’t need cloud accounts (AWS/GCP/etc.), and agents can present **pre-approval cost estimates**, enforce **budgets**, and provide **cost/log visibility**.
+Below is a **market research + competitive landscape** for **AgentDB** by **Run402**: an **agent-native cloud NoSQL database** that can be **provisioned and paid for via x402** (HTTP 402 + stablecoin settlement) so users don’t need cloud accounts (AWS/GCP/etc.), and agents can present **pre-approval cost estimates**, enforce **budgets**, and provide **cost/log visibility**.
 
-I’m going to call the product **“AgentDB”** (a brand placeholder). Under the hood you can run DynamoDB, but the analysis assumes you **do not disclose that** publicly.
+The product is **AgentDB** (Run402’s initial product). Under the hood it runs DynamoDB, but the analysis assumes you **do not disclose that** publicly.
 
 ---
 
@@ -237,25 +237,21 @@ Your pricing must reconcile two facts:
 
 **What I’d recommend for AgentDB (packaging, not implementation):**
 
-### Plan A — “Ephemeral Agent Store”
+### Ephemeral (Dev)
 
-* Default TTL (e.g., 7 days)
-* small included storage
-* hard monthly cap set at creation
-* optimized for “agent used it for a task”
+* Default TTL: 7 days
+* Logs: 7 days
+* Best-effort support
+* Designed for “agent tasks”
 
-### Plan B — “Project Store”
+### Project
 
-* longer retention
-* backups/export options
-* higher SLA tier option
-* team-sharing keys/capabilities
+* TTL: configurable
+* Logs: 30 days
+* Higher SLA target
+* Export tools
 
-### Plan C — “Enterprise Sandbox”
-
-* audit log retention
-* SSO / policy integration (even if no “accounts”, you can do enterprise auth at org level)
-* support + custom SLA
+*Production tier (multi-region, longer log retention, priority support) is planned for v2.*
 
 **Billing model:**
 
@@ -346,7 +342,7 @@ These numbers vary by methodology; treat them as *context for investor decks*, n
 Your **SAM** is meaningfully smaller:
 
 * developers building cloud apps + agent workflows
-* who want a managed store
+* who want a managed table
 * and are willing to pay for “accountless + automated procurement”
 
 The **SOM** early on is basically: “agent toolchain early adopters” + “internal platform sandboxes”.
@@ -358,7 +354,7 @@ The **SOM** early on is basically: “agent toolchain early adopters” + “int
 **Positioning (what I’d put on the homepage):**
 
 > **AgentDB is the database your agent can buy.**
-> Get a production-grade cloud store in seconds with an explicit cost cap, receipts, and logs—no AWS account, no billing setup, no keys copied from dashboards. Pay programmatically via x402 (HTTP 402).
+> Get a production-grade cloud table in seconds with an explicit cost cap, receipts, and logs—no AWS account, no billing setup, no keys copied from dashboards. Pay programmatically via x402 (HTTP 402).
 
 **Why now:** x402 + MCP + agentic workflows create a credible distribution + adoption path that didn’t exist when “micropayments for APIs” was just theory. ([The Cloudflare Blog][10])
 

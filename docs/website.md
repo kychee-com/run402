@@ -1,4 +1,4 @@
-Below is a **complete website blueprint** for an x402-powered “accountless cloud NoSQL” product (I’ll keep calling it **AgentDB** as a placeholder name). It includes:
+Below is a **complete website blueprint** for **AgentDB** by **Run402**, an x402-powered “accountless cloud NoSQL” product. It includes:
 
 * **Human-facing** marketing + console (costs, budgets, logs, approvals)
 * **Agent-facing** machine-discoverable endpoints + agent-readable docs + MCP surface
@@ -18,12 +18,9 @@ Use separate surfaces so agents never have to crawl marketing pages.
 
 ### Recommended hostnames
 
-* `agentdb.com` → marketing + docs (human-first)
-* `console.agentdb.com` → wallet-based console (human ops)
-* `api.agentdb.com` → paid API (agent + human SDKs)
-* `status.agentdb.com` → status page (public)
-
-If you want one domain only, keep the same paths, but the separation helps caching, security policy, and “agent readability.”
+* `run402.com` → marketing + docs (human-first)
+* `app.run402.com` → wallet-based console (human ops) + paid API (agent + human SDKs)
+* `status.run402.com` → status page (public)
 
 ---
 
@@ -43,7 +40,7 @@ If you want one domain only, keep the same paths, but the separation helps cachi
 ### Console nav
 
 * Overview
-* Stores
+* Tables
 * Approvals
 * Usage & Receipts
 * Logs
@@ -59,7 +56,7 @@ If you want one domain only, keep the same paths, but the separation helps cachi
 * `/` Home
 * `/product`
 
-  * `/product/stores`
+  * `/product/agentdb`
   * `/product/agents`
   * `/product/billing`
   * `/product/observability`
@@ -89,30 +86,29 @@ If you want one domain only, keep the same paths, but the separation helps cachi
 
 * `/` (connect wallet / resume session)
 * `/overview`
-* `/stores`
-* `/stores/{store_id}`
-* `/approvals`
-* `/approvals/{approval_id}` (internal view)
+* `/tables`
+* `/tables/{table_id}`
+* `/approvals` *(v1.1)*
+* `/approvals/{approval_id}` *(v1.1)*
 * `/usage`
 * `/receipts`
 * `/logs`
 * `/budgets`
 * `/settings`
 
-### Public approval flow (human approval initiated by agent)
+### Public approval flow (human approval initiated by agent) *(v1.1)*
 
-* `approve.agentdb.com/{approval_id}`
-  (or `console.agentdb.com/approve/{approval_id}`)
+* `app.run402.com/approve/{approval_id}`
 
 ### Agent-facing (machine + protocol)
 
-* `api.agentdb.com/.well-known/x402` (x402 discovery manifest — convention; aligns with emerging discovery patterns) ([datatracker.ietf.org][2])
-* `api.agentdb.com/.well-known/mcp.json` (MCP “server card” pattern)
-* `api.agentdb.com/x402/discovery` (tool + pricing catalog; convenience convention used in the ecosystem) ([agent402.dev][3])
-* `api.agentdb.com/mcp` (MCP transport endpoint; optional) ([agent402.dev][3])
-* `api.agentdb.com/openapi.json`
-* `api.agentdb.com/llms.txt` (agent/doc indexing outline; highly recommended)
-* `api.agentdb.com/meta.json` (machine-friendly endpoint map; convenience convention)
+* `app.run402.com/.well-known/x402` (x402 discovery manifest — convention; aligns with emerging discovery patterns) ([datatracker.ietf.org][2])
+* `app.run402.com/.well-known/mcp.json` (MCP “server card” pattern)
+* `app.run402.com/x402/discovery` (tool + pricing catalog; convenience convention used in the ecosystem) ([agent402.dev][3])
+* `app.run402.com/mcp` (MCP transport endpoint; optional) ([agent402.dev][3])
+* `app.run402.com/openapi.json`
+* `app.run402.com/llms.txt` (agent/doc indexing outline; highly recommended)
+* `app.run402.com/meta.json` (machine-friendly endpoint map; convenience convention)
 
 ---
 
@@ -133,7 +129,7 @@ In <20 seconds, a human should understand:
 **A cloud database your agent can buy.**
 
 **Subhead:**
-Provision a production-grade store in seconds—no cloud accounts, no API keys, no billing setup.
+Provision a production-grade table in seconds—no cloud accounts, no API keys, no billing setup.
 Agents get quotes, humans approve a cap, and x402 handles payment over HTTP.
 
 **Primary CTA:** `Install for Agents`
@@ -144,7 +140,7 @@ Agents get quotes, humans approve a cap, and x402 handles payment over HTTP.
 
 1. Quote shown
 2. Human approves budget
-3. Store created
+3. Table created
 4. Receipts & logs visible
 
 ### Section: “How it works”
@@ -189,9 +185,9 @@ Four cards:
 
 Split into five feature pillars, each linking deeper:
 
-1. **Stores (tables without tables)**
+1. **Tables**
 
-* “Create stores with a primary key (and optional sort key)”
+* “Create tables with a primary key (and optional sort key)”
 * “TTL and retention”
 * “Fast CRUD”
 
@@ -253,7 +249,7 @@ Pricing must support *human approval* and *agent automation*.
   * SLA: higher
   * Export tools
 
-* **Production**
+* **Production** *(planned for v2)*
 
   * Multi-region option
   * Higher SLA
@@ -274,7 +270,7 @@ Present these as *AgentDB units*, not cloud-vendor units:
 
 Explain the **lease** model clearly:
 
-* “Stores are leased resources. You pre-fund a balance. Usage and storage draw down that balance. When it’s low, the API returns HTTP 402 with a top-up requirement.”
+* “Tables are leased resources. You pre-fund a balance. Usage and storage draw down that balance. When it’s low, the API returns HTTP 402 with a top-up requirement.”
 
 Tie it to x402 mechanics:
 
@@ -299,7 +295,7 @@ Tie it to x402 mechanics:
   * Humans (Console approvals + monitoring)
 * **Core concepts**
 
-  * Stores, keys, TTL
+  * Tables, keys, TTL
   * Budgets, caps, leases
   * Logs, receipts, request IDs
   * QoS tiers and SLAs
@@ -323,19 +319,18 @@ Show the exact three-step canonical discovery order (agent-readable, concise), m
 
 ### Quickstart: Agents (REST)
 
-* Hit `POST /v1/stores:quote`
-* Create approval request
-* Poll approval status
-* Create store
+* Hit `POST /v1/tables:quote`
+* Create table (pay 402)
 * CRUD/query
 * Handle 402 top-ups
+* *(v1.1: approval request + poll)*
 
 ### Quickstart: Humans
 
-* Open approval link
+* Review quote + approve spend (via console or approval link *(v1.1)*)
 * Review quote & cap
 * Pay deposit/top-up
-* View store in console
+* View table in console
 * Watch logs and receipts
 * Delete/expire
 
@@ -360,22 +355,22 @@ Top KPIs:
 
 * Current balance
 * Spend today / week
-* Stores count
+* Tables count
 * Active approvals
 * Recent errors (last 24h)
 
 Widgets:
 
 * Usage chart (by day)
-* “Top stores by cost”
+* “Top tables by cost”
 * “Low balance warnings”
-* “Recently created stores (auto-expiring)”
+* “Recently created tables (auto-expiring)”
 
-### Console: Stores list
+### Console: Tables list
 
 Table-like list with:
 
-* Store name
+* Table name
 * TTL/expiry date
 * Budget cap
 * Current balance allocated
@@ -388,7 +383,7 @@ Bulk actions:
 * Delete
 * Export receipts
 
-### Console: Store detail
+### Console: Table detail
 
 Tabs:
 
@@ -402,7 +397,7 @@ Tabs:
 
 **B) Access**
 
-* store secret / capability token management (rotate)
+* table secret (capability token) management (rotate)
 * optional IP allowlist (if you add)
 * “Generate agent snippet” (copy/paste)
 
@@ -430,9 +425,9 @@ Tabs:
 * budgets & caps
 * rate limits
 * retention
-* delete store
+* delete table
 
-### Console: Approvals
+### Console: Approvals *(v1.1)*
 
 Two subviews:
 
@@ -448,7 +443,9 @@ Two subviews:
 
 ---
 
-## 9) The “agent asks, human approves” UX (critical flow)
+## 9) The “agent asks, human approves” UX *(v1.1 — designed, deferred from MVP)*
+
+> **Note:** The approval flow below is designed and specified but deferred to v1.1. The MVP ships with direct x402 pay-and-go: the agent calls `POST /v1/tables:quote` (free), then `POST /v1/tables` which returns 402, the agent pays and retries, and the table is created. See D12 in the Decisions Log (spec.md).
 
 This is the UX that makes your product feel inevitable.
 
@@ -476,7 +473,7 @@ This is the UX that makes your product feel inevitable.
 * browser wallet (or broker) signs payment and retries with `PAYMENT-SIGNATURE`
 * server responds success with `PAYMENT-RESPONSE` ([docs.x402.org][1])
 
-4. Agent polls until approval is `APPROVED`, then provisions store automatically.
+4. Agent polls until approval is `APPROVED`, then provisions table automatically.
 
 ### Approval page UI (what to show)
 
@@ -563,7 +560,7 @@ Example content (what the page should say, roughly):
 * **Discovery order:** `/.well-known/mcp.json` → `/x402/discovery` → `/mcp`
 * **If HTTP 402 returned:** read `PAYMENT-REQUIRED`, pay, retry same call with `PAYMENT-SIGNATURE` (do not mutate args)
 * **Idempotency:** include payment-identifier for write-like operations
-* **Budget safety:** set `max_spend_usd` on approval / store creation
+* **Budget safety:** set `max_spend_usd` on approval / table creation
 
 (That aligns with x402’s standard header flow. ([docs.x402.org][1]))
 
@@ -577,7 +574,7 @@ Content blocks:
 
 * encryption at rest + in transit
 * key management posture (don’t mention AWS)
-* isolation model: “store-level isolation”
+* isolation model: “table-level isolation”
 * data retention & deletion guarantees
 * incident response: “how we handle”
 * vulnerability disclosure email
@@ -630,30 +627,35 @@ Here’s a minimal set you can implement that makes agents happy immediately (pa
 
 ```txt
 # Agent discovery
-GET  https://api.agentdb.com/.well-known/x402
-GET  https://api.agentdb.com/openapi.json
-GET  https://api.agentdb.com/llms.txt
-GET  https://api.agentdb.com/meta.json
+GET  https://app.run402.com/.well-known/x402
+GET  https://app.run402.com/openapi.json
+GET  https://app.run402.com/llms.txt
+GET  https://app.run402.com/meta.json
 
 # Optional MCP surface
-GET  https://api.agentdb.com/.well-known/mcp.json
-GET  https://api.agentdb.com/x402/discovery
-POST https://api.agentdb.com/mcp
+GET  https://app.run402.com/.well-known/mcp.json
+GET  https://app.run402.com/x402/discovery
+POST https://app.run402.com/mcp
 
 # Core API (REST)
-POST /v1/stores:quote
-POST /v1/approvals
-GET  /v1/approvals/{approval_id}
-POST /v1/stores
-GET  /v1/stores
-GET  /v1/stores/{store_id}
-PUT  /v1/stores/{store_id}/items/{pk}
-GET  /v1/stores/{store_id}/items/{pk}
-POST /v1/stores/{store_id}:query
-GET  /v1/usage
+POST /v1/tables:quote
+POST /v1/approvals                        # v1.1
+GET  /v1/approvals/{approval_id}           # v1.1
+POST /v1/tables
+GET  /v1/tables
+GET  /v1/tables/{table_id}
+PUT   /v1/tables/{table_id}/items/{pk}
+PATCH /v1/tables/{table_id}/items/{pk}
+GET   /v1/tables/{table_id}/items/{pk}
+DELETE /v1/tables/{table_id}/items/{pk}
+POST  /v1/tables/{table_id}:query
+POST  /v1/tables/{table_id}:scan
+POST  /v1/tables/{table_id}:batch-get
+POST  /v1/tables/{table_id}:batch-write
+GET   /v1/usage
 GET  /v1/receipts
-GET  /v1/stores/{store_id}/logs
-DELETE /v1/stores/{store_id}
+GET  /v1/tables/{table_id}/logs
+DELETE /v1/tables/{table_id}
 ```
 
 And **payment behavior** for any route that can require funding:
@@ -678,7 +680,7 @@ No cloud accounts. No API keys. Hard cost caps, receipts, and logs built in.
 
 ### Pricing model explainer
 
-**Lease-based billing:** Stores are pre-funded resources. Usage and storage draw down your balance. When balance is low, requests pause with a standardized HTTP 402 paywall until you top up.
+**Lease-based billing:** Tables are pre-funded resources. Usage and storage draw down your balance. When balance is low, requests pause with a standardized HTTP 402 paywall until you top up.
 
 ### Trust line
 
@@ -693,9 +695,10 @@ If you want the website to be “complete” *and* shippable fast, prioritize:
 1. Marketing home + pricing + docs skeleton
 2. Agent quickstart page (`/agents`)
 3. `api` discovery endpoints: `/.well-known/x402`, `openapi.json`, `llms.txt`
-4. Console MVP: Overview, Stores, Receipts, Logs, Approvals
-5. Public approval link flow
-6. Status page
+4. Console MVP: Overview, Tables, Receipts, Logs
+5. Status page
+
+*Post-MVP (v1.1):* Console Approvals page, public approval link flow.
 
 Everything else (SEO polish, case studies, enterprise pages) can come later without breaking the core.
 
@@ -727,13 +730,13 @@ If you want, I can produce the **actual first-pass content** for every page (fin
 
 
 
-xxxxxxxxxxx
+---
 
 
 
 
 
-Below is a **copy‑pasteable “website content pack”** for AgentDB (placeholder name) with:
+Below is a **copy‑pasteable “website content pack”** for **AgentDB** by **Run402** with:
 
 * Human-facing marketing + console UX copy (wallet sign-in, approvals, budgets, receipts, logs)
 * Agent-facing docs (MCP + REST) written in “agent‑readable” style
@@ -780,15 +783,15 @@ Competitive comparisons grounded by vendor docs:
 ## Site-wide UX rules
 
 * Always show a **Max Spend** number wherever money appears.
-* Always show **Expiry / TTL** wherever a store is shown.
+* Always show **Expiry / TTL** wherever a table is shown.
 * Every cost number has a companion link: “How this is calculated”.
 * Every operational surface shows:
 
   * `Request ID`
-  * `Store ID`
+  * `Table ID`
   * `Metered Units`
   * `Estimated Cost`
-* Every destructive action has a “Type the store name to confirm” pattern.
+* Every destructive action has a “Type the table name to confirm” pattern.
 
 ---
 
@@ -800,7 +803,7 @@ Use this as a Next.js / Remix / SSG content layout.
 /marketing
   /index
   /product
-  /product/stores
+  /product/agentdb
   /product/agents
   /product/billing
   /product/observability
@@ -829,8 +832,8 @@ Use this as a Next.js / Remix / SSG content layout.
 /console
   /index (connect wallet / resume)
   /overview
-  /stores
-  /stores/[store_id]
+  /tables
+  /tables/[table_id]
   /approvals
   /usage
   /receipts
@@ -854,7 +857,7 @@ Use this as a Next.js / Remix / SSG content layout.
 ## 2.1 `/` Home
 
 **Meta title:** AgentDB — A cloud database your agent can buy
-**Meta description:** Provision a production-grade store in seconds with explicit cost caps, receipts, and logs. No cloud accounts. x402 payments over HTTP.
+**Meta description:** Provision a production-grade table in seconds with explicit cost caps, receipts, and logs. No cloud accounts. x402 payments over HTTP.
 
 ### Above the fold (Hero)
 
@@ -881,7 +884,7 @@ Use this as a Next.js / Remix / SSG content layout.
 2. **Approve**
    “One click approval. Optional wallet sign-in. Fund a lease.”
 3. **Provision**
-   “Store is created and ready. No vendor console needed.”
+   “Table is created and ready. No vendor console needed.”
 4. **Use + Monitor**
    “CRUD + query, with receipts and logs you can export.”
 
@@ -890,7 +893,7 @@ Use this as a Next.js / Remix / SSG content layout.
 **Title:** Production behaviors, agent-native interface
 **Grid (6 items):**
 
-* Stores with keys + TTL
+* Tables with keys + TTL
 * Query by key/range
 * Budget caps + rate limits
 * Usage dashboard + receipts
@@ -907,7 +910,7 @@ Use this as a Next.js / Remix / SSG content layout.
 **Title:** Safe by default
 **Bullets:**
 
-* Default TTL on every store
+* Default TTL on every table
 * Default max spend cap
 * Read-only suspension on low balance (configurable)
 * Explicit top-ups, never silent overages
@@ -929,7 +932,7 @@ Links: Product, Pricing, Docs, Learn x402, Compare, Security, SLA, Status, Legal
 ├────────────────────────────────────────────────────────────┤
 │  Quote → Approve → Provision → Use + Monitor                │
 ├────────────────────────────────────────────────────────────┤
-│ Feature grid (Stores, TTL, Budgets, Receipts, Logs, SLA...) │
+│ Feature grid (Tables, TTL, Budgets, Receipts, Logs, SLA...) │
 ├────────────────────────────────────────────────────────────┤
 │ Trust + Footer links                                        │
 └────────────────────────────────────────────────────────────┘
@@ -944,9 +947,9 @@ Links: Product, Pricing, Docs, Learn x402, Compare, Security, SLA, Status, Legal
 
 ### Sections
 
-1. **Stores**
-   “Create stores with a primary key (optional sort key), TTL, and predictable query patterns.”
-   CTA: Explore Stores
+1. **Tables**
+   “Create tables with a primary key (optional sort key), TTL, and predictable query patterns.”
+   CTA: Explore Tables
 
 2. **Agents**
    “MCP + REST. Discovery endpoints. Standardized payment negotiation via x402.”
@@ -966,25 +969,26 @@ Links: Product, Pricing, Docs, Learn x402, Compare, Security, SLA, Status, Legal
 
 ---
 
-## 2.3 `/product/stores`
+## 2.3 `/product/agentdb`
 
-**H1:** Stores: simple, durable, key-based state
+**H1:** Tables: simple, durable, key-based state
 **Subhead:** Enough database to build real software. Small enough for agents to use correctly.
 
-### What stores support (v1)
+### What tables support (v1)
 
-* Create/delete stores
+* Create/delete tables
 * Primary key (string), optional sort key (string)
-* Put/get/delete items
+* Put/get/update/delete items
 * Query by partition key; optional sort key range/prefix
-* TTL at store level
+* Scan (guarded, with explicit opt-in + hard limits)
+* Batch get/write operations
+* TTL at table level
 * Pagination
 
-### What stores don’t support (v1)
+### What tables don’t support (v1)
 
 * Multi-item transactions
 * Secondary indexes (GSI/LSI)
-* Full table scans (except limited admin export)
 * Change streams / triggers
 
 ### “Design for agent predictability”
@@ -1015,12 +1019,12 @@ CTA: “See API reference”
 
 2. **REST / OpenAPI**
 
-* `POST /stores:quote`
-* `POST /approvals`
-* `POST /stores`
+* `POST /tables:quote`
+* `POST /approvals` *(v1.1)*
+* `POST /tables`
 * data-plane CRUD/query
 
-### The approval primitive
+### The approval primitive *(v1.1)*
 
 **Copy:** Agents should never spend money without an explicit policy. AgentDB supports an “approval request” object so your local broker can ask the human once, then execute safely.
 
@@ -1031,11 +1035,11 @@ CTA: “Agent Quickstart (MCP)” and “Agent Quickstart (REST)”
 ## 2.5 `/product/billing`
 
 **H1:** Pay over time without subscriptions or accounts
-**Subhead:** Stores are leased resources. You pre-fund, spend down, and renew when needed.
+**Subhead:** Tables are leased resources. You pre-fund, spend down, and renew when needed.
 
 ### Billing behaviors
 
-* **Deposit / top-up**: Fund a store or workspace balance.
+* **Deposit / top-up**: Fund a table or workspace balance.
 * **Spend caps**: Hard daily and lifetime caps (configurable).
 * **Low-balance handling**: Return 402 for top-up; optionally suspend writes first.
 * **Expiry**: Default TTL; explicit extension requires approval.
@@ -1109,11 +1113,7 @@ CTA: “Read SLA”
 * Logs: 30 days
 * Higher SLA target
 
-**Production**
-
-* Multi-region option
-* Longer log retention
-* Priority support + credits SLA
+*Production tier (multi-region, longer log retention, priority support) is planned for v2.*
 
 ### Unit pricing table (template)
 
@@ -1153,7 +1153,7 @@ CTA: “Try Quote API”
 * Agent Quickstart (MCP)
 * Agent Quickstart (REST)
 * Human Quickstart (Approvals + Console)
-* Core Concepts (Stores, Budgets, Leases, Logs)
+* Core Concepts (Tables, Budgets, Leases, Logs)
 * API Reference (OpenAPI)
 * Security + Limits
 
@@ -1165,7 +1165,7 @@ CTA: “Try Quote API”
 **Sections (copy placeholders—do not claim certifications you don’t have):**
 
 * Data encryption (in transit / at rest)
-* Store isolation model
+* Table isolation model
 * Access model (capability tokens + wallet sign-in)
 * Logging and audit
 * Responsible disclosure (security@…)
@@ -1190,7 +1190,7 @@ CTA: “Try Quote API”
 
 ## 2.12 `/status`
 
-Redirect to `status.agentdb.com`
+Redirect to `status.run402.com`
 
 **Copy:** “Live status and incident history.”
 
@@ -1364,7 +1364,7 @@ x402 is the payment primitive. AgentDB adds:
 
 Terms:
 
-* Store
+* Table
 * Lease
 * Cap / Budget
 * Receipt
@@ -1385,7 +1385,7 @@ Examples:
 * “Do I need an account?” (No; wallet/capabilities)
 * “Can I cap spend?” (Yes; hard caps)
 * “What happens if I stop paying?” (Suspend → expire → delete)
-* “Can agents create infinite stores?” (No; policy + caps + TTL)
+* “Can agents create infinite tables?” (No; policy + caps + TTL)
 
 ---
 
@@ -1451,7 +1451,7 @@ This page is grounded in vendor pricing/auth docs to keep it factual, not vibes.
 ## 5.1 `/console` Connect / Resume
 
 **H1:** Open Console
-**Subhead:** View stores, approvals, spend caps, receipts, and logs.
+**Subhead:** View tables, approvals, spend caps, receipts, and logs.
 
 Buttons:
 
@@ -1480,24 +1480,24 @@ Widgets:
 
 * Balance (workspace)
 * Spend today / last 7 days
-* Active stores count
+* Active tables count
 * Approvals pending
 * Errors last 24h
 
 Lists:
 
-* “Top stores by cost (7d)”
-* “Recently created stores”
+* “Top tables by cost (7d)”
+* “Recently created tables”
 * “Low balance warnings”
 
 ---
 
-## 5.3 `/console/stores` Stores list
+## 5.3 `/console/tables` Tables list
 
 Table columns:
 
-* Store Name
-* Store ID
+* Table Name
+* Table ID
 * Tier (Regional / Multi-region)
 * Expiry
 * Cap (daily / lifetime)
@@ -1512,11 +1512,11 @@ Actions:
 
 ---
 
-## 5.4 `/console/stores/{store_id}` Store details (tabs)
+## 5.4 `/console/tables/{table_id}` Table details (tabs)
 
 **Tab: Overview**
 
-* Store endpoint
+* Table endpoint
 * Current balance allocated
 * TTL and expiry
 * Caps and limits
@@ -1546,18 +1546,18 @@ Actions:
 
 **Tab: Access**
 
-* Rotate store secret (capability token)
+* Rotate table secret / capability token
 * Allowed origins / IP allowlist (optional)
 
 **Tab: Settings**
 
 * Update TTL
 * Update caps
-* Delete store
+* Delete table
 
 ---
 
-## 5.5 `/console/approvals`
+## 5.5 `/console/approvals` *(v1.1)*
 
 Two panes:
 
@@ -1578,7 +1578,7 @@ Approval card contents:
 
 Global receipts ledger:
 
-* filters: store, date range, op type
+* filters: table, date range, op type
 * export CSV/JSON
 
 ---
@@ -1587,7 +1587,7 @@ Global receipts ledger:
 
 Global logs explorer:
 
-* filters: store, time range, severity, request ID
+* filters: table, time range, severity, request ID
 
 ---
 
@@ -1595,7 +1595,7 @@ Global logs explorer:
 
 Workspace-level policies:
 
-* Default TTL for new stores
+* Default TTL for new tables
 * Default max spend
 * Auto-approve thresholds (for the broker)
 * Rate limit defaults
@@ -1621,9 +1621,9 @@ Choose:
 
 ### Canonical discovery order
 
-1. `GET https://api.agentdb.com/.well-known/mcp.json`
-2. `GET https://api.agentdb.com/x402/discovery`
-3. Connect MCP transport at `https://api.agentdb.com/mcp`
+1. `GET https://app.run402.com/.well-known/mcp.json`
+2. `GET https://app.run402.com/x402/discovery`
+3. Connect MCP transport at `https://app.run402.com/mcp`
 
 ### 402 retry rule
 
@@ -1631,9 +1631,9 @@ Choose:
 
 ### Tools you’ll use (example)
 
-* `agentdb.quote_store`
-* `agentdb.request_approval`
-* `agentdb.create_store`
+* `agentdb.quote_table`
+* `agentdb.request_approval` *(v1.1)*
+* `agentdb.create_table`
 * `agentdb.put`
 * `agentdb.get`
 * `agentdb.query`
@@ -1651,22 +1651,22 @@ Choose:
 1. Quote:
 
 ```bash
-curl -sS https://api.agentdb.com/v1/stores:quote \
+curl -sS https://app.run402.com/v1/tables:quote \
   -H 'content-type: application/json' \
   -d '{"ttl_days":7,"expected_ops_per_day":{"read":2000,"write":200},"max_spend_usd":3.00}'
 ```
 
-2. Create approval:
+2. Create table (will return 402; pay and retry):
 
 ```bash
-curl -sS https://api.agentdb.com/v1/approvals \
+curl -sS https://app.run402.com/v1/tables \
   -H 'content-type: application/json' \
-  -d '{"quote_id":"...","purpose":"Need a DB for feature branch test run","max_spend_usd":3.00}'
+  -d '{"table_name":"my-table","key_schema":[{"attribute_name":"id","key_type":"HASH"}],"ttl_days":7,"max_spend_usd":3.00}'
 ```
 
-3. Human approves via `approval_url`
+> *v1.1 will add an approval step here: `POST /v1/approvals` → human approves via URL → agent polls and then provisions.*
 
-4. Create store (may return 402 if funding required)
+4. Create table (may return 402 if funding required)
 
 * On 402: pay and retry with `PAYMENT-SIGNATURE` (x402)
 
@@ -1694,7 +1694,7 @@ The shapes below intentionally mirror the **de facto** “agent gateway” patte
 ```json
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://api.agentdb.com/schemas/McpServerCard.schema.json",
+  "$id": "https://app.run402.com/schemas/McpServerCard.schema.json",
   "title": "MCP Server Card",
   "type": "object",
   "additionalProperties": false,
@@ -1750,14 +1750,14 @@ The shapes below intentionally mirror the **de facto** “agent gateway” patte
 ```json
 {
   "name": "agentdb-mcp",
-  "description": "AgentDB MCP: create and use durable stores with x402 billing and human approvals.",
-  "url": "https://api.agentdb.com/mcp",
+  "description": "AgentDB MCP: create and use durable tables with x402 billing and human approvals.",
+  "url": "https://app.run402.com/mcp",
   "transport": "streamable-http",
   "version": "0.2.0",
   "tools": [
-    { "name": "agentdb.quote_store", "description": "Estimate cost range and propose a max spend cap." },
-    { "name": "agentdb.request_approval", "description": "Create a human approval request for a store." },
-    { "name": "agentdb.create_store", "description": "Provision a store after approval/funding." },
+    { "name": "agentdb.quote_table", "description": "Estimate cost range and propose a max spend cap." },
+    { "name": "agentdb.request_approval", "description": "Create a human approval request for a table." },
+    { "name": "agentdb.create_table", "description": "Provision a table after approval/funding." },
     { "name": "agentdb.put", "description": "Put an item by key." },
     { "name": "agentdb.get", "description": "Get an item by key." },
     { "name": "agentdb.query", "description": "Query items by partition key (and sort key conditions, if enabled)." },
@@ -1783,7 +1783,7 @@ The shapes below intentionally mirror the **de facto** “agent gateway” patte
 ```json
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://api.agentdb.com/schemas/X402Discovery.schema.json",
+  "$id": "https://app.run402.com/schemas/X402Discovery.schema.json",
   "title": "x402 Discovery (Tool Catalog)",
   "type": "object",
   "additionalProperties": false,
@@ -1860,8 +1860,8 @@ The shapes below intentionally mirror the **de facto** “agent gateway” patte
   "version": "2",
   "server": {
     "name": "agentdb-mcp",
-    "description": "Pay-per-use durable stores for agents with approvals, caps, receipts, and logs.",
-    "url": "https://api.agentdb.com/mcp"
+    "description": "Pay-per-use durable tables for agents with approvals, caps, receipts, and logs.",
+    "url": "https://app.run402.com/mcp"
   },
   "policy": {
     "billingMode": "lease_and_usage",
@@ -1870,7 +1870,7 @@ The shapes below intentionally mirror the **de facto** “agent gateway” patte
   },
   "tools": [
     {
-      "name": "agentdb.quote_store",
+      "name": "agentdb.quote_table",
       "description": "Estimate cost range and propose a max spend cap.",
       "price": "free",
       "network": "eip155:8453",
@@ -1912,8 +1912,8 @@ The shapes below intentionally mirror the **de facto** “agent gateway” patte
       }
     },
     {
-      "name": "agentdb.create_store",
-      "description": "Provision a store after approval/funding.",
+      "name": "agentdb.create_table",
+      "description": "Provision a table after approval/funding.",
       "price": "dynamic",
       "priceModel": {
         "type": "lease_deposit_plus_usage",
@@ -1933,7 +1933,7 @@ The shapes below intentionally mirror the **de facto** “agent gateway” patte
         "type": "object",
         "properties": {
           "approval_id": { "type": "string" },
-          "store_name": { "type": "string", "minLength": 1 },
+          "table_name": { "type": "string", "minLength": 1 },
           "key_schema": {
             "type": "object",
             "properties": {
@@ -1943,16 +1943,16 @@ The shapes below intentionally mirror the **de facto** “agent gateway” patte
             "required": ["partitionKey"]
           }
         },
-        "required": ["approval_id", "store_name", "key_schema"]
+        "required": ["approval_id", "table_name", "key_schema"]
       },
       "outputSchema": {
         "type": "object",
         "properties": {
-          "store_id": { "type": "string" },
+          "table_id": { "type": "string" },
           "endpoint": { "type": "string", "format": "uri" },
           "expires_at": { "type": "string" }
         },
-        "required": ["store_id", "endpoint", "expires_at"]
+        "required": ["table_id", "endpoint", "expires_at"]
       }
     }
   ]
@@ -1968,7 +1968,7 @@ The shapes below intentionally mirror the **de facto** “agent gateway” patte
 ```json
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://api.agentdb.com/schemas/Meta.schema.json",
+  "$id": "https://app.run402.com/schemas/Meta.schema.json",
   "title": "Machine-friendly Site Metadata",
   "type": "object",
   "additionalProperties": false,
@@ -2025,54 +2025,54 @@ The shapes below intentionally mirror the **de facto** “agent gateway” patte
 ```json
 {
   "name": "agentdb-mcp",
-  "description": "AgentDB: durable stores for agents with x402 billing, approvals, caps, receipts, and logs.",
+  "description": "AgentDB: durable tables for agents with x402 billing, approvals, caps, receipts, and logs.",
   "endpoints": {
-    "homepage": "https://agentdb.com/",
-    "console": "https://console.agentdb.com/",
-    "mcp": "https://api.agentdb.com/mcp",
-    "mcpCard": "https://api.agentdb.com/.well-known/mcp.json",
-    "x402Discovery": "https://api.agentdb.com/x402/discovery",
-    "x402Manifest": "https://api.agentdb.com/.well-known/x402",
-    "openapi": "https://api.agentdb.com/openapi.json",
-    "meta": "https://api.agentdb.com/meta.json",
-    "llms": "https://api.agentdb.com/llms.txt",
-    "robotsTxt": "https://api.agentdb.com/robots.txt",
-    "sitemap": "https://agentdb.com/sitemap.xml",
-    "health": "https://api.agentdb.com/health"
+    "homepage": "https://run402.com/",
+    "console": "https://app.run402.com/",
+    "mcp": "https://app.run402.com/mcp",
+    "mcpCard": "https://app.run402.com/.well-known/mcp.json",
+    "x402Discovery": "https://app.run402.com/x402/discovery",
+    "x402Manifest": "https://app.run402.com/.well-known/x402",
+    "openapi": "https://app.run402.com/openapi.json",
+    "meta": "https://app.run402.com/meta.json",
+    "llms": "https://app.run402.com/llms.txt",
+    "robotsTxt": "https://app.run402.com/robots.txt",
+    "sitemap": "https://run402.com/sitemap.xml",
+    "health": "https://app.run402.com/health"
   },
   "endpointDetails": [
     {
       "path": "/mcp",
       "methods": "POST, GET, DELETE",
-      "url": "https://api.agentdb.com/mcp",
+      "url": "https://app.run402.com/mcp",
       "role": "Primary Streamable HTTP MCP transport."
     },
     {
       "path": "/.well-known/mcp.json",
       "methods": "GET",
-      "url": "https://api.agentdb.com/.well-known/mcp.json",
+      "url": "https://app.run402.com/.well-known/mcp.json",
       "role": "Canonical MCP server card for discovery."
     },
     {
       "path": "/x402/discovery",
       "methods": "GET",
-      "url": "https://api.agentdb.com/x402/discovery",
+      "url": "https://app.run402.com/x402/discovery",
       "role": "Tool list, schemas, and pricing."
     },
     {
       "path": "/.well-known/x402",
       "methods": "GET",
-      "url": "https://api.agentdb.com/.well-known/x402",
+      "url": "https://app.run402.com/.well-known/x402",
       "role": "x402 manifest for discovery tooling and DNS-based discovery."
     }
   ],
   "tools": [
-    { "name": "agentdb.quote_store", "description": "Estimate costs and propose caps.", "price": "free" },
-    { "name": "agentdb.create_store", "description": "Provision a store after approval.", "price": "dynamic" }
+    { "name": "agentdb.quote_table", "description": "Estimate costs and propose caps.", "price": "free" },
+    { "name": "agentdb.create_table", "description": "Provision a table after approval.", "price": "dynamic" }
   ],
   "robots": {
-    "llms": "https://api.agentdb.com/llms.txt",
-    "robotsTxt": "https://api.agentdb.com/robots.txt"
+    "llms": "https://app.run402.com/llms.txt",
+    "robotsTxt": "https://app.run402.com/robots.txt"
   }
 }
 ```
@@ -2086,32 +2086,32 @@ This is not standardized, but the ecosystem pattern is: a concise outline of can
 **Example `llms.txt`:**
 
 ```txt
-# AgentDB — accountless cloud stores for AI agents with x402 billing.
+# AgentDB — accountless cloud tables for AI agents with x402 billing.
 
 ## Canonical Discovery
-- MCP card: https://api.agentdb.com/.well-known/mcp.json
-- MCP transport: https://api.agentdb.com/mcp
-- x402 discovery: https://api.agentdb.com/x402/discovery
-- x402 manifest: https://api.agentdb.com/.well-known/x402
-- OpenAPI: https://api.agentdb.com/openapi.json
-- Meta: https://api.agentdb.com/meta.json
+- MCP card: https://app.run402.com/.well-known/mcp.json
+- MCP transport: https://app.run402.com/mcp
+- x402 discovery: https://app.run402.com/x402/discovery
+- x402 manifest: https://app.run402.com/.well-known/x402
+- OpenAPI: https://app.run402.com/openapi.json
+- Meta: https://app.run402.com/meta.json
 
 ## Agent Quickstarts
-- MCP quickstart: https://agentdb.com/docs/quickstart/agents-mcp
-- REST quickstart: https://agentdb.com/docs/quickstart/agents-rest
+- MCP quickstart: https://run402.com/docs/quickstart/agents-mcp
+- REST quickstart: https://run402.com/docs/quickstart/agents-rest
 
 ## Human Docs
-- Overview: https://agentdb.com/product
-- Pricing: https://agentdb.com/pricing
-- Learn x402: https://agentdb.com/learn/what-is-x402
-- Compare: https://agentdb.com/compare
+- Overview: https://run402.com/product
+- Pricing: https://run402.com/pricing
+- Learn x402: https://run402.com/learn/what-is-x402
+- Compare: https://run402.com/compare
 
 ## Console
-- Console: https://console.agentdb.com/
+- Console: https://app.run402.com/
 
 ## Health
-- API health: https://api.agentdb.com/health
-- Status: https://status.agentdb.com/
+- API health: https://app.run402.com/health
+- Status: https://status.run402.com/
 ```
 
 ---
@@ -2126,7 +2126,7 @@ The draft doesn’t prescribe a concrete field schema; so you should publish a *
 ```json
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://api.agentdb.com/schemas/X402Manifest.schema.json",
+  "$id": "https://app.run402.com/schemas/X402Manifest.schema.json",
   "title": "x402 Discovery Manifest",
   "type": "object",
   "additionalProperties": false,
@@ -2219,7 +2219,7 @@ The draft doesn’t prescribe a concrete field schema; so you should publish a *
   "version": "x402-manifest/1",
   "service": {
     "name": "AgentDB API",
-    "description": "Accountless durable stores for agents with x402 billing and human approvals."
+    "description": "Accountless durable tables for agents with x402 billing and human approvals."
   },
   "x402": {
     "protocolVersion": "2",
@@ -2233,7 +2233,7 @@ The draft doesn’t prescribe a concrete field schema; so you should publish a *
   },
   "resources": [
     {
-      "path": "/v1/stores:quote",
+      "path": "/v1/tables:quote",
       "methods": ["POST"],
       "description": "Return cost estimate range and recommended deposit.",
       "payment": { "mode": "none" }
@@ -2245,19 +2245,19 @@ The draft doesn’t prescribe a concrete field schema; so you should publish a *
       "payment": { "mode": "dynamic", "priceHint": "Typically free" }
     },
     {
-      "path": "/v1/stores",
+      "path": "/v1/tables",
       "methods": ["POST"],
-      "description": "Create store after approval; funds lease and provisions store.",
+      "description": "Create table after approval; funds lease and provisions table.",
       "payment": { "mode": "lease_and_usage", "priceHint": "Deposit + usage", "currency": "USD" }
     }
   ],
   "links": {
-    "x402Discovery": "https://api.agentdb.com/x402/discovery",
-    "mcpCard": "https://api.agentdb.com/.well-known/mcp.json",
-    "mcp": "https://api.agentdb.com/mcp",
-    "openapi": "https://api.agentdb.com/openapi.json",
-    "meta": "https://api.agentdb.com/meta.json",
-    "llms": "https://api.agentdb.com/llms.txt"
+    "x402Discovery": "https://app.run402.com/x402/discovery",
+    "mcpCard": "https://app.run402.com/.well-known/mcp.json",
+    "mcp": "https://app.run402.com/mcp",
+    "openapi": "https://app.run402.com/openapi.json",
+    "meta": "https://app.run402.com/meta.json",
+    "llms": "https://app.run402.com/llms.txt"
   }
 }
 ```
@@ -2269,7 +2269,7 @@ The draft doesn’t prescribe a concrete field schema; so you should publish a *
 If you want to support DNS-based discovery, add a “For operators” note in docs and publish:
 
 ```
-_x402.api.agentdb.com TXT "v=x4021;descriptor=api;url=https://api.agentdb.com/.well-known/x402"
+_x402.app.run402.com TXT "v=x4021;descriptor=api;url=https://app.run402.com/.well-known/x402"
 ```
 
 The DNS discovery draft describes `_x402` TXT records pointing to an HTTPS manifest URL (often `/.well-known/x402`) and emphasizes TLS validation requirements. ([IETF Datatracker][1])
@@ -2280,19 +2280,19 @@ The DNS discovery draft describes `_x402` TXT records pointing to an HTTPS manif
 
 To avoid a “pretty website / missing product” mismatch, the minimum implementation that makes every page honest:
 
-1. `/v1/stores:quote` returns real estimates
+1. `/v1/tables:quote` returns real estimates
 2. `/v1/approvals` + approval URL page
-3. `/v1/stores` create + TTL + caps
+3. `/v1/tables` create + TTL + caps
 4. Receipts ledger endpoint
 5. Logs endpoint (audit + ops at least)
 6. `/.well-known/mcp.json`, `/x402/discovery`, `/meta.json`, `/llms.txt`
-7. Console pages: Stores, Approvals, Receipts, Logs
+7. Console pages: Tables, Approvals, Receipts, Logs
 
 ---
 
 If you want, I can also generate:
 
-* a **full OpenAPI 3.1 spec** for the REST surface (quote/approval/store CRUD/receipts/logs),
+* a **full OpenAPI 3.1 spec** for the REST surface (quote/approval/table CRUD/receipts/logs),
 * a matching **MCP tool schema** set (tools/list + tools/call payloads),
 * and a **pixel-level component spec** (design tokens, layout, and concrete UI states for approval flows and low-balance top-ups).
 

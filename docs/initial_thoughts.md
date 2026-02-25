@@ -4,9 +4,9 @@ Below is a concrete design for a “no-account” cloud NoSQL service backed by 
 
 ## What you’re building
 
-A SaaS-style wrapper (call it **AgentDB** / **CloudKV** / **NoSQL-as-a-Tool**) that exposes an HTTP API (and an agent-friendly client/tooling layer) with:
+A SaaS-style wrapper called **AgentDB** (the initial product from **Run402**) that exposes an HTTP API (and an agent-friendly client/tooling layer) with:
 
-* **Control plane**: create/delete “tables”, set TTL/retention, set budgets, fetch usage & logs
+* **Control plane**: create/delete tables, set TTL/retention, set budgets, fetch usage & logs
 * **Data plane**: put/get/delete/query items
 * **Payments**: enforced via **x402 (HTTP 402 Payment Required)** so the client/agent can pay programmatically without accounts/sessions/API keys in the traditional sense. ([x402][1])
 * **Underlying storage**: DynamoDB in *your* AWS account(s), but **you do not disclose DynamoDB** in the public API.
@@ -34,7 +34,7 @@ Also, you should enable x402’s **payment-identifier** extension for idempotenc
 ### Objects
 
 * **Workspace**: implicitly tied to a wallet (payer) or to an issued capability; used for budgets, usage, logs.
-* **Store** (your “table”): `store_id`, schema (key definition), region/tier, TTL policy, budget policy.
+* **Table**: `table_id`, schema (key definition), region/tier, TTL policy, budget policy.
 * **Item**: JSON document with required key fields.
 
 ### API endpoints (minimal but useful)
@@ -43,47 +43,51 @@ Also, you should enable x402’s **payment-identifier** extension for idempotenc
 
 1. **Quote** (free or very cheap, see abuse controls)
 
-* `POST /v1/stores:quote`
+* `POST /v1/tables:quote`
 
   * Input: expected usage (rough), retention, region/tier, schema
   * Output: price model + estimated cost range + recommended deposit + budget suggestions
 
 2. **Create**
 
-* `POST /v1/stores`
+* `POST /v1/tables`
 
   * Returns 402 with payment requirements unless caller is already funded/authorized
-  * On success returns `store_id`, endpoints, TTL, budget, etc.
+  * On success returns `table_id`, endpoints, TTL, budget, etc.
 
 3. **Describe / List**
 
-* `GET /v1/stores/{store_id}`
-* `GET /v1/stores`
+* `GET /v1/tables/{table_id}`
+* `GET /v1/tables`
 
 4. **Budgets**
 
-* `PUT /v1/stores/{store_id}/budget`
-* `GET /v1/stores/{store_id}/budget`
+* `PUT /v1/tables/{table_id}/budget`
+* `GET /v1/tables/{table_id}/budget`
 
 5. **Usage / Costs**
 
-* `GET /v1/usage?store_id=&from=&to=`
-* `GET /v1/receipts?store_id=&from=&to=` (line-item receipts)
+* `GET /v1/usage?table_id=&from=&to=`
+* `GET /v1/receipts?table_id=&from=&to=` (line-item receipts)
 
 6. **Logs**
 
-* `GET /v1/stores/{store_id}/logs?from=&to=&type=audit|ops|errors`
+* `GET /v1/tables/{table_id}/logs?from=&to=&type=audit|ops|errors`
 
 7. **Delete / Expire**
 
-* `DELETE /v1/stores/{store_id}`
+* `DELETE /v1/tables/{table_id}`
 
 **Data plane (potentially high frequency)**
 
-* `PUT /v1/stores/{store_id}/items/{pk}` (optional `sk`)
-* `GET /v1/stores/{store_id}/items/{pk}`
-* `DELETE /v1/stores/{store_id}/items/{pk}`
-* `POST /v1/stores/{store_id}:query` (key-based query, paginated)
+* `PUT /v1/tables/{table_id}/items/{pk}` (optional `sk`)
+* `PATCH /v1/tables/{table_id}/items/{pk}` (partial update with update expressions)
+* `GET /v1/tables/{table_id}/items/{pk}`
+* `DELETE /v1/tables/{table_id}/items/{pk}`
+* `POST /v1/tables/{table_id}:query` (key-based query, paginated)
+* `POST /v1/tables/{table_id}:scan` (guarded; requires explicit opt-in + hard limits)
+* `POST /v1/tables/{table_id}:batch-get` (batch get items)
+* `POST /v1/tables/{table_id}:batch-write` (batch put/delete items)
 
 ---
 
@@ -91,20 +95,28 @@ Also, you should enable x402’s **payment-identifier** extension for idempotenc
 
 ### Supported (v1)
 
-* Create/delete “stores” (tables)
+* Create/delete tables
 * Primary key:
 
   * Partition key required (string)
   * Optional sort key (string)
 * CRUD:
 
-  * Put/Get/Delete
+  * Put/Get/Update/Delete
 * Query:
 
   * Partition-key queries + sort-key range/prefix (if sort key enabled)
   * Pagination (`limit`, `next_token`)
-* TTL / auto-expiration policy (store-level)
-* Budget enforcement (store-level and workspace-level)
+* Scan (guarded):
+
+  * Requires explicit opt-in + hard item/size limits
+  * Paginated, rate-limited
+* Batch operations:
+
+  * Batch get (multi-item, single table)
+  * Batch write (put/delete, single table)
+* TTL / auto-expiration policy (table-level)
+* Budget enforcement (table-level and workspace-level)
 * Cost visibility:
 
   * Real-time “metered” usage + receipts
@@ -120,7 +132,6 @@ Also, you should enable x402’s **payment-identifier** extension for idempotenc
 * PartiQL
 * Fine-grained IAM-style permissions (you’re not exposing AWS auth)
 * DAX, global table topology controls (you can offer “multi-region tier” as a product, but don’t expose DynamoDB knobs)
-* Arbitrary scans over entire dataset (you can add a heavily rate-limited “scan” later)
 
 This keeps the surface area “agent-simple” and makes pricing and QoS easier to guarantee.
 
@@ -130,10 +141,10 @@ This keeps the surface area “agent-simple” and makes pricing and QoS easier 
 
 ### Storage strategy
 
-To give stronger QoS isolation (and simpler per-store billing), start with:
+To give stronger QoS isolation (and simpler per-table billing), start with:
 
-* **1 DynamoDB table per Store** in your AWS account, on-demand mode
-* Tag each table with `workspace_id`, `store_id`, `tier`, etc. (helps internal attribution)
+* **1 DynamoDB table per AgentDB table** in your AWS account, on-demand mode
+* Tag each table with `workspace_id`, `table_id`, `tier`, etc. (helps internal attribution)
 
 You can later optimize at scale using a pooled multi-tenant table, but that makes “noisy neighbor” QoS harder.
 
@@ -167,7 +178,7 @@ DynamoDB accrues costs even when idle (storage, backups if enabled). If the user
 
 ### The solution: **Lease + prepaid balance**, enforced by x402
 
-Make every store a **lease-backed resource**:
+Make every table a **lease-backed resource**:
 
 * At create time, the user pays:
 
@@ -181,7 +192,7 @@ Make every store a **lease-backed resource**:
   * API starts returning `402 Payment Required` with a “top-up required” price
 * If they do not top-up by lease expiry:
 
-  * store transitions to `SUSPENDED` (read-only or inaccessible)
+  * table transitions to `SUSPENDED` (read-only or inaccessible)
   * after a grace period, you `DELETE` (or export snapshot then delete)
 
 This guarantees you’re never stuck paying AWS indefinitely for an abandoned resource.
@@ -190,7 +201,7 @@ This guarantees you’re never stuck paying AWS indefinitely for an abandoned re
 
 x402 is the universal “pay now” mechanism when:
 
-* creating a store
+* creating a table
 * topping up a lease
 * increasing budgets/limits
 * requesting exports / long-retention logs
@@ -215,7 +226,7 @@ x402 is explicitly designed for programmatic payments without accounts/sessions/
 
 ## Auth without “accounts” (but still preventing data theft)
 
-You must ensure a random payer cannot pay you and read someone else’s store.
+You must ensure a random payer cannot pay you and read someone else’s table.
 
 You have two solid approaches that remain “no account”:
 
@@ -223,26 +234,26 @@ You have two solid approaches that remain “no account”:
 
 Treat the **payer wallet** as the workspace identity (x402 already assumes wallets are central; the wallet is how buyers sign payloads). ([x402][7])
 
-* On store creation, bind `store_id → owner_wallet`
+* On table creation, bind `table_id → owner_wallet`
 * On each request:
 
   * if it is a paid x402 request, you can recover payer identity during verification
   * if it is an unpaid request (because they have balance), you need an auth proof
 
 For that “auth proof,” you can adopt x402’s **Sign-In-With-X (SIWX)** extension, which is designed to let clients prove wallet ownership for returning access. ([x402][8])
-Even though SIWX is described as “access previously purchased content without repaying,” you can apply it to “access your already-funded store without re-running payment on every request.”
+Even though SIWX is described as “access previously purchased content without repaying,” you can apply it to “access your already-funded table without re-running payment on every request.”
 
 Practical note: SIWX support appears best in the TypeScript ecosystem; if you need Python-first, you may implement SIWX signing/verification yourself or provide a small local bridge (see agent tooling).
 
 ### Option 2: Capability tokens (simpler; very agent-friendly)
 
-When a store is created, return an unguessable `store_secret` (capability) and require:
+When a table is created, return an unguessable `table_secret` (capability) and require:
 
-* `Authorization: Bearer store_secret` for store access
+* `Authorization: Bearer table_secret` for table access
 
 This is not an “account,” but it is a credential. It’s operationally simple, language-agnostic, and lets you keep data-plane calls fast while using x402 only for top-ups.
 
-You can still *also* bind stores to wallets for billing/ownership, but the token is the practical access key.
+You can still *also* bind tables to wallets for billing/ownership, but the token is the practical access key.
 
 ---
 
@@ -252,7 +263,7 @@ You want an agent to tell a human “expected costs” and then proceed automati
 
 ### 1) Quote endpoint (pre-approval UX)
 
-`POST /v1/stores:quote`
+`POST /v1/tables:quote`
 
 Inputs the agent can reasonably provide:
 
@@ -278,7 +289,7 @@ Under the hood, your unit model should mirror DynamoDB on-demand economics:
 
 Expose:
 
-* `GET /v1/usage` – aggregated usage + cost estimate by store and time bucket
+* `GET /v1/usage` – aggregated usage + cost estimate by table and time bucket
 * `GET /v1/receipts` – append-only ledger entries:
 
   * timestamp, operation type, units, $ cost, remaining balance, correlation id
@@ -296,7 +307,7 @@ Let the human approve a budget, not a guess.
 Examples:
 
 * max $ spend per day
-* max $ spend lifetime per store
+* max $ spend lifetime per table
 * hard max ops/sec
 * auto-expire after N days unless renewed
 
@@ -315,7 +326,7 @@ You can provide logs without giving AWS access by treating logs as a first-class
 
 1. **Audit log** (who did what)
 
-* store created/deleted
+* table created/deleted
 * budget changes
 * lease top-ups
 * key administrative actions
@@ -330,7 +341,7 @@ You can provide logs without giving AWS access by treating logs as a first-class
 
 ### How users retrieve logs
 
-* `GET /v1/stores/{store_id}/logs?...`
+* `GET /v1/tables/{table_id}/logs?...`
 * Provide:
 
   * JSONL stream
@@ -340,7 +351,7 @@ You can provide logs without giving AWS access by treating logs as a first-class
 Also return correlation headers on every response:
 
 * `X-Request-Id`
-* `X-Store-Id`
+* `X-Table-Id`
 * `X-Metered-Units`
 * `X-Estimated-Cost-Usd`
 
@@ -404,19 +415,19 @@ x402 already documents an MCP server pattern that bridges Claude Desktop to x402
 ### Flow
 
 1. Agent: “I need a DB for feature X.”
-2. Broker calls `POST /v1/stores:quote`
+2. Broker calls `POST /v1/tables:quote`
 3. Broker shows human something like:
 
    * “Max spend: $3.00”
    * “Typical expected: $0.20–$0.80”
    * “Auto-expires in 7 days unless renewed”
 4. Human approves (one click / terminal prompt)
-5. Broker calls `POST /v1/stores`
+5. Broker calls `POST /v1/tables`
 
    * receives 402 with `PAYMENT-REQUIRED`
    * pays via x402
    * retries with `PAYMENT-SIGNATURE`
-6. Broker returns `store_id` + “connection handle” to the agent
+6. Broker returns `table_id` + “connection handle” to the agent
 7. Agent uses CRUD/query calls
 8. If balance depleted or lease expired:
 
@@ -438,7 +449,7 @@ Implement in the broker, not the cloud:
 
 ## Concrete x402 “PAYMENT-REQUIRED” examples (how you’d structure it)
 
-When payment is required (create store / top-up), your server responds:
+When payment is required (create table / top-up), your server responds:
 
 * HTTP `402 Payment Required`
 * `PAYMENT-REQUIRED: <base64(PaymentRequired JSON)>`
@@ -474,8 +485,8 @@ Operationally you need:
    * alert on drift (e.g., if you enabled backups or global tables unexpectedly)
 3. **Risk controls**:
 
-   * per-store budget caps enforced at gateway
-   * lease expiration so abandoned stores don’t accumulate cost indefinitely
+   * per-table budget caps enforced at gateway
+   * lease expiration so abandoned tables don’t accumulate cost indefinitely
 
 ---
 
@@ -485,8 +496,8 @@ If you want something that works well for coding agents quickly:
 
 * Regional tier only (single region)
 * On-demand capacity only
-* One-table-per-store (strong isolation)
-* Supported ops: Create, Put/Get/Delete, Query-by-key, List stores, Delete
+* One DynamoDB table per AgentDB table (strong isolation)
+* Supported ops: Create, Put/Get/Update/Delete, Query-by-key, Scan (guarded), Batch get/write, List tables, Delete
 * Lease model:
 
   * default 7-day expiry
