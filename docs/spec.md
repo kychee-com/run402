@@ -523,13 +523,322 @@ Then iterate:
 
 ---
 
+## Security threat model and hardening
+
+This section covers attacks that can cause **data leakage** or **money loss** (operator or user), with mitigations and integration test specifications. This is a protocol/SaaS threat model, not a code review.
+
+### Threat model: assets and trust boundaries
+
+**Assets to protect**
+
+1. **Customer data** in tables (confidentiality + integrity)
+2. **Customer funds** (avoid double charges, unauthorized charges)
+3. **Operator money** (AWS bill, fraud, abuse, cost spikes)
+4. **Secrets**: capability tokens, wallet auth proofs, facilitator credentials, AWS credentials
+5. **Receipts/logs** (contain sensitive metadata; can enable further attacks)
+
+**Trust boundaries**
+
+* Public internet → `app.run402.com` gateway (control + data plane)
+* Gateway → x402 facilitator (`/verify`, `/settle`)
+* Gateway → AWS DynamoDB (and any metering/ledger store)
+* Wallet identity / SIWX (off-chain signatures) or capability tokens
+
+---
+
+### Data theft attacks
+
+#### T1) “Pay-to-steal” (missing authorization binding)
+
+**Attack:** If “payment == authorization,” any payer can access any table ID they can guess/obtain.
+
+**Impact:** Direct cross-tenant reads/writes/deletes.
+
+**Mitigations**
+
+* Enforce **ownership** on every request, independent of payment:
+  * **Wallet-as-identity**: table/workspace records must bind `table_id → owner_wallet` and require that the **verified payer** matches owner (or is delegated)
+  * **Capability tokens**: require `Authorization: Bearer <table_secret>` and bind that secret to a single table/workspace + scopes
+* If using both (recommended): require *either* wallet owner *or* a valid scoped capability; never “any payer”
+
+**Integration tests**
+
+* Create table as Wallet A; attempt `GET/PUT/DELETE` with Wallet B paying correctly → must be **403**
+* Attempt access with no capability and no SIWX → **401/403** even if payment settles
+
+#### T2) Payment replay / cross-request reuse
+
+**Attack:** A `PAYMENT-SIGNATURE` (or facilitator verification artifact) is replayed for multiple writes, different endpoints, or different table IDs.
+
+**Impact:** Free operations, unauthorized access.
+
+**Mitigations**
+
+* Use x402 **payment-identifier** idempotency extension *and* bind payment to request:
+  * Include at minimum: `method`, `path`, canonical query, `content-digest`/body hash, timestamp, expiration, and an idempotency key
+  * Server must reject if any mismatch
+* Maintain a **spent/seen registry** of payment identifiers (durable store, not in-memory)
+* Expire payment proofs quickly (clock-skew tolerant)
+
+**Integration tests**
+
+* Reuse identical `PAYMENT-SIGNATURE` for the same request twice → second must be **409** (“already used”) without performing the write
+* Reuse the signature for same path but different body/pk → must be **400/403**
+* Reuse for a different endpoint (quote → create) → must be rejected
+* Concurrency: 20 parallel retries with same payment-id → only one succeeds
+
+#### T3) Capability token leakage
+
+**Attack:** If using `table_secret` capabilities, they leak via CLI debug logs, shell history, proxies/APM, browser referer headers, support tickets, and agent prompt injection (agent prints secrets to tool output).
+
+**Impact:** Full table compromise until rotated.
+
+**Mitigations**
+
+* Only accept secrets in `Authorization` header; never in URL/query
+* Store secrets **hashed** server-side; show only once on creation; allow rotation
+* Scope tokens (read vs write vs admin; table-bound; TTL)
+* Add “break-glass” revoke API and automatic rotation recommendations
+* Redact `Authorization`, `PAYMENT-*`, SIWX payloads from logs by default
+
+**Integration tests**
+
+* Ensure API rejects `?table_secret=` or `X-Api-Key` if not intended
+* Verify logs/audit events never include raw tokens (snapshot test on log output)
+* Token rotation test: old token stops working immediately
+
+#### T4) Table ID enumeration + insecure object references
+
+**Attack:** If `table_id` is guessable (sequential, short, user-chosen), attackers enumerate and try stolen capabilities or replayed payments.
+
+**Mitigations**
+
+* Make `table_id` server-assigned, high-entropy (e.g., 128-bit)
+* If allowing user labels, keep them separate from the routing identifier
+* Return identical error shape for “not found” vs “not authorized” (avoid oracle)
+
+**Integration tests**
+
+* Attempt random table IDs → must not leak existence via timing/status differences
+* Fuzz `table_id` with path traversal strings, unicode, very long input → must be rejected early
+
+---
+
+### Money loss attacks (runaway AWS cost)
+
+#### T5) Cost blow-up via scans, hot loops, oversized items, table sprawl
+
+**Attack:** Attackers create operations that are cheap for them but expensive for the operator: scans across large tables, huge items near DynamoDB limits, high RPS storms, creating many tables, long TTL / no expiry.
+
+**Mitigations**
+
+* **Hard limits at gateway** (enforced before hitting DynamoDB):
+  * max item size, max attributes, max query page size, max scan items/MB
+  * max ops/sec per table and per payer
+  * max concurrent requests per table
+  * max tables per workspace
+* “Scan” must be **explicit opt-in** + strict caps
+* Consider DynamoDB **provisioned capacity with maximums** for tiers where cost predictability matters (on-demand can spike)
+* Implement **real-time budget enforcement** on the request path (not async): reject before calling AWS if remaining budget < worst-case cost of request
+* Default TTL/lease expiry must be **hard** and non-extendable without top-up
+
+**Integration tests**
+
+* Scan without opt-in → rejected
+* Scan with opt-in but exceeding caps → rejected and does not hit DynamoDB (assert via mock/CloudTrail)
+* Oversized item (> limit) → rejected pre-AWS
+* RPS test: exceed ops/sec → **429** and costs stay bounded
+* Create 1,000 tables attempt → blocked by quota
+
+#### T6) Payment under-collection (price confusion / tampering)
+
+**Attack:** Client manipulates headers, claims a cheaper price, reuses an old quote. Disagreement between “metered usage” and “settled payment” allows operations without adequate balance. Facilitator errors treated as success.
+
+**Mitigations**
+
+* Server is the source of truth for price: the `PAYMENT-REQUIRED` header must include a **server-generated quote id**; settlement must reference that id
+* Treat facilitator calls as a strict gate:
+  * fail closed if `/verify` is ambiguous
+  * settle must be idempotent and recorded
+* Maintain a **double-entry ledger**: (credits from settlement) vs (debits from metered usage)
+* Reconcile and alert on negative balances; enforce “cannot go below zero” for non-free tiers (or allow small credit line only with risk scoring)
+
+**Integration tests**
+
+* Tamper `PAYMENT-REQUIRED` content client-side (lower amount) but keep signature valid for that content → server must reject because it doesn’t match server quote id
+* Facilitator timeout: request must fail (no DynamoDB write)
+* Simulate ledger drift: ensure enforcement stops operations at threshold
+
+#### T7) Double-charge / duplicate writes (idempotency gaps)
+
+**Attack:** Retries due to network issues cause user charged twice, or single payment but multiple writes.
+
+**Mitigations**
+
+* Payment idempotency key must tie together:
+  * settlement idempotency
+  * and operation idempotency (write is “exactly once” where promised)
+* For writes, require an `Idempotency-Key` header (or x402 payment-identifier) and store outcome
+
+**Integration tests**
+
+* Force client retry after server processes but before response → ensure only one charge and one write
+* Retry after payment settled but before DynamoDB call → ensure deterministic outcome
+
+#### T8) Free endpoints abused for amplification
+
+**Attack:** Quote, logs, usage, and receipts endpoints abused for high CPU (pricing calc, large time ranges), data exfil (logs leak request bodies/keys), and enumeration/correlation.
+
+**Mitigations**
+
+* Require auth (wallet/SIWX or capability) for any table-scoped metadata
+* Put strict pagination + time range caps on logs/usage
+* Consider making quote cheap-but-not-free, or rate limit heavily with PoW/captcha for anonymous
+
+**Integration tests**
+
+* `GET /logs?from=1970...` huge range → capped/paginated
+* Unauth logs/usage access → 401/403
+* Rate-limit tests for quote endpoint
+
+---
+
+### Protocol / platform attacks
+
+#### T9) Facilitator compromise or malicious facilitator responses
+
+**Attack:** If the facilitator lies (“verified” when not paid), or its endpoint is MITM’d, the service serves requests without being paid.
+
+**Mitigations**
+
+* Pin facilitator via TLS + robust DNS hygiene; consider allowing multiple facilitators and quorum/backup
+* Validate facilitator responses strictly (signatures, chain finality rules)
+* Keep an allowlist of accepted `chain_id`, token contract, and settlement destinations
+
+**Integration tests**
+
+* Fake facilitator returning “OK” without valid proof → server must reject
+* Wrong chain/token/recipient → server must reject
+
+#### T10) Header injection / oversized headers
+
+**Attack:** Base64 JSON `PAYMENT-*` headers can become large; attackers send huge headers to trigger proxy failures, memory pressure, log injection, and parsing vulnerabilities.
+
+**Mitigations**
+
+* Enforce maximum header sizes at edge (CDN/WAF) and app
+* Strict base64 decode limits and JSON schema validation
+* Never log raw `PAYMENT-*` headers
+
+**Integration tests**
+
+* Send 1MB `PAYMENT-SIGNATURE` header → rejected at edge/app; no crash
+* Malformed base64/JSON → 400, no stack trace leak
+
+#### T11) Agentic prompt injection causing secret exfil
+
+**Attack:** Attackers store malicious content in the DB that instructs the agent to exfiltrate capability tokens, wallet signing requests, or internal endpoints.
+
+**Mitigations**
+
+* Client/CLI defaults that:
+  * never print capability secrets after creation
+  * require explicit confirmation for payments above `--run402-max-pay-usd`
+  * support allowlists for endpoints (prevent SSRF-like tool calls)
+* Offer “safe mode” SDK wrappers: redact secrets, prevent tool output from containing tokens, tag untrusted data
+
+**Integration tests**
+
+* Store prompt-injection string in an item; ensure CLI/SDK does not echo secrets or auto-approve unexpected payments
+
+---
+
+### AWS / infrastructure hardening
+
+#### T12) AWS credential leakage / over-privileged IAM
+
+**Attack:** If the gateway is compromised and has broad DynamoDB permissions, attacker can dump or delete everything, or create expensive resources.
+
+**Mitigations**
+
+* Use IAM roles (not SSO profiles) in production with:
+  * least privilege to only the table ARNs you manage
+  * explicit denies for non-DynamoDB services
+  * separation of duties: control plane role vs data plane role
+* Consider **per-environment AWS accounts** (dev/stage/prod) and possibly per-tier accounts to contain blast radius
+* Use KMS CMKs where appropriate; restrict key usage
+
+**Integration tests**
+
+* IAM policy tests (automated): attempt forbidden AWS actions from app role (e.g., create unrelated resources) must fail
+* Attempt access to a table not owned/registered must fail even if name matches prefix
+
+#### T13) Deletion, suspension, and retention failures
+
+**Attack:** If “auto-expire” fails silently, abandoned tables accumulate storage forever (operator’s bill). If deletion is too aggressive, customers lose data unexpectedly.
+
+**Mitigations**
+
+* Make lifecycle a state machine: `ACTIVE → SUSPENDED → DELETING → DELETED`, all transitions logged/auditable
+* Daily sweeper with alerts on stuck resources and on “expired but still exists”
+* Consider PITR/backups for paid tiers; encryption and access controls apply to backups too
+
+**Integration tests**
+
+* Simulate expired lease → table becomes inaccessible; after grace, deleted
+* Verify deletion removes data and stops incurring cost (assert via AWS DescribeTable)
+
+---
+
+### Hardening checklist (launch blockers)
+
+1. **Identity & access**: Wallet-bound workspace identity (SIWX) + optional scoped capabilities. Per-request authorization checks independent of payment.
+2. **Payment correctness**: Bind payment proof to request; durable spent registry; strict facilitator validation. Durable ledger; never allow negative balance unless explicitly risk-scored.
+3. **Abuse controls**: Edge rate limiting (per IP, per wallet, per table), quotas, concurrency limits. Guard scan + batch ops + big payloads.
+4. **Data isolation**: Server-assigned random IDs; no user-controlled AWS resource names. Strong audit logs with redaction; minimize metadata leaks.
+5. **Operational controls**: Reconciliation (expected usage vs AWS bill; anomaly detection). Kill switches (disable scan globally; freeze a workspace; emergency budget clamp).
+
+### Integration test suite summary (security-focused)
+
+**AuthZ / isolation**
+
+* Cross-wallet access denied (read/write/delete)
+* Capability scope tests (read-only token cannot write/delete)
+* Token revocation/rotation effective immediately
+
+**Payment / x402 correctness**
+
+* Replay attack tests (same payment used twice)
+* Cross-request binding tests (same payment used for different endpoint/body)
+* Settlement idempotency under retries/concurrency
+* Facilitator failure modes: timeout, 500, malformed response, wrong token/chain
+
+**Budget / abuse / DoS safety**
+
+* Budget exhaustion stops DynamoDB calls (verify via CloudTrail or mock)
+* Scan limits: opt-in required, page limits enforced
+* Payload limits: large headers/body rejected
+* Rate limit: sustained RPS results in 429 and stable AWS consumption
+
+**Logging / privacy**
+
+* Ensure no secrets in logs (Authorization, payment payloads, SIWX)
+* “Not found” vs “forbidden” indistinguishable to outsiders
+
+**Lifecycle**
+
+* Expiry → suspend → delete flow behaves and is auditable
+* “Stuck deletion” detection triggers alerts
+
+---
+
 If you want, I can also draft:
 
 * a concrete OpenAPI spec for the endpoints above,
 * the metering schema (how you compute units deterministically for each operation),
 * and a reference “AgentDB Broker” MCP tool interface tailored to Claude Code’s workflow (quote → approval → create → use → top-up).
 
-[1]: https://docs.x402.org/ "Welcome to x402 - x402"
+[1]: https://docs.x402.org/ “Welcome to x402 - x402”
 [2]: https://docs.x402.org/core-concepts/http-402 "HTTP 402 - x402"
 [3]: https://docs.x402.org/core-concepts/facilitator "Facilitator - x402"
 [4]: https://docs.x402.org/extensions/payment-identifier "Payment-Identifier (Idempotency) - x402"
