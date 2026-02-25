@@ -1,0 +1,28 @@
+{
+  "name": "agentdb-test",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "generate-wallets": "tsx src/generate-wallets.ts",
+    "server": "tsx src/test-server.ts",
+    "test": "tsx src/test-client.ts"
+  },
+  "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.700.0",
+    "@aws-sdk/credential-providers": "^3.700.0",
+    "@x402/core": "^2.4.0",
+    "@x402/express": "^2.4.0",
+    "@x402/evm": "^2.4.0",
+    "@x402/fetch": "^2.4.0",
+    "express": "^4.18.2",
+    "viem": "^2.39.0"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.0.0",
+    "dotenv": "^16.4.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0"
+  }
+}
