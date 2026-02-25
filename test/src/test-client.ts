@@ -6,7 +6,7 @@
  *   2. Writes an item (pays via x402)
  *   3. Reads it back (pays via x402)
  *   4. Fetches cost report
- *   5. Cleans up (deletes table, free)
+ *   5. Cleans up (deletes table, free per cost model)
  *
  * Run: npm run test  (while server is running in another terminal)
  */
@@ -127,14 +127,17 @@ async function main() {
   const costBody = await costRes.json();
   console.log("   Operations:");
   for (const entry of costBody.entries) {
-    console.log(`     ${entry.operation}: ${entry.x402Price} at ${entry.timestamp}`);
+    console.log(`     ${entry.operation}: charged ${entry.x402Price}, AWS cost ${entry.awsCost} (margin: ${entry.margin})`);
   }
-  console.log(`\n   TOTAL: ${costBody.summary.total_operations} ops, ${costBody.summary.total_x402_usd}`);
+  console.log(`\n   Revenue:      ${costBody.summary.total_revenue_usd}`);
+  console.log(`   AWS cost:     ${costBody.summary.total_aws_cost_usd}`);
+  console.log(`   Gross profit: ${costBody.summary.gross_profit_usd}`);
+  console.log(`   Gross margin: ${costBody.summary.gross_margin}`);
   console.log(`   (${costBody.summary.note})`);
 
-  // Step 5: Delete table (paywalled)
+  // Step 5: Delete table (free per cost model — no x402 payment)
   console.log("\n5) Deleting table...");
-  const delRes = await fetchPaid(`${BASE_URL}/v1/tables/${tableId}`, {
+  const delRes = await fetch(`${BASE_URL}/v1/tables/${tableId}`, {
     method: "DELETE",
   });
   const delBody = await delRes.json();
@@ -142,8 +145,7 @@ async function main() {
     console.error("   FAILED:", delBody);
     process.exit(1);
   }
-  console.log(`   ${delBody.status}`);
-  logPayment(delRes, "delete_table");
+  console.log(`   ${delBody.status} (free — no x402 payment)`);
 
   console.log("\n=== Test complete ===\n");
 }
