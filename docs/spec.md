@@ -490,6 +490,224 @@ Operationally you need:
 
 ---
 
+## Cost model and pricing
+
+This section defines the concrete cost model: how AWS DynamoDB costs map to AgentDB pricing, with margins, metering formulas, deposit calculations, and abuse prevention knobs.
+
+All figures assume **us-east-1, DynamoDB Standard table class, on-demand capacity mode**.
+
+### AWS cost basis
+
+#### Direct DynamoDB variable costs
+
+1. **Write request units (WRU)**: $1.25 / 1M WRU → $0.00000125 per WRU
+   * 1 WRU = writing up to 1 KB (rounded up in 1 KB chunks)
+2. **Read request units (RRU)**: $0.25 / 1M RRU → $0.00000025 per RRU
+   * 1 RRU = strongly consistent read up to 4 KB (rounded up in 4 KB chunks)
+   * Eventually consistent reads = 0.5 RRU
+3. **Storage**: $0.25 / GB-month
+   * Do not pass through AWS free tier (25 GB); it is account-level and disappears at scale
+4. **Data transfer (egress)**: first 100 GB/month free then ~$0.09/GB
+
+#### Platform costs (recovered in margin + lease fee)
+
+* Gateway compute (Lambda/ECS), ALB/API GW, WAF, rate limiting infra
+* Logs/audit trail storage + query
+* Engineering/support/operations
+* Treasury: stablecoin → fiat conversion fees + slippage
+* Bad-debt risk if concurrency races allow small negative balances
+
+### Canonical metering units
+
+Implement these exact unit calculations at the gateway for quotes, budget enforcement, and billing.
+
+**Item size**: `itemBytes = byteLength(JSON_canonicalized)` (or stricter attribute-by-attribute estimator). Enforce `itemBytes <= MAX_ITEM_BYTES`.
+
+**Write units**: For any put/update/delete:
+* `wru = ceil(itemBytes / 1024)`
+* For v1, charge updates as worst-case full item write (simpler and safer than delta estimation)
+
+**Read units**: For Get/Query/Scan results:
+* `rru_per_item_strong = ceil(itemBytes / 4096)`
+* `rru_per_item_eventual = 0.5 * ceil(itemBytes / 4096)`
+* For Query/Scan, bill based on **items evaluated**, not just returned (DynamoDB charges for what it reads)
+
+**v1 recommendation**: Only allow Query patterns without server-side FilterExpressions (or cap them hard), and always return `ConsumedCapacity` from DynamoDB for reconciliation while doing worst-case prechecks.
+
+### Retail price sheet (v1 — Ephemeral / Dev tier, us-east-1)
+
+Target: **~70–85% gross margin** on variable usage, plus table lease fee for sprawl control.
+
+#### Data-plane usage
+
+| Meter | AWS cost | AgentDB retail | Markup |
+|---|---:|---:|---:|
+| Writes (per 1M WRU) | $1.25 | **$7.50** | 6.0× |
+| Reads (per 1M RRU) | $0.25 | **$1.50** | 6.0× |
+| Storage (per GB-month) | $0.25 | **$1.00** | 4.0× |
+| Egress (per GB, after 1 GB/mo free per workspace) | ~$0.09 | **$0.20** | ~2.2× |
+
+Rationale:
+* Reads stay cheap (DynamoDB reads are cheap), but >$0 so scans deplete attacker balances quickly
+* Writes are materially more expensive than reads in DynamoDB; pricing reflects that
+* Storage gets a lower multiplier (sticky revenue; too high looks punitive)
+
+#### Table lease fee (sprawl control + fixed overhead)
+
+| Tier | Fee |
+|---|---:|
+| Ephemeral (Dev) | **$0.01 / table-day** |
+| Project | **$0.03 / table-day** |
+
+This is negligible for legitimate usage but prevents “create 50K tables for free” abuse and pays for control-plane + logs.
+
+#### Control-plane operations
+
+| Operation | Price |
+|---|---:|
+| `create_table` | **$0.05** (or absorbed into minimum deposit) |
+| `delete_table` | free |
+| `export` | price by bytes + compute (or require Project tier) |
+
+A small create fee is an effective spam brake.
+
+### Per-operation billing formulas
+
+#### PutItem
+* `wru = ceil(itemBytes / 1024)`
+* charge: `wru * price_wru`
+
+#### GetItem
+* `rru = ceil(itemBytes / 4096)` (strong) or `0.5 * ceil(itemBytes / 4096)` (eventual)
+* charge: `rru * price_rru`
+* Item not found: still bill `rru = 1` (strong) or `0.5` (eventual) — DynamoDB charges a minimum read
+
+#### DeleteItem
+* Bill `wru = 1` (delete consumes write units even for small items)
+
+#### UpdateItem (v1: replace semantics)
+* Require client to send full item (replace semantics) in v1; bill as PutItem
+* This avoids needing a size-delta estimator
+
+#### Query
+* Bill for **items evaluated** (close to returned if FilterExpression is disallowed)
+* Disallow FilterExpression in v1; require KeyCondition-only
+* Enforce `Limit <= MAX_QUERY_LIMIT`
+* Bill: `sum(rru(item))` for returned items (or use DynamoDB `ConsumedCapacity`)
+
+#### Scan (guarded)
+* Explicit opt-in per table
+* Hard caps: `MAX_SCAN_ITEMS`, `MAX_SCAN_MB`, `MAX_SCAN_SECONDS`
+* Pre-check with worst-case RRUs based on caps
+* Bill actual via `ConsumedCapacity`
+
+#### BatchWrite / BatchGet
+* BatchWrite: sum WRUs per item
+* BatchGet: sum RRUs per item (not-found items still cost ~1 RRU minimum each; meter as 1 strong / 0.5 eventual)
+
+### Deposit + lease model
+
+Deposits must be large enough to: (1) cover baseline storage + table-day fee for the lease period, and (2) cover a burst buffer so hot loops can’t run up AWS cost before the 402 gate triggers.
+
+#### Minimum deposit formula (per table)
+
+```
+min_deposit = D * (table_day_fee + storage_price_per_day(S_gb))
+              + D * Ops_budget_day
+              + Safety
+```
+
+Where:
+* `D` = lease days (default 7)
+* `S_gb` = expected storage GB (from quote inputs; if unknown assume 0.1 GB)
+* `Ops_budget_day` = user-declared daily budget OR default ($1/day)
+* `Safety = max($1.00, 2 * Ops_budget_day)`
+* `storage_price_per_day(S_gb) = S_gb * (storage_price_per_gb_month / 30)`
+
+### Worst-case cost enforcement (pre-AWS rejection)
+
+#### Two-balance system
+
+* `ledger_balance`: credits − debits, append-only
+* `available_balance = ledger_balance - holds`
+
+#### Per-request hold flow
+
+1. Compute **worst_case_cost** from request parameters + enforced caps
+2. If `available_balance < worst_case_cost`: return **402 top-up required**
+3. Place a **hold** for `worst_case_cost`
+4. Execute DynamoDB call
+5. Compute **actual_cost** (prefer `ConsumedCapacity`; else compute from returned items)
+6. Release hold, debit actual_cost
+
+This prevents concurrent expensive calls from racing into negative balance.
+
+#### Worst-case cost formulas
+
+* **Put**: `worst_case_wru = ceil(itemBytes / 1024)` → `worst_case_cost = worst_case_wru * price_wru`
+* **Get**: `worst_case_rru = ceil(MAX_ITEM_BYTES / 4096)` → `worst_case_cost = worst_case_rru * price_rru`
+* **Query**: `worst_case_rru = Lmax * ceil(Imax / 4096)` (where `Lmax` = max query limit, `Imax` = max item bytes)
+* **Scan**: `worst_case_rru = min(Nmax * ceil(Imax / 4096), (MBmax * 1024 * 1024) / 4096)` (bounded by whichever cap is tighter)
+
+#### Budget enforcement at precheck
+
+Before executing, check:
+* `spent_today + worst_case_cost <= daily_cap`
+* `spent_lifetime + worst_case_cost <= lifetime_cap`
+
+### Abuse prevention controls
+
+#### Table sprawl / control-plane abuse
+* Max tables per workspace: 20 (dev) / 200 (project)
+* Table creation fee + table-day fee
+* Require non-trivial minimum deposit per table
+
+#### Oversized items / attribute bombs
+* `MAX_ITEM_BYTES`: 64 KB (dev), 256 KB (project) — well below DynamoDB’s 400 KB limit
+* `MAX_ATTR_COUNT`, `MAX_NESTING_DEPTH`, `MAX_STRING_BYTES`
+* Reject compressed/base64 blobs unless explicitly supported (they bypass naive size estimates)
+
+#### Hot loops / request floods
+* Hard **ops/sec** per table and per workspace
+* Hard **concurrency** limits per table/workspace
+* Idempotency keys for writes (prevent retry storms from double-charging)
+* **429** for rate-limit, **402** for insufficient funds — both before AWS call
+
+#### Scan / query amplification
+* Scans off by default; opt-in + hard caps
+* Queries: key-condition only (no filters) in v1, or meter by `ConsumedCapacity` with worst-case pre-hold
+* Strict pagination; max page size; max total pages per minute
+
+#### Free endpoint amplification
+* Auth required for usage/logs endpoints
+* Strict time-range caps and pagination
+* Rate-limit `/quote` and/or charge $0.001, or require workspace deposit before heavy quoting
+
+### Default limits (v1 — Ephemeral / Dev tier)
+
+| Limit | Value |
+|---|---:|
+| Max item size | 64 KB |
+| Max query limit | 100 items |
+| Scan | disabled by default |
+| Ops/sec per table | 10 (burst 20) |
+| Concurrency per table | 5 |
+| Max tables per workspace | 20 |
+| Default lease | 7 days |
+| Default ops budget/day | $1.00 |
+
+### Reconciliation against AWS bill
+
+Even with perfect metering, expect deltas from rounding, internal retries, background ops (health checks, TTL deletions), data transfer paths, and operational changes (e.g., accidentally enabling PITR).
+
+Process:
+1. **Gateway ledger is source of truth for customer billing**
+2. Daily job: compare metered DynamoDB units vs CloudWatch DynamoDB metrics / AWS CUR
+3. Alert on drift > X% per day per region/account
+4. If drift is consistently positive (AWS > metered), increase multipliers or fix missing meters
+
+---
+
 ## The “minimal v1” I’d ship first (fastest path)
 
 If you want something that works well for coding agents quickly:
