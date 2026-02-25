@@ -243,6 +243,30 @@ If you answer those, I can suggest a tighter wedge + a clearer roadmap (includin
 
 **On compliance / SOC 2 (point 9):** Not relevant for home/private segment. These users run agents on their laptops.
 
+### Remaining objections — founder responses (2026-02-25)
+
+**On gateway = SLA bottleneck (point 3):** This isn't a design flaw to fix, it's an operational discipline to maintain. We *are* the gateway, so we need to be good at it: multi-AZ, health checks, graceful deploys, circuit breakers on the facilitator. The spec already covers this (multi-AZ Fargate behind ALB). The real risk is early-stage — one ECS cluster, a bad deploy = "the DB is down." Mitigation is boring: good CI/CD, canary deploys, synthetic monitoring, an honest status page. Not a spec change, just ops hygiene.
+
+**On "SQLite locally is good enough" (point 7):** SQLite can't do: agent A writes data that agent B reads, state that persists across machines/sessions, state that a web app can query while the agent runs, or anything multi-agent. The play is bigger than DB anyway — Run402 wants to be the "agent cloud resource layer." SQLite is the substitute for *local scratch state*. We're selling *cloud state as a service*.
+
+**On feature set awkward middle (point 8):** Don't care about the human side of this. The DynamoDB surface is fine mechanically for agents. What agents would value that we could lean into:
+
+- **Simpler defaults**: agents don't want to think about partition keys vs sort keys. A `put(key, json)` / `get(key)` / `list(prefix)` interface with optional sort key is more natural than exposing KeySchema.
+- **Built-in TTL as a first-class concept**: agents create ephemeral state constantly. "This data expires in 2 hours" should be trivial, not a DynamoDB TTL attribute you have to configure.
+- **Append-only log / event journal**: agents want to record "what I did" — a natural fit for a sort-key-ordered append pattern, but worth packaging as a primitive.
+- **Structured receipts as tool output**: the agent can report costs to the human in a standard way — already in the spec but worth emphasizing as a differentiator.
+
+The spec already supports all of this at the API level. The gap is SDK/MCP ergonomics, not backend features.
+
+**On moat risk (point 10):** The moat is distribution, not tech. Concrete strategies:
+
+1. **Be the default in agent toolkits** — MCP server that ships with Claude Code, Cursor plugin, OpenHands integration. If `agentdb` is what agents reach for by muscle memory, incumbents adding "agent mode" later doesn't matter. First-mover in *distribution channels* is the moat.
+2. **x402 discovery protocol** — the spec already has `/x402/discovery`. If Run402 becomes *the* reference implementation for "how agents discover and pay for cloud resources via x402," we set the standard. When other services adopt x402, our agent tooling already knows how to work with them. We become the broker, not just the DB.
+3. **Multi-resource play** — expand beyond DB. If Run402 becomes where agents go for DB *and* queues *and* object storage *and* compute sandboxes, the switching cost compounds. Each new resource makes "just use Upstash" weaker because Upstash only does Redis.
+4. **The ledger/governance layer** — GPT-5.2 actually nailed this one: the moat isn't the DB proxy, it's the *spend control + receipts + approval flow*. If agents trust the ledger and humans trust the cost transparency, that's sticky even if someone clones the DynamoDB wrapper.
+
+Incumbents can copy "DB with agent-friendly API." They can't easily copy "universal agent resource broker with x402 payments, cross-resource budgeting, and distribution in every major agent runtime."
+
 ---
 
 ## Action items from this consultation
