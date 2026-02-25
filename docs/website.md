@@ -1,3 +1,508 @@
+---
+
+# STYLE GUIDE — Visual Design System
+
+> **Design philosophy:** The site feels like a *production terminal that graduated to a product*. Monospace roots, neon-on-dark data surfaces, but with the spatial clarity and type hierarchy of a modern SaaS. Every screen should feel like you could pipe it to `stdout` or show it to a VP. Fast. Scannable. No decoration that doesn't carry information.
+
+---
+
+## SG-1) Performance targets
+
+The site **must** be fast. These are hard constraints, not aspirations.
+
+| Metric | Target |
+|---|---|
+| First Contentful Paint | < 0.8s |
+| Largest Contentful Paint | < 1.5s |
+| Total Blocking Time | < 100ms |
+| CLS | < 0.05 |
+| JS bundle (gzipped) | < 50 KB total for marketing pages |
+| No layout shifts from web fonts | System font stack first; swap mono only |
+
+**Rules:**
+* No client-side framework on marketing pages — static HTML + minimal JS (scroll observer, theme toggle, calculator widget only).
+* Console pages may use a lightweight framework (Preact, Solid, or vanilla) — **no React on marketing.**
+* Images: SVG only for icons/illustrations. No raster hero images. Use CSS gradients + grid patterns.
+* Fonts: loaded via `font-display: swap` with system fallbacks. Two fonts max.
+* No analytics scripts above the fold. Defer everything.
+
+---
+
+## SG-2) Color system
+
+### Dark mode (default)
+
+The site ships dark-first. Light mode is optional (v2).
+
+```
+--bg-root:          #0A0A0F        /* near-black, faint blue cast */
+--bg-surface:       #111118        /* card/panel background */
+--bg-surface-hover: #1A1A24        /* interactive hover state */
+--bg-elevated:      #16161F        /* modals, dropdowns, tooltips */
+--bg-inset:         #08080C        /* code blocks, terminal areas */
+
+--border-subtle:    #1E1E2A        /* panel dividers */
+--border-default:   #2A2A3A        /* input borders, table lines */
+--border-focus:     #00FF9F        /* focus rings — terminal green */
+
+--text-primary:     #E8E8ED        /* body text — high contrast on dark */
+--text-secondary:   #8888A0        /* labels, captions, muted */
+--text-tertiary:    #555566        /* disabled, placeholder */
+--text-inverse:     #0A0A0F        /* text on bright backgrounds */
+
+--accent-green:     #00FF9F        /* primary accent — terminal green */
+--accent-green-dim: #00CC7F        /* hover / pressed state */
+--accent-green-bg:  rgba(0,255,159,0.08) /* subtle highlight background */
+
+--accent-cyan:      #00D4FF        /* secondary accent — data, links */
+--accent-cyan-dim:  #00A8CC        /* hover state */
+
+--accent-amber:     #FFB800        /* warnings, low-balance alerts */
+--accent-red:       #FF3B5C        /* errors, destructive actions */
+--accent-purple:    #A78BFA        /* v1.1 / future / deferred badges */
+
+--receipt-green:    #00FF9F15      /* receipt ledger row tint */
+--status-ok:        #00FF9F        /* health indicator — ok */
+--status-warn:      #FFB800        /* health indicator — degraded */
+--status-error:     #FF3B5C        /* health indicator — down */
+```
+
+### Gradient accents (used sparingly)
+
+```
+--gradient-hero:    linear-gradient(135deg, #00FF9F 0%, #00D4FF 100%)
+--gradient-glow:    radial-gradient(ellipse at 50% 0%, rgba(0,255,159,0.12) 0%, transparent 60%)
+--gradient-surface: linear-gradient(180deg, #111118 0%, #0A0A0F 100%)
+```
+
+### Usage rules
+
+* **Green** (`--accent-green`) is the primary action color. CTAs, focus rings, active states, success.
+* **Cyan** (`--accent-cyan`) is the data/link color. Hyperlinks, table headers, metric values.
+* **Amber** only for cost warnings and approaching-cap states. Never decorative.
+* **Red** only for errors and destructive confirmations. Never decorative.
+* **Purple** badges mark “v1.1” or “planned” features — nothing else.
+* Never use color as the sole indicator. Always pair with text labels or icons.
+
+---
+
+## SG-3) Typography
+
+### Font stack
+
+```css
+/* Primary — used for headings, body, UI */
+--font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+
+/* Mono — used for code, data, terminal surfaces, prices, IDs */
+--font-mono: 'JetBrains Mono', 'SF Mono', 'Cascadia Code', 'Fira Code', ui-monospace, monospace;
+```
+
+Load **Inter** (variable, 400–700) and **JetBrains Mono** (400, 700) via self-hosted WOFF2. Total: ~60 KB.
+
+### Type scale (rem-based, 16px root)
+
+| Token | Size | Weight | Use |
+|---|---|---|---|
+| `--type-display` | 3rem / 48px | 700 | Hero H1 only |
+| `--type-h1` | 2.25rem / 36px | 700 | Page H1 |
+| `--type-h2` | 1.5rem / 24px | 700 | Section headings |
+| `--type-h3` | 1.125rem / 18px | 600 | Sub-sections, card titles |
+| `--type-body` | 1rem / 16px | 400 | Body text |
+| `--type-body-sm` | 0.875rem / 14px | 400 | Secondary text, table cells |
+| `--type-caption` | 0.75rem / 12px | 400 | Labels, timestamps, badges |
+| `--type-mono-lg` | 1.125rem / 18px | 400 | Terminal output, prices |
+| `--type-mono` | 0.875rem / 14px | 400 | Code inline, IDs, hashes |
+| `--type-mono-sm` | 0.75rem / 12px | 400 | Log lines, receipt entries |
+
+### Typography rules
+
+* **Headings:** Inter bold. All headings use `--text-primary`.
+* **Body:** Inter regular. Line-height: 1.6 for prose, 1.4 for UI.
+* **Any number, ID, hash, price, or machine value:** Always `--font-mono`. Prices are `--accent-cyan` in mono. Request IDs are `--text-secondary` in mono.
+* **Terminal/code blocks:** JetBrains Mono on `--bg-inset` with a 1px `--border-subtle` border and `border-radius: 6px`.
+* **No italic in UI text.** Reserve italic only for inline variable names in docs.
+* **Letter-spacing:** -0.02em on `--type-display` and `--type-h1`. Default elsewhere.
+
+---
+
+## SG-4) Layout system
+
+### Grid
+
+```
+--grid-max-width:   1200px         /* content max */
+--grid-gutter:      24px           /* column gaps */
+--grid-margin:      24px           /* page edge on mobile */
+```
+
+* Marketing pages: 12-column grid, collapsing to single-column below 768px.
+* Console pages: Sidebar (240px fixed) + fluid main. Sidebar collapses to bottom-tab nav on mobile.
+* All pages: content never wider than `--grid-max-width`. Centered.
+
+### Spacing scale
+
+```
+--space-1:  4px
+--space-2:  8px
+--space-3:  12px
+--space-4:  16px
+--space-5:  24px
+--space-6:  32px
+--space-7:  48px
+--space-8:  64px
+--space-9:  96px
+```
+
+* Section vertical spacing: `--space-9` between major sections on marketing pages.
+* Card padding: `--space-5` on desktop, `--space-4` on mobile.
+* Tight UI (console tables, logs): `--space-2` to `--space-3` vertical rhythm.
+
+### Breakpoints
+
+```
+--bp-sm:   480px    /* phone */
+--bp-md:   768px    /* tablet / landscape phone */
+--bp-lg:   1024px   /* small desktop / tablet landscape */
+--bp-xl:   1280px   /* desktop */
+```
+
+---
+
+## SG-5) Component styles
+
+### Cards
+
+```
+background:    var(--bg-surface)
+border:        1px solid var(--border-subtle)
+border-radius: 8px
+padding:       var(--space-5)
+```
+
+* On hover (interactive cards): border transitions to `--border-default`, background to `--bg-surface-hover`. Transition: 150ms ease.
+* No box-shadows. Depth is communicated through border brightness and background shade only.
+
+### The “terminal block”
+
+Used for: code examples, agent quickstarts, discovery endpoint previews, API response examples.
+
+```
+background:    var(--bg-inset)
+border:        1px solid var(--border-subtle)
+border-radius: 6px
+padding:       var(--space-4)
+font-family:   var(--font-mono)
+font-size:     var(--type-mono)
+line-height:   1.5
+overflow-x:    auto
+```
+
+* Top bar: 32px height, `--bg-surface` background, shows filename or endpoint path in `--text-secondary` mono, plus a copy button (icon only, right-aligned).
+* Syntax highlighting palette:
+  * Keywords/methods: `--accent-green`
+  * Strings: `--accent-cyan`
+  * Numbers/prices: `--accent-amber`
+  * Comments: `--text-tertiary`
+  * Punctuation: `--text-secondary`
+
+### Buttons
+
+**Primary (CTA):**
+```
+background:    var(--accent-green)
+color:         var(--text-inverse)
+font-family:   var(--font-mono)
+font-weight:   700
+font-size:     var(--type-body-sm)
+text-transform: uppercase
+letter-spacing: 0.05em
+padding:       12px 24px
+border-radius: 6px
+border:        none
+```
+Hover: `--accent-green-dim`. Active: scale(0.98). Focus: 2px offset ring in `--accent-green`.
+
+**Secondary:**
+```
+background:    transparent
+color:         var(--accent-green)
+border:        1px solid var(--accent-green)
+/* same font/size/radius as primary */
+```
+Hover: `--accent-green-bg` background.
+
+**Tertiary (text link button):**
+```
+color:         var(--accent-cyan)
+text-decoration: underline
+text-underline-offset: 3px
+```
+
+### Tables (data)
+
+```
+font-family:       var(--font-mono)
+font-size:         var(--type-mono-sm)   /* tight for data-dense views */
+border-collapse:   collapse
+```
+* Header row: `--bg-surface`, `--text-secondary`, `text-transform: uppercase`, `letter-spacing: 0.08em`, `font-size: --type-caption`.
+* Body rows: `--bg-root`, alternating `--bg-surface` every other row.
+* Row hover: `--bg-surface-hover`.
+* Cell padding: `--space-2` vertical, `--space-3` horizontal.
+* Column alignment: text left, numbers right, status indicators center.
+* On mobile (< 768px): horizontal scroll with a sticky first column, or card-stack layout for ≤ 5 columns.
+
+### Badges / pills
+
+```
+font-family:   var(--font-mono)
+font-size:     var(--type-caption)
+padding:       2px 8px
+border-radius: 4px
+```
+* Status OK: `--accent-green` text on `--accent-green-bg`.
+* Warning: `--accent-amber` text on `rgba(255,184,0,0.1)`.
+* Error: `--accent-red` text on `rgba(255,59,92,0.1)`.
+* Deferred/v1.1: `--accent-purple` text on `rgba(167,139,250,0.1)`.
+* Free: `--accent-green` text, no background.
+
+### Navigation
+
+**Top nav (marketing):**
+* Sticky, 56px height, `--bg-root` with `backdrop-filter: blur(12px)` and `background: rgba(10,10,15,0.85)`.
+* Logo: “AgentDB” in `--font-mono`, 700 weight, `--accent-green`. A blinking cursor `▌` animates after the logo text (CSS-only, `@media (prefers-reduced-motion: no-preference)`).
+* Nav links: `--text-secondary`, `--font-sans`, `--type-body-sm`. Hover: `--text-primary`. Active: `--accent-green` underline (2px, offset 6px).
+* CTA buttons in nav: Small primary button style.
+* Mobile (< 768px): Hamburger menu → full-screen overlay, `--bg-root`, stacked links.
+
+**Console sidebar:**
+* 240px fixed width, `--bg-surface`, border-right `--border-subtle`.
+* Nav items: `--font-mono`, `--type-body-sm`. Inactive: `--text-secondary`. Active: `--accent-green` with a 2px left border accent.
+* Mobile (< 768px): Collapses to a fixed bottom tab bar (5 icons max: Overview, Tables, Receipts, Logs, Settings). More items behind a “...” overflow.
+
+### Inputs
+
+```
+background:    var(--bg-inset)
+border:        1px solid var(--border-default)
+border-radius: 6px
+padding:       10px 12px
+font-family:   var(--font-mono)
+font-size:     var(--type-body-sm)
+color:         var(--text-primary)
+```
+* Focus: border `--border-focus` + `box-shadow: 0 0 0 2px rgba(0,255,159,0.15)`.
+* Placeholder: `--text-tertiary`.
+* Labels: `--font-sans`, `--type-caption`, `--text-secondary`, `text-transform: uppercase`, `letter-spacing: 0.06em`. Positioned above input with `--space-2` gap.
+
+---
+
+## SG-6) Iconography
+
+* **Icon set:** Lucide (MIT, tree-shakeable SVG, ~0.5 KB per icon).
+* **Size:** 16px (inline), 20px (nav/buttons), 24px (feature cards).
+* **Color:** Inherits `currentColor`. Never multi-color icons.
+* **Status dots:** 8px circles. Solid fill with status color. Pulse animation on active incidents only.
+
+---
+
+## SG-7) Motion & animation
+
+**Rules:**
+* All transitions: `150ms ease` unless specified.
+* Respect `prefers-reduced-motion: reduce` — disable all non-essential animation.
+* No page-level entrance animations. No scroll-triggered fades. Content appears instantly.
+
+**Allowed animations:**
+* Blinking cursor on logo: `opacity` toggle, 1s interval, CSS-only.
+* Button press: `transform: scale(0.98)`, 100ms.
+* Terminal typing effect on hero subhead: Characters appear left-to-right, 30ms/char, mono font. Plays once on load. Skippable (click to reveal all).
+* Skeleton loading states in console: `--bg-surface` → `--bg-surface-hover` pulse, 1.5s ease-in-out infinite.
+* Metric counters on overview: count-up from 0 over 400ms on first paint. No re-animation.
+
+---
+
+## SG-8) The “terminal prompt” motif
+
+This is the signature visual. Used on:
+* Hero section — the subhead types out like a terminal command
+* Section dividers — a faint `$` or `>` prompt glyph before section titles (CSS `::before` pseudo-element, `--text-tertiary`, mono)
+* Code/quickstart blocks — show a realistic prompt: `$ curl ...`
+* Console breadcrumbs — path displayed as `~/tables/tbl_abc123` in mono
+* Page transitions — a brief `> loading...` in mono before content appears (console only)
+
+**Implementation:**
+```css
+.section-title::before {
+  content: '>';
+  font-family: var(--font-mono);
+  color: var(--text-tertiary);
+  margin-right: 0.5em;
+  font-weight: 400;
+}
+```
+
+---
+
+## SG-9) The “data overlay” motif
+
+Subtle background pattern that signals “this surface shows machine data”:
+
+* A faint dot-grid pattern (`radial-gradient`, 1px dots at 24px intervals, `rgba(255,255,255,0.03)`) on `--bg-root`.
+* On console pages, the main content area has a subtle scanline overlay (`repeating-linear-gradient`, 1px lines at 2px intervals, `rgba(255,255,255,0.01)`).
+* Hero section: `--gradient-glow` radial from top-center, creating a soft green/cyan light spill behind the headline.
+
+**These must be purely CSS. No images. No performance cost.**
+
+---
+
+## SG-10) Mobile-specific rules
+
+* **Touch targets:** Minimum 44px × 44px for all interactive elements.
+* **No horizontal scroll** on any page at any breakpoint (except data tables with explicit scroll containers).
+* **Console tables on mobile:** Switch to card-stack layout. Each row becomes a card with label: value pairs stacked vertically.
+* **Bottom tab bar:** Fixed, 56px, `--bg-surface`, border-top `--border-subtle`. Icons + 10px labels in `--type-caption`.
+* **Hero text on mobile:** `--type-h1` (not `--type-display`). Subhead: `--type-body`. No typing animation on mobile (respect bandwidth + reduced motion).
+* **CTAs on mobile:** Full-width buttons, stacked vertically with `--space-3` gap.
+* **Pricing calculator on mobile:** Single-column, inputs stacked. Output pinned to bottom of viewport as a summary bar.
+
+---
+
+## SG-11) Accessibility
+
+* **Contrast:** All text meets WCAG 2.1 AA (4.5:1 for body, 3:1 for large text). `--text-primary` on `--bg-root` = 14.8:1 ✓. `--accent-green` on `--bg-root` = 10.2:1 ✓.
+* **Focus indicators:** Visible on all interactive elements. Never `outline: none` without a replacement.
+* **Keyboard navigation:** Full tab-order on all pages. Console sidebar navigable with arrow keys.
+* **Screen readers:** All icons have `aria-label`. Status badges have `role=”status”`. Live regions for balance updates in console.
+* **Reduced motion:** All animations gated behind `@media (prefers-reduced-motion: no-preference)`.
+
+---
+
+## SG-12) Page-specific visual treatments
+
+### Home hero
+
+* Full-bleed dark section. `--gradient-glow` behind headline.
+* H1 in `--type-display`, `--text-primary`.
+* Subhead in `--font-mono`, `--type-mono-lg`, `--accent-green`, with typing animation.
+* Three bullet callouts below: each has a `▸` prefix in `--accent-green`, text in `--text-primary`.
+* CTA row: Primary + Secondary buttons side by side. Below: tertiary text link.
+* No illustration. No hero image. The **typography is the visual.**
+
+### Pricing page
+
+* Plan cards side-by-side (2 on desktop, stacked on mobile).
+* Each card: `--bg-surface`, green top-border (2px `--accent-green`).
+* Unit pricing table: full `--font-mono`, right-aligned numbers in `--accent-cyan`.
+* Calculator: inset `--bg-inset` panel, real-time output updates, no submit button. Numbers animate on change (count-up, 200ms).
+
+### Console overview
+
+* KPI row: 5 metric cards in a row (3 + 2 on tablet, stacked on mobile).
+* Each KPI: large number in `--font-mono` `--type-h1`, label in `--type-caption` `--text-secondary`.
+* Charts: minimal line charts, `--accent-green` fill/stroke on `--bg-inset`. No chart library > 10 KB — use `<canvas>` or lightweight (uPlot, Chart.css).
+* Warning cards: `--accent-amber` left-border (3px), amber-tinted background.
+
+### Approval page (v1.1)
+
+* Approval cards: prominent green “Approve” CTA, muted “Deny” in `--text-secondary`.
+* Max spend number: `--type-h2`, `--font-mono`, `--accent-cyan`. This is the biggest number on the card.
+* “Type table name to confirm” input: `--bg-inset`, mono, with a blinking cursor.
+
+### Receipts / Logs
+
+* Dense data table layout. `--font-mono` throughout.
+* Request IDs: truncated with `...`, full value on hover tooltip or click-to-copy.
+* Timestamps: relative (“2m ago”) with absolute on hover.
+* Filter bar: inset panel at top, mono inputs, instant filtering (no submit).
+
+---
+
+## SG-13) Dos and Don'ts
+
+### Do
+* Use monospace for anything a machine produces: IDs, hashes, prices, timestamps, endpoints, status codes.
+* Show costs prominently with `$` prefix and 2 decimal places.
+* Truncate long values; offer copy-to-clipboard.
+* Use the `>` prompt motif on section headers for terminal feel.
+* Keep marketing copy short. If a section needs > 3 sentences, it's too long.
+
+### Don't
+* Don't use gradients on text (illegible, slow on mobile).
+* Don't add parallax, scroll jacking, or scroll-triggered animations.
+* Don't use colored backgrounds on marketing sections — dark + border-separated cards only.
+* Don't put marketing fluff on agent-facing or docs pages.
+* Don't use loading spinners — use skeleton placeholders.
+* Don't use shadows. Depth = border brightness.
+* Don't use rounded corners > 8px anywhere.
+
+---
+
+## SG-14) CSS custom properties — full token export
+
+```css
+:root {
+  /* Colors */
+  --bg-root: #0A0A0F;
+  --bg-surface: #111118;
+  --bg-surface-hover: #1A1A24;
+  --bg-elevated: #16161F;
+  --bg-inset: #08080C;
+  --border-subtle: #1E1E2A;
+  --border-default: #2A2A3A;
+  --border-focus: #00FF9F;
+  --text-primary: #E8E8ED;
+  --text-secondary: #8888A0;
+  --text-tertiary: #555566;
+  --text-inverse: #0A0A0F;
+  --accent-green: #00FF9F;
+  --accent-green-dim: #00CC7F;
+  --accent-green-bg: rgba(0,255,159,0.08);
+  --accent-cyan: #00D4FF;
+  --accent-cyan-dim: #00A8CC;
+  --accent-amber: #FFB800;
+  --accent-red: #FF3B5C;
+  --accent-purple: #A78BFA;
+
+  /* Typography */
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', 'SF Mono', 'Cascadia Code', 'Fira Code', ui-monospace, monospace;
+  --type-display: 3rem;
+  --type-h1: 2.25rem;
+  --type-h2: 1.5rem;
+  --type-h3: 1.125rem;
+  --type-body: 1rem;
+  --type-body-sm: 0.875rem;
+  --type-caption: 0.75rem;
+  --type-mono-lg: 1.125rem;
+  --type-mono: 0.875rem;
+  --type-mono-sm: 0.75rem;
+
+  /* Spacing */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+  --space-8: 64px;
+  --space-9: 96px;
+
+  /* Layout */
+  --grid-max-width: 1200px;
+  --grid-gutter: 24px;
+  --grid-margin: 24px;
+}
+```
+
+---
+
+*End of Style Guide. Blueprint content follows below.*
+
+---
+
 Below is a **complete website blueprint** for **AgentDB** by **Run402**, an x402-powered “accountless cloud NoSQL” product. It includes:
 
 * **Human-facing** marketing + console (costs, budgets, logs, approvals)
