@@ -4,7 +4,7 @@ Below is a concrete design for a “no-account” cloud NoSQL service backed by 
 
 ## What you’re building
 
-A SaaS-style wrapper (call it **AgentDB** / **CloudKV** / **NoSQL-as-a-Tool**) that exposes an HTTP API (and an agent-friendly client/tooling layer) with:
+A SaaS-style wrapper called **AgentDB** (the initial product from **Run402**) that exposes an HTTP API (and an agent-friendly client/tooling layer) with:
 
 * **Control plane**: create/delete “tables”, set TTL/retention, set budgets, fetch usage & logs
 * **Data plane**: put/get/delete/query items
@@ -532,9 +532,9 @@ If you want, I can also draft:
 
 
 
-Below is a **market research + competitive landscape** for the product you described: an **agent-native cloud NoSQL store** that can be **provisioned and paid for via x402** (HTTP 402 + stablecoin settlement) so users don’t need cloud accounts (AWS/GCP/etc.), and agents can present **pre-approval cost estimates**, enforce **budgets**, and provide **cost/log visibility**.
+Below is a **market research + competitive landscape** for **AgentDB** by **Run402**: an **agent-native cloud NoSQL store** that can be **provisioned and paid for via x402** (HTTP 402 + stablecoin settlement) so users don’t need cloud accounts (AWS/GCP/etc.), and agents can present **pre-approval cost estimates**, enforce **budgets**, and provide **cost/log visibility**.
 
-I’m going to call the product **“AgentDB”** (a brand placeholder). Under the hood you can run DynamoDB, but the analysis assumes you **do not disclose that** publicly.
+The product is **AgentDB** (Run402's initial product). Under the hood it runs DynamoDB, but the analysis assumes you **do not disclose that** publicly.
 
 ---
 
@@ -952,7 +952,7 @@ If you want to pressure-test this quickly:
 [26]: https://www.rtinsights.com/2025-cloud-database-market-the-year-in-review/?utm_source=chatgpt.com "2025 Cloud Database Market: The Year in Review"
 
 
-Below is a **complete website blueprint** for an x402-powered “accountless cloud NoSQL” product (I’ll keep calling it **AgentDB** as a placeholder name). It includes:
+Below is a **complete website blueprint** for an x402-powered “accountless cloud NoSQL” product (the product is **AgentDB** by **Run402**). It includes:
 
 * **Human-facing** marketing + console (costs, budgets, logs, approvals)
 * **Agent-facing** machine-discoverable endpoints + agent-readable docs + MCP surface
@@ -972,10 +972,10 @@ Use separate surfaces so agents never have to crawl marketing pages.
 
 ### Recommended hostnames
 
-* `agentdb.com` → marketing + docs (human-first)
-* `console.agentdb.com` → wallet-based console (human ops)
-* `api.agentdb.com` → paid API (agent + human SDKs)
-* `status.agentdb.com` → status page (public)
+* `run402.com` → marketing + docs (human-first)
+* `app.run402.com` → wallet-based console (human ops)
+* `app.run402.com` → paid API (agent + human SDKs)
+* `status.run402.com` → status page (public)
 
 If you want one domain only, keep the same paths, but the separation helps caching, security policy, and “agent readability.”
 
@@ -1055,18 +1055,18 @@ If you want one domain only, keep the same paths, but the separation helps cachi
 
 ### Public approval flow (human approval initiated by agent)
 
-* `approve.agentdb.com/{approval_id}`
-  (or `console.agentdb.com/approve/{approval_id}`)
+* `app.run402.com/approve/{approval_id}`
+  (or `app.run402.com/approve/{approval_id}`)
 
 ### Agent-facing (machine + protocol)
 
-* `api.agentdb.com/.well-known/x402` (x402 discovery manifest — convention; aligns with emerging discovery patterns) ([datatracker.ietf.org][2])
-* `api.agentdb.com/.well-known/mcp.json` (MCP “server card” pattern)
-* `api.agentdb.com/x402/discovery` (tool + pricing catalog; convenience convention used in the ecosystem) ([agent402.dev][3])
-* `api.agentdb.com/mcp` (MCP transport endpoint; optional) ([agent402.dev][3])
-* `api.agentdb.com/openapi.json`
-* `api.agentdb.com/llms.txt` (agent/doc indexing outline; highly recommended)
-* `api.agentdb.com/meta.json` (machine-friendly endpoint map; convenience convention)
+* `app.run402.com/.well-known/x402` (x402 discovery manifest — convention; aligns with emerging discovery patterns) ([datatracker.ietf.org][2])
+* `app.run402.com/.well-known/mcp.json` (MCP “server card” pattern)
+* `app.run402.com/x402/discovery` (tool + pricing catalog; convenience convention used in the ecosystem) ([agent402.dev][3])
+* `app.run402.com/mcp` (MCP transport endpoint; optional) ([agent402.dev][3])
+* `app.run402.com/openapi.json`
+* `app.run402.com/llms.txt` (agent/doc indexing outline; highly recommended)
+* `app.run402.com/meta.json` (machine-friendly endpoint map; convenience convention)
 
 ---
 
@@ -1584,15 +1584,15 @@ Here’s a minimal set you can implement that makes agents happy immediately (pa
 
 ```txt
 # Agent discovery
-GET  https://api.agentdb.com/.well-known/x402
-GET  https://api.agentdb.com/openapi.json
-GET  https://api.agentdb.com/llms.txt
-GET  https://api.agentdb.com/meta.json
+GET  https://app.run402.com/.well-known/x402
+GET  https://app.run402.com/openapi.json
+GET  https://app.run402.com/llms.txt
+GET  https://app.run402.com/meta.json
 
 # Optional MCP surface
-GET  https://api.agentdb.com/.well-known/mcp.json
-GET  https://api.agentdb.com/x402/discovery
-POST https://api.agentdb.com/mcp
+GET  https://app.run402.com/.well-known/mcp.json
+GET  https://app.run402.com/x402/discovery
+POST https://app.run402.com/mcp
 
 # Core API (REST)
 POST /v1/stores:quote
@@ -1679,7 +1679,7 @@ If you want, I can produce the **actual first-pass content** for every page (fin
 
 
 
-Below is a **copy‑pasteable “website content pack”** for AgentDB (placeholder name) with:
+Below is a **copy‑pasteable “website content pack”** for AgentDB (Run402's initial product) with:
 
 * Human-facing marketing + console UX copy (wallet sign-in, approvals, budgets, receipts, logs)
 * Agent-facing docs (MCP + REST) written in “agent‑readable” style
@@ -1715,9 +1715,10 @@ Competitive comparisons grounded by vendor docs:
 
 # 0) Brand + site-wide UX rules
 
-## Brand placeholders
+## Brand
 
-* Product: **AgentDB**
+* Company: **Run402**
+* Product: **AgentDB** (Run402's initial product — the DynamoDB equivalent)
 * Tagline: **“A cloud database your agent can buy.”**
 * Primary CTA: **Install for Agents**
 * Secondary CTA: **Open Console**
@@ -2136,7 +2137,7 @@ CTA: “Try Quote API”
 
 ## 2.12 `/status`
 
-Redirect to `status.agentdb.com`
+Redirect to `status.run402.com`
 
 **Copy:** “Live status and incident history.”
 
@@ -2410,7 +2411,7 @@ Buttons:
 Wireframe:
 
 ```
-┌─────────────── AgentDB Console ────────────────┐
+┌─────────────── Run402 Console ────────────────┐
 │ [Connect Wallet]                               │
 │ [Paste Workspace Key]                          │
 │                                                │
@@ -2567,9 +2568,9 @@ Choose:
 
 ### Canonical discovery order
 
-1. `GET https://api.agentdb.com/.well-known/mcp.json`
-2. `GET https://api.agentdb.com/x402/discovery`
-3. Connect MCP transport at `https://api.agentdb.com/mcp`
+1. `GET https://app.run402.com/.well-known/mcp.json`
+2. `GET https://app.run402.com/x402/discovery`
+3. Connect MCP transport at `https://app.run402.com/mcp`
 
 ### 402 retry rule
 
@@ -2597,7 +2598,7 @@ Choose:
 1. Quote:
 
 ```bash
-curl -sS https://api.agentdb.com/v1/stores:quote \
+curl -sS https://app.run402.com/v1/stores:quote \
   -H 'content-type: application/json' \
   -d '{"ttl_days":7,"expected_ops_per_day":{"read":2000,"write":200},"max_spend_usd":3.00}'
 ```
@@ -2605,7 +2606,7 @@ curl -sS https://api.agentdb.com/v1/stores:quote \
 2. Create approval:
 
 ```bash
-curl -sS https://api.agentdb.com/v1/approvals \
+curl -sS https://app.run402.com/v1/approvals \
   -H 'content-type: application/json' \
   -d '{"quote_id":"...","purpose":"Need a DB for feature branch test run","max_spend_usd":3.00}'
 ```
@@ -2640,7 +2641,7 @@ The shapes below intentionally mirror the **de facto** “agent gateway” patte
 ```json
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://api.agentdb.com/schemas/McpServerCard.schema.json",
+  "$id": "https://app.run402.com/schemas/McpServerCard.schema.json",
   "title": "MCP Server Card",
   "type": "object",
   "additionalProperties": false,
@@ -2697,7 +2698,7 @@ The shapes below intentionally mirror the **de facto** “agent gateway” patte
 {
   "name": "agentdb-mcp",
   "description": "AgentDB MCP: create and use durable stores with x402 billing and human approvals.",
-  "url": "https://api.agentdb.com/mcp",
+  "url": "https://app.run402.com/mcp",
   "transport": "streamable-http",
   "version": "0.2.0",
   "tools": [
@@ -2729,7 +2730,7 @@ The shapes below intentionally mirror the **de facto** “agent gateway” patte
 ```json
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://api.agentdb.com/schemas/X402Discovery.schema.json",
+  "$id": "https://app.run402.com/schemas/X402Discovery.schema.json",
   "title": "x402 Discovery (Tool Catalog)",
   "type": "object",
   "additionalProperties": false,
@@ -2807,7 +2808,7 @@ The shapes below intentionally mirror the **de facto** “agent gateway” patte
   "server": {
     "name": "agentdb-mcp",
     "description": "Pay-per-use durable stores for agents with approvals, caps, receipts, and logs.",
-    "url": "https://api.agentdb.com/mcp"
+    "url": "https://app.run402.com/mcp"
   },
   "policy": {
     "billingMode": "lease_and_usage",
@@ -2914,7 +2915,7 @@ The shapes below intentionally mirror the **de facto** “agent gateway” patte
 ```json
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://api.agentdb.com/schemas/Meta.schema.json",
+  "$id": "https://app.run402.com/schemas/Meta.schema.json",
   "title": "Machine-friendly Site Metadata",
   "type": "object",
   "additionalProperties": false,
@@ -2973,42 +2974,42 @@ The shapes below intentionally mirror the **de facto** “agent gateway” patte
   "name": "agentdb-mcp",
   "description": "AgentDB: durable stores for agents with x402 billing, approvals, caps, receipts, and logs.",
   "endpoints": {
-    "homepage": "https://agentdb.com/",
-    "console": "https://console.agentdb.com/",
-    "mcp": "https://api.agentdb.com/mcp",
-    "mcpCard": "https://api.agentdb.com/.well-known/mcp.json",
-    "x402Discovery": "https://api.agentdb.com/x402/discovery",
-    "x402Manifest": "https://api.agentdb.com/.well-known/x402",
-    "openapi": "https://api.agentdb.com/openapi.json",
-    "meta": "https://api.agentdb.com/meta.json",
-    "llms": "https://api.agentdb.com/llms.txt",
-    "robotsTxt": "https://api.agentdb.com/robots.txt",
-    "sitemap": "https://agentdb.com/sitemap.xml",
-    "health": "https://api.agentdb.com/health"
+    "homepage": "https://run402.com/",
+    "console": "https://app.run402.com/",
+    "mcp": "https://app.run402.com/mcp",
+    "mcpCard": "https://app.run402.com/.well-known/mcp.json",
+    "x402Discovery": "https://app.run402.com/x402/discovery",
+    "x402Manifest": "https://app.run402.com/.well-known/x402",
+    "openapi": "https://app.run402.com/openapi.json",
+    "meta": "https://app.run402.com/meta.json",
+    "llms": "https://app.run402.com/llms.txt",
+    "robotsTxt": "https://app.run402.com/robots.txt",
+    "sitemap": "https://run402.com/sitemap.xml",
+    "health": "https://app.run402.com/health"
   },
   "endpointDetails": [
     {
       "path": "/mcp",
       "methods": "POST, GET, DELETE",
-      "url": "https://api.agentdb.com/mcp",
+      "url": "https://app.run402.com/mcp",
       "role": "Primary Streamable HTTP MCP transport."
     },
     {
       "path": "/.well-known/mcp.json",
       "methods": "GET",
-      "url": "https://api.agentdb.com/.well-known/mcp.json",
+      "url": "https://app.run402.com/.well-known/mcp.json",
       "role": "Canonical MCP server card for discovery."
     },
     {
       "path": "/x402/discovery",
       "methods": "GET",
-      "url": "https://api.agentdb.com/x402/discovery",
+      "url": "https://app.run402.com/x402/discovery",
       "role": "Tool list, schemas, and pricing."
     },
     {
       "path": "/.well-known/x402",
       "methods": "GET",
-      "url": "https://api.agentdb.com/.well-known/x402",
+      "url": "https://app.run402.com/.well-known/x402",
       "role": "x402 manifest for discovery tooling and DNS-based discovery."
     }
   ],
@@ -3017,8 +3018,8 @@ The shapes below intentionally mirror the **de facto** “agent gateway” patte
     { "name": "agentdb.create_store", "description": "Provision a store after approval.", "price": "dynamic" }
   ],
   "robots": {
-    "llms": "https://api.agentdb.com/llms.txt",
-    "robotsTxt": "https://api.agentdb.com/robots.txt"
+    "llms": "https://app.run402.com/llms.txt",
+    "robotsTxt": "https://app.run402.com/robots.txt"
   }
 }
 ```
@@ -3035,29 +3036,29 @@ This is not standardized, but the ecosystem pattern is: a concise outline of can
 # AgentDB — accountless cloud stores for AI agents with x402 billing.
 
 ## Canonical Discovery
-- MCP card: https://api.agentdb.com/.well-known/mcp.json
-- MCP transport: https://api.agentdb.com/mcp
-- x402 discovery: https://api.agentdb.com/x402/discovery
-- x402 manifest: https://api.agentdb.com/.well-known/x402
-- OpenAPI: https://api.agentdb.com/openapi.json
-- Meta: https://api.agentdb.com/meta.json
+- MCP card: https://app.run402.com/.well-known/mcp.json
+- MCP transport: https://app.run402.com/mcp
+- x402 discovery: https://app.run402.com/x402/discovery
+- x402 manifest: https://app.run402.com/.well-known/x402
+- OpenAPI: https://app.run402.com/openapi.json
+- Meta: https://app.run402.com/meta.json
 
 ## Agent Quickstarts
-- MCP quickstart: https://agentdb.com/docs/quickstart/agents-mcp
-- REST quickstart: https://agentdb.com/docs/quickstart/agents-rest
+- MCP quickstart: https://run402.com/docs/quickstart/agents-mcp
+- REST quickstart: https://run402.com/docs/quickstart/agents-rest
 
 ## Human Docs
-- Overview: https://agentdb.com/product
-- Pricing: https://agentdb.com/pricing
-- Learn x402: https://agentdb.com/learn/what-is-x402
-- Compare: https://agentdb.com/compare
+- Overview: https://run402.com/product
+- Pricing: https://run402.com/pricing
+- Learn x402: https://run402.com/learn/what-is-x402
+- Compare: https://run402.com/compare
 
 ## Console
-- Console: https://console.agentdb.com/
+- Console: https://app.run402.com/
 
 ## Health
-- API health: https://api.agentdb.com/health
-- Status: https://status.agentdb.com/
+- API health: https://app.run402.com/health
+- Status: https://status.run402.com/
 ```
 
 ---
@@ -3072,7 +3073,7 @@ The draft doesn’t prescribe a concrete field schema; so you should publish a *
 ```json
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://api.agentdb.com/schemas/X402Manifest.schema.json",
+  "$id": "https://app.run402.com/schemas/X402Manifest.schema.json",
   "title": "x402 Discovery Manifest",
   "type": "object",
   "additionalProperties": false,
@@ -3198,12 +3199,12 @@ The draft doesn’t prescribe a concrete field schema; so you should publish a *
     }
   ],
   "links": {
-    "x402Discovery": "https://api.agentdb.com/x402/discovery",
-    "mcpCard": "https://api.agentdb.com/.well-known/mcp.json",
-    "mcp": "https://api.agentdb.com/mcp",
-    "openapi": "https://api.agentdb.com/openapi.json",
-    "meta": "https://api.agentdb.com/meta.json",
-    "llms": "https://api.agentdb.com/llms.txt"
+    "x402Discovery": "https://app.run402.com/x402/discovery",
+    "mcpCard": "https://app.run402.com/.well-known/mcp.json",
+    "mcp": "https://app.run402.com/mcp",
+    "openapi": "https://app.run402.com/openapi.json",
+    "meta": "https://app.run402.com/meta.json",
+    "llms": "https://app.run402.com/llms.txt"
   }
 }
 ```
@@ -3215,7 +3216,7 @@ The draft doesn’t prescribe a concrete field schema; so you should publish a *
 If you want to support DNS-based discovery, add a “For operators” note in docs and publish:
 
 ```
-_x402.api.agentdb.com TXT "v=x4021;descriptor=api;url=https://api.agentdb.com/.well-known/x402"
+_x402.app.run402.com TXT "v=x4021;descriptor=api;url=https://app.run402.com/.well-known/x402"
 ```
 
 The DNS discovery draft describes `_x402` TXT records pointing to an HTTPS manifest URL (often `/.well-known/x402`) and emphasizes TLS validation requirements. ([IETF Datatracker][1])
@@ -3266,27 +3267,27 @@ If you want, I can also generate:
 [16]: https://agent402.dev/llms.txt "agent402.dev"
 
 
-elevator pitch:;2;13~AgentDB turns cloud infrastructure into something an AI agent can safely buy.
+elevator pitch: AgentDB (by Run402) turns cloud infrastructure into something an AI agent can safely buy.
 
 Today, when a coding agent needs a database, it hits a wall: someone has to create a cloud account, set up billing, click through consoles, manage keys, and then you still risk surprise spend. That friction kills autonomous workflows and makes platform teams say “no” to agents provisioning anything real.
 
-We built AgentDB: a production-grade cloud store that can be provisioned in seconds with **no AWS account, no signup, and no API keys**. It uses the **x402 standard**—HTTP 402 “Payment Required”—so an agent can request a quote, present a maximum spend to a human, get one-click approval, and then automatically provision and operate the database. Every request produces receipts and logs, budgets are hard-enforced, and resources auto-expire so you never pay forever. We offer QoS-backed tiers with an SLA and transparent status.
+Run402 built AgentDB: a production-grade cloud store that can be provisioned in seconds with **no AWS account, no signup, and no API keys**. It uses the **x402 standard**—HTTP 402 “Payment Required”—so an agent can request a quote, present a maximum spend to a human, get one-click approval, and then automatically provision and operate the database. Every request produces receipts and logs, budgets are hard-enforced, and resources auto-expire so you never pay forever. We offer QoS-backed tiers with an SLA and transparent status.
 
 The wedge is simple: **agent-native procurement** for state. Once you can buy a database over HTTP, you can buy anything—queues, storage, model calls, test environments—under policy. We’re building the default payments-and-governance layer for agentic infrastructure.
 
 
-Below is a **DynamoDB‑CLI‑compatible** design for a `ws402` command that preserves AWS muscle memory as much as possible.
+Below is a **DynamoDB‑CLI‑compatible** design for the `run402 db` command that preserves AWS muscle memory as much as possible.
 
 The goal is that for the common CRUD + table lifecycle operations, you can **almost always** do:
 
-* Replace `aws dynamodb` with `ws402 db` (or `ws402 dynamodb`)
+* Replace `aws dynamodb` with `run402 db` (or `run402 dynamodb`)
 * Keep the rest of the command line the same
 
 Example (yours):
 
 ```bash
 aws dynamodb get-item --table-name MyTable --key '{"id":{"S":"123"}}'
-ws402 db get-item  --table-name MyTable --key '{"id":{"S":"123"}}'
+run402 db get-item  --table-name MyTable --key '{"id":{"S":"123"}}'
 ```
 
 ---
@@ -3295,20 +3296,20 @@ ws402 db get-item  --table-name MyTable --key '{"id":{"S":"123"}}'
 
 ### Command shape (AWS-style)
 
-`ws402 [global options] <service> <operation> [parameters]`
+`run402 [global options] <service> <operation> [parameters]`
 
 ### Service aliases
 
-* `ws402 db ...`  ✅ (short)
-* `ws402 dynamodb ...` ✅ (drop-in mental model)
+* `run402 db ...`  ✅ (short)
+* `run402 dynamodb ...` ✅ (drop-in mental model)
 
 ### Compatibility contract
 
-**For supported operations**, `ws402 db` will:
+**For supported operations**, `run402 db` will:
 
 * Accept the **same parameters** as the AWS CLI DynamoDB command references (AWS CLI v2 style) for the subset we implement (see scope below). ([AWS Documentation][1])
 * Accept DynamoDB **AttributeValue JSON** (`{"S":...,"N":...,"M":...,"L":...}` etc.) exactly as AWS CLI examples and docs describe. ([AWS Documentation][2])
-* Return response JSON shaped like AWS CLI outputs (e.g., `{"Item": ...}`, `{"TableDescription": ...}`), plus optional ws402 extensions under a dedicated field (off by default).
+* Return response JSON shaped like AWS CLI outputs (e.g., `{"Item": ...}`, `{"TableDescription": ...}`), plus optional run402 extensions under a dedicated field (off by default).
 
 ---
 
@@ -3337,7 +3338,7 @@ You asked for “as close as possible” but not 100%. Here’s the intentional 
 | `update-item`      | ✅                 | Supports `--update-expression`, `--condition-expression`, `--expression-attribute-*`, `--return-values`. ([AWS Documentation][9])                             |
 | `delete-item`      | ✅                 | Supports condition/expression flags and `--return-values`. ([AWS Documentation][10])                                                                          |
 | `query`            | ✅ (no indexes v1) | Supports `--key-condition-expression`, `--filter-expression`, `--projection-expression`, pagination. `--index-name` errors for now. ([AWS Documentation][11]) |
-| `scan`             | ⚠️ guarded        | Supported **only with an explicit ws402 override** (see below), because scans are easy to abuse/costly. AWS supports scan broadly. ([AWS Documentation][12])  |
+| `scan`             | ⚠️ guarded        | Supported **only with an explicit run402 override** (see below), because scans are easy to abuse/costly. AWS supports scan broadly. ([AWS Documentation][12])  |
 | `batch-get-item`   | ✅                 | Supports `--request-items`. ([AWS Documentation][13])                                                                                                         |
 | `batch-write-item` | ✅                 | Supports `--request-items` (PutRequest/DeleteRequest). ([AWS Documentation][14])                                                                              |
 
@@ -3353,13 +3354,13 @@ If you call an unsupported operation or pass unsupported flags, you get a **hard
 
 ---
 
-## 3) Global options (AWS-like) + ws402 extensions
+## 3) Global options (AWS-like) + run402 extensions
 
 ### AWS-like global options (supported)
 
-* `--endpoint-url` (points to ws402 API gateway; default configured)
-* `--region` (maps to ws402 “service region”)
-* `--profile` (selects a ws402 profile)
+* `--endpoint-url` (points to run402 API gateway; default configured)
+* `--region` (maps to run402 “service region”)
+* `--profile` (selects a run402 profile)
 * `--output`, `--query`, `--no-cli-pager`
 * `--cli-read-timeout`, `--cli-connect-timeout`
 * `--cli-binary-format` (for Binary attributes parity)
@@ -3367,36 +3368,36 @@ If you call an unsupported operation or pass unsupported flags, you get a **hard
 
 These appear in AWS CLI DynamoDB command synopses and are worth matching to make scripts portable. ([AWS Documentation][1])
 
-### ws402-specific global extensions (namespaced to avoid collisions)
+### run402-specific global extensions (namespaced to avoid collisions)
 
-All ws402-only flags start with `--ws402-` so you can copy/paste AWS CLI commands unchanged and only add ws402 controls when needed.
+All run402-only flags start with `--run402-` so you can copy/paste AWS CLI commands unchanged and only add run402 controls when needed.
 
 **Payment + approvals**
 
-* `--ws402-pay ask|auto|never` (default: `ask`)
-* `--ws402-max-pay-usd <float>` (cap for auto-pay)
-* `--ws402-approval ask|auto|never` (default: `ask`)
-* `--ws402-approval-url` (print-only; outputs a URL if approval is required)
-* `--ws402-noninteractive` (never prompt; return machine-readable “payment/approval required” JSON + exit code)
+* `--run402-pay ask|auto|never` (default: `ask`)
+* `--run402-max-pay-usd <float>` (cap for auto-pay)
+* `--run402-approval ask|auto|never` (default: `ask`)
+* `--run402-approval-url` (print-only; outputs a URL if approval is required)
+* `--run402-noninteractive` (never prompt; return machine-readable “payment/approval required” JSON + exit code)
 
 **Resource safety defaults**
 
-* `--ws402-ttl <duration>` (e.g., `7d`, `24h`) for `create-table` if you want explicit per-call TTL
-* `--ws402-max-spend-usd <float>` (hard lifetime cap for the table lease)
-* `--ws402-daily-cap-usd <float>` (optional)
-* `--ws402-include-billing` (adds a `WS402Billing` object to outputs; off by default)
+* `--run402-ttl <duration>` (e.g., `7d`, `24h`) for `create-table` if you want explicit per-call TTL
+* `--run402-max-spend-usd <float>` (hard lifetime cap for the table lease)
+* `--run402-daily-cap-usd <float>` (optional)
+* `--run402-include-billing` (adds a `Run402Billing` object to outputs; off by default)
 
 **Scan guardrails**
 
-* `--ws402-allow-scan` (required to run `scan`)
-* `--ws402-scan-max-items <int>` (hard cap)
-* `--ws402-scan-max-mb <int>` (hard cap)
+* `--run402-allow-scan` (required to run `scan`)
+* `--run402-scan-max-items <int>` (hard cap)
+* `--run402-scan-max-mb <int>` (hard cap)
 
 ---
 
 ## 4) Config that feels like `aws configure`
 
-### `ws402 configure`
+### `run402 configure`
 
 Interactive prompt modeled after AWS CLI, but instead of AWS access keys you set payment/policy defaults.
 
@@ -3413,7 +3414,7 @@ Prompts:
 
 ### File format (INI, AWS-like)
 
-Path: `~/.ws402/config`
+Path: `~/.run402/config`
 
 Example:
 
@@ -3421,17 +3422,17 @@ Example:
 [default]
 region = us-east-1
 output = json
-endpoint_url = https://api.ws402.example
-ws402_default_ttl = 7d
-ws402_default_max_spend_usd = 3.00
-ws402_pay = ask
-ws402_max_auto_pay_usd = 0.50
+endpoint_url = https://app.run402.com
+run402_default_ttl = 7d
+run402_default_max_spend_usd = 3.00
+run402_pay = ask
+run402_max_auto_pay_usd = 0.50
 
 [profile work]
 region = eu-west-1
-ws402_default_max_spend_usd = 25.00
-ws402_pay = auto
-ws402_max_auto_pay_usd = 1.00
+run402_default_max_spend_usd = 25.00
+run402_pay = auto
+run402_max_auto_pay_usd = 1.00
 ```
 
 This preserves the familiar `--profile` workflow from AWS CLI.
@@ -3457,13 +3458,13 @@ This is exactly the format described in the AWS CLI references for item and expr
 
 AWS DynamoDB calls don’t have a payment step. Your wrapper does.
 
-### When ws402 will require payment
+### When run402 will require payment
 
 * `create-table` (fund the table lease / minimum deposit)
 * Any operation when balance is low or cap would be exceeded
 * Optional: log retention upgrades, TTL extension
 
-### Interactive default (`--ws402-pay ask`)
+### Interactive default (`--run402-pay ask`)
 
 If the server replies with **HTTP 402 Payment Required** (x402 style), the CLI prints a prompt:
 
@@ -3483,10 +3484,10 @@ Approval required:
   Estimated range: $0.35–$1.10
   Cap requested: $3.00
 Open approval link:
-  https://console.ws402.example/approve/ap_...
+  https://app.run402.com/approve/ap_...
 ```
 
-### Non-interactive mode (`--ws402-noninteractive`)
+### Non-interactive mode (`--run402-noninteractive`)
 
 The CLI exits with:
 
@@ -3498,7 +3499,7 @@ And prints JSON such as:
 ```json
 {
   "error": "ApprovalRequired",
-  "approval_url": "https://console.ws402.example/approve/ap_01J...",
+  "approval_url": "https://app.run402.com/approve/ap_01J...",
   "requested_cap_usd": 3.0,
   "estimated_cost_range_usd": {"low": 0.35, "high": 1.10}
 }
@@ -3508,14 +3509,14 @@ This is what you want for **agents**: they can display the quote and route the h
 
 ---
 
-## 7) Command examples (AWS → ws402)
+## 7) Command examples (AWS → run402)
 
 ### 7.1 `get-item` (exact drop-in)
 
 AWS CLI flags here include `--table-name`, `--key`, optional `--consistent-read`, `--projection-expression`, etc. ([AWS Documentation][1])
 
 ```bash
-ws402 db get-item \
+run402 db get-item \
   --table-name MyTable \
   --key '{"id":{"S":"123"}}'
 ```
@@ -3525,7 +3526,7 @@ ws402 db get-item \
 AWS CLI synopsis shows `--item`, expression flags, and `--return-values`, etc. ([AWS Documentation][2])
 
 ```bash
-ws402 db put-item \
+run402 db put-item \
   --table-name MyTable \
   --item '{"id":{"S":"123"},"email":{"S":"a@b.com"}}' \
   --return-consumed-capacity TOTAL
@@ -3536,25 +3537,25 @@ ws402 db put-item \
 AWS CLI synopsis includes `--key-condition-expression`, `--expression-attribute-values`, `--filter-expression`, pagination flags. ([AWS Documentation][11])
 
 ```bash
-ws402 db query \
+run402 db query \
   --table-name MyTable \
   --key-condition-expression "id = :v" \
   --expression-attribute-values '{":v":{"S":"123"}}' \
   --limit 20
 ```
 
-### 7.4 `create-table` (AWS-like args, ws402 safety extensions)
+### 7.4 `create-table` (AWS-like args, run402 safety extensions)
 
 AWS CLI `create-table` supports many options. We support the core ones and will reject unsupported ones in v1. ([AWS Documentation][5])
 
 ```bash
-ws402 db create-table \
+run402 db create-table \
   --table-name MyTable \
   --attribute-definitions AttributeName=id,AttributeType=S \
   --key-schema AttributeName=id,KeyType=HASH \
   --billing-mode PAY_PER_REQUEST \
-  --ws402-ttl 7d \
-  --ws402-max-spend-usd 3.00
+  --run402-ttl 7d \
+  --run402-max-spend-usd 3.00
 ```
 
 ### 7.5 TTL parity (`update-time-to-live` / `describe-time-to-live`)
@@ -3562,30 +3563,30 @@ ws402 db create-table \
 AWS CLI TTL commands and shorthand syntax are well-defined. ([AWS Documentation][7])
 
 ```bash
-ws402 db update-time-to-live \
+run402 db update-time-to-live \
   --table-name MyTable \
   --time-to-live-specification Enabled=true,AttributeName=ttl
 ```
 
 ```bash
-ws402 db describe-time-to-live --table-name MyTable
+run402 db describe-time-to-live --table-name MyTable
 ```
 
 ### 7.6 `scan` (guarded)
 
 AWS supports scan broadly; it’s paginated and has many flags. ([AWS Documentation][12])
-ws402 requires explicit opt-in:
+run402 requires explicit opt-in:
 
 ```bash
-ws402 db scan \
+run402 db scan \
   --table-name MyTable \
-  --ws402-allow-scan \
-  --ws402-scan-max-items 1000
+  --run402-allow-scan \
+  --run402-scan-max-items 1000
 ```
 
 ---
 
-## 8) Output compatibility (AWS-like), with optional ws402 extensions
+## 8) Output compatibility (AWS-like), with optional run402 extensions
 
 ### Default output (AWS-shaped)
 
@@ -3604,13 +3605,13 @@ Example `get-item` output (AWS-like):
 }
 ```
 
-### Optional ws402 fields (only with `--ws402-include-billing`)
+### Optional run402 fields (only with `--run402-include-billing`)
 
 ```json
 {
   "Item": { "...": "..." },
   "ConsumedCapacity": { "...": "..." },
-  "WS402Billing": {
+  "Run402Billing": {
     "estimated_cost_usd": 0.0000008,
     "balance_remaining_usd": 2.41,
     "cap_remaining_usd": 2.41,
@@ -3637,11 +3638,11 @@ This keeps compatibility clean by default, while still enabling cost transparenc
 
 If you want *maximum* drop-in compatibility (including odd edge behaviors like shorthand parsing quirks and skeleton generation), the most robust approach is:
 
-* Implement `ws402 db` using the **same parameter models** as the AWS CLI docs for each supported command (synopsis/options).
+* Implement `run402 db` using the **same parameter models** as the AWS CLI docs for each supported command (synopsis/options).
 * Enforce a **compatibility test suite**:
 
   * take real AWS CLI DynamoDB examples
-  * run them through `ws402 db ...`
+  * run them through `run402 db ...`
   * compare request objects and response shapes
 
 If you want, I can produce:
@@ -3676,23 +3677,22 @@ The following decisions were made through a structured interview to resolve all 
 
 | Decision | Value |
 |---|---|
-| **Product name** | **run402** |
+| **Company name** | **Run402** |
+| **Initial product name** | **AgentDB** (the DynamoDB equivalent — Run402's first cloud primitive for agents) |
 | **Domain** | run402.com |
-| **CLI command** | `run402` (replaces `ws402` from earlier spec) |
+| **CLI command** | `run402` (platform CLI; `run402 db` for the AgentDB service) |
 | **Subdomains** | `run402.com` (marketing + docs), `app.run402.com` (API + console) |
 | **Tagline** | **Deferred** — to be brainstormed. Vision is bigger than databases: "databases are just the first in this cloud-for-agents space." The spec placeholder "A cloud database your agent can buy" works for now but should evolve to reflect the full platform. |
-| **Naming convention** | All references to "AgentDB" → **run402**. All references to "ws402" → **run402**. |
+| **Naming convention** | **Run402** = company/platform. **AgentDB** = the database product. All references to "ws402" → **run402**. |
 
 ### Global rename map (apply throughout all spec sections)
 
-* `AgentDB` → `run402`
-* `ws402` → `run402`
-* `agentdb.com` → `run402.com`
-* `console.agentdb.com` → `app.run402.com`
-* `api.agentdb.com` → `app.run402.com` (single app subdomain)
-* `status.agentdb.com` → `status.run402.com`
-* `approve.agentdb.com` → `app.run402.com/approve`
-* `agentdb-mcp` → `run402-mcp`
+* `ws402` → `run402` (applied)
+* `agentdb.com` → `run402.com` (applied — company domain; AgentDB is a product under Run402)
+* `console.agentdb.com` → `app.run402.com` (applied)
+* `api.agentdb.com` → `app.run402.com` (applied — single app subdomain)
+* `status.agentdb.com` → `status.run402.com` (applied)
+* `approve.agentdb.com` → `app.run402.com/approve` (applied)
 * "Store" (as resource noun) → **"Table"** throughout API, CLI, docs, and marketing
 * `/v1/stores` → `/v1/tables`
 * `/v1/stores/{store_id}` → `/v1/tables/{table_id}`
@@ -3704,21 +3704,22 @@ The following decisions were made through a structured interview to resolve all 
 * `store_id` → `table_id`
 * `store_name` → `table_name`
 * `store_secret` → `table_secret`
-* MCP tool names: `agentdb.*` → `run402.*`
-* MCP tool: `agentdb.quote_store` → `run402.quote_table`
-* MCP tool: `agentdb.create_store` → `run402.create_table`
+* MCP tool names: keep as `agentdb.*` (product-specific tool namespace)
+* MCP tool: `agentdb.quote_store` → `agentdb.quote_table`
+* MCP tool: `agentdb.create_store` → `agentdb.create_table`
+* MCP server name: `agentdb-mcp` (product-specific)
 
 ---
 
 ## D2. Platform Vision
 
-**Databases are product #1, not the whole product.**
+**AgentDB (databases) is product #1, not the whole product.**
 
-run402 is building toward **full cloud primitives for agents** — a platform where any cloud resource (databases, queues, object storage, compute, caching, DNS) can be provisioned and paid for by agents via x402, without cloud accounts.
+Run402 is building toward **full cloud primitives for agents** — a platform where any cloud resource (databases, queues, object storage, compute, caching, DNS) can be provisioned and paid for by agents via x402, without cloud accounts.
 
 **Roadmap vision (order TBD):**
 
-1. **Tables** (DynamoDB-backed KV/NoSQL) — **this MVP**
+1. **AgentDB** — Tables (DynamoDB-backed KV/NoSQL) — **this MVP**
 2. Queues (SQS-like message queues)
 3. Object storage (S3-like blob storage)
 4. Functions / compute (serverless invocations)
@@ -3783,7 +3784,7 @@ run402/
 | **Compute** | AWS ECS/Fargate | Containerized API server, auto-scaling |
 | **Load balancer** | AWS ALB | Regional, health checks, target groups |
 | **CDN/Edge** | AWS CloudFront | Cache discovery endpoints, DDoS protection, global TLS termination |
-| **Database (customer tables)** | AWS DynamoDB (on-demand) | 1 DynamoDB table per run402 table. Tagged for attribution. |
+| **Database (customer tables)** | AWS DynamoDB (on-demand) | 1 DynamoDB table per AgentDB table. Tagged for attribution. |
 | **Database (internal state)** | AWS DynamoDB | Ledger, metering, table metadata, capability tokens |
 | **Region** | **us-east-1** (N. Virginia) | Cheapest, most services, default |
 | **CI/CD** | GitHub Actions | Build, test, deploy to ECS |
@@ -3865,7 +3866,7 @@ run402/
 
 ---
 
-## D8. Product: Tables
+## D8. Product: AgentDB (Tables)
 
 | Decision | Value |
 |---|---|
@@ -4085,25 +4086,25 @@ run402 db create-table \
 run402 configure
 ```
 
-All `--ws402-*` flags are now `--run402-*`.
+All platform-specific flags use the `--run402-*` prefix.
 
 ### Config file path
 
-`~/.run402/config` (replaces `~/.ws402/config`)
+`~/.run402/config`
 
 ---
 
-## D19. MCP Tools (Final, Post-Rename)
+## D19. MCP Tools (Final)
 
 ```
-run402.quote_table      # Estimate costs and propose caps
-run402.create_table     # Provision a table after funding
-run402.put              # Put an item
-run402.get              # Get an item
-run402.query            # Query by key
-run402.delete           # Delete an item
-run402.receipts         # Fetch receipts
-run402.logs             # Fetch logs
+agentdb.quote_table      # Estimate costs and propose caps
+agentdb.create_table     # Provision a table after funding
+agentdb.put              # Put an item
+agentdb.get              # Get an item
+agentdb.query            # Query by key
+agentdb.delete           # Delete an item
+agentdb.receipts         # Fetch receipts
+agentdb.logs             # Fetch logs
 ```
 
 ---
@@ -4115,7 +4116,7 @@ run402.logs             # Fetch logs
 ```
 /                           # Home (hero + how it works + features)
 /product                    # Product overview (5 pillars)
-/product/tables             # Tables feature page
+/product/agentdb            # AgentDB (tables) feature page
 /product/agents             # Agent integration page
 /product/billing            # Lease + billing model page
 /product/observability      # Receipts, logs, metering headers
@@ -4126,7 +4127,7 @@ run402.logs             # Fetch logs
 /docs/quickstart/agents-rest# Agent quickstart (REST)
 /docs/quickstart/humans     # Human quickstart (console)
 /docs/api                   # API reference (OpenAPI)
-/docs/x402                  # How run402 uses x402
+/docs/x402                  # How Run402 / AgentDB uses x402
 /docs/security              # Security model
 /docs/limits                # Limits & anti-abuse
 /learn                      # x402 education section
