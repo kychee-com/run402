@@ -143,10 +143,10 @@ This keeps the surface area “agent-simple” and makes pricing and QoS easier 
 
 To give stronger QoS isolation (and simpler per-table billing), start with:
 
-* **1 DynamoDB table per AgentDB table** in your AWS account, on-demand mode
-* Tag each table with `workspace_id`, `table_id`, `tier`, etc. (helps internal attribution)
-
-You can later optimize at scale using a pooled multi-tenant table, but that makes “noisy neighbor” QoS harder.
+* **Shared multi-tenant DynamoDB table** (`agentdb-data-001`) in your AWS account, on-demand mode
+* PK: `{tableId}#{userPK}`, SK: `{userSK}` — logical table isolation enforced at app layer
+* GSI on `_tid` (logical table ID) for scan operations
+* Separate internal metadata table for ledger, table records, capability tokens
 
 ### Capacity mode
 
@@ -496,7 +496,7 @@ If you want something that works well for coding agents quickly:
 
 * Regional tier only (single region)
 * On-demand capacity only
-* One DynamoDB table per AgentDB table (strong isolation)
+* Shared multi-tenant DynamoDB table (PK-prefixed logical isolation, GSI for scans)
 * Supported ops: Create, Put/Get/Update/Delete, Query-by-key, Scan (guarded), Batch get/write, List tables, Delete
 * Lease model:
 

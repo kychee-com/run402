@@ -765,11 +765,15 @@ Pricing must support *human approval* and *agent automation*.
 
 Present these as *AgentDB units*, not cloud-vendor units:
 
-* Read Units
-* Write Units
-* Storage GB-day
-* Log GB-ingested (optional)
-* Export jobs
+| Meter | Price |
+|---|---:|
+| Read Units | **$1.50 / million RRU** |
+| Write Units | **$7.50 / million WRU** |
+| Storage | **$1.50 / GB-month** |
+| Egress (response data) | **$0.30 / GB** |
+| Table create | **$0.02** |
+| Table-day (Ephemeral) | **$0.005** |
+| Table-day (Project) | **$0.01** |
 
 ### Payment model section (critical)
 
@@ -1620,15 +1624,17 @@ CTA: “Read SLA”
 
 *Production tier (multi-region, longer log retention, priority support) is planned for v2.*
 
-### Unit pricing table (template)
+### Unit pricing table
 
-* Read Units: $X / million
-* Write Units: $Y / million
-* Storage: $Z / GB-day
-* Logs ingest: $A / GB
-* Export jobs: $B / job
-
-> You can swap these numbers to match your margin and upstream costs.
+| Meter | Price |
+|---|---:|
+| Read Units | **$1.50 / million RRU** |
+| Write Units | **$7.50 / million WRU** |
+| Storage | **$1.50 / GB-month** |
+| Egress (response data) | **$0.30 / GB** |
+| Table create | **$0.02** |
+| Table-day (Ephemeral) | **$0.005** |
+| Table-day (Project) | **$0.01** |
 
 ### Calculator (UI spec)
 
@@ -1670,7 +1676,7 @@ CTA: “Try Quote API”
 **Sections (copy placeholders—do not claim certifications you don’t have):**
 
 * Data encryption (in transit / at rest)
-* Table isolation model
+* Table isolation model (shared multi-tenant table with PK-prefixed logical isolation)
 * Access model (capability tokens + wallet sign-in)
 * Logging and audit
 * Responsible disclosure (security@…)

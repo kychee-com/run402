@@ -139,14 +139,35 @@ This keeps the surface area “agent-simple” and makes pricing and QoS easier 
 
 ## Under the hood on AWS (implementation choices)
 
-### Storage strategy
+### Storage strategy — shared multi-tenant table
 
-To give stronger QoS isolation (and simpler per-table billing), start with:
+All customer data lives in a **single shared DynamoDB table** (`agentdb-data-001`) in on-demand mode, with logical table isolation enforced at the application layer. This avoids AWS table-count limits, eliminates 20–60 s `CreateTable` latency, and simplifies lifecycle management (TTL-based cleanup instead of `DeleteTable`).
 
-* **1 DynamoDB table per AgentDB table** in your AWS account, on-demand mode
-* Tag each table with `workspace_id`, `table_id`, `tier`, etc. (helps internal attribution)
+#### Table schema
 
-You can later optimize at scale using a pooled multi-tenant table, but that makes “noisy neighbor” QoS harder.
+| Attribute | Type | Role |
+|---|---|---|
+| `PK` | String | `{tableId}#{userPK}` — globally unique because `tableId` is server-assigned 128-bit random |
+| `SK` | String | `{userSK}` (or `#` sentinel if the logical table has no sort key) |
+| `_wid` | String | Wallet / tenant ID (for access-control + attribution) |
+| `_tid` | String | Logical table ID (for GSI queries) |
+| `_ttl` | Number | DynamoDB TTL epoch (used for lease-based expiry) |
+| `_sz` | Number | Item size in bytes (for storage metering) |
+
+**GSI**: `_tid` (partition key) + `PK` (sort key) — used for Scan operations (listing/scanning items within a logical table).
+
+#### How operations map to the shared table
+
+| Operation | Implementation |
+|---|---|
+| Create table | Insert metadata record (sub-second, ~$0.02). No AWS `CreateTable`. |
+| Delete table | Set metadata status to `DELETED` + set `_ttl` on all items for eventual cleanup. Instant. |
+| Put / Get / Delete item | Standard DynamoDB ops with `PK = “{tableId}#{userPK}”` |
+| Query (by partition key + sort key range) | DynamoDB Query with `PK = “{tableId}#{pk}”` and SK conditions |
+| Scan (all items in logical table) | GSI Query where `_tid = “{tableId}”` (not a full-table DynamoDB Scan) |
+| Lease expiry | State machine ending in TTL sweep (items auto-deleted by DynamoDB TTL) |
+
+A separate **internal metadata table** stores table records, the ledger, and capability tokens (unchanged from original design).
 
 ### Capacity mode
 
@@ -496,9 +517,9 @@ This section defines the concrete cost model: how AWS DynamoDB costs map to Agen
 
 All figures assume **us-east-1, DynamoDB Standard table class, on-demand capacity mode**.
 
-### AWS cost basis
+### AWS cost basis (5 categories)
 
-#### Direct DynamoDB variable costs
+#### A. DynamoDB variable costs
 
 1. **Write request units (WRU)**: $1.25 / 1M WRU → $0.00000125 per WRU
    * 1 WRU = writing up to 1 KB (rounded up in 1 KB chunks)
@@ -507,14 +528,36 @@ All figures assume **us-east-1, DynamoDB Standard table class, on-demand capacit
    * Eventually consistent reads = 0.5 RRU
 3. **Storage**: $0.25 / GB-month
    * Do not pass through AWS free tier (25 GB); it is account-level and disappears at scale
-4. **Data transfer (egress)**: first 100 GB/month free then ~$0.09/GB
+   * Shared table has a GSI (`_tid` + `PK`) which roughly doubles storage for indexed attributes
 
-#### Platform costs (recovered in margin + lease fee)
+#### B. Egress (data transfer out)
 
-* Gateway compute (Lambda/ECS), ALB/API GW, WAF, rate limiting infra
-* Logs/audit trail storage + query
-* Engineering/support/operations
-* Treasury: stablecoin → fiat conversion fees + slippage
+* First 100 GB/month free (account-level), then ~$0.09/GB
+* Reads returning JSON over the internet dominate this cost category
+* At scale, egress can exceed DynamoDB variable costs for read-heavy workloads with large items
+
+#### C. Fixed infrastructure (baseline cost at zero traffic)
+
+| Component | Estimated monthly cost |
+|---|---:|
+| ALB | ~$16 |
+| ECS Fargate (2 tasks minimum) | ~$30 |
+| CloudWatch (logs + metrics) | ~$5–10 |
+| WAF | ~$5 |
+| **Total baseline** | **~$50–100/mo** |
+
+These costs exist regardless of customer traffic and must be covered by margin + table-day fees.
+
+#### D. Payment facilitation
+
+* Chain gas: <$0.01 per transaction on Base L2
+* Stablecoin → fiat conversion: 0.5–1.5% (treasury policy dependent)
+* These are small per-transaction but material at low volume
+
+#### E. Internal metering overhead
+
+* ~1–2 extra WRU per request for ledger balance updates (atomic conditional writes)
+* This is an internal cost not directly billed to the customer but recovered in margin
 * Bad-debt risk if concurrency races allow small negative balances
 
 ### Canonical metering units
@@ -532,44 +575,76 @@ Implement these exact unit calculations at the gateway for quotes, budget enforc
 * `rru_per_item_eventual = 0.5 * ceil(itemBytes / 4096)`
 * For Query/Scan, bill based on **items evaluated**, not just returned (DynamoDB charges for what it reads)
 
-**v1 recommendation**: Only allow Query patterns without server-side FilterExpressions (or cap them hard), and always return `ConsumedCapacity` from DynamoDB for reconciliation while doing worst-case prechecks.
+**v1 recommendation**: Only allow Query patterns without server-side FilterExpressions (or cap them hard).
+
+### `ReturnConsumedCapacity` mandate
+
+ALL DynamoDB calls MUST include `ReturnConsumedCapacity: TOTAL`. This enables accurate billing:
+
+1. **Pre-hold**: Use a pre-computed worst-case estimate (from item size / query limits) to place a hold on the customer's balance before the DynamoDB call
+2. **Actual debit**: Use the `ConsumedCapacity` value from the DynamoDB response for the final debit
+3. **Reconciliation**: If actual > hold, debit actual (customer slightly under-held). If actual < hold, release the excess hold back to available balance.
+
+This two-phase approach ensures the gateway never under-charges while minimizing over-holds.
 
 ### Retail price sheet (v1 — Ephemeral / Dev tier, us-east-1)
 
-Target: **~70–85% gross margin** on variable usage, plus table lease fee for sprawl control.
+Pricing principle: reduce fees previously justified by physical-table overhead (create, table-day), increase where markup is too thin to cover real costs (storage with GSI duplication, egress).
 
 #### Data-plane usage
 
-| Meter | AWS cost | AgentDB retail | Markup |
-|---|---:|---:|---:|
-| Writes (per 1M WRU) | $1.25 | **$7.50** | 6.0× |
-| Reads (per 1M RRU) | $0.25 | **$1.50** | 6.0× |
-| Storage (per GB-month) | $0.25 | **$1.00** | 4.0× |
-| Egress (per GB, after 1 GB/mo free per workspace) | ~$0.09 | **$0.20** | ~2.2× |
+| Meter | AWS cost | AgentDB retail | Markup | Notes |
+|---|---:|---:|---:|---|
+| Writes (per 1M WRU) | $1.25 | **$7.50** | 6.0× | Unchanged |
+| Reads (per 1M RRU) | $0.25 | **$1.50** | 6.0× | Unchanged |
+| Storage (per GB-month) | $0.25 | **$1.50** | 6.0× | +50% from $1.00 — GSI duplication roughly doubles indexed-attribute storage |
+| Egress (per GB) | ~$0.09 | **$0.30** | ~3.3× | +50% from $0.20 — must be profitable standalone; no free-tier pass-through |
 
 Rationale:
 * Reads stay cheap (DynamoDB reads are cheap), but >$0 so scans deplete attacker balances quickly
 * Writes are materially more expensive than reads in DynamoDB; pricing reflects that
-* Storage gets a lower multiplier (sticky revenue; too high looks punitive)
+* Storage increased to 6× to absorb GSI duplication overhead and be profitable after fixed-cost allocation
+* Egress increased to $0.30/GB — reads returning large JSON payloads can make egress the dominant cost; must carry its own margin
 
 #### Table lease fee (sprawl control + fixed overhead)
 
-| Tier | Fee |
-|---|---:|
-| Ephemeral (Dev) | **$0.01 / table-day** |
-| Project | **$0.03 / table-day** |
+| Tier | Fee | Change |
+|---|---:|---|
+| Ephemeral (Dev) | **$0.005 / table-day** | -50% (no physical DynamoDB table to maintain) |
+| Project | **$0.01 / table-day** | -67% (no physical DynamoDB table to maintain) |
 
-This is negligible for legitimate usage but prevents “create 50K tables for free” abuse and pays for control-plane + logs.
+Reduced because the shared multi-tenant table eliminates per-table AWS infrastructure cost. The fee still prevents “create 50K tables for free” abuse and pays for control-plane metadata + logs.
 
 #### Control-plane operations
 
-| Operation | Price |
-|---|---:|
-| `create_table` | **$0.05** (or absorbed into minimum deposit) |
-| `delete_table` | free |
-| `export` | price by bytes + compute (or require Project tier) |
+| Operation | Price | Change |
+|---|---:|---|
+| `create_table` | **$0.02** (or absorbed into minimum deposit) | -60% (metadata insert, not AWS `CreateTable`) |
+| `delete_table` | free | — |
+| `export` | price by bytes + compute (or require Project tier) | — |
 
-A small create fee is an effective spam brake.
+Create fee reduced because table creation is now a sub-second metadata insert, not a 20–60 s AWS `CreateTable` call.
+
+#### Egress billing formula
+
+For every read response, egress is metered and billed separately from RRU:
+* `egress_bytes = byteLength(HTTP response body)`
+* `egress_cost = (egress_bytes / 1,073,741,824) * $0.30`
+* Total read cost = RRU cost + egress cost
+* New metering header: `X-Metered-Egress-Bytes`
+
+#### Margin analysis (honest breakdown)
+
+Replace the previous “Target: ~70–85% gross margin” with a scenario-based analysis:
+
+| Scenario | Gross margin | Notes |
+|---|---:|---|
+| Write-heavy (small items) | ~83% | Best case — DynamoDB writes are well-marked-up |
+| Read-heavy (small items) | ~83% | Similar to writes at 6× markup |
+| Read-heavy (large items, egress-dominated) | ~65–70% | Egress at $0.30 vs ~$0.09 is thinner |
+| **Break-even point** | — | ~$120/mo revenue covers ~$80/mo fixed costs at 33% net margin |
+
+At low volume, AgentDB operates at a loss (expected during early growth). Fixed infrastructure costs (~$50–100/mo) dominate until revenue crosses the break-even threshold.
 
 ### Per-operation billing formulas
 
@@ -619,10 +694,13 @@ min_deposit = D * (table_day_fee + storage_price_per_day(S_gb))
 
 Where:
 * `D` = lease days (default 7)
+* `table_day_fee` = $0.005 (Ephemeral) or $0.01 (Project)
 * `S_gb` = expected storage GB (from quote inputs; if unknown assume 0.1 GB)
 * `Ops_budget_day` = user-declared daily budget OR default ($1/day)
-* `Safety = max($1.00, 2 * Ops_budget_day)`
-* `storage_price_per_day(S_gb) = S_gb * (storage_price_per_gb_month / 30)`
+* `Safety = max($0.50, 2 * Ops_budget_day)` (reduced from $1.00 — lower table overhead)
+* `storage_price_per_day(S_gb) = S_gb * ($1.50 / 30)`
+
+Note: for read-heavy workloads with large items, egress can exceed RRU cost. The quote endpoint should factor expected response sizes into its deposit recommendation.
 
 ### Worst-case cost enforcement (pre-AWS rejection)
 
@@ -633,12 +711,16 @@ Where:
 
 #### Per-request hold flow
 
-1. Compute **worst_case_cost** from request parameters + enforced caps
+1. Compute **worst_case_cost** from request parameters + enforced caps (pre-computed estimate)
 2. If `available_balance < worst_case_cost`: return **402 top-up required**
 3. Place a **hold** for `worst_case_cost`
-4. Execute DynamoDB call
-5. Compute **actual_cost** (prefer `ConsumedCapacity`; else compute from returned items)
-6. Release hold, debit actual_cost
+4. Execute DynamoDB call with `ReturnConsumedCapacity: TOTAL`
+5. Compute **actual_cost** from `ConsumedCapacity` response + egress bytes:
+   * `actual_rru_cost = ConsumedCapacity.CapacityUnits * price_rru` (for reads)
+   * `actual_wru_cost = ConsumedCapacity.CapacityUnits * price_wru` (for writes)
+   * `actual_egress_cost = byteLength(response_body) / 1GB * $0.30` (for reads)
+   * `actual_cost = actual_rru_or_wru_cost + actual_egress_cost`
+6. Release hold, debit `max(actual_cost, worst_case_cost)` — if actual exceeds estimate (rare), still debit actual to avoid operator loss
 
 This prevents concurrent expensive calls from racing into negative balance.
 
@@ -658,9 +740,10 @@ Before executing, check:
 ### Abuse prevention controls
 
 #### Table sprawl / control-plane abuse
-* Max tables per workspace: 20 (dev) / 200 (project)
-* Table creation fee + table-day fee
+* Max tables per wallet: 50 (shared across tiers, per D9/D13)
+* Table creation fee ($0.02) + table-day fee ($0.005 Ephemeral / $0.01 Project)
 * Require non-trivial minimum deposit per table
+* With the shared multi-tenant table, table sprawl no longer risks hitting AWS table-count limits, but metadata/ledger overhead and storage costs still motivate the cap
 
 #### Oversized items / attribute bombs
 * `MAX_ITEM_BYTES`: 64 KB (dev), 256 KB (project) — well below DynamoDB’s 400 KB limit
@@ -692,7 +775,7 @@ Before executing, check:
 | Scan | disabled by default |
 | Ops/sec per table | 10 (burst 20) |
 | Concurrency per table | 5 |
-| Max tables per workspace | 20 |
+| Max tables per wallet | 50 |
 | Default lease | 7 days |
 | Default ops budget/day | $1.00 |
 
@@ -706,6 +789,11 @@ Process:
 3. Alert on drift > X% per day per region/account
 4. If drift is consistently positive (AWS > metered), increase multipliers or fix missing meters
 
+Additional reconciliation items:
+* **Egress**: compare metered `X-Metered-Egress-Bytes` totals against AWS data transfer line items in CUR
+* **Internal metering overhead**: ledger writes (~1–2 WRU per customer request) are an internal cost; track separately and ensure margin covers them
+* **GSI storage**: the `_tid + PK` GSI roughly doubles storage for indexed attributes; reconcile against DynamoDB storage metrics
+
 ---
 
 ## The “minimal v1” I’d ship first (fastest path)
@@ -714,7 +802,7 @@ If you want something that works well for coding agents quickly:
 
 * Regional tier only (single region)
 * On-demand capacity only
-* One DynamoDB table per AgentDB table (strong isolation)
+* Shared multi-tenant DynamoDB table (PK-prefixed logical isolation, GSI for scans)
 * Supported ops: Create, Put/Get/Update/Delete, Query-by-key, Scan (guarded), Batch get/write, List tables, Delete
 * Lease model:
 
@@ -848,16 +936,18 @@ This section covers attacks that can cause **data leakage** or **money loss** (o
 
 **Attack:** Attackers create operations that are cheap for them but expensive for the operator: scans across large tables, huge items near DynamoDB limits, high RPS storms, creating many tables, long TTL / no expiry.
 
+**Impact with shared multi-tenant table:** Table sprawl no longer risks hitting AWS table-count limits (since all data is in one shared table), but it still incurs metadata/ledger overhead and can amplify GSI storage costs. The primary cost risks shift to data-plane abuse (scans, large items, egress amplification).
+
 **Mitigations**
 
 * **Hard limits at gateway** (enforced before hitting DynamoDB):
   * max item size, max attributes, max query page size, max scan items/MB
   * max ops/sec per table and per payer
   * max concurrent requests per table
-  * max tables per workspace
-* “Scan” must be **explicit opt-in** + strict caps
+  * max tables per wallet: 50 (per D9/D13)
+* “Scan” must be **explicit opt-in** + strict caps (implemented as GSI query on shared table, but still bounded)
 * Consider DynamoDB **provisioned capacity with maximums** for tiers where cost predictability matters (on-demand can spike)
-* Implement **real-time budget enforcement** on the request path (not async): reject before calling AWS if remaining budget < worst-case cost of request
+* Implement **real-time budget enforcement** on the request path (not async): reject before calling AWS if remaining budget < worst-case cost of request (including egress estimate for reads)
 * Default TTL/lease expiry must be **hard** and non-extendable without top-up
 
 **Integration tests**
@@ -866,7 +956,7 @@ This section covers attacks that can cause **data leakage** or **money loss** (o
 * Scan with opt-in but exceeding caps → rejected and does not hit DynamoDB (assert via mock/CloudTrail)
 * Oversized item (> limit) → rejected pre-AWS
 * RPS test: exceed ops/sec → **429** and costs stay bounded
-* Create 1,000 tables attempt → blocked by quota
+* Create 51 tables attempt → blocked by quota (50 max per wallet)
 
 #### T6) Payment under-collection (price confusion / tampering)
 
@@ -995,16 +1085,19 @@ This section covers attacks that can cause **data leakage** or **money loss** (o
 
 **Attack:** If “auto-expire” fails silently, abandoned tables accumulate storage forever (operator’s bill). If deletion is too aggressive, customers lose data unexpectedly.
 
-**Mitigations**
+**Mitigations (shared multi-tenant table)**
 
 * Make lifecycle a state machine: `ACTIVE → SUSPENDED → DELETING → DELETED`, all transitions logged/auditable
-* Daily sweeper with alerts on stuck resources and on “expired but still exists”
+* **Deletion is TTL-based**: when a table expires, set `_ttl` on all items belonging to that logical table. DynamoDB TTL automatically removes items (typically within 48 hours). Set metadata status to `DELETED`.
+* Daily sweeper checks for tables in `DELETING` state where items with matching `_tid` still exist past TTL + 48h buffer → alert on stuck items
+* No `DeleteTable` API call needed — the shared table persists; only the logical table’s items are cleaned up
 * Consider PITR/backups for paid tiers; encryption and access controls apply to backups too
 
 **Integration tests**
 
-* Simulate expired lease → table becomes inaccessible; after grace, deleted
-* Verify deletion removes data and stops incurring cost (assert via AWS DescribeTable)
+* Simulate expired lease → table becomes inaccessible; after grace, items receive `_ttl`
+* Verify TTL-expired items are eventually removed (assert via GSI query on `_tid` returns zero items)
+* Verify metadata record transitions to `DELETED` and is no longer listable
 
 ---
 
@@ -4329,7 +4422,7 @@ run402/
 | **Compute** | AWS ECS/Fargate | Containerized API server, auto-scaling |
 | **Load balancer** | AWS ALB | Regional, health checks, target groups |
 | **CDN/Edge** | AWS CloudFront | Cache discovery endpoints, DDoS protection, global TLS termination |
-| **Database (customer tables)** | AWS DynamoDB (on-demand) | 1 DynamoDB table per AgentDB table. Tagged for attribution. |
+| **Database (customer data)** | AWS DynamoDB (on-demand) | Single shared multi-tenant table (`agentdb-data-001`). PK-prefixed with `{tableId}#`. GSI on `_tid` for scans. |
 | **Database (internal state)** | AWS DynamoDB | Ledger, metering, table metadata, capability tokens |
 | **Region** | **us-east-1** (N. Virginia) | Cheapest, most services, default |
 | **CI/CD** | GitHub Actions | Build, test, deploy to ECS |
@@ -4360,14 +4453,16 @@ run402/
               │              │              │
               └──────────────┼──────────────┘
                              │
-              ┌──────────────┼──────────────┐
-              │              │              │
-     ┌────────▼───┐  ┌──────▼─────┐  ┌─────▼──────┐
-     │ DynamoDB   │  │ DynamoDB   │  │ DynamoDB   │
-     │ (customer  │  │ (internal: │  │ (customer  │
-     │  tables)   │  │  ledger,   │  │  tables)   │
-     │            │  │  metadata) │  │            │
-     └────────────┘  └────────────┘  └────────────┘
+                    ┌────────┼────────┐
+                    │                 │
+           ┌───────▼───────┐  ┌──────▼──────┐
+           │   DynamoDB    │  │  DynamoDB   │
+           │ (shared       │  │ (internal:  │
+           │  customer     │  │  ledger,    │
+           │  data table)  │  │  metadata)  │
+           │ agentdb-      │  └─────────────┘
+           │  data-001     │
+           └───────────────┘
 ```
 
 ---
@@ -4456,19 +4551,24 @@ run402/
 
 ```
 1. Request arrives with Bearer table_secret
-2. Validate token → resolve table_id
-3. Compute expected cost:
+2. Validate token → resolve table_id (logical table in shared data table)
+3. Compute worst-case hold:
    - Write: ceil(item_size / 1KB) * write_unit_price
-   - Read: ceil(item_size / 4KB) * read_unit_price
-4. Atomic DynamoDB update on ledger:
-   - ConditionExpression: balance >= expected_cost
-   - UpdateExpression: SET balance = balance - expected_cost
+   - Read: ceil(MAX_ITEM_BYTES / 4KB) * read_unit_price + egress estimate
+4. Atomic DynamoDB update on ledger (internal metadata table):
+   - ConditionExpression: balance >= worst_case_hold
+   - UpdateExpression: SET balance = balance - worst_case_hold
 5. If condition fails → return 402 (top-up required)
-6. Execute DynamoDB operation on customer table
-7. Return response with metering headers:
+6. Execute DynamoDB operation on shared data table with prefixed keys:
+   - PK = "{tableId}#{userPK}", SK = "{userSK}"
+   - Include ReturnConsumedCapacity: TOTAL
+7. Compute actual cost from ConsumedCapacity + response egress bytes
+8. Reconcile: release hold, debit actual cost (or worst-case if actual is lower)
+9. Return response with metering headers:
    - X-Request-Id
    - X-Table-Id
    - X-Metered-Units
+   - X-Metered-Egress-Bytes
    - X-Estimated-Cost-Usd
    - X-Balance-Remaining-Usd
 ```
