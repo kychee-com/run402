@@ -46,7 +46,7 @@ export class PodStack extends cdk.Stack {
     // =========================================================================
     const albSg = new ec2.SecurityGroup(this, "AlbSg", {
       vpc,
-      description: "ALB — inbound HTTPS from internet",
+      description: "ALB - inbound HTTPS from internet",
       allowAllOutbound: true,
     });
     albSg.addIngressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(443), "HTTPS");
@@ -54,14 +54,14 @@ export class PodStack extends cdk.Stack {
 
     const ecsSg = new ec2.SecurityGroup(this, "EcsSg", {
       vpc,
-      description: "ECS tasks — inbound from ALB only",
+      description: "ECS tasks - inbound from ALB only",
       allowAllOutbound: true,
     });
     ecsSg.addIngressRule(albSg, ec2.Port.tcp(4022), "Gateway from ALB");
 
     const auroraSg = new ec2.SecurityGroup(this, "AuroraSg", {
       vpc,
-      description: "Aurora — inbound from ECS only",
+      description: "Aurora - inbound from ECS only",
       allowAllOutbound: false,
     });
     auroraSg.addIngressRule(ecsSg, ec2.Port.tcp(5432), "Postgres from ECS");
@@ -149,7 +149,6 @@ export class PodStack extends cdk.Stack {
     // =========================================================================
     const cluster = new ecs.Cluster(this, "Cluster", {
       vpc,
-      containerInsights: true,
     });
 
     const taskDef = new ecs.FargateTaskDefinition(this, "TaskDef", {
@@ -237,7 +236,7 @@ export class PodStack extends cdk.Stack {
     const fargateService = new ecs.FargateService(this, "Service", {
       cluster,
       taskDefinition: taskDef,
-      desiredCount: 2,
+      desiredCount: 0, // Start at 0, scale up after pushing image to ECR
       assignPublicIp: true, // No NAT gateway, so public subnet + public IP
       vpcSubnets: { subnetType: ec2.SubnetType.PUBLIC },
       securityGroups: [ecsSg],
@@ -275,6 +274,7 @@ export class PodStack extends cdk.Stack {
 
     httpsListener.addTargets("Gateway", {
       port: 4022,
+      protocol: elbv2.ApplicationProtocol.HTTP,
       targets: [fargateService],
       healthCheck: {
         path: "/health",
