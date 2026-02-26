@@ -92,6 +92,10 @@ export class PodStack extends cdk.Stack {
       description: "Seller wallet private key and address for x402 payments",
     });
 
+    const cdpApiKeySecret = secretsmanager.Secret.fromSecretNameV2(
+      this, "CdpApiKey", "agentdb/cdp-api-key",
+    );
+
     // =========================================================================
     // Aurora Serverless v2 (Postgres 16)
     // =========================================================================
@@ -160,6 +164,7 @@ export class PodStack extends cdk.Stack {
     dbSecret.grantRead(taskDef.taskRole);
     jwtSecret.grantRead(taskDef.taskRole);
     sellerSecret.grantRead(taskDef.taskRole);
+    cdpApiKeySecret.grantRead(taskDef.taskRole);
     storageBucket.grantReadWrite(taskDef.taskRole);
 
     const logGroup = new logs.LogGroup(this, "GatewayLogs", {
@@ -186,7 +191,6 @@ export class PodStack extends cdk.Stack {
         POSTGREST_URL: "http://localhost:3000",
         MAINNET_NETWORK: "eip155:8453",
         TESTNET_NETWORK: "eip155:84532",
-        FACILITATOR_URL: "https://x402.org/facilitator",
         S3_BUCKET: storageBucket.bucketName,
         S3_REGION: this.region,
         MAX_SCHEMA_SLOTS: String(MAX_SCHEMAS),
@@ -200,6 +204,8 @@ export class PodStack extends cdk.Stack {
         DB_USER: ecs.Secret.fromSecretsManager(dbSecret, "username"),
         JWT_SECRET: ecs.Secret.fromSecretsManager(jwtSecret),
         SELLER_ADDRESS: ecs.Secret.fromSecretsManager(sellerSecret, "address"),
+        CDP_API_KEY_ID: ecs.Secret.fromSecretsManager(cdpApiKeySecret, "key_id"),
+        CDP_API_KEY_SECRET: ecs.Secret.fromSecretsManager(cdpApiKeySecret, "key_secret"),
       },
       healthCheck: {
         command: ["CMD-SHELL", "wget -qO- http://localhost:4022/health || exit 1"],

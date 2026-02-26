@@ -8,7 +8,7 @@
 try { await import("dotenv/config"); } catch {}
 
 import express, { Request, Response, NextFunction } from "express";
-import { PORT, POSTGREST_URL, SELLER_ADDRESS, MAINNET_NETWORK, TESTNET_NETWORK, FACILITATOR_URL, RATE_LIMIT_PER_SEC } from "./config.js";
+import { PORT, POSTGREST_URL, SELLER_ADDRESS, MAINNET_NETWORK, TESTNET_NETWORK, TESTNET_FACILITATOR_URL, CDP_API_KEY_ID, RATE_LIMIT_PER_SEC } from "./config.js";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
@@ -214,7 +214,7 @@ async function start() {
     console.log(`\nAgentDB Gateway running on port ${PORT}`);
     console.log(`  Seller wallet:  ${SELLER_ADDRESS || "(not set — x402 disabled)"}`);
     console.log(`  Networks:       ${MAINNET_NETWORK} (mainnet), ${TESTNET_NETWORK} (testnet)`);
-    console.log(`  Facilitator:    ${FACILITATOR_URL}`);
+    console.log(`  Facilitator:    CDP${CDP_API_KEY_ID ? "" : " — NO KEY, x402 will fail"}`);
     console.log(`  PostgREST:      ${POSTGREST_URL}`);
     console.log(`  Rate limit:     ${RATE_LIMIT_PER_SEC} req/sec per project`);
     console.log(`\nReady for requests.\n`);

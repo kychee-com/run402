@@ -1,16 +1,19 @@
 import { paymentMiddleware, x402ResourceServer } from "@x402/express";
 import { ExactEvmScheme } from "@x402/evm/exact/server";
 import { HTTPFacilitatorClient } from "@x402/core/server";
+import { createFacilitatorConfig } from "@coinbase/x402";
 import { TIERS } from "@agentdb/shared";
-import { SELLER_ADDRESS, FACILITATOR_URL, MAINNET_NETWORK, TESTNET_NETWORK } from "../config.js";
+import { SELLER_ADDRESS, MAINNET_NETWORK, TESTNET_NETWORK, CDP_API_KEY_ID, CDP_API_KEY_SECRET } from "../config.js";
 import type { TierName } from "@agentdb/shared";
 
 /**
  * Build x402 payment middleware.
- * Accepts payments on both Base mainnet and Base Sepolia testnet.
+ * Uses CDP facilitator for both Base mainnet and Base Sepolia.
  */
 export function createPaymentMiddleware() {
-  const facilitatorClient = new HTTPFacilitatorClient({ url: FACILITATOR_URL });
+  const facilitatorClient = new HTTPFacilitatorClient(
+    createFacilitatorConfig(CDP_API_KEY_ID, CDP_API_KEY_SECRET),
+  );
 
   const networks = [MAINNET_NETWORK, TESTNET_NETWORK];
 

@@ -1,9 +1,11 @@
 export const PORT = parseInt(process.env.PORT || "4022", 10);
 export const JWT_SECRET = process.env.JWT_SECRET || "super-secret-jwt-key-for-agentdb-test-only-32chars!!";
 export const SELLER_ADDRESS = process.env.SELLER_ADDRESS as `0x${string}`;
-export const FACILITATOR_URL = process.env.FACILITATOR_URL || "https://x402.org/facilitator";
+export const TESTNET_FACILITATOR_URL = process.env.TESTNET_FACILITATOR_URL || "https://x402.org/facilitator";
 export const MAINNET_NETWORK = process.env.MAINNET_NETWORK || "eip155:8453"; // Base mainnet
 export const TESTNET_NETWORK = process.env.TESTNET_NETWORK || "eip155:84532"; // Base Sepolia
+export const CDP_API_KEY_ID = process.env.CDP_API_KEY_ID || "";
+export const CDP_API_KEY_SECRET = process.env.CDP_API_KEY_SECRET || "";
 export const POSTGREST_URL = process.env.POSTGREST_URL || "http://localhost:3000";
 export const MAX_SCHEMA_SLOTS = parseInt(process.env.MAX_SCHEMA_SLOTS || "2000", 10);
 
