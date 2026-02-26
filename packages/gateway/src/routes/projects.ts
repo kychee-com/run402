@@ -1,0 +1,135 @@
+import { Router, Request, Response } from "express";
+import { TIERS } from "@agentdb/shared";
+import type { TierName } from "@agentdb/shared";
+import { createProject, archiveProject, renewLease } from "../services/projects.js";
+
+const router = Router();
+
+// POST /v1/projects/quote — return tier pricing (free, no auth)
+router.post("/v1/projects/quote", (_req: Request, res: Response) => {
+  const tiers: Record<string, any> = {};
+  for (const [name, config] of Object.entries(TIERS)) {
+    tiers[name] = {
+      price: config.price,
+      lease_days: config.leaseDays,
+      storage_mb: config.storageMb,
+      api_calls: config.apiCalls,
+    };
+  }
+  res.json({ tiers });
+});
+
+// POST /v1/projects — create project (x402-gated)
+router.post("/v1/projects", async (req: Request, res: Response) => {
+  const name = req.body?.name || `project-${Date.now()}`;
+  const tier = (req.body?.tier as TierName) || "prototype";
+
+  if (!TIERS[tier]) {
+    res.status(400).json({ error: `Unknown tier: ${tier}. Valid tiers: ${Object.keys(TIERS).join(", ")}` });
+    return;
+  }
+
+  // Extract x402 transaction hash from response headers if available
+  const txHash = res.getHeader("x-402-transaction") as string | undefined;
+
+  try {
+    const project = await createProject(name, tier, txHash);
+    if (!project) {
+      res.status(503).json({ error: "No schema slots available" });
+      return;
+    }
+
+    console.log(`  Created project: ${project.id} (schema: ${project.schemaSlot}, tier: ${tier})`);
+
+    res.json({
+      project_id: project.id,
+      anon_key: project.anonKey,
+      service_key: project.serviceKey,
+      schema_slot: project.schemaSlot,
+      tier: project.tier,
+      lease_expires_at: project.leaseExpiresAt.toISOString(),
+    });
+  } catch (err: any) {
+    console.error("Failed to create project:", err.message);
+    res.status(500).json({ error: "Failed to create project" });
+  }
+});
+
+// POST /v1/projects/create/:tier — tier-specific creation (x402-gated per tier)
+router.post("/v1/projects/create/:tier", async (req: Request, res: Response) => {
+  const tier = req.params["tier"] as TierName;
+  if (!TIERS[tier]) {
+    res.status(400).json({ error: `Unknown tier: ${tier}` });
+    return;
+  }
+
+  const name = req.body?.name || `project-${Date.now()}`;
+  const txHash = res.getHeader("x-402-transaction") as string | undefined;
+
+  try {
+    const project = await createProject(name, tier, txHash);
+    if (!project) {
+      res.status(503).json({ error: "No schema slots available" });
+      return;
+    }
+
+    console.log(`  Created project: ${project.id} (schema: ${project.schemaSlot}, tier: ${tier})`);
+
+    res.json({
+      project_id: project.id,
+      anon_key: project.anonKey,
+      service_key: project.serviceKey,
+      schema_slot: project.schemaSlot,
+      tier: project.tier,
+      lease_expires_at: project.leaseExpiresAt.toISOString(),
+    });
+  } catch (err: any) {
+    console.error("Failed to create project:", err.message);
+    res.status(500).json({ error: "Failed to create project" });
+  }
+});
+
+// DELETE /v1/projects/:id — archive project (free, no auth for now)
+router.delete("/v1/projects/:id", async (req: Request, res: Response) => {
+  const projectId = req.params["id"] as string;
+
+  try {
+    const archived = await archiveProject(projectId);
+    if (!archived) {
+      res.status(404).json({ error: "Project not found or already archived" });
+      return;
+    }
+
+    console.log(`  Archived project: ${projectId}`);
+    res.json({ status: "archived", project_id: projectId });
+  } catch (err: any) {
+    console.error("Failed to archive project:", err.message);
+    res.status(500).json({ error: "Failed to archive project" });
+  }
+});
+
+// POST /v1/projects/:id/renew — renew lease (x402-gated in future)
+router.post("/v1/projects/:id/renew", async (req: Request, res: Response) => {
+  const projectId = req.params["id"] as string;
+  const tier = (req.body?.tier as TierName) || "prototype";
+
+  try {
+    const newExpiry = await renewLease(projectId, tier);
+    if (!newExpiry) {
+      res.status(404).json({ error: "Project not found" });
+      return;
+    }
+
+    console.log(`  Renewed project: ${projectId} (new expiry: ${newExpiry.toISOString()})`);
+    res.json({
+      project_id: projectId,
+      tier,
+      lease_expires_at: newExpiry.toISOString(),
+    });
+  } catch (err: any) {
+    console.error("Failed to renew project:", err.message);
+    res.status(500).json({ error: "Failed to renew project" });
+  }
+});
+
+export default router;

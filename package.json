@@ -1,0 +1,19 @@
+{
+  "name": "agentdb",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/shared",
+    "packages/gateway",
+    "infra"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces",
+    "build:gateway": "npm run build -w packages/gateway",
+    "build:infra": "npm run build -w infra",
+    "dev": "npm run dev -w packages/gateway",
+    "test:e2e": "tsx test/e2e.ts",
+    "deploy": "bash scripts/deploy.sh"
+  }
+}

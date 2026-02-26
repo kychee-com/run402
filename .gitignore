@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.env
+storage/
+*.js.map
+*.d.ts.map
+cdk.out/
+cdk.context.json

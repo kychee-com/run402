@@ -1,0 +1,34 @@
+# Local development: Postgres + PostgREST (gateway runs via `npm run dev`)
+services:
+  postgres:
+    image: postgres:16
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: agentdb
+    volumes:
+      - ./packages/gateway/src/db/init.sql:/docker-entrypoint-initdb.d/init-db.sql
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 2s
+      timeout: 5s
+      retries: 10
+
+  postgrest:
+    image: postgrest/postgrest:v12.2.3
+    ports:
+      - "3000:3000"
+    environment:
+      PGRST_DB_URI: postgres://authenticator:authenticator@postgres:5432/agentdb
+      PGRST_DB_SCHEMAS: ${PGRST_DB_SCHEMAS:-p0001,p0002,p0003,p0004,p0005,p0006,p0007,p0008,p0009,p0010}
+      PGRST_DB_ANON_ROLE: anon
+      PGRST_JWT_SECRET: ${JWT_SECRET:-super-secret-jwt-key-for-agentdb-test-only-32chars!!}
+      PGRST_DB_PRE_REQUEST: internal.pre_request
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  pgdata:
