@@ -1,3 +1,5 @@
+> **SUPERSEDED** — Early brainstorm for the DynamoDB approach. See `supa_spec.md` for the current Postgres/PostgREST spec.
+
 Below is a concrete design for a “no-account” cloud NoSQL service backed by DynamoDB, using **x402** as the payment and (optionally) lightweight identity rail—so an agent can spin up a database after a human approves an estimated spend, without anyone opening an AWS account.
 
 ---

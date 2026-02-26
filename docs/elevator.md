@@ -1,7 +1,9 @@
-AgentDB turns cloud infrastructure into something an AI agent can safely buy.
+AgentDB lets your AI agent ship a real app — database, API, auth, storage — without you ever touching a cloud console.
 
-Today, when a coding agent needs a database, it hits a wall: someone has to create a cloud account, set up billing, click through consoles, manage keys, and then you still risk surprise spend. That friction kills autonomous workflows and makes platform teams say "no" to agents provisioning anything real.
+Today, when you ask an agent to build you a workout tracker or a CRM, it writes the frontend and then stops. "Now go create a Supabase account. Or spin up an AWS database. Set up auth. Configure API keys." You're back to doing the hard part yourself.
 
-We built AgentDB: a production-grade cloud database that can be provisioned in seconds with **no AWS account, no signup, and no API keys**. It uses the **x402 standard**—HTTP 402 "Payment Required"—so an agent can request a quote, a human can review the maximum spend, and then the agent automatically provisions and operates the database. Every request produces receipts and logs, budgets are hard-enforced, and resources auto-expire so you never pay forever. We offer QoS-backed tiers with an SLA and transparent status.
+AgentDB removes that wall. It's an **instant Postgres backend** that agents provision and pay for using **x402** — the HTTP 402 "Payment Required" standard. Your agent requests a quote ("$0.10 for 7 days of Postgres + API + auth + storage"), you approve the spend, and it's live. One payment, full backend. The agent writes the schema, enables auth, sets up row-level security, and hands you a working app. No account. No signup. No API keys to manage. No surprise bill at the end of the month — budgets are hard-capped, and everything auto-expires when abandoned.
 
-The wedge is simple: **agent-native procurement** for state. Once you can buy a database over HTTP, you can buy anything—queues, storage, model calls, test environments—under policy. We're building the default payments-and-governance layer for agentic infrastructure.
+The unlock is that **agents already know how to use this**. They're fluent in SQL, they know REST APIs, and they're great at CRUD apps. The only thing stopping them from shipping complete software was the procurement step — someone had to go click through a console. x402 makes that step a single HTTP request with human-approved spend.
+
+We're building the default way agents buy and operate infrastructure. Database is the wedge. Once an agent can provision a backend over HTTP, it can provision anything — queues, storage, compute, domains — all under policy, all with hard caps, all with receipts.

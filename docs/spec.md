@@ -1,3 +1,5 @@
+> **SUPERSEDED** — This DynamoDB-based design was replaced by the Postgres/PostgREST architecture. See `supa_spec.md` for the current spec and live implementation at `https://api.run402.com`.
+
 Below is a concrete design for a “no-account” cloud NoSQL service backed by DynamoDB, using **x402** as the payment and (optionally) lightweight identity rail—so an agent can spin up a database after a human approves an estimated spend, without anyone opening an AWS account.
 
 ---

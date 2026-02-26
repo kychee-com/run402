@@ -1,3 +1,5 @@
+> **SUPERSEDED** — Style guide for the DynamoDB-era site. See `supa_website.md` for the current design system.
+
 ---
 
 # STYLE GUIDE — Visual Design System

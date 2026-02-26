@@ -7,7 +7,7 @@ A **Supabase-compatible instant backend** that agents can provision via x402 to 
 **Product statement:**
 > "AgentDB is Postgres for agent-built apps: provision in seconds, ship via generated APIs, hard budget caps, auto-expire."
 
-**Domain:** `<project>.run402.com`
+**Domain:** `api.run402.com` (single domain, project routing via `apikey` header)
 
 ---
 
@@ -40,17 +40,30 @@ This keeps:
 
 | Component | AWS Service | Role |
 |---|---|---|
-| Database | **Aurora Serverless v2** (Postgres-compatible) | Multi-tenant via schema-per-project |
-| REST API | **PostgREST** on **ECS Fargate** | Auto-generated CRUD + filters from Postgres schema |
-| Auth | Custom thin service on **ECS Fargate** | JWT issuance, user management, stored in Postgres |
-| Object storage | **S3** | One bucket, prefix-partitioned by project. Signed URLs |
-| x402 gateway | **ECS Fargate** | Procurement, leasing, budget enforcement, metering, routing |
-| Load balancer | **ALB** | Single entry point per pod |
-| Connection pooling | **RDS Proxy** or **pgBouncer** | Prevent connection exhaustion |
+| Database | **Aurora Serverless v2** (Postgres 16, 0.5-2 ACU) | Multi-tenant via schema-per-project |
+| REST API | **PostgREST v12.2.3** as ECS sidecar | Auto-generated CRUD + filters from Postgres schema |
+| Auth | Built into gateway | JWT issuance, user management, stored in Postgres |
+| Object storage | **S3** | One bucket, prefix-partitioned by project. Signed URLs + local fallback |
+| x402 gateway | **ECS Fargate** (0.5 vCPU, 1GB) | Procurement, leasing, budget enforcement, metering, routing |
+| Load balancer | **ALB** | HTTPS via ACM wildcard cert for `*.run402.com` |
+| Secrets | **Secrets Manager** | DB creds, JWT secret, seller wallet |
+| DNS | **Route 53** | `api.run402.com` → ALB |
+| Container registry | **ECR** | Gateway Docker image |
+| Logs | **CloudWatch** | Structured JSON logs |
 
-### Baseline cost per pod
+No RDS Proxy or pgBouncer needed — direct connection pool (~20 connections) is well within Aurora's ~1000 connection limit at current scale.
 
-~$250–600/month (Aurora + ECS services + ALB + misc).
+### Baseline cost per pod (actual, us-east-1)
+
+~$113–198/month:
+
+| Service | $/mo |
+|---|---|
+| Aurora Serverless v2 (0.5-2 ACU, 20GB) | $45-90 |
+| ECS Fargate (1 task × 0.5 vCPU, 1GB) | $15-30 |
+| ALB | $28 |
+| S3 | $1-5 |
+| ECR, Route 53, Secrets Manager, CloudWatch | $10-15 |
 
 ---
 
@@ -88,26 +101,29 @@ Intentionally mimic Supabase's API contract so agents already know how to use it
 ### Endpoints
 
 ```
-https://<project>.run402.com/rest/v1/*      → PostgREST (CRUD + filters + RPC)
-https://<project>.run402.com/auth/v1/*      → Auth service (signup, signin, refresh, getUser)
-https://<project>.run402.com/storage/v1/*   → Storage service (upload, download, signed URLs)
-https://<project>.run402.com/admin/v1/*     → Migrations, introspection, metering (service key only)
+https://api.run402.com/rest/v1/*      → PostgREST proxy (CRUD + filters + RPC)
+https://api.run402.com/auth/v1/*      → Auth (signup, signin, refresh, getUser, logout)
+https://api.run402.com/storage/v1/*   → Storage (upload, download, signed URLs, list)
+https://api.run402.com/admin/v1/*     → Migrations, RLS, introspection, usage (service key only)
+https://api.run402.com/v1/projects/*  → Project lifecycle (quote, create, delete, renew)
 ```
+
+All project routing is via the `apikey` header (not subdomains). The gateway looks up the project from the key and injects the correct schema slot headers.
 
 ### What agents get back on project creation
 
 ```json
 {
-  "project_id": "prj_...",
-  "url": "https://prj-abc123.run402.com",
-  "anon_key": "public_browser_key",
-  "service_key": "server_admin_key",
-  "sql_url": "postgres://...",
-  "lease_expires_at": "2026-03-26T00:00:00Z",
-  "hard_cap_usd": 5.00,
-  "tier": "hobby"
+  "project_id": "prj_1772125073085_0001",
+  "anon_key": "eyJhbGciOi...",
+  "service_key": "eyJhbGciOi...",
+  "schema_slot": "p0001",
+  "tier": "prototype",
+  "lease_expires_at": "2026-03-05T16:57:53.085Z"
 }
 ```
+
+The `anon_key` and `service_key` are JWTs. All API requests use `https://api.run402.com` with the `apikey` header for routing.
 
 ### What agents actually use (from Supabase usage patterns)
 
@@ -121,32 +137,33 @@ Agents rarely need: realtime subscriptions, edge functions, studio/dashboard, cu
 
 ## Provisioning Flow (x402)
 
-### Step 1: Quote + approval
+### Step 1: Quote (free, no payment)
 
 ```
 POST /v1/projects/quote
+```
+
+Returns 200 with all tier pricing:
+```json
 {
-  "name": "workout-tracker",
-  "tier": "hobby",
-  "lease_days": 30,
-  "budget_cap_usd": 5,
-  "region": "us-east"
+  "tiers": {
+    "prototype": { "price": "$0.10", "lease_days": 7, "storage_mb": 250, "api_calls": 500000 },
+    "hobby": { "price": "$5.00", "lease_days": 30, "storage_mb": 1024, "api_calls": 5000000 },
+    "team": { "price": "$20.00", "lease_days": 30, "storage_mb": 10240, "api_calls": 50000000 }
+  }
 }
 ```
 
-Server responds `402 Payment Required` with price, what's included, expiration date, payTo address.
-
-Human approves. Agent signs payment with wallet. Agent retries with `PAYMENT-SIGNATURE`.
-
-### Step 2: Create project
+### Step 2: Create project (x402-gated)
 
 ```
 POST /v1/projects
+{ "name": "workout-tracker", "tier": "prototype" }
 ```
 
-Returns: `url`, `anon_key`, `service_key`, `sql_url`, `lease_expires_at`, `hard_cap_usd`.
+Server responds `402 Payment Required` with price and payTo address. Human approves. Agent signs payment with wallet. Agent retries with `PAYMENT-SIGNATURE`. On success, returns `project_id`, `anon_key`, `service_key`, `schema_slot`, `lease_expires_at`.
 
-Agent receives **capability tokens** valid for the lease duration.
+Agent receives **JWT capability tokens** valid for the lease duration.
 
 ### Step 3: Apply schema
 
@@ -171,19 +188,23 @@ CREATE TABLE workouts (
 
 Executes in a transaction with `search_path=<slot>`. Blocks dangerous statements (`CREATE EXTENSION`, `COPY ... PROGRAM`, etc.). After apply: `NOTIFY pgrst, 'reload schema'`.
 
-### Step 4: Enable auth + RLS
+### Step 4: Apply RLS
 
 ```
-POST /auth/v1/enable
-{ "providers": ["email"] }
-
 POST /admin/v1/projects/{id}/rls
-{ "template": "user_owns_rows" }
+Authorization: Bearer <service_key>
+{
+  "template": "user_owns_rows",
+  "tables": [
+    { "table": "profiles", "owner_column": "id" },
+    { "table": "workouts", "owner_column": "user_id" },
+    { "table": "exercises", "owner_column": "user_id" },
+    { "table": "sets", "owner_column": "user_id" }
+  ]
+}
 ```
 
-Generates standard RLS policies:
-- `workouts.user_id = auth.uid()`
-- `sets.workout_id IN (SELECT id FROM workouts WHERE user_id = auth.uid())`
+Auth is always available — no enable step needed. RLS generates standard policies: `owner_column = auth.uid()` for SELECT, INSERT, UPDATE, DELETE.
 
 ### Step 5: Agent builds frontend — no backend code needed
 
@@ -215,11 +236,11 @@ Lease ends → API disabled, data archived. User can renew lease (pay again) to 
 
 ### Tiers
 
-| Tier | Lease | Price | Includes | Max item |
-|---|---|---|---|---|
-| **Prototype** | 7 days | $1.00 | 250MB storage + 500k API calls | — |
-| **Hobby** | 30 days | $5.00 | 1GB storage + 5M API calls | — |
-| **Team** | 30 days | $20.00 | 10GB storage + 50M API calls | — |
+| Tier | Lease | Price | Includes |
+|---|---|---|---|
+| **Prototype** | 7 days | $0.10 | 250MB storage + 500k API calls |
+| **Hobby** | 30 days | $5.00 | 1GB storage + 5M API calls |
+| **Team** | 30 days | $20.00 | 10GB storage + 50M API calls |
 
 ### Overage (only if user sets a higher cap)
 
@@ -326,10 +347,10 @@ When cap exceeded:
 
 | Scale | Pods | Infra baseline | Per project | Gross margin on $5 Hobby |
 |---:|---:|---:|---:|---:|
-| 10 | 1 | ~$250–600/mo | $25–60 | **negative** (expected early) |
-| 100 | 1 | ~$250–600/mo | $2.5–6 | **strong** |
-| 1,000 | 1–2 | ~$500–1,200 | $0.5–1.2 | **very strong** |
-| 10,000 | 10–20 | ~$2,500–12,000 | $0.25–1.2 | **excellent** |
+| 10 | 1 | ~$113–198/mo | $11–20 | **negative** (expected early) |
+| 100 | 1 | ~$113–198/mo | $1.1–2 | **strong** |
+| 1,000 | 1–2 | ~$226–396 | $0.23–0.40 | **very strong** |
+| 10,000 | 10–20 | ~$1,130–3,960 | $0.11–0.40 | **excellent** |
 
 Marginal cost per project is dominated by DB storage + S3 storage (~$0.03–0.15/mo for a typical small app). Economics improve dramatically with density.
 
@@ -339,7 +360,7 @@ Marginal cost per project is dominated by DB storage + S3 storage (~$0.03–0.15
 
 | Risk | Mitigation |
 |---|---|
-| Aurora connection exhaustion | RDS Proxy / pgBouncer, sane pool sizes per pod |
+| Aurora connection exhaustion | Direct pool (~20 conns) fine for now; add RDS Proxy at 10+ tasks |
 | PostgREST schema cache reload | Pod sizing, controlled migrations, `NOTIFY pgrst` |
 | Noisy neighbor projects | Per-project query timeouts, quotas, move heavy projects to dedicated pods |
 | Budget enforcement bugs | Strong invariants in gateway, defense-in-depth with DB-level checks |
@@ -359,24 +380,33 @@ The moat is **not Postgres**. It's:
 
 ---
 
-## v1 Build Plan
+## v1 Status: Shipped
 
-| Week | Deliverable |
-|---|---|
-| **1** | Pod infra + provisioning + gateway routing to PostgREST (CRUD working end-to-end) |
-| **2** | Migrations API + schema reload + basic metering + x402 lease flow |
-| **3** | Auth v1 (email/password + JWT + refresh) + RLS helpers |
-| **4** | Storage v1 (signed upload/download) + quota enforcement + docs/examples |
+**Live at `https://api.run402.com`** — Pod 01 (us-east-1), Feb 2026.
+
+All 11 E2E steps pass with real x402 payment on Base Sepolia:
+1. Quote (free) — returns tier pricing
+2. Create project — $0.10 USDC payment settles on-chain, returns project_id + keys
+3. SQL migration — CREATE TABLE with foreign keys
+4. RLS — user_owns_rows template applied
+5. Auth — email/password signup + JWT login + refresh tokens
+6. PostgREST CRUD — insert profiles, exercises, workouts, sets
+7. Joins — `?select=*,sets(*,exercises(*))` resource embedding
+8. Storage — S3 upload/download/list/sign/delete
+9. Metering — API calls + storage bytes tracked
+10. Schema introspection — tables, columns, constraints, RLS policies
+11. Cleanup — project archived, schema dropped
 
 ### Not in v1
 
-- Realtime subscriptions
-- Edge functions / compute
-- GraphQL
-- Studio / dashboard
-- Custom domains
-- Complex networking / VPC
-- Database branching (v2)
+- Realtime subscriptions (agents rarely need WebSockets)
+- Edge functions / compute (agents write frontend calling the REST API)
+- GraphQL (PostgREST covers 95% of use cases)
+- Studio / dashboard (the API is the interface)
+- Custom domains (api.run402.com is sufficient)
+- Per-project subdomains (route via apikey header)
+- OAuth / social login (agents can't drive redirect flows)
+- Read-only mode on budget cap (402 rejection only)
 
 ---
 

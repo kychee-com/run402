@@ -1,3 +1,5 @@
+> **SUPERSEDED** — This DynamoDB CLI wrapper was not built. AgentDB shipped as a REST API (Postgres/PostgREST). See `supa_spec.md`.
+
 Below is a **DynamoDB‑CLI‑compatible** design for a `run402` command that preserves AWS muscle memory as much as possible.
 
 The goal is that for the common CRUD + table lifecycle operations, you can **almost always** do:
