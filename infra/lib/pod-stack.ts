@@ -236,10 +236,11 @@ export class PodStack extends cdk.Stack {
     const fargateService = new ecs.FargateService(this, "Service", {
       cluster,
       taskDefinition: taskDef,
-      desiredCount: 0, // Start at 0, scale up after pushing image to ECR
+      desiredCount: 1, // Start with 1 task
       assignPublicIp: true, // No NAT gateway, so public subnet + public IP
       vpcSubnets: { subnetType: ec2.SubnetType.PUBLIC },
       securityGroups: [ecsSg],
+      enableExecuteCommand: true, // ECS Exec for debugging
       circuitBreaker: { rollback: true },
       minHealthyPercent: 50,
       maxHealthyPercent: 200,

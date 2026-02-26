@@ -5,11 +5,13 @@
  * PostgREST runs as ECS sidecar on localhost:3000.
  */
 
-import { config } from "dotenv";
-config();
+try { await import("dotenv/config"); } catch {}
 
 import express, { Request, Response, NextFunction } from "express";
 import { PORT, POSTGREST_URL, SELLER_ADDRESS, NETWORK, FACILITATOR_URL, RATE_LIMIT_PER_SEC } from "./config.js";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
 import { pool } from "./db/pool.js";
 import { createPaymentMiddleware } from "./middleware/x402.js";
 import { startMeteringFlush, stopMeteringFlush, flushCounters } from "./middleware/metering.js";
@@ -148,6 +150,30 @@ app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
 // --- Startup ---
 let server: ReturnType<typeof app.listen>;
 
+async function initDatabase() {
+  // Check if internal schema already exists
+  const result = await pool.query(
+    `SELECT 1 FROM information_schema.schemata WHERE schema_name = 'internal'`,
+  );
+  if (result.rows.length > 0) {
+    console.log("  Database already initialized");
+    return;
+  }
+
+  console.log("  Initializing database (first run)...");
+  const __dirname = dirname(fileURLToPath(import.meta.url));
+  const sqlPath = join(__dirname, "db", "init.sql");
+  const sql = readFileSync(sqlPath, "utf-8");
+
+  const client = await pool.connect();
+  try {
+    await client.query(sql);
+    console.log("  Database initialized successfully");
+  } finally {
+    client.release();
+  }
+}
+
 async function start() {
   // Verify Postgres connection
   try {
@@ -157,6 +183,9 @@ async function start() {
     console.error("Cannot connect to Postgres:", err.message);
     process.exit(1);
   }
+
+  // Auto-initialize database on first run
+  await initDatabase();
 
   // Initialize slot allocator
   await initSlots();
