@@ -101,11 +101,13 @@ Intentionally mimic Supabase's API contract so agents already know how to use it
 ### Endpoints
 
 ```
-https://api.run402.com/rest/v1/*      → PostgREST proxy (CRUD + filters + RPC)
-https://api.run402.com/auth/v1/*      → Auth (signup, signin, refresh, getUser, logout)
-https://api.run402.com/storage/v1/*   → Storage (upload, download, signed URLs, list)
-https://api.run402.com/admin/v1/*     → Migrations, RLS, introspection, usage (service key only)
-https://api.run402.com/v1/projects/*  → Project lifecycle (quote, create, delete, renew)
+https://api.run402.com/health          → Free health check (Postgres + PostgREST connectivity)
+https://api.run402.com/v1/ping         → Paid health check ($0.001 USDC — validates x402 flow)
+https://api.run402.com/rest/v1/*       → PostgREST proxy (CRUD + filters + RPC)
+https://api.run402.com/auth/v1/*       → Auth (signup, signin, refresh, getUser, logout)
+https://api.run402.com/storage/v1/*    → Storage (upload, download, signed URLs, list)
+https://api.run402.com/admin/v1/*      → Migrations, RLS, introspection, usage (service key only)
+https://api.run402.com/v1/projects/*   → Project lifecycle (quote, create, delete, renew)
 ```
 
 All project routing is via the `apikey` header (not subdomains). The gateway looks up the project from the key and injects the correct schema slot headers.
@@ -161,9 +163,19 @@ POST /v1/projects
 { "name": "workout-tracker", "tier": "prototype" }
 ```
 
-Server responds `402 Payment Required` with price and payTo address. Human approves. Agent signs payment with wallet. Agent retries with `PAYMENT-SIGNATURE`. On success, returns `project_id`, `anon_key`, `service_key`, `schema_slot`, `lease_expires_at`.
+Server responds `402 Payment Required` with price and payTo address. The 402 response offers payment on both **Base mainnet** (real USDC) and **Base Sepolia** (testnet USDC) — the paying agent picks which network to use. Human approves. Agent signs payment with wallet. Agent retries with `PAYMENT-SIGNATURE`. On success, returns `project_id`, `anon_key`, `service_key`, `schema_slot`, `lease_expires_at`.
 
 Agent receives **JWT capability tokens** valid for the lease duration.
+
+### Paid ping (x402 probe)
+
+```
+GET /v1/ping
+```
+
+Returns `402 Payment Required` ($0.001 USDC). After payment: `{ "status": "ok", "paid": true, "timestamp": "..." }`.
+
+Use this to verify the API is alive and the x402 payment flow works end-to-end before provisioning a project. Accepts both Base mainnet and Base Sepolia testnet payments.
 
 ### Step 3: Apply schema
 
@@ -383,6 +395,10 @@ The moat is **not Postgres**. It's:
 ## v1 Status: Shipped
 
 **Live at `https://api.run402.com`** — Pod 01 (us-east-1), Feb 2026.
+
+**Seller wallet:** `0x059D091D51a0f011c9872EaA63Df538F5cE15945` (kychee.base.eth)
+
+**Networks:** Both Base mainnet (`eip155:8453`) and Base Sepolia testnet (`eip155:84532`) accepted on all x402-gated endpoints. Agents choose which network to pay on. This allows running integration tests with testnet USDC against the production API.
 
 All 11 E2E steps pass with real x402 payment on Base Sepolia:
 1. Quote (free) — returns tier pricing

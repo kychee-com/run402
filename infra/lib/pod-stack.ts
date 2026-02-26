@@ -184,7 +184,8 @@ export class PodStack extends cdk.Stack {
       environment: {
         PORT: "4022",
         POSTGREST_URL: "http://localhost:3000",
-        NETWORK: "eip155:84532",
+        MAINNET_NETWORK: "eip155:8453",
+        TESTNET_NETWORK: "eip155:84532",
         FACILITATOR_URL: "https://x402.org/facilitator",
         S3_BUCKET: storageBucket.bucketName,
         S3_REGION: this.region,

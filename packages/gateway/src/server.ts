@@ -8,7 +8,7 @@
 try { await import("dotenv/config"); } catch {}
 
 import express, { Request, Response, NextFunction } from "express";
-import { PORT, POSTGREST_URL, SELLER_ADDRESS, NETWORK, FACILITATOR_URL, RATE_LIMIT_PER_SEC } from "./config.js";
+import { PORT, POSTGREST_URL, SELLER_ADDRESS, MAINNET_NETWORK, TESTNET_NETWORK, FACILITATOR_URL, RATE_LIMIT_PER_SEC } from "./config.js";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
@@ -134,6 +134,11 @@ app.get("/health", async (_req: Request, res: Response) => {
   });
 });
 
+// --- Paid ping (x402 probe) ---
+app.get("/v1/ping", (_req: Request, res: Response) => {
+  res.json({ status: "ok", paid: true, timestamp: new Date().toISOString() });
+});
+
 // --- Routes ---
 app.use(projectRoutes);
 app.use(authRoutes);
@@ -208,7 +213,7 @@ async function start() {
   server = app.listen(PORT, () => {
     console.log(`\nAgentDB Gateway running on port ${PORT}`);
     console.log(`  Seller wallet:  ${SELLER_ADDRESS || "(not set — x402 disabled)"}`);
-    console.log(`  Network:        ${NETWORK}`);
+    console.log(`  Networks:       ${MAINNET_NETWORK} (mainnet), ${TESTNET_NETWORK} (testnet)`);
     console.log(`  Facilitator:    ${FACILITATOR_URL}`);
     console.log(`  PostgREST:      ${POSTGREST_URL}`);
     console.log(`  Rate limit:     ${RATE_LIMIT_PER_SEC} req/sec per project`);
