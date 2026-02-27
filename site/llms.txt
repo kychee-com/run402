@@ -78,12 +78,14 @@ With Run402:
 
 All REST endpoints support PostgREST query syntax: `?select=`, `?column=eq.value`, `?order=`, `?limit=`, `?offset=`.
 
+**Auth shortcut**: You only need the `apikey` header. The gateway auto-forwards it as `Authorization: Bearer` to PostgREST. For authenticated user access, you can pass the user's `access_token` as the `apikey` value, or use both `apikey` (project key) and `Authorization: Bearer <access_token>` explicitly.
+
 ### Admin
 
 | Endpoint | Method | Auth | Description |
 |----------|--------|------|-------------|
-| `/admin/v1/projects/:id/sql` | POST | service_key | Execute SQL migrations |
-| `/admin/v1/projects/:id/rls` | POST | service_key | Apply row-level security templates |
+| `/admin/v1/projects/:id/sql` | POST | service_key | Execute SQL (DDL + queries). Returns `rows` and `rowCount`. |
+| `/admin/v1/projects/:id/rls` | POST | service_key | Apply RLS template: `user_owns_rows`, `public_read`, or `public_read_write` |
 | `/admin/v1/projects/:id/usage` | GET | service_key | Check usage vs limits |
 | `/admin/v1/projects/:id/schema` | GET | service_key | Inspect tables, columns, constraints, RLS policies |
 
@@ -224,8 +226,27 @@ curl -X POST https://api.run402.com/admin/v1/projects/$PROJECT_ID/sql \
   );"
 ```
 
+Response (the `/sql` endpoint returns query results for SELECT statements):
+```json
+{ "status": "ok", "schema": "p0001", "rows": [], "rowCount": 0 }
+```
+
+Both `SERIAL` and `BIGINT GENERATED ALWAYS AS IDENTITY` work for auto-increment columns. Sequence permissions are granted automatically.
+
+You can also use this endpoint for ad-hoc queries:
+```bash
+curl -X POST https://api.run402.com/admin/v1/projects/$PROJECT_ID/sql \
+  -H "Authorization: Bearer $SERVICE_KEY" \
+  -H "Content-Type: text/plain" \
+  -d "SELECT * FROM todos WHERE done = false;"
+# → { "status": "ok", "schema": "p0001", "rows": [...], "rowCount": 3 }
+```
+
 ### 4. Enable row-level security (optional)
 
+Three templates are available:
+
+**`user_owns_rows`** — Users can only access rows where `owner_column = auth.uid()`. Best for user-scoped data.
 ```bash
 curl -X POST https://api.run402.com/admin/v1/projects/$PROJECT_ID/rls \
   -H "Authorization: Bearer $SERVICE_KEY" \
@@ -233,6 +254,28 @@ curl -X POST https://api.run402.com/admin/v1/projects/$PROJECT_ID/rls \
   -d '{
     "template": "user_owns_rows",
     "tables": [{ "table": "todos", "owner_column": "user_id" }]
+  }'
+```
+
+**`public_read`** — Anyone (including anonymous) can read. Only authenticated users can insert, update, and delete.
+```bash
+curl -X POST https://api.run402.com/admin/v1/projects/$PROJECT_ID/rls \
+  -H "Authorization: Bearer $SERVICE_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "template": "public_read",
+    "tables": [{ "table": "announcements" }]
+  }'
+```
+
+**`public_read_write`** — Anyone (including anonymous) can read and write. Use for guestbooks, public logs, etc.
+```bash
+curl -X POST https://api.run402.com/admin/v1/projects/$PROJECT_ID/rls \
+  -H "Authorization: Bearer $SERVICE_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "template": "public_read_write",
+    "tables": [{ "table": "guestbook" }]
   }'
 ```
 
@@ -389,7 +432,8 @@ Yes. The `/admin/v1/projects/:id/usage` endpoint shows API call counts, storage 
 
 ## Guardrails
 
-- **SQL safety**: The `/admin/v1/projects/:id/sql` endpoint blocks dangerous operations: `CREATE EXTENSION`, `COPY ... PROGRAM`, `ALTER SYSTEM`, `SET search_path`, `CREATE/DROP SCHEMA`, `GRANT/REVOKE`, `CREATE/DROP ROLE`.
+- **SQL safety**: The `/admin/v1/projects/:id/sql` endpoint blocks dangerous operations: `CREATE EXTENSION`, `COPY ... PROGRAM`, `ALTER SYSTEM`, `SET search_path`, `CREATE/DROP SCHEMA`, `GRANT/REVOKE`, `CREATE/DROP ROLE`. Blocked statements return 403 with an `error` and, where applicable, a `hint` suggesting alternatives.
+- **No GRANT needed**: Table and sequence permissions are managed automatically via `ALTER DEFAULT PRIVILEGES`. You don't need `GRANT` or `REVOKE` — use RLS templates (`POST /admin/v1/projects/:id/rls`) for access control instead.
 - **Schema isolation**: Each project runs in its own Postgres schema. Cross-schema access is not possible.
 - **Rate limiting**: 100 requests/second per project. Exceeding returns `429`.
 - **Budget enforcement**: API calls and storage are metered against tier limits. Exceeding returns `402` with usage details and a renew URL.
