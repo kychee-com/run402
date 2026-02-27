@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Run402 — Postgres for AI Agents</title>
+  <meta name="description" content="Instant Postgres databases for AI agents. Pay with x402 crypto micropayments. No signups, no API keys, no humans required.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #0A0A0F;
+      color: #E0E0E0;
+      font-family: 'Inter', system-ui, sans-serif;
+      line-height: 1.6;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    .container {
+      max-width: 720px;
+      margin: 0 auto;
+      padding: 80px 24px 60px;
+    }
+
+    .badge {
+      display: inline-block;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      color: #00FF9F;
+      border: 1px solid rgba(0, 255, 159, 0.3);
+      border-radius: 4px;
+      padding: 4px 10px;
+      margin-bottom: 24px;
+      letter-spacing: 0.5px;
+    }
+
+    h1 {
+      font-size: clamp(32px, 5vw, 48px);
+      font-weight: 700;
+      line-height: 1.15;
+      margin-bottom: 20px;
+      color: #FFFFFF;
+    }
+
+    h1 .accent { color: #00FF9F; }
+
+    .subtitle {
+      font-size: 18px;
+      color: #9CA3AF;
+      margin-bottom: 40px;
+      max-width: 560px;
+    }
+
+    .copy-block {
+      background: #12121A;
+      border: 1px solid #1E1E2A;
+      border-radius: 8px;
+      padding: 16px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 48px;
+      transition: border-color 0.2s;
+    }
+
+    .copy-block:hover { border-color: rgba(0, 255, 159, 0.3); }
+
+    .copy-block code {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 14px;
+      color: #00FF9F;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .copy-btn {
+      background: rgba(0, 255, 159, 0.1);
+      color: #00FF9F;
+      border: 1px solid rgba(0, 255, 159, 0.25);
+      border-radius: 6px;
+      padding: 8px 16px;
+      font-family: 'Inter', sans-serif;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: background 0.2s, border-color 0.2s;
+    }
+
+    .copy-btn:hover {
+      background: rgba(0, 255, 159, 0.2);
+      border-color: rgba(0, 255, 159, 0.5);
+    }
+
+    .copy-btn.copied {
+      background: rgba(0, 255, 159, 0.25);
+      color: #fff;
+    }
+
+    .section { margin-bottom: 48px; }
+
+    .section h2 {
+      font-size: 20px;
+      font-weight: 600;
+      color: #FFFFFF;
+      margin-bottom: 16px;
+    }
+
+    .section p {
+      color: #9CA3AF;
+      margin-bottom: 12px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 16px;
+      margin-top: 20px;
+    }
+
+    .card {
+      background: #12121A;
+      border: 1px solid #1E1E2A;
+      border-radius: 8px;
+      padding: 20px;
+    }
+
+    .card .label {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: #00FF9F;
+      margin-bottom: 8px;
+    }
+
+    .card .value {
+      font-size: 24px;
+      font-weight: 700;
+      color: #FFFFFF;
+    }
+
+    .card .detail {
+      font-size: 13px;
+      color: #6B7280;
+      margin-top: 4px;
+    }
+
+    .terminal {
+      background: #12121A;
+      border: 1px solid #1E1E2A;
+      border-radius: 8px;
+      padding: 20px;
+      margin-top: 20px;
+      overflow-x: auto;
+    }
+
+    .terminal pre {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+      line-height: 1.7;
+      color: #9CA3AF;
+    }
+
+    .terminal .comment { color: #4B5563; }
+    .terminal .cmd { color: #00FF9F; }
+    .terminal .string { color: #FBBF24; }
+
+    .footer {
+      border-top: 1px solid #1E1E2A;
+      padding-top: 32px;
+      margin-top: 48px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+
+    .footer-text {
+      font-size: 13px;
+      color: #4B5563;
+    }
+
+    .footer a {
+      color: #00FF9F;
+      text-decoration: none;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+    }
+
+    .footer a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <span class="badge">x402 payments</span>
+    <h1>Postgres for <span class="accent">AI agents</span></h1>
+    <p class="subtitle">
+      Instant databases with auth, storage, and row-level security.
+      Agents pay per-project with crypto micropayments. No signups. No API keys.
+    </p>
+
+    <div class="copy-block">
+      <code>https://run402.com/llms.txt</code>
+      <button class="copy-btn" onclick="copyUrl(this)">Copy URL</button>
+    </div>
+
+    <div class="section">
+      <h2>What agents get</h2>
+      <p>One API call provisions a full Postgres project with REST API, user auth, file storage, and RLS&mdash;all gated by x402 micropayments.</p>
+      <div class="grid">
+        <div class="card">
+          <div class="label">Prototype</div>
+          <div class="value">$0.10</div>
+          <div class="detail">7 days &middot; 250 MB &middot; 500K calls</div>
+        </div>
+        <div class="card">
+          <div class="label">Hobby</div>
+          <div class="value">$5</div>
+          <div class="detail">30 days &middot; 1 GB &middot; 5M calls</div>
+        </div>
+        <div class="card">
+          <div class="label">Team</div>
+          <div class="value">$20</div>
+          <div class="detail">30 days &middot; 10 GB &middot; 50M calls</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>How it works</h2>
+      <div class="terminal">
+        <pre><span class="comment"># 1. Pay and provision (one call)</span>
+<span class="cmd">curl -X POST</span> https://api.run402.com/v1/projects \
+  -H <span class="string">"X-402-Payment: &lt;payment&gt;"</span>
+
+<span class="comment"># 2. Create tables</span>
+<span class="cmd">curl -X POST</span> https://api.run402.com/admin/v1/projects/$ID/sql \
+  -H <span class="string">"Authorization: Bearer $SERVICE_KEY"</span> \
+  -d <span class="string">"CREATE TABLE todos (id serial primary key, task text);"</span>
+
+<span class="comment"># 3. Use the REST API</span>
+<span class="cmd">curl</span> https://api.run402.com/rest/v1/todos \
+  -H <span class="string">"apikey: $ANON_KEY"</span></pre>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>For agents</h2>
+      <p>
+        Paste <code style="color:#00FF9F; font-family:'JetBrains Mono',monospace; font-size:14px;">https://run402.com/llms.txt</code>
+        into your agent's context. It contains the full API reference, quickstart snippets, and scripts to ask your human for a spending allowance.
+      </p>
+    </div>
+
+    <div class="footer">
+      <span class="footer-text">Run402</span>
+      <span>
+        <a href="https://api.run402.com/health">API status</a>
+      </span>
+    </div>
+  </div>
+
+  <script>
+    function copyUrl(btn) {
+      navigator.clipboard.writeText('https://run402.com/llms.txt').then(function() {
+        btn.textContent = 'Copied';
+        btn.classList.add('copied');
+        setTimeout(function() {
+          btn.textContent = 'Copy URL';
+          btn.classList.remove('copied');
+        }, 2000);
+      });
+    }
+  </script>
+</body>
+</html>
