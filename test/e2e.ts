@@ -18,7 +18,9 @@
  *   14. SQL query rows — verify SELECT returns data via /sql endpoint
  *   15. SERIAL table — test sequence permissions (SERIAL/BIGSERIAL fix)
  *   16. apikey-only REST — verify apikey auto-forwards as Authorization
- *   17. Delete project — cleanup
+ *   17. RLS templates — public_read, public_read_write
+ *   18. GRANT blocked hint — actionable error messages
+ *   19. Delete project — cleanup
  *
  * Usage:
  *   BASE_URL=http://localhost:4022 npm run test:e2e
@@ -457,8 +459,131 @@ async function main() {
   const insertOnlyBody = await insertOnlyRes.json();
   assert(Array.isArray(insertOnlyBody) && insertOnlyBody[0]?.title === "apikey-only insert", "INSERT via apikey-only works");
 
-  // Step 17: Delete project
-  console.log("\n17) Delete project...");
+  // Step 17: RLS templates (public_read, public_read_write)
+  console.log("\n17) RLS templates...");
+
+  // Create tables for template testing
+  const templateSQL = `
+    CREATE TABLE announcements (
+      id SERIAL PRIMARY KEY,
+      title TEXT NOT NULL,
+      body TEXT,
+      created_at TIMESTAMPTZ DEFAULT now()
+    );
+    CREATE TABLE guestbook (
+      id SERIAL PRIMARY KEY,
+      name TEXT NOT NULL,
+      message TEXT,
+      created_at TIMESTAMPTZ DEFAULT now()
+    );
+  `;
+  const templateMigRes = await fetch(`${BASE_URL}/admin/v1/projects/${project_id}/sql`, {
+    method: "POST",
+    headers: { "Content-Type": "text/plain", Authorization: `Bearer ${service_key}` },
+    body: templateSQL,
+  });
+  assert(templateMigRes.ok, "Template test tables created");
+
+  // Apply public_read to announcements
+  const publicReadRes = await fetch(`${BASE_URL}/admin/v1/projects/${project_id}/rls`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${service_key}` },
+    body: JSON.stringify({
+      template: "public_read",
+      tables: [{ table: "announcements" }],
+    }),
+  });
+  const publicReadBody = await publicReadRes.json();
+  assert(publicReadRes.ok, "public_read RLS applied");
+  assert(publicReadBody.template === "public_read", "Response includes template name");
+
+  // Apply public_read_write to guestbook
+  const publicRWRes = await fetch(`${BASE_URL}/admin/v1/projects/${project_id}/rls`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${service_key}` },
+    body: JSON.stringify({
+      template: "public_read_write",
+      tables: [{ table: "guestbook" }],
+    }),
+  });
+  assert(publicRWRes.ok, "public_read_write RLS applied");
+
+  // Invalid template should fail
+  const badTemplateRes = await fetch(`${BASE_URL}/admin/v1/projects/${project_id}/rls`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${service_key}` },
+    body: JSON.stringify({ template: "nonexistent", tables: [{ table: "guestbook" }] }),
+  });
+  assert(badTemplateRes.status === 400, "Invalid template returns 400");
+
+  await sleep(500); // Wait for PostgREST reload
+
+  // Insert announcement as authenticated user
+  const announceInsertRes = await fetch(`${BASE_URL}/rest/v1/announcements`, {
+    method: "POST",
+    headers: restHeaders,
+    body: JSON.stringify({ title: "Hello World", body: "First announcement" }),
+  });
+  assert(announceInsertRes.ok, "Authenticated user can insert announcement (public_read)");
+
+  // Read announcement as anon (public_read allows SELECT for anyone)
+  const announceReadRes = await fetch(`${BASE_URL}/rest/v1/announcements`, {
+    headers: { apikey: anon_key },
+  });
+  const announceReadBody = await announceReadRes.json();
+  assert(announceReadRes.ok, "Anon can read announcements (public_read)");
+  assert(Array.isArray(announceReadBody) && announceReadBody.length === 1, "Anon sees 1 announcement");
+
+  // Anon INSERT to announcements should fail (public_read = read-only for anon)
+  const anonInsertRes = await fetch(`${BASE_URL}/rest/v1/announcements`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", apikey: anon_key, Prefer: "return=representation" },
+    body: JSON.stringify({ title: "Anon post" }),
+  });
+  assert(!anonInsertRes.ok, `Anon cannot insert to public_read table (status ${anonInsertRes.status})`);
+
+  // Insert guestbook entry as anon (public_read_write allows everything)
+  const guestInsertRes = await fetch(`${BASE_URL}/rest/v1/guestbook`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", apikey: anon_key, Prefer: "return=representation" },
+    body: JSON.stringify({ name: "Visitor", message: "Great site!" }),
+  });
+  const guestInsertBody = await guestInsertRes.json();
+  assert(guestInsertRes.ok, "Anon can insert to guestbook (public_read_write)");
+  assert(Array.isArray(guestInsertBody) && guestInsertBody[0]?.name === "Visitor", "Guestbook entry created");
+
+  // Read guestbook as anon
+  const guestReadRes = await fetch(`${BASE_URL}/rest/v1/guestbook`, {
+    headers: { apikey: anon_key },
+  });
+  const guestReadBody = await guestReadRes.json();
+  assert(guestReadRes.ok, "Anon can read guestbook (public_read_write)");
+  assert(Array.isArray(guestReadBody) && guestReadBody.length === 1, "Anon sees 1 guestbook entry");
+
+  // Step 18: GRANT blocked with helpful hint
+  console.log("\n18) GRANT blocked with hint...");
+  const grantRes = await fetch(`${BASE_URL}/admin/v1/projects/${project_id}/sql`, {
+    method: "POST",
+    headers: { "Content-Type": "text/plain", Authorization: `Bearer ${service_key}` },
+    body: "GRANT SELECT ON profiles TO anon;",
+  });
+  const grantBody = await grantRes.json();
+  assert(grantRes.status === 403, "GRANT still blocked");
+  assert(typeof grantBody.hint === "string", "GRANT error includes hint");
+  assert(grantBody.hint.includes("IDENTITY"), "Hint suggests IDENTITY over SERIAL");
+
+  const revokeRes = await fetch(`${BASE_URL}/admin/v1/projects/${project_id}/sql`, {
+    method: "POST",
+    headers: { "Content-Type": "text/plain", Authorization: `Bearer ${service_key}` },
+    body: "REVOKE SELECT ON profiles FROM anon;",
+  });
+  const revokeBody = await revokeRes.json();
+  assert(revokeRes.status === 403, "REVOKE still blocked");
+  assert(typeof revokeBody.hint === "string", "REVOKE error includes hint");
+  assert(revokeBody.hint.includes("RLS"), "Hint suggests using RLS endpoint");
+
+  // Step 19: Delete project
+  console.log("\n19) Delete project...");
   const deleteRes = await fetch(`${BASE_URL}/v1/projects/${project_id}`, {
     method: "DELETE",
     headers: { Authorization: `Bearer ${service_key}` },

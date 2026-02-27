@@ -9,23 +9,32 @@ const router = Router();
 router.use("/admin/v1", serviceKeyAuth);
 
 // SQL statement blocklist — defense-in-depth (real boundary is search_path + pre_request hook)
-const BLOCKED_PATTERNS = [
-  /\bCREATE\s+EXTENSION\b/i,
-  /\bCOPY\b.*\bPROGRAM\b/i,
-  /\bALTER\s+SYSTEM\b/i,
-  /\bSET\s+(search_path|role)\b/i,
-  /\bCREATE\s+SCHEMA\b/i,
-  /\bDROP\s+SCHEMA\b/i,
-  /\bGRANT\b/i,
-  /\bREVOKE\b/i,
-  /\bCREATE\s+ROLE\b/i,
-  /\bDROP\s+ROLE\b/i,
+const BLOCKED_PATTERNS: Array<{ pattern: RegExp; hint?: string }> = [
+  { pattern: /\bCREATE\s+EXTENSION\b/i },
+  { pattern: /\bCOPY\b.*\bPROGRAM\b/i },
+  { pattern: /\bALTER\s+SYSTEM\b/i },
+  { pattern: /\bSET\s+(search_path|role)\b/i },
+  { pattern: /\bCREATE\s+SCHEMA\b/i },
+  { pattern: /\bDROP\s+SCHEMA\b/i },
+  {
+    pattern: /\bGRANT\b/i,
+    hint: "Permissions are managed automatically. For SERIAL/BIGSERIAL columns, sequence permissions are pre-granted. Prefer BIGINT GENERATED ALWAYS AS IDENTITY over SERIAL for new tables.",
+  },
+  {
+    pattern: /\bREVOKE\b/i,
+    hint: "Permissions are managed automatically. Use RLS policies (POST /admin/v1/projects/:id/rls) to control row-level access.",
+  },
+  { pattern: /\bCREATE\s+ROLE\b/i },
+  { pattern: /\bDROP\s+ROLE\b/i },
 ];
 
-function checkSqlSafety(sql: string): string | null {
-  for (const pattern of BLOCKED_PATTERNS) {
+function checkSqlSafety(sql: string): { error: string; hint?: string } | null {
+  for (const { pattern, hint } of BLOCKED_PATTERNS) {
     if (pattern.test(sql)) {
-      return `Blocked SQL statement matching pattern: ${pattern.source}`;
+      return {
+        error: `Blocked SQL pattern: ${pattern.source}`,
+        hint,
+      };
     }
   }
   return null;
@@ -48,7 +57,7 @@ router.post("/admin/v1/projects/:id/sql", async (req: Request, res: Response) =>
   // Check SQL safety
   const blocked = checkSqlSafety(sql);
   if (blocked) {
-    res.status(403).json({ error: blocked });
+    res.status(403).json(blocked);
     return;
   }
 
@@ -89,9 +98,22 @@ router.post("/admin/v1/projects/:id/rls", async (req: Request, res: Response) =>
   }
 
   const { template, tables } = req.body;
-  if (template !== "user_owns_rows" || !Array.isArray(tables)) {
-    res.status(400).json({ error: "Requires template: 'user_owns_rows' and tables array" });
+  const VALID_TEMPLATES = ["user_owns_rows", "public_read", "public_read_write"];
+  if (!VALID_TEMPLATES.includes(template) || !Array.isArray(tables)) {
+    res.status(400).json({
+      error: `Requires template (${VALID_TEMPLATES.join(", ")}) and tables array`,
+    });
     return;
+  }
+
+  // user_owns_rows requires owner_column on every table
+  if (template === "user_owns_rows") {
+    for (const t of tables) {
+      if (!t.owner_column) {
+        res.status(400).json({ error: `owner_column required for table '${t.table}' with user_owns_rows template` });
+        return;
+      }
+    }
   }
 
   try {
@@ -102,27 +124,65 @@ router.post("/admin/v1/projects/:id/rls", async (req: Request, res: Response) =>
 
       for (const table of tables) {
         const tableName = table.table;
-        const ownerColumn = table.owner_column;
 
         await client.query(`ALTER TABLE ${tableName} ENABLE ROW LEVEL SECURITY`);
         await client.query(`ALTER TABLE ${tableName} FORCE ROW LEVEL SECURITY`);
 
-        await client.query(`
-          CREATE POLICY "Users can view own rows" ON ${tableName}
-            FOR SELECT USING (${ownerColumn} = auth.uid())
-        `);
-        await client.query(`
-          CREATE POLICY "Users can insert own rows" ON ${tableName}
-            FOR INSERT WITH CHECK (${ownerColumn} = auth.uid())
-        `);
-        await client.query(`
-          CREATE POLICY "Users can update own rows" ON ${tableName}
-            FOR UPDATE USING (${ownerColumn} = auth.uid())
-        `);
-        await client.query(`
-          CREATE POLICY "Users can delete own rows" ON ${tableName}
-            FOR DELETE USING (${ownerColumn} = auth.uid())
-        `);
+        if (template === "user_owns_rows") {
+          const ownerColumn = table.owner_column;
+          await client.query(`
+            CREATE POLICY "Users can view own rows" ON ${tableName}
+              FOR SELECT USING (${ownerColumn} = auth.uid())
+          `);
+          await client.query(`
+            CREATE POLICY "Users can insert own rows" ON ${tableName}
+              FOR INSERT WITH CHECK (${ownerColumn} = auth.uid())
+          `);
+          await client.query(`
+            CREATE POLICY "Users can update own rows" ON ${tableName}
+              FOR UPDATE USING (${ownerColumn} = auth.uid())
+          `);
+          await client.query(`
+            CREATE POLICY "Users can delete own rows" ON ${tableName}
+              FOR DELETE USING (${ownerColumn} = auth.uid())
+          `);
+        } else if (template === "public_read") {
+          // Anyone can read, only authenticated users can write their own rows
+          await client.query(`
+            CREATE POLICY "Anyone can read" ON ${tableName}
+              FOR SELECT USING (true)
+          `);
+          await client.query(`
+            CREATE POLICY "Authenticated users can insert" ON ${tableName}
+              FOR INSERT WITH CHECK (auth.role() = 'authenticated')
+          `);
+          await client.query(`
+            CREATE POLICY "Authenticated users can update" ON ${tableName}
+              FOR UPDATE USING (auth.role() = 'authenticated')
+          `);
+          await client.query(`
+            CREATE POLICY "Authenticated users can delete" ON ${tableName}
+              FOR DELETE USING (auth.role() = 'authenticated')
+          `);
+        } else if (template === "public_read_write") {
+          // Anyone (including anon) can read and write
+          await client.query(`
+            CREATE POLICY "Anyone can read" ON ${tableName}
+              FOR SELECT USING (true)
+          `);
+          await client.query(`
+            CREATE POLICY "Anyone can insert" ON ${tableName}
+              FOR INSERT WITH CHECK (true)
+          `);
+          await client.query(`
+            CREATE POLICY "Anyone can update" ON ${tableName}
+              FOR UPDATE USING (true)
+          `);
+          await client.query(`
+            CREATE POLICY "Anyone can delete" ON ${tableName}
+              FOR DELETE USING (true)
+          `);
+        }
       }
 
       await client.query("COMMIT");
@@ -133,8 +193,8 @@ router.post("/admin/v1/projects/:id/rls", async (req: Request, res: Response) =>
       client.release();
     }
 
-    console.log(`  RLS applied to ${project.id}: ${tables.map((t: any) => t.table).join(", ")}`);
-    res.json({ status: "ok", tables: tables.map((t: any) => t.table) });
+    console.log(`  RLS (${template}) applied to ${project.id}: ${tables.map((t: any) => t.table).join(", ")}`);
+    res.json({ status: "ok", template, tables: tables.map((t: any) => t.table) });
   } catch (err: any) {
     console.error("RLS error:", err.message);
     res.status(400).json({ error: err.message });
