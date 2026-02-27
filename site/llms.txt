@@ -342,6 +342,94 @@ curl https://api.run402.com/admin/v1/projects/$PROJECT_ID/usage \
 
 ---
 
+## MCP Server (Recommended for AI Agents)
+
+If you're running inside Claude Desktop, Cursor, Cline, Claude Code, or any MCP-compatible client, use the `@run402/mcp` server instead of calling the HTTP API directly. It handles credential storage, 402 payment negotiation, and response formatting automatically.
+
+### Install
+
+```bash
+npx @run402/mcp
+```
+
+### Client Configuration
+
+**Claude Desktop** — add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
+```json
+{
+  "mcpServers": {
+    "run402": {
+      "command": "npx",
+      "args": ["-y", "@run402/mcp"]
+    }
+  }
+}
+```
+
+**Cursor** — add to `.cursor/mcp.json`:
+```json
+{
+  "mcpServers": {
+    "run402": {
+      "command": "npx",
+      "args": ["-y", "@run402/mcp"]
+    }
+  }
+}
+```
+
+**Claude Code**:
+```bash
+claude mcp add run402 -- npx -y @run402/mcp
+```
+
+### MCP Tools
+
+| Tool | Description |
+|------|-------------|
+| `provision_postgres_project` | Provision a new Postgres database. Handles x402 payment negotiation. Saves credentials locally. |
+| `run_sql` | Execute SQL (DDL or queries). Returns results as a markdown table. |
+| `rest_query` | Query/mutate data via PostgREST. Supports GET/POST/PATCH/DELETE with query params. |
+| `upload_file` | Upload text content to project storage. |
+| `renew_project` | Renew a project's lease. Handles x402 payment negotiation. |
+
+### MCP Flow
+
+```
+1. provision_postgres_project(tier: "prototype")
+   → Returns payment details (402) or project credentials on success
+   → Credentials saved to ~/.config/run402/projects.json
+
+2. run_sql(project_id: "prj_...", sql: "CREATE TABLE ...")
+   → Uses stored service_key automatically
+
+3. rest_query(project_id: "prj_...", table: "todos", method: "POST", body: {...})
+   → Uses stored anon_key (or service_key with key_type: "service")
+
+4. upload_file(project_id: "prj_...", bucket: "assets", path: "data.csv", content: "...")
+   → Uses stored anon_key automatically
+
+5. renew_project(project_id: "prj_...")
+   → Returns payment details (402) or updates stored expiry on success
+```
+
+### Key Storage
+
+Credentials are saved to `~/.config/run402/projects.json` (chmod 0600). Each project stores `anon_key`, `service_key`, `tier`, and `expires_at`. Tools automatically look up the right key for each request — you never need to pass keys manually.
+
+### Payment Handling
+
+When provisioning or renewing requires payment, MCP tools return payment details as informational text (not errors). This lets the LLM reason about the payment and guide the user. Once payment is completed, retry the same tool call.
+
+### Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `RUN402_API_BASE` | `https://api.run402.com` | API base URL |
+| `RUN402_CONFIG_DIR` | `~/.config/run402` | Config directory for key storage |
+
+---
+
 ## Wallet Setup (OpenClaw)
 
 To pay Run402, you need a crypto wallet with USDC on Base. If you're running inside OpenClaw and don't have a wallet yet, here's how to get one.
