@@ -57,18 +57,23 @@ router.post("/admin/v1/projects/:id/sql", async (req: Request, res: Response) =>
     try {
       await client.query("BEGIN");
       await client.query(`SET search_path TO ${project.schemaSlot}`);
-      await client.query(sql);
+      const result = await client.query(sql);
       await client.query("NOTIFY pgrst, 'reload schema'");
       await client.query("COMMIT");
+
+      console.log(`  Migration applied to ${project.id} (${project.schemaSlot})`);
+      res.json({
+        status: "ok",
+        schema: project.schemaSlot,
+        rows: result.rows,
+        rowCount: result.rowCount,
+      });
     } catch (err) {
       await client.query("ROLLBACK");
       throw err;
     } finally {
       client.release();
     }
-
-    console.log(`  Migration applied to ${project.id} (${project.schemaSlot})`);
-    res.json({ status: "ok", schema: project.schemaSlot });
   } catch (err: any) {
     console.error("Migration error:", err.message);
     res.status(400).json({ error: err.message });

@@ -25,6 +25,8 @@ BEGIN
     EXECUTE format('ALTER DEFAULT PRIVILEGES IN SCHEMA p%s GRANT SELECT ON TABLES TO anon', lpad(i::text, 4, '0'));
     EXECUTE format('ALTER DEFAULT PRIVILEGES IN SCHEMA p%s GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO authenticated', lpad(i::text, 4, '0'));
     EXECUTE format('ALTER DEFAULT PRIVILEGES IN SCHEMA p%s GRANT ALL ON TABLES TO service_role', lpad(i::text, 4, '0'));
+    -- Sequences (needed for SERIAL/BIGSERIAL columns)
+    EXECUTE format('ALTER DEFAULT PRIVILEGES IN SCHEMA p%s GRANT USAGE, SELECT ON SEQUENCES TO anon, authenticated, service_role', lpad(i::text, 4, '0'));
   END LOOP;
 END
 $$;

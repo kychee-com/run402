@@ -185,6 +185,30 @@ async function initDatabase() {
   }
 }
 
+/**
+ * Apply idempotent schema migrations for existing deployments.
+ */
+async function applyMigrations() {
+  // v1.1: Grant default sequence privileges (fixes SERIAL/BIGSERIAL permission errors)
+  const result = await pool.query(
+    `SELECT schema_name FROM information_schema.schemata WHERE schema_name ~ '^p\\d{4}$'`,
+  );
+  if (result.rows.length > 0) {
+    const client = await pool.connect();
+    try {
+      for (const row of result.rows) {
+        const slot = row.schema_name;
+        await client.query(
+          `ALTER DEFAULT PRIVILEGES IN SCHEMA ${slot} GRANT USAGE, SELECT ON SEQUENCES TO anon, authenticated, service_role`,
+        );
+      }
+      console.log(`  Applied sequence grants to ${result.rows.length} schema slots`);
+    } finally {
+      client.release();
+    }
+  }
+}
+
 async function start() {
   // Verify Postgres connection
   try {
@@ -197,6 +221,9 @@ async function start() {
 
   // Auto-initialize database on first run
   await initDatabase();
+
+  // Apply pending migrations (idempotent)
+  await applyMigrations();
 
   // Initialize idempotency table
   await initIdempotencyTable();

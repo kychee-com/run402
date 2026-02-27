@@ -14,7 +14,11 @@
  *   10. Check usage — API calls + storage
  *   11. Schema introspection — verify tables/columns
  *   12. Refresh token — rotate tokens
- *   13. Delete project — cleanup
+ *   13. SQL blocklist — verify blocked patterns
+ *   14. SQL query rows — verify SELECT returns data via /sql endpoint
+ *   15. SERIAL table — test sequence permissions (SERIAL/BIGSERIAL fix)
+ *   16. apikey-only REST — verify apikey auto-forwards as Authorization
+ *   17. Delete project — cleanup
  *
  * Usage:
  *   BASE_URL=http://localhost:4022 npm run test:e2e
@@ -321,9 +325,144 @@ async function main() {
   });
   assert(blockedRes.status === 403, "Blocked SQL returns 403");
 
-  // Step 14: Delete project
-  console.log("\n14) Delete project...");
-  const deleteRes = await fetch(`${BASE_URL}/v1/projects/${project_id}`, { method: "DELETE" });
+  // Step 14: SQL query returns rows
+  console.log("\n14) SQL query returns rows...");
+
+  // DDL should return empty rows
+  const ddlRes = await fetch(`${BASE_URL}/admin/v1/projects/${project_id}/sql`, {
+    method: "POST",
+    headers: { "Content-Type": "text/plain", Authorization: `Bearer ${service_key}` },
+    body: "CREATE TABLE IF NOT EXISTS profiles (id UUID PRIMARY KEY);",
+  });
+  const ddlBody = await ddlRes.json();
+  assert(ddlRes.ok, "DDL via /sql succeeds");
+  assert(Array.isArray(ddlBody.rows), "DDL response includes rows array");
+  assert(ddlBody.rows.length === 0, "DDL returns empty rows");
+
+  // SELECT should return actual data
+  const selectRes = await fetch(`${BASE_URL}/admin/v1/projects/${project_id}/sql`, {
+    method: "POST",
+    headers: { "Content-Type": "text/plain", Authorization: `Bearer ${service_key}` },
+    body: "SELECT id, email FROM profiles ORDER BY created_at;",
+  });
+  const selectBody = await selectRes.json();
+  assert(selectRes.ok, "SELECT via /sql succeeds");
+  assert(Array.isArray(selectBody.rows), "SELECT response includes rows array");
+  assert(selectBody.rows.length === 1, "SELECT returns 1 profile row");
+  assert(selectBody.rows[0].email === "athlete@example.com", "SELECT returns correct email");
+  assert(typeof selectBody.rowCount === "number", "Response includes rowCount");
+
+  // COUNT query
+  const countRes = await fetch(`${BASE_URL}/admin/v1/projects/${project_id}/sql`, {
+    method: "POST",
+    headers: { "Content-Type": "text/plain", Authorization: `Bearer ${service_key}` },
+    body: "SELECT count(*) AS total FROM exercises;",
+  });
+  const countBody = await countRes.json();
+  assert(countRes.ok, "COUNT via /sql succeeds");
+  assert(countBody.rows[0].total === "3", "COUNT returns 3 exercises");
+
+  // Step 15: SERIAL/BIGSERIAL sequence permissions
+  console.log("\n15) SERIAL table (sequence permissions)...");
+
+  // Create a table using SERIAL (auto-incrementing integer)
+  const serialSQL = `
+    CREATE TABLE tasks (
+      id SERIAL PRIMARY KEY,
+      user_id UUID NOT NULL REFERENCES profiles(id),
+      title TEXT NOT NULL,
+      done BOOLEAN DEFAULT false
+    );
+  `;
+  const serialMigRes = await fetch(`${BASE_URL}/admin/v1/projects/${project_id}/sql`, {
+    method: "POST",
+    headers: { "Content-Type": "text/plain", Authorization: `Bearer ${service_key}` },
+    body: serialSQL,
+  });
+  assert(serialMigRes.ok, "SERIAL table migration succeeds");
+
+  // Apply RLS to the new table
+  const serialRlsRes = await fetch(`${BASE_URL}/admin/v1/projects/${project_id}/rls`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${service_key}` },
+    body: JSON.stringify({
+      template: "user_owns_rows",
+      tables: [{ table: "tasks", owner_column: "user_id" }],
+    }),
+  });
+  assert(serialRlsRes.ok, "RLS applied to SERIAL table");
+
+  await sleep(500); // Wait for PostgREST reload
+
+  // Insert a row — should auto-generate id from sequence
+  const taskInsertRes = await fetch(`${BASE_URL}/rest/v1/tasks`, {
+    method: "POST",
+    headers: restHeaders,
+    body: JSON.stringify({ user_id: userId, title: "Test SERIAL insert" }),
+  });
+  const taskInsertBody = await taskInsertRes.json();
+  assert(taskInsertRes.ok, `SERIAL insert succeeds (status ${taskInsertRes.status})`);
+  assert(Array.isArray(taskInsertBody) && taskInsertBody[0]?.id === 1, "Auto-generated id = 1");
+
+  // Insert another row — id should increment
+  const taskInsert2Res = await fetch(`${BASE_URL}/rest/v1/tasks`, {
+    method: "POST",
+    headers: restHeaders,
+    body: JSON.stringify({ user_id: userId, title: "Second task" }),
+  });
+  const taskInsert2Body = await taskInsert2Res.json();
+  assert(taskInsert2Res.ok, "Second SERIAL insert succeeds");
+  assert(Array.isArray(taskInsert2Body) && taskInsert2Body[0]?.id === 2, "Auto-generated id = 2");
+
+  // Query to verify both rows
+  const tasksQueryRes = await fetch(`${BASE_URL}/rest/v1/tasks?order=id`, {
+    headers: { apikey: anon_key, Authorization: `Bearer ${accessToken}` },
+  });
+  const tasksQueryBody = await tasksQueryRes.json();
+  assert(tasksQueryRes.ok, "SERIAL table query succeeds");
+  assert(Array.isArray(tasksQueryBody) && tasksQueryBody.length === 2, "2 tasks returned");
+
+  // Step 16: apikey-only REST access (no Authorization header needed)
+  console.log("\n16) apikey-only REST access...");
+
+  // 16a: GET with only apikey (anon_key) — should return 200, not permission error
+  const anonOnlyRes = await fetch(`${BASE_URL}/rest/v1/profiles?select=id`, {
+    headers: { apikey: anon_key },
+  });
+  assert(anonOnlyRes.ok, `GET with only apikey returns 200 (was ${anonOnlyRes.status})`);
+  // anon can SELECT but RLS filters to auth.uid()=NULL → empty array
+  const anonOnlyBody = await anonOnlyRes.json();
+  assert(Array.isArray(anonOnlyBody), "anon-only GET returns array (empty due to RLS)");
+
+  // 16b: GET with access_token as apikey (no Authorization header) — should authenticate
+  const tokenOnlyRes = await fetch(`${BASE_URL}/rest/v1/profiles?select=id,email`, {
+    headers: { apikey: accessToken },
+  });
+  assert(tokenOnlyRes.ok, `GET with access_token as apikey returns 200 (was ${tokenOnlyRes.status})`);
+  const tokenOnlyBody = await tokenOnlyRes.json();
+  assert(Array.isArray(tokenOnlyBody) && tokenOnlyBody.length === 1, "access_token apikey returns user's row");
+  assert(tokenOnlyBody[0]?.email === "athlete@example.com", "Correct user returned via apikey-only");
+
+  // 16c: POST with access_token as apikey (no Authorization header) — should allow INSERT
+  const insertOnlyRes = await fetch(`${BASE_URL}/rest/v1/tasks`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      apikey: accessToken,
+      Prefer: "return=representation",
+    },
+    body: JSON.stringify({ user_id: userId, title: "apikey-only insert" }),
+  });
+  assert(insertOnlyRes.ok, `POST with access_token as apikey returns 200 (was ${insertOnlyRes.status})`);
+  const insertOnlyBody = await insertOnlyRes.json();
+  assert(Array.isArray(insertOnlyBody) && insertOnlyBody[0]?.title === "apikey-only insert", "INSERT via apikey-only works");
+
+  // Step 17: Delete project
+  console.log("\n17) Delete project...");
+  const deleteRes = await fetch(`${BASE_URL}/v1/projects/${project_id}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${service_key}` },
+  });
   const deleteBody = await deleteRes.json();
   assert(deleteRes.ok, "Delete succeeds");
   assert(deleteBody.status === "archived", "Project archived");

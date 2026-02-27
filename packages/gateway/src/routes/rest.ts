@@ -20,9 +20,13 @@ router.all("/rest/v1/*", apikeyAuth, meteringMiddleware, async (req: Request, re
     "Content-Profile": project.schemaSlot,
   };
 
-  // Forward Authorization header (user JWT for RLS)
+  // Forward Authorization header (user JWT for RLS).
+  // If no Authorization header, auto-forward the apikey token so PostgREST
+  // receives a valid JWT (avoids requiring both apikey + Authorization headers).
   if (req.headers.authorization) {
     headers["Authorization"] = req.headers.authorization as string;
+  } else if (req.headers["apikey"]) {
+    headers["Authorization"] = `Bearer ${req.headers["apikey"]}`;
   }
 
   // Forward content type

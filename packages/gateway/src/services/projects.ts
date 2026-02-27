@@ -135,6 +135,10 @@ export async function archiveProject(projectId: string): Promise<boolean> {
     await client.query(
       `ALTER DEFAULT PRIVILEGES IN SCHEMA ${project.schemaSlot} GRANT ALL ON TABLES TO service_role`,
     );
+    // Sequences (needed for SERIAL/BIGSERIAL columns)
+    await client.query(
+      `ALTER DEFAULT PRIVILEGES IN SCHEMA ${project.schemaSlot} GRANT USAGE, SELECT ON SEQUENCES TO anon, authenticated, service_role`,
+    );
 
     // Delete project users
     await client.query(`DELETE FROM internal.users WHERE project_id = $1`, [projectId]);
