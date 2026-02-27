@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Run402 - Postgres for AI Agents</title>
-  <meta name="description" content="Instant Postgres databases for AI agents. Pay with x402 crypto micropayments. No signups, no API keys, no humans required.">
+  <meta name="description" content="Instant Postgres databases for AI agents. Pay with x402 crypto micropayments. No signups, no dashboards. Project keys generated on provision.">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -231,7 +231,8 @@
     <h1>Postgres for <span class="accent">AI agents</span></h1>
     <p class="subtitle">
       Instant databases with auth, storage, and row-level security.
-      Agents pay per-project with crypto micropayments. No signups. No API keys.
+      Agents pay per-project with crypto micropayments. No signups. No dashboards.
+      Project-scoped keys are generated after payment.
     </p>
 
     <div class="copy-block">
@@ -276,6 +277,31 @@
 <span class="comment"># 3. Use the REST API</span>
 <span class="cmd">curl</span> https://api.run402.com/rest/v1/todos \
   -H <span class="string">"apikey: $ANON_KEY"</span></pre>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>Durability &amp; ops</h2>
+      <div class="terminal">
+        <pre><span class="cmd">Engine</span>       AWS Aurora Serverless v2 (Postgres 16), multi-AZ
+<span class="cmd">Encryption</span>  At rest (Aurora + S3) and in transit (TLS)
+<span class="cmd">Backups</span>     Automated, 7-day retention
+<span class="cmd">Isolation</span>   Each project gets its own Postgres schema
+<span class="cmd">Status</span>      Beta &middot; best-effort &middot; <a href="https://api.run402.com/health" style="color:#00FF9F">api.run402.com/health</a></pre>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>Project lifecycle</h2>
+      <p>Leases are prepaid with hard caps. No overage charges, no surprise bills.</p>
+      <div class="terminal">
+        <pre><span class="comment"># After lease expires:</span>
+<span class="cmd">Day 0</span>    Lease expires &mdash; project becomes <span class="string">read-only</span>
+<span class="cmd">Day 7</span>    Grace period ends &mdash; project is <span class="string">archived</span>
+<span class="cmd">Day 37</span>   Permanent <span class="string">deletion</span>
+
+<span class="comment"># Renew anytime before deletion:</span>
+<span class="cmd">POST</span> /v1/projects/:id/renew  (x402 payment)</pre>
       </div>
     </div>
 

@@ -6,9 +6,37 @@
 
 ## TL;DR
 
-Run402 gives you a full Postgres database with REST API, user auth, file storage, and row-level security. You pay with a single x402 micropayment -- no signups, no API keys, no human approval needed.
+Run402 gives you a full Postgres database with REST API, user auth, file storage, and row-level security. You pay with a single x402 micropayment -- no signups, no dashboards, no human approval needed.
 
 One HTTP call. One payment. You get back `anon_key`, `service_key`, and a project ID. Start creating tables immediately.
+
+Only provisioning and renewal require x402 payment. All subsequent REST, auth, and storage calls use the returned project keys -- no payment headers needed.
+
+---
+
+## Before You Integrate (Read This First)
+
+**Production readiness**: Beta. Best-effort availability. No formal SLA yet.
+
+**Infrastructure**: AWS Aurora Serverless v2 (Postgres 16), multi-AZ. ECS Fargate behind ALB. S3-backed file storage.
+
+**Durability & backups**: All data encrypted at rest (Aurora + S3) and in transit (TLS). Automated backups with 7-day retention.
+
+**Billing model**: Prepaid per lease. Hard-capped API calls and storage per tier. No overage charges. When limits are hit, the API returns 402 with usage details and a renew URL.
+
+**Project lifecycle**:
+- Lease active: full read/write access
+- Lease expires (day 0): project becomes **read-only** for 7 days
+- Grace period ends (day 7): project is **archived** (no access)
+- Permanent deletion at **day 37** after expiry
+- Renew anytime before deletion via `POST /v1/projects/:id/renew`
+
+**Keys**: You receive two project-scoped JWTs after provisioning:
+- `anon_key` -- public client key for REST, auth, and storage endpoints. Safe to embed in client apps.
+- `service_key` -- admin key for SQL migrations, RLS setup, usage checks, and schema inspection. Keep server-side.
+- Keys expire with the lease. Key rotation is not yet supported.
+
+**Isolation**: Each project runs in its own Postgres schema. Cross-schema access is blocked at the database level. A `db-pre-request` hook validates JWT claims match the project.
 
 ---
 
@@ -17,7 +45,7 @@ One HTTP call. One payment. You get back `anon_key`, `service_key`, and a projec
 Without Run402, persisting data means asking your human to sign up for a database service, configure credentials, and paste them back to you. That flow takes minutes of human time and breaks your autonomy.
 
 With Run402:
-- **Zero human involvement** -- You pay and provision in one API call
+- **No signup, no dashboard** -- You pay and provision in one API call. Project-scoped keys (`anon_key`, `service_key`) are generated automatically
 - **Instant Postgres** -- Full SQL database, not a toy key-value store
 - **REST API included** -- PostgREST auto-generates CRUD endpoints for every table you create
 - **Auth built in** -- User signup/login, JWT tokens, refresh flow
@@ -99,6 +127,27 @@ All REST endpoints support PostgREST query syntax: `?select=`, `?column=eq.value
 Payments are x402 micropayments on **Base** (EIP-155 chain 8453). Testnet available on Base Sepolia (chain 84532).
 
 Rate limit: 100 requests/second per project.
+
+---
+
+## Idempotency
+
+All paid endpoints support the `Idempotency-Key` header to prevent double-charging on retries.
+
+```bash
+curl -X POST https://api.run402.com/v1/projects \
+  -H "Idempotency-Key: my-unique-key-12345" \
+  -H "X-402-Payment: <payment>"
+```
+
+**Guarantee**: Same `Idempotency-Key` + same method + same path = same response, no duplicate payment. Keys are valid for 24 hours.
+
+Supported on:
+- `POST /v1/projects`
+- `POST /v1/projects/create/:tier`
+- `POST /v1/projects/:id/renew`
+
+**Recommendation**: Always include an `Idempotency-Key` when provisioning or renewing. Use a UUID or deterministic hash of your intent.
 
 ---
 
@@ -346,6 +395,59 @@ Yes. The `/admin/v1/projects/:id/usage` endpoint shows API call counts, storage 
 - **Budget enforcement**: API calls and storage are metered against tier limits. Exceeding returns `402` with usage details and a renew URL.
 - **Lease enforcement**: Expired projects cannot accept writes. Grace period: 7 days read-only, then archived.
 - **Auth**: JWTs expire in 1 hour. Refresh tokens are one-time use and expire in 30 days.
+
+---
+
+## Error Responses
+
+### 402 — Payment Required (provisioning)
+
+When you call a paid endpoint without a valid x402 payment header:
+
+```json
+{
+  "error": "X-402-Payment header required",
+  "accepts": [
+    { "scheme": "exact", "network": "eip155:8453", "price": "$0.10", "payTo": "0x..." }
+  ]
+}
+```
+
+### 402 — Quota Exceeded (budget enforcement)
+
+When your project hits its tier's API call or storage limit:
+
+```json
+{
+  "error": "API call budget exceeded",
+  "usage": { "api_calls": 500000, "limit": 500000, "storage_bytes": 1048576, "storage_limit": 262144000 },
+  "renew_url": "/v1/projects/prj_xxx/renew"
+}
+```
+
+### 429 — Rate Limited
+
+```json
+{
+  "error": "Rate limit exceeded",
+  "retry_after": 1
+}
+```
+
+The `retry_after` value is in seconds.
+
+### 403 — Lease Expired
+
+```json
+{
+  "error": "Project lease expired",
+  "expires_at": "2026-03-06T14:22:00.000Z",
+  "status": "read_only",
+  "renew_url": "/v1/projects/prj_xxx/renew"
+}
+```
+
+During the 7-day grace period, reads succeed but writes return 403. After grace period, all requests return 403.
 
 ---
 

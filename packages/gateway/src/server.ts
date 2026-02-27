@@ -18,6 +18,7 @@ import { startMeteringFlush, stopMeteringFlush, flushCounters } from "./middlewa
 import { syncProjects } from "./services/projects.js";
 import { initSlots } from "./services/slots.js";
 import { startLeaseChecker, stopLeaseChecker } from "./services/leases.js";
+import { initIdempotencyTable, idempotencyMiddleware } from "./middleware/idempotency.js";
 import projectRoutes from "./routes/projects.js";
 import authRoutes from "./routes/auth.js";
 import adminRoutes from "./routes/admin.js";
@@ -30,7 +31,7 @@ const app = express();
 app.use((_req, res, next) => {
   res.set("Access-Control-Allow-Origin", "*");
   res.set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS");
-  res.set("Access-Control-Allow-Headers", "Content-Type, Authorization, apikey, Prefer, Accept-Profile, Content-Profile");
+  res.set("Access-Control-Allow-Headers", "Content-Type, Authorization, apikey, Prefer, Accept-Profile, Content-Profile, Idempotency-Key");
   if (_req.method === "OPTIONS") {
     res.status(204).send();
     return;
@@ -100,6 +101,11 @@ app.use((req: Request, res: Response, next: NextFunction) => {
     express.json({ limit: "1mb" })(req, res, next);
   }
 });
+
+// --- Idempotency middleware (for paid endpoints, before x402) ---
+app.post("/v1/projects", idempotencyMiddleware);
+app.post("/v1/projects/create/:tier", idempotencyMiddleware);
+app.post("/v1/projects/:id/renew", idempotencyMiddleware);
 
 // --- x402 payment middleware ---
 if (SELLER_ADDRESS) {
@@ -191,6 +197,9 @@ async function start() {
 
   // Auto-initialize database on first run
   await initDatabase();
+
+  // Initialize idempotency table
+  await initIdempotencyTable();
 
   // Initialize slot allocator
   await initSlots();

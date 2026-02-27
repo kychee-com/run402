@@ -17,8 +17,8 @@ export const S3_REGION = process.env.S3_REGION || "us-east-1";
 export const RATE_LIMIT_PER_SEC = parseInt(process.env.RATE_LIMIT_PER_SEC || "100", 10);
 
 // Lease grace periods (ms)
-export const LEASE_GRACE_PERIOD = 7 * 24 * 60 * 60 * 1000; // 7 days
-export const LEASE_DELETE_PERIOD = 30 * 24 * 60 * 60 * 1000; // 30 days
+export const LEASE_GRACE_PERIOD = 7 * 24 * 60 * 60 * 1000; // 7 days read-only after expiry
+export const LEASE_DELETE_PERIOD = 37 * 24 * 60 * 60 * 1000; // 37 days after expiry (7d grace + 30d archive)
 
 // Metering flush interval (ms)
 export const METERING_FLUSH_INTERVAL = 60_000; // 60s
