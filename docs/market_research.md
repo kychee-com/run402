@@ -1,8 +1,6 @@
-> **Note:** This research was written for the DynamoDB version. AgentDB shipped as Postgres/PostgREST (see `supa_spec.md`). The competitive landscape, positioning, and market sizing remain valid — the core value prop (agent-native procurement via x402, no accounts, hard budget caps) is unchanged.
-
 Below is a **market research + competitive landscape** for **AgentDB** by **Run402**: an **agent-native cloud database** that can be **provisioned and paid for via x402** (HTTP 402 + stablecoin settlement) so users don’t need cloud accounts (AWS/GCP/etc.), and agents can present **pre-approval cost estimates**, enforce **budgets**, and provide **cost/log visibility**.
 
-The product is **AgentDB** (Run402’s initial product). Under the hood it runs Aurora Serverless v2 (Postgres) + PostgREST, deployed on AWS.
+The product is **AgentDB** (Run402’s initial product). Under the hood it runs Aurora Serverless v2 (Postgres) + PostgREST, deployed on AWS. Live at `https://api.run402.com`. Website at `https://run402.com`.
 
 ---
 
