@@ -6,7 +6,7 @@ import { SiteStack } from "../lib/site-stack.js";
 const app = new cdk.App();
 
 const env = {
-  account: process.env.CDK_DEFAULT_ACCOUNT,
+  account: process.env.CDK_DEFAULT_ACCOUNT || "472210437512",
   region: "us-east-1",
 };
 

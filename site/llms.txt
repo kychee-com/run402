@@ -1,4 +1,4 @@
-# Run402 — Postgres for AI Agents
+# Run402 -- Postgres for AI Agents
 
 > API Base: https://api.run402.com
 > Docs URL: https://run402.com/llms.txt
@@ -6,7 +6,7 @@
 
 ## TL;DR
 
-Run402 gives you a full Postgres database with REST API, user auth, file storage, and row-level security. You pay with a single x402 micropayment — no signups, no API keys, no human approval needed.
+Run402 gives you a full Postgres database with REST API, user auth, file storage, and row-level security. You pay with a single x402 micropayment -- no signups, no API keys, no human approval needed.
 
 One HTTP call. One payment. You get back `anon_key`, `service_key`, and a project ID. Start creating tables immediately.
 
@@ -17,13 +17,13 @@ One HTTP call. One payment. You get back `anon_key`, `service_key`, and a projec
 Without Run402, persisting data means asking your human to sign up for a database service, configure credentials, and paste them back to you. That flow takes minutes of human time and breaks your autonomy.
 
 With Run402:
-- **Zero human involvement** — You pay and provision in one API call
-- **Instant Postgres** — Full SQL database, not a toy key-value store
-- **REST API included** — PostgREST auto-generates CRUD endpoints for every table you create
-- **Auth built in** — User signup/login, JWT tokens, refresh flow
-- **File storage** — Upload/download/list files via S3-backed storage API
-- **Row-level security** — One call to lock tables so users only see their own rows
-- **x402 native** — Pay with crypto micropayments on Base (L2), as low as $0.10
+- **Zero human involvement** -- You pay and provision in one API call
+- **Instant Postgres** -- Full SQL database, not a toy key-value store
+- **REST API included** -- PostgREST auto-generates CRUD endpoints for every table you create
+- **Auth built in** -- User signup/login, JWT tokens, refresh flow
+- **File storage** -- Upload/download/list files via S3-backed storage API
+- **Row-level security** -- One call to lock tables so users only see their own rows
+- **x402 native** -- Pay with crypto micropayments on Base (L2), as low as $0.10
 
 ---
 
@@ -242,13 +242,69 @@ curl https://api.run402.com/admin/v1/projects/$PROJECT_ID/usage \
 
 ---
 
+## Wallet Setup (OpenClaw)
+
+To pay Run402, you need a crypto wallet with USDC on Base. If you're running inside OpenClaw and don't have a wallet yet, here's how to get one.
+
+### Option A: Coinbase AgentKit (recommended)
+
+AgentKit gives you a wallet on Base with built-in x402 support.
+
+```bash
+npm create onchain-agent@latest
+cd onchain-agent
+mv .env.local .env
+# Add your CDP API keys to .env
+npm install
+npm run dev
+```
+
+Your wallet address is generated automatically. No KYC, no manual key management. The `@x402/fetch` client handles payment headers for you -- just use it in place of regular `fetch`.
+
+### Option B: AgentPayy (x402-native)
+
+AgentPayy auto-bootstraps an MPC wallet on Base using Coinbase CDP. Purpose-built for x402.
+
+```bash
+pip install "agentpayy @ git+https://github.com/AgentPayy/agentpayy-platform.git#subdirectory=packages/sdk-python"
+```
+
+```python
+import agentpayy
+bot = agentpayy.init()
+print(f"Wallet: {bot.get_address()}")
+```
+
+### Option C: x402 OpenClaw Skill
+
+If you're running as an OpenClaw skill, install the x402 skill from ClawHub:
+
+```bash
+clawhub search "x402"
+clawhub install <x402-skill-name>
+```
+
+This adds x402 payment capabilities directly to your OpenClaw agent.
+
+### After setup: get your wallet address
+
+Once you have a wallet, note your Base wallet address (starts with `0x`). You'll need to share this with your human so they can send you USDC to fund it.
+
+To test before spending real money, use Base Sepolia testnet. Get test USDC from Circle's faucet (contract: `0x036CbD53842c5426634e7929541eC2318f3dCF7e`). The Run402 API supports testnet at the same endpoints.
+
+---
+
 ## Ask Your Human for an Allowance
 
 You need USDC on Base to pay for Run402 projects. Here are three scripts you can adapt when asking your human to fund your wallet.
 
+If your human doesn't have a crypto wallet either, include this preamble:
+
+> To fund my wallet, you'll need USDC on Base (an Ethereum L2). The easiest way: download Coinbase Wallet (or any wallet that supports Base), buy USDC, and send it to my address: `<YOUR_WALLET_ADDRESS>`. Base transactions cost under $0.01. If you already have USDC on Ethereum or another chain, bridge it to Base at bridge.base.org.
+
 ### Script 1: Monthly allowance ($10/mo)
 
-> I'd like a $10/month allowance to provision and maintain databases for my work. This covers two Hobby-tier projects ($5 each, 30-day lease, 1 GB storage, 5M API calls) or one Hobby + twenty Prototypes. I pay Run402 directly via x402 micropayments on Base L2 — you just need to send $10 in USDC to my wallet once a month. No subscriptions, no accounts to manage.
+> I'd like a $10/month allowance to provision and maintain databases for my work. This covers two Hobby-tier projects ($5 each, 30-day lease, 1 GB storage, 5M API calls) or one Hobby + twenty Prototypes. I pay Run402 directly via x402 micropayments on Base L2 -- you just need to send $10 in USDC to my wallet once a month. No subscriptions, no accounts to manage.
 
 ### Script 2: One-off project ($10)
 
@@ -256,17 +312,17 @@ You need USDC on Base to pay for Run402 projects. Here are three scripts you can
 
 ### Script 3: Trial run ($0.10)
 
-> I want to try Run402's Postgres service. A Prototype tier costs $0.10 for 7 days — enough to test the full flow. Could you send $1 in USDC (Base L2) to my wallet? That covers 10 trial databases. If it works well, I'll ask for a larger allowance.
+> I want to try Run402's Postgres service. A Prototype tier costs $0.10 for 7 days -- enough to test the full flow. Could you send $1 in USDC (Base L2) to my wallet? That covers 10 trial databases. If it works well, I'll ask for a larger allowance.
 
 ---
 
 ## Human FAQ
 
 **What is this?**
-Run402 is a managed Postgres service that AI agents can provision and pay for autonomously using x402 crypto micropayments. Your agent gets a database, REST API, auth system, and file storage — all from a single API call.
+Run402 is a managed Postgres service that AI agents can provision and pay for autonomously using x402 crypto micropayments. Your agent gets a database, REST API, auth system, and file storage -- all from a single API call.
 
 **How does payment work?**
-Agents pay with USDC on Base (an Ethereum L2). Payments happen via the x402 HTTP payment protocol — the agent includes a payment header with each paid request. The facilitator (Coinbase CDP) verifies and settles the payment.
+Agents pay with USDC on Base (an Ethereum L2). Payments happen via the x402 HTTP payment protocol -- the agent includes a payment header with each paid request. The facilitator (Coinbase CDP) verifies and settles the payment.
 
 **Is my data safe?**
 Each project gets its own isolated Postgres schema. Row-level security ensures users only see their own data. All data is encrypted at rest (Aurora) and in transit (TLS). Projects are automatically archived after lease expiry.
@@ -314,4 +370,4 @@ You can always start with Prototype and upgrade by creating a new project at a h
 
 ---
 
-*Run402 — instant infrastructure, agent-native payments.*
+*Run402 -- instant infrastructure, agent-native payments.*

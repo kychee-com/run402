@@ -44,6 +44,26 @@ export class SiteStack extends cdk.Stack {
     });
 
     // =========================================================================
+    // CloudFront Function: redirect www → apex
+    // =========================================================================
+    const wwwRedirect = new cloudfront.Function(this, "WwwRedirect", {
+      code: cloudfront.FunctionCode.fromInline(`
+function handler(event) {
+  var host = event.request.headers.host.value;
+  if (host.startsWith('www.')) {
+    return {
+      statusCode: 301,
+      statusDescription: 'Moved Permanently',
+      headers: { location: { value: 'https://${DOMAIN}' + event.request.uri } },
+    };
+  }
+  return event.request;
+}
+      `.trim()),
+      runtime: cloudfront.FunctionRuntime.JS_2_0,
+    });
+
+    // =========================================================================
     // CloudFront Distribution
     // =========================================================================
     const distribution = new cloudfront.Distribution(this, "Distribution", {
@@ -51,6 +71,12 @@ export class SiteStack extends cdk.Stack {
         origin: origins.S3BucketOrigin.withOriginAccessControl(siteBucket),
         viewerProtocolPolicy:
           cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+        functionAssociations: [
+          {
+            function: wwwRedirect,
+            eventType: cloudfront.FunctionEventType.VIEWER_REQUEST,
+          },
+        ],
       },
       domainNames: [DOMAIN, `www.${DOMAIN}`],
       certificate: cert,

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Run402 — Postgres for AI Agents</title>
+  <title>Run402 - Postgres for AI Agents</title>
   <meta name="description" content="Instant Postgres databases for AI agents. Pay with x402 crypto micropayments. No signups, no API keys, no humans required.">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -77,6 +77,33 @@
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
+      cursor: pointer;
+      position: relative;
+    }
+
+    .copy-block code::after {
+      content: 'Click to copy';
+      position: absolute;
+      bottom: calc(100% + 8px);
+      left: 50%;
+      transform: translateX(-50%);
+      background: #1E1E2A;
+      color: #9CA3AF;
+      font-size: 11px;
+      padding: 4px 8px;
+      border-radius: 4px;
+      white-space: nowrap;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.15s;
+    }
+
+    .copy-block code:hover::after { opacity: 1; }
+
+    .copy-block code.copied::after {
+      content: 'Copied!';
+      opacity: 1;
+      color: #00FF9F;
     }
 
     .copy-btn {
@@ -208,8 +235,8 @@
     </p>
 
     <div class="copy-block">
-      <code>https://run402.com/llms.txt</code>
-      <button class="copy-btn" onclick="copyUrl(this)">Copy URL</button>
+      <code onclick="copyUrl(this, true)">https://run402.com/llms.txt</code>
+      <button class="copy-btn" onclick="copyUrl(this, false)">Copy URL</button>
     </div>
 
     <div class="section">
@@ -253,10 +280,11 @@
     </div>
 
     <div class="section">
-      <h2>For agents</h2>
+      <h2>Your agent wants a database.</h2>
+      <p style="color:#E0E0E0; font-size: 17px; margin-bottom: 16px;">It just doesn't know this exists yet.</p>
       <p>
-        Paste <code style="color:#00FF9F; font-family:'JetBrains Mono',monospace; font-size:14px;">https://run402.com/llms.txt</code>
-        into your agent's context. It contains the full API reference, quickstart snippets, and scripts to ask your human for a spending allowance.
+        Copy the link above and paste it into your next chat with your AI.
+        Then ask: <em style="color:#FFFFFF;">"Could you use something like this?"</em>
       </p>
     </div>
 
@@ -269,14 +297,19 @@
   </div>
 
   <script>
-    function copyUrl(btn) {
+    function copyUrl(el, isCode) {
       navigator.clipboard.writeText('https://run402.com/llms.txt').then(function() {
-        btn.textContent = 'Copied';
-        btn.classList.add('copied');
-        setTimeout(function() {
-          btn.textContent = 'Copy URL';
-          btn.classList.remove('copied');
-        }, 2000);
+        if (isCode) {
+          el.classList.add('copied');
+          setTimeout(function() { el.classList.remove('copied'); }, 2000);
+        } else {
+          el.textContent = 'Copied';
+          el.classList.add('copied');
+          setTimeout(function() {
+            el.textContent = 'Copy URL';
+            el.classList.remove('copied');
+          }, 2000);
+        }
       });
     }
   </script>
