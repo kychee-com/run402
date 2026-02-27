@@ -16,9 +16,7 @@ Only provisioning and renewal require x402 payment. All subsequent REST, auth, a
 
 ## Before You Integrate (Read This First)
 
-**Production readiness**: Beta. Best-effort availability. No formal SLA yet.
-
-**Infrastructure**: AWS Aurora Serverless v2 (Postgres 16), multi-AZ. ECS Fargate behind ALB. S3-backed file storage.
+**Infrastructure**: AWS Aurora Serverless v2 (Postgres 16), multi-AZ with automated failover. ECS Fargate behind ALB. S3-backed file storage.
 
 **Durability & backups**: All data encrypted at rest (Aurora + S3) and in transit (TLS). Automated backups with 7-day retention.
 

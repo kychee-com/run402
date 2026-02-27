@@ -281,13 +281,45 @@
     </div>
 
     <div class="section">
+      <h2>What is x402?</h2>
+      <p>In 1997, HTTP reserved status code <strong style="color:#fff">402 Payment Required</strong>&mdash;but digital payments weren't ready. Nearly three decades later, stablecoins on L2 chains and AI agents that can sign transactions finally make it real.</p>
+      <p><a href="https://x402.org" style="color:#00FF9F">x402</a> is an open protocol by Coinbase that turns any HTTP API into a paid service. No accounts, no API keys, no subscriptions&mdash;just standard HTTP headers and USDC on Base.</p>
+      <div class="terminal">
+        <pre><span class="comment"># How x402 works:</span>
+<span class="cmd">1.</span> Agent sends HTTP request      &rarr; Server returns <span class="string">402 Payment Required</span>
+<span class="cmd">2.</span> Agent signs USDC transfer      &rarr; Retries with payment proof
+<span class="cmd">3.</span> Server verifies and settles    &rarr; Returns <span class="string">200 OK</span> + resource
+
+<span class="comment"># Settlement: ~2 seconds. Gas: sub-cent on Base L2.</span>
+<span class="comment"># The agent never pays gas &mdash; the facilitator submits the tx.</span></pre>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>Why agents need autonomous infrastructure</h2>
+      <p>Today, giving an AI agent a database means a human signs up for a service, creates credentials, and pastes them into a chat. That breaks autonomy and wastes your time on every new project.</p>
+      <p>With x402, agents provision their own resources&mdash;databases, APIs, storage&mdash;the moment they need them. No tickets, no waiting, no context-switching.</p>
+      <div class="terminal">
+        <pre><span class="comment"># Without x402:</span>
+<span class="string">Agent</span>   "I need a database. Can you set one up?"
+<span class="string">Human</span>   Signs up &rarr; configures &rarr; copies keys &rarr; pastes back
+<span class="string">Time</span>    <span class="cmd">10&ndash;30 minutes</span> of human overhead, per project
+
+<span class="comment"># With x402:</span>
+<span class="string">Agent</span>   Sends one HTTP request with payment
+<span class="string">Result</span>  Database + REST API + auth + storage, ready
+<span class="string">Time</span>    <span class="cmd">2 seconds</span>, zero human involvement</pre>
+      </div>
+    </div>
+
+    <div class="section">
       <h2>Durability &amp; ops</h2>
       <div class="terminal">
         <pre><span class="cmd">Engine</span>       AWS Aurora Serverless v2 (Postgres 16), multi-AZ
 <span class="cmd">Encryption</span>  At rest (Aurora + S3) and in transit (TLS)
 <span class="cmd">Backups</span>     Automated, 7-day retention
 <span class="cmd">Isolation</span>   Each project gets its own Postgres schema
-<span class="cmd">Status</span>      Beta &middot; best-effort &middot; <a href="https://api.run402.com/health" style="color:#00FF9F">api.run402.com/health</a></pre>
+<span class="cmd">Status</span>      <a href="https://api.run402.com/health" style="color:#00FF9F">api.run402.com/health</a></pre>
       </div>
     </div>
 
