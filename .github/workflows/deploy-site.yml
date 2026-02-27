@@ -1,0 +1,30 @@
+name: Deploy Site
+
+on:
+  push:
+    branches: [main]
+    paths: [site/**]
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::472210437512:role/run402-site-deploy
+          aws-region: us-east-1
+
+      - name: Sync to S3
+        run: aws s3 sync site/ s3://agentdb-site-sitebucket397a1860-gzodkmo2focr --delete
+
+      - name: Invalidate CloudFront
+        run: |
+          aws cloudfront create-invalidation \
+            --distribution-id E1FX7YW8K8VPR \
+            --paths "/*"

@@ -6,6 +6,7 @@ import * as route53 from "aws-cdk-lib/aws-route53";
 import * as route53targets from "aws-cdk-lib/aws-route53-targets";
 import * as acm from "aws-cdk-lib/aws-certificatemanager";
 import * as s3deploy from "aws-cdk-lib/aws-s3-deployment";
+import * as iam from "aws-cdk-lib/aws-iam";
 import { Construct } from "constructs";
 import * as path from "path";
 import { fileURLToPath } from "url";
@@ -127,6 +128,55 @@ function handler(event) {
     });
 
     // =========================================================================
+    // GitHub Actions OIDC → IAM Role (for CI/CD site deploys)
+    // =========================================================================
+    const ghProvider = iam.OpenIdConnectProvider.fromOpenIdConnectProviderArn(
+      this,
+      "GitHubOidc",
+      `arn:aws:iam::${this.account}:oidc-provider/token.actions.githubusercontent.com`,
+    );
+
+    const deployRole = new iam.Role(this, "SiteDeployRole", {
+      roleName: "run402-site-deploy",
+      assumedBy: new iam.WebIdentityPrincipal(
+        ghProvider.openIdConnectProviderArn,
+        {
+          StringEquals: {
+            "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
+          },
+          StringLike: {
+            "token.actions.githubusercontent.com:sub":
+              "repo:MajorTal/run402:ref:refs/heads/main",
+          },
+        },
+      ),
+      inlinePolicies: {
+        SiteDeploy: new iam.PolicyDocument({
+          statements: [
+            new iam.PolicyStatement({
+              actions: [
+                "s3:PutObject",
+                "s3:DeleteObject",
+                "s3:ListBucket",
+                "s3:GetObject",
+              ],
+              resources: [
+                siteBucket.bucketArn,
+                `${siteBucket.bucketArn}/*`,
+              ],
+            }),
+            new iam.PolicyStatement({
+              actions: ["cloudfront:CreateInvalidation"],
+              resources: [
+                `arn:aws:cloudfront::${this.account}:distribution/${distribution.distributionId}`,
+              ],
+            }),
+          ],
+        }),
+      },
+    });
+
+    // =========================================================================
     // Outputs
     // =========================================================================
     new cdk.CfnOutput(this, "SiteUrl", {
@@ -140,6 +190,10 @@ function handler(event) {
     new cdk.CfnOutput(this, "BucketName", {
       value: siteBucket.bucketName,
       description: "Site S3 bucket",
+    });
+    new cdk.CfnOutput(this, "DeployRoleArn", {
+      value: deployRole.roleArn,
+      description: "GitHub Actions deploy role ARN",
     });
   }
 }
