@@ -15,12 +15,13 @@
  *   11. Schema introspection — verify tables/columns
  *   12. Refresh token — rotate tokens
  *   13. SQL blocklist — verify blocked patterns
- *   14. SQL query rows — verify SELECT returns data via /sql endpoint
- *   15. SERIAL table — test sequence permissions (SERIAL/BIGSERIAL fix)
- *   16. apikey-only REST — verify apikey auto-forwards as Authorization
- *   17. RLS templates — public_read, public_read_write
- *   18. GRANT blocked hint — actionable error messages
- *   19. Delete project — cleanup
+ *   14. Access levels — anon read-only, service_key admin, access_token authenticated
+ *   15. SQL query rows — verify SELECT returns data via /sql endpoint
+ *   16. SERIAL table — test sequence permissions (SERIAL/BIGSERIAL fix)
+ *   17. apikey-only REST — verify apikey auto-forwards as Authorization
+ *   18. RLS templates — public_read, public_read_write (anon write via GRANT)
+ *   19. GRANT blocked hint — actionable error messages
+ *   20. Delete project — cleanup
  *
  * Usage:
  *   BASE_URL=http://localhost:4022 npm run test:e2e
@@ -327,8 +328,41 @@ async function main() {
   });
   assert(blockedRes.status === 403, "Blocked SQL returns 403");
 
-  // Step 14: SQL query returns rows
-  console.log("\n14) SQL query returns rows...");
+  // Step 14: Access level enforcement (anon = read-only)
+  console.log("\n14) Access levels (anon read-only)...");
+
+  // anon_key can SELECT
+  const anonReadRes = await fetch(`${BASE_URL}/rest/v1/profiles?select=id`, {
+    headers: { apikey: anon_key },
+  });
+  assert(anonReadRes.ok, "anon_key can SELECT (read-only access)");
+
+  // anon_key cannot INSERT (no write permission on regular tables)
+  const anonWriteRes = await fetch(`${BASE_URL}/rest/v1/exercises`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", apikey: anon_key, Prefer: "return=representation" },
+    body: JSON.stringify({ user_id: userId, name: "Anon Exercise", muscle_group: "none" }),
+  });
+  assert(!anonWriteRes.ok, `anon_key INSERT blocked (status ${anonWriteRes.status})`);
+
+  // service_key can INSERT (full admin, bypasses RLS)
+  const svcWriteRes = await fetch(`${BASE_URL}/rest/v1/exercises`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", apikey: service_key, Prefer: "return=representation" },
+    body: JSON.stringify({ user_id: userId, name: "Service Exercise", muscle_group: "admin" }),
+  });
+  assert(svcWriteRes.ok, `service_key can INSERT (admin access)`);
+
+  // access_token can INSERT (authenticated, subject to RLS)
+  const authWriteRes = await fetch(`${BASE_URL}/rest/v1/exercises`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", apikey: accessToken, Prefer: "return=representation" },
+    body: JSON.stringify({ user_id: userId, name: "Auth Exercise", muscle_group: "user" }),
+  });
+  assert(authWriteRes.ok, `access_token can INSERT (authenticated access)`);
+
+  // Step 15: SQL query returns rows
+  console.log("\n15) SQL query returns rows...");
 
   // DDL should return empty rows
   const ddlRes = await fetch(`${BASE_URL}/admin/v1/projects/${project_id}/sql`, {
@@ -364,8 +398,8 @@ async function main() {
   assert(countRes.ok, "COUNT via /sql succeeds");
   assert(countBody.rows[0].total === "3", "COUNT returns 3 exercises");
 
-  // Step 15: SERIAL/BIGSERIAL sequence permissions
-  console.log("\n15) SERIAL table (sequence permissions)...");
+  // Step 16: SERIAL/BIGSERIAL sequence permissions
+  console.log("\n16) SERIAL table (sequence permissions)...");
 
   // Create a table using SERIAL (auto-incrementing integer)
   const serialSQL = `
@@ -424,10 +458,10 @@ async function main() {
   assert(tasksQueryRes.ok, "SERIAL table query succeeds");
   assert(Array.isArray(tasksQueryBody) && tasksQueryBody.length === 2, "2 tasks returned");
 
-  // Step 16: apikey-only REST access (no Authorization header needed)
-  console.log("\n16) apikey-only REST access...");
+  // Step 17: apikey-only REST access (no Authorization header needed)
+  console.log("\n17) apikey-only REST access...");
 
-  // 16a: GET with only apikey (anon_key) — should return 200, not permission error
+  // 17a: GET with only apikey (anon_key) — should return 200, not permission error
   const anonOnlyRes = await fetch(`${BASE_URL}/rest/v1/profiles?select=id`, {
     headers: { apikey: anon_key },
   });
@@ -436,7 +470,7 @@ async function main() {
   const anonOnlyBody = await anonOnlyRes.json();
   assert(Array.isArray(anonOnlyBody), "anon-only GET returns array (empty due to RLS)");
 
-  // 16b: GET with access_token as apikey (no Authorization header) — should authenticate
+  // 17b: GET with access_token as apikey (no Authorization header) — should authenticate
   const tokenOnlyRes = await fetch(`${BASE_URL}/rest/v1/profiles?select=id,email`, {
     headers: { apikey: accessToken },
   });
@@ -445,7 +479,7 @@ async function main() {
   assert(Array.isArray(tokenOnlyBody) && tokenOnlyBody.length === 1, "access_token apikey returns user's row");
   assert(tokenOnlyBody[0]?.email === "athlete@example.com", "Correct user returned via apikey-only");
 
-  // 16c: POST with access_token as apikey (no Authorization header) — should allow INSERT
+  // 17c: POST with access_token as apikey (no Authorization header) — should allow INSERT
   const insertOnlyRes = await fetch(`${BASE_URL}/rest/v1/tasks`, {
     method: "POST",
     headers: {
@@ -459,8 +493,8 @@ async function main() {
   const insertOnlyBody = await insertOnlyRes.json();
   assert(Array.isArray(insertOnlyBody) && insertOnlyBody[0]?.title === "apikey-only insert", "INSERT via apikey-only works");
 
-  // Step 17: RLS templates (public_read, public_read_write)
-  console.log("\n17) RLS templates...");
+  // Step 18: RLS templates (public_read, public_read_write)
+  console.log("\n18) RLS templates...");
 
   // Create tables for template testing
   const templateSQL = `
@@ -560,8 +594,8 @@ async function main() {
   assert(guestReadRes.ok, "Anon can read guestbook (public_read_write)");
   assert(Array.isArray(guestReadBody) && guestReadBody.length === 1, "Anon sees 1 guestbook entry");
 
-  // Step 18: GRANT blocked with helpful hint
-  console.log("\n18) GRANT blocked with hint...");
+  // Step 19: GRANT blocked with helpful hint
+  console.log("\n19) GRANT blocked with hint...");
   const grantRes = await fetch(`${BASE_URL}/admin/v1/projects/${project_id}/sql`, {
     method: "POST",
     headers: { "Content-Type": "text/plain", Authorization: `Bearer ${service_key}` },
@@ -582,8 +616,8 @@ async function main() {
   assert(typeof revokeBody.hint === "string", "REVOKE error includes hint");
   assert(revokeBody.hint.includes("RLS"), "Hint suggests using RLS endpoint");
 
-  // Step 19: Delete project
-  console.log("\n19) Delete project...");
+  // Step 20: Delete project
+  console.log("\n20) Delete project...");
   const deleteRes = await fetch(`${BASE_URL}/v1/projects/${project_id}`, {
     method: "DELETE",
     headers: { Authorization: `Bearer ${service_key}` },

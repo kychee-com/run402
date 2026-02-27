@@ -31,9 +31,10 @@ Only provisioning and renewal require x402 payment. All subsequent REST, auth, a
 - Permanent deletion at **day 37** after expiry
 - Renew anytime before deletion via `POST /v1/projects/:id/renew`
 
-**Keys**: You receive two project-scoped JWTs after provisioning:
-- `anon_key` -- public client key for REST, auth, and storage endpoints. Safe to embed in client apps.
-- `service_key` -- admin key for SQL migrations, RLS setup, usage checks, and schema inspection. Keep server-side.
+**Keys and access levels**: You receive two project-scoped JWTs after provisioning. After user login, a third token type becomes available:
+- `anon_key` (role: anon) -- **read-only** public key. Can SELECT from tables, sign up users, and access storage. Safe to embed in client apps. Cannot INSERT, UPDATE, or DELETE (unless the table uses the `public_read_write` RLS template).
+- `service_key` (role: service_role) -- **full admin** key. Read/write access to all tables (bypasses RLS). Use for SQL migrations, RLS setup, seeding data, usage checks, and schema inspection. Keep server-side only.
+- `access_token` (role: authenticated) -- **user-scoped read/write** key. Returned from `/auth/v1/token` after login. Can INSERT, UPDATE, DELETE subject to RLS policies. Use for user-facing CRUD operations.
 - Keys expire with the lease. Key rotation is not yet supported.
 
 **Isolation**: Each project runs in its own Postgres schema. Cross-schema access is blocked at the database level. A `db-pre-request` hook validates JWT claims match the project.
@@ -78,7 +79,12 @@ With Run402:
 
 All REST endpoints support PostgREST query syntax: `?select=`, `?column=eq.value`, `?order=`, `?limit=`, `?offset=`.
 
-**Auth shortcut**: You only need the `apikey` header. The gateway auto-forwards it as `Authorization: Bearer` to PostgREST. For authenticated user access, you can pass the user's `access_token` as the `apikey` value, or use both `apikey` (project key) and `Authorization: Bearer <access_token>` explicitly.
+**Auth shortcut**: You only need the `apikey` header — the gateway auto-forwards it as `Authorization: Bearer` to PostgREST. You can pass any valid project JWT as `apikey`:
+- `anon_key` → read-only (SELECT)
+- `service_key` → full admin access (bypasses RLS)
+- `access_token` (from login) → user-scoped read/write (subject to RLS)
+
+For explicit control, use both `apikey` (project key) and `Authorization: Bearer <access_token>`.
 
 ### Admin
 
@@ -279,17 +285,21 @@ curl -X POST https://api.run402.com/admin/v1/projects/$PROJECT_ID/rls \
   }'
 ```
 
-### 5. Insert data
+### 5. Insert data (with service_key)
+
+Use `service_key` for server-side writes. The `anon_key` is read-only (SELECT only).
 
 ```bash
 curl -X POST https://api.run402.com/rest/v1/todos \
-  -H "apikey: $ANON_KEY" \
+  -H "apikey: $SERVICE_KEY" \
   -H "Content-Type: application/json" \
   -H "Prefer: return=representation" \
   -d '{"task": "Build something great", "done": false}'
 ```
 
-### 6. Query data
+### 6. Query data (with anon_key)
+
+`anon_key` can read from any table:
 
 ```bash
 curl https://api.run402.com/rest/v1/todos?done=eq.false&order=id \

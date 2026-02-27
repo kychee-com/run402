@@ -165,7 +165,10 @@ router.post("/admin/v1/projects/:id/rls", async (req: Request, res: Response) =>
               FOR DELETE USING (auth.role() = 'authenticated')
           `);
         } else if (template === "public_read_write") {
-          // Anyone (including anon) can read and write
+          // Anyone (including anon) can read and write.
+          // anon role only has SELECT by default, so grant write permissions
+          // on this specific table (runs server-side, not via user SQL endpoint).
+          await client.query(`GRANT INSERT, UPDATE, DELETE ON ${tableName} TO anon`);
           await client.query(`
             CREATE POLICY "Anyone can read" ON ${tableName}
               FOR SELECT USING (true)
