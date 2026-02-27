@@ -65,7 +65,7 @@ With Run402:
 | `/v1/projects` | POST | x402 | $0.10+ | Create project (default: prototype) |
 | `/v1/projects/create/:tier` | POST | x402 | Per tier | Create project with specific tier |
 | `/v1/projects/:id/renew` | POST | x402 | Per tier | Extend lease |
-| `/v1/projects/:id` | DELETE | None | Free | Archive and delete project |
+| `/v1/projects/:id` | DELETE | service_key | Free | Archive and delete project |
 
 ### REST API (PostgREST Proxy)
 

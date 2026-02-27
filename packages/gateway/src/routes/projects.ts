@@ -2,6 +2,7 @@ import { Router, Request, Response } from "express";
 import { TIERS } from "@agentdb/shared";
 import type { TierName } from "@agentdb/shared";
 import { createProject, archiveProject, renewLease } from "../services/projects.js";
+import { serviceKeyAuth } from "../middleware/apikey.js";
 
 const router = Router();
 
@@ -89,9 +90,15 @@ router.post("/v1/projects/create/:tier", async (req: Request, res: Response) => 
   }
 });
 
-// DELETE /v1/projects/:id — archive project (free, no auth for now)
-router.delete("/v1/projects/:id", async (req: Request, res: Response) => {
+// DELETE /v1/projects/:id — archive project (requires service_key)
+router.delete("/v1/projects/:id", serviceKeyAuth, async (req: Request, res: Response) => {
   const projectId = req.params["id"] as string;
+
+  // Verify the service_key belongs to this project
+  if (req.tokenPayload?.project_id !== projectId) {
+    res.status(403).json({ error: "Service key does not match project" });
+    return;
+  }
 
   try {
     const archived = await archiveProject(projectId);
