@@ -1,0 +1,29 @@
+{
+  "name": "@run402/mcp",
+  "version": "0.1.0",
+  "description": "MCP server for Run402 — AI-native Postgres databases",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "run402-mcp": "dist/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.27.1",
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "@agentdb/shared": "1.0.0",
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0"
+  },
+  "license": "MIT"
+}
