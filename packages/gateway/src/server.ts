@@ -8,7 +8,7 @@
 try { await import("dotenv/config"); } catch {}
 
 import express, { Request, Response, NextFunction } from "express";
-import { PORT, POSTGREST_URL, SELLER_ADDRESS, MAINNET_NETWORK, TESTNET_NETWORK, TESTNET_FACILITATOR_URL, CDP_API_KEY_ID, RATE_LIMIT_PER_SEC } from "./config.js";
+import { PORT, POSTGREST_URL, SELLER_ADDRESS, MAINNET_NETWORK, TESTNET_NETWORK, TESTNET_FACILITATOR_URL, CDP_API_KEY_ID, RATE_LIMIT_PER_SEC, FAUCET_TREASURY_KEY } from "./config.js";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
@@ -18,14 +18,19 @@ import { startMeteringFlush, stopMeteringFlush, flushCounters } from "./middlewa
 import { syncProjects } from "./services/projects.js";
 import { initSlots } from "./services/slots.js";
 import { startLeaseChecker, stopLeaseChecker } from "./services/leases.js";
+import { startFaucetRefill, stopFaucetRefill } from "./services/faucet.js";
 import { initIdempotencyTable, idempotencyMiddleware } from "./middleware/idempotency.js";
 import projectRoutes from "./routes/projects.js";
 import authRoutes from "./routes/auth.js";
 import adminRoutes from "./routes/admin.js";
 import restRoutes from "./routes/rest.js";
 import storageRoutes from "./routes/storage.js";
+import faucetRoutes from "./routes/faucet.js";
 
 const app = express();
+
+// Trust ALB proxy for correct req.ip
+app.set("trust proxy", true);
 
 // --- CORS ---
 app.use((_req, res, next) => {
@@ -151,6 +156,7 @@ app.use(authRoutes);
 app.use(adminRoutes);
 app.use(restRoutes);
 app.use(storageRoutes);
+app.use(faucetRoutes);
 
 // --- Error handler ---
 app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
@@ -245,6 +251,7 @@ async function start() {
   // Start background tasks
   startMeteringFlush();
   startLeaseChecker();
+  startFaucetRefill();
 
   server = app.listen(PORT, () => {
     console.log(`\nAgentDB Gateway running on port ${PORT}`);
@@ -253,6 +260,7 @@ async function start() {
     console.log(`  Facilitator:    CDP${CDP_API_KEY_ID ? "" : " — NO KEY, x402 will fail"}`);
     console.log(`  PostgREST:      ${POSTGREST_URL}`);
     console.log(`  Rate limit:     ${RATE_LIMIT_PER_SEC} req/sec per project`);
+    console.log(`  Faucet:         ${FAUCET_TREASURY_KEY ? "enabled" : "disabled (no FAUCET_TREASURY_KEY)"}`);
     console.log(`\nReady for requests.\n`);
   });
 }
@@ -269,6 +277,7 @@ async function shutdown(signal: string) {
   // Stop background tasks
   stopMeteringFlush();
   stopLeaseChecker();
+  stopFaucetRefill();
 
   // Flush metering counters
   try {

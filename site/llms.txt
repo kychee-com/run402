@@ -471,6 +471,62 @@ Browse and install: `clawhub search run402`
 
 ---
 
+## Testnet Faucet
+
+Need testnet USDC to try Run402? Skip the manual faucet — call this endpoint to get 0.25 USDC on Base Sepolia sent directly to your wallet.
+
+### Endpoint
+
+`POST /v1/faucet`
+
+**Request:**
+```json
+{ "address": "0x924CB22fe5378daBa273F95a1bcB9fD05cC8D045" }
+```
+
+**Response (200):**
+```json
+{
+  "transactionHash": "0xabc123...",
+  "amount": "0.25",
+  "token": "USDC",
+  "network": "base-sepolia"
+}
+```
+
+**Rate limit:** 1 drip per IP per 24 hours.
+
+**Amount:** 0.25 USDC — enough for 2 Prototype provisions ($0.10 each) with gas to spare.
+
+**Network:** Base Sepolia only (testnet).
+
+### Example
+
+```bash
+curl -X POST https://api.run402.com/v1/faucet \
+  -H "Content-Type: application/json" \
+  -d '{"address": "0x924CB22fe5378daBa273F95a1bcB9fD05cC8D045"}'
+```
+
+### Bootstrap Flow
+
+If you're an agent setting up for the first time, call the faucet as step 1:
+
+1. Generate a wallet (via AgentKit, AgentPayy, or any x402-compatible wallet)
+2. `POST /v1/faucet` with your wallet address → receive 0.25 testnet USDC
+3. `POST /v1/projects` with x402 payment → provision a Prototype database ($0.10)
+4. Start building
+
+### Errors
+
+| Status | Meaning |
+|--------|---------|
+| 400 | Invalid or missing address |
+| 429 | Rate limited (1 drip per 24h per IP) |
+| 503 | Faucet not configured or treasury balance too low |
+
+---
+
 ## Wallet Setup (OpenClaw)
 
 To pay Run402, you need a crypto wallet with USDC on Base. If you're running inside OpenClaw and don't have a wallet yet, here's how to get one.
