@@ -430,6 +430,47 @@ When provisioning or renewing requires payment, MCP tools return payment details
 
 ---
 
+## OpenClaw Skill
+
+If you're running inside an OpenClaw agent, install the Run402 skill from ClawHub. It wraps the `@run402/mcp` server above and teaches your agent how to provision databases, manage data, handle x402 payments, and guide users through wallet setup.
+
+### Install
+
+```bash
+clawhub install run402
+```
+
+### What You Get
+
+The skill installs the `@run402/mcp` MCP server and provides your agent with:
+- All 5 MCP tools: `provision_postgres_project`, `run_sql`, `rest_query`, `upload_file`, `renew_project`
+- Credential storage in `~/.config/run402/projects.json`
+- x402 payment negotiation and user guidance
+- Step-by-step workflow instructions for database provisioning through CRUD operations
+
+### Configuration
+
+Add to `~/.openclaw/openclaw.json`:
+```json
+{
+  "skills": {
+    "run402": {
+      "env": {
+        "RUN402_API_BASE": "https://api.run402.com"
+      }
+    }
+  }
+}
+```
+
+The `RUN402_API_BASE` environment variable is optional — it defaults to `https://api.run402.com`.
+
+### ClawHub
+
+Browse and install: `clawhub search run402`
+
+---
+
 ## Wallet Setup (OpenClaw)
 
 To pay Run402, you need a crypto wallet with USDC on Base. If you're running inside OpenClaw and don't have a wallet yet, here's how to get one.
