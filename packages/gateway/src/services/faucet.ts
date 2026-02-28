@@ -5,8 +5,6 @@ import {
   parseUnits,
   encodeFunctionData,
   isAddress,
-  type WalletClient,
-  type PublicClient,
   type Address,
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
@@ -38,8 +36,9 @@ const ERC20_ABI = [
   },
 ] as const;
 
-let walletClient: WalletClient | null = null;
-let publicClient: PublicClient | null = null;
+// Use `any` to avoid type conflicts between viem versions (direct vs transitive via @x402/evm)
+let walletClient: any = null;
+let publicClient: any = null;
 let treasuryAddress: Address | null = null;
 
 // Mutex for serializing drip transactions (avoids nonce conflicts)
