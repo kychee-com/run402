@@ -96,6 +96,10 @@ export class PodStack extends cdk.Stack {
       this, "CdpApiKey", "agentdb/cdp-api-key",
     );
 
+    const faucetTreasurySecret = secretsmanager.Secret.fromSecretNameV2(
+      this, "FaucetTreasuryKey", "agentdb/faucet-treasury-key",
+    );
+
     // =========================================================================
     // Aurora Serverless v2 (Postgres 16)
     // =========================================================================
@@ -165,6 +169,7 @@ export class PodStack extends cdk.Stack {
     jwtSecret.grantRead(taskDef.taskRole);
     sellerSecret.grantRead(taskDef.taskRole);
     cdpApiKeySecret.grantRead(taskDef.taskRole);
+    faucetTreasurySecret.grantRead(taskDef.taskRole);
     storageBucket.grantReadWrite(taskDef.taskRole);
 
     const logGroup = new logs.LogGroup(this, "GatewayLogs", {
@@ -206,6 +211,7 @@ export class PodStack extends cdk.Stack {
         SELLER_ADDRESS: ecs.Secret.fromSecretsManager(sellerSecret, "address"),
         CDP_API_KEY_ID: ecs.Secret.fromSecretsManager(cdpApiKeySecret, "key_id"),
         CDP_API_KEY_SECRET: ecs.Secret.fromSecretsManager(cdpApiKeySecret, "key_secret"),
+        FAUCET_TREASURY_KEY: ecs.Secret.fromSecretsManager(faucetTreasurySecret),
       },
       healthCheck: {
         command: ["CMD-SHELL", "wget -qO- http://localhost:4022/health || exit 1"],
