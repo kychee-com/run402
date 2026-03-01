@@ -323,8 +323,8 @@ For explicit control, use both `apikey` (project key) and `Authorization: Bearer
 |----------|--------|------|-------------|
 | `/admin/v1/projects/:id/sql` | POST | service_key | Execute SQL (DDL + queries). Returns `rows` and `rowCount`. |
 | `/admin/v1/projects/:id/rls` | POST | service_key | Apply RLS template: `user_owns_rows`, `public_read`, or `public_read_write` |
-| `/admin/v1/projects/:id/usage` | GET | service_key | Check usage vs limits |
-| `/admin/v1/projects/:id/schema` | GET | service_key | Inspect tables, columns, constraints, RLS policies |
+| `/admin/v1/projects/:id/usage` | GET | service_key | Check usage vs limits. Not metered -- calling this does not count against your API call budget. |
+| `/admin/v1/projects/:id/schema` | GET | service_key | Inspect tables, columns, constraints, RLS policies. Not metered. |
 
 ### User Auth
 

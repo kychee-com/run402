@@ -1,55 +1,68 @@
 import { pool } from "../db/pool.js";
 import { MAX_SCHEMA_SLOTS } from "../config.js";
 
-let nextSlot = 1;
-
 /**
- * Initialize slot counter from database state.
- * Finds the highest allocated slot and starts from the next one.
+ * Initialize the slot sequence from database state.
+ * Creates the sequence if it doesn't exist, and advances it past all
+ * currently allocated slots.
  */
 export async function initSlots(): Promise<void> {
-  const result = await pool.query(
-    `SELECT schema_slot FROM internal.projects WHERE status = 'active' ORDER BY schema_slot DESC LIMIT 1`,
-  );
-  if (result.rows.length > 0) {
-    const slotNum = parseInt(result.rows[0].schema_slot.replace("p", ""), 10);
-    nextSlot = slotNum + 1;
+  const client = await pool.connect();
+  try {
+    // Create sequence if it doesn't exist (idempotent for existing deployments)
+    await client.query(
+      `CREATE SEQUENCE IF NOT EXISTS internal.slot_seq MAXVALUE ${MAX_SCHEMA_SLOTS} NO CYCLE`,
+    );
+
+    // Advance the sequence past all existing slots so it never collides.
+    // Find the highest slot number across ALL projects (any status).
+    const result = await client.query(
+      `SELECT max(replace(schema_slot, 'p', '')::int) AS max_slot FROM internal.projects`,
+    );
+    const maxSlot = result.rows[0]?.max_slot;
+    if (maxSlot != null) {
+      await client.query(`SELECT setval('internal.slot_seq', $1)`, [maxSlot]);
+    }
+
+    const cur = await client.query(`SELECT last_value FROM internal.slot_seq`);
+    console.log(`  Slot allocator initialized: sequence at ${cur.rows[0].last_value}`);
+  } finally {
+    client.release();
   }
-  console.log(`  Slot allocator initialized: next slot = p${String(nextSlot).padStart(4, "0")}`);
 }
 
 /**
  * Allocate the next available schema slot.
- * First tries to reuse an archived slot, then allocates a new one.
+ * First tries to reuse an archived/deleted slot (atomic), then draws
+ * from the sequence (atomic). No in-memory state — fully concurrency-safe.
  */
 export async function allocateSlot(): Promise<string | null> {
-  // Try to find an archived/deleted slot to reuse
+  // Try to reuse an archived/deleted slot (atomic: single DELETE ... RETURNING)
   const reuse = await pool.query(
-    `SELECT schema_slot FROM internal.projects
-     WHERE status IN ('archived', 'deleted')
-     ORDER BY schema_slot ASC LIMIT 1`,
+    `DELETE FROM internal.projects
+     WHERE id = (
+       SELECT id FROM internal.projects
+       WHERE status IN ('archived', 'deleted')
+       ORDER BY schema_slot ASC
+       LIMIT 1
+       FOR UPDATE SKIP LOCKED
+     )
+     RETURNING schema_slot`,
   );
 
   if (reuse.rows.length > 0) {
-    const slot = reuse.rows[0].schema_slot;
-    // Remove the old record so the slot can be reused
-    await pool.query(
-      `DELETE FROM internal.projects WHERE schema_slot = $1 AND status IN ('archived', 'deleted')`,
-      [slot],
-    );
-    return slot;
+    return reuse.rows[0].schema_slot;
   }
 
-  // Allocate new slot
-  if (nextSlot > MAX_SCHEMA_SLOTS) {
-    return null; // No slots available
+  // Allocate a new slot from the sequence
+  try {
+    const result = await pool.query(`SELECT nextval('internal.slot_seq')::int AS n`);
+    return `p${String(result.rows[0].n).padStart(4, "0")}`;
+  } catch (err: any) {
+    // Sequence exhausted (reached MAXVALUE with NO CYCLE)
+    if (err.code === "55000") {
+      return null;
+    }
+    throw err;
   }
-
-  const slot = `p${String(nextSlot).padStart(4, "0")}`;
-  nextSlot++;
-  return slot;
-}
-
-export function getNextSlotNumber(): number {
-  return nextSlot;
 }

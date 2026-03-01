@@ -38,6 +38,8 @@ $$;
 CREATE SCHEMA IF NOT EXISTS internal;
 GRANT USAGE ON SCHEMA internal TO authenticator, anon, authenticated, service_role;
 
+CREATE SEQUENCE internal.slot_seq MAXVALUE 2000 NO CYCLE;
+
 CREATE TABLE internal.projects (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
