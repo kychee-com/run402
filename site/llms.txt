@@ -734,6 +734,7 @@ You can always start with Prototype and upgrade by creating a new project at a h
 - **Budget enforcement**: API calls and storage are metered against tier limits. Exceeding returns `402` with usage details and a renew URL.
 - **Lease enforcement**: Expired projects cannot accept writes. Grace period: 7 days read-only, then archived.
 - **Auth**: JWTs expire in 1 hour. Refresh tokens are one-time use and expire in 30 days.
+- **Schema cache**: The REST proxy (PostgREST) caches table metadata. After creating a table via `/admin/v1/projects/:id/sql`, the REST API is available immediately -- the proxy retries automatically if the cache hasn't refreshed yet. No sleep or delay needed between table creation and first REST call.
 
 ---
 

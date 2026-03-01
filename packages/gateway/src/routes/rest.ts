@@ -5,6 +5,29 @@ import { meteringMiddleware } from "../middleware/metering.js";
 
 const router = Router();
 
+// Retry delay for 404s caused by PostgREST schema cache staleness (ms).
+// After DDL changes, PostgREST receives a NOTIFY and reloads its schema cache.
+// Requests arriving in the brief window before the reload completes get a 404.
+// A single retry after this delay is enough — PostgREST blocks requests during
+// reload, so the retry will wait for the fresh cache automatically.
+const SCHEMA_CACHE_RETRY_DELAY_MS = 150;
+
+/**
+ * Send a request to PostgREST and return the raw response.
+ */
+async function forwardToPostgREST(
+  url: string,
+  fetchOptions: RequestInit,
+): Promise<{ status: number; text: string; contentType: string | null; contentRange: string | null }> {
+  const pgResponse = await fetch(url, fetchOptions);
+  return {
+    status: pgResponse.status,
+    text: await pgResponse.text(),
+    contentType: pgResponse.headers.get("content-type"),
+    contentRange: pgResponse.headers.get("content-range"),
+  };
+}
+
 // PostgREST proxy — /rest/v1/*
 router.all("/rest/v1/*", apikeyAuth, meteringMiddleware, async (req: Request, res: Response) => {
   const project = req.project!;
@@ -50,19 +73,22 @@ router.all("/rest/v1/*", apikeyAuth, meteringMiddleware, async (req: Request, re
       fetchOptions.body = JSON.stringify(req.body);
     }
 
-    const pgResponse = await fetch(url, fetchOptions);
+    let result = await forwardToPostgREST(url, fetchOptions);
+
+    // Retry once on 404 — PostgREST's schema cache may be stale after DDL.
+    // The NOTIFY from the DDL transaction triggers an async reload; this retry
+    // bridges the gap. PostgREST blocks requests during reload, so the retry
+    // will see the fresh cache.
+    if (result.status === 404) {
+      await new Promise((r) => setTimeout(r, SCHEMA_CACHE_RETRY_DELAY_MS));
+      result = await forwardToPostgREST(url, fetchOptions);
+    }
 
     // Forward status and response
-    const responseText = await pgResponse.text();
-    res.status(pgResponse.status);
-
-    // Forward relevant response headers
-    const ct = pgResponse.headers.get("content-type");
-    if (ct) res.set("Content-Type", ct);
-    const cr = pgResponse.headers.get("content-range");
-    if (cr) res.set("Content-Range", cr);
-
-    res.send(responseText);
+    res.status(result.status);
+    if (result.contentType) res.set("Content-Type", result.contentType);
+    if (result.contentRange) res.set("Content-Range", result.contentRange);
+    res.send(result.text);
   } catch (err: any) {
     console.error("PostgREST proxy error:", err.message);
     res.status(502).json({ error: "PostgREST proxy error: " + err.message });

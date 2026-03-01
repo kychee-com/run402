@@ -137,7 +137,8 @@ async function main() {
   assert(createTableRes.ok, "CREATE TABLE succeeds");
   assert(createTableBody.schema != null, "Returns schema slot");
 
-  await sleep(500); // Wait for PostgREST reload
+  // No sleep needed — the REST proxy retries on 404 to handle PostgREST
+  // schema cache staleness after DDL changes.
 
   // Step 8: Write data
   console.log("\n8) Write data...");
