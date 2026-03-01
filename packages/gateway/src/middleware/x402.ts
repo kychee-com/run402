@@ -2,6 +2,7 @@ import { paymentMiddleware, x402ResourceServer } from "@x402/express";
 import { ExactEvmScheme } from "@x402/evm/exact/server";
 import { HTTPFacilitatorClient } from "@x402/core/server";
 import { createFacilitatorConfig } from "@coinbase/x402";
+import { declareDiscoveryExtension, bazaarResourceServerExtension } from "@x402/extensions";
 import { TIERS } from "@agentdb/shared";
 import { SELLER_ADDRESS, MAINNET_NETWORK, TESTNET_NETWORK, CDP_API_KEY_ID, CDP_API_KEY_SECRET } from "../config.js";
 import type { TierName } from "@agentdb/shared";
@@ -30,6 +31,25 @@ export function createPaymentMiddleware() {
       })),
       description: tierConfig.description,
       mimeType: "application/json",
+      extensions: {
+        ...declareDiscoveryExtension({
+          bodyType: "json",
+          inputSchema: {
+            type: "object",
+            properties: { name: { type: "string", description: "Project name" } },
+            required: ["name"],
+          },
+          output: {
+            example: {
+              project_id: "prj_...",
+              anon_key: "eyJ...",
+              service_key: "eyJ...",
+              schema_slot: "s0001",
+              lease_expires_at: "2026-03-08T00:00:00Z",
+            },
+          },
+        }),
+      },
     };
   }
 
@@ -43,6 +63,11 @@ export function createPaymentMiddleware() {
     })),
     description: "Paid ping — validates x402 payment flow ($0.001 USDC)",
     mimeType: "application/json",
+    extensions: {
+      ...declareDiscoveryExtension({
+        output: { example: { pong: true } },
+      }),
+    },
   };
 
   // POST /v1/projects — default route uses prototype pricing
@@ -55,9 +80,29 @@ export function createPaymentMiddleware() {
     })),
     description: "Create a new AgentDB project (Prototype tier — default)",
     mimeType: "application/json",
+    extensions: {
+      ...declareDiscoveryExtension({
+        bodyType: "json",
+        inputSchema: {
+          type: "object",
+          properties: { name: { type: "string", description: "Project name" } },
+          required: ["name"],
+        },
+        output: {
+          example: {
+            project_id: "prj_...",
+            anon_key: "eyJ...",
+            service_key: "eyJ...",
+            schema_slot: "s0001",
+            lease_expires_at: "2026-03-08T00:00:00Z",
+          },
+        },
+      }),
+    },
   };
 
   const server = new x402ResourceServer(facilitatorClient);
+  server.registerExtension(bazaarResourceServerExtension);
   for (const network of networks) {
     server.register(network as `${string}:${string}`, new ExactEvmScheme());
   }
