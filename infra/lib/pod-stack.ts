@@ -100,6 +100,10 @@ export class PodStack extends cdk.Stack {
       this, "FaucetTreasuryKey", "agentdb/faucet-treasury-key",
     );
 
+    const stripeSecret = secretsmanager.Secret.fromSecretNameV2(
+      this, "StripeApiKey", "eleanor/stripe/prod/secret-key",
+    );
+
     // =========================================================================
     // Aurora Serverless v2 (Postgres 16)
     // =========================================================================
@@ -170,6 +174,7 @@ export class PodStack extends cdk.Stack {
     sellerSecret.grantRead(taskDef.taskRole);
     cdpApiKeySecret.grantRead(taskDef.taskRole);
     faucetTreasurySecret.grantRead(taskDef.taskRole);
+    stripeSecret.grantRead(taskDef.taskRole);
     storageBucket.grantReadWrite(taskDef.taskRole);
 
     const logGroup = new logs.LogGroup(this, "GatewayLogs", {
@@ -200,6 +205,8 @@ export class PodStack extends cdk.Stack {
         S3_REGION: this.region,
         MAX_SCHEMA_SLOTS: String(MAX_SCHEMAS),
         RATE_LIMIT_PER_SEC: "100",
+        FACILITATOR_PROVIDER: "cdp",
+        FACILITATOR_URL: "https://www.x402.org/facilitator",
         DB_HOST: auroraCluster.clusterEndpoint.hostname,
         DB_PORT: "5432",
         DB_NAME: "agentdb",
@@ -212,6 +219,7 @@ export class PodStack extends cdk.Stack {
         CDP_API_KEY_ID: ecs.Secret.fromSecretsManager(cdpApiKeySecret, "key_id"),
         CDP_API_KEY_SECRET: ecs.Secret.fromSecretsManager(cdpApiKeySecret, "key_secret"),
         FAUCET_TREASURY_KEY: ecs.Secret.fromSecretsManager(faucetTreasurySecret),
+        STRIPE_SECRET_KEY: ecs.Secret.fromSecretsManager(stripeSecret),
       },
       healthCheck: {
         command: ["CMD-SHELL", "wget -qO- http://localhost:4022/health || exit 1"],

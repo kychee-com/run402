@@ -4,19 +4,109 @@ import { HTTPFacilitatorClient } from "@x402/core/server";
 import { createFacilitatorConfig } from "@coinbase/x402";
 import { declareDiscoveryExtension, bazaarResourceServerExtension } from "@x402/extensions";
 import { TIERS } from "@agentdb/shared";
-import { SELLER_ADDRESS, MAINNET_NETWORK, TESTNET_NETWORK, CDP_API_KEY_ID, CDP_API_KEY_SECRET } from "../config.js";
+import Stripe from "stripe";
+import {
+  SELLER_ADDRESS,
+  MAINNET_NETWORK,
+  TESTNET_NETWORK,
+  CDP_API_KEY_ID,
+  CDP_API_KEY_SECRET,
+  FACILITATOR_PROVIDER,
+  FACILITATOR_URL,
+  STRIPE_SECRET_KEY,
+} from "../config.js";
 import type { TierName } from "@agentdb/shared";
+
+// --- Stripe payTo machinery ---
+
+const validPayToAddresses = new Set<string>();
+
+/**
+ * Factory: returns a dynamic payTo function that creates a Stripe PaymentIntent
+ * and extracts the crypto deposit address.  On retry (payment header present)
+ * it validates the `to` address against the in-memory cache.
+ */
+function createPayToAddressFactory(priceStr: string) {
+  const dollars = parseFloat(priceStr.replace("$", ""));
+  const amountInCents = Math.max(1, Math.round(dollars * 100));
+
+  const stripe = new Stripe(STRIPE_SECRET_KEY);
+
+  return async function createPayToAddress(context: { paymentHeader?: string }): Promise<string> {
+    // Retry call: validate address from payment header
+    if (context.paymentHeader) {
+      const decoded = JSON.parse(
+        Buffer.from(context.paymentHeader, "base64").toString(),
+      );
+      const toAddress = decoded.payload?.authorization?.to;
+
+      if (toAddress && typeof toAddress === "string") {
+        // Normalize to lowercase — Stripe returns lowercase, but EIP-55 checksum may differ.
+        // Must return lowercase to match the original 402 response (deepEqual comparison).
+        const normalized = toAddress.toLowerCase();
+        if (!validPayToAddresses.has(normalized)) {
+          throw new Error("Invalid payTo address: not found in server cache");
+        }
+        return normalized;
+      }
+      throw new Error("PaymentIntent did not return expected crypto deposit details");
+    }
+
+    // First call: create PaymentIntent → deposit address
+    const paymentIntent = await stripe.paymentIntents.create({
+      amount: amountInCents,
+      currency: "usd",
+      payment_method_types: ["crypto"],
+      payment_method_data: {
+        type: "crypto",
+      },
+      payment_method_options: {
+        crypto: {
+          // @ts-ignore — Stripe crypto payments beta
+          mode: "custom",
+        },
+      },
+      confirm: true,
+    });
+
+    if (
+      !paymentIntent.next_action ||
+      !("crypto_collect_deposit_details" in paymentIntent.next_action)
+    ) {
+      throw new Error("PaymentIntent did not return expected crypto deposit details");
+    }
+
+    const depositDetails = (paymentIntent.next_action as any).crypto_collect_deposit_details;
+    const payToAddress: string = depositDetails.deposit_addresses.base.address;
+
+    console.log(
+      `Stripe PaymentIntent ${paymentIntent.id}: $${(amountInCents / 100).toFixed(2)} → ${payToAddress}`,
+    );
+
+    validPayToAddresses.add(payToAddress.toLowerCase());
+    return payToAddress;
+  };
+}
+
+// --- Middleware builder ---
 
 /**
  * Build x402 payment middleware.
- * Uses CDP facilitator for both Base mainnet and Base Sepolia.
+ * Reads FACILITATOR_PROVIDER to select CDP or Stripe facilitator.
  */
 export function createPaymentMiddleware() {
-  const facilitatorClient = new HTTPFacilitatorClient(
-    createFacilitatorConfig(CDP_API_KEY_ID, CDP_API_KEY_SECRET),
-  );
+  const useStripe = FACILITATOR_PROVIDER === "stripe";
 
-  const networks = [MAINNET_NETWORK, TESTNET_NETWORK];
+  const facilitatorClient = useStripe
+    ? new HTTPFacilitatorClient({ url: FACILITATOR_URL })
+    : new HTTPFacilitatorClient(createFacilitatorConfig(CDP_API_KEY_ID, CDP_API_KEY_SECRET));
+
+  // Stripe facilitator (x402.org) only supports Base Sepolia for now
+  const networks = useStripe ? [TESTNET_NETWORK] : [MAINNET_NETWORK, TESTNET_NETWORK];
+
+  // Helper: payTo value for a given price
+  const payTo = (price: string) =>
+    useStripe ? createPayToAddressFactory(price) : SELLER_ADDRESS;
 
   // Build resource config for each tier
   const resourceConfig: Record<string, any> = {};
@@ -27,7 +117,7 @@ export function createPaymentMiddleware() {
         scheme: "exact",
         price: tierConfig.price,
         network,
-        payTo: SELLER_ADDRESS,
+        payTo: payTo(tierConfig.price),
       })),
       description: tierConfig.description,
       mimeType: "application/json",
@@ -59,7 +149,7 @@ export function createPaymentMiddleware() {
       scheme: "exact",
       price: "$0.001",
       network,
-      payTo: SELLER_ADDRESS,
+      payTo: payTo("$0.001"),
     })),
     description: "Paid ping — validates x402 payment flow ($0.001 USDC)",
     mimeType: "application/json",
@@ -76,7 +166,7 @@ export function createPaymentMiddleware() {
       scheme: "exact",
       price: TIERS.prototype.price,
       network,
-      payTo: SELLER_ADDRESS,
+      payTo: payTo(TIERS.prototype.price),
     })),
     description: "Create a new AgentDB project (Prototype tier — default)",
     mimeType: "application/json",
