@@ -92,12 +92,27 @@ The B2M (Business-to-Machine) concept has been emerging in Gartner research and 
 - Alerts when budgets approach limits
 - Full audit trail exportable for accounting
 
-**How it works technically:**
-- We generate and manage custodial wallets for users who don't have their own
-- Stripe integration converts fiat → USDC (via on-ramp partners) into the user's agent wallet
-- The wallet signs x402 payment transactions on behalf of the agent
-- All settlements happen on Base L2 (sub-cent transaction fees)
-- Users with existing wallets can connect directly
+**How users fund their agents — the critical onboarding problem:**
+
+Getting USDC into a user's wallet is the single hardest UX and regulatory challenge in the x402 ecosystem. The x402 FAQ explicitly states that the protocol does not natively support fiat on-ramps or credit card deposits, and every path to acquiring USDC currently requires KYC somewhere. Every player in the ecosystem has either ignored this problem or assumed crypto-native users. We must solve it.
+
+The section "Payment Funding Models & Regulatory Analysis" (below, in MVP Specification) provides a detailed breakdown of five possible funding models, their regulatory implications across all relevant jurisdictions (US/FinCEN, EU/MiCA, Israel), and our recommended approach.
+
+**Summary of recommended approach (details in full analysis below):**
+
+1. **Testnet is completely free** — no wallet, no payment, no KYC. This powers the "ask your agent" funnel. Zero friction.
+2. **When converting to mainnet: Stripe Crypto Onramp embedded widget.** User clicks "Fund Wallet," enters credit card via Stripe's widget, Stripe handles all KYC/AML/compliance, USDC lands in user's wallet on Base. We never touch fiat or perform currency exchange. Stripe carries the full regulatory burden.
+3. **Bring Your Own Wallet** for crypto-native users who already hold USDC — direct connection, no intermediary needed.
+
+The user never needs to know what USDC is, what Base is, or what a blockchain wallet is. They see "Add $10 to your agent's budget" and use their credit card.
+
+**Controls and reporting:**
+- Per-agent spending limits (daily, weekly, total)
+- Per-service spending caps
+- Per-transaction maximum
+- Real-time spending dashboard showing every transaction: what service, what amount, what the agent was doing
+- Alerts when budgets approach limits
+- Full audit trail exportable for accounting
 
 **The "piggy bank" concept:** Think of the Agent Wallet as a prepaid debit card for your AI agent. You load it with a budget. The agent spends it autonomously within the rules you set. You see every transaction. You top up when needed. No surprises.
 
@@ -267,6 +282,164 @@ The MVP must ship with proper legal foundations. These protect us and establish 
 - Machine-readable summaries in llms.txt so agents can understand policies before provisioning
 - API responses include relevant policy links in headers/metadata
 
+### Payment Funding Models & Regulatory Analysis
+
+This section addresses the hardest practical problem in the x402 ecosystem: how do users get USDC into a wallet so their agents can pay for services? Every funding path carries regulatory implications. Kychee Technologies is a Delaware corporation with founders in Israel and the Netherlands, potentially serving users globally — so we must consider US federal (FinCEN), US state, EU (MiCA), and Israeli regulations.
+
+**The ecosystem's dirty secret:** As of March 2026, the x402 protocol does not natively support fiat deposits or credit card payments. The official x402 FAQ states this explicitly: facilitators or third-party gateways can wrap x402 flows with on-ramps, but the protocol itself provides no fiat path. Every x402 user today either (a) already holds USDC from a crypto exchange account (high friction, requires KYC at the exchange), or (b) uses a third-party on-ramp. The entire ecosystem has punted on this problem by assuming crypto-native users.
+
+#### The Five Funding Models
+
+**Model 1: "We Fund the Testnet, You Pay Nothing" (Zero Friction)**
+
+How it works: User receives free testnet coins from our faucet. All experimentation happens on testnet. No wallet, no credit card, no KYC. This is the entry point of our friction ladder (Levels 0–3).
+
+Regulatory status: **No regulatory concern.** Testnet tokens have no monetary value. No money transmission, no exchange, no financial service is occurring. This is functionally identical to offering a free trial of SaaS software.
+
+Limitation: Only works for testing. The friction problem hits when the user wants to go live on mainnet.
+
+**Model 2: Stripe Crypto Onramp Embedded Widget (RECOMMENDED)**
+
+How it works: We embed Stripe's fiat-to-crypto onramp widget in our dashboard. User clicks "Fund Wallet," the Stripe widget appears, user enters credit card (or Apple Pay, Google Pay, bank transfer), Stripe converts USD/EUR to USDC and deposits it directly into the user's wallet on Base. We never touch fiat currency. We never perform currency exchange. We never custody fiat.
+
+Regulatory status: **Lowest regulatory burden for us.** Stripe acts as the merchant of record for onramp transactions. Stripe handles all KYC verification, sanctions screening, fraud detection, and regulatory compliance. Stripe carries the regulatory responsibility — the integrating developer (us) does not need a money transmitter license or VASP registration to offer the onramp. This applies in the US (Stripe is a licensed money transmitter in all required states) and in the EU (Stripe operates under its own licenses — the developer doesn't need PSAN in France or MiCA authorization for the onramp itself).
+
+Cost to user: Stripe charges approximately 1–2% plus a fixed fee per transaction. For a $10 funding, the user might pay ~$0.50 in fees. Stripe supports purchases of USDC on Base, which is our settlement network.
+
+Integration effort: Stripe provides embeddable widgets and hosted onramp pages. Integration is straightforward — similar complexity to adding Stripe Checkout to a website. Requires a Stripe account and approved onramp application (typically reviewed within 48 hours).
+
+User experience: User sees "Add funds" → Stripe widget → enters card → receives USDC in wallet. If user has previously used Stripe (via Link), payment info is pre-populated. First-time users complete lightweight KYC through Stripe (name, email, possibly ID verification depending on amount). Returning users fund instantly.
+
+Confidence level: **HIGH.** This is a well-established pattern. Stripe's onramp documentation is public and the product is generally available. The regulatory burden on Stripe (not on us) is clearly documented. Many Web3 companies use this exact model.
+
+**Model 3: Accept Fiat via Stripe, We Convert to USDC (High Risk)**
+
+How it works: User pays us via standard Stripe Checkout (credit card). We receive USD in our Stripe balance. We then separately purchase USDC on an exchange or via Circle and deposit it into the user's platform wallet.
+
+Regulatory status: **VERY HIGH RISK. Almost certainly requires money transmitter registration.** Under FinCEN's 2013 guidance (FIN-2013-G001), an "exchanger" is a person engaged as a business in the exchange of virtual currency for real currency, funds, or other virtual currency. An exchanger is a money transmitter under BSA regulations. By accepting fiat and converting to USDC for users, we would be acting as a currency exchanger — accepting real currency from one person and providing convertible virtual currency. This triggers:
+  - FinCEN MSB registration (federal)
+  - State money transmitter licenses in every state where we have users (49 states plus DC — Montana is the only exemption). New York's BitLicense alone can cost $50,000+ in application fees. California's DFAL takes full effect July 1, 2026.
+  - AML/KYC compliance program (written program, compliance officer, ongoing training, independent review)
+  - Suspicious Activity Reports (SARs) and Currency Transaction Reports (CTRs)
+  - In the EU: CASP authorization under MiCA (since Tal is in the Netherlands, which already requires full MiCA compliance as of July 2025)
+  - In Israel: VASP licensing under the Supervision Law and AML compliance with the Israel Money Laundering and Terror Financing Prohibition Authority
+
+The "integral exemption" (31 CFR 1010.100(ff)(5)(ii)(B)) is unlikely to apply. This exemption covers money transmission that is only integral to the sale of goods or services different from money transmission itself. Three conditions must be met: (1) the money transmission must be part of providing a good or service distinct from money transmission, (2) only the person providing that distinct service can claim the exemption, and (3) the money transmission must be integral (necessary) for providing the service. While we provide cloud infrastructure (distinct from money transmission), the fiat-to-USDC conversion step is NOT integral to our infrastructure service — users could fund their wallets through other means. FinCEN has consistently held that when a company's payment mechanism is the primary service being offered alongside another product, the integral exemption does not apply. The 2014 FinCEN ruling on virtual currency payment systems (FIN-2014-R012) rejected the integral exemption for exactly this pattern.
+
+Confidence level: **HIGH that this model requires licensing.** FinCEN rulings are explicit and consistent on this point.
+
+**RECOMMENDATION: DO NOT PURSUE THIS MODEL.** The licensing burden would cost hundreds of thousands of dollars, take 12–24 months, and require ongoing compliance infrastructure that is disproportionate to an MVP.
+
+**Model 4: Prepaid Platform Credits — We Hold a Hot Wallet (Medium-High Risk)**
+
+How it works: User pays $10 via standard Stripe Checkout. User receives "10 credits" in our internal system. Our platform maintains a USDC hot wallet. When the user's agent consumes a service, our hot wallet makes the actual x402 payment. The user never sees or touches USDC — they interact only with our credit system.
+
+Regulatory status: **COMPLEX — likely triggers MSB obligations, but arguments exist both ways.** This is the hardest model to analyze because it touches multiple regulatory categories:
+
+  (a) **Money transmitter analysis:** We accept value (fiat) from Person A (the user) and transmit value (USDC) to Person B (the service provider) on Person A's behalf. This is textbook money transmission under FinCEN's definition (31 CFR 1010.100(ff)(5)). The fact that we denominate the intermediate step as "credits" does not change the substance — FinCEN looks at the economic reality, not labels.
+
+  (b) **Integral exemption argument (weak but not frivolous):** One could argue that the payment transmission is integral to our cloud infrastructure service. The analogy would be: when AWS charges your credit card for Lambda compute, nobody calls that money transmission — it's selling a service. Our "credits" could be characterized as prepayment for our own services, not transmission of value to third parties. However, this argument weakens significantly once we open the marketplace to third-party services — at that point, we ARE transmitting value to third parties on behalf of users, which is the core definition of money transmission.
+
+  (c) **Prepaid access analysis:** FinCEN defines "prepaid access" as access to funds paid in advance that can be retrieved or transferred through an electronic device (31 CFR 1010.100(ff)(4)). If our credits can only be spent within our closed ecosystem (only on our first-party services), this resembles a closed-loop prepaid system, which has certain exemptions. However, once credits can be spent on third-party services through our marketplace, the system becomes open-loop and the exemptions narrow substantially.
+
+  (d) **Provider of prepaid access:** If classified as prepaid access, FinCEN requires the designated "provider of prepaid access" to register as an MSB, implement an AML program, file SARs, and comply with recordkeeping requirements (31 CFR Part 1022). This is similar in burden to money transmitter obligations.
+
+The Wilson Sonsini analysis of gaming companies facing this exact pattern (in-game currencies purchased with fiat, spent within an ecosystem) concluded that gaming companies could potentially rely on the integral exemption for closed-loop systems but face significant risk when value becomes transferable or redeemable.
+
+Confidence level: **MEDIUM.** The regulatory treatment depends heavily on exact implementation details — whether credits are refundable, whether they can be spent on third-party services, whether they represent a claim on specific assets. A fintech attorney would need to review the specific implementation.
+
+**If we pursue first-party services only (Option C from MVP strategy), the integral exemption argument is strongest.** If we open to third-party services, this model almost certainly requires MSB registration.
+
+**Model 5: Partner with Embedded Wallet Provider (MoonPay, Privy, Crossmint)**
+
+How it works: We integrate a third-party embedded wallet provider. The provider handles wallet creation, KYC, and fiat on-ramping. The user's experience is seamless — they see "sign up, add payment method" — but the wallet infrastructure and compliance burden is carried by the partner.
+
+Regulatory status: **Low regulatory burden for us, similar to Model 2.** The wallet provider (MoonPay, Privy, Crossmint) carries the MSB registration and compliance obligations. We provide the platform; they provide the financial infrastructure. This is analogous to a marketplace using Stripe for payments — the marketplace doesn't need a payment license because Stripe has one.
+
+Recent development: MoonPay launched "MoonPay Agents" in February 2026, specifically designed for this use case — non-custodial wallets that AI agents can transact with autonomously, with the human completing one-time KYC through MoonPay. Crossmint offers smart wallets with x402 compatibility, multi-chain support, and built-in KYC/AML via VASP licensing and SOC2 Type II compliance.
+
+Trade-off: Dependency on a third party for a critical flow. If MoonPay goes down, our users can't fund their agents. We also inherit their fee structure (typically 1–5% depending on provider and payment method).
+
+Confidence level: **HIGH that this reduces our regulatory burden.** The authorized delegate / agent model is well-established in FinCEN guidance.
+
+#### Jurisdiction-Specific Considerations
+
+**United States (Delaware corporation):**
+- FinCEN: Federal MSB registration is required if we perform money transmission, currency exchange, or provide prepaid access. Registration is done via BSA E-Filing, renewed biannually. Must maintain a written AML program.
+- State licensing: Required in up to 49 states plus DC. Cost and timeline vary widely — New York BitLicense is the most expensive ($50K+ in fees, 12–18 month review). Many startups avoid this by using a licensed partner as an "authorized delegate" (operating under the partner's license).
+- GENIUS Act (passed June 2025): Establishes a federal framework for payment stablecoins. Implementation regulations expected through 2026–2027. Does not directly change MSB requirements but signals regulatory clarity for stablecoin use.
+
+**European Union / Netherlands (Tal's location, potential EU users):**
+- MiCA: The Markets in Crypto-Assets Regulation requires CASP (Crypto-Asset Service Provider) authorization to provide crypto-asset services in the EU. The Netherlands required full compliance by July 1, 2025 — one of the earliest deadlines in the EU.
+- If we custody crypto assets (hold USDC in wallets on behalf of EU users), we may need CASP authorization. USDC is MiCA-compliant — Circle achieved MiCA compliance and USDC is classified as an EMT (Electronic Money Token) in the EU.
+- Transfer of Funds Regulation (TFR): Requires CASPs to collect and transmit sender/recipient information on ALL crypto transfers (no minimum threshold in the EU, unlike the US $3,000 threshold). Effective since December 2024.
+- If we use Stripe Onramp (Model 2), Stripe handles EU compliance. If we custody wallets ourselves, we need CASP authorization.
+- Transaction caps for non-EU stablecoins: MiCA limits non-EU currency stablecoins (like USDC, which is USD-denominated) to 1 million transactions daily or €200 million in payment value. This is unlikely to affect our MVP but matters at scale.
+
+**Israel (Barry's location):**
+- Israel regulates crypto under the Supervision of Financial Services (Regulated Financial Services) Law. VASPs must be licensed by the Capital Markets Authority (CMA) and comply with AML/KYC requirements under the Anti-Money Laundering Order (2021), aligned with FATF standards.
+- The Bank of Israel has published stablecoin principles (2023) but these have not yet become law. The BOI's 2026 digital shekel roadmap is underway but does not yet affect private stablecoin use.
+- Israeli banks have historically been reluctant to handle crypto transactions, though Directive 411 requires a risk-based approach (not blanket refusal) and the Supreme Court has ruled banks are not prohibited from crypto transactions.
+- If Run402 is structured as a Delaware corporation with Israeli operations, the CMA may require Israeli licensing for financial services activity. A fintech attorney familiar with Israeli regulation should review the specific structure.
+
+#### Recommended Payment Architecture for MVP
+
+Based on the regulatory analysis above, the recommended payment architecture is:
+
+**Tier 1 — Free Testnet (all users start here):**
+No payment, no wallet, no KYC. Users get testnet coins from faucet. Powers the entire "ask your agent" funnel and friction ladder Levels 0–3. Zero regulatory concern.
+
+**Tier 2 — Stripe Crypto Onramp (mainnet funding):**
+Embedded Stripe widget converts fiat → USDC → user's wallet on Base. Stripe handles all KYC/AML/compliance. We never touch fiat. We never perform exchange. Our regulatory burden is limited to operating the platform and managing wallet infrastructure (see Tier 2b below).
+
+**Tier 2b — Wallet custody decision (CRITICAL — requires legal counsel):**
+Two sub-options for how we manage the wallet after funding:
+
+  - **(a) We host custodial wallets:** We generate and manage wallets, hold private keys, sign x402 transactions on behalf of agents. This is the best UX (user never thinks about wallets) but likely makes us a hosted wallet provider under FinCEN guidance, which is classified as money transmission. Would require MSB registration and potentially state MTLs. Could be mitigated by operating as an authorized delegate of a licensed partner.
+
+  - **(b) Users hold non-custodial wallets via embedded provider:** We integrate Privy, Crossmint, or MoonPay for wallet infrastructure. They handle wallet creation and custody. We provide the platform layer (discovery, provisioning, controls). This adds a dependency but keeps us out of the money transmission definition.
+
+  **Recommendation for MVP: Option (b) — use an embedded wallet provider.** The regulatory cost and timeline of Option (a) is disproportionate for an MVP. We can always bring wallet custody in-house later after obtaining proper licensing.
+
+**Tier 3 — Bring Your Own Wallet (crypto-native users):**
+Users with existing USDC on Base connect their own wallet. We never touch their funds — they sign x402 transactions directly. Zero regulatory concern for us on this path.
+
+**What we explicitly DO NOT do (at MVP):**
+- We do not accept fiat and convert to USDC ourselves (Model 3) — would require MSB + state MTLs
+- We do not operate a proprietary credits system that involves fiat-to-crypto conversion (Model 4 without licensing)
+- We do not sell, redeem, or exchange USDC
+- We do not custody fiat currency at any point
+
+#### Updated Friction Ladder (with payment model integrated)
+
+Level 0 — "Ask Your Agent" (zero friction): Paste llms.txt URL into any AI chat. Agent reads and explains value. No account needed.
+
+Level 1 — One Curl Command (10 seconds): `curl https://api.[platform].com/try` provisions free testnet Postgres. No account.
+
+Level 2 — Web Playground (1 minute): Interactive page showing live provisioning with testnet coins. No account.
+
+Level 3 — "Build Me an App" Prompt (5 minutes): Ready-made prompt, agent provisions testnet resources and demonstrates the full flow.
+
+Level 4 — Create Account (30 seconds): Email/OAuth signup. Needed for persistent testnet projects and to prepare for mainnet.
+
+Level 5 — Fund Wallet via Stripe Onramp (2–3 minutes): Click "Go Live" → Stripe widget → credit card → USDC in wallet. First-time KYC through Stripe (lightweight — name, email, card). Returning users fund in seconds.
+
+Level 6 — MCP Server Install (retention): One-line install for ongoing agent access to our services. Agent can now discover and provision autonomously.
+
+**Key insight:** The first four levels require zero payment, zero KYC, zero commitment. The user has fully experienced the product before we ever ask for money. Payment friction (Level 5) only hits after the user has seen the value.
+
+#### Immediate Action Items (Payment/Regulatory)
+
+1. **Engage a fintech attorney** with US + EU crypto experience to review the specific structure of Kychee Technologies → Run402 and confirm: (a) whether Stripe Onramp integration alone triggers any licensing requirement, (b) whether non-custodial wallet integration (via Privy/Crossmint/MoonPay) keeps us outside MSB classification, (c) Israeli regulatory implications for Barry's involvement.
+
+2. **Apply for Stripe Crypto Onramp access** — requires a Stripe account and approved application. Typically 48 hours. Start in sandbox/test mode.
+
+3. **Evaluate embedded wallet providers** — compare Privy, Crossmint, and MoonPay Agents on: fee structure, x402 compatibility, Base L2 support, KYC friction level, API quality.
+
+4. **Do NOT build custodial wallet infrastructure** until legal counsel confirms the regulatory path and licensing timeline.
+
+5. **Do NOT accept fiat payments** into Kychee's bank account for the purpose of funding user wallets — this is the highest-risk activity and should be avoided entirely at MVP.
+
 ### Communicating with AI Agent Customers
 
 This is a genuinely novel B2B2M problem: when something goes wrong, or a lease is expiring, or we need to warn about pending data deletion — who do we tell, and how?
@@ -380,7 +553,7 @@ This means the llms.txt isn't just documentation — it's an **agent-optimized s
 
 #### The Friction Ladder
 
-Each step requires slightly more commitment but delivers more value. Users enter at any level and naturally progress upward.
+Each step requires slightly more commitment but delivers more value. Users enter at any level and naturally progress upward. See "Updated Friction Ladder (with payment model integrated)" in the Payment Funding section above for the definitive version with payment/regulatory details.
 
 **Level 0 — "Ask Your Agent" (zero friction)**
 - User pastes our URL into any AI chat
@@ -408,18 +581,25 @@ Each step requires slightly more commitment but delivers more value. Users enter
 - User watches their agent autonomously build and ship a working app
 - **CTA:** "Give your agent this prompt and watch it build →"
 
-**Level 4 — MCP Server Install (conversion step)**
-- For developers who want their agents to use the platform ongoing
-- One-line install command
-- Agent now has permanent access to discovery, wallet, and all services
-- This is the retention mechanism, not the acquisition step
-- **CTA:** "Make it permanent — install the MCP server →"
+**Level 4 — Create Account (30 seconds)**
+- Email/OAuth signup for persistent testnet projects
+- Needed before going live
+- **CTA:** "Create your account →"
 
-**Level 5 — Fund Wallet (monetization step)**
-- Connect Stripe, purchase agent allowance
+**Level 5 — Fund Wallet via Stripe Onramp (2–3 minutes, monetization step)**
+- Click "Go Live" → Stripe Crypto Onramp widget → credit card → USDC in wallet on Base
+- Stripe handles all KYC/AML/compliance — we never touch fiat
 - Set spending limits and controls
 - Agent operates autonomously within budget on real infrastructure
 - **CTA:** "Go live — fund your agent's wallet →"
+
+**Level 6 — MCP Server Install (retention step)**
+- One-line install for ongoing agent access
+- Agent now has permanent discovery, wallet, and service access
+- This is the retention mechanism, not the acquisition step
+- **CTA:** "Make it permanent — install the MCP server →"
+
+**Key design principle:** The first four levels require zero payment, zero KYC, zero commitment. Users fully experience the product value before we ever ask for money.
 
 #### Distribution Channels
 
