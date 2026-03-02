@@ -1,4 +1,4 @@
-# Run402 -- Postgres for AI Agents
+# Run402 -- Postgres & Static Hosting for AI Agents
 
 > API Base: https://api.run402.com
 > Docs URL: https://run402.com/llms.txt
@@ -6,11 +6,13 @@
 
 ## TL;DR
 
-Run402 gives you a full Postgres database with REST API, user auth, file storage, and row-level security. You pay with a single x402 micropayment -- no signups, no dashboards, no human approval needed.
+Run402 gives you a full Postgres database with REST API, user auth, file storage, row-level security, and static site hosting. You pay with x402 micropayments -- no signups, no dashboards, no human approval needed.
 
-One HTTP call. One payment. You get back `anon_key`, `service_key`, and a project ID. Start creating tables immediately.
+**Database**: One HTTP call, one payment → `anon_key`, `service_key`, project ID. Start creating tables immediately.
 
-Only provisioning and renewal require x402 payment. All subsequent REST, auth, and storage calls use the returned project keys -- no payment headers needed.
+**Static sites**: One HTTP call, one payment → live URL at `{id}.sites.run402.com`. Upload HTML/CSS/JS/images as inlined files. SPA-ready with automatic fallback routing.
+
+Only provisioning, renewal, and site deployment require x402 payment. All subsequent REST, auth, and storage calls use the returned project keys -- no payment headers needed.
 
 ---
 
@@ -400,11 +402,21 @@ For explicit control, use both `apikey` (project key) and `Authorization: Bearer
 
 ## Pricing
 
+### Database tiers
+
 | Tier | Price | Lease | Storage | API Calls |
 |------|-------|-------|---------|-----------|
 | Prototype | $0.10 | 7 days | 250 MB | 500,000 |
 | Hobby | $5.00 | 30 days | 1 GB | 5,000,000 |
 | Team | $20.00 | 30 days | 10 GB | 50,000,000 |
+
+### Static site deployment
+
+| Item | Price | Limit |
+|------|-------|-------|
+| Per deployment | $0.05 | 50 MB total file size |
+
+Each deployment is immutable and gets a permanent URL. Deploy as many times as you want -- each is a separate $0.05 payment.
 
 Payments are x402 micropayments on **Base** (EIP-155 chain 8453). Testnet available on Base Sepolia (chain 84532).
 
@@ -615,6 +627,113 @@ curl -X POST https://api.run402.com/storage/v1/object/assets/photo.jpg \
 ```bash
 curl https://api.run402.com/admin/v1/projects/$PROJECT_ID/usage \
   -H "Authorization: Bearer $SERVICE_KEY"
+```
+
+---
+
+## Deploy a Static Site
+
+You can deploy a static site (HTML, CSS, JS, images) with a single API call. Each deployment gets a permanent URL at `https://{id}.sites.run402.com`. No project or database required -- deployments are standalone.
+
+### How it works
+
+1. You POST files as inline JSON (text as UTF-8, binary as base64)
+2. Run402 uploads them to S3, records the deployment, returns a live URL
+3. CloudFront serves the site globally with caching and HTTPS
+4. Paths without file extensions (e.g. `/about`, `/dashboard`) serve `index.html` (SPA fallback)
+
+### Deploy with x402 (TypeScript)
+
+```typescript
+import { x402Client, wrapFetchWithPayment } from "@x402/fetch";
+import { ExactEvmScheme } from "@x402/evm/exact/client";
+import { toClientEvmSigner } from "@x402/evm";
+import { privateKeyToAccount } from "viem/accounts";
+import { createPublicClient, http } from "viem";
+import { baseSepolia } from "viem/chains";
+
+// Your wallet (testnet -- use `base` chain + eip155:8453 for mainnet)
+const account = privateKeyToAccount("YOUR_PRIVATE_KEY" as `0x${string}`);
+const publicClient = createPublicClient({ chain: baseSepolia, transport: http() });
+const signer = toClientEvmSigner(account, publicClient);
+
+const client = new x402Client();
+client.register("eip155:84532", new ExactEvmScheme(signer));
+const fetchPaid = wrapFetchWithPayment(fetch, client);
+
+// Deploy a site ($0.05)
+const res = await fetchPaid("https://api.run402.com/v13/deployments", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({
+    name: "my-app",
+    files: [
+      { file: "index.html", data: "<!DOCTYPE html><html><body><h1>Hello!</h1></body></html>" },
+      { file: "style.css", data: "body { font-family: sans-serif; }" },
+      { file: "logo.png", data: "iVBORw0KGgo...", encoding: "base64" },
+    ],
+  }),
+});
+
+const deployment = await res.json();
+console.log("Live at:", deployment.url);
+// -> https://dpl-1709337600000-a1b2c3.sites.run402.com
+```
+
+### Deploy with MCP
+
+```
+deploy_site(
+  name: "my-app",
+  files: [
+    { file: "index.html", data: "<!DOCTYPE html><html><body><h1>Hello!</h1></body></html>" },
+    { file: "style.css", data: "body { font-family: sans-serif; }" }
+  ]
+)
+// -> Payment required ($0.05) or live URL on success
+```
+
+### Check a deployment (free, no auth)
+
+```bash
+curl https://api.run402.com/v13/deployments/dpl_1709337600000_a1b2c3
+```
+
+Response:
+```json
+{
+  "id": "dpl_1709337600000_a1b2c3",
+  "name": "my-app",
+  "url": "https://dpl-1709337600000-a1b2c3.sites.run402.com",
+  "status": "READY",
+  "files_count": 3,
+  "total_size": 4096
+}
+```
+
+### URL scheme
+
+Each deployment ID like `dpl_1709337600000_a1b2c3` maps to a subdomain with underscores replaced by hyphens: `dpl-1709337600000-a1b2c3.sites.run402.com`. This is a permanent, immutable URL -- it will serve the same content forever.
+
+### SPA behavior
+
+- `/` → serves `index.html`
+- `/about` → serves `index.html` (no file extension = SPA fallback)
+- `/style.css` → serves `style.css` with `text/css` Content-Type
+- `/assets/app.js` → serves the file with `application/javascript` Content-Type
+- `/missing.js` → returns 403 (has file extension, not found in deployment)
+
+### Linking to a project (optional)
+
+Pass `project` to associate a deployment with an existing Run402 database project. This is metadata only -- it doesn't affect the deployment URL or require project auth.
+
+```json
+{
+  "name": "my-app",
+  "project": "prj_1234_0001",
+  "target": "production",
+  "files": [...]
+}
 ```
 
 ---

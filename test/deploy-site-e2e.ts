@@ -13,8 +13,8 @@
  *   9.  Verify idempotency (same key → same deployment)
  *
  * Usage:
- *   BASE_URL=http://localhost:4022 npx tsx test/deploy-site-e2e.ts
- *   BASE_URL=https://api.run402.com npx tsx test/deploy-site-e2e.ts
+ *   BASE_URL=https://api.run402.com npx tsx test/deploy-site-e2e.ts          # mainnet
+ *   BASE_URL=https://api.run402.com TESTNET=1 npx tsx test/deploy-site-e2e.ts  # testnet
  */
 
 import { config } from "dotenv";
@@ -25,13 +25,14 @@ import { ExactEvmScheme } from "@x402/evm/exact/client";
 import { toClientEvmSigner } from "@x402/evm";
 import { privateKeyToAccount } from "viem/accounts";
 import { createPublicClient, http } from "viem";
-import { baseSepolia } from "viem/chains";
+import { base, baseSepolia } from "viem/chains";
 import { randomBytes } from "node:crypto";
 
 // --- Config ---
 
 const BUYER_KEY = process.env.BUYER_PRIVATE_KEY as `0x${string}`;
 const BASE_URL = process.env.BASE_URL || "http://localhost:4022";
+const USE_TESTNET = !!process.env.TESTNET;
 
 if (!BUYER_KEY) {
   console.error("Missing BUYER_PRIVATE_KEY in .env");
@@ -40,11 +41,14 @@ if (!BUYER_KEY) {
 
 // --- Setup x402 client ---
 
+const chain = USE_TESTNET ? baseSepolia : base;
+const network = USE_TESTNET ? "eip155:84532" : "eip155:8453";
+
 const account = privateKeyToAccount(BUYER_KEY);
-const publicClient = createPublicClient({ chain: baseSepolia, transport: http() });
+const publicClient = createPublicClient({ chain, transport: http() });
 const signer = toClientEvmSigner(account, publicClient);
 const client = new x402Client();
-client.register("eip155:*", new ExactEvmScheme(signer));
+client.register(network as `${string}:${string}`, new ExactEvmScheme(signer));
 const fetchPaid = wrapFetchWithPayment(fetch, client);
 
 // --- Helpers ---
