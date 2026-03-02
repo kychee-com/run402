@@ -121,7 +121,7 @@ function handler(event) {
     // Deploy site/ to S3 + invalidate CloudFront
     // =========================================================================
     new s3deploy.BucketDeployment(this, "Deploy", {
-      sources: [s3deploy.Source.asset(path.join(__dirname, "../../site"))],
+      sources: [s3deploy.Source.asset(path.join(__dirname, "../../site-dist"))],
       destinationBucket: siteBucket,
       distribution,
       distributionPaths: ["/*"],
