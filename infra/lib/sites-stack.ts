@@ -78,8 +78,8 @@ function handler(event) {
   var lastSegment = uri.split('/').pop();
   var hasExtension = lastSegment.indexOf('.') > 0;
 
-  // SPA fallback: paths without extensions serve index.html
-  if (!hasExtension && uri !== '/') {
+  // SPA fallback: root path and paths without extensions serve index.html
+  if (!hasExtension) {
     uri = '/index.html';
   }
 
