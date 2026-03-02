@@ -7,6 +7,7 @@ import { runSqlSchema, handleRunSql } from "./tools/run-sql.js";
 import { restQuerySchema, handleRestQuery } from "./tools/rest-query.js";
 import { uploadFileSchema, handleUploadFile } from "./tools/upload-file.js";
 import { renewSchema, handleRenew } from "./tools/renew.js";
+import { deploySiteSchema, handleDeploySite } from "./tools/deploy-site.js";
 
 const server = new McpServer({
   name: "run402",
@@ -46,6 +47,13 @@ server.tool(
   "Renew a project's lease. Returns success or payment details if x402 payment is needed.",
   renewSchema,
   async (args) => handleRenew(args),
+);
+
+server.tool(
+  "deploy_site",
+  "Deploy a static site (HTML/CSS/JS). Files are uploaded to S3 and served via CloudFront at a unique URL. Costs $0.05 USDC via x402.",
+  deploySiteSchema,
+  async (args) => handleDeploySite(args),
 );
 
 const transport = new StdioServerTransport();

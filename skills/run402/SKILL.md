@@ -23,7 +23,7 @@ One tool call. One payment. You get back `anon_key`, `service_key`, and a projec
 
 ## Tools Reference
 
-You have 5 tools available through the `@run402/mcp` server.
+You have 6 tools available through the `@run402/mcp` server.
 
 ### provision_postgres_project
 
@@ -124,6 +124,44 @@ Renew a project's lease before it expires.
 **Returns on 402 (payment required):** Payment details as informational text (not an error). Guide the user through payment, then retry.
 
 Updates the local keystore with the new expiry date.
+
+### deploy_site
+
+Deploy a static site (HTML/CSS/JS/images). Files are uploaded to S3 and served via CloudFront at a unique URL.
+
+**Parameters:**
+- `name` (required) — Site name (e.g. `"family-todo"`, `"portfolio"`)
+- `project` (optional) — Project ID to link this deployment to an existing Run402 project
+- `target` (optional) — Deployment target (e.g. `"production"`)
+- `files` (required) — Array of files to deploy:
+  - `file` — File path (e.g. `"index.html"`, `"assets/logo.png"`)
+  - `data` — File content (text or base64-encoded)
+  - `encoding` (optional) — `"utf-8"` (default) for text, `"base64"` for binary files
+
+**Returns on success:**
+```json
+{
+  "id": "dpl_1709337600000_a1b2c3",
+  "name": "family-todo",
+  "url": "https://dpl-1709337600000-a1b2c3.sites.run402.com",
+  "status": "READY",
+  "files_count": 3,
+  "total_size": 4096
+}
+```
+
+**Returns on 402 (payment required):** Payment details as informational text (not an error). Costs $0.05 USDC per deployment.
+
+**Examples:**
+```
+deploy_site(name: "my-app", files: [
+  { file: "index.html", data: "<!DOCTYPE html><html>..." },
+  { file: "style.css", data: "body { margin: 0; }" },
+  { file: "app.js", data: "console.log('hello');" }
+])
+```
+
+SPA fallback: paths without file extensions (e.g. `/about`) serve `index.html`. Static assets are served with correct Content-Type headers. Max 50 MB per deployment.
 
 ## Standard Workflow
 

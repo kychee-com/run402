@@ -160,6 +160,54 @@ export function createPaymentMiddleware() {
     },
   };
 
+  // POST /v13/deployments — static site deployment ($0.05)
+  resourceConfig["POST /v13/deployments"] = {
+    accepts: networks.map((network) => ({
+      scheme: "exact",
+      price: "$0.05",
+      network,
+      payTo: payTo("$0.05"),
+    })),
+    description: "Deploy a static site — Vercel-compatible inlined file upload ($0.05 USDC)",
+    mimeType: "application/json",
+    extensions: {
+      ...declareDiscoveryExtension({
+        bodyType: "json",
+        inputSchema: {
+          type: "object",
+          properties: {
+            name: { type: "string", description: "Site name" },
+            project: { type: "string", description: "Optional project ID to link deployment" },
+            target: { type: "string", description: "Deployment target (e.g. 'production')" },
+            files: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  file: { type: "string", description: "File path (e.g. 'index.html')" },
+                  data: { type: "string", description: "File content" },
+                  encoding: { type: "string", description: "'utf-8' (default) or 'base64'" },
+                },
+                required: ["file", "data"],
+              },
+            },
+          },
+          required: ["name", "files"],
+        },
+        output: {
+          example: {
+            id: "dpl_1709337600000_a1b2c3",
+            name: "my-site",
+            url: "https://dpl-1709337600000-a1b2c3.sites.run402.com",
+            status: "READY",
+            files_count: 2,
+            total_size: 4096,
+          },
+        },
+      }),
+    },
+  };
+
   // POST /v1/projects — default route uses prototype pricing
   resourceConfig["POST /v1/projects"] = {
     accepts: networks.map((network) => ({

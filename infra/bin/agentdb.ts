@@ -2,6 +2,7 @@
 import * as cdk from "aws-cdk-lib";
 import { PodStack } from "../lib/pod-stack.js";
 import { SiteStack } from "../lib/site-stack.js";
+import { SitesStack } from "../lib/sites-stack.js";
 
 const app = new cdk.App();
 
@@ -18,6 +19,11 @@ new PodStack(app, "AgentDB-Pod01", {
 new SiteStack(app, "AgentDB-Site", {
   env,
   description: "AgentDB Site — S3 + CloudFront static website",
+});
+
+new SitesStack(app, "AgentDB-Sites", {
+  env,
+  description: "AgentDB Sites — CloudFront + wildcard DNS for deployed static sites",
 });
 
 app.synth();

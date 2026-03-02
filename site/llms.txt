@@ -346,6 +346,49 @@ For explicit control, use both `apikey` (project key) and `Authorization: Bearer
 | `/storage/v1/object/sign/:bucket/*` | POST | apikey | Get signed URL (1h) |
 | `/storage/v1/object/list/:bucket` | GET | apikey | List files in bucket |
 
+### Sites / Deployments
+
+| Endpoint | Method | Auth | Cost | Description |
+|----------|--------|------|------|-------------|
+| `/v13/deployments` | POST | x402 | $0.05 | Deploy a static site (Vercel-compatible inlined files) |
+| `/v13/deployments/:id` | GET | None | Free | Get deployment status and URL |
+
+**Deploy a static site** — Upload HTML/CSS/JS/images as inlined files. Each deployment gets a permanent URL at `https://{id}.sites.run402.com`. SPA-friendly: paths without file extensions serve `index.html`.
+
+**Request:**
+```json
+{
+  "name": "family-todo",
+  "project": "prj_1234_0001",
+  "target": "production",
+  "files": [
+    { "file": "index.html", "data": "<!DOCTYPE html>..." },
+    { "file": "assets/style.css", "data": "body { margin: 0; }" },
+    { "file": "assets/logo.png", "data": "iVBORw0KGgo...", "encoding": "base64" }
+  ]
+}
+```
+
+**Response:**
+```json
+{
+  "id": "dpl_1709337600000_a1b2c3",
+  "name": "family-todo",
+  "url": "https://dpl-1709337600000-a1b2c3.sites.run402.com",
+  "project_id": "prj_1234_0001",
+  "status": "READY",
+  "files_count": 3,
+  "total_size": 4096
+}
+```
+
+- **Price**: $0.05 per deployment via x402
+- **Size limit**: 50 MB total per deployment
+- **File encoding**: `utf-8` (default) for text files, `base64` for binary (images, fonts, etc.)
+- **SPA fallback**: Paths without file extensions (e.g. `/about`, `/dashboard`) serve `index.html` with 200
+- **Immutable**: Each deployment URL is permanent. New deploys get new URLs.
+- **Idempotency**: Use `Idempotency-Key` header to prevent double-charging on retries
+
 ### Utility
 
 | Endpoint | Method | Auth | Cost |
@@ -385,6 +428,7 @@ Supported on:
 - `POST /v1/projects`
 - `POST /v1/projects/create/:tier`
 - `POST /v1/projects/:id/renew`
+- `POST /v13/deployments`
 
 **Recommendation**: Always include an `Idempotency-Key` when provisioning or renewing. Use a UUID or deterministic hash of your intent.
 
@@ -625,6 +669,7 @@ claude mcp add run402 -- npx -y @run402/mcp
 | `rest_query` | Query/mutate data via PostgREST. Supports GET/POST/PATCH/DELETE with query params. |
 | `upload_file` | Upload text content to project storage. |
 | `renew_project` | Renew a project's lease. Handles x402 payment negotiation. |
+| `deploy_site` | Deploy a static site (HTML/CSS/JS). $0.05 per deployment. Returns a live URL. |
 
 ### MCP Flow
 
@@ -644,6 +689,9 @@ claude mcp add run402 -- npx -y @run402/mcp
 
 5. renew_project(project_id: "prj_...")
    -> Returns payment details (402) or updates stored expiry on success
+
+6. deploy_site(name: "my-app", files: [{file: "index.html", data: "..."}])
+   -> Returns payment details (402) or deployment URL on success
 ```
 
 ### Key Storage
@@ -676,7 +724,7 @@ clawhub install run402
 ### What You Get
 
 The skill installs the `@run402/mcp` MCP server and provides your agent with:
-- All 5 MCP tools: `provision_postgres_project`, `run_sql`, `rest_query`, `upload_file`, `renew_project`
+- All 6 MCP tools: `provision_postgres_project`, `run_sql`, `rest_query`, `upload_file`, `renew_project`, `deploy_site`
 - Credential storage in `~/.config/run402/projects.json`
 - x402 payment negotiation and user guidance
 - Step-by-step workflow instructions for database provisioning through CRUD operations

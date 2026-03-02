@@ -20,12 +20,14 @@ import { initSlots } from "./services/slots.js";
 import { startLeaseChecker, stopLeaseChecker } from "./services/leases.js";
 import { startFaucetRefill, stopFaucetRefill } from "./services/faucet.js";
 import { initIdempotencyTable, idempotencyMiddleware } from "./middleware/idempotency.js";
+import { initDeploymentsTable } from "./services/deployments.js";
 import projectRoutes from "./routes/projects.js";
 import authRoutes from "./routes/auth.js";
 import adminRoutes from "./routes/admin.js";
 import restRoutes from "./routes/rest.js";
 import storageRoutes from "./routes/storage.js";
 import faucetRoutes from "./routes/faucet.js";
+import deploymentRoutes from "./routes/deployments.js";
 
 const app = express();
 
@@ -102,6 +104,8 @@ app.use((req: Request, res: Response, next: NextFunction) => {
 app.use((req: Request, res: Response, next: NextFunction) => {
   if (req.path.endsWith("/sql") || req.path.startsWith("/storage/")) {
     express.text({ type: "*/*", limit: "10mb" })(req, res, next);
+  } else if (req.path === "/v13/deployments" && req.method === "POST") {
+    express.json({ limit: "50mb" })(req, res, next);
   } else {
     express.json({ limit: "1mb" })(req, res, next);
   }
@@ -111,6 +115,7 @@ app.use((req: Request, res: Response, next: NextFunction) => {
 app.post("/v1/projects", idempotencyMiddleware);
 app.post("/v1/projects/create/:tier", idempotencyMiddleware);
 app.post("/v1/projects/:id/renew", idempotencyMiddleware);
+app.post("/v13/deployments", idempotencyMiddleware);
 
 // --- x402 payment middleware ---
 if (SELLER_ADDRESS) {
@@ -157,6 +162,7 @@ app.use(adminRoutes);
 app.use(restRoutes);
 app.use(storageRoutes);
 app.use(faucetRoutes);
+app.use(deploymentRoutes);
 
 // --- Error handler ---
 app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
@@ -233,6 +239,9 @@ async function start() {
 
   // Initialize idempotency table
   await initIdempotencyTable();
+
+  // Initialize deployments table
+  await initDeploymentsTable();
 
   // Initialize slot allocator
   await initSlots();
