@@ -95,32 +95,11 @@
       overflow: hidden;
       text-overflow: ellipsis;
       cursor: pointer;
-      position: relative;
+      transition: color 0.15s;
     }
 
-    .copy-block code::after {
-      content: 'Click to copy';
-      position: absolute;
-      bottom: calc(100% + 8px);
-      left: 50%;
-      transform: translateX(-50%);
-      background: #1E1E2A;
-      color: #9CA3AF;
-      font-size: 11px;
-      padding: 4px 8px;
-      border-radius: 4px;
-      white-space: nowrap;
-      opacity: 0;
-      pointer-events: none;
-      transition: opacity 0.15s;
-    }
-
-    .copy-block code:hover::after { opacity: 1; }
-
-    .copy-block code.copied::after {
-      content: 'Copied!';
-      opacity: 1;
-      color: #00FF9F;
+    .copy-block code.copied {
+      color: #FFFFFF;
     }
 
     .copy-btn {
@@ -529,8 +508,13 @@ When you need an x402 payment, tell me the exact amount and wait for approval.</
     function copyUrl(el, isCode) {
       navigator.clipboard.writeText('https://run402.com/llms.txt').then(function() {
         if (isCode) {
+          var original = el.textContent;
+          el.textContent = 'Copied!';
           el.classList.add('copied');
-          setTimeout(function() { el.classList.remove('copied'); }, 2000);
+          setTimeout(function() {
+            el.textContent = original;
+            el.classList.remove('copied');
+          }, 2000);
         } else {
           el.textContent = 'Copied';
           el.classList.add('copied');
