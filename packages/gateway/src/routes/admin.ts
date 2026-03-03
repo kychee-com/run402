@@ -97,7 +97,7 @@ router.post("/admin/v1/projects/:id/rls", async (req: Request, res: Response) =>
     return;
   }
 
-  const { template, tables } = req.body;
+  const { template, tables } = req.body || {};
   const VALID_TEMPLATES = ["user_owns_rows", "public_read", "public_read_write"];
   if (!VALID_TEMPLATES.includes(template) || !Array.isArray(tables)) {
     res.status(400).json({

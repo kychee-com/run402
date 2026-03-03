@@ -111,6 +111,23 @@ app.use((req: Request, res: Response, next: NextFunction) => {
   }
 });
 
+// Body-parser error handler — return 4xx for bad input, not 500
+app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
+  if (err.type === "entity.parse.failed") {
+    res.status(400).json({ error: "Invalid JSON in request body" });
+    return;
+  }
+  if (err.type === "entity.too.large") {
+    res.status(413).json({ error: "Request body too large" });
+    return;
+  }
+  if (err.type === "encoding.unsupported" || err.type === "charset.unsupported") {
+    res.status(415).json({ error: "Unsupported content encoding" });
+    return;
+  }
+  next(err);
+});
+
 // --- Idempotency middleware (for paid endpoints, before x402) ---
 app.post("/v1/projects", idempotencyMiddleware);
 app.post("/v1/projects/create/:tier", idempotencyMiddleware);

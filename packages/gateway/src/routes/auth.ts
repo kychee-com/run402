@@ -14,7 +14,7 @@ router.use("/auth/v1", apikeyAuth);
 // POST /auth/v1/signup — create user
 router.post("/auth/v1/signup", async (req: Request, res: Response) => {
   const project = req.project!;
-  const { email, password } = req.body;
+  const { email, password } = req.body || {};
 
   if (!email || !password) {
     res.status(400).json({ error: "email and password required" });
@@ -110,7 +110,7 @@ router.post("/auth/v1/token", async (req: Request, res: Response) => {
   }
 
   // Password login flow
-  const { email, password } = req.body;
+  const { email, password } = req.body || {};
   if (!email || !password) {
     res.status(400).json({ error: "email and password required" });
     return;

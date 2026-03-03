@@ -14,7 +14,7 @@ const router = Router();
 // POST /v13/deployments — create a deployment
 router.post("/v13/deployments", async (req: Request, res: Response) => {
   try {
-    const { name, project, target, files } = req.body;
+    const { name, project, target, files } = req.body || {};
 
     // Validate required fields
     if (!name || typeof name !== "string") {

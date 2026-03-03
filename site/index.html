@@ -300,7 +300,7 @@ Build and ship a small webapp for me using Run402 (backend + frontend):
 - Create the Postgres schema
 - Set up auth + basic RLS so each user only sees their own rows
 - Use file storage where it helps (uploads/avatars/etc.)
-- Deploy the frontend as a Run402 static site ($0.05) and return the live URL
+- Deploy the frontend as a Run402 static site and return the live URL
 
 When you need an x402 payment, tell me the exact amount and wait for approval.</pre>
         <div class="note">Tip: replace "small webapp" with "workout tracker", "CRM", "bug tracker", "inventory", etc.</div>
@@ -373,15 +373,10 @@ When you need an x402 payment, tell me the exact amount and wait for approval.</
           <div class="value">$20</div>
           <div class="detail">30 days · 10 GB · 50M calls</div>
         </div>
-        <div class="card">
-          <div class="label">Site deployment</div>
-          <div class="value">$0.05</div>
-          <div class="detail">Per deploy · served globally · SPA-ready routing</div>
-        </div>
       </div>
 
       <p class="note">
-        Only provisioning, renewals, and site deployments require x402 payment. Normal REST/auth/storage usage uses the keys returned after provisioning.
+        Only provisioning and renewals require x402 payment. Normal REST/auth/storage/hosting usage uses the keys returned after provisioning.
       </p>
     </div>
 
@@ -401,9 +396,9 @@ When you need an x402 payment, tell me the exact amount and wait for approval.</
 <span class="cmd">curl</span> https://api.run402.com/rest/v1/todos \
   -H <span class="string">"apikey: $ANON_KEY"</span>
 
-<span class="comment"># 4) Deploy the frontend as a static site (x402)</span>
+<span class="comment"># 4) Deploy the frontend as a static site</span>
 <span class="cmd">curl -X POST</span> https://api.run402.com/v13/deployments \
-  -H <span class="string">"X-402-Payment: &lt;payment&gt;"</span> \
+  -H <span class="string">"Authorization: Bearer $SERVICE_KEY"</span> \
   -d <span class="string">'{"name":"myapp","files":[{"file":"index.html","data":"&lt;!doctype html&gt;..."}]}'</span>
 
 <span class="comment"># =&gt; https://&lt;deployment_id&gt;.sites.run402.com</span></pre>
