@@ -7,4 +7,3 @@ storage/
 *.d.ts.map
 cdk.out/
 cdk.context.json
-site-dist/

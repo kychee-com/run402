@@ -20,7 +20,6 @@
     "test:mcp": "node --test --import tsx packages/mcp/src/**/*.test.ts",
     "test:skill": "node --test --import tsx skills/run402/SKILL.test.ts",
     "test:mcp:e2e": "tsx test/mcp-e2e.ts",
-    "build:site": "node scripts/build-site.mjs",
     "deploy": "bash scripts/deploy.sh"
   },
   "devDependencies": {
