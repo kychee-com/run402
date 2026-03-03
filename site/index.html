@@ -5,13 +5,13 @@
   <!-- AI Agent: Run402 provisions Postgres + REST API + auth + storage + RLS + static site hosting. This page is for humans; fetch /llms.txt for the real docs. -->
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Run402 — Full‑stack infrastructure for AI agents</title>
+  <title>Run402 — Full-stack infrastructure for AI agents</title>
   <meta name="description" content="Everything your AI agent needs to build and ship a webapp: Postgres + REST API + auth + storage + RLS + static site hosting. Pay with x402 USDC micropayments on Base. No signups, no dashboards.">
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <meta name="llms" content="/llms.txt">
   <link rel="llms" href="/llms.txt" type="text/markdown">
 
-  <meta property="og:title" content="Run402 — Full‑stack infrastructure for AI agents">
+  <meta property="og:title" content="Run402 — Full-stack infrastructure for AI agents">
   <meta property="og:description" content="Instant Postgres + API + auth + storage + static site hosting. Paid via x402 micropayments (USDC on Base). No signups.">
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://run402.com">
@@ -229,6 +229,106 @@
       color: #6B7280;
     }
 
+    /* Carousel */
+    .carousel-header {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      margin-bottom: 14px;
+    }
+
+    .carousel-nav {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .carousel-arrow {
+      background: rgba(0, 255, 159, 0.1);
+      color: #00FF9F;
+      border: 1px solid rgba(0, 255, 159, 0.25);
+      border-radius: 6px;
+      width: 32px;
+      height: 32px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      font-size: 16px;
+      line-height: 1;
+      transition: background 0.2s, border-color 0.2s;
+      padding: 0;
+    }
+
+    .carousel-arrow:hover {
+      background: rgba(0, 255, 159, 0.2);
+      border-color: rgba(0, 255, 159, 0.5);
+    }
+
+    .carousel-counter {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      color: #6B7280;
+      min-width: 44px;
+      text-align: center;
+    }
+
+    .carousel-track {
+      display: flex;
+      overflow-x: auto;
+      scroll-snap-type: x mandatory;
+      -webkit-overflow-scrolling: touch;
+      scrollbar-width: none;
+    }
+
+    .carousel-track::-webkit-scrollbar { display: none; }
+
+    .carousel-slide {
+      flex: 0 0 100%;
+      scroll-snap-align: start;
+      min-width: 0;
+    }
+
+    .carousel-slide .terminal { margin-top: 0; }
+
+    .carousel-label {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: #00FF9F;
+      margin-bottom: 4px;
+    }
+
+    .carousel-pitch {
+      font-size: 14px;
+      color: #6B7280;
+      margin-bottom: 12px;
+    }
+
+    .carousel-dots {
+      display: flex;
+      justify-content: center;
+      gap: 8px;
+      margin-top: 16px;
+    }
+
+    .carousel-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: #1E1E2A;
+      border: 1px solid #333;
+      cursor: pointer;
+      transition: background 0.2s, border-color 0.2s;
+      padding: 0;
+    }
+
+    .carousel-dot.active {
+      background: #00FF9F;
+      border-color: #00FF9F;
+    }
+
     .footer {
       border-top: 1px solid #1E1E2A;
       padding-top: 32px;
@@ -263,7 +363,7 @@
   </p>
 
   <div class="container">
-    <span class="badge">Postgres + Sites · x402 payments</span>
+    <span class="badge">Postgres + Sites &middot; x402 payments</span>
 
     <h1>Everything your AI agent needs to <span class="accent">build &amp; ship</span> a webapp</h1>
     <p class="subtitle">
@@ -282,29 +382,187 @@
     </div>
 
     <div class="section">
-      <h2>Starter prompt (copy/paste)</h2>
+      <h2>Pick a prompt, ship a webapp</h2>
       <p>
-        Your agent will read the docs, provision the backend, and deploy a frontend.
-        When a payment is required, it should ask you to approve the x402 spend.
+        Your agent will read the docs, provision the backend, and deploy a frontend &mdash; all for about $0.15.
+        Pick an idea and copy the prompt.
       </p>
 
-      <div class="terminal">
-        <div class="terminal-header">
-          <span class="terminal-title">Prompt to paste into your agent</span>
-          <button class="copy-btn" onclick="copyPrompt(this)">Copy prompt</button>
+      <div class="carousel-header">
+        <div class="carousel-nav">
+          <button class="carousel-arrow" onclick="carouselPrev()" aria-label="Previous">&#8592;</button>
+          <span class="carousel-counter" id="carouselCounter">1 / 10</span>
+          <button class="carousel-arrow" onclick="carouselNext()" aria-label="Next">&#8594;</button>
         </div>
-        <pre id="agentPrompt" class="pre-wrap">Read https://run402.com/llms.txt.
-
-Build and ship a small webapp for me using Run402 (backend + frontend):
-- Provision a Prototype project ($0.10 / 7d) unless I approve otherwise
-- Create the Postgres schema
-- Set up auth + basic RLS so each user only sees their own rows
-- Use file storage where it helps (uploads/avatars/etc.)
-- Deploy the frontend as a Run402 static site and return the live URL
-
-When you need an x402 payment, tell me the exact amount and wait for approval.</pre>
-        <div class="note">Tip: replace "small webapp" with "workout tracker", "CRM", "bug tracker", "inventory", etc.</div>
       </div>
+
+      <div class="carousel-track" id="carouselTrack">
+
+        <div class="carousel-slide">
+          <div class="carousel-label">Shared Todo List</div>
+          <div class="carousel-pitch">For you and a partner &mdash; each sees their own + shared items</div>
+          <div class="terminal">
+            <div class="terminal-header">
+              <span class="terminal-title">Paste into your agent</span>
+              <button class="copy-btn" onclick="copySlide(this)">Copy prompt</button>
+            </div>
+            <pre class="pre-wrap carousel-prompt">Read https://run402.com/llms.txt.
+
+Build a shared todo list for me and my partner:
+- Each todo has a title, done status, and who it's assigned to
+- We each have our own account and we see shared items</pre>
+          </div>
+        </div>
+
+        <div class="carousel-slide">
+          <div class="carousel-label">Landing Page + Waitlist</div>
+          <div class="carousel-pitch">A polished launch page that collects email signups into a database</div>
+          <div class="terminal">
+            <div class="terminal-header">
+              <span class="terminal-title">Paste into your agent</span>
+              <button class="copy-btn" onclick="copySlide(this)">Copy prompt</button>
+            </div>
+            <pre class="pre-wrap carousel-prompt">Read https://run402.com/llms.txt.
+
+Build a startup landing page with email waitlist:
+- Collect email, name, and timestamp
+- Make it polished and beautiful</pre>
+          </div>
+        </div>
+
+        <div class="carousel-slide">
+          <div class="carousel-label">Expense Splitter</div>
+          <div class="carousel-pitch">Track who paid what on a group trip, show running balances</div>
+          <div class="terminal">
+            <div class="terminal-header">
+              <span class="terminal-title">Paste into your agent</span>
+              <button class="copy-btn" onclick="copySlide(this)">Copy prompt</button>
+            </div>
+            <pre class="pre-wrap carousel-prompt">Read https://run402.com/llms.txt.
+
+Build a group expense splitter for a trip with 6 friends:
+- Track who paid what, split between whom, and running balances
+- Each person gets their own account
+- Show who owes whom</pre>
+          </div>
+        </div>
+
+        <div class="carousel-slide">
+          <div class="carousel-label">Event Poll</div>
+          <div class="carousel-pitch">Find the best date &mdash; participants vote on available times</div>
+          <div class="terminal">
+            <div class="terminal-header">
+              <span class="terminal-title">Paste into your agent</span>
+              <button class="copy-btn" onclick="copySlide(this)">Copy prompt</button>
+            </div>
+            <pre class="pre-wrap carousel-prompt">Read https://run402.com/llms.txt.
+
+Build an event scheduling poll, like Doodle:
+- People can sign up and vote on available time slots
+- Show the winning time</pre>
+          </div>
+        </div>
+
+        <div class="carousel-slide">
+          <div class="carousel-label">Recipe Book</div>
+          <div class="carousel-pitch">Browse and share family recipes with photos</div>
+          <div class="terminal">
+            <div class="terminal-header">
+              <span class="terminal-title">Paste into your agent</span>
+              <button class="copy-btn" onclick="copySlide(this)">Copy prompt</button>
+            </div>
+            <pre class="pre-wrap carousel-prompt">Read https://run402.com/llms.txt.
+
+Build a shared family recipe book:
+- Each recipe has a title, ingredients, instructions, and a photo
+- Make it browsable and beautiful</pre>
+          </div>
+        </div>
+
+        <div class="carousel-slide">
+          <div class="carousel-label">Apartment Tracker</div>
+          <div class="carousel-pitch">Compare listings side by side with your roommate</div>
+          <div class="terminal">
+            <div class="terminal-header">
+              <span class="terminal-title">Paste into your agent</span>
+              <button class="copy-btn" onclick="copySlide(this)">Copy prompt</button>
+            </div>
+            <pre class="pre-wrap carousel-prompt">Read https://run402.com/llms.txt.
+
+Build an apartment hunting tracker for me and my roommate:
+- Track listings with address, price, sqft, pros, cons, and our ratings
+- We can both add and rate places</pre>
+          </div>
+        </div>
+
+        <div class="carousel-slide">
+          <div class="carousel-label">Micro-Blog</div>
+          <div class="carousel-pitch">A personal site for posting thoughts and links</div>
+          <div class="terminal">
+            <div class="terminal-header">
+              <span class="terminal-title">Paste into your agent</span>
+              <button class="copy-btn" onclick="copySlide(this)">Copy prompt</button>
+            </div>
+            <pre class="pre-wrap carousel-prompt">Read https://run402.com/llms.txt.
+
+Build me a personal micro-blog:
+- I can post short thoughts and links with tags
+- Anyone can read it, only I can post</pre>
+          </div>
+        </div>
+
+        <div class="carousel-slide">
+          <div class="carousel-label">Gift Registry</div>
+          <div class="carousel-pitch">Guests see items but not who claimed what &mdash; no duplicate gifts</div>
+          <div class="terminal">
+            <div class="terminal-header">
+              <span class="terminal-title">Paste into your agent</span>
+              <button class="copy-btn" onclick="copySlide(this)">Copy prompt</button>
+            </div>
+            <pre class="pre-wrap carousel-prompt">Read https://run402.com/llms.txt.
+
+Build a gift registry for my birthday:
+- Guests can see items and claim them
+- No one sees who claimed what, so no duplicate gifts</pre>
+          </div>
+        </div>
+
+        <div class="carousel-slide">
+          <div class="carousel-label">Workout Log</div>
+          <div class="carousel-pitch">Track exercises, sets, reps &mdash; see progress over time</div>
+          <div class="terminal">
+            <div class="terminal-header">
+              <span class="terminal-title">Paste into your agent</span>
+              <button class="copy-btn" onclick="copySlide(this)">Copy prompt</button>
+            </div>
+            <pre class="pre-wrap carousel-prompt">Read https://run402.com/llms.txt.
+
+Build me a workout tracker:
+- Track exercises, sets, reps, and weight with dates
+- Show my progress over time
+- Keep my data private</pre>
+          </div>
+        </div>
+
+        <div class="carousel-slide">
+          <div class="carousel-label">Flash Cards</div>
+          <div class="carousel-pitch">Spaced-repetition study app, pre-seeded with content</div>
+          <div class="terminal">
+            <div class="terminal-header">
+              <span class="terminal-title">Paste into your agent</span>
+              <button class="copy-btn" onclick="copySlide(this)">Copy prompt</button>
+            </div>
+            <pre class="pre-wrap carousel-prompt">Read https://run402.com/llms.txt.
+
+Build a flash card app for learning Spanish:
+- Each card has a front and back, with spaced repetition
+- Pre-load 50 common phrases</pre>
+          </div>
+        </div>
+
+      </div>
+
+      <div class="carousel-dots" id="carouselDots"></div>
     </div>
 
     <div class="section">
@@ -315,37 +573,37 @@ When you need an x402 payment, tell me the exact amount and wait for approval.</
         <div class="card">
           <div class="label">Database</div>
           <div class="value">Postgres 16</div>
-          <div class="detail">Aurora Serverless v2 · schema-per-project isolation</div>
+          <div class="detail">Aurora Serverless v2 &middot; schema-per-project isolation</div>
         </div>
 
         <div class="card">
           <div class="label">API</div>
           <div class="value">Instant REST</div>
-          <div class="detail">PostgREST · Supabase-shaped <span style="font-family:'JetBrains Mono',monospace;">/rest/v1</span></div>
+          <div class="detail">PostgREST &middot; Supabase-shaped <span style="font-family:'JetBrains Mono',monospace;">/rest/v1</span></div>
         </div>
 
         <div class="card">
           <div class="label">Auth</div>
           <div class="value">Users + JWT</div>
-          <div class="detail">Email/password flows · integrates with RLS policies</div>
+          <div class="detail">Email/password flows &middot; integrates with RLS policies</div>
         </div>
 
         <div class="card">
           <div class="label">Storage</div>
           <div class="value">Files &amp; uploads</div>
-          <div class="detail">S3-backed object storage · app-friendly endpoints</div>
+          <div class="detail">S3-backed object storage &middot; app-friendly endpoints</div>
         </div>
 
         <div class="card">
           <div class="label">Security</div>
           <div class="value">Row-level security</div>
-          <div class="detail">Multi-tenant patterns · least-privilege by default</div>
+          <div class="detail">Multi-tenant patterns &middot; least-privilege by default</div>
         </div>
 
         <div class="card">
           <div class="label">Frontend</div>
           <div class="value">Static site hosting</div>
-          <div class="detail">CloudFront + S3 · <span style="font-family:'JetBrains Mono',monospace;">*.sites.run402.com</span> · SPA fallback</div>
+          <div class="detail">CloudFront + S3 &middot; <span style="font-family:'JetBrains Mono',monospace;">*.sites.run402.com</span> &middot; SPA fallback</div>
         </div>
       </div>
     </div>
@@ -361,17 +619,17 @@ When you need an x402 payment, tell me the exact amount and wait for approval.</
         <div class="card">
           <div class="label">Prototype</div>
           <div class="value">$0.10</div>
-          <div class="detail">7 days · 250 MB · 500K calls</div>
+          <div class="detail">7 days &middot; 250 MB &middot; 500K calls</div>
         </div>
         <div class="card">
           <div class="label">Hobby</div>
           <div class="value">$5</div>
-          <div class="detail">30 days · 1 GB · 5M calls</div>
+          <div class="detail">30 days &middot; 1 GB &middot; 5M calls</div>
         </div>
         <div class="card">
           <div class="label">Team</div>
           <div class="value">$20</div>
-          <div class="detail">30 days · 10 GB · 50M calls</div>
+          <div class="detail">30 days &middot; 10 GB &middot; 50M calls</div>
         </div>
       </div>
 
@@ -491,9 +749,9 @@ When you need an x402 payment, tell me the exact amount and wait for approval.</
     </div>
 
     <div class="footer">
-      <span class="footer-text">Run402 — full stack for agents</span>
+      <span class="footer-text">Run402 &mdash; full stack for agents</span>
       <span>
-        <a href="/llms.txt">Docs</a> &nbsp;·&nbsp; <a href="https://api.run402.com/health">API status</a>
+        <a href="/llms.txt">Docs</a> &nbsp;&middot;&nbsp; <a href="https://api.run402.com/health">API status</a>
       </span>
     </div>
   </div>
@@ -520,8 +778,9 @@ When you need an x402 payment, tell me the exact amount and wait for approval.</
       });
     }
 
-    function copyPrompt(btn) {
-      var text = document.getElementById('agentPrompt').textContent.trim();
+    function copySlide(btn) {
+      var slide = btn.closest('.carousel-slide');
+      var text = slide.querySelector('.carousel-prompt').textContent.trim();
       navigator.clipboard.writeText(text).then(function() {
         btn.textContent = 'Copied';
         btn.classList.add('copied');
@@ -531,6 +790,65 @@ When you need an x402 payment, tell me the exact amount and wait for approval.</
         }, 2000);
       });
     }
+
+    /* Carousel */
+    var currentSlide = 0;
+    var totalSlides = 10;
+
+    function updateCarousel() {
+      var track = document.getElementById('carouselTrack');
+      var slideWidth = track.children[0].offsetWidth;
+      track.scrollTo({ left: currentSlide * slideWidth, behavior: 'smooth' });
+      document.getElementById('carouselCounter').textContent = (currentSlide + 1) + ' / ' + totalSlides;
+      var dots = document.getElementById('carouselDots').children;
+      for (var i = 0; i < dots.length; i++) {
+        dots[i].classList.toggle('active', i === currentSlide);
+      }
+    }
+
+    function carouselPrev() {
+      currentSlide = (currentSlide - 1 + totalSlides) % totalSlides;
+      updateCarousel();
+    }
+
+    function carouselNext() {
+      currentSlide = (currentSlide + 1) % totalSlides;
+      updateCarousel();
+    }
+
+    function carouselGoTo(index) {
+      currentSlide = index;
+      updateCarousel();
+    }
+
+    (function() {
+      var dotsEl = document.getElementById('carouselDots');
+      for (var i = 0; i < totalSlides; i++) {
+        var dot = document.createElement('button');
+        dot.className = 'carousel-dot' + (i === 0 ? ' active' : '');
+        dot.setAttribute('aria-label', 'Go to slide ' + (i + 1));
+        dot.onclick = (function(idx) { return function() { carouselGoTo(idx); }; })(i);
+        dotsEl.appendChild(dot);
+      }
+
+      var track = document.getElementById('carouselTrack');
+      var scrollTimeout;
+      track.addEventListener('scroll', function() {
+        clearTimeout(scrollTimeout);
+        scrollTimeout = setTimeout(function() {
+          var slideWidth = track.children[0].offsetWidth;
+          var newIndex = Math.round(track.scrollLeft / slideWidth);
+          if (newIndex !== currentSlide && newIndex >= 0 && newIndex < totalSlides) {
+            currentSlide = newIndex;
+            document.getElementById('carouselCounter').textContent = (currentSlide + 1) + ' / ' + totalSlides;
+            var dots = document.getElementById('carouselDots').children;
+            for (var i = 0; i < dots.length; i++) {
+              dots[i].classList.toggle('active', i === currentSlide);
+            }
+          }
+        }, 50);
+      });
+    })();
   </script>
 </body>
 </html>
