@@ -28,6 +28,7 @@ import restRoutes from "./routes/rest.js";
 import storageRoutes from "./routes/storage.js";
 import faucetRoutes from "./routes/faucet.js";
 import deploymentRoutes from "./routes/deployments.js";
+import messageRoutes from "./routes/message.js";
 
 const app = express();
 
@@ -133,6 +134,7 @@ app.post("/v1/projects", idempotencyMiddleware);
 app.post("/v1/projects/create/:tier", idempotencyMiddleware);
 app.post("/v1/projects/:id/renew", idempotencyMiddleware);
 app.post("/v13/deployments", idempotencyMiddleware);
+app.post("/v1/message", idempotencyMiddleware);
 
 // --- x402 payment middleware ---
 if (SELLER_ADDRESS) {
@@ -180,6 +182,7 @@ app.use(restRoutes);
 app.use(storageRoutes);
 app.use(faucetRoutes);
 app.use(deploymentRoutes);
+app.use(messageRoutes);
 
 // --- Error handler ---
 app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {

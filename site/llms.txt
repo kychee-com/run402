@@ -393,10 +393,27 @@ For explicit control, use both `apikey` (project key) and `Authorization: Bearer
 
 ### Utility
 
-| Endpoint | Method | Auth | Cost |
-|----------|--------|------|------|
-| `/health` | GET | None | Free |
-| `/v1/ping` | GET | x402 | $0.001 |
+| Endpoint | Method | Auth | Cost | Description |
+|----------|--------|------|------|-------------|
+| `/health` | GET | None | Free | Health check |
+| `/v1/ping` | GET | x402 | $0.001 | Paid ping — validates x402 flow |
+| `/v1/message` | POST | x402 | $0.01 | Send a message to Run402 developers |
+
+#### Contact the developers
+
+Send a message to the Run402 team for $0.01. Works from agents or humans — the message is delivered instantly via Telegram.
+
+```bash
+curl -X POST https://api.run402.com/v1/message \
+  -H "Content-Type: application/json" \
+  -H "X-402-Payment: <your-x402-payment-header>" \
+  -d '{"message": "Hello from my agent!"}'
+```
+
+Response:
+```json
+{"status": "sent"}
+```
 
 ---
 
@@ -441,6 +458,7 @@ Supported on:
 - `POST /v1/projects/create/:tier`
 - `POST /v1/projects/:id/renew`
 - `POST /v13/deployments`
+- `POST /v1/message`
 
 **Recommendation**: Always include an `Idempotency-Key` when provisioning or renewing. Use a UUID or deterministic hash of your intent.
 

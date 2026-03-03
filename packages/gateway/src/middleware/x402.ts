@@ -208,6 +208,29 @@ export function createPaymentMiddleware() {
     },
   };
 
+  // POST /v1/message — paid developer contact ($0.01)
+  resourceConfig["POST /v1/message"] = {
+    accepts: networks.map((network) => ({
+      scheme: "exact",
+      price: "$0.01",
+      network,
+      payTo: payTo("$0.01"),
+    })),
+    description: "Send a message to Run402 developers ($0.01 USDC)",
+    mimeType: "application/json",
+    extensions: {
+      ...declareDiscoveryExtension({
+        bodyType: "json",
+        inputSchema: {
+          type: "object",
+          properties: { message: { type: "string", description: "Message text" } },
+          required: ["message"],
+        },
+        output: { example: { status: "sent" } },
+      }),
+    },
+  };
+
   // POST /v1/projects — default route uses prototype pricing
   resourceConfig["POST /v1/projects"] = {
     accepts: networks.map((network) => ({
