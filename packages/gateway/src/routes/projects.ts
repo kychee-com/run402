@@ -2,6 +2,7 @@ import { Router, Request, Response } from "express";
 import { TIERS } from "@agentdb/shared";
 import type { TierName } from "@agentdb/shared";
 import { createProject, archiveProject, renewLease } from "../services/projects.js";
+import { notifyNewProject } from "../services/telegram.js";
 import { serviceKeyAuth } from "../middleware/apikey.js";
 
 const router = Router();
@@ -41,6 +42,7 @@ router.post("/v1/projects", async (req: Request, res: Response) => {
     }
 
     console.log(`  Created project: ${project.id} (schema: ${project.schemaSlot}, tier: ${tier})`);
+    notifyNewProject(name, tier, project.id);
 
     res.json({
       project_id: project.id,
@@ -75,6 +77,7 @@ router.post("/v1/projects/create/:tier", async (req: Request, res: Response) => 
     }
 
     console.log(`  Created project: ${project.id} (schema: ${project.schemaSlot}, tier: ${tier})`);
+    notifyNewProject(name, tier, project.id);
 
     res.json({
       project_id: project.id,

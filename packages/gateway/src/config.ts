@@ -31,3 +31,7 @@ export const FAUCET_TREASURY_KEY = process.env.FAUCET_TREASURY_KEY || "";
 export const FAUCET_DRIP_AMOUNT = process.env.FAUCET_DRIP_AMOUNT || "0.25";
 export const FAUCET_DRIP_COOLDOWN = parseInt(process.env.FAUCET_DRIP_COOLDOWN || "86400000", 10); // 24h
 export const FAUCET_REFILL_INTERVAL = parseInt(process.env.FAUCET_REFILL_INTERVAL || "8640000", 10); // ~2.4h
+
+// Telegram notifications
+export const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || "";
+export const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID || "";

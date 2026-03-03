@@ -104,6 +104,10 @@ export class PodStack extends cdk.Stack {
       this, "StripeApiKey", "eleanor/stripe/prod/secret-key",
     );
 
+    const telegramSecret = secretsmanager.Secret.fromSecretNameV2(
+      this, "TelegramBot", "agentdb/telegram-bot",
+    );
+
     // =========================================================================
     // Aurora Serverless v2 (Postgres 16)
     // =========================================================================
@@ -175,6 +179,7 @@ export class PodStack extends cdk.Stack {
     cdpApiKeySecret.grantRead(taskDef.taskRole);
     faucetTreasurySecret.grantRead(taskDef.taskRole);
     stripeSecret.grantRead(taskDef.taskRole);
+    telegramSecret.grantRead(taskDef.taskRole);
     storageBucket.grantReadWrite(taskDef.taskRole);
 
     const logGroup = new logs.LogGroup(this, "GatewayLogs", {
@@ -220,6 +225,8 @@ export class PodStack extends cdk.Stack {
         CDP_API_KEY_SECRET: ecs.Secret.fromSecretsManager(cdpApiKeySecret, "key_secret"),
         FAUCET_TREASURY_KEY: ecs.Secret.fromSecretsManager(faucetTreasurySecret),
         STRIPE_SECRET_KEY: ecs.Secret.fromSecretsManager(stripeSecret),
+        TELEGRAM_BOT_TOKEN: ecs.Secret.fromSecretsManager(telegramSecret, "bot_token"),
+        TELEGRAM_CHAT_ID: ecs.Secret.fromSecretsManager(telegramSecret, "chat_id"),
       },
       healthCheck: {
         command: ["CMD-SHELL", "wget -qO- http://localhost:4022/health || exit 1"],
