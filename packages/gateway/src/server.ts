@@ -29,6 +29,7 @@ import storageRoutes from "./routes/storage.js";
 import faucetRoutes from "./routes/faucet.js";
 import deploymentRoutes from "./routes/deployments.js";
 import messageRoutes from "./routes/message.js";
+import stripeRoutes from "./routes/stripe.js";
 
 const app = express();
 
@@ -39,7 +40,7 @@ app.set("trust proxy", true);
 app.use((_req, res, next) => {
   res.set("Access-Control-Allow-Origin", "*");
   res.set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS");
-  res.set("Access-Control-Allow-Headers", "Content-Type, Authorization, apikey, Prefer, Accept-Profile, Content-Profile, Idempotency-Key");
+  res.set("Access-Control-Allow-Headers", "Content-Type, Authorization, apikey, Prefer, Accept-Profile, Content-Profile, Idempotency-Key, X-Wallet-Address");
   if (_req.method === "OPTIONS") {
     res.status(204).send();
     return;
@@ -183,6 +184,7 @@ app.use(storageRoutes);
 app.use(faucetRoutes);
 app.use(deploymentRoutes);
 app.use(messageRoutes);
+app.use(stripeRoutes);
 
 // --- Error handler ---
 app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
@@ -239,6 +241,10 @@ async function applyMigrations() {
       client.release();
     }
   }
+
+  // v1.2: wallet_address for subscription linking
+  await pool.query(`ALTER TABLE internal.projects ADD COLUMN IF NOT EXISTS wallet_address TEXT`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_projects_wallet ON internal.projects(wallet_address) WHERE wallet_address IS NOT NULL`);
 }
 
 async function start() {

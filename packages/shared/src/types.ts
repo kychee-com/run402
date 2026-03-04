@@ -13,6 +13,7 @@ export interface ProjectInfo {
   leaseStartedAt: Date;
   leaseExpiresAt: Date;
   txHash?: string;
+  walletAddress?: string;
   createdAt: Date;
 }
 

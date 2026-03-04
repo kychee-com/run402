@@ -31,7 +31,7 @@ export const projectCache = {
 export async function syncProjects(): Promise<void> {
   const result = await pool.query(
     `SELECT id, name, schema_slot, tier, status, api_calls, storage_bytes,
-            lease_started_at, lease_expires_at, tx_hash, created_at
+            lease_started_at, lease_expires_at, tx_hash, wallet_address, created_at
      FROM internal.projects WHERE status = 'active'`,
   );
 
@@ -49,6 +49,7 @@ export async function syncProjects(): Promise<void> {
       leaseStartedAt: new Date(row.lease_started_at),
       leaseExpiresAt: new Date(row.lease_expires_at),
       txHash: row.tx_hash,
+      walletAddress: row.wallet_address || undefined,
       createdAt: new Date(row.created_at),
     });
   }
@@ -64,6 +65,7 @@ export async function createProject(
   name: string,
   tier: TierName,
   txHash?: string,
+  walletAddress?: string,
 ): Promise<ProjectInfo | null> {
   const schemaSlot = await allocateSlot();
   if (!schemaSlot) return null;
@@ -86,9 +88,9 @@ export async function createProject(
 
   await pool.query(
     `INSERT INTO internal.projects
-     (id, name, schema_slot, tier, status, lease_started_at, lease_expires_at, tx_hash)
-     VALUES ($1, $2, $3, $4, 'active', $5, $6, $7)`,
-    [projectId, name, schemaSlot, tier, now.toISOString(), leaseExpiresAt.toISOString(), txHash || null],
+     (id, name, schema_slot, tier, status, lease_started_at, lease_expires_at, tx_hash, wallet_address)
+     VALUES ($1, $2, $3, $4, 'active', $5, $6, $7, $8)`,
+    [projectId, name, schemaSlot, tier, now.toISOString(), leaseExpiresAt.toISOString(), txHash || null, walletAddress || null],
   );
 
   const project: ProjectInfo = {
@@ -104,6 +106,7 @@ export async function createProject(
     leaseStartedAt: now,
     leaseExpiresAt,
     txHash,
+    walletAddress,
     createdAt: now,
   };
 

@@ -1,0 +1,643 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Subscribe — Run402</title>
+  <meta name="description" content="Subscribe to Run402 with your credit card. Manage your agent's infrastructure with a monthly or annual plan.">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #0A0A0F;
+      color: #E0E0E0;
+      font-family: 'Inter', system-ui, sans-serif;
+      line-height: 1.6;
+      min-height: 100vh;
+    }
+
+    .container {
+      max-width: 760px;
+      margin: 0 auto;
+      padding: 40px 24px 60px;
+    }
+
+    .back-bar {
+      text-align: center;
+      padding: 12px;
+      background: #111;
+      color: #9CA3AF;
+      font-size: 14px;
+    }
+
+    .back-bar a {
+      color: #00FF9F;
+      text-decoration: underline;
+    }
+
+    .badge {
+      display: inline-block;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      color: #00FF9F;
+      border: 1px solid rgba(0, 255, 159, 0.3);
+      border-radius: 4px;
+      padding: 4px 10px;
+      margin-bottom: 24px;
+      letter-spacing: 0.5px;
+    }
+
+    h1 {
+      font-size: clamp(28px, 4vw, 40px);
+      font-weight: 700;
+      line-height: 1.2;
+      margin-bottom: 12px;
+      color: #FFFFFF;
+    }
+
+    h1 .accent { color: #00FF9F; }
+
+    .subtitle {
+      font-size: 16px;
+      color: #9CA3AF;
+      margin-bottom: 32px;
+    }
+
+    .wallet-display {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 14px;
+      color: #00FF9F;
+      background: #12121A;
+      border: 1px solid #1E1E2A;
+      border-radius: 8px;
+      padding: 12px 16px;
+      margin-bottom: 32px;
+      word-break: break-all;
+    }
+
+    .section { margin-bottom: 40px; }
+
+    .section h2 {
+      font-size: 18px;
+      font-weight: 600;
+      color: #FFFFFF;
+      margin-bottom: 16px;
+    }
+
+    .section h2::before {
+      content: '> ';
+      color: #00FF9F;
+      font-family: 'JetBrains Mono', monospace;
+      font-weight: 500;
+    }
+
+    .card {
+      background: #12121A;
+      border: 1px solid #1E1E2A;
+      border-radius: 8px;
+      padding: 20px;
+    }
+
+    .card .label {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: #00FF9F;
+      margin-bottom: 8px;
+    }
+
+    /* Projects list */
+    .project-card {
+      background: #12121A;
+      border: 1px solid #1E1E2A;
+      border-radius: 8px;
+      padding: 16px 20px;
+      margin-bottom: 12px;
+    }
+
+    .project-name {
+      font-weight: 600;
+      color: #FFFFFF;
+      margin-bottom: 4px;
+    }
+
+    .project-meta {
+      font-size: 13px;
+      color: #6B7280;
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .usage-bar {
+      height: 4px;
+      background: #1E1E2A;
+      border-radius: 2px;
+      margin-top: 8px;
+      overflow: hidden;
+    }
+
+    .usage-bar-fill {
+      height: 100%;
+      background: #00FF9F;
+      border-radius: 2px;
+      transition: width 0.3s;
+    }
+
+    /* Subscription status */
+    .sub-status {
+      background: rgba(0, 255, 159, 0.08);
+      border: 1px solid rgba(0, 255, 159, 0.3);
+      border-radius: 8px;
+      padding: 20px;
+      margin-bottom: 32px;
+    }
+
+    .sub-status .tier {
+      font-size: 20px;
+      font-weight: 700;
+      color: #00FF9F;
+    }
+
+    .sub-status .detail {
+      font-size: 14px;
+      color: #9CA3AF;
+      margin-top: 4px;
+    }
+
+    /* Pricing */
+    .toggle-wrap {
+      display: flex;
+      justify-content: center;
+      margin-bottom: 24px;
+      gap: 0;
+    }
+
+    .toggle-btn {
+      background: #12121A;
+      border: 1px solid #1E1E2A;
+      color: #9CA3AF;
+      padding: 8px 20px;
+      font-family: 'Inter', sans-serif;
+      font-size: 14px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .toggle-btn:first-child { border-radius: 6px 0 0 6px; }
+    .toggle-btn:last-child { border-radius: 0 6px 6px 0; }
+
+    .toggle-btn.active {
+      background: rgba(0, 255, 159, 0.1);
+      border-color: rgba(0, 255, 159, 0.3);
+      color: #00FF9F;
+    }
+
+    .pricing-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+
+    @media (max-width: 500px) {
+      .pricing-grid { grid-template-columns: 1fr; }
+    }
+
+    .pricing-card {
+      background: #12121A;
+      border: 1px solid #1E1E2A;
+      border-radius: 8px;
+      padding: 24px;
+      text-align: center;
+      transition: border-color 0.2s;
+    }
+
+    .pricing-card:hover { border-color: rgba(0, 255, 159, 0.3); }
+
+    .pricing-card .tier-name {
+      font-size: 20px;
+      font-weight: 700;
+      color: #FFFFFF;
+      margin-bottom: 4px;
+    }
+
+    .pricing-card .price {
+      font-size: 32px;
+      font-weight: 700;
+      color: #00FF9F;
+      margin-bottom: 2px;
+    }
+
+    .pricing-card .interval {
+      font-size: 13px;
+      color: #6B7280;
+      margin-bottom: 16px;
+    }
+
+    .pricing-card .features {
+      text-align: left;
+      font-size: 14px;
+      color: #9CA3AF;
+      margin-bottom: 20px;
+    }
+
+    .pricing-card .features div {
+      padding: 4px 0;
+    }
+
+    .pricing-card .features span {
+      color: #00FF9F;
+      margin-right: 6px;
+    }
+
+    .btn {
+      display: inline-block;
+      background: rgba(0, 255, 159, 0.1);
+      color: #00FF9F;
+      border: 1px solid rgba(0, 255, 159, 0.25);
+      border-radius: 6px;
+      padding: 10px 24px;
+      font-family: 'Inter', sans-serif;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.2s, border-color 0.2s;
+      text-decoration: none;
+    }
+
+    .btn:hover {
+      background: rgba(0, 255, 159, 0.2);
+      border-color: rgba(0, 255, 159, 0.5);
+    }
+
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .btn-full { width: 100%; }
+
+    /* Success banner */
+    .success-banner {
+      background: rgba(0, 255, 159, 0.08);
+      border: 1px solid rgba(0, 255, 159, 0.3);
+      border-radius: 8px;
+      padding: 20px;
+      margin-bottom: 32px;
+      text-align: center;
+    }
+
+    .success-banner h3 {
+      color: #00FF9F;
+      font-size: 18px;
+      margin-bottom: 8px;
+    }
+
+    .success-banner p {
+      color: #9CA3AF;
+      font-size: 14px;
+      margin-bottom: 12px;
+    }
+
+    /* Empty / error states */
+    .empty {
+      text-align: center;
+      color: #6B7280;
+      font-size: 14px;
+      padding: 24px;
+    }
+
+    .error-msg {
+      color: #EF4444;
+      font-size: 14px;
+      margin-top: 8px;
+    }
+
+    .loading {
+      color: #6B7280;
+      font-size: 14px;
+      text-align: center;
+      padding: 20px;
+    }
+
+    .no-wallet {
+      text-align: center;
+      padding: 60px 20px;
+    }
+
+    .no-wallet h2 {
+      color: #FFFFFF;
+      font-size: 24px;
+      margin-bottom: 12px;
+    }
+
+    .no-wallet p {
+      color: #9CA3AF;
+      font-size: 16px;
+      max-width: 480px;
+      margin: 0 auto;
+    }
+
+    .no-wallet code {
+      font-family: 'JetBrains Mono', monospace;
+      color: #00FF9F;
+      font-size: 14px;
+    }
+
+    .footer {
+      border-top: 1px solid #1E1E2A;
+      padding-top: 32px;
+      margin-top: 48px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+
+    .footer-text {
+      font-size: 13px;
+      color: #4B5563;
+    }
+
+    .footer a {
+      color: #00FF9F;
+      text-decoration: none;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+    }
+
+    .footer a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+
+  <div class="back-bar">
+    <a href="/humans">&larr; Back to run402.com</a>
+  </div>
+
+  <div class="container">
+
+    <!-- No wallet state -->
+    <div id="no-wallet" class="no-wallet" style="display:none;">
+      <h2>No wallet address provided</h2>
+      <p>This page is for managing your agent's Run402 subscription. Your agent should send you a link like:</p>
+      <p style="margin-top:12px;"><code>run402.com/subscribe?wallet=0x...</code></p>
+    </div>
+
+    <!-- Main content (hidden until wallet is set) -->
+    <div id="main-content" style="display:none;">
+      <span class="badge">Stripe Subscription</span>
+      <h1>Manage your agent's <span class="accent">subscription</span></h1>
+      <p class="subtitle">Subscribe with a credit card to give your agent unlimited projects with shared resource limits.</p>
+
+      <div class="wallet-display" id="wallet-display"></div>
+
+      <!-- Success banner -->
+      <div id="success-banner" class="success-banner" style="display:none;">
+        <h3>Subscription active!</h3>
+        <p>Your agent's x402 payments are now automatically bypassed. No changes needed on the agent side.</p>
+        <button class="btn" onclick="openPortal()">Manage subscription</button>
+      </div>
+
+      <!-- Subscription status -->
+      <div id="sub-status" style="display:none;"></div>
+
+      <!-- Projects -->
+      <div class="section">
+        <h2>Projects</h2>
+        <div id="projects-list"><div class="loading">Loading projects...</div></div>
+      </div>
+
+      <!-- Pricing (hidden if already subscribed) -->
+      <div id="pricing-section" class="section">
+        <h2>Choose a plan</h2>
+        <div class="toggle-wrap">
+          <button class="toggle-btn active" onclick="setInterval('month', this)">Monthly</button>
+          <button class="toggle-btn" onclick="setInterval('year', this)">Annual (save 2 months)</button>
+        </div>
+        <div id="pricing-grid" class="pricing-grid">
+          <div class="loading">Loading plans...</div>
+        </div>
+      </div>
+
+      <div class="footer">
+        <span class="footer-text">Run402 &mdash; infrastructure for AI agents</span>
+        <span>
+          <a href="/llms.txt">Docs</a> &nbsp;&middot;&nbsp; <a href="https://api.run402.com/health">API status</a>
+        </span>
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    var API = 'https://api.run402.com';
+    var wallet = null;
+    var billingInterval = 'month';
+    var productsData = null;
+    var isSubscribed = false;
+
+    // Parse URL params
+    var params = new URLSearchParams(window.location.search);
+    wallet = params.get('wallet');
+    var isSuccess = params.get('success') === 'true';
+
+    if (!wallet || !wallet.startsWith('0x')) {
+      document.getElementById('no-wallet').style.display = 'block';
+    } else {
+      wallet = wallet.toLowerCase();
+      document.getElementById('main-content').style.display = 'block';
+      document.getElementById('wallet-display').textContent = wallet;
+
+      if (isSuccess) {
+        // Clear cache after successful checkout
+        fetch(API + '/v1/stripe/cache/clear', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ wallet: wallet })
+        }).catch(function() {});
+        document.getElementById('success-banner').style.display = 'block';
+      }
+
+      // Load data
+      loadSubscription();
+      loadProjects();
+      loadProducts();
+    }
+
+    function loadSubscription() {
+      fetch(API + '/v1/stripe/subscription/' + wallet)
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+          if (data.subscribed) {
+            isSubscribed = true;
+            var el = document.getElementById('sub-status');
+            el.style.display = 'block';
+            el.innerHTML = '<div class="sub-status">' +
+              '<div class="tier">' + capitalize(data.tier) + ' Plan</div>' +
+              '<div class="detail">Status: ' + data.status + ' &middot; Renews: ' + new Date(data.current_period_end).toLocaleDateString() + '</div>' +
+              '<div style="margin-top:12px;"><button class="btn" onclick="openPortal()">Manage subscription</button></div>' +
+            '</div>';
+            document.getElementById('pricing-section').style.display = 'none';
+          }
+        })
+        .catch(function() {});
+    }
+
+    function loadProjects() {
+      fetch(API + '/v1/wallets/' + wallet + '/projects')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+          var el = document.getElementById('projects-list');
+          if (!data.projects || data.projects.length === 0) {
+            el.innerHTML = '<div class="empty">No projects yet. Your agent will create projects after subscribing.</div>';
+            return;
+          }
+          var html = '';
+          for (var i = 0; i < data.projects.length; i++) {
+            var p = data.projects[i];
+            var callsPct = Math.min(100, (p.api_calls / 5000000) * 100);
+            html += '<div class="project-card">' +
+              '<div class="project-name">' + escapeHtml(p.name) + '</div>' +
+              '<div class="project-meta">' + p.tier + ' &middot; ' + p.id + '</div>' +
+              '<div class="project-meta">API calls: ' + p.api_calls.toLocaleString() + ' &middot; Storage: ' + formatBytes(p.storage_bytes) + '</div>' +
+              '<div class="usage-bar"><div class="usage-bar-fill" style="width:' + callsPct + '%"></div></div>' +
+            '</div>';
+          }
+          el.innerHTML = html;
+        })
+        .catch(function() {
+          document.getElementById('projects-list').innerHTML = '<div class="empty">Failed to load projects.</div>';
+        });
+    }
+
+    function loadProducts() {
+      fetch(API + '/v1/stripe/products')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+          productsData = data.products || [];
+          renderPricing();
+        })
+        .catch(function() {
+          document.getElementById('pricing-grid').innerHTML = '<div class="empty">Failed to load plans.</div>';
+        });
+    }
+
+    function renderPricing() {
+      if (!productsData) return;
+      var grid = document.getElementById('pricing-grid');
+
+      // Sort: hobby first, team second
+      var sorted = productsData.slice().sort(function(a, b) {
+        if (a.tier === 'hobby') return -1;
+        if (b.tier === 'hobby') return 1;
+        return 0;
+      });
+
+      var html = '';
+      for (var i = 0; i < sorted.length; i++) {
+        var prod = sorted[i];
+        var price = null;
+        for (var j = 0; j < prod.prices.length; j++) {
+          if (prod.prices[j].interval === billingInterval) {
+            price = prod.prices[j];
+            break;
+          }
+        }
+        if (!price) continue;
+
+        var amount = (price.unit_amount / 100).toFixed(0);
+        var features = prod.tier === 'hobby'
+          ? '<div><span>+</span>1 GB shared storage</div><div><span>+</span>5M shared API calls</div><div><span>+</span>Unlimited projects</div>'
+          : '<div><span>+</span>10 GB shared storage</div><div><span>+</span>50M shared API calls</div><div><span>+</span>Unlimited projects</div>';
+
+        html += '<div class="pricing-card">' +
+          '<div class="tier-name">' + capitalize(prod.tier) + '</div>' +
+          '<div class="price">$' + amount + '</div>' +
+          '<div class="interval">per ' + billingInterval + '</div>' +
+          '<div class="features">' + features + '</div>' +
+          '<button class="btn btn-full" onclick="checkout(\'' + price.id + '\')">Subscribe</button>' +
+        '</div>';
+      }
+
+      grid.innerHTML = html || '<div class="empty">No plans available.</div>';
+    }
+
+    function setInterval(interval, btn) {
+      billingInterval = interval;
+      var buttons = btn.parentElement.children;
+      for (var i = 0; i < buttons.length; i++) {
+        buttons[i].classList.remove('active');
+      }
+      btn.classList.add('active');
+      renderPricing();
+    }
+
+    function checkout(priceId) {
+      var btns = document.querySelectorAll('.pricing-card .btn');
+      for (var i = 0; i < btns.length; i++) btns[i].disabled = true;
+
+      fetch(API + '/v1/stripe/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ wallet: wallet, price_id: priceId })
+      })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+          if (data.url) {
+            window.location.href = data.url;
+          } else {
+            alert(data.error || 'Failed to create checkout session');
+            for (var i = 0; i < btns.length; i++) btns[i].disabled = false;
+          }
+        })
+        .catch(function() {
+          alert('Failed to create checkout session');
+          for (var i = 0; i < btns.length; i++) btns[i].disabled = false;
+        });
+    }
+
+    function openPortal() {
+      fetch(API + '/v1/stripe/portal', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ wallet: wallet })
+      })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+          if (data.url) {
+            window.location.href = data.url;
+          } else {
+            alert(data.error || 'Failed to open portal');
+          }
+        })
+        .catch(function() {
+          alert('Failed to open subscription portal');
+        });
+    }
+
+    function capitalize(s) {
+      return s.charAt(0).toUpperCase() + s.slice(1);
+    }
+
+    function escapeHtml(s) {
+      var d = document.createElement('div');
+      d.textContent = s;
+      return d.innerHTML;
+    }
+
+    function formatBytes(bytes) {
+      if (bytes === 0) return '0 B';
+      var units = ['B', 'KB', 'MB', 'GB'];
+      var i = Math.floor(Math.log(bytes) / Math.log(1024));
+      return (bytes / Math.pow(1024, i)).toFixed(1) + ' ' + units[i];
+    }
+  </script>
+</body>
+</html>

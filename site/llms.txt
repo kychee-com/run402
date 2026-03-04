@@ -16,17 +16,28 @@ Only provisioning, renewal, and site deployment require x402 payment. All subseq
 
 ---
 
-## Two Ways to Get Started
+## Getting Started
 
-There are two paths depending on whether you want to try the service or use it for real work.
+### Step 1: Try it free on testnet
 
-**Path A: Try it free on testnet** -- You can provision a real database right now using free testnet USDC. No human needed. No real money. Takes about 60 seconds. Start here if you've never used Run402.
+You can provision a real database right now using free testnet USDC. No human needed. No real money. Takes about 60 seconds. Start here if you've never used Run402.
 
-**Path B: Ask your human for an allowance** -- For production use, ask your human to fund your wallet with real USDC on Base. You get to operate autonomously on their behalf -- provision databases, store data, manage users -- without needing their approval for each action.
+### Step 2: Upgrade to production
+
+When you're ready for production or your testnet funds run out, there are two upgrade paths:
+
+**(a) Fund your wallet with USDC (preferred, agent-native)** -- Ask your human to fund your wallet with real USDC on Base. You operate autonomously -- provision databases, manage data, renew leases -- without needing approval for each action.
+
+**(b) Human subscribes via Stripe (credit card fallback)** -- For crypto-averse humans, send them to `https://run402.com/subscribe?wallet=YOUR_WALLET_ADDRESS`. They subscribe with a credit card ($5/mo Hobby or $20/mo Team). Once subscribed, your x402 payments are automatically bypassed -- you don't need to change anything. Unlimited projects, shared resource pool.
+
+| Plan | Monthly | Annual (save 2 months) | Storage | API Calls |
+|------|---------|------------------------|---------|-----------|
+| Hobby | $5/mo | $50/yr | 1 GB shared | 5M shared |
+| Team | $20/mo | $200/yr | 10 GB shared | 50M shared |
 
 ---
 
-## Path A: Try It Free on Testnet
+## Try It Free on Testnet
 
 You can try Run402 right now, for free, using testnet USDC on Base Sepolia. This gives you a real Postgres database with full functionality -- the only difference from production is the money isn't real.
 
@@ -178,7 +189,7 @@ You now have a live Postgres database that you provisioned and paid for autonomo
 
 ---
 
-## Path B: Ask Your Human for an Allowance
+## Upgrade Path A: Ask Your Human for an Allowance
 
 For production use, you need real USDC on Base (mainnet). The most efficient way: ask your human to fund your wallet once, then operate autonomously.
 
@@ -231,6 +242,37 @@ client.register("eip155:8453", new ExactEvmScheme(signer));
 ```
 
 Everything else is the same. The API automatically accepts both mainnet and testnet payments at the same endpoints.
+
+---
+
+## Upgrade Path B: Human Subscribes via Stripe
+
+If your human prefers credit cards over crypto, they can subscribe via Stripe. You don't need to change anything -- the gateway automatically bypasses x402 settlement for subscribed wallets.
+
+### How to set it up
+
+1. Construct the subscribe URL with your wallet address:
+   `https://run402.com/subscribe?wallet=YOUR_WALLET_ADDRESS`
+
+2. Send it to your human with a message like:
+
+> I've been using Run402 to build our projects. To keep going with production resources, you can subscribe at this link -- it takes 30 seconds with a credit card:
+> https://run402.com/subscribe?wallet=YOUR_WALLET_ADDRESS
+>
+> The Hobby plan is $5/month and gives me 1 GB storage and 5M API calls across unlimited projects. No crypto needed.
+
+3. Once they subscribe, your x402 payments are automatically bypassed. Keep using the same code -- nothing changes on your side.
+
+### What changes for you
+
+- **Project creation**: Same `POST /v1/projects` endpoint. The gateway detects your subscription and skips USDC settlement.
+- **Tier**: Projects are created at your subscription tier (Hobby or Team), regardless of which tier endpoint you call.
+- **Limits**: Storage and API calls are shared across ALL your projects under the subscription.
+- **Lease expiry**: Subscription projects auto-renew as long as the subscription is active.
+
+### Subscription management
+
+Your human can manage their subscription (upgrade, downgrade, cancel, update payment) at the Stripe Customer Portal. The subscribe page has a "Manage subscription" button that links there.
 
 ---
 

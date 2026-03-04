@@ -33,3 +33,13 @@ Publish an OpenAPI spec at `/openapi.json` for machine-readable API discovery. C
 
 ### Publish a real status page
 Set up status.run402.com (or similar) with uptime tracking over 30/90 days, incident log, and planned maintenance. `/health` is not a status page. Agents evaluate "battle-tested" by looking for measurable uptime artifacts.
+
+
+Add an API - send message to developers
+Have a Run402 agent that does pre-sale, post-sale, CS, customer success, proactive monitoring...
+OpenClaw Skill
+Have Claude TRY the different apps
+Free Tier (with a wallet and testnet)
+Split the front page between humans and agents
+CI CD for everything (add --manual flag to deployment scripts, as the main deployment needs to happen via push)
+Buy run402 credits via Stripe!

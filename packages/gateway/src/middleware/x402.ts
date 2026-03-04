@@ -1,4 +1,4 @@
-import { paymentMiddleware, x402ResourceServer } from "@x402/express";
+import { paymentMiddlewareFromHTTPServer, x402ResourceServer, x402HTTPResourceServer } from "@x402/express";
 import { ExactEvmScheme } from "@x402/evm/exact/server";
 import { HTTPFacilitatorClient } from "@x402/core/server";
 import { createFacilitatorConfig } from "@coinbase/x402";
@@ -16,6 +16,8 @@ import {
   STRIPE_SECRET_KEY,
 } from "../config.js";
 import type { TierName } from "@agentdb/shared";
+import { getWalletSubscription } from "../services/stripe-subscriptions.js";
+import { extractWalletFromPaymentHeader } from "../utils/wallet.js";
 
 // --- Stripe payTo machinery ---
 
@@ -268,5 +270,21 @@ export function createPaymentMiddleware() {
     server.register(network as `${string}:${string}`, new ExactEvmScheme());
   }
 
-  return paymentMiddleware(resourceConfig, server);
+  const httpServer = new x402HTTPResourceServer(server, resourceConfig);
+
+  // Subscription bypass: skip x402 settlement for wallets with active Stripe subscriptions
+  if (STRIPE_SECRET_KEY) {
+    httpServer.onProtectedRequest(async (context) => {
+      if (!context.paymentHeader) return;
+      const wallet = extractWalletFromPaymentHeader(context.paymentHeader);
+      if (!wallet) return;
+      const sub = await getWalletSubscription(wallet);
+      if (sub?.status === "active") {
+        console.log(`Subscription bypass: ${wallet} → ${sub.tier}`);
+        return { grantAccess: true };
+      }
+    });
+  }
+
+  return paymentMiddlewareFromHTTPServer(httpServer);
 }

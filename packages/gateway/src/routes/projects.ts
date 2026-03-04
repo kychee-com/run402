@@ -4,6 +4,8 @@ import type { TierName } from "@agentdb/shared";
 import { createProject, archiveProject, renewLease } from "../services/projects.js";
 import { notifyNewProject } from "../services/telegram.js";
 import { serviceKeyAuth } from "../middleware/apikey.js";
+import { extractWalletFromPaymentHeader } from "../utils/wallet.js";
+import { getWalletSubscription } from "../services/stripe-subscriptions.js";
 
 const router = Router();
 
@@ -24,18 +26,28 @@ router.post("/v1/projects/quote", (_req: Request, res: Response) => {
 // POST /v1/projects — create project (x402-gated)
 router.post("/v1/projects", async (req: Request, res: Response) => {
   const name = req.body?.name || `project-${Date.now()}`;
-  const tier = (req.body?.tier as TierName) || "prototype";
+  let tier = (req.body?.tier as TierName) || "prototype";
 
   if (!TIERS[tier]) {
     res.status(400).json({ error: `Unknown tier: ${tier}. Valid tiers: ${Object.keys(TIERS).join(", ")}` });
     return;
   }
 
-  // Extract x402 transaction hash from response headers if available
+  // Extract x402 transaction hash and wallet address
   const txHash = res.getHeader("x-402-transaction") as string | undefined;
+  const paymentHeader = req.headers["x-402-payment"] as string | undefined;
+  const walletAddress = paymentHeader ? extractWalletFromPaymentHeader(paymentHeader) : undefined;
+
+  // For subscribed wallets: use subscription tier
+  if (walletAddress) {
+    const sub = await getWalletSubscription(walletAddress);
+    if (sub?.status === "active") {
+      tier = sub.tier;
+    }
+  }
 
   try {
-    const project = await createProject(name, tier, txHash);
+    const project = await createProject(name, tier, txHash, walletAddress || undefined);
     if (!project) {
       res.status(503).json({ error: "No schema slots available" });
       return;
@@ -60,7 +72,7 @@ router.post("/v1/projects", async (req: Request, res: Response) => {
 
 // POST /v1/projects/create/:tier — tier-specific creation (x402-gated per tier)
 router.post("/v1/projects/create/:tier", async (req: Request, res: Response) => {
-  const tier = req.params["tier"] as TierName;
+  let tier = req.params["tier"] as TierName;
   if (!TIERS[tier]) {
     res.status(400).json({ error: `Unknown tier: ${tier}` });
     return;
@@ -68,9 +80,19 @@ router.post("/v1/projects/create/:tier", async (req: Request, res: Response) => 
 
   const name = req.body?.name || `project-${Date.now()}`;
   const txHash = res.getHeader("x-402-transaction") as string | undefined;
+  const paymentHeader = req.headers["x-402-payment"] as string | undefined;
+  const walletAddress = paymentHeader ? extractWalletFromPaymentHeader(paymentHeader) : undefined;
+
+  // For subscribed wallets: use subscription tier
+  if (walletAddress) {
+    const sub = await getWalletSubscription(walletAddress);
+    if (sub?.status === "active") {
+      tier = sub.tier;
+    }
+  }
 
   try {
-    const project = await createProject(name, tier, txHash);
+    const project = await createProject(name, tier, txHash, walletAddress || undefined);
     if (!project) {
       res.status(503).json({ error: "No schema slots available" });
       return;

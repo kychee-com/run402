@@ -7,6 +7,7 @@ export const TESTNET_NETWORK = process.env.TESTNET_NETWORK || "eip155:84532"; //
 export const CDP_API_KEY_ID = process.env.CDP_API_KEY_ID || "";
 export const CDP_API_KEY_SECRET = process.env.CDP_API_KEY_SECRET || "";
 export const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY || "";
+export const STRIPE_PUBLISHABLE_KEY = process.env.STRIPE_PUBLISHABLE_KEY || "";
 export const FACILITATOR_PROVIDER = process.env.FACILITATOR_PROVIDER || "cdp"; // "cdp" | "stripe"
 export const FACILITATOR_URL = process.env.FACILITATOR_URL || "https://www.x402.org/facilitator";
 export const POSTGREST_URL = process.env.POSTGREST_URL || "http://localhost:3000";
