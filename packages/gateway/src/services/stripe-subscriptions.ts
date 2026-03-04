@@ -1,6 +1,7 @@
 import Stripe from "stripe";
 import { STRIPE_SECRET_KEY } from "../config.js";
 import type { TierName } from "@run402/shared";
+import { errorMessage } from "../utils/errors.js";
 
 const stripe = STRIPE_SECRET_KEY ? new Stripe(STRIPE_SECRET_KEY) : null;
 
@@ -40,25 +41,33 @@ export async function getWalletSubscription(wallet: string): Promise<WalletSubsc
       return null;
     }
 
-    const customer = customers.data[0]!;
+    const customer = customers.data[0];
+    if (!customer) {
+      subCache.set(normalized, { data: null, cachedAt: Date.now() });
+      return null;
+    }
     const subscriptions = await stripe.subscriptions.list({
       customer: customer.id,
       status: "active",
       limit: 1,
     });
 
-    if (subscriptions.data.length === 0) {
+    const sub = subscriptions.data[0];
+    if (!sub) {
       subCache.set(normalized, { data: null, cachedAt: Date.now() });
       return null;
     }
 
-    const sub = subscriptions.data[0]!;
-    const item = sub.items.data[0]!;
+    const item = sub.items.data[0];
+    if (!item) {
+      subCache.set(normalized, { data: null, cachedAt: Date.now() });
+      return null;
+    }
     const product = await stripe.products.retrieve(item.price.product as string);
     const tier = (product.metadata["run402_tier"] || "hobby") as TierName;
 
     // In Stripe SDK v20+, current_period_end is on the subscription item, not the subscription
-    const periodEnd = (item as any).current_period_end as number;
+    const periodEnd = (item as unknown as { current_period_end: number }).current_period_end;
 
     const result: WalletSubscription = {
       tier,
@@ -69,8 +78,8 @@ export async function getWalletSubscription(wallet: string): Promise<WalletSubsc
 
     subCache.set(normalized, { data: result, cachedAt: Date.now() });
     return result;
-  } catch (err: any) {
-    console.error("Stripe subscription lookup failed:", err.message);
+  } catch (err: unknown) {
+    console.error("Stripe subscription lookup failed:", errorMessage(err));
     return null;
   }
 }
@@ -111,8 +120,8 @@ export async function createStripeCheckout(
     limit: 1,
   });
 
-  if (customers.data.length > 0) {
-    customerId = customers.data[0]!.id;
+  if (customers.data.length > 0 && customers.data[0]) {
+    customerId = customers.data[0].id;
   } else {
     const customer = await stripe.customers.create({
       metadata: { wallet_address: normalized },
@@ -149,7 +158,7 @@ export async function createStripePortal(wallet: string, returnUrl: string): Pro
   }
 
   const session = await stripe.billingPortal.sessions.create({
-    customer: customers.data[0]!.id,
+    customer: customers.data[0]!.id, // guarded by length === 0 check above
     return_url: returnUrl,
   });
 

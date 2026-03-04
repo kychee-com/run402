@@ -64,7 +64,7 @@ function createPayToAddressFactory(priceStr: string) {
       },
       payment_method_options: {
         crypto: {
-          // @ts-ignore — Stripe crypto payments beta
+          // @ts-expect-error — Stripe crypto payments beta (types not yet stable)
           mode: "custom",
         },
       },
@@ -78,7 +78,7 @@ function createPayToAddressFactory(priceStr: string) {
       throw new Error("PaymentIntent did not return expected crypto deposit details");
     }
 
-    const depositDetails = (paymentIntent.next_action as any).crypto_collect_deposit_details;
+    const depositDetails = (paymentIntent.next_action as Record<string, Record<string, Record<string, Record<string, string>>>>).crypto_collect_deposit_details;
     const payToAddress: string = depositDetails.deposit_addresses.base.address;
 
     console.log(
@@ -111,6 +111,7 @@ export function createPaymentMiddleware() {
     useStripe ? createPayToAddressFactory(price) : SELLER_ADDRESS;
 
   // Build resource config for each tier
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- x402 resource config shape is defined by @x402/express
   const resourceConfig: Record<string, any> = {};
 
   for (const [tierName, tierConfig] of Object.entries(TIERS)) {

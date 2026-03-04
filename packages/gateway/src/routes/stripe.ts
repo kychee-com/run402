@@ -1,5 +1,6 @@
 import { Router, Request, Response } from "express";
 import { pool } from "../db/pool.js";
+import { errorMessage } from "../utils/errors.js";
 import {
   getWalletSubscription,
   createStripeCheckout,
@@ -39,8 +40,8 @@ router.get("/v1/wallets/:address/projects", async (req: Request, res: Response) 
         created_at: new Date(r.created_at).toISOString(),
       })),
     });
-  } catch (err: any) {
-    console.error("Failed to list wallet projects:", err.message);
+  } catch (err: unknown) {
+    console.error("Failed to list wallet projects:", errorMessage(err));
     res.status(500).json({ error: "Failed to list projects" });
   }
 });
@@ -50,8 +51,8 @@ router.get("/v1/stripe/products", async (_req: Request, res: Response) => {
   try {
     const products = await getProducts();
     res.json({ products });
-  } catch (err: any) {
-    console.error("Failed to list products:", err.message);
+  } catch (err: unknown) {
+    console.error("Failed to list products:", errorMessage(err));
     res.status(500).json({ error: "Failed to list products" });
   }
 });
@@ -76,12 +77,13 @@ router.post("/v1/stripe/checkout", async (req: Request, res: Response) => {
       cancel_url || defaultCancel,
     );
     res.json({ url });
-  } catch (err: any) {
-    if (err.message === "Wallet already has an active subscription") {
-      res.status(409).json({ error: err.message });
+  } catch (err: unknown) {
+    const msg = errorMessage(err);
+    if (msg === "Wallet already has an active subscription") {
+      res.status(409).json({ error: msg });
       return;
     }
-    console.error("Failed to create checkout:", err.message);
+    console.error("Failed to create checkout:", msg);
     res.status(500).json({ error: "Failed to create checkout session" });
   }
 });
@@ -100,12 +102,13 @@ router.post("/v1/stripe/portal", async (req: Request, res: Response) => {
   try {
     const url = await createStripePortal(wallet, return_url || defaultReturn);
     res.json({ url });
-  } catch (err: any) {
-    if (err.message === "No Stripe customer found for this wallet") {
-      res.status(404).json({ error: err.message });
+  } catch (err: unknown) {
+    const msg = errorMessage(err);
+    if (msg === "No Stripe customer found for this wallet") {
+      res.status(404).json({ error: msg });
       return;
     }
-    console.error("Failed to create portal:", err.message);
+    console.error("Failed to create portal:", msg);
     res.status(500).json({ error: "Failed to create portal session" });
   }
 });
@@ -131,8 +134,8 @@ router.get("/v1/stripe/subscription/:wallet", async (req: Request, res: Response
       status: sub.status,
       current_period_end: sub.currentPeriodEnd.toISOString(),
     });
-  } catch (err: any) {
-    console.error("Failed to get subscription:", err.message);
+  } catch (err: unknown) {
+    console.error("Failed to get subscription:", errorMessage(err));
     res.status(500).json({ error: "Failed to get subscription status" });
   }
 });

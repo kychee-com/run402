@@ -20,9 +20,13 @@
     "test:mcp": "node --test --import tsx packages/mcp/src/**/*.test.ts",
     "test:skill": "node --test --import tsx skills/run402/SKILL.test.ts",
     "test:mcp:e2e": "tsx test/mcp-e2e.ts",
+    "lint": "eslint",
     "deploy": "bash scripts/deploy.sh"
   },
   "devDependencies": {
+    "@typescript-eslint/eslint-plugin": "^8.56.1",
+    "@typescript-eslint/parser": "^8.56.1",
+    "eslint": "^10.0.2",
     "yaml": "^2.8.2"
   }
 }

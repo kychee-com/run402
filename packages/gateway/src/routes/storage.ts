@@ -7,6 +7,13 @@ import { S3_BUCKET, S3_REGION } from "../config.js";
 import { apikeyAuth } from "../middleware/apikey.js";
 import { meteringMiddleware } from "../middleware/metering.js";
 import { updateStorageBytes } from "../services/budget.js";
+import { errorMessage, hasName } from "../utils/errors.js";
+
+interface StorageObject {
+  key: string;
+  size: number;
+  last_modified: string;
+}
 
 const router = Router();
 
@@ -25,7 +32,7 @@ router.use("/storage/v1", apikeyAuth, meteringMiddleware);
 router.post("/storage/v1/object/:bucket/*", async (req: Request, res: Response) => {
   const project = req.project!;
   const bucket = req.params["bucket"] as string;
-  const filePath = (req.params as any)[0] as string;
+  const filePath = (req.params as Record<string, string>)[0];
   const content = typeof req.body === "string" ? req.body : JSON.stringify(req.body);
   const buffer = Buffer.from(content);
 
@@ -49,8 +56,8 @@ router.post("/storage/v1/object/:bucket/*", async (req: Request, res: Response) 
 
     console.log(`  Storage upload: ${bucket}/${filePath} (${buffer.length}B, project: ${project.id})`);
     res.json({ key: `${bucket}/${filePath}`, size: buffer.length });
-  } catch (err: any) {
-    console.error("Storage upload error:", err.message);
+  } catch (err: unknown) {
+    console.error("Storage upload error:", errorMessage(err));
     res.status(500).json({ error: "Upload failed" });
   }
 });
@@ -59,7 +66,7 @@ router.post("/storage/v1/object/:bucket/*", async (req: Request, res: Response) 
 router.get("/storage/v1/object/:bucket/*", async (req: Request, res: Response) => {
   const project = req.project!;
   const bucket = req.params["bucket"] as string;
-  const filePath = (req.params as any)[0] as string;
+  const filePath = (req.params as Record<string, string>)[0];
 
   try {
     if (s3 && S3_BUCKET) {
@@ -81,11 +88,11 @@ router.get("/storage/v1/object/:bucket/*", async (req: Request, res: Response) =
       res.set("Content-Type", "application/octet-stream");
       res.send(content);
     }
-  } catch (err: any) {
-    if (err.name === "NoSuchKey") {
+  } catch (err: unknown) {
+    if (hasName(err, "NoSuchKey")) {
       res.status(404).json({ error: "File not found" });
     } else {
-      console.error("Storage download error:", err.message);
+      console.error("Storage download error:", errorMessage(err));
       res.status(500).json({ error: "Download failed" });
     }
   }
@@ -95,7 +102,7 @@ router.get("/storage/v1/object/:bucket/*", async (req: Request, res: Response) =
 router.delete("/storage/v1/object/:bucket/*", async (req: Request, res: Response) => {
   const project = req.project!;
   const bucket = req.params["bucket"] as string;
-  const filePath = (req.params as any)[0] as string;
+  const filePath = (req.params as Record<string, string>)[0];
 
   try {
     if (s3 && S3_BUCKET) {
@@ -115,8 +122,8 @@ router.delete("/storage/v1/object/:bucket/*", async (req: Request, res: Response
 
     console.log(`  Storage delete: ${bucket}/${filePath} (project: ${project.id})`);
     res.json({ status: "deleted", key: `${bucket}/${filePath}` });
-  } catch (err: any) {
-    console.error("Storage delete error:", err.message);
+  } catch (err: unknown) {
+    console.error("Storage delete error:", errorMessage(err));
     res.status(500).json({ error: "Delete failed" });
   }
 });
@@ -125,7 +132,7 @@ router.delete("/storage/v1/object/:bucket/*", async (req: Request, res: Response
 router.post("/storage/v1/object/sign/:bucket/*", async (req: Request, res: Response) => {
   const project = req.project!;
   const bucket = req.params["bucket"] as string;
-  const filePath = (req.params as any)[0] as string;
+  const filePath = (req.params as Record<string, string>)[0];
 
   if (!s3 || !S3_BUCKET) {
     // For local dev, return a direct URL
@@ -146,8 +153,8 @@ router.post("/storage/v1/object/sign/:bucket/*", async (req: Request, res: Respo
     );
 
     res.json({ signed_url: signedUrl, expires_in: 3600 });
-  } catch (err: any) {
-    console.error("Signed URL error:", err.message);
+  } catch (err: unknown) {
+    console.error("Signed URL error:", errorMessage(err));
     res.status(500).json({ error: "Failed to generate signed URL" });
   }
 });
@@ -180,7 +187,7 @@ router.get("/storage/v1/object/list/:bucket", async (req: Request, res: Response
         return;
       }
 
-      const objects: any[] = [];
+      const objects: StorageObject[] = [];
       function walk(dir: string, prefix: string) {
         for (const entry of readdirSync(dir, { withFileTypes: true })) {
           const fullPath = join(dir, entry.name);
@@ -196,8 +203,8 @@ router.get("/storage/v1/object/list/:bucket", async (req: Request, res: Response
       walk(dirPath, "");
       res.json({ objects });
     }
-  } catch (err: any) {
-    console.error("Storage list error:", err.message);
+  } catch (err: unknown) {
+    console.error("Storage list error:", errorMessage(err));
     res.status(500).json({ error: "List failed" });
   }
 });

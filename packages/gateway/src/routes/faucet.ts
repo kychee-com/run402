@@ -2,6 +2,7 @@ import { Router, Request, Response } from "express";
 import { isAddress } from "viem";
 import { sendDrip } from "../services/faucet.js";
 import { FAUCET_TREASURY_KEY, FAUCET_DRIP_AMOUNT, FAUCET_DRIP_COOLDOWN } from "../config.js";
+import { errorMessage, hasCode } from "../utils/errors.js";
 
 const router = Router();
 
@@ -52,11 +53,11 @@ router.post("/v1/faucet", async (req: Request, res: Response) => {
       token: "USDC",
       network: "base-sepolia",
     });
-  } catch (err: any) {
-    if (err.code === "TREASURY_LOW") {
+  } catch (err: unknown) {
+    if (hasCode(err) && err.code === "TREASURY_LOW") {
       res.status(503).json({ error: "Treasury balance too low. Try again later." });
     } else {
-      console.error("Faucet drip error:", err.message);
+      console.error("Faucet drip error:", errorMessage(err));
       res.status(500).json({ error: "Failed to send drip" });
     }
   }

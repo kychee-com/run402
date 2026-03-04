@@ -65,7 +65,7 @@ export function idempotencyMiddleware(req: Request, res: Response, next: NextFun
 
     // Override res.json to capture the response
     const originalJson = res.json.bind(res);
-    res.json = function (body: any) {
+    res.json = function (body: unknown) {
       // Cache successful responses (2xx)
       if (res.statusCode >= 200 && res.statusCode < 300) {
         pool.query(
@@ -73,12 +73,12 @@ export function idempotencyMiddleware(req: Request, res: Response, next: NextFun
            VALUES ($1, $2, $3, $4, $5)
            ON CONFLICT (key) DO NOTHING`,
           [compositeKey, req.method, req.path, res.statusCode, JSON.stringify(body)],
-        ).catch((err) => {
-          console.error("Failed to cache idempotency key:", err.message);
+        ).catch((err: unknown) => {
+          console.error("Failed to cache idempotency key:", err instanceof Error ? err.message : err);
         });
       }
       return originalJson(body);
-    } as any;
+    } as typeof res.json;
 
     next();
   }).catch((err) => {

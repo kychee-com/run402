@@ -1,5 +1,6 @@
 import { pool } from "../db/pool.js";
 import { MAX_SCHEMA_SLOTS } from "../config.js";
+import { hasCode } from "../utils/errors.js";
 
 /**
  * Initialize the slot sequence from database state.
@@ -58,9 +59,9 @@ export async function allocateSlot(): Promise<string | null> {
   try {
     const result = await pool.query(`SELECT nextval('internal.slot_seq')::int AS n`);
     return `p${String(result.rows[0].n).padStart(4, "0")}`;
-  } catch (err: any) {
+  } catch (err: unknown) {
     // Sequence exhausted (reached MAXVALUE with NO CYCLE)
-    if (err.code === "55000") {
+    if (hasCode(err) && err.code === "55000") {
       return null;
     }
     throw err;

@@ -5,6 +5,8 @@ import crypto from "node:crypto";
 import { pool } from "../db/pool.js";
 import { JWT_SECRET } from "../config.js";
 import { apikeyAuth } from "../middleware/apikey.js";
+import { errorMessage, hasCode } from "../utils/errors.js";
+import type { TokenPayload } from "@run402/shared";
 
 const router = Router();
 
@@ -37,11 +39,11 @@ router.post("/auth/v1/signup", async (req: Request, res: Response) => {
       email: user.email,
       created_at: user.created_at,
     });
-  } catch (err: any) {
-    if (err.code === "23505") {
+  } catch (err: unknown) {
+    if (hasCode(err) && err.code === "23505") {
       res.status(409).json({ error: "User already exists" });
     } else {
-      console.error("Signup error:", err.message);
+      console.error("Signup error:", errorMessage(err));
       res.status(500).json({ error: "Signup failed" });
     }
   }
@@ -102,8 +104,8 @@ router.post("/auth/v1/token", async (req: Request, res: Response) => {
         refresh_token: newRefreshToken,
         user: { id: token.user_id, email: token.email },
       });
-    } catch (err: any) {
-      console.error("Refresh error:", err.message);
+    } catch (err: unknown) {
+      console.error("Refresh error:", errorMessage(err));
       res.status(500).json({ error: "Token refresh failed" });
     }
     return;
@@ -151,8 +153,8 @@ router.post("/auth/v1/token", async (req: Request, res: Response) => {
       refresh_token: refreshToken,
       user: { id: user.id, email },
     });
-  } catch (err: any) {
-    console.error("Login error:", err.message);
+  } catch (err: unknown) {
+    console.error("Login error:", errorMessage(err));
     res.status(500).json({ error: "Login failed" });
   }
 });
@@ -166,7 +168,7 @@ router.get("/auth/v1/user", async (req: Request, res: Response) => {
   }
 
   try {
-    const payload = jwt.verify(authHeader.slice(7), JWT_SECRET) as any;
+    const payload = jwt.verify(authHeader.slice(7), JWT_SECRET) as TokenPayload;
     if (payload.role !== "authenticated") {
       res.status(401).json({ error: "Not an authenticated user token" });
       return;

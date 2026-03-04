@@ -2,6 +2,7 @@ import { Router, Request, Response } from "express";
 import { POSTGREST_URL } from "../config.js";
 import { apikeyAuth } from "../middleware/apikey.js";
 import { meteringMiddleware } from "../middleware/metering.js";
+import { errorMessage } from "../utils/errors.js";
 
 const router = Router();
 
@@ -33,7 +34,7 @@ router.all("/rest/v1/*", apikeyAuth, meteringMiddleware, async (req: Request, re
   const project = req.project!;
 
   // Build PostgREST URL
-  const restPath = (req.params as any)[0] as string;
+  const restPath = (req.params as Record<string, string>)[0];
   const queryString = new URLSearchParams(req.query as Record<string, string>).toString();
   const url = `${POSTGREST_URL}/${restPath}${queryString ? "?" + queryString : ""}`;
 
@@ -89,9 +90,10 @@ router.all("/rest/v1/*", apikeyAuth, meteringMiddleware, async (req: Request, re
     if (result.contentType) res.set("Content-Type", result.contentType);
     if (result.contentRange) res.set("Content-Range", result.contentRange);
     res.send(result.text);
-  } catch (err: any) {
-    console.error("PostgREST proxy error:", err.message);
-    res.status(502).json({ error: "PostgREST proxy error: " + err.message });
+  } catch (err: unknown) {
+    const msg = errorMessage(err);
+    console.error("PostgREST proxy error:", msg);
+    res.status(502).json({ error: "PostgREST proxy error: " + msg });
   }
 });
 

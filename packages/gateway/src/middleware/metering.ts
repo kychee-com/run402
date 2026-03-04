@@ -4,6 +4,7 @@ import { METERING_FLUSH_INTERVAL } from "../config.js";
 import { projectCache } from "../services/projects.js";
 import { getTierLimits } from "@run402/shared";
 import { getWalletSubscriptionCached } from "../services/stripe-subscriptions.js";
+import { errorMessage } from "../utils/errors.js";
 
 // In-memory counters, flushed to DB periodically
 const counters = new Map<string, { apiCalls: number; lastFlushed: number }>();
@@ -102,9 +103,9 @@ export async function flushCounters(): Promise<void> {
       }
     }
     await client.query("COMMIT");
-  } catch (err: any) {
+  } catch (err: unknown) {
     await client.query("ROLLBACK");
-    console.error("Failed to flush metering counters:", err.message);
+    console.error("Failed to flush metering counters:", errorMessage(err));
   } finally {
     client.release();
   }

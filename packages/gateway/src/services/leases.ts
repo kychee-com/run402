@@ -3,6 +3,7 @@ import { projectCache, archiveProject } from "./projects.js";
 import { LEASE_GRACE_PERIOD, LEASE_DELETE_PERIOD } from "../config.js";
 import { getWalletSubscription, clearSubscriptionCache } from "./stripe-subscriptions.js";
 import type { TierName } from "@run402/shared";
+import { errorMessage } from "../utils/errors.js";
 
 let leaseInterval: ReturnType<typeof setInterval> | null = null;
 let lastStripeCheck = 0;
@@ -41,16 +42,16 @@ async function checkLeases(): Promise<void> {
       try {
         await archiveProject(project.id);
         await pool.query(`UPDATE internal.projects SET status = 'deleted' WHERE id = $1`, [project.id]);
-      } catch (err: any) {
-        console.error(`  Failed to delete expired project ${project.id}:`, err.message);
+      } catch (err: unknown) {
+        console.error(`  Failed to delete expired project ${project.id}:`, errorMessage(err));
       }
     } else if (now > expiryTime + LEASE_GRACE_PERIOD) {
       // Past grace period — archive
       console.log(`  Lease cleanup: archiving project ${project.id} (expired ${Math.floor((now - expiryTime) / 86400000)}d ago)`);
       try {
         await archiveProject(project.id);
-      } catch (err: any) {
-        console.error(`  Failed to archive expired project ${project.id}:`, err.message);
+      } catch (err: unknown) {
+        console.error(`  Failed to archive expired project ${project.id}:`, errorMessage(err));
       }
     }
   }
@@ -100,8 +101,8 @@ async function syncStripeSubscriptions(): Promise<void> {
           synced++;
         }
       }
-    } catch (err: any) {
-      console.error(`  Stripe sync failed for wallet ${wallet}:`, err.message);
+    } catch (err: unknown) {
+      console.error(`  Stripe sync failed for wallet ${wallet}:`, errorMessage(err));
     }
   }
 

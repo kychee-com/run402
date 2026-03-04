@@ -10,6 +10,7 @@ import {
 import { privateKeyToAccount } from "viem/accounts";
 import { baseSepolia } from "viem/chains";
 import { FAUCET_TREASURY_KEY, FAUCET_DRIP_AMOUNT, FAUCET_REFILL_INTERVAL, CDP_API_KEY_ID, CDP_API_KEY_SECRET } from "../config.js";
+import { errorMessage } from "../utils/errors.js";
 
 // Base Sepolia USDC (Circle test token)
 const USDC_ADDRESS: Address = "0x036CbD53842c5426634e7929541eC2318f3dCF7e";
@@ -36,8 +37,9 @@ const ERC20_ABI = [
   },
 ] as const;
 
-// Use `any` to avoid type conflicts between viem versions (direct vs transitive via @x402/evm)
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- avoid type conflicts between viem versions (direct vs transitive via @x402/evm)
 let walletClient: any = null;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- same viem version conflict
 let publicClient: any = null;
 let treasuryAddress: Address | null = null;
 
@@ -143,8 +145,8 @@ export async function refillTreasury(): Promise<void> {
       token: "eth",
     });
     console.log(`  Faucet refill: requested ETH for ${treasuryAddress}`);
-  } catch (err: any) {
-    console.error(`  Faucet refill failed: ${err.message}`);
+  } catch (err: unknown) {
+    console.error(`  Faucet refill failed: ${errorMessage(err)}`);
   }
 }
 

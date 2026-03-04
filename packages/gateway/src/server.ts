@@ -7,7 +7,8 @@
 
 try { await import("dotenv/config"); } catch {}
 
-import express, { Request, Response, NextFunction } from "express";
+import express, { Request, Response, NextFunction, ErrorRequestHandler } from "express";
+import { errorMessage } from "./utils/errors.js";
 import { PORT, POSTGREST_URL, SELLER_ADDRESS, MAINNET_NETWORK, TESTNET_NETWORK, TESTNET_FACILITATOR_URL, CDP_API_KEY_ID, RATE_LIMIT_PER_SEC, FAUCET_TREASURY_KEY, FACILITATOR_PROVIDER } from "./config.js";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -114,7 +115,8 @@ app.use((req: Request, res: Response, next: NextFunction) => {
 });
 
 // Body-parser error handler — return 4xx for bad input, not 500
-app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- Express ErrorRequestHandler types err as any
+const bodyParserErrorHandler: ErrorRequestHandler = (err: any, _req, res, next) => {
   if (err.type === "entity.parse.failed") {
     res.status(400).json({ error: "Invalid JSON in request body" });
     return;
@@ -128,7 +130,8 @@ app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
     return;
   }
   next(err);
-});
+};
+app.use(bodyParserErrorHandler);
 
 // --- Idempotency middleware (for paid endpoints, before x402) ---
 app.post("/v1/projects", idempotencyMiddleware);
@@ -252,8 +255,8 @@ async function start() {
   try {
     await pool.query("SELECT 1 AS ok");
     console.log("  Postgres connection: OK");
-  } catch (err: any) {
-    console.error("Cannot connect to Postgres:", err.message);
+  } catch (err: unknown) {
+    console.error("Cannot connect to Postgres:", errorMessage(err));
     process.exit(1);
   }
 
@@ -279,8 +282,8 @@ async function start() {
   try {
     await fetch(POSTGREST_URL);
     console.log("  PostgREST connection: OK");
-  } catch (err: any) {
-    console.warn("  PostgREST not reachable (will retry on requests):", err.message);
+  } catch (err: unknown) {
+    console.warn("  PostgREST not reachable (will retry on requests):", errorMessage(err));
   }
 
   // Start background tasks
@@ -318,16 +321,16 @@ async function shutdown(signal: string) {
   try {
     await flushCounters();
     console.log("  Metering counters flushed");
-  } catch (err: any) {
-    console.error("  Failed to flush counters:", err.message);
+  } catch (err: unknown) {
+    console.error("  Failed to flush counters:", errorMessage(err));
   }
 
   // Close pool
   try {
     await pool.end();
     console.log("  Database pool closed");
-  } catch (err: any) {
-    console.error("  Failed to close pool:", err.message);
+  } catch (err: unknown) {
+    console.error("  Failed to close pool:", errorMessage(err));
   }
 
   process.exit(0);

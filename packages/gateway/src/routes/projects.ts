@@ -6,12 +6,13 @@ import { notifyNewProject } from "../services/telegram.js";
 import { serviceKeyAuth } from "../middleware/apikey.js";
 import { extractWalletFromPaymentHeader } from "../utils/wallet.js";
 import { getWalletSubscription } from "../services/stripe-subscriptions.js";
+import { errorMessage } from "../utils/errors.js";
 
 const router = Router();
 
 // POST /v1/projects/quote — return tier pricing (free, no auth)
 router.post("/v1/projects/quote", (_req: Request, res: Response) => {
-  const tiers: Record<string, any> = {};
+  const tiers: Record<string, { price: string; lease_days: number; storage_mb: number; api_calls: number }> = {};
   for (const [name, config] of Object.entries(TIERS)) {
     tiers[name] = {
       price: config.price,
@@ -64,8 +65,8 @@ router.post("/v1/projects", async (req: Request, res: Response) => {
       tier: project.tier,
       lease_expires_at: project.leaseExpiresAt.toISOString(),
     });
-  } catch (err: any) {
-    console.error("Failed to create project:", err.message);
+  } catch (err: unknown) {
+    console.error("Failed to create project:", errorMessage(err));
     res.status(500).json({ error: "Failed to create project" });
   }
 });
@@ -109,8 +110,8 @@ router.post("/v1/projects/create/:tier", async (req: Request, res: Response) => 
       tier: project.tier,
       lease_expires_at: project.leaseExpiresAt.toISOString(),
     });
-  } catch (err: any) {
-    console.error("Failed to create project:", err.message);
+  } catch (err: unknown) {
+    console.error("Failed to create project:", errorMessage(err));
     res.status(500).json({ error: "Failed to create project" });
   }
 });
@@ -134,8 +135,8 @@ router.delete("/v1/projects/:id", serviceKeyAuth, async (req: Request, res: Resp
 
     console.log(`  Archived project: ${projectId}`);
     res.json({ status: "archived", project_id: projectId });
-  } catch (err: any) {
-    console.error("Failed to archive project:", err.message);
+  } catch (err: unknown) {
+    console.error("Failed to archive project:", errorMessage(err));
     res.status(500).json({ error: "Failed to archive project" });
   }
 });
@@ -158,8 +159,8 @@ router.post("/v1/projects/:id/renew", async (req: Request, res: Response) => {
       tier,
       lease_expires_at: newExpiry.toISOString(),
     });
-  } catch (err: any) {
-    console.error("Failed to renew project:", err.message);
+  } catch (err: unknown) {
+    console.error("Failed to renew project:", errorMessage(err));
     res.status(500).json({ error: "Failed to renew project" });
   }
 });

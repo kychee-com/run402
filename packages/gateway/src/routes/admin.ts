@@ -2,6 +2,32 @@ import { Router, Request, Response } from "express";
 import { pool } from "../db/pool.js";
 import { serviceKeyAuth } from "../middleware/apikey.js";
 import { getTierLimits } from "@run402/shared";
+import { errorMessage } from "../utils/errors.js";
+
+interface RlsTable {
+  table: string;
+  owner_column?: string;
+}
+
+interface PgColumn {
+  column_name: string;
+  data_type: string;
+  is_nullable: string;
+  column_default: string | null;
+}
+
+interface PgConstraint {
+  constraint_name: string;
+  constraint_type: string;
+  definition: string;
+}
+
+interface PgPolicy {
+  name: string;
+  command: string;
+  using_expression: string | null;
+  check_expression: string | null;
+}
 
 const router = Router();
 
@@ -83,9 +109,9 @@ router.post("/admin/v1/projects/:id/sql", async (req: Request, res: Response) =>
     } finally {
       client.release();
     }
-  } catch (err: any) {
-    console.error("Migration error:", err.message);
-    res.status(400).json({ error: err.message });
+  } catch (err: unknown) {
+    console.error("Migration error:", errorMessage(err));
+    res.status(400).json({ error: errorMessage(err) });
   }
 });
 
@@ -196,11 +222,11 @@ router.post("/admin/v1/projects/:id/rls", async (req: Request, res: Response) =>
       client.release();
     }
 
-    console.log(`  RLS (${template}) applied to ${project.id}: ${tables.map((t: any) => t.table).join(", ")}`);
-    res.json({ status: "ok", template, tables: tables.map((t: any) => t.table) });
-  } catch (err: any) {
-    console.error("RLS error:", err.message);
-    res.status(400).json({ error: err.message });
+    console.log(`  RLS (${template}) applied to ${project.id}: ${(tables as RlsTable[]).map((t) => t.table).join(", ")}`);
+    res.json({ status: "ok", template, tables: (tables as RlsTable[]).map((t) => t.table) });
+  } catch (err: unknown) {
+    console.error("RLS error:", errorMessage(err));
+    res.status(400).json({ error: errorMessage(err) });
   }
 });
 
@@ -292,19 +318,19 @@ router.get("/admin/v1/projects/:id/schema", async (req: Request, res: Response) 
 
       tables.push({
         name: tableName,
-        columns: columnsResult.rows.map((c: any) => ({
+        columns: (columnsResult.rows as PgColumn[]).map((c) => ({
           name: c.column_name,
           type: c.data_type,
           nullable: c.is_nullable === "YES",
           default_value: c.column_default,
         })),
-        constraints: constraintsResult.rows.map((c: any) => ({
+        constraints: (constraintsResult.rows as PgConstraint[]).map((c) => ({
           name: c.constraint_name,
           type: c.constraint_type,
           definition: c.definition,
         })),
         rls_enabled: rlsResult.rows[0]?.relrowsecurity || false,
-        policies: policiesResult.rows.map((p: any) => ({
+        policies: (policiesResult.rows as PgPolicy[]).map((p) => ({
           name: p.name,
           command: p.command,
           using_expression: p.using_expression,
@@ -314,8 +340,8 @@ router.get("/admin/v1/projects/:id/schema", async (req: Request, res: Response) 
     }
 
     res.json({ schema: project.schemaSlot, tables });
-  } catch (err: any) {
-    console.error("Schema introspection error:", err.message);
+  } catch (err: unknown) {
+    console.error("Schema introspection error:", errorMessage(err));
     res.status(500).json({ error: "Schema introspection failed" });
   }
 });

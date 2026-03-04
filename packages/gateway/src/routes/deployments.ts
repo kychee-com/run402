@@ -8,6 +8,7 @@
 import { Router, Request, Response } from "express";
 import { createDeployment, getDeployment, DeploymentError } from "../services/deployments.js";
 import type { DeploymentFile } from "../services/deployments.js";
+import { errorMessage } from "../utils/errors.js";
 
 const router = Router();
 
@@ -52,11 +53,11 @@ router.post("/v1/deployments", async (req: Request, res: Response) => {
     );
 
     res.status(201).json(deployment);
-  } catch (err: any) {
+  } catch (err: unknown) {
     if (err instanceof DeploymentError) {
       res.status(err.statusCode).json({ error: err.message });
     } else {
-      console.error("Deployment error:", err.message);
+      console.error("Deployment error:", errorMessage(err));
       res.status(500).json({ error: "Deployment failed" });
     }
   }
@@ -71,8 +72,8 @@ router.get("/v1/deployments/:id", async (req: Request, res: Response) => {
       return;
     }
     res.json(deployment);
-  } catch (err: any) {
-    console.error("Deployment lookup error:", err.message);
+  } catch (err: unknown) {
+    console.error("Deployment lookup error:", errorMessage(err));
     res.status(500).json({ error: "Lookup failed" });
   }
 });
