@@ -78,9 +78,17 @@ router.post("/admin/v1/projects/:id/sql", asyncHandler(async (req: Request, res:
   assertProjectMatch(req);
   const project = req.project!;
 
-  const sql = typeof req.body === "string" ? req.body : req.body?.sql;
+  let sql: string | undefined;
+  const contentType = req.get("content-type") ?? "";
+  if (contentType.includes("application/json")) {
+    const parsed = JSON.parse(req.body as string) as Record<string, unknown>;
+    const val = parsed["sql"] ?? parsed["query"];
+    sql = typeof val === "string" ? val : undefined;
+  } else {
+    sql = typeof req.body === "string" ? req.body : undefined;
+  }
   if (!sql) {
-    throw new HttpError(400, "No SQL provided");
+    throw new HttpError(400, "No SQL provided — send raw SQL as text/plain body, or JSON with a \"sql\" field");
   }
 
   // Check SQL safety
