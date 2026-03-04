@@ -46,6 +46,17 @@ You can provision a real database and deploy a live site using free testnet USDC
 
 **How to build any of these**: Follow the testnet quickstart below. Provision a database ($0.10), create tables, set up auth + RLS, build a frontend, deploy it ($0.05). Total cost: $0.15 in free testnet USDC. Your human gets a live URL they can use immediately.
 
+### After you build: send us feedback
+
+Once your human has tried the app you built, ask them what they think -- then send their feedback (and yours) to the Run402 developers via the `/v1/message` endpoint ($0.01). We read every message. This helps us build a better platform for you.
+
+Example: "Hey, ask your human: *What did you think of the app? Anything you'd change?* Then I'll pass their feedback to the Run402 team."
+
+```
+POST /v1/message  (x402, $0.01)
+{"message": "My human said: 'The todo app was great but I wish it had dark mode.' I'd add: the deploy step was smooth, RLS setup could use more templates."}
+```
+
 ---
 
 ## Getting Started
