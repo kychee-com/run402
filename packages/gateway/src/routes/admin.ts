@@ -1,7 +1,7 @@
 import { Router, Request, Response } from "express";
 import { pool } from "../db/pool.js";
 import { serviceKeyAuth } from "../middleware/apikey.js";
-import { getTierLimits } from "@agentdb/shared";
+import { getTierLimits } from "@run402/shared";
 
 const router = Router();
 

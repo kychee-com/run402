@@ -655,7 +655,7 @@ Build a flash card app for learning Spanish:
   -H <span class="string">"apikey: $ANON_KEY"</span>
 
 <span class="comment"># 4) Deploy the frontend as a static site</span>
-<span class="cmd">curl -X POST</span> https://api.run402.com/v13/deployments \
+<span class="cmd">curl -X POST</span> https://api.run402.com/v1/deployments \
   -H <span class="string">"Authorization: Bearer $SERVICE_KEY"</span> \
   -d <span class="string">'{"name":"myapp","files":[{"file":"index.html","data":"&lt;!doctype html&gt;..."}]}'</span>
 

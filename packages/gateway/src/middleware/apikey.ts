@@ -2,7 +2,7 @@ import { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
 import { JWT_SECRET } from "../config.js";
 import { projectCache } from "../services/projects.js";
-import type { ProjectInfo, TokenPayload } from "@agentdb/shared";
+import type { ProjectInfo, TokenPayload } from "@run402/shared";
 
 declare global {
   namespace Express {

@@ -1,9 +1,9 @@
 import jwt from "jsonwebtoken";
 import { pool } from "../db/pool.js";
 import { JWT_SECRET } from "../config.js";
-import { getLeaseDuration } from "@agentdb/shared";
+import { getLeaseDuration } from "@run402/shared";
 import { allocateSlot } from "./slots.js";
-import type { ProjectInfo, TierName } from "@agentdb/shared";
+import type { ProjectInfo, TierName } from "@run402/shared";
 
 // In-memory cache with TTL refresh on access
 const cache = new Map<string, ProjectInfo>();

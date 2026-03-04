@@ -1,8 +1,8 @@
 /**
  * Deployment routes — Vercel-compatible static site hosting.
  *
- * POST /v13/deployments — deploy a static site (x402-gated, $0.05)
- * GET  /v13/deployments/:id — get deployment status (free)
+ * POST /v1/deployments — deploy a static site (x402-gated, $0.05)
+ * GET  /v1/deployments/:id — get deployment status (free)
  */
 
 import { Router, Request, Response } from "express";
@@ -11,8 +11,8 @@ import type { DeploymentFile } from "../services/deployments.js";
 
 const router = Router();
 
-// POST /v13/deployments — create a deployment
-router.post("/v13/deployments", async (req: Request, res: Response) => {
+// POST /v1/deployments — create a deployment
+router.post("/v1/deployments", async (req: Request, res: Response) => {
   try {
     const { name, project, target, files } = req.body || {};
 
@@ -62,8 +62,8 @@ router.post("/v13/deployments", async (req: Request, res: Response) => {
   }
 });
 
-// GET /v13/deployments/:id — get deployment status (free, no auth)
-router.get("/v13/deployments/:id", async (req: Request, res: Response) => {
+// GET /v1/deployments/:id — get deployment status (free, no auth)
+router.get("/v1/deployments/:id", async (req: Request, res: Response) => {
   try {
     const deployment = await getDeployment(req.params.id as string);
     if (!deployment) {

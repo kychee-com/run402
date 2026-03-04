@@ -10,14 +10,14 @@ From GPT-5.2 Pro consultation (2026-02-27) on improving agent trust and adoption
 - [x] Add idempotency key support on paid endpoints (Idempotency-Key header, 24h TTL)
 - [x] Fix lifecycle mismatch: LEASE_DELETE_PERIOD 30d → 37d (7d grace + 30d archive)
 - [x] Require service_key auth on DELETE /v1/projects/:id
-- [x] Static site hosting: Vercel-compatible POST /v13/deployments, CloudFront + S3 serving, SPA fallback, deploy_site MCP tool
+- [x] Static site hosting: Vercel-compatible POST /v1/deployments, CloudFront + S3 serving, SPA fallback, deploy_site MCP tool
 
 ## Pending
 
 ### Static site hosting — follow-ups
 - [ ] Production aliases: `prj-xxx.sites.run402.com` pointing to latest `target: "production"` deployment
 - [ ] Custom domains: let agents CNAME their own domain to a deployment
-- [ ] Deployment listing: `GET /v13/deployments?project=prj_xxx` for listing project deployments
+- [ ] Deployment listing: `GET /v1/deployments?project=prj_xxx` for listing project deployments
 
 ### Self-serve export endpoint
 Add `POST /admin/v1/projects/:id/export` that returns a signed URL to a SQL dump of the project's schema and data. This is the biggest trust unlock for agents considering Run402 for non-ephemeral work.

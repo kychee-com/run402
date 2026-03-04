@@ -75,7 +75,7 @@ async function main() {
     "/v1/projects",
     "/v1/projects/create/prototype",
     "/v1/faucet",
-    "/v13/deployments",
+    "/v1/deployments",
     "/auth/v1/signup",
     "/auth/v1/token",
     "/auth/v1/logout",
@@ -129,10 +129,10 @@ async function main() {
       label: `POST /v1/faucet (Content-Type: ${ct})`,
     });
 
-    await expectNot5xx("POST", "/v13/deployments", {
+    await expectNot5xx("POST", "/v1/deployments", {
       headers: { "Content-Type": ct },
       body: "name=test",
-      label: `POST /v13/deployments (Content-Type: ${ct})`,
+      label: `POST /v1/deployments (Content-Type: ${ct})`,
     });
   }
 
@@ -142,9 +142,9 @@ async function main() {
     label: "POST /v1/faucet (no Content-Type)",
   });
 
-  await expectNot5xx("POST", "/v13/deployments", {
+  await expectNot5xx("POST", "/v1/deployments", {
     body: '{"name":"test","files":[]}',
-    label: "POST /v13/deployments (no Content-Type)",
+    label: "POST /v1/deployments (no Content-Type)",
   });
 
   // ──────────────────────────────────────────────
@@ -200,22 +200,22 @@ async function main() {
   });
 
   // Deployments — missing fields
-  await expectNot5xx("POST", "/v13/deployments", {
+  await expectNot5xx("POST", "/v1/deployments", {
     headers: { "Content-Type": "application/json" },
     body: '{"name":"test"}',
-    label: "POST /v13/deployments (no files array)",
+    label: "POST /v1/deployments (no files array)",
   });
 
-  await expectNot5xx("POST", "/v13/deployments", {
+  await expectNot5xx("POST", "/v1/deployments", {
     headers: { "Content-Type": "application/json" },
     body: '{"files":[{"file":"index.html"}]}',
-    label: "POST /v13/deployments (file missing data field)",
+    label: "POST /v1/deployments (file missing data field)",
   });
 
-  await expectNot5xx("POST", "/v13/deployments", {
+  await expectNot5xx("POST", "/v1/deployments", {
     headers: { "Content-Type": "application/json" },
     body: '{"name":"test","files":[]}',
-    label: "POST /v13/deployments (empty files array)",
+    label: "POST /v1/deployments (empty files array)",
   });
 
   // RLS — missing fields
@@ -260,16 +260,16 @@ async function main() {
     label: "POST /auth/v1/signup (email/password as numbers)",
   });
 
-  await expectNot5xx("POST", "/v13/deployments", {
+  await expectNot5xx("POST", "/v1/deployments", {
     headers: { "Content-Type": "application/json" },
     body: '{"name":123,"files":"not-an-array"}',
-    label: "POST /v13/deployments (name as number, files as string)",
+    label: "POST /v1/deployments (name as number, files as string)",
   });
 
-  await expectNot5xx("POST", "/v13/deployments", {
+  await expectNot5xx("POST", "/v1/deployments", {
     headers: { "Content-Type": "application/json" },
     body: '{"name":"test","files":[{"file":123,"data":456}]}',
-    label: "POST /v13/deployments (file/data as numbers)",
+    label: "POST /v1/deployments (file/data as numbers)",
   });
 
   await expectNot5xx("POST", "/admin/v1/projects/fake-id/rls", {
@@ -392,14 +392,14 @@ async function main() {
   });
 
   // Non-existent deployment
-  await expectNot5xx("GET", "/v13/deployments/dpl_nonexistent", {
-    label: "GET /v13/deployments/dpl_nonexistent",
+  await expectNot5xx("GET", "/v1/deployments/dpl_nonexistent", {
+    label: "GET /v1/deployments/dpl_nonexistent",
     expectStatus: 404,
   });
 
   // SQL injection in path params
-  await expectNot5xx("GET", "/v13/deployments/'; DROP TABLE deployments;--", {
-    label: "GET /v13/deployments (SQL injection in path)",
+  await expectNot5xx("GET", "/v1/deployments/'; DROP TABLE deployments;--", {
+    label: "GET /v1/deployments (SQL injection in path)",
   });
 
   await expectNot5xx("DELETE", "/v1/projects/'; DROP TABLE projects;--", {
@@ -434,7 +434,7 @@ async function main() {
     { path: "/v1/faucet", validMethods: ["POST"] },
     { path: "/v1/projects/quote", validMethods: ["POST"] },
     { path: "/v1/projects", validMethods: ["POST"] },
-    { path: "/v13/deployments", validMethods: ["POST"] },
+    { path: "/v1/deployments", validMethods: ["POST"] },
     { path: "/auth/v1/signup", validMethods: ["POST"] },
     { path: "/auth/v1/token", validMethods: ["POST"] },
     { path: "/auth/v1/user", validMethods: ["GET"] },
@@ -483,13 +483,13 @@ async function main() {
     label: "GET /rest/v1/anything (10KB apikey header)",
   });
 
-  await expectNot5xx("POST", "/v13/deployments", {
+  await expectNot5xx("POST", "/v1/deployments", {
     headers: {
       "Content-Type": "application/json",
       "Idempotency-Key": "k".repeat(300),
     },
     body: '{"name":"test","files":[{"file":"index.html","data":"hi"}]}',
-    label: "POST /v13/deployments (300-char Idempotency-Key)",
+    label: "POST /v1/deployments (300-char Idempotency-Key)",
     expectStatus: 400,
   });
 
@@ -519,10 +519,10 @@ async function main() {
     label: "POST /v1/faucet (lone surrogate in address)",
   });
 
-  await expectNot5xx("POST", "/v13/deployments", {
+  await expectNot5xx("POST", "/v1/deployments", {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ name: "\u0000\u0001\u0002", files: [{ file: "index.html", data: "hi" }] }),
-    label: "POST /v13/deployments (control chars in name)",
+    label: "POST /v1/deployments (control chars in name)",
   });
 
   // Null bytes in various positions
@@ -538,7 +538,7 @@ async function main() {
   console.log("\n--- 10. Edge cases ---");
 
   // OPTIONS (CORS preflight) on various endpoints
-  for (const path of ["/v1/projects", "/v13/deployments", "/rest/v1/test", "/auth/v1/signup"]) {
+  for (const path of ["/v1/projects", "/v1/deployments", "/rest/v1/test", "/auth/v1/signup"]) {
     await expectNot5xx("OPTIONS", path, {
       headers: {
         Origin: "https://evil.com",
@@ -554,8 +554,8 @@ async function main() {
     label: "GET //health (double slash)",
   });
 
-  await expectNot5xx("GET", "/v13//deployments/test", {
-    label: "GET /v13//deployments/test (double slash mid-path)",
+  await expectNot5xx("GET", "/v1//deployments/test", {
+    label: "GET /v1//deployments/test (double slash mid-path)",
   });
 
   // Trailing slashes
@@ -575,8 +575,8 @@ async function main() {
     label: "HEAD /health",
   });
 
-  await expectNot5xx("HEAD", "/v13/deployments/dpl_nonexistent", {
-    label: "HEAD /v13/deployments/dpl_nonexistent",
+  await expectNot5xx("HEAD", "/v1/deployments/dpl_nonexistent", {
+    label: "HEAD /v1/deployments/dpl_nonexistent",
   });
 
   // ──────────────────────────────────────────────

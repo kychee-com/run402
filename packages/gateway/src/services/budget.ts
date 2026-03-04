@@ -1,6 +1,6 @@
 import { pool } from "../db/pool.js";
 import { projectCache } from "./projects.js";
-import { getTierLimits } from "@agentdb/shared";
+import { getTierLimits } from "@run402/shared";
 
 /**
  * Update storage bytes for a project (on upload/delete).

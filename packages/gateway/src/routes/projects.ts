@@ -1,6 +1,6 @@
 import { Router, Request, Response } from "express";
-import { TIERS } from "@agentdb/shared";
-import type { TierName } from "@agentdb/shared";
+import { TIERS } from "@run402/shared";
+import type { TierName } from "@run402/shared";
 import { createProject, archiveProject, renewLease } from "../services/projects.js";
 import { notifyNewProject } from "../services/telegram.js";
 import { serviceKeyAuth } from "../middleware/apikey.js";

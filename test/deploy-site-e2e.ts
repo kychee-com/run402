@@ -9,7 +9,7 @@
  *   5.  Verify SPA fallback (/about returns index.html with 200)
  *   6.  Verify actual 404 (/nonexistent.js returns 403/404)
  *   7.  Deploy with base64 file (PNG), verify Content-Type
- *   8.  Verify GET /v13/deployments/:id (metadata lookup)
+ *   8.  Verify GET /v1/deployments/:id (metadata lookup)
  *   9.  Verify idempotency (same key → same deployment)
  *
  * Usage:
@@ -79,7 +79,7 @@ async function main() {
 
   // Test 1: Deploy a simple site
   console.log("1) Deploy a simple site...");
-  const deployRes = await fetchPaid(`${BASE_URL}/v13/deployments`, {
+  const deployRes = await fetchPaid(`${BASE_URL}/v1/deployments`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -175,7 +175,7 @@ async function main() {
 
   // Test 7: Deploy with base64 file
   console.log("\n7) Deploy with base64 PNG...");
-  const pngDeployRes = await fetchPaid(`${BASE_URL}/v13/deployments`, {
+  const pngDeployRes = await fetchPaid(`${BASE_URL}/v1/deployments`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -199,9 +199,9 @@ async function main() {
     assert(false, `PNG fetch failed: ${err.message}`);
   }
 
-  // Test 8: GET /v13/deployments/:id
-  console.log("\n8) Verify GET /v13/deployments/:id...");
-  const getRes = await fetch(`${BASE_URL}/v13/deployments/${deploymentId}`);
+  // Test 8: GET /v1/deployments/:id
+  console.log("\n8) Verify GET /v1/deployments/:id...");
+  const getRes = await fetch(`${BASE_URL}/v1/deployments/${deploymentId}`);
   const getMeta = await getRes.json();
   assert(getRes.ok, `GET deployment returns 200`);
   assert(getMeta.id === deploymentId, `ID matches`);
@@ -214,7 +214,7 @@ async function main() {
   console.log("\n9) Verify idempotency...");
   const idempotencyKey = randomBytes(16).toString("hex");
 
-  const idem1 = await fetchPaid(`${BASE_URL}/v13/deployments`, {
+  const idem1 = await fetchPaid(`${BASE_URL}/v1/deployments`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -228,7 +228,7 @@ async function main() {
   const idemBody1 = await idem1.json();
   assert(idem1.status === 201, `First idempotent deploy returns 201`);
 
-  const idem2 = await fetchPaid(`${BASE_URL}/v13/deployments`, {
+  const idem2 = await fetchPaid(`${BASE_URL}/v1/deployments`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",

@@ -3,7 +3,7 @@ import { ExactEvmScheme } from "@x402/evm/exact/server";
 import { HTTPFacilitatorClient } from "@x402/core/server";
 import { createFacilitatorConfig } from "@coinbase/x402";
 import { declareDiscoveryExtension, bazaarResourceServerExtension } from "@x402/extensions";
-import { TIERS } from "@agentdb/shared";
+import { TIERS } from "@run402/shared";
 import Stripe from "stripe";
 import {
   SELLER_ADDRESS,
@@ -15,7 +15,7 @@ import {
   FACILITATOR_URL,
   STRIPE_SECRET_KEY,
 } from "../config.js";
-import type { TierName } from "@agentdb/shared";
+import type { TierName } from "@run402/shared";
 import { getWalletSubscription } from "../services/stripe-subscriptions.js";
 import { extractWalletFromPaymentHeader } from "../utils/wallet.js";
 
@@ -162,8 +162,8 @@ export function createPaymentMiddleware() {
     },
   };
 
-  // POST /v13/deployments — static site deployment ($0.05)
-  resourceConfig["POST /v13/deployments"] = {
+  // POST /v1/deployments — static site deployment ($0.05)
+  resourceConfig["POST /v1/deployments"] = {
     accepts: networks.map((network) => ({
       scheme: "exact",
       price: "$0.05",

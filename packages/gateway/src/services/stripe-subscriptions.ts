@@ -1,6 +1,6 @@
 import Stripe from "stripe";
 import { STRIPE_SECRET_KEY } from "../config.js";
-import type { TierName } from "@agentdb/shared";
+import type { TierName } from "@run402/shared";
 
 const stripe = STRIPE_SECRET_KEY ? new Stripe(STRIPE_SECRET_KEY) : null;
 

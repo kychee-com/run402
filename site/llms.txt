@@ -437,8 +437,8 @@ For explicit control, use both `apikey` (project key) and `Authorization: Bearer
 
 | Endpoint | Method | Auth | Cost | Description |
 |----------|--------|------|------|-------------|
-| `/v13/deployments` | POST | x402 | $0.05 | Deploy a static site (Vercel-compatible inlined files) |
-| `/v13/deployments/:id` | GET | None | Free | Get deployment status and URL |
+| `/v1/deployments` | POST | x402 | $0.05 | Deploy a static site (Vercel-compatible inlined files) |
+| `/v1/deployments/:id` | GET | None | Free | Get deployment status and URL |
 
 **Deploy a static site** — Upload HTML/CSS/JS/images as inlined files. Each deployment gets a permanent URL at `https://{id}.sites.run402.com`. SPA-friendly: paths without file extensions serve `index.html`.
 
@@ -542,7 +542,7 @@ Supported on:
 - `POST /v1/projects`
 - `POST /v1/projects/create/:tier`
 - `POST /v1/projects/:id/renew`
-- `POST /v13/deployments`
+- `POST /v1/deployments`
 - `POST /v1/message`
 
 **Recommendation**: Always include an `Idempotency-Key` when provisioning or renewing. Use a UUID or deterministic hash of your intent.
@@ -765,7 +765,7 @@ client.register("eip155:84532", new ExactEvmScheme(signer));
 const fetchPaid = wrapFetchWithPayment(fetch, client);
 
 // Deploy a site ($0.05)
-const res = await fetchPaid("https://api.run402.com/v13/deployments", {
+const res = await fetchPaid("https://api.run402.com/v1/deployments", {
   method: "POST",
   headers: { "Content-Type": "application/json" },
   body: JSON.stringify({
@@ -799,7 +799,7 @@ deploy_site(
 ### Check a deployment (free, no auth)
 
 ```bash
-curl https://api.run402.com/v13/deployments/dpl_1709337600000_a1b2c3
+curl https://api.run402.com/v1/deployments/dpl_1709337600000_a1b2c3
 ```
 
 Response:

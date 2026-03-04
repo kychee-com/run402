@@ -2,7 +2,7 @@ import { Request, Response, NextFunction } from "express";
 import { pool } from "../db/pool.js";
 import { METERING_FLUSH_INTERVAL } from "../config.js";
 import { projectCache } from "../services/projects.js";
-import { getTierLimits } from "@agentdb/shared";
+import { getTierLimits } from "@run402/shared";
 import { getWalletSubscriptionCached } from "../services/stripe-subscriptions.js";
 
 // In-memory counters, flushed to DB periodically

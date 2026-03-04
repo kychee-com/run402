@@ -2,7 +2,7 @@ import { pool } from "../db/pool.js";
 import { projectCache, archiveProject } from "./projects.js";
 import { LEASE_GRACE_PERIOD, LEASE_DELETE_PERIOD } from "../config.js";
 import { getWalletSubscription, clearSubscriptionCache } from "./stripe-subscriptions.js";
-import type { TierName } from "@agentdb/shared";
+import type { TierName } from "@run402/shared";
 
 let leaseInterval: ReturnType<typeof setInterval> | null = null;
 let lastStripeCheck = 0;

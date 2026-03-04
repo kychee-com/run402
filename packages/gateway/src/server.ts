@@ -106,7 +106,7 @@ app.use((req: Request, res: Response, next: NextFunction) => {
 app.use((req: Request, res: Response, next: NextFunction) => {
   if (req.path.endsWith("/sql") || req.path.startsWith("/storage/")) {
     express.text({ type: "*/*", limit: "10mb" })(req, res, next);
-  } else if (req.path === "/v13/deployments" && req.method === "POST") {
+  } else if (req.path === "/v1/deployments" && req.method === "POST") {
     express.json({ limit: "50mb" })(req, res, next);
   } else {
     express.json({ limit: "1mb" })(req, res, next);
@@ -134,7 +134,7 @@ app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
 app.post("/v1/projects", idempotencyMiddleware);
 app.post("/v1/projects/create/:tier", idempotencyMiddleware);
 app.post("/v1/projects/:id/renew", idempotencyMiddleware);
-app.post("/v13/deployments", idempotencyMiddleware);
+app.post("/v1/deployments", idempotencyMiddleware);
 app.post("/v1/message", idempotencyMiddleware);
 
 // --- x402 payment middleware ---
