@@ -24,8 +24,11 @@
     "deploy": "bash scripts/deploy.sh"
   },
   "devDependencies": {
+    "@aws-sdk/client-dynamodb": "^3.1001.0",
+    "@aws-sdk/credential-providers": "^3.1001.0",
     "@typescript-eslint/eslint-plugin": "^8.56.1",
     "@typescript-eslint/parser": "^8.56.1",
+    "@x402/fetch": "^2.5.0",
     "eslint": "^10.0.2",
     "yaml": "^2.8.2"
   }
