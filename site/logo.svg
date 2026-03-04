@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 448">
+  <defs>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="4" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <filter id="outerGlow">
+      <feGaussianBlur stdDeviation="8" result="blur"/>
+      <feFlood flood-color="#00FF9F" flood-opacity="0.3" result="color"/>
+      <feComposite in="color" in2="blur" operator="in" result="shadow"/>
+      <feMerge>
+        <feMergeNode in="shadow"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Rounded square with black fill and neon border -->
+  <rect width="448" height="448" rx="48" ry="48"
+        fill="#000000" stroke="#00FF9F" stroke-width="6"
+        filter="url(#outerGlow)"/>
+
+  <!-- ">$" text with neon glow -->
+  <text x="224" y="288" text-anchor="middle"
+        font-family="'SF Mono', 'Fira Code', 'Cascadia Code', 'Consolas', monospace"
+        font-size="280" font-weight="bold"
+        fill="#00FF9F" filter="url(#glow)">&gt;$</text>
+</svg>
