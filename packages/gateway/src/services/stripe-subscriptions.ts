@@ -53,13 +53,17 @@ export async function getWalletSubscription(wallet: string): Promise<WalletSubsc
     }
 
     const sub = subscriptions.data[0]!;
-    const product = await stripe.products.retrieve(sub.items.data[0]!.price.product as string);
+    const item = sub.items.data[0]!;
+    const product = await stripe.products.retrieve(item.price.product as string);
     const tier = (product.metadata["run402_tier"] || "hobby") as TierName;
+
+    // In Stripe SDK v20+, current_period_end is on the subscription item, not the subscription
+    const periodEnd = (item as any).current_period_end as number;
 
     const result: WalletSubscription = {
       tier,
       status: sub.status,
-      currentPeriodEnd: new Date((sub as any).current_period_end * 1000),
+      currentPeriodEnd: new Date(periodEnd * 1000),
       customerId: customer.id,
     };
 

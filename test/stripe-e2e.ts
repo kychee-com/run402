@@ -116,9 +116,9 @@ async function run() {
     assert(sub.status === "active", `Subscription should be active, got ${sub.status}`);
   });
 
-  // --- Wait for Stripe search index ---
-  console.log("  ... waiting 5s for Stripe search index ...");
-  await new Promise((r) => setTimeout(r, 5000));
+  // --- Wait for Stripe search index (can take up to 60s) ---
+  console.log("  ... waiting 65s for Stripe search index ...");
+  await new Promise((r) => setTimeout(r, 65000));
 
   // --- Test 3: Clear cache and verify subscription status ---
   await test("Clear cache and verify subscription via API", async () => {
