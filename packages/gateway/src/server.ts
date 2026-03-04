@@ -9,6 +9,7 @@ try { await import("dotenv/config"); } catch {}
 
 import express, { Request, Response, NextFunction, ErrorRequestHandler } from "express";
 import { errorMessage } from "./utils/errors.js";
+import { HttpError } from "./utils/async-handler.js";
 import { PORT, POSTGREST_URL, SELLER_ADDRESS, MAINNET_NETWORK, TESTNET_NETWORK, TESTNET_FACILITATOR_URL, CDP_API_KEY_ID, RATE_LIMIT_PER_SEC, FAUCET_TREASURY_KEY, FACILITATOR_PROVIDER } from "./config.js";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -189,9 +190,15 @@ app.use(deploymentRoutes);
 app.use(messageRoutes);
 app.use(stripeRoutes);
 
-// --- Error handler ---
+// --- Central error handler ---
+// Routes using asyncHandler() forward errors here automatically.
+// HttpError instances set the status code; everything else becomes 500.
 app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
-  console.error("Unhandled error:", err.message);
+  if (err instanceof HttpError) {
+    res.status(err.statusCode).json({ error: err.message });
+    return;
+  }
+  console.error("Unhandled error:", errorMessage(err));
   res.status(500).json({ error: "Internal server error" });
 });
 

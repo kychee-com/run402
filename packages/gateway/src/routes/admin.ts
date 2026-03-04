@@ -2,7 +2,7 @@ import { Router, Request, Response } from "express";
 import { pool } from "../db/pool.js";
 import { serviceKeyAuth } from "../middleware/apikey.js";
 import { getTierLimits } from "@run402/shared";
-import { errorMessage } from "../utils/errors.js";
+import { asyncHandler, HttpError } from "../utils/async-handler.js";
 
 interface RlsTable {
   table: string;
@@ -66,178 +66,155 @@ function checkSqlSafety(sql: string): { error: string; hint?: string } | null {
   return null;
 }
 
-// POST /admin/v1/projects/:id/sql — run SQL migration
-router.post("/admin/v1/projects/:id/sql", async (req: Request, res: Response) => {
-  const project = req.project!;
-  if (project.id !== req.params["id"]) {
-    res.status(403).json({ error: "Token project_id mismatch" });
-    return;
+/** Verify service_key matches the project in the URL. */
+function assertProjectMatch(req: Request): void {
+  if (req.project!.id !== req.params["id"]) {
+    throw new HttpError(403, "Token project_id mismatch");
   }
+}
+
+// POST /admin/v1/projects/:id/sql — run SQL migration
+router.post("/admin/v1/projects/:id/sql", asyncHandler(async (req: Request, res: Response) => {
+  assertProjectMatch(req);
+  const project = req.project!;
 
   const sql = typeof req.body === "string" ? req.body : req.body?.sql;
   if (!sql) {
-    res.status(400).json({ error: "No SQL provided" });
-    return;
+    throw new HttpError(400, "No SQL provided");
   }
 
   // Check SQL safety
   const blocked = checkSqlSafety(sql);
   if (blocked) {
-    res.status(403).json(blocked);
-    return;
+    throw new HttpError(403, blocked.hint ? `${blocked.error} — ${blocked.hint}` : blocked.error);
   }
 
+  const client = await pool.connect();
   try {
-    const client = await pool.connect();
-    try {
-      await client.query("BEGIN");
-      await client.query(`SET search_path TO ${project.schemaSlot}`);
-      const result = await client.query(sql);
-      await client.query("NOTIFY pgrst, 'reload schema'");
-      await client.query("COMMIT");
+    await client.query("BEGIN");
+    await client.query(`SET search_path TO ${project.schemaSlot}`);
+    const result = await client.query(sql);
+    await client.query("NOTIFY pgrst, 'reload schema'");
+    await client.query("COMMIT");
 
-      console.log(`  Migration applied to ${project.id} (${project.schemaSlot})`);
-      res.json({
-        status: "ok",
-        schema: project.schemaSlot,
-        rows: result.rows,
-        rowCount: result.rowCount,
-      });
-    } catch (err) {
-      await client.query("ROLLBACK");
-      throw err;
-    } finally {
-      client.release();
-    }
-  } catch (err: unknown) {
-    console.error("Migration error:", errorMessage(err));
-    res.status(400).json({ error: errorMessage(err) });
+    console.log(`  Migration applied to ${project.id} (${project.schemaSlot})`);
+    res.json({
+      status: "ok",
+      schema: project.schemaSlot,
+      rows: result.rows,
+      rowCount: result.rowCount,
+    });
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  } finally {
+    client.release();
   }
-});
+}));
 
 // POST /admin/v1/projects/:id/rls — apply RLS template
-router.post("/admin/v1/projects/:id/rls", async (req: Request, res: Response) => {
+router.post("/admin/v1/projects/:id/rls", asyncHandler(async (req: Request, res: Response) => {
+  assertProjectMatch(req);
   const project = req.project!;
-  if (project.id !== req.params["id"]) {
-    res.status(403).json({ error: "Token project_id mismatch" });
-    return;
-  }
 
   const { template, tables } = req.body || {};
   const VALID_TEMPLATES = ["user_owns_rows", "public_read", "public_read_write"];
   if (!VALID_TEMPLATES.includes(template) || !Array.isArray(tables)) {
-    res.status(400).json({
-      error: `Requires template (${VALID_TEMPLATES.join(", ")}) and tables array`,
-    });
-    return;
+    throw new HttpError(400, `Requires template (${VALID_TEMPLATES.join(", ")}) and tables array`);
   }
 
   // user_owns_rows requires owner_column on every table
   if (template === "user_owns_rows") {
     for (const t of tables) {
       if (!t.owner_column) {
-        res.status(400).json({ error: `owner_column required for table '${t.table}' with user_owns_rows template` });
-        return;
+        throw new HttpError(400, `owner_column required for table '${t.table}' with user_owns_rows template`);
       }
     }
   }
 
+  const client = await pool.connect();
   try {
-    const client = await pool.connect();
-    try {
-      await client.query("BEGIN");
-      await client.query(`SET search_path TO ${project.schemaSlot}`);
+    await client.query("BEGIN");
+    await client.query(`SET search_path TO ${project.schemaSlot}`);
 
-      for (const table of tables) {
-        const tableName = table.table;
+    for (const table of tables) {
+      const tableName = table.table;
 
-        await client.query(`ALTER TABLE ${tableName} ENABLE ROW LEVEL SECURITY`);
-        await client.query(`ALTER TABLE ${tableName} FORCE ROW LEVEL SECURITY`);
+      await client.query(`ALTER TABLE ${tableName} ENABLE ROW LEVEL SECURITY`);
+      await client.query(`ALTER TABLE ${tableName} FORCE ROW LEVEL SECURITY`);
 
-        if (template === "user_owns_rows") {
-          const ownerColumn = table.owner_column;
-          await client.query(`
-            CREATE POLICY "Users can view own rows" ON ${tableName}
-              FOR SELECT USING (${ownerColumn} = auth.uid())
-          `);
-          await client.query(`
-            CREATE POLICY "Users can insert own rows" ON ${tableName}
-              FOR INSERT WITH CHECK (${ownerColumn} = auth.uid())
-          `);
-          await client.query(`
-            CREATE POLICY "Users can update own rows" ON ${tableName}
-              FOR UPDATE USING (${ownerColumn} = auth.uid())
-          `);
-          await client.query(`
-            CREATE POLICY "Users can delete own rows" ON ${tableName}
-              FOR DELETE USING (${ownerColumn} = auth.uid())
-          `);
-        } else if (template === "public_read") {
-          // Anyone can read, only authenticated users can write their own rows
-          await client.query(`
-            CREATE POLICY "Anyone can read" ON ${tableName}
-              FOR SELECT USING (true)
-          `);
-          await client.query(`
-            CREATE POLICY "Authenticated users can insert" ON ${tableName}
-              FOR INSERT WITH CHECK (auth.role() = 'authenticated')
-          `);
-          await client.query(`
-            CREATE POLICY "Authenticated users can update" ON ${tableName}
-              FOR UPDATE USING (auth.role() = 'authenticated')
-          `);
-          await client.query(`
-            CREATE POLICY "Authenticated users can delete" ON ${tableName}
-              FOR DELETE USING (auth.role() = 'authenticated')
-          `);
-        } else if (template === "public_read_write") {
-          // Anyone (including anon) can read and write.
-          // anon role only has SELECT by default, so grant write permissions
-          // on this specific table (runs server-side, not via user SQL endpoint).
-          await client.query(`GRANT INSERT, UPDATE, DELETE ON ${tableName} TO anon`);
-          await client.query(`
-            CREATE POLICY "Anyone can read" ON ${tableName}
-              FOR SELECT USING (true)
-          `);
-          await client.query(`
-            CREATE POLICY "Anyone can insert" ON ${tableName}
-              FOR INSERT WITH CHECK (true)
-          `);
-          await client.query(`
-            CREATE POLICY "Anyone can update" ON ${tableName}
-              FOR UPDATE USING (true)
-          `);
-          await client.query(`
-            CREATE POLICY "Anyone can delete" ON ${tableName}
-              FOR DELETE USING (true)
-          `);
-        }
+      if (template === "user_owns_rows") {
+        const ownerColumn = table.owner_column;
+        await client.query(`
+          CREATE POLICY "Users can view own rows" ON ${tableName}
+            FOR SELECT USING (${ownerColumn} = auth.uid())
+        `);
+        await client.query(`
+          CREATE POLICY "Users can insert own rows" ON ${tableName}
+            FOR INSERT WITH CHECK (${ownerColumn} = auth.uid())
+        `);
+        await client.query(`
+          CREATE POLICY "Users can update own rows" ON ${tableName}
+            FOR UPDATE USING (${ownerColumn} = auth.uid())
+        `);
+        await client.query(`
+          CREATE POLICY "Users can delete own rows" ON ${tableName}
+            FOR DELETE USING (${ownerColumn} = auth.uid())
+        `);
+      } else if (template === "public_read") {
+        await client.query(`
+          CREATE POLICY "Anyone can read" ON ${tableName}
+            FOR SELECT USING (true)
+        `);
+        await client.query(`
+          CREATE POLICY "Authenticated users can insert" ON ${tableName}
+            FOR INSERT WITH CHECK (auth.role() = 'authenticated')
+        `);
+        await client.query(`
+          CREATE POLICY "Authenticated users can update" ON ${tableName}
+            FOR UPDATE USING (auth.role() = 'authenticated')
+        `);
+        await client.query(`
+          CREATE POLICY "Authenticated users can delete" ON ${tableName}
+            FOR DELETE USING (auth.role() = 'authenticated')
+        `);
+      } else if (template === "public_read_write") {
+        await client.query(`GRANT INSERT, UPDATE, DELETE ON ${tableName} TO anon`);
+        await client.query(`
+          CREATE POLICY "Anyone can read" ON ${tableName}
+            FOR SELECT USING (true)
+        `);
+        await client.query(`
+          CREATE POLICY "Anyone can insert" ON ${tableName}
+            FOR INSERT WITH CHECK (true)
+        `);
+        await client.query(`
+          CREATE POLICY "Anyone can update" ON ${tableName}
+            FOR UPDATE USING (true)
+        `);
+        await client.query(`
+          CREATE POLICY "Anyone can delete" ON ${tableName}
+            FOR DELETE USING (true)
+        `);
       }
-
-      await client.query("COMMIT");
-    } catch (err) {
-      await client.query("ROLLBACK");
-      throw err;
-    } finally {
-      client.release();
     }
 
-    console.log(`  RLS (${template}) applied to ${project.id}: ${(tables as RlsTable[]).map((t) => t.table).join(", ")}`);
-    res.json({ status: "ok", template, tables: (tables as RlsTable[]).map((t) => t.table) });
-  } catch (err: unknown) {
-    console.error("RLS error:", errorMessage(err));
-    res.status(400).json({ error: errorMessage(err) });
+    await client.query("COMMIT");
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  } finally {
+    client.release();
   }
-});
+
+  console.log(`  RLS (${template}) applied to ${project.id}: ${(tables as RlsTable[]).map((t) => t.table).join(", ")}`);
+  res.json({ status: "ok", template, tables: (tables as RlsTable[]).map((t) => t.table) });
+}));
 
 // GET /admin/v1/projects/:id/usage — usage report
 router.get("/admin/v1/projects/:id/usage", (req: Request, res: Response) => {
+  assertProjectMatch(req);
   const project = req.project!;
-  if (project.id !== req.params["id"]) {
-    res.status(403).json({ error: "Token project_id mismatch" });
-    return;
-  }
-
   const limits = getTierLimits(project.tier);
 
   res.json({
@@ -253,97 +230,85 @@ router.get("/admin/v1/projects/:id/usage", (req: Request, res: Response) => {
 });
 
 // GET /admin/v1/projects/:id/schema — schema introspection
-router.get("/admin/v1/projects/:id/schema", async (req: Request, res: Response) => {
+router.get("/admin/v1/projects/:id/schema", asyncHandler(async (req: Request, res: Response) => {
+  assertProjectMatch(req);
   const project = req.project!;
-  if (project.id !== req.params["id"]) {
-    res.status(403).json({ error: "Token project_id mismatch" });
-    return;
-  }
 
-  try {
-    // Get tables
-    const tablesResult = await pool.query(
-      `SELECT table_name FROM information_schema.tables
-       WHERE table_schema = $1 AND table_type = 'BASE TABLE'
-       ORDER BY table_name`,
-      [project.schemaSlot],
+  // Get tables
+  const tablesResult = await pool.query(
+    `SELECT table_name FROM information_schema.tables
+     WHERE table_schema = $1 AND table_type = 'BASE TABLE'
+     ORDER BY table_name`,
+    [project.schemaSlot],
+  );
+
+  const tables = [];
+  for (const row of tablesResult.rows) {
+    const tableName = row.table_name;
+
+    const columnsResult = await pool.query(
+      `SELECT column_name, data_type, is_nullable, column_default
+       FROM information_schema.columns
+       WHERE table_schema = $1 AND table_name = $2
+       ORDER BY ordinal_position`,
+      [project.schemaSlot, tableName],
     );
 
-    const tables = [];
-    for (const row of tablesResult.rows) {
-      const tableName = row.table_name;
+    const constraintsResult = await pool.query(
+      `SELECT tc.constraint_name, tc.constraint_type,
+              pg_get_constraintdef(pgc.oid) as definition
+       FROM information_schema.table_constraints tc
+       JOIN pg_constraint pgc ON pgc.conname = tc.constraint_name
+       WHERE tc.table_schema = $1 AND tc.table_name = $2`,
+      [project.schemaSlot, tableName],
+    );
 
-      // Get columns
-      const columnsResult = await pool.query(
-        `SELECT column_name, data_type, is_nullable, column_default
-         FROM information_schema.columns
-         WHERE table_schema = $1 AND table_name = $2
-         ORDER BY ordinal_position`,
-        [project.schemaSlot, tableName],
-      );
+    const rlsResult = await pool.query(
+      `SELECT relrowsecurity FROM pg_class
+       WHERE relname = $1 AND relnamespace = (
+         SELECT oid FROM pg_namespace WHERE nspname = $2
+       )`,
+      [tableName, project.schemaSlot],
+    );
 
-      // Get constraints
-      const constraintsResult = await pool.query(
-        `SELECT tc.constraint_name, tc.constraint_type,
-                pg_get_constraintdef(pgc.oid) as definition
-         FROM information_schema.table_constraints tc
-         JOIN pg_constraint pgc ON pgc.conname = tc.constraint_name
-         WHERE tc.table_schema = $1 AND tc.table_name = $2`,
-        [project.schemaSlot, tableName],
-      );
-
-      // Check RLS status
-      const rlsResult = await pool.query(
-        `SELECT relrowsecurity FROM pg_class
+    const policiesResult = await pool.query(
+      `SELECT polname as name, polcmd as command,
+              pg_get_expr(polqual, polrelid) as using_expression,
+              pg_get_expr(polwithcheck, polrelid) as check_expression
+       FROM pg_policy
+       WHERE polrelid = (
+         SELECT oid FROM pg_class
          WHERE relname = $1 AND relnamespace = (
            SELECT oid FROM pg_namespace WHERE nspname = $2
-         )`,
-        [tableName, project.schemaSlot],
-      );
+         )
+       )`,
+      [tableName, project.schemaSlot],
+    );
 
-      // Get RLS policies
-      const policiesResult = await pool.query(
-        `SELECT polname as name, polcmd as command,
-                pg_get_expr(polqual, polrelid) as using_expression,
-                pg_get_expr(polwithcheck, polrelid) as check_expression
-         FROM pg_policy
-         WHERE polrelid = (
-           SELECT oid FROM pg_class
-           WHERE relname = $1 AND relnamespace = (
-             SELECT oid FROM pg_namespace WHERE nspname = $2
-           )
-         )`,
-        [tableName, project.schemaSlot],
-      );
-
-      tables.push({
-        name: tableName,
-        columns: (columnsResult.rows as PgColumn[]).map((c) => ({
-          name: c.column_name,
-          type: c.data_type,
-          nullable: c.is_nullable === "YES",
-          default_value: c.column_default,
-        })),
-        constraints: (constraintsResult.rows as PgConstraint[]).map((c) => ({
-          name: c.constraint_name,
-          type: c.constraint_type,
-          definition: c.definition,
-        })),
-        rls_enabled: rlsResult.rows[0]?.relrowsecurity || false,
-        policies: (policiesResult.rows as PgPolicy[]).map((p) => ({
-          name: p.name,
-          command: p.command,
-          using_expression: p.using_expression,
-          check_expression: p.check_expression,
-        })),
-      });
-    }
-
-    res.json({ schema: project.schemaSlot, tables });
-  } catch (err: unknown) {
-    console.error("Schema introspection error:", errorMessage(err));
-    res.status(500).json({ error: "Schema introspection failed" });
+    tables.push({
+      name: tableName,
+      columns: (columnsResult.rows as PgColumn[]).map((c) => ({
+        name: c.column_name,
+        type: c.data_type,
+        nullable: c.is_nullable === "YES",
+        default_value: c.column_default,
+      })),
+      constraints: (constraintsResult.rows as PgConstraint[]).map((c) => ({
+        name: c.constraint_name,
+        type: c.constraint_type,
+        definition: c.definition,
+      })),
+      rls_enabled: rlsResult.rows[0]?.relrowsecurity || false,
+      policies: (policiesResult.rows as PgPolicy[]).map((p) => ({
+        name: p.name,
+        command: p.command,
+        using_expression: p.using_expression,
+        check_expression: p.check_expression,
+      })),
+    });
   }
-});
+
+  res.json({ schema: project.schemaSlot, tables });
+}));
 
 export default router;

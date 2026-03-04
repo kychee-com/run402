@@ -6,7 +6,7 @@ import { notifyNewProject } from "../services/telegram.js";
 import { serviceKeyAuth } from "../middleware/apikey.js";
 import { extractWalletFromPaymentHeader } from "../utils/wallet.js";
 import { getWalletSubscription } from "../services/stripe-subscriptions.js";
-import { errorMessage } from "../utils/errors.js";
+import { asyncHandler, HttpError } from "../utils/async-handler.js";
 
 const router = Router();
 
@@ -25,13 +25,12 @@ router.post("/v1/projects/quote", (_req: Request, res: Response) => {
 });
 
 // POST /v1/projects — create project (x402-gated)
-router.post("/v1/projects", async (req: Request, res: Response) => {
+router.post("/v1/projects", asyncHandler(async (req: Request, res: Response) => {
   const name = req.body?.name || `project-${Date.now()}`;
   let tier = (req.body?.tier as TierName) || "prototype";
 
   if (!TIERS[tier]) {
-    res.status(400).json({ error: `Unknown tier: ${tier}. Valid tiers: ${Object.keys(TIERS).join(", ")}` });
-    return;
+    throw new HttpError(400, `Unknown tier: ${tier}. Valid tiers: ${Object.keys(TIERS).join(", ")}`);
   }
 
   // Extract x402 transaction hash and wallet address
@@ -47,36 +46,29 @@ router.post("/v1/projects", async (req: Request, res: Response) => {
     }
   }
 
-  try {
-    const project = await createProject(name, tier, txHash, walletAddress || undefined);
-    if (!project) {
-      res.status(503).json({ error: "No schema slots available" });
-      return;
-    }
-
-    console.log(`  Created project: ${project.id} (schema: ${project.schemaSlot}, tier: ${tier})`);
-    notifyNewProject(name, tier, project.id);
-
-    res.json({
-      project_id: project.id,
-      anon_key: project.anonKey,
-      service_key: project.serviceKey,
-      schema_slot: project.schemaSlot,
-      tier: project.tier,
-      lease_expires_at: project.leaseExpiresAt.toISOString(),
-    });
-  } catch (err: unknown) {
-    console.error("Failed to create project:", errorMessage(err));
-    res.status(500).json({ error: "Failed to create project" });
+  const project = await createProject(name, tier, txHash, walletAddress || undefined);
+  if (!project) {
+    throw new HttpError(503, "No schema slots available");
   }
-});
+
+  console.log(`  Created project: ${project.id} (schema: ${project.schemaSlot}, tier: ${tier})`);
+  notifyNewProject(name, tier, project.id);
+
+  res.json({
+    project_id: project.id,
+    anon_key: project.anonKey,
+    service_key: project.serviceKey,
+    schema_slot: project.schemaSlot,
+    tier: project.tier,
+    lease_expires_at: project.leaseExpiresAt.toISOString(),
+  });
+}));
 
 // POST /v1/projects/create/:tier — tier-specific creation (x402-gated per tier)
-router.post("/v1/projects/create/:tier", async (req: Request, res: Response) => {
+router.post("/v1/projects/create/:tier", asyncHandler(async (req: Request, res: Response) => {
   let tier = req.params["tier"] as TierName;
   if (!TIERS[tier]) {
-    res.status(400).json({ error: `Unknown tier: ${tier}` });
-    return;
+    throw new HttpError(400, `Unknown tier: ${tier}`);
   }
 
   const name = req.body?.name || `project-${Date.now()}`;
@@ -92,77 +84,58 @@ router.post("/v1/projects/create/:tier", async (req: Request, res: Response) => 
     }
   }
 
-  try {
-    const project = await createProject(name, tier, txHash, walletAddress || undefined);
-    if (!project) {
-      res.status(503).json({ error: "No schema slots available" });
-      return;
-    }
-
-    console.log(`  Created project: ${project.id} (schema: ${project.schemaSlot}, tier: ${tier})`);
-    notifyNewProject(name, tier, project.id);
-
-    res.json({
-      project_id: project.id,
-      anon_key: project.anonKey,
-      service_key: project.serviceKey,
-      schema_slot: project.schemaSlot,
-      tier: project.tier,
-      lease_expires_at: project.leaseExpiresAt.toISOString(),
-    });
-  } catch (err: unknown) {
-    console.error("Failed to create project:", errorMessage(err));
-    res.status(500).json({ error: "Failed to create project" });
+  const project = await createProject(name, tier, txHash, walletAddress || undefined);
+  if (!project) {
+    throw new HttpError(503, "No schema slots available");
   }
-});
+
+  console.log(`  Created project: ${project.id} (schema: ${project.schemaSlot}, tier: ${tier})`);
+  notifyNewProject(name, tier, project.id);
+
+  res.json({
+    project_id: project.id,
+    anon_key: project.anonKey,
+    service_key: project.serviceKey,
+    schema_slot: project.schemaSlot,
+    tier: project.tier,
+    lease_expires_at: project.leaseExpiresAt.toISOString(),
+  });
+}));
 
 // DELETE /v1/projects/:id — archive project (requires service_key)
-router.delete("/v1/projects/:id", serviceKeyAuth, async (req: Request, res: Response) => {
+router.delete("/v1/projects/:id", serviceKeyAuth, asyncHandler(async (req: Request, res: Response) => {
   const projectId = req.params["id"] as string;
 
   // Verify the service_key belongs to this project
   if (req.tokenPayload?.project_id !== projectId) {
-    res.status(403).json({ error: "Service key does not match project" });
-    return;
+    throw new HttpError(403, "Service key does not match project");
   }
 
-  try {
-    const archived = await archiveProject(projectId);
-    if (!archived) {
-      res.status(404).json({ error: "Project not found or already archived" });
-      return;
-    }
-
-    console.log(`  Archived project: ${projectId}`);
-    res.json({ status: "archived", project_id: projectId });
-  } catch (err: unknown) {
-    console.error("Failed to archive project:", errorMessage(err));
-    res.status(500).json({ error: "Failed to archive project" });
+  const archived = await archiveProject(projectId);
+  if (!archived) {
+    throw new HttpError(404, "Project not found or already archived");
   }
-});
+
+  console.log(`  Archived project: ${projectId}`);
+  res.json({ status: "archived", project_id: projectId });
+}));
 
 // POST /v1/projects/:id/renew — renew lease (x402-gated in future)
-router.post("/v1/projects/:id/renew", async (req: Request, res: Response) => {
+router.post("/v1/projects/:id/renew", asyncHandler(async (req: Request, res: Response) => {
   const projectId = req.params["id"] as string;
   const tier = (req.body?.tier as TierName) || "prototype";
 
-  try {
-    const newExpiry = await renewLease(projectId, tier);
-    if (!newExpiry) {
-      res.status(404).json({ error: "Project not found" });
-      return;
-    }
-
-    console.log(`  Renewed project: ${projectId} (new expiry: ${newExpiry.toISOString()})`);
-    res.json({
-      project_id: projectId,
-      tier,
-      lease_expires_at: newExpiry.toISOString(),
-    });
-  } catch (err: unknown) {
-    console.error("Failed to renew project:", errorMessage(err));
-    res.status(500).json({ error: "Failed to renew project" });
+  const newExpiry = await renewLease(projectId, tier);
+  if (!newExpiry) {
+    throw new HttpError(404, "Project not found");
   }
-});
+
+  console.log(`  Renewed project: ${projectId} (new expiry: ${newExpiry.toISOString()})`);
+  res.json({
+    project_id: projectId,
+    tier,
+    lease_expires_at: newExpiry.toISOString(),
+  });
+}));
 
 export default router;

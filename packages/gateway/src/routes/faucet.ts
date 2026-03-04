@@ -2,7 +2,8 @@ import { Router, Request, Response } from "express";
 import { isAddress } from "viem";
 import { sendDrip } from "../services/faucet.js";
 import { FAUCET_TREASURY_KEY, FAUCET_DRIP_AMOUNT, FAUCET_DRIP_COOLDOWN } from "../config.js";
-import { errorMessage, hasCode } from "../utils/errors.js";
+import { hasCode } from "../utils/errors.js";
+import { asyncHandler, HttpError } from "../utils/async-handler.js";
 
 const router = Router();
 
@@ -17,18 +18,14 @@ setInterval(() => {
   }
 }, 60 * 60 * 1000);
 
-router.post("/v1/faucet", async (req: Request, res: Response) => {
-  // Check faucet is configured
+router.post("/v1/faucet", asyncHandler(async (req: Request, res: Response) => {
   if (!FAUCET_TREASURY_KEY) {
-    res.status(503).json({ error: "Faucet not configured" });
-    return;
+    throw new HttpError(503, "Faucet not configured");
   }
 
-  // Validate address
   const { address } = req.body || {};
   if (!address || !isAddress(address)) {
-    res.status(400).json({ error: "Invalid or missing Ethereum address" });
-    return;
+    throw new HttpError(400, "Invalid or missing Ethereum address");
   }
 
   // Rate limit by IP
@@ -36,11 +33,7 @@ router.post("/v1/faucet", async (req: Request, res: Response) => {
   const lastDrip = dripTimestamps.get(ip);
   if (lastDrip && Date.now() - lastDrip < FAUCET_DRIP_COOLDOWN) {
     const retryAfter = Math.ceil((FAUCET_DRIP_COOLDOWN - (Date.now() - lastDrip)) / 1000);
-    res.status(429).json({
-      error: "Rate limit exceeded. One drip per 24 hours.",
-      retry_after: retryAfter,
-    });
-    return;
+    throw new HttpError(429, `Rate limit exceeded. One drip per 24 hours. Retry after ${retryAfter}s`);
   }
 
   try {
@@ -55,12 +48,10 @@ router.post("/v1/faucet", async (req: Request, res: Response) => {
     });
   } catch (err: unknown) {
     if (hasCode(err) && err.code === "TREASURY_LOW") {
-      res.status(503).json({ error: "Treasury balance too low. Try again later." });
-    } else {
-      console.error("Faucet drip error:", errorMessage(err));
-      res.status(500).json({ error: "Failed to send drip" });
+      throw new HttpError(503, "Treasury balance too low. Try again later.");
     }
+    throw err;
   }
-});
+}));
 
 export default router;

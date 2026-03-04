@@ -5,7 +5,8 @@ import crypto from "node:crypto";
 import { pool } from "../db/pool.js";
 import { JWT_SECRET } from "../config.js";
 import { apikeyAuth } from "../middleware/apikey.js";
-import { errorMessage, hasCode } from "../utils/errors.js";
+import { hasCode } from "../utils/errors.js";
+import { asyncHandler, HttpError } from "../utils/async-handler.js";
 import type { TokenPayload } from "@run402/shared";
 
 const router = Router();
@@ -14,13 +15,12 @@ const router = Router();
 router.use("/auth/v1", apikeyAuth);
 
 // POST /auth/v1/signup — create user
-router.post("/auth/v1/signup", async (req: Request, res: Response) => {
+router.post("/auth/v1/signup", asyncHandler(async (req: Request, res: Response) => {
   const project = req.project!;
   const { email, password } = req.body || {};
 
   if (!email || !password) {
-    res.status(400).json({ error: "email and password required" });
-    return;
+    throw new HttpError(400, "email and password required");
   }
 
   try {
@@ -41,16 +41,14 @@ router.post("/auth/v1/signup", async (req: Request, res: Response) => {
     });
   } catch (err: unknown) {
     if (hasCode(err) && err.code === "23505") {
-      res.status(409).json({ error: "User already exists" });
-    } else {
-      console.error("Signup error:", errorMessage(err));
-      res.status(500).json({ error: "Signup failed" });
+      throw new HttpError(409, "User already exists");
     }
+    throw err;
   }
-});
+}));
 
 // POST /auth/v1/token — login, return JWT + refresh token
-router.post("/auth/v1/token", async (req: Request, res: Response) => {
+router.post("/auth/v1/token", asyncHandler(async (req: Request, res: Response) => {
   const project = req.project!;
   const grantType = req.query.grant_type as string | undefined;
 
@@ -58,120 +56,101 @@ router.post("/auth/v1/token", async (req: Request, res: Response) => {
   if (grantType === "refresh_token") {
     const { refresh_token } = req.body;
     if (!refresh_token) {
-      res.status(400).json({ error: "refresh_token required" });
-      return;
+      throw new HttpError(400, "refresh_token required");
     }
 
-    try {
-      const result = await pool.query(
-        `SELECT rt.id, rt.user_id, rt.expires_at, rt.used, u.email
-         FROM internal.refresh_tokens rt
-         JOIN internal.users u ON u.id = rt.user_id
-         WHERE rt.id = $1 AND rt.project_id = $2`,
-        [refresh_token, project.id],
-      );
+    const result = await pool.query(
+      `SELECT rt.id, rt.user_id, rt.expires_at, rt.used, u.email
+       FROM internal.refresh_tokens rt
+       JOIN internal.users u ON u.id = rt.user_id
+       WHERE rt.id = $1 AND rt.project_id = $2`,
+      [refresh_token, project.id],
+    );
 
-      if (result.rows.length === 0) {
-        res.status(401).json({ error: "Invalid refresh token" });
-        return;
-      }
-
-      const token = result.rows[0];
-      if (token.used) {
-        res.status(401).json({ error: "Refresh token already used" });
-        return;
-      }
-      if (new Date(token.expires_at) < new Date()) {
-        res.status(401).json({ error: "Refresh token expired" });
-        return;
-      }
-
-      // Mark old token as used
-      await pool.query(`UPDATE internal.refresh_tokens SET used = true WHERE id = $1`, [refresh_token]);
-
-      // Issue new tokens
-      const accessToken = jwt.sign(
-        { sub: token.user_id, role: "authenticated", project_id: project.id },
-        JWT_SECRET,
-        { expiresIn: "1h" },
-      );
-      const newRefreshToken = await createRefreshToken(token.user_id, project.id);
-
-      res.json({
-        access_token: accessToken,
-        token_type: "bearer",
-        expires_in: 3600,
-        refresh_token: newRefreshToken,
-        user: { id: token.user_id, email: token.email },
-      });
-    } catch (err: unknown) {
-      console.error("Refresh error:", errorMessage(err));
-      res.status(500).json({ error: "Token refresh failed" });
+    if (result.rows.length === 0) {
+      throw new HttpError(401, "Invalid refresh token");
     }
+
+    const token = result.rows[0];
+    if (token.used) {
+      throw new HttpError(401, "Refresh token already used");
+    }
+    if (new Date(token.expires_at) < new Date()) {
+      throw new HttpError(401, "Refresh token expired");
+    }
+
+    // Mark old token as used
+    await pool.query(`UPDATE internal.refresh_tokens SET used = true WHERE id = $1`, [refresh_token]);
+
+    // Issue new tokens
+    const accessToken = jwt.sign(
+      { sub: token.user_id, role: "authenticated", project_id: project.id },
+      JWT_SECRET,
+      { expiresIn: "1h" },
+    );
+    const newRefreshToken = await createRefreshToken(token.user_id, project.id);
+
+    res.json({
+      access_token: accessToken,
+      token_type: "bearer",
+      expires_in: 3600,
+      refresh_token: newRefreshToken,
+      user: { id: token.user_id, email: token.email },
+    });
     return;
   }
 
   // Password login flow
   const { email, password } = req.body || {};
   if (!email || !password) {
-    res.status(400).json({ error: "email and password required" });
-    return;
+    throw new HttpError(400, "email and password required");
   }
 
-  try {
-    const result = await pool.query(
-      `SELECT id, password_hash FROM internal.users
-       WHERE project_id = $1 AND email = $2`,
-      [project.id, email],
-    );
+  const result = await pool.query(
+    `SELECT id, password_hash FROM internal.users
+     WHERE project_id = $1 AND email = $2`,
+    [project.id, email],
+  );
 
-    if (result.rows.length === 0) {
-      res.status(401).json({ error: "Invalid credentials" });
-      return;
-    }
-
-    const user = result.rows[0];
-    const valid = await bcrypt.compare(password, user.password_hash);
-    if (!valid) {
-      res.status(401).json({ error: "Invalid credentials" });
-      return;
-    }
-
-    const accessToken = jwt.sign(
-      { sub: user.id, role: "authenticated", project_id: project.id },
-      JWT_SECRET,
-      { expiresIn: "1h" },
-    );
-    const refreshToken = await createRefreshToken(user.id, project.id);
-
-    console.log(`  User logged in: ${email} (project: ${project.id})`);
-
-    res.json({
-      access_token: accessToken,
-      token_type: "bearer",
-      expires_in: 3600,
-      refresh_token: refreshToken,
-      user: { id: user.id, email },
-    });
-  } catch (err: unknown) {
-    console.error("Login error:", errorMessage(err));
-    res.status(500).json({ error: "Login failed" });
+  if (result.rows.length === 0) {
+    throw new HttpError(401, "Invalid credentials");
   }
-});
+
+  const user = result.rows[0];
+  const valid = await bcrypt.compare(password, user.password_hash);
+  if (!valid) {
+    throw new HttpError(401, "Invalid credentials");
+  }
+
+  const accessToken = jwt.sign(
+    { sub: user.id, role: "authenticated", project_id: project.id },
+    JWT_SECRET,
+    { expiresIn: "1h" },
+  );
+  const refreshToken = await createRefreshToken(user.id, project.id);
+
+  console.log(`  User logged in: ${email} (project: ${project.id})`);
+
+  res.json({
+    access_token: accessToken,
+    token_type: "bearer",
+    expires_in: 3600,
+    refresh_token: refreshToken,
+    user: { id: user.id, email },
+  });
+}));
 
 // GET /auth/v1/user — get current user from Bearer token
-router.get("/auth/v1/user", async (req: Request, res: Response) => {
+router.get("/auth/v1/user", asyncHandler(async (req: Request, res: Response) => {
   const authHeader = req.headers.authorization;
   if (!authHeader?.startsWith("Bearer ")) {
-    res.status(401).json({ error: "Missing Bearer token" });
-    return;
+    throw new HttpError(401, "Missing Bearer token");
   }
 
   try {
     const payload = jwt.verify(authHeader.slice(7), JWT_SECRET) as TokenPayload;
     if (payload.role !== "authenticated") {
-      res.status(401).json({ error: "Not an authenticated user token" });
-      return;
+      throw new HttpError(401, "Not an authenticated user token");
     }
 
     const result = await pool.query(
@@ -180,24 +159,24 @@ router.get("/auth/v1/user", async (req: Request, res: Response) => {
     );
 
     if (result.rows.length === 0) {
-      res.status(404).json({ error: "User not found" });
-      return;
+      throw new HttpError(404, "User not found");
     }
 
     res.json(result.rows[0]);
-  } catch {
-    res.status(401).json({ error: "Invalid token" });
+  } catch (err) {
+    if (err instanceof HttpError) throw err;
+    throw new HttpError(401, "Invalid token");
   }
-});
+}));
 
 // POST /auth/v1/logout — invalidate refresh token
-router.post("/auth/v1/logout", async (req: Request, res: Response) => {
+router.post("/auth/v1/logout", asyncHandler(async (req: Request, res: Response) => {
   const { refresh_token } = req.body;
   if (refresh_token) {
     await pool.query(`UPDATE internal.refresh_tokens SET used = true WHERE id = $1`, [refresh_token]);
   }
   res.json({ status: "ok" });
-});
+}));
 
 // Helper: create a refresh token
 async function createRefreshToken(userId: string, projectId: string): Promise<string> {
