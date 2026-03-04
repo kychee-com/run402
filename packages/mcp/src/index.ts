@@ -8,6 +8,8 @@ import { restQuerySchema, handleRestQuery } from "./tools/rest-query.js";
 import { uploadFileSchema, handleUploadFile } from "./tools/upload-file.js";
 import { renewSchema, handleRenew } from "./tools/renew.js";
 import { deploySiteSchema, handleDeploySite } from "./tools/deploy-site.js";
+import { claimSubdomainSchema, handleClaimSubdomain } from "./tools/subdomain.js";
+import { deleteSubdomainSchema, handleDeleteSubdomain } from "./tools/subdomain.js";
 
 const server = new McpServer({
   name: "run402",
@@ -54,6 +56,20 @@ server.tool(
   "Deploy a static site (HTML/CSS/JS). Files are uploaded to S3 and served via CloudFront at a unique URL. Costs $0.05 USDC via x402.",
   deploySiteSchema,
   async (args) => handleDeploySite(args),
+);
+
+server.tool(
+  "claim_subdomain",
+  "Claim a custom subdomain (e.g. myapp.run402.com) and point it at an existing deployment. Free, requires service_key auth.",
+  claimSubdomainSchema,
+  async (args) => handleClaimSubdomain(args),
+);
+
+server.tool(
+  "delete_subdomain",
+  "Release a custom subdomain. The URL will stop serving content.",
+  deleteSubdomainSchema,
+  async (args) => handleDeleteSubdomain(args),
 );
 
 const transport = new StdioServerTransport();

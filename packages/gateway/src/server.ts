@@ -23,6 +23,8 @@ import { startLeaseChecker, stopLeaseChecker } from "./services/leases.js";
 import { startFaucetRefill, stopFaucetRefill } from "./services/faucet.js";
 import { initIdempotencyTable, idempotencyMiddleware } from "./middleware/idempotency.js";
 import { initDeploymentsTable } from "./services/deployments.js";
+import { initSubdomainsTable } from "./services/subdomains.js";
+import { subdomainMiddleware } from "./middleware/subdomain.js";
 import projectRoutes from "./routes/projects.js";
 import authRoutes from "./routes/auth.js";
 import adminRoutes from "./routes/admin.js";
@@ -32,11 +34,15 @@ import faucetRoutes from "./routes/faucet.js";
 import deploymentRoutes from "./routes/deployments.js";
 import messageRoutes from "./routes/message.js";
 import stripeRoutes from "./routes/stripe.js";
+import subdomainRoutes from "./routes/subdomains.js";
 
 const app = express();
 
 // Trust ALB proxy for correct req.ip
 app.set("trust proxy", true);
+
+// --- Custom subdomain routing (must be before CORS/body parsing) ---
+app.use(subdomainMiddleware);
 
 // --- CORS ---
 app.use((_req, res, next) => {
@@ -189,6 +195,7 @@ app.use(faucetRoutes);
 app.use(deploymentRoutes);
 app.use(messageRoutes);
 app.use(stripeRoutes);
+app.use(subdomainRoutes);
 
 // --- Central error handler ---
 // Routes using asyncHandler() forward errors here automatically.
@@ -278,6 +285,9 @@ async function start() {
 
   // Initialize deployments table
   await initDeploymentsTable();
+
+  // Initialize subdomains table
+  await initSubdomainsTable();
 
   // Initialize slot allocator
   await initSlots();

@@ -476,6 +476,15 @@ For explicit control, use both `apikey` (project key) and `Authorization: Bearer
 - **Immutable**: Each deployment URL is permanent. New deploys get new URLs.
 - **Idempotency**: Use `Idempotency-Key` header to prevent double-charging on retries
 
+### Custom Subdomains
+
+| Endpoint | Method | Auth | Cost | Description |
+|----------|--------|------|------|-------------|
+| `/v1/subdomains` | POST | service_key | Free | Claim or reassign a custom subdomain |
+| `/v1/subdomains` | GET | service_key | Free | List project's subdomains |
+| `/v1/subdomains/:name` | GET | None | Free | Lookup subdomain details |
+| `/v1/subdomains/:name` | DELETE | service_key | Free | Release a subdomain |
+
 ### Utility
 
 | Endpoint | Method | Auth | Cost | Description |
@@ -841,6 +850,122 @@ Pass `project` to associate a deployment with an existing Run402 database projec
 
 ---
 
+## Custom Subdomains
+
+Give your deployments memorable URLs. Instead of `dpl-1709337600000-a1b2c3.sites.run402.com`, point `myapp.run402.com` at any deployment.
+
+### How it works
+
+1. Deploy a static site (as before) to get a deployment ID
+2. Claim a subdomain via `POST /v1/subdomains` — free, requires `service_key`
+3. The subdomain immediately serves your deployment's files at `https://{name}.run402.com`
+4. You can reassign a subdomain to a different deployment at any time (just POST again)
+
+### Claim a subdomain (curl)
+
+```bash
+curl -X POST https://api.run402.com/v1/subdomains \
+  -H "Authorization: Bearer $SERVICE_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "myapp", "deployment_id": "dpl_1709337600000_a1b2c3"}'
+```
+
+Response:
+```json
+{
+  "name": "myapp",
+  "deployment_id": "dpl_1709337600000_a1b2c3",
+  "url": "https://myapp.run402.com",
+  "deployment_url": "https://dpl-1709337600000-a1b2c3.sites.run402.com",
+  "project_id": "prj_1234_0001",
+  "created_at": "2026-03-04T00:00:00Z",
+  "updated_at": "2026-03-04T00:00:00Z"
+}
+```
+
+### Look up a subdomain (free, no auth)
+
+```bash
+curl https://api.run402.com/v1/subdomains/myapp
+```
+
+### List project's subdomains
+
+```bash
+curl https://api.run402.com/v1/subdomains \
+  -H "Authorization: Bearer $SERVICE_KEY"
+```
+
+### Release a subdomain
+
+```bash
+curl -X DELETE https://api.run402.com/v1/subdomains/myapp \
+  -H "Authorization: Bearer $SERVICE_KEY"
+```
+
+### Full workflow (TypeScript)
+
+```typescript
+// 1. Deploy the site ($0.05)
+const deployRes = await fetchPaid("https://api.run402.com/v1/deployments", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({
+    name: "my-app",
+    project: PROJECT_ID,
+    files: [
+      { file: "index.html", data: "<!DOCTYPE html><html><body><h1>Hello!</h1></body></html>" },
+      { file: "style.css", data: "body { font-family: sans-serif; }" },
+    ],
+  }),
+});
+const deployment = await deployRes.json();
+
+// 2. Claim a custom subdomain (free)
+const subRes = await fetch("https://api.run402.com/v1/subdomains", {
+  method: "POST",
+  headers: {
+    "Authorization": `Bearer ${SERVICE_KEY}`,
+    "Content-Type": "application/json",
+  },
+  body: JSON.stringify({
+    name: "myapp",
+    deployment_id: deployment.id,
+  }),
+});
+const subdomain = await subRes.json();
+console.log("Live at:", subdomain.url);
+// -> https://myapp.run402.com
+```
+
+### With MCP
+
+```
+claim_subdomain(name: "myapp", deployment_id: "dpl_...", project_id: "prj_...")
+// -> https://myapp.run402.com
+
+delete_subdomain(name: "myapp", project_id: "prj_...")
+// -> Subdomain released
+```
+
+### Subdomain rules
+
+- **Length**: 3-63 characters
+- **Characters**: lowercase letters, numbers, and hyphens
+- **Format**: must start and end with a letter or number, no consecutive hyphens (`--`)
+- **Reserved**: `api`, `www`, `admin`, `sites`, `mail`, `ftp`, `cdn`, `static`, and other infrastructure names
+- **Ownership**: subdomains are scoped to the project that claimed them — other projects cannot reassign them
+- **Cost**: free — no x402 payment required (only the initial deployment costs $0.05)
+
+### SPA behavior
+
+Same as regular deployments:
+- `/` → serves `index.html`
+- `/about` → serves `index.html` (SPA fallback)
+- `/style.css` → serves the file with correct Content-Type
+
+---
+
 ## MCP Server (Recommended for AI Agents)
 
 If you're running inside Claude Desktop, Cursor, Cline, Claude Code, or any MCP-compatible client, use the `@run402/mcp` server instead of calling the HTTP API directly. It handles credential storage, 402 payment negotiation, and response formatting automatically.
@@ -892,6 +1017,8 @@ claude mcp add run402 -- npx -y @run402/mcp
 | `upload_file` | Upload text content to project storage. |
 | `renew_project` | Renew a project's lease. Handles x402 payment negotiation. |
 | `deploy_site` | Deploy a static site (HTML/CSS/JS). $0.05 per deployment. Returns a live URL. |
+| `claim_subdomain` | Claim a custom subdomain (e.g. myapp.run402.com) and point it at a deployment. Free. |
+| `delete_subdomain` | Release a custom subdomain. |
 
 ### MCP Flow
 
