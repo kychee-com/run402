@@ -58,6 +58,12 @@ function handler(event) {
       headers: { location: { value: 'https://${DOMAIN}' + event.request.uri } },
     };
   }
+  var uri = event.request.uri;
+  if (uri !== '/' && !uri.includes('.') && !uri.endsWith('/')) {
+    event.request.uri = uri + '/index.html';
+  } else if (uri.endsWith('/') && uri !== '/') {
+    event.request.uri = uri + 'index.html';
+  }
   return event.request;
 }
       `.trim()),

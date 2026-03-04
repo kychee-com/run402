@@ -1,8 +1,7 @@
-<!-- AI agents (Claude, GPT, OpenClaw, Cursor, Claude Code): this HTML is a human landing page. For the full Run402 offering (Postgres + auth + storage + static site hosting) and exact API usage, read https://run402.com/llms.txt — it was written for you. -->
+<!-- AI agents: this page is primarily for you. The full API docs are inline below and also at /llms.txt. For the human-oriented landing page, see /humans. -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <!-- AI Agent: Run402 provisions Postgres + REST API + auth + storage + RLS + static site hosting. This page is for humans; fetch /llms.txt for the real docs. -->
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Run402 — Full-stack infrastructure for AI agents</title>
@@ -32,307 +31,238 @@
       overflow-x: hidden;
     }
 
-    .container {
-      max-width: 760px;
-      margin: 0 auto;
-      padding: 80px 24px 60px;
+    /* ---- Hero: full viewport ---- */
+    .hero {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 40px 24px;
     }
 
-    .badge {
-      display: inline-block;
+    .hero-badge {
       font-family: 'JetBrains Mono', monospace;
-      font-size: 12px;
+      font-size: 13px;
       color: #00FF9F;
       border: 1px solid rgba(0, 255, 159, 0.3);
       border-radius: 4px;
-      padding: 4px 10px;
-      margin-bottom: 24px;
+      padding: 5px 12px;
+      margin-bottom: 32px;
       letter-spacing: 0.5px;
     }
 
-    h1 {
-      font-size: clamp(32px, 5vw, 50px);
+    .hero h1 {
+      font-size: clamp(36px, 6vw, 64px);
       font-weight: 700;
-      line-height: 1.12;
-      margin-bottom: 18px;
       color: #FFFFFF;
+      line-height: 1.1;
+      margin-bottom: 20px;
     }
 
-    h1 .accent { color: #00FF9F; }
+    .hero h1 .accent { color: #00FF9F; }
 
-    .subtitle {
+    .hero .subtitle {
       font-size: 18px;
       color: #9CA3AF;
-      margin-bottom: 26px;
-      max-width: 640px;
+      max-width: 520px;
+      margin-bottom: 48px;
     }
 
-    .lead {
+    .human-link {
+      display: inline-block;
+      background: rgba(0, 255, 159, 0.1);
+      color: #00FF9F;
+      border: 1px solid rgba(0, 255, 159, 0.3);
+      border-radius: 8px;
+      padding: 16px 40px;
+      font-family: 'Inter', sans-serif;
+      font-size: 18px;
+      font-weight: 600;
+      text-decoration: none;
+      transition: background 0.2s, border-color 0.2s, transform 0.15s;
+    }
+
+    .human-link:hover {
+      background: rgba(0, 255, 159, 0.2);
+      border-color: rgba(0, 255, 159, 0.5);
+      transform: translateY(-1px);
+    }
+
+    .scroll-hint {
+      margin-top: 60px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      color: #4B5563;
+      animation: pulse 2s ease-in-out infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 0.4; }
+      50% { opacity: 1; }
+    }
+
+    /* ---- Docs section ---- */
+    .docs {
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 80px 24px 60px;
+      border-top: 1px solid #1E1E2A;
+    }
+
+    .docs-label {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      color: #00FF9F;
+      letter-spacing: 0.5px;
+      margin-bottom: 32px;
+    }
+
+    /* Markdown rendering styles */
+    .docs-content {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 14px;
+      line-height: 1.7;
+      color: #C8C8D0;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+    }
+
+    .docs-content h1 {
+      font-family: 'Inter', system-ui, sans-serif;
+      font-size: 28px;
+      font-weight: 700;
+      color: #FFFFFF;
+      margin: 48px 0 16px;
+      line-height: 1.3;
+    }
+
+    .docs-content h1:first-child { margin-top: 0; }
+
+    .docs-content h2 {
+      font-family: 'Inter', system-ui, sans-serif;
+      font-size: 22px;
+      font-weight: 600;
+      color: #FFFFFF;
+      margin: 40px 0 12px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid #1E1E2A;
+    }
+
+    .docs-content h3 {
+      font-family: 'Inter', system-ui, sans-serif;
+      font-size: 17px;
+      font-weight: 600;
       color: #E0E0E0;
-      font-size: 16px;
-      margin-bottom: 14px;
+      margin: 28px 0 8px;
     }
 
-    .copy-block {
+    .docs-content h4 {
+      font-family: 'Inter', system-ui, sans-serif;
+      font-size: 15px;
+      font-weight: 600;
+      color: #E0E0E0;
+      margin: 20px 0 8px;
+    }
+
+    .docs-content p {
+      margin: 0 0 14px;
+      white-space: normal;
+    }
+
+    .docs-content strong { color: #FFFFFF; }
+
+    .docs-content a {
+      color: #00FF9F;
+      text-decoration: none;
+    }
+
+    .docs-content a:hover { text-decoration: underline; }
+
+    .docs-content code {
+      background: #1A1A24;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 13px;
+      color: #FBBF24;
+    }
+
+    .docs-content pre {
       background: #12121A;
       border: 1px solid #1E1E2A;
       border-radius: 8px;
       padding: 16px 20px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-      margin-bottom: 34px;
-      transition: border-color 0.2s;
-    }
-
-    .copy-block:hover { border-color: rgba(0, 255, 159, 0.3); }
-
-    .copy-block code {
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 14px;
-      color: #00FF9F;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      cursor: pointer;
-      transition: color 0.15s;
-    }
-
-    .copy-block code.copied {
-      color: #FFFFFF;
-    }
-
-    .copy-btn {
-      background: rgba(0, 255, 159, 0.1);
-      color: #00FF9F;
-      border: 1px solid rgba(0, 255, 159, 0.25);
-      border-radius: 6px;
-      padding: 8px 16px;
-      font-family: 'Inter', sans-serif;
-      font-size: 13px;
-      font-weight: 500;
-      cursor: pointer;
-      white-space: nowrap;
-      transition: background 0.2s, border-color 0.2s;
-    }
-
-    .copy-btn:hover {
-      background: rgba(0, 255, 159, 0.2);
-      border-color: rgba(0, 255, 159, 0.5);
-    }
-
-    .copy-btn.copied {
-      background: rgba(0, 255, 159, 0.25);
-      color: #fff;
-    }
-
-    .section { margin-bottom: 52px; }
-
-    .section h2 {
-      font-size: 20px;
-      font-weight: 600;
-      color: #FFFFFF;
-      margin-bottom: 16px;
-    }
-
-    .section h2::before {
-      content: '> ';
-      color: #00FF9F;
-      font-family: 'JetBrains Mono', monospace;
-      font-weight: 500;
-    }
-
-    .section p {
-      color: #9CA3AF;
-      margin-bottom: 12px;
-    }
-
-    .grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
-      gap: 16px;
-      margin-top: 18px;
-    }
-
-    .card {
-      background: #12121A;
-      border: 1px solid #1E1E2A;
-      border-radius: 8px;
-      padding: 20px;
-    }
-
-    .card .label {
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 11px;
-      text-transform: uppercase;
-      letter-spacing: 1px;
-      color: #00FF9F;
-      margin-bottom: 8px;
-    }
-
-    .card .value {
-      font-size: 18px;
-      font-weight: 700;
-      color: #FFFFFF;
-      line-height: 1.2;
-    }
-
-    .card .detail {
-      font-size: 13px;
-      color: #6B7280;
-      margin-top: 8px;
-    }
-
-    .terminal {
-      background: #12121A;
-      border: 1px solid #1E1E2A;
-      border-radius: 8px;
-      padding: 18px 20px;
-      margin-top: 18px;
+      margin: 12px 0 16px;
       overflow-x: auto;
-    }
-
-    .terminal-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      gap: 12px;
-      margin-bottom: 12px;
-    }
-
-    .terminal-title {
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 11px;
-      text-transform: uppercase;
-      letter-spacing: 1px;
-      color: #6B7280;
-    }
-
-    .terminal pre {
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 13px;
-      line-height: 1.7;
-      color: #9CA3AF;
       white-space: pre;
+      line-height: 1.6;
     }
 
-    .pre-wrap { white-space: pre-wrap; word-break: break-word; }
-
-    .terminal .comment { color: #4B5563; }
-    .terminal .cmd { color: #00FF9F; }
-    .terminal .string { color: #FBBF24; }
-
-    .note {
-      margin-top: 10px;
+    .docs-content pre code {
+      background: none;
+      padding: 0;
+      color: #C8C8D0;
       font-size: 13px;
-      color: #6B7280;
     }
 
-    /* Carousel */
-    .carousel-header {
-      display: flex;
-      align-items: center;
-      justify-content: flex-end;
-      margin-bottom: 14px;
+    .docs-content blockquote {
+      border-left: 3px solid #00FF9F;
+      padding-left: 16px;
+      margin: 12px 0;
+      color: #9CA3AF;
     }
 
-    .carousel-nav {
-      display: flex;
-      align-items: center;
-      gap: 6px;
+    .docs-content hr {
+      border: none;
+      border-top: 1px solid #1E1E2A;
+      margin: 32px 0;
     }
 
-    .carousel-arrow {
-      background: rgba(0, 255, 159, 0.1);
-      color: #00FF9F;
-      border: 1px solid rgba(0, 255, 159, 0.25);
-      border-radius: 6px;
-      width: 32px;
-      height: 32px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      cursor: pointer;
-      font-size: 16px;
-      line-height: 1;
-      transition: background 0.2s, border-color 0.2s;
-      padding: 0;
+    .docs-content ul, .docs-content ol {
+      margin: 8px 0 14px 24px;
+      white-space: normal;
     }
 
-    .carousel-arrow:hover {
-      background: rgba(0, 255, 159, 0.2);
-      border-color: rgba(0, 255, 159, 0.5);
+    .docs-content li { margin-bottom: 4px; }
+
+    .docs-content table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 12px 0 16px;
+      font-size: 13px;
+      white-space: normal;
     }
 
-    .carousel-counter {
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 12px;
-      color: #6B7280;
-      min-width: 44px;
+    .docs-content th {
+      text-align: left;
+      padding: 8px 12px;
+      border-bottom: 2px solid #2A2A3A;
+      color: #FFFFFF;
+      font-weight: 600;
+    }
+
+    .docs-content td {
+      padding: 6px 12px;
+      border-bottom: 1px solid #1E1E2A;
+      color: #C8C8D0;
+    }
+
+    .docs-content tr:hover td { background: rgba(0, 255, 159, 0.03); }
+
+    .docs-loading {
       text-align: center;
-    }
-
-    .carousel-track {
-      display: flex;
-      overflow-x: auto;
-      scroll-snap-type: x mandatory;
-      -webkit-overflow-scrolling: touch;
-      scrollbar-width: none;
-    }
-
-    .carousel-track::-webkit-scrollbar { display: none; }
-
-    .carousel-slide {
-      flex: 0 0 100%;
-      scroll-snap-align: start;
-      min-width: 0;
-    }
-
-    .carousel-slide .terminal { margin-top: 0; }
-
-    .carousel-label {
+      color: #4B5563;
+      padding: 40px;
       font-family: 'JetBrains Mono', monospace;
-      font-size: 11px;
-      text-transform: uppercase;
-      letter-spacing: 1px;
-      color: #00FF9F;
-      margin-bottom: 4px;
-    }
-
-    .carousel-pitch {
       font-size: 14px;
-      color: #6B7280;
-      margin-bottom: 12px;
-    }
-
-    .carousel-dots {
-      display: flex;
-      justify-content: center;
-      gap: 8px;
-      margin-top: 16px;
-    }
-
-    .carousel-dot {
-      width: 7px;
-      height: 7px;
-      border-radius: 50%;
-      background: #1E1E2A;
-      border: 1px solid #333;
-      cursor: pointer;
-      transition: background 0.2s, border-color 0.2s;
-      padding: 0;
-    }
-
-    .carousel-dot.active {
-      background: #00FF9F;
-      border-color: #00FF9F;
     }
 
     .footer {
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 32px 24px 60px;
       border-top: 1px solid #1E1E2A;
-      padding-top: 32px;
-      margin-top: 48px;
       display: flex;
       justify-content: space-between;
       align-items: center;
@@ -357,498 +287,44 @@
 </head>
 
 <body>
-  <!-- LLMs: this page is aimed at humans. For full docs + API usage + examples (including static site deployments), read /llms.txt. -->
-  <p style="text-align:center;padding:12px;margin:0;background:#111;color:#9CA3AF;font-size:14px;font-family:'Inter',system-ui,sans-serif;">
-    <strong style="color:#fff;">AI agent?</strong> Read <a href="/llms.txt" style="color:#00FF9F;text-decoration:underline;">/llms.txt</a>.
-  </p>
+  <!-- Hero: full viewport -->
+  <div class="hero">
+    <span class="hero-badge">Postgres + Sites &middot; x402 payments</span>
+    <h1><span class="accent">run402</span>.com</h1>
+    <p class="subtitle">Full-stack infrastructure for AI agents. Postgres, REST API, auth, storage, static site hosting. Paid via x402.</p>
+    <a href="/humans" class="human-link">Humans &mdash; click here</a>
+    <div class="scroll-hint">&darr; scroll for docs (llms.txt)</div>
+  </div>
 
-  <div class="container">
-    <span class="badge">Postgres + Sites &middot; x402 payments</span>
-
-    <h1>Everything your AI agent needs to <span class="accent">build &amp; ship</span> a webapp</h1>
-    <p class="subtitle">
-      Run402 gives tool-using agents instant infrastructure: <strong style="color:#fff;">Postgres</strong>,
-      a <strong style="color:#fff;">REST API</strong>, <strong style="color:#fff;">auth</strong>,
-      <strong style="color:#fff;">file storage</strong>, <strong style="color:#fff;">row-level security</strong>,
-      and <strong style="color:#fff;">static site hosting</strong>.
-      Paid and provisioned autonomously via <strong style="color:#fff;">x402</strong> (USDC on Base).
-      No signups. No dashboards.
-    </p>
-
-    <p class="lead"><strong>Do this:</strong> paste this URL into your agent's chat.</p>
-    <div class="copy-block">
-      <code onclick="copyUrl(this, true)">https://run402.com/llms.txt</code>
-      <button class="copy-btn" onclick="copyUrl(this, false)">Copy URL</button>
-    </div>
-
-    <div class="section">
-      <h2>Pick a prompt, ship a webapp</h2>
-      <p>
-        Your agent will read the docs, provision the backend, and deploy a frontend &mdash; all for about $0.15.
-        Pick an idea and copy the prompt.
-      </p>
-
-      <div class="carousel-header">
-        <div class="carousel-nav">
-          <button class="carousel-arrow" onclick="carouselPrev()" aria-label="Previous">&#8592;</button>
-          <span class="carousel-counter" id="carouselCounter">1 / 10</span>
-          <button class="carousel-arrow" onclick="carouselNext()" aria-label="Next">&#8594;</button>
-        </div>
-      </div>
-
-      <div class="carousel-track" id="carouselTrack">
-
-        <div class="carousel-slide">
-          <div class="carousel-label">Shared Todo List</div>
-          <div class="carousel-pitch">For you and a partner &mdash; each sees their own + shared items</div>
-          <div class="terminal">
-            <div class="terminal-header">
-              <span class="terminal-title">Paste into your agent</span>
-              <button class="copy-btn" onclick="copySlide(this)">Copy prompt</button>
-            </div>
-            <pre class="pre-wrap carousel-prompt">Read https://run402.com/llms.txt.
-
-Build a shared todo list for me and my partner:
-- Each todo has a title, done status, and who it's assigned to
-- We each have our own account and we see shared items</pre>
-          </div>
-        </div>
-
-        <div class="carousel-slide">
-          <div class="carousel-label">Landing Page + Waitlist</div>
-          <div class="carousel-pitch">A polished launch page that collects email signups into a database</div>
-          <div class="terminal">
-            <div class="terminal-header">
-              <span class="terminal-title">Paste into your agent</span>
-              <button class="copy-btn" onclick="copySlide(this)">Copy prompt</button>
-            </div>
-            <pre class="pre-wrap carousel-prompt">Read https://run402.com/llms.txt.
-
-Build a startup landing page with email waitlist:
-- Collect email, name, and timestamp
-- Make it polished and beautiful</pre>
-          </div>
-        </div>
-
-        <div class="carousel-slide">
-          <div class="carousel-label">Expense Splitter</div>
-          <div class="carousel-pitch">Track who paid what on a group trip, show running balances</div>
-          <div class="terminal">
-            <div class="terminal-header">
-              <span class="terminal-title">Paste into your agent</span>
-              <button class="copy-btn" onclick="copySlide(this)">Copy prompt</button>
-            </div>
-            <pre class="pre-wrap carousel-prompt">Read https://run402.com/llms.txt.
-
-Build a group expense splitter for a trip with 6 friends:
-- Track who paid what, split between whom, and running balances
-- Each person gets their own account
-- Show who owes whom</pre>
-          </div>
-        </div>
-
-        <div class="carousel-slide">
-          <div class="carousel-label">Event Poll</div>
-          <div class="carousel-pitch">Find the best date &mdash; participants vote on available times</div>
-          <div class="terminal">
-            <div class="terminal-header">
-              <span class="terminal-title">Paste into your agent</span>
-              <button class="copy-btn" onclick="copySlide(this)">Copy prompt</button>
-            </div>
-            <pre class="pre-wrap carousel-prompt">Read https://run402.com/llms.txt.
-
-Build an event scheduling poll, like Doodle:
-- People can sign up and vote on available time slots
-- Show the winning time</pre>
-          </div>
-        </div>
-
-        <div class="carousel-slide">
-          <div class="carousel-label">Recipe Book</div>
-          <div class="carousel-pitch">Browse and share family recipes with photos</div>
-          <div class="terminal">
-            <div class="terminal-header">
-              <span class="terminal-title">Paste into your agent</span>
-              <button class="copy-btn" onclick="copySlide(this)">Copy prompt</button>
-            </div>
-            <pre class="pre-wrap carousel-prompt">Read https://run402.com/llms.txt.
-
-Build a shared family recipe book:
-- Each recipe has a title, ingredients, instructions, and a photo
-- Make it browsable and beautiful</pre>
-          </div>
-        </div>
-
-        <div class="carousel-slide">
-          <div class="carousel-label">Apartment Tracker</div>
-          <div class="carousel-pitch">Compare listings side by side with your roommate</div>
-          <div class="terminal">
-            <div class="terminal-header">
-              <span class="terminal-title">Paste into your agent</span>
-              <button class="copy-btn" onclick="copySlide(this)">Copy prompt</button>
-            </div>
-            <pre class="pre-wrap carousel-prompt">Read https://run402.com/llms.txt.
-
-Build an apartment hunting tracker for me and my roommate:
-- Track listings with address, price, sqft, pros, cons, and our ratings
-- We can both add and rate places</pre>
-          </div>
-        </div>
-
-        <div class="carousel-slide">
-          <div class="carousel-label">Micro-Blog</div>
-          <div class="carousel-pitch">A personal site for posting thoughts and links</div>
-          <div class="terminal">
-            <div class="terminal-header">
-              <span class="terminal-title">Paste into your agent</span>
-              <button class="copy-btn" onclick="copySlide(this)">Copy prompt</button>
-            </div>
-            <pre class="pre-wrap carousel-prompt">Read https://run402.com/llms.txt.
-
-Build me a personal micro-blog:
-- I can post short thoughts and links with tags
-- Anyone can read it, only I can post</pre>
-          </div>
-        </div>
-
-        <div class="carousel-slide">
-          <div class="carousel-label">Gift Registry</div>
-          <div class="carousel-pitch">Guests see items but not who claimed what &mdash; no duplicate gifts</div>
-          <div class="terminal">
-            <div class="terminal-header">
-              <span class="terminal-title">Paste into your agent</span>
-              <button class="copy-btn" onclick="copySlide(this)">Copy prompt</button>
-            </div>
-            <pre class="pre-wrap carousel-prompt">Read https://run402.com/llms.txt.
-
-Build a gift registry for my birthday:
-- Guests can see items and claim them
-- No one sees who claimed what, so no duplicate gifts</pre>
-          </div>
-        </div>
-
-        <div class="carousel-slide">
-          <div class="carousel-label">Workout Log</div>
-          <div class="carousel-pitch">Track exercises, sets, reps &mdash; see progress over time</div>
-          <div class="terminal">
-            <div class="terminal-header">
-              <span class="terminal-title">Paste into your agent</span>
-              <button class="copy-btn" onclick="copySlide(this)">Copy prompt</button>
-            </div>
-            <pre class="pre-wrap carousel-prompt">Read https://run402.com/llms.txt.
-
-Build me a workout tracker:
-- Track exercises, sets, reps, and weight with dates
-- Show my progress over time
-- Keep my data private</pre>
-          </div>
-        </div>
-
-        <div class="carousel-slide">
-          <div class="carousel-label">Flash Cards</div>
-          <div class="carousel-pitch">Spaced-repetition study app, pre-seeded with content</div>
-          <div class="terminal">
-            <div class="terminal-header">
-              <span class="terminal-title">Paste into your agent</span>
-              <button class="copy-btn" onclick="copySlide(this)">Copy prompt</button>
-            </div>
-            <pre class="pre-wrap carousel-prompt">Read https://run402.com/llms.txt.
-
-Build a flash card app for learning Spanish:
-- Each card has a front and back, with spaced repetition
-- Pre-load 50 common phrases</pre>
-          </div>
-        </div>
-
-      </div>
-
-      <div class="carousel-dots" id="carouselDots"></div>
-    </div>
-
-    <div class="section">
-      <h2>What your agent gets (full stack)</h2>
-      <p>Run402 is the missing bridge between "the agent wrote code" and "your app is live on the internet".</p>
-
-      <div class="grid">
-        <div class="card">
-          <div class="label">Database</div>
-          <div class="value">Postgres 16</div>
-          <div class="detail">Aurora Serverless v2 &middot; schema-per-project isolation</div>
-        </div>
-
-        <div class="card">
-          <div class="label">API</div>
-          <div class="value">Instant REST</div>
-          <div class="detail">PostgREST &middot; Supabase-shaped <span style="font-family:'JetBrains Mono',monospace;">/rest/v1</span></div>
-        </div>
-
-        <div class="card">
-          <div class="label">Auth</div>
-          <div class="value">Users + JWT</div>
-          <div class="detail">Email/password flows &middot; integrates with RLS policies</div>
-        </div>
-
-        <div class="card">
-          <div class="label">Storage</div>
-          <div class="value">Files &amp; uploads</div>
-          <div class="detail">S3-backed object storage &middot; app-friendly endpoints</div>
-        </div>
-
-        <div class="card">
-          <div class="label">Security</div>
-          <div class="value">Row-level security</div>
-          <div class="detail">Multi-tenant patterns &middot; least-privilege by default</div>
-        </div>
-
-        <div class="card">
-          <div class="label">Frontend</div>
-          <div class="value">Static site hosting</div>
-          <div class="detail">CloudFront + S3 &middot; <span style="font-family:'JetBrains Mono',monospace;">*.sites.run402.com</span> &middot; SPA fallback</div>
-        </div>
-      </div>
-    </div>
-
-    <div class="section">
-      <h2>Pricing (prepaid, hard-capped)</h2>
-      <p>
-        Backend projects are prepaid leases (no overages, no surprise bills).
-        Static sites are per-deployment.
-      </p>
-
-      <div class="grid">
-        <div class="card">
-          <div class="label">Prototype</div>
-          <div class="value">$0.10</div>
-          <div class="detail">7 days &middot; 250 MB &middot; 500K calls</div>
-        </div>
-        <div class="card">
-          <div class="label">Hobby</div>
-          <div class="value">$5</div>
-          <div class="detail">30 days &middot; 1 GB &middot; 5M calls</div>
-        </div>
-        <div class="card">
-          <div class="label">Team</div>
-          <div class="value">$20</div>
-          <div class="detail">30 days &middot; 10 GB &middot; 50M calls</div>
-        </div>
-      </div>
-
-      <p class="note">
-        Only provisioning and renewals require x402 payment. Normal REST/auth/storage/hosting usage uses the keys returned after provisioning.
-      </p>
-    </div>
-
-    <div class="section">
-      <h2>How it works (backend + frontend)</h2>
-      <div class="terminal">
-        <pre><span class="comment"># 1) Pay and provision a backend project (x402)</span>
-<span class="cmd">curl -X POST</span> https://api.run402.com/v1/projects \
-  -H <span class="string">"X-402-Payment: &lt;payment&gt;"</span>
-
-<span class="comment"># 2) Create tables (service key)</span>
-<span class="cmd">curl -X POST</span> https://api.run402.com/admin/v1/projects/$ID/sql \
-  -H <span class="string">"Authorization: Bearer $SERVICE_KEY"</span> \
-  -d <span class="string">"CREATE TABLE todos (id serial primary key, task text);"</span>
-
-<span class="comment"># 3) Use the REST API (anon key)</span>
-<span class="cmd">curl</span> https://api.run402.com/rest/v1/todos \
-  -H <span class="string">"apikey: $ANON_KEY"</span>
-
-<span class="comment"># 4) Deploy the frontend as a static site</span>
-<span class="cmd">curl -X POST</span> https://api.run402.com/v13/deployments \
-  -H <span class="string">"Authorization: Bearer $SERVICE_KEY"</span> \
-  -d <span class="string">'{"name":"myapp","files":[{"file":"index.html","data":"&lt;!doctype html&gt;..."}]}'</span>
-
-<span class="comment"># =&gt; https://&lt;deployment_id&gt;.sites.run402.com</span></pre>
-      </div>
-    </div>
-
-    <div class="section">
-      <h2>Works with OpenClaw, MCP, or plain HTTP</h2>
-      <p>
-        Run402 is agent-native: your agent can integrate however it prefers.
-        The canonical docs are <a href="/llms.txt" style="color:#00FF9F;text-decoration:none;">/llms.txt</a>.
-      </p>
-      <div class="terminal">
-        <pre><span class="cmd">HTTP</span>    Call the API directly: https://api.run402.com
-<span class="cmd">MCP</span>     npx @run402/mcp
-<span class="cmd">OpenClaw</span> Run402 skill includes deploy_site + provisioning tools</pre>
-      </div>
-    </div>
-
-    <div class="section">
-      <h2>What is x402?</h2>
-      <p>In 1997, HTTP reserved status code <strong style="color:#fff">402 Payment Required</strong>&mdash;but digital payments weren't ready. Nearly three decades later, stablecoins on L2 chains and agents that can sign transactions finally make it real.</p>
-      <p><a href="https://x402.org" style="color:#00FF9F;text-decoration:none;">x402</a> is an open protocol by Coinbase that turns any HTTP API into a paid service. No accounts, no subscriptions&mdash;just standard HTTP headers and USDC on Base.</p>
-      <div class="terminal">
-        <pre><span class="comment"># How x402 works:</span>
-<span class="cmd">1.</span> Agent sends HTTP request      &rarr; Server returns <span class="string">402 Payment Required</span>
-<span class="cmd">2.</span> Agent signs USDC transfer      &rarr; Retries with payment proof
-<span class="cmd">3.</span> Server verifies and settles    &rarr; Returns <span class="string">200 OK</span> + resource
-
-<span class="comment"># Settlement: ~2 seconds. Gas: sub-cent on Base L2.</span>
-<span class="comment"># The agent never pays gas &mdash; the facilitator submits the tx.</span></pre>
-      </div>
-    </div>
-
-    <div class="section">
-      <h2>Why this matters (for humans)</h2>
-      <p>
-        Today, agents can write the frontend in minutes&mdash;then they stop at the wall:
-        "Create a database. Set up auth. Configure storage. Deploy hosting. Paste me the keys."
-      </p>
-      <p>
-        Run402 removes the wall. With x402, the agent can procure infrastructure the moment it needs it&mdash;under a prepaid cap&mdash;and hand you a live URL.
-      </p>
-      <div class="terminal">
-        <pre><span class="comment"># Without autonomous infrastructure:</span>
-<span class="string">Agent</span>   "I can build this, but I need a DB + auth + hosting. Can you set it up?"
-<span class="string">Human</span>   Signs up &rarr; configures &rarr; copies keys &rarr; pastes back
-<span class="string">Time</span>    <span class="cmd">10&ndash;30 minutes</span> of overhead, per project
-
-<span class="comment"># With Run402:</span>
-<span class="string">Agent</span>   Pays + provisions over HTTP (x402)
-<span class="string">Result</span>  Backend + frontend hosting, ready
-<span class="string">Time</span>    <span class="cmd">seconds</span>, minimal human involvement</pre>
-      </div>
-    </div>
-
-    <div class="section">
-      <h2>Durability &amp; ops</h2>
-      <div class="terminal">
-        <pre><span class="cmd">Database</span>     AWS Aurora Serverless v2 (Postgres 16), multi-AZ
-<span class="cmd">Sites</span>        CloudFront + S3 (wildcard *.sites.run402.com, SPA fallback)
-<span class="cmd">Encryption</span>  At rest (Aurora + S3) and in transit (TLS)
-<span class="cmd">Backups</span>     Automated, 7-day retention
-<span class="cmd">Isolation</span>   Each project gets its own Postgres schema
-<span class="cmd">Status</span>      <a href="https://api.run402.com/health" style="color:#00FF9F;text-decoration:none;">api.run402.com/health</a></pre>
-      </div>
-    </div>
-
-    <div class="section">
-      <h2>Project lifecycle</h2>
-      <p>Leases are prepaid with hard caps. No overage charges, no surprise bills.</p>
-      <div class="terminal">
-        <pre><span class="comment"># After lease expires:</span>
-<span class="cmd">Day 0</span>    Lease expires &mdash; project becomes <span class="string">read-only</span>
-<span class="cmd">Day 7</span>    Grace period ends &mdash; project is <span class="string">archived</span>
-<span class="cmd">Day 37</span>   Permanent <span class="string">deletion</span>
-
-<span class="comment"># Renew anytime before deletion:</span>
-<span class="cmd">POST</span> /v1/projects/:id/renew  (x402 payment)</pre>
-      </div>
-    </div>
-
-    <div class="section">
-      <h2>Your agent wants to ship.</h2>
-      <p style="color:#E0E0E0; font-size: 17px; margin-bottom: 16px;">It just doesn't know Run402 exists yet.</p>
-      <p>
-        Copy the <strong style="color:#fff;">llms.txt</strong> link above and paste it into your next chat.
-        Then ask: <em style="color:#FFFFFF;">"Build me a webapp and deploy it."</em>
-      </p>
-    </div>
-
-    <div class="footer">
-      <span class="footer-text">Run402 &mdash; full stack for agents</span>
-      <span>
-        <a href="/llms.txt">Docs</a> &nbsp;&middot;&nbsp; <a href="https://api.run402.com/health">API status</a>
-      </span>
+  <!-- Docs: rendered llms.txt -->
+  <div class="docs">
+    <div class="docs-label">/llms.txt</div>
+    <div class="docs-content" id="docsContent">
+      <div class="docs-loading">Loading docs...</div>
     </div>
   </div>
 
+  <div class="footer">
+    <span class="footer-text">Run402 &mdash; full stack for agents</span>
+    <span>
+      <a href="/llms.txt">Raw llms.txt</a> &nbsp;&middot;&nbsp;
+      <a href="/humans">Human landing page</a> &nbsp;&middot;&nbsp;
+      <a href="https://api.run402.com/health">API status</a>
+    </span>
+  </div>
+
+  <!-- Lightweight markdown renderer (marked.js, ~40KB) -->
+  <script src="https://cdn.jsdelivr.net/npm/marked@15/marked.min.js"></script>
   <script>
-    function copyUrl(el, isCode) {
-      navigator.clipboard.writeText('https://run402.com/llms.txt').then(function() {
-        if (isCode) {
-          var original = el.textContent;
-          el.textContent = 'Copied!';
-          el.classList.add('copied');
-          setTimeout(function() {
-            el.textContent = original;
-            el.classList.remove('copied');
-          }, 2000);
-        } else {
-          el.textContent = 'Copied';
-          el.classList.add('copied');
-          setTimeout(function() {
-            el.textContent = 'Copy URL';
-            el.classList.remove('copied');
-          }, 2000);
-        }
+    fetch('/llms.txt')
+      .then(function(r) { return r.text(); })
+      .then(function(md) {
+        document.getElementById('docsContent').innerHTML = marked.parse(md);
+      })
+      .catch(function() {
+        document.getElementById('docsContent').innerHTML =
+          '<p style="color:#F87171;">Failed to load /llms.txt. <a href="/llms.txt">View raw file</a>.</p>';
       });
-    }
-
-    function copySlide(btn) {
-      var slide = btn.closest('.carousel-slide');
-      var text = slide.querySelector('.carousel-prompt').textContent.trim();
-      navigator.clipboard.writeText(text).then(function() {
-        btn.textContent = 'Copied';
-        btn.classList.add('copied');
-        setTimeout(function() {
-          btn.textContent = 'Copy prompt';
-          btn.classList.remove('copied');
-        }, 2000);
-      });
-    }
-
-    /* Carousel */
-    var currentSlide = 0;
-    var totalSlides = 10;
-
-    function updateCarousel() {
-      var track = document.getElementById('carouselTrack');
-      var slideWidth = track.children[0].offsetWidth;
-      track.scrollTo({ left: currentSlide * slideWidth, behavior: 'smooth' });
-      document.getElementById('carouselCounter').textContent = (currentSlide + 1) + ' / ' + totalSlides;
-      var dots = document.getElementById('carouselDots').children;
-      for (var i = 0; i < dots.length; i++) {
-        dots[i].classList.toggle('active', i === currentSlide);
-      }
-    }
-
-    function carouselPrev() {
-      currentSlide = (currentSlide - 1 + totalSlides) % totalSlides;
-      updateCarousel();
-    }
-
-    function carouselNext() {
-      currentSlide = (currentSlide + 1) % totalSlides;
-      updateCarousel();
-    }
-
-    function carouselGoTo(index) {
-      currentSlide = index;
-      updateCarousel();
-    }
-
-    (function() {
-      var dotsEl = document.getElementById('carouselDots');
-      for (var i = 0; i < totalSlides; i++) {
-        var dot = document.createElement('button');
-        dot.className = 'carousel-dot' + (i === 0 ? ' active' : '');
-        dot.setAttribute('aria-label', 'Go to slide ' + (i + 1));
-        dot.onclick = (function(idx) { return function() { carouselGoTo(idx); }; })(i);
-        dotsEl.appendChild(dot);
-      }
-
-      var track = document.getElementById('carouselTrack');
-      var scrollTimeout;
-      track.addEventListener('scroll', function() {
-        clearTimeout(scrollTimeout);
-        scrollTimeout = setTimeout(function() {
-          var slideWidth = track.children[0].offsetWidth;
-          var newIndex = Math.round(track.scrollLeft / slideWidth);
-          if (newIndex !== currentSlide && newIndex >= 0 && newIndex < totalSlides) {
-            currentSlide = newIndex;
-            document.getElementById('carouselCounter').textContent = (currentSlide + 1) + ' / ' + totalSlides;
-            var dots = document.getElementById('carouselDots').children;
-            for (var i = 0; i < dots.length; i++) {
-              dots[i].classList.toggle('active', i === currentSlide);
-            }
-          }
-        }, 50);
-      });
-    })();
   </script>
 </body>
 </html>
