@@ -62,19 +62,27 @@ function lambdaName(projectId: string, name: string): string {
  */
 function buildShimCode(userCode: string): string {
   // The shim wraps the user's default export in a Lambda handler.
-  // User code is embedded as a data URL to avoid filesystem writes.
+  // User code is written to /tmp at cold start so bare module specifiers
+  // (e.g. "@run402/functions", "openai") resolve from the layer's node_modules.
   const encoded = Buffer.from(userCode).toString("base64");
   return `
+import { writeFileSync } from "node:fs";
+
 const USER_CODE_B64 = ${JSON.stringify(encoded)};
+const USER_CODE_PATH = "/tmp/_user_code_" + Date.now() + ".mjs";
+
+// Write user code to /tmp at cold start
+writeFileSync(USER_CODE_PATH, Buffer.from(USER_CODE_B64, "base64").toString("utf-8"));
+
+let userModule;
+try {
+  userModule = await import(USER_CODE_PATH);
+} catch (importErr) {
+  console.error("Failed to import user code:", importErr);
+}
 
 export async function handler(event, context) {
-  let userModule;
-  try {
-    const code = Buffer.from(USER_CODE_B64, "base64").toString("utf-8");
-    const dataUrl = "data:text/javascript;base64," + Buffer.from(code).toString("base64");
-    userModule = await import(dataUrl);
-  } catch (importErr) {
-    console.error("Failed to import user code:", importErr);
+  if (!userModule) {
     return {
       statusCode: 500,
       headers: { "content-type": "application/json" },
@@ -670,17 +678,21 @@ async function refreshFunctionEnvVars(projectId: string): Promise<void> {
     [projectId],
   );
 
-  // We need the service key — look it up from the project
-  const project = await pool.query(
-    `SELECT service_key FROM internal.projects WHERE id = $1`,
-    [projectId],
-  );
-  const serviceKey = project.rows[0]?.service_key || "";
+  // Read existing service key from the first Lambda function's env vars
+  // (service keys aren't stored in DB — they're JWTs given to the user at provision)
+  const firstFnName = lambdaName(projectId, functions.rows[0].name);
+  let existingServiceKey = "";
+  try {
+    const fnConfig = await lambda.send(new GetFunctionCommand({ FunctionName: firstFnName }));
+    existingServiceKey = fnConfig.Configuration?.Environment?.Variables?.RUN402_SERVICE_KEY || "";
+  } catch {
+    // Best effort
+  }
 
   const envVars: Record<string, string> = {
     RUN402_PROJECT_ID: projectId,
     RUN402_API_BASE: process.env.API_BASE || "https://api.run402.com",
-    RUN402_SERVICE_KEY: serviceKey,
+    RUN402_SERVICE_KEY: existingServiceKey,
   };
   for (const row of secrets.rows) {
     envVars[row.key] = row.value_encrypted;

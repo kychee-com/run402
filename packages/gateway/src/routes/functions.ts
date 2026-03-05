@@ -45,13 +45,15 @@ router.post(
     const project = req.project!;
     const tier = TIERS[project.tier];
     const apiBase = `${req.protocol}://${req.get("host")}`;
+    // Extract service key from the Authorization header (serviceKeyAuth already validated it)
+    const serviceKey = (req.headers.authorization || "").replace("Bearer ", "");
 
     try {
       const fn = await deployFunction(
         projectId,
         name,
         code,
-        project.serviceKey,
+        serviceKey,
         apiBase,
         config,
         deps,
@@ -191,8 +193,9 @@ router.get(
 // --- Public invocation route ---
 
 // ALL /functions/v1/:name — invoke a function (apikey auth + metering)
+// Matches both /functions/v1/myFunc and /functions/v1/myFunc/sub/path
 router.all(
-  "/functions/v1/:name",
+  ["/functions/v1/:name", "/functions/v1/:name/*"],
   apikeyAuth,
   meteringMiddleware,
   asyncHandler(async (req: Request, res: Response) => {
