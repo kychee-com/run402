@@ -217,6 +217,12 @@ export class PodStack extends cdk.Stack {
       resources: [`arn:aws:lambda:${this.region}:${this.account}:function:run402_*`],
     }));
 
+    // Grant GetLayerVersion so gateway can attach the runtime layer
+    taskDef.taskRole.addToPrincipalPolicy(new iam.PolicyStatement({
+      actions: ["lambda:GetLayerVersion"],
+      resources: [`arn:aws:lambda:${this.region}:${this.account}:layer:run402-*`],
+    }));
+
     // Grant iam:PassRole so gateway can assign the Lambda exec role
     taskDef.taskRole.addToPrincipalPolicy(new iam.PolicyStatement({
       actions: ["iam:PassRole"],
@@ -266,6 +272,7 @@ export class PodStack extends cdk.Stack {
         DB_PORT: "5432",
         DB_NAME: "agentdb",
         LAMBDA_ROLE_ARN: lambdaExecRole.roleArn,
+        LAMBDA_LAYER_ARN: "arn:aws:lambda:us-east-1:472210437512:layer:run402-functions-runtime:1",
         FUNCTIONS_LOG_GROUP: functionsLogGroup.logGroupName,
       },
       secrets: {

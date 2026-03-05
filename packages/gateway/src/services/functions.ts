@@ -11,6 +11,8 @@ import {
   DeleteFunctionCommand,
   GetFunctionCommand,
   ResourceNotFoundException,
+  ResourceConflictException,
+  waitUntilFunctionUpdatedV2,
 } from "@aws-sdk/client-lambda";
 import {
   CloudWatchLogsClient,
@@ -69,13 +71,8 @@ export async function handler(event, context) {
   let userModule;
   try {
     const code = Buffer.from(USER_CODE_B64, "base64").toString("utf-8");
-    const blob = new Blob([code], { type: "application/javascript" });
-    const url = URL.createObjectURL(blob);
-    try {
-      userModule = await import(url);
-    } finally {
-      URL.revokeObjectURL(url);
-    }
+    const dataUrl = "data:text/javascript;base64," + Buffer.from(code).toString("base64");
+    userModule = await import(dataUrl);
   } catch (importErr) {
     console.error("Failed to import user code:", importErr);
     return {
@@ -290,12 +287,32 @@ export async function deployFunction(
   try {
     await lambda.send(new GetFunctionCommand({ FunctionName: fnName }));
 
+    // Wait for any in-progress updates to complete
+    try {
+      await waitUntilFunctionUpdatedV2(
+        { client: lambda, maxWaitTime: 30 },
+        { FunctionName: fnName },
+      );
+    } catch {
+      // Best effort — proceed anyway
+    }
+
     // Update existing function code
     const updateCodeResult = await lambda.send(new UpdateFunctionCodeCommand({
       FunctionName: fnName,
       ZipFile: zipBuffer,
     }));
     lambdaArn = updateCodeResult.FunctionArn!;
+
+    // Wait for code update to complete before updating config
+    try {
+      await waitUntilFunctionUpdatedV2(
+        { client: lambda, maxWaitTime: 30 },
+        { FunctionName: fnName },
+      );
+    } catch {
+      // Best effort
+    }
 
     // Update configuration
     await lambda.send(new UpdateFunctionConfigurationCommand({
