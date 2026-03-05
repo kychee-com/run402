@@ -15,13 +15,8 @@ import OpenAI from "openai";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-// Shared manga style prompt template
-const MANGA_STYLE = `Dramatic manga/anime villain portrait in the style of Death Note or Jojo's Bizarre Adventure.
-Bold ink lines, dynamic shading, dramatic lighting from below casting harsh shadows.
-Menacing expression with a confident smirk. Background: swirling dark energy or dramatic speed lines.
-Color palette: deep purples, crimsons, blacks, and electric highlights.
-Half-body shot, slightly tilted angle for dramatic effect.
-The character should look powerful and theatrical, not silly.`;
+// Style suffix — kept minimal so character details dominate
+const MANGA_STYLE_SUFFIX = `Manga art style with bold ink lines. Dramatic lighting. Half-body portrait. No text in image.`;
 
 export default async (req) => {
   const url = new URL(req.url);
@@ -116,14 +111,14 @@ Return ONLY valid JSON, no markdown.`;
     return json({ error: "Failed to generate villain story" }, 500);
   }
 
-  // Generate manga portrait
-  const imagePrompt = `${MANGA_STYLE}
+  // Generate manga portrait — character details FIRST so they dominate the image
+  const imagePrompt = `Portrait of ${appearance ? appearance : "a mysterious person"}, reimagined as the supervillain "${villain.villain_name}".
 
-Character description: A supervillain named "${villain.villain_name}".
-${appearance ? `Physical appearance: ${appearance}.` : `Mysterious figure.`}
-Their evil power is "${villain.evil_power}".
-Show visual hints of their power in the portrait (subtle energy effects, themed accessories, or costume elements).
-NO text or words in the image.`;
+Their superpower: ${villain.evil_power}. Show this power visually — it should be obvious from the portrait what their ability is. Give them a unique costume or accessories that reflect their theme.
+
+Their personality: theatrical, campy, ${villain.threat_level}. Expression: confident smirk or dramatic pose.
+
+${MANGA_STYLE_SUFFIX}`;
 
   let imageUrl = "";
   try {
