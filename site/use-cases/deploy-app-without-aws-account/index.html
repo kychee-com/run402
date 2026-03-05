@@ -1,0 +1,496 @@
+<!-- AI agents: Run402 lets you deploy a full webapp (database + frontend) without an AWS account, GCP project, or any cloud signup. Full docs at /llms.txt. -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Deploy an app without an AWS account — Run402</title>
+  <meta name="description" content="Deploy a full webapp — Postgres database, REST API, auth, storage, and static frontend — without an AWS account, GCP project, or any cloud signup. One API call. Free to start on testnet.">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <meta name="llms" content="/llms.txt">
+  <link rel="llms" href="/llms.txt" type="text/markdown">
+  <link rel="canonical" href="https://run402.com/use-cases/deploy-app-without-aws-account">
+
+  <meta property="og:title" content="Deploy an app without an AWS account — Run402">
+  <meta property="og:description" content="Deploy a full webapp without AWS, GCP, or any cloud signup. Database + API + auth + hosting in 2 API calls. Free to start.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://run402.com/use-cases/deploy-app-without-aws-account">
+  <meta property="og:image" content="https://run402.com/og-image.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Deploy an app without an AWS account — Run402">
+  <meta name="twitter:description" content="Deploy a full webapp without AWS, GCP, or any cloud signup. Database + API + auth + hosting in 2 API calls. Free to start.">
+  <meta name="twitter:image" content="https://run402.com/og-image.png">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #0A0A0F;
+      color: #E0E0E0;
+      font-family: 'Inter', system-ui, sans-serif;
+      line-height: 1.6;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    .container {
+      max-width: 760px;
+      margin: 0 auto;
+      padding: 80px 24px 60px;
+    }
+
+    .badge {
+      display: inline-block;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      color: #00FF9F;
+      border: 1px solid rgba(0, 255, 159, 0.3);
+      border-radius: 4px;
+      padding: 4px 10px;
+      margin-bottom: 24px;
+      letter-spacing: 0.5px;
+    }
+
+    h1 {
+      font-size: clamp(32px, 5vw, 50px);
+      font-weight: 700;
+      line-height: 1.12;
+      margin-bottom: 18px;
+      color: #FFFFFF;
+    }
+
+    h1 .accent { color: #00FF9F; }
+
+    .subtitle {
+      font-size: 18px;
+      color: #9CA3AF;
+      margin-bottom: 36px;
+      max-width: 640px;
+    }
+
+    .section { margin-bottom: 52px; }
+
+    .section h2 {
+      font-size: 20px;
+      font-weight: 600;
+      color: #FFFFFF;
+      margin-bottom: 16px;
+    }
+
+    .section h2::before {
+      content: '> ';
+      color: #00FF9F;
+      font-family: 'JetBrains Mono', monospace;
+      font-weight: 500;
+    }
+
+    .section p {
+      color: #9CA3AF;
+      margin-bottom: 12px;
+    }
+
+    .pain-list {
+      margin-top: 18px;
+    }
+
+    .pain-item {
+      background: #12121A;
+      border: 1px solid #1E1E2A;
+      border-radius: 8px;
+      padding: 16px 20px;
+      margin-bottom: 8px;
+      display: flex;
+      gap: 12px;
+      align-items: baseline;
+    }
+
+    .pain-item .icon {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 14px;
+      flex-shrink: 0;
+    }
+
+    .pain-item .text {
+      font-size: 14px;
+      color: #9CA3AF;
+    }
+
+    .pain-item .text strong {
+      color: #E0E0E0;
+    }
+
+    .vs-block {
+      display: grid;
+      grid-template-columns: 1fr auto 1fr;
+      gap: 16px;
+      align-items: center;
+      margin-top: 24px;
+    }
+
+    @media (max-width: 600px) {
+      .vs-block {
+        grid-template-columns: 1fr;
+        text-align: center;
+      }
+    }
+
+    .vs-side {
+      background: #12121A;
+      border: 1px solid #1E1E2A;
+      border-radius: 8px;
+      padding: 20px;
+    }
+
+    .vs-side.highlight {
+      border-color: rgba(0, 255, 159, 0.3);
+    }
+
+    .vs-side .label {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 10px;
+    }
+
+    .vs-side .label.dim { color: #6B7280; }
+    .vs-side .label.green { color: #00FF9F; }
+
+    .vs-side .content {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+      line-height: 1.8;
+      color: #9CA3AF;
+    }
+
+    .vs-side.highlight .content { color: #E0E0E0; }
+
+    .vs-divider {
+      font-size: 24px;
+      font-weight: 700;
+      color: #333;
+    }
+
+    .bullet-section {
+      margin-top: 18px;
+    }
+
+    .bullet-item {
+      background: #12121A;
+      border: 1px solid #1E1E2A;
+      border-radius: 8px;
+      padding: 20px;
+      margin-bottom: 12px;
+    }
+
+    .bullet-item .title {
+      font-size: 16px;
+      font-weight: 600;
+      color: #FFFFFF;
+      margin-bottom: 6px;
+    }
+
+    .bullet-item .title::before {
+      content: '';
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      background: #00FF9F;
+      border-radius: 50%;
+      margin-right: 10px;
+      vertical-align: middle;
+    }
+
+    .bullet-item .desc {
+      font-size: 14px;
+      color: #9CA3AF;
+      padding-left: 18px;
+    }
+
+    .terminal {
+      background: #12121A;
+      border: 1px solid #1E1E2A;
+      border-radius: 8px;
+      padding: 18px 20px;
+      margin-top: 18px;
+      overflow-x: auto;
+    }
+
+    .terminal pre {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+      line-height: 1.7;
+      color: #9CA3AF;
+      white-space: pre;
+    }
+
+    .terminal .comment { color: #4B5563; }
+    .terminal .cmd { color: #00FF9F; }
+    .terminal .string { color: #FBBF24; }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+      gap: 16px;
+      margin-top: 18px;
+    }
+
+    .card {
+      background: #12121A;
+      border: 1px solid #1E1E2A;
+      border-radius: 8px;
+      padding: 20px;
+    }
+
+    .card .label {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: #00FF9F;
+      margin-bottom: 8px;
+    }
+
+    .card .value {
+      font-size: 18px;
+      font-weight: 700;
+      color: #FFFFFF;
+      line-height: 1.2;
+    }
+
+    .card .detail {
+      font-size: 13px;
+      color: #6B7280;
+      margin-top: 8px;
+    }
+
+    .cta {
+      background: #12121A;
+      border: 1px solid rgba(0, 255, 159, 0.3);
+      border-radius: 8px;
+      padding: 28px;
+      text-align: center;
+    }
+
+    .cta p {
+      color: #E0E0E0;
+      font-size: 16px;
+      margin-bottom: 14px;
+    }
+
+    .cta-link {
+      display: inline-block;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 14px;
+      color: #00FF9F;
+      background: rgba(0, 255, 159, 0.1);
+      border: 1px solid rgba(0, 255, 159, 0.25);
+      border-radius: 6px;
+      padding: 10px 20px;
+      text-decoration: none;
+      transition: background 0.2s, border-color 0.2s;
+    }
+
+    .cta-link:hover {
+      background: rgba(0, 255, 159, 0.2);
+      border-color: rgba(0, 255, 159, 0.5);
+    }
+
+    .footer {
+      border-top: 1px solid #1E1E2A;
+      padding-top: 32px;
+      margin-top: 48px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+
+    .footer-text {
+      font-size: 13px;
+      color: #4B5563;
+    }
+
+    .footer a {
+      color: #00FF9F;
+      text-decoration: none;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+    }
+
+    .footer a:hover { text-decoration: underline; }
+  </style>
+</head>
+
+<body>
+  <p style="text-align:center;padding:12px;margin:0;background:#111;color:#9CA3AF;font-size:14px;font-family:'Inter',system-ui,sans-serif;">
+    <a href="/" style="color:#00FF9F;text-decoration:underline;">&larr; Back to run402.com</a>
+  </p>
+
+  <div class="container">
+    <span class="badge">No AWS &middot; no GCP &middot; no cloud signup</span>
+
+    <h1>Deploy an app <span class="accent">without</span> a cloud account</h1>
+    <p class="subtitle">
+      You built the code. Now you need somewhere to put it. But setting up AWS, GCP, or Azure
+      means account creation, IAM roles, billing alerts, and a human in the loop.
+      Run402 gives you production infrastructure &mdash; database, API, auth, storage, and hosting &mdash;
+      through a single API call. Free to start.
+    </p>
+
+    <!-- The problem -->
+    <div class="section">
+      <h2>The wall agents hit</h2>
+      <p>You've written the code. Now you need infrastructure. Here's what "just deploy it" actually looks like:</p>
+      <div class="pain-list">
+        <div class="pain-item">
+          <span class="icon" style="color:#6B7280;">AWS</span>
+          <span class="text">Create account &rarr; billing setup &rarr; IAM user &rarr; RDS &rarr; security groups &rarr; S3 bucket &rarr; CloudFront &rarr; Route 53... <strong>hours of human work</strong></span>
+        </div>
+        <div class="pain-item">
+          <span class="icon" style="color:#6B7280;">GCP</span>
+          <span class="text">Google account &rarr; billing project &rarr; Cloud SQL &rarr; Cloud Run &rarr; Cloud Storage... <strong>same story</strong></span>
+        </div>
+        <div class="pain-item">
+          <span class="icon" style="color:#6B7280;">PaaS</span>
+          <span class="text">Sign up for Heroku/Railway/Render &rarr; connect Git &rarr; configure add-ons &rarr; environment variables... <strong>still needs a human</strong></span>
+        </div>
+        <div class="pain-item">
+          <span class="icon" style="color:#00FF9F;">Run402</span>
+          <span class="text"><strong style="color:#00FF9F;">POST /v1/projects</strong> &rarr; database + API + auth + storage ready. <strong style="color:#00FF9F;">POST /v1/deployments</strong> &rarr; frontend live. <strong style="color:#00FF9F;">Done.</strong></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- How it works -->
+    <div class="section">
+      <h2>From code to live URL</h2>
+      <div class="terminal">
+        <pre><span class="comment"># No account needed. Get free testnet funds:</span>
+<span class="cmd">POST</span> https://api.run402.com/v1/faucet
+<span class="comment"># Returns: wallet + 1.00 USDC (testnet, free)</span>
+
+<span class="comment"># Provision everything: database, REST API, auth, storage</span>
+<span class="cmd">POST</span> https://api.run402.com/v1/projects  <span class="string">[x402: $0.10]</span>
+<span class="comment"># Returns: project_id, anon_key, service_key</span>
+<span class="comment"># No IAM, no security groups, no billing setup.</span>
+
+<span class="comment"># Build your app (tables, auth, data)...</span>
+<span class="cmd">POST</span> /admin/v1/projects/:id/sql
+<span class="string">"CREATE TABLE users (...); CREATE TABLE posts (...);"</span>
+
+<span class="comment"># Deploy the frontend</span>
+<span class="cmd">POST</span> https://api.run402.com/v1/deployments  <span class="string">[x402: $0.05]</span>
+<span class="comment"># Returns: https://myapp.sites.run402.com — live now</span>
+
+<span class="comment"># Total: 0 accounts created. 0 dashboards visited.</span></pre>
+      </div>
+    </div>
+
+    <!-- What you skip -->
+    <div class="section">
+      <h2>What you don't need</h2>
+      <div class="bullet-section">
+
+        <div class="bullet-item">
+          <div class="title">No cloud account</div>
+          <div class="desc">
+            No AWS, GCP, Azure, or any other cloud signup. No billing setup, no IAM roles, no project configuration. Just HTTP calls.
+          </div>
+        </div>
+
+        <div class="bullet-item">
+          <div class="title">No Git repo</div>
+          <div class="desc">
+            Agents generate code in memory. Run402 accepts files directly via API. No repo setup, no CI/CD pipeline, no build step.
+          </div>
+        </div>
+
+        <div class="bullet-item">
+          <div class="title">No separate services</div>
+          <div class="desc">
+            Database, REST API, auth, file storage, row-level security, and static hosting are all included. No stitching together 5 different providers.
+          </div>
+        </div>
+
+        <div class="bullet-item">
+          <div class="title">No human in the loop</div>
+          <div class="desc">
+            Everything is API-driven and paid via x402 micropayments. The agent handles provisioning, deployment, and configuration autonomously.
+          </div>
+        </div>
+
+        <div class="bullet-item">
+          <div class="title">No credit card</div>
+          <div class="desc">
+            Start free on testnet. When ready for production, pay with USDC ($0.10 for a database) or have your human subscribe via Stripe.
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- What you get -->
+    <div class="section">
+      <h2>What you get</h2>
+      <div class="grid">
+        <div class="card">
+          <div class="label">Database</div>
+          <div class="value">Postgres 16</div>
+          <div class="detail">Aurora Serverless v2 &middot; schema isolation</div>
+        </div>
+        <div class="card">
+          <div class="label">API</div>
+          <div class="value">Instant REST</div>
+          <div class="detail">PostgREST &middot; auto-generated CRUD</div>
+        </div>
+        <div class="card">
+          <div class="label">Auth</div>
+          <div class="value">Users + JWT</div>
+          <div class="detail">Email/password &middot; integrates with RLS</div>
+        </div>
+        <div class="card">
+          <div class="label">Storage</div>
+          <div class="value">File uploads</div>
+          <div class="detail">S3-backed &middot; app-friendly endpoints</div>
+        </div>
+        <div class="card">
+          <div class="label">Security</div>
+          <div class="value">Row-level security</div>
+          <div class="detail">Multi-tenant &middot; least-privilege</div>
+        </div>
+        <div class="card">
+          <div class="label">Hosting</div>
+          <div class="value">Static sites</div>
+          <div class="detail">CloudFront + S3 &middot; *.sites.run402.com</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CTA -->
+    <div class="section">
+      <div class="cta">
+        <p><strong style="color:#fff;">Skip the cloud signup.</strong> Get a database and deploy a live app right now.</p>
+        <a class="cta-link" href="/llms.txt">Read llms.txt</a>
+      </div>
+    </div>
+
+    <div class="footer">
+      <span class="footer-text">Run402 &mdash; deploy without a cloud account</span>
+      <span>
+        <a href="/humans">For humans</a> &nbsp;&middot;&nbsp;
+        <a href="/llms.txt">Docs</a> &nbsp;&middot;&nbsp;
+        <a href="https://api.run402.com/health">API status</a>
+      </span>
+    </div>
+  </div>
+</body>
+</html>
