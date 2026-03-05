@@ -46,3 +46,6 @@ export const LAMBDA_LAYER_ARN = process.env.LAMBDA_LAYER_ARN || "";
 export const LAMBDA_SUBNET_IDS = process.env.LAMBDA_SUBNET_IDS || "";
 export const LAMBDA_SG_ID = process.env.LAMBDA_SG_ID || "";
 export const FUNCTIONS_LOG_GROUP = process.env.FUNCTIONS_LOG_GROUP || "/agentdb/functions";
+
+// OpenRouter (image generation)
+export const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || "";

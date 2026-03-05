@@ -1,0 +1,48 @@
+import { Router, Request, Response } from "express";
+import { asyncHandler } from "../utils/async-handler.js";
+import { HttpError } from "../utils/async-handler.js";
+import { generateImage, ImageGenerationError, ALLOWED_SIZES } from "../services/generate-image.js";
+
+const router = Router();
+
+router.get("/v1/generate-image", (_req: Request, res: Response) => {
+  res.json({
+    description: "Generate an image from a text prompt",
+    price: "$0.01 USDC",
+    method: "POST",
+    body: {
+      prompt: "string (required, max 1000 chars)",
+      size: `string (optional, one of: ${[...ALLOWED_SIZES].join(", ")})`,
+    },
+  });
+});
+
+router.post(
+  "/v1/generate-image",
+  asyncHandler(async (req: Request, res: Response) => {
+    const { prompt, size } = req.body || {};
+
+    if (!prompt || typeof prompt !== "string" || !prompt.trim()) {
+      throw new HttpError(400, "prompt is required");
+    }
+    if (prompt.length > 1000) {
+      throw new HttpError(400, "prompt must be 1000 characters or less");
+    }
+    const resolvedSize = size || "1024x1024";
+    if (!ALLOWED_SIZES.has(resolvedSize)) {
+      throw new HttpError(400, `invalid size, must be one of: ${[...ALLOWED_SIZES].join(", ")}`);
+    }
+
+    try {
+      const result = await generateImage(prompt.trim(), resolvedSize);
+      res.json(result);
+    } catch (err) {
+      if (err instanceof ImageGenerationError) {
+        throw new HttpError(err.statusCode, err.message);
+      }
+      throw err;
+    }
+  }),
+);
+
+export default router;

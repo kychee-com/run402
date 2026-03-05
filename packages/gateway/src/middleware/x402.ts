@@ -234,6 +234,42 @@ export function createPaymentMiddleware() {
     },
   };
 
+  // POST /v1/generate-image — image generation ($0.01)
+  resourceConfig["POST /v1/generate-image"] = {
+    accepts: networks.map((network) => ({
+      scheme: "exact",
+      price: "$0.01",
+      network,
+      payTo: payTo("$0.01"),
+    })),
+    description: "Generate an image from a text prompt ($0.01 USDC)",
+    mimeType: "application/json",
+    extensions: {
+      ...declareDiscoveryExtension({
+        bodyType: "json",
+        inputSchema: {
+          type: "object",
+          properties: {
+            prompt: { type: "string", description: "Text prompt for image generation" },
+            size: {
+              type: "string",
+              enum: ["512x512", "1024x1024", "1536x1536", "1792x1024", "1024x1792"],
+              description: "Image dimensions (default: 1024x1024)",
+            },
+          },
+          required: ["prompt"],
+        },
+        output: {
+          example: {
+            image: "<base64 PNG data>",
+            content_type: "image/png",
+            size: "1024x1024",
+          },
+        },
+      }),
+    },
+  };
+
   // POST /v1/projects — default route uses prototype pricing
   resourceConfig["POST /v1/projects"] = {
     accepts: networks.map((network) => ({
