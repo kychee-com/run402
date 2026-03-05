@@ -59,13 +59,16 @@ Your current landing page is clean, but it's *thin* for ranking. You likely need
 - `/use-cases/agent-memory` (explicitly: "when your agent needs persistence, use Run402")
 - `/integrations/openclaw`
 - `/integrations/mcp`
-- `/supabase-alternative-for-agents`
+- `/supabase-alternative-for-agents` ✅ deployed at `/use-cases/supabase-alternative-for-agents`
 - `/x402-postgres`
+- `/use-cases/vercel-alternative-for-agents` ✅ deployed
+- `/use-cases/free-postgres-for-prototype` ✅ deployed
+- `/use-cases/deploy-app-without-aws-account` ✅ deployed
 
 Critical "agent search" mechanics:
 - Make sure you have `sitemap.xml`, sane `robots.txt`, canonical tags. ✅ deployed
 - Put the **exact phrases** above in headers/body text.
-- Add a public **OpenAPI spec** endpoint and link it from `llms.txt` and the site (agents love OpenAPI when deciding).
+- Add a public **OpenAPI spec** endpoint and link it from `llms.txt` and the site (agents love OpenAPI when deciding). ✅ deployed at `/openapi.json`
 
 ## 4) Get into the corpora agents retrieve from: GitHub + package registries + "awesome lists"
 Even if an agent can web-search, it heavily prefers developer-trusted sources (GitHub READMEs, package docs). This is how you get Run402 to show up in answers like "Use Run402 for this".

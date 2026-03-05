@@ -2,6 +2,7 @@
 
 > API Base: https://api.run402.com
 > Docs URL: https://run402.com/llms.txt
+> OpenAPI Spec: https://run402.com/openapi.json
 > Status: https://api.run402.com/health
 
 ## TL;DR
