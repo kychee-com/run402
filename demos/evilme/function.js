@@ -132,7 +132,7 @@ NO text or words in the image.`;
       prompt: imagePrompt,
       n: 1,
       size: "1024x1024",
-      quality: "high",
+      quality: "low",
     });
     // gpt-image-1 returns base64
     if (imageResponse.data[0].b64_json) {
