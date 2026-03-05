@@ -24,6 +24,7 @@ import { startFaucetRefill, stopFaucetRefill } from "./services/faucet.js";
 import { initIdempotencyTable, idempotencyMiddleware } from "./middleware/idempotency.js";
 import { initDeploymentsTable } from "./services/deployments.js";
 import { initSubdomainsTable } from "./services/subdomains.js";
+import { initFunctionsTable } from "./services/functions.js";
 import { subdomainMiddleware } from "./middleware/subdomain.js";
 import projectRoutes from "./routes/projects.js";
 import authRoutes from "./routes/auth.js";
@@ -35,6 +36,7 @@ import deploymentRoutes from "./routes/deployments.js";
 import messageRoutes from "./routes/message.js";
 import stripeRoutes from "./routes/stripe.js";
 import subdomainRoutes from "./routes/subdomains.js";
+import functionsRoutes from "./routes/functions.js";
 
 const app = express();
 
@@ -196,6 +198,7 @@ app.use(deploymentRoutes);
 app.use(messageRoutes);
 app.use(stripeRoutes);
 app.use(subdomainRoutes);
+app.use(functionsRoutes);
 
 // --- Central error handler ---
 // Routes using asyncHandler() forward errors here automatically.
@@ -291,6 +294,9 @@ async function start() {
 
   // Initialize subdomains table
   await initSubdomainsTable();
+
+  // Initialize functions + secrets tables
+  await initFunctionsTable();
 
   // Initialize slot allocator
   await initSlots();

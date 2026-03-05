@@ -36,3 +36,10 @@ export const FAUCET_REFILL_INTERVAL = parseInt(process.env.FAUCET_REFILL_INTERVA
 // Telegram notifications
 export const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || "";
 export const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID || "";
+
+// Lambda / Functions config
+export const LAMBDA_ROLE_ARN = process.env.LAMBDA_ROLE_ARN || "";
+export const LAMBDA_LAYER_ARN = process.env.LAMBDA_LAYER_ARN || "";
+export const LAMBDA_SUBNET_IDS = process.env.LAMBDA_SUBNET_IDS || "";
+export const LAMBDA_SG_ID = process.env.LAMBDA_SG_ID || "";
+export const FUNCTIONS_LOG_GROUP = process.env.FUNCTIONS_LOG_GROUP || "/agentdb/functions";

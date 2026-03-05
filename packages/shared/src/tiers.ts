@@ -6,6 +6,10 @@ export const TIERS: Record<TierName, TierConfig> = {
     leaseDays: 7,
     storageMb: 250,
     apiCalls: 500_000,
+    maxFunctions: 5,
+    functionTimeoutSec: 10,
+    functionMemoryMb: 128,
+    maxSecrets: 10,
     description: "Prototype tier — 7-day lease, 250MB storage, 500k API calls",
   },
   hobby: {
@@ -13,6 +17,10 @@ export const TIERS: Record<TierName, TierConfig> = {
     leaseDays: 30,
     storageMb: 1024,
     apiCalls: 5_000_000,
+    maxFunctions: 25,
+    functionTimeoutSec: 30,
+    functionMemoryMb: 256,
+    maxSecrets: 50,
     description: "Hobby tier — 30-day lease, 1GB storage, 5M API calls",
   },
   team: {
@@ -20,6 +28,10 @@ export const TIERS: Record<TierName, TierConfig> = {
     leaseDays: 30,
     storageMb: 10240,
     apiCalls: 50_000_000,
+    maxFunctions: 100,
+    functionTimeoutSec: 60,
+    functionMemoryMb: 512,
+    maxSecrets: 200,
     description: "Team tier — 30-day lease, 10GB storage, 50M API calls",
   },
 };

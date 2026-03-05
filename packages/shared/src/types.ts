@@ -26,6 +26,10 @@ export interface TierConfig {
   leaseDays: number;
   storageMb: number;
   apiCalls: number;
+  maxFunctions: number;
+  functionTimeoutSec: number;
+  functionMemoryMb: number;
+  maxSecrets: number;
   description: string;
 }
 
@@ -115,4 +119,25 @@ export interface MeteringCounter {
   projectId: string;
   apiCalls: number;
   lastFlushed: number;
+}
+
+// === Functions types ===
+
+export interface FunctionRecord {
+  name: string;
+  url: string;
+  lambda_arn: string;
+  runtime: string;
+  timeout: number;
+  memory: number;
+  code_hash: string;
+  deps: string[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SecretRecord {
+  key: string;
+  created_at: string;
+  updated_at: string;
 }

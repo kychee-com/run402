@@ -182,6 +182,56 @@ export class PodStack extends cdk.Stack {
     telegramSecret.grantRead(taskDef.taskRole);
     storageBucket.grantReadWrite(taskDef.taskRole);
 
+    // =========================================================================
+    // Lambda Functions support
+    // =========================================================================
+
+    // IAM role for Lambda function execution
+    const lambdaExecRole = new iam.Role(this, "LambdaExecRole", {
+      assumedBy: new iam.ServicePrincipal("lambda.amazonaws.com"),
+      managedPolicies: [
+        iam.ManagedPolicy.fromAwsManagedPolicyName("service-role/AWSLambdaBasicExecutionRole"),
+        iam.ManagedPolicy.fromAwsManagedPolicyName("service-role/AWSLambdaVPCAccessExecutionRole"),
+      ],
+      description: "Execution role for Run402 user-deployed Lambda functions",
+    });
+
+    // CloudWatch log group for user functions
+    const functionsLogGroup = new logs.LogGroup(this, "FunctionsLogs", {
+      logGroupName: "/agentdb/functions",
+      retention: logs.RetentionDays.TWO_WEEKS,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+    });
+
+    // Grant ECS task role permissions to manage Lambda functions
+    taskDef.taskRole.addToPrincipalPolicy(new iam.PolicyStatement({
+      actions: [
+        "lambda:CreateFunction",
+        "lambda:UpdateFunctionCode",
+        "lambda:UpdateFunctionConfiguration",
+        "lambda:InvokeFunction",
+        "lambda:DeleteFunction",
+        "lambda:GetFunction",
+        "lambda:ListFunctions",
+      ],
+      resources: [`arn:aws:lambda:${this.region}:${this.account}:function:run402_*`],
+    }));
+
+    // Grant iam:PassRole so gateway can assign the Lambda exec role
+    taskDef.taskRole.addToPrincipalPolicy(new iam.PolicyStatement({
+      actions: ["iam:PassRole"],
+      resources: [lambdaExecRole.roleArn],
+    }));
+
+    // Grant CloudWatch Logs read access for function logs
+    taskDef.taskRole.addToPrincipalPolicy(new iam.PolicyStatement({
+      actions: [
+        "logs:FilterLogEvents",
+        "logs:GetLogEvents",
+      ],
+      resources: [functionsLogGroup.logGroupArn, `${functionsLogGroup.logGroupArn}:*`],
+    }));
+
     const logGroup = new logs.LogGroup(this, "GatewayLogs", {
       logGroupName: "/agentdb/gateway",
       retention: logs.RetentionDays.ONE_MONTH,
@@ -215,6 +265,8 @@ export class PodStack extends cdk.Stack {
         DB_HOST: auroraCluster.clusterEndpoint.hostname,
         DB_PORT: "5432",
         DB_NAME: "agentdb",
+        LAMBDA_ROLE_ARN: lambdaExecRole.roleArn,
+        FUNCTIONS_LOG_GROUP: functionsLogGroup.logGroupName,
       },
       secrets: {
         DB_PASSWORD: ecs.Secret.fromSecretsManager(dbSecret, "password"),

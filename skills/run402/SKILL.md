@@ -23,7 +23,7 @@ One tool call. One payment. You get back `anon_key`, `service_key`, and a projec
 
 ## Tools Reference
 
-You have 6 tools available through the `@run402/mcp` server.
+You have 10 tools available through the `@run402/mcp` server.
 
 ### provision_postgres_project
 
@@ -163,6 +163,80 @@ deploy_site(name: "my-app", files: [
 
 SPA fallback: paths without file extensions (e.g. `/about`) serve `index.html`. Static assets are served with correct Content-Type headers. Max 50 MB per deployment.
 
+### deploy_function
+
+Deploy a serverless function (Node 22) to a project. Functions are invoked via HTTP at `/functions/v1/:name`.
+
+**Parameters:**
+- `project_id` (required) — Project ID
+- `name` (required) — Function name (URL-safe slug: lowercase, hyphens, alphanumeric)
+- `code` (required) — TypeScript or JavaScript source code. Handler: `export default async (req: Request) => Response`
+- `config` (optional) — `{ timeout?: number, memory?: number }` — Timeout (seconds) and memory (MB), capped by tier
+- `deps` (optional) — Array of npm package names to install alongside pre-bundled packages
+
+**Returns on success:**
+```json
+{
+  "name": "stripe-webhook",
+  "url": "https://api.run402.com/functions/v1/stripe-webhook",
+  "status": "deployed",
+  "runtime": "node22",
+  "timeout": 10,
+  "memory": 128
+}
+```
+
+**Pre-bundled packages:** stripe, openai, @anthropic-ai/sdk, resend, zod, uuid, jsonwebtoken, bcryptjs, cheerio, csv-parse.
+
+**DB access inside functions:**
+```typescript
+import { db } from '@run402/functions';
+const users = await db.from('users').select('*');
+const result = await db.sql('SELECT count(*) FROM orders');
+```
+
+**Secrets:** Access via `process.env.SECRET_NAME`. Set with `set_secret`.
+
+### invoke_function
+
+Invoke a deployed function via HTTP. Useful for testing without building a frontend.
+
+**Parameters:**
+- `project_id` (required) — Project ID
+- `name` (required) — Function name
+- `method` (optional, default: `"POST"`) — HTTP method
+- `body` (optional) — Request body (string or JSON object)
+- `headers` (optional) — Additional headers to send
+
+**Returns:** Status code, duration, and response body.
+
+### get_function_logs
+
+Get recent logs from a deployed function (console.log/error output and error stack traces).
+
+**Parameters:**
+- `project_id` (required) — Project ID
+- `name` (required) — Function name
+- `tail` (optional, default: 50) — Number of log lines to return (max 200)
+
+**Returns:** Timestamped log entries from CloudWatch.
+
+### set_secret
+
+Set a project secret. Secrets are injected as `process.env` variables in all functions.
+
+**Parameters:**
+- `project_id` (required) — Project ID
+- `key` (required) — Secret key (uppercase alphanumeric + underscores, e.g. `"STRIPE_SECRET_KEY"`)
+- `value` (required) — Secret value
+
+Setting an existing key overwrites it. All project functions are automatically updated with new env vars.
+
+**Example:**
+```
+set_secret(project_id: "prj_...", key: "STRIPE_SECRET_KEY", value: "sk_live_...")
+```
+
 ## Standard Workflow
 
 Follow this sequence to go from zero to a working database:
@@ -247,11 +321,11 @@ Run402 uses the x402 HTTP payment protocol. Here's what you need to know:
 4. Once payment is complete, retry the same tool call
 
 **Pricing tiers:**
-| Tier | Price | Lease | Storage | API Calls |
-|------|-------|-------|---------|-----------|
-| Prototype | $0.10 | 7 days | 250 MB | 500,000 |
-| Hobby | $5.00 | 30 days | 1 GB | 5,000,000 |
-| Team | $20.00 | 30 days | 10 GB | 50,000,000 |
+| Tier | Price | Lease | Storage | API Calls | Functions | Timeout | Memory | Secrets |
+|------|-------|-------|---------|-----------|-----------|---------|--------|---------|
+| Prototype | $0.10 | 7 days | 250 MB | 500,000 | 5 | 10s | 128MB | 10 |
+| Hobby | $5.00 | 30 days | 1 GB | 5,000,000 | 25 | 30s | 256MB | 50 |
+| Team | $20.00 | 30 days | 10 GB | 50,000,000 | 100 | 60s | 512MB | 200 |
 
 **Budget enforcement:** When a project hits its tier's API call or storage limit, REST/SQL calls return 402 with usage details and a renew URL. Suggest renewing the project at the same or higher tier.
 

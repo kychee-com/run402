@@ -10,6 +10,10 @@ import { renewSchema, handleRenew } from "./tools/renew.js";
 import { deploySiteSchema, handleDeploySite } from "./tools/deploy-site.js";
 import { claimSubdomainSchema, handleClaimSubdomain } from "./tools/subdomain.js";
 import { deleteSubdomainSchema, handleDeleteSubdomain } from "./tools/subdomain.js";
+import { deployFunctionSchema, handleDeployFunction } from "./tools/deploy-function.js";
+import { invokeFunctionSchema, handleInvokeFunction } from "./tools/invoke-function.js";
+import { getFunctionLogsSchema, handleGetFunctionLogs } from "./tools/get-function-logs.js";
+import { setSecretSchema, handleSetSecret } from "./tools/set-secret.js";
 
 const server = new McpServer({
   name: "run402",
@@ -70,6 +74,34 @@ server.tool(
   "Release a custom subdomain. The URL will stop serving content.",
   deleteSubdomainSchema,
   async (args) => handleDeleteSubdomain(args),
+);
+
+server.tool(
+  "deploy_function",
+  "Deploy a serverless function (Node 22) to a project. Handler signature: export default async (req: Request) => Response. Pre-bundled packages: stripe, openai, @anthropic-ai/sdk, resend, zod, uuid, jsonwebtoken, bcryptjs, cheerio, csv-parse.",
+  deployFunctionSchema,
+  async (args) => handleDeployFunction(args),
+);
+
+server.tool(
+  "invoke_function",
+  "Invoke a deployed function via HTTP. Returns the function's response body and status code. Useful for testing functions without building a frontend.",
+  invokeFunctionSchema,
+  async (args) => handleInvokeFunction(args),
+);
+
+server.tool(
+  "get_function_logs",
+  "Get recent logs from a deployed function. Shows console.log/error output and error stack traces from CloudWatch.",
+  getFunctionLogsSchema,
+  async (args) => handleGetFunctionLogs(args),
+);
+
+server.tool(
+  "set_secret",
+  "Set a project secret (e.g. STRIPE_SECRET_KEY). Secrets are injected as process.env variables in functions. Setting an existing key overwrites it.",
+  setSecretSchema,
+  async (args) => handleSetSecret(args),
 );
 
 const transport = new StdioServerTransport();
