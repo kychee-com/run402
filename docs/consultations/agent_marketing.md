@@ -63,7 +63,7 @@ Your current landing page is clean, but it's *thin* for ranking. You likely need
 - `/x402-postgres`
 
 Critical "agent search" mechanics:
-- Make sure you have `sitemap.xml`, sane `robots.txt`, canonical tags.
+- Make sure you have `sitemap.xml`, sane `robots.txt`, canonical tags. ✅ deployed
 - Put the **exact phrases** above in headers/body text.
 - Add a public **OpenAPI spec** endpoint and link it from `llms.txt` and the site (agents love OpenAPI when deciding).
 
