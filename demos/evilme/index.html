@@ -1,0 +1,979 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>EvilMe — Villain Origin Story Generator</title>
+  <meta name="description" content="Discover your supervillain alter ego. AI generates your villain name, origin story, and manga portrait.">
+  <meta property="og:title" content="EvilMe — What's YOUR Villain Origin Story?">
+  <meta property="og:description" content="Enter your name and a mundane fact. AI creates your supervillain alter ego with a manga portrait.">
+  <meta property="og:url" content="https://evilme.run402.com">
+  <meta property="og:type" content="website">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>😈</text></svg>">
+  <style>
+    :root {
+      --bg: #0a0a0f;
+      --surface: #14141f;
+      --border: #2a2a3a;
+      --purple: #8b5cf6;
+      --purple-glow: rgba(139, 92, 246, 0.3);
+      --crimson: #dc2626;
+      --gold: #f59e0b;
+      --text: #e2e8f0;
+      --text-dim: #94a3b8;
+      --text-bright: #f8fafc;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* Subtle animated background */
+    body::before {
+      content: '';
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background:
+        radial-gradient(ellipse at 20% 50%, rgba(139, 92, 246, 0.08) 0%, transparent 50%),
+        radial-gradient(ellipse at 80% 20%, rgba(220, 38, 38, 0.06) 0%, transparent 50%);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .container {
+      max-width: 640px;
+      margin: 0 auto;
+      padding: 20px 16px;
+      position: relative;
+      z-index: 1;
+    }
+
+    /* Header */
+    header {
+      text-align: center;
+      padding: 32px 0 24px;
+    }
+
+    header h1 {
+      font-size: 2.5rem;
+      font-weight: 800;
+      background: linear-gradient(135deg, var(--purple), var(--crimson));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      letter-spacing: -0.02em;
+    }
+
+    header p {
+      color: var(--text-dim);
+      margin-top: 8px;
+      font-size: 1.05rem;
+    }
+
+    /* Navigation */
+    nav {
+      display: flex;
+      justify-content: center;
+      gap: 4px;
+      margin-bottom: 28px;
+      background: var(--surface);
+      border-radius: 12px;
+      padding: 4px;
+      border: 1px solid var(--border);
+    }
+
+    nav button {
+      flex: 1;
+      padding: 10px 16px;
+      background: transparent;
+      border: none;
+      color: var(--text-dim);
+      font-size: 0.9rem;
+      font-weight: 500;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    nav button.active {
+      background: var(--purple);
+      color: white;
+      box-shadow: 0 2px 12px var(--purple-glow);
+    }
+
+    nav button:hover:not(.active) {
+      color: var(--text);
+      background: rgba(255,255,255,0.05);
+    }
+
+    /* Sections */
+    .section { display: none; }
+    .section.active { display: block; animation: fadeIn 0.3s ease; }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* Form */
+    .form-group {
+      margin-bottom: 16px;
+    }
+
+    .form-group label {
+      display: block;
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: var(--text-dim);
+      margin-bottom: 6px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .form-group input,
+    .form-group textarea {
+      width: 100%;
+      padding: 12px 14px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      color: var(--text);
+      font-size: 1rem;
+      font-family: inherit;
+      transition: border-color 0.2s, box-shadow 0.2s;
+      outline: none;
+    }
+
+    .form-group input:focus,
+    .form-group textarea:focus {
+      border-color: var(--purple);
+      box-shadow: 0 0 0 3px var(--purple-glow);
+    }
+
+    .form-group textarea {
+      resize: vertical;
+      min-height: 80px;
+    }
+
+    .form-group .hint {
+      font-size: 0.8rem;
+      color: var(--text-dim);
+      margin-top: 4px;
+    }
+
+    /* Buttons */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 14px 28px;
+      border: none;
+      border-radius: 12px;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      font-family: inherit;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, var(--purple), #7c3aed);
+      color: white;
+      width: 100%;
+      box-shadow: 0 4px 16px var(--purple-glow);
+    }
+
+    .btn-primary:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 6px 24px var(--purple-glow);
+    }
+
+    .btn-primary:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .btn-outline {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text);
+    }
+
+    .btn-outline:hover {
+      border-color: var(--purple);
+      background: rgba(139, 92, 246, 0.1);
+    }
+
+    .btn-vote {
+      background: var(--surface);
+      border: 2px solid var(--border);
+      color: var(--text);
+      padding: 12px 20px;
+      width: 100%;
+      border-radius: 12px;
+      transition: all 0.2s;
+    }
+
+    .btn-vote:hover {
+      border-color: var(--purple);
+      background: rgba(139, 92, 246, 0.1);
+      transform: scale(1.02);
+    }
+
+    /* Loading */
+    .loading {
+      text-align: center;
+      padding: 48px 20px;
+    }
+
+    .loading .spinner {
+      width: 48px;
+      height: 48px;
+      border: 3px solid var(--border);
+      border-top-color: var(--purple);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin: 0 auto 20px;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .loading .loading-text {
+      color: var(--text-dim);
+      font-size: 0.95rem;
+    }
+
+    .loading .loading-text span {
+      animation: pulse 1.5s ease-in-out infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 0.5; }
+      50% { opacity: 1; }
+    }
+
+    /* Villain Card (result) */
+    .villain-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      overflow: hidden;
+      animation: cardReveal 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    @keyframes cardReveal {
+      from { opacity: 0; transform: scale(0.95) translateY(16px); }
+      to { opacity: 1; transform: scale(1) translateY(0); }
+    }
+
+    .villain-card .portrait {
+      width: 100%;
+      aspect-ratio: 1;
+      object-fit: cover;
+      display: block;
+      background: var(--border);
+    }
+
+    .villain-card .info {
+      padding: 20px;
+    }
+
+    .villain-card .villain-name {
+      font-size: 1.5rem;
+      font-weight: 800;
+      color: var(--text-bright);
+      margin-bottom: 4px;
+    }
+
+    .villain-card .threat {
+      font-size: 0.8rem;
+      color: var(--crimson);
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 16px;
+    }
+
+    .villain-card .origin {
+      color: var(--text);
+      line-height: 1.6;
+      margin-bottom: 16px;
+      font-size: 0.95rem;
+    }
+
+    .villain-card .stats {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+
+    .villain-card .stat {
+      background: rgba(139, 92, 246, 0.08);
+      border-radius: 10px;
+      padding: 12px;
+    }
+
+    .villain-card .stat-label {
+      font-size: 0.7rem;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 4px;
+    }
+
+    .villain-card .stat-value {
+      font-size: 0.9rem;
+      font-weight: 600;
+      color: var(--text-bright);
+    }
+
+    /* Share buttons */
+    .share-row {
+      display: flex;
+      gap: 8px;
+      margin-top: 16px;
+    }
+
+    .share-row .btn {
+      flex: 1;
+      padding: 10px;
+      font-size: 0.85rem;
+    }
+
+    .share-twitter { background: #1da1f2; color: white; }
+    .share-copy { background: var(--surface); border: 1px solid var(--border); color: var(--text); }
+
+    /* Gallery grid */
+    .gallery-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 12px;
+    }
+
+    .gallery-item {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+      cursor: pointer;
+      transition: all 0.2s;
+      animation: fadeIn 0.4s ease;
+    }
+
+    .gallery-item:hover {
+      border-color: var(--purple);
+      transform: translateY(-2px);
+      box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+    }
+
+    .gallery-item img {
+      width: 100%;
+      aspect-ratio: 1;
+      object-fit: cover;
+      display: block;
+      background: var(--border);
+    }
+
+    .gallery-item .gallery-info {
+      padding: 10px 12px;
+    }
+
+    .gallery-item .gallery-name {
+      font-weight: 700;
+      font-size: 0.85rem;
+      color: var(--text-bright);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .gallery-item .gallery-elo {
+      font-size: 0.75rem;
+      color: var(--gold);
+      font-weight: 600;
+    }
+
+    /* Vote matchup */
+    .matchup {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+
+    .matchup-card {
+      background: var(--surface);
+      border: 2px solid var(--border);
+      border-radius: 14px;
+      overflow: hidden;
+      cursor: pointer;
+      transition: all 0.25s;
+    }
+
+    .matchup-card:hover {
+      border-color: var(--purple);
+      transform: scale(1.02);
+    }
+
+    .matchup-card:active {
+      transform: scale(0.98);
+    }
+
+    .matchup-card img {
+      width: 100%;
+      aspect-ratio: 1;
+      object-fit: cover;
+      display: block;
+    }
+
+    .matchup-card .matchup-name {
+      padding: 10px 12px;
+      font-weight: 700;
+      font-size: 0.85rem;
+      text-align: center;
+      color: var(--text-bright);
+    }
+
+    .matchup-vs {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.5rem;
+      font-weight: 800;
+      color: var(--crimson);
+      grid-column: 1 / -1;
+      margin: -8px 0;
+      position: relative;
+      z-index: 2;
+    }
+
+    .matchup-prompt {
+      text-align: center;
+      color: var(--text-dim);
+      font-size: 0.9rem;
+      margin-bottom: 16px;
+    }
+
+    /* Leaderboard */
+    .leaderboard-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      margin-bottom: 8px;
+      animation: fadeIn 0.3s ease;
+    }
+
+    .leaderboard-rank {
+      font-size: 1.2rem;
+      font-weight: 800;
+      color: var(--text-dim);
+      min-width: 32px;
+      text-align: center;
+    }
+
+    .leaderboard-rank.gold { color: #f59e0b; }
+    .leaderboard-rank.silver { color: #94a3b8; }
+    .leaderboard-rank.bronze { color: #b45309; }
+
+    .leaderboard-avatar {
+      width: 48px;
+      height: 48px;
+      border-radius: 10px;
+      object-fit: cover;
+      background: var(--border);
+    }
+
+    .leaderboard-info { flex: 1; min-width: 0; }
+
+    .leaderboard-name {
+      font-weight: 700;
+      font-size: 0.9rem;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .leaderboard-power {
+      font-size: 0.75rem;
+      color: var(--text-dim);
+    }
+
+    .leaderboard-elo {
+      font-weight: 700;
+      color: var(--gold);
+      font-size: 0.9rem;
+    }
+
+    /* Footer */
+    footer {
+      text-align: center;
+      padding: 32px 0;
+      color: var(--text-dim);
+      font-size: 0.8rem;
+    }
+
+    footer a {
+      color: var(--purple);
+      text-decoration: none;
+    }
+
+    footer a:hover { text-decoration: underline; }
+
+    /* Villain detail overlay */
+    .overlay {
+      display: none;
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.85);
+      z-index: 100;
+      overflow-y: auto;
+      padding: 20px;
+      animation: fadeIn 0.2s ease;
+    }
+
+    .overlay.active { display: flex; justify-content: center; align-items: flex-start; }
+
+    .overlay-content {
+      max-width: 540px;
+      width: 100%;
+      margin: 20px auto;
+    }
+
+    .overlay-close {
+      position: sticky;
+      top: 0;
+      text-align: right;
+      margin-bottom: 8px;
+    }
+
+    .overlay-close button {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--text);
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      font-size: 1.2rem;
+      cursor: pointer;
+    }
+
+    /* Empty state */
+    .empty {
+      text-align: center;
+      padding: 48px 20px;
+      color: var(--text-dim);
+    }
+
+    .empty-emoji { font-size: 3rem; margin-bottom: 12px; }
+
+    /* Error message */
+    .error {
+      background: rgba(220, 38, 38, 0.1);
+      border: 1px solid rgba(220, 38, 38, 0.3);
+      color: #fca5a5;
+      padding: 12px 16px;
+      border-radius: 10px;
+      margin-bottom: 16px;
+      font-size: 0.9rem;
+    }
+
+    .create-another {
+      margin-top: 20px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>EvilMe</h1>
+      <p>What's YOUR villain origin story?</p>
+    </header>
+
+    <nav>
+      <button class="active" onclick="showSection('create')">Create</button>
+      <button onclick="showSection('vote')">Vote</button>
+      <button onclick="showSection('gallery')">Gallery</button>
+      <button onclick="showSection('leaderboard')">Top 20</button>
+    </nav>
+
+    <!-- Create Section -->
+    <div id="sec-create" class="section active">
+      <div id="create-form">
+        <div class="form-group">
+          <label>Your Name</label>
+          <input type="text" id="inp-name" placeholder="e.g. Tal" maxlength="50">
+        </div>
+        <div class="form-group">
+          <label>One Mundane Fact About You</label>
+          <input type="text" id="inp-fact" placeholder="e.g. I'm obsessed with mechanical keyboards" maxlength="200">
+          <div class="hint">The more specific, the funnier your villain will be</div>
+        </div>
+        <div class="form-group">
+          <label>Describe Your Appearance <span style="color:var(--text-dim);font-weight:400;text-transform:none">(optional)</span></label>
+          <textarea id="inp-appearance" placeholder="e.g. 50 year old Israeli with blue eyes, graying curly hair buzzed on the sides" maxlength="300"></textarea>
+          <div class="hint">Used for your manga villain portrait</div>
+        </div>
+        <div id="create-error"></div>
+        <button class="btn btn-primary" id="btn-generate" onclick="generate()">
+          Generate My Villain 😈
+        </button>
+      </div>
+
+      <div id="create-loading" class="loading" style="display:none">
+        <div class="spinner"></div>
+        <div class="loading-text">
+          <span>Crafting your villain origin story...</span>
+        </div>
+      </div>
+
+      <div id="create-result" style="display:none"></div>
+    </div>
+
+    <!-- Vote Section -->
+    <div id="sec-vote" class="section">
+      <p class="matchup-prompt">Who's the more menacing villain?</p>
+      <div id="vote-content"></div>
+    </div>
+
+    <!-- Gallery Section -->
+    <div id="sec-gallery" class="section">
+      <div id="gallery-content"></div>
+    </div>
+
+    <!-- Leaderboard Section -->
+    <div id="sec-leaderboard" class="section">
+      <div id="leaderboard-content"></div>
+    </div>
+
+    <footer>
+      Built with <a href="https://run402.com" target="_blank">Run402</a> — AI-native backends for agents
+    </footer>
+  </div>
+
+  <!-- Detail overlay -->
+  <div id="overlay" class="overlay" onclick="if(event.target===this)closeOverlay()">
+    <div class="overlay-content">
+      <div class="overlay-close"><button onclick="closeOverlay()">✕</button></div>
+      <div id="overlay-body"></div>
+    </div>
+  </div>
+
+  <script>
+    const API = "https://api.run402.com/functions/v1/evilme";
+    let APIKEY = "";
+
+    // Try to get apikey from URL or use a default
+    const params = new URLSearchParams(location.search);
+    APIKEY = params.get("key") || "";
+
+    // Routing
+    function showSection(name) {
+      document.querySelectorAll(".section").forEach(s => s.classList.remove("active"));
+      document.querySelectorAll("nav button").forEach(b => b.classList.remove("active"));
+      document.getElementById("sec-" + name).classList.add("active");
+      document.querySelectorAll("nav button").forEach(b => {
+        if (b.textContent.toLowerCase().includes(name.substring(0, 4))) b.classList.add("active");
+      });
+
+      if (name === "vote") loadMatchup();
+      if (name === "gallery") loadGallery();
+      if (name === "leaderboard") loadLeaderboard();
+    }
+
+    // Check hash for deep links
+    function checkHash() {
+      const hash = location.hash;
+      if (hash.startsWith("#/villain/")) {
+        const id = hash.replace("#/villain/", "");
+        showVillainDetail(id);
+      }
+    }
+    window.addEventListener("hashchange", checkHash);
+    window.addEventListener("load", checkHash);
+
+    // === Generate ===
+    async function generate() {
+      const name = document.getElementById("inp-name").value.trim();
+      const fact = document.getElementById("inp-fact").value.trim();
+      const appearance = document.getElementById("inp-appearance").value.trim();
+
+      if (!name || !fact) {
+        showError("create-error", "Please enter your name and a fun fact!");
+        return;
+      }
+
+      document.getElementById("create-form").style.display = "none";
+      document.getElementById("create-loading").style.display = "block";
+      document.getElementById("create-result").style.display = "none";
+      document.getElementById("create-error").innerHTML = "";
+
+      try {
+        const res = await apiFetch("/generate", {
+          method: "POST",
+          body: JSON.stringify({ name, fact, appearance }),
+        });
+
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.error || "Generation failed");
+        }
+
+        const villain = await res.json();
+        document.getElementById("create-loading").style.display = "none";
+        document.getElementById("create-result").style.display = "block";
+        document.getElementById("create-result").innerHTML = renderVillainCard(villain, true);
+      } catch (err) {
+        document.getElementById("create-loading").style.display = "none";
+        document.getElementById("create-form").style.display = "block";
+        showError("create-error", err.message);
+      }
+    }
+
+    function resetForm() {
+      document.getElementById("create-form").style.display = "block";
+      document.getElementById("create-result").style.display = "none";
+      document.getElementById("inp-name").value = "";
+      document.getElementById("inp-fact").value = "";
+      document.getElementById("inp-appearance").value = "";
+    }
+
+    // === Vote ===
+    let currentMatchup = null;
+
+    async function loadMatchup() {
+      const el = document.getElementById("vote-content");
+      try {
+        const res = await apiFetch("/matchup");
+        if (!res.ok) {
+          const err = await res.json();
+          el.innerHTML = `<div class="empty"><div class="empty-emoji">⚔️</div><p>${err.error || "Not enough villains yet. Create some first!"}</p></div>`;
+          return;
+        }
+        currentMatchup = await res.json();
+        el.innerHTML = renderMatchup(currentMatchup);
+      } catch {
+        el.innerHTML = `<div class="empty"><div class="empty-emoji">⚔️</div><p>Could not load matchup</p></div>`;
+      }
+    }
+
+    async function vote(winnerId, loserId) {
+      const el = document.getElementById("vote-content");
+      el.style.opacity = "0.5";
+      el.style.pointerEvents = "none";
+
+      try {
+        await apiFetch("/vote", {
+          method: "POST",
+          body: JSON.stringify({ winner_id: winnerId, loser_id: loserId }),
+        });
+      } catch {}
+
+      // Load next matchup
+      setTimeout(() => {
+        el.style.opacity = "1";
+        el.style.pointerEvents = "auto";
+        loadMatchup();
+      }, 300);
+    }
+
+    // === Gallery ===
+    let galleryPage = 1;
+
+    async function loadGallery(page = 1) {
+      galleryPage = page;
+      const el = document.getElementById("gallery-content");
+      try {
+        const res = await apiFetch(`/gallery?page=${page}`);
+        const data = await res.json();
+
+        if (!data.villains?.length) {
+          el.innerHTML = `<div class="empty"><div class="empty-emoji">😈</div><p>No villains yet. Be the first!</p></div>`;
+          return;
+        }
+
+        let html = '<div class="gallery-grid">';
+        for (const v of data.villains) {
+          html += `
+            <div class="gallery-item" onclick="showVillainDetail(${v.id})">
+              ${v.image_url ? `<img src="${escHtml(v.image_url)}" alt="${escHtml(v.villain_name)}" loading="lazy">` : ''}
+              <div class="gallery-info">
+                <div class="gallery-name">${escHtml(v.villain_name)}</div>
+                <div class="gallery-elo">⚡ ${v.elo_rating}</div>
+              </div>
+            </div>
+          `;
+        }
+        html += '</div>';
+
+        if (data.pages > 1) {
+          html += '<div style="display:flex;justify-content:center;gap:8px;margin-top:16px">';
+          if (page > 1) html += `<button class="btn btn-outline" onclick="loadGallery(${page - 1})">← Prev</button>`;
+          html += `<span style="padding:10px;color:var(--text-dim)">${page} / ${data.pages}</span>`;
+          if (page < data.pages) html += `<button class="btn btn-outline" onclick="loadGallery(${page + 1})">Next →</button>`;
+          html += '</div>';
+        }
+
+        el.innerHTML = html;
+      } catch {
+        el.innerHTML = `<div class="empty"><div class="empty-emoji">💀</div><p>Could not load gallery</p></div>`;
+      }
+    }
+
+    // === Leaderboard ===
+    async function loadLeaderboard() {
+      const el = document.getElementById("leaderboard-content");
+      try {
+        const res = await apiFetch("/leaderboard");
+        const data = await res.json();
+
+        if (!data.leaderboard?.length) {
+          el.innerHTML = `<div class="empty"><div class="empty-emoji">🏆</div><p>No villains ranked yet!</p></div>`;
+          return;
+        }
+
+        let html = "";
+        data.leaderboard.forEach((v, i) => {
+          const rankClass = i === 0 ? "gold" : i === 1 ? "silver" : i === 2 ? "bronze" : "";
+          html += `
+            <div class="leaderboard-item" onclick="showVillainDetail(${v.id})" style="cursor:pointer">
+              <div class="leaderboard-rank ${rankClass}">${i + 1}</div>
+              ${v.image_url ? `<img class="leaderboard-avatar" src="${escHtml(v.image_url)}" alt="" loading="lazy">` : '<div class="leaderboard-avatar"></div>'}
+              <div class="leaderboard-info">
+                <div class="leaderboard-name">${escHtml(v.villain_name)}</div>
+                <div class="leaderboard-power">${escHtml(v.evil_power)}</div>
+              </div>
+              <div class="leaderboard-elo">${v.elo_rating}</div>
+            </div>
+          `;
+        });
+
+        el.innerHTML = html;
+      } catch {
+        el.innerHTML = `<div class="empty"><div class="empty-emoji">🏆</div><p>Could not load leaderboard</p></div>`;
+      }
+    }
+
+    // === Villain Detail ===
+    async function showVillainDetail(id) {
+      const overlay = document.getElementById("overlay");
+      const body = document.getElementById("overlay-body");
+      overlay.classList.add("active");
+
+      body.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+
+      try {
+        const res = await apiFetch(`/villain/${id}`);
+        const villain = await res.json();
+        body.innerHTML = renderVillainCard(villain, false);
+        location.hash = `/villain/${id}`;
+      } catch {
+        body.innerHTML = '<div class="empty"><p>Could not load villain</p></div>';
+      }
+    }
+
+    function closeOverlay() {
+      document.getElementById("overlay").classList.remove("active");
+      history.replaceState(null, "", location.pathname + location.search);
+    }
+
+    // === Renderers ===
+    function renderVillainCard(v, showCreateAnother) {
+      const shareText = encodeURIComponent(`I just discovered my villain alter ego: ${v.villain_name}! "${v.evil_catchphrase}" 😈\n\nCreate yours:`);
+      const shareUrl = encodeURIComponent(v.share_url || `https://evilme.run402.com/#/villain/${v.id}`);
+
+      return `
+        <div class="villain-card">
+          ${v.image_url ? `<img class="portrait" src="${escHtml(v.image_url)}" alt="${escHtml(v.villain_name)}">` : ''}
+          <div class="info">
+            <div class="villain-name">${escHtml(v.villain_name)}</div>
+            <div class="threat">☠️ Threat Level: ${escHtml(v.threat_level)}</div>
+            <div class="origin">${escHtml(v.origin_story)}</div>
+            <div class="stats">
+              <div class="stat">
+                <div class="stat-label">Evil Power</div>
+                <div class="stat-value">${escHtml(v.evil_power)}</div>
+              </div>
+              <div class="stat">
+                <div class="stat-label">Weakness</div>
+                <div class="stat-value">${escHtml(v.weakness)}</div>
+              </div>
+            </div>
+            <div style="background:rgba(139,92,246,0.1);border-radius:10px;padding:14px;text-align:center;font-style:italic;color:var(--text-bright);font-size:1.05rem;margin-bottom:16px">
+              "${escHtml(v.evil_catchphrase)}"
+            </div>
+            <div class="share-row">
+              <button class="btn share-twitter" onclick="window.open('https://twitter.com/intent/tweet?text=${shareText}&url=${shareUrl}','_blank')">
+                Share on X
+              </button>
+              <button class="btn share-copy" onclick="copyLink('${v.share_url || `https://evilme.run402.com/#/villain/${v.id}`}', this)">
+                Copy Link
+              </button>
+            </div>
+            ${showCreateAnother ? `
+              <div class="create-another">
+                <button class="btn btn-outline" onclick="resetForm()" style="width:100%">
+                  Create Another Villain
+                </button>
+              </div>
+            ` : ''}
+          </div>
+        </div>
+      `;
+    }
+
+    function renderMatchup(m) {
+      return `
+        <div class="matchup">
+          <div class="matchup-card" onclick="vote(${m.villain_a.id}, ${m.villain_b.id})">
+            ${m.villain_a.image_url ? `<img src="${escHtml(m.villain_a.image_url)}" alt="">` : ''}
+            <div class="matchup-name">${escHtml(m.villain_a.villain_name)}</div>
+          </div>
+          <div class="matchup-card" onclick="vote(${m.villain_b.id}, ${m.villain_a.id})">
+            ${m.villain_b.image_url ? `<img src="${escHtml(m.villain_b.image_url)}" alt="">` : ''}
+            <div class="matchup-name">${escHtml(m.villain_b.villain_name)}</div>
+          </div>
+        </div>
+        <p style="text-align:center;color:var(--text-dim);font-size:0.85rem">Tap the more menacing villain</p>
+      `;
+    }
+
+    // === Helpers ===
+    async function apiFetch(path, opts = {}) {
+      const headers = { "Content-Type": "application/json" };
+      if (APIKEY) headers["apikey"] = APIKEY;
+      return fetch(API + path, { ...opts, headers: { ...headers, ...(opts.headers || {}) } });
+    }
+
+    function showError(containerId, msg) {
+      document.getElementById(containerId).innerHTML = `<div class="error">${escHtml(msg)}</div>`;
+    }
+
+    function escHtml(s) {
+      if (!s) return "";
+      return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+    }
+
+    function copyLink(url, btn) {
+      navigator.clipboard.writeText(url).then(() => {
+        const orig = btn.textContent;
+        btn.textContent = "Copied!";
+        setTimeout(() => btn.textContent = orig, 1500);
+      });
+    }
+  </script>
+</body>
+</html>
