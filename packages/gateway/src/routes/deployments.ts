@@ -12,6 +12,16 @@ import { asyncHandler, HttpError } from "../utils/async-handler.js";
 
 const router = Router();
 
+// GET /v1/deployments — info (enables `purl inspect` on the x402-gated POST route)
+router.get("/v1/deployments", (_req: Request, res: Response) => {
+  res.json({
+    description: "Deploy a static site — Vercel-compatible inlined file upload",
+    price: "$0.05 USDC",
+    method: "POST",
+    body: { name: "string (required)", project: "string (optional project ID)", files: "[{ file, data, encoding? }]" },
+  });
+});
+
 // POST /v1/deployments — create a deployment
 router.post("/v1/deployments", asyncHandler(async (req: Request, res: Response) => {
   const { name, project, target, files } = req.body || {};

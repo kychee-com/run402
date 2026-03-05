@@ -10,8 +10,9 @@ import { asyncHandler, HttpError } from "../utils/async-handler.js";
 
 const router = Router();
 
-// POST /v1/projects/quote — return tier pricing (free, no auth)
-router.post("/v1/projects/quote", (_req: Request, res: Response) => {
+// GET/POST /v1/projects/quote — return tier pricing (free, no auth)
+// GET /v1/projects — same (enables `purl inspect` on the x402-gated POST route)
+function handleQuote(_req: Request, res: Response): void {
   const tiers: Record<string, { price: string; lease_days: number; storage_mb: number; api_calls: number }> = {};
   for (const [name, config] of Object.entries(TIERS)) {
     tiers[name] = {
@@ -22,7 +23,9 @@ router.post("/v1/projects/quote", (_req: Request, res: Response) => {
     };
   }
   res.json({ tiers });
-});
+}
+router.get("/v1/projects", handleQuote);
+router.post("/v1/projects/quote", handleQuote);
 
 // POST /v1/projects — create project (x402-gated)
 router.post("/v1/projects", asyncHandler(async (req: Request, res: Response) => {

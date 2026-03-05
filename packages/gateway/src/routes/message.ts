@@ -3,6 +3,15 @@ import { notifyMessage } from "../services/telegram.js";
 
 const router = Router();
 
+router.get("/v1/message", (_req: Request, res: Response) => {
+  res.json({
+    description: "Send a message to Run402 developers",
+    price: "$0.01 USDC",
+    method: "POST",
+    body: { message: "string (required)" },
+  });
+});
+
 router.post("/v1/message", (req: Request, res: Response) => {
   const { message } = req.body || {};
   if (!message || typeof message !== "string" || !message.trim()) {
