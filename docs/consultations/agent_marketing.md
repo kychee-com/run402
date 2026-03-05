@@ -81,7 +81,7 @@ Concrete seeding assets:
   - "Devin/Claude Code project template with Run402"
 - PR into existing lists:
   - "awesome-agent-tools"
-  - "awesome-mcp-servers"
+  - "awesome-mcp-servers" ✅ PR open: https://github.com/punkpeye/awesome-mcp-servers/pull/2760
   - "awesome-x402" (if it exists; if not, create it—directories *are* distribution)
 
 ## 5) Make x402 a distribution channel (not just a payment rail)
