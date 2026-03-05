@@ -968,12 +968,12 @@ Same as regular deployments:
 
 ## MCP Server (Recommended for AI Agents)
 
-If you're running inside Claude Desktop, Cursor, Cline, Claude Code, or any MCP-compatible client, use the `@run402/mcp` server instead of calling the HTTP API directly. It handles credential storage, 402 payment negotiation, and response formatting automatically.
+If you're running inside Claude Desktop, Cursor, Cline, Claude Code, or any MCP-compatible client, use the `run402-mcp` server instead of calling the HTTP API directly. It handles credential storage, 402 payment negotiation, and response formatting automatically.
 
 ### Install
 
 ```bash
-npx @run402/mcp
+npx run402-mcp
 ```
 
 ### Client Configuration
@@ -984,7 +984,7 @@ npx @run402/mcp
   "mcpServers": {
     "run402": {
       "command": "npx",
-      "args": ["-y", "@run402/mcp"]
+      "args": ["-y", "run402-mcp"]
     }
   }
 }
@@ -996,7 +996,7 @@ npx @run402/mcp
   "mcpServers": {
     "run402": {
       "command": "npx",
-      "args": ["-y", "@run402/mcp"]
+      "args": ["-y", "run402-mcp"]
     }
   }
 }
@@ -1004,7 +1004,7 @@ npx @run402/mcp
 
 **Claude Code**:
 ```bash
-claude mcp add run402 -- npx -y @run402/mcp
+claude mcp add run402 -- npx -y run402-mcp
 ```
 
 ### MCP Tools
@@ -1062,7 +1062,7 @@ When provisioning or renewing requires payment, MCP tools return payment details
 
 ## OpenClaw Skill
 
-If you're running inside an OpenClaw agent, install the Run402 skill from ClawHub. It wraps the `@run402/mcp` server above and teaches your agent how to provision databases, manage data, handle x402 payments, and guide users through wallet setup.
+If you're running inside an OpenClaw agent, install the Run402 skill from ClawHub. It wraps the `run402-mcp` server above and teaches your agent how to provision databases, manage data, handle x402 payments, and guide users through wallet setup.
 
 ### Install
 
@@ -1072,7 +1072,7 @@ clawhub install run402
 
 ### What You Get
 
-The skill installs the `@run402/mcp` MCP server and provides your agent with:
+The skill installs the `run402-mcp` MCP server and provides your agent with:
 - All 6 MCP tools: `provision_postgres_project`, `run_sql`, `rest_query`, `upload_file`, `renew_project`, `deploy_site`
 - Credential storage in `~/.config/run402/projects.json`
 - x402 payment negotiation and user guidance

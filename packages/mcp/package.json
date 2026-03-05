@@ -1,5 +1,5 @@
 {
-  "name": "@run402/mcp",
+  "name": "run402-mcp",
   "version": "0.1.0",
   "description": "MCP server for Run402 — AI-native Postgres databases with REST API, auth, storage, and row-level security. Pay with x402 USDC micropayments.",
   "type": "module",

@@ -49,12 +49,12 @@ describe("frontmatter", () => {
     assert.deepEqual(frontmatter.metadata.openclaw.requires.bins, ["npx"]);
   });
 
-  it("has node install spec for @run402/mcp", () => {
+  it("has node install spec for run402-mcp", () => {
     const install = frontmatter.metadata.openclaw.install;
     assert.ok(Array.isArray(install), "install must be an array");
     assert.equal(install.length, 1);
     assert.equal(install[0].kind, "node");
-    assert.equal(install[0].package, "@run402/mcp");
+    assert.equal(install[0].package, "run402-mcp");
     assert.ok(
       install[0].bins.includes("run402-mcp"),
       "bins must include run402-mcp",

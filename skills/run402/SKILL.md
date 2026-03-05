@@ -10,7 +10,7 @@ metadata:
         - npx
     install:
       - kind: node
-        package: "@run402/mcp"
+        package: "run402-mcp"
         bins: [run402-mcp]
     primaryEnv: RUN402_API_BASE
 ---
@@ -23,7 +23,7 @@ One tool call. One payment. You get back `anon_key`, `service_key`, and a projec
 
 ## Tools Reference
 
-You have 10 tools available through the `@run402/mcp` server.
+You have 10 tools available through the `run402-mcp` server.
 
 ### provision_postgres_project
 
@@ -381,5 +381,5 @@ To pay Run402, the user needs a crypto wallet with USDC on Base. If they don't h
 
 - **Full API docs:** https://run402.com/llms.txt
 - **API health:** https://api.run402.com/health
-- **MCP package:** https://www.npmjs.com/package/@run402/mcp
+- **MCP package:** https://www.npmjs.com/package/run402-mcp
 - **Homepage:** https://run402.com

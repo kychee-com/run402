@@ -1,11 +1,11 @@
-# @run402/mcp
+# run402-mcp
 
 MCP server for [Run402](https://run402.com) — provision and manage AI-native Postgres databases from any MCP-compatible client.
 
 ## Quick Start
 
 ```bash
-npx @run402/mcp
+npx run402-mcp
 ```
 
 ## Tools
@@ -29,7 +29,7 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
   "mcpServers": {
     "run402": {
       "command": "npx",
-      "args": ["-y", "@run402/mcp"]
+      "args": ["-y", "run402-mcp"]
     }
   }
 }
@@ -44,7 +44,7 @@ Add to `.cursor/mcp.json` in your project:
   "mcpServers": {
     "run402": {
       "command": "npx",
-      "args": ["-y", "@run402/mcp"]
+      "args": ["-y", "run402-mcp"]
     }
   }
 }
@@ -59,7 +59,7 @@ Add to Cline MCP settings:
   "mcpServers": {
     "run402": {
       "command": "npx",
-      "args": ["-y", "@run402/mcp"]
+      "args": ["-y", "run402-mcp"]
     }
   }
 }
@@ -68,7 +68,7 @@ Add to Cline MCP settings:
 ### Claude Code
 
 ```bash
-claude mcp add run402 -- npx -y @run402/mcp
+claude mcp add run402 -- npx -y run402-mcp
 ```
 
 ## How It Works
