@@ -2,7 +2,7 @@ import { Router, Request, Response } from "express";
 import { isAddress } from "viem";
 import { sendDrip } from "../services/faucet.js";
 import { serviceKeyAuth } from "../middleware/apikey.js";
-import { FAUCET_TREASURY_KEY, FAUCET_DRIP_AMOUNT, FAUCET_DRIP_COOLDOWN } from "../config.js";
+import { FAUCET_TREASURY_KEY, FAUCET_DRIP_AMOUNT, FAUCET_DRIP_COOLDOWN, ADMIN_KEY } from "../config.js";
 import { hasCode } from "../utils/errors.js";
 import { asyncHandler, HttpError } from "../utils/async-handler.js";
 
@@ -55,8 +55,13 @@ router.post("/v1/faucet", asyncHandler(async (req: Request, res: Response) => {
   }
 }));
 
-// POST /admin/v1/faucet — admin drip (no rate limit, custom amount)
+// POST /admin/v1/faucet — admin drip (no rate limit, custom amount, admin only)
 router.post("/admin/v1/faucet", serviceKeyAuth, asyncHandler(async (req: Request, res: Response) => {
+  const adminKey = req.headers["x-admin-key"] as string | undefined;
+  if (!ADMIN_KEY || adminKey !== ADMIN_KEY) {
+    throw new HttpError(403, "Requires platform admin key");
+  }
+
   if (!FAUCET_TREASURY_KEY) {
     throw new HttpError(503, "Faucet not configured");
   }
