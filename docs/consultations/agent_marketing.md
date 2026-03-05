@@ -12,31 +12,22 @@ Agents don't "discover" things the way humans do. An OpenClaw (or Cursor/Claude 
 
 So "marketing to agents" is really: **get into agent tool catalogs + win agent web-search + seed the corpora agents retrieve from.**
 
-## 1) The highest-leverage move: become a first-class OpenClaw skill
+## 1) The highest-leverage move: become a first-class OpenClaw skill ✅
 If you want "all OpenClaws" to find you, the closest thing to a distribution firehose is: **Run402 ships as an OpenClaw skill** (and ideally is *recommended* / *bundled*).
 
-What to build:
-- A `run402` OpenClaw skill that exposes 3–6 *high-level* tools (agents hate low-level APIs):
-  - `provision_postgres_project(tier)`
-  - `run_sql(project_id, sql)`
-  - `rest_query(project_id, method, path, body)`
-  - `upload_file(project_id, bucket, path, bytes)`
-  - `renew_project(project_id, tier)`
-- The skill should implement a **wallet/funds precheck** and return a structured "needs allowance" object when empty, e.g.:
-  - `needed_usdc`, `chain=base`, `reason`, `human_script`, `funding_link`, `docs=https://run402.com/llms.txt`
+✅ **Done**: OpenClaw skill defined in `SKILL.md` at https://github.com/kychee-com/run402-mcp — 10 high-level tools, wallet/funds precheck, x402 payment negotiation.
 
 Distribution tactic:
 - Publish it wherever OpenClaw indexes skills.
 - PR into OpenClaw's docs/examples: "Persistent memory backend: Run402".
 - If OpenClaw has a "default skills" list, fight to be included there (that's how you reach *all* OpenClaws, not just the ones whose humans go shopping).
 
-## 2) Ship an MCP server and list it in MCP directories (reaches *many* agent runtimes)
+## 2) Ship an MCP server and list it in MCP directories (reaches *many* agent runtimes) ✅
 MCP is rapidly becoming the "plugin layer" for agents. If Run402 has an MCP server, you show up in the places agents (and their humans) already look for capabilities.
 
-What to ship:
-- `run402-mcp` with the same high-level tools as above
-- One-line install/run:
-  - `npx @run402/mcp` (Node) and/or `uvx run402-mcp` (Python) and/or Docker
+✅ **Done**: `run402-mcp@0.1.1` published to npm — https://github.com/kychee-com/run402-mcp
+- `npx run402-mcp` one-line install/run
+- 10 tools: provision, sql, rest, storage, auth, deploy, functions, secrets, faucet, usage
 
 Where discovery happens:
 - MCP server directories + GitHub "awesome-mcp-servers" lists (these are *exactly* what agents and agent-builders retrieve/search)
