@@ -11,6 +11,8 @@ From GPT-5.2 Pro consultation (2026-02-27) on improving agent trust and adoption
 - [x] Fix lifecycle mismatch: LEASE_DELETE_PERIOD 30d → 37d (7d grace + 30d archive)
 - [x] Require service_key auth on DELETE /v1/projects/:id
 - [x] Static site hosting: Vercel-compatible POST /v1/deployments, CloudFront + S3 serving, SPA fallback, deploy_site MCP tool
+- [x] MCP server: published as `run402-mcp` on npm (provision, run_sql, rest_query, upload_file, renew_project). Works with Claude Desktop, Cursor, Cline, Claude Code. https://github.com/kychee-com/run402-mcp
+- [x] Directory listings: listed on npm, GitHub MCP registry
 
 ## Pending
 
@@ -28,18 +30,15 @@ Bind project ownership to payer wallet address. Allow key recovery/rotation via 
 ### Split wallet setup into separate doc
 Move "Wallet Setup (OpenClaw)" and "Ask Your Human for an Allowance" sections from llms.txt into a separate document (e.g. `/wallets.txt`). Keep llms.txt focused on evaluation, integration, and security.
 
-### Ship OpenAPI spec and/or MCP server
-Publish an OpenAPI spec at `/openapi.json` for machine-readable API discovery. Consider building an MCP server (run402-mcp) for Cursor/Claude Desktop integration, and/or an OpenClaw skill. Reduces integration from "read docs + implement" to "install and call."
+### Ship OpenAPI spec
+Publish an OpenAPI spec at `/openapi.json` for machine-readable API discovery.
 
 ### Publish a real status page
 Set up status.run402.com (or similar) with uptime tracking over 30/90 days, incident log, and planned maintenance. `/health` is not a status page. Agents evaluate "battle-tested" by looking for measurable uptime artifacts.
 
 
-Add an API - send message to developers
 Have a Run402 agent that does pre-sale, post-sale, CS, customer success, proactive monitoring...
 OpenClaw Skill
 Have Claude TRY the different apps
-Free Tier (with a wallet and testnet)
-Split the front page between humans and agents
 CI CD for everything (add --manual flag to deployment scripts, as the main deployment needs to happen via push)
-Buy run402 credits via Stripe!
+Offer generous subdomains (cool-name.run402.com)

@@ -5,6 +5,7 @@
  *   POST /generate  — create a villain (name, fact, appearance)
  *   GET  /gallery   — public gallery (top villains by Elo)
  *   GET  /villain/:id — single villain
+ *   GET  /villain/:id/image — just the image_url for one villain
  *   GET  /matchup   — random pair for voting
  *   POST /vote      — submit vote (winner_id, loser_id)
  *   GET  /leaderboard — top 20 by Elo
@@ -12,8 +13,12 @@
 
 import { db } from "@run402/functions";
 import OpenAI from "openai";
+import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const s3 = new S3Client({ region: "us-east-1" });
+const S3_BUCKET = "agentdb-storage-472210437512";
+const IMAGE_CDN = "https://evilme-images.sites.run402.com";
 
 // Style suffix — kept minimal so character details dominate
 const MANGA_STYLE_SUFFIX = `Manga art style with bold ink lines. Dramatic lighting. Half-body portrait. No text in image.`;
@@ -37,6 +42,10 @@ export default async (req) => {
     }
     if (method === "GET" && path === "/gallery") {
       return await handleGallery(url);
+    }
+    if (method === "GET" && path.match(/^\/villain\/\d+\/image$/)) {
+      const id = path.split("/")[2];
+      return await handleVillainImage(id);
     }
     if (method === "GET" && path.startsWith("/villain/")) {
       const id = path.replace("/villain/", "");
@@ -62,6 +71,26 @@ export default async (req) => {
 // === Handlers ===
 
 async function handleGenerate(req) {
+  // Auth: require Bearer token with "authenticated" role
+  const authHeader = req.headers.get("authorization");
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    return json({ error: "Login required to generate a villain" }, 401);
+  }
+
+  let jwtPayload;
+  try {
+    const token = authHeader.split(" ")[1];
+    jwtPayload = JSON.parse(atob(token.split(".")[1]));
+  } catch {
+    return json({ error: "Login required to generate a villain" }, 401);
+  }
+
+  if (jwtPayload.role !== "authenticated") {
+    return json({ error: "Login required to generate a villain" }, 401);
+  }
+
+  const userId = jwtPayload.sub;
+
   const body = await req.json();
   const { name, fact, appearance } = body;
 
@@ -69,11 +98,10 @@ async function handleGenerate(req) {
     return json({ error: "Name and fact are required" }, 400);
   }
 
-  // Rate limit: 3 per day per IP (stored in DB)
-  const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+  // Rate limit: 3 per day per user
   const rateCheck = await db.sql(
     `SELECT count(*)::int AS cnt FROM villains
-     WHERE creator_ip = '${ip.replace(/'/g, "''")}'
+     WHERE creator_ip = '${esc(userId)}'
      AND created_at > now() - interval '24 hours'`
   );
   if (rateCheck.rows?.[0]?.cnt >= 3) {
@@ -156,11 +184,42 @@ ${MANGA_STYLE_SUFFIX}`;
   // Store in DB
   const insertResult = await db.sql(
     `INSERT INTO villains (name, real_name, fact, appearance, villain_name, origin_story, evil_catchphrase, weakness, evil_power, threat_level, image_url, creator_ip, elo_rating)
-     VALUES ('${esc(name)}', '${esc(name)}', '${esc(fact)}', '${esc(appearance || "")}', '${esc(villain.villain_name)}', '${esc(villain.origin_story)}', '${esc(villain.evil_catchphrase)}', '${esc(villain.weakness)}', '${esc(villain.evil_power)}', '${esc(villain.threat_level)}', '${esc(imageUrl)}', '${esc(ip)}', 1200)
+     VALUES ('${esc(name)}', '${esc(name)}', '${esc(fact)}', '${esc(appearance || "")}', '${esc(villain.villain_name)}', '${esc(villain.origin_story)}', '${esc(villain.evil_catchphrase)}', '${esc(villain.weakness)}', '${esc(villain.evil_power)}', '${esc(villain.threat_level)}', '${esc(imageUrl)}', '${esc(userId)}', 1200)
      RETURNING id, villain_name, origin_story, evil_catchphrase, weakness, evil_power, threat_level, image_url, created_at`
   );
 
   const row = insertResult.rows[0];
+
+  // Upload image + OG card to S3 for public sharing on X
+  let publicImageUrl = row.image_url;
+  let shareUrl = `https://evilme.run402.com/#/villain/${row.id}`;
+
+  if (row.image_url && row.image_url.startsWith("data:image/png;base64,")) {
+    try {
+      const b64 = row.image_url.replace("data:image/png;base64,", "");
+      await s3.send(new PutObjectCommand({
+        Bucket: S3_BUCKET,
+        Key: `sites/evilme_images/${row.id}.png`,
+        Body: Buffer.from(b64, "base64"),
+        ContentType: "image/png",
+      }));
+      publicImageUrl = `${IMAGE_CDN}/${row.id}.png`;
+
+      await s3.send(new PutObjectCommand({
+        Bucket: S3_BUCKET,
+        Key: `sites/evilme_images/card/${row.id}.html`,
+        Body: buildCardHtml(row, publicImageUrl),
+        ContentType: "text/html",
+      }));
+      shareUrl = `${IMAGE_CDN}/card/${row.id}.html`;
+
+      // Update DB with public URL (smaller than base64, fixes gallery too)
+      await db.sql(`UPDATE villains SET image_url = '${esc(publicImageUrl)}' WHERE id = ${row.id}`);
+    } catch (s3Err) {
+      console.error("S3 upload failed:", s3Err.message);
+    }
+  }
+
   return json({
     id: row.id,
     villain_name: row.villain_name,
@@ -169,8 +228,8 @@ ${MANGA_STYLE_SUFFIX}`;
     weakness: row.weakness,
     evil_power: row.evil_power,
     threat_level: row.threat_level,
-    image_url: row.image_url,
-    share_url: `https://evilme.run402.com/#/villain/${row.id}`,
+    image_url: publicImageUrl,
+    share_url: shareUrl,
   });
 }
 
@@ -180,7 +239,7 @@ async function handleGallery(url) {
   const offset = (page - 1) * limit;
 
   const result = await db.sql(
-    `SELECT id, villain_name, origin_story, evil_catchphrase, weakness, evil_power, threat_level, image_url, elo_rating, created_at
+    `SELECT id, villain_name, origin_story, evil_catchphrase, weakness, evil_power, threat_level, elo_rating, created_at
      FROM villains ORDER BY elo_rating DESC, created_at DESC LIMIT ${limit} OFFSET ${offset}`
   );
 
@@ -205,10 +264,20 @@ async function handleGetVillain(id) {
   return json(result.rows[0]);
 }
 
+async function handleVillainImage(id) {
+  const result = await db.sql(
+    `SELECT image_url FROM villains WHERE id = ${parseInt(id)}`
+  );
+  if (!result.rows?.length) {
+    return json({ error: "Villain not found" }, 404);
+  }
+  return json({ image_url: result.rows[0].image_url });
+}
+
 async function handleMatchup() {
   // Get 2 random villains with images
   const result = await db.sql(
-    `SELECT id, villain_name, evil_power, threat_level, image_url, elo_rating
+    `SELECT id, villain_name, evil_power, threat_level, elo_rating
      FROM villains WHERE image_url != ''
      ORDER BY random() LIMIT 2`
   );
@@ -254,7 +323,7 @@ async function handleVote(req) {
 
 async function handleLeaderboard() {
   const result = await db.sql(
-    `SELECT id, villain_name, evil_power, threat_level, image_url, elo_rating
+    `SELECT id, villain_name, evil_power, threat_level, elo_rating
      FROM villains ORDER BY elo_rating DESC LIMIT 20`
   );
   return json({ leaderboard: result.rows });
@@ -282,4 +351,32 @@ function corsHeaders() {
 
 function esc(s) {
   return (s || "").replace(/'/g, "''");
+}
+
+function escHtml(s) {
+  return (s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+function buildCardHtml(villain, imageUrl) {
+  const name = escHtml(villain.villain_name);
+  const catchphrase = escHtml(villain.evil_catchphrase);
+  const story = escHtml(villain.origin_story);
+  const spaUrl = `https://evilme.run402.com/#/villain/${villain.id}`;
+  return `<!DOCTYPE html>
+<html><head>
+<meta charset="UTF-8">
+<title>${name} — EvilMe</title>
+<meta property="og:title" content="${name}">
+<meta property="og:description" content="&quot;${catchphrase}&quot;">
+<meta property="og:image" content="${imageUrl}">
+<meta property="og:url" content="${spaUrl}">
+<meta property="og:type" content="website">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="${name} — EvilMe">
+<meta name="twitter:description" content="&quot;${catchphrase}&quot;">
+<meta name="twitter:image" content="${imageUrl}">
+<meta http-equiv="refresh" content="0;url=${spaUrl}">
+</head>
+<body><p>Redirecting to <a href="${spaUrl}">${name}</a>...</p></body>
+</html>`;
 }

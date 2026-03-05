@@ -594,11 +594,113 @@
     .create-another {
       margin-top: 20px;
     }
+
+    /* Auth modal */
+    .auth-modal-overlay {
+      display: none;
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.85);
+      z-index: 200;
+      justify-content: center;
+      align-items: center;
+      animation: fadeIn 0.2s ease;
+    }
+
+    .auth-modal-overlay.active { display: flex; }
+
+    .auth-modal {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 28px 24px;
+      max-width: 380px;
+      width: 90%;
+    }
+
+    .auth-modal h2 {
+      text-align: center;
+      margin-bottom: 20px;
+      font-size: 1.3rem;
+    }
+
+    .auth-tabs {
+      display: flex;
+      gap: 4px;
+      margin-bottom: 20px;
+      background: var(--bg);
+      border-radius: 8px;
+      padding: 3px;
+    }
+
+    .auth-tabs button {
+      flex: 1;
+      padding: 8px;
+      background: transparent;
+      border: none;
+      color: var(--text-dim);
+      font-size: 0.85rem;
+      font-weight: 600;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+
+    .auth-tabs button.active {
+      background: var(--purple);
+      color: white;
+    }
+
+    .auth-modal .form-group { margin-bottom: 12px; }
+
+    .auth-modal .form-group input {
+      width: 100%;
+      padding: 10px 12px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      font-size: 0.95rem;
+      font-family: inherit;
+      outline: none;
+    }
+
+    .auth-modal .form-group input:focus {
+      border-color: var(--purple);
+    }
+
+    .auth-error {
+      color: #fca5a5;
+      font-size: 0.85rem;
+      margin-bottom: 12px;
+      text-align: center;
+    }
+
+    .auth-header-bar {
+      display: flex;
+      justify-content: flex-end;
+      align-items: center;
+      gap: 12px;
+      min-height: 28px;
+      font-size: 0.85rem;
+    }
+
+    .auth-header-bar .user-email {
+      color: var(--text-dim);
+    }
+
+    .auth-header-bar a {
+      color: var(--purple);
+      cursor: pointer;
+      text-decoration: none;
+    }
+
+    .auth-header-bar a:hover { text-decoration: underline; }
   </style>
 </head>
 <body>
   <div class="container">
     <header>
+      <div id="auth-header" class="auth-header-bar"></div>
       <h1>EvilMe</h1>
       <p>What's YOUR villain origin story?</p>
     </header>
@@ -612,6 +714,13 @@
 
     <!-- Create Section -->
     <div id="sec-create" class="section active">
+      <div id="create-login-prompt" style="display:none">
+        <div class="empty">
+          <div class="empty-emoji">😈</div>
+          <p style="margin-bottom:16px">Sign in to create your villain</p>
+          <button class="btn btn-primary" onclick="openAuthModal()" style="max-width:280px;margin:0 auto">Sign In</button>
+        </div>
+      </div>
       <div id="create-form">
         <div class="form-group">
           <label>Your Name</label>
@@ -672,6 +781,25 @@
     </div>
   </div>
 
+  <!-- Auth modal -->
+  <div id="auth-modal" class="auth-modal-overlay" onclick="if(event.target===this)closeAuthModal()">
+    <div class="auth-modal">
+      <h2>Welcome</h2>
+      <div class="auth-tabs">
+        <button id="tab-login" class="active" onclick="switchAuthTab('login')">Log In</button>
+        <button id="tab-signup" onclick="switchAuthTab('signup')">Sign Up</button>
+      </div>
+      <div id="auth-error" class="auth-error" style="display:none"></div>
+      <div class="form-group">
+        <input type="email" id="auth-email" placeholder="Email">
+      </div>
+      <div class="form-group">
+        <input type="password" id="auth-password" placeholder="Password" onkeydown="if(event.key==='Enter')submitAuth()">
+      </div>
+      <button class="btn btn-primary" id="btn-auth" onclick="submitAuth()">Log In</button>
+    </div>
+  </div>
+
   <script>
     const API = "https://api.run402.com/functions/v1/evilme";
     let APIKEY = "";
@@ -679,6 +807,163 @@
     // Try to get apikey from URL or use a default
     const params = new URLSearchParams(location.search);
     APIKEY = params.get("key") || "";
+
+    const AUTH_URL = "https://api.run402.com/auth/v1";
+    let currentUser = null;
+    let accessToken = null;
+
+    // Restore session from localStorage
+    (function restoreSession() {
+      try {
+        const stored = localStorage.getItem("evilme_auth");
+        if (stored) {
+          const data = JSON.parse(stored);
+          const payload = JSON.parse(atob(data.access_token.split(".")[1]));
+          if (payload.exp * 1000 < Date.now()) {
+            localStorage.removeItem("evilme_auth");
+          } else {
+            accessToken = data.access_token;
+            currentUser = data.user;
+          }
+        }
+      } catch {
+        localStorage.removeItem("evilme_auth");
+      }
+      updateAuthUI();
+    })();
+
+    function updateAuthUI() {
+      const header = document.getElementById("auth-header");
+      const loginPrompt = document.getElementById("create-login-prompt");
+      const createForm = document.getElementById("create-form");
+      if (currentUser) {
+        header.innerHTML = `<span class="user-email">${escHtml(currentUser.email)}</span> <a onclick="logout()">Log out</a>`;
+        if (loginPrompt) loginPrompt.style.display = "none";
+        if (createForm) createForm.style.display = "block";
+      } else {
+        header.innerHTML = `<a onclick="openAuthModal()">Sign In</a>`;
+        if (loginPrompt) loginPrompt.style.display = "block";
+        if (createForm) createForm.style.display = "none";
+      }
+    }
+
+    // Auth modal
+    let authMode = "login";
+
+    function openAuthModal() {
+      document.getElementById("auth-modal").classList.add("active");
+      document.getElementById("auth-email").focus();
+    }
+
+    function closeAuthModal() {
+      document.getElementById("auth-modal").classList.remove("active");
+      document.getElementById("auth-error").style.display = "none";
+      document.getElementById("auth-email").value = "";
+      document.getElementById("auth-password").value = "";
+    }
+
+    function switchAuthTab(mode) {
+      authMode = mode;
+      document.getElementById("tab-login").classList.toggle("active", mode === "login");
+      document.getElementById("tab-signup").classList.toggle("active", mode === "signup");
+      document.getElementById("btn-auth").textContent = mode === "login" ? "Log In" : "Sign Up";
+      document.getElementById("auth-error").style.display = "none";
+    }
+
+    async function submitAuth() {
+      const email = document.getElementById("auth-email").value.trim();
+      const password = document.getElementById("auth-password").value;
+      const errEl = document.getElementById("auth-error");
+
+      if (!email || !password) {
+        errEl.textContent = "Email and password required";
+        errEl.style.display = "block";
+        return;
+      }
+
+      if (authMode === "signup" && password.length < 6) {
+        errEl.textContent = "Password must be at least 6 characters";
+        errEl.style.display = "block";
+        return;
+      }
+
+      const btn = document.getElementById("btn-auth");
+      btn.disabled = true;
+      btn.textContent = "...";
+      errEl.style.display = "none";
+
+      try {
+        let url;
+        if (authMode === "signup") {
+          url = AUTH_URL + "/signup";
+        } else {
+          url = AUTH_URL + "/token?grant_type=password";
+        }
+
+        const headers = { "Content-Type": "application/json" };
+        if (APIKEY) headers["apikey"] = APIKEY;
+
+        const res = await fetch(url, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ email, password }),
+        });
+
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data.error_description || data.error || data.msg || "Authentication failed");
+        }
+
+        if (data.access_token) {
+          // Login or auto-confirmed signup
+          accessToken = data.access_token;
+          currentUser = data.user;
+          localStorage.setItem("evilme_auth", JSON.stringify({
+            access_token: data.access_token,
+            refresh_token: data.refresh_token,
+            user: data.user,
+          }));
+          closeAuthModal();
+          updateAuthUI();
+        } else if (authMode === "signup") {
+          // Signup without auto-confirm — try logging in
+          const loginRes = await fetch(AUTH_URL + "/token?grant_type=password", {
+            method: "POST",
+            headers,
+            body: JSON.stringify({ email, password }),
+          });
+          const loginData = await loginRes.json();
+          if (loginData.access_token) {
+            accessToken = loginData.access_token;
+            currentUser = loginData.user;
+            localStorage.setItem("evilme_auth", JSON.stringify({
+              access_token: loginData.access_token,
+              refresh_token: loginData.refresh_token,
+              user: loginData.user,
+            }));
+            closeAuthModal();
+            updateAuthUI();
+          } else {
+            errEl.textContent = "Account created! Check your email to confirm, then log in.";
+            errEl.style.display = "block";
+            switchAuthTab("login");
+          }
+        }
+      } catch (err) {
+        errEl.textContent = err.message;
+        errEl.style.display = "block";
+      } finally {
+        btn.disabled = false;
+        btn.textContent = authMode === "login" ? "Log In" : "Sign Up";
+      }
+    }
+
+    function logout() {
+      accessToken = null;
+      currentUser = null;
+      localStorage.removeItem("evilme_auth");
+      updateAuthUI();
+    }
 
     // Routing
     function showSection(name) {
@@ -765,6 +1050,7 @@
         }
         currentMatchup = await res.json();
         el.innerHTML = renderMatchup(currentMatchup);
+        lazyLoadImages(el);
       } catch {
         el.innerHTML = `<div class="empty"><div class="empty-emoji">⚔️</div><p>Could not load matchup</p></div>`;
       }
@@ -808,8 +1094,8 @@
         let html = '<div class="gallery-grid">';
         for (const v of data.villains) {
           html += `
-            <div class="gallery-item" onclick="showVillainDetail(${v.id})">
-              ${v.image_url ? `<img src="${escHtml(v.image_url)}" alt="${escHtml(v.villain_name)}" loading="lazy">` : ''}
+            <div class="gallery-item" data-vid="${v.id}" onclick="showVillainDetail(${v.id})">
+              <div class="gallery-img-placeholder" style="width:100%;aspect-ratio:1;background:var(--border)"></div>
               <div class="gallery-info">
                 <div class="gallery-name">${escHtml(v.villain_name)}</div>
                 <div class="gallery-elo">⚡ ${v.elo_rating}</div>
@@ -828,6 +1114,7 @@
         }
 
         el.innerHTML = html;
+        lazyLoadImages(el);
       } catch {
         el.innerHTML = `<div class="empty"><div class="empty-emoji">💀</div><p>Could not load gallery</p></div>`;
       }
@@ -849,9 +1136,9 @@
         data.leaderboard.forEach((v, i) => {
           const rankClass = i === 0 ? "gold" : i === 1 ? "silver" : i === 2 ? "bronze" : "";
           html += `
-            <div class="leaderboard-item" onclick="showVillainDetail(${v.id})" style="cursor:pointer">
+            <div class="leaderboard-item" data-vid="${v.id}" onclick="showVillainDetail(${v.id})" style="cursor:pointer">
               <div class="leaderboard-rank ${rankClass}">${i + 1}</div>
-              ${v.image_url ? `<img class="leaderboard-avatar" src="${escHtml(v.image_url)}" alt="" loading="lazy">` : '<div class="leaderboard-avatar"></div>'}
+              <div class="leaderboard-avatar" style="background:var(--border)"></div>
               <div class="leaderboard-info">
                 <div class="leaderboard-name">${escHtml(v.villain_name)}</div>
                 <div class="leaderboard-power">${escHtml(v.evil_power)}</div>
@@ -862,6 +1149,7 @@
         });
 
         el.innerHTML = html;
+        lazyLoadImages(el);
       } catch {
         el.innerHTML = `<div class="empty"><div class="empty-emoji">🏆</div><p>Could not load leaderboard</p></div>`;
       }
@@ -938,12 +1226,12 @@
     function renderMatchup(m) {
       return `
         <div class="matchup">
-          <div class="matchup-card" onclick="vote(${m.villain_a.id}, ${m.villain_b.id})">
-            ${m.villain_a.image_url ? `<img src="${escHtml(m.villain_a.image_url)}" alt="">` : ''}
+          <div class="matchup-card" data-vid="${m.villain_a.id}" onclick="vote(${m.villain_a.id}, ${m.villain_b.id})">
+            <div style="width:100%;aspect-ratio:1;background:var(--border)"></div>
             <div class="matchup-name">${escHtml(m.villain_a.villain_name)}</div>
           </div>
-          <div class="matchup-card" onclick="vote(${m.villain_b.id}, ${m.villain_a.id})">
-            ${m.villain_b.image_url ? `<img src="${escHtml(m.villain_b.image_url)}" alt="">` : ''}
+          <div class="matchup-card" data-vid="${m.villain_b.id}" onclick="vote(${m.villain_b.id}, ${m.villain_a.id})">
+            <div style="width:100%;aspect-ratio:1;background:var(--border)"></div>
             <div class="matchup-name">${escHtml(m.villain_b.villain_name)}</div>
           </div>
         </div>
@@ -955,6 +1243,7 @@
     async function apiFetch(path, opts = {}) {
       const headers = { "Content-Type": "application/json" };
       if (APIKEY) headers["apikey"] = APIKEY;
+      if (accessToken) headers["Authorization"] = "Bearer " + accessToken;
       return fetch(API + path, { ...opts, headers: { ...headers, ...(opts.headers || {}) } });
     }
 
@@ -965,6 +1254,28 @@
     function escHtml(s) {
       if (!s) return "";
       return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+    }
+
+    function lazyLoadImages(container) {
+      container.querySelectorAll("[data-vid]").forEach(item => {
+        const id = item.dataset.vid;
+        apiFetch(`/villain/${id}/image`).then(r => r.json()).then(d => {
+          if (!d.image_url) return;
+          const placeholder = item.querySelector("div[style*='aspect-ratio']") || item.querySelector(".leaderboard-avatar");
+          if (!placeholder) return;
+          const img = document.createElement("img");
+          img.src = d.image_url;
+          img.alt = "";
+          img.loading = "lazy";
+          // Copy styles from the element being replaced
+          if (placeholder.classList.contains("leaderboard-avatar")) {
+            img.className = "leaderboard-avatar";
+          } else {
+            img.style.cssText = "width:100%;aspect-ratio:1;object-fit:cover;display:block";
+          }
+          placeholder.replaceWith(img);
+        }).catch(() => {});
+      });
     }
 
     function copyLink(url, btn) {
