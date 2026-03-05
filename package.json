@@ -6,20 +6,16 @@
   "workspaces": [
     "packages/shared",
     "packages/gateway",
-    "packages/mcp",
     "infra"
   ],
   "scripts": {
     "build": "npm run build --workspaces",
     "build:gateway": "npm run build -w packages/gateway",
     "build:infra": "npm run build -w infra",
-    "build:mcp": "npm run build -w packages/mcp",
     "dev": "npm run dev -w packages/gateway",
     "test:e2e": "tsx test/e2e.ts",
     "test:openclaw": "tsx test/openclaw-e2e.ts",
-    "test:mcp": "node --test --import tsx packages/mcp/src/**/*.test.ts",
-    "test:subdomains": "node --test --import tsx packages/gateway/src/services/subdomains.test.ts packages/mcp/src/tools/subdomain.test.ts",
-    "test:skill": "node --test --import tsx skills/run402/SKILL.test.ts",
+    "test:subdomains": "node --test --import tsx packages/gateway/src/services/subdomains.test.ts",
     "test:functions": "tsx test/functions-e2e.ts",
     "test:mcp:e2e": "tsx test/mcp-e2e.ts",
     "lint": "eslint",
