@@ -1,6 +1,7 @@
 import { Router, Request, Response } from "express";
 import { isAddress } from "viem";
 import { sendDrip } from "../services/faucet.js";
+import { serviceKeyAuth } from "../middleware/apikey.js";
 import { FAUCET_TREASURY_KEY, FAUCET_DRIP_AMOUNT, FAUCET_DRIP_COOLDOWN } from "../config.js";
 import { hasCode } from "../utils/errors.js";
 import { asyncHandler, HttpError } from "../utils/async-handler.js";
@@ -49,6 +50,37 @@ router.post("/v1/faucet", asyncHandler(async (req: Request, res: Response) => {
   } catch (err: unknown) {
     if (hasCode(err) && err.code === "TREASURY_LOW") {
       throw new HttpError(503, "Treasury balance too low. Try again later.");
+    }
+    throw err;
+  }
+}));
+
+// POST /admin/v1/faucet — admin drip (no rate limit, custom amount)
+router.post("/admin/v1/faucet", serviceKeyAuth, asyncHandler(async (req: Request, res: Response) => {
+  if (!FAUCET_TREASURY_KEY) {
+    throw new HttpError(503, "Faucet not configured");
+  }
+
+  const { address, amount } = req.body || {};
+  if (!address || !isAddress(address)) {
+    throw new HttpError(400, "Invalid or missing Ethereum address");
+  }
+
+  const dripAmount = typeof amount === "string" && /^\d+(\.\d+)?$/.test(amount) ? amount : FAUCET_DRIP_AMOUNT;
+
+  try {
+    const transactionHash = await sendDrip(address as `0x${string}`, dripAmount);
+    console.log(`  Admin faucet: ${dripAmount} USDC to ${address}`);
+
+    res.json({
+      transactionHash,
+      amount: dripAmount,
+      token: "USDC",
+      network: "base-sepolia",
+    });
+  } catch (err: unknown) {
+    if (hasCode(err) && err.code === "TREASURY_LOW") {
+      throw new HttpError(503, "Treasury balance too low.");
     }
     throw err;
   }

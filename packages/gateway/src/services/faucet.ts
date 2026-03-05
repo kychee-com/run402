@@ -70,15 +70,16 @@ function ensureClients() {
 /**
  * Send a USDC drip to the given address.
  * Serialized via promise queue to avoid nonce conflicts.
+ * @param customAmount — override drip amount (e.g. "5.00")
  */
-export async function sendDrip(to: Address): Promise<string> {
+export async function sendDrip(to: Address, customAmount?: string): Promise<string> {
   ensureClients();
 
   // Serialize via queue
   const result = new Promise<string>((resolve, reject) => {
     dripQueue = dripQueue.then(async () => {
       try {
-        const amount = parseUnits(FAUCET_DRIP_AMOUNT, USDC_DECIMALS);
+        const amount = parseUnits(customAmount || FAUCET_DRIP_AMOUNT, USDC_DECIMALS);
 
         // Check treasury balance
         const balance = await publicClient!.readContract({
