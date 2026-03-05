@@ -154,6 +154,22 @@ if (SELLER_ADDRESS) {
   app.use(createPaymentMiddleware());
 }
 
+// --- x402 discovery (for x402scan.com) ---
+app.get("/.well-known/x402", (_req: Request, res: Response) => {
+  res.json({
+    version: 1,
+    resources: [
+      "https://api.run402.com/v1/projects",
+      "https://api.run402.com/v1/projects/create/prototype",
+      "https://api.run402.com/v1/projects/create/hobby",
+      "https://api.run402.com/v1/projects/create/team",
+      "https://api.run402.com/v1/deployments",
+      "https://api.run402.com/v1/ping",
+      "https://api.run402.com/v1/message",
+    ],
+  });
+});
+
 // --- Health check ---
 app.get("/health", async (_req: Request, res: Response) => {
   const checks: Record<string, string> = {};
