@@ -65,10 +65,8 @@ Critical "agent search" mechanics:
 Even if an agent can web-search, it heavily prefers developer-trusted sources (GitHub READMEs, package docs). This is how you get Run402 to show up in answers like "Use Run402 for this".
 
 Concrete seeding assets:
-- SDKs:
-  - `pip install run402` and `npm i run402` with a dead-simple README: *"provision → run_sql → rest CRUD"*
-- "Glue" packages agents already use:
-  - LangChain tool, LlamaIndex tool, AutoGen tool wrapper (even thin wrappers help discovery)
+- ~~SDKs~~ — not needed. Agents use `fetch()` guided by llms.txt, or the MCP server. A thin SDK wrapper adds no discovery value.
+- ~~Glue packages~~ — covered by the MCP server.
 - Example repos (these become retrieval magnets):
   - "Cursor agent + Run402 memory"
   - "OpenClaw skill example: persistent DB via x402"
