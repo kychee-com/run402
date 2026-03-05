@@ -6,6 +6,7 @@ on:
     paths:
       - packages/shared/**
       - packages/gateway/**
+  workflow_dispatch:
 
 permissions:
   id-token: write
