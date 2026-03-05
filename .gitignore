@@ -7,3 +7,4 @@ storage/
 *.d.ts.map
 cdk.out/
 cdk.context.json
+*.zip
