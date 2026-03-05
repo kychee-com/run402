@@ -1,0 +1,55 @@
+name: Deploy Gateway
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - packages/shared/**
+      - packages/gateway/**
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: us-east-1
+  ECR_REPO: 472210437512.dkr.ecr.us-east-1.amazonaws.com/agentdb-gateway
+  ECS_CLUSTER: AgentDB-Pod01-ClusterEB0386A7-qXAYbEVDllzd
+  ECS_SERVICE: AgentDB-Pod01-ServiceD69D759B-Ko0ySLxS6H2Q
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::472210437512:role/run402-gateway-deploy
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to ECR
+        run: |
+          aws ecr get-login-password --region $AWS_REGION \
+            | docker login --username AWS --password-stdin ${{ env.ECR_REPO }}
+
+      - name: Build and push Docker image
+        run: |
+          docker build -t $ECR_REPO:latest -f packages/gateway/Dockerfile .
+          docker push $ECR_REPO:latest
+
+      - name: Force ECS deployment
+        run: |
+          aws ecs update-service \
+            --cluster $ECS_CLUSTER \
+            --service $ECS_SERVICE \
+            --force-new-deployment \
+            --region $AWS_REGION \
+            --no-cli-pager
+
+      - name: Wait for stability
+        run: |
+          aws ecs wait services-stable \
+            --cluster $ECS_CLUSTER \
+            --services $ECS_SERVICE \
+            --region $AWS_REGION
