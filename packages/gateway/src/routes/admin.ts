@@ -3,6 +3,7 @@ import { pool } from "../db/pool.js";
 import { serviceKeyAuth } from "../middleware/apikey.js";
 import { getTierLimits } from "@run402/shared";
 import { asyncHandler, HttpError } from "../utils/async-handler.js";
+import { ADMIN_KEY } from "../config.js";
 
 interface RlsTable {
   table: string;
@@ -219,8 +220,13 @@ router.post("/admin/v1/projects/:id/rls", asyncHandler(async (req: Request, res:
   res.json({ status: "ok", template, tables: (tables as RlsTable[]).map((t) => t.table) });
 }));
 
-// POST /admin/v1/projects/:id/pin — pin project (lease never expires)
+// POST /admin/v1/projects/:id/pin — pin project (lease never expires, admin only)
 router.post("/admin/v1/projects/:id/pin", asyncHandler(async (req: Request, res: Response) => {
+  const adminKey = req.headers["x-admin-key"] as string | undefined;
+  if (!ADMIN_KEY || adminKey !== ADMIN_KEY) {
+    throw new HttpError(403, "Requires platform admin key");
+  }
+
   assertProjectMatch(req);
   const project = req.project!;
 
@@ -231,8 +237,13 @@ router.post("/admin/v1/projects/:id/pin", asyncHandler(async (req: Request, res:
   res.json({ status: "ok", project_id: project.id, pinned: true });
 }));
 
-// POST /admin/v1/projects/:id/unpin — unpin project (normal lease expiry resumes)
+// POST /admin/v1/projects/:id/unpin — unpin project (normal lease expiry resumes, admin only)
 router.post("/admin/v1/projects/:id/unpin", asyncHandler(async (req: Request, res: Response) => {
+  const adminKey = req.headers["x-admin-key"] as string | undefined;
+  if (!ADMIN_KEY || adminKey !== ADMIN_KEY) {
+    throw new HttpError(403, "Requires platform admin key");
+  }
+
   assertProjectMatch(req);
   const project = req.project!;
 

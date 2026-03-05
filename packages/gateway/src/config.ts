@@ -37,6 +37,9 @@ export const FAUCET_REFILL_INTERVAL = parseInt(process.env.FAUCET_REFILL_INTERVA
 export const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || "";
 export const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID || "";
 
+// Admin key (for privileged operations like pin/unpin)
+export const ADMIN_KEY = process.env.ADMIN_KEY || "";
+
 // Lambda / Functions config
 export const LAMBDA_ROLE_ARN = process.env.LAMBDA_ROLE_ARN || "";
 export const LAMBDA_LAYER_ARN = process.env.LAMBDA_LAYER_ARN || "";
