@@ -262,6 +262,9 @@ async function applyMigrations() {
   // v1.2: wallet_address for subscription linking
   await pool.query(`ALTER TABLE internal.projects ADD COLUMN IF NOT EXISTS wallet_address TEXT`);
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_projects_wallet ON internal.projects(wallet_address) WHERE wallet_address IS NOT NULL`);
+
+  // v1.3: pinned projects (lease never expires)
+  await pool.query(`ALTER TABLE internal.projects ADD COLUMN IF NOT EXISTS pinned BOOLEAN NOT NULL DEFAULT false`);
 }
 
 async function start() {

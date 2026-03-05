@@ -28,6 +28,9 @@ async function checkLeases(): Promise<void> {
     if (project.status !== "active") continue;
     if (!project.leaseExpiresAt) continue;
 
+    // Skip pinned projects (e.g. showcase apps that should never expire)
+    if (project.pinned) continue;
+
     // Skip subscription-managed projects (their leases are extended by syncStripeSubscriptions)
     if (project.walletAddress) {
       const sub = await getWalletSubscription(project.walletAddress);

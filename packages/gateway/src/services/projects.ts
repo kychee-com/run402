@@ -31,7 +31,7 @@ export const projectCache = {
 export async function syncProjects(): Promise<void> {
   const result = await pool.query(
     `SELECT id, name, schema_slot, tier, status, api_calls, storage_bytes,
-            lease_started_at, lease_expires_at, tx_hash, wallet_address, created_at
+            lease_started_at, lease_expires_at, tx_hash, wallet_address, pinned, created_at
      FROM internal.projects WHERE status = 'active'`,
   );
 
@@ -50,6 +50,7 @@ export async function syncProjects(): Promise<void> {
       leaseExpiresAt: new Date(row.lease_expires_at),
       txHash: row.tx_hash,
       walletAddress: row.wallet_address || undefined,
+      pinned: row.pinned || false,
       createdAt: new Date(row.created_at),
     });
   }
@@ -107,6 +108,7 @@ export async function createProject(
     leaseExpiresAt,
     txHash,
     walletAddress,
+    pinned: false,
     createdAt: now,
   };
 

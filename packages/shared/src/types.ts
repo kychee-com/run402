@@ -14,6 +14,7 @@ export interface ProjectInfo {
   leaseExpiresAt: Date;
   txHash?: string;
   walletAddress?: string;
+  pinned: boolean;
   createdAt: Date;
 }
 

@@ -219,6 +219,30 @@ router.post("/admin/v1/projects/:id/rls", asyncHandler(async (req: Request, res:
   res.json({ status: "ok", template, tables: (tables as RlsTable[]).map((t) => t.table) });
 }));
 
+// POST /admin/v1/projects/:id/pin — pin project (lease never expires)
+router.post("/admin/v1/projects/:id/pin", asyncHandler(async (req: Request, res: Response) => {
+  assertProjectMatch(req);
+  const project = req.project!;
+
+  await pool.query(`UPDATE internal.projects SET pinned = true WHERE id = $1`, [project.id]);
+  project.pinned = true;
+
+  console.log(`  Project ${project.id} pinned (lease will not expire)`);
+  res.json({ status: "ok", project_id: project.id, pinned: true });
+}));
+
+// POST /admin/v1/projects/:id/unpin — unpin project (normal lease expiry resumes)
+router.post("/admin/v1/projects/:id/unpin", asyncHandler(async (req: Request, res: Response) => {
+  assertProjectMatch(req);
+  const project = req.project!;
+
+  await pool.query(`UPDATE internal.projects SET pinned = false WHERE id = $1`, [project.id]);
+  project.pinned = false;
+
+  console.log(`  Project ${project.id} unpinned (normal lease expiry resumes)`);
+  res.json({ status: "ok", project_id: project.id, pinned: false });
+}));
+
 // GET /admin/v1/projects/:id/usage — usage report
 router.get("/admin/v1/projects/:id/usage", (req: Request, res: Response) => {
   assertProjectMatch(req);
