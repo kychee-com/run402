@@ -149,7 +149,18 @@ Their personality: theatrical, campy, ${villain.threat_level}. Expression: confi
 
 ${MANGA_STYLE_SUFFIX}`;
 
-  let imageUrl = "";
+  // Insert villain into DB first (without image) to get an ID for S3 key
+  const insertResult = await db.sql(
+    `INSERT INTO villains (name, real_name, fact, appearance, villain_name, origin_story, evil_catchphrase, weakness, evil_power, threat_level, image_url, creator_ip, elo_rating)
+     VALUES ('${esc(name)}', '${esc(name)}', '${esc(fact)}', '${esc(appearance || "")}', '${esc(villain.villain_name)}', '${esc(villain.origin_story)}', '${esc(villain.evil_catchphrase)}', '${esc(villain.weakness)}', '${esc(villain.evil_power)}', '${esc(villain.threat_level)}', '', '${esc(userId)}', 1200)
+     RETURNING id, villain_name, origin_story, evil_catchphrase, weakness, evil_power, threat_level, created_at`
+  );
+
+  const row = insertResult.rows[0];
+  let publicImageUrl = "";
+  let shareUrl = `https://evilme.run402.com/#/villain/${row.id}`;
+
+  // Generate image via Run402's own /v1/generate-image (admin key bypasses x402)
   try {
     const imageResp = await fetch(`${BASE_URL}/v1/generate-image`, {
       method: "POST",
@@ -159,52 +170,36 @@ ${MANGA_STYLE_SUFFIX}`;
       },
       body: JSON.stringify({ prompt: imagePrompt, aspect: "square" }),
     });
-    const imageData = await imageResp.json();
-    imageUrl = imageData.image
-      ? `data:image/png;base64,${imageData.image}`
-      : "";
+
+    if (!imageResp.ok) {
+      console.error("Image API error:", imageResp.status);
+    } else {
+      const imageData = await imageResp.json();
+      if (imageData.image) {
+        // Upload directly to S3 (avoid putting large base64 in DB)
+        await s3.send(new PutObjectCommand({
+          Bucket: S3_BUCKET,
+          Key: `sites/evilme_images/${row.id}.png`,
+          Body: Buffer.from(imageData.image, "base64"),
+          ContentType: "image/png",
+        }));
+        publicImageUrl = `${IMAGE_CDN}/${row.id}.png`;
+
+        // Upload OG card for social sharing
+        await s3.send(new PutObjectCommand({
+          Bucket: S3_BUCKET,
+          Key: `sites/evilme_images/card/${row.id}.html`,
+          Body: buildCardHtml(row, publicImageUrl),
+          ContentType: "text/html",
+        }));
+        shareUrl = `${IMAGE_CDN}/card/${row.id}.html`;
+
+        // Update DB with CDN URL
+        await db.sql(`UPDATE villains SET image_url = '${esc(publicImageUrl)}' WHERE id = ${row.id}`);
+      }
+    }
   } catch (imgErr) {
     console.error("Image generation failed:", imgErr.message);
-    imageUrl = "";
-  }
-
-  // Store in DB
-  const insertResult = await db.sql(
-    `INSERT INTO villains (name, real_name, fact, appearance, villain_name, origin_story, evil_catchphrase, weakness, evil_power, threat_level, image_url, creator_ip, elo_rating)
-     VALUES ('${esc(name)}', '${esc(name)}', '${esc(fact)}', '${esc(appearance || "")}', '${esc(villain.villain_name)}', '${esc(villain.origin_story)}', '${esc(villain.evil_catchphrase)}', '${esc(villain.weakness)}', '${esc(villain.evil_power)}', '${esc(villain.threat_level)}', '${esc(imageUrl)}', '${esc(userId)}', 1200)
-     RETURNING id, villain_name, origin_story, evil_catchphrase, weakness, evil_power, threat_level, image_url, created_at`
-  );
-
-  const row = insertResult.rows[0];
-
-  // Upload image + OG card to S3 for public sharing on X
-  let publicImageUrl = row.image_url;
-  let shareUrl = `https://evilme.run402.com/#/villain/${row.id}`;
-
-  if (row.image_url && row.image_url.startsWith("data:image/png;base64,")) {
-    try {
-      const b64 = row.image_url.replace("data:image/png;base64,", "");
-      await s3.send(new PutObjectCommand({
-        Bucket: S3_BUCKET,
-        Key: `sites/evilme_images/${row.id}.png`,
-        Body: Buffer.from(b64, "base64"),
-        ContentType: "image/png",
-      }));
-      publicImageUrl = `${IMAGE_CDN}/${row.id}.png`;
-
-      await s3.send(new PutObjectCommand({
-        Bucket: S3_BUCKET,
-        Key: `sites/evilme_images/card/${row.id}.html`,
-        Body: buildCardHtml(row, publicImageUrl),
-        ContentType: "text/html",
-      }));
-      shareUrl = `${IMAGE_CDN}/card/${row.id}.html`;
-
-      // Update DB with public URL (smaller than base64, fixes gallery too)
-      await db.sql(`UPDATE villains SET image_url = '${esc(publicImageUrl)}' WHERE id = ${row.id}`);
-    } catch (s3Err) {
-      console.error("S3 upload failed:", s3Err.message);
-    }
   }
 
   return json({
