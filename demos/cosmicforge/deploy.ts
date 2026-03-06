@@ -114,11 +114,11 @@ async function main() {
   console.log(`   Site deployed: ${site.url}`);
 
   // 5. Claim subdomain
-  console.log("\n5) Claiming cosmit.run402.com...");
+  console.log("\n5) Claiming cosmic.run402.com...");
   const subRes = await fetch(`${BASE_URL}/v1/subdomains`, {
     method: "POST",
     headers: authHeaders,
-    body: JSON.stringify({ name: "cosmit", deployment_id: site.id }),
+    body: JSON.stringify({ name: "cosmic", deployment_id: site.id }),
   });
   if (!subRes.ok) {
     const err = await subRes.text();
@@ -126,14 +126,14 @@ async function main() {
       await fetch(`${BASE_URL}/v1/subdomains`, {
         method: "POST",
         headers: authHeaders,
-        body: JSON.stringify({ name: "cosmit", deployment_id: site.id }),
+        body: JSON.stringify({ name: "cosmic", deployment_id: site.id }),
       });
       console.log("   Subdomain updated");
     } else {
       console.error("Subdomain failed:", err);
     }
   } else {
-    console.log("   Subdomain claimed: https://cosmit.run402.com");
+    console.log("   Subdomain claimed: https://cosmic.run402.com");
   }
 
   // 6. Pin project
@@ -149,7 +149,7 @@ async function main() {
   }
 
   console.log("\n=== Deploy Complete ===");
-  console.log(`\n  Site: https://cosmit.run402.com`);
+  console.log(`\n  Site: https://cosmic.run402.com`);
   console.log(`  Function: ${fn.url}`);
   console.log(`  Project: ${project_id}`);
   console.log(`  Anon Key: ${anon_key}`);
