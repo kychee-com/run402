@@ -295,9 +295,10 @@ export class PodStack extends cdk.Stack {
       },
       healthCheck: {
         command: ["CMD-SHELL", "wget -qO- http://localhost:4022/health || exit 1"],
-        interval: cdk.Duration.seconds(30),
+        interval: cdk.Duration.seconds(10),
         timeout: cdk.Duration.seconds(5),
         retries: 3,
+        startPeriod: cdk.Duration.seconds(15),
       },
     });
 
@@ -370,9 +371,10 @@ export class PodStack extends cdk.Stack {
       port: 4022,
       protocol: elbv2.ApplicationProtocol.HTTP,
       targets: [fargateService],
+      deregistrationDelay: cdk.Duration.seconds(30),
       healthCheck: {
         path: "/health",
-        interval: cdk.Duration.seconds(30),
+        interval: cdk.Duration.seconds(10),
         timeout: cdk.Duration.seconds(5),
         healthyThresholdCount: 2,
         unhealthyThresholdCount: 3,
