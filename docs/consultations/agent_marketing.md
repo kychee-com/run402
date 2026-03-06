@@ -80,7 +80,7 @@ Concrete seeding assets:
 Because you're x402-native, you should be listed anywhere x402 users look for "things I can pay for with HTTP 402".
 
 Actions:
-- Get into x402.org "examples/services" (or their GitHub examples)
+- Get into x402.org "examples/services" (or their GitHub examples) ✅ PR open: https://github.com/coinbase/x402/pull/1456
 - Publish a "reference implementation" post: **"Paid Postgres provisioning over x402"**
 - Co-market with Coinbase AgentKit: "Here's a real service your AgentKit wallet can buy"
 
