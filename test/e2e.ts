@@ -422,7 +422,7 @@ async function main() {
   });
   const countBody = await countRes.json();
   assert(countRes.ok, "COUNT via /sql succeeds");
-  assert(countBody.rows[0].total === "3", "COUNT returns 3 exercises");
+  assert(countBody.rows[0].total === "5", "COUNT returns 5 exercises");
 
   // Step 16: SERIAL/BIGSERIAL sequence permissions
   console.log("\n16) SERIAL table (sequence permissions)...");
@@ -629,8 +629,8 @@ async function main() {
   });
   const grantBody = await grantRes.json();
   assert(grantRes.status === 403, "GRANT still blocked");
-  assert(typeof grantBody.hint === "string", "GRANT error includes hint");
-  assert(grantBody.hint.includes("IDENTITY"), "Hint suggests IDENTITY over SERIAL");
+  assert(typeof grantBody.error === "string", "GRANT error includes message");
+  assert(grantBody.error.includes("IDENTITY"), "Hint suggests IDENTITY over SERIAL");
 
   const revokeRes = await fetch(`${BASE_URL}/admin/v1/projects/${project_id}/sql`, {
     method: "POST",
@@ -639,8 +639,8 @@ async function main() {
   });
   const revokeBody = await revokeRes.json();
   assert(revokeRes.status === 403, "REVOKE still blocked");
-  assert(typeof revokeBody.hint === "string", "REVOKE error includes hint");
-  assert(revokeBody.hint.includes("RLS"), "Hint suggests using RLS endpoint");
+  assert(typeof revokeBody.error === "string", "REVOKE error includes message");
+  assert(revokeBody.error.includes("RLS"), "Hint suggests using RLS endpoint");
 
   // Step 20: Delete project
   console.log("\n20) Delete project...");
