@@ -113,9 +113,11 @@ app.use((req: Request, res: Response, next: NextFunction) => {
 });
 
 // --- Body parsing ---
-// Parse JSON for most routes, raw text for SQL migrations and storage uploads
+// Parse JSON for most routes, raw for storage uploads, text for SQL migrations
 app.use((req: Request, res: Response, next: NextFunction) => {
-  if (req.path.endsWith("/sql") || req.path.startsWith("/storage/")) {
+  if (req.path.startsWith("/storage/")) {
+    express.raw({ type: "*/*", limit: "10mb" })(req, res, next);
+  } else if (req.path.endsWith("/sql")) {
     express.text({ type: "*/*", limit: "10mb" })(req, res, next);
   } else if (req.path === "/v1/deployments" && req.method === "POST") {
     express.json({ limit: "50mb" })(req, res, next);

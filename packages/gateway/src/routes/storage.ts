@@ -34,8 +34,9 @@ router.post("/storage/v1/object/:bucket/*", asyncHandler(async (req: Request, re
   const project = req.project!;
   const bucket = req.params["bucket"] as string;
   const filePath = (req.params as Record<string, string>)[0];
-  const content = typeof req.body === "string" ? req.body : JSON.stringify(req.body);
-  const buffer = Buffer.from(content);
+  const buffer = Buffer.isBuffer(req.body)
+    ? req.body
+    : Buffer.from(typeof req.body === "string" ? req.body : JSON.stringify(req.body));
 
   if (s3 && S3_BUCKET) {
     const key = `${project.id}/${bucket}/${filePath}`;

@@ -276,6 +276,32 @@ async function main() {
   assert(uploadBody.key === "logs/workout-log.txt", "Correct file key");
   assert(uploadBody.size > 0, "File has size > 0");
 
+  // Step 9b: Upload binary file (regression: body parser must not corrupt binary)
+  console.log("\n9b) Upload binary file...");
+  const binaryData = new Uint8Array(256);
+  for (let i = 0; i < 256; i++) binaryData[i] = i; // every byte value 0x00–0xFF
+  const binaryUploadRes = await fetch(`${BASE_URL}/storage/v1/object/logs/test-image.bin`, {
+    method: "POST",
+    headers: { "Content-Type": "application/octet-stream", apikey: anon_key },
+    body: binaryData,
+  });
+  const binaryUploadBody = await binaryUploadRes.json();
+  assert(binaryUploadRes.ok, "Binary file uploaded");
+  assert(binaryUploadBody.size === 256, `Binary file size is 256 (got ${binaryUploadBody.size})`);
+
+  // Download and verify byte-for-byte integrity
+  const binaryDownloadRes = await fetch(`${BASE_URL}/storage/v1/object/logs/test-image.bin`, {
+    headers: { apikey: anon_key },
+  });
+  assert(binaryDownloadRes.ok, "Binary file downloaded");
+  const downloaded = new Uint8Array(await binaryDownloadRes.arrayBuffer());
+  assert(downloaded.length === 256, `Downloaded size is 256 (got ${downloaded.length})`);
+  let bytesMatch = true;
+  for (let i = 0; i < 256; i++) {
+    if (downloaded[i] !== i) { bytesMatch = false; break; }
+  }
+  assert(bytesMatch, "Binary roundtrip: all 256 byte values preserved");
+
   // Step 10: Check usage
   console.log("\n10) Check usage...");
   const usageRes = await fetch(`${BASE_URL}/admin/v1/projects/${project_id}/usage`, {
