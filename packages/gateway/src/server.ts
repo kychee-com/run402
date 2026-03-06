@@ -197,7 +197,7 @@ app.get("/health", async (_req: Request, res: Response) => {
   res.status(healthy ? 200 : 503).json({
     status: healthy ? "healthy" : "degraded",
     checks,
-    version: "1.0.0",
+    version: "1.0.1",
   });
 });
 
