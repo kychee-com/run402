@@ -74,18 +74,29 @@ async function main() {
   }
   console.log("   Tables created");
 
-  // 3. Set OpenAI secret
-  console.log("\n3) Setting OPENAI_API_KEY secret...");
+  // 3. Set secrets (OpenAI for story gen, Admin key for image gen bypass)
+  console.log("\n3) Setting secrets...");
   const secretRes = await fetch(`${BASE_URL}/admin/v1/projects/${project_id}/secrets`, {
     method: "POST",
     headers: authHeaders,
     body: JSON.stringify({ key: "OPENAI_API_KEY", value: OPENAI_API_KEY }),
   });
   if (!secretRes.ok) {
-    console.error("Secret failed:", await secretRes.text());
+    console.error("OPENAI_API_KEY secret failed:", await secretRes.text());
     process.exit(1);
   }
-  console.log("   Secret set");
+  console.log("   OPENAI_API_KEY set");
+
+  const adminSecretRes = await fetch(`${BASE_URL}/admin/v1/projects/${project_id}/secrets`, {
+    method: "POST",
+    headers: authHeaders,
+    body: JSON.stringify({ key: "ADMIN_KEY", value: ADMIN_KEY }),
+  });
+  if (!adminSecretRes.ok) {
+    console.error("ADMIN_KEY secret failed:", await adminSecretRes.text());
+    process.exit(1);
+  }
+  console.log("   ADMIN_KEY set");
 
   // 4. Deploy function
   console.log("\n4) Deploying function...");

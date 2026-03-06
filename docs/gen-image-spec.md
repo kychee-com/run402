@@ -156,7 +156,62 @@ Available image sizes: `0.5K`, `1K`, `2K`, `4K` (model-dependent, flux.2-klein i
 | x402 charge        | $0.03 |
 | Margin             | $0.013–$0.015 (~45-50%) |
 
-Single flat price regardless of image size — all tested models charge the same across sizes.
+Single flat price regardless of aspect ratio.
+
+## Competitive Landscape (x402 image generation, March 2026)
+
+|  | **Run402** | **x402engine** | **Freepik** |
+|--|-----------|---------------|-------------|
+| Endpoint | `POST api.run402.com/v1/generate-image` | `POST x402engine.app/api/image/fast` | `POST api.freepik.com/v1/x402/ai/mystic` |
+| Price | $0.03 | $0.015 (fast), $0.05 (quality), $0.12 (text-in-image) | Unknown (requires account) |
+| Signup required | **No** | **No** | **Yes** (API key required) |
+| Networks | Base mainnet + Base Sepolia | Base, MegaETH, Solana | Base mainnet |
+| Model | flux.2-klein-4b | FLUX Schnell (fast), FLUX.2 Pro (quality), Ideogram v3 (text) | 6 models (zen, realism, super_real, etc.) |
+| Aspect ratios | 3 (square, landscape, portrait) | Unknown | 13 |
+| Resolutions | Fixed (~1920px) | Unknown | 1K, 2K, 4K |
+| Style references | No | No | Yes |
+| Response | Sync (base64 PNG, ~7s) | Sync | Async (task_id + poll) |
+| purl compatible | Yes | Yes | No (401 before 402) |
+| Testnet | Yes (Base Sepolia) | No | No |
+
+**Key takeaways**:
+- x402engine is cheaper at $0.015/image but only on mainnet — no testnet for testing.
+- Freepik has the most features (models, resolutions, style refs) but requires signup and API key, defeating the x402 "no account" value prop.
+- Run402 is the only service offering Base Sepolia testnet, letting agents test for free before committing real funds.
+- All three use the same x402 protocol, but only Run402 and x402engine are truly "wallet-only" — no signup.
+
+## Admin Key Bypass (Pinned Apps)
+
+Pinned apps like EvilMe that run on Run402 infrastructure should not pay themselves for image generation. The gateway supports an `X-Admin-Key` header that bypasses x402 payment when the key matches the `ADMIN_KEY` env var.
+
+### How It Works
+
+1. The `onProtectedRequest` hook in `middleware/x402.ts` checks for the `X-Admin-Key` header
+2. If the header value matches `ADMIN_KEY`, returns `{ grantAccess: true }` to skip x402 settlement
+3. The function's Lambda environment gets `ADMIN_KEY` via project secrets (set during deploy)
+
+### Usage from a Pinned App
+
+```js
+const resp = await fetch(`${BASE_URL}/v1/generate-image`, {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+    "X-Admin-Key": process.env.ADMIN_KEY,
+  },
+  body: JSON.stringify({ prompt: "a cat in a top hat", aspect: "square" }),
+});
+const { image } = await resp.json();
+// image is base64-encoded PNG
+```
+
+### EvilMe Integration
+
+EvilMe uses this bypass to generate villain portraits via `/v1/generate-image` instead of calling OpenAI directly. This makes EvilMe a showcase of how to consume Run402's paid APIs from a pinned app — suitable for open-sourcing.
+
+- **Story generation**: Still uses OpenAI GPT-4.1 (via `OPENAI_API_KEY` secret)
+- **Image generation**: Now uses Run402's `/v1/generate-image` (via `ADMIN_KEY` secret, bypasses x402)
+- **Model**: flux.2-klein-4b (via OpenRouter, abstracted behind our endpoint)
 
 ## x402 Integration
 

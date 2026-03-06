@@ -17,6 +17,7 @@ import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const s3 = new S3Client({ region: "us-east-1" });
+const BASE_URL = process.env.BASE_URL || "https://api.run402.com";
 const S3_BUCKET = "agentdb-storage-472210437512";
 const IMAGE_CDN = "https://evilme-images.sites.run402.com";
 
@@ -150,35 +151,21 @@ ${MANGA_STYLE_SUFFIX}`;
 
   let imageUrl = "";
   try {
-    const imageResponse = await openai.images.generate({
-      model: "gpt-image-1",
-      prompt: imagePrompt,
-      n: 1,
-      size: "1024x1024",
-      quality: "low",
+    const imageResp = await fetch(`${BASE_URL}/v1/generate-image`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Admin-Key": process.env.ADMIN_KEY,
+      },
+      body: JSON.stringify({ prompt: imagePrompt, aspect: "square" }),
     });
-    // gpt-image-1 returns base64
-    if (imageResponse.data[0].b64_json) {
-      imageUrl = `data:image/png;base64,${imageResponse.data[0].b64_json}`;
-    } else {
-      imageUrl = imageResponse.data[0].url;
-    }
+    const imageData = await imageResp.json();
+    imageUrl = imageData.image
+      ? `data:image/png;base64,${imageData.image}`
+      : "";
   } catch (imgErr) {
     console.error("Image generation failed:", imgErr.message);
-    // Fallback to DALL-E 3
-    try {
-      const fallback = await openai.images.generate({
-        model: "dall-e-3",
-        prompt: imagePrompt,
-        n: 1,
-        size: "1024x1024",
-        quality: "hd",
-      });
-      imageUrl = fallback.data[0].url;
-    } catch (fallbackErr) {
-      console.error("DALL-E fallback also failed:", fallbackErr.message);
-      imageUrl = "";
-    }
+    imageUrl = "";
   }
 
   // Store in DB

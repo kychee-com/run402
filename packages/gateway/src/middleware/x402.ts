@@ -14,6 +14,7 @@ import {
   FACILITATOR_PROVIDER,
   FACILITATOR_URL,
   STRIPE_SECRET_KEY,
+  ADMIN_KEY,
 } from "../config.js";
 import type { TierName } from "@run402/shared";
 import { getWalletSubscription } from "../services/stripe-subscriptions.js";
@@ -308,6 +309,16 @@ export function createPaymentMiddleware() {
   }
 
   const httpServer = new x402HTTPResourceServer(server, resourceConfig);
+
+  // Admin key bypass: pinned apps calling our own paid endpoints
+  if (ADMIN_KEY) {
+    httpServer.onProtectedRequest(async (context) => {
+      const adminKey = context.adapter.getHeader("x-admin-key");
+      if (adminKey && adminKey === ADMIN_KEY) {
+        return { grantAccess: true };
+      }
+    });
+  }
 
   // Subscription bypass: skip x402 settlement for wallets with active Stripe subscriptions
   if (STRIPE_SECRET_KEY) {
