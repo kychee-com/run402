@@ -54,7 +54,7 @@ const account = privateKeyToAccount(BUYER_KEY);
 const publicClient = createPublicClient({ chain: baseSepolia, transport: http() });
 const signer = toClientEvmSigner(account, publicClient);
 const client = new x402Client();
-client.register("eip155:*", new ExactEvmScheme(signer));
+client.register("eip155:84532", new ExactEvmScheme(signer));
 const fetchPaid = wrapFetchWithPayment(fetch, client);
 
 // --- Helpers ---
