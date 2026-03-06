@@ -2,27 +2,20 @@ FROM node:22-alpine AS builder
 
 WORKDIR /app
 
-# Copy workspace root
+# Copy only package.jsons + tsconfigs first (cache-friendly layer for npm install)
 COPY package.json tsconfig.base.json ./
+COPY packages/shared/package.json packages/shared/tsconfig.json packages/shared/
+COPY packages/gateway/package.json packages/gateway/tsconfig.json packages/gateway/
 
-# Copy shared package
-COPY packages/shared/package.json packages/shared/
-COPY packages/shared/tsconfig.json packages/shared/
-COPY packages/shared/src packages/shared/src/
-
-# Copy gateway package
-COPY packages/gateway/package.json packages/gateway/
-COPY packages/gateway/tsconfig.json packages/gateway/
-
-# Install all workspace deps
+# Install all workspace deps (cached unless package.json changes)
 RUN npm install --workspaces
 
-# Copy gateway source
+# Copy source AFTER install so source changes don't bust the install cache
+COPY packages/shared/src packages/shared/src/
 COPY packages/gateway/src packages/gateway/src/
 
 # Build shared then gateway
-RUN npm run build -w packages/shared
-RUN npm run build -w packages/gateway
+RUN npm run build -w packages/shared && npm run build -w packages/gateway
 
 # --- Production stage ---
 FROM node:22-alpine
