@@ -112,6 +112,10 @@ export class PodStack extends cdk.Stack {
       this, "AdminKey", "agentdb/admin-key",
     );
 
+    const openrouterSecret = secretsmanager.Secret.fromSecretNameV2(
+      this, "OpenRouterKey", "agentdb/openrouter-api-key",
+    );
+
     // =========================================================================
     // Aurora Serverless v2 (Postgres 16)
     // =========================================================================
@@ -292,6 +296,7 @@ export class PodStack extends cdk.Stack {
         TELEGRAM_BOT_TOKEN: ecs.Secret.fromSecretsManager(telegramSecret, "bot_token"),
         TELEGRAM_CHAT_ID: ecs.Secret.fromSecretsManager(telegramSecret, "chat_id"),
         ADMIN_KEY: ecs.Secret.fromSecretsManager(adminKeySecret),
+        OPENROUTER_API_KEY: ecs.Secret.fromSecretsManager(openrouterSecret),
       },
       healthCheck: {
         command: ["CMD-SHELL", "wget -qO- http://localhost:4022/health || exit 1"],
