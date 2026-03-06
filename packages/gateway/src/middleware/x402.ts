@@ -234,15 +234,15 @@ export function createPaymentMiddleware() {
     },
   };
 
-  // POST /v1/generate-image — image generation ($0.01)
+  // POST /v1/generate-image — image generation ($0.03)
   resourceConfig["POST /v1/generate-image"] = {
     accepts: networks.map((network) => ({
       scheme: "exact",
-      price: "$0.01",
+      price: "$0.03",
       network,
-      payTo: payTo("$0.01"),
+      payTo: payTo("$0.03"),
     })),
-    description: "Generate an image from a text prompt ($0.01 USDC)",
+    description: "Generate an image from a text prompt ($0.03 USDC)",
     mimeType: "application/json",
     extensions: {
       ...declareDiscoveryExtension({
@@ -251,10 +251,10 @@ export function createPaymentMiddleware() {
           type: "object",
           properties: {
             prompt: { type: "string", description: "Text prompt for image generation" },
-            size: {
+            aspect: {
               type: "string",
-              enum: ["512x512", "1024x1024", "1536x1536", "1792x1024", "1024x1792"],
-              description: "Image dimensions (default: 1024x1024)",
+              enum: ["square", "landscape", "portrait"],
+              description: "Aspect ratio (default: square)",
             },
           },
           required: ["prompt"],
@@ -263,7 +263,7 @@ export function createPaymentMiddleware() {
           example: {
             image: "<base64 PNG data>",
             content_type: "image/png",
-            size: "1024x1024",
+            aspect: "square",
           },
         },
       }),

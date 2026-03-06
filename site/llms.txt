@@ -13,7 +13,7 @@ Run402 gives you a full Postgres database with REST API, user auth, file storage
 
 **Static sites**: One HTTP call, one payment → live URL at `{id}.sites.run402.com`. Upload HTML/CSS/JS/images as inlined files. SPA-ready with automatic fallback routing.
 
-**Image generation**: Send a text prompt, get a PNG back. $0.01 per image. Supports multiple sizes from 512x512 to 1792x1024.
+**Image generation**: Send a text prompt, get a PNG back. $0.03 per image. Three aspect ratios: square, landscape, portrait.
 
 Only provisioning, renewal, site deployment, and image generation require x402 payment. All subsequent REST, auth, and storage calls use the returned project keys -- no payment headers needed.
 
@@ -492,30 +492,30 @@ For explicit control, use both `apikey` (project key) and `Authorization: Bearer
 
 | Endpoint | Method | Auth | Cost | Description |
 |----------|--------|------|------|-------------|
-| `/v1/generate-image` | GET | None | Free | Endpoint info (pricing, allowed sizes) |
-| `/v1/generate-image` | POST | x402 | $0.01 | Generate an image from a text prompt |
+| `/v1/generate-image` | GET | None | Free | Endpoint info (pricing, aspect ratios) |
+| `/v1/generate-image` | POST | x402 | $0.03 | Generate an image from a text prompt |
 
-Generate a PNG image from a text prompt for $0.01. No signup, no API keys -- just pay and get an image.
+Generate a PNG image from a text prompt for $0.03. No signup, no API keys -- just pay and get an image.
 
 **Request body:**
 ```json
 {
   "prompt": "a cat wearing a top hat, watercolor style",
-  "size": "1024x1024"
+  "aspect": "square"
 }
 ```
 
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
 | `prompt` | string | Yes | -- | Image description. Max 1000 chars. |
-| `size` | string | No | `"1024x1024"` | One of: `512x512`, `1024x1024`, `1536x1536`, `1792x1024`, `1024x1792` |
+| `aspect` | string | No | `"square"` | One of: `square` (1:1), `landscape` (16:9), `portrait` (9:16) |
 
 **Example:**
 ```bash
 curl -X POST https://api.run402.com/v1/generate-image \
   -H "Content-Type: application/json" \
   -H "X-402-Payment: <your-x402-payment-header>" \
-  -d '{"prompt": "a futuristic city at sunset"}'
+  -d '{"prompt": "a futuristic city at sunset", "aspect": "landscape"}'
 ```
 
 **Response:**
@@ -523,7 +523,7 @@ curl -X POST https://api.run402.com/v1/generate-image \
 {
   "image": "<base64-encoded PNG>",
   "content_type": "image/png",
-  "size": "1024x1024"
+  "aspect": "landscape"
 }
 ```
 
@@ -575,11 +575,11 @@ Each deployment is immutable and gets a permanent URL. Deploy as many times as y
 
 ### Image generation
 
-| Item | Price | Sizes |
-|------|-------|-------|
-| Per image | $0.01 | 512x512, 1024x1024, 1536x1536, 1792x1024, 1024x1792 |
+| Item | Price | Aspect Ratios |
+|------|-------|---------------|
+| Per image | $0.03 | square (1:1), landscape (16:9), portrait (9:16) |
 
-Flat price regardless of image size.
+Flat price regardless of aspect ratio.
 
 Payments are x402 micropayments on **Base** (EIP-155 chain 8453). Testnet available on Base Sepolia (chain 84532).
 

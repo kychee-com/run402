@@ -1,12 +1,12 @@
 import { OPENROUTER_API_KEY } from "../config.js";
 
-export const ALLOWED_SIZES = new Set([
-  "512x512",
-  "1024x1024",
-  "1536x1536",
-  "1792x1024",
-  "1024x1792",
-]);
+export const ALLOWED_ASPECTS = new Set(["square", "landscape", "portrait"]);
+
+const ASPECT_MAP: Record<string, string> = {
+  square: "1:1",
+  landscape: "16:9",
+  portrait: "9:16",
+};
 
 export class ImageGenerationError extends Error {
   constructor(
@@ -21,18 +21,17 @@ export class ImageGenerationError extends Error {
 interface GenerateImageResult {
   image: string;
   content_type: string;
-  size: string;
+  aspect: string;
 }
 
 export async function generateImage(
   prompt: string,
-  size: string = "1024x1024",
+  aspect: string = "square",
 ): Promise<GenerateImageResult> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 30_000);
 
   try {
-    const [width, height] = size.split("x").map(Number);
     const resp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -40,12 +39,11 @@ export async function generateImage(
         Authorization: `Bearer ${OPENROUTER_API_KEY}`,
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash-image",
+        model: "black-forest-labs/flux.2-klein-4b",
         messages: [{ role: "user", content: prompt }],
         modalities: ["image"],
         image_config: {
-          width,
-          height,
+          aspect_ratio: ASPECT_MAP[aspect],
         },
       }),
       signal: controller.signal,
@@ -87,7 +85,7 @@ export async function generateImage(
       throw new ImageGenerationError(502, "image generation failed");
     }
 
-    return { image: b64Match[1], content_type: "image/png", size };
+    return { image: b64Match[1], content_type: "image/png", aspect };
   } catch (err) {
     if (err instanceof ImageGenerationError) throw err;
     if ((err as Error).name === "AbortError") {
