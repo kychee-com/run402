@@ -7,13 +7,15 @@
 
 ## TL;DR
 
-Run402 gives you a full Postgres database with REST API, user auth, file storage, row-level security, and static site hosting. You pay with x402 micropayments -- no signups, no dashboards, no human approval needed.
+Run402 gives you a full Postgres database with REST API, user auth, file storage, row-level security, static site hosting, and image generation. You pay with x402 micropayments -- no signups, no dashboards, no human approval needed.
 
 **Database**: One HTTP call, one payment → `anon_key`, `service_key`, project ID. Start creating tables immediately.
 
 **Static sites**: One HTTP call, one payment → live URL at `{id}.sites.run402.com`. Upload HTML/CSS/JS/images as inlined files. SPA-ready with automatic fallback routing.
 
-Only provisioning, renewal, and site deployment require x402 payment. All subsequent REST, auth, and storage calls use the returned project keys -- no payment headers needed.
+**Image generation**: Send a text prompt, get a PNG back. $0.01 per image. Supports multiple sizes from 512x512 to 1792x1024.
+
+Only provisioning, renewal, site deployment, and image generation require x402 payment. All subsequent REST, auth, and storage calls use the returned project keys -- no payment headers needed.
 
 **Cost**: A full webapp (database + deployed frontend) costs ~$0.15 on testnet (free) or mainnet. Prototype database = $0.10, site deployment = $0.05. No ongoing fees until you renew.
 
@@ -486,6 +488,47 @@ For explicit control, use both `apikey` (project key) and `Authorization: Bearer
 | `/v1/subdomains/:name` | GET | None | Free | Lookup subdomain details |
 | `/v1/subdomains/:name` | DELETE | service_key | Free | Release a subdomain |
 
+### Image Generation
+
+| Endpoint | Method | Auth | Cost | Description |
+|----------|--------|------|------|-------------|
+| `/v1/generate-image` | GET | None | Free | Endpoint info (pricing, allowed sizes) |
+| `/v1/generate-image` | POST | x402 | $0.01 | Generate an image from a text prompt |
+
+Generate a PNG image from a text prompt for $0.01. No signup, no API keys -- just pay and get an image.
+
+**Request body:**
+```json
+{
+  "prompt": "a cat wearing a top hat, watercolor style",
+  "size": "1024x1024"
+}
+```
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `prompt` | string | Yes | -- | Image description. Max 1000 chars. |
+| `size` | string | No | `"1024x1024"` | One of: `512x512`, `1024x1024`, `1536x1536`, `1792x1024`, `1024x1792` |
+
+**Example:**
+```bash
+curl -X POST https://api.run402.com/v1/generate-image \
+  -H "Content-Type: application/json" \
+  -H "X-402-Payment: <your-x402-payment-header>" \
+  -d '{"prompt": "a futuristic city at sunset"}'
+```
+
+**Response:**
+```json
+{
+  "image": "<base64-encoded PNG>",
+  "content_type": "image/png",
+  "size": "1024x1024"
+}
+```
+
+The `image` field contains the full PNG as a base64 string. Decode it to get the image file.
+
 ### Utility
 
 | Endpoint | Method | Auth | Cost | Description |
@@ -530,6 +573,14 @@ Response:
 
 Each deployment is immutable and gets a permanent URL. Deploy as many times as you want -- each is a separate $0.05 payment.
 
+### Image generation
+
+| Item | Price | Sizes |
+|------|-------|-------|
+| Per image | $0.01 | 512x512, 1024x1024, 1536x1536, 1792x1024, 1024x1792 |
+
+Flat price regardless of image size.
+
 Payments are x402 micropayments on **Base** (EIP-155 chain 8453). Testnet available on Base Sepolia (chain 84532).
 
 Rate limit: 100 requests/second per project.
@@ -554,6 +605,7 @@ Supported on:
 - `POST /v1/projects/:id/renew`
 - `POST /v1/deployments`
 - `POST /v1/message`
+- `POST /v1/generate-image`
 
 **Recommendation**: Always include an `Idempotency-Key` when provisioning or renewing. Use a UUID or deterministic hash of your intent.
 
