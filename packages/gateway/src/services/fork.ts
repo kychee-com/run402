@@ -7,8 +7,15 @@
  */
 
 import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+import { writeFileSync, unlinkSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { pool } from "../db/pool.js";
 import { S3_BUCKET, S3_REGION } from "../config.js";
+
+const execFileAsync = promisify(execFile);
 import { TIERS } from "@run402/shared";
 import type { TierName } from "@run402/shared";
 import { deployBundle } from "./bundle.js";
@@ -163,55 +170,21 @@ export async function forkApp(
   );
   const targetSchema = projectResult.rows[0].schema_slot;
 
-  // Apply pre-schema SQL (tables, types, sequences)
-  if (bundle.pre_schema_sql.trim()) {
-    const preSql = decanonicalizeSchema(bundle.pre_schema_sql, targetSchema);
-    const client = await pool.connect();
-    try {
-      await client.query("BEGIN");
-      await client.query(preSql);
-      await client.query("NOTIFY pgrst, 'reload schema'");
-      await client.query("COMMIT");
-    } catch (err) {
-      await client.query("ROLLBACK");
-      throw err;
-    } finally {
-      client.release();
-    }
+  // Apply schema SQL via psql (handles multi-statement pg_dump output correctly)
+  const sqlPhases = [
+    { label: "pre-schema", sql: bundle.pre_schema_sql },
+    { label: "seed", sql: bundle.seed_sql },
+    { label: "post-schema", sql: bundle.post_schema_sql },
+  ];
+
+  for (const phase of sqlPhases) {
+    if (!phase.sql?.trim()) continue;
+    const sql = decanonicalizeSchema(phase.sql, targetSchema);
+    await executeSqlViaPsql(sql, `fork ${phase.label}`);
   }
 
-  // Apply seed data
-  if (bundle.seed_sql?.trim()) {
-    const seedSql = decanonicalizeSchema(bundle.seed_sql, targetSchema);
-    const client = await pool.connect();
-    try {
-      await client.query("BEGIN");
-      await client.query(seedSql);
-      await client.query("COMMIT");
-    } catch (err) {
-      await client.query("ROLLBACK");
-      throw err;
-    } finally {
-      client.release();
-    }
-  }
-
-  // Apply post-schema SQL (indexes, RLS policies, constraints)
-  if (bundle.post_schema_sql.trim()) {
-    const postSql = decanonicalizeSchema(bundle.post_schema_sql, targetSchema);
-    const client = await pool.connect();
-    try {
-      await client.query("BEGIN");
-      await client.query(postSql);
-      await client.query("NOTIFY pgrst, 'reload schema'");
-      await client.query("COMMIT");
-    } catch (err) {
-      await client.query("ROLLBACK");
-      throw err;
-    } finally {
-      client.release();
-    }
-  }
+  // Notify PostgREST to reload schema cache
+  await pool.query("NOTIFY pgrst, 'reload schema'");
 
   // Record provenance
   await pool.query(
@@ -238,4 +211,39 @@ export async function forkApp(
     missing_secrets: requiredSecrets,
     required_actions: requiredActions,
   };
+}
+
+/**
+ * Execute multi-statement SQL via psql (handles pg_dump output correctly).
+ */
+async function executeSqlViaPsql(sql: string, label: string): Promise<void> {
+  const dbHost = process.env.DB_HOST || "localhost";
+  const dbPort = process.env.DB_PORT || "5432";
+  const dbName = process.env.DB_NAME || "agentdb";
+  const dbUser = process.env.DB_USER || "postgres";
+  const dbPassword = process.env.DB_PASSWORD || "";
+
+  // Write SQL to temp file (psql -f is more reliable than stdin for large scripts)
+  const tmpFile = join(tmpdir(), `fork-${Date.now()}-${Math.random().toString(36).slice(2)}.sql`);
+  writeFileSync(tmpFile, sql);
+
+  try {
+    await execFileAsync("psql", [
+      `--host=${dbHost}`,
+      `--port=${dbPort}`,
+      `--username=${dbUser}`,
+      `--dbname=${dbName}`,
+      "--no-psqlrc",
+      "--set=ON_ERROR_STOP=1",
+      `-f`, tmpFile,
+    ], {
+      env: { ...process.env, PGPASSWORD: dbPassword },
+      maxBuffer: 10 * 1024 * 1024,
+    });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    throw new ForkError(`Fork ${label} failed: ${msg}`, 500);
+  } finally {
+    try { unlinkSync(tmpFile); } catch { /* best effort cleanup */ }
+  }
 }
