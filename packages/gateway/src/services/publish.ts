@@ -190,11 +190,9 @@ async function pgDumpSchema(
   } else {
     args.push("--schema-only");
     args.push(`--section=${section}`);
-    // Keep privileges in post-data (GRANTs from RLS templates etc.)
-    // Strip from pre-data to avoid DEFAULT PRIVILEGES conflicts
-    if (section === "pre-data") {
-      args.push("--no-privileges");
-    }
+    // Keep privileges — GRANTs reference standard PostgREST roles
+    // (anon, authenticated, service_role) which exist in all run402 instances.
+    // The fork service also applies base grants as a safety net.
   }
 
   const env = { ...process.env, PGPASSWORD: dbPassword };
@@ -216,10 +214,11 @@ async function pgDumpSchema(
  */
 function canonicalizeSchema(sql: string, schemaSlot: string): string {
   // Simple global replacement of schema name with placeholder.
-  // Then remove CREATE SCHEMA lines (target schema already exists in fork).
+  // Remove CREATE SCHEMA and GRANT USAGE ON SCHEMA lines (target schema already has these).
   return sql
     .replace(new RegExp(schemaSlot, "g"), "__SCHEMA__")
-    .replace(/^CREATE SCHEMA __SCHEMA__;\s*$/gm, "");
+    .replace(/^CREATE SCHEMA __SCHEMA__;\s*$/gm, "")
+    .replace(/^GRANT USAGE ON SCHEMA __SCHEMA__ TO .*;\s*$/gm, "");
 }
 
 /**
