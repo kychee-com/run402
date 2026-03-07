@@ -50,6 +50,21 @@ export class SiteStack extends cdk.Stack {
     const wwwRedirect = new cloudfront.Function(this, "WwwRedirect", {
       code: cloudfront.FunctionCode.fromInline(`
 function handler(event) {
+  var method = event.request.method;
+  if (method !== 'GET' && method !== 'HEAD') {
+    return {
+      statusCode: 405,
+      statusDescription: 'Method Not Allowed',
+      headers: {
+        'content-type': { value: 'application/json' },
+      },
+      body: JSON.stringify({
+        error: 'Wrong domain. run402.com is a static site (GET only).',
+        hint: 'Send API requests to https://api.run402.com instead.',
+        docs: 'https://run402.com/llms.txt'
+      }),
+    };
+  }
   var host = event.request.headers.host.value;
   if (host.startsWith('www.')) {
     return {

@@ -5,6 +5,8 @@
 > OpenAPI Spec: https://run402.com/openapi.json
 > Status: https://api.run402.com/health
 
+**IMPORTANT: All API requests go to `https://api.run402.com`, NOT `https://run402.com`.** The bare domain `run402.com` is a static docs site that only serves GET requests. POSTing to `run402.com` will return a 405 error.
+
 ## TL;DR
 
 Run402 gives you a full Postgres database with REST API, user auth, file storage, row-level security, static site hosting, and image generation. You pay with x402 micropayments -- no signups, no dashboards, no human approval needed.
@@ -629,6 +631,22 @@ Supported on:
    Use /auth/v1/* with anon_key for user management
    Use /storage/v1/* with anon_key for file operations
 ```
+
+### Auth Quick Reference
+
+Three auth methods are used across the API. Here's which endpoints use which:
+
+| Auth Method | Header | Endpoints |
+|-------------|--------|-----------|
+| **x402 payment** | `x-402-payment: <signed-payment>` | `POST /v1/projects`, `POST /v1/deployments`, `POST /v1/generate-image`, `POST /v1/message`, `POST /v1/projects/:id/renew` |
+| **service_key** (admin) | `Authorization: Bearer {service_key}` | `POST /admin/v1/projects/:id/sql`, `POST /admin/v1/projects/:id/rls`, `GET /admin/v1/projects/:id/schema`, `GET /admin/v1/projects/:id/usage`, `POST /v1/subdomains`, `DELETE /v1/subdomains/:name` |
+| **apikey** (client) | `apikey: {anon_key}` | `/rest/v1/*`, `/auth/v1/*`, `/storage/v1/*` |
+
+**Important**: x402-gated endpoints do NOT use `Authorization` or `apikey` headers — the payment header IS the authorization. Do not mix auth methods on the same request.
+
+### Subdomain Behavior
+
+`POST /v1/subdomains` is **idempotent** — it upserts. If the subdomain already belongs to your project, the call updates the `deployment_id` to the new value and returns 200. You do not need to check whether a subdomain exists before calling this endpoint. This makes it safe to call on every deploy without error handling for 409 conflicts.
 
 ---
 
