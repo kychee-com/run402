@@ -71,11 +71,75 @@ router.get(
   }),
 );
 
+// PATCH /admin/v1/projects/:id/versions/:versionId — update version metadata (service_key auth)
+router.patch(
+  "/admin/v1/projects/:id/versions/:versionId",
+  serviceKeyAuth,
+  asyncHandler(async (req: Request, res: Response) => {
+    const project = req.project!;
+    if (project.id !== req.params.id) {
+      throw new HttpError(403, "Token project_id mismatch");
+    }
+
+    const { tags, description, fork_allowed, visibility } = req.body || {};
+    const updates: string[] = [];
+    const params: unknown[] = [];
+    let paramIdx = 1;
+
+    if (tags !== undefined) {
+      const { validateTags: vt } = await import("../services/publish.js");
+      const tagError = vt(tags);
+      if (tagError) throw new HttpError(400, tagError);
+      updates.push(`tags = $${paramIdx++}`);
+      params.push(tags);
+    }
+    if (description !== undefined) {
+      updates.push(`description = $${paramIdx++}`);
+      params.push(description);
+    }
+    if (fork_allowed !== undefined) {
+      updates.push(`fork_allowed = $${paramIdx++}`);
+      params.push(fork_allowed);
+    }
+    if (visibility !== undefined) {
+      updates.push(`visibility = $${paramIdx++}`);
+      params.push(visibility);
+    }
+
+    if (updates.length === 0) {
+      throw new HttpError(400, "No fields to update");
+    }
+
+    params.push(req.params.versionId);
+    params.push(project.id);
+
+    const { pool: dbPool } = await import("../db/pool.js");
+    const result = await dbPool.query(
+      `UPDATE internal.app_versions SET ${updates.join(", ")}
+       WHERE id = $${paramIdx++} AND project_id = $${paramIdx}`,
+      params,
+    );
+
+    if (result.rowCount === 0) {
+      throw new HttpError(404, "Version not found");
+    }
+
+    const { getAppVersion: getVer } = await import("../services/publish.js");
+    const updated = await getVer(req.params.versionId as string);
+    res.json(updated);
+  }),
+);
+
 // GET /v1/apps — list all public forkable apps (free, no auth)
+// Supports ?tag=auth&tag=rls for filtering
 router.get(
   "/v1/apps",
-  asyncHandler(async (_req: Request, res: Response) => {
-    const apps = await listPublicApps();
+  asyncHandler(async (req: Request, res: Response) => {
+    const tagParam = req.query.tag;
+    const filterTags = tagParam
+      ? (Array.isArray(tagParam) ? tagParam as string[] : [tagParam as string])
+      : undefined;
+    const apps = await listPublicApps(filterTags);
 
     const forkPricing: Record<string, string> = {};
     for (const [tierName, tierConfig] of Object.entries(TIERS)) {

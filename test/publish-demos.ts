@@ -28,6 +28,7 @@ const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 interface DemoApp {
   name: string;
   description: string;
+  tags: string[];
   migrations: string;
   rls: { template: string; tables: Array<{ table: string; owner_column?: string }> };
   site?: Array<{ file: string; data: string }>;
@@ -37,6 +38,7 @@ const DEMOS: DemoApp[] = [
   {
     name: "todo-starter",
     description: "Simple todo list with user accounts. Fork and customize for any task tracker.",
+    tags: ["todo", "auth", "rls", "starter"],
     migrations: `
       CREATE TABLE profiles (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), email TEXT UNIQUE NOT NULL, display_name TEXT, created_at TIMESTAMPTZ DEFAULT now());
       CREATE TABLE todos (id SERIAL PRIMARY KEY, user_id UUID NOT NULL REFERENCES profiles(id), title TEXT NOT NULL, done BOOLEAN DEFAULT false, created_at TIMESTAMPTZ DEFAULT now());
@@ -53,6 +55,7 @@ const DEMOS: DemoApp[] = [
   {
     name: "guestbook",
     description: "Public guestbook - anyone can read and write. Great starting point for forums, comment sections, or feedback forms.",
+    tags: ["guestbook", "public-write", "starter"],
     migrations: `
       CREATE TABLE entries (id SERIAL PRIMARY KEY, name TEXT NOT NULL, message TEXT NOT NULL, created_at TIMESTAMPTZ DEFAULT now());
     `,
@@ -65,6 +68,7 @@ const DEMOS: DemoApp[] = [
   {
     name: "link-board",
     description: "Share and vote on links. Authenticated users can post and upvote. Public read access.",
+    tags: ["links", "voting", "auth", "public-read"],
     migrations: `
       CREATE TABLE profiles (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), email TEXT UNIQUE NOT NULL, username TEXT, created_at TIMESTAMPTZ DEFAULT now());
       CREATE TABLE links (id SERIAL PRIMARY KEY, user_id UUID NOT NULL REFERENCES profiles(id), url TEXT NOT NULL, title TEXT NOT NULL, votes INTEGER DEFAULT 0, created_at TIMESTAMPTZ DEFAULT now());
@@ -81,6 +85,7 @@ const DEMOS: DemoApp[] = [
   {
     name: "inventory-tracker",
     description: "Track items with quantity, location, and categories. Private per-user data with row-level security.",
+    tags: ["inventory", "auth", "rls", "categories"],
     migrations: `
       CREATE TABLE profiles (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), email TEXT UNIQUE NOT NULL, created_at TIMESTAMPTZ DEFAULT now());
       CREATE TABLE categories (id SERIAL PRIMARY KEY, user_id UUID NOT NULL REFERENCES profiles(id), name TEXT NOT NULL);
@@ -137,6 +142,7 @@ async function publishDemo(demo: DemoApp, serviceKey: string, adminKey: string):
       visibility: "public",
       fork_allowed: true,
       description: demo.description,
+      tags: demo.tags,
     }),
   });
   const pubBody = await pubRes.json();

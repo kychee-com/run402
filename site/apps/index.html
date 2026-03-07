@@ -143,6 +143,29 @@
     .nav a { color: #00FF9F; text-decoration: none; }
     .nav a:hover { text-decoration: underline; }
     .loading { text-align: center; padding: 40px; color: #6B7280; }
+    .filter-bar {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 24px;
+    }
+    .filter-tag {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      color: #9CA3AF;
+      background: rgba(255,255,255,0.03);
+      border: 1px solid #1E1E2A;
+      border-radius: 4px;
+      padding: 4px 10px;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .filter-tag:hover { border-color: rgba(0,255,159,0.3); color: #E0E0E0; }
+    .filter-tag.active {
+      color: #00FF9F;
+      border-color: rgba(0,255,159,0.5);
+      background: rgba(0,255,159,0.08);
+    }
     .footer {
       border-top: 1px solid #1E1E2A;
       padding-top: 32px;
@@ -168,6 +191,7 @@
       Fully independent. One x402 payment.
     </p>
 
+    <div id="filterBar" class="filter-bar" style="display:none"></div>
     <div id="apps" class="loading">Loading apps...</div>
 
     <div class="footer">
@@ -180,14 +204,17 @@
   </div>
 
   <script>
+    var allApps = [];
+    var activeFilters = new Set();
+
     async function loadApps() {
       var container = document.getElementById('apps');
       try {
         var res = await fetch('https://api.run402.com/v1/apps');
         var data = await res.json();
-        var apps = data.apps || [];
+        allApps = data.apps || [];
 
-        if (apps.length === 0) {
+        if (allApps.length === 0) {
           container.innerHTML = '<div class="empty">' +
             '<p>No public apps yet.</p>' +
             '<p style="margin-top:12px">Publish your app with:</p>' +
@@ -197,53 +224,107 @@
           return;
         }
 
-        var html = '<div class="grid">';
-        for (var i = 0; i < apps.length; i++) {
-          var app = apps[i];
-          var tags = '';
-
-          if (app.fork_allowed) {
-            tags += '<span class="tag forkable">forkable</span>';
-          }
-          if (app.function_count > 0) {
-            tags += '<span class="tag">' + app.function_count + ' function' + (app.function_count !== 1 ? 's' : '') + '</span>';
-          }
-          if (app.table_count > 0) {
-            tags += '<span class="tag">' + app.table_count + ' table' + (app.table_count !== 1 ? 's' : '') + '</span>';
-          }
-          if (app.site_file_count > 0) {
-            tags += '<span class="tag">' + app.site_file_count + ' file' + (app.site_file_count !== 1 ? 's' : '') + '</span>';
-          }
-          var secrets = app.required_secrets || [];
-          if (secrets.length > 0) {
-            tags += '<span class="tag secrets">' + secrets.length + ' secret' + (secrets.length !== 1 ? 's' : '') + ' required</span>';
-          }
-
-          var forkSection = '';
-          if (app.fork_allowed && app.fork_pricing) {
-            forkSection = '<div class="fork-section">' +
-              '<div class="fork-label">Fork this app</div>' +
-              '<div class="fork-cmd">POST /v1/fork/prototype<br>{ <span class="hl">"version_id"</span>: <span class="hl">"' + app.id + '"</span>, <span class="hl">"name"</span>: "my-copy" }</div>' +
-              '<div class="fork-price">From ' + app.fork_pricing.prototype + ' USDC</div>' +
-              '</div>';
-          }
-
-          html += '<div class="app-card">' +
-            '<div class="app-name">' + escapeHtml(app.name) + '</div>' +
-            '<div class="app-desc">' + escapeHtml(app.description || 'No description') + '</div>' +
-            '<div class="app-stats">' +
-              '<span class="stat">Tier: <strong>' + app.min_tier + '+</strong></span>' +
-              '<span class="stat">v<strong>' + app.version + '</strong></span>' +
-            '</div>' +
-            '<div class="app-tags">' + tags + '</div>' +
-            forkSection +
-            '</div>';
-        }
-        html += '</div>';
-        container.innerHTML = html;
+        buildFilterBar();
+        renderApps(allApps);
       } catch (err) {
         container.innerHTML = '<div class="empty">Failed to load apps. <a href="https://api.run402.com/v1/apps" style="color:#00FF9F">Try the API directly</a>.</div>';
       }
+    }
+
+    function buildFilterBar() {
+      var tagCounts = {};
+      for (var i = 0; i < allApps.length; i++) {
+        var appTags = allApps[i].tags || [];
+        for (var j = 0; j < appTags.length; j++) {
+          tagCounts[appTags[j]] = (tagCounts[appTags[j]] || 0) + 1;
+        }
+      }
+      var sortedTags = Object.keys(tagCounts).sort(function(a, b) { return tagCounts[b] - tagCounts[a]; });
+      if (sortedTags.length === 0) return;
+
+      var bar = document.getElementById('filterBar');
+      bar.style.display = 'flex';
+      var html = '';
+      for (var k = 0; k < sortedTags.length; k++) {
+        html += '<button class="filter-tag" data-tag="' + sortedTags[k] + '" onclick="toggleFilter(this)">' +
+          sortedTags[k] + ' <span style="opacity:0.5">(' + tagCounts[sortedTags[k]] + ')</span></button>';
+      }
+      bar.innerHTML = html;
+    }
+
+    function toggleFilter(btn) {
+      var tag = btn.getAttribute('data-tag');
+      if (activeFilters.has(tag)) {
+        activeFilters.delete(tag);
+        btn.classList.remove('active');
+      } else {
+        activeFilters.add(tag);
+        btn.classList.add('active');
+      }
+      var filtered = allApps;
+      if (activeFilters.size > 0) {
+        filtered = allApps.filter(function(app) {
+          var appTags = app.tags || [];
+          var match = true;
+          activeFilters.forEach(function(f) { if (appTags.indexOf(f) === -1) match = false; });
+          return match;
+        });
+      }
+      renderApps(filtered);
+    }
+
+    function renderApps(apps) {
+      var container = document.getElementById('apps');
+      if (apps.length === 0) {
+        container.innerHTML = '<div class="empty">No apps match the selected filters.</div>';
+        return;
+      }
+
+      var html = '<div class="grid">';
+      for (var i = 0; i < apps.length; i++) {
+        var app = apps[i];
+        var tagsHtml = '';
+
+        if (app.fork_allowed) {
+          tagsHtml += '<span class="tag forkable">forkable</span>';
+        }
+        var appTags = app.tags || [];
+        for (var t = 0; t < appTags.length; t++) {
+          tagsHtml += '<span class="tag">' + escapeHtml(appTags[t]) + '</span>';
+        }
+        if (app.table_count > 0) {
+          tagsHtml += '<span class="tag">' + app.table_count + ' table' + (app.table_count !== 1 ? 's' : '') + '</span>';
+        }
+        if (app.function_count > 0) {
+          tagsHtml += '<span class="tag">' + app.function_count + ' function' + (app.function_count !== 1 ? 's' : '') + '</span>';
+        }
+        var secrets = app.required_secrets || [];
+        if (secrets.length > 0) {
+          tagsHtml += '<span class="tag secrets">' + secrets.length + ' secret' + (secrets.length !== 1 ? 's' : '') + ' required</span>';
+        }
+
+        var forkSection = '';
+        if (app.fork_allowed && app.fork_pricing) {
+          forkSection = '<div class="fork-section">' +
+            '<div class="fork-label">Fork this app</div>' +
+            '<div class="fork-cmd">POST /v1/fork/prototype<br>{ <span class="hl">"version_id"</span>: <span class="hl">"' + app.id + '"</span>, <span class="hl">"name"</span>: "my-copy" }</div>' +
+            '<div class="fork-price">From ' + app.fork_pricing.prototype + ' USDC</div>' +
+            '</div>';
+        }
+
+        html += '<div class="app-card">' +
+          '<div class="app-name">' + escapeHtml(app.name) + '</div>' +
+          '<div class="app-desc">' + escapeHtml(app.description || 'No description') + '</div>' +
+          '<div class="app-stats">' +
+            '<span class="stat">Tier: <strong>' + app.min_tier + '+</strong></span>' +
+            '<span class="stat">v<strong>' + app.version + '</strong></span>' +
+          '</div>' +
+          '<div class="app-tags">' + tagsHtml + '</div>' +
+          forkSection +
+          '</div>';
+      }
+      html += '</div>';
+      container.innerHTML = html;
     }
 
     function escapeHtml(s) {

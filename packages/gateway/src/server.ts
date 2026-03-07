@@ -326,6 +326,9 @@ async function applyMigrations() {
 
   // v1.6: fork provenance
   await pool.query(`ALTER TABLE internal.projects ADD COLUMN IF NOT EXISTS source_version_id TEXT`);
+
+  // v1.7: app version tags
+  await pool.query(`ALTER TABLE internal.app_versions ADD COLUMN IF NOT EXISTS tags TEXT[] DEFAULT '{}'`);
 }
 
 async function start() {

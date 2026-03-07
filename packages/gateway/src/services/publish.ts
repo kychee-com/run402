@@ -58,9 +58,30 @@ export interface PublishOptions {
   visibility?: "private" | "unlisted" | "public";
   fork_allowed?: boolean;
   description?: string;
+  tags?: string[];
   include_seed?: { tables: string[] };
   required_secrets?: Array<{ key: string; description?: string }>;
   required_actions?: Array<{ action: string; description?: string }>;
+}
+
+const TAG_RE = /^[a-z0-9][a-z0-9-]{0,28}[a-z0-9]$/;
+const MAX_TAGS = 10;
+
+/**
+ * Validate tags. Returns error message or null.
+ */
+export function validateTags(tags: string[]): string | null {
+  if (!Array.isArray(tags)) return "'tags' must be an array";
+  if (tags.length > MAX_TAGS) return `Max ${MAX_TAGS} tags allowed`;
+  const seen = new Set<string>();
+  for (const tag of tags) {
+    if (typeof tag !== "string") return "Each tag must be a string";
+    if (tag.length < 2) return `Tag '${tag}' is too short (min 2 chars)`;
+    if (!TAG_RE.test(tag)) return `Tag '${tag}' must be lowercase alphanumeric + hyphens, 2-30 chars`;
+    if (seen.has(tag)) return `Duplicate tag: '${tag}'`;
+    seen.add(tag);
+  }
+  return null;
 }
 
 export interface AppVersionInfo {
@@ -80,6 +101,7 @@ export interface AppVersionInfo {
   site_total_bytes: number;
   required_secrets: Array<{ key: string; description?: string }>;
   required_actions: Array<{ action: string; description?: string }>;
+  tags: string[];
   created_at: string;
   compatibility_warnings: string[];
 }
@@ -240,6 +262,13 @@ export async function publishAppVersion(
 ): Promise<AppVersionInfo> {
   const warnings: string[] = [];
 
+  // Validate tags
+  const tags = options.tags || [];
+  if (tags.length > 0) {
+    const tagError = validateTags(tags);
+    if (tagError) throw new PublishError(tagError, 400);
+  }
+
   // Acquire advisory lock to prevent concurrent publish/deploy
   const lockId = Buffer.from(projectId).readUInt32BE(0) || 1;
   await pool.query(`SELECT pg_advisory_lock($1)`, [lockId]);
@@ -352,19 +381,19 @@ export async function publishAppVersion(
       `INSERT INTO internal.app_versions
        (id, project_id, version, name, description, visibility, fork_allowed, status,
         min_tier, derived_min_tier, format_version, bundle_uri, bundle_sha256,
-        publisher_wallet, required_secrets, required_actions,
+        publisher_wallet, required_secrets, required_actions, tags,
         table_count, function_count, site_file_count, site_total_bytes, seed_row_count,
         site_deployment_id)
        VALUES ($1, $2, $3, $4, $5, $6, $7, 'published',
         $8, $9, 1, $10, $11,
-        $12, $13, $14,
-        $15, $16, $17, $18, $19,
-        $20)`,
+        $12, $13, $14, $15,
+        $16, $17, $18, $19, $20,
+        $21)`,
       [
         versionId, projectId, version, projectName, options.description || null,
         visibility, forkAllowed,
         derivedMinTier, derivedMinTier, bundleUri, bundleSha256,
-        publisherWallet || null, JSON.stringify(requiredSecrets), JSON.stringify(requiredActions),
+        publisherWallet || null, JSON.stringify(requiredSecrets), JSON.stringify(requiredActions), tags,
         tableCount, functionCount, siteFileCount, siteTotalBytes, seedRowCount,
         siteDeploymentId,
       ],
@@ -407,6 +436,7 @@ export async function publishAppVersion(
       site_total_bytes: siteTotalBytes,
       required_secrets: requiredSecrets,
       required_actions: requiredActions,
+      tags,
       created_at: new Date().toISOString(),
       compatibility_warnings: warnings,
     };
@@ -423,66 +453,58 @@ export async function listVersions(projectId: string): Promise<AppVersionInfo[]>
     `SELECT id, project_id, version, name, description, visibility, fork_allowed,
             min_tier, derived_min_tier, status,
             table_count, function_count, site_file_count, site_total_bytes,
-            required_secrets, required_actions, created_at
+            required_secrets, required_actions, tags, created_at
      FROM internal.app_versions WHERE project_id = $1 ORDER BY version DESC`,
     [projectId],
   );
-  return result.rows.map((row) => ({
-    id: row.id,
-    project_id: row.project_id,
-    version: row.version,
-    name: row.name,
-    description: row.description,
-    visibility: row.visibility,
-    fork_allowed: row.fork_allowed,
-    min_tier: row.min_tier as TierName,
-    derived_min_tier: row.derived_min_tier as TierName,
-    status: row.status,
-    table_count: row.table_count,
-    function_count: row.function_count,
-    site_file_count: row.site_file_count,
-    site_total_bytes: Number(row.site_total_bytes),
-    required_secrets: row.required_secrets || [],
-    required_actions: row.required_actions || [],
-    created_at: row.created_at,
-    compatibility_warnings: [],
-  }));
+  return result.rows.map(mapRowToAppVersion);
 }
 
 /**
- * List all public forkable app versions.
+ * List all public forkable app versions, optionally filtered by tags.
  */
-export async function listPublicApps(): Promise<AppVersionInfo[]> {
-  const result = await pool.query(
-    `SELECT id, project_id, version, name, description, visibility, fork_allowed,
+export async function listPublicApps(filterTags?: string[]): Promise<AppVersionInfo[]> {
+  let query = `SELECT id, project_id, version, name, description, visibility, fork_allowed,
             min_tier, derived_min_tier, status,
             table_count, function_count, site_file_count, site_total_bytes,
-            required_secrets, required_actions, site_deployment_id, created_at
+            required_secrets, required_actions, tags, site_deployment_id, created_at
      FROM internal.app_versions
-     WHERE visibility IN ('public', 'unlisted') AND status = 'published'
-     ORDER BY created_at DESC
-     LIMIT 100`,
-  );
-  return result.rows.map((row) => ({
-    id: row.id,
-    project_id: row.project_id,
-    version: row.version,
-    name: row.name,
-    description: row.description,
-    visibility: row.visibility,
-    fork_allowed: row.fork_allowed,
+     WHERE visibility IN ('public', 'unlisted') AND status = 'published'`;
+  const params: string[][] = [];
+
+  if (filterTags && filterTags.length > 0) {
+    query += ` AND tags @> $1`;
+    params.push(filterTags);
+  }
+
+  query += ` ORDER BY created_at DESC LIMIT 100`;
+
+  const result = await pool.query(query, params.length > 0 ? params : undefined);
+  return result.rows.map(mapRowToAppVersion);
+}
+
+function mapRowToAppVersion(row: Record<string, unknown>): AppVersionInfo {
+  return {
+    id: row.id as string,
+    project_id: row.project_id as string,
+    version: row.version as number,
+    name: row.name as string,
+    description: row.description as string | null,
+    visibility: row.visibility as string,
+    fork_allowed: row.fork_allowed as boolean,
     min_tier: row.min_tier as TierName,
     derived_min_tier: row.derived_min_tier as TierName,
-    status: row.status,
-    table_count: row.table_count,
-    function_count: row.function_count,
-    site_file_count: row.site_file_count,
+    status: row.status as string,
+    table_count: row.table_count as number,
+    function_count: row.function_count as number,
+    site_file_count: row.site_file_count as number,
     site_total_bytes: Number(row.site_total_bytes),
-    required_secrets: row.required_secrets || [],
-    required_actions: row.required_actions || [],
-    created_at: row.created_at,
+    required_secrets: (row.required_secrets || []) as Array<{ key: string; description?: string }>,
+    required_actions: (row.required_actions || []) as Array<{ action: string; description?: string }>,
+    tags: (row.tags || []) as string[],
+    created_at: row.created_at as string,
     compatibility_warnings: [],
-  }));
+  };
 }
 
 /**
@@ -493,30 +515,10 @@ export async function getAppVersion(versionId: string): Promise<AppVersionInfo |
     `SELECT id, project_id, version, name, description, visibility, fork_allowed,
             min_tier, derived_min_tier, status,
             table_count, function_count, site_file_count, site_total_bytes,
-            required_secrets, required_actions, created_at
+            required_secrets, required_actions, tags, created_at
      FROM internal.app_versions WHERE id = $1`,
     [versionId],
   );
   if (result.rows.length === 0) return null;
-  const row = result.rows[0];
-  return {
-    id: row.id,
-    project_id: row.project_id,
-    version: row.version,
-    name: row.name,
-    description: row.description,
-    visibility: row.visibility,
-    fork_allowed: row.fork_allowed,
-    min_tier: row.min_tier as TierName,
-    derived_min_tier: row.derived_min_tier as TierName,
-    status: row.status,
-    table_count: row.table_count,
-    function_count: row.function_count,
-    site_file_count: row.site_file_count,
-    site_total_bytes: Number(row.site_total_bytes),
-    required_secrets: row.required_secrets || [],
-    required_actions: row.required_actions || [],
-    created_at: row.created_at,
-    compatibility_warnings: [],
-  };
+  return mapRowToAppVersion(result.rows[0]);
 }
