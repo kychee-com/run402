@@ -21,7 +21,8 @@
  *   17. apikey-only REST — verify apikey auto-forwards as Authorization
  *   18. RLS templates — public_read, public_read_write (anon write via GRANT)
  *   19. GRANT blocked hint — actionable error messages
- *   20. Delete project — cleanup
+ *   20. Bundle deploy — one-call full-stack app (x402 payment, migrations, RLS, site)
+ *   21. Delete project — cleanup
  *
  * Usage:
  *   BASE_URL=http://localhost:4022 npm run test:e2e
@@ -642,8 +643,64 @@ async function main() {
   assert(typeof revokeBody.error === "string", "REVOKE error includes message");
   assert(revokeBody.error.includes("RLS"), "Hint suggests using RLS endpoint");
 
-  // Step 20: Delete project
-  console.log("\n20) Delete project...");
+  // Step 20: Bundle deploy — one-call full-stack app
+  console.log("\n20) Bundle deploy...");
+  const bundleRes = await fetchPaid(`${BASE_URL}/v1/deploy/prototype`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      name: "e2e-bundle-test",
+      migrations: "CREATE TABLE items (id SERIAL PRIMARY KEY, title TEXT NOT NULL, done BOOLEAN DEFAULT false);",
+      rls: {
+        template: "public_read_write",
+        tables: [{ table: "items" }],
+      },
+      site: [
+        { file: "index.html", data: "<!doctype html><html><body><h1>Bundle Test</h1></body></html>" },
+      ],
+    }),
+  });
+  const bundleBody = await bundleRes.json();
+  assert(bundleRes.status === 201, `Bundle deploy returns 201 (got ${bundleRes.status})`);
+  assert(typeof bundleBody.project_id === "string", "Bundle returns project_id");
+  assert(typeof bundleBody.anon_key === "string", "Bundle returns anon_key");
+  assert(typeof bundleBody.service_key === "string", "Bundle returns service_key");
+  assert(typeof bundleBody.site_url === "string", "Bundle returns site_url");
+  assert(typeof bundleBody.deployment_id === "string", "Bundle returns deployment_id");
+  assert(typeof bundleBody.lease_expires_at === "string", "Bundle returns lease_expires_at");
+
+  const bundleProjectId = bundleBody.project_id;
+  const bundleAnonKey = bundleBody.anon_key;
+  const bundleServiceKey = bundleBody.service_key;
+
+  await sleep(500); // Wait for PostgREST reload
+
+  // Verify table exists via REST
+  const bundleInsertRes = await fetch(`${BASE_URL}/rest/v1/items`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      apikey: bundleAnonKey,
+      Prefer: "return=representation",
+    },
+    body: JSON.stringify({ title: "Bundle item" }),
+  });
+  const bundleInsertBody = await bundleInsertRes.json();
+  assert(bundleInsertRes.ok, `Bundle project REST insert works (status ${bundleInsertRes.status})`);
+  assert(Array.isArray(bundleInsertBody) && bundleInsertBody[0]?.title === "Bundle item", "Bundle item inserted");
+
+  // Verify site deployment exists
+  assert(bundleBody.site_url.includes("sites.run402.com"), "Bundle site URL points to sites.run402.com");
+
+  // Clean up bundle project
+  const bundleDeleteRes = await fetch(`${BASE_URL}/v1/projects/${bundleProjectId}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${bundleServiceKey}` },
+  });
+  assert(bundleDeleteRes.ok, "Bundle project cleaned up");
+
+  // Step 21: Delete original project
+  console.log("\n21) Delete project...");
   const deleteRes = await fetch(`${BASE_URL}/v1/projects/${project_id}`, {
     method: "DELETE",
     headers: { Authorization: `Bearer ${service_key}` },
