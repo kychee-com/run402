@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Cosmic Forge — Shape the Universe</title>
-  <meta name="description" content="An interactive Three.js particle cosmos. Type a concept and watch 100,000 particles morph into living formations.">
+  <meta name="description" content="An interactive Three.js particle cosmos. Type a concept and watch 100,000 particles morph into living formations with procedural music.">
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
@@ -12,9 +12,11 @@
       overflow: hidden;
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
       color: #fff;
+      touch-action: none;
     }
     canvas { display: block; }
 
+    /* Bottom bar: input + status */
     #ui {
       position: fixed;
       bottom: 32px;
@@ -24,15 +26,16 @@
       display: flex;
       flex-direction: column;
       align-items: center;
-      gap: 12px;
+      gap: 10px;
       pointer-events: none;
+      width: 90%;
+      max-width: 460px;
     }
 
     #status {
-      font-size: 0.8rem;
-      color: rgba(255,255,255,0.5);
+      font-size: 0.75rem;
+      color: rgba(255,255,255,0.45);
       text-align: center;
-      transition: opacity 0.5s;
       text-shadow: 0 1px 8px rgba(0,0,0,0.8);
     }
 
@@ -40,10 +43,12 @@
       display: flex;
       gap: 8px;
       pointer-events: auto;
+      width: 100%;
     }
 
     #concept-input {
-      width: 320px;
+      flex: 1;
+      min-width: 0;
       padding: 12px 18px;
       background: rgba(10, 10, 20, 0.7);
       backdrop-filter: blur(20px);
@@ -64,33 +69,30 @@
 
     #concept-input::placeholder { color: rgba(255,255,255,0.3); }
 
-    #forge-btn {
-      padding: 12px 24px;
-      background: linear-gradient(135deg, #8b5cf6, #ec4899);
+    .btn-pill {
+      padding: 12px 20px;
       border: none;
       border-radius: 50px;
       color: white;
-      font-size: 0.95rem;
+      font-size: 0.9rem;
       font-weight: 600;
       cursor: pointer;
       font-family: inherit;
       transition: transform 0.2s, box-shadow 0.2s;
+      flex-shrink: 0;
     }
 
-    #forge-btn:hover {
-      transform: scale(1.05);
-      box-shadow: 0 4px 24px rgba(139, 92, 246, 0.4);
+    #forge-btn {
+      background: linear-gradient(135deg, #8b5cf6, #ec4899);
     }
 
-    #forge-btn:disabled {
-      opacity: 0.5;
-      cursor: not-allowed;
-      transform: none;
-    }
+    .btn-pill:hover { transform: scale(1.05); }
+    .btn-pill:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
 
+    /* Title */
     #title {
       position: fixed;
-      top: 28px;
+      top: 20px;
       left: 50%;
       transform: translateX(-50%);
       z-index: 10;
@@ -99,25 +101,24 @@
     }
 
     #title h1 {
-      font-size: 1.6rem;
+      font-size: 1.5rem;
       font-weight: 700;
       background: linear-gradient(135deg, #8b5cf6, #ec4899, #f59e0b);
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
       background-clip: text;
-      letter-spacing: -0.02em;
-      text-shadow: none;
     }
 
     #title p {
-      font-size: 0.8rem;
-      color: rgba(255,255,255,0.35);
-      margin-top: 4px;
+      font-size: 0.75rem;
+      color: rgba(255,255,255,0.3);
+      margin-top: 2px;
     }
 
+    /* Entity info overlay */
     #entity-info {
       position: fixed;
-      top: 100px;
+      top: 90px;
       left: 50%;
       transform: translateX(-50%);
       z-index: 10;
@@ -130,39 +131,39 @@
     #entity-info.visible { opacity: 1; }
 
     #entity-name {
-      font-size: 1.8rem;
+      font-size: 1.6rem;
       font-weight: 800;
-      letter-spacing: -0.02em;
       text-shadow: 0 0 40px currentColor;
     }
 
     #entity-desc {
-      font-size: 0.9rem;
-      color: rgba(255,255,255,0.6);
-      margin-top: 6px;
-      max-width: 400px;
-      line-height: 1.5;
+      font-size: 0.85rem;
+      color: rgba(255,255,255,0.55);
+      margin-top: 4px;
+      max-width: 360px;
+      line-height: 1.4;
     }
 
+    /* Preset buttons (top right) */
     #presets {
       position: fixed;
-      top: 28px;
-      right: 28px;
+      top: 20px;
+      right: 16px;
       z-index: 10;
       display: flex;
       flex-direction: column;
-      gap: 6px;
+      gap: 5px;
     }
 
     .preset-btn {
-      padding: 8px 14px;
+      padding: 6px 12px;
       background: rgba(255,255,255,0.06);
       backdrop-filter: blur(12px);
       -webkit-backdrop-filter: blur(12px);
       border: 1px solid rgba(255,255,255,0.08);
       border-radius: 8px;
-      color: rgba(255,255,255,0.5);
-      font-size: 0.75rem;
+      color: rgba(255,255,255,0.45);
+      font-size: 0.7rem;
       cursor: pointer;
       font-family: inherit;
       transition: all 0.3s;
@@ -172,27 +173,210 @@
     .preset-btn:hover {
       background: rgba(255,255,255,0.1);
       color: rgba(255,255,255,0.8);
-      border-color: rgba(255,255,255,0.15);
     }
 
+    /* Help text */
     #help {
       position: fixed;
-      bottom: 100px;
+      bottom: 96px;
       left: 50%;
       transform: translateX(-50%);
       z-index: 10;
-      font-size: 0.75rem;
-      color: rgba(255,255,255,0.25);
+      font-size: 0.7rem;
+      color: rgba(255,255,255,0.2);
       text-align: center;
       pointer-events: none;
       transition: opacity 2s;
     }
 
+    /* ===============================
+       MUSIC PANEL
+       =============================== */
+    /* Music CTA — loud and pulsing until interacted with */
+    #music-cta {
+      position: fixed;
+      bottom: 90px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 25;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 14px 24px;
+      background: linear-gradient(135deg, rgba(139,92,246,0.9), rgba(236,72,153,0.9));
+      border: 1px solid rgba(255,255,255,0.2);
+      border-radius: 50px;
+      color: #fff;
+      font-size: 0.95rem;
+      font-weight: 600;
+      font-family: inherit;
+      cursor: pointer;
+      animation: ctaPulse 2s ease-in-out infinite, ctaFloat 3s ease-in-out infinite;
+      box-shadow: 0 0 30px rgba(139,92,246,0.4), 0 0 60px rgba(236,72,153,0.2);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      transition: transform 0.3s, opacity 0.4s;
+      white-space: nowrap;
+    }
+
+    #music-cta:hover {
+      transform: translateX(-50%) scale(1.08);
+      box-shadow: 0 0 40px rgba(139,92,246,0.6), 0 0 80px rgba(236,72,153,0.3);
+    }
+
+    #music-cta.hidden {
+      opacity: 0;
+      pointer-events: none;
+      transform: translateX(-50%) scale(0.8);
+    }
+
+    #music-cta .cta-dismiss {
+      margin-left: 4px;
+      opacity: 0.5;
+      font-size: 0.8rem;
+      padding: 2px 6px;
+      border-radius: 50%;
+      transition: opacity 0.2s;
+    }
+
+    #music-cta .cta-dismiss:hover { opacity: 1; }
+
+    @keyframes ctaPulse {
+      0%, 100% { box-shadow: 0 0 30px rgba(139,92,246,0.4), 0 0 60px rgba(236,72,153,0.2); }
+      50% { box-shadow: 0 0 50px rgba(139,92,246,0.7), 0 0 100px rgba(236,72,153,0.4); }
+    }
+
+    @keyframes ctaFloat {
+      0%, 100% { margin-bottom: 0; }
+      50% { margin-bottom: 6px; }
+    }
+
+    /* Small toggle (shown after CTA dismissed or audio started) */
+    #music-toggle {
+      position: fixed;
+      bottom: 32px;
+      right: 16px;
+      z-index: 20;
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      border: 1px solid rgba(255,255,255,0.15);
+      background: rgba(10, 10, 20, 0.7);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      color: rgba(255,255,255,0.5);
+      font-size: 1.2rem;
+      cursor: pointer;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.3s;
+    }
+
+    #music-toggle.visible { display: flex; }
+
+    #music-toggle:hover, #music-toggle.active {
+      border-color: rgba(139, 92, 246, 0.5);
+      color: #fff;
+      box-shadow: 0 0 20px rgba(139, 92, 246, 0.2);
+    }
+
+    #music-panel {
+      position: fixed;
+      bottom: 86px;
+      right: 16px;
+      z-index: 20;
+      background: rgba(10, 10, 20, 0.8);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 16px;
+      padding: 16px;
+      width: 200px;
+      display: none;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    #music-panel.open { display: flex; }
+
+    #music-panel h3 {
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: rgba(255,255,255,0.4);
+      margin-bottom: -4px;
+    }
+
+    .slider-group {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+
+    .slider-group label {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.7rem;
+      color: rgba(255,255,255,0.5);
+    }
+
+    .slider-group label span { color: rgba(255,255,255,0.3); }
+
+    .slider-group input[type="range"] {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 100%;
+      height: 4px;
+      border-radius: 2px;
+      background: rgba(255,255,255,0.1);
+      outline: none;
+    }
+
+    .slider-group input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: #8b5cf6;
+      cursor: pointer;
+      border: 2px solid rgba(255,255,255,0.2);
+    }
+
+    .slider-group input[type="range"]::-moz-range-thumb {
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: #8b5cf6;
+      cursor: pointer;
+      border: 2px solid rgba(255,255,255,0.2);
+    }
+
+    /* Mobile */
     @media (max-width: 600px) {
-      #concept-input { width: 200px; font-size: 0.85rem; padding: 10px 14px; }
-      #forge-btn { padding: 10px 16px; font-size: 0.85rem; }
+      #concept-input { font-size: 0.85rem; padding: 10px 14px; }
+      .btn-pill { padding: 10px 16px; font-size: 0.85rem; }
       #presets { display: none; }
-      #title h1 { font-size: 1.2rem; }
+      #title h1 { font-size: 1.1rem; }
+      #title p { font-size: 0.65rem; }
+      #entity-name { font-size: 1.2rem; }
+      #entity-desc { font-size: 0.75rem; max-width: 280px; }
+      #entity-info { top: 75px; }
+      #ui { bottom: 20px; }
+      #help { bottom: 80px; font-size: 0.65rem; }
+
+      #music-cta { font-size: 0.85rem; padding: 12px 20px; bottom: 76px; }
+      #music-toggle { bottom: 20px; right: 10px; width: 40px; height: 40px; font-size: 1rem; }
+      #music-panel {
+        bottom: 70px;
+        right: 10px;
+        width: 180px;
+        padding: 12px;
+        gap: 10px;
+      }
+      .slider-group input[type="range"]::-webkit-slider-thumb { width: 18px; height: 18px; }
+      .slider-group input[type="range"]::-moz-range-thumb { width: 18px; height: 18px; }
     }
   </style>
 </head>
@@ -218,17 +402,53 @@
     <button class="preset-btn" onclick="forgePreset('fireworks')">Fireworks</button>
   </div>
 
-  <div id="help">Click to explode &bull; Drag to orbit &bull; Scroll to zoom &bull; Move mouse to repel</div>
+  <div id="help">Click to explode &bull; Drag to orbit &bull; Scroll to zoom</div>
 
   <div id="ui">
     <div id="status">Ready to forge</div>
     <div id="input-row">
-      <input type="text" id="concept-input" placeholder="Enter a concept... (e.g. 'time', 'love', 'chaos')" maxlength="100">
-      <button id="forge-btn" onclick="forge()">Forge</button>
+      <input type="text" id="concept-input" placeholder="Enter a concept... (e.g. 'time', 'love')" maxlength="100">
+      <button class="btn-pill" id="forge-btn" onclick="forge()">Forge</button>
     </div>
   </div>
 
-  <!-- Three.js + addons from CDN -->
+  <!-- Music CTA (prominent, shown until interacted) -->
+  <button id="music-cta" onclick="onCtaClick()">
+    &#9835;&ensp;Enable Sound
+    <span class="cta-dismiss" onclick="event.stopPropagation(); dismissCta()" title="Dismiss">&times;</span>
+  </button>
+
+  <!-- Small toggle (shown after CTA is dismissed) -->
+  <button id="music-toggle" onclick="toggleMusicPanel()" title="Music controls">&#9835;</button>
+
+  <div id="music-panel">
+    <h3>Sound</h3>
+    <div class="slider-group">
+      <label>Style <span id="style-label">Ambient</span></label>
+      <input type="range" id="sl-style" min="0" max="100" value="30" oninput="onSlider()">
+    </div>
+    <div class="slider-group">
+      <label>Energy <span id="energy-label">40%</span></label>
+      <input type="range" id="sl-energy" min="0" max="100" value="40" oninput="onSlider()">
+    </div>
+    <div class="slider-group">
+      <label>Mood <span id="mood-label">Neutral</span></label>
+      <input type="range" id="sl-mood" min="0" max="100" value="50" oninput="onSlider()">
+    </div>
+    <div class="slider-group">
+      <label>Tempo <span id="tempo-label">90</span></label>
+      <input type="range" id="sl-tempo" min="40" max="200" value="90" oninput="onSlider()">
+    </div>
+    <div class="slider-group">
+      <label>Chaos <span id="chaos-label">20%</span></label>
+      <input type="range" id="sl-chaos" min="0" max="100" value="20" oninput="onSlider()">
+    </div>
+    <button class="btn-pill" id="audio-btn" onclick="toggleAudio()" style="width:100%;margin-top:4px;background:rgba(255,255,255,0.08);font-size:0.8rem;padding:10px">
+      Play
+    </button>
+  </div>
+
+  <!-- Three.js + Tone.js -->
   <script type="importmap">
   {
     "imports": {
@@ -237,6 +457,7 @@
     }
   }
   </script>
+  <script src="https://cdn.jsdelivr.net/npm/tone@15.0.4/build/Tone.min.js"></script>
 
   <script type="module">
     import * as THREE from 'three';
@@ -249,7 +470,7 @@
     // CONFIG
     // ============================================================
     const PARTICLE_COUNT = 80000;
-    const TRANSITION_DURATION = 3.0; // seconds
+    const TRANSITION_DURATION = 3.0;
 
     // ============================================================
     // SCENE SETUP
@@ -265,7 +486,6 @@
     renderer.toneMappingExposure = 1.0;
     document.body.prepend(renderer.domElement);
 
-    // Controls
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
     controls.dampingFactor = 0.05;
@@ -274,19 +494,14 @@
     controls.autoRotate = true;
     controls.autoRotateSpeed = 0.3;
 
-    // Post-processing
     const composer = new EffectComposer(renderer);
     composer.addPass(new RenderPass(scene, camera));
 
     const bloomPass = new UnrealBloomPass(
-      new THREE.Vector2(innerWidth, innerHeight),
-      1.5,   // strength
-      0.4,   // radius
-      0.85   // threshold
+      new THREE.Vector2(innerWidth, innerHeight), 1.5, 0.4, 0.85
     );
     composer.addPass(bloomPass);
 
-    // Resize
     window.addEventListener('resize', () => {
       camera.aspect = innerWidth / innerHeight;
       camera.updateProjectionMatrix();
@@ -294,9 +509,8 @@
       composer.setSize(innerWidth, innerHeight);
     });
 
-    // Mouse tracking for particle interaction
+    // Mouse
     const mouse = new THREE.Vector2(9999, 9999);
-    const mouseWorld = new THREE.Vector3();
     const raycaster = new THREE.Raycaster();
 
     window.addEventListener('mousemove', (e) => {
@@ -304,7 +518,7 @@
       mouse.y = -(e.clientY / innerHeight) * 2 + 1;
     });
 
-    // Click explosion tracking
+    // Click explosion
     let explosionActive = false;
     let explosionDecay = 0;
     const EXPLOSION_RADIUS = 4.0;
@@ -313,7 +527,6 @@
     const RETURN_STRENGTH = 1.5;
     let bloomTarget = 1.5;
 
-    // Track mouse down/up to distinguish clicks from drags
     let mouseDownPos = { x: 0, y: 0 };
     let isDragging = false;
 
@@ -332,7 +545,6 @@
     renderer.domElement.addEventListener('pointerup', (e) => {
       if (isDragging) return;
 
-      // Get click position in world space
       const clickMouse = new THREE.Vector2(
         (e.clientX / innerWidth) * 2 - 1,
         -(e.clientY / innerHeight) * 2 + 1
@@ -344,7 +556,6 @@
       raycaster.ray.intersectPlane(clickPlane, clickPoint);
       if (!clickPoint) return;
 
-      // Apply explosion force to nearby particles
       for (let i = 0; i < PARTICLE_COUNT; i++) {
         const i3 = i * 3;
         const dx = positions[i3] - clickPoint.x;
@@ -364,10 +575,15 @@
 
       explosionActive = true;
       explosionDecay = 1.0;
-
-      // Flash bloom
       bloomTarget = 3.5;
       setTimeout(() => { bloomTarget = 1.5; }, 300);
+
+      // Trigger impact sound if audio is playing
+      if (audioPlaying && impactKick) {
+        const now = Tone.now();
+        impactKick.triggerAttackRelease('C1', '8n', now);
+        impactNoise.triggerAttackRelease('16n', now);
+      }
     });
 
     // ============================================================
@@ -387,34 +603,33 @@
       randoms[i] = Math.random();
     }
 
-    // Custom shader material for beautiful particles
     const particleMaterial = new THREE.ShaderMaterial({
       uniforms: {
         uTime: { value: 0 },
         uSize: { value: 3.0 * renderer.getPixelRatio() },
         uMouse: { value: new THREE.Vector3(9999, 9999, 9999) },
-        uTransition: { value: 0 },
-        uColorShift: { value: 0 },
-        uPulse: { value: 0 },
         uTurbulence: { value: 0.3 },
+        uAudioBass: { value: 0 },
+        uAudioMid: { value: 0 },
+        uAudioHigh: { value: 0 },
+        uAudioPulse: { value: 0 },
       },
       vertexShader: `
         attribute float aSize;
         attribute float aRandom;
-        attribute vec3 aTarget;
-        attribute vec3 aVelocity;
 
         uniform float uTime;
         uniform float uSize;
         uniform vec3 uMouse;
-        uniform float uTransition;
         uniform float uTurbulence;
+        uniform float uAudioBass;
+        uniform float uAudioMid;
+        uniform float uAudioHigh;
+        uniform float uAudioPulse;
 
         varying vec3 vColor;
         varying float vAlpha;
-        varying float vDist;
 
-        // Simplex-like noise
         vec3 mod289(vec3 x) { return x - floor(x * (1.0/289.0)) * 289.0; }
         vec4 mod289(vec4 x) { return x - floor(x * (1.0/289.0)) * 289.0; }
         vec4 permute(vec4 x) { return mod289(((x*34.0)+1.0)*x); }
@@ -466,62 +681,54 @@
         void main() {
           vec3 pos = position;
 
-          // Add turbulence
-          float noiseScale = 0.5;
+          // Audio-reactive scale pulse (bass breathes)
+          float breathe = 1.0 + uAudioBass * 0.15;
+          pos *= breathe;
+
+          // Turbulence + audio-driven shimmer
+          float turb = uTurbulence + uAudioHigh * 0.3;
           float t = uTime * 0.15;
           vec3 noiseOffset = vec3(
-            snoise(pos * noiseScale + t),
-            snoise(pos * noiseScale + t + 100.0),
-            snoise(pos * noiseScale + t + 200.0)
-          ) * uTurbulence * (1.0 + aRandom * 0.5);
-
+            snoise(pos * 0.5 + t),
+            snoise(pos * 0.5 + t + 100.0),
+            snoise(pos * 0.5 + t + 200.0)
+          ) * turb * (1.0 + aRandom * 0.5);
           pos += noiseOffset;
 
           // Mouse repulsion
           vec3 toMouse = pos - uMouse;
           float mouseDist = length(toMouse);
           if (mouseDist < 2.5) {
-            float force = (1.0 - mouseDist / 2.5) * 1.2;
-            pos += normalize(toMouse) * force;
+            pos += normalize(toMouse) * (1.0 - mouseDist / 2.5) * 1.2;
           }
 
           vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
 
-          // Distance-based size
+          // Size: base + audio pulse on transients
+          float sizeBoost = 1.0 + uAudioPulse * 0.5;
           float distFactor = 1.0 / (-mvPosition.z * 0.15 + 1.0);
-          gl_PointSize = uSize * (aSize * 0.5 + 0.5) * distFactor;
+          gl_PointSize = uSize * (aSize * 0.5 + 0.5) * distFactor * sizeBoost;
           gl_PointSize = max(gl_PointSize, 0.5);
 
           gl_Position = projectionMatrix * mvPosition;
 
-          vColor = color;
-          vDist = -mvPosition.z;
-
-          // Alpha: fade distant particles
+          // Color: brighten with mids
+          vColor = color + uAudioMid * 0.25;
           vAlpha = smoothstep(80.0, 5.0, -mvPosition.z) * (0.6 + aSize * 0.4);
         }
       `,
       fragmentShader: `
         varying vec3 vColor;
         varying float vAlpha;
-        varying float vDist;
 
         void main() {
-          // Soft circular particle
           vec2 center = gl_PointCoord - 0.5;
           float dist = length(center);
           if (dist > 0.5) discard;
-
-          // Soft glow falloff
           float alpha = smoothstep(0.5, 0.0, dist);
-          alpha *= alpha; // Extra soft
-
-          // Core brightness
+          alpha *= alpha;
           float core = smoothstep(0.15, 0.0, dist) * 0.6;
-
-          vec3 col = vColor + core;
-
-          gl_FragColor = vec4(col, alpha * vAlpha);
+          gl_FragColor = vec4(vColor + core, alpha * vAlpha);
         }
       `,
       transparent: true,
@@ -541,220 +748,109 @@
     scene.add(particles);
 
     // ============================================================
-    // FORMATION GENERATORS
+    // FORMATIONS (presets)
     // ============================================================
     const formations = {
       galaxy(i, total) {
         const arm = Math.floor(Math.random() * 4);
-        const armAngle = (arm / 4) * Math.PI * 2;
         const r = Math.pow(Math.random(), 0.5) * 5;
-        const spin = r * 0.8;
-        const angle = armAngle + spin + (Math.random() - 0.5) * 0.5;
+        const angle = (arm / 4) * Math.PI * 2 + r * 0.8 + (Math.random() - 0.5) * 0.5;
         const y = (Math.random() - 0.5) * 0.3 * (1 - r / 5);
-        return [
-          Math.cos(angle) * r,
-          y + (Math.random() - 0.5) * 0.1,
-          Math.sin(angle) * r
-        ];
+        return [Math.cos(angle) * r, y + (Math.random() - 0.5) * 0.1, Math.sin(angle) * r];
       },
-
       sphere(i, total) {
         const phi = Math.acos(2 * Math.random() - 1);
         const theta = Math.random() * Math.PI * 2;
         const r = Math.pow(Math.random(), 0.33) * 4;
-        return [
-          r * Math.sin(phi) * Math.cos(theta),
-          r * Math.cos(phi),
-          r * Math.sin(phi) * Math.sin(theta)
-        ];
+        return [r * Math.sin(phi) * Math.cos(theta), r * Math.cos(phi), r * Math.sin(phi) * Math.sin(theta)];
       },
-
       dna(i, total) {
         const t = (i / total) * Math.PI * 12;
-        const strand = i % 2;
-        const phase = strand * Math.PI;
-        const r = 1.5;
+        const phase = (i % 2) * Math.PI;
         const y = (i / total - 0.5) * 12;
-        const jitter = 0.15;
-
-        // Backbone or rung
         if (i % 20 < 2) {
-          // Cross-rung connecting strands
-          const lerp = (i % 20) / 1;
-          const a1 = t;
-          const a2 = t + Math.PI;
-          const x = Math.cos(a1) * r * (1 - lerp) + Math.cos(a2) * r * lerp;
-          const z = Math.sin(a1) * r * (1 - lerp) + Math.sin(a2) * r * lerp;
-          return [x + (Math.random()-0.5)*jitter, y, z + (Math.random()-0.5)*jitter];
+          const lerp = (i % 20);
+          const x = Math.cos(t) * 1.5 * (1 - lerp) + Math.cos(t + Math.PI) * 1.5 * lerp;
+          const z = Math.sin(t) * 1.5 * (1 - lerp) + Math.sin(t + Math.PI) * 1.5 * lerp;
+          return [x, y, z];
         }
-
-        return [
-          Math.cos(t + phase) * r + (Math.random()-0.5)*jitter,
-          y + (Math.random()-0.5)*jitter,
-          Math.sin(t + phase) * r + (Math.random()-0.5)*jitter
-        ];
+        return [Math.cos(t + phase) * 1.5 + (Math.random()-0.5)*0.15, y, Math.sin(t + phase) * 1.5 + (Math.random()-0.5)*0.15];
       },
-
-      blackhole(i, total) {
+      blackhole(i) {
         const r = Math.pow(Math.random(), 2) * 6;
-        const angle = Math.random() * Math.PI * 2 + r * 2;
-        const diskHeight = 0.05 + Math.random() * 0.05;
-        const y = (Math.random() - 0.5) * diskHeight * (6 - r);
-
         if (r < 0.3) {
-          // Event horizon - tight sphere
-          const phi = Math.acos(2 * Math.random() - 1);
-          const theta = Math.random() * Math.PI * 2;
-          return [
-            0.3 * Math.sin(phi) * Math.cos(theta),
-            0.3 * Math.cos(phi),
-            0.3 * Math.sin(phi) * Math.sin(theta)
-          ];
+          const phi = Math.acos(2 * Math.random() - 1), theta = Math.random() * Math.PI * 2;
+          return [0.3*Math.sin(phi)*Math.cos(theta), 0.3*Math.cos(phi), 0.3*Math.sin(phi)*Math.sin(theta)];
         }
-
+        const angle = Math.random() * Math.PI * 2 + r * 2;
+        const y = (Math.random() - 0.5) * 0.05 * (6 - r);
         return [Math.cos(angle) * r, y, Math.sin(angle) * r];
       },
-
-      supernova(i, total) {
-        // Expanding shell with inner remnant
-        const isShell = Math.random() > 0.3;
-        if (isShell) {
-          const phi = Math.acos(2 * Math.random() - 1);
-          const theta = Math.random() * Math.PI * 2;
-          const r = 3.5 + (Math.random() - 0.5) * 1.0;
-          return [
-            r * Math.sin(phi) * Math.cos(theta),
-            r * Math.cos(phi),
-            r * Math.sin(phi) * Math.sin(theta)
-          ];
-        } else {
-          // Dense core
-          const phi = Math.acos(2 * Math.random() - 1);
-          const theta = Math.random() * Math.PI * 2;
-          const r = Math.pow(Math.random(), 2) * 0.8;
-          return [
-            r * Math.sin(phi) * Math.cos(theta),
-            r * Math.cos(phi),
-            r * Math.sin(phi) * Math.sin(theta)
-          ];
+      supernova(i) {
+        if (Math.random() > 0.3) {
+          const phi = Math.acos(2 * Math.random() - 1), theta = Math.random() * Math.PI * 2;
+          const r = 3.5 + (Math.random() - 0.5);
+          return [r*Math.sin(phi)*Math.cos(theta), r*Math.cos(phi), r*Math.sin(phi)*Math.sin(theta)];
         }
+        const phi = Math.acos(2 * Math.random() - 1), theta = Math.random() * Math.PI * 2;
+        const r = Math.pow(Math.random(), 2) * 0.8;
+        return [r*Math.sin(phi)*Math.cos(theta), r*Math.cos(phi), r*Math.sin(phi)*Math.sin(theta)];
       },
-
       tornado(i, total) {
         const t = i / total;
         const y = (t - 0.5) * 10;
         const r = 0.3 + (t * t) * 3;
         const angle = t * Math.PI * 8 + Math.random() * 0.5;
-        const jitter = r * 0.15;
-        return [
-          Math.cos(angle) * r + (Math.random()-0.5) * jitter,
-          y,
-          Math.sin(angle) * r + (Math.random()-0.5) * jitter
-        ];
+        return [Math.cos(angle) * r + (Math.random()-0.5)*r*0.15, y, Math.sin(angle) * r + (Math.random()-0.5)*r*0.15];
       },
-
-      heartbeat(i, total) {
-        // Heart shape in 3D
-        const t = Math.random() * Math.PI * 2;
-        const s = Math.random() * Math.PI;
-        const scale = 2.0;
-
-        // Parametric heart
-        const x = scale * Math.sin(t) * Math.sin(t) * Math.sin(t);
-        const y = scale * (0.8125 * Math.cos(t) - 0.3125 * Math.cos(2*t) - 0.125 * Math.cos(3*t) - 0.0625 * Math.cos(4*t));
-        const z = (Math.random() - 0.5) * 1.0;
-
-        return [
-          x + (Math.random()-0.5)*0.15,
-          y + (Math.random()-0.5)*0.15,
-          z
-        ];
+      heartbeat(i) {
+        const t = Math.random() * Math.PI * 2, s = 2;
+        const x = s * Math.sin(t)**3;
+        const y = s * (0.8125*Math.cos(t) - 0.3125*Math.cos(2*t) - 0.125*Math.cos(3*t) - 0.0625*Math.cos(4*t));
+        return [x + (Math.random()-0.5)*0.15, y + (Math.random()-0.5)*0.15, (Math.random()-0.5)];
       },
-
-      ocean(i, total) {
-        const x = (Math.random() - 0.5) * 12;
-        const z = (Math.random() - 0.5) * 12;
-        const wave1 = Math.sin(x * 0.8) * 0.6;
-        const wave2 = Math.sin(z * 0.5 + x * 0.3) * 0.4;
-        const wave3 = Math.sin(x * 1.5 + z * 0.7) * 0.2;
-        const y = wave1 + wave2 + wave3 + (Math.random()-0.5)*0.1;
+      ocean(i) {
+        const x = (Math.random()-0.5)*12, z = (Math.random()-0.5)*12;
+        const y = Math.sin(x*0.8)*0.6 + Math.sin(z*0.5+x*0.3)*0.4 + Math.sin(x*1.5+z*0.7)*0.2 + (Math.random()-0.5)*0.1;
         return [x, y - 1, z];
       },
-
-      fireworks(i, total) {
-        // Multiple burst points
+      fireworks(i) {
         const burst = Math.floor(Math.random() * 5);
-        const cx = (burst % 3 - 1) * 3;
-        const cy = (Math.floor(burst / 3)) * 2 + 1 + Math.random() * 2;
-        const cz = (Math.random() - 0.5) * 2;
-
-        const phi = Math.acos(2 * Math.random() - 1);
-        const theta = Math.random() * Math.PI * 2;
+        const cx = (burst % 3 - 1) * 3, cy = Math.floor(burst / 3) * 2 + 1 + Math.random() * 2;
+        const phi = Math.acos(2*Math.random()-1), theta = Math.random()*Math.PI*2;
         const r = Math.pow(Math.random(), 0.5) * 2;
-
-        return [
-          cx + r * Math.sin(phi) * Math.cos(theta),
-          cy + r * Math.cos(phi),
-          cz + r * Math.sin(phi) * Math.sin(theta)
-        ];
+        return [cx+r*Math.sin(phi)*Math.cos(theta), cy+r*Math.cos(phi), (Math.random()-0.5)*2+r*Math.sin(phi)*Math.sin(theta)];
       },
-
-      cube(i, total) {
-        // Points on cube surface
-        const face = Math.floor(Math.random() * 6);
-        const s = 3;
-        const u = (Math.random() - 0.5) * s;
-        const v = (Math.random() - 0.5) * s;
-        const coords = [
-          [s/2, u, v], [-s/2, u, v],
-          [u, s/2, v], [u, -s/2, v],
-          [u, v, s/2], [u, v, -s/2]
-        ];
-        const p = coords[face];
-        return [p[0]+(Math.random()-0.5)*0.05, p[1]+(Math.random()-0.5)*0.05, p[2]+(Math.random()-0.5)*0.05];
+      torus(i) {
+        const u = Math.random()*Math.PI*2, v = Math.random()*Math.PI*2;
+        return [(3+Math.cos(v))*Math.cos(u), Math.sin(v), (3+Math.cos(v))*Math.sin(u)];
       },
-
-      torus(i, total) {
-        const R = 3, r = 1;
-        const u = Math.random() * Math.PI * 2;
-        const v = Math.random() * Math.PI * 2;
-        return [
-          (R + r * Math.cos(v)) * Math.cos(u),
-          r * Math.sin(v),
-          (R + r * Math.cos(v)) * Math.sin(u)
-        ];
+      nebula(i) {
+        const arm = Math.floor(Math.random()*3), t = Math.random()*6;
+        const angle = (arm/3)*Math.PI*2 + t*0.3;
+        const r = t + (Math.random()-0.5)*1.5;
+        return [Math.cos(angle)*r*0.8, Math.sin(t*0.5+arm)*2+(Math.random()-0.5)*0.5, Math.sin(angle)*r*0.8];
       },
-
-      nebula(i, total) {
-        // Organic, filamentary structure
-        const arm = Math.floor(Math.random() * 3);
-        const t = Math.random() * 6;
-        const baseAngle = (arm / 3) * Math.PI * 2 + t * 0.3;
-        const r = t + (Math.random() - 0.5) * 1.5;
-        const y = Math.sin(t * 0.5 + arm) * 2 + (Math.random()-0.5)*0.5;
-        return [
-          Math.cos(baseAngle) * r * 0.8,
-          y,
-          Math.sin(baseAngle) * r * 0.8
-        ];
+      cube(i) {
+        const face = Math.floor(Math.random()*6), s = 3;
+        const u = (Math.random()-0.5)*s, v = (Math.random()-0.5)*s;
+        const coords = [[s/2,u,v],[-s/2,u,v],[u,s/2,v],[u,-s/2,v],[u,v,s/2],[u,v,-s/2]];
+        return coords[face];
       },
     };
 
-    // ============================================================
-    // COLOR PALETTES
-    // ============================================================
     const palettes = {
-      galaxy:     [[0.4,0.2,0.8], [0.1,0.3,0.9], [0.8,0.4,0.9], [0.2,0.1,0.5]],
-      dna:        [[0.0,0.8,0.6], [0.0,0.4,0.8], [0.2,0.9,0.4], [0.0,0.6,0.9]],
-      blackhole:  [[1.0,0.3,0.0], [1.0,0.6,0.0], [0.8,0.1,0.0], [0.3,0.0,0.0]],
-      supernova:  [[1.0,0.8,0.2], [1.0,0.4,0.1], [1.0,1.0,0.8], [0.9,0.2,0.1]],
-      tornado:    [[0.5,0.5,0.5], [0.3,0.4,0.5], [0.6,0.6,0.7], [0.2,0.3,0.4]],
-      heartbeat:  [[0.9,0.1,0.2], [1.0,0.3,0.4], [0.8,0.0,0.2], [1.0,0.5,0.6]],
-      ocean:      [[0.0,0.3,0.6], [0.0,0.5,0.8], [0.1,0.7,0.9], [0.0,0.2,0.4]],
-      fireworks:  [[1.0,0.8,0.0], [1.0,0.2,0.3], [0.2,0.5,1.0], [0.0,1.0,0.5]],
-      cube:       [[0.9,0.9,0.9], [0.6,0.6,0.7], [0.8,0.8,0.9], [0.5,0.5,0.6]],
-      torus:      [[0.8,0.5,0.2], [0.9,0.7,0.3], [0.7,0.3,0.1], [1.0,0.8,0.4]],
-      nebula:     [[0.5,0.1,0.8], [0.8,0.2,0.6], [0.2,0.1,0.9], [0.9,0.3,0.7]],
+      galaxy:     [[0.4,0.2,0.8],[0.1,0.3,0.9],[0.8,0.4,0.9],[0.2,0.1,0.5]],
+      dna:        [[0.0,0.8,0.6],[0.0,0.4,0.8],[0.2,0.9,0.4],[0.0,0.6,0.9]],
+      blackhole:  [[1.0,0.3,0.0],[1.0,0.6,0.0],[0.8,0.1,0.0],[0.3,0.0,0.0]],
+      supernova:  [[1.0,0.8,0.2],[1.0,0.4,0.1],[1.0,1.0,0.8],[0.9,0.2,0.1]],
+      tornado:    [[0.5,0.5,0.5],[0.3,0.4,0.5],[0.6,0.6,0.7],[0.2,0.3,0.4]],
+      heartbeat:  [[0.9,0.1,0.2],[1.0,0.3,0.4],[0.8,0.0,0.2],[1.0,0.5,0.6]],
+      ocean:      [[0.0,0.3,0.6],[0.0,0.5,0.8],[0.1,0.7,0.9],[0.0,0.2,0.4]],
+      fireworks:  [[1.0,0.8,0.0],[1.0,0.2,0.3],[0.2,0.5,1.0],[0.0,1.0,0.5]],
+      cube:       [[0.9,0.9,0.9],[0.6,0.6,0.7],[0.8,0.8,0.9],[0.5,0.5,0.6]],
+      torus:      [[0.8,0.5,0.2],[0.9,0.7,0.3],[0.7,0.3,0.1],[1.0,0.8,0.4]],
+      nebula:     [[0.5,0.1,0.8],[0.8,0.2,0.6],[0.2,0.1,0.9],[0.9,0.3,0.7]],
     };
 
     // ============================================================
@@ -770,62 +866,369 @@
     function applyFormation(name) {
       const fn = formations[name] || formations.galaxy;
       const pal = palettes[name] || palettes.galaxy;
-
-      // Store current positions as starting points
-      for (let i = 0; i < PARTICLE_COUNT * 3; i++) {
-        originalPositions[i] = positions[i];
-      }
-
-      // Generate target positions and colors
+      for (let i = 0; i < PARTICLE_COUNT * 3; i++) originalPositions[i] = positions[i];
       for (let i = 0; i < PARTICLE_COUNT; i++) {
         const [x, y, z] = fn(i, PARTICLE_COUNT);
-        targetPositions[i * 3] = x;
-        targetPositions[i * 3 + 1] = y;
-        targetPositions[i * 3 + 2] = z;
-
+        targetPositions[i*3] = x; targetPositions[i*3+1] = y; targetPositions[i*3+2] = z;
         sizes[i] = 0.3 + Math.random() * 0.7;
       }
-
       targetPalette = pal;
       currentFormation = name;
       transitionProgress = 0;
       transitionStart = performance.now() / 1000;
       isTransitioning = true;
-
       geometry.attributes.aTarget.needsUpdate = true;
       geometry.attributes.aSize.needsUpdate = true;
     }
 
-    // Initialize with galaxy
     function initPositions() {
       for (let i = 0; i < PARTICLE_COUNT; i++) {
         const [x, y, z] = formations.galaxy(i, PARTICLE_COUNT);
-        positions[i * 3] = x;
-        positions[i * 3 + 1] = y;
-        positions[i * 3 + 2] = z;
-        originalPositions[i * 3] = x;
-        originalPositions[i * 3 + 1] = y;
-        originalPositions[i * 3 + 2] = z;
-        targetPositions[i * 3] = x;
-        targetPositions[i * 3 + 1] = y;
-        targetPositions[i * 3 + 2] = z;
-
-        const pal = palettes.galaxy;
-        const c = pal[Math.floor(Math.random() * pal.length)];
-        const variation = 0.15;
-        colors[i * 3] = c[0] + (Math.random() - 0.5) * variation;
-        colors[i * 3 + 1] = c[1] + (Math.random() - 0.5) * variation;
-        colors[i * 3 + 2] = c[2] + (Math.random() - 0.5) * variation;
-
+        positions[i*3]=x; positions[i*3+1]=y; positions[i*3+2]=z;
+        originalPositions[i*3]=x; originalPositions[i*3+1]=y; originalPositions[i*3+2]=z;
+        targetPositions[i*3]=x; targetPositions[i*3+1]=y; targetPositions[i*3+2]=z;
+        const c = palettes.galaxy[Math.floor(Math.random()*palettes.galaxy.length)];
+        colors[i*3]=c[0]+(Math.random()-0.5)*0.15;
+        colors[i*3+1]=c[1]+(Math.random()-0.5)*0.15;
+        colors[i*3+2]=c[2]+(Math.random()-0.5)*0.15;
         sizes[i] = 0.3 + Math.random() * 0.7;
       }
-
       geometry.attributes.position.needsUpdate = true;
       geometry.attributes.color.needsUpdate = true;
       geometry.attributes.aSize.needsUpdate = true;
     }
 
     initPositions();
+
+    // ============================================================
+    // AUDIO ENGINE (Tone.js)
+    // ============================================================
+    let audioPlaying = false;
+    let currentEmbedding = null;
+
+    // Audio analyser — lazily initialized on first play
+    let analyserNode = null;
+    let freqData = null;
+
+    // Smoothed audio values for particles
+    let audioBass = 0, audioMid = 0, audioHigh = 0, audioPulse = 0;
+    let prevBassLevel = 0;
+
+    function ensureAnalyser() {
+      if (analyserNode) return;
+      analyserNode = Tone.getContext().createAnalyser();
+      analyserNode.fftSize = 256;
+      analyserNode.smoothingTimeConstant = 0.8;
+      freqData = new Uint8Array(analyserNode.frequencyBinCount);
+      Tone.getDestination().connect(analyserNode);
+    }
+
+    // Music theory
+    const SCALES = {
+      minor:      [0, 2, 3, 5, 7, 8, 10],
+      major:      [0, 2, 4, 5, 7, 9, 11],
+      dorian:     [0, 2, 3, 5, 7, 9, 10],
+      pentatonic: [0, 2, 4, 7, 9],
+      phrygian:   [0, 1, 3, 5, 7, 8, 10],
+      blues:      [0, 3, 5, 6, 7, 10],
+      wholeTone:  [0, 2, 4, 6, 8, 10],
+    };
+    const SCALE_KEYS = Object.keys(SCALES);
+
+    const PROGRESSIONS = [
+      [0, 3, 4, 4],   // i-iv-v-v
+      [0, 5, 3, 4],   // i-vi-iv-v
+      [0, 3, 5, 4],   // i-iv-vi-v
+      [0, 2, 5, 4],   // i-iii-vi-v
+      [0, 0, 3, 4],   // i-i-iv-v
+    ];
+
+    function scaleNote(scale, degree, octave) {
+      const s = SCALES[scale] || SCALES.minor;
+      const idx = ((degree % s.length) + s.length) % s.length;
+      const octShift = Math.floor(degree / s.length);
+      return Tone.Frequency(36 + s[idx] + (octave + octShift) * 12, "midi").toFrequency();
+    }
+
+    // Instrument layers
+    let pad, bass, arp, perc, pluck, impactKick, impactNoise;
+    let padGain, bassGain, arpGain, percGain, pluckGain, impactGain;
+    let masterGain;
+
+    // Sequencer state
+    let loopRef = null;
+    let currentScale = 'minor';
+    let currentRoot = 0; // semitone offset
+    let currentProgIdx = 0;
+    let currentChordDeg = 0;
+    let stepInBar = 0;
+
+    function buildInstruments() {
+      masterGain = new Tone.Gain(0.6).toDestination();
+
+      // Pad: warm, evolving
+      padGain = new Tone.Gain(0.3).connect(masterGain);
+      const padReverb = new Tone.Reverb({ decay: 6, wet: 0.6 }).connect(padGain);
+      pad = new Tone.PolySynth(Tone.Synth, {
+        oscillator: { type: 'sine' },
+        envelope: { attack: 1.5, decay: 2, sustain: 0.6, release: 3 },
+      }).connect(padReverb);
+
+      // Bass: sub
+      bassGain = new Tone.Gain(0.35).connect(masterGain);
+      bass = new Tone.MonoSynth({
+        oscillator: { type: 'triangle' },
+        envelope: { attack: 0.05, decay: 0.3, sustain: 0.4, release: 0.8 },
+        filterEnvelope: { attack: 0.06, decay: 0.2, sustain: 0.5, release: 0.8, baseFrequency: 80, octaves: 2.5 },
+      }).connect(bassGain);
+
+      // Arp: plucky lead
+      arpGain = new Tone.Gain(0.2).connect(masterGain);
+      const arpDelay = new Tone.PingPongDelay({ delayTime: '8n', feedback: 0.3, wet: 0.25 }).connect(arpGain);
+      arp = new Tone.Synth({
+        oscillator: { type: 'triangle' },
+        envelope: { attack: 0.01, decay: 0.2, sustain: 0.05, release: 0.4 },
+      }).connect(arpDelay);
+
+      // Perc: hi-hats and clicks
+      percGain = new Tone.Gain(0.15).connect(masterGain);
+      perc = new Tone.NoiseSynth({
+        noise: { type: 'white' },
+        envelope: { attack: 0.002, decay: 0.08, sustain: 0, release: 0.05 },
+      }).connect(new Tone.Filter(8000, 'highpass')).connect(percGain);
+
+      // Pluck: occasional accent
+      pluckGain = new Tone.Gain(0.18).connect(masterGain);
+      const pluckVerb = new Tone.Reverb({ decay: 3, wet: 0.4 }).connect(pluckGain);
+      pluck = new Tone.PluckSynth({ resonance: 0.9, release: 1.2 }).connect(pluckVerb);
+
+      // Impact: explosion sound (kick + noise burst + low boom)
+      impactGain = new Tone.Gain(0.5).connect(masterGain);
+      const impactVerb = new Tone.Reverb({ decay: 2.5, wet: 0.5 }).connect(impactGain);
+      impactKick = new Tone.MembraneSynth({
+        pitchDecay: 0.08,
+        octaves: 6,
+        envelope: { attack: 0.001, decay: 0.4, sustain: 0, release: 0.4 },
+      }).connect(impactVerb);
+      impactNoise = new Tone.NoiseSynth({
+        noise: { type: 'brown' },
+        envelope: { attack: 0.001, decay: 0.2, sustain: 0, release: 0.15 },
+      }).connect(new Tone.Filter(2000, 'lowpass')).connect(impactVerb);
+    }
+
+    function getSliders() {
+      return {
+        style:  parseInt(document.getElementById('sl-style').value) / 100,
+        energy: parseInt(document.getElementById('sl-energy').value) / 100,
+        mood:   parseInt(document.getElementById('sl-mood').value) / 100,
+        tempo:  parseInt(document.getElementById('sl-tempo').value),
+        chaos:  parseInt(document.getElementById('sl-chaos').value) / 100,
+      };
+    }
+
+    function configureFromEmbedding(emb64) {
+      if (!emb64 || !pad) return;
+      const e = (v, min, max) => min + (v * 0.5 + 0.5) * (max - min);
+
+      // Scale — dramatically different feel
+      const scaleIdx = Math.round(e(emb64[31] || 0, 0, SCALE_KEYS.length - 1));
+      currentScale = SCALE_KEYS[scaleIdx];
+
+      // Root note — shift the key
+      currentRoot = Math.round(e(emb64[32] || 0, 0, 11));
+
+      // Chord progression
+      currentProgIdx = Math.round(e(emb64[33] || 0, 0, PROGRESSIONS.length - 1));
+
+      // Tempo from embedding
+      const embTempo = Math.round(e(emb64[39] || 0, 60, 160));
+      Tone.getTransport().bpm.rampTo(embTempo, 2);
+      document.getElementById('sl-tempo').value = embTempo;
+      document.getElementById('tempo-label').textContent = embTempo;
+
+      // Layer volumes — wider range so some concepts mute layers entirely
+      padGain.gain.rampTo(e(emb64[34] || 0, 0.0, 0.5), 2);
+      bassGain.gain.rampTo(e(emb64[35] || 0, 0.0, 0.55), 2);
+      arpGain.gain.rampTo(e(emb64[36] || 0, 0.0, 0.4), 2);
+      percGain.gain.rampTo(e(emb64[37] || 0, 0.0, 0.3), 2);
+      pluckGain.gain.rampTo(e(emb64[38] || 0, 0.0, 0.35), 2);
+
+      // Oscillator types — changes timbre dramatically
+      const padTypes = ['sine', 'triangle', 'sawtooth4', 'square4', 'fatsawtooth', 'amsine'];
+      const bassTypes = ['triangle', 'square', 'sawtooth', 'sine', 'fatsquare'];
+      const arpTypes = ['triangle', 'sawtooth', 'square', 'sine', 'pulse'];
+      pad.set({ oscillator: { type: padTypes[Math.round(e(emb64[40] || 0, 0, padTypes.length - 1))] }});
+      bass.set({ oscillator: { type: bassTypes[Math.round(e(emb64[41] || 0, 0, bassTypes.length - 1))] }});
+      arp.set({ oscillator: { type: arpTypes[Math.round(e(emb64[42] || 0, 0, arpTypes.length - 1))] }});
+
+      // Pad envelope — ambient vs rhythmic
+      const padAttack = e(emb64[43] || 0, 0.1, 3.0);
+      const padRelease = e(emb64[44] || 0, 0.5, 5.0);
+      pad.set({ envelope: { attack: padAttack, release: padRelease }});
+
+      // Bass filter — bright vs muffled
+      const bassFilterFreq = e(emb64[45] || 0, 60, 400);
+      const bassOctaves = e(emb64[46] || 0, 1, 4);
+      bass.set({ filterEnvelope: { baseFrequency: bassFilterFreq, octaves: bassOctaves }});
+
+      // Arp envelope — short staccato vs longer
+      const arpDecay = e(emb64[47] || 0, 0.05, 0.5);
+      arp.set({ envelope: { decay: arpDecay }});
+
+      // Reset step counter so new chords start fresh
+      stepInBar = 0;
+      currentChordDeg = 0;
+    }
+
+    function applySliders() {
+      const s = getSliders();
+      Tone.getTransport().bpm.rampTo(s.tempo, 0.5);
+
+      // Style: ambient (0) vs techno (1) — adjusts instrument character
+      if (pad) {
+        pad.set({ oscillator: { type: s.style < 0.5 ? 'sine' : 'sawtooth4' }});
+        bass.set({ oscillator: { type: s.style < 0.5 ? 'triangle' : 'square' }});
+      }
+
+      // Energy: note density handled in sequencer tick
+      // Mood: scale shift handled in sequencer tick
+      // Chaos: handled in sequencer tick
+
+      // Update slider labels
+      document.getElementById('style-label').textContent = s.style < 0.3 ? 'Ambient' : s.style < 0.7 ? 'Hybrid' : 'Techno';
+      document.getElementById('energy-label').textContent = Math.round(s.energy * 100) + '%';
+      document.getElementById('mood-label').textContent = s.mood < 0.3 ? 'Dark' : s.mood > 0.7 ? 'Bright' : 'Neutral';
+      document.getElementById('tempo-label').textContent = s.tempo;
+      document.getElementById('chaos-label').textContent = Math.round(s.chaos * 100) + '%';
+    }
+
+    function startSequencer() {
+      if (loopRef) return;
+      buildInstruments();
+      if (currentEmbedding) configureFromEmbedding(currentEmbedding);
+      applySliders();
+
+      stepInBar = 0;
+      currentChordDeg = 0;
+
+      loopRef = new Tone.Loop((time) => {
+        const s = getSliders();
+        const prog = PROGRESSIONS[currentProgIdx];
+        const chordRoot = prog[currentChordDeg] + currentRoot;
+
+        // Mood adjusts the active scale
+        let activeScale = currentScale;
+        if (s.mood > 0.7) activeScale = 'major';
+        else if (s.mood < 0.3) activeScale = 'phrygian';
+
+        // === PAD: plays chord, changes every 4 beats ===
+        if (stepInBar % 16 === 0) {
+          const notes = [0, 2, 4].map(d => scaleNote(activeScale, chordRoot + d, 3));
+          pad.triggerAttackRelease(notes, '2m', time);
+          currentChordDeg = (currentChordDeg + 1) % prog.length;
+        }
+
+        // === BASS: root note ===
+        if (stepInBar % 4 === 0) {
+          const bassNote = scaleNote(activeScale, chordRoot, 1);
+          if (s.energy > 0.2 || stepInBar % 8 === 0) {
+            bass.triggerAttackRelease(bassNote, '8n', time);
+          }
+        }
+
+        // === ARP: melodic patterns ===
+        const arpChance = 0.2 + s.energy * 0.6;
+        if (Math.random() < arpChance) {
+          const chaos = s.chaos;
+          let degree = chordRoot + [0, 2, 4, 5, 7][Math.floor(Math.random() * 5)];
+          if (Math.random() < chaos * 0.5) degree += Math.floor(Math.random() * 3) - 1;
+          const note = scaleNote(activeScale, degree, 4 + Math.floor(Math.random() * 2));
+          arp.triggerAttackRelease(note, '16n', time);
+        }
+
+        // === PERC: hi-hats ===
+        const percChance = s.style * 0.6 + s.energy * 0.3;
+        if (stepInBar % 2 === 0 && Math.random() < percChance) {
+          perc.triggerAttackRelease('16n', time);
+        }
+        // Offbeat ghost hits
+        if (stepInBar % 2 === 1 && Math.random() < percChance * 0.4 + s.chaos * 0.3) {
+          perc.triggerAttackRelease('32n', time);
+        }
+
+        // === PLUCK: occasional accents ===
+        if (stepInBar % 8 === 0 && Math.random() < 0.3 + s.energy * 0.3) {
+          const deg = chordRoot + [0, 4, 7][Math.floor(Math.random() * 3)];
+          pluck.triggerAttackRelease(scaleNote(activeScale, deg, 5), time);
+        }
+
+        stepInBar = (stepInBar + 1) % 64;
+      }, '16n');
+
+      Tone.getTransport().start();
+      loopRef.start(0);
+    }
+
+    function stopSequencer() {
+      if (loopRef) {
+        loopRef.stop();
+        loopRef.dispose();
+        loopRef = null;
+      }
+      Tone.getTransport().stop();
+      if (pad) { pad.releaseAll(); }
+      // Dispose instruments
+      [pad, bass, arp, perc, pluck, impactKick, impactNoise, padGain, bassGain, arpGain, percGain, pluckGain, impactGain, masterGain].forEach(n => {
+        if (n) try { n.dispose(); } catch {}
+      });
+      pad = bass = arp = perc = pluck = impactKick = impactNoise = null;
+      padGain = bassGain = arpGain = percGain = pluckGain = impactGain = masterGain = null;
+    }
+
+    // ============================================================
+    // AUDIO ANALYSIS → PARTICLE UNIFORMS
+    // ============================================================
+    function updateAudio() {
+      if (!audioPlaying || !analyserNode) {
+        // Decay smoothly when audio off
+        audioBass *= 0.95; audioMid *= 0.95; audioHigh *= 0.95; audioPulse *= 0.9;
+      } else {
+        analyserNode.getByteFrequencyData(freqData);
+        const bins = freqData.length;
+
+        // Frequency band averages (0-255 range → 0-1)
+        let bassSum = 0, midSum = 0, highSum = 0;
+        const bassEnd = Math.floor(bins * 0.1);
+        const midEnd = Math.floor(bins * 0.5);
+
+        for (let i = 0; i < bassEnd; i++) bassSum += freqData[i];
+        for (let i = bassEnd; i < midEnd; i++) midSum += freqData[i];
+        for (let i = midEnd; i < bins; i++) highSum += freqData[i];
+
+        const rawBass = bassSum / (bassEnd * 255);
+        const rawMid = midSum / ((midEnd - bassEnd) * 255);
+        const rawHigh = highSum / ((bins - midEnd) * 255);
+
+        // Smooth
+        audioBass += (rawBass - audioBass) * 0.3;
+        audioMid += (rawMid - audioMid) * 0.3;
+        audioHigh += (rawHigh - audioHigh) * 0.4;
+
+        // Onset/transient detection (bass jump = kick)
+        const bassJump = rawBass - prevBassLevel;
+        if (bassJump > 0.15) {
+          audioPulse = Math.min(bassJump * 3, 1.0);
+        } else {
+          audioPulse *= 0.85;
+        }
+        prevBassLevel = rawBass;
+      }
+
+      particleMaterial.uniforms.uAudioBass.value = audioBass;
+      particleMaterial.uniforms.uAudioMid.value = audioMid;
+      particleMaterial.uniforms.uAudioHigh.value = audioHigh;
+      particleMaterial.uniforms.uAudioPulse.value = audioPulse;
+    }
 
     // ============================================================
     // ANIMATION LOOP
@@ -836,12 +1239,13 @@
       requestAnimationFrame(animate);
 
       const time = clock.getElapsedTime();
-      const delta = Math.min(clock.getDelta(), 0.05);
 
-      // Update uniforms
       particleMaterial.uniforms.uTime.value = time;
 
-      // Mouse world position for particle interaction
+      // Audio analysis
+      updateAudio();
+
+      // Mouse world
       raycaster.setFromCamera(mouse, camera);
       const planeNormal = new THREE.Vector3(0, 0, 1).applyQuaternion(camera.quaternion);
       const plane = new THREE.Plane(planeNormal, 0);
@@ -855,53 +1259,38 @@
       if (isTransitioning) {
         const elapsed = time - transitionStart;
         transitionProgress = Math.min(elapsed / TRANSITION_DURATION, 1);
-
-        // Smooth easing
         const t = transitionProgress < 0.5
           ? 4 * transitionProgress * transitionProgress * transitionProgress
           : 1 - Math.pow(-2 * transitionProgress + 2, 3) / 2;
 
         for (let i = 0; i < PARTICLE_COUNT; i++) {
           const i3 = i * 3;
-
           const baseX = originalPositions[i3] + (targetPositions[i3] - originalPositions[i3]) * t;
           const baseY = originalPositions[i3+1] + (targetPositions[i3+1] - originalPositions[i3+1]) * t;
           const baseZ = originalPositions[i3+2] + (targetPositions[i3+2] - originalPositions[i3+2]) * t;
-
-          // Apply velocity offset
           positions[i3] = baseX + velocities[i3] * explosionDecay;
           positions[i3+1] = baseY + velocities[i3+1] * explosionDecay;
           positions[i3+2] = baseZ + velocities[i3+2] * explosionDecay;
 
-          // Lerp colors — flash white near explosion then fade back
           const pal = targetPalette;
           const c = pal[i % pal.length];
-          const variation = 0.15;
           const speed = Math.abs(velocities[i3]) + Math.abs(velocities[i3+1]) + Math.abs(velocities[i3+2]);
           const flash = Math.min(speed * explosionDecay * 0.15, 1.0);
-          const targetR = c[0] + (randoms[i] - 0.5) * variation + flash;
-          const targetG = c[1] + (randoms[i] - 0.5) * variation + flash * 0.8;
-          const targetB = c[2] + (randoms[i] - 0.5) * variation + flash * 0.5;
-          colors[i3] += (targetR - colors[i3]) * 0.1;
-          colors[i3+1] += (targetG - colors[i3+1]) * 0.1;
-          colors[i3+2] += (targetB - colors[i3+2]) * 0.1;
+          colors[i3] += (c[0] + (randoms[i]-0.5)*0.15 + flash - colors[i3]) * 0.1;
+          colors[i3+1] += (c[1] + (randoms[i]-0.5)*0.15 + flash*0.8 - colors[i3+1]) * 0.1;
+          colors[i3+2] += (c[2] + (randoms[i]-0.5)*0.15 + flash*0.5 - colors[i3+2]) * 0.1;
         }
 
-        if (transitionProgress >= 1) {
-          isTransitioning = false;
-          currentPalette = targetPalette;
-        }
-
+        if (transitionProgress >= 1) { isTransitioning = false; currentPalette = targetPalette; }
         geometry.attributes.position.needsUpdate = true;
         geometry.attributes.color.needsUpdate = true;
       }
 
-      // Explosion velocity physics (runs even when not transitioning)
+      // Explosion physics
       if (explosionActive) {
         let totalSpeed = 0;
         for (let i = 0; i < PARTICLE_COUNT; i++) {
           const i3 = i * 3;
-          // Dampen velocity
           velocities[i3] *= VELOCITY_DAMPING;
           velocities[i3+1] *= VELOCITY_DAMPING;
           velocities[i3+2] *= VELOCITY_DAMPING;
@@ -909,39 +1298,28 @@
         }
         explosionDecay *= 0.97;
 
-        // When not in a formation transition, apply velocity directly to positions
         if (!isTransitioning) {
           for (let i = 0; i < PARTICLE_COUNT; i++) {
             const i3 = i * 3;
-
-            // Apply velocity
             positions[i3] += velocities[i3] * 0.016;
             positions[i3+1] += velocities[i3+1] * 0.016;
             positions[i3+2] += velocities[i3+2] * 0.016;
+            velocities[i3] += (targetPositions[i3] - positions[i3]) * RETURN_STRENGTH * 0.016;
+            velocities[i3+1] += (targetPositions[i3+1] - positions[i3+1]) * RETURN_STRENGTH * 0.016;
+            velocities[i3+2] += (targetPositions[i3+2] - positions[i3+2]) * RETURN_STRENGTH * 0.016;
 
-            // Spring back toward target position
-            const dx = targetPositions[i3] - positions[i3];
-            const dy = targetPositions[i3+1] - positions[i3+1];
-            const dz = targetPositions[i3+2] - positions[i3+2];
-            velocities[i3] += dx * RETURN_STRENGTH * 0.016;
-            velocities[i3+1] += dy * RETURN_STRENGTH * 0.016;
-            velocities[i3+2] += dz * RETURN_STRENGTH * 0.016;
-
-            // Flash colors for fast particles
             const speed = Math.abs(velocities[i3]) + Math.abs(velocities[i3+1]) + Math.abs(velocities[i3+2]);
             const flash = Math.min(speed * 0.08, 1.0);
             const pal = currentPalette;
             const c = pal[i % pal.length];
-            const variation = 0.15;
-            colors[i3] += (c[0] + (randoms[i] - 0.5) * variation + flash - colors[i3]) * 0.08;
-            colors[i3+1] += (c[1] + (randoms[i] - 0.5) * variation + flash * 0.8 - colors[i3+1]) * 0.08;
-            colors[i3+2] += (c[2] + (randoms[i] - 0.5) * variation + flash * 0.5 - colors[i3+2]) * 0.08;
+            colors[i3] += (c[0] + (randoms[i]-0.5)*0.15 + flash - colors[i3]) * 0.08;
+            colors[i3+1] += (c[1] + (randoms[i]-0.5)*0.15 + flash*0.8 - colors[i3+1]) * 0.08;
+            colors[i3+2] += (c[2] + (randoms[i]-0.5)*0.15 + flash*0.5 - colors[i3+2]) * 0.08;
           }
           geometry.attributes.position.needsUpdate = true;
           geometry.attributes.color.needsUpdate = true;
         }
 
-        // Deactivate when settled
         if (totalSpeed / PARTICLE_COUNT < 0.001) {
           explosionActive = false;
           explosionDecay = 0;
@@ -949,9 +1327,9 @@
         }
       }
 
-      // Bloom: smooth toward target with pulse
-      const baseBoom = bloomTarget + Math.sin(time * 0.5) * 0.2;
-      bloomPass.strength += (baseBoom - bloomPass.strength) * 0.08;
+      // Bloom with audio kick
+      const baseBoom = bloomTarget + Math.sin(time * 0.5) * 0.2 + audioPulse * 1.5;
+      bloomPass.strength += (baseBoom - bloomPass.strength) * 0.12;
 
       controls.update();
       composer.render();
@@ -962,35 +1340,25 @@
     // ============================================================
     // EMBEDDING-DRIVEN FORMATION GENERATOR
     // ============================================================
-    // The 64-dim embedding vector becomes the DNA of each formation.
-    // Different dimension ranges control different visual properties.
-
     const API = "https://api.run402.com/functions/v1/cosmicforge";
     let APIKEY = "";
     const params = new URLSearchParams(location.search);
     APIKEY = params.get("key") || "";
 
-    // Map a value from [-1,1] embedding range to [min,max]
     function emb(v, min, max) {
       return min + (v * 0.5 + 0.5) * (max - min);
     }
 
-    // Generate a procedural formation from an embedding vector
     function embeddingFormation(emb64) {
-      // dims 0-5:  structure type blend weights (how much spiral vs shell vs helix vs plane vs burst vs ring)
       const weights = emb64.slice(0, 6).map(v => Math.abs(v));
       const wSum = weights.reduce((a, b) => a + b, 0.001);
       const w = weights.map(v => v / wSum);
-
-      // dims 6-11: structural parameters
       const armCount = Math.round(emb(emb64[6], 2, 7));
       const twistRate = emb(emb64[7], 0.3, 2.5);
       const spread = emb(emb64[8], 2, 6);
       const height = emb(emb64[9], 0.1, 4);
       const density = emb(emb64[10], 0.3, 1.0);
       const innerRadius = emb(emb64[11], 0, 1.5);
-
-      // dims 12-17: secondary params
       const helixLoops = emb(emb64[12], 3, 12);
       const helixRadius = emb(emb64[13], 0.8, 2.5);
       const waveFreqX = emb(emb64[14], 0.3, 2.0);
@@ -999,157 +1367,94 @@
       const shellThickness = emb(emb64[17], 0.3, 1.5);
 
       return function(i, total) {
-        const r01 = Math.random();
-        const rand1 = Math.random();
-        const rand2 = Math.random();
+        const r01 = Math.random(), rand1 = Math.random(), rand2 = Math.random();
 
-        // === Shape generators (same as presets but parameterized) ===
-
-        // 0: Spiral galaxy
         const arm = Math.floor(rand1 * armCount);
-        const armAngle = (arm / armCount) * Math.PI * 2;
         const sr = Math.pow(r01, density) * spread;
-        const sAngle = armAngle + sr * twistRate + (rand2 - 0.5) * 0.5;
-        const sy = (Math.random() - 0.5) * height * (1 - sr / spread);
-        const spiral = [Math.cos(sAngle) * sr, sy, Math.sin(sAngle) * sr];
+        const sAngle = (arm / armCount) * Math.PI * 2 + sr * twistRate + (rand2 - 0.5) * 0.5;
+        const spiral = [Math.cos(sAngle) * sr, (Math.random()-0.5)*height*(1-sr/spread), Math.sin(sAngle) * sr];
 
-        // 1: Spherical shell
-        const sPhi = Math.acos(2 * rand1 - 1);
-        const sTheta = rand2 * Math.PI * 2;
-        const sR = spread * 0.7 + (Math.random() - 0.5) * shellThickness;
+        const sPhi = Math.acos(2*rand1-1), sTheta = rand2*Math.PI*2;
+        const sR = spread*0.7 + (Math.random()-0.5)*shellThickness;
         const shell = [sR*Math.sin(sPhi)*Math.cos(sTheta), sR*Math.cos(sPhi), sR*Math.sin(sPhi)*Math.sin(sTheta)];
 
-        // 2: Double helix
-        const ht = (i / total) * Math.PI * helixLoops;
-        const hStrand = i % 2;
-        const hPhase = hStrand * Math.PI;
-        const hy = (i / total - 0.5) * spread * 2;
-        const helix = [
-          Math.cos(ht + hPhase) * helixRadius + (Math.random()-0.5)*0.1,
-          hy,
-          Math.sin(ht + hPhase) * helixRadius + (Math.random()-0.5)*0.1
-        ];
+        const ht = (i/total)*Math.PI*helixLoops;
+        const helix = [Math.cos(ht+(i%2)*Math.PI)*helixRadius, (i/total-0.5)*spread*2, Math.sin(ht+(i%2)*Math.PI)*helixRadius];
 
-        // 3: Wave plane
-        const wx = (rand1 - 0.5) * spread * 2;
-        const wz = (rand2 - 0.5) * spread * 2;
-        const wy = Math.sin(wx * waveFreqX) * height * 0.5
-                  + Math.sin(wz * waveFreqZ + wx * 0.3) * height * 0.3;
-        const plane = [wx, wy, wz];
+        const wx = (rand1-0.5)*spread*2, wz = (rand2-0.5)*spread*2;
+        const plane = [wx, Math.sin(wx*waveFreqX)*height*0.5+Math.sin(wz*waveFreqZ+wx*0.3)*height*0.3, wz];
 
-        // 4: Multi-burst
-        const bIdx = Math.floor(Math.random() * burstCount);
-        const bAngle = (bIdx / burstCount) * Math.PI * 2;
-        const bR2 = spread * 0.4;
-        const cx = Math.cos(bAngle) * bR2;
-        const cy = Math.sin(bAngle) * bR2 + height * 0.5;
-        const bPhi = Math.acos(2 * rand1 - 1);
-        const bTheta = rand2 * Math.PI * 2;
-        const br = Math.pow(Math.random(), 0.5) * spread * 0.4;
-        const burst = [
-          cx + br*Math.sin(bPhi)*Math.cos(bTheta),
-          cy + br*Math.cos(bPhi),
-          br*Math.sin(bPhi)*Math.sin(bTheta)
-        ];
+        const bIdx = Math.floor(Math.random()*burstCount), bAngle = (bIdx/burstCount)*Math.PI*2;
+        const bR = spread*0.4, bPhi = Math.acos(2*rand1-1), bTheta = rand2*Math.PI*2;
+        const br = Math.pow(Math.random(), 0.5)*spread*0.4;
+        const burst = [Math.cos(bAngle)*bR+br*Math.sin(bPhi)*Math.cos(bTheta), Math.sin(bAngle)*bR+height*0.5+br*Math.cos(bPhi), br*Math.sin(bPhi)*Math.sin(bTheta)];
 
-        // 5: Torus / ring
-        const R = spread * 0.6;
-        const tr = innerRadius + 0.5;
-        const tu = rand1 * Math.PI * 2;
-        const tv = rand2 * Math.PI * 2;
-        const ring = [
-          (R + tr * Math.cos(tv)) * Math.cos(tu),
-          tr * Math.sin(tv) * height * 0.4,
-          (R + tr * Math.cos(tv)) * Math.sin(tu)
-        ];
+        const R = spread*0.6, tr = innerRadius+0.5;
+        const tu = rand1*Math.PI*2, tv = rand2*Math.PI*2;
+        const ring = [(R+tr*Math.cos(tv))*Math.cos(tu), tr*Math.sin(tv)*height*0.4, (R+tr*Math.cos(tv))*Math.sin(tu)];
 
-        // Blend all shapes by weights
         const pos = [0, 0, 0];
-        const shapes = [spiral, shell, helix, plane, burst, ring];
-        for (let s = 0; s < 6; s++) {
-          pos[0] += shapes[s][0] * w[s];
-          pos[1] += shapes[s][1] * w[s];
-          pos[2] += shapes[s][2] * w[s];
-        }
-
+        [spiral, shell, helix, plane, burst, ring].forEach((sh, s) => {
+          pos[0] += sh[0]*w[s]; pos[1] += sh[1]*w[s]; pos[2] += sh[2]*w[s];
+        });
         return pos;
       };
     }
 
-    // Generate a color palette from embedding dims 18-29
     function embeddingPalette(emb64) {
       const pal = [];
       for (let i = 0; i < 4; i++) {
         const base = 18 + i * 3;
-        // Map embedding values to HSL then to RGB for more pleasing colors
-        const hue = emb(emb64[base], 0, 360);
-        const sat = emb(emb64[base + 1], 40, 100);
-        const lit = emb(emb64[base + 2], 30, 70);
-        pal.push(hslToRgb(hue, sat, lit));
+        pal.push(hslToRgb(emb(emb64[base], 0, 360), emb(emb64[base+1], 40, 100), emb(emb64[base+2], 30, 70)));
       }
       return pal;
     }
 
     function hslToRgb(h, s, l) {
       s /= 100; l /= 100;
-      const c = (1 - Math.abs(2 * l - 1)) * s;
-      const x = c * (1 - Math.abs((h / 60) % 2 - 1));
-      const m = l - c / 2;
+      const c = (1 - Math.abs(2*l-1)) * s;
+      const x = c * (1 - Math.abs((h/60)%2-1));
+      const m = l - c/2;
       let r, g, b;
-      if (h < 60)       { r=c; g=x; b=0; }
-      else if (h < 120) { r=x; g=c; b=0; }
-      else if (h < 180) { r=0; g=c; b=x; }
-      else if (h < 240) { r=0; g=x; b=c; }
-      else if (h < 300) { r=x; g=0; b=c; }
-      else              { r=c; g=0; b=x; }
-      return [r + m, g + m, b + m];
+      if (h<60){r=c;g=x;b=0;} else if(h<120){r=x;g=c;b=0;} else if(h<180){r=0;g=c;b=x;}
+      else if(h<240){r=0;g=x;b=c;} else if(h<300){r=x;g=0;b=c;} else{r=c;g=0;b=x;}
+      return [r+m, g+m, b+m];
     }
 
-    // Apply an embedding-driven formation
     function applyEmbeddingFormation(emb64) {
       const fn = embeddingFormation(emb64);
       const pal = embeddingPalette(emb64);
-
-      for (let i = 0; i < PARTICLE_COUNT * 3; i++) {
-        originalPositions[i] = positions[i];
-      }
-
+      for (let i = 0; i < PARTICLE_COUNT * 3; i++) originalPositions[i] = positions[i];
       for (let i = 0; i < PARTICLE_COUNT; i++) {
         const [x, y, z] = fn(i, PARTICLE_COUNT);
-        targetPositions[i * 3] = x;
-        targetPositions[i * 3 + 1] = y;
-        targetPositions[i * 3 + 2] = z;
+        targetPositions[i*3]=x; targetPositions[i*3+1]=y; targetPositions[i*3+2]=z;
         sizes[i] = 0.3 + Math.random() * 0.7;
       }
-
       targetPalette = pal;
       transitionProgress = 0;
       transitionStart = performance.now() / 1000;
       isTransitioning = true;
-
-      // Turbulence from embedding
       particleMaterial.uniforms.uTurbulence.value = emb(emb64[30] || 0, 0.1, 0.6);
-
       geometry.attributes.aTarget.needsUpdate = true;
       geometry.attributes.aSize.needsUpdate = true;
     }
 
     // ============================================================
-    // PRESET FALLBACKS (used for sidebar buttons when offline)
+    // PRESET FALLBACKS
     // ============================================================
     const presetDescriptions = {
-      galaxy:     { name: 'Stellar Vortex', desc: 'A spiral dance of 80,000 stars, each following the gravitational choreography of an ancient cosmos.' },
-      dna:        { name: 'Helix of Life', desc: 'The double helix unwinds — the molecular code that writes every living thing into existence.' },
-      blackhole:  { name: 'Event Horizon', desc: 'Where light bends and time dissolves. An accretion disk of pure energy spiraling into the void.' },
-      supernova:  { name: 'Stellar Bloom', desc: 'A dying star explodes outward, seeding the universe with the heavy elements that make worlds.' },
-      tornado:    { name: 'Chaos Spiral', desc: 'Pure turbulence given form. A vortex that draws everything into its relentless spin.' },
-      heartbeat:  { name: 'Pulse of Love', desc: 'The universal shape of connection, carved from light. Every particle beats in rhythm.' },
-      ocean:      { name: 'Infinite Wave', desc: 'A plane of liquid light, rippling with the memory of every tide that ever turned.' },
-      fireworks:  { name: 'Joy Cascade', desc: 'Bursts of pure celebration, scattered across the void like champagne turned to starlight.' },
+      galaxy:    { name:'Stellar Vortex', desc:'A spiral dance of 80,000 stars following ancient gravitational choreography.' },
+      dna:       { name:'Helix of Life', desc:'The molecular code that writes every living thing into existence.' },
+      blackhole: { name:'Event Horizon', desc:'Where light bends and time dissolves into the void.' },
+      supernova: { name:'Stellar Bloom', desc:'A dying star seeding the universe with heavy elements.' },
+      tornado:   { name:'Chaos Spiral', desc:'Pure turbulence given form in a relentless vortex.' },
+      heartbeat: { name:'Pulse of Love', desc:'The universal shape of connection, carved from light.' },
+      ocean:     { name:'Infinite Wave', desc:'Liquid light rippling with the memory of every tide.' },
+      fireworks: { name:'Joy Cascade', desc:'Celebration scattered across the void like starlight.' },
     };
 
     // ============================================================
-    // UI
+    // UI WIRING
     // ============================================================
     const input = document.getElementById('concept-input');
     const btn = document.getElementById('forge-btn');
@@ -1158,9 +1463,16 @@
     const entityNameEl = document.getElementById('entity-name');
     const entityDescEl = document.getElementById('entity-desc');
 
-    input.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') forge();
-    });
+    input.addEventListener('keydown', (e) => { if (e.key === 'Enter') forge(); });
+
+    function showEntity(name, desc, pal) {
+      const mainColor = `rgb(${Math.round(pal[0][0]*255)}, ${Math.round(pal[0][1]*255)}, ${Math.round(pal[0][2]*255)})`;
+      entityNameEl.style.color = mainColor;
+      entityNameEl.textContent = name;
+      entityDescEl.textContent = desc;
+      entityInfoEl.classList.add('visible');
+      setTimeout(() => { entityInfoEl.classList.remove('visible'); }, 6000);
+    }
 
     window.forge = async function() {
       const concept = input.value.trim();
@@ -1174,83 +1486,97 @@
         if (APIKEY) headers["apikey"] = APIKEY;
 
         const res = await fetch(API + "/embed", {
-          method: "POST",
-          headers,
+          method: "POST", headers,
           body: JSON.stringify({ concept }),
         });
 
-        if (!res.ok) {
-          const err = await res.json().catch(() => ({}));
-          throw new Error(err.error || "API error");
-        }
+        if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "API error");
 
         const data = await res.json();
-        const { name, desc, embedding } = data;
+        currentEmbedding = data.embedding;
 
-        // Apply embedding-driven formation
-        applyEmbeddingFormation(embedding);
+        applyEmbeddingFormation(data.embedding);
+        showEntity(data.name, data.desc, embeddingPalette(data.embedding));
+        statusEl.textContent = `"${concept}" forged into ${data.name}`;
 
-        // Show entity info with color from the generated palette
-        const pal = embeddingPalette(embedding);
-        const mainColor = `rgb(${Math.round(pal[0][0]*255)}, ${Math.round(pal[0][1]*255)}, ${Math.round(pal[0][2]*255)})`;
+        // Update music if playing
+        if (audioPlaying) configureFromEmbedding(data.embedding);
 
-        entityNameEl.style.color = mainColor;
-        entityNameEl.textContent = name;
-        entityDescEl.textContent = desc;
-        entityInfoEl.classList.add('visible');
-
-        statusEl.textContent = `"${concept}" forged into ${name}`;
         btn.disabled = false;
-
-        setTimeout(() => {
-          entityInfoEl.classList.remove('visible');
-        }, 6000);
-      } catch (err) {
-        // Fallback to preset formations if API is unavailable
+      } catch {
         statusEl.textContent = 'API unavailable — using local formation';
         const keys = Object.keys(formations);
         const fallback = keys[Math.floor(Math.random() * keys.length)];
         applyFormation(fallback);
         const info = presetDescriptions[fallback] || { name: fallback, desc: '' };
-
-        const pal = palettes[fallback];
-        const mainColor = `rgb(${Math.round(pal[0][0]*255)}, ${Math.round(pal[0][1]*255)}, ${Math.round(pal[0][2]*255)})`;
-        entityNameEl.style.color = mainColor;
-        entityNameEl.textContent = info.name;
-        entityDescEl.textContent = info.desc;
-        entityInfoEl.classList.add('visible');
-
+        showEntity(info.name, info.desc, palettes[fallback] || palettes.galaxy);
         btn.disabled = false;
-        setTimeout(() => { entityInfoEl.classList.remove('visible'); }, 6000);
       }
     };
 
     window.forgePreset = function(name) {
-      // Presets use local formations (no API call needed)
       input.value = name;
-      const info = presetDescriptions[name] || { name, desc: '' };
-
       applyFormation(name);
-
-      const pal = palettes[name] || palettes.galaxy;
-      const mainColor = `rgb(${Math.round(pal[0][0]*255)}, ${Math.round(pal[0][1]*255)}, ${Math.round(pal[0][2]*255)})`;
-
-      entityNameEl.style.color = mainColor;
-      entityNameEl.textContent = info.name;
-      entityDescEl.textContent = info.desc;
-      entityInfoEl.classList.add('visible');
-
+      const info = presetDescriptions[name] || { name, desc: '' };
+      showEntity(info.name, info.desc, palettes[name] || palettes.galaxy);
       statusEl.textContent = `Forged: ${info.name}`;
+    };
 
-      setTimeout(() => {
-        entityInfoEl.classList.remove('visible');
-      }, 6000);
+    // ============================================================
+    // MUSIC UI
+    // ============================================================
+    function hideCta() {
+      document.getElementById('music-cta').classList.add('hidden');
+      document.getElementById('music-toggle').classList.add('visible');
+    }
+
+    window.onCtaClick = async function() {
+      hideCta();
+      // Open panel and start audio immediately
+      document.getElementById('music-panel').classList.add('open');
+      document.getElementById('music-toggle').classList.add('active');
+      await Tone.start();
+      ensureAnalyser();
+      startSequencer();
+      audioPlaying = true;
+      document.getElementById('audio-btn').textContent = 'Stop';
+      document.getElementById('audio-btn').style.background = 'linear-gradient(135deg, #8b5cf6, #ec4899)';
+    };
+
+    window.dismissCta = function() {
+      hideCta();
+    };
+
+    window.toggleMusicPanel = function() {
+      const panel = document.getElementById('music-panel');
+      const toggle = document.getElementById('music-toggle');
+      panel.classList.toggle('open');
+      toggle.classList.toggle('active', panel.classList.contains('open'));
+    };
+
+    window.onSlider = function() {
+      applySliders();
+    };
+
+    window.toggleAudio = async function() {
+      const audioBtn = document.getElementById('audio-btn');
+      if (!audioPlaying) {
+        await Tone.start();
+        ensureAnalyser();
+        startSequencer();
+        audioPlaying = true;
+        audioBtn.textContent = 'Stop';
+        audioBtn.style.background = 'linear-gradient(135deg, #8b5cf6, #ec4899)';
+      } else {
+        stopSequencer();
+        audioPlaying = false;
+        audioBtn.textContent = 'Play';
+        audioBtn.style.background = 'rgba(255,255,255,0.08)';
+      }
     };
 
     // Fade help text
-    setTimeout(() => {
-      document.getElementById('help').style.opacity = '0';
-    }, 8000);
+    setTimeout(() => { document.getElementById('help').style.opacity = '0'; }, 8000);
   </script>
 </body>
 </html>
