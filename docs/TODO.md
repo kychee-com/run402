@@ -54,62 +54,50 @@ Other agent → POST /v1/fork/:tier { version_id, name }
 
 Key principle: **fork reuses the bundle deploy orchestrator**. No second deploy engine.
 
-#### Prerequisites
-- [ ] Add `source` column to `internal.functions` — store raw source at deploy time, dual-write alongside Lambda deploy. Legacy functions without source are not publishable.
-- [ ] Add `ref_count` to `internal.deployments` — site deployment pinning. Increment on publish, decrement on version deletion. GC skips pinned deployments.
-- [ ] Add `postgresql16-client` to Dockerfile — for `pg_dump` (schema export)
-- [ ] Define v1 support matrix — what's publishable and what's rejected (tables, FKs, indexes, RLS, SERIAL/IDENTITY = yes; views, triggers, DB functions, enums, extensions = no, reject at publish with clear error)
-- [ ] Frontend runtime config convention — `window.__RUN402_CONFIG__` injected into `index.html` on fork deploy with apiUrl, anonKey, projectId. Optional for publishers, auto-injected for forkers.
+#### Prerequisites [SHIPPED]
+- [x] Add `source` column to `internal.functions` — dual-write at deploy time
+- [x] Add `ref_count` to `internal.deployments` — site deployment pinning
+- [x] Add `postgresql16-client` to Dockerfile — for pg_dump/psql
+- [x] v1 support matrix: views, triggers, DB functions, enums, extensions rejected at publish time with clear error
+- [ ] Frontend runtime config convention — `window.__RUN402_CONFIG__` injected into `index.html` on fork deploy. Optional for publishers, auto-injected for forkers.
 
-#### Schema export (pg_dump)
-- [ ] `pg_dump` wrapper: dump `--section=pre-data` and `--section=post-data` separately
-- [ ] Schema-name canonicalization: replace `p0042` with `__SCHEMA__` placeholder, restore replaces with target schema
-- [ ] Seed data (opt-in): `pg_dump --data-only` for specified tables + `setval()` for sequences
-- [ ] Round-trip fidelity test: create diverse schema → publish → fork → introspect both → compare semantically
+#### Schema export (pg_dump) [SHIPPED]
+- [x] `pg_dump` wrapper: pre-data + post-data sections dumped separately
+- [x] Schema-name canonicalization: global replace with `__SCHEMA__` placeholder, strip CREATE SCHEMA and GRANT USAGE ON SCHEMA
+- [x] Table/sequence grants re-applied after restore (compensates for pg_dump --no-privileges on pre-data)
+- [x] Schema restore via `psql` (handles multi-statement pg_dump output correctly)
+- [x] Seed data (opt-in): `pg_dump --data-only` for specified tables
+- [ ] Round-trip schema fidelity test: create diverse schema → publish → fork → introspect both → compare semantically (tested manually, not yet automated)
 
-#### DB tables
-- [ ] `internal.app_versions` — metadata: id, project_id, version, name, description, visibility (private/unlisted/public), fork_allowed, status (published/disabled), min_tier, derived_min_tier, format_version, bundle_uri (S3), bundle_sha256, publisher_wallet, required_secrets (JSONB), required_actions (JSONB), capabilities (JSONB), stats (table/function/site counts + sizes), site_deployment_id, created_at
-- [ ] `internal.app_version_functions` — PRIMARY KEY (version_id, name), source, runtime, timeout, memory, deps, code_hash. CASCADE delete on version removal.
-- [ ] Add `source_version_id` column to `internal.projects` for fork provenance tracking
+#### DB tables [SHIPPED]
+- [x] `internal.app_versions` — full metadata + S3 bundle reference + SHA-256
+- [x] `internal.app_version_functions` — PRIMARY KEY (version_id, name), CASCADE delete
+- [x] `source_version_id` column on `internal.projects` for fork provenance
 
-#### Publish service
-- [ ] `packages/gateway/src/services/publish.ts` — acquire project-level advisory lock, validate (active project, all functions have source, no unsupported objects), run pg_dump pre/post, build bundle.json, upload to S3 with SHA-256, insert DB rows, increment site ref_count, return version + compatibility report
-- [ ] `POST /admin/v1/projects/:id/publish` (service_key auth) — body: { visibility?, fork_allowed?, description?, include_seed?: { tables: string[] }, required_secrets?: [...], required_actions?: [...] }
-- [ ] `GET /admin/v1/projects/:id/versions` (service_key auth) — list versions
-- [ ] `GET /v1/apps/:versionId` (free, no auth) — public app info: name, description, stats, required secrets/actions, effective_min_tier, fork price by tier
+#### Publish service [SHIPPED]
+- [x] `packages/gateway/src/services/publish.ts` — advisory lock, unsupported object validation, pg_dump pre/post, S3 bundle upload with SHA-256, site ref_count pinning, derived min_tier computation
+- [x] `POST /admin/v1/projects/:id/publish` (service_key auth)
+- [x] `GET /admin/v1/projects/:id/versions` (service_key auth)
+- [x] `GET /v1/apps/:versionId` (free, no auth) with fork pricing
 
-#### Fork service
-- [ ] `packages/gateway/src/services/fork.ts` — load version metadata + S3 bundle, verify SHA-256, validate (fork_allowed, visibility, tier >= effective_min_tier), build bundle deploy request, call deployBundle(), apply post_schema_sql, apply seed_sql, inject __RUN402_CONFIG__ into index.html, record source_version_id, return credentials + missing_secrets + required_actions + readiness status (ready / configuration_required / manual_setup_required)
-- [ ] `POST /v1/fork/:tier` (x402-gated, tier-priced) — body: { version_id, name, subdomain? }
-- [ ] x402 config: same pricing as project creation per tier, Bazaar discovery metadata
-- [ ] Derived min_tier: compute from artifact stats (function count, site size) — `effective_min_tier = max(derived, publisher)`
-- [ ] Idempotency on fork endpoint
+#### Fork service [SHIPPED]
+- [x] `packages/gateway/src/services/fork.ts` — loads S3 bundle, verifies SHA-256, validates forkability/tier, calls deployBundle(), applies pre/post/seed SQL via psql, re-applies table+sequence grants, records provenance, returns readiness status
+- [x] `POST /v1/fork/:tier` (x402-gated, tier-priced)
+- [x] x402 config with Bazaar discovery metadata for all tiers
+- [x] Derived min_tier from artifact stats
+- [x] Idempotency on fork endpoint
 
-#### Tests
-- [ ] `publish.test.ts` — unsupported object rejection, required_secrets explicit not auto-snapshotted, derived_min_tier computation, schema placeholder replacement, bundle SHA-256 verification
-- [ ] `fork.test.ts` — reject private version, reject below min_tier, reject disabled version, request shape validation, readiness status logic
-- [ ] E2E Step 22: publish workout tracker project as public/forkable, verify version returned with correct stats, verify GET /v1/apps/:versionId
-- [ ] E2E Step 23: fork via x402 payment, verify new project with tables + RLS, insert data, verify independence, cleanup
-- [ ] Round-trip schema fidelity: create → publish → fork → introspect both → compare
+#### Tests [SHIPPED]
+- [x] `publish.test.ts` — 7 tests: schema canonicalization, derived min_tier
+- [x] `fork.test.ts` — 11 tests: request validation, tier ordering
+- [x] E2E Step 21: publish workout tracker as public/forkable, verify stats, verify GET /v1/apps
+- [x] E2E Step 22: fork via x402 payment, verify schema restored with tables + RLS, verify independence, cleanup
+- [x] **Full E2E: 135 passed, 0 failed** on production with real x402 payments
 
-#### Docs & website
-- [ ] llms.txt: "Publish & Fork" section with publish, inspect, fork examples
-- [ ] Website: "Fork & Remix" card in feature grid, fork flow in "How it works"
+#### Docs [SHIPPED]
+- [x] llms.txt: "Publish & Fork" section with publish, inspect, fork examples + readiness statuses + pricing
+- [ ] Website: "Fork & Remix" card in feature grid
 - [ ] MCP tools: publish_app, list_versions, inspect_app, fork_app (run402-mcp repo)
-
-#### Implementation order
-1. Define v1 support matrix
-2. Add `source` column to `internal.functions` + dual-write
-3. Add `ref_count` to `internal.deployments`
-4. Add `postgresql16-client` to Dockerfile
-5. Create `internal.app_versions` + `internal.app_version_functions` tables (init on startup)
-6. Build schema export (pg_dump wrapper + pre/post split + placeholder replacement)
-7. Build publish service + route + unit tests
-8. Build fork service (converts bundle → calls deployBundle()) + route + unit tests
-9. x402 config + idempotency + server.ts wiring
-10. E2E tests (publish + fork + round-trip fidelity)
-11. llms.txt + website
-12. Deploy to ECS
 
 #### NOT in v1
 - Paid creator fees / revenue split
