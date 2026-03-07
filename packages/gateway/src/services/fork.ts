@@ -183,6 +183,38 @@ export async function forkApp(
     await executeSqlViaPsql(sql, `fork ${phase.label}`);
   }
 
+  // Re-apply table grants stripped by pg_dump --no-privileges.
+  // The schema slot has ALTER DEFAULT PRIVILEGES set, but those only apply to
+  // tables created by the same role in the same session. pg_dump/psql creates
+  // tables in a separate session, so the defaults may not fire. Explicitly grant.
+  const tablesResult = await pool.query(
+    `SELECT table_name FROM information_schema.tables
+     WHERE table_schema = $1 AND table_type = 'BASE TABLE'`,
+    [targetSchema],
+  );
+  if (tablesResult.rows.length > 0) {
+    const client = await pool.connect();
+    try {
+      for (const row of tablesResult.rows) {
+        const t = `${targetSchema}.${row.table_name}`;
+        await client.query(`GRANT SELECT ON ${t} TO anon`);
+        await client.query(`GRANT SELECT, INSERT, UPDATE, DELETE ON ${t} TO authenticated`);
+        await client.query(`GRANT ALL ON ${t} TO service_role`);
+      }
+      // Also grant sequence usage (for SERIAL/BIGSERIAL columns)
+      const seqResult = await pool.query(
+        `SELECT sequence_name FROM information_schema.sequences WHERE sequence_schema = $1`,
+        [targetSchema],
+      );
+      for (const row of seqResult.rows) {
+        const s = `${targetSchema}.${row.sequence_name}`;
+        await client.query(`GRANT USAGE, SELECT ON SEQUENCE ${s} TO anon, authenticated, service_role`);
+      }
+    } finally {
+      client.release();
+    }
+  }
+
   // Notify PostgREST to reload schema cache
   await pool.query("NOTIFY pgrst, 'reload schema'");
 

@@ -177,7 +177,6 @@ async function pgDumpSchema(
     `--dbname=${dbName}`,
     `--schema=${schemaSlot}`,
     `--no-owner`,
-    `--no-privileges`,
     `--no-comments`,
   ];
 
@@ -191,6 +190,11 @@ async function pgDumpSchema(
   } else {
     args.push("--schema-only");
     args.push(`--section=${section}`);
+    // Keep privileges in post-data (GRANTs from RLS templates etc.)
+    // Strip from pre-data to avoid DEFAULT PRIVILEGES conflicts
+    if (section === "pre-data") {
+      args.push("--no-privileges");
+    }
   }
 
   const env = { ...process.env, PGPASSWORD: dbPassword };
