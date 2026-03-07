@@ -37,23 +37,39 @@ const fetchPaid = wrapFetchWithPayment(fetch, client);
 async function main() {
   console.log("=== Cosmic Forge Deploy ===\n");
 
-  // 1. Provision project
-  console.log("1) Provisioning project...");
-  const provRes = await fetchPaid(`${BASE_URL}/v1/projects/create/prototype`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name: "cosmicforge" }),
-  });
+  // 1. Provision project (or reuse existing)
+  const EXISTING_PROJECT = process.env.COSMIC_PROJECT_ID || "";
+  const EXISTING_SERVICE_KEY = process.env.COSMIC_SERVICE_KEY || "";
+  const EXISTING_ANON_KEY = process.env.COSMIC_ANON_KEY || "";
 
-  if (!provRes.ok) {
-    console.error("Failed to provision:", provRes.status, await provRes.text());
-    process.exit(1);
+  let project_id, service_key, anon_key;
+
+  if (EXISTING_PROJECT && EXISTING_SERVICE_KEY) {
+    console.log("1) Reusing existing project...");
+    project_id = EXISTING_PROJECT;
+    service_key = EXISTING_SERVICE_KEY;
+    anon_key = EXISTING_ANON_KEY;
+    console.log(`   Project: ${project_id}`);
+  } else {
+    console.log("1) Provisioning new project...");
+    const provRes = await fetchPaid(`${BASE_URL}/v1/projects/create/prototype`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "cosmicforge" }),
+    });
+
+    if (!provRes.ok) {
+      console.error("Failed to provision:", provRes.status, await provRes.text());
+      process.exit(1);
+    }
+
+    const project = await provRes.json();
+    project_id = project.project_id;
+    service_key = project.service_key;
+    anon_key = project.anon_key;
+    console.log(`   Project: ${project_id}`);
+    console.log(`   Anon key: ${anon_key.substring(0, 20)}...`);
   }
-
-  const project = await provRes.json();
-  const { project_id, service_key, anon_key } = project;
-  console.log(`   Project: ${project_id}`);
-  console.log(`   Anon key: ${anon_key.substring(0, 20)}...`);
 
   const authHeaders = {
     Authorization: `Bearer ${service_key}`,
