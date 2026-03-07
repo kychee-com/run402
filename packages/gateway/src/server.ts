@@ -7,10 +7,12 @@
 
 try { await import("dotenv/config"); } catch {}
 
+import Bugsnag from "@bugsnag/js";
+import BugsnagPluginExpress from "@bugsnag/plugin-express";
 import express, { Request, Response, NextFunction, ErrorRequestHandler } from "express";
 import { errorMessage } from "./utils/errors.js";
 import { HttpError } from "./utils/async-handler.js";
-import { PORT, POSTGREST_URL, SELLER_ADDRESS, MAINNET_NETWORK, TESTNET_NETWORK, TESTNET_FACILITATOR_URL, CDP_API_KEY_ID, RATE_LIMIT_PER_SEC, FAUCET_TREASURY_KEY, FACILITATOR_PROVIDER } from "./config.js";
+import { PORT, POSTGREST_URL, SELLER_ADDRESS, MAINNET_NETWORK, TESTNET_NETWORK, TESTNET_FACILITATOR_URL, CDP_API_KEY_ID, RATE_LIMIT_PER_SEC, FAUCET_TREASURY_KEY, FACILITATOR_PROVIDER, BUGSNAG_API_KEY } from "./config.js";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
@@ -42,7 +44,16 @@ import bundleRoutes from "./routes/bundle.js";
 import publishRoutes from "./routes/publish.js";
 import { initAppVersionsTables } from "./services/publish.js";
 
+Bugsnag.start({
+  apiKey: BUGSNAG_API_KEY,
+  plugins: [BugsnagPluginExpress],
+});
+const bugsnagMiddleware = Bugsnag.getPlugin("express")!;
+
 const app = express();
+
+// Bugsnag request handler must be the first middleware
+app.use(bugsnagMiddleware.requestHandler);
 
 // Trust ALB proxy for correct req.ip
 app.set("trust proxy", true);
@@ -234,6 +245,9 @@ app.use(functionsRoutes);
 app.use(generateImageRoutes);
 app.use(bundleRoutes);
 app.use(publishRoutes);
+
+// --- Bugsnag error handler (must be before central error handler) ---
+app.use(bugsnagMiddleware.errorHandler);
 
 // --- Central error handler ---
 // Routes using asyncHandler() forward errors here automatically.
