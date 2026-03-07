@@ -21,6 +21,25 @@ From GPT-5.2 Pro consultation (2026-02-27) on improving agent trust and adoption
 - [ ] Custom domains: let agents CNAME their own domain to a deployment
 - [ ] Deployment listing: `GET /v1/deployments?project=prj_xxx` for listing project deployments
 
+### Bundle deploy endpoint
+Single-call atomic deploy: `POST /v1/deploy` (x402-gated) that accepts site files, functions, secrets, and migrations in one request. Replaces the current multi-call flow (create project + deploy functions + deploy site + set secrets). One payment, everything deploys atomically. MCP tool: `deploy_app`. This is the agent-native deploy primitive — no git, no CLI, one API call from files to live URL.
+
+### Forkable apps
+`POST /v1/fork` (x402-gated) — fork any public run402 app in one call. Creates a new project with copied code, fresh database, own URL, own budget. One payment, fully independent copy.
+
+**Use cases:**
+- "Make me a version of that" — agent finds a live app, forks it, customizes for the user
+- Agent-to-agent tool sharing — Agent A builds a Stripe checkout handler, Agent B forks it for their own app
+- Live templates — curated starter apps (todo, CRM, SaaS starter, RAG chat) that are already running. Fork = instant working app, no setup
+- "Fix/extend this app" — fork a public app, add features, deploy as a new version
+- A/B testing — fork an app, change the copy/CTA, deploy both at $0.10 each
+- Client work at scale — build a base app once, fork per client, each with isolated DB/auth/billing
+
+**Paid forks (creator economy):**
+`run402.yaml` declares a `forkFee` and creator wallet. When another agent forks, x402 splits the payment — run402 gets infra fee, creator gets fork fee. Agents building and selling reusable apps to other agents, entirely programmatically.
+
+**Why this matters:** Git push is a deployment mechanism. Forkability is a distribution mechanism — agents discover, fork, and improve each other's apps. This is what makes run402 a platform, not just a host.
+
 ### Self-serve export endpoint
 Add `POST /admin/v1/projects/:id/export` that returns a signed URL to a SQL dump of the project's schema and data. This is the biggest trust unlock for agents considering Run402 for non-ephemeral work.
 
