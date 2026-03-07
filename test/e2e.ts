@@ -22,7 +22,9 @@
  *   18. RLS templates — public_read, public_read_write (anon write via GRANT)
  *   19. GRANT blocked hint — actionable error messages
  *   20. Bundle deploy — one-call full-stack app (x402 payment, migrations, RLS, site)
- *   21. Delete project — cleanup
+ *   21. Publish — publish workout tracker as forkable app version
+ *   22. Fork — fork the published app, verify independent copy
+ *   23. Delete project — cleanup
  *
  * Usage:
  *   BASE_URL=http://localhost:4022 npm run test:e2e
@@ -699,8 +701,80 @@ async function main() {
   });
   assert(bundleDeleteRes.ok, "Bundle project cleaned up");
 
-  // Step 21: Delete original project
-  console.log("\n21) Delete project...");
+  // Step 21: Publish — publish workout tracker as forkable app version
+  console.log("\n21) Publish app version...");
+  const publishRes = await fetch(`${BASE_URL}/admin/v1/projects/${project_id}/publish`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${service_key}` },
+    body: JSON.stringify({
+      visibility: "public",
+      fork_allowed: true,
+      description: "E2E workout tracker — tables, RLS, auth",
+      required_secrets: [],
+    }),
+  });
+  const publishBody = await publishRes.json();
+  assert(publishRes.status === 201, `Publish returns 201 (got ${publishRes.status})`);
+  assert(typeof publishBody.id === "string", "Publish returns version id");
+  assert(publishBody.visibility === "public", "Publish returns visibility");
+  assert(publishBody.fork_allowed === true, "Publish returns fork_allowed");
+  assert(publishBody.table_count >= 4, `Publish found tables (got ${publishBody.table_count})`);
+  assert(publishBody.status === "published", "Publish status is published");
+
+  const versionId = publishBody.id;
+
+  // Verify public app info endpoint
+  const appInfoRes = await fetch(`${BASE_URL}/v1/apps/${versionId}`);
+  const appInfoBody = await appInfoRes.json();
+  assert(appInfoRes.ok, "Public app info accessible");
+  assert(appInfoBody.fork_allowed === true, "App info shows fork_allowed");
+  assert(typeof appInfoBody.fork_pricing === "object", "App info includes fork pricing");
+
+  // Step 22: Fork — fork the published app via x402
+  console.log("\n22) Fork app version...");
+  const forkRes = await fetchPaid(`${BASE_URL}/v1/fork/prototype`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      version_id: versionId,
+      name: "e2e-fork-test",
+    }),
+  });
+  const forkBody = await forkRes.json();
+  assert(forkRes.status === 201, `Fork returns 201 (got ${forkRes.status})`);
+  assert(typeof forkBody.project_id === "string", "Fork returns project_id");
+  assert(typeof forkBody.anon_key === "string", "Fork returns anon_key");
+  assert(typeof forkBody.service_key === "string", "Fork returns service_key");
+  assert(forkBody.source_version_id === versionId, "Fork records source version");
+  assert(typeof forkBody.readiness === "string", "Fork returns readiness status");
+  assert(forkBody.project_id !== project_id, "Fork creates different project");
+
+  const forkProjectId = forkBody.project_id;
+  const forkAnonKey = forkBody.anon_key;
+  const forkServiceKey = forkBody.service_key;
+
+  await sleep(500); // Wait for PostgREST reload
+
+  // Verify forked project has the tables (schema was restored)
+  const forkSchemaRes = await fetch(`${BASE_URL}/admin/v1/projects/${forkProjectId}/schema`, {
+    headers: { Authorization: `Bearer ${forkServiceKey}` },
+  });
+  const forkSchemaBody = await forkSchemaRes.json();
+  assert(forkSchemaRes.ok, "Fork schema introspection works");
+  const forkTableNames = (forkSchemaBody.tables || []).map((t: { name: string }) => t.name).sort();
+  assert(forkTableNames.includes("profiles"), "Fork has profiles table");
+  assert(forkTableNames.includes("exercises"), "Fork has exercises table");
+  assert(forkTableNames.includes("workouts"), "Fork has workouts table");
+
+  // Clean up fork project
+  const forkDeleteRes = await fetch(`${BASE_URL}/v1/projects/${forkProjectId}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${forkServiceKey}` },
+  });
+  assert(forkDeleteRes.ok, "Fork project cleaned up");
+
+  // Step 23: Delete original project
+  console.log("\n23) Delete project...");
   const deleteRes = await fetch(`${BASE_URL}/v1/projects/${project_id}`, {
     method: "DELETE",
     headers: { Authorization: `Bearer ${service_key}` },

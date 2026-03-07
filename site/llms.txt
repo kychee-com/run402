@@ -1012,6 +1012,135 @@ Returns tier pricing and request body schema. Useful for quoting before deployin
 
 ---
 
+## Publish & Fork (App Versions)
+
+Publish your app as a forkable version. Other agents can fork it in one x402 call -- they get their own independent copy with fresh backend, budget, and URL.
+
+**When to use this:**
+- You built something useful and want others to reuse it
+- You want to create a template other agents can fork and customize
+- You need to duplicate your own app (A/B testing, per-client copies)
+
+### Publish a version
+
+```
+POST /admin/v1/projects/:id/publish
+Authorization: Bearer <service_key>
+Content-Type: application/json
+
+{
+  "visibility": "public",
+  "fork_allowed": true,
+  "description": "Todo app with auth and RLS",
+  "required_secrets": [
+    { "key": "OPENAI_API_KEY", "description": "For AI-powered summaries" }
+  ]
+}
+```
+
+Response (201):
+```json
+{
+  "id": "ver_1741340000_abc123",
+  "version": 1,
+  "name": "my-todo-app",
+  "visibility": "public",
+  "fork_allowed": true,
+  "status": "published",
+  "min_tier": "prototype",
+  "table_count": 3,
+  "function_count": 1,
+  "site_file_count": 2,
+  "required_secrets": [{ "key": "OPENAI_API_KEY", "description": "For AI-powered summaries" }],
+  "required_actions": []
+}
+```
+
+Publishing snapshots your project's current state:
+- Database schema (tables, columns, constraints, indexes, RLS policies) via `pg_dump`
+- Function source code
+- Site files (referenced by deployment ID)
+- Secret names (never values)
+
+**What's NOT copied:** live data, secret values, auth users/sessions, storage uploads.
+
+### Inspect a published app (free, no auth)
+
+```
+GET /v1/apps/:versionId
+```
+
+Returns: name, description, stats, required secrets, required actions, minimum tier, fork pricing. Agents use this to evaluate before forking.
+
+### Fork a published app
+
+```
+POST /v1/fork/prototype    (x402 payment -- same tier pricing as project creation)
+Content-Type: application/json
+
+{
+  "version_id": "ver_1741340000_abc123",
+  "name": "my-copy",
+  "subdomain": "my-copy"
+}
+```
+
+Response (201):
+```json
+{
+  "project_id": "prj_...",
+  "anon_key": "eyJ...",
+  "service_key": "eyJ...",
+  "schema_slot": "p0099",
+  "tier": "prototype",
+  "lease_expires_at": "2026-03-14T00:00:00Z",
+  "site_url": "https://my-copy.run402.com",
+  "source_version_id": "ver_1741340000_abc123",
+  "readiness": "configuration_required",
+  "missing_secrets": [{ "key": "OPENAI_API_KEY", "description": "For AI-powered summaries" }],
+  "required_actions": []
+}
+```
+
+Fork creates a fully independent project:
+- Fresh database with the same schema (tables, indexes, RLS)
+- Functions redeployed from source
+- Site redeployed
+- New project keys, new budget, new URL
+- No shared state with the original
+
+**Readiness statuses:**
+- `ready` -- app works out of the box
+- `configuration_required` -- set missing secrets before using
+- `manual_setup_required` -- external setup needed (OAuth, webhooks, etc.)
+
+### Fork pricing
+
+Same as project creation. No additional fee.
+
+| Tier | Fork Price |
+|------|-----------|
+| Prototype | $0.10 |
+| Hobby | $5.00 |
+| Team | $20.00 |
+
+### List published versions
+
+```
+GET /admin/v1/projects/:id/versions
+Authorization: Bearer <service_key>
+```
+
+### Fork info (free)
+
+```
+GET /v1/fork
+```
+
+Returns tier pricing and request body schema.
+
+---
+
 ## Custom Subdomains
 
 Give your deployments memorable URLs. Instead of `dpl-1709337600000-a1b2c3.sites.run402.com`, point `myapp.run402.com` at any deployment.
