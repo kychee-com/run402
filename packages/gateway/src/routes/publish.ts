@@ -16,6 +16,7 @@ import {
   publishAppVersion,
   listVersions,
   getAppVersion,
+  listPublicApps,
   PublishError,
 } from "../services/publish.js";
 import { forkApp, validateForkRequest, ForkError } from "../services/fork.js";
@@ -67,6 +68,27 @@ router.get(
 
     const versions = await listVersions(project.id);
     res.json({ versions });
+  }),
+);
+
+// GET /v1/apps — list all public forkable apps (free, no auth)
+router.get(
+  "/v1/apps",
+  asyncHandler(async (_req: Request, res: Response) => {
+    const apps = await listPublicApps();
+
+    const forkPricing: Record<string, string> = {};
+    for (const [tierName, tierConfig] of Object.entries(TIERS)) {
+      forkPricing[tierName] = tierConfig.price;
+    }
+
+    res.json({
+      apps: apps.map((app) => ({
+        ...app,
+        fork_pricing: app.fork_allowed ? forkPricing : undefined,
+      })),
+      total: apps.length,
+    });
   }),
 );
 

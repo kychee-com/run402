@@ -450,6 +450,42 @@ export async function listVersions(projectId: string): Promise<AppVersionInfo[]>
 }
 
 /**
+ * List all public forkable app versions.
+ */
+export async function listPublicApps(): Promise<AppVersionInfo[]> {
+  const result = await pool.query(
+    `SELECT id, project_id, version, name, description, visibility, fork_allowed,
+            min_tier, derived_min_tier, status,
+            table_count, function_count, site_file_count, site_total_bytes,
+            required_secrets, required_actions, site_deployment_id, created_at
+     FROM internal.app_versions
+     WHERE visibility IN ('public', 'unlisted') AND status = 'published'
+     ORDER BY created_at DESC
+     LIMIT 100`,
+  );
+  return result.rows.map((row) => ({
+    id: row.id,
+    project_id: row.project_id,
+    version: row.version,
+    name: row.name,
+    description: row.description,
+    visibility: row.visibility,
+    fork_allowed: row.fork_allowed,
+    min_tier: row.min_tier as TierName,
+    derived_min_tier: row.derived_min_tier as TierName,
+    status: row.status,
+    table_count: row.table_count,
+    function_count: row.function_count,
+    site_file_count: row.site_file_count,
+    site_total_bytes: Number(row.site_total_bytes),
+    required_secrets: row.required_secrets || [],
+    required_actions: row.required_actions || [],
+    created_at: row.created_at,
+    compatibility_warnings: [],
+  }));
+}
+
+/**
  * Get a public app version by ID.
  */
 export async function getAppVersion(versionId: string): Promise<AppVersionInfo | null> {
