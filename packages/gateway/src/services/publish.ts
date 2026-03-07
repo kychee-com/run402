@@ -39,7 +39,12 @@ const UNSUPPORTED_OBJECT_QUERIES = [
   },
   {
     label: "custom types",
-    sql: `SELECT typname AS name FROM pg_type t JOIN pg_namespace n ON t.typnamespace = n.oid WHERE n.nspname = $1 AND t.typtype IN ('e', 'c', 'd') AND t.typname NOT LIKE 'pg_%'`,
+    sql: `SELECT typname AS name FROM pg_type t
+          JOIN pg_namespace n ON t.typnamespace = n.oid
+          WHERE n.nspname = $1
+            AND t.typtype IN ('e', 'd')
+            AND t.typname NOT LIKE 'pg_%'`,
+    // Note: excludes composite types ('c') since Postgres auto-creates one per table
   },
 ];
 
@@ -190,12 +195,16 @@ async function pgDumpSchema(
 
   const env = { ...process.env, PGPASSWORD: dbPassword };
 
-  const { stdout } = await execFileAsync("pg_dump", args, {
-    env,
-    maxBuffer: 10 * 1024 * 1024, // 10MB
-  });
-
-  return stdout;
+  try {
+    const { stdout } = await execFileAsync("pg_dump", args, {
+      env,
+      maxBuffer: 10 * 1024 * 1024, // 10MB
+    });
+    return stdout;
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    throw new PublishError(`pg_dump failed: ${msg}`, 500);
+  }
 }
 
 /**
