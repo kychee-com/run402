@@ -11,6 +11,29 @@ Never use `$()` command substitution or heredocs with `$(cat <<...)` in Bash cal
 - For git commits, use a simple single-line `-m` flag or multiple `-m` flags for multi-line messages.
 This avoids permission prompts from the harness.
 
+## Deployment
+
+### Gateway (API)
+
+**Normal path:** Push to `main`. The GitHub Action `.github/workflows/deploy-gateway.yml` builds the Docker image, pushes to ECR, and redeploys ECS automatically.
+
+**Manual/emergency:** `./scripts/deploy.sh` does the same thing locally via colima/buildx. Prompts for confirmation (pass `-y` to skip). Only use when CI is broken or you need a hotfix without pushing.
+
+### Site (run402.com landing page)
+
+**Content updates:** Push changes under `site/` to `main`. The GitHub Action `.github/workflows/deploy-site.yml` syncs to S3 and invalidates CloudFront.
+
+**Infra changes (S3 bucket, CloudFront distribution):** `./scripts/cdk-deploy.sh` runs `cdk deploy` for the Site stack. Rarely needed.
+
+### Demos
+
+Each demo under `demos/` has its own `deploy.ts` that provisions a Run402 project, sets secrets, deploys the function + site, and claims a subdomain:
+
+- `demos/evilme/deploy.ts` → evilme.run402.com
+- `demos/cosmicforge/deploy.ts` → cosmic.run402.com
+
+Run with `npx tsx demos/<name>/deploy.ts`. Requires `BUYER_PRIVATE_KEY`, `OPENAI_API_KEY`, and `ADMIN_KEY` in `.env`.
+
 ## Bugsnag
 
 Error monitoring is integrated in the Express gateway (`packages/gateway/src/server.ts`).

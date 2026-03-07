@@ -1,9 +1,24 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# AgentDB deployment script
-# Usage: ./scripts/deploy.sh
+# AgentDB manual deployment script
+# Usage: ./scripts/deploy.sh [-y]
 # Uses docker buildx for cross-platform (ARM → amd64) builds
+#
+# NOTE: The normal deploy path is pushing to main, which triggers
+# .github/workflows/deploy-gateway.yml automatically.
+# This script is for manual/emergency deploys only.
+
+if [[ "${1:-}" != "-y" ]]; then
+  echo "⚠  You're about to deploy the gateway manually."
+  echo "   The normal path is to push to main — GitHub Actions deploys automatically."
+  echo ""
+  read -rp "Are you sure? [y/N] " confirm
+  if [[ "$confirm" != [yY] ]]; then
+    echo "Aborted. Push to main instead."
+    exit 0
+  fi
+fi
 
 REGION="${AWS_REGION:-us-east-1}"
 PROFILE="${AWS_PROFILE:-kychee}"
