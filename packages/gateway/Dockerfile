@@ -20,6 +20,9 @@ RUN npm run build -w packages/shared && npm run build -w packages/gateway
 # --- Production stage ---
 FROM node:22-alpine
 
+# pg_dump needed for publish/fork schema export
+RUN apk add --no-cache postgresql16-client
+
 WORKDIR /app
 
 COPY package.json ./

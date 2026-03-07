@@ -1,0 +1,476 @@
+/**
+ * Publish service — snapshot a project's live state into an immutable App Version.
+ *
+ * Uses pg_dump for schema export (pre-data + post-data split).
+ * Stores bundle artifact in S3, metadata in internal.app_versions.
+ * Published versions can be forked by other agents via POST /v1/fork/:tier.
+ */
+
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+import { createHash, randomBytes } from "node:crypto";
+import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
+import { pool } from "../db/pool.js";
+import { S3_BUCKET, S3_REGION } from "../config.js";
+import { TIERS } from "@run402/shared";
+import type { TierName } from "@run402/shared";
+
+const execFileAsync = promisify(execFile);
+
+const s3 = S3_BUCKET ? new S3Client({ region: S3_REGION }) : null;
+
+// Unsupported object types — publish rejects projects that use these
+const UNSUPPORTED_OBJECT_QUERIES = [
+  {
+    label: "views",
+    sql: `SELECT table_name FROM information_schema.views WHERE table_schema = $1 AND table_name NOT LIKE 'pg_%'`,
+  },
+  {
+    label: "materialized views",
+    sql: `SELECT matviewname AS name FROM pg_matviews WHERE schemaname = $1`,
+  },
+  {
+    label: "triggers",
+    sql: `SELECT DISTINCT trigger_name AS name FROM information_schema.triggers WHERE trigger_schema = $1`,
+  },
+  {
+    label: "custom functions",
+    sql: `SELECT routine_name AS name FROM information_schema.routines WHERE routine_schema = $1 AND routine_type = 'FUNCTION'`,
+  },
+  {
+    label: "custom types",
+    sql: `SELECT typname AS name FROM pg_type t JOIN pg_namespace n ON t.typnamespace = n.oid WHERE n.nspname = $1 AND t.typtype IN ('e', 'c', 'd') AND t.typname NOT LIKE 'pg_%'`,
+  },
+];
+
+export class PublishError extends Error {
+  constructor(message: string, public statusCode: number) {
+    super(message);
+  }
+}
+
+export interface PublishOptions {
+  visibility?: "private" | "unlisted" | "public";
+  fork_allowed?: boolean;
+  description?: string;
+  include_seed?: { tables: string[] };
+  required_secrets?: Array<{ key: string; description?: string }>;
+  required_actions?: Array<{ action: string; description?: string }>;
+}
+
+export interface AppVersionInfo {
+  id: string;
+  project_id: string;
+  version: number;
+  name: string;
+  description: string | null;
+  visibility: string;
+  fork_allowed: boolean;
+  min_tier: TierName;
+  derived_min_tier: TierName;
+  status: string;
+  table_count: number;
+  function_count: number;
+  site_file_count: number;
+  site_total_bytes: number;
+  required_secrets: Array<{ key: string; description?: string }>;
+  required_actions: Array<{ action: string; description?: string }>;
+  created_at: string;
+  compatibility_warnings: string[];
+}
+
+/**
+ * Ensure the app_versions tables exist (idempotent).
+ */
+export async function initAppVersionsTables(): Promise<void> {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS internal.app_versions (
+      id TEXT PRIMARY KEY,
+      project_id TEXT NOT NULL,
+      version INTEGER NOT NULL,
+      name TEXT NOT NULL,
+      description TEXT,
+      visibility TEXT NOT NULL DEFAULT 'private',
+      fork_allowed BOOLEAN NOT NULL DEFAULT false,
+      status TEXT NOT NULL DEFAULT 'published',
+      min_tier TEXT NOT NULL DEFAULT 'prototype',
+      derived_min_tier TEXT NOT NULL DEFAULT 'prototype',
+      format_version INTEGER NOT NULL DEFAULT 1,
+      bundle_uri TEXT NOT NULL,
+      bundle_sha256 TEXT NOT NULL,
+      publisher_wallet TEXT,
+      required_secrets JSONB NOT NULL DEFAULT '[]',
+      required_actions JSONB NOT NULL DEFAULT '[]',
+      capabilities JSONB NOT NULL DEFAULT '[]',
+      table_count INTEGER NOT NULL DEFAULT 0,
+      function_count INTEGER NOT NULL DEFAULT 0,
+      site_file_count INTEGER NOT NULL DEFAULT 0,
+      site_total_bytes BIGINT NOT NULL DEFAULT 0,
+      seed_row_count INTEGER NOT NULL DEFAULT 0,
+      site_deployment_id TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      UNIQUE(project_id, version)
+    )
+  `);
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_app_versions_project
+      ON internal.app_versions(project_id)
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS internal.app_version_functions (
+      version_id TEXT NOT NULL REFERENCES internal.app_versions(id) ON DELETE CASCADE,
+      name TEXT NOT NULL,
+      source TEXT NOT NULL,
+      runtime TEXT NOT NULL DEFAULT 'node22',
+      timeout_seconds INTEGER NOT NULL DEFAULT 10,
+      memory_mb INTEGER NOT NULL DEFAULT 128,
+      deps TEXT[] DEFAULT '{}',
+      code_hash TEXT NOT NULL,
+      PRIMARY KEY (version_id, name)
+    )
+  `);
+}
+
+/**
+ * Generate a version ID.
+ */
+function generateVersionId(): string {
+  const ts = Date.now();
+  const rand = randomBytes(3).toString("hex");
+  return `ver_${ts}_${rand}`;
+}
+
+/**
+ * Compute derived minimum tier from artifact stats.
+ */
+function computeDerivedMinTier(functionCount: number, siteTotalBytes: number): TierName {
+  if (functionCount > TIERS.hobby.maxFunctions) return "team";
+  if (functionCount > TIERS.prototype.maxFunctions) return "hobby";
+  if (siteTotalBytes > TIERS.hobby.storageMb * 1024 * 1024) return "team";
+  if (siteTotalBytes > TIERS.prototype.storageMb * 1024 * 1024) return "hobby";
+  return "prototype";
+}
+
+/**
+ * Run pg_dump for a schema and return the SQL output.
+ */
+async function pgDumpSchema(
+  schemaSlot: string,
+  section: "pre-data" | "post-data" | "data",
+  tables?: string[],
+): Promise<string> {
+  const dbHost = process.env.DB_HOST || "localhost";
+  const dbPort = process.env.DB_PORT || "5432";
+  const dbName = process.env.DB_NAME || "agentdb";
+  const dbUser = process.env.DB_USER || "postgres";
+  const dbPassword = process.env.DB_PASSWORD || "";
+
+  const args = [
+    `--host=${dbHost}`,
+    `--port=${dbPort}`,
+    `--username=${dbUser}`,
+    `--dbname=${dbName}`,
+    `--schema=${schemaSlot}`,
+    `--no-owner`,
+    `--no-privileges`,
+    `--no-comments`,
+  ];
+
+  if (section === "data") {
+    args.push("--data-only");
+    if (tables) {
+      for (const t of tables) {
+        args.push(`--table=${schemaSlot}.${t}`);
+      }
+    }
+  } else {
+    args.push("--schema-only");
+    args.push(`--section=${section}`);
+  }
+
+  const env = { ...process.env, PGPASSWORD: dbPassword };
+
+  const { stdout } = await execFileAsync("pg_dump", args, {
+    env,
+    maxBuffer: 10 * 1024 * 1024, // 10MB
+  });
+
+  return stdout;
+}
+
+/**
+ * Replace schema name with placeholder for portability.
+ */
+function canonicalizeSchema(sql: string, schemaSlot: string): string {
+  // Replace SET search_path lines
+  const result = sql
+    .replace(new RegExp(`SET search_path = ${schemaSlot},`, "g"), "SET search_path = __SCHEMA__,")
+    .replace(new RegExp(`${schemaSlot}\\.`, "g"), "__SCHEMA__.")
+    .replace(new RegExp(`CREATE SCHEMA ${schemaSlot}`, "g"), "CREATE SCHEMA __SCHEMA__")
+    .replace(new RegExp(`SCHEMA ${schemaSlot}`, "g"), "SCHEMA __SCHEMA__");
+  return result;
+}
+
+/**
+ * Restore schema placeholder to a target schema name.
+ */
+export function decanonicalizeSchema(sql: string, targetSchema: string): string {
+  return sql.replace(/__SCHEMA__/g, targetSchema);
+}
+
+/**
+ * Publish an app version — snapshot current project state.
+ */
+export async function publishAppVersion(
+  projectId: string,
+  projectName: string,
+  schemaSlot: string,
+  publisherWallet: string | undefined,
+  options: PublishOptions,
+): Promise<AppVersionInfo> {
+  const warnings: string[] = [];
+
+  // Acquire advisory lock to prevent concurrent publish/deploy
+  const lockId = Buffer.from(projectId).readUInt32BE(0) || 1;
+  await pool.query(`SELECT pg_advisory_lock($1)`, [lockId]);
+
+  try {
+    // Check for unsupported objects
+    for (const check of UNSUPPORTED_OBJECT_QUERIES) {
+      const result = await pool.query(check.sql, [schemaSlot]);
+      if (result.rows.length > 0) {
+        const names = result.rows.map((r) => r.name || r.table_name).join(", ");
+        throw new PublishError(
+          `Project uses unsupported ${check.label}: ${names}. Remove them before publishing.`,
+          400,
+        );
+      }
+    }
+
+    // Check all functions have source
+    const functionsResult = await pool.query(
+      `SELECT name, source, runtime, timeout_seconds, memory_mb, deps, code_hash
+       FROM internal.functions WHERE project_id = $1 ORDER BY name`,
+      [projectId],
+    );
+    for (const fn of functionsResult.rows) {
+      if (!fn.source) {
+        throw new PublishError(
+          `Function '${fn.name}' has no stored source. Redeploy it before publishing.`,
+          400,
+        );
+      }
+    }
+
+    // Get table count
+    const tablesResult = await pool.query(
+      `SELECT count(*)::int AS cnt FROM information_schema.tables
+       WHERE table_schema = $1 AND table_type = 'BASE TABLE'`,
+      [schemaSlot],
+    );
+    const tableCount = tablesResult.rows[0].cnt;
+
+    // Get site deployment info
+    const siteResult = await pool.query(
+      `SELECT id, files_count, total_size FROM internal.deployments
+       WHERE project_id = $1 ORDER BY created_at DESC LIMIT 1`,
+      [projectId],
+    );
+    const siteDeploymentId = siteResult.rows[0]?.id || null;
+    const siteFileCount = siteResult.rows[0]?.files_count || 0;
+    const siteTotalBytes = Number(siteResult.rows[0]?.total_size || 0);
+
+    // Run pg_dump for pre-data and post-data
+    const preSchemaRaw = await pgDumpSchema(schemaSlot, "pre-data");
+    const postSchemaRaw = await pgDumpSchema(schemaSlot, "post-data");
+    const preSchemaSql = canonicalizeSchema(preSchemaRaw, schemaSlot);
+    const postSchemaSql = canonicalizeSchema(postSchemaRaw, schemaSlot);
+
+    // Optional seed data
+    let seedSql: string | null = null;
+    let seedRowCount = 0;
+    if (options.include_seed && options.include_seed.tables.length > 0) {
+      const seedRaw = await pgDumpSchema(schemaSlot, "data", options.include_seed.tables);
+      seedSql = canonicalizeSchema(seedRaw, schemaSlot);
+      // Rough row count from INSERT statements
+      seedRowCount = (seedSql.match(/^INSERT /gm) || []).length;
+    }
+
+    // Compute stats and derived min tier
+    const functionCount = functionsResult.rows.length;
+    const derivedMinTier = computeDerivedMinTier(functionCount, siteTotalBytes);
+
+    // Determine next version number
+    const versionResult = await pool.query(
+      `SELECT COALESCE(MAX(version), 0) + 1 AS next FROM internal.app_versions WHERE project_id = $1`,
+      [projectId],
+    );
+    const version = versionResult.rows[0].next;
+
+    // Build bundle artifact
+    const versionId = generateVersionId();
+    const bundle = {
+      format_version: 1,
+      pre_schema_sql: preSchemaSql,
+      post_schema_sql: postSchemaSql,
+      seed_sql: seedSql,
+      schema_placeholder: "__SCHEMA__",
+    };
+    const bundleJson = JSON.stringify(bundle);
+    const bundleSha256 = createHash("sha256").update(bundleJson).digest("hex");
+
+    // Upload to S3
+    const bundleKey = `app-versions/${versionId}/bundle.json`;
+    const bundleUri = `s3://${S3_BUCKET}/${bundleKey}`;
+
+    if (s3 && S3_BUCKET) {
+      await s3.send(new PutObjectCommand({
+        Bucket: S3_BUCKET,
+        Key: bundleKey,
+        Body: bundleJson,
+        ContentType: "application/json",
+      }));
+    }
+
+    // Insert app version
+    const visibility = options.visibility || "private";
+    const forkAllowed = options.fork_allowed || false;
+    const requiredSecrets = options.required_secrets || [];
+    const requiredActions = options.required_actions || [];
+
+    await pool.query(
+      `INSERT INTO internal.app_versions
+       (id, project_id, version, name, description, visibility, fork_allowed, status,
+        min_tier, derived_min_tier, format_version, bundle_uri, bundle_sha256,
+        publisher_wallet, required_secrets, required_actions,
+        table_count, function_count, site_file_count, site_total_bytes, seed_row_count,
+        site_deployment_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, 'published',
+        $8, $9, 1, $10, $11,
+        $12, $13, $14,
+        $15, $16, $17, $18, $19,
+        $20)`,
+      [
+        versionId, projectId, version, projectName, options.description || null,
+        visibility, forkAllowed,
+        derivedMinTier, derivedMinTier, bundleUri, bundleSha256,
+        publisherWallet || null, JSON.stringify(requiredSecrets), JSON.stringify(requiredActions),
+        tableCount, functionCount, siteFileCount, siteTotalBytes, seedRowCount,
+        siteDeploymentId,
+      ],
+    );
+
+    // Insert function sources
+    for (const fn of functionsResult.rows) {
+      await pool.query(
+        `INSERT INTO internal.app_version_functions
+         (version_id, name, source, runtime, timeout_seconds, memory_mb, deps, code_hash)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+        [versionId, fn.name, fn.source, fn.runtime, fn.timeout_seconds, fn.memory_mb, fn.deps || [], fn.code_hash],
+      );
+    }
+
+    // Pin site deployment (increment ref_count)
+    if (siteDeploymentId) {
+      await pool.query(
+        `UPDATE internal.deployments SET ref_count = ref_count + 1 WHERE id = $1`,
+        [siteDeploymentId],
+      );
+    }
+
+    console.log(`  Published version ${versionId} for ${projectId} (v${version}, ${tableCount} tables, ${functionCount} functions)`);
+
+    return {
+      id: versionId,
+      project_id: projectId,
+      version,
+      name: projectName,
+      description: options.description || null,
+      visibility,
+      fork_allowed: forkAllowed,
+      min_tier: derivedMinTier,
+      derived_min_tier: derivedMinTier,
+      status: "published",
+      table_count: tableCount,
+      function_count: functionCount,
+      site_file_count: siteFileCount,
+      site_total_bytes: siteTotalBytes,
+      required_secrets: requiredSecrets,
+      required_actions: requiredActions,
+      created_at: new Date().toISOString(),
+      compatibility_warnings: warnings,
+    };
+  } finally {
+    await pool.query(`SELECT pg_advisory_unlock($1)`, [lockId]);
+  }
+}
+
+/**
+ * List published versions for a project.
+ */
+export async function listVersions(projectId: string): Promise<AppVersionInfo[]> {
+  const result = await pool.query(
+    `SELECT id, project_id, version, name, description, visibility, fork_allowed,
+            min_tier, derived_min_tier, status,
+            table_count, function_count, site_file_count, site_total_bytes,
+            required_secrets, required_actions, created_at
+     FROM internal.app_versions WHERE project_id = $1 ORDER BY version DESC`,
+    [projectId],
+  );
+  return result.rows.map((row) => ({
+    id: row.id,
+    project_id: row.project_id,
+    version: row.version,
+    name: row.name,
+    description: row.description,
+    visibility: row.visibility,
+    fork_allowed: row.fork_allowed,
+    min_tier: row.min_tier as TierName,
+    derived_min_tier: row.derived_min_tier as TierName,
+    status: row.status,
+    table_count: row.table_count,
+    function_count: row.function_count,
+    site_file_count: row.site_file_count,
+    site_total_bytes: Number(row.site_total_bytes),
+    required_secrets: row.required_secrets || [],
+    required_actions: row.required_actions || [],
+    created_at: row.created_at,
+    compatibility_warnings: [],
+  }));
+}
+
+/**
+ * Get a public app version by ID.
+ */
+export async function getAppVersion(versionId: string): Promise<AppVersionInfo | null> {
+  const result = await pool.query(
+    `SELECT id, project_id, version, name, description, visibility, fork_allowed,
+            min_tier, derived_min_tier, status,
+            table_count, function_count, site_file_count, site_total_bytes,
+            required_secrets, required_actions, created_at
+     FROM internal.app_versions WHERE id = $1`,
+    [versionId],
+  );
+  if (result.rows.length === 0) return null;
+  const row = result.rows[0];
+  return {
+    id: row.id,
+    project_id: row.project_id,
+    version: row.version,
+    name: row.name,
+    description: row.description,
+    visibility: row.visibility,
+    fork_allowed: row.fork_allowed,
+    min_tier: row.min_tier as TierName,
+    derived_min_tier: row.derived_min_tier as TierName,
+    status: row.status,
+    table_count: row.table_count,
+    function_count: row.function_count,
+    site_file_count: row.site_file_count,
+    site_total_bytes: Number(row.site_total_bytes),
+    required_secrets: row.required_secrets || [],
+    required_actions: row.required_actions || [],
+    created_at: row.created_at,
+    compatibility_warnings: [],
+  };
+}

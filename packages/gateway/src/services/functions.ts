@@ -358,18 +358,19 @@ export async function deployFunction(
     }
   }
 
-  // Upsert DB record
+  // Upsert DB record (including source for publish/fork)
   await pool.query(
-    `INSERT INTO internal.functions (project_id, name, lambda_arn, runtime, timeout_seconds, memory_mb, code_hash, deps)
-     VALUES ($1, $2, $3, 'node22', $4, $5, $6, $7)
+    `INSERT INTO internal.functions (project_id, name, lambda_arn, runtime, timeout_seconds, memory_mb, code_hash, deps, source)
+     VALUES ($1, $2, $3, 'node22', $4, $5, $6, $7, $8)
      ON CONFLICT (project_id, name) DO UPDATE SET
        lambda_arn = $3,
        timeout_seconds = $4,
        memory_mb = $5,
        code_hash = $6,
        deps = $7,
+       source = $8,
        updated_at = now()`,
-    [projectId, name, lambdaArn, timeout, memory, codeHash, deps || []],
+    [projectId, name, lambdaArn, timeout, memory, codeHash, deps || [], code],
   );
 
   const url = `${apiBase}/functions/v1/${name}`;

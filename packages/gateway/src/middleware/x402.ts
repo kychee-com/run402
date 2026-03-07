@@ -186,6 +186,43 @@ export function createPaymentMiddleware() {
     };
   }
 
+  // POST /v1/fork/:tier — fork a published app (tier-priced)
+  for (const [tierName, tierConfig] of Object.entries(TIERS)) {
+    resourceConfig[`POST /v1/fork/${tierName}`] = {
+      accepts: networks.map((network) => ({
+        scheme: "exact",
+        price: tierConfig.price,
+        network,
+        payTo: payTo(tierConfig.price),
+      })),
+      description: `Fork a published app — independent copy with fresh backend (${tierConfig.description})`,
+      mimeType: "application/json",
+      extensions: {
+        ...declareDiscoveryExtension({
+          bodyType: "json",
+          inputSchema: {
+            type: "object",
+            properties: {
+              version_id: { type: "string", description: "App version ID to fork" },
+              name: { type: "string", description: "Name for the forked app" },
+              subdomain: { type: "string", description: "Custom subdomain (optional)" },
+            },
+            required: ["version_id", "name"],
+          },
+          output: {
+            example: {
+              project_id: "prj_...",
+              anon_key: "eyJ...",
+              service_key: "eyJ...",
+              source_version_id: "ver_...",
+              readiness: "ready",
+            },
+          },
+        }),
+      },
+    };
+  }
+
   // GET /v1/ping — paid health check ($0.001) for agents to verify x402 works
   resourceConfig["GET /v1/ping"] = {
     accepts: networks.map((network) => ({

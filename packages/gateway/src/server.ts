@@ -39,6 +39,8 @@ import subdomainRoutes from "./routes/subdomains.js";
 import functionsRoutes from "./routes/functions.js";
 import generateImageRoutes from "./routes/generate-image.js";
 import bundleRoutes from "./routes/bundle.js";
+import publishRoutes from "./routes/publish.js";
+import { initAppVersionsTables } from "./services/publish.js";
 
 const app = express();
 
@@ -154,6 +156,7 @@ app.post("/v1/deployments", idempotencyMiddleware);
 app.post("/v1/message", idempotencyMiddleware);
 app.post("/v1/generate-image", idempotencyMiddleware);
 app.post("/v1/deploy/:tier", idempotencyMiddleware);
+app.post("/v1/fork/:tier", idempotencyMiddleware);
 
 // --- x402 payment middleware ---
 if (SELLER_ADDRESS) {
@@ -176,6 +179,9 @@ app.get("/.well-known/x402", (_req: Request, res: Response) => {
       "https://api.run402.com/v1/deploy/prototype",
       "https://api.run402.com/v1/deploy/hobby",
       "https://api.run402.com/v1/deploy/team",
+      "https://api.run402.com/v1/fork/prototype",
+      "https://api.run402.com/v1/fork/hobby",
+      "https://api.run402.com/v1/fork/team",
     ],
   });
 });
@@ -227,6 +233,7 @@ app.use(subdomainRoutes);
 app.use(functionsRoutes);
 app.use(generateImageRoutes);
 app.use(bundleRoutes);
+app.use(publishRoutes);
 
 // --- Central error handler ---
 // Routes using asyncHandler() forward errors here automatically.
@@ -296,6 +303,15 @@ async function applyMigrations() {
 
   // v1.3: pinned projects (lease never expires)
   await pool.query(`ALTER TABLE internal.projects ADD COLUMN IF NOT EXISTS pinned BOOLEAN NOT NULL DEFAULT false`);
+
+  // v1.4: function source storage (for publish/fork)
+  await pool.query(`ALTER TABLE internal.functions ADD COLUMN IF NOT EXISTS source TEXT`);
+
+  // v1.5: deployment ref_count (for publish pinning)
+  await pool.query(`ALTER TABLE internal.deployments ADD COLUMN IF NOT EXISTS ref_count INTEGER NOT NULL DEFAULT 0`);
+
+  // v1.6: fork provenance
+  await pool.query(`ALTER TABLE internal.projects ADD COLUMN IF NOT EXISTS source_version_id TEXT`);
 }
 
 async function start() {
@@ -325,6 +341,9 @@ async function start() {
 
   // Initialize functions + secrets tables
   await initFunctionsTable();
+
+  // Initialize app versions tables (publish/fork)
+  await initAppVersionsTables();
 
   // Initialize slot allocator
   await initSlots();
