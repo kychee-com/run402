@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FAQ — Run402</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: #0A0A0F; color: #E0E0E0; font-family: 'Inter', system-ui, sans-serif; line-height: 1.6; min-height: 100vh; }
+    .container { max-width: 760px; margin: 0 auto; padding: 48px 24px 60px; }
+    h1 { font-size: clamp(28px, 4vw, 40px); font-weight: 700; color: #FFFFFF; margin-bottom: 8px; }
+    h2 { font-size: 18px; font-weight: 600; color: #FFFFFF; margin-top: 36px; margin-bottom: 8px; }
+    p { color: #9CA3AF; margin-bottom: 12px; }
+    a { color: #00FF9F; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    ul { color: #9CA3AF; margin-bottom: 12px; padding-left: 24px; }
+    li { margin-bottom: 6px; }
+    strong { color: #FFFFFF; }
+    code { font-family: 'JetBrains Mono', monospace; font-size: 14px; color: #00FF9F; background: #12121A; padding: 2px 6px; border-radius: 4px; }
+    .muted { color: #6B7280; font-size: 14px; margin-bottom: 32px; }
+    .subtitle { color: #6B7280; font-size: 16px; margin-bottom: 36px; }
+    .footer { border-top: 1px solid #1E1E2A; padding-top: 32px; margin-top: 48px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px; }
+    .footer-text { font-size: 13px; color: #4B5563; }
+    .footer a { color: #00FF9F; text-decoration: none; font-family: 'JetBrains Mono', monospace; font-size: 13px; }
+    .footer a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p style="text-align:center;padding:12px;margin:0;background:#111;color:#9CA3AF;font-size:14px;font-family:'Inter',system-ui,sans-serif;">
+    <a href="/humans/" style="color:#00FF9F;text-decoration:underline;">&larr; Back to run402.com/humans</a>
+  </p>
+
+  <div class="container">
+    <h1>Frequently Asked Questions</h1>
+    <p class="subtitle">Quick answers for developers and agent builders.</p>
+
+    <h2>What is Run402?</h2>
+    <p>Run402 is full-stack cloud infrastructure designed for AI agents: PostgreSQL databases, REST APIs, authentication, file storage, row-level security, and static site hosting. Everything is provisioned and paid for over HTTP — no dashboards, no signups.</p>
+
+    <h2>How do I get started?</h2>
+    <p>Paste <code>https://run402.com/llms.txt</code> into your AI agent's chat and describe what you want to build. The agent reads the docs, provisions a backend, and deploys a frontend. You can also call the API directly — see <a href="/llms.txt">/llms.txt</a> for full documentation.</p>
+
+    <h2>What is x402?</h2>
+    <p><a href="https://x402.org">x402</a> is an open payment protocol by Coinbase that uses HTTP status code 402 (Payment Required). Your agent pays for infrastructure with USDC on Base — sub-cent gas, ~2 second settlement. No accounts or subscriptions needed for x402 payments.</p>
+
+    <h2>Can I also pay with a credit card?</h2>
+    <p>Yes. Run402 offers Stripe subscriptions as an alternative to x402 micropayments. Visit <a href="/subscribe/">/subscribe/</a> with your wallet address to manage your subscription.</p>
+
+    <h2>How much does it cost?</h2>
+    <p>Prototype projects start at <strong>$0.10</strong> (7 days, 250 MB, 500K API calls). Hobby projects are <strong>$5/month</strong> (1 GB, 5M calls). Team projects are <strong>$20/month</strong> (10 GB, 50M calls). All leases are prepaid with hard caps — no overage charges.</p>
+
+    <h2>What happens when my lease expires?</h2>
+    <p>Your project goes read-only immediately. After 7 days, it's archived. After 37 days, it's permanently deleted. You can renew at any time before deletion with a single API call.</p>
+
+    <h2>Which AI agents work with Run402?</h2>
+    <p>Any agent that can make HTTP requests: Claude Code, ChatGPT, Cursor, Windsurf, Cline, OpenClaw, custom agents — anything. Run402 is also available as an MCP server (<code>npx run402-mcp</code>) and as an OpenClaw skill.</p>
+
+    <h2>Can I use a custom domain?</h2>
+    <p>Not yet. All sites are currently served on <code>*.sites.run402.com</code> subdomains. Custom domain support is on the roadmap.</p>
+
+    <h2>What database do I get?</h2>
+    <p>PostgreSQL 16 on AWS Aurora Serverless v2. Each project gets its own schema with full SQL access. Row-level security is supported for multi-tenant apps. Backups are automated with 7-day retention.</p>
+
+    <h2>Can I export my data?</h2>
+    <p>Yes. You have full SQL access to your database schema and can export data via the REST API or direct SQL queries at any time while your lease is active.</p>
+
+    <h2>What's the uptime?</h2>
+    <p>Run402 runs on AWS multi-AZ infrastructure. Check current status at <a href="https://api.run402.com/health">api.run402.com/health</a>. We don't currently offer an SLA, but we aim for high availability.</p>
+
+    <h2>Is my data secure?</h2>
+    <p>Data is encrypted at rest (AES-256) and in transit (TLS 1.2+). Each project is isolated in its own PostgreSQL schema. See our <a href="/humans/privacy.html">Privacy Policy</a> for full details.</p>
+
+    <h2>What content is allowed on Run402?</h2>
+    <p>See our <a href="/humans/terms.html">Acceptable Use Policy</a> in the Terms of Service. In short: no malware, phishing, illegal content, spam, or abuse. You're responsible for everything you deploy, including AI-generated content.</p>
+
+    <h2>I'm not a developer. I just want to build stuff.</h2>
+    <p>Check out <a href="https://bld402.com/humans/">bld402</a> — it's a free guided workflow that lets anyone build and deploy a web app without writing code. You describe what you want to your AI agent, and bld402 handles the rest. Run402 powers the infrastructure behind the scenes.</p>
+
+    <div class="footer">
+      <span class="footer-text">Run402 &mdash; full stack for agents</span>
+      <span>
+        <a href="/humans/terms.html">Terms</a> &nbsp;&middot;&nbsp;
+        <a href="/humans/privacy.html">Privacy</a> &nbsp;&middot;&nbsp;
+        <a href="/humans/faq.html">FAQ</a> &nbsp;&middot;&nbsp;
+        <a href="/llms.txt">Docs</a> &nbsp;&middot;&nbsp;
+        <a href="https://api.run402.com/health">API status</a>
+      </span>
+    </div>
+  </div>
+</body>
+</html>
