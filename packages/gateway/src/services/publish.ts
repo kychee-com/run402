@@ -211,13 +211,11 @@ async function pgDumpSchema(
  * Replace schema name with placeholder for portability.
  */
 function canonicalizeSchema(sql: string, schemaSlot: string): string {
-  // Replace SET search_path lines
-  const result = sql
-    .replace(new RegExp(`SET search_path = ${schemaSlot},`, "g"), "SET search_path = __SCHEMA__,")
-    .replace(new RegExp(`${schemaSlot}\\.`, "g"), "__SCHEMA__.")
-    .replace(new RegExp(`CREATE SCHEMA ${schemaSlot}`, "g"), "CREATE SCHEMA __SCHEMA__")
-    .replace(new RegExp(`SCHEMA ${schemaSlot}`, "g"), "SCHEMA __SCHEMA__");
-  return result;
+  // Simple global replacement of schema name with placeholder.
+  // Then remove CREATE SCHEMA lines (target schema already exists in fork).
+  return sql
+    .replace(new RegExp(schemaSlot, "g"), "__SCHEMA__")
+    .replace(/^CREATE SCHEMA __SCHEMA__;\s*$/gm, "");
 }
 
 /**
