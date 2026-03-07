@@ -147,6 +147,45 @@ export function createPaymentMiddleware() {
     };
   }
 
+  // POST /v1/deploy/:tier — bundle deploy (tier-priced)
+  for (const [tierName, tierConfig] of Object.entries(TIERS)) {
+    resourceConfig[`POST /v1/deploy/${tierName}`] = {
+      accepts: networks.map((network) => ({
+        scheme: "exact",
+        price: tierConfig.price,
+        network,
+        payTo: payTo(tierConfig.price),
+      })),
+      description: `Bundle deploy — one-call full-stack app (${tierConfig.description})`,
+      mimeType: "application/json",
+      extensions: {
+        ...declareDiscoveryExtension({
+          bodyType: "json",
+          inputSchema: {
+            type: "object",
+            properties: {
+              name: { type: "string", description: "App name" },
+              migrations: { type: "string", description: "SQL migrations (optional)" },
+              functions: { type: "array", description: "Functions to deploy (optional)" },
+              site: { type: "array", description: "Site files to deploy (optional)" },
+              subdomain: { type: "string", description: "Custom subdomain (optional)" },
+            },
+            required: ["name"],
+          },
+          output: {
+            example: {
+              project_id: "prj_...",
+              anon_key: "eyJ...",
+              service_key: "eyJ...",
+              site_url: "https://myapp.run402.com",
+              functions: [{ name: "checkout", url: "https://api.run402.com/functions/v1/checkout" }],
+            },
+          },
+        }),
+      },
+    };
+  }
+
   // GET /v1/ping — paid health check ($0.001) for agents to verify x402 works
   resourceConfig["GET /v1/ping"] = {
     accepts: networks.map((network) => ({

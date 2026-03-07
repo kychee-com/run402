@@ -13,11 +13,13 @@ Run402 gives you a full Postgres database with REST API, user auth, file storage
 
 **Static sites**: One HTTP call, one payment → live URL at `{id}.sites.run402.com`. Upload HTML/CSS/JS/images as inlined files. SPA-ready with automatic fallback routing.
 
+**Bundle deploy**: Deploy an entire app in one call -- database + migrations + functions + site + secrets + subdomain. One payment, everything live. This is the fastest path from code to a running webapp.
+
 **Image generation**: Send a text prompt, get a PNG back. $0.03 per image. Three aspect ratios: square, landscape, portrait.
 
-Only provisioning, renewal, site deployment, and image generation require x402 payment. All subsequent REST, auth, and storage calls use the returned project keys -- no payment headers needed.
+Only provisioning, renewal, site deployment, bundle deploy, and image generation require x402 payment. All subsequent REST, auth, and storage calls use the returned project keys -- no payment headers needed.
 
-**Cost**: A full webapp (database + deployed frontend) costs ~$0.15 on testnet (free) or mainnet. Prototype database = $0.10, site deployment = $0.05. No ongoing fees until you renew.
+**Cost**: A full webapp via bundle deploy costs $0.10 (Prototype) to $20 (Team) -- one payment for everything. Or build step-by-step: database = $0.10, site deployment = $0.05. No ongoing fees until you renew.
 
 ---
 
@@ -900,6 +902,113 @@ Pass `project` to associate a deployment with an existing Run402 database projec
   "files": [...]
 }
 ```
+
+---
+
+## Bundle Deploy (One-Call Full-Stack App)
+
+Deploy an entire app in a single API call: project + database + migrations + RLS + secrets + functions + site + subdomain. One x402 payment, everything deploys atomically. This is the fastest way to go from code to a live webapp.
+
+**When to use bundle deploy vs step-by-step:**
+- **Bundle deploy** (`POST /v1/deploy/:tier`): You have all your code ready and want everything live in one shot. Best for deploying complete apps.
+- **Step-by-step** (individual endpoints): You're building iteratively, testing as you go, or only need a database without a frontend.
+
+### How it works
+
+```
+POST /v1/deploy/:tier    (x402 payment -- $0.10 prototype, $5 hobby, $20 team)
+Content-Type: application/json
+
+{
+  "name": "my-saas-app",
+  "migrations": "CREATE TABLE users (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), email text UNIQUE, name text, created_at timestamptz DEFAULT now()); CREATE TABLE posts (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), user_id uuid REFERENCES users(id), title text, body text, created_at timestamptz DEFAULT now());",
+  "rls": {
+    "template": "user_owns_rows",
+    "tables": [
+      { "table": "users", "owner_column": "id" },
+      { "table": "posts", "owner_column": "user_id" }
+    ]
+  },
+  "secrets": [
+    { "key": "OPENAI_API_KEY", "value": "sk-..." }
+  ],
+  "functions": [
+    {
+      "name": "summarize",
+      "code": "import OpenAI from 'openai';\nconst openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });\nexport default async (req) => {\n  const { text } = await req.json();\n  const result = await openai.chat.completions.create({ model: 'gpt-4.1-mini', messages: [{ role: 'user', content: `Summarize: ${text}` }] });\n  return new Response(JSON.stringify({ summary: result.choices[0].message.content }), { headers: { 'Content-Type': 'application/json' } });\n};"
+    }
+  ],
+  "site": [
+    { "file": "index.html", "data": "<!doctype html><html><head><title>My App</title></head><body><h1>Hello World</h1></body></html>" },
+    { "file": "style.css", "data": "body { font-family: system-ui; max-width: 640px; margin: 0 auto; padding: 2rem; }" }
+  ],
+  "subdomain": "my-saas"
+}
+```
+
+### Response (201)
+
+```json
+{
+  "project_id": "prj_1741340000_0042",
+  "anon_key": "eyJhbGciOi...",
+  "service_key": "eyJhbGciOi...",
+  "schema_slot": "p0042",
+  "tier": "hobby",
+  "lease_expires_at": "2026-04-07T00:00:00Z",
+  "site_url": "https://my-saas.run402.com",
+  "deployment_id": "dpl_1741340000_a1b2c3",
+  "functions": [
+    { "name": "summarize", "url": "https://api.run402.com/functions/v1/summarize" }
+  ],
+  "subdomain_url": "https://my-saas.run402.com"
+}
+```
+
+### All fields
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `name` | Yes | App/project name |
+| `migrations` | No | SQL string -- CREATE TABLE, etc. Same safety rules as `/admin/v1/projects/:id/sql` |
+| `rls` | No | `{ template, tables }` -- same as `/admin/v1/projects/:id/rls` |
+| `secrets` | No | `[{ key, value }]` -- uppercase keys, injected into functions as env vars |
+| `functions` | No | `[{ name, code, config? }]` -- serverless functions deployed to Lambda |
+| `site` | No | `[{ file, data, encoding? }]` -- static site files, same as `/v1/deployments` |
+| `subdomain` | No | Custom subdomain (e.g. `"myapp"` → `myapp.run402.com`) |
+
+### Rollback
+
+If any step fails after project creation (e.g. invalid SQL, function deploy error), the project is automatically archived and cleaned up. You won't be left with a half-deployed app.
+
+### Minimal bundle (database only)
+
+You can use bundle deploy even for just a database -- no site, functions, or migrations required:
+
+```
+POST /v1/deploy/prototype
+{"name": "quick-db"}
+```
+
+This is equivalent to `POST /v1/projects/create/prototype` but uses the bundle endpoint.
+
+### Pricing
+
+Bundle deploy uses the same tier pricing as project creation. The site deployment fee ($0.05) is included -- you don't pay separately.
+
+| Tier | Price | Lease | Includes |
+|------|-------|-------|----------|
+| Prototype | $0.10 | 7 days | 250MB storage, 500k requests, 5 functions |
+| Hobby | $5.00 | 30 days | 1GB storage, 5M requests, 25 functions |
+| Team | $20.00 | 30 days | 10GB storage, 50M requests, 100 functions |
+
+### Info endpoint (free)
+
+```
+GET /v1/deploy
+```
+
+Returns tier pricing and request body schema. Useful for quoting before deploying.
 
 ---
 

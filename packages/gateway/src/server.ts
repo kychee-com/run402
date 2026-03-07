@@ -38,6 +38,7 @@ import stripeRoutes from "./routes/stripe.js";
 import subdomainRoutes from "./routes/subdomains.js";
 import functionsRoutes from "./routes/functions.js";
 import generateImageRoutes from "./routes/generate-image.js";
+import bundleRoutes from "./routes/bundle.js";
 
 const app = express();
 
@@ -119,7 +120,7 @@ app.use((req: Request, res: Response, next: NextFunction) => {
     express.raw({ type: "*/*", limit: "10mb" })(req, res, next);
   } else if (req.path.endsWith("/sql")) {
     express.text({ type: "*/*", limit: "10mb" })(req, res, next);
-  } else if (req.path === "/v1/deployments" && req.method === "POST") {
+  } else if ((req.path === "/v1/deployments" || req.path.startsWith("/v1/deploy/")) && req.method === "POST") {
     express.json({ limit: "50mb" })(req, res, next);
   } else {
     express.json({ limit: "1mb" })(req, res, next);
@@ -152,6 +153,7 @@ app.post("/v1/projects/:id/renew", idempotencyMiddleware);
 app.post("/v1/deployments", idempotencyMiddleware);
 app.post("/v1/message", idempotencyMiddleware);
 app.post("/v1/generate-image", idempotencyMiddleware);
+app.post("/v1/deploy/:tier", idempotencyMiddleware);
 
 // --- x402 payment middleware ---
 if (SELLER_ADDRESS) {
@@ -171,6 +173,9 @@ app.get("/.well-known/x402", (_req: Request, res: Response) => {
       "https://api.run402.com/v1/ping",
       "https://api.run402.com/v1/message",
       "https://api.run402.com/v1/generate-image",
+      "https://api.run402.com/v1/deploy/prototype",
+      "https://api.run402.com/v1/deploy/hobby",
+      "https://api.run402.com/v1/deploy/team",
     ],
   });
 });
@@ -221,6 +226,7 @@ app.use(stripeRoutes);
 app.use(subdomainRoutes);
 app.use(functionsRoutes);
 app.use(generateImageRoutes);
+app.use(bundleRoutes);
 
 // --- Central error handler ---
 // Routes using asyncHandler() forward errors here automatically.
