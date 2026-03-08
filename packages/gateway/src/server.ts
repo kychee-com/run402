@@ -12,7 +12,7 @@ import BugsnagPluginExpress from "@bugsnag/plugin-express";
 import express, { Request, Response, NextFunction, ErrorRequestHandler } from "express";
 import { errorMessage } from "./utils/errors.js";
 import { HttpError } from "./utils/async-handler.js";
-import { PORT, POSTGREST_URL, SELLER_ADDRESS, MAINNET_NETWORK, TESTNET_NETWORK, TESTNET_FACILITATOR_URL, CDP_API_KEY_ID, RATE_LIMIT_PER_SEC, FAUCET_TREASURY_KEY, FACILITATOR_PROVIDER, BUGSNAG_API_KEY } from "./config.js";
+import { PORT, POSTGREST_URL, SELLER_ADDRESS, MAINNET_NETWORK, TESTNET_NETWORK, TESTNET_FACILITATOR_URL, CDP_API_KEY_ID, RATE_LIMIT_PER_SEC, FAUCET_TREASURY_KEY, FACILITATOR_PROVIDER, BUGSNAG_API_KEY, S3_BUCKET, S3_REGION } from "./config.js";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
@@ -228,9 +228,8 @@ app.get("/health", async (_req: Request, res: Response) => {
   // S3 (Cloud Object Storage)
   if (S3_BUCKET) {
     try {
-      const s3check = new (await import("@aws-sdk/client-s3")).HeadBucketCommand({ Bucket: S3_BUCKET });
-      const s3client = new (await import("@aws-sdk/client-s3")).S3Client({ region: S3_REGION });
-      await s3client.send(s3check);
+      const { S3Client, HeadBucketCommand } = await import("@aws-sdk/client-s3");
+      await new S3Client({ region: S3_REGION }).send(new HeadBucketCommand({ Bucket: S3_BUCKET }));
       checks.s3 = "ok";
     } catch {
       checks.s3 = "error";
