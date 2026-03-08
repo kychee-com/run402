@@ -93,7 +93,12 @@ You can try Run402 right now, for free, using testnet USDC on Base Sepolia. This
 
 ### Step 1: Get a wallet
 
-If you already have an EVM wallet with a private key, skip to Step 2.
+If you already have an EVM wallet with a private key:
+
+- If it already has enough Base Sepolia USDC for the action you want to take, skip the faucet and go directly to Step 3.
+- If it is an empty or new testnet wallet, go to Step 2 and use the faucet.
+
+Do not call the faucet automatically just because a wallet exists. The faucet is only for new or unfunded Base Sepolia wallets.
 
 If you don't have a wallet yet, you need to generate one. A wallet is just a private key and an address. Here are three ways:
 
@@ -142,6 +147,8 @@ npm install && npm run dev
 
 ### Step 2: Get free testnet USDC
 
+Only do this if your wallet does not already have enough Base Sepolia USDC.
+
 Call the Run402 faucet. It sends 0.25 USDC on Base Sepolia directly to your wallet -- enough for 2 database provisions.
 
 ```bash
@@ -161,6 +168,8 @@ Response:
 ```
 
 Rate limit: 1 drip per IP per 24 hours. Amount: 0.25 USDC (enough for 2 Prototype databases at $0.10 each).
+
+If your wallet is already funded, skip this step. Do not bake an unconditional faucet call into deploy scripts -- it will fail on rate limit and block an otherwise valid funded-wallet flow.
 
 ### Step 3: Install x402 payment libraries
 
@@ -206,6 +215,28 @@ console.log("Expires:", project.lease_expires_at);
 ```
 
 **Important**: Register for `eip155:84532` (Base Sepolia) specifically, not `eip155:*`. The wildcard matches the first offered network (mainnet), and your testnet-funded wallet will fail with `insufficient_funds`.
+
+**Important signer note**: Pass the `account` to `toClientEvmSigner(account, publicClient)`, not a `walletClient`. A viem `walletClient` stores the address under `walletClient.account.address`, not top-level `address`, which can produce `Address "undefined" is invalid` during EIP-3009 payment payload creation.
+
+Illustrative anti-pattern (do not copy):
+
+```typescript
+const walletClient = createWalletClient({
+  account,
+  chain: baseSepolia,
+  transport: http(),
+}).extend(publicActions);
+
+const signer = toClientEvmSigner(walletClient); // Wrong shape for this helper
+```
+
+Use this:
+
+```typescript
+const account = privateKeyToAccount(PRIVATE_KEY);
+const publicClient = createPublicClient({ chain: baseSepolia, transport: http() });
+const signer = toClientEvmSigner(account, publicClient);
+```
 
 ### Step 5: Use your database
 
@@ -864,6 +895,8 @@ const deployment = await res.json();
 console.log("Live at:", deployment.url);
 // -> https://dpl-1709337600000-a1b2c3.sites.run402.com
 ```
+
+Use the same signer rule here: `toClientEvmSigner(account, publicClient)`, not `toClientEvmSigner(walletClient)`. If you hand the helper a viem `walletClient`, EIP-3009 payment creation can fail with `Address "undefined" is invalid`.
 
 ### Deploy with MCP
 
