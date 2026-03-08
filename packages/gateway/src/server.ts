@@ -47,6 +47,14 @@ import { initAppVersionsTables } from "./services/publish.js";
 Bugsnag.start({
   apiKey: BUGSNAG_API_KEY,
   plugins: [BugsnagPluginExpress],
+  onError(event) {
+    // Don't report expected client errors (4xx) — these are validation,
+    // rate limits, not-found, etc. Only 5xx errors are real bugs.
+    const orig = event.originalError as { statusCode?: number; name?: string };
+    if (orig?.name === "HttpError" && orig.statusCode && orig.statusCode < 500) {
+      return false;
+    }
+  },
 });
 const bugsnagMiddleware = Bugsnag.getPlugin("express")!;
 
