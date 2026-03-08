@@ -225,6 +225,26 @@ app.get("/health", async (_req: Request, res: Response) => {
     checks.postgrest = "error";
   }
 
+  // S3 (Cloud Object Storage)
+  if (S3_BUCKET) {
+    try {
+      const s3check = new (await import("@aws-sdk/client-s3")).HeadBucketCommand({ Bucket: S3_BUCKET });
+      const s3client = new (await import("@aws-sdk/client-s3")).S3Client({ region: S3_REGION });
+      await s3client.send(s3check);
+      checks.s3 = "ok";
+    } catch {
+      checks.s3 = "error";
+    }
+  }
+
+  // CloudFront (Content Delivery Network)
+  try {
+    const cfResp = await fetch("https://run402.com/favicon.svg", { method: "HEAD" });
+    checks.cloudfront = cfResp.ok ? "ok" : "error";
+  } catch {
+    checks.cloudfront = "error";
+  }
+
   const healthy = checks.postgres === "ok" && checks.postgrest === "ok";
   res.status(healthy ? 200 : 503).json({
     status: healthy ? "healthy" : "degraded",
@@ -369,6 +389,14 @@ h1 .g{color:#00FF9F}
         <span class="check-name"><span class="check-dot load"></span> PostgREST</span>
         <span class="check-ms">...</span>
       </div>
+      <div class="check">
+        <span class="check-name"><span class="check-dot load"></span> Cloud Object Storage</span>
+        <span class="check-ms">...</span>
+      </div>
+      <div class="check">
+        <span class="check-name"><span class="check-dot load"></span> Content Delivery Network</span>
+        <span class="check-ms">...</span>
+      </div>
     </div>
   </div>
 
@@ -427,6 +455,8 @@ async function check(){
       {name:'Gateway API',status:'ok',ms:ms+'ms'},
       {name:'PostgreSQL (Aurora)',status:d.checks.postgres,ms:d.checks.postgres==='ok'?ms+'ms':'error'},
       {name:'PostgREST',status:d.checks.postgrest,ms:d.checks.postgrest==='ok'?ms+'ms':'error'},
+      {name:'Cloud Object Storage',status:d.checks.s3||'ok',ms:d.checks.s3==='ok'?ms+'ms':(d.checks.s3?'error':'\u2014')},
+      {name:'Content Delivery Network',status:d.checks.cloudfront||'ok',ms:d.checks.cloudfront==='ok'?ms+'ms':(d.checks.cloudfront?'error':'\u2014')},
     ];
     checksEl.innerHTML=services.map(function(s){
       return '<div class="check"><span class="check-name"><span class="check-dot '
