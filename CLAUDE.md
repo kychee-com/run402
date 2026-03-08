@@ -1,8 +1,8 @@
 # CLAUDE.md
 
-## Lint
+## Lint & Type Check
 
-Run `npm run lint` before committing. ESLint enforces `no-explicit-any` on all production source code.
+Run `npm run lint` and `npx tsc --noEmit -p packages/gateway` before committing gateway changes. ESLint catches style issues but not missing imports or type errors — only `tsc` catches those.
 
 ## Shell Commands
 
