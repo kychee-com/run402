@@ -233,6 +233,11 @@ app.get("/health", async (_req: Request, res: Response) => {
   });
 });
 
+// --- Human-friendly health page ---
+app.get("/health-humans", (_req: Request, res: Response) => {
+  res.type("html").send(healthHumanPage());
+});
+
 // --- Paid ping (x402 probe) ---
 app.get("/v1/ping", (_req: Request, res: Response) => {
   res.json({ status: "ok", paid: true, timestamp: new Date().toISOString() });
@@ -268,6 +273,183 @@ app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
   console.error("Unhandled error:", errorMessage(err));
   res.status(500).json({ error: "Internal server error" });
 });
+
+// --- Health page HTML ---
+function healthHumanPage(): string {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Run402 — System Status</title>
+<link rel="icon" href="https://run402.com/favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{background:#0A0A0F;color:#E0E0E0;font-family:'Inter',system-ui,sans-serif;min-height:100vh;overflow-x:hidden}
+.bg{position:fixed;top:0;left:0;right:0;bottom:0;z-index:0;overflow:hidden;pointer-events:none}
+.bg canvas{width:100%;height:100%}
+.wrap{position:relative;z-index:1;max-width:640px;margin:0 auto;padding:80px 24px 60px}
+.badge{display:inline-block;font-family:'JetBrains Mono',monospace;font-size:11px;color:#00FF9F;border:1px solid rgba(0,255,159,0.3);border-radius:4px;padding:4px 10px;margin-bottom:20px;letter-spacing:.5px}
+h1{font-size:clamp(28px,5vw,42px);font-weight:700;color:#fff;margin-bottom:6px}
+h1 .g{color:#00FF9F}
+.sub{font-size:15px;color:#9CA3AF;margin-bottom:40px}
+.card{background:#12121A;border:1px solid #1E1E2A;border-radius:12px;padding:28px;margin-bottom:16px;transition:border-color .3s}
+.card.ok{border-color:rgba(0,255,159,0.2)}
+.card.err{border-color:rgba(255,80,80,0.3)}
+.card-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
+.card-title{font-family:'JetBrains Mono',monospace;font-size:14px;font-weight:500;color:#fff;letter-spacing:.3px}
+.pill{font-family:'JetBrains Mono',monospace;font-size:11px;padding:4px 12px;border-radius:20px;font-weight:500;letter-spacing:.5px}
+.pill.ok{background:rgba(0,255,159,0.1);color:#00FF9F;box-shadow:0 0 12px rgba(0,255,159,0.08)}
+.pill.err{background:rgba(255,80,80,0.1);color:#FF5050;box-shadow:0 0 12px rgba(255,80,80,0.08)}
+.pill.load{background:rgba(255,255,255,0.05);color:#4B5563}
+.checks{display:flex;flex-direction:column;gap:10px}
+.check{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:rgba(255,255,255,0.02);border-radius:8px;border:1px solid rgba(255,255,255,0.04)}
+.check-name{font-size:13px;color:#9CA3AF;display:flex;align-items:center;gap:8px}
+.check-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.check-dot.ok{background:#00FF9F;box-shadow:0 0 8px rgba(0,255,159,0.5)}
+.check-dot.err{background:#FF5050;box-shadow:0 0 8px rgba(255,80,80,0.5)}
+.check-dot.load{background:#4B5563}
+.check-ms{font-family:'JetBrains Mono',monospace;font-size:12px;color:#4B5563}
+.meta{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px}
+.meta-item{background:#12121A;border:1px solid #1E1E2A;border-radius:10px;padding:16px}
+.meta-label{font-size:11px;color:#4B5563;text-transform:uppercase;letter-spacing:.8px;font-family:'JetBrains Mono',monospace;margin-bottom:4px}
+.meta-value{font-size:18px;font-weight:600;color:#fff;font-family:'JetBrains Mono',monospace}
+.meta-value .g{color:#00FF9F}
+.pulse-ring{display:inline-block;width:10px;height:10px;border-radius:50%;position:relative;vertical-align:middle;margin-right:6px}
+.pulse-ring.ok{background:#00FF9F}
+.pulse-ring.err{background:#FF5050}
+.pulse-ring::after{content:'';position:absolute;top:-4px;left:-4px;width:18px;height:18px;border-radius:50%;animation:pulse 2s ease-in-out infinite;opacity:0.4}
+.pulse-ring.ok::after{background:#00FF9F}
+.pulse-ring.err::after{background:#FF5050}
+@keyframes pulse{0%,100%{transform:scale(1);opacity:0.4}50%{transform:scale(1.6);opacity:0}}
+.ts{font-size:12px;color:#4B5563;text-align:center;margin-top:24px;font-family:'JetBrains Mono',monospace}
+.footer{border-top:1px solid #1E1E2A;padding-top:24px;margin-top:40px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px}
+.footer-text{font-size:13px;color:#4B5563}
+.footer a{color:#00FF9F;text-decoration:none;font-family:'JetBrains Mono',monospace;font-size:13px}
+.footer a:hover{text-decoration:underline}
+@media(max-width:480px){.meta{grid-template-columns:1fr}.wrap{padding:60px 16px 40px}}
+</style>
+</head>
+<body>
+<div class="bg"><canvas id="grid"></canvas></div>
+<div class="wrap">
+  <div class="badge">SYSTEM STATUS</div>
+  <h1><span class="g">run402</span> status</h1>
+  <p class="sub">Real-time health of the Run402 infrastructure</p>
+
+  <div class="meta">
+    <div class="meta-item">
+      <div class="meta-label">Version</div>
+      <div class="meta-value" id="version">...</div>
+    </div>
+    <div class="meta-item">
+      <div class="meta-label">Overall</div>
+      <div class="meta-value" id="overall"><span class="pulse-ring load"></span> checking</div>
+    </div>
+  </div>
+
+  <div class="card" id="main-card">
+    <div class="card-head">
+      <span class="card-title">Services</span>
+      <span class="pill load" id="main-pill">CHECKING</span>
+    </div>
+    <div class="checks" id="checks">
+      <div class="check">
+        <span class="check-name"><span class="check-dot load"></span> Gateway API</span>
+        <span class="check-ms">...</span>
+      </div>
+      <div class="check">
+        <span class="check-name"><span class="check-dot load"></span> PostgreSQL (Aurora)</span>
+        <span class="check-ms">...</span>
+      </div>
+      <div class="check">
+        <span class="check-name"><span class="check-dot load"></span> PostgREST</span>
+        <span class="check-ms">...</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="ts" id="timestamp"></div>
+
+  <div class="footer">
+    <span class="footer-text">Run402 &mdash; full stack for agents</span>
+    <span>
+      <a href="https://run402.com/humans">Home</a> &nbsp;&middot;&nbsp;
+      <a href="/health">API (JSON)</a>
+    </span>
+  </div>
+</div>
+
+<script>
+// Grid background
+(function(){
+  const c=document.getElementById('grid'),ctx=c.getContext('2d');
+  function resize(){c.width=innerWidth;c.height=innerHeight;draw()}
+  function draw(){
+    ctx.clearRect(0,0,c.width,c.height);
+    ctx.strokeStyle='rgba(0,255,159,0.03)';
+    ctx.lineWidth=1;
+    const s=60;
+    for(let x=0;x<c.width;x+=s){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,c.height);ctx.stroke()}
+    for(let y=0;y<c.height;y+=s){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(c.width,y);ctx.stroke()}
+    // Glow at center top
+    const g=ctx.createRadialGradient(c.width/2,0,0,c.width/2,0,c.height*.6);
+    g.addColorStop(0,'rgba(0,255,159,0.04)');
+    g.addColorStop(1,'transparent');
+    ctx.fillStyle=g;
+    ctx.fillRect(0,0,c.width,c.height);
+  }
+  addEventListener('resize',resize);
+  resize();
+})();
+
+// Health check
+async function check(){
+  const t0=performance.now();
+  try{
+    const r=await fetch('/health');
+    const ms=Math.round(performance.now()-t0);
+    const d=await r.json();
+    const ok=d.status==='healthy';
+
+    document.getElementById('version').innerHTML='<span class="g">'+esc(d.version)+'</span>';
+    document.getElementById('overall').innerHTML=
+      '<span class="pulse-ring '+(ok?'ok':'err')+'"></span> '+(ok?'Operational':'Degraded');
+    document.getElementById('main-pill').className='pill '+(ok?'ok':'err');
+    document.getElementById('main-pill').textContent=ok?'ALL SYSTEMS GO':'DEGRADED';
+    document.getElementById('main-card').className='card '+(ok?'ok':'err');
+
+    const checksEl=document.getElementById('checks');
+    const services=[
+      {name:'Gateway API',status:'ok',ms:ms+'ms'},
+      {name:'PostgreSQL (Aurora)',status:d.checks.postgres,ms:d.checks.postgres==='ok'?ms+'ms':'error'},
+      {name:'PostgREST',status:d.checks.postgrest,ms:d.checks.postgrest==='ok'?ms+'ms':'error'},
+    ];
+    checksEl.innerHTML=services.map(function(s){
+      return '<div class="check"><span class="check-name"><span class="check-dot '
+        +(s.status==='ok'?'ok':'err')+'"></span> '+esc(s.name)+'</span><span class="check-ms">'
+        +esc(s.ms)+'</span></div>';
+    }).join('');
+
+    document.getElementById('timestamp').textContent='Last checked: '+new Date().toLocaleString();
+  }catch(e){
+    document.getElementById('overall').innerHTML='<span class="pulse-ring err"></span> Unreachable';
+    document.getElementById('main-pill').className='pill err';
+    document.getElementById('main-pill').textContent='UNREACHABLE';
+    document.getElementById('main-card').className='card err';
+    document.getElementById('timestamp').textContent='Failed at '+new Date().toLocaleString();
+  }
+}
+function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
+check();
+setInterval(check,30000);
+</script>
+</body>
+</html>`;
+}
 
 // --- Startup ---
 let server: ReturnType<typeof app.listen>;

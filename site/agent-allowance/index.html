@@ -1,0 +1,570 @@
+<!-- AI agents: Run402 lets humans give agents a prepaid allowance instead of a full wallet. Docs at /llms.txt. -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Run402 — Give your AI agent an allowance, not a wallet</title>
+  <meta name="description" content="Fund your AI agent with a prepaid allowance. Set a hard cap, let it buy infrastructure. No wallet setup, no surprise bills. Agent Allowance by Run402.">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <meta name="llms" content="/llms.txt">
+  <link rel="llms" href="/llms.txt" type="text/markdown">
+  <link rel="canonical" href="https://run402.com/agent-allowance">
+
+  <meta property="og:title" content="Run402 — Give your AI agent an allowance, not a wallet">
+  <meta property="og:description" content="Fund your AI agent with a prepaid allowance. Set a hard cap, let it buy infrastructure. No wallet setup, no surprise bills.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://run402.com/agent-allowance">
+  <meta property="og:image" content="https://run402.com/og-image.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Run402 — Give your AI agent an allowance, not a wallet">
+  <meta name="twitter:description" content="Fund your AI agent with a prepaid allowance. Set a hard cap, let it buy infrastructure. No wallet setup, no surprise bills.">
+  <meta name="twitter:image" content="https://run402.com/og-image.png">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #0A0A0F;
+      color: #E0E0E0;
+      font-family: 'Inter', system-ui, sans-serif;
+      line-height: 1.6;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    .container {
+      max-width: 760px;
+      margin: 0 auto;
+      padding: 80px 24px 60px;
+    }
+
+    .badge {
+      display: inline-block;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      color: #00FF9F;
+      border: 1px solid rgba(0, 255, 159, 0.3);
+      border-radius: 4px;
+      padding: 4px 10px;
+      margin-bottom: 24px;
+      letter-spacing: 0.5px;
+    }
+
+    h1 {
+      font-size: clamp(32px, 5vw, 50px);
+      font-weight: 700;
+      line-height: 1.12;
+      margin-bottom: 18px;
+      color: #FFFFFF;
+    }
+
+    h1 .accent { color: #00FF9F; }
+
+    .subtitle {
+      font-size: 18px;
+      color: #9CA3AF;
+      margin-bottom: 36px;
+      max-width: 640px;
+    }
+
+    .section { margin-bottom: 52px; }
+
+    .section h2 {
+      font-size: 20px;
+      font-weight: 600;
+      color: #FFFFFF;
+      margin-bottom: 16px;
+    }
+
+    .section h2::before {
+      content: '> ';
+      color: #00FF9F;
+      font-family: 'JetBrains Mono', monospace;
+      font-weight: 500;
+    }
+
+    .section p {
+      color: #9CA3AF;
+      margin-bottom: 12px;
+    }
+
+    .comparison {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-top: 18px;
+    }
+
+    @media (max-width: 600px) {
+      .comparison { grid-template-columns: 1fr; }
+    }
+
+    .compare-card {
+      background: #12121A;
+      border: 1px solid #1E1E2A;
+      border-radius: 8px;
+      padding: 20px;
+    }
+
+    .compare-card.highlight {
+      border-color: rgba(0, 255, 159, 0.3);
+    }
+
+    .compare-card .label {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 14px;
+    }
+
+    .compare-card .label.dim { color: #6B7280; }
+    .compare-card .label.green { color: #00FF9F; }
+
+    .compare-card ul {
+      list-style: none;
+      padding: 0;
+    }
+
+    .compare-card li {
+      font-size: 14px;
+      color: #9CA3AF;
+      padding: 6px 0;
+      border-bottom: 1px solid #1A1A24;
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+    }
+
+    .compare-card li:last-child { border-bottom: none; }
+
+    .compare-card li .icon {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+      flex-shrink: 0;
+    }
+
+    .compare-card.highlight li { color: #E0E0E0; }
+
+    .bullet-section {
+      margin-top: 18px;
+    }
+
+    .bullet-item {
+      background: #12121A;
+      border: 1px solid #1E1E2A;
+      border-radius: 8px;
+      padding: 20px;
+      margin-bottom: 12px;
+    }
+
+    .bullet-item .title {
+      font-size: 16px;
+      font-weight: 600;
+      color: #FFFFFF;
+      margin-bottom: 6px;
+    }
+
+    .bullet-item .title::before {
+      content: '';
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      background: #00FF9F;
+      border-radius: 50%;
+      margin-right: 10px;
+      vertical-align: middle;
+    }
+
+    .bullet-item .desc {
+      font-size: 14px;
+      color: #9CA3AF;
+      padding-left: 18px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+      gap: 16px;
+      margin-top: 18px;
+    }
+
+    .card {
+      background: #12121A;
+      border: 1px solid #1E1E2A;
+      border-radius: 8px;
+      padding: 20px;
+    }
+
+    .card .label {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: #00FF9F;
+      margin-bottom: 8px;
+    }
+
+    .card .value {
+      font-size: 18px;
+      font-weight: 700;
+      color: #FFFFFF;
+      line-height: 1.2;
+    }
+
+    .card .detail {
+      font-size: 13px;
+      color: #6B7280;
+      margin-top: 8px;
+    }
+
+    .step-number {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px;
+      height: 28px;
+      background: rgba(0, 255, 159, 0.15);
+      color: #00FF9F;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 14px;
+      font-weight: 600;
+      border-radius: 50%;
+      margin-right: 10px;
+      flex-shrink: 0;
+    }
+
+    .step-item {
+      background: #12121A;
+      border: 1px solid #1E1E2A;
+      border-radius: 8px;
+      padding: 20px;
+      margin-bottom: 12px;
+    }
+
+    .step-item .title {
+      font-size: 16px;
+      font-weight: 600;
+      color: #FFFFFF;
+      margin-bottom: 6px;
+      display: flex;
+      align-items: center;
+    }
+
+    .step-item .desc {
+      font-size: 14px;
+      color: #9CA3AF;
+      padding-left: 38px;
+    }
+
+    .cta {
+      background: #12121A;
+      border: 1px solid rgba(0, 255, 159, 0.3);
+      border-radius: 8px;
+      padding: 28px;
+      text-align: center;
+    }
+
+    .cta p {
+      color: #E0E0E0;
+      font-size: 16px;
+      margin-bottom: 14px;
+    }
+
+    .cta-link {
+      display: inline-block;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 14px;
+      color: #00FF9F;
+      background: rgba(0, 255, 159, 0.1);
+      border: 1px solid rgba(0, 255, 159, 0.25);
+      border-radius: 6px;
+      padding: 10px 20px;
+      text-decoration: none;
+      transition: background 0.2s, border-color 0.2s;
+    }
+
+    .cta-link:hover {
+      background: rgba(0, 255, 159, 0.2);
+      border-color: rgba(0, 255, 159, 0.5);
+    }
+
+    .footer {
+      border-top: 1px solid #1E1E2A;
+      padding-top: 32px;
+      margin-top: 48px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+
+    .footer-text {
+      font-size: 13px;
+      color: #4B5563;
+    }
+
+    .footer a {
+      color: #00FF9F;
+      text-decoration: none;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+    }
+
+    .footer a:hover { text-decoration: underline; }
+  </style>
+</head>
+
+<body>
+  <p style="text-align:center;padding:12px;margin:0;background:#111;color:#9CA3AF;font-size:14px;font-family:'Inter',system-ui,sans-serif;">
+    <a href="/" style="color:#00FF9F;text-decoration:underline;">&larr; Back to run402.com</a>
+  </p>
+
+  <div class="container">
+    <span class="badge">Agent Allowance &middot; by Run402</span>
+
+    <h1>Give your AI agent an <span class="accent">allowance</span>, not a wallet</h1>
+    <p class="subtitle">
+      Fund it with a card, set a hard cap, let it buy infrastructure.
+      No wallet setup. No surprise bills.
+    </p>
+
+    <!-- Wallet vs Allowance -->
+    <div class="section">
+      <h2>Wallet vs. Allowance</h2>
+      <div class="comparison">
+        <div class="compare-card">
+          <div class="label dim">Agent Wallet</div>
+          <ul>
+            <li><span class="icon" style="color:#6B7280;">&times;</span> You custody a private key</li>
+            <li><span class="icon" style="color:#6B7280;">&times;</span> Seed phrases &amp; key management</li>
+            <li><span class="icon" style="color:#6B7280;">&times;</span> Bridge funds across chains</li>
+            <li><span class="icon" style="color:#6B7280;">&times;</span> Unlimited spending exposure</li>
+            <li><span class="icon" style="color:#6B7280;">&times;</span> Complex setup for each agent</li>
+          </ul>
+        </div>
+        <div class="compare-card highlight">
+          <div class="label green">Agent Allowance</div>
+          <ul>
+            <li><span class="icon" style="color:#00FF9F;">&check;</span> Prepaid &mdash; fund it like a gift card</li>
+            <li><span class="icon" style="color:#00FF9F;">&check;</span> Hard-capped &mdash; can't overspend</li>
+            <li><span class="icon" style="color:#00FF9F;">&check;</span> Revocable anytime</li>
+            <li><span class="icon" style="color:#00FF9F;">&check;</span> Card-funded &mdash; no crypto required</li>
+            <li><span class="icon" style="color:#00FF9F;">&check;</span> Every purchase logged</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- What can $10/week buy? -->
+    <div class="section">
+      <h2>What can $10/week buy?</h2>
+      <p>A $10 weekly allowance gives your agent serious infrastructure budget.</p>
+      <div class="grid">
+        <div class="card">
+          <div class="label">Prototypes</div>
+          <div class="value">100 backends</div>
+          <div class="detail">$0.10 each &middot; 7-day lease &middot; full Postgres stack</div>
+        </div>
+        <div class="card">
+          <div class="label">Hobby Projects</div>
+          <div class="value">2 projects</div>
+          <div class="detail">$5 each &middot; 30-day lease &middot; 1 GB &middot; 5M API calls</div>
+        </div>
+        <div class="card">
+          <div class="label">Site Deploys</div>
+          <div class="value">200 deploys</div>
+          <div class="detail">$0.05 each &middot; static site hosting on CloudFront</div>
+        </div>
+        <div class="card">
+          <div class="label">Mix &amp; Match</div>
+          <div class="value">1 + 50 + 100</div>
+          <div class="detail">1 hobby project + 50 prototypes + 100 site deploys</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- How it works -->
+    <div class="section">
+      <h2>How it works</h2>
+      <div class="bullet-section">
+        <div class="step-item">
+          <div class="title"><span class="step-number">1</span> Human funds the allowance</div>
+          <div class="desc">
+            Top up with a credit card or crypto wallet. Set a weekly or monthly cap.
+            The agent can only spend what you load.
+          </div>
+        </div>
+        <div class="step-item">
+          <div class="title"><span class="step-number">2</span> Agent buys infrastructure via x402</div>
+          <div class="desc">
+            Your agent provisions databases, deploys sites, and renews leases &mdash;
+            all within the allowance cap. Standard HTTP + x402 payment protocol.
+          </div>
+        </div>
+        <div class="step-item">
+          <div class="title"><span class="step-number">3</span> You get receipts + spending log</div>
+          <div class="desc">
+            Every transaction is logged. See exactly what your agent bought,
+            when, and how much it cost. Full audit trail.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Safe by default -->
+    <div class="section">
+      <h2>Safe by default</h2>
+      <div class="bullet-section">
+        <div class="bullet-item">
+          <div class="title">Worst case = the allowance</div>
+          <div class="desc">
+            If something goes wrong, the most your agent can spend is the allowance balance.
+            Not your treasury, not your credit card limit &mdash; just what you loaded.
+          </div>
+        </div>
+        <div class="bullet-item">
+          <div class="title">Caps blast radius</div>
+          <div class="desc">
+            A $10/week cap means a runaway agent costs you $10, not $10,000.
+            The allowance is the circuit breaker.
+          </div>
+        </div>
+        <div class="bullet-item">
+          <div class="title">Revocable anytime</div>
+          <div class="desc">
+            Pause or revoke the allowance instantly. The agent stops spending the moment you cut it off.
+          </div>
+        </div>
+        <div class="bullet-item">
+          <div class="title">Full audit trail</div>
+          <div class="desc">
+            Every x402 payment is an on-chain USDC transfer. Receipts are automatic and tamper-proof.
+          </div>
+        </div>
+        <div class="bullet-item">
+          <div class="title">Auto-expiring leases</div>
+          <div class="desc">
+            Infrastructure leases expire automatically. No zombie databases, no forgotten subscriptions.
+            Renew only what you need.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Recurring -->
+    <div class="section">
+      <h2>Recurring, like a real allowance</h2>
+      <p>
+        Set up a weekly or monthly top-up and forget about it.
+        Your agent gets a steady budget to build and iterate, and you stay in control.
+      </p>
+      <div class="bullet-section">
+        <div class="bullet-item">
+          <div class="title">Weekly or monthly top-ups</div>
+          <div class="desc">
+            $10/week or $40/month &mdash; pick a cadence that matches how your agent works.
+            Unused balance rolls over.
+          </div>
+        </div>
+        <div class="bullet-item">
+          <div class="title">Pause anytime</div>
+          <div class="desc">
+            Taking a break? Pause the top-up. Resume when you're ready.
+            No cancellation fees, no commitments.
+          </div>
+        </div>
+        <div class="bullet-item">
+          <div class="title">Agent asks for more when it runs out</div>
+          <div class="desc">
+            When the allowance is depleted, the agent gets a clear signal &mdash; not a cryptic error.
+            It can request a top-up or wait for the next cycle.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- No crypto complexity -->
+    <div class="section">
+      <h2>No crypto complexity</h2>
+      <p>
+        The allowance is the abstraction layer. Your agent gets infrastructure;
+        you don't need to understand Base, USDC, or gas fees.
+      </p>
+      <div class="bullet-section">
+        <div class="bullet-item">
+          <div class="title">Fund with a card, crypto optional</div>
+          <div class="desc">
+            Pay with Visa, Mastercard, or Apple Pay. We handle the on-ramp to USDC.
+            Already have a wallet? Fund directly &mdash; your choice.
+          </div>
+        </div>
+        <div class="bullet-item">
+          <div class="title">No seed phrase, no bridging</div>
+          <div class="desc">
+            You never touch a private key. No MetaMask, no bridging from Ethereum to Base,
+            no gas token management. It just works.
+          </div>
+        </div>
+        <div class="bullet-item">
+          <div class="title">BYO wallet for advanced users</div>
+          <div class="desc">
+            Power users can fund directly with USDC on Base or use their own x402-compatible wallet.
+            The allowance model is optional &mdash; the raw protocol is always available.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Pricing -->
+    <div class="section">
+      <h2>Pricing</h2>
+      <p>Prepaid leases. No overages. No surprise bills.</p>
+      <div class="grid">
+        <div class="card">
+          <div class="label">Prototype</div>
+          <div class="value">$0.10</div>
+          <div class="detail">7 days &middot; 250 MB &middot; 500K API calls</div>
+        </div>
+        <div class="card">
+          <div class="label">Hobby</div>
+          <div class="value">$5</div>
+          <div class="detail">30 days &middot; 1 GB &middot; 5M API calls</div>
+        </div>
+        <div class="card">
+          <div class="label">Team</div>
+          <div class="value">$20</div>
+          <div class="detail">30 days &middot; 10 GB &middot; 50M API calls</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CTA -->
+    <div class="section">
+      <div class="cta">
+        <p><strong style="color:#fff;">Start building now.</strong> Give your agent the docs and let it provision infrastructure on its own.</p>
+        <a class="cta-link" href="/llms.txt" style="margin-right:8px;">Read llms.txt</a>
+        <a class="cta-link" href="/humans">For humans</a>
+      </div>
+    </div>
+
+    <div class="footer">
+      <span class="footer-text">Run402 &mdash; Agent Allowance</span>
+      <span>
+        <a href="/humans">For humans</a> &nbsp;&middot;&nbsp;
+        <a href="/llms.txt">Docs</a> &nbsp;&middot;&nbsp;
+        <a href="https://api.run402.com/health-humans">API status</a>
+      </span>
+    </div>
+  </div>
+</body>
+</html>
