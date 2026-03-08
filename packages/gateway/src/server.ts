@@ -569,6 +569,7 @@ async function applyMigrations() {
   const avExists = await pool.query(`SELECT 1 FROM information_schema.tables WHERE table_schema = 'internal' AND table_name = 'app_versions'`);
   if (avExists.rows.length > 0) {
     await pool.query(`ALTER TABLE internal.app_versions ADD COLUMN IF NOT EXISTS tags TEXT[] DEFAULT '{}'`);
+    await pool.query(`ALTER TABLE internal.app_versions ADD COLUMN IF NOT EXISTS live_url TEXT`);
   }
 
   // v1.8: billing/allowance tables

@@ -102,6 +102,7 @@ export interface AppVersionInfo {
   required_secrets: Array<{ key: string; description?: string }>;
   required_actions: Array<{ action: string; description?: string }>;
   tags: string[];
+  live_url: string | null;
   created_at: string;
   compatibility_warnings: string[];
 }
@@ -335,6 +336,19 @@ export async function publishAppVersion(
       seedRowCount = (seedSql.match(/^INSERT /gm) || []).length;
     }
 
+    // Resolve live URL from subdomain or deployment
+    let liveUrl: string | null = null;
+    const subdomainResult = await pool.query(
+      `SELECT name FROM internal.subdomains WHERE project_id = $1 ORDER BY created_at DESC LIMIT 1`,
+      [projectId],
+    );
+    if (subdomainResult.rows.length > 0) {
+      liveUrl = `https://${subdomainResult.rows[0].name}.run402.com`;
+    } else if (siteDeploymentId) {
+      const dnsLabel = siteDeploymentId.replace(/_/g, "-");
+      liveUrl = `https://${dnsLabel}.sites.run402.com`;
+    }
+
     // Compute stats and derived min tier
     const functionCount = functionsResult.rows.length;
     const derivedMinTier = computeDerivedMinTier(functionCount, siteTotalBytes);
@@ -381,19 +395,19 @@ export async function publishAppVersion(
       `INSERT INTO internal.app_versions
        (id, project_id, version, name, description, visibility, fork_allowed, status,
         min_tier, derived_min_tier, format_version, bundle_uri, bundle_sha256,
-        publisher_wallet, required_secrets, required_actions, tags,
+        publisher_wallet, required_secrets, required_actions, tags, live_url,
         table_count, function_count, site_file_count, site_total_bytes, seed_row_count,
         site_deployment_id)
        VALUES ($1, $2, $3, $4, $5, $6, $7, 'published',
         $8, $9, 1, $10, $11,
-        $12, $13, $14, $15,
-        $16, $17, $18, $19, $20,
-        $21)`,
+        $12, $13, $14, $15, $16,
+        $17, $18, $19, $20, $21,
+        $22)`,
       [
         versionId, projectId, version, projectName, options.description || null,
         visibility, forkAllowed,
         derivedMinTier, derivedMinTier, bundleUri, bundleSha256,
-        publisherWallet || null, JSON.stringify(requiredSecrets), JSON.stringify(requiredActions), tags,
+        publisherWallet || null, JSON.stringify(requiredSecrets), JSON.stringify(requiredActions), tags, liveUrl,
         tableCount, functionCount, siteFileCount, siteTotalBytes, seedRowCount,
         siteDeploymentId,
       ],
@@ -437,6 +451,7 @@ export async function publishAppVersion(
       required_secrets: requiredSecrets,
       required_actions: requiredActions,
       tags,
+      live_url: liveUrl,
       created_at: new Date().toISOString(),
       compatibility_warnings: warnings,
     };
@@ -453,7 +468,7 @@ export async function listVersions(projectId: string): Promise<AppVersionInfo[]>
     `SELECT id, project_id, version, name, description, visibility, fork_allowed,
             min_tier, derived_min_tier, status,
             table_count, function_count, site_file_count, site_total_bytes,
-            required_secrets, required_actions, tags, created_at
+            required_secrets, required_actions, tags, live_url, created_at
      FROM internal.app_versions WHERE project_id = $1 ORDER BY version DESC`,
     [projectId],
   );
@@ -467,7 +482,7 @@ export async function listPublicApps(filterTags?: string[]): Promise<AppVersionI
   let query = `SELECT id, project_id, version, name, description, visibility, fork_allowed,
             min_tier, derived_min_tier, status,
             table_count, function_count, site_file_count, site_total_bytes,
-            required_secrets, required_actions, tags, site_deployment_id, created_at
+            required_secrets, required_actions, tags, live_url, site_deployment_id, created_at
      FROM internal.app_versions
      WHERE visibility IN ('public', 'unlisted') AND status = 'published'`;
   const params: string[][] = [];
@@ -502,6 +517,7 @@ function mapRowToAppVersion(row: Record<string, unknown>): AppVersionInfo {
     required_secrets: (row.required_secrets || []) as Array<{ key: string; description?: string }>,
     required_actions: (row.required_actions || []) as Array<{ action: string; description?: string }>,
     tags: (row.tags || []) as string[],
+    live_url: (row.live_url as string) || null,
     created_at: row.created_at as string,
     compatibility_warnings: [],
   };
@@ -515,7 +531,7 @@ export async function getAppVersion(versionId: string): Promise<AppVersionInfo |
     `SELECT id, project_id, version, name, description, visibility, fork_allowed,
             min_tier, derived_min_tier, status,
             table_count, function_count, site_file_count, site_total_bytes,
-            required_secrets, required_actions, tags, created_at
+            required_secrets, required_actions, tags, live_url, created_at
      FROM internal.app_versions WHERE id = $1`,
     [versionId],
   );

@@ -312,8 +312,13 @@
             '</div>';
         }
 
+        var liveLink = '';
+        if (app.live_url) {
+          liveLink = '<a href="' + escapeHtml(app.live_url) + '" target="_blank" style="color:#00FF9F;font-family:\'JetBrains Mono\',monospace;font-size:12px;text-decoration:none;border:1px solid rgba(0,255,159,0.3);border-radius:4px;padding:2px 8px;margin-left:8px;">Visit</a>';
+        }
+
         html += '<div class="app-card">' +
-          '<div class="app-name">' + escapeHtml(app.name) + '</div>' +
+          '<div class="app-name">' + escapeHtml(app.name) + liveLink + '</div>' +
           '<div class="app-desc">' + escapeHtml(app.description || 'No description') + '</div>' +
           '<div class="app-stats">' +
             '<span class="stat">Tier: <strong>' + app.min_tier + '+</strong></span>' +

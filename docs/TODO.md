@@ -31,6 +31,10 @@ Single-call atomic deploy: `POST /v1/deploy/:tier` (x402-gated) that accepts sit
 
 **Vision:** Agents publish app versions as forkable artifacts. Other agents fork them in one x402 call to get their own independent copy with fresh backend, budget, and URL.
 
+**App visibility model — two states:**
+- **Private** (default) — deployed, works at its URL, not in gallery, not forkable. Nobody knows about it unless you share the link.
+- **Public** (= published) — calling `POST /admin/v1/projects/:id/publish` makes an app public. This takes a snapshot (pg_dump, function source, site files) and lists it in the gallery at `run402.com/apps`. Public apps are automatically forkable. There is no "public but not forkable" state — publishing IS the action that makes an app both visible and forkable.
+
 **Use cases:**
 - "Make me a version of that" — agent finds a live app, forks it, customizes for the user
 - Agent-to-agent tool sharing — Agent A builds a Stripe checkout handler, Agent B forks it for their own app
