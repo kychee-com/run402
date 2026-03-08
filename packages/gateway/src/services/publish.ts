@@ -522,3 +522,35 @@ export async function getAppVersion(versionId: string): Promise<AppVersionInfo |
   if (result.rows.length === 0) return null;
   return mapRowToAppVersion(result.rows[0]);
 }
+
+/**
+ * Delete a published app version. Decrements site deployment ref_count.
+ */
+export async function deleteAppVersion(versionId: string, projectId: string): Promise<boolean> {
+  // Get site_deployment_id before deleting
+  const verResult = await pool.query(
+    `SELECT site_deployment_id FROM internal.app_versions WHERE id = $1 AND project_id = $2`,
+    [versionId, projectId],
+  );
+  if (verResult.rows.length === 0) return false;
+
+  const siteDeploymentId = verResult.rows[0].site_deployment_id;
+
+  // Delete (cascades to app_version_functions)
+  const delResult = await pool.query(
+    `DELETE FROM internal.app_versions WHERE id = $1 AND project_id = $2`,
+    [versionId, projectId],
+  );
+  if (!delResult.rowCount || delResult.rowCount === 0) return false;
+
+  // Decrement site deployment ref_count
+  if (siteDeploymentId) {
+    await pool.query(
+      `UPDATE internal.deployments SET ref_count = GREATEST(ref_count - 1, 0) WHERE id = $1`,
+      [siteDeploymentId],
+    );
+  }
+
+  console.log(`  Deleted app version ${versionId}`);
+  return true;
+}

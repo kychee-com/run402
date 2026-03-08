@@ -20,6 +20,8 @@ import {
   PublishError,
 } from "../services/publish.js";
 import { forkApp, validateForkRequest, ForkError } from "../services/fork.js";
+import { deleteAppVersion } from "../services/publish.js";
+import { ADMIN_KEY } from "../config.js";
 import { extractWalletFromPaymentHeader } from "../utils/wallet.js";
 import { getWalletSubscription } from "../services/stripe-subscriptions.js";
 import { notifyNewProject } from "../services/telegram.js";
@@ -127,6 +129,48 @@ router.patch(
     const { getAppVersion: getVer } = await import("../services/publish.js");
     const updated = await getVer(req.params.versionId as string);
     res.json(updated);
+  }),
+);
+
+// DELETE /admin/v1/projects/:id/versions/:versionId — delete a published version (service_key auth)
+router.delete(
+  "/admin/v1/projects/:id/versions/:versionId",
+  serviceKeyAuth,
+  asyncHandler(async (req: Request, res: Response) => {
+    const project = req.project!;
+    if (project.id !== req.params.id) {
+      throw new HttpError(403, "Token project_id mismatch");
+    }
+
+    const { deleteAppVersion: delVer } = await import("../services/publish.js");
+    const deleted = await delVer(req.params.versionId as string, project.id);
+    if (!deleted) {
+      throw new HttpError(404, "Version not found");
+    }
+
+    res.json({ status: "deleted", version_id: req.params.versionId });
+  }),
+);
+
+// DELETE /v1/admin/app-versions/:versionId — admin-only version deletion (no service_key needed)
+router.delete(
+  "/v1/admin/app-versions/:versionId",
+  asyncHandler(async (req: Request, res: Response) => {
+    const adminKey = req.headers["x-admin-key"] as string | undefined;
+    if (!ADMIN_KEY || adminKey !== ADMIN_KEY) {
+      throw new HttpError(403, "Requires platform admin key");
+    }
+
+    const { pool: dbPool } = await import("../db/pool.js");
+    const result = await dbPool.query(
+      `DELETE FROM internal.app_versions WHERE id = $1 RETURNING id`,
+      [req.params.versionId],
+    );
+    if (!result.rowCount || result.rowCount === 0) {
+      throw new HttpError(404, "Version not found");
+    }
+    console.log(`  Admin deleted app version: ${req.params.versionId}`);
+    res.json({ status: "deleted", version_id: req.params.versionId });
   }),
 );
 

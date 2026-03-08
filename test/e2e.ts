@@ -773,6 +773,13 @@ async function main() {
   });
   assert(forkDeleteRes.ok, "Fork project cleaned up");
 
+  // Clean up published version (prevent stale gallery entries)
+  const versionDeleteRes = await fetch(`${BASE_URL}/admin/v1/projects/${project_id}/versions/${versionId}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${service_key}` },
+  });
+  assert(versionDeleteRes.ok, "Published version cleaned up");
+
   // Step 23: Delete original project
   console.log("\n23) Delete project...");
   const deleteRes = await fetch(`${BASE_URL}/v1/projects/${project_id}`, {
