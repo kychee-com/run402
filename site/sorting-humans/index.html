@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sorting Humans — run402 × bld402</title>
+  <meta name="description" content="Two doors. One question. Choose wisely. Are you a green-pill developer or a blue-pill builder?">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+
+  <meta property="og:title" content="Sorting Humans — run402 × bld402">
+  <meta property="og:description" content="Two doors. One question. Choose wisely.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://run402.com/sorting-humans">
+  <meta property="og:image" content="https://run402.com/og-image.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Sorting Humans — run402 × bld402">
+  <meta name="twitter:description" content="Two doors. One question. Choose wisely.">
+  <meta name="twitter:image" content="https://run402.com/og-image.png">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #0f0f1a;
+      color: #e0e0e0;
+      font-family: 'Inter', system-ui, sans-serif;
+      line-height: 1.6;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 40px 16px;
+    }
+
+    h1 {
+      font-size: clamp(20px, 4vw, 36px);
+      font-weight: 700;
+      color: #fff;
+      text-align: center;
+      margin-bottom: 2px;
+    }
+
+    .subtitle {
+      font-size: clamp(12px, 2vw, 16px);
+      color: #9ca3af;
+      text-align: center;
+      margin-bottom: 32px;
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 12px;
+      width: 100%;
+      max-width: 900px;
+    }
+    @media (min-width: 768px) {
+      .grid { grid-template-columns: 1fr 1fr; gap: 0; }
+    }
+
+    .card {
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: 16px;
+      border-radius: 16px;
+      text-decoration: none;
+      transition: all 0.3s ease;
+    }
+    @media (min-width: 768px) {
+      .card { padding: 32px; }
+    }
+
+    .card--run {
+      background: #1a1a2e;
+      color: #fff;
+      border: 1px solid rgba(0,153,102,0.4);
+    }
+    .card--run:hover {
+      transform: scale(1.02);
+      box-shadow: 0 25px 50px rgba(0,153,102,0.2);
+      border-color: #009966;
+    }
+
+    .card--bld {
+      background: #fff;
+      color: #1a1a2e;
+      border: 1px solid rgba(0,102,204,0.3);
+    }
+    .card--bld:hover {
+      transform: scale(1.02);
+      box-shadow: 0 25px 50px rgba(0,102,204,0.2);
+      border-color: #0066cc;
+    }
+
+    @media (min-width: 768px) {
+      .card--run { border-radius: 16px 0 0 16px; }
+      .card--bld { border-radius: 0 16px 16px 0; }
+    }
+
+    .grid:has(.card--run:hover) .card--bld { opacity: 0.5; }
+    .grid:has(.card--bld:hover) .card--run { opacity: 0.5; }
+    .card { transition: all 0.3s ease, opacity 0.3s ease; }
+
+    .pill-label {
+      display: inline-block;
+      align-self: flex-start;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      border-radius: 4px;
+      padding: 2px 8px;
+      margin-bottom: 12px;
+    }
+    .pill-label--green {
+      color: #009966;
+      border: 1px solid rgba(0,153,102,0.3);
+    }
+    .pill-label--blue {
+      color: #0066cc;
+      border: 1px solid rgba(0,102,204,0.3);
+    }
+
+    .checklist {
+      flex: 1;
+      list-style: none;
+    }
+    .checklist li {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      font-size: 14px;
+      line-height: 1.5;
+      margin-bottom: 6px;
+    }
+    @media (min-width: 768px) {
+      .checklist li { margin-bottom: 10px; }
+    }
+    .check { flex-shrink: 0; margin-top: 2px; }
+    .check--green { color: #009966; }
+    .check--blue  { color: #0066cc; }
+
+    .cta-box {
+      margin-top: 12px;
+      text-align: center;
+    }
+    @media (min-width: 768px) {
+      .cta-box { margin-top: 20px; }
+    }
+
+    .cta-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 12px;
+      border-radius: 8px;
+      padding: 10px 32px;
+      font-weight: 600;
+      font-size: 16px;
+      transition: all 0.2s ease;
+    }
+    .cta-btn--green {
+      background: rgba(0,153,102,0.12);
+      color: #00ff9f;
+      border: 1px solid rgba(0,153,102,0.4);
+    }
+    .card--run:hover .cta-btn--green {
+      background: rgba(0,153,102,0.25);
+      border-color: rgba(0,153,102,0.6);
+      transform: translateY(-2px);
+    }
+    .cta-btn--blue {
+      background: rgba(0,102,204,0.08);
+      color: #0066cc;
+      border: 1px solid rgba(0,102,204,0.3);
+    }
+    .card--bld:hover .cta-btn--blue {
+      background: rgba(0,102,204,0.15);
+      border-color: rgba(0,102,204,0.5);
+      transform: translateY(-2px);
+    }
+
+    .cta-desc {
+      font-size: 12px;
+      color: #6b7280;
+      margin-top: 6px;
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .footer-joke {
+      font-size: 12px;
+      color: #4b5563;
+      text-align: center;
+      max-width: 420px;
+      margin-top: 16px;
+      font-family: 'JetBrains Mono', monospace;
+    }
+  </style>
+</head>
+<body>
+  <h1>Sorting Humans</h1>
+  <p class="subtitle">Two doors. One question. Choose wisely.</p>
+
+  <div class="grid">
+    <a href="https://run402.com" target="_blank" rel="noopener noreferrer" class="card card--run">
+      <span class="pill-label pill-label--green">the green pill</span>
+      <ul class="checklist">
+        <li><span class="check check--green">&#10003;</span> You know what Postgres is (and have opinions about it)</li>
+        <li><span class="check check--green">&#10003;</span> "x402" made you think of HTTP status codes</li>
+        <li><span class="check check--green">&#10003;</span> You've argued about tabs vs spaces (and you were right)</li>
+        <li><span class="check check--green">&#10003;</span> REST vs GraphQL is a hill you'd die on</li>
+        <li><span class="check check--green">&#10003;</span> You deploy on Fridays (you live dangerously)</li>
+      </ul>
+      <div class="cta-box">
+        <span class="cta-btn cta-btn--green">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="24" height="24">
+            <rect width="32" height="32" rx="4" fill="#0A0A0F"/>
+            <text x="3" y="24" font-family="monospace" font-size="22" font-weight="bold" fill="#00FF9F">&gt;$</text>
+          </svg>
+          run402.com
+        </span>
+        <p class="cta-desc">APIs, databases, infrastructure — your playground.</p>
+      </div>
+    </a>
+
+    <a href="https://bld402.com/humans/" target="_blank" rel="noopener noreferrer" class="card card--bld">
+      <span class="pill-label pill-label--blue">the blue pill</span>
+      <ul class="checklist">
+        <li><span class="check check--blue">&#10003;</span> "API" sounds like a type of bee</li>
+        <li><span class="check check--blue">&#10003;</span> You just want to build cool stuff, not learn tech mumbo jumbo</li>
+        <li><span class="check check--blue">&#10003;</span> "Deploy" sounds like something the military does</li>
+        <li><span class="check check--blue">&#10003;</span> You describe your app idea and an AI builds it for you</li>
+        <li><span class="check check--blue">&#10003;</span> You've never seen a terminal and you're proud of it</li>
+      </ul>
+      <div class="cta-box">
+        <span class="cta-btn cta-btn--blue">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="24" height="24">
+            <rect width="32" height="32" rx="4" fill="#FFFFFF" stroke="#E5E7EB" stroke-width="1"/>
+            <text x="2" y="23" font-family="monospace" font-size="20" font-weight="bold" fill="#0066cc">&gt;</text>
+            <g transform="translate(16, 6) rotate(35, 8, 10)">
+              <rect x="7" y="10" width="3" height="14" rx="1" fill="#374151"/>
+              <rect x="2" y="5" width="13" height="7" rx="2" fill="#0066cc"/>
+            </g>
+          </svg>
+          bld402.com
+        </span>
+        <p class="cta-desc">Just describe it. AI does the rest.</p>
+      </div>
+    </a>
+  </div>
+
+  <p class="footer-joke">No wrong answers. But if you're still reading instead of clicking, you might be a product manager.</p>
+</body>
+</html>
