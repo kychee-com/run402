@@ -3,7 +3,7 @@ import { ExactEvmScheme } from "@x402/evm/exact/server";
 import { HTTPFacilitatorClient } from "@x402/core/server";
 import { createFacilitatorConfig } from "@coinbase/x402";
 import { declareDiscoveryExtension, bazaarResourceServerExtension } from "@x402/extensions";
-import { TIERS } from "@run402/shared";
+import { TIERS, SKU_PRICES } from "@run402/shared";
 import Stripe from "stripe";
 import {
   SELLER_ADDRESS,
@@ -17,8 +17,9 @@ import {
   ADMIN_KEY,
 } from "../config.js";
 import type { TierName } from "@run402/shared";
-import { getWalletSubscription } from "../services/stripe-subscriptions.js";
+import { getBillingAccount, debitAllowance } from "../services/billing.js";
 import { extractWalletFromPaymentHeader } from "../utils/wallet.js";
+import { createHash } from "node:crypto";
 
 // --- Stripe payTo machinery ---
 
@@ -396,19 +397,69 @@ export function createPaymentMiddleware() {
     });
   }
 
-  // Subscription bypass: skip x402 settlement for wallets with active Stripe subscriptions
-  if (STRIPE_SECRET_KEY) {
-    httpServer.onProtectedRequest(async (context) => {
-      if (!context.paymentHeader) return;
-      const wallet = extractWalletFromPaymentHeader(context.paymentHeader);
-      if (!wallet) return;
-      const sub = await getWalletSubscription(wallet);
-      if (sub?.status === "active") {
-        console.log(`Subscription bypass: ${wallet} → ${sub.tier}`);
-        return { grantAccess: true };
-      }
-    });
-  }
+  // Allowance rail: debit allowance balance instead of on-chain settlement
+  httpServer.onProtectedRequest(async (context) => {
+    if (!context.paymentHeader) return;
+    const wallet = extractWalletFromPaymentHeader(context.paymentHeader);
+    if (!wallet) return;
+
+    // Check if wallet has a billing account with balance
+    const account = await getBillingAccount(wallet);
+    if (!account || account.status !== "active") return;
+
+    // Resolve price for this request
+    const price = resolveSkuPrice(context.method, context.path);
+    if (!price) return;
+
+    // Check sufficient balance
+    if (account.available_usd_micros < price.amountUsdMicros) return;
+
+    // Debit allowance
+    const headerHash = createHash("sha256").update(context.paymentHeader).digest("hex");
+    const result = await debitAllowance(wallet, price.amountUsdMicros, price.sku, headerHash);
+    if (!result) return; // Insufficient balance (race condition), fall through to x402
+
+    console.log(`Allowance debit: ${wallet} → ${price.sku} ($${(price.amountUsdMicros / 1_000_000).toFixed(4)}) remaining=$${(result.remaining / 1_000_000).toFixed(4)}`);
+
+    return { grantAccess: true as const };
+  });
 
   return paymentMiddlewareFromHTTPServer(httpServer);
+}
+
+/**
+ * Map a request method+path to a price in micro-USD.
+ * Uses tier prices for project/deploy/fork endpoints, SKU_PRICES for others.
+ */
+function resolveSkuPrice(method: string, path: string): { sku: string; amountUsdMicros: number } | null {
+
+  // Tier-priced endpoints: POST /v1/projects/create/:tier, POST /v1/deploy/:tier, POST /v1/fork/:tier
+  const tierMatch = path.match(/^\/v1\/(?:projects\/create|deploy|fork)\/(\w+)$/);
+  if (tierMatch && tierMatch[1]) {
+    const tierName = tierMatch[1] as TierName;
+    if (TIERS[tierName]) {
+      return { sku: `tier_${tierName}`, amountUsdMicros: TIERS[tierName].priceUsdMicros };
+    }
+  }
+
+  // POST /v1/projects (default prototype)
+  if (method === "POST" && path === "/v1/projects") {
+    return { sku: "tier_prototype", amountUsdMicros: TIERS.prototype.priceUsdMicros };
+  }
+
+  // SKU-priced endpoints
+  if (method === "GET" && path === "/v1/ping") {
+    return { sku: "ping", amountUsdMicros: SKU_PRICES["ping"]! };
+  }
+  if (method === "POST" && path === "/v1/message") {
+    return { sku: "message", amountUsdMicros: SKU_PRICES["message"]! };
+  }
+  if (method === "POST" && path === "/v1/generate-image") {
+    return { sku: "image", amountUsdMicros: SKU_PRICES["image"]! };
+  }
+  if (method === "POST" && path === "/v1/deployments") {
+    return { sku: "deployment", amountUsdMicros: SKU_PRICES["deployment"]! };
+  }
+
+  return null;
 }

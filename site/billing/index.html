@@ -1,0 +1,592 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Allowance — Run402</title>
+  <meta name="description" content="Fund your AI agent's Run402 allowance with a credit card. Prepaid, hard-capped, fully logged.">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #0A0A0F;
+      color: #E0E0E0;
+      font-family: 'Inter', system-ui, sans-serif;
+      line-height: 1.6;
+      min-height: 100vh;
+    }
+
+    .container {
+      max-width: 760px;
+      margin: 0 auto;
+      padding: 40px 24px 60px;
+    }
+
+    .back-bar {
+      text-align: center;
+      padding: 12px;
+      background: #111;
+      color: #9CA3AF;
+      font-size: 14px;
+    }
+
+    .back-bar a {
+      color: #00FF9F;
+      text-decoration: underline;
+    }
+
+    .badge {
+      display: inline-block;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      color: #00FF9F;
+      border: 1px solid rgba(0, 255, 159, 0.3);
+      border-radius: 4px;
+      padding: 4px 10px;
+      margin-bottom: 24px;
+      letter-spacing: 0.5px;
+    }
+
+    h1 {
+      font-size: clamp(28px, 4vw, 40px);
+      font-weight: 700;
+      line-height: 1.2;
+      margin-bottom: 12px;
+      color: #FFFFFF;
+    }
+
+    h1 .accent { color: #00FF9F; }
+
+    .subtitle {
+      font-size: 16px;
+      color: #9CA3AF;
+      margin-bottom: 32px;
+    }
+
+    .wallet-display {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 14px;
+      color: #00FF9F;
+      background: #12121A;
+      border: 1px solid #1E1E2A;
+      border-radius: 8px;
+      padding: 12px 16px;
+      margin-bottom: 32px;
+      word-break: break-all;
+    }
+
+    .section { margin-bottom: 40px; }
+
+    .section h2 {
+      font-size: 18px;
+      font-weight: 600;
+      color: #FFFFFF;
+      margin-bottom: 16px;
+    }
+
+    .section h2::before {
+      content: '> ';
+      color: #00FF9F;
+      font-family: 'JetBrains Mono', monospace;
+      font-weight: 500;
+    }
+
+    /* Balance card */
+    .balance-card {
+      background: #12121A;
+      border: 1px solid rgba(0, 255, 159, 0.2);
+      border-radius: 12px;
+      padding: 28px;
+      margin-bottom: 32px;
+      text-align: center;
+    }
+
+    .balance-label {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: #9CA3AF;
+      margin-bottom: 8px;
+    }
+
+    .balance-amount {
+      font-size: 48px;
+      font-weight: 700;
+      color: #00FF9F;
+      font-family: 'JetBrains Mono', monospace;
+      margin-bottom: 4px;
+    }
+
+    .balance-sub {
+      font-size: 13px;
+      color: #6B7280;
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    /* Top-up buttons */
+    .topup-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 12px;
+      margin-bottom: 32px;
+    }
+
+    @media (max-width: 500px) {
+      .topup-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+
+    .topup-btn {
+      background: #12121A;
+      border: 1px solid #1E1E2A;
+      border-radius: 8px;
+      padding: 16px;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color 0.2s, background 0.2s;
+      color: #E0E0E0;
+      font-family: 'Inter', sans-serif;
+    }
+
+    .topup-btn:hover {
+      border-color: rgba(0, 255, 159, 0.4);
+      background: rgba(0, 255, 159, 0.05);
+    }
+
+    .topup-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .topup-btn .amount {
+      font-size: 24px;
+      font-weight: 700;
+      color: #00FF9F;
+      display: block;
+      margin-bottom: 4px;
+    }
+
+    .topup-btn .label {
+      font-size: 12px;
+      color: #6B7280;
+    }
+
+    /* Ledger table */
+    .ledger-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+
+    .ledger-table th {
+      text-align: left;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: #6B7280;
+      padding: 8px 12px;
+      border-bottom: 1px solid #1E1E2A;
+    }
+
+    .ledger-table td {
+      padding: 10px 12px;
+      border-bottom: 1px solid rgba(30, 30, 42, 0.5);
+      vertical-align: middle;
+    }
+
+    .ledger-credit { color: #00FF9F; }
+    .ledger-debit { color: #EF4444; }
+
+    .ledger-kind {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      color: #9CA3AF;
+    }
+
+    .ledger-time {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: #4B5563;
+    }
+
+    /* Project cards */
+    .project-card {
+      background: #12121A;
+      border: 1px solid #1E1E2A;
+      border-radius: 8px;
+      padding: 16px 20px;
+      margin-bottom: 12px;
+    }
+
+    .project-name {
+      font-weight: 600;
+      color: #FFFFFF;
+      margin-bottom: 4px;
+    }
+
+    .project-meta {
+      font-size: 13px;
+      color: #6B7280;
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .usage-bar {
+      height: 4px;
+      background: #1E1E2A;
+      border-radius: 2px;
+      margin-top: 8px;
+      overflow: hidden;
+    }
+
+    .usage-bar-fill {
+      height: 100%;
+      background: #00FF9F;
+      border-radius: 2px;
+      transition: width 0.3s;
+    }
+
+    /* Success banner */
+    .success-banner {
+      background: rgba(0, 255, 159, 0.08);
+      border: 1px solid rgba(0, 255, 159, 0.3);
+      border-radius: 8px;
+      padding: 20px;
+      margin-bottom: 32px;
+      text-align: center;
+    }
+
+    .success-banner h3 {
+      color: #00FF9F;
+      font-size: 18px;
+      margin-bottom: 8px;
+    }
+
+    .success-banner p {
+      color: #9CA3AF;
+      font-size: 14px;
+    }
+
+    /* States */
+    .empty {
+      text-align: center;
+      color: #6B7280;
+      font-size: 14px;
+      padding: 24px;
+    }
+
+    .loading {
+      color: #6B7280;
+      font-size: 14px;
+      text-align: center;
+      padding: 20px;
+    }
+
+    .no-wallet {
+      text-align: center;
+      padding: 60px 20px;
+    }
+
+    .no-wallet h2 {
+      color: #FFFFFF;
+      font-size: 24px;
+      margin-bottom: 12px;
+    }
+
+    .no-wallet p {
+      color: #9CA3AF;
+      font-size: 16px;
+      max-width: 480px;
+      margin: 0 auto;
+    }
+
+    .no-wallet code {
+      font-family: 'JetBrains Mono', monospace;
+      color: #00FF9F;
+      font-size: 14px;
+    }
+
+    .footer {
+      border-top: 1px solid #1E1E2A;
+      padding-top: 32px;
+      margin-top: 48px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+
+    .footer-text {
+      font-size: 13px;
+      color: #4B5563;
+    }
+
+    .footer a {
+      color: #00FF9F;
+      text-decoration: none;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+    }
+
+    .footer a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+
+  <div class="back-bar">
+    <a href="/humans">&larr; Back to run402.com</a>
+  </div>
+
+  <div class="container">
+
+    <!-- No wallet state -->
+    <div id="no-wallet" class="no-wallet" style="display:none;">
+      <h2>No wallet address provided</h2>
+      <p>This page is for funding your agent's Run402 allowance. Your agent should send you a link like:</p>
+      <p style="margin-top:12px;"><code>run402.com/billing?wallet=0x...</code></p>
+    </div>
+
+    <!-- Main content -->
+    <div id="main-content" style="display:none;">
+      <span class="badge">Agent Allowance</span>
+      <h1>Fund your agent's <span class="accent">allowance</span></h1>
+      <p class="subtitle">Prepaid USD balance. Your agent spends it on infrastructure via x402. Hard-capped, fully logged, no surprises.</p>
+
+      <div class="wallet-display" id="wallet-display"></div>
+
+      <!-- Success banner -->
+      <div id="success-banner" class="success-banner" style="display:none;">
+        <h3>Top-up received!</h3>
+        <p id="success-text">Your allowance has been credited. Your agent can start spending immediately.</p>
+      </div>
+
+      <!-- Balance -->
+      <div class="balance-card">
+        <div class="balance-label">Available Balance</div>
+        <div class="balance-amount" id="balance-display">...</div>
+        <div class="balance-sub" id="balance-micros"></div>
+      </div>
+
+      <!-- Top-up buttons -->
+      <div class="section">
+        <h2>Add funds</h2>
+        <div class="topup-grid">
+          <button class="topup-btn" onclick="topup(5000000)">
+            <span class="amount">$5</span>
+            <span class="label">Top up</span>
+          </button>
+          <button class="topup-btn" onclick="topup(10000000)">
+            <span class="amount">$10</span>
+            <span class="label">Top up</span>
+          </button>
+          <button class="topup-btn" onclick="topup(25000000)">
+            <span class="amount">$25</span>
+            <span class="label">Top up</span>
+          </button>
+          <button class="topup-btn" onclick="topup(50000000)">
+            <span class="amount">$50</span>
+            <span class="label">Top up</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Recent transactions -->
+      <div class="section">
+        <h2>Recent transactions</h2>
+        <div id="ledger-list"><div class="loading">Loading transactions...</div></div>
+      </div>
+
+      <!-- Projects -->
+      <div class="section">
+        <h2>Projects</h2>
+        <div id="projects-list"><div class="loading">Loading projects...</div></div>
+      </div>
+
+      <div class="footer">
+        <span class="footer-text">Run402 &mdash; infrastructure for AI agents</span>
+        <span>
+          <a href="/humans/terms.html">Terms</a> &nbsp;&middot;&nbsp;
+          <a href="/humans/privacy.html">Privacy</a> &nbsp;&middot;&nbsp;
+          <a href="/humans/faq.html">FAQ</a> &nbsp;&middot;&nbsp;
+          <a href="/llms.txt">Docs</a> &nbsp;&middot;&nbsp;
+          <a href="https://api.run402.com/health-humans">API status</a>
+        </span>
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    var API = 'https://api.run402.com';
+    var wallet = null;
+    var pollCount = 0;
+    var pollTimer = null;
+
+    // Parse URL params
+    var params = new URLSearchParams(window.location.search);
+    wallet = params.get('wallet');
+    var isSuccess = params.get('success') === 'true';
+
+    if (!wallet || !wallet.startsWith('0x')) {
+      document.getElementById('no-wallet').style.display = 'block';
+    } else {
+      wallet = wallet.toLowerCase();
+      document.getElementById('main-content').style.display = 'block';
+      document.getElementById('wallet-display').textContent = wallet;
+
+      if (isSuccess) {
+        document.getElementById('success-banner').style.display = 'block';
+        // Poll for balance update (webhook may take a few seconds)
+        pollForCredit();
+      }
+
+      loadBalance();
+      loadLedger();
+      loadProjects();
+    }
+
+    function loadBalance() {
+      fetch(API + '/v1/billing/accounts/' + wallet)
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+          var micros = data.available_usd_micros || 0;
+          var dollars = (micros / 1000000).toFixed(2);
+          document.getElementById('balance-display').textContent = '$' + dollars;
+          document.getElementById('balance-micros').textContent = micros.toLocaleString() + ' micro-USD';
+        })
+        .catch(function() {
+          document.getElementById('balance-display').textContent = '$0.00';
+          document.getElementById('balance-micros').textContent = 'Failed to load balance';
+        });
+    }
+
+    function loadLedger() {
+      fetch(API + '/v1/billing/accounts/' + wallet + '/history?limit=20')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+          var el = document.getElementById('ledger-list');
+          if (!data.entries || data.entries.length === 0) {
+            el.innerHTML = '<div class="empty">No transactions yet. Add funds above to get started.</div>';
+            return;
+          }
+          var html = '<table class="ledger-table"><thead><tr><th>Type</th><th>Amount</th><th>Balance After</th><th>Time</th></tr></thead><tbody>';
+          for (var i = 0; i < data.entries.length; i++) {
+            var e = data.entries[i];
+            var sign = e.direction === 'credit' ? '+' : '-';
+            var cls = e.direction === 'credit' ? 'ledger-credit' : 'ledger-debit';
+            var dollars = (e.amount_usd_micros / 1000000).toFixed(4);
+            var afterDollars = (e.balance_after_available / 1000000).toFixed(2);
+            var time = new Date(e.created_at).toLocaleString();
+            html += '<tr>' +
+              '<td><span class="ledger-kind">' + escapeHtml(e.kind) + '</span></td>' +
+              '<td class="' + cls + '">' + sign + '$' + dollars + '</td>' +
+              '<td>$' + afterDollars + '</td>' +
+              '<td><span class="ledger-time">' + time + '</span></td>' +
+            '</tr>';
+          }
+          html += '</tbody></table>';
+          el.innerHTML = html;
+        })
+        .catch(function() {
+          document.getElementById('ledger-list').innerHTML = '<div class="empty">Failed to load transactions.</div>';
+        });
+    }
+
+    function loadProjects() {
+      fetch(API + '/v1/wallets/' + wallet + '/projects')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+          var el = document.getElementById('projects-list');
+          if (!data.projects || data.projects.length === 0) {
+            el.innerHTML = '<div class="empty">No projects yet. Your agent will create projects after you fund the allowance.</div>';
+            return;
+          }
+          var html = '';
+          for (var i = 0; i < data.projects.length; i++) {
+            var p = data.projects[i];
+            var callsPct = Math.min(100, (p.api_calls / 5000000) * 100);
+            html += '<div class="project-card">' +
+              '<div class="project-name">' + escapeHtml(p.name) + '</div>' +
+              '<div class="project-meta">' + p.tier + ' &middot; ' + p.id + '</div>' +
+              '<div class="project-meta">API calls: ' + p.api_calls.toLocaleString() + ' &middot; Storage: ' + formatBytes(p.storage_bytes) + '</div>' +
+              '<div class="usage-bar"><div class="usage-bar-fill" style="width:' + callsPct + '%"></div></div>' +
+            '</div>';
+          }
+          el.innerHTML = html;
+        })
+        .catch(function() {
+          document.getElementById('projects-list').innerHTML = '<div class="empty">Failed to load projects.</div>';
+        });
+    }
+
+    function topup(amountMicros) {
+      var btns = document.querySelectorAll('.topup-btn');
+      for (var i = 0; i < btns.length; i++) btns[i].disabled = true;
+
+      fetch(API + '/v1/billing/checkouts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ wallet: wallet, amount_usd_micros: amountMicros })
+      })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+          if (data.checkout_url) {
+            window.location.href = data.checkout_url;
+          } else {
+            alert(data.error || 'Failed to create checkout session');
+            for (var i = 0; i < btns.length; i++) btns[i].disabled = false;
+          }
+        })
+        .catch(function() {
+          alert('Failed to create checkout session');
+          for (var i = 0; i < btns.length; i++) btns[i].disabled = false;
+        });
+    }
+
+    function pollForCredit() {
+      pollCount = 0;
+      pollTimer = setInterval(function() {
+        pollCount++;
+        if (pollCount > 20) { // Stop after ~40s
+          clearInterval(pollTimer);
+          return;
+        }
+        fetch(API + '/v1/billing/accounts/' + wallet)
+          .then(function(r) { return r.json(); })
+          .then(function(data) {
+            var micros = data.available_usd_micros || 0;
+            if (micros > 0) {
+              clearInterval(pollTimer);
+              var dollars = (micros / 1000000).toFixed(2);
+              document.getElementById('balance-display').textContent = '$' + dollars;
+              document.getElementById('balance-micros').textContent = micros.toLocaleString() + ' micro-USD';
+              document.getElementById('success-text').textContent = 'Your allowance has been credited. Balance: $' + dollars;
+              loadLedger();
+            }
+          })
+          .catch(function() {});
+      }, 2000);
+    }
+
+    function escapeHtml(s) {
+      var d = document.createElement('div');
+      d.textContent = s;
+      return d.innerHTML;
+    }
+
+    function formatBytes(bytes) {
+      if (bytes === 0) return '0 B';
+      var units = ['B', 'KB', 'MB', 'GB'];
+      var i = Math.floor(Math.log(bytes) / Math.log(1024));
+      return (bytes / Math.pow(1024, i)).toFixed(1) + ' ' + units[i];
+    }
+  </script>
+</body>
+</html>

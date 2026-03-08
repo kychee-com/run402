@@ -11,7 +11,6 @@ import type { TierName } from "@run402/shared";
 import { deployBundle, validateBundle, BundleError } from "../services/bundle.js";
 import { notifyNewProject } from "../services/telegram.js";
 import { extractWalletFromPaymentHeader } from "../utils/wallet.js";
-import { getWalletSubscription } from "../services/stripe-subscriptions.js";
 import { asyncHandler, HttpError } from "../utils/async-handler.js";
 
 const router = Router();
@@ -40,7 +39,7 @@ router.get("/v1/deploy", (_req: Request, res: Response) => {
 
 // POST /v1/deploy/:tier — bundle deploy (x402-gated per tier)
 router.post("/v1/deploy/:tier", asyncHandler(async (req: Request, res: Response) => {
-  let tier = req.params["tier"] as TierName;
+  const tier = req.params["tier"] as TierName;
   if (!TIERS[tier]) {
     throw new HttpError(400, `Unknown tier: ${tier}. Valid tiers: ${Object.keys(TIERS).join(", ")}`);
   }
@@ -62,15 +61,6 @@ router.post("/v1/deploy/:tier", asyncHandler(async (req: Request, res: Response)
   const txHash = res.getHeader("x-402-transaction") as string | undefined;
   const paymentHeader = req.headers["x-402-payment"] as string | undefined;
   const walletAddress = paymentHeader ? extractWalletFromPaymentHeader(paymentHeader) : undefined;
-
-  // For subscribed wallets: use subscription tier
-  if (walletAddress) {
-    const sub = await getWalletSubscription(walletAddress);
-    if (sub?.status === "active") {
-      tier = sub.tier;
-      bundleReq.tier = tier;
-    }
-  }
 
   const apiBase = `${req.protocol}://${req.get("host")}`;
 

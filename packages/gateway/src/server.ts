@@ -36,7 +36,8 @@ import storageRoutes from "./routes/storage.js";
 import faucetRoutes from "./routes/faucet.js";
 import deploymentRoutes from "./routes/deployments.js";
 import messageRoutes from "./routes/message.js";
-import stripeRoutes from "./routes/stripe.js";
+import billingRoutes from "./routes/billing.js";
+import billingStripeRoutes from "./routes/billing-stripe.js";
 import subdomainRoutes from "./routes/subdomains.js";
 import functionsRoutes from "./routes/functions.js";
 import generateImageRoutes from "./routes/generate-image.js";
@@ -134,9 +135,17 @@ app.use((req: Request, res: Response, next: NextFunction) => {
   next();
 });
 
+// --- Stripe webhook raw body (must be before JSON parser) ---
+app.post("/v1/webhooks/stripe", express.raw({ type: "application/json" }));
+
 // --- Body parsing ---
 // Parse JSON for most routes, raw for storage uploads, text for SQL migrations
 app.use((req: Request, res: Response, next: NextFunction) => {
+  if (req.path === "/v1/webhooks/stripe") {
+    // Already parsed as raw above
+    next();
+    return;
+  }
   if (req.path.startsWith("/storage/")) {
     express.raw({ type: "*/*", limit: "10mb" })(req, res, next);
   } else if (req.path.endsWith("/sql")) {
@@ -263,6 +272,8 @@ app.get("/v1/ping", (_req: Request, res: Response) => {
 });
 
 // --- Routes ---
+app.use(billingRoutes);
+app.use(billingStripeRoutes);
 app.use(projectRoutes);
 app.use(authRoutes);
 app.use(adminRoutes);
@@ -271,7 +282,6 @@ app.use(storageRoutes);
 app.use(faucetRoutes);
 app.use(deploymentRoutes);
 app.use(messageRoutes);
-app.use(stripeRoutes);
 app.use(subdomainRoutes);
 app.use(functionsRoutes);
 app.use(generateImageRoutes);
@@ -538,16 +548,118 @@ async function applyMigrations() {
   await pool.query(`ALTER TABLE internal.projects ADD COLUMN IF NOT EXISTS pinned BOOLEAN NOT NULL DEFAULT false`);
 
   // v1.4: function source storage (for publish/fork)
-  await pool.query(`ALTER TABLE internal.functions ADD COLUMN IF NOT EXISTS source TEXT`);
+  // Guard: table created by initFunctionsTable(), may not exist on fresh DB
+  const fnExists = await pool.query(`SELECT 1 FROM information_schema.tables WHERE table_schema = 'internal' AND table_name = 'functions'`);
+  if (fnExists.rows.length > 0) {
+    await pool.query(`ALTER TABLE internal.functions ADD COLUMN IF NOT EXISTS source TEXT`);
+  }
 
   // v1.5: deployment ref_count (for publish pinning)
-  await pool.query(`ALTER TABLE internal.deployments ADD COLUMN IF NOT EXISTS ref_count INTEGER NOT NULL DEFAULT 0`);
+  // Guard: table created by initDeploymentsTable(), may not exist on fresh DB
+  const deplExists = await pool.query(`SELECT 1 FROM information_schema.tables WHERE table_schema = 'internal' AND table_name = 'deployments'`);
+  if (deplExists.rows.length > 0) {
+    await pool.query(`ALTER TABLE internal.deployments ADD COLUMN IF NOT EXISTS ref_count INTEGER NOT NULL DEFAULT 0`);
+  }
 
   // v1.6: fork provenance
   await pool.query(`ALTER TABLE internal.projects ADD COLUMN IF NOT EXISTS source_version_id TEXT`);
 
   // v1.7: app version tags
-  await pool.query(`ALTER TABLE internal.app_versions ADD COLUMN IF NOT EXISTS tags TEXT[] DEFAULT '{}'`);
+  // Guard: table created by initAppVersionsTables(), may not exist on fresh DB
+  const avExists = await pool.query(`SELECT 1 FROM information_schema.tables WHERE table_schema = 'internal' AND table_name = 'app_versions'`);
+  if (avExists.rows.length > 0) {
+    await pool.query(`ALTER TABLE internal.app_versions ADD COLUMN IF NOT EXISTS tags TEXT[] DEFAULT '{}'`);
+  }
+
+  // v1.8: billing/allowance tables
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS internal.billing_accounts (
+      id UUID PRIMARY KEY,
+      status TEXT NOT NULL DEFAULT 'active',
+      currency TEXT NOT NULL DEFAULT 'USD',
+      available_usd_micros BIGINT NOT NULL DEFAULT 0,
+      held_usd_micros BIGINT NOT NULL DEFAULT 0,
+      funding_policy TEXT NOT NULL DEFAULT 'allowance_then_wallet',
+      low_balance_threshold_usd_micros BIGINT NOT NULL DEFAULT 1000000,
+      primary_contact_email TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS internal.billing_account_wallets (
+      wallet_address TEXT PRIMARY KEY,
+      billing_account_id UUID NOT NULL REFERENCES internal.billing_accounts(id),
+      status TEXT NOT NULL DEFAULT 'active',
+      role TEXT NOT NULL DEFAULT 'owner',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_baw_account ON internal.billing_account_wallets(billing_account_id)`);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS internal.allowance_ledger (
+      id UUID PRIMARY KEY,
+      billing_account_id UUID NOT NULL REFERENCES internal.billing_accounts(id),
+      direction TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      amount_usd_micros BIGINT NOT NULL,
+      balance_after_available BIGINT NOT NULL,
+      balance_after_held BIGINT NOT NULL,
+      reference_type TEXT,
+      reference_id TEXT,
+      idempotency_key TEXT UNIQUE,
+      metadata JSONB,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_ledger_account_time ON internal.allowance_ledger(billing_account_id, created_at DESC)`);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS internal.billing_topups (
+      id UUID PRIMARY KEY,
+      billing_account_id UUID NOT NULL REFERENCES internal.billing_accounts(id),
+      wallet_address TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'initiated',
+      funded_usd_micros BIGINT NOT NULL,
+      charged_usd_cents INTEGER NOT NULL,
+      stripe_checkout_session_id TEXT UNIQUE,
+      stripe_payment_intent_id TEXT UNIQUE,
+      payer_email TEXT,
+      terms_version TEXT,
+      livemode BOOLEAN NOT NULL DEFAULT false,
+      metadata JSONB,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      paid_at TIMESTAMPTZ,
+      credited_at TIMESTAMPTZ
+    )
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS internal.charge_authorizations (
+      id UUID PRIMARY KEY,
+      wallet_address TEXT NOT NULL,
+      billing_account_id UUID NOT NULL REFERENCES internal.billing_accounts(id),
+      rail TEXT NOT NULL,
+      sku TEXT NOT NULL,
+      amount_usd_micros BIGINT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'captured',
+      idempotency_key TEXT UNIQUE,
+      payment_header_hash TEXT,
+      metadata JSONB,
+      expires_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      captured_at TIMESTAMPTZ
+    )
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS internal.stripe_webhook_events (
+      stripe_event_id TEXT PRIMARY KEY,
+      type TEXT NOT NULL,
+      livemode BOOLEAN NOT NULL DEFAULT false,
+      payload JSONB NOT NULL,
+      received_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      processed_at TIMESTAMPTZ,
+      processing_error TEXT
+    )
+  `);
 }
 
 async function start() {

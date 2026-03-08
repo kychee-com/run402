@@ -1,0 +1,488 @@
+/**
+ * Core billing service — the only module that touches billing tables.
+ * All balance mutations use SELECT ... FOR UPDATE + single transaction.
+ * Currency: integer micro-USD (bigint in Postgres, number in JS).
+ */
+
+import { pool } from "../db/pool.js";
+import { randomUUID } from "node:crypto";
+
+export interface BillingAccount {
+  id: string;
+  status: string;
+  currency: string;
+  available_usd_micros: number;
+  held_usd_micros: number;
+  funding_policy: string;
+  low_balance_threshold_usd_micros: number;
+  primary_contact_email: string | null;
+  created_at: Date;
+  updated_at: Date;
+}
+
+export interface LedgerEntry {
+  id: string;
+  billing_account_id: string;
+  direction: string;
+  kind: string;
+  amount_usd_micros: number;
+  balance_after_available: number;
+  balance_after_held: number;
+  reference_type: string | null;
+  reference_id: string | null;
+  idempotency_key: string | null;
+  metadata: Record<string, unknown> | null;
+  created_at: Date;
+}
+
+export interface ChargeAuthorization {
+  id: string;
+  wallet_address: string;
+  billing_account_id: string;
+  rail: string;
+  sku: string;
+  amount_usd_micros: number;
+  status: string;
+  idempotency_key: string | null;
+  payment_header_hash: string | null;
+  metadata: Record<string, unknown> | null;
+  expires_at: Date | null;
+  created_at: Date;
+  captured_at: Date | null;
+}
+
+/**
+ * Get or create a billing account for a wallet address.
+ * Atomic upsert: inserts billing_accounts + billing_account_wallets.
+ */
+export async function getOrCreateBillingAccount(wallet: string): Promise<BillingAccount> {
+  const normalized = wallet.toLowerCase();
+
+  // Check if wallet already linked
+  const existing = await pool.query(
+    `SELECT ba.* FROM internal.billing_accounts ba
+     JOIN internal.billing_account_wallets baw ON baw.billing_account_id = ba.id
+     WHERE baw.wallet_address = $1`,
+    [normalized],
+  );
+
+  if (existing.rows.length > 0) {
+    return rowToAccount(existing.rows[0]);
+  }
+
+  // Create new account + wallet link in a transaction
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    // Double-check inside transaction
+    const recheck = await client.query(
+      `SELECT ba.* FROM internal.billing_accounts ba
+       JOIN internal.billing_account_wallets baw ON baw.billing_account_id = ba.id
+       WHERE baw.wallet_address = $1`,
+      [normalized],
+    );
+    if (recheck.rows.length > 0) {
+      await client.query("COMMIT");
+      return rowToAccount(recheck.rows[0]);
+    }
+
+    const accountId = randomUUID();
+    await client.query(
+      `INSERT INTO internal.billing_accounts (id, status, currency, available_usd_micros, held_usd_micros, funding_policy, low_balance_threshold_usd_micros)
+       VALUES ($1, 'active', 'USD', 0, 0, 'allowance_then_wallet', 1000000)`,
+      [accountId],
+    );
+
+    await client.query(
+      `INSERT INTO internal.billing_account_wallets (wallet_address, billing_account_id, status, role)
+       VALUES ($1, $2, 'active', 'owner')`,
+      [normalized, accountId],
+    );
+
+    await client.query("COMMIT");
+
+    const result = await pool.query(
+      `SELECT * FROM internal.billing_accounts WHERE id = $1`,
+      [accountId],
+    );
+    return rowToAccount(result.rows[0]);
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+/**
+ * Lookup billing account by wallet address. Returns null if not found.
+ */
+export async function getBillingAccount(wallet: string): Promise<BillingAccount | null> {
+  const normalized = wallet.toLowerCase();
+  const result = await pool.query(
+    `SELECT ba.* FROM internal.billing_accounts ba
+     JOIN internal.billing_account_wallets baw ON baw.billing_account_id = ba.id
+     WHERE baw.wallet_address = $1`,
+    [normalized],
+  );
+  return result.rows.length > 0 ? rowToAccount(result.rows[0]) : null;
+}
+
+/**
+ * Admin credit — append ledger credit, increment available balance.
+ */
+export async function adminCredit(
+  wallet: string,
+  amountUsdMicros: number,
+  reason: string,
+  idempotencyKey?: string,
+): Promise<{ account: BillingAccount; ledger_entry: LedgerEntry }> {
+  const account = await getOrCreateBillingAccount(wallet);
+  const key = idempotencyKey || randomUUID();
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    // Idempotency check
+    const dup = await client.query(
+      `SELECT id FROM internal.allowance_ledger WHERE idempotency_key = $1`,
+      [key],
+    );
+    if (dup.rows.length > 0) {
+      const entry = await client.query(
+        `SELECT * FROM internal.allowance_ledger WHERE idempotency_key = $1`,
+        [key],
+      );
+      await client.query("COMMIT");
+      const updatedAccount = await getBillingAccount(wallet);
+      return { account: updatedAccount!, ledger_entry: rowToLedger(entry.rows[0]) };
+    }
+
+    // Lock account row
+    const locked = await client.query(
+      `SELECT * FROM internal.billing_accounts WHERE id = $1 FOR UPDATE`,
+      [account.id],
+    );
+    const currentAvailable = Number(locked.rows[0].available_usd_micros);
+    const currentHeld = Number(locked.rows[0].held_usd_micros);
+    const newAvailable = currentAvailable + amountUsdMicros;
+
+    // Update balance
+    await client.query(
+      `UPDATE internal.billing_accounts SET available_usd_micros = $1, updated_at = NOW() WHERE id = $2`,
+      [newAvailable, account.id],
+    );
+
+    // Append ledger
+    const ledgerId = randomUUID();
+    await client.query(
+      `INSERT INTO internal.allowance_ledger (id, billing_account_id, direction, kind, amount_usd_micros, balance_after_available, balance_after_held, reference_type, reference_id, idempotency_key, metadata)
+       VALUES ($1, $2, 'credit', 'admin_credit', $3, $4, $5, 'admin', $6, $7, $8)`,
+      [ledgerId, account.id, amountUsdMicros, newAvailable, currentHeld, reason, key, JSON.stringify({ reason })],
+    );
+
+    await client.query("COMMIT");
+
+    const updatedAccount = await getBillingAccount(wallet);
+    const ledgerEntry = await pool.query(
+      `SELECT * FROM internal.allowance_ledger WHERE id = $1`,
+      [ledgerId],
+    );
+    return { account: updatedAccount!, ledger_entry: rowToLedger(ledgerEntry.rows[0]) };
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+/**
+ * Admin debit — append ledger debit, decrement available balance.
+ */
+export async function adminDebit(
+  wallet: string,
+  amountUsdMicros: number,
+  reason: string,
+  idempotencyKey?: string,
+): Promise<{ account: BillingAccount; ledger_entry: LedgerEntry }> {
+  const account = await getOrCreateBillingAccount(wallet);
+  const key = idempotencyKey || randomUUID();
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    // Idempotency check
+    const dup = await client.query(
+      `SELECT id FROM internal.allowance_ledger WHERE idempotency_key = $1`,
+      [key],
+    );
+    if (dup.rows.length > 0) {
+      const entry = await client.query(
+        `SELECT * FROM internal.allowance_ledger WHERE idempotency_key = $1`,
+        [key],
+      );
+      await client.query("COMMIT");
+      const updatedAccount = await getBillingAccount(wallet);
+      return { account: updatedAccount!, ledger_entry: rowToLedger(entry.rows[0]) };
+    }
+
+    // Lock account row
+    const locked = await client.query(
+      `SELECT * FROM internal.billing_accounts WHERE id = $1 FOR UPDATE`,
+      [account.id],
+    );
+    const currentAvailable = Number(locked.rows[0].available_usd_micros);
+    const currentHeld = Number(locked.rows[0].held_usd_micros);
+
+    if (currentAvailable < amountUsdMicros) {
+      await client.query("ROLLBACK");
+      throw new Error(`Insufficient balance: available=${currentAvailable}, requested=${amountUsdMicros}`);
+    }
+
+    const newAvailable = currentAvailable - amountUsdMicros;
+
+    // Update balance
+    await client.query(
+      `UPDATE internal.billing_accounts SET available_usd_micros = $1, updated_at = NOW() WHERE id = $2`,
+      [newAvailable, account.id],
+    );
+
+    // Append ledger
+    const ledgerId = randomUUID();
+    await client.query(
+      `INSERT INTO internal.allowance_ledger (id, billing_account_id, direction, kind, amount_usd_micros, balance_after_available, balance_after_held, reference_type, reference_id, idempotency_key, metadata)
+       VALUES ($1, $2, 'debit', 'admin_debit', $3, $4, $5, 'admin', $6, $7, $8)`,
+      [ledgerId, account.id, amountUsdMicros, newAvailable, currentHeld, reason, key, JSON.stringify({ reason })],
+    );
+
+    await client.query("COMMIT");
+
+    const updatedAccount = await getBillingAccount(wallet);
+    const ledgerEntry = await pool.query(
+      `SELECT * FROM internal.allowance_ledger WHERE id = $1`,
+      [ledgerId],
+    );
+    return { account: updatedAccount!, ledger_entry: rowToLedger(ledgerEntry.rows[0]) };
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+/**
+ * Debit allowance for a purchase (used by x402 middleware).
+ * Returns the remaining balance, or null if insufficient funds.
+ */
+export async function debitAllowance(
+  wallet: string,
+  amountUsdMicros: number,
+  sku: string,
+  paymentHeaderHash: string | null,
+): Promise<{ remaining: number; chargeId: string } | null> {
+  const normalized = wallet.toLowerCase();
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    // Find account via wallet
+    const accountResult = await client.query(
+      `SELECT ba.* FROM internal.billing_accounts ba
+       JOIN internal.billing_account_wallets baw ON baw.billing_account_id = ba.id
+       WHERE baw.wallet_address = $1
+       FOR UPDATE OF ba`,
+      [normalized],
+    );
+
+    if (accountResult.rows.length === 0) {
+      await client.query("ROLLBACK");
+      return null;
+    }
+
+    const row = accountResult.rows[0];
+    const currentAvailable = Number(row.available_usd_micros);
+    const currentHeld = Number(row.held_usd_micros);
+
+    if (currentAvailable < amountUsdMicros) {
+      await client.query("ROLLBACK");
+      return null;
+    }
+
+    const newAvailable = currentAvailable - amountUsdMicros;
+
+    // Update balance
+    await client.query(
+      `UPDATE internal.billing_accounts SET available_usd_micros = $1, updated_at = NOW() WHERE id = $2`,
+      [newAvailable, row.id],
+    );
+
+    // Append ledger
+    const ledgerId = randomUUID();
+    const idempotencyKey = paymentHeaderHash || randomUUID();
+    await client.query(
+      `INSERT INTO internal.allowance_ledger (id, billing_account_id, direction, kind, amount_usd_micros, balance_after_available, balance_after_held, reference_type, reference_id, idempotency_key, metadata)
+       VALUES ($1, $2, 'debit', 'purchase_debit', $3, $4, $5, 'charge', $6, $7, $8)`,
+      [ledgerId, row.id, amountUsdMicros, newAvailable, currentHeld, sku, idempotencyKey, JSON.stringify({ sku })],
+    );
+
+    // Insert charge authorization
+    const chargeId = randomUUID();
+    await client.query(
+      `INSERT INTO internal.charge_authorizations (id, wallet_address, billing_account_id, rail, sku, amount_usd_micros, status, idempotency_key, payment_header_hash, created_at, captured_at)
+       VALUES ($1, $2, $3, 'allowance', $4, $5, 'captured', $6, $7, NOW(), NOW())`,
+      [chargeId, normalized, row.id, sku, amountUsdMicros, idempotencyKey, paymentHeaderHash],
+    );
+
+    await client.query("COMMIT");
+
+    return { remaining: newAvailable, chargeId };
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+/**
+ * Credit from a Stripe top-up (used by webhook handler).
+ */
+export async function creditFromTopup(
+  topupId: string,
+  stripeEventId: string,
+): Promise<BillingAccount> {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    // Idempotency: check if already processed
+    const dup = await client.query(
+      `SELECT id FROM internal.allowance_ledger WHERE idempotency_key = $1`,
+      [stripeEventId],
+    );
+    if (dup.rows.length > 0) {
+      // Already processed — return current state
+      const topup = await client.query(
+        `SELECT billing_account_id FROM internal.billing_topups WHERE id = $1`,
+        [topupId],
+      );
+      await client.query("COMMIT");
+      const account = await pool.query(
+        `SELECT * FROM internal.billing_accounts WHERE id = $1`,
+        [topup.rows[0].billing_account_id],
+      );
+      return rowToAccount(account.rows[0]);
+    }
+
+    // Load topup
+    const topup = await client.query(
+      `SELECT * FROM internal.billing_topups WHERE id = $1`,
+      [topupId],
+    );
+    if (topup.rows.length === 0) {
+      await client.query("ROLLBACK");
+      throw new Error(`Topup not found: ${topupId}`);
+    }
+
+    const topupRow = topup.rows[0];
+    const amountUsdMicros = Number(topupRow.funded_usd_micros);
+
+    // Lock account
+    const locked = await client.query(
+      `SELECT * FROM internal.billing_accounts WHERE id = $1 FOR UPDATE`,
+      [topupRow.billing_account_id],
+    );
+    const currentAvailable = Number(locked.rows[0].available_usd_micros);
+    const currentHeld = Number(locked.rows[0].held_usd_micros);
+    const newAvailable = currentAvailable + amountUsdMicros;
+
+    // Update balance
+    await client.query(
+      `UPDATE internal.billing_accounts SET available_usd_micros = $1, updated_at = NOW() WHERE id = $2`,
+      [newAvailable, topupRow.billing_account_id],
+    );
+
+    // Append ledger
+    const ledgerId = randomUUID();
+    await client.query(
+      `INSERT INTO internal.allowance_ledger (id, billing_account_id, direction, kind, amount_usd_micros, balance_after_available, balance_after_held, reference_type, reference_id, idempotency_key, metadata)
+       VALUES ($1, $2, 'credit', 'stripe_topup', $3, $4, $5, 'topup', $6, $7, $8)`,
+      [ledgerId, topupRow.billing_account_id, amountUsdMicros, newAvailable, currentHeld, topupId, stripeEventId, JSON.stringify({ topup_id: topupId })],
+    );
+
+    // Mark topup as credited
+    await client.query(
+      `UPDATE internal.billing_topups SET status = 'credited', credited_at = NOW() WHERE id = $1`,
+      [topupId],
+    );
+
+    await client.query("COMMIT");
+
+    const account = await pool.query(
+      `SELECT * FROM internal.billing_accounts WHERE id = $1`,
+      [topupRow.billing_account_id],
+    );
+    return rowToAccount(account.rows[0]);
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+/**
+ * Get ledger history for a wallet.
+ */
+export async function getLedgerHistory(wallet: string, limit = 50): Promise<LedgerEntry[]> {
+  const normalized = wallet.toLowerCase();
+  const result = await pool.query(
+    `SELECT al.* FROM internal.allowance_ledger al
+     JOIN internal.billing_account_wallets baw ON baw.billing_account_id = al.billing_account_id
+     WHERE baw.wallet_address = $1
+     ORDER BY al.created_at DESC
+     LIMIT $2`,
+    [normalized, limit],
+  );
+  return result.rows.map(rowToLedger);
+}
+
+// --- Row mappers ---
+
+function rowToAccount(row: Record<string, unknown>): BillingAccount {
+  return {
+    id: row.id as string,
+    status: row.status as string,
+    currency: row.currency as string,
+    available_usd_micros: Number(row.available_usd_micros),
+    held_usd_micros: Number(row.held_usd_micros),
+    funding_policy: row.funding_policy as string,
+    low_balance_threshold_usd_micros: Number(row.low_balance_threshold_usd_micros),
+    primary_contact_email: row.primary_contact_email as string | null,
+    created_at: new Date(row.created_at as string),
+    updated_at: new Date(row.updated_at as string),
+  };
+}
+
+function rowToLedger(row: Record<string, unknown>): LedgerEntry {
+  return {
+    id: row.id as string,
+    billing_account_id: row.billing_account_id as string,
+    direction: row.direction as string,
+    kind: row.kind as string,
+    amount_usd_micros: Number(row.amount_usd_micros),
+    balance_after_available: Number(row.balance_after_available),
+    balance_after_held: Number(row.balance_after_held),
+    reference_type: row.reference_type as string | null,
+    reference_id: row.reference_id as string | null,
+    idempotency_key: row.idempotency_key as string | null,
+    metadata: row.metadata as Record<string, unknown> | null,
+    created_at: new Date(row.created_at as string),
+  };
+}

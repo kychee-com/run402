@@ -116,6 +116,10 @@ export class PodStack extends cdk.Stack {
       this, "OpenRouterKey", "agentdb/openrouter-api-key",
     );
 
+    const stripeWebhookSecret = secretsmanager.Secret.fromSecretNameV2(
+      this, "StripeWebhookSecret", "agentdb/stripe-webhook-secret",
+    );
+
     // =========================================================================
     // Aurora Serverless v2 (Postgres 16)
     // =========================================================================
@@ -189,6 +193,7 @@ export class PodStack extends cdk.Stack {
     stripeSecret.grantRead(taskDef.taskRole);
     telegramSecret.grantRead(taskDef.taskRole);
     adminKeySecret.grantRead(taskDef.taskRole);
+    stripeWebhookSecret.grantRead(taskDef.taskRole);
     storageBucket.grantReadWrite(taskDef.taskRole);
 
     // =========================================================================
@@ -297,6 +302,7 @@ export class PodStack extends cdk.Stack {
         TELEGRAM_CHAT_ID: ecs.Secret.fromSecretsManager(telegramSecret, "chat_id"),
         ADMIN_KEY: ecs.Secret.fromSecretsManager(adminKeySecret),
         OPENROUTER_API_KEY: ecs.Secret.fromSecretsManager(openrouterSecret),
+        STRIPE_WEBHOOK_SECRET: ecs.Secret.fromSecretsManager(stripeWebhookSecret),
       },
       healthCheck: {
         command: ["CMD-SHELL", "wget -qO- http://localhost:4022/health || exit 1"],

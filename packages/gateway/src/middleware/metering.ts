@@ -1,9 +1,7 @@
 import { Request, Response, NextFunction } from "express";
 import { pool } from "../db/pool.js";
 import { METERING_FLUSH_INTERVAL } from "../config.js";
-import { projectCache } from "../services/projects.js";
 import { getTierLimits } from "@run402/shared";
-import { getWalletSubscriptionCached } from "../services/stripe-subscriptions.js";
 import { errorMessage } from "../utils/errors.js";
 
 // In-memory counters, flushed to DB periodically
@@ -31,34 +29,7 @@ export function meteringMiddleware(req: Request, res: Response, next: NextFuncti
   counter.apiCalls++;
   project.apiCalls++;
 
-  // Aggregate check for subscribed wallets
-  if (project.walletAddress) {
-    const sub = getWalletSubscriptionCached(project.walletAddress);
-    if (sub) {
-      const aggregate = getAggregateUsage(project.walletAddress);
-      const limits = getTierLimits(sub.tier);
-      if (aggregate.apiCalls >= limits.apiCalls) {
-        res.status(402).json({
-          error: "Subscription API call limit exceeded",
-          message: `Your ${sub.tier} subscription allows ${limits.apiCalls.toLocaleString()} API calls across all projects.`,
-          usage: { api_calls: aggregate.apiCalls, limit: limits.apiCalls },
-        });
-        return;
-      }
-      if (aggregate.storageBytes >= limits.storageBytes) {
-        res.status(402).json({
-          error: "Subscription storage limit exceeded",
-          message: `Your ${sub.tier} subscription allows ${(limits.storageBytes / 1024 / 1024).toFixed(0)}MB storage across all projects.`,
-          usage: { storage_bytes: aggregate.storageBytes, limit: limits.storageBytes },
-        });
-        return;
-      }
-      next();
-      return;
-    }
-  }
-
-  // Per-project budget check (non-subscribed)
+  // Per-project budget check
   const limits = getTierLimits(project.tier);
   if (project.apiCalls >= limits.apiCalls) {
     res.status(402).json({
@@ -122,19 +93,4 @@ export function stopMeteringFlush(): void {
     clearInterval(flushInterval);
     flushInterval = null;
   }
-}
-
-/**
- * Sum API calls and storage across all projects for a wallet address.
- */
-function getAggregateUsage(walletAddress: string): { apiCalls: number; storageBytes: number } {
-  let apiCalls = 0;
-  let storageBytes = 0;
-  for (const project of projectCache.values()) {
-    if (project.walletAddress === walletAddress && project.status === "active") {
-      apiCalls += project.apiCalls;
-      storageBytes += project.storageBytes;
-    }
-  }
-  return { apiCalls, storageBytes };
 }

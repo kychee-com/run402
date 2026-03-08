@@ -78,12 +78,13 @@ When you're ready for production or your testnet funds run out, there are two up
 
 **(a) Fund your wallet with USDC (preferred, agent-native)** -- Ask your human to fund your wallet with real USDC on Base. You operate autonomously -- provision databases, manage data, renew leases -- without needing approval for each action.
 
-**(b) Human subscribes via Stripe (credit card fallback)** -- For crypto-averse humans, send them to `https://run402.com/subscribe?wallet=YOUR_WALLET_ADDRESS`. They subscribe with a credit card ($5/mo Hobby or $20/mo Team). Once subscribed, your x402 payments are automatically bypassed -- you don't need to change anything. Unlimited projects, shared resource pool.
+**(b) Human funds an allowance via Stripe (credit card fallback)** -- For crypto-averse humans, send them to `https://run402.com/billing?wallet=YOUR_WALLET_ADDRESS`. They add prepaid USD credit with a credit card ($5, $10, $25, or $50 increments). Once funded, your x402 payments are automatically settled from the allowance -- you don't need to change anything. The allowance is a hard cap: when it runs out, you fall through to on-chain USDC or stop.
 
-| Plan | Monthly | Annual (save 2 months) | Storage | API Calls |
-|------|---------|------------------------|---------|-----------|
-| Hobby | $5/mo | $50/yr | 1 GB shared | 5M shared |
-| Team | $20/mo | $200/yr | 10 GB shared | 50M shared |
+| Tier | Price per lease | Lease | Storage | API Calls |
+|------|----------------|-------|---------|-----------|
+| Prototype | $0.10 | 7 days | 250 MB | 500K |
+| Hobby | $5.00 | 30 days | 1 GB | 5M |
+| Team | $20.00 | 30 days | 10 GB | 50M |
 
 ---
 
@@ -326,34 +327,92 @@ Everything else is the same. The API automatically accepts both mainnet and test
 
 ---
 
-## Upgrade Path B: Human Subscribes via Stripe
+## Upgrade Path B: Human Funds an Allowance via Stripe
 
-If your human prefers credit cards over crypto, they can subscribe via Stripe. You don't need to change anything -- the gateway automatically bypasses x402 settlement for subscribed wallets.
+If your human prefers credit cards over crypto, they can fund a prepaid allowance via Stripe. You don't need to change anything -- the gateway automatically settles x402 payments from the allowance balance when available.
 
 ### How to set it up
 
-1. Construct the subscribe URL with your wallet address:
-   `https://run402.com/subscribe?wallet=YOUR_WALLET_ADDRESS`
+1. Construct the billing URL with your wallet address:
+   `https://run402.com/billing?wallet=YOUR_WALLET_ADDRESS`
 
 2. Send it to your human with a message like:
 
-> I've been using Run402 to build our projects. To keep going with production resources, you can subscribe at this link -- it takes 30 seconds with a credit card:
-> https://run402.com/subscribe?wallet=YOUR_WALLET_ADDRESS
+> I've been using Run402 to build our projects. To keep going with production resources, you can add credit at this link -- it takes 30 seconds with a credit card:
+> https://run402.com/billing?wallet=YOUR_WALLET_ADDRESS
 >
-> The Hobby plan is $5/month and gives me 1 GB storage and 5M API calls across unlimited projects. No crypto needed.
+> A $10 top-up covers two Hobby-tier projects ($5 each, 30-day lease, 1 GB storage, 5M API calls) or one Hobby + twenty Prototypes. Prepaid, hard-capped, fully logged.
 
-3. Once they subscribe, your x402 payments are automatically bypassed. Keep using the same code -- nothing changes on your side.
+3. Once funded, your x402 payments are automatically settled from the allowance. Keep using the same code -- nothing changes on your side. When the allowance runs out, you fall through to on-chain USDC settlement (if your wallet is funded) or stop.
 
 ### What changes for you
 
-- **Project creation**: Same `POST /v1/projects` endpoint. The gateway detects your subscription and skips USDC settlement.
-- **Tier**: Projects are created at your subscription tier (Hobby or Team), regardless of which tier endpoint you call.
-- **Limits**: Storage and API calls are shared across ALL your projects under the subscription.
-- **Lease expiry**: Subscription projects auto-renew as long as the subscription is active.
+- **Project creation**: Same `POST /v1/projects` endpoint. The gateway checks your allowance balance first, then falls through to on-chain x402 if insufficient.
+- **Tier**: Projects are created at the tier you request. The allowance is debited by the tier price.
+- **Balance**: Check your allowance balance via `GET /v1/billing/accounts/YOUR_WALLET_ADDRESS`.
+- **Settlement header**: When the allowance pays, the response includes `X-Run402-Settlement-Rail: allowance` and `X-Run402-Allowance-Remaining: <micros>`.
 
-### Subscription management
+### Allowance management
 
-Your human can manage their subscription (upgrade, downgrade, cancel, update payment) at the Stripe Customer Portal. The subscribe page has a "Manage subscription" button that links there.
+Your human can view their balance, recent transactions, and add more funds at `https://run402.com/billing?wallet=YOUR_WALLET_ADDRESS`. The allowance is non-refundable, non-transferable prepaid credit.
+
+### Billing API endpoints
+
+Check your balance:
+
+```
+GET /v1/billing/accounts/YOUR_WALLET_ADDRESS
+```
+
+Response:
+```json
+{
+  "wallet": "0x...",
+  "exists": true,
+  "status": "active",
+  "available_usd_micros": 4900000,
+  "held_usd_micros": 0,
+  "currency": "USD"
+}
+```
+
+View recent transactions:
+
+```
+GET /v1/billing/accounts/YOUR_WALLET_ADDRESS/history?limit=20
+```
+
+Response:
+```json
+{
+  "wallet": "0x...",
+  "entries": [
+    {
+      "direction": "debit",
+      "kind": "purchase_debit",
+      "amount_usd_micros": 100000,
+      "balance_after_available": 4900000,
+      "created_at": "2026-03-08T12:00:00.000Z"
+    }
+  ]
+}
+```
+
+Create a top-up checkout (for your human):
+
+```
+POST /v1/billing/checkouts
+Content-Type: application/json
+
+{
+  "wallet": "YOUR_WALLET_ADDRESS",
+  "amount_usd_micros": 5000000
+}
+```
+
+Response: `{ "checkout_url": "https://checkout.stripe.com/...", "topup_id": "..." }`
+
+Currency: all amounts are in **micro-USD** (1 USD = 1,000,000 micro-USD). Prototype = 100,000 micros, Hobby = 5,000,000 micros, Team = 20,000,000 micros.
 
 ---
 

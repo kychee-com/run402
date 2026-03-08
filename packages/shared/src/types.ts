@@ -23,6 +23,7 @@ export type TierName = "prototype" | "hobby" | "team";
 
 export interface TierConfig {
   price: string;
+  priceUsdMicros: number;
   leaseDays: number;
   storageMb: number;
   apiCalls: number;

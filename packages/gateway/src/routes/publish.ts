@@ -23,7 +23,6 @@ import { forkApp, validateForkRequest, ForkError } from "../services/fork.js";
 import { deleteAppVersion } from "../services/publish.js";
 import { ADMIN_KEY } from "../config.js";
 import { extractWalletFromPaymentHeader } from "../utils/wallet.js";
-import { getWalletSubscription } from "../services/stripe-subscriptions.js";
 import { notifyNewProject } from "../services/telegram.js";
 
 const router = Router();
@@ -248,7 +247,7 @@ router.get("/v1/fork", (_req: Request, res: Response) => {
 router.post(
   "/v1/fork/:tier",
   asyncHandler(async (req: Request, res: Response) => {
-    let tier = req.params.tier as TierName;
+    const tier = req.params.tier as TierName;
     if (!TIERS[tier]) {
       throw new HttpError(400, `Unknown tier: ${tier}`);
     }
@@ -267,13 +266,6 @@ router.post(
     const txHash = res.getHeader("x-402-transaction") as string | undefined;
     const paymentHeader = req.headers["x-402-payment"] as string | undefined;
     const walletAddress = paymentHeader ? extractWalletFromPaymentHeader(paymentHeader) : undefined;
-
-    if (walletAddress) {
-      const sub = await getWalletSubscription(walletAddress);
-      if (sub?.status === "active") {
-        tier = sub.tier;
-      }
-    }
 
     const apiBase = `${req.protocol}://${req.get("host")}`;
 

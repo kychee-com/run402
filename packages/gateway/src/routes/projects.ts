@@ -5,7 +5,6 @@ import { createProject, archiveProject, renewLease } from "../services/projects.
 import { notifyNewProject } from "../services/telegram.js";
 import { serviceKeyAuth } from "../middleware/apikey.js";
 import { extractWalletFromPaymentHeader } from "../utils/wallet.js";
-import { getWalletSubscription } from "../services/stripe-subscriptions.js";
 import { asyncHandler, HttpError } from "../utils/async-handler.js";
 
 const router = Router();
@@ -30,7 +29,7 @@ router.post("/v1/projects/quote", handleQuote);
 // POST /v1/projects — create project (x402-gated)
 router.post("/v1/projects", asyncHandler(async (req: Request, res: Response) => {
   const name = req.body?.name || `project-${Date.now()}`;
-  let tier = (req.body?.tier as TierName) || "prototype";
+  const tier = (req.body?.tier as TierName) || "prototype";
 
   if (!TIERS[tier]) {
     throw new HttpError(400, `Unknown tier: ${tier}. Valid tiers: ${Object.keys(TIERS).join(", ")}`);
@@ -40,14 +39,6 @@ router.post("/v1/projects", asyncHandler(async (req: Request, res: Response) => 
   const txHash = res.getHeader("x-402-transaction") as string | undefined;
   const paymentHeader = req.headers["x-402-payment"] as string | undefined;
   const walletAddress = paymentHeader ? extractWalletFromPaymentHeader(paymentHeader) : undefined;
-
-  // For subscribed wallets: use subscription tier
-  if (walletAddress) {
-    const sub = await getWalletSubscription(walletAddress);
-    if (sub?.status === "active") {
-      tier = sub.tier;
-    }
-  }
 
   const project = await createProject(name, tier, txHash, walletAddress || undefined);
   if (!project) {
@@ -69,7 +60,7 @@ router.post("/v1/projects", asyncHandler(async (req: Request, res: Response) => 
 
 // POST /v1/projects/create/:tier — tier-specific creation (x402-gated per tier)
 router.post("/v1/projects/create/:tier", asyncHandler(async (req: Request, res: Response) => {
-  let tier = req.params["tier"] as TierName;
+  const tier = req.params["tier"] as TierName;
   if (!TIERS[tier]) {
     throw new HttpError(400, `Unknown tier: ${tier}`);
   }
@@ -78,14 +69,6 @@ router.post("/v1/projects/create/:tier", asyncHandler(async (req: Request, res: 
   const txHash = res.getHeader("x-402-transaction") as string | undefined;
   const paymentHeader = req.headers["x-402-payment"] as string | undefined;
   const walletAddress = paymentHeader ? extractWalletFromPaymentHeader(paymentHeader) : undefined;
-
-  // For subscribed wallets: use subscription tier
-  if (walletAddress) {
-    const sub = await getWalletSubscription(walletAddress);
-    if (sub?.status === "active") {
-      tier = sub.tier;
-    }
-  }
 
   const project = await createProject(name, tier, txHash, walletAddress || undefined);
   if (!project) {
