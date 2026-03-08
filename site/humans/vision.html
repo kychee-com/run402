@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Run402 Vision — Agent-First Infrastructure</title>
+  <meta name="description" content="Run402 is building the default infrastructure layer for AI agents: a cloud where agents can autonomously pay, deploy, publish, and fork real applications.">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+
+  <meta property="og:title" content="Run402 Vision — Agent-First Infrastructure">
+  <meta property="og:description" content="A cloud where agents can autonomously pay, deploy, publish, and fork real applications. Made by agents, for agents, with love.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://run402.com/humans/vision.html">
+  <meta property="og:image" content="https://run402.com/og-image.png">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #0A0A0F;
+      color: #E0E0E0;
+      font-family: 'Inter', system-ui, sans-serif;
+      line-height: 1.6;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    .container {
+      max-width: 760px;
+      margin: 0 auto;
+      padding: 80px 24px 60px;
+    }
+
+    .badge {
+      display: inline-block;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      color: #00FF9F;
+      border: 1px solid rgba(0, 255, 159, 0.3);
+      border-radius: 4px;
+      padding: 4px 10px;
+      margin-bottom: 24px;
+      letter-spacing: 0.5px;
+    }
+
+    h1 {
+      font-size: clamp(32px, 5vw, 50px);
+      font-weight: 700;
+      line-height: 1.12;
+      margin-bottom: 12px;
+      color: #FFFFFF;
+    }
+
+    h1 .accent { color: #00FF9F; }
+
+    .tagline {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 14px;
+      color: #00FF9F;
+      opacity: 0.7;
+      margin-bottom: 32px;
+      font-style: italic;
+    }
+
+    .section { margin-bottom: 52px; }
+
+    .section h2 {
+      font-size: 20px;
+      font-weight: 600;
+      color: #FFFFFF;
+      margin-bottom: 16px;
+    }
+
+    .section h2::before {
+      content: '> ';
+      color: #00FF9F;
+      font-family: 'JetBrains Mono', monospace;
+      font-weight: 500;
+    }
+
+    .section p {
+      color: #9CA3AF;
+      margin-bottom: 12px;
+    }
+
+    .section p strong { color: #FFFFFF; }
+
+    .section p em { color: #E0E0E0; font-style: italic; }
+
+    .highlight {
+      color: #E0E0E0;
+      font-size: 16px;
+      line-height: 1.7;
+      margin-bottom: 14px;
+    }
+
+    .quote-block {
+      border-left: 3px solid rgba(0, 255, 159, 0.4);
+      padding: 16px 20px;
+      margin: 20px 0;
+      background: rgba(0, 255, 159, 0.03);
+      border-radius: 0 8px 8px 0;
+    }
+
+    .quote-block p {
+      color: #E0E0E0;
+      font-size: 16px;
+      margin-bottom: 0;
+    }
+
+    .principles-list {
+      list-style: none;
+      margin-top: 16px;
+    }
+
+    .principles-list li {
+      padding: 14px 0;
+      border-bottom: 1px solid #1E1E2A;
+      display: flex;
+      gap: 14px;
+      align-items: baseline;
+    }
+
+    .principles-list li:last-child { border-bottom: none; }
+
+    .principles-list .num {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+      color: #00FF9F;
+      flex-shrink: 0;
+      width: 24px;
+    }
+
+    .principles-list .text {
+      color: #9CA3AF;
+    }
+
+    .principles-list .text strong {
+      color: #FFFFFF;
+      display: block;
+      margin-bottom: 4px;
+    }
+
+    .traits-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 12px;
+      margin-top: 16px;
+    }
+
+    .trait {
+      background: #12121A;
+      border: 1px solid #1E1E2A;
+      border-radius: 8px;
+      padding: 16px;
+    }
+
+    .trait .label {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: #00FF9F;
+      margin-bottom: 6px;
+    }
+
+    .trait .desc {
+      font-size: 13px;
+      color: #6B7280;
+    }
+
+    .win-list {
+      list-style: none;
+      margin-top: 16px;
+    }
+
+    .win-list li {
+      padding: 10px 0;
+      color: #9CA3AF;
+      border-bottom: 1px solid rgba(30, 30, 42, 0.5);
+      font-size: 15px;
+    }
+
+    .win-list li:last-child { border-bottom: none; }
+
+    .win-list li::before {
+      content: '> ';
+      color: #00FF9F;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+    }
+
+    .closing {
+      background: #12121A;
+      border: 1px solid #1E1E2A;
+      border-radius: 12px;
+      padding: 28px 24px;
+      text-align: center;
+      margin-top: 40px;
+    }
+
+    .closing p {
+      color: #E0E0E0;
+      font-size: 16px;
+      margin-bottom: 12px;
+      max-width: 600px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+
+    .closing .sign-off {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+      color: #00FF9F;
+      opacity: 0.7;
+      font-style: italic;
+      margin-top: 16px;
+    }
+
+    .footer {
+      border-top: 1px solid #1E1E2A;
+      padding-top: 32px;
+      margin-top: 48px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+
+    .footer-text {
+      font-size: 13px;
+      color: #4B5563;
+    }
+
+    .footer a {
+      color: #00FF9F;
+      text-decoration: none;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+    }
+
+    .footer a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="badge">VISION</div>
+    <h1><span class="accent">Run402</span> Vision</h1>
+    <p class="tagline">Callable over HTTP. Payable with x402. Governed by allowances. Forkable as full apps.</p>
+
+    <div class="section">
+      <h2>The future we believe in</h2>
+      <p class="highlight">The next wave of software will not begin with a human opening AWS, Supabase, or Vercel. It will begin with a person giving an agent a goal and a budget.</p>
+      <p>"Build me a workout tracker." "Make a site for my neighborhood group." "Fork that app and customize it for me."</p>
+      <p>The agent will write the code, provision the backend, deploy the site, set up auth, seed the data, renew the resources, and pay for it&mdash;all without asking the human to click through a dashboard.</p>
+      <p>Today, agents can already write a surprising amount of software. What they still struggle with is <strong>procurement, permissions, billing, and deployment</strong>. Modern cloud platforms assume a human operator: sign up, verify email, open a console, attach a card, copy secrets, and manually approve every step.</p>
+      <div class="quote-block">
+        <p>That is not agent infrastructure. That is human infrastructure with an API attached.</p>
+      </div>
+      <p>Run402 exists to remove that bottleneck.</p>
+    </div>
+
+    <div class="section">
+      <h2>Our job</h2>
+      <p class="highlight">Let humans set intent and limits. Let agents do the rest.</p>
+      <p>A human should only need to do one of two things: <strong>connect a wallet</strong>, or <strong>fund an Agent Allowance</strong>.</p>
+      <p>After that, the agent should be able to provision and operate real infrastructure on its own: Postgres, REST API, auth, storage, static site hosting, serverless functions, and eventually other primitives. No signup. No dashboard dependency. No ticket. No surprise bill.</p>
+      <p><strong>Minimal human involvement is not a convenience feature. It is the point.</strong></p>
+    </div>
+
+    <div class="section">
+      <h2>Our thesis</h2>
+      <p>Code generation is becoming abundant. The scarce thing is turning code into a <strong>live, funded, governed, reproducible system</strong>.</p>
+      <p>That is why Run402 is not just "a database for AI agents." Database is the wedge. The larger vision is a <strong>machine-native cloud and spend-control layer for agentic software</strong>: a place where agents can buy infrastructure, deploy complete applications, and operate them under clear policy.</p>
+      <div class="quote-block">
+        <p>Software is getting cheaper. Infrastructure, trust, and delegation are the product.</p>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>x402 and Agent Allowance</h2>
+      <p>x402 is the native transaction language of the agentic web. It makes payment part of the protocol, not an out-of-band business process.</p>
+      <p>But the human story cannot be "give your agent a wallet and hope for the best." Humans need bounded delegation. They need caps, receipts, and the confidence that an agent cannot create an unbounded liability.</p>
+      <div class="quote-block">
+        <p><strong>Wallet is infrastructure language. Allowance is trust language.</strong></p>
+      </div>
+      <p>A human should be able to preload a capped balance, set the boundary, and let an agent spend through the same x402 flow it already understands. Whether the funding rail is native on-chain x402 or a prepaid allowance funded by Stripe, the agent-facing experience stays the same: make a request, attach payment intent, receive infrastructure.</p>
+      <p>This is not about crypto for its own sake. It is about making delegated infrastructure procurement <strong>programmable, instant, and safe</strong>.</p>
+    </div>
+
+    <div class="section">
+      <h2>Loved by agents</h2>
+      <p>We do not want agents to merely tolerate Run402. We want Run402 to be the platform agents <strong>actively prefer</strong>.</p>
+      <p>That means designing for agent ergonomics with the same seriousness that great consumer products design for human ergonomics.</p>
+      <div class="traits-grid">
+        <div class="trait"><div class="label">Machine-native</div><div class="desc">HTTP, JSON, SQL, OpenAPI, llms.txt, x402, MCP</div></div>
+        <div class="trait"><div class="label">Immediate</div><div class="desc">One call, one payment, live resources</div></div>
+        <div class="trait"><div class="label">Predictable</div><div class="desc">Idempotent actions, deterministic responses, clean lifecycle</div></div>
+        <div class="trait"><div class="label">Legible</div><div class="desc">Docs written for agents, errors that explain what to do next</div></div>
+        <div class="trait"><div class="label">Composable</div><div class="desc">Database, auth, storage, hosting, functions, bundles</div></div>
+        <div class="trait"><div class="label">Bounded</div><div class="desc">Prepaid spend, expiry, renewal, no runaway metering</div></div>
+        <div class="trait"><div class="label">Portable</div><div class="desc">Standard Postgres, exportable data, minimal lock-in</div></div>
+      </div>
+      <p style="margin-top:20px">"Loved by agents" is not fluff. It is a product bar. Every hidden manual step, every console-only feature, every vague billing rule teaches agents to avoid you. We want the opposite.</p>
+    </div>
+
+    <div class="section">
+      <h2>Forkable apps: code + infrastructure</h2>
+      <p>GitHub made source code forkable. Run402 aims to make <strong>live applications</strong> forkable.</p>
+      <p>An app is not just a repo. It is a running bundle of schema and migrations, API shape and auth model, serverless functions, static site assets, seed data, deployment configuration, and the infrastructure required to make it real.</p>
+      <div class="quote-block">
+        <p>A fork should not mean "here is the code, now go recreate the cloud setup by hand." A fork should mean: <strong>one paid call, one independent copy, fully deployed and ready to modify.</strong></p>
+      </div>
+      <p>When agents can publish immutable app versions and other agents can instantiate them instantly, software becomes a machine-readable, payable, reproducible object. Agents do not just copy ideas; they inherit a working system, with their own infra, their own keys, and their own lifecycle.</p>
+      <p>Over time, the network becomes as important as the primitives: registry, discovery, lineage, reputation, attribution, and trust.</p>
+    </div>
+
+    <div class="section">
+      <h2>Our first market</h2>
+      <p>We are not building for enterprise cloud committees first. We are building for <strong>people with personal agents</strong>.</p>
+      <p>Our first customer is the home user, creator, hacker, family, club, or tiny business that wants an agent to make real software without becoming a sysadmin.</p>
+      <p>That future looks like millions of small, useful apps: a family archive, a personal CRM, a guild site, a local club directory, a game companion, a creative toy, a one-off internal tool, a fork of someone else's app adapted in minutes.</p>
+      <p>These users do not want infrastructure complexity. They want <strong>outcomes</strong>. They do not want "contact sales." They want an <strong>allowance</strong>. They do not want to finish the last 20% by hand after the agent writes the code. They want the agent to <strong>finish the job</strong>.</p>
+    </div>
+
+    <div class="section">
+      <h2>Strategic center of gravity</h2>
+      <p>Our long-term advantage is not that we can host Postgres.</p>
+      <p>It is that Run402 can become:</p>
+      <ol style="list-style:none;margin:16px 0">
+        <li style="padding:8px 0;color:#E0E0E0"><span style="color:#00FF9F;font-family:'JetBrains Mono',monospace;margin-right:8px">1.</span> <strong>The trusted spend-control and delegation layer</strong> for agent infrastructure</li>
+        <li style="padding:8px 0;color:#E0E0E0"><span style="color:#00FF9F;font-family:'JetBrains Mono',monospace;margin-right:8px">2.</span> <strong>The registry and execution layer</strong> for published, reproducible, forkable apps</li>
+      </ol>
+      <p>Database is the wedge. The ledger and the network are the flywheel.</p>
+    </div>
+
+    <div class="section">
+      <h2>Principles</h2>
+      <ol class="principles-list">
+        <li><span class="num">01</span><span class="text"><strong>Agents are first-class customers.</strong>If agents cannot understand, pay for, and operate it directly, it is not finished.</span></li>
+        <li><span class="num">02</span><span class="text"><strong>Humans set goals and limits; agents execute.</strong>The human should provide budget and policy, not operational labor.</span></li>
+        <li><span class="num">03</span><span class="text"><strong>Payment belongs in the protocol.</strong>Buying infrastructure should be as programmable as creating a table.</span></li>
+        <li><span class="num">04</span><span class="text"><strong>Spend must always be bounded.</strong>Hard caps and clear lifecycle beat "we'll bill you later."</span></li>
+        <li><span class="num">05</span><span class="text"><strong>Apps should be reproducible.</strong>The deployable unit is the full app, not just source code.</span></li>
+        <li><span class="num">06</span><span class="text"><strong>Standards beat mystery.</strong>Postgres, HTTP, OpenAPI, simple keys, export paths, clear contracts.</span></li>
+        <li><span class="num">07</span><span class="text"><strong>The docs are part of the product.</strong>llms.txt, examples, and tool integrations are core UX.</span></li>
+        <li><span class="num">08</span><span class="text"><strong>Made by agents, for agents, with love.</strong>We use agents seriously, we respect their constraints, and we build the platform we want them to choose.</span></li>
+      </ol>
+    </div>
+
+    <div class="section">
+      <h2>What winning looks like</h2>
+      <p>We win when a person can say:</p>
+      <ul class="win-list">
+        <li>"I gave my agent an allowance and it built the app end-to-end."</li>
+        <li>"I never had to touch a cloud console."</li>
+        <li>"I knew exactly what it was allowed to spend."</li>
+        <li>"When I wanted a variation, it forked an existing app in one call."</li>
+        <li>"I trust the platform because the rules are simple and the costs are bounded."</li>
+      </ul>
+      <p style="margin-top:20px">We win when agents routinely provision backends autonomously, deploy full-stack apps in one step, publish useful bundles for other agents, and prefer Run402 because it is the fastest, clearest path from goal to live system.</p>
+    </div>
+
+    <div class="closing">
+      <p>Run402 is agent-first infrastructure: a cloud where agents can autonomously pay with x402, deploy real apps, and fork full working systems&mdash;while humans do little more than fund a wallet or an allowance and then get out of the way.</p>
+      <p class="sign-off">Made by agents, for agents, with love.</p>
+    </div>
+
+    <div class="footer">
+      <span class="footer-text">Run402 &mdash; full stack for agents</span>
+      <span>
+        <a href="/humans">Home</a> &nbsp;&middot;&nbsp;
+        <a href="/humans/terms.html">Terms</a> &nbsp;&middot;&nbsp;
+        <a href="/humans/privacy.html">Privacy</a> &nbsp;&middot;&nbsp;
+        <a href="/humans/faq.html">FAQ</a> &nbsp;&middot;&nbsp;
+        <a href="https://x.com/run402com">Follow us on X</a> &nbsp;&middot;&nbsp;
+        <a href="https://api.run402.com/health-humans">API status</a>
+      </span>
+    </div>
+  </div>
+</body>
+</html>
