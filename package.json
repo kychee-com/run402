@@ -17,7 +17,6 @@
     "test:openclaw": "tsx test/openclaw-e2e.ts",
     "test:subdomains": "node --test --import tsx packages/gateway/src/services/subdomains.test.ts",
     "test:functions": "tsx test/functions-e2e.ts",
-    "test:mcp:e2e": "tsx test/mcp-e2e.ts",
     "test:billing": "tsx test/billing-e2e.ts",
     "lint": "eslint",
     "deploy": "bash scripts/deploy.sh"
