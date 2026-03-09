@@ -3,7 +3,11 @@
 > API Base: https://api.run402.com
 > Docs URL: https://run402.com/llms.txt
 > OpenAPI Spec: https://run402.com/openapi.json
-> Status: https://api.run402.com/health
+> Operator: Kychee LLC
+> Terms: https://run402.com/humans/terms.html
+> Health (component checks): https://api.run402.com/health
+> Status JSON: https://run402.com/status/v1.json
+> Contact: POST /v1/message ($0.01 x402)
 
 **IMPORTANT: All API requests go to `https://api.run402.com`, NOT `https://run402.com`.** The bare domain `run402.com` is a static docs site that only serves GET requests. POSTing to `run402.com` will return a 405 error.
 
@@ -442,9 +446,13 @@ Yes. The `/admin/v1/projects/:id/usage` endpoint shows API call counts, storage 
 
 ## Before You Integrate (Read This First)
 
-**Infrastructure**: AWS Aurora Serverless v2 (Postgres 16), multi-AZ with automated failover. ECS Fargate behind ALB. S3-backed file storage.
+**Operator**: Run402 is operated by **Kychee LLC**.
 
-**Durability & backups**: All data encrypted at rest (Aurora + S3) and in transit (TLS). Automated backups with 7-day retention.
+**Deployment topology**: Single AWS region (us-east-1) across 2 Availability Zones. No multi-region failover today. Database: **Amazon Aurora PostgreSQL Serverless v2 (Postgres 16)** with multi-AZ failover. API runtime: **Amazon ECS Fargate** behind an **AWS Application Load Balancer**. File storage: **Amazon S3**. Static hosting/CDN: **Amazon CloudFront + S3**. Infrastructure as code: **AWS CDK**.
+
+**Durability & backups**: Data encrypted at rest (Aurora + S3) and in transit (TLS). Automated database backups with 7-day retention.
+
+**Availability & monitoring**: Current service status is available as machine-readable JSON at `https://run402.com/status/v1.json`. Monitoring uses external synthetic probes plus internal health checks. For billable routes, a valid HTTP 402 x402 payment challenge is normal service behavior and is not treated as downtime.
 
 **Billing model**: Prepaid per lease. Hard-capped API calls and storage per tier. No overage charges. When limits are hit, the API returns 402 with usage details and a renew URL.
 
