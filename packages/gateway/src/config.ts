@@ -50,8 +50,9 @@ export const FUNCTIONS_LOG_GROUP = process.env.FUNCTIONS_LOG_GROUP || "/agentdb/
 // OpenRouter (image generation)
 export const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || "";
 
-// Stripe webhook
+// Stripe webhook (support both test + live secrets in parallel)
 export const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET || "";
+export const STRIPE_WEBHOOK_SECRET_LIVE = process.env.STRIPE_WEBHOOK_SECRET_LIVE || "";
 
 // Bugsnag
 export const BUGSNAG_API_KEY = process.env.BUGSNAG_API_KEY || "0751ea52d07c1449d7cd2f7724de0ede";

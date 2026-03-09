@@ -3,7 +3,7 @@
  */
 
 import Stripe from "stripe";
-import { STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET } from "../config.js";
+import { STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET, STRIPE_WEBHOOK_SECRET_LIVE } from "../config.js";
 import { getOrCreateBillingAccount, creditFromTopup } from "./billing.js";
 import { pool } from "../db/pool.js";
 import { randomUUID } from "node:crypto";
@@ -83,10 +83,23 @@ export async function createAllowanceCheckout(
  */
 export async function handleStripeWebhookEvent(rawBody: Buffer, signature: string): Promise<boolean> {
   if (!stripe) throw new Error("Stripe not configured");
-  if (!STRIPE_WEBHOOK_SECRET) throw new Error("STRIPE_WEBHOOK_SECRET not configured");
 
-  // Verify signature
-  const event = stripe.webhooks.constructEvent(rawBody, signature, STRIPE_WEBHOOK_SECRET);
+  const secrets = [STRIPE_WEBHOOK_SECRET, STRIPE_WEBHOOK_SECRET_LIVE].filter(Boolean);
+  if (secrets.length === 0) throw new Error("No STRIPE_WEBHOOK_SECRET configured");
+
+  // Try each webhook secret (test + live) until one verifies
+  let event: Stripe.Event | undefined;
+  for (const secret of secrets) {
+    try {
+      event = stripe.webhooks.constructEvent(rawBody, signature, secret);
+      break;
+    } catch {
+      continue;
+    }
+  }
+  if (!event) {
+    throw new Error("Webhook signature verification failed: no matching secret");
+  }
 
   // Idempotent: check if already processed
   const existing = await pool.query(
