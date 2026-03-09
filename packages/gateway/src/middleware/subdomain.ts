@@ -13,6 +13,7 @@ import { S3_BUCKET, S3_REGION } from "../config.js";
 import { resolveSubdomain } from "../services/subdomains.js";
 import { getMimeType } from "../utils/mime.js";
 import { hasName } from "../utils/errors.js";
+import { injectForkBadge } from "../utils/fork-badge.js";
 
 const s3 = S3_BUCKET ? new S3Client({ region: S3_REGION }) : null;
 const LOCAL_STORAGE_ROOT = process.env.STORAGE_ROOT || "./storage";
@@ -92,6 +93,8 @@ async function handleSubdomainRequest(
   const relativePath = filePath.startsWith("/") ? filePath.slice(1) : filePath;
   const s3Key = `sites/${deploymentId}/${relativePath}`;
 
+  const isHtml = filePath.endsWith(".html");
+
   try {
     if (s3 && S3_BUCKET) {
       const obj = await s3.send(new GetObjectCommand({
@@ -100,9 +103,19 @@ async function handleSubdomainRequest(
       }));
       const contentType = obj.ContentType || getMimeType(filePath);
       const body = await obj.Body!.transformToByteArray();
-      res.set("Content-Type", contentType);
-      res.set("Cache-Control", "public, max-age=3600");
-      res.send(Buffer.from(body));
+
+      // Inject fork badge into HTML responses
+      if (isHtml) {
+        let html = Buffer.from(body).toString("utf-8");
+        html = await injectForkBadge(html, subdomain);
+        res.set("Content-Type", "text/html; charset=utf-8");
+        res.set("Cache-Control", "public, max-age=60");
+        res.send(html);
+      } else {
+        res.set("Content-Type", contentType);
+        res.set("Cache-Control", "public, max-age=3600");
+        res.send(Buffer.from(body));
+      }
     } else {
       // Local filesystem fallback for dev
       const localPath = join(LOCAL_STORAGE_ROOT, s3Key);
@@ -113,10 +126,20 @@ async function handleSubdomainRequest(
         );
         return;
       }
-      const fileContent = readFileSync(localPath);
-      res.set("Content-Type", getMimeType(filePath));
-      res.set("Cache-Control", "public, max-age=3600");
-      res.send(fileContent);
+      let fileContent: string | Buffer = readFileSync(localPath);
+
+      // Inject fork badge into HTML responses
+      if (isHtml) {
+        let html = fileContent.toString("utf-8");
+        html = await injectForkBadge(html, subdomain);
+        res.set("Content-Type", "text/html; charset=utf-8");
+        res.set("Cache-Control", "public, max-age=60");
+        res.send(html);
+      } else {
+        res.set("Content-Type", getMimeType(filePath));
+        res.set("Cache-Control", "public, max-age=3600");
+        res.send(fileContent);
+      }
     }
   } catch (err: unknown) {
     if (hasName(err, "NoSuchKey")) {
