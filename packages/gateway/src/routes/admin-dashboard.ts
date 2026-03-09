@@ -194,7 +194,7 @@ router.get("/admin/api/stats", asyncHandler(async (req: Request, res: Response) 
     pool.query(`SELECT COUNT(*)::int AS accounts, COALESCE(SUM(available_usd_micros),0)::bigint AS total_available FROM internal.billing_accounts`),
     pool.query(`SELECT COUNT(*)::int AS count FROM internal.subdomains`),
     pool.query(`SELECT COUNT(*)::int AS count FROM internal.functions`).catch(() => ({ rows: [{ count: 0 }] })),
-    pool.query(`SELECT COUNT(*)::int AS used FROM information_schema.schemata WHERE schema_name ~ '^p\\d{4}$'`),
+    pool.query(`SELECT COUNT(*)::int AS used FROM internal.projects WHERE schema_slot IS NOT NULL`),
   ]);
 
   const statusCounts: Record<string, number> = {};

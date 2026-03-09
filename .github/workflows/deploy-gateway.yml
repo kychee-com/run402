@@ -46,11 +46,17 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Force ECS deployment
+      - name: Force ECS deployment (latest task def revision)
         run: |
+          LATEST_TD=$(aws ecs describe-task-definition \
+            --task-definition AgentDBPod01TaskDef0304D417 \
+            --region $AWS_REGION \
+            --query 'taskDefinition.taskDefinitionArn' --output text)
+          echo "Using task definition: $LATEST_TD"
           aws ecs update-service \
             --cluster $ECS_CLUSTER \
             --service $ECS_SERVICE \
+            --task-definition "$LATEST_TD" \
             --force-new-deployment \
             --region $AWS_REGION \
             --no-cli-pager
