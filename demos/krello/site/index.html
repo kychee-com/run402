@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Krello</title>
+    <meta
+      name="description"
+      content="Krello is a beautiful Trello-style collaboration app built natively on run402."
+    />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Space+Grotesk:wght@400;500;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/styles.css" />
+    <script>
+      window.__KRELLO_CONFIG__ = {
+        apiBase: "https://api.run402.com",
+        apikey: "",
+        functionName: "krello",
+      };
+    </script>
+  </head>
+  <body>
+    <div id="app" class="shell-loading">
+      <div class="boot-card">
+        <div class="boot-mark">Krello</div>
+        <p>Preparing your boards.</p>
+      </div>
+    </div>
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>
