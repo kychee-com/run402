@@ -266,9 +266,20 @@ app.get("/health-humans", (_req: Request, res: Response) => {
   res.type("html").send(healthHumanPage());
 });
 
-// --- Status redirect → static site ---
-app.get("/status", (_req: Request, res: Response) => {
-  res.redirect(301, "https://run402.com/status/v1.json");
+// --- Status proxy (avoids CORS issues for health-humans page) ---
+let statusCache: { data: string; ts: number } | null = null;
+app.get("/status", async (_req: Request, res: Response) => {
+  try {
+    if (!statusCache || Date.now() - statusCache.ts > 30_000) {
+      const r = await fetch("https://run402.com/status/v1.json");
+      statusCache = { data: await r.text(), ts: Date.now() };
+    }
+    res.set("Content-Type", "application/json");
+    res.set("Cache-Control", "public, max-age=30");
+    res.send(statusCache.data);
+  } catch {
+    res.redirect(302, "https://run402.com/status/v1.json");
+  }
 });
 
 // --- Paid ping (x402 probe) ---
@@ -556,7 +567,7 @@ function renderCapabilities(perCap) {
 // Fetch status JSON from static site
 async function loadUptime() {
   try {
-    const r = await fetch('https://run402.com/status/v1.json');
+    const r = await fetch('/status');
     const d = await r.json();
     if (d.availability) {
       renderUptime('24h', d.availability.last_24h);
