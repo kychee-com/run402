@@ -266,6 +266,11 @@ app.get("/health-humans", (_req: Request, res: Response) => {
   res.type("html").send(healthHumanPage());
 });
 
+// --- Status redirect → static site ---
+app.get("/status", (_req: Request, res: Response) => {
+  res.redirect(301, "https://run402.com/status/v1.json");
+});
+
 // --- Paid ping (x402 probe) ---
 app.get("/v1/ping", (_req: Request, res: Response) => {
   res.json({ status: "ok", paid: true, timestamp: new Date().toISOString() });
