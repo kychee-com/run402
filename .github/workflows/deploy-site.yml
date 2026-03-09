@@ -21,7 +21,7 @@ jobs:
           aws-region: us-east-1
 
       - name: Sync to S3
-        run: aws s3 sync site/ s3://agentdb-site-sitebucket397a1860-gzodkmo2focr --delete --exclude "status/*"
+        run: aws s3 sync site/ s3://agentdb-site-sitebucket397a1860-gzodkmo2focr --delete --exclude "status/v1.json" --exclude "status/history/*"
 
       - name: Invalidate CloudFront
         run: |

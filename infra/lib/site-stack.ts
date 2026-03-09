@@ -146,7 +146,7 @@ function handler(event) {
       destinationBucket: siteBucket,
       distribution,
       distributionPaths: ["/*"],
-      exclude: ["status/*"],
+      exclude: ["status/v1.json", "status/history/*"],
     });
 
     // =========================================================================
