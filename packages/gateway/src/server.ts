@@ -325,11 +325,13 @@ function healthHumanPage(): string {
 body{background:#0A0A0F;color:#E0E0E0;font-family:'Inter',system-ui,sans-serif;min-height:100vh;overflow-x:hidden}
 .bg{position:fixed;top:0;left:0;right:0;bottom:0;z-index:0;overflow:hidden;pointer-events:none}
 .bg canvas{width:100%;height:100%}
-.wrap{position:relative;z-index:1;max-width:640px;margin:0 auto;padding:80px 24px 60px}
+.wrap{position:relative;z-index:1;max-width:720px;margin:0 auto;padding:80px 24px 60px}
 .badge{display:inline-block;font-family:'JetBrains Mono',monospace;font-size:11px;color:#00FF9F;border:1px solid rgba(0,255,159,0.3);border-radius:4px;padding:4px 10px;margin-bottom:20px;letter-spacing:.5px}
 h1{font-size:clamp(28px,5vw,42px);font-weight:700;color:#fff;margin-bottom:6px}
 h1 .g{color:#00FF9F}
 .sub{font-size:15px;color:#9CA3AF;margin-bottom:40px}
+
+/* Cards */
 .card{background:#12121A;border:1px solid #1E1E2A;border-radius:12px;padding:28px;margin-bottom:16px;transition:border-color .3s}
 .card.ok{border-color:rgba(0,255,159,0.2)}
 .card.err{border-color:rgba(255,80,80,0.3)}
@@ -339,6 +341,8 @@ h1 .g{color:#00FF9F}
 .pill.ok{background:rgba(0,255,159,0.1);color:#00FF9F;box-shadow:0 0 12px rgba(0,255,159,0.08)}
 .pill.err{background:rgba(255,80,80,0.1);color:#FF5050;box-shadow:0 0 12px rgba(255,80,80,0.08)}
 .pill.load{background:rgba(255,255,255,0.05);color:#4B5563}
+
+/* Service checks */
 .checks{display:flex;flex-direction:column;gap:10px}
 .check{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:rgba(255,255,255,0.02);border-radius:8px;border:1px solid rgba(255,255,255,0.04)}
 .check-name{font-size:13px;color:#9CA3AF;display:flex;align-items:center;gap:8px}
@@ -347,11 +351,15 @@ h1 .g{color:#00FF9F}
 .check-dot.err{background:#FF5050;box-shadow:0 0 8px rgba(255,80,80,0.5)}
 .check-dot.load{background:#4B5563}
 .check-ms{font-family:'JetBrains Mono',monospace;font-size:12px;color:#4B5563}
+
+/* Meta grid */
 .meta{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px}
 .meta-item{background:#12121A;border:1px solid #1E1E2A;border-radius:10px;padding:16px}
 .meta-label{font-size:11px;color:#4B5563;text-transform:uppercase;letter-spacing:.8px;font-family:'JetBrains Mono',monospace;margin-bottom:4px}
 .meta-value{font-size:18px;font-weight:600;color:#fff;font-family:'JetBrains Mono',monospace}
 .meta-value .g{color:#00FF9F}
+
+/* Pulse ring */
 .pulse-ring{display:inline-block;width:10px;height:10px;border-radius:50%;position:relative;vertical-align:middle;margin-right:6px}
 .pulse-ring.ok{background:#00FF9F}
 .pulse-ring.err{background:#FF5050}
@@ -359,12 +367,42 @@ h1 .g{color:#00FF9F}
 .pulse-ring.ok::after{background:#00FF9F}
 .pulse-ring.err::after{background:#FF5050}
 @keyframes pulse{0%,100%{transform:scale(1);opacity:0.4}50%{transform:scale(1.6);opacity:0}}
+
+/* Uptime section */
+.uptime-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px}
+.uptime-card{background:#12121A;border:1px solid #1E1E2A;border-radius:12px;padding:20px;text-align:center;position:relative;overflow:hidden}
+.uptime-card::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,#00FF9F,transparent);opacity:0;transition:opacity .6s}
+.uptime-card.loaded::before{opacity:1;animation:shimmer 3s ease-in-out infinite}
+@keyframes shimmer{0%{opacity:0.3;transform:translateX(-100%)}50%{opacity:1;transform:translateX(0)}100%{opacity:0.3;transform:translateX(100%)}}
+.uptime-window{font-size:11px;color:#4B5563;text-transform:uppercase;letter-spacing:.8px;font-family:'JetBrains Mono',monospace;margin-bottom:10px}
+.uptime-pct{font-size:32px;font-weight:700;font-family:'JetBrains Mono',monospace;color:#fff;line-height:1}
+.uptime-pct .g{color:#00FF9F}
+.uptime-pct .dim{color:#4B5563;font-size:20px}
+.uptime-probes{font-size:11px;color:#4B5563;font-family:'JetBrains Mono',monospace;margin-top:8px}
+.uptime-bar{height:4px;background:#1E1E2A;border-radius:2px;margin-top:12px;overflow:hidden}
+.uptime-fill{height:100%;border-radius:2px;background:#00FF9F;width:0;transition:width 1.2s cubic-bezier(0.22,1,0.36,1)}
+
+/* Capability grid */
+.cap-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.cap-item{display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:rgba(255,255,255,0.02);border-radius:6px;border:1px solid rgba(255,255,255,0.04);opacity:0;animation:fadeSlide .4s ease forwards}
+@keyframes fadeSlide{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+.cap-name{font-size:12px;color:#9CA3AF;font-family:'JetBrains Mono',monospace}
+.cap-pct{font-size:12px;font-family:'JetBrains Mono',monospace;color:#00FF9F}
+.cap-pct.warn{color:#FBBF24}
+.cap-pct.bad{color:#FF5050}
+
+/* Ticker counter animation */
+.ticker{display:inline-block}
+.ticker-digit{display:inline-block;animation:countUp .6s cubic-bezier(0.22,1,0.36,1) forwards;opacity:0;transform:translateY(10px)}
+@keyframes countUp{to{opacity:1;transform:translateY(0)}}
+
+/* Timestamp & footer */
 .ts{font-size:12px;color:#4B5563;text-align:center;margin-top:24px;font-family:'JetBrains Mono',monospace}
 .footer{border-top:1px solid #1E1E2A;padding-top:24px;margin-top:40px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px}
 .footer-text{font-size:13px;color:#4B5563}
 .footer a{color:#00FF9F;text-decoration:none;font-family:'JetBrains Mono',monospace;font-size:13px}
 .footer a:hover{text-decoration:underline}
-@media(max-width:480px){.meta{grid-template-columns:1fr}.wrap{padding:60px 16px 40px}}
+@media(max-width:540px){.uptime-grid{grid-template-columns:1fr}.cap-grid{grid-template-columns:1fr}.meta{grid-template-columns:1fr}.wrap{padding:60px 16px 40px}}
 </style>
 </head>
 <body>
@@ -385,33 +423,48 @@ h1 .g{color:#00FF9F}
     </div>
   </div>
 
+  <div id="uptime-section">
+    <div class="uptime-grid" id="uptime-grid">
+      <div class="uptime-card" id="up-24h">
+        <div class="uptime-window">Last 24 hours</div>
+        <div class="uptime-pct" id="pct-24h"><span class="dim">--.--</span><span class="dim">%</span></div>
+        <div class="uptime-probes" id="probes-24h">&mdash;</div>
+        <div class="uptime-bar"><div class="uptime-fill" id="bar-24h"></div></div>
+      </div>
+      <div class="uptime-card" id="up-7d">
+        <div class="uptime-window">Last 7 days</div>
+        <div class="uptime-pct" id="pct-7d"><span class="dim">--.--</span><span class="dim">%</span></div>
+        <div class="uptime-probes" id="probes-7d">&mdash;</div>
+        <div class="uptime-bar"><div class="uptime-fill" id="bar-7d"></div></div>
+      </div>
+      <div class="uptime-card" id="up-30d">
+        <div class="uptime-window">Last 30 days</div>
+        <div class="uptime-pct" id="pct-30d"><span class="dim">--.--</span><span class="dim">%</span></div>
+        <div class="uptime-probes" id="probes-30d">&mdash;</div>
+        <div class="uptime-bar"><div class="uptime-fill" id="bar-30d"></div></div>
+      </div>
+    </div>
+  </div>
+
   <div class="card" id="main-card">
     <div class="card-head">
       <span class="card-title">Services</span>
       <span class="pill load" id="main-pill">CHECKING</span>
     </div>
     <div class="checks" id="checks">
-      <div class="check">
-        <span class="check-name"><span class="check-dot load"></span> Gateway API</span>
-        <span class="check-ms">...</span>
-      </div>
-      <div class="check">
-        <span class="check-name"><span class="check-dot load"></span> PostgreSQL (Aurora)</span>
-        <span class="check-ms">...</span>
-      </div>
-      <div class="check">
-        <span class="check-name"><span class="check-dot load"></span> PostgREST</span>
-        <span class="check-ms">...</span>
-      </div>
-      <div class="check">
-        <span class="check-name"><span class="check-dot load"></span> Cloud Object Storage</span>
-        <span class="check-ms">...</span>
-      </div>
-      <div class="check">
-        <span class="check-name"><span class="check-dot load"></span> Content Delivery Network</span>
-        <span class="check-ms">...</span>
-      </div>
+      <div class="check"><span class="check-name"><span class="check-dot load"></span> Gateway API</span><span class="check-ms">...</span></div>
+      <div class="check"><span class="check-name"><span class="check-dot load"></span> PostgreSQL (Aurora)</span><span class="check-ms">...</span></div>
+      <div class="check"><span class="check-name"><span class="check-dot load"></span> PostgREST</span><span class="check-ms">...</span></div>
+      <div class="check"><span class="check-name"><span class="check-dot load"></span> Cloud Object Storage</span><span class="check-ms">...</span></div>
+      <div class="check"><span class="check-name"><span class="check-dot load"></span> Content Delivery Network</span><span class="check-ms">...</span></div>
     </div>
+  </div>
+
+  <div class="card" id="cap-card" style="display:none">
+    <div class="card-head">
+      <span class="card-title">Capability Uptime <span style="color:#4B5563;font-weight:400">(30d)</span></span>
+    </div>
+    <div class="cap-grid" id="cap-grid"></div>
   </div>
 
   <div class="ts" id="timestamp"></div>
@@ -420,7 +473,8 @@ h1 .g{color:#00FF9F}
     <span class="footer-text">Run402 &mdash; full stack for agents</span>
     <span>
       <a href="https://run402.com/humans">Home</a> &nbsp;&middot;&nbsp;
-      <a href="/health">API (JSON)</a>
+      <a href="/health">API (JSON)</a> &nbsp;&middot;&nbsp;
+      <a href="/status">Status JSON</a>
     </span>
   </div>
 </div>
@@ -432,21 +486,88 @@ h1 .g{color:#00FF9F}
   function resize(){c.width=innerWidth;c.height=innerHeight;draw()}
   function draw(){
     ctx.clearRect(0,0,c.width,c.height);
-    ctx.strokeStyle='rgba(0,255,159,0.03)';
-    ctx.lineWidth=1;
+    ctx.strokeStyle='rgba(0,255,159,0.03)';ctx.lineWidth=1;
     const s=60;
     for(let x=0;x<c.width;x+=s){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,c.height);ctx.stroke()}
     for(let y=0;y<c.height;y+=s){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(c.width,y);ctx.stroke()}
-    // Glow at center top
     const g=ctx.createRadialGradient(c.width/2,0,0,c.width/2,0,c.height*.6);
-    g.addColorStop(0,'rgba(0,255,159,0.04)');
-    g.addColorStop(1,'transparent');
-    ctx.fillStyle=g;
-    ctx.fillRect(0,0,c.width,c.height);
+    g.addColorStop(0,'rgba(0,255,159,0.04)');g.addColorStop(1,'transparent');
+    ctx.fillStyle=g;ctx.fillRect(0,0,c.width,c.height);
   }
-  addEventListener('resize',resize);
-  resize();
+  addEventListener('resize',resize);resize();
 })();
+
+function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
+
+// Animate a number with ticker effect
+function tickerHtml(value, suffix) {
+  const str = String(value);
+  let html = '';
+  for (let i = 0; i < str.length; i++) {
+    const delay = (i * 60) + 'ms';
+    html += '<span class="ticker-digit" style="animation-delay:' + delay + '">' + esc(str[i]) + '</span>';
+  }
+  if (suffix) html += '<span class="ticker-digit dim" style="animation-delay:' + (str.length * 60) + 'ms">' + esc(suffix) + '</span>';
+  return '<span class="ticker">' + html + '</span>';
+}
+
+const CAP_LABELS = {
+  database_api: 'Database API',
+  file_storage: 'File Storage',
+  static_hosting: 'Static Hosting',
+  x402_payments: 'x402 Payments',
+  allowance_billing: 'Allowance Billing',
+  image_generation: 'Image Generation',
+  testnet_faucet: 'Testnet Faucet'
+};
+
+function renderUptime(key, data) {
+  if (!data) return;
+  const el = document.getElementById('pct-' + key);
+  const bar = document.getElementById('bar-' + key);
+  const probes = document.getElementById('probes-' + key);
+  const card = document.getElementById('up-' + key);
+
+  el.innerHTML = tickerHtml(data.uptime_pct.toFixed(2), '%');
+  bar.style.width = data.uptime_pct + '%';
+  bar.style.background = data.uptime_pct >= 99.9 ? '#00FF9F' : data.uptime_pct >= 99 ? '#FBBF24' : '#FF5050';
+  probes.textContent = data.healthy_probes.toLocaleString() + ' / ' + data.total_probes.toLocaleString() + ' probes';
+  card.classList.add('loaded');
+}
+
+function renderCapabilities(perCap) {
+  const grid = document.getElementById('cap-grid');
+  const card = document.getElementById('cap-card');
+  let html = '';
+  let i = 0;
+  for (const [key, pct] of Object.entries(perCap)) {
+    const label = CAP_LABELS[key] || key;
+    const cls = pct >= 99.9 ? '' : pct >= 99 ? ' warn' : ' bad';
+    html += '<div class="cap-item" style="animation-delay:' + (i * 80) + 'ms">'
+      + '<span class="cap-name">' + esc(label) + '</span>'
+      + '<span class="cap-pct' + cls + '">' + pct.toFixed(2) + '%</span>'
+      + '</div>';
+    i++;
+  }
+  grid.innerHTML = html;
+  card.style.display = '';
+}
+
+// Fetch status JSON from static site
+async function loadUptime() {
+  try {
+    const r = await fetch('https://run402.com/status/v1.json');
+    const d = await r.json();
+    if (d.availability) {
+      renderUptime('24h', d.availability.last_24h);
+      renderUptime('7d', d.availability.last_7d);
+      renderUptime('30d', d.availability.last_30d);
+      if (d.availability.last_30d && d.availability.last_30d.per_capability) {
+        renderCapabilities(d.availability.last_30d.per_capability);
+      }
+    }
+  } catch(e) { /* uptime section stays in placeholder state */ }
+}
 
 // Health check
 async function check(){
@@ -469,8 +590,8 @@ async function check(){
       {name:'Gateway API',status:'ok',ms:ms+'ms'},
       {name:'PostgreSQL (Aurora)',status:d.checks.postgres,ms:d.checks.postgres==='ok'?ms+'ms':'error'},
       {name:'PostgREST',status:d.checks.postgrest,ms:d.checks.postgrest==='ok'?ms+'ms':'error'},
-      {name:'Cloud Object Storage',status:d.checks.s3||'ok',ms:d.checks.s3==='ok'?ms+'ms':(d.checks.s3?'error':'\u2014')},
-      {name:'Content Delivery Network',status:d.checks.cloudfront||'ok',ms:d.checks.cloudfront==='ok'?ms+'ms':(d.checks.cloudfront?'error':'\u2014')},
+      {name:'Cloud Object Storage',status:d.checks.s3||'ok',ms:d.checks.s3==='ok'?ms+'ms':(d.checks.s3?'error':'\\u2014')},
+      {name:'Content Delivery Network',status:d.checks.cloudfront||'ok',ms:d.checks.cloudfront==='ok'?ms+'ms':(d.checks.cloudfront?'error':'\\u2014')},
     ];
     checksEl.innerHTML=services.map(function(s){
       return '<div class="check"><span class="check-name"><span class="check-dot '
@@ -487,9 +608,11 @@ async function check(){
     document.getElementById('timestamp').textContent='Failed at '+new Date().toLocaleString();
   }
 }
-function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
+
 check();
-setInterval(check,30000);
+loadUptime();
+setInterval(check, 30000);
+setInterval(loadUptime, 60000);
 </script>
 </body>
 </html>`;
