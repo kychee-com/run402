@@ -72,6 +72,23 @@ const bugsnagMiddleware = Bugsnag.getPlugin("express")!;
 
 const app = express();
 
+/**
+ * Initialize x402 payment middleware with retries.
+ * The facilitator may be temporarily unreachable during cold start.
+ */
+async function initPaymentMiddlewareWithRetry(maxAttempts = 5, delayMs = 3000) {
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      return createPaymentMiddleware();
+    } catch (err) {
+      console.error(`x402 init attempt ${attempt}/${maxAttempts} failed:`, err);
+      if (attempt === maxAttempts) throw err;
+      await new Promise((r) => setTimeout(r, delayMs));
+    }
+  }
+  throw new Error("unreachable");
+}
+
 // Bugsnag request handler must be the first middleware
 app.use(bugsnagMiddleware.requestHandler);
 
@@ -199,7 +216,7 @@ app.post("/v1/fork/:tier", idempotencyMiddleware);
 
 // --- x402 payment middleware ---
 if (SELLER_ADDRESS) {
-  app.use(createPaymentMiddleware());
+  app.use(await initPaymentMiddlewareWithRetry());
 }
 
 // --- x402 discovery (for x402scan.com) ---
