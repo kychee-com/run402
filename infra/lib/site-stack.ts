@@ -146,6 +146,7 @@ function handler(event) {
       destinationBucket: siteBucket,
       distribution,
       distributionPaths: ["/*"],
+      exclude: ["status/*"],
     });
 
     // =========================================================================
