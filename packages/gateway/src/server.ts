@@ -50,10 +50,20 @@ Bugsnag.start({
   apiKey: BUGSNAG_API_KEY,
   plugins: [BugsnagPluginExpress],
   onError(event) {
+    const orig = event.originalError as { statusCode?: number; name?: string; code?: string };
     // Don't report expected client errors (4xx) — these are validation,
     // rate limits, not-found, etc. Only 5xx errors are real bugs.
-    const orig = event.originalError as { statusCode?: number; name?: string };
     if (orig?.name === "HttpError" && orig.statusCode && orig.statusCode < 500) {
+      return false;
+    }
+    // Don't report user SQL errors (e.g. "relation X does not exist").
+    // These are user schema mistakes, not gateway bugs.
+    if (orig?.code === "42P01" || orig?.code === "42703" || orig?.code === "42601") {
+      return false;
+    }
+    // Don't report user function errors — FunctionError is our own class
+    // for 4xx responses (not found, quota exceeded, etc.).
+    if (orig?.name === "FunctionError") {
       return false;
     }
   },

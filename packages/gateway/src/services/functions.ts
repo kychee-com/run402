@@ -291,7 +291,7 @@ export async function deployFunction(
   }
 
   // Check if function already exists
-  let lambdaArn: string;
+  let lambdaArn = "";
   try {
     await lambda.send(new GetFunctionCommand({ FunctionName: fnName }));
 
@@ -305,22 +305,33 @@ export async function deployFunction(
       // Best effort — proceed anyway
     }
 
-    // Update existing function code
-    const updateCodeResult = await lambda.send(new UpdateFunctionCodeCommand({
-      FunctionName: fnName,
-      ZipFile: zipBuffer,
-    }));
-    lambdaArn = updateCodeResult.FunctionArn!;
+    // Update existing function code — retry on ResourceConflictException
+    // (function may still be in Pending state from a previous deploy)
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const updateCodeResult = await lambda.send(new UpdateFunctionCodeCommand({
+          FunctionName: fnName,
+          ZipFile: zipBuffer,
+        }));
+        lambdaArn = updateCodeResult.FunctionArn!;
+        break;
+      } catch (retryErr) {
+        if (retryErr instanceof ResourceConflictException && attempt < 2) {
+          await waitUntilFunctionUpdatedV2(
+            { client: lambda, maxWaitTime: 30 },
+            { FunctionName: fnName },
+          );
+          continue;
+        }
+        throw retryErr;
+      }
+    }
 
     // Wait for code update to complete before updating config
-    try {
-      await waitUntilFunctionUpdatedV2(
-        { client: lambda, maxWaitTime: 30 },
-        { FunctionName: fnName },
-      );
-    } catch {
-      // Best effort
-    }
+    await waitUntilFunctionUpdatedV2(
+      { client: lambda, maxWaitTime: 30 },
+      { FunctionName: fnName },
+    );
 
     // Update configuration
     await lambda.send(new UpdateFunctionConfigurationCommand({
