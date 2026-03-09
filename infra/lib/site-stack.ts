@@ -211,6 +211,7 @@ function handler(event) {
     new cdk.CfnOutput(this, "BucketName", {
       value: siteBucket.bucketName,
       description: "Site S3 bucket",
+      exportName: "Run402-SiteBucketName",
     });
     new cdk.CfnOutput(this, "DeployRoleArn", {
       value: deployRole.roleArn,

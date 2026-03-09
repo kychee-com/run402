@@ -3,6 +3,7 @@ import * as cdk from "aws-cdk-lib";
 import { PodStack } from "../lib/pod-stack.js";
 import { SiteStack } from "../lib/site-stack.js";
 import { SitesStack } from "../lib/sites-stack.js";
+import { StatusProbeStack } from "../lib/status-probe-stack.js";
 
 const app = new cdk.App();
 
@@ -24,6 +25,11 @@ new SiteStack(app, "AgentDB-Site", {
 new SitesStack(app, "AgentDB-Sites", {
   env,
   description: "AgentDB Sites — CloudFront + wildcard DNS for deployed static sites",
+});
+
+new StatusProbeStack(app, "Run402-StatusProbe", {
+  env,
+  description: "Run402 Status Probe — Lambda probes API every 60s, writes live status to S3",
 });
 
 app.synth();

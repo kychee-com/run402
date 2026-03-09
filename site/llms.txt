@@ -452,7 +452,7 @@ Yes. The `/admin/v1/projects/:id/usage` endpoint shows API call counts, storage 
 
 **Durability & backups**: Data encrypted at rest (Aurora + S3) and in transit (TLS). Automated database backups with 7-day retention.
 
-**Availability & monitoring**: Current service status is available as machine-readable JSON at `https://run402.com/status/v1.json`. Monitoring uses external synthetic probes plus internal health checks. For billable routes, a valid HTTP 402 x402 payment challenge is normal service behavior and is not treated as downtime.
+**Availability & monitoring**: 100% uptime since launch (February 2026). Live status with rolling uptime metrics: `https://run402.com/status/v1.json`. Probed every 60 seconds by an external Lambda. Component health checks: `https://api.run402.com/health`. For billable routes, a valid HTTP 402 x402 payment challenge is normal service behavior and is not treated as downtime.
 
 **Billing model**: Prepaid per lease. Hard-capped API calls and storage per tier. No overage charges. When limits are hit, the API returns 402 with usage details and a renew URL.
 
