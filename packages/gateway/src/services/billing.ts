@@ -108,10 +108,10 @@ export async function getOrCreateBillingAccount(wallet: string): Promise<Billing
     );
     return rowToAccount(result.rows[0]);
   } catch (err) {
-    await client.query("ROLLBACK");
+    try { await client.query("ROLLBACK"); } catch { /* connection may be dead */ }
     throw err;
   } finally {
-    client.release();
+    try { client.release(); } catch { /* may already be released */ }
   }
 }
 
@@ -192,10 +192,10 @@ export async function adminCredit(
     );
     return { account: updatedAccount!, ledger_entry: rowToLedger(ledgerEntry.rows[0]) };
   } catch (err) {
-    await client.query("ROLLBACK");
+    try { await client.query("ROLLBACK"); } catch { /* connection may be dead */ }
     throw err;
   } finally {
-    client.release();
+    try { client.release(); } catch { /* may already be released */ }
   }
 }
 
@@ -239,7 +239,6 @@ export async function adminDebit(
     const currentHeld = Number(locked.rows[0].held_usd_micros);
 
     if (currentAvailable < amountUsdMicros) {
-      await client.query("ROLLBACK");
       throw new Error(`Insufficient balance: available=${currentAvailable}, requested=${amountUsdMicros}`);
     }
 
@@ -268,10 +267,10 @@ export async function adminDebit(
     );
     return { account: updatedAccount!, ledger_entry: rowToLedger(ledgerEntry.rows[0]) };
   } catch (err) {
-    await client.query("ROLLBACK");
+    try { await client.query("ROLLBACK"); } catch { /* connection may be dead */ }
     throw err;
   } finally {
-    client.release();
+    try { client.release(); } catch { /* may already be released */ }
   }
 }
 
@@ -343,10 +342,10 @@ export async function debitAllowance(
 
     return { remaining: newAvailable, chargeId };
   } catch (err) {
-    await client.query("ROLLBACK");
+    try { await client.query("ROLLBACK"); } catch { /* connection may be dead */ }
     throw err;
   } finally {
-    client.release();
+    try { client.release(); } catch { /* may already be released */ }
   }
 }
 
@@ -430,10 +429,10 @@ export async function creditFromTopup(
     );
     return rowToAccount(account.rows[0]);
   } catch (err) {
-    await client.query("ROLLBACK");
+    try { await client.query("ROLLBACK"); } catch { /* connection may be dead */ }
     throw err;
   } finally {
-    client.release();
+    try { client.release(); } catch { /* may already be released */ }
   }
 }
 
