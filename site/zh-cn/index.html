@@ -1,0 +1,1014 @@
+<!-- AI 智能体：Run402 为 OpenClaw / MCP 智能体提供全栈后端基础设施。完整 API 文档请访问 /llms.txt -->
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Run402 — 让 OpenClaw 智能体一键上线完整后端</title>
+  <meta name="description" content="不到 1 元，让 OpenClaw 上线完整后端 7 天。Postgres 数据库 + REST API + 鉴权 + 存储 + 静态站点托管。无需云账号，无需控制台。给智能体一个额度，不是钱包。">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <meta name="llms" content="/llms.txt">
+  <link rel="llms" href="/llms.txt" type="text/markdown">
+  <link rel="canonical" href="https://run402.com/zh-cn">
+
+  <meta property="og:title" content="Run402 — 让 OpenClaw 智能体一键上线完整后端">
+  <meta property="og:description" content="不到 1 元，7 天完整后端。Postgres + API + 鉴权 + 存储 + 站点。无需云账号。">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://run402.com/zh-cn">
+  <meta property="og:image" content="https://run402.com/og-image.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Noto+Sans+SC:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #0A0A0F;
+      color: #E0E0E0;
+      font-family: 'Noto Sans SC', 'Inter', system-ui, sans-serif;
+      line-height: 1.7;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    .container {
+      max-width: 760px;
+      margin: 0 auto;
+      padding: 80px 24px 60px;
+    }
+
+    .badge {
+      display: inline-block;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      color: #00FF9F;
+      border: 1px solid rgba(0, 255, 159, 0.3);
+      border-radius: 4px;
+      padding: 4px 10px;
+      margin-bottom: 24px;
+      letter-spacing: 0.5px;
+    }
+
+    h1 {
+      font-size: clamp(30px, 5vw, 48px);
+      font-weight: 700;
+      line-height: 1.2;
+      margin-bottom: 18px;
+      color: #FFFFFF;
+    }
+
+    h1 .accent { color: #00FF9F; }
+
+    .subtitle {
+      font-size: 18px;
+      color: #9CA3AF;
+      margin-bottom: 28px;
+      max-width: 640px;
+    }
+
+    .hero-price {
+      display: inline-block;
+      background: rgba(0, 255, 159, 0.08);
+      border: 1px solid rgba(0, 255, 159, 0.25);
+      border-radius: 8px;
+      padding: 14px 24px;
+      margin-bottom: 36px;
+      font-size: 20px;
+      font-weight: 600;
+      color: #00FF9F;
+    }
+
+    .hero-price .rmb {
+      font-size: 28px;
+      font-weight: 700;
+      color: #FFFFFF;
+    }
+
+    .lead {
+      color: #E0E0E0;
+      font-size: 16px;
+      margin-bottom: 14px;
+    }
+
+    .copy-block {
+      background: #12121A;
+      border: 1px solid #1E1E2A;
+      border-radius: 8px;
+      padding: 16px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 34px;
+      transition: border-color 0.2s;
+    }
+
+    .copy-block:hover { border-color: rgba(0, 255, 159, 0.3); }
+
+    .copy-block code {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 14px;
+      color: #00FF9F;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      cursor: pointer;
+      transition: color 0.15s;
+    }
+
+    .copy-block code.copied { color: #FFFFFF; }
+
+    .copy-btn {
+      background: rgba(0, 255, 159, 0.1);
+      color: #00FF9F;
+      border: 1px solid rgba(0, 255, 159, 0.25);
+      border-radius: 6px;
+      padding: 8px 16px;
+      font-family: 'Noto Sans SC', 'Inter', sans-serif;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: background 0.2s, border-color 0.2s;
+    }
+
+    .copy-btn:hover {
+      background: rgba(0, 255, 159, 0.2);
+      border-color: rgba(0, 255, 159, 0.5);
+    }
+
+    .copy-btn.copied {
+      background: rgba(0, 255, 159, 0.25);
+      color: #fff;
+    }
+
+    .section { margin-bottom: 52px; }
+
+    .section h2 {
+      font-size: 20px;
+      font-weight: 600;
+      color: #FFFFFF;
+      margin-bottom: 16px;
+    }
+
+    .section h2::before {
+      content: '> ';
+      color: #00FF9F;
+      font-family: 'JetBrains Mono', monospace;
+      font-weight: 500;
+    }
+
+    .section p {
+      color: #9CA3AF;
+      margin-bottom: 12px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+      gap: 16px;
+      margin-top: 18px;
+    }
+
+    .card {
+      background: #12121A;
+      border: 1px solid #1E1E2A;
+      border-radius: 8px;
+      padding: 20px;
+    }
+
+    .card .label {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: #00FF9F;
+      margin-bottom: 8px;
+    }
+
+    .card .value {
+      font-size: 18px;
+      font-weight: 700;
+      color: #FFFFFF;
+      line-height: 1.2;
+    }
+
+    .card .detail {
+      font-size: 13px;
+      color: #6B7280;
+      margin-top: 8px;
+    }
+
+    .terminal {
+      background: #12121A;
+      border: 1px solid #1E1E2A;
+      border-radius: 8px;
+      padding: 18px 20px;
+      margin-top: 18px;
+      overflow-x: auto;
+    }
+
+    .terminal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+
+    .terminal-title {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: #6B7280;
+    }
+
+    .terminal pre {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+      line-height: 1.7;
+      color: #9CA3AF;
+      white-space: pre;
+    }
+
+    .pre-wrap { white-space: pre-wrap; word-break: break-word; }
+
+    .terminal .comment { color: #4B5563; }
+    .terminal .cmd { color: #00FF9F; }
+    .terminal .string { color: #FBBF24; }
+
+    .note {
+      margin-top: 10px;
+      font-size: 13px;
+      color: #6B7280;
+    }
+
+    .bullet-section { margin-top: 18px; }
+
+    .bullet-item {
+      background: #12121A;
+      border: 1px solid #1E1E2A;
+      border-radius: 8px;
+      padding: 20px;
+      margin-bottom: 12px;
+    }
+
+    .bullet-item .title {
+      font-size: 16px;
+      font-weight: 600;
+      color: #FFFFFF;
+      margin-bottom: 6px;
+    }
+
+    .bullet-item .title::before {
+      content: '';
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      background: #00FF9F;
+      border-radius: 50%;
+      margin-right: 10px;
+      vertical-align: middle;
+    }
+
+    .bullet-item .desc {
+      font-size: 14px;
+      color: #9CA3AF;
+      padding-left: 18px;
+    }
+
+    .comparison {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-top: 18px;
+    }
+
+    @media (max-width: 600px) {
+      .comparison { grid-template-columns: 1fr; }
+    }
+
+    .compare-card {
+      background: #12121A;
+      border: 1px solid #1E1E2A;
+      border-radius: 8px;
+      padding: 20px;
+    }
+
+    .compare-card.highlight { border-color: rgba(0, 255, 159, 0.3); }
+
+    .compare-card .clabel {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 14px;
+    }
+
+    .compare-card .clabel.dim { color: #6B7280; }
+    .compare-card .clabel.green { color: #00FF9F; }
+
+    .compare-card ul { list-style: none; padding: 0; }
+
+    .compare-card li {
+      font-size: 14px;
+      color: #9CA3AF;
+      padding: 6px 0;
+      border-bottom: 1px solid #1A1A24;
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+    }
+
+    .compare-card li:last-child { border-bottom: none; }
+
+    .compare-card li .icon {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+      flex-shrink: 0;
+    }
+
+    .compare-card.highlight li { color: #E0E0E0; }
+
+    /* Carousel */
+    .carousel-header {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      margin-bottom: 14px;
+    }
+
+    .carousel-nav {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .carousel-arrow {
+      background: rgba(0, 255, 159, 0.1);
+      color: #00FF9F;
+      border: 1px solid rgba(0, 255, 159, 0.25);
+      border-radius: 6px;
+      width: 32px;
+      height: 32px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      font-size: 16px;
+      line-height: 1;
+      transition: background 0.2s, border-color 0.2s;
+      padding: 0;
+    }
+
+    .carousel-arrow:hover {
+      background: rgba(0, 255, 159, 0.2);
+      border-color: rgba(0, 255, 159, 0.5);
+    }
+
+    .carousel-counter {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      color: #6B7280;
+      min-width: 44px;
+      text-align: center;
+    }
+
+    .carousel-track {
+      display: flex;
+      overflow-x: auto;
+      scroll-snap-type: x mandatory;
+      -webkit-overflow-scrolling: touch;
+      scrollbar-width: none;
+    }
+
+    .carousel-track::-webkit-scrollbar { display: none; }
+
+    .carousel-slide {
+      flex: 0 0 100%;
+      scroll-snap-align: start;
+      min-width: 0;
+    }
+
+    .carousel-slide .terminal { margin-top: 0; }
+
+    .carousel-label {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: #00FF9F;
+      margin-bottom: 4px;
+    }
+
+    .carousel-pitch {
+      font-size: 14px;
+      color: #6B7280;
+      margin-bottom: 12px;
+    }
+
+    .carousel-dots {
+      display: flex;
+      justify-content: center;
+      gap: 8px;
+      margin-top: 16px;
+    }
+
+    .carousel-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: #1E1E2A;
+      border: 1px solid #333;
+      cursor: pointer;
+      transition: background 0.2s, border-color 0.2s;
+      padding: 0;
+    }
+
+    .carousel-dot.active {
+      background: #00FF9F;
+      border-color: #00FF9F;
+    }
+
+    .compat-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 12px;
+      margin-top: 18px;
+    }
+
+    .compat-card {
+      background: #12121A;
+      border: 1px solid #1E1E2A;
+      border-radius: 8px;
+      padding: 16px;
+      text-align: center;
+    }
+
+    .compat-card .name {
+      font-size: 15px;
+      font-weight: 600;
+      color: #FFFFFF;
+      margin-bottom: 4px;
+    }
+
+    .compat-card .status {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: #00FF9F;
+    }
+
+    .cta {
+      background: #12121A;
+      border: 1px solid rgba(0, 255, 159, 0.3);
+      border-radius: 8px;
+      padding: 28px;
+      text-align: center;
+    }
+
+    .cta p {
+      color: #E0E0E0;
+      font-size: 16px;
+      margin-bottom: 14px;
+    }
+
+    .cta-link {
+      display: inline-block;
+      font-family: 'Noto Sans SC', 'Inter', sans-serif;
+      font-size: 14px;
+      color: #00FF9F;
+      background: rgba(0, 255, 159, 0.1);
+      border: 1px solid rgba(0, 255, 159, 0.25);
+      border-radius: 6px;
+      padding: 10px 20px;
+      text-decoration: none;
+      transition: background 0.2s, border-color 0.2s;
+      margin: 4px;
+    }
+
+    .cta-link:hover {
+      background: rgba(0, 255, 159, 0.2);
+      border-color: rgba(0, 255, 159, 0.5);
+    }
+
+    .footer {
+      border-top: 1px solid #1E1E2A;
+      padding-top: 32px;
+      margin-top: 48px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+
+    .footer-text {
+      font-size: 13px;
+      color: #4B5563;
+    }
+
+    .footer a {
+      color: #00FF9F;
+      text-decoration: none;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+    }
+
+    .footer a:hover { text-decoration: underline; }
+  </style>
+</head>
+
+<body>
+  <p style="text-align:center;padding:12px;margin:0;background:#111;color:#9CA3AF;font-size:14px;font-family:'Noto Sans SC','Inter',system-ui,sans-serif;">
+    <a href="/" style="color:#00FF9F;text-decoration:underline;">&larr; run402.com</a>
+    &nbsp;&middot;&nbsp;
+    <a href="/humans" style="color:#9CA3AF;text-decoration:none;">English</a>
+    &nbsp;&middot;&nbsp;
+    <a href="/apps" style="color:#00FF9F;text-decoration:none;font-family:'JetBrains Mono',monospace;font-size:12px;border:1px solid rgba(0,255,159,0.3);border-radius:4px;padding:2px 8px;">Apps</a>
+  </p>
+
+  <div class="container">
+    <span class="badge">OpenClaw + MCP &middot; Postgres + Sites</span>
+
+    <h1>让 OpenClaw 智能体<br><span class="accent">一键上线完整后端</span></h1>
+    <p class="subtitle">
+      数据库 + REST API + 鉴权 + 存储 + 静态站点 + 函数，一次请求全部搞定。
+      无需云账号，无需控制台，无需人工操作。
+    </p>
+
+    <div class="hero-price">
+      不到 <span class="rmb">&yen;1</span> &mdash; 完整后端上线 7 天
+    </div>
+
+    <p class="lead"><strong>开始使用：</strong>将这个 URL 粘贴到你的智能体对话中</p>
+    <div class="copy-block">
+      <code onclick="copyUrl(this, true)">https://run402.com/llms.txt</code>
+      <button class="copy-btn" onclick="copyUrl(this, false)">复制</button>
+    </div>
+
+    <!-- Prompts carousel -->
+    <div class="section">
+      <h2>选一个提示词，上线一个应用</h2>
+      <p>你的智能体会读取文档、创建后端、部署前端 &mdash; 总共花费约 &yen;1。</p>
+
+      <div class="carousel-header">
+        <div class="carousel-nav">
+          <button class="carousel-arrow" onclick="carouselPrev()" aria-label="上一个">&#8592;</button>
+          <span class="carousel-counter" id="carouselCounter">1 / 6</span>
+          <button class="carousel-arrow" onclick="carouselNext()" aria-label="下一个">&#8594;</button>
+        </div>
+      </div>
+
+      <div class="carousel-track" id="carouselTrack">
+
+        <div class="carousel-slide">
+          <div class="carousel-label">门店预约系统</div>
+          <div class="carousel-pitch">客户在线预约，店主后台管理时间、服务和订单</div>
+          <div class="terminal">
+            <div class="terminal-header">
+              <span class="terminal-title">粘贴到智能体</span>
+              <button class="copy-btn" onclick="copySlide(this)">复制提示词</button>
+            </div>
+            <pre class="pre-wrap carousel-prompt">Read https://run402.com/llms.txt.
+
+Build a booking app for a salon:
+- Customers can browse services and book time slots
+- Owner can manage schedule, services, and view bookings
+- Each user has their own account with auth
+- Deploy with a nice Chinese UI</pre>
+          </div>
+        </div>
+
+        <div class="carousel-slide">
+          <div class="carousel-label">物业报修工单</div>
+          <div class="carousel-pitch">住户提交维修请求，物业人员处理和追踪进度</div>
+          <div class="terminal">
+            <div class="terminal-header">
+              <span class="terminal-title">粘贴到智能体</span>
+              <button class="copy-btn" onclick="copySlide(this)">复制提示词</button>
+            </div>
+            <pre class="pre-wrap carousel-prompt">Read https://run402.com/llms.txt.
+
+Build a maintenance request tracker for a property:
+- Residents submit repair requests with photos and descriptions
+- Staff can view, assign, and update request status
+- Each user has their own account
+- Deploy with a clean Chinese UI</pre>
+          </div>
+        </div>
+
+        <div class="carousel-slide">
+          <div class="carousel-label">客户管理 CRM</div>
+          <div class="carousel-pitch">管理客户、跟进记录、销售阶段，适合小团队</div>
+          <div class="terminal">
+            <div class="terminal-header">
+              <span class="terminal-title">粘贴到智能体</span>
+              <button class="copy-btn" onclick="copySlide(this)">复制提示词</button>
+            </div>
+            <pre class="pre-wrap carousel-prompt">Read https://run402.com/llms.txt.
+
+Build a simple CRM for a small sales team:
+- Track contacts, companies, deals, and notes
+- Kanban-style pipeline view with drag-and-drop stages
+- Each salesperson has their own account
+- Deploy with Chinese UI</pre>
+          </div>
+        </div>
+
+        <div class="carousel-slide">
+          <div class="carousel-label">活动报名系统</div>
+          <div class="carousel-pitch">发布活动页面，收集报名信息，管理签到</div>
+          <div class="terminal">
+            <div class="terminal-header">
+              <span class="terminal-title">粘贴到智能体</span>
+              <button class="copy-btn" onclick="copySlide(this)">复制提示词</button>
+            </div>
+            <pre class="pre-wrap carousel-prompt">Read https://run402.com/llms.txt.
+
+Build an event registration system:
+- Public event page with details and schedule
+- Registration form collecting name, email, phone
+- Admin dashboard to view registrations and check-in attendees
+- Deploy with Chinese UI</pre>
+          </div>
+        </div>
+
+        <div class="carousel-slide">
+          <div class="carousel-label">内容审核工作流</div>
+          <div class="carousel-pitch">上传材料、自动审核、人工复核，适合政务/企业流程</div>
+          <div class="terminal">
+            <div class="terminal-header">
+              <span class="terminal-title">粘贴到智能体</span>
+              <button class="copy-btn" onclick="copySlide(this)">复制提示词</button>
+            </div>
+            <pre class="pre-wrap carousel-prompt">Read https://run402.com/llms.txt.
+
+Build a document review workflow:
+- Users upload documents (photos, PDFs) for review
+- System shows upload status and review comments
+- Reviewers can approve, reject, or request changes
+- Admin dashboard with statistics
+- Deploy with Chinese UI</pre>
+          </div>
+        </div>
+
+        <div class="carousel-slide">
+          <div class="carousel-label">会员门户</div>
+          <div class="carousel-pitch">社区/协会/俱乐部的会员资料、通知和资源管理</div>
+          <div class="terminal">
+            <div class="terminal-header">
+              <span class="terminal-title">粘贴到智能体</span>
+              <button class="copy-btn" onclick="copySlide(this)">复制提示词</button>
+            </div>
+            <pre class="pre-wrap carousel-prompt">Read https://run402.com/llms.txt.
+
+Build a membership portal for a community:
+- Members can view profiles, announcements, and shared resources
+- Admin can manage members, post announcements, upload documents
+- Each member has their own account
+- Deploy with Chinese UI</pre>
+          </div>
+        </div>
+
+      </div>
+
+      <div class="carousel-dots" id="carouselDots"></div>
+    </div>
+
+    <!-- What agent gets -->
+    <div class="section">
+      <h2>智能体获得的全栈能力</h2>
+      <p>Run402 连接了"智能体写代码"和"应用在线可用"之间的最后一步。</p>
+
+      <div class="grid">
+        <div class="card">
+          <div class="label">数据库</div>
+          <div class="value">Postgres 16</div>
+          <div class="detail">Aurora Serverless v2 &middot; 项目级 Schema 隔离</div>
+        </div>
+        <div class="card">
+          <div class="label">API</div>
+          <div class="value">即时 REST</div>
+          <div class="detail">PostgREST &middot; Supabase 兼容格式</div>
+        </div>
+        <div class="card">
+          <div class="label">鉴权</div>
+          <div class="value">用户 + JWT</div>
+          <div class="detail">邮箱密码登录 &middot; 支持行级安全策略</div>
+        </div>
+        <div class="card">
+          <div class="label">存储</div>
+          <div class="value">文件上传</div>
+          <div class="detail">S3 对象存储 &middot; 应用友好接口</div>
+        </div>
+        <div class="card">
+          <div class="label">站点</div>
+          <div class="value">静态托管</div>
+          <div class="detail">CloudFront + S3 &middot; SPA 支持</div>
+        </div>
+        <div class="card">
+          <div class="label">函数</div>
+          <div class="value">Serverless</div>
+          <div class="detail">JavaScript 运行时 &middot; 自定义 API 端点</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Pricing -->
+    <div class="section">
+      <h2>定价（预付费，硬限额）</h2>
+      <p>项目以预付租约方式计费。没有超额，没有账单意外。自动到期，自动回收。</p>
+
+      <div class="grid">
+        <div class="card">
+          <div class="label">Prototype 原型</div>
+          <div class="value">$0.10 / &yen;0.7</div>
+          <div class="detail">7 天 &middot; 250 MB &middot; 50 万次调用</div>
+        </div>
+        <div class="card">
+          <div class="label">Hobby 进阶</div>
+          <div class="value">$5 / &yen;36</div>
+          <div class="detail">30 天 &middot; 1 GB &middot; 500 万次调用</div>
+        </div>
+        <div class="card">
+          <div class="label">Team 团队</div>
+          <div class="value">$20 / &yen;145</div>
+          <div class="detail">30 天 &middot; 10 GB &middot; 5000 万次调用</div>
+        </div>
+      </div>
+
+      <p class="note">仅项目创建和续期需要支付。后续 REST/鉴权/存储请求使用返回的项目密钥，无需付款。</p>
+    </div>
+
+    <!-- How it works -->
+    <div class="section">
+      <h2>工作原理（一次调用，全套上线）</h2>
+      <div class="terminal">
+        <div class="terminal-header">
+          <span class="terminal-title">Bundle Deploy &mdash; 一键整套部署</span>
+        </div>
+        <pre><span class="comment"># 一次 x402 支付，完整应用上线：</span>
+<span class="cmd">POST</span> https://api.run402.com/v1/deploy/prototype
+{
+  <span class="string">"name"</span>: <span class="string">"my-booking-app"</span>,
+  <span class="string">"migrations"</span>: <span class="string">"CREATE TABLE bookings (...);"</span>,
+  <span class="string">"site"</span>: [{ <span class="string">"file"</span>: <span class="string">"index.html"</span>, <span class="string">"data"</span>: <span class="string">"..."</span> }],
+  <span class="string">"subdomain"</span>: <span class="string">"my-booking"</span>
+}
+
+<span class="comment"># =&gt; https://my-booking.run402.com (已上线！)</span>
+<span class="comment"># =&gt; 返回 project_id, anon_key, service_key</span></pre>
+      </div>
+      <p class="note">
+        数据库 + 表结构 + 鉴权 + 站点 + 函数 + 子域名 &mdash; 一次支付，全部上线。
+      </p>
+    </div>
+
+    <!-- Fork / Templates -->
+    <div class="section">
+      <h2>应用模板：一键复制，独立实例</h2>
+      <p>
+        Run402 上的公开应用可以被一键复制（Fork）。每个副本拥有独立的数据库、鉴权、存储、预算和 URL。
+        发布模板的开发者可以获得<strong style="color:#fff;">持续分成</strong>。
+      </p>
+
+      <div class="bullet-section">
+        <div class="bullet-item">
+          <div class="title">一键复制</div>
+          <div class="desc">从任意公开应用创建独立副本。一次付款，全部资源独立。</div>
+        </div>
+        <div class="bullet-item">
+          <div class="title">模板分成</div>
+          <div class="desc">发布者从下游实例的续费中获得持续收入（20% 模板分成）。</div>
+        </div>
+        <div class="bullet-item">
+          <div class="title">适合服务商</div>
+          <div class="desc">做一个模板，为每个客户复制独立实例。可重复、可持续。</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Agent Allowance -->
+    <div class="section">
+      <h2>智能体额度：给智能体额度，不是钱包</h2>
+      <p>给智能体设定一个预付额度，限制总支出。它在额度内自主采购基础设施。安全、可控、可撤销。</p>
+
+      <div class="comparison">
+        <div class="compare-card">
+          <div class="clabel dim">智能体钱包</div>
+          <ul>
+            <li><span class="icon" style="color:#6B7280;">&times;</span> 需要管理私钥</li>
+            <li><span class="icon" style="color:#6B7280;">&times;</span> 助记词和密钥托管</li>
+            <li><span class="icon" style="color:#6B7280;">&times;</span> 跨链桥接资金</li>
+            <li><span class="icon" style="color:#6B7280;">&times;</span> 支出无上限</li>
+          </ul>
+        </div>
+        <div class="compare-card highlight">
+          <div class="clabel green">智能体额度</div>
+          <ul>
+            <li><span class="icon" style="color:#00FF9F;">&check;</span> 预付制，像充值卡</li>
+            <li><span class="icon" style="color:#00FF9F;">&check;</span> 硬限额，不会超支</li>
+            <li><span class="icon" style="color:#00FF9F;">&check;</span> 随时可撤销</li>
+            <li><span class="icon" style="color:#00FF9F;">&check;</span> 每笔交易可追溯</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- Compatible models -->
+    <div class="section">
+      <h2>兼容的模型和平台</h2>
+      <p>Run402 通过 OpenClaw / MCP / 直接 HTTP 调用工作，支持所有主流智能体运行时。</p>
+
+      <div class="compat-grid">
+        <div class="compat-card">
+          <div class="name">OpenClaw</div>
+          <div class="status">Skill 已发布</div>
+        </div>
+        <div class="compat-card">
+          <div class="name">Claude Code</div>
+          <div class="status">MCP 支持</div>
+        </div>
+        <div class="compat-card">
+          <div class="name">Cursor</div>
+          <div class="status">MCP 支持</div>
+        </div>
+        <div class="compat-card">
+          <div class="name">豆包 Doubao</div>
+          <div class="status">OpenClaw 兼容</div>
+        </div>
+        <div class="compat-card">
+          <div class="name">Kimi</div>
+          <div class="status">OpenClaw 兼容</div>
+        </div>
+        <div class="compat-card">
+          <div class="name">GLM</div>
+          <div class="status">OpenClaw 兼容</div>
+        </div>
+        <div class="compat-card">
+          <div class="name">MiniMax</div>
+          <div class="status">OpenClaw 兼容</div>
+        </div>
+        <div class="compat-card">
+          <div class="name">任意 HTTP</div>
+          <div class="status">直接调用 API</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Integration -->
+    <div class="section">
+      <h2>接入方式</h2>
+      <div class="terminal">
+        <pre><span class="cmd">HTTP</span>     直接调用 API：https://api.run402.com
+<span class="cmd">MCP</span>      npx run402-mcp
+<span class="cmd">OpenClaw</span> Run402 Skill（含部署、数据库、存储等 10 个工具）</pre>
+      </div>
+    </div>
+
+    <!-- Partner program teaser -->
+    <div class="section">
+      <h2>服务商 / 模板创作者</h2>
+      <p>
+        如果你在提供 OpenClaw 安装服务、AI 培训或为客户搭建应用 &mdash;
+        Run402 的模板市场让你可以：
+      </p>
+      <div class="bullet-section">
+        <div class="bullet-item">
+          <div class="title">发布行业模板</div>
+          <div class="desc">把你做好的应用发布为可复制的模板。</div>
+        </div>
+        <div class="bullet-item">
+          <div class="title">客户一键复制上线</div>
+          <div class="desc">每个客户获得独立后端、独立数据、独立 URL。</div>
+        </div>
+        <div class="bullet-item">
+          <div class="title">你拿持续分成</div>
+          <div class="desc">客户每次续费，你自动获得 20% 模板分成。</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CTA -->
+    <div class="section">
+      <div class="cta">
+        <p><strong style="color:#fff;">立即开始</strong> &mdash; 把文档链接粘贴给你的智能体，让它自动创建后端。</p>
+        <a class="cta-link" href="/llms.txt">llms.txt 文档</a>
+        <a class="cta-link" href="/apps">浏览应用</a>
+        <a class="cta-link" href="/humans">English</a>
+      </div>
+    </div>
+
+    <div class="footer">
+      <span class="footer-text">Run402 &mdash; AI 智能体的全栈基础设施</span>
+      <span>
+        <a href="/humans/terms.html">Terms</a> &nbsp;&middot;&nbsp;
+        <a href="/humans/privacy.html">Privacy</a> &nbsp;&middot;&nbsp;
+        <a href="/humans/faq.html">FAQ</a> &nbsp;&middot;&nbsp;
+        <a href="https://x.com/run402com">X</a> &nbsp;&middot;&nbsp;
+        <a href="https://api.run402.com/health-humans">API 状态</a>
+      </span>
+    </div>
+  </div>
+
+  <script>
+    function copyUrl(el, isCode) {
+      navigator.clipboard.writeText('https://run402.com/llms.txt').then(function() {
+        if (isCode) {
+          var original = el.textContent;
+          el.textContent = '已复制！';
+          el.classList.add('copied');
+          setTimeout(function() {
+            el.textContent = original;
+            el.classList.remove('copied');
+          }, 2000);
+        } else {
+          el.textContent = '已复制';
+          el.classList.add('copied');
+          setTimeout(function() {
+            el.textContent = '复制';
+            el.classList.remove('copied');
+          }, 2000);
+        }
+      });
+    }
+
+    function copySlide(btn) {
+      var slide = btn.closest('.carousel-slide');
+      var text = slide.querySelector('.carousel-prompt').textContent.trim();
+      navigator.clipboard.writeText(text).then(function() {
+        btn.textContent = '已复制';
+        btn.classList.add('copied');
+        setTimeout(function() {
+          btn.textContent = '复制提示词';
+          btn.classList.remove('copied');
+        }, 2000);
+      });
+    }
+
+    /* Carousel */
+    var currentSlide = 0;
+    var totalSlides = 6;
+
+    function updateCarousel() {
+      var track = document.getElementById('carouselTrack');
+      var slideWidth = track.children[0].offsetWidth;
+      track.scrollTo({ left: currentSlide * slideWidth, behavior: 'smooth' });
+      document.getElementById('carouselCounter').textContent = (currentSlide + 1) + ' / ' + totalSlides;
+      var dots = document.getElementById('carouselDots').children;
+      for (var i = 0; i < dots.length; i++) {
+        dots[i].classList.toggle('active', i === currentSlide);
+      }
+    }
+
+    function carouselPrev() {
+      currentSlide = (currentSlide - 1 + totalSlides) % totalSlides;
+      updateCarousel();
+    }
+
+    function carouselNext() {
+      currentSlide = (currentSlide + 1) % totalSlides;
+      updateCarousel();
+    }
+
+    function carouselGoTo(index) {
+      currentSlide = index;
+      updateCarousel();
+    }
+
+    (function() {
+      var dotsEl = document.getElementById('carouselDots');
+      for (var i = 0; i < totalSlides; i++) {
+        var dot = document.createElement('button');
+        dot.className = 'carousel-dot' + (i === 0 ? ' active' : '');
+        dot.setAttribute('aria-label', '跳到第 ' + (i + 1) + ' 个');
+        dot.onclick = (function(idx) { return function() { carouselGoTo(idx); }; })(i);
+        dotsEl.appendChild(dot);
+      }
+
+      var track = document.getElementById('carouselTrack');
+      var scrollTimeout;
+      track.addEventListener('scroll', function() {
+        clearTimeout(scrollTimeout);
+        scrollTimeout = setTimeout(function() {
+          var slideWidth = track.children[0].offsetWidth;
+          var newIndex = Math.round(track.scrollLeft / slideWidth);
+          if (newIndex !== currentSlide && newIndex >= 0 && newIndex < totalSlides) {
+            currentSlide = newIndex;
+            document.getElementById('carouselCounter').textContent = (currentSlide + 1) + ' / ' + totalSlides;
+            var dots = document.getElementById('carouselDots').children;
+            for (var i = 0; i < dots.length; i++) {
+              dots[i].classList.toggle('active', i === currentSlide);
+            }
+          }
+        }, 50);
+      });
+    })();
+  </script>
+</body>
+</html>
