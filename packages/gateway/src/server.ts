@@ -43,6 +43,7 @@ import functionsRoutes from "./routes/functions.js";
 import generateImageRoutes from "./routes/generate-image.js";
 import bundleRoutes from "./routes/bundle.js";
 import publishRoutes from "./routes/publish.js";
+import adminDashboardRoutes from "./routes/admin-dashboard.js";
 import { initAppVersionsTables } from "./services/publish.js";
 
 Bugsnag.start({
@@ -288,6 +289,7 @@ app.get("/v1/ping", (_req: Request, res: Response) => {
 });
 
 // --- Routes ---
+app.use(adminDashboardRoutes);
 app.use(billingRoutes);
 app.use(billingStripeRoutes);
 app.use(projectRoutes);

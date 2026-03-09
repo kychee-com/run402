@@ -55,3 +55,8 @@ export const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET || "";
 
 // Bugsnag
 export const BUGSNAG_API_KEY = process.env.BUGSNAG_API_KEY || "0751ea52d07c1449d7cd2f7724de0ede";
+
+// Google OAuth (admin dashboard)
+export const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || "";
+export const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || "";
+export const ADMIN_SESSION_SECRET = process.env.ADMIN_SESSION_SECRET || "run402-admin-session-secret-change-me";

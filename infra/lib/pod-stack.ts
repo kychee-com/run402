@@ -120,6 +120,10 @@ export class PodStack extends cdk.Stack {
       this, "StripeWebhookSecret", "agentdb/stripe-webhook-secret",
     );
 
+    // Google OAuth + admin session secrets are managed outside CDK.
+    // The task role has a wildcard policy (AgentDBSecretsWildcard) for agentdb/*.
+    // New secrets are added directly to task def revisions — no CDK deploy needed.
+
     // =========================================================================
     // Aurora Serverless v2 (Postgres 16)
     // =========================================================================
@@ -303,6 +307,8 @@ export class PodStack extends cdk.Stack {
         ADMIN_KEY: ecs.Secret.fromSecretsManager(adminKeySecret),
         OPENROUTER_API_KEY: ecs.Secret.fromSecretsManager(openrouterSecret),
         STRIPE_WEBHOOK_SECRET: ecs.Secret.fromSecretsManager(stripeWebhookSecret),
+        // GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, ADMIN_SESSION_SECRET
+        // are added directly to task def revisions (see deploy.sh / CI)
       },
       healthCheck: {
         command: ["CMD-SHELL", "wget -qO- http://localhost:4022/health || exit 1"],
