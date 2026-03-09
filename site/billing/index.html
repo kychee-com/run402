@@ -312,6 +312,111 @@
       font-size: 14px;
     }
 
+    .manual-entry {
+      max-width: 520px;
+      margin: 40px auto 0;
+      text-align: left;
+    }
+
+    .manual-entry summary {
+      cursor: pointer;
+      color: #9CA3AF;
+      font-size: 14px;
+      text-align: center;
+      list-style: none;
+      user-select: none;
+    }
+
+    .manual-entry summary::-webkit-details-marker { display: none; }
+
+    .manual-entry summary span {
+      border-bottom: 1px dashed #6B7280;
+      transition: color 0.2s;
+    }
+
+    .manual-entry summary:hover span { color: #E0E0E0; }
+
+    .manual-entry-inner {
+      margin-top: 24px;
+      background: #12121A;
+      border: 1px solid #1E1E2A;
+      border-radius: 12px;
+      padding: 24px;
+    }
+
+    .manual-entry-inner h3 {
+      font-size: 15px;
+      color: #FFFFFF;
+      font-weight: 600;
+      margin-bottom: 16px;
+    }
+
+    .manual-entry-inner ol {
+      color: #9CA3AF;
+      font-size: 14px;
+      padding-left: 20px;
+      margin-bottom: 20px;
+      line-height: 1.8;
+    }
+
+    .manual-entry-inner ol code {
+      font-family: 'JetBrains Mono', monospace;
+      color: #00FF9F;
+      font-size: 12px;
+      background: rgba(0, 255, 159, 0.08);
+      padding: 2px 6px;
+      border-radius: 3px;
+    }
+
+    .wallet-input-row {
+      display: flex;
+      gap: 8px;
+    }
+
+    .wallet-input {
+      flex: 1;
+      background: #0A0A0F;
+      border: 1px solid #1E1E2A;
+      border-radius: 8px;
+      padding: 12px 14px;
+      color: #00FF9F;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 14px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    .wallet-input::placeholder { color: #4B5563; }
+    .wallet-input:focus { border-color: rgba(0, 255, 159, 0.4); }
+
+    .wallet-input-error {
+      border-color: #EF4444 !important;
+    }
+
+    .wallet-go-btn {
+      background: #00FF9F;
+      color: #0A0A0F;
+      border: none;
+      border-radius: 8px;
+      padding: 12px 20px;
+      font-family: 'Inter', sans-serif;
+      font-weight: 600;
+      font-size: 14px;
+      cursor: pointer;
+      transition: opacity 0.2s;
+      white-space: nowrap;
+    }
+
+    .wallet-go-btn:hover { opacity: 0.85; }
+
+    .wallet-input-hint {
+      font-size: 12px;
+      color: #6B7280;
+      margin-top: 8px;
+    }
+
+    .wallet-input-hint.error { color: #EF4444; }
+
     .footer {
       border-top: 1px solid #1E1E2A;
       padding-top: 32px;
@@ -351,6 +456,25 @@
       <h2>No wallet address provided</h2>
       <p>This page is for funding your agent's Run402 allowance. Your agent should send you a link like:</p>
       <p style="margin-top:12px;"><code>run402.com/billing?wallet=0x...</code></p>
+
+      <div class="manual-entry">
+        <details>
+          <summary><span>How do I do this manually?</span></summary>
+          <div class="manual-entry-inner">
+            <h3>Enter your agent's wallet address</h3>
+            <ol>
+              <li>Ask your agent for its Ethereum wallet address (starts with <code>0x</code>)</li>
+              <li>Paste the address below</li>
+              <li>Fund the allowance with a credit card &mdash; your agent can start spending immediately</li>
+            </ol>
+            <div class="wallet-input-row">
+              <input type="text" class="wallet-input" id="manual-wallet" placeholder="0x..." spellcheck="false" autocomplete="off">
+              <button class="wallet-go-btn" onclick="goToWallet()">Go</button>
+            </div>
+            <div class="wallet-input-hint" id="wallet-hint">42-character hex address, e.g. 0x059D...5945</div>
+          </div>
+        </details>
+      </div>
     </div>
 
     <!-- Main content -->
@@ -574,6 +698,34 @@
           .catch(function() {});
       }, 2000);
     }
+
+    function goToWallet() {
+      var input = document.getElementById('manual-wallet');
+      var hint = document.getElementById('wallet-hint');
+      var addr = input.value.trim().toLowerCase();
+      if (/^0x[0-9a-f]{40}$/i.test(addr)) {
+        window.location.href = '/billing?wallet=' + addr;
+      } else {
+        input.classList.add('wallet-input-error');
+        hint.textContent = 'Please enter a valid Ethereum address (0x followed by 40 hex characters)';
+        hint.classList.add('error');
+      }
+    }
+
+    // Allow Enter key to submit
+    document.addEventListener('DOMContentLoaded', function() {
+      var input = document.getElementById('manual-wallet');
+      if (input) {
+        input.addEventListener('keydown', function(e) {
+          if (e.key === 'Enter') goToWallet();
+        });
+        input.addEventListener('input', function() {
+          input.classList.remove('wallet-input-error');
+          document.getElementById('wallet-hint').textContent = '42-character hex address, e.g. 0x059D...5945';
+          document.getElementById('wallet-hint').classList.remove('error');
+        });
+      }
+    });
 
     function escapeHtml(s) {
       var d = document.createElement('div');
