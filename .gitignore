@@ -8,3 +8,4 @@ storage/
 cdk.out/
 cdk.context.json
 *.zip
+tmp/
