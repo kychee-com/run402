@@ -401,7 +401,7 @@
 
     <p class="lead"><strong>Do this:</strong> paste this into your agent's chat.</p>
     <div class="copy-block">
-      <code onclick="copyUrl(this, true)">Please build me a demo app using https://run402.com/llms.txt</code>
+      <code onclick="copyUrl(this, true)">Please build me a demo app using https://run402.com/llms.txt (curl it)</code>
       <button class="copy-btn" onclick="copyUrl(this, false)">Copy</button>
     </div>
 
@@ -767,7 +767,7 @@ Build a flash card app for learning Spanish:
       <p style="color:#E0E0E0; font-size: 17px; margin-bottom: 16px;">It just doesn't know Run402 exists yet.</p>
       <p class="lead"><strong>Do this:</strong> paste this into your agent's chat.</p>
       <div class="copy-block">
-        <code onclick="copyUrl(this, true)">Please build me a demo app using https://run402.com/llms.txt</code>
+        <code onclick="copyUrl(this, true)">Please build me a demo app using https://run402.com/llms.txt (curl it)</code>
         <button class="copy-btn" onclick="copyUrl(this, false)">Copy</button>
       </div>
     </div>
@@ -806,7 +806,7 @@ Build a flash card app for learning Spanish:
 
     function copyUrl(el, isCode) {
       sendAttributionBeacon();
-      navigator.clipboard.writeText('Please build me a demo app using https://run402.com/llms.txt').then(function() {
+      navigator.clipboard.writeText('Please build me a demo app using https://run402.com/llms.txt (curl it)').then(function() {
         if (isCode) {
           var original = el.textContent;
           el.textContent = 'Copied!';
