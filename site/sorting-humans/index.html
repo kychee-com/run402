@@ -51,18 +51,18 @@
     }
 
     h1 {
-      font-size: clamp(20px, 4vw, 36px);
+      font-size: clamp(24px, 4vw, 48px);
       font-weight: 700;
       color: #fff;
       text-align: center;
-      margin-bottom: 2px;
+      margin-bottom: 4px;
     }
 
     .subtitle {
-      font-size: clamp(12px, 2vw, 16px);
+      font-size: clamp(14px, 2vw, 18px);
       color: #9ca3af;
       text-align: center;
-      margin-bottom: 32px;
+      margin-bottom: 40px;
       font-family: 'JetBrains Mono', monospace;
     }
 
@@ -81,13 +81,13 @@
       display: flex;
       flex-direction: column;
       justify-content: space-between;
-      padding: 16px;
+      padding: 20px;
       border-radius: 16px;
       text-decoration: none;
       transition: all 0.3s ease;
     }
     @media (min-width: 768px) {
-      .card { padding: 32px; }
+      .card { padding: 40px; }
     }
 
     .card--run {
@@ -125,12 +125,12 @@
       display: inline-block;
       align-self: flex-start;
       font-family: 'JetBrains Mono', monospace;
-      font-size: 10px;
+      font-size: 12px;
       text-transform: uppercase;
       letter-spacing: 0.1em;
       border-radius: 4px;
-      padding: 2px 8px;
-      margin-bottom: 12px;
+      padding: 4px 10px;
+      margin-bottom: 16px;
     }
     .pill-label--green {
       color: #009966;
@@ -148,15 +148,15 @@
     .checklist li {
       display: flex;
       align-items: flex-start;
-      gap: 8px;
-      font-size: 14px;
+      gap: 10px;
+      font-size: 16px;
       line-height: 1.5;
-      margin-bottom: 6px;
+      margin-bottom: 12px;
     }
     @media (min-width: 768px) {
-      .checklist li { margin-bottom: 10px; }
+      .checklist li { font-size: 18px; margin-bottom: 16px; }
     }
-    .check { flex-shrink: 0; margin-top: 2px; }
+    .check { flex-shrink: 0; margin-top: 2px; font-size: 18px; }
     .check--green { color: #009966; }
     .check--blue  { color: #0066cc; }
 
@@ -173,9 +173,9 @@
       align-items: center;
       gap: 12px;
       border-radius: 8px;
-      padding: 10px 32px;
+      padding: 12px 32px;
       font-weight: 600;
-      font-size: 16px;
+      font-size: 18px;
       transition: all 0.2s ease;
     }
     .cta-btn--green {
@@ -200,18 +200,18 @@
     }
 
     .cta-desc {
-      font-size: 12px;
+      font-size: 14px;
       color: #6b7280;
-      margin-top: 6px;
+      margin-top: 8px;
       font-family: 'JetBrains Mono', monospace;
     }
 
     .footer-joke {
-      font-size: 12px;
+      font-size: 14px;
       color: #4b5563;
       text-align: center;
       max-width: 420px;
-      margin-top: 16px;
+      margin-top: 20px;
       font-family: 'JetBrains Mono', monospace;
     }
   </style>
@@ -223,13 +223,7 @@
   <div class="grid">
     <a href="https://run402.com" target="_blank" rel="noopener noreferrer" class="card card--run">
       <span class="pill-label pill-label--green">the green pill</span>
-      <ul class="checklist">
-        <li><span class="check check--green">&#10003;</span> You know what Postgres is (and have opinions about it)</li>
-        <li><span class="check check--green">&#10003;</span> "x402" made you think of HTTP status codes</li>
-        <li><span class="check check--green">&#10003;</span> You've argued about tabs vs spaces (and you were right)</li>
-        <li><span class="check check--green">&#10003;</span> REST vs GraphQL is a hill you'd die on</li>
-        <li><span class="check check--green">&#10003;</span> You deploy on Fridays (you live dangerously)</li>
-      </ul>
+      <ul class="checklist" id="run-list"></ul>
       <div class="cta-box">
         <span class="cta-btn cta-btn--green">
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="24" height="24">
@@ -244,13 +238,7 @@
 
     <a href="https://bld402.com/humans/" target="_blank" rel="noopener noreferrer" class="card card--bld">
       <span class="pill-label pill-label--blue">the blue pill</span>
-      <ul class="checklist">
-        <li><span class="check check--blue">&#10003;</span> "API" sounds like a type of bee</li>
-        <li><span class="check check--blue">&#10003;</span> You just want to build cool stuff, not learn tech mumbo jumbo</li>
-        <li><span class="check check--blue">&#10003;</span> "Deploy" sounds like something the military does</li>
-        <li><span class="check check--blue">&#10003;</span> You describe your app idea and an AI builds it for you</li>
-        <li><span class="check check--blue">&#10003;</span> You've never seen a terminal and you're proud of it</li>
-      </ul>
+      <ul class="checklist" id="bld-list"></ul>
       <div class="cta-box">
         <span class="cta-btn cta-btn--blue">
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="24" height="24">
@@ -269,6 +257,44 @@
   </div>
 
   <p class="footer-joke">No wrong answers. But if you're still reading instead of clicking, you might be a product manager.</p>
+
+  <script>
+    // Pick 2 random lines per side — runs synchronously, no layout shift
+    (function() {
+      var runLines = [
+        'You know what Postgres is (and have opinions about it)',
+        '\u201cx402\u201d made you think of HTTP status codes',
+        'You\u2019ve argued about tabs vs spaces (and you were right)',
+        'REST vs GraphQL is a hill you\u2019d die on',
+        'You deploy on Fridays (you live dangerously)'
+      ];
+      var bldLines = [
+        '\u201cAPI\u201d sounds like a type of bee',
+        'You just want to build cool stuff, not learn tech mumbo jumbo',
+        '\u201cDeploy\u201d sounds like something the military does',
+        'You describe your app idea and an AI builds it for you',
+        'You\u2019ve never seen a terminal and you\u2019re proud of it'
+      ];
+      function pick(arr, n) {
+        var a = arr.slice();
+        for (var i = a.length - 1; i > 0; i--) {
+          var j = Math.floor(Math.random() * (i + 1));
+          var t = a[i]; a[i] = a[j]; a[j] = t;
+        }
+        return a.slice(0, n);
+      }
+      function render(id, items, cls) {
+        var ul = document.getElementById(id);
+        for (var i = 0; i < items.length; i++) {
+          var li = document.createElement('li');
+          li.innerHTML = '<span class="check ' + cls + '">&#10003;</span> ' + items[i];
+          ul.appendChild(li);
+        }
+      }
+      render('run-list', pick(runLines, 2), 'check--green');
+      render('bld-list', pick(bldLines, 2), 'check--blue');
+    })();
+  </script>
 
   <script>
     // Attribution beacon — fire on pill click if user came from an ad
