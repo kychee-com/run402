@@ -129,6 +129,76 @@
       color: #00FF9F !important;
     }
 
+    .wallet-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .wallet-row .wallet-display { flex: 1; }
+
+    .qr-btn {
+      background: transparent;
+      border: 1px solid #1E1E2A;
+      border-radius: 4px;
+      color: #9CA3AF;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      padding: 6px 10px;
+      cursor: pointer;
+      letter-spacing: 1px;
+      transition: border-color 0.2s, color 0.2s;
+      flex-shrink: 0;
+    }
+
+    .qr-btn:hover {
+      border-color: rgba(0, 255, 159, 0.4);
+      color: #00FF9F;
+    }
+
+    .qr-overlay {
+      display: none;
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      background: rgba(0, 0, 0, 0.85);
+      z-index: 1000;
+      justify-content: center;
+      align-items: center;
+      backdrop-filter: blur(4px);
+    }
+
+    .qr-modal {
+      background: #12121A;
+      border: 1px solid rgba(0, 255, 159, 0.2);
+      border-radius: 16px;
+      padding: 40px;
+      text-align: center;
+      max-width: 360px;
+      position: relative;
+    }
+
+    .qr-close {
+      position: absolute;
+      top: 12px; right: 16px;
+      background: none;
+      border: none;
+      color: #6B7280;
+      font-size: 24px;
+      cursor: pointer;
+      line-height: 1;
+    }
+
+    .qr-close:hover { color: #E0E0E0; }
+
+    .qr-img-wrap {
+      background: white;
+      border-radius: 12px;
+      padding: 16px;
+      display: inline-block;
+      margin-bottom: 20px;
+    }
+
     .section { margin-bottom: 40px; }
 
     .section h2 {
@@ -559,8 +629,24 @@
 
       <fieldset class="labeled-box">
         <legend>Wallet Address</legend>
-        <div class="wallet-display" id="wallet-display"></div>
+        <div class="wallet-row">
+          <div class="wallet-display" id="wallet-display"></div>
+          <button class="qr-btn" id="qr-btn">QR</button>
+        </div>
       </fieldset>
+
+      <!-- QR code overlay -->
+      <div class="qr-overlay" id="qr-overlay">
+        <div class="qr-modal">
+          <button class="qr-close" id="qr-close">&times;</button>
+          <div style="font-family:'JetBrains Mono',monospace; font-size:11px; text-transform:uppercase; letter-spacing:1.5px; color:#9CA3AF; margin-bottom:20px;">Send USDC on Base</div>
+          <div class="qr-img-wrap">
+            <img id="qr-img" width="200" height="200" style="display:block;" alt="Wallet QR code">
+          </div>
+          <div id="qr-address" style="font-family:'JetBrains Mono',monospace; font-size:12px; color:#00FF9F; word-break:break-all; padding:0 8px; margin-bottom:16px;"></div>
+          <div style="font-size:12px; color:#6B7280;">Scan with your wallet app to send USDC on Base</div>
+        </div>
+      </div>
 
       <!-- Success banner -->
       <div id="success-banner" class="success-banner" style="display:none;">
@@ -660,6 +746,19 @@
             el.classList.remove('copied');
           }, 1200);
         });
+      });
+
+      // QR code overlay
+      document.getElementById('qr-img').src = 'https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=ethereum:' + wallet;
+      document.getElementById('qr-address').textContent = wallet;
+      document.getElementById('qr-btn').addEventListener('click', function() {
+        document.getElementById('qr-overlay').style.display = 'flex';
+      });
+      document.getElementById('qr-close').addEventListener('click', function() {
+        document.getElementById('qr-overlay').style.display = 'none';
+      });
+      document.getElementById('qr-overlay').addEventListener('click', function(e) {
+        if (e.target === this) this.style.display = 'none';
       });
 
       // Conversion: billing page view (user is in the funnel)
