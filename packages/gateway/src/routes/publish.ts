@@ -21,6 +21,7 @@ import {
 } from "../services/publish.js";
 import { forkApp, validateForkRequest, ForkError } from "../services/fork.js";
 import { deleteAppVersion } from "../services/publish.js";
+import { createDemoProject, findDemoProject, updateDemoVersion, teardownDemoProject } from "../services/demo.js";
 import { ADMIN_KEY } from "../config.js";
 import { extractWalletFromPaymentHeader } from "../utils/wallet.js";
 import { notifyNewProject } from "../services/telegram.js";
@@ -47,6 +48,27 @@ router.post(
         project.walletAddress,
         options,
       );
+
+      // Auto-create or update demo project for public forkable apps
+      if (version.visibility === "public" && version.fork_allowed) {
+        const apiBase = `${req.protocol}://${req.get("host")}`;
+        try {
+          const existingDemoId = await findDemoProject(project.id);
+          if (existingDemoId) {
+            // Update existing demo to new version (triggers immediate reset)
+            await updateDemoVersion(existingDemoId, version.id);
+            console.log(`  Demo project ${existingDemoId} updated to version ${version.id}`);
+          } else {
+            // Create new demo project
+            const demoId = await createDemoProject(version.id, project.name, apiBase);
+            console.log(`  Demo project ${demoId} created for ${project.id}`);
+          }
+        } catch (demoErr) {
+          // Demo creation failure should not block the publish
+          console.error("  Failed to create/update demo project:", demoErr);
+        }
+      }
+
       res.status(201).json(version);
     } catch (err: unknown) {
       if (err instanceof PublishError) {
@@ -145,6 +167,13 @@ router.delete(
     const deleted = await delVer(req.params.versionId as string, project.id);
     if (!deleted) {
       throw new HttpError(404, "Version not found");
+    }
+
+    // Teardown demo project if this was a published version with a demo
+    try {
+      await teardownDemoProject(project.id);
+    } catch (err) {
+      console.error("  Failed to teardown demo project:", err);
     }
 
     res.json({ status: "deleted", version_id: req.params.versionId });

@@ -1,5 +1,29 @@
 // === Project types ===
 
+export interface DemoConfig {
+  max_row_inserts: number;
+  max_auth_users: number;
+  max_storage_files: number;
+  max_row_deletes: number;
+  max_function_invocations: number;
+  reset_interval_hours: number;
+  allow_edits: boolean;
+  allow_deletes: boolean;
+  banner_text: string;
+}
+
+export const DEFAULT_DEMO_CONFIG: DemoConfig = {
+  max_row_inserts: 50,
+  max_auth_users: 3,
+  max_storage_files: 5,
+  max_row_deletes: 20,
+  max_function_invocations: 100,
+  reset_interval_hours: 4,
+  allow_edits: true,
+  allow_deletes: true,
+  banner_text: "Live demo — shared, resets every 4 hours. Fork for your own permanent copy.",
+};
+
 export interface ProjectInfo {
   id: string;
   name: string;
@@ -16,6 +40,10 @@ export interface ProjectInfo {
   walletAddress?: string;
   pinned: boolean;
   createdAt: Date;
+  demoMode: boolean;
+  demoConfig?: DemoConfig;
+  demoSourceVersionId?: string;
+  demoLastResetAt?: Date;
 }
 
 export type ProjectStatus = "active" | "archived" | "expired" | "deleted";

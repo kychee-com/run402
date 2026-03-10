@@ -1,6 +1,7 @@
 import { Router, Request, Response } from "express";
 import { pool } from "../db/pool.js";
 import { serviceKeyAuth } from "../middleware/apikey.js";
+import { demoBlockedMiddleware } from "../middleware/demo.js";
 import { getTierLimits } from "@run402/shared";
 import { asyncHandler, HttpError } from "../utils/async-handler.js";
 import { ADMIN_KEY } from "../config.js";
@@ -74,8 +75,8 @@ function assertProjectMatch(req: Request): void {
   }
 }
 
-// POST /admin/v1/projects/:id/sql — run SQL migration
-router.post("/admin/v1/projects/:id/sql", asyncHandler(async (req: Request, res: Response) => {
+// POST /admin/v1/projects/:id/sql — run SQL migration (blocked in demo mode)
+router.post("/admin/v1/projects/:id/sql", demoBlockedMiddleware("SQL execution"), asyncHandler(async (req: Request, res: Response) => {
   assertProjectMatch(req);
   const project = req.project!;
 

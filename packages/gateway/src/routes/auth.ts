@@ -5,6 +5,7 @@ import crypto from "node:crypto";
 import { pool } from "../db/pool.js";
 import { JWT_SECRET } from "../config.js";
 import { apikeyAuth } from "../middleware/apikey.js";
+import { demoSignupMiddleware } from "../middleware/demo.js";
 import { hasCode } from "../utils/errors.js";
 import { asyncHandler, HttpError } from "../utils/async-handler.js";
 import type { TokenPayload } from "@run402/shared";
@@ -15,7 +16,7 @@ const router = Router();
 router.use("/auth/v1", apikeyAuth);
 
 // POST /auth/v1/signup — create user
-router.post("/auth/v1/signup", asyncHandler(async (req: Request, res: Response) => {
+router.post("/auth/v1/signup", demoSignupMiddleware, asyncHandler(async (req: Request, res: Response) => {
   const project = req.project!;
   const { email, password } = req.body || {};
 

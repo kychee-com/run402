@@ -18,16 +18,18 @@ import { asyncHandler, HttpError } from "../utils/async-handler.js";
 import { serviceKeyAuth } from "../middleware/apikey.js";
 import { apikeyAuth } from "../middleware/apikey.js";
 import { meteringMiddleware } from "../middleware/metering.js";
+import { demoBlockedMiddleware, demoFunctionInvokeMiddleware } from "../middleware/demo.js";
 import { TIERS } from "@run402/shared";
 
 const router = Router();
 
 // --- Admin routes (service_key auth) ---
 
-// POST /admin/v1/projects/:id/functions — deploy a function
+// POST /admin/v1/projects/:id/functions — deploy a function (blocked in demo mode)
 router.post(
   "/admin/v1/projects/:id/functions",
   serviceKeyAuth,
+  demoBlockedMiddleware("Function deployment"),
   asyncHandler(async (req: Request, res: Response) => {
     const projectId = req.params.id as string;
     const { name, code, config, deps } = req.body || {};
@@ -135,10 +137,11 @@ router.get(
 
 // --- Secrets routes ---
 
-// POST /admin/v1/projects/:id/secrets — set a secret
+// POST /admin/v1/projects/:id/secrets — set a secret (blocked in demo mode)
 router.post(
   "/admin/v1/projects/:id/secrets",
   serviceKeyAuth,
+  demoBlockedMiddleware("Secret management"),
   asyncHandler(async (req: Request, res: Response) => {
     const { key, value } = req.body || {};
     if (!key || typeof key !== "string") {
@@ -198,6 +201,7 @@ router.all(
   ["/functions/v1/:name", "/functions/v1/:name/*"],
   apikeyAuth,
   meteringMiddleware,
+  demoFunctionInvokeMiddleware,
   asyncHandler(async (req: Request, res: Response) => {
     const project = req.project!;
     const fnName = req.params.name as string;

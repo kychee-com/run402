@@ -23,6 +23,7 @@ import { syncProjects } from "./services/projects.js";
 import { initSlots } from "./services/slots.js";
 import { startLeaseChecker, stopLeaseChecker } from "./services/leases.js";
 import { startFaucetRefill, stopFaucetRefill } from "./services/faucet.js";
+import { startDemoResetChecker, stopDemoResetChecker } from "./services/demo.js";
 import { initIdempotencyTable, idempotencyMiddleware } from "./middleware/idempotency.js";
 import { initDeploymentsTable } from "./services/deployments.js";
 import { initSubdomainsTable } from "./services/subdomains.js";
@@ -850,6 +851,12 @@ async function applyMigrations() {
       processing_error TEXT
     )
   `);
+
+  // v1.10: demo mode columns
+  await pool.query(`ALTER TABLE internal.projects ADD COLUMN IF NOT EXISTS demo_mode BOOLEAN NOT NULL DEFAULT false`);
+  await pool.query(`ALTER TABLE internal.projects ADD COLUMN IF NOT EXISTS demo_config JSONB`);
+  await pool.query(`ALTER TABLE internal.projects ADD COLUMN IF NOT EXISTS demo_source_version_id TEXT`);
+  await pool.query(`ALTER TABLE internal.projects ADD COLUMN IF NOT EXISTS demo_last_reset_at TIMESTAMPTZ`);
 }
 
 async function start() {
@@ -901,6 +908,7 @@ async function start() {
   startMeteringFlush();
   startLeaseChecker();
   startFaucetRefill();
+  startDemoResetChecker();
 
   server = app.listen(PORT, () => {
     console.log(`\nAgentDB Gateway running on port ${PORT}`);
@@ -927,6 +935,7 @@ async function shutdown(signal: string) {
   stopMeteringFlush();
   stopLeaseChecker();
   stopFaucetRefill();
+  stopDemoResetChecker();
 
   // Flush metering counters
   try {

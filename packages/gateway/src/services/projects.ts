@@ -31,7 +31,8 @@ export const projectCache = {
 export async function syncProjects(): Promise<void> {
   const result = await pool.query(
     `SELECT id, name, schema_slot, tier, status, api_calls, storage_bytes,
-            lease_started_at, lease_expires_at, tx_hash, wallet_address, pinned, created_at
+            lease_started_at, lease_expires_at, tx_hash, wallet_address, pinned, created_at,
+            demo_mode, demo_config, demo_source_version_id, demo_last_reset_at
      FROM internal.projects WHERE status = 'active'`,
   );
 
@@ -52,6 +53,10 @@ export async function syncProjects(): Promise<void> {
       walletAddress: row.wallet_address || undefined,
       pinned: row.pinned || false,
       createdAt: new Date(row.created_at),
+      demoMode: row.demo_mode || false,
+      demoConfig: row.demo_config || undefined,
+      demoSourceVersionId: row.demo_source_version_id || undefined,
+      demoLastResetAt: row.demo_last_reset_at ? new Date(row.demo_last_reset_at) : undefined,
     });
   }
 
@@ -110,6 +115,7 @@ export async function createProject(
     walletAddress,
     pinned: false,
     createdAt: now,
+    demoMode: false,
   };
 
   cache.set(projectId, project);

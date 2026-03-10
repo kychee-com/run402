@@ -248,7 +248,7 @@ export async function forkApp(
 /**
  * Execute multi-statement SQL via psql (handles pg_dump output correctly).
  */
-async function executeSqlViaPsql(sql: string, label: string): Promise<void> {
+export async function executeSqlViaPsql(sql: string, label: string): Promise<void> {
   const dbHost = process.env.DB_HOST || "localhost";
   const dbPort = process.env.DB_PORT || "5432";
   const dbName = process.env.DB_NAME || "agentdb";

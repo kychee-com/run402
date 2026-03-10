@@ -6,6 +6,7 @@ import { join, dirname } from "node:path";
 import { S3_BUCKET, S3_REGION } from "../config.js";
 import { apikeyAuth } from "../middleware/apikey.js";
 import { meteringMiddleware } from "../middleware/metering.js";
+import { demoStorageMiddleware } from "../middleware/demo.js";
 import { updateStorageBytes } from "../services/budget.js";
 import { hasName } from "../utils/errors.js";
 import { asyncHandler, HttpError } from "../utils/async-handler.js";
@@ -27,7 +28,7 @@ const s3 = S3_BUCKET
 const LOCAL_STORAGE_ROOT = process.env.STORAGE_ROOT || "./storage";
 
 // All storage routes require apikey
-router.use("/storage/v1", apikeyAuth, meteringMiddleware);
+router.use("/storage/v1", apikeyAuth, meteringMiddleware, demoStorageMiddleware);
 
 // POST /storage/v1/object/:bucket/* — upload file
 router.post("/storage/v1/object/:bucket/*", asyncHandler(async (req: Request, res: Response) => {

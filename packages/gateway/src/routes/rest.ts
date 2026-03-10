@@ -2,6 +2,7 @@ import { Router, Request, Response } from "express";
 import { POSTGREST_URL } from "../config.js";
 import { apikeyAuth } from "../middleware/apikey.js";
 import { meteringMiddleware } from "../middleware/metering.js";
+import { demoRestMiddleware } from "../middleware/demo.js";
 import { asyncHandler } from "../utils/async-handler.js";
 
 const router = Router();
@@ -26,7 +27,7 @@ async function forwardToPostgREST(
 }
 
 // PostgREST proxy — /rest/v1/*
-router.all("/rest/v1/*", apikeyAuth, meteringMiddleware, asyncHandler(async (req: Request, res: Response) => {
+router.all("/rest/v1/*", apikeyAuth, meteringMiddleware, demoRestMiddleware, asyncHandler(async (req: Request, res: Response) => {
   const project = req.project!;
 
   // Build PostgREST URL

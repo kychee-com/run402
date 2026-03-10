@@ -44,6 +44,8 @@ Limits are stored in `demo_config` on the project and have sensible defaults.
 | Row inserts (total, all tables) | 50 | Enough to try the app, not enough to use it |
 | Auth user signups | 3 | Can test multi-user, can't run a real team |
 | Storage file uploads | 5 | Can see upload UX, can't use as file hosting |
+| Row deletes (total, all tables) | 20 | Can test delete UX, can't wipe demo data |
+| SQL exec endpoint | Blocked | Bypasses RLS — see [details](#sql-exec-is-blocked) |
 | DDL statements | Blocked | Can't alter schema |
 | Secret writes | Blocked | Can't configure integrations |
 | Function deploys | Blocked | Can't modify serverless functions |
@@ -57,17 +59,27 @@ Reads are unlimited — visitors can browse all seeded data freely.
 | `POST /rest/v1/:table` | Increment row insert counter; reject if over limit |
 | `PATCH /rest/v1/:table` | Allowed (editing existing data is fine) |
 | `DELETE /rest/v1/:table` | Allowed but capped (max 20 deletes) — prevents wiping demo data |
-| `POST /admin/v1/projects/:id/sql` | Reject DDL; allow DML up to row insert limit |
+| `POST /admin/v1/projects/:id/sql` | Blocked — bypasses RLS, exposes raw SQL access (see [SQL exec](#sql-exec-is-blocked)) |
 | `POST /auth/v1/signup` | Increment auth user counter; reject if over limit |
 | `POST /storage/v1/...` | Increment file counter; reject if over limit |
 | `POST /admin/v1/projects/:id/secrets` | Blocked |
 | `POST /admin/v1/projects/:id/functions` | Blocked |
 
+#### SQL exec is blocked
+
+The SQL exec endpoint (`/admin/v1/projects/:id/sql`) is fully blocked in demo mode. Unlike PostgREST, which respects RLS policies, the SQL exec endpoint runs raw SQL as the schema owner. In a demo project the service key may be observable (embedded in client-side code or function calls), so exposing this endpoint would let visitors:
+
+- Bypass row-level security to read data PostgREST would hide
+- Run `DROP TABLE` or `DELETE FROM ... WHERE true` to destroy the demo for everyone
+- Probe `pg_catalog` / `information_schema` across schema slots
+
+Apps that use SQL exec for migrations don't need it at demo runtime — migrations ran at publish time. If a future app legitimately needs runtime SQL in its demo, we can revisit with a read-only allowlist, but the default is blocked.
+
 #### Counter tracking
 
-Counters are tracked in-memory (or Redis if multi-instance) per demo project. They reset when the demo resets.
+Counters are tracked **in-memory** per demo project per gateway instance. They reset when the demo resets or the gateway restarts.
 
-No need for durable counters — if the gateway restarts, counters reset early. That's fine; it's a demo.
+With multiple gateway instances (ECS `desiredCount > 1`), each instance tracks its own counters. This means effective limits are multiplied by the number of instances (e.g., 50 inserts × 2 instances = 100 inserts possible). This is acceptable — demo limits are approximate guardrails, not hard security boundaries. If tighter enforcement is needed later, move counters to Redis or a shared Postgres row.
 
 ### 3. Demo reset
 
@@ -76,14 +88,16 @@ A scheduled task resets each demo project to its published snapshot on a configu
 **Default interval: 4 hours.**
 
 Reset process:
-1. Drop all tables in the demo schema
-2. Restore from the published bundle (same `deployBundle()` path used by fork)
-3. Re-apply grants
-4. Reset in-memory counters to zero
+1. Set the demo project to **maintenance mode** (gateway returns `503 Service Unavailable` with `Retry-After: 30` for all requests to this project)
+2. Drop all tables in the demo schema
+3. Restore from the published bundle (same `deployBundle()` path used by fork)
+4. Re-apply grants
 5. Auth users created by visitors are wiped (seeded users are restored)
 6. Storage uploads by visitors are deleted (seeded assets are restored)
+7. Reset in-memory counters to zero
+8. Clear maintenance mode
 
-This reuses the existing publish/fork restore pipeline — no new restore logic needed.
+This reuses the existing publish/fork restore pipeline — no new restore logic needed. The maintenance window prevents visitors from hitting errors or writing data mid-reset. Typical reset takes a few seconds.
 
 #### Reset schedule options
 
@@ -98,7 +112,13 @@ Can be overridden per app. Some apps (e.g., a game with leaderboard) might want 
 
 ### 4. Error responses when limits are hit
 
-When a demo limit is reached, the gateway returns **403** with a structured body:
+When a demo limit is reached, the gateway returns **429 Too Many Requests** with a `Retry-After` header set to the number of seconds until the next reset. 429 is semantically correct (the limit is temporary and resets), and HTTP clients/agents already understand retry logic for this status code.
+
+```http
+HTTP/1.1 429 Too Many Requests
+Retry-After: 3600
+Content-Type: application/json
+```
 
 ```json
 {
@@ -111,12 +131,6 @@ When a demo limit is reached, the gateway returns **403** with a structured body
   "fork": {
     "version_id": "av_abc123",
     "app_name": "Prello",
-    "min_tier": "prototype",
-    "pricing": {
-      "prototype": "$0.10 for 7 days",
-      "hobby": "$5.00 for 30 days",
-      "team": "$20.00 for 30 days"
-    },
     "fork_url": "https://run402.com/apps#av_abc123"
   },
   "resets_at": "2026-03-10T16:00:00Z"
@@ -125,9 +139,9 @@ When a demo limit is reached, the gateway returns **403** with a structured body
 
 The error is:
 - **Human-readable** — clear message
-- **Agent-readable** — structured fork info, version ID, pricing
-- **Actionable** — includes everything needed to fork
-- **Temporary** — includes `resets_at` so visitors know when limits clear
+- **Agent-readable** — structured fork info, version ID
+- **Actionable** — `fork_url` links to the listing page which shows pricing and tiers (keeps the gateway decoupled from billing)
+- **Temporary** — includes `resets_at` and `Retry-After` so visitors/agents know when limits clear
 
 ### 5. Frontend demo banner
 
@@ -135,9 +149,9 @@ Demo projects get an injected banner (similar to the fork badge) that says:
 
 > **Live demo** — shared, resets every 4 hours. Fork for your own permanent copy.
 
-This is injected by the site-serving layer (CloudFront function or edge inject), not by the app itself.
+This is injected by the site-serving layer as a `<script>` tag appended by a CloudFront Function. The script renders a fixed-position top bar — CloudFront Functions can append to the response body but can't parse/modify HTML, so a self-rendering script is the right approach.
 
-The existing fork badge overlay already handles the "Copy agent prompt" UX. The demo banner is a simpler, smaller element — a top bar or subtle fixed strip.
+The existing fork badge overlay already handles the "Copy agent prompt" UX. The demo banner is a simpler, smaller element — a fixed strip at the top of the viewport.
 
 ---
 
@@ -160,6 +174,7 @@ ALTER TABLE internal.projects ADD COLUMN demo_last_reset_at TIMESTAMPTZ;
   "max_auth_users": 3,
   "max_storage_files": 5,
   "max_row_deletes": 20,
+  "max_function_invocations": 100,
   "reset_interval_hours": 4,
   "allow_edits": true,
   "allow_deletes": true,
@@ -186,7 +201,7 @@ When publishing with `visibility: public` and `fork_allowed: true`:
 When the publisher publishes a new version:
 - The demo project's `demo_source_version_id` is updated
 - An immediate reset restores the new version's bundle
-- Visitors see the latest version after next reset
+- Visitors see the latest version right away (no need to wait for the scheduled reset)
 
 ---
 
@@ -201,6 +216,30 @@ This means:
 - `my-prello.run402.com` → forked instance (full access, user-owned)
 
 The published app's listing page (`/apps#version-id`) links to the live demo URL.
+
+---
+
+### 6. Function invocations
+
+Bundled serverless functions from the published bundle **do run** in demo mode (deploying new functions is blocked, but existing ones work). If a function calls external APIs (e.g., OpenAI) using secrets from the published bundle, each invocation costs the app author money.
+
+To prevent abuse, function invocations are capped:
+
+| Resource | Default limit | Rationale |
+|----------|--------------|-----------|
+| Function invocations (total) | 100 | Enough to try the app, prevents burning through author's API keys |
+
+This counter resets with each demo reset, same as other counters. The `demo_config` key is `max_function_invocations`.
+
+### 7. Demo teardown
+
+When an app is unpublished or deleted:
+1. The demo project is marked inactive (`status = 'inactive'`)
+2. The demo schema is dropped
+3. The subdomain is released
+4. Storage assets are deleted
+
+This follows the same teardown path as regular project deletion.
 
 ---
 
@@ -227,23 +266,24 @@ The published app's listing page (`/apps#version-id`) links to the live demo URL
 
 ---
 
-## Implementation order
+## Decisions
 
-1. **Add `demo_mode` column + gateway middleware** — enforce limits on demo-flagged projects
-2. **Add demo error response format** — structured 403 with fork info
-3. **Add demo reset scheduled task** — reuse `deployBundle()` restore path
-4. **Wire into publish flow** — auto-create demo project on public publish
-5. **Add demo banner injection** — top bar on demo sites
-6. **Tune defaults** — adjust limits based on real usage
+1. **Edits to existing seeded data are allowed.** Editing feels interactive and doesn't accumulate new data. The reset restores everything anyway.
+
+2. **Demo projects are platform-operated, excluded from billing.** No x402 payment needed to interact with a demo. No testnet or mainnet — demos are free.
+
+3. **Demo projects consume a real schema slot.** This naturally limits how many apps can have demos (which is fine — only public forkable apps get them, and there won't be thousands at first).
+
+4. **"Resets in X minutes" is shown in the demo banner.** Low-effort since `resets_at` is already tracked. Helps set expectations.
 
 ---
 
-## Open questions
+## Implementation order
 
-1. **Should edits to existing seeded data be allowed?** Proposed: yes. Editing feels interactive and doesn't accumulate new data. The reset restores everything anyway.
-
-2. **Should the demo project be on testnet or mainnet?** Proposed: neither — it's platform-operated, excluded from billing entirely. No x402 payment needed to interact with a demo.
-
-3. **Should we show "resets in X minutes" in the UI?** Probably yes, but low priority. The reset is transparent — visitors don't need to plan around it.
-
-4. **Should demo projects count toward schema slot limits?** Yes, they consume a real schema slot. This naturally limits how many apps can have demos (which is fine — only public forkable apps get them, and there won't be thousands at first).
+1. **Add `demo_mode` column + gateway middleware** — enforce limits on demo-flagged projects
+2. **Add demo error response format** — structured 429 with fork info and `Retry-After`
+3. **Add demo reset scheduled task** — reuse `deployBundle()` restore path, with maintenance mode
+4. **Wire into publish flow** — auto-create demo project on public publish
+5. **Add demo teardown to unpublish flow** — clean up demo project when app is removed
+6. **Add demo banner injection** — `<script>` tag via CloudFront Function
+7. **Tune defaults** — adjust limits based on real usage
