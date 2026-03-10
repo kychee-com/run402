@@ -398,18 +398,15 @@ Given:
 
 do:
 
-1. If `wallet_only` -> native x402
-2. If `allowance_only` -> allowance or fail
-3. If `allowance_then_wallet`:
-   - use allowance if sufficient
-   - else try native x402
+> **2026-03-10 UPDATE:** This resolution logic was not implemented. The gateway only debits the allowance. If insufficient, it falls through and the x402 library handles on-chain payment independently — the gateway never "chooses" between rails. See Spend policy section below.
 
-**Do not split a single charge across both rails.**  
-If allowance has $3 and the charge is $5, either:
-- fail, or
-- charge full $5 on wallet if fallback is enabled
+~~1. If `wallet_only` -> native x402~~
+~~2. If `allowance_only` -> allowance or fail~~
+~~3. If `allowance_then_wallet`:~~
+   ~~- use allowance if sufficient~~
+   ~~- else try native x402~~
 
-Never do $3 allowance + $2 wallet. It complicates everything.
+**Do not split a single charge across both rails.** (This still holds — the allowance hook either debits the full amount or returns insufficient.)
 
 ### Allowance path
 
@@ -762,14 +759,16 @@ Show them separately forever.
 
 ## Spend policy
 
-Store and display one of:
+> **2026-03-10 UPDATE:** `funding_policy` is vestigial. The gateway can only debit the allowance — it has no access to the user's wallet. On-chain x402 is a separate payment the agent makes independently (the agent signs and submits). There is no "fallback" on the gateway side; the allowance hook simply returns insufficient and the x402 library handles the on-chain payment as a separate flow. The `insufficient_allowance` error response was removed from the middleware for this reason.
 
-- `allowance_only` — **recommended default**
-- `wallet_only`
-- `allowance_then_wallet`
+~~Store and display one of:~~
 
-I would default to **`allowance_only`** whenever allowance exists, because the whole point is budget control.  
-Wallet fallback should be explicit opt-in.
+- ~~`allowance_only` — **recommended default**~~
+- ~~`wallet_only`~~
+- ~~`allowance_then_wallet`~~
+
+~~I would default to **`allowance_only`** whenever allowance exists, because the whole point is budget control.~~
+~~Wallet fallback should be explicit opt-in.~~
 
 ## Low-balance alerts
 
