@@ -479,7 +479,8 @@ export async function listVersions(projectId: string): Promise<AppVersionInfo[]>
  * List all public forkable app versions, optionally filtered by tags.
  */
 export async function listPublicApps(filterTags?: string[]): Promise<AppVersionInfo[]> {
-  let query = `SELECT id, project_id, version, name, description, visibility, fork_allowed,
+  let query = `SELECT DISTINCT ON (project_id)
+            id, project_id, version, name, description, visibility, fork_allowed,
             min_tier, derived_min_tier, status,
             table_count, function_count, site_file_count, site_total_bytes,
             required_secrets, required_actions, tags, live_url, site_deployment_id, created_at
@@ -492,7 +493,10 @@ export async function listPublicApps(filterTags?: string[]): Promise<AppVersionI
     params.push(filterTags);
   }
 
-  query += ` ORDER BY created_at DESC LIMIT 100`;
+  // DISTINCT ON requires the first ORDER BY column to match, so we sort by
+  // project_id first (for dedup), then version DESC (to pick the latest).
+  // Wrap in a subquery so the final result is ordered by created_at.
+  query = `SELECT * FROM (${query} ORDER BY project_id, version DESC) sub ORDER BY created_at DESC LIMIT 100`;
 
   const result = await pool.query(query, params.length > 0 ? params : undefined);
   return result.rows.map(mapRowToAppVersion);
