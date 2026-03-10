@@ -435,31 +435,10 @@ export function createPaymentMiddleware() {
   const x402Middleware = paymentMiddlewareFromHTTPServer(httpServer);
 
   // Wrapper middleware: adds X-Run402-Settlement-Rail and X-Run402-Allowance-Remaining headers.
-  // Also handles insufficient_allowance error for allowance_only accounts.
   return async (req: Request, res: Response, next: NextFunction) => {
     const paymentHeader = req.header("payment-signature") || req.header("x-payment");
 
     if (paymentHeader) {
-      // Pre-check: allowance_only accounts with insufficient balance get a clear 402
-      // instead of falling through to the native x402 payment challenge.
-      const wallet = extractWalletFromPaymentHeader(paymentHeader);
-      if (wallet) {
-        const account = await getBillingAccount(wallet);
-        if (account && account.status === "active" && account.funding_policy === "allowance_only") {
-          const price = resolveSkuPrice(req.method, req.path);
-          if (price && account.available_usd_micros < price.amountUsdMicros) {
-            res.status(402).json({
-              error: "insufficient_allowance",
-              required_usd_micros: String(price.amountUsdMicros),
-              available_allowance_usd_micros: String(account.available_usd_micros),
-              funding_policy: account.funding_policy,
-              topup_url: `https://run402.com/billing?wallet=${encodeURIComponent(wallet)}`,
-            });
-            return;
-          }
-        }
-      }
-
       // Intercept writeHead to inject settlement headers before the response is sent.
       // For the allowance path: x402 returns no-payment-required → next() → route handler → writeHead fires.
       // For the x402 path: x402 buffers writeHead, runs settlement, then replays through our wrapper.

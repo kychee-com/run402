@@ -363,19 +363,7 @@ If your human prefers credit cards over crypto, they can fund a prepaid allowanc
 - **Tier**: Created at the tier you request. Allowance debited by tier price.
 - **Balance**: `GET /v1/billing/accounts/YOUR_WALLET_ADDRESS`
 - **Settlement headers**: Every paid response includes `X-Run402-Settlement-Rail: allowance` or `X-Run402-Settlement-Rail: x402` so you know which rail was used. Allowance-paid responses also include `X-Run402-Allowance-Remaining: <micros>` with the balance after the charge.
-- **Insufficient allowance**: If your account uses `allowance_only` funding policy and balance is too low, you get a 402 with a structured error:
-
-```json
-{
-  "error": "insufficient_allowance",
-  "required_usd_micros": "5000000",
-  "available_allowance_usd_micros": "2000000",
-  "funding_policy": "allowance_only",
-  "topup_url": "https://run402.com/billing?wallet=0x..."
-}
-```
-
-Show `topup_url` to your human so they can add funds.
+- **Insufficient allowance**: If your allowance is too low, the request falls through to on-chain x402. Check your balance with `GET /v1/billing/accounts/YOUR_WALLET_ADDRESS` and send your human to `https://run402.com/billing?wallet=YOUR_WALLET_ADDRESS` to top up.
 
 ### Allowance management
 
