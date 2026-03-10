@@ -186,7 +186,7 @@ If your wallet is already funded, skip this step. Do not bake an unconditional f
 ### Step 3: Install x402 payment libraries
 
 ```bash
-npm install @x402/fetch @x402/evm viem
+npm install @x402/fetch@^2 @x402/evm@^2 viem
 ```
 
 ### Step 4: Provision a database
@@ -824,6 +824,8 @@ Response (the `/sql` endpoint returns query results for SELECT statements):
 
 Both `SERIAL` and `BIGINT GENERATED ALWAYS AS IDENTITY` work for auto-increment columns. Sequence permissions are granted automatically.
 
+Table permissions for `anon` and `authenticated` roles are granted automatically when tables are created — do not run `GRANT` or `REVOKE` (the SQL endpoint blocks them). Use RLS policies (`POST /admin/v1/projects/:id/rls`) for fine-grained access control.
+
 You can also use this endpoint for ad-hoc queries:
 ```bash
 curl -X POST https://api.run402.com/admin/v1/projects/$PROJECT_ID/sql \
@@ -899,6 +901,14 @@ curl -X POST https://api.run402.com/auth/v1/signup \
   -H "Content-Type: application/json" \
   -d '{"email": "user@example.com", "password": "securepass123"}'
 ```
+
+Response returns the created user (no session):
+
+```json
+{ "id": "uuid", "email": "user@example.com", "created_at": "..." }
+```
+
+Signup does **not** return an access token. Call `/auth/v1/token` (step 8) to log in and get a session.
 
 ### 8. Login
 
