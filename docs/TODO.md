@@ -119,7 +119,7 @@ Key principle: **fork reuses the bundle deploy orchestrator**. No second deploy 
 ### Agent Allowance — follow-ups
 
 #### Designed but not yet implemented
-- [x] Response headers: return `X-Run402-Settlement-Rail` and `X-Run402-Allowance-Remaining` on x402-gated responses. For `allowance_only` accounts with insufficient balance, return 402 with structured `insufficient_allowance` error body including `topup_url` pointing to `https://run402.com/billing?wallet=<address>`
+- [x] Response headers: return `X-Run402-Settlement-Rail` and `X-Run402-Allowance-Remaining` on x402-gated responses. Insufficient allowance falls through to on-chain x402 (no gateway-side error — the agent decides whether to pay on-chain)
 - [ ] Low-balance email alerts: schema fields exist (`low_balance_threshold_usd_micros`, `primary_contact_email` on `billing_accounts`) but no scheduled job to send notifications
 - [~] ~~Funding policy UI~~ — removed. The gateway can only debit the allowance; it never touches the user's wallet. On-chain x402 is a separate payment the agent makes independently. The `funding_policy` column is vestigial
 - [x] Dashboard/frontend: two-box balance (allowance + on-chain USDC via RPC), fieldset/legend layout, click-to-copy wallet, QR code overlay, humanized ledger labels. Remaining: settings section (email, threshold), ledger pagination, auto-refresh
