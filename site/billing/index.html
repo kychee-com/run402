@@ -79,16 +79,54 @@
       margin-bottom: 32px;
     }
 
-    .wallet-display {
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 14px;
-      color: #00FF9F;
-      background: #12121A;
+    /* Fieldset/legend pattern for labeled boxes */
+    .labeled-box {
       border: 1px solid #1E1E2A;
       border-radius: 8px;
       padding: 12px 16px;
       margin-bottom: 32px;
+    }
+
+    .labeled-box legend {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+      color: #9CA3AF;
+      padding: 0 8px;
+    }
+
+    .wallet-display {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 14px;
+      color: #00FF9F;
       word-break: break-all;
+      cursor: pointer;
+      transition: opacity 0.2s ease;
+      position: relative;
+    }
+
+    .wallet-display:hover { opacity: 0.8; }
+    .wallet-display::after {
+      content: "click to copy";
+      position: absolute;
+      right: 0;
+      top: 50%;
+      transform: translateY(-50%);
+      font-size: 10px;
+      color: #6B7280;
+      opacity: 0;
+      transition: opacity 0.2s ease;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+    .wallet-display:hover::after { opacity: 1; }
+
+    @keyframes copyFlash { 0% { background: rgba(0,255,159,0.15); } 100% { background: transparent; } }
+    .wallet-display.copied::after {
+      content: "copied!" !important;
+      opacity: 1 !important;
+      color: #00FF9F !important;
     }
 
     .section { margin-bottom: 40px; }
@@ -107,37 +145,63 @@
       font-weight: 500;
     }
 
-    /* Balance card */
-    .balance-card {
-      background: #12121A;
-      border: 1px solid rgba(0, 255, 159, 0.2);
-      border-radius: 12px;
-      padding: 28px;
+    /* Balance boxes */
+    .balance-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
       margin-bottom: 32px;
+    }
+
+    @media (max-width: 500px) {
+      .balance-grid { grid-template-columns: 1fr; }
+    }
+
+    .balance-box {
+      border-radius: 12px;
+      padding: 20px 28px 28px;
       text-align: center;
     }
 
-    .balance-label {
+    .balance-box.allowance { border: 1px solid rgba(0, 255, 159, 0.2); }
+    .balance-box.onchain { border: 1px solid rgba(99, 102, 241, 0.3); }
+
+    .balance-box legend {
       font-family: 'JetBrains Mono', monospace;
       font-size: 11px;
       text-transform: uppercase;
-      letter-spacing: 1px;
+      letter-spacing: 1.5px;
       color: #9CA3AF;
-      margin-bottom: 8px;
+      padding: 0 8px;
+      text-align: left;
     }
 
     .balance-amount {
-      font-size: 48px;
+      font-size: 36px;
       font-weight: 700;
-      color: #00FF9F;
       font-family: 'JetBrains Mono', monospace;
       margin-bottom: 4px;
     }
 
+    .balance-amount.allowance { color: #00FF9F; }
+    .balance-amount.onchain { color: #818CF8; }
+
     .balance-sub {
-      font-size: 13px;
+      font-size: 12px;
       color: #6B7280;
+    }
+
+    .onchain-testnet {
       font-family: 'JetBrains Mono', monospace;
+      font-size: 16px;
+      color: #6B7280;
+      margin-top: 12px;
+      padding-top: 12px;
+      border-top: 1px solid #1E1E2A;
+    }
+
+    .onchain-testnet span {
+      font-size: 11px;
     }
 
     /* Top-up buttons */
@@ -493,8 +557,10 @@
       <h1>Fund your agent's <span class="accent">allowance</span></h1>
       <p class="subtitle">Prepaid USD balance. Your agent spends it on infrastructure via x402. Hard-capped, fully logged, no surprises.</p>
 
-      <div class="section"><h2>Wallet Address</h2></div>
-      <div class="wallet-display" id="wallet-display"></div>
+      <fieldset class="labeled-box">
+        <legend>Wallet Address</legend>
+        <div class="wallet-display" id="wallet-display"></div>
+      </fieldset>
 
       <!-- Success banner -->
       <div id="success-banner" class="success-banner" style="display:none;">
@@ -503,10 +569,18 @@
       </div>
 
       <!-- Balance -->
-      <div class="balance-card">
-        <div class="balance-label">Available Balance</div>
-        <div class="balance-amount" id="balance-display">...</div>
-        <div class="balance-sub" id="balance-micros" style="display:none"></div>
+      <div class="balance-grid">
+        <fieldset class="balance-box allowance">
+          <legend>Allowance Balance</legend>
+          <div class="balance-amount allowance" id="balance-display">...</div>
+          <div class="balance-sub">Prepaid credit · settles first</div>
+        </fieldset>
+        <fieldset class="balance-box onchain">
+          <legend>On-Chain USDC</legend>
+          <div class="balance-amount onchain" id="onchain-display">...</div>
+          <div class="balance-sub">Base Mainnet</div>
+          <div class="onchain-testnet" id="onchain-testnet" style="display:none"></div>
+        </fieldset>
       </div>
 
       <!-- Top-up buttons -->
@@ -550,7 +624,6 @@
           <a href="/humans/terms.html">Terms</a> &nbsp;&middot;&nbsp;
           <a href="/humans/privacy.html">Privacy</a> &nbsp;&middot;&nbsp;
           <a href="/humans/faq.html">FAQ</a> &nbsp;&middot;&nbsp;
-          <a href="/llms.txt">Docs</a> &nbsp;&middot;&nbsp;
           <a href="https://api.run402.com/health-humans">API status</a>
         </span>
       </div>
@@ -576,6 +649,19 @@
       document.getElementById('main-content').style.display = 'block';
       document.getElementById('wallet-display').textContent = wallet;
 
+      // Click-to-copy wallet address
+      document.getElementById('wallet-display').addEventListener('click', function() {
+        var el = this;
+        navigator.clipboard.writeText(wallet).then(function() {
+          el.parentElement.style.animation = 'copyFlash 0.6s ease';
+          el.classList.add('copied');
+          setTimeout(function() {
+            el.parentElement.style.animation = '';
+            el.classList.remove('copied');
+          }, 1200);
+        });
+      });
+
       // Conversion: billing page view (user is in the funnel)
       gtag('event', 'billing_page_view', {wallet: wallet});
 
@@ -590,6 +676,7 @@
       loadBalance();
       loadLedger();
       loadProjects();
+      loadOnChainBalance();
     }
 
     function loadBalance() {
@@ -616,6 +703,7 @@
             el.innerHTML = '<div class="empty">No transactions yet. Add funds above to get started.</div>';
             return;
           }
+          var kindMap = {stripe_topup:'Stripe Top-Up', purchase_debit:'Purchase', admin_credit:'Admin Credit', admin_debit:'Admin Debit'};
           var html = '<table class="ledger-table"><thead><tr><th>Type</th><th>Amount</th><th>Balance After</th><th>Time</th></tr></thead><tbody>';
           for (var i = 0; i < data.entries.length; i++) {
             var e = data.entries[i];
@@ -624,8 +712,9 @@
             var dollars = (e.amount_usd_micros / 1000000).toFixed(4);
             var afterDollars = (e.balance_after_available / 1000000).toFixed(2);
             var time = new Date(e.created_at).toLocaleString();
+            var kindLabel = kindMap[e.kind] || e.kind;
             html += '<tr>' +
-              '<td><span class="ledger-kind">' + escapeHtml(e.kind) + '</span></td>' +
+              '<td><span class="ledger-kind">' + escapeHtml(kindLabel) + '</span></td>' +
               '<td class="' + cls + '">' + sign + '$' + dollars + '</td>' +
               '<td>$' + afterDollars + '</td>' +
               '<td><span class="ledger-time">' + time + '</span></td>' +
@@ -746,6 +835,42 @@
         });
       }
     });
+
+    function loadOnChainBalance() {
+      var USDC_MAINNET = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913';
+      var USDC_SEPOLIA = '0x036CbD53842c5426634e7929541eC2318f3dCF7e';
+      var paddedWallet = '000000000000000000000000' + wallet.slice(2);
+      var calldata = '0x70a08231' + paddedWallet;
+
+      function fetchUSDC(rpcUrl, contract) {
+        return fetch(rpcUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_call', params: [{ to: contract, data: calldata }, 'latest'] })
+        })
+          .then(function(r) { return r.json(); })
+          .then(function(j) { return (parseInt(j.result, 16) / 1e6).toFixed(2); })
+          .catch(function() { return null; });
+      }
+
+      Promise.all([
+        fetchUSDC('https://mainnet.base.org', USDC_MAINNET),
+        fetchUSDC('https://sepolia.base.org', USDC_SEPOLIA)
+      ]).then(function(results) {
+        var mainnet = results[0];
+        var sepolia = results[1];
+        if (mainnet !== null) document.getElementById('onchain-display').textContent = '$' + mainnet;
+        else document.getElementById('onchain-display').textContent = '$0.00';
+        if (sepolia !== null && parseFloat(sepolia) > 0) {
+          var el = document.getElementById('onchain-testnet');
+          el.textContent = '$' + sepolia + ' ';
+          var span = document.createElement('span');
+          span.textContent = 'Sepolia';
+          el.appendChild(span);
+          el.style.display = 'block';
+        }
+      });
+    }
 
     function escapeHtml(s) {
       var d = document.createElement('div');
