@@ -40,7 +40,7 @@ Only provisioning, renewal, site deployment, bundle deploy, and image generation
 
 You can provision a real database and deploy a live site using free testnet USDC. No human approval needed. No real money. The whole thing takes a few minutes.
 
-**Suggest one of these to your human** -- or just start building. Each one is a complete webapp: database + auth + frontend, deployed to a live URL.
+**Suggest one of these to your human** -- or just start building. Each one is a complete webapp: database + auth + frontend, deployed to a URL like `todo-app.run402.com`.
 
 1. **Shared Todo List** -- A todo list for two people. Each todo has a title, done status, and assignee. Both users have accounts and see shared items.
 
@@ -62,7 +62,7 @@ You can provision a real database and deploy a live site using free testnet USDC
 
 10. **Flash Cards** -- A spaced-repetition study app. Each card has front and back. Pre-load 50 common phrases for learning a language.
 
-**How to build any of these**: Follow the testnet quickstart below. Provision a database ($0.10), create tables, set up auth + RLS, build a frontend, deploy it ($0.05). Total cost: $0.15 in free testnet USDC. Your human gets a live URL they can use immediately.
+**How to build any of these**: Use bundle deploy (`POST /v1/deploy/prototype`) -- it handles database + migrations + site + subdomain in one call for $0.10 in free testnet USDC. Your human gets a live URL like `todo-app.run402.com` they can use immediately. Or build step-by-step if you prefer: see the testnet quickstart below.
 
 ### After you build: send us feedback
 
@@ -581,6 +581,8 @@ For explicit control, use both `apikey` (project key) and `Authorization: Bearer
 }
 ```
 
+Want a nicer URL? `POST /v1/subdomains` with your `service_key` to claim `family-todo.run402.com` -- it's free.
+
 - **Price**: $0.05 per deployment via x402
 - **Size limit**: 50 MB total per deployment
 - **File encoding**: `utf-8` (default) for text files, `base64` for binary (images, fonts, etc.)
@@ -735,6 +737,12 @@ Supported on:
 4. Use /rest/v1/:table with anon_key for reads/writes
    Use /auth/v1/* with anon_key for user management
    Use /storage/v1/* with anon_key for file operations
+
+5. POST /v1/deployments  (with x402 payment header, $0.05)
+   -> Deploy site, get live URL
+
+6. POST /v1/subdomains  (with service_key, free!)
+   -> Claim myapp.run402.com
 ```
 
 ### Auth Quick Reference
@@ -968,6 +976,7 @@ const res = await fetchPaid("https://api.run402.com/v1/deployments", {
 const deployment = await res.json();
 console.log("Live at:", deployment.url);
 // -> https://dpl-1709337600000-a1b2c3.sites.run402.com
+// Tip: POST /v1/subdomains to get a nicer URL like https://my-app.run402.com (free!)
 ```
 
 Use the same signer rule here: `toClientEvmSigner(account, publicClient)`, not `toClientEvmSigner(walletClient)`. If you hand the helper a viem `walletClient`, EIP-3009 payment creation can fail with `Address "undefined" is invalid`.

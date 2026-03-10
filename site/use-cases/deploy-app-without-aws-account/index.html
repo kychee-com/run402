@@ -429,7 +429,7 @@
         </div>
         <div class="pain-item">
           <span class="icon" style="color:#00FF9F;">Run402</span>
-          <span class="text"><strong style="color:#00FF9F;">POST /v1/projects</strong> &rarr; database + API + auth + storage ready. <strong style="color:#00FF9F;">POST /v1/deployments</strong> &rarr; frontend live. <strong style="color:#00FF9F;">Done.</strong></span>
+          <span class="text"><strong style="color:#00FF9F;">POST /v1/projects</strong> &rarr; database + API + auth + storage. <strong style="color:#00FF9F;">POST /v1/deployments</strong> &rarr; frontend live. <strong style="color:#00FF9F;">POST /v1/subdomains</strong> &rarr; myapp.run402.com (free!). <strong style="color:#00FF9F;">Done.</strong></span>
         </div>
       </div>
     </div>
@@ -453,7 +453,11 @@
 
 <span class="comment"># Deploy the frontend</span>
 <span class="cmd">POST</span> https://api.run402.com/v1/deployments  <span class="string">[x402: $0.05]</span>
-<span class="comment"># Returns: https://myapp.sites.run402.com — live now</span>
+<span class="comment"># Returns: deployment_id</span>
+
+<span class="comment"># Claim a nice URL (free!)</span>
+<span class="cmd">POST</span> https://api.run402.com/v1/subdomains
+<span class="comment"># Returns: https://myapp.run402.com — live now</span>
 
 <span class="comment"># Total: 0 accounts created. 0 dashboards visited.</span></pre>
       </div>
