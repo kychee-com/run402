@@ -3,6 +3,16 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
+  <!-- Google tag (gtag.js) — GA4 -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-SP7DMDB21B"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+    gtag('config', 'G-SP7DMDB21B');
+    // Capture gclid + UTM params for offline conversion attribution
+    (function(){var p=new URLSearchParams(location.search),k=['gclid','utm_source','utm_medium','utm_campaign','utm_term','utm_content'];for(var i=0;i<k.length;i++){var v=p.get(k[i]);if(v)try{localStorage.setItem('x402_'+k[i],v)}catch(e){}}if(p.get('gclid'))try{localStorage.setItem('x402_gclid_ts',''+Date.now())}catch(e){}})();
+  </script>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Run402 — 让 OpenClaw 智能体一键上线完整后端</title>
   <meta name="description" content="不到 1 元，让 OpenClaw 上线完整后端 7 天。Postgres 数据库 + REST API + 鉴权 + 存储 + 静态站点托管。无需云账号，无需控制台。给智能体一个额度，不是钱包。">

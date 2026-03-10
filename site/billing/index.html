@@ -2,6 +2,16 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <!-- Google tag (gtag.js) — GA4 -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-SP7DMDB21B"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+    gtag('config', 'G-SP7DMDB21B');
+    // Capture gclid + UTM params for offline conversion attribution
+    (function(){var p=new URLSearchParams(location.search),k=['gclid','utm_source','utm_medium','utm_campaign','utm_term','utm_content'];for(var i=0;i<k.length;i++){var v=p.get(k[i]);if(v)try{localStorage.setItem('x402_'+k[i],v)}catch(e){}}if(p.get('gclid'))try{localStorage.setItem('x402_gclid_ts',''+Date.now())}catch(e){}})();
+  </script>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Allowance — Run402</title>
   <meta name="description" content="Fund your AI agent's Run402 allowance with a credit card. Prepaid, hard-capped, fully logged.">
@@ -566,8 +576,13 @@
       document.getElementById('main-content').style.display = 'block';
       document.getElementById('wallet-display').textContent = wallet;
 
+      // Conversion: billing page view (user is in the funnel)
+      gtag('event', 'billing_page_view', {wallet: wallet});
+
       if (isSuccess) {
         document.getElementById('success-banner').style.display = 'block';
+        // Conversion: Stripe payment completed successfully
+        gtag('event', 'stripe_payment_success', {wallet: wallet, value: 5.0, currency: 'USD'});
         // Poll for balance update (webhook may take a few seconds)
         pollForCredit();
       }
@@ -652,6 +667,10 @@
     }
 
     function topup(amountMicros) {
+      // Conversion: Stripe checkout started
+      var dollars = (amountMicros / 1000000).toFixed(2);
+      gtag('event', 'stripe_checkout_started', {wallet: wallet, value: parseFloat(dollars), currency: 'USD'});
+
       var btns = document.querySelectorAll('.topup-btn');
       for (var i = 0; i < btns.length; i++) btns[i].disabled = true;
 

@@ -3,6 +3,16 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <!-- Google tag (gtag.js) — GA4 -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-SP7DMDB21B"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+    gtag('config', 'G-SP7DMDB21B');
+    // Capture gclid + UTM params for offline conversion attribution
+    (function(){var p=new URLSearchParams(location.search),k=['gclid','utm_source','utm_medium','utm_campaign','utm_term','utm_content'];for(var i=0;i<k.length;i++){var v=p.get(k[i]);if(v)try{localStorage.setItem('x402_'+k[i],v)}catch(e){}}if(p.get('gclid'))try{localStorage.setItem('x402_gclid_ts',''+Date.now())}catch(e){}})();
+  </script>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Run402 — Vercel alternative for AI agents</title>
   <meta name="description" content="Run402 is a Vercel alternative built for AI agents. Deploy a full webapp — Postgres backend + static frontend — in 2 API calls. No signups, no dashboards, no Git repos. Pay with x402 USDC micropayments. Free to start on testnet.">

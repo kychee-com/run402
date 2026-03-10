@@ -44,6 +44,7 @@ import generateImageRoutes from "./routes/generate-image.js";
 import bundleRoutes from "./routes/bundle.js";
 import publishRoutes from "./routes/publish.js";
 import adminDashboardRoutes from "./routes/admin-dashboard.js";
+import attributionRoutes from "./routes/attribution.js";
 import { initAppVersionsTables } from "./services/publish.js";
 
 Bugsnag.start({
@@ -332,6 +333,7 @@ app.use(functionsRoutes);
 app.use(generateImageRoutes);
 app.use(bundleRoutes);
 app.use(publishRoutes);
+app.use(attributionRoutes);
 
 // --- Bugsnag error handler (must be before central error handler) ---
 app.use(bugsnagMiddleware.errorHandler);
@@ -740,7 +742,26 @@ async function applyMigrations() {
     await pool.query(`ALTER TABLE internal.app_versions ADD COLUMN IF NOT EXISTS live_url TEXT`);
   }
 
-  // v1.8: billing/allowance tables
+  // v1.8: ad attribution tracking (gclid + UTM beacons from landing pages)
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS internal.ad_attribution (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      gclid TEXT,
+      utm_source TEXT,
+      utm_medium TEXT,
+      utm_campaign TEXT,
+      utm_term TEXT,
+      utm_content TEXT,
+      page TEXT,
+      ip TEXT,
+      user_agent TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_ad_attribution_time ON internal.ad_attribution(created_at DESC)`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_ad_attribution_gclid ON internal.ad_attribution(gclid) WHERE gclid IS NOT NULL`);
+
+  // v1.9: billing/allowance tables
   await pool.query(`
     CREATE TABLE IF NOT EXISTS internal.billing_accounts (
       id UUID PRIMARY KEY,

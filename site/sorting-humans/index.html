@@ -2,6 +2,16 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <!-- Google tag (gtag.js) — GA4 -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-SP7DMDB21B"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+    gtag('config', 'G-SP7DMDB21B');
+    // Capture gclid + UTM params for offline conversion attribution
+    (function(){var p=new URLSearchParams(location.search),k=['gclid','utm_source','utm_medium','utm_campaign','utm_term','utm_content'];for(var i=0;i<k.length;i++){var v=p.get(k[i]);if(v)try{localStorage.setItem('x402_'+k[i],v)}catch(e){}}if(p.get('gclid'))try{localStorage.setItem('x402_gclid_ts',''+Date.now())}catch(e){}})();
+  </script>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Sorting Humans — run402 × bld402</title>
   <meta name="description" content="Two doors. One question. Choose wisely. Are you a green-pill developer or a blue-pill builder?">
@@ -259,5 +269,37 @@
   </div>
 
   <p class="footer-joke">No wrong answers. But if you're still reading instead of clicking, you might be a product manager.</p>
+
+  <script>
+    // Attribution beacon — fire on pill click if user came from an ad
+    function sendAttributionBeacon(dest) {
+      try {
+        var gclid = localStorage.getItem('x402_gclid');
+        var src = localStorage.getItem('x402_utm_source');
+        if (!gclid && !src) return;
+        var body = JSON.stringify({
+          gclid: gclid, utm_source: src,
+          utm_medium: localStorage.getItem('x402_utm_medium'),
+          utm_campaign: localStorage.getItem('x402_utm_campaign'),
+          utm_term: localStorage.getItem('x402_utm_term'),
+          utm_content: localStorage.getItem('x402_utm_content'),
+          page: 'sorting_humans_' + dest
+        });
+        navigator.sendBeacon('https://api.run402.com/x402/attribution', new Blob([body], {type: 'application/json'}));
+      } catch(e) {}
+    }
+
+    // Conversion: sorting humans pill click
+    document.addEventListener('DOMContentLoaded', function() {
+      var cards = document.querySelectorAll('.card');
+      for (var i = 0; i < cards.length; i++) {
+        cards[i].addEventListener('click', function() {
+          var dest = this.classList.contains('card--run') ? 'run402' : 'bld402';
+          sendAttributionBeacon(dest);
+          gtag('event', 'sorting_humans_click', {destination: dest, value: 1.0, currency: 'USD'});
+        });
+      }
+    });
+  </script>
 </body>
 </html>
