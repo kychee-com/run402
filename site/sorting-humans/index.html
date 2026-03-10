@@ -96,7 +96,6 @@
       border: 1px solid rgba(0,153,102,0.4);
     }
     .card--run:hover {
-      transform: scale(1.02);
       box-shadow: 0 25px 50px rgba(0,153,102,0.2);
       border-color: #009966;
     }
@@ -107,7 +106,6 @@
       border: 1px solid rgba(0,102,204,0.3);
     }
     .card--bld:hover {
-      transform: scale(1.02);
       box-shadow: 0 25px 50px rgba(0,102,204,0.2);
       border-color: #0066cc;
     }
@@ -200,11 +198,14 @@
     }
 
     .cta-desc {
-      font-size: 13px;
+      font-size: 12px;
       color: #6b7280;
       margin-top: 8px;
       font-family: 'JetBrains Mono', monospace;
       white-space: nowrap;
+    }
+    .card--run .cta-desc {
+      color: #9ca3af;
     }
 
     .footer-joke {
