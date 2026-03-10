@@ -399,10 +399,10 @@
       No signups. No dashboards.
     </p>
 
-    <p class="lead"><strong>Do this:</strong> paste this URL into your agent's chat.</p>
+    <p class="lead"><strong>Do this:</strong> paste this into your agent's chat.</p>
     <div class="copy-block">
-      <code onclick="copyUrl(this, true)">https://run402.com/llms.txt</code>
-      <button class="copy-btn" onclick="copyUrl(this, false)">Copy URL</button>
+      <code onclick="copyUrl(this, true)">Please build me a demo app using https://run402.com/llms.txt</code>
+      <button class="copy-btn" onclick="copyUrl(this, false)">Copy</button>
     </div>
 
     <div class="section">
@@ -765,10 +765,11 @@ Build a flash card app for learning Spanish:
     <div class="section">
       <h2>Your agent wants to ship.</h2>
       <p style="color:#E0E0E0; font-size: 17px; margin-bottom: 16px;">It just doesn't know Run402 exists yet.</p>
-      <p>
-        Copy the <strong style="color:#fff;">llms.txt</strong> link above and paste it into your next chat.
-        Then ask: <em style="color:#FFFFFF;">"Build me a webapp and deploy it."</em>
-      </p>
+      <p class="lead"><strong>Do this:</strong> paste this into your agent's chat.</p>
+      <div class="copy-block">
+        <code onclick="copyUrl(this, true)">Please build me a demo app using https://run402.com/llms.txt</code>
+        <button class="copy-btn" onclick="copyUrl(this, false)">Copy</button>
+      </div>
     </div>
 
     <div class="footer">
@@ -805,7 +806,7 @@ Build a flash card app for learning Spanish:
 
     function copyUrl(el, isCode) {
       sendAttributionBeacon();
-      navigator.clipboard.writeText('https://run402.com/llms.txt').then(function() {
+      navigator.clipboard.writeText('Please build me a demo app using https://run402.com/llms.txt').then(function() {
         if (isCode) {
           var original = el.textContent;
           el.textContent = 'Copied!';
@@ -818,7 +819,7 @@ Build a flash card app for learning Spanish:
           el.textContent = 'Copied';
           el.classList.add('copied');
           setTimeout(function() {
-            el.textContent = 'Copy URL';
+            el.textContent = 'Copy';
             el.classList.remove('copied');
           }, 2000);
         }

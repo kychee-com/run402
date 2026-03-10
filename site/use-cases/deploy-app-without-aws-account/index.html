@@ -313,6 +313,60 @@
       border-color: rgba(0, 255, 159, 0.5);
     }
 
+    .copy-block {
+      background: #12121A;
+      border: 1px solid #1E1E2A;
+      border-radius: 8px;
+      padding: 16px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 34px;
+      transition: border-color 0.2s;
+    }
+
+    .copy-block:hover { border-color: rgba(0, 255, 159, 0.3); }
+
+    .copy-block code {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 14px;
+      color: #00FF9F;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      cursor: pointer;
+      transition: color 0.15s;
+    }
+
+    .copy-block code.copied {
+      color: #FFFFFF;
+    }
+
+    .copy-btn {
+      background: rgba(0, 255, 159, 0.1);
+      color: #00FF9F;
+      border: 1px solid rgba(0, 255, 159, 0.25);
+      border-radius: 6px;
+      padding: 8px 16px;
+      font-family: 'Inter', sans-serif;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: background 0.2s, border-color 0.2s;
+    }
+
+    .copy-btn:hover {
+      background: rgba(0, 255, 159, 0.2);
+      border-color: rgba(0, 255, 159, 0.5);
+    }
+
+    .copy-btn.copied {
+      background: rgba(0, 255, 159, 0.25);
+      color: #fff;
+    }
+
     .footer {
       border-top: 1px solid #1E1E2A;
       padding-top: 32px;
@@ -342,7 +396,7 @@
 
 <body>
   <p style="text-align:center;padding:12px;margin:0;background:#111;color:#9CA3AF;font-size:14px;font-family:'Inter',system-ui,sans-serif;">
-    <a href="/" style="color:#00FF9F;text-decoration:underline;">&larr; Back to run402.com</a>
+    <a href="/humans" style="color:#00FF9F;text-decoration:underline;">&larr; Back to run402.com</a>
   </p>
 
   <div class="container">
@@ -487,9 +541,10 @@
 
     <!-- CTA -->
     <div class="section">
-      <div class="cta">
-        <p><strong style="color:#fff;">Skip the cloud signup.</strong> Get a database and deploy a live app right now.</p>
-        <a class="cta-link" href="/llms.txt">Read llms.txt</a>
+      <p class="lead" style="color:#E0E0E0;font-size:16px;margin-bottom:14px;"><strong>Do this:</strong> paste this into your agent's chat.</p>
+      <div class="copy-block">
+        <code onclick="copyPrompt(this, true)">Please build me a demo app using https://run402.com/llms.txt</code>
+        <button class="copy-btn" onclick="copyPrompt(this, false)">Copy</button>
       </div>
     </div>
 
@@ -505,5 +560,27 @@
       </span>
     </div>
   </div>
+  <script>
+    function copyPrompt(el, isCode) {
+      navigator.clipboard.writeText('Please build me a demo app using https://run402.com/llms.txt').then(function() {
+        if (isCode) {
+          var original = el.textContent;
+          el.textContent = 'Copied!';
+          el.classList.add('copied');
+          setTimeout(function() {
+            el.textContent = original;
+            el.classList.remove('copied');
+          }, 2000);
+        } else {
+          el.textContent = 'Copied';
+          el.classList.add('copied');
+          setTimeout(function() {
+            el.textContent = 'Copy';
+            el.classList.remove('copied');
+          }, 2000);
+        }
+      });
+    }
+  </script>
 </body>
 </html>
