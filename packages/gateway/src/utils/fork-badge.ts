@@ -32,7 +32,7 @@ async function getForkableInfo(subdomain: string): Promise<ForkableInfo> {
   const notForkable: ForkableInfo = { forkable: false, appName: subdomain, versionId: null };
 
   try {
-    // subdomain → project_id → latest published forkable version
+    // subdomain → project_id → published forkable version (one per project)
     const result = await pool.query(
       `SELECT av.id AS version_id, av.name AS app_name
        FROM internal.subdomains s
@@ -40,9 +40,7 @@ async function getForkableInfo(subdomain: string): Promise<ForkableInfo> {
        WHERE s.name = $1
          AND av.status = 'published'
          AND av.fork_allowed = true
-         AND av.visibility IN ('public', 'unlisted')
-       ORDER BY av.version DESC
-       LIMIT 1`,
+         AND av.visibility IN ('public', 'unlisted')`,
       [subdomain],
     );
 

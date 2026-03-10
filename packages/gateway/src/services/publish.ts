@@ -9,7 +9,7 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { createHash, randomBytes } from "node:crypto";
-import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
+import { S3Client, PutObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
 import { pool } from "../db/pool.js";
 import { S3_BUCKET, S3_REGION } from "../config.js";
 import { TIERS } from "@run402/shared";
@@ -18,6 +18,19 @@ import type { TierName } from "@run402/shared";
 const execFileAsync = promisify(execFile);
 
 const s3 = S3_BUCKET ? new S3Client({ region: S3_REGION }) : null;
+
+/**
+ * Delete an S3 bundle by URI. Logs and swallows errors — orphaned objects are harmless.
+ */
+async function deleteS3Bundle(bundleUri: string): Promise<void> {
+  if (!s3 || !S3_BUCKET) return;
+  const key = bundleUri.replace(`s3://${S3_BUCKET}/`, "");
+  try {
+    await s3.send(new DeleteObjectCommand({ Bucket: S3_BUCKET, Key: key }));
+  } catch (err) {
+    console.warn(`  Failed to delete old bundle ${key}:`, err);
+  }
+}
 
 // Unsupported object types — publish rejects projects that use these
 const UNSUPPORTED_OBJECT_QUERIES = [
@@ -353,12 +366,30 @@ export async function publishAppVersion(
     const functionCount = functionsResult.rows.length;
     const derivedMinTier = computeDerivedMinTier(functionCount, siteTotalBytes);
 
-    // Determine next version number
-    const versionResult = await pool.query(
-      `SELECT COALESCE(MAX(version), 0) + 1 AS next FROM internal.app_versions WHERE project_id = $1`,
+    // Delete previous version(s) — we keep only one snapshot per project
+    const oldVersions = await pool.query(
+      `SELECT id, version, bundle_uri, site_deployment_id
+       FROM internal.app_versions WHERE project_id = $1
+       ORDER BY version DESC`,
       [projectId],
     );
-    const version = versionResult.rows[0].next;
+    const maxOldVersion = oldVersions.rows.length > 0 ? (oldVersions.rows[0].version as number) : 0;
+    for (const old of oldVersions.rows) {
+      await deleteS3Bundle(old.bundle_uri as string);
+      if (old.site_deployment_id) {
+        await pool.query(
+          `UPDATE internal.deployments SET ref_count = GREATEST(ref_count - 1, 0) WHERE id = $1`,
+          [old.site_deployment_id],
+        );
+      }
+    }
+    if (oldVersions.rows.length > 0) {
+      await pool.query(
+        `DELETE FROM internal.app_versions WHERE project_id = $1`,
+        [projectId],
+      );
+    }
+    const version = maxOldVersion + 1;
 
     // Build bundle artifact
     const versionId = generateVersionId();
@@ -479,8 +510,7 @@ export async function listVersions(projectId: string): Promise<AppVersionInfo[]>
  * List all public forkable app versions, optionally filtered by tags.
  */
 export async function listPublicApps(filterTags?: string[]): Promise<AppVersionInfo[]> {
-  let query = `SELECT DISTINCT ON (project_id)
-            id, project_id, version, name, description, visibility, fork_allowed,
+  let query = `SELECT id, project_id, version, name, description, visibility, fork_allowed,
             min_tier, derived_min_tier, status,
             table_count, function_count, site_file_count, site_total_bytes,
             required_secrets, required_actions, tags, live_url, site_deployment_id, created_at
@@ -493,10 +523,7 @@ export async function listPublicApps(filterTags?: string[]): Promise<AppVersionI
     params.push(filterTags);
   }
 
-  // DISTINCT ON requires the first ORDER BY column to match, so we sort by
-  // project_id first (for dedup), then version DESC (to pick the latest).
-  // Wrap in a subquery so the final result is ordered by created_at.
-  query = `SELECT * FROM (${query} ORDER BY project_id, version DESC) sub ORDER BY created_at DESC LIMIT 100`;
+  query += ` ORDER BY created_at DESC LIMIT 100`;
 
   const result = await pool.query(query, params.length > 0 ? params : undefined);
   return result.rows.map(mapRowToAppVersion);
@@ -547,14 +574,14 @@ export async function getAppVersion(versionId: string): Promise<AppVersionInfo |
  * Delete a published app version. Decrements site deployment ref_count.
  */
 export async function deleteAppVersion(versionId: string, projectId: string): Promise<boolean> {
-  // Get site_deployment_id before deleting
+  // Get metadata before deleting
   const verResult = await pool.query(
-    `SELECT site_deployment_id FROM internal.app_versions WHERE id = $1 AND project_id = $2`,
+    `SELECT site_deployment_id, bundle_uri FROM internal.app_versions WHERE id = $1 AND project_id = $2`,
     [versionId, projectId],
   );
   if (verResult.rows.length === 0) return false;
 
-  const siteDeploymentId = verResult.rows[0].site_deployment_id;
+  const { site_deployment_id: siteDeploymentId, bundle_uri: bundleUri } = verResult.rows[0];
 
   // Delete (cascades to app_version_functions)
   const delResult = await pool.query(
@@ -562,6 +589,9 @@ export async function deleteAppVersion(versionId: string, projectId: string): Pr
     [versionId, projectId],
   );
   if (!delResult.rowCount || delResult.rowCount === 0) return false;
+
+  // Clean up S3 bundle
+  if (bundleUri) await deleteS3Bundle(bundleUri as string);
 
   // Decrement site deployment ref_count
   if (siteDeploymentId) {
