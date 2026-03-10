@@ -47,7 +47,7 @@ function fakeReq(method = "GET", project?: ProjectInfo) {
   } as any;
 }
 
-function fakeRes() {
+function fakeRes(): any {
   const res: Record<string, any> = {
     _status: 0,
     _headers: {} as Record<string, string>,
