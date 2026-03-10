@@ -557,7 +557,7 @@
 
     <p class="lead"><strong>开始使用：</strong>将这个 URL 粘贴到你的智能体对话中</p>
     <div class="copy-block">
-      <code onclick="copyUrl(this, true)">Please build me a demo app using https://run402.com/llms.txt (curl it)</code>
+      <code onclick="copyUrl(this, true)">Please build me a demo app using run402.com/llms.txt (curl it)</code>
       <button class="copy-btn" onclick="copyUrl(this, false)">复制</button>
     </div>
 
@@ -928,7 +928,7 @@ Build a membership portal for a community:
 
   <script>
     function copyUrl(el, isCode) {
-      navigator.clipboard.writeText('Please build me a demo app using https://run402.com/llms.txt (curl it)').then(function() {
+      navigator.clipboard.writeText('Please build me a demo app using run402.com/llms.txt (curl it)').then(function() {
         if (isCode) {
           var original = el.textContent;
           el.textContent = '已复制！';
