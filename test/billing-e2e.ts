@@ -190,10 +190,12 @@ async function main() {
   });
   assert(overdraftRes.status === 402, "Overdraft returns 402");
 
-  // 8) Allowance-funded project creation
+  // 8) Allowance-funded project creation + settlement headers
   console.log("\n8) Create project via allowance...");
   const balBeforeProject = (await (await fetch(`${BASE_URL}/v1/billing/accounts/${wallet}`)).json() as Record<string, unknown>).available_usd_micros as number;
   let projBody: Record<string, unknown>;
+  let settlementRail: string | null = null;
+  let allowanceRemaining: string | null = null;
   try {
     const projRes = await fetchPaid(`${BASE_URL}/v1/projects/create/prototype`, {
       method: "POST",
@@ -203,6 +205,8 @@ async function main() {
     projBody = await projRes.json() as Record<string, unknown>;
     assert(projRes.ok, "Project creation returns 200");
     assert(typeof projBody.project_id === "string", "Project ID returned");
+    settlementRail = projRes.headers.get("x-run402-settlement-rail");
+    allowanceRemaining = projRes.headers.get("x-run402-allowance-remaining");
   } catch {
     // x402 disabled locally — create project directly (no payment gate)
     console.log("   (x402 fetch failed — using direct POST)");
@@ -220,6 +224,18 @@ async function main() {
   console.log(`   Project: ${projBody.project_id}`);
   console.log(`   Tier: ${projBody.tier}`);
   console.log(`   Allowance rail used: ${usedAllowanceRail} (balance: ${balBeforeProject} -> ${balAfterProject})`);
+
+  // 8b) Verify settlement response headers
+  if (usedAllowanceRail) {
+    console.log(`   Settlement-Rail: ${settlementRail}`);
+    console.log(`   Allowance-Remaining: ${allowanceRemaining}`);
+    assert(settlementRail === "allowance", "X-Run402-Settlement-Rail is 'allowance'");
+    assert(allowanceRemaining !== null, "X-Run402-Allowance-Remaining header present");
+    const expectedRemaining = balBeforeProject - 100_000; // prototype tier = $0.10
+    assert(Number(allowanceRemaining) === expectedRemaining, `Allowance-Remaining is ${expectedRemaining}`);
+  } else {
+    console.log("   (Skipped header checks — allowance rail not used)");
+  }
 
   // 9) Balance after purchase — verify decremented (only if allowance rail was used)
   console.log("\n9) Balance after purchase...");

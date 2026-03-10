@@ -446,11 +446,11 @@ And for insufficient funds:
   "required_usd_micros": "5000000",
   "available_allowance_usd_micros": "2000000",
   "funding_policy": "allowance_only",
-  "topup_url": "https://run402.com/fund?t=..."
+  "topup_url": "https://run402.com/billing?wallet=0x..."
 }
 ```
 
-That’s perfect for the agent-to-human handoff.
+That’s perfect for the agent-to-human handoff. Uses the existing billing page at `run402.com/billing?wallet=<address>`.
 
 ---
 
@@ -489,16 +489,16 @@ Also change `client_reference_id`:
 
 That gives you wallet rotation flexibility later.
 
-## Best UX: signed funding link
+## Best UX: signed funding link (future improvement)
 
-I strongly recommend adding an optional **funding link/token** flow:
+The current implementation uses `https://run402.com/billing?wallet=0x...` directly, which is the canonical billing page. A future improvement could add an optional **funding link/token** flow:
 
 - agent asks for money
-- Run402 returns `https://run402.com/fund?t=...`
+- Run402 returns `https://run402.com/billing?t=...`
 - token encodes wallet + optional suggested amount + expiry
 - human clicks link, no copy/paste wallet error
 
-This is cleaner than relying on `?wallet=0x...` forever.
+This would be cleaner but is not needed for launch — the wallet-in-URL pattern is already used by Stripe redirects, llms.txt docs, and the insufficient_allowance error response.
 
 ---
 

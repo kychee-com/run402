@@ -116,6 +116,25 @@ Key principle: **fork reuses the bundle deploy orchestrator**. No second deploy 
 - `run402.yaml` manifest file convention
 - Content-addressed site blobs / deduplication
 
+### Agent Allowance — follow-ups
+
+#### Designed but not yet implemented
+- [x] Response headers: return `X-Run402-Settlement-Rail` and `X-Run402-Allowance-Remaining` on x402-gated responses. For `allowance_only` accounts with insufficient balance, return 402 with structured `insufficient_allowance` error body including `topup_url` pointing to `https://run402.com/billing?wallet=<address>`
+- [ ] Low-balance email alerts: schema fields exist (`low_balance_threshold_usd_micros`, `primary_contact_email` on `billing_accounts`) but no scheduled job to send notifications
+- [ ] Funding policy UI: `funding_policy` column supports `allowance_only`, `wallet_only`, `allowance_then_wallet` but no endpoint or UI for users to change it (defaults to `allowance_then_wallet`)
+- [ ] Dashboard/frontend: balance display, top-up CTA, ledger history view, settings (e.g. `/fund` or `/billing` page)
+- [ ] Hold/capture semantics: current implementation does immediate debit — no explicit hold → release/capture phase. Fine for launch since all paid operations are deterministic, but needed for long-running or variable-cost operations
+
+#### Not started
+- [ ] Recurring auto-top-ups: Stripe subscriptions as pure funding (not entitlements), auto-credit on renewal
+- [ ] Saved payment methods / threshold auto-top-up: save card, define a low-balance threshold, auto-charge when balance drops below it
+- [ ] Management tokens: human access to billing account without needing the agent's wallet key (`billing_access_tokens` table)
+- [ ] Marketing pages: `/agent-allowance` landing page, wallet vs. allowance comparison page, SEO/AEO content cluster
+- [ ] Google Ads campaigns: keyword strategy and RSAs fully designed in `docs/consultations/google-ads-strategy-v2.md`, not yet live
+- [ ] MCP tools: `top_up_allowance`, `check_allowance`, `allowance_history` in run402-mcp repo
+
+---
+
 ### Self-serve export endpoint
 Add `POST /admin/v1/projects/:id/export` that returns a signed URL to a SQL dump of the project's schema and data. This is the biggest trust unlock for agents considering Run402 for non-ephemeral work.
 

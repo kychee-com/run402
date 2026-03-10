@@ -20,6 +20,7 @@ import type { TierName } from "@run402/shared";
 import { getBillingAccount, debitAllowance } from "../services/billing.js";
 import { extractWalletFromPaymentHeader } from "../utils/wallet.js";
 import { createHash } from "node:crypto";
+import type { Request, Response, NextFunction } from "express";
 
 // --- Stripe payTo machinery ---
 
@@ -397,6 +398,10 @@ export function createPaymentMiddleware() {
     });
   }
 
+  // Track allowance debit results per-request (keyed by payment header)
+  // so the wrapper middleware can set response headers after the x402 library calls next().
+  const allowanceResults = new Map<string, { remaining: number }>();
+
   // Allowance rail: debit allowance balance instead of on-chain settlement
   httpServer.onProtectedRequest(async (context) => {
     if (!context.paymentHeader) return;
@@ -419,12 +424,72 @@ export function createPaymentMiddleware() {
     const result = await debitAllowance(wallet, price.amountUsdMicros, price.sku, headerHash);
     if (!result) return; // Insufficient balance (race condition), fall through to x402
 
+    // Stash result for the wrapper to read when setting response headers
+    allowanceResults.set(context.paymentHeader, { remaining: result.remaining });
+
     console.log(`Allowance debit: ${wallet} → ${price.sku} ($${(price.amountUsdMicros / 1_000_000).toFixed(4)}) remaining=$${(result.remaining / 1_000_000).toFixed(4)}`);
 
     return { grantAccess: true as const };
   });
 
-  return paymentMiddlewareFromHTTPServer(httpServer);
+  const x402Middleware = paymentMiddlewareFromHTTPServer(httpServer);
+
+  // Wrapper middleware: adds X-Run402-Settlement-Rail and X-Run402-Allowance-Remaining headers.
+  // Also handles insufficient_allowance error for allowance_only accounts.
+  return async (req: Request, res: Response, next: NextFunction) => {
+    const paymentHeader = req.header("payment-signature") || req.header("x-payment");
+
+    if (paymentHeader) {
+      // Pre-check: allowance_only accounts with insufficient balance get a clear 402
+      // instead of falling through to the native x402 payment challenge.
+      const wallet = extractWalletFromPaymentHeader(paymentHeader);
+      if (wallet) {
+        const account = await getBillingAccount(wallet);
+        if (account && account.status === "active" && account.funding_policy === "allowance_only") {
+          const price = resolveSkuPrice(req.method, req.path);
+          if (price && account.available_usd_micros < price.amountUsdMicros) {
+            res.status(402).json({
+              error: "insufficient_allowance",
+              required_usd_micros: String(price.amountUsdMicros),
+              available_allowance_usd_micros: String(account.available_usd_micros),
+              funding_policy: account.funding_policy,
+              topup_url: `https://run402.com/billing?wallet=${encodeURIComponent(wallet)}`,
+            });
+            return;
+          }
+        }
+      }
+
+      // Intercept writeHead to inject settlement headers before the response is sent.
+      // For the allowance path: x402 returns no-payment-required → next() → route handler → writeHead fires.
+      // For the x402 path: x402 buffers writeHead, runs settlement, then replays through our wrapper.
+      const realWriteHead = res.writeHead;
+      let headersInjected = false;
+
+      res.writeHead = function (this: Response, ...args: Parameters<Response["writeHead"]>) {
+        if (!headersInjected) {
+          headersInjected = true;
+          if (allowanceResults.has(paymentHeader)) {
+            const result = allowanceResults.get(paymentHeader)!;
+            allowanceResults.delete(paymentHeader);
+            res.setHeader("X-Run402-Settlement-Rail", "allowance");
+            res.setHeader("X-Run402-Allowance-Remaining", String(result.remaining));
+          } else if (res.statusCode < 400) {
+            // Native x402 path succeeded
+            res.setHeader("X-Run402-Settlement-Rail", "x402");
+          }
+        }
+        return realWriteHead.apply(this, args);
+      } as Response["writeHead"];
+
+      // Safety net: clean up the Map entry if the connection closes before writeHead fires
+      res.on("close", () => {
+        allowanceResults.delete(paymentHeader);
+      });
+    }
+
+    x402Middleware(req, res, next);
+  };
 }
 
 /**

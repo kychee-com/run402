@@ -105,6 +105,7 @@ app.use((_req, res, next) => {
   res.set("Access-Control-Allow-Origin", "*");
   res.set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS");
   res.set("Access-Control-Allow-Headers", "Content-Type, Authorization, apikey, Prefer, Accept-Profile, Content-Profile, Idempotency-Key, X-Wallet-Address");
+  res.set("Access-Control-Expose-Headers", "X-Run402-Settlement-Rail, X-Run402-Allowance-Remaining");
   if (_req.method === "OPTIONS") {
     res.status(204).send();
     return;
