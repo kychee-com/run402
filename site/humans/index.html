@@ -806,6 +806,7 @@ Build a flash card app for learning Spanish:
 
     function copyUrl(el, isCode) {
       sendAttributionBeacon();
+      gtag('event', 'copy_prompt', {page: 'run402_humans', prompt: 'main_cta'});
       navigator.clipboard.writeText('Please build me a demo app using run402.com/llms.txt (curl it)').then(function() {
         if (isCode) {
           var original = el.textContent;
@@ -829,6 +830,8 @@ Build a flash card app for learning Spanish:
     function copySlide(btn) {
       sendAttributionBeacon();
       var slide = btn.closest('.carousel-slide');
+      var label = slide.querySelector('.carousel-label').textContent.trim();
+      gtag('event', 'copy_prompt', {page: 'run402_humans', prompt: label});
       var text = slide.querySelector('.carousel-prompt').textContent.trim();
       navigator.clipboard.writeText(text).then(function() {
         btn.textContent = 'Copied';
