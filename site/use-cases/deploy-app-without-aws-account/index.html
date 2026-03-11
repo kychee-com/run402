@@ -566,6 +566,7 @@
   </div>
   <script>
     function copyPrompt(el, isCode) {
+      gtag('event', 'copy_prompt', {page: 'run402_usecase_deploy_without_aws', prompt: 'main_cta'});
       navigator.clipboard.writeText('Please build me a demo app using run402.com/llms.txt (curl it)').then(function() {
         if (isCode) {
           var original = el.textContent;

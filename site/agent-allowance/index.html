@@ -644,6 +644,8 @@
   </div>
   <script>
     function copyText(el, text) {
+      var prompt = text.indexOf('allowance') > -1 ? 'fund_allowance' : 'demo_app';
+      gtag('event', 'copy_prompt', {page: 'run402_agent_allowance', prompt: prompt});
       navigator.clipboard.writeText(text).then(function() {
         var original = el.textContent;
         el.textContent = 'Copied!';
@@ -656,6 +658,8 @@
     }
 
     function copyBtn(el, text) {
+      var prompt = text.indexOf('allowance') > -1 ? 'fund_allowance' : 'demo_app';
+      gtag('event', 'copy_prompt', {page: 'run402_agent_allowance', prompt: prompt});
       navigator.clipboard.writeText(text).then(function() {
         var original = el.textContent;
         el.textContent = 'Copied';
