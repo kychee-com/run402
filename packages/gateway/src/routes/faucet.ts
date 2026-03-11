@@ -4,6 +4,7 @@ import { sendDrip } from "../services/faucet.js";
 import { FAUCET_TREASURY_KEY, FAUCET_DRIP_AMOUNT, FAUCET_DRIP_COOLDOWN, ADMIN_KEY } from "../config.js";
 import { hasCode } from "../utils/errors.js";
 import { asyncHandler, HttpError } from "../utils/async-handler.js";
+import { recordWallet } from "../utils/wallet.js";
 
 const router = Router();
 
@@ -35,6 +36,8 @@ router.post("/v1/faucet", asyncHandler(async (req: Request, res: Response) => {
     const retryAfter = Math.ceil((FAUCET_DRIP_COOLDOWN - (Date.now() - lastDrip)) / 1000);
     throw new HttpError(429, `Rate limit exceeded. One drip per 24 hours. Retry after ${retryAfter}s`);
   }
+
+  recordWallet(address, "faucet");
 
   try {
     const transactionHash = await sendDrip(address as `0x${string}`);

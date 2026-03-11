@@ -18,7 +18,7 @@ import {
 } from "../config.js";
 import type { TierName } from "@run402/shared";
 import { getBillingAccount, debitAllowance } from "../services/billing.js";
-import { extractWalletFromPaymentHeader } from "../utils/wallet.js";
+import { extractWalletFromPaymentHeader, recordWallet } from "../utils/wallet.js";
 import { createHash } from "node:crypto";
 import type { Request, Response, NextFunction } from "express";
 
@@ -407,6 +407,8 @@ export function createPaymentMiddleware() {
     if (!context.paymentHeader) return;
     const wallet = extractWalletFromPaymentHeader(context.paymentHeader);
     if (!wallet) return;
+
+    recordWallet(wallet, "x402");
 
     // Check if wallet has a billing account with balance
     const account = await getBillingAccount(wallet);

@@ -320,7 +320,9 @@ app.get("/public/stats", async (_req: Request, res: Response) => {
     if (!publicStatsCache || Date.now() - publicStatsCache.ts > 60_000) {
       const result = await pool.query(`
         SELECT COUNT(DISTINCT wallet)::int AS count FROM (
-          SELECT wallet_address AS wallet FROM internal.billing_account_wallets
+          SELECT wallet_address AS wallet FROM internal.wallet_sightings
+          UNION
+          SELECT wallet_address FROM internal.billing_account_wallets
           UNION
           SELECT wallet_address FROM internal.projects WHERE wallet_address IS NOT NULL
           UNION
@@ -873,6 +875,16 @@ async function applyMigrations() {
       received_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       processed_at TIMESTAMPTZ,
       processing_error TEXT
+    )
+  `);
+
+  // v1.11: wallet sightings — track every unique wallet encountered
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS internal.wallet_sightings (
+      wallet_address TEXT PRIMARY KEY,
+      first_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      source TEXT NOT NULL DEFAULT 'unknown'
     )
   `);
 

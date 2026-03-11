@@ -196,7 +196,9 @@ router.get("/admin/api/stats", asyncHandler(async (req: Request, res: Response) 
     pool.query(`SELECT COUNT(*)::int AS count FROM internal.functions`).catch(() => ({ rows: [{ count: 0 }] })),
     pool.query(`SELECT COUNT(*)::int AS used FROM internal.projects WHERE schema_slot IS NOT NULL`),
     pool.query(`SELECT COUNT(DISTINCT wallet)::int AS count FROM (
-      SELECT wallet_address AS wallet FROM internal.billing_account_wallets
+      SELECT wallet_address AS wallet FROM internal.wallet_sightings
+      UNION
+      SELECT wallet_address FROM internal.billing_account_wallets
       UNION
       SELECT wallet_address FROM internal.projects WHERE wallet_address IS NOT NULL
       UNION
