@@ -313,6 +313,21 @@ app.get("/status", async (_req: Request, res: Response) => {
   }
 });
 
+// --- Public stats (wallet count for landing page) ---
+let publicStatsCache: { data: object; ts: number } | null = null;
+app.get("/public/stats", async (_req: Request, res: Response) => {
+  try {
+    if (!publicStatsCache || Date.now() - publicStatsCache.ts > 60_000) {
+      const result = await pool.query(`SELECT COUNT(*)::int AS count FROM internal.billing_account_wallets`);
+      publicStatsCache = { data: { wallets: result.rows[0]?.count || 0 }, ts: Date.now() };
+    }
+    res.set("Cache-Control", "public, max-age=60");
+    res.json(publicStatsCache.data);
+  } catch {
+    res.json({ wallets: 0 });
+  }
+});
+
 // --- Paid ping (x402 probe) ---
 app.get("/v1/ping", (_req: Request, res: Response) => {
   res.json({ status: "ok", paid: true, timestamp: new Date().toISOString() });

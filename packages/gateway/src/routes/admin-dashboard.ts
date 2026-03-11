@@ -189,12 +189,13 @@ router.get("/admin/api/stats", asyncHandler(async (req: Request, res: Response) 
   }
 
   // DB-level stats
-  const [allProjectsRes, billingRes, subdomainsRes, functionsRes, slotsRes] = await Promise.all([
+  const [allProjectsRes, billingRes, subdomainsRes, functionsRes, slotsRes, walletsRes] = await Promise.all([
     pool.query(`SELECT status, COUNT(*)::int AS count FROM internal.projects GROUP BY status`),
     pool.query(`SELECT COUNT(*)::int AS accounts, COALESCE(SUM(available_usd_micros),0)::bigint AS total_available FROM internal.billing_accounts`),
     pool.query(`SELECT COUNT(*)::int AS count FROM internal.subdomains`),
     pool.query(`SELECT COUNT(*)::int AS count FROM internal.functions`).catch(() => ({ rows: [{ count: 0 }] })),
     pool.query(`SELECT COUNT(*)::int AS used FROM internal.projects WHERE schema_slot IS NOT NULL`),
+    pool.query(`SELECT COUNT(*)::int AS count FROM internal.billing_account_wallets`),
   ]);
 
   const statusCounts: Record<string, number> = {};
@@ -226,6 +227,7 @@ router.get("/admin/api/stats", asyncHandler(async (req: Request, res: Response) 
     billing: {
       accounts: billing.accounts,
       totalAvailableUsd: Number(billing.total_available) / 1_000_000,
+      uniqueWallets: walletsRes.rows[0]?.count || 0,
     },
   });
 }));
@@ -364,6 +366,7 @@ function render(d){
   html+='<div class="stat"><div class="stat-label">Storage Used</div><div class="stat-value">'+u.totalStorageMb+' <span style="font-size:14px;color:#9CA3AF">MB</span></div></div>';
   html+='<div class="stat"><div class="stat-label">Schema Slots</div><div class="stat-value"><span class="'+slotColor+'">'+fmt(inf.slotsUsed)+'</span> <span style="font-size:14px;color:#9CA3AF">/ '+fmt(inf.slotsTotal)+'</span></div>';
   html+='<div class="bar-wrap"><div class="bar-fill" style="width:'+slotPct+'%;background:'+(slotPct>90?'#FF5050':slotPct>70?'#FBBF24':'#00FF9F')+'"></div></div></div>';
+  html+='<div class="stat"><div class="stat-label">Unique Wallets</div><div class="stat-value"><span class="g">'+fmt(b.uniqueWallets)+'</span></div></div>';
   html+='<div class="stat"><div class="stat-label">Billing Accounts</div><div class="stat-value">'+fmt(b.accounts)+'</div></div>';
   html+='<div class="stat"><div class="stat-label">Total Allowance</div><div class="stat-value">$'+b.totalAvailableUsd.toFixed(2)+'</div></div>';
   html+='<div class="stat"><div class="stat-label">Subdomains</div><div class="stat-value">'+fmt(inf.subdomains)+'</div></div>';

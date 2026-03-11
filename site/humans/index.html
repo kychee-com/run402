@@ -373,6 +373,20 @@
     }
 
     .footer a:hover { text-decoration: underline; }
+
+    .wallet-count {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 14px;
+      color: #4B5563;
+      margin-bottom: 28px;
+      letter-spacing: 0.3px;
+    }
+
+    .wallet-num {
+      color: #00FF9F;
+      font-weight: 600;
+      font-size: 16px;
+    }
   </style>
 </head>
 
@@ -397,6 +411,10 @@
       and <strong style="color:#fff;">static site hosting</strong>.
       Paid and provisioned autonomously via <strong style="color:#fff;">x402</strong> (USDC on Base).
       No signups. No dashboards.
+    </p>
+
+    <p class="wallet-count" id="walletCount" style="display:none;">
+      <span class="wallet-num" id="walletNum">0</span> wallets served
     </p>
 
     <p class="lead"><strong>Do this:</strong> paste this into your agent's chat.</p>
@@ -786,6 +804,19 @@ Build a flash card app for learning Spanish:
   </div>
 
   <script>
+    // Fetch wallet count from API
+    (function() {
+      fetch('https://api.run402.com/public/stats')
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+          if (d.wallets > 0) {
+            document.getElementById('walletNum').textContent = d.wallets.toLocaleString();
+            document.getElementById('walletCount').style.display = '';
+          }
+        })
+        .catch(function() {});
+    })();
+
     // Attribution beacon — fire on copy-click if user came from an ad
     function sendAttributionBeacon() {
       try {
