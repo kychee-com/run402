@@ -1,5 +1,9 @@
 # CLAUDE.md
 
+## MCP Server
+
+The Run402 MCP server is published at https://github.com/kychee-com/run402-mcp (npm: `run402-mcp`, v0.2.0). It exposes `provision_postgres_project`, `run_sql`, `rest_query`, `upload_file`, `renew_project`, `deploy_site`, `claim_subdomain`, `delete_subdomain` as MCP tools. Install: `npx run402-mcp`. Config and docs are in the separate `kychee-com/run402-mcp` repo.
+
 ## Lint & Type Check
 
 Run `npm run lint` and `npx tsc --noEmit -p packages/gateway` before committing gateway changes. ESLint catches style issues but not missing imports or type errors — only `tsc` catches those.

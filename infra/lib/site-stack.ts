@@ -86,6 +86,18 @@ function handler(event) {
     });
 
     // =========================================================================
+    // S3 Bucket for CloudFront access logs
+    // =========================================================================
+    const logBucket = new s3.Bucket(this, "AccessLogBucket", {
+      blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
+      encryption: s3.BucketEncryption.S3_MANAGED,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+      autoDeleteObjects: true,
+      objectOwnership: s3.ObjectOwnership.BUCKET_OWNER_PREFERRED,
+      lifecycleRules: [{ expiration: cdk.Duration.days(90) }],
+    });
+
+    // =========================================================================
     // CloudFront Distribution
     // =========================================================================
     const distribution = new cloudfront.Distribution(this, "Distribution", {
@@ -103,6 +115,9 @@ function handler(event) {
       domainNames: [DOMAIN, `www.${DOMAIN}`],
       certificate: cert,
       defaultRootObject: "index.html",
+      enableLogging: true,
+      logBucket,
+      logFilePrefix: "cf-logs/",
     });
 
     // =========================================================================
@@ -217,6 +232,10 @@ function handler(event) {
     new cdk.CfnOutput(this, "DeployRoleArn", {
       value: deployRole.roleArn,
       description: "GitHub Actions deploy role ARN",
+    });
+    new cdk.CfnOutput(this, "AccessLogBucketName", {
+      value: logBucket.bucketName,
+      description: "CloudFront access log bucket",
     });
   }
 }
