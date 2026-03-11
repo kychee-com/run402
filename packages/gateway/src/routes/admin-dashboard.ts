@@ -195,7 +195,13 @@ router.get("/admin/api/stats", asyncHandler(async (req: Request, res: Response) 
     pool.query(`SELECT COUNT(*)::int AS count FROM internal.subdomains`),
     pool.query(`SELECT COUNT(*)::int AS count FROM internal.functions`).catch(() => ({ rows: [{ count: 0 }] })),
     pool.query(`SELECT COUNT(*)::int AS used FROM internal.projects WHERE schema_slot IS NOT NULL`),
-    pool.query(`SELECT COUNT(*)::int AS count FROM internal.billing_account_wallets`),
+    pool.query(`SELECT COUNT(DISTINCT wallet)::int AS count FROM (
+      SELECT wallet_address AS wallet FROM internal.billing_account_wallets
+      UNION
+      SELECT wallet_address FROM internal.projects WHERE wallet_address IS NOT NULL
+      UNION
+      SELECT wallet_address FROM internal.charge_authorizations
+    ) all_wallets`),
   ]);
 
   const statusCounts: Record<string, number> = {};

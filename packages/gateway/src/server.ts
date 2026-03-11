@@ -318,7 +318,15 @@ let publicStatsCache: { data: object; ts: number } | null = null;
 app.get("/public/stats", async (_req: Request, res: Response) => {
   try {
     if (!publicStatsCache || Date.now() - publicStatsCache.ts > 60_000) {
-      const result = await pool.query(`SELECT COUNT(*)::int AS count FROM internal.billing_account_wallets`);
+      const result = await pool.query(`
+        SELECT COUNT(DISTINCT wallet)::int AS count FROM (
+          SELECT wallet_address AS wallet FROM internal.billing_account_wallets
+          UNION
+          SELECT wallet_address FROM internal.projects WHERE wallet_address IS NOT NULL
+          UNION
+          SELECT wallet_address FROM internal.charge_authorizations
+        ) all_wallets
+      `);
       publicStatsCache = { data: { wallets: result.rows[0]?.count || 0 }, ts: Date.now() };
     }
     res.set("Cache-Control", "public, max-age=60");
