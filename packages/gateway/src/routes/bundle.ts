@@ -9,6 +9,7 @@ import { Router, Request, Response } from "express";
 import { TIERS } from "@run402/shared";
 import type { TierName } from "@run402/shared";
 import { deployBundle, validateBundle, BundleError } from "../services/bundle.js";
+import { SubdomainError } from "../services/subdomains.js";
 import { notifyNewProject } from "../services/telegram.js";
 import { extractWalletFromPaymentHeader } from "../utils/wallet.js";
 import { asyncHandler, HttpError } from "../utils/async-handler.js";
@@ -72,6 +73,9 @@ router.post("/v1/deploy/:tier", asyncHandler(async (req: Request, res: Response)
     res.status(201).json(result);
   } catch (err: unknown) {
     if (err instanceof BundleError) {
+      throw new HttpError(err.statusCode, err.message);
+    }
+    if (err instanceof SubdomainError) {
       throw new HttpError(err.statusCode, err.message);
     }
     throw err;

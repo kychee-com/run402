@@ -7,6 +7,7 @@
 
 import { pool } from "../db/pool.js";
 import { getDeployment } from "./deployments.js";
+import { projectCache } from "./projects.js";
 
 export interface SubdomainRecord {
   name: string;
@@ -125,6 +126,8 @@ export async function createOrUpdateSubdomain(
   name: string,
   deploymentId: string,
   projectId?: string | null,
+  /** If provided, allows cross-project reassignment when the wallet matches. */
+  walletAddress?: string,
 ): Promise<SubdomainRecord> {
   // Verify deployment exists
   const deployment = await getDeployment(deploymentId);
@@ -135,7 +138,26 @@ export async function createOrUpdateSubdomain(
   // Check ownership if subdomain already exists
   const existing = await getSubdomain(name);
   if (existing && existing.project_id && projectId && existing.project_id !== projectId) {
-    throw new SubdomainError("Subdomain owned by different project", 403);
+    // Different project — allow if same wallet is redeploying
+    let sameWallet = false;
+    if (walletAddress) {
+      // Check cache first, fall back to DB (old project may be archived)
+      const cached = projectCache.get(existing.project_id);
+      const oldWallet = cached?.walletAddress
+        ?? (await pool.query(
+             `SELECT wallet_address FROM internal.projects WHERE id = $1`,
+             [existing.project_id],
+           )).rows[0]?.wallet_address;
+      if (oldWallet && oldWallet.toLowerCase() === walletAddress.toLowerCase()) {
+        sameWallet = true;
+      }
+    }
+    if (!sameWallet) {
+      throw new SubdomainError(
+        `Subdomain "${name}" is already claimed by another wallet`,
+        403,
+      );
+    }
   }
 
   const result = await pool.query(

@@ -270,9 +270,9 @@ export async function deployBundle(
       siteUrl = deployment.url;
       deploymentId = deployment.id;
 
-      // 7. Claim subdomain
+      // 7. Claim subdomain — pass wallet so same-wallet redeploys can reassign
       if (req.subdomain && deploymentId) {
-        await createOrUpdateSubdomain(req.subdomain, deploymentId, project.id);
+        await createOrUpdateSubdomain(req.subdomain, deploymentId, project.id, walletAddress);
         siteUrl = `https://${req.subdomain}.run402.com`;
       }
     }
