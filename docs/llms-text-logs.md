@@ -54,11 +54,11 @@ CREATE EXTERNAL TABLE IF NOT EXISTS cf_logs (
   sc_range_end BIGINT
 )
 ROW FORMAT DELIMITED FIELDS TERMINATED BY '\t'
-LOCATION 's3://<LOG_BUCKET_NAME>/cf-logs/'
+LOCATION 's3://agentdb-site-accesslogbucketda470295-jaz7qij2zfjq/cf-logs/'
 TBLPROPERTIES ('skip.header.line.count'='2');
 ```
 
-Replace `<LOG_BUCKET_NAME>` with the `AccessLogBucketName` output from `cdk deploy`.
+Bucket name: `agentdb-site-accesslogbucketda470295-jaz7qij2zfjq`
 
 ### 2. Example queries
 
