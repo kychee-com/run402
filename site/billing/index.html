@@ -785,11 +785,9 @@
           var micros = data.available_usd_micros || 0;
           var dollars = (micros / 1000000).toFixed(2);
           document.getElementById('balance-display').textContent = '$' + dollars;
-          document.getElementById('balance-micros').textContent = micros.toLocaleString() + ' micro-USD';
         })
         .catch(function() {
           document.getElementById('balance-display').textContent = '$0.00';
-          document.getElementById('balance-micros').textContent = 'Failed to load balance';
         });
     }
 
@@ -898,7 +896,6 @@
               clearInterval(pollTimer);
               var dollars = (micros / 1000000).toFixed(2);
               document.getElementById('balance-display').textContent = '$' + dollars;
-              document.getElementById('balance-micros').textContent = micros.toLocaleString() + ' micro-USD';
               document.getElementById('success-text').textContent = 'Your allowance has been credited. Balance: $' + dollars;
               loadLedger();
             }
