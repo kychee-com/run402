@@ -15,7 +15,7 @@
     "dev": "npm run dev -w packages/gateway",
     "test:e2e": "tsx test/e2e.ts",
     "test:openclaw": "tsx test/openclaw-e2e.ts",
-    "test:subdomains": "node --test --import tsx packages/gateway/src/services/subdomains.test.ts",
+    "test:subdomains": "node --experimental-test-module-mocks --test --import tsx packages/gateway/src/services/subdomains.test.ts",
     "test:functions": "tsx test/functions-e2e.ts",
     "test:billing": "tsx test/billing-e2e.ts",
     "lint": "eslint",
