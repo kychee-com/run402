@@ -50,6 +50,7 @@
       line-height: 1.6;
       min-height: 100vh;
       overflow-x: hidden;
+      padding-bottom: 56px;
     }
 
     .container {
@@ -350,14 +351,19 @@
     }
 
     .footer {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: #0A0A0F;
       border-top: 1px solid #1E1E2A;
-      padding-top: 32px;
-      margin-top: 48px;
+      padding: 12px 24px;
       display: flex;
-      justify-content: space-between;
+      justify-content: center;
       align-items: center;
       flex-wrap: wrap;
-      gap: 16px;
+      gap: 12px;
+      z-index: 100;
     }
 
     .footer-text {
@@ -790,18 +796,19 @@ Build a flash card app for learning Spanish:
       </div>
     </div>
 
-    <div class="footer">
-      <span class="footer-text">By <a href="https://kychee.com">Kychee</a></span>
-      <span>
-        <a href="/humans/about.html">About</a> &nbsp;&middot;&nbsp;
-        <a href="/humans/vision.html">Vision</a> &nbsp;&middot;&nbsp;
-        <a href="/humans/terms.html">Terms</a> &nbsp;&middot;&nbsp;
-        <a href="/humans/privacy.html">Privacy</a> &nbsp;&middot;&nbsp;
-        <a href="/humans/faq.html">FAQ</a> &nbsp;&middot;&nbsp;
-        <a href="https://x.com/run402com">Follow us on X</a> &nbsp;&middot;&nbsp;
-        <a href="https://api.run402.com/health-humans">API status</a>
-      </span>
-    </div>
+  </div>
+
+  <div class="footer">
+    <span class="footer-text">By <a href="https://kychee.com">Kychee</a></span>
+    <span>
+      <a href="/humans/about.html">About</a> &nbsp;&middot;&nbsp;
+      <a href="/humans/vision.html">Vision</a> &nbsp;&middot;&nbsp;
+      <a href="/humans/terms.html">Terms</a> &nbsp;&middot;&nbsp;
+      <a href="/humans/privacy.html">Privacy</a> &nbsp;&middot;&nbsp;
+      <a href="/humans/faq.html">FAQ</a> &nbsp;&middot;&nbsp;
+      <a href="https://x.com/run402com">Follow us on X</a> &nbsp;&middot;&nbsp;
+      <a href="https://api.run402.com/health-humans">API status</a>
+    </span>
   </div>
 
   <script>
