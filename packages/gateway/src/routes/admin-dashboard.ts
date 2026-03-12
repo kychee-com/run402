@@ -440,7 +440,7 @@ function render(d){
   html+='<div class="stat tip" data-tip="Distinct Ethereum wallet addresses seen across all sources: faucet drips, billing accounts, projects, and charge authorizations"><div class="stat-label">Unique Wallets</div><div class="stat-value"><span class="g">'+fmt(b.uniqueWallets)+'</span></div></div>';
   html+='<div class="stat tip" data-tip="Accounts created via Stripe checkout or wallet-based billing. Each account can have multiple wallets"><div class="stat-label">Billing Accounts</div><div class="stat-value">'+fmt(b.accounts)+'</div></div>';
   html+='<div class="stat tip" data-tip="Sum of all prepaid USDC allowance across billing accounts (available_usd_micros / 1M)"><div class="stat-label">Total Allowance</div><div class="stat-value">$'+b.totalAvailableUsd.toFixed(2)+'</div></div>';
-  html+='<div class="stat tip" data-tip="Custom subdomains claimed on *.run402.com, each pointing to a project\'s deployed site"><div class="stat-label">Subdomains</div><div class="stat-value">'+fmt(inf.subdomains)+'</div></div>';
+  html+='<div class="stat tip" data-tip="Custom subdomains claimed on *.run402.com, each pointing to a deployed project site"><div class="stat-label">Subdomains</div><div class="stat-value">'+fmt(inf.subdomains)+'</div></div>';
   html+='<div class="stat tip" data-tip="Lambda functions deployed by projects for serverless compute"><div class="stat-label">Functions</div><div class="stat-value">'+fmt(inf.functions)+'</div></div>';
   html+='</div>';
 
