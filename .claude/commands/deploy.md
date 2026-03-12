@@ -4,7 +4,7 @@ Full deployment pipeline: run all pre-flight checks, commit, push to main, monit
 
 ## Instructions
 
-Execute the following steps in order. Stop and report if any step fails.
+Execute the following steps in order. Stop and report if any step fails. Do NOT ask the user for confirmation at any point — run the entire pipeline autonomously.
 
 ### Step 1: Pre-flight checks (run in parallel)
 
@@ -20,11 +20,9 @@ If any fail, stop and fix the issues before proceeding. Do NOT skip failures.
 ### Step 2: Commit and push
 
 1. Run `git status` and `git diff --stat` to review what changed
-2. Show the user a summary of the changes and a proposed commit message
-3. Ask the user to confirm before committing
-4. Stage the relevant files (NOT `.env`, credentials, or large binaries)
-5. Commit with a descriptive message
-6. Push to `main`
+2. Stage the relevant files (NOT `.env`, credentials, or large binaries)
+3. Commit with a descriptive message
+4. Push to `main`
 
 ### Step 3: Determine which CI workflows will trigger
 

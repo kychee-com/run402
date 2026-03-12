@@ -37,6 +37,21 @@
 - **Role:** Co-authored x402 whitepaper, shaped CDP vision. Now a YC visiting partner. No longer at Coinbase but still influential in ecosystem.
 - **Status:** Messaged
 
+## Competition — InsForge.dev
+
+Backend-as-a-service for AI coding agents (Postgres, auth, storage, edge functions, model gateway, vector search). Seattle, WA. Launched Nov 2025, #1 on Product Hunt. Raised $1.5M pre-seed from MindWorks Ventures. ~9 employees.
+
+### Hang Huang — Co-Founder & CEO
+- **Twitter:** [@HH_HangHuang](https://x.com/HH_HangHuang)
+- **LinkedIn:** [linkedin.com/in/hang-huang-oliver](https://www.linkedin.com/in/hang-huang-oliver/)
+- **Background:** PM at Amazon. MBA from Yale, BSBA from Northeastern (Finance & Data Science).
+
+### Tony Chang — Co-Founder & CTO
+- **Twitter:** [@tonychang430](https://x.com/tonychang430)
+- **LinkedIn:** [linkedin.com/in/tony-chang-0430](https://www.linkedin.com/in/tony-chang-0430/)
+- **GitHub:** [tonychang04](https://github.com/tonychang04)
+- **Background:** SWE at Databricks (networking), previously Amazon and Meta. CS from UIUC. 5x hackathon winner.
+
 ## Our Pitch (Summary)
 
 Run402 is a live implementation of x402. Agents autonomously read our llms.txt/MCP, generate a wallet, get testnet USDC from our faucet, pay via x402, and deploy a full app in ~3 minutes. No humans, no API keys, no email. Identity is just a wallet address.
