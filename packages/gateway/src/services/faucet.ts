@@ -148,6 +148,14 @@ export async function refillTreasury(): Promise<void> {
       token: "eth",
     });
     console.log(`  Faucet refill: requested ETH for ${treasuryAddress}`);
+
+    // Snapshot balance after refill (wait a bit for on-chain settlement)
+    setTimeout(async () => {
+      try {
+        const bal = await getTreasuryBalance();
+        recordFaucetSnapshot(bal, "refill");
+      } catch { /* ignore */ }
+    }, 15_000);
   } catch (err: unknown) {
     console.error(`  Faucet refill failed: ${errorMessage(err)}`);
   }
