@@ -375,6 +375,11 @@ tr:last-child td{border-bottom:none}
 .pill-gray{background:rgba(255,255,255,0.05);color:#9CA3AF}
 .bar-wrap{height:8px;background:#1E1E2A;border-radius:4px;overflow:hidden;margin-top:8px}
 .bar-fill{height:100%;border-radius:4px;transition:width .6s ease}
+.tip{position:relative;cursor:help}
+.tip::after{content:attr(data-tip);position:absolute;bottom:calc(100% + 8px);left:50%;transform:translateX(-50%);background:#1E1E2A;color:#E0E0E0;font-size:12px;font-weight:400;line-height:1.5;padding:8px 12px;border-radius:8px;border:1px solid #2A2A3A;white-space:normal;width:max-content;max-width:260px;pointer-events:none;opacity:0;transition:opacity .15s;z-index:10;text-transform:none;letter-spacing:normal;box-shadow:0 4px 12px rgba(0,0,0,.4)}
+.tip:hover::after{opacity:1}
+.tip::before{content:'';position:absolute;bottom:calc(100% + 2px);left:50%;transform:translateX(-50%);border:6px solid transparent;border-top-color:#1E1E2A;pointer-events:none;opacity:0;transition:opacity .15s;z-index:10}
+.tip:hover::before{opacity:1}
 .loading{color:#4B5563;font-size:13px;text-align:center;padding:40px}
 .ts{color:#4B5563;font-size:12px;text-align:center;margin-top:24px}
 .chart-wrap{background:#12121A;border:1px solid #1E1E2A;border-radius:12px;padding:20px 20px 12px;position:relative}
@@ -427,20 +432,20 @@ function render(d){
   const slotColor=slotPct>90?'bad':slotPct>70?'warn':'g';
 
   let html='<div class="grid">';
-  html+='<div class="stat"><div class="stat-label">Active Projects</div><div class="stat-value"><span class="g">'+fmt(p.active)+'</span></div></div>';
-  html+='<div class="stat"><div class="stat-label">Total API Calls</div><div class="stat-value">'+fmt(u.totalApiCalls)+'</div></div>';
-  html+='<div class="stat"><div class="stat-label">Storage Used</div><div class="stat-value">'+u.totalStorageMb+' <span style="font-size:14px;color:#9CA3AF">MB</span></div></div>';
-  html+='<div class="stat"><div class="stat-label">Schema Slots</div><div class="stat-value"><span class="'+slotColor+'">'+fmt(inf.slotsUsed)+'</span> <span style="font-size:14px;color:#9CA3AF">/ '+fmt(inf.slotsTotal)+'</span></div>';
+  html+='<div class="stat tip" data-tip="Projects with an active lease currently loaded in the in-memory cache"><div class="stat-label">Active Projects</div><div class="stat-value"><span class="g">'+fmt(p.active)+'</span></div></div>';
+  html+='<div class="stat tip" data-tip="Total REST and SQL API calls across all projects since creation"><div class="stat-label">Total API Calls</div><div class="stat-value">'+fmt(u.totalApiCalls)+'</div></div>';
+  html+='<div class="stat tip" data-tip="Combined S3 storage used by file uploads across all projects"><div class="stat-label">Storage Used</div><div class="stat-value">'+u.totalStorageMb+' <span style="font-size:14px;color:#9CA3AF">MB</span></div></div>';
+  html+='<div class="stat tip" data-tip="Each project gets a Postgres schema slot. '+fmt(inf.slotsTotal)+' total slots. Green < 70%, yellow 70-90%, red > 90%"><div class="stat-label">Schema Slots</div><div class="stat-value"><span class="'+slotColor+'">'+fmt(inf.slotsUsed)+'</span> <span style="font-size:14px;color:#9CA3AF">/ '+fmt(inf.slotsTotal)+'</span></div>';
   html+='<div class="bar-wrap"><div class="bar-fill" style="width:'+slotPct+'%;background:'+(slotPct>90?'#FF5050':slotPct>70?'#FBBF24':'#00FF9F')+'"></div></div></div>';
-  html+='<div class="stat"><div class="stat-label">Unique Wallets</div><div class="stat-value"><span class="g">'+fmt(b.uniqueWallets)+'</span></div></div>';
-  html+='<div class="stat"><div class="stat-label">Billing Accounts</div><div class="stat-value">'+fmt(b.accounts)+'</div></div>';
-  html+='<div class="stat"><div class="stat-label">Total Allowance</div><div class="stat-value">$'+b.totalAvailableUsd.toFixed(2)+'</div></div>';
-  html+='<div class="stat"><div class="stat-label">Subdomains</div><div class="stat-value">'+fmt(inf.subdomains)+'</div></div>';
-  html+='<div class="stat"><div class="stat-label">Functions</div><div class="stat-value">'+fmt(inf.functions)+'</div></div>';
+  html+='<div class="stat tip" data-tip="Distinct Ethereum wallet addresses seen across all sources: faucet drips, billing accounts, projects, and charge authorizations"><div class="stat-label">Unique Wallets</div><div class="stat-value"><span class="g">'+fmt(b.uniqueWallets)+'</span></div></div>';
+  html+='<div class="stat tip" data-tip="Accounts created via Stripe checkout or wallet-based billing. Each account can have multiple wallets"><div class="stat-label">Billing Accounts</div><div class="stat-value">'+fmt(b.accounts)+'</div></div>';
+  html+='<div class="stat tip" data-tip="Sum of all prepaid USDC allowance across billing accounts (available_usd_micros / 1M)"><div class="stat-label">Total Allowance</div><div class="stat-value">$'+b.totalAvailableUsd.toFixed(2)+'</div></div>';
+  html+='<div class="stat tip" data-tip="Custom subdomains claimed on *.run402.com, each pointing to a project\'s deployed site"><div class="stat-label">Subdomains</div><div class="stat-value">'+fmt(inf.subdomains)+'</div></div>';
+  html+='<div class="stat tip" data-tip="Lambda functions deployed by projects for serverless compute"><div class="stat-label">Functions</div><div class="stat-value">'+fmt(inf.functions)+'</div></div>';
   html+='</div>';
 
   // Projects by status
-  html+='<div class="section"><h2><span class="dot"></span>Projects by Status</h2><table><tr><th>Status</th><th>Count</th></tr>';
+  html+='<div class="section"><h2><span class="dot"></span><span class="tip" data-tip="All projects in the database grouped by lifecycle status: active (leased), archived (lease expired, read-only), deleted (past grace period)">Projects by Status</span></h2><table><tr><th>Status</th><th>Count</th></tr>';
   for(const [s,c] of Object.entries(p.byStatus)){
     const cls=s==='active'?'pill-green':s==='archived'?'pill-yellow':s==='deleted'?'pill-red':'pill-gray';
     html+='<tr><td><span class="pill '+cls+'">'+esc(s)+'</span></td><td>'+fmt(c)+'</td></tr>';
@@ -448,7 +453,7 @@ function render(d){
   html+='</table></div>';
 
   // Projects by tier
-  html+='<div class="section"><h2><span class="dot"></span>Active Projects by Tier</h2><table><tr><th>Tier</th><th>Count</th></tr>';
+  html+='<div class="section"><h2><span class="dot"></span><span class="tip" data-tip="Active projects broken down by pricing tier. Pinned projects never expire. Expiring shows projects whose lease ends within 7 days">Active Projects by Tier</span></h2><table><tr><th>Tier</th><th>Count</th></tr>';
   for(const [t,c] of Object.entries(p.byTier)){
     html+='<tr><td>'+esc(t)+'</td><td>'+fmt(c)+'</td></tr>';
   }
@@ -459,11 +464,11 @@ function render(d){
   // Faucet section
   const f=d.faucet;
   if(f && f.enabled){
-    html+='<div class="section"><h2><span class="dot" style="background:#6366F1"></span>Faucet (Base Sepolia USDC)</h2>';
+    html+='<div class="section"><h2><span class="dot" style="background:#6366F1"></span><span class="tip" data-tip="Testnet USDC faucet on Base Sepolia. Gives 0.25 USDC per drip (1 per 24h per IP). Auto-refills from Coinbase CDP every ~2.4h">Faucet (Base Sepolia USDC)</span></h2>';
 
     // Balance stat card
     html+='<div class="grid" style="margin-bottom:16px">';
-    html+='<div class="stat"><div class="stat-label">Treasury Balance</div><div class="stat-value">';
+    html+='<div class="stat tip" data-tip="Live USDC balance of the treasury wallet on Base Sepolia. Red < $1, yellow < $5, green otherwise"><div class="stat-label">Treasury Balance</div><div class="stat-value">';
     if(f.balanceUsdc!==null){
       const bc=f.balanceUsdc<1?'bad':f.balanceUsdc<5?'warn':'g';
       html+='<span class="'+bc+'">$'+f.balanceUsdc.toFixed(2)+'</span> <span style="font-size:12px;color:#9CA3AF">USDC</span>';
@@ -472,13 +477,13 @@ function render(d){
     if(f.treasuryAddress) html+='<div class="faucet-addr">'+esc(f.treasuryAddress)+'</div>';
     html+='</div>';
     const lastWallet=f.cumulativeWallets.length?f.cumulativeWallets[f.cumulativeWallets.length-1].v:0;
-    html+='<div class="stat"><div class="stat-label">Total Faucet Wallets</div><div class="stat-value"><span class="g">'+fmt(lastWallet)+'</span></div></div>';
+    html+='<div class="stat tip" data-tip="Distinct wallet addresses that have received at least one faucet drip (source=faucet in wallet_sightings)"><div class="stat-label">Total Faucet Wallets</div><div class="stat-value"><span class="g">'+fmt(lastWallet)+'</span></div></div>';
     html+='</div>';
 
     // Charts row
     html+='<div class="chart-row">';
-    html+='<div class="chart-wrap"><div class="chart-header"><span class="chart-title">Balance Over Time</span></div><canvas id="cvBalance"></canvas></div>';
-    html+='<div class="chart-wrap"><div class="chart-header"><span class="chart-title">Cumulative Wallets</span></div><canvas id="cvWallets"></canvas></div>';
+    html+='<div class="chart-wrap"><div class="chart-header"><span class="chart-title tip" data-tip="Treasury USDC balance after each drip, refill, and periodic poll. Dips are drips, jumps are CDP refills">Balance Over Time</span></div><canvas id="cvBalance"></canvas></div>';
+    html+='<div class="chart-wrap"><div class="chart-header"><span class="chart-title tip" data-tip="Running total of unique wallets that have requested a faucet drip, by day">Cumulative Wallets</span></div><canvas id="cvWallets"></canvas></div>';
     html+='</div>';
     html+='</div>';
   }
@@ -581,6 +586,38 @@ function drawAreaChart(id,data,color,prefix){
   ctx.fillStyle=color;ctx.fill();
   ctx.beginPath();ctx.arc(x(last.t),y(last.v),8,0,Math.PI*2);
   ctx.fillStyle=color+'20';ctx.fill();
+
+  // Interactive hover tooltip
+  var tooltip=document.createElement('div');
+  tooltip.className='chart-tip';
+  tooltip.style.cssText='position:absolute;display:none;background:#1E1E2A;color:#E0E0E0;font-size:12px;padding:6px 10px;border-radius:6px;border:1px solid #2A2A3A;pointer-events:none;white-space:nowrap;z-index:10;box-shadow:0 4px 12px rgba(0,0,0,.4)';
+  c.parentNode.style.position='relative';
+  c.parentNode.appendChild(tooltip);
+
+  c.addEventListener('mousemove',function(e){
+    var rect=c.getBoundingClientRect();
+    var mx=e.clientX-rect.left;
+    // Find nearest data point
+    var best=0,bestDist=Infinity;
+    for(var i=0;i<data.length;i++){
+      var dx=Math.abs(x(data[i].t)/2*c.offsetWidth/(W)-mx); // approximate
+      var px=(data[i].t-minT)/(maxT-minT)*cw+pad.l;
+      var screenX=px*c.offsetWidth/W;
+      var dist=Math.abs(screenX-mx);
+      if(dist<bestDist){bestDist=dist;best=i}
+    }
+    var pt=data[best];
+    var dt=new Date(pt.t);
+    var dateStr=dt.toLocaleDateString()+' '+dt.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+    var valStr=prefix+(pt.v<10?pt.v.toFixed(2):Math.round(pt.v).toLocaleString());
+    tooltip.innerHTML='<span style="color:'+color+'">'+valStr+'</span><br><span style="color:#4B5563">'+dateStr+'</span>';
+    tooltip.style.display='block';
+    var tx=e.clientX-rect.left-tooltip.offsetWidth/2;
+    var ty=e.clientY-rect.top-tooltip.offsetHeight-12;
+    if(tx<0)tx=0;if(tx+tooltip.offsetWidth>rect.width)tx=rect.width-tooltip.offsetWidth;
+    tooltip.style.left=tx+'px';tooltip.style.top=ty+'px';
+  });
+  c.addEventListener('mouseleave',function(){tooltip.style.display='none'});
 }
 
 load();
