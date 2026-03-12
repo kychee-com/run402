@@ -18,6 +18,7 @@
     "test:subdomains": "node --experimental-test-module-mocks --test --import tsx packages/gateway/src/services/subdomains.test.ts",
     "test:functions": "tsx test/functions-e2e.ts",
     "test:billing": "tsx test/billing-e2e.ts",
+    "test:docs": "tsx --test test/api-docs-alignment.test.ts",
     "lint": "eslint",
     "deploy": "bash scripts/deploy.sh"
   },

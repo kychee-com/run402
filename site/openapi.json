@@ -16,23 +16,69 @@
     }
   ],
   "tags": [
-    { "name": "Projects", "description": "Provision, renew, and manage database projects" },
-    { "name": "Auth", "description": "User signup, login, token refresh, and logout" },
-    { "name": "Admin", "description": "SQL migrations, RLS policies, usage, and schema introspection" },
-    { "name": "REST", "description": "PostgREST proxy — full CRUD on your tables" },
-    { "name": "Storage", "description": "Upload, download, delete, sign, and list files" },
-    { "name": "Faucet", "description": "Testnet USDC drip for development" },
-    { "name": "Deployments", "description": "Static site deployment" },
-    { "name": "Message", "description": "Paid feedback / contact endpoint" },
-    { "name": "Stripe", "description": "Subscription checkout and management" },
-    { "name": "Subdomains", "description": "Custom subdomain management for deployments" },
-    { "name": "Functions", "description": "Serverless function deploy, invoke, logs, and secrets" },
-    { "name": "Health", "description": "Health check and x402 discovery" }
+    {
+      "name": "Projects",
+      "description": "Provision, renew, and manage database projects"
+    },
+    {
+      "name": "Auth",
+      "description": "User signup, login, token refresh, and logout"
+    },
+    {
+      "name": "Admin",
+      "description": "SQL migrations, RLS policies, usage, and schema introspection"
+    },
+    {
+      "name": "REST",
+      "description": "PostgREST proxy — full CRUD on your tables"
+    },
+    {
+      "name": "Storage",
+      "description": "Upload, download, delete, sign, and list files"
+    },
+    {
+      "name": "Faucet",
+      "description": "Testnet USDC drip for development"
+    },
+    {
+      "name": "Deployments",
+      "description": "Static site deployment"
+    },
+    {
+      "name": "Message",
+      "description": "Paid feedback / contact endpoint"
+    },
+    {
+      "name": "Subdomains",
+      "description": "Custom subdomain management for deployments"
+    },
+    {
+      "name": "Functions",
+      "description": "Serverless function deploy, invoke, logs, and secrets"
+    },
+    {
+      "name": "Health",
+      "description": "Health check and x402 discovery"
+    },
+    {
+      "name": "Billing",
+      "description": "Prepaid allowance accounts and checkout"
+    },
+    {
+      "name": "Bundle",
+      "description": "One-call full-stack app deployment"
+    },
+    {
+      "name": "Publish",
+      "description": "Publish and fork app versions"
+    }
   ],
   "paths": {
     "/health": {
       "get": {
-        "tags": ["Health"],
+        "tags": [
+          "Health"
+        ],
         "summary": "Health check",
         "operationId": "getHealth",
         "responses": {
@@ -43,15 +89,24 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "status": { "type": "string", "example": "healthy" },
+                    "status": {
+                      "type": "string",
+                      "example": "healthy"
+                    },
                     "checks": {
                       "type": "object",
                       "properties": {
-                        "postgres": { "type": "string" },
-                        "postgrest": { "type": "string" }
+                        "postgres": {
+                          "type": "string"
+                        },
+                        "postgrest": {
+                          "type": "string"
+                        }
                       }
                     },
-                    "version": { "type": "string" }
+                    "version": {
+                      "type": "string"
+                    }
                   }
                 }
               }
@@ -62,11 +117,17 @@
     },
     "/v1/ping": {
       "get": {
-        "tags": ["Health"],
+        "tags": [
+          "Health"
+        ],
         "summary": "Paid ping (x402 probe)",
         "operationId": "ping",
         "x-402-price": "$0.001 USDC",
-        "security": [{ "x402": [] }],
+        "security": [
+          {
+            "x402": []
+          }
+        ],
         "responses": {
           "200": {
             "description": "Paid ping accepted",
@@ -75,21 +136,34 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "status": { "type": "string", "example": "ok" },
-                    "paid": { "type": "boolean", "example": true },
-                    "timestamp": { "type": "string", "format": "date-time" }
+                    "status": {
+                      "type": "string",
+                      "example": "ok"
+                    },
+                    "paid": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "timestamp": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
                   }
                 }
               }
             }
           },
-          "402": { "$ref": "#/components/responses/PaymentRequired" }
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          }
         }
       }
     },
     "/.well-known/x402": {
       "get": {
-        "tags": ["Health"],
+        "tags": [
+          "Health"
+        ],
         "summary": "x402 resource discovery",
         "operationId": "x402Discovery",
         "description": "Lists all x402-gated resources and their prices for automated discovery.",
@@ -101,16 +175,26 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "version": { "type": "string" },
+                    "version": {
+                      "type": "string"
+                    },
                     "resources": {
                       "type": "array",
                       "items": {
                         "type": "object",
                         "properties": {
-                          "method": { "type": "string" },
-                          "path": { "type": "string" },
-                          "price": { "type": "string" },
-                          "network": { "type": "string" }
+                          "method": {
+                            "type": "string"
+                          },
+                          "path": {
+                            "type": "string"
+                          },
+                          "price": {
+                            "type": "string"
+                          },
+                          "network": {
+                            "type": "string"
+                          }
                         }
                       }
                     }
@@ -124,7 +208,9 @@
     },
     "/v1/projects": {
       "get": {
-        "tags": ["Projects"],
+        "tags": [
+          "Projects"
+        ],
         "summary": "List tier pricing",
         "operationId": "listTiers",
         "description": "Returns available tiers and their pricing. No auth required. Useful for programmatic price discovery before provisioning.",
@@ -133,76 +219,25 @@
             "description": "Tier pricing info",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/TierPricing" }
+                "schema": {
+                  "$ref": "#/components/schemas/TierPricing"
+                }
               }
             }
           }
         }
       },
       "post": {
-        "tags": ["Projects"],
+        "tags": [
+          "Projects"
+        ],
         "summary": "Provision a new project",
         "operationId": "createProject",
         "description": "Creates a new database project. Requires x402 payment. Default tier is prototype ($0.10 USDC).",
         "x-402-price": "$0.10 USDC (prototype), $5.00 (hobby), $20.00 (team)",
-        "security": [{ "x402": [] }],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "name": { "type": "string", "description": "Optional project name" },
-                  "tier": { "type": "string", "enum": ["prototype", "hobby", "team"], "default": "prototype" }
-                }
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": "Project created",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/ProjectCreated" }
-              }
-            }
-          },
-          "402": { "$ref": "#/components/responses/PaymentRequired" }
-        }
-      }
-    },
-    "/v1/projects/quote": {
-      "post": {
-        "tags": ["Projects"],
-        "summary": "Quote tier pricing",
-        "operationId": "quoteTiers",
-        "description": "Same as GET /v1/projects — returns tier pricing info.",
-        "responses": {
-          "200": {
-            "description": "Tier pricing info",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/TierPricing" }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/v1/projects/create/{tier}": {
-      "post": {
-        "tags": ["Projects"],
-        "summary": "Provision a project with a specific tier",
-        "operationId": "createProjectByTier",
-        "x-402-price": "Per tier: prototype $0.10, hobby $5.00, team $20.00",
-        "security": [{ "x402": [] }],
-        "parameters": [
+        "security": [
           {
-            "name": "tier",
-            "in": "path",
-            "required": true,
-            "schema": { "type": "string", "enum": ["prototype", "hobby", "team"] }
+            "x402": []
           }
         ],
         "requestBody": {
@@ -211,7 +246,19 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "name": { "type": "string", "description": "Optional project name" }
+                  "name": {
+                    "type": "string",
+                    "description": "Optional project name"
+                  },
+                  "tier": {
+                    "type": "string",
+                    "enum": [
+                      "prototype",
+                      "hobby",
+                      "team"
+                    ],
+                    "default": "prototype"
+                  }
                 }
               }
             }
@@ -222,22 +269,122 @@
             "description": "Project created",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/ProjectCreated" }
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectCreated"
+                }
               }
             }
           },
-          "402": { "$ref": "#/components/responses/PaymentRequired" }
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          }
+        }
+      }
+    },
+    "/v1/projects/quote": {
+      "post": {
+        "tags": [
+          "Projects"
+        ],
+        "summary": "Quote tier pricing",
+        "operationId": "quoteTiers",
+        "description": "Same as GET /v1/projects — returns tier pricing info.",
+        "responses": {
+          "200": {
+            "description": "Tier pricing info",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TierPricing"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/projects/create/{tier}": {
+      "post": {
+        "tags": [
+          "Projects"
+        ],
+        "summary": "Provision a project with a specific tier",
+        "operationId": "createProjectByTier",
+        "x-402-price": "Per tier: prototype $0.10, hobby $5.00, team $20.00",
+        "security": [
+          {
+            "x402": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "tier",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "prototype",
+                "hobby",
+                "team"
+              ]
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "description": "Optional project name"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Project created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectCreated"
+                }
+              }
+            }
+          },
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          }
         }
       }
     },
     "/v1/projects/{id}": {
       "delete": {
-        "tags": ["Projects"],
+        "tags": [
+          "Projects"
+        ],
         "summary": "Archive (soft-delete) a project",
         "operationId": "deleteProject",
-        "security": [{ "serviceKey": [] }],
+        "security": [
+          {
+            "serviceKey": []
+          }
+        ],
         "parameters": [
-          { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
         ],
         "responses": {
           "200": {
@@ -247,27 +394,49 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "status": { "type": "string", "example": "archived" },
-                    "project_id": { "type": "string", "format": "uuid" }
+                    "status": {
+                      "type": "string",
+                      "example": "archived"
+                    },
+                    "project_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    }
                   }
                 }
               }
             }
           },
-          "401": { "$ref": "#/components/responses/Unauthorized" }
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
         }
       }
     },
     "/v1/projects/{id}/renew": {
       "post": {
-        "tags": ["Projects"],
+        "tags": [
+          "Projects"
+        ],
         "summary": "Renew project lease",
         "operationId": "renewProject",
         "description": "Extends the project lease via x402 payment.",
         "x-402-price": "Per tier: prototype $0.10, hobby $5.00, team $20.00",
-        "security": [{ "x402": [] }],
+        "security": [
+          {
+            "x402": []
+          }
+        ],
         "parameters": [
-          { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
         ],
         "requestBody": {
           "content": {
@@ -275,7 +444,14 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "tier": { "type": "string", "enum": ["prototype", "hobby", "team"] }
+                  "tier": {
+                    "type": "string",
+                    "enum": [
+                      "prototype",
+                      "hobby",
+                      "team"
+                    ]
+                  }
                 }
               }
             }
@@ -289,34 +465,59 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "project_id": { "type": "string", "format": "uuid" },
-                    "tier": { "type": "string" },
-                    "lease_expires_at": { "type": "string", "format": "date-time" }
+                    "project_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "tier": {
+                      "type": "string"
+                    },
+                    "lease_expires_at": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
                   }
                 }
               }
             }
           },
-          "402": { "$ref": "#/components/responses/PaymentRequired" }
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          }
         }
       }
     },
     "/auth/v1/signup": {
       "post": {
-        "tags": ["Auth"],
+        "tags": [
+          "Auth"
+        ],
         "summary": "Create a new user",
         "operationId": "signup",
-        "security": [{ "apikey": [] }],
+        "security": [
+          {
+            "apikey": []
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": ["email", "password"],
+                "required": [
+                  "email",
+                  "password"
+                ],
                 "properties": {
-                  "email": { "type": "string", "format": "email" },
-                  "password": { "type": "string", "minLength": 6 }
+                  "email": {
+                    "type": "string",
+                    "format": "email"
+                  },
+                  "password": {
+                    "type": "string",
+                    "minLength": 6
+                  }
                 }
               }
             }
@@ -330,24 +531,41 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "id": { "type": "string", "format": "uuid" },
-                    "email": { "type": "string", "format": "email" },
-                    "created_at": { "type": "string", "format": "date-time" }
+                    "id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "email": {
+                      "type": "string",
+                      "format": "email"
+                    },
+                    "created_at": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
                   }
                 }
               }
             }
           },
-          "401": { "$ref": "#/components/responses/Unauthorized" }
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
         }
       }
     },
     "/auth/v1/token": {
       "post": {
-        "tags": ["Auth"],
+        "tags": [
+          "Auth"
+        ],
         "summary": "Login or refresh token",
         "operationId": "getToken",
-        "security": [{ "apikey": [] }],
+        "security": [
+          {
+            "apikey": []
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -356,19 +574,37 @@
                 "oneOf": [
                   {
                     "type": "object",
-                    "required": ["email", "password"],
+                    "required": [
+                      "email",
+                      "password"
+                    ],
                     "properties": {
-                      "email": { "type": "string", "format": "email" },
-                      "password": { "type": "string" }
+                      "email": {
+                        "type": "string",
+                        "format": "email"
+                      },
+                      "password": {
+                        "type": "string"
+                      }
                     },
                     "title": "Password login"
                   },
                   {
                     "type": "object",
-                    "required": ["refresh_token", "grant_type"],
+                    "required": [
+                      "refresh_token",
+                      "grant_type"
+                    ],
                     "properties": {
-                      "refresh_token": { "type": "string" },
-                      "grant_type": { "type": "string", "enum": ["refresh_token"] }
+                      "refresh_token": {
+                        "type": "string"
+                      },
+                      "grant_type": {
+                        "type": "string",
+                        "enum": [
+                          "refresh_token"
+                        ]
+                      }
                     },
                     "title": "Token refresh"
                   }
@@ -385,15 +621,31 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "access_token": { "type": "string" },
-                    "token_type": { "type": "string", "example": "Bearer" },
-                    "expires_in": { "type": "integer", "example": 3600 },
-                    "refresh_token": { "type": "string" },
+                    "access_token": {
+                      "type": "string"
+                    },
+                    "token_type": {
+                      "type": "string",
+                      "example": "Bearer"
+                    },
+                    "expires_in": {
+                      "type": "integer",
+                      "example": 3600
+                    },
+                    "refresh_token": {
+                      "type": "string"
+                    },
                     "user": {
                       "type": "object",
                       "properties": {
-                        "id": { "type": "string", "format": "uuid" },
-                        "email": { "type": "string", "format": "email" }
+                        "id": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "email": {
+                          "type": "string",
+                          "format": "email"
+                        }
                       }
                     }
                   }
@@ -401,16 +653,24 @@
               }
             }
           },
-          "401": { "$ref": "#/components/responses/Unauthorized" }
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
         }
       }
     },
     "/auth/v1/user": {
       "get": {
-        "tags": ["Auth"],
+        "tags": [
+          "Auth"
+        ],
         "summary": "Get current user",
         "operationId": "getUser",
-        "security": [{ "bearerAuth": [] }],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "responses": {
           "200": {
             "description": "Current user info",
@@ -419,31 +679,50 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "id": { "type": "string", "format": "uuid" },
-                    "email": { "type": "string", "format": "email" },
-                    "created_at": { "type": "string", "format": "date-time" }
+                    "id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "email": {
+                      "type": "string",
+                      "format": "email"
+                    },
+                    "created_at": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
                   }
                 }
               }
             }
           },
-          "401": { "$ref": "#/components/responses/Unauthorized" }
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
         }
       }
     },
     "/auth/v1/logout": {
       "post": {
-        "tags": ["Auth"],
+        "tags": [
+          "Auth"
+        ],
         "summary": "Logout / invalidate refresh token",
         "operationId": "logout",
-        "security": [{ "apikey": [] }],
+        "security": [
+          {
+            "apikey": []
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
                 "type": "object",
                 "properties": {
-                  "refresh_token": { "type": "string" }
+                  "refresh_token": {
+                    "type": "string"
+                  }
                 }
               }
             }
@@ -457,7 +736,10 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "status": { "type": "string", "example": "ok" }
+                    "status": {
+                      "type": "string",
+                      "example": "ok"
+                    }
                   }
                 }
               }
@@ -468,13 +750,27 @@
     },
     "/admin/v1/projects/{id}/sql": {
       "post": {
-        "tags": ["Admin"],
+        "tags": [
+          "Admin"
+        ],
         "summary": "Run SQL migration",
         "operationId": "runSql",
         "description": "Executes SQL against the project database. Dangerous statements (CREATE EXTENSION, ALTER SYSTEM, etc.) are blocked.",
-        "security": [{ "serviceKey": [] }],
+        "security": [
+          {
+            "serviceKey": []
+          }
+        ],
         "parameters": [
-          { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
         ],
         "requestBody": {
           "required": true,
@@ -482,14 +778,22 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": ["sql"],
+                "required": [
+                  "sql"
+                ],
                 "properties": {
-                  "sql": { "type": "string", "description": "SQL statement(s) to execute" }
+                  "sql": {
+                    "type": "string",
+                    "description": "SQL statement(s) to execute"
+                  }
                 }
               }
             },
             "text/plain": {
-              "schema": { "type": "string", "description": "Raw SQL text" }
+              "schema": {
+                "type": "string",
+                "description": "Raw SQL text"
+              }
             }
           }
         },
@@ -501,28 +805,56 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "status": { "type": "string", "example": "ok" },
-                    "schema": { "type": "string" },
-                    "rows": { "type": "array", "items": { "type": "object" } },
-                    "rowCount": { "type": "integer" }
+                    "status": {
+                      "type": "string",
+                      "example": "ok"
+                    },
+                    "schema": {
+                      "type": "string"
+                    },
+                    "rows": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "rowCount": {
+                      "type": "integer"
+                    }
                   }
                 }
               }
             }
           },
-          "401": { "$ref": "#/components/responses/Unauthorized" }
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
         }
       }
     },
     "/admin/v1/projects/{id}/rls": {
       "post": {
-        "tags": ["Admin"],
+        "tags": [
+          "Admin"
+        ],
         "summary": "Apply RLS policy template",
         "operationId": "applyRls",
         "description": "Applies a row-level security template to one or more tables.",
-        "security": [{ "serviceKey": [] }],
+        "security": [
+          {
+            "serviceKey": []
+          }
+        ],
         "parameters": [
-          { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
         ],
         "requestBody": {
           "required": true,
@@ -530,16 +862,25 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": ["template", "tables"],
+                "required": [
+                  "template",
+                  "tables"
+                ],
                 "properties": {
                   "template": {
                     "type": "string",
-                    "enum": ["user_owns_rows", "public_read", "public_read_write"],
+                    "enum": [
+                      "user_owns_rows",
+                      "public_read",
+                      "public_read_write"
+                    ],
                     "description": "RLS template to apply"
                   },
                   "tables": {
                     "type": "array",
-                    "items": { "type": "string" },
+                    "items": {
+                      "type": "string"
+                    },
                     "description": "Table names to apply the policy to"
                   }
                 }
@@ -555,26 +896,52 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "status": { "type": "string", "example": "ok" },
-                    "template": { "type": "string" },
-                    "tables": { "type": "array", "items": { "type": "string" } }
+                    "status": {
+                      "type": "string",
+                      "example": "ok"
+                    },
+                    "template": {
+                      "type": "string"
+                    },
+                    "tables": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
                   }
                 }
               }
             }
           },
-          "401": { "$ref": "#/components/responses/Unauthorized" }
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
         }
       }
     },
     "/admin/v1/projects/{id}/usage": {
       "get": {
-        "tags": ["Admin"],
+        "tags": [
+          "Admin"
+        ],
         "summary": "Get project usage",
         "operationId": "getUsage",
-        "security": [{ "serviceKey": [] }],
+        "security": [
+          {
+            "serviceKey": []
+          }
+        ],
         "parameters": [
-          { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
         ],
         "responses": {
           "200": {
@@ -584,32 +951,66 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "project_id": { "type": "string", "format": "uuid" },
-                    "tier": { "type": "string" },
-                    "api_calls": { "type": "integer" },
-                    "api_calls_limit": { "type": "integer" },
-                    "storage_bytes": { "type": "integer" },
-                    "storage_limit_bytes": { "type": "integer" },
-                    "lease_expires_at": { "type": "string", "format": "date-time" },
-                    "status": { "type": "string" }
+                    "project_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "tier": {
+                      "type": "string"
+                    },
+                    "api_calls": {
+                      "type": "integer"
+                    },
+                    "api_calls_limit": {
+                      "type": "integer"
+                    },
+                    "storage_bytes": {
+                      "type": "integer"
+                    },
+                    "storage_limit_bytes": {
+                      "type": "integer"
+                    },
+                    "lease_expires_at": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "status": {
+                      "type": "string"
+                    }
                   }
                 }
               }
             }
           },
-          "401": { "$ref": "#/components/responses/Unauthorized" }
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
         }
       }
     },
     "/admin/v1/projects/{id}/schema": {
       "get": {
-        "tags": ["Admin"],
+        "tags": [
+          "Admin"
+        ],
         "summary": "Introspect project schema",
         "operationId": "getSchema",
         "description": "Returns full schema introspection: tables, columns, constraints, RLS policies.",
-        "security": [{ "serviceKey": [] }],
+        "security": [
+          {
+            "serviceKey": []
+          }
+        ],
         "parameters": [
-          { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
         ],
         "responses": {
           "200": {
@@ -619,17 +1020,38 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "schema": { "type": "string" },
+                    "schema": {
+                      "type": "string"
+                    },
                     "tables": {
                       "type": "array",
                       "items": {
                         "type": "object",
                         "properties": {
-                          "name": { "type": "string" },
-                          "columns": { "type": "array", "items": { "type": "object" } },
-                          "constraints": { "type": "array", "items": { "type": "object" } },
-                          "rls_enabled": { "type": "boolean" },
-                          "policies": { "type": "array", "items": { "type": "object" } }
+                          "name": {
+                            "type": "string"
+                          },
+                          "columns": {
+                            "type": "array",
+                            "items": {
+                              "type": "object"
+                            }
+                          },
+                          "constraints": {
+                            "type": "array",
+                            "items": {
+                              "type": "object"
+                            }
+                          },
+                          "rls_enabled": {
+                            "type": "boolean"
+                          },
+                          "policies": {
+                            "type": "array",
+                            "items": {
+                              "type": "object"
+                            }
+                          }
                         }
                       }
                     }
@@ -638,19 +1060,36 @@
               }
             }
           },
-          "401": { "$ref": "#/components/responses/Unauthorized" }
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
         }
       }
     },
     "/admin/v1/projects/{id}/pin": {
       "post": {
-        "tags": ["Admin"],
+        "tags": [
+          "Admin"
+        ],
         "summary": "Pin project (admin-only)",
         "operationId": "pinProject",
         "description": "Pins a project so its lease never expires. Requires x-admin-key header.",
-        "security": [{ "serviceKey": [], "adminKey": [] }],
+        "security": [
+          {
+            "serviceKey": [],
+            "adminKey": []
+          }
+        ],
         "parameters": [
-          { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
         ],
         "responses": {
           "200": {
@@ -660,28 +1099,56 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "status": { "type": "string", "example": "ok" },
-                    "project_id": { "type": "string", "format": "uuid" },
-                    "pinned": { "type": "boolean", "example": true }
+                    "status": {
+                      "type": "string",
+                      "example": "ok"
+                    },
+                    "project_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "pinned": {
+                      "type": "boolean",
+                      "example": true
+                    }
                   }
                 }
               }
             }
           },
-          "401": { "$ref": "#/components/responses/Unauthorized" },
-          "403": { "description": "Forbidden — invalid admin key" }
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden — invalid admin key"
+          }
         }
       }
     },
     "/admin/v1/projects/{id}/unpin": {
       "post": {
-        "tags": ["Admin"],
+        "tags": [
+          "Admin"
+        ],
         "summary": "Unpin project (admin-only)",
         "operationId": "unpinProject",
         "description": "Unpins a project, restoring normal lease expiry. Requires x-admin-key header.",
-        "security": [{ "serviceKey": [], "adminKey": [] }],
+        "security": [
+          {
+            "serviceKey": [],
+            "adminKey": []
+          }
+        ],
         "parameters": [
-          { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
         ],
         "responses": {
           "200": {
@@ -691,58 +1158,145 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "status": { "type": "string", "example": "ok" },
-                    "project_id": { "type": "string", "format": "uuid" },
-                    "pinned": { "type": "boolean", "example": false }
+                    "status": {
+                      "type": "string",
+                      "example": "ok"
+                    },
+                    "project_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "pinned": {
+                      "type": "boolean",
+                      "example": false
+                    }
                   }
                 }
               }
             }
           },
-          "401": { "$ref": "#/components/responses/Unauthorized" },
-          "403": { "description": "Forbidden — invalid admin key" }
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden — invalid admin key"
+          }
         }
       }
     },
     "/rest/v1/{path}": {
       "get": {
-        "tags": ["REST"],
+        "tags": [
+          "REST"
+        ],
         "summary": "PostgREST proxy — read data",
         "operationId": "restGet",
         "description": "Proxies GET requests to PostgREST. Supports all PostgREST query parameters (select, order, limit, offset, filters). The apikey header determines the role (anon or authenticated user).",
-        "security": [{ "apikey": [] }],
+        "security": [
+          {
+            "apikey": []
+          }
+        ],
         "parameters": [
-          { "name": "path", "in": "path", "required": true, "schema": { "type": "string" }, "description": "Table name or RPC function" },
-          { "name": "select", "in": "query", "schema": { "type": "string" }, "description": "Column selection" },
-          { "name": "order", "in": "query", "schema": { "type": "string" }, "description": "Sort order" },
-          { "name": "limit", "in": "query", "schema": { "type": "integer" }, "description": "Row limit" },
-          { "name": "offset", "in": "query", "schema": { "type": "integer" }, "description": "Row offset" }
+          {
+            "name": "path",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Table name or RPC function"
+          },
+          {
+            "name": "select",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Column selection"
+          },
+          {
+            "name": "order",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Sort order"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Row limit"
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Row offset"
+          }
         ],
         "responses": {
           "200": {
             "description": "Query results",
             "content": {
               "application/json": {
-                "schema": { "type": "array", "items": { "type": "object" } }
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                }
               }
             }
           },
-          "401": { "$ref": "#/components/responses/Unauthorized" }
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
         }
       },
       "post": {
-        "tags": ["REST"],
+        "tags": [
+          "REST"
+        ],
         "summary": "PostgREST proxy — insert data",
         "operationId": "restPost",
         "description": "Proxies POST requests to PostgREST for inserting rows.",
-        "security": [{ "apikey": [] }],
+        "security": [
+          {
+            "apikey": []
+          }
+        ],
         "parameters": [
-          { "name": "path", "in": "path", "required": true, "schema": { "type": "string" } }
+          {
+            "name": "path",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
         ],
         "requestBody": {
           "content": {
             "application/json": {
-              "schema": { "oneOf": [{ "type": "object" }, { "type": "array", "items": { "type": "object" } }] }
+              "schema": {
+                "oneOf": [
+                  {
+                    "type": "object"
+                  },
+                  {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    }
+                  }
+                ]
+              }
             }
           }
         },
@@ -751,26 +1305,48 @@
             "description": "Row(s) inserted",
             "content": {
               "application/json": {
-                "schema": { "type": "array", "items": { "type": "object" } }
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                }
               }
             }
           },
-          "401": { "$ref": "#/components/responses/Unauthorized" }
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
         }
       },
       "patch": {
-        "tags": ["REST"],
+        "tags": [
+          "REST"
+        ],
         "summary": "PostgREST proxy — update data",
         "operationId": "restPatch",
         "description": "Proxies PATCH requests to PostgREST for updating rows. Use query parameters to filter which rows to update.",
-        "security": [{ "apikey": [] }],
+        "security": [
+          {
+            "apikey": []
+          }
+        ],
         "parameters": [
-          { "name": "path", "in": "path", "required": true, "schema": { "type": "string" } }
+          {
+            "name": "path",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
         ],
         "requestBody": {
           "content": {
             "application/json": {
-              "schema": { "type": "object" }
+              "schema": {
+                "type": "object"
+              }
             }
           }
         },
@@ -779,54 +1355,107 @@
             "description": "Row(s) updated",
             "content": {
               "application/json": {
-                "schema": { "type": "array", "items": { "type": "object" } }
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                }
               }
             }
           },
-          "401": { "$ref": "#/components/responses/Unauthorized" }
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
         }
       },
       "delete": {
-        "tags": ["REST"],
+        "tags": [
+          "REST"
+        ],
         "summary": "PostgREST proxy — delete data",
         "operationId": "restDelete",
         "description": "Proxies DELETE requests to PostgREST. Use query parameters to filter which rows to delete.",
-        "security": [{ "apikey": [] }],
+        "security": [
+          {
+            "apikey": []
+          }
+        ],
         "parameters": [
-          { "name": "path", "in": "path", "required": true, "schema": { "type": "string" } }
+          {
+            "name": "path",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
         ],
         "responses": {
           "200": {
             "description": "Row(s) deleted",
             "content": {
               "application/json": {
-                "schema": { "type": "array", "items": { "type": "object" } }
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                }
               }
             }
           },
-          "401": { "$ref": "#/components/responses/Unauthorized" }
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
         }
       }
     },
     "/storage/v1/object/{bucket}/{path}": {
       "post": {
-        "tags": ["Storage"],
+        "tags": [
+          "Storage"
+        ],
         "summary": "Upload a file",
         "operationId": "uploadFile",
         "description": "Uploads a file to the specified bucket. Max 10MB.",
-        "security": [{ "apikey": [] }],
+        "security": [
+          {
+            "apikey": []
+          }
+        ],
         "parameters": [
-          { "name": "bucket", "in": "path", "required": true, "schema": { "type": "string" } },
-          { "name": "path", "in": "path", "required": true, "schema": { "type": "string" }, "description": "File path within the bucket" }
+          {
+            "name": "bucket",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "path",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "File path within the bucket"
+          }
         ],
         "requestBody": {
           "required": true,
           "content": {
             "application/octet-stream": {
-              "schema": { "type": "string", "format": "binary" }
+              "schema": {
+                "type": "string",
+                "format": "binary"
+              }
             },
             "text/plain": {
-              "schema": { "type": "string" }
+              "schema": {
+                "type": "string"
+              }
             }
           }
         },
@@ -838,46 +1467,99 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "key": { "type": "string" },
-                    "size": { "type": "integer" }
+                    "key": {
+                      "type": "string"
+                    },
+                    "size": {
+                      "type": "integer"
+                    }
                   }
                 }
               }
             }
           },
-          "401": { "$ref": "#/components/responses/Unauthorized" }
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
         }
       },
       "get": {
-        "tags": ["Storage"],
+        "tags": [
+          "Storage"
+        ],
         "summary": "Download a file",
         "operationId": "downloadFile",
-        "security": [{ "apikey": [] }],
+        "security": [
+          {
+            "apikey": []
+          }
+        ],
         "parameters": [
-          { "name": "bucket", "in": "path", "required": true, "schema": { "type": "string" } },
-          { "name": "path", "in": "path", "required": true, "schema": { "type": "string" } }
+          {
+            "name": "bucket",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "path",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
         ],
         "responses": {
           "200": {
             "description": "File content",
             "content": {
               "application/octet-stream": {
-                "schema": { "type": "string", "format": "binary" }
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
               }
             }
           },
-          "401": { "$ref": "#/components/responses/Unauthorized" },
-          "404": { "description": "File not found" }
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "description": "File not found"
+          }
         }
       },
       "delete": {
-        "tags": ["Storage"],
+        "tags": [
+          "Storage"
+        ],
         "summary": "Delete a file",
         "operationId": "deleteFile",
-        "security": [{ "apikey": [] }],
+        "security": [
+          {
+            "apikey": []
+          }
+        ],
         "parameters": [
-          { "name": "bucket", "in": "path", "required": true, "schema": { "type": "string" } },
-          { "name": "path", "in": "path", "required": true, "schema": { "type": "string" } }
+          {
+            "name": "bucket",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "path",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
         ],
         "responses": {
           "200": {
@@ -887,27 +1569,54 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "status": { "type": "string", "example": "deleted" },
-                    "key": { "type": "string" }
+                    "status": {
+                      "type": "string",
+                      "example": "deleted"
+                    },
+                    "key": {
+                      "type": "string"
+                    }
                   }
                 }
               }
             }
           },
-          "401": { "$ref": "#/components/responses/Unauthorized" }
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
         }
       }
     },
     "/storage/v1/object/sign/{bucket}/{path}": {
       "post": {
-        "tags": ["Storage"],
+        "tags": [
+          "Storage"
+        ],
         "summary": "Generate a signed URL",
         "operationId": "signFile",
         "description": "Generates a pre-signed URL for direct file access. Expires in 1 hour.",
-        "security": [{ "apikey": [] }],
+        "security": [
+          {
+            "apikey": []
+          }
+        ],
         "parameters": [
-          { "name": "bucket", "in": "path", "required": true, "schema": { "type": "string" } },
-          { "name": "path", "in": "path", "required": true, "schema": { "type": "string" } }
+          {
+            "name": "bucket",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "path",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
         ],
         "responses": {
           "200": {
@@ -917,25 +1626,46 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "signed_url": { "type": "string", "format": "uri" },
-                    "expires_in": { "type": "integer", "example": 3600 }
+                    "signed_url": {
+                      "type": "string",
+                      "format": "uri"
+                    },
+                    "expires_in": {
+                      "type": "integer",
+                      "example": 3600
+                    }
                   }
                 }
               }
             }
           },
-          "401": { "$ref": "#/components/responses/Unauthorized" }
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
         }
       }
     },
     "/storage/v1/object/list/{bucket}": {
       "get": {
-        "tags": ["Storage"],
+        "tags": [
+          "Storage"
+        ],
         "summary": "List files in a bucket",
         "operationId": "listFiles",
-        "security": [{ "apikey": [] }],
+        "security": [
+          {
+            "apikey": []
+          }
+        ],
         "parameters": [
-          { "name": "bucket", "in": "path", "required": true, "schema": { "type": "string" } }
+          {
+            "name": "bucket",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
         ],
         "responses": {
           "200": {
@@ -950,9 +1680,16 @@
                       "items": {
                         "type": "object",
                         "properties": {
-                          "key": { "type": "string" },
-                          "size": { "type": "integer" },
-                          "last_modified": { "type": "string", "format": "date-time" }
+                          "key": {
+                            "type": "string"
+                          },
+                          "size": {
+                            "type": "integer"
+                          },
+                          "last_modified": {
+                            "type": "string",
+                            "format": "date-time"
+                          }
                         }
                       }
                     }
@@ -961,13 +1698,17 @@
               }
             }
           },
-          "401": { "$ref": "#/components/responses/Unauthorized" }
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
         }
       }
     },
     "/v1/faucet": {
       "post": {
-        "tags": ["Faucet"],
+        "tags": [
+          "Faucet"
+        ],
         "summary": "Request testnet USDC",
         "operationId": "faucetDrip",
         "description": "Sends testnet USDC to the specified wallet address on Base Sepolia. Rate limited to 1 drip per IP per 24 hours.",
@@ -977,9 +1718,14 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": ["address"],
+                "required": [
+                  "address"
+                ],
                 "properties": {
-                  "address": { "type": "string", "description": "Ethereum wallet address (0x...)" }
+                  "address": {
+                    "type": "string",
+                    "description": "Ethereum wallet address (0x...)"
+                  }
                 }
               }
             }
@@ -993,36 +1739,62 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "transactionHash": { "type": "string" },
-                    "amount": { "type": "string" },
-                    "token": { "type": "string", "example": "USDC" },
-                    "network": { "type": "string", "example": "base-sepolia" }
+                    "transactionHash": {
+                      "type": "string"
+                    },
+                    "amount": {
+                      "type": "string"
+                    },
+                    "token": {
+                      "type": "string",
+                      "example": "USDC"
+                    },
+                    "network": {
+                      "type": "string",
+                      "example": "base-sepolia"
+                    }
                   }
                 }
               }
             }
           },
-          "429": { "description": "Rate limited — 1 drip per IP per 24 hours" }
+          "429": {
+            "description": "Rate limited — 1 drip per IP per 24 hours"
+          }
         }
       }
     },
     "/admin/v1/faucet": {
       "post": {
-        "tags": ["Faucet"],
+        "tags": [
+          "Faucet"
+        ],
         "summary": "Admin faucet drip (no rate limit)",
         "operationId": "adminFaucetDrip",
         "description": "Admin-only faucet with no rate limit and optional custom amount. Requires x-admin-key.",
-        "security": [{ "serviceKey": [], "adminKey": [] }],
+        "security": [
+          {
+            "serviceKey": [],
+            "adminKey": []
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": ["address"],
+                "required": [
+                  "address"
+                ],
                 "properties": {
-                  "address": { "type": "string" },
-                  "amount": { "type": "string", "description": "Custom USDC amount" }
+                  "address": {
+                    "type": "string"
+                  },
+                  "amount": {
+                    "type": "string",
+                    "description": "Custom USDC amount"
+                  }
                 }
               }
             }
@@ -1036,23 +1808,37 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "transactionHash": { "type": "string" },
-                    "amount": { "type": "string" },
-                    "token": { "type": "string" },
-                    "network": { "type": "string" }
+                    "transactionHash": {
+                      "type": "string"
+                    },
+                    "amount": {
+                      "type": "string"
+                    },
+                    "token": {
+                      "type": "string"
+                    },
+                    "network": {
+                      "type": "string"
+                    }
                   }
                 }
               }
             }
           },
-          "401": { "$ref": "#/components/responses/Unauthorized" },
-          "403": { "description": "Forbidden — invalid admin key" }
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden — invalid admin key"
+          }
         }
       }
     },
     "/v1/deployments": {
       "get": {
-        "tags": ["Deployments"],
+        "tags": [
+          "Deployments"
+        ],
         "summary": "Deployment info (price discovery)",
         "operationId": "deploymentsInfo",
         "description": "Returns deployment pricing and usage info. No auth required.",
@@ -1064,10 +1850,18 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "description": { "type": "string" },
-                    "price": { "type": "string" },
-                    "method": { "type": "string" },
-                    "body": { "type": "object" }
+                    "description": {
+                      "type": "string"
+                    },
+                    "price": {
+                      "type": "string"
+                    },
+                    "method": {
+                      "type": "string"
+                    },
+                    "body": {
+                      "type": "object"
+                    }
                   }
                 }
               }
@@ -1076,32 +1870,66 @@
         }
       },
       "post": {
-        "tags": ["Deployments"],
+        "tags": [
+          "Deployments"
+        ],
         "summary": "Deploy a static site",
         "operationId": "createDeployment",
         "description": "Deploys static files to a live URL at {id}.sites.run402.com. Supports HTML, CSS, JS, images. SPA-ready with automatic fallback routing. Max 50MB total. Idempotent with Idempotency-Key header.",
         "x-402-price": "$0.05 USDC",
-        "security": [{ "x402": [] }],
+        "security": [
+          {
+            "x402": []
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": ["name", "files"],
+                "required": [
+                  "name",
+                  "files"
+                ],
                 "properties": {
-                  "name": { "type": "string", "description": "Deployment name" },
-                  "project": { "type": "string", "description": "Optional project ID to associate with" },
-                  "target": { "type": "string", "description": "Optional deploy target" },
+                  "name": {
+                    "type": "string",
+                    "description": "Deployment name"
+                  },
+                  "project": {
+                    "type": "string",
+                    "description": "Optional project ID to associate with"
+                  },
+                  "target": {
+                    "type": "string",
+                    "description": "Optional deploy target"
+                  },
                   "files": {
                     "type": "array",
                     "items": {
                       "type": "object",
-                      "required": ["file", "data"],
+                      "required": [
+                        "file",
+                        "data"
+                      ],
                       "properties": {
-                        "file": { "type": "string", "description": "File path (e.g. index.html, css/style.css)" },
-                        "data": { "type": "string", "description": "File content (UTF-8 text or base64-encoded)" },
-                        "encoding": { "type": "string", "enum": ["utf-8", "base64"], "default": "utf-8" }
+                        "file": {
+                          "type": "string",
+                          "description": "File path (e.g. index.html, css/style.css)"
+                        },
+                        "data": {
+                          "type": "string",
+                          "description": "File content (UTF-8 text or base64-encoded)"
+                        },
+                        "encoding": {
+                          "type": "string",
+                          "enum": [
+                            "utf-8",
+                            "base64"
+                          ],
+                          "default": "utf-8"
+                        }
                       }
                     }
                   }
@@ -1118,28 +1946,52 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "id": { "type": "string" },
-                    "name": { "type": "string" },
-                    "url": { "type": "string", "format": "uri" },
-                    "status": { "type": "string" },
-                    "files_count": { "type": "integer" },
-                    "total_size": { "type": "integer" }
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "url": {
+                      "type": "string",
+                      "format": "uri"
+                    },
+                    "status": {
+                      "type": "string"
+                    },
+                    "files_count": {
+                      "type": "integer"
+                    },
+                    "total_size": {
+                      "type": "integer"
+                    }
                   }
                 }
               }
             }
           },
-          "402": { "$ref": "#/components/responses/PaymentRequired" }
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          }
         }
       }
     },
     "/v1/deployments/{id}": {
       "get": {
-        "tags": ["Deployments"],
+        "tags": [
+          "Deployments"
+        ],
         "summary": "Get deployment status",
         "operationId": "getDeployment",
         "parameters": [
-          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
         ],
         "responses": {
           "200": {
@@ -1149,41 +2001,58 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "id": { "type": "string" },
-                    "name": { "type": "string" },
-                    "url": { "type": "string", "format": "uri" },
-                    "status": { "type": "string" },
-                    "files_count": { "type": "integer" },
-                    "total_size": { "type": "integer" },
-                    "created_at": { "type": "string", "format": "date-time" },
-                    "updated_at": { "type": "string", "format": "date-time" }
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "url": {
+                      "type": "string",
+                      "format": "uri"
+                    },
+                    "status": {
+                      "type": "string"
+                    },
+                    "files_count": {
+                      "type": "integer"
+                    },
+                    "total_size": {
+                      "type": "integer"
+                    },
+                    "created_at": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "updated_at": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
                   }
                 }
               }
             }
           },
-          "404": { "description": "Deployment not found" }
+          "404": {
+            "description": "Deployment not found"
+          }
         }
       }
     },
     "/v1/message": {
       "get": {
-        "tags": ["Message"],
-        "summary": "Message endpoint info (price discovery)",
-        "operationId": "messageInfo",
+        "tags": [
+          "Message"
+        ],
+        "summary": "Message endpoint info",
+        "operationId": "getMessageInfo",
         "responses": {
           "200": {
-            "description": "Message endpoint info",
+            "description": "Endpoint info and pricing",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "properties": {
-                    "description": { "type": "string" },
-                    "price": { "type": "string" },
-                    "method": { "type": "string" },
-                    "body": { "type": "object" }
-                  }
+                  "type": "object"
                 }
               }
             }
@@ -1191,21 +2060,32 @@
         }
       },
       "post": {
-        "tags": ["Message"],
+        "tags": [
+          "Message"
+        ],
         "summary": "Send a paid message",
         "operationId": "sendMessage",
         "description": "Sends a paid message (feedback, contact) to the Run402 team via Telegram. Idempotent.",
         "x-402-price": "$0.01 USDC",
-        "security": [{ "x402": [] }],
+        "security": [
+          {
+            "x402": []
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": ["message"],
+                "required": [
+                  "message"
+                ],
                 "properties": {
-                  "message": { "type": "string", "description": "Message text" }
+                  "message": {
+                    "type": "string",
+                    "description": "Message text"
+                  }
                 }
               }
             }
@@ -1219,33 +2099,68 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "status": { "type": "string", "example": "sent" }
+                    "status": {
+                      "type": "string",
+                      "example": "sent"
+                    }
                   }
                 }
               }
             }
           },
-          "402": { "$ref": "#/components/responses/PaymentRequired" }
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          }
         }
       }
     },
     "/v1/generate-image": {
+      "get": {
+        "tags": [
+          "Message"
+        ],
+        "summary": "Image generation info",
+        "operationId": "getGenerateImageInfo",
+        "responses": {
+          "200": {
+            "description": "Image generation pricing and options",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      },
       "post": {
-        "tags": ["Message"],
+        "tags": [
+          "Message"
+        ],
         "summary": "Generate an image",
         "operationId": "generateImage",
         "description": "Generates an image via AI. Requires x402 payment.",
         "x-402-price": "$0.01 USDC",
-        "security": [{ "x402": [] }],
+        "security": [
+          {
+            "x402": []
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": ["prompt"],
+                "required": [
+                  "prompt"
+                ],
                 "properties": {
-                  "prompt": { "type": "string", "description": "Image generation prompt" }
+                  "prompt": {
+                    "type": "string",
+                    "description": "Image generation prompt"
+                  }
                 }
               }
             }
@@ -1256,22 +2171,36 @@
             "description": "Image generated",
             "content": {
               "application/json": {
-                "schema": { "type": "object" }
+                "schema": {
+                  "type": "object"
+                }
               }
             }
           },
-          "402": { "$ref": "#/components/responses/PaymentRequired" }
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          }
         }
       }
     },
     "/v1/wallets/{address}/projects": {
       "get": {
-        "tags": ["Stripe"],
+        "tags": [
+          "Billing"
+        ],
         "summary": "List projects by wallet",
         "operationId": "listWalletProjects",
         "description": "Lists all projects associated with a wallet address.",
         "parameters": [
-          { "name": "address", "in": "path", "required": true, "schema": { "type": "string" }, "description": "Ethereum wallet address" }
+          {
+            "name": "address",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Ethereum wallet address"
+          }
         ],
         "responses": {
           "200": {
@@ -1281,198 +2210,44 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "wallet": { "type": "string" },
+                    "wallet": {
+                      "type": "string"
+                    },
                     "projects": {
                       "type": "array",
                       "items": {
                         "type": "object",
                         "properties": {
-                          "id": { "type": "string", "format": "uuid" },
-                          "name": { "type": "string" },
-                          "tier": { "type": "string" },
-                          "status": { "type": "string" },
-                          "api_calls": { "type": "integer" },
-                          "storage_bytes": { "type": "integer" },
-                          "lease_expires_at": { "type": "string", "format": "date-time" },
-                          "created_at": { "type": "string", "format": "date-time" }
+                          "id": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "tier": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "type": "string"
+                          },
+                          "api_calls": {
+                            "type": "integer"
+                          },
+                          "storage_bytes": {
+                            "type": "integer"
+                          },
+                          "lease_expires_at": {
+                            "type": "string",
+                            "format": "date-time"
+                          },
+                          "created_at": {
+                            "type": "string",
+                            "format": "date-time"
+                          }
                         }
                       }
                     }
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/v1/stripe/products": {
-      "get": {
-        "tags": ["Stripe"],
-        "summary": "List subscription products",
-        "operationId": "listStripeProducts",
-        "responses": {
-          "200": {
-            "description": "Available subscription products",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "products": {
-                      "type": "array",
-                      "items": {
-                        "type": "object",
-                        "properties": {
-                          "id": { "type": "string" },
-                          "name": { "type": "string" },
-                          "price": { "type": "string" },
-                          "tier": { "type": "string" }
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/v1/stripe/checkout": {
-      "post": {
-        "tags": ["Stripe"],
-        "summary": "Create Stripe checkout session",
-        "operationId": "createCheckout",
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": ["wallet", "price_id"],
-                "properties": {
-                  "wallet": { "type": "string", "description": "Ethereum wallet address" },
-                  "price_id": { "type": "string", "description": "Stripe price ID" },
-                  "success_url": { "type": "string", "format": "uri" },
-                  "cancel_url": { "type": "string", "format": "uri" }
-                }
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Checkout session created",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "url": { "type": "string", "format": "uri" }
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/v1/stripe/portal": {
-      "post": {
-        "tags": ["Stripe"],
-        "summary": "Create Stripe customer portal session",
-        "operationId": "createPortal",
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": ["wallet"],
-                "properties": {
-                  "wallet": { "type": "string" },
-                  "return_url": { "type": "string", "format": "uri" }
-                }
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Portal session created",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "url": { "type": "string", "format": "uri" }
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/v1/stripe/subscription/{wallet}": {
-      "get": {
-        "tags": ["Stripe"],
-        "summary": "Check subscription status",
-        "operationId": "getSubscription",
-        "parameters": [
-          { "name": "wallet", "in": "path", "required": true, "schema": { "type": "string" } }
-        ],
-        "responses": {
-          "200": {
-            "description": "Subscription status",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "wallet": { "type": "string" },
-                    "subscribed": { "type": "boolean" },
-                    "tier": { "type": "string" },
-                    "status": { "type": "string" },
-                    "current_period_end": { "type": "string", "format": "date-time" }
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/v1/stripe/cache/clear": {
-      "post": {
-        "tags": ["Stripe"],
-        "summary": "Clear subscription cache",
-        "operationId": "clearStripeCache",
-        "description": "Clears the cached subscription status for a wallet. Call after checkout completes.",
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": ["wallet"],
-                "properties": {
-                  "wallet": { "type": "string" }
-                }
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Cache cleared",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "status": { "type": "string", "example": "ok" }
                   }
                 }
               }
@@ -1483,21 +2258,36 @@
     },
     "/v1/subdomains": {
       "post": {
-        "tags": ["Subdomains"],
+        "tags": [
+          "Subdomains"
+        ],
         "summary": "Claim or reassign a subdomain",
         "operationId": "createSubdomain",
         "description": "Maps a custom subdomain ({name}.run402.com) to a deployment.",
-        "security": [{ "serviceKey": [] }],
+        "security": [
+          {
+            "serviceKey": []
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": ["name", "deployment_id"],
+                "required": [
+                  "name",
+                  "deployment_id"
+                ],
                 "properties": {
-                  "name": { "type": "string", "description": "Subdomain name (e.g. 'myapp' for myapp.run402.com)" },
-                  "deployment_id": { "type": "string", "description": "Deployment ID to point to" }
+                  "name": {
+                    "type": "string",
+                    "description": "Subdomain name (e.g. 'myapp' for myapp.run402.com)"
+                  },
+                  "deployment_id": {
+                    "type": "string",
+                    "description": "Deployment ID to point to"
+                  }
                 }
               }
             }
@@ -1508,18 +2298,28 @@
             "description": "Subdomain created",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/Subdomain" }
+                "schema": {
+                  "$ref": "#/components/schemas/Subdomain"
+                }
               }
             }
           },
-          "401": { "$ref": "#/components/responses/Unauthorized" }
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
         }
       },
       "get": {
-        "tags": ["Subdomains"],
+        "tags": [
+          "Subdomains"
+        ],
         "summary": "List project subdomains",
         "operationId": "listSubdomains",
-        "security": [{ "serviceKey": [] }],
+        "security": [
+          {
+            "serviceKey": []
+          }
+        ],
         "responses": {
           "200": {
             "description": "Subdomain list",
@@ -1527,43 +2327,73 @@
               "application/json": {
                 "schema": {
                   "type": "array",
-                  "items": { "$ref": "#/components/schemas/Subdomain" }
+                  "items": {
+                    "$ref": "#/components/schemas/Subdomain"
+                  }
                 }
               }
             }
           },
-          "401": { "$ref": "#/components/responses/Unauthorized" }
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
         }
       }
     },
     "/v1/subdomains/{name}": {
       "get": {
-        "tags": ["Subdomains"],
+        "tags": [
+          "Subdomains"
+        ],
         "summary": "Look up a subdomain",
         "operationId": "getSubdomain",
         "description": "Public lookup — no auth required.",
         "parameters": [
-          { "name": "name", "in": "path", "required": true, "schema": { "type": "string" } }
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
         ],
         "responses": {
           "200": {
             "description": "Subdomain details",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/Subdomain" }
+                "schema": {
+                  "$ref": "#/components/schemas/Subdomain"
+                }
               }
             }
           },
-          "404": { "description": "Subdomain not found" }
+          "404": {
+            "description": "Subdomain not found"
+          }
         }
       },
       "delete": {
-        "tags": ["Subdomains"],
+        "tags": [
+          "Subdomains"
+        ],
         "summary": "Release a subdomain",
         "operationId": "deleteSubdomain",
-        "security": [{ "serviceKey": [] }],
+        "security": [
+          {
+            "serviceKey": []
+          }
+        ],
         "parameters": [
-          { "name": "name", "in": "path", "required": true, "schema": { "type": "string" } }
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
         ],
         "responses": {
           "200": {
@@ -1573,26 +2403,47 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "status": { "type": "string", "example": "deleted" },
-                    "name": { "type": "string" }
+                    "status": {
+                      "type": "string",
+                      "example": "deleted"
+                    },
+                    "name": {
+                      "type": "string"
+                    }
                   }
                 }
               }
             }
           },
-          "401": { "$ref": "#/components/responses/Unauthorized" }
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
         }
       }
     },
     "/admin/v1/projects/{id}/functions": {
       "post": {
-        "tags": ["Functions"],
+        "tags": [
+          "Functions"
+        ],
         "summary": "Deploy a serverless function",
         "operationId": "deployFunction",
         "description": "Deploys a JavaScript/TypeScript function to AWS Lambda. Returns an invocation URL.",
-        "security": [{ "serviceKey": [] }],
+        "security": [
+          {
+            "serviceKey": []
+          }
+        ],
         "parameters": [
-          { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
         ],
         "requestBody": {
           "required": true,
@@ -1600,21 +2451,38 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": ["name", "code"],
+                "required": [
+                  "name",
+                  "code"
+                ],
                 "properties": {
-                  "name": { "type": "string", "description": "Function name" },
-                  "code": { "type": "string", "description": "Function source code" },
+                  "name": {
+                    "type": "string",
+                    "description": "Function name"
+                  },
+                  "code": {
+                    "type": "string",
+                    "description": "Function source code"
+                  },
                   "config": {
                     "type": "object",
                     "properties": {
-                      "timeout": { "type": "integer", "description": "Timeout in seconds" },
-                      "memory": { "type": "integer", "description": "Memory in MB" }
+                      "timeout": {
+                        "type": "integer",
+                        "description": "Timeout in seconds"
+                      },
+                      "memory": {
+                        "type": "integer",
+                        "description": "Memory in MB"
+                      }
                     }
                   },
                   "deps": {
                     "type": "object",
                     "description": "NPM dependencies (name → version)",
-                    "additionalProperties": { "type": "string" }
+                    "additionalProperties": {
+                      "type": "string"
+                    }
                   }
                 }
               }
@@ -1629,28 +2497,60 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "name": { "type": "string" },
-                    "url": { "type": "string", "format": "uri" },
-                    "status": { "type": "string" },
-                    "runtime": { "type": "string" },
-                    "timeout": { "type": "integer" },
-                    "memory": { "type": "integer" },
-                    "created_at": { "type": "string", "format": "date-time" }
+                    "name": {
+                      "type": "string"
+                    },
+                    "url": {
+                      "type": "string",
+                      "format": "uri"
+                    },
+                    "status": {
+                      "type": "string"
+                    },
+                    "runtime": {
+                      "type": "string"
+                    },
+                    "timeout": {
+                      "type": "integer"
+                    },
+                    "memory": {
+                      "type": "integer"
+                    },
+                    "created_at": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
                   }
                 }
               }
             }
           },
-          "401": { "$ref": "#/components/responses/Unauthorized" }
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
         }
       },
       "get": {
-        "tags": ["Functions"],
+        "tags": [
+          "Functions"
+        ],
         "summary": "List project functions",
         "operationId": "listFunctions",
-        "security": [{ "serviceKey": [] }],
+        "security": [
+          {
+            "serviceKey": []
+          }
+        ],
         "parameters": [
-          { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
         ],
         "responses": {
           "200": {
@@ -1665,13 +2565,30 @@
                       "items": {
                         "type": "object",
                         "properties": {
-                          "name": { "type": "string" },
-                          "url": { "type": "string", "format": "uri" },
-                          "runtime": { "type": "string" },
-                          "timeout": { "type": "integer" },
-                          "memory": { "type": "integer" },
-                          "created_at": { "type": "string", "format": "date-time" },
-                          "updated_at": { "type": "string", "format": "date-time" }
+                          "name": {
+                            "type": "string"
+                          },
+                          "url": {
+                            "type": "string",
+                            "format": "uri"
+                          },
+                          "runtime": {
+                            "type": "string"
+                          },
+                          "timeout": {
+                            "type": "integer"
+                          },
+                          "memory": {
+                            "type": "integer"
+                          },
+                          "created_at": {
+                            "type": "string",
+                            "format": "date-time"
+                          },
+                          "updated_at": {
+                            "type": "string",
+                            "format": "date-time"
+                          }
                         }
                       }
                     }
@@ -1680,19 +2597,42 @@
               }
             }
           },
-          "401": { "$ref": "#/components/responses/Unauthorized" }
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
         }
       }
     },
     "/admin/v1/projects/{id}/functions/{name}": {
       "delete": {
-        "tags": ["Functions"],
+        "tags": [
+          "Functions"
+        ],
         "summary": "Delete a function",
         "operationId": "deleteFunction",
-        "security": [{ "serviceKey": [] }],
+        "security": [
+          {
+            "serviceKey": []
+          }
+        ],
         "parameters": [
-          { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } },
-          { "name": "name", "in": "path", "required": true, "schema": { "type": "string" } }
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
         ],
         "responses": {
           "200": {
@@ -1702,26 +2642,60 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "status": { "type": "string", "example": "deleted" }
+                    "status": {
+                      "type": "string",
+                      "example": "deleted"
+                    }
                   }
                 }
               }
             }
           },
-          "401": { "$ref": "#/components/responses/Unauthorized" }
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
         }
       }
     },
     "/admin/v1/projects/{id}/functions/{name}/logs": {
       "get": {
-        "tags": ["Functions"],
+        "tags": [
+          "Functions"
+        ],
         "summary": "Get function execution logs",
         "operationId": "getFunctionLogs",
-        "security": [{ "serviceKey": [] }],
+        "security": [
+          {
+            "serviceKey": []
+          }
+        ],
         "parameters": [
-          { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } },
-          { "name": "name", "in": "path", "required": true, "schema": { "type": "string" } },
-          { "name": "tail", "in": "query", "schema": { "type": "integer", "default": 50 }, "description": "Number of log lines to return" }
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "tail",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 50
+            },
+            "description": "Number of log lines to return"
+          }
         ],
         "responses": {
           "200": {
@@ -1731,25 +2705,43 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "logs": { "type": "string" }
+                    "logs": {
+                      "type": "string"
+                    }
                   }
                 }
               }
             }
           },
-          "401": { "$ref": "#/components/responses/Unauthorized" }
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
         }
       }
     },
     "/admin/v1/projects/{id}/secrets": {
       "post": {
-        "tags": ["Functions"],
+        "tags": [
+          "Functions"
+        ],
         "summary": "Set a function secret",
         "operationId": "setSecret",
         "description": "Sets an environment variable available to all functions in the project.",
-        "security": [{ "serviceKey": [] }],
+        "security": [
+          {
+            "serviceKey": []
+          }
+        ],
         "parameters": [
-          { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
         ],
         "requestBody": {
           "required": true,
@@ -1757,10 +2749,17 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": ["key", "value"],
+                "required": [
+                  "key",
+                  "value"
+                ],
                 "properties": {
-                  "key": { "type": "string" },
-                  "value": { "type": "string" }
+                  "key": {
+                    "type": "string"
+                  },
+                  "value": {
+                    "type": "string"
+                  }
                 }
               }
             }
@@ -1774,24 +2773,45 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "status": { "type": "string", "example": "set" },
-                    "key": { "type": "string" }
+                    "status": {
+                      "type": "string",
+                      "example": "set"
+                    },
+                    "key": {
+                      "type": "string"
+                    }
                   }
                 }
               }
             }
           },
-          "401": { "$ref": "#/components/responses/Unauthorized" }
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
         }
       },
       "get": {
-        "tags": ["Functions"],
+        "tags": [
+          "Functions"
+        ],
         "summary": "List function secrets",
         "operationId": "listSecrets",
         "description": "Lists secret key names (not values).",
-        "security": [{ "serviceKey": [] }],
+        "security": [
+          {
+            "serviceKey": []
+          }
+        ],
         "parameters": [
-          { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
         ],
         "responses": {
           "200": {
@@ -1803,26 +2823,51 @@
                   "properties": {
                     "secrets": {
                       "type": "array",
-                      "items": { "type": "string" }
+                      "items": {
+                        "type": "string"
+                      }
                     }
                   }
                 }
               }
             }
           },
-          "401": { "$ref": "#/components/responses/Unauthorized" }
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
         }
       }
     },
     "/admin/v1/projects/{id}/secrets/{key}": {
       "delete": {
-        "tags": ["Functions"],
+        "tags": [
+          "Functions"
+        ],
         "summary": "Delete a function secret",
         "operationId": "deleteSecret",
-        "security": [{ "serviceKey": [] }],
+        "security": [
+          {
+            "serviceKey": []
+          }
+        ],
         "parameters": [
-          { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } },
-          { "name": "key", "in": "path", "required": true, "schema": { "type": "string" } }
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
         ],
         "responses": {
           "200": {
@@ -1832,49 +2877,848 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "status": { "type": "string", "example": "deleted" }
+                    "status": {
+                      "type": "string",
+                      "example": "deleted"
+                    }
                   }
                 }
               }
             }
           },
-          "401": { "$ref": "#/components/responses/Unauthorized" }
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
         }
       }
     },
     "/functions/v1/{name}": {
       "get": {
-        "tags": ["Functions"],
+        "tags": [
+          "Functions"
+        ],
         "summary": "Invoke a function (GET)",
         "operationId": "invokeFunctionGet",
         "description": "Invokes a deployed function. Supports any HTTP method. Subroutes are forwarded.",
-        "security": [{ "apikey": [] }],
+        "security": [
+          {
+            "apikey": []
+          }
+        ],
         "parameters": [
-          { "name": "name", "in": "path", "required": true, "schema": { "type": "string" } }
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
         ],
         "responses": {
-          "200": { "description": "Function response (varies)" },
-          "401": { "$ref": "#/components/responses/Unauthorized" }
+          "200": {
+            "description": "Function response (varies)"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
         }
       },
       "post": {
-        "tags": ["Functions"],
+        "tags": [
+          "Functions"
+        ],
         "summary": "Invoke a function (POST)",
         "operationId": "invokeFunctionPost",
-        "security": [{ "apikey": [] }],
+        "security": [
+          {
+            "apikey": []
+          }
+        ],
         "parameters": [
-          { "name": "name", "in": "path", "required": true, "schema": { "type": "string" } }
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
         ],
         "requestBody": {
           "content": {
             "application/json": {
-              "schema": { "type": "object" }
+              "schema": {
+                "type": "object"
+              }
             }
           }
         },
         "responses": {
-          "200": { "description": "Function response (varies)" },
-          "401": { "$ref": "#/components/responses/Unauthorized" }
+          "200": {
+            "description": "Function response (varies)"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "Functions"
+        ],
+        "summary": "Invoke a function (PATCH)",
+        "operationId": "invokeFunctionPatch",
+        "security": [
+          {
+            "apikey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Function response (varies)"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Functions"
+        ],
+        "summary": "Invoke a function (DELETE)",
+        "operationId": "invokeFunctionDelete",
+        "security": [
+          {
+            "apikey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Function response (varies)"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/v1/billing/accounts/{wallet}": {
+      "get": {
+        "tags": [
+          "Billing"
+        ],
+        "summary": "Get account balance",
+        "operationId": "getBillingAccount",
+        "parameters": [
+          {
+            "name": "wallet",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Ethereum wallet address"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Account balance and status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "wallet": {
+                      "type": "string"
+                    },
+                    "exists": {
+                      "type": "boolean"
+                    },
+                    "status": {
+                      "type": "string"
+                    },
+                    "available_usd_micros": {
+                      "type": "integer"
+                    },
+                    "held_usd_micros": {
+                      "type": "integer"
+                    },
+                    "currency": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/billing/accounts/{wallet}/history": {
+      "get": {
+        "tags": [
+          "Billing"
+        ],
+        "summary": "Get account transaction history",
+        "operationId": "getBillingHistory",
+        "parameters": [
+          {
+            "name": "wallet",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 20
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Transaction history",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "wallet": {
+                      "type": "string"
+                    },
+                    "entries": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/billing/checkouts": {
+      "post": {
+        "tags": [
+          "Billing"
+        ],
+        "summary": "Create a top-up checkout",
+        "operationId": "createBillingCheckout",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "wallet",
+                  "amount_usd_micros"
+                ],
+                "properties": {
+                  "wallet": {
+                    "type": "string",
+                    "description": "Ethereum wallet address"
+                  },
+                  "amount_usd_micros": {
+                    "type": "integer",
+                    "description": "Amount in micro-USD"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Checkout session created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "checkout_url": {
+                      "type": "string",
+                      "format": "uri"
+                    },
+                    "topup_id": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/deploy": {
+      "get": {
+        "tags": [
+          "Bundle"
+        ],
+        "summary": "Bundle deploy info",
+        "operationId": "getBundleDeployInfo",
+        "responses": {
+          "200": {
+            "description": "Tier pricing and request body schema",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/deploy/{tier}": {
+      "post": {
+        "tags": [
+          "Bundle"
+        ],
+        "summary": "Bundle deploy (one-call full-stack app)",
+        "operationId": "bundleDeploy",
+        "description": "Deploys project + database + migrations + RLS + secrets + functions + site + subdomain in one call.",
+        "x-402-price": "Per tier ($0.10 prototype, $5 hobby, $20 team)",
+        "security": [
+          {
+            "x402": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "tier",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "prototype",
+                "hobby",
+                "team"
+              ]
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "name"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "migrations": {
+                    "type": "string"
+                  },
+                  "rls": {
+                    "type": "object"
+                  },
+                  "secrets": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    }
+                  },
+                  "functions": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    }
+                  },
+                  "site": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    }
+                  },
+                  "subdomain": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "App deployed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          }
+        }
+      }
+    },
+    "/admin/v1/projects/{id}/publish": {
+      "post": {
+        "tags": [
+          "Publish"
+        ],
+        "summary": "Publish app as a forkable version",
+        "operationId": "publishAppVersion",
+        "security": [
+          {
+            "serviceKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "visibility": {
+                    "type": "string",
+                    "enum": [
+                      "public",
+                      "unlisted",
+                      "private"
+                    ]
+                  },
+                  "fork_allowed": {
+                    "type": "boolean"
+                  },
+                  "description": {
+                    "type": "string"
+                  },
+                  "required_secrets": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Version published",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/admin/v1/projects/{id}/versions": {
+      "get": {
+        "tags": [
+          "Publish"
+        ],
+        "summary": "List published versions",
+        "operationId": "listVersions",
+        "security": [
+          {
+            "serviceKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Version list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "versions": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/admin/v1/projects/{id}/versions/{versionId}": {
+      "patch": {
+        "tags": [
+          "Publish"
+        ],
+        "summary": "Update version metadata",
+        "operationId": "updateVersion",
+        "security": [
+          {
+            "serviceKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "versionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "tags": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "description": {
+                    "type": "string"
+                  },
+                  "fork_allowed": {
+                    "type": "boolean"
+                  },
+                  "visibility": {
+                    "type": "string",
+                    "enum": [
+                      "public",
+                      "unlisted",
+                      "private"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Version updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Publish"
+        ],
+        "summary": "Delete a published version",
+        "operationId": "deleteVersion",
+        "security": [
+          {
+            "serviceKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "versionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Version deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "example": "deleted"
+                    },
+                    "version_id": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/v1/apps": {
+      "get": {
+        "tags": [
+          "Publish"
+        ],
+        "summary": "List public forkable apps",
+        "operationId": "listApps",
+        "parameters": [
+          {
+            "name": "tag",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Filter by tag (repeatable)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "App list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "apps": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "total": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/apps/{versionId}": {
+      "get": {
+        "tags": [
+          "Publish"
+        ],
+        "summary": "Get public app info",
+        "operationId": "getApp",
+        "parameters": [
+          {
+            "name": "versionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "App details with fork pricing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "App not found"
+          }
+        }
+      }
+    },
+    "/v1/fork": {
+      "get": {
+        "tags": [
+          "Publish"
+        ],
+        "summary": "Fork endpoint info",
+        "operationId": "getForkInfo",
+        "responses": {
+          "200": {
+            "description": "Tier pricing and body schema",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/fork/{tier}": {
+      "post": {
+        "tags": [
+          "Publish"
+        ],
+        "summary": "Fork a published app",
+        "operationId": "forkApp",
+        "description": "Creates a fully independent project from a published app version.",
+        "x-402-price": "Per tier ($0.10 prototype, $5 hobby, $20 team)",
+        "security": [
+          {
+            "x402": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "tier",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "prototype",
+                "hobby",
+                "team"
+              ]
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "version_id",
+                  "name"
+                ],
+                "properties": {
+                  "version_id": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "subdomain": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "App forked — new project created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          }
         }
       }
     }
@@ -1922,34 +3766,85 @@
               "prototype": {
                 "type": "object",
                 "properties": {
-                  "price": { "type": "string", "example": "$0.10" },
-                  "lease_days": { "type": "integer", "example": 7 },
-                  "storage_mb": { "type": "integer", "example": 250 },
-                  "api_calls": { "type": "integer", "example": 500000 },
-                  "max_functions": { "type": "integer", "example": 5 },
-                  "description": { "type": "string" }
+                  "price": {
+                    "type": "string",
+                    "example": "$0.10"
+                  },
+                  "lease_days": {
+                    "type": "integer",
+                    "example": 7
+                  },
+                  "storage_mb": {
+                    "type": "integer",
+                    "example": 250
+                  },
+                  "api_calls": {
+                    "type": "integer",
+                    "example": 500000
+                  },
+                  "max_functions": {
+                    "type": "integer",
+                    "example": 5
+                  },
+                  "description": {
+                    "type": "string"
+                  }
                 }
               },
               "hobby": {
                 "type": "object",
                 "properties": {
-                  "price": { "type": "string", "example": "$5.00" },
-                  "lease_days": { "type": "integer", "example": 30 },
-                  "storage_mb": { "type": "integer", "example": 1024 },
-                  "api_calls": { "type": "integer", "example": 5000000 },
-                  "max_functions": { "type": "integer", "example": 25 },
-                  "description": { "type": "string" }
+                  "price": {
+                    "type": "string",
+                    "example": "$5.00"
+                  },
+                  "lease_days": {
+                    "type": "integer",
+                    "example": 30
+                  },
+                  "storage_mb": {
+                    "type": "integer",
+                    "example": 1024
+                  },
+                  "api_calls": {
+                    "type": "integer",
+                    "example": 5000000
+                  },
+                  "max_functions": {
+                    "type": "integer",
+                    "example": 25
+                  },
+                  "description": {
+                    "type": "string"
+                  }
                 }
               },
               "team": {
                 "type": "object",
                 "properties": {
-                  "price": { "type": "string", "example": "$20.00" },
-                  "lease_days": { "type": "integer", "example": 30 },
-                  "storage_mb": { "type": "integer", "example": 10240 },
-                  "api_calls": { "type": "integer", "example": 50000000 },
-                  "max_functions": { "type": "integer", "example": 100 },
-                  "description": { "type": "string" }
+                  "price": {
+                    "type": "string",
+                    "example": "$20.00"
+                  },
+                  "lease_days": {
+                    "type": "integer",
+                    "example": 30
+                  },
+                  "storage_mb": {
+                    "type": "integer",
+                    "example": 10240
+                  },
+                  "api_calls": {
+                    "type": "integer",
+                    "example": 50000000
+                  },
+                  "max_functions": {
+                    "type": "integer",
+                    "example": 100
+                  },
+                  "description": {
+                    "type": "string"
+                  }
                 }
               }
             }
@@ -1959,24 +3854,64 @@
       "ProjectCreated": {
         "type": "object",
         "properties": {
-          "project_id": { "type": "string", "format": "uuid" },
-          "anon_key": { "type": "string", "description": "JWT for client-side access (apikey header)" },
-          "service_key": { "type": "string", "description": "JWT for admin access (Authorization: Bearer)" },
-          "schema_slot": { "type": "string" },
-          "tier": { "type": "string", "enum": ["prototype", "hobby", "team"] },
-          "lease_expires_at": { "type": "string", "format": "date-time" }
+          "project_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "anon_key": {
+            "type": "string",
+            "description": "JWT for client-side access (apikey header)"
+          },
+          "service_key": {
+            "type": "string",
+            "description": "JWT for admin access (Authorization: Bearer)"
+          },
+          "schema_slot": {
+            "type": "string"
+          },
+          "tier": {
+            "type": "string",
+            "enum": [
+              "prototype",
+              "hobby",
+              "team"
+            ]
+          },
+          "lease_expires_at": {
+            "type": "string",
+            "format": "date-time"
+          }
         }
       },
       "Subdomain": {
         "type": "object",
         "properties": {
-          "name": { "type": "string" },
-          "deployment_id": { "type": "string" },
-          "url": { "type": "string", "format": "uri" },
-          "deployment_url": { "type": "string", "format": "uri" },
-          "project_id": { "type": "string", "format": "uuid" },
-          "created_at": { "type": "string", "format": "date-time" },
-          "updated_at": { "type": "string", "format": "date-time" }
+          "name": {
+            "type": "string"
+          },
+          "deployment_id": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string",
+            "format": "uri"
+          },
+          "deployment_url": {
+            "type": "string",
+            "format": "uri"
+          },
+          "project_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
         }
       }
     },
@@ -1988,16 +3923,29 @@
             "schema": {
               "type": "object",
               "properties": {
-                "error": { "type": "string", "example": "X-PAYMENT header is required" },
+                "error": {
+                  "type": "string",
+                  "example": "X-PAYMENT header is required"
+                },
                 "accepts": {
                   "type": "array",
                   "items": {
                     "type": "object",
                     "properties": {
-                      "network": { "type": "string", "example": "eip155:84532" },
-                      "token": { "type": "string", "example": "USDC" },
-                      "amount": { "type": "string" },
-                      "payee": { "type": "string" }
+                      "network": {
+                        "type": "string",
+                        "example": "eip155:84532"
+                      },
+                      "token": {
+                        "type": "string",
+                        "example": "USDC"
+                      },
+                      "amount": {
+                        "type": "string"
+                      },
+                      "payee": {
+                        "type": "string"
+                      }
                     }
                   }
                 }
@@ -2013,7 +3961,9 @@
             "schema": {
               "type": "object",
               "properties": {
-                "error": { "type": "string" }
+                "error": {
+                  "type": "string"
+                }
               }
             }
           }

@@ -425,6 +425,32 @@ Response: `{ "checkout_url": "https://checkout.stripe.com/...", "topup_id": "...
 
 Currency: all amounts in **micro-USD** (1 USD = 1,000,000 micro-USD). Prototype = 100,000, Hobby = 5,000,000, Team = 20,000,000.
 
+List projects for a wallet:
+
+```
+GET /v1/wallets/YOUR_WALLET_ADDRESS/projects
+```
+
+```json
+{
+  "wallet": "0x...",
+  "projects": [
+    {
+      "id": "prj_1234_0001",
+      "name": "my-app",
+      "tier": "hobby",
+      "status": "active",
+      "api_calls": 1234,
+      "storage_bytes": 524288,
+      "lease_expires_at": "2026-04-08T00:00:00.000Z",
+      "created_at": "2026-03-08T00:00:00.000Z"
+    }
+  ]
+}
+```
+
+Public endpoint — no auth required. Returns only active projects.
+
 ---
 
 ## Human FAQ
@@ -486,6 +512,7 @@ Yes. `/admin/v1/projects/:id/usage` shows API calls, storage, lease status. `/ad
 
 | Endpoint | Method | Auth | Cost | Description |
 |----------|--------|------|------|-------------|
+| `/v1/projects` | GET | None | Free | Tier pricing info |
 | `/v1/projects/quote` | POST | None | Free | Get tier pricing |
 | `/v1/projects` | POST | x402 | $0.10+ | Create project (default: prototype) |
 | `/v1/projects/create/:tier` | POST | x402 | Per tier | Create project with specific tier |
@@ -524,6 +551,28 @@ For explicit control, use both `apikey` (project key) and `Authorization: Bearer
 | `/admin/v1/projects/:id/rls` | POST | service_key | Apply RLS template: `user_owns_rows`, `public_read`, or `public_read_write` |
 | `/admin/v1/projects/:id/usage` | GET | service_key | Check usage vs limits. Not metered. |
 | `/admin/v1/projects/:id/schema` | GET | service_key | Inspect tables, columns, constraints, RLS policies. Not metered. |
+| `/admin/v1/projects/:id/functions` | POST | service_key | Deploy a function (`{ name, code, config?, deps? }`). Blocked in demo mode. |
+| `/admin/v1/projects/:id/functions` | GET | service_key | List deployed functions. |
+| `/admin/v1/projects/:id/functions/:name` | DELETE | service_key | Delete a function. |
+| `/admin/v1/projects/:id/functions/:name/logs` | GET | service_key | Get function logs. `?tail=N` (default 50). |
+| `/admin/v1/projects/:id/secrets` | POST | service_key | Set a secret (`{ "key": "...", "value": "..." }`). Blocked in demo mode. |
+| `/admin/v1/projects/:id/secrets` | GET | service_key | List secrets (keys only, values not exposed). |
+| `/admin/v1/projects/:id/secrets/:key` | DELETE | service_key | Delete a secret. |
+| `/admin/v1/projects/:id/publish` | POST | service_key | Publish app as a forkable version. |
+| `/admin/v1/projects/:id/versions` | GET | service_key | List published versions. |
+| `/admin/v1/projects/:id/versions/:versionId` | PATCH | service_key | Update version metadata (tags, description, visibility, fork_allowed). |
+| `/admin/v1/projects/:id/versions/:versionId` | DELETE | service_key | Delete a published version. |
+
+### Serverless Functions (Invocation)
+
+| Endpoint | Method | Auth | Description |
+|----------|--------|------|-------------|
+| `/functions/v1/:name` | GET | apikey | Invoke function (GET) |
+| `/functions/v1/:name` | POST | apikey | Invoke function (POST) |
+| `/functions/v1/:name` | PATCH | apikey | Invoke function (PATCH) |
+| `/functions/v1/:name` | DELETE | apikey | Invoke function (DELETE) |
+
+Functions are deployed via the Admin endpoints above and invoked at `/functions/v1/:name`. Any HTTP method is supported -- the function receives the full request (method, headers, body, query string). Sub-paths like `/functions/v1/:name/sub/path` are forwarded to the function.
 
 ### User Auth
 
@@ -549,6 +598,7 @@ For explicit control, use both `apikey` (project key) and `Authorization: Bearer
 
 | Endpoint | Method | Auth | Cost | Description |
 |----------|--------|------|------|-------------|
+| `/v1/deployments` | GET | None | Free | Deployment endpoint info (pricing, body schema) |
 | `/v1/deployments` | POST | x402 | $0.05 | Deploy a static site (inlined files) |
 | `/v1/deployments/:id` | GET | None | Free | Get deployment status and URL |
 
@@ -644,8 +694,10 @@ The `image` field contains the full PNG as base64. Decode to get the image file.
 
 | Endpoint | Method | Auth | Cost | Description |
 |----------|--------|------|------|-------------|
+| `/.well-known/x402` | GET | None | Free | x402 discovery — lists all paid endpoints |
 | `/health` | GET | None | Free | Health check |
 | `/v1/ping` | GET | x402 | $0.001 | Paid ping — validates x402 flow |
+| `/v1/message` | GET | None | Free | Message endpoint info |
 | `/v1/message` | POST | x402 | $0.01 | Send message to Run402 developers |
 
 #### Contact the developers
@@ -1137,6 +1189,17 @@ Returns tier pricing and request body schema.
 
 Publish your app as a forkable version. Other agents fork it in one x402 call -- they get their own independent copy with fresh backend, budget, and URL.
 
+| Endpoint | Method | Auth | Cost | Description |
+|----------|--------|------|------|-------------|
+| `/admin/v1/projects/:id/publish` | POST | service_key | Free | Publish app as a forkable version |
+| `/admin/v1/projects/:id/versions` | GET | service_key | Free | List published versions |
+| `/admin/v1/projects/:id/versions/:versionId` | PATCH | service_key | Free | Update version metadata |
+| `/admin/v1/projects/:id/versions/:versionId` | DELETE | service_key | Free | Delete a published version |
+| `/v1/apps` | GET | None | Free | List all public forkable apps. `?tag=` to filter. |
+| `/v1/apps/:versionId` | GET | None | Free | Get public app info, fork pricing |
+| `/v1/fork/:tier` | POST | x402 | Per tier | Fork an app version into a new project |
+| `/v1/fork` | GET | None | Free | Fork endpoint info (tier pricing, body schema) |
+
 **When to use this:**
 - You built something useful and want others to reuse it
 - You want to create a template other agents can fork and customize
@@ -1181,6 +1244,14 @@ Publishing snapshots your project's current state: schema (tables, columns, cons
 
 **Not copied:** live data, secret values, auth users/sessions, storage uploads.
 
+### Browse published apps (free, no auth)
+
+```
+GET /v1/apps
+```
+
+Returns all public forkable apps. Filter with `?tag=auth&tag=rls`.
+
 ### Inspect a published app (free, no auth)
 
 ```
@@ -1192,7 +1263,7 @@ Returns name, description, stats, required secrets, required actions, min tier, 
 ### Fork a published app
 
 ```
-POST /v1/fork/prototype    (x402 payment -- same tier pricing as project creation)
+POST /v1/fork/:tier    (x402 payment -- same tier pricing as project creation)
 Content-Type: application/json
 
 {
@@ -1405,11 +1476,40 @@ claude mcp add run402 -- npx -y run402-mcp
 | `provision_postgres_project` | Provision a Postgres database. Handles x402 payment. Saves credentials locally. |
 | `run_sql` | Execute SQL (DDL or queries). Returns markdown table. |
 | `rest_query` | Query/mutate via PostgREST. GET/POST/PATCH/DELETE with query params. |
+| `setup_rls` | Apply row-level security templates to tables. |
+| `get_schema` | Introspect database schema — tables, columns, types, constraints, RLS policies. |
+| `get_usage` | Get project usage report — API calls, storage, limits, lease expiry. |
 | `upload_file` | Upload text content to project storage. |
-| `renew_project` | Renew lease. Handles x402 payment. |
+| `download_file` | Download a file from project storage. |
+| `delete_file` | Delete a file from project storage. |
+| `list_files` | List files in a storage bucket. |
+| `deploy_function` | Deploy a serverless function (Node 22) to a project. |
+| `invoke_function` | Invoke a deployed function via HTTP. |
+| `get_function_logs` | Get recent logs from a deployed function. |
+| `list_functions` | List all deployed functions for a project. |
+| `delete_function` | Delete a deployed function. |
+| `set_secret` | Set a project secret. Injected as process.env in functions. |
+| `list_secrets` | List secret keys for a project (values not shown). |
+| `delete_secret` | Delete a secret from a project. |
 | `deploy_site` | Deploy static site. $0.05/deployment. Returns live URL. |
 | `claim_subdomain` | Claim custom subdomain (e.g. myapp.run402.com). Free. |
 | `delete_subdomain` | Release a subdomain. |
+| `list_subdomains` | List all subdomains claimed by a project. |
+| `bundle_deploy` | One-call full-stack deploy: database + migrations + RLS + secrets + functions + site + subdomain. |
+| `browse_apps` | Browse public apps available for forking. |
+| `fork_app` | Fork a published app into a new project. |
+| `publish_app` | Publish a project as a forkable app. |
+| `list_versions` | List published versions of a project. |
+| `get_quote` | Get tier pricing. Free, no auth required. |
+| `renew_project` | Renew lease. Handles x402 payment. |
+| `archive_project` | Archive a project and remove from local key store. |
+| `check_balance` | Check billing account balance for a wallet address. |
+| `list_projects` | List all active projects for a wallet address. |
+| `wallet_status` | Check local wallet status — address, network, funding. |
+| `wallet_create` | Create a new local wallet (Base Sepolia testnet). |
+| `wallet_export` | Export the local wallet address. |
+| `request_faucet` | Request free testnet USDC from the Run402 faucet. |
+| `generate_image` | Generate a PNG image from a text prompt. $0.03 via x402. |
 
 ### MCP Flow
 

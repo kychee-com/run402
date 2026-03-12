@@ -79,7 +79,7 @@ Each page should be agent-readable (examples, curl, constraints, pricing) and li
 ### 8) Make x402/Base a distribution channel, not just plumbing
 **Why:** you’re natively aligned with those ecosystems; they amplify “first real apps using X.”  
 **Do:**
-- Ensure you’re listed on **x402.org/ecosystem** with crisp copy + working example.
+- ~~Ensure you’re listed on **x402.org/ecosystem** with crisp copy + working example.~~ ✅ Done — listed at https://www.x402.org/ecosystem
 - Apply to any **Base ecosystem directories**, grants, hackathons, “Base Builders” spotlights.
 - Co-market with other x402 services: “build an agent that can buy its stack over HTTP.”
 
