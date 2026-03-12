@@ -42,6 +42,7 @@ export const TIERS: Record<TierName, TierConfig> = {
 /** Prices for non-tier endpoints (micro-USD) */
 export const SKU_PRICES: Record<string, number> = {
   ping: 1_000,
+  contact: 1_000,
   message: 10_000,
   image: 30_000,
   deployment: 50_000,

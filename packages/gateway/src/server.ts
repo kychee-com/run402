@@ -47,6 +47,7 @@ import publishRoutes from "./routes/publish.js";
 import adminDashboardRoutes from "./routes/admin-dashboard.js";
 import adminLlmsTxtRoutes from "./routes/admin-llms-txt.js";
 import attributionRoutes from "./routes/attribution.js";
+import contactRoutes from "./routes/contact.js";
 import { initAppVersionsTables } from "./services/publish.js";
 
 Bugsnag.start({
@@ -106,7 +107,7 @@ app.use((_req, res, next) => {
   res.set("Access-Control-Allow-Origin", "*");
   res.set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS");
   res.set("Access-Control-Allow-Headers", "Content-Type, Authorization, apikey, Prefer, Accept-Profile, Content-Profile, Idempotency-Key, X-Wallet-Address");
-  res.set("Access-Control-Expose-Headers", "X-Run402-Settlement-Rail, X-Run402-Allowance-Remaining");
+  res.set("Access-Control-Expose-Headers", "X-Run402-Settlement-Rail, X-Run402-Allowance-Remaining, X-Run402-Hint");
   if (_req.method === "OPTIONS") {
     res.status(204).send();
     return;
@@ -242,6 +243,7 @@ app.get("/.well-known/x402", (_req: Request, res: Response) => {
       "https://api.run402.com/v1/fork/prototype",
       "https://api.run402.com/v1/fork/hobby",
       "https://api.run402.com/v1/fork/team",
+      "https://api.run402.com/v1/agent/contact",
     ],
   });
 });
@@ -363,6 +365,7 @@ app.use(generateImageRoutes);
 app.use(bundleRoutes);
 app.use(publishRoutes);
 app.use(attributionRoutes);
+app.use(contactRoutes);
 
 // --- Bugsnag error handler (must be before central error handler) ---
 app.use(bugsnagMiddleware.errorHandler);
@@ -900,6 +903,18 @@ async function applyMigrations() {
     )
   `);
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_faucet_snapshots_at ON internal.faucet_snapshots (recorded_at)`);
+
+  // v1.13: agent contact info
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS internal.agent_contacts (
+      wallet_address TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      email TEXT,
+      webhook TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
 
   // v1.10: demo mode columns
   await pool.query(`ALTER TABLE internal.projects ADD COLUMN IF NOT EXISTS demo_mode BOOLEAN NOT NULL DEFAULT false`);

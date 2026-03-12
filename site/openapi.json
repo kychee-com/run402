@@ -2039,6 +2039,108 @@
         }
       }
     },
+    "/v1/agent/contact": {
+      "get": {
+        "tags": [
+          "Agent"
+        ],
+        "summary": "Agent contact endpoint info",
+        "operationId": "getAgentContactInfo",
+        "responses": {
+          "200": {
+            "description": "Endpoint info and pricing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Agent"
+        ],
+        "summary": "Register agent contact info",
+        "operationId": "putAgentContact",
+        "description": "Register or update agent contact info (name, email, webhook) tied to the paying wallet. $0.001 USDC.",
+        "x-402-price": "$0.001 USDC",
+        "security": [
+          {
+            "x402": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "name"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "description": "Agent name (required)"
+                  },
+                  "email": {
+                    "type": "string",
+                    "description": "Contact email (optional)"
+                  },
+                  "webhook": {
+                    "type": "string",
+                    "description": "Webhook URL, must be https (optional)"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Contact info saved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "wallet": {
+                      "type": "string",
+                      "example": "0x..."
+                    },
+                    "name": {
+                      "type": "string",
+                      "example": "my-agent"
+                    },
+                    "email": {
+                      "type": "string",
+                      "example": "ops@example.com"
+                    },
+                    "webhook": {
+                      "type": "string",
+                      "example": "https://example.com/hook"
+                    },
+                    "updated_at": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error (missing name, invalid email, non-https webhook)"
+          },
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          }
+        }
+      }
+    },
     "/v1/message": {
       "get": {
         "tags": [

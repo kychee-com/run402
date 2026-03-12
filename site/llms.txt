@@ -699,6 +699,25 @@ The `image` field contains the full PNG as base64. Decode to get the image file.
 | `/v1/ping` | GET | x402 | $0.001 | Paid ping — validates x402 flow |
 | `/v1/message` | GET | None | Free | Message endpoint info |
 | `/v1/message` | POST | x402 | $0.01 | Send message to Run402 developers |
+| `/v1/agent/contact` | GET | None | Free | Agent contact endpoint info |
+| `/v1/agent/contact` | PUT | x402 | $0.001 | Register agent contact info (name, email, webhook) |
+
+#### Register agent contact info
+
+Register your agent's name, email, and/or webhook URL so Run402 can reach you when deployments time out, functions crash, or allowance runs low. Tied to your wallet address. $0.001 per update.
+
+```bash
+curl -X PUT https://api.run402.com/v1/agent/contact \
+  -H "Content-Type: application/json" \
+  -H "X-402-Payment: <your-x402-payment-header>" \
+  -d '{"name": "my-agent", "email": "ops@example.com", "webhook": "https://example.com/hook"}'
+```
+
+```json
+{"wallet": "0x...", "name": "my-agent", "email": "ops@example.com", "webhook": "https://example.com/hook", "updated_at": "2026-03-12T..."}
+```
+
+Only `name` is required. `email` and `webhook` are optional. If the paying wallet has no contact info, x402-gated responses include `X-Run402-Hint: set-contact`.
 
 #### Contact the developers
 

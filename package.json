@@ -16,6 +16,7 @@
     "test:e2e": "tsx test/e2e.ts",
     "test:openclaw": "tsx test/openclaw-e2e.ts",
     "test:subdomains": "node --experimental-test-module-mocks --test --import tsx packages/gateway/src/services/subdomains.test.ts",
+    "test:contact": "node --experimental-test-module-mocks --test --import tsx packages/gateway/src/routes/contact.test.ts",
     "test:functions": "tsx test/functions-e2e.ts",
     "test:billing": "tsx test/billing-e2e.ts",
     "test:docs": "tsx --test test/api-docs-alignment.test.ts",

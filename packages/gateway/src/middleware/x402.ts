@@ -20,6 +20,7 @@ import type { TierName } from "@run402/shared";
 import { getBillingAccount, debitAllowance } from "../services/billing.js";
 import { extractWalletFromPaymentHeader, recordWallet } from "../utils/wallet.js";
 import { createHash } from "node:crypto";
+import { pool } from "../db/pool.js";
 import type { Request, Response, NextFunction } from "express";
 
 // --- Stripe payTo machinery ---
@@ -242,6 +243,41 @@ export function createPaymentMiddleware() {
     },
   };
 
+  // PUT /v1/agent/contact — register agent contact info ($0.001)
+  resourceConfig["PUT /v1/agent/contact"] = {
+    accepts: networks.map((network) => ({
+      scheme: "exact",
+      price: "$0.001",
+      network,
+      payTo: payTo("$0.001"),
+    })),
+    description: "Register agent contact info — name, email, webhook ($0.001 USDC)",
+    mimeType: "application/json",
+    extensions: {
+      ...declareDiscoveryExtension({
+        bodyType: "json",
+        inputSchema: {
+          type: "object",
+          properties: {
+            name: { type: "string", description: "Agent name (required)" },
+            email: { type: "string", description: "Contact email (optional)" },
+            webhook: { type: "string", description: "Webhook URL, must be https (optional)" },
+          },
+          required: ["name"],
+        },
+        output: {
+          example: {
+            wallet: "0x...",
+            name: "my-agent",
+            email: "ops@example.com",
+            webhook: "https://example.com/hook",
+            updated_at: "2026-03-12T00:00:00Z",
+          },
+        },
+      }),
+    },
+  };
+
   // POST /v1/deployments — static site deployment ($0.05)
   resourceConfig["POST /v1/deployments"] = {
     accepts: networks.map((network) => ({
@@ -402,6 +438,10 @@ export function createPaymentMiddleware() {
   // so the wrapper middleware can set response headers after the x402 library calls next().
   const allowanceResults = new Map<string, { remaining: number }>();
 
+  // Track whether paying wallet has contact info (keyed by payment header).
+  // true = has contact, false = no contact (should hint).
+  const contactCheckResults = new Map<string, boolean>();
+
   // Allowance rail: debit allowance balance instead of on-chain settlement
   httpServer.onProtectedRequest(async (context) => {
     if (!context.paymentHeader) return;
@@ -409,6 +449,16 @@ export function createPaymentMiddleware() {
     if (!wallet) return;
 
     recordWallet(wallet, "x402");
+
+    // Fire non-blocking contact check (result used by writeHead interceptor for hint header)
+    pool.query(
+      `SELECT 1 FROM internal.agent_contacts WHERE wallet_address = $1`,
+      [wallet],
+    ).then((r) => {
+      contactCheckResults.set(context.paymentHeader!, r.rows.length > 0);
+    }).catch(() => {
+      // On error, don't set hint — fail open
+    });
 
     // Check if wallet has a billing account with balance
     const account = await getBillingAccount(wallet);
@@ -459,13 +509,21 @@ export function createPaymentMiddleware() {
             // Native x402 path succeeded
             res.setHeader("X-Run402-Settlement-Rail", "x402");
           }
+          // Hint: suggest setting contact info if wallet has none
+          if (contactCheckResults.has(paymentHeader)) {
+            if (!contactCheckResults.get(paymentHeader)) {
+              res.setHeader("X-Run402-Hint", "set-contact");
+            }
+            contactCheckResults.delete(paymentHeader);
+          }
         }
         return realWriteHead.apply(this, args);
       } as Response["writeHead"];
 
-      // Safety net: clean up the Map entry if the connection closes before writeHead fires
+      // Safety net: clean up the Map entries if the connection closes before writeHead fires
       res.on("close", () => {
         allowanceResults.delete(paymentHeader);
+        contactCheckResults.delete(paymentHeader);
       });
     }
 
@@ -496,6 +554,9 @@ function resolveSkuPrice(method: string, path: string): { sku: string; amountUsd
   // SKU-priced endpoints
   if (method === "GET" && path === "/v1/ping") {
     return { sku: "ping", amountUsdMicros: SKU_PRICES["ping"]! };
+  }
+  if (method === "PUT" && path === "/v1/agent/contact") {
+    return { sku: "contact", amountUsdMicros: SKU_PRICES["contact"]! };
   }
   if (method === "POST" && path === "/v1/message") {
     return { sku: "message", amountUsdMicros: SKU_PRICES["message"]! };
