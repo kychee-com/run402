@@ -1,5 +1,11 @@
 # run402-mcp
 
+[![Tests](https://github.com/kychee-com/run402/actions/workflows/test.yml/badge.svg)](https://github.com/kychee-com/run402/actions/workflows/test.yml)
+[![CodeQL](https://github.com/kychee-com/run402/actions/workflows/codeql.yml/badge.svg)](https://github.com/kychee-com/run402/actions/workflows/codeql.yml)
+[![npm: run402-mcp](https://img.shields.io/npm/v/run402-mcp?label=run402-mcp)](https://www.npmjs.com/package/run402-mcp)
+[![npm: run402](https://img.shields.io/npm/v/run402?label=run402)](https://www.npmjs.com/package/run402)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
+
 Developer tools for [Run402](https://run402.com) — provision Postgres databases, deploy static sites, serverless functions, generate images, and manage x402 wallets. Available as an MCP server, an OpenClaw skill, and a CLI.
 
 English | [简体中文](./README.zh-CN.md)
