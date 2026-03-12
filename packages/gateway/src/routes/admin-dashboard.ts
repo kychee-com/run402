@@ -399,7 +399,9 @@ tr:last-child td{border-bottom:none}
   <header>
     <h1><span class="g">run402</span> admin</h1>
     <div class="user">
-      <span>${escHtml(name)} (${escHtml(email)})</span>
+      <a href="/admin" style="border-color:#00FF9F;color:#00FF9F">Dashboard</a>
+      <a href="/admin/llms-txt">llms.txt</a>
+      <span>${escHtml(name)}</span>
       <a href="/admin/logout">Logout</a>
     </div>
   </header>

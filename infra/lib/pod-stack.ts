@@ -200,6 +200,10 @@ export class PodStack extends cdk.Stack {
     stripeWebhookSecret.grantRead(taskDef.taskRole);
     storageBucket.grantReadWrite(taskDef.taskRole);
 
+    // CloudFront access log bucket (read-only for llms.txt analytics)
+    const cfLogBucket = s3.Bucket.fromBucketName(this, "CfLogBucket", "agentdb-site-accesslogbucketda470295-jaz7qij2zfjq");
+    cfLogBucket.grantRead(taskDef.taskRole);
+
     // =========================================================================
     // Lambda Functions support
     // =========================================================================
@@ -292,6 +296,8 @@ export class PodStack extends cdk.Stack {
         LAMBDA_ROLE_ARN: lambdaExecRole.roleArn,
         LAMBDA_LAYER_ARN: "arn:aws:lambda:us-east-1:472210437512:layer:run402-functions-runtime:1",
         FUNCTIONS_LOG_GROUP: functionsLogGroup.logGroupName,
+        CF_LOG_BUCKET: "agentdb-site-accesslogbucketda470295-jaz7qij2zfjq",
+        CF_LOG_PREFIX: "cf-logs/",
       },
       secrets: {
         DB_PASSWORD: ecs.Secret.fromSecretsManager(dbSecret, "password"),

@@ -45,6 +45,7 @@ import generateImageRoutes from "./routes/generate-image.js";
 import bundleRoutes from "./routes/bundle.js";
 import publishRoutes from "./routes/publish.js";
 import adminDashboardRoutes from "./routes/admin-dashboard.js";
+import adminLlmsTxtRoutes from "./routes/admin-llms-txt.js";
 import attributionRoutes from "./routes/attribution.js";
 import { initAppVersionsTables } from "./services/publish.js";
 
@@ -345,6 +346,7 @@ app.get("/v1/ping", (_req: Request, res: Response) => {
 
 // --- Routes ---
 app.use(adminDashboardRoutes);
+app.use(adminLlmsTxtRoutes);
 app.use(billingRoutes);
 app.use(billingStripeRoutes);
 app.use(projectRoutes);
