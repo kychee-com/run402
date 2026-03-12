@@ -116,9 +116,8 @@ export class PodStack extends cdk.Stack {
       this, "OpenRouterKey", "agentdb/openrouter-api-key",
     );
 
-    const stripeWebhookSecret = secretsmanager.Secret.fromSecretNameV2(
-      this, "StripeWebhookSecret", "agentdb/stripe-webhook-secret",
-    );
+    // STRIPE_WEBHOOK_SECRET: managed outside CDK — added directly to task def revisions.
+    // fromSecretNameV2 generates a partial ARN that ECS can't resolve at startup.
 
     // Google OAuth + admin session secrets are managed outside CDK.
     // The task role has a wildcard policy (AgentDBSecretsWildcard) for agentdb/*.
@@ -197,7 +196,7 @@ export class PodStack extends cdk.Stack {
     stripeSecret.grantRead(taskDef.taskRole);
     telegramSecret.grantRead(taskDef.taskRole);
     adminKeySecret.grantRead(taskDef.taskRole);
-    stripeWebhookSecret.grantRead(taskDef.taskRole);
+    // stripeWebhookSecret: read granted via AgentDBSecretsWildcard policy
     storageBucket.grantReadWrite(taskDef.taskRole);
 
     // CloudFront access log bucket (read-only for llms.txt analytics)
@@ -312,7 +311,7 @@ export class PodStack extends cdk.Stack {
         TELEGRAM_CHAT_ID: ecs.Secret.fromSecretsManager(telegramSecret, "chat_id"),
         ADMIN_KEY: ecs.Secret.fromSecretsManager(adminKeySecret),
         OPENROUTER_API_KEY: ecs.Secret.fromSecretsManager(openrouterSecret),
-        STRIPE_WEBHOOK_SECRET: ecs.Secret.fromSecretsManager(stripeWebhookSecret),
+        // STRIPE_WEBHOOK_SECRET: managed outside CDK (fromSecretNameV2 ARN issue)
         // GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, ADMIN_SESSION_SECRET
         // are added directly to task def revisions (see deploy.sh / CI)
       },
