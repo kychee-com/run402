@@ -3,6 +3,7 @@ import {
   createPublicClient,
   http,
   parseUnits,
+  formatUnits,
   encodeFunctionData,
   isAddress,
   type Address,
@@ -11,6 +12,7 @@ import { privateKeyToAccount } from "viem/accounts";
 import { baseSepolia } from "viem/chains";
 import { FAUCET_TREASURY_KEY, FAUCET_DRIP_AMOUNT, FAUCET_REFILL_INTERVAL, CDP_API_KEY_ID, CDP_API_KEY_SECRET } from "../config.js";
 import { errorMessage } from "../utils/errors.js";
+import { pool } from "../db/pool.js";
 
 // Base Sepolia USDC (Circle test token)
 const USDC_ADDRESS: Address = "0x036CbD53842c5426634e7929541eC2318f3dCF7e";
@@ -176,6 +178,30 @@ export function stopFaucetRefill(): void {
     clearInterval(refillInterval);
     refillInterval = null;
   }
+}
+
+/**
+ * Get current USDC balance of the treasury wallet (human-readable string).
+ */
+export async function getTreasuryBalance(): Promise<string> {
+  ensureClients();
+  const raw = await publicClient!.readContract({
+    address: USDC_ADDRESS,
+    abi: ERC20_ABI,
+    functionName: "balanceOf",
+    args: [treasuryAddress!],
+  });
+  return formatUnits(raw as bigint, USDC_DECIMALS);
+}
+
+/**
+ * Record a faucet balance snapshot (fire-and-forget).
+ */
+export function recordFaucetSnapshot(balanceUsdc: string, event: string): void {
+  pool.query(
+    `INSERT INTO internal.faucet_snapshots (balance_usdc, event) VALUES ($1, $2)`,
+    [balanceUsdc, event],
+  ).catch(() => {});
 }
 
 export { isAddress, USDC_ADDRESS, treasuryAddress };

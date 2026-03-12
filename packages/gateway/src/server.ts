@@ -888,6 +888,17 @@ async function applyMigrations() {
     )
   `);
 
+  // v1.12: faucet balance snapshots — track treasury balance over time
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS internal.faucet_snapshots (
+      id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+      recorded_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      balance_usdc NUMERIC(20,6) NOT NULL,
+      event TEXT NOT NULL DEFAULT 'drip'
+    )
+  `);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_faucet_snapshots_at ON internal.faucet_snapshots (recorded_at)`);
+
   // v1.10: demo mode columns
   await pool.query(`ALTER TABLE internal.projects ADD COLUMN IF NOT EXISTS demo_mode BOOLEAN NOT NULL DEFAULT false`);
   await pool.query(`ALTER TABLE internal.projects ADD COLUMN IF NOT EXISTS demo_config JSONB`);

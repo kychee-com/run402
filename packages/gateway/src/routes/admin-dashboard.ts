@@ -16,6 +16,8 @@ import { GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, ADMIN_SESSION_SECRET, MAX_SCHEM
 import { pool } from "../db/pool.js";
 import { projectCache } from "../services/projects.js";
 import { asyncHandler } from "../utils/async-handler.js";
+import { getTreasuryBalance, treasuryAddress } from "../services/faucet.js";
+import { FAUCET_TREASURY_KEY } from "../config.js";
 
 const router = Router();
 
@@ -189,7 +191,7 @@ router.get("/admin/api/stats", asyncHandler(async (req: Request, res: Response) 
   }
 
   // DB-level stats
-  const [allProjectsRes, billingRes, subdomainsRes, functionsRes, slotsRes, walletsRes] = await Promise.all([
+  const [allProjectsRes, billingRes, subdomainsRes, functionsRes, slotsRes, walletsRes, faucetSnapshotsRes, faucetWalletsRes] = await Promise.all([
     pool.query(`SELECT status, COUNT(*)::int AS count FROM internal.projects GROUP BY status`),
     pool.query(`SELECT COUNT(*)::int AS accounts, COALESCE(SUM(available_usd_micros),0)::bigint AS total_available FROM internal.billing_accounts`),
     pool.query(`SELECT COUNT(*)::int AS count FROM internal.subdomains`),
@@ -204,6 +206,26 @@ router.get("/admin/api/stats", asyncHandler(async (req: Request, res: Response) 
       UNION
       SELECT wallet_address FROM internal.charge_authorizations
     ) all_wallets`),
+    // Faucet balance history (last 90 days, sampled to ~200 points)
+    pool.query(`
+      SELECT recorded_at, balance_usdc::float AS balance
+      FROM internal.faucet_snapshots
+      WHERE recorded_at > NOW() - INTERVAL '90 days'
+      ORDER BY recorded_at
+    `).catch(() => ({ rows: [] })),
+    // Cumulative distinct faucet wallets by day
+    pool.query(`
+      SELECT d.day::date AS day, COUNT(w.wallet_address)::int AS cumulative
+      FROM (
+        SELECT generate_series(
+          COALESCE((SELECT MIN(first_seen_at)::date FROM internal.wallet_sightings WHERE source = 'faucet'), CURRENT_DATE),
+          CURRENT_DATE, '1 day'
+        )::date AS day
+      ) d
+      LEFT JOIN internal.wallet_sightings w
+        ON w.source = 'faucet' AND w.first_seen_at::date <= d.day
+      GROUP BY d.day ORDER BY d.day
+    `).catch(() => ({ rows: [] })),
   ]);
 
   const statusCounts: Record<string, number> = {};
@@ -211,6 +233,12 @@ router.get("/admin/api/stats", asyncHandler(async (req: Request, res: Response) 
 
   const billing = billingRes.rows[0] || { accounts: 0, total_available: "0" };
   const slotsUsed = slotsRes.rows[0]?.used || 0;
+
+  // Faucet live balance
+  let faucetBalance: string | null = null;
+  if (FAUCET_TREASURY_KEY) {
+    try { faucetBalance = await getTreasuryBalance(); } catch { /* faucet offline */ }
+  }
 
   res.json({
     projects: {
@@ -236,6 +264,19 @@ router.get("/admin/api/stats", asyncHandler(async (req: Request, res: Response) 
       accounts: billing.accounts,
       totalAvailableUsd: Number(billing.total_available) / 1_000_000,
       uniqueWallets: walletsRes.rows[0]?.count || 0,
+    },
+    faucet: {
+      enabled: !!FAUCET_TREASURY_KEY,
+      treasuryAddress: treasuryAddress || null,
+      balanceUsdc: faucetBalance ? parseFloat(faucetBalance) : null,
+      balanceHistory: faucetSnapshotsRes.rows.map((r: { recorded_at: Date; balance: number }) => ({
+        t: r.recorded_at,
+        v: r.balance,
+      })),
+      cumulativeWallets: faucetWalletsRes.rows.map((r: { day: string; cumulative: number }) => ({
+        d: r.day,
+        v: r.cumulative,
+      })),
     },
   });
 }));
@@ -328,7 +369,16 @@ tr:last-child td{border-bottom:none}
 .bar-fill{height:100%;border-radius:4px;transition:width .6s ease}
 .loading{color:#4B5563;font-size:13px;text-align:center;padding:40px}
 .ts{color:#4B5563;font-size:12px;text-align:center;margin-top:24px}
-@media(max-width:600px){.grid{grid-template-columns:1fr 1fr}}
+.chart-wrap{background:#12121A;border:1px solid #1E1E2A;border-radius:12px;padding:20px 20px 12px;position:relative}
+.chart-wrap canvas{width:100%;height:180px;display:block}
+.chart-header{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:12px}
+.chart-title{font-size:13px;color:#9CA3AF;text-transform:uppercase;letter-spacing:.8px}
+.chart-value{font-size:22px;font-weight:700;color:#fff;font-variant-numeric:tabular-nums}
+.chart-value .g{color:#00FF9F}
+.chart-value .unit{font-size:12px;color:#9CA3AF;font-weight:400}
+.chart-row{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:32px}
+.faucet-addr{font-size:11px;color:#4B5563;font-family:monospace;margin-top:4px;word-break:break-all}
+@media(max-width:600px){.grid{grid-template-columns:1fr 1fr}.chart-row{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
@@ -398,7 +448,131 @@ function render(d){
   html+='<tr><td><strong style="color:#FBBF24">Expiring in 7d</strong></td><td>'+fmt(p.expiringIn7d)+'</td></tr>';
   html+='</table></div>';
 
+  // Faucet section
+  const f=d.faucet;
+  if(f && f.enabled){
+    html+='<div class="section"><h2><span class="dot" style="background:#6366F1"></span>Faucet (Base Sepolia USDC)</h2>';
+
+    // Balance stat card
+    html+='<div class="grid" style="margin-bottom:16px">';
+    html+='<div class="stat"><div class="stat-label">Treasury Balance</div><div class="stat-value">';
+    if(f.balanceUsdc!==null){
+      const bc=f.balanceUsdc<1?'bad':f.balanceUsdc<5?'warn':'g';
+      html+='<span class="'+bc+'">$'+f.balanceUsdc.toFixed(2)+'</span> <span style="font-size:12px;color:#9CA3AF">USDC</span>';
+    } else { html+='<span style="color:#4B5563">offline</span>'; }
+    html+='</div>';
+    if(f.treasuryAddress) html+='<div class="faucet-addr">'+esc(f.treasuryAddress)+'</div>';
+    html+='</div>';
+    const lastWallet=f.cumulativeWallets.length?f.cumulativeWallets[f.cumulativeWallets.length-1].v:0;
+    html+='<div class="stat"><div class="stat-label">Total Faucet Wallets</div><div class="stat-value"><span class="g">'+fmt(lastWallet)+'</span></div></div>';
+    html+='</div>';
+
+    // Charts row
+    html+='<div class="chart-row">';
+    html+='<div class="chart-wrap"><div class="chart-header"><span class="chart-title">Balance Over Time</span></div><canvas id="cvBalance"></canvas></div>';
+    html+='<div class="chart-wrap"><div class="chart-header"><span class="chart-title">Cumulative Wallets</span></div><canvas id="cvWallets"></canvas></div>';
+    html+='</div>';
+    html+='</div>';
+  }
+
   document.getElementById('content').innerHTML=html;
+
+  // Draw charts after DOM update
+  if(f && f.enabled){
+    if(f.balanceHistory.length>1) drawAreaChart('cvBalance',f.balanceHistory.map(function(p){return{t:new Date(p.t).getTime(),v:p.v}}),'#6366F1','$');
+    else noData('cvBalance');
+    if(f.cumulativeWallets.length>1) drawAreaChart('cvWallets',f.cumulativeWallets.map(function(p){return{t:new Date(p.d).getTime(),v:p.v}}),'#00FF9F','');
+    else noData('cvWallets');
+  }
+}
+
+function noData(id){
+  var c=document.getElementById(id);
+  if(!c)return;
+  var ctx=c.getContext('2d');
+  c.width=c.offsetWidth*2;c.height=c.offsetHeight*2;
+  ctx.scale(2,2);
+  ctx.fillStyle='#4B5563';ctx.font='13px system-ui';ctx.textAlign='center';
+  ctx.fillText('No data yet',c.offsetWidth/2,c.offsetHeight/2);
+}
+
+function drawAreaChart(id,data,color,prefix){
+  var c=document.getElementById(id);
+  if(!c)return;
+  var W=c.offsetWidth,H=c.offsetHeight;
+  c.width=W*2;c.height=H*2;
+  var ctx=c.getContext('2d');
+  ctx.scale(2,2);
+
+  var pad={t:24,r:12,b:28,l:48};
+  var cw=W-pad.l-pad.r, ch=H-pad.t-pad.b;
+  var vals=data.map(function(p){return p.v});
+  var times=data.map(function(p){return p.t});
+  var minV=Math.min.apply(null,vals)*0.9;
+  var maxV=Math.max.apply(null,vals)*1.1;
+  if(maxV===minV){maxV+=1;minV-=1}
+  var minT=times[0],maxT=times[times.length-1];
+  if(maxT===minT)maxT+=1;
+
+  function x(t){return pad.l+(t-minT)/(maxT-minT)*cw}
+  function y(v){return pad.t+ch-(v-minV)/(maxV-minV)*ch}
+
+  // Grid lines
+  ctx.strokeStyle='rgba(255,255,255,0.04)';ctx.lineWidth=1;
+  for(var i=0;i<5;i++){
+    var gy=pad.t+ch*i/4;
+    ctx.beginPath();ctx.moveTo(pad.l,gy);ctx.lineTo(W-pad.r,gy);ctx.stroke();
+  }
+
+  // Y-axis labels
+  ctx.fillStyle='#4B5563';ctx.font='10px system-ui';ctx.textAlign='right';
+  for(var i=0;i<5;i++){
+    var lv=minV+(maxV-minV)*(4-i)/4;
+    ctx.fillText(prefix+(lv<10?lv.toFixed(2):Math.round(lv)),pad.l-6,pad.t+ch*i/4+3);
+  }
+
+  // X-axis labels
+  ctx.textAlign='center';
+  var labelCount=Math.min(5,data.length);
+  for(var i=0;i<labelCount;i++){
+    var idx=Math.round(i*(data.length-1)/(labelCount-1));
+    var dt=new Date(data[idx].t);
+    var label=(dt.getMonth()+1)+'/'+dt.getDate();
+    ctx.fillText(label,x(data[idx].t),H-pad.b+16);
+  }
+
+  // Gradient fill
+  var grad=ctx.createLinearGradient(0,pad.t,0,pad.t+ch);
+  grad.addColorStop(0,color+'40');
+  grad.addColorStop(1,color+'00');
+  ctx.beginPath();
+  ctx.moveTo(x(data[0].t),y(data[0].v));
+  for(var i=1;i<data.length;i++) ctx.lineTo(x(data[i].t),y(data[i].v));
+  ctx.lineTo(x(data[data.length-1].t),pad.t+ch);
+  ctx.lineTo(x(data[0].t),pad.t+ch);
+  ctx.closePath();
+  ctx.fillStyle=grad;ctx.fill();
+
+  // Line
+  ctx.beginPath();
+  ctx.moveTo(x(data[0].t),y(data[0].v));
+  for(var i=1;i<data.length;i++) ctx.lineTo(x(data[i].t),y(data[i].v));
+  ctx.strokeStyle=color;ctx.lineWidth=2;ctx.lineJoin='round';ctx.stroke();
+
+  // Glow effect
+  ctx.shadowColor=color;ctx.shadowBlur=8;
+  ctx.beginPath();
+  ctx.moveTo(x(data[0].t),y(data[0].v));
+  for(var i=1;i<data.length;i++) ctx.lineTo(x(data[i].t),y(data[i].v));
+  ctx.strokeStyle=color+'80';ctx.lineWidth=1;ctx.stroke();
+  ctx.shadowBlur=0;
+
+  // Latest value dot
+  var last=data[data.length-1];
+  ctx.beginPath();ctx.arc(x(last.t),y(last.v),4,0,Math.PI*2);
+  ctx.fillStyle=color;ctx.fill();
+  ctx.beginPath();ctx.arc(x(last.t),y(last.v),8,0,Math.PI*2);
+  ctx.fillStyle=color+'20';ctx.fill();
 }
 
 load();
