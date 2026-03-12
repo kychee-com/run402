@@ -1,5 +1,5 @@
-import { findProject, loadProjects, saveProjects, readWallet, API, WALLET_FILE } from "./config.mjs";
-import { existsSync } from "fs";
+import { findProject, loadProjects, saveProjects, readWallet, API, WALLET_FILE, PROJECTS_FILE } from "./config.mjs";
+import { existsSync, mkdirSync, writeFileSync } from "fs";
 
 const HELP = `run402 projects — Manage your deployed Run402 projects
 
@@ -7,27 +7,35 @@ Usage:
   run402 projects <subcommand> [args...]
 
 Subcommands:
-  list                           List all your projects (IDs, tiers, URLs, expiry)
-  sql   <id> "<query>"           Run a SQL query against a project's Postgres DB
-  rest  <id> <table> [params]    Query a table via the REST API (PostgREST)
-  usage <id>                     Show compute/storage usage for a project
-  schema <id>                    Inspect the database schema
-  renew <id>                     Extend the project lease (pays via x402)
-  delete <id>                    Delete a project and remove it from local state
+  quote                                   Show pricing tiers
+  provision [--tier <tier>] [--name <n>]  Provision a new Postgres project (pays via x402)
+  list                                    List all your projects (IDs, tiers, URLs, expiry)
+  sql   <id> "<query>"                    Run a SQL query against a project's Postgres DB
+  rest  <id> <table> [params]             Query a table via the REST API (PostgREST)
+  usage <id>                              Show compute/storage usage for a project
+  schema <id>                             Inspect the database schema
+  rls   <id> <template> <tables_json>     Apply Row-Level Security policies
+  renew <id>                              Extend the project lease (pays via x402)
+  delete <id>                             Delete a project and remove it from local state
 
 Examples:
+  run402 projects quote
+  run402 projects provision --tier prototype
+  run402 projects provision --tier hobby --name my-app
   run402 projects list
   run402 projects sql abc123 "SELECT * FROM users LIMIT 5"
   run402 projects rest abc123 users "limit=10&select=id,name"
   run402 projects usage abc123
   run402 projects schema abc123
+  run402 projects rls abc123 public_read '[{"table":"posts"}]'
   run402 projects renew abc123
   run402 projects delete abc123
 
 Notes:
   - <id> is the project_id shown in 'run402 projects list'
   - 'rest' uses PostgREST query syntax (table name + optional query string)
-  - 'renew' requires a funded wallet — payment is automatic via x402
+  - 'renew' and 'provision' require a funded wallet — payment is automatic via x402
+  - RLS templates: user_owns_rows, public_read, public_read_write
 `;
 
 async function setupPaidFetch() {
@@ -48,6 +56,56 @@ async function setupPaidFetch() {
   const client = new x402Client();
   client.register("eip155:84532", new ExactEvmScheme(signer));
   return wrapFetchWithPayment(fetch, client);
+}
+
+async function quote() {
+  const res = await fetch(`${API}/v1/projects`);
+  const data = await res.json();
+  if (!res.ok) { console.error(JSON.stringify({ status: "error", http: res.status, ...data })); process.exit(1); }
+  console.log(JSON.stringify(data, null, 2));
+}
+
+async function provision(args) {
+  const opts = { tier: "prototype", name: undefined };
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === "--tier" && args[i + 1]) opts.tier = args[++i];
+    if (args[i] === "--name" && args[i + 1]) opts.name = args[++i];
+  }
+  const fetchPaid = await setupPaidFetch();
+  const body = { tier: opts.tier };
+  if (opts.name) body.name = opts.name;
+  const res = await fetchPaid(`${API}/v1/projects`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json();
+  if (!res.ok) { console.error(JSON.stringify({ status: "error", http: res.status, ...data })); process.exit(1); }
+  // Save project credentials locally
+  if (data.project_id) {
+    const projects = loadProjects();
+    projects.push({
+      project_id: data.project_id, anon_key: data.anon_key, service_key: data.service_key,
+      tier: data.tier, lease_expires_at: data.lease_expires_at, deployed_at: new Date().toISOString(),
+    });
+    const dir = PROJECTS_FILE.replace(/\/[^/]+$/, "");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(PROJECTS_FILE, JSON.stringify(projects, null, 2), { mode: 0o600 });
+  }
+  console.log(JSON.stringify(data, null, 2));
+}
+
+async function rls(projectId, template, tablesJson) {
+  const p = findProject(projectId);
+  const tables = JSON.parse(tablesJson);
+  const res = await fetch(`${API}/admin/v1/projects/${projectId}/rls`, {
+    method: "POST",
+    headers: { "Authorization": `Bearer ${p.service_key}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ template, tables }),
+  });
+  const data = await res.json();
+  if (!res.ok) { console.error(JSON.stringify({ status: "error", http: res.status, ...data })); process.exit(1); }
+  console.log(JSON.stringify(data, null, 2));
 }
 
 async function list() {
@@ -113,13 +171,16 @@ export async function run(sub, args) {
     process.exit(0);
   }
   switch (sub) {
-    case "list":   await list(); break;
-    case "sql":    await sqlCmd(args[0], args[1]); break;
-    case "rest":   await rest(args[0], args[1], args[2]); break;
-    case "usage":  await usage(args[0]); break;
-    case "schema": await schema(args[0]); break;
-    case "renew":  await renew(args[0]); break;
-    case "delete": await deleteProject(args[0]); break;
+    case "quote":     await quote(); break;
+    case "provision": await provision(args); break;
+    case "list":      await list(); break;
+    case "sql":       await sqlCmd(args[0], args[1]); break;
+    case "rest":      await rest(args[0], args[1], args[2]); break;
+    case "usage":     await usage(args[0]); break;
+    case "schema":    await schema(args[0]); break;
+    case "rls":       await rls(args[0], args[1], args[2]); break;
+    case "renew":     await renew(args[0]); break;
+    case "delete":    await deleteProject(args[0]); break;
     default:
       console.error(`Unknown subcommand: ${sub}\n`);
       console.log(HELP);

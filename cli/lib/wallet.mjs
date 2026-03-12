@@ -9,6 +9,7 @@ Subcommands:
   status    Show wallet address, network, and funding status
   create    Generate a new wallet and save it locally
   fund      Request test USDC from the Run402 faucet (Base Sepolia)
+  balance   Check billing balance for this wallet
   export    Print the wallet address (useful for scripting)
 
 Notes:
@@ -65,6 +66,15 @@ async function fund() {
   }
 }
 
+async function balance() {
+  const w = readWallet();
+  if (!w) { console.log(JSON.stringify({ status: "error", message: "No wallet. Run: run402 wallet create" })); process.exit(1); }
+  const res = await fetch(`${API}/v1/billing/accounts/${w.address.toLowerCase()}`);
+  const data = await res.json();
+  if (!res.ok) { console.error(JSON.stringify({ status: "error", http: res.status, ...data })); process.exit(1); }
+  console.log(JSON.stringify(data, null, 2));
+}
+
 async function exportAddr() {
   const w = readWallet();
   if (!w) { console.log(JSON.stringify({ status: "error", message: "No wallet." })); process.exit(1); }
@@ -77,10 +87,11 @@ export async function run(sub, args) {
     process.exit(0);
   }
   switch (sub) {
-    case "status": await status(); break;
-    case "create": await create(); break;
-    case "fund":   await fund(); break;
-    case "export": await exportAddr(); break;
+    case "status":  await status(); break;
+    case "create":  await create(); break;
+    case "fund":    await fund(); break;
+    case "balance": await balance(); break;
+    case "export":  await exportAddr(); break;
     default:
       console.error(`Unknown subcommand: ${sub}\n`);
       console.log(HELP);

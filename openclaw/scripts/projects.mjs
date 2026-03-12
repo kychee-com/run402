@@ -12,8 +12,8 @@
  *   node projects.mjs delete <project_id>            # Archive and delete project
  */
 
-import { findProject, loadProjects, saveProjects, readWallet, API, WALLET_FILE } from "./config.mjs";
-import { existsSync } from "fs";
+import { findProject, loadProjects, saveProjects, readWallet, API, WALLET_FILE, PROJECTS_FILE } from "./config.mjs";
+import { existsSync, mkdirSync, writeFileSync } from "fs";
 
 async function setupPaidFetch() {
   if (!existsSync(WALLET_FILE)) {
@@ -34,6 +34,55 @@ async function setupPaidFetch() {
   const client = new x402Client();
   client.register("eip155:84532", new ExactEvmScheme(signer));
   return wrapFetchWithPayment(fetch, client);
+}
+
+async function quote() {
+  const res = await fetch(`${API}/v1/projects`);
+  const data = await res.json();
+  if (!res.ok) { console.error(JSON.stringify({ status: "error", http: res.status, ...data })); process.exit(1); }
+  console.log(JSON.stringify(data, null, 2));
+}
+
+async function provision(extraArgs) {
+  const opts = { tier: "prototype", name: undefined };
+  for (let i = 0; i < extraArgs.length; i++) {
+    if (extraArgs[i] === "--tier" && extraArgs[i + 1]) opts.tier = extraArgs[++i];
+    if (extraArgs[i] === "--name" && extraArgs[i + 1]) opts.name = extraArgs[++i];
+  }
+  const fetchPaid = await setupPaidFetch();
+  const body = { tier: opts.tier };
+  if (opts.name) body.name = opts.name;
+  const res = await fetchPaid(`${API}/v1/projects`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json();
+  if (!res.ok) { console.error(JSON.stringify({ status: "error", http: res.status, ...data })); process.exit(1); }
+  if (data.project_id) {
+    const projects = loadProjects();
+    projects.push({
+      project_id: data.project_id, anon_key: data.anon_key, service_key: data.service_key,
+      tier: data.tier, lease_expires_at: data.lease_expires_at, deployed_at: new Date().toISOString(),
+    });
+    const dir = PROJECTS_FILE.replace(/\/[^/]+$/, "");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(PROJECTS_FILE, JSON.stringify(projects, null, 2), { mode: 0o600 });
+  }
+  console.log(JSON.stringify(data, null, 2));
+}
+
+async function rls(projectId, template, tablesJson) {
+  const p = findProject(projectId);
+  const tables = JSON.parse(tablesJson);
+  const res = await fetch(`${API}/admin/v1/projects/${projectId}/rls`, {
+    method: "POST",
+    headers: { "Authorization": `Bearer ${p.service_key}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ template, tables }),
+  });
+  const data = await res.json();
+  if (!res.ok) { console.error(JSON.stringify({ status: "error", http: res.status, ...data })); process.exit(1); }
+  console.log(JSON.stringify(data, null, 2));
 }
 
 async function list() {
@@ -124,14 +173,17 @@ async function deleteProject(projectId) {
 
 const [cmd, ...args] = process.argv.slice(2);
 switch (cmd) {
+  case "quote": await quote(); break;
+  case "provision": await provision(args); break;
   case "list": await list(); break;
   case "sql": await sql(args[0], args[1]); break;
   case "rest": await rest(args[0], args[1], args[2]); break;
   case "usage": await usage(args[0]); break;
   case "schema": await schema(args[0]); break;
+  case "rls": await rls(args[0], args[1], args[2]); break;
   case "renew": await renew(args[0]); break;
   case "delete": await deleteProject(args[0]); break;
   default:
-    console.log("Usage: node projects.mjs <list|sql|rest|usage|schema|renew|delete> [args...]");
+    console.log("Usage: node projects.mjs <quote|provision|list|sql|rest|usage|schema|rls|renew|delete> [args...]");
     process.exit(1);
 }

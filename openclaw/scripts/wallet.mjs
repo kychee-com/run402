@@ -72,6 +72,15 @@ async function fund() {
   }
 }
 
+async function balance() {
+  const w = readWallet();
+  if (!w) { console.log(JSON.stringify({ status: "error", message: "No wallet. Run: node wallet.mjs create" })); process.exit(1); }
+  const res = await fetch(`${API}/v1/billing/accounts/${w.address.toLowerCase()}`);
+  const data = await res.json();
+  if (!res.ok) { console.error(JSON.stringify({ status: "error", http: res.status, ...data })); process.exit(1); }
+  console.log(JSON.stringify(data, null, 2));
+}
+
 async function exportAddr() {
   const w = readWallet();
   if (!w) { console.log(JSON.stringify({ status: "error", message: "No wallet." })); process.exit(1); }
@@ -83,8 +92,9 @@ switch (cmd) {
   case "status": await status(); break;
   case "create": await create(); break;
   case "fund": await fund(); break;
+  case "balance": await balance(); break;
   case "export": await exportAddr(); break;
   default:
-    console.log("Usage: node wallet.mjs <status|create|fund|export>");
+    console.log("Usage: node wallet.mjs <status|create|fund|balance|export>");
     process.exit(1);
 }
