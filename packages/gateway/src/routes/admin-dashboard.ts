@@ -16,7 +16,7 @@ import { GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, ADMIN_SESSION_SECRET, MAX_SCHEM
 import { pool } from "../db/pool.js";
 import { projectCache } from "../services/projects.js";
 import { asyncHandler } from "../utils/async-handler.js";
-import { getTreasuryBalance, treasuryAddress } from "../services/faucet.js";
+import { getTreasuryBalance, recordFaucetSnapshot, treasuryAddress } from "../services/faucet.js";
 import { FAUCET_TREASURY_KEY } from "../config.js";
 
 const router = Router();
@@ -24,6 +24,7 @@ const router = Router();
 const ALLOWED_DOMAIN = "kychee.com";
 const SESSION_COOKIE = "run402_admin";
 const SESSION_DAYS = 7;
+let lastFaucetSnapshot = 0; // throttle: one snapshot per 5min max
 const STATE_COOKIE = "run402_oauth_state";
 
 // ---- Helpers ----
@@ -234,10 +235,17 @@ router.get("/admin/api/stats", asyncHandler(async (req: Request, res: Response) 
   const billing = billingRes.rows[0] || { accounts: 0, total_available: "0" };
   const slotsUsed = slotsRes.rows[0]?.used || 0;
 
-  // Faucet live balance
+  // Faucet live balance + periodic snapshot (at most once per 5min)
   let faucetBalance: string | null = null;
   if (FAUCET_TREASURY_KEY) {
-    try { faucetBalance = await getTreasuryBalance(); } catch { /* faucet offline */ }
+    try {
+      faucetBalance = await getTreasuryBalance();
+      const now = Date.now();
+      if (now - lastFaucetSnapshot > 300_000) {
+        lastFaucetSnapshot = now;
+        recordFaucetSnapshot(faucetBalance, "poll");
+      }
+    } catch { /* faucet offline */ }
   }
 
   res.json({
