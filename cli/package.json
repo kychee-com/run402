@@ -22,7 +22,7 @@
   "homepage": "https://run402.com",
   "repository": {
     "type": "git",
-    "url": "https://github.com/kychee-com/run402-mcp.git",
+    "url": "https://github.com/kychee-com/run402.git",
     "directory": "cli"
   },
   "keywords": ["run402", "x402", "postgres", "ai-agent", "openclaw"]
