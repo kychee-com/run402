@@ -100,6 +100,11 @@ function handler(event) {
     // =========================================================================
     // CloudFront Distribution
     // =========================================================================
+    // API gateway origin (for /admin* proxy)
+    const apiOrigin = new origins.HttpOrigin(`api.${DOMAIN}`, {
+      protocolPolicy: cloudfront.OriginProtocolPolicy.HTTPS_ONLY,
+    });
+
     const distribution = new cloudfront.Distribution(this, "Distribution", {
       defaultBehavior: {
         origin: origins.S3BucketOrigin.withOriginAccessControl(siteBucket),
@@ -111,6 +116,17 @@ function handler(event) {
             eventType: cloudfront.FunctionEventType.VIEWER_REQUEST,
           },
         ],
+      },
+      additionalBehaviors: {
+        "/admin*": {
+          origin: apiOrigin,
+          viewerProtocolPolicy:
+            cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+          allowedMethods: cloudfront.AllowedMethods.ALLOW_ALL,
+          cachePolicy: cloudfront.CachePolicy.CACHING_DISABLED,
+          originRequestPolicy:
+            cloudfront.OriginRequestPolicy.ALL_VIEWER,
+        },
       },
       domainNames: [DOMAIN, `www.${DOMAIN}`],
       certificate: cert,
