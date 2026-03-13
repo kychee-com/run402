@@ -1,7 +1,7 @@
 /**
  * Billing routes — allowance balance management.
  *
- * GET  /v1/billing/accounts/:wallet         — balance + status
+ * GET  /v1/billing/accounts/:wallet         — balance
  * GET  /v1/billing/accounts/:wallet/history  — ledger entries
  * POST /admin/v1/billing/accounts/:wallet/credit — admin credit
  * POST /admin/v1/billing/accounts/:wallet/debit  — admin debit
@@ -30,30 +30,9 @@ router.get("/v1/billing/accounts/:wallet", asyncHandler(async (req: Request, res
   }
 
   const account = await getBillingAccount(wallet);
-  if (!account) {
-    res.json({
-      wallet,
-      exists: false,
-      available_usd_micros: 0,
-      held_usd_micros: 0,
-      status: "none",
-    });
-    return;
-  }
 
   res.json({
-    wallet,
-    exists: true,
-    billing_account_id: account.id,
-    status: account.status,
-    currency: account.currency,
-    available_usd_micros: account.available_usd_micros,
-    held_usd_micros: account.held_usd_micros,
-    funding_policy: account.funding_policy,
-    low_balance_threshold_usd_micros: account.low_balance_threshold_usd_micros,
-    primary_contact_email: account.primary_contact_email,
-    created_at: account.created_at.toISOString(),
-    updated_at: account.updated_at.toISOString(),
+    available_usd_micros: account?.available_usd_micros ?? 0,
   });
 }));
 

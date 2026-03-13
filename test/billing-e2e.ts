@@ -116,9 +116,7 @@ async function main() {
   const balRes2 = await fetch(`${BASE_URL}/v1/billing/accounts/${wallet}`);
   const bal2 = await balRes2.json() as Record<string, unknown>;
   assert(balRes2.ok, "GET balance returns 200");
-  assert(bal2.exists === true, "Account exists");
   assert(bal2.available_usd_micros === initialBalance + creditAmount, "Balance matches credited amount");
-  assert(bal2.status === "active", "Account status is active");
 
   // 4) GET history — verify ledger entry
   console.log("\n4) GET history...");

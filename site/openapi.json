@@ -3155,31 +3155,18 @@
         ],
         "responses": {
           "200": {
-            "description": "Account balance and status",
+            "description": "Account balance",
             "content": {
               "application/json": {
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "wallet": {
-                      "type": "string"
-                    },
-                    "exists": {
-                      "type": "boolean"
-                    },
-                    "status": {
-                      "type": "string"
-                    },
                     "available_usd_micros": {
-                      "type": "integer"
-                    },
-                    "held_usd_micros": {
-                      "type": "integer"
-                    },
-                    "currency": {
-                      "type": "string"
+                      "type": "integer",
+                      "description": "Available balance in micro-USD (1 USD = 1,000,000)"
                     }
-                  }
+                  },
+                  "required": ["available_usd_micros"]
                 }
               }
             }

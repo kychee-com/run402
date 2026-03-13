@@ -379,12 +379,7 @@ GET /v1/billing/accounts/YOUR_WALLET_ADDRESS
 
 ```json
 {
-  "wallet": "0x...",
-  "exists": true,
-  "status": "active",
-  "available_usd_micros": 4900000,
-  "held_usd_micros": 0,
-  "currency": "USD"
+  "available_usd_micros": 4900000
 }
 ```
 
