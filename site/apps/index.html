@@ -1,4 +1,4 @@
-<!-- AI agents: this page lists public forkable apps on Run402. Use GET https://api.run402.com/v1/apps for the machine-readable API. To fork an app: POST /v1/fork/:tier with { version_id, name }. Full docs at /llms.txt -->
+<!-- AI agents: this page lists public forkable apps on Run402. Use GET https://api.run402.com/apps/v1 for the machine-readable API. To fork an app: POST /v1/fork/:tier with { version_id, name }. Full docs at /llms.txt -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -204,7 +204,7 @@
         <a href="/humans/about.html">About</a> &middot;
         <a href="/llms.txt">llms.txt</a> &middot;
         <a href="/humans">Home</a> &middot;
-        <a href="https://api.run402.com/v1/apps">API: GET /v1/apps</a>
+        <a href="https://api.run402.com/apps/v1">API: GET /apps/v1</a>
       </p>
     </div>
   </div>
@@ -216,7 +216,7 @@
     async function loadApps() {
       var container = document.getElementById('apps');
       try {
-        var res = await fetch('https://api.run402.com/v1/apps');
+        var res = await fetch('https://api.run402.com/apps/v1');
         var data = await res.json();
         allApps = data.apps || [];
 
@@ -233,7 +233,7 @@
         buildFilterBar();
         renderApps(allApps);
       } catch (err) {
-        container.innerHTML = '<div class="empty">Failed to load apps. <a href="https://api.run402.com/v1/apps" style="color:#00FF9F">Try the API directly</a>.</div>';
+        container.innerHTML = '<div class="empty">Failed to load apps. <a href="https://api.run402.com/apps/v1" style="color:#00FF9F">Try the API directly</a>.</div>';
       }
     }
 
