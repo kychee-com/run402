@@ -7,8 +7,12 @@ import { asyncHandler } from "../utils/async-handler.js";
 
 const router = Router();
 
-// Retry delay for 404s caused by PostgREST schema cache staleness (ms).
+// Retry config for 404s caused by PostgREST schema cache staleness.
+// After DDL + RLS setup, PostgREST may need several hundred ms to reload
+// its schema via NOTIFY. A single 150ms retry wasn't enough in practice
+// (observed: first 2 of 5 sequential inserts got 404 after CREATE TABLE + RLS).
 const SCHEMA_CACHE_RETRY_DELAY_MS = 150;
+const SCHEMA_CACHE_MAX_RETRIES = 3;
 
 /**
  * Send a request to PostgREST and return the raw response.
@@ -66,10 +70,12 @@ router.all("/rest/v1/*", apikeyAuth, meteringMiddleware, demoRestMiddleware, asy
 
   let result = await forwardToPostgREST(url, fetchOptions);
 
-  // Retry once on 404 — PostgREST's schema cache may be stale after DDL.
-  if (result.status === 404) {
+  // Retry on 404 — PostgREST's schema cache may be stale after DDL + RLS.
+  let retries = 0;
+  while (result.status === 404 && retries < SCHEMA_CACHE_MAX_RETRIES) {
     await new Promise((r) => setTimeout(r, SCHEMA_CACHE_RETRY_DELAY_MS));
     result = await forwardToPostgREST(url, fetchOptions);
+    retries++;
   }
 
   res.status(result.status);
