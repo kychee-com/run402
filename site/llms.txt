@@ -1257,134 +1257,20 @@ Same as project creation (see Pricing section). No additional fee.
 
 ## MCP Server (Recommended for AI Agents)
 
-If running inside Claude Desktop, Cursor, Cline, Claude Code, or any MCP-compatible client, use `run402-mcp` instead of HTTP API directly. Handles credential storage, 402 payment negotiation, and response formatting automatically.
+Use `run402-mcp` instead of HTTP API directly. Handles credential storage, x402 payment negotiation, and response formatting. Tools map 1:1 to HTTP endpoints above. Also available as an OpenClaw skill: `clawhub install run402`.
 
-Also available as an OpenClaw skill: `clawhub install run402`.
-
-### Install
-
-```bash
-npx run402-mcp
-```
-
-### Client Configuration
+Install: `npx run402-mcp`
 
 **Claude Desktop** -- add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
 ```json
-{
-  "mcpServers": {
-    "run402": {
-      "command": "npx",
-      "args": ["-y", "run402-mcp"]
-    }
-  }
-}
+{ "mcpServers": { "run402": { "command": "npx", "args": ["-y", "run402-mcp"] } } }
 ```
 
-**Cursor** -- add to `.cursor/mcp.json`:
-```json
-{
-  "mcpServers": {
-    "run402": {
-      "command": "npx",
-      "args": ["-y", "run402-mcp"]
-    }
-  }
-}
-```
+**Cursor** -- add to `.cursor/mcp.json`: same JSON as above.
 
-**Claude Code**:
-```bash
-claude mcp add run402 -- npx -y run402-mcp
-```
+**Claude Code**: `claude mcp add run402 -- npx -y run402-mcp`
 
-### MCP Tools
-
-| Tool | Description |
-|------|-------------|
-| `provision_postgres_project` | Provision a Postgres database. Handles x402 payment. Saves credentials locally. |
-| `run_sql` | Execute SQL (DDL or queries). Returns markdown table. |
-| `rest_query` | Query/mutate via PostgREST. GET/POST/PATCH/DELETE with query params. |
-| `setup_rls` | Apply row-level security templates to tables. |
-| `get_schema` | Introspect database schema — tables, columns, types, constraints, RLS policies. |
-| `get_usage` | Get project usage report — API calls, storage, limits, lease expiry. |
-| `upload_file` | Upload text content to project storage. |
-| `download_file` | Download a file from project storage. |
-| `delete_file` | Delete a file from project storage. |
-| `list_files` | List files in a storage bucket. |
-| `deploy_function` | Deploy a serverless function (Node 22) to a project. |
-| `invoke_function` | Invoke a deployed function via HTTP. |
-| `get_function_logs` | Get recent logs from a deployed function. |
-| `list_functions` | List all deployed functions for a project. |
-| `delete_function` | Delete a deployed function. |
-| `set_secret` | Set a project secret. Injected as process.env in functions. |
-| `list_secrets` | List secret keys for a project (values not shown). |
-| `delete_secret` | Delete a secret from a project. |
-| `deploy_site` | Deploy static site. Free with active tier. Returns live URL. |
-| `claim_subdomain` | Claim custom subdomain (e.g. myapp.run402.com). Free. |
-| `delete_subdomain` | Release a subdomain. |
-| `list_subdomains` | List all subdomains claimed by a project. |
-| `bundle_deploy` | One-call full-stack deploy: database + migrations + RLS + secrets + functions + site + subdomain. |
-| `browse_apps` | Browse public apps available for forking. |
-| `fork_app` | Fork a published app into a new project. |
-| `publish_app` | Publish a project as a forkable app. |
-| `list_versions` | List published versions of a project. |
-| `get_quote` | Get tier pricing. Free, no auth required. |
-| `renew_project` | Renew lease. Handles x402 payment. |
-| `archive_project` | Archive a project and remove from local key store. |
-| `check_balance` | Check billing account balance for a wallet address. |
-| `list_projects` | List all active projects for a wallet address. |
-| `wallet_status` | Check local wallet status — address, network, funding. |
-| `wallet_create` | Create a new local wallet (Base Sepolia testnet). |
-| `wallet_export` | Export the local wallet address. |
-| `request_faucet` | Request free testnet USDC from the Run402 faucet. |
-| `generate_image` | Generate a PNG image from a text prompt. $0.03 via x402. |
-| `send_message` | Send a message to the Run402 developers. Free with wallet auth. |
-| `set_agent_contact` | Register agent contact info (name, email, webhook). Free with wallet auth. |
-| `create_checkout` | Create a Stripe checkout URL for your human to fund your wallet. |
-| `billing_history` | View billing transaction history for a wallet address. |
-| `get_deployment` | Get deployment status and URL for a static site deployment. |
-| `update_version` | Update metadata of a published app version. |
-| `delete_version` | Delete a published app version. |
-| `get_app` | Inspect a specific published app — details, required secrets, fork pricing. |
-
-### MCP Flow
-
-```
-1. provision_postgres_project(tier: "prototype")
-   -> Returns payment details (402) or project credentials on success
-   -> Credentials saved to ~/.config/run402/projects.json
-
-2. run_sql(project_id: "prj_...", sql: "CREATE TABLE ...")
-   -> Uses stored service_key automatically
-
-3. rest_query(project_id: "prj_...", table: "todos", method: "POST", body: {...})
-   -> Uses stored anon_key (or service_key with key_type: "service")
-
-4. upload_file(project_id: "prj_...", bucket: "assets", path: "data.csv", content: "...")
-   -> Uses stored anon_key automatically
-
-5. renew_project(project_id: "prj_...")
-   -> Returns payment details (402) or updates stored expiry on success
-
-6. deploy_site(name: "my-app", files: [{file: "index.html", data: "..."}])
-   -> Returns payment details (402) or deployment URL on success
-```
-
-### Key Storage
-
-Credentials saved to `~/.config/run402/projects.json` (chmod 0600). Each project stores `anon_key`, `service_key`, `tier`, `expires_at`. Tools auto-lookup the right key -- no manual key passing needed.
-
-### Payment Handling
-
-When provisioning or renewing requires payment, MCP tools return payment details as informational text (not errors). The LLM reasons about the payment and guides the user. Once paid, retry the same tool call.
-
-### Environment Variables
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `RUN402_API_BASE` | `https://api.run402.com` | API base URL |
-| `RUN402_CONFIG_DIR` | `~/.config/run402` | Config directory |
+Credentials saved to `~/.config/run402/projects.json` (chmod 0600). Tools auto-lookup keys -- no manual key passing. Env vars: `RUN402_API_BASE` (default `https://api.run402.com`), `RUN402_CONFIG_DIR` (default `~/.config/run402`).
 
 ---
 
