@@ -4,12 +4,13 @@
 **Submitted**: 2026-03-10T22:17:31.191276
 **Completed**: 2026-03-10T22:34:24.849962
 **Status**: completed
+**Reviewed**: 2026-03-12 — status annotations added below
 
 ---
 
-Short answer: **no, not yet**.
+Short answer: **no, not yet** — but significant progress since the consultation.
 
-Based on the source you shared, the MCP is **functionally strong** but **under-optimized as a marketing surface**. The website sells **“full-stack infrastructure for AI agents”**; the MCP still mostly reads like **“a Postgres tool with extras.”**
+Based on the source you shared, the MCP is **functionally strong** but **under-optimized as a marketing surface**. The website sells **”full-stack infrastructure for AI agents”**; the MCP still mostly reads like **”a Postgres tool with extras.”**
 
 The biggest leak is this mismatch:
 
@@ -18,42 +19,61 @@ The biggest leak is this mismatch:
 
 If MCP is the primary integration point, then the MCP tool list is effectively your **homepage for agents**.
 
+### Progress summary
+
+| Area | Status |
+|------|--------|
+| README tool table drift | DONE — 39 tools listed, comprehensive |
+| CI sync check | DONE — `sync.test.ts` with SURFACE array |
+| Tool count (was 32) | Grew to 37 MCP tools (image gen, wallet, etc.) |
+| SKILL.md title & tool count | NOT DONE — still “Postgres for AI Agents”, still “10 tools” |
+| package.json description | NOT DONE — still DB-centric |
+| Hero tool ordering | NOT DONE |
+| MCP resources/prompts | NOT DONE |
+| Tool description rewrites | NOT DONE (bundle_deploy partially improved) |
+| Success/payment/error CTAs | NOT DONE |
+| fork/publish growth loops | NOT DONE |
+| Funnel instrumentation | NOT DONE |
+
 ## Highest-priority fixes
 
-### P0 — Fix message drift immediately
-Right now your surfaces disagree:
+### P0 — Fix message drift immediately — PARTIALLY DONE
 
-- `README.md` lists **5 tools**
-- `SKILL.md` says **10 tools**
-- `index.ts` exposes **32 tools**
+~~Right now your surfaces disagree:~~
 
-That is both a **trust problem** and a **discovery problem**.
+- ~~`README.md` lists **5 tools**~~ → DONE: README now lists **39 tools** in a comprehensive table
+- `SKILL.md` says **10 tools** → **STILL 10** — actual count is 37 MCP tools
+- ~~`index.ts` exposes **32 tools**~~ → now **37 tools** (added image gen, wallet, CRUD helpers)
 
-#### Action
-Create a **single source of truth** for tool metadata and generate from it:
+~~That is both a **trust problem** and a **discovery problem**.~~
+README↔MCP drift is fixed. SKILL.md↔MCP drift remains.
 
-- MCP tool descriptions
-- README tool table
-- SKILL docs
-- llms.txt sections if possible
+#### Action — PARTIALLY DONE
 
-Also add a CI check that fails if docs/tool counts drift.
+~~Create a **single source of truth** for tool metadata and generate from it:~~
 
-#### Messaging change
+- ~~MCP tool descriptions~~ → descriptions live in `src/index.ts`
+- ~~README tool table~~ → DONE: 39-row table
+- SKILL docs → **NOT DONE**: still documents only 10 tools
+- llms.txt sections if possible → **NOT CHECKED**
+
+~~Also add a CI check that fails if docs/tool counts drift.~~ → DONE: `sync.test.ts` has a `SURFACE` array (30 capabilities) checked against MCP, CLI, and OpenClaw. Runs in CI.
+
+#### Messaging change — NOT DONE
 Standardize on one top-line position everywhere:
 
 > **Run402 is full-stack infrastructure for AI agents — Postgres, REST API, auth, storage, functions, and static hosting, paid with x402.**
 
-Right now these surfaces are too DB-centric:
+~~Right now~~ These surfaces are still too DB-centric:
 
-- README title/subtitle
-- SKILL title: “Postgres for AI Agents”
-- `package.json` description omits functions/hosting
+- ~~README title/subtitle~~ → title changed to “run402 — MCP Server, CLI & OpenClaw Skill” (better but not “full-stack infrastructure”)
+- SKILL title: still “Postgres for AI Agents” — **NOT CHANGED**
+- `package.json` description: still “AI-native Postgres databases with REST API, auth, storage, and row-level security” — **NOT CHANGED**, omits functions/hosting/images
 
 ---
 
-### P0 — Make the default story “first live URL,” not “first database”
-Your thesis is “fastest path from agent-wrote-code to live app.”  
+### P0 — Make the default story “first live URL,” not “first database” — NOT DONE
+Your thesis is “fastest path from agent-wrote-code to live app.”
 But the MCP currently leads with low-level DB workflows.
 
 The hero tools should be:
@@ -63,17 +83,17 @@ The hero tools should be:
 3. `provision_postgres_project`
 4. `get_quote`
 
-#### Action
-- Put a **“Start here”** section at the top of README and SKILL.
-- Mark `bundle_deploy` as **recommended for new apps**.
-- Reorder tool registration so clients that preserve order show the hero path first.
-- In docs, explicitly say:
+#### Action — NOT DONE
+- Put a **”Start here”** section at the top of README and SKILL. → **NOT DONE** — README has “Quick Start” which is just `npx run402-mcp`
+- Mark `bundle_deploy` as **recommended for new apps**. → **NOT DONE** — description says “One-call full-stack app deployment” (good) but not positioned as the default
+- Reorder tool registration so clients that preserve order show the hero path first. → **NOT DONE** — still category-ordered (database first, bundle_deploy in the middle at line 230)
+- In docs, explicitly say: → **NOT DONE**
   - **New app from scratch?** `bundle_deploy`
   - **Start from template?** `fork_app`
   - **Backend only?** `provision_postgres_project`
   - **Budget first?** `get_quote`
 
-#### Important site-side alignment
+#### Important site-side alignment — NOT CHECKED
 Your `/humans` prompt currently says:
 
 > “Please build me a demo app using run402.com/llms.txt (curl it)”
@@ -86,7 +106,7 @@ Right now your site may be teaching people to bypass your best distribution surf
 
 ---
 
-### P1 — Bring your best site marketing into the MCP itself
+### P1 — Bring your best site marketing into the MCP itself — NOT DONE
 Your strongest agent marketing already exists in `llms.txt`:
 
 - demo app ideas
@@ -97,8 +117,8 @@ Your strongest agent marketing already exists in `llms.txt`:
 
 But the MCP exposes almost none of that in-protocol.
 
-#### Action
-Add MCP **resources/prompts** for:
+#### Action — NOT DONE
+No MCP resources or prompts are registered in `src/index.ts`. Add MCP **resources/prompts** for:
 
 - `quickstart`
 - `demo_prompts`
@@ -116,7 +136,7 @@ That is worth it. Agents often won’t independently fetch your website.
 
 ---
 
-### P1 — Rewrite key tool descriptions for marketing *and* better tool routing
+### P1 — Rewrite key tool descriptions for marketing *and* better tool routing — NOT DONE
 For models, “marketing” means:
 
 - clearer intent matching
@@ -125,11 +145,11 @@ For models, “marketing” means:
 
 Your current descriptions are clear, but they often undersell Run402.
 
-#### Biggest misses
-- `provision_postgres_project` sells only **database**, not **backend**
-- auth is marketed on the site but mostly hidden in the MCP
-- `deploy_function` spends too much description budget on package list
-- `bundle_deploy` is strong, but not positioned as the obvious default
+#### Biggest misses — current state (2026-03-12)
+- `provision_postgres_project`: still "Provision a new Postgres database. Returns project credentials on success, or payment details if x402 payment is needed." — **still sells only database, not backend**
+- auth is marketed on the site but mostly hidden in the MCP — **UNCHANGED**
+- `deploy_function`: still lists all 10 pre-bundled packages in the description — **still package-list heavy**
+- `bundle_deploy`: now "One-call full-stack app deployment..." — **improved** but not positioned as the obvious default
 
 #### Suggested rewrites
 
@@ -162,7 +182,7 @@ Also tighten descriptions for utility tools in a brand-helpful way:
 
 ---
 
-### P1 — Redesign success, payment, and error messages as conversion moments
+### P1 — Redesign success, payment, and error messages as conversion moments — NOT DONE
 This is the biggest underused marketing surface.
 
 Right now your success outputs are functional, but they don’t fully sell the value created.
@@ -173,8 +193,8 @@ Right now your success outputs are functional, but they don’t fully sell the v
 
 ### What to change
 
-#### 1) Lead with the public outcome
-For major wins, put the live URL first.
+#### 1) Lead with the public outcome — PARTIALLY DONE
+`deploy_site` does say "The site is live at **${url}**". Other tools still lead with project_id/table data.
 
 Example for `bundle_deploy`:
 
@@ -200,7 +220,9 @@ For provisioning and bundle deploy, explicitly list:
 
 That reinforces breadth.
 
-#### 3) Add next-best-action CTAs
+#### 3) Add next-best-action CTAs — NOT DONE
+Only `deploy_function` suggests a next action ("Invoke with: `invoke_function(...)`"). All other tools just say "Keys saved to local key store."
+
 Examples:
 
 After `provision_postgres_project`:
@@ -216,8 +238,8 @@ After `fork_app`:
 - `deploy_site` / `deploy_function` to customize
 - `publish_app` when ready to share
 
-#### 4) Upgrade payment-required responses
-Your payment responses are too mechanical.
+#### 4) Upgrade payment-required responses — PARTIALLY DONE
+Payment responses now use `## Payment Required` headings with structured guidance. Still mostly mechanical JSON + retry instructions, but better than raw dumps.
 
 Instead of just raw JSON + “retry”, include:
 
@@ -254,7 +276,7 @@ This action uses Run402’s x402 micropayment flow.
 - Learn allowance model: https://run402.com/agent-allowance?utm_source=run402-mcp
 ```
 
-#### 5) Turn common errors into onboarding
+#### 5) Turn common errors into onboarding — NOT DONE
 Example: if a project is missing locally, don’t just error.
 
 Say:
@@ -266,7 +288,7 @@ That’s not fluff. That’s conversion-preserving recovery UX.
 
 ---
 
-### P2 — Use `fork_app` / `publish_app` as growth loops
+### P2 — Use `fork_app` / `publish_app` as growth loops — NOT DONE
 This is a marketing engine hiding in plain sight.
 
 #### Action
@@ -285,7 +307,7 @@ You already have an app marketplace. The MCP should actively feed it.
 
 ---
 
-### P2 — Instrument this like a funnel
+### P2 — Instrument this like a funnel — NOT DONE
 If MCP is the primary GTM surface, you need marketing metrics for it.
 
 #### Track
@@ -304,16 +326,18 @@ Also put UTM params on links from MCP responses so your site analytics can attri
 
 ---
 
-## Small but high-leverage copy changes
+## Small but high-leverage copy changes — MOSTLY NOT DONE
 
-### README
-Your README should open more like:
+### README — PARTIALLY DONE
+~~Your README should open more like:~~
 
-> **run402-mcp — full-stack infrastructure for AI agents**  
-> From agent-written code to a live app on the internet.  
+README title is now “run402 — MCP Server, CLI & OpenClaw Skill” and subtitle is “Developer tools for Run402 — provision Postgres databases, deploy static sites, serverless functions, generate images, and manage x402 wallets.” This is better than before but doesn't match the suggested framing:
+
+> **run402-mcp — full-stack infrastructure for AI agents**
+> From agent-written code to a live app on the internet.
 > Provision Postgres, REST API, auth, storage, serverless functions, static sites, and subdomains via MCP. Pay with x402 USDC. No signups or dashboards.
 
-Then add:
+“Start here” section still missing. Currently has “Quick Start” with just `npx run402-mcp`.
 
 ```md
 ## Start here
@@ -326,10 +350,10 @@ Most users should start with one of these:
 - `get_quote` — pricing and limits
 ```
 
-### SKILL.md
-Change the frame from **“Postgres for AI Agents”** to **“Full-stack infra for AI agents.”**
+### SKILL.md — NOT DONE
+Still says **”Postgres for AI Agents”** — needs to change to **”Full-stack infra for AI agents.”**
 
-And fix the stale “10 tools” line immediately.
+Still says **”10 tools available”** — actual MCP count is **37 tools**.
 
 ---
 
@@ -356,18 +380,24 @@ That’s where the conversion value is.
 
 ---
 
-## If I were prioritizing the next sprint
+## If I were prioritizing the next sprint — UPDATED 2026-03-12
 
-### Do these 3 first
-1. **Fix docs drift** and unify messaging across README, SKILL, package description, and tool catalog.
-2. **Make `bundle_deploy`/`fork_app` the obvious start path** in MCP and on run402.com prompts.
-3. **Rewrite milestone/payment/error responses** to emphasize live URLs, what the user got, and next steps.
+### Done
+1. ~~**Fix docs drift**~~ — README tool table is comprehensive (39 tools). `sync.test.ts` CI check prevents MCP/CLI/OpenClaw drift.
 
-If you want, I can also draft:
-- a rewritten `README.md`
-- a rewritten `SKILL.md` intro + tool matrix
-- replacement description strings for all 32 tools
-- response copy templates for success / payment / error states
+### Remaining — next priorities
+1. **Fix SKILL.md** — still says "Postgres for AI Agents" and "10 tools." Fastest remaining win.
+2. **Unify messaging** — package.json, SKILL title, README subtitle should all say "full-stack infrastructure" not "Postgres databases."
+3. **Add "Start here" section** to README and SKILL with the bundle_deploy/fork_app/provision/get_quote decision tree.
+4. **Rewrite hero tool descriptions** in `src/index.ts` — provision, bundle_deploy, deploy_site, deploy_function, fork_app, get_quote.
+5. **Add next-best-action CTAs** to success responses (provision → setup_rls/deploy_function; deploy_site → claim_subdomain; fork_app → publish_app).
+6. **Consider MCP resources/prompts** for quickstart, pricing, demo ideas — or a `get_run402_guide(topic)` fallback tool.
+
+### Deferred
+- Tool registration reordering (hero tools first)
+- fork/publish growth loop copy
+- Funnel instrumentation / UTM params
+- Error → onboarding recovery UX
 
 ---
 **Wall time**: 16m 53s
