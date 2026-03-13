@@ -16,7 +16,7 @@ export async function handleDeleteSecret(args: {
   if (!project) return projectNotFound(args.project_id);
 
   const res = await apiRequest(
-    `/admin/v1/projects/${args.project_id}/secrets/${encodeURIComponent(args.key)}`,
+    `/projects/v1/admin/${args.project_id}/secrets/${encodeURIComponent(args.key)}`,
     {
       method: "DELETE",
       headers: {

@@ -37,7 +37,7 @@ export async function handleRequestFaucet(args: {
     }
   }
 
-  const res = await apiRequest("/v1/faucet", {
+  const res = await apiRequest("/faucet/v1", {
     method: "POST",
     body: { address },
   });

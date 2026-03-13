@@ -16,7 +16,7 @@ export async function handleDeleteFunction(args: {
   if (!project) return projectNotFound(args.project_id);
 
   const res = await apiRequest(
-    `/admin/v1/projects/${args.project_id}/functions/${encodeURIComponent(args.name)}`,
+    `/projects/v1/admin/${args.project_id}/functions/${encodeURIComponent(args.name)}`,
     {
       method: "DELETE",
       headers: {

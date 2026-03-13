@@ -21,7 +21,7 @@ export async function handleGenerateImage(args: {
 }> {
   const aspect = args.aspect || "square";
 
-  const res = await apiRequest("/v1/generate-image", {
+  const res = await apiRequest("/generate-image/v1", {
     method: "POST",
     body: { prompt: args.prompt, aspect },
   });

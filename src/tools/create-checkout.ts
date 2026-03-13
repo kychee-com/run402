@@ -11,7 +11,7 @@ export async function handleCreateCheckout(args: {
   wallet: string;
   amount_usd_micros: number;
 }): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
-  const res = await apiRequest("/v1/billing/checkouts", {
+  const res = await apiRequest("/billing/v1/checkouts", {
     method: "POST",
     body: { wallet: args.wallet.toLowerCase(), amount_usd_micros: args.amount_usd_micros },
   });

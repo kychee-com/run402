@@ -56,7 +56,7 @@ async function generate(opts) {
   client.register("eip155:84532", new ExactEvmScheme(signer));
   const fetchPaid = wrapFetchWithPayment(fetch, client);
 
-  const res = await fetchPaid(`${API}/v1/generate-image`, {
+  const res = await fetchPaid(`${API}/generate-image/v1`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ prompt: opts.prompt, aspect: opts.aspect }),

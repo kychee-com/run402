@@ -12,10 +12,10 @@ export const browseAppsSchema = {
 export async function handleBrowseApps(args: {
   tags?: string[];
 }): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
-  let path = "/v1/apps";
+  let path = "/apps/v1";
   if (args.tags && args.tags.length > 0) {
     const params = args.tags.map((t) => `tag=${encodeURIComponent(t)}`).join("&");
-    path = `/v1/apps?${params}`;
+    path = `/apps/v1?${params}`;
   }
 
   const res = await apiRequest(path, { method: "GET" });

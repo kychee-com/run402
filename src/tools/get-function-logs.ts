@@ -22,7 +22,7 @@ export async function handleGetFunctionLogs(args: {
 
   const tail = args.tail || 50;
   const res = await apiRequest(
-    `/admin/v1/projects/${args.project_id}/functions/${encodeURIComponent(args.name)}/logs?tail=${tail}`,
+    `/projects/v1/admin/${args.project_id}/functions/${encodeURIComponent(args.name)}/logs?tail=${tail}`,
     {
       method: "GET",
       headers: {

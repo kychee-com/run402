@@ -9,7 +9,7 @@ export const getDeploymentSchema = {
 export async function handleGetDeployment(args: {
   deployment_id: string;
 }): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
-  const res = await apiRequest(`/v1/deployments/${args.deployment_id}`, {
+  const res = await apiRequest(`/deployments/v1/${args.deployment_id}`, {
     method: "GET",
   });
 

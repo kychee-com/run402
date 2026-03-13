@@ -66,7 +66,7 @@ export async function run(sub, args) {
   client.register("eip155:84532", new ExactEvmScheme(signer));
   const fetchPaid = wrapFetchWithPayment(fetch, client);
 
-  const res = await fetchPaid(`${API}/v1/generate-image`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt: opts.prompt, aspect: opts.aspect }) });
+  const res = await fetchPaid(`${API}/generate-image/v1`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt: opts.prompt, aspect: opts.aspect }) });
   const data = await res.json();
   if (!res.ok) { console.error(JSON.stringify({ status: "error", http: res.status, ...data })); process.exit(1); }
 

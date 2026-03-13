@@ -35,7 +35,7 @@ async function send(text) {
   client.register("eip155:84532", new ExactEvmScheme(signer));
   const fetchPaid = wrapFetchWithPayment(fetch, client);
 
-  const res = await fetchPaid(`${API}/v1/message`, {
+  const res = await fetchPaid(`${API}/message/v1`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ message: text }),

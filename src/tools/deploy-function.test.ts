@@ -81,7 +81,7 @@ describe("deploy_function tool", () => {
   it("returns payment info (NOT isError) on 402", async () => {
     globalThis.fetch = (async () =>
       new Response(
-        JSON.stringify({ error: "Lease expired", renew_url: "/v1/projects/proj-001/renew" }),
+        JSON.stringify({ error: "Lease expired", renew_url: "/projects/v1/proj-001/renew" }),
         { status: 402, headers: { "Content-Type": "application/json" } },
       )) as typeof fetch;
 

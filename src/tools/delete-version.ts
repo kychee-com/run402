@@ -16,7 +16,7 @@ export async function handleDeleteVersion(args: {
   if (!project) return projectNotFound(args.project_id);
 
   const res = await apiRequest(
-    `/admin/v1/projects/${args.project_id}/versions/${args.version_id}`,
+    `/projects/v1/admin/${args.project_id}/versions/${args.version_id}`,
     {
       method: "DELETE",
       headers: { Authorization: `Bearer ${project.service_key}` },

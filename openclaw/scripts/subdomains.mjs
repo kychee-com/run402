@@ -20,7 +20,7 @@ async function claim(deploymentId, name, extraArgs) {
     const p = findProject(opts.project);
     headers["Authorization"] = `Bearer ${p.service_key}`;
   }
-  const res = await fetch(`${API}/v1/subdomains`, {
+  const res = await fetch(`${API}/subdomains/v1`, {
     method: "POST",
     headers,
     body: JSON.stringify({ name, deployment_id: deploymentId }),
@@ -40,7 +40,7 @@ async function deleteSubdomain(name, extraArgs) {
     const p = findProject(opts.project);
     headers["Authorization"] = `Bearer ${p.service_key}`;
   }
-  const res = await fetch(`${API}/v1/subdomains/${encodeURIComponent(name)}`, {
+  const res = await fetch(`${API}/subdomains/v1/${encodeURIComponent(name)}`, {
     method: "DELETE",
     headers,
   });
@@ -54,7 +54,7 @@ async function deleteSubdomain(name, extraArgs) {
 
 async function list(projectId) {
   const p = findProject(projectId);
-  const res = await fetch(`${API}/v1/subdomains`, {
+  const res = await fetch(`${API}/subdomains/v1`, {
     headers: { "Authorization": `Bearer ${p.service_key}` },
   });
   const data = await res.json();

@@ -21,7 +21,7 @@ export async function handleProvision(args: {
   const tier = args.tier || "prototype";
   const name = args.name;
 
-  const res = await apiRequest("/v1/projects", {
+  const res = await apiRequest("/projects/v1", {
     method: "POST",
     body: { tier, name },
   });

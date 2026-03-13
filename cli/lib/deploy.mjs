@@ -84,7 +84,7 @@ export async function run(args) {
   client.register("eip155:84532", new ExactEvmScheme(signer));
   const fetchPaid = wrapFetchWithPayment(fetch, client);
 
-  const res = await fetchPaid(`${API}/v1/deploy/${opts.tier}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(manifest) });
+  const res = await fetchPaid(`${API}/deploy/v1/${opts.tier}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(manifest) });
   const result = await res.json();
   if (!res.ok) { console.error(JSON.stringify({ status: "error", http: res.status, ...result })); process.exit(1); }
   saveProject(result);

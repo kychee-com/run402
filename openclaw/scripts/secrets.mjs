@@ -12,7 +12,7 @@ import { findProject, API } from "./config.mjs";
 
 async function set(projectId, key, value) {
   const p = findProject(projectId);
-  const res = await fetch(`${API}/admin/v1/projects/${projectId}/secrets`, {
+  const res = await fetch(`${API}/projects/v1/admin/${projectId}/secrets`, {
     method: "POST",
     headers: { "Authorization": `Bearer ${p.service_key}`, "Content-Type": "application/json" },
     body: JSON.stringify({ key, value }),
@@ -24,7 +24,7 @@ async function set(projectId, key, value) {
 
 async function list(projectId) {
   const p = findProject(projectId);
-  const res = await fetch(`${API}/admin/v1/projects/${projectId}/secrets`, {
+  const res = await fetch(`${API}/projects/v1/admin/${projectId}/secrets`, {
     headers: { "Authorization": `Bearer ${p.service_key}` },
   });
   const data = await res.json();
@@ -34,7 +34,7 @@ async function list(projectId) {
 
 async function deleteSecret(projectId, key) {
   const p = findProject(projectId);
-  const res = await fetch(`${API}/admin/v1/projects/${projectId}/secrets/${encodeURIComponent(key)}`, {
+  const res = await fetch(`${API}/projects/v1/admin/${projectId}/secrets/${encodeURIComponent(key)}`, {
     method: "DELETE",
     headers: { "Authorization": `Bearer ${p.service_key}` },
   });

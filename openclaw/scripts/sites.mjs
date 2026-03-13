@@ -49,7 +49,7 @@ async function deploy(extraArgs) {
   client.register("eip155:84532", new ExactEvmScheme(signer));
   const fetchPaid = wrapFetchWithPayment(fetch, client);
 
-  const res = await fetchPaid(`${API}/v1/deployments`, {
+  const res = await fetchPaid(`${API}/deployments/v1`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -61,7 +61,7 @@ async function deploy(extraArgs) {
 
 async function status(deploymentId) {
   if (!deploymentId) { console.error(JSON.stringify({ status: "error", message: "Missing deployment ID" })); process.exit(1); }
-  const res = await fetch(`${API}/v1/deployments/${deploymentId}`);
+  const res = await fetch(`${API}/deployments/v1/${deploymentId}`);
   const data = await res.json();
   if (!res.ok) { console.error(JSON.stringify({ status: "error", http: res.status, ...data })); process.exit(1); }
   console.log(JSON.stringify(data, null, 2));

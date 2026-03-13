@@ -51,7 +51,7 @@ async function deploy(projectId, name, extraArgs) {
   if (opts.deps) body.deps = opts.deps;
 
   const fetchPaid = await setupPaidFetch();
-  const res = await fetchPaid(`${API}/admin/v1/projects/${projectId}/functions`, {
+  const res = await fetchPaid(`${API}/projects/v1/admin/${projectId}/functions`, {
     method: "POST",
     headers: { "Authorization": `Bearer ${p.service_key}`, "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -88,7 +88,7 @@ async function logs(projectId, name, extraArgs) {
   for (let i = 0; i < extraArgs.length; i++) {
     if (extraArgs[i] === "--tail" && extraArgs[i + 1]) tail = parseInt(extraArgs[++i]);
   }
-  const res = await fetch(`${API}/admin/v1/projects/${projectId}/functions/${encodeURIComponent(name)}/logs?tail=${tail}`, {
+  const res = await fetch(`${API}/projects/v1/admin/${projectId}/functions/${encodeURIComponent(name)}/logs?tail=${tail}`, {
     headers: { "Authorization": `Bearer ${p.service_key}` },
   });
   const data = await res.json();
@@ -98,7 +98,7 @@ async function logs(projectId, name, extraArgs) {
 
 async function list(projectId) {
   const p = findProject(projectId);
-  const res = await fetch(`${API}/admin/v1/projects/${projectId}/functions`, {
+  const res = await fetch(`${API}/projects/v1/admin/${projectId}/functions`, {
     headers: { "Authorization": `Bearer ${p.service_key}` },
   });
   const data = await res.json();
@@ -108,7 +108,7 @@ async function list(projectId) {
 
 async function deleteFunction(projectId, name) {
   const p = findProject(projectId);
-  const res = await fetch(`${API}/admin/v1/projects/${projectId}/functions/${encodeURIComponent(name)}`, {
+  const res = await fetch(`${API}/projects/v1/admin/${projectId}/functions/${encodeURIComponent(name)}`, {
     method: "DELETE",
     headers: { "Authorization": `Bearer ${p.service_key}` },
   });

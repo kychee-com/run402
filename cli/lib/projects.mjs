@@ -59,7 +59,7 @@ async function setupPaidFetch() {
 }
 
 async function quote() {
-  const res = await fetch(`${API}/v1/projects`);
+  const res = await fetch(`${API}/projects/v1`);
   const data = await res.json();
   if (!res.ok) { console.error(JSON.stringify({ status: "error", http: res.status, ...data })); process.exit(1); }
   console.log(JSON.stringify(data, null, 2));
@@ -74,7 +74,7 @@ async function provision(args) {
   const fetchPaid = await setupPaidFetch();
   const body = { tier: opts.tier };
   if (opts.name) body.name = opts.name;
-  const res = await fetchPaid(`${API}/v1/projects`, {
+  const res = await fetchPaid(`${API}/projects/v1`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -98,7 +98,7 @@ async function provision(args) {
 async function rls(projectId, template, tablesJson) {
   const p = findProject(projectId);
   const tables = JSON.parse(tablesJson);
-  const res = await fetch(`${API}/admin/v1/projects/${projectId}/rls`, {
+  const res = await fetch(`${API}/projects/v1/admin/${projectId}/rls`, {
     method: "POST",
     headers: { "Authorization": `Bearer ${p.service_key}`, "Content-Type": "application/json" },
     body: JSON.stringify({ template, tables }),
@@ -116,7 +116,7 @@ async function list() {
 
 async function sqlCmd(projectId, query) {
   const p = findProject(projectId);
-  const res = await fetch(`${API}/admin/v1/projects/${projectId}/sql`, { method: "POST", headers: { "Authorization": `Bearer ${p.service_key}`, "Content-Type": "text/plain" }, body: query });
+  const res = await fetch(`${API}/projects/v1/admin/${projectId}/sql`, { method: "POST", headers: { "Authorization": `Bearer ${p.service_key}`, "Content-Type": "text/plain" }, body: query });
   console.log(JSON.stringify(await res.json(), null, 2));
 }
 
@@ -128,7 +128,7 @@ async function rest(projectId, table, queryParams) {
 
 async function usage(projectId) {
   const p = findProject(projectId);
-  const res = await fetch(`${API}/admin/v1/projects/${projectId}/usage`, { headers: { "Authorization": `Bearer ${p.service_key}` } });
+  const res = await fetch(`${API}/projects/v1/admin/${projectId}/usage`, { headers: { "Authorization": `Bearer ${p.service_key}` } });
   const data = await res.json();
   if (!res.ok) { console.error(JSON.stringify({ status: "error", http: res.status, ...data })); process.exit(1); }
   console.log(JSON.stringify(data, null, 2));
@@ -136,7 +136,7 @@ async function usage(projectId) {
 
 async function schema(projectId) {
   const p = findProject(projectId);
-  const res = await fetch(`${API}/admin/v1/projects/${projectId}/schema`, { headers: { "Authorization": `Bearer ${p.service_key}` } });
+  const res = await fetch(`${API}/projects/v1/admin/${projectId}/schema`, { headers: { "Authorization": `Bearer ${p.service_key}` } });
   const data = await res.json();
   if (!res.ok) { console.error(JSON.stringify({ status: "error", http: res.status, ...data })); process.exit(1); }
   console.log(JSON.stringify(data, null, 2));
@@ -144,7 +144,7 @@ async function schema(projectId) {
 
 async function renew(projectId) {
   const fetchPaid = await setupPaidFetch();
-  const res = await fetchPaid(`${API}/v1/projects/${projectId}/renew`, { method: "POST", headers: { "Content-Type": "application/json" } });
+  const res = await fetchPaid(`${API}/projects/v1/${projectId}/renew`, { method: "POST", headers: { "Content-Type": "application/json" } });
   const data = await res.json();
   if (!res.ok) { console.error(JSON.stringify({ status: "error", http: res.status, ...data })); process.exit(1); }
   const projects = loadProjects();
@@ -155,7 +155,7 @@ async function renew(projectId) {
 
 async function deleteProject(projectId) {
   const p = findProject(projectId);
-  const res = await fetch(`${API}/v1/projects/${projectId}`, { method: "DELETE", headers: { "Authorization": `Bearer ${p.service_key}` } });
+  const res = await fetch(`${API}/projects/v1/${projectId}`, { method: "DELETE", headers: { "Authorization": `Bearer ${p.service_key}` } });
   if (res.status === 204 || res.ok) {
     saveProjects(loadProjects().filter(pr => pr.project_id !== projectId));
     console.log(JSON.stringify({ status: "ok", message: `Project ${projectId} deleted.` }));

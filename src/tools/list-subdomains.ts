@@ -13,7 +13,7 @@ export async function handleListSubdomains(args: {
   const project = getProject(args.project_id);
   if (!project) return projectNotFound(args.project_id);
 
-  const res = await apiRequest("/v1/subdomains", {
+  const res = await apiRequest("/subdomains/v1", {
     method: "GET",
     headers: {
       Authorization: `Bearer ${project.service_key}`,

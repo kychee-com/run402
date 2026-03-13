@@ -149,7 +149,7 @@ describe("claim_subdomain tool", () => {
       project_id: "proj-4",
     });
 
-    assert.ok(capturedUrl.includes("/v1/subdomains"));
+    assert.ok(capturedUrl.includes("/subdomains/v1"));
     const headers = capturedInit?.headers as Record<string, string>;
     assert.equal(headers["Authorization"], "Bearer sk-auth-key");
     assert.equal(headers["Content-Type"], "application/json");

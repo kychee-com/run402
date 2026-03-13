@@ -262,10 +262,10 @@ Design tables based on what the user needs. Add `user_id uuid` columns if you pl
 Use `run_sql` to apply RLS if users should only see their own rows:
 
 ```
-run_sql(project_id: "prj_...", sql: "-- Use the /admin/v1/projects/:id/rls endpoint via HTTP for RLS templates")
+run_sql(project_id: "prj_...", sql: "-- Use the /projects/v1/admin/:id/rls endpoint via HTTP for RLS templates")
 ```
 
-Three RLS templates are available via the REST API:
+Three RLS templates are available via the API:
 - **`user_owns_rows`** — Users can only access rows where `owner_column = auth.uid()`. Best for user-scoped data.
 - **`public_read`** — Anyone can read. Only authenticated users can write.
 - **`public_read_write`** — Anyone can read and write. Use for guestbooks, public logs.

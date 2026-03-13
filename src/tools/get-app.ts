@@ -9,7 +9,7 @@ export const getAppSchema = {
 export async function handleGetApp(args: {
   version_id: string;
 }): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
-  const res = await apiRequest(`/v1/apps/${args.version_id}`, {
+  const res = await apiRequest(`/apps/v1/${args.version_id}`, {
     method: "GET",
   });
 

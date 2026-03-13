@@ -34,7 +34,7 @@ export async function handleDeploySite(args: {
   target?: string;
   files: Array<{ file: string; data: string; encoding?: string }>;
 }): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
-  const res = await apiRequest("/v1/deployments", {
+  const res = await apiRequest("/deployments/v1", {
     method: "POST",
     body: {
       name: args.name,

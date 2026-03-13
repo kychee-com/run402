@@ -9,7 +9,7 @@ export const sendMessageSchema = {
 export async function handleSendMessage(args: {
   message: string;
 }): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
-  const res = await apiRequest("/v1/message", {
+  const res = await apiRequest("/message/v1", {
     method: "POST",
     body: { message: args.message },
   });

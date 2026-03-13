@@ -29,7 +29,7 @@ export async function handleClaimSubdomain(args: {
     authHeader = { Authorization: `Bearer ${project.service_key}` };
   }
 
-  const res = await apiRequest("/v1/subdomains", {
+  const res = await apiRequest("/subdomains/v1", {
     method: "POST",
     headers: authHeader,
     body: { name: args.name, deployment_id: args.deployment_id },
@@ -85,7 +85,7 @@ export async function handleDeleteSubdomain(args: {
     authHeader = { Authorization: `Bearer ${project.service_key}` };
   }
 
-  const res = await apiRequest(`/v1/subdomains/${encodeURIComponent(args.name)}`, {
+  const res = await apiRequest(`/subdomains/v1/${encodeURIComponent(args.name)}`, {
     method: "DELETE",
     headers: authHeader,
   });

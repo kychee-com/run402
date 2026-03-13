@@ -17,7 +17,7 @@ export async function handleSetAgentContact(args: {
   if (args.email) body.email = args.email;
   if (args.webhook) body.webhook = args.webhook;
 
-  const res = await apiRequest("/v1/agent/contact", {
+  const res = await apiRequest("/agent/v1/contact", {
     method: "PUT",
     body,
   });

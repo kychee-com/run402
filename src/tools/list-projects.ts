@@ -13,7 +13,7 @@ export async function handleListProjects(args: {
 }): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
   const wallet = args.wallet.toLowerCase();
 
-  const res = await apiRequest(`/v1/wallets/${wallet}/projects`, {
+  const res = await apiRequest(`/wallets/v1/${wallet}/projects`, {
     method: "GET",
   });
 

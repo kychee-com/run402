@@ -13,7 +13,7 @@ export async function handleCheckBalance(args: {
 }): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
   const wallet = args.wallet.toLowerCase();
 
-  const res = await apiRequest(`/v1/billing/accounts/${wallet}`, {
+  const res = await apiRequest(`/billing/v1/accounts/${wallet}`, {
     method: "GET",
   });
 

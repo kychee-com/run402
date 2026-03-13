@@ -30,7 +30,7 @@ export async function handleUpdateVersion(args: {
   if (args.fork_allowed !== undefined) body.fork_allowed = args.fork_allowed;
 
   const res = await apiRequest(
-    `/admin/v1/projects/${args.project_id}/versions/${args.version_id}`,
+    `/projects/v1/admin/${args.project_id}/versions/${args.version_id}`,
     {
       method: "PATCH",
       headers: { Authorization: `Bearer ${project.service_key}` },

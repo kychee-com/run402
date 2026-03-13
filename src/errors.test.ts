@@ -33,10 +33,10 @@ describe("formatApiError", () => {
 
   it("includes renew_url when present", () => {
     const result = formatApiError(
-      { status: 403, body: { error: "Expired", renew_url: "/v1/projects/p1/renew" } },
+      { status: 403, body: { error: "Expired", renew_url: "/projects/v1/p1/renew" } },
       "running SQL",
     );
-    assert.ok(result.content[0]!.text.includes("Renew URL: /v1/projects/p1/renew"));
+    assert.ok(result.content[0]!.text.includes("Renew URL: /projects/v1/p1/renew"));
     assert.ok(result.content[0]!.text.includes("lease may have expired"));
   });
 

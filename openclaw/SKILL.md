@@ -80,7 +80,7 @@ node <skill_dir>/scripts/projects.mjs list
    - `service_key` = full admin (bypasses RLS). Server-side only.
    - `access_token` = user-scoped read/write (from login). Subject to RLS.
 5. **Don't mix auth methods** — x402 endpoints use payment header only (no apikey/Authorization). REST/auth/storage use apikey only (no payment header).
-6. **`POST /v1/subdomains` is idempotent** — upserts. Safe to call every deploy.
+6. **`POST /subdomains/v1` is idempotent** — upserts. Safe to call every deploy.
 7. **Subdomain claim requires `service_key`** as `Authorization: Bearer` (not apikey header).
 8. **Don't GRANT/REVOKE** — permissions managed automatically. Use RLS templates for access control.
 9. **Schema cache is instant** — no sleep needed after CREATE TABLE, REST API works immediately.
@@ -124,7 +124,7 @@ Once funded, x402 payments settle from allowance automatically. No code changes.
 
 ## Bundle Deploy (One-Call Full-Stack App)
 
-`POST /v1/deploy/:tier` — deploys everything atomically. One x402 payment.
+`POST /deploy/v1/:tier` — deploys everything atomically. One x402 payment.
 
 ```json
 {
@@ -166,8 +166,8 @@ For when you want to build incrementally instead of all-at-once.
 ### 1. Create Project
 
 ```
-POST /v1/projects                    (x402, default prototype)
-POST /v1/projects/create/:tier       (x402, specific tier)
+POST /projects/v1                    (x402, default prototype)
+POST /projects/v1/create/:tier       (x402, specific tier)
 ```
 
 Returns: `project_id`, `anon_key`, `service_key`, `schema_slot`, `lease_expires_at`
@@ -175,7 +175,7 @@ Returns: `project_id`, `anon_key`, `service_key`, `schema_slot`, `lease_expires_
 ### 2. Create Tables (SQL)
 
 ```bash
-curl -X POST https://api.run402.com/admin/v1/projects/$PROJECT_ID/sql \
+curl -X POST https://api.run402.com/projects/v1/admin/$PROJECT_ID/sql \
   -H "Authorization: Bearer $SERVICE_KEY" \
   -H "Content-Type: text/plain" \
   -d "CREATE TABLE todos (id serial PRIMARY KEY, task text NOT NULL, done boolean DEFAULT false, user_id uuid);"
@@ -188,7 +188,7 @@ Both `SERIAL` and `BIGINT GENERATED ALWAYS AS IDENTITY` work. Sequence permissio
 ### 3. Apply RLS (Optional)
 
 ```bash
-curl -X POST https://api.run402.com/admin/v1/projects/$PROJECT_ID/rls \
+curl -X POST https://api.run402.com/projects/v1/admin/$PROJECT_ID/rls \
   -H "Authorization: Bearer $SERVICE_KEY" \
   -H "Content-Type: application/json" \
   -d '{"template": "user_owns_rows", "tables": [{"table": "todos", "owner_column": "user_id"}]}'
@@ -197,7 +197,7 @@ curl -X POST https://api.run402.com/admin/v1/projects/$PROJECT_ID/rls \
 ### 4. Deploy Site
 
 ```
-POST /v1/deployments    (x402, $0.05)
+POST /deployments/v1    (x402, $0.05)
 { "name": "my-app", "project": "prj_...", "files": [{ "file": "index.html", "data": "..." }] }
 ```
 
@@ -206,7 +206,7 @@ Returns permanent URL at `https://{id}.sites.run402.com`. SPA-friendly (paths wi
 ### 5. Claim Subdomain (Free)
 
 ```bash
-curl -X POST https://api.run402.com/v1/subdomains \
+curl -X POST https://api.run402.com/subdomains/v1 \
   -H "Authorization: Bearer $SERVICE_KEY" \
   -H "Content-Type: application/json" \
   -d '{"name": "my-app", "deployment_id": "dpl_..."}'
@@ -255,7 +255,7 @@ DELETE /rest/v1/todos?id=eq.1
 ## SQL Queries (Admin)
 
 ```bash
-curl -X POST https://api.run402.com/admin/v1/projects/$PROJECT_ID/sql \
+curl -X POST https://api.run402.com/projects/v1/admin/$PROJECT_ID/sql \
   -H "Authorization: Bearer $SERVICE_KEY" \
   -H "Content-Type: text/plain" \
   -d "SELECT * FROM todos WHERE done = false;"
@@ -355,7 +355,7 @@ GET /storage/v1/object/list/assets
 
 ## Row-Level Security (RLS)
 
-Three templates. Applied via `POST /admin/v1/projects/:id/rls` with `service_key`.
+Three templates. Applied via `POST /projects/v1/admin/:id/rls` with `service_key`.
 
 ### `user_owns_rows`
 Users access only rows where `owner_column = auth.uid()`. Best for user-scoped data.
@@ -387,7 +387,7 @@ node <skill_dir>/scripts/image.mjs generate "a cat in a top hat" --aspect landsc
 
 Or via API directly:
 ```
-POST /v1/generate-image    (x402, $0.03)
+POST /generate-image/v1    (x402, $0.03)
 { "prompt": "a cat wearing a top hat, watercolor style", "aspect": "square" }
 ```
 
@@ -433,7 +433,7 @@ Share your app as a template. Other agents fork it — get their own independent
 
 ### Publish
 ```
-POST /admin/v1/projects/:id/publish
+POST /projects/v1/admin/:id/publish
 Authorization: Bearer <service_key>
 {
   "visibility": "public",
@@ -447,12 +447,12 @@ Snapshots: schema, functions, site files, secret names (never values). NOT copie
 
 ### Inspect (free)
 ```
-GET /v1/apps/:versionId
+GET /apps/v1/:versionId
 ```
 
 ### Fork
 ```
-POST /v1/fork/:tier    (x402, same pricing as project creation)
+POST /fork/v1/:tier    (x402, same pricing as project creation)
 { "version_id": "ver_...", "name": "my-copy", "subdomain": "my-copy" }
 ```
 
@@ -460,7 +460,7 @@ Creates fully independent project. Readiness: `ready`, `configuration_required` 
 
 ### List versions
 ```
-GET /admin/v1/projects/:id/versions
+GET /projects/v1/admin/:id/versions
 Authorization: Bearer <service_key>
 ```
 
@@ -470,20 +470,20 @@ Authorization: Bearer <service_key>
 
 ```bash
 # Claim/reassign (idempotent upsert, free)
-POST /v1/subdomains
+POST /subdomains/v1
   -H "Authorization: Bearer $SERVICE_KEY"
   -d '{"name": "myapp", "deployment_id": "dpl_..."}'
 # → https://myapp.run402.com
 
 # Lookup (free, no auth)
-GET /v1/subdomains/myapp
+GET /subdomains/v1/myapp
 
 # List project's subdomains
-GET /v1/subdomains
+GET /subdomains/v1
   -H "Authorization: Bearer $SERVICE_KEY"
 
 # Release
-DELETE /v1/subdomains/myapp
+DELETE /subdomains/v1/myapp
   -H "Authorization: Bearer $SERVICE_KEY"
 ```
 
@@ -521,7 +521,7 @@ node <skill_dir>/scripts/projects.mjs rest <project_id> todos "done=eq.false&ord
 - **Expired (day 0)**: read-only for 7 days
 - **Grace ends (day 7)**: archived (no access)
 - **Day 37**: permanent deletion
-- **Renew anytime** before deletion via `POST /v1/projects/:id/renew`
+- **Renew anytime** before deletion via `POST /projects/v1/:id/renew`
 
 ---
 
@@ -529,14 +529,14 @@ node <skill_dir>/scripts/projects.mjs rest <project_id> todos "done=eq.false&ord
 
 ```bash
 # Check balance (micro-USD: 1 USD = 1,000,000)
-GET /v1/billing/accounts/<WALLET_ADDRESS>
+GET /billing/v1/accounts/<WALLET_ADDRESS>
 # → { "available_usd_micros": 4900000, ... }
 
 # Transaction history
-GET /v1/billing/accounts/<WALLET_ADDRESS>/history?limit=20
+GET /billing/v1/accounts/<WALLET_ADDRESS>/history?limit=20
 
 # Create Stripe checkout (for your human)
-POST /v1/billing/checkouts
+POST /billing/v1/checkouts
   -d '{"wallet": "<WALLET_ADDRESS>", "amount_usd_micros": 5000000}'
 # → { "checkout_url": "https://checkout.stripe.com/..." }
 ```
@@ -554,12 +554,12 @@ Settlement headers on paid responses:
 Add `Idempotency-Key` header to prevent double-charging on retries. Same key + method + path = same response, no duplicate payment. Keys valid 24h.
 
 ```bash
-curl -X POST https://api.run402.com/v1/projects \
+curl -X POST https://api.run402.com/projects/v1 \
   -H "Idempotency-Key: $(uuidgen)" \
   -H "X-402-Payment: <payment>"
 ```
 
-Supported on: `/v1/projects`, `/v1/projects/create/:tier`, `/v1/projects/:id/renew`, `/v1/deployments`, `/v1/message`, `/v1/generate-image`, `/v1/deploy/:tier`.
+Supported on: `/projects/v1`, `/projects/v1/create/:tier`, `/projects/v1/:id/renew`, `/deployments/v1`, `/message/v1`, `/generate-image/v1`, `/deploy/v1/:tier`.
 
 **Always include an Idempotency-Key when provisioning or renewing.**
 
@@ -568,7 +568,7 @@ Supported on: `/v1/projects`, `/v1/projects/create/:tier`, `/v1/projects/:id/ren
 ## Contact Developers
 
 ```
-POST /v1/message    (x402, $0.01)
+POST /message/v1    (x402, $0.01)
 { "message": "Hello from my agent!" }
 ```
 
@@ -588,7 +588,7 @@ Site deployment: $0.05 (standalone) or included in bundle deploy.
 Image generation: $0.03/image.
 Rate limit: 100 req/s per project.
 
-Check pricing: `POST /v1/projects/quote` (free, no auth).
+Check pricing: `POST /projects/v1/quote` (free, no auth).
 
 ---
 
@@ -596,8 +596,8 @@ Check pricing: `POST /v1/projects/quote` (free, no auth).
 
 | Auth Method | Header | Used For |
 |-------------|--------|----------|
-| x402 payment | (automatic via x402 client) | `POST /v1/projects`, `/v1/deployments`, `/v1/generate-image`, `/v1/message`, `/v1/projects/:id/renew`, `/v1/deploy/:tier` |
-| service_key | `Authorization: Bearer {service_key}` | `/admin/v1/projects/:id/*`, `POST /v1/subdomains`, `DELETE /v1/subdomains/:name` |
+| x402 payment | (automatic via x402 client) | `POST /projects/v1`, `/deployments/v1`, `/generate-image/v1`, `/message/v1`, `/projects/v1/:id/renew`, `/deploy/v1/:tier` |
+| service_key | `Authorization: Bearer {service_key}` | `/projects/v1/admin/:id/*`, `POST /subdomains/v1`, `DELETE /subdomains/v1/:name` |
 | apikey | `apikey: {anon_key or service_key or access_token}` | `/rest/v1/*`, `/auth/v1/*`, `/storage/v1/*` |
 
 ---
@@ -626,4 +626,4 @@ Don't build generic apps. Build something your human will show off.
 
 ### After building: send feedback
 
-Ask your human what they thought, then relay to Run402 developers via `/v1/message` ($0.01). They read every message.
+Ask your human what they thought, then relay to Run402 developers via `/message/v1` ($0.01). They read every message.

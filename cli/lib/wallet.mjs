@@ -68,7 +68,7 @@ async function fund() {
   const client = createPublicClient({ chain: baseSepolia, transport: http() });
   const before = await readUsdcBalance(client, USDC_SEPOLIA, w.address).catch(() => 0);
 
-  const res = await fetch(`${API}/v1/faucet`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ address: w.address }) });
+  const res = await fetch(`${API}/faucet/v1`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ address: w.address }) });
   const data = await res.json();
   if (!res.ok) {
     console.log(JSON.stringify({ status: "error", ...data }));
@@ -111,7 +111,7 @@ async function balance() {
   const [mainnetUsdc, sepoliaUsdc, billingRes] = await Promise.all([
     readUsdcBalance(mainnetClient, USDC_MAINNET, w.address).catch(() => null),
     readUsdcBalance(sepoliaClient, USDC_SEPOLIA, w.address).catch(() => null),
-    fetch(`${API}/v1/billing/accounts/${w.address.toLowerCase()}`),
+    fetch(`${API}/billing/v1/accounts/${w.address.toLowerCase()}`),
   ]);
 
   const billing = billingRes.ok ? await billingRes.json() : null;
@@ -140,7 +140,7 @@ async function checkout(args) {
     if (args[i] === "--amount" && args[i + 1]) amount = parseInt(args[++i], 10);
   }
   if (!amount) { console.error(JSON.stringify({ status: "error", message: "Missing --amount <usd_micros> (e.g. --amount 5000000 for $5)" })); process.exit(1); }
-  const res = await fetch(`${API}/v1/billing/checkouts`, {
+  const res = await fetch(`${API}/billing/v1/checkouts`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ wallet: w.address.toLowerCase(), amount_usd_micros: amount }),
@@ -157,7 +157,7 @@ async function history(args) {
   for (let i = 0; i < args.length; i++) {
     if (args[i] === "--limit" && args[i + 1]) limit = parseInt(args[++i], 10);
   }
-  const res = await fetch(`${API}/v1/billing/accounts/${w.address.toLowerCase()}/history?limit=${limit}`);
+  const res = await fetch(`${API}/billing/v1/accounts/${w.address.toLowerCase()}/history?limit=${limit}`);
   const data = await res.json();
   if (!res.ok) { console.error(JSON.stringify({ status: "error", http: res.status, ...data })); process.exit(1); }
   console.log(JSON.stringify(data, null, 2));

@@ -12,7 +12,7 @@ export async function handleBillingHistory(args: {
   limit?: number;
 }): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
   const wallet = args.wallet.toLowerCase();
-  let path = `/v1/billing/accounts/${wallet}/history`;
+  let path = `/billing/v1/accounts/${wallet}/history`;
   if (args.limit) path += `?limit=${args.limit}`;
 
   const res = await apiRequest(path, { method: "GET" });

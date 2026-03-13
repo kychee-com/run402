@@ -13,7 +13,7 @@ export async function handleArchiveProject(args: {
   const project = getProject(args.project_id);
   if (!project) return projectNotFound(args.project_id);
 
-  const res = await apiRequest(`/v1/projects/${args.project_id}`, {
+  const res = await apiRequest(`/projects/v1/${args.project_id}`, {
     method: "DELETE",
     headers: {
       Authorization: `Bearer ${project.service_key}`,

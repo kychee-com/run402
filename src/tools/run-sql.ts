@@ -28,7 +28,7 @@ export async function handleRunSql(args: {
   const project = getProject(args.project_id);
   if (!project) return projectNotFound(args.project_id);
 
-  const res = await apiRequest(`/admin/v1/projects/${args.project_id}/sql`, {
+  const res = await apiRequest(`/projects/v1/admin/${args.project_id}/sql`, {
     method: "POST",
     rawBody: args.sql,
     headers: {

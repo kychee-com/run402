@@ -59,7 +59,7 @@ async function fund() {
     console.log(JSON.stringify({ status: "error", message: "No wallet. Run: node wallet.mjs create" }));
     process.exit(1);
   }
-  const res = await fetch(`${API}/v1/faucet`, {
+  const res = await fetch(`${API}/faucet/v1`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ address: w.address }),
@@ -90,7 +90,7 @@ async function balance() {
   const [mainnetUsdc, sepoliaUsdc, billingRes] = await Promise.all([
     readUsdcBalance(mainnetClient, USDC_MAINNET, w.address).catch(() => null),
     readUsdcBalance(sepoliaClient, USDC_SEPOLIA, w.address).catch(() => null),
-    fetch(`${API}/v1/billing/accounts/${w.address.toLowerCase()}`),
+    fetch(`${API}/billing/v1/accounts/${w.address.toLowerCase()}`),
   ]);
 
   const billing = billingRes.ok ? await billingRes.json() : null;
@@ -119,7 +119,7 @@ async function checkout(extraArgs) {
     if (extraArgs[i] === "--amount" && extraArgs[i + 1]) amount = parseInt(extraArgs[++i], 10);
   }
   if (!amount) { console.error(JSON.stringify({ status: "error", message: "Missing --amount <usd_micros>" })); process.exit(1); }
-  const res = await fetch(`${API}/v1/billing/checkouts`, {
+  const res = await fetch(`${API}/billing/v1/checkouts`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ wallet: w.address.toLowerCase(), amount_usd_micros: amount }),
@@ -136,7 +136,7 @@ async function history(extraArgs) {
   for (let i = 0; i < extraArgs.length; i++) {
     if (extraArgs[i] === "--limit" && extraArgs[i + 1]) limit = parseInt(extraArgs[++i], 10);
   }
-  const res = await fetch(`${API}/v1/billing/accounts/${w.address.toLowerCase()}/history?limit=${limit}`);
+  const res = await fetch(`${API}/billing/v1/accounts/${w.address.toLowerCase()}/history?limit=${limit}`);
   const data = await res.json();
   if (!res.ok) { console.error(JSON.stringify({ status: "error", http: res.status, ...data })); process.exit(1); }
   console.log(JSON.stringify(data, null, 2));

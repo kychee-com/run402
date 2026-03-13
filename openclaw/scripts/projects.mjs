@@ -37,7 +37,7 @@ async function setupPaidFetch() {
 }
 
 async function quote() {
-  const res = await fetch(`${API}/v1/projects`);
+  const res = await fetch(`${API}/projects/v1`);
   const data = await res.json();
   if (!res.ok) { console.error(JSON.stringify({ status: "error", http: res.status, ...data })); process.exit(1); }
   console.log(JSON.stringify(data, null, 2));
@@ -52,7 +52,7 @@ async function provision(extraArgs) {
   const fetchPaid = await setupPaidFetch();
   const body = { tier: opts.tier };
   if (opts.name) body.name = opts.name;
-  const res = await fetchPaid(`${API}/v1/projects`, {
+  const res = await fetchPaid(`${API}/projects/v1`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -75,7 +75,7 @@ async function provision(extraArgs) {
 async function rls(projectId, template, tablesJson) {
   const p = findProject(projectId);
   const tables = JSON.parse(tablesJson);
-  const res = await fetch(`${API}/admin/v1/projects/${projectId}/rls`, {
+  const res = await fetch(`${API}/projects/v1/admin/${projectId}/rls`, {
     method: "POST",
     headers: { "Authorization": `Bearer ${p.service_key}`, "Content-Type": "application/json" },
     body: JSON.stringify({ template, tables }),
@@ -102,7 +102,7 @@ async function list() {
 
 async function sql(projectId, query) {
   const p = findProject(projectId);
-  const res = await fetch(`${API}/admin/v1/projects/${projectId}/sql`, {
+  const res = await fetch(`${API}/projects/v1/admin/${projectId}/sql`, {
     method: "POST",
     headers: { "Authorization": `Bearer ${p.service_key}`, "Content-Type": "text/plain" },
     body: query,
@@ -119,7 +119,7 @@ async function rest(projectId, table, queryParams) {
 
 async function usage(projectId) {
   const p = findProject(projectId);
-  const res = await fetch(`${API}/admin/v1/projects/${projectId}/usage`, {
+  const res = await fetch(`${API}/projects/v1/admin/${projectId}/usage`, {
     headers: { "Authorization": `Bearer ${p.service_key}` },
   });
   const data = await res.json();
@@ -129,7 +129,7 @@ async function usage(projectId) {
 
 async function schema(projectId) {
   const p = findProject(projectId);
-  const res = await fetch(`${API}/admin/v1/projects/${projectId}/schema`, {
+  const res = await fetch(`${API}/projects/v1/admin/${projectId}/schema`, {
     headers: { "Authorization": `Bearer ${p.service_key}` },
   });
   const data = await res.json();
@@ -139,7 +139,7 @@ async function schema(projectId) {
 
 async function renew(projectId) {
   const fetchPaid = await setupPaidFetch();
-  const res = await fetchPaid(`${API}/v1/projects/${projectId}/renew`, {
+  const res = await fetchPaid(`${API}/projects/v1/${projectId}/renew`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
   });
@@ -157,7 +157,7 @@ async function renew(projectId) {
 
 async function deleteProject(projectId) {
   const p = findProject(projectId);
-  const res = await fetch(`${API}/v1/projects/${projectId}`, {
+  const res = await fetch(`${API}/projects/v1/${projectId}`, {
     method: "DELETE",
     headers: { "Authorization": `Bearer ${p.service_key}` },
   });

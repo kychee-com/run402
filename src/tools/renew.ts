@@ -20,7 +20,7 @@ export async function handleRenew(args: {
 
   const tier = args.tier || project.tier;
 
-  const res = await apiRequest(`/v1/projects/${args.project_id}/renew`, {
+  const res = await apiRequest(`/projects/v1/${args.project_id}/renew`, {
     method: "POST",
     body: { tier },
   });

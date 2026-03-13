@@ -13,7 +13,7 @@ export async function handleListVersions(args: {
   const project = getProject(args.project_id);
   if (!project) return projectNotFound(args.project_id);
 
-  const res = await apiRequest(`/admin/v1/projects/${args.project_id}/versions`, {
+  const res = await apiRequest(`/projects/v1/admin/${args.project_id}/versions`, {
     method: "GET",
     headers: {
       Authorization: `Bearer ${project.service_key}`,

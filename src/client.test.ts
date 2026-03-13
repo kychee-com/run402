@@ -40,7 +40,7 @@ describe("client.apiRequest", () => {
       })) as typeof fetch;
 
     const { apiRequest } = await import("./client.js");
-    const result = await apiRequest("/v1/projects");
+    const result = await apiRequest("/projects/v1");
     assert.equal(result.ok, true);
     assert.equal(result.status, 200);
     assert.deepEqual(result.body, { id: "proj-1" });
@@ -59,7 +59,7 @@ describe("client.apiRequest", () => {
       )) as typeof fetch;
 
     const { apiRequest } = await import("./client.js");
-    const result = await apiRequest("/v1/projects");
+    const result = await apiRequest("/projects/v1");
     assert.equal(result.ok, false);
     assert.equal(result.is402, true);
     assert.equal(result.status, 402);
@@ -74,7 +74,7 @@ describe("client.apiRequest", () => {
       })) as typeof fetch;
 
     const { apiRequest } = await import("./client.js");
-    const result = await apiRequest("/v1/projects");
+    const result = await apiRequest("/projects/v1");
     assert.equal(result.ok, false);
     assert.equal(result.status, 401);
   });
@@ -149,7 +149,7 @@ describe("client.apiRequest", () => {
     }) as typeof fetch;
 
     const { apiRequest } = await import("./client.js");
-    await apiRequest("/admin/v1/projects/p1/sql", {
+    await apiRequest("/projects/v1/admin/p1/sql", {
       method: "POST",
       rawBody: "SELECT 1",
       headers: { "Content-Type": "text/plain" },
@@ -170,7 +170,7 @@ describe("client.apiRequest", () => {
     }) as typeof fetch;
 
     const { apiRequest } = await import("./client.js");
-    await apiRequest("/v1/projects", {
+    await apiRequest("/projects/v1", {
       method: "POST",
       body: { tier: "prototype" },
     });

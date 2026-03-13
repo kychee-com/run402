@@ -31,7 +31,7 @@ Examples:
 `;
 
 async function browse(args) {
-  let url = `${API}/v1/apps`;
+  let url = `${API}/apps/v1`;
   const tags = [];
   for (let i = 0; i < args.length; i++) {
     if (args[i] === "--tag" && args[i + 1]) tags.push(args[++i]);
@@ -71,7 +71,7 @@ async function fork(versionId, name, args) {
   const body = { version_id: versionId, name };
   if (opts.subdomain) body.subdomain = opts.subdomain;
 
-  const res = await fetchPaid(`${API}/v1/fork/${opts.tier}`, {
+  const res = await fetchPaid(`${API}/fork/v1/${opts.tier}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -109,7 +109,7 @@ async function publish(projectId, args) {
   if (opts.visibility) body.visibility = opts.visibility;
   if (opts.forkAllowed !== undefined) body.fork_allowed = opts.forkAllowed;
 
-  const res = await fetch(`${API}/admin/v1/projects/${projectId}/publish`, {
+  const res = await fetch(`${API}/projects/v1/admin/${projectId}/publish`, {
     method: "POST",
     headers: { "Authorization": `Bearer ${p.service_key}`, "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -121,7 +121,7 @@ async function publish(projectId, args) {
 
 async function versions(projectId) {
   const p = findProject(projectId);
-  const res = await fetch(`${API}/admin/v1/projects/${projectId}/versions`, {
+  const res = await fetch(`${API}/projects/v1/admin/${projectId}/versions`, {
     headers: { "Authorization": `Bearer ${p.service_key}` },
   });
   const data = await res.json();
@@ -131,7 +131,7 @@ async function versions(projectId) {
 
 async function inspect(versionId) {
   if (!versionId) { console.error(JSON.stringify({ status: "error", message: "Missing version ID" })); process.exit(1); }
-  const res = await fetch(`${API}/v1/apps/${versionId}`);
+  const res = await fetch(`${API}/apps/v1/${versionId}`);
   const data = await res.json();
   if (!res.ok) { console.error(JSON.stringify({ status: "error", http: res.status, ...data })); process.exit(1); }
   console.log(JSON.stringify(data, null, 2));
@@ -147,7 +147,7 @@ async function update(projectId, versionId, args) {
     if (args[i] === "--fork-allowed") body.fork_allowed = true;
     if (args[i] === "--no-fork") body.fork_allowed = false;
   }
-  const res = await fetch(`${API}/admin/v1/projects/${projectId}/versions/${versionId}`, {
+  const res = await fetch(`${API}/projects/v1/admin/${projectId}/versions/${versionId}`, {
     method: "PATCH",
     headers: { "Authorization": `Bearer ${p.service_key}`, "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -159,7 +159,7 @@ async function update(projectId, versionId, args) {
 
 async function deleteVersion(projectId, versionId) {
   const p = findProject(projectId);
-  const res = await fetch(`${API}/admin/v1/projects/${projectId}/versions/${versionId}`, {
+  const res = await fetch(`${API}/projects/v1/admin/${projectId}/versions/${versionId}`, {
     method: "DELETE",
     headers: { "Authorization": `Bearer ${p.service_key}` },
   });

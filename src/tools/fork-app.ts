@@ -24,7 +24,7 @@ export async function handleForkApp(args: {
 }): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
   const tier = args.tier || "prototype";
 
-  const res = await apiRequest(`/v1/fork/${tier}`, {
+  const res = await apiRequest(`/fork/v1/${tier}`, {
     method: "POST",
     body: {
       version_id: args.version_id,
