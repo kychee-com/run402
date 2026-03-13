@@ -175,7 +175,7 @@ curl -X POST https://api.run402.com/v1/faucet \
 ```json
 {
   "transactionHash": "0xabc123...",
-  "amount": "0.25",
+  "amount_usd_micros": 250000,
   "token": "USDC",
   "network": "base-sepolia"
 }

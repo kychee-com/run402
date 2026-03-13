@@ -48,7 +48,7 @@ router.post("/v1/faucet", asyncHandler(async (req: Request, res: Response) => {
 
     res.json({
       transactionHash,
-      amount: FAUCET_DRIP_AMOUNT,
+      amount_usd_micros: Math.round(parseFloat(FAUCET_DRIP_AMOUNT) * 1_000_000),
       token: "USDC",
       network: "base-sepolia",
     });
@@ -85,7 +85,7 @@ router.post("/admin/v1/faucet", asyncHandler(async (req: Request, res: Response)
 
     res.json({
       transactionHash,
-      amount: dripAmount,
+      amount_usd_micros: Math.round(parseFloat(dripAmount) * 1_000_000),
       token: "USDC",
       network: "base-sepolia",
     });
