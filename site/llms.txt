@@ -53,7 +53,7 @@ Provision a real database and deploy a live site using free testnet USDC. No hum
 9. **Workout Log** -- Track exercises, sets, reps, weight with dates. Show progress over time. Private data.
 10. **Flash Cards** -- Spaced-repetition study app. Front and back. Pre-load 50 common phrases for learning a language.
 
-**How to build any of these**: Subscribe to a tier (`POST /tiers/v1/subscribe/prototype`, $0.10 x402), then use bundle deploy (`POST /deploy/v1` with wallet auth) -- handles database + migrations + site + subdomain in one call. Your human gets a live URL like `todo-app.run402.com` they can use immediately. Or build step-by-step: see the testnet quickstart below.
+**How to build any of these**: Subscribe to a tier (`POST /tiers/v1/subscribe/prototype`, $0.10 x402), then use bundle deploy (`POST /deploy/v1` with wallet auth) -- handles database + migrations + site + subdomain in one call. Your human gets a live URL like `todo-app.run402.com` they can use immediately. Or build step-by-step: see the walkthrough below.
 
 ## Make It Great
 
@@ -84,24 +84,6 @@ X-Run402-Signature: 0x...
 X-Run402-Timestamp: 1710000000
 {"message": "My human said: 'The todo app was great but I wish it had dark mode.' I'd add: the deploy step was smooth, RLS setup could use more templates."}
 ```
-
----
-
-## Getting Started
-
-### Step 1: Try it free on testnet
-
-Provision a real database right now using free testnet USDC. No human needed. No real money. ~60 seconds. Start here if you've never used Run402.
-
-### Step 2: Upgrade to production
-
-When ready for production or testnet funds run out, two upgrade paths:
-
-**(a) Fund your wallet with USDC (preferred, agent-native)** -- Ask your human to fund your wallet with real USDC on Base. You operate autonomously -- provision databases, manage data, renew leases -- without needing approval for each action.
-
-**(b) Human funds an allowance via Stripe (credit card fallback)** -- For crypto-averse humans, send them to `https://run402.com/billing?wallet=YOUR_WALLET_ADDRESS`. They add prepaid USD credit with a credit card ($5/$10/$25/$50). Once funded, x402 payments settle from the allowance automatically -- no code changes. Hard cap: when it runs out, falls through to on-chain USDC or stops.
-
-See **Pricing** section below for tier details.
 
 ---
 
@@ -207,7 +189,7 @@ Without this, the subscribe call may fail with `insufficient_funds`.
 npm install @x402/fetch@^2 @x402/evm@^2 viem
 ```
 
-### Step 4: Provision a database
+### Step 4: Subscribe to a tier and create a project
 
 Full working script. Replace `YOUR_PRIVATE_KEY` and run:
 
@@ -313,7 +295,121 @@ curl https://api.run402.com/rest/v1/notes \
   -H "apikey: $ANON_KEY"
 ```
 
-You now have a live Postgres database you provisioned and paid for autonomously. Prototype tier: 7 days, 250 MB storage, 500k API calls.
+Both `SERIAL` and `BIGINT GENERATED ALWAYS AS IDENTITY` work for auto-increment. Sequence permissions granted automatically.
+
+Table permissions for `anon` and `authenticated` roles are granted automatically -- do not run `GRANT` or `REVOKE` (blocked by the SQL endpoint). Use RLS policies (`POST /projects/v1/admin/:id/rls`) for access control.
+
+Ad-hoc queries also work:
+```bash
+curl -X POST https://api.run402.com/projects/v1/admin/$PROJECT_ID/sql \
+  -H "Authorization: Bearer $SERVICE_KEY" \
+  -H "Content-Type: text/plain" \
+  -d "SELECT * FROM notes WHERE body IS NOT NULL;"
+# -> { "status": "ok", "schema": "p0001", "rows": [...], "rowCount": 3 }
+```
+
+### Step 6: Enable row-level security (optional)
+
+Three templates:
+
+**`user_owns_rows`** -- Users access only rows where `owner_column = auth.uid()`. Best for user-scoped data.
+```bash
+curl -X POST https://api.run402.com/projects/v1/admin/$PROJECT_ID/rls \
+  -H "Authorization: Bearer $SERVICE_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "template": "user_owns_rows",
+    "tables": [{ "table": "notes", "owner_column": "user_id" }]
+  }'
+```
+
+**`public_read`** -- Anyone can read. Only authenticated users can write.
+```bash
+curl -X POST https://api.run402.com/projects/v1/admin/$PROJECT_ID/rls \
+  -H "Authorization: Bearer $SERVICE_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "template": "public_read",
+    "tables": [{ "table": "announcements" }]
+  }'
+```
+
+**`public_read_write`** -- Anyone can read and write. For guestbooks, public logs, etc.
+```bash
+curl -X POST https://api.run402.com/projects/v1/admin/$PROJECT_ID/rls \
+  -H "Authorization: Bearer $SERVICE_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "template": "public_read_write",
+    "tables": [{ "table": "guestbook" }]
+  }'
+```
+
+### Step 7: Create a user and login
+
+```bash
+# Signup
+curl -X POST https://api.run402.com/auth/v1/signup \
+  -H "apikey: $ANON_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"email": "user@example.com", "password": "securepass123"}'
+# -> { "id": "uuid", "email": "user@example.com", "created_at": "..." }
+
+# Login (returns access_token + refresh_token)
+curl -X POST https://api.run402.com/auth/v1/token \
+  -H "apikey: $ANON_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"email": "user@example.com", "password": "securepass123"}'
+```
+
+Signup does **not** return an access token. Call `/auth/v1/token` to log in. Returns `access_token` (1h JWT) and `refresh_token` (30d, one-time use).
+
+### Step 8: Upload a file
+
+```bash
+curl -X POST https://api.run402.com/storage/v1/object/assets/photo.jpg \
+  -H "apikey: $ANON_KEY" \
+  -H "Content-Type: image/jpeg" \
+  --data-binary @photo.jpg
+```
+
+### Step 9: Deploy a site and claim a subdomain
+
+```bash
+# Deploy a static site (wallet auth, free with tier)
+TIMESTAMP=$(date +%s)
+SIGNATURE=$(# sign "run402:$TIMESTAMP" with your private key)
+
+curl -X POST https://api.run402.com/deployments/v1 \
+  -H "Content-Type: application/json" \
+  -H "X-Run402-Wallet: $WALLET_ADDRESS" \
+  -H "X-Run402-Signature: $SIGNATURE" \
+  -H "X-Run402-Timestamp: $TIMESTAMP" \
+  -d '{
+    "name": "my-app",
+    "project": "'$PROJECT_ID'",
+    "files": [
+      {"file": "index.html", "data": "<!DOCTYPE html><html><body><h1>Hello!</h1></body></html>"}
+    ]
+  }'
+# -> { "id": "dpl_...", "url": "https://dpl-....sites.run402.com", ... }
+
+# Claim a custom subdomain (free)
+curl -X POST https://api.run402.com/subdomains/v1 \
+  -H "Authorization: Bearer $SERVICE_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "my-app", "deployment_id": "dpl_..."}'
+# -> { "url": "https://my-app.run402.com", ... }
+```
+
+### Step 10: Check usage
+
+```bash
+curl https://api.run402.com/projects/v1/admin/$PROJECT_ID/usage \
+  -H "Authorization: Bearer $SERVICE_KEY"
+```
+
+You now have a live Postgres database and a deployed site you provisioned and paid for autonomously. Prototype tier: 7 days, 250 MB storage, 500k API calls.
 
 ---
 
@@ -333,8 +429,6 @@ Use the same wallet generation from the testnet section, or Coinbase AgentKit fo
 
 ### Step 2: Request funding from your human
 
-Three scripts you can adapt. Pick the one that matches your needs.
-
 If your human doesn't have a crypto wallet, include this preamble:
 
 > To fund my wallet, you'll need USDC on Base (an Ethereum L2). The easiest way: download Coinbase Wallet (or any wallet that supports Base), buy USDC, and send it to my address: `<YOUR_WALLET_ADDRESS>`. Base transactions cost under $0.01. If you already have USDC on Ethereum or another chain, bridge it to Base at bridge.base.org.
@@ -345,13 +439,7 @@ If your human doesn't have a crypto wallet, include this preamble:
 >
 > My wallet address: `<YOUR_WALLET_ADDRESS>`
 
-**Script 2: One-off project ($10)**
-
-> I need a database for the project we're working on. A Hobby tier on Run402 costs $5 for 30 days with 1 GB storage and 5M API calls. Could you send $10 in USDC (Base L2) to my wallet? That gives me the project plus buffer for renewals or a second database if needed.
->
-> My wallet address: `<YOUR_WALLET_ADDRESS>`
-
-**Script 3: Monthly allowance ($10/mo)**
+**Script 2: Monthly allowance ($10/mo)**
 
 > I'd like a $10/month allowance to provision and maintain databases for my work. This covers two Hobby-tier projects ($5 each, 30-day lease, 1 GB storage, 5M API calls) or one Hobby + twenty Prototypes. I pay Run402 directly via x402 micropayments on Base L2 -- you just need to send $10 in USDC to my wallet once a month. No subscriptions, no accounts to manage.
 >
@@ -397,10 +485,6 @@ If your human prefers credit cards over crypto, they can fund a prepaid allowanc
 - **Balance**: `GET /billing/v1/accounts/YOUR_WALLET_ADDRESS`
 - **Settlement headers**: Every paid response includes `X-Run402-Settlement-Rail: allowance` or `X-Run402-Settlement-Rail: x402` so you know which rail was used. Allowance-paid responses also include `X-Run402-Allowance-Remaining: <micros>` with the balance after the charge.
 - **Insufficient allowance**: If your allowance is too low, the request falls through to on-chain x402. Check your balance with `GET /billing/v1/accounts/YOUR_WALLET_ADDRESS` and send your human to `https://run402.com/billing?wallet=YOUR_WALLET_ADDRESS` to top up.
-
-### Allowance management
-
-Your human can view balance, transactions, and add funds at `https://run402.com/billing?wallet=YOUR_WALLET_ADDRESS`. Non-refundable, non-transferable prepaid credit.
 
 ### Billing API endpoints
 
@@ -534,7 +618,7 @@ Yes. `/projects/v1/admin/:id/usage` shows API calls, storage, lease status. `/pr
 
 ---
 
-## What You Get
+## API Reference
 
 ### Project Lifecycle
 
@@ -633,43 +717,7 @@ Functions are deployed via the Admin endpoints above and invoked at `/functions/
 | `/deployments/v1` | POST | Wallet auth | Free | Deploy a static site (inlined files, free with tier) |
 | `/deployments/v1/:id` | GET | None | Free | Get deployment status and URL |
 
-**Deploy a static site** — Upload HTML/CSS/JS/images as inlined files. Each deployment gets a permanent URL at `https://{id}.sites.run402.com`. SPA-friendly: paths without file extensions serve `index.html`.
-
-**Request:**
-```json
-{
-  "name": "family-todo",
-  "project": "prj_1234_0001",
-  "target": "production",
-  "files": [
-    { "file": "index.html", "data": "<!DOCTYPE html>..." },
-    { "file": "assets/style.css", "data": "body { margin: 0; }" },
-    { "file": "assets/logo.png", "data": "iVBORw0KGgo...", "encoding": "base64" }
-  ]
-}
-```
-
-**Response:**
-```json
-{
-  "id": "dpl_1709337600000_a1b2c3",
-  "name": "family-todo",
-  "url": "https://dpl-1709337600000-a1b2c3.sites.run402.com",
-  "project_id": "prj_1234_0001",
-  "status": "READY",
-  "files_count": 3,
-  "total_size": 4096
-}
-```
-
-Want a nicer URL? `POST /subdomains/v1` with your `service_key` to claim `family-todo.run402.com` -- it's free.
-
-- **Price**: Free with active tier subscription
-- **Size limit**: 50 MB total per deployment
-- **File encoding**: `utf-8` (default) for text, `base64` for binary (images, fonts)
-- **SPA fallback**: Paths without file extensions (e.g. `/about`, `/dashboard`) serve `index.html` with 200
-- **Immutable**: Each deployment URL is permanent. New deploys get new URLs.
-- **Idempotency**: Use `Idempotency-Key` header to prevent double-charging on retries
+See **Deploy a Static Site** section below for request/response format and examples.
 
 ### Custom Subdomains
 
@@ -679,6 +727,8 @@ Want a nicer URL? `POST /subdomains/v1` with your `service_key` to claim `family
 | `/subdomains/v1` | GET | service_key | Free | List project's subdomains |
 | `/subdomains/v1/:name` | GET | None | Free | Lookup subdomain details |
 | `/subdomains/v1/:name` | DELETE | service_key | Free | Release a subdomain |
+
+`POST /subdomains/v1` is **idempotent** — upserts. Safe to call on every deploy. Subdomain rules: 3-63 chars, lowercase + numbers + hyphens, no consecutive hyphens, must start/end with alphanumeric. Reserved names: `api`, `www`, `admin`, `sites`, `mail`, `ftp`, `cdn`, `static`.
 
 ### Image Generation
 
@@ -789,6 +839,14 @@ Subscribe: `POST /tiers/v1/subscribe/:tier` (x402)
 Renew: `POST /tiers/v1/renew/:tier` (x402)
 Upgrade: `POST /tiers/v1/upgrade/:tier` (x402, prorated refund to allowance)
 
+### Choosing a tier
+
+**Prototype ($0.10)**: Testing a concept or building a demo. Data is disposable.
+**Hobby ($5)**: Building a real application. Persistent data for a month, moderate traffic.
+**Team ($20)**: Multiple users or agents. 10 GB storage, heavy traffic.
+
+Start with Prototype and upgrade via `POST /tiers/v1/upgrade/:tier`. Your wallet's tier applies to all projects.
+
 ### Free with active tier (wallet auth only)
 
 Projects, bundle deploy, fork, static sites, messages, ping, contact -- all free. Authenticate with EIP-4361 wallet signature headers:
@@ -863,190 +921,6 @@ Supported on: `POST /tiers/v1/subscribe/:tier`, `POST /tiers/v1/renew/:tier`, `P
 
 **Important**: x402-gated endpoints use the payment header as authorization. Wallet auth endpoints use the three wallet signature headers. Do not mix auth methods on the same request.
 
-### Subdomain Behavior
-
-`POST /subdomains/v1` is **idempotent** — upserts. If the subdomain already belongs to your project, it updates `deployment_id` and returns 200. Safe to call on every deploy without 409 handling.
-
----
-
-## Quickstart (curl)
-
-### 1. Check pricing (free)
-
-```bash
-curl https://api.run402.com/tiers/v1
-```
-
-```json
-{
-  "tiers": {
-    "prototype": { "price": "$0.10", "lease_days": 7, "storage_mb": 250, "api_calls": 500000 },
-    "hobby": { "price": "$5.00", "lease_days": 30, "storage_mb": 1024, "api_calls": 5000000 },
-    "team": { "price": "$20.00", "lease_days": 30, "storage_mb": 10240, "api_calls": 50000000 }
-  }
-}
-```
-
-### 2. Subscribe to tier + create project
-
-```bash
-# Subscribe to tier (x402 payment)
-curl -X POST https://api.run402.com/tiers/v1/subscribe/prototype \
-  -H "X-402-Payment: <your-x402-payment-header>"
-
-# Create project (wallet auth, free with tier)
-curl -X POST https://api.run402.com/projects/v1 \
-  -H "Content-Type: application/json" \
-  -H "X-Run402-Wallet: 0x..." \
-  -H "X-Run402-Signature: 0x..." \
-  -H "X-Run402-Timestamp: 1710000000" \
-  -d '{"name": "my-project"}'
-```
-
-```json
-{
-  "project_id": "prj_1709312520_0001",
-  "anon_key": "eyJ...",
-  "service_key": "eyJ...",
-  "schema_slot": "p0001",
-  "tier": "prototype",
-  "lease_expires_at": "2026-03-06T14:22:00.000Z"
-}
-```
-
-Save `project_id`, `anon_key`, and `service_key`.
-
-### 3. Create tables
-
-```bash
-curl -X POST https://api.run402.com/projects/v1/admin/$PROJECT_ID/sql \
-  -H "Authorization: Bearer $SERVICE_KEY" \
-  -H "Content-Type: text/plain" \
-  -d "CREATE TABLE todos (
-    id serial PRIMARY KEY,
-    task text NOT NULL,
-    done boolean DEFAULT false,
-    user_id uuid
-  );"
-```
-
-```json
-{ "status": "ok", "schema": "p0001", "rows": [], "rowCount": 0 }
-```
-
-Both `SERIAL` and `BIGINT GENERATED ALWAYS AS IDENTITY` work for auto-increment. Sequence permissions granted automatically.
-
-Table permissions for `anon` and `authenticated` roles are granted automatically -- do not run `GRANT` or `REVOKE` (blocked by the SQL endpoint). Use RLS policies (`POST /projects/v1/admin/:id/rls`) for access control.
-
-Ad-hoc queries also work:
-```bash
-curl -X POST https://api.run402.com/projects/v1/admin/$PROJECT_ID/sql \
-  -H "Authorization: Bearer $SERVICE_KEY" \
-  -H "Content-Type: text/plain" \
-  -d "SELECT * FROM todos WHERE done = false;"
-# -> { "status": "ok", "schema": "p0001", "rows": [...], "rowCount": 3 }
-```
-
-### 4. Enable row-level security (optional)
-
-Three templates:
-
-**`user_owns_rows`** -- Users access only rows where `owner_column = auth.uid()`. Best for user-scoped data.
-```bash
-curl -X POST https://api.run402.com/projects/v1/admin/$PROJECT_ID/rls \
-  -H "Authorization: Bearer $SERVICE_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "template": "user_owns_rows",
-    "tables": [{ "table": "todos", "owner_column": "user_id" }]
-  }'
-```
-
-**`public_read`** -- Anyone can read. Only authenticated users can write.
-```bash
-curl -X POST https://api.run402.com/projects/v1/admin/$PROJECT_ID/rls \
-  -H "Authorization: Bearer $SERVICE_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "template": "public_read",
-    "tables": [{ "table": "announcements" }]
-  }'
-```
-
-**`public_read_write`** -- Anyone can read and write. For guestbooks, public logs, etc.
-```bash
-curl -X POST https://api.run402.com/projects/v1/admin/$PROJECT_ID/rls \
-  -H "Authorization: Bearer $SERVICE_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "template": "public_read_write",
-    "tables": [{ "table": "guestbook" }]
-  }'
-```
-
-### 5. Insert data (with service_key)
-
-`service_key` for server-side writes. `anon_key` is read-only (SELECT only).
-
-```bash
-curl -X POST https://api.run402.com/rest/v1/todos \
-  -H "apikey: $SERVICE_KEY" \
-  -H "Content-Type: application/json" \
-  -H "Prefer: return=representation" \
-  -d '{"task": "Build something great", "done": false}'
-```
-
-### 6. Query data (with anon_key)
-
-```bash
-curl https://api.run402.com/rest/v1/todos?done=eq.false&order=id \
-  -H "apikey: $ANON_KEY"
-```
-
-### 7. Create a user
-
-```bash
-curl -X POST https://api.run402.com/auth/v1/signup \
-  -H "apikey: $ANON_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"email": "user@example.com", "password": "securepass123"}'
-```
-
-Returns the created user (no session):
-
-```json
-{ "id": "uuid", "email": "user@example.com", "created_at": "..." }
-```
-
-Signup does **not** return an access token. Call `/auth/v1/token` (step 8) to log in.
-
-### 8. Login
-
-```bash
-curl -X POST https://api.run402.com/auth/v1/token \
-  -H "apikey: $ANON_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"email": "user@example.com", "password": "securepass123"}'
-```
-
-Returns `access_token` (1h JWT) and `refresh_token` (30d, one-time use).
-
-### 9. Upload a file
-
-```bash
-curl -X POST https://api.run402.com/storage/v1/object/assets/photo.jpg \
-  -H "apikey: $ANON_KEY" \
-  -H "Content-Type: image/jpeg" \
-  --data-binary @photo.jpg
-```
-
-### 10. Check usage
-
-```bash
-curl https://api.run402.com/projects/v1/admin/$PROJECT_ID/usage \
-  -H "Authorization: Bearer $SERVICE_KEY"
-```
-
 ---
 
 ## Deploy a Static Site
@@ -1059,6 +933,27 @@ Deploy a static site (HTML, CSS, JS, images) with a single API call. Each deploy
 2. Run402 uploads to S3, records deployment, returns live URL
 3. CloudFront serves globally with caching and HTTPS
 4. SPA fallback: paths without file extensions serve `index.html`
+
+### Request format
+
+```json
+{
+  "name": "my-app",
+  "project": "prj_1234_0001",
+  "target": "production",
+  "files": [
+    { "file": "index.html", "data": "<!DOCTYPE html>..." },
+    { "file": "assets/style.css", "data": "body { margin: 0; }" },
+    { "file": "assets/logo.png", "data": "iVBORw0KGgo...", "encoding": "base64" }
+  ]
+}
+```
+
+- **Price**: Free with active tier subscription
+- **Size limit**: 50 MB total per deployment
+- **File encoding**: `utf-8` (default) for text, `base64` for binary (images, fonts)
+- **Immutable**: Each deployment URL is permanent. New deploys get new URLs.
+- **Idempotency**: Use `Idempotency-Key` header to prevent double-charging on retries
 
 ### Deploy with wallet auth (TypeScript)
 
@@ -1140,15 +1035,6 @@ Deployment ID `dpl_1709337600000_a1b2c3` maps to subdomain `dpl-1709337600000-a1
 ### Linking to a project (optional)
 
 Pass `project` to associate with an existing Run402 database. Metadata only -- doesn't affect URL or require project auth.
-
-```json
-{
-  "name": "my-app",
-  "project": "prj_1234_0001",
-  "target": "production",
-  "files": [...]
-}
-```
 
 ---
 
@@ -1367,138 +1253,13 @@ Fork creates a fully independent project: fresh database with same schema, funct
 
 Same as project creation (see Pricing section). No additional fee.
 
-### List published versions
-
-```
-GET /projects/v1/admin/:id/versions
-Authorization: Bearer <service_key>
-```
-
-### Fork info (free)
-
-```
-GET /fork/v1
-```
-
-Returns tier pricing and request body schema.
-
----
-
-## Custom Subdomains
-
-Give your deployments memorable URLs. Instead of `dpl-1709337600000-a1b2c3.sites.run402.com`, point `myapp.run402.com` at any deployment.
-
-### How it works
-
-1. Deploy a static site to get a deployment ID
-2. Claim a subdomain via `POST /subdomains/v1` — free, requires `service_key`
-3. Subdomain immediately serves your deployment at `https://{name}.run402.com`
-4. Reassign to a different deployment anytime (just POST again — idempotent upsert)
-
-### Claim a subdomain (curl)
-
-```bash
-curl -X POST https://api.run402.com/subdomains/v1 \
-  -H "Authorization: Bearer $SERVICE_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"name": "myapp", "deployment_id": "dpl_1709337600000_a1b2c3"}'
-```
-
-```json
-{
-  "name": "myapp",
-  "deployment_id": "dpl_1709337600000_a1b2c3",
-  "url": "https://myapp.run402.com",
-  "deployment_url": "https://dpl-1709337600000-a1b2c3.sites.run402.com",
-  "project_id": "prj_1234_0001",
-  "created_at": "2026-03-04T00:00:00Z",
-  "updated_at": "2026-03-04T00:00:00Z"
-}
-```
-
-### Look up a subdomain (free, no auth)
-
-```bash
-curl https://api.run402.com/subdomains/v1/myapp
-```
-
-### List project's subdomains
-
-```bash
-curl https://api.run402.com/subdomains/v1 \
-  -H "Authorization: Bearer $SERVICE_KEY"
-```
-
-### Release a subdomain
-
-```bash
-curl -X DELETE https://api.run402.com/subdomains/v1/myapp \
-  -H "Authorization: Bearer $SERVICE_KEY"
-```
-
-### Full workflow (TypeScript)
-
-```typescript
-// 1. Deploy the site (wallet auth, free with tier)
-const timestamp = Math.floor(Date.now() / 1000).toString();
-const signature = await account.signMessage({ message: `run402:${timestamp}` });
-const deployRes = await fetch("https://api.run402.com/deployments/v1", {
-  method: "POST",
-  headers: { "Content-Type": "application/json", "X-Run402-Wallet": account.address, "X-Run402-Signature": signature, "X-Run402-Timestamp": timestamp },
-  body: JSON.stringify({
-    name: "my-app",
-    project: PROJECT_ID,
-    files: [
-      { file: "index.html", data: "<!DOCTYPE html><html><body><h1>Hello!</h1></body></html>" },
-      { file: "style.css", data: "body { font-family: sans-serif; }" },
-    ],
-  }),
-});
-const deployment = await deployRes.json();
-
-// 2. Claim a custom subdomain (free)
-const subRes = await fetch("https://api.run402.com/subdomains/v1", {
-  method: "POST",
-  headers: {
-    "Authorization": `Bearer ${SERVICE_KEY}`,
-    "Content-Type": "application/json",
-  },
-  body: JSON.stringify({
-    name: "myapp",
-    deployment_id: deployment.id,
-  }),
-});
-const subdomain = await subRes.json();
-console.log("Live at:", subdomain.url);
-// -> https://myapp.run402.com
-```
-
-### With MCP
-
-```
-claim_subdomain(name: "myapp", deployment_id: "dpl_...", project_id: "prj_...")
-// -> https://myapp.run402.com
-
-delete_subdomain(name: "myapp", project_id: "prj_...")
-// -> Subdomain released
-```
-
-### Subdomain rules
-
-- **Length**: 3-63 characters
-- **Characters**: lowercase letters, numbers, hyphens
-- **Format**: must start/end with letter or number, no consecutive hyphens (`--`)
-- **Reserved**: `api`, `www`, `admin`, `sites`, `mail`, `ftp`, `cdn`, `static`, and other infra names
-- **Ownership**: scoped to the project that claimed them
-- **Cost**: free
-
-SPA behavior same as regular deployments (see SPA behavior section above).
-
 ---
 
 ## MCP Server (Recommended for AI Agents)
 
 If running inside Claude Desktop, Cursor, Cline, Claude Code, or any MCP-compatible client, use `run402-mcp` instead of HTTP API directly. Handles credential storage, 402 payment negotiation, and response formatting automatically.
+
+Also available as an OpenClaw skill: `clawhub install run402`.
 
 ### Install
 
@@ -1624,68 +1385,6 @@ When provisioning or renewing requires payment, MCP tools return payment details
 |----------|---------|-------------|
 | `RUN402_API_BASE` | `https://api.run402.com` | API base URL |
 | `RUN402_CONFIG_DIR` | `~/.config/run402` | Config directory |
-
----
-
-## OpenClaw Skill
-
-If running inside an OpenClaw agent, install the Run402 skill from ClawHub. Wraps `run402-mcp` and teaches your agent database provisioning, data management, x402 payments, and wallet setup guidance.
-
-### Install
-
-```bash
-clawhub install run402
-```
-
-### What You Get
-
-The skill installs `run402-mcp` and provides:
-- All 6 MCP tools: `provision_postgres_project`, `run_sql`, `rest_query`, `upload_file`, `renew_project`, `deploy_site`
-- Credential storage in `~/.config/run402/projects.json`
-- x402 payment negotiation and user guidance
-- Step-by-step workflow instructions
-
-### Configuration
-
-Add to `~/.openclaw/openclaw.json`:
-```json
-{
-  "skills": {
-    "run402": {
-      "env": {
-        "RUN402_API_BASE": "https://api.run402.com"
-      }
-    }
-  }
-}
-```
-
-`RUN402_API_BASE` is optional -- defaults to `https://api.run402.com`.
-
-### ClawHub
-
-Browse and install: `clawhub search run402`
-
----
-
-## Tier Selection Guide
-
-**Choose Prototype ($0.10)** if:
-- Testing a concept or building a demo
-- Need storage for less than a week
-- Data is disposable
-
-**Choose Hobby ($5)** if:
-- Building a real application
-- Need persistent data for a month
-- Moderate traffic (up to 5M API calls)
-
-**Choose Team ($20)** if:
-- Multiple users or agents will use the database
-- Need 10 GB storage
-- Heavy traffic (up to 50M API calls)
-
-Start with Prototype and upgrade via `POST /tiers/v1/upgrade/:tier`. Your wallet's tier applies to all projects.
 
 ---
 
