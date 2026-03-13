@@ -34,14 +34,38 @@ const client = new x402Client();
 client.register("eip155:84532", new ExactEvmScheme(signer));
 const fetchPaid = wrapFetchWithPayment(fetch, client);
 
+async function walletAuthHeaders(): Promise<Record<string, string>> {
+  const timestamp = Math.floor(Date.now() / 1000).toString();
+  const signature = await account.signMessage({ message: `run402:${timestamp}` });
+  return {
+    "X-Run402-Wallet": account.address,
+    "X-Run402-Signature": signature,
+    "X-Run402-Timestamp": timestamp,
+  };
+}
+
 async function main() {
   console.log("=== EvilMe Deploy ===\n");
 
-  // 1. Provision project
-  console.log("1) Provisioning project...");
-  const provRes = await fetchPaid(`${BASE_URL}/projects/v1/create/prototype`, {
+  // 0. Subscribe to tier
+  console.log("0) Subscribing to prototype tier...");
+  const subRes = await fetchPaid(`${BASE_URL}/tiers/v1/subscribe/prototype`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({}),
+  });
+  if (!subRes.ok) {
+    console.error("Failed to subscribe:", subRes.status, await subRes.text());
+    process.exit(1);
+  }
+  console.log("   Subscribed to prototype tier");
+
+  // 1. Provision project
+  console.log("\n1) Provisioning project...");
+  const wHeaders = await walletAuthHeaders();
+  const provRes = await fetch(`${BASE_URL}/projects/v1`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...wHeaders },
     body: JSON.stringify({ name: "evilme" }),
   });
 
@@ -122,9 +146,10 @@ async function main() {
     `APIKEY = params.get("key") || "${anon_key}";`,
   );
 
-  const siteRes = await fetchPaid(`${BASE_URL}/deployments/v1`, {
+  const siteHeaders = await walletAuthHeaders();
+  const siteRes = await fetch(`${BASE_URL}/deployments/v1`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...siteHeaders },
     body: JSON.stringify({
       name: "evilme",
       project: project_id,

@@ -98,7 +98,9 @@ function createPayToAddressFactory(priceStr: string) {
 
 /**
  * Build x402 payment middleware.
- * Reads FACILITATOR_PROVIDER to select CDP or Stripe facilitator.
+ *
+ * Pay-per-tier model: x402 gates only tier subscribe/renew/upgrade + generate-image.
+ * All other endpoints use walletAuth (free with active tier).
  */
 export function createPaymentMiddleware() {
   const useStripe = FACILITATOR_PROVIDER === "stripe";
@@ -114,35 +116,77 @@ export function createPaymentMiddleware() {
   const payTo = (price: string) =>
     useStripe ? createPayToAddressFactory(price) : SELLER_ADDRESS;
 
-  // Build resource config for each tier
+  // Build resource config — only x402-gated endpoints
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- x402 resource config shape is defined by @x402/express
   const resourceConfig: Record<string, any> = {};
 
+  // --- Tier subscription endpoints (x402-gated) ---
+
   for (const [tierName, tierConfig] of Object.entries(TIERS)) {
-    resourceConfig[`POST /projects/v1/create/${tierName}`] = {
+    // POST /tiers/v1/subscribe/:tier
+    resourceConfig[`POST /tiers/v1/subscribe/${tierName}`] = {
       accepts: networks.map((network) => ({
         scheme: "exact",
         price: tierConfig.price,
         network,
         payTo: payTo(tierConfig.price),
       })),
-      description: tierConfig.description,
+      description: `Subscribe to ${tierName} tier (${tierConfig.price} USDC)`,
       mimeType: "application/json",
       extensions: {
         ...declareDiscoveryExtension({
-          bodyType: "json",
-          inputSchema: {
-            type: "object",
-            properties: { name: { type: "string", description: "Project name" } },
-            required: ["name"],
-          },
           output: {
             example: {
-              project_id: "prj_...",
-              anon_key: "eyJ...",
-              service_key: "eyJ...",
-              schema_slot: "s0001",
-              lease_expires_at: "2026-03-08T00:00:00Z",
+              wallet: "0x...",
+              tier: tierName,
+              lease_expires_at: "2026-04-08T00:00:00Z",
+            },
+          },
+        }),
+      },
+    };
+
+    // POST /tiers/v1/renew/:tier
+    resourceConfig[`POST /tiers/v1/renew/${tierName}`] = {
+      accepts: networks.map((network) => ({
+        scheme: "exact",
+        price: tierConfig.price,
+        network,
+        payTo: payTo(tierConfig.price),
+      })),
+      description: `Renew ${tierName} tier subscription (${tierConfig.price} USDC)`,
+      mimeType: "application/json",
+      extensions: {
+        ...declareDiscoveryExtension({
+          output: {
+            example: {
+              wallet: "0x...",
+              tier: tierName,
+              lease_expires_at: "2026-05-08T00:00:00Z",
+            },
+          },
+        }),
+      },
+    };
+
+    // POST /tiers/v1/upgrade/:tier
+    resourceConfig[`POST /tiers/v1/upgrade/${tierName}`] = {
+      accepts: networks.map((network) => ({
+        scheme: "exact",
+        price: tierConfig.price,
+        network,
+        payTo: payTo(tierConfig.price),
+      })),
+      description: `Upgrade to ${tierName} tier (${tierConfig.price} USDC, prorated refund to allowance)`,
+      mimeType: "application/json",
+      extensions: {
+        ...declareDiscoveryExtension({
+          output: {
+            example: {
+              wallet: "0x...",
+              tier: tierName,
+              previous_tier: "prototype",
+              lease_expires_at: "2026-04-08T00:00:00Z",
             },
           },
         }),
@@ -150,204 +194,7 @@ export function createPaymentMiddleware() {
     };
   }
 
-  // POST /v1/deploy/:tier — bundle deploy (tier-priced)
-  for (const [tierName, tierConfig] of Object.entries(TIERS)) {
-    resourceConfig[`POST /deploy/v1/${tierName}`] = {
-      accepts: networks.map((network) => ({
-        scheme: "exact",
-        price: tierConfig.price,
-        network,
-        payTo: payTo(tierConfig.price),
-      })),
-      description: `Bundle deploy — one-call full-stack app (${tierConfig.description})`,
-      mimeType: "application/json",
-      extensions: {
-        ...declareDiscoveryExtension({
-          bodyType: "json",
-          inputSchema: {
-            type: "object",
-            properties: {
-              name: { type: "string", description: "App name" },
-              migrations: { type: "string", description: "SQL migrations (optional)" },
-              functions: { type: "array", description: "Functions to deploy (optional)" },
-              site: { type: "array", description: "Site files to deploy (optional)" },
-              subdomain: { type: "string", description: "Custom subdomain (optional)" },
-            },
-            required: ["name"],
-          },
-          output: {
-            example: {
-              project_id: "prj_...",
-              anon_key: "eyJ...",
-              service_key: "eyJ...",
-              site_url: "https://myapp.run402.com",
-              functions: [{ name: "checkout", url: "https://api.run402.com/functions/v1/checkout" }],
-            },
-          },
-        }),
-      },
-    };
-  }
-
-  // POST /v1/fork/:tier — fork a published app (tier-priced)
-  for (const [tierName, tierConfig] of Object.entries(TIERS)) {
-    resourceConfig[`POST /fork/v1/${tierName}`] = {
-      accepts: networks.map((network) => ({
-        scheme: "exact",
-        price: tierConfig.price,
-        network,
-        payTo: payTo(tierConfig.price),
-      })),
-      description: `Fork a published app — independent copy with fresh backend (${tierConfig.description})`,
-      mimeType: "application/json",
-      extensions: {
-        ...declareDiscoveryExtension({
-          bodyType: "json",
-          inputSchema: {
-            type: "object",
-            properties: {
-              version_id: { type: "string", description: "App version ID to fork" },
-              name: { type: "string", description: "Name for the forked app" },
-              subdomain: { type: "string", description: "Custom subdomain (optional)" },
-            },
-            required: ["version_id", "name"],
-          },
-          output: {
-            example: {
-              project_id: "prj_...",
-              anon_key: "eyJ...",
-              service_key: "eyJ...",
-              source_version_id: "ver_...",
-              readiness: "ready",
-            },
-          },
-        }),
-      },
-    };
-  }
-
-  // GET /ping/v1 — paid health check ($0.001) for agents to verify x402 works
-  resourceConfig["GET /ping/v1"] = {
-    accepts: networks.map((network) => ({
-      scheme: "exact",
-      price: "$0.001",
-      network,
-      payTo: payTo("$0.001"),
-    })),
-    description: "Paid ping — validates x402 payment flow ($0.001 USDC)",
-    mimeType: "application/json",
-    extensions: {
-      ...declareDiscoveryExtension({
-        output: { example: { pong: true } },
-      }),
-    },
-  };
-
-  // POST /agent/v1/contact — register agent contact info ($0.001)
-  resourceConfig["POST /agent/v1/contact"] = {
-    accepts: networks.map((network) => ({
-      scheme: "exact",
-      price: "$0.001",
-      network,
-      payTo: payTo("$0.001"),
-    })),
-    description: "Register agent contact info — name, email, webhook ($0.001 USDC)",
-    mimeType: "application/json",
-    extensions: {
-      ...declareDiscoveryExtension({
-        bodyType: "json",
-        inputSchema: {
-          type: "object",
-          properties: {
-            name: { type: "string", description: "Agent name (required)" },
-            email: { type: "string", description: "Contact email (optional)" },
-            webhook: { type: "string", description: "Webhook URL, must be https (optional)" },
-          },
-          required: ["name"],
-        },
-        output: {
-          example: {
-            wallet: "0x...",
-            name: "my-agent",
-            email: "ops@example.com",
-            webhook: "https://example.com/hook",
-            updated_at: "2026-03-12T00:00:00Z",
-          },
-        },
-      }),
-    },
-  };
-
-  // POST /deployments/v1 — static site deployment ($0.05)
-  resourceConfig["POST /deployments/v1"] = {
-    accepts: networks.map((network) => ({
-      scheme: "exact",
-      price: "$0.05",
-      network,
-      payTo: payTo("$0.05"),
-    })),
-    description: "Deploy a static site — Vercel-compatible inlined file upload ($0.05 USDC)",
-    mimeType: "application/json",
-    extensions: {
-      ...declareDiscoveryExtension({
-        bodyType: "json",
-        inputSchema: {
-          type: "object",
-          properties: {
-            name: { type: "string", description: "Site name" },
-            project: { type: "string", description: "Optional project ID to link deployment" },
-            target: { type: "string", description: "Deployment target (e.g. 'production')" },
-            files: {
-              type: "array",
-              items: {
-                type: "object",
-                properties: {
-                  file: { type: "string", description: "File path (e.g. 'index.html')" },
-                  data: { type: "string", description: "File content" },
-                  encoding: { type: "string", description: "'utf-8' (default) or 'base64'" },
-                },
-                required: ["file", "data"],
-              },
-            },
-          },
-          required: ["name", "files"],
-        },
-        output: {
-          example: {
-            id: "dpl_1709337600000_a1b2c3",
-            name: "my-site",
-            url: "https://dpl-1709337600000-a1b2c3.sites.run402.com",
-            status: "READY",
-            files_count: 2,
-            total_size: 4096,
-          },
-        },
-      }),
-    },
-  };
-
-  // POST /message/v1 — paid developer contact ($0.01)
-  resourceConfig["POST /message/v1"] = {
-    accepts: networks.map((network) => ({
-      scheme: "exact",
-      price: "$0.01",
-      network,
-      payTo: payTo("$0.01"),
-    })),
-    description: "Send a message to Run402 developers ($0.01 USDC)",
-    mimeType: "application/json",
-    extensions: {
-      ...declareDiscoveryExtension({
-        bodyType: "json",
-        inputSchema: {
-          type: "object",
-          properties: { message: { type: "string", description: "Message text" } },
-          required: ["message"],
-        },
-        output: { example: { status: "sent" } },
-      }),
-    },
-  };
+  // --- Per-call paid endpoints (still x402-gated) ---
 
   // POST /generate-image/v1 — image generation ($0.03)
   resourceConfig["POST /generate-image/v1"] = {
@@ -379,37 +226,6 @@ export function createPaymentMiddleware() {
             image: "<base64 PNG data>",
             content_type: "image/png",
             aspect: "square",
-          },
-        },
-      }),
-    },
-  };
-
-  // POST /projects/v1 — default route uses prototype pricing
-  resourceConfig["POST /projects/v1"] = {
-    accepts: networks.map((network) => ({
-      scheme: "exact",
-      price: TIERS.prototype.price,
-      network,
-      payTo: payTo(TIERS.prototype.price),
-    })),
-    description: "Create a new AgentDB project (Prototype tier — default)",
-    mimeType: "application/json",
-    extensions: {
-      ...declareDiscoveryExtension({
-        bodyType: "json",
-        inputSchema: {
-          type: "object",
-          properties: { name: { type: "string", description: "Project name" } },
-          required: ["name"],
-        },
-        output: {
-          example: {
-            project_id: "prj_...",
-            anon_key: "eyJ...",
-            service_key: "eyJ...",
-            schema_slot: "s0001",
-            lease_expires_at: "2026-03-08T00:00:00Z",
           },
         },
       }),
@@ -533,12 +349,12 @@ export function createPaymentMiddleware() {
 
 /**
  * Map a request method+path to a price in micro-USD.
- * Uses tier prices for project/deploy/fork endpoints, SKU_PRICES for others.
+ * Pay-per-tier: only tier subscribe/renew/upgrade + generate-image have prices.
  */
 function resolveSkuPrice(method: string, path: string): { sku: string; amountUsdMicros: number } | null {
 
-  // Tier-priced endpoints: POST /projects/v1/create/:tier, POST /deploy/v1/:tier, POST /fork/v1/:tier
-  const tierMatch = path.match(/^\/(?:projects\/v1\/create|deploy\/v1|fork\/v1)\/(\w+)$/);
+  // Tier subscription endpoints: POST /tiers/v1/subscribe/:tier, POST /tiers/v1/renew/:tier, POST /tiers/v1/upgrade/:tier
+  const tierMatch = path.match(/^\/tiers\/v1\/(?:subscribe|renew|upgrade)\/(\w+)$/);
   if (tierMatch && tierMatch[1]) {
     const tierName = tierMatch[1] as TierName;
     if (TIERS[tierName]) {
@@ -546,26 +362,9 @@ function resolveSkuPrice(method: string, path: string): { sku: string; amountUsd
     }
   }
 
-  // POST /projects/v1 (default prototype)
-  if (method === "POST" && path === "/projects/v1") {
-    return { sku: "tier_prototype", amountUsdMicros: TIERS.prototype.priceUsdMicros };
-  }
-
-  // SKU-priced endpoints
-  if (method === "GET" && path === "/ping/v1") {
-    return { sku: "ping", amountUsdMicros: SKU_PRICES["ping"]! };
-  }
-  if (method === "POST" && path === "/agent/v1/contact") {
-    return { sku: "contact", amountUsdMicros: SKU_PRICES["contact"]! };
-  }
-  if (method === "POST" && path === "/message/v1") {
-    return { sku: "message", amountUsdMicros: SKU_PRICES["message"]! };
-  }
+  // Per-call: generate-image
   if (method === "POST" && path === "/generate-image/v1") {
     return { sku: "image", amountUsdMicros: SKU_PRICES["image"]! };
-  }
-  if (method === "POST" && path === "/deployments/v1") {
-    return { sku: "deployment", amountUsdMicros: SKU_PRICES["deployment"]! };
   }
 
   return null;

@@ -34,8 +34,31 @@ const client = new x402Client();
 client.register("eip155:84532", new ExactEvmScheme(signer));
 const fetchPaid = wrapFetchWithPayment(fetch, client);
 
+async function walletAuthHeaders(): Promise<Record<string, string>> {
+  const timestamp = Math.floor(Date.now() / 1000).toString();
+  const signature = await account.signMessage({ message: `run402:${timestamp}` });
+  return {
+    "X-Run402-Wallet": account.address,
+    "X-Run402-Signature": signature,
+    "X-Run402-Timestamp": timestamp,
+  };
+}
+
 async function main() {
   console.log("=== Cosmic Forge Deploy ===\n");
+
+  // 0. Subscribe to tier
+  console.log("0) Subscribing to prototype tier...");
+  const tierRes = await fetchPaid(`${BASE_URL}/tiers/v1/subscribe/prototype`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({}),
+  });
+  if (!tierRes.ok) {
+    console.error("Failed to subscribe:", tierRes.status, await tierRes.text());
+    process.exit(1);
+  }
+  console.log("   Subscribed to prototype tier");
 
   // 1. Provision project (or reuse existing)
   const EXISTING_PROJECT = process.env.COSMIC_PROJECT_ID || "";
@@ -45,16 +68,17 @@ async function main() {
   let project_id, service_key, anon_key;
 
   if (EXISTING_PROJECT && EXISTING_SERVICE_KEY) {
-    console.log("1) Reusing existing project...");
+    console.log("\n1) Reusing existing project...");
     project_id = EXISTING_PROJECT;
     service_key = EXISTING_SERVICE_KEY;
     anon_key = EXISTING_ANON_KEY;
     console.log(`   Project: ${project_id}`);
   } else {
-    console.log("1) Provisioning new project...");
-    const provRes = await fetchPaid(`${BASE_URL}/projects/v1/create/prototype`, {
+    console.log("\n1) Provisioning new project...");
+    const wHeaders = await walletAuthHeaders();
+    const provRes = await fetch(`${BASE_URL}/projects/v1`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...wHeaders },
       body: JSON.stringify({ name: "cosmicforge" }),
     });
 
@@ -113,9 +137,10 @@ async function main() {
     `APIKEY = params.get("key") || "${anon_key}";`,
   );
 
-  const siteRes = await fetchPaid(`${BASE_URL}/deployments/v1`, {
+  const siteHeaders = await walletAuthHeaders();
+  const siteRes = await fetch(`${BASE_URL}/deployments/v1`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...siteHeaders },
     body: JSON.stringify({
       name: "cosmicforge",
       project: project_id,

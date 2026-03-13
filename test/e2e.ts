@@ -1,30 +1,33 @@
 /**
- * AgentDB E2E Test — Workout Tracker Flow
+ * AgentDB E2E Test — Workout Tracker Flow (Pay-Per-Tier Model)
  *
  * Tests the full lifecycle against a running AgentDB instance:
- *   1.  Quote — get tier pricing
- *   2.  Create project — pay via x402
- *   3.  Apply migration — create tables
- *   4.  Apply RLS — user_owns_rows template
- *   5.  Sign up user
- *   6.  Log in — get access_token + refresh_token
- *   7.  Insert data — exercises, workouts, sets via PostgREST
- *   8.  Query with joins — PostgREST embedded resources
- *   9.  Upload file — workout log to storage
- *   10. Check usage — API calls + storage
- *   11. Schema introspection — verify tables/columns
- *   12. Refresh token — rotate tokens
- *   13. SQL blocklist — verify blocked patterns
- *   14. Access levels — anon read-only, service_key admin, access_token authenticated
- *   15. SQL query rows — verify SELECT returns data via /sql endpoint
- *   16. SERIAL table — test sequence permissions (SERIAL/BIGSERIAL fix)
- *   17. apikey-only REST — verify apikey auto-forwards as Authorization
- *   18. RLS templates — public_read, public_read_write (anon write via GRANT)
- *   19. GRANT blocked hint — actionable error messages
- *   20. Bundle deploy — one-call full-stack app (x402 payment, migrations, RLS, site)
- *   21. Publish — publish workout tracker as forkable app version
- *   22. Fork — fork the published app, verify independent copy
- *   23. Delete project — cleanup
+ *   1.  Tier info — list tier pricing
+ *   2.  Subscribe tier — pay via x402 to subscribe to prototype tier
+ *   3.  Tier status — verify wallet auth + tier info
+ *   4.  Ping — verify wallet auth works
+ *   5.  Create project — with wallet auth (free with tier)
+ *   6.  Apply migration — create tables
+ *   7.  Apply RLS — user_owns_rows template
+ *   8.  Sign up user
+ *   9.  Log in — get access_token + refresh_token
+ *   10. Insert data — exercises, workouts, sets via PostgREST
+ *   11. Query with joins — PostgREST embedded resources
+ *   12. Upload file — workout log to storage
+ *   13. Check usage — API calls + storage
+ *   14. Schema introspection — verify tables/columns
+ *   15. Refresh token — rotate tokens
+ *   16. SQL blocklist — verify blocked patterns
+ *   17. Access levels — anon read-only, service_key admin, access_token authenticated
+ *   18. SQL query rows — verify SELECT returns data via /sql endpoint
+ *   19. SERIAL table — test sequence permissions
+ *   20. apikey-only REST — verify apikey auto-forwards as Authorization
+ *   21. RLS templates — public_read, public_read_write
+ *   22. GRANT blocked hint — actionable error messages
+ *   23. Bundle deploy — one-call full-stack app (wallet auth, migrations, RLS, site)
+ *   24. Publish — publish workout tracker as forkable app version
+ *   25. Fork — fork the published app with wallet auth
+ *   26. Delete project — cleanup
  *
  * Usage:
  *   BASE_URL=http://localhost:4022 npm run test:e2e
@@ -60,6 +63,25 @@ const client = new x402Client();
 client.register("eip155:84532", new ExactEvmScheme(signer));
 const fetchPaid = wrapFetchWithPayment(fetch, client);
 
+// --- Wallet auth helpers ---
+
+/**
+ * Generate EIP-4361 wallet auth headers for the test wallet.
+ * Signs `run402:{timestamp}` with the buyer's private key.
+ */
+async function walletAuthHeaders(): Promise<Record<string, string>> {
+  const timestamp = Math.floor(Date.now() / 1000).toString();
+  const message = `run402:${timestamp}`;
+
+  const signature = await account.signMessage({ message });
+
+  return {
+    "X-Run402-Wallet": account.address,
+    "X-Run402-Signature": signature,
+    "X-Run402-Timestamp": timestamp,
+  };
+}
+
 // --- Helpers ---
 
 let passed = 0;
@@ -82,32 +104,68 @@ async function sleep(ms: number) {
 // --- Main test flow ---
 
 async function main() {
-  console.log("\n=== AgentDB E2E Test — Workout Tracker ===\n");
+  console.log("\n=== AgentDB E2E Test — Workout Tracker (Pay-Per-Tier) ===\n");
   console.log(`Target:  ${BASE_URL}`);
   console.log(`Buyer:   ${account.address}\n`);
 
-  // Step 1: Quote
-  console.log("1) Quote...");
-  const quoteRes = await fetch(`${BASE_URL}/projects/v1/quote`, {
+  // Step 1: Tier info
+  console.log("1) Tier info...");
+  const tierInfoRes = await fetch(`${BASE_URL}/tiers/v1`);
+  const tierInfoBody = await tierInfoRes.json();
+  assert(tierInfoRes.ok, "Tier info returns 200");
+  assert(tierInfoBody.tiers?.prototype != null, "Tier info includes prototype tier");
+  assert(tierInfoBody.tiers?.hobby != null, "Tier info includes hobby tier");
+  assert(tierInfoBody.tiers?.team != null, "Tier info includes team tier");
+  assert(tierInfoBody.auth != null, "Tier info includes auth method");
+
+  // Step 2: Subscribe to prototype tier via x402
+  console.log("\n2) Subscribe to prototype tier via x402...");
+  const subscribeRes = await fetchPaid(`${BASE_URL}/tiers/v1/subscribe/prototype`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({}),
   });
-  const quoteBody = await quoteRes.json();
-  assert(quoteRes.ok, "Quote returns 200");
-  assert(quoteBody.tiers?.prototype != null, "Quote includes prototype tier");
-  assert(quoteBody.tiers?.hobby != null, "Quote includes hobby tier");
-  assert(quoteBody.tiers?.team != null, "Quote includes team tier");
+  const subscribeBody = await subscribeRes.json();
+  assert(subscribeRes.status === 201, `Subscribe returns 201 (got ${subscribeRes.status})`);
+  assert(typeof subscribeBody.wallet === "string", "Subscribe returns wallet");
+  assert(subscribeBody.tier === "prototype", "Subscribe returns tier=prototype");
+  assert(typeof subscribeBody.lease_expires_at === "string", "Subscribe returns lease_expires_at");
 
-  // Step 2: Create project via x402
-  console.log("\n2) Create project via x402...");
-  const createRes = await fetchPaid(`${BASE_URL}/projects/v1`, {
+  // Step 3: Tier status (wallet auth)
+  console.log("\n3) Tier status...");
+  const statusHeaders = await walletAuthHeaders();
+  const statusRes = await fetch(`${BASE_URL}/tiers/v1/status`, {
+    headers: statusHeaders,
+  });
+  const statusBody = await statusRes.json();
+  assert(statusRes.ok, "Tier status returns 200");
+  assert(statusBody.tier === "prototype", "Tier status shows prototype");
+  assert(statusBody.active === true, "Tier is active");
+
+  // Step 4: Ping (wallet auth)
+  console.log("\n4) Ping...");
+  const pingHeaders = await walletAuthHeaders();
+  const pingRes = await fetch(`${BASE_URL}/ping/v1`, {
+    headers: pingHeaders,
+  });
+  const pingBody = await pingRes.json();
+  assert(pingRes.ok, "Ping returns 200");
+  assert(pingBody.status === "ok", "Ping status is ok");
+  assert(typeof pingBody.wallet === "string", "Ping returns wallet");
+
+  // Step 5: Create project with wallet auth
+  console.log("\n5) Create project with wallet auth...");
+  const createHeaders = await walletAuthHeaders();
+  const createRes = await fetch(`${BASE_URL}/projects/v1`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      ...createHeaders,
+    },
     body: JSON.stringify({ name: "e2e-workout-tracker" }),
   });
   const project = await createRes.json();
-  assert(createRes.ok, "Project creation succeeds");
+  assert(createRes.status === 201, `Project creation returns 201 (got ${createRes.status})`);
   assert(typeof project.project_id === "string", "Returns project_id");
   assert(typeof project.anon_key === "string", "Returns anon_key");
   assert(typeof project.service_key === "string", "Returns service_key");
@@ -116,8 +174,8 @@ async function main() {
 
   const { project_id, anon_key, service_key } = project;
 
-  // Step 3: Apply migration
-  console.log("\n3) Apply migration...");
+  // Step 6: Apply migration
+  console.log("\n6) Apply migration...");
   const migrationSQL = `
     CREATE TABLE profiles (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -160,8 +218,8 @@ async function main() {
 
   await sleep(500); // Wait for PostgREST reload
 
-  // Step 4: Apply RLS
-  console.log("\n4) Apply RLS...");
+  // Step 7: Apply RLS
+  console.log("\n7) Apply RLS...");
   const rlsRes = await fetch(`${BASE_URL}/projects/v1/admin/${project_id}/rls`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${service_key}` },
@@ -177,8 +235,8 @@ async function main() {
   });
   assert(rlsRes.ok, "RLS applied successfully");
 
-  // Step 5: Sign up
-  console.log("\n5) Sign up...");
+  // Step 8: Sign up
+  console.log("\n8) Sign up...");
   const signupRes = await fetch(`${BASE_URL}/auth/v1/signup`, {
     method: "POST",
     headers: { "Content-Type": "application/json", apikey: anon_key },
@@ -189,8 +247,8 @@ async function main() {
   assert(typeof signupBody.id === "string", "Returns user id");
   const userId = signupBody.id;
 
-  // Step 6: Log in
-  console.log("\n6) Log in...");
+  // Step 9: Log in
+  console.log("\n9) Log in...");
   const loginRes = await fetch(`${BASE_URL}/auth/v1/token`, {
     method: "POST",
     headers: { "Content-Type": "application/json", apikey: anon_key },
@@ -210,8 +268,8 @@ async function main() {
     Prefer: "return=representation",
   };
 
-  // Step 7: Insert data
-  console.log("\n7) Insert data via PostgREST...");
+  // Step 10: Insert data
+  console.log("\n10) Insert data via PostgREST...");
 
   const profileRes = await fetch(`${BASE_URL}/rest/v1/profiles`, {
     method: "POST",
@@ -232,6 +290,7 @@ async function main() {
   const exercisesBody = await exercisesRes.json();
   assert(exercisesRes.ok, "Exercises created");
   assert(Array.isArray(exercisesBody) && exercisesBody.length === 3, "3 exercises returned");
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- test code
   const exerciseIds = exercisesBody.map((e: any) => e.id);
 
   const workoutRes = await fetch(`${BASE_URL}/rest/v1/workouts`, {
@@ -256,8 +315,8 @@ async function main() {
   assert(setsRes.ok, "Sets created");
   assert(Array.isArray(setsBody) && setsBody.length === 3, "3 sets returned");
 
-  // Step 8: Query with joins
-  console.log("\n8) Query with joins...");
+  // Step 11: Query with joins
+  console.log("\n11) Query with joins...");
   const queryRes = await fetch(`${BASE_URL}/rest/v1/workouts?select=*,sets(*,exercises(*))`, {
     headers: { apikey: anon_key, Authorization: `Bearer ${accessToken}` },
   });
@@ -267,8 +326,8 @@ async function main() {
   assert(queryBody[0].sets?.length === 3, "3 sets embedded in workout");
   assert(queryBody[0].sets[0].exercises?.name != null, "Exercise embedded in set");
 
-  // Step 9: Upload file
-  console.log("\n9) Upload file...");
+  // Step 12: Upload file
+  console.log("\n12) Upload file...");
   const uploadRes = await fetch(`${BASE_URL}/storage/v1/object/logs/workout-log.txt`, {
     method: "POST",
     headers: { "Content-Type": "text/plain", apikey: anon_key },
@@ -279,8 +338,8 @@ async function main() {
   assert(uploadBody.key === "logs/workout-log.txt", "Correct file key");
   assert(uploadBody.size > 0, "File has size > 0");
 
-  // Step 9b: Upload binary file (regression: body parser must not corrupt binary)
-  console.log("\n9b) Upload binary file...");
+  // Step 12b: Upload binary file (regression: body parser must not corrupt binary)
+  console.log("\n12b) Upload binary file...");
   const binaryData = new Uint8Array(256);
   for (let i = 0; i < 256; i++) binaryData[i] = i; // every byte value 0x00–0xFF
   const binaryUploadRes = await fetch(`${BASE_URL}/storage/v1/object/logs/test-image.bin`, {
@@ -305,8 +364,8 @@ async function main() {
   }
   assert(bytesMatch, "Binary roundtrip: all 256 byte values preserved");
 
-  // Step 10: Check usage
-  console.log("\n10) Check usage...");
+  // Step 13: Check usage
+  console.log("\n13) Check usage...");
   const usageRes = await fetch(`${BASE_URL}/projects/v1/admin/${project_id}/usage`, {
     headers: { Authorization: `Bearer ${service_key}` },
   });
@@ -316,14 +375,15 @@ async function main() {
   assert(usageBody.api_calls_limit > 0, "API call limit set");
   assert(typeof usageBody.lease_expires_at === "string", "Lease expiry in usage report");
 
-  // Step 11: Schema introspection
-  console.log("\n11) Schema introspection...");
+  // Step 14: Schema introspection
+  console.log("\n14) Schema introspection...");
   const schemaRes = await fetch(`${BASE_URL}/projects/v1/admin/${project_id}/schema`, {
     headers: { Authorization: `Bearer ${service_key}` },
   });
   const schemaBody = await schemaRes.json();
   assert(schemaRes.ok, "Schema introspection succeeds");
   assert(Array.isArray(schemaBody.tables), "Returns tables array");
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- test code
   const tableNames = schemaBody.tables.map((t: any) => t.name).sort();
   assert(tableNames.includes("profiles"), "Profiles table found");
   assert(tableNames.includes("exercises"), "Exercises table found");
@@ -331,12 +391,13 @@ async function main() {
   assert(tableNames.includes("sets"), "Sets table found");
 
   // Verify columns on profiles
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- test code
   const profilesTable = schemaBody.tables.find((t: any) => t.name === "profiles");
   assert(profilesTable?.columns?.length === 4, "Profiles has 4 columns");
   assert(profilesTable?.rls_enabled === true, "Profiles has RLS enabled");
 
-  // Step 12: Refresh token
-  console.log("\n12) Refresh token...");
+  // Step 15: Refresh token
+  console.log("\n15) Refresh token...");
   const refreshRes = await fetch(`${BASE_URL}/auth/v1/token?grant_type=refresh_token`, {
     method: "POST",
     headers: { "Content-Type": "application/json", apikey: anon_key },
@@ -348,8 +409,8 @@ async function main() {
   assert(typeof refreshBody.refresh_token === "string", "New refresh_token returned");
   assert(refreshBody.refresh_token !== refreshToken, "Refresh token rotated");
 
-  // Step 13: SQL blocklist
-  console.log("\n13) SQL blocklist...");
+  // Step 16: SQL blocklist
+  console.log("\n16) SQL blocklist...");
   const blockedRes = await fetch(`${BASE_URL}/projects/v1/admin/${project_id}/sql`, {
     method: "POST",
     headers: { "Content-Type": "text/plain", Authorization: `Bearer ${service_key}` },
@@ -357,8 +418,8 @@ async function main() {
   });
   assert(blockedRes.status === 403, "Blocked SQL returns 403");
 
-  // Step 14: Access level enforcement (anon = read-only)
-  console.log("\n14) Access levels (anon read-only)...");
+  // Step 17: Access level enforcement (anon = read-only)
+  console.log("\n17) Access levels (anon read-only)...");
 
   // anon_key can SELECT
   const anonReadRes = await fetch(`${BASE_URL}/rest/v1/profiles?select=id`, {
@@ -390,8 +451,8 @@ async function main() {
   });
   assert(authWriteRes.ok, `access_token can INSERT (authenticated access)`);
 
-  // Step 15: SQL query returns rows
-  console.log("\n15) SQL query returns rows...");
+  // Step 18: SQL query returns rows
+  console.log("\n18) SQL query returns rows...");
 
   // DDL should return empty rows
   const ddlRes = await fetch(`${BASE_URL}/projects/v1/admin/${project_id}/sql`, {
@@ -427,8 +488,8 @@ async function main() {
   assert(countRes.ok, "COUNT via /sql succeeds");
   assert(countBody.rows[0].total === "5", "COUNT returns 5 exercises");
 
-  // Step 16: SERIAL/BIGSERIAL sequence permissions
-  console.log("\n16) SERIAL table (sequence permissions)...");
+  // Step 19: SERIAL/BIGSERIAL sequence permissions
+  console.log("\n19) SERIAL table (sequence permissions)...");
 
   // Create a table using SERIAL (auto-incrementing integer)
   const serialSQL = `
@@ -487,10 +548,10 @@ async function main() {
   assert(tasksQueryRes.ok, "SERIAL table query succeeds");
   assert(Array.isArray(tasksQueryBody) && tasksQueryBody.length === 2, "2 tasks returned");
 
-  // Step 17: apikey-only REST access (no Authorization header needed)
-  console.log("\n17) apikey-only REST access...");
+  // Step 20: apikey-only REST access (no Authorization header needed)
+  console.log("\n20) apikey-only REST access...");
 
-  // 17a: GET with only apikey (anon_key) — should return 200, not permission error
+  // 20a: GET with only apikey (anon_key) — should return 200, not permission error
   const anonOnlyRes = await fetch(`${BASE_URL}/rest/v1/profiles?select=id`, {
     headers: { apikey: anon_key },
   });
@@ -499,7 +560,7 @@ async function main() {
   const anonOnlyBody = await anonOnlyRes.json();
   assert(Array.isArray(anonOnlyBody), "anon-only GET returns array (empty due to RLS)");
 
-  // 17b: GET with access_token as apikey (no Authorization header) — should authenticate
+  // 20b: GET with access_token as apikey (no Authorization header) — should authenticate
   const tokenOnlyRes = await fetch(`${BASE_URL}/rest/v1/profiles?select=id,email`, {
     headers: { apikey: accessToken },
   });
@@ -508,7 +569,7 @@ async function main() {
   assert(Array.isArray(tokenOnlyBody) && tokenOnlyBody.length === 1, "access_token apikey returns user's row");
   assert(tokenOnlyBody[0]?.email === "athlete@example.com", "Correct user returned via apikey-only");
 
-  // 17c: POST with access_token as apikey (no Authorization header) — should allow INSERT
+  // 20c: POST with access_token as apikey (no Authorization header) — should allow INSERT
   const insertOnlyRes = await fetch(`${BASE_URL}/rest/v1/tasks`, {
     method: "POST",
     headers: {
@@ -522,8 +583,8 @@ async function main() {
   const insertOnlyBody = await insertOnlyRes.json();
   assert(Array.isArray(insertOnlyBody) && insertOnlyBody[0]?.title === "apikey-only insert", "INSERT via apikey-only works");
 
-  // Step 18: RLS templates (public_read, public_read_write)
-  console.log("\n18) RLS templates...");
+  // Step 21: RLS templates (public_read, public_read_write)
+  console.log("\n21) RLS templates...");
 
   // Create tables for template testing
   const templateSQL = `
@@ -623,8 +684,8 @@ async function main() {
   assert(guestReadRes.ok, "Anon can read guestbook (public_read_write)");
   assert(Array.isArray(guestReadBody) && guestReadBody.length === 1, "Anon sees 1 guestbook entry");
 
-  // Step 19: GRANT blocked with helpful hint
-  console.log("\n19) GRANT blocked with hint...");
+  // Step 22: GRANT blocked with helpful hint
+  console.log("\n22) GRANT blocked with hint...");
   const grantRes = await fetch(`${BASE_URL}/projects/v1/admin/${project_id}/sql`, {
     method: "POST",
     headers: { "Content-Type": "text/plain", Authorization: `Bearer ${service_key}` },
@@ -645,11 +706,15 @@ async function main() {
   assert(typeof revokeBody.error === "string", "REVOKE error includes message");
   assert(revokeBody.error.includes("RLS"), "Hint suggests using RLS endpoint");
 
-  // Step 20: Bundle deploy — one-call full-stack app
-  console.log("\n20) Bundle deploy...");
-  const bundleRes = await fetchPaid(`${BASE_URL}/deploy/v1/prototype`, {
+  // Step 23: Bundle deploy — one-call full-stack app (wallet auth)
+  console.log("\n23) Bundle deploy...");
+  const bundleHeaders = await walletAuthHeaders();
+  const bundleRes = await fetch(`${BASE_URL}/deploy/v1`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      ...bundleHeaders,
+    },
     body: JSON.stringify({
       name: "e2e-bundle-test",
       migrations: "CREATE TABLE items (id SERIAL PRIMARY KEY, title TEXT NOT NULL, done BOOLEAN DEFAULT false);",
@@ -675,7 +740,7 @@ async function main() {
   const bundleAnonKey = bundleBody.anon_key;
   const bundleServiceKey = bundleBody.service_key;
 
-  await sleep(500); // Wait for PostgREST reload
+  await sleep(1500); // Wait for PostgREST schema cache reload
 
   // Verify table exists via REST
   const bundleInsertRes = await fetch(`${BASE_URL}/rest/v1/items`, {
@@ -701,8 +766,8 @@ async function main() {
   });
   assert(bundleDeleteRes.ok, "Bundle project cleaned up");
 
-  // Step 21: Publish — publish workout tracker as forkable app version
-  console.log("\n21) Publish app version...");
+  // Step 24: Publish — publish workout tracker as forkable app version
+  console.log("\n24) Publish app version...");
   const publishRes = await fetch(`${BASE_URL}/projects/v1/admin/${project_id}/publish`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${service_key}` },
@@ -730,11 +795,15 @@ async function main() {
   assert(appInfoBody.fork_allowed === true, "App info shows fork_allowed");
   assert(typeof appInfoBody.fork_pricing === "object", "App info includes fork pricing");
 
-  // Step 22: Fork — fork the published app via x402
-  console.log("\n22) Fork app version...");
-  const forkRes = await fetchPaid(`${BASE_URL}/fork/v1/prototype`, {
+  // Step 25: Fork — fork the published app with wallet auth
+  console.log("\n25) Fork app version...");
+  const forkHeaders = await walletAuthHeaders();
+  const forkRes = await fetch(`${BASE_URL}/fork/v1`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      ...forkHeaders,
+    },
     body: JSON.stringify({
       version_id: versionId,
       name: "e2e-fork-test",
@@ -750,7 +819,6 @@ async function main() {
   assert(forkBody.project_id !== project_id, "Fork creates different project");
 
   const forkProjectId = forkBody.project_id;
-  const forkAnonKey = forkBody.anon_key;
   const forkServiceKey = forkBody.service_key;
 
   await sleep(500); // Wait for PostgREST reload
@@ -780,8 +848,8 @@ async function main() {
   });
   assert(versionDeleteRes.ok, "Published version cleaned up");
 
-  // Step 23: Delete original project
-  console.log("\n23) Delete project...");
+  // Step 26: Delete original project
+  console.log("\n26) Delete project...");
   const deleteRes = await fetch(`${BASE_URL}/projects/v1/${project_id}`, {
     method: "DELETE",
     headers: { Authorization: `Bearer ${service_key}` },

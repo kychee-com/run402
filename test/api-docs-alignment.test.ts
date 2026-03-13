@@ -44,19 +44,19 @@ const EXCLUDED_ENDPOINTS = new Set([
   "GET /status",
   "GET /public/stats",
   // Attribution beacon (internal analytics)
-  "POST /x402/attribution",
-  "GET /x402/attribution/recent",
+  "POST /attribution/v1",
+  "GET /attribution/v1/recent",
   // Stripe webhook (called by Stripe, not by agents)
-  "POST /v1/webhooks/stripe",
+  "POST /webhooks/v1/stripe",
   // Billing admin (internal, admin-key only)
-  "POST /v1/billing/admin/accounts/{_}/credit",
-  "POST /v1/billing/admin/accounts/{_}/debit",
+  "POST /billing/v1/admin/accounts/{_}/credit",
+  "POST /billing/v1/admin/accounts/{_}/debit",
   // Admin-only operations (admin-key, not agent-facing)
-  "POST /admin/v1/projects/{_}/pin",
-  "POST /admin/v1/projects/{_}/unpin",
-  "POST /admin/v1/faucet",
+  "POST /projects/v1/admin/{_}/pin",
+  "POST /projects/v1/admin/{_}/unpin",
+  "POST /faucet/v1/admin",
   // Admin delete app version (admin-key only)
-  "DELETE /v1/admin/app-versions/{_}",
+  "DELETE /apps/v1/admin/{_}",
 ]);
 
 // ---------------------------------------------------------------------------

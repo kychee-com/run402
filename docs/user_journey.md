@@ -135,7 +135,7 @@ curl https://api.run402.com/rest/v1/greetings \
 
 ## Step 8: Deploy a static site
 
-This is another **paid** call ($0.05). Reuse the same fetchPaid from step 4.
+Free with an active tier subscription. Uses wallet auth headers.
 
 ```typescript
 // deploy-site.ts  (same imports + signer setup as provision.ts)
@@ -205,9 +205,10 @@ Your app is now live at **https://hello-world.run402.com**.
 |------|------|
 | Wallet | Free (local) |
 | Testnet USDC | Free (faucet) |
-| Postgres database | $0.10 |
-| Static site deployment | $0.05 |
+| Tier subscription (prototype) | $0.10 |
+| Postgres database | Free (with tier) |
+| Static site deployment | Free (with tier) |
 | Custom subdomain | Free |
-| **Total** | **$0.15 testnet USDC** |
+| **Total** | **$0.10 testnet USDC** |
 
 A full-stack app with database, REST API, static site, and custom domain — no signups, no dashboards.

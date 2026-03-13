@@ -296,7 +296,7 @@ Rewards accrue only on the paid portion. Prevents promo credits from minting rea
 
 ## Fork Flow
 
-1. `POST /v1/fork/:tier` with `{ version_id, name }`, x402-gated
+1. `POST /fork/v1` with `{ version_id, name }`, wallet auth (free with active tier)
 2. Load S3 bundle, verify SHA-256
 3. Validate `tier >= effective_min_tier`
 4. Call `deployBundle()` orchestrator

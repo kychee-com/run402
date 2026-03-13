@@ -1,15 +1,15 @@
 import { Router, Request, Response } from "express";
 import { asyncHandler, HttpError } from "../utils/async-handler.js";
-import { extractWalletFromPaymentHeader, recordWallet } from "../utils/wallet.js";
+import { walletAuth } from "../middleware/wallet-auth.js";
 import { pool } from "../db/pool.js";
 
 const router = Router();
 
 router.get("/agent/v1/contact", (_req: Request, res: Response) => {
   res.json({
-    description: "Register agent contact info (name, email, webhook) tied to your wallet",
-    price: "$0.001",
+    description: "Register agent contact info (name, email, webhook) tied to your wallet (free with wallet auth)",
     method: "POST",
+    auth: "EIP-4361 wallet signature",
     body: {
       name: "string (required)",
       email: "string (optional, email address)",
@@ -18,19 +18,8 @@ router.get("/agent/v1/contact", (_req: Request, res: Response) => {
   });
 });
 
-router.post("/agent/v1/contact", asyncHandler(async (req: Request, res: Response) => {
-  // Extract wallet from payment header
-  const paymentHeader = req.headers["x-402-payment"] as string | undefined;
-  if (!paymentHeader) {
-    throw new HttpError(401, "Missing payment header");
-  }
-
-  const wallet = extractWalletFromPaymentHeader(paymentHeader);
-  if (!wallet) {
-    throw new HttpError(401, "Could not extract wallet from payment header");
-  }
-
-  recordWallet(wallet, "contact");
+router.post("/agent/v1/contact", walletAuth(false), asyncHandler(async (req: Request, res: Response) => {
+  const wallet = req.walletAddress!;
 
   // Validate body
   const { name, email, webhook } = req.body || {};

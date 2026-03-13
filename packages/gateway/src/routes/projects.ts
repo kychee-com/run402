@@ -1,16 +1,16 @@
 import { Router, Request, Response } from "express";
 import { TIERS } from "@run402/shared";
 import type { TierName } from "@run402/shared";
-import { createProject, archiveProject, renewLease } from "../services/projects.js";
+import { createProject, archiveProject } from "../services/projects.js";
 import { notifyNewProject } from "../services/telegram.js";
 import { serviceKeyAuth } from "../middleware/apikey.js";
-import { extractWalletFromPaymentHeader } from "../utils/wallet.js";
+import { walletAuth } from "../middleware/wallet-auth.js";
 import { asyncHandler, HttpError } from "../utils/async-handler.js";
 
 const router = Router();
 
 // GET/POST /v1/projects/quote — return tier pricing (free, no auth)
-// GET /v1/projects — same (enables `purl inspect` on the x402-gated POST route)
+// GET /v1/projects — same (enables `purl inspect` on the POST route)
 function handleQuote(_req: Request, res: Response): void {
   const tiers: Record<string, { price: string; lease_days: number; storage_mb: number; api_calls: number }> = {};
   for (const [name, config] of Object.entries(TIERS)) {
@@ -26,56 +26,20 @@ function handleQuote(_req: Request, res: Response): void {
 router.get("/projects/v1", handleQuote);
 router.post("/projects/v1/quote", handleQuote);
 
-// POST /v1/projects — create project (x402-gated)
-router.post("/projects/v1", asyncHandler(async (req: Request, res: Response) => {
+// POST /v1/projects — create project (wallet auth, free with active tier)
+router.post("/projects/v1", walletAuth(true), asyncHandler(async (req: Request, res: Response) => {
   const name = req.body?.name || `project-${Date.now()}`;
-  const tier = (req.body?.tier as TierName) || "prototype";
+  // Tier comes from the wallet's subscription
+  const tier = (req.walletTier as TierName) || "prototype";
 
-  if (!TIERS[tier]) {
-    throw new HttpError(400, `Unknown tier: ${tier}. Valid tiers: ${Object.keys(TIERS).join(", ")}`);
-  }
+  const walletAddress = req.walletAddress;
 
-  // Extract x402 transaction hash and wallet address
-  const txHash = res.getHeader("x-402-transaction") as string | undefined;
-  const paymentHeader = req.headers["x-402-payment"] as string | undefined;
-  const walletAddress = paymentHeader ? extractWalletFromPaymentHeader(paymentHeader) : undefined;
-
-  const project = await createProject(name, tier, txHash, walletAddress || undefined);
+  const project = await createProject(name, tier, undefined, walletAddress);
   if (!project) {
     throw new HttpError(503, "No schema slots available");
   }
 
-  console.log(`  Created project: ${project.id} (schema: ${project.schemaSlot}, tier: ${tier})`);
-  notifyNewProject(name, tier, project.id);
-
-  res.status(201).json({
-    project_id: project.id,
-    anon_key: project.anonKey,
-    service_key: project.serviceKey,
-    schema_slot: project.schemaSlot,
-    tier: project.tier,
-    lease_expires_at: project.leaseExpiresAt.toISOString(),
-  });
-}));
-
-// POST /v1/projects/create/:tier — tier-specific creation (x402-gated per tier)
-router.post("/projects/v1/create/:tier", asyncHandler(async (req: Request, res: Response) => {
-  const tier = req.params["tier"] as TierName;
-  if (!TIERS[tier]) {
-    throw new HttpError(400, `Unknown tier: ${tier}`);
-  }
-
-  const name = req.body?.name || `project-${Date.now()}`;
-  const txHash = res.getHeader("x-402-transaction") as string | undefined;
-  const paymentHeader = req.headers["x-402-payment"] as string | undefined;
-  const walletAddress = paymentHeader ? extractWalletFromPaymentHeader(paymentHeader) : undefined;
-
-  const project = await createProject(name, tier, txHash, walletAddress || undefined);
-  if (!project) {
-    throw new HttpError(503, "No schema slots available");
-  }
-
-  console.log(`  Created project: ${project.id} (schema: ${project.schemaSlot}, tier: ${tier})`);
+  console.log(`  Created project: ${project.id} (schema: ${project.schemaSlot}, tier: ${tier}, wallet: ${walletAddress})`);
   notifyNewProject(name, tier, project.id);
 
   res.status(201).json({
@@ -104,24 +68,6 @@ router.delete("/projects/v1/:id", serviceKeyAuth, asyncHandler(async (req: Reque
 
   console.log(`  Archived project: ${projectId}`);
   res.json({ status: "archived", project_id: projectId });
-}));
-
-// POST /v1/projects/:id/renew — renew lease (x402-gated in future)
-router.post("/projects/v1/:id/renew", asyncHandler(async (req: Request, res: Response) => {
-  const projectId = req.params["id"] as string;
-  const tier = (req.body?.tier as TierName) || "prototype";
-
-  const newExpiry = await renewLease(projectId, tier);
-  if (!newExpiry) {
-    throw new HttpError(404, "Project not found");
-  }
-
-  console.log(`  Renewed project: ${projectId} (new expiry: ${newExpiry.toISOString()})`);
-  res.json({
-    project_id: projectId,
-    tier,
-    lease_expires_at: newExpiry.toISOString(),
-  });
 }));
 
 export default router;

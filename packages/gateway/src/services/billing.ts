@@ -16,6 +16,9 @@ export interface BillingAccount {
   funding_policy: string;
   low_balance_threshold_usd_micros: number;
   primary_contact_email: string | null;
+  tier: string | null;
+  lease_started_at: Date | null;
+  lease_expires_at: Date | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -464,6 +467,9 @@ function rowToAccount(row: Record<string, unknown>): BillingAccount {
     funding_policy: row.funding_policy as string,
     low_balance_threshold_usd_micros: Number(row.low_balance_threshold_usd_micros),
     primary_contact_email: row.primary_contact_email as string | null,
+    tier: (row.tier as string) || null,
+    lease_started_at: row.lease_started_at ? new Date(row.lease_started_at as string) : null,
+    lease_expires_at: row.lease_expires_at ? new Date(row.lease_expires_at as string) : null,
     created_at: new Date(row.created_at as string),
     updated_at: new Date(row.updated_at as string),
   };

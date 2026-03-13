@@ -142,6 +142,23 @@ export interface PolicyInfo {
   check_expression: string | null;
 }
 
+// === Wallet tier types ===
+
+export interface WalletTierInfo {
+  wallet: string;
+  tier: TierName | null;
+  lease_started_at: string | null;
+  lease_expires_at: string | null;
+  active: boolean;
+  pool_usage: {
+    projects: number;
+    total_api_calls: number;
+    total_storage_bytes: number;
+    api_calls_limit: number;
+    storage_bytes_limit: number;
+  };
+}
+
 // === Metering types ===
 
 export interface MeteringCounter {

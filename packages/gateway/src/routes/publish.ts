@@ -23,7 +23,7 @@ import { forkApp, validateForkRequest, ForkError } from "../services/fork.js";
 import { deleteAppVersion } from "../services/publish.js";
 import { createDemoProject, findDemoProject, updateDemoVersion, teardownDemoProject } from "../services/demo.js";
 import { ADMIN_KEY } from "../config.js";
-import { extractWalletFromPaymentHeader } from "../utils/wallet.js";
+import { walletAuth } from "../middleware/wallet-auth.js";
 import { notifyNewProject } from "../services/telegram.js";
 
 const router = Router();
@@ -256,14 +256,10 @@ router.get(
 
 // GET /v1/fork — info
 router.get("/fork/v1", (_req: Request, res: Response) => {
-  const tiers: Record<string, { price: string }> = {};
-  for (const [name, config] of Object.entries(TIERS)) {
-    tiers[name] = { price: config.price };
-  }
   res.json({
-    description: "Fork a published app version into a new project",
-    tiers,
-    method: "POST /fork/v1/:tier",
+    description: "Fork a published app version into a new project (requires active tier)",
+    method: "POST /fork/v1",
+    auth: "EIP-4361 wallet signature (tier from wallet subscription)",
     body: {
       version_id: "string (required)",
       name: "string (required)",
@@ -272,15 +268,12 @@ router.get("/fork/v1", (_req: Request, res: Response) => {
   });
 });
 
-// POST /v1/fork/:tier — fork an app version (x402-gated)
+// POST /v1/fork — fork an app version (wallet auth, free with tier)
 router.post(
-  "/fork/v1/:tier",
+  "/fork/v1",
+  walletAuth(true),
   asyncHandler(async (req: Request, res: Response) => {
-    const tier = req.params.tier as TierName;
-    if (!TIERS[tier]) {
-      throw new HttpError(400, `Unknown tier: ${tier}`);
-    }
-
+    const tier = (req.walletTier as TierName) || "prototype";
     const body = req.body || {};
 
     try {
@@ -292,14 +285,11 @@ router.post(
       throw err;
     }
 
-    const txHash = res.getHeader("x-402-transaction") as string | undefined;
-    const paymentHeader = req.headers["x-402-payment"] as string | undefined;
-    const walletAddress = paymentHeader ? extractWalletFromPaymentHeader(paymentHeader) : undefined;
-
+    const walletAddress = req.walletAddress;
     const apiBase = `${req.protocol}://${req.get("host")}`;
 
     try {
-      const result = await forkApp(body, tier, apiBase, txHash, walletAddress || undefined);
+      const result = await forkApp(body, tier, apiBase, undefined, walletAddress);
       notifyNewProject(`fork:${body.name}`, tier, result.project_id);
       res.status(201).json(result);
     } catch (err: unknown) {

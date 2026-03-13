@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from "express";
 import { pool } from "../db/pool.js";
 import { METERING_FLUSH_INTERVAL } from "../config.js";
 import { getTierLimits } from "@run402/shared";
+import type { TierName } from "@run402/shared";
 import { errorMessage } from "../utils/errors.js";
 
 // In-memory counters, flushed to DB periodically
@@ -10,6 +11,9 @@ const counters = new Map<string, { apiCalls: number; lastFlushed: number }>();
 /**
  * Middleware: increment API call counter and enforce budget.
  * Must run after apikey auth (requires req.project).
+ *
+ * If req.walletAddress is set (wallet auth), checks pool limits
+ * across all the wallet's projects. Otherwise falls back to per-project limits.
  */
 export function meteringMiddleware(req: Request, res: Response, next: NextFunction): void {
   const project = req.project;
@@ -29,12 +33,15 @@ export function meteringMiddleware(req: Request, res: Response, next: NextFuncti
   counter.apiCalls++;
   project.apiCalls++;
 
-  // Per-project budget check
-  const limits = getTierLimits(project.tier);
+  // Use wallet-level tier if available, otherwise project tier
+  const tier = (req.walletTier as TierName) || project.tier;
+  const limits = getTierLimits(tier);
+
+  // Per-project budget check (individual project limits still apply)
   if (project.apiCalls >= limits.apiCalls) {
     res.status(402).json({
       error: "API call limit exceeded",
-      message: `Your ${project.tier} tier allows ${limits.apiCalls.toLocaleString()} API calls. Upgrade your tier to continue.`,
+      message: `Your ${tier} tier allows ${limits.apiCalls.toLocaleString()} API calls. Upgrade your tier to continue.`,
       usage: { api_calls: project.apiCalls, limit: limits.apiCalls },
     });
     return;
@@ -43,7 +50,7 @@ export function meteringMiddleware(req: Request, res: Response, next: NextFuncti
   if (project.storageBytes >= limits.storageBytes) {
     res.status(402).json({
       error: "Storage limit exceeded",
-      message: `Your ${project.tier} tier allows ${(limits.storageBytes / 1024 / 1024).toFixed(0)}MB storage. Upgrade your tier to continue.`,
+      message: `Your ${tier} tier allows ${(limits.storageBytes / 1024 / 1024).toFixed(0)}MB storage. Upgrade your tier to continue.`,
       usage: { storage_bytes: project.storageBytes, limit: limits.storageBytes },
     });
     return;

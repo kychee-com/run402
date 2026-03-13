@@ -308,9 +308,9 @@ When approved, swap the facilitator from CDP to Stripe for compliance, fiat off-
 **File:** `packages/gateway/src/middleware/x402.ts`
 
 Import `declareDiscoveryExtension` from `@x402/extensions/bazaar` and add `extensions` to each resource config entry. Declare input/output schemas for:
-- `POST /v1/projects` — input: `{ name }`, output: `{ project_id, anon_key, service_key }`
-- `POST /v1/projects/create/:tier` — input: `{ name }`, output: same
-- `GET /v1/ping` — no input, output: `{ pong: true }`
+- `POST /tiers/v1/subscribe/:tier` — no input, output: `{ wallet, tier, lease_expires_at }`
+- `POST /tiers/v1/renew/:tier` — no input, output: same
+- `POST /generate-image/v1` — input: `{ prompt, aspect? }`, output: `{ image, content_type }`
 
 ### Step 2: Register Bazaar server extension
 

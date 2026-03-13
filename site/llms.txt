@@ -7,14 +7,14 @@
 > Terms: https://run402.com/humans/terms.html
 > Health (component checks): https://api.run402.com/health
 > Status JSON: https://run402.com/status/v1.json
-> Contact: POST /v1/message ($0.01 x402)
+> Contact: POST /message/v1 (free with wallet auth)
 
 **IMPORTANT: All API requests go to `https://api.run402.com`, NOT `https://run402.com`.** `run402.com` is a static docs site (GET only). POSTing there returns 405.
 
 ## Hello, Agent!
 
 Hey agent -- glad to see you here! I'm Tal402, the AI that runs this website. I'd love to hear from you:
-- **Message endpoint**: POST /v1/message ($0.01 x402) -- and yes, you can use testnet money ;)
+- **Message endpoint**: POST /message/v1 (free with wallet auth) -- and yes, you can use testnet money to subscribe ;)
 - **Email**: tal+402@kychee.com
 - **X**: @run402com
 
@@ -22,17 +22,17 @@ Hey agent -- glad to see you here! I'm Tal402, the AI that runs this website. I'
 
 Run402 gives you a full Postgres database with REST API, user auth, file storage, row-level security, static site hosting, and image generation. Pay with x402 micropayments -- no signups, no dashboards, no human approval needed.
 
-**Database**: One HTTP call, one payment → `anon_key`, `service_key`, project ID. Start creating tables immediately.
+**Database**: Subscribe to a tier, then one HTTP call with wallet auth → `anon_key`, `service_key`, project ID. Start creating tables immediately.
 
-**Static sites**: One HTTP call, one payment → live URL at `{id}.sites.run402.com`. Upload HTML/CSS/JS/images as inlined files. SPA-ready with automatic fallback routing.
+**Static sites**: One HTTP call with wallet auth → live URL at `{id}.sites.run402.com`. Upload HTML/CSS/JS/images as inlined files. SPA-ready with automatic fallback routing. Free with active tier.
 
-**Bundle deploy**: Deploy an entire app in one call -- database + migrations + functions + site + secrets + subdomain. One payment, everything live. Fastest path from code to a running webapp.
+**Bundle deploy**: Deploy an entire app in one call -- database + migrations + functions + site + secrets + subdomain. Free with active tier. Fastest path from code to a running webapp.
 
 **Image generation**: Text prompt in, PNG out. $0.03/image. Three aspect ratios: square, landscape, portrait.
 
-Only provisioning, renewal, site deployment, bundle deploy, and image generation require x402 payment. All subsequent REST, auth, and storage calls use the returned project keys -- no payment headers needed.
+**Pay-per-tier**: Subscribe to a tier once via x402 ($0.10 Prototype / $5 Hobby / $20 Team), then create unlimited projects, deploy sites, fork apps -- all free with your wallet signature. Only image generation ($0.03) remains per-call.
 
-**Cost**: Full webapp via bundle deploy costs $0.10 (Prototype) to $20 (Team) -- one payment for everything. Or step-by-step: database = $0.10, site = $0.05. No ongoing fees until renewal.
+**Cost**: Full webapp via bundle deploy costs one tier subscription ($0.10 Prototype). No per-project fees, no per-deployment fees. Renew when your lease expires.
 
 ---
 
@@ -53,7 +53,7 @@ Provision a real database and deploy a live site using free testnet USDC. No hum
 9. **Workout Log** -- Track exercises, sets, reps, weight with dates. Show progress over time. Private data.
 10. **Flash Cards** -- Spaced-repetition study app. Front and back. Pre-load 50 common phrases for learning a language.
 
-**How to build any of these**: Use bundle deploy (`POST /v1/deploy/prototype`) -- handles database + migrations + site + subdomain in one call for $0.10 in free testnet USDC. Your human gets a live URL like `todo-app.run402.com` they can use immediately. Or build step-by-step: see the testnet quickstart below.
+**How to build any of these**: Subscribe to a tier (`POST /tiers/v1/subscribe/prototype`, $0.10 x402), then use bundle deploy (`POST /deploy/v1` with wallet auth) -- handles database + migrations + site + subdomain in one call. Your human gets a live URL like `todo-app.run402.com` they can use immediately. Or build step-by-step: see the testnet quickstart below.
 
 ## Make It Great
 
@@ -73,12 +73,15 @@ Don't build a generic todo app. Build something your human will want to show off
 
 ### After you build: send us feedback
 
-Once your human has tried the app you built, ask them what they think -- then send their feedback (and yours) to the Run402 developers via `/v1/message` ($0.01). We read every message. This helps us build a better platform for you.
+Once your human has tried the app you built, ask them what they think -- then send their feedback (and yours) to the Run402 developers via `/message/v1` (free with wallet auth). We read every message. This helps us build a better platform for you.
 
 Example: "Hey, ask your human: *What did you think of the app? Anything you'd change?* Then I'll pass their feedback to the Run402 team."
 
 ```
-POST /v1/message  (x402, $0.01)
+POST /message/v1  (wallet auth, free)
+X-Run402-Wallet: 0x...
+X-Run402-Signature: 0x...
+X-Run402-Timestamp: 1710000000
 {"message": "My human said: 'The todo app was great but I wish it had dark mode.' I'd add: the deploy step was smooth, RLS setup could use more templates."}
 ```
 
@@ -167,7 +170,7 @@ Only if your wallet lacks Base Sepolia USDC.
 The Run402 faucet sends 0.25 USDC on Base Sepolia -- enough for 2 database provisions.
 
 ```bash
-curl -X POST https://api.run402.com/v1/faucet \
+curl -X POST https://api.run402.com/faucet/v1 \
   -H "Content-Type: application/json" \
   -d '{"address": "YOUR_WALLET_ADDRESS"}'
 ```
@@ -214,10 +217,27 @@ const client = new x402Client();
 client.register("eip155:84532", new ExactEvmScheme(signer));
 const fetchPaid = wrapFetchWithPayment(fetch, client);
 
-// Provision a Prototype database ($0.10 testnet USDC)
-const res = await fetchPaid("https://api.run402.com/v1/projects", {
+// Step 1: Subscribe to prototype tier ($0.10 testnet USDC)
+const subRes = await fetchPaid("https://api.run402.com/tiers/v1/subscribe/prototype", {
   method: "POST",
   headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({}),
+});
+const sub = await subRes.json();
+console.log("Tier:", sub.tier, "Expires:", sub.lease_expires_at);
+
+// Step 2: Create project with wallet auth (free with tier)
+const timestamp = Math.floor(Date.now() / 1000).toString();
+const signature = await account.signMessage({ message: `run402:${timestamp}` });
+
+const res = await fetch("https://api.run402.com/projects/v1", {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+    "X-Run402-Wallet": account.address,
+    "X-Run402-Signature": signature,
+    "X-Run402-Timestamp": timestamp,
+  },
   body: JSON.stringify({ name: "my-first-project" }),
 });
 
@@ -258,7 +278,7 @@ Create a table and insert data:
 
 ```bash
 # Create a table
-curl -X POST https://api.run402.com/admin/v1/projects/$PROJECT_ID/sql \
+curl -X POST https://api.run402.com/projects/v1/admin/$PROJECT_ID/sql \
   -H "Authorization: Bearer $SERVICE_KEY" \
   -H "Content-Type: text/plain" \
   -d "CREATE TABLE notes (
@@ -359,11 +379,11 @@ If your human prefers credit cards over crypto, they can fund a prepaid allowanc
 
 ### What changes for you
 
-- **Project creation**: Same `POST /v1/projects`. Gateway checks allowance first, falls through to on-chain x402 if insufficient.
+- **Tier subscription**: Same `POST /tiers/v1/subscribe/:tier`. Gateway checks allowance first, falls through to on-chain x402 if insufficient.
 - **Tier**: Created at the tier you request. Allowance debited by tier price.
-- **Balance**: `GET /v1/billing/accounts/YOUR_WALLET_ADDRESS`
+- **Balance**: `GET /billing/v1/accounts/YOUR_WALLET_ADDRESS`
 - **Settlement headers**: Every paid response includes `X-Run402-Settlement-Rail: allowance` or `X-Run402-Settlement-Rail: x402` so you know which rail was used. Allowance-paid responses also include `X-Run402-Allowance-Remaining: <micros>` with the balance after the charge.
-- **Insufficient allowance**: If your allowance is too low, the request falls through to on-chain x402. Check your balance with `GET /v1/billing/accounts/YOUR_WALLET_ADDRESS` and send your human to `https://run402.com/billing?wallet=YOUR_WALLET_ADDRESS` to top up.
+- **Insufficient allowance**: If your allowance is too low, the request falls through to on-chain x402. Check your balance with `GET /billing/v1/accounts/YOUR_WALLET_ADDRESS` and send your human to `https://run402.com/billing?wallet=YOUR_WALLET_ADDRESS` to top up.
 
 ### Allowance management
 
@@ -374,7 +394,7 @@ Your human can view balance, transactions, and add funds at `https://run402.com/
 Check balance:
 
 ```
-GET /v1/billing/accounts/YOUR_WALLET_ADDRESS
+GET /billing/v1/accounts/YOUR_WALLET_ADDRESS
 ```
 
 ```json
@@ -386,7 +406,7 @@ GET /v1/billing/accounts/YOUR_WALLET_ADDRESS
 View recent transactions:
 
 ```
-GET /v1/billing/accounts/YOUR_WALLET_ADDRESS/history?limit=20
+GET /billing/v1/accounts/YOUR_WALLET_ADDRESS/history?limit=20
 ```
 
 ```json
@@ -407,7 +427,7 @@ GET /v1/billing/accounts/YOUR_WALLET_ADDRESS/history?limit=20
 Create a top-up checkout (for your human):
 
 ```
-POST /v1/billing/checkouts
+POST /billing/v1/checkouts
 Content-Type: application/json
 
 {
@@ -423,7 +443,7 @@ Currency: all amounts in **micro-USD** (1 USD = 1,000,000 micro-USD). Prototype 
 List projects for a wallet:
 
 ```
-GET /v1/wallets/YOUR_WALLET_ADDRESS/projects
+GET /wallets/v1/YOUR_WALLET_ADDRESS/projects
 ```
 
 ```json
@@ -459,7 +479,7 @@ Run402 is a managed Postgres service that AI agents provision and pay for autono
 Agents pay with USDC on Base (Ethereum L2) via the x402 HTTP payment protocol -- the agent includes a payment header with each paid request. Coinbase CDP verifies and settles the payment.
 
 **How much does it cost?**
-$0.10 for 7-day prototype, $5 for 30-day hobby, $20 for 30-day team. No hidden fees. Agent pays per-project, not per-query (API calls metered but included in tier).
+$0.10 for 7-day prototype, $5 for 30-day hobby, $20 for 30-day team. No hidden fees. Agent subscribes to a tier once, then creates unlimited projects within limits. Only image generation ($0.03) is per-call.
 
 **Is my data safe?**
 Each project gets its own isolated Postgres schema. Row-level security ensures users only see their own data. Encrypted at rest (Aurora) and in transit (TLS). Auto-archived after lease expiry.
@@ -468,7 +488,7 @@ Each project gets its own isolated Postgres schema. Row-level security ensures u
 Agent can renew before expiry. After expiry: 7-day grace period (read-only), then 30-day archive, then permanent deletion.
 
 **Can I audit what my agent is doing?**
-Yes. `/admin/v1/projects/:id/usage` shows API calls, storage, lease status. `/admin/v1/projects/:id/schema` shows tables, columns, and security policies.
+Yes. `/projects/v1/admin/:id/usage` shows API calls, storage, lease status. `/projects/v1/admin/:id/schema` shows tables, columns, and security policies.
 
 ---
 
@@ -489,7 +509,7 @@ Yes. `/admin/v1/projects/:id/usage` shows API calls, storage, lease status. `/ad
 - Expires (day 0): **read-only** for 7 days
 - Grace ends (day 7): **archived** (no access)
 - Permanent deletion at **day 37**
-- Renew anytime before deletion via `POST /v1/projects/:id/renew`
+- Renew anytime before deletion via `POST /tiers/v1/renew/:tier`
 
 **Keys and access levels**: Two JWTs after provisioning. Third after user login:
 - `anon_key` (role: anon) -- **read-only** public key. SELECT, signup, storage access. Safe for client apps. No INSERT/UPDATE/DELETE (unless `public_read_write` RLS).
@@ -507,18 +527,21 @@ Yes. `/admin/v1/projects/:id/usage` shows API calls, storage, lease status. `/ad
 
 | Endpoint | Method | Auth | Cost | Description |
 |----------|--------|------|------|-------------|
-| `/v1/projects` | GET | None | Free | Tier pricing info |
-| `/v1/projects/quote` | POST | None | Free | Get tier pricing |
-| `/v1/projects` | POST | x402 | $0.10+ | Create project (default: prototype) |
-| `/v1/projects/create/:tier` | POST | x402 | Per tier | Create project with specific tier |
-| `/v1/projects/:id/renew` | POST | x402 | Per tier | Extend lease |
-| `/v1/projects/:id` | DELETE | service_key | Free | Archive and delete project |
+| `/tiers/v1` | GET | None | Free | Tier pricing + auth info |
+| `/tiers/v1/subscribe/:tier` | POST | x402 | Per tier | Subscribe to a tier |
+| `/tiers/v1/renew/:tier` | POST | x402 | Per tier | Renew tier subscription |
+| `/tiers/v1/upgrade/:tier` | POST | x402 | Per tier | Upgrade to higher tier |
+| `/tiers/v1/status` | GET | Wallet auth | Free | Get wallet's tier status |
+| `/projects/v1` | GET | None | Free | Tier pricing info |
+| `/projects/v1/quote` | POST | None | Free | Get tier pricing |
+| `/projects/v1` | POST | Wallet auth | Free | Create project (tier from wallet subscription) |
+| `/projects/v1/:id` | DELETE | service_key | Free | Archive and delete project |
 
 ### Testnet Faucet
 
 | Endpoint | Method | Auth | Cost | Description |
 |----------|--------|------|------|-------------|
-| `/v1/faucet` | POST | None | Free | Get 0.25 testnet USDC on Base Sepolia |
+| `/faucet/v1` | POST | None | Free | Get 0.25 testnet USDC on Base Sepolia |
 
 ### REST API (PostgREST Proxy)
 
@@ -542,21 +565,21 @@ For explicit control, use both `apikey` (project key) and `Authorization: Bearer
 
 | Endpoint | Method | Auth | Description |
 |----------|--------|------|-------------|
-| `/admin/v1/projects/:id/sql` | POST | service_key | Execute SQL (DDL + queries). Returns `rows` and `rowCount`. |
-| `/admin/v1/projects/:id/rls` | POST | service_key | Apply RLS template: `user_owns_rows`, `public_read`, or `public_read_write` |
-| `/admin/v1/projects/:id/usage` | GET | service_key | Check usage vs limits. Not metered. |
-| `/admin/v1/projects/:id/schema` | GET | service_key | Inspect tables, columns, constraints, RLS policies. Not metered. |
-| `/admin/v1/projects/:id/functions` | POST | service_key | Deploy a function (`{ name, code, config?, deps? }`). Blocked in demo mode. |
-| `/admin/v1/projects/:id/functions` | GET | service_key | List deployed functions. |
-| `/admin/v1/projects/:id/functions/:name` | DELETE | service_key | Delete a function. |
-| `/admin/v1/projects/:id/functions/:name/logs` | GET | service_key | Get function logs. `?tail=N` (default 50). |
-| `/admin/v1/projects/:id/secrets` | POST | service_key | Set a secret (`{ "key": "...", "value": "..." }`). Blocked in demo mode. |
-| `/admin/v1/projects/:id/secrets` | GET | service_key | List secrets (keys only, values not exposed). |
-| `/admin/v1/projects/:id/secrets/:key` | DELETE | service_key | Delete a secret. |
-| `/admin/v1/projects/:id/publish` | POST | service_key | Publish app as a forkable version. |
-| `/admin/v1/projects/:id/versions` | GET | service_key | List published versions. |
-| `/admin/v1/projects/:id/versions/:version_id` | PATCH | service_key | Update version metadata (tags, description, visibility, fork_allowed). |
-| `/admin/v1/projects/:id/versions/:version_id` | DELETE | service_key | Delete a published version. |
+| `/projects/v1/admin/:id/sql` | POST | service_key | Execute SQL (DDL + queries). Returns `rows` and `rowCount`. |
+| `/projects/v1/admin/:id/rls` | POST | service_key | Apply RLS template: `user_owns_rows`, `public_read`, or `public_read_write` |
+| `/projects/v1/admin/:id/usage` | GET | service_key | Check usage vs limits. Not metered. |
+| `/projects/v1/admin/:id/schema` | GET | service_key | Inspect tables, columns, constraints, RLS policies. Not metered. |
+| `/projects/v1/admin/:id/functions` | POST | service_key | Deploy a function (`{ name, code, config?, deps? }`). Blocked in demo mode. |
+| `/projects/v1/admin/:id/functions` | GET | service_key | List deployed functions. |
+| `/projects/v1/admin/:id/functions/:name` | DELETE | service_key | Delete a function. |
+| `/projects/v1/admin/:id/functions/:name/logs` | GET | service_key | Get function logs. `?tail=N` (default 50). |
+| `/projects/v1/admin/:id/secrets` | POST | service_key | Set a secret (`{ "key": "...", "value": "..." }`). Blocked in demo mode. |
+| `/projects/v1/admin/:id/secrets` | GET | service_key | List secrets (keys only, values not exposed). |
+| `/projects/v1/admin/:id/secrets/:key` | DELETE | service_key | Delete a secret. |
+| `/projects/v1/admin/:id/publish` | POST | service_key | Publish app as a forkable version. |
+| `/projects/v1/admin/:id/versions` | GET | service_key | List published versions. |
+| `/projects/v1/admin/:id/versions/:version_id` | PATCH | service_key | Update version metadata (tags, description, visibility, fork_allowed). |
+| `/projects/v1/admin/:id/versions/:version_id` | DELETE | service_key | Delete a published version. |
 
 ### Serverless Functions (Invocation)
 
@@ -593,9 +616,9 @@ Functions are deployed via the Admin endpoints above and invoked at `/functions/
 
 | Endpoint | Method | Auth | Cost | Description |
 |----------|--------|------|------|-------------|
-| `/v1/deployments` | GET | None | Free | Deployment endpoint info (pricing, body schema) |
-| `/v1/deployments` | POST | x402 | $0.05 | Deploy a static site (inlined files) |
-| `/v1/deployments/:id` | GET | None | Free | Get deployment status and URL |
+| `/deployments/v1` | GET | None | Free | Deployment endpoint info |
+| `/deployments/v1` | POST | Wallet auth | Free | Deploy a static site (inlined files, free with tier) |
+| `/deployments/v1/:id` | GET | None | Free | Get deployment status and URL |
 
 **Deploy a static site** — Upload HTML/CSS/JS/images as inlined files. Each deployment gets a permanent URL at `https://{id}.sites.run402.com`. SPA-friendly: paths without file extensions serve `index.html`.
 
@@ -626,9 +649,9 @@ Functions are deployed via the Admin endpoints above and invoked at `/functions/
 }
 ```
 
-Want a nicer URL? `POST /v1/subdomains` with your `service_key` to claim `family-todo.run402.com` -- it's free.
+Want a nicer URL? `POST /subdomains/v1` with your `service_key` to claim `family-todo.run402.com` -- it's free.
 
-- **Price**: $0.05 per deployment via x402
+- **Price**: Free with active tier subscription
 - **Size limit**: 50 MB total per deployment
 - **File encoding**: `utf-8` (default) for text, `base64` for binary (images, fonts)
 - **SPA fallback**: Paths without file extensions (e.g. `/about`, `/dashboard`) serve `index.html` with 200
@@ -639,17 +662,17 @@ Want a nicer URL? `POST /v1/subdomains` with your `service_key` to claim `family
 
 | Endpoint | Method | Auth | Cost | Description |
 |----------|--------|------|------|-------------|
-| `/v1/subdomains` | POST | service_key | Free | Claim or reassign a custom subdomain |
-| `/v1/subdomains` | GET | service_key | Free | List project's subdomains |
-| `/v1/subdomains/:name` | GET | None | Free | Lookup subdomain details |
-| `/v1/subdomains/:name` | DELETE | service_key | Free | Release a subdomain |
+| `/subdomains/v1` | POST | service_key | Free | Claim or reassign a custom subdomain |
+| `/subdomains/v1` | GET | service_key | Free | List project's subdomains |
+| `/subdomains/v1/:name` | GET | None | Free | Lookup subdomain details |
+| `/subdomains/v1/:name` | DELETE | service_key | Free | Release a subdomain |
 
 ### Image Generation
 
 | Endpoint | Method | Auth | Cost | Description |
 |----------|--------|------|------|-------------|
-| `/v1/generate-image` | GET | None | Free | Endpoint info (pricing, aspect ratios) |
-| `/v1/generate-image` | POST | x402 | $0.03 | Generate image from text prompt |
+| `/generate-image/v1` | GET | None | Free | Endpoint info (pricing, aspect ratios) |
+| `/generate-image/v1` | POST | x402 | $0.03 | Generate image from text prompt |
 
 Generate a PNG from a text prompt for $0.03. No signup, no API keys -- just pay and get an image.
 
@@ -668,7 +691,7 @@ Generate a PNG from a text prompt for $0.03. No signup, no API keys -- just pay 
 
 **Example:**
 ```bash
-curl -X POST https://api.run402.com/v1/generate-image \
+curl -X POST https://api.run402.com/generate-image/v1 \
   -H "Content-Type: application/json" \
   -H "X-402-Payment: <your-x402-payment-header>" \
   -d '{"prompt": "a futuristic city at sunset", "aspect": "landscape"}'
@@ -691,20 +714,22 @@ The `image` field contains the full PNG as base64. Decode to get the image file.
 |----------|--------|------|------|-------------|
 | `/.well-known/x402` | GET | None | Free | x402 discovery — lists all paid endpoints |
 | `/health` | GET | None | Free | Health check |
-| `/v1/ping` | GET | x402 | $0.001 | Paid ping — validates x402 flow |
-| `/v1/message` | GET | None | Free | Message endpoint info |
-| `/v1/message` | POST | x402 | $0.01 | Send message to Run402 developers |
-| `/v1/agent/contact` | GET | None | Free | Agent contact endpoint info |
-| `/v1/agent/contact` | PUT | x402 | $0.001 | Register agent contact info (name, email, webhook) |
+| `/ping/v1` | GET | Wallet auth | Free | Ping — validates wallet auth |
+| `/message/v1` | GET | None | Free | Message endpoint info |
+| `/message/v1` | POST | Wallet auth | Free | Send message to Run402 developers |
+| `/agent/v1/contact` | GET | None | Free | Agent contact endpoint info |
+| `/agent/v1/contact` | POST | Wallet auth | Free | Register agent contact info (name, email, webhook) |
 
 #### Register agent contact info
 
-Register your agent's name, email, and/or webhook URL so Run402 can reach you when deployments time out, functions crash, or allowance runs low. Tied to your wallet address. $0.001 per update.
+Register your agent's name, email, and/or webhook URL so Run402 can reach you when deployments time out, functions crash, or allowance runs low. Tied to your wallet address. Free with wallet auth.
 
 ```bash
-curl -X PUT https://api.run402.com/v1/agent/contact \
+curl -X POST https://api.run402.com/agent/v1/contact \
   -H "Content-Type: application/json" \
-  -H "X-402-Payment: <your-x402-payment-header>" \
+  -H "X-Run402-Wallet: 0x..." \
+  -H "X-Run402-Signature: 0x..." \
+  -H "X-Run402-Timestamp: 1710000000" \
   -d '{"name": "my-agent", "email": "ops@example.com", "webhook": "https://example.com/hook"}'
 ```
 
@@ -716,12 +741,14 @@ Only `name` is required. `email` and `webhook` are optional. If the paying walle
 
 #### Contact the developers
 
-Send a message to the Run402 team for $0.01. Works from agents or humans — delivered instantly via Telegram.
+Send a message to the Run402 team. Free with wallet auth. Delivered instantly via Telegram.
 
 ```bash
-curl -X POST https://api.run402.com/v1/message \
+curl -X POST https://api.run402.com/message/v1 \
   -H "Content-Type: application/json" \
-  -H "X-402-Payment: <your-x402-payment-header>" \
+  -H "X-Run402-Wallet: 0x..." \
+  -H "X-Run402-Signature: 0x..." \
+  -H "X-Run402-Timestamp: 1710000000" \
   -d '{"message": "Hello from my agent!"}'
 ```
 
@@ -733,7 +760,11 @@ curl -X POST https://api.run402.com/v1/message \
 
 ## Pricing
 
-### Database tiers
+### Pay-Per-Tier Model
+
+Subscribe to a tier via x402. All operations (projects, deploys, forks, sites, messages, ping, contact) are free once you have an active tier.
+
+### Tier subscriptions (x402 payment required)
 
 | Tier | Price | Lease | Storage | API Calls |
 |------|-------|-------|---------|-----------|
@@ -741,25 +772,26 @@ curl -X POST https://api.run402.com/v1/message \
 | Hobby | $5.00 | 30 days | 1 GB | 5,000,000 |
 | Team | $20.00 | 30 days | 10 GB | 50,000,000 |
 
-### Static site deployment
+Subscribe: `POST /tiers/v1/subscribe/:tier` (x402)
+Renew: `POST /tiers/v1/renew/:tier` (x402)
+Upgrade: `POST /tiers/v1/upgrade/:tier` (x402, prorated refund to allowance)
 
-| Item | Price | Limit |
+### Free with active tier (wallet auth only)
+
+Projects, bundle deploy, fork, static sites, messages, ping, contact -- all free. Authenticate with EIP-4361 wallet signature headers:
+- `X-Run402-Wallet`: wallet address
+- `X-Run402-Signature`: signature of `run402:{unix_timestamp}`
+- `X-Run402-Timestamp`: unix timestamp (seconds, 30s freshness)
+
+### Per-call paid (x402)
+
+| Item | Price | Notes |
 |------|-------|-------|
-| Per deployment | $0.05 | 50 MB total file size |
-
-Each deployment is immutable with a permanent URL. Each is a separate $0.05 payment.
-
-### Image generation
-
-| Item | Price | Aspect Ratios |
-|------|-------|---------------|
-| Per image | $0.03 | square (1:1), landscape (16:9), portrait (9:16) |
-
-Flat price regardless of aspect ratio.
+| Image generation | $0.03 | square/landscape/portrait |
 
 Payments are x402 micropayments on **Base** (EIP-155 chain 8453). Testnet on Base Sepolia (chain 84532).
 
-Rate limit: 100 req/s per project.
+Rate limit: 100 req/s per wallet or project.
 
 ---
 
@@ -768,14 +800,14 @@ Rate limit: 100 req/s per project.
 All paid endpoints support `Idempotency-Key` header to prevent double-charging on retries.
 
 ```bash
-curl -X POST https://api.run402.com/v1/projects \
+curl -X POST https://api.run402.com/tiers/v1/subscribe/prototype \
   -H "Idempotency-Key: my-unique-key-12345" \
   -H "X-402-Payment: <payment>"
 ```
 
 **Guarantee**: Same key + method + path = same response, no duplicate payment. Keys valid 24h.
 
-Supported on: `POST /v1/projects`, `POST /v1/projects/create/:tier`, `POST /v1/projects/:id/renew`, `POST /v1/deployments`, `POST /v1/message`, `POST /v1/generate-image`.
+Supported on: `POST /tiers/v1/subscribe/:tier`, `POST /tiers/v1/renew/:tier`, `POST /tiers/v1/upgrade/:tier`, `POST /projects/v1`, `POST /deploy/v1`, `POST /fork/v1`, `POST /generate-image/v1`.
 
 **Recommendation**: Always include an `Idempotency-Key` when provisioning or renewing. Use a UUID or deterministic hash.
 
@@ -784,39 +816,43 @@ Supported on: `POST /v1/projects`, `POST /v1/projects/create/:tier`, `POST /v1/p
 ## Standard Flow
 
 ```
-1. POST /v1/projects  (with x402 payment header)
+0. POST /tiers/v1/subscribe/prototype  (x402 payment)
+   -> { wallet, tier, lease_expires_at }
+
+1. POST /projects/v1  (wallet auth headers)
    -> { project_id, anon_key, service_key, schema_slot, lease_expires_at }
 
-2. POST /admin/v1/projects/:id/sql  (with service_key)
+2. POST /projects/v1/admin/:id/sql  (with service_key)
    -> Create your tables
 
-3. POST /admin/v1/projects/:id/rls  (with service_key, optional)
+3. POST /projects/v1/admin/:id/rls  (with service_key, optional)
    -> Lock tables with row-level security
 
 4. Use /rest/v1/:table with anon_key for reads/writes
    Use /auth/v1/* with anon_key for user management
    Use /storage/v1/* with anon_key for file operations
 
-5. POST /v1/deployments  (with x402 payment header, $0.05)
+5. POST /deployments/v1  (wallet auth headers, free with tier)
    -> Deploy site, get live URL
 
-6. POST /v1/subdomains  (with service_key, free!)
+6. POST /subdomains/v1  (with service_key, free)
    -> Claim myapp.run402.com
 ```
 
 ### Auth Quick Reference
 
-| Auth Method | Header | Endpoints |
-|-------------|--------|-----------|
-| **x402 payment** | `x-402-payment: <signed-payment>` | `POST /v1/projects`, `POST /v1/deployments`, `POST /v1/generate-image`, `POST /v1/message`, `POST /v1/projects/:id/renew` |
-| **service_key** (admin) | `Authorization: Bearer {service_key}` | `POST /admin/v1/projects/:id/sql`, `POST /admin/v1/projects/:id/rls`, `GET /admin/v1/projects/:id/schema`, `GET /admin/v1/projects/:id/usage`, `POST /v1/subdomains`, `DELETE /v1/subdomains/:name` |
+| Auth Method | Headers | Endpoints |
+|-------------|---------|-----------|
+| **x402 payment** | `x-402-payment: <signed-payment>` | `POST /tiers/v1/subscribe/:tier`, `POST /tiers/v1/renew/:tier`, `POST /tiers/v1/upgrade/:tier`, `POST /generate-image/v1` |
+| **wallet auth** (EIP-4361) | `X-Run402-Wallet`, `X-Run402-Signature`, `X-Run402-Timestamp` | `POST /projects/v1`, `POST /deploy/v1`, `POST /fork/v1`, `POST /deployments/v1`, `POST /message/v1`, `GET /ping/v1`, `POST /agent/v1/contact` |
+| **service_key** (admin) | `Authorization: Bearer {service_key}` | `POST /projects/v1/admin/:id/sql`, `POST /projects/v1/admin/:id/rls`, `GET /projects/v1/admin/:id/schema`, `GET /projects/v1/admin/:id/usage`, `POST /subdomains/v1` |
 | **apikey** (client) | `apikey: {anon_key}` | `/rest/v1/*`, `/auth/v1/*`, `/storage/v1/*` |
 
-**Important**: x402-gated endpoints do NOT use `Authorization` or `apikey` -- the payment header IS the authorization. Do not mix auth methods on the same request.
+**Important**: x402-gated endpoints use the payment header as authorization. Wallet auth endpoints use the three wallet signature headers. Do not mix auth methods on the same request.
 
 ### Subdomain Behavior
 
-`POST /v1/subdomains` is **idempotent** — upserts. If the subdomain already belongs to your project, it updates `deployment_id` and returns 200. Safe to call on every deploy without 409 handling.
+`POST /subdomains/v1` is **idempotent** — upserts. If the subdomain already belongs to your project, it updates `deployment_id` and returns 200. Safe to call on every deploy without 409 handling.
 
 ---
 
@@ -825,7 +861,7 @@ Supported on: `POST /v1/projects`, `POST /v1/projects/create/:tier`, `POST /v1/p
 ### 1. Check pricing (free)
 
 ```bash
-curl -X POST https://api.run402.com/v1/projects/quote
+curl https://api.run402.com/tiers/v1
 ```
 
 ```json
@@ -838,11 +874,20 @@ curl -X POST https://api.run402.com/v1/projects/quote
 }
 ```
 
-### 2. Create a project (x402 payment)
+### 2. Subscribe to tier + create project
 
 ```bash
-curl -X POST https://api.run402.com/v1/projects \
+# Subscribe to tier (x402 payment)
+curl -X POST https://api.run402.com/tiers/v1/subscribe/prototype \
   -H "X-402-Payment: <your-x402-payment-header>"
+
+# Create project (wallet auth, free with tier)
+curl -X POST https://api.run402.com/projects/v1 \
+  -H "Content-Type: application/json" \
+  -H "X-Run402-Wallet: 0x..." \
+  -H "X-Run402-Signature: 0x..." \
+  -H "X-Run402-Timestamp: 1710000000" \
+  -d '{"name": "my-project"}'
 ```
 
 ```json
@@ -861,7 +906,7 @@ Save `project_id`, `anon_key`, and `service_key`.
 ### 3. Create tables
 
 ```bash
-curl -X POST https://api.run402.com/admin/v1/projects/$PROJECT_ID/sql \
+curl -X POST https://api.run402.com/projects/v1/admin/$PROJECT_ID/sql \
   -H "Authorization: Bearer $SERVICE_KEY" \
   -H "Content-Type: text/plain" \
   -d "CREATE TABLE todos (
@@ -878,11 +923,11 @@ curl -X POST https://api.run402.com/admin/v1/projects/$PROJECT_ID/sql \
 
 Both `SERIAL` and `BIGINT GENERATED ALWAYS AS IDENTITY` work for auto-increment. Sequence permissions granted automatically.
 
-Table permissions for `anon` and `authenticated` roles are granted automatically -- do not run `GRANT` or `REVOKE` (blocked by the SQL endpoint). Use RLS policies (`POST /admin/v1/projects/:id/rls`) for access control.
+Table permissions for `anon` and `authenticated` roles are granted automatically -- do not run `GRANT` or `REVOKE` (blocked by the SQL endpoint). Use RLS policies (`POST /projects/v1/admin/:id/rls`) for access control.
 
 Ad-hoc queries also work:
 ```bash
-curl -X POST https://api.run402.com/admin/v1/projects/$PROJECT_ID/sql \
+curl -X POST https://api.run402.com/projects/v1/admin/$PROJECT_ID/sql \
   -H "Authorization: Bearer $SERVICE_KEY" \
   -H "Content-Type: text/plain" \
   -d "SELECT * FROM todos WHERE done = false;"
@@ -895,7 +940,7 @@ Three templates:
 
 **`user_owns_rows`** -- Users access only rows where `owner_column = auth.uid()`. Best for user-scoped data.
 ```bash
-curl -X POST https://api.run402.com/admin/v1/projects/$PROJECT_ID/rls \
+curl -X POST https://api.run402.com/projects/v1/admin/$PROJECT_ID/rls \
   -H "Authorization: Bearer $SERVICE_KEY" \
   -H "Content-Type: application/json" \
   -d '{
@@ -906,7 +951,7 @@ curl -X POST https://api.run402.com/admin/v1/projects/$PROJECT_ID/rls \
 
 **`public_read`** -- Anyone can read. Only authenticated users can write.
 ```bash
-curl -X POST https://api.run402.com/admin/v1/projects/$PROJECT_ID/rls \
+curl -X POST https://api.run402.com/projects/v1/admin/$PROJECT_ID/rls \
   -H "Authorization: Bearer $SERVICE_KEY" \
   -H "Content-Type: application/json" \
   -d '{
@@ -917,7 +962,7 @@ curl -X POST https://api.run402.com/admin/v1/projects/$PROJECT_ID/rls \
 
 **`public_read_write`** -- Anyone can read and write. For guestbooks, public logs, etc.
 ```bash
-curl -X POST https://api.run402.com/admin/v1/projects/$PROJECT_ID/rls \
+curl -X POST https://api.run402.com/projects/v1/admin/$PROJECT_ID/rls \
   -H "Authorization: Bearer $SERVICE_KEY" \
   -H "Content-Type: application/json" \
   -d '{
@@ -985,7 +1030,7 @@ curl -X POST https://api.run402.com/storage/v1/object/assets/photo.jpg \
 ### 10. Check usage
 
 ```bash
-curl https://api.run402.com/admin/v1/projects/$PROJECT_ID/usage \
+curl https://api.run402.com/projects/v1/admin/$PROJECT_ID/usage \
   -H "Authorization: Bearer $SERVICE_KEY"
 ```
 
@@ -1002,29 +1047,25 @@ Deploy a static site (HTML, CSS, JS, images) with a single API call. Each deploy
 3. CloudFront serves globally with caching and HTTPS
 4. SPA fallback: paths without file extensions serve `index.html`
 
-### Deploy with x402 (TypeScript)
+### Deploy with wallet auth (TypeScript)
 
 ```typescript
-import { x402Client, wrapFetchWithPayment } from "@x402/fetch";
-import { ExactEvmScheme } from "@x402/evm/exact/client";
-import { toClientEvmSigner } from "@x402/evm";
 import { privateKeyToAccount } from "viem/accounts";
-import { createPublicClient, http } from "viem";
-import { baseSepolia } from "viem/chains";
 
-// Your wallet (testnet -- use `base` chain + eip155:8453 for mainnet)
 const account = privateKeyToAccount("YOUR_PRIVATE_KEY" as `0x${string}`);
-const publicClient = createPublicClient({ chain: baseSepolia, transport: http() });
-const signer = toClientEvmSigner(account, publicClient);
 
-const client = new x402Client();
-client.register("eip155:84532", new ExactEvmScheme(signer));
-const fetchPaid = wrapFetchWithPayment(fetch, client);
+// Deploy a site (free with active tier)
+const timestamp = Math.floor(Date.now() / 1000).toString();
+const signature = await account.signMessage({ message: `run402:${timestamp}` });
 
-// Deploy a site ($0.05)
-const res = await fetchPaid("https://api.run402.com/v1/deployments", {
+const res = await fetch("https://api.run402.com/deployments/v1", {
   method: "POST",
-  headers: { "Content-Type": "application/json" },
+  headers: {
+    "Content-Type": "application/json",
+    "X-Run402-Wallet": account.address,
+    "X-Run402-Signature": signature,
+    "X-Run402-Timestamp": timestamp,
+  },
   body: JSON.stringify({
     name: "my-app",
     files: [
@@ -1038,10 +1079,8 @@ const res = await fetchPaid("https://api.run402.com/v1/deployments", {
 const deployment = await res.json();
 console.log("Live at:", deployment.url);
 // -> https://dpl-1709337600000-a1b2c3.sites.run402.com
-// Tip: POST /v1/subdomains to get a nicer URL like https://my-app.run402.com (free!)
+// Tip: POST /subdomains/v1 to get a nicer URL like https://my-app.run402.com (free!)
 ```
-
-Same signer rule: `toClientEvmSigner(account, publicClient)`, not `toClientEvmSigner(walletClient)`. See signer note in Step 4 above.
 
 ### Deploy with MCP
 
@@ -1053,13 +1092,13 @@ deploy_site(
     { file: "style.css", data: "body { font-family: sans-serif; }" }
   ]
 )
-// -> Payment required ($0.05) or live URL on success
+// -> Returns live URL (free with wallet auth)
 ```
 
 ### Check a deployment (free, no auth)
 
 ```bash
-curl https://api.run402.com/v1/deployments/dpl_1709337600000_a1b2c3
+curl https://api.run402.com/deployments/v1/dpl_1709337600000_a1b2c3
 ```
 
 ```json
@@ -1102,16 +1141,16 @@ Pass `project` to associate with an existing Run402 database. Metadata only -- d
 
 ## Bundle Deploy (One-Call Full-Stack App)
 
-Deploy an entire app in one API call: project + database + migrations + RLS + secrets + functions + site + subdomain. One x402 payment, everything deploys atomically. Fastest way from code to live webapp.
+Deploy an entire app in one API call: project + database + migrations + RLS + secrets + functions + site + subdomain. Free with active tier subscription. Everything deploys atomically. Fastest way from code to live webapp.
 
 **When to use bundle deploy vs step-by-step:**
-- **Bundle deploy** (`POST /v1/deploy/:tier`): All code ready, want everything live in one shot.
+- **Bundle deploy** (`POST /deploy/v1`): All code ready, want everything live in one shot.
 - **Step-by-step** (individual endpoints): Building iteratively, testing as you go, or only need a database.
 
 ### How it works
 
 ```
-POST /v1/deploy/:tier    (x402 payment -- see Pricing section for tier costs)
+POST /deploy/v1    (wallet auth -- requires active tier subscription)
 Content-Type: application/json
 
 {
@@ -1165,11 +1204,11 @@ Content-Type: application/json
 | Field | Required | Description |
 |-------|----------|-------------|
 | `name` | Yes | App/project name |
-| `migrations` | No | SQL string -- CREATE TABLE, etc. Same rules as `/admin/v1/projects/:id/sql` |
-| `rls` | No | `{ template, tables }` -- same as `/admin/v1/projects/:id/rls` |
+| `migrations` | No | SQL string -- CREATE TABLE, etc. Same rules as `/projects/v1/admin/:id/sql` |
+| `rls` | No | `{ template, tables }` -- same as `/projects/v1/admin/:id/rls` |
 | `secrets` | No | `[{ key, value }]` -- uppercase keys, injected as env vars |
 | `functions` | No | `[{ name, code, config? }]` -- serverless functions deployed to Lambda |
-| `site` | No | `[{ file, data, encoding? }]` -- static site files, same as `/v1/deployments` |
+| `site` | No | `[{ file, data, encoding? }]` -- static site files, same as `/deployments/v1` |
 | `subdomain` | No | Custom subdomain (e.g. `"myapp"` → `myapp.run402.com`) |
 
 ### Rollback
@@ -1179,20 +1218,20 @@ If any step fails after project creation (e.g. invalid SQL, function deploy erro
 ### Minimal bundle (database only)
 
 ```
-POST /v1/deploy/prototype
+POST /deploy/v1  (wallet auth)
 {"name": "quick-db"}
 ```
 
-Equivalent to `POST /v1/projects/create/prototype` but uses the bundle endpoint.
+Equivalent to `POST /projects/v1` but uses the bundle endpoint.
 
 ### Pricing
 
-Same tier pricing as project creation. Site deployment fee ($0.05) included -- no separate charge. Bundle includes: storage, requests, and functions per tier (Prototype: 5 functions, Hobby: 25, Team: 100).
+Free with active tier subscription. No per-deploy charge. Your wallet's tier determines resource limits: storage, API calls, and functions (Prototype: 5 functions, Hobby: 25, Team: 100).
 
 ### Info endpoint (free)
 
 ```
-GET /v1/deploy
+GET /deploy/v1
 ```
 
 Returns tier pricing and request body schema.
@@ -1201,18 +1240,18 @@ Returns tier pricing and request body schema.
 
 ## Publish & Fork (App Versions)
 
-Publish your app as a forkable version. Other agents fork it in one x402 call -- they get their own independent copy with fresh backend, budget, and URL.
+Publish your app as a forkable version. Other agents fork it with wallet auth (free with tier) -- they get their own independent copy with fresh backend, budget, and URL.
 
 | Endpoint | Method | Auth | Cost | Description |
 |----------|--------|------|------|-------------|
-| `/admin/v1/projects/:id/publish` | POST | service_key | Free | Publish app as a forkable version |
-| `/admin/v1/projects/:id/versions` | GET | service_key | Free | List published versions |
-| `/admin/v1/projects/:id/versions/:version_id` | PATCH | service_key | Free | Update version metadata |
-| `/admin/v1/projects/:id/versions/:version_id` | DELETE | service_key | Free | Delete a published version |
-| `/v1/apps` | GET | None | Free | List all public forkable apps. `?tag=` to filter. |
-| `/v1/apps/:version_id` | GET | None | Free | Get public app info, fork pricing |
-| `/v1/fork/:tier` | POST | x402 | Per tier | Fork an app version into a new project |
-| `/v1/fork` | GET | None | Free | Fork endpoint info (tier pricing, body schema) |
+| `/projects/v1/admin/:id/publish` | POST | service_key | Free | Publish app as a forkable version |
+| `/projects/v1/admin/:id/versions` | GET | service_key | Free | List published versions |
+| `/projects/v1/admin/:id/versions/:version_id` | PATCH | service_key | Free | Update version metadata |
+| `/projects/v1/admin/:id/versions/:version_id` | DELETE | service_key | Free | Delete a published version |
+| `/apps/v1` | GET | None | Free | List all public forkable apps. `?tag=` to filter. |
+| `/apps/v1/:version_id` | GET | None | Free | Get public app info |
+| `/fork/v1` | POST | Wallet auth | Free | Fork an app version (free with tier) |
+| `/fork/v1` | GET | None | Free | Fork endpoint info |
 
 **When to use this:**
 - You built something useful and want others to reuse it
@@ -1222,7 +1261,7 @@ Publish your app as a forkable version. Other agents fork it in one x402 call --
 ### Publish a version
 
 ```
-POST /admin/v1/projects/:id/publish
+POST /projects/v1/admin/:id/publish
 Authorization: Bearer <service_key>
 Content-Type: application/json
 
@@ -1261,7 +1300,7 @@ Publishing snapshots your project's current state: schema (tables, columns, cons
 ### Browse published apps (free, no auth)
 
 ```
-GET /v1/apps
+GET /apps/v1
 ```
 
 Returns all public forkable apps. Filter with `?tag=auth&tag=rls`.
@@ -1269,7 +1308,7 @@ Returns all public forkable apps. Filter with `?tag=auth&tag=rls`.
 ### Inspect a published app (free, no auth)
 
 ```
-GET /v1/apps/:version_id
+GET /apps/v1/:version_id
 ```
 
 Returns name, description, stats, required secrets, required actions, min tier, fork pricing.
@@ -1277,7 +1316,7 @@ Returns name, description, stats, required secrets, required actions, min tier, 
 ### Fork a published app
 
 ```
-POST /v1/fork/:tier    (x402 payment -- same tier pricing as project creation)
+POST /fork/v1    (wallet auth -- free with active tier subscription)
 Content-Type: application/json
 
 {
@@ -1318,14 +1357,14 @@ Same as project creation (see Pricing section). No additional fee.
 ### List published versions
 
 ```
-GET /admin/v1/projects/:id/versions
+GET /projects/v1/admin/:id/versions
 Authorization: Bearer <service_key>
 ```
 
 ### Fork info (free)
 
 ```
-GET /v1/fork
+GET /fork/v1
 ```
 
 Returns tier pricing and request body schema.
@@ -1339,14 +1378,14 @@ Give your deployments memorable URLs. Instead of `dpl-1709337600000-a1b2c3.sites
 ### How it works
 
 1. Deploy a static site to get a deployment ID
-2. Claim a subdomain via `POST /v1/subdomains` — free, requires `service_key`
+2. Claim a subdomain via `POST /subdomains/v1` — free, requires `service_key`
 3. Subdomain immediately serves your deployment at `https://{name}.run402.com`
 4. Reassign to a different deployment anytime (just POST again — idempotent upsert)
 
 ### Claim a subdomain (curl)
 
 ```bash
-curl -X POST https://api.run402.com/v1/subdomains \
+curl -X POST https://api.run402.com/subdomains/v1 \
   -H "Authorization: Bearer $SERVICE_KEY" \
   -H "Content-Type: application/json" \
   -d '{"name": "myapp", "deployment_id": "dpl_1709337600000_a1b2c3"}'
@@ -1367,30 +1406,32 @@ curl -X POST https://api.run402.com/v1/subdomains \
 ### Look up a subdomain (free, no auth)
 
 ```bash
-curl https://api.run402.com/v1/subdomains/myapp
+curl https://api.run402.com/subdomains/v1/myapp
 ```
 
 ### List project's subdomains
 
 ```bash
-curl https://api.run402.com/v1/subdomains \
+curl https://api.run402.com/subdomains/v1 \
   -H "Authorization: Bearer $SERVICE_KEY"
 ```
 
 ### Release a subdomain
 
 ```bash
-curl -X DELETE https://api.run402.com/v1/subdomains/myapp \
+curl -X DELETE https://api.run402.com/subdomains/v1/myapp \
   -H "Authorization: Bearer $SERVICE_KEY"
 ```
 
 ### Full workflow (TypeScript)
 
 ```typescript
-// 1. Deploy the site ($0.05)
-const deployRes = await fetchPaid("https://api.run402.com/v1/deployments", {
+// 1. Deploy the site (wallet auth, free with tier)
+const timestamp = Math.floor(Date.now() / 1000).toString();
+const signature = await account.signMessage({ message: `run402:${timestamp}` });
+const deployRes = await fetch("https://api.run402.com/deployments/v1", {
   method: "POST",
-  headers: { "Content-Type": "application/json" },
+  headers: { "Content-Type": "application/json", "X-Run402-Wallet": account.address, "X-Run402-Signature": signature, "X-Run402-Timestamp": timestamp },
   body: JSON.stringify({
     name: "my-app",
     project: PROJECT_ID,
@@ -1403,7 +1444,7 @@ const deployRes = await fetchPaid("https://api.run402.com/v1/deployments", {
 const deployment = await deployRes.json();
 
 // 2. Claim a custom subdomain (free)
-const subRes = await fetch("https://api.run402.com/v1/subdomains", {
+const subRes = await fetch("https://api.run402.com/subdomains/v1", {
   method: "POST",
   headers: {
     "Authorization": `Bearer ${SERVICE_KEY}`,
@@ -1505,7 +1546,7 @@ claude mcp add run402 -- npx -y run402-mcp
 | `set_secret` | Set a project secret. Injected as process.env in functions. |
 | `list_secrets` | List secret keys for a project (values not shown). |
 | `delete_secret` | Delete a secret from a project. |
-| `deploy_site` | Deploy static site. $0.05/deployment. Returns live URL. |
+| `deploy_site` | Deploy static site. Free with active tier. Returns live URL. |
 | `claim_subdomain` | Claim custom subdomain (e.g. myapp.run402.com). Free. |
 | `delete_subdomain` | Release a subdomain. |
 | `list_subdomains` | List all subdomains claimed by a project. |
@@ -1524,8 +1565,8 @@ claude mcp add run402 -- npx -y run402-mcp
 | `wallet_export` | Export the local wallet address. |
 | `request_faucet` | Request free testnet USDC from the Run402 faucet. |
 | `generate_image` | Generate a PNG image from a text prompt. $0.03 via x402. |
-| `send_message` | Send a message to the Run402 developers. $0.01 via x402. |
-| `set_agent_contact` | Register agent contact info (name, email, webhook). $0.001 via x402. |
+| `send_message` | Send a message to the Run402 developers. Free with wallet auth. |
+| `set_agent_contact` | Register agent contact info (name, email, webhook). Free with wallet auth. |
 | `create_checkout` | Create a Stripe checkout URL for your human to fund your wallet. |
 | `billing_history` | View billing transaction history for a wallet address. |
 | `get_deployment` | Get deployment status and URL for a static site deployment. |
@@ -1631,13 +1672,13 @@ Browse and install: `clawhub search run402`
 - Need 10 GB storage
 - Heavy traffic (up to 50M API calls)
 
-Start with Prototype and upgrade by creating a new project at a higher tier. Projects can be renewed at any tier.
+Start with Prototype and upgrade via `POST /tiers/v1/upgrade/:tier`. Your wallet's tier applies to all projects.
 
 ---
 
 ## Guardrails
 
-- **SQL safety**: `/admin/v1/projects/:id/sql` blocks: `CREATE EXTENSION`, `COPY ... PROGRAM`, `ALTER SYSTEM`, `SET search_path`, `CREATE/DROP SCHEMA`, `GRANT/REVOKE`, `CREATE/DROP ROLE`. Blocked statements return 403 with `error` and optional `hint`.
+- **SQL safety**: `/projects/v1/admin/:id/sql` blocks: `CREATE EXTENSION`, `COPY ... PROGRAM`, `ALTER SYSTEM`, `SET search_path`, `CREATE/DROP SCHEMA`, `GRANT/REVOKE`, `CREATE/DROP ROLE`. Blocked statements return 403 with `error` and optional `hint`.
 - **No GRANT needed**: Permissions managed via `ALTER DEFAULT PRIVILEGES`. Use RLS templates for access control.
 - **Schema isolation**: Each project in its own schema. No cross-schema access.
 - **Rate limiting**: 100 req/s per project. Exceeding returns 429.
@@ -1669,7 +1710,7 @@ When calling a paid endpoint without valid x402 payment:
 {
   "error": "API call budget exceeded",
   "usage": { "api_calls": 500000, "limit": 500000, "storage_bytes": 1048576, "storage_limit": 262144000 },
-  "renew_url": "/v1/projects/prj_xxx/renew"
+  "renew_url": "/tiers/v1/renew/prototype"
 }
 ```
 
@@ -1691,7 +1732,7 @@ When calling a paid endpoint without valid x402 payment:
   "error": "Project lease expired",
   "expires_at": "2026-03-06T14:22:00.000Z",
   "status": "read_only",
-  "renew_url": "/v1/projects/prj_xxx/renew"
+  "renew_url": "/tiers/v1/renew/prototype"
 }
 ```
 

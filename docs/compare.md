@@ -82,7 +82,7 @@ InsForge is a pre-seed BaaS (Backend-as-a-Service) that bolted on MCP agent supp
 | Hobby | $5.00 | 30 days | 1GB | 5M | 25 |
 | Team | $20.00 | 30 days | 10GB | 50M | 100 |
 
-Additional micropayments: deploy site ($0.05), generate image ($0.03), send message ($0.01).
+One tier subscription covers all operations (projects, deploys, forks, sites, messages). Only image generation ($0.03) is per-call.
 
 **No overages.** Hit the limit → blocked until renewal. No surprise bills.
 

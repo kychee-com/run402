@@ -156,26 +156,38 @@ Returns 200 with all tier pricing:
 }
 ```
 
-### Step 2: Create project (x402-gated)
+### Step 2: Subscribe to tier (x402-gated)
 
 ```
-POST /v1/projects
-{ "name": "workout-tracker", "tier": "prototype" }
+POST /tiers/v1/subscribe/prototype
 ```
 
-Server responds `402 Payment Required` with price and payTo address. The 402 response offers payment on both **Base mainnet** (real USDC) and **Base Sepolia** (testnet USDC) — the paying agent picks which network to use. Human approves. Agent signs payment with wallet. Agent retries with `PAYMENT-SIGNATURE`. On success, returns `project_id`, `anon_key`, `service_key`, `schema_slot`, `lease_expires_at`.
+Server responds `402 Payment Required` with price and payTo address. Agent signs payment. On success, returns `{ wallet, tier, lease_expires_at }`.
+
+### Step 3: Create project (wallet auth, free with tier)
+
+```
+POST /projects/v1
+X-Run402-Wallet: 0x...
+X-Run402-Signature: 0x...
+X-Run402-Timestamp: 1710000000
+{ "name": "workout-tracker" }
+```
+
+Tier comes from the wallet's subscription. Returns `project_id`, `anon_key`, `service_key`, `schema_slot`, `lease_expires_at`.
 
 Agent receives **JWT capability tokens** valid for the lease duration.
 
-### Paid ping (x402 probe)
+### Ping (wallet auth)
 
 ```
-GET /v1/ping
+GET /ping/v1
+X-Run402-Wallet: 0x...
+X-Run402-Signature: 0x...
+X-Run402-Timestamp: 1710000000
 ```
 
-Returns `402 Payment Required` ($0.001 USDC). After payment: `{ "status": "ok", "paid": true, "timestamp": "..." }`.
-
-Use this to verify the API is alive and the x402 payment flow works end-to-end before provisioning a project. Accepts both Base mainnet and Base Sepolia testnet payments.
+Returns `{ "status": "ok", "wallet": "0x...", "tier": "prototype" }`. Free with wallet auth. Use this to verify the wallet auth flow works.
 
 ### Step 3: Apply schema
 

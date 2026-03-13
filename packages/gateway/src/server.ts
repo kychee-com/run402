@@ -48,6 +48,7 @@ import adminDashboardRoutes from "./routes/admin-dashboard.js";
 import adminLlmsTxtRoutes from "./routes/admin-llms-txt.js";
 import attributionRoutes from "./routes/attribution.js";
 import contactRoutes from "./routes/contact.js";
+import tierRoutes from "./routes/tiers.js";
 import { initAppVersionsTables } from "./services/publish.js";
 
 Bugsnag.start({
@@ -106,7 +107,7 @@ app.use(subdomainMiddleware);
 app.use((_req, res, next) => {
   res.set("Access-Control-Allow-Origin", "*");
   res.set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS");
-  res.set("Access-Control-Allow-Headers", "Content-Type, Authorization, apikey, Prefer, Accept-Profile, Content-Profile, Idempotency-Key, X-Wallet-Address");
+  res.set("Access-Control-Allow-Headers", "Content-Type, Authorization, apikey, Prefer, Accept-Profile, Content-Profile, Idempotency-Key, X-Wallet-Address, X-Run402-Wallet, X-Run402-Signature, X-Run402-Timestamp");
   res.set("Access-Control-Expose-Headers", "X-Run402-Settlement-Rail, X-Run402-Allowance-Remaining, X-Run402-Hint");
   if (_req.method === "OPTIONS") {
     res.status(204).send();
@@ -119,15 +120,17 @@ app.use((_req, res, next) => {
 const rateBuckets = new Map<string, { tokens: number; lastRefill: number }>();
 
 function rateLimit(req: Request, res: Response, next: NextFunction): void {
+  // Use wallet address or apikey as bucket key
+  const walletHeader = req.headers["x-run402-wallet"] as string | undefined;
   const apikey = req.headers["apikey"] as string;
-  if (!apikey) { next(); return; }
+  const bucketKey = walletHeader?.toLowerCase() || apikey;
+  if (!bucketKey) { next(); return; }
 
-  // Use apikey as bucket key (cheaper than JWT decode)
   const now = Date.now();
-  let bucket = rateBuckets.get(apikey);
+  let bucket = rateBuckets.get(bucketKey);
   if (!bucket) {
     bucket = { tokens: RATE_LIMIT_PER_SEC, lastRefill: now };
-    rateBuckets.set(apikey, bucket);
+    rateBuckets.set(bucketKey, bucket);
   }
 
   // Refill tokens
@@ -184,7 +187,7 @@ app.use((req: Request, res: Response, next: NextFunction) => {
     express.raw({ type: "*/*", limit: "10mb" })(req, res, next);
   } else if (req.path.endsWith("/sql")) {
     express.text({ type: "*/*", limit: "10mb" })(req, res, next);
-  } else if ((req.path === "/deployments/v1" || req.path.startsWith("/deploy/v1/")) && req.method === "POST") {
+  } else if ((req.path === "/deployments/v1" || req.path === "/deploy/v1") && req.method === "POST") {
     express.json({ limit: "50mb" })(req, res, next);
   } else {
     express.json({ limit: "1mb" })(req, res, next);
@@ -211,14 +214,13 @@ const bodyParserErrorHandler: ErrorRequestHandler = (err: any, _req, res, next) 
 app.use(bodyParserErrorHandler);
 
 // --- Idempotency middleware (for paid endpoints, before x402) ---
+app.post("/tiers/v1/subscribe/:tier", idempotencyMiddleware);
+app.post("/tiers/v1/renew/:tier", idempotencyMiddleware);
+app.post("/tiers/v1/upgrade/:tier", idempotencyMiddleware);
 app.post("/projects/v1", idempotencyMiddleware);
-app.post("/projects/v1/create/:tier", idempotencyMiddleware);
-app.post("/projects/v1/:id/renew", idempotencyMiddleware);
-app.post("/deployments/v1", idempotencyMiddleware);
-app.post("/message/v1", idempotencyMiddleware);
+app.post("/deploy/v1", idempotencyMiddleware);
+app.post("/fork/v1", idempotencyMiddleware);
 app.post("/generate-image/v1", idempotencyMiddleware);
-app.post("/deploy/v1/:tier", idempotencyMiddleware);
-app.post("/fork/v1/:tier", idempotencyMiddleware);
 
 // --- x402 payment middleware ---
 if (SELLER_ADDRESS) {
@@ -230,21 +232,15 @@ app.get("/.well-known/x402", (_req: Request, res: Response) => {
   res.json({
     version: 1,
     resources: [
-      "https://api.run402.com/projects/v1",
-      "https://api.run402.com/projects/v1/create/prototype",
-      "https://api.run402.com/projects/v1/create/hobby",
-      "https://api.run402.com/projects/v1/create/team",
-      "https://api.run402.com/deployments/v1",
-      "https://api.run402.com/ping/v1",
-      "https://api.run402.com/message/v1",
+      "https://api.run402.com/tiers/v1/subscribe/prototype",
+      "https://api.run402.com/tiers/v1/subscribe/hobby",
+      "https://api.run402.com/tiers/v1/subscribe/team",
+      "https://api.run402.com/tiers/v1/renew/prototype",
+      "https://api.run402.com/tiers/v1/renew/hobby",
+      "https://api.run402.com/tiers/v1/renew/team",
+      "https://api.run402.com/tiers/v1/upgrade/hobby",
+      "https://api.run402.com/tiers/v1/upgrade/team",
       "https://api.run402.com/generate-image/v1",
-      "https://api.run402.com/deploy/v1/prototype",
-      "https://api.run402.com/deploy/v1/hobby",
-      "https://api.run402.com/deploy/v1/team",
-      "https://api.run402.com/fork/v1/prototype",
-      "https://api.run402.com/fork/v1/hobby",
-      "https://api.run402.com/fork/v1/team",
-      "https://api.run402.com/agent/v1/contact",
     ],
   });
 });
@@ -342,12 +338,14 @@ app.get("/public/stats", async (_req: Request, res: Response) => {
   }
 });
 
-// --- Paid ping (x402 probe) ---
-app.get("/ping/v1", (_req: Request, res: Response) => {
-  res.json({ status: "ok", paid: true, timestamp: new Date().toISOString() });
+// --- Ping (wallet auth, free with tier) ---
+import { walletAuth } from "./middleware/wallet-auth.js";
+app.get("/ping/v1", walletAuth(false), (_req: Request, res: Response) => {
+  res.json({ status: "ok", wallet: _req.walletAddress, tier: _req.walletTier, timestamp: new Date().toISOString() });
 });
 
 // --- Routes ---
+app.use(tierRoutes);
 app.use(adminDashboardRoutes);
 app.use(adminLlmsTxtRoutes);
 app.use(billingRoutes);
@@ -916,6 +914,11 @@ async function applyMigrations() {
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `);
+
+  // v1.14: wallet-level tier subscription (pay-per-tier)
+  await pool.query(`ALTER TABLE internal.billing_accounts ADD COLUMN IF NOT EXISTS tier TEXT`);
+  await pool.query(`ALTER TABLE internal.billing_accounts ADD COLUMN IF NOT EXISTS lease_started_at TIMESTAMPTZ`);
+  await pool.query(`ALTER TABLE internal.billing_accounts ADD COLUMN IF NOT EXISTS lease_expires_at TIMESTAMPTZ`);
 
   // v1.10: demo mode columns
   await pool.query(`ALTER TABLE internal.projects ADD COLUMN IF NOT EXISTS demo_mode BOOLEAN NOT NULL DEFAULT false`);

@@ -1,8 +1,8 @@
 /**
  * Bundle deploy routes — one-call full-stack app deployment.
  *
- * POST /v1/deploy/:tier — deploy a complete app (x402-gated, tier-priced)
- * GET  /v1/deploy       — info (free)
+ * POST /v1/deploy — deploy a complete app (wallet auth, free with tier)
+ * GET  /v1/deploy — info (free)
  */
 
 import { Router, Request, Response } from "express";
@@ -11,21 +11,22 @@ import type { TierName } from "@run402/shared";
 import { deployBundle, validateBundle, BundleError } from "../services/bundle.js";
 import { SubdomainError } from "../services/subdomains.js";
 import { notifyNewProject } from "../services/telegram.js";
-import { extractWalletFromPaymentHeader } from "../utils/wallet.js";
+import { walletAuth } from "../middleware/wallet-auth.js";
 import { asyncHandler, HttpError } from "../utils/async-handler.js";
 
 const router = Router();
 
-// GET /v1/deploy — info (enables `purl inspect` on the x402-gated POST routes)
+// GET /v1/deploy — info
 router.get("/deploy/v1", (_req: Request, res: Response) => {
   const tiers: Record<string, { price: string; lease_days: number }> = {};
   for (const [name, config] of Object.entries(TIERS)) {
     tiers[name] = { price: config.price, lease_days: config.leaseDays };
   }
   res.json({
-    description: "Bundle deploy — one-call full-stack app deployment",
+    description: "Bundle deploy — one-call full-stack app deployment (requires active tier)",
     tiers,
-    method: "POST /deploy/v1/:tier",
+    method: "POST /deploy/v1",
+    auth: "EIP-4361 wallet signature (tier from wallet subscription)",
     body: {
       name: "string (required)",
       migrations: "string (optional SQL)",
@@ -38,12 +39,9 @@ router.get("/deploy/v1", (_req: Request, res: Response) => {
   });
 });
 
-// POST /v1/deploy/:tier — bundle deploy (x402-gated per tier)
-router.post("/deploy/v1/:tier", asyncHandler(async (req: Request, res: Response) => {
-  const tier = req.params["tier"] as TierName;
-  if (!TIERS[tier]) {
-    throw new HttpError(400, `Unknown tier: ${tier}. Valid tiers: ${Object.keys(TIERS).join(", ")}`);
-  }
+// POST /v1/deploy — bundle deploy (wallet auth, tier from wallet)
+router.post("/deploy/v1", walletAuth(true), asyncHandler(async (req: Request, res: Response) => {
+  const tier = (req.walletTier as TierName) || "prototype";
 
   const body = req.body || {};
   const bundleReq = { ...body, tier };
@@ -58,15 +56,11 @@ router.post("/deploy/v1/:tier", asyncHandler(async (req: Request, res: Response)
     throw err;
   }
 
-  // Extract x402 transaction hash and wallet address
-  const txHash = res.getHeader("x-402-transaction") as string | undefined;
-  const paymentHeader = req.headers["x-402-payment"] as string | undefined;
-  const walletAddress = paymentHeader ? extractWalletFromPaymentHeader(paymentHeader) : undefined;
-
+  const walletAddress = req.walletAddress;
   const apiBase = `${req.protocol}://${req.get("host")}`;
 
   try {
-    const result = await deployBundle(bundleReq, apiBase, txHash, walletAddress || undefined);
+    const result = await deployBundle(bundleReq, apiBase, undefined, walletAddress);
 
     notifyNewProject(bundleReq.name, tier, result.project_id);
 

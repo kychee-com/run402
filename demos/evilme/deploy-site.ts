@@ -28,6 +28,16 @@ const client = new x402Client();
 client.register("eip155:84532", new ExactEvmScheme(signer));
 const fetchPaid = wrapFetchWithPayment(fetch, client);
 
+async function walletAuthHeaders(): Promise<Record<string, string>> {
+  const timestamp = Math.floor(Date.now() / 1000).toString();
+  const signature = await account.signMessage({ message: `run402:${timestamp}` });
+  return {
+    "X-Run402-Wallet": account.address,
+    "X-Run402-Signature": signature,
+    "X-Run402-Timestamp": timestamp,
+  };
+}
+
 const authHeaders = {
   Authorization: `Bearer ${SERVICE_KEY}`,
   "Content-Type": "application/json",
@@ -42,9 +52,10 @@ async function main() {
     `APIKEY = params.get("key") || "${ANON_KEY}";`,
   );
 
-  const siteRes = await fetchPaid(`${BASE_URL}/deployments/v1`, {
+  const wHeaders = await walletAuthHeaders();
+  const siteRes = await fetch(`${BASE_URL}/deployments/v1`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...wHeaders },
     body: JSON.stringify({
       name: "evilme",
       project: PROJECT_ID,

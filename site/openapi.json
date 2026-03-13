@@ -2,8 +2,8 @@
   "openapi": "3.0.3",
   "info": {
     "title": "Run402 API",
-    "version": "1.0.0",
-    "description": "Full-stack infrastructure for AI agents. Postgres, REST API, auth, file storage, static site hosting, serverless functions. Paid via x402 USDC micropayments on Base — no signups, no dashboards.",
+    "version": "2.0.0",
+    "description": "Full-stack infrastructure for AI agents. Postgres, REST API, auth, file storage, static site hosting, serverless functions. Pay-per-tier via x402 USDC on Base — subscribe once, then use wallet signatures for all operations within your tier.",
     "contact": {
       "name": "Run402",
       "url": "https://run402.com"
@@ -17,8 +17,12 @@
   ],
   "tags": [
     {
+      "name": "Tiers",
+      "description": "Wallet-level tier subscription — subscribe, renew, upgrade, and check status"
+    },
+    {
       "name": "Projects",
-      "description": "Provision, renew, and manage database projects"
+      "description": "Provision and manage database projects (wallet auth, free within tier)"
     },
     {
       "name": "Auth",
@@ -42,11 +46,11 @@
     },
     {
       "name": "Deployments",
-      "description": "Static site deployment"
+      "description": "Static site deployment (wallet auth, free within tier)"
     },
     {
       "name": "Message",
-      "description": "Paid feedback / contact endpoint"
+      "description": "Feedback / contact endpoint (wallet auth, free within tier)"
     },
     {
       "name": "Subdomains",
@@ -66,11 +70,19 @@
     },
     {
       "name": "Bundle",
-      "description": "One-call full-stack app deployment"
+      "description": "One-call full-stack app deployment (wallet auth, free within tier)"
     },
     {
       "name": "Publish",
       "description": "Publish and fork app versions"
+    },
+    {
+      "name": "Image",
+      "description": "AI image generation (x402-gated, per-call)"
+    },
+    {
+      "name": "Agent",
+      "description": "Agent contact registration (wallet auth, free within tier)"
     }
   ],
   "paths": {
@@ -115,22 +127,33 @@
         }
       }
     },
-    "/v1/ping": {
+    "/ping/v1": {
       "get": {
         "tags": [
           "Health"
         ],
-        "summary": "Paid ping (x402 probe)",
+        "summary": "Authenticated ping (wallet auth)",
         "operationId": "ping",
-        "x-402-price": "$0.001 USDC",
+        "description": "Health probe that verifies wallet auth is working. Free within tier.",
         "security": [
           {
-            "x402": []
+            "walletAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/WalletHeader"
+          },
+          {
+            "$ref": "#/components/parameters/SignatureHeader"
+          },
+          {
+            "$ref": "#/components/parameters/TimestampHeader"
           }
         ],
         "responses": {
           "200": {
-            "description": "Paid ping accepted",
+            "description": "Ping accepted",
             "content": {
               "application/json": {
                 "schema": {
@@ -153,8 +176,8 @@
               }
             }
           },
-          "402": {
-            "$ref": "#/components/responses/PaymentRequired"
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
           }
         }
       }
@@ -206,110 +229,61 @@
         }
       }
     },
-    "/v1/projects": {
+    "/tiers/v1": {
       "get": {
         "tags": [
-          "Projects"
+          "Tiers"
         ],
         "summary": "List tier pricing",
         "operationId": "listTiers",
-        "description": "Returns available tiers and their pricing. No auth required. Useful for programmatic price discovery before provisioning.",
+        "description": "Returns available tiers, pricing, and resource limits. No auth required. Useful for programmatic price discovery before subscribing.",
         "responses": {
           "200": {
-            "description": "Tier pricing info",
+            "description": "Tier pricing and auth info",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/TierPricing"
-                }
-              }
-            }
-          }
-        }
-      },
-      "post": {
-        "tags": [
-          "Projects"
-        ],
-        "summary": "Provision a new project",
-        "operationId": "createProject",
-        "description": "Creates a new database project. Requires x402 payment. Default tier is prototype ($0.10 USDC).",
-        "x-402-price": "$0.10 USDC (prototype), $5.00 (hobby), $20.00 (team)",
-        "security": [
-          {
-            "x402": []
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "name": {
-                    "type": "string",
-                    "description": "Optional project name"
-                  },
-                  "tier": {
-                    "type": "string",
-                    "enum": [
-                      "prototype",
-                      "hobby",
-                      "team"
-                    ],
-                    "default": "prototype"
+                  "type": "object",
+                  "properties": {
+                    "tiers": {
+                      "$ref": "#/components/schemas/TierPricing"
+                    },
+                    "auth": {
+                      "type": "object",
+                      "properties": {
+                        "method": {
+                          "type": "string",
+                          "example": "EIP-4361 wallet signature"
+                        },
+                        "headers": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          },
+                          "example": ["X-Run402-Wallet", "X-Run402-Signature", "X-Run402-Timestamp"]
+                        },
+                        "message_format": {
+                          "type": "string",
+                          "example": "run402:{unix_timestamp}"
+                        }
+                      }
+                    }
                   }
                 }
               }
             }
           }
-        },
-        "responses": {
-          "201": {
-            "description": "Project created",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProjectCreated"
-                }
-              }
-            }
-          },
-          "402": {
-            "$ref": "#/components/responses/PaymentRequired"
-          }
         }
       }
     },
-    "/v1/projects/quote": {
+    "/tiers/v1/subscribe/{tier}": {
       "post": {
         "tags": [
-          "Projects"
+          "Tiers"
         ],
-        "summary": "Quote tier pricing",
-        "operationId": "quoteTiers",
-        "description": "Same as GET /v1/projects — returns tier pricing info.",
-        "responses": {
-          "200": {
-            "description": "Tier pricing info",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/TierPricing"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/v1/projects/create/{tier}": {
-      "post": {
-        "tags": [
-          "Projects"
-        ],
-        "summary": "Provision a project with a specific tier",
-        "operationId": "createProjectByTier",
+        "summary": "Subscribe to a tier",
+        "operationId": "subscribeTier",
+        "description": "Pay for a wallet-level tier via x402. This is the primary x402 payment in the normal flow. After subscribing, all operations within the tier are free using wallet signatures.",
         "x-402-price": "Per tier: prototype $0.10, hobby $5.00, team $20.00",
         "security": [
           {
@@ -331,6 +305,249 @@
             }
           }
         ],
+        "responses": {
+          "201": {
+            "description": "Tier subscription created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TierSubscription"
+                }
+              }
+            }
+          },
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          }
+        }
+      }
+    },
+    "/tiers/v1/renew/{tier}": {
+      "post": {
+        "tags": [
+          "Tiers"
+        ],
+        "summary": "Renew tier subscription",
+        "operationId": "renewTier",
+        "description": "Extend the wallet's tier lease via x402 payment. Price equals the current tier price. Extends lease by the tier's lease duration from now.",
+        "x-402-price": "Per tier: prototype $0.10, hobby $5.00, team $20.00",
+        "security": [
+          {
+            "x402": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "tier",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "prototype",
+                "hobby",
+                "team"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Tier renewed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TierSubscription"
+                }
+              }
+            }
+          },
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          }
+        }
+      }
+    },
+    "/tiers/v1/upgrade/{tier}": {
+      "post": {
+        "tags": [
+          "Tiers"
+        ],
+        "summary": "Upgrade to a higher tier",
+        "operationId": "upgradeTier",
+        "description": "Pay the difference to move to a higher tier via x402. Price = (new tier price) - (prorated remaining value). Lease resets to the new tier's lease period. Resource pool expands immediately.",
+        "x-402-price": "Price difference between current and new tier",
+        "security": [
+          {
+            "x402": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "tier",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "prototype",
+                "hobby",
+                "team"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Tier upgraded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/TierSubscription"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "previous_tier": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Cannot downgrade — resource usage exceeds target tier limits"
+          },
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          }
+        }
+      }
+    },
+    "/tiers/v1/status": {
+      "get": {
+        "tags": [
+          "Tiers"
+        ],
+        "summary": "Get wallet tier status",
+        "operationId": "getTierStatus",
+        "description": "Returns the wallet's current tier, lease expiry, and resource pool usage. Requires wallet auth.",
+        "security": [
+          {
+            "walletAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/WalletHeader"
+          },
+          {
+            "$ref": "#/components/parameters/SignatureHeader"
+          },
+          {
+            "$ref": "#/components/parameters/TimestampHeader"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Wallet tier status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "wallet": {
+                      "type": "string"
+                    },
+                    "tier": {
+                      "type": "string"
+                    },
+                    "lease_expires_at": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "pool": {
+                      "type": "object",
+                      "properties": {
+                        "storage_bytes": {
+                          "type": "integer"
+                        },
+                        "storage_used_bytes": {
+                          "type": "integer"
+                        },
+                        "api_calls": {
+                          "type": "integer"
+                        },
+                        "api_calls_used": {
+                          "type": "integer"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/projects/v1": {
+      "get": {
+        "tags": [
+          "Projects"
+        ],
+        "summary": "List tier pricing (legacy alias)",
+        "operationId": "listProjectTiers",
+        "description": "Returns available tiers and their pricing. No auth required. Same as GET /tiers/v1.",
+        "responses": {
+          "200": {
+            "description": "Tier pricing info",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "tiers": {
+                      "$ref": "#/components/schemas/TierPricing"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Projects"
+        ],
+        "summary": "Provision a new project",
+        "operationId": "createProject",
+        "description": "Creates a new database project. Requires wallet auth (EIP-4361 signature). Free within your active tier. The wallet must have an active tier subscription.",
+        "security": [
+          {
+            "walletAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/WalletHeader"
+          },
+          {
+            "$ref": "#/components/parameters/SignatureHeader"
+          },
+          {
+            "$ref": "#/components/parameters/TimestampHeader"
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -357,13 +574,40 @@
               }
             }
           },
-          "402": {
-            "$ref": "#/components/responses/PaymentRequired"
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
           }
         }
       }
     },
-    "/v1/projects/{id}": {
+    "/projects/v1/quote": {
+      "post": {
+        "tags": [
+          "Projects"
+        ],
+        "summary": "Quote tier pricing",
+        "operationId": "quoteTiers",
+        "description": "Same as GET /projects/v1 — returns tier pricing info.",
+        "responses": {
+          "200": {
+            "description": "Tier pricing info",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "tiers": {
+                      "$ref": "#/components/schemas/TierPricing"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/projects/v1/{id}": {
       "delete": {
         "tags": [
           "Projects"
@@ -409,80 +653,6 @@
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
-          }
-        }
-      }
-    },
-    "/v1/projects/{id}/renew": {
-      "post": {
-        "tags": [
-          "Projects"
-        ],
-        "summary": "Renew project lease",
-        "operationId": "renewProject",
-        "description": "Extends the project lease via x402 payment.",
-        "x-402-price": "Per tier: prototype $0.10, hobby $5.00, team $20.00",
-        "security": [
-          {
-            "x402": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "tier": {
-                    "type": "string",
-                    "enum": [
-                      "prototype",
-                      "hobby",
-                      "team"
-                    ]
-                  }
-                }
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Lease renewed",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "project_id": {
-                      "type": "string",
-                      "format": "uuid"
-                    },
-                    "tier": {
-                      "type": "string"
-                    },
-                    "lease_expires_at": {
-                      "type": "string",
-                      "format": "date-time"
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "402": {
-            "$ref": "#/components/responses/PaymentRequired"
           }
         }
       }
@@ -748,7 +918,7 @@
         }
       }
     },
-    "/admin/v1/projects/{id}/sql": {
+    "/projects/v1/admin/{id}/sql": {
       "post": {
         "tags": [
           "Admin"
@@ -832,7 +1002,7 @@
         }
       }
     },
-    "/admin/v1/projects/{id}/rls": {
+    "/projects/v1/admin/{id}/rls": {
       "post": {
         "tags": [
           "Admin"
@@ -920,7 +1090,7 @@
         }
       }
     },
-    "/admin/v1/projects/{id}/usage": {
+    "/projects/v1/admin/{id}/usage": {
       "get": {
         "tags": [
           "Admin"
@@ -988,7 +1158,7 @@
         }
       }
     },
-    "/admin/v1/projects/{id}/schema": {
+    "/projects/v1/admin/{id}/schema": {
       "get": {
         "tags": [
           "Admin"
@@ -1066,7 +1236,7 @@
         }
       }
     },
-    "/admin/v1/projects/{id}/pin": {
+    "/projects/v1/admin/{id}/pin": {
       "post": {
         "tags": [
           "Admin"
@@ -1125,7 +1295,7 @@
         }
       }
     },
-    "/admin/v1/projects/{id}/unpin": {
+    "/projects/v1/admin/{id}/unpin": {
       "post": {
         "tags": [
           "Admin"
@@ -1704,7 +1874,7 @@
         }
       }
     },
-    "/v1/faucet": {
+    "/faucet/v1": {
       "post": {
         "tags": [
           "Faucet"
@@ -1764,7 +1934,7 @@
         }
       }
     },
-    "/admin/v1/faucet": {
+    "/faucet/v1/admin": {
       "post": {
         "tags": [
           "Faucet"
@@ -1834,14 +2004,14 @@
         }
       }
     },
-    "/v1/deployments": {
+    "/deployments/v1": {
       "get": {
         "tags": [
           "Deployments"
         ],
-        "summary": "Deployment info (price discovery)",
+        "summary": "Deployment info",
         "operationId": "deploymentsInfo",
-        "description": "Returns deployment pricing and usage info. No auth required.",
+        "description": "Returns deployment info. No auth required.",
         "responses": {
           "200": {
             "description": "Deployment info",
@@ -1851,9 +2021,6 @@
                   "type": "object",
                   "properties": {
                     "description": {
-                      "type": "string"
-                    },
-                    "price": {
                       "type": "string"
                     },
                     "method": {
@@ -1875,11 +2042,21 @@
         ],
         "summary": "Deploy a static site",
         "operationId": "createDeployment",
-        "description": "Deploys static files to a live URL at {id}.sites.run402.com. Supports HTML, CSS, JS, images. SPA-ready with automatic fallback routing. Max 50MB total. Idempotent with Idempotency-Key header.",
-        "x-402-price": "$0.05 USDC",
+        "description": "Deploys static files to a live URL at {id}.sites.run402.com. Supports HTML, CSS, JS, images. SPA-ready with automatic fallback routing. Max 50MB total. Idempotent with Idempotency-Key header. Requires wallet auth, free within tier.",
         "security": [
           {
-            "x402": []
+            "walletAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/WalletHeader"
+          },
+          {
+            "$ref": "#/components/parameters/SignatureHeader"
+          },
+          {
+            "$ref": "#/components/parameters/TimestampHeader"
           }
         ],
         "requestBody": {
@@ -1970,13 +2147,13 @@
               }
             }
           },
-          "402": {
-            "$ref": "#/components/responses/PaymentRequired"
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
           }
         }
       }
     },
-    "/v1/deployments/{id}": {
+    "/deployments/v1/{id}": {
       "get": {
         "tags": [
           "Deployments"
@@ -2039,7 +2216,7 @@
         }
       }
     },
-    "/v1/agent/contact": {
+    "/agent/v1/contact": {
       "get": {
         "tags": [
           "Agent"
@@ -2048,7 +2225,7 @@
         "operationId": "getAgentContactInfo",
         "responses": {
           "200": {
-            "description": "Endpoint info and pricing",
+            "description": "Endpoint info",
             "content": {
               "application/json": {
                 "schema": {
@@ -2059,17 +2236,27 @@
           }
         }
       },
-      "put": {
+      "post": {
         "tags": [
           "Agent"
         ],
         "summary": "Register agent contact info",
-        "operationId": "putAgentContact",
-        "description": "Register or update agent contact info (name, email, webhook) tied to the paying wallet. $0.001 USDC.",
-        "x-402-price": "$0.001 USDC",
+        "operationId": "postAgentContact",
+        "description": "Register or update agent contact info (name, email, webhook) tied to the wallet. Requires wallet auth, free within tier.",
         "security": [
           {
-            "x402": []
+            "walletAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/WalletHeader"
+          },
+          {
+            "$ref": "#/components/parameters/SignatureHeader"
+          },
+          {
+            "$ref": "#/components/parameters/TimestampHeader"
           }
         ],
         "requestBody": {
@@ -2135,13 +2322,13 @@
           "400": {
             "description": "Validation error (missing name, invalid email, non-https webhook)"
           },
-          "402": {
-            "$ref": "#/components/responses/PaymentRequired"
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
           }
         }
       }
     },
-    "/v1/message": {
+    "/message/v1": {
       "get": {
         "tags": [
           "Message"
@@ -2150,7 +2337,7 @@
         "operationId": "getMessageInfo",
         "responses": {
           "200": {
-            "description": "Endpoint info and pricing",
+            "description": "Endpoint info",
             "content": {
               "application/json": {
                 "schema": {
@@ -2165,13 +2352,23 @@
         "tags": [
           "Message"
         ],
-        "summary": "Send a paid message",
+        "summary": "Send a message",
         "operationId": "sendMessage",
-        "description": "Sends a paid message (feedback, contact) to the Run402 team via Telegram. Idempotent.",
-        "x-402-price": "$0.01 USDC",
+        "description": "Sends a message (feedback, contact) to the Run402 team via Telegram. Requires wallet auth, free within tier. Idempotent.",
         "security": [
           {
-            "x402": []
+            "walletAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/WalletHeader"
+          },
+          {
+            "$ref": "#/components/parameters/SignatureHeader"
+          },
+          {
+            "$ref": "#/components/parameters/TimestampHeader"
           }
         ],
         "requestBody": {
@@ -2210,16 +2407,16 @@
               }
             }
           },
-          "402": {
-            "$ref": "#/components/responses/PaymentRequired"
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
           }
         }
       }
     },
-    "/v1/generate-image": {
+    "/generate-image/v1": {
       "get": {
         "tags": [
-          "Message"
+          "Image"
         ],
         "summary": "Image generation info",
         "operationId": "getGenerateImageInfo",
@@ -2238,12 +2435,12 @@
       },
       "post": {
         "tags": [
-          "Message"
+          "Image"
         ],
         "summary": "Generate an image",
         "operationId": "generateImage",
-        "description": "Generates an image via AI. Requires x402 payment.",
-        "x-402-price": "$0.01 USDC",
+        "description": "Generates an image via AI. Requires x402 payment. Not included in any tier — per-call cost.",
+        "x-402-price": "$0.03 USDC",
         "security": [
           {
             "x402": []
@@ -2285,7 +2482,7 @@
         }
       }
     },
-    "/v1/wallets/{address}/projects": {
+    "/wallets/v1/{address}/projects": {
       "get": {
         "tags": [
           "Billing"
@@ -2358,7 +2555,7 @@
         }
       }
     },
-    "/v1/subdomains": {
+    "/subdomains/v1": {
       "post": {
         "tags": [
           "Subdomains"
@@ -2447,7 +2644,7 @@
         }
       }
     },
-    "/v1/subdomains/{name}": {
+    "/subdomains/v1/{name}": {
       "get": {
         "tags": [
           "Subdomains"
@@ -2528,7 +2725,7 @@
         }
       }
     },
-    "/admin/v1/projects/{id}/functions": {
+    "/projects/v1/admin/{id}/functions": {
       "post": {
         "tags": [
           "Functions"
@@ -2710,7 +2907,7 @@
         }
       }
     },
-    "/admin/v1/projects/{id}/functions/{name}": {
+    "/projects/v1/admin/{id}/functions/{name}": {
       "delete": {
         "tags": [
           "Functions"
@@ -2764,7 +2961,7 @@
         }
       }
     },
-    "/admin/v1/projects/{id}/functions/{name}/logs": {
+    "/projects/v1/admin/{id}/functions/{name}/logs": {
       "get": {
         "tags": [
           "Functions"
@@ -2826,7 +3023,7 @@
         }
       }
     },
-    "/admin/v1/projects/{id}/secrets": {
+    "/projects/v1/admin/{id}/secrets": {
       "post": {
         "tags": [
           "Functions"
@@ -2945,7 +3142,7 @@
         }
       }
     },
-    "/admin/v1/projects/{id}/secrets/{key}": {
+    "/projects/v1/admin/{id}/secrets/{key}": {
       "delete": {
         "tags": [
           "Functions"
@@ -3140,7 +3337,7 @@
         }
       }
     },
-    "/v1/billing/accounts/{wallet}": {
+    "/billing/v1/accounts/{wallet}": {
       "get": {
         "tags": [
           "Billing"
@@ -3179,7 +3376,7 @@
         }
       }
     },
-    "/v1/billing/accounts/{wallet}/history": {
+    "/billing/v1/accounts/{wallet}/history": {
       "get": {
         "tags": [
           "Billing"
@@ -3229,7 +3426,7 @@
         }
       }
     },
-    "/v1/billing/checkouts": {
+    "/billing/v1/checkouts": {
       "post": {
         "tags": [
           "Billing"
@@ -3283,7 +3480,7 @@
         }
       }
     },
-    "/v1/deploy": {
+    "/deploy/v1": {
       "get": {
         "tags": [
           "Bundle"
@@ -3302,35 +3499,28 @@
             }
           }
         }
-      }
-    },
-    "/v1/deploy/{tier}": {
+      },
       "post": {
         "tags": [
           "Bundle"
         ],
         "summary": "Bundle deploy (one-call full-stack app)",
         "operationId": "bundleDeploy",
-        "description": "Deploys project + database + migrations + RLS + secrets + functions + site + subdomain in one call.",
-        "x-402-price": "Per tier ($0.10 prototype, $5 hobby, $20 team)",
+        "description": "Deploys project + database + migrations + RLS + secrets + functions + site + subdomain in one call. Requires wallet auth, free within tier.",
         "security": [
           {
-            "x402": []
+            "walletAuth": []
           }
         ],
         "parameters": [
           {
-            "name": "tier",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "enum": [
-                "prototype",
-                "hobby",
-                "team"
-              ]
-            }
+            "$ref": "#/components/parameters/WalletHeader"
+          },
+          {
+            "$ref": "#/components/parameters/SignatureHeader"
+          },
+          {
+            "$ref": "#/components/parameters/TimestampHeader"
           }
         ],
         "requestBody": {
@@ -3389,13 +3579,13 @@
               }
             }
           },
-          "402": {
-            "$ref": "#/components/responses/PaymentRequired"
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
           }
         }
       }
     },
-    "/admin/v1/projects/{id}/publish": {
+    "/projects/v1/admin/{id}/publish": {
       "post": {
         "tags": [
           "Publish"
@@ -3466,7 +3656,7 @@
         }
       }
     },
-    "/admin/v1/projects/{id}/versions": {
+    "/projects/v1/admin/{id}/versions": {
       "get": {
         "tags": [
           "Publish"
@@ -3514,7 +3704,7 @@
         }
       }
     },
-    "/admin/v1/projects/{id}/versions/{version_id}": {
+    "/projects/v1/admin/{id}/versions/{version_id}": {
       "patch": {
         "tags": [
           "Publish"
@@ -3648,7 +3838,7 @@
         }
       }
     },
-    "/v1/apps": {
+    "/apps/v1": {
       "get": {
         "tags": [
           "Publish"
@@ -3690,7 +3880,7 @@
         }
       }
     },
-    "/v1/apps/{version_id}": {
+    "/apps/v1/{version_id}": {
       "get": {
         "tags": [
           "Publish"
@@ -3709,7 +3899,7 @@
         ],
         "responses": {
           "200": {
-            "description": "App details with fork pricing",
+            "description": "App details with fork info",
             "content": {
               "application/json": {
                 "schema": {
@@ -3724,7 +3914,7 @@
         }
       }
     },
-    "/v1/fork": {
+    "/fork/v1": {
       "get": {
         "tags": [
           "Publish"
@@ -3733,7 +3923,7 @@
         "operationId": "getForkInfo",
         "responses": {
           "200": {
-            "description": "Tier pricing and body schema",
+            "description": "Body schema and auth info",
             "content": {
               "application/json": {
                 "schema": {
@@ -3743,35 +3933,28 @@
             }
           }
         }
-      }
-    },
-    "/v1/fork/{tier}": {
+      },
       "post": {
         "tags": [
           "Publish"
         ],
         "summary": "Fork a published app",
         "operationId": "forkApp",
-        "description": "Creates a fully independent project from a published app version.",
-        "x-402-price": "Per tier ($0.10 prototype, $5 hobby, $20 team)",
+        "description": "Creates a fully independent project from a published app version. Requires wallet auth, free within tier.",
         "security": [
           {
-            "x402": []
+            "walletAuth": []
           }
         ],
         "parameters": [
           {
-            "name": "tier",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "enum": [
-                "prototype",
-                "hobby",
-                "team"
-              ]
-            }
+            "$ref": "#/components/parameters/WalletHeader"
+          },
+          {
+            "$ref": "#/components/parameters/SignatureHeader"
+          },
+          {
+            "$ref": "#/components/parameters/TimestampHeader"
           }
         ],
         "requestBody": {
@@ -3810,8 +3993,8 @@
               }
             }
           },
-          "402": {
-            "$ref": "#/components/responses/PaymentRequired"
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
           }
         }
       }
@@ -3848,100 +4031,158 @@
         "in": "header",
         "name": "X-PAYMENT",
         "description": "x402 payment header. The client library (e.g. @anthropic-ai/sdk x402 facilitator) handles this automatically. Payment is in USDC on Base (mainnet eip155:8453 or testnet eip155:84532)."
+      },
+      "walletAuth": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-Run402-Wallet",
+        "description": "EIP-4361 wallet authentication. Requires three headers: X-Run402-Wallet (wallet address), X-Run402-Signature (signed message), X-Run402-Timestamp (unix timestamp). The wallet must have an active tier subscription."
+      }
+    },
+    "parameters": {
+      "WalletHeader": {
+        "name": "X-Run402-Wallet",
+        "in": "header",
+        "required": true,
+        "schema": {
+          "type": "string"
+        },
+        "description": "Ethereum wallet address (0x...)"
+      },
+      "SignatureHeader": {
+        "name": "X-Run402-Signature",
+        "in": "header",
+        "required": true,
+        "schema": {
+          "type": "string"
+        },
+        "description": "EIP-4361 signature of the message 'run402:{method}:{path}:{timestamp}'"
+      },
+      "TimestampHeader": {
+        "name": "X-Run402-Timestamp",
+        "in": "header",
+        "required": true,
+        "schema": {
+          "type": "string"
+        },
+        "description": "Unix timestamp (must be within 30 seconds of server time)"
       }
     },
     "schemas": {
       "TierPricing": {
         "type": "object",
         "properties": {
-          "tiers": {
+          "prototype": {
             "type": "object",
             "properties": {
-              "prototype": {
-                "type": "object",
-                "properties": {
-                  "price": {
-                    "type": "string",
-                    "example": "$0.10"
-                  },
-                  "lease_days": {
-                    "type": "integer",
-                    "example": 7
-                  },
-                  "storage_mb": {
-                    "type": "integer",
-                    "example": 250
-                  },
-                  "api_calls": {
-                    "type": "integer",
-                    "example": 500000
-                  },
-                  "max_functions": {
-                    "type": "integer",
-                    "example": 5
-                  },
-                  "description": {
-                    "type": "string"
-                  }
-                }
+              "price": {
+                "type": "string",
+                "example": "$0.10"
               },
-              "hobby": {
-                "type": "object",
-                "properties": {
-                  "price": {
-                    "type": "string",
-                    "example": "$5.00"
-                  },
-                  "lease_days": {
-                    "type": "integer",
-                    "example": 30
-                  },
-                  "storage_mb": {
-                    "type": "integer",
-                    "example": 1024
-                  },
-                  "api_calls": {
-                    "type": "integer",
-                    "example": 5000000
-                  },
-                  "max_functions": {
-                    "type": "integer",
-                    "example": 25
-                  },
-                  "description": {
-                    "type": "string"
-                  }
-                }
+              "lease_days": {
+                "type": "integer",
+                "example": 7
               },
-              "team": {
-                "type": "object",
-                "properties": {
-                  "price": {
-                    "type": "string",
-                    "example": "$20.00"
-                  },
-                  "lease_days": {
-                    "type": "integer",
-                    "example": 30
-                  },
-                  "storage_mb": {
-                    "type": "integer",
-                    "example": 10240
-                  },
-                  "api_calls": {
-                    "type": "integer",
-                    "example": 50000000
-                  },
-                  "max_functions": {
-                    "type": "integer",
-                    "example": 100
-                  },
-                  "description": {
-                    "type": "string"
-                  }
-                }
+              "storage_mb": {
+                "type": "integer",
+                "example": 250
+              },
+              "api_calls": {
+                "type": "integer",
+                "example": 500000
+              },
+              "max_functions": {
+                "type": "integer",
+                "example": 5
+              },
+              "description": {
+                "type": "string"
               }
             }
+          },
+          "hobby": {
+            "type": "object",
+            "properties": {
+              "price": {
+                "type": "string",
+                "example": "$5.00"
+              },
+              "lease_days": {
+                "type": "integer",
+                "example": 30
+              },
+              "storage_mb": {
+                "type": "integer",
+                "example": 1024
+              },
+              "api_calls": {
+                "type": "integer",
+                "example": 5000000
+              },
+              "max_functions": {
+                "type": "integer",
+                "example": 25
+              },
+              "description": {
+                "type": "string"
+              }
+            }
+          },
+          "team": {
+            "type": "object",
+            "properties": {
+              "price": {
+                "type": "string",
+                "example": "$20.00"
+              },
+              "lease_days": {
+                "type": "integer",
+                "example": 30
+              },
+              "storage_mb": {
+                "type": "integer",
+                "example": 10240
+              },
+              "api_calls": {
+                "type": "integer",
+                "example": 50000000
+              },
+              "max_functions": {
+                "type": "integer",
+                "example": 100
+              },
+              "description": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      },
+      "TierSubscription": {
+        "type": "object",
+        "properties": {
+          "wallet": {
+            "type": "string",
+            "example": "0x..."
+          },
+          "tier": {
+            "type": "string",
+            "enum": [
+              "prototype",
+              "hobby",
+              "team"
+            ]
+          },
+          "lease_started_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "lease_expires_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "allowance_remaining_usd_micros": {
+            "type": "integer"
           }
         }
       },
@@ -4049,7 +4290,7 @@
         }
       },
       "Unauthorized": {
-        "description": "Missing or invalid authentication. Provide apikey header (anon_key) or Authorization: Bearer (service_key/access_token).",
+        "description": "Missing or invalid authentication. For wallet-auth endpoints, provide X-Run402-Wallet, X-Run402-Signature, and X-Run402-Timestamp headers. For project endpoints, provide apikey header (anon_key) or Authorization: Bearer (service_key/access_token).",
         "content": {
           "application/json": {
             "schema": {

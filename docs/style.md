@@ -8,7 +8,7 @@ Version goes last, Supabase-style: `/<resource>/v1`.
 
 ```
 /projects/v1
-/projects/v1/:id/renew
+/tiers/v1/subscribe/:tier
 /faucet/v1
 /billing/v1/accounts/:wallet
 /subdomains/v1
@@ -80,7 +80,7 @@ Always `{ "error": "Human-readable message" }`. Optional extra fields for action
 
 ```json
 { "error": "API call limit exceeded", "usage": { "api_calls": 500, "limit": 500 } }
-{ "error": "Lease expired", "renew_url": "/projects/v1/:id/renew" }
+{ "error": "Lease expired", "renew_url": "/tiers/v1/renew/prototype" }
 ```
 
 ## Auth
@@ -96,14 +96,26 @@ Four mechanisms, never mixed:
 
 ## Paid Endpoints (x402)
 
-Every paid endpoint has a free GET that returns pricing and expected request shape:
+Tier subscription endpoints (`/tiers/v1/subscribe/:tier`, `/tiers/v1/renew/:tier`, `/tiers/v1/upgrade/:tier`) and image generation (`/generate-image/v1`) require x402 payment.
+
+All other operational endpoints (projects, deploys, forks, sites, messages) use EIP-4361 wallet auth and are free with an active tier subscription.
+
+Every endpoint category has a free GET that returns info:
 
 ```
-GET  /projects/v1       → { tiers, prices, method, body }
-POST /projects/v1       → 201, creates the resource
+GET  /tiers/v1          → { tiers, prices, auth }
+GET  /projects/v1       → { tiers, prices }
+POST /projects/v1       → 201, creates the resource (wallet auth)
 ```
 
 All paid POST routes support `Idempotency-Key` header for safe retries.
+
+## EIP-4361 Wallet Auth
+
+Endpoints that are free with tier use wallet signature headers:
+- `X-Run402-Wallet`: wallet address
+- `X-Run402-Signature`: signature of `run402:{unix_timestamp}`
+- `X-Run402-Timestamp`: unix timestamp (seconds, 30s freshness)
 
 ## HTTP Verbs
 

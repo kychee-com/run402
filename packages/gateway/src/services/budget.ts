@@ -1,6 +1,7 @@
 import { pool } from "../db/pool.js";
 import { projectCache } from "./projects.js";
 import { getTierLimits } from "@run402/shared";
+import type { TierName } from "@run402/shared";
 
 /**
  * Update storage bytes for a project (on upload/delete).
@@ -20,10 +21,11 @@ export async function updateStorageBytes(projectId: string, deltaBytes: number):
 
 /**
  * Check if a project has exceeded its storage budget.
+ * If the project has a wallet with an active tier, uses the wallet's tier limits.
  */
 export function isStorageExceeded(projectId: string): boolean {
   const project = projectCache.get(projectId);
   if (!project) return true;
-  const limits = getTierLimits(project.tier);
+  const limits = getTierLimits(project.tier as TierName);
   return project.storageBytes >= limits.storageBytes;
 }

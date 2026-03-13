@@ -39,13 +39,12 @@ export const TIERS: Record<TierName, TierConfig> = {
   },
 };
 
-/** Prices for non-tier endpoints (micro-USD) */
+/** Prices for per-call paid endpoints (micro-USD).
+ * Most endpoints are now free with an active tier subscription.
+ * Only generate-image remains per-call priced.
+ */
 export const SKU_PRICES: Record<string, number> = {
-  ping: 1_000,
-  contact: 1_000,
-  message: 10_000,
   image: 30_000,
-  deployment: 50_000,
 };
 
 export const TIER_NAMES = Object.keys(TIERS) as TierName[];
