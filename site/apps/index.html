@@ -136,12 +136,6 @@
       word-break: break-all;
     }
     .fork-cmd .hl { color: #FBBF24; }
-    .fork-price {
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 12px;
-      color: #00FF9F;
-      margin-top: 6px;
-    }
     .nav {
       text-align: center;
       padding: 12px;
@@ -320,7 +314,6 @@
           forkSection = '<div class="fork-section">' +
             '<div class="fork-label">Fork this app</div>' +
             '<div class="fork-cmd">POST /v1/fork/prototype<br>{ <span class="hl">"version_id"</span>: <span class="hl">"' + app.id + '"</span>, <span class="hl">"name"</span>: "my-copy" }</div>' +
-            '<div class="fork-price">From ' + app.fork_pricing.prototype + ' USDC</div>' +
             '</div>';
         }
 
