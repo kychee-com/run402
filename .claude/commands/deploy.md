@@ -14,6 +14,7 @@ Run all of these simultaneously:
 2. **Type-check**: `npx tsc --noEmit -p packages/gateway`
 3. **Docs alignment**: `npm run test:docs`
 4. **Unit tests**: `node --experimental-test-module-mocks --test --import tsx packages/gateway/src/services/subdomains.test.ts`
+5. **Style guide check**: Read `docs/style.md` and validate that route files (`packages/gateway/src/routes/*.ts`, `server.ts`, `middleware/x402.ts`) comply with every rule in that doc. Flag and fix any violations.
 
 If any fail, stop and fix the issues before proceeding. Do NOT skip failures.
 
