@@ -40,14 +40,14 @@ router.post("/v1/faucet", asyncHandler(async (req: Request, res: Response) => {
   recordWallet(address, "faucet");
 
   try {
-    const transactionHash = await sendDrip(address as `0x${string}`);
+    const transaction_hash = await sendDrip(address as `0x${string}`);
     dripTimestamps.set(ip, Date.now());
 
     // Snapshot balance after drip (fire-and-forget)
     getTreasuryBalance().then(b => recordFaucetSnapshot(b, "drip")).catch(() => {});
 
     res.json({
-      transactionHash,
+      transaction_hash,
       amount_usd_micros: Math.round(parseFloat(FAUCET_DRIP_AMOUNT) * 1_000_000),
       token: "USDC",
       network: "base-sepolia",
@@ -79,12 +79,12 @@ router.post("/admin/v1/faucet", asyncHandler(async (req: Request, res: Response)
   const dripAmount = typeof amount === "string" && /^\d+(\.\d+)?$/.test(amount) ? amount : FAUCET_DRIP_AMOUNT;
 
   try {
-    const transactionHash = await sendDrip(address as `0x${string}`, dripAmount);
+    const transaction_hash = await sendDrip(address as `0x${string}`, dripAmount);
     getTreasuryBalance().then(b => recordFaucetSnapshot(b, "admin-drip")).catch(() => {});
     console.log(`  Admin faucet: ${dripAmount} USDC to ${address}`);
 
     res.json({
-      transactionHash,
+      transaction_hash,
       amount_usd_micros: Math.round(parseFloat(dripAmount) * 1_000_000),
       token: "USDC",
       network: "base-sepolia",

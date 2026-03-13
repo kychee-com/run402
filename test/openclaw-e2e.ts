@@ -75,8 +75,8 @@ async function main() {
   });
   const faucetBody = await faucetRes.json();
   assert(faucetRes.ok, `Faucet returns 200 (status ${faucetRes.status})`);
-  assert(typeof faucetBody.transactionHash === "string", "Faucet returns transactionHash");
-  console.log(`  TX: ${faucetBody.transactionHash}`);
+  assert(typeof faucetBody.transaction_hash === "string", "Faucet returns transaction_hash");
+  console.log(`  TX: ${faucetBody.transaction_hash}`);
 
   // Step 4: Wait for USDC balance
   console.log("\n4) Wait for USDC balance...");

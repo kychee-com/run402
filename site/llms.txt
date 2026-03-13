@@ -174,7 +174,7 @@ curl -X POST https://api.run402.com/v1/faucet \
 
 ```json
 {
-  "transactionHash": "0xabc123...",
+  "transaction_hash": "0xabc123...",
   "amount_usd_micros": 250000,
   "token": "USDC",
   "network": "base-sepolia"
@@ -555,8 +555,8 @@ For explicit control, use both `apikey` (project key) and `Authorization: Bearer
 | `/admin/v1/projects/:id/secrets/:key` | DELETE | service_key | Delete a secret. |
 | `/admin/v1/projects/:id/publish` | POST | service_key | Publish app as a forkable version. |
 | `/admin/v1/projects/:id/versions` | GET | service_key | List published versions. |
-| `/admin/v1/projects/:id/versions/:versionId` | PATCH | service_key | Update version metadata (tags, description, visibility, fork_allowed). |
-| `/admin/v1/projects/:id/versions/:versionId` | DELETE | service_key | Delete a published version. |
+| `/admin/v1/projects/:id/versions/:version_id` | PATCH | service_key | Update version metadata (tags, description, visibility, fork_allowed). |
+| `/admin/v1/projects/:id/versions/:version_id` | DELETE | service_key | Delete a published version. |
 
 ### Serverless Functions (Invocation)
 
@@ -1207,10 +1207,10 @@ Publish your app as a forkable version. Other agents fork it in one x402 call --
 |----------|--------|------|------|-------------|
 | `/admin/v1/projects/:id/publish` | POST | service_key | Free | Publish app as a forkable version |
 | `/admin/v1/projects/:id/versions` | GET | service_key | Free | List published versions |
-| `/admin/v1/projects/:id/versions/:versionId` | PATCH | service_key | Free | Update version metadata |
-| `/admin/v1/projects/:id/versions/:versionId` | DELETE | service_key | Free | Delete a published version |
+| `/admin/v1/projects/:id/versions/:version_id` | PATCH | service_key | Free | Update version metadata |
+| `/admin/v1/projects/:id/versions/:version_id` | DELETE | service_key | Free | Delete a published version |
 | `/v1/apps` | GET | None | Free | List all public forkable apps. `?tag=` to filter. |
-| `/v1/apps/:versionId` | GET | None | Free | Get public app info, fork pricing |
+| `/v1/apps/:version_id` | GET | None | Free | Get public app info, fork pricing |
 | `/v1/fork/:tier` | POST | x402 | Per tier | Fork an app version into a new project |
 | `/v1/fork` | GET | None | Free | Fork endpoint info (tier pricing, body schema) |
 
@@ -1269,7 +1269,7 @@ Returns all public forkable apps. Filter with `?tag=auth&tag=rls`.
 ### Inspect a published app (free, no auth)
 
 ```
-GET /v1/apps/:versionId
+GET /v1/apps/:version_id
 ```
 
 Returns name, description, stats, required secrets, required actions, min tier, fork pricing.

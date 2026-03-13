@@ -1,5 +1,6 @@
 import { Router, Request, Response } from "express";
 import { notifyMessage } from "../services/telegram.js";
+import { asyncHandler, HttpError } from "../utils/async-handler.js";
 
 const router = Router();
 
@@ -12,17 +13,16 @@ router.get("/v1/message", (_req: Request, res: Response) => {
   });
 });
 
-router.post("/v1/message", (req: Request, res: Response) => {
+router.post("/v1/message", asyncHandler(async (req: Request, res: Response) => {
   const { message } = req.body || {};
   if (!message || typeof message !== "string" || !message.trim()) {
-    res.status(400).json({ error: "Missing or empty 'message' field" });
-    return;
+    throw new HttpError(400, "Missing or empty 'message' field");
   }
 
   // Fire-and-forget Telegram notification
   notifyMessage(message.trim());
 
   res.json({ status: "sent" });
-});
+}));
 
 export default router;

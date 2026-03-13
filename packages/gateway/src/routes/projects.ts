@@ -48,7 +48,7 @@ router.post("/v1/projects", asyncHandler(async (req: Request, res: Response) => 
   console.log(`  Created project: ${project.id} (schema: ${project.schemaSlot}, tier: ${tier})`);
   notifyNewProject(name, tier, project.id);
 
-  res.json({
+  res.status(201).json({
     project_id: project.id,
     anon_key: project.anonKey,
     service_key: project.serviceKey,
@@ -78,7 +78,7 @@ router.post("/v1/projects/create/:tier", asyncHandler(async (req: Request, res: 
   console.log(`  Created project: ${project.id} (schema: ${project.schemaSlot}, tier: ${tier})`);
   notifyNewProject(name, tier, project.id);
 
-  res.json({
+  res.status(201).json({
     project_id: project.id,
     anon_key: project.anonKey,
     service_key: project.serviceKey,

@@ -3,7 +3,7 @@
  *
  * POST /admin/v1/projects/:id/publish  — publish app version (service_key auth)
  * GET  /admin/v1/projects/:id/versions — list versions (service_key auth)
- * GET  /v1/apps/:versionId             — get public app info (free)
+ * GET  /v1/apps/:version_id             — get public app info (free)
  * POST /v1/fork/:tier                  — fork an app version (x402-gated)
  */
 
@@ -94,9 +94,9 @@ router.get(
   }),
 );
 
-// PATCH /admin/v1/projects/:id/versions/:versionId — update version metadata (service_key auth)
+// PATCH /admin/v1/projects/:id/versions/:version_id — update version metadata (service_key auth)
 router.patch(
-  "/admin/v1/projects/:id/versions/:versionId",
+  "/admin/v1/projects/:id/versions/:version_id",
   serviceKeyAuth,
   asyncHandler(async (req: Request, res: Response) => {
     const project = req.project!;
@@ -133,7 +133,7 @@ router.patch(
       throw new HttpError(400, "No fields to update");
     }
 
-    params.push(req.params.versionId);
+    params.push(req.params.version_id);
     params.push(project.id);
 
     const { pool: dbPool } = await import("../db/pool.js");
@@ -148,14 +148,14 @@ router.patch(
     }
 
     const { getAppVersion: getVer } = await import("../services/publish.js");
-    const updated = await getVer(req.params.versionId as string);
+    const updated = await getVer(req.params.version_id as string);
     res.json(updated);
   }),
 );
 
-// DELETE /admin/v1/projects/:id/versions/:versionId — delete a published version (service_key auth)
+// DELETE /admin/v1/projects/:id/versions/:version_id — delete a published version (service_key auth)
 router.delete(
-  "/admin/v1/projects/:id/versions/:versionId",
+  "/admin/v1/projects/:id/versions/:version_id",
   serviceKeyAuth,
   asyncHandler(async (req: Request, res: Response) => {
     const project = req.project!;
@@ -164,7 +164,7 @@ router.delete(
     }
 
     const { deleteAppVersion: delVer } = await import("../services/publish.js");
-    const deleted = await delVer(req.params.versionId as string, project.id);
+    const deleted = await delVer(req.params.version_id as string, project.id);
     if (!deleted) {
       throw new HttpError(404, "Version not found");
     }
@@ -176,13 +176,13 @@ router.delete(
       console.error("  Failed to teardown demo project:", err);
     }
 
-    res.json({ status: "deleted", version_id: req.params.versionId });
+    res.json({ status: "deleted", version_id: req.params.version_id });
   }),
 );
 
-// DELETE /v1/admin/app-versions/:versionId — admin-only version deletion (no service_key needed)
+// DELETE /v1/admin/app-versions/:version_id — admin-only version deletion (no service_key needed)
 router.delete(
-  "/v1/admin/app-versions/:versionId",
+  "/v1/admin/app-versions/:version_id",
   asyncHandler(async (req: Request, res: Response) => {
     const adminKey = req.headers["x-admin-key"] as string | undefined;
     if (!ADMIN_KEY || adminKey !== ADMIN_KEY) {
@@ -192,13 +192,13 @@ router.delete(
     const { pool: dbPool } = await import("../db/pool.js");
     const result = await dbPool.query(
       `DELETE FROM internal.app_versions WHERE id = $1 RETURNING id`,
-      [req.params.versionId],
+      [req.params.version_id],
     );
     if (!result.rowCount || result.rowCount === 0) {
       throw new HttpError(404, "Version not found");
     }
-    console.log(`  Admin deleted app version: ${req.params.versionId}`);
-    res.json({ status: "deleted", version_id: req.params.versionId });
+    console.log(`  Admin deleted app version: ${req.params.version_id}`);
+    res.json({ status: "deleted", version_id: req.params.version_id });
   }),
 );
 
@@ -228,11 +228,11 @@ router.get(
   }),
 );
 
-// GET /v1/apps/:versionId — public app info (free, no auth)
+// GET /v1/apps/:version_id — public app info (free, no auth)
 router.get(
-  "/v1/apps/:versionId",
+  "/v1/apps/:version_id",
   asyncHandler(async (req: Request, res: Response) => {
-    const version = await getAppVersion(req.params.versionId as string);
+    const version = await getAppVersion(req.params.version_id as string);
     if (!version) {
       throw new HttpError(404, "App version not found");
     }

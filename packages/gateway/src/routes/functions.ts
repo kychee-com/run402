@@ -107,7 +107,7 @@ router.delete(
   asyncHandler(async (req: Request, res: Response) => {
     try {
       await deleteFunction(req.params.id as string, req.params.name as string);
-      res.json({ status: "deleted" });
+      res.json({ status: "deleted", name: req.params.name });
     } catch (err: unknown) {
       if (err instanceof FunctionError) {
         throw new HttpError(err.statusCode, err.message);
@@ -173,7 +173,7 @@ router.delete(
   asyncHandler(async (req: Request, res: Response) => {
     try {
       await deleteSecret(req.params.id as string, req.params.key as string);
-      res.json({ status: "deleted" });
+      res.json({ status: "deleted", key: req.params.key });
     } catch (err: unknown) {
       if (err instanceof FunctionError) {
         throw new HttpError(err.statusCode, err.message);

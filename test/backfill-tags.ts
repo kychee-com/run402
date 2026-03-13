@@ -6,7 +6,7 @@
  * re-publishes with tags by using the admin faucet + deploy flow.
  *
  * Actually — the published versions reference project_ids that may still be active
- * (pinned). We need to call PATCH /admin/v1/projects/:id/versions/:versionId
+ * (pinned). We need to call PATCH /admin/v1/projects/:id/versions/:version_id
  * with the project's service_key. But we don't have the service keys stored.
  *
  * Simplest approach: delete old test versions and re-run publish-demos.ts with tags.

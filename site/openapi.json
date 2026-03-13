@@ -1739,11 +1739,11 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "transactionHash": {
+                    "transaction_hash": {
                       "type": "string"
                     },
-                    "amount": {
-                      "type": "string"
+                    "amount_usd_micros": {
+                      "type": "integer"
                     },
                     "token": {
                       "type": "string",
@@ -1808,11 +1808,11 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "transactionHash": {
+                    "transaction_hash": {
                       "type": "string"
                     },
-                    "amount": {
-                      "type": "string"
+                    "amount_usd_micros": {
+                      "type": "integer"
                     },
                     "token": {
                       "type": "string"
@@ -3509,7 +3509,7 @@
         }
       }
     },
-    "/admin/v1/projects/{id}/versions/{versionId}": {
+    "/admin/v1/projects/{id}/versions/{version_id}": {
       "patch": {
         "tags": [
           "Publish"
@@ -3532,7 +3532,7 @@
             }
           },
           {
-            "name": "versionId",
+            "name": "version_id",
             "in": "path",
             "required": true,
             "schema": {
@@ -3609,7 +3609,7 @@
             }
           },
           {
-            "name": "versionId",
+            "name": "version_id",
             "in": "path",
             "required": true,
             "schema": {
@@ -3685,7 +3685,7 @@
         }
       }
     },
-    "/v1/apps/{versionId}": {
+    "/v1/apps/{version_id}": {
       "get": {
         "tags": [
           "Publish"
@@ -3694,7 +3694,7 @@
         "operationId": "getApp",
         "parameters": [
           {
-            "name": "versionId",
+            "name": "version_id",
             "in": "path",
             "required": true,
             "schema": {
