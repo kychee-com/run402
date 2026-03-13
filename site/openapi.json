@@ -2428,9 +2428,14 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/Subdomain"
+                  "type": "object",
+                  "properties": {
+                    "subdomains": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Subdomain"
+                      }
+                    }
                   }
                 }
               }
@@ -2868,7 +2873,7 @@
           }
         },
         "responses": {
-          "200": {
+          "201": {
             "description": "Secret set",
             "content": {
               "application/json": {
