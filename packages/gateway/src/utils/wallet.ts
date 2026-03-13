@@ -3,6 +3,9 @@ import { pool } from "../db/pool.js";
 /**
  * Extract the sender wallet address from an x402 payment header.
  * The header is base64 JSON: { payload: { authorization: { from: "0x..." } } }
+ *
+ * x402 v2 uses `payment-signature` header (or `x-payment`).
+ * Legacy clients may use `x-402-payment`.
  */
 export function extractWalletFromPaymentHeader(header: string): string | null {
   try {
@@ -12,6 +15,15 @@ export function extractWalletFromPaymentHeader(header: string): string | null {
   } catch {
     return null;
   }
+}
+
+/**
+ * Get the payment header from a request, checking all known header names.
+ * x402 v2: `payment-signature` or `x-payment`
+ * Legacy: `x-402-payment`
+ */
+export function getPaymentHeader(headers: Record<string, string | string[] | undefined>): string | undefined {
+  return (headers["payment-signature"] || headers["x-payment"] || headers["x-402-payment"]) as string | undefined;
 }
 
 /**

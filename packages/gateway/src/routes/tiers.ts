@@ -12,7 +12,7 @@ import { Router, Request, Response } from "express";
 import { TIERS } from "@run402/shared";
 import type { TierName } from "@run402/shared";
 import { subscribeTier, renewTier, upgradeTier, getWalletTier, canDowngrade } from "../services/wallet-tiers.js";
-import { extractWalletFromPaymentHeader } from "../utils/wallet.js";
+import { extractWalletFromPaymentHeader, getPaymentHeader } from "../utils/wallet.js";
 import { walletAuth, invalidateWalletTierCache } from "../middleware/wallet-auth.js";
 import { asyncHandler, HttpError } from "../utils/async-handler.js";
 
@@ -57,7 +57,7 @@ router.post("/tiers/v1/subscribe/:tier", asyncHandler(async (req: Request, res: 
     throw new HttpError(400, `Unknown tier: ${tier}. Valid tiers: ${Object.keys(TIERS).join(", ")}`);
   }
 
-  const paymentHeader = req.headers["x-402-payment"] as string | undefined;
+  const paymentHeader = getPaymentHeader(req.headers as Record<string, string | string[] | undefined>);
   const wallet = paymentHeader ? extractWalletFromPaymentHeader(paymentHeader) : null;
   if (!wallet) {
     throw new HttpError(401, "Could not extract wallet from payment header");
@@ -84,7 +84,7 @@ router.post("/tiers/v1/renew/:tier", asyncHandler(async (req: Request, res: Resp
     throw new HttpError(400, `Unknown tier: ${tier}. Valid tiers: ${Object.keys(TIERS).join(", ")}`);
   }
 
-  const paymentHeader = req.headers["x-402-payment"] as string | undefined;
+  const paymentHeader = getPaymentHeader(req.headers as Record<string, string | string[] | undefined>);
   const wallet = paymentHeader ? extractWalletFromPaymentHeader(paymentHeader) : null;
   if (!wallet) {
     throw new HttpError(401, "Could not extract wallet from payment header");
@@ -111,7 +111,7 @@ router.post("/tiers/v1/upgrade/:tier", asyncHandler(async (req: Request, res: Re
     throw new HttpError(400, `Unknown tier: ${newTier}. Valid tiers: ${Object.keys(TIERS).join(", ")}`);
   }
 
-  const paymentHeader = req.headers["x-402-payment"] as string | undefined;
+  const paymentHeader = getPaymentHeader(req.headers as Record<string, string | string[] | undefined>);
   const wallet = paymentHeader ? extractWalletFromPaymentHeader(paymentHeader) : null;
   if (!wallet) {
     throw new HttpError(401, "Could not extract wallet from payment header");

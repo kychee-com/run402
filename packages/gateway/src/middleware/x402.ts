@@ -304,7 +304,7 @@ export function createPaymentMiddleware() {
 
   // Wrapper middleware: adds X-Run402-Settlement-Rail and X-Run402-Allowance-Remaining headers.
   return async (req: Request, res: Response, next: NextFunction) => {
-    const paymentHeader = req.headers["x-402-payment"] as string | undefined;
+    const paymentHeader = (req.headers["payment-signature"] || req.headers["x-payment"] || req.headers["x-402-payment"]) as string | undefined;
 
     if (paymentHeader) {
       // Intercept writeHead to inject settlement headers before the response is sent.
