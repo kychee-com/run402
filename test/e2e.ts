@@ -88,7 +88,7 @@ async function main() {
 
   // Step 1: Quote
   console.log("1) Quote...");
-  const quoteRes = await fetch(`${BASE_URL}/v1/projects/quote`, {
+  const quoteRes = await fetch(`${BASE_URL}/projects/v1/quote`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({}),
@@ -101,7 +101,7 @@ async function main() {
 
   // Step 2: Create project via x402
   console.log("\n2) Create project via x402...");
-  const createRes = await fetchPaid(`${BASE_URL}/v1/projects`, {
+  const createRes = await fetchPaid(`${BASE_URL}/projects/v1`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ name: "e2e-workout-tracker" }),
@@ -149,7 +149,7 @@ async function main() {
       created_at TIMESTAMPTZ DEFAULT now()
     );
   `;
-  const migrationRes = await fetch(`${BASE_URL}/admin/v1/projects/${project_id}/sql`, {
+  const migrationRes = await fetch(`${BASE_URL}/projects/v1/admin/${project_id}/sql`, {
     method: "POST",
     headers: { "Content-Type": "text/plain", Authorization: `Bearer ${service_key}` },
     body: migrationSQL,
@@ -162,7 +162,7 @@ async function main() {
 
   // Step 4: Apply RLS
   console.log("\n4) Apply RLS...");
-  const rlsRes = await fetch(`${BASE_URL}/admin/v1/projects/${project_id}/rls`, {
+  const rlsRes = await fetch(`${BASE_URL}/projects/v1/admin/${project_id}/rls`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${service_key}` },
     body: JSON.stringify({
@@ -307,7 +307,7 @@ async function main() {
 
   // Step 10: Check usage
   console.log("\n10) Check usage...");
-  const usageRes = await fetch(`${BASE_URL}/admin/v1/projects/${project_id}/usage`, {
+  const usageRes = await fetch(`${BASE_URL}/projects/v1/admin/${project_id}/usage`, {
     headers: { Authorization: `Bearer ${service_key}` },
   });
   const usageBody = await usageRes.json();
@@ -318,7 +318,7 @@ async function main() {
 
   // Step 11: Schema introspection
   console.log("\n11) Schema introspection...");
-  const schemaRes = await fetch(`${BASE_URL}/admin/v1/projects/${project_id}/schema`, {
+  const schemaRes = await fetch(`${BASE_URL}/projects/v1/admin/${project_id}/schema`, {
     headers: { Authorization: `Bearer ${service_key}` },
   });
   const schemaBody = await schemaRes.json();
@@ -350,7 +350,7 @@ async function main() {
 
   // Step 13: SQL blocklist
   console.log("\n13) SQL blocklist...");
-  const blockedRes = await fetch(`${BASE_URL}/admin/v1/projects/${project_id}/sql`, {
+  const blockedRes = await fetch(`${BASE_URL}/projects/v1/admin/${project_id}/sql`, {
     method: "POST",
     headers: { "Content-Type": "text/plain", Authorization: `Bearer ${service_key}` },
     body: "CREATE EXTENSION pg_stat_statements;",
@@ -394,7 +394,7 @@ async function main() {
   console.log("\n15) SQL query returns rows...");
 
   // DDL should return empty rows
-  const ddlRes = await fetch(`${BASE_URL}/admin/v1/projects/${project_id}/sql`, {
+  const ddlRes = await fetch(`${BASE_URL}/projects/v1/admin/${project_id}/sql`, {
     method: "POST",
     headers: { "Content-Type": "text/plain", Authorization: `Bearer ${service_key}` },
     body: "CREATE TABLE IF NOT EXISTS profiles (id UUID PRIMARY KEY);",
@@ -405,7 +405,7 @@ async function main() {
   assert(ddlBody.rows.length === 0, "DDL returns empty rows");
 
   // SELECT should return actual data
-  const selectRes = await fetch(`${BASE_URL}/admin/v1/projects/${project_id}/sql`, {
+  const selectRes = await fetch(`${BASE_URL}/projects/v1/admin/${project_id}/sql`, {
     method: "POST",
     headers: { "Content-Type": "text/plain", Authorization: `Bearer ${service_key}` },
     body: "SELECT id, email FROM profiles ORDER BY created_at;",
@@ -418,7 +418,7 @@ async function main() {
   assert(typeof selectBody.rowCount === "number", "Response includes rowCount");
 
   // COUNT query
-  const countRes = await fetch(`${BASE_URL}/admin/v1/projects/${project_id}/sql`, {
+  const countRes = await fetch(`${BASE_URL}/projects/v1/admin/${project_id}/sql`, {
     method: "POST",
     headers: { "Content-Type": "text/plain", Authorization: `Bearer ${service_key}` },
     body: "SELECT count(*) AS total FROM exercises;",
@@ -439,7 +439,7 @@ async function main() {
       done BOOLEAN DEFAULT false
     );
   `;
-  const serialMigRes = await fetch(`${BASE_URL}/admin/v1/projects/${project_id}/sql`, {
+  const serialMigRes = await fetch(`${BASE_URL}/projects/v1/admin/${project_id}/sql`, {
     method: "POST",
     headers: { "Content-Type": "text/plain", Authorization: `Bearer ${service_key}` },
     body: serialSQL,
@@ -447,7 +447,7 @@ async function main() {
   assert(serialMigRes.ok, "SERIAL table migration succeeds");
 
   // Apply RLS to the new table
-  const serialRlsRes = await fetch(`${BASE_URL}/admin/v1/projects/${project_id}/rls`, {
+  const serialRlsRes = await fetch(`${BASE_URL}/projects/v1/admin/${project_id}/rls`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${service_key}` },
     body: JSON.stringify({
@@ -540,7 +540,7 @@ async function main() {
       created_at TIMESTAMPTZ DEFAULT now()
     );
   `;
-  const templateMigRes = await fetch(`${BASE_URL}/admin/v1/projects/${project_id}/sql`, {
+  const templateMigRes = await fetch(`${BASE_URL}/projects/v1/admin/${project_id}/sql`, {
     method: "POST",
     headers: { "Content-Type": "text/plain", Authorization: `Bearer ${service_key}` },
     body: templateSQL,
@@ -548,7 +548,7 @@ async function main() {
   assert(templateMigRes.ok, "Template test tables created");
 
   // Apply public_read to announcements
-  const publicReadRes = await fetch(`${BASE_URL}/admin/v1/projects/${project_id}/rls`, {
+  const publicReadRes = await fetch(`${BASE_URL}/projects/v1/admin/${project_id}/rls`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${service_key}` },
     body: JSON.stringify({
@@ -561,7 +561,7 @@ async function main() {
   assert(publicReadBody.template === "public_read", "Response includes template name");
 
   // Apply public_read_write to guestbook
-  const publicRWRes = await fetch(`${BASE_URL}/admin/v1/projects/${project_id}/rls`, {
+  const publicRWRes = await fetch(`${BASE_URL}/projects/v1/admin/${project_id}/rls`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${service_key}` },
     body: JSON.stringify({
@@ -572,7 +572,7 @@ async function main() {
   assert(publicRWRes.ok, "public_read_write RLS applied");
 
   // Invalid template should fail
-  const badTemplateRes = await fetch(`${BASE_URL}/admin/v1/projects/${project_id}/rls`, {
+  const badTemplateRes = await fetch(`${BASE_URL}/projects/v1/admin/${project_id}/rls`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${service_key}` },
     body: JSON.stringify({ template: "nonexistent", tables: [{ table: "guestbook" }] }),
@@ -625,7 +625,7 @@ async function main() {
 
   // Step 19: GRANT blocked with helpful hint
   console.log("\n19) GRANT blocked with hint...");
-  const grantRes = await fetch(`${BASE_URL}/admin/v1/projects/${project_id}/sql`, {
+  const grantRes = await fetch(`${BASE_URL}/projects/v1/admin/${project_id}/sql`, {
     method: "POST",
     headers: { "Content-Type": "text/plain", Authorization: `Bearer ${service_key}` },
     body: "GRANT SELECT ON profiles TO anon;",
@@ -635,7 +635,7 @@ async function main() {
   assert(typeof grantBody.error === "string", "GRANT error includes message");
   assert(grantBody.error.includes("IDENTITY"), "Hint suggests IDENTITY over SERIAL");
 
-  const revokeRes = await fetch(`${BASE_URL}/admin/v1/projects/${project_id}/sql`, {
+  const revokeRes = await fetch(`${BASE_URL}/projects/v1/admin/${project_id}/sql`, {
     method: "POST",
     headers: { "Content-Type": "text/plain", Authorization: `Bearer ${service_key}` },
     body: "REVOKE SELECT ON profiles FROM anon;",
@@ -647,7 +647,7 @@ async function main() {
 
   // Step 20: Bundle deploy — one-call full-stack app
   console.log("\n20) Bundle deploy...");
-  const bundleRes = await fetchPaid(`${BASE_URL}/v1/deploy/prototype`, {
+  const bundleRes = await fetchPaid(`${BASE_URL}/deploy/v1/prototype`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -695,7 +695,7 @@ async function main() {
   assert(bundleBody.site_url.includes("sites.run402.com"), "Bundle site URL points to sites.run402.com");
 
   // Clean up bundle project
-  const bundleDeleteRes = await fetch(`${BASE_URL}/v1/projects/${bundleProjectId}`, {
+  const bundleDeleteRes = await fetch(`${BASE_URL}/projects/v1/${bundleProjectId}`, {
     method: "DELETE",
     headers: { Authorization: `Bearer ${bundleServiceKey}` },
   });
@@ -703,7 +703,7 @@ async function main() {
 
   // Step 21: Publish — publish workout tracker as forkable app version
   console.log("\n21) Publish app version...");
-  const publishRes = await fetch(`${BASE_URL}/admin/v1/projects/${project_id}/publish`, {
+  const publishRes = await fetch(`${BASE_URL}/projects/v1/admin/${project_id}/publish`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${service_key}` },
     body: JSON.stringify({
@@ -724,7 +724,7 @@ async function main() {
   const versionId = publishBody.id;
 
   // Verify public app info endpoint
-  const appInfoRes = await fetch(`${BASE_URL}/v1/apps/${versionId}`);
+  const appInfoRes = await fetch(`${BASE_URL}/apps/v1/${versionId}`);
   const appInfoBody = await appInfoRes.json();
   assert(appInfoRes.ok, "Public app info accessible");
   assert(appInfoBody.fork_allowed === true, "App info shows fork_allowed");
@@ -732,7 +732,7 @@ async function main() {
 
   // Step 22: Fork — fork the published app via x402
   console.log("\n22) Fork app version...");
-  const forkRes = await fetchPaid(`${BASE_URL}/v1/fork/prototype`, {
+  const forkRes = await fetchPaid(`${BASE_URL}/fork/v1/prototype`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -756,7 +756,7 @@ async function main() {
   await sleep(500); // Wait for PostgREST reload
 
   // Verify forked project has the tables (schema was restored)
-  const forkSchemaRes = await fetch(`${BASE_URL}/admin/v1/projects/${forkProjectId}/schema`, {
+  const forkSchemaRes = await fetch(`${BASE_URL}/projects/v1/admin/${forkProjectId}/schema`, {
     headers: { Authorization: `Bearer ${forkServiceKey}` },
   });
   const forkSchemaBody = await forkSchemaRes.json();
@@ -767,14 +767,14 @@ async function main() {
   assert(forkTableNames.includes("workouts"), "Fork has workouts table");
 
   // Clean up fork project
-  const forkDeleteRes = await fetch(`${BASE_URL}/v1/projects/${forkProjectId}`, {
+  const forkDeleteRes = await fetch(`${BASE_URL}/projects/v1/${forkProjectId}`, {
     method: "DELETE",
     headers: { Authorization: `Bearer ${forkServiceKey}` },
   });
   assert(forkDeleteRes.ok, "Fork project cleaned up");
 
   // Clean up published version (prevent stale gallery entries)
-  const versionDeleteRes = await fetch(`${BASE_URL}/admin/v1/projects/${project_id}/versions/${versionId}`, {
+  const versionDeleteRes = await fetch(`${BASE_URL}/projects/v1/admin/${project_id}/versions/${versionId}`, {
     method: "DELETE",
     headers: { Authorization: `Bearer ${service_key}` },
   });
@@ -782,7 +782,7 @@ async function main() {
 
   // Step 23: Delete original project
   console.log("\n23) Delete project...");
-  const deleteRes = await fetch(`${BASE_URL}/v1/projects/${project_id}`, {
+  const deleteRes = await fetch(`${BASE_URL}/projects/v1/${project_id}`, {
     method: "DELETE",
     headers: { Authorization: `Bearer ${service_key}` },
   });
