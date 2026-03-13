@@ -39,7 +39,7 @@ async function main() {
 
   // 1. Provision project
   console.log("1) Provisioning project...");
-  const provRes = await fetchPaid(`${BASE_URL}/v1/projects/create/prototype`, {
+  const provRes = await fetchPaid(`${BASE_URL}/projects/v1/create/prototype`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ name: "evilme" }),
@@ -63,7 +63,7 @@ async function main() {
   // 2. Create DB tables
   console.log("\n2) Creating DB tables...");
   const schema = readFileSync(new URL("./schema.sql", import.meta.url), "utf-8");
-  const sqlRes = await fetch(`${BASE_URL}/admin/v1/projects/${project_id}/sql`, {
+  const sqlRes = await fetch(`${BASE_URL}/projects/v1/admin/${project_id}/sql`, {
     method: "POST",
     headers: { Authorization: `Bearer ${service_key}`, "Content-Type": "text/plain" },
     body: schema,
@@ -76,7 +76,7 @@ async function main() {
 
   // 3. Set secrets (OpenAI for story gen, Admin key for image gen bypass)
   console.log("\n3) Setting secrets...");
-  const secretRes = await fetch(`${BASE_URL}/admin/v1/projects/${project_id}/secrets`, {
+  const secretRes = await fetch(`${BASE_URL}/projects/v1/admin/${project_id}/secrets`, {
     method: "POST",
     headers: authHeaders,
     body: JSON.stringify({ key: "OPENAI_API_KEY", value: OPENAI_API_KEY }),
@@ -87,7 +87,7 @@ async function main() {
   }
   console.log("   OPENAI_API_KEY set");
 
-  const adminSecretRes = await fetch(`${BASE_URL}/admin/v1/projects/${project_id}/secrets`, {
+  const adminSecretRes = await fetch(`${BASE_URL}/projects/v1/admin/${project_id}/secrets`, {
     method: "POST",
     headers: authHeaders,
     body: JSON.stringify({ key: "ADMIN_KEY", value: ADMIN_KEY }),
@@ -101,7 +101,7 @@ async function main() {
   // 4. Deploy function
   console.log("\n4) Deploying function...");
   const functionCode = readFileSync(new URL("./function.js", import.meta.url), "utf-8");
-  const fnRes = await fetch(`${BASE_URL}/admin/v1/projects/${project_id}/functions`, {
+  const fnRes = await fetch(`${BASE_URL}/projects/v1/admin/${project_id}/functions`, {
     method: "POST",
     headers: authHeaders,
     body: JSON.stringify({ name: "evilme", code: functionCode }),
@@ -122,7 +122,7 @@ async function main() {
     `APIKEY = params.get("key") || "${anon_key}";`,
   );
 
-  const siteRes = await fetchPaid(`${BASE_URL}/v1/deployments`, {
+  const siteRes = await fetchPaid(`${BASE_URL}/deployments/v1`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -140,7 +140,7 @@ async function main() {
 
   // 6. Claim subdomain
   console.log("\n6) Claiming evilme.run402.com...");
-  const subRes = await fetch(`${BASE_URL}/v1/subdomains`, {
+  const subRes = await fetch(`${BASE_URL}/subdomains/v1`, {
     method: "POST",
     headers: authHeaders,
     body: JSON.stringify({ name: "evilme", deployment_id: site.id }),
@@ -149,7 +149,7 @@ async function main() {
     const err = await subRes.text();
     if (err.includes("already claimed")) {
       // Update existing subdomain
-      await fetch(`${BASE_URL}/v1/subdomains`, {
+      await fetch(`${BASE_URL}/subdomains/v1`, {
         method: "POST",
         headers: authHeaders,
         body: JSON.stringify({ name: "evilme", deployment_id: site.id }),
@@ -164,7 +164,7 @@ async function main() {
 
   // 7. Pin project
   console.log("\n7) Pinning project...");
-  const pinRes = await fetch(`${BASE_URL}/admin/v1/projects/${project_id}/pin`, {
+  const pinRes = await fetch(`${BASE_URL}/projects/v1/admin/${project_id}/pin`, {
     method: "POST",
     headers: { ...authHeaders, "X-Admin-Key": ADMIN_KEY },
   });

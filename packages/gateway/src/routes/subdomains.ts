@@ -42,7 +42,7 @@ function formatSubdomain(record: {
 }
 
 // POST /v1/subdomains — claim or reassign a subdomain
-router.post("/v1/subdomains", serviceKeyAuth, asyncHandler(async (req: Request, res: Response) => {
+router.post("/subdomains/v1", serviceKeyAuth, asyncHandler(async (req: Request, res: Response) => {
   const { name, deployment_id } = req.body || {};
 
   if (!name || typeof name !== "string") {
@@ -72,14 +72,14 @@ router.post("/v1/subdomains", serviceKeyAuth, asyncHandler(async (req: Request, 
 }));
 
 // GET /v1/subdomains — list subdomains for the authenticated project
-router.get("/v1/subdomains", serviceKeyAuth, asyncHandler(async (req: Request, res: Response) => {
+router.get("/subdomains/v1", serviceKeyAuth, asyncHandler(async (req: Request, res: Response) => {
   const projectId = req.project!.id;
   const records = await listSubdomains(projectId);
   res.json({ subdomains: records.map(formatSubdomain) });
 }));
 
 // GET /v1/subdomains/:name — lookup a subdomain (free, no auth)
-router.get("/v1/subdomains/:name", asyncHandler(async (req: Request, res: Response) => {
+router.get("/subdomains/v1/:name", asyncHandler(async (req: Request, res: Response) => {
   const record = await getSubdomain(req.params.name as string);
   if (!record) {
     throw new HttpError(404, "Subdomain not found");
@@ -88,7 +88,7 @@ router.get("/v1/subdomains/:name", asyncHandler(async (req: Request, res: Respon
 }));
 
 // DELETE /v1/subdomains/:name — release a subdomain
-router.delete("/v1/subdomains/:name", serviceKeyAuth, asyncHandler(async (req: Request, res: Response) => {
+router.delete("/subdomains/v1/:name", serviceKeyAuth, asyncHandler(async (req: Request, res: Response) => {
   const projectId = req.project?.id || null;
 
   try {

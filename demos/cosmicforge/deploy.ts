@@ -52,7 +52,7 @@ async function main() {
     console.log(`   Project: ${project_id}`);
   } else {
     console.log("1) Provisioning new project...");
-    const provRes = await fetchPaid(`${BASE_URL}/v1/projects/create/prototype`, {
+    const provRes = await fetchPaid(`${BASE_URL}/projects/v1/create/prototype`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name: "cosmicforge" }),
@@ -78,7 +78,7 @@ async function main() {
 
   // 2. Set OPENAI_API_KEY secret
   console.log("\n2) Setting secrets...");
-  const secretRes = await fetch(`${BASE_URL}/admin/v1/projects/${project_id}/secrets`, {
+  const secretRes = await fetch(`${BASE_URL}/projects/v1/admin/${project_id}/secrets`, {
     method: "POST",
     headers: authHeaders,
     body: JSON.stringify({ key: "OPENAI_API_KEY", value: OPENAI_API_KEY }),
@@ -92,7 +92,7 @@ async function main() {
   // 3. Deploy function
   console.log("\n3) Deploying function...");
   const functionCode = readFileSync(new URL("./function.js", import.meta.url), "utf-8");
-  const fnRes = await fetch(`${BASE_URL}/admin/v1/projects/${project_id}/functions`, {
+  const fnRes = await fetch(`${BASE_URL}/projects/v1/admin/${project_id}/functions`, {
     method: "POST",
     headers: authHeaders,
     body: JSON.stringify({ name: "cosmicforge", code: functionCode }),
@@ -113,7 +113,7 @@ async function main() {
     `APIKEY = params.get("key") || "${anon_key}";`,
   );
 
-  const siteRes = await fetchPaid(`${BASE_URL}/v1/deployments`, {
+  const siteRes = await fetchPaid(`${BASE_URL}/deployments/v1`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -131,7 +131,7 @@ async function main() {
 
   // 5. Claim subdomain
   console.log("\n5) Claiming cosmic.run402.com...");
-  const subRes = await fetch(`${BASE_URL}/v1/subdomains`, {
+  const subRes = await fetch(`${BASE_URL}/subdomains/v1`, {
     method: "POST",
     headers: authHeaders,
     body: JSON.stringify({ name: "cosmic", deployment_id: site.id }),
@@ -139,7 +139,7 @@ async function main() {
   if (!subRes.ok) {
     const err = await subRes.text();
     if (err.includes("already claimed")) {
-      await fetch(`${BASE_URL}/v1/subdomains`, {
+      await fetch(`${BASE_URL}/subdomains/v1`, {
         method: "POST",
         headers: authHeaders,
         body: JSON.stringify({ name: "cosmic", deployment_id: site.id }),
@@ -154,7 +154,7 @@ async function main() {
 
   // 6. Pin project
   console.log("\n6) Pinning project...");
-  const pinRes = await fetch(`${BASE_URL}/admin/v1/projects/${project_id}/pin`, {
+  const pinRes = await fetch(`${BASE_URL}/projects/v1/admin/${project_id}/pin`, {
     method: "POST",
     headers: { ...authHeaders, "X-Admin-Key": ADMIN_KEY },
   });

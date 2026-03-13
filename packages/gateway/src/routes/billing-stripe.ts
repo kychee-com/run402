@@ -1,8 +1,8 @@
 /**
  * Stripe billing routes — checkout + webhook.
  *
- * POST /v1/billing/checkouts      — create Stripe Checkout session for allowance top-up
- * POST /v1/webhooks/stripe        — Stripe webhook handler (signature-verified)
+ * POST /billing/v1/checkouts      — create Stripe Checkout session for allowance top-up
+ * POST /webhooks/v1/stripe        — Stripe webhook handler (signature-verified)
  */
 
 import { Router, Request, Response } from "express";
@@ -13,8 +13,8 @@ import { STRIPE_SECRET_KEY } from "../config.js";
 
 const router = Router();
 
-// POST /v1/billing/checkouts — create Stripe Checkout for allowance top-up
-router.post("/v1/billing/checkouts", asyncHandler(async (req: Request, res: Response) => {
+// POST /billing/v1/checkouts — create Stripe Checkout for allowance top-up
+router.post("/billing/v1/checkouts", asyncHandler(async (req: Request, res: Response) => {
   if (!STRIPE_SECRET_KEY) {
     throw new HttpError(503, "Stripe not configured");
   }
@@ -32,8 +32,8 @@ router.post("/v1/billing/checkouts", asyncHandler(async (req: Request, res: Resp
   res.json(result);
 }));
 
-// POST /v1/webhooks/stripe — Stripe webhook (raw body, signature-verified)
-router.post("/v1/webhooks/stripe", asyncHandler(async (req: Request, res: Response) => {
+// POST /webhooks/v1/stripe — Stripe webhook (raw body, signature-verified)
+router.post("/webhooks/v1/stripe", asyncHandler(async (req: Request, res: Response) => {
   const signature = req.headers["stripe-signature"] as string;
   if (!signature) {
     throw new HttpError(400, "Missing stripe-signature header");

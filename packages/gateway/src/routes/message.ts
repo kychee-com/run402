@@ -4,7 +4,7 @@ import { asyncHandler, HttpError } from "../utils/async-handler.js";
 
 const router = Router();
 
-router.get("/v1/message", (_req: Request, res: Response) => {
+router.get("/message/v1", (_req: Request, res: Response) => {
   res.json({
     description: "Send a message to Run402 developers",
     price: "$0.01",
@@ -13,7 +13,7 @@ router.get("/v1/message", (_req: Request, res: Response) => {
   });
 });
 
-router.post("/v1/message", asyncHandler(async (req: Request, res: Response) => {
+router.post("/message/v1", asyncHandler(async (req: Request, res: Response) => {
   const { message } = req.body || {};
   if (!message || typeof message !== "string" || !message.trim()) {
     throw new HttpError(400, "Missing or empty 'message' field");

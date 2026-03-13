@@ -13,7 +13,7 @@ import { asyncHandler, HttpError } from "../utils/async-handler.js";
 const router = Router();
 
 // GET /v1/deployments — info (enables `purl inspect` on the x402-gated POST route)
-router.get("/v1/deployments", (_req: Request, res: Response) => {
+router.get("/deployments/v1", (_req: Request, res: Response) => {
   res.json({
     description: "Deploy a static site — Vercel-compatible inlined file upload",
     price: "$0.05",
@@ -23,7 +23,7 @@ router.get("/v1/deployments", (_req: Request, res: Response) => {
 });
 
 // POST /v1/deployments — create a deployment
-router.post("/v1/deployments", asyncHandler(async (req: Request, res: Response) => {
+router.post("/deployments/v1", asyncHandler(async (req: Request, res: Response) => {
   const { name, project, target, files } = req.body || {};
 
   if (!name || typeof name !== "string") {
@@ -65,7 +65,7 @@ router.post("/v1/deployments", asyncHandler(async (req: Request, res: Response) 
 }));
 
 // GET /v1/deployments/:id — get deployment status (free, no auth)
-router.get("/v1/deployments/:id", asyncHandler(async (req: Request, res: Response) => {
+router.get("/deployments/v1/:id", asyncHandler(async (req: Request, res: Response) => {
   const deployment = await getDeployment(req.params.id as string);
   if (!deployment) {
     throw new HttpError(404, "Deployment not found");

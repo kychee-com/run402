@@ -28,9 +28,9 @@ import { notifyNewProject } from "../services/telegram.js";
 
 const router = Router();
 
-// POST /admin/v1/projects/:id/publish — publish app version
+// POST /projects/v1/admin/:id/publish — publish app version
 router.post(
-  "/admin/v1/projects/:id/publish",
+  "/projects/v1/admin/:id/publish",
   serviceKeyAuth,
   asyncHandler(async (req: Request, res: Response) => {
     const project = req.project!;
@@ -79,9 +79,9 @@ router.post(
   }),
 );
 
-// GET /admin/v1/projects/:id/versions — list published versions
+// GET /projects/v1/admin/:id/versions — list published versions
 router.get(
-  "/admin/v1/projects/:id/versions",
+  "/projects/v1/admin/:id/versions",
   serviceKeyAuth,
   asyncHandler(async (req: Request, res: Response) => {
     const project = req.project!;
@@ -94,9 +94,9 @@ router.get(
   }),
 );
 
-// PATCH /admin/v1/projects/:id/versions/:version_id — update version metadata (service_key auth)
+// PATCH /projects/v1/admin/:id/versions/:version_id — update version metadata (service_key auth)
 router.patch(
-  "/admin/v1/projects/:id/versions/:version_id",
+  "/projects/v1/admin/:id/versions/:version_id",
   serviceKeyAuth,
   asyncHandler(async (req: Request, res: Response) => {
     const project = req.project!;
@@ -153,9 +153,9 @@ router.patch(
   }),
 );
 
-// DELETE /admin/v1/projects/:id/versions/:version_id — delete a published version (service_key auth)
+// DELETE /projects/v1/admin/:id/versions/:version_id — delete a published version (service_key auth)
 router.delete(
-  "/admin/v1/projects/:id/versions/:version_id",
+  "/projects/v1/admin/:id/versions/:version_id",
   serviceKeyAuth,
   asyncHandler(async (req: Request, res: Response) => {
     const project = req.project!;
@@ -182,7 +182,7 @@ router.delete(
 
 // DELETE /v1/admin/app-versions/:version_id — admin-only version deletion (no service_key needed)
 router.delete(
-  "/v1/admin/app-versions/:version_id",
+  "/apps/v1/admin/:version_id",
   asyncHandler(async (req: Request, res: Response) => {
     const adminKey = req.headers["x-admin-key"] as string | undefined;
     if (!ADMIN_KEY || adminKey !== ADMIN_KEY) {
@@ -205,7 +205,7 @@ router.delete(
 // GET /v1/apps — list all public forkable apps (free, no auth)
 // Supports ?tag=auth&tag=rls for filtering
 router.get(
-  "/v1/apps",
+  "/apps/v1",
   asyncHandler(async (req: Request, res: Response) => {
     const tagParam = req.query.tag;
     const filterTags = tagParam
@@ -230,7 +230,7 @@ router.get(
 
 // GET /v1/apps/:version_id — public app info (free, no auth)
 router.get(
-  "/v1/apps/:version_id",
+  "/apps/v1/:version_id",
   asyncHandler(async (req: Request, res: Response) => {
     const version = await getAppVersion(req.params.version_id as string);
     if (!version) {
@@ -255,7 +255,7 @@ router.get(
 );
 
 // GET /v1/fork — info
-router.get("/v1/fork", (_req: Request, res: Response) => {
+router.get("/fork/v1", (_req: Request, res: Response) => {
   const tiers: Record<string, { price: string }> = {};
   for (const [name, config] of Object.entries(TIERS)) {
     tiers[name] = { price: config.price };
@@ -263,7 +263,7 @@ router.get("/v1/fork", (_req: Request, res: Response) => {
   res.json({
     description: "Fork a published app version into a new project",
     tiers,
-    method: "POST /v1/fork/:tier",
+    method: "POST /fork/v1/:tier",
     body: {
       version_id: "string (required)",
       name: "string (required)",
@@ -274,7 +274,7 @@ router.get("/v1/fork", (_req: Request, res: Response) => {
 
 // POST /v1/fork/:tier — fork an app version (x402-gated)
 router.post(
-  "/v1/fork/:tier",
+  "/fork/v1/:tier",
   asyncHandler(async (req: Request, res: Response) => {
     const tier = req.params.tier as TierName;
     if (!TIERS[tier]) {

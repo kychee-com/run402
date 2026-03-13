@@ -25,9 +25,9 @@ const router = Router();
 
 // --- Admin routes (service_key auth) ---
 
-// POST /admin/v1/projects/:id/functions — deploy a function (blocked in demo mode)
+// POST /projects/v1/admin/:id/functions — deploy a function (blocked in demo mode)
 router.post(
-  "/admin/v1/projects/:id/functions",
+  "/projects/v1/admin/:id/functions",
   serviceKeyAuth,
   demoBlockedMiddleware("Function deployment"),
   asyncHandler(async (req: Request, res: Response) => {
@@ -79,9 +79,9 @@ router.post(
   }),
 );
 
-// GET /admin/v1/projects/:id/functions — list functions
+// GET /projects/v1/admin/:id/functions — list functions
 router.get(
-  "/admin/v1/projects/:id/functions",
+  "/projects/v1/admin/:id/functions",
   serviceKeyAuth,
   asyncHandler(async (req: Request, res: Response) => {
     const apiBase = `${req.protocol}://${req.get("host")}`;
@@ -100,9 +100,9 @@ router.get(
   }),
 );
 
-// DELETE /admin/v1/projects/:id/functions/:name — delete a function
+// DELETE /projects/v1/admin/:id/functions/:name — delete a function
 router.delete(
-  "/admin/v1/projects/:id/functions/:name",
+  "/projects/v1/admin/:id/functions/:name",
   serviceKeyAuth,
   asyncHandler(async (req: Request, res: Response) => {
     try {
@@ -117,9 +117,9 @@ router.delete(
   }),
 );
 
-// GET /admin/v1/projects/:id/functions/:name/logs — get function logs
+// GET /projects/v1/admin/:id/functions/:name/logs — get function logs
 router.get(
-  "/admin/v1/projects/:id/functions/:name/logs",
+  "/projects/v1/admin/:id/functions/:name/logs",
   serviceKeyAuth,
   asyncHandler(async (req: Request, res: Response) => {
     const tail = parseInt(req.query.tail as string || "50", 10);
@@ -137,9 +137,9 @@ router.get(
 
 // --- Secrets routes ---
 
-// POST /admin/v1/projects/:id/secrets — set a secret (blocked in demo mode)
+// POST /projects/v1/admin/:id/secrets — set a secret (blocked in demo mode)
 router.post(
-  "/admin/v1/projects/:id/secrets",
+  "/projects/v1/admin/:id/secrets",
   serviceKeyAuth,
   demoBlockedMiddleware("Secret management"),
   asyncHandler(async (req: Request, res: Response) => {
@@ -166,9 +166,9 @@ router.post(
   }),
 );
 
-// DELETE /admin/v1/projects/:id/secrets/:key — delete a secret
+// DELETE /projects/v1/admin/:id/secrets/:key — delete a secret
 router.delete(
-  "/admin/v1/projects/:id/secrets/:key",
+  "/projects/v1/admin/:id/secrets/:key",
   serviceKeyAuth,
   asyncHandler(async (req: Request, res: Response) => {
     try {
@@ -183,9 +183,9 @@ router.delete(
   }),
 );
 
-// GET /admin/v1/projects/:id/secrets — list secrets (keys only)
+// GET /projects/v1/admin/:id/secrets — list secrets (keys only)
 router.get(
-  "/admin/v1/projects/:id/secrets",
+  "/projects/v1/admin/:id/secrets",
   serviceKeyAuth,
   asyncHandler(async (req: Request, res: Response) => {
     const secrets = await listSecrets(req.params.id as string);

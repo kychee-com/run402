@@ -34,7 +34,7 @@ interface PgPolicy {
 const router = Router();
 
 // All admin routes require service_key
-router.use("/admin/v1", serviceKeyAuth);
+router.use("/projects/v1/admin", serviceKeyAuth);
 
 // SQL statement blocklist — defense-in-depth (real boundary is search_path + pre_request hook)
 const BLOCKED_PATTERNS: Array<{ pattern: RegExp; hint?: string }> = [
@@ -50,7 +50,7 @@ const BLOCKED_PATTERNS: Array<{ pattern: RegExp; hint?: string }> = [
   },
   {
     pattern: /\bREVOKE\b/i,
-    hint: "Permissions are managed automatically. Use RLS policies (POST /admin/v1/projects/:id/rls) to control row-level access.",
+    hint: "Permissions are managed automatically. Use RLS policies (POST /projects/v1/admin/:id/rls) to control row-level access.",
   },
   { pattern: /\bCREATE\s+ROLE\b/i },
   { pattern: /\bDROP\s+ROLE\b/i },
@@ -75,8 +75,8 @@ function assertProjectMatch(req: Request): void {
   }
 }
 
-// POST /admin/v1/projects/:id/sql — run SQL migration (blocked in demo mode)
-router.post("/admin/v1/projects/:id/sql", demoBlockedMiddleware("SQL execution"), asyncHandler(async (req: Request, res: Response) => {
+// POST /projects/v1/admin/:id/sql — run SQL migration (blocked in demo mode)
+router.post("/projects/v1/admin/:id/sql", demoBlockedMiddleware("SQL execution"), asyncHandler(async (req: Request, res: Response) => {
   assertProjectMatch(req);
   const project = req.project!;
 
@@ -122,8 +122,8 @@ router.post("/admin/v1/projects/:id/sql", demoBlockedMiddleware("SQL execution")
   }
 }));
 
-// POST /admin/v1/projects/:id/rls — apply RLS template
-router.post("/admin/v1/projects/:id/rls", asyncHandler(async (req: Request, res: Response) => {
+// POST /projects/v1/admin/:id/rls — apply RLS template
+router.post("/projects/v1/admin/:id/rls", asyncHandler(async (req: Request, res: Response) => {
   assertProjectMatch(req);
   const project = req.project!;
 
@@ -221,8 +221,8 @@ router.post("/admin/v1/projects/:id/rls", asyncHandler(async (req: Request, res:
   res.json({ status: "ok", template, tables: (tables as RlsTable[]).map((t) => t.table) });
 }));
 
-// POST /admin/v1/projects/:id/pin — pin project (lease never expires, admin only)
-router.post("/admin/v1/projects/:id/pin", asyncHandler(async (req: Request, res: Response) => {
+// POST /projects/v1/admin/:id/pin — pin project (lease never expires, admin only)
+router.post("/projects/v1/admin/:id/pin", asyncHandler(async (req: Request, res: Response) => {
   const adminKey = req.headers["x-admin-key"] as string | undefined;
   if (!ADMIN_KEY || adminKey !== ADMIN_KEY) {
     throw new HttpError(403, "Requires platform admin key");
@@ -238,8 +238,8 @@ router.post("/admin/v1/projects/:id/pin", asyncHandler(async (req: Request, res:
   res.json({ status: "ok", project_id: project.id, pinned: true });
 }));
 
-// POST /admin/v1/projects/:id/unpin — unpin project (normal lease expiry resumes, admin only)
-router.post("/admin/v1/projects/:id/unpin", asyncHandler(async (req: Request, res: Response) => {
+// POST /projects/v1/admin/:id/unpin — unpin project (normal lease expiry resumes, admin only)
+router.post("/projects/v1/admin/:id/unpin", asyncHandler(async (req: Request, res: Response) => {
   const adminKey = req.headers["x-admin-key"] as string | undefined;
   if (!ADMIN_KEY || adminKey !== ADMIN_KEY) {
     throw new HttpError(403, "Requires platform admin key");
@@ -255,8 +255,8 @@ router.post("/admin/v1/projects/:id/unpin", asyncHandler(async (req: Request, re
   res.json({ status: "ok", project_id: project.id, pinned: false });
 }));
 
-// GET /admin/v1/projects/:id/usage — usage report
-router.get("/admin/v1/projects/:id/usage", (req: Request, res: Response) => {
+// GET /projects/v1/admin/:id/usage — usage report
+router.get("/projects/v1/admin/:id/usage", (req: Request, res: Response) => {
   assertProjectMatch(req);
   const project = req.project!;
   const limits = getTierLimits(project.tier);
@@ -273,8 +273,8 @@ router.get("/admin/v1/projects/:id/usage", (req: Request, res: Response) => {
   });
 });
 
-// GET /admin/v1/projects/:id/schema — schema introspection
-router.get("/admin/v1/projects/:id/schema", asyncHandler(async (req: Request, res: Response) => {
+// GET /projects/v1/admin/:id/schema — schema introspection
+router.get("/projects/v1/admin/:id/schema", asyncHandler(async (req: Request, res: Response) => {
   assertProjectMatch(req);
   const project = req.project!;
 

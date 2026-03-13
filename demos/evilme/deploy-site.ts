@@ -42,7 +42,7 @@ async function main() {
     `APIKEY = params.get("key") || "${ANON_KEY}";`,
   );
 
-  const siteRes = await fetchPaid(`${BASE_URL}/v1/deployments`, {
+  const siteRes = await fetchPaid(`${BASE_URL}/deployments/v1`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -65,7 +65,7 @@ async function main() {
 
   // Claim subdomain
   console.log("\nClaiming evilme.run402.com...");
-  const subRes = await fetch(`${BASE_URL}/v1/subdomains`, {
+  const subRes = await fetch(`${BASE_URL}/subdomains/v1`, {
     method: "POST",
     headers: authHeaders,
     body: JSON.stringify({ name: "evilme", deployment_id: site.id }),
@@ -75,7 +75,7 @@ async function main() {
   // Pin project
   if (ADMIN_KEY) {
     console.log("\nPinning project...");
-    const pinRes = await fetch(`${BASE_URL}/admin/v1/projects/${PROJECT_ID}/pin`, {
+    const pinRes = await fetch(`${BASE_URL}/projects/v1/admin/${PROJECT_ID}/pin`, {
       method: "POST",
       headers: { ...authHeaders, "X-Admin-Key": ADMIN_KEY },
     });

@@ -23,11 +23,11 @@ function handleQuote(_req: Request, res: Response): void {
   }
   res.json({ tiers });
 }
-router.get("/v1/projects", handleQuote);
-router.post("/v1/projects/quote", handleQuote);
+router.get("/projects/v1", handleQuote);
+router.post("/projects/v1/quote", handleQuote);
 
 // POST /v1/projects — create project (x402-gated)
-router.post("/v1/projects", asyncHandler(async (req: Request, res: Response) => {
+router.post("/projects/v1", asyncHandler(async (req: Request, res: Response) => {
   const name = req.body?.name || `project-${Date.now()}`;
   const tier = (req.body?.tier as TierName) || "prototype";
 
@@ -59,7 +59,7 @@ router.post("/v1/projects", asyncHandler(async (req: Request, res: Response) => 
 }));
 
 // POST /v1/projects/create/:tier — tier-specific creation (x402-gated per tier)
-router.post("/v1/projects/create/:tier", asyncHandler(async (req: Request, res: Response) => {
+router.post("/projects/v1/create/:tier", asyncHandler(async (req: Request, res: Response) => {
   const tier = req.params["tier"] as TierName;
   if (!TIERS[tier]) {
     throw new HttpError(400, `Unknown tier: ${tier}`);
@@ -89,7 +89,7 @@ router.post("/v1/projects/create/:tier", asyncHandler(async (req: Request, res: 
 }));
 
 // DELETE /v1/projects/:id — archive project (requires service_key)
-router.delete("/v1/projects/:id", serviceKeyAuth, asyncHandler(async (req: Request, res: Response) => {
+router.delete("/projects/v1/:id", serviceKeyAuth, asyncHandler(async (req: Request, res: Response) => {
   const projectId = req.params["id"] as string;
 
   // Verify the service_key belongs to this project
@@ -107,7 +107,7 @@ router.delete("/v1/projects/:id", serviceKeyAuth, asyncHandler(async (req: Reque
 }));
 
 // POST /v1/projects/:id/renew — renew lease (x402-gated in future)
-router.post("/v1/projects/:id/renew", asyncHandler(async (req: Request, res: Response) => {
+router.post("/projects/v1/:id/renew", asyncHandler(async (req: Request, res: Response) => {
   const projectId = req.params["id"] as string;
   const tier = (req.body?.tier as TierName) || "prototype";
 

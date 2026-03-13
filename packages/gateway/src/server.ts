@@ -170,12 +170,12 @@ app.use((req: Request, res: Response, next: NextFunction) => {
 });
 
 // --- Stripe webhook raw body (must be before JSON parser) ---
-app.post("/v1/webhooks/stripe", express.raw({ type: "application/json" }));
+app.post("/webhooks/v1/stripe", express.raw({ type: "application/json" }));
 
 // --- Body parsing ---
 // Parse JSON for most routes, raw for storage uploads, text for SQL migrations
 app.use((req: Request, res: Response, next: NextFunction) => {
-  if (req.path === "/v1/webhooks/stripe") {
+  if (req.path === "/webhooks/v1/stripe") {
     // Already parsed as raw above
     next();
     return;
@@ -184,7 +184,7 @@ app.use((req: Request, res: Response, next: NextFunction) => {
     express.raw({ type: "*/*", limit: "10mb" })(req, res, next);
   } else if (req.path.endsWith("/sql")) {
     express.text({ type: "*/*", limit: "10mb" })(req, res, next);
-  } else if ((req.path === "/v1/deployments" || req.path.startsWith("/v1/deploy/")) && req.method === "POST") {
+  } else if ((req.path === "/deployments/v1" || req.path.startsWith("/deploy/v1/")) && req.method === "POST") {
     express.json({ limit: "50mb" })(req, res, next);
   } else {
     express.json({ limit: "1mb" })(req, res, next);
@@ -211,14 +211,14 @@ const bodyParserErrorHandler: ErrorRequestHandler = (err: any, _req, res, next) 
 app.use(bodyParserErrorHandler);
 
 // --- Idempotency middleware (for paid endpoints, before x402) ---
-app.post("/v1/projects", idempotencyMiddleware);
-app.post("/v1/projects/create/:tier", idempotencyMiddleware);
-app.post("/v1/projects/:id/renew", idempotencyMiddleware);
-app.post("/v1/deployments", idempotencyMiddleware);
-app.post("/v1/message", idempotencyMiddleware);
-app.post("/v1/generate-image", idempotencyMiddleware);
-app.post("/v1/deploy/:tier", idempotencyMiddleware);
-app.post("/v1/fork/:tier", idempotencyMiddleware);
+app.post("/projects/v1", idempotencyMiddleware);
+app.post("/projects/v1/create/:tier", idempotencyMiddleware);
+app.post("/projects/v1/:id/renew", idempotencyMiddleware);
+app.post("/deployments/v1", idempotencyMiddleware);
+app.post("/message/v1", idempotencyMiddleware);
+app.post("/generate-image/v1", idempotencyMiddleware);
+app.post("/deploy/v1/:tier", idempotencyMiddleware);
+app.post("/fork/v1/:tier", idempotencyMiddleware);
 
 // --- x402 payment middleware ---
 if (SELLER_ADDRESS) {
@@ -230,21 +230,21 @@ app.get("/.well-known/x402", (_req: Request, res: Response) => {
   res.json({
     version: 1,
     resources: [
-      "https://api.run402.com/v1/projects",
-      "https://api.run402.com/v1/projects/create/prototype",
-      "https://api.run402.com/v1/projects/create/hobby",
-      "https://api.run402.com/v1/projects/create/team",
-      "https://api.run402.com/v1/deployments",
-      "https://api.run402.com/v1/ping",
-      "https://api.run402.com/v1/message",
-      "https://api.run402.com/v1/generate-image",
-      "https://api.run402.com/v1/deploy/prototype",
-      "https://api.run402.com/v1/deploy/hobby",
-      "https://api.run402.com/v1/deploy/team",
-      "https://api.run402.com/v1/fork/prototype",
-      "https://api.run402.com/v1/fork/hobby",
-      "https://api.run402.com/v1/fork/team",
-      "https://api.run402.com/v1/agent/contact",
+      "https://api.run402.com/projects/v1",
+      "https://api.run402.com/projects/v1/create/prototype",
+      "https://api.run402.com/projects/v1/create/hobby",
+      "https://api.run402.com/projects/v1/create/team",
+      "https://api.run402.com/deployments/v1",
+      "https://api.run402.com/ping/v1",
+      "https://api.run402.com/message/v1",
+      "https://api.run402.com/generate-image/v1",
+      "https://api.run402.com/deploy/v1/prototype",
+      "https://api.run402.com/deploy/v1/hobby",
+      "https://api.run402.com/deploy/v1/team",
+      "https://api.run402.com/fork/v1/prototype",
+      "https://api.run402.com/fork/v1/hobby",
+      "https://api.run402.com/fork/v1/team",
+      "https://api.run402.com/agent/v1/contact",
     ],
   });
 });
@@ -343,7 +343,7 @@ app.get("/public/stats", async (_req: Request, res: Response) => {
 });
 
 // --- Paid ping (x402 probe) ---
-app.get("/v1/ping", (_req: Request, res: Response) => {
+app.get("/ping/v1", (_req: Request, res: Response) => {
   res.json({ status: "ok", paid: true, timestamp: new Date().toISOString() });
 });
 

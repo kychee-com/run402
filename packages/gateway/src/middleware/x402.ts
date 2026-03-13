@@ -119,7 +119,7 @@ export function createPaymentMiddleware() {
   const resourceConfig: Record<string, any> = {};
 
   for (const [tierName, tierConfig] of Object.entries(TIERS)) {
-    resourceConfig[`POST /v1/projects/create/${tierName}`] = {
+    resourceConfig[`POST /projects/v1/create/${tierName}`] = {
       accepts: networks.map((network) => ({
         scheme: "exact",
         price: tierConfig.price,
@@ -152,7 +152,7 @@ export function createPaymentMiddleware() {
 
   // POST /v1/deploy/:tier — bundle deploy (tier-priced)
   for (const [tierName, tierConfig] of Object.entries(TIERS)) {
-    resourceConfig[`POST /v1/deploy/${tierName}`] = {
+    resourceConfig[`POST /deploy/v1/${tierName}`] = {
       accepts: networks.map((network) => ({
         scheme: "exact",
         price: tierConfig.price,
@@ -191,7 +191,7 @@ export function createPaymentMiddleware() {
 
   // POST /v1/fork/:tier — fork a published app (tier-priced)
   for (const [tierName, tierConfig] of Object.entries(TIERS)) {
-    resourceConfig[`POST /v1/fork/${tierName}`] = {
+    resourceConfig[`POST /fork/v1/${tierName}`] = {
       accepts: networks.map((network) => ({
         scheme: "exact",
         price: tierConfig.price,
@@ -226,8 +226,8 @@ export function createPaymentMiddleware() {
     };
   }
 
-  // GET /v1/ping — paid health check ($0.001) for agents to verify x402 works
-  resourceConfig["GET /v1/ping"] = {
+  // GET /ping/v1 — paid health check ($0.001) for agents to verify x402 works
+  resourceConfig["GET /ping/v1"] = {
     accepts: networks.map((network) => ({
       scheme: "exact",
       price: "$0.001",
@@ -243,8 +243,8 @@ export function createPaymentMiddleware() {
     },
   };
 
-  // PUT /v1/agent/contact — register agent contact info ($0.001)
-  resourceConfig["PUT /v1/agent/contact"] = {
+  // POST /agent/v1/contact — register agent contact info ($0.001)
+  resourceConfig["POST /agent/v1/contact"] = {
     accepts: networks.map((network) => ({
       scheme: "exact",
       price: "$0.001",
@@ -278,8 +278,8 @@ export function createPaymentMiddleware() {
     },
   };
 
-  // POST /v1/deployments — static site deployment ($0.05)
-  resourceConfig["POST /v1/deployments"] = {
+  // POST /deployments/v1 — static site deployment ($0.05)
+  resourceConfig["POST /deployments/v1"] = {
     accepts: networks.map((network) => ({
       scheme: "exact",
       price: "$0.05",
@@ -326,8 +326,8 @@ export function createPaymentMiddleware() {
     },
   };
 
-  // POST /v1/message — paid developer contact ($0.01)
-  resourceConfig["POST /v1/message"] = {
+  // POST /message/v1 — paid developer contact ($0.01)
+  resourceConfig["POST /message/v1"] = {
     accepts: networks.map((network) => ({
       scheme: "exact",
       price: "$0.01",
@@ -349,8 +349,8 @@ export function createPaymentMiddleware() {
     },
   };
 
-  // POST /v1/generate-image — image generation ($0.03)
-  resourceConfig["POST /v1/generate-image"] = {
+  // POST /generate-image/v1 — image generation ($0.03)
+  resourceConfig["POST /generate-image/v1"] = {
     accepts: networks.map((network) => ({
       scheme: "exact",
       price: "$0.03",
@@ -385,8 +385,8 @@ export function createPaymentMiddleware() {
     },
   };
 
-  // POST /v1/projects — default route uses prototype pricing
-  resourceConfig["POST /v1/projects"] = {
+  // POST /projects/v1 — default route uses prototype pricing
+  resourceConfig["POST /projects/v1"] = {
     accepts: networks.map((network) => ({
       scheme: "exact",
       price: TIERS.prototype.price,
@@ -537,8 +537,8 @@ export function createPaymentMiddleware() {
  */
 function resolveSkuPrice(method: string, path: string): { sku: string; amountUsdMicros: number } | null {
 
-  // Tier-priced endpoints: POST /v1/projects/create/:tier, POST /v1/deploy/:tier, POST /v1/fork/:tier
-  const tierMatch = path.match(/^\/v1\/(?:projects\/create|deploy|fork)\/(\w+)$/);
+  // Tier-priced endpoints: POST /projects/v1/create/:tier, POST /deploy/v1/:tier, POST /fork/v1/:tier
+  const tierMatch = path.match(/^\/(?:projects\/v1\/create|deploy\/v1|fork\/v1)\/(\w+)$/);
   if (tierMatch && tierMatch[1]) {
     const tierName = tierMatch[1] as TierName;
     if (TIERS[tierName]) {
@@ -546,25 +546,25 @@ function resolveSkuPrice(method: string, path: string): { sku: string; amountUsd
     }
   }
 
-  // POST /v1/projects (default prototype)
-  if (method === "POST" && path === "/v1/projects") {
+  // POST /projects/v1 (default prototype)
+  if (method === "POST" && path === "/projects/v1") {
     return { sku: "tier_prototype", amountUsdMicros: TIERS.prototype.priceUsdMicros };
   }
 
   // SKU-priced endpoints
-  if (method === "GET" && path === "/v1/ping") {
+  if (method === "GET" && path === "/ping/v1") {
     return { sku: "ping", amountUsdMicros: SKU_PRICES["ping"]! };
   }
-  if (method === "PUT" && path === "/v1/agent/contact") {
+  if (method === "POST" && path === "/agent/v1/contact") {
     return { sku: "contact", amountUsdMicros: SKU_PRICES["contact"]! };
   }
-  if (method === "POST" && path === "/v1/message") {
+  if (method === "POST" && path === "/message/v1") {
     return { sku: "message", amountUsdMicros: SKU_PRICES["message"]! };
   }
-  if (method === "POST" && path === "/v1/generate-image") {
+  if (method === "POST" && path === "/generate-image/v1") {
     return { sku: "image", amountUsdMicros: SKU_PRICES["image"]! };
   }
-  if (method === "POST" && path === "/v1/deployments") {
+  if (method === "POST" && path === "/deployments/v1") {
     return { sku: "deployment", amountUsdMicros: SKU_PRICES["deployment"]! };
   }
 

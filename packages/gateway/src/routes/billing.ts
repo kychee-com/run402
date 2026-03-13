@@ -1,11 +1,11 @@
 /**
  * Billing routes — allowance balance management.
  *
- * GET  /v1/billing/accounts/:wallet         — balance
- * GET  /v1/billing/accounts/:wallet/history  — ledger entries
- * POST /admin/v1/billing/accounts/:wallet/credit — admin credit
- * POST /admin/v1/billing/accounts/:wallet/debit  — admin debit
- * GET  /v1/wallets/:address/projects         — list projects for a wallet (moved from stripe.ts)
+ * GET  /billing/v1/accounts/:wallet         — balance
+ * GET  /billing/v1/accounts/:wallet/history  — ledger entries
+ * POST /billing/v1/admin/accounts/:wallet/credit — admin credit
+ * POST /billing/v1/admin/accounts/:wallet/debit  — admin debit
+ * GET  /wallets/v1/:address/projects         — list projects for a wallet
  */
 
 import { Router, Request, Response } from "express";
@@ -22,8 +22,8 @@ import { asyncHandler, HttpError } from "../utils/async-handler.js";
 
 const router = Router();
 
-// GET /v1/billing/accounts/:wallet — balance + status
-router.get("/v1/billing/accounts/:wallet", asyncHandler(async (req: Request, res: Response) => {
+// GET /billing/v1/accounts/:wallet — balance + status
+router.get("/billing/v1/accounts/:wallet", asyncHandler(async (req: Request, res: Response) => {
   const wallet = (req.params["wallet"] as string)?.toLowerCase();
   if (!wallet?.startsWith("0x")) {
     throw new HttpError(400, "Invalid wallet address");
@@ -36,8 +36,8 @@ router.get("/v1/billing/accounts/:wallet", asyncHandler(async (req: Request, res
   });
 }));
 
-// GET /v1/billing/accounts/:wallet/history — ledger entries
-router.get("/v1/billing/accounts/:wallet/history", asyncHandler(async (req: Request, res: Response) => {
+// GET /billing/v1/accounts/:wallet/history — ledger entries
+router.get("/billing/v1/accounts/:wallet/history", asyncHandler(async (req: Request, res: Response) => {
   const wallet = (req.params["wallet"] as string)?.toLowerCase();
   if (!wallet?.startsWith("0x")) {
     throw new HttpError(400, "Invalid wallet address");
@@ -63,8 +63,8 @@ router.get("/v1/billing/accounts/:wallet/history", asyncHandler(async (req: Requ
   });
 }));
 
-// POST /v1/billing/admin/accounts/:wallet/credit — admin credit
-router.post("/v1/billing/admin/accounts/:wallet/credit", asyncHandler(async (req: Request, res: Response) => {
+// POST /billing/v1/admin/accounts/:wallet/credit — admin credit
+router.post("/billing/v1/admin/accounts/:wallet/credit", asyncHandler(async (req: Request, res: Response) => {
   const adminKey = req.headers["x-admin-key"] as string | undefined;
   if (!ADMIN_KEY || adminKey !== ADMIN_KEY) {
     throw new HttpError(403, "Requires admin key");
@@ -93,8 +93,8 @@ router.post("/v1/billing/admin/accounts/:wallet/credit", asyncHandler(async (req
   });
 }));
 
-// POST /v1/billing/admin/accounts/:wallet/debit — admin debit
-router.post("/v1/billing/admin/accounts/:wallet/debit", asyncHandler(async (req: Request, res: Response) => {
+// POST /billing/v1/admin/accounts/:wallet/debit — admin debit
+router.post("/billing/v1/admin/accounts/:wallet/debit", asyncHandler(async (req: Request, res: Response) => {
   const adminKey = req.headers["x-admin-key"] as string | undefined;
   if (!ADMIN_KEY || adminKey !== ADMIN_KEY) {
     throw new HttpError(403, "Requires admin key");
@@ -129,8 +129,8 @@ router.post("/v1/billing/admin/accounts/:wallet/debit", asyncHandler(async (req:
   }
 }));
 
-// GET /v1/wallets/:address/projects — list active projects for a wallet (public)
-router.get("/v1/wallets/:address/projects", asyncHandler(async (req: Request, res: Response) => {
+// GET /wallets/v1/:address/projects — list active projects for a wallet (public)
+router.get("/wallets/v1/:address/projects", asyncHandler(async (req: Request, res: Response) => {
   const wallet = (req.params["address"] as string)?.toLowerCase();
   if (!wallet?.startsWith("0x")) {
     throw new HttpError(400, "Invalid wallet address");

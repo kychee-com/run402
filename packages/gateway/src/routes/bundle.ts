@@ -17,7 +17,7 @@ import { asyncHandler, HttpError } from "../utils/async-handler.js";
 const router = Router();
 
 // GET /v1/deploy — info (enables `purl inspect` on the x402-gated POST routes)
-router.get("/v1/deploy", (_req: Request, res: Response) => {
+router.get("/deploy/v1", (_req: Request, res: Response) => {
   const tiers: Record<string, { price: string; lease_days: number }> = {};
   for (const [name, config] of Object.entries(TIERS)) {
     tiers[name] = { price: config.price, lease_days: config.leaseDays };
@@ -25,7 +25,7 @@ router.get("/v1/deploy", (_req: Request, res: Response) => {
   res.json({
     description: "Bundle deploy — one-call full-stack app deployment",
     tiers,
-    method: "POST /v1/deploy/:tier",
+    method: "POST /deploy/v1/:tier",
     body: {
       name: "string (required)",
       migrations: "string (optional SQL)",
@@ -39,7 +39,7 @@ router.get("/v1/deploy", (_req: Request, res: Response) => {
 });
 
 // POST /v1/deploy/:tier — bundle deploy (x402-gated per tier)
-router.post("/v1/deploy/:tier", asyncHandler(async (req: Request, res: Response) => {
+router.post("/deploy/v1/:tier", asyncHandler(async (req: Request, res: Response) => {
   const tier = req.params["tier"] as TierName;
   if (!TIERS[tier]) {
     throw new HttpError(400, `Unknown tier: ${tier}. Valid tiers: ${Object.keys(TIERS).join(", ")}`);

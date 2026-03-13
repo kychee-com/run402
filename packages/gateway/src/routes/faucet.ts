@@ -19,7 +19,7 @@ setInterval(() => {
   }
 }, 60 * 60 * 1000);
 
-router.post("/v1/faucet", asyncHandler(async (req: Request, res: Response) => {
+router.post("/faucet/v1", asyncHandler(async (req: Request, res: Response) => {
   if (!FAUCET_TREASURY_KEY) {
     throw new HttpError(503, "Faucet not configured");
   }
@@ -60,8 +60,8 @@ router.post("/v1/faucet", asyncHandler(async (req: Request, res: Response) => {
   }
 }));
 
-// POST /admin/v1/faucet — admin drip (no rate limit, custom amount, admin only)
-router.post("/admin/v1/faucet", asyncHandler(async (req: Request, res: Response) => {
+// POST /faucet/v1/admin — admin drip (no rate limit, custom amount, admin only)
+router.post("/faucet/v1/admin", asyncHandler(async (req: Request, res: Response) => {
   const adminKey = req.headers["x-admin-key"] as string | undefined;
   if (!ADMIN_KEY || adminKey !== ADMIN_KEY) {
     throw new HttpError(403, "Requires platform admin key");

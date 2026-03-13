@@ -3,7 +3,7 @@
  *
  * Uses pg_dump for schema export (pre-data + post-data split).
  * Stores bundle artifact in S3, metadata in internal.app_versions.
- * Published versions can be forked by other agents via POST /v1/fork/:tier.
+ * Published versions can be forked by other agents via POST /fork/v1/:tier.
  */
 
 import { execFile } from "node:child_process";

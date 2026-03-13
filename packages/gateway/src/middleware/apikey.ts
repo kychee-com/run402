@@ -43,7 +43,7 @@ export function apikeyAuth(req: Request, res: Response, next: NextFunction): voi
     res.status(402).json({
       error: "Lease expired",
       message: "Your project lease has expired. Renew to continue.",
-      renew_url: `/v1/projects/${project.id}/renew`,
+      renew_url: `/projects/v1/${project.id}/renew`,
     });
     return;
   }
@@ -88,7 +88,7 @@ export function serviceKeyAuth(req: Request, res: Response, next: NextFunction):
     res.status(402).json({
       error: "Lease expired",
       message: "Your project lease has expired. Renew to continue.",
-      renew_url: `/v1/projects/${project.id}/renew`,
+      renew_url: `/projects/v1/${project.id}/renew`,
     });
     return;
   }

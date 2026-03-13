@@ -16,12 +16,12 @@ import { asyncHandler, HttpError } from "../utils/async-handler.js";
 const router = Router();
 
 /**
- * POST /x402/attribution — Browser beacon on copy-click
+ * POST /attribution/v1 — Browser beacon on copy-click
  *
  * Body: { gclid, utm_source, utm_medium, utm_campaign, utm_term, utm_content, page }
  * All fields optional except gclid (if no gclid, still useful for organic tracking).
  */
-router.post("/x402/attribution", asyncHandler(async (req: Request, res: Response) => {
+router.post("/attribution/v1", asyncHandler(async (req: Request, res: Response) => {
   const {
     gclid,
     utm_source,
@@ -61,11 +61,11 @@ router.post("/x402/attribution", asyncHandler(async (req: Request, res: Response
 }));
 
 /**
- * GET /x402/attribution/recent — List recent attribution beacons (admin/debug)
+ * GET /attribution/v1/recent — List recent attribution beacons (admin/debug)
  *
  * Query: ?minutes=30&limit=50
  */
-router.get("/x402/attribution/recent", asyncHandler(async (req: Request, res: Response) => {
+router.get("/attribution/v1/recent", asyncHandler(async (req: Request, res: Response) => {
   const minutes = Math.min(parseInt(req.query.minutes as string) || 60, 1440);
   const limit = Math.min(parseInt(req.query.limit as string) || 50, 200);
 

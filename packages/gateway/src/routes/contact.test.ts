@@ -41,7 +41,7 @@ const { default: router } = await import("./contact.js");
 function fakeReq(overrides: Record<string, any> = {}) {
   const headers: Record<string, string> = {};
   return {
-    method: "PUT",
+    method: "POST",
     headers,
     header(name: string) {
       return headers[name.toLowerCase()];
@@ -94,25 +94,25 @@ function findHandler(method: string, path: string): any {
   throw new Error(`No handler found for ${method} ${path}`);
 }
 
-const putHandler = findHandler("PUT", "/v1/agent/contact");
-const getHandler = findHandler("GET", "/v1/agent/contact");
+const putHandler = findHandler("POST", "/agent/v1/contact");
+const getHandler = findHandler("GET", "/agent/v1/contact");
 
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
-describe("GET /v1/agent/contact", () => {
+describe("GET /agent/v1/contact", () => {
   it("returns endpoint description", () => {
     const req = fakeReq();
     const res = fakeRes();
     getHandler(req, res);
-    assert.equal(res._body.method, "PUT");
+    assert.equal(res._body.method, "POST");
     assert.ok(res._body.description.includes("contact"));
     assert.ok(res._body.body.name);
   });
 });
 
-describe("PUT /v1/agent/contact", () => {
+describe("POST /agent/v1/contact", () => {
   beforeEach(() => {
     recordedWallets = [];
     mockExtractWallet = () => "0xabc123";

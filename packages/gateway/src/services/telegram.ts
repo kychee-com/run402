@@ -3,7 +3,7 @@ import { TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID } from "../config.js";
 export function notifyMessage(message: string): void {
   if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID) return;
 
-  const text = `💬 New message via /v1/message\n\n${message}`;
+  const text = `💬 New message via /message/v1\n\n${message}`;
 
   fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
     method: "POST",
