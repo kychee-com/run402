@@ -188,6 +188,19 @@ Rate limit: 1 drip per IP per 24h. 0.25 USDC = enough for 2 Prototype databases 
 
 If already funded, skip this step. Do not bake unconditional faucet calls into deploy scripts -- it will fail on rate limit and block valid funded-wallet flows.
 
+**Important**: The faucet returns a `transaction_hash` but the USDC is not spendable until the transaction confirms on-chain (~5s on Base Sepolia). If you're scripting the full flow (faucet → subscribe), wait for confirmation before subscribing:
+
+```typescript
+import { createPublicClient, http } from "viem";
+import { baseSepolia } from "viem/chains";
+
+const publicClient = createPublicClient({ chain: baseSepolia, transport: http() });
+await publicClient.waitForTransactionReceipt({ hash: faucetTxHash });
+// Now safe to subscribe
+```
+
+Without this, the subscribe call may fail with `insufficient_funds`.
+
 ### Step 3: Install x402 payment libraries
 
 ```bash

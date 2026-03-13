@@ -38,6 +38,12 @@ curl -X POST https://api.run402.com/v1/faucet \
 
 Rate limit: 1 drip per IP per 24h.
 
+**Important**: The USDC is not spendable until the transaction confirms on-chain (~5s on Base Sepolia). If scripting faucet → provision in one go, wait for confirmation first:
+
+```typescript
+await publicClient.waitForTransactionReceipt({ hash: faucetTxHash });
+```
+
 ---
 
 ## Step 3: Check pricing (free, no auth)
