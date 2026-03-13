@@ -1524,6 +1524,14 @@ claude mcp add run402 -- npx -y run402-mcp
 | `wallet_export` | Export the local wallet address. |
 | `request_faucet` | Request free testnet USDC from the Run402 faucet. |
 | `generate_image` | Generate a PNG image from a text prompt. $0.03 via x402. |
+| `send_message` | Send a message to the Run402 developers. $0.01 via x402. |
+| `set_agent_contact` | Register agent contact info (name, email, webhook). $0.001 via x402. |
+| `create_checkout` | Create a Stripe checkout URL for your human to fund your wallet. |
+| `billing_history` | View billing transaction history for a wallet address. |
+| `get_deployment` | Get deployment status and URL for a static site deployment. |
+| `update_version` | Update metadata of a published app version. |
+| `delete_version` | Delete a published app version. |
+| `get_app` | Inspect a specific published app — details, required secrets, fork pricing. |
 
 ### MCP Flow
 

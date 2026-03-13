@@ -8,7 +8,7 @@ const router = Router();
 router.get("/v1/agent/contact", (_req: Request, res: Response) => {
   res.json({
     description: "Register agent contact info (name, email, webhook) tied to your wallet",
-    price: "$0.001 USDC",
+    price: "$0.001",
     method: "PUT",
     body: {
       name: "string (required)",
@@ -20,7 +20,7 @@ router.get("/v1/agent/contact", (_req: Request, res: Response) => {
 
 router.put("/v1/agent/contact", asyncHandler(async (req: Request, res: Response) => {
   // Extract wallet from payment header
-  const paymentHeader = req.header("payment-signature") || req.header("x-payment");
+  const paymentHeader = req.headers["x-402-payment"] as string | undefined;
   if (!paymentHeader) {
     throw new HttpError(401, "Missing payment header");
   }

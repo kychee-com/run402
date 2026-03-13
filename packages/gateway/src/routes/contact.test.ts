@@ -140,7 +140,7 @@ describe("PUT /v1/agent/contact", () => {
   it("returns 401 when wallet extraction fails", async () => {
     mockExtractWallet = () => null;
     const req = fakeReq({ body: { name: "my-agent" } });
-    req._setHeader("x-payment", "badheader");
+    req._setHeader("x-402-payment", "badheader");
     const res = fakeRes();
     let nextErr: Error | undefined;
     await putHandler(req, res, (err?: Error) => { nextErr = err; });
@@ -150,7 +150,7 @@ describe("PUT /v1/agent/contact", () => {
 
   it("returns 400 when name is missing", async () => {
     const req = fakeReq({ body: {} });
-    req._setHeader("x-payment", "validheader");
+    req._setHeader("x-402-payment", "validheader");
     const res = fakeRes();
     let nextErr: Error | undefined;
     await putHandler(req, res, (err?: Error) => { nextErr = err; });
@@ -161,7 +161,7 @@ describe("PUT /v1/agent/contact", () => {
 
   it("returns 400 when name is empty string", async () => {
     const req = fakeReq({ body: { name: "   " } });
-    req._setHeader("x-payment", "validheader");
+    req._setHeader("x-402-payment", "validheader");
     const res = fakeRes();
     let nextErr: Error | undefined;
     await putHandler(req, res, (err?: Error) => { nextErr = err; });
@@ -171,7 +171,7 @@ describe("PUT /v1/agent/contact", () => {
 
   it("returns 400 when name is not a string", async () => {
     const req = fakeReq({ body: { name: 42 } });
-    req._setHeader("x-payment", "validheader");
+    req._setHeader("x-402-payment", "validheader");
     const res = fakeRes();
     let nextErr: Error | undefined;
     await putHandler(req, res, (err?: Error) => { nextErr = err; });
@@ -181,7 +181,7 @@ describe("PUT /v1/agent/contact", () => {
 
   it("returns 400 when email is invalid", async () => {
     const req = fakeReq({ body: { name: "my-agent", email: "not-an-email" } });
-    req._setHeader("x-payment", "validheader");
+    req._setHeader("x-402-payment", "validheader");
     const res = fakeRes();
     let nextErr: Error | undefined;
     await putHandler(req, res, (err?: Error) => { nextErr = err; });
@@ -192,7 +192,7 @@ describe("PUT /v1/agent/contact", () => {
 
   it("returns 400 when webhook is not https", async () => {
     const req = fakeReq({ body: { name: "my-agent", webhook: "http://insecure.com/hook" } });
-    req._setHeader("x-payment", "validheader");
+    req._setHeader("x-402-payment", "validheader");
     const res = fakeRes();
     let nextErr: Error | undefined;
     await putHandler(req, res, (err?: Error) => { nextErr = err; });
@@ -205,7 +205,7 @@ describe("PUT /v1/agent/contact", () => {
     const req = fakeReq({
       body: { name: "my-agent", email: "ops@example.com", webhook: "https://example.com/hook" },
     });
-    req._setHeader("x-payment", "validheader");
+    req._setHeader("x-402-payment", "validheader");
     const res = fakeRes();
     await putHandler(req, res, () => {});
     assert.equal(res._body.wallet, "0xabc123");
@@ -226,7 +226,7 @@ describe("PUT /v1/agent/contact", () => {
       }],
     });
     const req = fakeReq({ body: { name: "minimal-agent" } });
-    req._setHeader("x-payment", "validheader");
+    req._setHeader("x-402-payment", "validheader");
     const res = fakeRes();
     await putHandler(req, res, () => {});
     assert.equal(res._body.name, "minimal-agent");
@@ -236,7 +236,7 @@ describe("PUT /v1/agent/contact", () => {
 
   it("records wallet sighting with source 'contact'", async () => {
     const req = fakeReq({ body: { name: "my-agent" } });
-    req._setHeader("x-payment", "validheader");
+    req._setHeader("x-402-payment", "validheader");
     const res = fakeRes();
     await putHandler(req, res, () => {});
     assert.equal(recordedWallets.length, 1);
@@ -263,7 +263,7 @@ describe("PUT /v1/agent/contact", () => {
     const req = fakeReq({
       body: { name: "  padded-name  ", email: "a@b.com", webhook: "https://x.com/h" },
     });
-    req._setHeader("x-payment", "validheader");
+    req._setHeader("x-402-payment", "validheader");
     const res = fakeRes();
     await putHandler(req, res, () => {});
     assert.equal(capturedParams![0], "0xabc123");       // wallet
@@ -289,24 +289,23 @@ describe("PUT /v1/agent/contact", () => {
     };
 
     const req = fakeReq({ body: { name: "my-agent" } });
-    req._setHeader("x-payment", "validheader");
+    req._setHeader("x-402-payment", "validheader");
     const res = fakeRes();
     await putHandler(req, res, () => {});
     assert.equal(capturedParams![2], null); // email
     assert.equal(capturedParams![3], null); // webhook
   });
 
-  it("prefers payment-signature over x-payment header", async () => {
+  it("extracts wallet from x-402-payment header", async () => {
     let extractedHeader: string | undefined;
     mockExtractWallet = (h: string) => {
       extractedHeader = h;
       return "0xabc123";
     };
     const req = fakeReq({ body: { name: "my-agent" } });
-    req._setHeader("payment-signature", "sig-header");
-    req._setHeader("x-payment", "xpay-header");
+    req._setHeader("x-402-payment", "payment-header");
     const res = fakeRes();
     await putHandler(req, res, () => {});
-    assert.equal(extractedHeader, "sig-header");
+    assert.equal(extractedHeader, "payment-header");
   });
 });

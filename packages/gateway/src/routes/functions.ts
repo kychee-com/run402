@@ -156,7 +156,7 @@ router.post(
 
     try {
       await setSecret(req.params.id as string, key, value, tier);
-      res.status(200).json({ status: "set", key });
+      res.status(201).json({ status: "set", key });
     } catch (err: unknown) {
       if (err instanceof FunctionError) {
         throw new HttpError(err.statusCode, err.message);

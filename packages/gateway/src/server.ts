@@ -136,6 +136,7 @@ function rateLimit(req: Request, res: Response, next: NextFunction): void {
   bucket.lastRefill = now;
 
   if (bucket.tokens < 1) {
+    res.set("Retry-After", "1");
     res.status(429).json({ error: "Rate limit exceeded", retry_after: 1 });
     return;
   }

@@ -8,7 +8,7 @@ const router = Router();
 router.get("/v1/generate-image", (_req: Request, res: Response) => {
   res.json({
     description: "Generate an image from a text prompt",
-    price: "$0.03 USDC",
+    price: "$0.03",
     method: "POST",
     body: {
       prompt: "string (required, max 1000 chars)",

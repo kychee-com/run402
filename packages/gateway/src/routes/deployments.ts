@@ -16,7 +16,7 @@ const router = Router();
 router.get("/v1/deployments", (_req: Request, res: Response) => {
   res.json({
     description: "Deploy a static site — Vercel-compatible inlined file upload",
-    price: "$0.05 USDC",
+    price: "$0.05",
     method: "POST",
     body: { name: "string (required)", project: "string (optional project ID)", files: "[{ file, data, encoding? }]" },
   });

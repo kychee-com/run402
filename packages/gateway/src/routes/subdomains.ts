@@ -75,7 +75,7 @@ router.post("/v1/subdomains", serviceKeyAuth, asyncHandler(async (req: Request, 
 router.get("/v1/subdomains", serviceKeyAuth, asyncHandler(async (req: Request, res: Response) => {
   const projectId = req.project!.id;
   const records = await listSubdomains(projectId);
-  res.json(records.map(formatSubdomain));
+  res.json({ subdomains: records.map(formatSubdomain) });
 }));
 
 // GET /v1/subdomains/:name — lookup a subdomain (free, no auth)

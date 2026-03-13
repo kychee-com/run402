@@ -7,7 +7,7 @@ const router = Router();
 router.get("/v1/message", (_req: Request, res: Response) => {
   res.json({
     description: "Send a message to Run402 developers",
-    price: "$0.01 USDC",
+    price: "$0.01",
     method: "POST",
     body: { message: "string (required)" },
   });
