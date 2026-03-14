@@ -4076,9 +4076,10 @@
             "enum": [
               "subscribe",
               "renew",
-              "upgrade"
+              "upgrade",
+              "downgrade"
             ],
-            "description": "What happened: subscribe (new), renew (extend), or upgrade (higher tier)"
+            "description": "What happened: subscribe (new), renew (extend), upgrade (higher tier), or downgrade (lower tier, prorated refund)"
           },
           "previous_tier": {
             "type": "string",

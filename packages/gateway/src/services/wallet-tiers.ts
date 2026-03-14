@@ -309,9 +309,9 @@ export async function getWalletPoolUsage(wallet: string): Promise<WalletTierInfo
 }
 
 /**
- * Unified tier operation: auto-detects subscribe, renew, or upgrade.
+ * Unified tier operation: auto-detects subscribe, renew, upgrade, or downgrade.
  */
-export type TierAction = "subscribe" | "renew" | "upgrade";
+export type TierAction = "subscribe" | "renew" | "upgrade" | "downgrade";
 
 export async function setTier(
   wallet: string,
@@ -327,34 +327,32 @@ export async function setTier(
     && account.lease_expires_at !== null
     && account.lease_expires_at.getTime() > Date.now();
 
-  let action: TierAction;
-
   if (!account.tier || !isActive) {
     // No tier or expired → fresh subscribe
-    action = "subscribe";
     const result = await subscribeTier(wallet, tier);
-    return { ...result, action, previous_tier: account.tier };
+    return { ...result, action: "subscribe", previous_tier: account.tier };
   } else if (tier === account.tier) {
     // Same tier, active → renew (extend from expiry)
-    action = "renew";
     const result = await renewTier(wallet, tier);
-    return { ...result, action, previous_tier: account.tier };
+    return { ...result, action: "renew", previous_tier: account.tier };
   } else if (newIdx > currentIdx) {
-    // Higher tier → upgrade
-    action = "upgrade";
+    // Higher tier → upgrade (prorated refund to allowance)
     const previousTier = account.tier;
     const result = await upgradeTier(wallet, tier);
-    return { ...result, action, previous_tier: previousTier };
+    return { ...result, action: "upgrade", previous_tier: previousTier };
   } else {
-    // Lower tier, active → reject
-    const downgradeCheck = canDowngrade(account, tier);
-    if (!downgradeCheck.allowed) {
-      throw new Error(downgradeCheck.reason!);
+    // Lower tier, active → downgrade if usage fits
+    const usage = await getWalletPoolUsage(normalized);
+    const limits = getTierLimits(tier);
+    if (usage.total_storage_bytes > limits.storageBytes) {
+      throw new Error(
+        `Cannot downgrade: storage usage (${usage.total_storage_bytes} bytes) exceeds ${tier} limit (${limits.storageBytes} bytes). Delete data or wait for lease to expire.`,
+      );
     }
-    // Expired with lower tier (shouldn't reach here due to !isActive check above)
-    action = "subscribe";
-    const result = await subscribeTier(wallet, tier);
-    return { ...result, action, previous_tier: account.tier };
+    // Prorated refund of remaining old tier time, same as upgrade
+    const previousTier = account.tier;
+    const result = await upgradeTier(wallet, tier);
+    return { ...result, action: "downgrade", previous_tier: previousTier };
   }
 }
 
@@ -375,22 +373,6 @@ export function isWalletTierActive(account: BillingAccount): boolean {
  */
 export function calculateUpgradePrice(newTier: TierName): number {
   return TIERS[newTier].priceUsdMicros;
-}
-
-/**
- * Check if a wallet can downgrade to a lower tier (no downgrade during active lease).
- */
-export function canDowngrade(account: BillingAccount, _newTier: TierName): { allowed: boolean; reason?: string } {
-  if (!account.tier || !account.lease_expires_at) {
-    return { allowed: true };
-  }
-  if (account.lease_expires_at.getTime() > Date.now()) {
-    return {
-      allowed: false,
-      reason: "Cannot downgrade during active lease. Wait for lease to expire or upgrade instead.",
-    };
-  }
-  return { allowed: true };
 }
 
 // Row mapper (duplicated from billing.ts to avoid circular dependency)
