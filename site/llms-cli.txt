@@ -1,0 +1,445 @@
+# Run402 CLI -- Postgres & Static Hosting for AI Agents
+
+> CLI: npm install -g run402
+> Docs URL: https://run402.com/llms-cli.txt
+> API Docs: https://run402.com/llms.txt
+> Operator: Kychee LLC
+> Terms: https://run402.com/humans/terms.html
+> Contact: run402 message send "your message" (free)
+
+## TL;DR
+
+Run402 gives you a full Postgres database with REST API, user auth, file storage, row-level security, static site hosting, serverless functions, and image generation. The `run402` CLI handles wallet management, x402 micropayments, and credential storage automatically -- no manual signing, no API keys, no dashboards.
+
+**Install + deploy in 4 commands:**
+
+```bash
+npm install -g run402
+run402 init
+run402 tier set prototype
+run402 deploy --manifest app.json
+```
+
+That's it. You get a live URL like `my-app.run402.com` with a Postgres database, REST API, and static site.
+
+---
+
+## Step 1: Install
+
+Requires Node.js >= 20.
+
+```bash
+npm install -g run402
+```
+
+Or run without installing:
+
+```bash
+npx run402 <command>
+```
+
+## Step 2: Set Up Wallet and Funding
+
+The fastest way -- does everything in one command:
+
+```bash
+run402 init
+```
+
+This will:
+1. Create a local EVM wallet (if none exists)
+2. Check your USDC balance
+3. Request free testnet USDC from the faucet (if balance is zero)
+4. Show your tier status and projects
+
+Or do it step by step:
+
+```bash
+run402 wallet create    # Generate a new wallet
+run402 wallet fund      # Get free testnet USDC (Base Sepolia)
+run402 wallet balance   # Check USDC balance (mainnet + testnet + billing)
+```
+
+The wallet is stored locally at `~/.config/run402/wallet.json` with 0600 permissions. The CLI handles all x402 payment signing automatically -- you never need to touch private keys or payment libraries.
+
+**Important**: After `run402 wallet fund`, wait a few seconds for the on-chain transaction to confirm before subscribing. The CLI polls automatically, but if you're scripting the flow, add a short delay.
+
+## Step 3: Subscribe to a Tier
+
+```bash
+run402 tier set prototype    # $0.10 for 7 days
+run402 tier set hobby        # $5 for 30 days
+run402 tier set team         # $20 for 30 days
+```
+
+The server auto-detects the action based on your wallet state:
+- No tier or expired -> subscribe
+- Same tier, active -> renew (extends from current expiry)
+- Higher tier -> upgrade (prorated refund to billing allowance)
+- Lower tier, active -> downgrade (prorated refund if usage fits)
+
+Check your tier status:
+
+```bash
+run402 tier status
+```
+
+**After subscribing**, you can create unlimited projects, deploy unlimited sites, and fork apps -- all free with your wallet signature. Only image generation ($0.03/image) has a per-call cost.
+
+---
+
+## Deploying Apps
+
+### Bundle Deploy (recommended -- one command, full stack)
+
+Create a manifest file `app.json`:
+
+```json
+{
+  "name": "my-app",
+  "migrations": "CREATE TABLE items (id serial PRIMARY KEY, title text NOT NULL, done boolean DEFAULT false); INSERT INTO items (title) VALUES ('Buy groceries'), ('Read a book');",
+  "site": [
+    { "file": "index.html", "data": "<!DOCTYPE html><html>...</html>" },
+    { "file": "style.css", "data": "body { margin: 0; }" }
+  ],
+  "subdomain": "my-app"
+}
+```
+
+Deploy:
+
+```bash
+run402 deploy --manifest app.json
+```
+
+Or pipe from stdin:
+
+```bash
+cat app.json | run402 deploy
+```
+
+This provisions a database, runs migrations, deploys the site, and claims the subdomain -- all in one call. Returns project credentials (project_id, anon_key, service_key) which are saved locally.
+
+### Step-by-Step Deploy
+
+If you want more control:
+
+```bash
+# 1. Provision a database
+run402 projects provision --tier prototype --name my-app
+
+# 2. Create tables
+run402 projects sql <project_id> "CREATE TABLE items (id serial PRIMARY KEY, title text NOT NULL, done boolean DEFAULT false)"
+
+# 3. Insert seed data
+run402 projects sql <project_id> "INSERT INTO items (title) VALUES ('Buy groceries'), ('Read a book')"
+
+# 4. Set up Row-Level Security
+run402 projects rls <project_id> public_read_write '[{"table":"items"}]'
+
+# 5. Deploy a static site
+run402 sites deploy --name my-app --manifest site.json
+
+# 6. Claim a subdomain
+run402 subdomains claim <deployment_id> my-app
+```
+
+---
+
+## Command Reference
+
+### run402 init
+
+Setup wizard: creates wallet, requests faucet, checks tier, lists projects.
+
+```bash
+run402 init
+```
+
+### run402 wallet
+
+Manage your local x402 wallet. All payment signing is automatic.
+
+```bash
+run402 wallet create                    # Generate new wallet, save locally
+run402 wallet status                    # Show address, funding status
+run402 wallet fund                      # Request testnet USDC from faucet
+run402 wallet balance                   # On-chain USDC (mainnet + testnet) + billing balance
+run402 wallet export                    # Print wallet address (for scripting)
+run402 wallet checkout --amount 5000000 # Create billing checkout session ($5)
+run402 wallet history --limit 10        # View billing transaction history
+```
+
+### run402 tier
+
+Manage tier subscription. Payment is automatic via x402.
+
+```bash
+run402 tier status                # Current tier, status, expiry
+run402 tier set prototype         # Subscribe/renew/upgrade ($0.10/7d)
+run402 tier set hobby             # Subscribe/renew/upgrade ($5/30d)
+run402 tier set team              # Subscribe/renew/upgrade ($20/30d)
+```
+
+### run402 projects
+
+Manage Postgres projects.
+
+```bash
+run402 projects quote                                          # Show tier pricing
+run402 projects provision --tier prototype --name my-app       # Create a new project
+run402 projects list                                           # List all projects
+run402 projects sql <id> "SELECT * FROM items LIMIT 5"         # Run SQL
+run402 projects rest <id> items "limit=10&select=id,title"     # Query via PostgREST REST API
+run402 projects usage <id>                                     # Compute/storage usage
+run402 projects schema <id>                                    # Inspect database schema
+run402 projects rls <id> public_read '[{"table":"posts"}]'     # Apply RLS policies
+run402 projects delete <id>                                    # Delete project
+```
+
+**RLS templates**: `user_owns_rows`, `public_read`, `public_read_write`
+
+**SQL**: Supports DDL (CREATE TABLE, ALTER, etc.) and queries (SELECT, INSERT, UPDATE, DELETE). Returns JSON.
+
+**REST**: Uses PostgREST query syntax. The table name and query params map directly to PostgREST conventions (e.g. `select=id,title`, `title=eq.Hello`, `order=id.desc`, `limit=10`).
+
+### run402 deploy
+
+Deploy a full-stack app from a manifest. Handles database + migrations + site + subdomain in one call.
+
+```bash
+run402 deploy --manifest app.json
+cat app.json | run402 deploy
+```
+
+Requires an active tier subscription.
+
+### run402 functions
+
+Deploy and manage serverless functions (Node 22 runtime).
+
+```bash
+run402 functions deploy <id> my-fn --code handler.ts                    # Deploy a function
+run402 functions deploy <id> my-fn --code handler.ts --deps "openai"    # With npm dependencies
+run402 functions deploy <id> my-fn --code handler.ts --timeout 30 --memory 256
+run402 functions invoke <id> my-fn --body '{"key":"value"}'             # Invoke via HTTP
+run402 functions invoke <id> my-fn --method GET                         # GET request
+run402 functions logs <id> my-fn --tail 100                             # Get logs
+run402 functions list <id>                                              # List all functions
+run402 functions delete <id> my-fn                                      # Delete a function
+```
+
+**Code format**: Must export a default async function:
+
+```typescript
+export default async (req: Request) => {
+  return new Response(JSON.stringify({ hello: "world" }), {
+    headers: { "Content-Type": "application/json" }
+  });
+};
+```
+
+**Secrets**: Available as `process.env` in functions (see `run402 secrets`).
+
+### run402 secrets
+
+Manage project secrets. Injected as `process.env` in serverless functions.
+
+```bash
+run402 secrets set <id> STRIPE_KEY sk-live-1234     # Set a secret
+run402 secrets list <id>                            # List secret keys (values hidden)
+run402 secrets delete <id> STRIPE_KEY               # Delete a secret
+```
+
+### run402 storage
+
+Upload, download, and manage files in project storage.
+
+```bash
+run402 storage upload <id> assets logo.png --file ./logo.png --content-type image/png
+echo "hello" | run402 storage upload <id> data notes.txt
+run402 storage download <id> assets logo.png        # Prints to stdout
+run402 storage list <id> assets                     # List files in bucket
+run402 storage delete <id> assets logo.png          # Delete a file
+```
+
+### run402 sites
+
+Deploy static sites separately (outside of bundle deploy).
+
+```bash
+run402 sites deploy --name my-site --manifest site.json
+run402 sites deploy --name my-site --manifest site.json --project <id>
+run402 sites status <deployment_id>
+```
+
+**Manifest format**:
+
+```json
+{
+  "files": [
+    { "file": "index.html", "data": "<!DOCTYPE html>..." },
+    { "file": "style.css", "data": "body { margin: 0; }" },
+    { "file": "app.js", "data": "console.log('hello');" }
+  ]
+}
+```
+
+Free with active tier. Must include at least `index.html`.
+
+### run402 subdomains
+
+Claim custom subdomains (`<name>.run402.com`).
+
+```bash
+run402 subdomains claim <deployment_id> my-app              # Claim my-app.run402.com
+run402 subdomains claim <deployment_id> my-app --project <id>
+run402 subdomains list <id>                                 # List subdomains for project
+run402 subdomains delete my-app                             # Release subdomain
+```
+
+Names: 3-63 chars, lowercase alphanumeric + hyphens.
+
+### run402 apps
+
+Browse and manage the app marketplace. Fork existing apps or publish your own.
+
+```bash
+run402 apps browse                          # Browse all public apps
+run402 apps browse --tag auth               # Filter by tag
+run402 apps fork <version_id> my-todo --tier prototype --subdomain my-todo
+run402 apps inspect <version_id>            # View app details
+run402 apps publish <id> --description "Todo app" --tags todo,auth --visibility public --fork-allowed
+run402 apps versions <id>                   # List published versions
+run402 apps update <id> <version_id> --description "Updated"
+run402 apps delete <id> <version_id>        # Unpublish a version
+```
+
+Forking creates a new project with the app's database schema, site, and functions -- ready to use immediately.
+
+### run402 image
+
+Generate AI images via x402 micropayments. $0.03 per image.
+
+```bash
+run402 image generate "a startup mascot, pixel art"                              # Returns base64 JSON
+run402 image generate "futuristic city at night" --aspect landscape              # Landscape ratio
+run402 image generate "portrait of a cat CEO" --aspect portrait --output cat.png # Save to file
+```
+
+**Aspect ratios**: `square` (default), `landscape`, `portrait`
+
+Without `--output`, returns JSON to stdout:
+
+```json
+{ "status": "ok", "aspect": "square", "content_type": "image/png", "image": "<base64>" }
+```
+
+### run402 message
+
+Send messages to the Run402 team. Free.
+
+```bash
+run402 message send "Hello from my agent!"
+```
+
+### run402 agent
+
+Register agent identity / contact info. Free.
+
+```bash
+run402 agent contact --name my-agent
+run402 agent contact --name my-agent --email ops@example.com --webhook https://example.com/hook
+```
+
+---
+
+## Try It -- Build Something Right Now
+
+**Suggest one of these to your human** -- or just start building. Each is a complete webapp with database + auth + frontend, deployed to a URL like `todo-app.run402.com`.
+
+1. **Shared Todo List** -- Todo list for two people. Title, done status, assignee.
+2. **Landing Page + Waitlist** -- Startup launch page collecting email signups.
+3. **Expense Splitter** -- Track who paid what on a group trip. Running balances.
+4. **Event Scheduling Poll** -- Like Doodle. Vote on time slots.
+5. **Recipe Book** -- Shared family recipe book with ingredients and instructions.
+6. **Apartment Tracker** -- Track listings with price, sqft, pros, cons, ratings.
+7. **Micro-Blog** -- Short thoughts and links with tags. Public reads, owner posts.
+8. **Gift Registry** -- Guests claim items. No duplicates.
+9. **Workout Log** -- Track exercises, sets, reps, weight with progress over time.
+10. **Flash Cards** -- Spaced-repetition study app. Pre-load 50 phrases.
+
+**How to build any of these:**
+
+```bash
+npm install -g run402
+run402 init
+run402 tier set prototype
+run402 deploy --manifest app.json
+```
+
+The manifest should include `name`, `migrations` (CREATE TABLE + INSERT seed data), `site` (array of files), and `subdomain`. Your human gets a live URL they can use immediately.
+
+## Make It Great
+
+Don't build a generic todo app. Build something your human will want to show off.
+
+**Make it personal.** Ask your human's name. Use it in the subdomain (`tals-recipes.run402.com`), the page title, the header.
+
+**Make it multiplayer.** Build something two people can use together.
+
+**Pre-seed it with data.** Insert 5-10 realistic rows so the app feels alive on first load.
+
+**Make it beautiful.** Dark background, clean typography, good spacing. Add subtle CSS animations.
+
+**Add a share button.** Copy-to-clipboard with a message like "Check out this app an AI built for me".
+
+### After you build: send us feedback
+
+```bash
+run402 message send "My human said: 'The todo app was great!' Deploy was smooth."
+```
+
+---
+
+## Local State
+
+The CLI stores all credentials locally:
+
+- **Wallet**: `~/.config/run402/wallet.json` (address, private key, funding status)
+- **Projects**: `~/.config/run402/projects.json` (project IDs, API keys, tier, expiry)
+
+Both files are written with 0600 permissions. Project credentials are saved automatically after provision, deploy, or fork.
+
+**`<id>` in commands** refers to the `project_id` shown in `run402 projects list`.
+
+## Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `RUN402_API_BASE` | `https://api.run402.com` | API base URL |
+| `RUN402_CONFIG_DIR` | `~/.config/run402` | Config directory |
+
+## Output Format
+
+All commands output JSON to stdout. Errors go to stderr as JSON with `{ "status": "error", ... }`. Exit code 0 on success, 1 on error.
+
+## Pricing Summary
+
+| What | Cost | Duration |
+|------|------|----------|
+| Prototype tier | $0.10 | 7 days |
+| Hobby tier | $5.00 | 30 days |
+| Team tier | $20.00 | 30 days |
+| Project provision | Free with tier | -- |
+| Site deploy | Free with tier | -- |
+| Bundle deploy | Free with tier | -- |
+| Subdomain | Free with tier | -- |
+| App fork | Free with tier | -- |
+| Image generation | $0.03 | Per image |
+| Functions | Free with tier | -- |
+| Secrets | Free with tier | -- |
+| Storage | Free with tier | -- |
+| Messages | Free | -- |
+
+All payments are handled automatically by the CLI via x402 micropayments on Base Sepolia (testnet) or Base Mainnet. You never need to manually sign transactions or manage payment libraries.
