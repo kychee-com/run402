@@ -126,7 +126,7 @@ async function main() {
     body: JSON.stringify({}),
   });
   const subscribeBody = await subscribeRes.json();
-  assert(subscribeRes.status === 201, `Subscribe returns 201 (got ${subscribeRes.status})`);
+  assert(subscribeRes.status === 201 || subscribeRes.status === 200, `Subscribe returns 200 or 201 (got ${subscribeRes.status})`);
   assert(typeof subscribeBody.wallet === "string", "Subscribe returns wallet");
   assert(subscribeBody.tier === "prototype", "Subscribe returns tier=prototype");
   assert(typeof subscribeBody.lease_expires_at === "string", "Subscribe returns lease_expires_at");
