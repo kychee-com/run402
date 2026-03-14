@@ -49,7 +49,7 @@ async function main() {
 
   // 0. Subscribe to tier
   console.log("0) Subscribing to prototype tier...");
-  const tierRes = await fetchPaid(`${BASE_URL}/tiers/v1/subscribe/prototype`, {
+  const tierRes = await fetchPaid(`${BASE_URL}/tiers/v1/prototype`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({}),

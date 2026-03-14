@@ -120,7 +120,7 @@ async function main() {
 
   // Step 2: Subscribe to prototype tier via x402
   console.log("\n2) Subscribe to prototype tier via x402...");
-  const subscribeRes = await fetchPaid(`${BASE_URL}/tiers/v1/subscribe/prototype`, {
+  const subscribeRes = await fetchPaid(`${BASE_URL}/tiers/v1/prototype`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({}),

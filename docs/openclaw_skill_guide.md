@@ -14,7 +14,7 @@ Build a **single tool server** (your MCP server) that exposes the 5 high‑level
 - `run_sql`
 - `rest_query`
 - `upload_file`
-- `renew_project`
+- `set_tier`
 
 Then publish it in two ways:
 
@@ -170,15 +170,15 @@ Return (not throw) a structured object the agent can show to its operator:
 - optional `etag` / `version`
 - optional `signed_url` (if you also call sign endpoint)
 
-#### Tool: `renew_project`
+#### Tool: `set_tier`
 **Input**
-- `project_id`
-- optional `tier` (default to stored tier or `"prototype"`)
+- `tier` (`"prototype"`, `"hobby"`, or `"team"`)
 
 **Output**
-- `status: "ok"`
-- `project_id`
-- `expires_at` (or lease duration)
+- `action` (`"subscribe"`, `"renew"`, or `"upgrade"`)
+- `tier`
+- `lease_expires_at`
+- `previous_tier` (null if first subscription)
 
 **Output (needs allowance)**
 Same `needs_allowance` shape as provisioning.
@@ -348,7 +348,7 @@ High-signal places (as of my knowledge cutoff) that directly drive agent install
   - `run_sql`
   - `rest_query`
   - `upload_file`
-  - `renew_project`
+  - `set_tier`
 
 ### MCP registries/directories
 - [ ] Submit to Smithery: https://smithery.ai

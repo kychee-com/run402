@@ -276,14 +276,14 @@
         }
       }
     },
-    "/tiers/v1/subscribe/{tier}": {
+    "/tiers/v1/{tier}": {
       "post": {
         "tags": [
           "Tiers"
         ],
-        "summary": "Subscribe to a tier",
-        "operationId": "subscribeTier",
-        "description": "Pay for a wallet-level tier via x402. This is the primary x402 payment in the normal flow. After subscribing, all operations within the tier are free using wallet signatures.",
+        "summary": "Subscribe, renew, or upgrade tier",
+        "operationId": "setTier",
+        "description": "Unified tier endpoint. Auto-detects the action: subscribe (no tier or expired), renew (same tier, active), or upgrade (higher tier). Response includes an `action` field indicating what happened. Downgrading during an active lease is rejected.",
         "x-402-price": "Per tier: prototype $0.10, hobby $5.00, team $20.00",
         "security": [
           {
@@ -307,7 +307,7 @@
         ],
         "responses": {
           "201": {
-            "description": "Tier subscription created",
+            "description": "Tier subscribed (new subscription)",
             "content": {
               "application/json": {
                 "schema": {
@@ -316,112 +316,18 @@
               }
             }
           },
-          "402": {
-            "$ref": "#/components/responses/PaymentRequired"
-          }
-        }
-      }
-    },
-    "/tiers/v1/renew/{tier}": {
-      "post": {
-        "tags": [
-          "Tiers"
-        ],
-        "summary": "Renew tier subscription",
-        "operationId": "renewTier",
-        "description": "Extend the wallet's tier lease via x402 payment. Price equals the current tier price. Extends lease by the tier's lease duration from now.",
-        "x-402-price": "Per tier: prototype $0.10, hobby $5.00, team $20.00",
-        "security": [
-          {
-            "x402": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "tier",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "enum": [
-                "prototype",
-                "hobby",
-                "team"
-              ]
-            }
-          }
-        ],
-        "responses": {
           "200": {
-            "description": "Tier renewed",
+            "description": "Tier renewed or upgraded",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/TierSubscription"
-                }
-              }
-            }
-          },
-          "402": {
-            "$ref": "#/components/responses/PaymentRequired"
-          }
-        }
-      }
-    },
-    "/tiers/v1/upgrade/{tier}": {
-      "post": {
-        "tags": [
-          "Tiers"
-        ],
-        "summary": "Upgrade to a higher tier",
-        "operationId": "upgradeTier",
-        "description": "Pay the difference to move to a higher tier via x402. Price = (new tier price) - (prorated remaining value). Lease resets to the new tier's lease period. Resource pool expands immediately.",
-        "x-402-price": "Price difference between current and new tier",
-        "security": [
-          {
-            "x402": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "tier",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "enum": [
-                "prototype",
-                "hobby",
-                "team"
-              ]
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Tier upgraded",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "allOf": [
-                    {
-                      "$ref": "#/components/schemas/TierSubscription"
-                    },
-                    {
-                      "type": "object",
-                      "properties": {
-                        "previous_tier": {
-                          "type": "string"
-                        }
-                      }
-                    }
-                  ]
                 }
               }
             }
           },
           "400": {
-            "description": "Cannot downgrade — resource usage exceeds target tier limits"
+            "description": "Cannot downgrade during active lease"
           },
           "402": {
             "$ref": "#/components/responses/PaymentRequired"
@@ -4164,6 +4070,20 @@
           "wallet": {
             "type": "string",
             "example": "0x..."
+          },
+          "action": {
+            "type": "string",
+            "enum": [
+              "subscribe",
+              "renew",
+              "upgrade"
+            ],
+            "description": "What happened: subscribe (new), renew (extend), or upgrade (higher tier)"
+          },
+          "previous_tier": {
+            "type": "string",
+            "nullable": true,
+            "description": "Previous tier (null if first subscription)"
           },
           "tier": {
             "type": "string",

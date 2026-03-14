@@ -99,7 +99,7 @@ function createPayToAddressFactory(priceStr: string) {
 /**
  * Build x402 payment middleware.
  *
- * Pay-per-tier model: x402 gates only tier subscribe/renew/upgrade + generate-image.
+ * Pay-per-tier model: x402 gates only POST /tiers/v1/:tier + generate-image.
  * All other endpoints use walletAuth (free with active tier).
  */
 export function createPaymentMiddleware() {
@@ -120,72 +120,26 @@ export function createPaymentMiddleware() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- x402 resource config shape is defined by @x402/express
   const resourceConfig: Record<string, any> = {};
 
-  // --- Tier subscription endpoints (x402-gated) ---
+  // --- Tier endpoints (x402-gated) ---
+  // POST /tiers/v1/:tier — auto-detects subscribe, renew, or upgrade
 
   for (const [tierName, tierConfig] of Object.entries(TIERS)) {
-    // POST /tiers/v1/subscribe/:tier
-    resourceConfig[`POST /tiers/v1/subscribe/${tierName}`] = {
+    resourceConfig[`POST /tiers/v1/${tierName}`] = {
       accepts: networks.map((network) => ({
         scheme: "exact",
         price: tierConfig.price,
         network,
         payTo: payTo(tierConfig.price),
       })),
-      description: `Subscribe to ${tierName} tier (${tierConfig.price} USDC)`,
+      description: `Set ${tierName} tier (${tierConfig.price} USDC) — auto-detects subscribe/renew/upgrade`,
       mimeType: "application/json",
       extensions: {
         ...declareDiscoveryExtension({
           output: {
             example: {
               wallet: "0x...",
+              action: "subscribe",
               tier: tierName,
-              lease_expires_at: "2026-04-08T00:00:00Z",
-            },
-          },
-        }),
-      },
-    };
-
-    // POST /tiers/v1/renew/:tier
-    resourceConfig[`POST /tiers/v1/renew/${tierName}`] = {
-      accepts: networks.map((network) => ({
-        scheme: "exact",
-        price: tierConfig.price,
-        network,
-        payTo: payTo(tierConfig.price),
-      })),
-      description: `Renew ${tierName} tier subscription (${tierConfig.price} USDC)`,
-      mimeType: "application/json",
-      extensions: {
-        ...declareDiscoveryExtension({
-          output: {
-            example: {
-              wallet: "0x...",
-              tier: tierName,
-              lease_expires_at: "2026-05-08T00:00:00Z",
-            },
-          },
-        }),
-      },
-    };
-
-    // POST /tiers/v1/upgrade/:tier
-    resourceConfig[`POST /tiers/v1/upgrade/${tierName}`] = {
-      accepts: networks.map((network) => ({
-        scheme: "exact",
-        price: tierConfig.price,
-        network,
-        payTo: payTo(tierConfig.price),
-      })),
-      description: `Upgrade to ${tierName} tier (${tierConfig.price} USDC, prorated refund to allowance)`,
-      mimeType: "application/json",
-      extensions: {
-        ...declareDiscoveryExtension({
-          output: {
-            example: {
-              wallet: "0x...",
-              tier: tierName,
-              previous_tier: "prototype",
               lease_expires_at: "2026-04-08T00:00:00Z",
             },
           },
@@ -349,13 +303,13 @@ export function createPaymentMiddleware() {
 
 /**
  * Map a request method+path to a price in micro-USD.
- * Pay-per-tier: only tier subscribe/renew/upgrade + generate-image have prices.
+ * Pay-per-tier: only POST /tiers/v1/:tier + generate-image have prices.
  */
 function resolveSkuPrice(method: string, path: string): { sku: string; amountUsdMicros: number } | null {
 
-  // Tier subscription endpoints: POST /tiers/v1/subscribe/:tier, POST /tiers/v1/renew/:tier, POST /tiers/v1/upgrade/:tier
-  const tierMatch = path.match(/^\/tiers\/v1\/(?:subscribe|renew|upgrade)\/(\w+)$/);
-  if (tierMatch && tierMatch[1]) {
+  // Tier endpoint: POST /tiers/v1/:tier
+  const tierMatch = path.match(/^\/tiers\/v1\/(\w+)$/);
+  if (tierMatch && tierMatch[1] && tierMatch[1] !== "status") {
     const tierName = tierMatch[1] as TierName;
     if (TIERS[tierName]) {
       return { sku: `tier_${tierName}`, amountUsdMicros: TIERS[tierName].priceUsdMicros };

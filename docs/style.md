@@ -8,7 +8,7 @@ Version goes last, Supabase-style: `/<resource>/v1`.
 
 ```
 /projects/v1
-/tiers/v1/subscribe/:tier
+/tiers/v1/:tier
 /faucet/v1
 /billing/v1/accounts/:wallet
 /subdomains/v1
@@ -80,7 +80,7 @@ Always `{ "error": "Human-readable message" }`. Optional extra fields for action
 
 ```json
 { "error": "API call limit exceeded", "usage": { "api_calls": 500, "limit": 500 } }
-{ "error": "Lease expired", "renew_url": "/tiers/v1/renew/prototype" }
+{ "error": "Lease expired", "renew_url": "/tiers/v1/prototype" }
 ```
 
 ## Auth
@@ -96,7 +96,7 @@ Four mechanisms, never mixed:
 
 ## Paid Endpoints (x402)
 
-Tier subscription endpoints (`/tiers/v1/subscribe/:tier`, `/tiers/v1/renew/:tier`, `/tiers/v1/upgrade/:tier`) and image generation (`/generate-image/v1`) require x402 payment.
+Tier endpoint (`POST /tiers/v1/:tier`) and image generation (`/generate-image/v1`) require x402 payment.
 
 All other operational endpoints (projects, deploys, forks, sites, messages) use EIP-4361 wallet auth and are free with an active tier subscription.
 

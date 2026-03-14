@@ -115,7 +115,7 @@ export function walletAuth(requireTier = true) {
     if (requireTier && !tierInfo.active) {
       res.status(402).json({
         error: "No active tier subscription",
-        message: "Subscribe to a tier first: POST /tiers/v1/subscribe/:tier",
+        message: "Subscribe to a tier first: POST /tiers/v1/:tier",
         subscribe_url: "/tiers/v1",
       });
       return;
@@ -128,7 +128,7 @@ export function walletAuth(requireTier = true) {
 }
 
 /**
- * Invalidate the tier cache for a wallet (call after subscribe/renew/upgrade).
+ * Invalidate the tier cache for a wallet (call after setTier).
  */
 export function invalidateWalletTierCache(wallet: string): void {
   tierCache.delete(wallet.toLowerCase());

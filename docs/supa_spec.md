@@ -159,7 +159,7 @@ Returns 200 with all tier pricing:
 ### Step 2: Subscribe to tier (x402-gated)
 
 ```
-POST /tiers/v1/subscribe/prototype
+POST /tiers/v1/prototype
 ```
 
 Server responds `402 Payment Required` with price and payTo address. Agent signs payment. On success, returns `{ wallet, tier, lease_expires_at }`.

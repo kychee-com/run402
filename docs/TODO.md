@@ -11,7 +11,7 @@ From GPT-5.2 Pro consultation (2026-02-27) on improving agent trust and adoption
 - [x] Fix lifecycle mismatch: LEASE_DELETE_PERIOD 30d → 37d (7d grace + 30d archive)
 - [x] Require service_key auth on DELETE /v1/projects/:id
 - [x] Static site hosting: Vercel-compatible POST /v1/deployments, CloudFront + S3 serving, SPA fallback, deploy_site MCP tool
-- [x] MCP server: published as `run402-mcp` on npm (provision, run_sql, rest_query, upload_file, renew_project). Works with Claude Desktop, Cursor, Cline, Claude Code. https://github.com/kychee-com/run402-mcp
+- [x] MCP server: published as `run402-mcp` on npm (provision, run_sql, rest_query, upload_file, set_tier). Works with Claude Desktop, Cursor, Cline, Claude Code. https://github.com/kychee-com/run402-mcp
 - [x] Directory listings: listed on npm, GitHub MCP registry
 
 ## Pending

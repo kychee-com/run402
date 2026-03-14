@@ -70,12 +70,12 @@ POST /faucet/v1
 Agent pays for a tier via x402. This is the only x402 payment in the normal flow (besides generate-image and renewals).
 
 ```
-POST /tiers/v1/subscribe
+POST /tiers/v1/hobby
 x-402-payment: <signed payment>
-{ "tier": "hobby" }
 → 201
 {
   "wallet": "0x...",
+  "action": "subscribe",
   "tier": "hobby",
   "lease_expires_at": "2026-04-12T...",
   "pool": {
@@ -87,7 +87,7 @@ x-402-payment: <signed payment>
 }
 ```
 
-The x402 middleware resolves the price from the `tier` field in the body. Wallet address is extracted from the payment header. A billing account is created (or updated) for the wallet.
+The x402 middleware resolves the price from the tier name in the URL. Wallet address is extracted from the payment header. A billing account is created (or updated) for the wallet. The `action` field indicates what happened: `subscribe`, `renew`, or `upgrade`.
 
 ### 3. Create projects (EIP-4361 auth, free)
 
@@ -119,32 +119,19 @@ These endpoints become free for wallets with an active tier:
 
 Admin routes (`/projects/v1/admin/...`) continue to use service_key auth — these are project-scoped, not wallet-scoped.
 
-### 5. Renew (x402 payment)
+### 5. Renew or Upgrade (same endpoint)
 
-Lease expiry is per-wallet. Agent pays to extend.
+Calling `POST /tiers/v1/:tier` again auto-detects the action:
+- Same tier → renew (extends from current expiry)
+- Higher tier → upgrade (prorated refund to allowance)
+- Lower tier during active lease → rejected
 
 ```
-POST /tiers/v1/renew
+POST /tiers/v1/hobby
 x-402-payment: <signed payment>
 → 200
-{ "wallet": "0x...", "tier": "hobby", "lease_expires_at": "2026-05-12T..." }
+{ "wallet": "0x...", "action": "renew", "tier": "hobby", "lease_expires_at": "2026-05-12T..." }
 ```
-
-Price = current tier price. Extends lease by the tier's lease duration from now.
-
-### 6. Upgrade (x402 payment)
-
-Agent pays the difference to move to a higher tier.
-
-```
-POST /tiers/v1/upgrade
-x-402-payment: <signed payment>
-{ "tier": "team" }
-→ 200
-{ "wallet": "0x...", "tier": "team", "lease_expires_at": "2026-04-12T...", "pool": { ... } }
-```
-
-Price = (new tier price) - (prorated remaining value of current tier). Lease duration resets to the new tier's lease period. Resource pool expands immediately.
 
 ### 7. Lease expiry
 
@@ -169,9 +156,7 @@ These are not included in any tier — they cost per-call:
 | `POST /message/v1` (x402 $0.01) | `POST /message/v1` | EIP-4361 (free) |
 | `GET /ping/v1` (x402 $0.001) | `GET /ping/v1` | EIP-4361 (free) |
 | `PUT /agent/v1/contact` (x402) | `POST /agent/v1/contact` | EIP-4361 (free) |
-| — | `POST /tiers/v1/subscribe` | x402 (tier price) |
-| — | `POST /tiers/v1/renew` | x402 (tier price) |
-| — | `POST /tiers/v1/upgrade` | x402 (price difference) |
+| — | `POST /tiers/v1/:tier` | x402 (tier price, auto-detects subscribe/renew/upgrade) |
 | `POST /projects/v1/:id/renew` | removed | — |
 | `POST /generate-image/v1` ($0.03) | unchanged | x402 |
 

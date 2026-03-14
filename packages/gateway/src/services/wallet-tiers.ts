@@ -309,6 +309,56 @@ export async function getWalletPoolUsage(wallet: string): Promise<WalletTierInfo
 }
 
 /**
+ * Unified tier operation: auto-detects subscribe, renew, or upgrade.
+ */
+export type TierAction = "subscribe" | "renew" | "upgrade";
+
+export async function setTier(
+  wallet: string,
+  tier: TierName,
+): Promise<BillingAccount & { action: TierAction; previous_tier?: string | null }> {
+  const normalized = wallet.toLowerCase();
+  const account = await getOrCreateBillingAccount(normalized);
+
+  const TIER_ORDER: TierName[] = ["prototype", "hobby", "team"];
+  const currentIdx = account.tier ? TIER_ORDER.indexOf(account.tier as TierName) : -1;
+  const newIdx = TIER_ORDER.indexOf(tier);
+  const isActive = account.tier !== null
+    && account.lease_expires_at !== null
+    && account.lease_expires_at.getTime() > Date.now();
+
+  let action: TierAction;
+
+  if (!account.tier || !isActive) {
+    // No tier or expired → fresh subscribe
+    action = "subscribe";
+    const result = await subscribeTier(wallet, tier);
+    return { ...result, action, previous_tier: account.tier };
+  } else if (tier === account.tier) {
+    // Same tier, active → renew (extend from expiry)
+    action = "renew";
+    const result = await renewTier(wallet, tier);
+    return { ...result, action, previous_tier: account.tier };
+  } else if (newIdx > currentIdx) {
+    // Higher tier → upgrade
+    action = "upgrade";
+    const previousTier = account.tier;
+    const result = await upgradeTier(wallet, tier);
+    return { ...result, action, previous_tier: previousTier };
+  } else {
+    // Lower tier, active → reject
+    const downgradeCheck = canDowngrade(account, tier);
+    if (!downgradeCheck.allowed) {
+      throw new Error(downgradeCheck.reason!);
+    }
+    // Expired with lower tier (shouldn't reach here due to !isActive check above)
+    action = "subscribe";
+    const result = await subscribeTier(wallet, tier);
+    return { ...result, action, previous_tier: account.tier };
+  }
+}
+
+/**
  * Check if a wallet has an active tier subscription.
  */
 export function isWalletTierActive(account: BillingAccount): boolean {

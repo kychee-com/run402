@@ -214,9 +214,7 @@ const bodyParserErrorHandler: ErrorRequestHandler = (err: any, _req, res, next) 
 app.use(bodyParserErrorHandler);
 
 // --- Idempotency middleware (for paid endpoints, before x402) ---
-app.post("/tiers/v1/subscribe/:tier", idempotencyMiddleware);
-app.post("/tiers/v1/renew/:tier", idempotencyMiddleware);
-app.post("/tiers/v1/upgrade/:tier", idempotencyMiddleware);
+app.post("/tiers/v1/:tier", idempotencyMiddleware);
 app.post("/projects/v1", idempotencyMiddleware);
 app.post("/deploy/v1", idempotencyMiddleware);
 app.post("/fork/v1", idempotencyMiddleware);
@@ -232,14 +230,9 @@ app.get("/.well-known/x402", (_req: Request, res: Response) => {
   res.json({
     version: 1,
     resources: [
-      "https://api.run402.com/tiers/v1/subscribe/prototype",
-      "https://api.run402.com/tiers/v1/subscribe/hobby",
-      "https://api.run402.com/tiers/v1/subscribe/team",
-      "https://api.run402.com/tiers/v1/renew/prototype",
-      "https://api.run402.com/tiers/v1/renew/hobby",
-      "https://api.run402.com/tiers/v1/renew/team",
-      "https://api.run402.com/tiers/v1/upgrade/hobby",
-      "https://api.run402.com/tiers/v1/upgrade/team",
+      "https://api.run402.com/tiers/v1/prototype",
+      "https://api.run402.com/tiers/v1/hobby",
+      "https://api.run402.com/tiers/v1/team",
       "https://api.run402.com/generate-image/v1",
     ],
   });

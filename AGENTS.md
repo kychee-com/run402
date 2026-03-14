@@ -16,7 +16,7 @@ Run402 uses a tier subscription model. Subscribe once via x402, then create unli
 ### Quick Start (Agent Onboarding)
 
 1. **Get testnet USDC:** `POST /faucet/v1/drip` (free, 0.25 USDC per 24h)
-2. **Subscribe to a tier:** `POST /tiers/v1/subscribe/prototype` (x402 payment, $0.10)
+2. **Subscribe to a tier:** `POST /tiers/v1/prototype` (x402 payment, $0.10)
 3. **Create projects:** `POST /projects/v1` with EIP-4361 wallet auth (free with tier)
 4. **Deploy apps:** `POST /deploy/v1` with wallet auth (free with tier)
 
@@ -59,7 +59,7 @@ If you're running inside Claude Desktop, Cursor, Cline, Claude Code, or any MCP-
 | `run_sql` | Execute SQL (DDL/DML) against a project |
 | `rest_query` | CRUD via PostgREST (GET/POST/PATCH/DELETE) |
 | `upload_file` | Upload files to project storage |
-| `renew_project` | Extend a database lease |
+| `set_tier` | Subscribe, renew, or upgrade tier |
 | `deploy_site` | Deploy a static site (HTML/CSS/JS) |
 | `claim_subdomain` | Claim a custom subdomain (e.g. myapp.run402.com) |
 | `delete_subdomain` | Release a subdomain |
