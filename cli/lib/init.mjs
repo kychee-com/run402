@@ -99,7 +99,7 @@ export async function run() {
   if (!tierInfo || !tierInfo.tier || tierInfo.status !== "active") {
     console.log("  Next: run402 tier set prototype");
   } else {
-    console.log("  Ready to deploy. Run: run402 deploy --tier prototype --manifest app.json");
+    console.log("  Ready to deploy. Run: run402 deploy --manifest app.json");
   }
   console.log();
 }

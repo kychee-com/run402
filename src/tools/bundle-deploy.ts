@@ -5,10 +5,6 @@ import { formatApiError } from "../errors.js";
 
 export const bundleDeploySchema = {
   name: z.string().describe("App name (used as project name and default subdomain)"),
-  tier: z
-    .enum(["prototype", "hobby", "team"])
-    .default("prototype")
-    .describe("Database tier: prototype ($0.10/7d), hobby ($5/30d), team ($20/30d)"),
   migrations: z
     .string()
     .optional()
@@ -62,7 +58,6 @@ export const bundleDeploySchema = {
 
 export async function handleBundleDeploy(args: {
   name: string;
-  tier?: string;
   migrations?: string;
   rls?: { template: string; tables: Array<{ table: string; owner_column?: string }> };
   secrets?: Array<{ key: string; value: string }>;
@@ -70,8 +65,6 @@ export async function handleBundleDeploy(args: {
   site?: Array<{ file: string; data: string; encoding?: string }>;
   subdomain?: string;
 }): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
-  const tier = args.tier || "prototype";
-
   const res = await apiRequest("/deploy/v1", {
     method: "POST",
     body: {
@@ -90,7 +83,7 @@ export async function handleBundleDeploy(args: {
     const lines = [
       `## Payment Required`,
       ``,
-      `To bundle-deploy **${args.name}** (tier: **${tier}**), an x402 payment is needed.`,
+      `To bundle-deploy **${args.name}**, an x402 payment is needed.`,
       ``,
     ];
     if (body.x402) {

@@ -3,8 +3,8 @@
  * Run402 deploy — bundle deploy a full-stack app.
  *
  * Usage:
- *   node deploy.mjs --tier prototype --manifest manifest.json
- *   echo '{"name":"app","site":[...]}' | node deploy.mjs --tier prototype
+ *   node deploy.mjs --manifest manifest.json
+ *   echo '{"name":"app","site":[...]}' | node deploy.mjs
  *
  * Manifest JSON fields (passed to POST /deploy/v1):
  *   name, migrations, rls, secrets, functions, site, subdomain
@@ -15,9 +15,8 @@ import { readWallet, loadProjects, API, WALLET_FILE, PROJECTS_FILE } from "./con
 
 function parseArgs() {
   const args = process.argv.slice(2);
-  const opts = { tier: "prototype", manifest: null };
+  const opts = { manifest: null };
   for (let i = 0; i < args.length; i++) {
-    if (args[i] === "--tier" && args[i + 1]) opts.tier = args[++i];
     if (args[i] === "--manifest" && args[i + 1]) opts.manifest = args[++i];
   }
   return opts;

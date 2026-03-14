@@ -8,35 +8,27 @@ Usage:
   cat manifest.json | run402 deploy [options]
 
 Options:
-  --tier <tier>        Deployment tier: prototype | hobby | team  (default: prototype)
   --manifest <file>    Path to manifest JSON file  (default: read from stdin)
   --help, -h           Show this help message
-
-Tiers:
-  prototype   Smallest, cheapest — great for demos and experiments
-  hobby       Mid-tier — personal projects and side hustles
-  team        Full power — production-ready, shared team access
 
 Manifest format (JSON):
   {
     "name": "my-app",
-    "files": {
-      "index.html": "<html>...</html>",
-      "style.css": "body { margin: 0; }"
-    },
-    "env": {
-      "MY_VAR": "value"
-    }
+    "migrations": "CREATE TABLE items ...",
+    "site": [{ "file": "index.html", "data": "<html>...</html>" }],
+    "subdomain": "my-app"
   }
 
 Examples:
-  run402 deploy --tier prototype --manifest app.json
-  run402 deploy --tier hobby --manifest app.json
-  cat app.json | run402 deploy --tier team
+  run402 deploy --manifest app.json
+  cat app.json | run402 deploy
+
+Prerequisites:
+  - run402 init                     Set up wallet and funding
+  - run402 tier set prototype       Subscribe to a tier
 
 Notes:
-  - Requires a funded wallet (run402 wallet create && run402 wallet fund)
-  - Payments are processed automatically via x402 micropayments (Base Sepolia USDC)
+  - Requires an active tier subscription (run402 tier set <tier>)
   - Project credentials (project_id, keys, URL) are saved locally after deploy
   - Use 'run402 projects list' to see all deployed projects
 `;
@@ -56,10 +48,9 @@ function saveProject(project) {
 }
 
 export async function run(args) {
-  const opts = { tier: "prototype", manifest: null };
+  const opts = { manifest: null };
   for (let i = 0; i < args.length; i++) {
     if (args[i] === "--help" || args[i] === "-h") { console.log(HELP); process.exit(0); }
-    if (args[i] === "--tier" && args[i + 1]) opts.tier = args[++i];
     if (args[i] === "--manifest" && args[i + 1]) opts.manifest = args[++i];
   }
 

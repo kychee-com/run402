@@ -17,7 +17,7 @@ Commands:
   wallet      Manage your x402 wallet (create, fund, balance, status)
   tier        Manage tier subscription (status, set)
   projects    Manage projects (provision, list, query, inspect, delete)
-  deploy      Deploy a full-stack app or static site (Postgres + hosting)
+  deploy      Deploy a full-stack app or static site (requires active tier)
   functions   Manage serverless functions (deploy, invoke, logs, list, delete)
   secrets     Manage project secrets (set, list, delete)
   storage     Manage file storage (upload, download, list, delete)
@@ -33,7 +33,7 @@ Run 'run402 <command> --help' for detailed usage of each command.
 Examples:
   run402 wallet create
   run402 wallet fund
-  run402 deploy --tier prototype --manifest app.json
+  run402 deploy --manifest app.json
   run402 projects list
   run402 projects sql <project_id> "SELECT * FROM users LIMIT 5"
   run402 functions deploy <project_id> my-fn --code handler.ts
@@ -43,7 +43,7 @@ Examples:
 Getting started:
   run402 init               Set up everything in one command
   run402 tier set prototype  Subscribe to a tier
-  run402 deploy ...          Deploy your app
+  run402 deploy --manifest app.json
 `;
 
 if (!cmd || cmd === '--help' || cmd === '-h') {
