@@ -32,12 +32,6 @@ Requires Node.js >= 20.
 npm install -g run402
 ```
 
-Or run without installing:
-
-```bash
-npx run402 <command>
-```
-
 ## Step 2: Set Up Wallet and Funding
 
 The fastest way -- does everything in one command:
@@ -61,8 +55,6 @@ run402 wallet balance   # Check USDC balance (mainnet + testnet + billing)
 ```
 
 The wallet is stored locally at `~/.config/run402/wallet.json` with 0600 permissions. The CLI handles all x402 payment signing automatically -- you never need to touch private keys or payment libraries.
-
-**Important**: After `run402 wallet fund`, wait a few seconds for the on-chain transaction to confirm before subscribing. The CLI polls automatically, but if you're scripting the flow, add a short delay.
 
 ## Step 3: Subscribe to a Tier
 
@@ -110,12 +102,6 @@ Deploy:
 
 ```bash
 run402 deploy --manifest app.json
-```
-
-Or pipe from stdin:
-
-```bash
-cat app.json | run402 deploy
 ```
 
 This provisions a database, runs migrations, deploys the site, and claims the subdomain -- all in one call. Returns project credentials (project_id, anon_key, service_key) which are saved locally.
