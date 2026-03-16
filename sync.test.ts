@@ -188,6 +188,7 @@ const SURFACE: Capability[] = [
   // ── Billing ──────────────────────────────────────────────────────────────
   { id: "check_balance",     endpoint: "GET /billing/v1/accounts/:wallet",           mcp: "check_balance",  cli: "allowance:balance", openclaw: "allowance:balance" },
   { id: "list_projects",     endpoint: "GET /wallets/v1/:wallet/projects",           mcp: "list_projects",  cli: "projects:list",  openclaw: "projects:list" },
+  { id: "project_info",      endpoint: "(local)",                                    mcp: null,             cli: "projects:info",  openclaw: "projects:info" },
 
   // ── Image generation ─────────────────────────────────────────────────────
   { id: "generate_image",    endpoint: "POST /generate-image/v1",           mcp: "generate_image",   cli: "image:generate",   openclaw: "image:generate" },

@@ -9,6 +9,7 @@ Subcommands:
   quote                                   Show pricing tiers
   provision [--tier <tier>] [--name <n>]  Provision a new Postgres project (pays via x402)
   list                                    List all your projects (IDs, tiers, URLs, expiry)
+  info  <id>                              Show project details: REST URL, keys, expiry
   sql   <id> "<query>"                    Run a SQL query against a project's Postgres DB
   rest  <id> <table> [params]             Query a table via the REST API (PostgREST)
   usage <id>                              Show compute/storage usage for a project
@@ -21,6 +22,7 @@ Examples:
   run402 projects provision --tier prototype
   run402 projects provision --tier hobby --name my-app
   run402 projects list
+  run402 projects info abc123
   run402 projects sql abc123 "SELECT * FROM users LIMIT 5"
   run402 projects rest abc123 users "limit=10&select=id,name"
   run402 projects usage abc123
@@ -89,6 +91,22 @@ async function list() {
   console.log(JSON.stringify(entries.map(([id, p]) => ({ project_id: id, tier: p.tier, site_url: p.site_url, lease_expires_at: p.lease_expires_at, deployed_at: p.deployed_at })), null, 2));
 }
 
+async function info(projectId) {
+  const p = findProject(projectId);
+  const active = p.lease_expires_at ? new Date(p.lease_expires_at) > new Date() : null;
+  console.log(JSON.stringify({
+    project_id: projectId,
+    tier: p.tier,
+    active,
+    lease_expires_at: p.lease_expires_at,
+    rest_url: `${API}/rest/v1`,
+    anon_key: p.anon_key,
+    service_key: p.service_key,
+    site_url: p.site_url || null,
+    deployed_at: p.deployed_at || null,
+  }, null, 2));
+}
+
 async function sqlCmd(projectId, query) {
   const p = findProject(projectId);
   const res = await fetch(`${API}/projects/v1/admin/${projectId}/sql`, { method: "POST", headers: { "Authorization": `Bearer ${p.service_key}`, "Content-Type": "text/plain" }, body: query });
@@ -138,6 +156,7 @@ export async function run(sub, args) {
     case "quote":     await quote(); break;
     case "provision": await provision(args); break;
     case "list":      await list(); break;
+    case "info":      await info(args[0]); break;
     case "sql":       await sqlCmd(args[0], args[1]); break;
     case "rest":      await rest(args[0], args[1], args[2]); break;
     case "usage":     await usage(args[0]); break;
