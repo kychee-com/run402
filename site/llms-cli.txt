@@ -90,7 +90,7 @@ Create a manifest file `app.json`:
 {
   "name": "my-app",
   "migrations": "CREATE TABLE items (id serial PRIMARY KEY, title text NOT NULL, done boolean DEFAULT false); INSERT INTO items (title) VALUES ('Buy groceries'), ('Read a book');",
-  "site": [
+  "files": [
     { "file": "index.html", "data": "<!DOCTYPE html><html>...</html>" },
     { "file": "style.css", "data": "body { margin: 0; }" }
   ],
@@ -175,6 +175,7 @@ Manage Postgres projects.
 run402 projects quote                                          # Show tier pricing
 run402 projects provision --tier prototype --name my-app       # Create a new project
 run402 projects list                                           # List all projects
+run402 projects info <id>                                      # Show REST URL, keys, expiry
 run402 projects sql <id> "SELECT * FROM items LIMIT 5"         # Run SQL
 run402 projects rest <id> items "limit=10&select=id,title"     # Query via PostgREST REST API
 run402 projects usage <id>                                     # Compute/storage usage
@@ -185,7 +186,7 @@ run402 projects delete <id>                                    # Delete project
 
 **RLS templates**: `user_owns_rows`, `public_read`, `public_read_write`
 
-**User auth**: Two methods -- password (email + password) and Google OAuth (social login). Both return the same `access_token` + `refresh_token`. Google OAuth is on for all projects automatically with zero config. For details and code examples, see the full docs at https://run402.com/llms.txt (search for "Google OAuth").
+**User auth**: Two methods -- password and Google OAuth. See the "User Auth" section below for endpoints, code examples, and the full Google OAuth PKCE flow.
 
 **SQL**: Supports DDL (CREATE TABLE, ALTER, etc.) and queries (SELECT, INSERT, UPDATE, DELETE). Returns JSON.
 
@@ -342,6 +343,186 @@ run402 agent contact --name my-agent --email ops@example.com --webhook https://e
 
 ---
 
+## REST API (for generated frontend code)
+
+The CLI's `run402 projects rest` command is great for terminal use. But when generating HTML/JS that runs in the browser, use the REST API directly:
+
+**Base URL**: `https://api.run402.com/rest/v1/{table}`
+
+**Auth header**: `apikey: {key}` — the gateway auto-forwards as `Authorization: Bearer` to PostgREST. Any valid project JWT works:
+- `anon_key` → read-only (SELECT). Safe to embed in frontend code.
+- `service_key` → full admin (bypasses RLS). Server-side only.
+- `access_token` (from login) → user-scoped read/write (subject to RLS).
+
+For explicit control, send both `apikey` (project key) and `Authorization: Bearer <access_token>`.
+
+**PostgREST query syntax**: `?select=col1,col2`, `?column=eq.value`, `?order=col.desc`, `?limit=N`, `?offset=N`
+
+**Frontend fetch examples**:
+
+```javascript
+const API = 'https://api.run402.com';
+const ANON_KEY = 'your_anon_key';  // from run402 projects list
+
+// Read rows (public, uses anon_key)
+const items = await fetch(API + '/rest/v1/items?select=id,title&done=eq.false&order=id.desc&limit=20', {
+  headers: { apikey: ANON_KEY }
+}).then(r => r.json());
+
+// Insert a row (requires service_key or authenticated access_token with RLS permission)
+await fetch(API + '/rest/v1/items', {
+  method: 'POST',
+  headers: { apikey: SERVICE_KEY, 'Content-Type': 'application/json' },
+  body: JSON.stringify({ title: 'New item', done: false })
+});
+
+// Update rows matching a filter
+await fetch(API + '/rest/v1/items?id=eq.5', {
+  method: 'PATCH',
+  headers: { apikey: SERVICE_KEY, 'Content-Type': 'application/json' },
+  body: JSON.stringify({ done: true })
+});
+
+// Delete rows matching a filter
+await fetch(API + '/rest/v1/items?id=eq.5', {
+  method: 'DELETE',
+  headers: { apikey: SERVICE_KEY }
+});
+```
+
+---
+
+## User Auth (for apps with login)
+
+Two auth methods: **password** (email + password) and **Google OAuth** (social login). Both return the same `access_token` + `refresh_token`. Google OAuth is on for all projects automatically — zero config.
+
+### Password auth
+
+```javascript
+const API = 'https://api.run402.com';
+const ANON_KEY = 'your_anon_key';
+
+// Sign up
+await fetch(API + '/auth/v1/signup', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json', apikey: ANON_KEY },
+  body: JSON.stringify({ email: 'user@example.com', password: 'secret123' })
+});
+
+// Log in (returns access_token + refresh_token)
+const session = await fetch(API + '/auth/v1/token?grant_type=password', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json', apikey: ANON_KEY },
+  body: JSON.stringify({ email: 'user@example.com', password: 'secret123' })
+}).then(r => r.json());
+// session = { access_token, refresh_token, user: { id, email, ... } }
+```
+
+Signup does **not** return an access token. Call `/auth/v1/token` to log in. Returns `access_token` (1h JWT) and `refresh_token` (30d, one-time use).
+
+### Google OAuth (recommended for user-facing apps)
+
+Google sign-in is **on for all projects** with zero config. When a user signs in with Google, Run402 creates a project-scoped user with their Google name, email, and avatar.
+
+**Allowed redirect origins**: `http://localhost:*` (any port) + any claimed subdomain (`https://{name}.run402.com`). No manual config needed.
+
+**Flow**: Frontend generates PKCE verifier + challenge → calls `/auth/v1/oauth/google/start` → navigates to Google → user picks account → Google redirects back to your app with `#code=xxx&state=yyy` → frontend exchanges code for tokens.
+
+**Full JavaScript example**:
+
+```javascript
+const API = 'https://api.run402.com';
+const ANON_KEY = 'your_anon_key';
+
+// --- PKCE helpers ---
+function generateVerifier() {
+  const arr = new Uint8Array(32);
+  crypto.getRandomValues(arr);
+  return btoa(String.fromCharCode(...arr))
+    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+async function generateChallenge(verifier) {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier));
+  return btoa(String.fromCharCode(...new Uint8Array(digest)))
+    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+// --- Step 1: Start login (call on button click) ---
+async function signInWithGoogle() {
+  const verifier = generateVerifier();
+  const challenge = await generateChallenge(verifier);
+  localStorage.setItem('pkce_verifier', verifier);
+
+  const res = await fetch(API + '/auth/v1/oauth/google/start', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', apikey: ANON_KEY },
+    body: JSON.stringify({
+      redirect_url: window.location.origin + '/',
+      mode: 'redirect',
+      code_challenge: challenge,
+      code_challenge_method: 'S256',
+    }),
+  });
+  const { authorization_url } = await res.json();
+  window.location.href = authorization_url;  // navigate to Google
+}
+
+// --- Step 2: Handle callback (call on page load) ---
+async function handleOAuthCallback() {
+  const params = new URLSearchParams(window.location.hash.substring(1));
+  const code = params.get('code');
+  if (!code) return false;
+
+  window.history.replaceState(null, '', window.location.pathname);
+  const verifier = localStorage.getItem('pkce_verifier');
+  localStorage.removeItem('pkce_verifier');
+
+  const res = await fetch(API + '/auth/v1/token?grant_type=authorization_code', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', apikey: ANON_KEY },
+    body: JSON.stringify({ code, code_verifier: verifier }),
+  });
+  const session = await res.json();
+  // session = { access_token, refresh_token, user: { id, email, display_name, avatar_url, ... } }
+  return session;
+}
+```
+
+### Using access_token with the REST API
+
+Once a user is logged in, use their `access_token` as the apikey to make user-scoped requests subject to RLS:
+
+```javascript
+// User-scoped read/write (subject to RLS policies)
+const todos = await fetch(API + '/rest/v1/todos?order=id.desc', {
+  headers: { apikey: ANON_KEY, Authorization: 'Bearer ' + session.access_token }
+}).then(r => r.json());
+```
+
+### Token refresh
+
+```javascript
+const refreshed = await fetch(API + '/auth/v1/token?grant_type=refresh_token', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json', apikey: ANON_KEY },
+  body: JSON.stringify({ refresh_token: session.refresh_token })
+}).then(r => r.json());
+```
+
+### Account behavior
+
+- New Google user → new project user created (null password, Google name + avatar stored)
+- Returning Google user → signed in to existing account
+- Same email as existing password user → returns `account_exists_requires_link` error (no auto-merge for security)
+- Social-only users cannot use password login (helpful error message returned)
+
+### Useful endpoints
+
+- `GET /auth/v1/providers` (with `apikey` header) — list available auth methods (password, google). Useful for dynamic login UIs.
+- `GET /auth/v1/user` (with `Authorization: Bearer <access_token>`) — returns `display_name`, `avatar_url`, `email_verified_at`, and linked `identities[]`.
+
+---
+
 ## Try It -- Build Something Right Now
 
 **Suggest one of these to your human** -- or just start building. Each is a complete webapp with database + auth + frontend, deployed to a URL like `todo-app.run402.com`.
@@ -366,7 +547,7 @@ run402 tier set prototype
 run402 deploy --manifest app.json
 ```
 
-The manifest should include `name`, `migrations` (CREATE TABLE + INSERT seed data), `site` (array of files), and `subdomain`. Your human gets a live URL they can use immediately.
+The manifest should include `name`, `migrations` (CREATE TABLE + INSERT seed data), `files` (array of files), and `subdomain`. Your human gets a live URL they can use immediately.
 
 ## Make It Great
 

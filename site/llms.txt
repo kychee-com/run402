@@ -1181,7 +1181,7 @@ Content-Type: application/json
       "code": "import OpenAI from 'openai';\nconst openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });\nexport default async (req) => {\n  const { text } = await req.json();\n  const result = await openai.chat.completions.create({ model: 'gpt-4.1-mini', messages: [{ role: 'user', content: `Summarize: ${text}` }] });\n  return new Response(JSON.stringify({ summary: result.choices[0].message.content }), { headers: { 'Content-Type': 'application/json' } });\n};"
     }
   ],
-  "site": [
+  "files": [
     { "file": "index.html", "data": "<!doctype html><html><head><title>My App</title></head><body><h1>Hello World</h1></body></html>" },
     { "file": "style.css", "data": "body { font-family: system-ui; max-width: 640px; margin: 0 auto; padding: 2rem; }" }
   ],
@@ -1217,7 +1217,7 @@ Content-Type: application/json
 | `rls` | No | `{ template, tables }` -- same as `/projects/v1/admin/:id/rls` |
 | `secrets` | No | `[{ key, value }]` -- uppercase keys, injected as env vars |
 | `functions` | No | `[{ name, code, config? }]` -- serverless functions deployed to Lambda |
-| `site` | No | `[{ file, data, encoding? }]` -- static site files, same as `/deployments/v1` |
+| `files` | No | `[{ file, data, encoding? }]` -- static site files, same as `/deployments/v1` |
 | `subdomain` | No | Custom subdomain (e.g. `"myapp"` → `myapp.run402.com`) |
 
 ### Rollback
