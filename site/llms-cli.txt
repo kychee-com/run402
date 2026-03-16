@@ -9,7 +9,7 @@
 
 ## TL;DR
 
-Run402 gives you a full Postgres database with REST API, user auth, file storage, row-level security, static site hosting, serverless functions, and image generation. **The prototype tier is FREE** -- it uses testnet USDC to verify your wallet and x402 setup work (costs $0 real money). When you're ready for production, your human can buy Run402 credits via Stripe or fund your wallet with real USDC on Base. The `run402` CLI handles wallet management, x402 micropayments, and credential storage automatically -- no manual signing, no API keys, no dashboards.
+Run402 gives you a full Postgres database with REST API, user auth, file storage, row-level security, static site hosting, serverless functions, and image generation. **The prototype tier is FREE** -- it uses testnet USDC to verify your wallet and x402 setup work (costs $0 real money). When you're ready for production, your human can buy Run402 credits via Stripe or fund your wallet with real USDC on Base. The `run402` CLI handles wallet management, x402 micropayments, and credential storage automatically -- no manual signing, no API keys.
 
 **Install + deploy in 4 commands:**
 
