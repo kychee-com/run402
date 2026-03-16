@@ -539,12 +539,13 @@ function popupSuccessPage(redirectUrl: string, code: string, clientState?: strin
   return `<!DOCTYPE html>
 <html><head><title>Signing in...</title></head>
 <body>
-<p>Signing you in...</p>
+<p id="msg">Signing you in...</p>
 <script>
   if (window.opener) {
     window.opener.postMessage(${escapeJs(payload)}, ${escapeJs(JSON.stringify(origin))});
   }
-  window.close();
+  try { window.close(); } catch(e) {}
+  setTimeout(function() { document.getElementById("msg").textContent = "Signed in! You can close this window."; }, 300);
 </script>
 </body></html>`;
 }
@@ -559,12 +560,13 @@ function popupErrorPage(redirectUrl: string, errorCode: string, clientState?: st
   return `<!DOCTYPE html>
 <html><head><title>Sign in error</title></head>
 <body>
-<p>Sign in failed: ${escapeHtml(errorCode)}</p>
+<p id="msg">Sign in failed: ${escapeHtml(errorCode)}</p>
 <script>
   if (window.opener) {
     window.opener.postMessage(${escapeJs(payload)}, ${escapeJs(JSON.stringify(origin))});
   }
-  window.close();
+  try { window.close(); } catch(e) {}
+  setTimeout(function() { document.getElementById("msg").textContent = "You can close this window."; }, 300);
 </script>
 </body></html>`;
 }

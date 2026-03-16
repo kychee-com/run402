@@ -538,11 +538,11 @@ async function startGoogleLogin() {
   window.addEventListener('message', async function handler(e) {
     if (e.data?.type === 'run402:oauth:callback') {
       window.removeEventListener('message', handler);
-      if (popup) popup.close();
+      try { if (popup) popup.close(); } catch(e) {}
       await exchangeCode(e.data.code);
     } else if (e.data?.type === 'run402:oauth:error') {
       window.removeEventListener('message', handler);
-      if (popup) popup.close();
+      try { if (popup) popup.close(); } catch(e) {}
       showToast(e.data.error || 'Login failed');
     }
   });
