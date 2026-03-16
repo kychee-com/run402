@@ -429,7 +429,7 @@
       <h2>Deploy a full webapp in 2 calls</h2>
       <div class="terminal">
         <pre><span class="comment"># 1) Provision a backend (database + REST + auth + storage)</span>
-<span class="cmd">POST</span> /v1/projects  <span class="string">[x402: $0.10]</span>
+<span class="cmd">POST</span> /v1/projects  <span class="string">[x402: testnet, free]</span>
 <span class="comment"># Returns: project_id, anon_key, service_key</span>
 
 <span class="comment"># 2) Create tables, set up auth, add data...</span>
@@ -448,7 +448,7 @@
 }
 <span class="comment"># Returns: https://my-todo-app.sites.run402.com — live now</span>
 
-<span class="comment"># Total cost: $0.15. Total time: seconds.</span></pre>
+<span class="comment"># Total cost: $0 real money (testnet). Total time: seconds.</span></pre>
       </div>
     </div>
 
@@ -464,13 +464,15 @@
         </div>
         <div class="card">
           <div class="label">Prototype DB</div>
-          <div class="value">$0.10</div>
+          <div class="value" style="color:#00FF9F;">Free</div>
           <div class="detail">7 days &middot; 250 MB &middot; 500K API calls</div>
+          <div class="detail" style="margin-top:4px;">Testnet USDC &middot; $0 real money</div>
         </div>
         <div class="card">
           <div class="label">Full webapp</div>
-          <div class="value">$0.15</div>
+          <div class="value" style="color:#00FF9F;">Free</div>
           <div class="detail">Database + frontend &middot; everything included</div>
+          <div class="detail" style="margin-top:4px;">Testnet only &middot; $0 real money</div>
         </div>
       </div>
     </div>

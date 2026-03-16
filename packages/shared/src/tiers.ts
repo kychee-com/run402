@@ -11,7 +11,7 @@ export const TIERS: Record<TierName, TierConfig> = {
     functionTimeoutSec: 10,
     functionMemoryMb: 128,
     maxSecrets: 10,
-    description: "Prototype tier — 7-day lease, 250MB storage, 500k API calls",
+    description: "Prototype tier (FREE) — 7-day lease, 250MB storage, 500k API calls. Uses testnet USDC to verify wallet setup ($0 real money).",
   },
   hobby: {
     price: "$5.00",

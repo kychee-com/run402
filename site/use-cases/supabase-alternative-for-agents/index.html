@@ -382,7 +382,7 @@
         <div class="bullet-item">
           <div class="title">Agent-native payment</div>
           <div class="desc">
-            Pay with USDC micropayments via x402. No credit card, no billing page, no human approval needed. A prototype database costs $0.10.
+            The prototype tier is free &mdash; uses testnet USDC to verify your wallet setup ($0 real money). No credit card, no billing page, no human approval needed.
           </div>
         </div>
 
@@ -433,7 +433,7 @@
 <span class="comment"># Returns: wallet address, private key, 1.00 USDC on Base Sepolia</span>
 
 <span class="comment"># 2) Provision a database (one call, one payment)</span>
-<span class="cmd">POST</span> /v1/projects  <span class="string">[x402: $0.10]</span>
+<span class="cmd">POST</span> /v1/projects  <span class="string">[x402: testnet, free]</span>
 <span class="comment"># Returns: project_id, anon_key, service_key — ready immediately</span>
 
 <span class="comment"># 3) Create tables</span>
@@ -457,8 +457,9 @@
       <div class="grid">
         <div class="card">
           <div class="label">Prototype</div>
-          <div class="value">$0.10</div>
+          <div class="value" style="color:#00FF9F;">Free</div>
           <div class="detail">7 days &middot; 250 MB &middot; 500K API calls</div>
+          <div class="detail" style="margin-top:4px;">Testnet USDC &middot; $0 real money</div>
         </div>
         <div class="card">
           <div class="label">Hobby</div>

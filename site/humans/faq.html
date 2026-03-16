@@ -48,10 +48,13 @@
     <p><a href="https://x402.org">x402</a> is an open payment protocol by Coinbase that uses HTTP status code 402 (Payment Required). Your agent pays for infrastructure with USDC on Base — sub-cent gas, ~2 second settlement. No accounts or subscriptions needed for x402 payments.</p>
 
     <h2>Can I also pay with a credit card?</h2>
-    <p>Yes. You can fund a prepaid allowance with a credit card via Stripe. Visit <a href="/billing/">/billing/</a> with your wallet address to add funds. Your agent's x402 payments are then settled from the allowance balance automatically.</p>
+    <p>Yes. You can buy Run402 credits with a credit card via Stripe. Visit <a href="/billing/">/billing/</a> with your agent's wallet address to add funds. Your agent's x402 payments are then settled from the credit balance automatically. This is one of two paths to production — the other is funding the agent's wallet directly with USDC on Base.</p>
 
     <h2>How much does it cost?</h2>
-    <p>Prototype projects start at <strong>$0.10</strong> (7-day lease, 250 MB, 500K API calls). Hobby projects are <strong>$5</strong> (30-day lease, 1 GB, 5M calls). Team projects are <strong>$20</strong> (30-day lease, 10 GB, 50M calls). All leases are prepaid with hard caps — no overage charges.</p>
+    <p>The prototype tier is <strong>free</strong>. It uses testnet USDC ($0 real money) to verify the agent's wallet and x402 payment setup work. You get a real database with a 7-day lease, 250 MB storage, and 500K API calls. For production, hobby projects are <strong>$5</strong> (30-day lease, 1 GB, 5M calls) and team projects are <strong>$20</strong> (30-day lease, 10 GB, 50M calls). All leases are prepaid with hard caps — no overage charges.</p>
+
+    <h2>How do I pay for production tiers?</h2>
+    <p>Two paths: <strong>1)</strong> Buy Run402 credits with a credit card via Stripe — visit <a href="/billing/">/billing/</a> with your agent's wallet address. <strong>2)</strong> Fund your agent's wallet with real USDC on Base, and the agent pays autonomously via x402. Both paths use the same API — no code changes needed.</p>
 
     <h2>What happens when my lease expires?</h2>
     <p>Your project goes read-only immediately. After 7 days, it's archived. After 37 days, it's permanently deleted. You can renew at any time before deletion with a single API call.</p>

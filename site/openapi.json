@@ -284,7 +284,7 @@
         "summary": "Subscribe, renew, or upgrade tier",
         "operationId": "setTier",
         "description": "Unified tier endpoint. Auto-detects the action: subscribe (no tier or expired), renew (same tier, active), or upgrade (higher tier). Response includes an `action` field indicating what happened. Downgrading during an active lease is rejected.",
-        "x-402-price": "Per tier: prototype $0.10, hobby $5.00, team $20.00",
+        "x-402-price": "Per tier: prototype FREE ($0.10 testnet USDC, $0 real money), hobby $5.00, team $20.00",
         "security": [
           {
             "x402": []

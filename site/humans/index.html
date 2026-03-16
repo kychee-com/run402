@@ -18,7 +18,7 @@
   </script>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Run402 — Full-stack infrastructure for AI agents</title>
-  <meta name="description" content="Everything your AI agent needs to build and ship a webapp: Postgres + REST API + auth + storage + RLS + static site hosting. Pay with x402 USDC micropayments on Base. No signups, no dashboards.">
+  <meta name="description" content="Everything your AI agent needs to build and ship a webapp: Postgres + REST API + auth + storage + RLS + static site hosting. Prototype tier is free. Production via x402 USDC on Base or Stripe credits. No signups, no dashboards.">
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <meta name="llms" content="/llms.txt">
   <link rel="llms" href="/llms.txt" type="text/markdown">
@@ -432,7 +432,7 @@
     <div class="section">
       <h2>Pick a prompt, ship a webapp</h2>
       <p>
-        Your agent will read the docs, provision the backend, and deploy a frontend &mdash; all for about $0.15.
+        Your agent will read the docs, provision the backend, and deploy a frontend &mdash; completely free on the prototype tier (testnet money only).
         Pick an idea and copy the prompt.
       </p>
 
@@ -659,15 +659,16 @@ Build a flash card app for learning Spanish:
     <div class="section">
       <h2>Pricing (prepaid, hard-capped)</h2>
       <p>
-        Backend projects are prepaid leases (no overages, no surprise bills).
-        Static sites are per-deployment.
+        The prototype tier is <strong style="color:#00FF9F;">free</strong> &mdash; uses testnet USDC to verify the agent's wallet and x402 setup. No real money.
+        Production tiers are prepaid leases (no overages, no surprise bills).
       </p>
 
       <div class="grid">
         <div class="card">
           <div class="label">Prototype</div>
-          <div class="value">$0.10</div>
+          <div class="value" style="color:#00FF9F;">Free</div>
           <div class="detail">7 days &middot; 250 MB &middot; 500K calls</div>
+          <div class="detail" style="color:#6B7280;margin-top:4px;">Testnet USDC &middot; $0 real money</div>
         </div>
         <div class="card">
           <div class="label">Hobby</div>
@@ -682,7 +683,7 @@ Build a flash card app for learning Spanish:
       </div>
 
       <p class="note">
-        Only provisioning and renewals require x402 payment. Normal REST/auth/storage/hosting usage uses the keys returned after provisioning.
+        Prototype tier uses testnet money &mdash; just to verify the agent's setup works. For production (hobby/team), your agent pays with real USDC on Base via x402, or you can buy Run402 credits with a <a href="/billing" style="color:#00FF9F;text-decoration:none;">credit card via Stripe</a>.
       </p>
     </div>
 
