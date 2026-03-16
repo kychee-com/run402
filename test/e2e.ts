@@ -27,7 +27,8 @@
  *   23. Bundle deploy — one-call full-stack app (wallet auth, migrations, RLS, site)
  *   24. Publish — publish workout tracker as forkable app version
  *   25. Fork — fork the published app with wallet auth
- *   26. Delete project — cleanup
+ *   26. OAuth providers + start — Google OAuth API contract + validation
+ *   27. Delete project — cleanup
  *
  * Usage:
  *   BASE_URL=http://localhost:4022 npm run test:e2e
@@ -848,8 +849,94 @@ async function main() {
   });
   assert(versionDeleteRes.ok, "Published version cleaned up");
 
-  // Step 26: Delete original project
-  console.log("\n26) Delete project...");
+  // Step 26: OAuth providers + start
+  console.log("\n26) OAuth providers + start...");
+
+  // GET /auth/v1/providers
+  const providersRes = await fetch(`${BASE_URL}/auth/v1/providers`, {
+    headers: { apikey: anon_key },
+  });
+  const providersBody = await providersRes.json();
+  assert(providersRes.ok, "Providers endpoint returns 200");
+  assert(providersBody.password?.enabled === true, "Password provider enabled");
+  assert(Array.isArray(providersBody.oauth), "OAuth providers is array");
+  const googleProvider = providersBody.oauth.find((p: { provider: string }) => p.provider === "google");
+  assert(googleProvider, "Google provider listed");
+  assert(typeof googleProvider.enabled === "boolean", "Google provider has enabled flag");
+  assert(providersRes.headers.get("cache-control") === "no-store", "Providers has Cache-Control: no-store");
+
+  // POST /auth/v1/oauth/google/start — valid localhost redirect
+  const oauthStartRes = await fetch(`${BASE_URL}/auth/v1/oauth/google/start`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", apikey: anon_key },
+    body: JSON.stringify({ redirect_url: "http://localhost:3000/callback", mode: "popup" }),
+  });
+  const oauthStartBody = await oauthStartRes.json();
+  if (googleProvider.enabled) {
+    assert(oauthStartRes.ok, "OAuth start with localhost redirect returns 200");
+    assert(typeof oauthStartBody.authorization_url === "string", "Returns authorization_url");
+    assert(oauthStartBody.authorization_url.includes("accounts.google.com"), "Authorization URL points to Google");
+    assert(oauthStartBody.authorization_url.includes("state="), "Authorization URL includes state");
+    assert(oauthStartBody.authorization_url.includes("nonce="), "Authorization URL includes nonce");
+    assert(oauthStartBody.provider === "google", "Returns provider=google");
+    assert(oauthStartBody.expires_in === 600, "Returns expires_in=600");
+    assert(oauthStartRes.headers.get("cache-control") === "no-store", "OAuth start has Cache-Control: no-store");
+  } else {
+    assert(oauthStartRes.status === 503, "OAuth start returns 503 when Google not configured");
+  }
+
+  // POST /auth/v1/oauth/google/start — evil.com redirect rejected
+  const oauthBadRedirectRes = await fetch(`${BASE_URL}/auth/v1/oauth/google/start`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", apikey: anon_key },
+    body: JSON.stringify({ redirect_url: "https://evil.com/steal", mode: "redirect" }),
+  });
+  assert(oauthBadRedirectRes.status === 400, "OAuth start rejects evil.com redirect (400)");
+  const oauthBadBody = await oauthBadRedirectRes.json();
+  assert(oauthBadBody.error.includes("not an allowed origin"), "Error message mentions allowed origin");
+
+  // POST /auth/v1/oauth/google/start — missing redirect_url
+  const oauthNoRedirectRes = await fetch(`${BASE_URL}/auth/v1/oauth/google/start`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", apikey: anon_key },
+    body: JSON.stringify({ mode: "popup" }),
+  });
+  assert(oauthNoRedirectRes.status === 400, "OAuth start rejects missing redirect_url (400)");
+
+  // POST /auth/v1/token?grant_type=authorization_code — invalid code
+  const oauthBadCodeRes = await fetch(`${BASE_URL}/auth/v1/token?grant_type=authorization_code`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", apikey: anon_key },
+    body: JSON.stringify({ code: "bogus-code-that-does-not-exist" }),
+  });
+  assert(oauthBadCodeRes.status === 401, "Token exchange rejects invalid code (401)");
+
+  // Password login for social-only user guard (try login with null password_hash)
+  // This is implicitly tested — we just verify the existing password user still works
+  const reLoginRes = await fetch(`${BASE_URL}/auth/v1/token`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", apikey: anon_key },
+    body: JSON.stringify({ email: "athlete@example.com", password: "strong-password-123" }),
+  });
+  assert(reLoginRes.ok, "Password login still works after OAuth changes");
+
+  // GET /auth/v1/user — verify new fields present
+  const reLoginBody = await reLoginRes.json();
+  const userRes2 = await fetch(`${BASE_URL}/auth/v1/user`, {
+    headers: { apikey: anon_key, Authorization: `Bearer ${reLoginBody.access_token}` },
+  });
+  const userBody2 = await userRes2.json();
+  assert(userRes2.ok, "GET /auth/v1/user returns 200");
+  assert("email_verified_at" in userBody2, "User response includes email_verified_at field");
+  assert("display_name" in userBody2, "User response includes display_name field");
+  assert("avatar_url" in userBody2, "User response includes avatar_url field");
+  assert("identities" in userBody2, "User response includes identities array");
+  assert(Array.isArray(userBody2.identities), "Identities is an array");
+  assert(userBody2.identities.length === 0, "Password user has no linked identities");
+  assert(userRes2.headers.get("cache-control") === "no-store", "User endpoint has Cache-Control: no-store");
+
+  // Step 27: Delete original project
+  console.log("\n27) Delete project...");
   const deleteRes = await fetch(`${BASE_URL}/projects/v1/${project_id}`, {
     method: "DELETE",
     headers: { Authorization: `Bearer ${service_key}` },
