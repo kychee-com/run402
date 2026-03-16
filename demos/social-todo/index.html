@@ -1,0 +1,795 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Social Todo</title>
+<link rel="icon" href="data:,">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+
+:root{
+  --bg:#0A0A0F;
+  --surface:#111118;
+  --surface2:#18181F;
+  --border:#1E1E2A;
+  --border-hover:#2A2A3A;
+  --text:#E0E0E0;
+  --text-dim:#6B7280;
+  --text-muted:#3A3A4A;
+  --green:#00FF9F;
+  --green-dim:rgba(0,255,159,0.08);
+  --green-glow:rgba(0,255,159,0.15);
+  --red:#FF6B6B;
+  --mono:'DM Mono',monospace;
+  --sans:'DM Sans',system-ui,sans-serif;
+}
+
+html{font-size:16px}
+body{
+  background:var(--bg);
+  color:var(--text);
+  font-family:var(--sans);
+  min-height:100vh;
+  overflow-x:hidden;
+  -webkit-font-smoothing:antialiased;
+}
+
+/* Subtle grid background */
+body::before{
+  content:'';
+  position:fixed;
+  inset:0;
+  background-image:
+    linear-gradient(var(--border) 1px, transparent 1px),
+    linear-gradient(90deg, var(--border) 1px, transparent 1px);
+  background-size:80px 80px;
+  opacity:0.25;
+  pointer-events:none;
+  z-index:0;
+}
+
+/* Top glow */
+body::after{
+  content:'';
+  position:fixed;
+  top:-200px;left:50%;
+  transform:translateX(-50%);
+  width:600px;height:400px;
+  background:radial-gradient(circle,rgba(0,255,159,0.06) 0%,transparent 70%);
+  pointer-events:none;
+  z-index:0;
+}
+
+.app{
+  position:relative;z-index:1;
+  max-width:580px;
+  margin:0 auto;
+  padding:60px 20px 40px;
+  min-height:100vh;
+  display:flex;
+  flex-direction:column;
+}
+
+/* ── Header ── */
+.header{
+  text-align:center;
+  margin-bottom:48px;
+}
+
+.logo{
+  font-family:var(--mono);
+  font-size:11px;
+  letter-spacing:2px;
+  text-transform:uppercase;
+  color:var(--green);
+  margin-bottom:12px;
+  opacity:0;
+  animation:fadeDown .6s ease forwards;
+}
+
+h1{
+  font-family:var(--sans);
+  font-size:clamp(32px,6vw,44px);
+  font-weight:700;
+  color:#fff;
+  letter-spacing:-1px;
+  line-height:1.1;
+  opacity:0;
+  animation:fadeDown .6s ease .1s forwards;
+}
+
+h1 .accent{color:var(--green)}
+
+.tagline{
+  font-size:14px;
+  color:var(--text-dim);
+  margin-top:8px;
+  opacity:0;
+  animation:fadeDown .6s ease .2s forwards;
+}
+
+/* ── Signed-in user bar ── */
+.user-bar{
+  display:flex;
+  align-items:center;
+  gap:12px;
+  padding:12px 16px;
+  background:var(--surface);
+  border:1px solid var(--border);
+  border-radius:12px;
+  margin-bottom:24px;
+  animation:fadeIn .4s ease;
+}
+
+.user-avatar{
+  width:36px;height:36px;
+  border-radius:50%;
+  border:2px solid var(--green);
+  object-fit:cover;
+  flex-shrink:0;
+}
+
+.user-avatar-placeholder{
+  width:36px;height:36px;
+  border-radius:50%;
+  background:var(--green-dim);
+  border:2px solid var(--green);
+  display:flex;align-items:center;justify-content:center;
+  font-family:var(--mono);
+  font-size:14px;
+  color:var(--green);
+  flex-shrink:0;
+}
+
+.user-info{flex:1;min-width:0}
+.user-name{font-weight:600;font-size:14px;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.user-email{font-size:12px;color:var(--text-dim);font-family:var(--mono);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+.sign-out-btn{
+  font-family:var(--mono);
+  font-size:11px;
+  color:var(--text-dim);
+  background:none;border:1px solid var(--border);
+  padding:6px 12px;
+  border-radius:6px;
+  cursor:pointer;
+  transition:all .2s;
+  white-space:nowrap;
+}
+.sign-out-btn:hover{color:var(--red);border-color:rgba(255,107,107,0.3)}
+
+/* ── Google Sign-In ── */
+.login-section{
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  gap:20px;
+  padding:60px 20px;
+  opacity:0;
+  animation:fadeIn .5s ease .3s forwards;
+}
+
+.google-btn{
+  display:inline-flex;
+  align-items:center;
+  gap:12px;
+  background:#fff;
+  color:#1f1f1f;
+  border:none;
+  border-radius:8px;
+  padding:12px 24px 12px 12px;
+  font-family:var(--sans);
+  font-size:15px;
+  font-weight:500;
+  cursor:pointer;
+  transition:all .2s;
+  box-shadow:0 1px 3px rgba(0,0,0,0.3),0 4px 12px rgba(0,0,0,0.2);
+}
+.google-btn:hover{
+  box-shadow:0 2px 6px rgba(0,0,0,0.4),0 8px 24px rgba(0,0,0,0.3);
+  transform:translateY(-1px);
+}
+.google-btn:active{transform:translateY(0)}
+
+.google-btn svg{width:20px;height:20px;flex-shrink:0}
+
+.login-hint{
+  font-size:13px;
+  color:var(--text-muted);
+  text-align:center;
+  line-height:1.5;
+}
+
+/* ── Todo input ── */
+.todo-input-wrap{
+  display:flex;
+  gap:8px;
+  margin-bottom:24px;
+  animation:fadeIn .4s ease;
+}
+
+.todo-input{
+  flex:1;
+  background:var(--surface);
+  border:1px solid var(--border);
+  border-radius:10px;
+  padding:12px 16px;
+  font-family:var(--sans);
+  font-size:15px;
+  color:var(--text);
+  outline:none;
+  transition:border-color .2s;
+}
+.todo-input::placeholder{color:var(--text-muted)}
+.todo-input:focus{border-color:var(--green)}
+
+.todo-add-btn{
+  background:var(--green);
+  color:var(--bg);
+  border:none;
+  border-radius:10px;
+  padding:12px 20px;
+  font-family:var(--mono);
+  font-size:13px;
+  font-weight:500;
+  cursor:pointer;
+  transition:all .2s;
+  white-space:nowrap;
+}
+.todo-add-btn:hover{filter:brightness(1.1);transform:translateY(-1px)}
+.todo-add-btn:active{transform:translateY(0)}
+.todo-add-btn:disabled{opacity:0.4;cursor:not-allowed;transform:none}
+
+/* ── Todo list ── */
+.todo-list{
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+  flex:1;
+}
+
+.todo-empty{
+  text-align:center;
+  padding:48px 20px;
+  color:var(--text-muted);
+  font-size:14px;
+  line-height:1.6;
+  animation:fadeIn .4s ease;
+}
+
+.todo-item{
+  display:flex;
+  align-items:flex-start;
+  gap:12px;
+  padding:14px 16px;
+  background:var(--surface);
+  border:1px solid var(--border);
+  border-radius:10px;
+  transition:all .3s ease;
+  animation:slideIn .35s cubic-bezier(0.22,1,0.36,1);
+}
+.todo-item:hover{border-color:var(--border-hover)}
+.todo-item.done{opacity:0.5}
+.todo-item.removing{
+  animation:slideOut .3s ease forwards;
+}
+
+.todo-check{
+  width:20px;height:20px;
+  border:2px solid var(--border);
+  border-radius:6px;
+  flex-shrink:0;
+  cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+  transition:all .2s;
+  margin-top:2px;
+  background:transparent;
+  padding:0;
+}
+.todo-check:hover{border-color:var(--green)}
+.todo-check.checked{
+  background:var(--green);
+  border-color:var(--green);
+}
+.todo-check.checked svg{opacity:1}
+.todo-check svg{width:12px;height:12px;opacity:0;transition:opacity .2s}
+.todo-check.readonly{cursor:default;opacity:0.6}
+.todo-check.readonly:hover{border-color:var(--border)}
+
+.todo-content{flex:1;min-width:0}
+.todo-text{
+  font-size:15px;
+  color:var(--text);
+  line-height:1.4;
+  word-break:break-word;
+}
+.todo-item.done .todo-text{text-decoration:line-through;color:var(--text-dim)}
+
+.todo-meta{
+  display:flex;
+  align-items:center;
+  gap:6px;
+  margin-top:6px;
+  font-size:11px;
+  color:var(--text-muted);
+  font-family:var(--mono);
+}
+
+.todo-meta-avatar{
+  width:16px;height:16px;
+  border-radius:50%;
+  object-fit:cover;
+}
+
+.todo-delete{
+  background:none;border:none;
+  color:var(--text-muted);
+  cursor:pointer;
+  padding:4px;
+  border-radius:4px;
+  transition:color .2s;
+  flex-shrink:0;
+  margin-top:2px;
+  display:flex;align-items:center;
+}
+.todo-delete:hover{color:var(--red)}
+
+/* ── Counter ── */
+.todo-counter{
+  font-family:var(--mono);
+  font-size:11px;
+  color:var(--text-muted);
+  text-align:center;
+  margin-top:16px;
+  letter-spacing:0.5px;
+}
+
+/* ── Footer ── */
+.footer{
+  text-align:center;
+  padding:32px 0 0;
+  margin-top:auto;
+}
+.footer a{
+  font-family:var(--mono);
+  font-size:11px;
+  color:var(--text-muted);
+  text-decoration:none;
+  letter-spacing:0.5px;
+  transition:color .2s;
+}
+.footer a:hover{color:var(--green)}
+
+/* ── Loading ── */
+.loading{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:8px;
+  padding:32px;
+  color:var(--text-dim);
+  font-size:13px;
+}
+.spinner{
+  width:16px;height:16px;
+  border:2px solid var(--border);
+  border-top-color:var(--green);
+  border-radius:50%;
+  animation:spin .6s linear infinite;
+}
+
+/* ── Animations ── */
+@keyframes fadeDown{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:translateY(0)}}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+@keyframes slideIn{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+@keyframes slideOut{to{opacity:0;transform:translateX(-20px);height:0;padding:0;margin:0;border:0;overflow:hidden}}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ── Error toast ── */
+.toast{
+  position:fixed;
+  bottom:24px;left:50%;
+  transform:translateX(-50%) translateY(80px);
+  background:var(--surface2);
+  border:1px solid rgba(255,107,107,0.3);
+  color:var(--red);
+  font-family:var(--mono);
+  font-size:12px;
+  padding:10px 20px;
+  border-radius:8px;
+  z-index:100;
+  transition:transform .3s ease;
+  pointer-events:none;
+  white-space:nowrap;
+}
+.toast.visible{transform:translateX(-50%) translateY(0)}
+
+@media(max-width:480px){
+  .app{padding:40px 16px 32px}
+  .user-bar{flex-wrap:wrap}
+  .user-info{order:-1;flex-basis:calc(100% - 52px)}
+  .sign-out-btn{margin-left:auto}
+}
+</style>
+</head>
+<body>
+
+<div class="app" id="app">
+  <header class="header">
+    <div class="logo">Social Todo</div>
+    <h1>What needs <span class="accent">doing</span>?</h1>
+    <p class="tagline">Sign in with Google. Share todos with everyone.</p>
+  </header>
+  <div id="content"></div>
+  <footer class="footer">
+    <a href="https://run402.com" target="_blank" rel="noopener">Built on Run402</a>
+  </footer>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const API = window.__API_BASE__ || '';
+const ANON_KEY = window.__ANON_KEY__ || '';
+
+// ── State ──
+let user = null;
+let todos = [];
+let accessToken = localStorage.getItem('st_access_token');
+let refreshToken = localStorage.getItem('st_refresh_token');
+const userProfiles = new Map(); // user_id → { display_name, avatar_url }
+
+const $content = document.getElementById('content');
+const $toast = document.getElementById('toast');
+
+// ── Toast ──
+let toastTimer;
+function showToast(msg) {
+  $toast.textContent = msg;
+  $toast.classList.add('visible');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => $toast.classList.remove('visible'), 3000);
+}
+
+// ── API helpers ──
+function headers(auth = false) {
+  const h = { 'Content-Type': 'application/json', apikey: ANON_KEY };
+  if (auth && accessToken) h['Authorization'] = `Bearer ${accessToken}`;
+  return h;
+}
+
+async function apiFetch(path, opts = {}) {
+  const res = await fetch(`${API}${path}`, opts);
+  if (res.status === 401 && refreshToken && path !== '/auth/v1/token') {
+    const refreshed = await tryRefresh();
+    if (refreshed) {
+      if (opts.headers) opts.headers['Authorization'] = `Bearer ${accessToken}`;
+      return fetch(`${API}${path}`, opts);
+    }
+    signOut();
+  }
+  return res;
+}
+
+async function tryRefresh() {
+  try {
+    const res = await fetch(`${API}/auth/v1/token?grant_type=refresh_token`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', apikey: ANON_KEY },
+      body: JSON.stringify({ refresh_token: refreshToken }),
+    });
+    if (!res.ok) return false;
+    const data = await res.json();
+    accessToken = data.access_token;
+    refreshToken = data.refresh_token;
+    localStorage.setItem('st_access_token', accessToken);
+    localStorage.setItem('st_refresh_token', refreshToken);
+    return true;
+  } catch { return false; }
+}
+
+// ── PKCE ──
+function generateVerifier() {
+  const arr = new Uint8Array(32);
+  crypto.getRandomValues(arr);
+  return btoa(String.fromCharCode(...arr)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+async function generateChallenge(verifier) {
+  const encoded = new TextEncoder().encode(verifier);
+  const digest = await crypto.subtle.digest('SHA-256', encoded);
+  return btoa(String.fromCharCode(...new Uint8Array(digest))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+// ── Google OAuth ──
+async function startGoogleLogin() {
+  const verifier = generateVerifier();
+  const challenge = await generateChallenge(verifier);
+  sessionStorage.setItem('st_pkce_verifier', verifier);
+
+  const res = await fetch(`${API}/auth/v1/oauth/google/start`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', apikey: ANON_KEY },
+    body: JSON.stringify({
+      redirect_url: window.location.origin + '/',
+      mode: 'popup',
+      code_challenge: challenge,
+      code_challenge_method: 'S256',
+    }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    showToast(err.error || 'Failed to start login');
+    return;
+  }
+
+  const { authorization_url } = await res.json();
+
+  const w = 500, h = 600;
+  const left = screen.width / 2 - w / 2;
+  const top = screen.height / 2 - h / 2;
+  const popup = window.open(authorization_url, 'google-login', `width=${w},height=${h},left=${left},top=${top}`);
+
+  window.addEventListener('message', async function handler(e) {
+    if (e.data?.type === 'run402:oauth:callback') {
+      window.removeEventListener('message', handler);
+      if (popup) popup.close();
+      await exchangeCode(e.data.code);
+    } else if (e.data?.type === 'run402:oauth:error') {
+      window.removeEventListener('message', handler);
+      if (popup) popup.close();
+      showToast(e.data.error || 'Login failed');
+    }
+  });
+}
+
+async function exchangeCode(code) {
+  const verifier = sessionStorage.getItem('st_pkce_verifier');
+  sessionStorage.removeItem('st_pkce_verifier');
+
+  const res = await fetch(`${API}/auth/v1/token?grant_type=authorization_code`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', apikey: ANON_KEY },
+    body: JSON.stringify({ code, code_verifier: verifier }),
+  });
+
+  if (!res.ok) {
+    showToast('Failed to complete login');
+    return;
+  }
+
+  const data = await res.json();
+  accessToken = data.access_token;
+  refreshToken = data.refresh_token;
+  localStorage.setItem('st_access_token', accessToken);
+  localStorage.setItem('st_refresh_token', refreshToken);
+
+  await loadUser();
+  await loadTodos();
+  render();
+}
+
+// ── User ──
+async function loadUser() {
+  if (!accessToken) return;
+  const res = await apiFetch('/auth/v1/user', { headers: headers(true) });
+  if (res.ok) {
+    user = await res.json();
+    userProfiles.set(user.id, { display_name: user.display_name, avatar_url: user.avatar_url });
+  } else {
+    user = null;
+    accessToken = null;
+    refreshToken = null;
+    localStorage.removeItem('st_access_token');
+    localStorage.removeItem('st_refresh_token');
+  }
+}
+
+function signOut() {
+  if (refreshToken) {
+    fetch(`${API}/auth/v1/logout`, {
+      method: 'POST',
+      headers: headers(true),
+      body: JSON.stringify({ refresh_token: refreshToken }),
+    }).catch(() => {});
+  }
+  user = null;
+  accessToken = null;
+  refreshToken = null;
+  localStorage.removeItem('st_access_token');
+  localStorage.removeItem('st_refresh_token');
+  todos = [];
+  render();
+}
+
+// ── Todos ──
+async function loadTodos() {
+  if (!accessToken) return;
+  const res = await apiFetch('/rest/v1/todos?order=created_at.desc', {
+    headers: headers(true),
+  });
+  if (res.ok) todos = await res.json();
+}
+
+async function addTodo(text) {
+  const res = await apiFetch('/rest/v1/todos', {
+    method: 'POST',
+    headers: { ...headers(true), Prefer: 'return=representation' },
+    body: JSON.stringify({ user_id: user.id, text }),
+  });
+  if (res.ok) {
+    const [item] = await res.json();
+    todos.unshift(item);
+    render();
+  } else {
+    showToast('Failed to add todo');
+  }
+}
+
+async function toggleTodo(id, done) {
+  const res = await apiFetch(`/rest/v1/todos?id=eq.${id}`, {
+    method: 'PATCH',
+    headers: { ...headers(true), Prefer: 'return=representation' },
+    body: JSON.stringify({ done: !done }),
+  });
+  if (res.ok) {
+    const [updated] = await res.json();
+    const idx = todos.findIndex(t => t.id === id);
+    if (idx >= 0) todos[idx] = updated;
+    render();
+  }
+}
+
+async function deleteTodo(id) {
+  const el = document.querySelector(`[data-id="${id}"]`);
+  if (el) el.classList.add('removing');
+  await new Promise(r => setTimeout(r, 280));
+
+  const res = await apiFetch(`/rest/v1/todos?id=eq.${id}`, {
+    method: 'DELETE',
+    headers: headers(true),
+  });
+  if (res.ok) {
+    todos = todos.filter(t => t.id !== id);
+    render();
+  } else {
+    if (el) el.classList.remove('removing');
+    showToast('Failed to delete');
+  }
+}
+
+// ── Render ──
+function profileFor(userId) {
+  if (userProfiles.has(userId)) return userProfiles.get(userId);
+  return { display_name: null, avatar_url: null };
+}
+
+function avatarHtml(url, name, size = 16) {
+  if (url) return `<img src="${esc(url)}" alt="" class="todo-meta-avatar" width="${size}" height="${size}">`;
+  const letter = (name || '?')[0].toUpperCase();
+  return `<span class="todo-meta-avatar" style="display:inline-flex;align-items:center;justify-content:center;background:var(--green-dim);color:var(--green);font-size:${Math.round(size*0.6)}px;font-family:var(--mono);width:${size}px;height:${size}px;border-radius:50%">${esc(letter)}</span>`;
+}
+
+function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+function timeAgo(iso) {
+  const s = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
+  if (s < 60) return 'just now';
+  if (s < 3600) return Math.floor(s/60) + 'm ago';
+  if (s < 86400) return Math.floor(s/3600) + 'h ago';
+  return Math.floor(s/86400) + 'd ago';
+}
+
+function render() {
+  if (!user) {
+    $content.innerHTML = `
+      <div class="login-section">
+        <button class="google-btn" onclick="startGoogleLogin()">
+          <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4"/>
+            <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+            <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
+            <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+          </svg>
+          Sign in with Google
+        </button>
+        <p class="login-hint">Sign in to create and share todos.<br>Your Google name and photo appear on your todos.</p>
+      </div>`;
+    return;
+  }
+
+  const avatarEl = user.avatar_url
+    ? `<img src="${esc(user.avatar_url)}" alt="" class="user-avatar">`
+    : `<div class="user-avatar-placeholder">${esc((user.display_name || user.email || '?')[0].toUpperCase())}</div>`;
+
+  const todoItems = todos.map(t => {
+    const p = profileFor(t.user_id);
+    const mine = t.user_id === user.id;
+    const name = p.display_name || (mine ? (user.display_name || 'You') : 'Someone');
+
+    return `
+      <div class="todo-item${t.done ? ' done' : ''}" data-id="${t.id}">
+        <button class="todo-check${t.done ? ' checked' : ''}${mine ? '' : ' readonly'}"
+                ${mine ? `onclick="toggleTodo('${t.id}',${t.done})"` : ''}>
+          <svg viewBox="0 0 12 12" fill="none" stroke="#0A0A0F" stroke-width="2" stroke-linecap="round">
+            <polyline points="2.5,6 5,8.5 9.5,3.5"/>
+          </svg>
+        </button>
+        <div class="todo-content">
+          <div class="todo-text">${esc(t.text)}</div>
+          <div class="todo-meta">
+            ${avatarHtml(p.avatar_url, name)}
+            <span>${esc(name)}</span>
+            <span>&middot;</span>
+            <span>${timeAgo(t.created_at)}</span>
+          </div>
+        </div>
+        ${mine ? `<button class="todo-delete" onclick="deleteTodo('${t.id}')" title="Delete">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>` : ''}
+      </div>`;
+  }).join('');
+
+  const doneCount = todos.filter(t => t.done).length;
+
+  $content.innerHTML = `
+    <div class="user-bar">
+      ${avatarEl}
+      <div class="user-info">
+        <div class="user-name">${esc(user.display_name || user.email)}</div>
+        <div class="user-email">${esc(user.email)}</div>
+      </div>
+      <button class="sign-out-btn" onclick="signOut()">Sign out</button>
+    </div>
+
+    <div class="todo-input-wrap">
+      <input class="todo-input" id="todoInput" type="text" placeholder="What needs doing?" maxlength="280"
+             onkeydown="if(event.key==='Enter')submitTodo()">
+      <button class="todo-add-btn" onclick="submitTodo()">Add</button>
+    </div>
+
+    <div class="todo-list">
+      ${todos.length === 0 ? '<div class="todo-empty">No todos yet.<br>Add one above — everyone signed in can see it.</div>' : todoItems}
+    </div>
+
+    ${todos.length > 0 ? `<div class="todo-counter">${doneCount}/${todos.length} done</div>` : ''}
+  `;
+
+  document.getElementById('todoInput')?.focus();
+}
+
+function submitTodo() {
+  const input = document.getElementById('todoInput');
+  if (!input) return;
+  const text = input.value.trim();
+  if (!text) return;
+  input.value = '';
+  addTodo(text);
+}
+
+// ── Init ──
+async function init() {
+  if (accessToken) {
+    $content.innerHTML = '<div class="loading"><div class="spinner"></div>Loading...</div>';
+    await loadUser();
+    if (user) await loadTodos();
+  }
+  render();
+
+  // Poll for new todos every 10s
+  setInterval(async () => {
+    if (!user) return;
+    await loadTodos();
+    render();
+  }, 10000);
+}
+
+init();
+</script>
+</body>
+</html>

@@ -27,6 +27,9 @@ const GOOGLE_CALLBACK_URL = `${PUBLIC_API_URL}/auth/v1/oauth/google/callback`;
 // --- Google OAuth callback (NOT behind apikeyAuth — Google won't send apikey) ---
 
 router.get("/auth/v1/oauth/google/callback", asyncHandler(async (req: Request, res: Response) => {
+  // Allow the popup to access window.opener and call window.close()
+  res.set("Cross-Origin-Opener-Policy", "unsafe-none");
+
   const { code, state, error } = req.query as Record<string, string | undefined>;
 
   // Helper to redirect with error
