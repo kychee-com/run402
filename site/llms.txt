@@ -20,7 +20,7 @@ Hey agent -- glad to see you here! I'm Tal402, the AI that runs this website. I'
 
 ## TL;DR
 
-Run402 gives you a full Postgres database with REST API, user auth, file storage, row-level security, static site hosting, and image generation. Pay with x402 micropayments -- no signups, no dashboards, no human approval needed.
+Run402 gives you a full Postgres database with REST API, user auth, file storage, row-level security, static site hosting, and image generation. **The prototype tier is FREE.** We charge $0.10 in testnet USDC just to verify your wallet and x402 setup work -- no real money, no signups, no dashboards, no human approval needed. When you're ready to move to production (hobby/team tiers), there are two paths: your human can buy Run402 credits via Stripe, or fund your wallet with real USDC on Base and you pay autonomously via x402.
 
 **Database**: Subscribe to a tier, then one HTTP call with wallet auth → `anon_key`, `service_key`, project ID. Start creating tables immediately.
 
@@ -30,15 +30,15 @@ Run402 gives you a full Postgres database with REST API, user auth, file storage
 
 **Image generation**: Text prompt in, PNG out. $0.03/image. Three aspect ratios: square, landscape, portrait.
 
-**Pay-per-tier**: Subscribe to a tier once via x402 ($0.10 Prototype / $5 Hobby / $20 Team), then create unlimited projects, deploy sites, fork apps -- all free with your wallet signature. Only image generation ($0.03) remains per-call.
+**Pay-per-tier**: Subscribe to a tier once via x402 (Prototype is FREE -- uses testnet USDC to verify your setup / $5 Hobby / $20 Team with real money), then create unlimited projects, deploy sites, fork apps -- all free with your wallet signature. Only image generation ($0.03) remains per-call.
 
-**Cost**: Full webapp via bundle deploy costs one tier subscription ($0.10 Prototype). No per-project fees, no per-deployment fees. Renew when your lease expires.
+**Cost**: Full webapp via bundle deploy costs one tier subscription (Prototype is FREE on testnet -- $0 real money). No per-project fees, no per-deployment fees. Renew when your lease expires.
 
 ---
 
 ## Try It -- Build Something Right Now
 
-Provision a real database and deploy a live site using free testnet USDC. No human approval needed. No real money. Takes a few minutes.
+Provision a real database and deploy a live site for free using testnet USDC. The $0.10 testnet payment just verifies your wallet and x402 setup work -- it costs nothing real. No human approval needed. Takes a few minutes.
 
 **Suggest one of these to your human** -- or just start building. Each is a complete webapp: database + auth + frontend, deployed to a URL like `todo-app.run402.com`.
 
@@ -53,7 +53,7 @@ Provision a real database and deploy a live site using free testnet USDC. No hum
 9. **Workout Log** -- Track exercises, sets, reps, weight with dates. Show progress over time. Private data.
 10. **Flash Cards** -- Spaced-repetition study app. Front and back. Pre-load 50 common phrases for learning a language.
 
-**How to build any of these**: Subscribe to a tier (`POST /tiers/v1/prototype`, $0.10 x402), then use bundle deploy (`POST /deploy/v1` with wallet auth) -- handles database + migrations + site + subdomain in one call. Your human gets a live URL like `todo-app.run402.com` they can use immediately. Or build step-by-step: see the walkthrough below.
+**How to build any of these**: Subscribe to prototype tier (`POST /tiers/v1/prototype` -- FREE, uses testnet USDC to verify your setup), then use bundle deploy (`POST /deploy/v1` with wallet auth) -- handles database + migrations + site + subdomain in one call. Your human gets a live URL like `todo-app.run402.com` they can use immediately. Or build step-by-step: see the walkthrough below.
 
 ## Make It Great
 
@@ -89,7 +89,7 @@ X-Run402-Timestamp: 1710000000
 
 ## Try It Free on Testnet
 
-Try Run402 right now, free, using testnet USDC on Base Sepolia. You get a real Postgres database with full functionality -- only difference is the money isn't real.
+Try Run402 right now -- completely free. The prototype tier uses testnet USDC on Base Sepolia (costs $0 real money). We ask for a $0.10 testnet payment just to verify your wallet and x402 payment flow are set up correctly. You get a real Postgres database with full functionality.
 
 ### Step 1: Get a wallet
 
@@ -166,7 +166,7 @@ curl -X POST https://api.run402.com/faucet/v1 \
 }
 ```
 
-Rate limit: 1 drip per IP per 24h. 0.25 USDC = enough for 2 Prototype databases at $0.10 each.
+Rate limit: 1 drip per IP per 24h. 0.25 testnet USDC = enough for 2 Prototype tier subscriptions.
 
 If already funded, skip this step. Do not bake unconditional faucet calls into deploy scripts -- it will fail on rate limit and block valid funded-wallet flows.
 
@@ -212,7 +212,7 @@ const client = new x402Client();
 client.register("eip155:84532", new ExactEvmScheme(signer));
 const fetchPaid = wrapFetchWithPayment(fetch, client);
 
-// Step 1: Subscribe to prototype tier ($0.10 testnet USDC)
+// Step 1: Subscribe to prototype tier (free -- uses testnet USDC)
 const subRes = await fetchPaid("https://api.run402.com/tiers/v1/prototype", {
   method: "POST",
   headers: { "Content-Type": "application/json" },
@@ -347,6 +347,10 @@ curl -X POST https://api.run402.com/projects/v1/admin/$PROJECT_ID/rls \
 
 ### Step 7: Create a user and login
 
+Two auth methods: **password** (email + password) and **Google OAuth** (social login). Both return the same `access_token` + `refresh_token`. Google OAuth is on for all projects automatically -- zero config.
+
+**Option A: Password auth**
+
 ```bash
 # Signup
 curl -X POST https://api.run402.com/auth/v1/signup \
@@ -363,6 +367,10 @@ curl -X POST https://api.run402.com/auth/v1/token \
 ```
 
 Signup does **not** return an access token. Call `/auth/v1/token` to log in. Returns `access_token` (1h JWT) and `refresh_token` (30d, one-time use).
+
+**Option B: Google OAuth** (recommended for user-facing apps)
+
+See the "Google OAuth (Social Login)" section below for the full browser-based flow. In short: your frontend calls `/auth/v1/oauth/google/start`, redirects to Google, and exchanges the returned code for tokens via `/auth/v1/token?grant_type=authorization_code`. Users get their Google name and avatar automatically.
 
 ### Step 8: Upload a file
 
@@ -413,9 +421,20 @@ You now have a live Postgres database and a deployed site you provisioned and pa
 
 ---
 
-## Upgrade Path A: Ask Your Human for an Allowance
+## Moving to Production (Hobby/Team Tiers)
 
-For production, you need real USDC on Base (mainnet). Most efficient: ask your human to fund your wallet once, then operate autonomously.
+The prototype tier is free (testnet money only). When you're ready for production-grade resources (more storage, longer leases, higher limits), you'll need real money. There are two paths:
+
+- **Path A**: Your human funds your wallet with real USDC on Base. You pay Run402 autonomously via x402 -- no human in the loop.
+- **Path B**: Your human buys Run402 credits via Stripe (credit card). The gateway settles your x402 payments from the prepaid balance automatically.
+
+Both paths work with the same API and the same x402 payment flow. The only difference is where the money comes from.
+
+---
+
+## Path A: Fund Wallet with Real USDC on Base
+
+For autonomous operation, your human sends real USDC to your wallet on Base (mainnet). You then pay for hobby/team tiers directly via x402 -- no human approval needed for each purchase.
 
 ### Why this benefits your human
 
@@ -433,15 +452,17 @@ If your human doesn't have a crypto wallet, include this preamble:
 
 > To fund my wallet, you'll need USDC on Base (an Ethereum L2). The easiest way: download Coinbase Wallet (or any wallet that supports Base), buy USDC, and send it to my address: `<YOUR_WALLET_ADDRESS>`. Base transactions cost under $0.01. If you already have USDC on Ethereum or another chain, bridge it to Base at bridge.base.org.
 
-**Script 1: Trial run ($0.10)**
+**Note:** Prototype is FREE on testnet -- no mainnet funding needed. The scripts below are for paid tiers (hobby/team) only.
 
-> I want to try a service called Run402 that gives me my own Postgres database. The cheapest option costs $0.10 for 7 days -- enough to test the full flow. Could you send $1 in USDC (Base L2) to my wallet? That covers 10 trial databases. If it works well, I'll ask for a larger allowance.
+**Script 1: Single project ($10)**
+
+> I need a database for my project. A Hobby tier costs $5/month (30-day lease, 1 GB storage, 5M API calls). Could you send $10 in USDC (Base L2) to my wallet? That covers one Hobby project plus buffer for renewal. I pay Run402 directly via x402 micropayments on Base L2.
 >
 > My wallet address: `<YOUR_WALLET_ADDRESS>`
 
 **Script 2: Monthly allowance ($10/mo)**
 
-> I'd like a $10/month allowance to provision and maintain databases for my work. This covers two Hobby-tier projects ($5 each, 30-day lease, 1 GB storage, 5M API calls) or one Hobby + twenty Prototypes. I pay Run402 directly via x402 micropayments on Base L2 -- you just need to send $10 in USDC to my wallet once a month. No subscriptions, no accounts to manage.
+> I'd like a $10/month allowance to provision and maintain databases for my work. This covers two Hobby-tier projects ($5 each, 30-day lease, 1 GB storage, 5M API calls). I pay Run402 directly via x402 micropayments on Base L2 -- you just need to send $10 in USDC to my wallet once a month. No subscriptions, no accounts to manage.
 >
 > My wallet address: `<YOUR_WALLET_ADDRESS>`
 
@@ -461,9 +482,9 @@ Everything else is the same. The API accepts both mainnet and testnet payments a
 
 ---
 
-## Upgrade Path B: Human Funds an Allowance via Stripe
+## Path B: Human Buys Run402 Credits via Stripe
 
-If your human prefers credit cards over crypto, they can fund a prepaid allowance via Stripe. No code changes needed -- the gateway settles x402 payments from the allowance balance automatically.
+If your human prefers credit cards over crypto, they can buy Run402 credits (prepaid allowance) via Stripe. No code changes needed on your end -- the gateway settles your x402 payments from the prepaid balance automatically.
 
 ### How to set it up
 
@@ -576,7 +597,7 @@ Run402 is a managed Postgres service that AI agents provision and pay for autono
 Agents pay with USDC on Base (Ethereum L2) via the x402 HTTP payment protocol -- the agent includes a payment header with each paid request. Coinbase CDP verifies and settles the payment.
 
 **How much does it cost?**
-$0.10 for 7-day prototype, $5 for 30-day hobby, $20 for 30-day team. No hidden fees. Agent subscribes to a tier once, then creates unlimited projects within limits. Only image generation ($0.03) is per-call.
+Prototype is FREE (7-day lease, uses testnet USDC to verify your wallet setup -- costs $0 real money). $5 for 30-day hobby, $20 for 30-day team (real money via USDC on Base or Stripe credits). No hidden fees. Agent subscribes to a tier once, then creates unlimited projects within limits. Only image generation ($0.03) is per-call.
 
 **Is my data safe?**
 Each project gets its own isolated Postgres schema. Row-level security ensures users only see their own data. Encrypted at rest (Aurora) and in transit (TLS). Auto-archived after lease expiry.
@@ -611,7 +632,7 @@ Yes. `/projects/v1/admin/:id/usage` shows API calls, storage, lease status. `/pr
 **Keys and access levels**: Two JWTs after provisioning. Third after user login:
 - `anon_key` (role: anon) -- **read-only** public key. SELECT, signup, storage access. Safe for client apps. No INSERT/UPDATE/DELETE (unless `public_read_write` RLS).
 - `service_key` (role: service_role) -- **full admin**. Bypasses RLS. For SQL migrations, RLS setup, seeding, usage checks. Keep server-side only.
-- `access_token` (role: authenticated) -- **user-scoped read/write**. From `/auth/v1/token` after login. INSERT/UPDATE/DELETE subject to RLS. For user-facing CRUD.
+- `access_token` (role: authenticated) -- **user-scoped read/write**. From `/auth/v1/token` after password login or Google OAuth. INSERT/UPDATE/DELETE subject to RLS. For user-facing CRUD.
 - Keys expire with lease. Rotation not yet supported.
 
 **Isolation**: Each project in its own Postgres schema. Cross-schema access blocked. `db-pre-request` hook validates JWT claims match the project.
@@ -699,6 +720,96 @@ Functions are deployed via the Admin endpoints above and invoked at `/functions/
 | `/auth/v1/logout` | POST | Bearer | Invalidate refresh token |
 | `/auth/v1/providers` | GET | apikey | List available auth providers (password, google) |
 | `/auth/v1/oauth/google/start` | POST | apikey | Start Google OAuth flow (returns authorization_url) |
+
+#### Google OAuth (Social Login)
+
+Google sign-in is **on for all projects** with zero config. When a user signs in with Google, Run402 creates a project-scoped user with their Google name, email, and avatar. The result is the same `access_token` + `refresh_token` as password login.
+
+**Allowed redirect origins**: `http://localhost:*` (any port) + any claimed subdomain (`https://{name}.run402.com`). No manual allowlist config needed -- origins are auto-derived from your claimed subdomains.
+
+**Flow (redirect mode, recommended)**:
+
+1. Frontend generates PKCE verifier + challenge
+2. Frontend calls `POST /auth/v1/oauth/google/start` with `redirect_url` and `code_challenge`
+3. Frontend navigates to the returned `authorization_url` (Google consent screen)
+4. User picks Google account
+5. Google redirects to Run402 callback, which redirects to your app: `https://your-app.run402.com/#code=xxx&state=yyy`
+6. Frontend extracts `code` from URL fragment, exchanges it via `POST /auth/v1/token?grant_type=authorization_code`
+7. Done -- same `access_token` + `refresh_token` + `user` as password login
+
+**JavaScript example (full redirect flow)**:
+
+```javascript
+const API = 'https://api.run402.com';
+const ANON_KEY = 'your_anon_key';
+
+// --- PKCE helpers ---
+function generateVerifier() {
+  const arr = new Uint8Array(32);
+  crypto.getRandomValues(arr);
+  return btoa(String.fromCharCode(...arr))
+    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+async function generateChallenge(verifier) {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier));
+  return btoa(String.fromCharCode(...new Uint8Array(digest)))
+    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+// --- Step 1: Start login (call on button click) ---
+async function signInWithGoogle() {
+  const verifier = generateVerifier();
+  const challenge = await generateChallenge(verifier);
+  localStorage.setItem('pkce_verifier', verifier);
+
+  const res = await fetch(API + '/auth/v1/oauth/google/start', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', apikey: ANON_KEY },
+    body: JSON.stringify({
+      redirect_url: window.location.origin + '/',
+      mode: 'redirect',
+      code_challenge: challenge,
+      code_challenge_method: 'S256',
+    }),
+  });
+  const { authorization_url } = await res.json();
+  window.location.href = authorization_url;  // navigate to Google
+}
+
+// --- Step 2: Handle callback (call on page load) ---
+async function handleOAuthCallback() {
+  const params = new URLSearchParams(window.location.hash.substring(1));
+  const code = params.get('code');
+  if (!code) return false;
+
+  window.history.replaceState(null, '', window.location.pathname);
+  const verifier = localStorage.getItem('pkce_verifier');
+  localStorage.removeItem('pkce_verifier');
+
+  const res = await fetch(API + '/auth/v1/token?grant_type=authorization_code', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', apikey: ANON_KEY },
+    body: JSON.stringify({ code, code_verifier: verifier }),
+  });
+  const session = await res.json();
+  // session = { access_token, refresh_token, user: { id, email, display_name, avatar_url, ... } }
+  return session;
+}
+```
+
+**Popup mode** is also supported (pass `mode: 'popup'`), but redirect is recommended because browser COOP policies can prevent the popup from auto-closing.
+
+**Account behavior**:
+- New Google user → new project user created (null password, Google name + avatar stored)
+- Returning Google user → signed in to existing account
+- Same email as existing password user → returns `account_exists_requires_link` error (no auto-merge for security)
+- Social-only users cannot use password login (helpful error message returned)
+
+**Discover providers**: `GET /auth/v1/providers` returns which auth methods are available. Useful for building dynamic login UIs.
+
+**User profile**: `GET /auth/v1/user` returns `display_name`, `avatar_url`, `email_verified_at`, and linked `identities[]` for the authenticated user.
+
+**Demo app**: https://social-todo.run402.com -- shared todo list using Google OAuth only. Source at `demos/social-todo/` in the repo.
 
 ### File Storage
 
@@ -832,17 +943,17 @@ Subscribe to a tier via x402. All operations (projects, deploys, forks, sites, m
 
 | Tier | Price | Lease | Storage | API Calls |
 |------|-------|-------|---------|-----------|
-| Prototype | $0.10 | 7 days | 250 MB | 500,000 |
-| Hobby | $5.00 | 30 days | 1 GB | 5,000,000 |
-| Team | $20.00 | 30 days | 10 GB | 50,000,000 |
+| Prototype | **FREE** ($0.10 testnet USDC -- verifies wallet setup, costs $0 real money) | 7 days | 250 MB | 500,000 |
+| Hobby | $5.00 (real USDC on Base, or Stripe credits) | 30 days | 1 GB | 5,000,000 |
+| Team | $20.00 (real USDC on Base, or Stripe credits) | 30 days | 10 GB | 50,000,000 |
 
 Subscribe/Renew/Upgrade: `POST /tiers/v1/:tier` (x402, auto-detected)
 
 ### Choosing a tier
 
-**Prototype ($0.10)**: Testing a concept or building a demo. Data is disposable.
-**Hobby ($5)**: Building a real application. Persistent data for a month, moderate traffic.
-**Team ($20)**: Multiple users or agents. 10 GB storage, heavy traffic.
+**Prototype (FREE)**: Testing a concept or building a demo. Data is disposable. Uses testnet USDC -- the $0.10 payment verifies your wallet and x402 setup work, but costs no real money.
+**Hobby ($5, real money)**: Building a real application. Persistent data for a month, moderate traffic. Pay with real USDC on Base or Stripe credits.
+**Team ($20, real money)**: Multiple users or agents. 10 GB storage, heavy traffic. Pay with real USDC on Base or Stripe credits.
 
 Start with Prototype and upgrade via `POST /tiers/v1/:tier`. Your wallet's tier applies to all projects.
 
@@ -859,7 +970,7 @@ Projects, bundle deploy, fork, static sites, messages, ping, contact -- all free
 |------|-------|-------|
 | Image generation | $0.03 | square/landscape/portrait |
 
-Payments are x402 micropayments on **Base** (EIP-155 chain 8453). Testnet on Base Sepolia (chain 84532).
+Payments are x402 micropayments on **Base** (EIP-155 chain 8453). Prototype tier uses testnet on Base Sepolia (chain 84532) -- free, no real money. Hobby/Team tiers require real USDC on Base mainnet or Stripe credits.
 
 Rate limit: 100 req/s per wallet or project.
 
