@@ -238,6 +238,28 @@ router.post("/projects/v1/admin/:id/pin", asyncHandler(async (req: Request, res:
   res.json({ status: "ok", project_id: project.id, pinned: true });
 }));
 
+// PUT /projects/v1/admin/:id/wallet — set project wallet address (admin only)
+router.put("/projects/v1/admin/:id/wallet", asyncHandler(async (req: Request, res: Response) => {
+  const adminKey = req.headers["x-admin-key"] as string | undefined;
+  if (!ADMIN_KEY || adminKey !== ADMIN_KEY) {
+    throw new HttpError(403, "Requires platform admin key");
+  }
+
+  assertProjectMatch(req);
+  const project = req.project!;
+  const { wallet_address } = req.body || {};
+
+  if (!wallet_address || typeof wallet_address !== "string" || !/^0x[a-fA-F0-9]{40}$/.test(wallet_address)) {
+    throw new HttpError(400, "Invalid wallet_address (must be 0x + 40 hex chars)");
+  }
+
+  await pool.query(`UPDATE internal.projects SET wallet_address = $1 WHERE id = $2`, [wallet_address, project.id]);
+  project.walletAddress = wallet_address;
+
+  console.log(`  Project ${project.id} wallet set to ${wallet_address}`);
+  res.json({ status: "ok", project_id: project.id, wallet_address });
+}));
+
 // POST /projects/v1/admin/:id/unpin — unpin project (normal lease expiry resumes, admin only)
 router.post("/projects/v1/admin/:id/unpin", asyncHandler(async (req: Request, res: Response) => {
   const adminKey = req.headers["x-admin-key"] as string | undefined;
