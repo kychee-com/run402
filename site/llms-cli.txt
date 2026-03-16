@@ -9,7 +9,7 @@
 
 ## TL;DR
 
-Run402 gives you a full Postgres database with REST API, user auth, file storage, row-level security, static site hosting, serverless functions, and image generation. **The prototype tier is FREE** -- it uses testnet USDC to verify your wallet and x402 setup work (costs $0 real money). When you're ready for production, your human can buy Run402 credits via Stripe or fund your wallet with real USDC on Base. The `run402` CLI handles wallet management, x402 micropayments, and credential storage automatically -- no manual signing, no API keys.
+Run402 gives you a full Postgres database with REST API, user auth, file storage, row-level security, static site hosting, serverless functions, and image generation. **The prototype tier is FREE** -- it uses testnet USDC to verify your allowance and x402 setup work (costs $0 real money). When you're ready for production, your human can buy Run402 credits via Stripe or fund your allowance with real USDC on Base. The `run402` CLI handles allowance management, x402 micropayments, and credential storage automatically -- no manual signing, no API keys.
 
 **Install + deploy in 4 commands:**
 
@@ -24,7 +24,7 @@ That's it. You get a live URL like `my-app.run402.com` with a Postgres database,
 
 ## Core facts
 
-- Wallet: `~/.config/run402/wallet.json` (0600). Projects: `~/.config/run402/projects.json` (0600)
+- Allowance: `~/.config/run402/allowance.json` (0600). Projects: `~/.config/run402/projects.json` (0600)
 - Credentials saved automatically after provision, deploy, or fork
 - `<id>` in commands = `project_id` from `run402 projects list`
 - All output is JSON on stdout; errors are JSON on stderr; exit 0 = success, 1 = error
@@ -42,7 +42,7 @@ Requires Node.js >= 20.
 npm install -g run402
 ```
 
-## Step 2: Set Up Wallet and Funding
+## Step 2: Set Up Allowance and Funding
 
 The fastest way -- does everything in one command:
 
@@ -51,7 +51,7 @@ run402 init
 ```
 
 This will:
-1. Create a local EVM wallet (if none exists)
+1. Create a local agent allowance (if none exists)
 2. Check your USDC balance
 3. Request free testnet USDC from the faucet (if balance is zero)
 4. Show your tier status and projects
@@ -59,22 +59,22 @@ This will:
 Or do it step by step:
 
 ```bash
-run402 wallet create    # Generate a new wallet
-run402 wallet fund      # Get free testnet USDC (Base Sepolia)
-run402 wallet balance   # Check USDC balance (mainnet + testnet + billing)
+run402 allowance create    # Generate a new allowance
+run402 allowance fund      # Get free testnet USDC (Base Sepolia)
+run402 allowance balance   # Check USDC balance (mainnet + testnet + billing)
 ```
 
-The wallet is stored locally at `~/.config/run402/wallet.json` with 0600 permissions. The CLI handles all x402 payment signing automatically -- you never need to touch private keys or payment libraries.
+The allowance is stored locally at `~/.config/run402/allowance.json` with 0600 permissions. The CLI handles all x402 payment signing automatically -- you never need to touch private keys or payment libraries.
 
 ## Step 3: Subscribe to a Tier
 
 ```bash
-run402 tier set prototype    # FREE (testnet USDC -- verifies wallet setup, $0 real money)
+run402 tier set prototype    # FREE (testnet USDC -- verifies allowance setup, $0 real money)
 run402 tier set hobby        # $5 for 30 days (real money)
 run402 tier set team         # $20 for 30 days (real money)
 ```
 
-The server auto-detects the action based on your wallet state:
+The server auto-detects the action based on your allowance state:
 - No tier or expired -> subscribe
 - Same tier, active -> renew (extends from current expiry)
 - Higher tier -> upgrade (prorated refund to billing allowance)
@@ -86,7 +86,7 @@ Check your tier status:
 run402 tier status
 ```
 
-**After subscribing**, you can create unlimited projects, deploy unlimited sites, and fork apps -- all free with your wallet signature. Only image generation ($0.03/image) has a per-call cost.
+**After subscribing**, you can create unlimited projects, deploy unlimited sites, and fork apps -- all free with your allowance signature. Only image generation ($0.03/image) has a per-call cost.
 
 ---
 
@@ -145,12 +145,12 @@ run402 subdomains claim <deployment_id> my-app
 ## Command Reference
 
 ### init
-`run402 init` — creates wallet, requests faucet, checks tier, lists projects.
+`run402 init` — creates allowance, requests faucet, checks tier, lists projects.
 
-### wallet
-- `run402 wallet <create|status|fund|balance|export>`
-- `run402 wallet checkout --amount <usd_micros>`
-- `run402 wallet history [--limit <n>]`
+### allowance
+- `run402 allowance <create|status|fund|balance|export>`
+- `run402 allowance checkout --amount <usd_micros>`
+- `run402 allowance history [--limit <n>]`
 
 ### tier
 - `run402 tier status`
@@ -467,7 +467,7 @@ run402 message send "My human said: 'The todo app was great!' Deploy was smooth.
 
 | What | Cost | Duration |
 |------|------|----------|
-| Prototype tier | **FREE** (testnet USDC -- verifies wallet setup, $0 real money) | 7 days |
+| Prototype tier | **FREE** (testnet USDC -- verifies allowance setup, $0 real money) | 7 days |
 | Hobby tier | $5.00 (real money) | 30 days |
 | Team tier | $20.00 (real money) | 30 days |
 | Project provision | Free with tier | -- |
@@ -481,4 +481,4 @@ run402 message send "My human said: 'The todo app was great!' Deploy was smooth.
 | Storage | Free with tier | -- |
 | Messages | Free | -- |
 
-Prototype uses testnet USDC on Base Sepolia (free, no real money). Hobby/Team tiers require real money -- two paths: your human can buy Run402 credits via Stripe (credit card), or fund your wallet with real USDC on Base and you pay autonomously via x402. All payments are handled automatically by the CLI.
+Prototype uses testnet USDC on Base Sepolia (free, no real money). Hobby/Team tiers require real money -- two paths: your human can buy Run402 credits via Stripe (credit card), or fund your allowance with real USDC on Base and you pay autonomously via x402. All payments are handled automatically by the CLI.
