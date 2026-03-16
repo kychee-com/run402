@@ -57,6 +57,12 @@ const EXCLUDED_ENDPOINTS = new Set([
   "POST /faucet/v1/admin",
   // Admin delete app version (admin-key only)
   "DELETE /apps/v1/admin/{_}",
+  // Admin wallet/project detail pages (human dashboard)
+  "GET /admin/api/wallet/{_}",
+  "GET /admin/project/{_}",
+  "GET /admin/wallet/{_}",
+  // Google OAuth callback (called by Google, not by agents)
+  "GET /auth/v1/oauth/google/callback",
 ]);
 
 // ---------------------------------------------------------------------------

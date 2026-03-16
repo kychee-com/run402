@@ -694,8 +694,11 @@ Functions are deployed via the Admin endpoints above and invoked at `/functions/
 | `/auth/v1/signup` | POST | apikey | Create user (email + password) |
 | `/auth/v1/token` | POST | apikey | Login (returns access_token + refresh_token) |
 | `/auth/v1/token?grant_type=refresh_token` | POST | apikey | Refresh access token |
-| `/auth/v1/user` | GET | Bearer | Get current user |
+| `/auth/v1/token?grant_type=authorization_code` | POST | apikey | Exchange OAuth auth code for tokens |
+| `/auth/v1/user` | GET | Bearer | Get current user (includes linked identities) |
 | `/auth/v1/logout` | POST | Bearer | Invalidate refresh token |
+| `/auth/v1/providers` | GET | apikey | List available auth providers (password, google) |
+| `/auth/v1/oauth/google/start` | POST | apikey | Start Google OAuth flow (returns authorization_url) |
 
 ### File Storage
 

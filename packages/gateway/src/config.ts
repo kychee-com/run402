@@ -61,3 +61,8 @@ export const BUGSNAG_API_KEY = process.env.BUGSNAG_API_KEY || "0751ea52d07c1449d
 export const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || "";
 export const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || "";
 export const ADMIN_SESSION_SECRET = process.env.ADMIN_SESSION_SECRET || "run402-admin-session-secret-change-me";
+
+// Google OAuth (end-user app auth — separate from admin dashboard client)
+export const GOOGLE_APP_CLIENT_ID = process.env.GOOGLE_APP_CLIENT_ID || "";
+export const GOOGLE_APP_CLIENT_SECRET = process.env.GOOGLE_APP_CLIENT_SECRET || "";
+export const PUBLIC_API_URL = process.env.PUBLIC_API_URL || "https://api.run402.com";

@@ -51,6 +51,7 @@ import attributionRoutes from "./routes/attribution.js";
 import contactRoutes from "./routes/contact.js";
 import tierRoutes from "./routes/tiers.js";
 import { initAppVersionsTables } from "./services/publish.js";
+import { cleanupExpiredOAuthData } from "./services/oauth.js";
 
 Bugsnag.start({
   apiKey: BUGSNAG_API_KEY,
@@ -688,6 +689,7 @@ setInterval(loadUptime, 60000);
 
 // --- Startup ---
 let server: ReturnType<typeof app.listen>;
+let oauthCleanupInterval: ReturnType<typeof setInterval> | null = null;
 
 async function initDatabase() {
   // Check if internal schema already exists
@@ -920,6 +922,76 @@ async function applyMigrations() {
   await pool.query(`ALTER TABLE internal.projects ADD COLUMN IF NOT EXISTS demo_config JSONB`);
   await pool.query(`ALTER TABLE internal.projects ADD COLUMN IF NOT EXISTS demo_source_version_id TEXT`);
   await pool.query(`ALTER TABLE internal.projects ADD COLUMN IF NOT EXISTS demo_last_reset_at TIMESTAMPTZ`);
+
+  // v1.15: Google OAuth social login for app users
+  // v1.15a: nullable password_hash (social-only users)
+  await pool.query(`ALTER TABLE internal.users ALTER COLUMN password_hash DROP NOT NULL`);
+
+  // v1.15b: new user profile columns
+  await pool.query(`ALTER TABLE internal.users ADD COLUMN IF NOT EXISTS email_verified_at TIMESTAMPTZ`);
+  await pool.query(`ALTER TABLE internal.users ADD COLUMN IF NOT EXISTS display_name TEXT`);
+  await pool.query(`ALTER TABLE internal.users ADD COLUMN IF NOT EXISTS avatar_url TEXT`);
+  await pool.query(`ALTER TABLE internal.users ADD COLUMN IF NOT EXISTS last_sign_in_at TIMESTAMPTZ`);
+
+  // v1.15c: case-insensitive email uniqueness
+  await pool.query(`UPDATE internal.users SET email = LOWER(email) WHERE email != LOWER(email)`);
+  await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_project_email_ci ON internal.users(project_id, LOWER(email))`);
+
+  // v1.15d: auth identities (Google sub → project user)
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS internal.auth_identities (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id UUID NOT NULL REFERENCES internal.users(id) ON DELETE CASCADE,
+      project_id TEXT NOT NULL,
+      provider TEXT NOT NULL,
+      provider_sub TEXT NOT NULL,
+      provider_email TEXT,
+      provider_data JSONB,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE(project_id, provider, provider_sub)
+    )
+  `);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_auth_identities_user ON internal.auth_identities(user_id)`);
+
+  // v1.15e: OAuth transactions (DB-backed state, replaces cookies)
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS internal.oauth_transactions (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      project_id TEXT NOT NULL,
+      provider TEXT NOT NULL,
+      state_hash TEXT NOT NULL UNIQUE,
+      code_challenge TEXT,
+      code_challenge_method TEXT,
+      redirect_url TEXT NOT NULL,
+      mode TEXT NOT NULL DEFAULT 'popup',
+      intent TEXT NOT NULL DEFAULT 'signin',
+      nonce TEXT NOT NULL,
+      linking_user_id UUID,
+      client_state TEXT,
+      expires_at TIMESTAMPTZ NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_oauth_tx_expires ON internal.oauth_transactions(expires_at)`);
+
+  // v1.15f: OAuth codes (one-time auth codes, store hash only)
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS internal.oauth_codes (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      code_hash TEXT NOT NULL UNIQUE,
+      code_challenge TEXT,
+      code_challenge_method TEXT DEFAULT 'S256',
+      user_id UUID NOT NULL REFERENCES internal.users(id) ON DELETE CASCADE,
+      project_id TEXT NOT NULL,
+      redirect_url TEXT NOT NULL,
+      client_state TEXT,
+      expires_at TIMESTAMPTZ NOT NULL,
+      used BOOLEAN NOT NULL DEFAULT false,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_oauth_codes_expires ON internal.oauth_codes(expires_at)`);
 }
 
 async function start() {
@@ -972,6 +1044,7 @@ async function start() {
   startLeaseChecker();
   startFaucetRefill();
   startDemoResetChecker();
+  oauthCleanupInterval = setInterval(cleanupExpiredOAuthData, 3600_000);
 
   server = app.listen(PORT, () => {
     console.log(`\nAgentDB Gateway running on port ${PORT}`);
@@ -999,6 +1072,7 @@ async function shutdown(signal: string) {
   stopLeaseChecker();
   stopFaucetRefill();
   stopDemoResetChecker();
+  if (oauthCleanupInterval) clearInterval(oauthCleanupInterval);
 
   // Flush metering counters
   try {

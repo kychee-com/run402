@@ -824,6 +824,94 @@
         }
       }
     },
+    "/auth/v1/providers": {
+      "get": {
+        "tags": ["Auth"],
+        "summary": "List available auth providers",
+        "operationId": "getAuthProviders",
+        "description": "Returns available authentication providers for the project (password + OAuth).",
+        "security": [{ "apikey": [] }],
+        "responses": {
+          "200": {
+            "description": "Provider list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "password": {
+                      "type": "object",
+                      "properties": {
+                        "enabled": { "type": "boolean", "example": true }
+                      }
+                    },
+                    "oauth": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "provider": { "type": "string", "example": "google" },
+                          "enabled": { "type": "boolean", "example": true },
+                          "display_name": { "type": "string", "example": "Google" }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/v1/oauth/google/start": {
+      "post": {
+        "tags": ["Auth"],
+        "summary": "Start Google OAuth flow",
+        "operationId": "startGoogleOAuth",
+        "description": "Initiates Google OAuth for app end-users. Returns an authorization_url to open in a popup or redirect. After Google auth, the callback delivers a one-time code to your redirect_url, which you exchange via POST /auth/v1/token?grant_type=authorization_code.",
+        "security": [{ "apikey": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["redirect_url"],
+                "properties": {
+                  "redirect_url": { "type": "string", "description": "Where to send the auth code after Google login. Must be http://localhost:* or a claimed subdomain (https://{name}.run402.com)." },
+                  "mode": { "type": "string", "enum": ["popup", "redirect"], "default": "popup" },
+                  "intent": { "type": "string", "enum": ["signin", "link"], "default": "signin" },
+                  "code_challenge": { "type": "string", "description": "PKCE code challenge (base64url of SHA-256 of verifier)" },
+                  "code_challenge_method": { "type": "string", "enum": ["S256"], "default": "S256" },
+                  "client_state": { "type": "string", "description": "Opaque state passed back to your redirect_url" },
+                  "login_hint": { "type": "string", "description": "Email hint for Google account picker" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Authorization URL to open in browser",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "provider": { "type": "string", "example": "google" },
+                    "authorization_url": { "type": "string", "format": "uri" },
+                    "expires_in": { "type": "integer", "example": 600 }
+                  }
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
     "/projects/v1/admin/{id}/sql": {
       "post": {
         "tags": [

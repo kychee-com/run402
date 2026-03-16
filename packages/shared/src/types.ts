@@ -68,7 +68,24 @@ export interface UserRecord {
   id: string;
   projectId: string;
   email: string;
+  emailVerifiedAt?: Date;
+  displayName?: string;
+  avatarUrl?: string;
+  lastSignInAt?: Date;
   createdAt: Date;
+}
+
+export interface OAuthProviderInfo {
+  name: string;
+  enabled: boolean;
+  display_name: string;
+}
+
+export interface OAuthIdentity {
+  provider: string;
+  provider_sub: string;
+  provider_email?: string;
+  created_at: Date;
 }
 
 export interface TokenPayload {

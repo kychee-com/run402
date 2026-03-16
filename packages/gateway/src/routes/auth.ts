@@ -3,26 +3,262 @@ import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
 import crypto from "node:crypto";
 import { pool } from "../db/pool.js";
-import { JWT_SECRET } from "../config.js";
+import { JWT_SECRET, GOOGLE_APP_CLIENT_ID, GOOGLE_APP_CLIENT_SECRET, PUBLIC_API_URL } from "../config.js";
 import { apikeyAuth } from "../middleware/apikey.js";
 import { demoSignupMiddleware } from "../middleware/demo.js";
 import { hasCode } from "../utils/errors.js";
 import { asyncHandler, HttpError } from "../utils/async-handler.js";
+import { verifyGoogleIdToken } from "../services/google-oidc.js";
+import {
+  validateRedirectUrl,
+  createOAuthTransaction,
+  consumeOAuthTransaction,
+  resolveOAuthIdentity,
+  createAuthorizationCode,
+  exchangeAuthorizationCode,
+} from "../services/oauth.js";
+import { projectCache } from "../services/projects.js";
 import type { TokenPayload } from "@run402/shared";
 
 const router = Router();
 
-// All auth routes require apikey (anon_key)
+const GOOGLE_CALLBACK_URL = `${PUBLIC_API_URL}/auth/v1/oauth/google/callback`;
+
+// --- Google OAuth callback (NOT behind apikeyAuth — Google won't send apikey) ---
+
+router.get("/auth/v1/oauth/google/callback", asyncHandler(async (req: Request, res: Response) => {
+  const { code, state, error } = req.query as Record<string, string | undefined>;
+
+  // Helper to redirect with error
+  function redirectError(redirectUrl: string, mode: string, errorCode: string, clientState?: string) {
+    if (mode === "popup") {
+      res.set("Cache-Control", "no-store");
+      res.type("html").send(popupErrorPage(redirectUrl, errorCode, clientState));
+    } else {
+      const u = new URL(redirectUrl);
+      u.hash = `error=${encodeURIComponent(errorCode)}${clientState ? `&state=${encodeURIComponent(clientState)}` : ""}`;
+      res.set("Cache-Control", "no-store");
+      res.redirect(302, u.toString());
+    }
+  }
+
+  // Google returned an error
+  if (error || !code || !state) {
+    // We can't recover the transaction without state — best effort redirect
+    res.set("Cache-Control", "no-store");
+    res.status(400).type("html").send(errorPage(error || "missing_params"));
+    return;
+  }
+
+  // Consume OAuth transaction
+  const tx = await consumeOAuthTransaction(state);
+  if (!tx) {
+    res.set("Cache-Control", "no-store");
+    res.status(400).type("html").send(errorPage("invalid_or_expired_state"));
+    return;
+  }
+
+  // Exchange Google authorization code for tokens
+  let googleTokens: { id_token: string };
+  try {
+    const tokenResp = await fetch("https://oauth2.googleapis.com/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        code,
+        client_id: GOOGLE_APP_CLIENT_ID,
+        client_secret: GOOGLE_APP_CLIENT_SECRET,
+        redirect_uri: GOOGLE_CALLBACK_URL,
+        grant_type: "authorization_code",
+      }),
+    });
+
+    if (!tokenResp.ok) {
+      const errBody = await tokenResp.text();
+      console.error("  Google token exchange failed:", errBody);
+      return redirectError(tx.redirectUrl, tx.mode, "token_exchange_failed", tx.clientState);
+    }
+
+    googleTokens = await tokenResp.json() as { id_token: string };
+  } catch (err) {
+    console.error("  Google token exchange error:", err);
+    return redirectError(tx.redirectUrl, tx.mode, "token_exchange_failed", tx.clientState);
+  }
+
+  // Verify ID token
+  let claims;
+  try {
+    claims = await verifyGoogleIdToken(googleTokens.id_token, tx.nonce);
+  } catch (err) {
+    console.error("  Google id_token verification failed:", err);
+    return redirectError(tx.redirectUrl, tx.mode, "id_token_invalid", tx.clientState);
+  }
+
+  // Resolve identity
+  const project = projectCache.get(tx.projectId);
+  const identity = await resolveOAuthIdentity({
+    projectId: tx.projectId,
+    provider: "google",
+    providerSub: claims.sub,
+    providerEmail: claims.email,
+    emailVerified: claims.email_verified,
+    displayName: claims.name,
+    avatarUrl: claims.picture,
+    intent: tx.intent,
+    linkingUserId: tx.linkingUserId,
+    project: project || undefined,
+  });
+
+  if (identity.action === "account_exists_requires_link") {
+    return redirectError(tx.redirectUrl, tx.mode, "account_exists_requires_link", tx.clientState);
+  }
+
+  if (identity.action === "identity_already_linked") {
+    return redirectError(tx.redirectUrl, tx.mode, "identity_already_linked", tx.clientState);
+  }
+
+  if (!identity.userId) {
+    return redirectError(tx.redirectUrl, tx.mode, "identity_resolution_failed", tx.clientState);
+  }
+
+  // Create Run402 authorization code
+  const authCode = await createAuthorizationCode({
+    userId: identity.userId,
+    projectId: tx.projectId,
+    redirectUrl: tx.redirectUrl,
+    codeChallenge: tx.codeChallenge,
+    codeChallengeMethod: tx.codeChallengeMethod,
+    clientState: tx.clientState,
+  });
+
+  // Deliver to app
+  res.set("Cache-Control", "no-store");
+  if (tx.mode === "popup") {
+    res.type("html").send(popupSuccessPage(tx.redirectUrl, authCode, tx.clientState));
+  } else {
+    const u = new URL(tx.redirectUrl);
+    u.hash = `code=${encodeURIComponent(authCode)}${tx.clientState ? `&state=${encodeURIComponent(tx.clientState)}` : ""}`;
+    res.redirect(302, u.toString());
+  }
+}));
+
+// --- All other auth routes require apikey (anon_key) ---
 router.use("/auth/v1", apikeyAuth);
 
-// POST /auth/v1/signup — create user
+// GET /auth/v1/providers — discover available auth providers
+router.get("/auth/v1/providers", asyncHandler(async (_req: Request, res: Response) => {
+  const googleEnabled = !!GOOGLE_APP_CLIENT_ID;
+  res.set("Cache-Control", "no-store");
+  res.json({
+    password: { enabled: true },
+    oauth: [
+      {
+        provider: "google",
+        enabled: googleEnabled,
+        display_name: "Google",
+      },
+    ],
+  });
+}));
+
+// POST /auth/v1/oauth/google/start — initiate Google OAuth flow
+router.post("/auth/v1/oauth/google/start", asyncHandler(async (req: Request, res: Response) => {
+  if (!GOOGLE_APP_CLIENT_ID) {
+    throw new HttpError(503, "Google OAuth is not configured");
+  }
+
+  const project = req.project!;
+  const {
+    redirect_url,
+    mode = "popup",
+    intent = "signin",
+    code_challenge,
+    code_challenge_method,
+    client_state,
+    login_hint,
+  } = req.body || {};
+
+  if (!redirect_url) {
+    throw new HttpError(400, "redirect_url required");
+  }
+
+  if (mode !== "popup" && mode !== "redirect") {
+    throw new HttpError(400, "mode must be 'popup' or 'redirect'");
+  }
+
+  if (intent !== "signin" && intent !== "link") {
+    throw new HttpError(400, "intent must be 'signin' or 'link'");
+  }
+
+  // Validate redirect URL
+  const valid = await validateRedirectUrl(redirect_url, project.id);
+  if (!valid) {
+    throw new HttpError(400, "redirect_url is not an allowed origin for this project");
+  }
+
+  // If intent=link, require Bearer token
+  let linkingUserId: string | undefined;
+  if (intent === "link") {
+    const authHeader = req.headers.authorization;
+    if (!authHeader?.startsWith("Bearer ")) {
+      throw new HttpError(401, "Intent 'link' requires a Bearer token");
+    }
+    try {
+      const payload = jwt.verify(authHeader.slice(7), JWT_SECRET) as TokenPayload;
+      if (payload.role !== "authenticated" || payload.project_id !== project.id) {
+        throw new HttpError(401, "Invalid user token for linking");
+      }
+      linkingUserId = payload.sub;
+    } catch (err) {
+      if (err instanceof HttpError) throw err;
+      throw new HttpError(401, "Invalid Bearer token");
+    }
+  }
+
+  // Create OAuth transaction
+  const { state, nonce } = await createOAuthTransaction({
+    projectId: project.id,
+    provider: "google",
+    redirectUrl: redirect_url,
+    mode,
+    intent,
+    codeChallenge: code_challenge,
+    codeChallengeMethod: code_challenge_method || (code_challenge ? "S256" : undefined),
+    linkingUserId,
+    clientState: client_state,
+  });
+
+  // Build Google authorization URL
+  const googleAuthUrl = new URL("https://accounts.google.com/o/oauth2/v2/auth");
+  googleAuthUrl.searchParams.set("client_id", GOOGLE_APP_CLIENT_ID);
+  googleAuthUrl.searchParams.set("redirect_uri", GOOGLE_CALLBACK_URL);
+  googleAuthUrl.searchParams.set("response_type", "code");
+  googleAuthUrl.searchParams.set("scope", "openid email profile");
+  googleAuthUrl.searchParams.set("state", state);
+  googleAuthUrl.searchParams.set("nonce", nonce);
+  googleAuthUrl.searchParams.set("prompt", "select_account");
+  if (login_hint) {
+    googleAuthUrl.searchParams.set("login_hint", login_hint);
+  }
+
+  res.set("Cache-Control", "no-store");
+  res.json({
+    provider: "google",
+    authorization_url: googleAuthUrl.toString(),
+    expires_in: 600,
+  });
+}));
+
+// POST /auth/v1/signup — create user (email normalization added)
 router.post("/auth/v1/signup", demoSignupMiddleware, asyncHandler(async (req: Request, res: Response) => {
   const project = req.project!;
-  const { email, password } = req.body || {};
+  const { email: rawEmail, password } = req.body || {};
 
-  if (!email || !password) {
+  if (!rawEmail || !password) {
     throw new HttpError(400, "email and password required");
   }
+
+  const email = rawEmail.toLowerCase().trim();
 
   try {
     const passwordHash = await bcrypt.hash(password, 10);
@@ -35,7 +271,8 @@ router.post("/auth/v1/signup", demoSignupMiddleware, asyncHandler(async (req: Re
     const user = result.rows[0];
     console.log(`  User signed up: ${email} (project: ${project.id})`);
 
-    res.json({
+    res.set("Cache-Control", "no-store");
+    res.status(201).json({
       id: user.id,
       email: user.email,
       created_at: user.created_at,
@@ -91,6 +328,7 @@ router.post("/auth/v1/token", asyncHandler(async (req: Request, res: Response) =
     );
     const newRefreshToken = await createRefreshToken(token.user_id, project.id);
 
+    res.set("Cache-Control", "no-store");
     res.json({
       access_token: accessToken,
       token_type: "bearer",
@@ -101,15 +339,70 @@ router.post("/auth/v1/token", asyncHandler(async (req: Request, res: Response) =
     return;
   }
 
+  // Authorization code flow (OAuth)
+  if (grantType === "authorization_code") {
+    const { code, code_verifier } = req.body || {};
+    if (!code) {
+      throw new HttpError(400, "code required");
+    }
+
+    const result = await exchangeAuthorizationCode(code, code_verifier);
+    if (!result) {
+      throw new HttpError(401, "Invalid, expired, or already used authorization code");
+    }
+
+    if (result.projectId !== project.id) {
+      throw new HttpError(401, "Authorization code was issued for a different project");
+    }
+
+    // Fetch user email
+    const userResult = await pool.query(
+      `SELECT id, email, display_name, avatar_url, email_verified_at FROM internal.users WHERE id = $1`,
+      [result.userId],
+    );
+    if (userResult.rows.length === 0) {
+      throw new HttpError(401, "User not found");
+    }
+    const user = userResult.rows[0];
+
+    const accessToken = jwt.sign(
+      { sub: result.userId, role: "authenticated", project_id: project.id },
+      JWT_SECRET,
+      { expiresIn: "1h" },
+    );
+    const refreshToken = await createRefreshToken(result.userId, project.id);
+
+    console.log(`  OAuth login: ${user.email} (project: ${project.id})`);
+
+    res.set("Cache-Control", "no-store");
+    res.json({
+      access_token: accessToken,
+      token_type: "bearer",
+      expires_in: 3600,
+      refresh_token: refreshToken,
+      user: {
+        id: user.id,
+        email: user.email,
+        email_verified_at: user.email_verified_at || null,
+        display_name: user.display_name,
+        avatar_url: user.avatar_url,
+      },
+      provider: "google",
+    });
+    return;
+  }
+
   // Password login flow
-  const { email, password } = req.body || {};
-  if (!email || !password) {
+  const { email: rawEmail, password } = req.body || {};
+  if (!rawEmail || !password) {
     throw new HttpError(400, "email and password required");
   }
 
+  const email = rawEmail.toLowerCase().trim();
+
   const result = await pool.query(
     `SELECT id, password_hash FROM internal.users
-     WHERE project_id = $1 AND email = $2`,
+     WHERE project_id = $1 AND LOWER(email) = $2`,
     [project.id, email],
   );
 
@@ -118,10 +411,19 @@ router.post("/auth/v1/token", asyncHandler(async (req: Request, res: Response) =
   }
 
   const user = result.rows[0];
+
+  // Guard: social-only users have null password_hash
+  if (!user.password_hash) {
+    throw new HttpError(401, "This account uses social login. Sign in with Google instead.");
+  }
+
   const valid = await bcrypt.compare(password, user.password_hash);
   if (!valid) {
     throw new HttpError(401, "Invalid credentials");
   }
+
+  // Update last_sign_in_at
+  await pool.query(`UPDATE internal.users SET last_sign_in_at = NOW() WHERE id = $1`, [user.id]);
 
   const accessToken = jwt.sign(
     { sub: user.id, role: "authenticated", project_id: project.id },
@@ -132,6 +434,7 @@ router.post("/auth/v1/token", asyncHandler(async (req: Request, res: Response) =
 
   console.log(`  User logged in: ${email} (project: ${project.id})`);
 
+  res.set("Cache-Control", "no-store");
   res.json({
     access_token: accessToken,
     token_type: "bearer",
@@ -148,22 +451,49 @@ router.get("/auth/v1/user", asyncHandler(async (req: Request, res: Response) => 
     throw new HttpError(401, "Missing Bearer token");
   }
 
+  const project = req.project!;
+
   try {
     const payload = jwt.verify(authHeader.slice(7), JWT_SECRET) as TokenPayload;
     if (payload.role !== "authenticated") {
       throw new HttpError(401, "Not an authenticated user token");
     }
 
+    // Enforce project scoping
+    if (payload.project_id !== project.id) {
+      throw new HttpError(401, "Token was issued for a different project");
+    }
+
     const result = await pool.query(
-      `SELECT id, email, created_at FROM internal.users WHERE id = $1`,
-      [payload.sub],
+      `SELECT id, email, email_verified_at, display_name, avatar_url, last_sign_in_at, created_at
+       FROM internal.users WHERE id = $1 AND project_id = $2`,
+      [payload.sub, project.id],
     );
 
     if (result.rows.length === 0) {
       throw new HttpError(404, "User not found");
     }
 
-    res.json(result.rows[0]);
+    const user = result.rows[0];
+
+    // Fetch linked identities
+    const identities = await pool.query(
+      `SELECT provider, provider_sub, provider_email, created_at
+       FROM internal.auth_identities WHERE user_id = $1`,
+      [user.id],
+    );
+
+    res.set("Cache-Control", "no-store");
+    res.json({
+      id: user.id,
+      email: user.email,
+      email_verified_at: user.email_verified_at,
+      display_name: user.display_name,
+      avatar_url: user.avatar_url,
+      last_sign_in_at: user.last_sign_in_at,
+      created_at: user.created_at,
+      identities: identities.rows,
+    });
   } catch (err) {
     if (err instanceof HttpError) throw err;
     throw new HttpError(401, "Invalid token");
@@ -176,6 +506,7 @@ router.post("/auth/v1/logout", asyncHandler(async (req: Request, res: Response) 
   if (refresh_token) {
     await pool.query(`UPDATE internal.refresh_tokens SET used = true WHERE id = $1`, [refresh_token]);
   }
+  res.set("Cache-Control", "no-store");
   res.json({ status: "ok" });
 }));
 
@@ -191,6 +522,67 @@ async function createRefreshToken(userId: string, projectId: string): Promise<st
   );
 
   return tokenId;
+}
+
+// --- Popup response pages ---
+
+function popupSuccessPage(redirectUrl: string, code: string, clientState?: string): string {
+  const origin = new URL(redirectUrl).origin;
+  const payload = JSON.stringify({
+    type: "run402:oauth:callback",
+    code,
+    state: clientState || null,
+  });
+  return `<!DOCTYPE html>
+<html><head><title>Signing in...</title></head>
+<body>
+<p>Signing you in...</p>
+<script>
+  if (window.opener) {
+    window.opener.postMessage(${escapeHtml(payload)}, ${escapeHtml(JSON.stringify(origin))});
+  }
+  window.close();
+</script>
+</body></html>`;
+}
+
+function popupErrorPage(redirectUrl: string, errorCode: string, clientState?: string): string {
+  const origin = new URL(redirectUrl).origin;
+  const payload = JSON.stringify({
+    type: "run402:oauth:error",
+    error: errorCode,
+    state: clientState || null,
+  });
+  return `<!DOCTYPE html>
+<html><head><title>Sign in error</title></head>
+<body>
+<p>Sign in failed: ${escapeHtml(errorCode)}</p>
+<script>
+  if (window.opener) {
+    window.opener.postMessage(${escapeHtml(payload)}, ${escapeHtml(JSON.stringify(origin))});
+  }
+  window.close();
+</script>
+</body></html>`;
+}
+
+function errorPage(errorCode: string): string {
+  return `<!DOCTYPE html>
+<html><head><title>OAuth Error</title></head>
+<body>
+<h1>Sign in failed</h1>
+<p>Error: ${escapeHtml(errorCode)}</p>
+<p>Please close this window and try again.</p>
+</body></html>`;
+}
+
+function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 }
 
 export default router;
