@@ -539,7 +539,7 @@ function popupSuccessPage(redirectUrl: string, code: string, clientState?: strin
 <p>Signing you in...</p>
 <script>
   if (window.opener) {
-    window.opener.postMessage(${escapeHtml(payload)}, ${escapeHtml(JSON.stringify(origin))});
+    window.opener.postMessage(${escapeJs(payload)}, ${escapeJs(JSON.stringify(origin))});
   }
   window.close();
 </script>
@@ -559,7 +559,7 @@ function popupErrorPage(redirectUrl: string, errorCode: string, clientState?: st
 <p>Sign in failed: ${escapeHtml(errorCode)}</p>
 <script>
   if (window.opener) {
-    window.opener.postMessage(${escapeHtml(payload)}, ${escapeHtml(JSON.stringify(origin))});
+    window.opener.postMessage(${escapeJs(payload)}, ${escapeJs(JSON.stringify(origin))});
   }
   window.close();
 </script>
@@ -574,6 +574,11 @@ function errorPage(errorCode: string): string {
 <p>Error: ${escapeHtml(errorCode)}</p>
 <p>Please close this window and try again.</p>
 </body></html>`;
+}
+
+/** Escape a string for safe embedding inside a <script> block (prevents </script> breakout). */
+function escapeJs(str: string): string {
+  return str.replace(/<\//g, "<\\/");
 }
 
 function escapeHtml(str: string): string {
