@@ -1,5 +1,4 @@
-import { findProject, loadProjects, saveProjects, API, PROJECTS_FILE, walletAuthHeaders } from "./config.mjs";
-import { mkdirSync, writeFileSync } from "fs";
+import { findProject, loadKeyStore, saveProject, removeProject, API, walletAuthHeaders } from "./config.mjs";
 
 const HELP = `run402 projects — Manage your deployed Run402 projects
 
@@ -61,14 +60,11 @@ async function provision(args) {
   if (!res.ok) { console.error(JSON.stringify({ status: "error", http: res.status, ...data })); process.exit(1); }
   // Save project credentials locally
   if (data.project_id) {
-    const projects = loadProjects();
-    projects.push({
-      project_id: data.project_id, anon_key: data.anon_key, service_key: data.service_key,
-      tier: data.tier, lease_expires_at: data.lease_expires_at, deployed_at: new Date().toISOString(),
+    saveProject(data.project_id, {
+      anon_key: data.anon_key, service_key: data.service_key,
+      tier: data.tier, lease_expires_at: data.lease_expires_at,
+      deployed_at: new Date().toISOString(),
     });
-    const dir = PROJECTS_FILE.replace(/\/[^/]+$/, "");
-    mkdirSync(dir, { recursive: true });
-    writeFileSync(PROJECTS_FILE, JSON.stringify(projects, null, 2), { mode: 0o600 });
   }
   console.log(JSON.stringify(data, null, 2));
 }
@@ -87,9 +83,10 @@ async function rls(projectId, template, tablesJson) {
 }
 
 async function list() {
-  const projects = loadProjects();
-  if (projects.length === 0) { console.log(JSON.stringify({ status: "ok", projects: [], message: "No projects yet." })); return; }
-  console.log(JSON.stringify(projects.map(p => ({ project_id: p.project_id, tier: p.tier, site_url: p.site_url, lease_expires_at: p.lease_expires_at, deployed_at: p.deployed_at })), null, 2));
+  const store = loadKeyStore();
+  const entries = Object.entries(store.projects);
+  if (entries.length === 0) { console.log(JSON.stringify({ status: "ok", projects: [], message: "No projects yet." })); return; }
+  console.log(JSON.stringify(entries.map(([id, p]) => ({ project_id: id, tier: p.tier, site_url: p.site_url, lease_expires_at: p.lease_expires_at, deployed_at: p.deployed_at })), null, 2));
 }
 
 async function sqlCmd(projectId, query) {
@@ -124,7 +121,7 @@ async function deleteProject(projectId) {
   const p = findProject(projectId);
   const res = await fetch(`${API}/projects/v1/${projectId}`, { method: "DELETE", headers: { "Authorization": `Bearer ${p.service_key}` } });
   if (res.status === 204 || res.ok) {
-    saveProjects(loadProjects().filter(pr => pr.project_id !== projectId));
+    removeProject(projectId);
     console.log(JSON.stringify({ status: "ok", message: `Project ${projectId} deleted.` }));
   } else {
     const data = await res.json().catch(() => ({}));

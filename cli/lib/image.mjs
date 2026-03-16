@@ -1,5 +1,6 @@
-import { writeFileSync, existsSync } from "fs";
-import { readWallet, API, WALLET_FILE } from "./config.mjs";
+import { writeFileSync } from "fs";
+import { API, WALLET_FILE } from "./config.mjs";
+import { setupPaidFetch } from "./paid-fetch.mjs";
 
 const HELP = `run402 image — Generate AI images via x402 micropayments
 
@@ -49,22 +50,8 @@ export async function run(sub, args) {
   }
 
   if (!opts.prompt) { console.error(JSON.stringify({ status: "error", message: "Prompt required. Usage: run402 image generate \"your prompt\"" })); process.exit(1); }
-  if (!existsSync(WALLET_FILE)) { console.error(JSON.stringify({ status: "error", message: "No wallet found. Run: run402 wallet create && run402 wallet fund" })); process.exit(1); }
 
-  const wallet = readWallet();
-  const { privateKeyToAccount } = await import("viem/accounts");
-  const { createPublicClient, http } = await import("viem");
-  const { baseSepolia } = await import("viem/chains");
-  const { x402Client, wrapFetchWithPayment } = await import("@x402/fetch");
-  const { ExactEvmScheme } = await import("@x402/evm/exact/client");
-  const { toClientEvmSigner } = await import("@x402/evm");
-
-  const account = privateKeyToAccount(wallet.privateKey);
-  const publicClient = createPublicClient({ chain: baseSepolia, transport: http() });
-  const signer = toClientEvmSigner(account, publicClient);
-  const client = new x402Client();
-  client.register("eip155:84532", new ExactEvmScheme(signer));
-  const fetchPaid = wrapFetchWithPayment(fetch, client);
+  const fetchPaid = await setupPaidFetch();
 
   const res = await fetchPaid(`${API}/generate-image/v1`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt: opts.prompt, aspect: opts.aspect }) });
   const data = await res.json();

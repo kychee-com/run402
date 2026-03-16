@@ -30,7 +30,7 @@ describe("rest_query tool", () => {
       anon_key: "ak-r1",
       service_key: "sk-r1",
       tier: "prototype",
-      expires_at: "2026-03-06T00:00:00Z",
+      lease_expires_at: "2026-03-06T00:00:00Z",
     }, storePath);
 
     let capturedUrl = "";
@@ -59,7 +59,7 @@ describe("rest_query tool", () => {
       anon_key: "ak-r2",
       service_key: "sk-r2",
       tier: "prototype",
-      expires_at: "2026-03-06T00:00:00Z",
+      lease_expires_at: "2026-03-06T00:00:00Z",
     }, storePath);
 
     let capturedHeaders: Record<string, string> = {};
@@ -89,7 +89,7 @@ describe("rest_query tool", () => {
       anon_key: "ak-r3",
       service_key: "sk-r3",
       tier: "prototype",
-      expires_at: "2026-03-06T00:00:00Z",
+      lease_expires_at: "2026-03-06T00:00:00Z",
     }, storePath);
 
     let capturedMethod = "";
@@ -118,7 +118,7 @@ describe("rest_query tool", () => {
       anon_key: "ak-anon",
       service_key: "sk-svc",
       tier: "prototype",
-      expires_at: "2026-03-06T00:00:00Z",
+      lease_expires_at: "2026-03-06T00:00:00Z",
     }, storePath);
 
     let capturedHeaders: Record<string, string> = {};

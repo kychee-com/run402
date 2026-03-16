@@ -31,10 +31,19 @@ function parseMcpTools(): string[] {
  *  Matches both switch/case patterns and if-guard patterns like:
  *    case "generate":           → "generate"
  *    if (sub !== "generate")    → "generate"  (negation = only valid subcommand)
+ *  Follows re-exports: export { run } from "../../cli/lib/foo.mjs" → parse that file
  */
 function parseSubcommands(filePath: string): string[] {
   if (!existsSync(filePath)) return [];
   const src = readFileSync(filePath, "utf-8");
+
+  // Follow re-exports to the target file
+  const reExportMatch = src.match(/export\s+\{[^}]*run[^}]*\}\s+from\s+["']([^"']+)["']/);
+  if (reExportMatch) {
+    const targetPath = join(dirname(filePath), reExportMatch[1]);
+    return parseSubcommands(targetPath);
+  }
+
   const cmds: string[] = [];
   // Pattern 1: switch/case
   const caseRe = /case\s+"([\w-]+)":/g;

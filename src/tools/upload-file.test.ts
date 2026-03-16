@@ -30,7 +30,7 @@ describe("upload_file tool", () => {
       anon_key: "ak-u1",
       service_key: "sk-u1",
       tier: "prototype",
-      expires_at: "2026-03-06T00:00:00Z",
+      lease_expires_at: "2026-03-06T00:00:00Z",
     }, storePath);
 
     let capturedUrl = "";
@@ -78,7 +78,7 @@ describe("upload_file tool", () => {
       anon_key: "ak-u2",
       service_key: "sk-u2",
       tier: "prototype",
-      expires_at: "2026-03-06T00:00:00Z",
+      lease_expires_at: "2026-03-06T00:00:00Z",
     }, storePath);
 
     globalThis.fetch = (async () =>

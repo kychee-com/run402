@@ -29,7 +29,7 @@ describe("keystore", () => {
       anon_key: "anon-key-123",
       service_key: "svc-key-456",
       tier: "prototype",
-      expires_at: "2026-03-06T00:00:00Z",
+      lease_expires_at: "2026-03-06T00:00:00Z",
     };
     saveProject("proj-001", project, storePath);
 
@@ -42,7 +42,7 @@ describe("keystore", () => {
       anon_key: "ak",
       service_key: "sk",
       tier: "hobby",
-      expires_at: "2026-04-01T00:00:00Z",
+      lease_expires_at: "2026-04-01T00:00:00Z",
     };
     saveProject("proj-002", project, storePath);
 
@@ -56,13 +56,13 @@ describe("keystore", () => {
       anon_key: "ak1",
       service_key: "sk1",
       tier: "prototype",
-      expires_at: "2026-03-01T00:00:00Z",
+      lease_expires_at: "2026-03-01T00:00:00Z",
     };
     const p2: StoredProject = {
       anon_key: "ak2",
       service_key: "sk2",
       tier: "team",
-      expires_at: "2026-04-01T00:00:00Z",
+      lease_expires_at: "2026-04-01T00:00:00Z",
     };
 
     saveProject("proj-a", p1, storePath);
@@ -81,13 +81,13 @@ describe("keystore", () => {
       anon_key: "old",
       service_key: "old",
       tier: "prototype",
-      expires_at: "2026-03-01T00:00:00Z",
+      lease_expires_at: "2026-03-01T00:00:00Z",
     };
     const v2: StoredProject = {
       anon_key: "new",
       service_key: "new",
       tier: "hobby",
-      expires_at: "2026-04-01T00:00:00Z",
+      lease_expires_at: "2026-04-01T00:00:00Z",
     };
 
     saveProject("proj-x", v1, storePath);
@@ -113,7 +113,7 @@ describe("keystore", () => {
       anon_key: "ak",
       service_key: "sk",
       tier: "prototype",
-      expires_at: "2026-03-01T00:00:00Z",
+      lease_expires_at: "2026-03-01T00:00:00Z",
     };
     saveProject("proj-atomic", project, storePath);
 

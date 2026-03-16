@@ -447,9 +447,9 @@ describe("CLI e2e happy path", () => {
     await run("provision", ["--tier", "prototype"]);
     captureStop();
     assert.ok(captured().includes("prj_test123"), "should return project_id");
-    // Verify project saved locally
-    const projects = JSON.parse(readFileSync(join(tempDir, "projects.json"), "utf-8"));
-    assert.ok(projects.some(p => p.project_id === "prj_test123"), "project should be saved locally");
+    // Verify project saved locally (unified object-based keystore format)
+    const store = JSON.parse(readFileSync(join(tempDir, "projects.json"), "utf-8"));
+    assert.ok(store.projects && store.projects["prj_test123"], "project should be saved locally");
   });
 
   it("projects list", async () => {

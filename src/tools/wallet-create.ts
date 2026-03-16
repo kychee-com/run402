@@ -1,13 +1,6 @@
 import { z } from "zod";
 import { getWalletPath } from "../config.js";
-import {
-  readFileSync,
-  writeFileSync,
-  mkdirSync,
-  existsSync,
-  chmodSync,
-} from "node:fs";
-import { dirname } from "node:path";
+import { readWallet, saveWallet } from "../wallet.js";
 import { randomBytes, createECDH } from "node:crypto";
 import { keccak_256 } from "@noble/hashes/sha3.js";
 
@@ -18,21 +11,17 @@ export async function handleWalletCreate(
 ): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
   const walletPath = getWalletPath();
 
-  if (existsSync(walletPath)) {
-    try {
-      const existing = JSON.parse(readFileSync(walletPath, "utf-8"));
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Wallet already exists at \`${walletPath}\`.\n\nAddress: \`${existing.address}\`\n\nUse \`wallet_status\` to check details.`,
-          },
-        ],
-        isError: true,
-      };
-    } catch {
-      // corrupt file — fall through and create a new one
-    }
+  const existing = readWallet();
+  if (existing) {
+    return {
+      content: [
+        {
+          type: "text",
+          text: `Wallet already exists at \`${walletPath}\`.\n\nAddress: \`${existing.address}\`\n\nUse \`wallet_status\` to check details.`,
+        },
+      ],
+      isError: true,
+    };
   }
 
   // Generate private key
@@ -51,18 +40,13 @@ export async function handleWalletCreate(
   const addressBytes = hash.slice(-20);
   const address = `0x${Buffer.from(addressBytes).toString("hex")}`;
 
-  // Save wallet
-  const wallet = {
+  // Save wallet using core's atomic write
+  saveWallet({
     address,
     privateKey,
     created: new Date().toISOString(),
     funded: false,
-  };
-
-  const dir = dirname(walletPath);
-  mkdirSync(dir, { recursive: true });
-  writeFileSync(walletPath, JSON.stringify(wallet, null, 2), { mode: 0o600 });
-  chmodSync(walletPath, 0o600);
+  });
 
   const lines = [
     `## Wallet Created`,

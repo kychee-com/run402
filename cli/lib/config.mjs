@@ -1,53 +1,37 @@
 /**
- * Run402 config loader — reads local project and wallet state.
- * Kept in a separate module so credential reads stay isolated.
+ * Run402 config loader — thin wrapper over core/ shared modules.
+ * Adds CLI-specific behavior: process.exit() on errors.
  */
 
-import { readFileSync, writeFileSync, existsSync, mkdirSync, chmodSync, renameSync } from "fs";
-import { join, dirname } from "path";
-import { homedir } from "os";
-import { randomBytes } from "crypto";
+import { getApiBase, getConfigDir, getKeystorePath, getWalletPath } from "../../core/dist/config.js";
+import { readWallet as coreReadWallet, saveWallet as coreSaveWallet } from "../../core/dist/wallet.js";
+import { getWalletAuthHeaders } from "../../core/dist/wallet-auth.js";
+import { loadKeyStore, getProject, saveProject, removeProject, saveKeyStore } from "../../core/dist/keystore.js";
 
-export const CONFIG_DIR = process.env.RUN402_CONFIG_DIR || join(homedir(), ".config", "run402");
-export const WALLET_FILE = join(CONFIG_DIR, "wallet.json");
-export const PROJECTS_FILE = join(CONFIG_DIR, "projects.json");
-export const API = process.env.RUN402_API_BASE || "https://api.run402.com";
+export const CONFIG_DIR = getConfigDir();
+export const WALLET_FILE = getWalletPath();
+export const PROJECTS_FILE = getKeystorePath();
+export const API = getApiBase();
 
 export function readWallet() {
-  if (!existsSync(WALLET_FILE)) return null;
-  return JSON.parse(readFileSync(WALLET_FILE, "utf-8"));
+  return coreReadWallet();
 }
 
 export function saveWallet(data) {
-  mkdirSync(CONFIG_DIR, { recursive: true });
-  const tmp = join(CONFIG_DIR, `.wallet.${randomBytes(4).toString("hex")}.tmp`);
-  writeFileSync(tmp, JSON.stringify(data, null, 2), { mode: 0o600 });
-  renameSync(tmp, WALLET_FILE);
-  chmodSync(WALLET_FILE, 0o600);
-}
-
-export function loadProjects() {
-  if (!existsSync(PROJECTS_FILE)) return [];
-  return JSON.parse(readFileSync(PROJECTS_FILE, "utf-8"));
-}
-
-export function saveProjects(projects) {
-  mkdirSync(CONFIG_DIR, { recursive: true });
-  writeFileSync(PROJECTS_FILE, JSON.stringify(projects, null, 2), { mode: 0o600 });
+  coreSaveWallet(data);
 }
 
 export async function walletAuthHeaders() {
-  const w = readWallet();
-  if (!w) { console.error(JSON.stringify({ status: "error", message: "No wallet found. Run: run402 wallet create" })); process.exit(1); }
-  const { privateKeyToAccount } = await import("viem/accounts");
-  const account = privateKeyToAccount(w.privateKey);
-  const timestamp = Math.floor(Date.now() / 1000).toString();
-  const signature = await account.signMessage({ message: `run402:${timestamp}` });
-  return { "X-Run402-Wallet": account.address, "X-Run402-Signature": signature, "X-Run402-Timestamp": timestamp };
+  const headers = getWalletAuthHeaders();
+  if (!headers) { console.error(JSON.stringify({ status: "error", message: "No wallet found. Run: run402 wallet create" })); process.exit(1); }
+  return headers;
 }
 
 export function findProject(id) {
-  const p = loadProjects().find(p => p.project_id === id);
+  const p = getProject(id);
   if (!p) { console.error(`Project ${id} not found in local registry.`); process.exit(1); }
   return p;
 }
+
+// Re-export core keystore functions for direct use
+export { loadKeyStore, saveProject, removeProject, saveKeyStore };

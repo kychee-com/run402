@@ -8,37 +8,41 @@ run402-mcp is an MCP (Model Context Protocol) server that exposes Run402 develop
 
 - **MCP server** (root `src/`) — the main package, published as `run402-mcp` on npm
 - **CLI** (`cli/`) — standalone CLI published as `run402` on npm, uses `@x402/fetch` for payments
-- **OpenClaw skill** (`openclaw/`) — skill for OpenClaw agents, calls the API via Node.js scripts
+- **OpenClaw skill** (`openclaw/`) — skill for OpenClaw agents, thin shims over CLI modules
+
+All three share core logic via the `core/` module.
 
 ## Build & Test Commands
 
 ```bash
-npm run build          # tsc → dist/
+npm run build:core     # tsc -p core/tsconfig.json → core/dist/
+npm run build          # build:core + tsc → dist/
 npm run start          # node dist/index.js (stdio MCP transport)
 npm run test:skill     # node --test --import tsx SKILL.test.ts (validates SKILL.md frontmatter/body)
 npm run test:sync      # node --test --import tsx sync.test.ts (checks MCP/CLI/OpenClaw stay in sync)
-npm test               # runs all tests (SKILL.test.ts + sync.test.ts + src/**/*.test.ts)
+npm test               # runs all tests (SKILL.test.ts + sync.test.ts + core/src/**/*.test.ts + src/**/*.test.ts)
+npm run test:e2e       # node --test cli-e2e.test.mjs (47 CLI end-to-end tests)
 ```
 
 Unit tests use Node's built-in `node:test` runner with `tsx` for TypeScript:
 
 ```bash
 # Run all unit tests
-node --test --import tsx src/**/*.test.ts
+node --test --import tsx core/src/**/*.test.ts src/**/*.test.ts
 
 # Run a single test file
 node --test --import tsx src/tools/run-sql.test.ts
-node --test --import tsx src/client.test.ts
+node --test --import tsx core/src/keystore.test.ts
 ```
 
-Tests are excluded from the build (`tsconfig.json` excludes `src/**/*.test.ts`).
+Tests are excluded from the build (`tsconfig.json` and `core/tsconfig.json` both exclude `**/*.test.ts`).
 
 ### Sync Test (`sync.test.ts`)
 
 `sync.test.ts` defines the canonical API surface in a `SURFACE` array and checks:
 - MCP tools in `src/index.ts` match the expected set (no missing, no extra)
 - CLI commands in `cli/lib/*.mjs` match the expected set
-- OpenClaw commands in `openclaw/scripts/*.mjs` match the expected set
+- OpenClaw commands in `openclaw/scripts/*.mjs` match the expected set (follows re-exports to CLI)
 - CLI and OpenClaw have identical command sets (parity)
 - If `~/dev/run402/site/llms.txt` exists: MCP Tools table lists all tools, all endpoints documented
 
@@ -46,12 +50,39 @@ When adding a new tool/command, add it to the `SURFACE` array in `sync.test.ts`.
 
 ## Architecture
 
-### Core Modules (`src/`)
+### Shared Core (`core/src/`)
 
-- **`index.ts`** — Entry point. Creates the `McpServer`, registers all tools with their Zod schemas and handlers, connects via `StdioServerTransport`.
-- **`client.ts`** — Single `apiRequest()` function wrapping `fetch()` against `RUN402_API_BASE`. Handles JSON/text responses and identifies 402 (payment required) responses with `is402` flag.
-- **`config.ts`** — Reads `RUN402_API_BASE` (default `https://api.run402.com`) and `RUN402_CONFIG_DIR` (default `~/.config/run402`) from env.
-- **`keystore.ts`** — Atomic file-based credential store at `~/.config/run402/projects.json` (mode 0600). Uses temp-file + rename for safe writes.
+The `core/` module contains shared logic imported by all three interfaces:
+
+- **`config.ts`** — Path resolution and env vars: `getApiBase()`, `getConfigDir()`, `getKeystorePath()`, `getWalletPath()`.
+- **`wallet.ts`** — `readWallet()`, `saveWallet()` with atomic writes (temp-file + rename, mode 0600).
+- **`wallet-auth.ts`** — EIP-191 signing with `@noble/curves`. `getWalletAuthHeaders()` returns headers or null.
+- **`keystore.ts`** — Unified project credential store. Object schema: `{projects: {id: {anon_key, service_key, tier, lease_expires_at}}}`. Auto-migrates legacy array format and `expires_at` → `lease_expires_at`. Functions: `loadKeyStore()`, `saveKeyStore()`, `getProject()`, `saveProject()`, `removeProject()`.
+- **`client.ts`** — `apiRequest()` fetch wrapper. Handles JSON/text responses, 402 payment detection.
+
+Core functions return `null` or throw — they never call `process.exit()`. Each interface wraps with its own error behavior.
+
+### MCP Server (`src/`)
+
+Thin re-export layer over `core/dist/` plus MCP-specific wrappers:
+
+- **`config.ts`**, **`client.ts`**, **`keystore.ts`**, **`wallet.ts`** — re-export from core
+- **`wallet-auth.ts`** — re-exports core's `getWalletAuthHeaders()` + adds `requireWalletAuth()` which returns MCP error shape
+- **`errors.ts`** — MCP-specific error formatting (`formatApiError`, `projectNotFound`)
+- **`index.ts`** — Entry point. Registers all tools via `McpServer`.
+- **`tools/*.ts`** — Each tool exports a Zod schema + async handler
+
+### CLI (`cli/`)
+
+- **`cli/lib/config.mjs`** — Imports from `core/dist/`, adds CLI wrappers (`walletAuthHeaders()` with process.exit, `findProject()` with process.exit). Re-exports core keystore functions.
+- **`cli/lib/paid-fetch.mjs`** — Shared `setupPaidFetch()` using viem + @x402/fetch for paid endpoints.
+- **`cli/lib/*.mjs`** — Each module exports `async run(sub, args)` with CLI output format.
+
+### OpenClaw (`openclaw/`)
+
+- **`openclaw/scripts/config.mjs`** — Re-exports from `cli/lib/config.mjs`
+- **`openclaw/scripts/*.mjs`** — Thin shims: `export { run } from "../../cli/lib/<name>.mjs"`
+- **`openclaw/scripts/init.mjs`** — Calls CLI's `run()` at top level (executable script)
 
 ### Tool Pattern
 

@@ -1,5 +1,5 @@
-import { readFileSync, mkdirSync, writeFileSync } from "fs";
-import { loadProjects, API, PROJECTS_FILE, walletAuthHeaders } from "./config.mjs";
+import { readFileSync } from "fs";
+import { API, walletAuthHeaders, saveProject } from "./config.mjs";
 
 const HELP = `run402 deploy — Deploy a full-stack app or static site on Run402
 
@@ -39,14 +39,6 @@ async function readStdin() {
   return Buffer.concat(chunks).toString("utf-8");
 }
 
-function saveProject(project) {
-  const projects = loadProjects();
-  projects.push({ project_id: project.project_id, anon_key: project.anon_key, service_key: project.service_key, tier: project.tier, lease_expires_at: project.lease_expires_at, site_url: project.site_url || project.subdomain_url, deployed_at: new Date().toISOString() });
-  const dir = PROJECTS_FILE.replace(/\/[^/]+$/, "");
-  mkdirSync(dir, { recursive: true });
-  writeFileSync(PROJECTS_FILE, JSON.stringify(projects, null, 2), { mode: 0o600 });
-}
-
 export async function run(args) {
   const opts = { manifest: null };
   for (let i = 0; i < args.length; i++) {
@@ -60,6 +52,13 @@ export async function run(args) {
   const res = await fetch(`${API}/deploy/v1`, { method: "POST", headers: { "Content-Type": "application/json", ...authHeaders }, body: JSON.stringify(manifest) });
   const result = await res.json();
   if (!res.ok) { console.error(JSON.stringify({ status: "error", http: res.status, ...result })); process.exit(1); }
-  saveProject(result);
+  if (result.project_id) {
+    saveProject(result.project_id, {
+      anon_key: result.anon_key, service_key: result.service_key,
+      tier: result.tier, lease_expires_at: result.lease_expires_at,
+      site_url: result.site_url || result.subdomain_url,
+      deployed_at: new Date().toISOString(),
+    });
+  }
   console.log(JSON.stringify(result, null, 2));
 }

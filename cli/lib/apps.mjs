@@ -1,5 +1,4 @@
-import { findProject, loadProjects, saveProjects, API, PROJECTS_FILE, walletAuthHeaders } from "./config.mjs";
-import { mkdirSync, writeFileSync } from "fs";
+import { findProject, API, walletAuthHeaders, saveProject } from "./config.mjs";
 
 const HELP = `run402 apps — Browse and manage the app marketplace
 
@@ -63,15 +62,12 @@ async function fork(versionId, name, args) {
 
   // Save project credentials locally
   if (data.project_id) {
-    const projects = loadProjects();
-    projects.push({
-      project_id: data.project_id, anon_key: data.anon_key, service_key: data.service_key,
+    saveProject(data.project_id, {
+      anon_key: data.anon_key, service_key: data.service_key,
       tier: data.tier, lease_expires_at: data.lease_expires_at,
-      site_url: data.site_url || data.subdomain_url, deployed_at: new Date().toISOString(),
+      site_url: data.site_url || data.subdomain_url,
+      deployed_at: new Date().toISOString(),
     });
-    const dir = PROJECTS_FILE.replace(/\/[^/]+$/, "");
-    mkdirSync(dir, { recursive: true });
-    writeFileSync(PROJECTS_FILE, JSON.stringify(projects, null, 2), { mode: 0o600 });
   }
   console.log(JSON.stringify(data, null, 2));
 }

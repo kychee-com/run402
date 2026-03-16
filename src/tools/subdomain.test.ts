@@ -28,7 +28,7 @@ describe("claim_subdomain tool", () => {
       anon_key: "ak",
       service_key: "sk-the-key",
       tier: "prototype",
-      expires_at: "2026-03-06T00:00:00Z",
+      lease_expires_at: "2026-03-06T00:00:00Z",
     });
 
     globalThis.fetch = (async () =>
@@ -73,7 +73,7 @@ describe("claim_subdomain tool", () => {
       anon_key: "ak",
       service_key: "sk",
       tier: "prototype",
-      expires_at: "2026-03-06T00:00:00Z",
+      lease_expires_at: "2026-03-06T00:00:00Z",
     });
 
     globalThis.fetch = (async () =>
@@ -97,7 +97,7 @@ describe("claim_subdomain tool", () => {
       anon_key: "ak",
       service_key: "sk",
       tier: "prototype",
-      expires_at: "2026-03-06T00:00:00Z",
+      lease_expires_at: "2026-03-06T00:00:00Z",
     });
 
     globalThis.fetch = (async () =>
@@ -121,7 +121,7 @@ describe("claim_subdomain tool", () => {
       anon_key: "ak",
       service_key: "sk-auth-key",
       tier: "prototype",
-      expires_at: "2026-03-06T00:00:00Z",
+      lease_expires_at: "2026-03-06T00:00:00Z",
     });
 
     let capturedUrl = "";
@@ -165,7 +165,7 @@ describe("delete_subdomain tool", () => {
       anon_key: "ak",
       service_key: "sk",
       tier: "prototype",
-      expires_at: "2026-03-06T00:00:00Z",
+      lease_expires_at: "2026-03-06T00:00:00Z",
     });
 
     globalThis.fetch = (async () =>
@@ -189,7 +189,7 @@ describe("delete_subdomain tool", () => {
       anon_key: "ak",
       service_key: "sk",
       tier: "prototype",
-      expires_at: "2026-03-06T00:00:00Z",
+      lease_expires_at: "2026-03-06T00:00:00Z",
     });
 
     globalThis.fetch = (async () =>

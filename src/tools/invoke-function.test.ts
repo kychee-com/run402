@@ -19,7 +19,7 @@ beforeEach(() => {
         anon_key: "ak-123",
         service_key: "sk-456",
         tier: "prototype",
-        expires_at: "2030-01-01T00:00:00Z",
+        lease_expires_at: "2030-01-01T00:00:00Z",
       },
     },
   };

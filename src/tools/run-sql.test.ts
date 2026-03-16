@@ -30,7 +30,7 @@ describe("run_sql tool", () => {
       anon_key: "ak",
       service_key: "sk-the-key",
       tier: "prototype",
-      expires_at: "2026-03-06T00:00:00Z",
+      lease_expires_at: "2026-03-06T00:00:00Z",
     }, storePath);
 
     let capturedHeaders: Record<string, string> = {};
@@ -64,7 +64,7 @@ describe("run_sql tool", () => {
       anon_key: "ak",
       service_key: "sk",
       tier: "prototype",
-      expires_at: "2026-03-06T00:00:00Z",
+      lease_expires_at: "2026-03-06T00:00:00Z",
     }, storePath);
 
     globalThis.fetch = (async () =>
@@ -94,7 +94,7 @@ describe("run_sql tool", () => {
       anon_key: "ak",
       service_key: "sk",
       tier: "prototype",
-      expires_at: "2026-03-06T00:00:00Z",
+      lease_expires_at: "2026-03-06T00:00:00Z",
     }, storePath);
 
     globalThis.fetch = (async () =>
@@ -115,7 +115,7 @@ describe("run_sql tool", () => {
       anon_key: "ak",
       service_key: "sk",
       tier: "prototype",
-      expires_at: "2026-03-06T00:00:00Z",
+      lease_expires_at: "2026-03-06T00:00:00Z",
     }, storePath);
 
     globalThis.fetch = (async () =>

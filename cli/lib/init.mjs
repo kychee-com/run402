@@ -1,4 +1,4 @@
-import { readWallet, saveWallet, loadProjects, CONFIG_DIR, WALLET_FILE, API } from "./config.mjs";
+import { readWallet, saveWallet, loadKeyStore, CONFIG_DIR, WALLET_FILE, API } from "./config.mjs";
 import { mkdirSync } from "fs";
 
 const USDC_ABI = [{ name: "balanceOf", type: "function", stateMutability: "view", inputs: [{ name: "account", type: "address" }], outputs: [{ name: "", type: "uint256" }] }];
@@ -91,8 +91,8 @@ export async function run() {
   }
 
   // 5. Projects
-  const projects = loadProjects();
-  line("Projects", `${projects.length} active`);
+  const store = loadKeyStore();
+  line("Projects", `${Object.keys(store.projects).length} active`);
 
   // 6. Next step
   console.log();

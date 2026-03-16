@@ -1,15 +1,15 @@
 import { z } from "zod";
+import { readWallet } from "../wallet.js";
 import { getWalletPath } from "../config.js";
-import { readFileSync, existsSync } from "node:fs";
 
 export const walletExportSchema = {};
 
 export async function handleWalletExport(
   _args: Record<string, never>,
 ): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
-  const walletPath = getWalletPath();
+  const wallet = readWallet();
 
-  if (!existsSync(walletPath)) {
+  if (!wallet) {
     return {
       content: [
         {
@@ -21,20 +21,7 @@ export async function handleWalletExport(
     };
   }
 
-  try {
-    const wallet = JSON.parse(readFileSync(walletPath, "utf-8"));
-    return {
-      content: [{ type: "text", text: wallet.address }],
-    };
-  } catch {
-    return {
-      content: [
-        {
-          type: "text",
-          text: `Error: Could not read wallet file at ${walletPath}`,
-        },
-      ],
-      isError: true,
-    };
-  }
+  return {
+    content: [{ type: "text", text: wallet.address }],
+  };
 }

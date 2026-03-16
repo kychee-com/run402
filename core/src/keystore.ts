@@ -1,0 +1,105 @@
+import { readFileSync, writeFileSync, mkdirSync, renameSync, chmodSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { randomBytes } from "node:crypto";
+import { getKeystorePath } from "./config.js";
+
+export interface StoredProject {
+  anon_key: string;
+  service_key: string;
+  tier: string;
+  lease_expires_at: string;
+  site_url?: string;
+  deployed_at?: string;
+}
+
+export interface KeyStore {
+  projects: Record<string, StoredProject>;
+}
+
+/**
+ * Load the keystore from disk.
+ * Auto-migrates legacy formats:
+ * - Array format (CLI legacy): [{project_id, ...}] → {projects: {id: {...}}}
+ * - Old field name: expires_at → lease_expires_at
+ */
+export function loadKeyStore(path?: string): KeyStore {
+  const p = path ?? getKeystorePath();
+  try {
+    const data = readFileSync(p, "utf-8");
+    const parsed = JSON.parse(data);
+
+    // Auto-migrate array format (CLI legacy) to object format
+    if (Array.isArray(parsed)) {
+      const projects: Record<string, StoredProject> = {};
+      for (const item of parsed) {
+        if (item.project_id) {
+          projects[item.project_id] = {
+            anon_key: item.anon_key,
+            service_key: item.service_key,
+            tier: item.tier,
+            lease_expires_at: item.lease_expires_at || item.expires_at || "",
+            ...(item.site_url && { site_url: item.site_url }),
+            ...(item.deployed_at && { deployed_at: item.deployed_at }),
+          };
+        }
+      }
+      return { projects };
+    }
+
+    if (parsed && typeof parsed === "object" && parsed.projects) {
+      // Auto-normalize expires_at → lease_expires_at
+      for (const proj of Object.values(parsed.projects)) {
+        const rec = proj as Record<string, unknown>;
+        if (rec.expires_at && !rec.lease_expires_at) {
+          rec.lease_expires_at = rec.expires_at;
+          delete rec.expires_at;
+        }
+      }
+      return parsed as KeyStore;
+    }
+
+    return { projects: {} };
+  } catch {
+    return { projects: {} };
+  }
+}
+
+export function saveKeyStore(store: KeyStore, path?: string): void {
+  const p = path ?? getKeystorePath();
+  const dir = dirname(p);
+  mkdirSync(dir, { recursive: true });
+
+  const tmp = join(dir, `.projects.${randomBytes(4).toString("hex")}.tmp`);
+  writeFileSync(tmp, JSON.stringify(store, null, 2), { mode: 0o600 });
+  renameSync(tmp, p);
+  chmodSync(p, 0o600);
+}
+
+export function getProject(
+  projectId: string,
+  path?: string,
+): StoredProject | undefined {
+  const store = loadKeyStore(path);
+  return store.projects[projectId];
+}
+
+export function saveProject(
+  projectId: string,
+  project: StoredProject,
+  path?: string,
+): void {
+  const p = path ?? getKeystorePath();
+  const store = loadKeyStore(p);
+  store.projects[projectId] = project;
+  saveKeyStore(store, p);
+}
+
+export function removeProject(
+  projectId: string,
+  path?: string,
+): void {
+  const p = path ?? getKeystorePath();
+  const store = loadKeyStore(p);
+  delete store.projects[projectId];
+  saveKeyStore(store, p);
+}

@@ -102,7 +102,7 @@ export async function handleBundleDeploy(args: {
     anon_key: body.anon_key,
     service_key: body.service_key,
     tier: body.tier,
-    expires_at: body.lease_expires_at,
+    lease_expires_at: body.lease_expires_at,
   });
 
   const lines = [

@@ -10,14 +10,16 @@
   },
   "files": [
     "dist",
+    "core/dist",
     "README.md"
   ],
   "scripts": {
-    "build": "tsc",
+    "build:core": "tsc -p core/tsconfig.json",
+    "build": "npm run build:core && tsc",
     "start": "node dist/index.js",
     "test:skill": "node --test --import tsx SKILL.test.ts",
     "test:sync": "node --test --import tsx sync.test.ts",
-    "test": "node --experimental-test-module-mocks --test --import tsx SKILL.test.ts sync.test.ts src/**/*.test.ts",
+    "test": "node --experimental-test-module-mocks --test --import tsx SKILL.test.ts sync.test.ts core/src/**/*.test.ts src/**/*.test.ts",
     "test:e2e": "node --test cli-e2e.test.mjs"
   },
   "keywords": [
