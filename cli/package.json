@@ -6,9 +6,13 @@
   "bin": {
     "run402": "cli.mjs"
   },
+  "scripts": {
+    "prepack": "mkdir -p core-dist && cp ../core/dist/*.js core-dist/"
+  },
   "files": [
     "cli.mjs",
-    "lib/"
+    "lib/",
+    "core-dist/"
   ],
   "dependencies": {
     "@x402/evm": "^2.6.0",

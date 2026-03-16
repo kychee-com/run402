@@ -3,10 +3,10 @@
  * Adds CLI-specific behavior: process.exit() on errors.
  */
 
-import { getApiBase, getConfigDir, getKeystorePath, getAllowancePath } from "../../core/dist/config.js";
-import { readAllowance as coreReadAllowance, saveAllowance as coreSaveAllowance } from "../../core/dist/allowance.js";
-import { getAllowanceAuthHeaders } from "../../core/dist/allowance-auth.js";
-import { loadKeyStore, getProject, saveProject, removeProject, saveKeyStore } from "../../core/dist/keystore.js";
+import { getApiBase, getConfigDir, getKeystorePath, getAllowancePath } from "../core-dist/config.js";
+import { readAllowance as coreReadAllowance, saveAllowance as coreSaveAllowance } from "../core-dist/allowance.js";
+import { getAllowanceAuthHeaders } from "../core-dist/allowance-auth.js";
+import { loadKeyStore, getProject, saveProject, removeProject, saveKeyStore } from "../core-dist/keystore.js";
 
 export const CONFIG_DIR = getConfigDir();
 export const ALLOWANCE_FILE = getAllowancePath();
