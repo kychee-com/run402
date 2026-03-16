@@ -33,6 +33,32 @@ interface PgPolicy {
 
 const router = Router();
 
+// PUT /projects/v1/admin/:id/wallet — set project wallet address (admin key only, no service key)
+router.put("/projects/v1/admin/:id/wallet", asyncHandler(async (req: Request, res: Response) => {
+  const adminKey = req.headers["x-admin-key"] as string | undefined;
+  if (!ADMIN_KEY || adminKey !== ADMIN_KEY) {
+    throw new HttpError(403, "Requires platform admin key");
+  }
+
+  const projectId = req.params.id as string;
+  const { wallet_address } = req.body || {};
+
+  if (!wallet_address || typeof wallet_address !== "string" || !/^0x[a-fA-F0-9]{40}$/.test(wallet_address)) {
+    throw new HttpError(400, "Invalid wallet_address (must be 0x + 40 hex chars)");
+  }
+
+  const result = await pool.query(
+    `UPDATE internal.projects SET wallet_address = $1 WHERE id = $2 AND status = 'active' RETURNING id`,
+    [wallet_address, projectId],
+  );
+  if (result.rowCount === 0) {
+    throw new HttpError(404, "Project not found or not active");
+  }
+
+  console.log(`  Project ${projectId} wallet set to ${wallet_address}`);
+  res.json({ status: "ok", project_id: projectId, wallet_address });
+}));
+
 // All admin routes require service_key
 router.use("/projects/v1/admin", serviceKeyAuth);
 
@@ -236,28 +262,6 @@ router.post("/projects/v1/admin/:id/pin", asyncHandler(async (req: Request, res:
 
   console.log(`  Project ${project.id} pinned (lease will not expire)`);
   res.json({ status: "ok", project_id: project.id, pinned: true });
-}));
-
-// PUT /projects/v1/admin/:id/wallet — set project wallet address (admin only)
-router.put("/projects/v1/admin/:id/wallet", asyncHandler(async (req: Request, res: Response) => {
-  const adminKey = req.headers["x-admin-key"] as string | undefined;
-  if (!ADMIN_KEY || adminKey !== ADMIN_KEY) {
-    throw new HttpError(403, "Requires platform admin key");
-  }
-
-  assertProjectMatch(req);
-  const project = req.project!;
-  const { wallet_address } = req.body || {};
-
-  if (!wallet_address || typeof wallet_address !== "string" || !/^0x[a-fA-F0-9]{40}$/.test(wallet_address)) {
-    throw new HttpError(400, "Invalid wallet_address (must be 0x + 40 hex chars)");
-  }
-
-  await pool.query(`UPDATE internal.projects SET wallet_address = $1 WHERE id = $2`, [wallet_address, project.id]);
-  project.walletAddress = wallet_address;
-
-  console.log(`  Project ${project.id} wallet set to ${wallet_address}`);
-  res.json({ status: "ok", project_id: project.id, wallet_address });
 }));
 
 // POST /projects/v1/admin/:id/unpin — unpin project (normal lease expiry resumes, admin only)
