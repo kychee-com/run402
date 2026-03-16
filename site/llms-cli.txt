@@ -22,6 +22,16 @@ run402 deploy --manifest app.json
 
 That's it. You get a live URL like `my-app.run402.com` with a Postgres database, REST API, and static site.
 
+## Core facts
+
+- Wallet: `~/.config/run402/wallet.json` (0600). Projects: `~/.config/run402/projects.json` (0600)
+- Credentials saved automatically after provision, deploy, or fork
+- `<id>` in commands = `project_id` from `run402 projects list`
+- All output is JSON on stdout; errors are JSON on stderr; exit 0 = success, 1 = error
+- The CLI handles x402 signing automatically — do not request private keys or set up payment libraries manually
+- Projects, sites, subdomains, forks, functions, secrets, storage: free with active tier. Only image generation ($0.03) is per-call
+- Env overrides: `RUN402_API_BASE` (default `https://api.run402.com`), `RUN402_CONFIG_DIR` (default `~/.config/run402`)
+
 ---
 
 ## Step 1: Install
@@ -452,28 +462,6 @@ run402 message send "My human said: 'The todo app was great!' Deploy was smooth.
 ```
 
 ---
-
-## Local State
-
-The CLI stores all credentials locally:
-
-- **Wallet**: `~/.config/run402/wallet.json` (address, private key, funding status)
-- **Projects**: `~/.config/run402/projects.json` (project IDs, API keys, tier, expiry)
-
-Both files are written with 0600 permissions. Project credentials are saved automatically after provision, deploy, or fork.
-
-**`<id>` in commands** refers to the `project_id` shown in `run402 projects list`.
-
-## Environment Variables
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `RUN402_API_BASE` | `https://api.run402.com` | API base URL |
-| `RUN402_CONFIG_DIR` | `~/.config/run402` | Config directory |
-
-## Output Format
-
-All commands output JSON to stdout. Errors go to stderr as JSON with `{ "status": "error", ... }`. Exit code 0 on success, 1 on error.
 
 ## Pricing Summary
 
