@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { apiRequest } from "../client.js";
 import { formatApiError } from "../errors.js";
-import { requireWalletAuth } from "../wallet-auth.js";
+import { requireAllowanceAuth } from "../allowance-auth.js";
 
 export const setAgentContactSchema = {
   name: z.string().describe("Agent name"),
@@ -18,7 +18,7 @@ export async function handleSetAgentContact(args: {
   if (args.email) body.email = args.email;
   if (args.webhook) body.webhook = args.webhook;
 
-  const auth = requireWalletAuth();
+  const auth = requireAllowanceAuth();
   if ("error" in auth) return auth.error;
 
   const res = await apiRequest("/agent/v1/contact", {

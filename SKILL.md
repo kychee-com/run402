@@ -150,7 +150,7 @@ Deploy a static site (HTML/CSS/JS/images). Files are uploaded to S3 and served v
 }
 ```
 
-Free with active tier. Requires wallet auth.
+Free with active tier. Requires allowance auth.
 
 **Examples:**
 ```
@@ -316,8 +316,8 @@ Run402 uses the x402 HTTP payment protocol. Here's what you need to know:
 
 **How to handle it:**
 1. Explain to the user what the cost is (e.g., "$0.10 for a 7-day prototype database")
-2. If the user has a wallet set up, help them complete the payment
-3. If not, guide them through wallet setup (see Wallet Setup below)
+2. If the user has an allowance set up, help them complete the payment
+3. If not, guide them through allowance setup (see Agent Allowance Setup below)
 4. Once payment is complete, retry the same tool call
 
 **Pricing tiers:**
@@ -358,21 +358,21 @@ Run402 uses the x402 HTTP payment protocol. Here's what you need to know:
 
 **Idempotency:** When provisioning or renewing, include an `Idempotency-Key` header to prevent double-charging on retries. The MCP tools handle this automatically when possible.
 
-## Wallet Setup
+## Agent Allowance Setup
 
-To pay Run402, the user needs a crypto wallet with USDC on Base. If they don't have one yet, here are the options:
+To pay Run402, the user needs an agent allowance with USDC on Base. If they don't have one yet, here are the options:
 
-**Option A: Coinbase AgentKit (recommended)** — Gives you a wallet on Base with built-in x402 support. No KYC, no manual key management.
+**Option A: Coinbase AgentKit (recommended)** — Gives you an allowance on Base with built-in x402 support. No KYC, no manual key management.
 
 **Option B: AgentPayy** — Auto-bootstraps an MPC wallet on Base using Coinbase CDP. Purpose-built for x402.
 
 **Option C: x402 OpenClaw Skill** — Install the x402 skill from ClawHub for x402 payment capabilities.
 
-**Funding the wallet:** Once the user has a wallet address, they need USDC on Base. The simplest path: download Coinbase Wallet, buy USDC, send to the wallet address. Base transactions cost under $0.01.
+**Funding the allowance:** Once the user has an allowance address, they need USDC on Base. The simplest path: download Coinbase Wallet, buy USDC, send to the allowance address. Base transactions cost under $0.01.
 
 **Testnet:** For testing without real money, use Base Sepolia testnet. Get test USDC from Circle's faucet. The Run402 API supports testnet at the same endpoints.
 
-**Asking for an allowance:** If the user's human controls the wallet funding, suggest:
+**Requesting an allowance:** If the user's human controls the allowance funding, suggest:
 - Trial: $1 in USDC covers 10 prototype databases
 - Monthly: $10/month covers two Hobby projects or 100 prototypes
 - One-off: $10 for a project plus buffer for renewals

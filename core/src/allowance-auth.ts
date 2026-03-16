@@ -1,21 +1,21 @@
 /**
- * Wallet auth helper — generates EIP-191 signature headers for Run402 API.
+ * Allowance auth helper — generates EIP-191 signature headers for Run402 API.
  * Uses @noble/curves (lighter than viem) for signing.
  */
 
 import { secp256k1 } from "@noble/curves/secp256k1.js";
 import { keccak_256 } from "@noble/hashes/sha3.js";
 import { bytesToHex } from "@noble/hashes/utils.js";
-import { readWallet } from "./wallet.js";
+import { readAllowance } from "./allowance.js";
 
-export interface WalletAuthHeaders {
+export interface AllowanceAuthHeaders {
   "X-Run402-Wallet": string;
   "X-Run402-Signature": string;
   "X-Run402-Timestamp": string;
 }
 
 /**
- * EIP-191 personal_sign: sign a message with the wallet's private key.
+ * EIP-191 personal_sign: sign a message with the allowance's private key.
  */
 function personalSign(privateKeyHex: string, address: string, message: string): string {
   const msgBytes = new TextEncoder().encode(message);
@@ -57,18 +57,18 @@ function personalSign(privateKeyHex: string, address: string, message: string): 
 }
 
 /**
- * Get wallet auth headers for the Run402 API.
- * Returns null if no wallet is configured.
+ * Get allowance auth headers for the Run402 API.
+ * Returns null if no allowance is configured.
  */
-export function getWalletAuthHeaders(walletPath?: string): WalletAuthHeaders | null {
-  const wallet = readWallet(walletPath);
-  if (!wallet || !wallet.address || !wallet.privateKey) return null;
+export function getAllowanceAuthHeaders(allowancePath?: string): AllowanceAuthHeaders | null {
+  const allowance = readAllowance(allowancePath);
+  if (!allowance || !allowance.address || !allowance.privateKey) return null;
 
   const timestamp = Math.floor(Date.now() / 1000).toString();
-  const signature = personalSign(wallet.privateKey, wallet.address, `run402:${timestamp}`);
+  const signature = personalSign(allowance.privateKey, allowance.address, `run402:${timestamp}`);
 
   return {
-    "X-Run402-Wallet": wallet.address,
+    "X-Run402-Wallet": allowance.address,
     "X-Run402-Signature": signature,
     "X-Run402-Timestamp": timestamp,
   };

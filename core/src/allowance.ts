@@ -1,9 +1,9 @@
 import { readFileSync, writeFileSync, mkdirSync, existsSync, chmodSync, renameSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { randomBytes } from "node:crypto";
-import { getWalletPath } from "./config.js";
+import { getAllowancePath } from "./config.js";
 
-export interface WalletData {
+export interface AllowanceData {
   address: string;
   privateKey: string;
   created?: string;
@@ -11,8 +11,8 @@ export interface WalletData {
   lastFaucet?: string;
 }
 
-export function readWallet(path?: string): WalletData | null {
-  const p = path ?? getWalletPath();
+export function readAllowance(path?: string): AllowanceData | null {
+  const p = path ?? getAllowancePath();
   if (!existsSync(p)) return null;
   try {
     return JSON.parse(readFileSync(p, "utf-8"));
@@ -21,11 +21,11 @@ export function readWallet(path?: string): WalletData | null {
   }
 }
 
-export function saveWallet(data: WalletData, path?: string): void {
-  const p = path ?? getWalletPath();
+export function saveAllowance(data: AllowanceData, path?: string): void {
+  const p = path ?? getAllowancePath();
   const dir = dirname(p);
   mkdirSync(dir, { recursive: true });
-  const tmp = join(dir, `.wallet.${randomBytes(4).toString("hex")}.tmp`);
+  const tmp = join(dir, `.allowance.${randomBytes(4).toString("hex")}.tmp`);
   writeFileSync(tmp, JSON.stringify(data, null, 2), { mode: 0o600 });
   renameSync(tmp, p);
   chmodSync(p, 0o600);

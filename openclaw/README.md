@@ -21,7 +21,7 @@ OpenClaw reads `SKILL.md` and uses it as instructions, then invokes the helper s
 
 | Script | Description |
 |--------|-------------|
-| `scripts/wallet.mjs` | Manage your x402 wallet (create, fund, status) |
+| `scripts/allowance.mjs` | Manage your agent allowance (create, fund, status) |
 | `scripts/deploy.mjs` | Deploy a full-stack app bundle |
 | `scripts/projects.mjs` | Manage projects (list, SQL, REST, renew, delete) |
 | `scripts/image.mjs` | Generate images via Run402 |
@@ -34,15 +34,15 @@ Scripts use `@x402/fetch` and `viem` for x402 micropayment handling. Install the
 cd scripts && npm install
 ```
 
-Credentials are shared with the MCP server — both use `~/.config/run402/projects.json` and `~/.config/run402/wallet.json`.
+Credentials are shared with the MCP server — both use `~/.config/run402/projects.json` and `~/.config/run402/allowance.json`.
 
 ## Quick Start
 
 ```bash
-# Set up wallet (once)
-node scripts/wallet.mjs status
-node scripts/wallet.mjs create   # if no wallet yet
-node scripts/wallet.mjs fund     # get testnet USDC
+# Set up allowance (once)
+node scripts/allowance.mjs status
+node scripts/allowance.mjs create   # if no allowance yet
+node scripts/allowance.mjs fund     # get testnet USDC
 
 # Deploy an app
 echo '{"name":"my-app","migrations":"CREATE TABLE todos (id serial PRIMARY KEY, task text)","site":[{"file":"index.html","data":"<!DOCTYPE html><html><body>Hello</body></html>"}]}' \

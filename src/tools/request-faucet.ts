@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { apiRequest } from "../client.js";
 import { formatApiError } from "../errors.js";
-import { getWalletPath } from "../config.js";
+import { getAllowancePath } from "../config.js";
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 
 export const requestFaucetSchema = {
@@ -9,7 +9,7 @@ export const requestFaucetSchema = {
     .string()
     .optional()
     .describe(
-      "Wallet address (0x...) to fund. If omitted, reads from local wallet file.",
+      "Wallet address (0x...) to fund. If omitted, reads from local agent allowance file.",
     ),
 };
 
@@ -17,19 +17,19 @@ export async function handleRequestFaucet(args: {
   address?: string;
 }): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
   let address = args.address;
-  const walletPath = getWalletPath();
+  const allowancePath = getAllowancePath();
 
   if (!address) {
     try {
-      const wallet = JSON.parse(readFileSync(walletPath, "utf-8"));
-      address = wallet.address;
+      const allowance = JSON.parse(readFileSync(allowancePath, "utf-8"));
+      address = allowance.address;
     } catch {
       return {
         content: [
           {
             type: "text",
-            text: "Error: No wallet address provided and no local wallet found. " +
-              "Use `wallet_create` to create a wallet first, or pass an `address` parameter.",
+            text: "Error: No address provided and no local agent allowance found. " +
+              "Use `allowance_create` to create an allowance first, or pass an `address` parameter.",
           },
         ],
         isError: true,
@@ -51,17 +51,17 @@ export async function handleRequestFaucet(args: {
     network: string;
   };
 
-  // Update wallet file with funded status
-  if (existsSync(walletPath)) {
+  // Update allowance file with funded status
+  if (existsSync(allowancePath)) {
     try {
-      const wallet = JSON.parse(readFileSync(walletPath, "utf-8"));
-      wallet.funded = true;
-      wallet.lastFaucet = new Date().toISOString();
-      writeFileSync(walletPath, JSON.stringify(wallet, null, 2), {
+      const allowance = JSON.parse(readFileSync(allowancePath, "utf-8"));
+      allowance.funded = true;
+      allowance.lastFaucet = new Date().toISOString();
+      writeFileSync(allowancePath, JSON.stringify(allowance, null, 2), {
         mode: 0o600,
       });
     } catch {
-      // non-fatal — wallet update is best-effort
+      // non-fatal — allowance update is best-effort
     }
   }
 
@@ -75,7 +75,7 @@ export async function handleRequestFaucet(args: {
     `| network | ${body.network} |`,
     `| tx | \`${body.transactionHash}\` |`,
     ``,
-    `Wallet funded with testnet USDC. You can now provision databases and deploy sites.`,
+    `Agent allowance funded with testnet USDC. You can now provision databases and deploy sites.`,
   ];
 
   return { content: [{ type: "text", text: lines.join("\n") }] };

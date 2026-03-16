@@ -37,7 +37,7 @@ export async function handleSetTier(args: {
     }
     lines.push(``);
     lines.push(
-      `The user's wallet or payment agent must send the required amount. ` +
+      `The user's agent allowance or payment agent must send the required amount. ` +
       `Once payment is confirmed, retry this tool call.`,
     );
     return { content: [{ type: "text", text: lines.join("\n") }] };

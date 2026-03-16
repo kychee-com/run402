@@ -2,7 +2,7 @@ import { z } from "zod";
 import { apiRequest } from "../client.js";
 import { saveProject } from "../keystore.js";
 import { formatApiError } from "../errors.js";
-import { requireWalletAuth } from "../wallet-auth.js";
+import { requireAllowanceAuth } from "../allowance-auth.js";
 
 export const forkAppSchema = {
   version_id: z.string().describe("The app version ID to fork (from browse_apps)"),
@@ -18,7 +18,7 @@ export async function handleForkApp(args: {
   name: string;
   subdomain?: string;
 }): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
-  const auth = requireWalletAuth();
+  const auth = requireAllowanceAuth();
   if ("error" in auth) return auth.error;
 
   const res = await apiRequest("/fork/v1", {

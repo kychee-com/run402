@@ -2,7 +2,7 @@ import { describe, it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { join } from "node:path";
 import { homedir } from "node:os";
-import { getApiBase, getConfigDir, getKeystorePath, getWalletPath } from "./config.js";
+import { getApiBase, getConfigDir, getKeystorePath, getAllowancePath } from "./config.js";
 
 const origApiBase = process.env.RUN402_API_BASE;
 const origConfigDir = process.env.RUN402_CONFIG_DIR;
@@ -40,8 +40,8 @@ describe("config", () => {
     assert.equal(getKeystorePath(), "/tmp/test-config/projects.json");
   });
 
-  it("derives wallet path from config dir", () => {
+  it("derives allowance path from config dir", () => {
     process.env.RUN402_CONFIG_DIR = "/tmp/test-config";
-    assert.equal(getWalletPath(), "/tmp/test-config/wallet.json");
+    assert.equal(getAllowancePath(), "/tmp/test-config/allowance.json");
   });
 });

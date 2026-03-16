@@ -1,31 +1,31 @@
-import { readWallet, saveWallet, WALLET_FILE, API } from "./config.mjs";
+import { readAllowance, saveAllowance, ALLOWANCE_FILE, API } from "./config.mjs";
 
-const HELP = `run402 wallet — Manage your x402 wallet
+const HELP = `run402 allowance — Manage your agent allowance
 
 Usage:
-  run402 wallet <subcommand>
+  run402 allowance <subcommand>
 
 Subcommands:
-  status    Show wallet address, network, and funding status
-  create    Generate a new wallet and save it locally
+  status    Show allowance address, network, and funding status
+  create    Generate a new allowance and save it locally
   fund      Request test USDC from the Run402 faucet (Base Sepolia)
   balance   Show on-chain USDC (mainnet + testnet) and Run402 billing balance
-  export    Print the wallet address (useful for scripting)
+  export    Print the allowance address (useful for scripting)
   checkout  Create a billing checkout session (--amount <usd_micros>)
   history   View billing transaction history (--limit <n>)
 
 Notes:
-  - Wallet is stored locally at ~/.run402/wallet.json
-  - The wallet works on any EVM chain (currently Run402 uses Base Mainnet and Sepolia for testnet)
-  - You need to create and fund a wallet before any x402 transaction with Run402
+  - Agent allowance is stored locally at ~/.run402/allowance.json
+  - The allowance works on any EVM chain (currently Run402 uses Base Mainnet and Sepolia for testnet)
+  - You need to create and fund an allowance before any x402 transaction with Run402
 
 Examples:
-  run402 wallet create
-  run402 wallet status
-  run402 wallet fund
-  run402 wallet export
-  run402 wallet checkout --amount 5000000
-  run402 wallet history --limit 10
+  run402 allowance create
+  run402 allowance status
+  run402 allowance fund
+  run402 allowance export
+  run402 allowance checkout --amount 5000000
+  run402 allowance history --limit 10
 `;
 
 const USDC_ABI = [{ name: "balanceOf", type: "function", stateMutability: "view", inputs: [{ name: "account", type: "address" }], outputs: [{ name: "", type: "uint256" }] }];
@@ -40,29 +40,29 @@ async function loadDeps() {
 }
 
 async function status() {
-  const w = readWallet();
+  const w = readAllowance();
   if (!w) {
-    console.log(JSON.stringify({ status: "no_wallet", message: "No wallet found. Run: run402 wallet create" }));
+    console.log(JSON.stringify({ status: "no_wallet", message: "No agent allowance found. Run: run402 allowance create" }));
     return;
   }
-  console.log(JSON.stringify({ status: "ok", address: w.address, created: w.created, funded: w.funded || false, path: WALLET_FILE }));
+  console.log(JSON.stringify({ status: "ok", address: w.address, created: w.created, funded: w.funded || false, path: ALLOWANCE_FILE }));
 }
 
 async function create() {
-  if (readWallet()) {
-    console.log(JSON.stringify({ status: "error", message: "Wallet already exists. Use 'status' to check it." }));
+  if (readAllowance()) {
+    console.log(JSON.stringify({ status: "error", message: "Agent allowance already exists. Use 'status' to check it." }));
     process.exit(1);
   }
   const { generatePrivateKey, privateKeyToAccount } = await loadDeps();
   const privateKey = generatePrivateKey();
   const account = privateKeyToAccount(privateKey);
-  saveWallet({ address: account.address, privateKey, created: new Date().toISOString(), funded: false });
-  console.log(JSON.stringify({ status: "ok", address: account.address, message: `Wallet created. Stored locally at ${WALLET_FILE}` }));
+  saveAllowance({ address: account.address, privateKey, created: new Date().toISOString(), funded: false });
+  console.log(JSON.stringify({ status: "ok", address: account.address, message: `Agent allowance created. Stored locally at ${ALLOWANCE_FILE}` }));
 }
 
 async function fund() {
-  const w = readWallet();
-  if (!w) { console.log(JSON.stringify({ status: "error", message: "No wallet. Run: run402 wallet create" })); process.exit(1); }
+  const w = readAllowance();
+  if (!w) { console.log(JSON.stringify({ status: "error", message: "No agent allowance. Run: run402 allowance create" })); process.exit(1); }
 
   const { createPublicClient, http, baseSepolia } = await loadDeps();
   const client = createPublicClient({ chain: baseSepolia, transport: http() });
@@ -80,7 +80,7 @@ async function fund() {
     await new Promise(r => setTimeout(r, 1000));
     const now = await readUsdcBalance(client, USDC_SEPOLIA, w.address).catch(() => before);
     if (now > before) {
-      saveWallet({ ...w, funded: true, lastFaucet: new Date().toISOString() });
+      saveAllowance({ ...w, funded: true, lastFaucet: new Date().toISOString() });
       console.log(JSON.stringify({
         address: w.address,
         onchain: {
@@ -91,7 +91,7 @@ async function fund() {
     }
   }
 
-  saveWallet({ ...w, funded: true, lastFaucet: new Date().toISOString() });
+  saveAllowance({ ...w, funded: true, lastFaucet: new Date().toISOString() });
   console.log(JSON.stringify({ status: "ok", message: "Faucet request sent but balance not yet confirmed", ...data }));
 }
 
@@ -101,8 +101,8 @@ async function readUsdcBalance(client, usdc, address) {
 }
 
 async function balance() {
-  const w = readWallet();
-  if (!w) { console.log(JSON.stringify({ status: "error", message: "No wallet. Run: run402 wallet create" })); process.exit(1); }
+  const w = readAllowance();
+  if (!w) { console.log(JSON.stringify({ status: "error", message: "No agent allowance. Run: run402 allowance create" })); process.exit(1); }
 
   const { createPublicClient, http, base, baseSepolia } = await loadDeps();
   const mainnetClient = createPublicClient({ chain: base, transport: http() });
@@ -127,14 +127,14 @@ async function balance() {
 }
 
 async function exportAddr() {
-  const w = readWallet();
-  if (!w) { console.log(JSON.stringify({ status: "error", message: "No wallet." })); process.exit(1); }
+  const w = readAllowance();
+  if (!w) { console.log(JSON.stringify({ status: "error", message: "No agent allowance." })); process.exit(1); }
   console.log(w.address);
 }
 
 async function checkout(args) {
-  const w = readWallet();
-  if (!w) { console.log(JSON.stringify({ status: "error", message: "No wallet. Run: run402 wallet create" })); process.exit(1); }
+  const w = readAllowance();
+  if (!w) { console.log(JSON.stringify({ status: "error", message: "No agent allowance. Run: run402 allowance create" })); process.exit(1); }
   let amount = null;
   for (let i = 0; i < args.length; i++) {
     if (args[i] === "--amount" && args[i + 1]) amount = parseInt(args[++i], 10);
@@ -151,8 +151,8 @@ async function checkout(args) {
 }
 
 async function history(args) {
-  const w = readWallet();
-  if (!w) { console.log(JSON.stringify({ status: "error", message: "No wallet. Run: run402 wallet create" })); process.exit(1); }
+  const w = readAllowance();
+  if (!w) { console.log(JSON.stringify({ status: "error", message: "No agent allowance. Run: run402 allowance create" })); process.exit(1); }
   let limit = 20;
   for (let i = 0; i < args.length; i++) {
     if (args[i] === "--limit" && args[i + 1]) limit = parseInt(args[++i], 10);

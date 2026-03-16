@@ -13,8 +13,8 @@ Usage:
   run402 <command> [subcommand] [options]
 
 Commands:
-  init        Set up wallet, funding, and check tier status
-  wallet      Manage your x402 wallet (create, fund, balance, status)
+  init        Set up allowance, funding, and check tier status
+  allowance   Manage your agent allowance (create, fund, balance, status)
   tier        Manage tier subscription (status, set)
   projects    Manage projects (provision, list, query, inspect, delete)
   deploy      Deploy a full-stack app or static site (requires active tier)
@@ -31,8 +31,8 @@ Commands:
 Run 'run402 <command> --help' for detailed usage of each command.
 
 Examples:
-  run402 wallet create
-  run402 wallet fund
+  run402 allowance create
+  run402 allowance fund
   run402 deploy --manifest app.json
   run402 projects list
   run402 projects sql <project_id> "SELECT * FROM users LIMIT 5"
@@ -57,8 +57,8 @@ switch (cmd) {
     await run();
     break;
   }
-  case "wallet": {
-    const { run } = await import("./lib/wallet.mjs");
+  case "allowance": {
+    const { run } = await import("./lib/allowance.mjs");
     await run(sub, rest);
     break;
   }

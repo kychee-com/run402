@@ -99,7 +99,7 @@ const REQUIRED_SECTIONS = [
   "Payment Handling",
   "Tips & Guardrails",
   "Tools Reference",
-  "Wallet Setup",
+  "Agent Allowance Setup",
 ];
 
 describe("body required sections", () => {

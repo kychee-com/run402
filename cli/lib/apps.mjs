@@ -1,4 +1,4 @@
-import { findProject, API, walletAuthHeaders, saveProject } from "./config.mjs";
+import { findProject, API, allowanceAuthHeaders, saveProject } from "./config.mjs";
 
 const HELP = `run402 apps — Browse and manage the app marketplace
 
@@ -47,7 +47,7 @@ async function fork(versionId, name, args) {
     if (args[i] === "--tier" && args[i + 1]) opts.tier = args[++i];
     if (args[i] === "--subdomain" && args[i + 1]) opts.subdomain = args[++i];
   }
-  const authHeaders = await walletAuthHeaders();
+  const authHeaders = await allowanceAuthHeaders();
 
   const body = { version_id: versionId, name };
   if (opts.subdomain) body.subdomain = opts.subdomain;

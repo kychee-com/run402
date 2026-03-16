@@ -48,10 +48,10 @@ import { archiveProjectSchema, handleArchiveProject } from "./tools/archive-proj
 import { checkBalanceSchema, handleCheckBalance } from "./tools/check-balance.js";
 import { listProjectsSchema, handleListProjects } from "./tools/list-projects.js";
 
-// New tools — wallet, faucet, image
-import { walletStatusSchema, handleWalletStatus } from "./tools/wallet-status.js";
-import { walletCreateSchema, handleWalletCreate } from "./tools/wallet-create.js";
-import { walletExportSchema, handleWalletExport } from "./tools/wallet-export.js";
+// New tools — allowance, faucet, image
+import { allowanceStatusSchema, handleAllowanceStatus } from "./tools/allowance-status.js";
+import { allowanceCreateSchema, handleAllowanceCreate } from "./tools/allowance-create.js";
+import { allowanceExportSchema, handleAllowanceExport } from "./tools/allowance-export.js";
 import { requestFaucetSchema, handleRequestFaucet } from "./tools/request-faucet.js";
 import { generateImageSchema, handleGenerateImage } from "./tools/generate-image.js";
 
@@ -283,14 +283,14 @@ server.tool(
 
 server.tool(
   "tier_status",
-  "Check wallet's current tier subscription — tier name, status, and expiry. Requires wallet auth.",
+  "Check current tier subscription — tier name, status, and expiry. Requires allowance auth.",
   tierStatusSchema,
   async (args) => handleTierStatus(args),
 );
 
 server.tool(
   "set_tier",
-  "Subscribe, renew, or upgrade a wallet's tier. Auto-detects action based on wallet state. Returns success or payment details if x402 payment is needed.",
+  "Subscribe, renew, or upgrade tier. Auto-detects action based on allowance state. Returns success or payment details if x402 payment is needed.",
   setTierSchema,
   async (args) => handleSetTier(args),
 );
@@ -302,43 +302,43 @@ server.tool(
   async (args) => handleArchiveProject(args),
 );
 
-// ─── Billing & wallet tools ─────────────────────────────────────────────────
+// ─── Billing & allowance tools ───────────────────────────────────────────────
 
 server.tool(
   "check_balance",
-  "Check billing account balance for a wallet address. Shows available and held funds.",
+  "Check billing account balance for an agent allowance address. Shows available and held funds.",
   checkBalanceSchema,
   async (args) => handleCheckBalance(args),
 );
 
 server.tool(
   "list_projects",
-  "List all active projects for a wallet address.",
+  "List all active projects for an agent allowance address.",
   listProjectsSchema,
   async (args) => handleListProjects(args),
 );
 
-// ─── Wallet & faucet tools ────────────────────────────────────────────────
+// ─── Allowance & faucet tools ─────────────────────────────────────────────
 
 server.tool(
-  "wallet_status",
-  "Check local wallet status — address, network, and funding status.",
-  walletStatusSchema,
-  async (args) => handleWalletStatus(args),
+  "allowance_status",
+  "Check local agent allowance status — address, network, and funding status.",
+  allowanceStatusSchema,
+  async (args) => handleAllowanceStatus(args),
 );
 
 server.tool(
-  "wallet_create",
-  "Create a new local wallet (Base Sepolia testnet). Generates a private key and derives the Ethereum address. Saved to ~/.config/run402/wallet.json.",
-  walletCreateSchema,
-  async (args) => handleWalletCreate(args),
+  "allowance_create",
+  "Create a new local agent allowance (Base Sepolia testnet). Generates a private key and derives the Ethereum address. Saved to ~/.config/run402/allowance.json.",
+  allowanceCreateSchema,
+  async (args) => handleAllowanceCreate(args),
 );
 
 server.tool(
-  "wallet_export",
-  "Export the local wallet address. Safe to share publicly.",
-  walletExportSchema,
-  async (args) => handleWalletExport(args),
+  "allowance_export",
+  "Export the local agent allowance address. Safe to share publicly.",
+  allowanceExportSchema,
+  async (args) => handleAllowanceExport(args),
 );
 
 server.tool(
@@ -361,14 +361,14 @@ server.tool(
 
 server.tool(
   "send_message",
-  "Send a message to the Run402 developers. Free with wallet auth.",
+  "Send a message to the Run402 developers. Free with allowance auth.",
   sendMessageSchema,
   async (args) => handleSendMessage(args),
 );
 
 server.tool(
   "set_agent_contact",
-  "Register agent contact info (name, email, webhook) so Run402 can reach you. Free with wallet auth.",
+  "Register agent contact info (name, email, webhook) so Run402 can reach you. Free with allowance auth.",
   setAgentContactSchema,
   async (args) => handleSetAgentContact(args),
 );
@@ -377,14 +377,14 @@ server.tool(
 
 server.tool(
   "create_checkout",
-  "Create a Stripe checkout URL for your human to fund your wallet with a credit card.",
+  "Create a Stripe checkout URL for your human to fund your agent allowance with a credit card.",
   createCheckoutSchema,
   async (args) => handleCreateCheckout(args),
 );
 
 server.tool(
   "billing_history",
-  "View billing transaction history for a wallet address.",
+  "View billing transaction history for an agent allowance address.",
   billingHistorySchema,
   async (args) => handleBillingHistory(args),
 );

@@ -1,4 +1,4 @@
-import { readWallet, WALLET_FILE, API } from "./config.mjs";
+import { readAllowance, ALLOWANCE_FILE, API } from "./config.mjs";
 import { setupPaidFetch } from "./paid-fetch.mjs";
 
 const HELP = `run402 tier — Manage your Run402 tier subscription
@@ -12,7 +12,7 @@ Subcommands:
 
 Tiers: prototype ($0.10/7d), hobby ($5/30d), team ($20/30d)
 
-The server auto-detects the action based on your wallet state:
+The server auto-detects the action based on your allowance state:
   - No tier or expired  → subscribe
   - Same tier, active   → renew (extends from expiry)
   - Higher tier         → upgrade (prorated refund to allowance)
@@ -25,8 +25,8 @@ Examples:
 `;
 
 async function status() {
-  const w = readWallet();
-  if (!w) { console.log(JSON.stringify({ status: "error", message: "No wallet. Run: run402 wallet create" })); process.exit(1); }
+  const w = readAllowance();
+  if (!w) { console.log(JSON.stringify({ status: "error", message: "No agent allowance. Run: run402 allowance create" })); process.exit(1); }
   const { privateKeyToAccount } = await import("viem/accounts");
   const account = privateKeyToAccount(w.privateKey);
   const timestamp = Math.floor(Date.now() / 1000).toString();

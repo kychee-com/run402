@@ -1,5 +1,5 @@
 import { writeFileSync } from "fs";
-import { API, WALLET_FILE } from "./config.mjs";
+import { API, ALLOWANCE_FILE } from "./config.mjs";
 import { setupPaidFetch } from "./paid-fetch.mjs";
 
 const HELP = `run402 image — Generate AI images via x402 micropayments
@@ -22,7 +22,7 @@ Output (without --output):
   { "status": "ok", "aspect": "square", "content_type": "image/png", "image": "<base64>" }
 
 Notes:
-  - Requires a funded wallet (run402 wallet create && run402 wallet fund)
+  - Requires a funded allowance (run402 allowance create && run402 allowance fund)
   - Payments are processed automatically via x402 micropayments (Base Sepolia USDC)
   - Use --output to save directly to a file instead of printing base64
 `;

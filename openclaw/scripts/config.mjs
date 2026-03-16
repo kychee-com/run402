@@ -4,8 +4,8 @@
  */
 
 export {
-  CONFIG_DIR, WALLET_FILE, PROJECTS_FILE, API,
-  readWallet, saveWallet,
-  walletAuthHeaders, findProject,
+  CONFIG_DIR, ALLOWANCE_FILE, PROJECTS_FILE, API,
+  readAllowance, saveAllowance,
+  allowanceAuthHeaders, findProject,
   loadKeyStore, saveProject, removeProject, saveKeyStore,
 } from "../../cli/lib/config.mjs";

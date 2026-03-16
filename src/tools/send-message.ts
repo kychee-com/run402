@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { apiRequest } from "../client.js";
 import { formatApiError } from "../errors.js";
-import { requireWalletAuth } from "../wallet-auth.js";
+import { requireAllowanceAuth } from "../allowance-auth.js";
 
 export const sendMessageSchema = {
   message: z.string().describe("Message to send to the Run402 developers"),
@@ -10,7 +10,7 @@ export const sendMessageSchema = {
 export async function handleSendMessage(args: {
   message: string;
 }): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
-  const auth = requireWalletAuth();
+  const auth = requireAllowanceAuth();
   if ("error" in auth) return auth.error;
 
   const res = await apiRequest("/message/v1", {

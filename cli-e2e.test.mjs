@@ -353,27 +353,27 @@ beforeEach(() => {
 
 describe("CLI e2e happy path", () => {
 
-  // ── Wallet ──────────────────────────────────────────────────────────────
+  // ── Allowance ───────────────────────────────────────────────────────────
 
-  it("wallet create", async () => {
-    const { run } = await import("./cli/lib/wallet.mjs");
+  it("allowance create", async () => {
+    const { run } = await import("./cli/lib/allowance.mjs");
     captureStart();
     await run("create", []);
     captureStop();
     assert.ok(captured().includes("ok"), "should output ok status");
-    assert.ok(existsSync(join(tempDir, "wallet.json")), "wallet.json should exist");
+    assert.ok(existsSync(join(tempDir, "allowance.json")), "allowance.json should exist");
   });
 
-  it("wallet status", async () => {
-    const { run } = await import("./cli/lib/wallet.mjs");
+  it("allowance status", async () => {
+    const { run } = await import("./cli/lib/allowance.mjs");
     captureStart();
     await run("status", []);
     captureStop();
     assert.ok(captured().includes("ok"), "should show ok status");
   });
 
-  it("wallet fund", async () => {
-    const { run } = await import("./cli/lib/wallet.mjs");
+  it("allowance fund", async () => {
+    const { run } = await import("./cli/lib/allowance.mjs");
     captureStart();
     await run("fund", []);
     captureStop();
@@ -381,32 +381,32 @@ describe("CLI e2e happy path", () => {
     assert.ok(captured().includes("base-sepolia"), "should show balance or faucet result");
   });
 
-  it("wallet export", async () => {
-    const { run } = await import("./cli/lib/wallet.mjs");
+  it("allowance export", async () => {
+    const { run } = await import("./cli/lib/allowance.mjs");
     captureStart();
     await run("export", []);
     captureStop();
-    assert.ok(captured().includes("0x"), "should print wallet address");
+    assert.ok(captured().includes("0x"), "should print allowance address");
   });
 
-  it("wallet balance", async () => {
-    const { run } = await import("./cli/lib/wallet.mjs");
+  it("allowance balance", async () => {
+    const { run } = await import("./cli/lib/allowance.mjs");
     captureStart();
     await run("balance", []);
     captureStop();
     assert.ok(captured().includes("base-sepolia_usd_micros"), "should show balance");
   });
 
-  it("wallet checkout", async () => {
-    const { run } = await import("./cli/lib/wallet.mjs");
+  it("allowance checkout", async () => {
+    const { run } = await import("./cli/lib/allowance.mjs");
     captureStart();
     await run("checkout", ["--amount", "5000000"]);
     captureStop();
     assert.ok(captured().includes("checkout_url"), "should return checkout URL");
   });
 
-  it("wallet history", async () => {
-    const { run } = await import("./cli/lib/wallet.mjs");
+  it("allowance history", async () => {
+    const { run } = await import("./cli/lib/allowance.mjs");
     captureStart();
     await run("history", ["--limit", "5"]);
     captureStop();
@@ -774,16 +774,16 @@ describe("CLI e2e happy path", () => {
     assert.ok(captured().includes("deleted") || captured().includes("ok"), "should delete project");
   });
 
-  // ── Init (runs after wallet exists) ─────────────────────────────────────
+  // ── Init (runs after allowance exists) ──────────────────────────────────
 
-  it("init (wallet already exists)", async () => {
+  it("init (allowance already exists)", async () => {
     const { run } = await import("./cli/lib/init.mjs");
     captureStart();
     await run();
     captureStop();
     const out = captured();
     assert.ok(out.includes("Config"), "should show config dir");
-    assert.ok(out.includes("Wallet"), "should show wallet");
+    assert.ok(out.includes("Allowance"), "should show allowance");
     assert.ok(out.includes("Balance") || out.includes("USDC"), "should show balance");
     assert.ok(out.includes("Tier") || out.includes("prototype"), "should show tier");
   });

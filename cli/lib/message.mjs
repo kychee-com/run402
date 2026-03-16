@@ -1,4 +1,4 @@
-import { API, walletAuthHeaders } from "./config.mjs";
+import { API, allowanceAuthHeaders } from "./config.mjs";
 
 const HELP = `run402 message — Send messages to Run402 developers
 
@@ -6,8 +6,8 @@ Usage:
   run402 message send <text>
 
 Notes:
-  - Free with wallet auth
-  - Requires a wallet (run402 wallet create)
+  - Free with allowance auth
+  - Requires an allowance (run402 allowance create)
 
 Examples:
   run402 message send "Hello from my agent!"
@@ -15,7 +15,7 @@ Examples:
 
 async function send(text) {
   if (!text) { console.error(JSON.stringify({ status: "error", message: "Missing message text" })); process.exit(1); }
-  const authHeaders = await walletAuthHeaders();
+  const authHeaders = await allowanceAuthHeaders();
 
   const res = await fetch(`${API}/message/v1`, {
     method: "POST",

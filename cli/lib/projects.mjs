@@ -1,4 +1,4 @@
-import { findProject, loadKeyStore, saveProject, removeProject, API, walletAuthHeaders } from "./config.mjs";
+import { findProject, loadKeyStore, saveProject, removeProject, API, allowanceAuthHeaders } from "./config.mjs";
 
 const HELP = `run402 projects — Manage your deployed Run402 projects
 
@@ -31,7 +31,7 @@ Examples:
 Notes:
   - <id> is the project_id shown in 'run402 projects list'
   - 'rest' uses PostgREST query syntax (table name + optional query string)
-  - 'provision' requires a funded wallet — payment is automatic via x402
+  - 'provision' requires a funded allowance — payment is automatic via x402
   - RLS templates: user_owns_rows, public_read, public_read_write
 `;
 
@@ -48,7 +48,7 @@ async function provision(args) {
     if (args[i] === "--tier" && args[i + 1]) opts.tier = args[++i];
     if (args[i] === "--name" && args[i + 1]) opts.name = args[++i];
   }
-  const authHeaders = await walletAuthHeaders();
+  const authHeaders = await allowanceAuthHeaders();
   const body = { tier: opts.tier };
   if (opts.name) body.name = opts.name;
   const res = await fetch(`${API}/projects/v1`, {

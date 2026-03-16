@@ -10,7 +10,7 @@
 [![npm: run402](https://img.shields.io/npm/v/run402?label=run402)](https://www.npmjs.com/package/run402)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 
-Developer tools for [Run402](https://run402.com) — provision Postgres databases, deploy static sites, serverless functions, generate images, and manage x402 wallets. Available as an MCP server, an OpenClaw skill, and a CLI.
+Developer tools for [Run402](https://run402.com) — provision Postgres databases, deploy static sites, serverless functions, generate images, and manage agent allowances. Available as an MCP server, an OpenClaw skill, and a CLI.
 
 English | [简体中文](./README.zh-CN.md)
 
@@ -60,13 +60,13 @@ npx run402-mcp
 | `publish_app` | Publish a project as a forkable app. |
 | `list_versions` | List published versions of a project. |
 | `get_quote` | Get tier pricing. Free, no auth required. |
-| `set_tier` | Subscribe, renew, or upgrade wallet tier. Auto-detects action. Handles x402 payment. |
+| `set_tier` | Subscribe, renew, or upgrade tier. Auto-detects action. Handles x402 payment. |
 | `archive_project` | Archive a project and remove from local key store. |
-| `check_balance` | Check billing account balance for a wallet address. |
-| `list_projects` | List all active projects for a wallet address. |
-| `wallet_status` | Check local wallet status — address, network, funding. |
-| `wallet_create` | Create a new local wallet (Base Sepolia testnet). |
-| `wallet_export` | Export the local wallet address. |
+| `check_balance` | Check billing account balance for an agent allowance address. |
+| `list_projects` | List all active projects for an agent allowance address. |
+| `allowance_status` | Check local agent allowance status — address, network, funding. |
+| `allowance_create` | Create a new local agent allowance (Base Sepolia testnet). |
+| `allowance_export` | Export the local agent allowance address. |
 | `request_faucet` | Request free testnet USDC from the Run402 faucet. |
 | `generate_image` | Generate a PNG image from a text prompt. $0.03 via x402. |
 
@@ -79,8 +79,8 @@ A standalone CLI is available in the [`cli/`](./cli/) directory.
 ```bash
 npm install -g run402
 
-run402 wallet create
-run402 wallet fund
+run402 allowance create
+run402 allowance fund
 run402 deploy --tier prototype --manifest app.json
 ```
 

@@ -2,7 +2,7 @@ import { z } from "zod";
 import { apiRequest } from "../client.js";
 import { saveProject } from "../keystore.js";
 import { formatApiError } from "../errors.js";
-import { requireWalletAuth } from "../wallet-auth.js";
+import { requireAllowanceAuth } from "../allowance-auth.js";
 
 export const provisionSchema = {
   tier: z
@@ -19,7 +19,7 @@ export async function handleProvision(args: {
   tier?: string;
   name?: string;
 }): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
-  const auth = requireWalletAuth();
+  const auth = requireAllowanceAuth();
   if ("error" in auth) return auth.error;
 
   const tier = args.tier || "prototype";

@@ -1,5 +1,5 @@
 import { readFileSync } from "fs";
-import { API, walletAuthHeaders } from "./config.mjs";
+import { API, allowanceAuthHeaders } from "./config.mjs";
 
 const HELP = `run402 sites — Deploy and manage static sites
 
@@ -34,7 +34,7 @@ Examples:
 
 Notes:
   - Must include at least index.html in the files array
-  - Free with active tier — requires wallet auth
+  - Free with active tier — requires allowance auth
 `;
 
 async function readStdin() {
@@ -58,7 +58,7 @@ async function deploy(args) {
   if (opts.project) body.project = opts.project;
   if (opts.target) body.target = opts.target;
 
-  const authHeaders = await walletAuthHeaders();
+  const authHeaders = await allowanceAuthHeaders();
   const res = await fetch(`${API}/deployments/v1`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...authHeaders },

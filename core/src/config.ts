@@ -1,5 +1,6 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { existsSync, renameSync, mkdirSync } from "node:fs";
 
 export function getApiBase(): string {
   return process.env.RUN402_API_BASE || "https://api.run402.com";
@@ -13,6 +14,14 @@ export function getKeystorePath(): string {
   return join(getConfigDir(), "projects.json");
 }
 
-export function getWalletPath(): string {
-  return join(getConfigDir(), "wallet.json");
+export function getAllowancePath(): string {
+  const dir = getConfigDir();
+  const newPath = join(dir, "allowance.json");
+  const oldPath = join(dir, "wallet.json");
+  // Auto-migrate from wallet.json → allowance.json
+  if (!existsSync(newPath) && existsSync(oldPath)) {
+    mkdirSync(dir, { recursive: true });
+    renameSync(oldPath, newPath);
+  }
+  return newPath;
 }

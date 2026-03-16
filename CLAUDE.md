@@ -54,9 +54,9 @@ When adding a new tool/command, add it to the `SURFACE` array in `sync.test.ts`.
 
 The `core/` module contains shared logic imported by all three interfaces:
 
-- **`config.ts`** — Path resolution and env vars: `getApiBase()`, `getConfigDir()`, `getKeystorePath()`, `getWalletPath()`.
-- **`wallet.ts`** — `readWallet()`, `saveWallet()` with atomic writes (temp-file + rename, mode 0600).
-- **`wallet-auth.ts`** — EIP-191 signing with `@noble/curves`. `getWalletAuthHeaders()` returns headers or null.
+- **`config.ts`** — Path resolution and env vars: `getApiBase()`, `getConfigDir()`, `getKeystorePath()`, `getAllowancePath()`.
+- **`allowance.ts`** — `readAllowance()`, `saveAllowance()` with atomic writes (temp-file + rename, mode 0600).
+- **`allowance-auth.ts`** — EIP-191 signing with `@noble/curves`. `getAllowanceAuthHeaders()` returns headers or null.
 - **`keystore.ts`** — Unified project credential store. Object schema: `{projects: {id: {anon_key, service_key, tier, lease_expires_at}}}`. Auto-migrates legacy array format and `expires_at` → `lease_expires_at`. Functions: `loadKeyStore()`, `saveKeyStore()`, `getProject()`, `saveProject()`, `removeProject()`.
 - **`client.ts`** — `apiRequest()` fetch wrapper. Handles JSON/text responses, 402 payment detection.
 
@@ -66,15 +66,15 @@ Core functions return `null` or throw — they never call `process.exit()`. Each
 
 Thin re-export layer over `core/dist/` plus MCP-specific wrappers:
 
-- **`config.ts`**, **`client.ts`**, **`keystore.ts`**, **`wallet.ts`** — re-export from core
-- **`wallet-auth.ts`** — re-exports core's `getWalletAuthHeaders()` + adds `requireWalletAuth()` which returns MCP error shape
+- **`config.ts`**, **`client.ts`**, **`keystore.ts`**, **`allowance.ts`** — re-export from core
+- **`allowance-auth.ts`** — re-exports core's `getAllowanceAuthHeaders()` + adds `requireAllowanceAuth()` which returns MCP error shape
 - **`errors.ts`** — MCP-specific error formatting (`formatApiError`, `projectNotFound`)
 - **`index.ts`** — Entry point. Registers all tools via `McpServer`.
 - **`tools/*.ts`** — Each tool exports a Zod schema + async handler
 
 ### CLI (`cli/`)
 
-- **`cli/lib/config.mjs`** — Imports from `core/dist/`, adds CLI wrappers (`walletAuthHeaders()` with process.exit, `findProject()` with process.exit). Re-exports core keystore functions.
+- **`cli/lib/config.mjs`** — Imports from `core/dist/`, adds CLI wrappers (`allowanceAuthHeaders()` with process.exit, `findProject()` with process.exit). Re-exports core keystore functions.
 - **`cli/lib/paid-fetch.mjs`** — Shared `setupPaidFetch()` using viem + @x402/fetch for paid endpoints.
 - **`cli/lib/*.mjs`** — Each module exports `async run(sub, args)` with CLI output format.
 

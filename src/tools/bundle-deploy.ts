@@ -2,7 +2,7 @@ import { z } from "zod";
 import { apiRequest } from "../client.js";
 import { saveProject } from "../keystore.js";
 import { formatApiError } from "../errors.js";
-import { requireWalletAuth } from "../wallet-auth.js";
+import { requireAllowanceAuth } from "../allowance-auth.js";
 
 export const bundleDeploySchema = {
   name: z.string().describe("App name (used as project name and default subdomain)"),
@@ -66,7 +66,7 @@ export async function handleBundleDeploy(args: {
   site?: Array<{ file: string; data: string; encoding?: string }>;
   subdomain?: string;
 }): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
-  const auth = requireWalletAuth();
+  const auth = requireAllowanceAuth();
   if ("error" in auth) return auth.error;
 
   const res = await apiRequest("/deploy/v1", {

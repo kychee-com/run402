@@ -1,23 +1,23 @@
 import { z } from "zod";
-import { getWalletPath } from "../config.js";
-import { readWallet, saveWallet } from "../wallet.js";
+import { getAllowancePath } from "../config.js";
+import { readAllowance, saveAllowance } from "../allowance.js";
 import { randomBytes, createECDH } from "node:crypto";
 import { keccak_256 } from "@noble/hashes/sha3.js";
 
-export const walletCreateSchema = {};
+export const allowanceCreateSchema = {};
 
-export async function handleWalletCreate(
+export async function handleAllowanceCreate(
   _args: Record<string, never>,
 ): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
-  const walletPath = getWalletPath();
+  const allowancePath = getAllowancePath();
 
-  const existing = readWallet();
+  const existing = readAllowance();
   if (existing) {
     return {
       content: [
         {
           type: "text",
-          text: `Wallet already exists at \`${walletPath}\`.\n\nAddress: \`${existing.address}\`\n\nUse \`wallet_status\` to check details.`,
+          text: `Agent allowance already exists at \`${allowancePath}\`.\n\nAddress: \`${existing.address}\`\n\nUse \`allowance_status\` to check details.`,
         },
       ],
       isError: true,
@@ -40,8 +40,8 @@ export async function handleWalletCreate(
   const addressBytes = hash.slice(-20);
   const address = `0x${Buffer.from(addressBytes).toString("hex")}`;
 
-  // Save wallet using core's atomic write
-  saveWallet({
+  // Save allowance using core's atomic write
+  saveAllowance({
     address,
     privateKey,
     created: new Date().toISOString(),
@@ -49,12 +49,12 @@ export async function handleWalletCreate(
   });
 
   const lines = [
-    `## Wallet Created`,
+    `## Agent Allowance Created`,
     ``,
     `| Field | Value |`,
     `|-------|-------|`,
     `| address | \`${address}\` |`,
-    `| saved to | \`${walletPath}\` |`,
+    `| saved to | \`${allowancePath}\` |`,
     ``,
     `Use \`request_faucet\` to fund it with testnet USDC, or send USDC on any supported chain.`,
   ];

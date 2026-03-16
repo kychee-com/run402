@@ -33,8 +33,8 @@ The Run402 API (`api.run402.com`) is operated by Kychee LLC. Report API-side vul
 
 ## Security Design
 
-- **Credential storage**: Project keys and wallet private keys are stored locally at `~/.config/run402/` with `0600` permissions (owner read/write only). Atomic writes via temp-file + rename prevent partial-write corruption.
+- **Credential storage**: Project keys and allowance private keys are stored locally at `~/.config/run402/` with `0600` permissions (owner read/write only). Atomic writes via temp-file + rename prevent partial-write corruption.
 - **No secrets in transit to MCP clients**: The MCP server never sends private keys or service keys in tool responses. Keys are stored locally and used internally for API authentication.
-- **Wallet isolation**: Wallet private keys never leave the local machine. They are used only for signing x402 payment transactions.
+- **Allowance isolation**: Allowance private keys never leave the local machine. They are used only for signing x402 payment transactions.
 - **SQL safety**: The API blocks dangerous SQL operations (CREATE EXTENSION, COPY PROGRAM, ALTER SYSTEM, GRANT/REVOKE, etc.) at the gateway level.
 - **Schema isolation**: Each project runs in its own Postgres schema with cross-schema access blocked.

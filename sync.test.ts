@@ -59,7 +59,7 @@ function parseSubcommands(filePath: string): string[] {
 /** Parse CLI commands as "module:subcommand" pairs */
 function parseCliCommands(): string[] {
   const cmds: string[] = [];
-  for (const mod of ["wallet", "tier", "projects", "image", "storage", "functions", "secrets", "sites", "subdomains", "apps", "message", "agent"]) {
+  for (const mod of ["allowance", "tier", "projects", "image", "storage", "functions", "secrets", "sites", "subdomains", "apps", "message", "agent"]) {
     for (const sub of parseSubcommands(join(__dirname, "cli/lib", `${mod}.mjs`))) {
       cmds.push(`${mod}:${sub}`);
     }
@@ -72,7 +72,7 @@ function parseCliCommands(): string[] {
 /** Parse OpenClaw commands as "module:subcommand" pairs */
 function parseOpenClawCommands(): string[] {
   const cmds: string[] = [];
-  for (const mod of ["wallet", "tier", "projects", "image", "storage", "functions", "secrets", "sites", "subdomains", "apps", "message", "agent"]) {
+  for (const mod of ["allowance", "tier", "projects", "image", "storage", "functions", "secrets", "sites", "subdomains", "apps", "message", "agent"]) {
     for (const sub of parseSubcommands(join(__dirname, "openclaw/scripts", `${mod}.mjs`))) {
       cmds.push(`${mod}:${sub}`);
     }
@@ -143,7 +143,7 @@ const SURFACE: Capability[] = [
   { id: "archive",           endpoint: "DELETE /projects/v1/:id",                mcp: "archive_project",               cli: "projects:delete",     openclaw: "projects:delete" },
 
   // ── Faucet ───────────────────────────────────────────────────────────────
-  { id: "faucet",            endpoint: "POST /faucet/v1",                        mcp: "request_faucet",                cli: "wallet:fund",         openclaw: "wallet:fund" },
+  { id: "faucet",            endpoint: "POST /faucet/v1",                        mcp: "request_faucet",                cli: "allowance:fund",      openclaw: "allowance:fund" },
 
   // ── Database / Admin ─────────────────────────────────────────────────────
   { id: "run_sql",           endpoint: "POST /projects/v1/admin/:id/sql",        mcp: "run_sql",                       cli: "projects:sql",        openclaw: "projects:sql" },
@@ -186,7 +186,7 @@ const SURFACE: Capability[] = [
   { id: "list_versions",     endpoint: "GET /projects/v1/admin/:id/versions",       mcp: "list_versions", cli: "apps:versions", openclaw: "apps:versions" },
 
   // ── Billing ──────────────────────────────────────────────────────────────
-  { id: "check_balance",     endpoint: "GET /billing/v1/accounts/:wallet",           mcp: "check_balance",  cli: "wallet:balance", openclaw: "wallet:balance" },
+  { id: "check_balance",     endpoint: "GET /billing/v1/accounts/:wallet",           mcp: "check_balance",  cli: "allowance:balance", openclaw: "allowance:balance" },
   { id: "list_projects",     endpoint: "GET /wallets/v1/:wallet/projects",           mcp: "list_projects",  cli: "projects:list",  openclaw: "projects:list" },
 
   // ── Image generation ─────────────────────────────────────────────────────
@@ -197,8 +197,8 @@ const SURFACE: Capability[] = [
   { id: "set_agent_contact", endpoint: "POST /agent/v1/contact",            mcp: "set_agent_contact",   cli: "agent:contact",    openclaw: "agent:contact" },
 
   // ── Additional billing ─────────────────────────────────────────────────
-  { id: "create_checkout",   endpoint: "POST /billing/v1/checkouts",        mcp: "create_checkout",     cli: "wallet:checkout",  openclaw: "wallet:checkout" },
-  { id: "billing_history",   endpoint: "GET /billing/v1/accounts/:wallet/history", mcp: "billing_history", cli: "wallet:history", openclaw: "wallet:history" },
+  { id: "create_checkout",   endpoint: "POST /billing/v1/checkouts",        mcp: "create_checkout",     cli: "allowance:checkout",  openclaw: "allowance:checkout" },
+  { id: "billing_history",   endpoint: "GET /billing/v1/accounts/:wallet/history", mcp: "billing_history", cli: "allowance:history", openclaw: "allowance:history" },
 
   // ── Deployment status ──────────────────────────────────────────────────
   { id: "get_deployment",    endpoint: "GET /deployments/v1/:id",           mcp: "get_deployment",      cli: "sites:status",     openclaw: "sites:status" },
@@ -211,10 +211,10 @@ const SURFACE: Capability[] = [
   // ── Tier management ────────────────────────────────────────────────────
   { id: "tier_status",       endpoint: "GET /tiers/v1/status",             mcp: "tier_status",      cli: "tier:status",      openclaw: "tier:status" },
 
-  // ── Wallet management ──────────────────────────────────────────────────
-  { id: "wallet_status",     endpoint: "(local)",                          mcp: "wallet_status",    cli: "wallet:status",    openclaw: "wallet:status" },
-  { id: "wallet_create",     endpoint: "(local)",                          mcp: "wallet_create",    cli: "wallet:create",    openclaw: "wallet:create" },
-  { id: "wallet_export",     endpoint: "(local)",                          mcp: "wallet_export",    cli: "wallet:export",    openclaw: "wallet:export" },
+  // ── Allowance management ───────────────────────────────────────────────
+  { id: "allowance_status",  endpoint: "(local)",                          mcp: "allowance_status", cli: "allowance:status", openclaw: "allowance:status" },
+  { id: "allowance_create",  endpoint: "(local)",                          mcp: "allowance_create", cli: "allowance:create", openclaw: "allowance:create" },
+  { id: "allowance_export",  endpoint: "(local)",                          mcp: "allowance_export", cli: "allowance:export", openclaw: "allowance:export" },
 ];
 
 // ─── Derived expected sets ───────────────────────────────────────────────────

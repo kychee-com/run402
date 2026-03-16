@@ -1,4 +1,4 @@
-import { API, walletAuthHeaders } from "./config.mjs";
+import { API, allowanceAuthHeaders } from "./config.mjs";
 
 const HELP = `run402 agent — Manage agent identity
 
@@ -6,7 +6,7 @@ Usage:
   run402 agent contact --name <name> [--email <email>] [--webhook <url>]
 
 Notes:
-  - Free with wallet auth
+  - Free with allowance auth
   - Registers contact info so Run402 can reach your agent
   - Only name is required; email and webhook are optional
 
@@ -23,7 +23,7 @@ async function contact(args) {
     if (args[i] === "--webhook" && args[i + 1]) webhook = args[++i];
   }
   if (!name) { console.error(JSON.stringify({ status: "error", message: "Missing --name <name>" })); process.exit(1); }
-  const authHeaders = await walletAuthHeaders();
+  const authHeaders = await allowanceAuthHeaders();
 
   const body = { name };
   if (email) body.email = email;

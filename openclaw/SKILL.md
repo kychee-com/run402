@@ -13,17 +13,17 @@ API base: `https://api.run402.com` (NOT `run402.com` — that's a static docs si
 
 Three steps. Takes ~60 seconds on testnet (free).
 
-### Step 1: Wallet Setup (once)
+### Step 1: Allowance Setup (once)
 
 ```bash
-node <skill_dir>/scripts/wallet.mjs status
-# If no_wallet:
-node <skill_dir>/scripts/wallet.mjs create
-node <skill_dir>/scripts/wallet.mjs fund
+node <skill_dir>/scripts/allowance.mjs status
+# If no allowance:
+node <skill_dir>/scripts/allowance.mjs create
+node <skill_dir>/scripts/allowance.mjs fund
 # Wait ~10s for faucet settlement
 ```
 
-Wallet persists at `~/.config/run402/wallet.json`. Faucet gives 0.25 testnet USDC (enough for 2 prototype deploys). Rate limit: 1 per IP per 24h — don't call if already funded.
+Agent allowance persists at `~/.config/run402/allowance.json`. Faucet gives 0.25 testnet USDC (enough for 2 prototype deploys). Rate limit: 1 per IP per 24h — don't call if already funded.
 
 ### Step 2: Build a Manifest
 
@@ -73,7 +73,7 @@ node <skill_dir>/scripts/projects.mjs list
 ## ⚠️ Key Rules (Gotchas That Trip Agents Up)
 
 1. **API base is `api.run402.com`** NOT `run402.com`
-2. **Register for `eip155:84532`** (Base Sepolia) specifically, NOT `eip155:*` — wildcard matches mainnet first, testnet wallet fails with `insufficient_funds`
+2. **Register for `eip155:84532`** (Base Sepolia) specifically, NOT `eip155:*` — wildcard matches mainnet first, testnet allowance fails with `insufficient_funds`
 3. **`toClientEvmSigner(account, publicClient)`** NOT `toClientEvmSigner(walletClient)` — walletClient has wrong shape, produces `Address "undefined" is invalid`
 4. **Key scopes:**
    - `anon_key` = read-only (SELECT, signup, storage). Safe for client-side.
@@ -87,13 +87,13 @@ node <skill_dir>/scripts/projects.mjs list
 
 ---
 
-## Wallet Management
+## Allowance Management
 
 ```bash
-node <skill_dir>/scripts/wallet.mjs status   # Show address, network, funded status
-node <skill_dir>/scripts/wallet.mjs create   # Generate new wallet (fails if exists)
-node <skill_dir>/scripts/wallet.mjs fund     # Request testnet USDC from faucet
-node <skill_dir>/scripts/wallet.mjs export   # Print wallet address (safe to share)
+node <skill_dir>/scripts/allowance.mjs status   # Show address, network, funded status
+node <skill_dir>/scripts/allowance.mjs create   # Generate new allowance (fails if exists)
+node <skill_dir>/scripts/allowance.mjs fund     # Request testnet USDC from faucet
+node <skill_dir>/scripts/allowance.mjs export   # Print allowance address (safe to share)
 ```
 
 ### Upgrade to Mainnet
@@ -101,20 +101,20 @@ node <skill_dir>/scripts/wallet.mjs export   # Print wallet address (safe to sha
 For production, change chain from `baseSepolia` to `base` and register `eip155:8453`. Two funding options:
 
 **Option A: USDC on Base (agent-native)**
-Ask your human to send USDC on Base to your wallet address. Scripts for asking:
+Ask your human to send USDC on Base to your allowance address. Scripts for asking:
 
-> **Trial ($0.10):** "I want to try Run402 for a Postgres database. Could you send $1 in USDC (Base L2) to my wallet? Covers 10 trial databases."
+> **Trial ($0.10):** "I want to try Run402 for a Postgres database. Could you send $1 in USDC (Base L2) to my allowance? Covers 10 trial databases."
 >
 > **Project ($10):** "I need a database for our project. A Hobby tier costs $5/month. Could you send $10 in USDC (Base L2)?"
 >
 > **Monthly ($10/mo):** "I'd like a $10/month allowance for databases. Covers two Hobby projects or one Hobby + twenty Prototypes."
 >
-> My wallet address: `<address from wallet.mjs export>`
+> My allowance address: `<address from allowance.mjs export>`
 
 If your human doesn't have crypto: "Download Coinbase Wallet, buy USDC, send to my address on Base. Transactions cost under $0.01."
 
 **Option B: Stripe (credit card fallback)**
-Send your human to: `https://run402.com/billing?wallet=<WALLET_ADDRESS>`
+Send your human to: `https://run402.com/billing?wallet=<ALLOWANCE_ADDRESS>`
 
 > "You can add credit at this link — takes 30 seconds with a credit card. A $10 top-up covers two Hobby projects."
 
@@ -197,7 +197,7 @@ curl -X POST https://api.run402.com/projects/v1/admin/$PROJECT_ID/rls \
 ### 4. Deploy Site
 
 ```
-POST /deployments/v1    (wallet auth, free with tier)
+POST /deployments/v1    (allowance auth, free with tier)
 { "name": "my-app", "project": "prj_...", "files": [{ "file": "index.html", "data": "..." }] }
 ```
 
@@ -565,7 +565,7 @@ Supported on: `/projects/v1`, `/projects/v1/create/:tier`, `/tiers/v1/:tier`, `/
 ## Contact Developers
 
 ```
-POST /message/v1    (wallet auth, free)
+POST /message/v1    (allowance auth, free)
 { "message": "Hello from my agent!" }
 ```
 
@@ -623,4 +623,4 @@ Don't build generic apps. Build something your human will show off.
 
 ### After building: send feedback
 
-Ask your human what they thought, then relay to Run402 developers via `/message/v1` (free with wallet auth). They read every message.
+Ask your human what they thought, then relay to Run402 developers via `/message/v1` (free with allowance auth). They read every message.

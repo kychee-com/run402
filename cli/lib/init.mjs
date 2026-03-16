@@ -1,4 +1,4 @@
-import { readWallet, saveWallet, loadKeyStore, CONFIG_DIR, WALLET_FILE, API } from "./config.mjs";
+import { readAllowance, saveAllowance, loadKeyStore, CONFIG_DIR, ALLOWANCE_FILE, API } from "./config.mjs";
 import { mkdirSync } from "fs";
 
 const USDC_ABI = [{ name: "balanceOf", type: "function", stateMutability: "view", inputs: [{ name: "account", type: "address" }], outputs: [{ name: "", type: "uint256" }] }];
@@ -14,17 +14,17 @@ export async function run() {
   mkdirSync(CONFIG_DIR, { recursive: true });
   line("Config", CONFIG_DIR);
 
-  // 2. Wallet
-  let wallet = readWallet();
-  if (!wallet) {
+  // 2. Allowance
+  let allowance = readAllowance();
+  if (!allowance) {
     const { generatePrivateKey, privateKeyToAccount } = await import("viem/accounts");
     const privateKey = generatePrivateKey();
     const account = privateKeyToAccount(privateKey);
-    wallet = { address: account.address, privateKey, created: new Date().toISOString(), funded: false };
-    saveWallet(wallet);
-    line("Wallet", `${short(wallet.address)} (created)`);
+    allowance = { address: account.address, privateKey, created: new Date().toISOString(), funded: false };
+    saveAllowance(allowance);
+    line("Allowance", `${short(allowance.address)} (created)`);
   } else {
-    line("Wallet", short(wallet.address));
+    line("Allowance", short(allowance.address));
   }
 
   // 3. Balance — check on-chain, faucet if zero
@@ -34,7 +34,7 @@ export async function run() {
 
   let balance = 0;
   try {
-    const raw = await client.readContract({ address: USDC_SEPOLIA, abi: USDC_ABI, functionName: "balanceOf", args: [wallet.address] });
+    const raw = await client.readContract({ address: USDC_SEPOLIA, abi: USDC_ABI, functionName: "balanceOf", args: [allowance.address] });
     balance = Number(raw);
   } catch {}
 
@@ -43,19 +43,19 @@ export async function run() {
     const res = await fetch(`${API}/faucet/v1`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ address: wallet.address }),
+      body: JSON.stringify({ address: allowance.address }),
     });
     if (res.ok) {
       // Poll for up to 30s
       for (let i = 0; i < 30; i++) {
         await new Promise(r => setTimeout(r, 1000));
         try {
-          const raw = await client.readContract({ address: USDC_SEPOLIA, abi: USDC_ABI, functionName: "balanceOf", args: [wallet.address] });
+          const raw = await client.readContract({ address: USDC_SEPOLIA, abi: USDC_ABI, functionName: "balanceOf", args: [allowance.address] });
           balance = Number(raw);
           if (balance > 0) break;
         } catch {}
       }
-      saveWallet({ ...wallet, funded: true, lastFaucet: new Date().toISOString() });
+      saveAllowance({ ...allowance, funded: true, lastFaucet: new Date().toISOString() });
       if (balance > 0) {
         line("Balance", `${(balance / 1e6).toFixed(2)} USDC (funded)`);
       } else {
@@ -74,7 +74,7 @@ export async function run() {
   let tierInfo = null;
   try {
     const { privateKeyToAccount } = await import("viem/accounts");
-    const account = privateKeyToAccount(wallet.privateKey);
+    const account = privateKeyToAccount(allowance.privateKey);
     const timestamp = Math.floor(Date.now() / 1000).toString();
     const signature = await account.signMessage({ message: `run402:${timestamp}` });
     const res = await fetch(`${API}/tiers/v1/status`, {

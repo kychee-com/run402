@@ -1,1 +1,1 @@
-export { getApiBase, getConfigDir, getKeystorePath, getWalletPath } from "../core/dist/config.js";
+export { getApiBase, getConfigDir, getKeystorePath, getAllowancePath } from "../core/dist/config.js";

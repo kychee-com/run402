@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
-let walletAuthReturn: any = {
+let allowanceAuthReturn: any = {
   headers: {
     "X-Run402-Wallet": "0xtest",
     "X-Run402-Signature": "0xsig",
@@ -12,9 +12,9 @@ let walletAuthReturn: any = {
   },
 };
 
-mock.module("../wallet-auth.js", {
+mock.module("../allowance-auth.js", {
   namedExports: {
-    requireWalletAuth: () => walletAuthReturn,
+    requireAllowanceAuth: () => allowanceAuthReturn,
   },
 });
 
@@ -30,7 +30,7 @@ beforeEach(() => {
   storePath = join(tempDir, "projects.json");
   process.env.RUN402_CONFIG_DIR = tempDir;
   process.env.RUN402_API_BASE = "https://test-api.run402.com";
-  walletAuthReturn = {
+  allowanceAuthReturn = {
     headers: {
       "X-Run402-Wallet": "0xtest",
       "X-Run402-Signature": "0xsig",
@@ -73,17 +73,17 @@ describe("provision tool", () => {
     assert.equal(stored!.tier, "prototype");
   });
 
-  it("returns wallet auth error when no wallet configured", async () => {
-    walletAuthReturn = {
+  it("returns allowance auth error when no allowance configured", async () => {
+    allowanceAuthReturn = {
       error: {
-        content: [{ type: "text", text: "Error: No wallet configured." }],
+        content: [{ type: "text", text: "Error: No agent allowance configured." }],
         isError: true,
       },
     };
 
     const result = await handleProvision({ tier: "prototype" });
     assert.equal(result.isError, true);
-    assert.ok(result.content[0]!.text.includes("No wallet configured"));
+    assert.ok(result.content[0]!.text.includes("No agent allowance configured"));
   });
 
   it("returns isError on 400 (invalid tier)", async () => {
