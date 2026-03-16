@@ -173,7 +173,7 @@ router.post("/auth/v1/oauth/google/start", asyncHandler(async (req: Request, res
   const project = req.project!;
   const {
     redirect_url,
-    mode = "popup",
+    mode = "redirect",
     intent = "signin",
     code_challenge,
     code_challenge_method,

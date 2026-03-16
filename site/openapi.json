@@ -880,7 +880,7 @@
                 "required": ["redirect_url"],
                 "properties": {
                   "redirect_url": { "type": "string", "description": "Where to send the auth code after Google login. Must be http://localhost:* or a claimed subdomain (https://{name}.run402.com)." },
-                  "mode": { "type": "string", "enum": ["popup", "redirect"], "default": "popup" },
+                  "mode": { "type": "string", "enum": ["redirect", "popup"], "default": "redirect", "description": "Redirect mode (default) navigates the full page. Popup mode opens a window but window.close() may be blocked by browser COOP policies." },
                   "intent": { "type": "string", "enum": ["signin", "link"], "default": "signin" },
                   "code_challenge": { "type": "string", "description": "PKCE code challenge (base64url of SHA-256 of verifier)" },
                   "code_challenge_method": { "type": "string", "enum": ["S256"], "default": "S256" },

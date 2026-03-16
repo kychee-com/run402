@@ -505,18 +505,18 @@ async function generateChallenge(verifier) {
   return btoa(String.fromCharCode(...new Uint8Array(digest))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
-// ── Google OAuth ──
+// ── Google OAuth (redirect mode) ──
 async function startGoogleLogin() {
   const verifier = generateVerifier();
   const challenge = await generateChallenge(verifier);
-  sessionStorage.setItem('st_pkce_verifier', verifier);
+  localStorage.setItem('st_pkce_verifier', verifier);
 
   const res = await fetch(`${API}/auth/v1/oauth/google/start`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', apikey: ANON_KEY },
     body: JSON.stringify({
       redirect_url: window.location.origin + '/',
-      mode: 'popup',
+      mode: 'redirect',
       code_challenge: challenge,
       code_challenge_method: 'S256',
     }),
@@ -529,28 +529,12 @@ async function startGoogleLogin() {
   }
 
   const { authorization_url } = await res.json();
-
-  const w = 500, h = 600;
-  const left = screen.width / 2 - w / 2;
-  const top = screen.height / 2 - h / 2;
-  const popup = window.open(authorization_url, 'google-login', `width=${w},height=${h},left=${left},top=${top}`);
-
-  window.addEventListener('message', async function handler(e) {
-    if (e.data?.type === 'run402:oauth:callback') {
-      window.removeEventListener('message', handler);
-      try { if (popup) popup.close(); } catch(e) {}
-      await exchangeCode(e.data.code);
-    } else if (e.data?.type === 'run402:oauth:error') {
-      window.removeEventListener('message', handler);
-      try { if (popup) popup.close(); } catch(e) {}
-      showToast(e.data.error || 'Login failed');
-    }
-  });
+  window.location.href = authorization_url;
 }
 
 async function exchangeCode(code) {
-  const verifier = sessionStorage.getItem('st_pkce_verifier');
-  sessionStorage.removeItem('st_pkce_verifier');
+  const verifier = localStorage.getItem('st_pkce_verifier');
+  localStorage.removeItem('st_pkce_verifier');
 
   const res = await fetch(`${API}/auth/v1/token?grant_type=authorization_code`, {
     method: 'POST',
@@ -774,6 +758,24 @@ function submitTodo() {
 
 // ── Init ──
 async function init() {
+  // Handle redirect callback: check URL fragment for code=
+  const hash = window.location.hash.substring(1);
+  if (hash) {
+    const params = new URLSearchParams(hash);
+    const code = params.get('code');
+    if (code) {
+      window.history.replaceState(null, '', window.location.pathname);
+      $content.innerHTML = '<div class="loading"><div class="spinner"></div>Signing you in...</div>';
+      await exchangeCode(code);
+      return;
+    }
+    const error = params.get('error');
+    if (error) {
+      window.history.replaceState(null, '', window.location.pathname);
+      showToast(error);
+    }
+  }
+
   if (accessToken) {
     $content.innerHTML = '<div class="loading"><div class="spinner"></div>Loading...</div>';
     await loadUser();
