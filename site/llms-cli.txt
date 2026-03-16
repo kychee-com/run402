@@ -134,212 +134,94 @@ run402 subdomains claim <deployment_id> my-app
 
 ## Command Reference
 
-### run402 init
+### init
+`run402 init` — creates wallet, requests faucet, checks tier, lists projects.
 
-Setup wizard: creates wallet, requests faucet, checks tier, lists projects.
+### wallet
+- `run402 wallet <create|status|fund|balance|export>`
+- `run402 wallet checkout --amount <usd_micros>`
+- `run402 wallet history [--limit <n>]`
 
-```bash
-run402 init
-```
+### tier
+- `run402 tier status`
+- `run402 tier set <prototype|hobby|team>`
 
-### run402 wallet
+### projects
+- `run402 projects <quote|list>`
+- `run402 projects provision [--tier <prototype|hobby|team>] [--name <name>]`
+- `run402 projects info <id>`
+- `run402 projects sql <id> "<sql>"`
+- `run402 projects rest <id> <table> "<query>"`
+- `run402 projects <usage|schema|delete> <id>`
+- `run402 projects rls <id> <user_owns_rows|public_read|public_read_write> '<tables_json>'`
 
-Manage your local x402 wallet. All payment signing is automatic.
+RLS tables_json example: `'[{"table":"posts"}]'` or `'[{"table":"notes","owner_column":"user_id"}]'` for user_owns_rows.
 
-```bash
-run402 wallet create                    # Generate new wallet, save locally
-run402 wallet status                    # Show address, funding status
-run402 wallet fund                      # Request testnet USDC from faucet
-run402 wallet balance                   # On-chain USDC (mainnet + testnet) + billing balance
-run402 wallet export                    # Print wallet address (for scripting)
-run402 wallet checkout --amount 5000000 # Create billing checkout session ($5)
-run402 wallet history --limit 10        # View billing transaction history
-```
+SQL supports DDL + queries, returns JSON. REST uses PostgREST syntax (`select=`, `eq.`, `order=`, `limit=`).
 
-### run402 tier
+User auth: password + Google OAuth. See "User Auth" section below.
 
-Manage tier subscription. Payment is automatic via x402.
+### deploy
+- `run402 deploy --manifest app.json`
 
-```bash
-run402 tier status                # Current tier, status, expiry
-run402 tier set prototype         # FREE (testnet USDC, verifies setup)
-run402 tier set hobby             # Subscribe/renew/upgrade ($5/30d, real money)
-run402 tier set team              # Subscribe/renew/upgrade ($20/30d, real money)
-```
+Requires active tier. Handles database + migrations + site + subdomain in one call.
 
-### run402 projects
+### functions
+Node 22 runtime. Must export `default async (req: Request) => Response`.
 
-Manage Postgres projects.
+- `run402 functions deploy <id> <name> --code <file> [--deps "<pkg,...>"] [--timeout <s>] [--memory <mb>]`
+- `run402 functions invoke <id> <name> [--body '<json>'] [--method <GET|POST|...>]`
+- `run402 functions logs <id> <name> [--tail <n>]`
+- `run402 functions <list|delete> <id> [<name>]`
 
-```bash
-run402 projects quote                                          # Show tier pricing
-run402 projects provision --tier prototype --name my-app       # Create a new project
-run402 projects list                                           # List all projects
-run402 projects info <id>                                      # Show REST URL, keys, expiry
-run402 projects sql <id> "SELECT * FROM items LIMIT 5"         # Run SQL
-run402 projects rest <id> items "limit=10&select=id,title"     # Query via PostgREST REST API
-run402 projects usage <id>                                     # Compute/storage usage
-run402 projects schema <id>                                    # Inspect database schema
-run402 projects rls <id> public_read '[{"table":"posts"}]'     # Apply RLS policies
-run402 projects delete <id>                                    # Delete project
-```
+Secrets available as `process.env` (see secrets below).
 
-**RLS templates**: `user_owns_rows`, `public_read`, `public_read_write`
+### secrets
+Injected as `process.env` in functions.
 
-**User auth**: Two methods -- password and Google OAuth. See the "User Auth" section below for endpoints, code examples, and the full Google OAuth PKCE flow.
+- `run402 secrets set <id> <KEY> <VALUE>`
+- `run402 secrets <list|delete> <id> [<KEY>]`
 
-**SQL**: Supports DDL (CREATE TABLE, ALTER, etc.) and queries (SELECT, INSERT, UPDATE, DELETE). Returns JSON.
+### storage
+- `run402 storage upload <id> <bucket> <path> [--file <local>] [--content-type <mime>]`
+- `run402 storage <download|delete> <id> <bucket> <path>`
+- `run402 storage list <id> <bucket>`
 
-**REST**: Uses PostgREST query syntax. The table name and query params map directly to PostgREST conventions (e.g. `select=id,title`, `title=eq.Hello`, `order=id.desc`, `limit=10`).
+### sites
+- `run402 sites deploy --name <name> --manifest <file> [--project <id>]`
+- `run402 sites status <deployment_id>`
 
-### run402 deploy
+Manifest: `{"files":[{"file":"index.html","data":"..."},{"file":"style.css","data":"..."}]}`. Must include `index.html`. Free with active tier.
 
-Deploy a full-stack app from a manifest. Handles database + migrations + site + subdomain in one call.
+### subdomains
+- `run402 subdomains claim <deployment_id> <name> [--project <id>]`
+- `run402 subdomains list <id>`
+- `run402 subdomains delete <name>`
 
-```bash
-run402 deploy --manifest app.json
-cat app.json | run402 deploy
-```
+Names: 3-63 chars, lowercase alphanumeric + hyphens. Creates `<name>.run402.com`.
 
-Requires an active tier subscription.
+### apps
+- `run402 apps browse [--tag <tag>]`
+- `run402 apps fork <version_id> <name> [--tier <tier>] [--subdomain <name>]`
+- `run402 apps inspect <version_id>`
+- `run402 apps publish <id> [--description "..."] [--tags a,b] [--visibility <public|private>] [--fork-allowed]`
+- `run402 apps <versions|delete> <id> [<version_id>]`
+- `run402 apps update <id> <version_id> [--description "..."] [--tags a,b]`
 
-### run402 functions
+Forking clones schema, site, and functions into a new project.
 
-Deploy and manage serverless functions (Node 22 runtime).
+### image
+$0.03 per image.
 
-```bash
-run402 functions deploy <id> my-fn --code handler.ts                    # Deploy a function
-run402 functions deploy <id> my-fn --code handler.ts --deps "openai"    # With npm dependencies
-run402 functions deploy <id> my-fn --code handler.ts --timeout 30 --memory 256
-run402 functions invoke <id> my-fn --body '{"key":"value"}'             # Invoke via HTTP
-run402 functions invoke <id> my-fn --method GET                         # GET request
-run402 functions logs <id> my-fn --tail 100                             # Get logs
-run402 functions list <id>                                              # List all functions
-run402 functions delete <id> my-fn                                      # Delete a function
-```
+- `run402 image generate "<prompt>" [--aspect <square|landscape|portrait>] [--output <file>]`
 
-**Code format**: Must export a default async function:
+Without `--output`, returns `{"status":"ok","aspect":"...","content_type":"image/png","image":"<base64>"}`.
 
-```typescript
-export default async (req: Request) => {
-  return new Response(JSON.stringify({ hello: "world" }), {
-    headers: { "Content-Type": "application/json" }
-  });
-};
-```
+### message
+- `run402 message send "<text>"`
 
-**Secrets**: Available as `process.env` in functions (see `run402 secrets`).
-
-### run402 secrets
-
-Manage project secrets. Injected as `process.env` in serverless functions.
-
-```bash
-run402 secrets set <id> STRIPE_KEY sk-live-1234     # Set a secret
-run402 secrets list <id>                            # List secret keys (values hidden)
-run402 secrets delete <id> STRIPE_KEY               # Delete a secret
-```
-
-### run402 storage
-
-Upload, download, and manage files in project storage.
-
-```bash
-run402 storage upload <id> assets logo.png --file ./logo.png --content-type image/png
-echo "hello" | run402 storage upload <id> data notes.txt
-run402 storage download <id> assets logo.png        # Prints to stdout
-run402 storage list <id> assets                     # List files in bucket
-run402 storage delete <id> assets logo.png          # Delete a file
-```
-
-### run402 sites
-
-Deploy static sites separately (outside of bundle deploy).
-
-```bash
-run402 sites deploy --name my-site --manifest site.json
-run402 sites deploy --name my-site --manifest site.json --project <id>
-run402 sites status <deployment_id>
-```
-
-**Manifest format**:
-
-```json
-{
-  "files": [
-    { "file": "index.html", "data": "<!DOCTYPE html>..." },
-    { "file": "style.css", "data": "body { margin: 0; }" },
-    { "file": "app.js", "data": "console.log('hello');" }
-  ]
-}
-```
-
-Free with active tier. Must include at least `index.html`.
-
-### run402 subdomains
-
-Claim custom subdomains (`<name>.run402.com`).
-
-```bash
-run402 subdomains claim <deployment_id> my-app              # Claim my-app.run402.com
-run402 subdomains claim <deployment_id> my-app --project <id>
-run402 subdomains list <id>                                 # List subdomains for project
-run402 subdomains delete my-app                             # Release subdomain
-```
-
-Names: 3-63 chars, lowercase alphanumeric + hyphens.
-
-### run402 apps
-
-Browse and manage the app marketplace. Fork existing apps or publish your own.
-
-```bash
-run402 apps browse                          # Browse all public apps
-run402 apps browse --tag auth               # Filter by tag
-run402 apps fork <version_id> my-todo --tier prototype --subdomain my-todo
-run402 apps inspect <version_id>            # View app details
-run402 apps publish <id> --description "Todo app" --tags todo,auth --visibility public --fork-allowed
-run402 apps versions <id>                   # List published versions
-run402 apps update <id> <version_id> --description "Updated"
-run402 apps delete <id> <version_id>        # Unpublish a version
-```
-
-Forking creates a new project with the app's database schema, site, and functions -- ready to use immediately.
-
-### run402 image
-
-Generate AI images via x402 micropayments. $0.03 per image.
-
-```bash
-run402 image generate "a startup mascot, pixel art"                              # Returns base64 JSON
-run402 image generate "futuristic city at night" --aspect landscape              # Landscape ratio
-run402 image generate "portrait of a cat CEO" --aspect portrait --output cat.png # Save to file
-```
-
-**Aspect ratios**: `square` (default), `landscape`, `portrait`
-
-Without `--output`, returns JSON to stdout:
-
-```json
-{ "status": "ok", "aspect": "square", "content_type": "image/png", "image": "<base64>" }
-```
-
-### run402 message
-
-Send messages to the Run402 team. Free.
-
-```bash
-run402 message send "Hello from my agent!"
-```
-
-### run402 agent
-
-Register agent identity / contact info. Free.
-
-```bash
-run402 agent contact --name my-agent
-run402 agent contact --name my-agent --email ops@example.com --webhook https://example.com/hook
-```
+### agent
+- `run402 agent contact --name <name> [--email <email>] [--webhook <url>]`
 
 ---
 
