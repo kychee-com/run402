@@ -205,8 +205,8 @@ export function createPaymentMiddleware() {
   }
 
   // Track allowance debit results per-request (keyed by payment header)
-  // so the wrapper middleware can set response headers after the x402 library calls next().
-  const allowanceResults = new Map<string, { remaining: number }>();
+  // so the wrapper middleware can set response headers and req.walletAddress after the x402 library calls next().
+  const allowanceResults = new Map<string, { remaining: number; wallet: string }>();
 
   // Track whether paying wallet has contact info (keyed by payment header).
   // true = has contact, false = no contact (should hint).
@@ -246,8 +246,8 @@ export function createPaymentMiddleware() {
     const result = await debitAllowance(wallet, price.amountUsdMicros, price.sku, headerHash);
     if (!result) return; // Insufficient balance (race condition), fall through to x402
 
-    // Stash result for the wrapper to read when setting response headers
-    allowanceResults.set(context.paymentHeader, { remaining: result.remaining });
+    // Stash result for the wrapper to read when setting response headers + req.walletAddress
+    allowanceResults.set(context.paymentHeader, { remaining: result.remaining, wallet });
 
     console.log(`Allowance debit: ${wallet} → ${price.sku} ($${(price.amountUsdMicros / 1_000_000).toFixed(4)}) remaining=$${(result.remaining / 1_000_000).toFixed(4)}`);
 
@@ -261,6 +261,12 @@ export function createPaymentMiddleware() {
     const paymentHeader = (req.headers["payment-signature"] || req.headers["x-payment"] || req.headers["x-402-payment"]) as string | undefined;
 
     if (paymentHeader) {
+      // Set req.walletAddress for downstream routes when allowance rail is used.
+      // Without this, routes like project creation wouldn't know which wallet paid.
+      if (allowanceResults.has(paymentHeader)) {
+        req.walletAddress = allowanceResults.get(paymentHeader)!.wallet;
+      }
+
       // Intercept writeHead to inject settlement headers before the response is sent.
       // For the allowance path: x402 returns no-payment-required → next() → route handler → writeHead fires.
       // For the x402 path: x402 buffers writeHead, runs settlement, then replays through our wrapper.

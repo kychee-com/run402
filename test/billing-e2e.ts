@@ -271,8 +271,8 @@ async function main() {
   const projList = await projListRes.json() as Record<string, unknown>;
   assert(projListRes.ok, "Wallet projects returns 200");
   const projects = (projList.projects || []) as Array<Record<string, unknown>>;
-  // Note: allowance rail bypasses x402 settlement, so wallet_address is not set on the project.
-  // This is a known limitation — wallet-project linkage for allowance-settled requests is TODO.
+  // The x402 middleware now sets req.walletAddress when the allowance rail is used,
+  // so projects created via allowance-settled requests get proper wallet linkage.
   console.log(`   Projects found: ${projects.length}`);
   assert(true, "Wallet projects endpoint responds correctly");
 
