@@ -42,7 +42,7 @@ export interface BundleRequest {
   rls?: { template: string; tables: RlsTable[] };
   secrets?: BundleSecret[];
   functions?: BundleFunction[];
-  site?: BundleFile[];
+  files?: BundleFile[];
   subdomain?: string;
 }
 
@@ -173,11 +173,11 @@ export function validateBundle(req: BundleRequest): void {
     }
   }
 
-  if (req.site !== undefined) {
-    if (!Array.isArray(req.site) || req.site.length === 0) {
-      throw new BundleError("'site' must be a non-empty array of files", 400);
+  if (req.files !== undefined) {
+    if (!Array.isArray(req.files) || req.files.length === 0) {
+      throw new BundleError("'files' must be a non-empty array of files", 400);
     }
-    for (const f of req.site) {
+    for (const f of req.files) {
       if (!f.file || typeof f.file !== "string") {
         throw new BundleError("Each site file must have a 'file' (path) field", 400);
       }
@@ -262,9 +262,9 @@ export async function deployBundle(
     // 6. Deploy site
     let siteUrl: string | undefined;
     let deploymentId: string | undefined;
-    if (req.site) {
+    if (req.files) {
       const deployment = await createDeployment(
-        { name: req.name, project: project.id, files: req.site },
+        { name: req.name, project: project.id, files: req.files },
         txHash,
       );
       siteUrl = deployment.url;
@@ -291,7 +291,7 @@ export async function deployBundle(
     if (deployedFunctions.length > 0) result.functions = deployedFunctions;
     if (req.subdomain) result.subdomain_url = `https://${req.subdomain}.run402.com`;
 
-    console.log(`  Bundle deployed: ${project.id} (${tier}) — ${deployedFunctions.length} functions, ${req.site?.length || 0} site files`);
+    console.log(`  Bundle deployed: ${project.id} (${tier}) — ${deployedFunctions.length} functions, ${req.files?.length || 0} site files`);
 
     return result;
   } catch (err) {
@@ -319,8 +319,9 @@ async function runMigrations(project: ProjectInfo, sql: string): Promise<void> {
     await client.query("COMMIT");
     console.log(`  Migrations applied to ${project.id} (${project.schemaSlot})`);
   } catch (err) {
-    await client.query("ROLLBACK");
-    throw err;
+    await client.query("ROLLBACK").catch(() => {});
+    const msg = err instanceof Error ? err.message : String(err);
+    throw new Error(`Migration SQL error: ${msg}`);
   } finally {
     client.release();
   }

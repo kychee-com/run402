@@ -134,15 +134,21 @@ router.post("/projects/v1/admin/:id/sql", demoBlockedMiddleware("SQL execution")
     await client.query("COMMIT");
 
     console.log(`  Migration applied to ${project.id} (${project.schemaSlot})`);
+
+    // Multi-statement SQL returns an array of results; single-statement returns one result
+    const last = Array.isArray(result) ? result[result.length - 1] : result;
     res.json({
       status: "ok",
       schema: project.schemaSlot,
-      rows: result.rows,
-      rowCount: result.rowCount,
+      rows: last?.rows ?? [],
+      rowCount: Array.isArray(result)
+        ? result.reduce((n, r) => n + (r.rowCount ?? 0), 0)
+        : result.rowCount,
     });
   } catch (err) {
-    await client.query("ROLLBACK");
-    throw err;
+    await client.query("ROLLBACK").catch(() => {});
+    const msg = err instanceof Error ? err.message : String(err);
+    throw new HttpError(400, `SQL error: ${msg}`);
   } finally {
     client.release();
   }
