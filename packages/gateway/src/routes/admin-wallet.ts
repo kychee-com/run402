@@ -224,6 +224,25 @@ router.get("/admin/api/wallet/:address", asyncHandler(async (req: Request, res: 
   });
 }));
 
+// ---- Project → wallet redirect ----
+
+router.get("/admin/project/:id", asyncHandler(async (req: Request, res: Response) => {
+  const session = getSession(req);
+  if (!session) { res.redirect("/admin/login"); return; }
+
+  const projectId = req.params.id as string;
+  const result = await pool.query(
+    `SELECT wallet_address FROM internal.projects WHERE id = $1`,
+    [projectId],
+  );
+  const wallet = result.rows[0]?.wallet_address;
+  if (!wallet) {
+    res.status(404).type("html").send(`<!DOCTYPE html><html><head><title>Not Found</title></head><body style="background:#0A0A0F;color:#E0E0E0;font-family:system-ui;display:flex;align-items:center;justify-content:center;min-height:100vh"><div style="text-align:center"><h1 style="color:#FF5050">Project not found</h1><p style="color:#9CA3AF">${escHtml(projectId)}</p><a href="/admin" style="color:#00FF9F">Back to dashboard</a></div></body></html>`);
+    return;
+  }
+  res.redirect(`/admin/wallet/${wallet}#${projectId}`);
+}));
+
 // ---- Wallet detail page ----
 
 router.get("/admin/wallet/:address", (req: Request, res: Response) => {
