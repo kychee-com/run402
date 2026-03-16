@@ -40,7 +40,7 @@ router.post("/projects/v1", walletAuth(true), asyncHandler(async (req: Request, 
   }
 
   console.log(`  Created project: ${project.id} (schema: ${project.schemaSlot}, tier: ${tier}, wallet: ${walletAddress})`);
-  notifyNewProject(name, tier, project.id);
+  notifyNewProject(name, tier, project.id, walletAddress);
 
   res.status(201).json({
     project_id: project.id,

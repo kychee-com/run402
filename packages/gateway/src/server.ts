@@ -46,6 +46,7 @@ import bundleRoutes from "./routes/bundle.js";
 import publishRoutes from "./routes/publish.js";
 import adminDashboardRoutes from "./routes/admin-dashboard.js";
 import adminLlmsTxtRoutes from "./routes/admin-llms-txt.js";
+import adminWalletRoutes from "./routes/admin-wallet.js";
 import attributionRoutes from "./routes/attribution.js";
 import contactRoutes from "./routes/contact.js";
 import tierRoutes from "./routes/tiers.js";
@@ -341,6 +342,7 @@ app.get("/ping/v1", walletAuth(false), (_req: Request, res: Response) => {
 app.use(tierRoutes);
 app.use(adminDashboardRoutes);
 app.use(adminLlmsTxtRoutes);
+app.use(adminWalletRoutes);
 app.use(billingRoutes);
 app.use(billingStripeRoutes);
 app.use(projectRoutes);
