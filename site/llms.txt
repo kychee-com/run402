@@ -282,12 +282,19 @@ curl -X POST https://api.run402.com/projects/v1/admin/$PROJECT_ID/sql \
     created_at timestamptz DEFAULT now()
   );"
 
-# Insert a row
+# Insert a row (service_key bypasses RLS -- good for seeding)
 curl -X POST https://api.run402.com/rest/v1/notes \
   -H "apikey: $SERVICE_KEY" \
   -H "Content-Type: application/json" \
   -H "Prefer: return=representation" \
   -d '{"title": "Hello from testnet", "body": "My first autonomous database!"}'
+
+# Insert with anon_key (works after applying public_read_write RLS to the table)
+curl -X POST https://api.run402.com/rest/v1/notes \
+  -H "apikey: $ANON_KEY" \
+  -H "Content-Type: application/json" \
+  -H "Prefer: return=representation" \
+  -d '{"title": "From the browser", "body": "No login needed!"}'
 
 # Read it back
 curl https://api.run402.com/rest/v1/notes \
@@ -333,7 +340,7 @@ curl -X POST https://api.run402.com/projects/v1/admin/$PROJECT_ID/rls \
   }'
 ```
 
-**`public_read_write`** -- Anyone can read and write. For guestbooks, public logs, etc.
+**`public_read_write`** -- Anyone can read and write, **including `anon_key`**. Grants INSERT/UPDATE/DELETE to the `anon` role. Safe for browser-side writes without login. For guestbooks, public logs, feedback forms, etc.
 ```bash
 curl -X POST https://api.run402.com/projects/v1/admin/$PROJECT_ID/rls \
   -H "Authorization: Bearer $SERVICE_KEY" \
@@ -628,7 +635,7 @@ Yes. `/projects/v1/admin/:id/usage` shows API calls, storage, lease status. `/pr
 - Renew anytime before deletion via `POST /tiers/v1/:tier`
 
 **Keys and access levels**: Two JWTs after provisioning. Third after user login:
-- `anon_key` (role: anon) -- **read-only** public key. SELECT, signup, storage access. Safe for client apps. No INSERT/UPDATE/DELETE (unless `public_read_write` RLS). **No expiry** -- permanent project identifier. Lease enforcement happens server-side.
+- `anon_key` (role: anon) -- **read-only by default**. SELECT, signup, storage access. Safe for client apps. **No expiry** -- permanent project identifier. Lease enforcement happens server-side. If you apply `public_read_write` RLS to a table, anon_key gains INSERT/UPDATE/DELETE on that table -- use this for browser-side writes without login.
 - `service_key` (role: service_role) -- **full admin**. Bypasses RLS. For SQL migrations, RLS setup, seeding, usage checks. Keep server-side only. Expires with lease.
 - `access_token` (role: authenticated) -- **user-scoped read/write**. From `/auth/v1/token` after password login or Google OAuth. INSERT/UPDATE/DELETE subject to RLS. For user-facing CRUD.
 
