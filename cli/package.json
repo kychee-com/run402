@@ -15,6 +15,8 @@
     "core-dist/"
   ],
   "dependencies": {
+    "@noble/curves": "^2.0.1",
+    "@noble/hashes": "^2.0.1",
     "@x402/evm": "^2.6.0",
     "@x402/fetch": "^2.6.0",
     "viem": "^2.47.1"

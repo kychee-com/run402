@@ -21,3 +21,4 @@ jobs:
       - run: npm run test:skill
       - run: npm run test:sync
       - run: node --test --import tsx src/**/*.test.ts
+      - run: npm run test:e2e
