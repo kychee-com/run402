@@ -1,26 +1,24 @@
 /**
- * EIP-4361 wallet auth middleware.
+ * SIWX (Sign-In-With-X) wallet auth middleware.
  *
- * Verifies identity from signed message headers:
- *   X-Run402-Wallet:    0x... (wallet address)
- *   X-Run402-Signature: 0x... (signature of `run402:{timestamp}`)
- *   X-Run402-Timestamp: Unix timestamp (seconds)
+ * Verifies identity from the standard SIGN-IN-WITH-X header (CAIP-122 / EIP-4361).
+ * Replaces the custom X-Run402-Wallet/Signature/Timestamp headers.
  *
- * The message format is `run402:{timestamp}` — no path, so the signature
- * proves wallet identity only. Tier controls access.
+ * The header is a base64-encoded JSON payload containing a signed CAIP-122 message
+ * with domain binding, temporal validation, and cryptographic signature verification.
+ * Supports both EVM (eip155:*) and Solana wallets.
  *
- * Freshness: signature must be within 30 seconds.
  * Caches active tier lookups for 60 seconds per wallet.
  */
 
 import type { Request, Response, NextFunction } from "express";
-import { verifyMessage } from "viem";
+import { parseSIWxHeader, verifySIWxSignature } from "@x402/extensions/sign-in-with-x";
 import { getBillingAccount } from "../services/billing.js";
 import { isWalletTierActive } from "../services/wallet-tiers.js";
 import { recordWallet } from "../utils/wallet.js";
 import type { TierName } from "@run402/shared";
 
-const MAX_TIMESTAMP_DRIFT_SEC = 30;
+const MAX_AGE_MS = 5 * 60 * 1000; // 5 minutes
 
 // LRU-style cache for wallet tier active status
 const tierCache = new Map<string, { active: boolean; tier: string | null; expires: number }>();
@@ -34,7 +32,7 @@ declare module "express-serve-static-core" {
 }
 
 /**
- * Wallet auth middleware. Validates EIP-4361 headers and attaches
+ * Wallet auth middleware. Validates SIWX header and attaches
  * req.walletAddress and req.walletTier.
  *
  * @param requireTier If true (default), rejects requests without an active tier.
@@ -42,54 +40,75 @@ declare module "express-serve-static-core" {
  */
 export function walletAuth(requireTier = true) {
   return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
-    const wallet = req.headers["x-run402-wallet"] as string | undefined;
-    const signature = req.headers["x-run402-signature"] as string | undefined;
-    const timestamp = req.headers["x-run402-timestamp"] as string | undefined;
+    const siwxHeader = req.headers["sign-in-with-x"] as string | undefined;
 
-    if (!wallet || !signature || !timestamp) {
+    if (!siwxHeader) {
       res.status(401).json({
-        error: "Missing wallet auth headers",
-        required: ["X-Run402-Wallet", "X-Run402-Signature", "X-Run402-Timestamp"],
+        error: "Missing SIGN-IN-WITH-X header",
+        hint: "Sign a CAIP-122 message and send it as the SIGN-IN-WITH-X header (base64-encoded JSON). See https://docs.x402.org/extensions/sign-in-with-x",
       });
       return;
     }
 
-    // Validate timestamp freshness
-    const ts = parseInt(timestamp, 10);
-    if (isNaN(ts)) {
-      res.status(401).json({ error: "Invalid X-Run402-Timestamp" });
-      return;
-    }
-
-    const nowSec = Math.floor(Date.now() / 1000);
-    if (Math.abs(nowSec - ts) > MAX_TIMESTAMP_DRIFT_SEC) {
-      res.status(401).json({
-        error: "Signature expired",
-        message: `Timestamp drift exceeds ${MAX_TIMESTAMP_DRIFT_SEC}s. Current server time: ${nowSec}`,
-      });
-      return;
-    }
-
-    // Verify signature: message = `run402:{timestamp}`
-    const message = `run402:${timestamp}`;
+    // Parse the SIWX header
+    let payload;
     try {
-      const valid = await verifyMessage({
-        address: wallet as `0x${string}`,
-        message,
-        signature: signature as `0x${string}`,
-      });
+      payload = parseSIWxHeader(siwxHeader);
+    } catch {
+      res.status(401).json({ error: "Invalid SIGN-IN-WITH-X header" });
+      return;
+    }
 
-      if (!valid) {
-        res.status(401).json({ error: "Invalid signature" });
+    // Validate temporal fields
+    if (payload.expirationTime) {
+      const expiry = new Date(payload.expirationTime);
+      if (expiry.getTime() < Date.now()) {
+        res.status(401).json({ error: "SIWX message expired" });
         return;
       }
-    } catch {
-      res.status(401).json({ error: "Signature verification failed" });
+    }
+
+    if (payload.issuedAt) {
+      const issued = new Date(payload.issuedAt);
+      if (Date.now() - issued.getTime() > MAX_AGE_MS) {
+        res.status(401).json({
+          error: "SIWX message too old",
+          message: `Message issued more than ${MAX_AGE_MS / 1000}s ago. Generate a fresh SIWX message.`,
+        });
+        return;
+      }
+    }
+
+    // Validate domain binding
+    const expectedDomain = req.hostname;
+    if (payload.domain && payload.domain !== expectedDomain) {
+      res.status(401).json({
+        error: "SIWX domain mismatch",
+        expected: expectedDomain,
+        got: payload.domain,
+      });
       return;
     }
 
-    const normalized = wallet.toLowerCase();
-    recordWallet(normalized, "wallet-auth");
+    // Verify cryptographic signature
+    let verification;
+    try {
+      verification = await verifySIWxSignature(payload);
+    } catch {
+      res.status(401).json({ error: "SIWX signature verification failed" });
+      return;
+    }
+
+    if (!verification.valid || !verification.address) {
+      res.status(401).json({
+        error: "Invalid SIWX signature",
+        details: verification.error,
+      });
+      return;
+    }
+
+    const normalized = verification.address.toLowerCase();
+    recordWallet(normalized, "siwx");
 
     // Check tier (with caching)
     let tierInfo = tierCache.get(normalized);

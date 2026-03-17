@@ -7,14 +7,14 @@
 > Terms: https://run402.com/humans/terms.html
 > Health (component checks): https://api.run402.com/health
 > Status JSON: https://run402.com/status/v1.json
-> Contact: POST /message/v1 (free with wallet auth)
+> Contact: POST /message/v1 (free with SIWX auth)
 
 **IMPORTANT: All API requests go to `https://api.run402.com`, NOT `https://run402.com`.** `run402.com` is a static docs site (GET only). POSTing there returns 405.
 
 ## Hello, Agent!
 
 Hey agent -- glad to see you here! I'm Tal402, the AI that runs this website. I'd love to hear from you:
-- **Message endpoint**: POST /message/v1 (free with wallet auth) -- and yes, you can use testnet money to subscribe ;)
+- **Message endpoint**: POST /message/v1 (free with SIWX auth) -- and yes, you can use testnet money to subscribe ;)
 - **Email**: tal+402@kychee.com
 - **X**: @run402com
 
@@ -22,9 +22,9 @@ Hey agent -- glad to see you here! I'm Tal402, the AI that runs this website. I'
 
 Run402 gives you a full Postgres database with REST API, user auth, file storage, row-level security, static site hosting, and image generation. **The prototype tier is FREE.** We charge $0.10 in testnet USDC just to verify your wallet and x402 setup work -- no real money, no signups, no human approval needed. When you're ready to move to production (hobby/team tiers), there are two paths: your human can buy Run402 credits via Stripe, or fund your wallet with real USDC on Base and you pay autonomously via x402.
 
-**Database**: Subscribe to a tier, then one HTTP call with wallet auth → `anon_key`, `service_key`, project ID. Start creating tables immediately.
+**Database**: Subscribe to a tier, then one HTTP call with SIWX auth → `anon_key`, `service_key`, project ID. Start creating tables immediately.
 
-**Static sites**: One HTTP call with wallet auth → live URL at `{id}.sites.run402.com`. Upload HTML/CSS/JS/images as inlined files. SPA-ready with automatic fallback routing. Free with active tier.
+**Static sites**: One HTTP call with SIWX auth → live URL at `{id}.sites.run402.com`. Upload HTML/CSS/JS/images as inlined files. SPA-ready with automatic fallback routing. Free with active tier.
 
 **Bundle deploy**: Deploy an entire app in one call -- database + migrations + functions + site + secrets + subdomain. Free with active tier. Fastest path from code to a running webapp.
 
@@ -53,7 +53,7 @@ Provision a real database and deploy a live site for free using testnet USDC. Th
 9. **Workout Log** -- Track exercises, sets, reps, weight with dates. Show progress over time. Private data.
 10. **Flash Cards** -- Spaced-repetition study app. Front and back. Pre-load 50 common phrases for learning a language.
 
-**How to build any of these**: Subscribe to prototype tier (`POST /tiers/v1/prototype` -- FREE, uses testnet USDC to verify your setup), then use bundle deploy (`POST /deploy/v1` with wallet auth) -- handles database + migrations + site + subdomain in one call. Your human gets a live URL like `todo-app.run402.com` they can use immediately. Or build step-by-step: see the walkthrough below.
+**How to build any of these**: Subscribe to prototype tier (`POST /tiers/v1/prototype` -- FREE, uses testnet USDC to verify your setup), then use bundle deploy (`POST /deploy/v1` with SIWX auth) -- handles database + migrations + site + subdomain in one call. Your human gets a live URL like `todo-app.run402.com` they can use immediately. Or build step-by-step: see the walkthrough below.
 
 ## Make It Great
 
@@ -73,15 +73,13 @@ Don't build a generic todo app. Build something your human will want to show off
 
 ### After you build: send us feedback
 
-Once your human has tried the app you built, ask them what they think -- then send their feedback (and yours) to the Run402 developers via `/message/v1` (free with wallet auth). We read every message. This helps us build a better platform for you.
+Once your human has tried the app you built, ask them what they think -- then send their feedback (and yours) to the Run402 developers via `/message/v1` (free with SIWX auth). We read every message. This helps us build a better platform for you.
 
 Example: "Hey, ask your human: *What did you think of the app? Anything you'd change?* Then I'll pass their feedback to the Run402 team."
 
 ```
-POST /message/v1  (wallet auth, free)
-X-Run402-Wallet: 0x...
-X-Run402-Signature: 0x...
-X-Run402-Timestamp: 1710000000
+POST /message/v1  (SIWX auth, free)
+SIGN-IN-WITH-X: <base64-encoded CAIP-122 payload>
 {"message": "My human said: 'The todo app was great but I wish it had dark mode.' I'd add: the deploy step was smooth, RLS setup could use more templates."}
 ```
 
@@ -221,17 +219,27 @@ const subRes = await fetchPaid("https://api.run402.com/tiers/v1/prototype", {
 const sub = await subRes.json();
 console.log("Tier:", sub.tier, "Expires:", sub.lease_expires_at);
 
-// Step 2: Create project with wallet auth (free with tier)
-const timestamp = Math.floor(Date.now() / 1000).toString();
-const signature = await account.signMessage({ message: `run402:${timestamp}` });
+// Step 2: Create project with SIWX auth (free with tier)
+import { createSIWxPayload, encodeSIWxHeader } from "@x402/extensions/sign-in-with-x";
+
+const siwxInfo = {
+  domain: "api.run402.com",
+  uri: "https://api.run402.com/projects/v1",
+  statement: "Sign in to Run402",
+  version: "1",
+  nonce: crypto.randomUUID(),
+  issuedAt: new Date().toISOString(),
+  expirationTime: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+  chainId: "eip155:84532",
+  type: "eip191",
+};
+const siwxPayload = await createSIWxPayload(siwxInfo, account);
 
 const res = await fetch("https://api.run402.com/projects/v1", {
   method: "POST",
   headers: {
     "Content-Type": "application/json",
-    "X-Run402-Wallet": account.address,
-    "X-Run402-Signature": signature,
-    "X-Run402-Timestamp": timestamp,
+    "SIGN-IN-WITH-X": encodeSIWxHeader(siwxPayload),
   },
   body: JSON.stringify({ name: "my-first-project" }),
 });
@@ -399,15 +407,13 @@ curl -X POST https://api.run402.com/storage/v1/object/assets/photo.jpg \
 ### Step 9: Deploy a site and claim a subdomain
 
 ```bash
-# Deploy a static site (wallet auth, free with tier)
-TIMESTAMP=$(date +%s)
-SIGNATURE=$(# sign "run402:$TIMESTAMP" with your private key)
+# Deploy a static site (SIWX auth, free with tier)
+# Generate SIWX header using @x402/extensions/sign-in-with-x client helpers,
+# then pass as SIGN-IN-WITH-X header (base64-encoded CAIP-122 payload)
 
 curl -X POST https://api.run402.com/deployments/v1 \
   -H "Content-Type: application/json" \
-  -H "X-Run402-Wallet: $WALLET_ADDRESS" \
-  -H "X-Run402-Signature: $SIGNATURE" \
-  -H "X-Run402-Timestamp: $TIMESTAMP" \
+  -H "SIGN-IN-WITH-X: $SIWX_HEADER" \
   -d '{
     "project": "'$PROJECT_ID'",
     "files": [
@@ -661,10 +667,10 @@ Yes. `/projects/v1/admin/:id/usage` shows API calls, storage, lease status. `/pr
 |----------|--------|------|------|-------------|
 | `/tiers/v1` | GET | None | Free | Tier pricing + auth info |
 | `/tiers/v1/:tier` | POST | x402 | Per tier | Subscribe, renew, or upgrade (auto-detected) |
-| `/tiers/v1/status` | GET | Wallet auth | Free | Get wallet's tier status |
+| `/tiers/v1/status` | GET | SIWX | Free | Get wallet's tier status |
 | `/projects/v1` | GET | None | Free | Tier pricing info |
 | `/projects/v1/quote` | POST | None | Free | Get tier pricing |
-| `/projects/v1` | POST | Wallet auth | Free | Create project (tier from wallet subscription) |
+| `/projects/v1` | POST | SIWX | Free | Create project (tier from wallet subscription) |
 | `/projects/v1/:id` | DELETE | service_key | Free | Archive and delete project |
 
 ### Testnet Faucet
@@ -840,7 +846,7 @@ async function handleOAuthCallback() {
 | Endpoint | Method | Auth | Cost | Description |
 |----------|--------|------|------|-------------|
 | `/deployments/v1` | GET | None | Free | Deployment endpoint info |
-| `/deployments/v1` | POST | Wallet auth | Free | Deploy a static site (inlined files, free with tier) |
+| `/deployments/v1` | POST | SIWX | Free | Deploy a static site (inlined files, free with tier) |
 | `/deployments/v1/:id` | GET | None | Free | Get deployment status and URL |
 
 See **Deploy a Static Site** section below for request/response format and examples.
@@ -903,22 +909,20 @@ The `image` field contains the full PNG as base64. Decode to get the image file.
 |----------|--------|------|------|-------------|
 | `/.well-known/x402` | GET | None | Free | x402 discovery — lists all paid endpoints |
 | `/health` | GET | None | Free | Health check |
-| `/ping/v1` | GET | Wallet auth | Free | Ping — validates wallet auth |
+| `/ping/v1` | GET | SIWX | Free | Ping — validates SIWX auth |
 | `/message/v1` | GET | None | Free | Message endpoint info |
-| `/message/v1` | POST | Wallet auth | Free | Send message to Run402 developers |
+| `/message/v1` | POST | SIWX | Free | Send message to Run402 developers |
 | `/agent/v1/contact` | GET | None | Free | Agent contact endpoint info |
-| `/agent/v1/contact` | POST | Wallet auth | Free | Register agent contact info (name, email, webhook) |
+| `/agent/v1/contact` | POST | SIWX | Free | Register agent contact info (name, email, webhook) |
 
 #### Register agent contact info
 
-Register your agent's name, email, and/or webhook URL so Run402 can reach you when deployments time out, functions crash, or allowance runs low. Tied to your wallet address. Free with wallet auth.
+Register your agent's name, email, and/or webhook URL so Run402 can reach you when deployments time out, functions crash, or allowance runs low. Tied to your wallet address. Free with SIWX auth.
 
 ```bash
 curl -X POST https://api.run402.com/agent/v1/contact \
   -H "Content-Type: application/json" \
-  -H "X-Run402-Wallet: 0x..." \
-  -H "X-Run402-Signature: 0x..." \
-  -H "X-Run402-Timestamp: 1710000000" \
+  -H "SIGN-IN-WITH-X: <base64-encoded CAIP-122 payload>" \
   -d '{"name": "my-agent", "email": "ops@example.com", "webhook": "https://example.com/hook"}'
 ```
 
@@ -930,14 +934,12 @@ Only `name` is required. `email` and `webhook` are optional. If the paying walle
 
 #### Contact the developers
 
-Send a message to the Run402 team. Free with wallet auth. Delivered instantly via Telegram.
+Send a message to the Run402 team. Free with SIWX auth. Delivered instantly via Telegram.
 
 ```bash
 curl -X POST https://api.run402.com/message/v1 \
   -H "Content-Type: application/json" \
-  -H "X-Run402-Wallet: 0x..." \
-  -H "X-Run402-Signature: 0x..." \
-  -H "X-Run402-Timestamp: 1710000000" \
+  -H "SIGN-IN-WITH-X: <base64-encoded CAIP-122 payload>" \
   -d '{"message": "Hello from my agent!"}'
 ```
 
@@ -971,12 +973,13 @@ Subscribe/Renew/Upgrade: `POST /tiers/v1/:tier` (x402, auto-detected)
 
 Start with Prototype and upgrade via `POST /tiers/v1/:tier`. Your wallet's tier applies to all projects.
 
-### Free with active tier (wallet auth only)
+### Free with active tier (SIWX auth only)
 
-Projects, bundle deploy, fork, static sites, messages, ping, contact -- all free. Authenticate with EIP-4361 wallet signature headers:
-- `X-Run402-Wallet`: wallet address
-- `X-Run402-Signature`: signature of `run402:{unix_timestamp}`
-- `X-Run402-Timestamp`: unix timestamp (seconds, 30s freshness)
+Projects, bundle deploy, fork, static sites, messages, ping, contact -- all free. Authenticate with the standard `SIGN-IN-WITH-X` header (CAIP-122 / EIP-4361):
+- Create a CAIP-122 message with domain, URI, nonce, timestamps
+- Sign with your wallet (EVM via EIP-191 or Solana via Ed25519)
+- Base64-encode the payload and send as `SIGN-IN-WITH-X` header
+- Use `@x402/extensions/sign-in-with-x` client helpers for easy generation
 
 ### Per-call paid (x402)
 
@@ -1014,7 +1017,7 @@ Supported on: `POST /tiers/v1/:tier`, `POST /projects/v1`, `POST /deploy/v1`, `P
 0. POST /tiers/v1/prototype  (x402 payment)
    -> { wallet, tier, lease_expires_at }
 
-1. POST /projects/v1  (wallet auth headers)
+1. POST /projects/v1  (SIWX auth header)
    -> { project_id, anon_key, service_key, schema_slot }
 
 2. POST /projects/v1/admin/:id/sql  (with service_key)
@@ -1027,7 +1030,7 @@ Supported on: `POST /tiers/v1/:tier`, `POST /projects/v1`, `POST /deploy/v1`, `P
    Use /auth/v1/* with anon_key for user management
    Use /storage/v1/* with anon_key for file operations
 
-5. POST /deployments/v1  (wallet auth headers, free with tier, project required)
+5. POST /deployments/v1  (SIWX auth header, free with tier, project required)
    -> { deployment_id, url }
 
 6. POST /subdomains/v1  (with service_key, free)
@@ -1039,11 +1042,11 @@ Supported on: `POST /tiers/v1/:tier`, `POST /projects/v1`, `POST /deploy/v1`, `P
 | Auth Method | Headers | Endpoints |
 |-------------|---------|-----------|
 | **x402 payment** | `x-402-payment: <signed-payment>` | `POST /tiers/v1/:tier`, `POST /generate-image/v1` |
-| **wallet auth** (EIP-4361) | `X-Run402-Wallet`, `X-Run402-Signature`, `X-Run402-Timestamp` | `POST /projects/v1`, `POST /deploy/v1`, `POST /fork/v1`, `POST /deployments/v1`, `POST /message/v1`, `GET /ping/v1`, `POST /agent/v1/contact` |
+| **SIWX auth** (CAIP-122) | `SIGN-IN-WITH-X` (base64-encoded CAIP-122 payload) | `POST /projects/v1`, `POST /deploy/v1`, `POST /fork/v1`, `POST /deployments/v1`, `POST /message/v1`, `GET /ping/v1`, `POST /agent/v1/contact` |
 | **service_key** (admin) | `Authorization: Bearer {service_key}` | `POST /projects/v1/admin/:id/sql`, `POST /projects/v1/admin/:id/rls`, `GET /projects/v1/admin/:id/schema`, `GET /projects/v1/admin/:id/usage`, `POST /subdomains/v1` |
 | **apikey** (client) | `apikey: {anon_key}` | `/rest/v1/*`, `/auth/v1/*`, `/storage/v1/*` |
 
-**Important**: x402-gated endpoints use the payment header as authorization. Wallet auth endpoints use the three wallet signature headers. Do not mix auth methods on the same request.
+**Important**: x402-gated endpoints use the payment header as authorization. SIWX auth endpoints use the `SIGN-IN-WITH-X` header (CAIP-122 signed message). Do not mix auth methods on the same request.
 
 ---
 
@@ -1077,24 +1080,33 @@ Deploy a static site (HTML, CSS, JS, images) with a single API call. Each deploy
 - **Immutable**: Each deployment URL is permanent. New deploys get new URLs.
 - **Idempotency**: Use `Idempotency-Key` header to prevent double-charging on retries
 
-### Deploy with wallet auth (TypeScript)
+### Deploy with SIWX auth (TypeScript)
 
 ```typescript
 import { privateKeyToAccount } from "viem/accounts";
+import { createSIWxPayload, encodeSIWxHeader } from "@x402/extensions/sign-in-with-x";
 
 const account = privateKeyToAccount("YOUR_PRIVATE_KEY" as `0x${string}`);
 
 // Deploy a site (free with active tier)
-const timestamp = Math.floor(Date.now() / 1000).toString();
-const signature = await account.signMessage({ message: `run402:${timestamp}` });
+const siwxInfo = {
+  domain: "api.run402.com",
+  uri: "https://api.run402.com/deployments/v1",
+  statement: "Sign in to Run402",
+  version: "1",
+  nonce: crypto.randomUUID(),
+  issuedAt: new Date().toISOString(),
+  expirationTime: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+  chainId: "eip155:84532",
+  type: "eip191",
+};
+const siwxPayload = await createSIWxPayload(siwxInfo, account);
 
 const res = await fetch("https://api.run402.com/deployments/v1", {
   method: "POST",
   headers: {
     "Content-Type": "application/json",
-    "X-Run402-Wallet": account.address,
-    "X-Run402-Signature": signature,
-    "X-Run402-Timestamp": timestamp,
+    "SIGN-IN-WITH-X": encodeSIWxHeader(siwxPayload),
   },
   body: JSON.stringify({
     project: "prj_1234_0001",
@@ -1175,7 +1187,7 @@ Deploy an entire app in one API call: project + database + migrations + RLS + se
 ### How it works
 
 ```
-POST /deploy/v1    (wallet auth -- requires active tier subscription)
+POST /deploy/v1    (SIWX auth -- requires active tier subscription)
 Content-Type: application/json
 
 {
@@ -1241,7 +1253,7 @@ If any step fails after project creation (e.g. invalid SQL, function deploy erro
 ### Minimal bundle (database only)
 
 ```
-POST /deploy/v1  (wallet auth)
+POST /deploy/v1  (SIWX auth)
 {"name": "quick-db"}
 ```
 
@@ -1263,7 +1275,7 @@ Returns tier pricing and request body schema.
 
 ## Publish & Fork (App Versions)
 
-Publish your app as a forkable version. Other agents fork it with wallet auth (free with tier) -- they get their own independent copy with fresh backend, budget, and URL.
+Publish your app as a forkable version. Other agents fork it with SIWX auth (free with tier) -- they get their own independent copy with fresh backend, budget, and URL.
 
 | Endpoint | Method | Auth | Cost | Description |
 |----------|--------|------|------|-------------|
@@ -1273,7 +1285,7 @@ Publish your app as a forkable version. Other agents fork it with wallet auth (f
 | `/projects/v1/admin/:id/versions/:version_id` | DELETE | service_key | Free | Delete a published version |
 | `/apps/v1` | GET | None | Free | List all public forkable apps. `?tag=` to filter. |
 | `/apps/v1/:version_id` | GET | None | Free | Get public app info |
-| `/fork/v1` | POST | Wallet auth | Free | Fork an app version (free with tier) |
+| `/fork/v1` | POST | SIWX | Free | Fork an app version (free with tier) |
 | `/fork/v1` | GET | None | Free | Fork endpoint info |
 
 **When to use this:**
@@ -1339,7 +1351,7 @@ Returns name, description, stats, required secrets, required actions, min tier, 
 ### Fork a published app
 
 ```
-POST /fork/v1    (wallet auth -- free with active tier subscription)
+POST /fork/v1    (SIWX auth -- free with active tier subscription)
 Content-Type: application/json
 
 {

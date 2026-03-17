@@ -12,6 +12,7 @@ import type { TierName } from "@run402/shared";
 import { setTier, getWalletTier } from "../services/wallet-tiers.js";
 import { extractWalletFromPaymentHeader, getPaymentHeader } from "../utils/wallet.js";
 import { walletAuth, invalidateWalletTierCache } from "../middleware/wallet-auth.js";
+import { invalidateSIWxTierCache } from "../services/siwx-storage.js";
 import { asyncHandler, HttpError } from "../utils/async-handler.js";
 
 const router = Router();
@@ -39,9 +40,9 @@ router.get("/tiers/v1", (_req: Request, res: Response) => {
   res.json({
     tiers,
     auth: {
-      method: "EIP-4361 wallet signature",
-      headers: ["X-Run402-Wallet", "X-Run402-Signature", "X-Run402-Timestamp"],
-      message_format: "run402:{unix_timestamp}",
+      method: "SIWX (Sign-In-With-X, CAIP-122)",
+      headers: ["SIGN-IN-WITH-X"],
+      docs: "https://docs.x402.org/extensions/sign-in-with-x",
     },
   });
 });
@@ -62,6 +63,7 @@ router.post("/tiers/v1/:tier", asyncHandler(async (req: Request, res: Response) 
   try {
     const result = await setTier(wallet, tier);
     invalidateWalletTierCache(wallet);
+    invalidateSIWxTierCache(wallet);
 
     console.log(`  Tier ${result.action}: ${wallet} → ${tier} (expires ${result.lease_expires_at?.toISOString()})`);
 

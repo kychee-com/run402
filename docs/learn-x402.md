@@ -250,18 +250,42 @@ import { declareDiscoveryExtension } from "@x402/extensions/bazaar";
 }
 ```
 
-### Sign In With X (SIWx) — Wallet-Based Auth
+### Sign In With X (SIWx) — Wallet-Based Auth [IMPLEMENTED]
 
-**Problem it solves:** Right now, after an agent pays for a project, it authenticates with JWT keys (`anon_key`, `service_key`). SIWx would let an agent authenticate using the **same wallet it paid with** — no separate auth step.
+**What it does:** After an agent pays for a tier, it authenticates on free endpoints using the **same wallet it paid with** — via the standard CAIP-122 / EIP-4361 `SIGN-IN-WITH-X` header. No custom headers, supports both EVM and Solana wallets.
 
 **How it works:**
-1. Server sends a challenge: "Sign this message to prove you own wallet `0x6B85...`"
+1. Client creates a CAIP-122 message (domain, address, statement, nonce, timestamps)
 2. Client signs it with their private key (off-chain, no gas)
-3. Server verifies the signature and checks: "Has this wallet paid before? Yes → grant access"
+3. Client base64-encodes the payload and sends it as the `SIGN-IN-WITH-X` header
+4. Server verifies the signature, checks the wallet has an active tier, and grants access
 
-It's like OAuth but with no password, no email, no account creation. Your wallet IS your identity.
+**Client example (TypeScript):**
+```typescript
+import { createSIWxPayload, encodeSIWxHeader } from "@x402/extensions/sign-in-with-x";
 
-**How it differs from our JWT auth:** Our current flow is: pay → get project credentials (JWT) → use JWTs for everything. With SIWx, the flow would be: pay → wallet is remembered → sign a challenge to re-authenticate. No JWT management needed. But our JWT system works well for the multi-role access pattern (anon vs authenticated vs service), so SIWx would be a complement, not a replacement.
+const info = {
+  domain: "api.run402.com",
+  uri: "https://api.run402.com/projects/v1",
+  statement: "Sign in to Run402",
+  version: "1",
+  nonce: crypto.randomUUID(),
+  issuedAt: new Date().toISOString(),
+  expirationTime: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+  chainId: "eip155:84532",
+  type: "eip191",
+};
+const payload = await createSIWxPayload(info, walletSigner);
+const header = encodeSIWxHeader(payload);
+
+fetch("https://api.run402.com/projects/v1", {
+  method: "POST",
+  headers: { "SIGN-IN-WITH-X": header, "Content-Type": "application/json" },
+  body: JSON.stringify({ name: "my-project" }),
+});
+```
+
+**Relationship to JWT auth:** SIWx handles wallet-level identity (tier access). JWTs handle project-level auth (anon vs authenticated vs service). They complement each other — SIWx for "who owns this wallet?" and JWTs for "what can this user do in this project?"
 
 ### Payment Identifier — Idempotency Keys
 
@@ -287,9 +311,9 @@ Add the Bazaar discovery extension to `packages/gateway/src/middleware/x402.ts` 
 
 Register the payment identifier extension on the server so duplicate payment submissions return cached results instead of creating duplicate projects.
 
-### TODO: SIWx — Wallet-based auth (MEDIUM priority, MEDIUM effort — later)
+### ~~TODO: SIWx — Wallet-based auth~~ [DONE]
 
-Interesting for a future "wallet as identity" model. Would need a storage layer to track which wallets have paid. Not urgent — JWTs work fine today.
+Implemented. Custom `X-Run402-Wallet/Signature/Timestamp` headers replaced by standard `SIGN-IN-WITH-X` (CAIP-122). Supports EVM + Solana wallets. Uses `@x402/extensions/sign-in-with-x` for parsing, validation, and verification. SIWxStorage adapter wraps existing billing DB for tier checks.
 
 ### TODO: Stripe Machine Payments (HIGH priority — when approved)
 

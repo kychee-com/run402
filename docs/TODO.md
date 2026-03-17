@@ -13,6 +13,7 @@ From GPT-5.2 Pro consultation (2026-02-27) on improving agent trust and adoption
 - [x] Static site hosting: Vercel-compatible POST /v1/deployments, CloudFront + S3 serving, SPA fallback, deploy_site MCP tool
 - [x] MCP server: published as `run402-mcp` on npm (provision, run_sql, rest_query, upload_file, set_tier). Works with Claude Desktop, Cursor, Cline, Claude Code. https://github.com/kychee-com/run402-mcp
 - [x] Directory listings: listed on npm, GitHub MCP registry
+- [x] SIWX auth: replaced custom `X-Run402-Wallet/Signature/Timestamp` headers with standard `SIGN-IN-WITH-X` (CAIP-122). Supports EVM + Solana wallets via `@x402/extensions/sign-in-with-x`
 
 ## Pending
 

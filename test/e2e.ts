@@ -41,6 +41,8 @@ config();
 import { x402Client, wrapFetchWithPayment, x402HTTPClient } from "@x402/fetch";
 import { ExactEvmScheme } from "@x402/evm/exact/client";
 import { toClientEvmSigner } from "@x402/evm";
+import { createSIWxPayload, encodeSIWxHeader } from "@x402/extensions/sign-in-with-x";
+import type { CompleteSIWxInfo } from "@x402/extensions/sign-in-with-x";
 import { privateKeyToAccount } from "viem/accounts";
 import { createPublicClient, http } from "viem";
 import { baseSepolia } from "viem/chains";
@@ -64,23 +66,31 @@ const client = new x402Client();
 client.register("eip155:84532", new ExactEvmScheme(signer));
 const fetchPaid = wrapFetchWithPayment(fetch, client);
 
-// --- Wallet auth helpers ---
+// --- SIWX auth helpers ---
 
 /**
- * Generate EIP-4361 wallet auth headers for the test wallet.
- * Signs `run402:{timestamp}` with the buyer's private key.
+ * Generate SIWX (CAIP-122) auth headers for the test wallet.
+ * Creates a signed SIWX message and encodes it as the SIGN-IN-WITH-X header.
+ *
+ * @param path - endpoint path (e.g. "/ping/v1") — used to construct the resource URI
  */
-async function walletAuthHeaders(): Promise<Record<string, string>> {
-  const timestamp = Math.floor(Date.now() / 1000).toString();
-  const message = `run402:${timestamp}`;
-
-  const signature = await account.signMessage({ message });
-
-  return {
-    "X-Run402-Wallet": account.address,
-    "X-Run402-Signature": signature,
-    "X-Run402-Timestamp": timestamp,
+async function siwxHeaders(path: string): Promise<Record<string, string>> {
+  const baseUrl = new URL(BASE_URL);
+  const uri = `${baseUrl.protocol}//${baseUrl.host}${path}`;
+  const now = new Date();
+  const info: CompleteSIWxInfo = {
+    domain: baseUrl.hostname,
+    uri,
+    statement: "Sign in to Run402",
+    version: "1",
+    nonce: Math.random().toString(36).slice(2),
+    issuedAt: now.toISOString(),
+    expirationTime: new Date(now.getTime() + 5 * 60 * 1000).toISOString(),
+    chainId: "eip155:84532",
+    type: "eip191",
   };
+  const payload = await createSIWxPayload(info, account);
+  return { "SIGN-IN-WITH-X": encodeSIWxHeader(payload) };
 }
 
 // --- Helpers ---
@@ -134,7 +144,7 @@ async function main() {
 
   // Step 3: Tier status (wallet auth)
   console.log("\n3) Tier status...");
-  const statusHeaders = await walletAuthHeaders();
+  const statusHeaders = await siwxHeaders("/tiers/v1/status");
   const statusRes = await fetch(`${BASE_URL}/tiers/v1/status`, {
     headers: statusHeaders,
   });
@@ -145,7 +155,7 @@ async function main() {
 
   // Step 4: Ping (wallet auth)
   console.log("\n4) Ping...");
-  const pingHeaders = await walletAuthHeaders();
+  const pingHeaders = await siwxHeaders("/ping/v1");
   const pingRes = await fetch(`${BASE_URL}/ping/v1`, {
     headers: pingHeaders,
   });
@@ -156,7 +166,7 @@ async function main() {
 
   // Step 5: Create project with wallet auth
   console.log("\n5) Create project with wallet auth...");
-  const createHeaders = await walletAuthHeaders();
+  const createHeaders = await siwxHeaders("/projects/v1");
   const createRes = await fetch(`${BASE_URL}/projects/v1`, {
     method: "POST",
     headers: {
@@ -708,7 +718,7 @@ async function main() {
 
   // Step 23: Bundle deploy — one-call full-stack app (wallet auth)
   console.log("\n23) Bundle deploy...");
-  const bundleHeaders = await walletAuthHeaders();
+  const bundleHeaders = await siwxHeaders("/deploy/v1");
   const bundleRes = await fetch(`${BASE_URL}/deploy/v1`, {
     method: "POST",
     headers: {
@@ -797,7 +807,7 @@ async function main() {
 
   // Step 25: Fork — fork the published app with wallet auth
   console.log("\n25) Fork app version...");
-  const forkHeaders = await walletAuthHeaders();
+  const forkHeaders = await siwxHeaders("/fork/v1");
   const forkRes = await fetch(`${BASE_URL}/fork/v1`, {
     method: "POST",
     headers: {

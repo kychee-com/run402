@@ -3,6 +3,7 @@ import { ExactEvmScheme } from "@x402/evm/exact/server";
 import { HTTPFacilitatorClient } from "@x402/core/server";
 import { createFacilitatorConfig } from "@coinbase/x402";
 import { declareDiscoveryExtension, bazaarResourceServerExtension } from "@x402/extensions";
+import { siwxResourceServerExtension, declareSIWxExtension } from "@x402/extensions/sign-in-with-x";
 import { TIERS, SKU_PRICES } from "@run402/shared";
 import Stripe from "stripe";
 import {
@@ -154,6 +155,7 @@ export function createPaymentMiddleware() {
             },
           },
         }),
+        ...declareSIWxExtension({ statement: "Sign in to Run402" }),
       },
     };
   }
@@ -198,6 +200,7 @@ export function createPaymentMiddleware() {
 
   const server = new x402ResourceServer(facilitatorClient);
   server.registerExtension(bazaarResourceServerExtension);
+  server.registerExtension(siwxResourceServerExtension);
   for (const network of networks) {
     server.register(network as `${string}:${string}`, new ExactEvmScheme());
   }

@@ -2,42 +2,48 @@
 
 ## Overview
 
-Replace per-operation x402 payments with a wallet-level tier system. An agent pays once for a tier (via x402), then uses EIP-4361 wallet signatures to authenticate all subsequent requests. Operations within the tier (project creation, deploys, forks, message, ping) are free — they draw from a shared resource pool.
+Replace per-operation x402 payments with a wallet-level tier system. An agent pays once for a tier (via x402), then uses SIWX (CAIP-122 / EIP-4361) wallet signatures to authenticate all subsequent requests. Operations within the tier (project creation, deploys, forks, message, ping) are free — they draw from a shared resource pool.
 
 ## Identity Model
 
-A wallet address is the agent's identity. Today, wallet ownership is proven by x402 payment signatures. After tier purchase, ownership is proven via EIP-4361 (signed messages) — no payment needed per request.
+A wallet address is the agent's identity. Today, wallet ownership is proven by x402 payment signatures. After tier purchase, ownership is proven via SIWX (Sign-In-With-X, CAIP-122) — no payment needed per request.
 
-### EIP-4361 Auth Flow
+### SIWX Auth Flow (CAIP-122 / EIP-4361)
 
-Stateless, per-request signing. No sessions, no tokens to manage.
+Stateless, per-request signing using the industry standard. No sessions, no tokens to manage. Supports EVM and Solana wallets.
 
 **Client (agent):**
-```
-// viem — already available in agent codebases
-const message = `run402:${method}:${path}:${timestamp}`;
-const signature = await account.signMessage({ message });
+```typescript
+import { createSIWxPayload, encodeSIWxHeader } from "@x402/extensions/sign-in-with-x";
 
-// Send as header
+const info = {
+  domain: "api.run402.com",
+  uri: "https://api.run402.com/projects/v1",
+  statement: "Sign in to Run402",
+  version: "1",
+  nonce: crypto.randomUUID(),
+  issuedAt: new Date().toISOString(),
+  expirationTime: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+  chainId: "eip155:84532",
+  type: "eip191",
+};
+const payload = await createSIWxPayload(info, walletSigner);
+
 fetch(url, {
-  headers: {
-    "X-Run402-Wallet": walletAddress,
-    "X-Run402-Signature": signature,
-    "X-Run402-Timestamp": timestamp,
-  },
+  headers: { "SIGN-IN-WITH-X": encodeSIWxHeader(payload) },
 });
 ```
 
 **Server:**
-1. Extract wallet, signature, timestamp from headers.
-2. Reject if timestamp is older than 30 seconds (replay protection).
-3. Recover signer address from signature using `verifyMessage` (viem/ethers).
-4. Confirm recovered address matches `X-Run402-Wallet`.
+1. Parse `SIGN-IN-WITH-X` header (base64-encoded CAIP-122 payload).
+2. Validate temporal fields (issuedAt < 5 min old, expirationTime in future).
+3. Validate domain binding (must match server hostname).
+4. Verify cryptographic signature via `verifySIWxSignature` (EVM: EIP-191, Solana: Ed25519).
 5. Look up wallet's tier/account — reject if no active tier or lease expired.
 
 No challenge roundtrip. No nonce state. 1 HTTP request, 1 response.
 
-**Dependencies:** `siwe` or raw `verifyMessage` from viem/ethers on the server side. Nothing new on the client side.
+**Dependencies:** `@x402/extensions/sign-in-with-x` on both client and server. Uses `viem` for EVM verification internally.
 
 ## Tiers
 
@@ -89,13 +95,11 @@ x-402-payment: <signed payment>
 
 The x402 middleware resolves the price from the tier name in the URL. Wallet address is extracted from the payment header. A billing account is created (or updated) for the wallet. The `action` field indicates what happened: `subscribe`, `renew`, or `upgrade`.
 
-### 3. Create projects (EIP-4361 auth, free)
+### 3. Create projects (SIWX auth, free)
 
 ```
 POST /projects/v1
-X-Run402-Wallet: 0x...
-X-Run402-Signature: 0x...
-X-Run402-Timestamp: 1710360000
+SIGN-IN-WITH-X: <base64-encoded CAIP-122 payload>
 { "name": "my-app" }
 → 201
 { "project_id": "prj_...", "anon_key": "...", "service_key": "..." }
@@ -103,7 +107,7 @@ X-Run402-Timestamp: 1710360000
 
 No payment. Middleware verifies wallet signature, checks tier is active, creates project linked to wallet.
 
-### 4. All other operations (EIP-4361 auth, free within tier)
+### 4. All other operations (SIWX auth, free within tier)
 
 These endpoints become free for wallets with an active tier:
 
@@ -150,12 +154,12 @@ These are not included in any tier — they cost per-call:
 
 | Current | New | Auth |
 |---|---|---|
-| `POST /projects/v1/create/:tier` | `POST /projects/v1` | EIP-4361 (free) |
-| `POST /deploy/v1/:tier` | `POST /deploy/v1` | EIP-4361 (free) |
-| `POST /fork/v1/:tier` | `POST /fork/v1` | EIP-4361 (free) |
-| `POST /message/v1` (x402 $0.01) | `POST /message/v1` | EIP-4361 (free) |
-| `GET /ping/v1` (x402 $0.001) | `GET /ping/v1` | EIP-4361 (free) |
-| `PUT /agent/v1/contact` (x402) | `POST /agent/v1/contact` | EIP-4361 (free) |
+| `POST /projects/v1/create/:tier` | `POST /projects/v1` | SIWX (free) |
+| `POST /deploy/v1/:tier` | `POST /deploy/v1` | SIWX (free) |
+| `POST /fork/v1/:tier` | `POST /fork/v1` | SIWX (free) |
+| `POST /message/v1` (x402 $0.01) | `POST /message/v1` | SIWX (free) |
+| `GET /ping/v1` (x402 $0.001) | `GET /ping/v1` | SIWX (free) |
+| `PUT /agent/v1/contact` (x402) | `POST /agent/v1/contact` | SIWX (free) |
 | — | `POST /tiers/v1/:tier` | x402 (tier price, auto-detects subscribe/renew/upgrade) |
 | `POST /projects/v1/:id/renew` | removed | — |
 | `POST /generate-image/v1` ($0.03) | unchanged | x402 |
@@ -165,7 +169,7 @@ These are not included in any tier — they cost per-call:
 Request arrives → check in order:
 
 1. **x402 payment header present?** → x402 flow (tier purchase, generate-image, renewals)
-2. **EIP-4361 headers present?** → verify signature, look up wallet's tier, check lease + resource limits
+2. **SIWX header present?** → verify signature, look up wallet's tier, check lease + resource limits
 3. **apikey/service_key header?** → existing project-scoped auth (REST, storage, functions, admin routes)
 4. **None?** → public endpoints only (health, apps listing, subdomain lookup)
 
