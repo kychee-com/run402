@@ -9,6 +9,7 @@ import { getMimeType } from "../utils/mime.js";
 import { randomBytes } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
+import { cacheInvalidateByNames } from "./subdomains.js";
 
 // S3 client (only initialized if S3_BUCKET is set)
 const s3 = S3_BUCKET ? new S3Client({ region: S3_REGION }) : null;
@@ -32,6 +33,7 @@ export interface DeploymentRequest {
 export interface DeploymentResult {
   deployment_id: string;
   url: string;
+  subdomain_urls?: string[];
 }
 
 export interface DeploymentRecord {
@@ -152,7 +154,29 @@ export async function createDeployment(
 
   console.log(`  Deployment created: ${id} (${decoded.length} files, ${totalSize}B) → ${url}`);
 
-  return { deployment_id: id, url };
+  // Auto-reassign any subdomains that belong to this project
+  const subdomainUrls: string[] = [];
+  if (req.project) {
+    const subResult = await pool.query(
+      `UPDATE internal.subdomains
+       SET deployment_id = $1, updated_at = NOW()
+       WHERE project_id = $2 AND deployment_id != $1
+       RETURNING name`,
+      [id, req.project],
+    );
+    if (subResult.rows.length > 0) {
+      const names = subResult.rows.map((r: { name: string }) => r.name);
+      cacheInvalidateByNames(names);
+      for (const name of names) {
+        subdomainUrls.push(`https://${name}.run402.com`);
+        console.log(`  Subdomain auto-reassigned: ${name} → ${id}`);
+      }
+    }
+  }
+
+  const result: DeploymentResult = { deployment_id: id, url };
+  if (subdomainUrls.length > 0) result.subdomain_urls = subdomainUrls;
+  return result;
 }
 
 /**

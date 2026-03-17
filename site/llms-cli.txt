@@ -95,6 +95,15 @@ run402 tier status
 
 ### Bundle Deploy (recommended -- one command, full stack)
 
+⚠️ You need the anon_key BEFORE writing your manifest.
+Run provision first, then write your HTML with the real key:
+
+```bash
+run402 projects provision --name "my-app"
+```
+
+→ copy anon_key from output into your HTML, then:
+
 Create a manifest file `app.json`:
 
 ```json
@@ -202,14 +211,14 @@ Injected as `process.env` in functions.
 - `run402 sites deploy --project <id> --manifest <file>`
 - `run402 sites status <deployment_id>`
 
-Manifest: `{"files":[{"file":"index.html","data":"..."},{"file":"style.css","data":"..."}]}`. Must include `index.html`. Free with active tier.
+Manifest: `{"files":[{"file":"index.html","data":"..."},{"file":"style.css","data":"..."}]}`. Must include `index.html`. Free with active tier. If the project already has a subdomain, redeploying auto-reassigns it to the new deployment (response includes `subdomain_urls`).
 
 ### subdomains
 - `run402 subdomains claim <deployment_id> <name> [--project <id>]`
 - `run402 subdomains list <id>`
 - `run402 subdomains delete <name>`
 
-Names: 3-63 chars, lowercase alphanumeric + hyphens. Creates `<name>.run402.com`.
+Names: 3-63 chars, lowercase alphanumeric + hyphens. Creates `<name>.run402.com`. Only need to `claim` once per project — subsequent site deploys auto-reassign the subdomain.
 
 ### apps
 - `run402 apps browse [--tag <tag>]`

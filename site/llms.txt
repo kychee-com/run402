@@ -416,12 +416,13 @@ curl -X POST https://api.run402.com/deployments/v1 \
   }'
 # -> { "deployment_id": "dpl_...", "url": "https://dpl-....sites.run402.com" }
 
-# Claim a custom subdomain (free)
+# Claim a custom subdomain (free, only needed once per project)
 curl -X POST https://api.run402.com/subdomains/v1 \
   -H "Authorization: Bearer $SERVICE_KEY" \
   -H "Content-Type: application/json" \
   -d '{"name": "my-app", "deployment_id": "dpl_..."}'
 # -> { "url": "https://my-app.run402.com", ... }
+# Subsequent deploys to the same project auto-reassign the subdomain — no need to call this again.
 ```
 
 ### Step 10: Check usage
@@ -853,7 +854,7 @@ See **Deploy a Static Site** section below for request/response format and examp
 | `/subdomains/v1/:name` | GET | None | Free | Lookup subdomain details |
 | `/subdomains/v1/:name` | DELETE | service_key | Free | Release a subdomain |
 
-`POST /subdomains/v1` is **idempotent** — upserts. Safe to call on every deploy. Subdomain rules: 3-63 chars, lowercase + numbers + hyphens, no consecutive hyphens, must start/end with alphanumeric. Reserved names: `api`, `www`, `admin`, `sites`, `mail`, `ftp`, `cdn`, `static`.
+`POST /subdomains/v1` is **idempotent** — upserts. Only needed once per project to claim a subdomain. Subsequent deploys to the same project auto-reassign all its subdomains to the new deployment (response includes `subdomain_urls`). Subdomain rules: 3-63 chars, lowercase + numbers + hyphens, no consecutive hyphens, must start/end with alphanumeric. Reserved names: `api`, `www`, `admin`, `sites`, `mail`, `ftp`, `cdn`, `static`.
 
 ### Image Generation
 
@@ -1108,7 +1109,10 @@ const res = await fetch("https://api.run402.com/deployments/v1", {
 const deployment = await res.json();
 console.log("Live at:", deployment.url);
 // -> { deployment_id: "dpl_...", url: "https://dpl-1709337600000-a1b2c3.sites.run402.com" }
-// Tip: POST /subdomains/v1 to get a nicer URL like https://my-app.run402.com (free!)
+// If the project already has a subdomain, response also includes:
+//    subdomain_urls: ["https://my-app.run402.com"]
+// Tip: POST /subdomains/v1 once to claim a nicer URL like https://my-app.run402.com (free!).
+// Subsequent deploys to the same project auto-reassign the subdomain.
 ```
 
 ### Deploy with MCP
@@ -1121,7 +1125,8 @@ deploy_site(
     { file: "style.css", data: "body { font-family: sans-serif; }" }
   ]
 )
-// -> { deployment_id: "dpl_...", url: "https://..." }
+// -> { deployment_id: "dpl_...", url: "https://...", subdomain_urls: ["https://my-app.run402.com"] }
+// subdomain_urls is included when the project already has a claimed subdomain (auto-reassigned)
 ```
 
 ### Check a deployment (free, no auth)

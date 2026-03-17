@@ -11,6 +11,7 @@
  *   7.  Deploy with base64 file (PNG), verify Content-Type
  *   8.  Verify GET /v1/deployments/:id (metadata lookup)
  *   9.  Verify idempotency (same key → same deployment)
+ *   10. Verify auto subdomain reassignment on redeploy
  *
  * Usage:
  *   BASE_URL=https://api.run402.com npx tsx test/deploy-site-e2e.ts          # mainnet
@@ -241,6 +242,90 @@ async function main() {
   });
   const idemBody2 = await idem2.json();
   assert(idemBody2.id === idemBody1.id, `Same Idempotency-Key returns same deployment ID`);
+
+  // Test 10: Auto subdomain reassignment on redeploy
+  console.log("\n10) Verify auto subdomain reassignment on redeploy...");
+
+  // 10a: Provision a project for subdomain test
+  const subTestProjectRes = await fetchPaid(`${BASE_URL}/v1/projects`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name: "e2e-subdomain-reassign" }),
+  });
+  const subTestProject = await subTestProjectRes.json();
+  const subTestProjectId = subTestProject.id || subTestProject.project_id;
+  const subTestServiceKey = subTestProject.service_key;
+  assert(!!subTestProjectId, `Subdomain test project provisioned (${subTestProjectId})`);
+
+  // 10b: Deploy first version
+  const deploy1Res = await fetchPaid(`${BASE_URL}/v1/deployments`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      project: subTestProjectId,
+      files: [{ file: "index.html", data: "<h1>Version 1</h1>" }],
+    }),
+  });
+  const deploy1 = await deploy1Res.json();
+  assert(deploy1Res.status === 201, `First deploy returns 201 (got ${deploy1Res.status})`);
+  assert(!deploy1.subdomain_urls, `First deploy has no subdomain_urls (no subdomain claimed yet)`);
+
+  // 10c: Claim a subdomain pointing to first deployment
+  const subName = `e2e-auto-${randomBytes(4).toString("hex")}`;
+  const claimRes = await fetch(`${BASE_URL}/v1/subdomains`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${subTestServiceKey}`,
+    },
+    body: JSON.stringify({
+      name: subName,
+      deployment_id: deploy1.deployment_id,
+    }),
+  });
+  assert(claimRes.status === 201 || claimRes.status === 200, `Subdomain claimed (got ${claimRes.status})`);
+
+  // 10d: Deploy second version — should auto-reassign the subdomain
+  const deploy2Res = await fetchPaid(`${BASE_URL}/v1/deployments`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      project: subTestProjectId,
+      files: [{ file: "index.html", data: "<h1>Version 2</h1>" }],
+    }),
+  });
+  const deploy2 = await deploy2Res.json();
+  assert(deploy2Res.status === 201, `Second deploy returns 201 (got ${deploy2Res.status})`);
+  assert(
+    Array.isArray(deploy2.subdomain_urls) && deploy2.subdomain_urls.includes(`https://${subName}.run402.com`),
+    `Second deploy includes subdomain_urls with ${subName} (got ${JSON.stringify(deploy2.subdomain_urls)})`,
+  );
+
+  // 10e: Fetch subdomain URL — should serve version 2
+  try {
+    const subRes = await fetch(`https://${subName}.run402.com`);
+    const subBody = await subRes.text();
+    assert(subRes.ok, `Subdomain serves 200 (got ${subRes.status})`);
+    assert(subBody.includes("Version 2"), `Subdomain serves Version 2 content`);
+  } catch (err: any) {
+    assert(false, `Failed to fetch subdomain: ${err.message}`);
+  }
+
+  // 10f: Old deployment URL should still serve version 1 (immutability)
+  try {
+    const oldRes = await fetch(deploy1.url);
+    const oldBody = await oldRes.text();
+    assert(oldRes.ok, `Old deployment URL still serves 200`);
+    assert(oldBody.includes("Version 1"), `Old deployment URL still serves Version 1`);
+  } catch (err: any) {
+    assert(false, `Failed to fetch old deployment: ${err.message}`);
+  }
+
+  // 10g: Cleanup — delete subdomain
+  await fetch(`${BASE_URL}/v1/subdomains/${subName}`, {
+    method: "DELETE",
+    headers: { "Authorization": `Bearer ${subTestServiceKey}` },
+  });
 
   // --- Summary ---
   console.log(`\n=== Results: ${passed} passed, ${failed} failed ===\n`);

@@ -53,6 +53,14 @@ function cacheInvalidate(name: string): void {
   cache.delete(name);
 }
 
+/**
+ * Invalidate cache entries for multiple subdomain names.
+ * Used by the deployments service after auto-reassignment.
+ */
+export function cacheInvalidateByNames(names: string[]): void {
+  for (const name of names) cache.delete(name);
+}
+
 // ---------- Table init ----------
 
 /**

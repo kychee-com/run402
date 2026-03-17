@@ -17,6 +17,7 @@ From GPT-5.2 Pro consultation (2026-02-27) on improving agent trust and adoption
 ## Pending
 
 ### Static site hosting — follow-ups
+- [x] Auto subdomain reassignment: deploying to a project that already has a subdomain auto-reassigns it to the new deployment (response includes `subdomain_urls`)
 - [ ] Production aliases: `prj-xxx.sites.run402.com` pointing to latest `target: "production"` deployment
 - [ ] Custom domains: let agents CNAME their own domain to a deployment
 - [ ] Deployment listing: `GET /v1/deployments?project=prj_xxx` for listing project deployments
