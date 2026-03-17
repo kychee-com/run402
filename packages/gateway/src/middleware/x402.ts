@@ -19,6 +19,7 @@ import {
 import type { TierName } from "@run402/shared";
 import { getBillingAccount, debitAllowance } from "../services/billing.js";
 import { extractWalletFromPaymentHeader, recordWallet } from "../utils/wallet.js";
+import { getWalletTier } from "../services/wallet-tiers.js";
 import { createHash } from "node:crypto";
 import { pool } from "../db/pool.js";
 import type { Request, Response, NextFunction } from "express";
@@ -133,6 +134,15 @@ export function createPaymentMiddleware() {
       })),
       description: `Set ${tierName} tier (${tierConfig.price} USDC) — auto-detects subscribe/renew/upgrade`,
       mimeType: "application/json",
+      unpaidResponseBody: async () => ({
+        contentType: "application/json",
+        body: {
+          error: "Payment required",
+          message: `To set tier '${tierName}', include x402 payment of ${tierConfig.price} USDC. If this tier is already active, payment will renew the subscription.`,
+          tier: tierName,
+          price: tierConfig.price,
+        },
+      }),
       extensions: {
         ...declareDiscoveryExtension({
           output: {
@@ -212,6 +222,35 @@ export function createPaymentMiddleware() {
   // true = has contact, false = no contact (should hint).
   const contactCheckResults = new Map<string, boolean>();
 
+  // Track wallet tier info for tier routes — used to augment 402 responses with context.
+  // Keyed by payment header hash; populated in onProtectedRequest, consumed in wrapper.
+  const tierContextResults = new Map<string, { wallet: string; tier: string | null; active: boolean; lease_expires_at: string | null }>();
+
+  // Tier context: when a tier endpoint is hit, check wallet's current tier status
+  // so 402 responses can explain "already active" instead of being cryptic.
+  httpServer.onProtectedRequest(async (context) => {
+    if (!context.paymentHeader) return;
+
+    // Only for tier endpoints
+    const tierMatch = context.path.match(/^\/tiers\/v1\/(\w+)$/);
+    if (!tierMatch) return;
+
+    const wallet = extractWalletFromPaymentHeader(context.paymentHeader);
+    if (!wallet) return;
+
+    try {
+      const tierInfo = await getWalletTier(wallet);
+      tierContextResults.set(context.paymentHeader, {
+        wallet,
+        tier: tierInfo.tier,
+        active: tierInfo.active,
+        lease_expires_at: tierInfo.lease_expires_at as string | null,
+      });
+    } catch {
+      // Best effort — don't block payment flow
+    }
+  });
+
   // Allowance rail: debit allowance balance instead of on-chain settlement
   httpServer.onProtectedRequest(async (context) => {
     if (!context.paymentHeader) return;
@@ -257,6 +296,7 @@ export function createPaymentMiddleware() {
   const x402Middleware = paymentMiddlewareFromHTTPServer(httpServer);
 
   // Wrapper middleware: adds X-Run402-Settlement-Rail and X-Run402-Allowance-Remaining headers.
+  // Also augments 402 responses on tier routes with helpful context (e.g. "tier already active").
   return async (req: Request, res: Response, next: NextFunction) => {
     const paymentHeader = (req.headers["payment-signature"] || req.headers["x-payment"] || req.headers["x-402-payment"]) as string | undefined;
 
@@ -265,6 +305,40 @@ export function createPaymentMiddleware() {
       // Without this, routes like project creation wouldn't know which wallet paid.
       if (allowanceResults.has(paymentHeader)) {
         req.walletAddress = allowanceResults.get(paymentHeader)!.wallet;
+      }
+
+      // Intercept res.json to augment 402 responses on tier routes with wallet context.
+      const tierMatch = req.path.match(/^\/tiers\/v1\/(\w+)$/);
+      if (tierMatch && tierMatch[1] && tierMatch[1] !== "status") {
+        const requestedTier = tierMatch[1] as TierName;
+        const realJson = res.json.bind(res);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- augmenting x402 response body
+        res.json = function (body: any) {
+          if (res.statusCode === 402 && body && typeof body === "object") {
+            // Augment empty or sparse 402 body with helpful tier context
+            const tierConfig = TIERS[requestedTier];
+            if (tierConfig) {
+              body.error = body.error || "Payment required";
+              body.message = `Payment of ${tierConfig.price} USDC required to set tier '${requestedTier}'.`;
+              body.tier = requestedTier;
+              body.price = tierConfig.price;
+            }
+            // If we identified the wallet's current tier, include that info
+            const tierCtx = tierContextResults.get(paymentHeader);
+            if (tierCtx) {
+              tierContextResults.delete(paymentHeader);
+              if (tierCtx.active && tierCtx.tier === requestedTier) {
+                body.message = `Tier '${requestedTier}' is already active on this wallet (expires ${tierCtx.lease_expires_at}). Payment will renew the subscription.`;
+              } else if (tierCtx.active && tierCtx.tier) {
+                body.message = `Wallet is currently on '${tierCtx.tier}' tier (expires ${tierCtx.lease_expires_at}). Payment of ${TIERS[requestedTier]?.price} USDC will switch to '${requestedTier}'.`;
+              }
+              body.current_tier = tierCtx.tier;
+              body.current_tier_active = tierCtx.active;
+              body.lease_expires_at = tierCtx.lease_expires_at;
+            }
+          }
+          return realJson(body);
+        } as Response["json"];
       }
 
       // Intercept writeHead to inject settlement headers before the response is sent.
@@ -300,6 +374,7 @@ export function createPaymentMiddleware() {
       res.on("close", () => {
         allowanceResults.delete(paymentHeader);
         contactCheckResults.delete(paymentHeader);
+        tierContextResults.delete(paymentHeader);
       });
     }
 
