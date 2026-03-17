@@ -142,7 +142,6 @@ async function main() {
     method: "POST",
     headers: { "Content-Type": "application/json", ...siteHeaders },
     body: JSON.stringify({
-      name: "cosmicforge",
       project: project_id,
       files: [{ file: "index.html", data: siteHtml }],
     }),

@@ -24,7 +24,6 @@ export interface DeploymentFile {
 }
 
 export interface DeploymentRequest {
-  name: string;
   project: string;
   target?: string;
   files: DeploymentFile[];
@@ -146,7 +145,7 @@ export async function createDeployment(
   await pool.query(
     `INSERT INTO internal.deployments (id, name, project_id, target, files_count, total_size, tx_hash)
      VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-    [id, req.name, req.project, req.target || null, decoded.length, totalSize, txHash || null],
+    [id, req.project, req.project, req.target || null, decoded.length, totalSize, txHash || null],
   );
 
   const url = `https://${dnsLabel}.sites.run402.com`;

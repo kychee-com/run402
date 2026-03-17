@@ -262,7 +262,7 @@ export async function deployBundle(
     let deploymentId: string | undefined;
     if (req.files) {
       const deployment = await createDeployment(
-        { name: req.name, project: project.id, files: req.files },
+        { project: project.id, files: req.files },
         txHash,
       );
       siteUrl = deployment.url;

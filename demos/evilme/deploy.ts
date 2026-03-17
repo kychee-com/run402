@@ -151,7 +151,6 @@ async function main() {
     method: "POST",
     headers: { "Content-Type": "application/json", ...siteHeaders },
     body: JSON.stringify({
-      name: "evilme",
       project: project_id,
       files: [{ file: "index.html", data: siteHtml }],
     }),

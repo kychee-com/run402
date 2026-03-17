@@ -19,17 +19,13 @@ router.get("/deployments/v1", (_req: Request, res: Response) => {
     description: "Deploy a static site — Vercel-compatible inlined file upload (free with active tier)",
     method: "POST",
     auth: "EIP-4361 wallet signature",
-    body: { name: "string (required)", project: "string (required project ID)", files: "[{ file, data, encoding? }]" },
+    body: { project: "string (required project ID)", files: "[{ file, data, encoding? }]" },
   });
 });
 
 // POST /v1/deployments — create a deployment (wallet auth, free)
 router.post("/deployments/v1", walletAuth(false), asyncHandler(async (req: Request, res: Response) => {
-  const { name, project, target, files } = req.body || {};
-
-  if (!name || typeof name !== "string") {
-    throw new HttpError(400, "Missing or invalid 'name' field");
-  }
+  const { project, target, files } = req.body || {};
 
   if (!project || typeof project !== "string") {
     throw new HttpError(400, "Missing or invalid 'project' field (project ID required)");
@@ -54,7 +50,7 @@ router.post("/deployments/v1", walletAuth(false), asyncHandler(async (req: Reque
 
   try {
     const deployment = await createDeployment(
-      { name, project, target, files },
+      { project, target, files },
       undefined,
     );
     res.status(201).json(deployment);

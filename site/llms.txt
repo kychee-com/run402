@@ -393,7 +393,6 @@ curl -X POST https://api.run402.com/deployments/v1 \
   -H "X-Run402-Signature: $SIGNATURE" \
   -H "X-Run402-Timestamp: $TIMESTAMP" \
   -d '{
-    "name": "my-app",
     "project": "'$PROJECT_ID'",
     "files": [
       {"file": "index.html", "data": "<!DOCTYPE html><html><body><h1>Hello!</h1></body></html>"}
@@ -1046,7 +1045,6 @@ Deploy a static site (HTML, CSS, JS, images) with a single API call. Each deploy
 
 ```json
 {
-  "name": "my-app",
   "project": "prj_1234_0001",
   "files": [
     { "file": "index.html", "data": "<!DOCTYPE html>..." },
@@ -1082,7 +1080,6 @@ const res = await fetch("https://api.run402.com/deployments/v1", {
     "X-Run402-Timestamp": timestamp,
   },
   body: JSON.stringify({
-    name: "my-app",
     project: "prj_1234_0001",
     files: [
       { file: "index.html", data: "<!DOCTYPE html><html><body><h1>Hello!</h1></body></html>" },
@@ -1102,7 +1099,6 @@ console.log("Live at:", deployment.url);
 
 ```
 deploy_site(
-  name: "my-app",
   project: "prj_1234_0001",
   files: [
     { file: "index.html", data: "<!DOCTYPE html><html><body><h1>Hello!</h1></body></html>" },

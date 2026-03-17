@@ -135,7 +135,7 @@ run402 projects sql <project_id> "INSERT INTO items (title) VALUES ('Buy groceri
 run402 projects rls <project_id> public_read_write '[{"table":"items"}]'
 
 # 5. Deploy a static site
-run402 sites deploy --name my-app --manifest site.json
+run402 sites deploy --project <project_id> --manifest site.json
 
 # 6. Claim a subdomain
 run402 subdomains claim <deployment_id> my-app
@@ -199,7 +199,7 @@ Injected as `process.env` in functions.
 - `run402 storage list <id> <bucket>`
 
 ### sites
-- `run402 sites deploy --name <name> --manifest <file> [--project <id>]`
+- `run402 sites deploy --project <id> --manifest <file>`
 - `run402 sites status <deployment_id>`
 
 Manifest: `{"files":[{"file":"index.html","data":"..."},{"file":"style.css","data":"..."}]}`. Must include `index.html`. Free with active tier.
