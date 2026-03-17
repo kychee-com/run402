@@ -149,7 +149,7 @@ export async function forkApp(
       code: fn.source,
       config: { timeout: fn.timeout_seconds, memory: fn.memory_mb },
     })),
-    site: undefined as Array<{ file: string; data: string }> | undefined,
+    files: undefined as Array<{ file: string; data: string }> | undefined,
     subdomain: req.subdomain,
   };
 

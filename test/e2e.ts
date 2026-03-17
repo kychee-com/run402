@@ -171,7 +171,6 @@ async function main() {
   assert(typeof project.anon_key === "string", "Returns anon_key");
   assert(typeof project.service_key === "string", "Returns service_key");
   assert(typeof project.schema_slot === "string", "Returns schema_slot");
-  assert(typeof project.lease_expires_at === "string", "Returns lease_expires_at");
 
   const { project_id, anon_key, service_key } = project;
 
@@ -723,7 +722,7 @@ async function main() {
         template: "public_read_write",
         tables: [{ table: "items" }],
       },
-      site: [
+      files: [
         { file: "index.html", data: "<!doctype html><html><body><h1>Bundle Test</h1></body></html>" },
       ],
     }),
@@ -735,7 +734,7 @@ async function main() {
   assert(typeof bundleBody.service_key === "string", "Bundle returns service_key");
   assert(typeof bundleBody.site_url === "string", "Bundle returns site_url");
   assert(typeof bundleBody.deployment_id === "string", "Bundle returns deployment_id");
-  assert(typeof bundleBody.lease_expires_at === "string", "Bundle returns lease_expires_at");
+  assert(bundleBody.lease_expires_at === undefined, "Bundle no longer returns lease_expires_at");
 
   const bundleProjectId = bundleBody.project_id;
   const bundleAnonKey = bundleBody.anon_key;

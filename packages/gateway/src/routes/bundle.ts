@@ -1,8 +1,8 @@
 /**
  * Bundle deploy routes — one-call full-stack app deployment.
  *
- * POST /v1/deploy — deploy a complete app (wallet auth, free with tier)
- * GET  /v1/deploy — info (free)
+ * POST /deploy/v1 — deploy a complete app (wallet auth, free with tier)
+ * GET  /deploy/v1 — info (free)
  */
 
 import { Router, Request, Response } from "express";
@@ -33,7 +33,7 @@ router.get("/deploy/v1", (_req: Request, res: Response) => {
       rls: "{ template, tables } (optional)",
       secrets: "[{ key, value }] (optional)",
       functions: "[{ name, code, config? }] (optional)",
-      site: "[{ file, data, encoding? }] (optional)",
+      files: "[{ file, data, encoding? }] (optional)",
       subdomain: "string (optional)",
     },
   });

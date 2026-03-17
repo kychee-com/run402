@@ -25,9 +25,14 @@ export interface DeploymentFile {
 
 export interface DeploymentRequest {
   name: string;
-  project?: string;
+  project: string;
   target?: string;
   files: DeploymentFile[];
+}
+
+export interface DeploymentResult {
+  deployment_id: string;
+  url: string;
 }
 
 export interface DeploymentRecord {
@@ -88,7 +93,7 @@ export async function initDeploymentsTable(): Promise<void> {
 export async function createDeployment(
   req: DeploymentRequest,
   txHash?: string,
-): Promise<DeploymentRecord> {
+): Promise<DeploymentResult> {
   const id = generateDeploymentId();
   const dnsLabel = toDnsLabel(id);
 
@@ -141,23 +146,14 @@ export async function createDeployment(
   await pool.query(
     `INSERT INTO internal.deployments (id, name, project_id, target, files_count, total_size, tx_hash)
      VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-    [id, req.name, req.project || null, req.target || null, decoded.length, totalSize, txHash || null],
+    [id, req.name, req.project, req.target || null, decoded.length, totalSize, txHash || null],
   );
 
   const url = `https://${dnsLabel}.sites.run402.com`;
 
   console.log(`  Deployment created: ${id} (${decoded.length} files, ${totalSize}B) → ${url}`);
 
-  return {
-    id,
-    name: req.name,
-    url,
-    project_id: req.project || null,
-    status: "READY",
-    created_at: new Date().toISOString(),
-    files_count: decoded.length,
-    total_size: totalSize,
-  };
+  return { deployment_id: id, url };
 }
 
 /**

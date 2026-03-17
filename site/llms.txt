@@ -240,7 +240,6 @@ const project = await res.json();
 console.log("Project ID:", project.project_id);
 console.log("Anon Key:", project.anon_key);
 console.log("Service Key:", project.service_key);
-console.log("Expires:", project.lease_expires_at);
 ```
 
 **Important**: Register for `eip155:84532` (Base Sepolia) specifically, not `eip155:*`. The wildcard matches the first offered network (mainnet), and your testnet-funded wallet will fail with `insufficient_funds`.
@@ -400,7 +399,7 @@ curl -X POST https://api.run402.com/deployments/v1 \
       {"file": "index.html", "data": "<!DOCTYPE html><html><body><h1>Hello!</h1></body></html>"}
     ]
   }'
-# -> { "id": "dpl_...", "url": "https://dpl-....sites.run402.com", ... }
+# -> { "deployment_id": "dpl_...", "url": "https://dpl-....sites.run402.com" }
 
 # Claim a custom subdomain (free)
 curl -X POST https://api.run402.com/subdomains/v1 \
@@ -630,10 +629,9 @@ Yes. `/projects/v1/admin/:id/usage` shows API calls, storage, lease status. `/pr
 - Renew anytime before deletion via `POST /tiers/v1/:tier`
 
 **Keys and access levels**: Two JWTs after provisioning. Third after user login:
-- `anon_key` (role: anon) -- **read-only** public key. SELECT, signup, storage access. Safe for client apps. No INSERT/UPDATE/DELETE (unless `public_read_write` RLS).
-- `service_key` (role: service_role) -- **full admin**. Bypasses RLS. For SQL migrations, RLS setup, seeding, usage checks. Keep server-side only.
+- `anon_key` (role: anon) -- **read-only** public key. SELECT, signup, storage access. Safe for client apps. No INSERT/UPDATE/DELETE (unless `public_read_write` RLS). **No expiry** -- permanent project identifier. Lease enforcement happens server-side.
+- `service_key` (role: service_role) -- **full admin**. Bypasses RLS. For SQL migrations, RLS setup, seeding, usage checks. Keep server-side only. Expires with lease.
 - `access_token` (role: authenticated) -- **user-scoped read/write**. From `/auth/v1/token` after password login or Google OAuth. INSERT/UPDATE/DELETE subject to RLS. For user-facing CRUD.
-- Keys expire with lease. Rotation not yet supported.
 
 **Isolation**: Each project in its own Postgres schema. Cross-schema access blocked. `db-pre-request` hook validates JWT claims match the project.
 
@@ -1001,7 +999,7 @@ Supported on: `POST /tiers/v1/:tier`, `POST /projects/v1`, `POST /deploy/v1`, `P
    -> { wallet, tier, lease_expires_at }
 
 1. POST /projects/v1  (wallet auth headers)
-   -> { project_id, anon_key, service_key, schema_slot, lease_expires_at }
+   -> { project_id, anon_key, service_key, schema_slot }
 
 2. POST /projects/v1/admin/:id/sql  (with service_key)
    -> Create your tables
@@ -1013,8 +1011,8 @@ Supported on: `POST /tiers/v1/:tier`, `POST /projects/v1`, `POST /deploy/v1`, `P
    Use /auth/v1/* with anon_key for user management
    Use /storage/v1/* with anon_key for file operations
 
-5. POST /deployments/v1  (wallet auth headers, free with tier)
-   -> Deploy site, get live URL
+5. POST /deployments/v1  (wallet auth headers, free with tier, project required)
+   -> { deployment_id, url }
 
 6. POST /subdomains/v1  (with service_key, free)
    -> Claim myapp.run402.com
@@ -1035,7 +1033,7 @@ Supported on: `POST /tiers/v1/:tier`, `POST /projects/v1`, `POST /deploy/v1`, `P
 
 ## Deploy a Static Site
 
-Deploy a static site (HTML, CSS, JS, images) with a single API call. Each deployment gets a permanent URL at `https://{id}.sites.run402.com`. No project or database required -- standalone.
+Deploy a static site (HTML, CSS, JS, images) with a single API call. Each deployment gets a permanent URL at `https://{id}.sites.run402.com`. Requires a project ID -- provision a project first with `POST /projects/v1`.
 
 ### How it works
 
@@ -1050,7 +1048,6 @@ Deploy a static site (HTML, CSS, JS, images) with a single API call. Each deploy
 {
   "name": "my-app",
   "project": "prj_1234_0001",
-  "target": "production",
   "files": [
     { "file": "index.html", "data": "<!DOCTYPE html>..." },
     { "file": "assets/style.css", "data": "body { margin: 0; }" },
@@ -1086,6 +1083,7 @@ const res = await fetch("https://api.run402.com/deployments/v1", {
   },
   body: JSON.stringify({
     name: "my-app",
+    project: "prj_1234_0001",
     files: [
       { file: "index.html", data: "<!DOCTYPE html><html><body><h1>Hello!</h1></body></html>" },
       { file: "style.css", data: "body { font-family: sans-serif; }" },
@@ -1096,7 +1094,7 @@ const res = await fetch("https://api.run402.com/deployments/v1", {
 
 const deployment = await res.json();
 console.log("Live at:", deployment.url);
-// -> https://dpl-1709337600000-a1b2c3.sites.run402.com
+// -> { deployment_id: "dpl_...", url: "https://dpl-1709337600000-a1b2c3.sites.run402.com" }
 // Tip: POST /subdomains/v1 to get a nicer URL like https://my-app.run402.com (free!)
 ```
 
@@ -1105,12 +1103,13 @@ console.log("Live at:", deployment.url);
 ```
 deploy_site(
   name: "my-app",
+  project: "prj_1234_0001",
   files: [
     { file: "index.html", data: "<!DOCTYPE html><html><body><h1>Hello!</h1></body></html>" },
     { file: "style.css", data: "body { font-family: sans-serif; }" }
   ]
 )
-// -> Returns live URL (free with wallet auth)
+// -> { deployment_id: "dpl_...", url: "https://..." }
 ```
 
 ### Check a deployment (free, no auth)
@@ -1142,9 +1141,9 @@ Deployment ID `dpl_1709337600000_a1b2c3` maps to subdomain `dpl-1709337600000-a1
 - `/assets/app.js` → file with `application/javascript`
 - `/missing.js` → 403 (has extension, not found)
 
-### Linking to a project (optional)
+### Project association
 
-Pass `project` to associate with an existing Run402 database. Metadata only -- doesn't affect URL or require project auth.
+The `project` field is required. Every deployment must be tied to a project. Provision a project first with `POST /projects/v1`.
 
 ---
 
@@ -1197,8 +1196,6 @@ Content-Type: application/json
   "anon_key": "eyJhbGciOi...",
   "service_key": "eyJhbGciOi...",
   "schema_slot": "p0042",
-  "tier": "hobby",
-  "lease_expires_at": "2026-04-07T00:00:00Z",
   "site_url": "https://my-saas.run402.com",
   "deployment_id": "dpl_1741340000_a1b2c3",
   "functions": [

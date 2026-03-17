@@ -220,7 +220,6 @@ async function main() {
   const balAfterProject = (await (await fetch(`${BASE_URL}/v1/billing/accounts/${wallet}`)).json() as Record<string, unknown>).available_usd_micros as number;
   const usedAllowanceRail = balAfterProject < balBeforeProject;
   console.log(`   Project: ${projBody.project_id}`);
-  console.log(`   Tier: ${projBody.tier}`);
   console.log(`   Allowance rail used: ${usedAllowanceRail} (balance: ${balBeforeProject} -> ${balAfterProject})`);
 
   // 8b) Verify settlement response headers

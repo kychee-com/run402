@@ -202,17 +202,17 @@ describe("bundle validation — functions", () => {
   });
 });
 
-describe("bundle validation — site", () => {
-  it("rejects empty site array", () => {
+describe("bundle validation — files", () => {
+  it("rejects empty files array", () => {
     assert.throws(
-      () => validateBundle({ name: "app", site: [] }),
+      () => validateBundle({ name: "app", files: [] }),
       (err: BundleError) => err.statusCode === 400 && err.message.includes("non-empty"),
     );
   });
 
   it("rejects missing file path", () => {
     assert.throws(
-      () => validateBundle({ name: "app", site: [{ file: "", data: "hi" }] }),
+      () => validateBundle({ name: "app", files: [{ file: "", data: "hi" }] }),
       (err: BundleError) => err.statusCode === 400,
     );
   });
@@ -222,7 +222,7 @@ describe("bundle validation — site", () => {
       () =>
         validateBundle({
           name: "app",
-          site: [{ file: "index.html", data: "hi", encoding: "gzip" as "utf-8" }],
+          files: [{ file: "index.html", data: "hi", encoding: "gzip" as "utf-8" }],
         }),
       (err: BundleError) => err.statusCode === 400 && err.message.includes("encoding"),
     );
@@ -232,7 +232,7 @@ describe("bundle validation — site", () => {
     assert.doesNotThrow(() =>
       validateBundle({
         name: "app",
-        site: [
+        files: [
           { file: "index.html", data: "<h1>hello</h1>" },
           { file: "style.css", data: "body { color: red; }" },
         ],
@@ -280,7 +280,7 @@ describe("bundle validation — full bundle", () => {
             code: 'export default async (req) => new Response("ok")',
           },
         ],
-        site: [{ file: "index.html", data: "<h1>Cosmic Forge</h1>" }],
+        files: [{ file: "index.html", data: "<h1>Cosmic Forge</h1>" }],
         subdomain: "cosmic",
       }),
     );

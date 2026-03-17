@@ -31,7 +31,7 @@ interface DemoApp {
   tags: string[];
   migrations: string;
   rls: { template: string; tables: Array<{ table: string; owner_column?: string }> };
-  site?: Array<{ file: string; data: string }>;
+  files?: Array<{ file: string; data: string }>;
 }
 
 const DEMOS: DemoApp[] = [
@@ -50,7 +50,7 @@ const DEMOS: DemoApp[] = [
         { table: "todos", owner_column: "user_id" },
       ],
     },
-    site: [{ file: "index.html", data: "<!doctype html><html><head><title>Todo Starter</title><style>body{font-family:system-ui;max-width:640px;margin:0 auto;padding:2rem;background:#0a0a0f;color:#e0e0e0}h1{color:#00ff9f}</style></head><body><h1>Todo Starter</h1><p>A simple todo app with user auth. Fork this and make it yours.</p></body></html>" }],
+    files: [{ file: "index.html", data: "<!doctype html><html><head><title>Todo Starter</title><style>body{font-family:system-ui;max-width:640px;margin:0 auto;padding:2rem;background:#0a0a0f;color:#e0e0e0}h1{color:#00ff9f}</style></head><body><h1>Todo Starter</h1><p>A simple todo app with user auth. Fork this and make it yours.</p></body></html>" }],
   },
   {
     name: "guestbook",
@@ -63,7 +63,7 @@ const DEMOS: DemoApp[] = [
       template: "public_read_write",
       tables: [{ table: "entries" }],
     },
-    site: [{ file: "index.html", data: "<!doctype html><html><head><title>Guestbook</title><style>body{font-family:system-ui;max-width:640px;margin:0 auto;padding:2rem;background:#0a0a0f;color:#e0e0e0}h1{color:#00ff9f}</style></head><body><h1>Guestbook</h1><p>A public guestbook. Anyone can sign. Fork this for your own.</p></body></html>" }],
+    files: [{ file: "index.html", data: "<!doctype html><html><head><title>Guestbook</title><style>body{font-family:system-ui;max-width:640px;margin:0 auto;padding:2rem;background:#0a0a0f;color:#e0e0e0}h1{color:#00ff9f}</style></head><body><h1>Guestbook</h1><p>A public guestbook. Anyone can sign. Fork this for your own.</p></body></html>" }],
   },
   {
     name: "link-board",
@@ -80,7 +80,7 @@ const DEMOS: DemoApp[] = [
         { table: "links" },
       ],
     },
-    site: [{ file: "index.html", data: "<!doctype html><html><head><title>Link Board</title><style>body{font-family:system-ui;max-width:640px;margin:0 auto;padding:2rem;background:#0a0a0f;color:#e0e0e0}h1{color:#00ff9f}</style></head><body><h1>Link Board</h1><p>Share links, upvote the best ones. Fork this for your community.</p></body></html>" }],
+    files: [{ file: "index.html", data: "<!doctype html><html><head><title>Link Board</title><style>body{font-family:system-ui;max-width:640px;margin:0 auto;padding:2rem;background:#0a0a0f;color:#e0e0e0}h1{color:#00ff9f}</style></head><body><h1>Link Board</h1><p>Share links, upvote the best ones. Fork this for your community.</p></body></html>" }],
   },
   {
     name: "inventory-tracker",
@@ -121,7 +121,7 @@ async function publishDemo(demo: DemoApp, serviceKey: string, adminKey: string):
       name: demo.name,
       migrations: demo.migrations,
       rls: demo.rls,
-      site: demo.site,
+      files: demo.files,
     }),
   });
   const project = await createRes.json();

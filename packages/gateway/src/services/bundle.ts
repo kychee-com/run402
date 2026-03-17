@@ -51,8 +51,6 @@ export interface BundleResult {
   anon_key: string;
   service_key: string;
   schema_slot: string;
-  tier: TierName;
-  lease_expires_at: string;
   site_url?: string;
   deployment_id?: string;
   functions?: Array<{ name: string; url: string }>;
@@ -268,7 +266,7 @@ export async function deployBundle(
         txHash,
       );
       siteUrl = deployment.url;
-      deploymentId = deployment.id;
+      deploymentId = deployment.deployment_id;
 
       // 7. Claim subdomain — pass wallet so same-wallet redeploys can reassign
       if (req.subdomain && deploymentId) {
@@ -282,8 +280,6 @@ export async function deployBundle(
       anon_key: project.anonKey,
       service_key: project.serviceKey,
       schema_slot: project.schemaSlot,
-      tier: project.tier,
-      lease_expires_at: project.leaseExpiresAt.toISOString(),
     };
 
     if (siteUrl) result.site_url = siteUrl;

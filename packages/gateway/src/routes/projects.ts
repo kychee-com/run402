@@ -47,8 +47,6 @@ router.post("/projects/v1", walletAuth(true), asyncHandler(async (req: Request, 
     anon_key: project.anonKey,
     service_key: project.serviceKey,
     schema_slot: project.schemaSlot,
-    tier: project.tier,
-    lease_expires_at: project.leaseExpiresAt.toISOString(),
   });
 }));
 

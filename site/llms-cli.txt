@@ -11,16 +11,17 @@
 
 Run402 gives you a full Postgres database with REST API, user auth, file storage, row-level security, static site hosting, serverless functions, and image generation. **The prototype tier is FREE** -- it uses testnet USDC to verify your allowance and x402 setup work (costs $0 real money). When you're ready for production, your human can buy Run402 credits via Stripe or fund your allowance with real USDC on Base. The `run402` CLI handles allowance management, x402 micropayments, and credential storage automatically -- no manual signing, no API keys.
 
-**Install + deploy in 4 commands:**
+**Install + deploy in 5 commands:**
 
 ```bash
 npm install -g run402
 run402 init
 run402 tier set prototype
-run402 deploy --manifest app.json
+run402 projects provision --name "my-app"    # → returns anon_key, service_key, project_id
+run402 deploy --manifest app.json            # use the anon_key in your frontend code
 ```
 
-That's it. You get a live URL like `my-app.run402.com` with a Postgres database, REST API, and static site.
+Provision first, then write your frontend code with the real `anon_key` embedded. The key has no expiry -- it's a permanent project identifier.
 
 ## Core facts
 
@@ -114,7 +115,7 @@ Deploy:
 run402 deploy --manifest app.json
 ```
 
-This provisions a database, runs migrations, deploys the site, and claims the subdomain -- all in one call. Returns project credentials (project_id, anon_key, service_key) which are saved locally.
+This provisions a database, runs migrations, deploys the site, and claims the subdomain -- all in one call. Returns project credentials (project_id, anon_key, service_key, schema_slot) which are saved locally.
 
 ### Step-by-Step Deploy
 
@@ -242,8 +243,8 @@ The CLI's `run402 projects rest` command is great for terminal use. But when gen
 **Base URL**: `https://api.run402.com/rest/v1/{table}`
 
 **Auth header**: `apikey: {key}` — the gateway auto-forwards as `Authorization: Bearer` to PostgREST. Any valid project JWT works:
-- `anon_key` → read-only (SELECT). Safe to embed in frontend code.
-- `service_key` → full admin (bypasses RLS). Server-side only.
+- `anon_key` → read-only (SELECT). Safe to embed in frontend code. **No expiry** -- permanent project identifier.
+- `service_key` → full admin (bypasses RLS). Server-side only. Expires with lease.
 - `access_token` (from login) → user-scoped read/write (subject to RLS).
 
 For explicit control, send both `apikey` (project key) and `Authorization: Bearer <access_token>`.
@@ -436,10 +437,11 @@ const refreshed = await fetch(API + '/auth/v1/token?grant_type=refresh_token', {
 npm install -g run402
 run402 init
 run402 tier set prototype
-run402 deploy --manifest app.json
+run402 projects provision --name "my-app"    # → returns anon_key, service_key, project_id
+run402 deploy --manifest app.json            # use the anon_key in your frontend code
 ```
 
-The manifest should include `name`, `migrations` (CREATE TABLE + INSERT seed data), `files` (array of files), and `subdomain`. Your human gets a live URL they can use immediately.
+Provision first so you have the `anon_key` to embed in your frontend HTML. The manifest should include `name`, `migrations` (CREATE TABLE + INSERT seed data), `files` (array of files), and `subdomain`. Your human gets a live URL they can use immediately.
 
 ## Make It Great
 

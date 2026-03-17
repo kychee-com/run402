@@ -81,10 +81,11 @@ export async function createProject(
   const leaseExpiresAt = new Date(now.getTime() + leaseMs);
   const projectId = `prj_${Date.now()}_${schemaSlot.replace("p", "")}`;
 
+  // Anon key has no expiry — it's a public project identifier (like Supabase).
+  // Lease enforcement happens in apikeyAuth middleware, not in the JWT.
   const anonKey = jwt.sign(
     { role: "anon", project_id: projectId, iss: "agentdb" },
     JWT_SECRET,
-    { expiresIn: `${Math.floor(leaseMs / 1000)}s` },
   );
   const serviceKey = jwt.sign(
     { role: "service_role", project_id: projectId, iss: "agentdb" },
