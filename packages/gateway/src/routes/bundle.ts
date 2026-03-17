@@ -7,10 +7,8 @@
 
 import { Router, Request, Response } from "express";
 import { TIERS } from "@run402/shared";
-import type { TierName } from "@run402/shared";
 import { deployBundle, validateBundle, BundleError } from "../services/bundle.js";
 import { SubdomainError } from "../services/subdomains.js";
-import { notifyNewProject } from "../services/telegram.js";
 import { walletAuth } from "../middleware/wallet-auth.js";
 import { asyncHandler, HttpError } from "../utils/async-handler.js";
 
@@ -23,12 +21,12 @@ router.get("/deploy/v1", (_req: Request, res: Response) => {
     tiers[name] = { price: config.price, lease_days: config.leaseDays };
   }
   res.json({
-    description: "Bundle deploy — one-call full-stack app deployment (requires active tier)",
+    description: "Bundle deploy — deploy to an existing project (requires active tier)",
     tiers,
     method: "POST /deploy/v1",
     auth: "EIP-4361 wallet signature (tier from wallet subscription)",
     body: {
-      name: "string (required)",
+      project_id: "string (required — from POST /projects/v1)",
       migrations: "string (optional SQL)",
       rls: "{ template, tables } (optional)",
       secrets: "[{ key, value }] (optional)",
@@ -41,10 +39,8 @@ router.get("/deploy/v1", (_req: Request, res: Response) => {
 
 // POST /v1/deploy — bundle deploy (wallet auth, tier from wallet)
 router.post("/deploy/v1", walletAuth(true), asyncHandler(async (req: Request, res: Response) => {
-  const tier = (req.walletTier as TierName) || "prototype";
-
   const body = req.body || {};
-  const bundleReq = { ...body, tier };
+  const bundleReq = { ...body };
 
   // Validate
   try {
@@ -60,11 +56,9 @@ router.post("/deploy/v1", walletAuth(true), asyncHandler(async (req: Request, re
   const apiBase = `${req.protocol}://${req.get("host")}`;
 
   try {
-    const result = await deployBundle(bundleReq, apiBase, undefined, walletAddress);
+    const result = await deployBundle(bundleReq, apiBase, walletAddress);
 
-    notifyNewProject(bundleReq.name, tier, result.project_id);
-
-    res.status(201).json(result);
+    res.status(200).json(result);
   } catch (err: unknown) {
     if (err instanceof BundleError) {
       throw new HttpError(err.statusCode, err.message);

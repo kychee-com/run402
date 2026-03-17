@@ -1176,22 +1176,30 @@ The `project` field is required. Every deployment must be tied to a project. Pro
 
 ---
 
-## Bundle Deploy (One-Call Full-Stack App)
+## Bundle Deploy (Deploy to Existing Project)
 
-Deploy an entire app in one API call: project + database + migrations + RLS + secrets + functions + site + subdomain. Free with active tier subscription. Everything deploys atomically. Fastest way from code to live webapp.
+Deploy migrations, RLS, secrets, functions, site, and subdomain to an existing project in one API call. Free with active tier subscription. **Requires `project_id`** -- provision the project first with `POST /projects/v1`, then deploy to it.
 
 **When to use bundle deploy vs step-by-step:**
-- **Bundle deploy** (`POST /deploy/v1`): All code ready, want everything live in one shot.
+- **Bundle deploy** (`POST /deploy/v1`): All code ready, want everything deployed in one shot.
 - **Step-by-step** (individual endpoints): Building iteratively, testing as you go, or only need a database.
 
 ### How it works
 
+**Step 1: Provision a project** (returns keys you'll need for your frontend code):
+```
+POST /projects/v1    (SIWX auth)
+{"name": "my-saas-app"}
+```
+→ Returns `project_id`, `anon_key`, `service_key`, `schema_slot`.
+
+**Step 2: Deploy to the project:**
 ```
 POST /deploy/v1    (SIWX auth -- requires active tier subscription)
 Content-Type: application/json
 
 {
-  "name": "my-saas-app",
+  "project_id": "prj_1741340000_0042",
   "migrations": "CREATE TABLE users (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), email text UNIQUE, name text, created_at timestamptz DEFAULT now()); CREATE TABLE posts (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), user_id uuid REFERENCES users(id), title text, body text, created_at timestamptz DEFAULT now());",
   "rls": {
     "template": "user_owns_rows",
@@ -1217,14 +1225,11 @@ Content-Type: application/json
 }
 ```
 
-### Response (201)
+### Response (200)
 
 ```json
 {
   "project_id": "prj_1741340000_0042",
-  "anon_key": "eyJhbGciOi...",
-  "service_key": "eyJhbGciOi...",
-  "schema_slot": "p0042",
   "site_url": "https://my-saas.run402.com",
   "deployment_id": "dpl_1741340000_a1b2c3",
   "functions": [
@@ -1234,34 +1239,27 @@ Content-Type: application/json
 }
 ```
 
+Keys (`anon_key`, `service_key`) are returned by `POST /projects/v1` at provision time, not by deploy.
+
 ### All fields
 
 | Field | Required | Description |
 |-------|----------|-------------|
-| `name` | Yes | App/project name |
+| `project_id` | Yes | Project ID from `POST /projects/v1` (format: `prj_<timestamp>_<slot>`) |
 | `migrations` | No | SQL string -- CREATE TABLE, etc. Same rules as `/projects/v1/admin/:id/sql` |
-| `rls` | No | `{ template, tables }` -- same as `/projects/v1/admin/:id/rls` |
+| `rls` | No | `{ template, tables }` -- same as `/projects/v1/admin/:id/rls`. Idempotent -- drops existing policies before creating new ones. |
 | `secrets` | No | `[{ key, value }]` -- uppercase keys, injected as env vars |
 | `functions` | No | `[{ name, code, config? }]` -- serverless functions deployed to Lambda |
 | `files` | No | `[{ file, data, encoding? }]` -- static site files, same as `/deployments/v1` |
 | `subdomain` | No | Custom subdomain (e.g. `"myapp"` → `myapp.run402.com`) |
 
-### Rollback
+### Redeploy
 
-If any step fails after project creation (e.g. invalid SQL, function deploy error), the project is auto-archived and cleaned up. No half-deployed apps.
-
-### Minimal bundle (database only)
-
-```
-POST /deploy/v1  (SIWX auth)
-{"name": "quick-db"}
-```
-
-Equivalent to `POST /projects/v1` but uses the bundle endpoint.
+Deploy is idempotent -- you can call it multiple times on the same project. RLS policies are replaced, secrets are upserted, functions are updated, and site files are redeployed. The project is never destroyed on deploy failure.
 
 ### Pricing
 
-Free with active tier subscription. No per-deploy charge. Your wallet's tier determines resource limits: storage, API calls, and functions (Prototype: 5 functions, Hobby: 25, Team: 100).
+Free with active tier subscription. No per-deploy charge. Your project's tier determines resource limits: storage, API calls, and functions (Prototype: 5 functions, Hobby: 25, Team: 100).
 
 ### Info endpoint (free)
 

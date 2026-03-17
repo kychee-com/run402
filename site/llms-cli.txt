@@ -104,11 +104,11 @@ run402 projects provision --name "my-app"
 
 → copy anon_key from output into your HTML, then:
 
-Create a manifest file `app.json`:
+Create a manifest file `app.json` (use the `project_id` from provision):
 
 ```json
 {
-  "name": "my-app",
+  "project_id": "prj_1741340000_42",
   "migrations": "CREATE TABLE items (id serial PRIMARY KEY, title text NOT NULL, done boolean DEFAULT false); INSERT INTO items (title) VALUES ('Buy groceries'), ('Read a book');",
   "rls": {
     "template": "public_read_write",
@@ -128,7 +128,7 @@ Create a manifest file `app.json`:
 }
 ```
 
-All fields except `name` are optional. RLS templates:
+`project_id` is required (from `run402 projects provision`). All other fields are optional. RLS templates:
 - `user_owns_rows` — users see only their rows (requires `owner_column` per table)
 - `public_read` — anyone reads, authenticated users write
 - `public_read_write` — anyone reads and writes
@@ -141,7 +141,7 @@ Deploy:
 run402 deploy --manifest app.json
 ```
 
-This provisions a database, runs migrations, applies RLS, sets secrets, deploys functions, deploys the site, and claims the subdomain — all atomically. If any step fails, the whole deploy rolls back.
+This deploys to an existing project: runs migrations, applies RLS, sets secrets, deploys functions, deploys the site, and claims the subdomain. Provision the project first with `run402 projects provision`.
 
 ### Step-by-Step Deploy
 
@@ -204,7 +204,7 @@ User auth: password + Google OAuth. See "User Auth" section below.
 ### deploy
 - `run402 deploy --manifest app.json`
 
-Requires active tier. One atomic call: provisions database, runs migrations, applies RLS, sets secrets, deploys functions, deploys static site, and claims subdomain. Rolls back on failure.
+Requires active tier and a provisioned project. Deploys to an existing project: runs migrations, applies RLS, sets secrets, deploys functions, deploys static site, and claims subdomain. The manifest must include `project_id`.
 
 ### functions
 Node 22 runtime. Must export `default async (req: Request) => Response`.

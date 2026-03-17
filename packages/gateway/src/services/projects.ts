@@ -65,6 +65,70 @@ export async function syncProjects(): Promise<void> {
 }
 
 /**
+ * Look up a project by ID: cache-first, DB fallback.
+ */
+export async function getProjectById(id: string): Promise<ProjectInfo | null> {
+  const cached = cache.get(id);
+  if (cached) return cached;
+
+  const result = await pool.query(
+    `SELECT id, name, schema_slot, tier, status, api_calls, storage_bytes,
+            lease_started_at, lease_expires_at, tx_hash, wallet_address, pinned, created_at,
+            demo_mode, demo_config, demo_source_version_id, demo_last_reset_at
+     FROM internal.projects WHERE id = $1`,
+    [id],
+  );
+
+  if (result.rows.length === 0) return null;
+
+  const row = result.rows[0];
+  const project: ProjectInfo = {
+    id: row.id,
+    name: row.name,
+    schemaSlot: row.schema_slot,
+    tier: row.tier as TierName,
+    status: row.status,
+    anonKey: "",
+    serviceKey: "",
+    apiCalls: row.api_calls,
+    storageBytes: Number(row.storage_bytes),
+    leaseStartedAt: new Date(row.lease_started_at),
+    leaseExpiresAt: new Date(row.lease_expires_at),
+    txHash: row.tx_hash,
+    walletAddress: row.wallet_address || undefined,
+    pinned: row.pinned || false,
+    createdAt: new Date(row.created_at),
+    demoMode: row.demo_mode || false,
+    demoConfig: row.demo_config || undefined,
+    demoSourceVersionId: row.demo_source_version_id || undefined,
+    demoLastResetAt: row.demo_last_reset_at ? new Date(row.demo_last_reset_at) : undefined,
+  };
+
+  if (project.status === "active") {
+    cache.set(id, project);
+  }
+
+  return project;
+}
+
+/**
+ * Derive project JWT keys. Anon key is deterministic (no exp).
+ */
+export function deriveProjectKeys(projectId: string, tier: TierName): { anonKey: string; serviceKey: string } {
+  const leaseMs = getLeaseDuration(tier);
+  const anonKey = jwt.sign(
+    { role: "anon", project_id: projectId, iss: "agentdb" },
+    JWT_SECRET,
+  );
+  const serviceKey = jwt.sign(
+    { role: "service_role", project_id: projectId, iss: "agentdb" },
+    JWT_SECRET,
+    { expiresIn: `${Math.floor(leaseMs / 1000)}s` },
+  );
+  return { anonKey, serviceKey };
+}
+
+/**
  * Create a new project: allocate slot, sign keys, persist to DB.
  */
 export async function createProject(

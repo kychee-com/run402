@@ -1,17 +1,17 @@
 /**
- * Bundle deploy service — atomic one-call deploy of a full app.
+ * Bundle deploy service — deploy to an existing project.
  *
- * Orchestrates: project creation → migrations → RLS → secrets → functions → site → subdomain.
- * If any step fails after project creation, the project is archived to clean up.
+ * Orchestrates: migrations → RLS → secrets → functions → site → subdomain.
+ * Requires project_id — never creates projects (use POST /projects/v1 first).
  */
 
-import { createProject, archiveProject } from "./projects.js";
+import { getProjectById, deriveProjectKeys } from "./projects.js";
 import { deployFunction, setSecret } from "./functions.js";
 import { createDeployment } from "./deployments.js";
 import { createOrUpdateSubdomain, validateSubdomainName } from "./subdomains.js";
 import { pool } from "../db/pool.js";
 import { TIERS } from "@run402/shared";
-import type { TierName, ProjectInfo } from "@run402/shared";
+import type { ProjectInfo } from "@run402/shared";
 
 export interface BundleFunction {
   name: string;
@@ -36,8 +36,7 @@ export interface RlsTable {
 }
 
 export interface BundleRequest {
-  name: string;
-  tier?: TierName;
+  project_id: string;
   migrations?: string;
   rls?: { template: string; tables: RlsTable[] };
   secrets?: BundleSecret[];
@@ -48,9 +47,6 @@ export interface BundleRequest {
 
 export interface BundleResult {
   project_id: string;
-  anon_key: string;
-  service_key: string;
-  schema_slot: string;
   site_url?: string;
   deployment_id?: string;
   functions?: Array<{ name: string; url: string }>;
@@ -83,15 +79,11 @@ const VALID_RLS_TEMPLATES = ["user_owns_rows", "public_read", "public_read_write
  * Validate a bundle request. Throws BundleError on invalid input.
  */
 export function validateBundle(req: BundleRequest): void {
-  if (!req.name || typeof req.name !== "string") {
-    throw new BundleError("Missing or invalid 'name' field", 400);
+  if (!req.project_id || typeof req.project_id !== "string") {
+    throw new BundleError("Missing or invalid 'project_id' field", 400);
   }
-
-  if (req.tier && !TIERS[req.tier]) {
-    throw new BundleError(
-      `Unknown tier: ${req.tier}. Valid tiers: ${Object.keys(TIERS).join(", ")}`,
-      400,
-    );
+  if (!/^prj_\d+_\d+$/.test(req.project_id)) {
+    throw new BundleError("Invalid project_id format (expected prj_<timestamp>_<slot>)", 400);
   }
 
   if (req.migrations !== undefined) {
@@ -203,103 +195,95 @@ export function validateBundle(req: BundleRequest): void {
 }
 
 /**
- * Execute a bundle deploy — creates project and deploys everything atomically.
- * On failure after project creation, archives the project to clean up.
+ * Execute a bundle deploy — deploys to an existing project.
+ * Requires project_id; never creates projects.
  */
 export async function deployBundle(
   req: BundleRequest,
   apiBase: string,
-  txHash?: string,
   walletAddress?: string,
 ): Promise<BundleResult> {
-  const tier = req.tier || "prototype";
-  const tierConfig = TIERS[tier];
-
-  // 1. Create project
-  const project = await createProject(req.name, tier, txHash, walletAddress);
+  // 1. Look up existing project
+  const project = await getProjectById(req.project_id);
   if (!project) {
-    throw new BundleError("No schema slots available", 503);
+    throw new BundleError(`Project not found: ${req.project_id}`, 404);
+  }
+  if (project.status !== "active") {
+    throw new BundleError(`Project ${req.project_id} is not active (status: ${project.status})`, 400);
+  }
+  if (walletAddress && project.walletAddress &&
+      walletAddress.toLowerCase() !== project.walletAddress.toLowerCase()) {
+    throw new BundleError("Wallet does not own this project", 403);
   }
 
-  try {
-    // 2. Run migrations
-    if (req.migrations) {
-      await runMigrations(project, req.migrations);
-    }
+  const tier = project.tier;
+  const tierConfig = TIERS[tier];
+  const { serviceKey } = deriveProjectKeys(project.id, tier);
 
-    // 3. Apply RLS
-    if (req.rls) {
-      await applyRls(project, req.rls.template, req.rls.tables);
-    }
+  // 2. Run migrations
+  if (req.migrations) {
+    await runMigrations(project, req.migrations);
+  }
 
-    // 4. Set secrets
-    if (req.secrets) {
-      for (const s of req.secrets) {
-        await setSecret(project.id, s.key, s.value, tierConfig);
-      }
-    }
+  // 3. Apply RLS
+  if (req.rls) {
+    await applyRls(project, req.rls.template, req.rls.tables);
+  }
 
-    // 5. Deploy functions
-    const deployedFunctions: Array<{ name: string; url: string }> = [];
-    if (req.functions) {
-      for (const fn of req.functions) {
-        const result = await deployFunction(
-          project.id,
-          fn.name,
-          fn.code,
-          project.serviceKey,
-          apiBase,
-          fn.config,
-          undefined,
-          tierConfig,
-        );
-        deployedFunctions.push({ name: result.name, url: result.url });
-      }
+  // 4. Set secrets
+  if (req.secrets) {
+    for (const s of req.secrets) {
+      await setSecret(project.id, s.key, s.value, tierConfig);
     }
+  }
 
-    // 6. Deploy site
-    let siteUrl: string | undefined;
-    let deploymentId: string | undefined;
-    if (req.files) {
-      const deployment = await createDeployment(
-        { project: project.id, files: req.files },
-        txHash,
+  // 5. Deploy functions
+  const deployedFunctions: Array<{ name: string; url: string }> = [];
+  if (req.functions) {
+    for (const fn of req.functions) {
+      const result = await deployFunction(
+        project.id,
+        fn.name,
+        fn.code,
+        serviceKey,
+        apiBase,
+        fn.config,
+        undefined,
+        tierConfig,
       );
-      siteUrl = deployment.url;
-      deploymentId = deployment.deployment_id;
-
-      // 7. Claim subdomain — pass wallet so same-wallet redeploys can reassign
-      if (req.subdomain && deploymentId) {
-        await createOrUpdateSubdomain(req.subdomain, deploymentId, project.id, walletAddress);
-        siteUrl = `https://${req.subdomain}.run402.com`;
-      }
+      deployedFunctions.push({ name: result.name, url: result.url });
     }
-
-    const result: BundleResult = {
-      project_id: project.id,
-      anon_key: project.anonKey,
-      service_key: project.serviceKey,
-      schema_slot: project.schemaSlot,
-    };
-
-    if (siteUrl) result.site_url = siteUrl;
-    if (deploymentId) result.deployment_id = deploymentId;
-    if (deployedFunctions.length > 0) result.functions = deployedFunctions;
-    if (req.subdomain) result.subdomain_url = `https://${req.subdomain}.run402.com`;
-
-    console.log(`  Bundle deployed: ${project.id} (${tier}) — ${deployedFunctions.length} functions, ${req.files?.length || 0} site files`);
-
-    return result;
-  } catch (err) {
-    // Rollback: archive the project on failure
-    console.error(`  Bundle deploy failed for ${project.id}, archiving...`);
-    try {
-      await archiveProject(project.id);
-    } catch (archiveErr) {
-      console.error(`  Failed to archive project ${project.id} during rollback`);
-    }
-    throw err;
   }
+
+  // 6. Deploy site
+  let siteUrl: string | undefined;
+  let deploymentId: string | undefined;
+  if (req.files) {
+    const deployment = await createDeployment(
+      { project: project.id, files: req.files },
+    );
+    siteUrl = deployment.url;
+    deploymentId = deployment.deployment_id;
+
+    // 7. Claim subdomain — pass wallet so same-wallet redeploys can reassign
+    if (req.subdomain && deploymentId) {
+      await createOrUpdateSubdomain(req.subdomain, deploymentId, project.id, walletAddress);
+      siteUrl = `https://${req.subdomain}.run402.com`;
+    }
+  }
+
+  const result: BundleResult = {
+    project_id: project.id,
+  };
+
+  if (siteUrl) result.site_url = siteUrl;
+  if (deploymentId) result.deployment_id = deploymentId;
+  if (deployedFunctions.length > 0) result.functions = deployedFunctions;
+  if (req.subdomain) result.subdomain_url = `https://${req.subdomain}.run402.com`;
+
+  console.log(`  Bundle deployed: ${project.id} (${tier}) — ${deployedFunctions.length} functions, ${req.files?.length || 0} site files`);
+
+  return result;
 }
 
 /**
@@ -338,6 +322,16 @@ async function applyRls(
 
     for (const table of tables) {
       const tableName = table.table;
+
+      // Drop existing policies for idempotent redeploy
+      const existing = await client.query(
+        `SELECT policyname FROM pg_policies WHERE schemaname = $1 AND tablename = $2`,
+        [project.schemaSlot, tableName],
+      );
+      for (const row of existing.rows) {
+        await client.query(`DROP POLICY ${JSON.stringify(row.policyname)} ON ${tableName}`);
+      }
+
       await client.query(`ALTER TABLE ${tableName} ENABLE ROW LEVEL SECURITY`);
       await client.query(`ALTER TABLE ${tableName} FORCE ROW LEVEL SECURITY`);
 

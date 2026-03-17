@@ -19,6 +19,7 @@ const execFileAsync = promisify(execFile);
 import { TIERS } from "@run402/shared";
 import type { TierName } from "@run402/shared";
 import { deployBundle } from "./bundle.js";
+import { createProject, archiveProject, deriveProjectKeys } from "./projects.js";
 import { decanonicalizeSchema } from "./publish.js";
 import type { BundleResult } from "./bundle.js";
 
@@ -40,6 +41,9 @@ export interface ForkRequest {
 }
 
 export interface ForkResult extends BundleResult {
+  anon_key: string;
+  service_key: string;
+  schema_slot: string;
   source_version_id: string;
   readiness: "ready" | "configuration_required" | "manual_setup_required";
   missing_secrets: Array<{ key: string; description?: string }>;
@@ -138,11 +142,15 @@ export async function forkApp(
     [req.version_id],
   );
 
-  // Build bundle deploy request using pre_schema as migrations
-  // (post_schema applied after deploy since it needs tables to exist first)
+  // Create the project first (fork always creates a new project)
+  const project = await createProject(req.name, tier, txHash, walletAddress);
+  if (!project) {
+    throw new ForkError("No schema slots available", 503);
+  }
+
+  // Build bundle deploy request targeting the new project
   const bundleReq = {
-    name: req.name,
-    tier,
+    project_id: project.id,
     migrations: undefined as string | undefined,
     functions: functionsResult.rows.map((fn) => ({
       name: fn.name,
@@ -153,14 +161,24 @@ export async function forkApp(
     subdomain: req.subdomain,
   };
 
-  // Call the existing bundle deploy orchestrator
-  // pre_schema_sql is applied as migrations inside deployBundle
-  const result = await deployBundle(
-    { ...bundleReq, migrations: undefined },
-    apiBase,
-    txHash,
-    walletAddress,
-  );
+  let result: BundleResult;
+  try {
+    // Call the existing bundle deploy orchestrator
+    result = await deployBundle(
+      { ...bundleReq, migrations: undefined },
+      apiBase,
+      walletAddress,
+    );
+  } catch (err) {
+    // Rollback: archive the newly created project on deploy failure
+    console.error(`  Fork deploy failed for ${project.id}, archiving...`);
+    try {
+      await archiveProject(project.id);
+    } catch (archiveErr) {
+      console.error(`  Failed to archive project ${project.id} during fork rollback`);
+    }
+    throw err;
+  }
 
   // Now apply schema in the new project's schema slot
   // We need to get the schema slot from the newly created project
@@ -236,8 +254,13 @@ export async function forkApp(
 
   console.log(`  Forked ${req.version_id} → ${result.project_id} (${tier}, readiness: ${readiness})`);
 
+  const keys = deriveProjectKeys(project.id, tier);
+
   return {
     ...result,
+    anon_key: keys.anonKey,
+    service_key: keys.serviceKey,
+    schema_slot: project.schemaSlot,
     source_version_id: req.version_id,
     readiness,
     missing_secrets: requiredSecrets,
