@@ -115,7 +115,7 @@ Deploy:
 run402 deploy --manifest app.json
 ```
 
-This provisions a database, runs migrations, deploys the site, and claims the subdomain -- all in one call. Returns project credentials (project_id, anon_key, service_key, schema_slot) which are saved locally.
+This deploys the site, runs migrations, and claims the subdomain. The manifest references the project you already provisioned.
 
 ### Step-by-Step Deploy
 
@@ -123,7 +123,7 @@ If you want more control:
 
 ```bash
 # 1. Provision a database
-run402 projects provision --tier prototype --name my-app
+run402 projects provision --name my-app
 
 # 2. Create tables
 run402 projects sql <project_id> "CREATE TABLE items (id serial PRIMARY KEY, title text NOT NULL, done boolean DEFAULT false)"
@@ -159,7 +159,7 @@ run402 subdomains claim <deployment_id> my-app
 
 ### projects
 - `run402 projects <quote|list>`
-- `run402 projects provision [--tier <prototype|hobby|team>] [--name <name>]`
+- `run402 projects provision [--name <name>]`
 - `run402 projects info <id>`
 - `run402 projects sql <id> "<sql>"`
 - `run402 projects rest <id> <table> "<query>"`
@@ -213,7 +213,7 @@ Names: 3-63 chars, lowercase alphanumeric + hyphens. Creates `<name>.run402.com`
 
 ### apps
 - `run402 apps browse [--tag <tag>]`
-- `run402 apps fork <version_id> <name> [--tier <tier>] [--subdomain <name>]`
+- `run402 apps fork <version_id> <name> [--subdomain <name>]`
 - `run402 apps inspect <version_id>`
 - `run402 apps publish <id> [--description "..."] [--tags a,b] [--visibility <public|private>] [--fork-allowed]`
 - `run402 apps <versions|delete> <id> [<version_id>]`
@@ -508,16 +508,6 @@ const refreshed = await fetch(API + '/auth/v1/token?grant_type=refresh_token', {
 8. **Gift Registry** -- Guests claim items. No duplicates.
 9. **Workout Log** -- Track exercises, sets, reps, weight with progress over time.
 10. **Flash Cards** -- Spaced-repetition study app. Pre-load 50 phrases.
-
-**How to build any of these:**
-
-```bash
-npm install -g run402
-run402 init
-run402 tier set prototype
-run402 projects provision --name "my-app"    # → returns anon_key, service_key, project_id
-run402 deploy --manifest app.json            # use the anon_key in your frontend code
-```
 
 Provision first so you have the `anon_key` to embed in your frontend HTML. The manifest should include `name`, `migrations` (CREATE TABLE + INSERT seed data), `files` (array of files), and `subdomain`. Your human gets a live URL they can use immediately.
 
