@@ -557,7 +557,7 @@
 
     <p class="lead"><strong>开始使用：</strong>将这个 URL 粘贴到你的智能体对话中</p>
     <div class="copy-block">
-      <code onclick="copyUrl(this, true)">Please build me a demo app using run402.com/llms.txt (curl it)</code>
+      <code onclick="copyUrl(this, true)">Please build me a demo app using run402.com/llms-cli.txt (curl it)</code>
       <button class="copy-btn" onclick="copyUrl(this, false)">复制</button>
     </div>
 
@@ -584,7 +584,7 @@
               <span class="terminal-title">粘贴到智能体</span>
               <button class="copy-btn" onclick="copySlide(this)">复制提示词</button>
             </div>
-            <pre class="pre-wrap carousel-prompt">Read https://run402.com/llms.txt.
+            <pre class="pre-wrap carousel-prompt">Read https://run402.com/llms-cli.txt.
 
 Build a booking app for a salon:
 - Customers can browse services and book time slots
@@ -602,7 +602,7 @@ Build a booking app for a salon:
               <span class="terminal-title">粘贴到智能体</span>
               <button class="copy-btn" onclick="copySlide(this)">复制提示词</button>
             </div>
-            <pre class="pre-wrap carousel-prompt">Read https://run402.com/llms.txt.
+            <pre class="pre-wrap carousel-prompt">Read https://run402.com/llms-cli.txt.
 
 Build a maintenance request tracker for a property:
 - Residents submit repair requests with photos and descriptions
@@ -620,7 +620,7 @@ Build a maintenance request tracker for a property:
               <span class="terminal-title">粘贴到智能体</span>
               <button class="copy-btn" onclick="copySlide(this)">复制提示词</button>
             </div>
-            <pre class="pre-wrap carousel-prompt">Read https://run402.com/llms.txt.
+            <pre class="pre-wrap carousel-prompt">Read https://run402.com/llms-cli.txt.
 
 Build a simple CRM for a small sales team:
 - Track contacts, companies, deals, and notes
@@ -638,7 +638,7 @@ Build a simple CRM for a small sales team:
               <span class="terminal-title">粘贴到智能体</span>
               <button class="copy-btn" onclick="copySlide(this)">复制提示词</button>
             </div>
-            <pre class="pre-wrap carousel-prompt">Read https://run402.com/llms.txt.
+            <pre class="pre-wrap carousel-prompt">Read https://run402.com/llms-cli.txt.
 
 Build an event registration system:
 - Public event page with details and schedule
@@ -656,7 +656,7 @@ Build an event registration system:
               <span class="terminal-title">粘贴到智能体</span>
               <button class="copy-btn" onclick="copySlide(this)">复制提示词</button>
             </div>
-            <pre class="pre-wrap carousel-prompt">Read https://run402.com/llms.txt.
+            <pre class="pre-wrap carousel-prompt">Read https://run402.com/llms-cli.txt.
 
 Build a document review workflow:
 - Users upload documents (photos, PDFs) for review
@@ -675,7 +675,7 @@ Build a document review workflow:
               <span class="terminal-title">粘贴到智能体</span>
               <button class="copy-btn" onclick="copySlide(this)">复制提示词</button>
             </div>
-            <pre class="pre-wrap carousel-prompt">Read https://run402.com/llms.txt.
+            <pre class="pre-wrap carousel-prompt">Read https://run402.com/llms-cli.txt.
 
 Build a membership portal for a community:
 - Members can view profiles, announcements, and shared resources
@@ -931,7 +931,7 @@ Build a membership portal for a community:
   <script>
     function copyUrl(el, isCode) {
       gtag('event', 'copy_prompt', {page: 'run402_zh_cn', prompt: 'main_cta'});
-      navigator.clipboard.writeText('Please build me a demo app using run402.com/llms.txt (curl it)').then(function() {
+      navigator.clipboard.writeText('Please build me a demo app using run402.com/llms-cli.txt (curl it)').then(function() {
         if (isCode) {
           var original = el.textContent;
           el.textContent = '已复制！';

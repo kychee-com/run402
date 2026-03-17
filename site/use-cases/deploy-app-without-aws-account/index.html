@@ -547,7 +547,7 @@
     <div class="section">
       <p class="lead" style="color:#E0E0E0;font-size:16px;margin-bottom:14px;"><strong>Do this:</strong> paste this into your agent's chat.</p>
       <div class="copy-block">
-        <code onclick="copyPrompt(this, true)">Please build me a demo app using run402.com/llms.txt (curl it)</code>
+        <code onclick="copyPrompt(this, true)">Please build me a demo app using run402.com/llms-cli.txt (curl it)</code>
         <button class="copy-btn" onclick="copyPrompt(this, false)">Copy</button>
       </div>
     </div>
@@ -568,7 +568,7 @@
   <script>
     function copyPrompt(el, isCode) {
       gtag('event', 'copy_prompt', {page: 'run402_usecase_deploy_without_aws', prompt: 'main_cta'});
-      navigator.clipboard.writeText('Please build me a demo app using run402.com/llms.txt (curl it)').then(function() {
+      navigator.clipboard.writeText('Please build me a demo app using run402.com/llms-cli.txt (curl it)').then(function() {
         if (isCode) {
           var original = el.textContent;
           el.textContent = 'Copied!';
