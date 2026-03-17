@@ -249,7 +249,13 @@ The CLI's `run402 projects rest` command is great for terminal use. But when gen
 
 For explicit control, send both `apikey` (project key) and `Authorization: Bearer <access_token>`.
 
+**CORS**: The API allows all origins (`Access-Control-Allow-Origin: *`). Browser `fetch()` calls work from any domain -- no proxy needed.
+
 **PostgREST query syntax**: `?select=col1,col2`, `?column=eq.value`, `?order=col.desc`, `?limit=N`, `?offset=N`
+
+**`Prefer` header** (controls write responses):
+- `Prefer: return=representation` → return the inserted/updated row(s) as JSON. Use this to get server-generated fields (`id`, `created_at`) without a second query.
+- `Prefer: return=minimal` → empty body (default). Faster when you don't need the result.
 
 **Frontend fetch examples**:
 
@@ -262,32 +268,97 @@ const items = await fetch(API + '/rest/v1/items?select=id,title&done=eq.false&or
   headers: { apikey: ANON_KEY }
 }).then(r => r.json());
 
-// Insert a row (service_key bypasses RLS -- good for seeding)
-await fetch(API + '/rest/v1/items', {
+// Insert a row and get it back (Prefer: return=representation returns the new row with id, created_at, etc.)
+const [newItem] = await fetch(API + '/rest/v1/items', {
   method: 'POST',
-  headers: { apikey: SERVICE_KEY, 'Content-Type': 'application/json' },
+  headers: { apikey: ANON_KEY, 'Content-Type': 'application/json', Prefer: 'return=representation' },
   body: JSON.stringify({ title: 'New item', done: false })
-});
-
-// Insert with anon_key (works after applying public_read_write RLS to the table)
-await fetch(API + '/rest/v1/items', {
-  method: 'POST',
-  headers: { apikey: ANON_KEY, 'Content-Type': 'application/json' },
-  body: JSON.stringify({ title: 'From browser', done: false })
-});
+}).then(r => r.json());
 
 // Update rows matching a filter
 await fetch(API + '/rest/v1/items?id=eq.5', {
   method: 'PATCH',
-  headers: { apikey: SERVICE_KEY, 'Content-Type': 'application/json' },
+  headers: { apikey: ANON_KEY, 'Content-Type': 'application/json', Prefer: 'return=representation' },
   body: JSON.stringify({ done: true })
-});
+}).then(r => r.json());
 
 // Delete rows matching a filter
 await fetch(API + '/rest/v1/items?id=eq.5', {
   method: 'DELETE',
-  headers: { apikey: SERVICE_KEY }
+  headers: { apikey: ANON_KEY }
 });
+```
+
+### Complete HTML example
+
+A working single-file app. Uses `public_read_write` RLS so the `anon_key` handles all reads and writes — no login required.
+
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Guestbook</title>
+  <style>
+    body { font-family: system-ui; max-width: 480px; margin: 2rem auto; padding: 0 1rem; }
+    .entry { border-bottom: 1px solid #eee; padding: 0.5rem 0; }
+    .entry .name { font-weight: bold; }
+    .entry .time { color: #888; font-size: 0.85em; }
+    form { display: flex; gap: 0.5rem; margin-bottom: 1.5rem; }
+    input { flex: 1; padding: 0.4rem; }
+    button { padding: 0.4rem 1rem; }
+  </style>
+</head>
+<body>
+  <h1>Guestbook</h1>
+  <form id="form">
+    <input name="name" placeholder="Your name" required>
+    <input name="message" placeholder="Say something..." required>
+    <button type="submit">Post</button>
+  </form>
+  <div id="entries"></div>
+
+  <script>
+    const API = 'https://api.run402.com';
+    const ANON_KEY = 'YOUR_ANON_KEY';  // safe to embed — read-only by default, write-enabled via public_read_write RLS
+
+    async function loadEntries() {
+      const rows = await fetch(API + '/rest/v1/guestbook?order=created_at.desc&limit=50', {
+        headers: { apikey: ANON_KEY }
+      }).then(r => r.json());
+      document.getElementById('entries').innerHTML = rows.map(r =>
+        `<div class="entry"><span class="name">${esc(r.name)}</span> <span class="time">${new Date(r.created_at).toLocaleString()}</span><p>${esc(r.message)}</p></div>`
+      ).join('');
+    }
+
+    document.getElementById('form').onsubmit = async (e) => {
+      e.preventDefault();
+      const fd = new FormData(e.target);
+      await fetch(API + '/rest/v1/guestbook', {
+        method: 'POST',
+        headers: { apikey: ANON_KEY, 'Content-Type': 'application/json', Prefer: 'return=representation' },
+        body: JSON.stringify({ name: fd.get('name'), message: fd.get('message') })
+      });
+      e.target.reset();
+      loadEntries();
+    };
+
+    function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+    loadEntries();
+  </script>
+</body>
+</html>
+```
+
+**Setup for this example** (run once via CLI or service_key):
+```bash
+# Create table
+run402 projects sql $PROJECT_ID "CREATE TABLE guestbook (id serial PRIMARY KEY, name text NOT NULL, message text NOT NULL, created_at timestamptz DEFAULT now())"
+
+# Enable public_read_write so anon_key can insert
+run402 projects rls $PROJECT_ID public_read_write '[{"table":"guestbook"}]'
 ```
 
 ---

@@ -305,6 +305,15 @@ Both `SERIAL` and `BIGINT GENERATED ALWAYS AS IDENTITY` work for auto-increment.
 
 Table permissions for `anon` and `authenticated` roles are granted automatically -- do not run `GRANT` or `REVOKE` (blocked by the SQL endpoint). Use RLS policies (`POST /projects/v1/admin/:id/rls`) for access control.
 
+**PostgREST patterns**:
+
+`Prefer` header controls what the server returns on write operations:
+- `Prefer: return=representation` -- return the full inserted/updated row(s) as JSON. Use this in browser code to get the new row (including server-generated `id`, `created_at`, etc.) without a second query.
+- `Prefer: return=minimal` -- return empty body (default). Faster when you don't need the result.
+- `Prefer: return=headers-only` -- return empty body with `Location` header pointing to the new row.
+
+**CORS**: The API allows all origins (`Access-Control-Allow-Origin: *`). Browser `fetch()` calls work from any domain with no proxy needed. Allowed request headers include `apikey`, `Content-Type`, `Authorization`, `Prefer`, `Accept-Profile`, and `Content-Profile`.
+
 Ad-hoc queries also work:
 ```bash
 curl -X POST https://api.run402.com/projects/v1/admin/$PROJECT_ID/sql \
