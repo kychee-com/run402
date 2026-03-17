@@ -110,6 +110,16 @@ Create a manifest file `app.json`:
 {
   "name": "my-app",
   "migrations": "CREATE TABLE items (id serial PRIMARY KEY, title text NOT NULL, done boolean DEFAULT false); INSERT INTO items (title) VALUES ('Buy groceries'), ('Read a book');",
+  "rls": {
+    "template": "public_read_write",
+    "tables": [{ "table": "items" }]
+  },
+  "secrets": [{ "key": "OPENAI_API_KEY", "value": "sk-..." }],
+  "functions": [{
+    "name": "my-fn",
+    "code": "export default async (req) => new Response('ok')",
+    "config": { "timeout": 30, "memory": 256 }
+  }],
   "files": [
     { "file": "index.html", "data": "<!DOCTYPE html><html>...</html>" },
     { "file": "style.css", "data": "body { margin: 0; }" }
@@ -118,13 +128,20 @@ Create a manifest file `app.json`:
 }
 ```
 
+All fields except `name` are optional. RLS templates:
+- `user_owns_rows` — users see only their rows (requires `owner_column` per table)
+- `public_read` — anyone reads, authenticated users write
+- `public_read_write` — anyone reads and writes
+
+⚠️ **Without RLS, tables are read-only via anon_key.** If your app writes data from the browser, you almost certainly need an `rls` block.
+
 Deploy:
 
 ```bash
 run402 deploy --manifest app.json
 ```
 
-This deploys the site, runs migrations, and claims the subdomain. The manifest references the project you already provisioned.
+This provisions a database, runs migrations, applies RLS, sets secrets, deploys functions, deploys the site, and claims the subdomain — all atomically. If any step fails, the whole deploy rolls back.
 
 ### Step-by-Step Deploy
 
@@ -143,11 +160,11 @@ run402 projects sql <project_id> "INSERT INTO items (title) VALUES ('Buy groceri
 # 4. Set up Row-Level Security
 run402 projects rls <project_id> public_read_write '[{"table":"items"}]'
 
-# 5. Deploy a static site
-run402 sites deploy --project <project_id> --manifest site.json
+# 5. Deploy a static site (uses active project automatically)
+run402 sites deploy --manifest site.json
 
-# 6. Claim a subdomain
-run402 subdomains claim <deployment_id> my-app
+# 6. Claim a subdomain (uses active project + last deployment automatically)
+run402 subdomains claim my-app
 ```
 
 ---
@@ -169,11 +186,14 @@ run402 subdomains claim <deployment_id> my-app
 ### projects
 - `run402 projects <quote|list>`
 - `run402 projects provision [--name <name>]`
+- `run402 projects use <id>`
 - `run402 projects info <id>`
 - `run402 projects sql <id> "<sql>"`
 - `run402 projects rest <id> <table> "<query>"`
 - `run402 projects <usage|schema|delete> <id>`
 - `run402 projects rls <id> <user_owns_rows|public_read|public_read_write> '<tables_json>'`
+
+Provisioning automatically sets the new project as the **active project**. Other commands that take `<id>` default to the active project when omitted.
 
 RLS tables_json example: `'[{"table":"posts"}]'` or `'[{"table":"notes","owner_column":"user_id"}]'` for user_owns_rows.
 
@@ -184,7 +204,7 @@ User auth: password + Google OAuth. See "User Auth" section below.
 ### deploy
 - `run402 deploy --manifest app.json`
 
-Requires active tier. Handles database + migrations + site + subdomain in one call.
+Requires active tier. One atomic call: provisions database, runs migrations, applies RLS, sets secrets, deploys functions, deploys static site, and claims subdomain. Rolls back on failure.
 
 ### functions
 Node 22 runtime. Must export `default async (req: Request) => Response`.
@@ -208,17 +228,17 @@ Injected as `process.env` in functions.
 - `run402 storage list <id> <bucket>`
 
 ### sites
-- `run402 sites deploy --project <id> --manifest <file>`
+- `run402 sites deploy --manifest <file> [--project <id>]`
 - `run402 sites status <deployment_id>`
 
-Manifest: `{"files":[{"file":"index.html","data":"..."},{"file":"style.css","data":"..."}]}`. Must include `index.html`. Free with active tier. If the project already has a subdomain, redeploying auto-reassigns it to the new deployment (response includes `subdomain_urls`).
+`--project` defaults to the active project. Manifest: `{"files":[{"file":"index.html","data":"..."},{"file":"style.css","data":"..."}]}`. Must include `index.html`. Free with active tier. If the project already has a subdomain, redeploying auto-reassigns it to the new deployment (response includes `subdomain_urls`).
 
 ### subdomains
-- `run402 subdomains claim <deployment_id> <name> [--project <id>]`
-- `run402 subdomains list <id>`
-- `run402 subdomains delete <name>`
+- `run402 subdomains claim <name> [--deployment <id>] [--project <id>]`
+- `run402 subdomains list [<id>]`
+- `run402 subdomains delete <name> [--project <id>]`
 
-Names: 3-63 chars, lowercase alphanumeric + hyphens. Creates `<name>.run402.com`. Only need to `claim` once per project — subsequent site deploys auto-reassign the subdomain.
+All options default to the active project. `claim` also defaults to the project's last deployment. Names: 3-63 chars, lowercase alphanumeric + hyphens. Creates `<name>.run402.com`. Only need to `claim` once per project — subsequent site deploys auto-reassign the subdomain.
 
 ### apps
 - `run402 apps browse [--tag <tag>]`
@@ -518,7 +538,7 @@ const refreshed = await fetch(API + '/auth/v1/token?grant_type=refresh_token', {
 9. **Workout Log** -- Track exercises, sets, reps, weight with progress over time.
 10. **Flash Cards** -- Spaced-repetition study app. Pre-load 50 phrases.
 
-Provision first so you have the `anon_key` to embed in your frontend HTML. The manifest should include `name`, `migrations` (CREATE TABLE + INSERT seed data), `files` (array of files), and `subdomain`. Your human gets a live URL they can use immediately.
+Provision first so you have the `anon_key` to embed in your frontend HTML. The manifest should include `name`, `migrations` (CREATE TABLE + INSERT seed data), `rls` (almost always `public_read_write` for browser-writable apps), `files` (array of files), and `subdomain`. Your human gets a live URL they can use immediately.
 
 ## Make It Great
 
