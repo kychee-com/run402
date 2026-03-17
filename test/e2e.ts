@@ -716,8 +716,29 @@ async function main() {
   assert(typeof revokeBody.error === "string", "REVOKE error includes message");
   assert(revokeBody.error.includes("RLS"), "Hint suggests using RLS endpoint");
 
-  // Step 23: Bundle deploy — one-call full-stack app (wallet auth)
+  // Step 23: Bundle deploy — provision first, then deploy to existing project
   console.log("\n23) Bundle deploy...");
+
+  // 23a: Provision a project first
+  const bundleProvHeaders = await siwxHeaders("/projects/v1");
+  const bundleProvRes = await fetch(`${BASE_URL}/projects/v1`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...bundleProvHeaders,
+    },
+    body: JSON.stringify({ name: "e2e-bundle-test" }),
+  });
+  const bundleProvBody = await bundleProvRes.json();
+  assert(bundleProvRes.status === 201, `Bundle provision returns 201 (got ${bundleProvRes.status})`);
+  const bundleProjectId = bundleProvBody.project_id;
+  const bundleAnonKey = bundleProvBody.anon_key;
+  const bundleServiceKey = bundleProvBody.service_key;
+  assert(typeof bundleProjectId === "string", "Bundle provision returns project_id");
+  assert(typeof bundleAnonKey === "string", "Bundle provision returns anon_key");
+  assert(typeof bundleServiceKey === "string", "Bundle provision returns service_key");
+
+  // 23b: Deploy to the provisioned project
   const bundleHeaders = await siwxHeaders("/deploy/v1");
   const bundleRes = await fetch(`${BASE_URL}/deploy/v1`, {
     method: "POST",
@@ -726,7 +747,7 @@ async function main() {
       ...bundleHeaders,
     },
     body: JSON.stringify({
-      name: "e2e-bundle-test",
+      project_id: bundleProjectId,
       migrations: "CREATE TABLE items (id SERIAL PRIMARY KEY, title TEXT NOT NULL, done BOOLEAN DEFAULT false);",
       rls: {
         template: "public_read_write",
@@ -738,17 +759,12 @@ async function main() {
     }),
   });
   const bundleBody = await bundleRes.json();
-  assert(bundleRes.status === 201, `Bundle deploy returns 201 (got ${bundleRes.status})`);
-  assert(typeof bundleBody.project_id === "string", "Bundle returns project_id");
-  assert(typeof bundleBody.anon_key === "string", "Bundle returns anon_key");
-  assert(typeof bundleBody.service_key === "string", "Bundle returns service_key");
+  assert(bundleRes.status === 200, `Bundle deploy returns 200 (got ${bundleRes.status})`);
+  assert(bundleBody.project_id === bundleProjectId, "Bundle deploy returns same project_id");
   assert(typeof bundleBody.site_url === "string", "Bundle returns site_url");
   assert(typeof bundleBody.deployment_id === "string", "Bundle returns deployment_id");
-  assert(bundleBody.lease_expires_at === undefined, "Bundle no longer returns lease_expires_at");
-
-  const bundleProjectId = bundleBody.project_id;
-  const bundleAnonKey = bundleBody.anon_key;
-  const bundleServiceKey = bundleBody.service_key;
+  assert(bundleBody.anon_key === undefined, "Bundle deploy does not return anon_key");
+  assert(bundleBody.service_key === undefined, "Bundle deploy does not return service_key");
 
   await sleep(1500); // Wait for PostgREST schema cache reload
 
