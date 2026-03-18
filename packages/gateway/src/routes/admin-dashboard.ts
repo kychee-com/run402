@@ -567,7 +567,7 @@ async function loadAdminWallets(){
       h+='<td>'+(w.label?esc(w.label):'<span style="color:#4B5563">-</span>')+'</td>';
       h+='<td>'+esc(w.added_by)+'</td>';
       h+='<td style="color:#9CA3AF">'+new Date(w.added_at).toLocaleDateString()+'</td>';
-      h+='<td><button onclick="removeAdminWallet(\''+esc(w.address)+'\')" style="background:none;border:1px solid #1E1E2A;border-radius:6px;color:#FF5050;padding:4px 10px;font-size:12px;cursor:pointer">Remove</button></td></tr>';
+      h+='<td><button onclick="removeAdminWallet(\\''+esc(w.address)+'\\')" style="background:none;border:1px solid #1E1E2A;border-radius:6px;color:#FF5050;padding:4px 10px;font-size:12px;cursor:pointer">Remove</button></td></tr>';
     }
     h+='</table>';
     el.innerHTML=h;
