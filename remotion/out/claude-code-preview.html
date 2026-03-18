@@ -207,7 +207,6 @@ body{background:#0f1520;height:100vh;width:100vw;overflow:hidden;font-family:'Je
     <div style="margin-top:34px;font-size:54px;font-weight:900;color:#59D0FF;letter-spacing:-1.4px">Run402</div>
     <div style="margin-top:8px;font-size:28px;color:#F7FBFF">Autonomous backend for the agent economy</div>
     <div style="margin-top:22px;font-size:20px;color:rgba(247,251,255,0.6)">Built on x402: SIGN-IN-WITH-X (CAIP-122), broader ERC-20 token rails, and MCP-native tooling.</div>
-    <div style="margin-top:22px;font-size:22px;color:#F7FBFF">run402.com · api.run402.com</div>
   </div>
 </div>
 
@@ -302,11 +301,57 @@ var LOGOS = {
 };
 var spinChars = ['\u28CB','\u28D9','\u28F9','\u28F8','\u28FC','\u28F4','\u28E6','\u28E7','\u28C7','\u28CF'];
 
-function typeText(el, text, speed, cb) {
+// Keyboard click sound via Web Audio API
+var audioCtx = null;
+// Init audio on first user interaction (Chrome requires gesture)
+document.addEventListener('click', function initAudio() {
+  if (!audioCtx) {
+    try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch(e) {}
+  }
+  if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+  document.removeEventListener('click', initAudio);
+}, {once: false});
+document.addEventListener('keydown', function initAudioK() {
+  if (!audioCtx) {
+    try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch(e) {}
+  }
+  if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+  document.removeEventListener('keydown', initAudioK);
+}, {once: false});
+
+function keyClick() {
+  if (AUTOPLAY) return;
+  if (!audioCtx) return;
+  var t = audioCtx.currentTime;
+  // Short noise burst — sounds like a mechanical key
+  var bufSize = Math.floor(audioCtx.sampleRate * 0.025);
+  var buf = audioCtx.createBuffer(1, bufSize, audioCtx.sampleRate);
+  var data = buf.getChannelData(0);
+  for (var j = 0; j < bufSize; j++) {
+    var env = Math.exp(-j / (bufSize * 0.15));
+    data[j] = (Math.random() * 2 - 1) * env * 0.3;
+  }
+  var src = audioCtx.createBufferSource();
+  src.buffer = buf;
+  // Bandpass filter for realistic key sound
+  var filt = audioCtx.createBiquadFilter();
+  filt.type = 'bandpass';
+  filt.frequency.value = 800 + Math.random() * 600;
+  filt.Q.value = 1.5;
+  var gain = audioCtx.createGain();
+  gain.gain.value = 0.15 + Math.random() * 0.1;
+  src.connect(filt);
+  filt.connect(gain);
+  gain.connect(audioCtx.destination);
+  src.start(t);
+}
+
+function typeTextSound(el, text, speed, cb) { return typeText(el, text, speed, cb, true); }
+function typeText(el, text, speed, cb, withSound) { withSound = !!withSound;
   var i = 0; el.textContent = '';
   var full = document.createElement('span'); full.className = 'hidden-text'; full.textContent = text; el.appendChild(full);
   var vis = document.createElement('span'); vis.textContent = ''; el.insertBefore(vis, full);
-  var iv = setInterval(function() { i++; vis.textContent = text.substring(0, i); full.textContent = text.substring(i); if (i >= text.length) { clearInterval(iv); if (cb) cb(); } }, speed);
+  var iv = setInterval(function() { i++; vis.textContent = text.substring(0, i); full.textContent = text.substring(i); if (withSound && text[i-1] !== ' ') keyClick(); if (i >= text.length) { clearInterval(iv); if (cb) cb(); } }, speed);
 }
 
 function showSpinner(elId, duration, cb) {
@@ -443,21 +488,19 @@ var sceneDurations = [0, 6000, 6000, 6000, 6000, 8000]; // ms per feature scene
 // Show initial modal before Claude Code scene
 showModal(0, function() {
   setTimeout(function() {
-    // User types first message
-    typeText(document.getElementById('t1'), 'Make me a video to demo run402 for Coinbase', 80, function() {
+    // User types first message (with keyboard sound)
+    typeTextSound(document.getElementById('t1'), 'Make me a video to demo run402 for Coinbase', 80, function() {
       document.getElementById('c1').classList.add('blink');
       setTimeout(function() {
         document.getElementById('c1').style.display = 'none';
         document.getElementById('d1').style.display = '';
-        // Claude thinks
         showSpinner('thinking', 800, function() {
           document.getElementById('msg2').style.display = '';
           typeText(document.getElementById('t2'), 'Would you like me to host the video ON TOP of run402.com?', 35, function() {
             setTimeout(function() {
               document.getElementById('d2').style.display = '';
               document.getElementById('msg3').style.display = '';
-              // User replies
-              typeText(document.getElementById('t3'), 'Cool idea - yes please!', 80, function() {
+              typeTextSound(document.getElementById('t3'), 'Cool idea - yes please!', 80, function() {
                 document.getElementById('c3').classList.add('blink');
                 setTimeout(function() {
                   document.getElementById('c3').style.display = 'none';
