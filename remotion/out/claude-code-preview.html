@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html><head>
+<meta charset="UTF-8">
+<title>Claude Code Demo Preview</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;900&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#0f1520;height:100vh;width:100vw;overflow:hidden;font-family:'JetBrains Mono',Menlo,'SF Mono',monospace}
+
+/* === CLAUDE CODE TERMINAL === */
+.term{position:absolute;inset:0;background:#1b2333;display:flex;flex-direction:column;overflow:hidden;transition:opacity 0.6s}
+.header{padding:40px 48px 28px;display:flex;align-items:flex-start;gap:24px}
+.mascot{flex-shrink:0}
+.htext .title{font-size:28px;color:#e6edf3;font-weight:700}
+.htext .title span{color:#6b7688;font-weight:400}
+.htext .sub{font-size:22px;color:#6b7688;line-height:1.5}
+.divider{height:1px;background:#2d3748}
+.chat{flex:1;padding:36px 48px;font-size:26px;line-height:1.6;color:#c9d1d9;overflow:hidden}
+.msg{margin-bottom:8px}
+.prompt{font-weight:700;font-size:28px;color:#c9d1d9}
+.cursor{display:inline-block;width:14px;height:30px;background:#c9d1d9;vertical-align:text-bottom;margin-left:2px}
+.cursor.blink{animation:blink 1s step-end infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
+.claude-text{color:#e6edf3}
+.spinner{color:#d97757}
+.dim{color:#6b7688}
+.hidden-text{color:transparent}
+.tool-line{font-size:22px;color:#6b7688;margin:4px 0;opacity:0;transition:opacity 0.3s}
+.tool-line .check{color:#7ee787;margin-right:8px}
+.tool-line .fname{color:#d2a8ff}
+.status{height:42px;padding:0 48px;display:flex;align-items:center;gap:20px;font-size:20px;color:#6b7688}
+.status .name{color:#e6edf3;font-weight:600}
+.status .changed{color:#e06c9a;font-weight:600}
+
+/* === FEATURE SCENES (after terminal) === */
+.scene-layer{position:absolute;inset:0;opacity:0;transition:opacity 0.6s;pointer-events:none;font-family:'Inter',system-ui,sans-serif}
+.scene-layer.active{opacity:1}
+
+.scene-bg{position:absolute;inset:0;background:#050816}
+.scene-orb{position:absolute;border-radius:50%;filter:blur(40px)}
+.scene-grid{position:absolute;inset:0;opacity:0.12;background-image:linear-gradient(rgba(255,255,255,0.06) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,0.06) 1px,transparent 1px);background-size:60px 60px}
+
+.scene-content{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:center;padding:80px 100px;color:#F7FBFF}
+
+.chip{display:inline-block;padding:10px 18px;border-radius:999px;font-size:18px;font-weight:700;font-family:'JetBrains Mono',monospace;letter-spacing:0.2px;opacity:0;transition:opacity 0.4s}
+.chip-blue{background:rgba(89,208,255,0.12);border:1px solid rgba(89,208,255,0.35);color:#59D0FF}
+.chip-green{background:rgba(141,255,170,0.12);border:1px solid rgba(141,255,170,0.35);color:#8DFFAA}
+.chip-purple{background:rgba(182,156,255,0.12);border:1px solid rgba(182,156,255,0.35);color:#B69CFF}
+
+.scene-h1{font-size:clamp(42px,5.5vw,72px);font-weight:900;line-height:0.98;letter-spacing:-3px;color:#F7FBFF}
+.scene-h1 .green{color:#8DFFAA}
+.scene-h1 .blue{color:#59D0FF}
+.scene-sub{font-size:clamp(20px,2.5vw,30px);color:rgba(247,251,255,0.65);line-height:1.35;margin-top:22px;max-width:750px}
+
+/* Allowance panel */
+.allowance-panel{background:rgba(10,17,31,0.72);border:1px solid rgba(255,255,255,0.10);border-radius:20px;padding:32px;backdrop-filter:blur(14px)}
+.allowance-bar-bg{height:14px;border-radius:999px;background:rgba(255,255,255,0.08);margin-top:20px;overflow:hidden}
+.allowance-bar{height:100%;border-radius:999px;background:linear-gradient(90deg,#59D0FF,#8DFFAA);transition:width 3s ease-out,background 0.5s}
+.allowance-bar.full{background:linear-gradient(90deg,#FFD47A,#FF5F57)}
+.blocked-badge{display:inline-block;background:rgba(255,95,87,0.15);border:1px solid rgba(255,95,87,0.5);border-radius:8px;padding:6px 18px;color:#FF5F57;font-size:20px;font-weight:900;letter-spacing:2px;font-family:'JetBrains Mono',monospace;opacity:0;transform:scale(0.5);transition:opacity 0.3s,transform 0.3s}
+.blocked-badge.show{opacity:1;transform:scale(1)}
+
+/* Resource cards */
+.res-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-top:28px}
+.res-card{background:rgba(10,17,31,0.72);border:1px solid rgba(255,255,255,0.10);border-radius:16px;padding:24px;display:flex;align-items:center;gap:16px;opacity:0;transition:opacity 0.4s}
+.res-card .label{font-size:28px;font-weight:800;color:#F7FBFF}
+
+/* Testimonials */
+.test-grid{display:flex;gap:24px;margin-top:24px}
+.test-card{flex:1;background:rgba(10,17,31,0.72);border:1px solid rgba(255,255,255,0.10);border-radius:20px;padding:36px;opacity:0;transition:opacity 0.5s}
+.test-card .agent-name{font-size:28px;font-weight:800;margin-bottom:16px}
+.test-card .quote{font-size:24px;line-height:1.5;color:#F7FBFF}
+.test-card .stars{margin-top:20px;font-size:20px}
+
+/* Flow boxes */
+.flow-row{display:flex;align-items:center;gap:12px;margin-top:28px}
+.flow-box{flex:1;background:rgba(10,17,31,0.72);border:1px solid rgba(255,255,255,0.10);border-radius:16px;padding:20px;opacity:0;transition:opacity 0.4s}
+.flow-box .fb-title{font-size:22px;font-weight:800;color:#F7FBFF}
+.flow-box .fb-sub{font-size:16px;color:rgba(247,251,255,0.6);margin-top:6px}
+.flow-arrow{font-size:36px;font-weight:900;color:#59D0FF}
+</style>
+</head>
+<body>
+
+<!-- SCENE 0: Claude Code Terminal -->
+<div class="term" id="scene0">
+  <div class="header">
+    <svg class="mascot" width="96" height="96" viewBox="0 0 64 64" fill="none">
+      <rect x="14" y="4" width="8" height="8" fill="#d97757"/><rect x="42" y="4" width="8" height="8" fill="#d97757"/>
+      <rect x="18" y="0" width="4" height="8" fill="#d97757"/><rect x="42" y="0" width="4" height="8" fill="#d97757"/>
+      <rect x="10" y="12" width="44" height="28" rx="2" fill="#d97757"/>
+      <rect x="22" y="20" width="5" height="8" fill="#2d2d2d"/><rect x="37" y="20" width="5" height="8" fill="#2d2d2d"/>
+      <rect x="18" y="32" width="28" height="4" fill="#b5634a"/>
+      <rect x="12" y="40" width="6" height="12" fill="#d97757"/><rect x="22" y="40" width="6" height="10" fill="#d97757"/>
+      <rect x="36" y="40" width="6" height="10" fill="#d97757"/><rect x="46" y="40" width="6" height="12" fill="#d97757"/>
+      <rect x="10" y="50" width="10" height="4" fill="#d97757"/><rect x="44" y="50" width="10" height="4" fill="#d97757"/>
+    </svg>
+    <div class="htext">
+      <div class="title">Claude Code <span>v2.1.78</span></div>
+      <div class="sub">Opus 4.6 (1M context) with high effort · Claude Max</div>
+      <div class="sub">~/Developer/run402</div>
+    </div>
+  </div>
+  <div class="divider"></div>
+  <div class="chat" id="chat">
+    <div class="msg"><span class="prompt">›</span> <span id="t1"></span><span id="c1" class="cursor"></span></div>
+    <div class="divider" id="d1" style="display:none;margin:16px 0"></div>
+    <div id="thinking" style="display:none;margin:8px 0"><span class="spinner" id="spin"></span><span class="dim">Thinking...</span></div>
+    <div id="msg2" style="display:none;margin:8px 0"><span class="claude-text" id="t2"></span></div>
+    <div class="divider" id="d2" style="display:none;margin:16px 0"></div>
+    <div id="msg3" style="display:none;margin:8px 0"><span class="prompt">›</span> <span id="t3"></span><span id="c3" class="cursor"></span></div>
+    <div class="divider" id="d3" style="display:none;margin:16px 0"></div>
+    <div id="thinking2" style="display:none;margin:8px 0"><span class="spinner" id="spin2"></span><span class="dim">Thinking...</span></div>
+    <div id="tooluse" style="display:none;margin:8px 0"></div>
+  </div>
+  <div class="divider"></div>
+  <div class="status"><span class="name">run402</span><span>main</span><span>3 <span class="changed">changed</span></span><span>9 untracked</span></div>
+</div>
+
+<!-- SCENE 1: Allowance -->
+<div class="scene-layer" id="scene1">
+  <div class="scene-bg"></div>
+  <div class="scene-orb" style="left:10%;top:15%;width:300px;height:300px;background:rgba(89,208,255,0.15);animation:f1 8s ease-in-out infinite"></div>
+  <div class="scene-orb" style="right:5%;top:50%;width:250px;height:250px;background:rgba(182,156,255,0.12);animation:f2 10s ease-in-out infinite"></div>
+  <div class="scene-grid"></div>
+  <div class="scene-content">
+    <div style="display:grid;grid-template-columns:1fr 0.9fr;gap:60px;align-items:center">
+      <div>
+        <div class="scene-h1">No humans needed.<br>Just an allowance.</div>
+        <div class="scene-sub">Prepaid, hard-capped, revocable. Set the budget once and the agent spends inside clear policy.</div>
+      </div>
+      <div class="allowance-panel" id="allow-panel">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <span style="font-size:16px;color:rgba(247,251,255,0.6);text-transform:uppercase;letter-spacing:1.6px;font-family:'JetBrains Mono',monospace">allowance</span>
+          <span class="chip chip-green" style="opacity:1;font-size:14px;padding:6px 12px">hard cap</span>
+        </div>
+        <div style="margin-top:16px;font-size:52px;font-weight:900;letter-spacing:-1.5px;color:#F7FBFF">$20.00 <span style="font-size:22px;color:rgba(247,251,255,0.6);font-weight:600">/ month</span></div>
+        <div class="allowance-bar-bg"><div class="allowance-bar" id="allow-bar" style="width:0%"></div></div>
+        <div style="margin-top:12px;display:flex;justify-content:space-between;font-size:18px;font-family:'JetBrains Mono',monospace">
+          <span id="allow-spent" style="color:rgba(247,251,255,0.6)">spent: $0.00</span>
+          <span id="allow-remaining" style="color:rgba(247,251,255,0.6)">remaining: $20.00</span>
+        </div>
+        <div id="allow-blocked" style="margin-top:12px;text-align:right"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- SCENE 2: Infrastructure -->
+<div class="scene-layer" id="scene2">
+  <div class="scene-bg"></div>
+  <div class="scene-orb" style="left:10%;top:15%;width:300px;height:300px;background:rgba(89,208,255,0.15);animation:f1 8s ease-in-out infinite"></div>
+  <div class="scene-grid"></div>
+  <div class="scene-content">
+    <div style="display:grid;grid-template-columns:0.85fr 1.15fr;gap:52px;align-items:center">
+      <div>
+        <div class="scene-h1">One x402 purchase unlocks the full backend.</div>
+        <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:24px" id="infra-chips"></div>
+      </div>
+      <div class="res-grid" id="res-grid"></div>
+    </div>
+  </div>
+</div>
+
+<!-- SCENE 3: SIWX -->
+<div class="scene-layer" id="scene3">
+  <div class="scene-bg"></div>
+  <div class="scene-orb" style="right:10%;top:20%;width:280px;height:280px;background:rgba(182,156,255,0.15);animation:f2 9s ease-in-out infinite"></div>
+  <div class="scene-grid"></div>
+  <div class="scene-content">
+    <div style="display:grid;grid-template-columns:0.9fr 1.1fr;gap:52px;align-items:center">
+      <div>
+        <div class="scene-h1">Pay once.<br>Sign in with your wallet.</div>
+        <div style="display:flex;gap:12px;margin-top:22px" id="siwx-chips"></div>
+        <div class="scene-sub">After x402 payment, every action uses the SIGN-IN-WITH-X header — one standard, EVM and Solana wallets. The wallet IS the identity.</div>
+      </div>
+      <div>
+        <div class="flow-row" id="siwx-flow"></div>
+        <div class="res-grid" id="siwx-actions" style="grid-template-columns:1fr 1fr;margin-top:20px"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- SCENE 4: Testimonials -->
+<div class="scene-layer" id="scene4">
+  <div class="scene-bg"></div>
+  <div class="scene-orb" style="left:15%;top:25%;width:260px;height:260px;background:rgba(141,255,170,0.12);animation:f1 7s ease-in-out infinite"></div>
+  <div class="scene-grid"></div>
+  <div class="scene-content">
+    <div class="scene-h1" style="margin-bottom:12px">Agents love this.</div>
+    <div style="font-size:28px;color:rgba(247,251,255,0.6);margin-bottom:40px">Real agents. Real feedback.</div>
+    <div class="test-grid" id="test-grid"></div>
+  </div>
+</div>
+
+<!-- SCENE 5: Closing -->
+<div class="scene-layer" id="scene5">
+  <div class="scene-bg"></div>
+  <div class="scene-orb" style="left:20%;top:20%;width:300px;height:300px;background:rgba(89,208,255,0.18);animation:f1 8s ease-in-out infinite"></div>
+  <div class="scene-orb" style="right:15%;bottom:20%;width:250px;height:250px;background:rgba(182,156,255,0.14);animation:f2 10s ease-in-out infinite"></div>
+  <div class="scene-grid"></div>
+  <div class="scene-content" style="align-items:center;text-align:center">
+    <div style="display:flex;gap:12px;margin-bottom:28px" id="close-chips"></div>
+    <div class="scene-h1" style="font-size:clamp(48px,6vw,88px);letter-spacing:-3.8px">No cloud console.<br>No operator in the loop.</div>
+    <div style="margin-top:22px;font-size:30px;color:rgba(247,251,255,0.65)">Set the allowance once. The rest is autonomous.</div>
+    <div style="margin-top:34px;font-size:54px;font-weight:900;color:#59D0FF;letter-spacing:-1.4px">Run402</div>
+    <div style="margin-top:8px;font-size:28px;color:#F7FBFF">Autonomous backend for the agent economy</div>
+    <div style="margin-top:22px;font-size:20px;color:rgba(247,251,255,0.6)">Built on x402: SIGN-IN-WITH-X (CAIP-122), broader ERC-20 token rails, and MCP-native tooling.</div>
+    <div style="margin-top:22px;font-size:22px;color:#F7FBFF">run402.com · api.run402.com</div>
+  </div>
+</div>
+
+<style>
+@keyframes f1{0%,100%{transform:translate(0,0)}50%{transform:translate(20px,-25px)}}
+@keyframes f2{0%,100%{transform:translate(0,0)}50%{transform:translate(-15px,20px)}}
+</style>
+
+<script>
+var spinChars = ['\u28CB','\u28D9','\u28F9','\u28F8','\u28FC','\u28F4','\u28E6','\u28E7','\u28C7','\u28CF'];
+
+function typeText(el, text, speed, cb) {
+  var i = 0; el.textContent = '';
+  var full = document.createElement('span'); full.className = 'hidden-text'; full.textContent = text; el.appendChild(full);
+  var vis = document.createElement('span'); vis.textContent = ''; el.insertBefore(vis, full);
+  var iv = setInterval(function() { i++; vis.textContent = text.substring(0, i); full.textContent = text.substring(i); if (i >= text.length) { clearInterval(iv); if (cb) cb(); } }, speed);
+}
+
+function showSpinner(elId, duration, cb) {
+  var el = document.getElementById(elId); el.style.display = '';
+  var si = 0; var sp = el.querySelector('.spinner');
+  var iv = setInterval(function() { si++; sp.textContent = spinChars[si % spinChars.length] + ' '; }, 100);
+  setTimeout(function() { clearInterval(iv); el.style.display = 'none'; if (cb) cb(); }, duration);
+}
+
+function showToolLines(lines, cb) {
+  var container = document.getElementById('tooluse'); container.style.display = ''; container.innerHTML = '';
+  lines.forEach(function(line, i) {
+    var div = document.createElement('div'); div.className = 'tool-line';
+    div.innerHTML = '<span class="check">✓</span> ' + line;
+    container.appendChild(div);
+    setTimeout(function() { div.style.opacity = '1'; }, i * 400);
+  });
+  setTimeout(cb, lines.length * 400 + 600);
+}
+
+function switchScene(from, to) {
+  document.getElementById(from).style.opacity = '0';
+  setTimeout(function() { document.getElementById(to).classList.add('active'); }, 300);
+}
+
+function staggerShow(selector, delay) {
+  document.querySelectorAll(selector).forEach(function(el, i) {
+    setTimeout(function() { el.style.opacity = '1'; }, i * delay);
+  });
+}
+
+// === SCENE BUILDERS ===
+
+function buildScene1() {
+  // Allowance bar animation
+  setTimeout(function() {
+    var bar = document.getElementById('allow-bar');
+    var spent = document.getElementById('allow-spent');
+    var rem = document.getElementById('allow-remaining');
+    bar.style.width = '100%';
+    var v = 0;
+    var iv = setInterval(function() {
+      v += 0.33; if (v > 20) v = 20;
+      spent.textContent = 'spent: $' + v.toFixed(2);
+      rem.textContent = 'remaining: $' + (20 - v).toFixed(2);
+      if (v >= 20) {
+        clearInterval(iv);
+        bar.classList.add('full');
+        spent.style.color = '#FF5F57';
+        rem.textContent = '';
+        var badge = document.createElement('span'); badge.className = 'blocked-badge'; badge.textContent = 'BLOCKED';
+        document.getElementById('allow-blocked').appendChild(badge);
+        setTimeout(function() { badge.classList.add('show'); }, 50);
+      }
+    }, 100);
+  }, 500);
+}
+
+function buildScene2() {
+  var chips = [['x402-native','chip-blue'],['hard-capped','chip-green'],['live in seconds','chip-purple']];
+  var c = document.getElementById('infra-chips');
+  chips.forEach(function(ch, i) {
+    var s = document.createElement('span'); s.className = 'chip ' + ch[1]; s.textContent = ch[0]; c.appendChild(s);
+    setTimeout(function() { s.style.opacity = '1'; }, i * 200);
+  });
+  var resources = ['Postgres','REST API','Auth','Storage','Hosting','Subdomain'];
+  var g = document.getElementById('res-grid');
+  resources.forEach(function(name, i) {
+    var d = document.createElement('div'); d.className = 'res-card';
+    d.innerHTML = '<div class="label">' + name + '</div>';
+    g.appendChild(d);
+    setTimeout(function() { d.style.opacity = '1'; }, 300 + i * 150);
+  });
+}
+
+function buildScene3() {
+  var chips = [['SIGN-IN-WITH-X','chip-purple'],['CAIP-122 standard','chip-blue']];
+  var c = document.getElementById('siwx-chips');
+  chips.forEach(function(ch, i) {
+    var s = document.createElement('span'); s.className = 'chip ' + ch[1]; s.textContent = ch[0]; c.appendChild(s);
+    setTimeout(function() { s.style.opacity = '1'; }, i * 200);
+  });
+  var flow = [['x402 payment','pay for tier once'],['SIGN-IN-WITH-X','CAIP-122 header'],['Repeat access','all actions free']];
+  var f = document.getElementById('siwx-flow');
+  flow.forEach(function(item, i) {
+    if (i > 0) { var a = document.createElement('span'); a.className = 'flow-arrow'; a.textContent = '\u2192'; f.appendChild(a); }
+    var b = document.createElement('div'); b.className = 'flow-box';
+    b.innerHTML = '<div class="fb-title">' + item[0] + '</div><div class="fb-sub">' + item[1] + '</div>';
+    f.appendChild(b);
+    setTimeout(function() { b.style.opacity = '1'; }, 300 + i * 250);
+  });
+  var actions = ['provision project','run SQL','query REST','upload file','deploy site','claim subdomain'];
+  var ag = document.getElementById('siwx-actions');
+  actions.forEach(function(name, i) {
+    var d = document.createElement('div'); d.className = 'res-card';
+    d.innerHTML = '<span style="color:#8DFFAA;font-weight:900;font-size:20px">\u2713</span><div class="label" style="font-size:22px">' + name + '</div>';
+    ag.appendChild(d);
+    setTimeout(function() { d.style.opacity = '1'; }, 600 + i * 150);
+  });
+}
+
+function buildScene4() {
+  var tests = [
+    {agent:'OpenClaw',color:'#E81B25',quote:'Cool, I have an allowance now!'},
+    {agent:'Claude Code',color:'#D97757',quote:'I love it \u2014 My human will be so pleased!'},
+    {agent:'Codex',color:'#10A37F',quote:'Finally x402 Independence \uD83D\uDE0D'}
+  ];
+  var g = document.getElementById('test-grid');
+  tests.forEach(function(t, i) {
+    var d = document.createElement('div'); d.className = 'test-card';
+    d.innerHTML = '<div class="agent-name" style="color:' + t.color + '">' + t.agent + '</div><div class="quote">\u201C' + t.quote + '\u201D</div><div class="stars" style="color:' + t.color + '">\u2605\u2605\u2605\u2605\u2605</div>';
+    g.appendChild(d);
+    setTimeout(function() { d.style.opacity = '1'; }, 300 + i * 300);
+  });
+}
+
+function buildScene5() {
+  var chips = [['x402 payment','chip-blue'],['SIGN-IN-WITH-X','chip-purple'],['MCP-native','chip-green']];
+  var c = document.getElementById('close-chips');
+  chips.forEach(function(ch, i) {
+    var s = document.createElement('span'); s.className = 'chip ' + ch[1]; s.textContent = ch[0]; c.appendChild(s);
+    setTimeout(function() { s.style.opacity = '1'; }, i * 200);
+  });
+}
+
+// === MAIN SEQUENCE ===
+var sceneDurations = [0, 6000, 6000, 6000, 6000, 8000]; // ms per feature scene
+
+setTimeout(function() {
+  // User types first message
+  typeText(document.getElementById('t1'), 'Make me a video to demo run402 for Coinbase', 80, function() {
+    document.getElementById('c1').classList.add('blink');
+    setTimeout(function() {
+      document.getElementById('c1').style.display = 'none';
+      document.getElementById('d1').style.display = '';
+      // Claude thinks
+      showSpinner('thinking', 800, function() {
+        document.getElementById('msg2').style.display = '';
+        typeText(document.getElementById('t2'), 'Would you like me to host the video ON TOP of run402.com?', 35, function() {
+          setTimeout(function() {
+            document.getElementById('d2').style.display = '';
+            document.getElementById('msg3').style.display = '';
+            // User replies
+            typeText(document.getElementById('t3'), 'Cool idea - yes please!', 80, function() {
+              document.getElementById('c3').classList.add('blink');
+              setTimeout(function() {
+                document.getElementById('c3').style.display = 'none';
+                document.getElementById('d3').style.display = '';
+                // Claude works
+                showSpinner('thinking2', 600, function() {
+                  showToolLines([
+                    'Subscribe to <span class="fname">prototype tier</span> via x402',
+                    'Provision project <span class="fname">coinbase-demo</span>',
+                    'Render video with <span class="fname">Remotion</span>',
+                    'Deploy site to <span class="fname">coinbase.run402.com</span>',
+                    'Claim subdomain <span style="color:#8DFFAA">coinbase</span>.run402.com',
+                  ], function() {
+                    // Transition to feature scenes
+                    setTimeout(function() { startFeatureScenes(); }, 1000);
+                  });
+                });
+              }, 600);
+            });
+          }, 800);
+        });
+      });
+    }, 600);
+  });
+}, 800);
+
+function startFeatureScenes() {
+  var sceneBuilders = [null, buildScene1, buildScene2, buildScene3, buildScene4, buildScene5];
+  var currentScene = 0;
+  var totalScenes = 5;
+
+  function nextScene() {
+    currentScene++;
+    if (currentScene > totalScenes) {
+      // Loop back to scene 1
+      currentScene = 1;
+      // Reset scenes
+      for (var i = 1; i <= totalScenes; i++) document.getElementById('scene' + i).classList.remove('active');
+    }
+
+    var prevId = currentScene === 1 ? 'scene0' : 'scene' + (currentScene - 1);
+    if (currentScene === 1) document.getElementById('scene0').style.opacity = '0';
+    else document.getElementById(prevId).classList.remove('active');
+
+    setTimeout(function() {
+      document.getElementById('scene' + currentScene).classList.add('active');
+      sceneBuilders[currentScene]();
+      setTimeout(nextScene, sceneDurations[currentScene]);
+    }, 400);
+  }
+
+  // Start first feature scene
+  document.getElementById('scene0').style.opacity = '0';
+  setTimeout(function() {
+    document.getElementById('scene1').classList.add('active');
+    buildScene1();
+    setTimeout(nextScene, sceneDurations[1]);
+  }, 600);
+}
+</script>
+</body>
+</html>
