@@ -84,7 +84,9 @@ function render(d){
   html+='<input id="aw-address" type="text" placeholder="0x..." style="background:#12121A;border:1px solid #1E1E2A;border-radius:8px;padding:8px 12px;color:#E0E0E0;font-size:13px;font-family:monospace;flex:1;outline:none">';
   html+='<input id="aw-label" type="text" placeholder="Label (optional)" style="background:#12121A;border:1px solid #1E1E2A;border-radius:8px;padding:8px 12px;color:#E0E0E0;font-size:13px;width:160px;outline:none">';
   html+='<button onclick="addAdminWallet()" style="background:#F59E0B;color:#000;border:none;border-radius:8px;padding:8px 16px;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap">Add Wallet</button>';
-  html+='</div></div>';
+  html+='</div>';
+  html+='<div style="margin-top:6px;font-size:11px;color:#4B5563">Hint: run <code style="background:#1E1E2A;padding:2px 6px;border-radius:4px;color:#9CA3AF">run402 allowance export</code> to get your wallet address</div>';
+  html+='</div>';
 
   document.getElementById('content').innerHTML=html;
 
