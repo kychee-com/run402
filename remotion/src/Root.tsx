@@ -14,6 +14,13 @@ import {
   TEST_VIDEO_WIDTH,
   TEST_VIDEO_HEIGHT,
 } from './TestVideo';
+import {
+  ClaudeCodeDemo,
+  CC_DURATION,
+  CC_FPS,
+  CC_WIDTH,
+  CC_HEIGHT,
+} from './ClaudeCodeDemo';
 
 export const RemotionRoot: React.FC = () => {
   return (
@@ -33,6 +40,14 @@ export const RemotionRoot: React.FC = () => {
         fps={TEST_VIDEO_FPS}
         width={TEST_VIDEO_WIDTH}
         height={TEST_VIDEO_HEIGHT}
+      />
+      <Composition
+        id="ClaudeCodeDemo"
+        component={ClaudeCodeDemo}
+        durationInFrames={CC_DURATION}
+        fps={CC_FPS}
+        width={CC_WIDTH}
+        height={CC_HEIGHT}
       />
     </>
   );
