@@ -26,7 +26,7 @@ Provision first, then write your frontend code with the real `anon_key` embedded
 ## Core facts
 
 - Allowance: `~/.config/run402/allowance.json` (0600). Projects: `~/.config/run402/projects.json` (0600)
-- Credentials saved automatically after provision, deploy, or fork
+- Credentials saved automatically after provision or fork
 - `<id>` in commands = `project_id` from `run402 projects list`
 - All output is JSON on stdout; errors are JSON on stderr; exit 0 = success, 1 = error
 - The CLI handles x402 signing automatically — do not request private keys or set up payment libraries manually
@@ -174,6 +174,9 @@ run402 subdomains claim my-app
 ### init
 `run402 init` — creates allowance, requests faucet, checks tier, lists projects.
 
+### status
+`run402 status` — show full account state in one shot (allowance, balance, tier, projects, active project). Read-only, JSON output.
+
 ### allowance
 - `run402 allowance <create|status|fund|balance|export>`
 - `run402 allowance checkout --amount <usd_micros>`
@@ -202,9 +205,9 @@ SQL supports DDL + queries, returns JSON. REST uses PostgREST syntax (`select=`,
 User auth: password + Google OAuth. See "User Auth" section below.
 
 ### deploy
-- `run402 deploy --manifest app.json`
+- `run402 deploy --manifest app.json [--project <id>]`
 
-Requires active tier and a provisioned project. Deploys to an existing project: runs migrations, applies RLS, sets secrets, deploys functions, deploys static site, and claims subdomain. The manifest must include `project_id`.
+Requires active tier and a provisioned project. Deploys to an existing project: runs migrations, applies RLS, sets secrets, deploys functions, deploys static site, and claims subdomain. The manifest must include `project_id` (or use `--project` flag, or omit both to use the active project).
 
 ### functions
 Node 22 runtime. Must export `default async (req: Request) => Response`.
@@ -538,7 +541,7 @@ const refreshed = await fetch(API + '/auth/v1/token?grant_type=refresh_token', {
 9. **Workout Log** -- Track exercises, sets, reps, weight with progress over time.
 10. **Flash Cards** -- Spaced-repetition study app. Pre-load 50 phrases.
 
-Provision first so you have the `anon_key` to embed in your frontend HTML. The manifest should include `name`, `migrations` (CREATE TABLE + INSERT seed data), `rls` (almost always `public_read_write` for browser-writable apps), `files` (array of files), and `subdomain`. Your human gets a live URL they can use immediately.
+Provision first so you have the `anon_key` to embed in your frontend HTML. The manifest should include `project_id` (from provision), `migrations` (CREATE TABLE + INSERT seed data), `rls` (almost always `public_read_write` for browser-writable apps), `files` (array of files), and `subdomain`. Your human gets a live URL they can use immediately.
 
 ## Make It Great
 
