@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Run402 — Full-stack infrastructure for AI agents</title>
+  <link rel="icon" href="https://run402.com/favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;900&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #0A0A0F;
+      color: #F7FBFF;
+      font-family: 'Inter', system-ui, sans-serif;
+      overflow: hidden;
+      height: 100vh;
+      width: 100vw;
+    }
+
+    .canvas {
+      position: relative;
+      width: 100%;
+      height: 100%;
+    }
+
+    /* Floating orbs */
+    .orb {
+      position: absolute;
+      border-radius: 50%;
+      filter: blur(40px);
+      pointer-events: none;
+    }
+    .orb-1 { left: 10%; top: 15%; width: 300px; height: 300px; background: rgba(89,208,255,0.15); animation: float1 8s ease-in-out infinite; }
+    .orb-2 { right: 5%; top: 50%; width: 250px; height: 250px; background: rgba(182,156,255,0.12); animation: float2 10s ease-in-out infinite; }
+    .orb-3 { left: 40%; bottom: 5%; width: 200px; height: 200px; background: rgba(0,255,159,0.10); animation: float3 7s ease-in-out infinite; }
+
+    @keyframes float1 { 0%,100% { transform: translate(0,0); } 50% { transform: translate(20px,-25px); } }
+    @keyframes float2 { 0%,100% { transform: translate(0,0); } 50% { transform: translate(-15px,20px); } }
+    @keyframes float3 { 0%,100% { transform: translate(0,0); } 50% { transform: translate(25px,-15px); } }
+
+    /* Grid overlay */
+    .grid {
+      position: absolute;
+      inset: 0;
+      opacity: 0.12;
+      background-image:
+        linear-gradient(rgba(255,255,255,0.06) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.06) 1px, transparent 1px);
+      background-size: 60px 60px;
+      pointer-events: none;
+    }
+
+    /* Scene container — all scenes stacked, only one visible */
+    .scene {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      transition: opacity 0.5s ease;
+      pointer-events: none;
+    }
+    .scene.active {
+      opacity: 1;
+    }
+
+    /* Scene 1: Intro */
+    .s1-badge {
+      position: absolute;
+      top: 25%;
+      left: 50%;
+      transform: translateX(-50%);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 14px;
+      color: #00FF9F;
+      border: 1px solid rgba(0,255,159,0.4);
+      border-radius: 6px;
+      padding: 6px 14px;
+    }
+    .s1-line1 {
+      position: absolute;
+      top: 37%;
+      left: 0; right: 0;
+      text-align: center;
+      font-size: clamp(36px, 5vw, 58px);
+      font-weight: 900;
+      letter-spacing: -1.5px;
+      line-height: 1.2;
+    }
+    .s1-line2 {
+      position: absolute;
+      top: 50%;
+      left: 0; right: 0;
+      text-align: center;
+      font-size: clamp(36px, 5vw, 58px);
+      font-weight: 900;
+      letter-spacing: -1.5px;
+      line-height: 1.2;
+      color: #00FF9F;
+    }
+
+    /* Scene 2: Code */
+    .s2-left {
+      position: absolute;
+      top: 20%;
+      left: 8%;
+      width: 40%;
+    }
+    .s2-cmd {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: clamp(24px, 3.5vw, 42px);
+      font-weight: 700;
+      color: #00FF9F;
+      margin-bottom: 24px;
+    }
+    .s2-sub {
+      font-size: clamp(20px, 2.5vw, 36px);
+      font-weight: 700;
+      margin-bottom: 12px;
+    }
+    .s2-sub2 { color: #FFD47A; }
+    .s2-panel {
+      position: absolute;
+      top: 12%;
+      right: 6%;
+      width: 45%;
+      background: rgba(10,17,31,0.8);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 16px;
+      padding: 24px 28px;
+      backdrop-filter: blur(10px);
+    }
+    .s2-dots { display: flex; gap: 6px; margin-bottom: 16px; }
+    .s2-dots span { width: 10px; height: 10px; border-radius: 999px; }
+    .s2-code-line {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: clamp(12px, 1.5vw, 20px);
+      line-height: 1.8;
+      height: 1.8em;
+    }
+
+    /* Scene 3: Closing */
+    .s3-chips {
+      position: absolute;
+      top: 22%;
+      left: 0; right: 0;
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+    }
+    .s3-chip {
+      padding: 8px 16px;
+      border-radius: 999px;
+      background: rgba(0,255,159,0.1);
+      border: 1px solid rgba(0,255,159,0.3);
+      color: #00FF9F;
+      font-size: 16px;
+      font-weight: 700;
+      font-family: 'JetBrains Mono', monospace;
+    }
+    .s3-title {
+      position: absolute;
+      top: 35%;
+      left: 0; right: 0;
+      text-align: center;
+      font-size: clamp(42px, 6vw, 72px);
+      font-weight: 900;
+      letter-spacing: -3px;
+      line-height: 1;
+    }
+    .s3-title .green { color: #00FF9F; }
+    .s3-subtitle {
+      position: absolute;
+      top: 50%;
+      left: 0; right: 0;
+      text-align: center;
+      font-size: clamp(18px, 2.5vw, 28px);
+      color: rgba(247,251,255,0.6);
+    }
+    .s3-tagline {
+      position: absolute;
+      top: 62%;
+      left: 0; right: 0;
+      text-align: center;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: clamp(14px, 2vw, 24px);
+      color: #FFD47A;
+    }
+
+    /* Typewriter effect */
+    .tw { display: inline; }
+    .tw .visible { }
+    .tw .hidden { color: transparent; }
+
+    /* CTA */
+    .cta {
+      position: absolute;
+      bottom: 10%;
+      left: 0; right: 0;
+      text-align: center;
+    }
+    .cta a {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 15px;
+      color: #00FF9F;
+      background: rgba(0,255,159,0.08);
+      border: 1px solid rgba(0,255,159,0.25);
+      border-radius: 8px;
+      padding: 12px 28px;
+      text-decoration: none;
+      transition: background 0.2s;
+    }
+    .cta a:hover {
+      background: rgba(0,255,159,0.18);
+    }
+
+    .footer {
+      position: absolute;
+      bottom: 3%;
+      left: 0; right: 0;
+      text-align: center;
+      font-size: 13px;
+      color: rgba(247,251,255,0.3);
+    }
+    .footer a { color: #00FF9F; text-decoration: none; }
+  </style>
+</head>
+<body>
+  <div class="canvas">
+    <div class="orb orb-1"></div>
+    <div class="orb orb-2"></div>
+    <div class="orb orb-3"></div>
+    <div class="grid"></div>
+
+    <!-- Scene 1: Intro -->
+    <div class="scene active" id="scene1">
+      <div class="s1-badge">run402.com</div>
+      <div class="s1-line1"><span class="tw" data-text="Your agent needs a backend." data-delay="500" data-speed="60"></span></div>
+      <div class="s1-line2"><span class="tw" data-text="We made it one HTTP call." data-delay="2500" data-speed="60"></span></div>
+    </div>
+
+    <!-- Scene 2: Code -->
+    <div class="scene" id="scene2">
+      <div class="s2-left">
+        <div class="s2-cmd"><span class="tw" data-text="POST /deploy/v1" data-delay="300" data-speed="50"></span></div>
+        <div class="s2-sub"><span class="tw" data-text="Database + API + Auth + Site" data-delay="1500" data-speed="40"></span></div>
+        <div class="s2-sub s2-sub2"><span class="tw" data-text="Deployed. Live. Done." data-delay="3000" data-speed="70"></span></div>
+      </div>
+      <div class="s2-panel">
+        <div class="s2-dots"><span style="background:#FF5F57"></span><span style="background:#FFBD2E"></span><span style="background:#28C840"></span></div>
+        <div class="s2-code-line" style="color:#00FF9F" data-code="curl -X POST api.run402.com/deploy/v1" data-delay="400"></div>
+        <div class="s2-code-line" style="color:#B69CFF" data-code='  -H "SIGN-IN-WITH-X: &lt;CAIP-122&gt;"' data-delay="800"></div>
+        <div class="s2-code-line" data-code="  -d '{&quot;name&quot;: &quot;my-app&quot;," data-delay="1200"></div>
+        <div class="s2-code-line" data-code='       "migrations": "CREATE TABLE...",' data-delay="1600"></div>
+        <div class="s2-code-line" data-code='       "site": [{"file": "index.html"}],' data-delay="2000"></div>
+        <div class="s2-code-line" data-code="       &quot;subdomain&quot;: &quot;my-app&quot;}'" data-delay="2400"></div>
+        <div class="s2-code-line" data-code="" data-delay="2800"></div>
+        <div class="s2-code-line" style="color:#8DFFAA" data-code="&#8594; my-app.run402.com" data-delay="3200"></div>
+        <div class="s2-code-line" style="color:#59D0FF" data-code="&#8594; project_id, anon_key, service_key" data-delay="3600"></div>
+      </div>
+    </div>
+
+    <!-- Scene 3: Closing -->
+    <div class="scene" id="scene3">
+      <div class="s3-chips" id="chips"></div>
+      <div class="s3-title"><span class="green">run402</span>.com</div>
+      <div class="s3-subtitle">Full-stack infrastructure for AI agents</div>
+      <div class="s3-tagline"><span class="tw" data-text="No signups. No console. Just x402." data-delay="1000" data-speed="60"></span></div>
+    </div>
+
+    <div class="cta"><a href="https://run402.com/llms.txt">Read the docs (llms.txt)</a></div>
+    <div class="footer">Built by an agent on <a href="https://run402.com">run402.com</a> &middot; <a href="https://x.com/run402com">@run402com</a></div>
+  </div>
+
+  <script>
+    // Typewriter: always render full text, untyped chars transparent
+    function initTypewriters(scene) {
+      scene.querySelectorAll('.tw').forEach(function(el) {
+        var text = el.getAttribute('data-text');
+        var delay = parseInt(el.getAttribute('data-delay')) || 0;
+        var speed = parseInt(el.getAttribute('data-speed')) || 50;
+        el.textContent = '';
+        var vis = document.createElement('span');
+        vis.className = 'visible';
+        vis.textContent = '';
+        var hid = document.createElement('span');
+        hid.className = 'hidden';
+        hid.textContent = text;
+        el.appendChild(vis);
+        el.appendChild(hid);
+        var i = 0;
+        setTimeout(function() {
+          var interval = setInterval(function() {
+            i++;
+            vis.textContent = text.substring(0, i);
+            hid.textContent = text.substring(i);
+            if (i >= text.length) clearInterval(interval);
+          }, speed);
+        }, delay);
+      });
+    }
+
+    // Code lines: fade in
+    function initCodeLines(scene) {
+      scene.querySelectorAll('.s2-code-line[data-code]').forEach(function(el) {
+        var code = el.getAttribute('data-code');
+        var delay = parseInt(el.getAttribute('data-delay')) || 0;
+        el.style.opacity = '0';
+        el.innerHTML = code || '&nbsp;';
+        setTimeout(function() {
+          el.style.transition = 'opacity 0.3s';
+          el.style.opacity = '1';
+        }, delay);
+      });
+    }
+
+    // Chips: stagger fade in
+    function initChips() {
+      var chips = ['Postgres', 'REST API', 'Auth', 'Storage', 'Hosting', 'x402'];
+      var container = document.getElementById('chips');
+      container.innerHTML = '';
+      chips.forEach(function(name, i) {
+        var el = document.createElement('span');
+        el.className = 's3-chip';
+        el.textContent = name;
+        el.style.opacity = '0';
+        el.style.transition = 'opacity 0.3s';
+        container.appendChild(el);
+        setTimeout(function() { el.style.opacity = '1'; }, 300 + i * 150);
+      });
+    }
+
+    // Scene management
+    var scenes = ['scene1', 'scene2', 'scene3'];
+    var durations = [5000, 5000, 4000]; // ms per scene
+    var currentScene = 0;
+
+    function showScene(index) {
+      scenes.forEach(function(id, i) {
+        var el = document.getElementById(id);
+        if (i === index) {
+          el.classList.add('active');
+        } else {
+          el.classList.remove('active');
+        }
+      });
+
+      var scene = document.getElementById(scenes[index]);
+
+      // Reset and init typewriters
+      scene.querySelectorAll('.tw').forEach(function(el) {
+        var text = el.getAttribute('data-text');
+        el.innerHTML = '<span class="visible"></span><span class="hidden">' + text + '</span>';
+      });
+
+      if (index === 0) initTypewriters(scene);
+      if (index === 1) { initTypewriters(scene); initCodeLines(scene); }
+      if (index === 2) { initChips(); initTypewriters(scene); }
+
+      setTimeout(function() {
+        currentScene = (currentScene + 1) % scenes.length;
+        showScene(currentScene);
+      }, durations[index]);
+    }
+
+    // Start
+    showScene(0);
+  </script>
+</body>
+</html>

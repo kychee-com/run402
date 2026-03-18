@@ -7,16 +7,33 @@ import {
   RUN402_HEIGHT,
   RUN402_WIDTH,
 } from './Run402BuilderSpotlight';
+import {
+  TestVideo,
+  TEST_VIDEO_DURATION,
+  TEST_VIDEO_FPS,
+  TEST_VIDEO_WIDTH,
+  TEST_VIDEO_HEIGHT,
+} from './TestVideo';
 
 export const RemotionRoot: React.FC = () => {
   return (
-    <Composition
-      id="Run402BuilderSpotlight"
-      component={Run402BuilderSpotlight}
-      durationInFrames={RUN402_DURATION_IN_FRAMES}
-      fps={RUN402_FPS}
-      width={RUN402_WIDTH}
-      height={RUN402_HEIGHT}
-    />
+    <>
+      <Composition
+        id="Run402BuilderSpotlight"
+        component={Run402BuilderSpotlight}
+        durationInFrames={RUN402_DURATION_IN_FRAMES}
+        fps={RUN402_FPS}
+        width={RUN402_WIDTH}
+        height={RUN402_HEIGHT}
+      />
+      <Composition
+        id="TestVideo"
+        component={TestVideo}
+        durationInFrames={TEST_VIDEO_DURATION}
+        fps={TEST_VIDEO_FPS}
+        width={TEST_VIDEO_WIDTH}
+        height={TEST_VIDEO_HEIGHT}
+      />
+    </>
   );
 };
