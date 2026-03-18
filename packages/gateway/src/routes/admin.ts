@@ -1,10 +1,13 @@
-import { Router, Request, Response } from "express";
+import { Router, Request, Response, NextFunction } from "express";
 import { pool } from "../db/pool.js";
 import { serviceKeyAuth } from "../middleware/apikey.js";
 import { demoBlockedMiddleware } from "../middleware/demo.js";
 import { getTierLimits } from "@run402/shared";
 import { asyncHandler, HttpError } from "../utils/async-handler.js";
 import { ADMIN_KEY } from "../config.js";
+import { isAdminWallet } from "../services/admin-wallets.js";
+import { getProjectById } from "../services/projects.js";
+import { parseSIWxHeader, verifySIWxSignature } from "@x402/extensions/sign-in-with-x";
 
 interface RlsTable {
   table: string;
@@ -33,12 +36,70 @@ interface PgPolicy {
 
 const router = Router();
 
-// PUT /projects/v1/admin/:id/wallet — set project wallet address (admin key only, no service key)
-router.put("/projects/v1/admin/:id/wallet", asyncHandler(async (req: Request, res: Response) => {
+/**
+ * Check if the request has a valid admin key header.
+ */
+function hasAdminKey(req: Request): boolean {
   const adminKey = req.headers["x-admin-key"] as string | undefined;
-  if (!ADMIN_KEY || adminKey !== ADMIN_KEY) {
-    throw new HttpError(403, "Requires platform admin key");
+  return !!(ADMIN_KEY && adminKey === ADMIN_KEY);
+}
+
+/**
+ * Try to authenticate via SIWX and check if the wallet is an admin wallet.
+ * Returns the normalized wallet address if valid, null otherwise.
+ */
+async function tryAdminSiwx(req: Request): Promise<string | null> {
+  const siwxHeader = req.headers["sign-in-with-x"] as string | undefined;
+  if (!siwxHeader) return null;
+
+  try {
+    const payload = parseSIWxHeader(siwxHeader);
+
+    // Validate expiration
+    if (payload.expirationTime) {
+      const expiry = new Date(payload.expirationTime);
+      if (expiry.getTime() < Date.now()) return null;
+    }
+
+    // Validate issuedAt (5 min max age)
+    if (payload.issuedAt) {
+      const issued = new Date(payload.issuedAt);
+      if (Date.now() - issued.getTime() > 5 * 60 * 1000) return null;
+    }
+
+    // Validate domain
+    if (payload.domain && payload.domain !== req.hostname) return null;
+
+    const verification = await verifySIWxSignature(payload);
+    if (!verification.valid || !verification.address) return null;
+
+    const normalized = verification.address.toLowerCase();
+    return isAdminWallet(normalized) ? normalized : null;
+  } catch {
+    return null;
   }
+}
+
+/**
+ * Require admin privileges: either x-admin-key header or SIWX with an admin wallet.
+ */
+function requireAdmin(req: Request): Promise<void> | void {
+  // Fast path: admin key
+  if (hasAdminKey(req)) return;
+
+  // Async path: SIWX admin wallet
+  return (async () => {
+    const wallet = await tryAdminSiwx(req);
+    if (!wallet) {
+      throw new HttpError(403, "Admin access required", { admin_required: true, message: "Requires platform admin key or SIWX auth from an admin wallet" });
+    }
+    req.walletAddress = wallet;
+  })();
+}
+
+// PUT /projects/v1/admin/:id/wallet — set project wallet address (admin only, no service key)
+router.put("/projects/v1/admin/:id/wallet", asyncHandler(async (req: Request, res: Response) => {
+  await requireAdmin(req);
 
   const projectId = req.params.id as string;
   const { wallet_address } = req.body || {};
@@ -59,8 +120,34 @@ router.put("/projects/v1/admin/:id/wallet", asyncHandler(async (req: Request, re
   res.json({ status: "ok", project_id: projectId, wallet_address });
 }));
 
-// All admin routes require service_key
-router.use("/projects/v1/admin", serviceKeyAuth);
+/**
+ * Admin routes auth: accept service_key (existing flow) OR SIWX with admin wallet.
+ * Admin wallets bypass service_key — they can operate on any project.
+ */
+async function adminOrServiceKeyAuth(req: Request, res: Response, next: NextFunction): Promise<void> {
+  // Try SIWX admin wallet first (skips service_key requirement)
+  const wallet = await tryAdminSiwx(req);
+  if (wallet) {
+    req.walletAddress = wallet;
+    // Load project into req.project for downstream handlers
+    const projectId = req.params.id as string | undefined;
+    if (projectId) {
+      const project = await getProjectById(projectId);
+      if (!project || project.status !== "active") {
+        res.status(404).json({ error: "Project not found or not active" });
+        return;
+      }
+      req.project = project;
+    }
+    next();
+    return;
+  }
+
+  // Fall back to existing service_key auth
+  serviceKeyAuth(req, res, next);
+}
+
+router.use("/projects/v1/admin", adminOrServiceKeyAuth);
 
 // SQL statement blocklist — defense-in-depth (real boundary is search_path + pre_request hook)
 const BLOCKED_PATTERNS: Array<{ pattern: RegExp; hint?: string }> = [
@@ -255,10 +342,7 @@ router.post("/projects/v1/admin/:id/rls", asyncHandler(async (req: Request, res:
 
 // POST /projects/v1/admin/:id/pin — pin project (lease never expires, admin only)
 router.post("/projects/v1/admin/:id/pin", asyncHandler(async (req: Request, res: Response) => {
-  const adminKey = req.headers["x-admin-key"] as string | undefined;
-  if (!ADMIN_KEY || adminKey !== ADMIN_KEY) {
-    throw new HttpError(403, "Requires platform admin key");
-  }
+  await requireAdmin(req);
 
   assertProjectMatch(req);
   const project = req.project!;
@@ -272,10 +356,7 @@ router.post("/projects/v1/admin/:id/pin", asyncHandler(async (req: Request, res:
 
 // POST /projects/v1/admin/:id/unpin — unpin project (normal lease expiry resumes, admin only)
 router.post("/projects/v1/admin/:id/unpin", asyncHandler(async (req: Request, res: Response) => {
-  const adminKey = req.headers["x-admin-key"] as string | undefined;
-  if (!ADMIN_KEY || adminKey !== ADMIN_KEY) {
-    throw new HttpError(403, "Requires platform admin key");
-  }
+  await requireAdmin(req);
 
   assertProjectMatch(req);
   const project = req.project!;

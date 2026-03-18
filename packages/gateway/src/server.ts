@@ -28,6 +28,7 @@ import { initIdempotencyTable, idempotencyMiddleware } from "./middleware/idempo
 import { initDeploymentsTable } from "./services/deployments.js";
 import { initSubdomainsTable } from "./services/subdomains.js";
 import { initFunctionsTable } from "./services/functions.js";
+import { initAdminWalletsTable } from "./services/admin-wallets.js";
 import { subdomainMiddleware } from "./middleware/subdomain.js";
 import projectRoutes from "./routes/projects.js";
 import authRoutes from "./routes/auth.js";
@@ -370,7 +371,7 @@ app.use(bugsnagMiddleware.errorHandler);
 // HttpError instances set the status code; everything else becomes 500.
 app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
   if (err instanceof HttpError) {
-    res.status(err.statusCode).json({ error: err.message });
+    res.status(err.statusCode).json(err.body || { error: err.message });
     return;
   }
   console.error("Unhandled error:", errorMessage(err));
@@ -1021,6 +1022,9 @@ async function start() {
 
   // Initialize functions + secrets tables
   await initFunctionsTable();
+
+  // Initialize admin wallets table
+  await initAdminWalletsTable();
 
   // Initialize app versions tables (publish/fork)
   await initAppVersionsTables();

@@ -18,6 +18,7 @@ import { projectCache } from "../services/projects.js";
 import { asyncHandler } from "../utils/async-handler.js";
 import { getTreasuryBalance, recordFaucetSnapshot, treasuryAddress } from "../services/faucet.js";
 import { FAUCET_TREASURY_KEY } from "../config.js";
+import { listAdminWallets, addAdminWallet, removeAdminWallet } from "../services/admin-wallets.js";
 
 const router = Router();
 
@@ -289,6 +290,41 @@ router.get("/admin/api/stats", asyncHandler(async (req: Request, res: Response) 
   });
 }));
 
+// ---- Admin Wallets API ----
+
+router.get("/admin/api/admin-wallets", asyncHandler(async (req: Request, res: Response) => {
+  const session = getSession(req);
+  if (!session) { res.status(401).json({ error: "Unauthorized" }); return; }
+  const wallets = await listAdminWallets();
+  res.json({ wallets });
+}));
+
+router.post("/admin/api/admin-wallets", asyncHandler(async (req: Request, res: Response) => {
+  const session = getSession(req);
+  if (!session) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+  const { address, label } = req.body || {};
+  if (!address || typeof address !== "string" || !/^0x[a-fA-F0-9]{40}$/i.test(address)) {
+    res.status(400).json({ error: "Invalid address (must be 0x + 40 hex chars)" });
+    return;
+  }
+
+  await addAdminWallet(address, label || null, session.email);
+  res.status(201).json({ address: address.toLowerCase() });
+}));
+
+router.delete("/admin/api/admin-wallets/:address", asyncHandler(async (req: Request, res: Response) => {
+  const session = getSession(req);
+  if (!session) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+  const removed = await removeAdminWallet(req.params.address as string);
+  if (!removed) {
+    res.status(404).json({ error: "Wallet not found" });
+    return;
+  }
+  res.status(204).end();
+}));
+
 // ---- Dashboard page ----
 
 router.get("/admin", asyncHandler(async (req: Request, res: Response) => {
@@ -490,6 +526,15 @@ function render(d){
     html+='</div>';
   }
 
+  // Admin Wallets section
+  html+='<div class="section"><h2><span class="dot" style="background:#F59E0B"></span><span class="tip" data-tip="Wallet addresses authorized to call admin APIs via SIWX authentication. Admin wallets can pin/unpin projects, run SQL, and manage any project without a service key">Admin Wallets</span></h2>';
+  html+='<div id="admin-wallets-content"><div class="loading">Loading...</div></div>';
+  html+='<div style="margin-top:12px;display:flex;gap:8px;align-items:center">';
+  html+='<input id="aw-address" type="text" placeholder="0x..." style="background:#12121A;border:1px solid #1E1E2A;border-radius:8px;padding:8px 12px;color:#E0E0E0;font-size:13px;font-family:monospace;flex:1;outline:none">';
+  html+='<input id="aw-label" type="text" placeholder="Label (optional)" style="background:#12121A;border:1px solid #1E1E2A;border-radius:8px;padding:8px 12px;color:#E0E0E0;font-size:13px;width:160px;outline:none">';
+  html+='<button onclick="addAdminWallet()" style="background:#F59E0B;color:#000;border:none;border-radius:8px;padding:8px 16px;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap">Add Wallet</button>';
+  html+='</div></div>';
+
   document.getElementById('content').innerHTML=html;
 
   // Draw charts after DOM update
@@ -499,6 +544,63 @@ function render(d){
     if(f.cumulativeWallets.length>1) drawAreaChart('cvWallets',f.cumulativeWallets.map(function(p){return{t:new Date(p.d).getTime(),v:p.v}}),'#00FF9F','');
     else noData('cvWallets');
   }
+
+  // Load admin wallets
+  loadAdminWallets();
+}
+
+async function loadAdminWallets(){
+  var el=document.getElementById('admin-wallets-content');
+  if(!el)return;
+  try{
+    var r=await fetch('/admin/api/admin-wallets');
+    var d=await r.json();
+    var wallets=d.wallets||[];
+    if(wallets.length===0){
+      el.innerHTML='<div style="color:#4B5563;font-size:13px;padding:12px">No admin wallets configured</div>';
+      return;
+    }
+    var h='<table><tr><th>Address</th><th>Label</th><th>Added By</th><th>Added</th><th></th></tr>';
+    for(var i=0;i<wallets.length;i++){
+      var w=wallets[i];
+      h+='<tr><td style="font-family:monospace;font-size:12px">'+esc(w.address)+'</td>';
+      h+='<td>'+(w.label?esc(w.label):'<span style="color:#4B5563">-</span>')+'</td>';
+      h+='<td>'+esc(w.added_by)+'</td>';
+      h+='<td style="color:#9CA3AF">'+new Date(w.added_at).toLocaleDateString()+'</td>';
+      h+='<td><button onclick="removeAdminWallet(\''+esc(w.address)+'\')" style="background:none;border:1px solid #1E1E2A;border-radius:6px;color:#FF5050;padding:4px 10px;font-size:12px;cursor:pointer">Remove</button></td></tr>';
+    }
+    h+='</table>';
+    el.innerHTML=h;
+  }catch(e){
+    el.innerHTML='<div style="color:#FF5050;font-size:13px">Failed to load admin wallets</div>';
+  }
+}
+
+async function addAdminWallet(){
+  var addr=document.getElementById('aw-address').value.trim();
+  var label=document.getElementById('aw-label').value.trim();
+  if(!addr){return}
+  if(!/^0x[a-fA-F0-9]{40}$/.test(addr)){
+    document.getElementById('aw-address').style.borderColor='#FF5050';
+    return;
+  }
+  document.getElementById('aw-address').style.borderColor='#1E1E2A';
+  try{
+    var r=await fetch('/admin/api/admin-wallets',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({address:addr,label:label||null})});
+    if(!r.ok){var e=await r.json();alert(e.error||'Failed');return}
+    document.getElementById('aw-address').value='';
+    document.getElementById('aw-label').value='';
+    loadAdminWallets();
+  }catch(e){alert('Failed to add wallet')}
+}
+
+async function removeAdminWallet(addr){
+  if(!confirm('Remove admin wallet '+addr+'?'))return;
+  try{
+    var r=await fetch('/admin/api/admin-wallets/'+encodeURIComponent(addr),{method:'DELETE'});
+    if(!r.ok){var e=await r.json();alert(e.error||'Failed');return}
+    loadAdminWallets();
+  }catch(e){alert('Failed to remove wallet')}
 }
 
 function noData(id){

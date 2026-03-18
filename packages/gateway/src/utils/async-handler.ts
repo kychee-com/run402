@@ -25,11 +25,15 @@ export function asyncHandler(
  *   throw new HttpError(409, "Already exists");
  */
 export class HttpError extends Error {
+  public body?: Record<string, unknown>;
+
   constructor(
     public statusCode: number,
     message: string,
+    body?: Record<string, unknown>,
   ) {
     super(message);
     this.name = "HttpError";
+    this.body = body;
   }
 }
