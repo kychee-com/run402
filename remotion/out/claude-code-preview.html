@@ -55,7 +55,7 @@ body{background:#0f1520;height:100vh;width:100vw;overflow:hidden;font-family:'Je
 /* Allowance panel */
 .allowance-panel{background:rgba(10,17,31,0.72);border:1px solid rgba(255,255,255,0.10);border-radius:20px;padding:32px;backdrop-filter:blur(14px)}
 .allowance-bar-bg{height:14px;border-radius:999px;background:rgba(255,255,255,0.08);margin-top:20px;overflow:hidden}
-.allowance-bar{height:100%;border-radius:999px;background:linear-gradient(90deg,#59D0FF,#8DFFAA);transition:width 3s ease-out,background 0.5s}
+.allowance-bar{height:100%;border-radius:999px;background:linear-gradient(90deg,#59D0FF,#8DFFAA)}
 .allowance-bar.full{background:linear-gradient(90deg,#FFD47A,#FF5F57)}
 .blocked-badge{display:inline-block;background:rgba(255,95,87,0.15);border:1px solid rgba(255,95,87,0.5);border-radius:8px;padding:6px 18px;color:#FF5F57;font-size:20px;font-weight:900;letter-spacing:2px;font-family:'JetBrains Mono',monospace;opacity:0;transform:scale(0.5);transition:opacity 0.3s,transform 0.3s}
 .blocked-badge.show{opacity:1;transform:scale(1)}
@@ -214,9 +214,81 @@ body{background:#0f1520;height:100vh;width:100vw;overflow:hidden;font-family:'Je
 <style>
 @keyframes f1{0%,100%{transform:translate(0,0)}50%{transform:translate(20px,-25px)}}
 @keyframes f2{0%,100%{transform:translate(0,0)}50%{transform:translate(-15px,20px)}}
+
+/* Modal */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.5);display:flex;justify-content:center;align-items:center;z-index:100;opacity:0;transition:opacity 0.3s;pointer-events:none;backdrop-filter:blur(4px)}
+.modal-overlay.show{opacity:1;pointer-events:auto}
+.modal-box{background:#1b2333;border:1px solid rgba(89,208,255,0.25);border-radius:16px;padding:36px 48px;text-align:center;box-shadow:0 30px 80px rgba(0,0,0,0.5);transform:scale(0.9);transition:transform 0.3s}
+.modal-overlay.show .modal-box{transform:scale(1)}
+.modal-title{font-family:'Inter',system-ui,sans-serif;font-size:24px;font-weight:700;color:#F7FBFF;margin-bottom:12px}
+.modal-hint{font-family:'JetBrains Mono',monospace;font-size:16px;color:rgba(247,251,255,0.5)}
+.modal-key{display:inline-block;background:rgba(89,208,255,0.12);border:1px solid rgba(89,208,255,0.3);border-radius:6px;padding:4px 14px;color:#59D0FF;font-family:'JetBrains Mono',monospace;font-size:14px;margin:0 4px;font-weight:600}
+.modal-dots{display:flex;justify-content:center;gap:8px;margin-top:20px}
+.modal-dot{width:10px;height:10px;border-radius:50%;background:#2d3748;transition:background 0.3s}
+.modal-dot.active{background:#59D0FF}
+.modal-dot.done{background:#8DFFAA}
 </style>
 
+<!-- Modal -->
+<div class="modal-overlay" id="modal">
+  <div class="modal-box">
+    <div class="modal-title" id="modal-title">Ready?</div>
+    <div class="modal-hint"><span class="modal-key">&larr;</span> <span class="modal-key">&rarr;</span> navigate &nbsp;·&nbsp; <span class="modal-key">any key</span> or click to continue</div>
+    <div class="modal-dots" id="modal-dots"></div>
+  </div>
+</div>
+
 <script>
+// ?autoplay in URL = non-interactive (for video recording), otherwise interactive
+var AUTOPLAY = window.location.search.indexOf('autoplay') !== -1;
+
+var sceneNames = ['Claude Code', 'Allowance', 'Infrastructure', 'Sign-In-With-X', 'Agents Love This', 'Closing'];
+var totalDots = sceneNames.length;
+
+function buildDots(activeIdx) {
+  var dots = document.getElementById('modal-dots'); dots.innerHTML = '';
+  for (var i = 0; i < totalDots; i++) {
+    var d = document.createElement('div'); d.className = 'modal-dot';
+    if (i < activeIdx) d.classList.add('done');
+    if (i === activeIdx) d.classList.add('active');
+    dots.appendChild(d);
+  }
+}
+
+function showModal(sceneIdx, cbForward, cbBack) {
+  if (AUTOPLAY) { cbForward(); return; }
+  var modal = document.getElementById('modal');
+  document.getElementById('modal-title').textContent = sceneNames[sceneIdx] || 'Next';
+  buildDots(sceneIdx);
+  modal.classList.add('show');
+
+  function keyHandler(e) {
+    e.preventDefault();
+    cleanup();
+    if ((e.key === 'ArrowLeft' || e.key === 'Backspace') && cbBack) {
+      modal.classList.remove('show');
+      setTimeout(cbBack, 350);
+    } else {
+      modal.classList.remove('show');
+      setTimeout(cbForward, 350);
+    }
+  }
+  function clickHandler(e) {
+    e.preventDefault();
+    cleanup();
+    modal.classList.remove('show');
+    setTimeout(cbForward, 350);
+  }
+  function cleanup() {
+    document.removeEventListener('keydown', keyHandler);
+    document.removeEventListener('click', clickHandler);
+  }
+  setTimeout(function() {
+    document.addEventListener('keydown', keyHandler);
+    document.addEventListener('click', clickHandler);
+  }, 200);
+}
+
 var spinChars = ['\u28CB','\u28D9','\u28F9','\u28F8','\u28FC','\u28F4','\u28E6','\u28E7','\u28C7','\u28CF'];
 
 function typeText(el, text, speed, cb) {
@@ -263,15 +335,16 @@ function buildScene1() {
     var bar = document.getElementById('allow-bar');
     var spent = document.getElementById('allow-spent');
     var rem = document.getElementById('allow-remaining');
-    bar.style.width = '100%';
     var v = 0;
     var iv = setInterval(function() {
-      v += 0.33; if (v > 20) v = 20;
+      v += 1.0; if (v > 20) v = 20;
+      var pct = (v / 20) * 100;
+      bar.style.width = pct + '%';
+      if (pct > 85) bar.style.background = 'linear-gradient(90deg,#FFD47A,#FF5F57)';
       spent.textContent = 'spent: $' + v.toFixed(2);
       rem.textContent = 'remaining: $' + (20 - v).toFixed(2);
       if (v >= 20) {
         clearInterval(iv);
-        bar.classList.add('full');
         spent.style.color = '#FF5F57';
         rem.textContent = '';
         var badge = document.createElement('span'); badge.className = 'blocked-badge'; badge.textContent = 'BLOCKED';
@@ -352,80 +425,154 @@ function buildScene5() {
 // === MAIN SEQUENCE ===
 var sceneDurations = [0, 6000, 6000, 6000, 6000, 8000]; // ms per feature scene
 
-setTimeout(function() {
-  // User types first message
-  typeText(document.getElementById('t1'), 'Make me a video to demo run402 for Coinbase', 80, function() {
-    document.getElementById('c1').classList.add('blink');
-    setTimeout(function() {
-      document.getElementById('c1').style.display = 'none';
-      document.getElementById('d1').style.display = '';
-      // Claude thinks
-      showSpinner('thinking', 800, function() {
-        document.getElementById('msg2').style.display = '';
-        typeText(document.getElementById('t2'), 'Would you like me to host the video ON TOP of run402.com?', 35, function() {
-          setTimeout(function() {
-            document.getElementById('d2').style.display = '';
-            document.getElementById('msg3').style.display = '';
-            // User replies
-            typeText(document.getElementById('t3'), 'Cool idea - yes please!', 80, function() {
-              document.getElementById('c3').classList.add('blink');
-              setTimeout(function() {
-                document.getElementById('c3').style.display = 'none';
-                document.getElementById('d3').style.display = '';
-                // Claude works
-                showSpinner('thinking2', 600, function() {
-                  showToolLines([
-                    'Subscribe to <span class="fname">prototype tier</span> via x402',
-                    'Provision project <span class="fname">coinbase-demo</span>',
-                    'Render video with <span class="fname">Remotion</span>',
-                    'Deploy site to <span class="fname">coinbase.run402.com</span>',
-                    'Claim subdomain <span style="color:#8DFFAA">coinbase</span>.run402.com',
-                  ], function() {
-                    // Transition to feature scenes
-                    setTimeout(function() { startFeatureScenes(); }, 1000);
+// Show initial modal before Claude Code scene
+showModal(0, function() {
+  setTimeout(function() {
+    // User types first message
+    typeText(document.getElementById('t1'), 'Make me a video to demo run402 for Coinbase', 80, function() {
+      document.getElementById('c1').classList.add('blink');
+      setTimeout(function() {
+        document.getElementById('c1').style.display = 'none';
+        document.getElementById('d1').style.display = '';
+        // Claude thinks
+        showSpinner('thinking', 800, function() {
+          document.getElementById('msg2').style.display = '';
+          typeText(document.getElementById('t2'), 'Would you like me to host the video ON TOP of run402.com?', 35, function() {
+            setTimeout(function() {
+              document.getElementById('d2').style.display = '';
+              document.getElementById('msg3').style.display = '';
+              // User replies
+              typeText(document.getElementById('t3'), 'Cool idea - yes please!', 80, function() {
+                document.getElementById('c3').classList.add('blink');
+                setTimeout(function() {
+                  document.getElementById('c3').style.display = 'none';
+                  document.getElementById('d3').style.display = '';
+                  // Claude works
+                  showSpinner('thinking2', 600, function() {
+                    showToolLines([
+                      'Subscribe to <span class="fname">prototype tier</span> via x402',
+                      'Provision project <span class="fname">coinbase-demo</span>',
+                      'Deploy site to <span class="fname">coinbase.run402.com</span>',
+                      'Claim subdomain <span style="color:#8DFFAA">coinbase</span>.run402.com',
+                    ], function() {
+                      // Transition to feature scenes
+                      setTimeout(function() { startFeatureScenes(); }, 1000);
+                    });
                   });
-                });
-              }, 600);
-            });
-          }, 800);
+                }, 600);
+              });
+            }, 800);
+          });
         });
-      });
-    }, 600);
-  });
-}, 800);
+      }, 600);
+    });
+  }, 400);
+});
+
+// === GLOBAL ARROW KEY NAVIGATION ===
+var currentFeatureScene = 0;
+var featureScenesStarted = false;
+
+function jumpToScene(idx) {
+  if (idx < 0 || idx > 5) return;
+  if (idx === 0) {
+    // Go back to Claude Code terminal
+    document.getElementById('modal').classList.remove('show');
+    for (var j = 1; j <= 5; j++) document.getElementById('scene' + j).classList.remove('active');
+    document.getElementById('scene0').style.opacity = '1';
+    currentFeatureScene = 0;
+    return;
+  }
+  // Kill modal
+  document.getElementById('modal').classList.remove('show');
+  // Hide everything
+  document.getElementById('scene0').style.opacity = '0';
+  for (var i = 1; i <= 5; i++) document.getElementById('scene' + i).classList.remove('active');
+  // Reset + show target
+  currentFeatureScene = idx;
+  resetSceneContent(idx);
+  document.getElementById('scene' + idx).classList.add('active');
+  if (globalSceneBuilders[idx]) globalSceneBuilders[idx]();
+}
+
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'ArrowRight') {
+    e.preventDefault(); e.stopImmediatePropagation();
+    if (!featureScenesStarted) { skipToFeatures(); return; }
+    jumpToScene(currentFeatureScene + 1);
+  }
+  if (e.key === 'ArrowLeft') {
+    e.preventDefault(); e.stopImmediatePropagation();
+    if (!featureScenesStarted) return;
+    jumpToScene(currentFeatureScene - 1);
+  }
+}, true); // capture phase — fires BEFORE modal handlers
+
+var globalSceneBuilders = {};
+
+function skipToFeatures() {
+  // Skip the Claude Code terminal animation and go straight to features
+  featureScenesStarted = true;
+  document.getElementById('scene0').style.opacity = '0';
+  globalSceneBuilders = {1: buildScene1, 2: buildScene2, 3: buildScene3, 4: buildScene4, 5: buildScene5};
+  setTimeout(function() { jumpToScene(1); }, 300);
+}
+
+function resetSceneContent(idx) {
+  var containers = {
+    1: ['allow-bar','allow-spent','allow-remaining','allow-blocked'],
+    2: ['infra-chips','res-grid'],
+    3: ['siwx-chips','siwx-flow','siwx-actions'],
+    4: ['test-grid'],
+    5: ['close-chips']
+  };
+  if (containers[idx]) {
+    containers[idx].forEach(function(id) {
+      var el = document.getElementById(id);
+      if (el) {
+        if (id === 'allow-bar') { el.style.width = '0%'; el.style.background = ''; }
+        else if (id === 'allow-spent') { el.textContent = 'spent: $0.00'; el.style.color = ''; }
+        else if (id === 'allow-remaining') { el.textContent = 'remaining: $20.00'; }
+        else { el.innerHTML = ''; }
+      }
+    });
+  }
+}
 
 function startFeatureScenes() {
   var sceneBuilders = [null, buildScene1, buildScene2, buildScene3, buildScene4, buildScene5];
-  var currentScene = 0;
   var totalScenes = 5;
 
-  function nextScene() {
-    currentScene++;
-    if (currentScene > totalScenes) {
-      // Loop back to scene 1
-      currentScene = 1;
-      // Reset scenes
-      for (var i = 1; i <= totalScenes; i++) document.getElementById('scene' + i).classList.remove('active');
-    }
+  function showScene(idx) {
+    currentFeatureScene = idx;
+    // Hide all feature scenes
+    for (var i = 1; i <= totalScenes; i++) document.getElementById('scene' + i).classList.remove('active');
+    document.getElementById('scene0').style.opacity = '0';
 
-    var prevId = currentScene === 1 ? 'scene0' : 'scene' + (currentScene - 1);
-    if (currentScene === 1) document.getElementById('scene0').style.opacity = '0';
-    else document.getElementById(prevId).classList.remove('active');
-
+    // Reset and build
+    resetSceneContent(idx);
     setTimeout(function() {
-      document.getElementById('scene' + currentScene).classList.add('active');
-      sceneBuilders[currentScene]();
-      setTimeout(nextScene, sceneDurations[currentScene]);
+      document.getElementById('scene' + idx).classList.add('active');
+      sceneBuilders[idx]();
+
+      if (AUTOPLAY) {
+        if (idx < totalScenes) setTimeout(function() { showScene(idx + 1); }, sceneDurations[idx]);
+      } else {
+        setTimeout(function() {
+          if (idx < totalScenes) {
+            showModal(idx + 1, function() { showScene(idx + 1); }, function() { showScene(idx > 1 ? idx - 1 : idx); });
+          }
+        }, sceneDurations[idx]);
+      }
     }, 400);
   }
 
-  // Start first feature scene
-  document.getElementById('scene0').style.opacity = '0';
-  setTimeout(function() {
-    document.getElementById('scene1').classList.add('active');
-    buildScene1();
-    setTimeout(nextScene, sceneDurations[1]);
-  }, 600);
+  // Register builders globally for arrow nav
+  globalSceneBuilders = sceneBuilders;
+  featureScenesStarted = true;
+
+  // Show modal before first feature scene
+  showModal(1, function() { showScene(1); }, null);
 }
 </script>
 </body>
