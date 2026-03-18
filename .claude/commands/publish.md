@@ -35,6 +35,7 @@ Stage all three files and commit: `git add package.json cli/package.json package
 1. `git push` to push the version bump commit.
 2. Create a git tag: `git tag v<new_version> && git push --tags`
 3. Create a GitHub release from the tag using `gh release create v<new_version> --generate-notes`. This auto-generates release notes from commits since the last release.
-4. Print a summary of what was published, including the new version and npm URLs:
+4. **Update `llms-cli.txt` in the run402 repo.** The CLI documentation lives in a separate repo at `~/dev/run402/site/llms-cli.txt`. If any CLI commands, manifest fields, or user-facing behavior changed since the last release, update that file to match, then commit and push the run402 repo.
+5. Print a summary of what was published, including the new version and npm URLs:
    - https://www.npmjs.com/package/run402-mcp
    - https://www.npmjs.com/package/run402
