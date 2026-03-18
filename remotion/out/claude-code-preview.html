@@ -188,7 +188,7 @@ body{background:#0f1520;height:100vh;width:100vw;overflow:hidden;font-family:'Je
   <div class="scene-orb" style="left:15%;top:25%;width:260px;height:260px;background:rgba(141,255,170,0.12);animation:f1 7s ease-in-out infinite"></div>
   <div class="scene-grid"></div>
   <div class="scene-content">
-    <div class="scene-h1" style="margin-bottom:12px">Agents love this.</div>
+    <div class="scene-h1" style="margin-bottom:12px">Agents &#x2764;&#xFE0F; Run402</div>
     <div style="font-size:28px;color:rgba(247,251,255,0.6);margin-bottom:40px">Real agents. Real feedback.</div>
     <div class="test-grid" id="test-grid"></div>
   </div>
@@ -206,11 +206,11 @@ body{background:#0f1520;height:100vh;width:100vw;overflow:hidden;font-family:'Je
     <div style="margin-top:22px;font-size:30px;color:rgba(247,251,255,0.65)">Set the allowance once. The rest is autonomous.</div>
     <div style="margin-top:34px;font-size:54px;font-weight:900;color:#59D0FF;letter-spacing:-1.4px">Run402</div>
     <div style="margin-top:8px;font-size:28px;color:#F7FBFF">Autonomous backend for the agent economy</div>
-    <div style="margin-top:22px;font-size:20px;color:rgba(247,251,255,0.6)">Built on x402: SIGN-IN-WITH-X (CAIP-122), broader ERC-20 token rails, and MCP-native tooling.</div>
   </div>
 </div>
 
 <style>
+@keyframes pulse-play{0%,100%{transform:scale(1);box-shadow:0 0 0 0 rgba(255,255,255,0.3)}50%{transform:scale(1.08);box-shadow:0 0 0 16px rgba(255,255,255,0)}}
 @keyframes f1{0%,100%{transform:translate(0,0)}50%{transform:translate(20px,-25px)}}
 @keyframes f2{0%,100%{transform:translate(0,0)}50%{transform:translate(-15px,20px)}}
 
@@ -228,10 +228,22 @@ body{background:#0f1520;height:100vh;width:100vw;overflow:hidden;font-family:'Je
 .modal-dot.done{background:#8DFFAA}
 </style>
 
+<!-- Start splash -->
+<div class="modal-overlay show" id="splash" style="background:none;cursor:pointer">
+  <div style="position:absolute;inset:0;background:url(splash.jpg) center/cover no-repeat"></div>
+  <div style="position:absolute;inset:0;background:rgba(0,0,0,0.35)"></div>
+  <div style="position:relative;display:flex;align-items:center;gap:20px;cursor:pointer">
+    <div style="width:80px;height:80px;border-radius:50%;background:rgba(255,255,255,0.15);border:2px solid rgba(255,255,255,0.5);display:flex;align-items:center;justify-content:center;backdrop-filter:blur(8px);animation:pulse-play 2s ease-in-out infinite">
+      <svg width="32" height="36" viewBox="0 0 32 36" fill="none"><path d="M30 18L2 34V2L30 18Z" fill="white"/></svg>
+    </div>
+    <span style="font-family:Inter,system-ui,sans-serif;font-size:36px;font-weight:800;color:white;text-shadow:0 2px 20px rgba(0,0,0,0.5)">Play</span>
+  </div>
+</div>
+
 <!-- Modal -->
 <div class="modal-overlay" id="modal">
   <div class="modal-box">
-    <div class="modal-hint"><span class="modal-key">&larr;</span> <span class="modal-key">&rarr;</span> navigate &nbsp;·&nbsp; <span class="modal-key">any key</span> or click to continue</div>
+    <div class="modal-hint"><span class="modal-key">any key</span> or click to continue<br><span style="display:inline-block;margin-top:10px"><span class="modal-key">&larr;</span> <span class="modal-key">&rarr;</span> navigate</span></div>
     <div class="modal-dots" id="modal-dots"></div>
   </div>
 </div>
@@ -307,17 +319,18 @@ var spinChars = ['\u28CB','\u28D9','\u28F9','\u28F8','\u28FC','\u28F4','\u28E6',
 // Keyboard click sound via Web Audio API
 var audioCtx = null;
 // Init audio on first user interaction (Chrome requires gesture)
-// Create AudioContext immediately, resume on first interaction
-try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch(e) {}
-function resumeAudio() {
+// Don't create AudioContext until first user gesture (Chrome policy)
+function ensureAudio() {
+  if (!audioCtx) {
+    try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch(e) {}
+  }
   if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
 }
-document.addEventListener('click', resumeAudio);
-document.addEventListener('keydown', resumeAudio);
+document.addEventListener('click', ensureAudio);
+document.addEventListener('keydown', ensureAudio);
 
 function keyClick() {
-  if (AUTOPLAY) return;
-  if (!audioCtx) return;
+  if (AUTOPLAY || !audioCtx || audioCtx.state !== 'running') return;
   var t = audioCtx.currentTime;
   // Short noise burst — sounds like a mechanical key
   var bufSize = Math.floor(audioCtx.sampleRate * 0.025);
@@ -491,10 +504,14 @@ function buildScene5() {
 }
 
 // === MAIN SEQUENCE ===
-var sceneDurations = [0, 6000, 6000, 6000, 6000, 8000]; // ms per feature scene
+var sceneDurations = [0, 5000, 5000, 5000, 6000, 8000]; // ms per feature scene
 
-// Start Claude Code scene automatically
-(function() {
+// Wait for splash click to start (gives us user gesture for audio)
+function startDemo() {
+  var splash = document.getElementById('splash');
+  splash.classList.remove('show');
+  splash.style.display = 'none';
+  ensureAudio();
   setTimeout(function() {
     // User types first message (with keyboard sound)
     typeTextSound(document.getElementById('t1'), 'Make me a video to demo run402 for Coinbase', 80, function() {
@@ -504,7 +521,7 @@ var sceneDurations = [0, 6000, 6000, 6000, 6000, 8000]; // ms per feature scene
         document.getElementById('d1').style.display = '';
         showSpinner('thinking', 800, function() {
           document.getElementById('msg2').style.display = '';
-          typeText(document.getElementById('t2'), 'Would you like me to host the video ON TOP of run402.com?', 35, function() {
+          document.getElementById('t2').textContent = 'Would you like me to host the video ON TOP of run402.com?';
             setTimeout(function() {
               document.getElementById('d2').style.display = '';
               document.getElementById('msg3').style.display = '';
@@ -528,12 +545,26 @@ var sceneDurations = [0, 6000, 6000, 6000, 6000, 8000]; // ms per feature scene
                 }, 600);
               });
             }, 800);
-          });
         });
       }, 600);
     });
   }, 400);
-})();
+}
+
+// Splash handlers
+if (AUTOPLAY) {
+  // Show splash for 1.5s then auto-start
+  setTimeout(startDemo, 1500);
+} else {
+  document.getElementById('splash').addEventListener('click', startDemo);
+  document.addEventListener('keydown', function splashKey(e) {
+    if (document.getElementById('splash').style.display !== 'none') {
+      e.preventDefault();
+      document.removeEventListener('keydown', splashKey);
+      startDemo();
+    }
+  });
+}
 
 // === GLOBAL ARROW KEY NAVIGATION ===
 var currentFeatureScene = 0;
