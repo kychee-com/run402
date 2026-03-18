@@ -110,6 +110,7 @@ Create a manifest file `app.json` (use the `project_id` from provision):
 {
   "project_id": "prj_1741340000_42",
   "migrations": "CREATE TABLE items (id serial PRIMARY KEY, title text NOT NULL, done boolean DEFAULT false); INSERT INTO items (title) VALUES ('Buy groceries'), ('Read a book');",
+  "migrations_file": "setup.sql",
   "rls": {
     "template": "public_read_write",
     "tables": [{ "table": "items" }]
@@ -128,7 +129,15 @@ Create a manifest file `app.json` (use the `project_id` from provision):
 }
 ```
 
-`project_id` is required (from `run402 projects provision`). All other fields are optional. RLS templates:
+`project_id` is required (from `run402 projects provision`). All other fields are optional.
+
+**Migrations** can be inline or read from a file:
+- `"migrations": "CREATE TABLE ..."` — inline SQL string
+- `"migrations_file": "setup.sql"` — read SQL from a file on disk (path relative to manifest)
+
+Use `migrations_file` when your SQL contains JSONB literals or other characters that are painful to escape inside a JSON string. If both are present, `migrations_file` wins.
+
+RLS templates:
 - `user_owns_rows` — users see only their rows (requires `owner_column` per table)
 - `public_read` — anyone reads, authenticated users write
 - `public_read_write` — anyone reads and writes
