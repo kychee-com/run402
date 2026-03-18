@@ -11,6 +11,7 @@ Subcommands:
   use   <id>                              Set the active project (used as default for other commands)
   list                                    List all your projects (IDs, URLs, active marker)
   info  <id>                              Show project details: REST URL, keys
+  keys  <id>                              Print anon_key and service_key as JSON
   sql   <id> "<query>"                    Run a SQL query against a project's Postgres DB
   rest  <id> <table> [params]             Query a table via the REST API (PostgREST)
   usage <id>                              Show compute/storage usage for a project
@@ -108,6 +109,11 @@ async function info(projectId) {
   }, null, 2));
 }
 
+async function keys(projectId) {
+  const p = findProject(projectId);
+  console.log(JSON.stringify({ project_id: projectId, anon_key: p.anon_key, service_key: p.service_key }, null, 2));
+}
+
 async function sqlCmd(projectId, query) {
   const p = findProject(projectId);
   const res = await fetch(`${API}/projects/v1/admin/${projectId}/sql`, { method: "POST", headers: { "Authorization": `Bearer ${p.service_key}`, "Content-Type": "text/plain" }, body: query });
@@ -185,6 +191,7 @@ export async function run(sub, args) {
     case "use":       await use(args[0]); break;
     case "list":      await list(); break;
     case "info":      await info(args[0]); break;
+    case "keys":      await keys(args[0]); break;
     case "sql":       await sqlCmd(args[0], args[1]); break;
     case "rest":      await rest(args[0], args[1], args[2]); break;
     case "usage":     await usage(args[0]); break;
