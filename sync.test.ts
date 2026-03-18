@@ -213,6 +213,9 @@ const SURFACE: Capability[] = [
   { id: "delete_version",    endpoint: "DELETE /projects/v1/admin/:id/versions/:version_id", mcp: "delete_version", cli: "apps:delete", openclaw: "apps:delete" },
   { id: "get_app",           endpoint: "GET /apps/v1/:version_id",          mcp: "get_app",             cli: "apps:inspect",     openclaw: "apps:inspect" },
 
+  // ── Admin ──────────────────────────────────────────────────────────────
+  { id: "pin_project",     endpoint: "POST /projects/v1/admin/:id/pin",    mcp: "pin_project",      cli: "projects:pin",     openclaw: "projects:pin" },
+
   // ── Tier management ────────────────────────────────────────────────────
   { id: "tier_status",       endpoint: "GET /tiers/v1/status",             mcp: "tier_status",      cli: "tier:status",      openclaw: "tier:status" },
 

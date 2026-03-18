@@ -1,5 +1,7 @@
 import { readFileSync } from "fs";
+import { dirname, resolve } from "path";
 import { API, allowanceAuthHeaders, resolveProjectId, updateProject } from "./config.mjs";
+import { resolveFilePathsInManifest } from "./manifest.mjs";
 
 const HELP = `run402 sites — Deploy and manage static sites
 
@@ -22,9 +24,15 @@ Manifest format (JSON):
   {
     "files": [
       { "file": "index.html", "data": "<html>...</html>" },
-      { "file": "style.css", "data": "body { margin: 0; }" }
+      { "file": "style.css", "path": "./dist/style.css" }
     ]
   }
+
+  Files can use either inline "data" or a local "path":
+    { "file": "index.html", "data": "<html>...</html>" }   ← inline content
+    { "file": "style.css",  "path": "./dist/style.css" }   ← read from disk
+  Paths are resolved relative to the manifest file's directory.
+  Binary files (images, fonts, etc.) are auto-detected and base64-encoded.
 
 Examples:
   run402 sites deploy --manifest site.json
@@ -51,7 +59,9 @@ async function deploy(args) {
     if (args[i] === "--target" && args[i + 1]) opts.target = args[++i];
   }
   const projectId = resolveProjectId(opts.project);
-  const manifest = opts.manifest ? JSON.parse(readFileSync(opts.manifest, "utf-8")) : JSON.parse(await readStdin());
+  const raw = opts.manifest ? readFileSync(opts.manifest, "utf-8") : await readStdin();
+  const manifest = JSON.parse(raw);
+  if (opts.manifest) resolveFilePathsInManifest(manifest, dirname(resolve(opts.manifest)));
   const body = { files: manifest.files, project: projectId };
   if (opts.target) body.target = opts.target;
 

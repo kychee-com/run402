@@ -1,5 +1,7 @@
 import { readFileSync } from "fs";
+import { dirname, resolve } from "path";
 import { API, allowanceAuthHeaders, findProject } from "./config.mjs";
+import { resolveFilePathsInManifest } from "./manifest.mjs";
 
 const HELP = `run402 deploy — Deploy to an existing project on Run402
 
@@ -25,12 +27,21 @@ Manifest format (JSON):
       "name": "my-fn",
       "code": "export default async (req) => new Response('ok')"
     }],
-    "files": [{ "file": "index.html", "data": "<html>...</html>" }],
+    "files": [
+      { "file": "index.html", "data": "<html>...</html>" },
+      { "file": "style.css", "path": "./dist/style.css" }
+    ],
     "subdomain": "my-app"
   }
 
   project_id is required (provision first with 'run402 provision').
   All other fields are optional.
+
+  Files can use either inline "data" or a local "path":
+    { "file": "index.html", "data": "<html>...</html>" }   ← inline content
+    { "file": "style.css",  "path": "./dist/style.css" }   ← read from disk
+  Paths are resolved relative to the manifest file's directory.
+  Binary files (images, fonts, etc.) are auto-detected and base64-encoded.
 
   RLS templates:
     user_owns_rows   — users see only their rows (requires owner_column per table)
@@ -70,7 +81,9 @@ export async function run(args) {
     if (args[i] === "--project" && args[i + 1]) opts.project = args[++i];
   }
 
-  const manifest = opts.manifest ? JSON.parse(readFileSync(opts.manifest, "utf-8")) : JSON.parse(await readStdin());
+  const raw = opts.manifest ? readFileSync(opts.manifest, "utf-8") : await readStdin();
+  const manifest = JSON.parse(raw);
+  if (opts.manifest) resolveFilePathsInManifest(manifest, dirname(resolve(opts.manifest)));
 
   // --project flag overrides manifest's project_id
   if (opts.project) manifest.project_id = opts.project;

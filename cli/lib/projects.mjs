@@ -16,7 +16,8 @@ Subcommands:
   usage <id>                              Show compute/storage usage for a project
   schema <id>                             Inspect the database schema
   rls   <id> <template> <tables_json>     Apply Row-Level Security policies
-  delete <id>                             Delete a project and remove it from local state
+  delete <id>                             Delete a project and remove it from local state${process.env.RUN402_ADMIN ? `
+  pin   <id>                              [admin] Pin a project (prevents expiry/GC)` : ""}
 
 Examples:
   run402 projects quote
@@ -142,6 +143,25 @@ async function use(projectId) {
   console.log(JSON.stringify({ status: "ok", active_project_id: projectId }));
 }
 
+async function pin(projectId) {
+  if (!projectId) { console.error(JSON.stringify({ status: "error", message: "Usage: run402 projects pin <project_id>" })); process.exit(1); }
+  const authHeaders = allowanceAuthHeaders(`/projects/v1/admin/${projectId}/pin`);
+  const res = await fetch(`${API}/projects/v1/admin/${projectId}/pin`, {
+    method: "POST",
+    headers: { ...authHeaders },
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    if (res.status === 403 && data.admin_required) {
+      console.error(JSON.stringify({ status: "error", message: "This command requires admin access." }));
+    } else {
+      console.error(JSON.stringify({ status: "error", http: res.status, ...data }));
+    }
+    process.exit(1);
+  }
+  console.log(JSON.stringify(data, null, 2));
+}
+
 async function deleteProject(projectId) {
   const p = findProject(projectId);
   const res = await fetch(`${API}/projects/v1/${projectId}`, { method: "DELETE", headers: { "Authorization": `Bearer ${p.service_key}` } });
@@ -171,6 +191,7 @@ export async function run(sub, args) {
     case "schema":    await schema(args[0]); break;
     case "rls":       await rls(args[0], args[1], args[2]); break;
     case "delete":    await deleteProject(args[0]); break;
+    case "pin":       await pin(args[0]); break;
     default:
       console.error(`Unknown subcommand: ${sub}\n`);
       console.log(HELP);

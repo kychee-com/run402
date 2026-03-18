@@ -43,6 +43,7 @@ import { deleteSecretSchema, handleDeleteSecret } from "./tools/delete-secret.js
 // New tools — subdomains & projects
 import { listSubdomainsSchema, handleListSubdomains } from "./tools/list-subdomains.js";
 import { archiveProjectSchema, handleArchiveProject } from "./tools/archive-project.js";
+import { pinProjectSchema, handlePinProject } from "./tools/pin-project.js";
 
 // New tools — billing
 import { checkBalanceSchema, handleCheckBalance } from "./tools/check-balance.js";
@@ -300,6 +301,15 @@ server.tool(
   "Archive a project and remove it from the local key store. This action cannot be undone.",
   archiveProjectSchema,
   async (args) => handleArchiveProject(args),
+);
+
+// ─── Admin tools ─────────────────────────────────────────────────────────────
+
+server.tool(
+  "pin_project",
+  "Pin a project so it is not garbage-collected or expired. Requires admin access.",
+  pinProjectSchema,
+  async (args) => handlePinProject(args),
 );
 
 // ─── Billing & allowance tools ───────────────────────────────────────────────

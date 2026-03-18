@@ -63,9 +63,13 @@ export function formatApiError(
       );
       break;
     case 403:
-      lines.push(
-        `\nNext step: The project lease may have expired. Use \`get_usage\` to check status, or \`set_tier\` to renew the lease.`,
-      );
+      if (body && body.admin_required) {
+        lines.push(`\nThis command requires admin access.`);
+      } else {
+        lines.push(
+          `\nNext step: The project lease may have expired. Use \`get_usage\` to check status, or \`set_tier\` to renew the lease.`,
+        );
+      }
       break;
     case 404:
       lines.push(

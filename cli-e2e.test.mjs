@@ -516,6 +516,28 @@ describe("CLI e2e happy path", () => {
     assert.ok(captured().includes("prj_test123"), "should return project info");
   });
 
+  it("deploy with path fields in manifest", async () => {
+    const { run } = await import("./cli/lib/deploy.mjs");
+    const { writeFileSync: wf, mkdirSync } = await import("node:fs");
+    // Create a dist/ subdirectory with files
+    const distDir = join(tempDir, "dist");
+    mkdirSync(distDir, { recursive: true });
+    wf(join(distDir, "index.html"), "<h1>Built</h1>");
+    wf(join(distDir, "logo.png"), Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+    // Manifest uses path fields resolved relative to manifest location
+    const manifestPath = join(tempDir, "path-manifest.json");
+    wf(manifestPath, JSON.stringify({
+      files: [
+        { file: "index.html", path: "dist/index.html" },
+        { file: "logo.png", path: "dist/logo.png" },
+      ],
+    }));
+    captureStart();
+    await run(["--manifest", manifestPath, "--project", "prj_test123"]);
+    captureStop();
+    assert.ok(captured().includes("prj_test123"), "should deploy with resolved paths");
+  });
+
   // ── Functions ───────────────────────────────────────────────────────────
 
   it("functions deploy", async () => {
