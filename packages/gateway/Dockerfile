@@ -34,8 +34,9 @@ RUN npm install --workspaces --omit=dev
 COPY --from=builder /app/packages/shared/dist packages/shared/dist/
 COPY --from=builder /app/packages/gateway/dist packages/gateway/dist/
 
-# Copy init.sql for Lambda custom resource
+# Copy non-TS assets that tsc doesn't emit
 COPY packages/gateway/src/db/init.sql packages/gateway/dist/db/init.sql
+COPY packages/gateway/src/public packages/gateway/dist/public/
 
 ENV NODE_ENV=production
 ENV PORT=4022
