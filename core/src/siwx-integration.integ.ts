@@ -6,7 +6,7 @@
  *   2. The EIP-191 signature is valid and recoverable
  *   3. The payload JSON matches the server's expected schema
  *      (chainId as CAIP-2, type "eip191", statement present)
- *   4. The server accepts the SIGN-IN-WITH-X header (HTTP 200, not 401)
+ *   4. The server accepts the SIGN-IN-WITH-X header (HTTP 200, not 402)
  *
  * Uses GET /tiers/v1/status — a read-only, free, idempotent endpoint.
  * A fresh random keypair is generated per run (no secrets needed).
@@ -100,7 +100,7 @@ describe("SIWX auth integration (live API)", () => {
       headers: { "SIGN-IN-WITH-X": Buffer.from("{}").toString("base64") },
     });
 
-    assert.equal(res.status, 401, "server should reject empty/invalid SIWX payload");
+    assert.equal(res.status, 402, "server should reject empty/invalid SIWX payload (402 per x402 spec)");
   });
 
   it("server rejects a tampered signature", async () => {
@@ -120,7 +120,7 @@ describe("SIWX auth integration (live API)", () => {
       headers: { "SIGN-IN-WITH-X": tampered },
     });
 
-    assert.equal(res.status, 401, "server should reject tampered signature");
+    assert.equal(res.status, 402, "server should reject tampered signature (402 per x402 spec)");
   });
 
   it("server rejects missing required fields", async () => {
@@ -139,7 +139,7 @@ describe("SIWX auth integration (live API)", () => {
       headers: { "SIGN-IN-WITH-X": modified },
     });
 
-    assert.equal(res.status, 401, "server should reject payload missing statement");
+    assert.equal(res.status, 402, "server should reject payload missing statement (402 per x402 spec)");
   });
 
   it("server rejects numeric chainId (must be CAIP-2)", async () => {
@@ -158,6 +158,6 @@ describe("SIWX auth integration (live API)", () => {
       headers: { "SIGN-IN-WITH-X": modified },
     });
 
-    assert.equal(res.status, 401, "server should reject numeric chainId");
+    assert.equal(res.status, 402, "server should reject numeric chainId (402 per x402 spec)");
   });
 });
