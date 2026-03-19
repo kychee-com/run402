@@ -247,7 +247,7 @@ console.log('Generating typing sounds via Web Audio...');
 
   const wavBuf = Buffer.from(wavBase64, 'base64');
   const { writeFileSync: wf } = await import('fs');
-  wf('/tmp/typing-clicks.wav', wavBuf);
+  wf(join(__dirname, 'out', 'audio', 'typing-clicks.wav'), wavBuf);
   console.log(`Typing sounds generated: ${(wavBuf.length / 1024).toFixed(0)}KB`);
 }
 
@@ -268,12 +268,12 @@ execSync(
 // 38s   - 46s:   Closing (slide6 audio)
 
 const audioTracks = [
-  { file: '/tmp/typing-clicks.wav', start: 0 },
-  { file: '/tmp/slide2-voice-short.mp3', start: 14.4 },
-  { file: '/tmp/slide3-voice.mp3', start: 19.9 },
-  { file: '/tmp/slide4-voice.mp3', start: 25.3 },
-  { file: '/tmp/slide5-voice.mp3', start: 30.8 },
-  { file: '/tmp/slide6-voice.mp3', start: 37.2 },
+  { file: join(__dirname, 'out', 'audio', 'typing-clicks.wav'), start: 0 },
+  { file: join(__dirname, 'out', 'audio', 'slide2-voice-short.mp3'), start: 14.4 },
+  { file: join(__dirname, 'out', 'audio', 'slide3-voice.mp3'), start: 19.9 },
+  { file: join(__dirname, 'out', 'audio', 'slide4-voice.mp3'), start: 25.3 },
+  { file: join(__dirname, 'out', 'audio', 'slide5-voice.mp3'), start: 30.8 },
+  { file: join(__dirname, 'out', 'audio', 'slide6-voice.mp3'), start: 37.2 },
 ];
 
 // Check which audio files exist

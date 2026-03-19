@@ -10,3 +10,6 @@ cdk.context.json
 *.zip
 tmp/
 test-results/
+remotion/out/*
+!remotion/out/claude-code-preview.html
+!remotion/out/script.md
