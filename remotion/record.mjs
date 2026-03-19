@@ -118,6 +118,19 @@ await page.goto(`http://localhost:8402/claude-code-preview.html?autoplay`, {
 // Small real delay for fonts
 await new Promise(r => setTimeout(r, 2000));
 
+// Inject scene timing logger
+await page.evaluate(() => {
+  window.__sceneTimings = {};
+  const origBuilders = ['buildScene1','buildScene2','buildScene3','buildScene4','buildScene5'];
+  origBuilders.forEach(name => {
+    const orig = window[name];
+    window[name] = function() {
+      window.__sceneTimings[name] = window.__getVirtualTime();
+      return orig.apply(this, arguments);
+    };
+  });
+});
+
 console.log('Starting frame capture...');
 
 for (let i = 0; i < totalFrames; i++) {
@@ -140,6 +153,13 @@ for (let i = 0; i < totalFrames; i++) {
     const sec = (i / FPS).toFixed(0);
     console.log(`  ${sec}s / ${DURATION_S}s (frame ${i}/${totalFrames})`);
   }
+}
+
+// Get actual scene timings
+const timings = await page.evaluate(() => window.__sceneTimings);
+console.log('\nActual scene timings (ms):');
+for (const [name, ms] of Object.entries(timings)) {
+  console.log(`  ${name}: ${ms}ms (${(ms/1000).toFixed(2)}s)`);
 }
 
 await browser.close();
@@ -249,11 +269,11 @@ execSync(
 
 const audioTracks = [
   { file: '/tmp/typing-clicks.wav', start: 0 },
-  { file: '/tmp/slide2-voice-short.mp3', start: 17 },
-  { file: '/tmp/slide3-voice.mp3', start: 22 },
-  { file: '/tmp/slide4-voice.mp3', start: 27 },
-  { file: '/tmp/slide5-voice.mp3', start: 32 },
-  { file: '/tmp/slide6-voice.mp3', start: 38 },
+  { file: '/tmp/slide2-voice-short.mp3', start: 14.4 },
+  { file: '/tmp/slide3-voice.mp3', start: 19.9 },
+  { file: '/tmp/slide4-voice.mp3', start: 25.3 },
+  { file: '/tmp/slide5-voice.mp3', start: 30.8 },
+  { file: '/tmp/slide6-voice.mp3', start: 37.2 },
 ];
 
 // Check which audio files exist

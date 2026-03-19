@@ -44,18 +44,18 @@ body{background:#0f1520;height:100vh;width:100vw;overflow:hidden;font-family:'Je
 
 .chip{display:inline-block;padding:10px 18px;border-radius:999px;font-size:18px;font-weight:700;font-family:'JetBrains Mono',monospace;letter-spacing:0.2px;opacity:0;transition:opacity 0.4s}
 .chip-blue{background:rgba(89,208,255,0.12);border:1px solid rgba(89,208,255,0.35);color:#59D0FF}
-.chip-green{background:rgba(141,255,170,0.12);border:1px solid rgba(141,255,170,0.35);color:#8DFFAA}
+.chip-green{background:rgba(0,255,159,0.12);border:1px solid rgba(0,255,159,0.35);color:#00FF9F}
 .chip-purple{background:rgba(182,156,255,0.12);border:1px solid rgba(182,156,255,0.35);color:#B69CFF}
 
 .scene-h1{font-size:clamp(42px,5.5vw,72px);font-weight:900;line-height:0.98;letter-spacing:-3px;color:#F7FBFF}
-.scene-h1 .green{color:#8DFFAA}
+.scene-h1 .green{color:#00FF9F}
 .scene-h1 .blue{color:#59D0FF}
 .scene-sub{font-size:clamp(20px,2.5vw,30px);color:rgba(247,251,255,0.65);line-height:1.35;margin-top:22px;max-width:750px}
 
 /* Allowance panel */
 .allowance-panel{background:rgba(10,17,31,0.72);border:1px solid rgba(255,255,255,0.10);border-radius:20px;padding:32px;backdrop-filter:blur(14px)}
 .allowance-bar-bg{height:14px;border-radius:999px;background:rgba(255,255,255,0.08);margin-top:20px;overflow:hidden}
-.allowance-bar{height:100%;border-radius:999px;background:linear-gradient(90deg,#59D0FF,#8DFFAA)}
+.allowance-bar{height:100%;border-radius:999px;background:linear-gradient(90deg,#59D0FF,#00FF9F)}
 .allowance-bar.full{background:linear-gradient(90deg,#FFD47A,#FF5F57)}
 .blocked-badge{display:inline-block;background:rgba(255,95,87,0.15);border:1px solid rgba(255,95,87,0.5);border-radius:8px;padding:6px 18px;color:#FF5F57;font-size:20px;font-weight:900;letter-spacing:2px;font-family:'JetBrains Mono',monospace;opacity:0;transform:scale(0.5);transition:opacity 0.3s,transform 0.3s}
 .blocked-badge.show{opacity:1;transform:scale(1)}
@@ -188,7 +188,7 @@ body{background:#0f1520;height:100vh;width:100vw;overflow:hidden;font-family:'Je
   <div class="scene-orb" style="left:15%;top:25%;width:260px;height:260px;background:rgba(141,255,170,0.12);animation:f1 7s ease-in-out infinite"></div>
   <div class="scene-grid"></div>
   <div class="scene-content">
-    <div class="scene-h1" style="margin-bottom:12px">Agents &#x2764;&#xFE0F; Run402</div>
+    <div class="scene-h1" style="margin-bottom:12px">Agents &#x2764;&#xFE0F; <span style="color:#00FF9F">Run402</span></div>
     <div style="font-size:28px;color:rgba(247,251,255,0.6);margin-bottom:40px">Real agents. Real feedback.</div>
     <div class="test-grid" id="test-grid"></div>
   </div>
@@ -204,7 +204,7 @@ body{background:#0f1520;height:100vh;width:100vw;overflow:hidden;font-family:'Je
     <div style="display:flex;gap:12px;margin-bottom:28px" id="close-chips"></div>
     <div class="scene-h1" style="font-size:clamp(48px,6vw,88px);letter-spacing:-3.8px">No cloud console.<br>No operator in the loop.</div>
     <div style="margin-top:22px;font-size:30px;color:rgba(247,251,255,0.65)">Set the allowance once. The rest is autonomous.</div>
-    <div style="margin-top:34px;font-size:54px;font-weight:900;color:#59D0FF;letter-spacing:-1.4px">Run402</div>
+    <div style="margin-top:34px;font-size:54px;font-weight:900;color:#00FF9F;letter-spacing:-1.4px">Run402</div>
     <div style="margin-top:8px;font-size:28px;color:#F7FBFF">Autonomous backend for the agent economy</div>
   </div>
 </div>
@@ -225,7 +225,7 @@ body{background:#0f1520;height:100vh;width:100vw;overflow:hidden;font-family:'Je
 .modal-dots{display:flex;justify-content:center;gap:8px;margin-top:20px}
 .modal-dot{width:10px;height:10px;border-radius:50%;background:#2d3748;transition:background 0.3s}
 .modal-dot.active{background:#59D0FF}
-.modal-dot.done{background:#8DFFAA}
+.modal-dot.done{background:#00FF9F}
 </style>
 
 <!-- Start splash -->
@@ -471,7 +471,7 @@ function buildScene3() {
   var ag = document.getElementById('siwx-actions');
   actions.forEach(function(name, i) {
     var d = document.createElement('div'); d.className = 'res-card';
-    d.innerHTML = '<span style="color:#8DFFAA;font-weight:900;font-size:20px">\u2713</span><div class="label" style="font-size:22px">' + name + '</div>';
+    d.innerHTML = '<span style="color:#00FF9F;font-weight:900;font-size:20px">\u2713</span><div class="label" style="font-size:22px">' + name + '</div>';
     ag.appendChild(d);
     setTimeout(function() { d.style.opacity = '1'; }, 600 + i * 150);
   });
@@ -536,7 +536,7 @@ function startDemo() {
                       'Subscribe to <span class="fname">prototype tier</span> via x402',
                       'Provision project <span class="fname">coinbase-demo</span>',
                       'Deploy site to <span class="fname">coinbase.run402.com</span>',
-                      'Claim subdomain <span style="color:#8DFFAA">coinbase</span>.run402.com',
+                      'Claim subdomain <span style="color:#00FF9F">coinbase</span>.run402.com',
                     ], function() {
                       // Transition to feature scenes
                       setTimeout(function() { startFeatureScenes(); }, 1000);
