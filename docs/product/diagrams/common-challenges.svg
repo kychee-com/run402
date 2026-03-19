@@ -1,0 +1,58 @@
+<svg width="680" viewBox="0 0 680 500" xmlns="http://www.w3.org/2000/svg" style="font-family: system-ui, -apple-system, sans-serif; background: transparent;">
+  <style>
+    text { fill: #2C2C2A; }
+    .th { font-size: 14px; font-weight: 500; }
+    .ts { font-size: 12px; font-weight: 400; fill: #5F5E5A; }
+    .arr { stroke: #888780; stroke-width: 1.5; }
+  </style>
+  <defs><marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></marker></defs>
+
+  <text class="th" x="340" y="28" text-anchor="middle" dominant-baseline="central">Common challenges — all three platforms</text>
+
+  <rect x="40" y="55" width="600" height="56" rx="8" fill="#FAECE7" stroke="#993C1D" stroke-width="0.5"/>
+  <text class="th" x="340" y="73" text-anchor="middle" dominant-baseline="central" fill="#712B13">The authentication paradox</text>
+  <text class="ts" x="340" y="91" text-anchor="middle" dominant-baseline="central" fill="#993C1D">All 3 platforms mandate credential/connection config — run402 has no credentials</text>
+
+  <line x1="180" y1="111" x2="130" y2="140" class="arr" marker-end="url(#arrow)"/>
+  <line x1="340" y1="111" x2="340" y2="140" class="arr" marker-end="url(#arrow)"/>
+  <line x1="500" y1="111" x2="550" y2="140" class="arr" marker-end="url(#arrow)"/>
+
+  <rect x="40" y="140" width="180" height="56" rx="8" fill="#E1F5EE" stroke="#0F6E56" stroke-width="0.5"/>
+  <text class="th" x="130" y="158" text-anchor="middle" dominant-baseline="central" fill="#085041">x402 token as key</text>
+  <text class="ts" x="130" y="176" text-anchor="middle" dominant-baseline="central" fill="#0F6E56">Cleanest mapping</text>
+
+  <rect x="250" y="140" width="180" height="56" rx="8" fill="#F1EFE8" stroke="#5F5E5A" stroke-width="0.5"/>
+  <text class="th" x="340" y="158" text-anchor="middle" dominant-baseline="central" fill="#444441">Project ID as key</text>
+  <text class="ts" x="340" y="176" text-anchor="middle" dominant-baseline="central">Config, not auth</text>
+
+  <rect x="460" y="140" width="180" height="56" rx="8" fill="#F1EFE8" stroke="#5F5E5A" stroke-width="0.5"/>
+  <text class="th" x="550" y="158" text-anchor="middle" dominant-baseline="central" fill="#444441">Base URL only</text>
+  <text class="ts" x="550" y="176" text-anchor="middle" dominant-baseline="central">Weakest, feels empty</text>
+
+  <rect x="40" y="230" width="290" height="56" rx="8" fill="#FAECE7" stroke="#993C1D" stroke-width="0.5"/>
+  <text class="th" x="185" y="248" text-anchor="middle" dominant-baseline="central" fill="#712B13">Trigger limitations</text>
+  <text class="ts" x="185" y="266" text-anchor="middle" dominant-baseline="central" fill="#993C1D">No webhooks = polling only (1-15 min lag)</text>
+
+  <line x1="330" y1="258" x2="370" y2="258" class="arr" marker-end="url(#arrow)"/>
+
+  <rect x="370" y="230" width="270" height="56" rx="8" fill="#E1F5EE" stroke="#0F6E56" stroke-width="0.5"/>
+  <text class="th" x="505" y="248" text-anchor="middle" dominant-baseline="central" fill="#085041">Fix: add webhook endpoint</text>
+  <text class="ts" x="505" y="266" text-anchor="middle" dominant-baseline="central" fill="#0F6E56">Highest-value API addition for niche</text>
+
+  <rect x="40" y="320" width="600" height="56" rx="8" fill="#EEEDFE" stroke="#534AB7" stroke-width="0.5"/>
+  <text class="th" x="340" y="338" text-anchor="middle" dominant-baseline="central" fill="#3C3489">The "good enough" HTTP module problem</text>
+  <text class="ts" x="340" y="356" text-anchor="middle" dominant-baseline="central" fill="#534AB7">Generic HTTP works today on all 3 — formal integrations add discoverability, not functionality</text>
+
+  <rect x="40" y="400" width="600" height="56" rx="8" fill="#EEEDFE" stroke="#534AB7" stroke-width="0.5"/>
+  <text class="th" x="340" y="418" text-anchor="middle" dominant-baseline="central" fill="#3C3489">Platform-specific content is non-negotiable</text>
+  <text class="ts" x="340" y="436" text-anchor="middle" dominant-baseline="central" fill="#534AB7">Three separate doc efforts: JSON workflows (n8n), screenshots (Zapier), video (Make)</text>
+
+  <rect x="80" y="475" width="520" height="20" rx="4" fill="#E1F5EE" stroke="#0F6E56" stroke-width="0.5"/>
+  <text class="ts" x="100" y="489" dominant-baseline="central" fill="#085041">HTTP docs (all 3)</text>
+  <line x1="248" y1="485" x2="262" y2="485" class="arr" marker-end="url(#arrow)"/>
+  <text class="ts" x="268" y="489" dominant-baseline="central" fill="#085041">n8n node</text>
+  <line x1="350" y1="485" x2="364" y2="485" class="arr" marker-end="url(#arrow)"/>
+  <text class="ts" x="370" y="489" dominant-baseline="central" fill="#085041">Make app</text>
+  <line x1="450" y1="485" x2="464" y2="485" class="arr" marker-end="url(#arrow)"/>
+  <text class="ts" x="470" y="489" dominant-baseline="central" fill="#085041">Zapier (if traction)</text>
+</svg>
