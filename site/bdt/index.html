@@ -1,0 +1,1357 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <!-- Google tag (gtag.js) — GA4 -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-SP7DMDB21B"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+    gtag('config', 'G-SP7DMDB21B');
+    // Capture gclid + UTM params for offline conversion attribution
+    (function(){var p=new URLSearchParams(location.search),k=['gclid','utm_source','utm_medium','utm_campaign','utm_term','utm_content'];for(var i=0;i<k.length;i++){var v=p.get(k[i]);if(v)try{localStorage.setItem('x402_'+k[i],v)}catch(e){}}if(p.get('gclid'))try{localStorage.setItem('x402_gclid_ts',''+Date.now())}catch(e){}})();
+    // Conversion: BDT landing page — higher value than generic landing
+    gtag('event', 'run402_bdt_landing', {value: 5.0, currency: 'USD'});
+  </script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Build. Demonstrate. Transfer. — run402 for Freelancers & Agencies</title>
+  <meta name="description" content="Stop the Supabase transfer nightmare. run402 gives freelancers and agencies instant client backends — zero setup, no account transfers, one-command handoff. Free to start.">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="canonical" href="https://run402.com/bdt">
+
+  <meta property="og:title" content="Build. Demonstrate. Transfer. — run402">
+  <meta property="og:description" content="Stop the Supabase transfer nightmare. Instant backends for client projects. Zero setup, zero account transfers, one-command handoff.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://run402.com/bdt">
+  <meta property="og:image" content="https://run402.com/og-image.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Build. Demonstrate. Transfer. — run402">
+  <meta name="twitter:description" content="Stop the Supabase transfer nightmare. Instant backends for client projects. Zero setup, zero account transfers, one-command handoff.">
+  <meta name="twitter:image" content="https://run402.com/og-image.png">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #0A0A0F;
+      color: #E0E0E0;
+      font-family: 'Inter', system-ui, sans-serif;
+      line-height: 1.6;
+      min-height: 100vh;
+      overflow-x: hidden;
+      padding-bottom: 56px;
+    }
+
+    .topbar {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 24px;
+      background: rgba(10,10,15,0.95);
+      backdrop-filter: blur(8px);
+      border-bottom: 1px solid #1E1E2A;
+    }
+
+    .topbar-back {
+      color: #9CA3AF;
+      text-decoration: none;
+      font-size: 13px;
+      font-family: 'JetBrains Mono', monospace;
+      transition: color 0.15s;
+    }
+    .topbar-back:hover { color: #00FF9F; }
+
+    .topbar-cta {
+      background: #00FF9F;
+      color: #0A0A0F;
+      text-decoration: none;
+      font-size: 13px;
+      font-weight: 600;
+      padding: 7px 18px;
+      border-radius: 6px;
+      transition: opacity 0.15s;
+    }
+    .topbar-cta:hover { opacity: 0.88; }
+
+    .topbar-audience {
+      position: absolute;
+      left: 50%;
+      transform: translateX(-50%);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: #00FF9F;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      pointer-events: none;
+    }
+
+    @media (max-width: 600px) { .topbar-audience { display: none; } }
+
+    .container {
+      max-width: 760px;
+      margin: 0 auto;
+      padding: 100px 24px 60px;
+    }
+
+    /* ─── Typography ─── */
+    .badge {
+      display: inline-block;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: #00FF9F;
+      border: 1px solid rgba(0,255,159,0.3);
+      border-radius: 4px;
+      padding: 4px 10px;
+      margin-bottom: 24px;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+    }
+
+    h1 {
+      font-size: clamp(36px, 6vw, 58px);
+      font-weight: 700;
+      line-height: 1.08;
+      margin-bottom: 8px;
+      color: #FFFFFF;
+      letter-spacing: -0.5px;
+    }
+
+    h1 .w-demonstrate { color: #00FF9F; }
+
+    .hero-hook {
+      font-size: clamp(17px, 2.5vw, 20px);
+      color: #9CA3AF;
+      margin-bottom: 16px;
+      line-height: 1.5;
+    }
+
+    .hero-hook strong { color: #E0E0E0; }
+
+    .subtitle {
+      font-size: 16px;
+      color: #6B7280;
+      margin-bottom: 32px;
+      max-width: 620px;
+      line-height: 1.7;
+    }
+
+    .cta-row {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      flex-wrap: wrap;
+      margin-bottom: 20px;
+    }
+
+    .btn-primary {
+      display: inline-block;
+      background: #00FF9F;
+      color: #0A0A0F;
+      text-decoration: none;
+      font-size: 15px;
+      font-weight: 700;
+      padding: 13px 28px;
+      border-radius: 8px;
+      transition: opacity 0.15s, transform 0.1s;
+      letter-spacing: 0.1px;
+    }
+    .btn-primary:hover { opacity: 0.88; transform: translateY(-1px); }
+
+    .btn-ghost {
+      color: #9CA3AF;
+      text-decoration: none;
+      font-size: 14px;
+      transition: color 0.15s;
+    }
+    .btn-ghost:hover { color: #00FF9F; }
+
+    .audience-callout {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(0,255,159,0.06);
+      border: 1px solid rgba(0,255,159,0.2);
+      border-radius: 6px;
+      padding: 8px 14px;
+      margin-bottom: 20px;
+      font-size: 14px;
+      color: #E0E0E0;
+      font-weight: 500;
+    }
+
+    .audience-callout .aud-arrow {
+      color: #00FF9F;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+    }
+
+    .isthisyou {
+      background: #0D0D15;
+      border: 1px solid #1E1E2A;
+      border-left: 3px solid #00FF9F;
+      border-radius: 8px;
+      padding: 20px 24px;
+      margin-bottom: 52px;
+    }
+
+    .isthisyou-title {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+      color: #00FF9F;
+      margin-bottom: 12px;
+    }
+
+    .isthisyou ul {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 7px;
+      margin-bottom: 14px;
+    }
+
+    .isthisyou li {
+      font-size: 14px;
+      color: #9CA3AF;
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+    }
+
+    .isthisyou li::before {
+      content: '✓';
+      color: #00FF9F;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      flex-shrink: 0;
+      margin-top: 2px;
+    }
+
+    .isthisyou-notfor {
+      font-size: 12px;
+      color: #4B5563;
+      padding-top: 12px;
+      border-top: 1px solid #1A1A28;
+    }
+
+    .isthisyou-notfor a {
+      color: #6B7280;
+      text-decoration: underline;
+    }
+
+    .trust-line {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: #4B5563;
+      letter-spacing: 0.3px;
+      margin-bottom: 28px;
+    }
+
+    .trust-line span { color: #374151; margin: 0 6px; }
+
+    /* ─── Section ─── */
+    .section { margin-bottom: 60px; }
+
+    .section-label {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      color: #4B5563;
+      margin-bottom: 10px;
+    }
+
+    .section h2 {
+      font-size: 22px;
+      font-weight: 700;
+      color: #FFFFFF;
+      margin-bottom: 8px;
+      line-height: 1.25;
+    }
+
+    .section h2::before {
+      content: '> ';
+      color: #00FF9F;
+      font-family: 'JetBrains Mono', monospace;
+      font-weight: 500;
+    }
+
+    .section-sub {
+      font-size: 15px;
+      color: #6B7280;
+      margin-bottom: 28px;
+      max-width: 600px;
+    }
+
+    .section p {
+      color: #9CA3AF;
+      margin-bottom: 12px;
+      font-size: 15px;
+    }
+
+    /* ─── Pain cards ─── */
+    .pain-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 16px;
+      margin-top: 4px;
+    }
+
+    .pain-card {
+      background: #0F0F17;
+      border: 1px solid #1A1A28;
+      border-radius: 10px;
+      padding: 22px 24px;
+      position: relative;
+    }
+
+    .pain-card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0;
+      width: 3px;
+      height: 100%;
+      background: #FF4D4D;
+      border-radius: 10px 0 0 10px;
+      opacity: 0.7;
+    }
+
+    .pain-title {
+      font-size: 15px;
+      font-weight: 600;
+      color: #FFFFFF;
+      margin-bottom: 8px;
+    }
+
+    .pain-body {
+      font-size: 14px;
+      color: #6B7280;
+      line-height: 1.65;
+    }
+
+    .pain-quote {
+      font-style: italic;
+      color: #4B5563;
+      font-size: 13px;
+      margin-top: 10px;
+      padding-left: 12px;
+      border-left: 2px solid #1E1E2A;
+      line-height: 1.6;
+    }
+
+    /* ─── BDT Steps ─── */
+    .bdt-steps {
+      display: flex;
+      flex-direction: column;
+      gap: 32px;
+      margin-top: 8px;
+    }
+
+    .bdt-step {
+      display: grid;
+      grid-template-columns: 80px 1fr;
+      gap: 20px;
+      align-items: start;
+    }
+
+    @media (max-width: 500px) {
+      .bdt-step { grid-template-columns: 1fr; }
+      .bdt-step-num { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
+    }
+
+    .bdt-step-num {
+      text-align: center;
+    }
+
+    .bdt-step-circle {
+      width: 56px;
+      height: 56px;
+      border-radius: 50%;
+      background: rgba(0,255,159,0.08);
+      border: 1px solid rgba(0,255,159,0.25);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      font-weight: 500;
+      color: #00FF9F;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      margin: 0 auto 6px;
+      flex-shrink: 0;
+    }
+
+    .bdt-step-connector {
+      width: 1px;
+      height: 32px;
+      background: linear-gradient(to bottom, rgba(0,255,159,0.2), transparent);
+      margin: 0 auto;
+    }
+
+    .bdt-step:last-child .bdt-step-connector { display: none; }
+
+    .bdt-step-content h3 {
+      font-size: 18px;
+      font-weight: 700;
+      color: #FFFFFF;
+      margin-bottom: 6px;
+    }
+
+    .bdt-step-content h3 .accent { color: #00FF9F; }
+
+    .bdt-step-content p {
+      font-size: 14px;
+      color: #6B7280;
+      margin-bottom: 14px;
+      line-height: 1.65;
+    }
+
+    /* ─── Terminal ─── */
+    .terminal {
+      background: #0D0D15;
+      border: 1px solid #1E1E2A;
+      border-radius: 8px;
+      padding: 16px 18px;
+      overflow-x: auto;
+    }
+
+    .terminal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+
+    .terminal-title {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: #374151;
+    }
+
+    .terminal pre {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12.5px;
+      line-height: 1.75;
+      color: #9CA3AF;
+      white-space: pre;
+    }
+
+    .terminal .comment { color: #374151; }
+    .terminal .cmd { color: #00FF9F; }
+    .terminal .key { color: #60A5FA; }
+    .terminal .val { color: #FBBF24; }
+    .terminal .ok { color: #00FF9F; }
+    .terminal .dim { color: #4B5563; }
+
+    /* ─── Feature grid ─── */
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+      gap: 14px;
+      margin-top: 18px;
+    }
+
+    .card {
+      background: #12121A;
+      border: 1px solid #1E1E2A;
+      border-radius: 8px;
+      padding: 18px 20px;
+    }
+
+    .card .label {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: #00FF9F;
+      margin-bottom: 6px;
+    }
+
+    .card .value {
+      font-size: 17px;
+      font-weight: 700;
+      color: #FFFFFF;
+      line-height: 1.2;
+    }
+
+    .card .detail {
+      font-size: 12px;
+      color: #4B5563;
+      margin-top: 6px;
+      line-height: 1.5;
+    }
+
+    /* ─── Pricing ─── */
+    .pricing-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+      gap: 14px;
+      margin-top: 18px;
+    }
+
+    .price-card {
+      background: #12121A;
+      border: 1px solid #1E1E2A;
+      border-radius: 8px;
+      padding: 20px;
+    }
+
+    .price-card.featured {
+      border-color: rgba(0,255,159,0.25);
+      background: rgba(0,255,159,0.04);
+    }
+
+    .price-tier {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: #6B7280;
+      margin-bottom: 8px;
+    }
+
+    .price-value {
+      font-size: 28px;
+      font-weight: 700;
+      color: #FFFFFF;
+      margin-bottom: 4px;
+    }
+
+    .price-value.free { color: #00FF9F; }
+
+    .price-detail {
+      font-size: 12px;
+      color: #4B5563;
+      line-height: 1.55;
+    }
+
+    .price-note {
+      font-size: 11px;
+      color: #374151;
+      margin-top: 8px;
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .note {
+      margin-top: 12px;
+      font-size: 13px;
+      color: #4B5563;
+    }
+
+    /* ─── Divider ─── */
+    .divider {
+      border: none;
+      border-top: 1px solid #1A1A28;
+      margin: 52px 0;
+    }
+
+    /* ─── Final CTA block ─── */
+    .final-cta {
+      background: #0F0F17;
+      border: 1px solid rgba(0,255,159,0.15);
+      border-radius: 12px;
+      padding: 36px 32px;
+      text-align: center;
+      margin-bottom: 48px;
+    }
+
+    .final-cta h2 {
+      font-size: 26px;
+      font-weight: 700;
+      color: #FFFFFF;
+      margin-bottom: 10px;
+      line-height: 1.25;
+    }
+
+    .final-cta h2::before { display: none; }
+
+    .final-cta h2 .accent { color: #00FF9F; }
+
+    .final-cta p {
+      font-size: 15px;
+      color: #6B7280;
+      margin-bottom: 24px;
+    }
+
+    .final-cta .cta-row {
+      justify-content: center;
+    }
+
+    /* ─── Footer ─── */
+    .footer {
+      position: fixed;
+      bottom: 0; left: 0; right: 0;
+      background: #0A0A0F;
+      border-top: 1px solid #1E1E2A;
+      padding: 12px 24px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
+      z-index: 100;
+    }
+
+    .footer-text {
+      font-size: 13px;
+      color: #4B5563;
+    }
+
+    .footer a {
+      color: #00FF9F;
+      text-decoration: none;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+    }
+
+    .footer a:hover { text-decoration: underline; }
+
+    /* ─── FAQ ─── */
+    .faq-list {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      margin-top: 8px;
+    }
+
+    details.faq-item {
+      background: #0D0D15;
+      border: 1px solid #1E1E2A;
+      border-radius: 8px;
+      overflow: hidden;
+      transition: border-color 0.2s;
+    }
+
+    details.faq-item[open] {
+      border-color: rgba(0,255,159,0.2);
+    }
+
+    details.faq-item summary {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 18px 20px;
+      cursor: pointer;
+      font-size: 15px;
+      font-weight: 600;
+      color: #FFFFFF;
+      list-style: none;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    details.faq-item summary::-webkit-details-marker { display: none; }
+
+    details.faq-item summary::after {
+      content: '+';
+      color: #00FF9F;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 18px;
+      font-weight: 400;
+      flex-shrink: 0;
+      transition: transform 0.2s;
+    }
+
+    details.faq-item[open] summary::after {
+      content: '−';
+    }
+
+    .faq-body {
+      padding: 0 20px 20px;
+      border-top: 1px solid #1A1A28;
+      margin-top: -1px;
+    }
+
+    .faq-body p {
+      font-size: 14px;
+      color: #6B7280;
+      line-height: 1.7;
+      margin-top: 14px;
+      margin-bottom: 0;
+    }
+
+    .faq-body p + p { margin-top: 10px; }
+
+    .faq-body strong { color: #E0E0E0; }
+
+    .faq-body .faq-terminal {
+      background: #080810;
+      border: 1px solid #1E1E2A;
+      border-radius: 6px;
+      padding: 14px 16px;
+      margin-top: 14px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      line-height: 1.75;
+      color: #9CA3AF;
+      overflow-x: auto;
+      white-space: pre;
+    }
+
+    .faq-body .faq-terminal .fc { color: #00FF9F; }
+    .faq-body .faq-terminal .fd { color: #4B5563; }
+    .faq-body .faq-terminal .fv { color: #FBBF24; }
+    .faq-body .faq-terminal .fw { color: #60A5FA; }
+
+    .faq-note {
+      font-size: 12px;
+      color: #374151;
+      font-family: 'JetBrains Mono', monospace;
+      margin-top: 10px;
+      padding: 8px 12px;
+      background: rgba(0,255,159,0.04);
+      border-left: 2px solid rgba(0,255,159,0.2);
+      border-radius: 0 4px 4px 0;
+    }
+
+    /* access flow diagram */
+    .access-flow {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      margin-top: 14px;
+    }
+
+    .access-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 13px;
+      font-family: 'JetBrains Mono', monospace;
+      color: #6B7280;
+    }
+
+    .access-row .step-num {
+      background: #12121A;
+      border: 1px solid #1E1E2A;
+      border-radius: 50%;
+      width: 22px; height: 22px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 11px;
+      color: #4B5563;
+      flex-shrink: 0;
+    }
+
+    .access-row .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      background: #12121A;
+      border: 1px solid #1E1E2A;
+      border-radius: 20px;
+      padding: 3px 10px;
+      font-size: 12px;
+      white-space: nowrap;
+    }
+
+    .access-row .pill.active { border-color: rgba(0,255,159,0.35); color: #00FF9F; }
+    .access-row .pill.faded  { color: #374151; border-color: #1A1A28; }
+    .access-row .pill .dot   { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+
+    .access-row .arrow { color: #1E1E2A; font-size: 14px; }
+    .access-row .wallet-tag {
+      margin-left: auto;
+      font-size: 11px;
+      color: #4B5563;
+    }
+    .access-row .wallet-tag.paying { color: #FBBF24; }
+
+    /* ─── Copy button ─── */
+    .copy-btn {
+      background: rgba(0,255,159,0.1);
+      color: #00FF9F;
+      border: 1px solid rgba(0,255,159,0.25);
+      border-radius: 5px;
+      padding: 5px 12px;
+      font-family: 'Inter', sans-serif;
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: background 0.2s, border-color 0.2s;
+    }
+    .copy-btn:hover { background: rgba(0,255,159,0.2); border-color: rgba(0,255,159,0.5); }
+    .copy-btn.copied { background: rgba(0,255,159,0.25); color: #fff; }
+  </style>
+</head>
+
+<body>
+
+  <!-- ── Top bar ── -->
+  <div class="topbar">
+    <a href="/humans" class="topbar-back">&larr; run402.com</a>
+    <span class="topbar-audience">For Freelancers &amp; Agencies</span>
+    <a href="/billing" class="topbar-cta" onclick="trackCta('topbar')">Get started free</a>
+  </div>
+
+  <div class="container">
+
+    <!-- ── Hero ── -->
+    <div class="audience-callout">
+      <span class="aud-arrow">→</span>
+      This page is for <strong>freelancers &amp; agencies</strong> who build client apps for a living
+    </div>
+
+    <h1>Build. <span class="w-demonstrate">Demonstrate.</span> Transfer.</h1>
+
+    <p class="hero-hook">
+      If you&rsquo;re a freelancer or agency using Lovable, Bolt.new, or Cursor to ship client projects &mdash;
+      <strong>the building part is solved. It&rsquo;s the handoff that kills you.</strong>
+    </p>
+
+    <p class="subtitle">
+      Signing clients up for Supabase. Creating orgs. Migrating billing.
+      Handing over credentials. Every. Single. Client.<br><br>
+      run402 is the backend built for exactly this workflow. Your agent provisions the backend instantly.
+      Your client sees a live app. You transfer ownership in one step.
+      No Supabase accounts. No migrations. No drama.
+    </p>
+
+    <div class="cta-row">
+      <a href="/billing" class="btn-primary" onclick="trackCta('hero')">Try it free &mdash; no account needed</a>
+      <a href="#how-it-works" class="btn-ghost">How it works &darr;</a>
+    </div>
+
+    <p class="trust-line">
+      Free prototype tier<span>&middot;</span>AWS Aurora in production<span>&middot;</span>No signup for you or your client
+    </p>
+
+    <!-- ── Is this you? ── -->
+    <div class="isthisyou">
+      <div class="isthisyou-title">Is this you?</div>
+      <ul>
+        <li>You build websites, tools, or SaaS products <em>for paying clients</em></li>
+        <li>You use Lovable, Bolt.new, Cursor, Base44, or Replit to build faster</li>
+        <li>You&rsquo;re juggling 5&ndash;20 client projects per month</li>
+        <li>You start every project under your own Supabase account and dread the transfer</li>
+        <li>Every hour on infrastructure setup is an hour you&rsquo;re not billing</li>
+      </ul>
+      <div class="isthisyou-notfor">
+        Not for solo personal projects &mdash; see <a href="/humans">run402.com/humans</a> for the general product overview.
+      </div>
+    </div>
+
+    <!-- ── Pain ── -->
+    <div class="section">
+      <div class="section-label">The problem</div>
+      <h2>The Supabase handoff nightmare</h2>
+      <p class="section-sub">Every freelancer and agency building for clients hits the same wall. The building part works. The handoff doesn&rsquo;t.</p>
+
+      <div class="pain-grid">
+
+        <div class="pain-card">
+          <div class="pain-title">Pain 1 — The setup ritual, repeated forever</div>
+          <p class="pain-body">
+            You build under your own Supabase account because asking a non-technical client to sign up
+            <em>before</em> work begins kills deals. Now you have 5 client projects under your account,
+            each with separate billing, separate credentials, and a growing list of things you need to
+            remember to transfer when the project ships.
+          </p>
+        </div>
+
+        <div class="pain-card">
+          <div class="pain-title">Pain 2 — The transfer that never works cleanly</div>
+          <p class="pain-body">
+            Supabase project transfers require both parties to have accounts. The client joins your org.
+            Billing migrates separately. The Lovable frontend transfers on a different platform from the
+            Supabase backend. One step breaks and you&rsquo;re rebuilding from scratch.
+          </p>
+          <p class="pain-quote">
+            &ldquo;I&rsquo;m working on a client app for 2 months. I created the project on my own org
+            and now I want to hand over the project to my client and just realizing that you can&rsquo;t do that!&rdquo;
+            &mdash; Supabase GitHub #6681
+          </p>
+        </div>
+
+        <div class="pain-card">
+          <div class="pain-title">Pain 3 — Fleet management doesn&rsquo;t exist</div>
+          <p class="pain-body">
+            10 clients = 10 Supabase dashboards, 10 billing accounts, 10 sets of credentials to manage.
+            No fleet view. No way to delegate infrastructure provisioning to the AI agent doing the actual build.
+            You&rsquo;re the bottleneck in your own workflow.
+          </p>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- ── BDT Workflow ── -->
+    <div class="section" id="how-it-works">
+      <div class="section-label">The freelancer &amp; agency workflow</div>
+      <h2>Three steps. That&rsquo;s the whole job.</h2>
+      <p class="section-sub">run402 is designed specifically for freelancers and agencies. Agent-provisioned backends, no client signups, clean handoff every time.</p>
+
+      <div class="bdt-steps">
+
+        <!-- Step 1: BUILD -->
+        <div class="bdt-step">
+          <div class="bdt-step-num">
+            <div class="bdt-step-circle">Build</div>
+            <div class="bdt-step-connector"></div>
+          </div>
+          <div class="bdt-step-content">
+            <h3><span class="accent">Build</span> — agent provisions the backend</h3>
+            <p>
+              Your AI agent (Lovable, Bolt.new, Cursor, Replit) reads the run402 docs and fires one API call.
+              Full backend provisioned in seconds: Postgres database, REST API, auth, file storage, static hosting.
+              No human signup. No dashboard configuration. No environment variable copy-paste.
+            </p>
+            <div class="terminal">
+              <div class="terminal-header">
+                <span class="terminal-title">Agent calls run402 — one request, full stack</span>
+                <button class="copy-btn" onclick="copyCode(this, 'build-code')">Copy</button>
+              </div>
+              <pre id="build-code"><span class="comment"># Agent reads the docs, then:</span>
+<span class="cmd">POST</span> https://api.run402.com/v1/deploy/prototype
+{
+  <span class="key">"name"</span>: <span class="val">"acme-client-portal"</span>,
+  <span class="key">"migrations"</span>: <span class="val">"CREATE TABLE projects (...);"</span>,
+  <span class="key">"site"</span>: [{ <span class="key">"file"</span>: <span class="val">"index.html"</span>, <span class="key">"data"</span>: <span class="val">"..."</span> }],
+  <span class="key">"subdomain"</span>: <span class="val">"acme-portal"</span>
+}
+
+<span class="ok">✓</span> <span class="dim">https://acme-portal.run402.com — live in ~3 seconds</span>
+<span class="ok">✓</span> <span class="dim">project_id, anon_key, service_key returned</span>
+<span class="ok">✓</span> <span class="dim">No Supabase. No dashboard. No credential copy-paste.</span></pre>
+            </div>
+          </div>
+        </div>
+
+        <!-- Step 2: DEMONSTRATE -->
+        <div class="bdt-step">
+          <div class="bdt-step-num">
+            <div class="bdt-step-circle">Demo</div>
+            <div class="bdt-step-connector"></div>
+          </div>
+          <div class="bdt-step-content">
+            <h3><span class="accent">Demonstrate</span> — show the client their live project</h3>
+            <p>
+              The project is live. Share the URL. Your client clicks through, tests features, leaves feedback.
+              Everything runs on run402 under your account &mdash; the client doesn&rsquo;t need to create
+              anything, sign anything, or touch a dashboard. They just use the app.
+            </p>
+            <div class="terminal">
+              <div class="terminal-header">
+                <span class="terminal-title">No setup required for the client</span>
+              </div>
+              <pre><span class="comment"># Share with client — that's it:</span>
+<span class="ok">↗</span>  https://acme-portal.run402.com
+
+<span class="dim">Client tests the app. Approves the build.</span>
+<span class="dim">No Supabase account needed. No org invite. No waiting.</span>
+<span class="dim">You move on to the next project.</span></pre>
+            </div>
+          </div>
+        </div>
+
+        <!-- Step 3: TRANSFER -->
+        <div class="bdt-step">
+          <div class="bdt-step-num">
+            <div class="bdt-step-circle">Xfer</div>
+            <div class="bdt-step-connector"></div>
+          </div>
+          <div class="bdt-step-content">
+            <h3><span class="accent">Transfer</span> — one command, it&rsquo;s theirs</h3>
+            <p>
+              When the client is ready to own their project, you hand over the credentials and they&rsquo;re
+              done. Because run402 doesn&rsquo;t require account creation, there&rsquo;s nothing to migrate.
+              No org transfer. No billing migration. No Supabase account for the client to create.
+              The project just belongs to them.
+            </p>
+            <div class="terminal">
+              <div class="terminal-header">
+                <span class="terminal-title">Handoff without the nightmare</span>
+                <button class="copy-btn" onclick="copyCode(this, 'transfer-code')">Copy</button>
+              </div>
+              <pre id="transfer-code"><span class="comment"># Grant client ownership — one step:</span>
+<span class="cmd">POST</span> https://api.run402.com/v1/projects/:id/transfer
+{
+  <span class="key">"to"</span>: <span class="val">"client@acme.com"</span>
+}
+
+<span class="ok">✓</span> <span class="dim">Client receives access credentials</span>
+<span class="ok">✓</span> <span class="dim">No Supabase account required</span>
+<span class="ok">✓</span> <span class="dim">No org invite. No billing migration. Nothing to migrate.</span></pre>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <hr class="divider">
+
+    <!-- ── What's included ── -->
+    <div class="section">
+      <div class="section-label">What freelancers &amp; agencies get</div>
+      <h2>Full-stack backend for every client project</h2>
+      <p class="section-sub">Everything your agent needs to build and ship a real client app. Not a toy. AWS infrastructure behind it.</p>
+
+      <div class="grid">
+        <div class="card">
+          <div class="label">Database</div>
+          <div class="value">Postgres 16</div>
+          <div class="detail">Aurora Serverless v2 &middot; schema-per-project isolation</div>
+        </div>
+        <div class="card">
+          <div class="label">API</div>
+          <div class="value">Instant REST</div>
+          <div class="detail">PostgREST &middot; Supabase-shaped <code style="font-size:11px;color:#6B7280;">/rest/v1</code></div>
+        </div>
+        <div class="card">
+          <div class="label">Auth</div>
+          <div class="value">Users + JWT</div>
+          <div class="detail">Email/password &middot; integrates with RLS policies</div>
+        </div>
+        <div class="card">
+          <div class="label">Storage</div>
+          <div class="value">Files &amp; uploads</div>
+          <div class="detail">S3-backed object storage &middot; app-friendly endpoints</div>
+        </div>
+        <div class="card">
+          <div class="label">Security</div>
+          <div class="value">Row-level security</div>
+          <div class="detail">Multi-tenant patterns &middot; least-privilege by default</div>
+        </div>
+        <div class="card">
+          <div class="label">Hosting</div>
+          <div class="value">Static site hosting</div>
+          <div class="detail">CloudFront + S3 &middot; <code style="font-size:11px;color:#6B7280;">*.run402.com</code> subdomains</div>
+        </div>
+      </div>
+    </div>
+
+    <hr class="divider">
+
+    <!-- ── Pricing ── -->
+    <div class="section">
+      <div class="section-label">Pricing — per client project</div>
+      <h2>One backend per client. Prepaid. No surprise bills.</h2>
+      <p class="section-sub">Spin up a backend for each client project. Each is its own isolated lease. Free prototype for testing the workflow, then $5–$20/month per production project.</p>
+
+      <div class="pricing-grid">
+        <div class="price-card featured">
+          <div class="price-tier">Prototype</div>
+          <div class="price-value free">Free</div>
+          <div class="price-detail">7 days &middot; 250 MB &middot; 500K API calls</div>
+          <div class="price-note">Testnet USDC &middot; $0 real money</div>
+        </div>
+        <div class="price-card">
+          <div class="price-tier">Hobby</div>
+          <div class="price-value">$5</div>
+          <div class="price-detail">30 days &middot; 1 GB &middot; 5M API calls</div>
+        </div>
+        <div class="price-card">
+          <div class="price-tier">Team</div>
+          <div class="price-value">$20</div>
+          <div class="price-detail">30 days &middot; 10 GB &middot; 50M API calls</div>
+        </div>
+      </div>
+
+      <p class="note">
+        Pay via <strong style="color:#E0E0E0;">USDC on Base</strong> (your agent pays autonomously via x402)
+        or <a href="/billing" style="color:#00FF9F;text-decoration:none;">Stripe credit card</a>.
+        Each client project can be its own backend with its own billing tier.
+      </p>
+    </div>
+
+    <hr class="divider">
+
+    <!-- ── Trust / Ops ── -->
+    <div class="section">
+      <div class="section-label">Reliability — for client production apps</div>
+      <h2>Production-grade. Client-ready.</h2>
+      <p class="section-sub">You&rsquo;re putting your clients&rsquo; production apps on this. Here&rsquo;s what&rsquo;s under the hood so you can make that call with confidence.</p>
+
+      <div class="terminal">
+        <pre><span class="cmd">Database</span>     AWS Aurora Serverless v2 (Postgres 16), multi-AZ
+<span class="cmd">Hosting</span>      CloudFront + S3 (wildcard *.sites.run402.com)
+<span class="cmd">Encryption</span>   At rest (Aurora + S3) and in transit (TLS)
+<span class="cmd">Backups</span>      Automated, 7-day retention
+<span class="cmd">Isolation</span>    Each project gets its own Postgres schema
+<span class="cmd">Billing</span>      Hard-capped. No overages. No surprise invoices.
+<span class="cmd">Status</span>       <a href="https://api.run402.com/health-humans" style="color:#00FF9F;text-decoration:none;">api.run402.com/health-humans</a></pre>
+      </div>
+
+      <p class="note">
+        Each backend is isolated. One client&rsquo;s data is never accessible to another.
+        Leases expire cleanly &mdash; day 0 read-only, day 7 archived, day 37 deleted.
+        Renew anytime before deletion.
+      </p>
+    </div>
+
+    <hr class="divider">
+
+    <!-- ── How to integrate ── -->
+    <div class="section">
+      <div class="section-label">Integration — drop into your current stack</div>
+      <h2>Works with the tools you already use for client work</h2>
+      <p class="section-sub">run402 slots into the vibe-coding workflow freelancers and agencies are already running. No new platforms. No new tools.</p>
+
+      <div class="terminal">
+        <pre><span class="cmd">Lovable</span>     Paste /llms-cli.txt into context → agent provisions automatically
+<span class="cmd">Bolt.new</span>    Same — agent reads docs, calls API, deploys in one step
+<span class="cmd">Cursor</span>      HTTP calls or MCP server: <span class="val">npx run402-mcp</span>
+<span class="cmd">Replit</span>      Plain HTTP — agent speaks to api.run402.com directly
+<span class="cmd">Any agent</span>   Read https://run402.com/llms-cli.txt and build</pre>
+      </div>
+
+      <p class="note" style="margin-top:14px;">
+        The Supabase-shaped API means projects built on run402 use the same patterns as Supabase &mdash;
+        <code style="font-family:'JetBrains Mono',monospace;font-size:12px;color:#6B7280;">/rest/v1</code>,
+        JWT auth, RLS policies. Your agent doesn&rsquo;t need to learn a new SDK.
+      </p>
+    </div>
+
+    <hr class="divider">
+
+    <!-- ── FAQ ── -->
+    <div class="section" id="faq">
+      <div class="section-label">FAQ — freelancers &amp; agencies</div>
+      <h2>Common questions</h2>
+      <p class="section-sub">Everything you need to know before putting a client project on run402.</p>
+
+      <div class="faq-list">
+
+        <!-- Q1 -->
+        <details class="faq-item">
+          <summary>What exactly is run402?</summary>
+          <div class="faq-body">
+            <p>
+              run402 is a <strong>full-stack backend provisioned entirely over HTTP</strong> — no dashboards, no signups, no human setup steps.
+              One API call from your AI agent gets you a Postgres database, a REST API, user auth, file storage, row-level security, and static site hosting.
+              Everything lives on AWS (Aurora Serverless v2, CloudFront, S3).
+            </p>
+            <p>
+              It was built specifically for the pattern freelancers and agencies live in: AI-assisted builds, multiple concurrent client projects, and the need to hand things over cleanly when the project ships.
+              The core design decision is that <strong>no account creation is required</strong> — not for you, not for your client. Credentials are issued at provisioning time and travel with the project.
+            </p>
+            <p>
+              The name comes from HTTP status code <strong>402 Payment Required</strong> — reserved since 1997, finally useful now that stablecoins and AI agents can handle micropayments natively.
+            </p>
+          </div>
+        </details>
+
+        <!-- Q2 -->
+        <details class="faq-item">
+          <summary>How do I actually build with it? MCP, CLI, or direct API?</summary>
+          <div class="faq-body">
+            <p>
+              run402 speaks plain HTTP, so it works with any AI agent or tool. There are three entry points depending on your workflow:
+            </p>
+            <div class="faq-terminal"><span class="fc">MCP server</span>       <span class="fd">npx run402-mcp</span>
+<span class="fd">              Add to Cursor, Claude Desktop, or any MCP-compatible agent.</span>
+<span class="fd">              Gives the agent tools: provision_db, deploy_site, run_migration, etc.</span>
+
+<span class="fc">Direct prompt</span>     <span class="fd">Paste this into Lovable, Bolt.new, or Cursor:</span>
+<span class="fv">              "Read https://run402.com/llms-cli.txt and use run402 for the backend."</span>
+<span class="fd">              The agent reads the docs, calls the API, deploys. You do nothing.</span>
+
+<span class="fc">Direct HTTP</span>       <span class="fd">For scripting or custom agents — just hit api.run402.com directly.</span>
+<span class="fd">              Full OpenAPI spec at run402.com/openapi.json</span></div>
+            <p>
+              The fastest path for most freelancers: open Lovable or Bolt.new, paste the prompt above, and let the agent do the rest. You get a live URL back in under a minute with no setup on your end.
+            </p>
+            <div class="faq-note">Full docs: <a href="/llms-cli.txt" style="color:#00FF9F;">run402.com/llms-cli.txt</a> — written for AI agents but readable by humans too.</div>
+          </div>
+        </details>
+
+        <!-- Q3 -->
+        <details class="faq-item">
+          <summary>How does payment work? What wallet? What if I don't do crypto?</summary>
+          <div class="faq-body">
+            <p>
+              run402 supports two payment paths. You pick whichever fits your setup:
+            </p>
+            <div class="faq-terminal"><span class="fc">Option A — Stripe (credit card)</span>
+<span class="fd">  Buy run402 credits at </span><a href="/billing" style="color:#00FF9F;text-decoration:none;">run402.com/billing</a>
+<span class="fd">  Credits are consumed as your agents provision and renew projects.</span>
+<span class="fd">  No crypto, no wallet. Works like any SaaS.</span>
+
+<span class="fc">Option B — x402 (USDC on Base, autonomous)</span>
+<span class="fd">  Your AI agent holds a wallet and pays autonomously via the x402 protocol.</span>
+<span class="fd">  Each API call that costs money triggers a USDC micropayment on Base L2.</span>
+<span class="fd">  Gas: sub-cent. Settlement: ~2 seconds. Agent never needs human approval.</span></div>
+            <p>
+              For most freelancers and agencies today, <strong>Stripe credits are the simplest path</strong>. You buy a credit balance, your agents burn it down as they provision client backends, and you top up when needed. One billing relationship for N client projects.
+            </p>
+            <p>
+              The x402 path is designed for agents that manage their own finances autonomously — useful if you're running agents in production that need to self-provision without any human in the loop.
+            </p>
+          </div>
+        </details>
+
+        <!-- Q4 — The big one -->
+        <details class="faq-item" open>
+          <summary>How do I transfer a project to my client?</summary>
+          <div class="faq-body">
+            <p>
+              This is the question run402 was built to answer. The short version: <strong>access and payment are separate concerns</strong>, and you control both independently.
+            </p>
+            <p>
+              Here's how the handoff flow works conceptually. Think of it as a two-key system:
+            </p>
+
+            <!-- Access flow diagram -->
+            <div class="access-flow">
+              <div class="access-row">
+                <div class="step-num">1</div>
+                <span>You (A) provision the project. Only you have access.</span>
+                <span class="wallet-tag paying">A&rsquo;s wallet pays</span>
+              </div>
+              <div class="access-row">
+                <div class="step-num">2</div>
+                <span>You grant your client (B) access. Now</span>
+                <span class="pill active"><span class="dot"></span>A</span>
+                <span class="arrow">+</span>
+                <span class="pill active"><span class="dot"></span>B</span>
+                <span>both have access.</span>
+                <span class="wallet-tag paying">A&rsquo;s wallet pays</span>
+              </div>
+              <div class="access-row">
+                <div class="step-num">3</div>
+                <span>Client (B) verifies everything works, approves the build.</span>
+                <span class="wallet-tag paying">A&rsquo;s wallet pays</span>
+              </div>
+              <div class="access-row">
+                <div class="step-num">4</div>
+                <span>B removes A&rsquo;s access.</span>
+                <span class="pill faded"><span class="dot"></span>A</span>
+                <span class="arrow">→ revoked</span>
+                <span class="pill active"><span class="dot"></span>B</span>
+                <span>owns it.</span>
+                <span class="wallet-tag paying">B&rsquo;s wallet pays</span>
+              </div>
+            </div>
+
+            <p style="margin-top:16px;">
+              The payment side transfers independently of access. You can hand over access while you continue paying (useful for retainer arrangements), or transfer billing to the client at the same time. The project doesn&rsquo;t care which wallet is funding it — it just needs an active lease.
+            </p>
+            <p>
+              This also makes run402 useful beyond client handoffs: <strong>any scenario where multiple people need access to one project</strong> — a freelancer + a client&rsquo;s in-house developer, an agency team sharing a backend, a subcontractor who needs temporary access — all handled by the same access-grant / access-revoke mechanism.
+            </p>
+            <div class="faq-note">
+              Note: The access transfer flow is the intended design. Full API endpoints are in active development — this page will be updated when they ship. The core provisioning and credential system is live today.
+            </div>
+          </div>
+        </details>
+
+        <!-- Q5 -->
+        <details class="faq-item">
+          <summary>Does my client need to create a run402 account?</summary>
+          <div class="faq-body">
+            <p>
+              <strong>No. That&rsquo;s the whole point.</strong>
+            </p>
+            <p>
+              run402 doesn&rsquo;t require account creation at any stage — not for provisioning, not for access, not for the client. Access is credential-based: whoever holds the project credentials (project ID, API keys) can interact with the backend. Sharing access means sharing or delegating credentials, not inviting someone to create a platform account.
+            </p>
+            <p>
+              This is what makes client handoffs fast. Your client doesn&rsquo;t need to sign up for anything. They don&rsquo;t need a Supabase account. They don&rsquo;t join an org. They don&rsquo;t set up billing. They get credentials and their project works.
+            </p>
+          </div>
+        </details>
+
+        <!-- Q6 -->
+        <details class="faq-item">
+          <summary>Is this production-ready? Can I put real client data on it?</summary>
+          <div class="faq-body">
+            <p>
+              Yes. The infrastructure is AWS-grade: Aurora Serverless v2 (Postgres 16, multi-AZ), CloudFront + S3 for static hosting, TLS everywhere, automated backups with 7-day retention. Each client project lives in its own isolated Postgres schema — one client&rsquo;s data is never accessible to another.
+            </p>
+            <p>
+              The prototype tier (free) uses testnet USDC and is intentionally short-lived (7 days) — use it to validate the workflow works before committing a client project to production. The $5/month Hobby tier and $20/month Team tier are production leases with real billing, real durability guarantees, and no expiry risk beyond the lease period.
+            </p>
+            <p>
+              <strong>Hard caps, no overages.</strong> Every lease has a hard ceiling on storage and API calls. You will never receive a surprise invoice for a client project that got unexpectedly popular.
+            </p>
+          </div>
+        </details>
+
+      </div>
+    </div>
+
+    <!-- ── Final CTA ── -->
+    <div class="final-cta">
+      <h2>Freelancers &amp; agencies &mdash; <span class="accent">this is your backend.</span></h2>
+      <p>Start with the free prototype tier. Build a real client project with your AI agent. See how the handoff feels when it actually works.</p>
+      <div class="cta-row">
+        <a href="/billing" class="btn-primary" onclick="trackCta('final')">Try it free &mdash; build your first client project</a>
+        <a href="/llms-cli.txt" class="btn-ghost" target="_blank">Read the agent docs &rarr;</a>
+      </div>
+      <p style="font-size:12px;color:#374151;margin-top:16px;font-family:'JetBrains Mono',monospace;">
+        Free prototype &middot; No credit card &middot; No Supabase account for your client
+      </p>
+    </div>
+
+  </div><!-- /container -->
+
+  <!-- ── Footer ── -->
+  <div class="footer">
+    <span class="footer-text">By <a href="https://kychee.com">Kychee</a></span>
+    <span>
+      <a href="/humans">run402.com</a> &nbsp;&middot;&nbsp;
+      <a href="/humans/faq.html">FAQ</a> &nbsp;&middot;&nbsp;
+      <a href="/humans/terms.html">Terms</a> &nbsp;&middot;&nbsp;
+      <a href="/humans/privacy.html">Privacy</a> &nbsp;&middot;&nbsp;
+      <a href="https://x.com/run402com">@run402com</a>
+    </span>
+  </div>
+
+  <script>
+    function trackCta(location) {
+      try {
+        gtag('event', 'bdt_cta_click', { location: location });
+        // Attribution beacon
+        var gclid = localStorage.getItem('x402_gclid');
+        var src = localStorage.getItem('x402_utm_source');
+        if (gclid || src) {
+          var body = JSON.stringify({
+            gclid: gclid, utm_source: src,
+            utm_medium: localStorage.getItem('x402_utm_medium'),
+            utm_campaign: localStorage.getItem('x402_utm_campaign'),
+            utm_term: localStorage.getItem('x402_utm_term'),
+            utm_content: localStorage.getItem('x402_utm_content'),
+            page: 'run402_bdt', cta_location: location
+          });
+          navigator.sendBeacon('https://api.run402.com/x402/attribution', new Blob([body], {type: 'application/json'}));
+        }
+      } catch(e) {}
+    }
+
+    function copyCode(btn, id) {
+      var el = document.getElementById(id);
+      if (!el) return;
+      // Strip HTML tags to get plain text
+      var tmp = document.createElement('div');
+      tmp.innerHTML = el.innerHTML;
+      var text = tmp.textContent || tmp.innerText || '';
+      navigator.clipboard.writeText(text.trim()).then(function() {
+        btn.textContent = 'Copied';
+        btn.classList.add('copied');
+        setTimeout(function() {
+          btn.textContent = 'Copy';
+          btn.classList.remove('copied');
+        }, 2000);
+      });
+    }
+  </script>
+
+</body>
+</html>

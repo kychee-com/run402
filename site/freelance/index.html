@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>run402 for Freelancers — redirecting…</title>
+  <meta name="robots" content="noindex">
+  <script>
+    // Preserve incoming UTM params, inject utm_content=freelance, redirect to /bdt
+    (function() {
+      var src = new URLSearchParams(location.search);
+      var dst = new URLSearchParams();
+      ['gclid', 'utm_source', 'utm_medium', 'utm_campaign', 'utm_term'].forEach(function(k) {
+        var v = src.get(k); if (v) dst.set(k, v);
+      });
+      if (!dst.get('utm_campaign')) dst.set('utm_campaign', 'bdt');
+      dst.set('utm_content', src.get('utm_content') || 'freelance');
+      window.location.replace('/bdt?' + dst.toString());
+    })();
+  </script>
+  <meta http-equiv="refresh" content="0;url=/bdt">
+</head>
+<body></body>
+</html>
