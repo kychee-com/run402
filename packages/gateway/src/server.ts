@@ -233,10 +233,20 @@ app.get("/.well-known/x402", (_req: Request, res: Response) => {
   res.json({
     version: 1,
     resources: [
+      // Paid endpoints
       "https://api.run402.com/tiers/v1/prototype",
       "https://api.run402.com/tiers/v1/hobby",
       "https://api.run402.com/tiers/v1/team",
       "https://api.run402.com/generate-image/v1",
+      // Auth-only (SIWX identity, accepts: [])
+      "https://api.run402.com/projects/v1",
+      "https://api.run402.com/deployments/v1",
+      "https://api.run402.com/tiers/v1/status",
+      "https://api.run402.com/deploy/v1",
+      "https://api.run402.com/fork/v1",
+      "https://api.run402.com/message/v1",
+      "https://api.run402.com/agent/v1/contact",
+      "https://api.run402.com/ping/v1",
     ],
   });
 });

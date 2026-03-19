@@ -3,7 +3,7 @@ import { ExactEvmScheme } from "@x402/evm/exact/server";
 import { HTTPFacilitatorClient } from "@x402/core/server";
 import { createFacilitatorConfig } from "@coinbase/x402";
 import { declareDiscoveryExtension, bazaarResourceServerExtension } from "@x402/extensions";
-import { siwxResourceServerExtension, declareSIWxExtension } from "@x402/extensions/sign-in-with-x";
+import { siwxResourceServerExtension, declareSIWxExtension, parseSIWxHeader, validateSIWxMessage, verifySIWxSignature } from "@x402/extensions/sign-in-with-x";
 import { TIERS, SKU_PRICES } from "@run402/shared";
 import Stripe from "stripe";
 import {
@@ -198,6 +198,30 @@ export function createPaymentMiddleware() {
     },
   };
 
+  // --- Auth-only endpoints (SIWX identity required, no payment) ---
+  // accepts: [] signals "identity required, no payment" per x402 spec.
+  // Server returns 402 with SIWX challenge; client signs and sends SIGN-IN-WITH-X.
+  const authOnlyEndpoints = [
+    { route: "POST /projects/v1", description: "Create a new Postgres project (requires active tier)" },
+    { route: "POST /deployments/v1", description: "Deploy a static site" },
+    { route: "GET /tiers/v1/status", description: "Check your tier subscription status" },
+    { route: "POST /message/v1", description: "Send a message to an agent" },
+    { route: "POST /agent/v1/contact", description: "Set your agent contact info" },
+    { route: "GET /ping/v1", description: "Auth-only ping" },
+    { route: "POST /deploy/v1", description: "Full-stack app deployment (requires active tier)" },
+    { route: "POST /fork/v1", description: "Fork an app (requires active tier)" },
+  ];
+
+  for (const { route, description } of authOnlyEndpoints) {
+    resourceConfig[route] = {
+      accepts: [],
+      description,
+      extensions: {
+        ...declareSIWxExtension({ statement: "Sign in to Run402", network: networks }),
+      },
+    };
+  }
+
   const server = new x402ResourceServer(facilitatorClient);
   server.registerExtension(bazaarResourceServerExtension);
   server.registerExtension(siwxResourceServerExtension);
@@ -216,6 +240,10 @@ export function createPaymentMiddleware() {
       }
     });
   }
+
+  // SIWX auth hook: for auth-only routes (accepts: []), validate the SIWX
+  // signature and grant access. walletAuth downstream handles wallet extraction + tier checks.
+  httpServer.onProtectedRequest(createSIWxAuthOnlyHook(resourceConfig));
 
   // Track allowance debit results per-request (keyed by payment header)
   // so the wrapper middleware can set response headers and req.walletAddress after the x402 library calls next().
@@ -406,4 +434,35 @@ function resolveSkuPrice(method: string, path: string): { sku: string; amountUsd
   }
 
   return null;
+}
+
+/**
+ * SIWX auth-only hook — validates SIWX signatures for routes with accepts: [].
+ * Exported for testing.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function createSIWxAuthOnlyHook(resourceConfig: Record<string, any>) {
+  return async (context: { method: string; path: string; adapter: { getHeader: (name: string) => string | undefined; getUrl: () => string } }) => {
+    const routeKey = `${context.method.toUpperCase()} ${context.path}`;
+    const config = resourceConfig[routeKey];
+    if (!config || !Array.isArray(config.accepts) || config.accepts.length > 0) return;
+
+    const siwxHeader = context.adapter.getHeader("sign-in-with-x") || context.adapter.getHeader("SIGN-IN-WITH-X");
+    if (!siwxHeader) return;
+
+    try {
+      const payload = parseSIWxHeader(siwxHeader);
+      const resourceUri = context.adapter.getUrl();
+      const validation = await validateSIWxMessage(payload, resourceUri);
+      if (!validation.valid) return;
+
+      const verification = await verifySIWxSignature(payload);
+      if (!verification.valid || !verification.address) return;
+
+      recordWallet(verification.address.toLowerCase(), "siwx");
+      return { grantAccess: true as const };
+    } catch {
+      return;
+    }
+  };
 }
