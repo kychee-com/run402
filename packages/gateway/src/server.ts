@@ -80,6 +80,9 @@ const bugsnagMiddleware = Bugsnag.getPlugin("express")!;
 
 const app = express();
 
+// Cached llms-cli.txt for /.well-known/x402 instructions field
+let wellKnownInstructions: string | null = null;
+
 /**
  * Initialize x402 payment middleware with retries.
  * The facilitator may be temporarily unreachable during cold start.
@@ -229,9 +232,18 @@ if (SELLER_ADDRESS) {
 }
 
 // --- x402 discovery (for x402scan.com) ---
-app.get("/.well-known/x402", (_req: Request, res: Response) => {
-  res.json({
+app.get("/.well-known/x402", async (_req: Request, res: Response) => {
+  // Fetch llms-cli.txt once, cache in memory
+  if (!wellKnownInstructions) {
+    try {
+      const r = await fetch("https://run402.com/llms-cli.txt");
+      if (r.ok) wellKnownInstructions = await r.text();
+    } catch { /* serve without instructions if fetch fails */ }
+  }
+
+  const body: Record<string, unknown> = {
     version: 1,
+    description: "Postgres databases, static hosting, serverless functions, and image generation for AI agents. Pay-per-tier with x402 USDC micropayments.",
     resources: [
       // Paid endpoints
       "https://api.run402.com/tiers/v1/prototype",
@@ -248,7 +260,9 @@ app.get("/.well-known/x402", (_req: Request, res: Response) => {
       "https://api.run402.com/agent/v1/contact",
       "https://api.run402.com/ping/v1",
     ],
-  });
+  };
+  if (wellKnownInstructions) body.instructions = wellKnownInstructions;
+  res.json(body);
 });
 
 // --- Health check ---
