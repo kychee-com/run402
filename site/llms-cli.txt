@@ -181,7 +181,8 @@ run402 subdomains claim my-app
 ## Command Reference
 
 ### init
-`run402 init` — creates allowance, requests faucet, checks tier, lists projects.
+- `run402 init` — set up with x402 (Base Sepolia). Creates allowance, requests faucet, checks tier, lists projects.
+- `run402 init mpp` — set up with MPP (Tempo Moderato testnet). Same steps, different payment rail.
 
 ### status
 `run402 status` — show full account state in one shot (allowance, balance, tier, projects, active project). Read-only, JSON output.
