@@ -526,6 +526,53 @@ describe("CLI integration (live API, no mocks)", { timeout: 180_000 }, () => {
     assert.ok(Array.isArray(data.projects), "should include projects");
   });
 
+  // ── MPP rail (real Tempo RPC, no mocks) ────────────────────────────
+
+  it("init mpp — switch to MPP rail, fund on Tempo", async () => {
+    const { run } = await import("./cli/lib/init.mjs");
+    captureStart();
+    await run(["mpp"]);
+    captureStop();
+    const out = captured();
+    assert.ok(out.includes("Tempo"), `Expected 'Tempo' in: ${out}`);
+    assert.ok(out.includes("pathUSD"), `Expected 'pathUSD' in: ${out}`);
+    assert.ok(out.includes("mpp"), `Expected 'mpp' in: ${out}`);
+    // Verify rail saved
+    const allowance = JSON.parse(readFileSync(join(tempDir, "allowance.json"), "utf-8"));
+    assert.equal(allowance.rail, "mpp", "rail should be mpp");
+  });
+
+  it("allowance balance — shows Tempo pathUSD", async () => {
+    const { run } = await import("./cli/lib/allowance.mjs");
+    captureStart();
+    await run("balance", []);
+    captureStop();
+    const out = captured();
+    assert.ok(out.includes("tempo-moderato_pathusd_micros"), `Expected Tempo balance in: ${out}`);
+    assert.ok(out.includes("mpp"), `Expected 'mpp' rail in: ${out}`);
+  });
+
+  it("allowance fund — Tempo faucet (instant)", async () => {
+    const { run } = await import("./cli/lib/allowance.mjs");
+    captureStart();
+    await run("fund", []);
+    captureStop();
+    const out = captured();
+    assert.ok(out.includes("tempo-moderato_pathusd_micros"), `Expected Tempo fund result in: ${out}`);
+  });
+
+  it("init — switch back to x402", async () => {
+    const { run } = await import("./cli/lib/init.mjs");
+    captureStart();
+    await run([]);
+    captureStop();
+    const out = captured();
+    assert.ok(out.includes("Base Sepolia"), `Expected 'Base Sepolia' in: ${out}`);
+    assert.ok(out.includes("x402"), `Expected 'x402' in: ${out}`);
+    const allowance = JSON.parse(readFileSync(join(tempDir, "allowance.json"), "utf-8"));
+    assert.equal(allowance.rail, "x402", "rail should be x402");
+  });
+
   // ── Cleanup ───────────────────────────────────────────────────────────
 
   it("subdomains delete", async () => {
