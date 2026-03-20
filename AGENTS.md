@@ -91,3 +91,15 @@ Never use `$()` command substitution or heredocs with `$(cat <<...)` in Bash cal
 **Site (run402.com):** Push changes under `site/` to `main`. The GitHub Action `.github/workflows/deploy-site.yml` syncs to S3 and invalidates CloudFront.
 
 **Demos:** Each demo under `demos/` has its own `deploy.ts`. Run with `npx tsx demos/<name>/deploy.ts`.
+
+### Testing
+
+| Script | What it tests |
+|---|---|
+| `npm run test:e2e` | Full lifecycle (tier, project, SQL, RLS, auth, storage, deploy, publish, fork) |
+| `npm run test:bld402-compat` | bld402 template compatibility — 3 templates (shared-todo, paste-locker, landing-waitlist). **Run before releasing** to ensure run402 changes don't break bld402.com. |
+| `npm run test:functions` | Serverless functions E2E |
+| `npm run test:billing` | Billing/Stripe E2E |
+| `npm run test:openclaw` | OpenClaw agent E2E |
+
+All E2E tests require `BUYER_PRIVATE_KEY` in `.env` and `BASE_URL` (defaults to localhost).
