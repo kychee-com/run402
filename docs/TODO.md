@@ -170,3 +170,9 @@ Have Claude TRY the different apps
 CI CD for everything (add --manual flag to deployment scripts, as the main deployment needs to happen via push)
 Offer generous subdomains (cool-name.run402.com)
 Review the MCP server and OpenClaw skill sections inside llms.txt
+
+
+Transfer app to other users (for an agency)
+
+make the movie a run402 app
+
