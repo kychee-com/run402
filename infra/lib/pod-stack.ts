@@ -120,12 +120,12 @@ export class PodStack extends cdk.Stack {
       this, "MppSecretKey", "agentdb/mpp-secret-key",
     );
 
+    const googleAppOauth = secretsmanager.Secret.fromSecretNameV2(
+      this, "GoogleAppOAuth", "agentdb/google-app-oauth",
+    );
+
     // STRIPE_WEBHOOK_SECRET: managed outside CDK — added directly to task def revisions.
     // fromSecretNameV2 generates a partial ARN that ECS can't resolve at startup.
-
-    // Google OAuth + admin session secrets are managed outside CDK.
-    // The task role has a wildcard policy (AgentDBSecretsWildcard) for agentdb/*.
-    // New secrets are added directly to task def revisions — no CDK deploy needed.
 
     // =========================================================================
     // Aurora Serverless v2 (Postgres 16)
@@ -316,9 +316,9 @@ export class PodStack extends cdk.Stack {
         ADMIN_KEY: ecs.Secret.fromSecretsManager(adminKeySecret),
         OPENROUTER_API_KEY: ecs.Secret.fromSecretsManager(openrouterSecret),
         MPP_SECRET_KEY: ecs.Secret.fromSecretsManager(mppSecretKey),
+        GOOGLE_APP_CLIENT_ID: ecs.Secret.fromSecretsManager(googleAppOauth, "client_id"),
+        GOOGLE_APP_CLIENT_SECRET: ecs.Secret.fromSecretsManager(googleAppOauth, "client_secret"),
         // STRIPE_WEBHOOK_SECRET: managed outside CDK (fromSecretNameV2 ARN issue)
-        // GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, ADMIN_SESSION_SECRET
-        // are added directly to task def revisions (see deploy.sh / CI)
       },
       healthCheck: {
         command: ["CMD-SHELL", "wget -qO- http://localhost:4022/health || exit 1"],
