@@ -108,6 +108,10 @@ function assert(condition: boolean, message: string) {
   }
 }
 
+function skip(message: string) {
+  console.log(`  SKIP: ${message}`);
+}
+
 async function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -911,22 +915,29 @@ async function main() {
   }
 
   // POST /auth/v1/oauth/google/start — evil.com redirect rejected
-  const oauthBadRedirectRes = await fetch(`${BASE_URL}/auth/v1/oauth/google/start`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", apikey: anon_key },
-    body: JSON.stringify({ redirect_url: "https://evil.com/steal", mode: "redirect" }),
-  });
-  assert(oauthBadRedirectRes.status === 400, "OAuth start rejects evil.com redirect (400)");
-  const oauthBadBody = await oauthBadRedirectRes.json();
-  assert(oauthBadBody.error.includes("not an allowed origin"), "Error message mentions allowed origin");
+  // (only testable when Google OAuth is configured; otherwise 503 fires before validation)
+  if (googleProvider.enabled) {
+    const oauthBadRedirectRes = await fetch(`${BASE_URL}/auth/v1/oauth/google/start`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", apikey: anon_key },
+      body: JSON.stringify({ redirect_url: "https://evil.com/steal", mode: "redirect" }),
+    });
+    assert(oauthBadRedirectRes.status === 400, "OAuth start rejects evil.com redirect (400)");
+    const oauthBadBody = await oauthBadRedirectRes.json();
+    assert(oauthBadBody.error.includes("not an allowed origin"), "Error message mentions allowed origin");
 
-  // POST /auth/v1/oauth/google/start — missing redirect_url
-  const oauthNoRedirectRes = await fetch(`${BASE_URL}/auth/v1/oauth/google/start`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", apikey: anon_key },
-    body: JSON.stringify({ mode: "popup" }),
-  });
-  assert(oauthNoRedirectRes.status === 400, "OAuth start rejects missing redirect_url (400)");
+    // POST /auth/v1/oauth/google/start — missing redirect_url
+    const oauthNoRedirectRes = await fetch(`${BASE_URL}/auth/v1/oauth/google/start`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", apikey: anon_key },
+      body: JSON.stringify({ mode: "popup" }),
+    });
+    assert(oauthNoRedirectRes.status === 400, "OAuth start rejects missing redirect_url (400)");
+  } else {
+    skip("OAuth start rejects evil.com redirect (400)");
+    skip("Error message mentions allowed origin");
+    skip("OAuth start rejects missing redirect_url (400)");
+  }
 
   // POST /auth/v1/token?grant_type=authorization_code — invalid code
   const oauthBadCodeRes = await fetch(`${BASE_URL}/auth/v1/token?grant_type=authorization_code`, {
