@@ -113,9 +113,10 @@ def _detect_operation(challenge: str, aj: str) -> str | None:
 
     # Word-based detection (subtraction before addition to avoid false matches)
     ops = [
-        ("multiply", "*"), ("multiplied", "*"), ("times", "*"),
+        ("multiply", "*"), ("multiplied", "*"), ("multiplies", "*"), ("times", "*"),
         ("product", "*"), ("leverag", "*"), ("advantag", "*"),
         ("double", "*"), ("doubles", "*"), ("triple", "*"), ("triples", "*"),
+        ("torque", "*"),
         ("loses", "-"), ("minus", "-"), ("slows", "-"), ("drops", "-"),
         ("remains", "-"),
         ("reduces", "-"), ("subtract", "-"), ("decreased", "-"), ("reduced", "-"),

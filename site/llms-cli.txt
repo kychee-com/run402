@@ -224,7 +224,7 @@ Requires active tier and a provisioned project. Deploys to an existing project: 
 ### functions
 Node 22 runtime. Must export `default async (req: Request) => Response`.
 
-- `run402 functions deploy <id> <name> --code <file> [--deps "<pkg,...>"] [--timeout <s>] [--memory <mb>]`
+- `run402 functions deploy <id> <name> --file <file> [--deps "<pkg,...>"] [--timeout <s>] [--memory <mb>]`
 - `run402 functions invoke <id> <name> [--body '<json>'] [--method <GET|POST|...>]`
 - `run402 functions logs <id> <name> [--tail <n>]`
 - `run402 functions <list|delete> <id> [<name>]`
