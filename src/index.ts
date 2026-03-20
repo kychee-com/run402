@@ -67,6 +67,10 @@ import { deleteVersionSchema, handleDeleteVersion } from "./tools/delete-version
 import { getAppSchema, handleGetApp } from "./tools/get-app.js";
 import { tierStatusSchema, handleTierStatus } from "./tools/tier-status.js";
 import { initSchema, handleInit } from "./tools/init.js";
+import { statusSchema, handleStatus } from "./tools/status.js";
+import { projectInfoSchema, handleProjectInfo } from "./tools/project-info.js";
+import { projectUseSchema, handleProjectUse } from "./tools/project-use.js";
+import { projectKeysSchema, handleProjectKeys } from "./tools/project-keys.js";
 
 const server = new McpServer({
   name: "run402",
@@ -439,6 +443,38 @@ server.tool(
   "Set up agent allowance, request faucet funding, and check tier status — single-call bootstrap. Idempotent, safe to re-run.",
   initSchema,
   async (args) => handleInit(args),
+);
+
+// ─── Status tool ──────────────────────────────────────────────────────────
+
+server.tool(
+  "status",
+  "Full account snapshot — allowance, billing balance, tier subscription, projects, and active project. Single-call overview.",
+  statusSchema,
+  async (args) => handleStatus(args as Record<string, never>),
+);
+
+// ─── Local project tools ──────────────────────────────────────────────────
+
+server.tool(
+  "project_info",
+  "Show local project details — REST URL, keys, site URL, and deployment info. Reads from local keystore only.",
+  projectInfoSchema,
+  async (args) => handleProjectInfo(args),
+);
+
+server.tool(
+  "project_use",
+  "Set the active/default project in the local keystore.",
+  projectUseSchema,
+  async (args) => handleProjectUse(args),
+);
+
+server.tool(
+  "project_keys",
+  "Get anon_key and service_key for a project from the local keystore.",
+  projectKeysSchema,
+  async (args) => handleProjectKeys(args),
 );
 
 const transport = new StdioServerTransport();

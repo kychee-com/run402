@@ -137,7 +137,7 @@ interface Capability {
 const SURFACE: Capability[] = [
   // ── Init / status (local-only) ──────────────────────────────────────────
   { id: "init",              endpoint: "(local)",                              mcp: "init",                          cli: "init",                openclaw: "init" },
-  { id: "status",            endpoint: "(local)",                              mcp: null,                            cli: "status",              openclaw: "status" },
+  { id: "status",            endpoint: "(local)",                              mcp: "status",                        cli: "status",              openclaw: "status" },
 
   // ── Project lifecycle ────────────────────────────────────────────────────
   { id: "get_quote",         endpoint: "POST /projects/v1/quote",                mcp: "get_quote",                    cli: "projects:quote",      openclaw: "projects:quote" },
@@ -191,9 +191,9 @@ const SURFACE: Capability[] = [
   // ── Billing ──────────────────────────────────────────────────────────────
   { id: "check_balance",     endpoint: "GET /billing/v1/accounts/:wallet",           mcp: "check_balance",  cli: "allowance:balance", openclaw: "allowance:balance" },
   { id: "list_projects",     endpoint: "GET /wallets/v1/:wallet/projects",           mcp: "list_projects",  cli: "projects:list",  openclaw: "projects:list" },
-  { id: "project_info",      endpoint: "(local)",                                    mcp: null,             cli: "projects:info",  openclaw: "projects:info" },
-  { id: "project_use",       endpoint: "(local)",                                    mcp: null,             cli: "projects:use",   openclaw: "projects:use" },
-  { id: "project_keys",      endpoint: "(local)",                                    mcp: null,             cli: "projects:keys",  openclaw: "projects:keys" },
+  { id: "project_info",      endpoint: "(local)",                                    mcp: "project_info",   cli: "projects:info",  openclaw: "projects:info" },
+  { id: "project_use",       endpoint: "(local)",                                    mcp: "project_use",    cli: "projects:use",   openclaw: "projects:use" },
+  { id: "project_keys",      endpoint: "(local)",                                    mcp: "project_keys",   cli: "projects:keys",  openclaw: "projects:keys" },
 
   // ── Image generation ─────────────────────────────────────────────────────
   { id: "generate_image",    endpoint: "POST /generate-image/v1",           mcp: "generate_image",   cli: "image:generate",   openclaw: "image:generate" },
