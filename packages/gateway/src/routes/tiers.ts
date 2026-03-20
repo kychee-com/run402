@@ -54,8 +54,9 @@ router.post("/tiers/v1/:tier", asyncHandler(async (req: Request, res: Response) 
     throw new HttpError(400, `Unknown tier: ${tier}. Valid tiers: ${Object.keys(TIERS).join(", ")}`);
   }
 
+  // MPP middleware sets req.walletAddress directly; x402 flow uses payment header
   const paymentHeader = getPaymentHeader(req.headers as Record<string, string | string[] | undefined>);
-  const wallet = paymentHeader ? extractWalletFromPaymentHeader(paymentHeader) : null;
+  const wallet = req.walletAddress || (paymentHeader ? extractWalletFromPaymentHeader(paymentHeader) : null);
   if (!wallet) {
     throw new HttpError(401, "Could not extract wallet from payment header");
   }
