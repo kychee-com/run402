@@ -43,12 +43,18 @@ npx run402 projects sql <id> "CREATE TABLE test (id serial PRIMARY KEY);"
 
 **Root cause hypothesis:** The SQL parser or PostgREST layer treats the em-dash (`—`, U+2014) as a special character, possibly truncating the SQL at that point. Regular ASCII hyphens (`--`) in comments work fine.
 
-**Fix:** Either:
-- Strip non-ASCII characters from SQL comments before execution
-- Return an error if SQL contains characters that will cause parse failures
-- At minimum: return `rowCount: 0` or a warning when no DDL was executed
+**Fix (recommended):** Add `--file` flag to `projects sql` so the CLI reads SQL from a file instead of a command-line argument. This avoids all shell escaping issues on every platform:
+```bash
+npx run402 projects sql <id> --file schema.sql
+```
+Also consider stdin support:
+```bash
+cat schema.sql | npx run402 projects sql <id> --stdin
+```
 
-**Workaround (applied in bld402 tests):** Strip all comment lines from SQL before sending to the endpoint.
+**Windows compatibility note:** This bug affects ALL multiline SQL with `--` comment lines on Windows. The `--` may be interpreted as an end-of-options marker by the shell or Node.js argument parser. The `--file` flag would eliminate this entire class of issues.
+
+**Workaround (applied in bld402 tests):** Strip all comment lines from SQL and flatten to single line before passing as CLI argument.
 
 **Investigation (2026-03-20):** Unable to reproduce on Linux/Mac. Traced the full request lifecycle: CLI sends correct UTF-8 via fetch (Content-Length matches byte length), express.text() decodes correctly, node-pg serializes correctly. End-to-end test confirms em-dash survives the entire chain intact. Likely a PostgREST schema cache timing issue misattributed to the em-dash.
 
