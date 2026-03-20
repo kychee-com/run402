@@ -50,6 +50,8 @@ npx run402 projects sql <id> "CREATE TABLE test (id serial PRIMARY KEY);"
 
 **Workaround (applied in bld402 tests):** Strip all comment lines from SQL before sending to the endpoint.
 
+**Investigation (2026-03-20):** Unable to reproduce. Traced the full request lifecycle: CLI sends correct UTF-8 via fetch (Content-Length matches byte length), express.text() decodes correctly, node-pg serializes correctly. End-to-end test confirms em-dash survives the entire chain intact. Likely a PostgREST schema cache timing issue misattributed to the em-dash.
+
 ---
 
 ## BUG-002: `tier set` returns HTML instead of JSON when already subscribed (LOW)
@@ -210,12 +212,26 @@ But the gateway blocked the `GRANT` statement (security measure — raw GRANT is
 
 | Bug | Severity | Component | Status |
 |-----|----------|-----------|--------|
-| BUG-001 | HIGH | Gateway (SQL endpoint) | Open |
-| BUG-002 | LOW | CLI (tier.mjs) | Open |
-| BUG-003 | LOW | CLI (init.mjs) | Open |
-| BUG-004 | MEDIUM | CLI (sites.mjs) | Open |
-| BUG-005 | LOW | CLI (naming) | Open |
-| BUG-006 | HIGH | run402-mcp (set_tier) | Open |
-| BUG-007 | MEDIUM | Gateway + Docs | Open |
+| BUG-001 | HIGH | Gateway (SQL endpoint) | Cannot reproduce |
+| BUG-002 | LOW | CLI (tier.mjs) | Fixed |
+| BUG-003 | LOW | CLI (init.mjs) | Fixed |
+| BUG-004 | MEDIUM | CLI (sites.mjs) | Not a bug |
+| BUG-005 | LOW | CLI (naming) | Not a bug |
+| BUG-006 | HIGH | run402-mcp (set_tier) | Not a bug |
+| BUG-007 | MEDIUM | Gateway + Docs | Not a bug |
 
-**Priority order for fixing:** BUG-001 > BUG-006 > BUG-004 > BUG-007 > BUG-002 > BUG-003 > BUG-005
+### Investigation Notes (2026-03-20)
+
+**BUG-001 — Cannot reproduce.** Traced the full request lifecycle (CLI → fetch → express.text → node-pg → PostgreSQL). The em-dash survives every layer intact. End-to-end test confirms UTF-8 is preserved. Likely a PostgREST schema cache timing issue misattributed to the em-dash character.
+
+**BUG-002 — Fixed.** Reproduced: `res.json()` throws `SyntaxError` when the response body is HTML (e.g. from ALB 502 or x402 facilitator error). CLI crashes with unhandled error. Fix: read body as text first, then safely parse JSON.
+
+**BUG-003 — Fixed.** Reproduced: `init.mjs` checks `tierInfo.status === "active"` but the API returns `{ active: true }` (boolean field, not a `status` string). The condition is always false, so init always shows "Tier: (none)". Fix: changed to `tierInfo.active`.
+
+**BUG-004 — Not a bug.** The `--manifest` flag is the intended interface. The positional syntax `sites deploy <id> <file>` never existed in the current CLI — bld402 agent instructions referenced a syntax that was never implemented. This is a docs mismatch on the bld402 side, not a regression.
+
+**BUG-005 — Not a bug.** The command is `projects rest`, not `projects query`. The CLI documents `rest` in its help text. bld402 expected `query` to exist as an alias — that's a naming preference, not a missing feature.
+
+**BUG-006 — Not a bug.** The MCP server is designed to return 402 payment details as informational text so the LLM can reason about payment flow. It deliberately does not handle x402 signing internally — the MCP server has no x402 payment dependencies (`@x402/fetch`, `viem` are devDependencies only). bld402 expected automatic payment handling, which is an architecture disagreement, not a bug.
+
+**BUG-007 — Not a bug.** `GRANT` is intentionally blocked in the SQL endpoint as a security measure. The dedicated RLS endpoint (`POST /admin/:id/rls`) exists specifically to handle both policies and grants. This is working as designed. A docs improvement (pointing agents to the RLS endpoint) would help, but the behavior itself is correct.
