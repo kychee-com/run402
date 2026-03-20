@@ -69,6 +69,16 @@ function buildSpec(): object {
           pricingMode: "fixed",
           price: tierConfig.price,
         },
+        requestBody: {
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                description: "No body required. Payment header determines wallet identity and tier action.",
+              },
+            },
+          },
+        },
         responses: {
           "201": { description: "Tier subscribed" },
           "200": { description: "Tier renewed or upgraded" },
@@ -326,6 +336,7 @@ function buildSpec(): object {
       summary: "List tiers and pricing",
       description: "Returns all available tiers with pricing, limits, and descriptions. No auth required.",
       tags: ["tiers"],
+      security: [],
       responses: { "200": { description: "Tier listing" } },
     },
   };
@@ -336,6 +347,7 @@ function buildSpec(): object {
       summary: "Health check",
       description: "Returns service health status.",
       tags: ["utility"],
+      security: [],
       responses: { "200": { description: "Service healthy" } },
     },
   };
