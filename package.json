@@ -21,7 +21,8 @@
     "test:sync": "node --test --import tsx sync.test.ts",
     "test": "node --experimental-test-module-mocks --test --import tsx SKILL.test.ts sync.test.ts core/src/**/*.test.ts src/**/*.test.ts && node --test cli-e2e.test.mjs",
     "test:e2e": "node --test cli-e2e.test.mjs",
-    "test:integration": "node --test --import tsx core/src/siwx-integration.integ.ts"
+    "test:integration": "node --test --import tsx core/src/siwx-integration.integ.ts",
+    "test:integration:full": "node --test --import tsx cli-integration.test.ts"
   },
   "keywords": [
     "mcp",
