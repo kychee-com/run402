@@ -47,7 +47,11 @@ function noContent() {
 
 // USDC balance as ABI-encoded uint256 (250000 = 0.25 USDC)
 const USDC_BALANCE_HEX = "0x" + "0".repeat(58) + "03d090";
+// pathUSD balance as ABI-encoded uint256 (1000000 = 1.00 pathUSD)
+const PATHUSD_BALANCE_HEX = "0x" + "0".repeat(59) + "f4240";
+const TEMPO_RPC_URL = "https://rpc.moderato.tempo.xyz/";
 let rpcCallCount = 0;
+let tempoRpcCallCount = 0;
 
 function mockFetch(input, init) {
   // Handle Request objects (x402 library may pass these)
@@ -70,6 +74,31 @@ function mockFetch(input, init) {
     try { body = JSON.parse(rawBody); } catch { body = rawBody; }
   } else if (rawBody) {
     body = rawBody;
+  }
+
+  // ── Tempo Moderato RPC (pathUSD balance, faucet) ──
+  if (url === TEMPO_RPC_URL && body?.jsonrpc === "2.0") {
+    tempoRpcCallCount++;
+    if (body.method === "tempo_fundAddress") {
+      return Promise.resolve(json({ jsonrpc: "2.0", result: ["0xtx1", "0xtx2", "0xtx3", "0xtx4"], id: body.id }));
+    }
+    if (body.method === "eth_call") {
+      // Return 0 for first call (before faucet), positive for subsequent
+      const balance = tempoRpcCallCount <= 1 ? "0x0" : PATHUSD_BALANCE_HEX;
+      return Promise.resolve(json({ jsonrpc: "2.0", result: balance, id: body.id }));
+    }
+    if (body.method === "eth_chainId") {
+      return Promise.resolve(json({ jsonrpc: "2.0", result: "0xa5bf", id: body.id }));
+    }
+    if (Array.isArray(body)) {
+      const results = body.map(req => {
+        if (req.method === "eth_call") return { jsonrpc: "2.0", result: PATHUSD_BALANCE_HEX, id: req.id };
+        if (req.method === "eth_chainId") return { jsonrpc: "2.0", result: "0xa5bf", id: req.id };
+        return { jsonrpc: "2.0", result: "0x0", id: req.id };
+      });
+      return Promise.resolve(json(results));
+    }
+    return Promise.resolve(json({ jsonrpc: "2.0", result: "0x0", id: body.id }));
   }
 
   // ── Viem JSON-RPC calls (eth_call for USDC balance, eth_chainId, etc.) ──
@@ -819,5 +848,64 @@ describe("CLI e2e happy path", () => {
     assert.ok(data.allowance, "should include allowance");
     assert.ok(data.allowance.address, "should include allowance address");
     assert.ok(Array.isArray(data.projects), "should include projects array");
+  });
+
+  // ── MPP rail ─────────────────────────────────────────────────────────────
+
+  it("init mpp (switch to MPP rail)", async () => {
+    tempoRpcCallCount = 0; // reset for fresh faucet flow
+    const { run } = await import("./cli/lib/init.mjs");
+    captureStart();
+    await run(["mpp"]);
+    captureStop();
+    const out = captured();
+    assert.ok(out.includes("Tempo"), "should show Tempo network");
+    assert.ok(out.includes("pathUSD"), "should show pathUSD");
+    assert.ok(out.includes("mpp"), "should show mpp rail");
+    // Verify rail saved
+    const allowance = JSON.parse(readFileSync(join(tempDir, "allowance.json"), "utf-8"));
+    assert.equal(allowance.rail, "mpp", "rail should be mpp");
+  });
+
+  it("allowance status (MPP rail)", async () => {
+    const { run } = await import("./cli/lib/allowance.mjs");
+    captureStart();
+    await run("status", []);
+    captureStop();
+    assert.ok(captured().includes("mpp"), "should show mpp rail");
+  });
+
+  it("allowance balance (MPP rail)", async () => {
+    const { run } = await import("./cli/lib/allowance.mjs");
+    captureStart();
+    await run("balance", []);
+    captureStop();
+    const out = captured();
+    assert.ok(out.includes("tempo-moderato_pathusd_micros"), "should show Tempo balance");
+    assert.ok(out.includes("mpp"), "should show mpp rail");
+  });
+
+  it("allowance fund (MPP rail)", async () => {
+    tempoRpcCallCount = 0; // reset so first call returns 0, faucet tops up
+    const { run } = await import("./cli/lib/allowance.mjs");
+    captureStart();
+    await run("fund", []);
+    captureStop();
+    const out = captured();
+    assert.ok(out.includes("tempo-moderato_pathusd_micros"), "should show Tempo fund result");
+    assert.ok(out.includes("mpp"), "should show mpp rail");
+  });
+
+  it("init (switch back to x402)", async () => {
+    const { run } = await import("./cli/lib/init.mjs");
+    captureStart();
+    await run([]);
+    captureStop();
+    const out = captured();
+    assert.ok(out.includes("Base Sepolia"), "should show Base Sepolia network");
+    assert.ok(out.includes("x402"), "should show x402 rail");
+    // Verify rail switched back
+    const allowance = JSON.parse(readFileSync(join(tempDir, "allowance.json"), "utf-8"));
+    assert.equal(allowance.rail, "x402", "rail should be x402");
   });
 });

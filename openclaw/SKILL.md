@@ -1,6 +1,6 @@
 ---
 name: run402
-description: Provision Postgres databases, deploy static sites, generate images, and build full-stack webapps on Run402 using x402 micropayments. Use when the user asks to build a webapp, deploy a site, create a database, generate images, or mentions Run402.
+description: Provision Postgres databases, deploy static sites, generate images, and build full-stack webapps on Run402 using x402 or MPP micropayments. Use when the user asks to build a webapp, deploy a site, create a database, generate images, or mentions Run402.
 ---
 
 # Run402 — AI-Native Postgres & Static Hosting

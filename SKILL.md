@@ -1,6 +1,6 @@
 ---
 name: run402
-description: Provision and manage AI-native Postgres databases with REST API, auth, storage, and row-level security. Prototype tier is free (testnet). Paid tiers use x402 USDC on Base or Stripe credits.
+description: Provision and manage AI-native Postgres databases with REST API, auth, storage, and row-level security. Prototype tier is free (testnet). Paid tiers use x402 USDC on Base, MPP pathUSD on Tempo, or Stripe credits.
 metadata:
   openclaw:
     emoji: "🐘"
@@ -17,7 +17,11 @@ metadata:
 
 # Run402 — Postgres for AI Agents
 
-Run402 gives you a full Postgres database with a REST API, user auth, file storage, and row-level security. The prototype tier is free — you pay with testnet USDC to test the x402 flow end-to-end, no real money needed. Higher tiers (hobby, team) cost real money, payable with USDC on Base or Stripe credits. No signups, no human approval needed.
+Run402 gives you a full Postgres database with a REST API, user auth, file storage, and row-level security. The prototype tier is free — you pay with testnet USDC to test the payment flow end-to-end, no real money needed. Higher tiers (hobby, team) cost real money, payable with USDC on Base (x402), pathUSD on Tempo (MPP), or Stripe credits. No signups, no human approval needed.
+
+Two payment rails are supported:
+- **x402** (default): USDC on Base Sepolia (testnet) or Base mainnet. Standard HTTP 402 protocol.
+- **MPP**: pathUSD on Tempo Moderato (testnet). Stripe's Machine Payments Protocol. Same wallet key works on both chains.
 
 One tool call. One payment. You get back `anon_key`, `service_key`, and a project ID. Start creating tables immediately.
 
@@ -308,7 +312,7 @@ run_sql(project_id: "prj_...", sql: "SELECT count(*) FROM todos")
 
 ## Payment Handling
 
-Run402 uses the x402 HTTP payment protocol. Here's what you need to know:
+Run402 supports two payment protocols: **x402** (USDC on Base) and **MPP** (pathUSD on Tempo). Both use the same wallet key. Here's what you need to know:
 
 **When payment is needed:** Only `provision_postgres_project` and `renew_project` require x402 payment. All other tools (run_sql, rest_query, upload_file) use stored project keys — no payment needed.
 
@@ -327,7 +331,7 @@ Run402 uses the x402 HTTP payment protocol. Here's what you need to know:
 | Hobby | $5.00 | 30 days | 1 GB | 5,000,000 | 25 | 30s | 256MB | 50 |
 | Team | $20.00 | 30 days | 10 GB | 50,000,000 | 100 | 60s | 512MB | 200 |
 
-Prototype uses Base Sepolia testnet USDC — no real money needed. Get test USDC from the faucet. Hobby and Team require real payment via USDC on Base or Stripe credits.
+Prototype uses testnet tokens — no real money needed. With x402: Base Sepolia USDC from the faucet. With MPP: Tempo Moderato pathUSD from the Tempo faucet (instant, no rate limit). Hobby and Team require real payment via USDC on Base, pathUSD on Tempo, or Stripe credits.
 
 **Budget enforcement:** When a project hits its tier's API call or storage limit, REST/SQL calls return 402 with usage details and a renew URL. Suggest renewing the project at the same or higher tier.
 
@@ -362,15 +366,22 @@ Prototype uses Base Sepolia testnet USDC — no real money needed. Get test USDC
 
 ## Agent Allowance Setup
 
-To pay Run402, the user needs an agent allowance with USDC on Base. If they don't have one yet, here are the options:
+To pay Run402, the user needs an agent allowance. Two payment rails are available:
 
-**Option A: Coinbase AgentKit (recommended)** — Gives you an allowance on Base with built-in x402 support. No KYC, no manual key management.
+**x402 rail (default):** USDC on Base. Set up with `run402 init`.
+- Prototype: Base Sepolia testnet USDC (free from faucet)
+- Hobby/Team: real USDC on Base mainnet
 
-**Option B: AgentPayy** — Auto-bootstraps an MPC wallet on Base using Coinbase CDP. Purpose-built for x402.
+**MPP rail:** pathUSD on Tempo. Set up with `run402 init mpp`.
+- Prototype: Tempo Moderato testnet pathUSD (free from faucet, instant, no rate limit)
+- Hobby/Team: real pathUSD on Tempo mainnet
 
-**Option C: x402 OpenClaw Skill** — Install the x402 skill from ClawHub for x402 payment capabilities.
+The same wallet key works on both chains — switching rails just changes which chain is used for payments.
 
-**Prototype (free):** Use Base Sepolia testnet. Get free test USDC from the faucet (`request_faucet`) or Circle. No real money needed — the goal is to test the x402 payment flow end-to-end.
+**Additional setup options:**
+- **Coinbase AgentKit** — Gives you an allowance on Base with built-in x402 support
+- **AgentPayy** — Auto-bootstraps an MPC wallet on Base using Coinbase CDP
+- **x402 OpenClaw Skill** — Install the x402 skill from ClawHub for x402 payment capabilities
 
 **Hobby/Team (real money):** Fund the allowance with USDC on Base mainnet, or buy credits via Stripe. The simplest path: download Coinbase Wallet, buy USDC, send to the allowance address. Base transactions cost under $0.01.
 

@@ -19,7 +19,8 @@ Usage:
   run402 <command> [subcommand] [options]
 
 Commands:
-  init        Set up allowance, funding, and check tier status
+  init        Set up allowance, funding, and check tier status (x402 default)
+  init mpp    Set up with MPP payment rail (Tempo Moderato testnet)
   status      Show full account state (allowance, balance, tier, projects)
   allowance   Manage your agent allowance (create, fund, balance, status)
   tier        Manage tier subscription (status, set)
@@ -31,7 +32,7 @@ Commands:
   sites       Deploy static sites
   subdomains  Manage custom subdomains (claim, list, delete)
   apps        Browse and manage the app marketplace
-  image       Generate AI images via x402 micropayments
+  image       Generate AI images via x402 or MPP micropayments
   message     Send messages to Run402 developers
   agent       Manage agent identity (contact info)
 
@@ -48,7 +49,8 @@ Examples:
   run402 image generate "a startup mascot, pixel art" --output logo.png
 
 Getting started:
-  run402 init               Set up everything in one command
+  run402 init               Set up with x402 (Base Sepolia)
+  run402 init mpp           Set up with MPP (Tempo Moderato)
   run402 tier set prototype  Subscribe to a tier
   run402 deploy --manifest app.json
 `;
