@@ -173,7 +173,7 @@ export async function run(args = []) {
     }
   } catch {}
 
-  if (tierInfo && tierInfo.tier && tierInfo.status === "active") {
+  if (tierInfo && tierInfo.tier && tierInfo.active) {
     const expiry = tierInfo.lease_expires_at ? tierInfo.lease_expires_at.split("T")[0] : "unknown";
     line("Tier", `${tierInfo.tier} (expires ${expiry})`);
   } else {
@@ -185,7 +185,7 @@ export async function run(args = []) {
 
   // 6. Next step
   console.log();
-  if (!tierInfo || !tierInfo.tier || tierInfo.status !== "active") {
+  if (!tierInfo || !tierInfo.tier || !tierInfo.active) {
     console.log("  Next: run402 tier set prototype");
   } else {
     console.log("  Ready to deploy. Run: run402 deploy --manifest app.json");
