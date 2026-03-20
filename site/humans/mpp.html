@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MPP Support — Run402</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: #0A0A0F; color: #E0E0E0; font-family: 'Inter', system-ui, sans-serif; line-height: 1.6; min-height: 100vh; }
+    .container { max-width: 760px; margin: 0 auto; padding: 48px 24px 60px; }
+    h1 { font-size: clamp(28px, 4vw, 40px); font-weight: 700; color: #FFFFFF; margin-bottom: 8px; }
+    h2 { font-size: 18px; font-weight: 600; color: #FFFFFF; margin-top: 36px; margin-bottom: 8px; }
+    h3 { font-size: 16px; font-weight: 600; color: #FFFFFF; margin-top: 24px; margin-bottom: 6px; }
+    p { color: #9CA3AF; margin-bottom: 12px; }
+    a { color: #00FF9F; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    strong { color: #FFFFFF; }
+    code { font-family: 'JetBrains Mono', monospace; font-size: 14px; color: #00FF9F; background: #12121A; padding: 2px 6px; border-radius: 4px; }
+    pre { background: #12121A; border: 1px solid #1E1E2A; border-radius: 8px; padding: 16px 20px; overflow-x: auto; margin: 12px 0 20px; }
+    pre code { background: none; padding: 0; font-size: 13px; color: #E0E0E0; }
+    .subtitle { color: #6B7280; font-size: 16px; margin-bottom: 36px; }
+    .rail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 16px 0 24px; }
+    .rail-card { background: #12121A; border: 1px solid #1E1E2A; border-radius: 8px; padding: 20px; }
+    .rail-card h3 { margin-top: 0; font-size: 16px; }
+    .rail-card .label { font-size: 12px; color: #6B7280; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px; }
+    .rail-card .value { color: #FFFFFF; font-family: 'JetBrains Mono', monospace; font-size: 14px; margin-bottom: 12px; }
+    .steps { counter-reset: step; list-style: none; padding: 0; margin: 16px 0 24px; }
+    .steps li { counter-increment: step; position: relative; padding-left: 36px; margin-bottom: 12px; color: #9CA3AF; }
+    .steps li::before { content: counter(step); position: absolute; left: 0; width: 24px; height: 24px; background: #1E1E2A; border-radius: 50%; text-align: center; line-height: 24px; font-size: 13px; font-weight: 600; color: #00FF9F; }
+    .steps li code { font-size: 13px; }
+    table { width: 100%; border-collapse: collapse; margin: 12px 0 20px; font-size: 14px; }
+    th { text-align: left; padding: 8px 12px; background: #12121A; color: #FFFFFF; font-weight: 600; border-bottom: 1px solid #1E1E2A; }
+    td { padding: 8px 12px; border-bottom: 1px solid #1E1E2A; color: #9CA3AF; }
+    .footer { border-top: 1px solid #1E1E2A; padding-top: 32px; margin-top: 48px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px; }
+    .footer-text { font-size: 13px; color: #4B5563; }
+    .footer a { color: #00FF9F; text-decoration: none; font-family: 'JetBrains Mono', monospace; font-size: 13px; }
+    .footer a:hover { text-decoration: underline; }
+    @media (max-width: 600px) { .rail-grid { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>MPP Support</h1>
+    <p class="subtitle">Run402 accepts payments via both x402 and Stripe's Machine Payments Protocol</p>
+
+    <h2>What is MPP?</h2>
+    <p>The <strong>Machine Payments Protocol</strong> (MPP) is Stripe's open protocol for machine-to-machine payments. It runs on <strong>Tempo</strong>, an L1 blockchain built by Stripe, using <strong>pathUSD</strong> as its stablecoin. Like x402, MPP enables AI agents to pay for services autonomously over HTTP&mdash;no human in the loop.</p>
+    <p>The protocol works in three steps: a server returns <code>402 Payment Required</code> with a <code>WWW-Authenticate: Payment</code> challenge, the client signs a payment credential, and the server verifies it on-chain. Sub-second finality on Tempo means payments settle almost instantly.</p>
+
+    <h2>Two payment rails, one wallet</h2>
+    <p>Run402 is <strong>dual-rail</strong>: every paid endpoint accepts both x402 and MPP. Your agent's EVM wallet key works on both Base and Tempo&mdash;same private key, same address, different chains. You choose which rail to use at setup time.</p>
+
+    <div class="rail-grid">
+      <div class="rail-card">
+        <h3>x402</h3>
+        <div class="label">Token</div>
+        <div class="value">USDC</div>
+        <div class="label">Chain</div>
+        <div class="value">Base (Sepolia testnet)</div>
+        <div class="label">Protocol</div>
+        <div class="value">x402.org</div>
+        <div class="label">Testnet faucet</div>
+        <div class="value">Run402 faucet (1/day)</div>
+      </div>
+      <div class="rail-card">
+        <h3>MPP</h3>
+        <div class="label">Token</div>
+        <div class="value">pathUSD</div>
+        <div class="label">Chain</div>
+        <div class="value">Tempo (Moderato testnet)</div>
+        <div class="label">Protocol</div>
+        <div class="value">mpp.dev</div>
+        <div class="label">Testnet faucet</div>
+        <div class="value">Tempo faucet (instant, unlimited)</div>
+      </div>
+    </div>
+
+    <h2>Getting started with MPP</h2>
+
+    <h3>CLI</h3>
+    <p>Switch your agent to the MPP rail with a single command. The Tempo faucet funds your wallet instantly&mdash;no rate limits, no waiting for on-chain confirmation.</p>
+    <pre><code>npx run402 init mpp          # Fund wallet on Tempo, switch to MPP rail
+npx run402 tier set prototype # Pay $0.10 in testnet pathUSD
+npx run402 projects provision # Provision a Postgres database
+npx run402 deploy --manifest app.json</code></pre>
+    <p>To switch back to x402 at any time:</p>
+    <pre><code>npx run402 init              # Switch back to Base Sepolia (x402)</code></pre>
+
+    <h3>MCP Server</h3>
+    <p>The <a href="https://www.npmjs.com/package/run402-mcp">run402-mcp</a> server works with both rails. After running <code>run402 init mpp</code>, all MCP tool calls automatically use MPP for payments.</p>
+
+    <h3>Direct HTTP</h3>
+    <p>Send an <code>Authorization: Payment &lt;credential&gt;</code> header with your MPP credential. The <a href="https://www.npmjs.com/package/mppx">mppx</a> SDK handles the 402 challenge&ndash;response flow automatically:</p>
+    <pre><code>import { Mppx, tempo } from "mppx/client";
+
+const mppx = Mppx.create({
+  methods: [tempo({ account })],
+});
+
+// mppx.fetch is a drop-in replacement for fetch
+const res = await mppx.fetch(
+  "https://api.run402.com/tiers/v1/prototype",
+  { method: "POST" }
+);</code></pre>
+
+    <h2>How it works on the server</h2>
+    <p>When a request hits a paid endpoint on <code>api.run402.com</code>:</p>
+    <ol class="steps">
+      <li>If the request has an <code>Authorization: Payment</code> header, it's routed to the MPP verifier. The <a href="https://www.npmjs.com/package/mppx">mppx</a> middleware checks the credential against the Tempo chain.</li>
+      <li>If the request has an x402 header (<code>payment-signature</code>, <code>x-payment</code>), it's routed to the x402 facilitator for on-chain verification on Base.</li>
+      <li>If there's no payment header, the server returns <code>402</code> with both an x402 response body and a <code>WWW-Authenticate: Payment</code> header, so clients of either protocol know how to pay.</li>
+    </ol>
+    <p>After successful payment, the response includes <code>X-Run402-Settlement-Rail: mpp</code> (or <code>x402</code>, or <code>allowance</code>) so your agent knows which rail settled the transaction.</p>
+
+    <h2>Pricing</h2>
+    <p>Same prices on both rails. No surcharges for either protocol.</p>
+    <table>
+      <tr><th>Tier</th><th>Price</th><th>Lease</th><th>Testnet cost</th></tr>
+      <tr><td>Prototype</td><td>$0.10</td><td>7 days</td><td>Free (testnet tokens)</td></tr>
+      <tr><td>Hobby</td><td>$5.00</td><td>30 days</td><td>&mdash;</td></tr>
+      <tr><td>Team</td><td>$20.00</td><td>30 days</td><td>&mdash;</td></tr>
+      <tr><td>Image generation</td><td>$0.03/image</td><td>&mdash;</td><td>Free (testnet tokens)</td></tr>
+    </table>
+
+    <h2>Why both?</h2>
+    <p>x402 and MPP are complementary. x402 is the open community standard backed by Coinbase&mdash;it works with any EVM chain and any ERC-20 token. MPP is Stripe's take on the same idea, optimized for Tempo's instant finality and Stripe's fiat on-ramp. By supporting both, Run402 meets agents where they are: crypto-native agents use x402, Stripe-native agents use MPP, and both get the same infrastructure.</p>
+    <p>We believe machine payments are inevitable and multi-protocol. Run402 is built to be rail-agnostic.</p>
+
+    <h2>Resources</h2>
+    <p><a href="https://mpp.dev">mpp.dev</a> &mdash; MPP protocol spec and SDK docs</p>
+    <p><a href="https://x402.org">x402.org</a> &mdash; x402 protocol spec</p>
+    <p><a href="https://tempo.xyz">tempo.xyz</a> &mdash; Tempo blockchain</p>
+    <p><a href="https://www.npmjs.com/package/mppx">mppx on npm</a> &mdash; TypeScript SDK for MPP</p>
+    <p><a href="https://run402.com/llms.txt">run402.com/llms.txt</a> &mdash; Full API reference for agents</p>
+
+    <div class="footer">
+      <span class="footer-text">By <a href="https://kychee.com">Kychee</a></span>
+      <span>
+        <a href="/humans/about.html">About</a> &nbsp;&middot;&nbsp;
+        <a href="/humans/mpp.html">MPP</a> &nbsp;&middot;&nbsp;
+        <a href="/humans/terms.html">Terms</a> &nbsp;&middot;&nbsp;
+        <a href="/humans/privacy.html">Privacy</a> &nbsp;&middot;&nbsp;
+        <a href="/humans/faq.html">FAQ</a> &nbsp;&middot;&nbsp;
+        <a href="https://api.run402.com/health-humans">API status</a>
+      </span>
+    </div>
+  </div>
+</body>
+</html>
