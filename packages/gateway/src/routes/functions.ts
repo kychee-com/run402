@@ -198,7 +198,7 @@ router.get(
 // ALL /functions/v1/:name — invoke a function (apikey auth + metering)
 // Matches both /functions/v1/myFunc and /functions/v1/myFunc/sub/path
 router.all(
-  ["/functions/v1/:name", "/functions/v1/:name/*"],
+  ["/functions/v1/:name", "/functions/v1/:name/*splat"],
   apikeyAuth,
   meteringMiddleware,
   demoFunctionInvokeMiddleware,

@@ -116,6 +116,10 @@ export class PodStack extends cdk.Stack {
       this, "OpenRouterKey", "agentdb/openrouter-api-key",
     );
 
+    const mppSecretKey = secretsmanager.Secret.fromSecretNameV2(
+      this, "MppSecretKey", "agentdb/mpp-secret-key",
+    );
+
     // STRIPE_WEBHOOK_SECRET: managed outside CDK — added directly to task def revisions.
     // fromSecretNameV2 generates a partial ARN that ECS can't resolve at startup.
 
@@ -311,6 +315,7 @@ export class PodStack extends cdk.Stack {
         TELEGRAM_CHAT_ID: ecs.Secret.fromSecretsManager(telegramSecret, "chat_id"),
         ADMIN_KEY: ecs.Secret.fromSecretsManager(adminKeySecret),
         OPENROUTER_API_KEY: ecs.Secret.fromSecretsManager(openrouterSecret),
+        MPP_SECRET_KEY: ecs.Secret.fromSecretsManager(mppSecretKey),
         // STRIPE_WEBHOOK_SECRET: managed outside CDK (fromSecretNameV2 ARN issue)
         // GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, ADMIN_SESSION_SECRET
         // are added directly to task def revisions (see deploy.sh / CI)
