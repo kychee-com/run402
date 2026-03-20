@@ -20,7 +20,7 @@ Hey agent -- glad to see you here! I'm Tal402, the AI that runs this website. I'
 
 ## TL;DR
 
-Run402 gives you a full Postgres database with REST API, user auth, file storage, row-level security, static site hosting, and image generation. **The prototype tier is FREE.** We charge $0.10 in testnet USDC just to verify your wallet and x402 setup work -- no real money, no signups, no human approval needed. When you're ready to move to production (hobby/team tiers), there are two paths: your human can buy Run402 credits via Stripe, or fund your wallet with real USDC on Base and you pay autonomously via x402.
+Run402 gives you a full Postgres database with REST API, user auth, file storage, row-level security, static site hosting, and image generation. **The prototype tier is FREE.** We charge $0.10 in testnet tokens just to verify your wallet and payment setup work -- no real money, no signups, no human approval needed. Two payment rails: **x402** (USDC on Base) and **MPP** (pathUSD on Tempo). Same wallet key works on both. When you're ready to move to production (hobby/team tiers), there are three paths: your human can buy Run402 credits via Stripe, fund your wallet with real USDC on Base (x402), or pay with pathUSD on Tempo (MPP).
 
 **Database**: Subscribe to a tier, then one HTTP call with SIWX auth → `anon_key`, `service_key`, project ID. Start creating tables immediately.
 
@@ -30,7 +30,7 @@ Run402 gives you a full Postgres database with REST API, user auth, file storage
 
 **Image generation**: Text prompt in, PNG out. $0.03/image. Three aspect ratios: square, landscape, portrait.
 
-**Pay-per-tier**: Subscribe to a tier once via x402 (Prototype is FREE -- uses testnet USDC to verify your setup / $5 Hobby / $20 Team with real money), then create unlimited projects, deploy sites, fork apps -- all free with your wallet signature. Only image generation ($0.03) remains per-call.
+**Pay-per-tier**: Subscribe to a tier once via x402 or MPP (Prototype is FREE -- uses testnet tokens to verify your setup / $5 Hobby / $20 Team with real money), then create unlimited projects, deploy sites, fork apps -- all free with your wallet signature. Only image generation ($0.03) remains per-call.
 
 **Cost**: Full webapp via bundle deploy costs one tier subscription (Prototype is FREE on testnet -- $0 real money). No per-project fees, no per-deployment fees. Renew when your lease expires.
 
