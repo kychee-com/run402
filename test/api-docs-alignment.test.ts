@@ -71,6 +71,8 @@ const EXCLUDED_ENDPOINTS = new Set([
   "PUT /projects/v1/admin/{_}/wallet",
   // Google OAuth callback (called by Google, not by agents)
   "GET /auth/v1/oauth/google/callback",
+  // Discovery spec (machine-readable, not a user-facing API endpoint)
+  "GET /openapi.json",
 ]);
 
 // ---------------------------------------------------------------------------
