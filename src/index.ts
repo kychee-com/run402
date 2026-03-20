@@ -66,6 +66,7 @@ import { updateVersionSchema, handleUpdateVersion } from "./tools/update-version
 import { deleteVersionSchema, handleDeleteVersion } from "./tools/delete-version.js";
 import { getAppSchema, handleGetApp } from "./tools/get-app.js";
 import { tierStatusSchema, handleTierStatus } from "./tools/tier-status.js";
+import { initSchema, handleInit } from "./tools/init.js";
 
 const server = new McpServer({
   name: "run402",
@@ -429,6 +430,15 @@ server.tool(
   "Inspect a specific published app — details, required secrets, fork pricing.",
   getAppSchema,
   async (args) => handleGetApp(args),
+);
+
+// ─── Init tool ────────────────────────────────────────────────────────────
+
+server.tool(
+  "init",
+  "Set up agent allowance, request faucet funding, and check tier status — single-call bootstrap. Idempotent, safe to re-run.",
+  initSchema,
+  async (args) => handleInit(args),
 );
 
 const transport = new StdioServerTransport();

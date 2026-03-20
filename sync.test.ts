@@ -136,7 +136,7 @@ interface Capability {
 
 const SURFACE: Capability[] = [
   // ── Init / status (local-only) ──────────────────────────────────────────
-  { id: "init",              endpoint: "(local)",                              mcp: null,                            cli: "init",                openclaw: "init" },
+  { id: "init",              endpoint: "(local)",                              mcp: "init",                          cli: "init",                openclaw: "init" },
   { id: "status",            endpoint: "(local)",                              mcp: null,                            cli: "status",              openclaw: "status" },
 
   // ── Project lifecycle ────────────────────────────────────────────────────
