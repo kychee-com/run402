@@ -120,21 +120,28 @@ function extractMppWallet(credentialToken: string): string {
 
 // --- MPP middleware setup ---
 
+// Express-wrapped instance for middleware (handles Authorization: Payment header)
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let mppxInstance: any = null;
+// Core server instance for challenge generation (works with Fetch Request, no mock needed)
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let mppxCore: any = null;
 
 async function initMppx(): Promise<void> {
   if (!MPP_SECRET_KEY || !SELLER_ADDRESS) return;
   try {
-    const { Mppx, tempo } = await import("mppx/express");
-    mppxInstance = Mppx.create({
-      methods: [tempo.charge({
+    const mppConfig = {
+      methods: [(await import("mppx/server")).tempo.charge({
         currency: "0x20c0000000000000000000000000000000000000",
         recipient: SELLER_ADDRESS,
         testnet: true,
       })],
       secretKey: MPP_SECRET_KEY,
-    });
+    };
+    const { Mppx: MppxExpress } = await import("mppx/express");
+    const { Mppx: MppxServer } = await import("mppx/server");
+    mppxInstance = MppxExpress.create(mppConfig);
+    mppxCore = MppxServer.create(mppConfig);
     console.log("MPP payment rail initialized (Tempo Moderato testnet)");
   } catch (err) {
     console.warn("MPP init failed (mppx not available):", err);
@@ -143,28 +150,21 @@ async function initMppx(): Promise<void> {
 
 /**
  * Generate an MPP WWW-Authenticate challenge for 402 responses.
- * Uses a mock request to invoke the mppx middleware and capture the challenge header.
+ * Uses the core mppx server with a Fetch Request — no mock objects needed.
  */
 async function generateMppChallenge(amount: string): Promise<string | null> {
-  if (!mppxInstance) return null;
-  return new Promise((resolve) => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const mockReq = { headers: {}, method: "GET", url: "/", socket: { remoteAddress: "127.0.0.1" } } as any;
-    const captured: Record<string, string> = {};
-    const mockRes = {
-      statusCode: 200,
-      status(code: number) { this.statusCode = code; return this; },
-      setHeader(name: string, val: string) { captured[name.toLowerCase()] = val; return this; },
-      set(name: string, val: string) { captured[name.toLowerCase()] = val; return this; },
-      header(name: string, val: string) { captured[name.toLowerCase()] = val; return this; },
-      json() { resolve(captured["www-authenticate"] ?? null); return this; },
-      send() { resolve(captured["www-authenticate"] ?? null); return this; },
-      end() { resolve(captured["www-authenticate"] ?? null); },
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    } as any;
-    const mw = mppxInstance.charge({ amount });
-    mw(mockReq, mockRes, () => resolve(null));
-  });
+  if (!mppxCore) return null;
+  try {
+    const handler = mppxCore.charge({ amount });
+    const result = await handler(new Request("http://localhost/"));
+    if (result.status === 402) {
+      // result.challenge is a Fetch Response with WWW-Authenticate header
+      return result.challenge.headers.get("www-authenticate") ?? null;
+    }
+    return null;
+  } catch {
+    return null;
+  }
 }
 
 // --- Middleware builder ---
