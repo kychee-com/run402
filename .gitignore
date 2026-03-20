@@ -13,3 +13,6 @@ test-results/
 remotion/out/*
 !remotion/out/claude-code-preview.html
 !remotion/out/script.md
+__pycache__/
+.moltbook-tmp/
+.claude/scheduled_tasks.lock
