@@ -89,8 +89,7 @@ function normalize(method: string, path: string): string {
     .replace(/YOUR_WALLET_ADDRESS/g, "{_}")
     .replace(/:(\w+)/g, "{_}")       // Express :param
     .replace(/\{[^}]+\}/g, "{_}")    // OpenAPI {param}
-    .replace(/\/\*$/g, "/{_}")       // trailing wildcard
-    .replace(/\/\*\//g, "/{_}/")     // mid-path wildcard
+    .replace(/\/\*\w*/g, "/{_}")      // wildcard (/* or /*splat)
     .replace(/\?.*$/, "")            // query params
     .replace(/\/+$/, "");            // trailing slash
   if (!p.startsWith("/")) p = "/" + p;

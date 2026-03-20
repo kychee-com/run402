@@ -439,11 +439,19 @@ export async function invokeFunction(
     isBase64Encoded: false,
   };
 
-  const invokeResult = await lambda.send(new InvokeCommand({
-    FunctionName: fnName,
-    InvocationType: "RequestResponse",
-    Payload: Buffer.from(JSON.stringify(event)),
-  }));
+  let invokeResult;
+  try {
+    invokeResult = await lambda.send(new InvokeCommand({
+      FunctionName: fnName,
+      InvocationType: "RequestResponse",
+      Payload: Buffer.from(JSON.stringify(event)),
+    }));
+  } catch (err: unknown) {
+    if (err instanceof ResourceConflictException) {
+      throw new FunctionError("Function is still deploying, try again in a few seconds", 503);
+    }
+    throw err;
+  }
 
   if (invokeResult.FunctionError) {
     console.error(`Function ${fnName} error: ${invokeResult.FunctionError}`);
