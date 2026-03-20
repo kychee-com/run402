@@ -24,10 +24,11 @@
     "@x402/express": "^2.4.0",
     "@x402/extensions": "^2.4.0",
     "bcryptjs": "^2.4.3",
-    "express": "^4.18.2",
+    "express": "^5.1.0",
     "jose": "^5.9.0",
     "jsonwebtoken": "^9.0.2",
     "pg": "^8.13.0",
+    "mppx": "^0.4.7",
     "stripe": "^20.4.0",
     "viem": "^2.21.0"
   },

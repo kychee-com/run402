@@ -62,6 +62,9 @@ export const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || "";
 export const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || "";
 export const ADMIN_SESSION_SECRET = process.env.ADMIN_SESSION_SECRET || "run402-admin-session-secret-change-me";
 
+// MPP (Machine Payments Protocol)
+export const MPP_SECRET_KEY = process.env.MPP_SECRET_KEY || "";
+
 // Google OAuth (end-user app auth — separate from admin dashboard client)
 export const GOOGLE_APP_CLIENT_ID = process.env.GOOGLE_APP_CLIENT_ID || "";
 export const GOOGLE_APP_CLIENT_SECRET = process.env.GOOGLE_APP_CLIENT_SECRET || "";

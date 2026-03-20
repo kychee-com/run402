@@ -31,10 +31,11 @@ const LOCAL_STORAGE_ROOT = process.env.STORAGE_ROOT || "./storage";
 router.use("/storage/v1", apikeyAuth, meteringMiddleware, demoStorageMiddleware);
 
 // POST /storage/v1/object/:bucket/* — upload file
-router.post("/storage/v1/object/:bucket/*", asyncHandler(async (req: Request, res: Response) => {
+router.post("/storage/v1/object/:bucket/*splat", asyncHandler(async (req: Request, res: Response) => {
   const project = req.project!;
   const bucket = req.params["bucket"] as string;
-  const filePath = (req.params as Record<string, string>)[0];
+  const splatParam = (req.params as Record<string, string | string[]>)["splat"];
+  const filePath = Array.isArray(splatParam) ? splatParam.join("/") : splatParam;
   const buffer = Buffer.isBuffer(req.body)
     ? req.body
     : Buffer.from(typeof req.body === "string" ? req.body : JSON.stringify(req.body));
@@ -60,10 +61,11 @@ router.post("/storage/v1/object/:bucket/*", asyncHandler(async (req: Request, re
 }));
 
 // GET /storage/v1/object/:bucket/* — download file
-router.get("/storage/v1/object/:bucket/*", asyncHandler(async (req: Request, res: Response) => {
+router.get("/storage/v1/object/:bucket/*splat", asyncHandler(async (req: Request, res: Response) => {
   const project = req.project!;
   const bucket = req.params["bucket"] as string;
-  const filePath = (req.params as Record<string, string>)[0];
+  const splatParam = (req.params as Record<string, string | string[]>)["splat"];
+  const filePath = Array.isArray(splatParam) ? splatParam.join("/") : splatParam;
 
   try {
     if (s3 && S3_BUCKET) {
@@ -92,10 +94,11 @@ router.get("/storage/v1/object/:bucket/*", asyncHandler(async (req: Request, res
 }));
 
 // DELETE /storage/v1/object/:bucket/* — delete file
-router.delete("/storage/v1/object/:bucket/*", asyncHandler(async (req: Request, res: Response) => {
+router.delete("/storage/v1/object/:bucket/*splat", asyncHandler(async (req: Request, res: Response) => {
   const project = req.project!;
   const bucket = req.params["bucket"] as string;
-  const filePath = (req.params as Record<string, string>)[0];
+  const splatParam = (req.params as Record<string, string | string[]>)["splat"];
+  const filePath = Array.isArray(splatParam) ? splatParam.join("/") : splatParam;
 
   if (s3 && S3_BUCKET) {
     const key = `${project.id}/${bucket}/${filePath}`;
@@ -117,10 +120,11 @@ router.delete("/storage/v1/object/:bucket/*", asyncHandler(async (req: Request, 
 }));
 
 // POST /storage/v1/object/sign/:bucket/* — generate signed URL (S3 only)
-router.post("/storage/v1/object/sign/:bucket/*", asyncHandler(async (req: Request, res: Response) => {
+router.post("/storage/v1/object/sign/:bucket/*splat", asyncHandler(async (req: Request, res: Response) => {
   const project = req.project!;
   const bucket = req.params["bucket"] as string;
-  const filePath = (req.params as Record<string, string>)[0];
+  const splatParam = (req.params as Record<string, string | string[]>)["splat"];
+  const filePath = Array.isArray(splatParam) ? splatParam.join("/") : splatParam;
 
   if (!s3 || !S3_BUCKET) {
     res.json({

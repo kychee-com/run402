@@ -89,7 +89,7 @@ const app = express();
 async function initPaymentMiddlewareWithRetry(maxAttempts = 5, delayMs = 3000) {
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
-      return createPaymentMiddleware();
+      return await createPaymentMiddleware();
     } catch (err) {
       console.error(`x402 init attempt ${attempt}/${maxAttempts} failed:`, err);
       if (attempt === maxAttempts) throw err;
@@ -113,7 +113,7 @@ app.use((_req, res, next) => {
   res.set("Access-Control-Allow-Origin", "*");
   res.set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS");
   res.set("Access-Control-Allow-Headers", "Content-Type, Authorization, apikey, Prefer, Accept-Profile, Content-Profile, Idempotency-Key, X-Wallet-Address, X-Run402-Wallet, X-Run402-Signature, X-Run402-Timestamp");
-  res.set("Access-Control-Expose-Headers", "X-Run402-Settlement-Rail, X-Run402-Allowance-Remaining, X-Run402-Hint");
+  res.set("Access-Control-Expose-Headers", "X-Run402-Settlement-Rail, X-Run402-Allowance-Remaining, X-Run402-Hint, WWW-Authenticate");
   if (_req.method === "OPTIONS") {
     res.status(204).send();
     return;

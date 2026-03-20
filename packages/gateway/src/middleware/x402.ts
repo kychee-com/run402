@@ -16,6 +16,7 @@ import {
   FACILITATOR_URL,
   STRIPE_SECRET_KEY,
   ADMIN_KEY,
+  MPP_SECRET_KEY,
 } from "../config.js";
 import type { TierName } from "@run402/shared";
 import { getBillingAccount, debitAllowance } from "../services/billing.js";
@@ -23,7 +24,7 @@ import { extractWalletFromPaymentHeader, recordWallet } from "../utils/wallet.js
 import { getWalletTier } from "../services/wallet-tiers.js";
 import { createHash } from "node:crypto";
 import { pool } from "../db/pool.js";
-import type { Request, Response, NextFunction } from "express";
+import type { Request, Response, NextFunction, RequestHandler } from "express";
 
 // --- Stripe payTo machinery ---
 
@@ -96,6 +97,76 @@ function createPayToAddressFactory(priceStr: string) {
   };
 }
 
+// --- MPP credential wallet extraction ---
+
+/**
+ * Extract wallet address from an MPP credential's source DID.
+ * Source format: "did:pkh:eip155:42431:0xABC..."
+ */
+function extractMppWallet(credentialToken: string): string {
+  try {
+    // Credential.deserialize returns { challenge, payload, source? }
+    // The token is base64-encoded JSON after the "Payment " prefix
+    const decoded = JSON.parse(Buffer.from(credentialToken, "base64").toString());
+    const source: string = decoded.source || "";
+    // DID format: "did:pkh:eip155:<chainId>:<address>"
+    const parts = source.split(":");
+    const address = parts[parts.length - 1];
+    return address?.toLowerCase() || "";
+  } catch {
+    return "";
+  }
+}
+
+// --- MPP middleware setup ---
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let mppxInstance: any = null;
+
+async function initMppx(): Promise<void> {
+  if (!MPP_SECRET_KEY || !SELLER_ADDRESS) return;
+  try {
+    const { Mppx, tempo } = await import("mppx/express");
+    mppxInstance = Mppx.create({
+      methods: [tempo.charge({
+        currency: "0x20c0000000000000000000000000000000000000",
+        recipient: SELLER_ADDRESS,
+        testnet: true,
+      })],
+      secretKey: MPP_SECRET_KEY,
+    });
+    console.log("MPP payment rail initialized (Tempo Moderato testnet)");
+  } catch (err) {
+    console.warn("MPP init failed (mppx not available):", err);
+  }
+}
+
+/**
+ * Generate an MPP WWW-Authenticate challenge for 402 responses.
+ * Uses a mock request to invoke the mppx middleware and capture the challenge header.
+ */
+async function generateMppChallenge(amount: string): Promise<string | null> {
+  if (!mppxInstance) return null;
+  return new Promise((resolve) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const mockReq = { headers: {}, method: "GET", url: "/", socket: { remoteAddress: "127.0.0.1" } } as any;
+    const captured: Record<string, string> = {};
+    const mockRes = {
+      statusCode: 200,
+      status(code: number) { this.statusCode = code; return this; },
+      setHeader(name: string, val: string) { captured[name.toLowerCase()] = val; return this; },
+      set(name: string, val: string) { captured[name.toLowerCase()] = val; return this; },
+      header(name: string, val: string) { captured[name.toLowerCase()] = val; return this; },
+      json() { resolve(captured["www-authenticate"] ?? null); return this; },
+      send() { resolve(captured["www-authenticate"] ?? null); return this; },
+      end() { resolve(captured["www-authenticate"] ?? null); },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any;
+    const mw = mppxInstance.charge({ amount });
+    mw(mockReq, mockRes, () => resolve(null));
+  });
+}
+
 // --- Middleware builder ---
 
 /**
@@ -103,8 +174,13 @@ function createPayToAddressFactory(priceStr: string) {
  *
  * Pay-per-tier model: x402 gates only POST /tiers/v1/:tier + generate-image.
  * All other endpoints use walletAuth (free with active tier).
+ *
+ * Now also accepts MPP payments (Tempo pathUSD) when MPP_SECRET_KEY is configured.
  */
-export function createPaymentMiddleware() {
+export async function createPaymentMiddleware(): Promise<RequestHandler> {
+  // Initialize MPP rail
+  await initMppx();
+
   const useStripe = FACILITATOR_PROVIDER === "stripe";
 
   const facilitatorClient = useStripe
@@ -328,8 +404,44 @@ export function createPaymentMiddleware() {
 
   // Wrapper middleware: adds X-Run402-Settlement-Rail and X-Run402-Allowance-Remaining headers.
   // Also augments 402 responses on tier routes with helpful context (e.g. "tier already active").
+  // MPP payments are handled before x402 — checked via Authorization: Payment header.
   return async (req: Request, res: Response, next: NextFunction) => {
+    // --- MPP payment credential? ---
+    const authHeader = req.headers["authorization"] as string | undefined;
+    if (authHeader?.startsWith("Payment ") && mppxInstance) {
+      const price = resolveSkuPrice(req.method, req.path);
+      if (price) {
+        const amount = (price.amountUsdMicros / 1_000_000).toFixed(2);
+        const chargeMw = mppxInstance.charge({ amount });
+        chargeMw(req, res, (err?: unknown) => {
+          if (err) return next(err);
+          // MPP verified — extract wallet from credential, set headers, continue
+          const token = authHeader.slice("Payment ".length);
+          const wallet = extractMppWallet(token);
+          if (wallet) {
+            req.walletAddress = wallet;
+            recordWallet(wallet, "mpp");
+          }
+          res.setHeader("X-Run402-Settlement-Rail", "mpp");
+          console.log(`MPP payment: ${wallet || "unknown"} → ${price.sku} ($${amount})`);
+          next();
+        });
+        return;
+      }
+    }
+
+    // --- x402 path (existing behavior) ---
     const paymentHeader = (req.headers["payment-signature"] || req.headers["x-payment"] || req.headers["x-402-payment"]) as string | undefined;
+
+    // Pre-compute MPP challenge for 402 responses (only when no payment headers present)
+    let mppChallenge: string | null = null;
+    if (!paymentHeader && mppxInstance) {
+      const price = resolveSkuPrice(req.method, req.path);
+      if (price) {
+        const amount = (price.amountUsdMicros / 1_000_000).toFixed(2);
+        mppChallenge = await generateMppChallenge(amount);
+      }
+    }
 
     if (paymentHeader) {
       // Set req.walletAddress for downstream routes when allowance rail is used.
@@ -407,6 +519,16 @@ export function createPaymentMiddleware() {
         contactCheckResults.delete(paymentHeader);
         tierContextResults.delete(paymentHeader);
       });
+    } else if (mppChallenge) {
+      // No payment headers — x402 will return 402. Add MPP challenge to the response
+      // so mppx clients can discover the MPP payment option via WWW-Authenticate header.
+      const realWriteHead = res.writeHead;
+      res.writeHead = function (this: Response, ...args: Parameters<Response["writeHead"]>) {
+        if (res.statusCode === 402) {
+          res.setHeader("WWW-Authenticate", mppChallenge!);
+        }
+        return realWriteHead.apply(this, args);
+      } as Response["writeHead"];
     }
 
     x402Middleware(req, res, next);

@@ -31,11 +31,12 @@ async function forwardToPostgREST(
 }
 
 // PostgREST proxy — /rest/v1/*
-router.all("/rest/v1/*", apikeyAuth, meteringMiddleware, demoRestMiddleware, asyncHandler(async (req: Request, res: Response) => {
+router.all("/rest/v1/*splat", apikeyAuth, meteringMiddleware, demoRestMiddleware, asyncHandler(async (req: Request, res: Response) => {
   const project = req.project!;
 
   // Build PostgREST URL
-  const restPath = (req.params as Record<string, string>)[0];
+  const splat = (req.params as Record<string, string | string[]>)["splat"];
+  const restPath = Array.isArray(splat) ? splat.join("/") : splat;
   const queryString = new URLSearchParams(req.query as Record<string, string>).toString();
   const url = `${POSTGREST_URL}/${restPath}${queryString ? "?" + queryString : ""}`;
 

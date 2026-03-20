@@ -68,7 +68,8 @@ function buildHandler(fetchStub: (...args: any[]) => Promise<Response>, maxRetri
 
   return async function handler(req: any, res: any) {
     const project = req.project!;
-    const restPath = (req.params as any)[0] as string;
+    const splatParam = (req.params as any)["splat"] ?? (req.params as any)[0];
+    const restPath = Array.isArray(splatParam) ? splatParam.join("/") : splatParam as string;
     const queryString = new URLSearchParams(req.query).toString();
     const url = `http://localhost:3000/${restPath}${queryString ? "?" + queryString : ""}`;
 
