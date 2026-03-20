@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { apiRequest } from "../client.js";
+import { paidApiRequest } from "../paid-fetch.js";
 import { getProject } from "../keystore.js";
 import { formatApiError, projectNotFound } from "../errors.js";
 
@@ -34,7 +34,7 @@ export async function handleDeployFunction(args: {
   const project = getProject(args.project_id);
   if (!project) return projectNotFound(args.project_id);
 
-  const res = await apiRequest(`/projects/v1/admin/${args.project_id}/functions`, {
+  const res = await paidApiRequest(`/projects/v1/admin/${args.project_id}/functions`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${project.service_key}`,

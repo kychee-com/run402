@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { apiRequest } from "../client.js";
+import { paidApiRequest } from "../paid-fetch.js";
 import { formatApiError } from "../errors.js";
 
 export const generateImageSchema = {
@@ -21,7 +21,7 @@ export async function handleGenerateImage(args: {
 }> {
   const aspect = args.aspect || "square";
 
-  const res = await apiRequest("/generate-image/v1", {
+  const res = await paidApiRequest("/generate-image/v1", {
     method: "POST",
     body: { prompt: args.prompt, aspect },
   });

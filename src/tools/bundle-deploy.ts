@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { apiRequest } from "../client.js";
+import { paidApiRequest } from "../paid-fetch.js";
 import { formatApiError, projectNotFound } from "../errors.js";
 import { requireAllowanceAuth } from "../allowance-auth.js";
 import { getProject } from "../keystore.js";
@@ -74,7 +74,7 @@ export async function handleBundleDeploy(args: {
   const auth = requireAllowanceAuth("/deploy/v1");
   if ("error" in auth) return auth.error;
 
-  const res = await apiRequest("/deploy/v1", {
+  const res = await paidApiRequest("/deploy/v1", {
     method: "POST",
     headers: { ...auth.headers },
     body: {
@@ -87,6 +87,33 @@ export async function handleBundleDeploy(args: {
       subdomain: args.subdomain,
     },
   });
+
+  if (res.is402) {
+    const body = res.body as Record<string, unknown>;
+    const lines = [
+      `## Payment Required`,
+      ``,
+      `To deploy this bundle, an x402 payment is needed.`,
+      ``,
+    ];
+    if (body.x402) {
+      lines.push(`**Payment details:**`);
+      lines.push("```json");
+      lines.push(JSON.stringify(body.x402, null, 2));
+      lines.push("```");
+    } else {
+      lines.push(`**Server response:**`);
+      lines.push("```json");
+      lines.push(JSON.stringify(body, null, 2));
+      lines.push("```");
+    }
+    lines.push(``);
+    lines.push(
+      `The user's agent allowance or payment agent must send the required amount. ` +
+      `Once payment is confirmed, retry this tool call.`,
+    );
+    return { content: [{ type: "text", text: lines.join("\n") }] };
+  }
 
   if (!res.ok) return formatApiError(res, "deploying bundle");
 

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { apiRequest } from "../client.js";
+import { paidApiRequest } from "../paid-fetch.js";
 import { formatApiError } from "../errors.js";
 
 export const setTierSchema = {
@@ -11,7 +11,7 @@ export const setTierSchema = {
 export async function handleSetTier(args: {
   tier: string;
 }): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
-  const res = await apiRequest(`/tiers/v1/${args.tier}`, {
+  const res = await paidApiRequest(`/tiers/v1/${args.tier}`, {
     method: "POST",
     body: {},
   });

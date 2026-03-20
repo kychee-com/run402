@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { apiRequest } from "../client.js";
+import { paidApiRequest } from "../paid-fetch.js";
 import { getProject } from "../keystore.js";
 import { formatApiError, projectNotFound } from "../errors.js";
 
@@ -38,7 +38,7 @@ export async function handleInvokeFunction(args: {
 
   const startTime = Date.now();
 
-  const res = await apiRequest(`/functions/v1/${args.name}`, {
+  const res = await paidApiRequest(`/functions/v1/${args.name}`, {
     method,
     headers: requestHeaders,
     body: method !== "GET" && method !== "HEAD" ? args.body : undefined,
