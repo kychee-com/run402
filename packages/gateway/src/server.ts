@@ -51,6 +51,7 @@ import adminWalletRoutes from "./routes/admin-wallet.js";
 import attributionRoutes from "./routes/attribution.js";
 import contactRoutes from "./routes/contact.js";
 import tierRoutes from "./routes/tiers.js";
+import openapiRoutes from "./routes/openapi.js";
 import { initAppVersionsTables } from "./services/publish.js";
 import { cleanupExpiredOAuthData } from "./services/oauth.js";
 
@@ -80,8 +81,6 @@ const bugsnagMiddleware = Bugsnag.getPlugin("express")!;
 
 const app = express();
 
-// Cached llms-cli.txt for /.well-known/x402 instructions field
-let wellKnownInstructions: string | null = null;
 
 /**
  * Initialize x402 payment middleware with retries.
@@ -231,38 +230,21 @@ if (SELLER_ADDRESS) {
   app.use(await initPaymentMiddlewareWithRetry());
 }
 
-// --- x402 discovery (for x402scan.com) ---
-app.get("/.well-known/x402", async (_req: Request, res: Response) => {
-  // Fetch llms-cli.txt once, cache in memory
-  if (!wellKnownInstructions) {
-    try {
-      const r = await fetch("https://run402.com/llms-cli.txt");
-      if (r.ok) wellKnownInstructions = await r.text();
-    } catch { /* serve without instructions if fetch fails */ }
-  }
+// --- OpenAPI discovery (canonical) ---
+app.use(openapiRoutes);
 
-  const body: Record<string, unknown> = {
+// --- x402 discovery (fallback — OpenAPI at /openapi.json is canonical) ---
+app.get("/.well-known/x402", (_req: Request, res: Response) => {
+  res.json({
     version: 1,
-    description: "Postgres databases, static hosting, serverless functions, and image generation for AI agents. Pay-per-tier with x402 USDC micropayments.",
     resources: [
-      // Paid endpoints
-      "https://api.run402.com/tiers/v1/prototype",
-      "https://api.run402.com/tiers/v1/hobby",
-      "https://api.run402.com/tiers/v1/team",
-      "https://api.run402.com/generate-image/v1",
-      // Auth-only (SIWX identity, accepts: [])
-      "https://api.run402.com/projects/v1",
-      "https://api.run402.com/deployments/v1",
-      "https://api.run402.com/tiers/v1/status",
-      "https://api.run402.com/deploy/v1",
-      "https://api.run402.com/fork/v1",
-      "https://api.run402.com/message/v1",
-      "https://api.run402.com/agent/v1/contact",
-      "https://api.run402.com/ping/v1",
+      // Paid endpoints only (non-empty accepts)
+      "POST /tiers/v1/prototype",
+      "POST /tiers/v1/hobby",
+      "POST /tiers/v1/team",
+      "POST /generate-image/v1",
     ],
-  };
-  if (wellKnownInstructions) body.instructions = wellKnownInstructions;
-  res.json(body);
+  });
 });
 
 // --- Health check ---
