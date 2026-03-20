@@ -50,7 +50,9 @@ npx run402 projects sql <id> "CREATE TABLE test (id serial PRIMARY KEY);"
 
 **Workaround (applied in bld402 tests):** Strip all comment lines from SQL before sending to the endpoint.
 
-**Investigation (2026-03-20):** Unable to reproduce. Traced the full request lifecycle: CLI sends correct UTF-8 via fetch (Content-Length matches byte length), express.text() decodes correctly, node-pg serializes correctly. End-to-end test confirms em-dash survives the entire chain intact. Likely a PostgREST schema cache timing issue misattributed to the em-dash.
+**Investigation (2026-03-20):** Unable to reproduce on Linux/Mac. Traced the full request lifecycle: CLI sends correct UTF-8 via fetch (Content-Length matches byte length), express.text() decodes correctly, node-pg serializes correctly. End-to-end test confirms em-dash survives the entire chain intact. Likely a PostgREST schema cache timing issue misattributed to the em-dash.
+
+**Re-test (2026-03-20, Windows 11 / Git Bash):** REPRODUCED. The issue is NOT the em-dash — it's multiline SQL passed as a CLI argument on Windows. ANY SQL with `--` comment lines (even ASCII-only) silently fails when passed as `npx run402 projects sql <id> "multiline\nSQL"`. Single-line SQL without comments works. Multiline SQL without comments also works. SQL starting with `--` comment line silently returns `status: ok` but executes nothing. This appears to be a Windows-specific argument parsing issue in the CLI — the server endpoint works fine (Gate 2 tests pass via raw HTTP with the same SQL).
 
 ---
 
@@ -212,7 +214,7 @@ But the gateway blocked the `GRANT` statement (security measure — raw GRANT is
 
 | Bug | Severity | Component | Status |
 |-----|----------|-----------|--------|
-| BUG-001 | HIGH | Gateway (SQL endpoint) | Cannot reproduce |
+| BUG-001 | HIGH | CLI (Windows arg parsing) | Reproduced on Windows — SQL with comment lines silently no-ops |
 | BUG-002 | LOW | CLI (tier.mjs) | Fixed |
 | BUG-003 | LOW | CLI (init.mjs) | Fixed |
 | BUG-004 | MEDIUM | CLI (sites.mjs) | Not a bug |
@@ -222,7 +224,7 @@ But the gateway blocked the `GRANT` statement (security measure — raw GRANT is
 
 ### Investigation Notes (2026-03-20)
 
-**BUG-001 — Cannot reproduce.** Traced the full request lifecycle (CLI → fetch → express.text → node-pg → PostgreSQL). The em-dash survives every layer intact. End-to-end test confirms UTF-8 is preserved. Likely a PostgREST schema cache timing issue misattributed to the em-dash character.
+**BUG-001 — Reproduced on Windows.** Originally could not reproduce on Linux/Mac. Re-tested on Windows 11 (Git Bash): SQL with `--` comment lines passed as CLI argument silently fails — returns `status: ok` but no DDL is executed. Single-line SQL works. The server endpoint itself is fine (Gate 2 raw HTTP tests pass). Root cause is Windows-specific CLI argument parsing — likely newlines or `--` comment prefix being interpreted by the shell or Node.js argument parser on Windows.
 
 **BUG-002 — Fixed.** Reproduced: `res.json()` throws `SyntaxError` when the response body is HTML (e.g. from ALB 502 or x402 facilitator error). CLI crashes with unhandled error. Fix: read body as text first, then safely parse JSON.
 
