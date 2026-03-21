@@ -6,7 +6,7 @@
   "main": "dist/server.js",
   "scripts": {
     "build": "tsc",
-    "dev": "tsx src/server.ts",
+    "dev": "tsx --env-file=../../.env src/server.ts",
     "start": "node dist/server.js"
   },
   "dependencies": {

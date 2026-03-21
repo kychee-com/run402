@@ -52,15 +52,21 @@ Confirm the response shows `"status": "healthy"`. If not, wait 30 seconds and re
 
 ### Step 6: Production E2E test
 
-If gateway was deployed, run the production end-to-end test:
+If gateway was deployed, run these production tests sequentially:
 
+1. **E2E test**:
 ```bash
 BASE_URL=https://api.run402.com npm run test:e2e
 ```
-
 This runs the full 23-step workout tracker lifecycle test against production. It takes ~2 minutes and costs ~$0.30 in testnet USDC.
 
-Report the results. If any step fails, provide the specific failure details.
+2. **bld402 compatibility test**:
+```bash
+BASE_URL=https://api.run402.com npm run test:bld402-compat
+```
+This tests 3 bld402 templates (shared-todo, paste-locker, landing-waitlist) against the run402 API. It takes ~1 minute and verifies that run402 changes don't break bld402.com.
+
+Report the results of both tests. If any step fails, provide the specific failure details.
 
 ### Step 7: Summary
 
@@ -70,3 +76,4 @@ Report a final summary:
 - CI/CD: workflow name, status, duration
 - Health: healthy/unhealthy
 - E2E: pass/fail (with step count)
+- bld402 compat: pass/fail (with step count)
