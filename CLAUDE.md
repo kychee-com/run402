@@ -38,6 +38,51 @@ Each demo under `demos/` has its own `deploy.ts` that provisions a Run402 projec
 
 Run with `npx tsx demos/<name>/deploy.ts`. Requires `BUYER_PRIVATE_KEY`, `OPENAI_API_KEY`, and `ADMIN_KEY` in `.env`.
 
+## Local Development
+
+### Starting the local server
+
+1. Start Postgres: `docker run -d --name run402-postgres -p 5432:5432 -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=agentdb -v ./packages/gateway/src/db/init.sql:/docker-entrypoint-initdb.d/init-db.sql postgres:16`
+2. Start PostgREST: `docker run -d --name run402-postgrest -p 3000:3000 -e PGRST_DB_URI="postgres://authenticator:authenticator@<postgres-ip>:5432/agentdb" -e PGRST_DB_SCHEMAS="p0001,p0002,p0003,p0004,p0005,p0006,p0007,p0008,p0009,p0010" -e PGRST_DB_ANON_ROLE=anon -e 'PGRST_JWT_SECRET=super-secret-jwt-key-for-agentdb-test-only-32chars!!' -e PGRST_DB_PRE_REQUEST=internal.pre_request postgrest/postgrest:v12.2.3` (get postgres IP via `docker inspect run402-postgres --format '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}'`)
+3. Start gateway: `npm run dev`
+
+### ESM dotenv loading
+
+The dev script uses `tsx --env-file=../../.env` (in `packages/gateway/package.json`) to load `.env` from the repo root. This is necessary because ESM hoists static `import` statements before top-level `await`, so `config.ts` reads `process.env.*` before `await import("dotenv/config")` runs. The `--env-file` flag loads env vars at the Node.js level before any module evaluation.
+
+### Local function execution
+
+When `LAMBDA_ROLE_ARN` is not set (local dev), the gateway runs edge functions in-process instead of deploying to AWS Lambda. User code is written to disk as `.mjs` files with the `@run402/functions` helper (db client) inlined, then executed via dynamic `import()`. The `db.from()` calls route back to `localhost:4022/rest/v1/...` via PostgREST. This covers most logic but won't catch Lambda runtime/permissions issues.
+
+### Required `.env` vars for full local testing
+
+- `SELLER_ADDRESS` — x402 seller wallet (fetch from `agentdb/seller-wallet` in Secrets Manager)
+- `CDP_API_KEY_ID` / `CDP_API_KEY_SECRET` — x402 facilitator auth (fetch from `agentdb/cdp-api-key` in Secrets Manager)
+- `BUYER_PRIVATE_KEY` — test buyer wallet (already in `.env`)
+- `ADMIN_KEY` — admin operations (already in `.env`)
+
+Without `SELLER_ADDRESS` + CDP keys, x402 payment middleware won't initialize and payment-gated endpoints (tiers, projects) will fail.
+
+## Testing
+
+### Test commands
+
+| Command | What it tests |
+|---------|--------------|
+| `npm run test:e2e` | Full 23-step lifecycle test (workout tracker). Needs `BASE_URL`. |
+| `npm run test:bld402-compat` | bld402 template compatibility — 3 templates (shared-todo, paste-locker, landing-waitlist). Needs `BASE_URL`. |
+| `npm run test:docs` | API docs alignment |
+| `npm run test:siwx` | SIWx auth unit tests |
+| `npm run test:functions` | Functions lifecycle E2E |
+| `npm run test:billing` | Billing/tiers E2E |
+
+### Running tests locally vs production
+
+- **Local:** `npm run test:bld402-compat` (uses `BASE_URL=http://localhost:4022` default)
+- **Production:** `BASE_URL=https://api.run402.com npm run test:bld402-compat`
+
+The `/deploy` skill runs both `test:e2e` and `test:bld402-compat` against production after deployment.
+
 ## Bugsnag
 
 Error monitoring is integrated in the Express gateway (`packages/gateway/src/server.ts`).

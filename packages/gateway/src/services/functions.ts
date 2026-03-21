@@ -19,6 +19,9 @@ import {
   FilterLogEventsCommand,
 } from "@aws-sdk/client-cloudwatch-logs";
 import { createHash } from "node:crypto";
+import { writeFileSync, mkdirSync, existsSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import { pool } from "../db/pool.js";
 import {
   LAMBDA_ROLE_ARN,
@@ -236,10 +239,6 @@ export async function deployFunction(
     throw new FunctionError(`Code exceeds 1MB limit (${(code.length / 1024).toFixed(0)}KB)`, 400);
   }
 
-  if (!lambda) {
-    throw new FunctionError("Lambda not configured (missing LAMBDA_ROLE_ARN)", 503);
-  }
-
   // Check function count quota
   if (tierLimits) {
     const existing = await pool.query(
@@ -271,101 +270,109 @@ export async function deployFunction(
 
   const codeHash = createHash("sha256").update(code).digest("hex");
   const fnName = lambdaName(projectId, name);
-
-  // Build the shim + user code zip
-  const shimCode = buildShimCode(code);
-  const zipBuffer = await buildZip(shimCode);
-
-  // Load project secrets for env vars
-  const secretRows = await pool.query(
-    `SELECT key, value_encrypted FROM internal.secrets WHERE project_id = $1`,
-    [projectId],
-  );
-  const envVars: Record<string, string> = {
-    RUN402_PROJECT_ID: projectId,
-    RUN402_API_BASE: apiBase,
-    RUN402_SERVICE_KEY: serviceKey,
-  };
-  for (const row of secretRows.rows) {
-    envVars[row.key] = row.value_encrypted;
-  }
-
-  // Check if function already exists
   let lambdaArn = "";
-  try {
-    await lambda.send(new GetFunctionCommand({ FunctionName: fnName }));
 
-    // Wait for any in-progress updates to complete
+  if (!lambda) {
+    // --- Local mode: store code on disk, skip Lambda ---
+    lambdaArn = `local://${fnName}`;
+    writeLocalFunction(projectId, name, code, serviceKey, apiBase);
+    console.log(`  Function deployed (local): ${fnName}`);
+  } else {
+    // --- Lambda mode ---
+    // Build the shim + user code zip
+    const shimCode = buildShimCode(code);
+    const zipBuffer = await buildZip(shimCode);
+
+    // Load project secrets for env vars
+    const secretRows = await pool.query(
+      `SELECT key, value_encrypted FROM internal.secrets WHERE project_id = $1`,
+      [projectId],
+    );
+    const envVars: Record<string, string> = {
+      RUN402_PROJECT_ID: projectId,
+      RUN402_API_BASE: apiBase,
+      RUN402_SERVICE_KEY: serviceKey,
+    };
+    for (const row of secretRows.rows) {
+      envVars[row.key] = row.value_encrypted;
+    }
+
+    // Check if function already exists
     try {
+      await lambda.send(new GetFunctionCommand({ FunctionName: fnName }));
+
+      // Wait for any in-progress updates to complete
+      try {
+        await waitUntilFunctionUpdatedV2(
+          { client: lambda, maxWaitTime: 30 },
+          { FunctionName: fnName },
+        );
+      } catch {
+        // Best effort — proceed anyway
+      }
+
+      // Update existing function code — retry on ResourceConflictException
+      // (function may still be in Pending state from a previous deploy)
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          const updateCodeResult = await lambda.send(new UpdateFunctionCodeCommand({
+            FunctionName: fnName,
+            ZipFile: zipBuffer,
+          }));
+          lambdaArn = updateCodeResult.FunctionArn!;
+          break;
+        } catch (retryErr) {
+          if (retryErr instanceof ResourceConflictException && attempt < 2) {
+            await waitUntilFunctionUpdatedV2(
+              { client: lambda, maxWaitTime: 30 },
+              { FunctionName: fnName },
+            );
+            continue;
+          }
+          throw retryErr;
+        }
+      }
+
+      // Wait for code update to complete before updating config
       await waitUntilFunctionUpdatedV2(
         { client: lambda, maxWaitTime: 30 },
         { FunctionName: fnName },
       );
-    } catch {
-      // Best effort — proceed anyway
-    }
 
-    // Update existing function code — retry on ResourceConflictException
-    // (function may still be in Pending state from a previous deploy)
-    for (let attempt = 0; attempt < 3; attempt++) {
-      try {
-        const updateCodeResult = await lambda.send(new UpdateFunctionCodeCommand({
-          FunctionName: fnName,
-          ZipFile: zipBuffer,
-        }));
-        lambdaArn = updateCodeResult.FunctionArn!;
-        break;
-      } catch (retryErr) {
-        if (retryErr instanceof ResourceConflictException && attempt < 2) {
-          await waitUntilFunctionUpdatedV2(
-            { client: lambda, maxWaitTime: 30 },
-            { FunctionName: fnName },
-          );
-          continue;
-        }
-        throw retryErr;
-      }
-    }
-
-    // Wait for code update to complete before updating config
-    await waitUntilFunctionUpdatedV2(
-      { client: lambda, maxWaitTime: 30 },
-      { FunctionName: fnName },
-    );
-
-    // Update configuration
-    await lambda.send(new UpdateFunctionConfigurationCommand({
-      FunctionName: fnName,
-      Timeout: timeout,
-      MemorySize: memory,
-      Environment: { Variables: envVars },
-      Layers: LAMBDA_LAYER_ARN ? [LAMBDA_LAYER_ARN] : undefined,
-    }));
-  } catch (err: unknown) {
-    if (err instanceof ResourceNotFoundException) {
-      // Create new function
-      const subnetIds = LAMBDA_SUBNET_IDS ? LAMBDA_SUBNET_IDS.split(",") : undefined;
-      const createResult = await lambda.send(new CreateFunctionCommand({
+      // Update configuration
+      await lambda.send(new UpdateFunctionConfigurationCommand({
         FunctionName: fnName,
-        Runtime: "nodejs22.x",
-        Handler: "index.handler",
-        Role: LAMBDA_ROLE_ARN,
-        Code: { ZipFile: zipBuffer },
         Timeout: timeout,
         MemorySize: memory,
         Environment: { Variables: envVars },
         Layers: LAMBDA_LAYER_ARN ? [LAMBDA_LAYER_ARN] : undefined,
-        VpcConfig: subnetIds ? {
-          SubnetIds: subnetIds,
-          SecurityGroupIds: LAMBDA_SG_ID ? [LAMBDA_SG_ID] : [],
-        } : undefined,
-        LoggingConfig: {
-          LogGroup: FUNCTIONS_LOG_GROUP,
-        },
       }));
-      lambdaArn = createResult.FunctionArn!;
-    } else {
-      throw err;
+    } catch (err: unknown) {
+      if (err instanceof ResourceNotFoundException) {
+        // Create new function
+        const subnetIds = LAMBDA_SUBNET_IDS ? LAMBDA_SUBNET_IDS.split(",") : undefined;
+        const createResult = await lambda.send(new CreateFunctionCommand({
+          FunctionName: fnName,
+          Runtime: "nodejs22.x",
+          Handler: "index.handler",
+          Role: LAMBDA_ROLE_ARN,
+          Code: { ZipFile: zipBuffer },
+          Timeout: timeout,
+          MemorySize: memory,
+          Environment: { Variables: envVars },
+          Layers: LAMBDA_LAYER_ARN ? [LAMBDA_LAYER_ARN] : undefined,
+          VpcConfig: subnetIds ? {
+            SubnetIds: subnetIds,
+            SecurityGroupIds: LAMBDA_SG_ID ? [LAMBDA_SG_ID] : [],
+          } : undefined,
+          LoggingConfig: {
+            LogGroup: FUNCTIONS_LOG_GROUP,
+          },
+        }));
+        lambdaArn = createResult.FunctionArn!;
+      } else {
+        throw err;
+      }
     }
   }
 
@@ -385,7 +392,7 @@ export async function deployFunction(
   );
 
   const url = `${apiBase}/functions/v1/${name}`;
-  console.log(`  Function deployed: ${fnName} → ${url}`);
+  if (lambda) console.log(`  Function deployed: ${fnName} → ${url}`);
 
   return {
     name,
@@ -413,10 +420,6 @@ export async function invokeFunction(
   body: string | undefined,
   queryString: string,
 ): Promise<{ statusCode: number; headers: Record<string, string>; body: string }> {
-  if (!lambda) {
-    throw new FunctionError("Lambda not configured", 503);
-  }
-
   // Look up function in DB
   const result = await pool.query(
     `SELECT lambda_arn FROM internal.functions WHERE project_id = $1 AND name = $2`,
@@ -428,6 +431,12 @@ export async function invokeFunction(
 
   const fnName = lambdaName(projectId, name);
 
+  if (!lambda) {
+    // --- Local mode: execute function in-process ---
+    return invokeLocalFunction(projectId, name, method, path, headers, body, queryString);
+  }
+
+  // --- Lambda mode ---
   // Build Lambda event (API Gateway v2 format)
   const event = {
     httpMethod: method,
@@ -509,10 +518,6 @@ export async function listFunctions(projectId: string, apiBase: string): Promise
  * Delete a function.
  */
 export async function deleteFunction(projectId: string, name: string): Promise<void> {
-  if (!lambda) {
-    throw new FunctionError("Lambda not configured", 503);
-  }
-
   const result = await pool.query(
     `SELECT lambda_arn FROM internal.functions WHERE project_id = $1 AND name = $2`,
     [projectId, name],
@@ -523,13 +528,15 @@ export async function deleteFunction(projectId: string, name: string): Promise<v
 
   const fnName = lambdaName(projectId, name);
 
-  try {
-    await lambda.send(new DeleteFunctionCommand({ FunctionName: fnName }));
-  } catch (err: unknown) {
-    if (!(err instanceof ResourceNotFoundException)) {
-      throw err;
+  if (lambda) {
+    try {
+      await lambda.send(new DeleteFunctionCommand({ FunctionName: fnName }));
+    } catch (err: unknown) {
+      if (!(err instanceof ResourceNotFoundException)) {
+        throw err;
+      }
+      // Already deleted in Lambda, continue to clean up DB
     }
-    // Already deleted in Lambda, continue to clean up DB
   }
 
   await pool.query(
@@ -728,6 +735,161 @@ async function refreshFunctionEnvVars(projectId: string): Promise<void> {
     } catch {
       console.error(`  Failed to update env vars for ${fnName}`);
     }
+  }
+}
+
+// ============================================================
+// Local function execution (no Lambda)
+// ============================================================
+
+const LOCAL_FUNCTIONS_DIR = join(tmpdir(), "run402-local-functions");
+
+/**
+ * Write a local function module to disk for in-process execution.
+ * The file inlines the @run402/functions helper so the user code's
+ * `import { db } from '@run402/functions'` resolves without a Lambda layer.
+ */
+function writeLocalFunction(
+  projectId: string,
+  name: string,
+  userCode: string,
+  serviceKey: string,
+  apiBase: string,
+): void {
+  const dir = join(LOCAL_FUNCTIONS_DIR, projectId);
+  if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+
+  // Inline the @run402/functions helper + user code in a single module.
+  // Replace the user's import with the inlined helper.
+  const stripped = userCode
+    .replace(/import\s*\{[^}]*\}\s*from\s*['"]@run402\/functions['"]\s*;?/g, "");
+
+  const module = `
+// --- inlined @run402/functions helper ---
+const _API_BASE = ${JSON.stringify(apiBase)};
+const _SERVICE_KEY = ${JSON.stringify(serviceKey)};
+
+class _QueryBuilder {
+  #table; #params = new URLSearchParams(); #method = "GET"; #body = undefined;
+  constructor(t) { this.#table = t; }
+  select(c = "*") { this.#params.set("select", c); return this; }
+  eq(c, v) { this.#params.append(c, "eq." + v); return this; }
+  neq(c, v) { this.#params.append(c, "neq." + v); return this; }
+  gt(c, v) { this.#params.append(c, "gt." + v); return this; }
+  lt(c, v) { this.#params.append(c, "lt." + v); return this; }
+  gte(c, v) { this.#params.append(c, "gte." + v); return this; }
+  lte(c, v) { this.#params.append(c, "lte." + v); return this; }
+  like(c, p) { this.#params.append(c, "like." + p); return this; }
+  ilike(c, p) { this.#params.append(c, "ilike." + p); return this; }
+  in(c, vs) { this.#params.append(c, "in.(" + vs.join(",") + ")"); return this; }
+  order(c, { ascending = true } = {}) { this.#params.append("order", c + "." + (ascending ? "asc" : "desc")); return this; }
+  limit(n) { this.#params.set("limit", String(n)); return this; }
+  offset(n) { this.#params.set("offset", String(n)); return this; }
+  insert(d) { this.#method = "POST"; this.#body = Array.isArray(d) ? d : [d]; return this; }
+  update(d) { this.#method = "PATCH"; this.#body = d; return this; }
+  delete() { this.#method = "DELETE"; return this; }
+  async then(resolve, reject) {
+    try {
+      const qs = this.#params.toString();
+      const url = _API_BASE + "/rest/v1/" + this.#table + (qs ? "?" + qs : "");
+      const res = await fetch(url, {
+        method: this.#method,
+        headers: { apikey: _SERVICE_KEY, Authorization: "Bearer " + _SERVICE_KEY, "Content-Type": "application/json", Prefer: "return=representation" },
+        body: this.#body ? JSON.stringify(this.#body) : undefined,
+      });
+      if (!res.ok) { reject(new Error("PostgREST error (" + res.status + "): " + await res.text())); return; }
+      resolve(await res.json());
+    } catch (e) { reject(e); }
+  }
+}
+const db = { from(t) { return new _QueryBuilder(t); } };
+
+// --- user code ---
+${stripped}
+`;
+
+  writeFileSync(join(dir, name + ".mjs"), module);
+}
+
+/**
+ * Invoke a locally-stored function in-process.
+ */
+async function invokeLocalFunction(
+  projectId: string,
+  name: string,
+  method: string,
+  path: string,
+  headers: Record<string, string>,
+  body: string | undefined,
+  queryString: string,
+): Promise<{ statusCode: number; headers: Record<string, string>; body: string }> {
+  const filePath = join(LOCAL_FUNCTIONS_DIR, projectId, name + ".mjs");
+  if (!existsSync(filePath)) {
+    throw new FunctionError("Function not found locally", 404);
+  }
+
+  // Cache-bust: append timestamp query to force re-import on redeploy
+  const fileUrl = "file://" + filePath + "?t=" + Date.now();
+
+  let userModule;
+  try {
+    userModule = await import(fileUrl);
+  } catch (err: unknown) {
+    console.error(`Local function import error (${name}):`, err);
+    return {
+      statusCode: 500,
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ error: "Internal function error" }),
+    };
+  }
+
+  const handlerFn = userModule.default || userModule.handler;
+  if (typeof handlerFn !== "function") {
+    return {
+      statusCode: 500,
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ error: "Function does not export a default handler" }),
+    };
+  }
+
+  // Build a Web Request
+  const fullUrl = "http://localhost" + path + (queryString ? "?" + queryString : "");
+  const reqInit: RequestInit = { method, headers };
+  if (method !== "GET" && method !== "HEAD" && body) {
+    reqInit.body = body;
+  }
+  const request = new Request(fullUrl, reqInit);
+
+  try {
+    const response = await handlerFn(request);
+
+    if (response instanceof Response) {
+      const resBody = await response.text();
+      const resHeaders: Record<string, string> = {};
+      response.headers.forEach((v, k) => { resHeaders[k] = v; });
+      return { statusCode: response.status, headers: resHeaders, body: resBody };
+    }
+
+    if (response && typeof response === "object") {
+      return {
+        statusCode: response.statusCode || 200,
+        headers: { "content-type": "application/json", ...(response.headers || {}) },
+        body: typeof response.body === "string" ? response.body : JSON.stringify(response.body || response),
+      };
+    }
+
+    return {
+      statusCode: 200,
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(response),
+    };
+  } catch (err: unknown) {
+    console.error(`Local function error (${name}):`, err);
+    return {
+      statusCode: 500,
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ error: "Internal function error" }),
+    };
   }
 }
 
