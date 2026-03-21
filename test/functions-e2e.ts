@@ -2,7 +2,7 @@
  * Functions E2E Test
  *
  * Tests the full functions lifecycle against a running Run402 instance:
- *   0. Setup — credit allowance, create project via allowance
+ *   0. Setup — subscribe to tier via x402, create project via wallet auth
  *   1. Set a secret (TEST_SECRET)
  *   2. List secrets
  *   3. Deploy a function that reads the secret
@@ -17,7 +17,7 @@
  *  12. Invoke getUser with invalid token (returns null)
  *  13. Delete function, verify 404 on invoke
  *  14. Delete secret
- *  15. Cleanup — delete project, debit remaining allowance
+ *  15. Cleanup — delete project
  *
  * Usage:
  *   BASE_URL=https://api.run402.com npm run test:functions
@@ -29,31 +29,46 @@ config();
 import { x402Client, wrapFetchWithPayment } from "@x402/fetch";
 import { ExactEvmScheme } from "@x402/evm/exact/client";
 import { toClientEvmSigner } from "@x402/evm";
+import { createSIWxPayload, encodeSIWxHeader } from "@x402/extensions/sign-in-with-x";
+import type { CompleteSIWxInfo } from "@x402/extensions/sign-in-with-x";
 import { privateKeyToAccount } from "viem/accounts";
 import { createPublicClient, http } from "viem";
 import { baseSepolia } from "viem/chains";
 
 const BASE_URL = process.env.BASE_URL || "http://localhost:4022";
 const BUYER_KEY = process.env.BUYER_PRIVATE_KEY as `0x${string}`;
-const ADMIN_KEY = process.env.ADMIN_KEY;
 
 if (!BUYER_KEY) {
   console.error("Missing BUYER_PRIVATE_KEY in .env");
   process.exit(1);
 }
-if (!ADMIN_KEY) {
-  console.error("Missing ADMIN_KEY in .env");
-  process.exit(1);
-}
 
-// x402 setup
+// x402 + SIWx setup
 const account = privateKeyToAccount(BUYER_KEY);
-const wallet = account.address.toLowerCase();
 const publicClient = createPublicClient({ chain: baseSepolia, transport: http() });
 const signer = toClientEvmSigner(account, publicClient);
 const client = new x402Client();
 client.register("eip155:84532", new ExactEvmScheme(signer));
 const fetchPaid = wrapFetchWithPayment(fetch, client);
+
+async function siwxHeaders(path: string): Promise<Record<string, string>> {
+  const baseUrl = new URL(BASE_URL);
+  const uri = `${baseUrl.protocol}//${baseUrl.host}${path}`;
+  const now = new Date();
+  const info: CompleteSIWxInfo = {
+    domain: baseUrl.hostname,
+    uri,
+    statement: "Sign in to Run402",
+    version: "1",
+    nonce: Math.random().toString(36).slice(2),
+    issuedAt: now.toISOString(),
+    expirationTime: new Date(now.getTime() + 5 * 60 * 1000).toISOString(),
+    chainId: "eip155:84532",
+    type: "eip191",
+  };
+  const payload = await createSIWxPayload(info, account);
+  return { "SIGN-IN-WITH-X": encodeSIWxHeader(payload) };
+}
 
 let passed = 0;
 let failed = 0;
@@ -79,32 +94,29 @@ async function main() {
   let serviceKey = "";
   let anonKey = "";
 
-  // --- Step 0: Setup — credit allowance and create project ---
-  console.log("Step 0: Setup — create project");
+  // --- Step 0: Setup — subscribe to tier, create project ---
+  console.log("Step 0: Setup — subscribe + create project");
 
-  // Credit $1 allowance
-  const creditRes = await fetch(`${BASE_URL}/v1/billing/admin/accounts/${wallet}/credit`, {
+  // Subscribe to prototype tier via x402
+  const subRes = await fetchPaid(`${BASE_URL}/tiers/v1/prototype`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({}),
+  });
+  assert(subRes.status === 201 || subRes.status === 200, `Tier subscribed (${subRes.status})`);
+
+  // Create project via wallet auth (free with active tier)
+  const createHeaders = await siwxHeaders("/projects/v1");
+  const projRes = await fetch(`${BASE_URL}/projects/v1`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "x-admin-key": ADMIN_KEY,
+      ...createHeaders,
     },
-    body: JSON.stringify({
-      amount_usd_micros: 1_000_000,
-      reason: "functions-e2e setup",
-      idempotency_key: `functions-e2e-setup-${Date.now()}`,
-    }),
-  });
-  assert(creditRes.ok, `Allowance credited ($1)`);
-
-  // Create project via allowance (x402 payment)
-  const projRes = await fetchPaid(`${BASE_URL}/v1/projects/create/prototype`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ name: `func-test-${Date.now()}` }),
   });
   const projBody = await projRes.json() as Record<string, unknown>;
-  assert(projRes.ok, `Project created (${projBody.project_id})`);
+  assert(projRes.status === 201, `Project created (${projBody.project_id})`);
 
   projectId = projBody.project_id as string;
   serviceKey = projBody.service_key as string;
@@ -115,7 +127,7 @@ async function main() {
     // --- Step 1: Set a secret ---
     console.log("Step 1: Set a secret");
     {
-      const res = await fetch(`${BASE_URL}/admin/v1/projects/${projectId}/secrets`, {
+      const res = await fetch(`${BASE_URL}/projects/v1/admin/${projectId}/secrets`, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${serviceKey}`,
@@ -131,7 +143,7 @@ async function main() {
     // --- Step 2: List secrets ---
     console.log("\nStep 2: List secrets");
     {
-      const res = await fetch(`${BASE_URL}/admin/v1/projects/${projectId}/secrets`, {
+      const res = await fetch(`${BASE_URL}/projects/v1/admin/${projectId}/secrets`, {
         headers: { Authorization: `Bearer ${serviceKey}` },
       });
       const body = await res.json();
@@ -161,7 +173,7 @@ export default async (req) => {
 
     let functionUrl = "";
     {
-      const res = await fetch(`${BASE_URL}/admin/v1/projects/${projectId}/functions`, {
+      const res = await fetch(`${BASE_URL}/projects/v1/admin/${projectId}/functions`, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${serviceKey}`,
@@ -214,7 +226,7 @@ export default async (req) => {
     await sleep(2000); // Wait for CloudWatch ingestion
     {
       const res = await fetch(
-        `${BASE_URL}/admin/v1/projects/${projectId}/functions/test-func/logs?tail=10`,
+        `${BASE_URL}/projects/v1/admin/${projectId}/functions/test-func/logs?tail=10`,
         { headers: { Authorization: `Bearer ${serviceKey}` } },
       );
       const body = await res.json();
@@ -241,7 +253,7 @@ export default async (req) => {
   });
 };
 `;
-      const res = await fetch(`${BASE_URL}/admin/v1/projects/${projectId}/functions`, {
+      const res = await fetch(`${BASE_URL}/projects/v1/admin/${projectId}/functions`, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${serviceKey}`,
@@ -265,7 +277,7 @@ export default async (req) => {
     // --- Step 7: List functions ---
     console.log("\nStep 7: List functions");
     {
-      const res = await fetch(`${BASE_URL}/admin/v1/projects/${projectId}/functions`, {
+      const res = await fetch(`${BASE_URL}/projects/v1/admin/${projectId}/functions`, {
         headers: { Authorization: `Bearer ${serviceKey}` },
       });
       const body = await res.json();
@@ -290,7 +302,7 @@ export default async (req) => {
 };
 `;
     {
-      const res = await fetch(`${BASE_URL}/admin/v1/projects/${projectId}/functions`, {
+      const res = await fetch(`${BASE_URL}/projects/v1/admin/${projectId}/functions`, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${serviceKey}`,
@@ -374,7 +386,7 @@ export default async (req) => {
 
     // Delete getUser test function
     {
-      await fetch(`${BASE_URL}/admin/v1/projects/${projectId}/functions/getuser-test`, {
+      await fetch(`${BASE_URL}/projects/v1/admin/${projectId}/functions/getuser-test`, {
         method: "DELETE",
         headers: { Authorization: `Bearer ${serviceKey}` },
       });
@@ -384,7 +396,7 @@ export default async (req) => {
     console.log("\nStep 13: Delete function");
     {
       const res = await fetch(
-        `${BASE_URL}/admin/v1/projects/${projectId}/functions/test-func`,
+        `${BASE_URL}/projects/v1/admin/${projectId}/functions/test-func`,
         {
           method: "DELETE",
           headers: { Authorization: `Bearer ${serviceKey}` },
@@ -406,7 +418,7 @@ export default async (req) => {
     console.log("\nStep 14: Delete secret");
     {
       const res = await fetch(
-        `${BASE_URL}/admin/v1/projects/${projectId}/secrets/TEST_SECRET`,
+        `${BASE_URL}/projects/v1/admin/${projectId}/secrets/TEST_SECRET`,
         {
           method: "DELETE",
           headers: { Authorization: `Bearer ${serviceKey}` },
@@ -420,30 +432,11 @@ export default async (req) => {
 
     // Delete project
     if (projectId) {
-      const deleteRes = await fetch(`${BASE_URL}/v1/projects/${projectId}`, {
+      const deleteRes = await fetch(`${BASE_URL}/projects/v1/${projectId}`, {
         method: "DELETE",
         headers: { Authorization: `Bearer ${serviceKey}` },
       });
       assert(deleteRes.ok, `Project deleted (${projectId})`);
-    }
-
-    // Debit remaining allowance
-    const balRes = await fetch(`${BASE_URL}/v1/billing/accounts/${wallet}`);
-    const balBody = await balRes.json() as Record<string, unknown>;
-    const remaining = (balBody.available_usd_micros as number) || 0;
-    if (remaining > 0) {
-      await fetch(`${BASE_URL}/v1/billing/admin/accounts/${wallet}/debit`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-admin-key": ADMIN_KEY,
-        },
-        body: JSON.stringify({
-          amount_usd_micros: remaining,
-          reason: "functions-e2e cleanup",
-        }),
-      });
-      console.log(`  Debited remaining ${remaining} micro-USD`);
     }
   }
 
