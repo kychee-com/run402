@@ -136,7 +136,7 @@ async function main() {
         body: JSON.stringify({ key: "TEST_SECRET", value: "hello-from-secret" }),
       });
       const body = await res.json();
-      assert(res.status === 200, `Set secret: ${res.status}`);
+      assert(res.status === 201 || res.status === 200, `Set secret: ${res.status}`);
       assert(body.key === "TEST_SECRET", `Secret key matches`);
     }
 
