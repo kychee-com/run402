@@ -728,6 +728,13 @@ For explicit control, use both `apikey` (project key) and `Authorization: Bearer
 
 Functions are deployed via the Admin endpoints above and invoked at `/functions/v1/:name`. Any HTTP method is supported -- the function receives the full request (method, headers, body, query string). Sub-paths like `/functions/v1/:name/sub/path` are forwarded to the function.
 
+Handler signature: `export default async (req: Request) => Response`
+Built-in helper: `import { db, getUser } from '@run402/functions'`
+- `db.from(table)` -- PostgREST-style queries (service_role, bypasses RLS)
+- `db.sql(query)` -- raw SQL
+- `getUser(req)` -- verify caller's JWT, returns `{ id, role }` or `null`
+Secrets: `process.env.SECRET_NAME`
+
 ### User Auth
 
 | Endpoint | Method | Auth | Description |

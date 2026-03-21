@@ -30,6 +30,7 @@ import {
   LAMBDA_SG_ID,
   FUNCTIONS_LOG_GROUP,
   S3_REGION,
+  JWT_SECRET,
 } from "../config.js";
 import type { FunctionRecord } from "@run402/shared";
 
@@ -292,6 +293,7 @@ export async function deployFunction(
       RUN402_PROJECT_ID: projectId,
       RUN402_API_BASE: apiBase,
       RUN402_SERVICE_KEY: serviceKey,
+      RUN402_JWT_SECRET: JWT_SECRET,
     };
     for (const row of secretRows.rows) {
       envVars[row.key] = row.value_encrypted;
@@ -720,6 +722,7 @@ async function refreshFunctionEnvVars(projectId: string): Promise<void> {
     RUN402_PROJECT_ID: projectId,
     RUN402_API_BASE: process.env.API_BASE || "https://api.run402.com",
     RUN402_SERVICE_KEY: existingServiceKey,
+    RUN402_JWT_SECRET: JWT_SECRET,
   };
   for (const row of secrets.rows) {
     envVars[row.key] = row.value_encrypted;
@@ -768,6 +771,8 @@ function writeLocalFunction(
 // --- inlined @run402/functions helper ---
 const _API_BASE = ${JSON.stringify(apiBase)};
 const _SERVICE_KEY = ${JSON.stringify(serviceKey)};
+const _JWT_SECRET = ${JSON.stringify(JWT_SECRET)};
+const _PROJECT_ID = ${JSON.stringify(projectId)};
 
 class _QueryBuilder {
   #table; #params = new URLSearchParams(); #method = "GET"; #body = undefined;
@@ -803,6 +808,18 @@ class _QueryBuilder {
   }
 }
 const db = { from(t) { return new _QueryBuilder(t); } };
+
+import _jwt from "jsonwebtoken";
+function getUser(req) {
+  const authHeader = req.headers.get ? req.headers.get("authorization") : req.headers?.authorization;
+  if (!authHeader || !authHeader.startsWith("Bearer ")) return null;
+  const token = authHeader.slice(7);
+  try {
+    const payload = _jwt.verify(token, _JWT_SECRET);
+    if (payload.project_id !== _PROJECT_ID) return null;
+    return { id: payload.sub, role: payload.role };
+  } catch { return null; }
+}
 
 // --- user code ---
 ${stripped}

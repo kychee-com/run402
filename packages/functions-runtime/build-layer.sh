@@ -44,6 +44,7 @@ cat > "$BUILD_DIR/nodejs/node_modules/@run402/functions/index.js" << 'HELPERJS'
  * Provides:
  *   db.from(table) — PostgREST-style queries
  *   db.sql(query) — raw SQL via gateway
+ *   getUser(req) — verify caller's JWT, returns { id, role } or null
  */
 
 const API_BASE = process.env.RUN402_API_BASE || "https://api.run402.com";
@@ -198,6 +199,29 @@ export const db = {
     return res.json();
   },
 };
+
+import _jwt from "jsonwebtoken";
+
+const _JWT_SECRET = process.env.RUN402_JWT_SECRET || "";
+
+/**
+ * Verify the caller's JWT and return user identity.
+ * Returns { id, role } or null if unauthenticated/invalid.
+ */
+export function getUser(req) {
+  const authHeader = req.headers.get
+    ? req.headers.get("authorization")
+    : req.headers?.authorization;
+  if (!authHeader || !authHeader.startsWith("Bearer ")) return null;
+  const token = authHeader.slice(7);
+  try {
+    const payload = _jwt.verify(token, _JWT_SECRET);
+    if (payload.project_id !== PROJECT_ID) return null;
+    return { id: payload.sub, role: payload.role };
+  } catch {
+    return null;
+  }
+}
 HELPERJS
 
 # Build zip

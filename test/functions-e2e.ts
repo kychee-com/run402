@@ -10,9 +10,14 @@
  *   5. Get function logs
  *   6. Redeploy function (overwrite), verify new code runs
  *   7. List functions
- *   8. Delete function, verify 404 on invoke
- *   9. Delete secret
- *  10. Cleanup — delete project, debit remaining allowance
+ *   8. Deploy getUser function
+ *   9. Sign up user for getUser test
+ *  10. Invoke getUser with valid access token
+ *  11. Invoke getUser without auth header (returns null)
+ *  12. Invoke getUser with invalid token (returns null)
+ *  13. Delete function, verify 404 on invoke
+ *  14. Delete secret
+ *  15. Cleanup — delete project, debit remaining allowance
  *
  * Usage:
  *   BASE_URL=https://api.run402.com npm run test:functions
@@ -272,8 +277,111 @@ export default async (req) => {
       );
     }
 
-    // --- Step 8: Delete function ---
-    console.log("\nStep 8: Delete function");
+    // --- Step 8: Deploy getUser function ---
+    console.log("\nStep 8: Deploy getUser function");
+    const getUserFunctionCode = `
+import { db, getUser } from '@run402/functions';
+
+export default async (req) => {
+  const user = getUser(req);
+  return new Response(JSON.stringify({ user }), {
+    headers: { "Content-Type": "application/json" },
+  });
+};
+`;
+    {
+      const res = await fetch(`${BASE_URL}/admin/v1/projects/${projectId}/functions`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${serviceKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ name: "getuser-test", code: getUserFunctionCode }),
+      });
+      assert(res.status === 201, `Deploy getUser function: ${res.status}`);
+    }
+
+    await sleep(3000);
+
+    // --- Step 9: Sign up a user to get an access token ---
+    console.log("\nStep 9: Sign up user for getUser test");
+    let userAccessToken = "";
+    let testUserId = "";
+    {
+      const signupRes = await fetch(`${BASE_URL}/auth/v1/signup`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", apikey: anonKey },
+        body: JSON.stringify({ email: "getuser-test@example.com", password: "test-password-123" }),
+      });
+      const signupBody = await signupRes.json() as Record<string, unknown>;
+      assert(signupRes.ok, `User signed up`);
+      testUserId = signupBody.id as string;
+
+      const loginRes = await fetch(`${BASE_URL}/auth/v1/token`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", apikey: anonKey },
+        body: JSON.stringify({ email: "getuser-test@example.com", password: "test-password-123" }),
+      });
+      const loginBody = await loginRes.json() as Record<string, unknown>;
+      assert(loginRes.ok, `User logged in`);
+      userAccessToken = loginBody.access_token as string;
+    }
+
+    // --- Step 10: Invoke getUser with valid token ---
+    console.log("\nStep 10: Invoke getUser with valid access token");
+    {
+      const res = await fetch(`${BASE_URL}/functions/v1/getuser-test`, {
+        method: "POST",
+        headers: {
+          apikey: anonKey,
+          Authorization: `Bearer ${userAccessToken}`,
+        },
+      });
+      const body = await res.json() as Record<string, unknown>;
+      assert(res.status === 200, `getUser invoke: ${res.status}`);
+      const user = body.user as Record<string, unknown> | null;
+      assert(user !== null, `getUser returns non-null`);
+      assert(user?.id === testUserId, `getUser returns correct user id`);
+      assert(user?.role === "authenticated", `getUser returns authenticated role`);
+    }
+
+    // --- Step 11: Invoke getUser without auth header ---
+    console.log("\nStep 11: Invoke getUser without auth header");
+    {
+      const res = await fetch(`${BASE_URL}/functions/v1/getuser-test`, {
+        method: "POST",
+        headers: { apikey: anonKey },
+      });
+      const body = await res.json() as Record<string, unknown>;
+      assert(res.status === 200, `getUser invoke (no auth): ${res.status}`);
+      assert(body.user === null, `getUser returns null without auth`);
+    }
+
+    // --- Step 12: Invoke getUser with invalid token ---
+    console.log("\nStep 12: Invoke getUser with invalid token");
+    {
+      const res = await fetch(`${BASE_URL}/functions/v1/getuser-test`, {
+        method: "POST",
+        headers: {
+          apikey: anonKey,
+          Authorization: "Bearer invalid.jwt.token",
+        },
+      });
+      const body = await res.json() as Record<string, unknown>;
+      assert(res.status === 200, `getUser invoke (invalid): ${res.status}`);
+      assert(body.user === null, `getUser returns null with invalid token`);
+    }
+
+    // Delete getUser test function
+    {
+      await fetch(`${BASE_URL}/admin/v1/projects/${projectId}/functions/getuser-test`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${serviceKey}` },
+      });
+    }
+
+    // --- Step 13: Delete function ---
+    console.log("\nStep 13: Delete function");
     {
       const res = await fetch(
         `${BASE_URL}/admin/v1/projects/${projectId}/functions/test-func`,
@@ -294,8 +402,8 @@ export default async (req) => {
       assert(res.status === 404, `Invoke after delete returns 404: ${res.status}`);
     }
 
-    // --- Step 9: Delete secret ---
-    console.log("\nStep 9: Delete secret");
+    // --- Step 14: Delete secret ---
+    console.log("\nStep 14: Delete secret");
     {
       const res = await fetch(
         `${BASE_URL}/admin/v1/projects/${projectId}/secrets/TEST_SECRET`,
@@ -307,8 +415,8 @@ export default async (req) => {
       assert(res.status === 200, `Delete secret: ${res.status}`);
     }
   } finally {
-    // --- Step 10: Cleanup ---
-    console.log("\nStep 10: Cleanup");
+    // --- Step 15: Cleanup ---
+    console.log("\nStep 15: Cleanup");
 
     // Delete project
     if (projectId) {

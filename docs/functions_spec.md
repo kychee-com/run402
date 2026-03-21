@@ -44,19 +44,20 @@ This is the #1 feature blocking agents from shipping complete apps. Without Func
 
 ```typescript
 // my-function.ts
-import { db } from '@run402/functions';
+import { db, getUser } from '@run402/functions';
 
 export default async (req: Request): Promise<Response> => {
   const body = await req.json();
+
+  // Identify the authenticated caller (returns { id, role } or null)
+  const user = getUser(req);
+  if (!user) return new Response('Unauthorized', { status: 401 });
 
   // Use the built-in DB helper (PostgREST client)
   const users = await db.from('users').select('*');
 
   // Use secrets via env vars
   const stripeKey = process.env.STRIPE_SECRET_KEY;
-
-  // Access auth headers forwarded by the gateway
-  const authHeader = req.headers.get('authorization');
 
   return new Response(JSON.stringify({ users }), {
     headers: { 'Content-Type': 'application/json' },
@@ -69,7 +70,7 @@ export default async (req: Request): Promise<Response> => {
 The helper is pre-installed in the Lambda layer. It provides:
 
 ```typescript
-import { db } from '@run402/functions';
+import { db, getUser } from '@run402/functions';
 
 // PostgREST-style queries (uses service_key internally)
 await db.from('users').select('id, name').eq('active', true);
@@ -79,9 +80,15 @@ await db.from('orders').delete().eq('id', orderId);
 
 // Raw SQL (via /admin/v1/projects/:id/sql)
 await db.sql('SELECT count(*) FROM users WHERE created_at > now() - interval \'7 days\'');
+
+// Identify the authenticated caller
+const user = getUser(req);
+// Returns { id: string, role: string } or null
+// Verifies the JWT from the Authorization: Bearer header
+// Returns null if missing, invalid, expired, or wrong project
 ```
 
-The helper is pre-configured with the project's `service_key`, `project_id`, and `RUN402_API_BASE`. No configuration needed inside the function.
+The helper is pre-configured with the project's `service_key`, `project_id`, `JWT_SECRET`, and `RUN402_API_BASE`. No configuration needed inside the function.
 
 ---
 
