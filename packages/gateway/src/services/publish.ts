@@ -75,6 +75,7 @@ export interface PublishOptions {
   include_seed?: { tables: string[] };
   required_secrets?: Array<{ key: string; description?: string }>;
   required_actions?: Array<{ action: string; description?: string }>;
+  bootstrap_variables?: Array<{ name: string; type?: string; required?: boolean; default?: unknown; description?: string }>;
 }
 
 const TAG_RE = /^[a-z0-9][a-z0-9-]{0,28}[a-z0-9]$/;
@@ -116,6 +117,7 @@ export interface AppVersionInfo {
   required_actions: Array<{ action: string; description?: string }>;
   tags: string[];
   live_url: string | null;
+  bootstrap_variables: unknown[] | null;
   created_at: string;
   compatibility_warnings: string[];
 }
@@ -149,9 +151,14 @@ export async function initAppVersionsTables(): Promise<void> {
       site_total_bytes BIGINT NOT NULL DEFAULT 0,
       seed_row_count INTEGER NOT NULL DEFAULT 0,
       site_deployment_id TEXT,
+      bootstrap_variables JSONB,
       created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
       UNIQUE(project_id, version)
     )
+  `);
+  // Add bootstrap_variables column if table predates this feature
+  await pool.query(`
+    ALTER TABLE internal.app_versions ADD COLUMN IF NOT EXISTS bootstrap_variables JSONB
   `);
   await pool.query(`
     CREATE INDEX IF NOT EXISTS idx_app_versions_project
@@ -422,25 +429,28 @@ export async function publishAppVersion(
     const requiredSecrets = options.required_secrets || [];
     const requiredActions = options.required_actions || [];
 
+    // Parse bootstrap variables from options (from run402.yaml)
+    const bootstrapVariables = options.bootstrap_variables || null;
+
     await pool.query(
       `INSERT INTO internal.app_versions
        (id, project_id, version, name, description, visibility, fork_allowed, status,
         min_tier, derived_min_tier, format_version, bundle_uri, bundle_sha256,
         publisher_wallet, required_secrets, required_actions, tags, live_url,
         table_count, function_count, site_file_count, site_total_bytes, seed_row_count,
-        site_deployment_id)
+        site_deployment_id, bootstrap_variables)
        VALUES ($1, $2, $3, $4, $5, $6, $7, 'published',
         $8, $9, 1, $10, $11,
         $12, $13, $14, $15, $16,
         $17, $18, $19, $20, $21,
-        $22)`,
+        $22, $23)`,
       [
         versionId, projectId, version, projectName, options.description || null,
         visibility, forkAllowed,
         derivedMinTier, derivedMinTier, bundleUri, bundleSha256,
         publisherWallet || null, JSON.stringify(requiredSecrets), JSON.stringify(requiredActions), tags, liveUrl,
         tableCount, functionCount, siteFileCount, siteTotalBytes, seedRowCount,
-        siteDeploymentId,
+        siteDeploymentId, bootstrapVariables ? JSON.stringify(bootstrapVariables) : null,
       ],
     );
 
@@ -483,6 +493,7 @@ export async function publishAppVersion(
       required_actions: requiredActions,
       tags,
       live_url: liveUrl,
+      bootstrap_variables: bootstrapVariables || null,
       created_at: new Date().toISOString(),
       compatibility_warnings: warnings,
     };
@@ -549,6 +560,7 @@ function mapRowToAppVersion(row: Record<string, unknown>): AppVersionInfo {
     required_actions: (row.required_actions || []) as Array<{ action: string; description?: string }>,
     tags: (row.tags || []) as string[],
     live_url: (row.live_url as string) || null,
+    bootstrap_variables: (row.bootstrap_variables as unknown[]) || null,
     created_at: row.created_at as string,
     compatibility_warnings: [],
   };
@@ -562,7 +574,7 @@ export async function getAppVersion(versionId: string): Promise<AppVersionInfo |
     `SELECT id, project_id, version, name, description, visibility, fork_allowed,
             min_tier, derived_min_tier, status,
             table_count, function_count, site_file_count, site_total_bytes,
-            required_secrets, required_actions, tags, live_url, created_at
+            required_secrets, required_actions, tags, live_url, bootstrap_variables, created_at
      FROM internal.app_versions WHERE id = $1`,
     [versionId],
   );

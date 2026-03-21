@@ -223,6 +223,10 @@ Requires active tier and a provisioned project. Deploys to an existing project: 
 
 ### functions
 Node 22 runtime. Must export `default async (req: Request) => Response`.
+Built-in helper: `import { db, getUser } from '@run402/functions'`
+- `db.from(table)` — PostgREST-style queries (service_role, bypasses RLS)
+- `db.sql(query)` — raw SQL
+- `getUser(req)` — verify caller's JWT, returns `{ id, role }` or `null`
 
 - `run402 functions deploy <id> <name> --file <file> [--deps "<pkg,...>"] [--timeout <s>] [--memory <mb>]`
 - `run402 functions invoke <id> <name> [--body '<json>'] [--method <GET|POST|...>]`
@@ -257,13 +261,13 @@ All options default to the active project. `claim` also defaults to the project'
 
 ### apps
 - `run402 apps browse [--tag <tag>]`
-- `run402 apps fork <version_id> <name> [--subdomain <name>]`
+- `run402 apps fork <version_id> <name> [--subdomain <name>] [--bootstrap '<json>']`
 - `run402 apps inspect <version_id>`
 - `run402 apps publish <id> [--description "..."] [--tags a,b] [--visibility <public|private>] [--fork-allowed]`
 - `run402 apps <versions|delete> <id> [<version_id>]`
 - `run402 apps update <id> <version_id> [--description "..."] [--tags a,b]`
 
-Forking clones schema, site, and functions into a new project.
+Forking clones schema, site, and functions into a new project. If the app includes a `bootstrap` function, it runs automatically with the provided variables — use it for first-admin setup, demo data seeding, or app configuration. Response includes `bootstrap_result` (the function's return value) or `bootstrap_error` if it failed. Use `run402 apps inspect` to see what `bootstrap_variables` an app expects.
 
 ### image
 $0.03 per image.

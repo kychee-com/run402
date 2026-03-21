@@ -494,6 +494,59 @@ export async function invokeFunction(
 }
 
 /**
+ * Invoke the bootstrap function for a project (if it exists).
+ * Returns { result, error } — never throws. Fork/deploy should not fail if bootstrap fails.
+ */
+export async function invokeBootstrap(
+  projectId: string,
+  serviceKey: string,
+  anonKey: string,
+  variables: Record<string, unknown>,
+  apiBase: string,
+): Promise<{ result: unknown | null; error: string | null }> {
+  // Check if a bootstrap function exists
+  const fnResult = await pool.query(
+    `SELECT lambda_arn FROM internal.functions WHERE project_id = $1 AND name = 'bootstrap'`,
+    [projectId],
+  );
+  if (fnResult.rows.length === 0) {
+    return { result: null, error: null };
+  }
+
+  try {
+    const response = await invokeFunction(
+      projectId,
+      "bootstrap",
+      "POST",
+      "/functions/v1/bootstrap",
+      {
+        "content-type": "application/json",
+        apikey: anonKey,
+        authorization: `Bearer ${serviceKey}`,
+      },
+      JSON.stringify(variables),
+      "",
+    );
+
+    if (response.statusCode >= 200 && response.statusCode < 300) {
+      try {
+        return { result: JSON.parse(response.body), error: null };
+      } catch {
+        return { result: response.body, error: null };
+      }
+    } else {
+      return { result: null, error: `Bootstrap function returned ${response.statusCode}: ${response.body}` };
+    }
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    if (message.includes("timed out") || message.includes("timeout")) {
+      return { result: null, error: "Bootstrap function timed out" };
+    }
+    return { result: null, error: `Bootstrap function failed: ${message}` };
+  }
+}
+
+/**
  * List functions for a project.
  */
 export async function listFunctions(projectId: string, apiBase: string): Promise<FunctionRecord[]> {

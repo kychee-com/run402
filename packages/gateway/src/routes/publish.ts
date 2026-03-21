@@ -20,6 +20,7 @@ import {
   PublishError,
 } from "../services/publish.js";
 import { forkApp, validateForkRequest, ForkError } from "../services/fork.js";
+import { invokeBootstrap } from "../services/functions.js";
 import { deleteAppVersion } from "../services/publish.js";
 import { createDemoProject, findDemoProject, updateDemoVersion, teardownDemoProject } from "../services/demo.js";
 import { ADMIN_KEY } from "../config.js";
@@ -264,6 +265,7 @@ router.get("/fork/v1", (_req: Request, res: Response) => {
       version_id: "string (required)",
       name: "string (required)",
       subdomain: "string (optional)",
+      bootstrap: "object (optional — variables passed to the bootstrap function)",
     },
   });
 });
@@ -291,7 +293,19 @@ router.post(
     try {
       const result = await forkApp(body, tier, apiBase, undefined, walletAddress);
       notifyNewProject(`fork:${body.name}`, tier, result.project_id);
-      res.status(201).json(result);
+
+      // Invoke bootstrap function if it exists
+      const bootstrapVars = body.bootstrap && typeof body.bootstrap === "object" ? body.bootstrap : {};
+      const bootstrap = await invokeBootstrap(
+        result.project_id, result.service_key, result.anon_key, bootstrapVars, apiBase,
+      );
+
+      const response: Record<string, unknown> = { ...result, bootstrap_result: bootstrap.result };
+      if (bootstrap.error) {
+        response.bootstrap_error = bootstrap.error;
+        delete response.bootstrap_result;
+      }
+      res.status(201).json(response);
     } catch (err: unknown) {
       if (err instanceof ForkError) {
         throw new HttpError(err.statusCode, err.message);

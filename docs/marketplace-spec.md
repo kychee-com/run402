@@ -296,14 +296,52 @@ Rewards accrue only on the paid portion. Prevents promo credits from minting rea
 
 ## Fork Flow
 
-1. `POST /fork/v1` with `{ version_id, name }`, wallet auth (free with active tier)
+1. `POST /fork/v1` with `{ version_id, name, bootstrap? }`, wallet auth (free with active tier)
 2. Load S3 bundle, verify SHA-256
 3. Validate `tier >= effective_min_tier`
 4. Call `deployBundle()` orchestrator
 5. Apply pre-schema, seed, post-schema SQL via psql
 6. Re-apply table/sequence grants
 7. Record `source_version_id` on new project
-8. Return credentials + readiness status + missing secrets
+8. If project has a function named `bootstrap`, invoke it with the `bootstrap` variables
+9. Return credentials + readiness status + missing secrets + `bootstrap_result` or `bootstrap_error`
+
+## Bootstrap Convention
+
+If a published app includes a function named `bootstrap`, it is automatically invoked after fork/deploy with caller-provided variables. This enables first-admin setup, demo data seeding, and app configuration without the agent needing to know the app's internal schema.
+
+```json
+POST /fork/v1
+{
+  "version_id": "v_abc",
+  "name": "sunrise-properties",
+  "bootstrap": {
+    "admin_email": "landlord@example.com",
+    "app_name": "Sunrise Properties",
+    "seed_demo_data": true
+  }
+}
+```
+
+Response includes `bootstrap_result` (the function's return value) or `bootstrap_error` (if the function failed). Bootstrap errors do not fail the fork — the project is live either way, and the agent can retry by calling `POST /functions/v1/bootstrap` manually.
+
+Published apps may declare expected bootstrap variables in `run402.yaml`:
+
+```yaml
+bootstrap:
+  variables:
+    - name: admin_email
+      type: string
+      required: true
+      description: "Email for the first admin user"
+    - name: seed_demo_data
+      type: boolean
+      required: false
+      default: false
+      description: "Populate with sample data for a quick tour"
+```
+
+These declarations are stored on the app version and surfaced in `GET /apps/v1/:versionId` as `bootstrap_variables`.
 
 ## Reward Accrual Flow
 

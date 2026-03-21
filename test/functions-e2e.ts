@@ -392,8 +392,158 @@ export default async (req) => {
       });
     }
 
-    // --- Step 13: Delete function ---
-    console.log("\nStep 13: Delete function");
+    // --- Step 13: Bootstrap function via bundle deploy ---
+    console.log("\nStep 13: Bootstrap via bundle deploy");
+    {
+      // Provision a new project for bootstrap test
+      const bsHeaders = await siwxHeaders("/projects/v1");
+      const bsProvRes = await fetch(`${BASE_URL}/projects/v1`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...bsHeaders },
+        body: JSON.stringify({ name: `bootstrap-test-${Date.now()}` }),
+      });
+      const bsProv = await bsProvRes.json() as Record<string, unknown>;
+      assert(bsProvRes.status === 201, `Bootstrap project created`);
+      const bsProjectId = bsProv.project_id as string;
+      const bsServiceKey = bsProv.service_key as string;
+      const bsAnonKey = bsProv.anon_key as string;
+
+      // Bundle deploy WITH a bootstrap function and bootstrap variables
+      const bsDeployHeaders = await siwxHeaders("/deploy/v1");
+      const bsDeployRes = await fetch(`${BASE_URL}/deploy/v1`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...bsDeployHeaders },
+        body: JSON.stringify({
+          project_id: bsProjectId,
+          migrations: "CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT);",
+          functions: [{
+            name: "bootstrap",
+            code: `import { db } from '@run402/functions';
+export default async (req) => {
+  const vars = await req.json();
+  await db.from('settings').insert({ key: 'app_name', value: vars.app_name || 'Default' });
+  return new Response(JSON.stringify({ setup: true, app_name: vars.app_name }), {
+    headers: { "Content-Type": "application/json" },
+  });
+};`,
+          }],
+          bootstrap: { app_name: "Test App" },
+        }),
+      });
+      const bsDeploy = await bsDeployRes.json() as Record<string, unknown>;
+      assert(bsDeployRes.status === 200, `Bootstrap deploy: ${bsDeployRes.status}`);
+      assert(bsDeploy.bootstrap_result !== undefined, `bootstrap_result present in response`);
+      const bsResult = bsDeploy.bootstrap_result as Record<string, unknown> | null;
+      if (bsResult) {
+        assert(bsResult.setup === true, `Bootstrap result has setup: true`);
+        assert(bsResult.app_name === "Test App", `Bootstrap result has correct app_name`);
+      }
+      assert(bsDeploy.bootstrap_error === undefined, `No bootstrap_error`);
+
+      // Verify bootstrap function wrote to DB
+      await sleep(1500);
+      const settingsRes = await fetch(`${BASE_URL}/rest/v1/settings?key=eq.app_name`, {
+        headers: { apikey: bsAnonKey },
+      });
+      const settingsBody = await settingsRes.json() as Array<Record<string, unknown>>;
+      if (settingsRes.ok && settingsBody.length > 0) {
+        assert(settingsBody[0].value === "Test App", `Bootstrap wrote app_name to DB`);
+      }
+
+      // Step 13b: Manually re-invoke bootstrap with different vars
+      console.log("\nStep 13b: Manual bootstrap re-invoke");
+      const manualRes = await fetch(`${BASE_URL}/functions/v1/bootstrap`, {
+        method: "POST",
+        headers: {
+          apikey: bsAnonKey,
+          Authorization: `Bearer ${bsServiceKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ app_name: "Updated App" }),
+      });
+      assert(manualRes.status === 200, `Manual bootstrap invoke: ${manualRes.status}`);
+
+      // Clean up bootstrap project
+      await fetch(`${BASE_URL}/projects/v1/${bsProjectId}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${bsServiceKey}` },
+      });
+    }
+
+    // --- Step 14: Deploy without bootstrap function, verify null ---
+    console.log("\nStep 14: Deploy without bootstrap function");
+    {
+      const nbHeaders = await siwxHeaders("/projects/v1");
+      const nbProvRes = await fetch(`${BASE_URL}/projects/v1`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...nbHeaders },
+        body: JSON.stringify({ name: `no-bootstrap-${Date.now()}` }),
+      });
+      const nbProv = await nbProvRes.json() as Record<string, unknown>;
+      assert(nbProvRes.status === 201, `No-bootstrap project created`);
+      const nbProjectId = nbProv.project_id as string;
+      const nbServiceKey = nbProv.service_key as string;
+
+      const nbDeployHeaders = await siwxHeaders("/deploy/v1");
+      const nbDeployRes = await fetch(`${BASE_URL}/deploy/v1`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...nbDeployHeaders },
+        body: JSON.stringify({
+          project_id: nbProjectId,
+          migrations: "CREATE TABLE items (id SERIAL PRIMARY KEY, title TEXT);",
+          bootstrap: { some_var: "test" },
+        }),
+      });
+      const nbDeploy = await nbDeployRes.json() as Record<string, unknown>;
+      assert(nbDeployRes.status === 200, `No-bootstrap deploy: ${nbDeployRes.status}`);
+      assert(nbDeploy.bootstrap_result === null, `bootstrap_result is null when no function exists`);
+
+      await fetch(`${BASE_URL}/projects/v1/${nbProjectId}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${nbServiceKey}` },
+      });
+    }
+
+    // --- Step 15: Bootstrap function that throws ---
+    console.log("\nStep 15: Bootstrap function that throws");
+    {
+      const errHeaders = await siwxHeaders("/projects/v1");
+      const errProvRes = await fetch(`${BASE_URL}/projects/v1`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...errHeaders },
+        body: JSON.stringify({ name: `err-bootstrap-${Date.now()}` }),
+      });
+      const errProv = await errProvRes.json() as Record<string, unknown>;
+      assert(errProvRes.status === 201, `Error-bootstrap project created`);
+      const errProjectId = errProv.project_id as string;
+      const errServiceKey = errProv.service_key as string;
+
+      const errDeployHeaders = await siwxHeaders("/deploy/v1");
+      const errDeployRes = await fetch(`${BASE_URL}/deploy/v1`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...errDeployHeaders },
+        body: JSON.stringify({
+          project_id: errProjectId,
+          functions: [{
+            name: "bootstrap",
+            code: `export default async (req) => { throw new Error("intentional bootstrap failure"); };`,
+          }],
+          bootstrap: {},
+        }),
+      });
+      const errDeploy = await errDeployRes.json() as Record<string, unknown>;
+      assert(errDeployRes.status === 200, `Deploy succeeds even when bootstrap fails: ${errDeployRes.status}`);
+      assert(typeof errDeploy.bootstrap_error === "string", `bootstrap_error is present`);
+      assert(errDeploy.bootstrap_result === undefined, `bootstrap_result absent on error`);
+
+      await fetch(`${BASE_URL}/projects/v1/${errProjectId}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${errServiceKey}` },
+      });
+    }
+
+    // --- Step 16: Delete function ---
+    console.log("\nStep 16: Delete function");
     {
       const res = await fetch(
         `${BASE_URL}/projects/v1/admin/${projectId}/functions/test-func`,
@@ -414,8 +564,8 @@ export default async (req) => {
       assert(res.status === 404, `Invoke after delete returns 404: ${res.status}`);
     }
 
-    // --- Step 14: Delete secret ---
-    console.log("\nStep 14: Delete secret");
+    // --- Step 17: Delete secret ---
+    console.log("\nStep 17: Delete secret");
     {
       const res = await fetch(
         `${BASE_URL}/projects/v1/admin/${projectId}/secrets/TEST_SECRET`,
@@ -427,8 +577,8 @@ export default async (req) => {
       assert(res.status === 200, `Delete secret: ${res.status}`);
     }
   } finally {
-    // --- Step 15: Cleanup ---
-    console.log("\nStep 15: Cleanup");
+    // --- Step 18: Cleanup ---
+    console.log("\nStep 18: Cleanup");
 
     // Delete project
     if (projectId) {

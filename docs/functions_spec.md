@@ -592,6 +592,31 @@ Add compute quotas per tier (functions count, timeout, memory).
 
 ---
 
+## Bootstrap Function Convention
+
+If a project has a function named `bootstrap`, the platform auto-invokes it after fork or bundle deploy with caller-provided variables. This enables first-admin setup, demo data seeding, and app configuration.
+
+```typescript
+// bootstrap function example (SkMeld)
+import { db } from '@run402/functions';
+
+export default async (req) => {
+  const { admin_email, app_name, seed_demo_data } = await req.json();
+
+  // Create admin user, configure app, optionally seed demo data
+  // ... app-specific setup logic ...
+
+  return new Response(JSON.stringify({
+    login_url: `https://myapp.run402.com/claim?token=${token}`,
+    admin_email,
+  }), { headers: { "Content-Type": "application/json" } });
+};
+```
+
+The bootstrap function runs with `service_key` access and receives variables via `req.json()`. Its return value appears as `bootstrap_result` in the fork/deploy response. If it fails, the fork still succeeds with a `bootstrap_error` field. The function can also be invoked manually via `POST /functions/v1/bootstrap`.
+
+---
+
 ## Open Questions (revisit later)
 
 - **Deno runtime**: Add as a second runtime option when demand justifies.

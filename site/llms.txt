@@ -1362,7 +1362,12 @@ Content-Type: application/json
 {
   "version_id": "ver_1741340000_abc123",
   "name": "my-copy",
-  "subdomain": "my-copy"
+  "subdomain": "my-copy",
+  "bootstrap": {
+    "admin_email": "user@example.com",
+    "app_name": "My Business",
+    "seed_demo_data": true
+  }
 }
 ```
 
@@ -1379,11 +1384,14 @@ Response (201):
   "source_version_id": "ver_1741340000_abc123",
   "readiness": "configuration_required",
   "missing_secrets": [{ "key": "OPENAI_API_KEY", "description": "For AI-powered summaries" }],
-  "required_actions": []
+  "required_actions": [],
+  "bootstrap_result": { "login_url": "https://my-copy.run402.com/claim?token=abc123", "admin_email": "user@example.com" }
 }
 ```
 
 Fork creates a fully independent project: fresh database with same schema, functions redeployed, site redeployed, new keys, new budget, new URL. No shared state.
+
+**Bootstrap**: If the app includes a function named `bootstrap`, it runs automatically after fork with the provided `bootstrap` variables. The function's return value appears as `bootstrap_result`. If bootstrap fails, `bootstrap_error` replaces it -- the fork still succeeds. Retry manually via `POST /functions/v1/bootstrap`. Check `bootstrap_variables` in `GET /apps/v1/:versionId` to see what variables an app expects.
 
 **Readiness statuses:**
 - `ready` -- works out of the box
