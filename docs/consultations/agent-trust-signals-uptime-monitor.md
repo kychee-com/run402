@@ -7,6 +7,8 @@
 
 ---
 
+**Overall status:** /health endpoint exists [IMPLEMENTED]. All other trust surface recommendations (status JSON, uptime JSON, incidents JSON, llms.txt trust block, external synthetic canaries) are [FUTURE].
+
 Yes — what the agent is asking for is a **trust surface**, not more product copy.
 
 For agents, the winning combo is:
@@ -81,7 +83,7 @@ That is much more useful than “cloudfront ok / s3 ok”.
 
 ---
 
-## 2. Should you build a machine-readable status/uptime endpoint?
+## 2. Should you build a machine-readable status/uptime endpoint? [FUTURE]
 
 **Yes. Absolutely.**
 
@@ -355,19 +357,19 @@ That small naming change alone improves trust.
 
 # Practical rollout plan
 
-## Today
+## Today [FUTURE]
 - Add `Operator: Kychee LLC` to the first 10 lines
 - Change `Status` to `Health`
 - Add placeholders/links for `Status JSON`, `Uptime JSON`, `Incidents JSON`
 - Make the infra wording say **single-region, multi-AZ**
 
-## This week
+## This week [FUTURE]
 - Build `status/v1.json`
 - Publish it from `run402.com` static hosting
 - Add `public_history_start`
 - Add rolling uptime windows
 
-## Next
+## Next [FUTURE]
 - Add external synthetic canaries for:
   - x402 challenge
   - paid success path

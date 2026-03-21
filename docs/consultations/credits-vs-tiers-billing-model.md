@@ -138,11 +138,11 @@ You’ll be training the market away from x402, not toward it.
 
 ---
 
-## The model I recommend
+## The model I recommend [ACCEPTED]
 
 ## One price book. One spend model. Multiple funding rails.
 
-### 1. **Catalog / price book**
+### 1. **Catalog / price book** [IMPLEMENTED] - Tiers exist at $0.10/$5/$20
 Keep exactly this:
 
 - Prototype = $0.10 per lease
@@ -153,7 +153,7 @@ These are the permanent units.
 
 ---
 
-### 2. **Funding sources**
+### 2. **Funding sources** [FUTURE] - x402 works, Stripe allowance not built yet
 Support:
 
 - **x402 wallet**
@@ -165,7 +165,7 @@ This means the thing that changes is **how money gets there**, not what the agen
 
 ---
 
-### 3. **Budget policy**
+### 3. **Budget policy** [FUTURE] - Allowance product not built yet
 This is the actual allowance product:
 
 - one-time top-up
@@ -181,8 +181,8 @@ That is much more category-defining than a generic “subscription.”
 
 ## So should you have “credits”?
 
-### Internally: yes  
-### Externally: I would call it **allowance balance**, not “credits”
+### Internally: yes
+### Externally: I would call it **allowance balance**, not “credits” [FUTURE] - Not built yet
 
 “Credits” is fine as plumbing.  
 But externally, your story is stronger as:
@@ -230,7 +230,7 @@ But strategically, a closed-loop allowance ledger is much safer than building a 
 
 ---
 
-## What to do with your existing Stripe subscriptions
+## What to do with your existing Stripe subscriptions [IMPLEMENTED] - No subscribers existed, clean break
 
 I would **not delete them tomorrow**, but I would **stop making them the main path**.
 
@@ -589,11 +589,11 @@ However, this is a **secondary benefit**, not the primary motivation. The faucet
 
 ## Summary of decisions
 
-1. **Kill the Stripe subscription model** (no subscribers exist — clean break)
-2. **Keep tiers** (prototype/hobby/team) as fixed-price resource SKUs forever
-3. **Build Run402 Allowance** as a closed-loop USD balance in DB, funded via Stripe
-4. **Keep the testnet faucet** as the agent-only autonomous discovery/learning path
-5. **Offer two production funding paths:** Stripe allowance (for humans) and native x402 wallet (for crypto-native)
-6. **Build a dashboard page** showing both Run402 balance and on-chain wallet balance
-7. **Allowance is non-refundable, non-transferable, closed-loop** — standard service credit model
-8. **Get legal review** on stored-value classification
+1. **Kill the Stripe subscription model** (no subscribers exist — clean break) [IMPLEMENTED]
+2. **Keep tiers** (prototype/hobby/team) as fixed-price resource SKUs forever [IMPLEMENTED]
+3. **Build Run402 Allowance** as a closed-loop USD balance in DB, funded via Stripe [FUTURE]
+4. **Keep the testnet faucet** as the agent-only autonomous discovery/learning path [IMPLEMENTED]
+5. **Offer two production funding paths:** Stripe allowance (for humans) and native x402 wallet (for crypto-native) [FUTURE] (only x402 works today)
+6. **Build a dashboard page** showing both Run402 balance and on-chain wallet balance [FUTURE]
+7. **Allowance is non-refundable, non-transferable, closed-loop** — standard service credit model [FUTURE] (design decided, not built)
+8. **Get legal review** on stored-value classification [FUTURE]

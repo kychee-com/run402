@@ -27,7 +27,7 @@ If you position as “a DB,” you risk being pulled into a commodity fight. If 
 
 ## The weak points / failure modes in the current plan
 
-### 1) x402 + wallet payments are a massive adoption bottleneck (even if technically great)
+### 1) x402 + wallet payments are a massive adoption bottleneck (even if technically great) [PARTIALLY ADDRESSED — testnet faucet shipped, allowance system planned]
 - Most devs (and basically all enterprises) don’t want to start with stablecoins/wallets.
 - Even if agents are the “user,” humans still need a mental model for funding/approving.
 - Regulatory/AML/sanctions screening and “are we holding customer funds?” questions show up earlier than you want.
@@ -36,7 +36,7 @@ If you position as “a DB,” you risk being pulled into a commodity fight. If 
 
 ---
 
-### 2) “No signup” is great for agents, but it weakens *your* ability to sell/support/retain
+### 2) “No signup” is great for agents, but it weakens *your* ability to sell/support/retain [REJECTED as concern]
 Wallet-as-identity is clean, but:
 - Teams want shared ownership, roles, revocation, billing contacts, invoice exports.
 - Support/debugging is harder when you have no account context beyond an address.
@@ -44,7 +44,7 @@ Wallet-as-identity is clean, but:
 
 ---
 
-### 3) You’re inserting yourself into the data path → you become the SLA bottleneck
+### 3) You’re inserting yourself into the data path → you become the SLA bottleneck [ACKNOWLEDGED — ops discipline, not design change]
 Even if DynamoDB is rock-solid, customers experience *your* gateway:
 - Outages, deploys, throttling, regional issues, payment facilitator downtime = “DB is down.”
 - Your spec mentions SLAs/QoS tiers: that’s hard to honor without multi-region + strong ops.
@@ -87,7 +87,7 @@ you’ll get:
 
 ---
 
-### 7) Product wedge risk: for many agent workflows, “SQLite locally” (or built-in memory) is enough
+### 7) Product wedge risk: for many agent workflows, “SQLite locally” (or built-in memory) is enough [REJECTED as concern]
 Today’s agents:
 - often run in a repo with a filesystem,
 - can persist to local SQLite,
@@ -97,7 +97,7 @@ So your first market must strongly need **remote, shareable, persistent state** 
 
 ---
 
-### 8) The v1 feature set may be *too* Dynamo-like for agents and *not* enough DB for humans
+### 8) The v1 feature set may be *too* Dynamo-like for agents and *not* enough DB for humans [ACKNOWLEDGED — SDK ergonomics gap, not backend gap]
 - Agents often want “store JSON blob by key + TTL + list keys/prefix + append log.”
 - Humans evaluating a “DB” often ask for indexes, transactions, streams, backup/restore.
 
@@ -105,7 +105,7 @@ You’re in a middle zone: “not a full DB” + “not a purpose-built agent me
 
 ---
 
-### 9) Trust/compliance: routing customer data through *your* AWS account blocks many serious users
+### 9) Trust/compliance: routing customer data through *your* AWS account blocks many serious users [REJECTED as concern]
 Even if encrypted:
 - regulated customers will ask for SOC 2, DPAs, data residency, audit trails, incident response.
 - many platform teams will simply say: “we can’t store prod data in a third-party AWS account.”
@@ -114,7 +114,7 @@ This doesn’t kill the idea, but it shapes who your early customers can be.
 
 ---
 
-### 10) Moat risk: if the wedge works, incumbents can copy the surface area quickly
+### 10) Moat risk: if the wedge works, incumbents can copy the surface area quickly [ACKNOWLEDGED — addressed via distribution strategy]
 Upstash/Cloudflare/Neon/Supabase can add:
 - ephemeral tokens,
 - spend caps,
@@ -126,7 +126,7 @@ Your moat can’t just be “we proxy Dynamo + x402.” It has to become **polic
 
 ## Improvements (highest leverage changes)
 
-### A) Fix the scaling landmine: stop doing “1 physical Dynamo table per logical table” (for most tiers)
+### A) Fix the scaling landmine: stop doing “1 physical Dynamo table per logical table” (for most tiers) [IMPLEMENTED]
 Suggested model:
 - **Shared multi-tenant Dynamo table** for the majority of workloads:
   - PK: `tenantId#tableId#pk`
@@ -138,7 +138,7 @@ This single change avoids AWS table limits and makes auto-expire + cleanup far s
 
 ---
 
-### B) Make x402 optional, not mandatory, while keeping it as the “agent-native” superpower
+### B) Make x402 optional, not mandatory, while keeping it as the “agent-native” superpower [REJECTED]
 To grow, you likely need:
 - **Card billing / invoice** for humans/teams (Stripe), *plus*
 - x402 for “agent can pay programmatically.”
@@ -149,7 +149,7 @@ This de-risks adoption timing without abandoning your thesis.
 
 ---
 
-### C) Change the payment flow so you don’t do a 402 dance on every data-plane request
+### C) Change the payment flow so you don’t do a 402 dance on every data-plane request [FUTURE]
 Best practice pattern:
 1) Use x402 (or card) to buy a **lease / budget envelope** (prepaid or authorized max).
 2) Mint a **short-lived capability token** tied to:
@@ -163,7 +163,7 @@ This keeps the “agent can safely buy” story, but makes latency and reliabili
 
 ---
 
-### D) Bill based on real usage units + bytes (and include egress), or you’ll get wrecked
+### D) Bill based on real usage units + bytes (and include egress), or you’ll get wrecked [FUTURE]
 Concretely:
 - Always request `ReturnConsumedCapacity: TOTAL` from Dynamo.
 - Charge based on consumed RRU/WRU, **not** just “one write = $X.”
@@ -175,7 +175,7 @@ Concretely:
 
 ---
 
-### E) Reframe product language: “Agent State Store + governance” beats “database”
+### E) Reframe product language: “Agent State Store + governance” beats “database” [IMPLEMENTED]
 “AgentDB” is fine as a brand, but in messaging:
 - Emphasize *agent memory primitives*: TTL-by-default, receipts, replayable logs, append-only task journals.
 - Show an agent workflow: “need persistent state across runs → request lease → store state → expire automatically.”
@@ -184,7 +184,7 @@ This reduces the “why not Postgres” trap.
 
 ---
 
-### F) Give enterprises a path: BYOC or “data plane in your VPC”
+### F) Give enterprises a path: BYOC or “data plane in your VPC” [REJECTED]
 If you want Segment B (platform teams), consider an enterprise tier that is:
 - **Bring Your Own AWS Account** deployment (Terraform/CDK module),
 - your control plane manages policy/receipts,
@@ -194,7 +194,7 @@ Even if you don’t build it now, having it on the roadmap changes trust convers
 
 ---
 
-### G) Distribution: MCP + first-class integrations matter more than a big website
+### G) Distribution: MCP + first-class integrations matter more than a big website [IMPLEMENTED]
 The fastest way to prove demand is to be *the default tool* inside agent environments:
 - Ship an **MCP server** that exposes `put/get/query` as tools.
 - Provide “Cursor / Claude Code / generic MCP” quickstarts.

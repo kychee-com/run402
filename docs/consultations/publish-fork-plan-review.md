@@ -9,6 +9,8 @@
 
 Short version: **the product shape is right**. Publish immutable versions, fork from published versions, never copy secret values, and charge the same x402 as project creation — all of that is directionally correct.
 
+**Overall status:** Core publish/fork architecture is [IMPLEMENTED]. The improvements recommended below are all [FUTURE].
+
 The main things I would change are:
 
 1. **Don’t hand-build a mini `pg_dump` from `information_schema` if you can avoid it.**
@@ -23,18 +25,18 @@ Below is the direct review by your 7 questions.
 
 ## 1) Is this the right architecture? Any major design mistakes?
 
-### What’s right
+### What’s right [IMPLEMENTED]
 - **Publishing live state into an immutable App Version** is the right abstraction.
 - **Forking from published versions, not live projects** is the right choice.
 - **Not copying secret values** is exactly right.
 - **Reusing existing site deployments** is fine *if* those deployments are immutable and pinned.
 
-### Biggest design mistakes / risks
+### Biggest design mistakes / risks [FUTURE]
 
-#### A. Manual DDL reconstruction is the big technical risk
+#### A. Manual DDL reconstruction is the big technical risk [FUTURE]
 Your current DDL plan is the highest-risk part. If users can run arbitrary SQL migrations, rebuilding faithful schema SQL from `information_schema` + some `pg_catalog` is much harder than it looks.
 
-#### B. “Secret names from `internal.secrets`” is not the same as “required secrets”
+#### B. “Secret names from `internal.secrets`” is not the same as “required secrets” [FUTURE]
 Those are different concepts.
 
 - `internal.secrets` = what happens to be set today
@@ -47,7 +49,7 @@ If you snapshot all current secret names, you may:
 
 **Recommendation:** make `required_secrets` an explicit publish-time manifest field, optionally auto-populated from known function/site secret references if you track them.
 
-#### C. Site reuse needs pinning/immutability
+#### C. Site reuse needs pinning/immutability [FUTURE]
 “Reference existing site deployment” is only safe if:
 - the deployment is immutable
 - cleanup/GC will not delete assets while versions or forks still reference them
@@ -56,7 +58,7 @@ If source project cleanup can remove those objects, your public app versions bec
 
 **Recommendation:** add pinning/refcount semantics for site deployments, or move toward content-addressed site blobs.
 
-#### D. Fork should probably reuse bundle deploy internally
+#### D. Fork should probably reuse bundle deploy internally [FUTURE]
 You just shipped bundle deploy. Good. Don’t build a separate orchestration path if you can help it.
 
 **Better shape:**
@@ -69,7 +71,7 @@ That reduces:
 - feature drift
 - duplicated deploy logic
 
-#### E. Frontend/backend coupling is a product-level gotcha
+#### E. Frontend/backend coupling is a product-level gotcha [FUTURE]
 This is the biggest non-DB gotcha.
 
 If the built static site contains:
@@ -384,39 +386,39 @@ A few things are out of order.
 
 ### I would do this instead
 
-1. **Define the artifact format and support matrix**
+1. **Define the artifact format and support matrix** [FUTURE]
    - what is supported in v1?
    - what is rejected?
    - add `format_version`
 
-2. **Add function source dual-write**
+2. **Add function source dual-write** [FUTURE]
    - add `internal.functions.source`
    - decide legacy backfill / publishability rule
 
-3. **Make site deployments safely reusable**
+3. **Make site deployments safely reusable** [FUTURE]
    - immutability / pinning / manifest strategy
 
-4. **Create metadata tables**
+4. **Create metadata tables** [FUTURE]
    - `app_versions`
    - maybe `fork_operations`
    - maybe provenance (`source_version_id` on project or side table)
 
-5. **Prototype schema export/import**
+5. **Prototype schema export/import** [FUTURE]
    - preferably `pg_dump`-based
    - add round-trip tests on real PG16
 
-6. **Implement publish**
+6. **Implement publish** [FUTURE]
    - with project lock
    - with compatibility validation
    - with artifact upload + checksum
 
-7. **Implement fork by calling the bundle deploy orchestrator**
+7. **Implement fork by calling the bundle deploy orchestrator** [FUTURE]
    - not a second bespoke deploy engine
 
-8. **Add x402 + idempotency + operation status**
+8. **Add x402 + idempotency + operation status** [FUTURE]
    - async if possible
 
-9. **Add E2E matrix**
+9. **Add E2E matrix** [FUTURE]
    - not just one happy-path test
 
 ### Specific ordering note
@@ -428,14 +430,14 @@ Your current step 4 (`app_versions` tables) should come **before** publish servi
 
 If I were making only a few surgical changes, they would be:
 
-### 1. Replace `schema_ddl` with a 3-phase artifact
+### 1. Replace `schema_ddl` with a 3-phase artifact [FUTURE]
 - `pre_schema_sql`
 - `seed_sql`
 - `post_schema_sql`
 
 And generate those from `pg_dump` if possible.
 
-### 2. Make S3 bundle canonical
+### 2. Make S3 bundle canonical [FUTURE]
 Keep DB rows thin:
 - visibility
 - forkability
@@ -443,27 +445,27 @@ Keep DB rows thin:
 - pricing/tier metadata
 - checksum / bundle URI
 
-### 3. Reuse bundle deploy internally
+### 3. Reuse bundle deploy internally [FUTURE]
 Fork should feel like:
 > load published bundle → create project → call existing deploy orchestration
 
-### 4. Change `required_secrets` / `required_actions` to structured metadata
+### 4. Change `required_secrets` / `required_actions` to structured metadata [FUTURE]
 Not text arrays. Agents will benefit from structure.
 
-### 5. Add artifact-derived tier validation
+### 5. Add artifact-derived tier validation [FUTURE]
 Compute minimum viable tier automatically.
 
-### 6. Add publisher/provenance fields now
+### 6. Add publisher/provenance fields now [FUTURE]
 Even if creator fees and fork graph are “not in v1”, add enough metadata now:
 - `publisher_wallet`
 - `source_version_id` on forked projects
 
 Those are cheap now and useful later.
 
-### 7. Add a publish-time compatibility report
+### 7. Add a publish-time compatibility report [FUTURE]
 If an app uses unsupported features, say so clearly at publish time.
 
-### 8. Add round-trip restore tests
+### 8. Add round-trip restore tests [FUTURE]
 This matters more than fixture-string tests.
 
 The gold-standard test is:

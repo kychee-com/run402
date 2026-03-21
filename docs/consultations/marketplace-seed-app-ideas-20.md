@@ -7,6 +7,8 @@
 
 ---
 
+**Overall status:** Prello (Trello clone / board app) exists as proof-of-concept [IMPLEMENTED]. All 20 seed app ideas remain candidates [FUTURE]. The strategy of 5 reusable app families with vertical skins is [ACCEPTED].
+
 Trello clone is exactly the right instinct.
 
 The best seed apps for Run402 are not the most novel apps. They’re the apps where the value of **owning your own running copy** is obvious in 10 seconds:
@@ -30,7 +32,7 @@ Since you already have a Trello/board app, you can get a lot of mileage by turni
 
 # 20 strong marketplace seed ideas
 
-## 1) Workflow / board family
+## 1) Workflow / board family [FUTURE] — Prello exists as the base; vertical skins not built
 These are great because you already have the bones from Prello.
 
 1. **Helpdesk / Ticketing Portal**  
@@ -51,7 +53,7 @@ These are great because you already have the bones from Prello.
 
 ---
 
-## 2) Pipeline family
+## 2) Pipeline family [FUTURE]
 This is probably your highest-value family after the Trello clone.
 
 5. **CRM / Sales Pipeline**  
@@ -72,7 +74,7 @@ This is probably your highest-value family after the Trello clone.
 
 ---
 
-## 3) Portal family
+## 3) Portal family [FUTURE]
 These sell the “your own infra, your own customer logins, your own data” story really well.
 
 9. **Client Portal**  
@@ -94,7 +96,7 @@ These sell the “your own infra, your own customer logins, your own data” sto
 
 ---
 
-## 4) Site / intake family
+## 4) Site / intake family [FUTURE]
 These are excellent because they combine public pages + backend + auth + forms.
 
 13. **Booking + Intake App**  
@@ -117,7 +119,7 @@ These are excellent because they combine public pages + backend + auth + forms.
 
 ---
 
-## 5) Ops / public utility family
+## 5) Ops / public utility family [FUTURE]
 These are “boring software people are tired of renting.”
 
 17. **Estimates / Invoices / Approval Tracker**  
@@ -139,6 +141,8 @@ These are “boring software people are tired of renting.”
 ---
 
 # If I were you, I’d build these next first
+
+All 8 recommended next apps are [FUTURE].
 
 Since you already have the Trello-like board app, my next 8 would be:
 
@@ -228,12 +232,12 @@ That will make your publish/fork system look much stronger.
 
 I’d avoid in the first wave:
 
-- Slack clones
-- Google Docs / Notion-style collaborative editors
-- full accounting/payroll
-- complicated ecommerce
-- compliance-heavy healthcare/legal tools
-- anything that depends on lots of third-party setup
+- Slack clones [REJECTED]
+- Google Docs / Notion-style collaborative editors [REJECTED]
+- full accounting/payroll [REJECTED]
+- complicated ecommerce [REJECTED]
+- compliance-heavy healthcare/legal tools [REJECTED]
+- anything that depends on lots of third-party setup [REJECTED]
 
 Those are either too integration-heavy or don’t show your current strengths as cleanly.
 

@@ -4,7 +4,9 @@ Ready to build in Google Ads. Each campaign includes: name, type, goal, keywords
 
 ---
 
-## Campaign 1: Brand
+**Overall status:** No Google Ads campaigns are running. Ad copy and keyword strategies are ready [FUTURE]. Some messaging elements (allowance positioning, use-case pages) exist on the site [IMPLEMENTED].
+
+## Campaign 1: Brand [FUTURE]
 
 **Campaign name:** `run402-brand`
 **Type:** Search
@@ -50,7 +52,7 @@ Ready to build in Google Ads. Each campaign includes: name, type, goal, keywords
 
 ---
 
-## Campaign 3: Agent Allowance / Spend Control
+## Campaign 3: Agent Allowance / Spend Control [FUTURE]
 
 **Campaign name:** `run402-agent-allowance`
 **Type:** Search
@@ -143,7 +145,7 @@ Ready to build in Google Ads. Each campaign includes: name, type, goal, keywords
 
 ---
 
-**Campaign name:** `run402-postgres-for-agents`
+**Campaign name:** `run402-postgres-for-agents` [FUTURE]
 **Type:** Search
 **Goal:** Capture "agent needs a database" intent - the core infra wedge
 **Budget share:** 3%
@@ -220,7 +222,7 @@ Ready to build in Google Ads. Each campaign includes: name, type, goal, keywords
 
 ---
 
-## Campaign 10: x402 / Machine Payments
+## Campaign 10: x402 / Machine Payments [FUTURE]
 
 **Campaign name:** `run402-x402-protocol`
 **Type:** Search
@@ -267,7 +269,7 @@ Ready to build in Google Ads. Each campaign includes: name, type, goal, keywords
 
 ---
 
-## Account-Level Settings
+## Account-Level Settings [FUTURE]
 
 ### Shared negatives list (apply to all campaigns)
 - jobs

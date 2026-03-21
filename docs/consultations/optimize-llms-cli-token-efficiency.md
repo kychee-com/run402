@@ -7,6 +7,8 @@
 
 ---
 
+**Implementation status:** [FUTURE] — The optimized llms-cli.txt has not been adopted yet. The current llms-cli.txt works but hasn't been replaced with this token-optimized version.
+
 Below is a drop-in replacement for `site/llms-cli.txt`, optimized for agent use while keeping full CLI coverage.
 
 ````markdown

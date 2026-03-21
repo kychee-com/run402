@@ -6,6 +6,8 @@
 **Status**: completed
 **Reviewed**: 2026-03-12 — status annotations added below
 
+**Overall status:** README tool table and CI sync check are [IMPLEMENTED]. SKILL.md messaging, hero tool reordering, MCP resources/prompts, tool description rewrites, success/error CTAs, fork/publish growth loops, and funnel instrumentation are all [FUTURE]. See inline annotations below for details.
+
 ---
 
 Short answer: **no, not yet** — but significant progress since the consultation.

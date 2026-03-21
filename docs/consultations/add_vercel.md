@@ -13,7 +13,7 @@ You already have the “Supabase core” for CRUD apps (Postgres + PostgREST + A
 
 ### P0 (must-have) primitives
 
-### 1) **Static web hosting (“Sites”)**
+### 1) **Static web hosting (“Sites”)** [IMPLEMENTED]
 **What:** host a SPA/PWA build output (Next.js `output: "export"`, Vite/React, etc.) at a stable URL.  
 **Why:** “Works on phone” + “ship a real app” requires a deploy target with HTTPS.  
 **Unblocks:** *all* use cases (1–8).
@@ -26,7 +26,7 @@ You already have the “Supabase core” for CRUD apps (Postgres + PostgREST + A
 
 ---
 
-### 2) **HTTP compute (“Functions”) with service-role DB access**
+### 2) **HTTP compute (“Functions”) with service-role DB access** [IMPLEMENTED]
 **What:** project-scoped serverless endpoints (Node/TS) callable over HTTPS.  
 **Why:** eliminates the biggest remaining class of “needs a backend”: verification, webhooks, signed upload URL minting, moderation, custom logic.  
 **Unblocks:** puzzle anti-cheat/verification (2), RSVP handling (5), booking workflows + email triggers (6), Stripe webhooks later (7), secure storage signing (4), presence/moderation helpers (8).
@@ -46,7 +46,7 @@ You already have the “Supabase core” for CRUD apps (Postgres + PostgREST + A
 
 ---
 
-### 3) **Secrets / env var store (for functions + cron)**
+### 3) **Secrets / env var store (for functions + cron)** [IMPLEMENTED]
 **What:** store per-project secrets (Stripe webhook secret, puzzle salt, admin invite token pepper, etc.).  
 **Why:** without this, agents either hardcode secrets into frontend (bad) or into DB rows (often leaky).  
 **Unblocks:** (2) anti-cheat, (6) email notifications, (7) Stripe later, (5) mailing list integrations, (4) share tokens.
@@ -58,7 +58,7 @@ You already have the “Supabase core” for CRUD apps (Postgres + PostgREST + A
 
 ---
 
-### 4) **Scheduler / cron (“Jobs”)**
+### 4) **Scheduler / cron (“Jobs”)** [FUTURE]
 **What:** scheduled invocation of a function or execution of a SQL statement.  
 **Why:** daily puzzle publishing, recurring tasks, streak reminders, usage rollups.  
 **Unblocks:** (2) daily puzzle, (1) recurring tasks, (3) reminders/streak maintenance, (7) usage aggregation.
@@ -73,7 +73,7 @@ You already have the “Supabase core” for CRUD apps (Postgres + PostgREST + A
 
 ---
 
-### 5) **Group/team RLS templates (not just user_owns_rows)**
+### 5) **Group/team RLS templates (not just user_owns_rows)** [FUTURE]
 Right now your templates are mostly “per-user row ownership” and “public read/write”. The apps listed need **membership-scoped** access (family/class/team/room).
 
 **What:** add 1–2 templates that cover 80% of “multi-user shared data” safely.
@@ -103,7 +103,7 @@ This makes policies far less error-prone for agents.
 
 ---
 
-### 6) **Realtime (minimal “chat-grade”, not full Supabase WAL)**
+### 6) **Realtime (minimal “chat-grade”, not full Supabase WAL)** [FUTURE]
 You don’t need “full database changefeed for every query” to satisfy the MVP apps. You need “live messages in a room” + optional presence.
 
 **What:** a managed WebSocket (or SSE) service with:
@@ -125,7 +125,7 @@ You don’t need “full database changefeed for every query” to satisfy the M
 
 ---
 
-### 7) **Storage “secure-by-default” + large uploads**
+### 7) **Storage “secure-by-default” + large uploads** [FUTURE]
 For the photo dropbox, the current `10mb` gateway upload path isn’t enough, and “anon_key can hit storage” is risky if not carefully designed.
 
 **Minimal upgrades**
@@ -145,7 +145,7 @@ For the photo dropbox, the current `10mb` gateway upload path isn’t enough, an
 
 ---
 
-### 8) **Transactional email (service-only)**
+### 8) **Transactional email (service-only)** [FUTURE]
 You can technically ship some MVPs without email, but your examples explicitly want notifications/invites.
 
 **What:** a single “send email” capability usable from Functions (or service_key), rate-limited, using a Run402-managed sender domain (`noreply@run402.com`) for MVP.
@@ -176,12 +176,12 @@ Everything else (image thumbnails, domains, OAuth, queues, previews) can come la
 ## MCP tool additions OpenClaw will need (minimum)
 To make “build autonomously” true, add these tools to `@run402/mcp`:
 
-- `deploy_site`
-- `deploy_function`
-- `set_secret` (and maybe `list_secrets`)
-- `create_job` (cron)
-- `send_email` (or make it a Functions binding)
-- `realtime_info`
+- `deploy_site` [IMPLEMENTED]
+- `deploy_function` [IMPLEMENTED]
+- `set_secret` (and maybe `list_secrets`) [IMPLEMENTED]
+- `create_job` (cron) [FUTURE]
+- `send_email` (or make it a Functions binding) [FUTURE]
+- `realtime_info` [FUTURE]
 - Extend `rest_query` to support PostgREST RPC paths cleanly (optional, but helpful)
 
 That’s the MVP feature set that covers *all eight* app types with the least new platform surface area.

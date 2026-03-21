@@ -5,6 +5,8 @@
 **Completed**: 2026-03-10T09:29:03.434008
 **Status**: completed
 
+**Overall status:** Core fork/app model is [IMPLEMENTED]. Railway-inspired improvements (embeddable buttons, verified badges, version aliases, retention ranking, semantic fork inputs) are all [FUTURE].
+
 ---
 
 Short version: **Railway is a strong GTM analog for Run402, even if it isn’t the same product.** What they’re proving is:
@@ -174,7 +176,7 @@ So I would keep **fork** as the canonical action, but use softer helper language
 - “Start from this app”
 - “Clone this into your own budgeted instance”
 
-### Semantic fork inputs > env vars
+### Semantic fork inputs > env vars [FUTURE]
 Railway templates often collect technical setup variables.
 
 You can do better.
@@ -193,34 +195,34 @@ That is much more agent-native and much more SMB-friendly.
 ## What I would do next
 
 ### High-priority product moves
-1. **Make $5 Hobby the default public CTA** for many apps  
+1. **Make $5 Hobby the default public CTA** for many apps [FUTURE]
    Prototype is great for agents/testing, but $5 is the psychologically clean marketplace price.
 
-2. **Ship the embeddable Fork on Run402 button**
+2. **Ship the embeddable Fork on Run402 button** [FUTURE]
    - README snippet
    - docs snippet
    - social card / badge
    - ideally with app slug + recommended tier
 
-3. **Ship the live-app fork overlay**
+3. **Ship the live-app fork overlay** [FUTURE]
    This could be one of your best viral loops.
 
-4. **Add Official / Verified / Community labels**
+4. **Add Official / Verified / Community labels** [FUTURE]
    Discovery should strongly favor trusted sources.
 
-5. **Let publishers set a recommended tier**
+5. **Let publishers set a recommended tier** [FUTURE]
    Not every app should default to Prototype.
 
-6. **Add version aliases + deprecation**
+6. **Add version aliases + deprecation** [FUTURE]
    Railway templates implicitly stay current; your immutable versions need:
    - latest stable
    - deprecated
    - security warning / replaced by
 
-7. **Make publish self-serve**
+7. **Make publish self-serve** [FUTURE]
    If external maintainers are core to strategy, admin-only publish won’t scale.
 
-8. **Expose richer machine-readable metadata**
+8. **Expose richer machine-readable metadata** [FUTURE]
    Your `/v1/apps` and `/v1/apps/:versionId` should clearly expose:
    - recommended tier
    - required inputs

@@ -481,7 +481,7 @@ That division is clean.
 
 # What I would build, concretely
 
-## 1. A single API endpoint
+## 1. A single API endpoint [FUTURE]
 ```http
 POST /v1/git/push-session
 ```
@@ -522,7 +522,7 @@ I’d accept both:
 
 Basic is nice because it also works with credential helpers.
 
-## 2. A `run402 init` command
+## 2. A `run402 init` command [FUTURE]
 ```bash
 run402 init myapp --tier hobby --visibility public
 ```
@@ -534,14 +534,14 @@ This should:
 - set pushurl
 - store local billing hint / caps
 
-## 3. `git-remote-run402`
+## 3. `git-remote-run402` [FUTURE] - Partially exists but session API not complete
 It should:
 - call `/v1/git/push-session`
 - use `@x402/fetch`
 - mint short-lived token
 - delegate to `git-remote-http`
 
-## 4. `run402 push` fallback
+## 4. `run402 push` fallback [FUTURE]
 For no-install environments:
 
 ```bash
@@ -552,7 +552,7 @@ Internally it can do the same preflight + delegated Git push.
 
 This is the “agents can still succeed even if helper install is awkward” escape hatch.
 
-## 5. Optional later: `git-credential-run402`
+## 5. Optional later: `git-credential-run402` [FUTURE]
 For private HTTPS fetch/clone of existing repos.
 
 ---
@@ -579,7 +579,7 @@ It’s:
 
 # If I were prioritizing
 
-### Phase 0
+### Phase 0 [FUTURE]
 Ship:
 - `run402 init`
 - `run402 push`
@@ -587,14 +587,14 @@ Ship:
 
 Validate agent DX.
 
-### Phase 1
+### Phase 1 [FUTURE]
 Add:
 - hosted Git smart HTTP
 - `POST /v1/git/push-session`
 - `git-remote-run402`
 - post-receive deploy hooks
 
-### Phase 2
+### Phase 2 [FUTURE]
 Add:
 - public clone over HTTPS
 - private clone via credential helper

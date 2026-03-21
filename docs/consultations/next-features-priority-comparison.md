@@ -31,7 +31,7 @@ Missing: **event-driven compute** (webhooks + scheduled + DB-triggered), **realt
 
 # The most impactful “Y’s” (in order)
 
-## 1) HTTP Compute: “Functions” (server-side code that runs next to the DB)
+## 1) HTTP Compute: “Functions” (server-side code that runs next to the DB) [IMPLEMENTED]
 **What OpenClaw can’t do today:** “I need an API route / webhook endpoint / call Stripe/OpenAI/Slack safely without putting secrets in the browser.”
 
 This is the #1 unblocker for real apps:
@@ -60,7 +60,7 @@ This is the #1 unblocker for real apps:
 
 ---
 
-## 2) Secrets / Env Var Store (for Functions + future Jobs)
+## 2) Secrets / Env Var Store (for Functions + future Jobs) [IMPLEMENTED]
 **What OpenClaw can’t do today:** “I need to store STRIPE_SECRET_KEY / OPENAI_API_KEY / webhooks signing secrets securely.”
 
 **Vercel parity:** Environment Variables  
@@ -77,7 +77,7 @@ This is the #1 unblocker for real apps:
 
 ---
 
-## 3) Scheduler / Cron (“Jobs” that call Functions or HTTP)
+## 3) Scheduler / Cron (“Jobs” that call Functions or HTTP) [FUTURE]
 **What OpenClaw can’t do today:** “Send daily digests, reminders, cleanup tasks, retry failed work.”
 
 This turns a CRUD app into a product.
@@ -98,7 +98,7 @@ This turns a CRUD app into a product.
 
 ---
 
-## 4) Transactional Email (one-call “send_email” + Auth emails that just work)
+## 4) Transactional Email (one-call “send_email” + Auth emails that just work) [FUTURE]
 **What OpenClaw can’t do today:** “Users need email verification, password resets, invites, receipts.”
 
 Agents routinely hit this wall because wiring SES/Resend/Mailgun is *human-console work*.
@@ -119,7 +119,7 @@ Agents routinely hit this wall because wiring SES/Resend/Mailgun is *human-conso
 
 ---
 
-## 5) Realtime (chat-grade subscriptions + Postgres changefeed)
+## 5) Realtime (chat-grade subscriptions + Postgres changefeed) [FUTURE]
 **What OpenClaw can’t do today:** “Chat, live dashboards, multiplayer, collaborative editing.”
 
 Polling works, but it’s not “wow” and it breaks Supabase client compatibility for many templates.
@@ -142,7 +142,7 @@ Polling works, but it’s not “wow” and it breaks Supabase client compatibil
 
 ---
 
-## 6) Sites “Production Alias” + Custom Domains (finish your Vercel-lite)
+## 6) Sites “Production Alias” + Custom Domains (finish your Vercel-lite) [FUTURE]
 You already shipped deployments + subdomains; the next friction is “every deploy has a new URL” and “I need my own domain”.
 
 **Vercel parity:** Production alias, Domains  
@@ -161,7 +161,7 @@ You already shipped deployments + subdomains; the next friction is “every depl
 
 ---
 
-## 7) Auth upgrades that reduce onboarding friction: Magic links + Passkeys (then OAuth)
+## 7) Auth upgrades that reduce onboarding friction: Magic links + Passkeys (then OAuth) [FUTURE]
 OAuth (Google/GitHub) is valuable, but it *still requires someone to create OAuth credentials*—which is exactly the “go touch a console” trap.
 
 If you want “agent can ship without human setup,” prioritize:
@@ -177,7 +177,7 @@ Then add OAuth providers as “bring your own keys” for production polish.
 
 ---
 
-## 8) AI-native Postgres: pgvector (and a curated extensions set)
+## 8) AI-native Postgres: pgvector (and a curated extensions set) [FUTURE]
 Agents building “X” frequently need “memory/search”. If pgvector isn’t available, they’ll immediately detour to Pinecone/Upstash.
 
 **Supabase parity:** Vector support  
@@ -194,26 +194,26 @@ Agents building “X” frequently need “memory/search”. If pgvector isn’t
 ---
 
 # What I would *not* prioritize next (even though competitors have it)
-- **GraphQL:** doesn’t unblock agents if REST + RPC exists; adds surface + security complexity.
-- **Full Supabase Studio clone:** great eventually, but not the fastest path to “OpenClaw can ship anything.” Do a “Studio-lite” later once compute/email/realtime exist.
-- **Database branching/preview DBs:** very nice, but only after Functions + Sites + Domains are solid.
+- **GraphQL:** [REJECTED] doesn’t unblock agents if REST + RPC exists; adds surface + security complexity.
+- **Full Supabase Studio clone:** [FUTURE] great eventually, but not the fastest path to “OpenClaw can ship anything.” Do a “Studio-lite” later once compute/email/realtime exist.
+- **Database branching/preview DBs:** [FUTURE] very nice, but only after Functions + Sites + Domains are solid.
 
 ---
 
 # Recommended build order (high leverage, agent-first)
 
 ### Sprint 1–2: unblock shipping + onboarding
-1) **Functions + logs (v1)**
-2) **Secrets**
-3) **Sites production alias + deployment listing** (easy win, immediate polish)
+1) **Functions + logs (v1)** [IMPLEMENTED]
+2) **Secrets** [IMPLEMENTED]
+3) **Sites production alias + deployment listing** [FUTURE] (easy win, immediate polish)
 4) Publish **/openapi.json** (big onboarding multiplier for non-MCP agents)
 
 ### Sprint 3–4: make apps “real products”
-5) **Cron/Jobs**
-6) **Transactional email**
+5) **Cron/Jobs** [FUTURE]
+6) **Transactional email** [FUTURE]
 
 ### Sprint 5+: “wow” apps (chat/collab)
-7) **Realtime**
+7) **Realtime** [FUTURE]
 
 Parallel “trust” track (doesn’t block agents, but boosts adoption):
 - Wallet-based **project ownership + key recovery**

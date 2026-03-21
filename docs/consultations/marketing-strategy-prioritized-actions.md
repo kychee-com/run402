@@ -7,11 +7,13 @@
 
 ---
 
+**Overall status:** Distribution-focused actions (MCP, OpenClaw, directory listings, AEO pages, x402.org) are [IMPLEMENTED]. Growth actions (reference apps, funding flow, paid ads, outbound) are [FUTURE].
+
 Agents don’t really “see” marketing. They adopt tools when (a) the tool is already in their runtime/tool registry, (b) it ranks for the exact blocked query (“need hosted Postgres w/o signup”), or (c) it’s present in trusted corpora (GitHub READMEs, templates, awesome-lists, package registries) that agents retrieve from. So the GTM is: **toolbelt distribution + retrieval distribution + frictionless conversion**.
 
 ## Prioritized action list (max impact)
 
-### 1) Get Run402 into the *default toolbelt* (OpenClaw skill + MCP “everywhere”)
+### 1) Get Run402 into the *default toolbelt* (OpenClaw skill + MCP “everywhere”) [IMPLEMENTED]
 **Why it’s #1:** this is the closest thing to a firehose for “marketing to agents.”  
 **Do:**
 - Finish/ship the **OpenClaw skill** (high-level tools only: provision → run_sql → rest_query → upload → renew).
@@ -22,7 +24,7 @@ Agents don’t really “see” marketing. They adopt tools when (a) the tool is
 - “Works in 3 minutes” guide (copy/paste config blocks for Claude Desktop, Cursor, etc.).
 - A **capabilities page** that directories can deep-link to: tools, limits, pricing, security, lifecycle.
 
-### 2) List in every directory/marketplace agents + builders actually consult
+### 2) List in every directory/marketplace agents + builders actually consult [IMPLEMENTED]
 **Why:** directory listings are retrieval corpora; agents and builders scrape/search them.  
 **Do (same week as #1):**
 - Submit/PR to: SkillsMP, OpenClaw skill registry, Smithery, mcp.so, “awesome-mcp-servers”, any MCP directory you can find.
@@ -30,7 +32,7 @@ Agents don’t really “see” marketing. They adopt tools when (a) the tool is
 
 **Rule:** one canonical repo/README + consistent naming (“AgentDB by Run402” or pick one—avoid brand confusion).
 
-### 3) Fix the conversion cliff: USDC on Base funding must be “1-click”
+### 3) Fix the conversion cliff: USDC on Base funding must be “1-click” [FUTURE]
 **Why:** the biggest drop-off will be “cool… but I don’t have USDC on Base.”  
 **Do:**
 - Add a **Coinbase Onramp / funding link** anywhere a 402 happens and in docs. The 402 response should include a `funding_url`.
@@ -38,7 +40,7 @@ Agents don’t really “see” marketing. They adopt tools when (a) the tool is
 - Consider offering **credit-card → USDC** path (even if it’s slightly higher fee) to widen top-of-funnel.
 - Make failure modes agent-friendly: return structured “needs_allowance / needs_funding” objects that agents can relay to humans.
 
-### 4) Ship 3 “reference apps” that agents can clone/build in one prompt
+### 4) Ship 3 “reference apps” that agents can clone/build in one prompt [FUTURE]
 **Why:** this is how you replicate AgentMail-style “noise”: instant, concrete demos people can share.  
 **Do (pick 3):**
 1) “Agent builds a CRUD app with auth + RLS in 5 minutes” (Next.js + PostgREST)
@@ -50,14 +52,14 @@ Each should have:
 - A 30–60s screen recording
 - A single prompt: “Use Run402 MCP to provision + migrate + deploy”
 
-### 5) Seed the corpora agents retrieve from (GitHub + package registries + awesome lists)
+### 5) Seed the corpora agents retrieve from (GitHub + package registries + awesome lists) [FUTURE]
 **Why:** agents trust code/docs > marketing pages.  
 **Do:**
 - Publish small helper SDKs/wrappers if missing (even thin): `@run402/client`, plus Python if your audience is agent frameworks.
 - PR Run402 into relevant “awesome-*” lists: awesome-mcp, awesome-agents, awesome-postgres, awesome-x402/Base lists.
 - Put “Run402 quickstart” snippets in places agents fetch from: GitHub gists, template READMEs, example repos.
 
-### 6) AEO/SEO cluster aimed at “blocked queries” (not brand keywords)
+### 6) AEO/SEO cluster aimed at “blocked queries” (not brand keywords) [IMPLEMENTED]
 **Why:** when an agent gets stuck, it searches; you want to be the answer.  
 **Do (5–8 pages total):**
 - “Hosted Postgres with no signup”
@@ -67,7 +69,7 @@ Each should have:
 - “Agent backend with hard spend caps”
 Each page should be agent-readable (examples, curl, constraints, pricing) and link to `llms.txt` + OpenAPI/MCP docs.
 
-### 7) Founder-led “noise” on X (but demo-first, not vibes)
+### 7) Founder-led “noise” on X (but demo-first, not vibes) [FUTURE]
 **Why:** X is where agent builders hang out; but only demos travel.  
 **Do (2 weeks, consistent cadence):**
 - Post short clips: “HTTP 402 → approve spend → Postgres is live”
@@ -76,21 +78,21 @@ Each page should be agent-readable (examples, curl, constraints, pricing) and li
 
 (AgentMail’s “noise” is usually: extremely clear hook + proof in motion + easy try-it link.)
 
-### 8) Make x402/Base a distribution channel, not just plumbing
+### 8) Make x402/Base a distribution channel, not just plumbing [IMPLEMENTED]
 **Why:** you’re natively aligned with those ecosystems; they amplify “first real apps using X.”  
 **Do:**
 - ~~Ensure you’re listed on **x402.org/ecosystem** with crisp copy + working example.~~ ✅ Done — listed at https://www.x402.org/ecosystem
 - Apply to any **Base ecosystem directories**, grants, hackathons, “Base Builders” spotlights.
 - Co-market with other x402 services: “build an agent that can buy its stack over HTTP.”
 
-### 9) Targeted outbound to the 30 people who control distribution
+### 9) Targeted outbound to the 30 people who control distribution [FUTURE]
 **Why:** getting bundled > getting tweeted about.  
 **Do:**
 - Identify owners/maintainers of: OpenClaw, major MCP directories, popular agent templates, Claude Desktop community guides.
 - Offer: PRs + “official example” + small sponsorship/credits for inclusion.
 - Ask for: “Run402 as the recommended persistence/backend skill.”
 
-### 10) Paid ads (only after #1–#4 are tight)
+### 10) Paid ads (only after #1–#4 are tight) [FUTURE]
 **Why:** ads can work, but only once onboarding is frictionless and you can measure activation.  
 **If you do them:**
 - Start with **high-intent search** (keywords like “MCP postgres”, “no signup postgres”, “postgrest hosting”) rather than broad social.
