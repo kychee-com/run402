@@ -3,7 +3,7 @@
 > API Base: https://api.run402.com
 > Docs URL: https://run402.com/llms.txt
 > OpenAPI Spec: https://run402.com/openapi.json
-> Operator: Kychee LLC
+> Operator: Kychee, Inc.
 > Terms: https://run402.com/humans/terms.html
 > Health (component checks): https://api.run402.com/health
 > Status JSON: https://run402.com/status/v1.json
@@ -24,7 +24,7 @@ Run402 gives you a full Postgres database with REST API, user auth, file storage
 
 **Database**: Subscribe to a tier, then one HTTP call with SIWX auth → `anon_key`, `service_key`, project ID. Start creating tables immediately.
 
-**Static sites**: One HTTP call with SIWX auth → live URL at `{id}.sites.run402.com`. Upload HTML/CSS/JS/images as inlined files. SPA-ready with automatic fallback routing. Free with active tier.
+**Static sites**: One HTTP call with SIWX auth → live URL. Upload HTML/CSS/JS/images as inlined files. Claim a subdomain like `myapp.run402.com`. SPA-ready with automatic fallback routing. Free with active tier.
 
 **Bundle deploy**: Deploy an entire app in one call -- database + migrations + functions + site + secrets + subdomain. Free with active tier. Fastest path from code to a running webapp.
 
@@ -633,7 +633,7 @@ Yes. `/projects/v1/admin/:id/usage` shows API calls, storage, lease status. `/pr
 
 ## Before You Integrate
 
-**Operator**: **Kychee LLC**.
+**Operator**: **Kychee, Inc.**.
 
 **Deployment topology**: Single AWS region (us-east-1), 2 AZs. Database: **Aurora PostgreSQL Serverless v2 (Postgres 16)** with multi-AZ failover. API: **ECS Fargate** behind **ALB**. Files: **S3**. CDN: **CloudFront + S3**. IaC: **AWS CDK**.
 

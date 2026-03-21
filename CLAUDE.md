@@ -2,7 +2,7 @@
 
 ## MCP Server
 
-The Run402 MCP server is published at https://github.com/kychee-com/run402-mcp (npm: `run402-mcp`, v0.2.0). It exposes `provision_postgres_project`, `run_sql`, `rest_query`, `upload_file`, `deploy_site`, `claim_subdomain`, `delete_subdomain` as MCP tools. Install: `npx run402-mcp`. Config and docs are in the separate `kychee-com/run402-mcp` repo.
+The Run402 MCP server is published at https://github.com/kychee-com/run402-mcp (npm: `run402-mcp`, v0.2.0). It exposes 52 tools covering setup/billing, projects, database, deployment, subdomains, functions, storage, apps, and more. Install: `npx run402-mcp`. Config and docs are in the separate `kychee-com/run402-mcp` repo. See AGENTS.md for the full tool list.
 
 ## Lint & Type Check
 

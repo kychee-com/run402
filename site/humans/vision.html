@@ -2,6 +2,15 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <!-- Google tag (gtag.js) — GA4 -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-SP7DMDB21B"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+    gtag('config', 'G-SP7DMDB21B');
+    (function(){var p=new URLSearchParams(location.search),k=['gclid','utm_source','utm_medium','utm_campaign','utm_term','utm_content'];for(var i=0;i<k.length;i++){var v=p.get(k[i]);if(v)try{localStorage.setItem('x402_'+k[i],v)}catch(e){}}if(p.get('gclid'))try{localStorage.setItem('x402_gclid_ts',''+Date.now())}catch(e){}})();
+  </script>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Run402 Vision — Agent-First Infrastructure</title>
   <meta name="description" content="Run402 is building the default infrastructure layer for AI agents: a cloud where agents can autonomously pay, deploy, publish, and fork real applications.">
@@ -251,7 +260,7 @@
   <div class="container">
     <div class="badge">VISION</div>
     <h1><span class="accent">Run402</span> Vision</h1>
-    <p class="tagline">Callable over HTTP. Payable with x402. Governed by allowances. Forkable as full apps.</p>
+    <p class="tagline">Callable over HTTP. Payable over any rail. Governed by allowances. Forkable as full apps.</p>
 
     <div class="section">
       <h2>The future we believe in</h2>
@@ -283,14 +292,14 @@
     </div>
 
     <div class="section">
-      <h2>x402 and Agent Allowance</h2>
-      <p>x402 is the native transaction language of the agentic web. It makes payment part of the protocol, not an out-of-band business process.</p>
+      <h2>Machine payments and Agent Allowance</h2>
+      <p>Machine-to-machine payment protocols&mdash;x402, MPP, and whatever comes next&mdash;make payment part of the protocol, not an out-of-band business process. Run402 is rail-agnostic: we support any standard that lets agents pay for infrastructure over HTTP.</p>
       <p>But the human story cannot be "give your agent a wallet and hope for the best." Humans need bounded delegation. They need caps, receipts, and the confidence that an agent cannot create an unbounded liability.</p>
       <div class="quote-block">
         <p><strong>Wallet is infrastructure language. Allowance is trust language.</strong></p>
       </div>
-      <p>A human should be able to preload a capped balance, set the boundary, and let an agent spend through the same x402 flow it already understands. Whether the funding rail is native on-chain x402 or a prepaid allowance funded by Stripe, the agent-facing experience stays the same: make a request, attach payment intent, receive infrastructure.</p>
-      <p>This is not about crypto for its own sake. It is about making delegated infrastructure procurement <strong>programmable, instant, and safe</strong>.</p>
+      <p>A human should be able to preload a capped balance, set the boundary, and let an agent spend through whichever payment rail it prefers. Whether the funding comes from on-chain USDC, pathUSD on Tempo, or a prepaid allowance funded by Stripe, the agent-facing experience stays the same: make a request, attach payment intent, receive infrastructure.</p>
+      <p>This is not about any single protocol. It is about making delegated infrastructure procurement <strong>programmable, instant, and safe</strong>.</p>
     </div>
 
     <div class="section">
@@ -298,7 +307,7 @@
       <p>We do not want agents to merely tolerate Run402. We want Run402 to be the platform agents <strong>actively prefer</strong>.</p>
       <p>That means designing for agent ergonomics with the same seriousness that great consumer products design for human ergonomics.</p>
       <div class="traits-grid">
-        <div class="trait"><div class="label">Machine-native</div><div class="desc">HTTP, JSON, SQL, OpenAPI, llms.txt, x402, MCP</div></div>
+        <div class="trait"><div class="label">Machine-native</div><div class="desc">HTTP, JSON, SQL, OpenAPI, llms.txt, x402, MPP, MCP</div></div>
         <div class="trait"><div class="label">Immediate</div><div class="desc">One call, one payment, live resources</div></div>
         <div class="trait"><div class="label">Predictable</div><div class="desc">Idempotent actions, deterministic responses, clean lifecycle</div></div>
         <div class="trait"><div class="label">Legible</div><div class="desc">Docs written for agents, errors that explain what to do next</div></div>
@@ -367,7 +376,7 @@
     </div>
 
     <div class="closing">
-      <p>Run402 is agent-first infrastructure: a cloud where agents can autonomously pay with x402, deploy real apps, and fork full working systems&mdash;while humans do little more than fund a wallet or an allowance and then get out of the way.</p>
+      <p>Run402 is agent-first infrastructure: a cloud where agents can autonomously pay over any rail, deploy real apps, and fork full working systems&mdash;while humans do little more than fund an allowance and then get out of the way.</p>
       <p class="sign-off">Made by agents, for agents, with <span style="color:#EF4444">&hearts;</span>.</p>
     </div>
 

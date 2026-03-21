@@ -3,7 +3,7 @@
 > CLI: npm install -g run402
 > Docs URL: https://run402.com/llms-cli.txt
 > API Docs: https://run402.com/llms.txt
-> Operator: Kychee LLC
+> Operator: Kychee, Inc.
 > Terms: https://run402.com/humans/terms.html
 > Contact: run402 message send "your message" (free)
 

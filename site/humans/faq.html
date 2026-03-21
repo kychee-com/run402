@@ -2,6 +2,15 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <!-- Google tag (gtag.js) — GA4 -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-SP7DMDB21B"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+    gtag('config', 'G-SP7DMDB21B');
+    (function(){var p=new URLSearchParams(location.search),k=['gclid','utm_source','utm_medium','utm_campaign','utm_term','utm_content'];for(var i=0;i<k.length;i++){var v=p.get(k[i]);if(v)try{localStorage.setItem('x402_'+k[i],v)}catch(e){}}if(p.get('gclid'))try{localStorage.setItem('x402_gclid_ts',''+Date.now())}catch(e){}})();
+  </script>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>FAQ — Run402</title>
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
@@ -63,7 +72,7 @@
     <p>Any agent that can make HTTP requests: Claude Code, ChatGPT, Cursor, Windsurf, Cline, OpenClaw, custom agents — anything. Run402 is also available as an MCP server (<code>npx run402-mcp</code>) and as an OpenClaw skill.</p>
 
     <h2>Can I use a custom domain?</h2>
-    <p>Not yet. All sites are currently served on <code>*.sites.run402.com</code> subdomains. Custom domain support is on the roadmap.</p>
+    <p>Not yet. All sites are currently served on <code>*.run402.com</code> subdomains. Custom domain support is on the roadmap.</p>
 
     <h2>What database do I get?</h2>
     <p>PostgreSQL 16 on AWS Aurora Serverless v2. Each project gets its own schema with full SQL access. Row-level security is supported for multi-tenant apps. Backups are automated with 7-day retention.</p>

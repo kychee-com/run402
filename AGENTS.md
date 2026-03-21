@@ -15,17 +15,17 @@ Run402 uses a tier subscription model. Subscribe once via x402, then create unli
 
 ### Quick Start (Agent Onboarding)
 
-1. **Get testnet USDC:** `POST /faucet/v1/drip` (free, 0.25 USDC per 24h)
+1. **Get testnet USDC:** `POST /faucet/v1` (free, 0.25 USDC per 24h)
 2. **Subscribe to a tier:** `POST /tiers/v1/prototype` (x402 payment, $0.10)
 3. **Create projects:** `POST /projects/v1` with EIP-4361 wallet auth (free with tier)
 4. **Deploy apps:** `POST /deploy/v1` with wallet auth (free with tier)
 
-### EIP-4361 Wallet Auth
+### SIWX (CAIP-122) Wallet Auth
 
-After subscribing, authenticate with wallet signature headers:
-- `X-Run402-Wallet`: your wallet address
-- `X-Run402-Signature`: signature of `run402:{unix_timestamp}`
-- `X-Run402-Timestamp`: current unix timestamp (seconds)
+After subscribing, authenticate with a SIWX (Sign-In-With-X) header:
+- `SIGN-IN-WITH-X`: base64-encoded CAIP-122 payload signed by your wallet
+
+See https://run402.com/llms.txt for the full SIWX auth specification and examples.
 
 ### Tiers
 
@@ -51,18 +51,23 @@ If you're running inside Claude Desktop, Cursor, Cline, Claude Code, or any MCP-
 - Install: `npx run402-mcp`
 - Claude Code: `claude mcp add run402 -- npx -y run402-mcp`
 
-### MCP Tools
+### MCP Tools (52 tools)
 
-| Tool | Description |
-|------|-------------|
-| `provision_postgres_project` | Create a new Postgres database (prototype/hobby/team tiers) |
-| `run_sql` | Execute SQL (DDL/DML) against a project |
-| `rest_query` | CRUD via PostgREST (GET/POST/PATCH/DELETE) |
-| `upload_file` | Upload files to project storage |
-| `set_tier` | Subscribe, renew, or upgrade tier |
-| `deploy_site` | Deploy a static site (HTML/CSS/JS) |
-| `claim_subdomain` | Claim a custom subdomain (e.g. myapp.run402.com) |
-| `delete_subdomain` | Release a subdomain |
+The MCP server provides 52 tools across these categories:
+
+| Category | Tools |
+|----------|-------|
+| Setup & billing | `init`, `set_tier`, `tier_status`, `status`, `check_balance`, `allowance_create`, `allowance_status`, `allowance_export`, `request_faucet`, `create_checkout`, `billing_history` |
+| Projects | `provision_postgres_project`, `project_info`, `project_keys`, `project_use`, `list_projects`, `get_schema`, `get_usage`, `archive_project`, `pin_project` |
+| Database | `run_sql`, `setup_rls`, `rest_query` |
+| Deployment | `deploy_site`, `get_deployment`, `bundle_deploy` |
+| Subdomains | `claim_subdomain`, `delete_subdomain`, `list_subdomains` |
+| Functions | `deploy_function`, `invoke_function`, `list_functions`, `delete_function`, `get_function_logs`, `set_secret`, `list_secrets`, `delete_secret` |
+| Storage | `upload_file`, `download_file`, `list_files`, `delete_file` |
+| Apps | `publish_app`, `get_app`, `browse_apps`, `fork_app`, `list_versions`, `update_version`, `delete_version` |
+| Other | `generate_image`, `send_message`, `set_agent_contact`, `get_quote` |
+
+See the [run402-mcp README](https://github.com/kychee-com/run402-mcp) for full tool documentation.
 
 ## OpenClaw Skill
 
