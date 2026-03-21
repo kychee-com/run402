@@ -243,3 +243,62 @@ But the gateway blocked the `GRANT` statement (security measure — raw GRANT is
 **BUG-006 — Not a bug.** The MCP server is designed to return 402 payment details as informational text so the LLM can reason about payment flow. It deliberately does not handle x402 signing internally — the MCP server has no x402 payment dependencies (`@x402/fetch`, `viem` are devDependencies only). bld402 expected automatic payment handling, which is an architecture disagreement, not a bug.
 
 **BUG-007 — Not a bug.** `GRANT` is intentionally blocked in the SQL endpoint as a security measure. The dedicated RLS endpoint (`POST /admin/:id/rls`) exists specifically to handle both policies and grants. This is working as designed. A docs improvement (pointing agents to the RLS endpoint) would help, but the behavior itself is correct.
+
+---
+
+## Red Team Findings (2026-03-21)
+
+Found during red team testing where a fresh agent follows only bld402.com/llms.txt instructions.
+
+### GAP-001: Serverless function invocation broken — HTTP 500, no logs (HIGH)
+
+**Component:** run402 gateway — function invocation
+**Severity:** HIGH — blocks all function-based templates (paste-locker, secret-santa)
+
+**What was attempted:** Agent deployed a function via `deploy_function`. Function appeared in `list_functions` with status "deployed". Agent called `invoke_function`.
+
+**What happened:** Every invocation returns `HTTP 500 "Internal function error"` with zero CloudWatch logs. Reproduced with a trivial hello-world function: `export default async function(req) { return new Response("hello"); }`
+
+**Impact:** Blocks 2 of 13 bld402 templates. Function deploys successfully — failure is silent and only discovered at invocation time.
+
+**Fix:** Debug the gateway's function invocation path. Functions deploy and list correctly but never execute.
+
+### GAP-002: Subdomain 403 error message misleading (LOW)
+
+**Component:** run402 gateway — subdomains endpoint
+
+**What happened:** When a subdomain is claimed by another wallet, the error says "expired lease" instead of "claimed by another wallet."
+
+**Fix:** Return accurate error: "Subdomain X is already claimed by another wallet."
+
+### GAP-003: `get_function_logs` always returns empty (LOW)
+
+**Component:** run402-mcp — get_function_logs tool
+
+**What happened:** Even after function invocations (including 500 errors), logs are empty. Agents cannot debug failures.
+
+**Fix:** Ensure CloudWatch logs are correctly routed and queryable.
+
+### GAP-004: `set_secret` requires redeploy — undocumented (INFO)
+
+**Component:** Documentation
+
+**What happened:** Secrets set via `set_secret` are not available until function is redeployed. Not documented.
+
+**Fix:** Add to llms.txt/SKILL.md: "After setting secrets, redeploy the function."
+
+### Updated Summary
+
+| ID | Severity | Component | Status |
+|-----|----------|-----------|--------|
+| BUG-001 | HIGH | CLI (Windows) | Fixed in v1.18.0 (--file flag) |
+| BUG-002 | LOW | CLI (tier.mjs) | Fixed |
+| BUG-003 | LOW | CLI (init.mjs) | Fixed |
+| BUG-004 | — | CLI (sites.mjs) | Not a bug |
+| BUG-005 | — | CLI (naming) | Not a bug |
+| BUG-006 | — | run402-mcp | Not a bug (MCP parity in v1.18.0) |
+| BUG-007 | — | Gateway + Docs | Not a bug |
+| GAP-001 | **HIGH** | Gateway (functions) | **Open — blocks paste-locker, secret-santa** |
+| GAP-002 | LOW | Gateway (subdomains) | Open |
+| GAP-003 | LOW | run402-mcp (logs) | Open |
+| GAP-004 | INFO | Documentation | Open |
