@@ -47,9 +47,14 @@ cat > "$BUILD_DIR/nodejs/node_modules/@run402/functions/index.js" << 'HELPERJS'
  *   getUser(req) — verify caller's JWT, returns { id, role } or null
  */
 
+import { createRequire } from "node:module";
+const _require = createRequire(import.meta.url);
+const _jwt = _require("jsonwebtoken");
+
 const API_BASE = process.env.RUN402_API_BASE || "https://api.run402.com";
 const PROJECT_ID = process.env.RUN402_PROJECT_ID || "";
 const SERVICE_KEY = process.env.RUN402_SERVICE_KEY || "";
+const _JWT_SECRET = process.env.RUN402_JWT_SECRET || "";
 
 class QueryBuilder {
   #table;
@@ -199,10 +204,6 @@ export const db = {
     return res.json();
   },
 };
-
-import _jwt from "jsonwebtoken";
-
-const _JWT_SECRET = process.env.RUN402_JWT_SECRET || "";
 
 /**
  * Verify the caller's JWT and return user identity.

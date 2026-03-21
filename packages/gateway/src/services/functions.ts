@@ -769,6 +769,9 @@ function writeLocalFunction(
 
   const module = `
 // --- inlined @run402/functions helper ---
+import { createRequire as _cr } from "node:module";
+const _require = _cr(import.meta.url);
+const _jwt = _require("jsonwebtoken");
 const _API_BASE = ${JSON.stringify(apiBase)};
 const _SERVICE_KEY = ${JSON.stringify(serviceKey)};
 const _JWT_SECRET = ${JSON.stringify(JWT_SECRET)};
@@ -809,7 +812,6 @@ class _QueryBuilder {
 }
 const db = { from(t) { return new _QueryBuilder(t); } };
 
-import _jwt from "jsonwebtoken";
 function getUser(req) {
   const authHeader = req.headers.get ? req.headers.get("authorization") : req.headers?.authorization;
   if (!authHeader || !authHeader.startsWith("Bearer ")) return null;
