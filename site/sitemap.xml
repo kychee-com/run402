@@ -11,11 +11,6 @@
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://run402.com/llms.txt</loc>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
     <loc>https://run402.com/subscribe</loc>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
@@ -41,13 +36,38 @@
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://run402.com/openapi.json</loc>
+    <loc>https://run402.com/bdt</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
+    <loc>https://run402.com/agent-allowance</loc>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://run402.com/bdt</loc>
+    <loc>https://run402.com/apps</loc>
     <changefreq>weekly</changefreq>
-    <priority>0.9</priority>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://run402.com/billing</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://run402.com/health-humans</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://run402.com/sorting-humans</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://run402.com/zh-cn</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
   </url>
 </urlset>

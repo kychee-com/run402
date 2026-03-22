@@ -2,3 +2,4 @@ User-agent: *
 Allow: /
 
 Sitemap: https://run402.com/sitemap.xml
+Sitemap: https://run402.com/llms.txt
