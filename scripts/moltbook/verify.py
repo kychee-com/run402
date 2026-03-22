@@ -129,6 +129,12 @@ def _detect_operation(challenge: str, aj: str) -> str | None:
             return op
     if "total" in aj:
         return "+"
+    # Rate × time pattern: "per second/minute/hour for N seconds/minutes/hours"
+    if re.search(r"per\s+(second|minute|hour|meter).*\bfor\b", challenge, re.I):
+        return "*"
+    # "how far" with speed+time usually means multiply
+    if "how far" in challenge.lower() and any(w in challenge.lower() for w in ["per second", "per minute", "per hour", "speed", "velocity"]):
+        return "*"
     return None
 
 
