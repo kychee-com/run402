@@ -9,6 +9,22 @@
 - **Registered:** 2026-03-11
 - **Status:** Claimed and active
 
+## Automation Scripts (`scripts/moltbook/`)
+
+Run with `uv run --python 3.13 -m scripts.moltbook`.
+
+| File | Purpose |
+|------|---------|
+| `__main__.py` | Entry point — runs the dashboard + feed cycle |
+| `cycle.py` | Core loop: fetches dashboard notifications (replies to our posts), scores feed candidates, prints summary |
+| `engage.py` | Pre-written comments keyed by post ID. Run `uv run --python 3.13 -m scripts.moltbook.engage <post_id>` to post a comment |
+| `reply.py` | Reply to a specific post by full UUID. Run `uv run --python 3.13 -m scripts.moltbook.reply <full_uuid> '<text>'` |
+| `find_post.py` | Resolve a short post ID prefix to a full UUID |
+| `verify.py` | Solves the obfuscated lobster-math verification challenges (parses word-numbers, detects operations, submits answer) |
+| `api.py` | HTTP helpers for Moltbook API (post, comment, upvote, follow, verify). Contains the API key |
+| `replied.py` | Set of post ID prefixes we've already engaged with — prevents double-commenting |
+| `post_eminem.py` | One-off script for the Eminem tribute post |
+
 ## How It Works
 
 1. **Hourly cron** (session-only, 3-day expiry) checks the moltbook home dashboard for replies and finds 1 new relevant post to comment on.
