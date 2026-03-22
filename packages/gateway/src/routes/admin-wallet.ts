@@ -69,7 +69,7 @@ router.get("/admin/api/wallet/:address", asyncHandler(async (req: Request, res: 
     // Projects
     pool.query(`
       SELECT id, name, schema_slot, tier, status, api_calls, storage_bytes,
-             lease_started_at, lease_expires_at, pinned, demo_mode, created_at
+             pinned, demo_mode, created_at
       FROM internal.projects
       WHERE wallet_address = $1
       ORDER BY created_at DESC
@@ -173,7 +173,6 @@ router.get("/admin/api/wallet/:address", asyncHandler(async (req: Request, res: 
       status: p.status,
       apiCalls: p.api_calls,
       storageMb: Math.round(Number(p.storage_bytes) / 1048576 * 100) / 100,
-      leaseExpiresAt: p.lease_expires_at,
       pinned: p.pinned,
       demoMode: p.demo_mode,
       createdAt: p.created_at,
@@ -406,7 +405,7 @@ function render(d){
   if(d.projects.length===0){
     html+='<div class="empty">No projects</div>';
   } else {
-    html+='<table><tr><th>Name</th><th>ID</th><th>Tier</th><th>Status</th><th>API Calls</th><th>Storage</th><th>Lease Expires</th><th>Created</th></tr>';
+    html+='<table><tr><th>Name</th><th>ID</th><th>Tier</th><th>Status</th><th>API Calls</th><th>Storage</th><th>Created</th></tr>';
     for(var p of d.projects){
       html+='<tr><td><strong>'+esc(p.name)+'</strong>'+(p.pinned?' 📌':'')+(p.demoMode?' <span class="pill pill-blue">demo</span>':'')+'</td>';
       html+='<td class="mono" style="font-size:11px">'+esc(p.id)+'</td>';
@@ -414,7 +413,6 @@ function render(d){
       html+='<td><span class="pill '+pillStatus(p.status)+'">'+esc(p.status)+'</span></td>';
       html+='<td>'+fmt(p.apiCalls)+'</td>';
       html+='<td>'+p.storageMb+' MB</td>';
-      html+='<td>'+relTime(p.leaseExpiresAt)+'</td>';
       html+='<td>'+fmtDate(p.createdAt)+'</td></tr>';
     }
     html+='</table>';

@@ -364,7 +364,7 @@ router.post("/projects/v1/admin/:id/unpin", asyncHandler(async (req: Request, re
   await pool.query(`UPDATE internal.projects SET pinned = false WHERE id = $1`, [project.id]);
   project.pinned = false;
 
-  console.log(`  Project ${project.id} unpinned (normal lease expiry resumes)`);
+  console.log(`  Project ${project.id} unpinned`);
   res.json({ status: "ok", project_id: project.id, pinned: false });
 }));
 
@@ -381,7 +381,6 @@ router.get("/projects/v1/admin/:id/usage", (req: Request, res: Response) => {
     api_calls_limit: limits.apiCalls,
     storage_bytes: project.storageBytes,
     storage_limit_bytes: limits.storageBytes,
-    lease_expires_at: project.leaseExpiresAt.toISOString(),
     status: project.status,
   });
 });

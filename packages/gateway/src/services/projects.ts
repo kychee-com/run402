@@ -5,6 +5,7 @@ import { getLeaseDuration } from "@run402/shared";
 import { allocateSlot } from "./slots.js";
 import type { ProjectInfo, TierName } from "@run402/shared";
 
+
 // In-memory cache with TTL refresh on access
 const cache = new Map<string, ProjectInfo>();
 let lastFullSync = 0;
@@ -31,7 +32,7 @@ export const projectCache = {
 export async function syncProjects(): Promise<void> {
   const result = await pool.query(
     `SELECT id, name, schema_slot, tier, status, api_calls, storage_bytes,
-            lease_started_at, lease_expires_at, tx_hash, wallet_address, pinned, created_at,
+            tx_hash, wallet_address, pinned, created_at,
             demo_mode, demo_config, demo_source_version_id, demo_last_reset_at
      FROM internal.projects WHERE status = 'active'`,
   );
@@ -47,8 +48,6 @@ export async function syncProjects(): Promise<void> {
       serviceKey: "",
       apiCalls: row.api_calls,
       storageBytes: Number(row.storage_bytes),
-      leaseStartedAt: new Date(row.lease_started_at),
-      leaseExpiresAt: new Date(row.lease_expires_at),
       txHash: row.tx_hash,
       walletAddress: row.wallet_address || undefined,
       pinned: row.pinned || false,
@@ -73,7 +72,7 @@ export async function getProjectById(id: string): Promise<ProjectInfo | null> {
 
   const result = await pool.query(
     `SELECT id, name, schema_slot, tier, status, api_calls, storage_bytes,
-            lease_started_at, lease_expires_at, tx_hash, wallet_address, pinned, created_at,
+            tx_hash, wallet_address, pinned, created_at,
             demo_mode, demo_config, demo_source_version_id, demo_last_reset_at
      FROM internal.projects WHERE id = $1`,
     [id],
@@ -92,8 +91,6 @@ export async function getProjectById(id: string): Promise<ProjectInfo | null> {
     serviceKey: "",
     apiCalls: row.api_calls,
     storageBytes: Number(row.storage_bytes),
-    leaseStartedAt: new Date(row.lease_started_at),
-    leaseExpiresAt: new Date(row.lease_expires_at),
     txHash: row.tx_hash,
     walletAddress: row.wallet_address || undefined,
     pinned: row.pinned || false,
@@ -142,11 +139,8 @@ export async function createProject(
 
   const now = new Date();
   const leaseMs = getLeaseDuration(tier);
-  const leaseExpiresAt = new Date(now.getTime() + leaseMs);
   const projectId = `prj_${Date.now()}_${schemaSlot.replace("p", "")}`;
 
-  // Anon key has no expiry — it's a public project identifier (like Supabase).
-  // Lease enforcement happens in apikeyAuth middleware, not in the JWT.
   const anonKey = jwt.sign(
     { role: "anon", project_id: projectId, iss: "agentdb" },
     JWT_SECRET,
@@ -159,9 +153,9 @@ export async function createProject(
 
   await pool.query(
     `INSERT INTO internal.projects
-     (id, name, schema_slot, tier, status, lease_started_at, lease_expires_at, tx_hash, wallet_address)
-     VALUES ($1, $2, $3, $4, 'active', $5, $6, $7, $8)`,
-    [projectId, name, schemaSlot, tier, now.toISOString(), leaseExpiresAt.toISOString(), txHash || null, walletAddress || null],
+     (id, name, schema_slot, tier, status, tx_hash, wallet_address)
+     VALUES ($1, $2, $3, $4, 'active', $5, $6)`,
+    [projectId, name, schemaSlot, tier, txHash || null, walletAddress || null],
   );
 
   const project: ProjectInfo = {
@@ -174,8 +168,6 @@ export async function createProject(
     serviceKey,
     apiCalls: 0,
     storageBytes: 0,
-    leaseStartedAt: now,
-    leaseExpiresAt,
     txHash,
     walletAddress,
     pinned: false,
@@ -240,28 +232,3 @@ export async function archiveProject(projectId: string): Promise<boolean> {
   return true;
 }
 
-/**
- * Renew a project's lease.
- */
-export async function renewLease(projectId: string, tier: TierName): Promise<Date | null> {
-  const project = cache.get(projectId);
-  if (!project) return null;
-
-  const leaseMs = getLeaseDuration(tier);
-  const now = new Date();
-  const newExpiry = new Date(now.getTime() + leaseMs);
-
-  await pool.query(
-    `UPDATE internal.projects
-     SET lease_started_at = $1, lease_expires_at = $2, tier = $3, status = 'active'
-     WHERE id = $4`,
-    [now.toISOString(), newExpiry.toISOString(), tier, projectId],
-  );
-
-  project.leaseStartedAt = now;
-  project.leaseExpiresAt = newExpiry;
-  project.tier = tier;
-  project.status = "active";
-
-  return newExpiry;
-}

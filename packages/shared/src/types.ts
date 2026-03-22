@@ -34,8 +34,6 @@ export interface ProjectInfo {
   serviceKey: string;
   apiCalls: number;
   storageBytes: number;
-  leaseStartedAt: Date;
-  leaseExpiresAt: Date;
   txHash?: string;
   walletAddress?: string;
   pinned: boolean;
@@ -112,7 +110,6 @@ export interface CreateProjectResponse {
   service_key: string;
   schema_slot: string;
   tier: TierName;
-  lease_expires_at: string;
 }
 
 export interface UsageResponse {
@@ -122,7 +119,6 @@ export interface UsageResponse {
   api_calls_limit: number;
   storage_bytes: number;
   storage_limit_bytes: number;
-  lease_expires_at: string;
   status: ProjectStatus;
 }
 

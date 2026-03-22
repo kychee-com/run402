@@ -137,7 +137,7 @@ router.get("/wallets/v1/:address/projects", asyncHandler(async (req: Request, re
   }
 
   const result = await pool.query(
-    `SELECT id, name, tier, status, api_calls, storage_bytes, lease_expires_at, created_at
+    `SELECT id, name, tier, status, api_calls, storage_bytes, created_at
      FROM internal.projects WHERE wallet_address = $1 AND status = 'active'
      ORDER BY created_at DESC`,
     [wallet],
@@ -152,7 +152,6 @@ router.get("/wallets/v1/:address/projects", asyncHandler(async (req: Request, re
       status: r.status,
       api_calls: r.api_calls,
       storage_bytes: Number(r.storage_bytes),
-      lease_expires_at: new Date(r.lease_expires_at).toISOString(),
       created_at: new Date(r.created_at).toISOString(),
     })),
   });

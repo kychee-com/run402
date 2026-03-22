@@ -38,16 +38,6 @@ export function apikeyAuth(req: Request, res: Response, next: NextFunction): voi
     return;
   }
 
-  // Check lease expiry
-  if (project.leaseExpiresAt && new Date() > project.leaseExpiresAt) {
-    res.status(402).json({
-      error: "Lease expired",
-      message: "Your project lease has expired. Renew to continue.",
-      renew_url: `/projects/v1/${project.id}/renew`,
-    });
-    return;
-  }
-
   req.project = project;
   req.tokenPayload = payload;
   next();
@@ -80,16 +70,6 @@ export function serviceKeyAuth(req: Request, res: Response, next: NextFunction):
   const project = projectCache.get(payload.project_id);
   if (!project || project.status !== "active") {
     res.status(404).json({ error: "Project not found or inactive" });
-    return;
-  }
-
-  // Check lease expiry
-  if (project.leaseExpiresAt && new Date() > project.leaseExpiresAt) {
-    res.status(402).json({
-      error: "Lease expired",
-      message: "Your project lease has expired. Renew to continue.",
-      renew_url: `/projects/v1/${project.id}/renew`,
-    });
     return;
   }
 

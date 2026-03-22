@@ -48,8 +48,6 @@ CREATE TABLE internal.projects (
   status TEXT NOT NULL DEFAULT 'active',
   api_calls INTEGER NOT NULL DEFAULT 0,
   storage_bytes BIGINT NOT NULL DEFAULT 0,
-  lease_started_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  lease_expires_at TIMESTAMPTZ NOT NULL DEFAULT now() + interval '7 days',
   tx_hash TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -75,7 +73,6 @@ CREATE TABLE internal.refresh_tokens (
 CREATE INDEX idx_refresh_tokens_user ON internal.refresh_tokens(user_id);
 CREATE INDEX idx_refresh_tokens_project ON internal.refresh_tokens(project_id);
 CREATE INDEX idx_projects_status ON internal.projects(status);
-CREATE INDEX idx_projects_lease ON internal.projects(lease_expires_at) WHERE status = 'active';
 
 -- =============================================================================
 -- 4. Auth schema (helper functions for RLS)

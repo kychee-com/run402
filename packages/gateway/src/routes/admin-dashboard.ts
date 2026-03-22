@@ -191,17 +191,12 @@ router.get("/admin/api/stats", asyncHandler(async (req: Request, res: Response) 
   let totalApiCalls = 0;
   let totalStorageBytes = 0;
   let pinnedCount = 0;
-  const expiringIn7d: string[] = [];
-  const now = Date.now();
 
   for (const p of projects) {
     byTier[p.tier] = (byTier[p.tier] || 0) + 1;
     totalApiCalls += p.apiCalls;
     totalStorageBytes += p.storageBytes;
     if (p.pinned) pinnedCount++;
-    if (p.leaseExpiresAt && p.leaseExpiresAt.getTime() - now < 7 * 86400_000 && !p.pinned) {
-      expiringIn7d.push(p.id);
-    }
   }
 
   // DB-level stats
@@ -267,7 +262,6 @@ router.get("/admin/api/stats", asyncHandler(async (req: Request, res: Response) 
       byStatus: statusCounts,
       byTier,
       pinned: pinnedCount,
-      expiringIn7d: expiringIn7d.length,
     },
     usage: {
       totalApiCalls,

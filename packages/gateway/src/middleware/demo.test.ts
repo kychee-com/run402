@@ -28,8 +28,6 @@ function fakeProject(overrides: Partial<ProjectInfo> = {}): ProjectInfo {
     serviceKey: "",
     apiCalls: 0,
     storageBytes: 0,
-    leaseStartedAt: new Date(),
-    leaseExpiresAt: new Date(Date.now() + 86400000),
     pinned: true,
     createdAt: new Date(),
     demoMode: true,
