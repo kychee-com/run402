@@ -29,18 +29,18 @@ CREATE INDEX idx_users ON __SCHEMA__.users (id);`;
 
 describe("publish — derived min tier computation", () => {
   // We test the logic inline since computeDerivedMinTier is not exported.
-  // The function uses: prototype max 5 functions/250MB, hobby max 25/1GB, team max 100/10GB.
+  // The function uses: prototype max 8 functions/250MB, hobby max 25/1GB, team max 100/10GB.
 
   it("prototype tier for small apps", () => {
     // 3 functions, 10MB site → prototype
-    assert.ok(3 <= 5, "3 functions fits prototype");
+    assert.ok(3 <= 8, "3 functions fits prototype");
     assert.ok(10 * 1024 * 1024 <= 250 * 1024 * 1024, "10MB fits prototype");
   });
 
   it("hobby tier when functions exceed prototype limit", () => {
-    // 6 functions → needs hobby (prototype max is 5)
-    assert.ok(6 > 5, "6 functions exceeds prototype");
-    assert.ok(6 <= 25, "6 functions fits hobby");
+    // 9 functions → needs hobby (prototype max is 8)
+    assert.ok(9 > 8, "9 functions exceeds prototype");
+    assert.ok(9 <= 25, "9 functions fits hobby");
   });
 
   it("team tier when functions exceed hobby limit", () => {

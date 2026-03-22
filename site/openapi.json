@@ -4097,7 +4097,7 @@
               },
               "max_functions": {
                 "type": "integer",
-                "example": 5
+                "example": 8
               },
               "description": {
                 "type": "string"

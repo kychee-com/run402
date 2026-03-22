@@ -1266,7 +1266,7 @@ Deploy is idempotent -- you can call it multiple times on the same project. RLS 
 
 ### Pricing
 
-Free with active tier subscription. No per-deploy charge. Your project's tier determines resource limits: storage, API calls, and functions (Prototype: 5 functions, Hobby: 25, Team: 100).
+Free with active tier subscription. No per-deploy charge. Your project's tier determines resource limits: storage, API calls, and functions (Prototype: 8 functions, Hobby: 25, Team: 100).
 
 ### Info endpoint (free)
 

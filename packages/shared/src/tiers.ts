@@ -7,7 +7,7 @@ export const TIERS: Record<TierName, TierConfig> = {
     leaseDays: 7,
     storageMb: 250,
     apiCalls: 500_000,
-    maxFunctions: 5,
+    maxFunctions: 8,
     functionTimeoutSec: 10,
     functionMemoryMb: 128,
     maxSecrets: 10,
