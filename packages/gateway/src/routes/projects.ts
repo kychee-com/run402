@@ -1,11 +1,13 @@
 import { Router, Request, Response } from "express";
+import jwt from "jsonwebtoken";
 import { TIERS } from "@run402/shared";
-import type { TierName } from "@run402/shared";
-import { createProject, archiveProject } from "../services/projects.js";
+import type { TierName, TokenPayload } from "@run402/shared";
+import { createProject, archiveProject, renewLease, projectCache } from "../services/projects.js";
 import { notifyNewProject } from "../services/telegram.js";
 import { serviceKeyAuth } from "../middleware/apikey.js";
 import { walletAuth } from "../middleware/wallet-auth.js";
 import { asyncHandler, HttpError } from "../utils/async-handler.js";
+import { JWT_SECRET } from "../config.js";
 
 const router = Router();
 
@@ -47,6 +49,47 @@ router.post("/projects/v1", walletAuth(true), asyncHandler(async (req: Request, 
     anon_key: project.anonKey,
     service_key: project.serviceKey,
     schema_slot: project.schemaSlot,
+  });
+}));
+
+// POST /v1/projects/:id/renew — renew project lease (service_key auth, allows expired leases)
+router.post("/projects/v1/:id/renew", asyncHandler(async (req: Request, res: Response) => {
+  // Inline auth — same as serviceKeyAuth but without the lease expiry guard
+  const authHeader = req.headers.authorization;
+  if (!authHeader?.startsWith("Bearer ")) {
+    throw new HttpError(401, "Missing Bearer token");
+  }
+  let payload: TokenPayload;
+  try {
+    payload = jwt.verify(authHeader.slice(7), JWT_SECRET) as TokenPayload;
+  } catch {
+    throw new HttpError(401, "Invalid token");
+  }
+  if (payload.role !== "service_role") {
+    throw new HttpError(403, "Requires service_role key");
+  }
+
+  const projectId = req.params["id"] as string;
+  if (payload.project_id !== projectId) {
+    throw new HttpError(403, "Service key does not match project");
+  }
+
+  const project = projectCache.get(projectId);
+  if (!project || project.status === "archived" || project.status === "deleted") {
+    throw new HttpError(404, "Project not found or already archived");
+  }
+
+  const newExpiry = await renewLease(projectId, project.tier);
+  if (!newExpiry) {
+    throw new HttpError(404, "Project not found");
+  }
+
+  console.log(`  Renewed lease: ${projectId} (tier: ${project.tier}, expires: ${newExpiry.toISOString()})`);
+  res.json({
+    status: "renewed",
+    project_id: projectId,
+    tier: project.tier,
+    lease_expires_at: newExpiry.toISOString(),
   });
 }));
 
