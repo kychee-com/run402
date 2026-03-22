@@ -129,8 +129,11 @@ async function adminOrServiceKeyAuth(req: Request, res: Response, next: NextFunc
   const wallet = await tryAdminSiwx(req);
   if (wallet) {
     req.walletAddress = wallet;
-    // Load project into req.project for downstream handlers
-    const projectId = req.params.id as string | undefined;
+    // Load project into req.project for downstream handlers.
+    // req.params.id is not available here (middleware runs before route matching),
+    // so extract the project ID from the URL path directly.
+    const match = req.originalUrl.match(/\/projects\/v1\/admin\/(prj_[^/]+)/);
+    const projectId = match?.[1];
     if (projectId) {
       const project = await getProjectById(projectId);
       if (!project || project.status !== "active") {
