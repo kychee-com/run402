@@ -46,6 +46,11 @@ ALL_NUMS = {
 }
 
 
+def _fuzzy_pattern(word: str) -> str:
+    """Build regex that allows optional extra vowels between each char of word."""
+    return "[aeiou]?".join(re.escape(c) for c in collapse(word))
+
+
 def _extract_numbers(aj: str) -> list[int]:
     ct = {collapse(k): v for k, v in TENS.items()}
     co = {collapse(k): v for k, v in ONES.items()}
@@ -54,49 +59,51 @@ def _extract_numbers(aj: str) -> list[int]:
     found: list[tuple[int, int]] = []
     used: set[int] = set()
 
-    # Pass 1: tens+ones compounds
+    def _find_all(pattern: str, text: str, pos: int = 0):
+        """Yield (start, end) for all non-overlapping regex matches."""
+        for m in re.finditer(pattern, text[pos:]):
+            yield (pos + m.start(), pos + m.end())
+
+    # Pass 1: tens+ones compounds (with fuzzy matching)
     for tw, tv in sorted(ct.items(), key=lambda x: -len(x[0])):
-        pos = 0
-        while True:
-            idx = aj.find(tw, pos)
-            if idx < 0:
-                break
-            after = idx + len(tw)
+        pat = _fuzzy_pattern(list(TENS.keys())[list(TENS.values()).index(tv)])
+        for idx, after in _find_all(pat, aj):
+            if any(p in used for p in range(idx, after)):
+                continue
             matched = False
             for ow, ov in sorted(co.items(), key=lambda x: -len(x[0])):
-                if aj[after : after + len(ow)] == ow:
+                opat = _fuzzy_pattern(list(ONES.keys())[list(ONES.values()).index(ov)])
+                m = re.match(opat, aj[after:])
+                if m:
+                    end = after + m.end()
                     found.append((idx, tv + ov))
-                    used.update(range(idx, after + len(ow)))
+                    used.update(range(idx, end))
                     matched = True
                     break
             if not matched:
                 found.append((idx, tv))
                 used.update(range(idx, after))
-            pos = after
 
-    # Pass 2: standalone with false-positive filtering
+    # Pass 2: standalone with false-positive filtering (with fuzzy matching)
     for w, v in sorted(ca.items(), key=lambda x: -len(x[0])):
-        pos = 0
-        while True:
-            idx = aj.find(w, pos)
-            if idx < 0:
-                break
-            end = idx + len(w)
-            if not any(p in used for p in range(idx, end)):
-                is_fp = False
-                if w in FALSE_POSITIVES:
-                    for fpw in FALSE_POSITIVES[w]:
-                        fc = collapse(fpw)
-                        for fs in range(max(0, idx - len(fc) + 1), idx + 1):
-                            if aj[fs : fs + len(fc)] == fc:
-                                is_fp = True
-                                break
-                        if is_fp:
+        orig_word = [k for k, val in ALL_NUMS.items() if val == v][0]
+        pat = _fuzzy_pattern(orig_word)
+        for idx, end in _find_all(pat, aj):
+            if any(p in used for p in range(idx, end)):
+                continue
+            is_fp = False
+            if w in FALSE_POSITIVES:
+                for fpw in FALSE_POSITIVES[w]:
+                    fc = collapse(fpw)
+                    for fs in range(max(0, idx - len(fc) + 1), idx + 1):
+                        if aj[fs : fs + len(fc)] == fc:
+                            is_fp = True
                             break
-                if not is_fp:
-                    found.append((idx, v))
-                    used.update(range(idx, end))
-            pos = end
+                    if is_fp:
+                        break
+            if not is_fp:
+                found.append((idx, v))
+                used.update(range(idx, end))
 
     found.sort()
     return [v for _, v in found]
