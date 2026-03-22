@@ -276,19 +276,19 @@ router.post("/projects/v1/admin/:id/rls", asyncHandler(async (req: Request, res:
         const ownerColumn = table.owner_column;
         await client.query(`
           CREATE POLICY "Users can view own rows" ON ${tableName}
-            FOR SELECT USING (${ownerColumn} = auth.uid())
+            FOR SELECT USING (${ownerColumn} = auth.uid()::text)
         `);
         await client.query(`
           CREATE POLICY "Users can insert own rows" ON ${tableName}
-            FOR INSERT WITH CHECK (${ownerColumn} = auth.uid())
+            FOR INSERT WITH CHECK (${ownerColumn} = auth.uid()::text)
         `);
         await client.query(`
           CREATE POLICY "Users can update own rows" ON ${tableName}
-            FOR UPDATE USING (${ownerColumn} = auth.uid())
+            FOR UPDATE USING (${ownerColumn} = auth.uid()::text)
         `);
         await client.query(`
           CREATE POLICY "Users can delete own rows" ON ${tableName}
-            FOR DELETE USING (${ownerColumn} = auth.uid())
+            FOR DELETE USING (${ownerColumn} = auth.uid()::text)
         `);
       } else if (template === "public_read") {
         await client.query(`

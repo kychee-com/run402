@@ -43,10 +43,50 @@ mock.module("../middleware/apikey.js", {
   },
 });
 
-// Mock config
+// Mock config — must provide all exports transitively imported by admin.ts
 mock.module("../config.js", {
   namedExports: {
     ADMIN_KEY: "test-admin-key",
+    MAX_SCHEMA_SLOTS: 2000,
+    JWT_SECRET: "test-jwt-secret",
+    POSTGREST_URL: "http://localhost:3000",
+    S3_BUCKET: "",
+    S3_REGION: "us-east-1",
+    LAMBDA_ROLE_ARN: "",
+    LAMBDA_LAYER_ARN: "",
+    LAMBDA_SUBNET_IDS: "",
+    LAMBDA_SG_ID: "",
+    FUNCTIONS_LOG_GROUP: "/test/functions",
+    BUGSNAG_API_KEY: "",
+    SELLER_ADDRESS: "",
+    CDP_API_KEY_ID: "",
+    CDP_API_KEY_SECRET: "",
+    STRIPE_SECRET_KEY: "",
+    STRIPE_PUBLISHABLE_KEY: "",
+    FACILITATOR_PROVIDER: "cdp",
+    FACILITATOR_URL: "",
+    TESTNET_FACILITATOR_URL: "",
+    MAINNET_NETWORK: "eip155:8453",
+    TESTNET_NETWORK: "eip155:84532",
+    PORT: 4022,
+    RATE_LIMIT_PER_SEC: 100,
+    METERING_FLUSH_INTERVAL: 60000,
+    FAUCET_TREASURY_KEY: "",
+    FAUCET_DRIP_AMOUNT: "0.25",
+    FAUCET_DRIP_COOLDOWN: 86400000,
+    FAUCET_REFILL_INTERVAL: 8640000,
+    TELEGRAM_BOT_TOKEN: "",
+    TELEGRAM_CHAT_ID: "",
+    OPENROUTER_API_KEY: "",
+    STRIPE_WEBHOOK_SECRET: "",
+    STRIPE_WEBHOOK_SECRET_LIVE: "",
+    GOOGLE_CLIENT_ID: "",
+    GOOGLE_CLIENT_SECRET: "",
+    ADMIN_SESSION_SECRET: "",
+    MPP_SECRET_KEY: "",
+    GOOGLE_APP_CLIENT_ID: "",
+    GOOGLE_APP_CLIENT_SECRET: "",
+    PUBLIC_API_URL: "http://localhost:4022",
   },
 });
 
@@ -74,6 +114,7 @@ function findHandler(method: string, path: string): any {
 }
 
 const sqlHandler = findHandler("post", "/projects/v1/admin/:id/sql");
+const rlsHandler = findHandler("post", "/projects/v1/admin/:id/rls");
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function fakeReq(overrides: Record<string, any> = {}) {
@@ -336,5 +377,53 @@ describe("POST /projects/v1/admin/:id/sql", () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     assert.equal((err as any).statusCode, 403);
     assert.ok(err!.message.includes("Blocked SQL pattern"));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// RLS endpoint tests
+// ---------------------------------------------------------------------------
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function callRlsHandler(req: any): Promise<{ res: Record<string, any>; err?: Error }> {
+  return new Promise((resolve) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const res: Record<string, any> = {
+      _status: 200,
+      _body: null,
+      status(code: number) { res._status = code; return res; },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      json(obj: any) { res._body = obj; resolve({ res }); return res; },
+    };
+    rlsHandler(req, res, (err?: Error) => resolve({ res, err }));
+  });
+}
+
+describe("POST /projects/v1/admin/:id/rls — user_owns_rows", () => {
+  beforeEach(() => {
+    mockClientQueries = [];
+    clientQueryLog = [];
+    clientReleased = false;
+  });
+
+  it("casts auth.uid() to TEXT so owner_column can be text or uuid", async () => {
+    const req = fakeReq({
+      body: {
+        template: "user_owns_rows",
+        tables: [{ table: "tasks", owner_column: "user_id" }],
+      },
+    });
+    const { err } = await callRlsHandler(req);
+    assert.equal(err, undefined, "no error");
+
+    // Every policy that references auth.uid() must cast it to ::text
+    const policySql = clientQueryLog.filter((q) => q.includes("auth.uid()"));
+    assert.equal(policySql.length, 4, "should have 4 policies referencing auth.uid()");
+    for (const sql of policySql) {
+      assert.ok(
+        sql.includes("auth.uid()::text"),
+        `policy should cast auth.uid() to text, got: ${sql.trim()}`,
+      );
+    }
   });
 });
