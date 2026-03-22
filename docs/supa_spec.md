@@ -228,7 +228,7 @@ Authorization: Bearer <service_key>
 }
 ```
 
-Auth is always available — no enable step needed. RLS generates standard policies: `owner_column = auth.uid()` for SELECT, INSERT, UPDATE, DELETE.
+Auth is always available — no enable step needed. RLS generates standard policies: `owner_column::text = auth.uid()::text` for SELECT, INSERT, UPDATE, DELETE.
 
 ### Step 5: Agent builds frontend — no backend code needed
 

@@ -335,7 +335,7 @@ curl -X POST https://api.run402.com/projects/v1/admin/$PROJECT_ID/sql \
 
 Three templates:
 
-**`user_owns_rows`** -- Users access only rows where `owner_column = auth.uid()`. Best for user-scoped data.
+**`user_owns_rows`** -- Users access only rows where `owner_column::text = auth.uid()::text`. Best for user-scoped data.
 ```bash
 curl -X POST https://api.run402.com/projects/v1/admin/$PROJECT_ID/rls \
   -H "Authorization: Bearer $SERVICE_KEY" \

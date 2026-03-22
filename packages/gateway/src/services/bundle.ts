@@ -337,10 +337,10 @@ async function applyRls(
 
       if (template === "user_owns_rows") {
         const col = table.owner_column!;
-        await client.query(`CREATE POLICY "Users can view own rows" ON ${tableName} FOR SELECT USING (${col} = auth.uid())`);
-        await client.query(`CREATE POLICY "Users can insert own rows" ON ${tableName} FOR INSERT WITH CHECK (${col} = auth.uid())`);
-        await client.query(`CREATE POLICY "Users can update own rows" ON ${tableName} FOR UPDATE USING (${col} = auth.uid())`);
-        await client.query(`CREATE POLICY "Users can delete own rows" ON ${tableName} FOR DELETE USING (${col} = auth.uid())`);
+        await client.query(`CREATE POLICY "Users can view own rows" ON ${tableName} FOR SELECT USING (${col}::text = auth.uid()::text)`);
+        await client.query(`CREATE POLICY "Users can insert own rows" ON ${tableName} FOR INSERT WITH CHECK (${col}::text = auth.uid()::text)`);
+        await client.query(`CREATE POLICY "Users can update own rows" ON ${tableName} FOR UPDATE USING (${col}::text = auth.uid()::text)`);
+        await client.query(`CREATE POLICY "Users can delete own rows" ON ${tableName} FOR DELETE USING (${col}::text = auth.uid()::text)`);
       } else if (template === "public_read") {
         await client.query(`CREATE POLICY "Anyone can read" ON ${tableName} FOR SELECT USING (true)`);
         await client.query(`CREATE POLICY "Authenticated users can insert" ON ${tableName} FOR INSERT WITH CHECK (auth.role() = 'authenticated')`);
