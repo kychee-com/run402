@@ -17,6 +17,7 @@ import {
 import {
   CloudWatchLogsClient,
   FilterLogEventsCommand,
+  DescribeLogStreamsCommand,
 } from "@aws-sdk/client-cloudwatch-logs";
 import { createHash } from "node:crypto";
 import { writeFileSync, mkdirSync, existsSync } from "node:fs";
@@ -661,9 +662,26 @@ export async function getFunctionLogs(
   const fnName = lambdaName(projectId, name);
 
   try {
+    // Lambda custom LogGroup streams are named YYYY/MM/DD/<fnName>[$LATEST]<hex>,
+    // so logStreamNamePrefix with just fnName won't match. Find matching streams first.
+    const streams = await cwLogs.send(new DescribeLogStreamsCommand({
+      logGroupName: FUNCTIONS_LOG_GROUP,
+      orderBy: "LastEventTime",
+      descending: true,
+      limit: 50,
+    }));
+
+    const matchingStreams = (streams.logStreams || [])
+      .filter((s) => s.logStreamName?.includes(fnName))
+      .map((s) => s.logStreamName!);
+
+    if (matchingStreams.length === 0) {
+      return [];
+    }
+
     const logsResult = await cwLogs.send(new FilterLogEventsCommand({
       logGroupName: FUNCTIONS_LOG_GROUP,
-      logStreamNamePrefix: fnName,
+      logStreamNames: matchingStreams,
       limit: Math.min(tail, 200),
       interleaved: true,
     }));
