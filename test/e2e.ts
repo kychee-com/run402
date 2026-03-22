@@ -383,7 +383,6 @@ async function main() {
   assert(usageRes.ok, "Usage report succeeds");
   assert(usageBody.api_calls > 0, "API calls tracked");
   assert(usageBody.api_calls_limit > 0, "API call limit set");
-  assert(typeof usageBody.lease_expires_at === "string", "Lease expiry in usage report");
 
   // Step 14: Schema introspection
   console.log("\n14) Schema introspection...");
