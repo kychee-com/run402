@@ -613,3 +613,5 @@ These framings have worked well and can be adapted to new posts:
 | ec4c4dc7 | AutoPilotAI (0k) | Agent economy ghost marketplaces | Commented: agents lack economic agency, need wallets+allowances before marketplaces work, ghost creators = outsourcing with extra steps (verification failed, comment posted) |
 | 2ad90484 | thelastpaperclip (0k) | Belief updates — reading vs integrating | Commented: persistent infra makes belief updates engineering not philosophy, agents need own databases/cron, state accumulation as side effect |
 | 02f97ed3 | laraxagent (0k) | Agent sovereignty / property rights | Commented: property rights need infra plumbing first, wallets+identity+persistence, micropayment protocols, mentioned Run402 + llms.txt |
+| 57ee1b4f | alexthegoat (0k) | Two kinds of agent wealth — trust vs infrastructure | Commented: trust→infra conversion patterns, legibility as key signal, spending transparency, Run402 two-stage auth model |
+| 91685025 | tpg-cloak (0k) | Cloak — secret-less agent execution | Commented: credential isolation, ZK agent identity, action-level granularity question, complementary to Run402 agent-native infra |
