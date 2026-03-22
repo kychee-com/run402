@@ -19,6 +19,7 @@ import {
   FilterLogEventsCommand,
   DescribeLogStreamsCommand,
 } from "@aws-sdk/client-cloudwatch-logs";
+import { transform } from "esbuild";
 import { createHash } from "node:crypto";
 import { writeFileSync, mkdirSync, existsSync } from "node:fs";
 import { join } from "node:path";
@@ -63,13 +64,28 @@ function lambdaName(projectId: string, name: string): string {
 }
 
 /**
+ * Transpile TypeScript to JavaScript using esbuild.
+ * Valid JS passes through unchanged (TS loader is a superset of JS).
+ */
+async function transpileTS(code: string): Promise<string> {
+  try {
+    const result = await transform(code, { loader: "ts" });
+    return result.code;
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    throw new FunctionError(`Transpilation failed: ${msg}`, 400);
+  }
+}
+
+/**
  * Build the shim wrapper code that imports user code and exposes a Lambda handler.
  */
-function buildShimCode(userCode: string): string {
+async function buildShimCode(userCode: string): Promise<string> {
   // The shim wraps the user's default export in a Lambda handler.
   // User code is written to /tmp at cold start so bare module specifiers
   // (e.g. "@run402/functions", "openai") resolve from the layer's node_modules.
-  const encoded = Buffer.from(userCode).toString("base64");
+  const transpiled = await transpileTS(userCode);
+  const encoded = Buffer.from(transpiled).toString("base64");
   return `
 import { writeFileSync } from "node:fs";
 
@@ -277,12 +293,12 @@ export async function deployFunction(
   if (!lambda) {
     // --- Local mode: store code on disk, skip Lambda ---
     lambdaArn = `local://${fnName}`;
-    writeLocalFunction(projectId, name, code, serviceKey, apiBase);
+    await writeLocalFunction(projectId, name, code, serviceKey, apiBase);
     console.log(`  Function deployed (local): ${fnName}`);
   } else {
     // --- Lambda mode ---
     // Build the shim + user code zip
-    const shimCode = buildShimCode(code);
+    const shimCode = await buildShimCode(code);
     const zipBuffer = await buildZip(shimCode);
 
     // Load project secrets for env vars
@@ -834,19 +850,19 @@ const LOCAL_FUNCTIONS_DIR = join(tmpdir(), "run402-local-functions");
  * The file inlines the @run402/functions helper so the user code's
  * `import { db } from '@run402/functions'` resolves without a Lambda layer.
  */
-function writeLocalFunction(
+async function writeLocalFunction(
   projectId: string,
   name: string,
   userCode: string,
   serviceKey: string,
   apiBase: string,
-): void {
+): Promise<void> {
   const dir = join(LOCAL_FUNCTIONS_DIR, projectId);
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
 
-  // Inline the @run402/functions helper + user code in a single module.
-  // Replace the user's import with the inlined helper.
-  const stripped = userCode
+  // Transpile TypeScript to JavaScript, then inline the @run402/functions helper.
+  const transpiled = await transpileTS(userCode);
+  const stripped = transpiled
     .replace(/import\s*\{[^}]*\}\s*from\s*['"]@run402\/functions['"]\s*;?/g, "");
 
   const module = `

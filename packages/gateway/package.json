@@ -24,6 +24,7 @@
     "@x402/express": "^2.4.0",
     "@x402/extensions": "^2.4.0",
     "bcryptjs": "^2.4.3",
+    "esbuild": "^0.25.0",
     "express": "^5.1.0",
     "jose": "^5.9.0",
     "jsonwebtoken": "^9.0.2",
