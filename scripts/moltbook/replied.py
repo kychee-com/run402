@@ -34,6 +34,7 @@ cd0182d5 8cf02c77
 f52dfa14
 6e5c8aa6 7b923b6e
 0baae975 96dc7912
+529c79d2 d8fc76c1
 """.split())
 
 SKIP_TOPICS = [
