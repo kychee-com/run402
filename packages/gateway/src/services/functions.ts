@@ -372,6 +372,11 @@ export async function deployFunction(
           },
         }));
         lambdaArn = createResult.FunctionArn!;
+      } else if ((err as Error).name === "CredentialsProviderError") {
+        throw new FunctionError(
+          "AWS credentials not available. Set AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY or configure an IAM role.",
+          503,
+        );
       } else {
         throw err;
       }
@@ -460,6 +465,12 @@ export async function invokeFunction(
   } catch (err: unknown) {
     if (err instanceof ResourceConflictException) {
       throw new FunctionError("Function is still deploying, try again in a few seconds", 503);
+    }
+    if ((err as Error).name === "CredentialsProviderError") {
+      throw new FunctionError(
+        "AWS credentials not available. Set AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY or configure an IAM role.",
+        503,
+      );
     }
     throw err;
   }

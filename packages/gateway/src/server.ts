@@ -12,7 +12,7 @@ import BugsnagPluginExpress from "@bugsnag/plugin-express";
 import express, { Request, Response, NextFunction, ErrorRequestHandler } from "express";
 import { errorMessage } from "./utils/errors.js";
 import { HttpError } from "./utils/async-handler.js";
-import { PORT, POSTGREST_URL, SELLER_ADDRESS, MAINNET_NETWORK, TESTNET_NETWORK, TESTNET_FACILITATOR_URL, CDP_API_KEY_ID, RATE_LIMIT_PER_SEC, FAUCET_TREASURY_KEY, FACILITATOR_PROVIDER, BUGSNAG_API_KEY, S3_BUCKET, S3_REGION } from "./config.js";
+import { PORT, POSTGREST_URL, SELLER_ADDRESS, MAINNET_NETWORK, TESTNET_NETWORK, TESTNET_FACILITATOR_URL, CDP_API_KEY_ID, RATE_LIMIT_PER_SEC, FAUCET_TREASURY_KEY, FACILITATOR_PROVIDER, BUGSNAG_API_KEY, S3_BUCKET, S3_REGION, LAMBDA_ROLE_ARN } from "./config.js";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
@@ -227,7 +227,14 @@ app.post("/generate-image/v1", idempotencyMiddleware);
 
 // --- x402 payment middleware ---
 if (SELLER_ADDRESS) {
-  app.use(await initPaymentMiddlewareWithRetry());
+  try {
+    app.use(await initPaymentMiddlewareWithRetry());
+  } catch (err) {
+    console.error("\nx402 payment middleware failed to initialize.");
+    console.error("  Cause:", (err as Error).message);
+    console.error("  Fix: set SELLER_ADDRESS + CDP_API_KEY_ID + CDP_API_KEY_SECRET (or unset SELLER_ADDRESS to disable x402)\n");
+    process.exit(1);
+  }
 }
 
 // --- OpenAPI discovery (canonical) ---
@@ -1062,6 +1069,7 @@ async function start() {
     console.log(`  Networks:       ${MAINNET_NETWORK} (mainnet), ${TESTNET_NETWORK} (testnet)`);
     console.log(`  Facilitator:    ${FACILITATOR_PROVIDER}${FACILITATOR_PROVIDER === "stripe" ? "" : (CDP_API_KEY_ID ? "" : " — NO KEY, x402 will fail")}`);
     console.log(`  PostgREST:      ${POSTGREST_URL}`);
+    console.log(`  Functions:      ${LAMBDA_ROLE_ARN ? "Lambda" : "local (no LAMBDA_ROLE_ARN — functions run in-process)"}`);
     console.log(`  Rate limit:     ${RATE_LIMIT_PER_SEC} req/sec per project`);
     console.log(`  Faucet:         ${FAUCET_TREASURY_KEY ? "enabled" : "disabled (no FAUCET_TREASURY_KEY)"}`);
     console.log(`\nReady for requests.\n`);
