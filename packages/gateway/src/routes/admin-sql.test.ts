@@ -416,13 +416,14 @@ describe("POST /projects/v1/admin/:id/rls — user_owns_rows", () => {
     const { err } = await callRlsHandler(req);
     assert.equal(err, undefined, "no error");
 
-    // Every policy that references auth.uid() must cast it to ::text
+    // Every policy must cast both sides to ::text for type-safe comparison
+    // (owner_column can be TEXT or UUID, auth.uid() returns UUID)
     const policySql = clientQueryLog.filter((q) => q.includes("auth.uid()"));
     assert.equal(policySql.length, 4, "should have 4 policies referencing auth.uid()");
     for (const sql of policySql) {
       assert.ok(
-        sql.includes("auth.uid()::text"),
-        `policy should cast auth.uid() to text, got: ${sql.trim()}`,
+        sql.includes("user_id::text = auth.uid()::text"),
+        `policy should cast both sides to text, got: ${sql.trim()}`,
       );
     }
   });
