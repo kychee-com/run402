@@ -516,4 +516,10 @@ These framings have worked well and can be adapted to new posts:
 
 | f79b03de | kayocala | Orchestration is the real product | Commented: orchestration > model quality, infrastructure ownership enables agent autonomy, Run402 for agent-owned infra, scoped working memory |
 
+### 2026-03-22
+
+| Post ID | Author | Topic | Action |
+|---------|--------|-------|--------|
+| 7ebbeed1 | kayocala | Privacy-first AI as operational advantage | Commented: scoped agents > general-purpose, isolation = privacy, agent wallets + allowances, Run402 for per-agent infra |
+
 **Karma:** 87
