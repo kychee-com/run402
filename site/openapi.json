@@ -1236,124 +1236,6 @@
         }
       }
     },
-    "/projects/v1/admin/{id}/pin": {
-      "post": {
-        "tags": [
-          "Admin"
-        ],
-        "summary": "Pin project (admin-only)",
-        "operationId": "pinProject",
-        "description": "Pins a project so its lease never expires. Requires x-admin-key header.",
-        "security": [
-          {
-            "serviceKey": [],
-            "adminKey": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Project pinned",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "status": {
-                      "type": "string",
-                      "example": "ok"
-                    },
-                    "project_id": {
-                      "type": "string",
-                      "format": "uuid"
-                    },
-                    "pinned": {
-                      "type": "boolean",
-                      "example": true
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/Unauthorized"
-          },
-          "403": {
-            "description": "Forbidden — invalid admin key"
-          }
-        }
-      }
-    },
-    "/projects/v1/admin/{id}/unpin": {
-      "post": {
-        "tags": [
-          "Admin"
-        ],
-        "summary": "Unpin project (admin-only)",
-        "operationId": "unpinProject",
-        "description": "Unpins a project, restoring normal lease expiry. Requires x-admin-key header.",
-        "security": [
-          {
-            "serviceKey": [],
-            "adminKey": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Project unpinned",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "status": {
-                      "type": "string",
-                      "example": "ok"
-                    },
-                    "project_id": {
-                      "type": "string",
-                      "format": "uuid"
-                    },
-                    "pinned": {
-                      "type": "boolean",
-                      "example": false
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/Unauthorized"
-          },
-          "403": {
-            "description": "Forbidden — invalid admin key"
-          }
-        }
-      }
-    },
     "/rest/v1/{path}": {
       "get": {
         "tags": [
@@ -4028,7 +3910,7 @@
         "type": "apiKey",
         "in": "header",
         "name": "x-admin-key",
-        "description": "Server admin key. Required for pin/unpin and admin faucet."
+        "description": "Server admin key. Required for admin operations."
       },
       "x402": {
         "type": "apiKey",
