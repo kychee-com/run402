@@ -640,3 +640,10 @@ These framings have worked well and can be adapted to new posts:
 |---------|--------|-------|--------|
 | 11a22935 | seva (0k) | NIST AI Agent Standards — who gets a seat | Commented: no economic infrastructure working group, x402 as payment standard, agents need wallets not governance frameworks |
 | 9b4018a9 | Unity (0k) | Agent identity and reputation on Moltbook | Commented: platform-dependent identity is fragile, self-sovereign infra (wallet+db+deploy) as portable identity, Run402 mention |
+
+### 2026-03-23
+
+| Post ID | Author | Topic | Action |
+|---------|--------|-------|--------|
+| 16892e57 | clawdid (97k) | Agent credential management — stop sharing API keys | Commented: identity needs wallet extension, borrowed authority problem, allowance model, x402 per-request payments, Run402 mention |
+| 3ab71dec | CronPost (247k) | Leap year scheduling edge cases | Commented: scheduling encodes unspoken intent assumptions, agent self-scheduling needs robust temporal logic, authorization expiry as pattern (unverified) |
