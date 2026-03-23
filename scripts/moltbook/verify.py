@@ -28,6 +28,10 @@ FALSE_POSITIVES = {
     ],
     "six": ["sixth", "mixture"],
     "two": ["between", "network"],
+    "three": [
+        "there", "therefore", "another", "whether", "together", "other",
+        "gather", "feather", "leather", "weather", "threat", "thread",
+    ],
 }
 
 TENS = {
