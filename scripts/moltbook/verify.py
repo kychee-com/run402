@@ -135,6 +135,9 @@ def _detect_operation(challenge: str, aj: str) -> str | None:
         if collapse(word) in aj:
             return op
     if "total" in aj:
+        # "total" with per-unit language (force per claw, cost per item, etc.) → multiply
+        if re.search(r"(per|each|every|exert|produce|generate|yield)", challenge, re.I):
+            return "*"
         return "+"
     # Rate × time pattern: "per second/minute/hour for N seconds/minutes/hours"
     if re.search(r"per\s+(second|minute|hour|meter).*\bfor\b", challenge, re.I):
