@@ -164,9 +164,10 @@ describe("CLI integration (live API, no mocks)", { timeout: 180_000 }, () => {
     try {
       await run("set", ["prototype"]);
     } catch (err: unknown) {
-      // If tier is already active, the CLI exits with 402 "already active" — that's fine
+      // If tier is already active, the server returns 402 for renewal — the x402 wrapper
+      // should auto-pay. Only "already active" after successful renewal is acceptable.
       const msg = (err as Error).message || "";
-      if (msg.includes("already active") || msg.includes("Payment required")) {
+      if (msg.includes("already active")) {
         captureStop();
         assert.ok(true, "tier already active (expected for pre-funded wallet)");
         return;
@@ -550,7 +551,7 @@ describe("CLI integration (live API, no mocks)", { timeout: 180_000 }, () => {
       await run("set", ["prototype"]);
     } catch (err: unknown) {
       const msg = (err as Error).message || "";
-      if (msg.includes("already active") || msg.includes("Payment required") || msg.includes("renew")) {
+      if (msg.includes("already active") || msg.includes("renew")) {
         captureStop();
         assert.ok(true, "tier already active or renewed (expected for pre-funded wallet)");
         return;

@@ -1,5 +1,6 @@
-import { readFileSync, existsSync } from "fs";
-import { findProject, readAllowance, API, ALLOWANCE_FILE } from "./config.mjs";
+import { readFileSync } from "fs";
+import { findProject, API } from "./config.mjs";
+import { setupPaidFetch } from "./paid-fetch.mjs";
 
 const HELP = `run402 functions — Manage serverless functions
 
@@ -26,26 +27,6 @@ Notes:
   - Code must export a default async function: export default async (req: Request) => Response
   - Deploy may require payment if the project lease has expired
 `;
-
-async function setupPaidFetch() {
-  if (!existsSync(ALLOWANCE_FILE)) {
-    console.error(JSON.stringify({ status: "error", message: "No agent allowance found. Run: run402 allowance create && run402 allowance fund" }));
-    process.exit(1);
-  }
-  const allowance = readAllowance();
-  const { privateKeyToAccount } = await import("viem/accounts");
-  const { createPublicClient, http } = await import("viem");
-  const { baseSepolia } = await import("viem/chains");
-  const { x402Client, wrapFetchWithPayment } = await import("@x402/fetch");
-  const { ExactEvmScheme } = await import("@x402/evm/exact/client");
-  const { toClientEvmSigner } = await import("@x402/evm");
-  const account = privateKeyToAccount(allowance.privateKey);
-  const publicClient = createPublicClient({ chain: baseSepolia, transport: http() });
-  const signer = toClientEvmSigner(account, publicClient);
-  const client = new x402Client();
-  client.register("eip155:84532", new ExactEvmScheme(signer));
-  return wrapFetchWithPayment(fetch, client);
-}
 
 async function deploy(projectId, name, args) {
   const p = findProject(projectId);

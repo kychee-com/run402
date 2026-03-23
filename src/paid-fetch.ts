@@ -3,6 +3,7 @@
  * (x402 vs mpp), returns a wrapped fetch that intercepts 402 responses,
  * signs payment, and retries automatically.
  *
+ * Checks on-chain balances at setup time and selects funded networks.
  * Returns null when no allowance is configured or payment libraries are
  * unavailable (graceful degradation).
  */
@@ -12,6 +13,24 @@ import { apiRequest } from "./client.js";
 import type { ApiResponse, ApiRequestOptions } from "./client.js";
 
 type FetchFn = typeof globalThis.fetch;
+
+const USDC_ABI = [{ name: "balanceOf", type: "function", stateMutability: "view", inputs: [{ name: "account", type: "address" }], outputs: [{ name: "", type: "uint256" }] }] as const;
+const USDC_MAINNET = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
+const USDC_SEPOLIA = "0x036CbD53842c5426634e7929541eC2318f3dCF7e";
+
+async function checkBalance(publicClient: any, tokenAddress: string, walletAddress: string): Promise<number> {
+  try {
+    const raw = await publicClient.readContract({
+      address: tokenAddress,
+      abi: USDC_ABI,
+      functionName: "balanceOf",
+      args: [walletAddress],
+    });
+    return Number(raw);
+  } catch {
+    return 0;
+  }
+}
 
 /**
  * Create a payment-wrapping fetch function from the local allowance.
@@ -47,9 +66,27 @@ export async function setupPaidFetch(): Promise<FetchFn | null> {
     const mainnetClient = createPublicClient({ chain: base, transport: http() });
     const sepoliaClient = createPublicClient({ chain: baseSepolia, transport: http() });
 
+    // Check balances in parallel
+    const [mainnetBalance, sepoliaBalance] = await Promise.all([
+      checkBalance(mainnetClient, USDC_MAINNET, allowance.address),
+      checkBalance(sepoliaClient, USDC_SEPOLIA, allowance.address),
+    ]);
+
     const client = new x402Client();
     client.register("eip155:8453", new ExactEvmScheme(toClientEvmSigner(account, mainnetClient)));
     client.register("eip155:84532", new ExactEvmScheme(toClientEvmSigner(account, sepoliaClient)));
+
+    // Policy: only allow networks where the wallet has funds
+    if (mainnetBalance > 0 || sepoliaBalance > 0) {
+      client.registerPolicy((_version: number, reqs: any[]) => {
+        const funded = reqs.filter((r: any) => {
+          if (r.network === "eip155:8453") return mainnetBalance > 0;
+          if (r.network === "eip155:84532") return sepoliaBalance > 0;
+          return false;
+        });
+        return funded.length > 0 ? funded : reqs;
+      });
+    }
 
     return wrapFetchWithPayment(fetch, client) as FetchFn;
   } catch {
