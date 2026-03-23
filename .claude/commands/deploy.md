@@ -31,6 +31,14 @@ Run all of these simultaneously:
 
 If any fail, stop and fix the issues before proceeding. Do NOT skip failures.
 
+6. **Breaking change check**: Scan the diff for changes that affect downstream consumers:
+   - **Route changes** (new/renamed/deleted endpoints, changed HTTP methods, changed request/response shapes) → flag as breaking for MCP server (`kychee-com/run402-mcp`, separate repo) and CLI (`run402` npm package)
+   - **`site/openapi.json` or `site/llms.txt`** not updated to match route changes → flag as docs drift
+   - **`@run402/functions` helper changes** (`packages/functions-runtime/**` or the inlined helper in `functions.ts`) → flag as breaking for deployed user functions (existing Lambda functions use the OLD layer until redeployed by the user)
+   - **`packages/shared/**` type/interface changes** → flag as breaking for MCP server (it imports `@run402/shared`)
+
+   For each breaking change found, report: what changed, what downstream consumers are affected, and what needs to be updated (with repo/file pointers). Do NOT silently deploy breaking changes.
+
 ### Step 2: Commit and push
 
 1. Run `git status` and `git diff --stat` to review what changed
@@ -115,7 +123,48 @@ BASE_URL=https://api.run402.com npm run test:functions
 ```
 This tests the full functions lifecycle including `db.sql()` and `db.from()`.
 
-Report the results of all tests. If any step fails, provide the specific failure details.
+Report the results of all tests. If all pass, proceed to Step 7.
+
+If any test fails, go to Step 6b — do NOT loop back to Step 1 with a guess-fix.
+
+### Step 6b: Investigate failures from production (if any test failed)
+
+**STOP. Do not guess-fix and redeploy.** Each deploy cycle takes ~7 minutes. Investigate the root cause from production first.
+
+1. **Check production gateway logs** for the failing request:
+```bash
+AWS_PROFILE=kychee aws logs filter-log-events \
+  --log-group-name /agentdb/gateway \
+  --filter-pattern "<keyword from failing step>" \
+  --start-time $(date -v-15M +%s000) \
+  --limit 20 --region us-east-1 \
+  --query 'events[*].message' --output text
+```
+Look at status codes, durations, and error messages. The logs often reveal the exact issue (e.g., "404 in 1017ms" tells you retry budget was exhausted at exactly 1s).
+
+2. **Check PostgREST sidecar logs** if the failure involves REST/DB operations:
+```bash
+AWS_PROFILE=kychee aws logs filter-log-events \
+  --log-group-name /agentdb/gateway \
+  --filter-pattern "postgrest" \
+  --start-time $(date -v-15M +%s000) \
+  --limit 20 --region us-east-1 \
+  --query 'events[*].message' --output text
+```
+
+3. **Check Lambda logs** if the failure involves functions:
+```bash
+AWS_PROFILE=kychee aws logs filter-log-events \
+  --log-group-name /agentdb/functions \
+  --filter-pattern "ERROR" \
+  --start-time $(date -v-15M +%s000) \
+  --limit 20 --region us-east-1 \
+  --query 'events[*].message' --output text
+```
+
+4. **Report findings to the user** with the data — status codes, durations, error messages. Propose a fix based on evidence, not guesses.
+
+5. Only after the root cause is understood and the fix is targeted, loop back to Step 1 to deploy it.
 
 ### Step 7: Summary
 
