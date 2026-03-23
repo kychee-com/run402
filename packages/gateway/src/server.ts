@@ -242,15 +242,19 @@ app.use(openapiRoutes);
 
 // --- x402 discovery (fallback — OpenAPI at /openapi.json is canonical) ---
 app.get("/.well-known/x402", (_req: Request, res: Response) => {
+  const base = "https://api.run402.com";
+  const paid = [
+    "/tiers/v1/prototype",
+    "/tiers/v1/hobby",
+    "/tiers/v1/team",
+    "/generate-image/v1",
+  ];
   res.json({
     version: 1,
-    resources: [
-      // Paid endpoints only (non-empty accepts)
-      "POST /tiers/v1/prototype",
-      "POST /tiers/v1/hobby",
-      "POST /tiers/v1/team",
-      "POST /generate-image/v1",
-    ],
+    description: "Run402 — full-stack infrastructure for AI agents. Postgres databases, static hosting, serverless functions, and image generation. Pay with USDC via x402 or MPP.",
+    instructions: "Subscribe to a tier (prototype/hobby/team) to unlock project provisioning, then create projects and deploy. Image generation is per-call. See /openapi.json for full endpoint details.",
+    resources: paid.map((p) => `${base}${p}`),
+    mppResources: paid.map((p) => `${base}${p}`),
   });
 });
 

@@ -35,7 +35,7 @@ function buildSpec(): object {
 - Full CLI docs: https://run402.com/llms-cli.txt
 - Full OpenAPI: https://run402.com/openapi.json`;
 
-  const imagePrice = `$${(SKU_PRICES["image"]! / 1_000_000).toFixed(2)}`;
+  const imagePrice = (SKU_PRICES["image"]! / 1_000_000).toFixed(2);
 
   // Helper: build an operation object with only fields the discovery schema expects.
   // Zod v4 strict mode rejects unknown keys, so we must only include:
@@ -65,9 +65,9 @@ function buildSpec(): object {
         tags: ["tiers"],
         security: [{ x402: [] }],
         "x-payment-info": {
-          protocols: ["x402"],
+          protocols: ["x402", "mpp"],
           pricingMode: "fixed",
-          price: tierConfig.price,
+          price: tierConfig.price.replace("$", ""),
         },
         requestBody: {
           content: {
@@ -97,7 +97,7 @@ function buildSpec(): object {
       tags: ["image"],
       security: [{ x402: [] }],
       "x-payment-info": {
-        protocols: ["x402"],
+        protocols: ["x402", "mpp"],
         pricingMode: "fixed",
         price: imagePrice,
       },
@@ -159,6 +159,13 @@ function buildSpec(): object {
       guidance,
     },
     servers: [{ url: "https://api.run402.com" }],
+    "x-service-info": {
+      categories: ["compute", "data", "developer-tools", "storage"],
+      docs: {
+        homepage: "https://run402.com",
+        apiReference: "https://run402.com/openapi.json",
+      },
+    },
     paths,
   };
 }
