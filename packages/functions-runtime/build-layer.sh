@@ -186,7 +186,7 @@ export const db = {
   },
 
   async sql(query) {
-    const url = `${API_BASE}/admin/v1/projects/${PROJECT_ID}/sql`;
+    const url = `${API_BASE}/projects/v1/admin/${PROJECT_ID}/sql`;
     const res = await fetch(url, {
       method: "POST",
       headers: {

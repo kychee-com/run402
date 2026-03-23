@@ -865,10 +865,13 @@ async function writeLocalFunction(
   const stripped = transpiled
     .replace(/import\s*\{[^}]*\}\s*from\s*['"]@run402\/functions['"]\s*;?/g, "");
 
+  // Resolve jsonwebtoken from the gateway's node_modules (not the temp dir)
+  const gatewayDir = new URL(".", import.meta.url).pathname;
+
   const module = `
 // --- inlined @run402/functions helper ---
 import { createRequire as _cr } from "node:module";
-const _require = _cr(import.meta.url);
+const _require = _cr(${JSON.stringify("file://" + gatewayDir)});
 const _jwt = _require("jsonwebtoken");
 const _API_BASE = ${JSON.stringify(apiBase)};
 const _SERVICE_KEY = ${JSON.stringify(serviceKey)};
@@ -908,7 +911,22 @@ class _QueryBuilder {
     } catch (e) { reject(e); }
   }
 }
-const db = { from(t) { return new _QueryBuilder(t); } };
+const db = {
+  from(t) { return new _QueryBuilder(t); },
+  async sql(query) {
+    const url = _API_BASE + "/projects/v1/admin/" + _PROJECT_ID + "/sql";
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { Authorization: "Bearer " + _SERVICE_KEY, "Content-Type": "text/plain" },
+      body: query,
+    });
+    if (!res.ok) {
+      const errBody = await res.text();
+      throw new Error("SQL error (" + res.status + "): " + errBody);
+    }
+    return res.json();
+  },
+};
 
 function getUser(req) {
   const authHeader = req.headers.get ? req.headers.get("authorization") : req.headers?.authorization;

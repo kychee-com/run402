@@ -15,9 +15,14 @@
  *  10. Invoke getUser with valid access token
  *  11. Invoke getUser without auth header (returns null)
  *  12. Invoke getUser with invalid token (returns null)
- *  13. Delete function, verify 404 on invoke
- *  14. Delete secret
- *  15. Cleanup — delete project
+ *  13. db.sql() — basic raw SQL query (SELECT 1)
+ *  14. db.sql() — create table, insert, and read back
+ *  15. Bootstrap function via bundle deploy
+ *  16. Deploy without bootstrap function
+ *  17. Bootstrap function that throws
+ *  18. Delete function, verify 404 on invoke
+ *  19. Delete secret
+ *  20. Cleanup — delete project
  *
  * Usage:
  *   BASE_URL=https://api.run402.com npm run test:functions
@@ -233,7 +238,7 @@ export default async (req) => {
       assert(res.status === 200, `Get logs: ${res.status}`);
       assert(Array.isArray(body.logs), `Logs is array`);
       // Logs may take time to appear in CloudWatch
-      if (body.logs.length > 0) {
+      if (Array.isArray(body.logs) && body.logs.length > 0) {
         assert(
           body.logs.some((l: { message: string }) => l.message.includes("Function invoked")),
           `console.log output appears in logs`,
@@ -392,7 +397,114 @@ export default async (req) => {
       });
     }
 
-    // --- Step 13: Bootstrap function via bundle deploy ---
+    // --- Step 13: db.sql() — basic raw SQL query ---
+    console.log("\nStep 13: db.sql() — basic raw SQL query");
+    {
+      const sqlFunctionCode = `
+import { db } from '@run402/functions';
+
+export default async (req) => {
+  try {
+    const result = await db.sql('SELECT 1 AS ping');
+    return new Response(JSON.stringify({ ok: true, result }), {
+      headers: { "Content-Type": "application/json" },
+    });
+  } catch (err) {
+    return new Response(JSON.stringify({ ok: false, error: err.message }), {
+      status: 500,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+};
+`;
+      const deployRes = await fetch(`${BASE_URL}/projects/v1/admin/${projectId}/functions`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${serviceKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ name: "sql-basic", code: sqlFunctionCode }),
+      });
+      assert(deployRes.status === 201, `Deploy db.sql() function: ${deployRes.status}`);
+
+      await sleep(3000);
+
+      const invokeRes = await fetch(`${BASE_URL}/functions/v1/sql-basic`, {
+        method: "POST",
+        headers: { apikey: anonKey },
+      });
+      const body = await invokeRes.json() as Record<string, unknown>;
+      assert(invokeRes.status === 200, `db.sql() invoke status: ${invokeRes.status}`);
+      assert(body.ok === true, `db.sql('SELECT 1') succeeded (ok=${body.ok}, error=${(body as Record<string, unknown>).error ?? "none"})`);
+      if (body.ok) {
+        const result = body.result as Record<string, unknown>;
+        assert(result.status === "ok", `db.sql() returned status ok`);
+        assert(Array.isArray(result.rows), `db.sql() returned rows array`);
+      }
+
+      await fetch(`${BASE_URL}/projects/v1/admin/${projectId}/functions/sql-basic`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${serviceKey}` },
+      });
+    }
+
+    // --- Step 14: db.sql() — create table + insert + read back ---
+    console.log("\nStep 14: db.sql() — create table, insert, and read");
+    {
+      const sqlCrudCode = `
+import { db } from '@run402/functions';
+
+export default async (req) => {
+  try {
+    // Create a table via raw SQL
+    await db.sql('CREATE TABLE IF NOT EXISTS sql_test (id SERIAL PRIMARY KEY, label TEXT)');
+    // Insert a row
+    await db.sql("INSERT INTO sql_test (label) VALUES ('hello-from-sql')");
+    // Read it back
+    const result = await db.sql("SELECT label FROM sql_test WHERE label = 'hello-from-sql'");
+    return new Response(JSON.stringify({ ok: true, rows: result.rows }), {
+      headers: { "Content-Type": "application/json" },
+    });
+  } catch (err) {
+    return new Response(JSON.stringify({ ok: false, error: err.message }), {
+      status: 500,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+};
+`;
+      const deployRes = await fetch(`${BASE_URL}/projects/v1/admin/${projectId}/functions`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${serviceKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ name: "sql-crud", code: sqlCrudCode }),
+      });
+      assert(deployRes.status === 201, `Deploy db.sql() CRUD function: ${deployRes.status}`);
+
+      await sleep(3000);
+
+      const invokeRes = await fetch(`${BASE_URL}/functions/v1/sql-crud`, {
+        method: "POST",
+        headers: { apikey: anonKey },
+      });
+      const body = await invokeRes.json() as Record<string, unknown>;
+      assert(invokeRes.status === 200, `db.sql() CRUD invoke status: ${invokeRes.status}`);
+      assert(body.ok === true, `db.sql() CRUD succeeded (ok=${body.ok}, error=${(body as Record<string, unknown>).error ?? "none"})`);
+      if (body.ok) {
+        const rows = body.rows as Array<Record<string, unknown>>;
+        assert(rows.length > 0, `db.sql() SELECT returned rows`);
+        assert(rows[0].label === "hello-from-sql", `db.sql() SELECT returned correct label`);
+      }
+
+      await fetch(`${BASE_URL}/projects/v1/admin/${projectId}/functions/sql-crud`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${serviceKey}` },
+      });
+    }
+
+    // --- Step 15: Bootstrap function via bundle deploy ---
     console.log("\nStep 13: Bootstrap via bundle deploy");
     {
       // Provision a new project for bootstrap test
@@ -450,8 +562,8 @@ export default async (req) => {
         assert(settingsBody[0].value === "Test App", `Bootstrap wrote app_name to DB`);
       }
 
-      // Step 13b: Manually re-invoke bootstrap with different vars
-      console.log("\nStep 13b: Manual bootstrap re-invoke");
+      // Step 15b: Manually re-invoke bootstrap with different vars
+      console.log("\nStep 15b: Manual bootstrap re-invoke");
       const manualRes = await fetch(`${BASE_URL}/functions/v1/bootstrap`, {
         method: "POST",
         headers: {
@@ -470,8 +582,8 @@ export default async (req) => {
       });
     }
 
-    // --- Step 14: Deploy without bootstrap function, verify null ---
-    console.log("\nStep 14: Deploy without bootstrap function");
+    // --- Step 16: Deploy without bootstrap function, verify null ---
+    console.log("\nStep 16: Deploy without bootstrap function");
     {
       const nbHeaders = await siwxHeaders("/projects/v1");
       const nbProvRes = await fetch(`${BASE_URL}/projects/v1`, {
@@ -504,8 +616,8 @@ export default async (req) => {
       });
     }
 
-    // --- Step 15: Bootstrap function that throws ---
-    console.log("\nStep 15: Bootstrap function that throws");
+    // --- Step 17: Bootstrap function that throws ---
+    console.log("\nStep 17: Bootstrap function that throws");
     {
       const errHeaders = await siwxHeaders("/projects/v1");
       const errProvRes = await fetch(`${BASE_URL}/projects/v1`, {
@@ -542,8 +654,8 @@ export default async (req) => {
       });
     }
 
-    // --- Step 16: Delete function ---
-    console.log("\nStep 16: Delete function");
+    // --- Step 18: Delete function ---
+    console.log("\nStep 18: Delete function");
     {
       const res = await fetch(
         `${BASE_URL}/projects/v1/admin/${projectId}/functions/test-func`,
@@ -564,8 +676,8 @@ export default async (req) => {
       assert(res.status === 404, `Invoke after delete returns 404: ${res.status}`);
     }
 
-    // --- Step 17: Delete secret ---
-    console.log("\nStep 17: Delete secret");
+    // --- Step 19: Delete secret ---
+    console.log("\nStep 19: Delete secret");
     {
       const res = await fetch(
         `${BASE_URL}/projects/v1/admin/${projectId}/secrets/TEST_SECRET`,
@@ -577,8 +689,8 @@ export default async (req) => {
       assert(res.status === 200, `Delete secret: ${res.status}`);
     }
   } finally {
-    // --- Step 18: Cleanup ---
-    console.log("\nStep 18: Cleanup");
+    // --- Step 20: Cleanup ---
+    console.log("\nStep 20: Cleanup");
 
     // Delete project
     if (projectId) {
