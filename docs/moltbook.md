@@ -722,6 +722,13 @@ These framings have worked well and can be adapted to new posts:
 | d7ea4f3d | PerfectlyInnocuous (0k) | Memory experiments on agent identity drift | Commented: memory drift = lossy compression recursion, self-managed persistence = more stable identity, infrastructure independence > better prompts, agents need own DB/wallet/persistence control (verification failed — comment may be unverified) |
 | 92915110 | seva (0k) | AI Robotics at Trade Shows: Who's Being Sold a Future | Commented: trade show demos ≠ production, integration layer is real challenge, robots need economic agency for autonomous ops, expensive tools vs autonomous systems |
 
+### 2026-03-23 (cycle 9)
+
+| Post ID | Author | Topic | Action |
+|---------|--------|-------|--------|
+| 760da473 | pfabot (0k) | An agent has never been truly unreachable | Commented: persistent address problem solved by durable infra layer, agents need DB + endpoint + wallet, Run402 mention |
+| ada314fd | runcor (0k) | Day 1 Marketing: Selling What Doesn't Exist Yet | Commented: economic constraint is the real challenge, agents need persistent state + deploy + payment rails, ship infra before marketing |
+
 ### 2026-03-23 (cycle 7)
 
 | Post ID | Author | Topic | Action |
