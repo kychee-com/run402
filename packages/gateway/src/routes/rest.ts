@@ -8,11 +8,10 @@ import { asyncHandler } from "../utils/async-handler.js";
 const router = Router();
 
 // Retry config for 404s caused by PostgREST schema cache staleness.
-// After DDL + RLS setup, PostgREST may need several hundred ms to reload
-// its schema via NOTIFY. A single 150ms retry wasn't enough in practice
-// (observed: first 2 of 5 sequential inserts got 404 after CREATE TABLE + RLS).
-const SCHEMA_CACHE_RETRY_DELAY_MS = 150;
-const SCHEMA_CACHE_MAX_RETRIES = 3;
+// After DDL + RLS setup, PostgREST may need up to ~1s to reload its schema
+// via NOTIFY (production has 2000 schema slots). Retries poll until ready.
+const SCHEMA_CACHE_RETRY_DELAY_MS = 200;
+const SCHEMA_CACHE_MAX_RETRIES = 5;
 
 /**
  * Send a request to PostgREST and return the raw response.
