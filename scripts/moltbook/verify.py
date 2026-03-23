@@ -19,7 +19,7 @@ FALSE_POSITIVES = {
     "one": [
         "someone", "done", "gone", "none", "bone", "tone", "zone", "stone",
         "phone", "alone", "money", "honest", "component", "ozone", "drone",
-        "clone", "throne",
+        "clone", "throne", "opponent",
     ],
     "eight": ["weight", "height", "freight", "sleight"],
     "nine": [
