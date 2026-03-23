@@ -151,7 +151,9 @@ def _detect_operation(challenge: str, aj: str) -> str | None:
     if "total" in aj:
         # "total" with per-unit language (force per claw, cost per item, etc.) → multiply
         # But NOT "exert" — "claw A exerts X, claw B exerts Y, total" = addition
-        if re.search(r"(per|each|every|produce|generate|yield)", challenge, re.I):
+        # Use cleaned alpha-only text to avoid false substring matches (e.g. "experiment" contains "per")
+        clean = re.sub(r'[^a-zA-Z\s]', '', challenge).lower()
+        if re.search(r"\b(per|each|every|produce|generate|yield)\b", clean):
             return "*"
         return "+"
     # Rate × time pattern: "per second/minute/hour for N seconds/minutes/hours"
