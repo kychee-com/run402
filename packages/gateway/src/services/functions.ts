@@ -541,37 +541,50 @@ export async function invokeBootstrap(
     return { result: null, error: null };
   }
 
-  try {
-    const response = await invokeFunction(
-      projectId,
-      "bootstrap",
-      "POST",
-      "/functions/v1/bootstrap",
-      {
-        "content-type": "application/json",
-        apikey: anonKey,
-        authorization: `Bearer ${serviceKey}`,
-      },
-      JSON.stringify(variables),
-      "",
-    );
+  // Retry loop: the Lambda function may still be deploying (503) right after
+  // deployBundle, and PostgREST may still be reloading schema after migrations.
+  const MAX_BOOTSTRAP_RETRIES = 5;
+  const BOOTSTRAP_RETRY_DELAY_MS = 1000;
 
-    if (response.statusCode >= 200 && response.statusCode < 300) {
-      try {
-        return { result: JSON.parse(response.body), error: null };
-      } catch {
-        return { result: response.body, error: null };
+  for (let attempt = 0; attempt <= MAX_BOOTSTRAP_RETRIES; attempt++) {
+    try {
+      const response = await invokeFunction(
+        projectId,
+        "bootstrap",
+        "POST",
+        "/functions/v1/bootstrap",
+        {
+          "content-type": "application/json",
+          apikey: anonKey,
+          authorization: `Bearer ${serviceKey}`,
+        },
+        JSON.stringify(variables),
+        "",
+      );
+
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        try {
+          return { result: JSON.parse(response.body), error: null };
+        } catch {
+          return { result: response.body, error: null };
+        }
+      } else {
+        return { result: null, error: `Bootstrap function returned ${response.statusCode}: ${response.body}` };
       }
-    } else {
-      return { result: null, error: `Bootstrap function returned ${response.statusCode}: ${response.body}` };
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      // Retry on 503 (Lambda still deploying) — but not on final attempt
+      if (err instanceof FunctionError && err.statusCode === 503 && attempt < MAX_BOOTSTRAP_RETRIES) {
+        await new Promise((r) => setTimeout(r, BOOTSTRAP_RETRY_DELAY_MS));
+        continue;
+      }
+      if (message.includes("timed out") || message.includes("timeout")) {
+        return { result: null, error: "Bootstrap function timed out" };
+      }
+      return { result: null, error: `Bootstrap function failed: ${message}` };
     }
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : String(err);
-    if (message.includes("timed out") || message.includes("timeout")) {
-      return { result: null, error: "Bootstrap function timed out" };
-    }
-    return { result: null, error: `Bootstrap function failed: ${message}` };
   }
+  return { result: null, error: "Bootstrap function failed: max retries exceeded" };
 }
 
 /**
@@ -970,11 +983,12 @@ async function invokeLocalFunction(
   try {
     userModule = await import(fileUrl);
   } catch (err: unknown) {
-    console.error(`Local function import error (${name}):`, err);
+    const errMsg = err instanceof Error ? err.message : String(err);
+    console.error(`Local function import error (${name}):`, errMsg);
     return {
       statusCode: 500,
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ error: "Internal function error" }),
+      body: JSON.stringify({ error: "Internal function error", detail: errMsg }),
     };
   }
 
@@ -1019,11 +1033,12 @@ async function invokeLocalFunction(
       body: JSON.stringify(response),
     };
   } catch (err: unknown) {
-    console.error(`Local function error (${name}):`, err);
+    const errMsg = err instanceof Error ? err.message : String(err);
+    console.error(`Local function error (${name}):`, errMsg);
     return {
       statusCode: 500,
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ error: "Internal function error" }),
+      body: JSON.stringify({ error: "Internal function error", detail: errMsg }),
     };
   }
 }

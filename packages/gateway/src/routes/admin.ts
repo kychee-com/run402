@@ -331,6 +331,7 @@ router.post("/projects/v1/admin/:id/rls", asyncHandler(async (req: Request, res:
       }
     }
 
+    await client.query("NOTIFY pgrst, 'reload schema'");
     await client.query("COMMIT");
   } catch (err) {
     await client.query("ROLLBACK");

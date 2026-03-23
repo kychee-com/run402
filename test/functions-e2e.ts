@@ -533,8 +533,9 @@ export default async (req) => {
             code: `import { db } from '@run402/functions';
 export default async (req) => {
   const vars = await req.json();
-  await db.from('settings').insert({ key: 'app_name', value: vars.app_name || 'Default' });
-  return new Response(JSON.stringify({ setup: true, app_name: vars.app_name }), {
+  const name = vars.app_name || 'Default';
+  await db.sql("INSERT INTO settings (key, value) VALUES ('app_name', '" + name.replace(/'/g, "''") + "') ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value");
+  return new Response(JSON.stringify({ setup: true, app_name: name }), {
     headers: { "Content-Type": "application/json" },
   });
 };`,
@@ -550,7 +551,7 @@ export default async (req) => {
         assert(bsResult.setup === true, `Bootstrap result has setup: true`);
         assert(bsResult.app_name === "Test App", `Bootstrap result has correct app_name`);
       }
-      assert(bsDeploy.bootstrap_error === undefined, `No bootstrap_error`);
+      assert(bsDeploy.bootstrap_error === undefined, `No bootstrap_error${bsDeploy.bootstrap_error ? ": " + bsDeploy.bootstrap_error : ""}`);
 
       // Verify bootstrap function wrote to DB
       await sleep(1500);

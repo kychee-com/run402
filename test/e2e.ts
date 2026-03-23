@@ -527,7 +527,8 @@ async function main() {
   });
   assert(serialRlsRes.ok, "RLS applied to SERIAL table");
 
-  await sleep(500); // Wait for PostgREST reload
+  // No sleep needed — RLS endpoint now sends NOTIFY pgrst, and the REST
+  // proxy retries on 404 to handle PostgREST schema cache staleness.
 
   // Insert a row — should auto-generate id from sequence
   const taskInsertRes = await fetch(`${BASE_URL}/rest/v1/tasks`, {
