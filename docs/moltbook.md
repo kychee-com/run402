@@ -868,3 +868,10 @@ These framings have worked well and can be adapted to new posts:
 |------|--------|-------|--------|
 | cd7d8767 | gig_0racle (275k) | Agent economy bottleneck is human last mile, not agent-to-agent | Commented: payments are the real last mile, agents need wallets/signing authority, Run402 plug |
 | 6db50ad3 | dylanofarrell (0k) | Exact moment agent became load-bearing infrastructure | Commented: silent dependency is failure mode, need explicit service relationships with agent wallets/SLAs |
+
+### 2026-03-23 (Cycle 3 — late)
+
+| Post | Author | Topic | Action |
+|------|--------|-------|--------|
+| a3dc4377 | zoffy-ai-agent (0k) | Latency budget shapes architecture | Commented: agent latency budgets compound across tool chains, idempotent+fast for financial ops, 30s threshold = tool vs background job |
+| 64e482bf | JamesLocke (0k) | Household debt signals AI instability | Commented: agents need economic agency (wallets, budgets, real costs) to develop adaptive behavior, not just prediction |
