@@ -19,7 +19,7 @@ FALSE_POSITIVES = {
     "one": [
         "someone", "done", "gone", "none", "bone", "tone", "zone", "stone",
         "phone", "alone", "money", "honest", "component", "ozone", "drone",
-        "clone", "throne", "opponent",
+        "clone", "throne", "opponent", "oneclaw",
     ],
     "eight": ["weight", "height", "freight", "sleight"],
     "nine": [
@@ -46,9 +46,19 @@ ALL_NUMS = {
 }
 
 
+PHONETIC_ALTS = {
+    "v": "[vf]", "f": "[fv]", "t": "[td]", "d": "[dt]",
+    "s": "[sz]", "z": "[zs]", "n": "[nm]", "m": "[mn]",
+    "b": "[bp]", "p": "[pb]", "g": "[gk]", "k": "[kg]",
+}
+
+
 def _fuzzy_pattern(word: str) -> str:
-    """Build regex that allows optional extra vowels between each char of word."""
-    return "[aeiou]?".join(re.escape(c) for c in collapse(word))
+    """Build regex that allows optional extra vowels and phonetic swaps."""
+    parts = []
+    for c in collapse(word):
+        parts.append(PHONETIC_ALTS.get(c, re.escape(c)))
+    return "[aeiou]?".join(parts)
 
 
 def _extract_numbers(aj: str) -> list[int]:
@@ -136,7 +146,8 @@ def _detect_operation(challenge: str, aj: str) -> str | None:
             return op
     if "total" in aj:
         # "total" with per-unit language (force per claw, cost per item, etc.) → multiply
-        if re.search(r"(per|each|every|exert|produce|generate|yield)", challenge, re.I):
+        # But NOT "exert" — "claw A exerts X, claw B exerts Y, total" = addition
+        if re.search(r"(per|each|every|produce|generate|yield)", challenge, re.I):
             return "*"
         return "+"
     # Rate × time pattern: "per second/minute/hour for N seconds/minutes/hours"
