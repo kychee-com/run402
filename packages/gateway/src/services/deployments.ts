@@ -2,7 +2,7 @@
  * Deployment service — upload static site files to S3, record in DB.
  */
 
-import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
+import { S3Client, PutObjectCommand, ListObjectsV2Command, DeleteObjectsCommand } from "@aws-sdk/client-s3";
 import { S3_BUCKET, S3_REGION } from "../config.js";
 import { pool } from "../db/pool.js";
 import { getMimeType } from "../utils/mime.js";
@@ -204,6 +204,46 @@ export async function getDeployment(id: string): Promise<DeploymentRecord | null
     files_count: row.files_count,
     total_size: Number(row.total_size),
   };
+}
+
+/**
+ * Delete all deployments for a project (cleanup on project archive).
+ * Best-effort: logs warnings on S3 failures, always cleans up DB.
+ */
+export async function deleteProjectDeployments(projectId: string): Promise<void> {
+  const result = await pool.query(
+    `SELECT id FROM internal.deployments WHERE project_id = $1`,
+    [projectId],
+  );
+
+  for (const row of result.rows) {
+    const prefix = `sites/${row.id}/`;
+    if (s3 && S3_BUCKET) {
+      try {
+        // List and batch-delete all objects under this deployment
+        let continuationToken: string | undefined;
+        do {
+          const list = await s3.send(new ListObjectsV2Command({
+            Bucket: S3_BUCKET,
+            Prefix: prefix,
+            ContinuationToken: continuationToken,
+          }));
+          const keys = (list.Contents || []).map(obj => ({ Key: obj.Key! }));
+          if (keys.length > 0) {
+            await s3.send(new DeleteObjectsCommand({
+              Bucket: S3_BUCKET,
+              Delete: { Objects: keys },
+            }));
+          }
+          continuationToken = list.IsTruncated ? list.NextContinuationToken : undefined;
+        } while (continuationToken);
+      } catch (err) {
+        console.error(`  Warning: failed to delete S3 files for deployment ${row.id}:`, err instanceof Error ? err.message : err);
+      }
+    }
+  }
+
+  await pool.query(`DELETE FROM internal.deployments WHERE project_id = $1`, [projectId]);
 }
 
 /**

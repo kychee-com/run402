@@ -3,6 +3,9 @@ import { pool } from "../db/pool.js";
 import { JWT_SECRET } from "../config.js";
 import { getLeaseDuration } from "@run402/shared";
 import { allocateSlot } from "./slots.js";
+import { deleteProjectFunctions } from "./functions.js";
+import { deleteProjectSubdomains } from "./subdomains.js";
+import { deleteProjectDeployments } from "./deployments.js";
 import type { ProjectInfo, TierName } from "@run402/shared";
 
 
@@ -185,6 +188,40 @@ export async function createProject(
 export async function archiveProject(projectId: string): Promise<boolean> {
   const project = cache.get(projectId);
   if (!project || project.status !== "active") return false;
+
+  // --- Cascade cleanup (best-effort, before schema drop) ---
+
+  // 1. Delete Lambda functions + DB rows
+  try {
+    await deleteProjectFunctions(projectId);
+  } catch (err) {
+    console.error(`  Warning: cascade deleteProjectFunctions failed for ${projectId}:`, err instanceof Error ? err.message : err);
+  }
+
+  // 2. Release subdomains
+  try {
+    await deleteProjectSubdomains(projectId);
+  } catch (err) {
+    console.error(`  Warning: cascade deleteProjectSubdomains failed for ${projectId}:`, err instanceof Error ? err.message : err);
+  }
+
+  // 3. Delete S3 site files + deployment DB rows
+  try {
+    await deleteProjectDeployments(projectId);
+  } catch (err) {
+    console.error(`  Warning: cascade deleteProjectDeployments failed for ${projectId}:`, err instanceof Error ? err.message : err);
+  }
+
+  // 4. Delete DB-only resources (secrets, app versions, oauth transactions)
+  try {
+    await pool.query(`DELETE FROM internal.secrets WHERE project_id = $1`, [projectId]);
+    await pool.query(`DELETE FROM internal.app_versions WHERE project_id = $1`, [projectId]);
+    await pool.query(`DELETE FROM internal.oauth_transactions WHERE project_id = $1`, [projectId]);
+  } catch (err) {
+    console.error(`  Warning: cascade DB cleanup failed for ${projectId}:`, err instanceof Error ? err.message : err);
+  }
+
+  // --- Existing schema drop + archive logic ---
 
   const client = await pool.connect();
   try {

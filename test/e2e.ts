@@ -792,6 +792,17 @@ async function main() {
   });
   assert(bundleDeleteRes.ok, "Bundle project cleaned up");
 
+  // Verify cascade: deployment site should 404 after project delete
+  const cascadeSiteRes = await fetch(bundleBody.site_url);
+  assert(cascadeSiteRes.status === 404 || cascadeSiteRes.status === 403,
+    `Cascade: deployment site returns 404/403 after delete (got ${cascadeSiteRes.status})`);
+
+  // Verify cascade: REST endpoint should fail after project delete
+  const cascadeRestRes = await fetch(`${BASE_URL}/rest/v1/items`, {
+    headers: { apikey: bundleAnonKey },
+  });
+  assert(!cascadeRestRes.ok, "Cascade: REST queries fail after project delete");
+
   // Step 24: Publish — publish workout tracker as forkable app version
   console.log("\n24) Publish app version...");
   const publishRes = await fetch(`${BASE_URL}/projects/v1/admin/${project_id}/publish`, {

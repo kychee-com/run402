@@ -645,26 +645,26 @@ export async function deleteFunction(projectId: string, name: string): Promise<v
 
 /**
  * Delete all functions for a project (cleanup on project archive).
+ * Best-effort: logs warnings on Lambda API failures, always cleans up DB.
  */
-export async function deleteAllFunctions(projectId: string): Promise<void> {
-  if (!lambda) return;
-
+export async function deleteProjectFunctions(projectId: string): Promise<void> {
   const result = await pool.query(
     `SELECT name FROM internal.functions WHERE project_id = $1`,
     [projectId],
   );
 
-  for (const row of result.rows) {
-    const fnName = lambdaName(projectId, row.name);
-    try {
-      await lambda.send(new DeleteFunctionCommand({ FunctionName: fnName }));
-    } catch {
-      // Best effort cleanup
+  if (lambda) {
+    for (const row of result.rows) {
+      const fnName = lambdaName(projectId, row.name);
+      try {
+        await lambda.send(new DeleteFunctionCommand({ FunctionName: fnName }));
+      } catch (err) {
+        console.error(`  Warning: failed to delete Lambda ${fnName}:`, err instanceof Error ? err.message : err);
+      }
     }
   }
 
   await pool.query(`DELETE FROM internal.functions WHERE project_id = $1`, [projectId]);
-  await pool.query(`DELETE FROM internal.secrets WHERE project_id = $1`, [projectId]);
 }
 
 /**

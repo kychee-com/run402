@@ -693,13 +693,28 @@ export default async (req) => {
     // --- Step 20: Cleanup ---
     console.log("\nStep 20: Cleanup");
 
-    // Delete project
+    // Delete project (cascade cleanup)
     if (projectId) {
       const deleteRes = await fetch(`${BASE_URL}/projects/v1/${projectId}`, {
         method: "DELETE",
         headers: { Authorization: `Bearer ${serviceKey}` },
       });
       assert(deleteRes.ok, `Project deleted (${projectId})`);
+
+      // Verify cascade: functions should 404 after project delete
+      const cascadeFnRes = await fetch(`${BASE_URL}/functions/v1/test-func`, {
+        method: "POST",
+        headers: { apikey: anonKey },
+      });
+      assert(cascadeFnRes.status === 404, `Cascade: function returns 404 after delete (got ${cascadeFnRes.status})`);
+
+      // Verify cascade: list functions should return empty
+      const cascadeListRes = await fetch(`${BASE_URL}/projects/v1/admin/${projectId}/functions`, {
+        headers: { Authorization: `Bearer ${serviceKey}` },
+      });
+      const cascadeListBody = await cascadeListRes.json();
+      assert(Array.isArray(cascadeListBody) && cascadeListBody.length === 0,
+        "Cascade: function list is empty after delete");
     }
   }
 

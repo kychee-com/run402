@@ -263,6 +263,25 @@ export async function deleteSubdomain(name: string, projectId?: string | null): 
 }
 
 /**
+ * Delete all subdomains for a project (cleanup on project archive).
+ * Best-effort: logs warnings on failures, always cleans up DB.
+ */
+export async function deleteProjectSubdomains(projectId: string): Promise<void> {
+  const result = await pool.query(
+    `SELECT name FROM internal.subdomains WHERE project_id = $1`,
+    [projectId],
+  );
+
+  for (const row of result.rows) {
+    try {
+      await deleteSubdomain(row.name);
+    } catch (err) {
+      console.error(`  Warning: failed to delete subdomain ${row.name}:`, err instanceof Error ? err.message : err);
+    }
+  }
+}
+
+/**
  * Resolve a subdomain name to a deployment ID (hot path with caching).
  */
 export async function resolveSubdomain(name: string): Promise<string | null> {
