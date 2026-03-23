@@ -384,10 +384,13 @@ app.use(bugsnagMiddleware.errorHandler);
 // HttpError instances set the status code; everything else becomes 500.
 app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
   if (err instanceof HttpError) {
+    if (err.statusCode >= 500) {
+      console.error(JSON.stringify({ level: "error", status: err.statusCode, error: err.message, stack: err.stack }));
+    }
     res.status(err.statusCode).json(err.body || { error: err.message });
     return;
   }
-  console.error("Unhandled error:", errorMessage(err));
+  console.error(JSON.stringify({ level: "error", status: 500, error: errorMessage(err), stack: err instanceof Error ? err.stack : undefined }));
   res.status(500).json({ error: "Internal server error" });
 });
 

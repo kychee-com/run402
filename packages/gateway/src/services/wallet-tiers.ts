@@ -11,6 +11,7 @@ import { TIERS, getTierLimits } from "@run402/shared";
 import type { TierName, WalletTierInfo } from "@run402/shared";
 import { getOrCreateBillingAccount, type BillingAccount } from "./billing.js";
 import { randomUUID } from "node:crypto";
+import { HttpError } from "../utils/async-handler.js";
 
 /**
  * Subscribe a wallet to a tier. Sets tier + lease on the billing account.
@@ -345,7 +346,8 @@ export async function setTier(
     const usage = await getWalletPoolUsage(normalized);
     const limits = getTierLimits(tier);
     if (usage.total_storage_bytes > limits.storageBytes) {
-      throw new Error(
+      throw new HttpError(
+        400,
         `Cannot downgrade: storage usage (${usage.total_storage_bytes} bytes) exceeds ${tier} limit (${limits.storageBytes} bytes). Delete data or wait for lease to expire.`,
       );
     }

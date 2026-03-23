@@ -6,6 +6,7 @@
 
 import { pool } from "../db/pool.js";
 import { randomUUID } from "node:crypto";
+import { HttpError } from "../utils/async-handler.js";
 
 export interface BillingAccount {
   id: string;
@@ -242,7 +243,7 @@ export async function adminDebit(
     const currentHeld = Number(locked.rows[0].held_usd_micros);
 
     if (currentAvailable < amountUsdMicros) {
-      throw new Error(`Insufficient balance: available=${currentAvailable}, requested=${amountUsdMicros}`);
+      throw new HttpError(402, `Insufficient balance: available=${currentAvailable}, requested=${amountUsdMicros}`);
     }
 
     const newAvailable = currentAvailable - amountUsdMicros;

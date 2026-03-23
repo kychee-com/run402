@@ -301,7 +301,7 @@ async function runMigrations(project: ProjectInfo, sql: string): Promise<void> {
   } catch (err) {
     await client.query("ROLLBACK").catch(() => {});
     const msg = err instanceof Error ? err.message : String(err);
-    throw new Error(`Migration SQL error: ${msg}`);
+    throw new BundleError(`Migration SQL error: ${msg}`, 422);
   } finally {
     client.release();
   }

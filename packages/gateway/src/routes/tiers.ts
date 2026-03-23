@@ -61,29 +61,22 @@ router.post("/tiers/v1/:tier", asyncHandler(async (req: Request, res: Response) 
     throw new HttpError(401, "Could not extract wallet from payment header");
   }
 
-  try {
-    const result = await setTier(wallet, tier);
-    invalidateWalletTierCache(wallet);
-    invalidateSIWxTierCache(wallet);
+  const result = await setTier(wallet, tier);
+  invalidateWalletTierCache(wallet);
+  invalidateSIWxTierCache(wallet);
 
-    console.log(`  Tier ${result.action}: ${wallet} → ${tier} (expires ${result.lease_expires_at?.toISOString()})`);
+  console.log(`  Tier ${result.action}: ${wallet} → ${tier} (expires ${result.lease_expires_at?.toISOString()})`);
 
-    const status = result.action === "subscribe" ? 201 : 200;
-    res.status(status).json({
-      wallet,
-      action: result.action,
-      tier: result.tier,
-      previous_tier: result.previous_tier ?? null,
-      lease_started_at: result.lease_started_at?.toISOString(),
-      lease_expires_at: result.lease_expires_at?.toISOString(),
-      allowance_remaining_usd_micros: result.available_usd_micros,
-    });
-  } catch (err) {
-    if (err instanceof Error && err.message.includes("Cannot downgrade")) {
-      throw new HttpError(400, err.message);
-    }
-    throw err;
-  }
+  const status = result.action === "subscribe" ? 201 : 200;
+  res.status(status).json({
+    wallet,
+    action: result.action,
+    tier: result.tier,
+    previous_tier: result.previous_tier ?? null,
+    lease_started_at: result.lease_started_at?.toISOString(),
+    lease_expires_at: result.lease_expires_at?.toISOString(),
+    allowance_remaining_usd_micros: result.available_usd_micros,
+  });
 }));
 
 // GET /tiers/v1/status — get wallet's current tier info (wallet auth, free)

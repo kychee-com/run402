@@ -113,20 +113,13 @@ router.post("/billing/v1/admin/accounts/:wallet/debit", asyncHandler(async (req:
     throw new HttpError(400, "reason is required");
   }
 
-  try {
-    const result = await adminDebit(wallet, amount_usd_micros, reason, idempotency_key);
-    res.json({
-      wallet,
-      billing_account_id: result.account.id,
-      available_usd_micros: result.account.available_usd_micros,
-      ledger_entry_id: result.ledger_entry.id,
-    });
-  } catch (err: unknown) {
-    if (err instanceof Error && err.message.startsWith("Insufficient balance")) {
-      throw new HttpError(402, err.message);
-    }
-    throw err;
-  }
+  const result = await adminDebit(wallet, amount_usd_micros, reason, idempotency_key);
+  res.json({
+    wallet,
+    billing_account_id: result.account.id,
+    available_usd_micros: result.account.available_usd_micros,
+    ledger_entry_id: result.ledger_entry.id,
+  });
 }));
 
 // GET /wallets/v1/:address/projects — list active projects for a wallet (public)
