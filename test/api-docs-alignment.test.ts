@@ -68,7 +68,7 @@ const EXCLUDED_ENDPOINTS = new Set([
   // Admin dashboard static assets
   "GET /admin/js/dashboard.js",
   // Admin wallet assignment (admin-key only)
-  "PUT /projects/v1/admin/{_}/wallet",
+  "POST /projects/v1/admin/{_}/wallet",
   // Google OAuth callback (called by Google, not by agents)
   "GET /auth/v1/oauth/google/callback",
   // Discovery spec (machine-readable, not a user-facing API endpoint)

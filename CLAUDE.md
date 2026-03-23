@@ -23,6 +23,18 @@ This avoids permission prompts from the harness.
 
 **Manual/emergency:** `./scripts/deploy.sh` does the same thing locally via colima/buildx. Prompts for confirmation (pass `-y` to skip). Only use when CI is broken or you need a hotfix without pushing.
 
+### Lambda Layer (functions runtime)
+
+The `@run402/functions` helper (`db.from()`, `db.sql()`, `getUser()`) ships as a Lambda layer, separate from the gateway Docker image. Changing `packages/functions-runtime/**` requires rebuilding and publishing the layer:
+
+1. Build + publish: `cd packages/functions-runtime && AWS_PROFILE=kychee ./build-layer.sh --publish`
+2. Update `LAMBDA_LAYER_ARN` in `infra/lib/pod-stack.ts` with the new ARN
+3. Redeploy CDK: `cd infra && eval "$(aws configure export-credentials --profile kychee --format env)" && npx cdk deploy AgentDB-Pod01 --require-approval never`
+
+Current layer: `arn:aws:lambda:us-east-1:472210437512:layer:run402-functions-runtime:2` (hardcoded in pod-stack.ts)
+
+**Important:** The gateway CI workflow does NOT rebuild the Lambda layer. If you change `build-layer.sh` or the functions runtime and only push to main, the gateway will deploy with the old layer. Always publish the layer first.
+
 ### Site (run402.com landing page)
 
 **Content updates:** Push changes under `site/` to `main`. The GitHub Action `.github/workflows/deploy-site.yml` syncs to S3 and invalidates CloudFront.

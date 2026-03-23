@@ -1,6 +1,19 @@
 # /deploy — Test, Commit, Push, Deploy, Verify
 
-Full deployment pipeline: run all pre-flight checks, commit, push to main, monitor CI/CD, and verify production.
+Full deployment pipeline: run all pre-flight checks, commit, push to main, deploy ALL affected components, and verify production.
+
+## Deployment surfaces
+
+Run402 has four independently deployable components. Each has its own trigger:
+
+| Component | Trigger files | How it deploys |
+|-----------|--------------|----------------|
+| **Gateway** (API on ECS) | `packages/shared/**`, `packages/gateway/**` | CI: push to main → GitHub Actions builds Docker, pushes to ECR, redeploys ECS |
+| **Lambda layer** (functions runtime) | `packages/functions-runtime/**` | Manual: `build-layer.sh --publish` → new layer version → update `LAMBDA_LAYER_ARN` in CDK + redeploy ECS task def |
+| **Site** (run402.com) | `site/**` | CI: push to main → GitHub Actions syncs S3, invalidates CloudFront |
+| **Infra** (CDK stacks) | `infra/**` | Manual: `cdk deploy` |
+
+A single commit can touch multiple components. The deploy command MUST handle ALL of them.
 
 ## Instructions
 
@@ -25,24 +38,54 @@ If any fail, stop and fix the issues before proceeding. Do NOT skip failures.
 3. Commit with a descriptive message
 4. Push to `main`
 
-### Step 3: Determine which CI workflows will trigger
+### Step 3: Determine what needs deploying
 
-Based on the files changed, tell the user which workflows will run:
-- Changes in `packages/shared/**` or `packages/gateway/**` → **Deploy Gateway** workflow
-- Changes in `site/**` → **Deploy Site** workflow
-- Changes elsewhere → no deployment (tests-only push)
+Examine ALL files in the commit (use `git diff --name-only HEAD~1`). Set these flags:
 
-If no deployment workflow will trigger, skip to Step 6 and report "No deployment needed — push complete."
+- **deploy_gateway** = true if any file matches `packages/shared/**` or `packages/gateway/**`
+- **deploy_lambda_layer** = true if any file matches `packages/functions-runtime/**`
+- **deploy_site** = true if any file matches `site/**`
+- **deploy_infra** = true if any file matches `infra/**`
 
-### Step 4: Monitor CI/CD
+Report which components will be deployed. If nothing needs deploying, skip to Step 7 and report "No deployment needed — push complete."
 
-1. Use `gh run list --workflow=deploy-gateway.yml --limit=1` or `gh run list --workflow=deploy-site.yml --limit=1` (whichever is relevant) to find the run
-2. Poll with `gh run view <run-id>` until it completes (check every 30 seconds, max 10 minutes)
-3. If the workflow fails, run `gh run view <run-id> --log-failed` to get the failure logs and report them
+### Step 4a: Deploy Lambda layer (if deploy_lambda_layer)
+
+The Lambda layer is a separate artifact from the gateway Docker image. It must be rebuilt and published BEFORE the gateway deploys, so the new gateway can reference the new layer version.
+
+1. **Build and publish the layer**:
+```bash
+cd packages/functions-runtime && AWS_PROFILE=kychee ./build-layer.sh --publish
+```
+This outputs a new layer ARN like `arn:aws:lambda:us-east-1:472210437512:layer:run402-functions-runtime:3`.
+
+2. **Update the layer ARN in CDK** — edit `infra/lib/pod-stack.ts` and replace the old `LAMBDA_LAYER_ARN` value with the new ARN.
+
+3. **Deploy the CDK stack** to update the ECS task definition with the new layer ARN:
+```bash
+cd infra && eval "$(aws configure export-credentials --profile kychee --format env)" && npx cdk deploy AgentDB-Pod01 --require-approval never
+```
+
+4. Set **deploy_infra** = false (already handled) and **deploy_gateway** = true (CDK deploy updates the task def, but a gateway deploy will force a new ECS deployment with the latest image too).
+
+### Step 4b: Deploy infra (if deploy_infra and not already done in 4a)
+
+```bash
+cd infra && eval "$(aws configure export-credentials --profile kychee --format env)" && npx cdk deploy AgentDB-Pod01 --require-approval never
+```
+
+### Step 4c: Monitor CI/CD (if deploy_gateway or deploy_site)
+
+CI workflows are triggered automatically by the push to main:
+
+1. If **deploy_gateway**: use `gh run list --workflow=deploy-gateway.yml --limit=1` to find the run
+2. If **deploy_site**: use `gh run list --workflow=deploy-site.yml --limit=1` to find the run
+3. Poll each with `gh run view <run-id>` until it completes (check every 30 seconds, max 10 minutes)
+4. If a workflow fails, run `gh run view <run-id> --log-failed` to get the failure logs and report them
 
 ### Step 5: Health check
 
-After the gateway workflow succeeds, verify the deployment is live:
+After the gateway deploys (via CI or CDK), verify the deployment is live:
 
 ```bash
 curl -s https://api.run402.com/health
@@ -50,9 +93,9 @@ curl -s https://api.run402.com/health
 
 Confirm the response shows `"status": "healthy"`. If not, wait 30 seconds and retry once.
 
-### Step 6: Production E2E test
+### Step 6: Production E2E tests
 
-If gateway was deployed, run these production tests sequentially:
+If gateway or Lambda layer was deployed, run these production tests sequentially:
 
 1. **E2E test**:
 ```bash
@@ -66,14 +109,23 @@ BASE_URL=https://api.run402.com npm run test:bld402-compat
 ```
 This tests 3 bld402 templates (shared-todo, paste-locker, landing-waitlist) against the run402 API. It takes ~1 minute and verifies that run402 changes don't break bld402.com.
 
-Report the results of both tests. If any step fails, provide the specific failure details.
+3. **Functions test** (if Lambda layer was deployed):
+```bash
+BASE_URL=https://api.run402.com npm run test:functions
+```
+This tests the full functions lifecycle including `db.sql()` and `db.from()`.
+
+Report the results of all tests. If any step fails, provide the specific failure details.
 
 ### Step 7: Summary
 
 Report a final summary:
 - Pre-flight: pass/fail
 - Commit: hash and message
-- CI/CD: workflow name, status, duration
+- Components deployed: list which of [Gateway, Lambda layer, Site, Infra] were deployed
+- CI/CD: workflow name(s), status, duration
+- Lambda layer: new ARN (if published)
 - Health: healthy/unhealthy
 - E2E: pass/fail (with step count)
 - bld402 compat: pass/fail (with step count)
+- Functions: pass/fail (if run)

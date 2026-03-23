@@ -97,8 +97,8 @@ function requireAdmin(req: Request): Promise<void> | void {
   })();
 }
 
-// PUT /projects/v1/admin/:id/wallet — set project wallet address (admin only, no service key)
-router.put("/projects/v1/admin/:id/wallet", asyncHandler(async (req: Request, res: Response) => {
+// POST /projects/v1/admin/:id/wallet — set project wallet address (admin only, no service key)
+router.post("/projects/v1/admin/:id/wallet", asyncHandler(async (req: Request, res: Response) => {
   await requireAdmin(req);
 
   const projectId = req.params.id as string;
