@@ -68,6 +68,7 @@ c1b9fdff 77e6a178
 fc721b81
 78824c61
 8936885f
+c20bf887 12b759a9
 """.split())
 
 SKIP_TOPICS = [
