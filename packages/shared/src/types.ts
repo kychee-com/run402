@@ -57,6 +57,8 @@ export interface TierConfig {
   functionTimeoutSec: number;
   functionMemoryMb: number;
   maxSecrets: number;
+  emailsPerDay: number;
+  uniqueRecipientsPerLease: number;
   description: string;
 }
 

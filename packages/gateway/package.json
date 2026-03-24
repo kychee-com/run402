@@ -13,6 +13,7 @@
     "@aws-sdk/client-cloudwatch-logs": "^3.700.0",
     "@aws-sdk/client-lambda": "^3.700.0",
     "@aws-sdk/client-s3": "^3.700.0",
+    "@aws-sdk/client-sesv2": "^3.1015.0",
     "@aws-sdk/s3-request-presigner": "^3.700.0",
     "@bugsnag/js": "^8.8.1",
     "@bugsnag/plugin-express": "^8.8.0",
@@ -28,8 +29,8 @@
     "express": "^5.1.0",
     "jose": "^5.9.0",
     "jsonwebtoken": "^9.0.2",
-    "pg": "^8.13.0",
     "mppx": "^0.4.7",
+    "pg": "^8.13.0",
     "stripe": "^20.4.0",
     "viem": "^2.21.0"
   },

@@ -6,6 +6,7 @@ import { allocateSlot } from "./slots.js";
 import { deleteProjectFunctions } from "./functions.js";
 import { deleteProjectSubdomains } from "./subdomains.js";
 import { deleteProjectDeployments } from "./deployments.js";
+import { tombstoneProjectMailbox } from "./mailbox.js";
 import type { ProjectInfo, TierName } from "@run402/shared";
 
 
@@ -212,7 +213,14 @@ export async function archiveProject(projectId: string): Promise<boolean> {
     console.error(`  Warning: cascade deleteProjectDeployments failed for ${projectId}:`, err instanceof Error ? err.message : err);
   }
 
-  // 4. Delete DB-only resources (secrets, app versions, oauth transactions)
+  // 4. Tombstone mailbox
+  try {
+    await tombstoneProjectMailbox(projectId);
+  } catch (err) {
+    console.error(`  Warning: cascade tombstoneProjectMailbox failed for ${projectId}:`, err instanceof Error ? err.message : err);
+  }
+
+  // 5. Delete DB-only resources (secrets, app versions, oauth transactions)
   try {
     await pool.query(`DELETE FROM internal.secrets WHERE project_id = $1`, [projectId]);
     await pool.query(`DELETE FROM internal.app_versions WHERE project_id = $1`, [projectId]);

@@ -50,9 +50,11 @@ import adminLlmsTxtRoutes from "./routes/admin-llms-txt.js";
 import adminWalletRoutes from "./routes/admin-wallet.js";
 import attributionRoutes from "./routes/attribution.js";
 import contactRoutes from "./routes/contact.js";
+import mailboxRoutes from "./routes/mailboxes.js";
 import tierRoutes from "./routes/tiers.js";
 import openapiRoutes from "./routes/openapi.js";
 import { initAppVersionsTables } from "./services/publish.js";
+import { initMailboxTables } from "./services/mailbox.js";
 import { cleanupExpiredOAuthData } from "./services/oauth.js";
 
 Bugsnag.start({
@@ -390,6 +392,7 @@ app.use(bundleRoutes);
 app.use(publishRoutes);
 app.use(attributionRoutes);
 app.use(contactRoutes);
+app.use(mailboxRoutes);
 
 // --- Bugsnag error handler (must be before central error handler) ---
 app.use(bugsnagMiddleware.errorHandler);
@@ -1059,6 +1062,9 @@ async function start() {
 
   // Initialize app versions tables (publish/fork)
   await initAppVersionsTables();
+
+  // Initialize mailbox tables (email)
+  await initMailboxTables();
 
   // Initialize slot allocator
   await initSlots();

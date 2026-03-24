@@ -11,6 +11,11 @@ import * as route53targets from "aws-cdk-lib/aws-route53-targets";
 import * as acm from "aws-cdk-lib/aws-certificatemanager";
 import * as logs from "aws-cdk-lib/aws-logs";
 import * as iam from "aws-cdk-lib/aws-iam";
+import * as lambda from "aws-cdk-lib/aws-lambda";
+import * as sns from "aws-cdk-lib/aws-sns";
+import * as snsSubscriptions from "aws-cdk-lib/aws-sns-subscriptions";
+import * as ses from "aws-cdk-lib/aws-ses";
+import * as sesActions from "aws-cdk-lib/aws-ses-actions";
 import { Construct } from "constructs";
 
 const DOMAIN = "run402.com";
@@ -206,6 +211,101 @@ export class PodStack extends cdk.Stack {
     // CloudFront access log bucket (read-only for llms.txt analytics)
     const cfLogBucket = s3.Bucket.fromBucketName(this, "CfLogBucket", "agentdb-site-accesslogbucketda470295-jaz7qij2zfjq");
     cfLogBucket.grantRead(taskDef.taskRole);
+
+    // =========================================================================
+    // SES Email (project mailboxes)
+    // =========================================================================
+
+    // S3 bucket for inbound email storage
+    const inboundEmailBucket = new s3.Bucket(this, "InboundEmailBucket", {
+      bucketName: `agentdb-inbound-email-${this.account}`,
+      encryption: s3.BucketEncryption.S3_MANAGED,
+      blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
+      lifecycleRules: [
+        { id: "expire-old-inbound", expiration: cdk.Duration.days(90) },
+      ],
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
+    });
+
+    // Grant ECS task role SES send permissions
+    taskDef.taskRole.addToPrincipalPolicy(new iam.PolicyStatement({
+      actions: ["ses:SendEmail", "ses:SendRawEmail"],
+      resources: [`arn:aws:ses:${this.region}:${this.account}:identity/run402.com`],
+    }));
+
+    // Inbound email processing Lambda
+    const inboundEmailLambda = new lambda.Function(this, "InboundEmailLambda", {
+      functionName: "run402-inbound-email",
+      runtime: lambda.Runtime.NODEJS_22_X,
+      handler: "inbound.handler",
+      code: lambda.Code.fromAsset("../packages/email-lambda"),
+      timeout: cdk.Duration.seconds(30),
+      memorySize: 256,
+      environment: {
+        DB_HOST: auroraCluster.clusterEndpoint.hostname,
+        DB_PORT: "5432",
+        DB_NAME: "agentdb",
+        INBOUND_EMAIL_BUCKET: inboundEmailBucket.bucketName,
+      },
+      vpc,
+      vpcSubnets: { subnetType: ec2.SubnetType.PUBLIC },
+      allowPublicSubnet: true,
+    });
+    inboundEmailBucket.grantRead(inboundEmailLambda);
+    dbSecret.grantRead(inboundEmailLambda);
+    inboundEmailLambda.addEnvironment("DB_USER", "postgres");
+    // DB_PASSWORD injected from secret at deploy time via CDK
+    inboundEmailLambda.addToRolePolicy(new iam.PolicyStatement({
+      actions: ["secretsmanager:GetSecretValue"],
+      resources: [dbSecret.secretArn],
+    }));
+
+    // SES receipt rule set for inbound email
+    const receiptRuleSet = new ses.ReceiptRuleSet(this, "EmailReceiptRuleSet", {
+      receiptRuleSetName: "run402-inbound",
+    });
+    receiptRuleSet.addRule("InboundMailRule", {
+      recipients: ["mail.run402.com"],
+      actions: [
+        new sesActions.S3({
+          bucket: inboundEmailBucket,
+          objectKeyPrefix: "inbound-email/",
+        }),
+        new sesActions.Lambda({
+          function: inboundEmailLambda,
+        }),
+      ],
+    });
+
+    // SNS topic for SES delivery/bounce/complaint events
+    const sesEventsTopic = new sns.Topic(this, "SesEventsTopic", {
+      topicName: "run402-ses-events",
+    });
+
+    // SES event processing Lambda
+    const sesEventsLambda = new lambda.Function(this, "SesEventsLambda", {
+      functionName: "run402-ses-events",
+      runtime: lambda.Runtime.NODEJS_22_X,
+      handler: "events.handler",
+      code: lambda.Code.fromAsset("../packages/email-lambda"),
+      timeout: cdk.Duration.seconds(30),
+      memorySize: 256,
+      environment: {
+        DB_HOST: auroraCluster.clusterEndpoint.hostname,
+        DB_PORT: "5432",
+        DB_NAME: "agentdb",
+        DB_USER: "postgres",
+      },
+      vpc,
+      vpcSubnets: { subnetType: ec2.SubnetType.PUBLIC },
+      allowPublicSubnet: true,
+    });
+    dbSecret.grantRead(sesEventsLambda);
+    sesEventsLambda.addToRolePolicy(new iam.PolicyStatement({
+      actions: ["secretsmanager:GetSecretValue"],
+      resources: [dbSecret.secretArn],
+    }));
+    sesEventsTopic.addSubscription(new snsSubscriptions.LambdaSubscription(sesEventsLambda));
 
     // =========================================================================
     // Lambda Functions support

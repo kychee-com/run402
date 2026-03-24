@@ -84,6 +84,10 @@
     {
       "name": "Agent",
       "description": "Agent contact registration (wallet auth, free within tier)"
+    },
+    {
+      "name": "Mailboxes",
+      "description": "Project-scoped email at slug@mail.run402.com"
     }
   ],
   "paths": {
@@ -4015,6 +4019,589 @@
           }
         }
       }
+    },
+    "/mailboxes/v1": {
+      "post": {
+        "tags": [
+          "Mailboxes"
+        ],
+        "summary": "Create a mailbox",
+        "operationId": "createMailbox",
+        "description": "Creates a project-scoped mailbox at slug@mail.run402.com.",
+        "security": [
+          {
+            "serviceKey": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "slug"
+                ],
+                "properties": {
+                  "slug": {
+                    "type": "string",
+                    "description": "Mailbox slug (e.g. 'myapp' for myapp@mail.run402.com)"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Mailbox created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Mailbox"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "Mailboxes"
+        ],
+        "summary": "List project mailboxes",
+        "operationId": "listMailboxes",
+        "description": "Lists all mailboxes belonging to the project.",
+        "security": [
+          {
+            "serviceKey": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Mailbox list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "mailboxes": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Mailbox"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/mailboxes/v1/{id}": {
+      "get": {
+        "tags": [
+          "Mailboxes"
+        ],
+        "summary": "Get mailbox details",
+        "operationId": "getMailbox",
+        "description": "Returns details for a specific mailbox.",
+        "security": [
+          {
+            "serviceKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Mailbox ID"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Mailbox details",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Mailbox"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "description": "Mailbox not found"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Mailboxes"
+        ],
+        "summary": "Delete (tombstone) a mailbox",
+        "operationId": "deleteMailbox",
+        "description": "Soft-deletes a mailbox. The address is released.",
+        "security": [
+          {
+            "serviceKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Mailbox ID"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Mailbox deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "example": "deleted"
+                    },
+                    "address": {
+                      "type": "string",
+                      "example": "myapp@mail.run402.com"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/mailboxes/v1/{id}/messages": {
+      "post": {
+        "tags": [
+          "Mailboxes"
+        ],
+        "summary": "Send template email",
+        "operationId": "sendMailboxMessage",
+        "description": "Sends a templated email from the mailbox.",
+        "security": [
+          {
+            "serviceKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Mailbox ID"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "template",
+                  "to",
+                  "variables"
+                ],
+                "properties": {
+                  "template": {
+                    "type": "string",
+                    "enum": [
+                      "project_invite",
+                      "magic_link",
+                      "notification"
+                    ],
+                    "description": "Email template to use"
+                  },
+                  "to": {
+                    "type": "string",
+                    "format": "email",
+                    "description": "Recipient email address"
+                  },
+                  "variables": {
+                    "type": "object",
+                    "additionalProperties": true,
+                    "description": "Template variables"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Message sent",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MailboxMessage"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "Mailboxes"
+        ],
+        "summary": "List sent messages",
+        "operationId": "listMailboxMessages",
+        "description": "Lists messages sent from the mailbox. Supports cursor-based pagination.",
+        "security": [
+          {
+            "serviceKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Mailbox ID"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 50
+            },
+            "description": "Maximum number of messages to return"
+          },
+          {
+            "name": "after",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Cursor for pagination (from previous response's next_cursor)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Message list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "messages": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/MailboxMessage"
+                      }
+                    },
+                    "has_more": {
+                      "type": "boolean"
+                    },
+                    "next_cursor": {
+                      "type": "string",
+                      "nullable": true
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/mailboxes/v1/{id}/messages/{messageId}": {
+      "get": {
+        "tags": [
+          "Mailboxes"
+        ],
+        "summary": "Get message with replies",
+        "operationId": "getMailboxMessage",
+        "description": "Returns a specific message including any replies received.",
+        "security": [
+          {
+            "serviceKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Mailbox ID"
+          },
+          {
+            "name": "messageId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Message ID"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Message details with replies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/MailboxMessage"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "replies": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "reply_id": {
+                                "type": "string",
+                                "format": "uuid"
+                              },
+                              "from": {
+                                "type": "string",
+                                "format": "email"
+                              },
+                              "body": {
+                                "type": "string"
+                              },
+                              "received_at": {
+                                "type": "string",
+                                "format": "date-time"
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "description": "Message not found"
+          }
+        }
+      }
+    },
+    "/mailboxes/v1/{id}/webhooks": {
+      "post": {
+        "tags": [
+          "Mailboxes"
+        ],
+        "summary": "Register webhook",
+        "operationId": "createMailboxWebhook",
+        "description": "Registers a webhook URL to receive mailbox event notifications.",
+        "security": [
+          {
+            "serviceKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Mailbox ID"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "url",
+                  "events"
+                ],
+                "properties": {
+                  "url": {
+                    "type": "string",
+                    "format": "uri",
+                    "description": "Webhook callback URL"
+                  },
+                  "events": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "delivery",
+                        "bounced",
+                        "complained",
+                        "reply_received"
+                      ]
+                    },
+                    "description": "Events to subscribe to"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Webhook registered",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "webhook_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "url": {
+                      "type": "string",
+                      "format": "uri"
+                    },
+                    "events": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/mailboxes/v1/{id}/status": {
+      "post": {
+        "tags": [
+          "Mailboxes"
+        ],
+        "summary": "Admin reactivate suspended mailbox",
+        "operationId": "updateMailboxStatus",
+        "description": "Reactivates a suspended mailbox. Requires admin auth.",
+        "security": [
+          {
+            "adminKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Mailbox ID"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "status"
+                ],
+                "properties": {
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "active"
+                    ],
+                    "description": "New mailbox status"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Mailbox reactivated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "example": "active"
+                    },
+                    "mailbox_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -4276,6 +4863,77 @@
             "format": "date-time"
           },
           "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "Mailbox": {
+        "type": "object",
+        "properties": {
+          "mailbox_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "address": {
+            "type": "string",
+            "example": "myapp@mail.run402.com"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "project_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "suspended",
+              "deleted"
+            ]
+          },
+          "sends_today": {
+            "type": "integer"
+          },
+          "unique_recipients": {
+            "type": "integer"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "MailboxMessage": {
+        "type": "object",
+        "properties": {
+          "message_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "to": {
+            "type": "string",
+            "format": "email"
+          },
+          "template": {
+            "type": "string",
+            "enum": [
+              "project_invite",
+              "magic_link",
+              "notification"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "example": "sent"
+          },
+          "sent_at": {
             "type": "string",
             "format": "date-time"
           }

@@ -870,6 +870,20 @@ See **Deploy a Static Site** section below for request/response format and examp
 
 `POST /subdomains/v1` is **idempotent** — upserts. Only needed once per project to claim a subdomain. Subsequent deploys to the same project auto-reassign all its subdomains to the new deployment (response includes `subdomain_urls`). Subdomain rules: 3-63 chars, lowercase + numbers + hyphens, no consecutive hyphens, must start/end with alphanumeric. Reserved names: `api`, `www`, `admin`, `sites`, `mail`, `ftp`, `cdn`, `static`.
 
+### Email / Mailboxes
+
+| Endpoint | Method | Auth | Cost | Description |
+|----------|--------|------|------|-------------|
+| `/mailboxes/v1` | POST | service_key | Free | Create a mailbox (1 per project, `slug@mail.run402.com`) |
+| `/mailboxes/v1` | GET | service_key | Free | List project's mailboxes |
+| `/mailboxes/v1/:id` | GET | service_key | Free | Get mailbox details (address, usage, limits) |
+| `/mailboxes/v1/:id` | DELETE | service_key | Free | Delete (tombstone) a mailbox |
+| `/mailboxes/v1/:id/messages` | POST | service_key | Free | Send template email (project_invite, magic_link, notification) |
+| `/mailboxes/v1/:id/messages` | GET | service_key | Free | List sent messages |
+| `/mailboxes/v1/:id/messages/:messageId` | GET | service_key | Free | Get message with replies |
+| `/mailboxes/v1/:id/webhooks` | POST | service_key | Free | Register webhook for email events |
+| `/mailboxes/v1/:id/status` | POST | admin | Free | Reactivate suspended mailbox (admin only) |
+
 ### Image Generation
 
 | Endpoint | Method | Auth | Cost | Description |
@@ -1402,6 +1416,101 @@ Fork creates a fully independent project: fresh database with same schema, funct
 ### Fork pricing
 
 Same as project creation (see Pricing section). No additional fee.
+
+---
+
+## Email / Mailboxes
+
+Each project can have one mailbox at `<slug>@mail.run402.com`. Mailboxes support template-based outbound email and reply-only inbound. Free with active tier subscription.
+
+### How it works
+
+- **One mailbox per project.** The mailbox address is `<slug>@mail.run402.com`, where `slug` matches your project name or a custom slug you choose at creation.
+- **Template-based sends only.** Three templates: `project_invite` (invite a collaborator), `magic_link` (passwordless login link), `notification` (general notification with custom subject/body). No arbitrary HTML -- keeps deliverability high.
+- **Rate limits per tier.** Prototype: 10 emails/day. Hobby: 50 emails/day. Team: 200 emails/day.
+- **Reply-only inbound.** Only prior recipients can reply to emails sent from your mailbox. No open inbound -- prevents spam and abuse.
+- **Branded footer.** All outbound emails include a small "Sent via Run402" footer. Cannot be removed.
+- **Auto-suspend on spam complaints.** If recipients mark your emails as spam, the mailbox is suspended. Admin can reactivate via `POST /mailboxes/v1/:id/status`.
+- **Tombstone on project delete.** When a project is deleted, its mailbox is tombstoned. The address cannot be reused for 90 days (cooldown period).
+
+### Create a mailbox
+
+```bash
+curl -X POST https://api.run402.com/mailboxes/v1 \
+  -H "Authorization: Bearer $SERVICE_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"slug": "my-app"}'
+```
+
+```json
+{
+  "id": "mbx_1741340000_a1b2c3",
+  "address": "my-app@mail.run402.com",
+  "project_id": "prj_1741340000_0042",
+  "status": "active",
+  "daily_limit": 10,
+  "daily_used": 0,
+  "created_at": "2026-03-24T12:00:00.000Z"
+}
+```
+
+### Send a template email
+
+```bash
+curl -X POST https://api.run402.com/mailboxes/v1/mbx_1741340000_a1b2c3/messages \
+  -H "Authorization: Bearer $SERVICE_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "template": "notification",
+    "to": "user@example.com",
+    "subject": "Your report is ready",
+    "body": "Hi! Your weekly report has been generated. Log in to view it."
+  }'
+```
+
+```json
+{
+  "id": "msg_1741340000_x1y2z3",
+  "template": "notification",
+  "to": "user@example.com",
+  "subject": "Your report is ready",
+  "status": "queued",
+  "created_at": "2026-03-24T12:01:00.000Z"
+}
+```
+
+### List sent messages
+
+```bash
+curl https://api.run402.com/mailboxes/v1/mbx_1741340000_a1b2c3/messages \
+  -H "Authorization: Bearer $SERVICE_KEY"
+```
+
+### Get message with replies
+
+```bash
+curl https://api.run402.com/mailboxes/v1/mbx_1741340000_a1b2c3/messages/msg_1741340000_x1y2z3 \
+  -H "Authorization: Bearer $SERVICE_KEY"
+```
+
+### Register a webhook
+
+Receive notifications when emails are delivered, bounced, or replied to:
+
+```bash
+curl -X POST https://api.run402.com/mailboxes/v1/mbx_1741340000_a1b2c3/webhooks \
+  -H "Authorization: Bearer $SERVICE_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"url": "https://api.run402.com/functions/v1/email-hook", "events": ["delivered", "bounced", "replied"]}'
+```
+
+### Template reference
+
+| Template | Required fields | Description |
+|----------|----------------|-------------|
+| `project_invite` | `to`, `inviter_name`, `project_name`, `invite_url` | Invite a collaborator to your project |
+| `magic_link` | `to`, `magic_url`, `expires_in_minutes` | Passwordless login link |
+| `notification` | `to`, `subject`, `body` | General notification with custom subject and body |
 
 ---
 
