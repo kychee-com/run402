@@ -56,6 +56,12 @@ import { allowanceExportSchema, handleAllowanceExport } from "./tools/allowance-
 import { requestFaucetSchema, handleRequestFaucet } from "./tools/request-faucet.js";
 import { generateImageSchema, handleGenerateImage } from "./tools/generate-image.js";
 
+// New tools — email
+import { createMailboxSchema, handleCreateMailbox } from "./tools/create-mailbox.js";
+import { sendEmailSchema, handleSendEmail } from "./tools/send-email.js";
+import { listEmailsSchema, handleListEmails } from "./tools/list-emails.js";
+import { getEmailSchema, handleGetEmail } from "./tools/get-email.js";
+
 // New tools — messaging, agent contact, billing, deployments, versions
 import { sendMessageSchema, handleSendMessage } from "./tools/send-message.js";
 import { setAgentContactSchema, handleSetAgentContact } from "./tools/set-agent-contact.js";
@@ -370,6 +376,36 @@ server.tool(
   "Generate a PNG image from a text prompt. Costs $0.03 USDC via x402. Aspect ratios: square (1:1), landscape (16:9), portrait (9:16).",
   generateImageSchema,
   async (args) => handleGenerateImage(args),
+);
+
+// ─── Email tools ────────────────────────────────────────────────────────────
+
+server.tool(
+  "create_mailbox",
+  "Create a project-scoped email mailbox at <slug>@mail.run402.com. One mailbox per project.",
+  createMailboxSchema,
+  async (args) => handleCreateMailbox(args),
+);
+
+server.tool(
+  "send_email",
+  "Send a template-based email from the project's mailbox. Templates: project_invite, magic_link, notification. Single recipient only.",
+  sendEmailSchema,
+  async (args) => handleSendEmail(args),
+);
+
+server.tool(
+  "list_emails",
+  "List sent emails from the project's mailbox. Shows message ID, template, recipient, status, and timestamp.",
+  listEmailsSchema,
+  async (args) => handleListEmails(args),
+);
+
+server.tool(
+  "get_email",
+  "Get a sent email with details and any replies.",
+  getEmailSchema,
+  async (args) => handleGetEmail(args),
 );
 
 // ─── Messaging & agent contact tools ───────────────────────────────────────

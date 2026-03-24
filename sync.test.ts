@@ -59,7 +59,7 @@ function parseSubcommands(filePath: string): string[] {
 /** Parse CLI commands as "module:subcommand" pairs */
 function parseCliCommands(): string[] {
   const cmds: string[] = [];
-  for (const mod of ["allowance", "tier", "projects", "image", "storage", "functions", "secrets", "sites", "subdomains", "apps", "message", "agent"]) {
+  for (const mod of ["allowance", "tier", "projects", "image", "storage", "functions", "secrets", "sites", "subdomains", "apps", "email", "message", "agent"]) {
     for (const sub of parseSubcommands(join(__dirname, "cli/lib", `${mod}.mjs`))) {
       cmds.push(`${mod}:${sub}`);
     }
@@ -73,7 +73,7 @@ function parseCliCommands(): string[] {
 /** Parse OpenClaw commands as "module:subcommand" pairs */
 function parseOpenClawCommands(): string[] {
   const cmds: string[] = [];
-  for (const mod of ["allowance", "tier", "projects", "image", "storage", "functions", "secrets", "sites", "subdomains", "apps", "message", "agent"]) {
+  for (const mod of ["allowance", "tier", "projects", "image", "storage", "functions", "secrets", "sites", "subdomains", "apps", "email", "message", "agent"]) {
     for (const sub of parseSubcommands(join(__dirname, "openclaw/scripts", `${mod}.mjs`))) {
       cmds.push(`${mod}:${sub}`);
     }
@@ -197,6 +197,12 @@ const SURFACE: Capability[] = [
 
   // ── Image generation ─────────────────────────────────────────────────────
   { id: "generate_image",    endpoint: "POST /generate-image/v1",           mcp: "generate_image",   cli: "image:generate",   openclaw: "image:generate" },
+
+  // ── Email ──────────────────────────────────────────────────────────────
+  { id: "create_mailbox",  endpoint: "POST /mailboxes/v1",                      mcp: "create_mailbox",  cli: "email:create",  openclaw: "email:create" },
+  { id: "send_email",      endpoint: "POST /mailboxes/v1/:id/messages",         mcp: "send_email",      cli: "email:send",    openclaw: "email:send" },
+  { id: "list_emails",     endpoint: "GET /mailboxes/v1/:id/messages",          mcp: "list_emails",     cli: "email:list",    openclaw: "email:list" },
+  { id: "get_email",       endpoint: "GET /mailboxes/v1/:id/messages/:msgId",   mcp: "get_email",       cli: "email:get",     openclaw: "email:get" },
 
   // ── Messaging & agent contact ──────────────────────────────────────────
   { id: "send_message",      endpoint: "POST /message/v1",                  mcp: "send_message",        cli: "message:send",     openclaw: "message:send" },
@@ -442,6 +448,14 @@ describe("llms.txt alignment", { skip: !llmsTxtAvailable && "~/dev/run402/site/l
       "GET /.well-known/x402",
       "GET /health",
       "GET /ping/v1",
+      // Functions discovery (covered by list_functions per-project)
+      "GET /functions/v1",
+      // Mailbox endpoints not yet exposed as tools
+      "GET /mailboxes/v1",
+      "GET /mailboxes/v1/:id",
+      "DELETE /mailboxes/v1/:id",
+      "POST /mailboxes/v1/:id/webhooks",
+      "POST /mailboxes/v1/:id/status",
     ]);
 
     const uncovered = documented.filter(ep => {

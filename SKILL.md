@@ -241,6 +241,59 @@ Setting an existing key overwrites it. All project functions are automatically u
 set_secret(project_id: "prj_...", key: "STRIPE_SECRET_KEY", value: "sk_live_...")
 ```
 
+### create_mailbox
+
+Create a project-scoped email mailbox. One mailbox per project.
+
+**Parameters:**
+- `project_id` (required) — Project ID
+- `slug` (required) — Mailbox slug (3-63 chars, lowercase alphanumeric + hyphens, no consecutive hyphens). Creates `<slug>@mail.run402.com`.
+
+**Example:**
+```
+create_mailbox(project_id: "prj_...", slug: "my-app")
+```
+
+### send_email
+
+Send a template-based email from the project's mailbox. Single recipient only.
+
+**Parameters:**
+- `project_id` (required) — Project ID
+- `template` (required) — Template name: `project_invite`, `magic_link`, or `notification`
+- `to` (required) — Recipient email address
+- `variables` (required) — Template variables object. `project_invite`: `project_name`, `invite_url`. `magic_link`: `project_name`, `link_url`, `expires_in`. `notification`: `project_name`, `message` (max 500 chars).
+
+**Example:**
+```
+send_email(project_id: "prj_...", template: "project_invite", to: "user@example.com", variables: {"project_name": "My App", "invite_url": "https://..."})
+```
+
+### list_emails
+
+List sent emails from the project's mailbox.
+
+**Parameters:**
+- `project_id` (required) — Project ID
+
+**Example:**
+```
+list_emails(project_id: "prj_...")
+```
+
+### get_email
+
+Get a sent email with details and any replies.
+
+**Parameters:**
+- `project_id` (required) — Project ID
+- `message_id` (required) — Message ID to retrieve
+
+**Example:**
+```
+get_email(project_id: "prj_...", message_id: "msg_...")
+```
+
 ## Standard Workflow
 
 Follow this sequence to go from zero to a working database:

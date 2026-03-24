@@ -1,0 +1,115 @@
+import { describe, it, beforeEach, afterEach } from "node:test";
+import assert from "node:assert/strict";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import { handleSendEmail } from "./send-email.js";
+
+const originalFetch = globalThis.fetch;
+let tempDir: string;
+
+beforeEach(() => {
+  tempDir = mkdtempSync(join(tmpdir(), "run402-sendemail-test-"));
+  process.env.RUN402_CONFIG_DIR = tempDir;
+  process.env.RUN402_API_BASE = "https://test-api.run402.com";
+
+  const store = {
+    projects: {
+      "proj-001": {
+        anon_key: "ak-123",
+        service_key: "sk-456",
+        mailbox_id: "mbx-001",
+        mailbox_address: "my-app@mail.run402.com",
+      },
+    },
+  };
+  writeFileSync(join(tempDir, "projects.json"), JSON.stringify(store));
+});
+
+afterEach(() => {
+  globalThis.fetch = originalFetch;
+  rmSync(tempDir, { recursive: true, force: true });
+  delete process.env.RUN402_CONFIG_DIR;
+  delete process.env.RUN402_API_BASE;
+});
+
+describe("send_email tool", () => {
+  it("returns success on 200", async () => {
+    globalThis.fetch = (async () =>
+      new Response(
+        JSON.stringify({ id: "msg-001", status: "sent", to: "user@example.com", template: "project_invite" }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      )) as typeof fetch;
+
+    const result = await handleSendEmail({
+      project_id: "proj-001",
+      template: "project_invite",
+      to: "user@example.com",
+      variables: { project_name: "My App", invite_url: "https://example.com/invite" },
+    });
+
+    assert.equal(result.isError, undefined);
+    assert.ok(result.content[0]!.text.includes("Email Sent"));
+    assert.ok(result.content[0]!.text.includes("msg-001"));
+  });
+
+  it("returns isError when project not in keystore", async () => {
+    const result = await handleSendEmail({
+      project_id: "nonexistent",
+      template: "project_invite",
+      to: "user@example.com",
+      variables: { project_name: "App" },
+    });
+
+    assert.equal(result.isError, true);
+    assert.ok(result.content[0]!.text.includes("not found in key store"));
+  });
+
+  it("returns isError when no mailbox exists", async () => {
+    // Overwrite store without mailbox_id
+    const store = {
+      projects: {
+        "proj-001": {
+          anon_key: "ak-123",
+          service_key: "sk-456",
+        },
+      },
+    };
+    writeFileSync(join(tempDir, "projects.json"), JSON.stringify(store));
+
+    // Mock GET /mailboxes/v1 returning empty array
+    globalThis.fetch = (async () =>
+      new Response(
+        JSON.stringify([]),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      )) as typeof fetch;
+
+    const result = await handleSendEmail({
+      project_id: "proj-001",
+      template: "project_invite",
+      to: "user@example.com",
+      variables: { project_name: "App" },
+    });
+
+    assert.equal(result.isError, true);
+    assert.ok(result.content[0]!.text.includes("create_mailbox"));
+  });
+
+  it("returns isError on API error", async () => {
+    globalThis.fetch = (async () =>
+      new Response(
+        JSON.stringify({ error: "Rate limit exceeded" }),
+        { status: 429, headers: { "Content-Type": "application/json" } },
+      )) as typeof fetch;
+
+    const result = await handleSendEmail({
+      project_id: "proj-001",
+      template: "project_invite",
+      to: "user@example.com",
+      variables: { project_name: "App" },
+    });
+
+    assert.equal(result.isError, true);
+    assert.ok(result.content[0]!.text.includes("Rate limit"));
+  });
+});
