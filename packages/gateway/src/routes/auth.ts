@@ -304,7 +304,7 @@ router.post("/auth/v1/token", asyncHandler(async (req: Request, res: Response) =
       `SELECT rt.id, rt.user_id, rt.expires_at, rt.used, u.email
        FROM internal.refresh_tokens rt
        JOIN internal.users u ON u.id = rt.user_id
-       WHERE rt.id = $1 AND rt.project_id = $2`,
+       WHERE rt.id = $1::uuid AND rt.project_id = $2`,
       [refresh_token, project.id],
     );
 
@@ -321,7 +321,7 @@ router.post("/auth/v1/token", asyncHandler(async (req: Request, res: Response) =
     }
 
     // Mark old token as used
-    await pool.query(`UPDATE internal.refresh_tokens SET used = true WHERE id = $1`, [refresh_token]);
+    await pool.query(`UPDATE internal.refresh_tokens SET used = true WHERE id = $1::uuid`, [refresh_token]);
 
     // Issue new tokens
     const accessToken = jwt.sign(
@@ -360,7 +360,7 @@ router.post("/auth/v1/token", asyncHandler(async (req: Request, res: Response) =
 
     // Fetch user email
     const userResult = await pool.query(
-      `SELECT id, email, display_name, avatar_url, email_verified_at FROM internal.users WHERE id = $1`,
+      `SELECT id, email, display_name, avatar_url, email_verified_at FROM internal.users WHERE id = $1::uuid`,
       [result.userId],
     );
     if (userResult.rows.length === 0) {
@@ -426,7 +426,7 @@ router.post("/auth/v1/token", asyncHandler(async (req: Request, res: Response) =
   }
 
   // Update last_sign_in_at
-  await pool.query(`UPDATE internal.users SET last_sign_in_at = NOW() WHERE id = $1`, [user.id]);
+  await pool.query(`UPDATE internal.users SET last_sign_in_at = NOW() WHERE id = $1::uuid`, [user.id]);
 
   const accessToken = jwt.sign(
     { sub: user.id, role: "authenticated", project_id: project.id },
@@ -469,7 +469,7 @@ router.get("/auth/v1/user", asyncHandler(async (req: Request, res: Response) => 
 
     const result = await pool.query(
       `SELECT id, email, email_verified_at, display_name, avatar_url, last_sign_in_at, created_at
-       FROM internal.users WHERE id = $1 AND project_id = $2`,
+       FROM internal.users WHERE id = $1::uuid AND project_id = $2`,
       [payload.sub, project.id],
     );
 
@@ -482,7 +482,7 @@ router.get("/auth/v1/user", asyncHandler(async (req: Request, res: Response) => 
     // Fetch linked identities
     const identities = await pool.query(
       `SELECT provider, provider_sub, provider_email, created_at
-       FROM internal.auth_identities WHERE user_id = $1`,
+       FROM internal.auth_identities WHERE user_id = $1::uuid`,
       [user.id],
     );
 
@@ -507,7 +507,7 @@ router.get("/auth/v1/user", asyncHandler(async (req: Request, res: Response) => 
 router.post("/auth/v1/logout", asyncHandler(async (req: Request, res: Response) => {
   const { refresh_token } = req.body;
   if (refresh_token) {
-    await pool.query(`UPDATE internal.refresh_tokens SET used = true WHERE id = $1`, [refresh_token]);
+    await pool.query(`UPDATE internal.refresh_tokens SET used = true WHERE id = $1::uuid`, [refresh_token]);
   }
   res.set("Cache-Control", "no-store");
   res.json({ status: "ok" });

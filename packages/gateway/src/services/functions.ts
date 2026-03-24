@@ -13,6 +13,7 @@ import {
   ResourceNotFoundException,
   ResourceConflictException,
   waitUntilFunctionUpdatedV2,
+  waitUntilFunctionActiveV2,
 } from "@aws-sdk/client-lambda";
 import {
   CloudWatchLogsClient,
@@ -358,14 +359,28 @@ export async function deployFunction(
         { FunctionName: fnName },
       );
 
-      // Update configuration
-      await lambda.send(new UpdateFunctionConfigurationCommand({
-        FunctionName: fnName,
-        Timeout: timeout,
-        MemorySize: memory,
-        Environment: { Variables: envVars },
-        Layers: LAMBDA_LAYER_ARN ? [LAMBDA_LAYER_ARN] : undefined,
-      }));
+      // Update configuration — retry on ResourceConflictException
+      for (let cfgAttempt = 0; cfgAttempt < 3; cfgAttempt++) {
+        try {
+          await lambda.send(new UpdateFunctionConfigurationCommand({
+            FunctionName: fnName,
+            Timeout: timeout,
+            MemorySize: memory,
+            Environment: { Variables: envVars },
+            Layers: LAMBDA_LAYER_ARN ? [LAMBDA_LAYER_ARN] : undefined,
+          }));
+          break;
+        } catch (cfgErr) {
+          if (cfgErr instanceof ResourceConflictException && cfgAttempt < 2) {
+            await waitUntilFunctionUpdatedV2(
+              { client: lambda, maxWaitTime: 30 },
+              { FunctionName: fnName },
+            );
+            continue;
+          }
+          throw cfgErr;
+        }
+      }
     } catch (err: unknown) {
       if (err instanceof ResourceNotFoundException) {
         // Create new function
@@ -389,6 +404,17 @@ export async function deployFunction(
           },
         }));
         lambdaArn = createResult.FunctionArn!;
+
+        // Wait for the new function to become Active before returning
+        await waitUntilFunctionActiveV2(
+          { client: lambda, maxWaitTime: 60 },
+          { FunctionName: fnName },
+        );
+      } else if (err instanceof ResourceConflictException) {
+        throw new FunctionError(
+          "Function is busy (still updating from a previous deploy). Try again in a few seconds.",
+          503,
+        );
       } else if ((err as Error).name === "CredentialsProviderError") {
         throw new FunctionError(
           "AWS credentials not available. Set AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY or configure an IAM role.",

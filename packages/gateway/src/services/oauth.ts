@@ -198,7 +198,7 @@ export async function resolveOAuthIdentity(params: ResolveIdentityParams): Promi
     const userId = existing.rows[0].user_id;
     // Update last_sign_in_at
     await pool.query(
-      `UPDATE internal.users SET last_sign_in_at = NOW() WHERE id = $1`,
+      `UPDATE internal.users SET last_sign_in_at = NOW() WHERE id = $1::uuid`,
       [userId],
     );
     await pool.query(
@@ -233,7 +233,7 @@ export async function resolveOAuthIdentity(params: ResolveIdentityParams): Promi
          avatar_url = COALESCE(avatar_url, $3),
          email_verified_at = CASE WHEN email_verified_at IS NULL AND $4 THEN NOW() ELSE email_verified_at END,
          last_sign_in_at = NOW()
-       WHERE id = $1`,
+       WHERE id = $1::uuid`,
       [params.linkingUserId, params.displayName || null, params.avatarUrl || null, params.emailVerified],
     );
     return { action: "linked", userId: params.linkingUserId, email };

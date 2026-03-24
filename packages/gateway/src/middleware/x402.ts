@@ -412,21 +412,26 @@ export async function createPaymentMiddleware(): Promise<RequestHandler> {
       const price = resolveSkuPrice(req.method, req.path);
       if (price) {
         const amount = (price.amountUsdMicros / 1_000_000).toFixed(2);
-        const chargeMw = mppxInstance.charge({ amount });
-        chargeMw(req, res, (err?: unknown) => {
-          if (err) return next(err);
-          // MPP verified — extract wallet from credential, set headers, continue
-          const token = authHeader.slice("Payment ".length);
-          const wallet = extractMppWallet(token);
-          if (wallet) {
-            req.walletAddress = wallet;
-            recordWallet(wallet, "mpp");
-          }
-          res.setHeader("X-Run402-Settlement-Rail", "mpp");
-          console.log(`MPP payment: ${wallet || "unknown"} → ${price.sku} ($${amount})`);
-          next();
-        });
-        return;
+        try {
+          const chargeMw = mppxInstance.charge({ amount });
+          chargeMw(req, res, (err?: unknown) => {
+            if (err) return next(err);
+            // MPP verified — extract wallet from credential, set headers, continue
+            const token = authHeader.slice("Payment ".length);
+            const wallet = extractMppWallet(token);
+            if (wallet) {
+              req.walletAddress = wallet;
+              recordWallet(wallet, "mpp");
+            }
+            res.setHeader("X-Run402-Settlement-Rail", "mpp");
+            console.log(`MPP payment: ${wallet || "unknown"} → ${price.sku} ($${amount})`);
+            next();
+          });
+          return;
+        } catch (mppErr) {
+          console.warn("MPP charge middleware error, falling through to x402:", mppErr instanceof Error ? mppErr.message : mppErr);
+          // Fall through to x402 payment path
+        }
       }
     }
 

@@ -12,7 +12,7 @@ import BugsnagPluginExpress from "@bugsnag/plugin-express";
 import express, { Request, Response, NextFunction, ErrorRequestHandler } from "express";
 import { errorMessage } from "./utils/errors.js";
 import { HttpError } from "./utils/async-handler.js";
-import { PORT, POSTGREST_URL, SELLER_ADDRESS, MAINNET_NETWORK, TESTNET_NETWORK, TESTNET_FACILITATOR_URL, CDP_API_KEY_ID, RATE_LIMIT_PER_SEC, FAUCET_TREASURY_KEY, FACILITATOR_PROVIDER, BUGSNAG_API_KEY, S3_BUCKET, S3_REGION, LAMBDA_ROLE_ARN } from "./config.js";
+import { PORT, POSTGREST_URL, SELLER_ADDRESS, MAINNET_NETWORK, TESTNET_NETWORK, TESTNET_FACILITATOR_URL, CDP_API_KEY_ID, RATE_LIMIT_PER_SEC, FAUCET_TREASURY_KEY, FACILITATOR_PROVIDER, BUGSNAG_API_KEY, RELEASE_STAGE, S3_BUCKET, S3_REGION, LAMBDA_ROLE_ARN } from "./config.js";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
@@ -56,13 +56,20 @@ import { initAppVersionsTables } from "./services/publish.js";
 import { cleanupExpiredOAuthData } from "./services/oauth.js";
 
 Bugsnag.start({
-  apiKey: BUGSNAG_API_KEY,
+  apiKey: BUGSNAG_API_KEY || "disabled",
+  releaseStage: BUGSNAG_API_KEY ? RELEASE_STAGE : "disabled",
+  enabledReleaseStages: ["production"],
   plugins: [BugsnagPluginExpress],
   onError(event) {
-    const orig = event.originalError as { statusCode?: number; name?: string; code?: string };
+    const orig = event.originalError as { statusCode?: number; name?: string; code?: string; message?: string };
     // Don't report expected client errors (4xx) — these are validation,
     // rate limits, not-found, etc. Only 5xx errors are real bugs.
     if (orig?.name === "HttpError" && orig.statusCode && orig.statusCode < 500) {
+      return false;
+    }
+    // Don't report "not configured" 503s — expected when optional features
+    // (Lambda, OAuth, Stripe, etc.) aren't set up in this environment.
+    if (orig?.name === "HttpError" && orig.statusCode === 503 && orig.message?.includes("not configured")) {
       return false;
     }
     // Don't report user SQL errors (e.g. "relation X does not exist").
@@ -73,6 +80,10 @@ Bugsnag.start({
     // Don't report user function errors — FunctionError is our own class
     // for 4xx responses (not found, quota exceeded, etc.).
     if (orig?.name === "FunctionError") {
+      return false;
+    }
+    // Don't report transient pg pool errors (connection drops during Aurora restarts).
+    if (orig?.message?.includes("already been released to the pool")) {
       return false;
     }
   },

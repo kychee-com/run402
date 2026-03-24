@@ -301,6 +301,8 @@ export class PodStack extends cdk.Stack {
         FUNCTIONS_LOG_GROUP: functionsLogGroup.logGroupName,
         CF_LOG_BUCKET: "agentdb-site-accesslogbucketda470295-jaz7qij2zfjq",
         CF_LOG_PREFIX: "cf-logs/",
+        BUGSNAG_API_KEY: "0751ea52d07c1449d7cd2f7724de0ede",
+        RELEASE_STAGE: "production",
       },
       secrets: {
         DB_PASSWORD: ecs.Secret.fromSecretsManager(dbSecret, "password"),

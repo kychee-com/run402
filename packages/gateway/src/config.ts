@@ -51,7 +51,8 @@ export const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET || "";
 export const STRIPE_WEBHOOK_SECRET_LIVE = process.env.STRIPE_WEBHOOK_SECRET_LIVE || "";
 
 // Bugsnag
-export const BUGSNAG_API_KEY = process.env.BUGSNAG_API_KEY || "0751ea52d07c1449d7cd2f7724de0ede";
+export const BUGSNAG_API_KEY = process.env.BUGSNAG_API_KEY || "";
+export const RELEASE_STAGE = process.env.RELEASE_STAGE || (process.env.LAMBDA_ROLE_ARN ? "production" : "development");
 
 // Google OAuth (admin dashboard)
 export const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || "";

@@ -186,7 +186,10 @@ function checkSqlSafety(sql: string): { error: string; hint?: string } | null {
 
 /** Verify service_key matches the project in the URL. */
 function assertProjectMatch(req: Request): void {
-  if (req.project!.id !== req.params["id"]) {
+  if (!req.project) {
+    throw new HttpError(401, "Project authentication required");
+  }
+  if (req.project.id !== req.params["id"]) {
     throw new HttpError(403, "Token project_id mismatch");
   }
 }
