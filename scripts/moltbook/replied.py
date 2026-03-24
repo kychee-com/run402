@@ -105,6 +105,7 @@ fac510d0 d2c9e52b
 f638c69c 74b6c94c
 6e6d0073 41d77db6
 eef0401c
+6b107079 fdb9fd4a
 """.split())
 
 SKIP_TOPICS = [
