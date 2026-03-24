@@ -10,6 +10,11 @@ let mockClientQueries: Array<{ sql: string; result?: any; error?: Error }>;
 let clientQueryLog: string[];
 let clientReleased: boolean;
 
+// Pool-level query mock (used by pin/unpin/schema handlers that call pool.query directly)
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let mockPoolQueries: Array<{ sql: string; result?: any; error?: Error }> = [];
+let poolQueryLog: string[] = [];
+
 const fakeClient = {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async query(sql: string): Promise<any> {
@@ -32,6 +37,17 @@ mock.module("../db/pool.js", {
   namedExports: {
     pool: {
       connect: async () => fakeClient,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      async query(sql: string, _params?: unknown[]): Promise<any> {
+        poolQueryLog.push(sql);
+        for (const entry of mockPoolQueries) {
+          if (sql === entry.sql || sql.includes(entry.sql)) {
+            if (entry.error) throw entry.error;
+            return entry.result;
+          }
+        }
+        return { rows: [], rowCount: 0 };
+      },
     },
   },
 });
@@ -426,5 +442,383 @@ describe("POST /projects/v1/admin/:id/rls — user_owns_rows", () => {
         `policy should cast both sides to text, got: ${sql.trim()}`,
       );
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Pin endpoint tests
+// ---------------------------------------------------------------------------
+
+const pinHandler = findHandler("post", "/projects/v1/admin/:id/pin");
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function callPinHandler(req: any): Promise<{ res: Record<string, any>; err?: Error }> {
+  return new Promise((resolve) => {
+    const res = fakeRes(() => resolve({ res }));
+    pinHandler(req, res, (err?: Error) => resolve({ res, err }));
+  });
+}
+
+describe("POST /projects/v1/admin/:id/pin", () => {
+  beforeEach(() => {
+    mockPoolQueries = [];
+    poolQueryLog = [];
+  });
+
+  it("pins a project and returns { status, project_id, pinned: true }", async () => {
+    mockPoolQueries = [
+      { sql: "UPDATE internal.projects SET pinned = true", result: { rows: [], rowCount: 1 } },
+    ];
+
+    const req = fakeReq({
+      headers: { "x-admin-key": "test-admin-key" },
+      project: { id: "proj-1", schemaSlot: "p0001", pinned: false },
+    });
+    const { res, err } = await callPinHandler(req);
+
+    assert.equal(err, undefined, "no error");
+    assert.equal(res._body.status, "ok");
+    assert.equal(res._body.project_id, "proj-1");
+    assert.equal(res._body.pinned, true);
+  });
+
+  it("calls pool.query with UPDATE ... SET pinned = true", async () => {
+    mockPoolQueries = [
+      { sql: "UPDATE internal.projects SET pinned = true", result: { rows: [], rowCount: 1 } },
+    ];
+
+    const req = fakeReq({
+      headers: { "x-admin-key": "test-admin-key" },
+      project: { id: "proj-1", schemaSlot: "p0001", pinned: false },
+    });
+    await callPinHandler(req);
+
+    assert.ok(
+      poolQueryLog.some((q) => q.includes("UPDATE internal.projects SET pinned = true")),
+      "should execute UPDATE with pinned = true",
+    );
+  });
+
+  it("rejects without admin key", async () => {
+    const req = fakeReq({
+      headers: {},
+      project: { id: "proj-1", schemaSlot: "p0001", pinned: false },
+    });
+    const { err } = await callPinHandler(req);
+
+    assert.ok(err, "error forwarded");
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    assert.equal((err as any).statusCode, 403);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Unpin endpoint tests
+// ---------------------------------------------------------------------------
+
+const unpinHandler = findHandler("post", "/projects/v1/admin/:id/unpin");
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function callUnpinHandler(req: any): Promise<{ res: Record<string, any>; err?: Error }> {
+  return new Promise((resolve) => {
+    const res = fakeRes(() => resolve({ res }));
+    unpinHandler(req, res, (err?: Error) => resolve({ res, err }));
+  });
+}
+
+describe("POST /projects/v1/admin/:id/unpin", () => {
+  beforeEach(() => {
+    mockPoolQueries = [];
+    poolQueryLog = [];
+  });
+
+  it("unpins a project and returns { status, project_id, pinned: false }", async () => {
+    mockPoolQueries = [
+      { sql: "UPDATE internal.projects SET pinned = false", result: { rows: [], rowCount: 1 } },
+    ];
+
+    const req = fakeReq({
+      headers: { "x-admin-key": "test-admin-key" },
+      project: { id: "proj-1", schemaSlot: "p0001", pinned: true },
+    });
+    const { res, err } = await callUnpinHandler(req);
+
+    assert.equal(err, undefined, "no error");
+    assert.equal(res._body.status, "ok");
+    assert.equal(res._body.project_id, "proj-1");
+    assert.equal(res._body.pinned, false);
+  });
+
+  it("calls pool.query with UPDATE ... SET pinned = false", async () => {
+    mockPoolQueries = [
+      { sql: "UPDATE internal.projects SET pinned = false", result: { rows: [], rowCount: 1 } },
+    ];
+
+    const req = fakeReq({
+      headers: { "x-admin-key": "test-admin-key" },
+      project: { id: "proj-1", schemaSlot: "p0001", pinned: true },
+    });
+    await callUnpinHandler(req);
+
+    assert.ok(
+      poolQueryLog.some((q) => q.includes("UPDATE internal.projects SET pinned = false")),
+      "should execute UPDATE with pinned = false",
+    );
+  });
+
+  it("rejects without admin key", async () => {
+    const req = fakeReq({
+      headers: {},
+      project: { id: "proj-1", schemaSlot: "p0001", pinned: true },
+    });
+    const { err } = await callUnpinHandler(req);
+
+    assert.ok(err, "error forwarded");
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    assert.equal((err as any).statusCode, 403);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Usage endpoint tests
+// ---------------------------------------------------------------------------
+
+const usageHandler = findHandler("get", "/projects/v1/admin/:id/usage");
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function callUsageHandler(req: any): Promise<{ res: Record<string, any>; err?: Error }> {
+  return new Promise((resolve) => {
+    const res = fakeRes(() => resolve({ res }));
+    usageHandler(req, res, (err?: Error) => resolve({ res, err }));
+  });
+}
+
+describe("GET /projects/v1/admin/:id/usage", () => {
+  it("returns usage stats and tier limits for prototype tier", async () => {
+    const req = fakeReq({
+      method: "GET",
+      project: {
+        id: "proj-1",
+        schemaSlot: "p0001",
+        tier: "prototype",
+        apiCalls: 1234,
+        storageBytes: 5678,
+        status: "active",
+      },
+    });
+    const { res, err } = await callUsageHandler(req);
+
+    assert.equal(err, undefined, "no error");
+    assert.equal(res._body.project_id, "proj-1");
+    assert.equal(res._body.tier, "prototype");
+    assert.equal(res._body.api_calls, 1234);
+    assert.equal(res._body.storage_bytes, 5678);
+    assert.equal(res._body.status, "active");
+    // prototype tier: 500_000 api calls, 250 MB storage
+    assert.equal(res._body.api_calls_limit, 500_000);
+    assert.equal(res._body.storage_limit_bytes, 250 * 1024 * 1024);
+  });
+
+  it("returns usage stats for hobby tier", async () => {
+    const req = fakeReq({
+      method: "GET",
+      project: {
+        id: "proj-1",
+        schemaSlot: "p0001",
+        tier: "hobby",
+        apiCalls: 100_000,
+        storageBytes: 1_000_000,
+        status: "active",
+      },
+    });
+    const { res, err } = await callUsageHandler(req);
+
+    assert.equal(err, undefined, "no error");
+    assert.equal(res._body.tier, "hobby");
+    // hobby tier: 5_000_000 api calls, 1024 MB storage
+    assert.equal(res._body.api_calls_limit, 5_000_000);
+    assert.equal(res._body.storage_limit_bytes, 1024 * 1024 * 1024);
+  });
+
+  it("rejects when req.project is missing", async () => {
+    const req = fakeReq({
+      method: "GET",
+      project: undefined,
+    });
+    // Usage handler is synchronous so errors are thrown directly
+    assert.throws(
+      () => usageHandler(req, fakeRes(() => {}), () => {}),
+      (thrown: Error) => thrown.message.includes("Project authentication required"),
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Schema endpoint tests
+// ---------------------------------------------------------------------------
+
+const schemaHandler = findHandler("get", "/projects/v1/admin/:id/schema");
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function callSchemaHandler(req: any): Promise<{ res: Record<string, any>; err?: Error }> {
+  return new Promise((resolve) => {
+    const res = fakeRes(() => resolve({ res }));
+    schemaHandler(req, res, (err?: Error) => resolve({ res, err }));
+  });
+}
+
+describe("GET /projects/v1/admin/:id/schema", () => {
+  beforeEach(() => {
+    mockPoolQueries = [];
+    poolQueryLog = [];
+  });
+
+  it("returns schema introspection with tables, columns, constraints, and policies", async () => {
+    mockPoolQueries = [
+      // tables query
+      {
+        sql: "information_schema.tables",
+        result: { rows: [{ table_name: "users" }] },
+      },
+      // columns query
+      {
+        sql: "information_schema.columns",
+        result: {
+          rows: [
+            { column_name: "id", data_type: "uuid", is_nullable: "NO", column_default: "gen_random_uuid()" },
+            { column_name: "name", data_type: "text", is_nullable: "YES", column_default: null },
+          ],
+        },
+      },
+      // constraints query
+      {
+        sql: "table_constraints",
+        result: {
+          rows: [
+            { constraint_name: "users_pkey", constraint_type: "PRIMARY KEY", definition: "PRIMARY KEY (id)" },
+          ],
+        },
+      },
+      // RLS check query
+      {
+        sql: "relrowsecurity",
+        result: { rows: [{ relrowsecurity: true }] },
+      },
+      // policies query
+      {
+        sql: "pg_policy",
+        result: {
+          rows: [
+            {
+              name: "users_select",
+              command: "r",
+              using_expression: "(id = auth.uid())",
+              check_expression: null,
+            },
+          ],
+        },
+      },
+    ];
+
+    const req = fakeReq({
+      method: "GET",
+      project: { id: "proj-1", schemaSlot: "p0001" },
+    });
+    const { res, err } = await callSchemaHandler(req);
+
+    assert.equal(err, undefined, "no error");
+    assert.equal(res._body.schema, "p0001");
+    assert.equal(res._body.tables.length, 1);
+
+    const table = res._body.tables[0];
+    assert.equal(table.name, "users");
+
+    // Columns
+    assert.equal(table.columns.length, 2);
+    assert.equal(table.columns[0].name, "id");
+    assert.equal(table.columns[0].type, "uuid");
+    assert.equal(table.columns[0].nullable, false);
+    assert.equal(table.columns[0].default_value, "gen_random_uuid()");
+    assert.equal(table.columns[1].name, "name");
+    assert.equal(table.columns[1].type, "text");
+    assert.equal(table.columns[1].nullable, true);
+    assert.equal(table.columns[1].default_value, null);
+
+    // Constraints
+    assert.equal(table.constraints.length, 1);
+    assert.equal(table.constraints[0].name, "users_pkey");
+    assert.equal(table.constraints[0].type, "PRIMARY KEY");
+    assert.equal(table.constraints[0].definition, "PRIMARY KEY (id)");
+
+    // RLS
+    assert.equal(table.rls_enabled, true);
+
+    // Policies
+    assert.equal(table.policies.length, 1);
+    assert.equal(table.policies[0].name, "users_select");
+    assert.equal(table.policies[0].command, "r");
+    assert.equal(table.policies[0].using_expression, "(id = auth.uid())");
+    assert.equal(table.policies[0].check_expression, null);
+  });
+
+  it("returns empty tables array when no tables exist", async () => {
+    mockPoolQueries = [
+      {
+        sql: "information_schema.tables",
+        result: { rows: [] },
+      },
+    ];
+
+    const req = fakeReq({
+      method: "GET",
+      project: { id: "proj-1", schemaSlot: "p0001" },
+    });
+    const { res, err } = await callSchemaHandler(req);
+
+    assert.equal(err, undefined, "no error");
+    assert.equal(res._body.schema, "p0001");
+    assert.deepEqual(res._body.tables, []);
+  });
+
+  it("handles tables with RLS disabled and no policies", async () => {
+    mockPoolQueries = [
+      {
+        sql: "information_schema.tables",
+        result: { rows: [{ table_name: "logs" }] },
+      },
+      {
+        sql: "information_schema.columns",
+        result: {
+          rows: [
+            { column_name: "id", data_type: "integer", is_nullable: "NO", column_default: null },
+          ],
+        },
+      },
+      {
+        sql: "table_constraints",
+        result: { rows: [] },
+      },
+      {
+        sql: "relrowsecurity",
+        result: { rows: [{ relrowsecurity: false }] },
+      },
+      {
+        sql: "pg_policy",
+        result: { rows: [] },
+      },
+    ];
+
+    const req = fakeReq({
+      method: "GET",
+      project: { id: "proj-1", schemaSlot: "p0001" },
+    });
+    const { res, err } = await callSchemaHandler(req);
+
+    assert.equal(err, undefined, "no error");
+    const table = res._body.tables[0];
+    assert.equal(table.name, "logs");
+    assert.equal(table.rls_enabled, false);
+    assert.deepEqual(table.policies, []);
+    assert.deepEqual(table.constraints, []);
   });
 });

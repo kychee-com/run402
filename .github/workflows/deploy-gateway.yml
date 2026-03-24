@@ -32,7 +32,7 @@ jobs:
       - run: npm ci
 
       - name: Run unit tests with coverage
-        run: npm run test:unit:coverage -- --check-coverage --lines 30
+        run: npm run test:unit:coverage -- --check-coverage --lines 75
         working-directory: packages/gateway
 
   deploy:
