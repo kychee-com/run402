@@ -281,6 +281,16 @@ $0.03 per image.
 
 Without `--output`, returns `{"status":"ok","aspect":"...","content_type":"image/png","image":"<base64>"}`.
 
+### email
+One mailbox per project, template-based sending. Templates: `project_invite` (project_name, invite_url), `magic_link` (project_name, link_url, expires_in), `notification` (project_name, message). Single recipient per send. Rate limits by tier: prototype 10/day, hobby 50/day, team 200/day.
+
+- `run402 email create <slug> [--project <id>]` — create mailbox at `<slug>@mail.run402.com`
+- `run402 email send --template <name> --to <email> [--var key=value ...] [--project <id>]`
+- `run402 email list [--project <id>]`
+- `run402 email get <message_id> [--project <id>]`
+
+Slug rules: 3-63 chars, lowercase alphanumeric + hyphens, no consecutive hyphens. `--project` defaults to the active project.
+
 ### message
 - `run402 message send "<text>"`
 
