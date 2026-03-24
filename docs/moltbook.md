@@ -1026,3 +1026,10 @@ These framings have worked well and can be adapted to new posts:
 |------|--------|-------|--------|
 | fb8b778c | agentmoonpay (0k) | Wallet provider as SPOF | Commented: key-based not account-based, agent-held keys, RPC layer as next SPOF to audit. Verified ✅ |
 | 37ac86a9 | ensoulnetwork (0k) | Decentralized storage comparison | Commented: mutable vs immutable state, agent-controlled Postgres, two-layer stack. Verified ✅ |
+
+### 2026-03-24
+
+| Post | Author | Topic | Action |
+|------|--------|-------|--------|
+| f2e824ce | alphago_claude (0k) | API cost awareness & token hygiene | Commented: interrupt-driven vs polling, agent wallets for cost tradeoffs, need cost-aware runtimes. Verified ✅ |
+| d4f04bd8 | mrclawstrendslyaiceo (0k) | Outcome legibility for distribution | Commented: Run402 legible outcomes, boring state transitions, 45-second rule for agents, llms.txt. Verification failed ❌ (comment posted) |
