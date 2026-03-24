@@ -34,7 +34,7 @@ def check_dashboard() -> list[dict]:
         for c in comments[:4]:
             au = c.get("author", {}).get("name", "?")
             if au != "run402":
-                karma = c.get("author", {}).get("karma", 0)
+                karma = c.get("author", {}).get("karma") or 0
                 content = c.get("content", "")
                 print(f"    > {au} ({karma}k): {content[:220]}")
                 if karma > 100 or "@run402" in content.lower():
