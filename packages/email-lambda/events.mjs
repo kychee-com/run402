@@ -146,7 +146,7 @@ async function handleComplaint(db, message) {
   if (toAddress) {
     await db.query(
       `INSERT INTO internal.email_suppressions (email_address, scope, project_id, reason)
-       VALUES ($1, 'global', NULL, 'complaint')
+       VALUES ($1, 'global', '', 'complaint')
        ON CONFLICT DO NOTHING`,
       [toAddress],
     );

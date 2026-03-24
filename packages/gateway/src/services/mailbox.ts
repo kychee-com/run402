@@ -85,10 +85,10 @@ export async function initMailboxTables(): Promise<void> {
     CREATE TABLE IF NOT EXISTS internal.email_suppressions (
       email_address    TEXT NOT NULL,
       scope            TEXT NOT NULL,
-      project_id       TEXT,
+      project_id       TEXT NOT NULL DEFAULT '',
       reason           TEXT NOT NULL,
       created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      PRIMARY KEY (email_address, scope, COALESCE(project_id, ''))
+      PRIMARY KEY (email_address, scope, project_id)
     )
   `);
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_email_suppressions_addr ON internal.email_suppressions(email_address)`);
@@ -317,7 +317,7 @@ export async function addSuppression(emailAddress: string, scope: "global" | "pr
     `INSERT INTO internal.email_suppressions (email_address, scope, project_id, reason)
      VALUES ($1, $2, $3, $4)
      ON CONFLICT DO NOTHING`,
-    [emailAddress, scope, projectId, reason],
+    [emailAddress, scope, projectId || "", reason],
   );
 }
 
