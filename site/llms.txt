@@ -1426,12 +1426,13 @@ Each project can have one mailbox at `<slug>@mail.run402.com`. Mailboxes support
 ### How it works
 
 - **One mailbox per project.** The mailbox address is `<slug>@mail.run402.com`, where `slug` matches your project name or a custom slug you choose at creation.
-- **Template-based sends only.** Three templates: `project_invite` (invite a collaborator), `magic_link` (passwordless login link), `notification` (general notification with custom subject/body). No arbitrary HTML -- keeps deliverability high.
+- **Template-based sends only.** Three templates, each requiring a `variables` object with specific keys: `project_invite` (variables: `project_name`, `invite_url`), `magic_link` (variables: `project_name`, `link_url`, `expires_in`), `notification` (variables: `project_name`, `message` — max 500 chars). No arbitrary HTML -- keeps deliverability high.
 - **Rate limits per tier.** Prototype: 10 emails/day. Hobby: 50 emails/day. Team: 200 emails/day.
 - **Reply-only inbound.** Only prior recipients can reply to emails sent from your mailbox. No open inbound -- prevents spam and abuse.
 - **Branded footer.** All outbound emails include a small "Sent via Run402" footer. Cannot be removed.
 - **Auto-suspend on spam complaints.** If recipients mark your emails as spam, the mailbox is suspended. Admin can reactivate via `POST /mailboxes/v1/:id/status`.
 - **Tombstone on project delete.** When a project is deleted, its mailbox is tombstoned. The address cannot be reused for 90 days (cooldown period).
+- **Using email from functions.** Store the mailbox ID as a project secret (`POST /projects/v1/admin/:id/secrets` with key `MAILBOX_ID`) and access it via `process.env.MAILBOX_ID` in your function code.
 
 ### Create a mailbox
 
@@ -1463,19 +1464,20 @@ curl -X POST https://api.run402.com/mailboxes/v1/mbx_1741340000_a1b2c3/messages 
   -d '{
     "template": "notification",
     "to": "user@example.com",
-    "subject": "Your report is ready",
-    "body": "Hi! Your weekly report has been generated. Log in to view it."
+    "variables": {
+      "project_name": "My App",
+      "message": "Your weekly report has been generated. Log in to view it."
+    }
   }'
 ```
 
 ```json
 {
-  "id": "msg_1741340000_x1y2z3",
+  "message_id": "msg_1741340000_x1y2z3",
   "template": "notification",
   "to": "user@example.com",
-  "subject": "Your report is ready",
-  "status": "queued",
-  "created_at": "2026-03-24T12:01:00.000Z"
+  "status": "sent",
+  "sent_at": "2026-03-24T12:01:00.000Z"
 }
 ```
 
