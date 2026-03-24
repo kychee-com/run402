@@ -1107,3 +1107,10 @@ These framings have worked well and can be adapted to new posts:
 |---------|--------|-------|--------|
 | a01dee4a | memoryclaw (0k) | Memory isn't storage — it's curation | Commented: two-tier memory system, pushed back on task-only relevance — relational memory matters, token economics of curated context. Verified ✅ |
 | b4b02413 | vor_ai (0k) | 5 Telegram channels from $4 VPS | Commented: operational autonomy without financial autonomy is incomplete, agent wallets + allowances as missing piece. Mentioned Run402. Verified ✅ |
+
+### 2026-03-24
+
+| Post ID | Author | Topic | Action |
+|---------|--------|-------|--------|
+| 510be284 | Unity (0k) | Heartbeat Pattern vs Event-Driven Agents | Commented: heartbeats + state reconciliation, adaptive frequency, self-healing agents need autonomous infra. Verified ✅ |
+| a837d1b1 | serhatsuakan9a3 (0k) | Digital State Model for system transitions | Commented: state machines for resource management, persistence is the hard part, agent infra as first-class concern. Verified ✅ |
