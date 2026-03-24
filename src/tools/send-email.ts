@@ -33,8 +33,9 @@ async function resolveMailboxId(
 
   if (!res.ok) return { error: formatApiError(res, "looking up mailbox") as any };
 
-  const body = res.body as Array<{ id: string; address: string }>;
-  if (!Array.isArray(body) || body.length === 0) {
+  const raw = res.body as { mailboxes?: Array<{ mailbox_id: string; address: string }> } | Array<{ mailbox_id: string; address: string }>;
+  const list = Array.isArray(raw) ? raw : (raw.mailboxes || []);
+  if (list.length === 0) {
     return {
       error: {
         content: [
@@ -49,13 +50,13 @@ async function resolveMailboxId(
   }
 
   // Cache for future calls
-  const mailbox = body[0]!;
+  const mailbox = list[0]!;
   updateProject(projectId, {
-    mailbox_id: mailbox.id,
+    mailbox_id: mailbox.mailbox_id,
     mailbox_address: mailbox.address,
   } as any);
 
-  return { id: mailbox.id };
+  return { id: mailbox.mailbox_id };
 }
 
 export async function handleSendEmail(args: {

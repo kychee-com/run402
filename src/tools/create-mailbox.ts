@@ -58,7 +58,7 @@ export async function handleCreateMailbox(args: {
   if (!res.ok) return formatApiError(res, "creating mailbox");
 
   const body = res.body as {
-    id: string;
+    mailbox_id: string;
     address: string;
     slug: string;
     status: string;
@@ -66,7 +66,7 @@ export async function handleCreateMailbox(args: {
 
   // Store mailbox ID in keystore for future email commands
   updateProject(args.project_id, {
-    mailbox_id: body.id,
+    mailbox_id: body.mailbox_id,
     mailbox_address: body.address,
   } as any);
 
@@ -74,7 +74,7 @@ export async function handleCreateMailbox(args: {
     content: [
       {
         type: "text",
-        text: `## Mailbox Created\n\n- **Address:** ${body.address}\n- **Mailbox ID:** \`${body.id}\`\n- **Status:** ${body.status}\n\nUse \`send_email\` to send template-based emails from this mailbox.`,
+        text: `## Mailbox Created\n\n- **Address:** ${body.address}\n- **Mailbox ID:** \`${body.mailbox_id}\`\n- **Status:** ${body.status}\n\nUse \`send_email\` to send template-based emails from this mailbox.`,
       },
     ],
   };

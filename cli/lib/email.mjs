@@ -71,14 +71,15 @@ async function resolveMailboxId(projectId, serviceKey) {
     console.error(JSON.stringify({ status: "error", http: res.status, ...data }));
     process.exit(1);
   }
-  const mailboxes = await res.json();
+  const body = await res.json();
+  const mailboxes = body.mailboxes || body;
   if (!Array.isArray(mailboxes) || mailboxes.length === 0) {
     console.error(JSON.stringify({ status: "error", message: "No mailbox found. Run: run402 email create <slug>" }));
     process.exit(1);
   }
   const mb = mailboxes[0];
-  updateProject(projectId, { mailbox_id: mb.id, mailbox_address: mb.address });
-  return mb.id;
+  updateProject(projectId, { mailbox_id: mb.mailbox_id, mailbox_address: mb.address });
+  return mb.mailbox_id;
 }
 
 async function create(args) {
@@ -114,8 +115,8 @@ async function create(args) {
     process.exit(1);
   }
 
-  updateProject(projectId, { mailbox_id: data.id, mailbox_address: data.address });
-  console.log(JSON.stringify({ status: "ok", mailbox_id: data.id, address: data.address, slug: data.slug }));
+  updateProject(projectId, { mailbox_id: data.mailbox_id, mailbox_address: data.address });
+  console.log(JSON.stringify({ status: "ok", mailbox_id: data.mailbox_id, address: data.address, slug: data.slug }));
 }
 
 async function send(args) {
