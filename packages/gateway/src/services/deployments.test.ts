@@ -28,6 +28,8 @@ mock.module("@aws-sdk/client-s3", {
   namedExports: {
     S3Client: class { send = (...args: any[]) => mockS3Send(...args); },
     PutObjectCommand: class { constructor(public input: any) {} },
+    ListObjectsV2Command: class { constructor(public input: any) {} },
+    DeleteObjectsCommand: class { constructor(public input: any) {} },
   },
 });
 

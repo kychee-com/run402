@@ -7,7 +7,9 @@
   "scripts": {
     "build": "tsc",
     "dev": "tsx --env-file=../../.env src/server.ts",
-    "start": "node dist/server.js"
+    "start": "node dist/server.js",
+    "test:unit": "node --experimental-test-module-mocks --test --import tsx 'src/**/*.test.ts'",
+    "test:unit:coverage": "c8 --reporter=text --reporter=html --reporter=json --exclude='src/**/*.test.ts' --exclude='node_modules/**' --exclude='dist/**' node --experimental-test-module-mocks --test --import tsx 'src/**/*.test.ts'"
   },
   "dependencies": {
     "@aws-sdk/client-cloudwatch-logs": "^3.700.0",
@@ -40,6 +42,7 @@
     "@types/jsonwebtoken": "^9.0.7",
     "@types/node": "^22.0.0",
     "@types/pg": "^8.11.0",
+    "c8": "^11.0.0",
     "dotenv": "^16.4.0",
     "libpg-query": "^17.7.3",
     "tsx": "^4.19.0",
