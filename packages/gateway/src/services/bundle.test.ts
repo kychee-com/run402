@@ -23,9 +23,9 @@ let mockPoolConnect: () => Promise<any>;
 mock.module("./projects.js", {
   namedExports: {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    getProjectById: (...args: any[]) => mockGetProjectById(...args),
+    getProjectById: (id: any) => mockGetProjectById(id),
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    deriveProjectKeys: (...args: any[]) => mockDeriveProjectKeys(...args),
+    deriveProjectKeys: (projectId: any, tier: any) => mockDeriveProjectKeys(projectId, tier),
   },
 });
 
@@ -111,28 +111,28 @@ describe("bundle validation — project_id", () => {
   it("rejects missing project_id", () => {
     assert.throws(
       () => validateBundle({} as BundleRequest),
-      (err: BundleError) => err.statusCode === 400 && err.message.includes("project_id"),
+      (err: InstanceType<typeof BundleError>) => err.statusCode === 400 && err.message.includes("project_id"),
     );
   });
 
   it("rejects non-string project_id", () => {
     assert.throws(
       () => validateBundle({ project_id: 123 } as unknown as BundleRequest),
-      (err: BundleError) => err.statusCode === 400,
+      (err: InstanceType<typeof BundleError>) => err.statusCode === 400,
     );
   });
 
   it("rejects invalid project_id format", () => {
     assert.throws(
       () => validateBundle({ project_id: "bad_format" }),
-      (err: BundleError) => err.statusCode === 400 && err.message.includes("format"),
+      (err: InstanceType<typeof BundleError>) => err.statusCode === 400 && err.message.includes("format"),
     );
   });
 
   it("rejects project_id without prj_ prefix", () => {
     assert.throws(
       () => validateBundle({ project_id: "123_456" }),
-      (err: BundleError) => err.statusCode === 400,
+      (err: InstanceType<typeof BundleError>) => err.statusCode === 400,
     );
   });
 
@@ -145,14 +145,14 @@ describe("bundle validation — migrations", () => {
   it("rejects non-string migrations", () => {
     assert.throws(
       () => validateBundle({ project_id: "prj_123_1", migrations: 42 as unknown as string }),
-      (err: BundleError) => err.statusCode === 400,
+      (err: InstanceType<typeof BundleError>) => err.statusCode === 400,
     );
   });
 
   it("rejects oversized migrations", () => {
     assert.throws(
       () => validateBundle({ project_id: "prj_123_1", migrations: "x".repeat(1_000_001) }),
-      (err: BundleError) => err.statusCode === 400 && err.message.includes("1MB"),
+      (err: InstanceType<typeof BundleError>) => err.statusCode === 400 && err.message.includes("1MB"),
     );
   });
 
@@ -170,7 +170,7 @@ describe("bundle validation — migrations", () => {
     for (const sql of blocked) {
       assert.throws(
         () => validateBundle({ project_id: "prj_123_1", migrations: sql }),
-        (err: BundleError) => err.statusCode === 403,
+        (err: InstanceType<typeof BundleError>) => err.statusCode === 403,
         `Should block: ${sql}`,
       );
     }
@@ -190,14 +190,14 @@ describe("bundle validation — rls", () => {
   it("rejects missing template", () => {
     assert.throws(
       () => validateBundle({ project_id: "prj_123_1", rls: { template: "", tables: [] } }),
-      (err: BundleError) => err.statusCode === 400,
+      (err: InstanceType<typeof BundleError>) => err.statusCode === 400,
     );
   });
 
   it("rejects invalid template", () => {
     assert.throws(
       () => validateBundle({ project_id: "prj_123_1", rls: { template: "evil", tables: [] } }),
-      (err: BundleError) => err.statusCode === 400 && err.message.includes("Invalid RLS"),
+      (err: InstanceType<typeof BundleError>) => err.statusCode === 400 && err.message.includes("Invalid RLS"),
     );
   });
 
@@ -208,7 +208,7 @@ describe("bundle validation — rls", () => {
           project_id: "prj_123_1",
           rls: { template: "user_owns_rows", tables: [{ table: "posts" }] },
         }),
-      (err: BundleError) => err.statusCode === 400 && err.message.includes("owner_column"),
+      (err: InstanceType<typeof BundleError>) => err.statusCode === 400 && err.message.includes("owner_column"),
     );
   });
 
@@ -229,14 +229,14 @@ describe("bundle validation — secrets", () => {
   it("rejects non-array secrets", () => {
     assert.throws(
       () => validateBundle({ project_id: "prj_123_1", secrets: "bad" as unknown as [] }),
-      (err: BundleError) => err.statusCode === 400,
+      (err: InstanceType<typeof BundleError>) => err.statusCode === 400,
     );
   });
 
   it("rejects invalid secret key format", () => {
     assert.throws(
       () => validateBundle({ project_id: "prj_123_1", secrets: [{ key: "lowercase", value: "x" }] }),
-      (err: BundleError) => err.statusCode === 400 && err.message.includes("uppercase"),
+      (err: InstanceType<typeof BundleError>) => err.statusCode === 400 && err.message.includes("uppercase"),
     );
   });
 
@@ -247,7 +247,7 @@ describe("bundle validation — secrets", () => {
           project_id: "prj_123_1",
           secrets: [{ key: "MY_KEY", value: undefined as unknown as string }],
         }),
-      (err: BundleError) => err.statusCode === 400 && err.message.includes("value"),
+      (err: InstanceType<typeof BundleError>) => err.statusCode === 400 && err.message.includes("value"),
     );
   });
 
@@ -265,7 +265,7 @@ describe("bundle validation — functions", () => {
   it("rejects non-array functions", () => {
     assert.throws(
       () => validateBundle({ project_id: "prj_123_1", functions: "bad" as unknown as [] }),
-      (err: BundleError) => err.statusCode === 400,
+      (err: InstanceType<typeof BundleError>) => err.statusCode === 400,
     );
   });
 
@@ -274,7 +274,7 @@ describe("bundle validation — functions", () => {
     for (const name of invalid) {
       assert.throws(
         () => validateBundle({ project_id: "prj_123_1", functions: [{ name, code: "x" }] }),
-        (err: BundleError) => err.statusCode === 400,
+        (err: InstanceType<typeof BundleError>) => err.statusCode === 400,
         `Should reject function name: '${name}'`,
       );
     }
@@ -287,7 +287,7 @@ describe("bundle validation — functions", () => {
           project_id: "prj_123_1",
           functions: [{ name: "hello", code: "" }],
         }),
-      (err: BundleError) => err.statusCode === 400 && err.message.includes("code"),
+      (err: InstanceType<typeof BundleError>) => err.statusCode === 400 && err.message.includes("code"),
     );
   });
 
@@ -305,14 +305,14 @@ describe("bundle validation — files", () => {
   it("rejects empty files array", () => {
     assert.throws(
       () => validateBundle({ project_id: "prj_123_1", files: [] }),
-      (err: BundleError) => err.statusCode === 400 && err.message.includes("non-empty"),
+      (err: InstanceType<typeof BundleError>) => err.statusCode === 400 && err.message.includes("non-empty"),
     );
   });
 
   it("rejects missing file path", () => {
     assert.throws(
       () => validateBundle({ project_id: "prj_123_1", files: [{ file: "", data: "hi" }] }),
-      (err: BundleError) => err.statusCode === 400,
+      (err: InstanceType<typeof BundleError>) => err.statusCode === 400,
     );
   });
 
@@ -323,7 +323,7 @@ describe("bundle validation — files", () => {
           project_id: "prj_123_1",
           files: [{ file: "index.html", data: "hi", encoding: "gzip" as "utf-8" }],
         }),
-      (err: BundleError) => err.statusCode === 400 && err.message.includes("encoding"),
+      (err: InstanceType<typeof BundleError>) => err.statusCode === 400 && err.message.includes("encoding"),
     );
   });
 
@@ -344,14 +344,14 @@ describe("bundle validation — subdomain", () => {
   it("rejects reserved subdomain", () => {
     assert.throws(
       () => validateBundle({ project_id: "prj_123_1", subdomain: "api" }),
-      (err: BundleError) => err.statusCode === 400 && err.message.includes("reserved"),
+      (err: InstanceType<typeof BundleError>) => err.statusCode === 400 && err.message.includes("reserved"),
     );
   });
 
   it("rejects too-short subdomain", () => {
     assert.throws(
       () => validateBundle({ project_id: "prj_123_1", subdomain: "ab" }),
-      (err: BundleError) => err.statusCode === 400,
+      (err: InstanceType<typeof BundleError>) => err.statusCode === 400,
     );
   });
 
@@ -415,7 +415,7 @@ describe("deployBundle — project lookup errors", () => {
 
     await assert.rejects(
       () => deployBundle({ project_id: "prj_999_1" }, "https://api.run402.com"),
-      (err: BundleError) => err.statusCode === 404 && err.message.includes("not found"),
+      (err: InstanceType<typeof BundleError>) => err.statusCode === 404 && err.message.includes("not found"),
     );
   });
 
@@ -424,7 +424,7 @@ describe("deployBundle — project lookup errors", () => {
 
     await assert.rejects(
       () => deployBundle({ project_id: "prj_123_1" }, "https://api.run402.com"),
-      (err: BundleError) => err.statusCode === 400 && err.message.includes("not active"),
+      (err: InstanceType<typeof BundleError>) => err.statusCode === 400 && err.message.includes("not active"),
     );
   });
 
@@ -433,7 +433,7 @@ describe("deployBundle — project lookup errors", () => {
 
     await assert.rejects(
       () => deployBundle({ project_id: "prj_123_1" }, "https://api.run402.com", "0xDifferentWallet"),
-      (err: BundleError) => err.statusCode === 403 && err.message.includes("Wallet"),
+      (err: InstanceType<typeof BundleError>) => err.statusCode === 403 && err.message.includes("Wallet"),
     );
   });
 
@@ -701,7 +701,7 @@ describe("deployBundle — migration SQL errors", () => {
           },
           "https://api.run402.com",
         ),
-      (err: BundleError) => {
+      (err: InstanceType<typeof BundleError>) => {
         return (
           err.statusCode === 422 &&
           err.message.includes("Migration SQL error") &&
