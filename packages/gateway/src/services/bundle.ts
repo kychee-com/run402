@@ -10,6 +10,7 @@ import { deployFunction, setSecret } from "./functions.js";
 import { createDeployment } from "./deployments.js";
 import { createOrUpdateSubdomain, validateSubdomainName } from "./subdomains.js";
 import { pool } from "../db/pool.js";
+import { sql } from "../db/sql.js";
 import { TIERS } from "@run402/shared";
 import type { ProjectInfo } from "@run402/shared";
 
@@ -289,17 +290,17 @@ export async function deployBundle(
 /**
  * Run SQL migrations within a project's schema.
  */
-async function runMigrations(project: ProjectInfo, sql: string): Promise<void> {
+async function runMigrations(project: ProjectInfo, migrationSql: string): Promise<void> {
   const client = await pool.connect();
   try {
-    await client.query("BEGIN");
-    await client.query(`SET search_path TO ${project.schemaSlot}`);
-    await client.query(sql);
-    await client.query("NOTIFY pgrst, 'reload schema'");
-    await client.query("COMMIT");
+    await client.query(sql("BEGIN"));
+    await client.query(sql(`SET search_path TO ${project.schemaSlot}`));
+    await client.query(sql(migrationSql));
+    await client.query(sql("NOTIFY pgrst, 'reload schema'"));
+    await client.query(sql("COMMIT"));
     console.log(`  Migrations applied to ${project.id} (${project.schemaSlot})`);
   } catch (err) {
-    await client.query("ROLLBACK").catch(() => {});
+    await client.query(sql("ROLLBACK")).catch(() => {});
     const msg = err instanceof Error ? err.message : String(err);
     throw new BundleError(`Migration SQL error: ${msg}`, 422);
   } finally {
@@ -317,48 +318,48 @@ async function applyRls(
 ): Promise<void> {
   const client = await pool.connect();
   try {
-    await client.query("BEGIN");
-    await client.query(`SET search_path TO ${project.schemaSlot}`);
+    await client.query(sql("BEGIN"));
+    await client.query(sql(`SET search_path TO ${project.schemaSlot}`));
 
     for (const table of tables) {
       const tableName = table.table;
 
       // Drop existing policies for idempotent redeploy
       const existing = await client.query(
-        `SELECT policyname FROM pg_policies WHERE schemaname = $1 AND tablename = $2`,
+        sql(`SELECT policyname FROM pg_policies WHERE schemaname = $1 AND tablename = $2`),
         [project.schemaSlot, tableName],
       );
       for (const row of existing.rows) {
-        await client.query(`DROP POLICY ${JSON.stringify(row.policyname)} ON ${tableName}`);
+        await client.query(sql(`DROP POLICY ${JSON.stringify(row.policyname)} ON ${tableName}`));
       }
 
-      await client.query(`ALTER TABLE ${tableName} ENABLE ROW LEVEL SECURITY`);
-      await client.query(`ALTER TABLE ${tableName} FORCE ROW LEVEL SECURITY`);
+      await client.query(sql(`ALTER TABLE ${tableName} ENABLE ROW LEVEL SECURITY`));
+      await client.query(sql(`ALTER TABLE ${tableName} FORCE ROW LEVEL SECURITY`));
 
       if (template === "user_owns_rows") {
         const col = table.owner_column!;
-        await client.query(`CREATE POLICY "Users can view own rows" ON ${tableName} FOR SELECT USING (${col}::text = auth.uid()::text)`);
-        await client.query(`CREATE POLICY "Users can insert own rows" ON ${tableName} FOR INSERT WITH CHECK (${col}::text = auth.uid()::text)`);
-        await client.query(`CREATE POLICY "Users can update own rows" ON ${tableName} FOR UPDATE USING (${col}::text = auth.uid()::text)`);
-        await client.query(`CREATE POLICY "Users can delete own rows" ON ${tableName} FOR DELETE USING (${col}::text = auth.uid()::text)`);
+        await client.query(sql(`CREATE POLICY "Users can view own rows" ON ${tableName} FOR SELECT USING (${col}::text = auth.uid()::text)`));
+        await client.query(sql(`CREATE POLICY "Users can insert own rows" ON ${tableName} FOR INSERT WITH CHECK (${col}::text = auth.uid()::text)`));
+        await client.query(sql(`CREATE POLICY "Users can update own rows" ON ${tableName} FOR UPDATE USING (${col}::text = auth.uid()::text)`));
+        await client.query(sql(`CREATE POLICY "Users can delete own rows" ON ${tableName} FOR DELETE USING (${col}::text = auth.uid()::text)`));
       } else if (template === "public_read") {
-        await client.query(`CREATE POLICY "Anyone can read" ON ${tableName} FOR SELECT USING (true)`);
-        await client.query(`CREATE POLICY "Authenticated users can insert" ON ${tableName} FOR INSERT WITH CHECK (auth.role() = 'authenticated')`);
-        await client.query(`CREATE POLICY "Authenticated users can update" ON ${tableName} FOR UPDATE USING (auth.role() = 'authenticated')`);
-        await client.query(`CREATE POLICY "Authenticated users can delete" ON ${tableName} FOR DELETE USING (auth.role() = 'authenticated')`);
+        await client.query(sql(`CREATE POLICY "Anyone can read" ON ${tableName} FOR SELECT USING (true)`));
+        await client.query(sql(`CREATE POLICY "Authenticated users can insert" ON ${tableName} FOR INSERT WITH CHECK (auth.role() = 'authenticated')`));
+        await client.query(sql(`CREATE POLICY "Authenticated users can update" ON ${tableName} FOR UPDATE USING (auth.role() = 'authenticated')`));
+        await client.query(sql(`CREATE POLICY "Authenticated users can delete" ON ${tableName} FOR DELETE USING (auth.role() = 'authenticated')`));
       } else if (template === "public_read_write") {
-        await client.query(`GRANT INSERT, UPDATE, DELETE ON ${tableName} TO anon`);
-        await client.query(`CREATE POLICY "Anyone can read" ON ${tableName} FOR SELECT USING (true)`);
-        await client.query(`CREATE POLICY "Anyone can insert" ON ${tableName} FOR INSERT WITH CHECK (true)`);
-        await client.query(`CREATE POLICY "Anyone can update" ON ${tableName} FOR UPDATE USING (true)`);
-        await client.query(`CREATE POLICY "Anyone can delete" ON ${tableName} FOR DELETE USING (true)`);
+        await client.query(sql(`GRANT INSERT, UPDATE, DELETE ON ${tableName} TO anon`));
+        await client.query(sql(`CREATE POLICY "Anyone can read" ON ${tableName} FOR SELECT USING (true)`));
+        await client.query(sql(`CREATE POLICY "Anyone can insert" ON ${tableName} FOR INSERT WITH CHECK (true)`));
+        await client.query(sql(`CREATE POLICY "Anyone can update" ON ${tableName} FOR UPDATE USING (true)`));
+        await client.query(sql(`CREATE POLICY "Anyone can delete" ON ${tableName} FOR DELETE USING (true)`));
       }
     }
 
-    await client.query("COMMIT");
+    await client.query(sql("COMMIT"));
     console.log(`  RLS (${template}) applied to ${project.id}: ${tables.map((t) => t.table).join(", ")}`);
   } catch (err) {
-    await client.query("ROLLBACK");
+    await client.query(sql("ROLLBACK"));
     throw err;
   } finally {
     client.release();

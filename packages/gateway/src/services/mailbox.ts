@@ -6,6 +6,7 @@
  */
 
 import { pool } from "../db/pool.js";
+import { sql } from "../db/sql.js";
 
 export interface MailboxRecord {
   id: string;
@@ -44,7 +45,7 @@ const MAIL_DOMAIN = "mail.run402.com";
 // ---------- Table init ----------
 
 export async function initMailboxTables(): Promise<void> {
-  await pool.query(`
+  await pool.query(sql(`
     CREATE TABLE IF NOT EXISTS internal.mailboxes (
       id               TEXT PRIMARY KEY,
       slug             TEXT NOT NULL UNIQUE,
@@ -57,11 +58,11 @@ export async function initMailboxTables(): Promise<void> {
       created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
-  `);
-  await pool.query(`CREATE INDEX IF NOT EXISTS idx_mailboxes_project ON internal.mailboxes(project_id)`);
-  await pool.query(`CREATE INDEX IF NOT EXISTS idx_mailboxes_slug ON internal.mailboxes(slug)`);
+  `));
+  await pool.query(sql(`CREATE INDEX IF NOT EXISTS idx_mailboxes_project ON internal.mailboxes(project_id)`));
+  await pool.query(sql(`CREATE INDEX IF NOT EXISTS idx_mailboxes_slug ON internal.mailboxes(slug)`));
 
-  await pool.query(`
+  await pool.query(sql(`
     CREATE TABLE IF NOT EXISTS internal.email_messages (
       id               TEXT PRIMARY KEY,
       mailbox_id       TEXT NOT NULL REFERENCES internal.mailboxes(id),
@@ -77,11 +78,11 @@ export async function initMailboxTables(): Promise<void> {
       s3_key           TEXT,
       created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
-  `);
-  await pool.query(`CREATE INDEX IF NOT EXISTS idx_email_messages_mailbox ON internal.email_messages(mailbox_id, created_at DESC)`);
-  await pool.query(`CREATE INDEX IF NOT EXISTS idx_email_messages_to ON internal.email_messages(to_address, mailbox_id)`);
+  `));
+  await pool.query(sql(`CREATE INDEX IF NOT EXISTS idx_email_messages_mailbox ON internal.email_messages(mailbox_id, created_at DESC)`));
+  await pool.query(sql(`CREATE INDEX IF NOT EXISTS idx_email_messages_to ON internal.email_messages(to_address, mailbox_id)`));
 
-  await pool.query(`
+  await pool.query(sql(`
     CREATE TABLE IF NOT EXISTS internal.email_suppressions (
       email_address    TEXT NOT NULL,
       scope            TEXT NOT NULL,
@@ -90,10 +91,10 @@ export async function initMailboxTables(): Promise<void> {
       created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       PRIMARY KEY (email_address, scope, project_id)
     )
-  `);
-  await pool.query(`CREATE INDEX IF NOT EXISTS idx_email_suppressions_addr ON internal.email_suppressions(email_address)`);
+  `));
+  await pool.query(sql(`CREATE INDEX IF NOT EXISTS idx_email_suppressions_addr ON internal.email_suppressions(email_address)`));
 
-  await pool.query(`
+  await pool.query(sql(`
     CREATE TABLE IF NOT EXISTS internal.email_webhooks (
       id               TEXT PRIMARY KEY,
       mailbox_id       TEXT NOT NULL REFERENCES internal.mailboxes(id),
@@ -101,7 +102,7 @@ export async function initMailboxTables(): Promise<void> {
       events           JSONB NOT NULL DEFAULT '[]',
       created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
-  `);
+  `));
 }
 
 // ---------- Validation ----------
@@ -126,7 +127,7 @@ export function formatAddress(slug: string): string {
 export async function createMailbox(slug: string, projectId: string): Promise<MailboxRecord> {
   // Check if project already has a mailbox
   const existing = await pool.query(
-    `SELECT id FROM internal.mailboxes WHERE project_id = $1 AND status = 'active'`,
+    sql(`SELECT id FROM internal.mailboxes WHERE project_id = $1 AND status = 'active'`),
     [projectId],
   );
   if (existing.rows.length > 0) {
@@ -135,7 +136,7 @@ export async function createMailbox(slug: string, projectId: string): Promise<Ma
 
   // Check if slug is taken (active or tombstoned within cooldown)
   const slugCheck = await pool.query(
-    `SELECT id, status, tombstoned_at FROM internal.mailboxes WHERE slug = $1`,
+    sql(`SELECT id, status, tombstoned_at FROM internal.mailboxes WHERE slug = $1`),
     [slug],
   );
   if (slugCheck.rows.length > 0) {
@@ -150,15 +151,15 @@ export async function createMailbox(slug: string, projectId: string): Promise<Ma
         throw new MailboxError("Address is in cooldown period", 409);
       }
       // Cooldown expired — delete the old tombstone and allow reuse
-      await pool.query(`DELETE FROM internal.mailboxes WHERE id = $1`, [row.id]);
+      await pool.query(sql(`DELETE FROM internal.mailboxes WHERE id = $1`), [row.id]);
     }
   }
 
   const id = `mbx_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
   const result = await pool.query(
-    `INSERT INTO internal.mailboxes (id, slug, project_id)
+    sql(`INSERT INTO internal.mailboxes (id, slug, project_id)
      VALUES ($1, $2, $3)
-     RETURNING *`,
+     RETURNING *`),
     [id, slug, projectId],
   );
 
@@ -168,7 +169,7 @@ export async function createMailbox(slug: string, projectId: string): Promise<Ma
 
 export async function getMailbox(id: string): Promise<MailboxRecord | null> {
   const result = await pool.query(
-    `SELECT * FROM internal.mailboxes WHERE id = $1`,
+    sql(`SELECT * FROM internal.mailboxes WHERE id = $1`),
     [id],
   );
   return result.rows.length > 0 ? (result.rows[0] as MailboxRecord) : null;
@@ -176,7 +177,7 @@ export async function getMailbox(id: string): Promise<MailboxRecord | null> {
 
 export async function getMailboxBySlug(slug: string): Promise<MailboxRecord | null> {
   const result = await pool.query(
-    `SELECT * FROM internal.mailboxes WHERE slug = $1 AND status != 'tombstoned'`,
+    sql(`SELECT * FROM internal.mailboxes WHERE slug = $1 AND status != 'tombstoned'`),
     [slug],
   );
   return result.rows.length > 0 ? (result.rows[0] as MailboxRecord) : null;
@@ -184,7 +185,7 @@ export async function getMailboxBySlug(slug: string): Promise<MailboxRecord | nu
 
 export async function listMailboxes(projectId: string): Promise<MailboxRecord[]> {
   const result = await pool.query(
-    `SELECT * FROM internal.mailboxes WHERE project_id = $1 AND status != 'tombstoned' ORDER BY created_at DESC`,
+    sql(`SELECT * FROM internal.mailboxes WHERE project_id = $1 AND status != 'tombstoned' ORDER BY created_at DESC`),
     [projectId],
   );
   return result.rows as MailboxRecord[];
@@ -198,7 +199,7 @@ export async function deleteMailbox(id: string, projectId: string): Promise<bool
   }
 
   await pool.query(
-    `UPDATE internal.mailboxes SET status = 'tombstoned', tombstoned_at = NOW(), updated_at = NOW() WHERE id = $1`,
+    sql(`UPDATE internal.mailboxes SET status = 'tombstoned', tombstoned_at = NOW(), updated_at = NOW() WHERE id = $1`),
     [id],
   );
 
@@ -208,9 +209,9 @@ export async function deleteMailbox(id: string, projectId: string): Promise<bool
 
 export async function tombstoneProjectMailbox(projectId: string): Promise<void> {
   const result = await pool.query(
-    `UPDATE internal.mailboxes SET status = 'tombstoned', tombstoned_at = NOW(), updated_at = NOW()
+    sql(`UPDATE internal.mailboxes SET status = 'tombstoned', tombstoned_at = NOW(), updated_at = NOW()
      WHERE project_id = $1 AND status IN ('active', 'suspended')
-     RETURNING slug`,
+     RETURNING slug`),
     [projectId],
   );
   for (const row of result.rows) {
@@ -220,7 +221,7 @@ export async function tombstoneProjectMailbox(projectId: string): Promise<void> 
 
 export async function suspendMailbox(id: string, reason: string): Promise<void> {
   await pool.query(
-    `UPDATE internal.mailboxes SET status = 'suspended', updated_at = NOW() WHERE id = $1`,
+    sql(`UPDATE internal.mailboxes SET status = 'suspended', updated_at = NOW() WHERE id = $1`),
     [id],
   );
   console.log(`  Mailbox suspended: ${id} (reason: ${reason})`);
@@ -228,7 +229,7 @@ export async function suspendMailbox(id: string, reason: string): Promise<void> 
 
 export async function reactivateMailbox(id: string): Promise<boolean> {
   const result = await pool.query(
-    `UPDATE internal.mailboxes SET status = 'active', updated_at = NOW() WHERE id = $1 AND status = 'suspended' RETURNING id`,
+    sql(`UPDATE internal.mailboxes SET status = 'active', updated_at = NOW() WHERE id = $1 AND status = 'suspended' RETURNING id`),
     [id],
   );
   return (result.rowCount ?? 0) > 0;
@@ -243,7 +244,7 @@ export async function reactivateMailbox(id: string): Promise<boolean> {
 export async function checkAndIncrementDailyLimit(mailboxId: string, dailyLimit: number): Promise<{ allowed: boolean; current: number; resetsAt: string }> {
   // Reset if past reset time, then increment
   const result = await pool.query(
-    `UPDATE internal.mailboxes
+    sql(`UPDATE internal.mailboxes
      SET sends_today = CASE
        WHEN NOW() >= sends_today_reset_at THEN 1
        ELSE sends_today + 1
@@ -254,7 +255,7 @@ export async function checkAndIncrementDailyLimit(mailboxId: string, dailyLimit:
      END,
      updated_at = NOW()
      WHERE id = $1
-     RETURNING sends_today, sends_today_reset_at`,
+     RETURNING sends_today, sends_today_reset_at`),
     [mailboxId],
   );
   const row = result.rows[0];
@@ -276,7 +277,7 @@ export async function checkAndIncrementRecipientLimit(
 ): Promise<{ allowed: boolean; current: number }> {
   // Check if we've already sent to this address
   const existingResult = await pool.query(
-    `SELECT 1 FROM internal.email_messages WHERE mailbox_id = $1 AND to_address = $2 AND direction = 'outbound' LIMIT 1`,
+    sql(`SELECT 1 FROM internal.email_messages WHERE mailbox_id = $1 AND to_address = $2 AND direction = 'outbound' LIMIT 1`),
     [mailboxId, toAddress],
   );
   if (existingResult.rows.length > 0) {
@@ -293,7 +294,7 @@ export async function checkAndIncrementRecipientLimit(
   }
 
   await pool.query(
-    `UPDATE internal.mailboxes SET unique_recipients = unique_recipients + 1, updated_at = NOW() WHERE id = $1`,
+    sql(`UPDATE internal.mailboxes SET unique_recipients = unique_recipients + 1, updated_at = NOW() WHERE id = $1`),
     [mailboxId],
   );
 
@@ -304,9 +305,9 @@ export async function checkAndIncrementRecipientLimit(
 
 export async function isAddressSuppressed(emailAddress: string, projectId: string): Promise<boolean> {
   const result = await pool.query(
-    `SELECT 1 FROM internal.email_suppressions
+    sql(`SELECT 1 FROM internal.email_suppressions
      WHERE email_address = $1 AND (scope = 'global' OR (scope = 'project' AND project_id = $2))
-     LIMIT 1`,
+     LIMIT 1`),
     [emailAddress, projectId],
   );
   return result.rows.length > 0;
@@ -314,9 +315,9 @@ export async function isAddressSuppressed(emailAddress: string, projectId: strin
 
 export async function addSuppression(emailAddress: string, scope: "global" | "project", projectId: string | null, reason: string): Promise<void> {
   await pool.query(
-    `INSERT INTO internal.email_suppressions (email_address, scope, project_id, reason)
+    sql(`INSERT INTO internal.email_suppressions (email_address, scope, project_id, reason)
      VALUES ($1, $2, $3, $4)
-     ON CONFLICT DO NOTHING`,
+     ON CONFLICT DO NOTHING`),
     [emailAddress, scope, projectId || "", reason],
   );
 }

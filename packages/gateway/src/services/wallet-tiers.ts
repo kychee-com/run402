@@ -7,6 +7,7 @@
  */
 
 import { pool } from "../db/pool.js";
+import { sql } from "../db/sql.js";
 import { TIERS, getTierLimits } from "@run402/shared";
 import type { TierName, WalletTierInfo } from "@run402/shared";
 import { getOrCreateBillingAccount, type BillingAccount } from "./billing.js";
@@ -29,23 +30,23 @@ export async function subscribeTier(
 
   const client = await pool.connect();
   try {
-    await client.query("BEGIN");
+    await client.query(sql("BEGIN"));
 
     await client.query(
-      `UPDATE internal.billing_accounts
+      sql(`UPDATE internal.billing_accounts
        SET tier = $1, lease_started_at = $2, lease_expires_at = $3, updated_at = NOW()
-       WHERE id = $4`,
+       WHERE id = $4`),
       [tier, now, expiresAt, account.id],
     );
 
     // Ledger entry for the subscription
     const ledgerId = randomUUID();
     await client.query(
-      `INSERT INTO internal.allowance_ledger
+      sql(`INSERT INTO internal.allowance_ledger
        (id, billing_account_id, direction, kind, amount_usd_micros,
         balance_after_available, balance_after_held,
         reference_type, reference_id, idempotency_key, metadata)
-       VALUES ($1, $2, 'debit', 'tier_subscribe', 0, $3, $4, 'tier', $5, $6, $7)`,
+       VALUES ($1, $2, 'debit', 'tier_subscribe', 0, $3, $4, 'tier', $5, $6, $7)`),
       [
         ledgerId, account.id,
         account.available_usd_micros, account.held_usd_micros,
@@ -54,15 +55,15 @@ export async function subscribeTier(
       ],
     );
 
-    await client.query("COMMIT");
+    await client.query(sql("COMMIT"));
 
     const result = await pool.query(
-      `SELECT * FROM internal.billing_accounts WHERE id = $1`,
+      sql(`SELECT * FROM internal.billing_accounts WHERE id = $1`),
       [account.id],
     );
     return rowToAccount(result.rows[0]);
   } catch (err) {
-    try { await client.query("ROLLBACK"); } catch { /* connection may be dead */ }
+    try { await client.query(sql("ROLLBACK")); } catch { /* connection may be dead */ }
     throw err;
   } finally {
     try { client.release(); } catch { /* may already be released */ }
@@ -89,22 +90,22 @@ export async function renewTier(
 
   const client = await pool.connect();
   try {
-    await client.query("BEGIN");
+    await client.query(sql("BEGIN"));
 
     await client.query(
-      `UPDATE internal.billing_accounts
+      sql(`UPDATE internal.billing_accounts
        SET tier = $1, lease_started_at = COALESCE(lease_started_at, $2), lease_expires_at = $3, updated_at = NOW()
-       WHERE id = $4`,
+       WHERE id = $4`),
       [tier, now, expiresAt, account.id],
     );
 
     const ledgerId = randomUUID();
     await client.query(
-      `INSERT INTO internal.allowance_ledger
+      sql(`INSERT INTO internal.allowance_ledger
        (id, billing_account_id, direction, kind, amount_usd_micros,
         balance_after_available, balance_after_held,
         reference_type, reference_id, idempotency_key, metadata)
-       VALUES ($1, $2, 'debit', 'tier_renew', 0, $3, $4, 'tier', $5, $6, $7)`,
+       VALUES ($1, $2, 'debit', 'tier_renew', 0, $3, $4, 'tier', $5, $6, $7)`),
       [
         ledgerId, account.id,
         account.available_usd_micros, account.held_usd_micros,
@@ -113,15 +114,15 @@ export async function renewTier(
       ],
     );
 
-    await client.query("COMMIT");
+    await client.query(sql("COMMIT"));
 
     const result = await pool.query(
-      `SELECT * FROM internal.billing_accounts WHERE id = $1`,
+      sql(`SELECT * FROM internal.billing_accounts WHERE id = $1`),
       [account.id],
     );
     return rowToAccount(result.rows[0]);
   } catch (err) {
-    try { await client.query("ROLLBACK"); } catch { /* connection may be dead */ }
+    try { await client.query(sql("ROLLBACK")); } catch { /* connection may be dead */ }
     throw err;
   } finally {
     try { client.release(); } catch { /* may already be released */ }
@@ -158,11 +159,11 @@ export async function upgradeTier(
 
   const client = await pool.connect();
   try {
-    await client.query("BEGIN");
+    await client.query(sql("BEGIN"));
 
     // Lock account
     const locked = await client.query(
-      `SELECT * FROM internal.billing_accounts WHERE id = $1 FOR UPDATE`,
+      sql(`SELECT * FROM internal.billing_accounts WHERE id = $1 FOR UPDATE`),
       [account.id],
     );
     const currentAvailable = Number(locked.rows[0].available_usd_micros);
@@ -176,11 +177,11 @@ export async function upgradeTier(
 
       const refundLedgerId = randomUUID();
       await client.query(
-        `INSERT INTO internal.allowance_ledger
+        sql(`INSERT INTO internal.allowance_ledger
          (id, billing_account_id, direction, kind, amount_usd_micros,
           balance_after_available, balance_after_held,
           reference_type, reference_id, idempotency_key, metadata)
-         VALUES ($1, $2, 'credit', 'tier_upgrade_refund', $3, $4, $5, 'tier', $6, $7, $8)`,
+         VALUES ($1, $2, 'credit', 'tier_upgrade_refund', $3, $4, $5, 'tier', $6, $7, $8)`),
         [
           refundLedgerId, account.id,
           refundMicros, newAvailable, currentHeld,
@@ -192,20 +193,20 @@ export async function upgradeTier(
 
     // Update tier + lease + allowance
     await client.query(
-      `UPDATE internal.billing_accounts
+      sql(`UPDATE internal.billing_accounts
        SET tier = $1, lease_started_at = $2, lease_expires_at = $3,
            available_usd_micros = $4, updated_at = NOW()
-       WHERE id = $5`,
+       WHERE id = $5`),
       [newTier, now, expiresAt, newAvailable, account.id],
     );
 
     const upgradeLedgerId = randomUUID();
     await client.query(
-      `INSERT INTO internal.allowance_ledger
+      sql(`INSERT INTO internal.allowance_ledger
        (id, billing_account_id, direction, kind, amount_usd_micros,
         balance_after_available, balance_after_held,
         reference_type, reference_id, idempotency_key, metadata)
-       VALUES ($1, $2, 'debit', 'tier_upgrade', 0, $3, $4, 'tier', $5, $6, $7)`,
+       VALUES ($1, $2, 'debit', 'tier_upgrade', 0, $3, $4, 'tier', $5, $6, $7)`),
       [
         upgradeLedgerId, account.id,
         newAvailable, currentHeld,
@@ -214,15 +215,15 @@ export async function upgradeTier(
       ],
     );
 
-    await client.query("COMMIT");
+    await client.query(sql("COMMIT"));
 
     const result = await pool.query(
-      `SELECT * FROM internal.billing_accounts WHERE id = $1`,
+      sql(`SELECT * FROM internal.billing_accounts WHERE id = $1`),
       [account.id],
     );
     return rowToAccount(result.rows[0]);
   } catch (err) {
-    try { await client.query("ROLLBACK"); } catch { /* connection may be dead */ }
+    try { await client.query(sql("ROLLBACK")); } catch { /* connection may be dead */ }
     throw err;
   } finally {
     try { client.release(); } catch { /* may already be released */ }
@@ -237,9 +238,9 @@ export async function getWalletTier(wallet: string): Promise<WalletTierInfo> {
 
   // Get billing account
   const accountResult = await pool.query(
-    `SELECT ba.* FROM internal.billing_accounts ba
+    sql(`SELECT ba.* FROM internal.billing_accounts ba
      JOIN internal.billing_account_wallets baw ON baw.billing_account_id = ba.id
-     WHERE baw.wallet_address = $1`,
+     WHERE baw.wallet_address = $1`),
     [normalized],
   );
 
@@ -278,12 +279,12 @@ export async function getWalletPoolUsage(wallet: string): Promise<WalletTierInfo
   const normalized = wallet.toLowerCase();
 
   const result = await pool.query(
-    `SELECT
+    sql(`SELECT
        COUNT(*)::int AS projects,
        COALESCE(SUM(api_calls), 0)::bigint AS total_api_calls,
        COALESCE(SUM(storage_bytes), 0)::bigint AS total_storage_bytes
      FROM internal.projects
-     WHERE wallet_address = $1 AND status = 'active'`,
+     WHERE wallet_address = $1 AND status = 'active'`),
     [normalized],
   );
 
@@ -291,9 +292,9 @@ export async function getWalletPoolUsage(wallet: string): Promise<WalletTierInfo
 
   // Get tier limits from billing account
   const accountResult = await pool.query(
-    `SELECT ba.tier FROM internal.billing_accounts ba
+    sql(`SELECT ba.tier FROM internal.billing_accounts ba
      JOIN internal.billing_account_wallets baw ON baw.billing_account_id = ba.id
-     WHERE baw.wallet_address = $1`,
+     WHERE baw.wallet_address = $1`),
     [normalized],
   );
 

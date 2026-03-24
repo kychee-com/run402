@@ -11,6 +11,7 @@ import { Router, Request, Response } from "express";
 import { serviceKeyAuth } from "../middleware/apikey.js";
 import { serviceKeyOrAdmin, walletAuthOrAdmin } from "../middleware/admin-auth.js";
 import { pool } from "../db/pool.js";
+import { sql } from "../db/sql.js";
 import { asyncHandler, HttpError } from "../utils/async-handler.js";
 import {
   validateSubdomainName,
@@ -78,7 +79,7 @@ router.get("/subdomains/v1", serviceKeyOrAdmin, asyncHandler(async (req: Request
   if (req.isAdmin) {
     // Admin: list all subdomains
     const result = await pool.query(
-      `SELECT name, deployment_id, project_id, created_at, updated_at FROM internal.subdomains ORDER BY created_at DESC`,
+      sql(`SELECT name, deployment_id, project_id, created_at, updated_at FROM internal.subdomains ORDER BY created_at DESC`),
     );
     res.json({ subdomains: result.rows.map(formatSubdomain) });
   } else {

@@ -7,6 +7,7 @@
 
 import { S3Client, GetObjectCommand, DeleteObjectCommand, ListObjectsV2Command } from "@aws-sdk/client-s3";
 import { pool } from "../db/pool.js";
+import { sql } from "../db/sql.js";
 import { S3_BUCKET, S3_REGION } from "../config.js";
 import { projectCache } from "./projects.js";
 import { forkApp } from "./fork.js";
@@ -39,10 +40,10 @@ export async function createDemoProject(
   const config = DEFAULT_DEMO_CONFIG;
 
   await pool.query(
-    `UPDATE internal.projects
+    sql(`UPDATE internal.projects
      SET demo_mode = true, pinned = true,
          demo_source_version_id = $1, demo_config = $2, demo_last_reset_at = NOW()
-     WHERE id = $3`,
+     WHERE id = $3`),
     [versionId, JSON.stringify(config), result.project_id],
   );
 
@@ -74,7 +75,7 @@ export async function resetDemoProject(projectId: string): Promise<void> {
   try {
     // Load the published bundle
     const versionResult = await pool.query(
-      `SELECT bundle_uri, bundle_sha256 FROM internal.app_versions WHERE id = $1`,
+      sql(`SELECT bundle_uri, bundle_sha256 FROM internal.app_versions WHERE id = $1`),
       [project.demoSourceVersionId],
     );
     if (versionResult.rows.length === 0) {
@@ -110,30 +111,30 @@ export async function resetDemoProject(projectId: string): Promise<void> {
     // 1. Drop and recreate schema
     const client = await pool.connect();
     try {
-      await client.query("BEGIN");
-      await client.query(`DROP SCHEMA IF EXISTS ${project.schemaSlot} CASCADE`);
-      await client.query(`CREATE SCHEMA ${project.schemaSlot}`);
-      await client.query(`GRANT USAGE ON SCHEMA ${project.schemaSlot} TO anon, authenticated, service_role`);
+      await client.query(sql("BEGIN"));
+      await client.query(sql(`DROP SCHEMA IF EXISTS ${project.schemaSlot} CASCADE`));
+      await client.query(sql(`CREATE SCHEMA ${project.schemaSlot}`));
+      await client.query(sql(`GRANT USAGE ON SCHEMA ${project.schemaSlot} TO anon, authenticated, service_role`));
       await client.query(
-        `ALTER DEFAULT PRIVILEGES IN SCHEMA ${project.schemaSlot} GRANT SELECT ON TABLES TO anon`,
+        sql(`ALTER DEFAULT PRIVILEGES IN SCHEMA ${project.schemaSlot} GRANT SELECT ON TABLES TO anon`),
       );
       await client.query(
-        `ALTER DEFAULT PRIVILEGES IN SCHEMA ${project.schemaSlot} GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO authenticated`,
+        sql(`ALTER DEFAULT PRIVILEGES IN SCHEMA ${project.schemaSlot} GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO authenticated`),
       );
       await client.query(
-        `ALTER DEFAULT PRIVILEGES IN SCHEMA ${project.schemaSlot} GRANT ALL ON TABLES TO service_role`,
+        sql(`ALTER DEFAULT PRIVILEGES IN SCHEMA ${project.schemaSlot} GRANT ALL ON TABLES TO service_role`),
       );
       await client.query(
-        `ALTER DEFAULT PRIVILEGES IN SCHEMA ${project.schemaSlot} GRANT USAGE, SELECT ON SEQUENCES TO anon, authenticated, service_role`,
+        sql(`ALTER DEFAULT PRIVILEGES IN SCHEMA ${project.schemaSlot} GRANT USAGE, SELECT ON SEQUENCES TO anon, authenticated, service_role`),
       );
 
       // Delete auth users and refresh tokens
-      await client.query(`DELETE FROM internal.users WHERE project_id = $1`, [projectId]);
-      await client.query(`DELETE FROM internal.refresh_tokens WHERE project_id = $1`, [projectId]);
+      await client.query(sql(`DELETE FROM internal.users WHERE project_id = $1`), [projectId]);
+      await client.query(sql(`DELETE FROM internal.refresh_tokens WHERE project_id = $1`), [projectId]);
 
-      await client.query("COMMIT");
+      await client.query(sql("COMMIT"));
     } catch (err) {
-      await client.query("ROLLBACK");
+      await client.query(sql("ROLLBACK"));
       throw err;
     } finally {
       client.release();
@@ -154,8 +155,8 @@ export async function resetDemoProject(projectId: string): Promise<void> {
 
     // 3. Re-apply table grants
     const tablesResult = await pool.query(
-      `SELECT table_name FROM information_schema.tables
-       WHERE table_schema = $1 AND table_type = 'BASE TABLE'`,
+      sql(`SELECT table_name FROM information_schema.tables
+       WHERE table_schema = $1 AND table_type = 'BASE TABLE'`),
       [project.schemaSlot],
     );
     if (tablesResult.rows.length > 0) {
@@ -163,17 +164,17 @@ export async function resetDemoProject(projectId: string): Promise<void> {
       try {
         for (const row of tablesResult.rows) {
           const t = `${project.schemaSlot}.${row.table_name}`;
-          await grantClient.query(`GRANT SELECT ON ${t} TO anon`);
-          await grantClient.query(`GRANT SELECT, INSERT, UPDATE, DELETE ON ${t} TO authenticated`);
-          await grantClient.query(`GRANT ALL ON ${t} TO service_role`);
+          await grantClient.query(sql(`GRANT SELECT ON ${t} TO anon`));
+          await grantClient.query(sql(`GRANT SELECT, INSERT, UPDATE, DELETE ON ${t} TO authenticated`));
+          await grantClient.query(sql(`GRANT ALL ON ${t} TO service_role`));
         }
         const seqResult = await pool.query(
-          `SELECT sequence_name FROM information_schema.sequences WHERE sequence_schema = $1`,
+          sql(`SELECT sequence_name FROM information_schema.sequences WHERE sequence_schema = $1`),
           [project.schemaSlot],
         );
         for (const row of seqResult.rows) {
           const s = `${project.schemaSlot}.${row.sequence_name}`;
-          await grantClient.query(`GRANT USAGE, SELECT ON SEQUENCE ${s} TO anon, authenticated, service_role`);
+          await grantClient.query(sql(`GRANT USAGE, SELECT ON SEQUENCE ${s} TO anon, authenticated, service_role`));
         }
       } finally {
         grantClient.release();
@@ -181,7 +182,7 @@ export async function resetDemoProject(projectId: string): Promise<void> {
     }
 
     // 4. Notify PostgREST
-    await pool.query("NOTIFY pgrst, 'reload schema'");
+    await pool.query(sql("NOTIFY pgrst, 'reload schema'"));
 
     // 5. Delete visitor storage uploads
     if (s3 && S3_BUCKET) {
@@ -201,7 +202,7 @@ export async function resetDemoProject(projectId: string): Promise<void> {
     // 6. Reset counters and update timestamp
     resetDemoCounters(projectId);
     await pool.query(
-      `UPDATE internal.projects SET demo_last_reset_at = NOW() WHERE id = $1`,
+      sql(`UPDATE internal.projects SET demo_last_reset_at = NOW() WHERE id = $1`),
       [projectId],
     );
     project.demoLastResetAt = new Date();
@@ -220,9 +221,9 @@ export async function resetDemoProject(projectId: string): Promise<void> {
 export async function teardownDemoProject(sourceProjectId: string): Promise<void> {
   // Find the demo project for this source project's published version
   const result = await pool.query(
-    `SELECT p.id FROM internal.projects p
+    sql(`SELECT p.id FROM internal.projects p
      JOIN internal.app_versions av ON p.demo_source_version_id = av.id
-     WHERE av.project_id = $1 AND p.demo_mode = true AND p.status = 'active'`,
+     WHERE av.project_id = $1 AND p.demo_mode = true AND p.status = 'active'`),
     [sourceProjectId],
   );
 
@@ -236,7 +237,7 @@ export async function teardownDemoProject(sourceProjectId: string): Promise<void
 
     // Release subdomain
     try {
-      await pool.query(`DELETE FROM internal.subdomains WHERE project_id = $1`, [demoProjectId]);
+      await pool.query(sql(`DELETE FROM internal.subdomains WHERE project_id = $1`), [demoProjectId]);
     } catch (err) {
       console.warn(`  Failed to release demo subdomain for ${demoProjectId}:`, errorMessage(err));
     }
@@ -266,10 +267,10 @@ export async function teardownDemoProject(sourceProjectId: string): Promise<void
  */
 export async function findDemoProject(sourceProjectId: string): Promise<string | null> {
   const result = await pool.query(
-    `SELECT p.id FROM internal.projects p
+    sql(`SELECT p.id FROM internal.projects p
      JOIN internal.app_versions av ON p.demo_source_version_id = av.id
      WHERE av.project_id = $1 AND p.demo_mode = true AND p.status = 'active'
-     LIMIT 1`,
+     LIMIT 1`),
     [sourceProjectId],
   );
   return result.rows.length > 0 ? result.rows[0].id : null;
@@ -280,7 +281,7 @@ export async function findDemoProject(sourceProjectId: string): Promise<string |
  */
 export async function updateDemoVersion(demoProjectId: string, newVersionId: string): Promise<void> {
   await pool.query(
-    `UPDATE internal.projects SET demo_source_version_id = $1 WHERE id = $2`,
+    sql(`UPDATE internal.projects SET demo_source_version_id = $1 WHERE id = $2`),
     [newVersionId, demoProjectId],
   );
 

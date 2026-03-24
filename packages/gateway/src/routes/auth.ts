@@ -3,6 +3,7 @@ import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
 import crypto from "node:crypto";
 import { pool } from "../db/pool.js";
+import { sql } from "../db/sql.js";
 import { JWT_SECRET, GOOGLE_APP_CLIENT_ID, GOOGLE_APP_CLIENT_SECRET, PUBLIC_API_URL } from "../config.js";
 import { apikeyAuth } from "../middleware/apikey.js";
 import { demoSignupMiddleware } from "../middleware/demo.js";
@@ -266,8 +267,8 @@ router.post("/auth/v1/signup", demoSignupMiddleware, asyncHandler(async (req: Re
   try {
     const passwordHash = await bcrypt.hash(password, 10);
     const result = await pool.query(
-      `INSERT INTO internal.users (project_id, email, password_hash)
-       VALUES ($1, $2, $3) RETURNING id, email, created_at`,
+      sql(`INSERT INTO internal.users (project_id, email, password_hash)
+       VALUES ($1, $2, $3) RETURNING id, email, created_at`),
       [project.id, email, passwordHash],
     );
 
@@ -301,10 +302,10 @@ router.post("/auth/v1/token", asyncHandler(async (req: Request, res: Response) =
     }
 
     const result = await pool.query(
-      `SELECT rt.id, rt.user_id, rt.expires_at, rt.used, u.email
+      sql(`SELECT rt.id, rt.user_id, rt.expires_at, rt.used, u.email
        FROM internal.refresh_tokens rt
        JOIN internal.users u ON u.id = rt.user_id
-       WHERE rt.id = $1::uuid AND rt.project_id = $2`,
+       WHERE rt.id = $1::uuid AND rt.project_id = $2`),
       [refresh_token, project.id],
     );
 
@@ -321,7 +322,7 @@ router.post("/auth/v1/token", asyncHandler(async (req: Request, res: Response) =
     }
 
     // Mark old token as used
-    await pool.query(`UPDATE internal.refresh_tokens SET used = true WHERE id = $1::uuid`, [refresh_token]);
+    await pool.query(sql(`UPDATE internal.refresh_tokens SET used = true WHERE id = $1::uuid`), [refresh_token]);
 
     // Issue new tokens
     const accessToken = jwt.sign(
@@ -360,7 +361,7 @@ router.post("/auth/v1/token", asyncHandler(async (req: Request, res: Response) =
 
     // Fetch user email
     const userResult = await pool.query(
-      `SELECT id, email, display_name, avatar_url, email_verified_at FROM internal.users WHERE id = $1::uuid`,
+      sql(`SELECT id, email, display_name, avatar_url, email_verified_at FROM internal.users WHERE id = $1::uuid`),
       [result.userId],
     );
     if (userResult.rows.length === 0) {
@@ -404,8 +405,8 @@ router.post("/auth/v1/token", asyncHandler(async (req: Request, res: Response) =
   const email = rawEmail.toLowerCase().trim();
 
   const result = await pool.query(
-    `SELECT id, password_hash FROM internal.users
-     WHERE project_id = $1 AND LOWER(email) = $2`,
+    sql(`SELECT id, password_hash FROM internal.users
+     WHERE project_id = $1 AND LOWER(email) = $2`),
     [project.id, email],
   );
 
@@ -426,7 +427,7 @@ router.post("/auth/v1/token", asyncHandler(async (req: Request, res: Response) =
   }
 
   // Update last_sign_in_at
-  await pool.query(`UPDATE internal.users SET last_sign_in_at = NOW() WHERE id = $1::uuid`, [user.id]);
+  await pool.query(sql(`UPDATE internal.users SET last_sign_in_at = NOW() WHERE id = $1::uuid`), [user.id]);
 
   const accessToken = jwt.sign(
     { sub: user.id, role: "authenticated", project_id: project.id },
@@ -468,8 +469,8 @@ router.get("/auth/v1/user", asyncHandler(async (req: Request, res: Response) => 
     }
 
     const result = await pool.query(
-      `SELECT id, email, email_verified_at, display_name, avatar_url, last_sign_in_at, created_at
-       FROM internal.users WHERE id = $1::uuid AND project_id = $2`,
+      sql(`SELECT id, email, email_verified_at, display_name, avatar_url, last_sign_in_at, created_at
+       FROM internal.users WHERE id = $1::uuid AND project_id = $2`),
       [payload.sub, project.id],
     );
 
@@ -481,8 +482,8 @@ router.get("/auth/v1/user", asyncHandler(async (req: Request, res: Response) => 
 
     // Fetch linked identities
     const identities = await pool.query(
-      `SELECT provider, provider_sub, provider_email, created_at
-       FROM internal.auth_identities WHERE user_id = $1::uuid`,
+      sql(`SELECT provider, provider_sub, provider_email, created_at
+       FROM internal.auth_identities WHERE user_id = $1::uuid`),
       [user.id],
     );
 
@@ -507,7 +508,7 @@ router.get("/auth/v1/user", asyncHandler(async (req: Request, res: Response) => 
 router.post("/auth/v1/logout", asyncHandler(async (req: Request, res: Response) => {
   const { refresh_token } = req.body;
   if (refresh_token) {
-    await pool.query(`UPDATE internal.refresh_tokens SET used = true WHERE id = $1::uuid`, [refresh_token]);
+    await pool.query(sql(`UPDATE internal.refresh_tokens SET used = true WHERE id = $1::uuid`), [refresh_token]);
   }
   res.set("Cache-Control", "no-store");
   res.json({ status: "ok" });
@@ -519,8 +520,8 @@ async function createRefreshToken(userId: string, projectId: string): Promise<st
   const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 days
 
   await pool.query(
-    `INSERT INTO internal.refresh_tokens (id, user_id, project_id, expires_at)
-     VALUES ($1, $2, $3, $4)`,
+    sql(`INSERT INTO internal.refresh_tokens (id, user_id, project_id, expires_at)
+     VALUES ($1, $2, $3, $4)`),
     [tokenId, userId, projectId, expiresAt.toISOString()],
   );
 

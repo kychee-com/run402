@@ -26,6 +26,7 @@ import { writeFileSync, mkdirSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { pool } from "../db/pool.js";
+import { sql } from "../db/sql.js";
 import {
   LAMBDA_ROLE_ARN,
   LAMBDA_LAYER_ARN,
@@ -187,7 +188,7 @@ export async function handler(event, context) {
  * Ensure the functions and secrets tables exist (idempotent).
  */
 export async function initFunctionsTable(): Promise<void> {
-  await pool.query(`
+  await pool.query(sql(`
     CREATE TABLE IF NOT EXISTS internal.functions (
       id SERIAL PRIMARY KEY,
       project_id TEXT NOT NULL,
@@ -202,12 +203,12 @@ export async function initFunctionsTable(): Promise<void> {
       updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
       UNIQUE(project_id, name)
     )
-  `);
-  await pool.query(`
+  `));
+  await pool.query(sql(`
     CREATE INDEX IF NOT EXISTS idx_functions_project
       ON internal.functions(project_id)
-  `);
-  await pool.query(`
+  `));
+  await pool.query(sql(`
     CREATE TABLE IF NOT EXISTS internal.secrets (
       id SERIAL PRIMARY KEY,
       project_id TEXT NOT NULL,
@@ -217,11 +218,11 @@ export async function initFunctionsTable(): Promise<void> {
       updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
       UNIQUE(project_id, key)
     )
-  `);
-  await pool.query(`
+  `));
+  await pool.query(sql(`
     CREATE INDEX IF NOT EXISTS idx_secrets_project
       ON internal.secrets(project_id)
-  `);
+  `));
 }
 
 /**
@@ -261,13 +262,13 @@ export async function deployFunction(
   // Check function count quota
   if (tierLimits) {
     const existing = await pool.query(
-      `SELECT count(*)::int AS cnt FROM internal.functions WHERE project_id = $1`,
+      sql(`SELECT count(*)::int AS cnt FROM internal.functions WHERE project_id = $1`),
       [projectId],
     );
     const count = existing.rows[0].cnt;
     // Allow update of existing function
     const existingFn = await pool.query(
-      `SELECT 1 FROM internal.functions WHERE project_id = $1 AND name = $2`,
+      sql(`SELECT 1 FROM internal.functions WHERE project_id = $1 AND name = $2`),
       [projectId, name],
     );
     if (existingFn.rows.length === 0 && count >= tierLimits.maxFunctions) {
@@ -304,7 +305,7 @@ export async function deployFunction(
 
     // Load project secrets for env vars
     const secretRows = await pool.query(
-      `SELECT key, value_encrypted FROM internal.secrets WHERE project_id = $1`,
+      sql(`SELECT key, value_encrypted FROM internal.secrets WHERE project_id = $1`),
       [projectId],
     );
     const envVars: Record<string, string> = {
@@ -428,7 +429,7 @@ export async function deployFunction(
 
   // Upsert DB record (including source for publish/fork)
   await pool.query(
-    `INSERT INTO internal.functions (project_id, name, lambda_arn, runtime, timeout_seconds, memory_mb, code_hash, deps, source)
+    sql(`INSERT INTO internal.functions (project_id, name, lambda_arn, runtime, timeout_seconds, memory_mb, code_hash, deps, source)
      VALUES ($1, $2, $3, 'node22', $4, $5, $6, $7, $8)
      ON CONFLICT (project_id, name) DO UPDATE SET
        lambda_arn = $3,
@@ -437,7 +438,7 @@ export async function deployFunction(
        code_hash = $6,
        deps = $7,
        source = $8,
-       updated_at = now()`,
+       updated_at = now()`),
     [projectId, name, lambdaArn, timeout, memory, codeHash, deps || [], code],
   );
 
@@ -472,7 +473,7 @@ export async function invokeFunction(
 ): Promise<{ statusCode: number; headers: Record<string, string>; body: string }> {
   // Look up function in DB
   const result = await pool.query(
-    `SELECT lambda_arn FROM internal.functions WHERE project_id = $1 AND name = $2`,
+    sql(`SELECT lambda_arn FROM internal.functions WHERE project_id = $1 AND name = $2`),
     [projectId, name],
   );
   if (result.rows.length === 0) {
@@ -560,7 +561,7 @@ export async function invokeBootstrap(
 ): Promise<{ result: unknown | null; error: string | null }> {
   // Check if a bootstrap function exists
   const fnResult = await pool.query(
-    `SELECT lambda_arn FROM internal.functions WHERE project_id = $1 AND name = 'bootstrap'`,
+    sql(`SELECT lambda_arn FROM internal.functions WHERE project_id = $1 AND name = 'bootstrap'`),
     [projectId],
   );
   if (fnResult.rows.length === 0) {
@@ -618,8 +619,8 @@ export async function invokeBootstrap(
  */
 export async function listFunctions(projectId: string, apiBase: string): Promise<FunctionRecord[]> {
   const result = await pool.query(
-    `SELECT name, lambda_arn, runtime, timeout_seconds, memory_mb, code_hash, deps, created_at, updated_at
-     FROM internal.functions WHERE project_id = $1 ORDER BY name`,
+    sql(`SELECT name, lambda_arn, runtime, timeout_seconds, memory_mb, code_hash, deps, created_at, updated_at
+     FROM internal.functions WHERE project_id = $1 ORDER BY name`),
     [projectId],
   );
   return result.rows.map((row) => ({
@@ -641,7 +642,7 @@ export async function listFunctions(projectId: string, apiBase: string): Promise
  */
 export async function deleteFunction(projectId: string, name: string): Promise<void> {
   const result = await pool.query(
-    `SELECT lambda_arn FROM internal.functions WHERE project_id = $1 AND name = $2`,
+    sql(`SELECT lambda_arn FROM internal.functions WHERE project_id = $1 AND name = $2`),
     [projectId, name],
   );
   if (result.rows.length === 0) {
@@ -662,7 +663,7 @@ export async function deleteFunction(projectId: string, name: string): Promise<v
   }
 
   await pool.query(
-    `DELETE FROM internal.functions WHERE project_id = $1 AND name = $2`,
+    sql(`DELETE FROM internal.functions WHERE project_id = $1 AND name = $2`),
     [projectId, name],
   );
 
@@ -675,7 +676,7 @@ export async function deleteFunction(projectId: string, name: string): Promise<v
  */
 export async function deleteProjectFunctions(projectId: string): Promise<void> {
   const result = await pool.query(
-    `SELECT name FROM internal.functions WHERE project_id = $1`,
+    sql(`SELECT name FROM internal.functions WHERE project_id = $1`),
     [projectId],
   );
 
@@ -690,7 +691,7 @@ export async function deleteProjectFunctions(projectId: string): Promise<void> {
     }
   }
 
-  await pool.query(`DELETE FROM internal.functions WHERE project_id = $1`, [projectId]);
+  await pool.query(sql(`DELETE FROM internal.functions WHERE project_id = $1`), [projectId]);
 }
 
 /**
@@ -707,7 +708,7 @@ export async function getFunctionLogs(
 
   // Verify function exists
   const result = await pool.query(
-    `SELECT 1 FROM internal.functions WHERE project_id = $1 AND name = $2`,
+    sql(`SELECT 1 FROM internal.functions WHERE project_id = $1 AND name = $2`),
     [projectId, name],
   );
   if (result.rows.length === 0) {
@@ -772,11 +773,11 @@ export async function setSecret(
   // Check secrets quota
   if (tierLimits) {
     const existing = await pool.query(
-      `SELECT count(*)::int AS cnt FROM internal.secrets WHERE project_id = $1`,
+      sql(`SELECT count(*)::int AS cnt FROM internal.secrets WHERE project_id = $1`),
       [projectId],
     );
     const existingKey = await pool.query(
-      `SELECT 1 FROM internal.secrets WHERE project_id = $1 AND key = $2`,
+      sql(`SELECT 1 FROM internal.secrets WHERE project_id = $1 AND key = $2`),
       [projectId, key],
     );
     if (existingKey.rows.length === 0 && existing.rows[0].cnt >= tierLimits.maxSecrets) {
@@ -789,11 +790,11 @@ export async function setSecret(
 
   // Upsert secret (value stored as plaintext — encryption at rest via Aurora)
   await pool.query(
-    `INSERT INTO internal.secrets (project_id, key, value_encrypted)
+    sql(`INSERT INTO internal.secrets (project_id, key, value_encrypted)
      VALUES ($1, $2, $3)
      ON CONFLICT (project_id, key) DO UPDATE SET
        value_encrypted = $3,
-       updated_at = now()`,
+       updated_at = now()`),
     [projectId, key, value],
   );
 
@@ -806,7 +807,7 @@ export async function setSecret(
  */
 export async function deleteSecret(projectId: string, key: string): Promise<void> {
   const result = await pool.query(
-    `DELETE FROM internal.secrets WHERE project_id = $1 AND key = $2 RETURNING key`,
+    sql(`DELETE FROM internal.secrets WHERE project_id = $1 AND key = $2 RETURNING key`),
     [projectId, key],
   );
   if (result.rows.length === 0) {
@@ -821,7 +822,7 @@ export async function deleteSecret(projectId: string, key: string): Promise<void
  */
 export async function listSecrets(projectId: string): Promise<Array<{ key: string; created_at: string; updated_at: string }>> {
   const result = await pool.query(
-    `SELECT key, created_at, updated_at FROM internal.secrets WHERE project_id = $1 ORDER BY key`,
+    sql(`SELECT key, created_at, updated_at FROM internal.secrets WHERE project_id = $1 ORDER BY key`),
     [projectId],
   );
   return result.rows;
@@ -834,13 +835,13 @@ async function refreshFunctionEnvVars(projectId: string): Promise<void> {
   if (!lambda) return;
 
   const functions = await pool.query(
-    `SELECT name FROM internal.functions WHERE project_id = $1`,
+    sql(`SELECT name FROM internal.functions WHERE project_id = $1`),
     [projectId],
   );
   if (functions.rows.length === 0) return;
 
   const secrets = await pool.query(
-    `SELECT key, value_encrypted FROM internal.secrets WHERE project_id = $1`,
+    sql(`SELECT key, value_encrypted FROM internal.secrets WHERE project_id = $1`),
     [projectId],
   );
 

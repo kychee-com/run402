@@ -21,6 +21,7 @@ import { meteringMiddleware } from "../middleware/metering.js";
 import { demoBlockedMiddleware, demoFunctionInvokeMiddleware } from "../middleware/demo.js";
 import { walletAuthOrAdmin } from "../middleware/admin-auth.js";
 import { pool } from "../db/pool.js";
+import { sql, type SQL } from "../db/sql.js";
 import { TIERS } from "@run402/shared";
 
 const router = Router();
@@ -31,16 +32,16 @@ router.get(
   walletAuthOrAdmin,
   asyncHandler(async (req: Request, res: Response) => {
     const apiBase = `${req.protocol}://${req.get("host")}`;
-    let query: string;
+    let query: SQL;
     let params: unknown[];
 
     if (req.isAdmin) {
-      query = `SELECT f.name, f.project_id, f.created_at, f.updated_at FROM internal.functions f ORDER BY f.created_at DESC`;
+      query = sql(`SELECT f.name, f.project_id, f.created_at, f.updated_at FROM internal.functions f ORDER BY f.created_at DESC`);
       params = [];
     } else {
       const wallet = req.walletAddress;
       if (!wallet) { res.status(401).json({ error: "No wallet address" }); return; }
-      query = `SELECT f.name, f.project_id, f.created_at, f.updated_at FROM internal.functions f JOIN internal.projects p ON f.project_id = p.id WHERE p.wallet_address = $1 ORDER BY f.created_at DESC`;
+      query = sql(`SELECT f.name, f.project_id, f.created_at, f.updated_at FROM internal.functions f JOIN internal.projects p ON f.project_id = p.id WHERE p.wallet_address = $1 ORDER BY f.created_at DESC`);
       params = [wallet];
     }
 

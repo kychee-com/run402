@@ -1,4 +1,5 @@
 import { pool } from "../db/pool.js";
+import { sql } from "../db/sql.js";
 import { archiveProject } from "./projects.js";
 import { errorMessage } from "../utils/errors.js";
 
@@ -11,7 +12,7 @@ let leaseInterval: ReturnType<typeof setInterval> | null = null;
 async function checkWalletLeases(): Promise<void> {
   try {
     // Find wallets with expired tier leases that still have active projects
-    const result = await pool.query(`
+    const result = await pool.query(sql(`
       SELECT DISTINCT baw.wallet_address, ba.tier, ba.lease_expires_at
       FROM internal.billing_accounts ba
       JOIN internal.billing_account_wallets baw ON baw.billing_account_id = ba.id
@@ -24,7 +25,7 @@ async function checkWalletLeases(): Promise<void> {
         AND p.status = 'active'
         AND p.pinned = false
       )
-    `);
+    `));
 
     for (const row of result.rows) {
       const wallet = row.wallet_address;
@@ -32,7 +33,7 @@ async function checkWalletLeases(): Promise<void> {
 
       // Find and archive all non-pinned active projects for this wallet
       const projects = await pool.query(
-        `SELECT id FROM internal.projects WHERE wallet_address = $1 AND status = 'active' AND pinned = false`,
+        sql(`SELECT id FROM internal.projects WHERE wallet_address = $1 AND status = 'active' AND pinned = false`),
         [wallet],
       );
 

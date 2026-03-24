@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from "express";
 import { pool } from "../db/pool.js";
+import { sql } from "../db/sql.js";
 import { METERING_FLUSH_INTERVAL } from "../config.js";
 import { getTierLimits } from "@run402/shared";
 import type { TierName } from "@run402/shared";
@@ -69,20 +70,20 @@ export async function flushCounters(): Promise<void> {
 
   const client = await pool.connect();
   try {
-    await client.query("BEGIN");
+    await client.query(sql("BEGIN"));
     for (const [projectId, counter] of entries) {
       if (counter.apiCalls > 0) {
         await client.query(
-          `UPDATE internal.projects SET api_calls = api_calls + $1 WHERE id = $2`,
+          sql(`UPDATE internal.projects SET api_calls = api_calls + $1 WHERE id = $2`),
           [counter.apiCalls, projectId],
         );
         counter.apiCalls = 0;
         counter.lastFlushed = Date.now();
       }
     }
-    await client.query("COMMIT");
+    await client.query(sql("COMMIT"));
   } catch (err: unknown) {
-    await client.query("ROLLBACK");
+    await client.query(sql("ROLLBACK"));
     console.error("Failed to flush metering counters:", errorMessage(err));
   } finally {
     client.release();

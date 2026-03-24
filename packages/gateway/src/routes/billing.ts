@@ -10,6 +10,7 @@
 
 import { Router, Request, Response } from "express";
 import { pool } from "../db/pool.js";
+import { sql } from "../db/sql.js";
 import { ADMIN_KEY } from "../config.js";
 import {
   getBillingAccount,
@@ -130,9 +131,9 @@ router.get("/wallets/v1/:address/projects", asyncHandler(async (req: Request, re
   }
 
   const result = await pool.query(
-    `SELECT id, name, tier, status, api_calls, storage_bytes, created_at
+    sql(`SELECT id, name, tier, status, api_calls, storage_bytes, created_at
      FROM internal.projects WHERE wallet_address = $1 AND status = 'active'
-     ORDER BY created_at DESC`,
+     ORDER BY created_at DESC`),
     [wallet],
   );
 

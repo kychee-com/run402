@@ -5,6 +5,7 @@
 
 import crypto from "node:crypto";
 import { pool } from "../db/pool.js";
+import { sql } from "../db/sql.js";
 import { getDemoCounters } from "../middleware/demo.js";
 import { DEFAULT_DEMO_CONFIG } from "@run402/shared";
 import type { ProjectInfo } from "@run402/shared";
@@ -43,7 +44,7 @@ export async function validateRedirectUrl(url: string, projectId: string): Promi
   if (parsed.protocol === "https:" && parsed.hostname.endsWith(".run402.com")) {
     const subName = parsed.hostname.replace(/\.run402\.com$/, "");
     const result = await pool.query(
-      `SELECT 1 FROM internal.subdomains WHERE project_id = $1 AND name = $2`,
+      sql(`SELECT 1 FROM internal.subdomains WHERE project_id = $1 AND name = $2`),
       [projectId, subName],
     );
     return result.rows.length > 0;
@@ -93,10 +94,10 @@ export async function createOAuthTransaction(
   const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 min
 
   await pool.query(
-    `INSERT INTO internal.oauth_transactions
+    sql(`INSERT INTO internal.oauth_transactions
        (project_id, provider, state_hash, code_challenge, code_challenge_method,
         redirect_url, mode, intent, nonce, linking_user_id, client_state, expires_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`),
     [
       params.projectId,
       params.provider,
@@ -124,11 +125,11 @@ export async function consumeOAuthTransaction(stateValue: string): Promise<OAuth
   const stateHash = sha256(stateValue);
 
   const result = await pool.query(
-    `DELETE FROM internal.oauth_transactions
+    sql(`DELETE FROM internal.oauth_transactions
      WHERE state_hash = $1 AND expires_at > NOW()
      RETURNING id, project_id, provider, redirect_url, mode, intent,
                code_challenge, code_challenge_method, nonce,
-               linking_user_id, client_state`,
+               linking_user_id, client_state`),
     [stateHash],
   );
 
@@ -188,9 +189,9 @@ export async function resolveOAuthIdentity(params: ResolveIdentityParams): Promi
 
   // Case 1: check if identity already exists
   const existing = await pool.query(
-    `SELECT ai.user_id, u.email FROM internal.auth_identities ai
+    sql(`SELECT ai.user_id, u.email FROM internal.auth_identities ai
      JOIN internal.users u ON u.id = ai.user_id
-     WHERE ai.project_id = $1 AND ai.provider = $2 AND ai.provider_sub = $3`,
+     WHERE ai.project_id = $1 AND ai.provider = $2 AND ai.provider_sub = $3`),
     [params.projectId, params.provider, params.providerSub],
   );
 
@@ -198,12 +199,12 @@ export async function resolveOAuthIdentity(params: ResolveIdentityParams): Promi
     const userId = existing.rows[0].user_id;
     // Update last_sign_in_at
     await pool.query(
-      `UPDATE internal.users SET last_sign_in_at = NOW() WHERE id = $1::uuid`,
+      sql(`UPDATE internal.users SET last_sign_in_at = NOW() WHERE id = $1::uuid`),
       [userId],
     );
     await pool.query(
-      `UPDATE internal.auth_identities SET provider_email = $1, updated_at = NOW()
-       WHERE project_id = $2 AND provider = $3 AND provider_sub = $4`,
+      sql(`UPDATE internal.auth_identities SET provider_email = $1, updated_at = NOW()
+       WHERE project_id = $2 AND provider = $3 AND provider_sub = $4`),
       [email, params.projectId, params.provider, params.providerSub],
     );
     return { action: "signin", userId, email: existing.rows[0].email };
@@ -214,9 +215,9 @@ export async function resolveOAuthIdentity(params: ResolveIdentityParams): Promi
     // Check if this identity is already linked to another user
     // (already checked above — not found, so it's free)
     await pool.query(
-      `INSERT INTO internal.auth_identities
+      sql(`INSERT INTO internal.auth_identities
          (user_id, project_id, provider, provider_sub, provider_email, provider_data)
-       VALUES ($1, $2, $3, $4, $5, $6)`,
+       VALUES ($1, $2, $3, $4, $5, $6)`),
       [
         params.linkingUserId,
         params.projectId,
@@ -228,12 +229,12 @@ export async function resolveOAuthIdentity(params: ResolveIdentityParams): Promi
     );
     // Update user profile if fields are empty
     await pool.query(
-      `UPDATE internal.users SET
+      sql(`UPDATE internal.users SET
          display_name = COALESCE(display_name, $2),
          avatar_url = COALESCE(avatar_url, $3),
          email_verified_at = CASE WHEN email_verified_at IS NULL AND $4 THEN NOW() ELSE email_verified_at END,
          last_sign_in_at = NOW()
-       WHERE id = $1::uuid`,
+       WHERE id = $1::uuid`),
       [params.linkingUserId, params.displayName || null, params.avatarUrl || null, params.emailVerified],
     );
     return { action: "linked", userId: params.linkingUserId, email };
@@ -241,7 +242,7 @@ export async function resolveOAuthIdentity(params: ResolveIdentityParams): Promi
 
   // Case 3: check if same email exists in project
   const emailMatch = await pool.query(
-    `SELECT id FROM internal.users WHERE project_id = $1 AND LOWER(email) = $2`,
+    sql(`SELECT id FROM internal.users WHERE project_id = $1 AND LOWER(email) = $2`),
     [params.projectId, email],
   );
 
@@ -261,9 +262,9 @@ export async function resolveOAuthIdentity(params: ResolveIdentityParams): Promi
   }
 
   const userResult = await pool.query(
-    `INSERT INTO internal.users (project_id, email, password_hash, email_verified_at, display_name, avatar_url, last_sign_in_at)
+    sql(`INSERT INTO internal.users (project_id, email, password_hash, email_verified_at, display_name, avatar_url, last_sign_in_at)
      VALUES ($1, $2, NULL, $3, $4, $5, NOW())
-     RETURNING id`,
+     RETURNING id`),
     [
       params.projectId,
       email,
@@ -276,9 +277,9 @@ export async function resolveOAuthIdentity(params: ResolveIdentityParams): Promi
   const userId = userResult.rows[0].id;
 
   await pool.query(
-    `INSERT INTO internal.auth_identities
+    sql(`INSERT INTO internal.auth_identities
        (user_id, project_id, provider, provider_sub, provider_email, provider_data)
-     VALUES ($1, $2, $3, $4, $5, $6)`,
+     VALUES ($1, $2, $3, $4, $5, $6)`),
     [
       userId,
       params.projectId,
@@ -313,9 +314,9 @@ export async function createAuthorizationCode(params: {
   const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 min
 
   await pool.query(
-    `INSERT INTO internal.oauth_codes
+    sql(`INSERT INTO internal.oauth_codes
        (code_hash, code_challenge, code_challenge_method, user_id, project_id, redirect_url, client_state, expires_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`),
     [
       codeHash,
       params.codeChallenge || null,
@@ -343,10 +344,10 @@ export async function exchangeAuthorizationCode(
   const codeHash = sha256(code);
 
   const result = await pool.query(
-    `UPDATE internal.oauth_codes
+    sql(`UPDATE internal.oauth_codes
      SET used = true
      WHERE code_hash = $1 AND expires_at > NOW() AND used = false
-     RETURNING user_id, project_id, code_challenge, code_challenge_method`,
+     RETURNING user_id, project_id, code_challenge, code_challenge_method`),
     [codeHash],
   );
 
@@ -380,10 +381,10 @@ export async function exchangeAuthorizationCode(
 export async function cleanupExpiredOAuthData(): Promise<void> {
   try {
     const txResult = await pool.query(
-      `DELETE FROM internal.oauth_transactions WHERE expires_at < NOW()`,
+      sql(`DELETE FROM internal.oauth_transactions WHERE expires_at < NOW()`),
     );
     const codeResult = await pool.query(
-      `DELETE FROM internal.oauth_codes WHERE expires_at < NOW()`,
+      sql(`DELETE FROM internal.oauth_codes WHERE expires_at < NOW()`),
     );
     const total = (txResult.rowCount || 0) + (codeResult.rowCount || 0);
     if (total > 0) {

@@ -1,5 +1,6 @@
 import { Router, Request, Response, NextFunction } from "express";
 import { pool } from "../db/pool.js";
+import { sql } from "../db/sql.js";
 import { serviceKeyAuth } from "../middleware/apikey.js";
 import { demoBlockedMiddleware } from "../middleware/demo.js";
 import { getTierLimits } from "@run402/shared";
@@ -109,7 +110,7 @@ router.post("/projects/v1/admin/:id/wallet", asyncHandler(async (req: Request, r
   }
 
   const result = await pool.query(
-    `UPDATE internal.projects SET wallet_address = $1 WHERE id = $2 AND status = 'active' RETURNING id`,
+    sql(`UPDATE internal.projects SET wallet_address = $1 WHERE id = $2 AND status = 'active' RETURNING id`),
     [wallet_address, projectId],
   );
   if (result.rowCount === 0) {
@@ -199,32 +200,32 @@ router.post("/projects/v1/admin/:id/sql", demoBlockedMiddleware("SQL execution")
   assertProjectMatch(req);
   const project = req.project!;
 
-  let sql: string | undefined;
+  let userSql: string | undefined;
   const contentType = req.get("content-type") ?? "";
   if (contentType.includes("application/json")) {
     const parsed = JSON.parse(req.body as string) as Record<string, unknown>;
     const val = parsed["sql"] ?? parsed["query"];
-    sql = typeof val === "string" ? val : undefined;
+    userSql = typeof val === "string" ? val : undefined;
   } else {
-    sql = typeof req.body === "string" ? req.body : undefined;
+    userSql = typeof req.body === "string" ? req.body : undefined;
   }
-  if (!sql) {
+  if (!userSql) {
     throw new HttpError(400, "No SQL provided — send raw SQL as text/plain body, or JSON with a \"sql\" field");
   }
 
   // Check SQL safety
-  const blocked = checkSqlSafety(sql);
+  const blocked = checkSqlSafety(userSql);
   if (blocked) {
     throw new HttpError(403, blocked.hint ? `${blocked.error} — ${blocked.hint}` : blocked.error);
   }
 
   const client = await pool.connect();
   try {
-    await client.query("BEGIN");
-    await client.query(`SET search_path TO ${project.schemaSlot}`);
-    const result = await client.query(sql);
-    await client.query("NOTIFY pgrst, 'reload schema'");
-    await client.query("COMMIT");
+    await client.query(sql("BEGIN"));
+    await client.query(sql(`SET search_path TO ${project.schemaSlot}`));
+    const result = await client.query(sql(userSql));
+    await client.query(sql("NOTIFY pgrst, 'reload schema'"));
+    await client.query(sql("COMMIT"));
 
     console.log(`  Migration applied to ${project.id} (${project.schemaSlot})`);
 
@@ -239,7 +240,7 @@ router.post("/projects/v1/admin/:id/sql", demoBlockedMiddleware("SQL execution")
         : result.rowCount,
     });
   } catch (err) {
-    await client.query("ROLLBACK").catch(() => {});
+    await client.query(sql("ROLLBACK")).catch(() => {});
     const msg = err instanceof Error ? err.message : String(err);
     throw new HttpError(400, `SQL error: ${msg}`);
   } finally {
@@ -269,75 +270,75 @@ router.post("/projects/v1/admin/:id/rls", asyncHandler(async (req: Request, res:
 
   const client = await pool.connect();
   try {
-    await client.query("BEGIN");
-    await client.query(`SET search_path TO ${project.schemaSlot}`);
+    await client.query(sql("BEGIN"));
+    await client.query(sql(`SET search_path TO ${project.schemaSlot}`));
 
     for (const table of tables) {
       const tableName = table.table;
 
-      await client.query(`ALTER TABLE ${tableName} ENABLE ROW LEVEL SECURITY`);
-      await client.query(`ALTER TABLE ${tableName} FORCE ROW LEVEL SECURITY`);
+      await client.query(sql(`ALTER TABLE ${tableName} ENABLE ROW LEVEL SECURITY`));
+      await client.query(sql(`ALTER TABLE ${tableName} FORCE ROW LEVEL SECURITY`));
 
       if (template === "user_owns_rows") {
         const ownerColumn = table.owner_column;
-        await client.query(`
+        await client.query(sql(`
           CREATE POLICY "Users can view own rows" ON ${tableName}
             FOR SELECT USING (${ownerColumn}::text = auth.uid()::text)
-        `);
-        await client.query(`
+        `));
+        await client.query(sql(`
           CREATE POLICY "Users can insert own rows" ON ${tableName}
             FOR INSERT WITH CHECK (${ownerColumn}::text = auth.uid()::text)
-        `);
-        await client.query(`
+        `));
+        await client.query(sql(`
           CREATE POLICY "Users can update own rows" ON ${tableName}
             FOR UPDATE USING (${ownerColumn}::text = auth.uid()::text)
-        `);
-        await client.query(`
+        `));
+        await client.query(sql(`
           CREATE POLICY "Users can delete own rows" ON ${tableName}
             FOR DELETE USING (${ownerColumn}::text = auth.uid()::text)
-        `);
+        `));
       } else if (template === "public_read") {
-        await client.query(`
+        await client.query(sql(`
           CREATE POLICY "Anyone can read" ON ${tableName}
             FOR SELECT USING (true)
-        `);
-        await client.query(`
+        `));
+        await client.query(sql(`
           CREATE POLICY "Authenticated users can insert" ON ${tableName}
             FOR INSERT WITH CHECK (auth.role() = 'authenticated')
-        `);
-        await client.query(`
+        `));
+        await client.query(sql(`
           CREATE POLICY "Authenticated users can update" ON ${tableName}
             FOR UPDATE USING (auth.role() = 'authenticated')
-        `);
-        await client.query(`
+        `));
+        await client.query(sql(`
           CREATE POLICY "Authenticated users can delete" ON ${tableName}
             FOR DELETE USING (auth.role() = 'authenticated')
-        `);
+        `));
       } else if (template === "public_read_write") {
-        await client.query(`GRANT INSERT, UPDATE, DELETE ON ${tableName} TO anon`);
-        await client.query(`
+        await client.query(sql(`GRANT INSERT, UPDATE, DELETE ON ${tableName} TO anon`));
+        await client.query(sql(`
           CREATE POLICY "Anyone can read" ON ${tableName}
             FOR SELECT USING (true)
-        `);
-        await client.query(`
+        `));
+        await client.query(sql(`
           CREATE POLICY "Anyone can insert" ON ${tableName}
             FOR INSERT WITH CHECK (true)
-        `);
-        await client.query(`
+        `));
+        await client.query(sql(`
           CREATE POLICY "Anyone can update" ON ${tableName}
             FOR UPDATE USING (true)
-        `);
-        await client.query(`
+        `));
+        await client.query(sql(`
           CREATE POLICY "Anyone can delete" ON ${tableName}
             FOR DELETE USING (true)
-        `);
+        `));
       }
     }
 
-    await client.query("NOTIFY pgrst, 'reload schema'");
-    await client.query("COMMIT");
+    await client.query(sql("NOTIFY pgrst, 'reload schema'"));
+    await client.query(sql("COMMIT"));
   } catch (err) {
-    await client.query("ROLLBACK");
+    await client.query(sql("ROLLBACK"));
     throw err;
   } finally {
     client.release();
@@ -354,7 +355,7 @@ router.post("/projects/v1/admin/:id/pin", asyncHandler(async (req: Request, res:
   assertProjectMatch(req);
   const project = req.project!;
 
-  await pool.query(`UPDATE internal.projects SET pinned = true WHERE id = $1`, [project.id]);
+  await pool.query(sql(`UPDATE internal.projects SET pinned = true WHERE id = $1`), [project.id]);
   project.pinned = true;
 
   console.log(`  Project ${project.id} pinned (lease will not expire)`);
@@ -368,7 +369,7 @@ router.post("/projects/v1/admin/:id/unpin", asyncHandler(async (req: Request, re
   assertProjectMatch(req);
   const project = req.project!;
 
-  await pool.query(`UPDATE internal.projects SET pinned = false WHERE id = $1`, [project.id]);
+  await pool.query(sql(`UPDATE internal.projects SET pinned = false WHERE id = $1`), [project.id]);
   project.pinned = false;
 
   console.log(`  Project ${project.id} unpinned`);
@@ -399,9 +400,9 @@ router.get("/projects/v1/admin/:id/schema", asyncHandler(async (req: Request, re
 
   // Get tables
   const tablesResult = await pool.query(
-    `SELECT table_name FROM information_schema.tables
+    sql(`SELECT table_name FROM information_schema.tables
      WHERE table_schema = $1 AND table_type = 'BASE TABLE'
-     ORDER BY table_name`,
+     ORDER BY table_name`),
     [project.schemaSlot],
   );
 
@@ -410,32 +411,32 @@ router.get("/projects/v1/admin/:id/schema", asyncHandler(async (req: Request, re
     const tableName = row.table_name;
 
     const columnsResult = await pool.query(
-      `SELECT column_name, data_type, is_nullable, column_default
+      sql(`SELECT column_name, data_type, is_nullable, column_default
        FROM information_schema.columns
        WHERE table_schema = $1 AND table_name = $2
-       ORDER BY ordinal_position`,
+       ORDER BY ordinal_position`),
       [project.schemaSlot, tableName],
     );
 
     const constraintsResult = await pool.query(
-      `SELECT tc.constraint_name, tc.constraint_type,
+      sql(`SELECT tc.constraint_name, tc.constraint_type,
               pg_get_constraintdef(pgc.oid) as definition
        FROM information_schema.table_constraints tc
        JOIN pg_constraint pgc ON pgc.conname = tc.constraint_name
-       WHERE tc.table_schema = $1 AND tc.table_name = $2`,
+       WHERE tc.table_schema = $1 AND tc.table_name = $2`),
       [project.schemaSlot, tableName],
     );
 
     const rlsResult = await pool.query(
-      `SELECT relrowsecurity FROM pg_class
+      sql(`SELECT relrowsecurity FROM pg_class
        WHERE relname = $1 AND relnamespace = (
          SELECT oid FROM pg_namespace WHERE nspname = $2
-       )`,
+       )`),
       [tableName, project.schemaSlot],
     );
 
     const policiesResult = await pool.query(
-      `SELECT polname as name, polcmd as command,
+      sql(`SELECT polname as name, polcmd as command,
               pg_get_expr(polqual, polrelid) as using_expression,
               pg_get_expr(polwithcheck, polrelid) as check_expression
        FROM pg_policy
@@ -444,7 +445,7 @@ router.get("/projects/v1/admin/:id/schema", asyncHandler(async (req: Request, re
          WHERE relname = $1 AND relnamespace = (
            SELECT oid FROM pg_namespace WHERE nspname = $2
          )
-       )`,
+       )`),
       [tableName, project.schemaSlot],
     );
 

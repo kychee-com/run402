@@ -1,4 +1,5 @@
 import { pool } from "../db/pool.js";
+import { sql } from "../db/sql.js";
 import { projectCache } from "./projects.js";
 import { getTierLimits } from "@run402/shared";
 import type { TierName } from "@run402/shared";
@@ -14,7 +15,7 @@ export async function updateStorageBytes(projectId: string, deltaBytes: number):
   if (project.storageBytes < 0) project.storageBytes = 0;
 
   await pool.query(
-    `UPDATE internal.projects SET storage_bytes = $1 WHERE id = $2`,
+    sql(`UPDATE internal.projects SET storage_bytes = $1 WHERE id = $2`),
     [project.storageBytes, projectId],
   );
 }

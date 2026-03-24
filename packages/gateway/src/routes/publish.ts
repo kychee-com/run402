@@ -8,6 +8,7 @@
  */
 
 import { Router, Request, Response } from "express";
+import { sql } from "../db/sql.js";
 import { TIERS } from "@run402/shared";
 import type { TierName } from "@run402/shared";
 import { serviceKeyAuth } from "../middleware/apikey.js";
@@ -139,8 +140,8 @@ router.patch(
 
     const { pool: dbPool } = await import("../db/pool.js");
     const result = await dbPool.query(
-      `UPDATE internal.app_versions SET ${updates.join(", ")}
-       WHERE id = $${paramIdx++} AND project_id = $${paramIdx}`,
+      sql(`UPDATE internal.app_versions SET ${updates.join(", ")}
+       WHERE id = $${paramIdx++} AND project_id = $${paramIdx}`),
       params,
     );
 
@@ -192,7 +193,7 @@ router.delete(
 
     const { pool: dbPool } = await import("../db/pool.js");
     const result = await dbPool.query(
-      `DELETE FROM internal.app_versions WHERE id = $1 RETURNING id`,
+      sql(`DELETE FROM internal.app_versions WHERE id = $1 RETURNING id`),
       [req.params.version_id],
     );
     if (!result.rowCount || result.rowCount === 0) {

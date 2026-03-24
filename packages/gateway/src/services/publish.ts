@@ -11,6 +11,7 @@ import { promisify } from "node:util";
 import { createHash, randomBytes } from "node:crypto";
 import { S3Client, PutObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
 import { pool } from "../db/pool.js";
+import { sql } from "../db/sql.js";
 import { S3_BUCKET, S3_REGION } from "../config.js";
 import { TIERS } from "@run402/shared";
 import type { TierName } from "@run402/shared";
@@ -126,7 +127,7 @@ export interface AppVersionInfo {
  * Ensure the app_versions tables exist (idempotent).
  */
 export async function initAppVersionsTables(): Promise<void> {
-  await pool.query(`
+  await pool.query(sql(`
     CREATE TABLE IF NOT EXISTS internal.app_versions (
       id TEXT PRIMARY KEY,
       project_id TEXT NOT NULL,
@@ -155,16 +156,16 @@ export async function initAppVersionsTables(): Promise<void> {
       created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
       UNIQUE(project_id, version)
     )
-  `);
+  `));
   // Add bootstrap_variables column if table predates this feature
-  await pool.query(`
+  await pool.query(sql(`
     ALTER TABLE internal.app_versions ADD COLUMN IF NOT EXISTS bootstrap_variables JSONB
-  `);
-  await pool.query(`
+  `));
+  await pool.query(sql(`
     CREATE INDEX IF NOT EXISTS idx_app_versions_project
       ON internal.app_versions(project_id)
-  `);
-  await pool.query(`
+  `));
+  await pool.query(sql(`
     CREATE TABLE IF NOT EXISTS internal.app_version_functions (
       version_id TEXT NOT NULL REFERENCES internal.app_versions(id) ON DELETE CASCADE,
       name TEXT NOT NULL,
@@ -176,7 +177,7 @@ export async function initAppVersionsTables(): Promise<void> {
       code_hash TEXT NOT NULL,
       PRIMARY KEY (version_id, name)
     )
-  `);
+  `));
 }
 
 /**
@@ -292,12 +293,12 @@ export async function publishAppVersion(
 
   // Acquire advisory lock to prevent concurrent publish/deploy
   const lockId = Buffer.from(projectId).readUInt32BE(0) || 1;
-  await pool.query(`SELECT pg_advisory_lock($1)`, [lockId]);
+  await pool.query(sql(`SELECT pg_advisory_lock($1)`), [lockId]);
 
   try {
     // Check for unsupported objects
     for (const check of UNSUPPORTED_OBJECT_QUERIES) {
-      const result = await pool.query(check.sql, [schemaSlot]);
+      const result = await pool.query(sql(check.sql), [schemaSlot]);
       if (result.rows.length > 0) {
         const names = result.rows.map((r) => r.name || r.table_name).join(", ");
         throw new PublishError(
@@ -309,8 +310,8 @@ export async function publishAppVersion(
 
     // Check all functions have source
     const functionsResult = await pool.query(
-      `SELECT name, source, runtime, timeout_seconds, memory_mb, deps, code_hash
-       FROM internal.functions WHERE project_id = $1 ORDER BY name`,
+      sql(`SELECT name, source, runtime, timeout_seconds, memory_mb, deps, code_hash
+       FROM internal.functions WHERE project_id = $1 ORDER BY name`),
       [projectId],
     );
     for (const fn of functionsResult.rows) {
@@ -324,16 +325,16 @@ export async function publishAppVersion(
 
     // Get table count
     const tablesResult = await pool.query(
-      `SELECT count(*)::int AS cnt FROM information_schema.tables
-       WHERE table_schema = $1 AND table_type = 'BASE TABLE'`,
+      sql(`SELECT count(*)::int AS cnt FROM information_schema.tables
+       WHERE table_schema = $1 AND table_type = 'BASE TABLE'`),
       [schemaSlot],
     );
     const tableCount = tablesResult.rows[0].cnt;
 
     // Get site deployment info
     const siteResult = await pool.query(
-      `SELECT id, files_count, total_size FROM internal.deployments
-       WHERE project_id = $1 ORDER BY created_at DESC LIMIT 1`,
+      sql(`SELECT id, files_count, total_size FROM internal.deployments
+       WHERE project_id = $1 ORDER BY created_at DESC LIMIT 1`),
       [projectId],
     );
     const siteDeploymentId = siteResult.rows[0]?.id || null;
@@ -359,7 +360,7 @@ export async function publishAppVersion(
     // Resolve live URL from subdomain or deployment
     let liveUrl: string | null = null;
     const subdomainResult = await pool.query(
-      `SELECT name FROM internal.subdomains WHERE project_id = $1 ORDER BY created_at DESC LIMIT 1`,
+      sql(`SELECT name FROM internal.subdomains WHERE project_id = $1 ORDER BY created_at DESC LIMIT 1`),
       [projectId],
     );
     if (subdomainResult.rows.length > 0) {
@@ -375,9 +376,9 @@ export async function publishAppVersion(
 
     // Delete previous version(s) — we keep only one snapshot per project
     const oldVersions = await pool.query(
-      `SELECT id, version, bundle_uri, site_deployment_id
+      sql(`SELECT id, version, bundle_uri, site_deployment_id
        FROM internal.app_versions WHERE project_id = $1
-       ORDER BY version DESC`,
+       ORDER BY version DESC`),
       [projectId],
     );
     const maxOldVersion = oldVersions.rows.length > 0 ? (oldVersions.rows[0].version as number) : 0;
@@ -385,14 +386,14 @@ export async function publishAppVersion(
       await deleteS3Bundle(old.bundle_uri as string);
       if (old.site_deployment_id) {
         await pool.query(
-          `UPDATE internal.deployments SET ref_count = GREATEST(ref_count - 1, 0) WHERE id = $1`,
+          sql(`UPDATE internal.deployments SET ref_count = GREATEST(ref_count - 1, 0) WHERE id = $1`),
           [old.site_deployment_id],
         );
       }
     }
     if (oldVersions.rows.length > 0) {
       await pool.query(
-        `DELETE FROM internal.app_versions WHERE project_id = $1`,
+        sql(`DELETE FROM internal.app_versions WHERE project_id = $1`),
         [projectId],
       );
     }
@@ -433,7 +434,7 @@ export async function publishAppVersion(
     const bootstrapVariables = options.bootstrap_variables || null;
 
     await pool.query(
-      `INSERT INTO internal.app_versions
+      sql(`INSERT INTO internal.app_versions
        (id, project_id, version, name, description, visibility, fork_allowed, status,
         min_tier, derived_min_tier, format_version, bundle_uri, bundle_sha256,
         publisher_wallet, required_secrets, required_actions, tags, live_url,
@@ -443,7 +444,7 @@ export async function publishAppVersion(
         $8, $9, 1, $10, $11,
         $12, $13, $14, $15, $16,
         $17, $18, $19, $20, $21,
-        $22, $23)`,
+        $22, $23)`),
       [
         versionId, projectId, version, projectName, options.description || null,
         visibility, forkAllowed,
@@ -457,9 +458,9 @@ export async function publishAppVersion(
     // Insert function sources
     for (const fn of functionsResult.rows) {
       await pool.query(
-        `INSERT INTO internal.app_version_functions
+        sql(`INSERT INTO internal.app_version_functions
          (version_id, name, source, runtime, timeout_seconds, memory_mb, deps, code_hash)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`),
         [versionId, fn.name, fn.source, fn.runtime, fn.timeout_seconds, fn.memory_mb, fn.deps || [], fn.code_hash],
       );
     }
@@ -467,7 +468,7 @@ export async function publishAppVersion(
     // Pin site deployment (increment ref_count)
     if (siteDeploymentId) {
       await pool.query(
-        `UPDATE internal.deployments SET ref_count = ref_count + 1 WHERE id = $1`,
+        sql(`UPDATE internal.deployments SET ref_count = ref_count + 1 WHERE id = $1`),
         [siteDeploymentId],
       );
     }
@@ -498,7 +499,7 @@ export async function publishAppVersion(
       compatibility_warnings: warnings,
     };
   } finally {
-    await pool.query(`SELECT pg_advisory_unlock($1)`, [lockId]);
+    await pool.query(sql(`SELECT pg_advisory_unlock($1)`), [lockId]);
   }
 }
 
@@ -507,11 +508,11 @@ export async function publishAppVersion(
  */
 export async function listVersions(projectId: string): Promise<AppVersionInfo[]> {
   const result = await pool.query(
-    `SELECT id, project_id, version, name, description, visibility, fork_allowed,
+    sql(`SELECT id, project_id, version, name, description, visibility, fork_allowed,
             min_tier, derived_min_tier, status,
             table_count, function_count, site_file_count, site_total_bytes,
             required_secrets, required_actions, tags, live_url, created_at
-     FROM internal.app_versions WHERE project_id = $1 ORDER BY version DESC`,
+     FROM internal.app_versions WHERE project_id = $1 ORDER BY version DESC`),
     [projectId],
   );
   return result.rows.map(mapRowToAppVersion);
@@ -536,7 +537,7 @@ export async function listPublicApps(filterTags?: string[]): Promise<AppVersionI
 
   query += ` ORDER BY created_at DESC LIMIT 100`;
 
-  const result = await pool.query(query, params.length > 0 ? params : undefined);
+  const result = await pool.query(sql(query), params.length > 0 ? params : undefined);
   return result.rows.map(mapRowToAppVersion);
 }
 
@@ -571,11 +572,11 @@ function mapRowToAppVersion(row: Record<string, unknown>): AppVersionInfo {
  */
 export async function getAppVersion(versionId: string): Promise<AppVersionInfo | null> {
   const result = await pool.query(
-    `SELECT id, project_id, version, name, description, visibility, fork_allowed,
+    sql(`SELECT id, project_id, version, name, description, visibility, fork_allowed,
             min_tier, derived_min_tier, status,
             table_count, function_count, site_file_count, site_total_bytes,
             required_secrets, required_actions, tags, live_url, bootstrap_variables, created_at
-     FROM internal.app_versions WHERE id = $1`,
+     FROM internal.app_versions WHERE id = $1`),
     [versionId],
   );
   if (result.rows.length === 0) return null;
@@ -588,7 +589,7 @@ export async function getAppVersion(versionId: string): Promise<AppVersionInfo |
 export async function deleteAppVersion(versionId: string, projectId: string): Promise<boolean> {
   // Get metadata before deleting
   const verResult = await pool.query(
-    `SELECT site_deployment_id, bundle_uri FROM internal.app_versions WHERE id = $1 AND project_id = $2`,
+    sql(`SELECT site_deployment_id, bundle_uri FROM internal.app_versions WHERE id = $1 AND project_id = $2`),
     [versionId, projectId],
   );
   if (verResult.rows.length === 0) return false;
@@ -597,7 +598,7 @@ export async function deleteAppVersion(versionId: string, projectId: string): Pr
 
   // Delete (cascades to app_version_functions)
   const delResult = await pool.query(
-    `DELETE FROM internal.app_versions WHERE id = $1 AND project_id = $2`,
+    sql(`DELETE FROM internal.app_versions WHERE id = $1 AND project_id = $2`),
     [versionId, projectId],
   );
   if (!delResult.rowCount || delResult.rowCount === 0) return false;
@@ -608,7 +609,7 @@ export async function deleteAppVersion(versionId: string, projectId: string): Pr
   // Decrement site deployment ref_count
   if (siteDeploymentId) {
     await pool.query(
-      `UPDATE internal.deployments SET ref_count = GREATEST(ref_count - 1, 0) WHERE id = $1`,
+      sql(`UPDATE internal.deployments SET ref_count = GREATEST(ref_count - 1, 0) WHERE id = $1`),
       [siteDeploymentId],
     );
   }

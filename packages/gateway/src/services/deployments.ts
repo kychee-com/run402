@@ -5,6 +5,7 @@
 import { S3Client, PutObjectCommand, ListObjectsV2Command, DeleteObjectsCommand } from "@aws-sdk/client-s3";
 import { S3_BUCKET, S3_REGION } from "../config.js";
 import { pool } from "../db/pool.js";
+import { sql } from "../db/sql.js";
 import { getMimeType } from "../utils/mime.js";
 import { randomBytes } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
@@ -69,7 +70,7 @@ function toDnsLabel(id: string): string {
  * Ensure the deployments table exists (idempotent).
  */
 export async function initDeploymentsTable(): Promise<void> {
-  await pool.query(`
+  await pool.query(sql(`
     CREATE TABLE IF NOT EXISTS internal.deployments (
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
@@ -81,11 +82,11 @@ export async function initDeploymentsTable(): Promise<void> {
       ref_count INTEGER NOT NULL DEFAULT 0,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
-  `);
-  await pool.query(`
+  `));
+  await pool.query(sql(`
     CREATE INDEX IF NOT EXISTS idx_deployments_project
       ON internal.deployments(project_id) WHERE project_id IS NOT NULL
-  `);
+  `));
 }
 
 /**
@@ -145,8 +146,8 @@ export async function createDeployment(
 
   // Record in DB
   await pool.query(
-    `INSERT INTO internal.deployments (id, name, project_id, target, files_count, total_size, tx_hash)
-     VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+    sql(`INSERT INTO internal.deployments (id, name, project_id, target, files_count, total_size, tx_hash)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)`),
     [id, req.project, req.project, req.target || null, decoded.length, totalSize, txHash || null],
   );
 
@@ -158,10 +159,10 @@ export async function createDeployment(
   const subdomainUrls: string[] = [];
   if (req.project) {
     const subResult = await pool.query(
-      `UPDATE internal.subdomains
+      sql(`UPDATE internal.subdomains
        SET deployment_id = $1, updated_at = NOW()
        WHERE project_id = $2 AND deployment_id != $1
-       RETURNING name`,
+       RETURNING name`),
       [id, req.project],
     );
     if (subResult.rows.length > 0) {
@@ -184,8 +185,8 @@ export async function createDeployment(
  */
 export async function getDeployment(id: string): Promise<DeploymentRecord | null> {
   const result = await pool.query(
-    `SELECT id, name, project_id, target, files_count, total_size, tx_hash, created_at
-     FROM internal.deployments WHERE id = $1`,
+    sql(`SELECT id, name, project_id, target, files_count, total_size, tx_hash, created_at
+     FROM internal.deployments WHERE id = $1`),
     [id],
   );
 
@@ -212,7 +213,7 @@ export async function getDeployment(id: string): Promise<DeploymentRecord | null
  */
 export async function deleteProjectDeployments(projectId: string): Promise<void> {
   const result = await pool.query(
-    `SELECT id FROM internal.deployments WHERE project_id = $1`,
+    sql(`SELECT id FROM internal.deployments WHERE project_id = $1`),
     [projectId],
   );
 
@@ -243,7 +244,7 @@ export async function deleteProjectDeployments(projectId: string): Promise<void>
     }
   }
 
-  await pool.query(`DELETE FROM internal.deployments WHERE project_id = $1`, [projectId]);
+  await pool.query(sql(`DELETE FROM internal.deployments WHERE project_id = $1`), [projectId]);
 }
 
 /**

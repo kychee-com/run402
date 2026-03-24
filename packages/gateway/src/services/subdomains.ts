@@ -6,6 +6,7 @@
  */
 
 import { pool } from "../db/pool.js";
+import { sql } from "../db/sql.js";
 import { getDeployment } from "./deployments.js";
 import { projectCache } from "./projects.js";
 
@@ -67,7 +68,7 @@ export function cacheInvalidateByNames(names: string[]): void {
  * Ensure the subdomains table exists (idempotent).
  */
 export async function initSubdomainsTable(): Promise<void> {
-  await pool.query(`
+  await pool.query(sql(`
     CREATE TABLE IF NOT EXISTS internal.subdomains (
       name         TEXT PRIMARY KEY,
       deployment_id TEXT NOT NULL,
@@ -75,15 +76,15 @@ export async function initSubdomainsTable(): Promise<void> {
       created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
-  `);
-  await pool.query(`
+  `));
+  await pool.query(sql(`
     CREATE INDEX IF NOT EXISTS idx_subdomains_deployment
       ON internal.subdomains(deployment_id)
-  `);
-  await pool.query(`
+  `));
+  await pool.query(sql(`
     CREATE INDEX IF NOT EXISTS idx_subdomains_project
       ON internal.subdomains(project_id) WHERE project_id IS NOT NULL
-  `);
+  `));
 }
 
 // ---------- Validation ----------
@@ -153,7 +154,7 @@ export async function createOrUpdateSubdomain(
       const cached = projectCache.get(existing.project_id);
       const oldWallet = cached?.walletAddress
         ?? (await pool.query(
-             `SELECT wallet_address FROM internal.projects WHERE id = $1`,
+             sql(`SELECT wallet_address FROM internal.projects WHERE id = $1`),
              [existing.project_id],
            )).rows[0]?.wallet_address;
       if (oldWallet && oldWallet.toLowerCase() === walletAddress.toLowerCase()) {
@@ -169,13 +170,13 @@ export async function createOrUpdateSubdomain(
   }
 
   const result = await pool.query(
-    `INSERT INTO internal.subdomains (name, deployment_id, project_id)
+    sql(`INSERT INTO internal.subdomains (name, deployment_id, project_id)
      VALUES ($1, $2, $3)
      ON CONFLICT (name) DO UPDATE SET
        deployment_id = EXCLUDED.deployment_id,
        project_id = COALESCE(EXCLUDED.project_id, internal.subdomains.project_id),
        updated_at = NOW()
-     RETURNING name, deployment_id, project_id, created_at, updated_at`,
+     RETURNING name, deployment_id, project_id, created_at, updated_at`),
     [name, deploymentId, projectId || null],
   );
 
@@ -198,8 +199,8 @@ export async function createOrUpdateSubdomain(
  */
 export async function getSubdomain(name: string): Promise<SubdomainRecord | null> {
   const result = await pool.query(
-    `SELECT name, deployment_id, project_id, created_at, updated_at
-     FROM internal.subdomains WHERE name = $1`,
+    sql(`SELECT name, deployment_id, project_id, created_at, updated_at
+     FROM internal.subdomains WHERE name = $1`),
     [name],
   );
 
@@ -220,9 +221,9 @@ export async function getSubdomain(name: string): Promise<SubdomainRecord | null
  */
 export async function listSubdomains(projectId: string): Promise<SubdomainRecord[]> {
   const result = await pool.query(
-    `SELECT name, deployment_id, project_id, created_at, updated_at
+    sql(`SELECT name, deployment_id, project_id, created_at, updated_at
      FROM internal.subdomains WHERE project_id = $1
-     ORDER BY created_at DESC`,
+     ORDER BY created_at DESC`),
     [projectId],
   );
 
@@ -249,7 +250,7 @@ export async function deleteSubdomain(name: string, projectId?: string | null): 
   }
 
   const result = await pool.query(
-    `DELETE FROM internal.subdomains WHERE name = $1`,
+    sql(`DELETE FROM internal.subdomains WHERE name = $1`),
     [name],
   );
 
@@ -268,7 +269,7 @@ export async function deleteSubdomain(name: string, projectId?: string | null): 
  */
 export async function deleteProjectSubdomains(projectId: string): Promise<void> {
   const result = await pool.query(
-    `SELECT name FROM internal.subdomains WHERE project_id = $1`,
+    sql(`SELECT name FROM internal.subdomains WHERE project_id = $1`),
     [projectId],
   );
 
@@ -289,7 +290,7 @@ export async function resolveSubdomain(name: string): Promise<string | null> {
   if (cached !== undefined) return cached;
 
   const result = await pool.query(
-    `SELECT deployment_id FROM internal.subdomains WHERE name = $1`,
+    sql(`SELECT deployment_id FROM internal.subdomains WHERE name = $1`),
     [name],
   );
 

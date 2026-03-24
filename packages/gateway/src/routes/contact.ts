@@ -2,6 +2,7 @@ import { Router, Request, Response } from "express";
 import { asyncHandler, HttpError } from "../utils/async-handler.js";
 import { walletAuth } from "../middleware/wallet-auth.js";
 import { pool } from "../db/pool.js";
+import { sql } from "../db/sql.js";
 
 const router = Router();
 
@@ -42,14 +43,14 @@ router.post("/agent/v1/contact", walletAuth(false), asyncHandler(async (req: Req
 
   // Upsert contact
   const result = await pool.query(
-    `INSERT INTO internal.agent_contacts (wallet_address, name, email, webhook)
+    sql(`INSERT INTO internal.agent_contacts (wallet_address, name, email, webhook)
      VALUES ($1, $2, $3, $4)
      ON CONFLICT (wallet_address) DO UPDATE
        SET name = EXCLUDED.name,
            email = EXCLUDED.email,
            webhook = EXCLUDED.webhook,
            updated_at = NOW()
-     RETURNING wallet_address, name, email, webhook, updated_at`,
+     RETURNING wallet_address, name, email, webhook, updated_at`),
     [wallet, name.trim(), email?.trim() || null, webhook?.trim() || null],
   );
 

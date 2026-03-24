@@ -17,6 +17,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, ADMIN_SESSION_SECRET, MAX_SCHEMA_SLOTS } from "../config.js";
 import { pool } from "../db/pool.js";
+import { sql } from "../db/sql.js";
 import { projectCache } from "../services/projects.js";
 import { asyncHandler } from "../utils/async-handler.js";
 import { getTreasuryBalance, recordFaucetSnapshot, treasuryAddress } from "../services/faucet.js";
@@ -201,12 +202,12 @@ router.get("/admin/api/stats", asyncHandler(async (req: Request, res: Response) 
 
   // DB-level stats
   const [allProjectsRes, billingRes, subdomainsRes, functionsRes, slotsRes, walletsRes, faucetSnapshotsRes, faucetWalletsRes] = await Promise.all([
-    pool.query(`SELECT status, COUNT(*)::int AS count FROM internal.projects GROUP BY status`),
-    pool.query(`SELECT COUNT(*)::int AS accounts, COALESCE(SUM(available_usd_micros),0)::bigint AS total_available FROM internal.billing_accounts`),
-    pool.query(`SELECT COUNT(*)::int AS count FROM internal.subdomains`),
-    pool.query(`SELECT COUNT(*)::int AS count FROM internal.functions`).catch(() => ({ rows: [{ count: 0 }] })),
-    pool.query(`SELECT COUNT(*)::int AS used FROM internal.projects WHERE schema_slot IS NOT NULL`),
-    pool.query(`SELECT COUNT(DISTINCT wallet)::int AS count FROM (
+    pool.query(sql(`SELECT status, COUNT(*)::int AS count FROM internal.projects GROUP BY status`)),
+    pool.query(sql(`SELECT COUNT(*)::int AS accounts, COALESCE(SUM(available_usd_micros),0)::bigint AS total_available FROM internal.billing_accounts`)),
+    pool.query(sql(`SELECT COUNT(*)::int AS count FROM internal.subdomains`)),
+    pool.query(sql(`SELECT COUNT(*)::int AS count FROM internal.functions`)).catch(() => ({ rows: [{ count: 0 }] })),
+    pool.query(sql(`SELECT COUNT(*)::int AS used FROM internal.projects WHERE schema_slot IS NOT NULL`)),
+    pool.query(sql(`SELECT COUNT(DISTINCT wallet)::int AS count FROM (
       SELECT wallet_address AS wallet FROM internal.wallet_sightings
       UNION
       SELECT wallet_address FROM internal.billing_account_wallets
@@ -214,16 +215,16 @@ router.get("/admin/api/stats", asyncHandler(async (req: Request, res: Response) 
       SELECT wallet_address FROM internal.projects WHERE wallet_address IS NOT NULL
       UNION
       SELECT wallet_address FROM internal.charge_authorizations
-    ) all_wallets`),
+    ) all_wallets`)),
     // Faucet balance history (last 90 days, sampled to ~200 points)
-    pool.query(`
+    pool.query(sql(`
       SELECT recorded_at, balance_usdc::float AS balance
       FROM internal.faucet_snapshots
       WHERE recorded_at > NOW() - INTERVAL '90 days'
       ORDER BY recorded_at
-    `).catch(() => ({ rows: [] })),
+    `)).catch(() => ({ rows: [] })),
     // Cumulative distinct faucet wallets by day
-    pool.query(`
+    pool.query(sql(`
       SELECT d.day::date AS day, COUNT(w.wallet_address)::int AS cumulative
       FROM (
         SELECT generate_series(
@@ -234,7 +235,7 @@ router.get("/admin/api/stats", asyncHandler(async (req: Request, res: Response) 
       LEFT JOIN internal.wallet_sightings w
         ON w.source = 'faucet' AND w.first_seen_at::date <= d.day
       GROUP BY d.day ORDER BY d.day
-    `).catch(() => ({ rows: [] })),
+    `)).catch(() => ({ rows: [] })),
   ]);
 
   const statusCounts: Record<string, number> = {};

@@ -23,6 +23,7 @@
     "test:billing": "tsx test/billing-e2e.ts",
     "test:email": "tsx test/email-e2e.ts",
     "test:mailbox": "node --experimental-test-module-mocks --test --import tsx packages/gateway/src/services/mailbox.test.ts",
+    "test:sql": "node --experimental-test-module-mocks --test --import tsx packages/gateway/src/db/sql.test.ts",
     "test:docs": "tsx --test test/api-docs-alignment.test.ts",
     "test:bld402-compat": "tsx test/bld402-compat.ts",
     "lint": "eslint",

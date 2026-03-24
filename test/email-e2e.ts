@@ -50,18 +50,19 @@ async function siwxHeaders(path: string): Promise<Record<string, string>> {
   const baseUrl = new URL(BASE_URL);
   const uri = `${baseUrl.protocol}//${baseUrl.host}${path}`;
   const now = new Date();
-  const payload = createSIWxPayload({
-    domain: baseUrl.host,
-    address: account.address,
+  const info: CompleteSIWxInfo = {
+    domain: baseUrl.hostname,
     uri,
-    chainId: "eip155:84532",
-    issuedAt: now,
-    expirationTime: new Date(now.getTime() + 5 * 60_000),
+    statement: "Sign in to Run402",
+    version: "1",
     nonce: Math.random().toString(36).slice(2),
-  });
-  const signed = await signer.signSIWx(payload);
-  const info: CompleteSIWxInfo = { payload: signed.payload, signature: signed.signature };
-  return { "SIGN-IN-WITH-X": encodeSIWxHeader(info) };
+    issuedAt: now.toISOString(),
+    expirationTime: new Date(now.getTime() + 5 * 60 * 1000).toISOString(),
+    chainId: "eip155:84532",
+    type: "eip191",
+  };
+  const payload = await createSIWxPayload(info, account);
+  return { "SIGN-IN-WITH-X": encodeSIWxHeader(payload) };
 }
 
 let passed = 0;

@@ -7,6 +7,7 @@
 
 import { SESv2Client, SendEmailCommand } from "@aws-sdk/client-sesv2";
 import { pool } from "../db/pool.js";
+import { sql } from "../db/sql.js";
 import {
   getMailbox,
   checkAndIncrementDailyLimit,
@@ -128,7 +129,7 @@ export async function sendEmail(
   if (!dailyCheck.allowed) {
     // Roll back the increment
     await pool.query(
-      `UPDATE internal.mailboxes SET sends_today = sends_today - 1 WHERE id = $1`,
+      sql(`UPDATE internal.mailboxes SET sends_today = sends_today - 1 WHERE id = $1`),
       [mailboxId],
     );
 
@@ -163,7 +164,7 @@ export async function sendEmail(
   if (!recipientCheck.allowed) {
     // Roll back daily increment
     await pool.query(
-      `UPDATE internal.mailboxes SET sends_today = sends_today - 1 WHERE id = $1`,
+      sql(`UPDATE internal.mailboxes SET sends_today = sends_today - 1 WHERE id = $1`),
       [mailboxId],
     );
     throw new MailboxError(
@@ -200,8 +201,8 @@ export async function sendEmail(
   const msgId = `msg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
   const now = new Date().toISOString();
   await pool.query(
-    `INSERT INTO internal.email_messages (id, mailbox_id, direction, template, to_address, from_address, subject, body_text, ses_message_id, status, created_at)
-     VALUES ($1, $2, 'outbound', $3, $4, $5, $6, $7, $8, 'sent', $9)`,
+    sql(`INSERT INTO internal.email_messages (id, mailbox_id, direction, template, to_address, from_address, subject, body_text, ses_message_id, status, created_at)
+     VALUES ($1, $2, 'outbound', $3, $4, $5, $6, $7, $8, 'sent', $9)`),
     [msgId, mailboxId, template, to, fromAddress, subject, textBody, sesMessageId, now],
   );
 
@@ -255,7 +256,7 @@ export async function listMessages(
     params = [mailboxId, safeLimit + 1];
   }
 
-  const result = await pool.query(query, params);
+  const result = await pool.query(sql(query), params);
   const hasMore = result.rows.length > safeLimit;
   const rows = hasMore ? result.rows.slice(0, safeLimit) : result.rows;
 
@@ -268,8 +269,8 @@ export async function listMessages(
 
 export async function getMessage(mailboxId: string, messageId: string): Promise<EmailMessage | null> {
   const result = await pool.query(
-    `SELECT id, mailbox_id, direction, template, to_address, from_address, subject, body_text, status, created_at
-     FROM internal.email_messages WHERE id = $1 AND mailbox_id = $2`,
+    sql(`SELECT id, mailbox_id, direction, template, to_address, from_address, subject, body_text, status, created_at
+     FROM internal.email_messages WHERE id = $1 AND mailbox_id = $2`),
     [messageId, mailboxId],
   );
   if (result.rows.length === 0) return null;
@@ -278,8 +279,8 @@ export async function getMessage(mailboxId: string, messageId: string): Promise<
 
   // Fetch replies
   const repliesResult = await pool.query(
-    `SELECT id, mailbox_id, direction, template, to_address, from_address, subject, body_text, status, created_at
-     FROM internal.email_messages WHERE in_reply_to_id = $1 ORDER BY created_at ASC`,
+    sql(`SELECT id, mailbox_id, direction, template, to_address, from_address, subject, body_text, status, created_at
+     FROM internal.email_messages WHERE in_reply_to_id = $1 ORDER BY created_at ASC`),
     [messageId],
   );
   msg.replies = repliesResult.rows.map(formatMessage);

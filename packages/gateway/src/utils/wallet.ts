@@ -1,4 +1,5 @@
 import { pool } from "../db/pool.js";
+import { sql } from "../db/sql.js";
 
 /**
  * Extract the sender wallet address from an x402 payment header.
@@ -32,9 +33,9 @@ export function getPaymentHeader(headers: Record<string, string | string[] | und
 export function recordWallet(address: string, source: string): void {
   const normalized = address.toLowerCase();
   pool.query(
-    `INSERT INTO internal.wallet_sightings (wallet_address, source)
+    sql(`INSERT INTO internal.wallet_sightings (wallet_address, source)
      VALUES ($1, $2)
-     ON CONFLICT (wallet_address) DO UPDATE SET last_seen_at = NOW()`,
+     ON CONFLICT (wallet_address) DO UPDATE SET last_seen_at = NOW()`),
     [normalized, source],
   ).catch(() => {});
 }

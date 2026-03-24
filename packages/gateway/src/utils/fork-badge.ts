@@ -7,6 +7,7 @@
  */
 
 import { pool } from "../db/pool.js";
+import { sql } from "../db/sql.js";
 
 // ---------- Forkable status cache ----------
 
@@ -34,13 +35,13 @@ async function getForkableInfo(subdomain: string): Promise<ForkableInfo> {
   try {
     // subdomain → project_id → published forkable version (one per project)
     const result = await pool.query(
-      `SELECT av.id AS version_id, av.name AS app_name
+      sql(`SELECT av.id AS version_id, av.name AS app_name
        FROM internal.subdomains s
        JOIN internal.app_versions av ON av.project_id = s.project_id
        WHERE s.name = $1
          AND av.status = 'published'
          AND av.fork_allowed = true
-         AND av.visibility IN ('public', 'unlisted')`,
+         AND av.visibility IN ('public', 'unlisted')`),
       [subdomain],
     );
 

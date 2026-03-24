@@ -24,6 +24,7 @@ import { extractWalletFromPaymentHeader, recordWallet } from "../utils/wallet.js
 import { getWalletTier } from "../services/wallet-tiers.js";
 import { createHash } from "node:crypto";
 import { pool } from "../db/pool.js";
+import { sql } from "../db/sql.js";
 import type { Request, Response, NextFunction, RequestHandler } from "express";
 
 // --- Stripe payTo machinery ---
@@ -368,7 +369,7 @@ export async function createPaymentMiddleware(): Promise<RequestHandler> {
 
     // Fire non-blocking contact check (result used by writeHead interceptor for hint header)
     pool.query(
-      `SELECT 1 FROM internal.agent_contacts WHERE wallet_address = $1`,
+      sql(`SELECT 1 FROM internal.agent_contacts WHERE wallet_address = $1`),
       [wallet],
     ).then((r) => {
       contactCheckResults.set(context.paymentHeader!, r.rows.length > 0);

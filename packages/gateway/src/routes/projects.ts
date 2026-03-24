@@ -8,6 +8,7 @@ import { walletAuth } from "../middleware/wallet-auth.js";
 import { serviceKeyOrAdmin, walletAuthOrAdmin } from "../middleware/admin-auth.js";
 import { asyncHandler, HttpError } from "../utils/async-handler.js";
 import { pool } from "../db/pool.js";
+import { sql, type SQL } from "../db/sql.js";
 
 const router = Router();
 
@@ -49,20 +50,20 @@ router.get("/projects/v1", asyncHandler(async (req: Request, res: Response) => {
   const limit = Math.min(Math.max(parseInt(req.query.limit as string) || 50, 1), 200);
   const after = req.query.after as string | undefined;
 
-  let query: string;
+  let query: SQL;
   let params: unknown[];
 
   if (req.isAdmin) {
     query = after
-      ? `SELECT id, name, tier, status, wallet_address, created_at FROM internal.projects WHERE created_at < (SELECT created_at FROM internal.projects WHERE id = $1) ORDER BY created_at DESC LIMIT $2`
-      : `SELECT id, name, tier, status, wallet_address, created_at FROM internal.projects ORDER BY created_at DESC LIMIT $1`;
+      ? sql(`SELECT id, name, tier, status, wallet_address, created_at FROM internal.projects WHERE created_at < (SELECT created_at FROM internal.projects WHERE id = $1) ORDER BY created_at DESC LIMIT $2`)
+      : sql(`SELECT id, name, tier, status, wallet_address, created_at FROM internal.projects ORDER BY created_at DESC LIMIT $1`);
     params = after ? [after, limit + 1] : [limit + 1];
   } else {
     const wallet = req.walletAddress;
     if (!wallet) { res.status(401).json({ error: "No wallet address" }); return; }
     query = after
-      ? `SELECT id, name, tier, status, wallet_address, created_at FROM internal.projects WHERE wallet_address = $1 AND created_at < (SELECT created_at FROM internal.projects WHERE id = $2) ORDER BY created_at DESC LIMIT $3`
-      : `SELECT id, name, tier, status, wallet_address, created_at FROM internal.projects WHERE wallet_address = $1 ORDER BY created_at DESC LIMIT $2`;
+      ? sql(`SELECT id, name, tier, status, wallet_address, created_at FROM internal.projects WHERE wallet_address = $1 AND created_at < (SELECT created_at FROM internal.projects WHERE id = $2) ORDER BY created_at DESC LIMIT $3`)
+      : sql(`SELECT id, name, tier, status, wallet_address, created_at FROM internal.projects WHERE wallet_address = $1 ORDER BY created_at DESC LIMIT $2`);
     params = after ? [wallet, after, limit + 1] : [wallet, limit + 1];
   }
 

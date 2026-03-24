@@ -1,5 +1,6 @@
 import jwt from "jsonwebtoken";
 import { pool } from "../db/pool.js";
+import { sql } from "../db/sql.js";
 import { JWT_SECRET } from "../config.js";
 import { getLeaseDuration } from "@run402/shared";
 import { allocateSlot } from "./slots.js";
@@ -35,10 +36,10 @@ export const projectCache = {
  */
 export async function syncProjects(): Promise<void> {
   const result = await pool.query(
-    `SELECT id, name, schema_slot, tier, status, api_calls, storage_bytes,
+    sql(`SELECT id, name, schema_slot, tier, status, api_calls, storage_bytes,
             tx_hash, wallet_address, pinned, created_at,
             demo_mode, demo_config, demo_source_version_id, demo_last_reset_at
-     FROM internal.projects WHERE status = 'active'`,
+     FROM internal.projects WHERE status = 'active'`),
   );
 
   for (const row of result.rows) {
@@ -75,10 +76,10 @@ export async function getProjectById(id: string): Promise<ProjectInfo | null> {
   if (cached) return cached;
 
   const result = await pool.query(
-    `SELECT id, name, schema_slot, tier, status, api_calls, storage_bytes,
+    sql(`SELECT id, name, schema_slot, tier, status, api_calls, storage_bytes,
             tx_hash, wallet_address, pinned, created_at,
             demo_mode, demo_config, demo_source_version_id, demo_last_reset_at
-     FROM internal.projects WHERE id = $1`,
+     FROM internal.projects WHERE id = $1`),
     [id],
   );
 
@@ -156,9 +157,9 @@ export async function createProject(
   );
 
   await pool.query(
-    `INSERT INTO internal.projects
+    sql(`INSERT INTO internal.projects
      (id, name, schema_slot, tier, status, tx_hash, wallet_address)
-     VALUES ($1, $2, $3, $4, 'active', $5, $6)`,
+     VALUES ($1, $2, $3, $4, 'active', $5, $6)`),
     [projectId, name, schemaSlot, tier, txHash || null, walletAddress || null],
   );
 
@@ -222,9 +223,9 @@ export async function archiveProject(projectId: string): Promise<boolean> {
 
   // 5. Delete DB-only resources (secrets, app versions, oauth transactions)
   try {
-    await pool.query(`DELETE FROM internal.secrets WHERE project_id = $1`, [projectId]);
-    await pool.query(`DELETE FROM internal.app_versions WHERE project_id = $1`, [projectId]);
-    await pool.query(`DELETE FROM internal.oauth_transactions WHERE project_id = $1`, [projectId]);
+    await pool.query(sql(`DELETE FROM internal.secrets WHERE project_id = $1`), [projectId]);
+    await pool.query(sql(`DELETE FROM internal.app_versions WHERE project_id = $1`), [projectId]);
+    await pool.query(sql(`DELETE FROM internal.oauth_transactions WHERE project_id = $1`), [projectId]);
   } catch (err) {
     console.error(`  Warning: cascade DB cleanup failed for ${projectId}:`, err instanceof Error ? err.message : err);
   }
@@ -233,40 +234,40 @@ export async function archiveProject(projectId: string): Promise<boolean> {
 
   const client = await pool.connect();
   try {
-    await client.query("BEGIN");
+    await client.query(sql("BEGIN"));
 
     // Drop and recreate schema slot
-    await client.query(`DROP SCHEMA IF EXISTS ${project.schemaSlot} CASCADE`);
-    await client.query(`CREATE SCHEMA ${project.schemaSlot}`);
-    await client.query(`GRANT USAGE ON SCHEMA ${project.schemaSlot} TO anon, authenticated, service_role`);
+    await client.query(sql(`DROP SCHEMA IF EXISTS ${project.schemaSlot} CASCADE`));
+    await client.query(sql(`CREATE SCHEMA ${project.schemaSlot}`));
+    await client.query(sql(`GRANT USAGE ON SCHEMA ${project.schemaSlot} TO anon, authenticated, service_role`));
     await client.query(
-      `ALTER DEFAULT PRIVILEGES IN SCHEMA ${project.schemaSlot} GRANT SELECT ON TABLES TO anon`,
+      sql(`ALTER DEFAULT PRIVILEGES IN SCHEMA ${project.schemaSlot} GRANT SELECT ON TABLES TO anon`),
     );
     await client.query(
-      `ALTER DEFAULT PRIVILEGES IN SCHEMA ${project.schemaSlot} GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO authenticated`,
+      sql(`ALTER DEFAULT PRIVILEGES IN SCHEMA ${project.schemaSlot} GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO authenticated`),
     );
     await client.query(
-      `ALTER DEFAULT PRIVILEGES IN SCHEMA ${project.schemaSlot} GRANT ALL ON TABLES TO service_role`,
+      sql(`ALTER DEFAULT PRIVILEGES IN SCHEMA ${project.schemaSlot} GRANT ALL ON TABLES TO service_role`),
     );
     // Sequences (needed for SERIAL/BIGSERIAL columns)
     await client.query(
-      `ALTER DEFAULT PRIVILEGES IN SCHEMA ${project.schemaSlot} GRANT USAGE, SELECT ON SEQUENCES TO anon, authenticated, service_role`,
+      sql(`ALTER DEFAULT PRIVILEGES IN SCHEMA ${project.schemaSlot} GRANT USAGE, SELECT ON SEQUENCES TO anon, authenticated, service_role`),
     );
 
     // Delete project users
-    await client.query(`DELETE FROM internal.users WHERE project_id = $1`, [projectId]);
+    await client.query(sql(`DELETE FROM internal.users WHERE project_id = $1`), [projectId]);
     // Delete refresh tokens
-    await client.query(`DELETE FROM internal.refresh_tokens WHERE project_id = $1`, [projectId]);
+    await client.query(sql(`DELETE FROM internal.refresh_tokens WHERE project_id = $1`), [projectId]);
 
     // Mark archived
     await client.query(
-      `UPDATE internal.projects SET status = 'archived' WHERE id = $1`,
+      sql(`UPDATE internal.projects SET status = 'archived' WHERE id = $1`),
       [projectId],
     );
 
-    await client.query("COMMIT");
+    await client.query(sql("COMMIT"));
   } catch (err) {
-    await client.query("ROLLBACK");
+    await client.query(sql("ROLLBACK"));
     throw err;
   } finally {
     client.release();

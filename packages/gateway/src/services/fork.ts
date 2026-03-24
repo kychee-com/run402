@@ -13,6 +13,7 @@ import { writeFileSync, unlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pool } from "../db/pool.js";
+import { sql } from "../db/sql.js";
 import { S3_BUCKET, S3_REGION } from "../config.js";
 
 const execFileAsync = promisify(execFile);
@@ -74,10 +75,10 @@ export async function forkApp(
 ): Promise<ForkResult> {
   // Load app version metadata
   const versionResult = await pool.query(
-    `SELECT id, project_id, name, visibility, fork_allowed, status,
+    sql(`SELECT id, project_id, name, visibility, fork_allowed, status,
             min_tier, derived_min_tier, bundle_uri, bundle_sha256,
             required_secrets, required_actions, site_deployment_id
-     FROM internal.app_versions WHERE id = $1`,
+     FROM internal.app_versions WHERE id = $1`),
     [req.version_id],
   );
   if (versionResult.rows.length === 0) {
@@ -137,8 +138,8 @@ export async function forkApp(
 
   // Load function sources
   const functionsResult = await pool.query(
-    `SELECT name, source, runtime, timeout_seconds, memory_mb, deps
-     FROM internal.app_version_functions WHERE version_id = $1`,
+    sql(`SELECT name, source, runtime, timeout_seconds, memory_mb, deps
+     FROM internal.app_version_functions WHERE version_id = $1`),
     [req.version_id],
   );
 
@@ -183,7 +184,7 @@ export async function forkApp(
   // Now apply schema in the new project's schema slot
   // We need to get the schema slot from the newly created project
   const projectResult = await pool.query(
-    `SELECT schema_slot FROM internal.projects WHERE id = $1`,
+    sql(`SELECT schema_slot FROM internal.projects WHERE id = $1`),
     [result.project_id],
   );
   const targetSchema = projectResult.rows[0].schema_slot;
@@ -206,8 +207,8 @@ export async function forkApp(
   // tables created by the same role in the same session. pg_dump/psql creates
   // tables in a separate session, so the defaults may not fire. Explicitly grant.
   const tablesResult = await pool.query(
-    `SELECT table_name FROM information_schema.tables
-     WHERE table_schema = $1 AND table_type = 'BASE TABLE'`,
+    sql(`SELECT table_name FROM information_schema.tables
+     WHERE table_schema = $1 AND table_type = 'BASE TABLE'`),
     [targetSchema],
   );
   if (tablesResult.rows.length > 0) {
@@ -215,18 +216,18 @@ export async function forkApp(
     try {
       for (const row of tablesResult.rows) {
         const t = `${targetSchema}.${row.table_name}`;
-        await client.query(`GRANT SELECT ON ${t} TO anon`);
-        await client.query(`GRANT SELECT, INSERT, UPDATE, DELETE ON ${t} TO authenticated`);
-        await client.query(`GRANT ALL ON ${t} TO service_role`);
+        await client.query(sql(`GRANT SELECT ON ${t} TO anon`));
+        await client.query(sql(`GRANT SELECT, INSERT, UPDATE, DELETE ON ${t} TO authenticated`));
+        await client.query(sql(`GRANT ALL ON ${t} TO service_role`));
       }
       // Also grant sequence usage (for SERIAL/BIGSERIAL columns)
       const seqResult = await pool.query(
-        `SELECT sequence_name FROM information_schema.sequences WHERE sequence_schema = $1`,
+        sql(`SELECT sequence_name FROM information_schema.sequences WHERE sequence_schema = $1`),
         [targetSchema],
       );
       for (const row of seqResult.rows) {
         const s = `${targetSchema}.${row.sequence_name}`;
-        await client.query(`GRANT USAGE, SELECT ON SEQUENCE ${s} TO anon, authenticated, service_role`);
+        await client.query(sql(`GRANT USAGE, SELECT ON SEQUENCE ${s} TO anon, authenticated, service_role`));
       }
     } finally {
       client.release();
@@ -234,11 +235,11 @@ export async function forkApp(
   }
 
   // Notify PostgREST to reload schema cache
-  await pool.query("NOTIFY pgrst, 'reload schema'");
+  await pool.query(sql("NOTIFY pgrst, 'reload schema'"));
 
   // Record provenance
   await pool.query(
-    `UPDATE internal.projects SET source_version_id = $1 WHERE id = $2`,
+    sql(`UPDATE internal.projects SET source_version_id = $1 WHERE id = $2`),
     [req.version_id, result.project_id],
   );
 

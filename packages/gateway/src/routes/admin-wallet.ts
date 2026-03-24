@@ -10,6 +10,7 @@ import { Router, Request, Response } from "express";
 import crypto from "node:crypto";
 import { ADMIN_SESSION_SECRET } from "../config.js";
 import { pool } from "../db/pool.js";
+import { sql } from "../db/sql.js";
 import { asyncHandler } from "../utils/async-handler.js";
 
 const router = Router();
@@ -58,38 +59,38 @@ router.get("/admin/api/wallet/:address", asyncHandler(async (req: Request, res: 
     topupsRes,
   ] = await Promise.all([
     // Billing account
-    pool.query(`
+    pool.query(sql(`
       SELECT ba.id, ba.status, ba.available_usd_micros, ba.held_usd_micros,
              ba.tier, ba.lease_started_at, ba.lease_expires_at,
              ba.funding_policy, ba.primary_contact_email, ba.created_at
       FROM internal.billing_accounts ba
       JOIN internal.billing_account_wallets baw ON baw.billing_account_id = ba.id
       WHERE baw.wallet_address = $1
-    `, [address]),
+    `), [address]),
     // Projects
-    pool.query(`
+    pool.query(sql(`
       SELECT id, name, schema_slot, tier, status, api_calls, storage_bytes,
              pinned, demo_mode, created_at
       FROM internal.projects
       WHERE wallet_address = $1
       ORDER BY created_at DESC
-    `, [address]),
+    `), [address]),
     // Subdomains (for all projects owned by this wallet)
-    pool.query(`
+    pool.query(sql(`
       SELECT s.name, s.project_id, s.created_at
       FROM internal.subdomains s
       WHERE s.project_id IN (SELECT id FROM internal.projects WHERE wallet_address = $1)
       ORDER BY s.created_at DESC
-    `, [address]),
+    `), [address]),
     // Functions (for all projects owned by this wallet)
-    pool.query(`
+    pool.query(sql(`
       SELECT f.id, f.project_id, f.name, f.runtime, f.timeout_seconds, f.memory_mb, f.created_at
       FROM internal.functions f
       WHERE f.project_id IN (SELECT id FROM internal.projects WHERE wallet_address = $1)
       ORDER BY f.created_at DESC
-    `, [address]),
+    `), [address]),
     // Recent ledger entries
-    pool.query(`
+    pool.query(sql(`
       SELECT al.direction, al.kind, al.amount_usd_micros, al.balance_after_available,
              al.reference_type, al.reference_id, al.metadata, al.created_at
       FROM internal.allowance_ledger al
@@ -97,35 +98,35 @@ router.get("/admin/api/wallet/:address", asyncHandler(async (req: Request, res: 
       WHERE baw.wallet_address = $1
       ORDER BY al.created_at DESC
       LIMIT 50
-    `, [address]),
+    `), [address]),
     // Charge authorizations
-    pool.query(`
+    pool.query(sql(`
       SELECT id, sku, amount_usd_micros, status, created_at
       FROM internal.charge_authorizations
       WHERE wallet_address = $1
       ORDER BY created_at DESC
       LIMIT 50
-    `, [address]),
+    `), [address]),
     // Wallet sighting
-    pool.query(`
+    pool.query(sql(`
       SELECT wallet_address, first_seen_at, last_seen_at, source
       FROM internal.wallet_sightings
       WHERE wallet_address = $1
-    `, [address]),
+    `), [address]),
     // Agent contact
-    pool.query(`
+    pool.query(sql(`
       SELECT name, email, webhook, created_at
       FROM internal.agent_contacts
       WHERE wallet_address = $1
-    `, [address]).catch(() => ({ rows: [] })),
+    `), [address]).catch(() => ({ rows: [] })),
     // Stripe topups
-    pool.query(`
+    pool.query(sql(`
       SELECT bt.status, bt.funded_usd_micros, bt.charged_usd_cents, bt.payer_email, bt.livemode, bt.created_at, bt.paid_at
       FROM internal.billing_topups bt
       WHERE bt.wallet_address = $1
       ORDER BY bt.created_at DESC
       LIMIT 20
-    `, [address]).catch(() => ({ rows: [] })),
+    `), [address]).catch(() => ({ rows: [] })),
   ]);
 
   const billing = billingRes.rows[0] || null;
@@ -231,7 +232,7 @@ router.get("/admin/project/:id", asyncHandler(async (req: Request, res: Response
 
   const projectId = req.params.id as string;
   const result = await pool.query(
-    `SELECT wallet_address FROM internal.projects WHERE id = $1`,
+    sql(`SELECT wallet_address FROM internal.projects WHERE id = $1`),
     [projectId],
   );
   const wallet = result.rows[0]?.wallet_address;

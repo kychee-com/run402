@@ -6,6 +6,7 @@ import Stripe from "stripe";
 import { STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET, STRIPE_WEBHOOK_SECRET_LIVE } from "../config.js";
 import { getOrCreateBillingAccount, creditFromTopup } from "./billing.js";
 import { pool } from "../db/pool.js";
+import { sql } from "../db/sql.js";
 import { randomUUID } from "node:crypto";
 import { errorMessage } from "../utils/errors.js";
 
@@ -35,8 +36,8 @@ export async function createAllowanceCheckout(
   const amountInCents = Math.round(amountUsdMicros / 10_000); // micros to cents: 1_000_000 micros = 100 cents
 
   await pool.query(
-    `INSERT INTO internal.billing_topups (id, billing_account_id, wallet_address, status, funded_usd_micros, charged_usd_cents, terms_version)
-     VALUES ($1, $2, $3, 'initiated', $4, $5, 'v1')`,
+    sql(`INSERT INTO internal.billing_topups (id, billing_account_id, wallet_address, status, funded_usd_micros, charged_usd_cents, terms_version)
+     VALUES ($1, $2, $3, 'initiated', $4, $5, 'v1')`),
     [topupId, account.id, normalized, amountUsdMicros, amountInCents],
   );
 
@@ -70,7 +71,7 @@ export async function createAllowanceCheckout(
 
   // Update topup with Stripe session ID
   await pool.query(
-    `UPDATE internal.billing_topups SET stripe_checkout_session_id = $1 WHERE id = $2`,
+    sql(`UPDATE internal.billing_topups SET stripe_checkout_session_id = $1 WHERE id = $2`),
     [session.id, topupId],
   );
 
@@ -103,7 +104,7 @@ export async function handleStripeWebhookEvent(rawBody: Buffer, signature: strin
 
   // Idempotent: check if already processed
   const existing = await pool.query(
-    `SELECT stripe_event_id FROM internal.stripe_webhook_events WHERE stripe_event_id = $1`,
+    sql(`SELECT stripe_event_id FROM internal.stripe_webhook_events WHERE stripe_event_id = $1`),
     [event.id],
   );
   if (existing.rows.length > 0) {
@@ -112,9 +113,9 @@ export async function handleStripeWebhookEvent(rawBody: Buffer, signature: strin
 
   // Record the event
   await pool.query(
-    `INSERT INTO internal.stripe_webhook_events (stripe_event_id, type, livemode, payload, received_at)
+    sql(`INSERT INTO internal.stripe_webhook_events (stripe_event_id, type, livemode, payload, received_at)
      VALUES ($1, $2, $3, $4, NOW())
-     ON CONFLICT (stripe_event_id) DO NOTHING`,
+     ON CONFLICT (stripe_event_id) DO NOTHING`),
     [event.id, event.type, event.livemode, JSON.stringify(event.data)],
   );
 
@@ -134,13 +135,13 @@ export async function handleStripeWebhookEvent(rawBody: Buffer, signature: strin
 
       // Update topup with payment info
       await pool.query(
-        `UPDATE internal.billing_topups SET
+        sql(`UPDATE internal.billing_topups SET
            status = 'paid',
            stripe_payment_intent_id = $1,
            payer_email = $2,
            livemode = $3,
            paid_at = NOW()
-         WHERE id = $4 AND status = 'initiated'`,
+         WHERE id = $4 AND status = 'initiated'`),
         [
           session.payment_intent as string,
           session.customer_details?.email || null,
@@ -157,7 +158,7 @@ export async function handleStripeWebhookEvent(rawBody: Buffer, signature: strin
 
     // Mark event as processed
     await pool.query(
-      `UPDATE internal.stripe_webhook_events SET processed_at = NOW() WHERE stripe_event_id = $1`,
+      sql(`UPDATE internal.stripe_webhook_events SET processed_at = NOW() WHERE stripe_event_id = $1`),
       [event.id],
     );
 
@@ -165,7 +166,7 @@ export async function handleStripeWebhookEvent(rawBody: Buffer, signature: strin
   } catch (err) {
     // Record processing error
     await pool.query(
-      `UPDATE internal.stripe_webhook_events SET processing_error = $1 WHERE stripe_event_id = $2`,
+      sql(`UPDATE internal.stripe_webhook_events SET processing_error = $1 WHERE stripe_event_id = $2`),
       [errorMessage(err), event.id],
     );
     throw err;

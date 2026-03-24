@@ -17,6 +17,7 @@ import { serviceKeyAuth } from "../middleware/apikey.js";
 import { serviceKeyOrAdmin } from "../middleware/admin-auth.js";
 import { asyncHandler, HttpError } from "../utils/async-handler.js";
 import { pool } from "../db/pool.js";
+import { sql } from "../db/sql.js";
 import {
   validateSlug,
   formatAddress,
@@ -235,7 +236,7 @@ router.post("/mailboxes/v1/:id/webhooks", serviceKeyAuth, asyncHandler(async (re
 
   const webhookId = `whk_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
   await pool.query(
-    `INSERT INTO internal.email_webhooks (id, mailbox_id, url, events) VALUES ($1, $2, $3, $4)`,
+    sql(`INSERT INTO internal.email_webhooks (id, mailbox_id, url, events) VALUES ($1, $2, $3, $4)`),
     [webhookId, req.params.id, url, JSON.stringify(events)],
   );
 

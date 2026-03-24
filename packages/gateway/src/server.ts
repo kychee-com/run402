@@ -17,6 +17,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { pool } from "./db/pool.js";
+import { sql } from "./db/sql.js";
 import { createPaymentMiddleware } from "./middleware/x402.js";
 import { startMeteringFlush, stopMeteringFlush, flushCounters } from "./middleware/metering.js";
 import { syncProjects } from "./services/projects.js";
@@ -277,7 +278,7 @@ app.get("/health", async (_req: Request, res: Response) => {
 
   // Postgres
   try {
-    await pool.query("SELECT 1");
+    await pool.query(sql("SELECT 1"));
     checks.postgres = "ok";
   } catch {
     checks.postgres = "error";
@@ -344,7 +345,7 @@ let publicStatsCache: { data: object; ts: number } | null = null;
 app.get("/public/stats", async (_req: Request, res: Response) => {
   try {
     if (!publicStatsCache || Date.now() - publicStatsCache.ts > 60_000) {
-      const result = await pool.query(`
+      const result = await pool.query(sql(`
         SELECT COUNT(DISTINCT wallet)::int AS count FROM (
           SELECT wallet_address AS wallet FROM internal.wallet_sightings
           UNION
@@ -354,7 +355,7 @@ app.get("/public/stats", async (_req: Request, res: Response) => {
           UNION
           SELECT wallet_address FROM internal.charge_authorizations
         ) all_wallets
-      `);
+      `));
       publicStatsCache = { data: { wallets: result.rows[0]?.count || 0 }, ts: Date.now() };
     }
     res.set("Cache-Control", "public, max-age=60");
@@ -729,7 +730,7 @@ let oauthCleanupInterval: ReturnType<typeof setInterval> | null = null;
 async function initDatabase() {
   // Check if internal schema already exists
   const result = await pool.query(
-    `SELECT 1 FROM information_schema.schemata WHERE schema_name = 'internal'`,
+    sql(`SELECT 1 FROM information_schema.schemata WHERE schema_name = 'internal'`),
   );
   if (result.rows.length > 0) {
     console.log("  Database already initialized");
@@ -739,11 +740,11 @@ async function initDatabase() {
   console.log("  Initializing database (first run)...");
   const __dirname = dirname(fileURLToPath(import.meta.url));
   const sqlPath = join(__dirname, "db", "init.sql");
-  const sql = readFileSync(sqlPath, "utf-8");
+  const initSql = readFileSync(sqlPath, "utf-8");
 
   const client = await pool.connect();
   try {
-    await client.query(sql);
+    await client.query(sql(initSql));
     console.log("  Database initialized successfully");
   } finally {
     client.release();
@@ -756,7 +757,7 @@ async function initDatabase() {
 async function applyMigrations() {
   // v1.1: Grant default sequence privileges (fixes SERIAL/BIGSERIAL permission errors)
   const result = await pool.query(
-    `SELECT schema_name FROM information_schema.schemata WHERE schema_name ~ '^p\\d{4}$'`,
+    sql(`SELECT schema_name FROM information_schema.schemata WHERE schema_name ~ '^p\\d{4}$'`),
   );
   if (result.rows.length > 0) {
     const client = await pool.connect();
@@ -764,7 +765,7 @@ async function applyMigrations() {
       for (const row of result.rows) {
         const slot = row.schema_name;
         await client.query(
-          `ALTER DEFAULT PRIVILEGES IN SCHEMA ${slot} GRANT USAGE, SELECT ON SEQUENCES TO anon, authenticated, service_role`,
+          sql(`ALTER DEFAULT PRIVILEGES IN SCHEMA ${slot} GRANT USAGE, SELECT ON SEQUENCES TO anon, authenticated, service_role`),
         );
       }
       console.log(`  Applied sequence grants to ${result.rows.length} schema slots`);
@@ -774,39 +775,39 @@ async function applyMigrations() {
   }
 
   // v1.2: wallet_address for subscription linking
-  await pool.query(`ALTER TABLE internal.projects ADD COLUMN IF NOT EXISTS wallet_address TEXT`);
-  await pool.query(`CREATE INDEX IF NOT EXISTS idx_projects_wallet ON internal.projects(wallet_address) WHERE wallet_address IS NOT NULL`);
+  await pool.query(sql(`ALTER TABLE internal.projects ADD COLUMN IF NOT EXISTS wallet_address TEXT`));
+  await pool.query(sql(`CREATE INDEX IF NOT EXISTS idx_projects_wallet ON internal.projects(wallet_address) WHERE wallet_address IS NOT NULL`));
 
   // v1.3: pinned projects (lease never expires)
-  await pool.query(`ALTER TABLE internal.projects ADD COLUMN IF NOT EXISTS pinned BOOLEAN NOT NULL DEFAULT false`);
+  await pool.query(sql(`ALTER TABLE internal.projects ADD COLUMN IF NOT EXISTS pinned BOOLEAN NOT NULL DEFAULT false`));
 
   // v1.4: function source storage (for publish/fork)
   // Guard: table created by initFunctionsTable(), may not exist on fresh DB
-  const fnExists = await pool.query(`SELECT 1 FROM information_schema.tables WHERE table_schema = 'internal' AND table_name = 'functions'`);
+  const fnExists = await pool.query(sql(`SELECT 1 FROM information_schema.tables WHERE table_schema = 'internal' AND table_name = 'functions'`));
   if (fnExists.rows.length > 0) {
-    await pool.query(`ALTER TABLE internal.functions ADD COLUMN IF NOT EXISTS source TEXT`);
+    await pool.query(sql(`ALTER TABLE internal.functions ADD COLUMN IF NOT EXISTS source TEXT`));
   }
 
   // v1.5: deployment ref_count (for publish pinning)
   // Guard: table created by initDeploymentsTable(), may not exist on fresh DB
-  const deplExists = await pool.query(`SELECT 1 FROM information_schema.tables WHERE table_schema = 'internal' AND table_name = 'deployments'`);
+  const deplExists = await pool.query(sql(`SELECT 1 FROM information_schema.tables WHERE table_schema = 'internal' AND table_name = 'deployments'`));
   if (deplExists.rows.length > 0) {
-    await pool.query(`ALTER TABLE internal.deployments ADD COLUMN IF NOT EXISTS ref_count INTEGER NOT NULL DEFAULT 0`);
+    await pool.query(sql(`ALTER TABLE internal.deployments ADD COLUMN IF NOT EXISTS ref_count INTEGER NOT NULL DEFAULT 0`));
   }
 
   // v1.6: fork provenance
-  await pool.query(`ALTER TABLE internal.projects ADD COLUMN IF NOT EXISTS source_version_id TEXT`);
+  await pool.query(sql(`ALTER TABLE internal.projects ADD COLUMN IF NOT EXISTS source_version_id TEXT`));
 
   // v1.7: app version tags
   // Guard: table created by initAppVersionsTables(), may not exist on fresh DB
-  const avExists = await pool.query(`SELECT 1 FROM information_schema.tables WHERE table_schema = 'internal' AND table_name = 'app_versions'`);
+  const avExists = await pool.query(sql(`SELECT 1 FROM information_schema.tables WHERE table_schema = 'internal' AND table_name = 'app_versions'`));
   if (avExists.rows.length > 0) {
-    await pool.query(`ALTER TABLE internal.app_versions ADD COLUMN IF NOT EXISTS tags TEXT[] DEFAULT '{}'`);
-    await pool.query(`ALTER TABLE internal.app_versions ADD COLUMN IF NOT EXISTS live_url TEXT`);
+    await pool.query(sql(`ALTER TABLE internal.app_versions ADD COLUMN IF NOT EXISTS tags TEXT[] DEFAULT '{}'`));
+    await pool.query(sql(`ALTER TABLE internal.app_versions ADD COLUMN IF NOT EXISTS live_url TEXT`));
   }
 
   // v1.8: ad attribution tracking (gclid + UTM beacons from landing pages)
-  await pool.query(`
+  await pool.query(sql(`
     CREATE TABLE IF NOT EXISTS internal.ad_attribution (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       gclid TEXT,
@@ -820,12 +821,12 @@ async function applyMigrations() {
       user_agent TEXT,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
-  `);
-  await pool.query(`CREATE INDEX IF NOT EXISTS idx_ad_attribution_time ON internal.ad_attribution(created_at DESC)`);
-  await pool.query(`CREATE INDEX IF NOT EXISTS idx_ad_attribution_gclid ON internal.ad_attribution(gclid) WHERE gclid IS NOT NULL`);
+  `));
+  await pool.query(sql(`CREATE INDEX IF NOT EXISTS idx_ad_attribution_time ON internal.ad_attribution(created_at DESC)`));
+  await pool.query(sql(`CREATE INDEX IF NOT EXISTS idx_ad_attribution_gclid ON internal.ad_attribution(gclid) WHERE gclid IS NOT NULL`));
 
   // v1.9: billing/allowance tables
-  await pool.query(`
+  await pool.query(sql(`
     CREATE TABLE IF NOT EXISTS internal.billing_accounts (
       id UUID PRIMARY KEY,
       status TEXT NOT NULL DEFAULT 'active',
@@ -838,8 +839,8 @@ async function applyMigrations() {
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
-  `);
-  await pool.query(`
+  `));
+  await pool.query(sql(`
     CREATE TABLE IF NOT EXISTS internal.billing_account_wallets (
       wallet_address TEXT PRIMARY KEY,
       billing_account_id UUID NOT NULL REFERENCES internal.billing_accounts(id),
@@ -847,9 +848,9 @@ async function applyMigrations() {
       role TEXT NOT NULL DEFAULT 'owner',
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
-  `);
-  await pool.query(`CREATE INDEX IF NOT EXISTS idx_baw_account ON internal.billing_account_wallets(billing_account_id)`);
-  await pool.query(`
+  `));
+  await pool.query(sql(`CREATE INDEX IF NOT EXISTS idx_baw_account ON internal.billing_account_wallets(billing_account_id)`));
+  await pool.query(sql(`
     CREATE TABLE IF NOT EXISTS internal.allowance_ledger (
       id UUID PRIMARY KEY,
       billing_account_id UUID NOT NULL REFERENCES internal.billing_accounts(id),
@@ -864,9 +865,9 @@ async function applyMigrations() {
       metadata JSONB,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
-  `);
-  await pool.query(`CREATE INDEX IF NOT EXISTS idx_ledger_account_time ON internal.allowance_ledger(billing_account_id, created_at DESC)`);
-  await pool.query(`
+  `));
+  await pool.query(sql(`CREATE INDEX IF NOT EXISTS idx_ledger_account_time ON internal.allowance_ledger(billing_account_id, created_at DESC)`));
+  await pool.query(sql(`
     CREATE TABLE IF NOT EXISTS internal.billing_topups (
       id UUID PRIMARY KEY,
       billing_account_id UUID NOT NULL REFERENCES internal.billing_accounts(id),
@@ -884,8 +885,8 @@ async function applyMigrations() {
       paid_at TIMESTAMPTZ,
       credited_at TIMESTAMPTZ
     )
-  `);
-  await pool.query(`
+  `));
+  await pool.query(sql(`
     CREATE TABLE IF NOT EXISTS internal.charge_authorizations (
       id UUID PRIMARY KEY,
       wallet_address TEXT NOT NULL,
@@ -901,8 +902,8 @@ async function applyMigrations() {
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       captured_at TIMESTAMPTZ
     )
-  `);
-  await pool.query(`
+  `));
+  await pool.query(sql(`
     CREATE TABLE IF NOT EXISTS internal.stripe_webhook_events (
       stripe_event_id TEXT PRIMARY KEY,
       type TEXT NOT NULL,
@@ -912,31 +913,31 @@ async function applyMigrations() {
       processed_at TIMESTAMPTZ,
       processing_error TEXT
     )
-  `);
+  `));
 
   // v1.11: wallet sightings — track every unique wallet encountered
-  await pool.query(`
+  await pool.query(sql(`
     CREATE TABLE IF NOT EXISTS internal.wallet_sightings (
       wallet_address TEXT PRIMARY KEY,
       first_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       source TEXT NOT NULL DEFAULT 'unknown'
     )
-  `);
+  `));
 
   // v1.12: faucet balance snapshots — track treasury balance over time
-  await pool.query(`
+  await pool.query(sql(`
     CREATE TABLE IF NOT EXISTS internal.faucet_snapshots (
       id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
       recorded_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       balance_usdc NUMERIC(20,6) NOT NULL,
       event TEXT NOT NULL DEFAULT 'drip'
     )
-  `);
-  await pool.query(`CREATE INDEX IF NOT EXISTS idx_faucet_snapshots_at ON internal.faucet_snapshots (recorded_at)`);
+  `));
+  await pool.query(sql(`CREATE INDEX IF NOT EXISTS idx_faucet_snapshots_at ON internal.faucet_snapshots (recorded_at)`));
 
   // v1.13: agent contact info
-  await pool.query(`
+  await pool.query(sql(`
     CREATE TABLE IF NOT EXISTS internal.agent_contacts (
       wallet_address TEXT PRIMARY KEY,
       name TEXT NOT NULL,
@@ -945,35 +946,35 @@ async function applyMigrations() {
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
-  `);
+  `));
 
   // v1.14: wallet-level tier subscription (pay-per-tier)
-  await pool.query(`ALTER TABLE internal.billing_accounts ADD COLUMN IF NOT EXISTS tier TEXT`);
-  await pool.query(`ALTER TABLE internal.billing_accounts ADD COLUMN IF NOT EXISTS lease_started_at TIMESTAMPTZ`);
-  await pool.query(`ALTER TABLE internal.billing_accounts ADD COLUMN IF NOT EXISTS lease_expires_at TIMESTAMPTZ`);
+  await pool.query(sql(`ALTER TABLE internal.billing_accounts ADD COLUMN IF NOT EXISTS tier TEXT`));
+  await pool.query(sql(`ALTER TABLE internal.billing_accounts ADD COLUMN IF NOT EXISTS lease_started_at TIMESTAMPTZ`));
+  await pool.query(sql(`ALTER TABLE internal.billing_accounts ADD COLUMN IF NOT EXISTS lease_expires_at TIMESTAMPTZ`));
 
   // v1.10: demo mode columns
-  await pool.query(`ALTER TABLE internal.projects ADD COLUMN IF NOT EXISTS demo_mode BOOLEAN NOT NULL DEFAULT false`);
-  await pool.query(`ALTER TABLE internal.projects ADD COLUMN IF NOT EXISTS demo_config JSONB`);
-  await pool.query(`ALTER TABLE internal.projects ADD COLUMN IF NOT EXISTS demo_source_version_id TEXT`);
-  await pool.query(`ALTER TABLE internal.projects ADD COLUMN IF NOT EXISTS demo_last_reset_at TIMESTAMPTZ`);
+  await pool.query(sql(`ALTER TABLE internal.projects ADD COLUMN IF NOT EXISTS demo_mode BOOLEAN NOT NULL DEFAULT false`));
+  await pool.query(sql(`ALTER TABLE internal.projects ADD COLUMN IF NOT EXISTS demo_config JSONB`));
+  await pool.query(sql(`ALTER TABLE internal.projects ADD COLUMN IF NOT EXISTS demo_source_version_id TEXT`));
+  await pool.query(sql(`ALTER TABLE internal.projects ADD COLUMN IF NOT EXISTS demo_last_reset_at TIMESTAMPTZ`));
 
   // v1.15: Google OAuth social login for app users
   // v1.15a: nullable password_hash (social-only users)
-  await pool.query(`ALTER TABLE internal.users ALTER COLUMN password_hash DROP NOT NULL`);
+  await pool.query(sql(`ALTER TABLE internal.users ALTER COLUMN password_hash DROP NOT NULL`));
 
   // v1.15b: new user profile columns
-  await pool.query(`ALTER TABLE internal.users ADD COLUMN IF NOT EXISTS email_verified_at TIMESTAMPTZ`);
-  await pool.query(`ALTER TABLE internal.users ADD COLUMN IF NOT EXISTS display_name TEXT`);
-  await pool.query(`ALTER TABLE internal.users ADD COLUMN IF NOT EXISTS avatar_url TEXT`);
-  await pool.query(`ALTER TABLE internal.users ADD COLUMN IF NOT EXISTS last_sign_in_at TIMESTAMPTZ`);
+  await pool.query(sql(`ALTER TABLE internal.users ADD COLUMN IF NOT EXISTS email_verified_at TIMESTAMPTZ`));
+  await pool.query(sql(`ALTER TABLE internal.users ADD COLUMN IF NOT EXISTS display_name TEXT`));
+  await pool.query(sql(`ALTER TABLE internal.users ADD COLUMN IF NOT EXISTS avatar_url TEXT`));
+  await pool.query(sql(`ALTER TABLE internal.users ADD COLUMN IF NOT EXISTS last_sign_in_at TIMESTAMPTZ`));
 
   // v1.15c: case-insensitive email uniqueness
-  await pool.query(`UPDATE internal.users SET email = LOWER(email) WHERE email != LOWER(email)`);
-  await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_project_email_ci ON internal.users(project_id, LOWER(email))`);
+  await pool.query(sql(`UPDATE internal.users SET email = LOWER(email) WHERE email != LOWER(email)`));
+  await pool.query(sql(`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_project_email_ci ON internal.users(project_id, LOWER(email))`));
 
   // v1.15d: auth identities (Google sub → project user)
-  await pool.query(`
+  await pool.query(sql(`
     CREATE TABLE IF NOT EXISTS internal.auth_identities (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       user_id UUID NOT NULL REFERENCES internal.users(id) ON DELETE CASCADE,
@@ -986,11 +987,11 @@ async function applyMigrations() {
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       UNIQUE(project_id, provider, provider_sub)
     )
-  `);
-  await pool.query(`CREATE INDEX IF NOT EXISTS idx_auth_identities_user ON internal.auth_identities(user_id)`);
+  `));
+  await pool.query(sql(`CREATE INDEX IF NOT EXISTS idx_auth_identities_user ON internal.auth_identities(user_id)`));
 
   // v1.15e: OAuth transactions (DB-backed state, replaces cookies)
-  await pool.query(`
+  await pool.query(sql(`
     CREATE TABLE IF NOT EXISTS internal.oauth_transactions (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       project_id TEXT NOT NULL,
@@ -1007,11 +1008,11 @@ async function applyMigrations() {
       expires_at TIMESTAMPTZ NOT NULL,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
-  `);
-  await pool.query(`CREATE INDEX IF NOT EXISTS idx_oauth_tx_expires ON internal.oauth_transactions(expires_at)`);
+  `));
+  await pool.query(sql(`CREATE INDEX IF NOT EXISTS idx_oauth_tx_expires ON internal.oauth_transactions(expires_at)`));
 
   // v1.15f: OAuth codes (one-time auth codes, store hash only)
-  await pool.query(`
+  await pool.query(sql(`
     CREATE TABLE IF NOT EXISTS internal.oauth_codes (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       code_hash TEXT NOT NULL UNIQUE,
@@ -1025,14 +1026,14 @@ async function applyMigrations() {
       used BOOLEAN NOT NULL DEFAULT false,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
-  `);
-  await pool.query(`CREATE INDEX IF NOT EXISTS idx_oauth_codes_expires ON internal.oauth_codes(expires_at)`);
+  `));
+  await pool.query(sql(`CREATE INDEX IF NOT EXISTS idx_oauth_codes_expires ON internal.oauth_codes(expires_at)`));
 }
 
 async function start() {
   // Verify Postgres connection
   try {
-    await pool.query("SELECT 1 AS ok");
+    await pool.query(sql("SELECT 1 AS ok"));
     console.log("  Postgres connection: OK");
   } catch (err: unknown) {
     console.error("Cannot connect to Postgres:", errorMessage(err));

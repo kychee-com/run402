@@ -13,6 +13,7 @@ import { baseSepolia } from "viem/chains";
 import { FAUCET_TREASURY_KEY, FAUCET_DRIP_AMOUNT, FAUCET_REFILL_INTERVAL, CDP_API_KEY_ID, CDP_API_KEY_SECRET } from "../config.js";
 import { errorMessage } from "../utils/errors.js";
 import { pool } from "../db/pool.js";
+import { sql } from "../db/sql.js";
 
 // Base Sepolia USDC (Circle test token)
 const USDC_ADDRESS: Address = "0x036CbD53842c5426634e7929541eC2318f3dCF7e";
@@ -207,7 +208,7 @@ export async function getTreasuryBalance(): Promise<string> {
  */
 export function recordFaucetSnapshot(balanceUsdc: string, event: string): void {
   pool.query(
-    `INSERT INTO internal.faucet_snapshots (balance_usdc, event) VALUES ($1, $2)`,
+    sql(`INSERT INTO internal.faucet_snapshots (balance_usdc, event) VALUES ($1, $2)`),
     [balanceUsdc, event],
   ).catch(() => {});
 }
