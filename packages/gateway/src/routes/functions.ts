@@ -19,9 +19,43 @@ import { serviceKeyAuth } from "../middleware/apikey.js";
 import { apikeyAuth } from "../middleware/apikey.js";
 import { meteringMiddleware } from "../middleware/metering.js";
 import { demoBlockedMiddleware, demoFunctionInvokeMiddleware } from "../middleware/demo.js";
+import { walletAuthOrAdmin } from "../middleware/admin-auth.js";
+import { pool } from "../db/pool.js";
 import { TIERS } from "@run402/shared";
 
 const router = Router();
+
+// GET /v1/functions — list all functions (admin: all, wallet: own projects)
+router.get(
+  "/functions/v1",
+  walletAuthOrAdmin,
+  asyncHandler(async (req: Request, res: Response) => {
+    const apiBase = `${req.protocol}://${req.get("host")}`;
+    let query: string;
+    let params: unknown[];
+
+    if (req.isAdmin) {
+      query = `SELECT f.name, f.project_id, f.created_at, f.updated_at FROM internal.functions f ORDER BY f.created_at DESC`;
+      params = [];
+    } else {
+      const wallet = req.walletAddress;
+      if (!wallet) { res.status(401).json({ error: "No wallet address" }); return; }
+      query = `SELECT f.name, f.project_id, f.created_at, f.updated_at FROM internal.functions f JOIN internal.projects p ON f.project_id = p.id WHERE p.wallet_address = $1 ORDER BY f.created_at DESC`;
+      params = [wallet];
+    }
+
+    const result = await pool.query(query, params);
+    res.json({
+      functions: result.rows.map((r: Record<string, unknown>) => ({
+        name: r.name,
+        project_id: r.project_id,
+        url: `${apiBase}/functions/v1/${r.name}`,
+        created_at: r.created_at,
+        updated_at: r.updated_at,
+      })),
+    });
+  }),
+);
 
 // --- Admin routes (service_key auth) ---
 

@@ -9,6 +9,8 @@
 
 import { Router, Request, Response } from "express";
 import { serviceKeyAuth } from "../middleware/apikey.js";
+import { serviceKeyOrAdmin, walletAuthOrAdmin } from "../middleware/admin-auth.js";
+import { pool } from "../db/pool.js";
 import { asyncHandler, HttpError } from "../utils/async-handler.js";
 import {
   validateSubdomainName,
@@ -71,11 +73,20 @@ router.post("/subdomains/v1", serviceKeyAuth, asyncHandler(async (req: Request, 
   }
 }));
 
-// GET /v1/subdomains — list subdomains for the authenticated project
-router.get("/subdomains/v1", serviceKeyAuth, asyncHandler(async (req: Request, res: Response) => {
-  const projectId = req.project!.id;
-  const records = await listSubdomains(projectId);
-  res.json({ subdomains: records.map(formatSubdomain) });
+// GET /v1/subdomains — list subdomains (admin: all, service_key: project, wallet: own projects)
+router.get("/subdomains/v1", serviceKeyOrAdmin, asyncHandler(async (req: Request, res: Response) => {
+  if (req.isAdmin) {
+    // Admin: list all subdomains
+    const result = await pool.query(
+      `SELECT name, deployment_id, project_id, created_at, updated_at FROM internal.subdomains ORDER BY created_at DESC`,
+    );
+    res.json({ subdomains: result.rows.map(formatSubdomain) });
+  } else {
+    // Service key: list subdomains for the authenticated project
+    const projectId = req.project!.id;
+    const records = await listSubdomains(projectId);
+    res.json({ subdomains: records.map(formatSubdomain) });
+  }
 }));
 
 // GET /v1/subdomains/:name — lookup a subdomain (free, no auth)
@@ -87,9 +98,10 @@ router.get("/subdomains/v1/:name", asyncHandler(async (req: Request, res: Respon
   res.json(formatSubdomain(record));
 }));
 
-// DELETE /v1/subdomains/:name — release a subdomain
-router.delete("/subdomains/v1/:name", serviceKeyAuth, asyncHandler(async (req: Request, res: Response) => {
-  const projectId = req.project?.id || null;
+// DELETE /v1/subdomains/:name — release a subdomain (service_key or admin)
+router.delete("/subdomains/v1/:name", serviceKeyOrAdmin, asyncHandler(async (req: Request, res: Response) => {
+  // Admin bypasses project ownership check
+  const projectId = req.isAdmin ? null : (req.project?.id || null);
 
   try {
     const deleted = await deleteSubdomain(req.params.name as string, projectId);

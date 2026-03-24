@@ -9,6 +9,7 @@ declare global {
     interface Request {
       project?: ProjectInfo;
       tokenPayload?: TokenPayload;
+      isAdmin?: boolean;
     }
   }
 }

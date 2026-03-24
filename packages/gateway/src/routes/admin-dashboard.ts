@@ -339,6 +339,22 @@ router.get("/admin", asyncHandler(async (req: Request, res: Response) => {
   res.type("html").send(dashboardPage(session.name, session.email));
 }));
 
+// ---- Projects page ----
+
+router.get("/admin/projects", asyncHandler(async (req: Request, res: Response) => {
+  const session = getSession(req);
+  if (!session) { res.redirect("/admin/login"); return; }
+  res.type("html").send(adminTablePage(session.name, session.email, "projects"));
+}));
+
+// ---- Subdomains page ----
+
+router.get("/admin/subdomains", asyncHandler(async (req: Request, res: Response) => {
+  const session = getSession(req);
+  if (!session) { res.redirect("/admin/login"); return; }
+  res.type("html").send(adminTablePage(session.name, session.email, "subdomains"));
+}));
+
 // ---- HTML Templates ----
 
 function loginPage(error: string): string {
@@ -442,6 +458,8 @@ tr:last-child td{border-bottom:none}
     <h1><span class="g">run402</span> admin</h1>
     <div class="user">
       <a href="/admin" style="border-color:#00FF9F;color:#00FF9F">Dashboard</a>
+      <a href="/admin/projects">Projects</a>
+      <a href="/admin/subdomains">Subdomains</a>
       <a href="/admin/llms-txt">llms.txt</a>
       <span>${escHtml(name)}</span>
       <a href="/admin/logout">Logout</a>
@@ -453,6 +471,117 @@ tr:last-child td{border-bottom:none}
 </div>
 
 <script src="/admin/js/dashboard.js"></script>
+</body>
+</html>`;
+}
+
+function adminTablePage(name: string, email: string, page: "projects" | "subdomains"): string {
+  const title = page === "projects" ? "Projects" : "Subdomains";
+  const activeStyle = (p: string) => p === page ? 'style="border-color:#00FF9F;color:#00FF9F"' : '';
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Run402 Admin — ${title}</title>
+<link rel="icon" href="https://run402.com/favicon.svg" type="image/svg+xml">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{background:#0A0A0F;color:#E0E0E0;font-family:system-ui,sans-serif;min-height:100vh}
+.wrap{max-width:1200px;margin:0 auto;padding:40px 24px}
+header{display:flex;align-items:center;justify-content:space-between;margin-bottom:40px}
+h1{font-size:24px;color:#fff}
+h1 .g{color:#00FF9F}
+.user{display:flex;align-items:center;gap:12px;font-size:13px;color:#9CA3AF}
+.user a{color:#9CA3AF;text-decoration:none;padding:6px 12px;border:1px solid #1E1E2A;border-radius:6px;transition:border-color .2s}
+.user a:hover{border-color:#00FF9F;color:#00FF9F}
+table{width:100%;border-collapse:collapse;background:#12121A;border:1px solid #1E1E2A;border-radius:12px;overflow:hidden}
+th{text-align:left;font-size:11px;color:#4B5563;text-transform:uppercase;letter-spacing:.8px;padding:12px 16px;border-bottom:1px solid #1E1E2A}
+td{padding:10px 16px;font-size:13px;border-bottom:1px solid rgba(255,255,255,0.03);font-variant-numeric:tabular-nums}
+tr:last-child td{border-bottom:none}
+.pill{display:inline-block;font-size:11px;padding:2px 8px;border-radius:10px;font-weight:500}
+.pill-green{background:rgba(0,255,159,0.1);color:#00FF9F}
+.pill-red{background:rgba(255,80,80,0.1);color:#FF5050}
+.pill-gray{background:rgba(255,255,255,0.05);color:#9CA3AF}
+.btn-danger{background:rgba(255,80,80,0.1);color:#FF5050;border:1px solid rgba(255,80,80,0.3);border-radius:6px;padding:4px 12px;font-size:12px;cursor:pointer;transition:background .2s}
+.btn-danger:hover{background:rgba(255,80,80,0.2)}
+.loading{color:#4B5563;font-size:13px;text-align:center;padding:40px}
+.count{font-size:13px;color:#4B5563;margin-bottom:16px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1><span class="g">run402</span> admin</h1>
+    <div class="user">
+      <a href="/admin">Dashboard</a>
+      <a href="/admin/projects" ${activeStyle("projects")}>Projects</a>
+      <a href="/admin/subdomains" ${activeStyle("subdomains")}>Subdomains</a>
+      <a href="/admin/llms-txt">llms.txt</a>
+      <span>${escHtml(name)}</span>
+      <a href="/admin/logout">Logout</a>
+    </div>
+  </header>
+
+  <div class="count" id="count"></div>
+  <div id="content"><div class="loading">Loading...</div></div>
+</div>
+
+<script>
+(async function() {
+  const page = "${page}";
+  const content = document.getElementById("content");
+  const countEl = document.getElementById("count");
+
+  try {
+    const res = await fetch("/" + page + "/v1", { credentials: "same-origin" });
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    const data = await res.json();
+
+    if (page === "projects") {
+      const rows = data.projects || [];
+      countEl.textContent = rows.length + " projects" + (data.has_more ? " (more available)" : "");
+      content.innerHTML = "<table><thead><tr><th>ID</th><th>Name</th><th>Tier</th><th>Status</th><th>Wallet</th><th>Created</th><th></th></tr></thead><tbody>"
+        + rows.map(function(p) {
+          var statusClass = p.status === "active" ? "pill-green" : p.status === "archived" ? "pill-gray" : "pill-red";
+          return "<tr><td><code>" + p.id + "</code></td><td>" + (p.name || "-") + "</td><td>" + p.tier + "</td>"
+            + "<td><span class='pill " + statusClass + "'>" + p.status + "</span></td>"
+            + "<td style='font-size:11px;color:#4B5563'>" + (p.wallet_address ? p.wallet_address.slice(0,6) + "..." + p.wallet_address.slice(-4) : "-") + "</td>"
+            + "<td style='color:#4B5563'>" + new Date(p.created_at).toLocaleDateString() + "</td>"
+            + "<td>" + (p.status === "active" ? "<button class='btn-danger' onclick='deleteProject(\\\"" + p.id + "\\\")'>Delete</button>" : "") + "</td></tr>";
+        }).join("") + "</tbody></table>";
+    } else {
+      var rows = data.subdomains || [];
+      countEl.textContent = rows.length + " subdomains";
+      content.innerHTML = "<table><thead><tr><th>Name</th><th>URL</th><th>Project</th><th>Deployment</th><th>Created</th><th></th></tr></thead><tbody>"
+        + rows.map(function(s) {
+          return "<tr><td><strong>" + s.name + "</strong></td>"
+            + "<td><a href='" + s.url + "' target='_blank' style='color:#00FF9F;text-decoration:none'>" + s.url + "</a></td>"
+            + "<td style='font-size:11px;color:#4B5563'>" + (s.project_id || "-") + "</td>"
+            + "<td style='font-size:11px;color:#4B5563'>" + (s.deployment_id || "-") + "</td>"
+            + "<td style='color:#4B5563'>" + new Date(s.created_at).toLocaleDateString() + "</td>"
+            + "<td><button class='btn-danger' onclick='deleteSubdomain(\\\"" + s.name + "\\\")'>Release</button></td></tr>";
+        }).join("") + "</tbody></table>";
+    }
+  } catch (e) {
+    content.innerHTML = "<div class='loading'>Error: " + e.message + "</div>";
+  }
+})();
+
+async function deleteProject(id) {
+  if (!confirm("Delete project " + id + "? This cannot be undone.")) return;
+  var res = await fetch("/projects/v1/" + id, { method: "DELETE", credentials: "same-origin" });
+  if (res.ok) location.reload();
+  else alert("Failed: " + (await res.json()).error);
+}
+
+async function deleteSubdomain(name) {
+  if (!confirm("Release subdomain " + name + "?")) return;
+  var res = await fetch("/subdomains/v1/" + name, { method: "DELETE", credentials: "same-origin" });
+  if (res.ok) location.reload();
+  else alert("Failed: " + (await res.json()).error);
+}
+</script>
 </body>
 </html>`;
 }

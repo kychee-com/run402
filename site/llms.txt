@@ -668,10 +668,10 @@ Yes. `/projects/v1/admin/:id/usage` shows API calls, storage, lease status. `/pr
 | `/tiers/v1` | GET | None | Free | Tier pricing + auth info |
 | `/tiers/v1/:tier` | POST | x402 | Per tier | Subscribe, renew, or upgrade (auto-detected) |
 | `/tiers/v1/status` | GET | SIWX | Free | Get wallet's tier status |
-| `/projects/v1` | GET | None | Free | Tier pricing info |
+| `/projects/v1` | GET | SIWX or admin | Free | List projects (wallet sees own, admin sees all). Query: `?limit=50&after=cursor` |
 | `/projects/v1/quote` | POST | None | Free | Get tier pricing |
 | `/projects/v1` | POST | SIWX | Free | Create project (tier from wallet subscription) |
-| `/projects/v1/:id` | DELETE | service_key | Free | Archive and delete project |
+| `/projects/v1/:id` | DELETE | service_key or admin | Free | Archive and delete project |
 
 ### Testnet Faucet
 
@@ -721,6 +721,7 @@ For explicit control, use both `apikey` (project key) and `Authorization: Bearer
 
 | Endpoint | Method | Auth | Description |
 |----------|--------|------|-------------|
+| `/functions/v1` | GET | SIWX or admin | List functions (wallet sees own, admin sees all) |
 | `/functions/v1/:name` | GET | apikey | Invoke function (GET) |
 | `/functions/v1/:name` | POST | apikey | Invoke function (POST) |
 | `/functions/v1/:name` | PATCH | apikey | Invoke function (PATCH) |
@@ -863,9 +864,9 @@ See **Deploy a Static Site** section below for request/response format and examp
 | Endpoint | Method | Auth | Cost | Description |
 |----------|--------|------|------|-------------|
 | `/subdomains/v1` | POST | service_key | Free | Claim or reassign a custom subdomain |
-| `/subdomains/v1` | GET | service_key | Free | List project's subdomains |
+| `/subdomains/v1` | GET | service_key or admin | Free | List subdomains (service_key sees project's, admin sees all) |
 | `/subdomains/v1/:name` | GET | None | Free | Lookup subdomain details |
-| `/subdomains/v1/:name` | DELETE | service_key | Free | Release a subdomain |
+| `/subdomains/v1/:name` | DELETE | service_key or admin | Free | Release a subdomain |
 
 `POST /subdomains/v1` is **idempotent** — upserts. Only needed once per project to claim a subdomain. Subsequent deploys to the same project auto-reassign all its subdomains to the new deployment (response includes `subdomain_urls`). Subdomain rules: 3-63 chars, lowercase + numbers + hyphens, no consecutive hyphens, must start/end with alphanumeric. Reserved names: `api`, `www`, `admin`, `sites`, `mail`, `ftp`, `cdn`, `static`.
 

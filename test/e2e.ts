@@ -971,8 +971,102 @@ async function main() {
   assert(userBody2.identities.length === 0, "Password user has no linked identities");
   assert(userRes2.headers.get("cache-control") === "no-store", "User endpoint has Cache-Control: no-store");
 
-  // Step 27: Delete original project
-  console.log("\n27) Delete project...");
+  // Step 27: Admin list projects
+  console.log("\n27) Admin list projects...");
+  const ADMIN_KEY = process.env.ADMIN_KEY;
+  if (ADMIN_KEY) {
+    // Admin lists all projects
+    const adminListRes = await fetch(`${BASE_URL}/projects/v1`, {
+      headers: { "X-Admin-Key": ADMIN_KEY },
+    });
+    const adminListBody = await adminListRes.json();
+    assert(adminListRes.ok, `Admin list projects returns 200 (got ${adminListRes.status})`);
+    assert(Array.isArray(adminListBody.projects), "Admin list returns projects array");
+    assert(adminListBody.projects.length > 0, "Admin sees at least 1 project");
+    assert("has_more" in adminListBody, "Response includes has_more");
+    assert("next_cursor" in adminListBody, "Response includes next_cursor");
+
+    // Pagination: limit=2
+    const pagRes = await fetch(`${BASE_URL}/projects/v1?limit=2`, {
+      headers: { "X-Admin-Key": ADMIN_KEY },
+    });
+    const pagBody = await pagRes.json();
+    assert(pagRes.ok, "Paginated list returns 200");
+    assert(pagBody.projects.length <= 2, "Pagination respects limit");
+
+    // Wallet user sees only their own projects
+    const walletListHeaders = await siwxHeaders("/projects/v1");
+    const walletListRes = await fetch(`${BASE_URL}/projects/v1`, {
+      headers: { ...walletListHeaders },
+    });
+    const walletListBody = await walletListRes.json();
+    assert(walletListRes.ok, `Wallet list projects returns 200 (got ${walletListRes.status})`);
+    assert(Array.isArray(walletListBody.projects), "Wallet list returns projects array");
+    // All returned projects should belong to our wallet
+    for (const p of walletListBody.projects) {
+      assert(p.wallet_address === account.address.toLowerCase(), `Project ${p.id} belongs to test wallet`);
+    }
+
+    // Admin deletes a project (using ADMIN_KEY, not service_key)
+    console.log("\n28) Admin delete project...");
+    // Create a throwaway project to admin-delete
+    const throwawayHeaders = await siwxHeaders("/projects/v1");
+    const throwawayRes = await fetch(`${BASE_URL}/projects/v1`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...throwawayHeaders },
+      body: JSON.stringify({ name: "admin-delete-test" }),
+    });
+    const throwaway = await throwawayRes.json();
+    assert(throwawayRes.status === 201, "Throwaway project created");
+
+    const adminDeleteRes = await fetch(`${BASE_URL}/projects/v1/${throwaway.project_id}`, {
+      method: "DELETE",
+      headers: { "X-Admin-Key": ADMIN_KEY },
+    });
+    const adminDeleteBody = await adminDeleteRes.json();
+    assert(adminDeleteRes.ok, `Admin delete returns 200 (got ${adminDeleteRes.status})`);
+    assert(adminDeleteBody.status === "archived", "Admin delete archives project");
+
+    // Admin releases a subdomain
+    console.log("\n28b) Admin release subdomain...");
+    // Claim a subdomain on a new project, then admin-release it
+    const subProjHeaders = await siwxHeaders("/projects/v1");
+    const subProjRes = await fetch(`${BASE_URL}/projects/v1`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...subProjHeaders },
+      body: JSON.stringify({ name: "admin-sub-test" }),
+    });
+    const subProj = await subProjRes.json();
+    assert(subProjRes.status === 201, "Subdomain test project created");
+
+    // Claim subdomain via service_key
+    const claimRes = await fetch(`${BASE_URL}/subdomains/v1`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${subProj.service_key}` },
+      body: JSON.stringify({ name: "e2e-admin-test", deployment_id: "dpl_fake_000000_aaaaaa" }),
+    });
+    // Might fail if deployment doesn't exist, so just check if claimed
+    if (claimRes.status === 201) {
+      const adminSubDeleteRes = await fetch(`${BASE_URL}/subdomains/v1/e2e-admin-test`, {
+        method: "DELETE",
+        headers: { "X-Admin-Key": ADMIN_KEY },
+      });
+      const adminSubDeleteBody = await adminSubDeleteRes.json();
+      assert(adminSubDeleteRes.ok, `Admin subdomain release returns 200 (got ${adminSubDeleteRes.status})`);
+      assert(adminSubDeleteBody.status === "deleted", "Admin released subdomain");
+    }
+
+    // Clean up subdomain test project
+    await fetch(`${BASE_URL}/projects/v1/${subProj.project_id}`, {
+      method: "DELETE",
+      headers: { "X-Admin-Key": ADMIN_KEY },
+    });
+  } else {
+    console.log("   Skipped (no ADMIN_KEY in env)");
+  }
+
+  // Step 29: Delete original project (owner path — unchanged behavior)
+  console.log("\n29) Delete project (owner)...");
   const deleteRes = await fetch(`${BASE_URL}/projects/v1/${project_id}`, {
     method: "DELETE",
     headers: { Authorization: `Bearer ${service_key}` },

@@ -416,24 +416,74 @@
         "tags": [
           "Projects"
         ],
-        "summary": "List tier pricing (legacy alias)",
-        "operationId": "listProjectTiers",
-        "description": "Returns available tiers and their pricing. No auth required. Same as GET /tiers/v1.",
+        "summary": "List projects",
+        "operationId": "listProjects",
+        "description": "List projects. Wallet auth sees own projects; admin auth (ADMIN_KEY or admin wallet SIWx) sees all projects. Supports cursor-based pagination.",
+        "security": [
+          {
+            "walletAuth": []
+          },
+          {
+            "adminKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/WalletHeader"
+          },
+          {
+            "$ref": "#/components/parameters/SignatureHeader"
+          },
+          {
+            "$ref": "#/components/parameters/TimestampHeader"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 50,
+              "maximum": 200
+            },
+            "description": "Maximum number of projects to return (default 50, max 200)"
+          },
+          {
+            "name": "after",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Cursor for pagination (from previous response's next_cursor)"
+          }
+        ],
         "responses": {
           "200": {
-            "description": "Tier pricing info",
+            "description": "Project list",
             "content": {
               "application/json": {
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "tiers": {
-                      "$ref": "#/components/schemas/TierPricing"
+                    "projects": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/ProjectCreated"
+                      }
+                    },
+                    "has_more": {
+                      "type": "boolean"
+                    },
+                    "next_cursor": {
+                      "type": "string",
+                      "nullable": true
                     }
                   }
                 }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
           }
         }
       },
@@ -526,9 +576,13 @@
         ],
         "summary": "Archive (soft-delete) a project",
         "operationId": "deleteProject",
+        "description": "Archives and soft-deletes a project. Accepts service_key or admin auth (ADMIN_KEY or admin wallet SIWx).",
         "security": [
           {
             "serviceKey": []
+          },
+          {
+            "adminKey": []
           }
         ],
         "parameters": [
@@ -2498,11 +2552,15 @@
         "tags": [
           "Subdomains"
         ],
-        "summary": "List project subdomains",
+        "summary": "List subdomains",
         "operationId": "listSubdomains",
+        "description": "List subdomains. service_key sees the project's subdomains; admin auth (ADMIN_KEY or admin wallet SIWx) sees all subdomains.",
         "security": [
           {
             "serviceKey": []
+          },
+          {
+            "adminKey": []
           }
         ],
         "responses": {
@@ -2570,9 +2628,13 @@
         ],
         "summary": "Release a subdomain",
         "operationId": "deleteSubdomain",
+        "description": "Releases a subdomain. Accepts service_key or admin auth (ADMIN_KEY or admin wallet SIWx).",
         "security": [
           {
             "serviceKey": []
+          },
+          {
+            "adminKey": []
           }
         ],
         "parameters": [
@@ -3070,6 +3132,75 @@
                     "status": {
                       "type": "string",
                       "example": "deleted"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/functions/v1": {
+      "get": {
+        "tags": [
+          "Functions"
+        ],
+        "summary": "List functions",
+        "operationId": "listAllFunctions",
+        "description": "List deployed functions across all projects. Wallet auth sees own functions; admin auth (ADMIN_KEY or admin wallet SIWx) sees all functions.",
+        "security": [
+          {
+            "walletAuth": []
+          },
+          {
+            "adminKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/WalletHeader"
+          },
+          {
+            "$ref": "#/components/parameters/SignatureHeader"
+          },
+          {
+            "$ref": "#/components/parameters/TimestampHeader"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Function list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "functions": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "name": {
+                            "type": "string"
+                          },
+                          "project_id": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "created_at": {
+                            "type": "string",
+                            "format": "date-time"
+                          },
+                          "updated_at": {
+                            "type": "string",
+                            "format": "date-time"
+                          }
+                        }
+                      }
                     }
                   }
                 }

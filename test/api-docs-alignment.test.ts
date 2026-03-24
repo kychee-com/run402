@@ -39,6 +39,8 @@ const EXCLUDED_ENDPOINTS = new Set([
   "GET /admin/api/stats",
   "GET /admin/api/llms-txt-stats",
   "GET /admin/llms-txt",
+  "GET /admin/projects",
+  "GET /admin/subdomains",
   // Infrastructure / internal probes
   "GET /health-humans",
   "GET /status",
