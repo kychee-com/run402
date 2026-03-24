@@ -29,7 +29,7 @@ router.post("/projects/v1/quote", handleQuote);
 // GET /v1/projects — list projects (auth-scoped) or return pricing (no auth)
 router.get("/projects/v1", asyncHandler(async (req: Request, res: Response) => {
   // No auth → return tier pricing (backwards-compatible)
-  const hasAuth = req.headers.authorization || req.headers["sign-in-with-x"] || req.headers.cookie?.includes("run402_admin");
+  const hasAuth = req.headers.authorization || req.headers["sign-in-with-x"] || req.headers["x-admin-key"] || req.headers.cookie?.includes("run402_admin");
   if (!hasAuth) {
     handleQuote(req, res);
     return;
