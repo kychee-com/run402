@@ -291,6 +291,11 @@ One mailbox per project, template-based sending. Templates: `project_invite` (pr
 
 Slug rules: 3-63 chars, lowercase alphanumeric + hyphens, no consecutive hyphens. `--project` defaults to the active project.
 
+REST body for send: `POST /mailboxes/v1/:mailbox_id/messages` with `Authorization: Bearer <service_key>`. Template variables go under a `variables` key — they are NOT top-level body params:
+```json
+{"template": "project_invite", "to": "user@example.com", "variables": {"project_name": "My App", "invite_url": "https://..."}}
+```
+
 ### message
 - `run402 message send "<text>"`
 
