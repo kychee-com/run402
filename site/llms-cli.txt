@@ -291,11 +291,11 @@ One mailbox per project, template-based sending. Templates: `project_invite` (pr
 
 Slug rules: 3-63 chars, lowercase alphanumeric + hyphens, no consecutive hyphens. `--project` defaults to the active project.
 
-**Using email from functions**: Store the mailbox ID as a secret (`run402 secrets set <id> MAILBOX_ID mbx_xxx`) and access it via `process.env.MAILBOX_ID` in your function code. All secrets are auto-injected as env vars.
-
-REST body for send: `POST /mailboxes/v1/:mailbox_id/messages` with `Authorization: Bearer <service_key>`. Template variables go under a `variables` key — they are NOT top-level body params:
+**Using email from functions**: The service key is already available as `process.env.RUN402_SERVICE_KEY` (auto-injected into all functions). Store the mailbox ID as a secret (`run402 secrets set <id> MAILBOX_ID mbx_xxx`) or hardcode it. Then `fetch` the mailbox API from your function:
 ```json
-{"template": "project_invite", "to": "user@example.com", "variables": {"project_name": "My App", "invite_url": "https://..."}}
+POST /mailboxes/v1/{MAILBOX_ID}/messages
+Authorization: Bearer {RUN402_SERVICE_KEY}
+{"template": "notification", "to": "user@example.com", "variables": {"project_name": "My App", "message": "Hello!"}}
 ```
 
 ### message
