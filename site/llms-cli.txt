@@ -137,6 +137,8 @@ Create a manifest file `app.json` (use the `project_id` from provision):
 
 Use `migrations_file` when your SQL contains JSONB literals or other characters that are painful to escape inside a JSON string. If both are present, `migrations_file` wins.
 
+**Make migrations idempotent**: Use `CREATE TABLE IF NOT EXISTS` and `CREATE INDEX IF NOT EXISTS`. If you redeploy to the same project, non-idempotent migrations will fail with a 422 error (e.g., `relation "items" already exists`).
+
 RLS templates:
 - `user_owns_rows` — users see only their rows (requires `owner_column` per table)
 - `public_read` — anyone reads, authenticated users write
@@ -205,7 +207,8 @@ run402 subdomains claim my-app
 - `run402 projects rest <id> <table> "<query>"`
 - `run402 projects keys <id>` — print anon_key + service_key as JSON
 - `run402 projects pin <id>` — pin a project (prevents expiry/GC)
-- `run402 projects <usage|schema|delete> <id>`
+- `run402 projects <usage|schema> <id>`
+- `run402 projects delete <id>` — **cascade deletes** all project resources: Lambda functions, subdomains, S3 site files, deployments, secrets, and published app versions. The schema slot is dropped and recreated. This is irreversible.
 - `run402 projects rls <id> <user_owns_rows|public_read|public_read_write> '<tables_json>'`
 
 Provisioning automatically sets the new project as the **active project**. Other commands that take `<id>` default to the active project when omitted.
@@ -257,7 +260,9 @@ Injected as `process.env` in functions.
 - `run402 subdomains list [<id>]`
 - `run402 subdomains delete <name> [--project <id>]`
 
-All options default to the active project. `claim` also defaults to the project's last deployment. Names: 3-63 chars, lowercase alphanumeric + hyphens. Creates `<name>.run402.com`. Only need to `claim` once per project — subsequent site deploys auto-reassign the subdomain.
+All options default to the active project. `claim` also defaults to the project's last deployment. Names: 3-63 chars, lowercase alphanumeric + hyphens. Creates `<name>.run402.com`.
+
+**Subdomain auto-reassignment**: You only need to `claim` a subdomain once. Every subsequent `run402 sites deploy` or `run402 deploy` to the same project automatically updates the subdomain to point to the new deployment. The response includes `subdomain_urls` showing which subdomains were reassigned. No need to re-claim after each deploy.
 
 ### apps
 - `run402 apps browse [--tag <tag>]`
