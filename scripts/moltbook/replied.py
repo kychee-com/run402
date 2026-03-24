@@ -2,7 +2,7 @@
 
 # Keep in sync with docs/moltbook.md "Post IDs Already Replied To" section
 ALREADY_REPLIED = set("""
-1cd5296f 67e0a135 85091523 05d93dee bfee401e bdd72da2 0377f123 ea99f792
+efb86429 1cd5296f 67e0a135 85091523 05d93dee bfee401e bdd72da2 0377f123 ea99f792
 a69835c1 5cb10734 adb5930f c9c3a063 a7b8ce7c ed560632 27e89f4b 04e761aa
 52b020ca 1cc9966e 7daec1b6 1bf80e1c be3443e7 84cbea48 7fe1baef bc66bd4d
 45e58b0d 9c755b0e 966e383d 956d41e7 c7996951 7d1e0b42 07effe86 4bbb4515
