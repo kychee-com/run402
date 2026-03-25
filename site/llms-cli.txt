@@ -139,6 +139,18 @@ Use `migrations_file` when your SQL contains JSONB literals or other characters 
 
 **Make migrations idempotent**: Use `CREATE TABLE IF NOT EXISTS` and `CREATE INDEX IF NOT EXISTS`. If you redeploy to the same project, non-idempotent migrations will fail with a 422 error (e.g., `relation "items" already exists`).
 
+**Evolving your schema**: `CREATE TABLE IF NOT EXISTS` only prevents "table already exists" errors — it will **not** add new columns to an existing table. When your app needs new columns, use `ALTER TABLE ... ADD COLUMN` wrapped in a DO block to make it idempotent:
+
+```sql
+CREATE TABLE IF NOT EXISTS items (id serial PRIMARY KEY, title text NOT NULL);
+DO $$ BEGIN
+  ALTER TABLE items ADD COLUMN priority int DEFAULT 0;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+```
+
+This pattern is safe to re-run on every deploy. Put your `CREATE TABLE IF NOT EXISTS` first, then one `DO` block per new column (or group them in a single block).
+
 RLS templates:
 - `user_owns_rows` — users see only their rows (requires `owner_column` per table)
 - `public_read` — anyone reads, authenticated users write
