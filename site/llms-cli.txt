@@ -284,7 +284,8 @@ Without `--output`, returns `{"status":"ok","aspect":"...","content_type":"image
 ### email
 One mailbox per project, template-based sending. Templates: `project_invite` (project_name, invite_url), `magic_link` (project_name, link_url, expires_in), `notification` (project_name, message). Single recipient per send. Rate limits by tier: prototype 10/day, hobby 50/day, team 200/day.
 
-- `run402 email create <slug> [--project <id>]` — create mailbox at `<slug>@mail.run402.com`
+- `run402 email create <slug> [--project <id>]` — create mailbox at `<slug>@mail.run402.com` (idempotent: returns existing mailbox on conflict)
+- `run402 email status [--project <id>]` — show mailbox info (ID, address, slug)
 - `run402 email send --template <name> --to <email> [--var key=value ...] [--project <id>]`
 - `run402 email list [--project <id>]`
 - `run402 email get <message_id> [--project <id>]`
