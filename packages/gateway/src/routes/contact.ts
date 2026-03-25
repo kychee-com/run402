@@ -1,5 +1,6 @@
 import { Router, Request, Response } from "express";
 import { asyncHandler, HttpError } from "../utils/async-handler.js";
+import { validateEmail, validateURL } from "../utils/validate.js";
 import { walletAuth } from "../middleware/wallet-auth.js";
 import { pool } from "../db/pool.js";
 import { sql } from "../db/sql.js";
@@ -30,15 +31,11 @@ router.post("/agent/v1/contact", walletAuth(false), asyncHandler(async (req: Req
   }
 
   if (email !== undefined && email !== null) {
-    if (typeof email !== "string" || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      throw new HttpError(400, "Invalid 'email' — must be a valid email address");
-    }
+    validateEmail(email, "email");
   }
 
   if (webhook !== undefined && webhook !== null) {
-    if (typeof webhook !== "string" || !webhook.startsWith("https://")) {
-      throw new HttpError(400, "Invalid 'webhook' — must start with https://");
-    }
+    validateURL(webhook, "webhook");
   }
 
   // Upsert contact

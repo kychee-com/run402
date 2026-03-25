@@ -7,6 +7,7 @@ import { serviceKeyAuth } from "../middleware/apikey.js";
 import { walletAuth } from "../middleware/wallet-auth.js";
 import { serviceKeyOrAdmin, walletAuthOrAdmin } from "../middleware/admin-auth.js";
 import { asyncHandler, HttpError } from "../utils/async-handler.js";
+import { validatePaginationInt } from "../utils/validate.js";
 import { pool } from "../db/pool.js";
 import { sql, type SQL } from "../db/sql.js";
 
@@ -47,7 +48,7 @@ router.get("/projects/v1", asyncHandler(async (req: Request, res: Response) => {
   if (res.headersSent) return;
 
   // Pagination
-  const limit = Math.min(Math.max(parseInt(req.query.limit as string) || 50, 1), 200);
+  const limit = validatePaginationInt(req.query.limit, "limit", { fallback: 50, max: 200 });
   const after = req.query.after as string | undefined;
 
   let query: SQL;

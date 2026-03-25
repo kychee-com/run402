@@ -15,6 +15,7 @@ import {
   FunctionError,
 } from "../services/functions.js";
 import { asyncHandler, HttpError } from "../utils/async-handler.js";
+import { validatePaginationInt } from "../utils/validate.js";
 import { serviceKeyAuth } from "../middleware/apikey.js";
 import { apikeyAuth } from "../middleware/apikey.js";
 import { meteringMiddleware } from "../middleware/metering.js";
@@ -157,7 +158,7 @@ router.get(
   "/projects/v1/admin/:id/functions/:name/logs",
   serviceKeyAuth,
   asyncHandler(async (req: Request, res: Response) => {
-    const tail = parseInt(req.query.tail as string || "50", 10);
+    const tail = validatePaginationInt(req.query.tail, "tail", { fallback: 50, max: 1000 });
     try {
       const logs = await getFunctionLogs(req.params.id as string, req.params.name as string, tail);
       res.json({ logs });

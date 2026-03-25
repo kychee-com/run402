@@ -9,6 +9,7 @@ import { apikeyAuth } from "../middleware/apikey.js";
 import { demoSignupMiddleware } from "../middleware/demo.js";
 import { hasCode } from "../utils/errors.js";
 import { asyncHandler, HttpError } from "../utils/async-handler.js";
+import { validateUUID, validateEmail } from "../utils/validate.js";
 import { verifyGoogleIdToken } from "../services/google-oidc.js";
 import {
   validateRedirectUrl,
@@ -262,7 +263,7 @@ router.post("/auth/v1/signup", demoSignupMiddleware, asyncHandler(async (req: Re
     throw new HttpError(400, "email and password required");
   }
 
-  const email = rawEmail.toLowerCase().trim();
+  const email = validateEmail(rawEmail, "email");
 
   try {
     const passwordHash = await bcrypt.hash(password, 10);
@@ -300,6 +301,7 @@ router.post("/auth/v1/token", asyncHandler(async (req: Request, res: Response) =
     if (!refresh_token) {
       throw new HttpError(400, "refresh_token required");
     }
+    validateUUID(refresh_token, "refresh_token");
 
     const result = await pool.query(
       sql(`SELECT rt.id, rt.user_id, rt.expires_at, rt.used, u.email
@@ -402,7 +404,7 @@ router.post("/auth/v1/token", asyncHandler(async (req: Request, res: Response) =
     throw new HttpError(400, "email and password required");
   }
 
-  const email = rawEmail.toLowerCase().trim();
+  const email = validateEmail(rawEmail, "email");
 
   const result = await pool.query(
     sql(`SELECT id, password_hash FROM internal.users
@@ -508,6 +510,7 @@ router.get("/auth/v1/user", asyncHandler(async (req: Request, res: Response) => 
 router.post("/auth/v1/logout", asyncHandler(async (req: Request, res: Response) => {
   const { refresh_token } = req.body;
   if (refresh_token) {
+    validateUUID(refresh_token, "refresh_token");
     await pool.query(sql(`UPDATE internal.refresh_tokens SET used = true WHERE id = $1::uuid`), [refresh_token]);
   }
   res.set("Cache-Control", "no-store");

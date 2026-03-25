@@ -5,6 +5,7 @@ import { serviceKeyAuth } from "../middleware/apikey.js";
 import { demoBlockedMiddleware } from "../middleware/demo.js";
 import { getTierLimits } from "@run402/shared";
 import { asyncHandler, HttpError } from "../utils/async-handler.js";
+import { validateWalletAddress } from "../utils/validate.js";
 import { ADMIN_KEY } from "../config.js";
 import { isAdminWallet } from "../services/admin-wallets.js";
 import { getProjectById } from "../services/projects.js";
@@ -105,9 +106,7 @@ router.post("/projects/v1/admin/:id/wallet", asyncHandler(async (req: Request, r
   const projectId = req.params.id as string;
   const { wallet_address } = req.body || {};
 
-  if (!wallet_address || typeof wallet_address !== "string" || !/^0x[a-fA-F0-9]{40}$/.test(wallet_address)) {
-    throw new HttpError(400, "Invalid wallet_address (must be 0x + 40 hex chars)");
-  }
+  validateWalletAddress(wallet_address, "wallet_address");
 
   const result = await pool.query(
     sql(`UPDATE internal.projects SET wallet_address = $1 WHERE id = $2 AND status = 'active' RETURNING id`),

@@ -20,15 +20,13 @@ import {
   getLedgerHistory,
 } from "../services/billing.js";
 import { asyncHandler, HttpError } from "../utils/async-handler.js";
+import { validateWalletAddress, validatePaginationInt } from "../utils/validate.js";
 
 const router = Router();
 
 // GET /billing/v1/accounts/:wallet — balance + status
 router.get("/billing/v1/accounts/:wallet", asyncHandler(async (req: Request, res: Response) => {
-  const wallet = (req.params["wallet"] as string)?.toLowerCase();
-  if (!wallet?.startsWith("0x")) {
-    throw new HttpError(400, "Invalid wallet address");
-  }
+  const wallet = validateWalletAddress(req.params["wallet"], "wallet");
 
   const account = await getBillingAccount(wallet);
 
@@ -39,12 +37,9 @@ router.get("/billing/v1/accounts/:wallet", asyncHandler(async (req: Request, res
 
 // GET /billing/v1/accounts/:wallet/history — ledger entries
 router.get("/billing/v1/accounts/:wallet/history", asyncHandler(async (req: Request, res: Response) => {
-  const wallet = (req.params["wallet"] as string)?.toLowerCase();
-  if (!wallet?.startsWith("0x")) {
-    throw new HttpError(400, "Invalid wallet address");
-  }
+  const wallet = validateWalletAddress(req.params["wallet"], "wallet");
 
-  const limit = Math.min(parseInt(req.query["limit"] as string || "50", 10), 200);
+  const limit = validatePaginationInt(req.query["limit"], "limit", { fallback: 50, max: 200 });
   const entries = await getLedgerHistory(wallet, limit);
 
   res.json({
@@ -71,10 +66,7 @@ router.post("/billing/v1/admin/accounts/:wallet/credit", asyncHandler(async (req
     throw new HttpError(403, "Requires admin key");
   }
 
-  const wallet = (req.params["wallet"] as string)?.toLowerCase();
-  if (!wallet?.startsWith("0x")) {
-    throw new HttpError(400, "Invalid wallet address");
-  }
+  const wallet = validateWalletAddress(req.params["wallet"], "wallet");
 
   const { amount_usd_micros, reason, idempotency_key } = req.body || {};
   if (!amount_usd_micros || typeof amount_usd_micros !== "number" || amount_usd_micros <= 0) {
@@ -101,10 +93,7 @@ router.post("/billing/v1/admin/accounts/:wallet/debit", asyncHandler(async (req:
     throw new HttpError(403, "Requires admin key");
   }
 
-  const wallet = (req.params["wallet"] as string)?.toLowerCase();
-  if (!wallet?.startsWith("0x")) {
-    throw new HttpError(400, "Invalid wallet address");
-  }
+  const wallet = validateWalletAddress(req.params["wallet"], "wallet");
 
   const { amount_usd_micros, reason, idempotency_key } = req.body || {};
   if (!amount_usd_micros || typeof amount_usd_micros !== "number" || amount_usd_micros <= 0) {
@@ -125,10 +114,7 @@ router.post("/billing/v1/admin/accounts/:wallet/debit", asyncHandler(async (req:
 
 // GET /wallets/v1/:address/projects — list active projects for a wallet (public)
 router.get("/wallets/v1/:address/projects", asyncHandler(async (req: Request, res: Response) => {
-  const wallet = (req.params["address"] as string)?.toLowerCase();
-  if (!wallet?.startsWith("0x")) {
-    throw new HttpError(400, "Invalid wallet address");
-  }
+  const wallet = validateWalletAddress(req.params["address"], "address");
 
   const result = await pool.query(
     sql(`SELECT id, name, tier, status, api_calls, storage_bytes, created_at

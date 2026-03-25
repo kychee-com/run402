@@ -16,6 +16,7 @@ import { Router, Request, Response } from "express";
 import { serviceKeyAuth } from "../middleware/apikey.js";
 import { serviceKeyOrAdmin } from "../middleware/admin-auth.js";
 import { asyncHandler, HttpError } from "../utils/async-handler.js";
+import { validateUUID, validatePaginationInt, validateURL } from "../utils/validate.js";
 import { pool } from "../db/pool.js";
 import { sql } from "../db/sql.js";
 import {
@@ -97,6 +98,7 @@ router.get("/mailboxes/v1", serviceKeyAuth, asyncHandler(async (req: Request, re
 
 // GET /v1/mailboxes/:id — get mailbox details
 router.get("/mailboxes/v1/:id", serviceKeyAuth, asyncHandler(async (req: Request, res: Response) => {
+  validateUUID(req.params.id, "mailbox_id");
   const record = await getMailbox(req.params.id as string);
   if (!record) throw new HttpError(404, "Mailbox not found");
 
@@ -110,6 +112,7 @@ router.get("/mailboxes/v1/:id", serviceKeyAuth, asyncHandler(async (req: Request
 
 // DELETE /v1/mailboxes/:id — delete (tombstone) a mailbox
 router.delete("/mailboxes/v1/:id", serviceKeyAuth, asyncHandler(async (req: Request, res: Response) => {
+  validateUUID(req.params.id, "mailbox_id");
   const projectId = req.project?.id;
   if (!projectId) throw new HttpError(401, "No project context");
 
@@ -129,6 +132,7 @@ router.delete("/mailboxes/v1/:id", serviceKeyAuth, asyncHandler(async (req: Requ
 
 // POST /v1/mailboxes/:id/messages — send email
 router.post("/mailboxes/v1/:id/messages", serviceKeyAuth, asyncHandler(async (req: Request, res: Response) => {
+  validateUUID(req.params.id, "mailbox_id");
   const { template, to, variables } = req.body || {};
 
   if (!template || typeof template !== "string") {
@@ -177,6 +181,7 @@ router.post("/mailboxes/v1/:id/messages", serviceKeyAuth, asyncHandler(async (re
 
 // GET /v1/mailboxes/:id/messages — list messages
 router.get("/mailboxes/v1/:id/messages", serviceKeyAuth, asyncHandler(async (req: Request, res: Response) => {
+  validateUUID(req.params.id, "mailbox_id");
   const mailbox = await getMailbox(req.params.id as string);
   if (!mailbox) throw new HttpError(404, "Mailbox not found");
 
@@ -185,7 +190,7 @@ router.get("/mailboxes/v1/:id/messages", serviceKeyAuth, asyncHandler(async (req
     throw new HttpError(403, "Mailbox owned by different project");
   }
 
-  const limit = parseInt(req.query.limit as string) || 50;
+  const limit = validatePaginationInt(req.query.limit, "limit", { fallback: 50, max: 200 });
   const cursor = req.query.after as string | undefined;
 
   const result = await listMessages(req.params.id as string, limit, cursor);
@@ -194,6 +199,8 @@ router.get("/mailboxes/v1/:id/messages", serviceKeyAuth, asyncHandler(async (req
 
 // GET /v1/mailboxes/:id/messages/:messageId — get single message with replies
 router.get("/mailboxes/v1/:id/messages/:messageId", serviceKeyAuth, asyncHandler(async (req: Request, res: Response) => {
+  validateUUID(req.params.id, "mailbox_id");
+  validateUUID(req.params.messageId, "messageId");
   const mailbox = await getMailbox(req.params.id as string);
   if (!mailbox) throw new HttpError(404, "Mailbox not found");
 
@@ -210,11 +217,10 @@ router.get("/mailboxes/v1/:id/messages/:messageId", serviceKeyAuth, asyncHandler
 
 // POST /v1/mailboxes/:id/webhooks — register webhook
 router.post("/mailboxes/v1/:id/webhooks", serviceKeyAuth, asyncHandler(async (req: Request, res: Response) => {
+  validateUUID(req.params.id, "mailbox_id");
   const { url, events } = req.body || {};
 
-  if (!url || typeof url !== "string") {
-    throw new HttpError(400, "Missing or invalid 'url' field");
-  }
+  validateURL(url, "url");
   if (!events || !Array.isArray(events) || events.length === 0) {
     throw new HttpError(400, "Missing or invalid 'events' array");
   }
@@ -245,6 +251,7 @@ router.post("/mailboxes/v1/:id/webhooks", serviceKeyAuth, asyncHandler(async (re
 
 // POST /v1/mailboxes/:id/status — admin-only reactivate suspended mailbox
 router.post("/mailboxes/v1/:id/status", serviceKeyOrAdmin, asyncHandler(async (req: Request, res: Response) => {
+  validateUUID(req.params.id, "mailbox_id");
   if (!req.isAdmin) {
     throw new HttpError(403, "Admin access required");
   }
