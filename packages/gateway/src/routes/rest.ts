@@ -7,11 +7,27 @@ import { asyncHandler } from "../utils/async-handler.js";
 
 const router = Router();
 
-// Retry config for 404s caused by PostgREST schema cache staleness.
+// Retry config for PostgREST schema cache staleness.
 // After DDL + RLS setup, PostgREST reloads all 2000 schema slots on NOTIFY.
-// Production reload takes 1-3s. Retries poll until the table appears.
+// Production reload takes 1-3s. Retries poll until the table/column appears.
 const SCHEMA_CACHE_RETRY_DELAY_MS = 500;
 const SCHEMA_CACHE_MAX_RETRIES = 6;
+
+/**
+ * Detect PostgREST errors caused by a stale schema cache.
+ * - 404: table/view not found (PGRST200)
+ * - 400 with PGRST204: column not found in schema cache
+ */
+function isSchemaCacheError(status: number, body: string): boolean {
+  if (status === 404) return true;
+  if (status === 400) {
+    try {
+      const parsed = JSON.parse(body);
+      return parsed.code === "PGRST204";
+    } catch { return false; }
+  }
+  return false;
+}
 
 /**
  * Send a request to PostgREST and return the raw response.
@@ -70,9 +86,10 @@ router.all("/rest/v1/*splat", apikeyAuth, meteringMiddleware, demoRestMiddleware
 
   let result = await forwardToPostgREST(url, fetchOptions);
 
-  // Retry on 404 — PostgREST's schema cache may be stale after DDL + RLS.
+  // Retry on schema cache staleness — covers both missing tables (404)
+  // and missing columns on existing tables (400 / PGRST204).
   let retries = 0;
-  while (result.status === 404 && retries < SCHEMA_CACHE_MAX_RETRIES) {
+  while (isSchemaCacheError(result.status, result.text) && retries < SCHEMA_CACHE_MAX_RETRIES) {
     await new Promise((r) => setTimeout(r, SCHEMA_CACHE_RETRY_DELAY_MS));
     result = await forwardToPostgREST(url, fetchOptions);
     retries++;

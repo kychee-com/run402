@@ -176,13 +176,15 @@ export async function resetDemoProject(projectId: string): Promise<void> {
           const s = `${project.schemaSlot}.${row.sequence_name}`;
           await grantClient.query(sql(`GRANT USAGE, SELECT ON SEQUENCE ${s} TO anon, authenticated, service_role`));
         }
+        // 4. Notify PostgREST (inside same connection as grants)
+        await grantClient.query(sql("NOTIFY pgrst, 'reload schema'"));
       } finally {
         grantClient.release();
       }
+    } else {
+      // No tables, but schema was recreated — notify PostgREST
+      await pool.query(sql("NOTIFY pgrst, 'reload schema'"));
     }
-
-    // 4. Notify PostgREST
-    await pool.query(sql("NOTIFY pgrst, 'reload schema'"));
 
     // 5. Delete visitor storage uploads
     if (s3 && S3_BUCKET) {

@@ -356,6 +356,7 @@ async function applyRls(
       }
     }
 
+    await client.query(sql("NOTIFY pgrst, 'reload schema'"));
     await client.query(sql("COMMIT"));
     console.log(`  RLS (${template}) applied to ${project.id}: ${tables.map((t) => t.table).join(", ")}`);
   } catch (err) {

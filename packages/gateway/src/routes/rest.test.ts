@@ -45,6 +45,17 @@ function fakeRes() {
 
 type FetchResult = { status: number; body: string; contentType?: string };
 
+function isSchemaCacheError(status: number, body: string): boolean {
+  if (status === 404) return true;
+  if (status === 400) {
+    try {
+      const parsed = JSON.parse(body);
+      return parsed.code === "PGRST204";
+    } catch { return false; }
+  }
+  return false;
+}
+
 function buildHandler(fetchStub: (...args: any[]) => Promise<Response>, maxRetries = 3) {
   // We inline the handler logic here instead of importing the router,
   // because the router pulls in middleware and config that need a running
@@ -93,7 +104,7 @@ function buildHandler(fetchStub: (...args: any[]) => Promise<Response>, maxRetri
     let result = await forwardToPostgREST(url, fetchOptions);
 
     let retries = 0;
-    while (result.status === 404 && retries < SCHEMA_CACHE_MAX_RETRIES) {
+    while (isSchemaCacheError(result.status, result.text) && retries < SCHEMA_CACHE_MAX_RETRIES) {
       await new Promise((r) => setTimeout(r, SCHEMA_CACHE_RETRY_DELAY_MS));
       result = await forwardToPostgREST(url, fetchOptions);
       retries++;
@@ -633,5 +644,148 @@ describe("REST proxy 404 retry — insufficient retry window (actual bug)", () =
     // maxRetries=3: request 1 uses calls 1-3 (404) + call 4 (201, id=1) → success.
     assert.deepEqual(tripleRetryIds, [1, 2, 3],
       "maxRetries=3 recovers all requests — no undefined IDs");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// PGRST204 — column not found in schema cache (new column on existing table)
+// ---------------------------------------------------------------------------
+
+describe("REST proxy retry on PGRST204 (column not found in schema cache)", () => {
+  /**
+   * The original bug: adding a column to an existing table, then inserting
+   * with that column. PostgREST finds the table (no 404) but doesn't know
+   * the new column yet → returns HTTP 400 with code PGRST204.
+   */
+  it("retries on PGRST204 then succeeds when schema cache reloads", async () => {
+    let callCount = 0;
+    const handler = buildHandler(async () => {
+      callCount++;
+      if (callCount <= 2) {
+        return makeResponse({
+          status: 400,
+          body: JSON.stringify({
+            code: "PGRST204",
+            message: "Could not find the 'description' column of 'items' in the schema cache",
+          }),
+          contentType: "application/json",
+        });
+      }
+      return makeResponse({
+        status: 201,
+        body: JSON.stringify([{ id: 1, title: "test", description: "new column" }]),
+        contentType: "application/json",
+      });
+    });
+
+    const req = fakeReq({ body: { title: "test", description: "new column" } });
+    const res = fakeRes();
+    await handler(req, res);
+
+    assert.equal(callCount, 3, "fetch called 3 times (2 PGRST204 + 1 success)");
+    assert.equal(res._status, 201, "final status is 201");
+    assert.ok(res._body.includes("description"), "response contains new column");
+  });
+
+  it("returns 400 after all retries if column genuinely does not exist", async () => {
+    let callCount = 0;
+    const handler = buildHandler(async () => {
+      callCount++;
+      return makeResponse({
+        status: 400,
+        body: JSON.stringify({
+          code: "PGRST204",
+          message: "Could not find the 'nonexistent' column of 'items' in the schema cache",
+        }),
+        contentType: "application/json",
+      });
+    });
+
+    const req = fakeReq({ body: { title: "test", nonexistent: "value" } });
+    const res = fakeRes();
+    await handler(req, res);
+
+    assert.equal(callCount, 4, "fetch called 4 times (original + 3 retries)");
+    assert.equal(res._status, 400, "final status is 400");
+    assert.ok(res._body.includes("PGRST204"), "error code preserved");
+  });
+
+  it("does not retry on non-schema-cache 400 errors", async () => {
+    let callCount = 0;
+    const handler = buildHandler(async () => {
+      callCount++;
+      return makeResponse({
+        status: 400,
+        body: JSON.stringify({
+          code: "PGRST100",
+          message: "Parsing error in filter",
+        }),
+        contentType: "application/json",
+      });
+    });
+
+    const req = fakeReq();
+    const res = fakeRes();
+    await handler(req, res);
+
+    assert.equal(callCount, 1, "no retry on non-schema-cache 400");
+    assert.equal(res._status, 400);
+  });
+
+  it("does not retry on 400 with non-JSON body", async () => {
+    let callCount = 0;
+    const handler = buildHandler(async () => {
+      callCount++;
+      return makeResponse({
+        status: 400,
+        body: "Bad Request",
+        contentType: "text/plain",
+      });
+    });
+
+    const req = fakeReq();
+    const res = fakeRes();
+    await handler(req, res);
+
+    assert.equal(callCount, 1, "no retry on non-JSON 400");
+    assert.equal(res._status, 400);
+  });
+
+  /**
+   * Mixed scenario: first call returns PGRST204 (column not found),
+   * retry returns 404 (table vanished during reload?), next retry succeeds.
+   * Both error types should be retried.
+   */
+  it("retries through mixed PGRST204 and 404 errors", async () => {
+    let callCount = 0;
+    const handler = buildHandler(async () => {
+      callCount++;
+      if (callCount === 1) {
+        return makeResponse({
+          status: 400,
+          body: JSON.stringify({ code: "PGRST204", message: "column not found" }),
+          contentType: "application/json",
+        });
+      }
+      if (callCount === 2) {
+        return makeResponse({
+          status: 404,
+          body: JSON.stringify({ code: "42P01", message: "relation not found" }),
+          contentType: "application/json",
+        });
+      }
+      return makeResponse({
+        status: 201,
+        body: JSON.stringify([{ id: 1 }]),
+        contentType: "application/json",
+      });
+    });
+
+    const req = fakeReq();
+    const res = fakeRes();
+    await handler(req, res);
+
+    assert.equal(callCount, 3, "retried through both error types");
+    assert.equal(res._status, 201);
   });
 });

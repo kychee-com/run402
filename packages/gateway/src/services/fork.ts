@@ -229,13 +229,15 @@ export async function forkApp(
         const s = `${targetSchema}.${row.sequence_name}`;
         await client.query(sql(`GRANT USAGE, SELECT ON SEQUENCE ${s} TO anon, authenticated, service_role`));
       }
+      // Notify PostgREST to reload schema cache (inside same connection as grants)
+      await client.query(sql("NOTIFY pgrst, 'reload schema'"));
     } finally {
       client.release();
     }
+  } else {
+    // No tables, but schema was still created — notify PostgREST
+    await pool.query(sql("NOTIFY pgrst, 'reload schema'"));
   }
-
-  // Notify PostgREST to reload schema cache
-  await pool.query(sql("NOTIFY pgrst, 'reload schema'"));
 
   // Record provenance
   await pool.query(
