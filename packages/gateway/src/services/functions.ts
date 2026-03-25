@@ -735,17 +735,22 @@ export async function getFunctionLogs(
       return [];
     }
 
+    // FilterLogEventsCommand always returns oldest-first and has no reverse option.
+    // Fetch up to 200 events and return the last `tail` entries so --tail N
+    // behaves like Unix tail (most recent N).
     const logsResult = await cwLogs.send(new FilterLogEventsCommand({
       logGroupName: FUNCTIONS_LOG_GROUP,
       logStreamNames: matchingStreams,
-      limit: Math.min(tail, 200),
+      limit: Math.min(Math.max(tail, 50), 200),
       interleaved: true,
     }));
 
-    return (logsResult.events || []).map((event) => ({
+    const all = (logsResult.events || []).map((event) => ({
       timestamp: new Date(event.timestamp || 0).toISOString(),
       message: (event.message || "").trim(),
     }));
+
+    return all.slice(-tail);
   } catch {
     // Log group may not exist yet
     return [];
