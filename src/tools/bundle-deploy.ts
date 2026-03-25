@@ -119,6 +119,11 @@ export async function handleBundleDeploy(args: {
 
   const body = res.body as {
     project_id: string;
+    migrations_result?: {
+      tables_created: string[];
+      columns_added: string[];
+      status: string;
+    };
     site_url?: string;
     deployment_id?: string;
     functions?: Array<{ name: string; url: string }>;
@@ -141,6 +146,22 @@ export async function handleBundleDeploy(args: {
   }
   if (body.deployment_id) {
     lines.push(`| deployment_id | \`${body.deployment_id}\` |`);
+  }
+
+  if (body.migrations_result) {
+    const mr = body.migrations_result;
+    if (mr.status === "no_changes") {
+      lines.push(``, `**Migrations:** schema unchanged`);
+    } else {
+      const parts: string[] = [];
+      if (mr.tables_created.length > 0) {
+        parts.push(`tables created: ${mr.tables_created.map((t) => `\`${t}\``).join(", ")}`);
+      }
+      if (mr.columns_added.length > 0) {
+        parts.push(`columns added: ${mr.columns_added.map((c) => `\`${c}\``).join(", ")}`);
+      }
+      lines.push(``, `**Migrations:** ${parts.join("; ")}`);
+    }
   }
 
   if (body.functions && body.functions.length > 0) {

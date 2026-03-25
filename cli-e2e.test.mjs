@@ -248,8 +248,12 @@ function mockFetch(input, init) {
 
   // Bundle deploy
   if (path === "/deploy/v1" && method === "POST") {
+    const migrations_result = body?.migrations
+      ? { tables_created: ["items"], columns_added: [], status: "applied" }
+      : undefined;
     return Promise.resolve(json({
       project_id: TEST_PROJECT.project_id,
+      ...(migrations_result && { migrations_result }),
       site_url: "https://test.sites.run402.com",
       subdomain_url: "https://test-app.run402.com",
     }));
