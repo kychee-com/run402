@@ -7,6 +7,7 @@ Usage:
 
 Subcommands:
   create <slug> [--project <id>]     Create a mailbox (<slug>@mail.run402.com)
+  status [--project <id>]            Show mailbox info (ID, address, slug)
   send   --template <name> --to <email> [--var key=value ...] [--project <id>]
                                      Send a template email
   list   [--project <id>]            List sent emails
@@ -111,6 +112,16 @@ async function create(args) {
   });
   const data = await res.json();
   if (!res.ok) {
+    // On 409 (mailbox already exists), discover existing mailbox and return it
+    if (res.status === 409) {
+      const mbId = await resolveMailboxId(projectId, p.service_key).catch(() => null);
+      if (mbId) {
+        const store = loadKeyStore();
+        const proj = store.projects[projectId];
+        console.log(JSON.stringify({ status: "ok", mailbox_id: mbId, address: proj?.mailbox_address || mbId, already_existed: true }));
+        return;
+      }
+    }
     console.error(JSON.stringify({ status: "error", http: res.status, ...data }));
     process.exit(1);
   }
@@ -192,10 +203,34 @@ async function get(args) {
   console.log(JSON.stringify(data, null, 2));
 }
 
+async function status(args) {
+  const projectId = resolveProjectId(parseFlag(args, "--project"));
+  const p = findProject(projectId);
+
+  const res = await fetch(`${API}/mailboxes/v1`, {
+    headers: { "Authorization": `Bearer ${p.service_key}` },
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    console.error(JSON.stringify({ status: "error", http: res.status, ...data }));
+    process.exit(1);
+  }
+  const body = await res.json();
+  const mailboxes = body.mailboxes || body;
+  if (!Array.isArray(mailboxes) || mailboxes.length === 0) {
+    console.error(JSON.stringify({ status: "error", message: "No mailbox found. Run: run402 email create <slug>" }));
+    process.exit(1);
+  }
+  const mb = mailboxes[0];
+  updateProject(projectId, { mailbox_id: mb.mailbox_id, mailbox_address: mb.address });
+  console.log(JSON.stringify({ status: "ok", mailbox_id: mb.mailbox_id, address: mb.address, slug: mb.slug }));
+}
+
 export async function run(sub, args) {
   if (!sub || sub === '--help' || sub === '-h') { console.log(HELP); process.exit(0); }
   switch (sub) {
     case "create": await create(args); break;
+    case "status": await status(args); break;
     case "send":   await send(args); break;
     case "list":   await list(args); break;
     case "get":    await get(args); break;

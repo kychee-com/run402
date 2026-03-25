@@ -89,12 +89,65 @@ describe("create_mailbox tool", () => {
     assert.ok(result.content[0]!.text.includes("not found in key store"));
   });
 
-  it("returns isError on API error", async () => {
+  it("returns isError on non-409 API error", async () => {
     globalThis.fetch = (async () =>
       new Response(
-        JSON.stringify({ error: "Slug already taken" }),
-        { status: 409, headers: { "Content-Type": "application/json" } },
+        JSON.stringify({ error: "Internal server error" }),
+        { status: 500, headers: { "Content-Type": "application/json" } },
       )) as typeof fetch;
+
+    const result = await handleCreateMailbox({
+      project_id: "proj-001",
+      slug: "my-app",
+    });
+
+    assert.equal(result.isError, true);
+    assert.ok(result.content[0]!.text.includes("500"));
+  });
+
+  it("recovers on 409 by discovering existing mailbox", async () => {
+    let callCount = 0;
+    globalThis.fetch = (async (_url: string, opts?: RequestInit) => {
+      callCount++;
+      if (opts?.method === "POST") {
+        return new Response(
+          JSON.stringify({ error: "Project already has a mailbox" }),
+          { status: 409, headers: { "Content-Type": "application/json" } },
+        );
+      }
+      // GET /mailboxes/v1 — discovery
+      return new Response(
+        JSON.stringify({ mailboxes: [{ mailbox_id: "mbx-existing", address: "existing@mail.run402.com", slug: "existing" }] }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    }) as typeof fetch;
+
+    const result = await handleCreateMailbox({
+      project_id: "proj-001",
+      slug: "existing",
+    });
+
+    assert.equal(result.isError, undefined);
+    assert.ok(result.content[0]!.text.includes("Already Exists"));
+    assert.ok(result.content[0]!.text.includes("mbx-existing"));
+    assert.ok(result.content[0]!.text.includes("existing@mail.run402.com"));
+    assert.equal(callCount, 2);
+  });
+
+  it("falls through to error on 409 when discovery returns empty", async () => {
+    globalThis.fetch = (async (_url: string, opts?: RequestInit) => {
+      if (opts?.method === "POST") {
+        return new Response(
+          JSON.stringify({ error: "Project already has a mailbox" }),
+          { status: 409, headers: { "Content-Type": "application/json" } },
+        );
+      }
+      // GET /mailboxes/v1 — empty
+      return new Response(
+        JSON.stringify({ mailboxes: [] }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    }) as typeof fetch;
 
     const result = await handleCreateMailbox({
       project_id: "proj-001",
@@ -102,6 +155,30 @@ describe("create_mailbox tool", () => {
     });
 
     assert.equal(result.isError, true);
-    assert.ok(result.content[0]!.text.includes("already taken"));
+    assert.ok(result.content[0]!.text.includes("already has a mailbox"));
+  });
+
+  it("falls through to error on 409 when discovery fails", async () => {
+    globalThis.fetch = (async (_url: string, opts?: RequestInit) => {
+      if (opts?.method === "POST") {
+        return new Response(
+          JSON.stringify({ error: "Project already has a mailbox" }),
+          { status: 409, headers: { "Content-Type": "application/json" } },
+        );
+      }
+      // GET /mailboxes/v1 — fails
+      return new Response(
+        JSON.stringify({ error: "Unauthorized" }),
+        { status: 401, headers: { "Content-Type": "application/json" } },
+      );
+    }) as typeof fetch;
+
+    const result = await handleCreateMailbox({
+      project_id: "proj-001",
+      slug: "taken-slug",
+    });
+
+    assert.equal(result.isError, true);
+    assert.ok(result.content[0]!.text.includes("already has a mailbox"));
   });
 });

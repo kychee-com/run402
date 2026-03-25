@@ -55,7 +55,38 @@ export async function handleCreateMailbox(args: {
     body: { slug, project_id: args.project_id },
   });
 
-  if (!res.ok) return formatApiError(res, "creating mailbox");
+  if (!res.ok) {
+    // On 409 (mailbox already exists), discover the existing mailbox and return it
+    if (res.status === 409) {
+      const discover = await apiRequest(`/mailboxes/v1`, {
+        method: "GET",
+        headers: { Authorization: `Bearer ${project.service_key}` },
+      });
+      if (discover.ok) {
+        const raw = discover.body as
+          | { mailboxes?: Array<{ mailbox_id: string; address: string; slug?: string }> }
+          | Array<{ mailbox_id: string; address: string; slug?: string }>;
+        const list = Array.isArray(raw) ? raw : (raw.mailboxes || []);
+        if (list.length > 0) {
+          const existing = list[0]!;
+          updateProject(args.project_id, {
+            mailbox_id: existing.mailbox_id,
+            mailbox_address: existing.address,
+          } as any);
+          return {
+            content: [
+              {
+                type: "text",
+                text: `## Mailbox Already Exists\n\n- **Address:** ${existing.address}\n- **Mailbox ID:** \`${existing.mailbox_id}\`\n\nThe project already has a mailbox. Use \`send_email\` to send template-based emails from this mailbox.`,
+              },
+            ],
+          };
+        }
+      }
+      // Discovery failed — fall through to original error
+    }
+    return formatApiError(res, "creating mailbox");
+  }
 
   const body = res.body as {
     mailbox_id: string;

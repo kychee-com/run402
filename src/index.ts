@@ -61,6 +61,7 @@ import { createMailboxSchema, handleCreateMailbox } from "./tools/create-mailbox
 import { sendEmailSchema, handleSendEmail } from "./tools/send-email.js";
 import { listEmailsSchema, handleListEmails } from "./tools/list-emails.js";
 import { getEmailSchema, handleGetEmail } from "./tools/get-email.js";
+import { getMailboxSchema, handleGetMailbox } from "./tools/get-mailbox.js";
 
 // New tools — messaging, agent contact, billing, deployments, versions
 import { sendMessageSchema, handleSendMessage } from "./tools/send-message.js";
@@ -406,6 +407,13 @@ server.tool(
   "Get a sent email with details and any replies.",
   getEmailSchema,
   async (args) => handleGetEmail(args),
+);
+
+server.tool(
+  "get_mailbox",
+  "Get the project's mailbox info (ID, address, slug). Use to check if a mailbox exists.",
+  getMailboxSchema,
+  async (args) => handleGetMailbox(args),
 );
 
 // ─── Messaging & agent contact tools ───────────────────────────────────────

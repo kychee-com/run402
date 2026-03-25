@@ -294,6 +294,18 @@ Get a sent email with details and any replies.
 get_email(project_id: "prj_...", message_id: "msg_...")
 ```
 
+### get_mailbox
+
+Get the project's mailbox info (ID, address, slug). Use to check if a mailbox exists.
+
+**Parameters:**
+- `project_id` (required): The project ID
+
+**Example:**
+```
+get_mailbox(project_id: "prj_...")
+```
+
 ## Standard Workflow
 
 Follow this sequence to go from zero to a working database:
