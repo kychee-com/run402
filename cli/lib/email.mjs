@@ -69,23 +69,37 @@ async function resolveMailboxId(projectId, serviceKey) {
   });
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
-    console.error(JSON.stringify({ status: "error", http: res.status, ...data }));
-    process.exit(1);
+    throw Object.assign(new Error("Failed to resolve mailbox"), { http: res.status, ...data });
   }
   const body = await res.json();
   const mailboxes = body.mailboxes || body;
   if (!Array.isArray(mailboxes) || mailboxes.length === 0) {
-    console.error(JSON.stringify({ status: "error", message: "No mailbox found. Run: run402 email create <slug>" }));
-    process.exit(1);
+    throw new Error("No mailbox found. Run: run402 email create <slug>");
   }
   const mb = mailboxes[0];
   updateProject(projectId, { mailbox_id: mb.mailbox_id, mailbox_address: mb.address });
   return mb.mailbox_id;
 }
 
+async function requireMailboxId(projectId, serviceKey) {
+  try {
+    return await resolveMailboxId(projectId, serviceKey);
+  } catch (err) {
+    const out = { status: "error", message: err.message };
+    if (err.http) out.http = err.http;
+    console.error(JSON.stringify(out));
+    process.exit(1);
+  }
+}
+
 async function create(args) {
-  const slug = args.find(a => !a.startsWith("--"));
-  const projectId = resolveProjectId(parseFlag(args, "--project"));
+  let slug = null;
+  let projectOpt = null;
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === "--project" && args[i + 1]) { projectOpt = args[++i]; }
+    else if (!args[i].startsWith("--") && !slug) { slug = args[i]; }
+  }
+  const projectId = resolveProjectId(projectOpt);
   const p = findProject(projectId);
 
   if (!slug) {
@@ -146,7 +160,7 @@ async function send(args) {
     process.exit(1);
   }
 
-  const mailboxId = await resolveMailboxId(projectId, p.service_key);
+  const mailboxId = await requireMailboxId(projectId, p.service_key);
 
   const res = await fetch(`${API}/mailboxes/v1/${mailboxId}/messages`, {
     method: "POST",
@@ -165,7 +179,7 @@ async function send(args) {
 async function list(args) {
   const projectId = resolveProjectId(parseFlag(args, "--project"));
   const p = findProject(projectId);
-  const mailboxId = await resolveMailboxId(projectId, p.service_key);
+  const mailboxId = await requireMailboxId(projectId, p.service_key);
 
   const res = await fetch(`${API}/mailboxes/v1/${mailboxId}/messages`, {
     headers: { "Authorization": `Bearer ${p.service_key}` },
@@ -180,8 +194,13 @@ async function list(args) {
 }
 
 async function get(args) {
-  const messageId = args.find(a => !a.startsWith("--"));
-  const projectId = resolveProjectId(parseFlag(args, "--project"));
+  let messageId = null;
+  let projectOpt = null;
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === "--project" && args[i + 1]) { projectOpt = args[++i]; }
+    else if (!args[i].startsWith("--") && !messageId) { messageId = args[i]; }
+  }
+  const projectId = resolveProjectId(projectOpt);
   const p = findProject(projectId);
 
   if (!messageId) {
@@ -189,7 +208,7 @@ async function get(args) {
     process.exit(1);
   }
 
-  const mailboxId = await resolveMailboxId(projectId, p.service_key);
+  const mailboxId = await requireMailboxId(projectId, p.service_key);
 
   const res = await fetch(`${API}/mailboxes/v1/${mailboxId}/messages/${messageId}`, {
     headers: { "Authorization": `Bearer ${p.service_key}` },
