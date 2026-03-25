@@ -226,7 +226,7 @@ function mockFetch(input, init) {
     return Promise.resolve(json({ status: "ok", key: body?.key || "TEST_KEY" }));
   }
   if (path.match(/\/secrets$/) && method === "GET") {
-    return Promise.resolve(json({ keys: ["TEST_KEY"] }));
+    return Promise.resolve(json({ secrets: [{ key: "TEST_KEY", value_hash: "a1b2c3d4", created_at: "2026-01-01", updated_at: "2026-01-01" }] }));
   }
   if (path.match(/\/secrets\/[^/]+$/) && method === "DELETE") {
     return Promise.resolve(json({ status: "ok" }));

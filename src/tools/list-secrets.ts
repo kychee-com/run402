@@ -22,7 +22,7 @@ export async function handleListSecrets(args: {
 
   if (!res.ok) return formatApiError(res, "listing secrets");
 
-  const body = res.body as { secrets: Array<{ key: string }> };
+  const body = res.body as { secrets: Array<{ key: string; value_hash?: string }> };
 
   if (body.secrets.length === 0) {
     return {
@@ -38,9 +38,11 @@ export async function handleListSecrets(args: {
   const lines = [
     `## Secrets (${body.secrets.length})`,
     ``,
-    ...body.secrets.map((s) => `- \`${s.key}\``),
+    `| Key | Hash |`,
+    `|-----|------|`,
+    ...body.secrets.map((s) => `| \`${s.key}\` | ${s.value_hash ? `\`${s.value_hash}\`` : "—"} |`),
     ``,
-    `_Values are not shown for security._`,
+    `_Hash is the first 8 hex chars of SHA-256 — use it to verify the correct value was set._`,
   ];
 
   return { content: [{ type: "text", text: lines.join("\n") }] };

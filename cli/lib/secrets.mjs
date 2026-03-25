@@ -19,7 +19,7 @@ Examples:
 
 Notes:
   - Secrets are injected as process.env in serverless functions
-  - Values are never shown after being set
+  - Values are write-only — list returns keys with a value_hash (first 8 hex chars of SHA-256) for verifying the correct value was set
 `;
 
 async function set(projectId, key, args = []) {
