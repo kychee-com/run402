@@ -313,6 +313,22 @@ Both `SERIAL` and `BIGINT GENERATED ALWAYS AS IDENTITY` work for auto-increment.
 
 Table permissions for `anon` and `authenticated` roles are granted automatically -- do not run `GRANT` or `REVOKE` (blocked by the SQL endpoint). Use RLS policies (`POST /projects/v1/admin/:id/rls`) for access control.
 
+**Schema migrations**: Use `CREATE TABLE IF NOT EXISTS` so redeploys don't fail. But note: `IF NOT EXISTS` only prevents "table already exists" errors -- it will **not** add new columns to an existing table. When your app evolves, use `ALTER TABLE ... ADD COLUMN` wrapped in a DO block:
+
+```sql
+CREATE TABLE IF NOT EXISTS notes (id serial PRIMARY KEY, title text NOT NULL);
+DO $$ BEGIN
+  ALTER TABLE notes ADD COLUMN body text;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+DO $$ BEGIN
+  ALTER TABLE notes ADD COLUMN pinned boolean DEFAULT false;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+```
+
+This is safe to re-run on every deploy. Put `CREATE TABLE IF NOT EXISTS` first, then one `DO` block per new column (or group them). Without this pattern, redeploying after adding a column will either silently skip it (`IF NOT EXISTS`) or fail with a 422 (`duplicate_column`).
+
 **PostgREST patterns**:
 
 `Prefer` header controls what the server returns on write operations:
@@ -1278,6 +1294,15 @@ Keys (`anon_key`, `service_key`) are returned by `POST /projects/v1` at provisio
 ### Redeploy
 
 Deploy is idempotent -- you can call it multiple times on the same project. RLS policies are replaced, secrets are upserted, functions are updated, and site files are redeployed. The project is never destroyed on deploy failure.
+
+**Writing idempotent migrations**: Use `CREATE TABLE IF NOT EXISTS` for new tables, and `ALTER TABLE ... ADD COLUMN` in a `DO` block for new columns. `IF NOT EXISTS` will **not** add columns to an existing table -- it only prevents "table already exists" errors.
+
+```sql
+CREATE TABLE IF NOT EXISTS users (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), email text UNIQUE, name text);
+DO $$ BEGIN ALTER TABLE users ADD COLUMN avatar_url text; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+```
+
+This pattern is safe to re-run on every deploy. Without it, adding a column to an existing table silently does nothing (`IF NOT EXISTS`) or fails with a 422 error.
 
 ### Pricing
 
