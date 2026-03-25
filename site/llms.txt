@@ -726,7 +726,7 @@ For explicit control, use both `apikey` (project key) and `Authorization: Bearer
 | `/projects/v1/admin/:id/functions/:name` | DELETE | service_key | Delete a function. |
 | `/projects/v1/admin/:id/functions/:name/logs` | GET | service_key | Get function logs. `?tail=N` (default 50). |
 | `/projects/v1/admin/:id/secrets` | POST | service_key | Set a secret (`{ "key": "...", "value": "..." }`). Blocked in demo mode. |
-| `/projects/v1/admin/:id/secrets` | GET | service_key | List secrets (keys only, values not exposed). |
+| `/projects/v1/admin/:id/secrets` | GET | service_key | List secrets (keys + `value_hash` — first 8 hex chars of SHA-256 for debugging, values not exposed). |
 | `/projects/v1/admin/:id/secrets/:key` | DELETE | service_key | Delete a secret. |
 | `/projects/v1/admin/:id/publish` | POST | service_key | Publish app as a forkable version. |
 | `/projects/v1/admin/:id/versions` | GET | service_key | List published versions. |
@@ -1533,11 +1533,11 @@ curl -X POST https://api.run402.com/mailboxes/v1/mbx_1741340000_a1b2c3/webhooks 
 
 ### Template reference
 
-| Template | Required fields | Description |
-|----------|----------------|-------------|
-| `project_invite` | `to`, `inviter_name`, `project_name`, `invite_url` | Invite a collaborator to your project |
-| `magic_link` | `to`, `magic_url`, `expires_in_minutes` | Passwordless login link |
-| `notification` | `to`, `subject`, `body` | General notification with custom subject and body |
+| Template | Required fields | Variables | Description |
+|----------|----------------|-----------|-------------|
+| `project_invite` | `to`, `template`, `variables` | `project_name`, `invite_url` | Invite a collaborator to your project |
+| `magic_link` | `to`, `template`, `variables` | `project_name`, `link_url`, `expires_in` | Passwordless login link |
+| `notification` | `to`, `template`, `variables` | `project_name`, `message` (max 500 chars) | General notification |
 
 ---
 

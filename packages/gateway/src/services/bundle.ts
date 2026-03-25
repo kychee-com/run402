@@ -46,8 +46,15 @@ export interface BundleRequest {
   subdomain?: string;
 }
 
+export interface MigrationsResult {
+  tables_created: string[];
+  columns_added: string[];
+  status: "applied" | "no_changes";
+}
+
 export interface BundleResult {
   project_id: string;
+  migrations_result?: MigrationsResult;
   site_url?: string;
   deployment_id?: string;
   functions?: Array<{ name: string; url: string }>;
@@ -222,8 +229,9 @@ export async function deployBundle(
   const { serviceKey } = deriveProjectKeys(project.id, tier);
 
   // 2. Run migrations
+  let migrationsResult: MigrationsResult | undefined;
   if (req.migrations) {
-    await runMigrations(project, req.migrations);
+    migrationsResult = await runMigrations(project, req.migrations);
   }
 
   // 3. Apply RLS
@@ -277,6 +285,7 @@ export async function deployBundle(
     project_id: project.id,
   };
 
+  if (migrationsResult) result.migrations_result = migrationsResult;
   if (siteUrl) result.site_url = siteUrl;
   if (deploymentId) result.deployment_id = deploymentId;
   if (deployedFunctions.length > 0) result.functions = deployedFunctions;
@@ -288,17 +297,60 @@ export async function deployBundle(
 }
 
 /**
+ * Snapshot tables and columns in a project schema.
+ */
+async function snapshotSchema(
+  client: import("../db/pool.js").TypedPoolClient,
+  schemaSlot: string,
+): Promise<Map<string, Set<string>>> {
+  const result = await client.query(
+    sql(`SELECT table_name, column_name FROM information_schema.columns WHERE table_schema = $1`),
+    [schemaSlot],
+  );
+  const snapshot = new Map<string, Set<string>>();
+  for (const row of result.rows) {
+    if (!snapshot.has(row.table_name)) snapshot.set(row.table_name, new Set());
+    snapshot.get(row.table_name)!.add(row.column_name);
+  }
+  return snapshot;
+}
+
+/**
  * Run SQL migrations within a project's schema.
  */
-async function runMigrations(project: ProjectInfo, migrationSql: string): Promise<void> {
+async function runMigrations(project: ProjectInfo, migrationSql: string): Promise<MigrationsResult> {
   const client = await pool.connect();
   try {
     await client.query(sql("BEGIN"));
     await client.query(sql(`SET search_path TO ${project.schemaSlot}`));
+
+    const before = await snapshotSchema(client, project.schemaSlot);
+
     await client.query(sql(migrationSql));
     await client.query(sql("NOTIFY pgrst, 'reload schema'"));
+
+    const after = await snapshotSchema(client, project.schemaSlot);
+
     await client.query(sql("COMMIT"));
-    console.log(`  Migrations applied to ${project.id} (${project.schemaSlot})`);
+
+    // Diff
+    const tablesCreated: string[] = [];
+    const columnsAdded: string[] = [];
+    for (const [table, cols] of after) {
+      if (!before.has(table)) {
+        tablesCreated.push(table);
+      } else {
+        for (const col of cols) {
+          if (!before.get(table)!.has(col)) {
+            columnsAdded.push(`${table}.${col}`);
+          }
+        }
+      }
+    }
+
+    const status = tablesCreated.length > 0 || columnsAdded.length > 0 ? "applied" as const : "no_changes" as const;
+    console.log(`  Migrations ${status} to ${project.id} (${project.schemaSlot}): ${tablesCreated.length} tables created, ${columnsAdded.length} columns added`);
+    return { tables_created: tablesCreated, columns_added: columnsAdded, status };
   } catch (err) {
     await client.query(sql("ROLLBACK")).catch(() => {});
     const msg = err instanceof Error ? err.message : String(err);

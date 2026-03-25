@@ -9,7 +9,7 @@
  * GET    /v1/mailboxes/:id/messages         — List messages (service_key auth)
  * GET    /v1/mailboxes/:id/messages/:msgId  — Get message with replies (service_key auth)
  * POST   /v1/mailboxes/:id/webhooks         — Register webhook (service_key auth)
- * PUT    /v1/mailboxes/:id/status           — Admin reactivate (admin auth)
+ * POST   /v1/mailboxes/:id/status           — Admin reactivate (admin auth)
  */
 
 import { Router, Request, Response } from "express";
@@ -243,7 +243,7 @@ router.post("/mailboxes/v1/:id/webhooks", serviceKeyAuth, asyncHandler(async (re
   res.status(201).json({ webhook_id: webhookId, url, events });
 }));
 
-// PUT /v1/mailboxes/:id/status — admin-only reactivate suspended mailbox
+// POST /v1/mailboxes/:id/status — admin-only reactivate suspended mailbox
 router.post("/mailboxes/v1/:id/status", serviceKeyOrAdmin, asyncHandler(async (req: Request, res: Response) => {
   if (!req.isAdmin) {
     throw new HttpError(403, "Admin access required");

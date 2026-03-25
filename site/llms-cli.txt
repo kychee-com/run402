@@ -251,7 +251,7 @@ Built-in helper: `import { db, getUser } from '@run402/functions'`
 Secrets available as `process.env` (see secrets below).
 
 ### secrets
-Injected as `process.env` in functions.
+Injected as `process.env` in functions. Values are write-only — `list` returns keys with a `value_hash` (first 8 hex chars of SHA-256) for verifying the correct value was set.
 
 - `run402 secrets set <id> <KEY> [<VALUE>] [--file <path>]`
 - `run402 secrets <list|delete> <id> [<KEY>]`

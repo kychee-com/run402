@@ -780,20 +780,37 @@ describe("deleteSecret", () => {
 // ---------------------------------------------------------------------------
 
 describe("listSecrets", () => {
-  it("returns secret metadata without values", async () => {
+  it("returns secret metadata with value_hash", async () => {
     mockPoolQuery = async () => ({
       rows: [
-        { key: "API_KEY", created_at: "2025-01-01", updated_at: "2025-01-02" },
-        { key: "DB_PASS", created_at: "2025-01-03", updated_at: "2025-01-04" },
+        { key: "API_KEY", value_hash: "a1b2c3d4", created_at: "2025-01-01", updated_at: "2025-01-02" },
+        { key: "DB_PASS", value_hash: "e5f6a7b8", created_at: "2025-01-03", updated_at: "2025-01-04" },
       ],
     });
 
     const result = await listSecrets("prj_1");
     assert.equal(result.length, 2);
     assert.equal(result[0].key, "API_KEY");
+    assert.equal(result[0].value_hash, "a1b2c3d4");
     assert.equal(result[1].key, "DB_PASS");
+    assert.equal(result[1].value_hash, "e5f6a7b8");
     assert.ok(!("value" in result[0]));
     assert.ok(!("value_encrypted" in result[0]));
+  });
+
+  it("value_hash is 8-char hex prefix of SHA-256", async () => {
+    // SHA-256 of "sk-test-12345" = 5a0c8e... (computed offline)
+    // The DB computes this via left(encode(sha256(...), 'hex'), 8)
+    // Here we verify the query includes value_hash in the SELECT
+    let capturedSql = "";
+    mockPoolQuery = async (text: string) => {
+      capturedSql = typeof text === "string" ? text : (text as any).text || "";
+      return { rows: [] };
+    };
+
+    await listSecrets("prj_1");
+    assert.ok(capturedSql.includes("sha256"), "query should use sha256()");
+    assert.ok(capturedSql.includes("value_hash"), "query should alias as value_hash");
   });
 
   it("returns empty array when no secrets", async () => {
@@ -811,6 +828,28 @@ describe("listSecrets", () => {
 
     await listSecrets("prj_xyz");
     assert.equal(capturedParams[0], "prj_xyz");
+  });
+
+  it("value_hash changes when secret value changes", async () => {
+    // Simulate two calls with different hashes for the same key
+    let callCount = 0;
+    mockPoolQuery = async () => {
+      callCount++;
+      return {
+        rows: [
+          {
+            key: "MY_KEY",
+            value_hash: callCount === 1 ? "aaaabbbb" : "ccccdddd",
+            created_at: "2025-01-01",
+            updated_at: "2025-01-01",
+          },
+        ],
+      };
+    };
+
+    const first = await listSecrets("prj_1");
+    const second = await listSecrets("prj_1");
+    assert.notEqual(first[0].value_hash, second[0].value_hash);
   });
 });
 

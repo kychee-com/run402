@@ -823,11 +823,11 @@ export async function deleteSecret(projectId: string, key: string): Promise<void
 }
 
 /**
- * List project secrets (keys only, no values).
+ * List project secrets (keys only, no values — includes truncated hash for debugging).
  */
-export async function listSecrets(projectId: string): Promise<Array<{ key: string; created_at: string; updated_at: string }>> {
+export async function listSecrets(projectId: string): Promise<Array<{ key: string; value_hash: string; created_at: string; updated_at: string }>> {
   const result = await pool.query(
-    sql(`SELECT key, created_at, updated_at FROM internal.secrets WHERE project_id = $1 ORDER BY key`),
+    sql(`SELECT key, left(encode(sha256(value_encrypted::bytea), 'hex'), 8) AS value_hash, created_at, updated_at FROM internal.secrets WHERE project_id = $1 ORDER BY key`),
     [projectId],
   );
   return result.rows;
