@@ -15,6 +15,7 @@ FALSE_POSITIVES = {
         "written", "intensity", "intense", "intens", "content", "tent",
         "sentence", "attention", "potential", "patent", "latent", "intent",
         "extent", "extend", "competent", "consistent", "persistent", "existent",
+        "encounter", "encounters", "then", "whaten",
     ],
     "one": [
         "someone", "done", "gone", "none", "bone", "tone", "zone", "stone",
@@ -137,10 +138,10 @@ def _detect_operation(challenge: str, aj: str) -> str | None:
         ("multiply", "*"), ("multiplied", "*"), ("multiplies", "*"), ("multipled", "*"), ("multiple", "*"), ("times", "*"),
         ("product", "*"), ("leverag", "*"), ("advantag", "*"),
         ("double", "*"), ("doubles", "*"), ("triple", "*"), ("triples", "*"),
-        ("torque", "*"), ("factor", "*"), ("boost", "*"),
-        ("loses", "-"), ("minus", "-"), ("slows", "-"), ("drops", "-"),
+        ("torque", "*"), ("factor", "*"), ("boost", "*"), ("amplif", "*"), ("magnif", "*"),
+        ("loses", "-"), ("minus", "-"), ("slows", "-"), ("slower", "-"), ("drops", "-"),
         ("remains", "-"), ("remaining", "-"),
-        ("reduces", "-"), ("subtract", "-"), ("decreased", "-"), ("reduced", "-"),
+        ("reduces", "-"), ("reducing", "-"), ("subtract", "-"), ("decreased", "-"), ("reduced", "-"),
         ("adds", "+"), ("add", "+"), ("plus", "+"),
         ("increases", "+"), ("gains", "+"), ("speeds", "+"),
         ("divided", "/"),
@@ -154,6 +155,9 @@ def _detect_operation(challenge: str, aj: str) -> str | None:
         # Use cleaned alpha-only text to avoid false substring matches (e.g. "experiment" contains "per")
         clean = re.sub(r'[^a-zA-Z\s]', '', challenge).lower()
         if re.search(r"\b(per|each|every|produce|generate|yield)\b", clean):
+            return "*"
+        # "exerts X and has N claws" pattern = multiply (per-unit × count)
+        if re.search(r"\bexerts?\b", clean) and re.search(r"\b(has|have|with)\b.*\b(claws?|legs?|arms?|limbs?)\b", clean):
             return "*"
         return "+"
     # Rate × time pattern: "per second/minute/hour for N seconds/minutes/hours"
