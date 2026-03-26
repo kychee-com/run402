@@ -243,7 +243,7 @@ Built-in helper: `import { db, getUser } from '@run402/functions'`
 - `db.sql(query)` — raw SQL
 - `getUser(req)` — verify caller's JWT, returns `{ id, role }` or `null`
 
-- `run402 functions deploy <id> <name> --file <file> [--deps "<pkg,...>"] [--timeout <s>] [--memory <mb>]`
+- `run402 functions deploy <id> <name> --file <file> [--deps "<pkg,...>"] [--timeout <s>] [--memory <mb>] [--schedule "<cron>"]`
 - `run402 functions invoke <id> <name> [--body '<json>'] [--method <GET|POST|...>]`
 - `run402 functions logs <id> <name> [--tail <n>]`
 - `run402 functions <list|delete> <id> [<name>]`
