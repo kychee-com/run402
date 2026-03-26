@@ -1557,7 +1557,7 @@ Install: `npx run402-mcp`
 
 **Claude Code**: `claude mcp add run402 -- npx -y run402-mcp`
 
-Credentials saved to `~/.config/run402/projects.json` (chmod 0600). Tools auto-lookup keys -- no manual key passing. Env vars: `RUN402_API_BASE` (default `https://api.run402.com`), `RUN402_CONFIG_DIR` (default `~/.config/run402`).
+Credentials saved to `~/.config/run402/projects.json` (chmod 0600). Tools auto-lookup keys -- no manual key passing. Env vars: `RUN402_API_BASE` (default `https://api.run402.com`), `RUN402_CONFIG_DIR` (default `~/.config/run402`), `RUN402_ALLOWANCE_PATH` (custom allowance file path, default `{config_dir}/allowance.json`).
 
 ---
 

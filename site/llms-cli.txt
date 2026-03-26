@@ -31,7 +31,7 @@ Provision first, then write your frontend code with the real `anon_key` embedded
 - All output is JSON on stdout; errors are JSON on stderr; exit 0 = success, 1 = error
 - The CLI handles x402 signing automatically — do not request private keys or set up payment libraries manually
 - Projects, sites, subdomains, forks, functions, secrets, storage: free with active tier. Only image generation ($0.03) is per-call
-- Env overrides: `RUN402_API_BASE` (default `https://api.run402.com`), `RUN402_CONFIG_DIR` (default `~/.config/run402`)
+- Env overrides: `RUN402_API_BASE` (default `https://api.run402.com`), `RUN402_CONFIG_DIR` (default `~/.config/run402`), `RUN402_ALLOWANCE_PATH` (custom allowance file path, default `{config_dir}/allowance.json`)
 
 ---
 
