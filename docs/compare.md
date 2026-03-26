@@ -1,6 +1,6 @@
-# Run402 vs InsForge — Competitive Analysis
+# Competitive Analysis
 
-_Last updated: 2026-03-11_
+_Last updated: 2026-03-25_
 
 ## TL;DR
 
@@ -352,3 +352,737 @@ _Goal: Close every gap that matters and open new ones they can't match._
 | Comparison page (SEO) | No | **Yes** | No |
 
 **Net result:** We match them on MCP, free tier, vectors, and marketing presence — while keeping our structural advantages (x402, bundle deploy, forkable apps, hard caps) that they can't replicate in 3 days or 3 months.
+
+---
+---
+
+# Run402 vs here.now — Competitive Analysis
+
+_Added: 2026-03-25_
+
+## TL;DR
+
+here.now is focused, polished static hosting for AI agents. Zero-friction onboarding (no account needed), Cloudflare-based, with custom domains, password protection, and payment gating. Run402 is a full-stack platform (DB + functions + sites). Different scope, overlapping on static site hosting.
+
+---
+
+## Positioning
+
+| | Run402 | here.now |
+|---|---|---|
+| **Tagline** | "Postgres for AI Agents" | "Free, instant web hosting for agents" |
+| **Core model** | Full-stack platform (DB + functions + sites) | Static hosting only |
+| **Auth required** | Yes (wallet auth or tier subscription) | No (anonymous 24h sites, claim later) |
+| **Payment** | x402 micropayments (USDC) | Free + hobby tier (traditional) |
+| **CDN** | CloudFront (AWS) | Cloudflare edge |
+| **Agent integration** | MCP server (`run402-mcp`) | OpenClaw skill (bash script + SKILL.md) |
+
+## Feature Comparison (Site Hosting Only)
+
+| Feature | Run402 | here.now |
+|---|---|---|
+| Deploy flow | Single POST with inline files | 3-step: create → upload → finalize |
+| File upload | Inline in JSON body | Presigned URLs (parallel uploads) |
+| Max file size | 50MB total per deployment | 250MB anon / 5GB auth per file |
+| Storage | 250MB–10GB by tier (shared with object storage) | 10GB free / 100GB hobby |
+| Custom domains | No (subdomains on `*.run402.com` only) | Yes (CNAME/ALIAS + auto-SSL via Cloudflare) |
+| Handles | Subdomains (`myapp.run402.com`) | Yes (`yourname.here.now`) |
+| Password protection | No | Yes (server-side) |
+| Payment gating | x402 at API level only | Yes (per-site, stablecoins via Tempo) |
+| Site duplication | No | Yes (server-side copy) |
+| Incremental deploys | No (full re-upload) | Yes (SHA-256 hash diffing) |
+| SPA fallback | Yes (extensionless paths → `index.html`) | No (static only) |
+| Anonymous/ephemeral | No | Yes (24h, no account) |
+| Immutable URLs | Yes (deployment-id-based) | Yes (slug-based) |
+| Auto-viewer | No | Yes (single files get rich viewer) |
+| Rate limits | Tied to tier | 5/hr anon, 60–200/hr auth |
+
+## What here.now Does Better (Site Hosting)
+
+1. **Zero-friction onboarding** — one HTTP POST, no account/wallet/payment. Claim later.
+2. **Larger file support** — 5GB per file vs 50MB total per deployment.
+3. **Custom domains** — CNAME/ALIAS + auto-SSL via Cloudflare for SaaS. Run402 only does subdomains.
+4. **Incremental deploys** — hash-based diffing, only changed files uploaded.
+5. **Password protection** — server-side, per-site, survives redeploys.
+6. **Per-site payment gating** — stablecoins via Tempo, 402 response for agents.
+7. **Site duplication** — server-side copy in one API call.
+8. **Auto-viewer** — rich viewer for single-file sites (images, PDFs, video).
+9. **Bash-based skill** — `curl`/`jq`/`file` only, works on any machine without Node.js.
+
+## What Run402 Does Better
+
+1. **Full-stack** — Postgres, serverless functions, migrations, RLS, secrets, auth, storage.
+2. **Single-request deploy** — files inline, no 3-step dance.
+3. **SPA support** — `index.html` fallback for React/Vue/etc.
+4. **Bundle deploy** — one call deploys DB + functions + site + secrets + subdomain.
+5. **Subdomain auto-reassignment** — redeploy a project, subdomain follows automatically.
+6. **Fork/publish ecosystem** — agents share and fork full-stack apps.
+
+## Skill/CLI Comparison
+
+| | here.now | Run402 |
+|---|---|---|
+| Type | Bash script (`publish.sh`) + `SKILL.md` | Node.js scripts (`.mjs`) + `SKILL.md` |
+| Dependencies | `curl`, `jq`, `file` (universally available) | `npx`, Node.js runtime |
+| Script count | 1 script | ~20 scripts |
+| Scope | One thing: publish files | Full platform |
+| State | `.herenow/state.json` in working directory | `~/.config/run402/projects.json` global |
+| Structured output | `publish_result.*` on stderr (machine-parseable) | JSON on stdout |
+
+## Gaps to Close
+
+Detailed in separate docs:
+- **Custom domains** → `docs/custom_domains.md` (Cloudflare for SaaS architecture, three implementation options)
+- **Incremental deploys + size limits** → `docs/patching_sw.md` (patch deployments, presigned URLs, content-addressable storage progression)
+- **Password protection, payment gating, site duplication, auto-viewer** → `docs/ideas.md`
+
+---
+---
+
+# Run402 vs agentic.hosting — Competitive Analysis
+
+_Added: 2026-03-25_
+
+## TL;DR
+
+agentic.hosting is a self-hosted PaaS — a single Go binary you install on your own Linux server. It runs Docker containers, builds from Git, provisions Postgres/Redis, with a REST API for agents. Completely different architecture from Run402. Not a direct competitor — complementary.
+
+---
+
+## Positioning
+
+| | Run402 | agentic.hosting |
+|---|---|---|
+| **Model** | Managed cloud service | Self-hosted (BYO server) |
+| **Runtime** | Static sites + serverless functions (Node 22) | Docker containers (any language/framework) |
+| **Database** | Managed Aurora Postgres, multi-tenant | Postgres on same server, per-tenant |
+| **Pricing** | Per-tier via x402 micropayment ($0–$20) | $0 platform fee + server cost ($4–54/mo) |
+| **Auth** | Wallet signatures (EIP-4361) + x402 | API keys + bootstrap token |
+| **Scaling** | AWS managed (ECS, Aurora, Lambda, CloudFront) | Single server, manual |
+| **Open source** | No | Yes (MIT) |
+| **Agent integration** | MCP server + OpenClaw skill | REST API + Claude Code slash commands |
+
+## What agentic.hosting Does That Run402 Doesn't
+
+1. **Runs arbitrary Docker containers** — any language, any framework, long-running processes.
+2. **Git-based builds** — point at a GitHub repo, Nixpacks detects language and builds.
+3. **Container lifecycle management** — start, stop, restart, redeploy, deploy history.
+4. **Redis** — on-demand provisioning.
+5. **gVisor sandboxing** — every container runs in a kernel sandbox (not just process isolation).
+6. **Circuit breaker** — 5 crashes in 10 min → auto-pause. Prevents agent crash-loops.
+7. **Self-hosted / no vendor lock-in** — you own the server, data, everything.
+8. **Per-tenant network isolation** — containers can't see each other.
+9. **Reconciler** — scans every 60s, auto-restarts crashed services.
+10. **Scoped API keys** — per-tenant key isolation. Prompt injection can't escape tenant boundary.
+
+## What Run402 Does That agentic.hosting Doesn't
+
+1. **Zero infrastructure setup** — one API call to get a database. No server, no SSH, no bootstrap.
+2. **Managed Postgres with PostgREST** — instant REST API, RLS templates, auth built in.
+3. **x402 micropayments** — pay-per-use with crypto, no billing system to build.
+4. **Serverless functions** — Lambda-backed, auto-scaling, pre-bundled packages.
+5. **CDN-served static sites** — CloudFront edge delivery vs single-server Traefik.
+6. **User auth system** — signup, login, JWT, refresh tokens.
+7. **Row-level security** — three one-call RLS templates.
+8. **Storage API** — S3-backed file storage with signed URLs.
+9. **Fork/publish ecosystem** — share apps as templates, others fork.
+10. **Image generation** — $0.03/image via x402.
+11. **Bundle deploy** — one call: DB + migrations + RLS + functions + site + subdomain.
+
+## Who Should Use Which
+
+**agentic.hosting**: Agents that need arbitrary compute — Python ML pipelines, Go API servers, Redis job queues, custom Docker images. General-purpose compute platform.
+
+**Run402**: Agents that need to build web apps fast — database, API, auth, hosting, wired together in one call. Opinionated full-stack platform.
+
+They don't compete. An agent could use both — agentic.hosting for a custom backend service, Run402 for database + frontend + auth.
+
+## What Run402 Could Learn
+
+1. **Circuit breaker / crash protection** — Run402 functions can crash-loop if called repeatedly. No auto-pause exists.
+2. **JSON-only error responses** — agentic.hosting guarantees no HTML error pages. Run402's gateway returns JSON for API routes but CloudFront errors could return HTML.
+3. **Agent Runbook depth** — their `AGENT_RUNBOOK.md` has exact curl commands, polling patterns, error recovery, and "what can go wrong" per task. Run402's SKILL.md doesn't cover failure modes as deeply.
+4. **Scoped API keys** — limit what an agent can touch per-key. Run402 has service_key vs anon_key but no fine-grained scoping.
+5. **Deploy history endpoint** — `GET /v1/services/:id/deployments` shows audit log. Run402 tracks deployments in DB but doesn't expose history.
+
+---
+---
+
+# Run402 vs PaperPod — Competitive Analysis
+
+_Added: 2026-03-25_
+
+## TL;DR
+
+PaperPod is sandboxed compute-on-demand — isolated Linux containers on Cloudflare where agents run arbitrary code, start servers, expose ports, use browser automation, and run AI models. Pay-per-second. Not a hosting platform or database service. Complementary to Run402, not competitive.
+
+---
+
+## Positioning
+
+| | Run402 | PaperPod |
+|---|---|---|
+| **Core model** | Managed full-stack platform (DB + functions + sites) | Sandboxed compute pods |
+| **Runtime** | Static sites + Lambda functions (Node 22) | Full Linux (Python, Node, shell, 50+ tools) |
+| **Database** | Managed Aurora Postgres with REST API | SQLite in sandbox (ephemeral) |
+| **Persistence** | Permanent (DB, S3 storage, CDN sites) | Ephemeral sandbox + 10MB "Agent Memory" on R2 |
+| **Pricing** | Per-tier ($0–$20 per project) | Per-second ($0.0001/sec, ~$0.36/hr) |
+| **Payment** | x402 USDC on Base, MPP pathUSD on Tempo, Stripe credits | Stripe credits + x402 top-up |
+| **Infrastructure** | AWS (ECS, Aurora, Lambda, CloudFront) | Cloudflare (Containers, Workers, R2) |
+| **Auth** | Wallet signatures (EIP-4361) | Email magic link → session token |
+
+### Payment rails comparison
+
+Both Run402 and PaperPod accept multiple payment methods, but Run402 has broader coverage:
+
+| Rail | Run402 | PaperPod |
+|---|---|---|
+| **x402** (USDC on Base) | Yes — primary rail, prototype tier is free on testnet | Yes — top-up only |
+| **MPP** (pathUSD on Tempo) | Yes — full support, same wallet key as x402 | No |
+| **Stripe credits** | Yes — credit card fallback via `run402.com/billing` | Yes — primary rail |
+| **Model** | Pay-per-action (fixed price per tier/operation) | Pay-per-second (metered usage) |
+
+PaperPod uses x402 as a secondary top-up mechanism. Run402 uses x402 as the primary payment protocol with Stripe and MPP as alternatives. This means PaperPod is in the x402 ecosystem — potentially a partner/integration target.
+
+---
+
+## What PaperPod Does That Run402 Doesn't
+
+1. **Arbitrary code execution** — Python, JavaScript, shell. Install any pip/npm package. Run training jobs, data analysis, ffmpeg, imagemagick, pandoc.
+2. **Live preview URLs** — start a server, expose a port, get `https://8080-xxx.paperpod.work` instantly. Like ngrok for agents.
+3. **Browser automation** — headless Chrome at the edge. Screenshots, PDFs, scraping, Playwright tests. Built-in, no setup.
+4. **50+ pre-installed tools** — ffmpeg, imagemagick, pandoc, sqlite3, ripgrep, git, gh CLI. Full Linux toolchain.
+5. **AI model inference** — 50+ models (Llama, Mistral, FLUX, Whisper) on Cloudflare GPUs. LLM, images, audio, embeddings.
+6. **Agent Memory** — 10MB persistent storage across sessions on R2. Simple key-value file store.
+7. **Background processes** — start a server, it persists across API calls within a session. Run long training jobs.
+8. **Streaming execution** — SSE for real-time output. WebSocket for programmatic integrations.
+9. **Proactive suggestions** — server detects patterns (e.g., port listening) and suggests next actions to the agent.
+10. **Per-second billing** — granular, truly pay-for-what-you-use. A 400ms script execution costs $0.00004.
+
+## What Run402 Does That PaperPod Doesn't
+
+1. **Managed Postgres** — real database with PostgREST, RLS, auth, migrations. PaperPod only has ephemeral sqlite3.
+2. **Permanent hosting** — CDN-served static sites with custom subdomains. PaperPod preview URLs are ephemeral.
+3. **User auth system** — signup, login, JWT, refresh tokens, RLS.
+4. **Serverless functions** — Lambda-backed, auto-scaling, with pre-bundled packages.
+5. **Bundle deploy** — one call: DB + migrations + RLS + functions + site + subdomain.
+6. **Fork/publish ecosystem** — share and fork full-stack apps.
+7. **Storage API** — S3-backed with signed URLs, permanent file storage.
+8. **Row-level security** — three one-call templates.
+9. **MPP support** — second payment rail (pathUSD on Tempo) that PaperPod doesn't have.
+
+## Who Should Use Which
+
+**PaperPod**: Agents that need to *run code* — data processing, testing, browser automation, media manipulation, prototyping. It's a sandbox, not a production platform.
+
+**Run402**: Agents that need to *ship web apps* — database, API, auth, hosting. Production-grade infrastructure.
+
+**Together**: An agent could use PaperPod to prototype/test code, then deploy the result to Run402 for permanent hosting with a real database. PaperPod is the scratchpad, Run402 is the production environment.
+
+## What Run402 Could Learn
+
+1. **Browser automation as a service** — screenshots, PDFs, scraping built-in. Could complement Run402's serverless functions.
+2. **Proactive suggestions in responses** — PaperPod detects patterns (port listening, server crashes) and suggests next actions. Smart UX for agents.
+3. **Actionable error responses** — errors include `code`, `action`, `agentInstruction` fields. More structured than just error messages.
+4. **x402 "upto" scheme** — authorize a maximum spend, deduct actual usage. Different from Run402's fixed-price model. Could work for per-call pricing (e.g., image generation).
+5. **Email magic link auth** — simpler than wallet signatures for human onboarding. Lower barrier for developers without crypto wallets. (Run402 already addresses this with Stripe credits as a fallback.)
+
+---
+---
+
+# Run402 vs Xano — Competitive Analysis
+
+_Added: 2026-03-25_
+
+## TL;DR
+
+Xano is a mature, enterprise-grade no-code/low-code BaaS (est. ~2020, 100K+ users, SOC 2/HIPAA/GDPR/ISO). Visual logic builder, built-in AI agent builder, MCP server builder, CLI for Claude Code/Cursor. Pricing starts at $85/mo. Recently added AI agent capabilities to capture the AI developer wave. Fundamentally different market and thesis from Run402.
+
+---
+
+## Positioning
+
+| | Run402 | Xano |
+|---|---|---|
+| **Model** | Agent-native: agent is the customer, pays via x402 | Human-native: developer builds in dashboard/IDE, agent is a tool |
+| **Builder** | Code-first (SQL, REST, inline files) | Visual-first (drag-and-drop) + code + AI |
+| **Pricing** | $0–$20 per project via micropayment | $0–$224+/mo subscription |
+| **Target** | AI agents acting autonomously | Developers/teams (no-code and pro-code) |
+| **Maturity** | Early-stage, bootstrapped | Established, 100K+ users, enterprise customers |
+| **Compliance** | None | SOC 2/3, HIPAA, GDPR, FERPA, ISO 27001/9001/27701/42001, HDS |
+| **Payment** | x402 USDC on Base, MPP pathUSD on Tempo, Stripe credits | Credit card subscription |
+| **Database** | Aurora Postgres + PostgREST | Managed Postgres + proprietary API builder |
+| **Agent integration** | MCP server + OpenClaw skill (agent IS the customer) | MCP server builder + AI agent builder (agent is a tool the human wields) |
+
+## Pricing Comparison
+
+| | Run402 | Xano |
+|---|---|---|
+| Free | Prototype: $0.10 testnet (7 days, 250MB, 500K calls) | Free: 100K records, 1GB storage, 10 req/20s rate limit |
+| Mid | Hobby: $5 (30 days, 1GB, 5M calls) | Essential: $85/mo (unlimited records, 10GB, no rate limit) |
+| High | Team: $20 (30 days, 10GB, 50M calls) | Pro: $224/mo (25GB, load balancer, RBAC, 99.99% SLA) |
+| Enterprise | — | Custom: self-hosting, SSO, Docker sidecars, dedicated IP |
+
+Run402 is 10–40x cheaper. But Xano includes visual builder, team collaboration, compliance certs, multi-region, and managed DevOps in those prices.
+
+## What Xano Has That Run402 Doesn't
+
+1. **Visual logic builder** — drag-and-drop workflow editor (canvas/stack views). No code needed.
+2. **Built-in AI agent builder** — configure agents with system prompts, tools, structured outputs, multi-model support (OpenAI, Claude, Gemini). Agents run server-side.
+3. **MCP server builder** — build and host MCP servers inside Xano, exposing backend as tools.
+4. **XanoScript + CLI** — proprietary scripting language, local dev workflow (`xano pull` / `xano push`), git integration, branching/merging.
+5. **Enterprise features** — multi-region (15+ regions), load balancing, RBAC, team collaboration, branching, self-hosting, dedicated IP, SSO, Docker sidecars.
+6. **Compliance certifications** — SOC 2/3, HIPAA ($500/mo add-on), GDPR, FERPA, ISO 27001/9001/27701/42001, HDS.
+7. **Redis caching** — built-in data caching.
+8. **Background tasks** — scheduled/recurring jobs.
+9. **Realtime/WebSockets** — live data sync.
+10. **Database triggers** — automatic actions on data changes.
+11. **Middleware** — pre/post API logic hooks.
+12. **Unit and workflow tests** — built-in testing framework.
+13. **100GB–250GB file storage** on paid plans.
+14. **Agency features** — multi-client management for dev shops.
+
+## What Run402 Has That Xano Doesn't
+
+1. **Agent-as-customer** — agents provision and pay autonomously via x402. No human signup.
+2. **x402/MPP micropayments** — pay-per-action with crypto. Xano requires credit card subscription.
+3. **Bundle deploy** — one HTTP call deploys DB + migrations + RLS + functions + site + subdomain.
+4. **Fork/publish ecosystem** — agents share apps as templates, others fork with payment.
+5. **Hard-capped budgets** — lease-based, no overages, no surprise bills.
+6. **Lease lifecycle** — projects auto-expire, clean resource management.
+7. **PostgREST** — instant REST API over Postgres with standard query syntax. Xano uses proprietary API builder.
+8. **Transparent, low pricing** — $0.10–$20 per project. Xano starts at $85/mo.
+
+## Different Thesis
+
+Xano's AI angle: "Humans use AI tools to build backends faster in Xano." The agent is a productivity multiplier for the human developer.
+
+Run402's AI angle: "AI agents buy and operate their own backends." The agent is the autonomous customer.
+
+These serve different markets today. If the future is human-supervised agents building backends, Xano wins (better tools, more features, compliance). If the future is fully autonomous agents that provision their own infrastructure, Run402 wins (agent-native payment, no human gatekeeping, lease-based lifecycle).
+
+## What Run402 Could Learn
+
+1. **Database triggers** — auto-actions on data changes. Useful for agents building reactive apps.
+2. **Background tasks/scheduling** — recurring jobs beyond one-shot functions.
+3. **CLI pull/push workflow** — Xano's `xano pull` / `xano push` with local file editing + `--dry-run` is a clean dev workflow. Run402's MCP/skill scripts could adopt a similar pattern.
+4. **Structured AI agent outputs** — Xano's agent builder forces structured JSON output schemas. Good pattern for agent-to-agent communication.
+
+---
+---
+
+# AgentPhone — Adjacent Product Analysis
+
+_Added: 2026-03-26_
+
+## TL;DR
+
+AgentPhone is not a competitor — it's a **vertical agent-infrastructure product** that gives AI agents real phone numbers with SMS and voice capabilities. It's in the same "infrastructure for AI agents" category as Run402 but for a different resource (phone numbers vs databases/hosting). Interesting as a peer, potential partner, and pattern reference.
+
+---
+
+## What AgentPhone Is
+
+A telephony API purpose-built for AI agents. Provision US/Canadian phone numbers, handle inbound/outbound SMS and voice calls, real-time transcription, conversation threading — all through a REST API or MCP server. The agent gets a real phone number and can make/receive calls and texts.
+
+### Key details
+
+- **Pricing:** First phone number free (forever). Additional lines $8/mo each. $25 one-time 10DLC registration fee. Each line includes 1,000 SMS/mo + 250 voice minutes/mo.
+- **Integration:** REST API + MCP server (`agentphone-mcp` on npm). Works with Cursor, Claude Desktop, Windsurf, any MCP client.
+- **Features:** Unified webhook (SMS + voice in one format), real-time transcription, conversation threads, signed webhooks (HMAC-SHA256), automatic retries, outbound calls.
+- **Positioning:** "Twilio for AI agents" — same underlying capability but agent-first abstractions (agents own numbers, not accounts).
+
+---
+
+## Why It's Interesting for Run402
+
+### Same thesis, different resource
+
+AgentPhone and Run402 share the same core idea: **give AI agents direct access to infrastructure they can provision and operate autonomously.** AgentPhone does it for phone numbers. Run402 does it for databases and hosting. Both use MCP as a distribution channel. Both target agents as the primary customer.
+
+### Pattern comparison
+
+| | Run402 | AgentPhone |
+|---|---|---|
+| **Resource** | Postgres DB + hosting + functions | Phone numbers + SMS + voice |
+| **Agent integration** | MCP server + OpenClaw skill | MCP server |
+| **Provision flow** | One tool call → DB + keys | One API call → phone number |
+| **Payment** | x402 USDC, MPP, Stripe credits | Free first line, $8/mo per extra (credit card) |
+| **Auth** | Wallet signatures (EIP-4361) | API key (`ap_your_key`) |
+| **Webhook model** | Functions invoked via HTTP | Unified webhook for SMS + voice events |
+
+### Potential integration
+
+An agent building a full-stack app on Run402 might need a phone number for:
+- User verification (SMS codes)
+- Notifications/alerts
+- Customer support bot
+- Appointment scheduling
+
+AgentPhone + Run402 together gives the agent a complete stack: database, API, hosting, functions, AND phone/SMS. Neither product needs to build what the other already has.
+
+### What Run402 could learn
+
+1. **Free-forever first resource** — AgentPhone's first number is free permanently. Run402's prototype tier is free but expires after 7 days. A permanent free tier (even very limited) is a stronger hook.
+2. **MCP-first distribution** — AgentPhone's entire setup is `npx agentphone-mcp` in your MCP config. The agent provisions everything. Same pattern Run402 already uses, validates the approach.
+3. **Unified webhook format** — SMS and voice arrive in the same JSON shape. Run402's functions could adopt a similar pattern for different event types (storage events, auth events, cron triggers).
+4. **Simple API key auth** — `Authorization: Bearer ap_your_key`. No wallet signatures, no payment protocol. Lower friction for getting started. Run402's wallet auth is more powerful (agent autonomy, on-chain payment) but higher friction for simple use cases.
+5. **$25 one-time setup fee model** — interesting pricing pattern. A one-time fee for compliance/registration could work for Run402 features that have real setup costs (custom domains, SSL provisioning).
+
+---
+---
+
+# AgentMail — Adjacent Product Analysis
+
+_Added: 2026-03-26_
+
+## TL;DR
+
+AgentMail is an email inbox API for AI agents — YC-backed (W25), $6M seed, SOC 2 Type II, 100M+ emails delivered. Agents get their own email inboxes (like Gmail but API-only), with threads, attachments, custom domains, semantic search, and real-time events. Not a competitor — another vertical agent-infrastructure product in the same category as AgentPhone and Run402.
+
+---
+
+## What AgentMail Is
+
+Full email inboxes for AI agents. Not a transactional email sender (SendGrid/Mailgun) — it's a complete inbox with sending, receiving, threads, replies, attachments, labels, search. The agent gets `agent@agentmail.to` or `agent@yourdomain.com` and can operate it like a human uses Gmail.
+
+### Key details
+
+- **Funding:** $6M seed, YC W25 batch. Garry Tan quote on homepage.
+- **Scale:** 100M+ emails delivered. Enterprise customers (CarEdge: 25,000 inboxes).
+- **Compliance:** SOC 2 Type II certified.
+- **SDKs:** Python (`pip install agentmail`), TypeScript (`npm install agentmail`), CLI, MCP server.
+- **Features:** Inboxes API, threads + replies, attachments, real-time events (webhooks + websockets), custom domains (DKIM/SPF/DMARC), semantic search, data extraction, scheduled send, labels, drafts, SMTP relay, dedicated IPs.
+
+### Pricing
+
+| Tier | Price | Inboxes | Emails/mo | Storage | Custom domains |
+|------|-------|---------|-----------|---------|----------------|
+| Free | $0 | 3 | 3,000 | 3 GB | — |
+| Developer | $20/mo | 10 | 10,000 | 10 GB | 10 |
+| Startup | $200/mo | 150 | 150,000 | 150 GB | 150 |
+| Enterprise | Custom | Custom | Custom | Custom | Custom |
+
+---
+
+## Why It's Interesting for Run402
+
+### Same thesis, more mature execution
+
+AgentMail is what "agent-native infrastructure" looks like with real funding, enterprise customers, and scale. Same core idea as Run402 — give agents direct access to infrastructure — but for email instead of databases. They're further along in proving the market exists.
+
+### Comparison to Run402's email feature
+
+Run402 already has basic email (`create_mailbox` → `slug@mail.run402.com`, template-based sending, reply tracking). AgentMail is a full-blown email platform:
+
+| | Run402 email | AgentMail |
+|---|---|---|
+| **Scope** | Basic: 3 templates (invite, magic link, notification) | Full inbox: send, receive, threads, replies, attachments, search |
+| **Inboxes** | 1 per project | 3–150+ per account |
+| **Receiving** | Reply tracking only | Full inbound email with webhooks + websockets |
+| **Custom domains** | No (only `@mail.run402.com`) | Yes, with DKIM/SPF/DMARC |
+| **Attachments** | No | Yes |
+| **Search** | No | Semantic search |
+| **Threads** | Basic reply matching | Full conversation threading with labels |
+
+Run402's email is a feature. AgentMail's email is the product.
+
+### Potential integration
+
+Rather than building full email capabilities, Run402 could integrate with AgentMail:
+- Agent provisions a database on Run402, an inbox on AgentMail
+- Run402 functions send/receive email through AgentMail's API
+- AgentMail webhooks trigger Run402 functions
+
+### Pattern comparison across agent-infrastructure products
+
+| Product | Resource | Funding | Pricing | MCP | SOC 2 |
+|---------|----------|---------|---------|-----|-------|
+| **Run402** | Database + hosting + functions | Bootstrapped | $0–$20 (x402/MPP/Stripe) | Yes | No |
+| **AgentMail** | Email inboxes | $6M seed (YC) | $0–$200/mo | Yes | Yes |
+| **AgentPhone** | Phone numbers + SMS + voice | Unknown | Free + $8/line/mo | Yes | No |
+| **here.now** | Static site hosting | Unknown | Free + hobby | Skill | No |
+| **PaperPod** | Sandboxed compute | Unknown | $0.0001/sec | Skill | No |
+
+All five follow the same pattern: take a piece of infrastructure, make it agent-native (API-first, MCP distribution, instant provisioning), price it for agents. The "agent infrastructure" category is real and growing.
+
+### What Run402 could learn
+
+1. **SOC 2 matters early** — AgentMail has it at seed stage. Enterprise customers (CarEdge: 25K inboxes) need it. Run402 has no compliance certs.
+2. **SDKs in multiple languages** — Python + TypeScript + CLI + MCP. Run402 only has Node.js MCP server. A Python SDK would reach the data science / ML agent audience.
+3. **Generous free tier** — 3 inboxes, 3K emails, 3 GB free. No expiry. Run402's prototype expires in 7 days.
+4. **Semantic search over data** — AgentMail can search email content semantically. Run402 could add PGVector-powered semantic search over project data.
+5. **Websocket events** — real-time events alongside webhooks. Run402 has no real-time notification mechanism for agents.
+6. **Enterprise tier with BYO cloud** — custom deployment, EU region, SAML SSO. Run402 doesn't have this path yet.
+
+---
+---
+
+# Kapso — Adjacent Product Analysis
+
+_Added: 2026-03-26_
+
+## TL;DR
+
+Kapso is "WhatsApp for developers" — a WhatsApp Business API platform that makes it easy to integrate official WhatsApp messaging into products. Official Meta Business Partner. Not agent-native per se, but has agent integration (OpenClaw skills, works with Claude Code/Cursor/Codex). Adjacent to Run402 the same way AgentPhone (telephony) and AgentMail (email) are — a communication channel that agents building on Run402 might need.
+
+---
+
+## What Kapso Is
+
+A developer-focused WhatsApp Business API wrapper. Handles Meta's WhatsApp Cloud API complexity — number provisioning, webhook delivery, message tracking, template management, compliance — and exposes a clean REST API + TypeScript SDK.
+
+### Key features
+
+- **Instant setup** — get a US number instantly, no SIM required, or bring your own number
+- **REST API + SDK** — `@kapso/whatsapp-cloud-api` TypeScript package
+- **Webhooks** — real-time message events (received, delivered, read, failed) with retries
+- **Inbox** — team dashboard for managing WhatsApp conversations
+- **Workflows** — visual builder for automation, connects to 2,700+ apps
+- **Broadcasts** — bulk messaging to thousands of contacts
+- **AI agents** — built-in agent builder for WhatsApp bots
+- **WhatsApp Flows** — mini-apps inside WhatsApp (forms, surveys, etc.)
+- **Serverless functions** — deploy JavaScript to process webhooks and integrate APIs
+- **Sandbox mode** — test without setup
+- **API logs** — every request logged with timing and payloads
+- **Platform mode** — let your customers connect their own WhatsApp numbers (white-label B2B2C)
+- **Agent skills** — `npx skills add gokapso/agent-skills` for Claude Code, Cursor, Codex
+
+### Pricing
+
+| Tier | Price | Messages/mo |
+|------|-------|-------------|
+| Free | $0 | 2,000 + $2 AI credits |
+| Pro | $25/mo | 100,000 |
+| Platform | $299/mo | 1,000,000 |
+
+---
+
+## Why It's Interesting for Run402
+
+### Another piece of the agent infrastructure stack
+
+Like AgentPhone (phone/SMS) and AgentMail (email), Kapso covers a communication channel — WhatsApp, with 3 billion users globally. An agent building a customer-facing app on Run402 might need WhatsApp for:
+- Customer support chatbots
+- Order notifications / delivery updates
+- Lead capture and qualification
+- Two-factor authentication
+- Appointment reminders
+
+### Pattern comparison
+
+| Product | Channel | Agent integration | Pricing |
+|---------|---------|-------------------|---------|
+| **Run402** | Database + hosting + functions | MCP + OpenClaw skill | $0–$20 (x402/MPP/Stripe) |
+| **AgentMail** | Email inboxes | SDK + MCP | $0–$200/mo |
+| **AgentPhone** | Phone + SMS + voice | MCP | Free + $8/line/mo |
+| **Kapso** | WhatsApp | OpenClaw skills | $0–$299/mo |
+
+### The OpenClaw skills pattern
+
+Kapso uses `npx skills add gokapso/agent-skills` — the same OpenClaw framework that here.now and Run402 use. This validates the skills distribution model. An agent with Run402 + Kapso + AgentMail skills installed has database, hosting, functions, WhatsApp, and email — a full-stack for building customer-facing products.
+
+### What's different about Kapso vs the others
+
+Kapso is more of a **traditional developer tool with agent features bolted on**, rather than an agent-native product. It has a dashboard, team inbox, visual workflow builder, broadcast campaigns — all human-facing features. The agent skills are an on-ramp, not the primary interface. This is closer to Xano's approach (human-first, agent as tool) than Run402's (agent as customer).
+
+### What Run402 could learn
+
+1. **Platform/white-label mode** — Kapso lets your customers connect their own WhatsApp. Run402 could offer a similar model where developers build products on Run402, and their end-users get their own isolated projects.
+2. **Built-in agent with tool use** — Kapso's in-app agent can build workflows, debug integrations, create templates. Run402's "Make It Great" SKILL.md prompt is doing something similar but less structured.
+3. **Sandbox mode** — test without any setup. Run402's prototype tier requires wallet auth and faucet funding. A zero-auth sandbox for testing would lower the barrier.
+
+---
+---
+
+# Mem0 — Adjacent Product Analysis
+
+_Added: 2026-03-26_
+
+## TL;DR
+
+Mem0 is a universal memory layer for LLM applications — it gives AI agents persistent memory across conversations. Solves the "agents forget" problem by compressing chat history into optimized memory representations. 100K+ developers, SOC 2 + HIPAA, used by CrewAI, PwC, Microsoft, NVIDIA. Not a competitor — a complementary infrastructure layer that agents using Run402 might need.
+
+---
+
+## What Mem0 Is
+
+A managed service that stores, compresses, and retrieves memories for AI agents. Instead of stuffing entire conversation histories into prompts (expensive, hits context limits), Mem0 intelligently compresses interactions into memory representations and retrieves relevant memories when needed. Claims 26% higher response quality with 90% fewer tokens vs OpenAI's memory.
+
+### Key features
+
+- **Memory compression engine** — condenses chat history, reduces token usage up to 80%
+- **Zero-friction integration** — single-line code install, works with OpenAI, LangGraph, CrewAI
+- **Graph Memory** (Pro) — structured relationship memories, not just flat key-value
+- **Built-in observability** — TTL, size, access metrics
+- **SOC 2 + HIPAA compliant** — BYOK encryption
+- **On-premise deployment** — Kubernetes, air-gapped servers, private cloud
+
+### Pricing
+
+| Tier | Price | Memories | Retrieval calls/mo |
+|------|-------|----------|-------------------|
+| Hobby | Free | 10,000 | 1,000 |
+| Starter | $19/mo | 50,000 | 5,000 |
+| Pro | $249/mo | Unlimited | 50,000 |
+| Enterprise | Custom | Unlimited | Unlimited |
+
+---
+
+## Why It's Interesting for Run402
+
+### The memory problem for agent-built apps
+
+An agent building apps on Run402 across multiple conversations needs to remember: what projects exist, what schema was created, what the user's preferences are, what worked last time. Run402's MCP server stores project credentials locally (`~/.config/run402/projects.json`), but that's not memory — it's a keystore.
+
+Mem0 solves a layer above: the agent's own learning and personalization across sessions. This is complementary to Run402's data layer (Postgres stores the app's data, Mem0 stores the agent's memory about the app).
+
+### Pattern comparison — the full agent stack
+
+| Layer | Product | What it stores |
+|-------|---------|---------------|
+| **Agent memory** | Mem0 | Agent's learned context, user preferences, past decisions |
+| **App database** | Run402 | Application data (tables, rows, user records) |
+| **App hosting** | Run402 / here.now | Static sites, frontend assets |
+| **App functions** | Run402 | Serverless backend logic |
+| **Communication** | AgentMail / AgentPhone / Kapso | Email, phone, WhatsApp |
+| **Compute** | PaperPod | Code execution, data processing |
+| **Payments** | Kite / Sponge (see below) | Agent wallets, transactions |
+
+### What Run402 could learn
+
+1. **Memory compression is valuable** — Run402 functions that call LLMs could benefit from compressed conversation context. Not a Run402 feature, but worth being aware of for SKILL.md guidance.
+2. **Graph memory model** — structured relationships between memories. Could inform how Run402 thinks about agent state persistence if it ever adds a memory layer.
+3. **Startup program** — 3 months free Pro for startups under $5M funding. Run402 could offer a similar program for early agent builders.
+
+---
+---
+
+# Kite & Sponge — Adjacent Product Analysis (Agent Payments)
+
+_Added: 2026-03-26_
+
+## TL;DR
+
+Kite and Sponge solve the same problem from different angles: **how do AI agents pay for things?** This is directly relevant to Run402 because x402/MPP payment is core to Run402's model. These products are potential partners, potential competitors to Run402's payment rail, and validation that agent payments are a real category.
+
+---
+
+## Kite (GoKiteAI)
+
+### What it is
+
+A Layer 1 blockchain purpose-built for AI agents. Three components:
+
+1. **Agentic Network** — marketplace for discovering and using AI agents (shopping, groceries, rides)
+2. **Build Framework** — gives agents cryptographic identity, programmable governance, stablecoin transactions
+3. **Chain** — L1 blockchain with Proof of Artificial Intelligence (PoAI) consensus
+
+### Key specs
+
+- Gas fees: < $0.000001
+- Block time: 1 second
+- 17.8M "agent passports" issued
+- 1.7B total agent interactions
+- Mainnet: coming soon (testnet "Ozone" live)
+
+### How it compares to Run402's payment model
+
+| | Run402 (x402/MPP) | Kite |
+|---|---|---|
+| **Approach** | HTTP payment headers on standard APIs | Dedicated L1 blockchain |
+| **Identity** | Wallet address (EIP-4361) | "Agent passports" (cryptographic) |
+| **Governance** | Hard-capped budgets set by human | Programmable governance policies |
+| **Payment** | USDC on Base / pathUSD on Tempo | Native stablecoin on Kite chain |
+| **Integration** | Standard HTTP (x402 header) | Kite SDK + chain interactions |
+| **Status** | Live in production | Testnet only, mainnet coming soon |
+
+Kite is much more ambitious (entire blockchain) but much further from production. Run402 uses existing chains (Base, Tempo) with lightweight HTTP-level payment — simpler, already live.
+
+---
+
+## Sponge (PaySponge)
+
+### What it is
+
+Financial infrastructure for the agent economy — YC-backed. Gives agents wallets to pay, invest, and earn money using fiat and crypto.
+
+### Key features
+
+- **Agent wallets** — dedicated accounts for agents to hold and spend money
+- **Merchant gateway** — businesses accept payments from agents without human interaction
+- **Spending controls** — per-day budgets, per-transaction caps, approved vendor domains
+- **Multi-chain** — Base, Solana, Tempo
+- **Developer integration** — TypeScript SDK + MCP support, works with Claude Code and OpenAI Codex
+
+### How it compares to Run402's payment model
+
+| | Run402 (x402/MPP) | Sponge |
+|---|---|---|
+| **Approach** | Protocol-level (HTTP 402 + payment header) | Wallet-as-a-service |
+| **Who holds funds** | Agent's own wallet (allowance) | Sponge-managed agent wallet |
+| **Spending controls** | Hard cap on allowance balance | Per-day limits, per-tx caps, vendor allowlists |
+| **Chains** | Base, Tempo | Base, Solana, Tempo |
+| **Integration** | `@x402/fetch` or MCP tool | TypeScript SDK + MCP |
+| **Merchant side** | Server adds x402 middleware | Sponge merchant gateway |
+| **Fiat support** | Stripe credits as fallback | Fiat + crypto wallets |
+
+Sponge is **very close to Run402's allowance model** but as a standalone product. Run402 bundles payment into the infrastructure (the agent pays Run402 directly). Sponge is a general-purpose payment layer the agent uses to pay anyone.
+
+### Relationship to Run402
+
+Sponge supports **Base and Tempo** — the same chains Run402 uses for x402 and MPP. A Sponge-powered agent could pay Run402 via x402 or MPP using its Sponge wallet. They're not competing — Sponge is a wallet provider, Run402 is a merchant.
+
+In fact, Sponge's spending controls (per-day limits, vendor allowlists) are a more sophisticated version of what Run402 calls "hard-capped budgets." If Sponge became the standard agent wallet, Run402 would be a merchant in the Sponge ecosystem.
+
+### Open protocols vs proprietary platform
+
+The key distinction: **Run402's payment model is standards-based, Sponge's is proprietary.**
+
+Run402 uses:
+- **x402** — open HTTP protocol. Any server adds x402 middleware, any client pays. It's an HTTP 402 response with payment instructions + a payment header on retry. Not Run402-specific.
+- **MPP** — Stripe's Machine Payments Protocol on Tempo. Also open.
+- **Stripe credits** — standard Stripe checkout.
+- **The allowance** — just a local wallet (private key) that produces standard EIP-191 signatures. Any x402-compatible service accepts it.
+
+Sponge uses:
+- **Proprietary SDK** — TypeScript SDK with Sponge-specific API calls.
+- **Proprietary merchant gateway** — businesses integrate Sponge's gateway, not an open protocol.
+- **Sponge-managed wallets** — agent's funds live in Sponge's system.
+
+An agent with an x402-capable wallet can already pay Run402, PaperPod (accepts x402 top-ups), and any future service that adopts x402 — without being locked into any wallet provider. The wallet isn't Run402-specific, it's protocol-specific.
+
+Sponge is building a **platform** with richer features (spending controls, vendor allowlists, fiat + crypto) but with lock-in. Run402 is betting that the **protocol layer wins** — x402 becomes the standard, wallets are interchangeable.
+
+| | x402 / MPP (Run402's approach) | Sponge |
+|---|---|---|
+| **Protocol** | Open standard (HTTP 402) | Proprietary SDK + gateway |
+| **Wallet** | Any EVM wallet works | Sponge-managed wallet |
+| **Merchant integration** | Add middleware to HTTP server | Integrate Sponge merchant gateway |
+| **Spending controls** | Balance = hard cap (simple) | Per-day, per-tx, vendor allowlists (richer) |
+| **Lock-in** | None — switch wallets, switch chains | Tied to Sponge ecosystem |
+| **Interoperability** | Any x402 merchant, any x402 wallet | Only Sponge merchants + Sponge wallets |
+
+The spending controls gap is real — x402's "your balance is your limit" is crude compared to Sponge's granular controls. But that can be added at the wallet/allowance level without changing the protocol. The protocol stays open; the wallet software gets smarter.
+
+### What Run402 could learn
+
+1. **Richer spending controls** — per-day limits, per-transaction caps, vendor allowlists. Implement at the allowance layer, not the protocol layer. The x402 protocol stays unchanged.
+2. **Merchant gateway framing** — Sponge frames the vendor side as a "gateway." Run402's x402 middleware is effectively this, but not marketed as a reusable product.
+3. **Multi-chain from day one** — Sponge supports Base + Solana + Tempo. Run402 supports Base + Tempo. Solana is a gap given AI agent activity there.
+4. **MCP for payments** — Sponge has MCP support for wallet management. Run402's allowance management is via CLI scripts, not MCP tools.
+
+---
+
+## The Emerging Agent Infrastructure Map
+
+| Layer | Products | Run402's role |
+|-------|----------|---------------|
+| **Payments** | x402, MPP, Sponge, Kite | Run402 is both merchant (accepts payment) and provides allowance (manages wallet) |
+| **Memory** | Mem0 | Run402 stores app data; Mem0 stores agent memory |
+| **Database + Backend** | Run402, InsForge, Xano | Run402's core |
+| **Hosting** | Run402, here.now | Run402's feature |
+| **Compute** | PaperPod, agentic.hosting | Complementary |
+| **Email** | AgentMail, Run402 (basic) | Run402 has basic email; AgentMail is the full solution |
+| **Phone** | AgentPhone | Complementary |
+| **WhatsApp** | Kapso | Complementary |
