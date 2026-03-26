@@ -25,6 +25,7 @@ import { initSlots } from "./services/slots.js";
 import { startLeaseChecker, stopLeaseChecker } from "./services/leases.js";
 import { startFaucetRefill, stopFaucetRefill } from "./services/faucet.js";
 import { startDemoResetChecker, stopDemoResetChecker } from "./services/demo.js";
+import { startScheduler, stopScheduler } from "./services/scheduler.js";
 import { initIdempotencyTable, idempotencyMiddleware } from "./middleware/idempotency.js";
 import { initDeploymentsTable } from "./services/deployments.js";
 import { initSubdomainsTable } from "./services/subdomains.js";
@@ -1086,6 +1087,7 @@ async function start() {
   startLeaseChecker();
   startFaucetRefill();
   startDemoResetChecker();
+  await startScheduler();
   oauthCleanupInterval = setInterval(cleanupExpiredOAuthData, 3600_000);
 
   server = app.listen(PORT, () => {
@@ -1115,6 +1117,7 @@ async function shutdown(signal: string) {
   stopLeaseChecker();
   stopFaucetRefill();
   stopDemoResetChecker();
+  stopScheduler();
   if (oauthCleanupInterval) clearInterval(oauthCleanupInterval);
 
   // Flush metering counters

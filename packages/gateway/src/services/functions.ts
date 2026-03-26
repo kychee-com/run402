@@ -223,6 +223,19 @@ export async function initFunctionsTable(): Promise<void> {
     CREATE INDEX IF NOT EXISTS idx_secrets_project
       ON internal.secrets(project_id)
   `));
+  // Add schedule columns (safe to re-run — IF NOT EXISTS semantics via DO block)
+  await pool.query(sql(`
+    DO $$ BEGIN
+      ALTER TABLE internal.functions ADD COLUMN schedule TEXT;
+    EXCEPTION WHEN duplicate_column THEN NULL;
+    END $$
+  `));
+  await pool.query(sql(`
+    DO $$ BEGIN
+      ALTER TABLE internal.functions ADD COLUMN schedule_meta JSONB;
+    EXCEPTION WHEN duplicate_column THEN NULL;
+    END $$
+  `));
 }
 
 /**
@@ -619,7 +632,7 @@ export async function invokeBootstrap(
  */
 export async function listFunctions(projectId: string, apiBase: string): Promise<FunctionRecord[]> {
   const result = await pool.query(
-    sql(`SELECT name, lambda_arn, runtime, timeout_seconds, memory_mb, code_hash, deps, created_at, updated_at
+    sql(`SELECT name, lambda_arn, runtime, timeout_seconds, memory_mb, code_hash, deps, schedule, schedule_meta, created_at, updated_at
      FROM internal.functions WHERE project_id = $1 ORDER BY name`),
     [projectId],
   );
@@ -632,6 +645,8 @@ export async function listFunctions(projectId: string, apiBase: string): Promise
     memory: row.memory_mb,
     code_hash: row.code_hash,
     deps: row.deps || [],
+    schedule: row.schedule ?? null,
+    schedule_meta: row.schedule_meta ?? null,
     created_at: row.created_at,
     updated_at: row.updated_at,
   }));

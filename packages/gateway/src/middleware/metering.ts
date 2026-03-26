@@ -61,6 +61,25 @@ export function meteringMiddleware(req: Request, res: Response, next: NextFuncti
 }
 
 /**
+ * Increment the API call counter for a project (used by scheduler for cron invocations).
+ */
+export function incrementProjectCalls(projectId: string): void {
+  let counter = counters.get(projectId);
+  if (!counter) {
+    counter = { apiCalls: 0, lastFlushed: Date.now() };
+    counters.set(projectId, counter);
+  }
+  counter.apiCalls++;
+}
+
+/**
+ * Get the in-memory API call count for a project (unflushed portion).
+ */
+export function getProjectCallCount(projectId: string): number {
+  return counters.get(projectId)?.apiCalls ?? 0;
+}
+
+/**
  * Flush in-memory counters to the database.
  * Called on interval and during graceful shutdown.
  */

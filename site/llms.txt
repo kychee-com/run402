@@ -724,6 +724,7 @@ For explicit control, use both `apikey` (project key) and `Authorization: Bearer
 | `/projects/v1/admin/:id/functions` | POST | service_key | Deploy a function (`{ name, code, config?, deps? }`). Blocked in demo mode. |
 | `/projects/v1/admin/:id/functions` | GET | service_key | List deployed functions. |
 | `/projects/v1/admin/:id/functions/:name` | DELETE | service_key | Delete a function. |
+| `/projects/v1/admin/:id/functions/:name/trigger` | POST | service_key | Manually trigger a function (same as cron tick). Returns `{ status, body }`. |
 | `/projects/v1/admin/:id/functions/:name/logs` | GET | service_key | Get function logs. `?tail=N` (default 50). |
 | `/projects/v1/admin/:id/secrets` | POST | service_key | Set a secret (`{ "key": "...", "value": "..." }`). Blocked in demo mode. |
 | `/projects/v1/admin/:id/secrets` | GET | service_key | List secrets (keys + `value_hash` — first 8 hex chars of SHA-256 for debugging, values not exposed). |

@@ -2913,6 +2913,68 @@
         }
       }
     },
+    "/projects/v1/admin/{id}/functions/{name}/trigger": {
+      "post": {
+        "tags": [
+          "Functions"
+        ],
+        "summary": "Manually trigger a function",
+        "description": "Invoke a function immediately, same as a cron tick. Returns the function's response status and body. Updates schedule_meta if the function has a schedule.",
+        "operationId": "triggerFunction",
+        "security": [
+          {
+            "serviceKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Function invocation result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "integer",
+                      "description": "HTTP status code from the function"
+                    },
+                    "body": {
+                      "type": "string",
+                      "description": "Response body from the function"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Function not found"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
     "/projects/v1/admin/{id}/functions/{name}/logs": {
       "get": {
         "tags": [

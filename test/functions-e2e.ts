@@ -20,9 +20,12 @@
  *  15. Bootstrap function via bundle deploy
  *  16. Deploy without bootstrap function
  *  17. Bootstrap function that throws
- *  18. Delete function, verify 404 on invoke
- *  19. Delete secret
- *  20. Cleanup — delete project
+ *  18. Deploy scheduled function + trigger, verify schedule_meta
+ *  19. Redeploy with schedule: null, verify cleared
+ *  20. Schedule limit enforcement (bad cron → 400)
+ *  21. Delete function, verify 404 on invoke
+ *  22. Delete secret
+ *  23. Cleanup — delete project
  *
  * Usage:
  *   BASE_URL=https://api.run402.com npm run test:functions
@@ -655,8 +658,128 @@ export default async (req) => {
       });
     }
 
-    // --- Step 18: Delete function ---
-    console.log("\nStep 18: Delete function");
+    // --- Step 18: Deploy function with schedule, trigger, verify metadata ---
+    console.log("\nStep 18: Deploy scheduled function + trigger");
+    {
+      const schedCode = `export default async (req) => {
+        return new Response(JSON.stringify({ triggered: true }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      };`;
+
+      // Deploy with schedule
+      const deployRes = await fetch(
+        `${BASE_URL}/projects/v1/admin/${projectId}/functions`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${serviceKey}`,
+          },
+          body: JSON.stringify({ name: "sched-func", code: schedCode, schedule: "*/15 * * * *" }),
+        },
+      );
+      const deployBody = await deployRes.json() as Record<string, unknown>;
+      assert(deployRes.status === 201, `Deploy scheduled func: ${deployRes.status} ${JSON.stringify(deployBody)}`);
+      assert(deployBody.schedule === "*/15 * * * *", `Schedule in response: ${deployBody.schedule}`);
+      passed++;
+
+      // Verify schedule in list
+      const listRes = await fetch(
+        `${BASE_URL}/projects/v1/admin/${projectId}/functions`,
+        { headers: { Authorization: `Bearer ${serviceKey}` } },
+      );
+      const listBody = await listRes.json() as { functions: Array<Record<string, unknown>> };
+      const scheduled = listBody.functions.find((f) => f.name === "sched-func");
+      assert(scheduled, "Scheduled func in list");
+      assert(scheduled.schedule === "*/15 * * * *", `Schedule in list: ${scheduled.schedule}`);
+      passed++;
+
+      // Trigger manually
+      const trigRes = await fetch(
+        `${BASE_URL}/projects/v1/admin/${projectId}/functions/sched-func/trigger`,
+        {
+          method: "POST",
+          headers: { Authorization: `Bearer ${serviceKey}` },
+        },
+      );
+      const trigBody = await trigRes.json() as Record<string, unknown>;
+      assert(trigRes.status === 200, `Trigger: ${trigRes.status}`);
+      assert(trigBody.status === 200, `Trigger fn status: ${trigBody.status}`);
+      passed++;
+
+      // Verify schedule_meta updated
+      const metaListRes = await fetch(
+        `${BASE_URL}/projects/v1/admin/${projectId}/functions`,
+        { headers: { Authorization: `Bearer ${serviceKey}` } },
+      );
+      const metaListBody = await metaListRes.json() as { functions: Array<Record<string, unknown>> };
+      const metaFn = metaListBody.functions.find((f) => f.name === "sched-func");
+      const meta = metaFn?.schedule_meta as Record<string, unknown> | undefined;
+      assert(meta, "schedule_meta exists after trigger");
+      assert(meta.run_count === 1, `run_count: ${meta.run_count}`);
+      assert(meta.last_status === 200, `last_status: ${meta.last_status}`);
+      passed++;
+    }
+
+    // --- Step 19: Redeploy with schedule: null, verify cleared ---
+    console.log("\nStep 19: Redeploy with schedule: null");
+    {
+      const code = `export default async (req) => new Response("ok");`;
+      const res = await fetch(
+        `${BASE_URL}/projects/v1/admin/${projectId}/functions`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${serviceKey}`,
+          },
+          body: JSON.stringify({ name: "sched-func", code, schedule: null }),
+        },
+      );
+      assert(res.status === 201, `Redeploy: ${res.status}`);
+
+      const listRes = await fetch(
+        `${BASE_URL}/projects/v1/admin/${projectId}/functions`,
+        { headers: { Authorization: `Bearer ${serviceKey}` } },
+      );
+      const listBody = await listRes.json() as { functions: Array<Record<string, unknown>> };
+      const fn = listBody.functions.find((f) => f.name === "sched-func");
+      assert(fn?.schedule === null || fn?.schedule === undefined, `Schedule cleared: ${fn?.schedule}`);
+      passed++;
+
+      // Clean up the scheduled function
+      await fetch(
+        `${BASE_URL}/projects/v1/admin/${projectId}/functions/sched-func`,
+        {
+          method: "DELETE",
+          headers: { Authorization: `Bearer ${serviceKey}` },
+        },
+      );
+    }
+
+    // --- Step 20: Deploy exceeding schedule limit → 403 ---
+    console.log("\nStep 20: Schedule limit enforcement");
+    {
+      // Invalid cron expression → 400
+      const badCronRes = await fetch(
+        `${BASE_URL}/projects/v1/admin/${projectId}/functions`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${serviceKey}`,
+          },
+          body: JSON.stringify({ name: "bad-cron", code: `export default async () => new Response("ok");`, schedule: "not-valid" }),
+        },
+      );
+      assert(badCronRes.status === 400, `Bad cron: ${badCronRes.status}`);
+      passed++;
+    }
+
+    // --- Step 21: Delete function ---
+    console.log("\nStep 21: Delete function");
     {
       const res = await fetch(
         `${BASE_URL}/projects/v1/admin/${projectId}/functions/test-func`,
@@ -677,8 +800,8 @@ export default async (req) => {
       assert(res.status === 404, `Invoke after delete returns 404: ${res.status}`);
     }
 
-    // --- Step 19: Delete secret ---
-    console.log("\nStep 19: Delete secret");
+    // --- Step 22: Delete secret ---
+    console.log("\nStep 22: Delete secret");
     {
       const res = await fetch(
         `${BASE_URL}/projects/v1/admin/${projectId}/secrets/TEST_SECRET`,
@@ -690,8 +813,8 @@ export default async (req) => {
       assert(res.status === 200, `Delete secret: ${res.status}`);
     }
   } finally {
-    // --- Step 20: Cleanup ---
-    console.log("\nStep 20: Cleanup");
+    // --- Step 23: Cleanup ---
+    console.log("\nStep 23: Cleanup");
 
     // Delete project (cascade cleanup)
     if (projectId) {

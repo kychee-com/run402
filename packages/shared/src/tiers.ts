@@ -13,6 +13,8 @@ export const TIERS: Record<TierName, TierConfig> = {
     maxSecrets: 10,
     emailsPerDay: 10,
     uniqueRecipientsPerLease: 25,
+    maxScheduledFunctions: 1,
+    minScheduleIntervalMinutes: 15,
     description: "Prototype tier (FREE) — 7-day lease, 250MB storage, 500k API calls. Uses testnet USDC to verify wallet setup ($0 real money).",
   },
   hobby: {
@@ -27,6 +29,8 @@ export const TIERS: Record<TierName, TierConfig> = {
     maxSecrets: 50,
     emailsPerDay: 50,
     uniqueRecipientsPerLease: 200,
+    maxScheduledFunctions: 3,
+    minScheduleIntervalMinutes: 5,
     description: "Hobby tier — 30-day lease, 1GB storage, 5M API calls",
   },
   team: {
@@ -41,6 +45,8 @@ export const TIERS: Record<TierName, TierConfig> = {
     maxSecrets: 200,
     emailsPerDay: 200,
     uniqueRecipientsPerLease: 1000,
+    maxScheduledFunctions: 10,
+    minScheduleIntervalMinutes: 1,
     description: "Team tier — 30-day lease, 10GB storage, 50M API calls",
   },
 };

@@ -867,12 +867,14 @@ describe("initFunctionsTable", () => {
 
     await initFunctionsTable();
 
-    // Should have 4 queries: CREATE TABLE functions, CREATE INDEX, CREATE TABLE secrets, CREATE INDEX
-    assert.equal(queries.length, 4);
+    // Should have 6 queries: CREATE TABLE functions, CREATE INDEX, CREATE TABLE secrets, CREATE INDEX, ALTER TABLE schedule, ALTER TABLE schedule_meta
+    assert.equal(queries.length, 6);
     assert.ok(queries[0].includes("CREATE TABLE IF NOT EXISTS internal.functions"));
     assert.ok(queries[1].includes("CREATE INDEX IF NOT EXISTS idx_functions_project"));
     assert.ok(queries[2].includes("CREATE TABLE IF NOT EXISTS internal.secrets"));
     assert.ok(queries[3].includes("CREATE INDEX IF NOT EXISTS idx_secrets_project"));
+    assert.ok(queries[4].includes("ADD COLUMN schedule"));
+    assert.ok(queries[5].includes("ADD COLUMN schedule_meta"));
   });
 });
 

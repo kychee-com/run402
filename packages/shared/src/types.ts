@@ -59,6 +59,8 @@ export interface TierConfig {
   maxSecrets: number;
   emailsPerDay: number;
   uniqueRecipientsPerLease: number;
+  maxScheduledFunctions: number;
+  minScheduleIntervalMinutes: number;
   description: string;
 }
 
@@ -184,6 +186,14 @@ export interface MeteringCounter {
 
 // === Functions types ===
 
+export interface ScheduleMeta {
+  last_run_at?: string;
+  last_status?: number;
+  next_run_at?: string | null;
+  run_count: number;
+  last_error?: string | null;
+}
+
 export interface FunctionRecord {
   name: string;
   url: string;
@@ -193,6 +203,8 @@ export interface FunctionRecord {
   memory: number;
   code_hash: string;
   deps: string[];
+  schedule?: string | null;
+  schedule_meta?: ScheduleMeta | null;
   created_at: string;
   updated_at: string;
 }

@@ -14,6 +14,13 @@ import {
   listSecrets,
   FunctionError,
 } from "../services/functions.js";
+import {
+  isValidCron,
+  getCronIntervalMinutes,
+  registerSchedule,
+  cancelSchedule,
+  triggerFunction,
+} from "../services/scheduler.js";
 import { asyncHandler, HttpError } from "../utils/async-handler.js";
 import { validatePaginationInt } from "../utils/validate.js";
 import { serviceKeyAuth } from "../middleware/apikey.js";
@@ -68,7 +75,7 @@ router.post(
   demoBlockedMiddleware("Function deployment"),
   asyncHandler(async (req: Request, res: Response) => {
     const projectId = req.params.id as string;
-    const { name, code, config, deps } = req.body || {};
+    const { name, code, config, deps, schedule } = req.body || {};
 
     if (!name || typeof name !== "string") {
       throw new HttpError(400, "Missing or invalid 'name' field");
@@ -80,8 +87,38 @@ router.post(
       throw new HttpError(400, "'deps' must be an array of package names");
     }
 
+    // Validate schedule if provided
+    const scheduleExpr: string | null = schedule != null && schedule !== "" ? schedule : null;
+    if (scheduleExpr !== null) {
+      if (typeof scheduleExpr !== "string") {
+        throw new HttpError(400, "'schedule' must be a cron expression string");
+      }
+      if (!isValidCron(scheduleExpr)) {
+        throw new HttpError(400, `Invalid cron expression: "${scheduleExpr}". Use standard 5-field cron syntax (e.g., "*/15 * * * *").`);
+      }
+    }
+
     const project = req.project!;
     const tier = TIERS[project.tier];
+
+    // Validate schedule tier limits
+    if (scheduleExpr !== null) {
+      // Check minimum interval
+      const intervalMinutes = getCronIntervalMinutes(scheduleExpr);
+      if (intervalMinutes < tier.minScheduleIntervalMinutes) {
+        throw new HttpError(403, `Schedule interval too frequent (${intervalMinutes}min). Your ${project.tier} tier requires at least ${tier.minScheduleIntervalMinutes} minutes between runs.`);
+      }
+
+      // Check scheduled function count
+      const { rows } = await pool.query(
+        sql(`SELECT count(*)::int AS cnt FROM internal.functions WHERE project_id = $1 AND schedule IS NOT NULL AND name != $2`),
+        [projectId, name],
+      );
+      if (rows[0].cnt >= tier.maxScheduledFunctions) {
+        throw new HttpError(403, `Scheduled function limit reached (${tier.maxScheduledFunctions} for your ${project.tier} tier). Remove a schedule or upgrade.`);
+      }
+    }
+
     const apiBase = `${req.protocol}://${req.get("host")}`;
     // Extract service key from the Authorization header (serviceKeyAuth already validated it)
     const serviceKey = (req.headers.authorization || "").replace("Bearer ", "");
@@ -97,6 +134,23 @@ router.post(
         deps,
         tier,
       );
+
+      // Persist schedule to DB and register/cancel cron timer
+      if (scheduleExpr !== null) {
+        await pool.query(
+          sql(`UPDATE internal.functions SET schedule = $3, schedule_meta = COALESCE(schedule_meta, '{"run_count": 0}'::jsonb) WHERE project_id = $1 AND name = $2`),
+          [projectId, name, scheduleExpr],
+        );
+        registerSchedule(projectId, name, scheduleExpr);
+      } else if (schedule === null) {
+        // Explicit null = remove schedule
+        await pool.query(
+          sql(`UPDATE internal.functions SET schedule = NULL, schedule_meta = NULL WHERE project_id = $1 AND name = $2`),
+          [projectId, name],
+        );
+        cancelSchedule(projectId, name);
+      }
+
       res.status(201).json({
         name: fn.name,
         url: fn.url,
@@ -104,6 +158,7 @@ router.post(
         runtime: fn.runtime,
         timeout: fn.timeout,
         memory: fn.memory,
+        schedule: scheduleExpr,
         created_at: fn.created_at,
       });
     } catch (err: unknown) {
@@ -129,6 +184,8 @@ router.get(
         runtime: fn.runtime,
         timeout: fn.timeout,
         memory: fn.memory,
+        schedule: fn.schedule,
+        schedule_meta: fn.schedule_meta,
         created_at: fn.created_at,
         updated_at: fn.updated_at,
       })),
@@ -142,11 +199,32 @@ router.delete(
   serviceKeyAuth,
   asyncHandler(async (req: Request, res: Response) => {
     try {
+      cancelSchedule(req.params.id as string, req.params.name as string);
       await deleteFunction(req.params.id as string, req.params.name as string);
       res.json({ status: "deleted", name: req.params.name });
     } catch (err: unknown) {
       if (err instanceof FunctionError) {
         throw new HttpError(err.statusCode, err.message);
+      }
+      throw err;
+    }
+  }),
+);
+
+// POST /projects/v1/admin/:id/functions/:name/trigger — manually trigger a function
+router.post(
+  "/projects/v1/admin/:id/functions/:name/trigger",
+  serviceKeyAuth,
+  asyncHandler(async (req: Request, res: Response) => {
+    try {
+      const result = await triggerFunction(req.params.id as string, req.params.name as string);
+      res.json({ status: result.status, body: result.body });
+    } catch (err: unknown) {
+      if (err instanceof FunctionError) {
+        throw new HttpError(err.statusCode, err.message);
+      }
+      if (err instanceof Error && err.message === "Function not found") {
+        throw new HttpError(404, "Function not found");
       }
       throw err;
     }
