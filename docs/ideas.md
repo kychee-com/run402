@@ -49,3 +49,22 @@ No CloudFront Function or Lambda@Edge needed — the gateway already mediates al
 **Why:** Common agent workflow: generate a single artifact (chart, report, recording) and share it. The auto-viewer adds a nice frame with title/description instead of raw file rendering. Small polish, good UX for the "instant sharing" use case.
 
 **Implementation:** In the subdomain middleware / CloudFront Function: if the deployment has exactly one file and it's not `index.html`, wrap it in an HTML viewer template. Could be a simple HTML page with appropriate embed (`<img>`, `<video>`, `<iframe>` for PDF, `<audio>`). The template could be a static HTML file in S3 that gets the file URL injected.
+
+---
+
+## OWS Wallet Integration (When/If It Becomes a Standard)
+
+**Source:** Open Wallet Standard (OWS) by MoonPay — local-first, multi-chain wallet framework with encrypted key storage, policy-gated agent signing, and x402 support. See `docs/compare.md` for full analysis.
+
+**Why:** Run402's current allowance system (`~/.config/run402/allowance.json`) stores a raw private key in a plaintext JSON file. OWS provides encrypted storage (AES-256-GCM), policy-gated agent access (chain allowlists, spending limits, expiration), and a universal wallet that works with any x402 merchant — not just Run402.
+
+**When:** Not now. OWS is early (the `ows-pay` x402 crate is declared but empty). Run402's allowance works fine at current scale. Monitor for adoption — if OWS (or any wallet standard) gains traction as the default agent wallet, adopt it. The migration path is clean because Run402's merchant side (x402/MPP protocols) doesn't change — only the wallet layer swaps out.
+
+**What it would look like:**
+1. `run402 init` detects if an OWS wallet exists → uses it instead of creating a Run402-specific allowance
+2. Agent signs x402 payments via OWS policy-gated API token instead of Run402's raw private key
+3. Same OWS wallet pays Run402, PaperPod, and any other x402 merchant
+4. Spending controls (per-day limits, vendor allowlists) handled by OWS policies, not Run402
+5. Run402 removes its allowance management code and becomes purely a merchant
+
+**Key advantage:** Run402 uses open protocols (x402, MPP) — the wallet is interchangeable. Whether the agent pays with a Run402 allowance, an OWS wallet, a Coinbase AgentKit wallet, or a Sponge wallet, Run402's x402 middleware accepts the payment the same way. This is the benefit of being standards-based.

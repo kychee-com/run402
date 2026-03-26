@@ -1079,6 +1079,7 @@ The spending controls gap is real — x402's "your balance is your limit" is cru
 | Layer | Products | Run402's role |
 |-------|----------|---------------|
 | **Payments** | x402, MPP, Sponge, Kite | Run402 is both merchant (accepts payment) and provides allowance (manages wallet) |
+| **Wallets** | OWS (MoonPay), Coinbase AgentKit, Crossmint | Run402 has simple allowance; OWS could replace it |
 | **Memory** | Mem0 | Run402 stores app data; Mem0 stores agent memory |
 | **Database + Backend** | Run402, InsForge, Xano | Run402's core |
 | **Hosting** | Run402, here.now | Run402's feature |
@@ -1086,3 +1087,82 @@ The spending controls gap is real — x402's "your balance is your limit" is cru
 | **Email** | AgentMail, Run402 (basic) | Run402 has basic email; AgentMail is the full solution |
 | **Phone** | AgentPhone | Complementary |
 | **WhatsApp** | Kapso | Complementary |
+
+---
+---
+
+# Open Wallet Standard (OWS) — Adjacent Product Analysis
+
+_Added: 2026-03-26_
+
+## TL;DR
+
+OWS is a local-first, multi-chain wallet framework by MoonPay — encrypted key storage, policy-gated signing, 9-chain support, x402 integration. It's the wallet layer that could replace Run402's allowance system. Not a competitor — it's a wallet standard that Run402 would be a merchant on top of.
+
+---
+
+## What OWS Is
+
+A Rust library (with Node.js + Python bindings) that manages encrypted wallets locally. One BIP-39 mnemonic → accounts on 9 chains (EVM, Solana, Bitcoin, Cosmos, Tron, TON, Sui, Spark, Filecoin). Keys encrypted at rest (AES-256-GCM), decrypted only during signing, immediately wiped.
+
+The key innovation for agents: **policy-gated API tokens**. The wallet owner (human) creates policies (chain allowlists, spending limits, expiration) and issues an API token (`ows_key_...`) to the agent. The agent signs transactions through OWS without ever seeing the private key.
+
+### Architecture
+
+```
+Agent/CLI/App → Policy Engine → Signing Core → Encrypted Vault (~/.ows/wallets/)
+```
+
+Crates: `ows-core` (types), `ows-signer` (HD derivation + signing), `ows-lib` (main interface), `ows-pay` (x402 flows, early/empty), `ows-cli` (command line).
+
+### Key features
+
+- **9 chains** from one mnemonic (BIP-44 derivation)
+- **Policy engine** — declarative rules (allowed_chains, expires_at) or executable policies (custom subprocess)
+- **Agent API tokens** — `ows_key_...` bound to wallets + policies, token hash stored (never the full token)
+- **x402 support** — `ows pay request` / `ows pay discover` (early, ows-pay crate is declared but empty)
+- **MoonPay funding** — `ows fund deposit` converts fiat to USDC
+- **OpenClaw skill** — same distribution pattern as Run402
+
+### Pricing
+
+Open source (MIT). MoonPay monetizes via fiat on-ramp (funding flow).
+
+---
+
+## How OWS Relates to Run402
+
+### Run402 allowance vs OWS
+
+| | Run402 allowance | OWS |
+|---|---|---|
+| **Chains** | Base (EVM) + Tempo | 9 chains |
+| **Key storage** | JSON file with raw private key | AES-256-GCM encrypted vault |
+| **Agent access** | Whoever has the file | API tokens with policy-gated signing |
+| **Spending controls** | Balance = hard cap | Chain allowlists, expiration, custom policies |
+| **x402 support** | Yes (via `@x402/fetch`) | Yes (via `ows pay`, early) |
+| **Funding** | Faucet (testnet) or manual transfer | MoonPay (fiat → USDC) |
+
+### What it would mean for Run402
+
+If OWS becomes a standard, Run402's role simplifies:
+
+- **Run402 stays a merchant** — accepts x402/MPP payments, doesn't manage wallets
+- **OWS replaces the allowance** — the agent uses an OWS wallet instead of `~/.config/run402/allowance.json`
+- **Spending controls move to OWS** — the human sets policies in OWS, Run402 doesn't need to build them
+- **Key security moves to OWS** — encrypted vault > plaintext JSON file
+- **Same wallet pays everyone** — one OWS wallet for Run402, PaperPod, any x402 merchant
+
+The `run402 init` CLI command that generates an allowance wallet would become: "use your OWS wallet" or "create an OWS wallet if you don't have one."
+
+### Status and maturity
+
+- Rust core is substantial (~180KB, 5 crates)
+- Node.js + Python bindings published (`@open-wallet-standard/core` v1.1.0)
+- `ows-pay` (x402 integration) is **declared but empty** — no source yet
+- MoonPay is the backer
+- Listed on agentpaymentsstack.com in the Wallets layer
+
+### Assessment
+
+OWS is early but well-architected. The policy engine + agent API tokens are exactly what the "spending controls" gap needs. Run402 doesn't need to adopt OWS today — the allowance system works fine at current scale. But if OWS (or any wallet standard) gains adoption, Run402 can adopt it without changing the merchant side (x402/MPP protocols stay the same). The migration path is clean: swap the wallet, keep the protocol.
