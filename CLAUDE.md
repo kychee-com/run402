@@ -123,3 +123,4 @@ Tests mock `globalThis.fetch` and use temp directories for keystore isolation. E
 |----------|---------|---------|
 | `RUN402_API_BASE` | `https://api.run402.com` | API base URL (override for testing/staging) |
 | `RUN402_CONFIG_DIR` | `~/.config/run402` | Local credential storage directory |
+| `RUN402_ALLOWANCE_PATH` | `{config_dir}/allowance.json` | Custom allowance (wallet) file path |

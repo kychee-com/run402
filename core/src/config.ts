@@ -15,6 +15,7 @@ export function getKeystorePath(): string {
 }
 
 export function getAllowancePath(): string {
+  if (process.env.RUN402_ALLOWANCE_PATH) return process.env.RUN402_ALLOWANCE_PATH;
   const dir = getConfigDir();
   const newPath = join(dir, "allowance.json");
   const oldPath = join(dir, "wallet.json");

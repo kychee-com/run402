@@ -175,6 +175,7 @@ Project credentials are saved to `~/.config/run402/projects.json` with `0600` pe
 |----------|---------|-------------|
 | `RUN402_API_BASE` | `https://api.run402.com` | API base URL |
 | `RUN402_CONFIG_DIR` | `~/.config/run402` | Config directory for key storage |
+| `RUN402_ALLOWANCE_PATH` | `{config_dir}/allowance.json` | Custom allowance (wallet) file path |
 
 ## Development
 
