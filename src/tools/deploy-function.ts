@@ -22,6 +22,13 @@ export const deployFunctionSchema = {
     .array(z.string())
     .optional()
     .describe("Optional npm packages to install alongside pre-bundled packages"),
+  schedule: z
+    .string()
+    .nullable()
+    .optional()
+    .describe(
+      "Cron expression (5-field, e.g. '*/15 * * * *') to run the function on a schedule. Pass null to remove an existing schedule.",
+    ),
 };
 
 export async function handleDeployFunction(args: {
@@ -30,6 +37,7 @@ export async function handleDeployFunction(args: {
   code: string;
   config?: { timeout?: number; memory?: number };
   deps?: string[];
+  schedule?: string | null;
 }): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
   const project = getProject(args.project_id);
   if (!project) return projectNotFound(args.project_id);
@@ -44,6 +52,7 @@ export async function handleDeployFunction(args: {
       code: args.code,
       config: args.config,
       deps: args.deps,
+      ...(args.schedule !== undefined ? { schedule: args.schedule } : {}),
     },
   });
 
@@ -68,6 +77,7 @@ export async function handleDeployFunction(args: {
     runtime: string;
     timeout: number;
     memory: number;
+    schedule?: string | null;
     created_at: string;
   };
 
@@ -82,6 +92,7 @@ export async function handleDeployFunction(args: {
     `| runtime | ${body.runtime} |`,
     `| timeout | ${body.timeout}s |`,
     `| memory | ${body.memory}MB |`,
+    `| schedule | ${body.schedule ? `\`${body.schedule}\`` : "—"} |`,
     ``,
     `The function is live at **${body.url}**`,
     ``,

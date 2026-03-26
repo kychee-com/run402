@@ -1,0 +1,6 @@
+- [x] Add `schedule` parameter to `deploy_function` MCP tool schema, pass in request body, show in output table
+- [x] Add `schedule` and `schedule_meta` to `list_functions` MCP tool response type and output table (Schedule, Next Run, Last Run, Runs, Status columns; show last_error as note)
+- [x] Add `schedule` to function items in `bundle_deploy` MCP schema and type, show in output
+- [x] Add `--schedule` flag to CLI `functions deploy` subcommand and help text (empty string = `schedule: null`)
+- [x] Document scheduling in SKILL.md: `schedule` param on deploy_function, tier limits table, cron metering note
+- [x] Add unit test for `deploy_function` with schedule parameter

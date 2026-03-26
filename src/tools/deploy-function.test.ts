@@ -112,6 +112,97 @@ describe("deploy_function tool", () => {
     assert.ok(result.content[0]!.text.includes("limit"));
   });
 
+  it("passes schedule in request body and shows in output", async () => {
+    let capturedBody: string | undefined;
+    globalThis.fetch = (async (_url: string, init: RequestInit) => {
+      capturedBody = init.body as string;
+      return new Response(
+        JSON.stringify({
+          name: "send-reminders",
+          url: "https://test-api.run402.com/functions/v1/send-reminders",
+          status: "deployed",
+          runtime: "node22",
+          timeout: 10,
+          memory: 128,
+          schedule: "*/15 * * * *",
+          created_at: "2026-03-05T12:00:00Z",
+        }),
+        { status: 201, headers: { "Content-Type": "application/json" } },
+      );
+    }) as typeof fetch;
+
+    const result = await handleDeployFunction({
+      project_id: "proj-001",
+      name: "send-reminders",
+      code: 'export default async (req) => new Response("ok")',
+      schedule: "*/15 * * * *",
+    });
+
+    assert.equal(result.isError, undefined);
+    const parsed = JSON.parse(capturedBody!);
+    assert.equal(parsed.schedule, "*/15 * * * *");
+    assert.ok(result.content[0]!.text.includes("*/15 * * * *"));
+  });
+
+  it("passes schedule null to remove schedule", async () => {
+    let capturedBody: string | undefined;
+    globalThis.fetch = (async (_url: string, init: RequestInit) => {
+      capturedBody = init.body as string;
+      return new Response(
+        JSON.stringify({
+          name: "send-reminders",
+          url: "https://test-api.run402.com/functions/v1/send-reminders",
+          status: "deployed",
+          runtime: "node22",
+          timeout: 10,
+          memory: 128,
+          schedule: null,
+          created_at: "2026-03-05T12:00:00Z",
+        }),
+        { status: 201, headers: { "Content-Type": "application/json" } },
+      );
+    }) as typeof fetch;
+
+    const result = await handleDeployFunction({
+      project_id: "proj-001",
+      name: "send-reminders",
+      code: 'export default async (req) => new Response("ok")',
+      schedule: null,
+    });
+
+    assert.equal(result.isError, undefined);
+    const parsed = JSON.parse(capturedBody!);
+    assert.equal(parsed.schedule, null);
+  });
+
+  it("omits schedule from body when not provided", async () => {
+    let capturedBody: string | undefined;
+    globalThis.fetch = (async (_url: string, init: RequestInit) => {
+      capturedBody = init.body as string;
+      return new Response(
+        JSON.stringify({
+          name: "my-func",
+          url: "https://test-api.run402.com/functions/v1/my-func",
+          status: "deployed",
+          runtime: "node22",
+          timeout: 10,
+          memory: 128,
+          created_at: "2026-03-05T12:00:00Z",
+        }),
+        { status: 201, headers: { "Content-Type": "application/json" } },
+      );
+    }) as typeof fetch;
+
+    await handleDeployFunction({
+      project_id: "proj-001",
+      name: "my-func",
+      code: 'export default async (req) => new Response("ok")',
+    });
+
+    const parsed = JSON.parse(capturedBody!);
+    assert.equal("schedule" in parsed, false);
+  });
+
   it("returns isError when project not in keystore", async () => {
     const result = await handleDeployFunction({
       project_id: "nonexistent",

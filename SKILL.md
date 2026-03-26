@@ -177,6 +177,16 @@ Deploy a serverless function (Node 22) to a project. Functions are invoked via H
 - `code` (required) — TypeScript or JavaScript source code. Handler: `export default async (req: Request) => Response`
 - `config` (optional) — `{ timeout?: number, memory?: number }` — Timeout (seconds) and memory (MB), capped by tier
 - `deps` (optional) — Array of npm package names to install alongside pre-bundled packages
+- `schedule` (optional) — Cron expression (5-field, e.g. `"*/15 * * * *"`) to run the function on a schedule. Pass `null` to remove an existing schedule. Scheduled invocations count against API call quota.
+
+**Schedule tier limits:**
+
+| Tier | Max scheduled functions | Min interval |
+|------|------------------------|--------------|
+| Demo | 0 | — |
+| Prototype | 1 | 15 min |
+| Hobby | 3 | 5 min |
+| Team | 10 | 1 min |
 
 **Returns on success:**
 ```json
@@ -186,7 +196,8 @@ Deploy a serverless function (Node 22) to a project. Functions are invoked via H
   "status": "deployed",
   "runtime": "node22",
   "timeout": 10,
-  "memory": 128
+  "memory": 128,
+  "schedule": "*/15 * * * *"
 }
 ```
 

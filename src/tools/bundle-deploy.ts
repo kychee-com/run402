@@ -37,6 +37,10 @@ export const bundleDeploySchema = {
             memory: z.number().optional(),
           })
           .optional(),
+        schedule: z
+          .string()
+          .optional()
+          .describe("Cron expression (5-field) to run the function on a schedule"),
       }),
     )
     .optional()
@@ -62,7 +66,7 @@ export async function handleBundleDeploy(args: {
   migrations?: string;
   rls?: { template: string; tables: Array<{ table: string; owner_column?: string }> };
   secrets?: Array<{ key: string; value: string }>;
-  functions?: Array<{ name: string; code: string; config?: { timeout?: number; memory?: number } }>;
+  functions?: Array<{ name: string; code: string; config?: { timeout?: number; memory?: number }; schedule?: string }>;
   files?: Array<{ file: string; data: string; encoding?: string }>;
   subdomain?: string;
 }): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
@@ -126,7 +130,7 @@ export async function handleBundleDeploy(args: {
     };
     site_url?: string;
     deployment_id?: string;
-    functions?: Array<{ name: string; url: string }>;
+    functions?: Array<{ name: string; url: string; schedule?: string | null }>;
     subdomain_url?: string;
   };
 
@@ -168,7 +172,8 @@ export async function handleBundleDeploy(args: {
     lines.push(``);
     lines.push(`**Functions:**`);
     for (const fn of body.functions) {
-      lines.push(`- \`${fn.name}\` → ${fn.url}`);
+      const sched = fn.schedule ? ` (${fn.schedule})` : "";
+      lines.push(`- \`${fn.name}\` → ${fn.url}${sched}`);
     }
   }
 

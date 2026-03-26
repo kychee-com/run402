@@ -457,6 +457,8 @@ describe("llms.txt alignment", { skip: !llmsTxtAvailable && "~/dev/run402/site/l
       "DELETE /mailboxes/v1/:id",
       "POST /mailboxes/v1/:id/webhooks",
       "POST /mailboxes/v1/:id/status",
+      // Function trigger is a gateway testing endpoint, not exposed as a tool
+      "POST /projects/v1/admin/:id/functions/:name/trigger",
     ]);
 
     const uncovered = documented.filter(ep => {

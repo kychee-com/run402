@@ -8,7 +8,7 @@ Usage:
   run402 functions <subcommand> [args...]
 
 Subcommands:
-  deploy <id> <name> --file <file> [--timeout <s>] [--memory <mb>] [--deps <pkg,...>]
+  deploy <id> <name> --file <file> [--timeout <s>] [--memory <mb>] [--deps <pkg,...>] [--schedule <cron>]
                                        Deploy a function to a project
   invoke <id> <name> [--method <M>] [--body <json>]
                                        Invoke a deployed function
@@ -18,6 +18,8 @@ Subcommands:
 
 Examples:
   run402 functions deploy abc123 stripe-webhook --file handler.ts
+  run402 functions deploy abc123 send-reminders --file remind.ts --schedule '*/15 * * * *'
+  run402 functions deploy abc123 send-reminders --file remind.ts --schedule ''   # remove schedule
   run402 functions invoke abc123 stripe-webhook --body '{"event":"test"}'
   run402 functions logs abc123 stripe-webhook --tail 100
   run402 functions list abc123
@@ -30,12 +32,13 @@ Notes:
 
 async function deploy(projectId, name, args) {
   const p = findProject(projectId);
-  const opts = { file: null, timeout: undefined, memory: undefined, deps: undefined };
+  const opts = { file: null, timeout: undefined, memory: undefined, deps: undefined, schedule: undefined };
   for (let i = 0; i < args.length; i++) {
     if (args[i] === "--file" && args[i + 1]) opts.file = args[++i];
     if (args[i] === "--timeout" && args[i + 1]) opts.timeout = parseInt(args[++i]);
     if (args[i] === "--memory" && args[i + 1]) opts.memory = parseInt(args[++i]);
     if (args[i] === "--deps" && args[i + 1]) opts.deps = args[++i].split(",");
+    if (args[i] === "--schedule" && i + 1 < args.length) opts.schedule = args[++i];
   }
   if (!opts.file) { console.error(JSON.stringify({ status: "error", message: "Missing --file <file>" })); process.exit(1); }
   const code = readFileSync(opts.file, "utf-8");
@@ -44,6 +47,7 @@ async function deploy(projectId, name, args) {
   if (opts.timeout) body.config.timeout = opts.timeout;
   if (opts.memory) body.config.memory = opts.memory;
   if (opts.deps) body.deps = opts.deps;
+  if (opts.schedule !== undefined) body.schedule = opts.schedule === "" ? null : opts.schedule;
 
   const fetchPaid = await setupPaidFetch();
   const res = await fetchPaid(`${API}/projects/v1/admin/${projectId}/functions`, {
