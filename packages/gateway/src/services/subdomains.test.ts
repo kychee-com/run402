@@ -23,11 +23,14 @@ mock.module("./deployments.js", {
   },
 });
 
+let mockGetProjectById: (id: string) => Promise<any>;
+
 mock.module("./projects.js", {
   namedExports: {
     projectCache: {
       get: (id: string) => mockProjectCacheGet(id),
     },
+    getProjectById: (id: string) => mockGetProjectById(id),
   },
 });
 
@@ -176,6 +179,8 @@ describe("createOrUpdateSubdomain — ownership", () => {
     mockGetDeployment = async () => ({ id: "dpl_new" });
     // Default: no cached project
     mockProjectCacheGet = () => undefined;
+    // Default: project lookup returns null (not found)
+    mockGetProjectById = async () => null;
   });
 
   it("succeeds when subdomain is new (no existing record)", async () => {
