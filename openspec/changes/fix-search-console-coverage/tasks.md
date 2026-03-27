@@ -8,7 +8,7 @@
 ## 2. Use-Cases Index Page
 
 - [x] 2.1 Create `site/use-cases/index.html` with links to all 4 use-case pages, matching site styling
-- [ ] 2.2 Verify `/use-cases` resolves to the new page locally (or via curl after deploy)
+- [x] 2.2 Verify `/use-cases` resolves to the new page locally (or via curl after deploy)
 
 ## 3. Custom 404 Error Page
 
@@ -17,6 +17,6 @@
 
 ## 4. Deploy & Verify
 
-- [ ] 4.1 Push site changes to S3 (via git push to main, or manual `aws s3 sync`)
-- [ ] 4.2 Deploy CDK Site stack for the CloudFront error response config
-- [ ] 4.3 Verify `/use-cases` returns 200, `/nonexistent` returns 404 with branded page, and sitemap is correct
+- [x] 4.1 Push site changes to S3 (via git push to main, or manual `aws s3 sync`)
+- [x] 4.2 Deploy CDK Site stack for the CloudFront error response config
+- [x] 4.3 Verify `/use-cases` returns 200, `/nonexistent` returns 404 with branded page, and sitemap is correct
