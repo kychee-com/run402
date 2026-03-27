@@ -478,9 +478,11 @@ describe("createProject", () => {
     const project = await createProject("DB Test", "team", "0xhash", "0xaddr");
     assert.ok(project);
 
-    // The INSERT query should have been called
-    assert.equal(queries.length, 1);
-    const insertParams = queries[0].params;
+    // 7 resetSchemaSlot queries (DROP, CREATE, GRANT, 4x ALTER DEFAULT PRIVILEGES) + 1 INSERT
+    assert.equal(queries.length, 8);
+    const insertQuery = queries[7];
+    assert.ok(insertQuery.sql.includes("INSERT INTO internal.projects"));
+    const insertParams = insertQuery.params;
     assert.equal(insertParams[0], project.id); // id
     assert.equal(insertParams[1], "DB Test"); // name
     assert.equal(insertParams[2], "p0042"); // schema_slot
@@ -501,9 +503,9 @@ describe("createProject", () => {
     assert.equal(project.txHash, undefined);
     assert.equal(project.walletAddress, undefined);
 
-    // DB should receive null for optional fields
-    assert.equal(queries[0].params[4], null); // tx_hash
-    assert.equal(queries[0].params[5], null); // wallet_address
+    // DB should receive null for optional fields (INSERT is the 8th query after 7 resetSchemaSlot queries)
+    assert.equal(queries[7].params[4], null); // tx_hash
+    assert.equal(queries[7].params[5], null); // wallet_address
   });
 });
 
