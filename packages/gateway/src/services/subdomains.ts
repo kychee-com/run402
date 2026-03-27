@@ -8,7 +8,7 @@
 import { pool } from "../db/pool.js";
 import { sql } from "../db/sql.js";
 import { getDeployment } from "./deployments.js";
-import { projectCache } from "./projects.js";
+import { projectCache, getProjectById } from "./projects.js";
 
 export interface SubdomainRecord {
   name: string;
@@ -245,7 +245,11 @@ export async function deleteSubdomain(name: string, projectId?: string | null): 
     const existing = await getSubdomain(name);
     if (!existing) return false;
     if (existing.project_id && existing.project_id !== projectId) {
-      throw new SubdomainError("Subdomain owned by different project", 403);
+      // Allow deletion if the owning project is archived/gone (orphaned subdomain)
+      const owner = await getProjectById(existing.project_id);
+      if (owner && owner.status !== "archived") {
+        throw new SubdomainError("Subdomain owned by different project", 403);
+      }
     }
   }
 
