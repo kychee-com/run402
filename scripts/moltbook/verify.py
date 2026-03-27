@@ -15,7 +15,7 @@ FALSE_POSITIVES = {
         "written", "intensity", "intense", "intens", "content", "tent",
         "sentence", "attention", "potential", "patent", "latent", "intent",
         "extent", "extend", "competent", "consistent", "persistent", "existent",
-        "encounter", "encounters", "then", "whaten",
+        "encounter", "encounters", "then", "whaten", "meters", "meter",
     ],
     "one": [
         "someone", "done", "gone", "none", "bone", "tone", "zone", "stone",
@@ -52,8 +52,8 @@ ALL_NUMS = {
 
 
 PHONETIC_ALTS = {
-    "v": "[vf]", "f": "[fv]", "t": "[td]", "d": "[dt]",
-    "s": "[sz]", "z": "[zs]", "n": "[nm]", "m": "[mn]",
+    "v": "[vf]", "f": "[fv]", "t": "[tds]", "d": "[dt]",
+    "s": "[szt]", "z": "[zs]", "n": "[nm]", "m": "[mn]",
     "b": "[bp]", "p": "[pb]", "g": "[gk]", "k": "[kg]",
 }
 
@@ -86,15 +86,22 @@ def _extract_numbers(aj: str) -> list[int]:
             if any(p in used for p in range(idx, after)):
                 continue
             matched = False
+            # Try all ones and pick the closest (earliest) match
+            best_ones = None  # (end_pos, value)
             for ow, ov in sorted(co.items(), key=lambda x: -len(x[0])):
                 opat = _fuzzy_pattern(list(ONES.keys())[list(ONES.values()).index(ov)])
-                m = re.match(opat, aj[after:])
+                # Allow up to 5 junk chars between tens and ones (obfuscation artifacts)
+                m = re.search(r'^.{0,5}?' + opat, aj[after:])
                 if m:
-                    end = after + m.end()
-                    found.append((idx, tv + ov))
-                    used.update(range(idx, end))
-                    matched = True
-                    break
+                    candidate_end = after + m.end()
+                    # Prefer shortest overall match (ones word closest to tens word)
+                    if best_ones is None or m.end() < best_ones[4] or (m.end() == best_ones[4] and len(ow) > best_ones[2]):
+                        best_ones = (m.start(), ov, len(ow), candidate_end, m.end())
+            if best_ones:
+                end = best_ones[3]
+                found.append((idx, tv + best_ones[1]))
+                used.update(range(idx, end))
+                matched = True
             if not matched:
                 found.append((idx, tv))
                 used.update(range(idx, after))
@@ -107,8 +114,10 @@ def _extract_numbers(aj: str) -> list[int]:
             if any(p in used for p in range(idx, end)):
                 continue
             is_fp = False
-            if w in FALSE_POSITIVES:
-                for fpw in FALSE_POSITIVES[w]:
+            # Check both collapsed key and original word for false positives
+            fp_key = w if w in FALSE_POSITIVES else (orig_word if orig_word in FALSE_POSITIVES else None)
+            if fp_key:
+                for fpw in FALSE_POSITIVES[fp_key]:
                     fc = collapse(fpw)
                     for fs in range(max(0, idx - len(fc) + 1), idx + 1):
                         if aj[fs : fs + len(fc)] == fc:
@@ -134,8 +143,13 @@ def _detect_operation(challenge: str, aj: str) -> str | None:
     # these chars as decoration too often, causing false positives.
 
     # Word-based detection (subtraction before addition to avoid false matches)
+    # Use fuzzy matching to handle obfuscation artifacts
+    # False positives for operation keywords (word → list of containing words)
+    op_false_positives = {
+        "boost": ["lobster", "loboster"],
+    }
     ops = [
-        ("multiply", "*"), ("multiplied", "*"), ("multiplies", "*"), ("multipled", "*"), ("multiple", "*"), ("times", "*"),
+        ("multiply", "*"), ("multiplied", "*"), ("multiplies", "*"), ("multipled", "*"), ("multiple", "*"),
         ("product", "*"), ("leverag", "*"), ("advantag", "*"),
         ("double", "*"), ("doubles", "*"), ("triple", "*"), ("triples", "*"),
         ("torque", "*"), ("factor", "*"), ("boost", "*"), ("amplif", "*"), ("magnif", "*"),
@@ -144,11 +158,23 @@ def _detect_operation(challenge: str, aj: str) -> str | None:
         ("reduces", "-"), ("reducing", "-"), ("subtract", "-"), ("decreased", "-"), ("reduced", "-"),
         ("adds", "+"), ("add", "+"), ("plus", "+"),
         ("increases", "+"), ("gains", "+"), ("speeds", "+"),
+        ("times", "*"),
         ("divided", "/"),
     ]
     for word, op in ops:
-        if collapse(word) in aj:
-            return op
+        # Try exact collapsed match first, then fuzzy pattern match
+        m = re.search(_fuzzy_pattern(word), aj) if collapse(word) not in aj else None
+        matched = collapse(word) in aj or m
+        if matched:
+            # Check for false positives (e.g. "boost" inside "lobster")
+            fp_words = op_false_positives.get(word, [])
+            is_fp = False
+            for fpw in fp_words:
+                if collapse(fpw) in aj:
+                    is_fp = True
+                    break
+            if not is_fp:
+                return op
     if "total" in aj:
         # "total" with per-unit language (force per claw, cost per item, etc.) → multiply
         # But NOT "exert" — "claw A exerts X, claw B exerts Y, total" = addition
@@ -161,10 +187,17 @@ def _detect_operation(challenge: str, aj: str) -> str | None:
             return "*"
         return "+"
     # Rate × time pattern: "per second/minute/hour for N seconds/minutes/hours"
-    if re.search(r"per\s+(second|minute|hour|meter).*\bfor\b", challenge, re.I):
+    clean = re.sub(r'[^a-zA-Z\s]', '', challenge).lower()
+    if re.search(r"\bper\s+(second|minute|hour|meter).*\bfor\b", clean, re.I):
         return "*"
     # "how far" with speed+time usually means multiply
-    if "how far" in challenge.lower() and any(w in challenge.lower() for w in ["per second", "per minute", "per hour", "speed", "velocity"]):
+    if "howfar" in aj and any(w in aj for w in ["persecond", "perminute", "perhour", "speed", "velocity"]):
+        return "*"
+    # "swims/runs/flies at X ... for Y" pattern (speed × time)
+    if re.search(r"\b(swim|run|fl[iy]|walk|crawl|mov|trave?l|drive|sail|sprint|jog|gallop|dash)[a-z]*\b.*\bat\b.*\bfor\b", clean):
+        return "*"
+    # "how far" generic — if we have exactly 2 numbers and "how far", likely multiply
+    if "howfar" in aj:
         return "*"
     return None
 
@@ -191,8 +224,15 @@ def solve(result: dict) -> bool:
     print(f"  Numbers: {numbers} | Op: {op}")
 
     if len(numbers) >= 2 and op:
-        a, b = numbers[0], numbers[1]
-        ans = {"+": a + b, "-": a - b, "*": a * b, "/": a / b if b else 0}.get(op, a + b)
+        if op in ("*", "/") and len(numbers) > 2:
+            # "multiplies by X" / "divides by X" — use first and last number
+            a, b = numbers[0], numbers[-1]
+        else:
+            a, b = numbers[0], numbers[1]
+        if op == "+" and len(numbers) > 2:
+            ans = sum(numbers)
+        else:
+            ans = {"+": a + b, "-": a - b, "*": a * b, "/": a / b if b else 0}.get(op, a + b)
     elif len(numbers) >= 2:
         ans = sum(numbers)
     elif len(numbers) == 1:
