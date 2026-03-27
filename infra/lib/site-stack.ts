@@ -128,6 +128,14 @@ function handler(event) {
             cloudfront.OriginRequestPolicy.ALL_VIEWER,
         },
       },
+      errorResponses: [
+        {
+          httpStatus: 403,
+          responseHttpStatus: 404,
+          responsePagePath: "/404.html",
+          ttl: cdk.Duration.seconds(300),
+        },
+      ],
       domainNames: [DOMAIN, `www.${DOMAIN}`],
       certificate: cert,
       defaultRootObject: "index.html",

@@ -1,0 +1,237 @@
+<!-- AI agents: Run402 use cases. Full docs at /llms.txt. -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <!-- Google tag (gtag.js) — GA4 -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-SP7DMDB21B"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+    gtag('config', 'G-SP7DMDB21B');
+    (function(){var p=new URLSearchParams(location.search),k=['gclid','utm_source','utm_medium','utm_campaign','utm_term','utm_content'];for(var i=0;i<k.length;i++){var v=p.get(k[i]);if(v)try{localStorage.setItem('x402_'+k[i],v)}catch(e){}}if(p.get('gclid'))try{localStorage.setItem('x402_gclid_ts',''+Date.now())}catch(e){}})();
+  </script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Use Cases — Run402</title>
+  <meta name="description" content="How teams and agents use Run402: Supabase alternative, Vercel alternative, free Postgres for prototypes, deploy without an AWS account.">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <meta name="llms" content="/llms.txt">
+  <link rel="llms" href="/llms.txt" type="text/markdown">
+  <link rel="canonical" href="https://run402.com/use-cases">
+
+  <meta property="og:title" content="Use Cases — Run402">
+  <meta property="og:description" content="How teams and agents use Run402: Supabase alternative, Vercel alternative, free Postgres for prototypes, deploy without an AWS account.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://run402.com/use-cases">
+  <meta property="og:image" content="https://run402.com/og-image.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Use Cases — Run402">
+  <meta name="twitter:description" content="How teams and agents use Run402: Supabase alternative, Vercel alternative, free Postgres for prototypes, deploy without an AWS account.">
+  <meta name="twitter:image" content="https://run402.com/og-image.png">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #0A0A0F;
+      color: #E0E0E0;
+      font-family: 'Inter', system-ui, sans-serif;
+      line-height: 1.6;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    .container {
+      max-width: 760px;
+      margin: 0 auto;
+      padding: 80px 24px 60px;
+    }
+
+    .badge {
+      display: inline-block;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      color: #00FF9F;
+      border: 1px solid rgba(0, 255, 159, 0.3);
+      border-radius: 4px;
+      padding: 4px 10px;
+      margin-bottom: 24px;
+      letter-spacing: 0.5px;
+    }
+
+    h1 {
+      font-size: clamp(32px, 5vw, 50px);
+      font-weight: 700;
+      line-height: 1.12;
+      margin-bottom: 18px;
+      color: #FFFFFF;
+    }
+
+    h1 .accent { color: #00FF9F; }
+
+    .subtitle {
+      font-size: 18px;
+      color: #9CA3AF;
+      margin-bottom: 36px;
+      max-width: 640px;
+    }
+
+    .use-case-list { margin-bottom: 52px; }
+
+    .use-case {
+      display: block;
+      background: #12121A;
+      border: 1px solid #1E1E2A;
+      border-radius: 8px;
+      padding: 24px;
+      margin-bottom: 16px;
+      text-decoration: none;
+      transition: border-color 0.2s;
+    }
+
+    .use-case:hover {
+      border-color: rgba(0, 255, 159, 0.4);
+    }
+
+    .use-case .title {
+      font-size: 18px;
+      font-weight: 600;
+      color: #FFFFFF;
+      margin-bottom: 8px;
+    }
+
+    .use-case .title::before {
+      content: '> ';
+      color: #00FF9F;
+      font-family: 'JetBrains Mono', monospace;
+      font-weight: 500;
+    }
+
+    .use-case .desc {
+      font-size: 14px;
+      color: #9CA3AF;
+      line-height: 1.6;
+    }
+
+    .cta {
+      background: #12121A;
+      border: 1px solid rgba(0, 255, 159, 0.3);
+      border-radius: 8px;
+      padding: 28px;
+      text-align: center;
+    }
+
+    .cta p {
+      color: #E0E0E0;
+      font-size: 16px;
+      margin-bottom: 14px;
+    }
+
+    .cta-link {
+      display: inline-block;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 14px;
+      color: #00FF9F;
+      background: rgba(0, 255, 159, 0.1);
+      border: 1px solid rgba(0, 255, 159, 0.25);
+      border-radius: 6px;
+      padding: 10px 20px;
+      text-decoration: none;
+      transition: background 0.2s, border-color 0.2s;
+    }
+
+    .cta-link:hover {
+      background: rgba(0, 255, 159, 0.2);
+      border-color: rgba(0, 255, 159, 0.5);
+    }
+
+    .footer {
+      border-top: 1px solid #1E1E2A;
+      padding-top: 32px;
+      margin-top: 48px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+
+    .footer-text {
+      font-size: 13px;
+      color: #4B5563;
+    }
+
+    .footer a {
+      color: #00FF9F;
+      text-decoration: none;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+    }
+
+    .footer a:hover { text-decoration: underline; }
+  </style>
+</head>
+
+<body>
+  <p style="text-align:center;padding:12px;margin:0;background:#111;color:#9CA3AF;font-size:14px;font-family:'Inter',system-ui,sans-serif;">
+    <a href="/humans" style="color:#00FF9F;text-decoration:underline;">&larr; Back to run402.com</a>
+  </p>
+
+  <div class="container">
+    <span class="badge">use cases</span>
+
+    <h1>What you can <span class="accent">build</span></h1>
+    <p class="subtitle">
+      Run402 gives AI agents full-stack infrastructure &mdash; Postgres, REST API, auth, storage, and static hosting &mdash; with no signups. Here's how teams and agents use it.
+    </p>
+
+    <div class="use-case-list">
+      <a class="use-case" href="/use-cases/supabase-alternative-for-agents">
+        <div class="title">Supabase alternative for AI agents</div>
+        <div class="desc">Same stack as Supabase &mdash; Postgres, REST API, auth, storage, RLS &mdash; but your agent can provision it with one HTTP call. No signup flow, no human in the loop.</div>
+      </a>
+
+      <a class="use-case" href="/use-cases/vercel-alternative-for-agents">
+        <div class="title">Vercel alternative for AI agents</div>
+        <div class="desc">Deploy a full webapp &mdash; Postgres backend + static frontend &mdash; in 2 API calls. No Git repos, no build pipelines. Hand your human a live URL.</div>
+      </a>
+
+      <a class="use-case" href="/use-cases/free-postgres-for-prototype">
+        <div class="title">Free Postgres database for prototypes</div>
+        <div class="desc">Get a free Postgres database in seconds with no signup and no credit card. Use free testnet USDC, build your app, demo it. Includes REST API, auth, storage, and hosting.</div>
+      </a>
+
+      <a class="use-case" href="/use-cases/deploy-app-without-aws-account">
+        <div class="title">Deploy an app without an AWS account</div>
+        <div class="desc">Ship a full webapp &mdash; database, REST API, auth, storage, and static frontend &mdash; without an AWS account, GCP project, or any cloud signup. One API call. Free to start.</div>
+      </a>
+    </div>
+
+    <div class="cta">
+      <p><strong style="color:#fff;">Start building now.</strong> Read the full API docs or provision a database in seconds.</p>
+      <a class="cta-link" href="/llms.txt">Read llms.txt</a>
+    </div>
+
+    <div class="footer">
+      <span class="footer-text">By <a href="https://kychee.com">Kychee</a></span>
+      <span>
+        <a href="/humans/about.html">About</a> &nbsp;&middot;&nbsp;
+        <a href="/humans/terms.html">Terms</a> &nbsp;&middot;&nbsp;
+        <a href="/humans/privacy.html">Privacy</a> &nbsp;&middot;&nbsp;
+        <a href="/humans/faq.html">FAQ</a> &nbsp;&middot;&nbsp;
+        <a href="/humans">For humans</a> &nbsp;&middot;&nbsp;
+        <a href="/llms.txt">Docs</a> &nbsp;&middot;&nbsp;
+        <a href="https://api.run402.com/health-humans">API status</a>
+      </span>
+    </div>
+  </div>
+</body>
+</html>
