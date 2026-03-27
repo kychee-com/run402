@@ -1,6 +1,6 @@
 import jwt from "jsonwebtoken";
 import { pool } from "../db/pool.js";
-import { sql } from "../db/sql.js";
+import { sql, type SQL } from "../db/sql.js";
 import { JWT_SECRET } from "../config.js";
 import { getLeaseDuration } from "@run402/shared";
 import { allocateSlot } from "./slots.js";
@@ -131,6 +131,28 @@ export function deriveProjectKeys(projectId: string, tier: TierName): { anonKey:
 }
 
 /**
+ * Drop and recreate a schema slot, granting the standard roles.
+ * Used by both createProject (defensive cleanup) and archiveProject.
+ */
+async function resetSchemaSlot(client: { query(q: SQL, v?: unknown[]): Promise<unknown> }, slot: string): Promise<void> {
+  await client.query(sql(`DROP SCHEMA IF EXISTS ${slot} CASCADE`));
+  await client.query(sql(`CREATE SCHEMA ${slot}`));
+  await client.query(sql(`GRANT USAGE ON SCHEMA ${slot} TO anon, authenticated, service_role`));
+  await client.query(
+    sql(`ALTER DEFAULT PRIVILEGES IN SCHEMA ${slot} GRANT SELECT ON TABLES TO anon`),
+  );
+  await client.query(
+    sql(`ALTER DEFAULT PRIVILEGES IN SCHEMA ${slot} GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO authenticated`),
+  );
+  await client.query(
+    sql(`ALTER DEFAULT PRIVILEGES IN SCHEMA ${slot} GRANT ALL ON TABLES TO service_role`),
+  );
+  await client.query(
+    sql(`ALTER DEFAULT PRIVILEGES IN SCHEMA ${slot} GRANT USAGE, SELECT ON SEQUENCES TO anon, authenticated, service_role`),
+  );
+}
+
+/**
  * Create a new project: allocate slot, sign keys, persist to DB.
  */
 export async function createProject(
@@ -155,6 +177,11 @@ export async function createProject(
     JWT_SECRET,
     { expiresIn: `${Math.floor(leaseMs / 1000)}s` },
   );
+
+  // Defensive: ensure the schema slot is clean before use.
+  // archiveProject should have cleaned it, but if that transaction rolled back
+  // (or the slot was recycled via direct DB update) stale tables may remain.
+  await resetSchemaSlot(pool, schemaSlot);
 
   await pool.query(
     sql(`INSERT INTO internal.projects
@@ -237,22 +264,7 @@ export async function archiveProject(projectId: string): Promise<boolean> {
     await client.query(sql("BEGIN"));
 
     // Drop and recreate schema slot
-    await client.query(sql(`DROP SCHEMA IF EXISTS ${project.schemaSlot} CASCADE`));
-    await client.query(sql(`CREATE SCHEMA ${project.schemaSlot}`));
-    await client.query(sql(`GRANT USAGE ON SCHEMA ${project.schemaSlot} TO anon, authenticated, service_role`));
-    await client.query(
-      sql(`ALTER DEFAULT PRIVILEGES IN SCHEMA ${project.schemaSlot} GRANT SELECT ON TABLES TO anon`),
-    );
-    await client.query(
-      sql(`ALTER DEFAULT PRIVILEGES IN SCHEMA ${project.schemaSlot} GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO authenticated`),
-    );
-    await client.query(
-      sql(`ALTER DEFAULT PRIVILEGES IN SCHEMA ${project.schemaSlot} GRANT ALL ON TABLES TO service_role`),
-    );
-    // Sequences (needed for SERIAL/BIGSERIAL columns)
-    await client.query(
-      sql(`ALTER DEFAULT PRIVILEGES IN SCHEMA ${project.schemaSlot} GRANT USAGE, SELECT ON SEQUENCES TO anon, authenticated, service_role`),
-    );
+    await resetSchemaSlot(client, project.schemaSlot);
 
     // Delete project users
     await client.query(sql(`DELETE FROM internal.users WHERE project_id = $1`), [projectId]);
