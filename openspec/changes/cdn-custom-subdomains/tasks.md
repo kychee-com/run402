@@ -43,11 +43,11 @@
 
 ## 9. Testing
 
-- [ ] 9.1 E2E test: deploy site, claim subdomain, fetch asset via `{name}.run402.com` — assert immutable cache headers and CloudFront response headers
-- [ ] 9.2 E2E test: fetch HTML via `{name}.run402.com/` — assert `max-age=60` and fork badge present (if forkable)
-- [ ] 9.3 E2E test: redeploy site, fetch same asset URL — assert new content served (not stale)
-- [ ] 9.4 Integration test: claim subdomain, verify KVS entry exists via CloudFront API
-- [ ] 9.5 Integration test: delete subdomain, verify KVS entry removed
+- [x] 9.1 E2E test: deploy site, claim subdomain, fetch asset via `{name}.run402.com` — assert immutable cache headers and CloudFront response headers
+- [x] 9.2 E2E test: fetch HTML via `{name}.run402.com/` — assert `max-age=60` and fork badge present (if forkable)
+- [x] 9.3 E2E test: redeploy site, fetch same asset URL — assert new content served (not stale)
+- [x] 9.4 Integration test: claim subdomain, verify KVS entry exists via CloudFront API
+- [x] 9.5 Integration test: delete subdomain, verify KVS entry removed
 - [x] 9.6 Verify `api.run402.com/health` still resolves to ALB (no CloudFront headers)
 
 ## 10. Documentation
