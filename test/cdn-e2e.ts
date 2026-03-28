@@ -141,7 +141,7 @@ async function main() {
     const { res: cssRes, body: cssBody, attempts: a1 } = await poll(
       `${subUrl}/style.css`,
       (r) => r.status === 200,
-      { label: "KVS propagation" },
+      { maxAttempts: 60, label: "KVS propagation" },
     );
     const cssH = Object.fromEntries(cssRes.headers.entries());
     console.log(`  Status: ${cssRes.status} (after ${a1} poll${a1 > 1 ? "s" : ""})`);
