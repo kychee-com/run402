@@ -48,7 +48,7 @@
 - [ ] 9.3 E2E test: redeploy site, fetch same asset URL — assert new content served (not stale)
 - [ ] 9.4 Integration test: claim subdomain, verify KVS entry exists via CloudFront API
 - [ ] 9.5 Integration test: delete subdomain, verify KVS entry removed
-- [ ] 9.6 Verify `api.run402.com/health` still resolves to ALB (no CloudFront headers)
+- [x] 9.6 Verify `api.run402.com/health` still resolves to ALB (no CloudFront headers)
 
 ## 10. Documentation
 
