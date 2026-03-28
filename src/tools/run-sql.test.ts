@@ -110,6 +110,80 @@ describe("run_sql tool", () => {
     assert.ok(result.content[0]!.text.includes("0 rows returned"));
   });
 
+  it("sends JSON body with params when params provided", async () => {
+    saveProject("proj-params", {
+      anon_key: "ak",
+      service_key: "sk-p",
+      tier: "prototype",
+      lease_expires_at: "2026-03-06T00:00:00Z",
+    }, storePath);
+
+    let capturedHeaders: Record<string, string> = {};
+    let capturedBody: string | undefined;
+    globalThis.fetch = (async (_url: string | URL | Request, init?: RequestInit) => {
+      capturedHeaders = init?.headers as Record<string, string>;
+      capturedBody = init?.body as string;
+      return new Response(
+        JSON.stringify({ status: "ok", schema: "p0001", rows: [{ id: 42 }], rowCount: 1 }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    }) as typeof fetch;
+
+    await handleRunSql({ project_id: "proj-params", sql: "SELECT * FROM t WHERE id = $1", params: [42] });
+    assert.equal(capturedHeaders["Content-Type"], "application/json");
+    const parsed = JSON.parse(capturedBody!);
+    assert.equal(parsed.sql, "SELECT * FROM t WHERE id = $1");
+    assert.deepEqual(parsed.params, [42]);
+  });
+
+  it("sends plain text when params is empty array", async () => {
+    saveProject("proj-empty-params", {
+      anon_key: "ak",
+      service_key: "sk-ep",
+      tier: "prototype",
+      lease_expires_at: "2026-03-06T00:00:00Z",
+    }, storePath);
+
+    let capturedHeaders: Record<string, string> = {};
+    let capturedBody: string | undefined;
+    globalThis.fetch = (async (_url: string | URL | Request, init?: RequestInit) => {
+      capturedHeaders = init?.headers as Record<string, string>;
+      capturedBody = init?.body as string;
+      return new Response(
+        JSON.stringify({ status: "ok", schema: "p0001", rows: [{ "?column?": 1 }], rowCount: 1 }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    }) as typeof fetch;
+
+    await handleRunSql({ project_id: "proj-empty-params", sql: "SELECT 1", params: [] });
+    assert.equal(capturedHeaders["Content-Type"], "text/plain");
+    assert.equal(capturedBody, "SELECT 1");
+  });
+
+  it("sends plain text when params is undefined", async () => {
+    saveProject("proj-no-params", {
+      anon_key: "ak",
+      service_key: "sk-np",
+      tier: "prototype",
+      lease_expires_at: "2026-03-06T00:00:00Z",
+    }, storePath);
+
+    let capturedHeaders: Record<string, string> = {};
+    let capturedBody: string | undefined;
+    globalThis.fetch = (async (_url: string | URL | Request, init?: RequestInit) => {
+      capturedHeaders = init?.headers as Record<string, string>;
+      capturedBody = init?.body as string;
+      return new Response(
+        JSON.stringify({ status: "ok", schema: "p0001", rows: [{ "?column?": 1 }], rowCount: 1 }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    }) as typeof fetch;
+
+    await handleRunSql({ project_id: "proj-no-params", sql: "SELECT 1" });
+    assert.equal(capturedHeaders["Content-Type"], "text/plain");
+    assert.equal(capturedBody, "SELECT 1");
+  });
+
   it("returns isError with hint on 403 blocked SQL", async () => {
     saveProject("proj-4", {
       anon_key: "ak",

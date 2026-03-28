@@ -206,9 +206,17 @@ Deploy a serverless function (Node 22) to a project. Functions are invoked via H
 **DB access inside functions:**
 ```typescript
 import { db } from '@run402/functions';
-const users = await db.from('users').select('*');
-const result = await db.sql('SELECT count(*) FROM orders');
 ```
+
+**db.sql(query, params?)** — raw SQL, returns `{ status, schema, rows, rowCount }`.
+- SELECT: `rows` = matching rows, `rowCount` = row count
+- INSERT/UPDATE/DELETE: `rows` = `[]`, `rowCount` = affected rows
+- Parameterized: `db.sql('SELECT * FROM t WHERE id = $1', [42])`
+
+**db.from(table)** — PostgREST-style queries (service_role, bypasses RLS). Returns a plain array of row objects.
+Chainable read methods: `.select(cols?)`, `.eq(col, val)`, `.neq()`, `.gt()`, `.lt()`, `.gte()`, `.lte()`, `.like()`, `.ilike()`, `.in(col, [vals])`, `.order(col, { ascending? })`, `.limit(n)`, `.offset(n)`
+Chainable write methods: `.insert(obj | obj[])`, `.update(obj)`, `.delete()` — all return array of affected rows.
+Column narrowing: `.insert({...}).select('col1, col2')` returns only specified columns.
 
 **Secrets:** Access via `process.env.SECRET_NAME`. Set with `set_secret`.
 

@@ -6,6 +6,7 @@ import { formatApiError, projectNotFound } from "../errors.js";
 export const runSqlSchema = {
   project_id: z.string().describe("The project ID to run SQL against"),
   sql: z.string().describe("SQL statement to execute (DDL or DML)"),
+  params: z.array(z.unknown()).optional().describe("Bind parameters for parameterized queries (e.g. [42, \"hello\"])"),
 };
 
 function formatMarkdownTable(rows: Record<string, unknown>[]): string {
@@ -24,17 +25,17 @@ function formatMarkdownTable(rows: Record<string, unknown>[]): string {
 export async function handleRunSql(args: {
   project_id: string;
   sql: string;
+  params?: unknown[];
 }): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
   const project = getProject(args.project_id);
   if (!project) return projectNotFound(args.project_id);
 
+  const useParams = args.params && args.params.length > 0;
   const res = await apiRequest(`/projects/v1/admin/${args.project_id}/sql`, {
     method: "POST",
-    rawBody: args.sql,
-    headers: {
-      "Content-Type": "text/plain",
-      Authorization: `Bearer ${project.service_key}`,
-    },
+    ...(useParams
+      ? { body: { sql: args.sql, params: args.params }, headers: { "Content-Type": "application/json", Authorization: `Bearer ${project.service_key}` } }
+      : { rawBody: args.sql, headers: { "Content-Type": "text/plain", Authorization: `Bearer ${project.service_key}` } }),
   });
 
   if (!res.ok) return formatApiError(res, "running SQL");
