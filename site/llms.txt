@@ -747,8 +747,9 @@ For explicit control, use both `apikey` (project key) and `Authorization: Bearer
 Functions are deployed via the Admin endpoints above and invoked at `/functions/v1/:name`. Any HTTP method is supported -- the function receives the full request (method, headers, body, query string). Sub-paths like `/functions/v1/:name/sub/path` are forwarded to the function.
 
 Handler signature: `export default async (req: Request) => Response`
-Built-in helper: `import { db, getUser } from '@run402/functions'`
+Built-in helper: `import { db, email, getUser } from '@run402/functions'`
 - `getUser(req)` -- verify caller's JWT, returns `{ id, role }` or `null`
+- `email.send(opts)` -- send email from the project's mailbox (see below)
 Secrets: `process.env.SECRET_NAME`
 
 **db.sql(query, params?)** -- raw SQL, returns `{ status, schema, rows, rowCount }`.
@@ -760,6 +761,12 @@ Secrets: `process.env.SECRET_NAME`
 Chainable read methods: `.select(cols?)`, `.eq(col, val)`, `.neq()`, `.gt()`, `.lt()`, `.gte()`, `.lte()`, `.like()`, `.ilike()`, `.in(col, [vals])`, `.order(col, { ascending? })`, `.limit(n)`, `.offset(n)`
 Chainable write methods: `.insert(obj | obj[])`, `.update(obj)`, `.delete()` -- all return array of affected rows.
 Column narrowing: `.insert({...}).select('col1, col2')` returns only specified columns.
+
+**email.send(opts)** -- send email from the project's mailbox. Discovers the mailbox automatically on first call (project must have a mailbox created via `POST /mailboxes/v1`).
+- Template mode: `await email.send({ to: "user@example.com", template: "notification", variables: { project_name: "My App", message: "Hello!" } })`
+- Raw HTML mode: `await email.send({ to: "user@example.com", subject: "Welcome!", html: "<h1>Hi</h1>" })`
+- With display name: `await email.send({ to: "user@example.com", subject: "Hi", html: "<p>hey</p>", from_name: "My App" })`
+- Returns the message result. Throws on errors (rate limit, suppressed recipient, no mailbox).
 
 ### User Auth
 
@@ -903,11 +910,21 @@ See **Deploy a Static Site** section below for request/response format and examp
 | `/mailboxes/v1` | GET | service_key | Free | List project's mailboxes |
 | `/mailboxes/v1/:id` | GET | service_key | Free | Get mailbox details (address, usage, limits) |
 | `/mailboxes/v1/:id` | DELETE | service_key | Free | Delete (tombstone) a mailbox |
-| `/mailboxes/v1/:id/messages` | POST | service_key | Free | Send template email (project_invite, magic_link, notification) |
+| `/mailboxes/v1/:id/messages` | POST | service_key | Free | Send email (template or raw HTML) |
 | `/mailboxes/v1/:id/messages` | GET | service_key | Free | List sent messages |
 | `/mailboxes/v1/:id/messages/:messageId` | GET | service_key | Free | Get message with replies |
 | `/mailboxes/v1/:id/webhooks` | POST | service_key | Free | Register webhook for email events |
 | `/mailboxes/v1/:id/status` | POST | admin | Free | Reactivate suspended mailbox (admin only) |
+
+**Two send modes** for `POST /mailboxes/v1/:id/messages`:
+- **Template mode**: `{"to": "user@example.com", "template": "notification", "variables": {"project_name": "My App", "message": "Hello!"}}`
+  Templates: `project_invite` (project_name, invite_url), `magic_link` (project_name, link_url, expires_in), `notification` (project_name, message max 500 chars)
+- **Raw HTML mode**: `{"to": "user@example.com", "subject": "Welcome!", "html": "<h1>Hello</h1><p>Welcome aboard.</p>"}`
+  Optional `text` field for explicit plaintext (auto-generated from HTML if omitted). `html` max 1MB, `subject` max 998 chars.
+
+Both modes support optional `from_name` for display name: `{"from_name": "My App", ...}` sends from `"My App" <slug@mail.run402.com>`. Max 78 chars, no `<>` or newlines.
+
+Rate limits: prototype 10/day, hobby 50/day, team 500/day. Unique recipient cap per lease: prototype 25, hobby 200, team 1000.
 
 ### Image Generation
 

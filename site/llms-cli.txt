@@ -238,8 +238,9 @@ Requires active tier and a provisioned project. Deploys to an existing project: 
 
 ### functions
 Node 22 runtime. Must export `default async (req: Request) => Response`.
-Built-in helper: `import { db, getUser } from '@run402/functions'`
+Built-in helper: `import { db, email, getUser } from '@run402/functions'`
 - `getUser(req)` — verify caller's JWT, returns `{ id, role }` or `null`
+- `email.send(opts)` — send email from the project's mailbox (see email section below)
 
 #### db.sql(query, params?)
 Raw SQL. Returns `{ status, schema, rows, rowCount }`.
@@ -338,22 +339,32 @@ $0.03 per image.
 Without `--output`, returns `{"status":"ok","aspect":"...","content_type":"image/png","image":"<base64>"}`.
 
 ### email
-One mailbox per project, template-based sending. Templates: `project_invite` (project_name, invite_url), `magic_link` (project_name, link_url, expires_in), `notification` (project_name, message). Single recipient per send. Rate limits by tier: prototype 10/day, hobby 50/day, team 200/day.
+One mailbox per project. Two send modes: **template** (predefined templates) and **raw HTML** (arbitrary subject + HTML body). Single recipient per send. Rate limits by tier: prototype 10/day, hobby 50/day, team 500/day. Unique recipient cap per lease: prototype 25, hobby 200, team 1000.
+
+Templates: `project_invite` (project_name, invite_url), `magic_link` (project_name, link_url, expires_in), `notification` (project_name, message max 500 chars).
 
 - `run402 email create <slug> [--project <id>]` — create mailbox at `<slug>@mail.run402.com` (idempotent: returns existing mailbox on conflict)
 - `run402 email status [--project <id>]` — show mailbox info (ID, address, slug)
-- `run402 email send --template <name> --to <email> [--var key=value ...] [--project <id>]`
+- `run402 email send --template <name> --to <email> [--var key=value ...] [--from-name <name>] [--project <id>]`
+- `run402 email send --to <email> --subject <subject> --html <html> [--text <text>] [--from-name <name>] [--project <id>]`
 - `run402 email list [--project <id>]`
 - `run402 email get <message_id> [--project <id>]`
 
+Raw HTML: `--subject` (max 998 chars) + `--html` (max 1MB). Plaintext auto-generated from HTML if `--text` omitted. `--from-name` sets display name on From header (both modes): `"My App" <slug@mail.run402.com>`.
+
 Slug rules: 3-63 chars, lowercase alphanumeric + hyphens, no consecutive hyphens. `--project` defaults to the active project.
 
-**Using email from functions**: The service key is already available as `process.env.RUN402_SERVICE_KEY` (auto-injected into all functions). Store the mailbox ID as a secret (`run402 secrets set <id> MAILBOX_ID mbx_xxx`) or hardcode it. Then `fetch` the mailbox API from your function:
-```json
-POST /mailboxes/v1/{MAILBOX_ID}/messages
-Authorization: Bearer {RUN402_SERVICE_KEY}
-{"template": "notification", "to": "user@example.com", "variables": {"project_name": "My App", "message": "Hello!"}}
+**Using email from functions**: Import `email` from `@run402/functions` — no need to manage mailbox IDs or service keys manually:
+```js
+import { email } from '@run402/functions';
+
+// Template mode
+await email.send({ to: "user@example.com", template: "notification", variables: { project_name: "My App", message: "Hello!" } });
+
+// Raw HTML mode
+await email.send({ to: "user@example.com", subject: "Welcome!", html: "<h1>Hi</h1>", from_name: "My App" });
 ```
+Discovers the mailbox automatically. Throws on errors (rate limit, suppression, no mailbox).
 
 ### message
 - `run402 message send "<text>"`
