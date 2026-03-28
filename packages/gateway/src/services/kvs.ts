@@ -71,6 +71,7 @@ export async function kvsPut(
       }),
     );
     currentETag = res.ETag;
+    console.log(`  KVS put: ${name} → ${deploymentId}`);
   } catch (err) {
     currentETag = undefined; // force refresh on next call
     console.error(
