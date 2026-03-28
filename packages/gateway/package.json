@@ -9,7 +9,7 @@
     "dev": "tsx --env-file=../../.env src/server.ts",
     "start": "node dist/server.js",
     "test:unit": "node --experimental-test-module-mocks --test --import tsx 'src/**/*.test.ts'",
-    "test:unit:coverage": "c8 --reporter=text --reporter=html --reporter=json --exclude='src/**/*.test.ts' --exclude='node_modules/**' --exclude='dist/**' node --experimental-test-module-mocks --test --import tsx 'src/**/*.test.ts'"
+    "test:unit:coverage": "c8 --reporter=text --reporter=html --reporter=json --exclude='src/**/*.test.ts' --exclude='node_modules/**' --exclude='dist/**' --exclude='src/services/kvs.ts' node --experimental-test-module-mocks --test --import tsx 'src/**/*.test.ts'"
   },
   "dependencies": {
     "@aws-sdk/client-cloudfront-keyvaluestore": "^3.1019.0",

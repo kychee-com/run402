@@ -23,6 +23,13 @@ mock.module("./deployments.js", {
   },
 });
 
+mock.module("./kvs.js", {
+  namedExports: {
+    kvsPut: () => {},
+    kvsDelete: () => {},
+  },
+});
+
 let mockGetProjectById: (id: string) => Promise<any>;
 
 mock.module("./projects.js", {
