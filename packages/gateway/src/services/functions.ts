@@ -1008,7 +1008,7 @@ const email = (() => {
   let _mailboxId = null;
   async function _discoverMailbox() {
     if (_mailboxId) return _mailboxId;
-    const res = await fetch(_API_BASE + "/v1/mailboxes", {
+    const res = await fetch(_API_BASE + "/mailboxes/v1", {
       headers: { Authorization: "Bearer " + _SERVICE_KEY },
     });
     if (!res.ok) throw new Error("Failed to discover mailbox: " + await res.text());
@@ -1032,7 +1032,7 @@ const email = (() => {
         if (opts.text) body.text = opts.text;
       }
       if (opts.from_name) body.from_name = opts.from_name;
-      const res = await fetch(_API_BASE + "/v1/mailboxes/" + mbxId + "/messages", {
+      const res = await fetch(_API_BASE + "/mailboxes/v1/" + mbxId + "/messages", {
         method: "POST",
         headers: { Authorization: "Bearer " + _SERVICE_KEY, "Content-Type": "application/json" },
         body: JSON.stringify(body),
