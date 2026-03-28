@@ -215,7 +215,7 @@ run402 subdomains claim my-app
 - `run402 projects provision [--name <name>]`
 - `run402 projects use <id>`
 - `run402 projects info <id>`
-- `run402 projects sql <id> "<sql>" [--file <path>]`
+- `run402 projects sql <id> "<sql>" [--file <path>] [--params '<json_array>']`
 - `run402 projects rest <id> <table> "<query>"`
 - `run402 projects keys <id>` — print anon_key + service_key as JSON
 - `run402 projects pin <id>` — pin a project (prevents expiry/GC)
