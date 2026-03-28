@@ -963,6 +963,7 @@ export default async function handler(req) {
         }
       } else {
         assert(true, `Mailbox for email test (skipped, status=${mbxRes.status})`);
+      }
     }
   } finally {
     // --- Step 23: Cleanup ---
