@@ -16,6 +16,9 @@ import {
   DeleteKeyCommand,
   ListKeysCommand,
 } from "@aws-sdk/client-cloudfront-keyvaluestore";
+// SigV4a is required for CloudFront KVS API — import to ensure it's available
+import "@aws-sdk/signature-v4a";
+
 // Read directly from env to avoid circular mock issues in tests
 const CLOUDFRONT_KVS_ARN = process.env.CLOUDFRONT_KVS_ARN || "";
 import { pool } from "../db/pool.js";
