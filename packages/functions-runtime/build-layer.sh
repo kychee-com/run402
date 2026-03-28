@@ -185,15 +185,16 @@ export const db = {
     return new QueryBuilder(table);
   },
 
-  async sql(query) {
+  async sql(query, params) {
     const url = `${API_BASE}/projects/v1/admin/${PROJECT_ID}/sql`;
+    const hasParams = Array.isArray(params) && params.length > 0;
     const res = await fetch(url, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${SERVICE_KEY}`,
-        "Content-Type": "text/plain",
+        "Content-Type": hasParams ? "application/json" : "text/plain",
       },
-      body: query,
+      body: hasParams ? JSON.stringify({ sql: query, params }) : query,
     });
 
     if (!res.ok) {
