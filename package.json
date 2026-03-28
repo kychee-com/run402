@@ -39,7 +39,7 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/kychee-com/run402-mcp.git"
+    "url": "git+https://github.com/kychee-com/run402-mcp.git"
   },
   "homepage": "https://run402.com",
   "bugs": "https://github.com/kychee-com/run402-mcp/issues",
