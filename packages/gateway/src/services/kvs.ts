@@ -12,12 +12,12 @@
 import {
   CloudFrontKeyValueStoreClient,
   DescribeKeyValueStoreCommand,
-  GetKeyCommand,
   PutKeyCommand,
   DeleteKeyCommand,
   ListKeysCommand,
 } from "@aws-sdk/client-cloudfront-keyvaluestore";
-import { CLOUDFRONT_KVS_ARN } from "../config.js";
+// Read directly from env to avoid circular mock issues in tests
+const CLOUDFRONT_KVS_ARN = process.env.CLOUDFRONT_KVS_ARN || "";
 import { pool } from "../db/pool.js";
 import { sql } from "../db/sql.js";
 
