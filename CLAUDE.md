@@ -41,9 +41,13 @@ Custom subdomains use a CloudFront distribution with a KeyValueStore (KVS) for e
 
 **KVS sync:** The gateway automatically updates the KVS on subdomain claim/delete. A reconciliation job runs every 5 minutes to fix drift. Config: `CLOUDFRONT_KVS_ARN` env var.
 
+**Cache invalidation:** On subdomain reassignment (redeploy), the gateway calls `CreateInvalidation` to purge the edge cache so new assets are served immediately. Config: `CLOUDFRONT_CUSTOM_DISTRIBUTION_ID` env var.
+
 **Seed script:** To populate KVS from scratch: `CLOUDFRONT_KVS_ARN=<arn> DATABASE_URL=<url> npx tsx scripts/seed-kvs.ts`
 
 **CDK stack:** `Run402-CustomSubdomains` in `infra/lib/custom-subdomains-stack.ts`
+
+**Testing:** `BASE_URL=https://api.run402.com npx tsx test/cdn-e2e.ts` — tests asset caching, HTML routing, redeploy freshness, and subdomain delete. Takes ~2 min (KVS propagation polling).
 
 ### Site (run402.com landing page)
 
@@ -97,6 +101,7 @@ Without `SELLER_ADDRESS` + CDP keys, x402 payment middleware won't initialize an
 | `npm run test:siwx` | SIWx auth unit tests |
 | `npm run test:functions` | Functions lifecycle E2E |
 | `npm run test:billing` | Billing/tiers E2E |
+| `npx tsx test/cdn-e2e.ts` | CDN edge caching for custom subdomains. Needs `BASE_URL`. ~2 min. |
 
 ### Running tests locally vs production
 
