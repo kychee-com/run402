@@ -365,6 +365,10 @@ export class PodStack extends cdk.Stack {
       ],
       resources: [`arn:aws:cloudfront::${this.account}:key-value-store/*`],
     }));
+    taskDef.taskRole.addToPrincipalPolicy(new iam.PolicyStatement({
+      actions: ["cloudfront:CreateInvalidation"],
+      resources: [`arn:aws:cloudfront::${this.account}:distribution/*`],
+    }));
 
     // Grant CloudWatch Logs read access for function logs
     taskDef.taskRole.addToPrincipalPolicy(new iam.PolicyStatement({
@@ -414,6 +418,7 @@ export class PodStack extends cdk.Stack {
         CF_LOG_BUCKET: "agentdb-site-accesslogbucketda470295-jaz7qij2zfjq",
         CF_LOG_PREFIX: "cf-logs/",
         CLOUDFRONT_KVS_ARN: "arn:aws:cloudfront::472210437512:key-value-store/bd11de76-008e-4a74-b3cb-9954f50bd91a",
+        CLOUDFRONT_CUSTOM_DISTRIBUTION_ID: "E143BVVSPQIUM8",
         BUGSNAG_API_KEY: "0751ea52d07c1449d7cd2f7724de0ede",
         RELEASE_STAGE: "production",
       },

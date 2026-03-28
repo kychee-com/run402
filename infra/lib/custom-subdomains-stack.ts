@@ -101,10 +101,14 @@ async function handler(event) {
   try {
     deploymentId = await kvsHandle.get(subdomain);
   } catch (e) {
-    // Key not found → 404
+    // Key not found — return 404 with no-store so CloudFront doesn't cache it.
+    // During KVS propagation (a few seconds after subdomain claim), this 404
+    // is transient. The no-store header ensures the next request retries the
+    // KVS lookup instead of serving a cached 404.
     return {
       statusCode: 404,
       statusDescription: 'Not Found',
+      headers: { 'cache-control': { value: 'no-store' } },
       body: { encoding: 'text', data: 'Subdomain not configured' },
     };
   }
@@ -134,10 +138,12 @@ async function handler(event) {
     // CloudFront Distribution
     //
     // Default behavior → ALB (HTML, fork badge injection)
-    // Asset behaviors → S3 via KVS routing function (immutable cache)
+    // Asset behaviors → S3 via KVS routing function (immutable cache, invalidated on redeploy)
     // =========================================================================
 
-    // Build additional behaviors for each asset extension pattern
+    // Build additional behaviors for each asset extension pattern.
+    // Uses CACHING_OPTIMIZED (respects S3 immutable headers) — freshness on redeploy
+    // is handled by CloudFront invalidation in the gateway subdomain reassignment path.
     const additionalBehaviors: Record<string, cloudfront.BehaviorOptions> = {};
     for (const ext of ASSET_EXTENSIONS) {
       additionalBehaviors[`*.${ext}`] = {

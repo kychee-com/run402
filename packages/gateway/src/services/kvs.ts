@@ -16,16 +16,25 @@ import {
   DeleteKeyCommand,
   ListKeysCommand,
 } from "@aws-sdk/client-cloudfront-keyvaluestore";
+import {
+  CloudFrontClient,
+  CreateInvalidationCommand,
+} from "@aws-sdk/client-cloudfront";
 // SigV4a is required for CloudFront KVS API — import to ensure it's available
 import "@aws-sdk/signature-v4a";
 
 // Read directly from env to avoid circular mock issues in tests
 const CLOUDFRONT_KVS_ARN = process.env.CLOUDFRONT_KVS_ARN || "";
+const CLOUDFRONT_DISTRIBUTION_ID = process.env.CLOUDFRONT_CUSTOM_DISTRIBUTION_ID || "";
 import { pool } from "../db/pool.js";
 import { sql } from "../db/sql.js";
 
-const client = CLOUDFRONT_KVS_ARN
+const kvsClient = CLOUDFRONT_KVS_ARN
   ? new CloudFrontKeyValueStoreClient({ region: "us-east-1" })
+  : null;
+
+const cfClient = CLOUDFRONT_DISTRIBUTION_ID
+  ? new CloudFrontClient({ region: "us-east-1" })
   : null;
 
 /** Current ETag for the KVS (required for mutations). */
@@ -33,9 +42,9 @@ let currentETag: string | undefined;
 
 async function getETag(): Promise<string> {
   if (currentETag) return currentETag;
-  if (!client) throw new Error("KVS not configured");
+  if (!kvsClient) throw new Error("KVS not configured");
 
-  const res = await client.send(
+  const res = await kvsClient.send(
     new DescribeKeyValueStoreCommand({ KvsARN: CLOUDFRONT_KVS_ARN }),
   );
   currentETag = res.ETag!;
@@ -50,10 +59,10 @@ export async function kvsPut(
   name: string,
   deploymentId: string,
 ): Promise<void> {
-  if (!client) return;
+  if (!kvsClient) return;
   try {
     const etag = await getETag();
-    const res = await client.send(
+    const res = await kvsClient.send(
       new PutKeyCommand({
         KvsARN: CLOUDFRONT_KVS_ARN,
         Key: name,
@@ -76,10 +85,10 @@ export async function kvsPut(
  * Fire-and-forget: logs errors but does not throw.
  */
 export async function kvsDelete(name: string): Promise<void> {
-  if (!client) return;
+  if (!kvsClient) return;
   try {
     const etag = await getETag();
-    const res = await client.send(
+    const res = await kvsClient.send(
       new DeleteKeyCommand({
         KvsARN: CLOUDFRONT_KVS_ARN,
         Key: name,
@@ -100,6 +109,32 @@ export async function kvsDelete(name: string): Promise<void> {
 }
 
 /**
+ * Invalidate CloudFront edge cache for a custom subdomain.
+ * Called on subdomain reassignment so redeployed assets are served immediately.
+ * Fire-and-forget: logs errors but does not throw.
+ */
+export async function cfInvalidate(subdomain: string): Promise<void> {
+  if (!cfClient) return;
+  try {
+    await cfClient.send(
+      new CreateInvalidationCommand({
+        DistributionId: CLOUDFRONT_DISTRIBUTION_ID,
+        InvalidationBatch: {
+          CallerReference: `${subdomain}-${Date.now()}`,
+          Paths: { Quantity: 1, Items: ["/*"] },
+        },
+      }),
+    );
+    console.log(`  CloudFront invalidation created for ${subdomain}`);
+  } catch (err) {
+    console.error(
+      `CloudFront invalidation failed (${subdomain}):`,
+      err instanceof Error ? err.message : err,
+    );
+  }
+}
+
+/**
  * Reconcile KVS with the database. Runs periodically to fix drift.
  *
  * - Adds missing entries (DB has, KVS doesn't)
@@ -107,7 +142,7 @@ export async function kvsDelete(name: string): Promise<void> {
  * - Removes orphaned entries (KVS has, DB doesn't)
  */
 export async function kvsReconcile(): Promise<void> {
-  if (!client) return;
+  if (!kvsClient) return;
 
   try {
     // 1. Load all DB mappings
@@ -123,7 +158,7 @@ export async function kvsReconcile(): Promise<void> {
     const kvsMap = new Map<string, string>();
     let nextToken: string | undefined;
     do {
-      const res = await client.send(
+      const res = await kvsClient.send(
         new ListKeysCommand({
           KvsARN: CLOUDFRONT_KVS_ARN,
           NextToken: nextToken,
@@ -182,7 +217,7 @@ let reconcileTimer: ReturnType<typeof setInterval> | null = null;
  * Start the periodic reconciliation loop. Call once at startup.
  */
 export function startKvsReconciliation(): void {
-  if (!client) return;
+  if (!kvsClient) return;
   if (reconcileTimer) return;
 
   // Run initial reconciliation after a short delay (let server finish starting)

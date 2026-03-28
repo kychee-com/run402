@@ -27,6 +27,7 @@ mock.module("./kvs.js", {
   namedExports: {
     kvsPut: () => {},
     kvsDelete: () => {},
+    cfInvalidate: () => {},
   },
 });
 
