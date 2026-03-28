@@ -5,15 +5,21 @@ import { formatApiError, projectNotFound } from "../errors.js";
 
 export const sendEmailSchema = {
   project_id: z.string().describe("The project ID"),
+  to: z.string().describe("Recipient email address (single recipient only)"),
   template: z
     .enum(["project_invite", "magic_link", "notification"])
-    .describe("Email template to use"),
-  to: z.string().describe("Recipient email address (single recipient only)"),
+    .optional()
+    .describe("Email template (template mode). project_invite, magic_link, or notification"),
   variables: z
     .record(z.string())
+    .optional()
     .describe(
-      "Template variables. project_invite: project_name, invite_url. magic_link: project_name, link_url, expires_in. notification: project_name, message (max 500 chars).",
+      "Template variables (template mode). project_invite: project_name, invite_url. magic_link: project_name, link_url, expires_in. notification: project_name, message (max 500 chars).",
     ),
+  subject: z.string().optional().describe("Email subject line (raw HTML mode, max 998 chars)"),
+  html: z.string().optional().describe("HTML email body (raw HTML mode, max 1MB)"),
+  text: z.string().optional().describe("Plain text fallback (raw HTML mode, auto-generated from HTML if omitted)"),
+  from_name: z.string().optional().describe("Display name for From header, e.g. \"My App\" (max 78 chars)"),
 };
 
 async function resolveMailboxId(
@@ -61,42 +67,62 @@ async function resolveMailboxId(
 
 export async function handleSendEmail(args: {
   project_id: string;
-  template: string;
   to: string;
-  variables: Record<string, string>;
+  template?: string;
+  variables?: Record<string, string>;
+  subject?: string;
+  html?: string;
+  text?: string;
+  from_name?: string;
 }): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
   const project = getProject(args.project_id);
   if (!project) return projectNotFound(args.project_id);
 
+  const isRaw = !!(args.subject || args.html);
+  const isTemplate = !!(args.template);
+  if (!isRaw && !isTemplate) {
+    return {
+      content: [{ type: "text", text: "Error: Provide either `template` + `variables` (template mode) or `subject` + `html` (raw HTML mode)." }],
+      isError: true,
+    };
+  }
+
   const mailbox = await resolveMailboxId(args.project_id, project.service_key);
   if ("error" in mailbox) return mailbox.error;
 
+  const body: Record<string, unknown> = { to: args.to };
+  if (isTemplate) {
+    body.template = args.template;
+    body.variables = args.variables;
+  } else {
+    body.subject = args.subject;
+    body.html = args.html;
+    if (args.text) body.text = args.text;
+  }
+  if (args.from_name) body.from_name = args.from_name;
+
   const res = await apiRequest(`/mailboxes/v1/${mailbox.id}/messages`, {
     method: "POST",
-    headers: {
-      Authorization: `Bearer ${project.service_key}`,
-    },
-    body: {
-      template: args.template,
-      to: args.to,
-      variables: args.variables,
-    },
+    headers: { Authorization: `Bearer ${project.service_key}` },
+    body,
   });
 
   if (!res.ok) return formatApiError(res, "sending email");
 
-  const body = res.body as {
+  const resBody = res.body as {
     id: string;
     status: string;
     to: string;
-    template: string;
+    template?: string;
+    subject?: string;
   };
 
+  const mode = resBody.template ? `**Template:** ${resBody.template}` : `**Subject:** ${resBody.subject}`;
   return {
     content: [
       {
         type: "text",
-        text: `## Email Sent\n\n- **Message ID:** \`${body.id}\`\n- **To:** ${body.to}\n- **Template:** ${body.template}\n- **Status:** ${body.status}`,
+        text: `## Email Sent\n\n- **Message ID:** \`${resBody.id}\`\n- **To:** ${resBody.to}\n- ${mode}\n- **Status:** ${resBody.status}`,
       },
     ],
   };

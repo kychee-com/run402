@@ -1,6 +1,6 @@
 import { findProject, resolveProjectId, API, updateProject, loadKeyStore, saveKeyStore } from "./config.mjs";
 
-const HELP = `run402 email — Send template-based emails from your project
+const HELP = `run402 email — Send emails from your project
 
 Usage:
   run402 email <subcommand> [args...]
@@ -8,10 +8,14 @@ Usage:
 Subcommands:
   create <slug> [--project <id>]     Create a mailbox (<slug>@mail.run402.com)
   status [--project <id>]            Show mailbox info (ID, address, slug)
-  send   --template <name> --to <email> [--var key=value ...] [--project <id>]
-                                     Send a template email
+  send   --to <email> [mode flags]   Send an email (template or raw HTML)
   list   [--project <id>]            List sent emails
   get    <message_id> [--project <id>]  Get a message with replies
+
+Send modes:
+  Template:  --template <name> --var key=value [--var ...]
+  Raw HTML:  --subject "..." --html "..." [--text "..."]
+  Both modes support: --from-name "Display Name" --project <id>
 
 Templates:
   project_invite  — requires --var project_name=... --var invite_url=...
@@ -22,6 +26,8 @@ Examples:
   run402 email create my-app
   run402 email send --template project_invite --to user@example.com \\
     --var project_name="My App" --var invite_url="https://example.com/invite/abc"
+  run402 email send --to user@example.com --subject "Welcome!" \\
+    --html "<h1>Hello</h1><p>Welcome aboard.</p>" --from-name "My App"
   run402 email send --template notification --to admin@example.com \\
     --var project_name="My App" --var message="Deploy complete"
   run402 email list
@@ -31,7 +37,7 @@ Notes:
   - One mailbox per project
   - Single recipient per send (no CC/BCC)
   - Slug: 3-63 chars, lowercase alphanumeric + hyphens, no consecutive hyphens
-  - Rate limits vary by tier (prototype: 10/day, hobby: 50/day, team: 200/day)
+  - Rate limits vary by tier (prototype: 10/day, hobby: 50/day, team: 500/day)
   - --project defaults to the active project
 `;
 
@@ -147,25 +153,43 @@ async function create(args) {
 async function send(args) {
   const template = parseFlag(args, "--template");
   const to = parseFlag(args, "--to");
+  const subject = parseFlag(args, "--subject");
+  const html = parseFlag(args, "--html");
+  const text = parseFlag(args, "--text");
+  const fromName = parseFlag(args, "--from-name");
   const projectId = resolveProjectId(parseFlag(args, "--project"));
   const p = findProject(projectId);
   const variables = parseVars(args);
 
-  if (!template) {
-    console.error(JSON.stringify({ status: "error", message: "Missing --template. Options: project_invite, magic_link, notification" }));
-    process.exit(1);
-  }
   if (!to) {
     console.error(JSON.stringify({ status: "error", message: "Missing --to <email>" }));
     process.exit(1);
   }
 
+  const isRaw = !!(subject || html);
+  const isTemplate = !!template;
+  if (!isRaw && !isTemplate) {
+    console.error(JSON.stringify({ status: "error", message: "Provide --template (template mode) or --subject + --html (raw HTML mode)" }));
+    process.exit(1);
+  }
+
   const mailboxId = await requireMailboxId(projectId, p.service_key);
+
+  const body = { to };
+  if (isTemplate) {
+    body.template = template;
+    body.variables = variables;
+  } else {
+    body.subject = subject;
+    body.html = html;
+    if (text) body.text = text;
+  }
+  if (fromName) body.from_name = fromName;
 
   const res = await fetch(`${API}/mailboxes/v1/${mailboxId}/messages`, {
     method: "POST",
     headers: { "Authorization": `Bearer ${p.service_key}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ template, to, variables }),
+    body: JSON.stringify(body),
   });
   const data = await res.json();
   if (!res.ok) {
@@ -173,7 +197,7 @@ async function send(args) {
     process.exit(1);
   }
 
-  console.log(JSON.stringify({ status: "ok", message_id: data.id, to: data.to, template: data.template }));
+  console.log(JSON.stringify({ status: "ok", message_id: data.id, to: data.to, template: data.template || null, subject: data.subject || null }));
 }
 
 async function list(args) {

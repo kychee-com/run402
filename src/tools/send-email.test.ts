@@ -95,6 +95,65 @@ describe("send_email tool", () => {
     assert.ok(result.content[0]!.text.includes("create_mailbox"));
   });
 
+  it("sends raw HTML email with subject and html", async () => {
+    let capturedBody: string | undefined;
+    globalThis.fetch = (async (_url: string | URL | Request, init?: RequestInit) => {
+      capturedBody = init?.body as string;
+      return new Response(
+        JSON.stringify({ id: "msg-002", status: "sent", to: "user@example.com", subject: "Welcome!" }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    }) as typeof fetch;
+
+    const result = await handleSendEmail({
+      project_id: "proj-001",
+      to: "user@example.com",
+      subject: "Welcome!",
+      html: "<h1>Hello</h1>",
+    });
+
+    assert.equal(result.isError, undefined);
+    assert.ok(result.content[0]!.text.includes("Email Sent"));
+    assert.ok(result.content[0]!.text.includes("Subject:"));
+    const parsed = JSON.parse(capturedBody!);
+    assert.equal(parsed.subject, "Welcome!");
+    assert.equal(parsed.html, "<h1>Hello</h1>");
+    assert.equal(parsed.template, undefined);
+  });
+
+  it("sends from_name when provided", async () => {
+    let capturedBody: string | undefined;
+    globalThis.fetch = (async (_url: string | URL | Request, init?: RequestInit) => {
+      capturedBody = init?.body as string;
+      return new Response(
+        JSON.stringify({ id: "msg-003", status: "sent", to: "user@example.com", subject: "Hi" }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    }) as typeof fetch;
+
+    await handleSendEmail({
+      project_id: "proj-001",
+      to: "user@example.com",
+      subject: "Hi",
+      html: "<p>hey</p>",
+      from_name: "My App",
+    });
+
+    const parsed = JSON.parse(capturedBody!);
+    assert.equal(parsed.from_name, "My App");
+  });
+
+  it("returns error when neither template nor subject/html provided", async () => {
+    const result = await handleSendEmail({
+      project_id: "proj-001",
+      to: "user@example.com",
+    });
+
+    assert.equal(result.isError, true);
+    assert.ok(result.content[0]!.text.includes("template"));
+    assert.ok(result.content[0]!.text.includes("html"));
+  });
+
   it("returns isError on API error", async () => {
     globalThis.fetch = (async () =>
       new Response(

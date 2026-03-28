@@ -390,7 +390,7 @@ server.tool(
 
 server.tool(
   "send_email",
-  "Send a template-based email from the project's mailbox. Templates: project_invite, magic_link, notification. Single recipient only.",
+  "Send an email from the project's mailbox. Two modes: template (project_invite, magic_link, notification) or raw HTML (subject + html). Optional from_name for display name. Single recipient only.",
   sendEmailSchema,
   async (args) => handleSendEmail(args),
 );

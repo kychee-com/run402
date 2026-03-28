@@ -205,7 +205,7 @@ Deploy a serverless function (Node 22) to a project. Functions are invoked via H
 
 **DB access inside functions:**
 ```typescript
-import { db } from '@run402/functions';
+import { db, email, getUser } from '@run402/functions';
 ```
 
 **db.sql(query, params?)** — raw SQL, returns `{ status, schema, rows, rowCount }`.
@@ -217,6 +217,11 @@ import { db } from '@run402/functions';
 Chainable read methods: `.select(cols?)`, `.eq(col, val)`, `.neq()`, `.gt()`, `.lt()`, `.gte()`, `.lte()`, `.like()`, `.ilike()`, `.in(col, [vals])`, `.order(col, { ascending? })`, `.limit(n)`, `.offset(n)`
 Chainable write methods: `.insert(obj | obj[])`, `.update(obj)`, `.delete()` — all return array of affected rows.
 Column narrowing: `.insert({...}).select('col1, col2')` returns only specified columns.
+
+**email.send(opts)** — send email from the project's mailbox. Auto-discovers the mailbox on first call (project must have a mailbox created via `create_mailbox`).
+- Template mode: `await email.send({ to: "user@example.com", template: "notification", variables: { project_name: "My App", message: "Hello!" } })`
+- Raw HTML mode: `await email.send({ to: "user@example.com", subject: "Welcome!", html: "<h1>Hi</h1>" })`
+- With display name: `await email.send({ to: "user@example.com", subject: "Hi", html: "<p>hey</p>", from_name: "My App" })`
 
 **Secrets:** Access via `process.env.SECRET_NAME`. Set with `set_secret`.
 
@@ -275,17 +280,22 @@ create_mailbox(project_id: "prj_...", slug: "my-app")
 
 ### send_email
 
-Send a template-based email from the project's mailbox. Single recipient only.
+Send an email from the project's mailbox. Two modes: template or raw HTML. Single recipient only.
 
 **Parameters:**
 - `project_id` (required) — Project ID
-- `template` (required) — Template name: `project_invite`, `magic_link`, or `notification`
 - `to` (required) — Recipient email address
-- `variables` (required) — Template variables object. `project_invite`: `project_name`, `invite_url`. `magic_link`: `project_name`, `link_url`, `expires_in`. `notification`: `project_name`, `message` (max 500 chars).
+- `template` (optional) — Template name: `project_invite`, `magic_link`, or `notification` (template mode)
+- `variables` (optional) — Template variables object (template mode). `project_invite`: `project_name`, `invite_url`. `magic_link`: `project_name`, `link_url`, `expires_in`. `notification`: `project_name`, `message` (max 500 chars).
+- `subject` (optional) — Email subject line (raw HTML mode, max 998 chars)
+- `html` (optional) — HTML email body (raw HTML mode, max 1MB)
+- `text` (optional) — Plain text fallback (raw HTML mode, auto-generated from HTML if omitted)
+- `from_name` (optional) — Display name for From header, e.g. "My App" (max 78 chars, both modes)
 
-**Example:**
+**Examples:**
 ```
 send_email(project_id: "prj_...", template: "project_invite", to: "user@example.com", variables: {"project_name": "My App", "invite_url": "https://..."})
+send_email(project_id: "prj_...", to: "user@example.com", subject: "Welcome!", html: "<h1>Hello</h1>", from_name: "My App")
 ```
 
 ### list_emails
