@@ -43,7 +43,7 @@ export const TIERS: Record<TierName, TierConfig> = {
     functionTimeoutSec: 60,
     functionMemoryMb: 512,
     maxSecrets: 200,
-    emailsPerDay: 200,
+    emailsPerDay: 500,
     uniqueRecipientsPerLease: 1000,
     maxScheduledFunctions: 10,
     minScheduleIntervalMinutes: 1,

@@ -223,6 +223,60 @@ export function getUser(req) {
     return null;
   }
 }
+
+/**
+ * Email helper — send emails via the project's mailbox.
+ *
+ * Usage:
+ *   email.send({ to, subject, html })               // raw mode
+ *   email.send({ to, template, variables })          // template mode
+ *   email.send({ to, subject, html, from_name })     // with display name
+ */
+export const email = (() => {
+  let _mailboxId = null;
+
+  async function _discoverMailbox() {
+    if (_mailboxId) return _mailboxId;
+    const res = await fetch(API_BASE + "/v1/mailboxes", {
+      headers: { Authorization: "Bearer " + SERVICE_KEY },
+    });
+    if (!res.ok) throw new Error("Failed to discover mailbox: " + await res.text());
+    const data = await res.json();
+    if (!data.mailboxes || data.mailboxes.length === 0) {
+      throw new Error("No mailbox configured for this project");
+    }
+    _mailboxId = data.mailboxes[0].mailbox_id;
+    return _mailboxId;
+  }
+
+  return {
+    async send(opts) {
+      const mbxId = await _discoverMailbox();
+      const body = { to: opts.to };
+      if (opts.template) {
+        body.template = opts.template;
+        body.variables = opts.variables || {};
+      } else {
+        body.subject = opts.subject;
+        body.html = opts.html;
+        if (opts.text) body.text = opts.text;
+      }
+      if (opts.from_name) body.from_name = opts.from_name;
+      const res = await fetch(API_BASE + "/v1/mailboxes/" + mbxId + "/messages", {
+        method: "POST",
+        headers: { Authorization: "Bearer " + SERVICE_KEY, "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        const errBody = await res.text();
+        let msg;
+        try { msg = JSON.parse(errBody).error || errBody; } catch { msg = errBody; }
+        throw new Error("Email send failed (" + res.status + "): " + msg);
+      }
+      return res.json();
+    },
+  };
+})();
 HELPERJS
 
 # Build zip

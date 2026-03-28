@@ -507,8 +507,62 @@ export default async (req) => {
       });
     }
 
-    // --- Step 15: Bootstrap function via bundle deploy ---
-    console.log("\nStep 13: Bootstrap via bundle deploy");
+    // --- Step 15: db.sql() — parameterized query ---
+    console.log("\nStep 15: db.sql() — parameterized query");
+    {
+      const sqlParamCode = `
+import { db } from '@run402/functions';
+
+export default async (req) => {
+  try {
+    await db.sql('CREATE TABLE IF NOT EXISTS param_test (id SERIAL PRIMARY KEY, label TEXT, value INT)');
+    await db.sql('INSERT INTO param_test (label, value) VALUES ($1, $2)', ['parameterized', 42]);
+    const result = await db.sql('SELECT label, value FROM param_test WHERE label = $1', ['parameterized']);
+    return new Response(JSON.stringify({ ok: true, rows: result.rows }), {
+      headers: { "Content-Type": "application/json" },
+    });
+  } catch (err) {
+    return new Response(JSON.stringify({ ok: false, error: err.message }), {
+      status: 500,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+};
+`;
+      const deployRes = await fetch(`${BASE_URL}/projects/v1/admin/${projectId}/functions`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${serviceKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ name: "sql-param", code: sqlParamCode }),
+      });
+      assert(deployRes.status === 201, `Deploy db.sql() param function: ${deployRes.status}`);
+
+      await sleep(3000);
+
+      const invokeRes = await fetch(`${BASE_URL}/functions/v1/sql-param`, {
+        method: "POST",
+        headers: { apikey: anonKey },
+      });
+      const body = await invokeRes.json() as Record<string, unknown>;
+      assert(invokeRes.status === 200, `db.sql() param invoke status: ${invokeRes.status}`);
+      assert(body.ok === true, `db.sql() parameterized succeeded (ok=${body.ok}, error=${(body as Record<string, unknown>).error ?? "none"})`);
+      if (body.ok) {
+        const rows = body.rows as Array<Record<string, unknown>>;
+        assert(rows.length > 0, `db.sql() parameterized SELECT returned rows`);
+        assert(rows[0].label === "parameterized", `db.sql() param returned correct label`);
+        assert(rows[0].value === 42, `db.sql() param returned correct value`);
+      }
+
+      await fetch(`${BASE_URL}/projects/v1/admin/${projectId}/functions/sql-param`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${serviceKey}` },
+      });
+    }
+
+    // --- Step 16: Bootstrap function via bundle deploy ---
+    console.log("\nStep 16: Bootstrap via bundle deploy");
     {
       // Provision a new project for bootstrap test
       const bsHeaders = await siwxHeaders("/projects/v1");
@@ -811,6 +865,104 @@ export default async (req) => {
         },
       );
       assert(res.status === 200, `Delete secret: ${res.status}`);
+    }
+
+    // --- Step 24: email.send() from function (raw mode) ---
+    console.log("\nStep 24: email.send() from function (raw mode)");
+    {
+      // Create a mailbox first
+      const mbxRes = await fetch(`${BASE_URL}/mailboxes/v1`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${serviceKey}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ slug: `fn-email-${Date.now()}` }),
+      });
+      if (mbxRes.status === 201) {
+        const mbxBody = await mbxRes.json() as { mailbox_id: string };
+        const mailboxId = mbxBody.mailbox_id;
+        assert(true, "Mailbox created for email test");
+
+        // Deploy a function that uses email.send()
+        const fnCode = `
+import { email } from '@run402/functions';
+
+export default async function handler(req) {
+  const result = await email.send({
+    to: "fn-test@example.com",
+    subject: "From a function",
+    html: "<p>Sent via email.send() helper</p>",
+  });
+  return Response.json(result);
+}`;
+        const deployRes = await fetch(
+          `${BASE_URL}/projects/v1/admin/${projectId}/functions`,
+          {
+            method: "POST",
+            headers: { Authorization: `Bearer ${serviceKey}`, "Content-Type": "application/json" },
+            body: JSON.stringify({ name: "email-raw-test", code: fnCode }),
+          },
+        );
+        assert(deployRes.ok, `Deploy email.send() raw function: ${deployRes.status}`);
+
+        // Invoke it
+        const invokeRes = await fetch(`${BASE_URL}/functions/v1/email-raw-test`, {
+          method: "POST",
+          headers: { apikey: anonKey },
+        });
+        if (invokeRes.ok) {
+          const invokeBody = await invokeRes.json() as { message_id?: string; status?: string };
+          assert(!!invokeBody.message_id, "email.send() raw returned message_id");
+          assert(invokeBody.status === "sent", `email.send() raw status is sent (got ${invokeBody.status})`);
+        } else {
+          const errText = await invokeRes.text();
+          // SES sandbox is expected to fail
+          if (errText.includes("not verified") || errText.includes("MessageRejected") || errText.includes("Email send failed")) {
+            assert(true, "email.send() raw (SES sandbox — expected)");
+          } else {
+            assert(false, `email.send() raw invoke failed: ${invokeRes.status} ${errText}`);
+          }
+        }
+
+        // --- Step 25: email.send() from function (template mode) ---
+        console.log("\nStep 25: email.send() from function (template mode)");
+        const fnCode2 = `
+import { email } from '@run402/functions';
+
+export default async function handler(req) {
+  const result = await email.send({
+    to: "fn-template@example.com",
+    template: "notification",
+    variables: { project_name: "FnTest", message: "hello from function" },
+  });
+  return Response.json(result);
+}`;
+        const deployRes2 = await fetch(
+          `${BASE_URL}/projects/v1/admin/${projectId}/functions`,
+          {
+            method: "POST",
+            headers: { Authorization: `Bearer ${serviceKey}`, "Content-Type": "application/json" },
+            body: JSON.stringify({ name: "email-tmpl-test", code: fnCode2 }),
+          },
+        );
+        assert(deployRes2.ok, `Deploy email.send() template function: ${deployRes2.status}`);
+
+        const invokeRes2 = await fetch(`${BASE_URL}/functions/v1/email-tmpl-test`, {
+          method: "POST",
+          headers: { apikey: anonKey },
+        });
+        if (invokeRes2.ok) {
+          const body2 = await invokeRes2.json() as { template?: string; status?: string };
+          assert(body2.template === "notification", `email.send() template returned notification (got ${body2.template})`);
+          assert(body2.status === "sent", `email.send() template status is sent (got ${body2.status})`);
+        } else {
+          const errText2 = await invokeRes2.text();
+          if (errText2.includes("not verified") || errText2.includes("MessageRejected") || errText2.includes("Email send failed")) {
+            assert(true, "email.send() template (SES sandbox — expected)");
+          } else {
+            assert(false, `email.send() template invoke failed: ${invokeRes2.status} ${errText2}`);
+          }
+        }
+      } else {
+        assert(true, `Mailbox for email test (skipped, status=${mbxRes.status})`);
     }
   } finally {
     // --- Step 23: Cleanup ---

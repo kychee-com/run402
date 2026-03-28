@@ -1,7 +1,11 @@
 /**
- * Email send service — template-based outbound email via SES.
+ * Email send service — outbound email via SES.
  *
- * Sends from <slug>@mail.run402.com using predefined templates.
+ * Supports two modes:
+ *   1. Template mode: predefined templates (project_invite, magic_link, notification)
+ *   2. Raw mode: arbitrary subject + HTML body (with auto-generated plaintext fallback)
+ *
+ * Sends from <slug>@mail.run402.com (optionally with display name).
  * Enforces daily send limits, unique recipient caps, and suppression lists.
  */
 
@@ -67,42 +71,151 @@ function escapeHtml(str: string): string {
   return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
+/** Strip HTML tags to generate a plaintext fallback. */
+export function stripHtml(html: string): string {
+  return html
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
+    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/p>/gi, "\n\n")
+    .replace(/<\/div>/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+// ---------- Raw mode limits ----------
+
+const MAX_HTML_BYTES = 1_048_576; // 1MB
+const MAX_SUBJECT_CHARS = 998; // RFC 5322
+const MAX_FROM_NAME_CHARS = 78; // RFC 5322 display name
+
 // ---------- Send ----------
 
 export interface SendEmailResult {
   message_id: string;
   to: string;
-  template: string;
+  template: string | null;
+  subject?: string;
   status: string;
   sent_at: string;
 }
 
+export interface SendEmailOptions {
+  mailboxId: string;
+  to: string;
+  // Template mode
+  template?: string;
+  variables?: Record<string, string>;
+  // Raw mode
+  subject?: string;
+  html?: string;
+  text?: string;
+  // Shared
+  from_name?: string;
+}
+
+/**
+ * Validate the from_name field if provided.
+ */
+function validateFromName(name: string | undefined): void {
+  if (!name) return;
+  if (name.length > MAX_FROM_NAME_CHARS) {
+    throw new MailboxError(`Display name exceeds ${MAX_FROM_NAME_CHARS} character limit`, 400);
+  }
+  if (/[<>"\n\r]/.test(name)) {
+    throw new MailboxError("Display name contains invalid characters", 400);
+  }
+}
+
+/**
+ * Build the From address, optionally with a display name.
+ */
+function buildFromAddress(slug: string, fromName?: string): string {
+  const address = formatAddress(slug);
+  if (fromName) {
+    return `"${fromName}" <${address}>`;
+  }
+  return address;
+}
+
+/**
+ * Send an email — supports template mode and raw HTML mode.
+ *
+ * Template mode: provide `template` + `variables`
+ * Raw mode: provide `subject` + `html` (+ optional `text`)
+ * If `template` is present, template mode is used (takes precedence).
+ */
+export async function sendEmail(opts: SendEmailOptions): Promise<SendEmailResult>;
+export async function sendEmail(mailboxId: string, template: string, to: string, variables: Record<string, string>): Promise<SendEmailResult>;
 export async function sendEmail(
-  mailboxId: string,
-  template: string,
-  to: string,
-  variables: Record<string, string>,
+  mailboxIdOrOpts: string | SendEmailOptions,
+  templateArg?: string,
+  toArg?: string,
+  variablesArg?: Record<string, string>,
 ): Promise<SendEmailResult> {
-  // Validate template
-  const tmpl = TEMPLATES[template];
-  if (!tmpl) {
-    throw new MailboxError(
-      `Unknown template. Valid templates: ${Object.keys(TEMPLATES).join(", ")}`,
-      400,
-    );
-  }
+  // Normalize to options object (backwards compat with old 4-arg signature)
+  const opts: SendEmailOptions = typeof mailboxIdOrOpts === "string"
+    ? { mailboxId: mailboxIdOrOpts, template: templateArg, to: toArg!, variables: variablesArg }
+    : mailboxIdOrOpts;
 
-  // Validate required variables
-  for (const v of tmpl.requiredVars) {
-    if (!variables[v]) {
-      throw new MailboxError(`Missing required variable: ${v}`, 400);
+  const { mailboxId, to } = opts;
+  const isTemplateMode = !!opts.template;
+
+  // --- Template mode validation ---
+  let subject: string;
+  let textBody: string;
+  let htmlBody: string;
+  let templateName: string | null;
+
+  if (isTemplateMode) {
+    const tmpl = TEMPLATES[opts.template!];
+    if (!tmpl) {
+      throw new MailboxError(
+        `Unknown template. Valid templates: ${Object.keys(TEMPLATES).join(", ")}`,
+        400,
+      );
     }
+    const variables = opts.variables || {};
+    for (const v of tmpl.requiredVars) {
+      if (!variables[v]) {
+        throw new MailboxError(`Missing required variable: ${v}`, 400);
+      }
+    }
+    if (opts.template === "notification" && variables.message && variables.message.length > 500) {
+      throw new MailboxError("Message exceeds 500 character limit", 400);
+    }
+    subject = tmpl.subject(variables);
+    textBody = tmpl.textBody(variables);
+    htmlBody = tmpl.htmlBody(variables);
+    templateName = opts.template!;
+  } else {
+    // --- Raw mode validation ---
+    if (!opts.subject) {
+      throw new MailboxError("Subject is required for raw email", 400);
+    }
+    if (!opts.html) {
+      throw new MailboxError("HTML body is required for raw email", 400);
+    }
+    if (opts.subject.length > MAX_SUBJECT_CHARS) {
+      throw new MailboxError(`Subject exceeds ${MAX_SUBJECT_CHARS} character limit`, 400);
+    }
+    if (Buffer.byteLength(opts.html, "utf-8") > MAX_HTML_BYTES) {
+      throw new MailboxError("HTML body exceeds 1MB limit", 400);
+    }
+    subject = opts.subject;
+    htmlBody = opts.html + FOOTER_HTML;
+    textBody = (opts.text || stripHtml(opts.html)) + FOOTER_TEXT;
+    templateName = null;
   }
 
-  // Notification message length limit
-  if (template === "notification" && variables.message && variables.message.length > 500) {
-    throw new MailboxError("Message exceeds 500 character limit", 400);
-  }
+  // Validate from_name (both modes)
+  validateFromName(opts.from_name);
 
   // Get mailbox
   const mailbox = await getMailbox(mailboxId);
@@ -127,13 +240,11 @@ export async function sendEmail(
   // Check daily limit
   const dailyCheck = await checkAndIncrementDailyLimit(mailboxId, tierConfig.emailsPerDay);
   if (!dailyCheck.allowed) {
-    // Roll back the increment
     await pool.query(
       sql(`UPDATE internal.mailboxes SET sends_today = sends_today - 1 WHERE id = $1`),
       [mailboxId],
     );
 
-    // Check if upgrade available
     const tierNames: TierName[] = ["prototype", "hobby", "team"];
     const currentIdx = tierNames.indexOf(project.tier as TierName);
     if (currentIdx < tierNames.length - 1) {
@@ -162,7 +273,6 @@ export async function sendEmail(
     tierConfig.uniqueRecipientsPerLease,
   );
   if (!recipientCheck.allowed) {
-    // Roll back daily increment
     await pool.query(
       sql(`UPDATE internal.mailboxes SET sends_today = sends_today - 1 WHERE id = $1`),
       [mailboxId],
@@ -173,11 +283,7 @@ export async function sendEmail(
     );
   }
 
-  // Render template
-  const subject = tmpl.subject(variables);
-  const textBody = tmpl.textBody(variables);
-  const htmlBody = tmpl.htmlBody(variables);
-  const fromAddress = formatAddress(mailbox.slug);
+  const fromAddress = buildFromAddress(mailbox.slug, opts.from_name);
 
   // Send via SES
   const command = new SendEmailCommand({
@@ -203,15 +309,17 @@ export async function sendEmail(
   await pool.query(
     sql(`INSERT INTO internal.email_messages (id, mailbox_id, direction, template, to_address, from_address, subject, body_text, ses_message_id, status, created_at)
      VALUES ($1, $2, 'outbound', $3, $4, $5, $6, $7, $8, 'sent', $9)`),
-    [msgId, mailboxId, template, to, fromAddress, subject, textBody, sesMessageId, now],
+    [msgId, mailboxId, templateName, to, fromAddress, subject, textBody, sesMessageId, now],
   );
 
-  console.log(`  Email sent: ${fromAddress} → ${to} (template: ${template}, ses: ${sesMessageId})`);
+  const mode = templateName ? `template: ${templateName}` : "raw";
+  console.log(`  Email sent: ${fromAddress} → ${to} (${mode}, ses: ${sesMessageId})`);
 
   return {
     message_id: msgId,
     to,
-    template,
+    template: templateName,
+    ...(templateName ? {} : { subject }),
     status: "sent",
     sent_at: now,
   };

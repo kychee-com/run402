@@ -973,12 +973,16 @@ class _QueryBuilder {
 }
 const db = {
   from(t) { return new _QueryBuilder(t); },
-  async sql(query) {
+  async sql(query, params) {
     const url = _API_BASE + "/projects/v1/admin/" + _PROJECT_ID + "/sql";
+    const hasParams = Array.isArray(params) && params.length > 0;
     const res = await fetch(url, {
       method: "POST",
-      headers: { Authorization: "Bearer " + _SERVICE_KEY, "Content-Type": "text/plain" },
-      body: query,
+      headers: {
+        Authorization: "Bearer " + _SERVICE_KEY,
+        "Content-Type": hasParams ? "application/json" : "text/plain",
+      },
+      body: hasParams ? JSON.stringify({ sql: query, params: params }) : query,
     });
     if (!res.ok) {
       const errBody = await res.text();
@@ -998,6 +1002,51 @@ function getUser(req) {
     return { id: payload.sub, role: payload.role };
   } catch { return null; }
 }
+
+// --- email helper ---
+const email = (() => {
+  let _mailboxId = null;
+  async function _discoverMailbox() {
+    if (_mailboxId) return _mailboxId;
+    const res = await fetch(_API_BASE + "/v1/mailboxes", {
+      headers: { Authorization: "Bearer " + _SERVICE_KEY },
+    });
+    if (!res.ok) throw new Error("Failed to discover mailbox: " + await res.text());
+    const data = await res.json();
+    if (!data.mailboxes || data.mailboxes.length === 0) {
+      throw new Error("No mailbox configured for this project");
+    }
+    _mailboxId = data.mailboxes[0].mailbox_id;
+    return _mailboxId;
+  }
+  return {
+    async send(opts) {
+      const mbxId = await _discoverMailbox();
+      const body = { to: opts.to };
+      if (opts.template) {
+        body.template = opts.template;
+        body.variables = opts.variables || {};
+      } else {
+        body.subject = opts.subject;
+        body.html = opts.html;
+        if (opts.text) body.text = opts.text;
+      }
+      if (opts.from_name) body.from_name = opts.from_name;
+      const res = await fetch(_API_BASE + "/v1/mailboxes/" + mbxId + "/messages", {
+        method: "POST",
+        headers: { Authorization: "Bearer " + _SERVICE_KEY, "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        const errBody = await res.text();
+        let msg;
+        try { msg = JSON.parse(errBody).error || errBody; } catch { msg = errBody; }
+        throw new Error("Email send failed (" + res.status + "): " + msg);
+      }
+      return res.json();
+    },
+  };
+})();
 
 // --- user code ---
 ${stripped}

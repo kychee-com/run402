@@ -4267,9 +4267,9 @@
         "tags": [
           "Mailboxes"
         ],
-        "summary": "Send template email",
+        "summary": "Send email",
         "operationId": "sendMailboxMessage",
-        "description": "Sends a templated email from the mailbox.",
+        "description": "Sends an email from the mailbox. Supports two modes: template mode (provide template + variables) or raw HTML mode (provide subject + html). The from_name field optionally sets a display name on the From header.",
         "security": [
           {
             "serviceKey": []
@@ -4294,11 +4294,14 @@
               "schema": {
                 "type": "object",
                 "required": [
-                  "template",
-                  "to",
-                  "variables"
+                  "to"
                 ],
                 "properties": {
+                  "to": {
+                    "type": "string",
+                    "format": "email",
+                    "description": "Recipient email address"
+                  },
                   "template": {
                     "type": "string",
                     "enum": [
@@ -4306,17 +4309,30 @@
                       "magic_link",
                       "notification"
                     ],
-                    "description": "Email template to use"
-                  },
-                  "to": {
-                    "type": "string",
-                    "format": "email",
-                    "description": "Recipient email address"
+                    "description": "Email template to use (template mode)"
                   },
                   "variables": {
                     "type": "object",
                     "additionalProperties": true,
-                    "description": "Template variables"
+                    "description": "Template variables (template mode)"
+                  },
+                  "subject": {
+                    "type": "string",
+                    "maxLength": 998,
+                    "description": "Email subject line (raw mode)"
+                  },
+                  "html": {
+                    "type": "string",
+                    "description": "HTML email body, max 1MB (raw mode)"
+                  },
+                  "text": {
+                    "type": "string",
+                    "description": "Optional plaintext fallback; auto-generated from html if omitted (raw mode)"
+                  },
+                  "from_name": {
+                    "type": "string",
+                    "maxLength": 78,
+                    "description": "Display name for the From header, e.g. 'My App' renders as '\"My App\" <slug@mail.run402.com>'"
                   }
                 }
               }

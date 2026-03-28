@@ -130,14 +130,12 @@ router.delete("/mailboxes/v1/:id", serviceKeyAuth, asyncHandler(async (req: Requ
   }
 }));
 
-// POST /v1/mailboxes/:id/messages — send email
+// POST /v1/mailboxes/:id/messages — send email (template or raw HTML mode)
 router.post("/mailboxes/v1/:id/messages", serviceKeyAuth, asyncHandler(async (req: Request, res: Response) => {
   validateUUID(req.params.id, "mailbox_id");
-  const { template, to, variables } = req.body || {};
+  const body = req.body || {};
 
-  if (!template || typeof template !== "string") {
-    throw new HttpError(400, "Missing or invalid 'template' field");
-  }
+  const { to } = body;
   if (!to || typeof to !== "string") {
     throw new HttpError(400, "Missing or invalid 'to' field — must be a single email address");
   }
@@ -154,21 +152,30 @@ router.post("/mailboxes/v1/:id/messages", serviceKeyAuth, asyncHandler(async (re
     throw new HttpError(403, "Mailbox owned by different project");
   }
 
+  // Detect mode: template field present → template mode, else raw mode
+  const isTemplateMode = !!body.template;
+  if (!isTemplateMode && !body.subject && !body.html) {
+    throw new HttpError(400, "Provide either 'template' + 'variables', or 'subject' + 'html' for raw mode");
+  }
+
   try {
-    const result = await sendEmail(
-      req.params.id as string,
-      template,
+    const result = await sendEmail({
+      mailboxId: req.params.id as string,
       to,
-      variables || {},
-    );
+      template: body.template,
+      variables: body.variables,
+      subject: body.subject,
+      html: body.html,
+      text: body.text,
+      from_name: body.from_name,
+    });
     res.status(201).json(result);
   } catch (err: unknown) {
     if (err instanceof MailboxError) {
-      // 402 errors include JSON body with upgrade info
       if (err.statusCode === 402) {
         try {
-          const body = JSON.parse(err.message);
-          throw new HttpError(402, body.error, body);
+          const parsed = JSON.parse(err.message);
+          throw new HttpError(402, parsed.error, parsed);
         } catch (parseErr) {
           if (parseErr instanceof HttpError) throw parseErr;
         }

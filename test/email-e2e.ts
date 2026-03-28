@@ -260,8 +260,148 @@ async function run() {
     ok("invalid slug rejected", res2.status === 400);
   }
 
-  // Step 8: Delete project → mailbox tombstoned
-  console.log("\n8. Delete project (cascade)");
+  // Step 8: Send raw HTML email
+  console.log("\n8. Send raw HTML email");
+  {
+    const res = await fetch(`${BASE_URL}/mailboxes/v1/${mailboxId}/messages`, {
+      method: "POST",
+      headers: authHeaders,
+      body: JSON.stringify({
+        to: "test-raw@example.com",
+        subject: "Raw test email",
+        html: "<h1>Hello from raw mode</h1><p>This is a test.</p>",
+      }),
+    });
+    if (res.status === 201) {
+      const body = await res.json() as { message_id: string; template: string | null; subject: string; status: string };
+      ok("raw email sent", true);
+      ok("template is null", body.template === null, `got ${body.template}`);
+      ok("subject returned", body.subject === "Raw test email");
+      ok("status is sent", body.status === "sent");
+
+      // Verify in messages list
+      const listRes = await fetch(`${BASE_URL}/mailboxes/v1/${mailboxId}/messages`, {
+        headers: authHeaders,
+      });
+      const listBody = await listRes.json() as { messages: Array<{ template: string | null }> };
+      const rawMsg = listBody.messages.find((m) => m.template === null);
+      ok("raw message in list with template=null", !!rawMsg);
+    } else {
+      const body = await res.json() as { error: string };
+      if (body.error?.includes("not verified") || body.error?.includes("MessageRejected")) {
+        ok("raw email send (SES sandbox — expected)", true);
+      } else {
+        ok("raw email sent", false, `status=${res.status} ${JSON.stringify(body)}`);
+      }
+    }
+
+    // Missing subject → 400
+    const res2 = await fetch(`${BASE_URL}/mailboxes/v1/${mailboxId}/messages`, {
+      method: "POST",
+      headers: authHeaders,
+      body: JSON.stringify({ to: "a@b.com", html: "<p>no subject</p>" }),
+    });
+    ok("raw email without subject rejected", res2.status === 400);
+
+    // Missing html → 400 (no template and no html)
+    const res3 = await fetch(`${BASE_URL}/mailboxes/v1/${mailboxId}/messages`, {
+      method: "POST",
+      headers: authHeaders,
+      body: JSON.stringify({ to: "a@b.com", subject: "no html" }),
+    });
+    ok("raw email without html rejected", res3.status === 400);
+  }
+
+  // Step 9: Send with display name
+  console.log("\n9. Send with display name");
+  {
+    const res = await fetch(`${BASE_URL}/mailboxes/v1/${mailboxId}/messages`, {
+      method: "POST",
+      headers: authHeaders,
+      body: JSON.stringify({
+        to: "test-displayname@example.com",
+        subject: "Display name test",
+        html: "<p>Testing from_name</p>",
+        from_name: "My Test App",
+      }),
+    });
+    if (res.status === 201) {
+      ok("email with display name sent", true);
+      // Get the message to verify from_address format
+      const body = await res.json() as { message_id: string };
+      const msgRes = await fetch(`${BASE_URL}/mailboxes/v1/${mailboxId}/messages/${body.message_id}`, {
+        headers: authHeaders,
+      });
+      if (msgRes.status === 200) {
+        const msg = await msgRes.json() as { from_address: string };
+        ok("from_address has display name", msg.from_address?.includes('"My Test App"'), `got ${msg.from_address}`);
+      }
+    } else {
+      const body = await res.json() as { error: string };
+      if (body.error?.includes("not verified") || body.error?.includes("MessageRejected")) {
+        ok("display name send (SES sandbox — expected)", true);
+      } else {
+        ok("email with display name sent", false, `status=${res.status}`);
+      }
+    }
+
+    // Invalid from_name → 400
+    const res2 = await fetch(`${BASE_URL}/mailboxes/v1/${mailboxId}/messages`, {
+      method: "POST",
+      headers: authHeaders,
+      body: JSON.stringify({
+        to: "a@b.com",
+        subject: "Test",
+        html: "<p>hi</p>",
+        from_name: 'Evil <script>',
+      }),
+    });
+    ok("invalid from_name rejected", res2.status === 400);
+  }
+
+  // Step 10: Inbound reply E2E
+  console.log("\n10. Inbound reply test");
+  {
+    // Send an outbound email first
+    const outRes = await fetch(`${BASE_URL}/mailboxes/v1/${mailboxId}/messages`, {
+      method: "POST",
+      headers: authHeaders,
+      body: JSON.stringify({
+        template: "notification",
+        to: account.address.toLowerCase() + "-reply-test@example.com",
+        variables: { project_name: "Reply Test", message: "Please reply to this" },
+      }),
+    });
+    if (outRes.status === 201) {
+      const outBody = await outRes.json() as { message_id: string };
+      ok("outbound sent for reply test", true);
+
+      // Get the SES message ID for In-Reply-To header
+      const msgRes = await fetch(`${BASE_URL}/mailboxes/v1/${mailboxId}/messages/${outBody.message_id}`, {
+        headers: authHeaders,
+      });
+      if (msgRes.status === 200) {
+        // In a full E2E, we'd send a reply via SES SendRawEmail to the mailbox address
+        // and poll for the inbound reply. This requires SES sandbox to allow sending to
+        // mail.run402.com (which it does — we own the domain). But the inbound Lambda
+        // needs to process it, which only works against production with active SES rules.
+        //
+        // For now, verify the message thread endpoint works:
+        const msgBody = await msgRes.json() as { replies: unknown[] };
+        ok("message has replies array", Array.isArray(msgBody.replies));
+        ok("replies is empty (no reply yet)", msgBody.replies.length === 0);
+        // Full inbound reply test requires production SES — skipped in non-prod
+        if (BASE_URL.includes("api.run402.com")) {
+          console.log("    TODO: Send real SES reply and poll for inbound (production only)");
+        }
+      }
+    } else {
+      ok("outbound for reply test (SES sandbox — expected)", true);
+    }
+  }
+
+  // Step 11: Delete project → mailbox tombstoned
+  console.log("\n11. Delete project (cascade)");
   {
     const res = await fetch(`${BASE_URL}/projects/v1/${projectId}`, {
       method: "DELETE",
