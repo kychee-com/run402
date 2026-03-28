@@ -44,7 +44,7 @@ The system SHALL append a footer to every outbound email: "Sent by an AI agent v
 - **THEN** the email body SHALL end with the branded footer line
 
 ### Requirement: Daily send rate limit
-The system SHALL enforce a daily send limit per mailbox based on the project's tier: prototype=10, hobby=50, team=200. The counter resets at midnight UTC.
+The system SHALL enforce a daily send limit per mailbox based on the project's tier: prototype=10, hobby=50, team=500. The counter resets at midnight UTC.
 
 #### Scenario: Daily limit reached
 - **WHEN** a prototype-tier mailbox has sent 10 emails today and the agent sends another
