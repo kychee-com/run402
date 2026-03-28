@@ -748,10 +748,18 @@ Functions are deployed via the Admin endpoints above and invoked at `/functions/
 
 Handler signature: `export default async (req: Request) => Response`
 Built-in helper: `import { db, getUser } from '@run402/functions'`
-- `db.from(table)` -- PostgREST-style queries (service_role, bypasses RLS)
-- `db.sql(query)` -- raw SQL
 - `getUser(req)` -- verify caller's JWT, returns `{ id, role }` or `null`
 Secrets: `process.env.SECRET_NAME`
+
+**db.sql(query, params?)** -- raw SQL, returns `{ status, schema, rows, rowCount }`.
+- SELECT: `rows` = matching rows, `rowCount` = row count
+- INSERT/UPDATE/DELETE: `rows` = `[]`, `rowCount` = affected rows
+- Parameterized: `db.sql('SELECT * FROM t WHERE id = $1', [42])`
+
+**db.from(table)** -- PostgREST-style queries (service_role, bypasses RLS). Returns a plain array of row objects.
+Chainable read methods: `.select(cols?)`, `.eq(col, val)`, `.neq()`, `.gt()`, `.lt()`, `.gte()`, `.lte()`, `.like()`, `.ilike()`, `.in(col, [vals])`, `.order(col, { ascending? })`, `.limit(n)`, `.offset(n)`
+Chainable write methods: `.insert(obj | obj[])`, `.update(obj)`, `.delete()` -- all return array of affected rows.
+Column narrowing: `.insert({...}).select('col1, col2')` returns only specified columns.
 
 ### User Auth
 

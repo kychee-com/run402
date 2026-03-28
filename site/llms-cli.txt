@@ -239,9 +239,53 @@ Requires active tier and a provisioned project. Deploys to an existing project: 
 ### functions
 Node 22 runtime. Must export `default async (req: Request) => Response`.
 Built-in helper: `import { db, getUser } from '@run402/functions'`
-- `db.from(table)` — PostgREST-style queries (service_role, bypasses RLS)
-- `db.sql(query)` — raw SQL
 - `getUser(req)` — verify caller's JWT, returns `{ id, role }` or `null`
+
+#### db.sql(query, params?)
+Raw SQL. Returns `{ status, schema, rows, rowCount }`.
+- SELECT: `rows` = matching rows, `rowCount` = row count
+- INSERT/UPDATE/DELETE: `rows` = `[]`, `rowCount` = affected rows
+- Parameterized: `db.sql('SELECT * FROM t WHERE id = $1', [42])`
+
+```
+const result = await db.sql('SELECT * FROM users WHERE active = true');
+// { status: "ok", schema: "p0001", rows: [{ id: 1, name: "Alice" }], rowCount: 1 }
+const rows = result.rows;
+```
+
+#### db.from(table)
+PostgREST-style queries (service_role, bypasses RLS). Returns a plain array of row objects.
+
+Reads:
+- `.select(cols?)` — columns to return (default `"*"`)
+- `.eq(col, val)`, `.neq()`, `.gt()`, `.lt()`, `.gte()`, `.lte()` — filters
+- `.like(col, pattern)`, `.ilike(col, pattern)` — pattern match
+- `.in(col, [values])` — IN clause
+- `.order(col, { ascending? })` — sort (default ascending)
+- `.limit(n)`, `.offset(n)` — pagination
+
+```
+const users = await db.from('users').select('name, email').eq('active', true).limit(10);
+// [{ name: "Alice", email: "a@b.com" }, ...]
+```
+
+Writes (also return an array of affected rows):
+- `.insert(obj | obj[])` — insert one or many rows
+- `.update(obj)` — update matched rows (combine with `.eq()`)
+- `.delete()` — delete matched rows (combine with `.eq()`)
+
+```
+const created = await db.from('items').insert({ title: 'New', done: false });
+// [{ id: 1, title: "New", done: false, created_at: "..." }]
+
+await db.from('items').update({ done: true }).eq('id', 1);
+// [{ id: 1, title: "New", done: true, created_at: "..." }]
+
+await db.from('items').delete().eq('id', 1);
+// [{ id: 1, ... }]  (returns deleted row)
+```
+
+Column narrowing works with writes: `.insert({...}).select('id, title')` returns only those columns.
 
 - `run402 functions deploy <id> <name> --file <file> [--deps "<pkg,...>"] [--timeout <s>] [--memory <mb>] [--schedule "<cron>"]`
 - `run402 functions invoke <id> <name> [--body '<json>'] [--method <GET|POST|...>]`
