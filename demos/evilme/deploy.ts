@@ -14,6 +14,8 @@ import { readFileSync } from "node:fs";
 import { x402Client, wrapFetchWithPayment } from "@x402/fetch";
 import { ExactEvmScheme } from "@x402/evm/exact/client";
 import { toClientEvmSigner } from "@x402/evm";
+import { createSIWxPayload, encodeSIWxHeader } from "@x402/extensions/sign-in-with-x";
+import type { CompleteSIWxInfo } from "@x402/extensions/sign-in-with-x";
 import { privateKeyToAccount } from "viem/accounts";
 import { createPublicClient, http } from "viem";
 import { baseSepolia } from "viem/chains";
@@ -34,14 +36,23 @@ const client = new x402Client();
 client.register("eip155:84532", new ExactEvmScheme(signer));
 const fetchPaid = wrapFetchWithPayment(fetch, client);
 
-async function walletAuthHeaders(): Promise<Record<string, string>> {
-  const timestamp = Math.floor(Date.now() / 1000).toString();
-  const signature = await account.signMessage({ message: `run402:${timestamp}` });
-  return {
-    "X-Run402-Wallet": account.address,
-    "X-Run402-Signature": signature,
-    "X-Run402-Timestamp": timestamp,
+async function siwxHeaders(path: string): Promise<Record<string, string>> {
+  const baseUrl = new URL(BASE_URL);
+  const uri = `${baseUrl.protocol}//${baseUrl.host}${path}`;
+  const now = new Date();
+  const info: CompleteSIWxInfo = {
+    domain: baseUrl.hostname,
+    uri,
+    statement: "Sign in to Run402",
+    version: "1",
+    nonce: Math.random().toString(36).slice(2),
+    issuedAt: now.toISOString(),
+    expirationTime: new Date(now.getTime() + 5 * 60 * 1000).toISOString(),
+    chainId: "eip155:84532",
+    type: "eip191",
   };
+  const payload = await createSIWxPayload(info, account);
+  return { "SIGN-IN-WITH-X": encodeSIWxHeader(payload) };
 }
 
 async function main() {
@@ -54,18 +65,24 @@ async function main() {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({}),
   });
-  if (!subRes.ok) {
-    console.error("Failed to subscribe:", subRes.status, await subRes.text());
-    process.exit(1);
+  if (subRes.ok) {
+    console.log("   Subscribed to prototype tier");
+  } else {
+    const tierBody = await subRes.json().catch(() => ({})) as Record<string, unknown>;
+    if (tierBody.current_tier_active) {
+      console.log(`   Tier already active (expires ${tierBody.lease_expires_at})`);
+    } else {
+      console.error("Failed to subscribe:", subRes.status, JSON.stringify(tierBody));
+      process.exit(1);
+    }
   }
-  console.log("   Subscribed to prototype tier");
 
   // 1. Provision project
   console.log("\n1) Provisioning project...");
-  const wHeaders = await walletAuthHeaders();
+  const projHeaders = await siwxHeaders("/projects/v1");
   const provRes = await fetch(`${BASE_URL}/projects/v1`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", ...wHeaders },
+    headers: { "Content-Type": "application/json", ...projHeaders },
     body: JSON.stringify({ name: "evilme" }),
   });
 
@@ -146,7 +163,7 @@ async function main() {
     `APIKEY = params.get("key") || "${anon_key}";`,
   );
 
-  const siteHeaders = await walletAuthHeaders();
+  const siteHeaders = await siwxHeaders("/deployments/v1");
   const siteRes = await fetch(`${BASE_URL}/deployments/v1`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...siteHeaders },
@@ -167,7 +184,7 @@ async function main() {
   const subRes = await fetch(`${BASE_URL}/subdomains/v1`, {
     method: "POST",
     headers: authHeaders,
-    body: JSON.stringify({ name: "evilme", deployment_id: site.id }),
+    body: JSON.stringify({ name: "evilme", deployment_id: site.deployment_id }),
   });
   if (!subRes.ok) {
     const err = await subRes.text();
@@ -176,7 +193,7 @@ async function main() {
       await fetch(`${BASE_URL}/subdomains/v1`, {
         method: "POST",
         headers: authHeaders,
-        body: JSON.stringify({ name: "evilme", deployment_id: site.id }),
+        body: JSON.stringify({ name: "evilme", deployment_id: site.deployment_id }),
       });
       console.log("   Subdomain updated");
     } else {
