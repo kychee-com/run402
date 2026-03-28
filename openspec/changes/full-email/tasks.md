@@ -47,6 +47,6 @@
 
 ## 8. Lambda layer publish
 
-- [ ] 8.1 Rebuild and publish Lambda layer with the new email helper: `cd packages/functions-runtime && AWS_PROFILE=kychee ./build-layer.sh --publish` (deploy-time)
-- [ ] 8.2 Update `LAMBDA_LAYER_ARN` in `infra/lib/pod-stack.ts` with new layer version (deploy-time)
-- [ ] 8.3 Deploy CDK stack to update ECS task definition with new layer ARN (deploy-time)
+- [x] 8.1 Rebuild and publish Lambda layer v5 with email helper
+- [x] 8.2 Update `LAMBDA_LAYER_ARN` in `infra/lib/pod-stack.ts` to v5
+- [x] 8.3 Deploy CDK stack to update ECS task definition with new layer ARN
