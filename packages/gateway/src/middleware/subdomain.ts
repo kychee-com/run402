@@ -113,7 +113,7 @@ async function handleSubdomainRequest(
         res.send(html);
       } else {
         res.set("Content-Type", contentType);
-        res.set("Cache-Control", "public, max-age=3600");
+        res.set("Cache-Control", "public, max-age=60");
         res.send(Buffer.from(body));
       }
     } else {
@@ -137,7 +137,7 @@ async function handleSubdomainRequest(
         res.send(html);
       } else {
         res.set("Content-Type", getMimeType(filePath));
-        res.set("Cache-Control", "public, max-age=3600");
+        res.set("Cache-Control", "public, max-age=60");
         res.send(fileContent);
       }
     }

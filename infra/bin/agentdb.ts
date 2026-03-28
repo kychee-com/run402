@@ -4,6 +4,7 @@ import { PodStack } from "../lib/pod-stack.js";
 import { SiteStack } from "../lib/site-stack.js";
 import { SitesStack } from "../lib/sites-stack.js";
 import { StatusProbeStack } from "../lib/status-probe-stack.js";
+import { CustomSubdomainsStack } from "../lib/custom-subdomains-stack.js";
 
 const app = new cdk.App();
 
@@ -25,6 +26,11 @@ new SiteStack(app, "AgentDB-Site", {
 new SitesStack(app, "AgentDB-Sites", {
   env,
   description: "AgentDB Sites — CloudFront + wildcard DNS for deployed static sites",
+});
+
+new CustomSubdomainsStack(app, "Run402-CustomSubdomains", {
+  env,
+  description: "Run402 Custom Subdomains — CloudFront + KVS for {name}.run402.com",
 });
 
 new StatusProbeStack(app, "Run402-StatusProbe", {

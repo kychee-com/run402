@@ -9,6 +9,7 @@ import { pool } from "../db/pool.js";
 import { sql } from "../db/sql.js";
 import { getDeployment } from "./deployments.js";
 import { projectCache, getProjectById } from "./projects.js";
+import { kvsPut, kvsDelete } from "./kvs.js";
 
 export interface SubdomainRecord {
   name: string;
@@ -182,6 +183,7 @@ export async function createOrUpdateSubdomain(
 
   const row = result.rows[0];
   cacheInvalidate(name);
+  kvsPut(name, deploymentId);
 
   console.log(`  Subdomain claimed: ${name} → ${deploymentId}`);
 
@@ -260,6 +262,7 @@ export async function deleteSubdomain(name: string, projectId?: string | null): 
 
   if (result.rowCount && result.rowCount > 0) {
     cacheInvalidate(name);
+    kvsDelete(name);
     console.log(`  Subdomain released: ${name}`);
     return true;
   }

@@ -35,6 +35,16 @@ Current layer: `arn:aws:lambda:us-east-1:472210437512:layer:run402-functions-run
 
 **Important:** The gateway CI workflow does NOT rebuild the Lambda layer. If you change `build-layer.sh` or the functions runtime and only push to main, the gateway will deploy with the old layer. Always publish the layer first.
 
+### Custom Subdomains CDN ({name}.run402.com)
+
+Custom subdomains use a CloudFront distribution with a KeyValueStore (KVS) for edge routing. Static assets (CSS, JS, images, fonts) are served from CloudFront edge locations with immutable caching. HTML requests fall through to the ALB gateway for fork badge injection.
+
+**KVS sync:** The gateway automatically updates the KVS on subdomain claim/delete. A reconciliation job runs every 5 minutes to fix drift. Config: `CLOUDFRONT_KVS_ARN` env var.
+
+**Seed script:** To populate KVS from scratch: `CLOUDFRONT_KVS_ARN=<arn> DATABASE_URL=<url> npx tsx scripts/seed-kvs.ts`
+
+**CDK stack:** `Run402-CustomSubdomains` in `infra/lib/custom-subdomains-stack.ts`
+
 ### Site (run402.com landing page)
 
 **Content updates:** Push changes under `site/` to `main`. The GitHub Action `.github/workflows/deploy-site.yml` syncs to S3 and invalidates CloudFront.

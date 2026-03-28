@@ -66,3 +66,6 @@ export const MPP_SECRET_KEY = process.env.MPP_SECRET_KEY || "";
 export const GOOGLE_APP_CLIENT_ID = process.env.GOOGLE_APP_CLIENT_ID || "";
 export const GOOGLE_APP_CLIENT_SECRET = process.env.GOOGLE_APP_CLIENT_SECRET || "";
 export const PUBLIC_API_URL = process.env.PUBLIC_API_URL || "https://api.run402.com";
+
+// CloudFront KeyValueStore (subdomain → deployment_id edge cache)
+export const CLOUDFRONT_KVS_ARN = process.env.CLOUDFRONT_KVS_ARN || "";

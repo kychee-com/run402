@@ -32,6 +32,7 @@ import { initSubdomainsTable } from "./services/subdomains.js";
 import { initFunctionsTable } from "./services/functions.js";
 import { initAdminWalletsTable } from "./services/admin-wallets.js";
 import { subdomainMiddleware } from "./middleware/subdomain.js";
+import { startKvsReconciliation } from "./services/kvs.js";
 import projectRoutes from "./routes/projects.js";
 import authRoutes from "./routes/auth.js";
 import adminRoutes from "./routes/admin.js";
@@ -1087,6 +1088,7 @@ async function start() {
   startLeaseChecker();
   startFaucetRefill();
   startDemoResetChecker();
+  startKvsReconciliation();
   await startScheduler();
   oauthCleanupInterval = setInterval(cleanupExpiredOAuthData, 3600_000);
 
