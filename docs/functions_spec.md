@@ -36,7 +36,7 @@ This is the #1 feature blocking agents from shipping complete apps. Without Func
 | Gateway routing | Gateway invokes Lambda synchronously (AWS SDK) | Full control over auth/metering. ~20-50ms overhead. Revisit later. |
 | Domain | api.run402.com/functions/v1/:name | Same domain, path-based. Consistent with everything else. |
 | Helper API | `import { db, storage } from '@run402/functions'` | Explicit import. Standard Node pattern. |
-| Helper scope | DB only (PostgREST client + raw SQL) | `db.from('table').select()` + `db.sql('SELECT ...')`. Keep it focused. |
+| Helper scope | DB only (PostgREST client + raw SQL) | `db.from('table').select()` + `db.sql('SELECT ...', params?)`. Keep it focused. |
 
 ---
 
@@ -80,6 +80,10 @@ await db.from('orders').delete().eq('id', orderId);
 
 // Raw SQL (via /admin/v1/projects/:id/sql)
 await db.sql('SELECT count(*) FROM users WHERE created_at > now() - interval \'7 days\'');
+
+// Parameterized SQL — prevents SQL injection, handles escaping automatically
+await db.sql('SELECT * FROM users WHERE id = $1', [userId]);
+await db.sql('INSERT INTO orders (user_id, item, qty) VALUES ($1, $2, $3)', [userId, 'widget', 3]);
 
 // Identify the authenticated caller
 const user = getUser(req);

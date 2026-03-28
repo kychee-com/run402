@@ -8,6 +8,7 @@ import assert from "node:assert/strict";
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let mockClientQueries: Array<{ sql: string; result?: any; error?: Error }>;
 let clientQueryLog: string[];
+let clientParamsLog: Array<unknown[] | undefined>;
 let clientReleased: boolean;
 
 // Pool-level query mock (used by pin/unpin/schema handlers that call pool.query directly)
@@ -17,8 +18,9 @@ let poolQueryLog: string[] = [];
 
 const fakeClient = {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  async query(sql: string): Promise<any> {
+  async query(sql: string, params?: unknown[]): Promise<any> {
     clientQueryLog.push(sql);
+    clientParamsLog.push(params);
     for (const entry of mockClientQueries) {
       if (sql === entry.sql || sql.includes(entry.sql)) {
         if (entry.error) throw entry.error;
@@ -177,6 +179,7 @@ describe("POST /projects/v1/admin/:id/sql", () => {
   beforeEach(() => {
     mockClientQueries = [];
     clientQueryLog = [];
+    clientParamsLog = [];
     clientReleased = false;
   });
 
@@ -367,6 +370,79 @@ describe("POST /projects/v1/admin/:id/sql", () => {
     assert.equal(res._body.status, "ok");
   });
 
+  // --- Parameterized queries ---
+
+  it("accepts JSON body with sql and params fields", async () => {
+    mockClientQueries = [
+      { sql: "SELECT $1::text AS val", result: { rows: [{ val: "hello" }], rowCount: 1 } },
+    ];
+
+    const req = fakeReq({
+      body: JSON.stringify({ sql: "SELECT $1::text AS val", params: ["hello"] }),
+      headers: { "content-type": "application/json" },
+    });
+    const { res, err } = await callHandler(req);
+
+    assert.equal(err, undefined);
+    assert.equal(res._body.status, "ok");
+    assert.deepEqual(res._body.rows, [{ val: "hello" }]);
+    // The user SQL query is the 3rd call (after BEGIN, SET search_path)
+    const userQueryIndex = clientQueryLog.indexOf("SELECT $1::text AS val");
+    assert.ok(userQueryIndex >= 0, "user query was logged");
+    assert.deepEqual(clientParamsLog[userQueryIndex], ["hello"]);
+  });
+
+  it("does not pass params for text/plain body", async () => {
+    mockClientQueries = [
+      { sql: "SELECT 1", result: { rows: [{ "?column?": 1 }], rowCount: 1 } },
+    ];
+
+    const req = fakeReq({
+      body: "SELECT 1",
+      headers: { "content-type": "text/plain" },
+    });
+    const { res, err } = await callHandler(req);
+
+    assert.equal(err, undefined);
+    assert.equal(res._body.status, "ok");
+    // All query calls should have undefined params
+    for (const p of clientParamsLog) {
+      assert.equal(p, undefined);
+    }
+  });
+
+  it("treats empty params array same as no params", async () => {
+    mockClientQueries = [
+      { sql: "SELECT 1", result: { rows: [{ "?column?": 1 }], rowCount: 1 } },
+    ];
+
+    const req = fakeReq({
+      body: JSON.stringify({ sql: "SELECT 1", params: [] }),
+      headers: { "content-type": "application/json" },
+    });
+    const { res, err } = await callHandler(req);
+
+    assert.equal(err, undefined);
+    assert.equal(res._body.status, "ok");
+    // Empty params should not be passed through
+    for (const p of clientParamsLog) {
+      assert.equal(p, undefined);
+    }
+  });
+
+  it("rejects non-array params with 400", async () => {
+    const req = fakeReq({
+      body: JSON.stringify({ sql: "SELECT 1", params: "not-an-array" }),
+      headers: { "content-type": "application/json" },
+    });
+    const { err } = await callHandler(req);
+
+    assert.ok(err);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    assert.equal((err as any).statusCode, 400);
+    assert.ok(err!.message.includes('"params" must be an array'));
+  });
+
   // --- Input validation ---
 
   it("returns 400 when no SQL provided", async () => {
@@ -419,6 +495,7 @@ describe("POST /projects/v1/admin/:id/rls — user_owns_rows", () => {
   beforeEach(() => {
     mockClientQueries = [];
     clientQueryLog = [];
+    clientParamsLog = [];
     clientReleased = false;
   });
 

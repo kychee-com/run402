@@ -200,11 +200,21 @@ router.post("/projects/v1/admin/:id/sql", demoBlockedMiddleware("SQL execution")
   const project = req.project!;
 
   let userSql: string | undefined;
+  let userParams: unknown[] | undefined;
   const contentType = req.get("content-type") ?? "";
   if (contentType.includes("application/json")) {
     const parsed = JSON.parse(req.body as string) as Record<string, unknown>;
     const val = parsed["sql"] ?? parsed["query"];
     userSql = typeof val === "string" ? val : undefined;
+    const rawParams = parsed["params"];
+    if (rawParams !== undefined) {
+      if (!Array.isArray(rawParams)) {
+        throw new HttpError(400, '"params" must be an array');
+      }
+      if (rawParams.length > 0) {
+        userParams = rawParams;
+      }
+    }
   } else {
     userSql = typeof req.body === "string" ? req.body : undefined;
   }
@@ -222,7 +232,9 @@ router.post("/projects/v1/admin/:id/sql", demoBlockedMiddleware("SQL execution")
   try {
     await client.query(sql("BEGIN"));
     await client.query(sql(`SET search_path TO ${project.schemaSlot}`));
-    const result = await client.query(sql(userSql));
+    const result = userParams
+      ? await client.query(sql(userSql), userParams)
+      : await client.query(sql(userSql));
     await client.query(sql("NOTIFY pgrst, 'reload schema'"));
     await client.query(sql("COMMIT"));
 
