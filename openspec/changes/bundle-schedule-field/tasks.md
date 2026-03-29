@@ -11,6 +11,6 @@
 ## 3. Verify and close
 
 - [x] 3.1 Type-check: `npx tsc --noEmit -p packages/gateway`
-- [ ] 3.2 Lint: `npm run lint`
-- [ ] 3.3 Docs alignment: `npm run test:docs`
-- [ ] 3.4 Close GitHub issue #3
+- [x] 3.2 Lint: `npm run lint`
+- [x] 3.3 Docs alignment: `npm run test:docs`
+- [x] 3.4 Close GitHub issue #3
