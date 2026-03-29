@@ -29,6 +29,7 @@ import { toClientEvmSigner } from "@x402/evm";
 import { privateKeyToAccount } from "viem/accounts";
 import { createPublicClient, http } from "viem";
 import { baseSepolia } from "viem/chains";
+import { ensureTestBalance } from "./ensure-balance.js";
 
 // --- Config ---
 
@@ -76,6 +77,8 @@ const idempotencyKey = `test-credit-${Date.now()}`;
 // --- Main test flow ---
 
 async function main() {
+  await ensureTestBalance(account.address, BASE_URL);
+
   console.log("\n=== Billing / Allowance E2E Test ===\n");
   console.log(`Target:  ${BASE_URL}`);
   console.log(`Wallet:  ${wallet}\n`);

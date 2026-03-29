@@ -29,6 +29,7 @@ import type { CompleteSIWxInfo } from "@x402/extensions/sign-in-with-x";
 import { privateKeyToAccount } from "viem/accounts";
 import { createPublicClient, http } from "viem";
 import { baseSepolia } from "viem/chains";
+import { ensureTestBalance } from "./ensure-balance.js";
 
 const BUYER_KEY = process.env.BUYER_PRIVATE_KEY as `0x${string}`;
 const BASE_URL = process.env.BASE_URL || "http://localhost:4022";
@@ -79,6 +80,8 @@ function ok(name: string, condition: boolean, detail?: string) {
 }
 
 async function run() {
+  await ensureTestBalance(account.address, BASE_URL);
+
   console.log(`\nEmail E2E Test — ${BASE_URL}\n`);
 
   let serviceKey = "";

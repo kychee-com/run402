@@ -28,6 +28,7 @@ import { privateKeyToAccount } from "viem/accounts";
 import { createPublicClient, http } from "viem";
 import { base, baseSepolia } from "viem/chains";
 import { randomBytes } from "node:crypto";
+import { ensureTestBalance } from "./ensure-balance.js";
 
 // --- Config ---
 
@@ -74,6 +75,8 @@ const TINY_PNG_BASE64 =
 // --- Main test flow ---
 
 async function main() {
+  await ensureTestBalance(account.address, BASE_URL);
+
   console.log("\n=== Deploy Site E2E Test ===\n");
   console.log(`Target:  ${BASE_URL}`);
   console.log(`Buyer:   ${account.address}\n`);

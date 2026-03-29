@@ -16,6 +16,7 @@ import { baseSepolia } from "viem/chains";
 import { x402Client, wrapFetchWithPayment } from "@x402/fetch";
 import { ExactEvmScheme } from "@x402/evm/exact/client";
 import { toClientEvmSigner } from "@x402/evm";
+import { ensureTestBalance } from "./ensure-balance.js";
 
 // --- Config ---
 
@@ -65,6 +66,8 @@ async function main() {
   const account = privateKeyToAccount(privateKey);
   console.log(`  Wallet: ${account.address}`);
   assert(account.address.startsWith("0x"), "Generated valid address");
+
+  await ensureTestBalance(account.address, BASE_URL);
 
   // Step 3: Get a drip
   console.log("\n3) Get a drip from faucet...");

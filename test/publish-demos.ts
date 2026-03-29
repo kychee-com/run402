@@ -11,6 +11,7 @@ import { toClientEvmSigner } from "@x402/evm";
 import { privateKeyToAccount } from "viem/accounts";
 import { createPublicClient, http } from "viem";
 import { baseSepolia } from "viem/chains";
+import { ensureTestBalance } from "./ensure-balance.js";
 
 const BUYER_KEY = process.env.BUYER_PRIVATE_KEY as `0x${string}`;
 const BASE_URL = process.env.BASE_URL || "https://api.run402.com";
@@ -163,6 +164,8 @@ async function publishDemo(demo: DemoApp, serviceKey: string, adminKey: string):
 }
 
 async function main() {
+  await ensureTestBalance(account.address, BASE_URL);
+
   console.log("=== Publishing Demo Apps ===\n");
 
   // First project to bootstrap admin faucet access

@@ -15,7 +15,7 @@
 
 ## 4. E2E verification
 
-- [ ] 4.1 Deploy a test `on-signup` function that inserts a row into a known table (e.g., `members`) with the user's ID *(requires running gateway)*
-- [ ] 4.2 Sign up a new user via password, confirm the `on-signup` function was invoked (member row exists within a few seconds) *(requires running gateway)*
-- [ ] 4.3 Sign up a new user via OAuth, confirm the `on-signup` function was invoked *(requires running gateway)*
-- [ ] 4.4 Log in an existing user, confirm the `on-signup` function was NOT invoked *(requires running gateway)*
+- [x] 4.1 Deploy a test `on-signup` function that inserts a row into a known table (e.g., `members`) with the user's ID *(verified against production)*
+- [x] 4.2 Sign up a new user via password, confirm the `on-signup` function was invoked (member row exists within a few seconds) *(verified against production)*
+- [ ] 4.3 Sign up a new user via OAuth, confirm the `on-signup` function was invoked *(requires Google OAuth flow — manual test)*
+- [x] 4.4 Log in an existing user, confirm the `on-signup` function was NOT invoked *(verified against production)*
