@@ -413,7 +413,7 @@ export class PodStack extends cdk.Stack {
         DB_PORT: "5432",
         DB_NAME: "agentdb",
         LAMBDA_ROLE_ARN: lambdaExecRole.roleArn,
-        LAMBDA_LAYER_ARN: "arn:aws:lambda:us-east-1:472210437512:layer:run402-functions-runtime:6",
+        LAMBDA_LAYER_ARN: "arn:aws:lambda:us-east-1:472210437512:layer:run402-functions-runtime:7",
         FUNCTIONS_LOG_GROUP: functionsLogGroup.logGroupName,
         CF_LOG_BUCKET: "agentdb-site-accesslogbucketda470295-jaz7qij2zfjq",
         CF_LOG_PREFIX: "cf-logs/",
