@@ -9,6 +9,7 @@ import { getProjectById, deriveProjectKeys } from "./projects.js";
 import { deployFunction, setSecret } from "./functions.js";
 import { createDeployment } from "./deployments.js";
 import { createOrUpdateSubdomain, validateSubdomainName } from "./subdomains.js";
+import { isValidCron, getCronIntervalMinutes, registerSchedule, cancelSchedule } from "./scheduler.js";
 import { pool } from "../db/pool.js";
 import { sql } from "../db/sql.js";
 import { TIERS } from "@run402/shared";
@@ -18,6 +19,7 @@ export interface BundleFunction {
   name: string;
   code: string;
   config?: { timeout?: number; memory?: number };
+  schedule?: string | null;
 }
 
 export interface BundleFile {
@@ -168,6 +170,14 @@ export function validateBundle(req: BundleRequest): void {
       if (!fn.code || typeof fn.code !== "string") {
         throw new BundleError(`Function '${fn.name}' is missing 'code'`, 400);
       }
+      if (fn.schedule != null && fn.schedule !== "") {
+        if (typeof fn.schedule !== "string") {
+          throw new BundleError(`Function '${fn.name}': 'schedule' must be a cron expression string`, 400);
+        }
+        if (!isValidCron(fn.schedule)) {
+          throw new BundleError(`Function '${fn.name}': invalid cron expression "${fn.schedule}". Use standard 5-field cron syntax (e.g., "*/15 * * * *").`, 400);
+        }
+      }
     }
   }
 
@@ -261,6 +271,44 @@ export async function deployBundle(
         tierConfig,
       );
       deployedFunctions.push({ name: result.name, url: result.url });
+
+      // Apply schedule (string = set, null = remove, undefined = no change)
+      const scheduleExpr: string | null | undefined =
+        fn.schedule != null && fn.schedule !== "" ? fn.schedule : fn.schedule;
+
+      if (typeof scheduleExpr === "string") {
+        // Enforce tier limits
+        const intervalMinutes = getCronIntervalMinutes(scheduleExpr);
+        if (intervalMinutes < tierConfig.minScheduleIntervalMinutes) {
+          throw new BundleError(
+            `Function '${fn.name}': schedule interval too frequent (${intervalMinutes}min). Your ${tier} tier requires at least ${tierConfig.minScheduleIntervalMinutes} minutes between runs.`,
+            403,
+          );
+        }
+        const { rows } = await pool.query(
+          sql(`SELECT count(*)::int AS cnt FROM internal.functions WHERE project_id = $1 AND schedule IS NOT NULL AND name != $2`),
+          [project.id, fn.name],
+        );
+        if (rows[0].cnt >= tierConfig.maxScheduledFunctions) {
+          throw new BundleError(
+            `Function '${fn.name}': scheduled function limit reached (${tierConfig.maxScheduledFunctions} for your ${tier} tier). Remove a schedule or upgrade.`,
+            403,
+          );
+        }
+        // Persist and register
+        await pool.query(
+          sql(`UPDATE internal.functions SET schedule = $3, schedule_meta = COALESCE(schedule_meta, '{"run_count": 0}'::jsonb) WHERE project_id = $1 AND name = $2`),
+          [project.id, fn.name, scheduleExpr],
+        );
+        registerSchedule(project.id, fn.name, scheduleExpr);
+      } else if (scheduleExpr === null) {
+        // Explicit null = remove schedule
+        await pool.query(
+          sql(`UPDATE internal.functions SET schedule = NULL, schedule_meta = NULL WHERE project_id = $1 AND name = $2`),
+          [project.id, fn.name],
+        );
+        cancelSchedule(project.id, fn.name);
+      }
     }
   }
 
