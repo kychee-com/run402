@@ -28,6 +28,14 @@ mock.module("../config.js", {
     FUNCTIONS_LOG_GROUP: undefined,
     S3_REGION: "us-east-1",
     JWT_SECRET: "test-secret",
+    METERING_FLUSH_INTERVAL: 60_000,
+  },
+});
+
+mock.module("../middleware/metering.js", {
+  namedExports: {
+    incrementProjectCalls: () => {},
+    getProjectCallCount: () => 0,
   },
 });
 
