@@ -9,7 +9,7 @@
 
 ## 2. Docs and close
 
-- [ ] 2.1 Add PATCH row to admin endpoints table in `site/llms.txt`
-- [ ] 2.2 Add PATCH to `site/openapi.json`
-- [ ] 2.3 Type-check + lint + docs alignment
-- [ ] 2.4 Close GitHub issue #4
+- [x] 2.1 Add PATCH row to admin endpoints table in `site/llms.txt`
+- [x] 2.2 Add PATCH to `site/openapi.json`
+- [x] 2.3 Type-check + lint + docs alignment
+- [x] 2.4 Close GitHub issue #4
