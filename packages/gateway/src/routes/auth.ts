@@ -20,6 +20,7 @@ import {
   exchangeAuthorizationCode,
 } from "../services/oauth.js";
 import { projectCache } from "../services/projects.js";
+import { fireLifecycleHook } from "../services/functions.js";
 import type { TokenPayload } from "@run402/shared";
 
 const router = Router();
@@ -275,6 +276,11 @@ router.post("/auth/v1/signup", demoSignupMiddleware, asyncHandler(async (req: Re
 
     const user = result.rows[0];
     console.log(`  User signed up: ${email} (project: ${project.id})`);
+
+    // Fire on-signup lifecycle hook (fire-and-forget)
+    fireLifecycleHook(project.id, "signup", {
+      user: { id: user.id, email: user.email, created_at: user.created_at },
+    });
 
     res.set("Cache-Control", "no-store");
     res.status(201).json({

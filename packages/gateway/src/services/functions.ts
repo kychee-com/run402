@@ -37,6 +37,7 @@ import {
   JWT_SECRET,
 } from "../config.js";
 import type { FunctionRecord } from "@run402/shared";
+import { incrementProjectCalls, getProjectCallCount } from "../middleware/metering.js";
 
 // AWS clients (only initialized if LAMBDA_ROLE_ARN is set)
 const lambda = LAMBDA_ROLE_ARN
@@ -1221,4 +1222,61 @@ async function buildZip(code: string): Promise<Uint8Array> {
   endRecord.writeUInt16LE(0, 20); // comment length
 
   return Buffer.concat([localHeader, fileData, centralHeader, endRecord]);
+}
+
+/**
+ * Fire a lifecycle hook (on-*) for a project. Fire-and-forget: errors are logged, never thrown.
+ * Looks up `on-{hookName}` in the project's functions table; if found, invokes it.
+ */
+export async function fireLifecycleHook(
+  projectId: string,
+  hookName: string,
+  payload: Record<string, unknown>,
+): Promise<void> {
+  const fnName = `on-${hookName}`;
+  try {
+    // Check if hook function exists
+    const result = await pool.query(
+      sql(`SELECT lambda_arn FROM internal.functions WHERE project_id = $1 AND name = $2`),
+      [projectId, fnName],
+    );
+    if (result.rows.length === 0) return;
+
+    // Check API quota
+    const projResult = await pool.query(
+      sql(`SELECT tier, api_calls FROM internal.projects WHERE id = $1`),
+      [projectId],
+    );
+    if (projResult.rows.length === 0) return;
+
+    const { TIERS } = await import("@run402/shared");
+    const tierConfig = TIERS[projResult.rows[0].tier as keyof typeof TIERS];
+    const dbCalls = projResult.rows[0].api_calls ?? 0;
+    const memCalls = getProjectCallCount(projectId);
+    if (tierConfig && (dbCalls + memCalls) >= tierConfig.apiCalls) {
+      console.warn(`  Lifecycle hook: quota exceeded for ${projectId}/${fnName}, skipping`);
+      return;
+    }
+
+    // Meter the invocation
+    incrementProjectCalls(projectId);
+
+    // Invoke fire-and-forget
+    const hookResult = await invokeFunction(
+      projectId,
+      fnName,
+      "POST",
+      `/functions/v1/${fnName}`,
+      {
+        "content-type": "application/json",
+        "x-run402-trigger": hookName,
+      },
+      JSON.stringify(payload),
+      "",
+    );
+    console.log(`  Lifecycle hook: ${projectId}/${fnName} → ${hookResult.statusCode}`);
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`  Lifecycle hook: ${projectId}/${fnName} error: ${msg}`);
+  }
 }

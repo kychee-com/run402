@@ -7,6 +7,7 @@ import crypto from "node:crypto";
 import { pool } from "../db/pool.js";
 import { sql } from "../db/sql.js";
 import { getDemoCounters } from "../middleware/demo.js";
+import { fireLifecycleHook } from "./functions.js";
 import { DEFAULT_DEMO_CONFIG } from "@run402/shared";
 import type { ProjectInfo } from "@run402/shared";
 
@@ -291,6 +292,11 @@ export async function resolveOAuthIdentity(params: ResolveIdentityParams): Promi
   );
 
   console.log(`  OAuth signup: ${email} via ${params.provider} (project: ${params.projectId})`);
+
+  // Fire on-signup lifecycle hook (fire-and-forget)
+  fireLifecycleHook(params.projectId, "signup", {
+    user: { id: userId, email, created_at: new Date().toISOString() },
+  });
 
   return { action: "signup", userId, email };
 }
