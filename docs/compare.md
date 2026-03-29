@@ -1166,3 +1166,209 @@ The `run402 init` CLI command that generates an allowance wallet would become: "
 ### Assessment
 
 OWS is early but well-architected. The policy engine + agent API tokens are exactly what the "spending controls" gap needs. Run402 doesn't need to adopt OWS today — the allowance system works fine at current scale. But if OWS (or any wallet standard) gains adoption, Run402 can adopt it without changing the merchant side (x402/MPP protocols stay the same). The migration path is clean: swap the wallet, keep the protocol.
+
+---
+---
+
+# Run402 vs Railway — Competitive Analysis
+
+_Added: 2026-03-29_
+
+## TL;DR
+
+Railway is a well-funded ($120M Series B), general-purpose PaaS — "deploy anything" with usage-based pricing. 2M+ developers, 31% of Fortune 500, SOC 2/HIPAA, bare-metal data centers in 4 regions. Has an MCP server for AI agents to manage infrastructure. Fundamentally different model from Run402: Railway is infrastructure agents deploy *to*, Run402 is infrastructure agents consume *from*.
+
+---
+
+## Positioning
+
+| | Run402 | Railway |
+|---|---|---|
+| **Tagline** | "Full-stack infrastructure for AI agents" | "Ship software peacefully" |
+| **Core model** | Agent-native: agent is the customer, pays via x402 | General-purpose PaaS: deploy anything (Docker, Git, templates) |
+| **Who pays** | Agent pays per-action via x402 micropayments | Developer pays usage-based (CPU/RAM/second) |
+| **Primary audience** | AI agents (autonomous customers) | Developers and engineering teams |
+| **AI angle** | Agent-as-consumer (agents use Run402 APIs) | Agent-as-operator (agents deploy to Railway) |
+| **Maturity** | Early-stage, bootstrapped | $120M funded, 2M+ developers, 31% of Fortune 500 |
+
+**Key difference:** Railway gives agents tools to *manage infrastructure* (deploy services, set env vars, check logs). Run402 gives agents *ready-to-use infrastructure* (database, REST API, auth, hosting) with no deployment step. Railway agents are DevOps operators. Run402 agents are application builders.
+
+---
+
+## Feature Comparison
+
+| Feature | Run402 | Railway |
+|---|---|---|
+| **Postgres Database** | Yes (schema-isolated, PostgREST REST API) | Yes (managed, connect via driver) |
+| **REST API over DB** | Yes (PostgREST, auto-generated) | No (bring your own ORM/API layer) |
+| **Authentication** | Yes (JWT + refresh tokens, RLS, built-in) | No (BYO or deploy auth template) |
+| **Row-Level Security** | Yes (one-call templates) | No (manual Postgres RLS) |
+| **File Storage** | Yes (S3-backed, signed URLs) | Yes (Railway Buckets, S3-compatible) |
+| **Serverless Functions** | Yes (Node.js on Lambda) | Yes (TypeScript/Bun, dashboard editor) |
+| **Static Site Hosting** | Yes (CDN, custom subdomains) | Via templates (not first-class) |
+| **Docker Containers** | No | Yes (any language, any framework) |
+| **Git-based Deploys** | No | Yes (push to deploy, PR previews) |
+| **Custom Domains** | No (subdomains on `*.run402.com`) | Yes (auto-SSL) |
+| **Private Networking** | No | Yes (inter-service) |
+| **Bundle Deploy** | Yes (one call: DB + migrations + RLS + functions + site) | No (multi-step: create service, deploy, configure) |
+| **Forkable Apps** | Yes (publish → fork → earn rewards) | No (but 1,800+ deploy templates) |
+| **x402 Micropayments** | Yes (agent pays per-action) | No (credit card, usage-based billing) |
+| **Hard-capped Budgets** | Yes (lease expires, no overages) | Credits cap (but usage-based can exceed) |
+| **MCP Server** | Yes (data operations: SQL, REST, deploy) | Yes (infra operations: deploy, configure, logs) |
+| **Multi-region** | No (us-east-1 only) | Yes (4 regions: US-West, US-East, EU-West, Singapore) |
+| **SOC2 / HIPAA** | No | Yes (SOC 2 Type II, HIPAA BAA) |
+| **Templates Marketplace** | Forkable apps (agents share + fork) | 1,800+ one-click templates (25% revenue share to creators) |
+
+## What Railway Has That Run402 Doesn't
+
+1. **Run anything** — Docker containers, any language, any framework. Long-running processes, background workers, cron jobs.
+2. **Git-based deploys** — push to GitHub, Railway auto-builds and deploys. PR preview environments.
+3. **Custom domains** — automatic SSL, easy DNS configuration.
+4. **Private networking** — services talk to each other over internal network.
+5. **Multi-region** — 4 bare-metal data centers (US, EU, Singapore).
+6. **Multiple databases** — Postgres, MySQL, MongoDB, Redis. All one-click.
+7. **Dashboard** — visual canvas showing service topology, built-in code editor, database views.
+8. **Compliance** — SOC 2 Type II, HIPAA ($1K/mo), GDPR, SSO, RBAC, audit logs.
+9. **Scale** — up to 1,000 vCPU, 1TB RAM per service on Pro. Horizontal replicas.
+10. **Template marketplace** — 1,800+ templates with creator revenue sharing ($1M+ paid out).
+11. **CLI** — 30+ commands for local dev, deployment, environment management.
+
+## What Run402 Has That Railway Doesn't
+
+1. **Agent-as-customer** — agents provision and pay autonomously via x402. No human signup, no credit card.
+2. **Instant REST API** — PostgREST auto-generates CRUD endpoints from Postgres schema. Railway gives you a database; you build the API yourself.
+3. **Built-in auth** — JWT signup/login, refresh tokens, RLS templates in one call. Railway has no auth system.
+4. **Bundle deploy** — one HTTP call deploys DB + migrations + RLS + functions + site + subdomain. Railway requires creating services, configuring environment, deploying code separately.
+5. **x402/MPP micropayments** — pay-per-action with crypto. Railway requires credit card and usage-based billing.
+6. **Hard-capped budgets** — lease-based, no overages, no surprise bills.
+7. **Fork/publish ecosystem** — agents share apps as templates, others fork with payment, publishers earn 20% rewards.
+8. **Row-level security templates** — one-call RLS setup. Railway leaves this to manual Postgres configuration.
+9. **Lease lifecycle** — projects auto-expire, clean resource management.
+
+---
+
+## Pricing Comparison
+
+### Railway — Usage-based
+
+| Plan | Monthly fee | Credits included | vCPU/service | RAM/service | Storage |
+|---|---|---|---|---|---|
+| Free Trial | $0 | $5 one-time | 1 | 0.5 GB | 0.5 GB |
+| Hobby | $5/mo | $5/mo | 48 | 48 GB | 5 GB |
+| Pro | $20/mo | $20/mo | 1,000 | 1 TB | 1 TB |
+| Enterprise | Custom | Custom | 2,400 | 2.4 TB | Custom |
+
+Usage rates: vCPU $0.000463/min, RAM $0.000231/GB-min, storage $0.015/GB-month, egress $0.05/GB.
+
+### Run402 — Pay-per-tier
+
+| Tier | Price | Lease | Storage | API Calls | Functions |
+|---|---|---|---|---|---|
+| Prototype | $0.10 | 7 days | 250MB | 500K | 5 |
+| Hobby | $5.00 | 30 days | 1GB | 5M | 25 |
+| Team | $20.00 | 30 days | 10GB | 50M | 100 |
+
+**Key differences:**
+- Railway: pay for CPU/RAM/seconds consumed. A Postgres database running 24/7 on Hobby costs ~$5-10/mo in compute alone. Cost scales with usage and uptime.
+- Run402: one-time payment covers everything for the lease period. $5 gets 30 days of Postgres + REST API + auth + functions + hosting. No metering, no overages.
+- Railway's model rewards efficiency (shut down what you don't use). Run402's model rewards simplicity (flat fee, use everything).
+- For an agent spinning up a full-stack app: Run402 is one payment, one call. Railway is create project + add Postgres + deploy API service + deploy frontend + configure domains + set env vars — each consuming metered resources.
+
+---
+
+## MCP Server Comparison
+
+Both have MCP servers, but they serve different purposes:
+
+| | Run402 MCP | Railway MCP |
+|---|---|---|
+| **Package** | `run402-mcp` | `@railway/mcp-server` |
+| **Focus** | Data operations (build apps) | Infrastructure management (deploy services) |
+| **Key tools** | `provision_postgres_project`, `run_sql`, `rest_query`, `deploy_site`, `deploy_function`, `claim_subdomain` | `deploy`, `deploy-template`, `create-environment`, `set-variables`, `get-logs`, `generate-domain` |
+| **Agent role** | Agent is the customer using the platform | Agent is the operator managing infrastructure |
+| **Destructive ops** | Allowed (with auth) | Deliberately excluded (no delete tools) |
+
+Railway's MCP lets an agent deploy a Node.js server to Railway and configure it. Run402's MCP lets an agent create a database, run queries, deploy a site, and claim a subdomain — without ever "deploying" anything in the traditional sense.
+
+---
+
+## Different Thesis
+
+Railway's AI angle: **"Agents deploy and manage infrastructure on Railway."** The agent replaces the DevOps engineer — it creates services, sets environment variables, checks logs, manages deployments. The human still pays the bill, designs the architecture, and owns the account.
+
+Run402's AI angle: **"Agents buy and consume infrastructure from Run402."** The agent is the autonomous customer — it pays with its own wallet, provisions a database, deploys a full-stack app, and operates it. No human in the loop for infrastructure decisions.
+
+Railway is **infrastructure management for agents**. Run402 is **infrastructure consumption by agents**.
+
+---
+
+## Who Should Use Which
+
+**Railway**: Teams deploying production services — custom APIs, background workers, Docker containers, multi-service architectures. Agents that need to deploy and manage arbitrary software with full control over runtime, scaling, and networking.
+
+**Run402**: Agents building web apps autonomously — database, API, auth, hosting, all wired together in one call. Agents that need to go from zero to live app without understanding infrastructure.
+
+**Together**: An agent could use Run402 for rapid full-stack app scaffolding (database + REST API + auth + frontend in one call), then deploy a custom backend service to Railway for workloads that need arbitrary compute (ML inference, long-running workers, custom runtimes).
+
+---
+
+## What Run402 Could Learn
+
+### 1. Template marketplace with revenue sharing
+
+Railway pays template creators 25% of the CPU/RAM usage generated by their templates. They've paid out $1M+ to creators across 1,800+ templates (n8n, Metabase, various starters). This created a flywheel: creators publish because they earn, users arrive because there's selection, usage grows because templates lower the barrier to trying Railway.
+
+Run402's forkable apps have 20% publisher rewards — structurally similar. But Railway's marketplace is 4+ years old with massive scale. The lesson isn't the revenue share percentage — it's the **discovery and curation layer**. Railway has categories, search, one-click deploy buttons, usage stats. Run402's app listing is a flat API response. To grow the fork ecosystem, Run402 needs a browsable marketplace where agents (and humans) can discover, preview, and one-click-fork apps — not just an endpoint that returns JSON.
+
+**Actionable:** Build a marketplace page on `run402.com/apps` with categories, preview screenshots, fork counts, and one-click fork buttons. Surface it in `llms.txt` so agents can browse programmatically.
+
+**But note the template gap:** Railway's 2,687 templates are infrastructure building blocks — databases, automation tools (n8n, 99K deploys), chat platforms (Chatwoot, 4.8K), dev tools. Searching for "membership" or "community management" returns nothing — no equivalent to Wild Apricot (turnkey membership management with member directory, event registration, dues collection, email, website builder). Railway templates deploy *infrastructure*; you still have to *build the application*.
+
+This is where Run402's forkable apps can structurally differentiate. A Run402 bundle that deploys a complete membership app — member database with RLS, dues tracking via functions, event pages via static site, email via mailbox — is something Railway's marketplace literally cannot offer. Railway gives you Postgres + Node.js and says "build it." Run402 gives you the working app. The marketplace opportunity for Run402 isn't "more infrastructure templates" (Railway wins that at scale) — it's **full-stack, domain-specific applications** that agents fork and customize.
+
+### 2. PR preview environments
+
+Railway auto-deploys every pull request to an isolated environment with its own URL, database, and environment variables. Developers (or agents) can test changes against a full copy of the stack before merging. Preview environments auto-delete when the PR closes.
+
+Run402 doesn't have this concept because it doesn't have git-based deploys — apps are deployed via API, not from repos. But the underlying idea is valuable: **ephemeral copies of a running app for testing changes**. An agent iterating on a bundle could deploy a "preview" variant alongside the live version, test it, then promote or discard.
+
+**Actionable:** Add a `POST /v1/deploy/{tier}?preview_of={project_id}` that clones a project's schema and data into a short-lived (1-hour) preview project. The agent tests against the preview, then redeploys to the real project. Low infrastructure cost (it's just another prototype-tier project), high UX value for agents iterating on apps.
+
+### 3. Private networking
+
+Railway services within the same project communicate over an internal network (`service.railway.internal`) — no public internet, no latency overhead, no egress costs. A web server talks to a database and a Redis cache over private DNS.
+
+Run402 functions today can call the database (via PostgREST at `localhost`) and external APIs, but **functions can't call each other**. If an agent builds a multi-function app (e.g., a webhook handler that triggers a processing function), there's no internal invocation path — each function is a standalone Lambda.
+
+**Actionable:** Add function-to-function invocation via `db.invoke("other-function-name", payload)` in the `@run402/functions` runtime. Under the hood, this calls the function's Lambda ARN directly (AWS SDK `invoke`), bypassing the public API. Keeps the simplicity (no networking config) while enabling multi-function architectures.
+
+### 4. Dashboard code editor
+
+Railway's Functions feature includes a browser-based code editor — write TypeScript, hit save, it deploys. No CLI, no git repo, no local dev environment needed. This is especially powerful for quick experiments: "write a cron job that pings my API every 5 minutes" without touching a terminal.
+
+Run402 has no dashboard at all — everything is API/MCP/skill. This is intentional (agent-first), but it means humans who want to inspect or tweak their agent's work have no visual interface. Railway's editor proves that even in an API-first world, a lightweight editor lowers friction for small changes.
+
+**Actionable:** This is lower priority for Run402's agent-first thesis. But if/when Run402 builds a project dashboard (`run402.com/projects/{id}`), a simple function editor (Monaco, read-only DB viewer, log tail) would help humans supervise agent-built apps. The `humans/` site could link to per-project dashboards.
+
+### 5. Multi-database support
+
+Railway offers one-click Postgres, MySQL, MongoDB, and Redis. Redis is the meaningful gap — it's the standard for caching, rate limiting, session storage, job queues, and pub/sub. Many production apps need both Postgres (durable data) and Redis (fast ephemeral data).
+
+Run402 only offers Postgres. An agent building a rate-limited API, a job queue, or a real-time leaderboard has no caching layer. It would need to use Postgres for everything (slower for cache workloads) or integrate an external Redis provider.
+
+**Actionable:** Add a managed Redis instance per project. Implementation options:
+- **Lightweight:** ElastiCache Serverless (pay-per-use, managed by AWS, ~$0.0034/ECU-hour). Add a `REDIS_URL` env var to functions, expose via PostgREST-style API or just pass through to functions.
+- **Simpler:** Use Postgres `LISTEN/NOTIFY` + `UNLOGGED` tables for lightweight pub/sub and caching. Not real Redis, but covers 80% of cache use cases without adding infrastructure.
+
+Redis is the more impactful gap to close than MySQL or MongoDB — those overlap with Postgres's capabilities, while Redis fills a fundamentally different role.
+
+### 6. Log streaming and observability
+
+Railway provides structured logs (filterable by service, timestamp, severity), CPU/RAM/network metrics with graphs, and configurable alerts. Developers see exactly what their services are doing. Log retention scales with plan (3 days free → 90 days enterprise).
+
+Run402 has basic function invocation logs (stdout captured from Lambda) but no structured log viewer, no metrics, no alerts. An agent debugging a failing function has to parse raw log output from the API. There's no way to see historical patterns (is this function timing out more often? is the database growing?).
+
+**Actionable:**
+- **Near-term:** Add `GET /v1/projects/{id}/logs?function={name}&since={timestamp}` that returns structured CloudWatch logs for Lambda functions. Already available in AWS — just needs an API endpoint.
+- **Medium-term:** Add `GET /v1/projects/{id}/metrics` returning database size, API call count, storage usage, function invocation count/duration. These are already tracked internally for tier enforcement — expose them to the agent.
+- **Longer-term:** Webhooks or polling endpoint for alerts (function error rate > threshold, storage approaching limit). Agents that build production apps need to monitor them.
