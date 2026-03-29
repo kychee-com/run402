@@ -654,6 +654,40 @@ export async function listFunctions(projectId: string, apiBase: string): Promise
 }
 
 /**
+ * Update function configuration (timeout/memory) on Lambda without re-deploying code.
+ * In local mode (no Lambda), this is a no-op — config is metadata only.
+ */
+export async function updateFunctionConfig(
+  projectId: string,
+  name: string,
+  config: { timeout?: number; memory?: number },
+): Promise<void> {
+  if (!lambda) return; // local mode — no Lambda to update
+
+  const fnName = lambdaName(projectId, name);
+
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      await lambda.send(new UpdateFunctionConfigurationCommand({
+        FunctionName: fnName,
+        ...(config.timeout != null && { Timeout: config.timeout }),
+        ...(config.memory != null && { MemorySize: config.memory }),
+      }));
+      break;
+    } catch (err) {
+      if (err instanceof ResourceConflictException && attempt < 2) {
+        await waitUntilFunctionUpdatedV2(
+          { client: lambda, maxWaitTime: 30 },
+          { FunctionName: fnName },
+        );
+        continue;
+      }
+      throw err;
+    }
+  }
+}
+
+/**
  * Delete a function.
  */
 export async function deleteFunction(projectId: string, name: string): Promise<void> {

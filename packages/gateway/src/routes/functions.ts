@@ -8,6 +8,7 @@ import {
   invokeFunction,
   listFunctions,
   deleteFunction,
+  updateFunctionConfig,
   getFunctionLogs,
   setSecret,
   deleteSecret,
@@ -208,6 +209,117 @@ router.delete(
       }
       throw err;
     }
+  }),
+);
+
+// PATCH /projects/v1/admin/:id/functions/:name — update function metadata (schedule, config)
+router.patch(
+  "/projects/v1/admin/:id/functions/:name",
+  serviceKeyAuth,
+  asyncHandler(async (req: Request, res: Response) => {
+    const projectId = req.params.id as string;
+    const name = req.params.name as string;
+    const { schedule, config } = req.body || {};
+
+    // Look up existing function
+    const fnResult = await pool.query(
+      sql(`SELECT name, runtime, timeout_seconds, memory_mb, schedule, schedule_meta, created_at, updated_at
+       FROM internal.functions WHERE project_id = $1 AND name = $2`),
+      [projectId, name],
+    );
+    if (fnResult.rows.length === 0) {
+      throw new HttpError(404, `Function '${name}' not found`);
+    }
+
+    const project = req.project!;
+    const tier = TIERS[project.tier];
+
+    // --- Schedule update ---
+    const scheduleExpr: string | null | undefined =
+      schedule != null && schedule !== "" ? schedule : schedule;
+
+    if (typeof scheduleExpr === "string") {
+      if (!isValidCron(scheduleExpr)) {
+        throw new HttpError(400, `Invalid cron expression: "${scheduleExpr}". Use standard 5-field cron syntax (e.g., "*/15 * * * *").`);
+      }
+      const intervalMinutes = getCronIntervalMinutes(scheduleExpr);
+      if (intervalMinutes < tier.minScheduleIntervalMinutes) {
+        throw new HttpError(403, `Schedule interval too frequent (${intervalMinutes}min). Your ${project.tier} tier requires at least ${tier.minScheduleIntervalMinutes} minutes between runs.`);
+      }
+      const { rows } = await pool.query(
+        sql(`SELECT count(*)::int AS cnt FROM internal.functions WHERE project_id = $1 AND schedule IS NOT NULL AND name != $2`),
+        [projectId, name],
+      );
+      if (rows[0].cnt >= tier.maxScheduledFunctions) {
+        throw new HttpError(403, `Scheduled function limit reached (${tier.maxScheduledFunctions} for your ${project.tier} tier). Remove a schedule or upgrade.`);
+      }
+      await pool.query(
+        sql(`UPDATE internal.functions SET schedule = $3, schedule_meta = COALESCE(schedule_meta, '{"run_count": 0}'::jsonb), updated_at = NOW() WHERE project_id = $1 AND name = $2`),
+        [projectId, name, scheduleExpr],
+      );
+      registerSchedule(projectId, name, scheduleExpr);
+    } else if (scheduleExpr === null) {
+      await pool.query(
+        sql(`UPDATE internal.functions SET schedule = NULL, schedule_meta = NULL, updated_at = NOW() WHERE project_id = $1 AND name = $2`),
+        [projectId, name],
+      );
+      cancelSchedule(projectId, name);
+    }
+
+    // --- Config update (timeout / memory) ---
+    if (config && typeof config === "object") {
+      const timeout = config.timeout != null ? Number(config.timeout) : undefined;
+      const memory = config.memory != null ? Number(config.memory) : undefined;
+
+      if (timeout != null) {
+        if (timeout < 1 || timeout > tier.functionTimeoutSec) {
+          throw new HttpError(403, `Timeout must be 1-${tier.functionTimeoutSec}s for your ${project.tier} tier.`);
+        }
+      }
+      if (memory != null) {
+        if (memory < 128 || memory > tier.functionMemoryMb) {
+          throw new HttpError(403, `Memory must be 128-${tier.functionMemoryMb}MB for your ${project.tier} tier.`);
+        }
+      }
+
+      // Update DB
+      const setClauses: string[] = ["updated_at = NOW()"];
+      const params: unknown[] = [projectId, name];
+      let paramIdx = 3;
+      if (timeout != null) {
+        setClauses.push(`timeout_seconds = $${paramIdx++}`);
+        params.push(timeout);
+      }
+      if (memory != null) {
+        setClauses.push(`memory_mb = $${paramIdx++}`);
+        params.push(memory);
+      }
+      if (setClauses.length > 1) {
+        await pool.query(
+          sql(`UPDATE internal.functions SET ${setClauses.join(", ")} WHERE project_id = $1 AND name = $2`),
+          params,
+        );
+        // Update Lambda configuration (no code re-upload)
+        await updateFunctionConfig(projectId, name, { timeout, memory });
+      }
+    }
+
+    // Return updated state
+    const updated = await pool.query(
+      sql(`SELECT name, runtime, timeout_seconds, memory_mb, schedule, schedule_meta, created_at, updated_at
+       FROM internal.functions WHERE project_id = $1 AND name = $2`),
+      [projectId, name],
+    );
+    const row = updated.rows[0];
+    res.json({
+      name: row.name,
+      runtime: row.runtime,
+      timeout: row.timeout_seconds,
+      memory: row.memory_mb,
+      schedule: row.schedule ?? null,
+      schedule_meta: row.schedule_meta ?? null,
+      updated_at: row.updated_at,
+    });
   }),
 );
 

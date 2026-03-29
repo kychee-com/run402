@@ -2860,6 +2860,88 @@
       }
     },
     "/projects/v1/admin/{id}/functions/{name}": {
+      "patch": {
+        "tags": [
+          "Functions"
+        ],
+        "summary": "Update function metadata (schedule, timeout, memory) without redeploying code",
+        "operationId": "patchFunction",
+        "security": [
+          {
+            "serviceKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "schedule": {
+                    "type": "string",
+                    "nullable": true,
+                    "description": "Cron expression (5-field) or null to remove"
+                  },
+                  "config": {
+                    "type": "object",
+                    "properties": {
+                      "timeout": {
+                        "type": "integer",
+                        "description": "Timeout in seconds"
+                      },
+                      "memory": {
+                        "type": "integer",
+                        "description": "Memory in MB"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated function metadata",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "name": { "type": "string" },
+                    "runtime": { "type": "string" },
+                    "timeout": { "type": "integer" },
+                    "memory": { "type": "integer" },
+                    "schedule": { "type": "string", "nullable": true },
+                    "updated_at": { "type": "string", "format": "date-time" }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Function not found"
+          }
+        }
+      },
       "delete": {
         "tags": [
           "Functions"

@@ -723,6 +723,7 @@ For explicit control, use both `apikey` (project key) and `Authorization: Bearer
 | `/projects/v1/admin/:id/schema` | GET | service_key | Inspect tables, columns, constraints, RLS policies. Not metered. |
 | `/projects/v1/admin/:id/functions` | POST | service_key | Deploy a function (`{ name, code, config?, deps?, schedule? }`). Blocked in demo mode. |
 | `/projects/v1/admin/:id/functions` | GET | service_key | List deployed functions. |
+| `/projects/v1/admin/:id/functions/:name` | PATCH | service_key | Update function metadata without redeploying code. Body: `{ schedule?, config?: { timeout?, memory? } }`. |
 | `/projects/v1/admin/:id/functions/:name` | DELETE | service_key | Delete a function. |
 | `/projects/v1/admin/:id/functions/:name/trigger` | POST | service_key | Manually trigger a function (same as cron tick). Returns `{ status, body }`. |
 | `/projects/v1/admin/:id/functions/:name/logs` | GET | service_key | Get function logs. `?tail=N` (default 50). |
