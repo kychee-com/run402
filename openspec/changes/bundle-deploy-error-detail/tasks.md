@@ -6,4 +6,4 @@
 
 ## 2. Close issue
 
-- [ ] 2.1 Close GitHub issue #1 with a reference to the fix commit
+- [x] 2.1 Close GitHub issue #1 with a reference to the fix commit
