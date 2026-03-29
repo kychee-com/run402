@@ -16,12 +16,13 @@ FALSE_POSITIVES = {
         "sentence", "attention", "potential", "patent", "latent", "intent",
         "extent", "extend", "competent", "consistent", "persistent", "existent",
         "encounter", "encounters", "then", "whaten", "meters", "meter",
+        "neuton", "neutons",
     ],
     "one": [
         "someone", "done", "gone", "none", "bone", "tone", "zone", "stone",
         "phone", "alone", "money", "honest", "component", "ozone", "drone",
         "clone", "throne", "opponent", "oneclaw", "onecla",
-        "neoton", "oneoton", "onewoton", "newton",
+        "neoton", "oneoton", "onewoton", "newton", "neuton",
     ],
     "eight": ["weight", "height", "freight", "sleight"],
     "nine": [
@@ -135,10 +136,11 @@ def _extract_numbers(aj: str) -> list[int]:
 
 
 def _detect_operation(challenge: str, aj: str) -> str | None:
-    # Check literal math operators in original text first
-    if " * " in challenge:
+    # Check literal math operators in original text first (allow junk chars around operator)
+    stripped = re.sub(r'[^a-zA-Z0-9+\-*/\s]', ' ', challenge)
+    if re.search(r'\s\*\s', stripped):
         return "*"
-    if " + " in challenge:
+    if re.search(r'\s\+\s', stripped):
         return "+"
     # Note: " / " and " - " skipped for literal detection — obfuscation uses
     # these chars as decoration too often, causing false positives.
@@ -157,9 +159,9 @@ def _detect_operation(challenge: str, aj: str) -> str | None:
         ("loses", "-"), ("minus", "-"), ("slows", "-"), ("slower", "-"), ("drops", "-"),
         ("remains", "-"), ("remaining", "-"),
         ("reduces", "-"), ("reducing", "-"), ("subtract", "-"), ("decreased", "-"), ("reduced", "-"),
-        ("adds", "+"), ("add", "+"), ("plus", "+"),
-        ("increases", "+"), ("gains", "+"), ("speeds", "+"),
         ("times", "*"),
+        ("adds", "+"), ("add", "+"), ("plus", "+"),
+        ("increases", "+"), ("gains", "+"), ("speeds", "+"), ("accelerat", "+"),
         ("divided", "/"),
     ]
     for word, op in ops:
@@ -184,7 +186,7 @@ def _detect_operation(challenge: str, aj: str) -> str | None:
         if re.search(r"\b(per|each|every|produce|generate|yield)\b", clean):
             return "*"
         # "exerts X and has N claws" pattern = multiply (per-unit × count)
-        if re.search(r"\bexerts?\b", clean) and re.search(r"\b(has|have|with)\b.*\b(claws?|legs?|arms?|limbs?)\b", clean):
+        if re.search(r"\bexerts?\b", clean) and re.search(r"\b(has|have|with|are)\b.*\b(claws?|legs?|arms?|limbs?)\b", clean):
             return "*"
         return "+"
     # Rate × time pattern: "per second/minute/hour for N seconds/minutes/hours"
