@@ -246,6 +246,7 @@ Get recent logs from a deployed function (console.log/error output and error sta
 - `project_id` (required) — Project ID
 - `name` (required) — Function name
 - `tail` (optional, default: 50) — Number of log lines to return (max 200)
+- `since` (optional) — ISO 8601 timestamp; only return logs at or after this time. Useful for incremental polling — pass the last-seen timestamp + 1ms to avoid duplicates.
 
 **Returns:** Timestamped log entries from CloudWatch.
 

@@ -97,4 +97,43 @@ describe("get_function_logs tool", () => {
     assert.equal(result.isError, true);
     assert.ok(result.content[0]!.text.includes("not found in key store"));
   });
+
+  it("passes since as epoch ms query param", async () => {
+    let capturedUrl = "";
+    globalThis.fetch = (async (url: string) => {
+      capturedUrl = url;
+      return new Response(
+        JSON.stringify({ logs: [] }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    }) as typeof fetch;
+
+    await handleGetFunctionLogs({
+      project_id: "proj-001",
+      name: "my-func",
+      since: "2026-03-29T14:00:00.001Z",
+    });
+
+    assert.ok(capturedUrl.includes("since="), "URL should contain since param");
+    const sinceMs = new URL(capturedUrl).searchParams.get("since");
+    assert.equal(sinceMs, String(new Date("2026-03-29T14:00:00.001Z").getTime()));
+  });
+
+  it("omits since param when not provided", async () => {
+    let capturedUrl = "";
+    globalThis.fetch = (async (url: string) => {
+      capturedUrl = url;
+      return new Response(
+        JSON.stringify({ logs: [] }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    }) as typeof fetch;
+
+    await handleGetFunctionLogs({
+      project_id: "proj-001",
+      name: "my-func",
+    });
+
+    assert.ok(!capturedUrl.includes("since="), "URL should not contain since param");
+  });
 });

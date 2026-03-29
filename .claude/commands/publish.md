@@ -44,3 +44,14 @@ Stage all three files and commit: `git add package.json cli/package.json package
 6. Print a summary of what was published, including the new version and npm URLs:
    - https://www.npmjs.com/package/run402-mcp
    - https://www.npmjs.com/package/run402
+
+## Twitter summary
+
+Write a tweet-ready summary of the release. This is the last thing you do.
+
+Guidelines:
+- **Focus on what developers can now build**, not what changed internally. "Your agents can now send HTML emails" not "Added raw HTML mode to email tool".
+- Keep it under 280 characters. No hashtags, no emojis unless the user asks.
+- If the release has multiple features, pick the 1-2 most compelling and lead with those.
+- End with the version number, e.g. `(run402 v1.21.0)`
+- Present 2-3 options so the user can pick or remix.

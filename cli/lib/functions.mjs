@@ -12,7 +12,8 @@ Subcommands:
                                        Deploy a function to a project
   invoke <id> <name> [--method <M>] [--body <json>]
                                        Invoke a deployed function
-  logs   <id> <name> [--tail <n>]      Get function logs
+  logs   <id> <name> [--tail <n>] [--since <ts>] [--follow]
+                                       Get function logs
   list   <id>                          List all functions for a project
   delete <id> <name>                   Delete a function
 
@@ -22,6 +23,8 @@ Examples:
   run402 functions deploy abc123 send-reminders --file remind.ts --schedule ''   # remove schedule
   run402 functions invoke abc123 stripe-webhook --body '{"event":"test"}'
   run402 functions logs abc123 stripe-webhook --tail 100
+  run402 functions logs abc123 stripe-webhook --since 2026-03-29T14:00:00Z
+  run402 functions logs abc123 stripe-webhook --follow
   run402 functions list abc123
   run402 functions delete abc123 stripe-webhook
 
@@ -84,15 +87,61 @@ async function invoke(projectId, name, args) {
 async function logs(projectId, name, args) {
   const p = findProject(projectId);
   let tail = 50;
+  let since = undefined;
+  let follow = false;
   for (let i = 0; i < args.length; i++) {
     if (args[i] === "--tail" && args[i + 1]) tail = parseInt(args[++i]);
+    if (args[i] === "--since" && args[i + 1]) since = args[++i];
+    if (args[i] === "--follow") follow = true;
   }
-  const res = await fetch(`${API}/projects/v1/admin/${projectId}/functions/${encodeURIComponent(name)}/logs?tail=${tail}`, {
-    headers: { "Authorization": `Bearer ${p.service_key}` },
-  });
-  const data = await res.json();
-  if (!res.ok) { console.error(JSON.stringify({ status: "error", http: res.status, ...data })); process.exit(1); }
-  console.log(JSON.stringify(data, null, 2));
+
+  // Parse since: accept ISO string or epoch ms
+  let sinceMs = undefined;
+  if (since !== undefined) {
+    const parsed = Number(since);
+    sinceMs = Number.isNaN(parsed) ? new Date(since).getTime() : parsed;
+    if (Number.isNaN(sinceMs)) { console.error(JSON.stringify({ status: "error", message: `Invalid --since value: ${since}` })); process.exit(1); }
+  }
+
+  const fetchLogs = async () => {
+    let url = `${API}/projects/v1/admin/${projectId}/functions/${encodeURIComponent(name)}/logs?tail=${tail}`;
+    if (sinceMs !== undefined) url += `&since=${sinceMs}`;
+    const res = await fetch(url, { headers: { "Authorization": `Bearer ${p.service_key}` } });
+    const data = await res.json();
+    if (!res.ok) { console.error(JSON.stringify({ status: "error", http: res.status, ...data })); process.exit(1); }
+    return data.logs || [];
+  };
+
+  if (!follow) {
+    const entries = await fetchLogs();
+    console.log(JSON.stringify({ logs: entries }, null, 2));
+    return;
+  }
+
+  // Follow mode: poll every 3s, print new entries
+  let running = true;
+  process.on("SIGINT", () => { running = false; });
+
+  // Initial fetch
+  const initial = await fetchLogs();
+  for (const entry of initial) {
+    console.log(`[${entry.timestamp}] ${entry.message}`);
+  }
+  if (initial.length > 0) {
+    sinceMs = new Date(initial[initial.length - 1].timestamp).getTime() + 1;
+  }
+
+  while (running) {
+    await new Promise(r => setTimeout(r, 3000));
+    if (!running) break;
+    const entries = await fetchLogs();
+    for (const entry of entries) {
+      console.log(`[${entry.timestamp}] ${entry.message}`);
+    }
+    if (entries.length > 0) {
+      sinceMs = new Date(entries[entries.length - 1].timestamp).getTime() + 1;
+    }
+  }
 }
 
 async function list(projectId) {
