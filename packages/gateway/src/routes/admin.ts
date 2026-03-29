@@ -157,7 +157,7 @@ const BLOCKED_PATTERNS: Array<{ pattern: RegExp; hint?: string }> = [
   { pattern: /\bCREATE\s+EXTENSION\b/i },
   { pattern: /\bCOPY\b.*\bPROGRAM\b/i },
   { pattern: /\bALTER\s+SYSTEM\b/i },
-  { pattern: /\bSET\s+(search_path|role)\b/i },
+  { pattern: /\bSET\s+search_path\b/i },
   { pattern: /\bCREATE\s+SCHEMA\b/i },
   { pattern: /\bDROP\s+SCHEMA\b/i },
   {

@@ -72,7 +72,7 @@ const BLOCKED_PATTERNS = [
   /\bCREATE\s+EXTENSION\b/i,
   /\bCOPY\b.*\bPROGRAM\b/i,
   /\bALTER\s+SYSTEM\b/i,
-  /\bSET\s+(search_path|role)\b/i,
+  /\bSET\s+search_path\b/i,
   /\bCREATE\s+SCHEMA\b/i,
   /\bDROP\s+SCHEMA\b/i,
   /\bGRANT\b/i,

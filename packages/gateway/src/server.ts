@@ -129,7 +129,7 @@ app.use((_req, res, next) => {
   res.set("Access-Control-Allow-Origin", "*");
   res.set("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS");
   res.set("Access-Control-Allow-Headers", "Content-Type, Authorization, apikey, Prefer, Accept-Profile, Content-Profile, Idempotency-Key, X-Wallet-Address, X-Run402-Wallet, X-Run402-Signature, X-Run402-Timestamp");
-  res.set("Access-Control-Expose-Headers", "X-Run402-Settlement-Rail, X-Run402-Allowance-Remaining, X-Run402-Hint, WWW-Authenticate");
+  res.set("Access-Control-Expose-Headers", "X-Run402-Settlement-Rail, X-Run402-Allowance-Remaining, X-Run402-Hint, WWW-Authenticate, Content-Range");
   if (_req.method === "OPTIONS") {
     res.status(204).send();
     return;

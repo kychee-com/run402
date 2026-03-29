@@ -328,7 +328,7 @@ router.post("/auth/v1/token", asyncHandler(async (req: Request, res: Response) =
 
     // Issue new tokens
     const accessToken = jwt.sign(
-      { sub: token.user_id, role: "authenticated", project_id: project.id },
+      { sub: token.user_id, role: "authenticated", project_id: project.id, email: token.email },
       JWT_SECRET,
       { expiresIn: "1h" },
     );
@@ -372,7 +372,7 @@ router.post("/auth/v1/token", asyncHandler(async (req: Request, res: Response) =
     const user = userResult.rows[0];
 
     const accessToken = jwt.sign(
-      { sub: result.userId, role: "authenticated", project_id: project.id },
+      { sub: result.userId, role: "authenticated", project_id: project.id, email: user.email },
       JWT_SECRET,
       { expiresIn: "1h" },
     );
@@ -432,7 +432,7 @@ router.post("/auth/v1/token", asyncHandler(async (req: Request, res: Response) =
   await pool.query(sql(`UPDATE internal.users SET last_sign_in_at = NOW() WHERE id = $1::uuid`), [user.id]);
 
   const accessToken = jwt.sign(
-    { sub: user.id, role: "authenticated", project_id: project.id },
+    { sub: user.id, role: "authenticated", project_id: project.id, email },
     JWT_SECRET,
     { expiresIn: "1h" },
   );

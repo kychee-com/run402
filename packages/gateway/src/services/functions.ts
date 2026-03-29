@@ -999,7 +999,7 @@ function getUser(req) {
   try {
     const payload = _jwt.verify(token, _JWT_SECRET);
     if (payload.project_id !== _PROJECT_ID) return null;
-    return { id: payload.sub, role: payload.role };
+    return { id: payload.sub, role: payload.role, email: payload.email };
   } catch { return null; }
 }
 

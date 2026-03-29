@@ -363,6 +363,7 @@ export default async (req) => {
       assert(user !== null, `getUser returns non-null`);
       assert(user?.id === testUserId, `getUser returns correct user id`);
       assert(user?.role === "authenticated", `getUser returns authenticated role`);
+      assert(user?.email === "getuser-test@example.com", `getUser returns correct email`);
     }
 
     // --- Step 11: Invoke getUser without auth header ---

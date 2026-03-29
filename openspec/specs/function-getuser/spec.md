@@ -3,7 +3,7 @@ The `@run402/functions` module SHALL export a `getUser` function alongside the e
 
 #### Scenario: Successful user identification
 - **WHEN** a function calls `getUser(req)` with a request containing a valid `Authorization: Bearer <access_token>` header
-- **THEN** it SHALL return `{ id: string, role: string }` where `id` is the user's UUID (from the JWT `sub` claim) and `role` is the JWT role claim (typically `"authenticated"`)
+- **THEN** it SHALL return `{ id: string, role: string, email: string }` where `id` is the user's UUID (from the JWT `sub` claim), `role` is the JWT role claim (typically `"authenticated"`), and `email` is the user's email address
 
 #### Scenario: Missing authorization header
 - **WHEN** a function calls `getUser(req)` with a request that has no `Authorization` header
@@ -46,16 +46,31 @@ The `getUser` function SHALL use the `jsonwebtoken` package (already bundled in 
 - **WHEN** a function calls `getUser(req)` with a JWT signed by a different secret
 - **THEN** it SHALL return `null` (signature mismatch)
 
-### Requirement: getUser extracts user identity from JWT claims only
-The `getUser` function SHALL return only the identity fields present in the JWT itself: `sub` (mapped to `id`) and `role`. It SHALL NOT include app-level fields like email or profile data. Functions that need additional user data SHALL query for it via `db`.
+### Requirement: getUser extracts user identity from JWT claims
+The `getUser` function SHALL return the identity fields present in the JWT: `sub` (mapped to `id`), `role`, and `email`. Functions that need additional user data beyond these fields (e.g., display_name, avatar_url) SHALL query for it via `db`.
 
 #### Scenario: Claim mapping
-- **WHEN** a function calls `getUser(req)` with a valid token containing `{ sub: "abc-123", role: "authenticated", project_id: "prj_001" }`
-- **THEN** it SHALL return `{ id: "abc-123", role: "authenticated" }`
+- **WHEN** a function calls `getUser(req)` with a valid token containing `{ sub: "abc-123", role: "authenticated", email: "user@example.com", project_id: "prj_001" }`
+- **THEN** it SHALL return `{ id: "abc-123", role: "authenticated", email: "user@example.com" }`
 
-#### Scenario: Function needs email or profile data
-- **WHEN** a function needs the user's email or other profile fields
-- **THEN** it SHALL use `getUser(req)` to obtain the user ID, then query via `db.from('profiles').select('email').eq('user_id', user.id)` or equivalent
+#### Scenario: Function needs profile data beyond email
+- **WHEN** a function needs the user's display_name, avatar_url, or other profile fields
+- **THEN** it SHALL use `getUser(req)` to obtain the user ID, then query via `db.from('profiles').select('*').eq('user_id', user.id)` or equivalent
+
+### Requirement: JWT claims include email
+The gateway SHALL include the `email` claim in all user JWTs (password login, OAuth login, token refresh). The value SHALL be the user's email address from `internal.users`.
+
+#### Scenario: Password login JWT contains email
+- **WHEN** a user authenticates via `POST /auth/v1/token` with `grant_type: "password"`
+- **THEN** the issued JWT SHALL contain the `email` claim set to the user's email address
+
+#### Scenario: OAuth login JWT contains email
+- **WHEN** a user authenticates via `POST /auth/v1/token` with `grant_type: "authorization_code"`
+- **THEN** the issued JWT SHALL contain the `email` claim set to the user's email address
+
+#### Scenario: Token refresh JWT contains email
+- **WHEN** a user refreshes via `POST /auth/v1/token` with `grant_type: "refresh_token"`
+- **THEN** the refreshed JWT SHALL contain the `email` claim set to the user's current email address
 
 ### Requirement: getUser available in both Lambda and local dev modes
 The `getUser` implementation SHALL exist in both:

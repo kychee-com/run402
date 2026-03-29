@@ -44,7 +44,7 @@ cat > "$BUILD_DIR/nodejs/node_modules/@run402/functions/index.js" << 'HELPERJS'
  * Provides:
  *   db.from(table) — PostgREST-style queries
  *   db.sql(query) — raw SQL via gateway
- *   getUser(req) — verify caller's JWT, returns { id, role } or null
+ *   getUser(req) — verify caller's JWT, returns { id, role, email } or null
  */
 
 import { createRequire } from "node:module";
@@ -219,7 +219,7 @@ export function getUser(req) {
   try {
     const payload = _jwt.verify(token, _JWT_SECRET);
     if (payload.project_id !== PROJECT_ID) return null;
-    return { id: payload.sub, role: payload.role };
+    return { id: payload.sub, role: payload.role, email: payload.email };
   } catch {
     return null;
   }

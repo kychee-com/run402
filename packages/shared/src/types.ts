@@ -94,6 +94,7 @@ export interface TokenPayload {
   sub?: string;
   role: "anon" | "authenticated" | "service_role";
   project_id: string;
+  email?: string;
   iss: string;
 }
 
