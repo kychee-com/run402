@@ -45,6 +45,17 @@ mock.module("./deployments.js", {
   },
 });
 
+mock.module("./scheduler.js", {
+  namedExports: {
+    isValidCron: (expr: string) => {
+      try { return /^[\d*/,-]+(\s+[\d*/,-]+){4}$/.test(expr.trim()); } catch { return false; }
+    },
+    getCronIntervalMinutes: () => 15,
+    registerSchedule: () => {},
+    cancelSchedule: () => {},
+  },
+});
+
 mock.module("./subdomains.js", {
   namedExports: {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -62,6 +73,7 @@ mock.module("../db/pool.js", {
   namedExports: {
     pool: {
       connect: () => mockPoolConnect(),
+      query: async () => ({ rows: [{ cnt: 0 }], rowCount: 1 }),
     },
   },
 });
