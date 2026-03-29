@@ -23,4 +23,4 @@
 
 - [x] 5.1 Update `getUser()` assertions in `test/functions-e2e.ts` to expect `email` field
 - [x] 5.2 Run `npm run lint` and `npx tsc --noEmit -p packages/gateway`
-- [ ] 5.3 Run `npm run test:functions` to verify getUser changes (requires live server + Lambda layer rebuild)
+- [x] 5.3 Run `npm run test:functions` to verify getUser changes (requires live server + Lambda layer rebuild)
