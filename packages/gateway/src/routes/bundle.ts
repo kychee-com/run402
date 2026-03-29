@@ -10,7 +10,6 @@ import { TIERS } from "@run402/shared";
 import { deployBundle, validateBundle, BundleError } from "../services/bundle.js";
 import { invokeBootstrap } from "../services/functions.js";
 import { deriveProjectKeys } from "../services/projects.js";
-import { SubdomainError } from "../services/subdomains.js";
 import { walletAuth } from "../middleware/wallet-auth.js";
 import { asyncHandler, HttpError } from "../utils/async-handler.js";
 
@@ -76,13 +75,11 @@ router.post("/deploy/v1", walletAuth(true), asyncHandler(async (req: Request, re
     }
     res.status(200).json(response);
   } catch (err: unknown) {
-    if (err instanceof BundleError) {
-      throw new HttpError(err.statusCode, err.message);
+    if (err instanceof Error && "statusCode" in err) {
+      throw new HttpError((err as { statusCode: number }).statusCode, err.message);
     }
-    if (err instanceof SubdomainError) {
-      throw new HttpError(err.statusCode, err.message);
-    }
-    throw err;
+    const msg = err instanceof Error ? err.message : String(err);
+    throw new HttpError(500, msg);
   }
 }));
 
