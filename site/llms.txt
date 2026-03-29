@@ -721,7 +721,7 @@ For explicit control, use both `apikey` (project key) and `Authorization: Bearer
 | `/projects/v1/admin/:id/rls` | POST | service_key | Apply RLS template: `user_owns_rows`, `public_read`, or `public_read_write` |
 | `/projects/v1/admin/:id/usage` | GET | service_key | Check usage vs limits. Not metered. |
 | `/projects/v1/admin/:id/schema` | GET | service_key | Inspect tables, columns, constraints, RLS policies. Not metered. |
-| `/projects/v1/admin/:id/functions` | POST | service_key | Deploy a function (`{ name, code, config?, deps? }`). Blocked in demo mode. |
+| `/projects/v1/admin/:id/functions` | POST | service_key | Deploy a function (`{ name, code, config?, deps?, schedule? }`). Blocked in demo mode. |
 | `/projects/v1/admin/:id/functions` | GET | service_key | List deployed functions. |
 | `/projects/v1/admin/:id/functions/:name` | DELETE | service_key | Delete a function. |
 | `/projects/v1/admin/:id/functions/:name/trigger` | POST | service_key | Manually trigger a function (same as cron tick). Returns `{ status, body }`. |
@@ -747,6 +747,11 @@ For explicit control, use both `apikey` (project key) and `Authorization: Bearer
 Functions are deployed via the Admin endpoints above and invoked at `/functions/v1/:name`. Any HTTP method is supported -- the function receives the full request (method, headers, body, query string). Sub-paths like `/functions/v1/:name/sub/path` are forwarded to the function.
 
 Handler signature: `export default async (req: Request) => Response`
+
+**Scheduled functions**: Deploy with `"schedule": "*/15 * * * *"` (standard 5-field cron). The gateway invokes the function on schedule with header `X-Run402-Trigger: cron` and body `{ "trigger": "cron", "scheduled_at": "<ISO>" }`. Tier limits apply (see Resource limits per tier above). Set `"schedule": null` to remove a schedule on redeploy. Scheduled invocations count against API quota.
+
+**Lifecycle hooks**: Functions named `on-<event>` are invoked by the gateway on platform events. Currently supported: `on-signup` — fires after first user signup (password or OAuth) with body `{ "user": { "id", "email", "created_at" } }` and header `X-Run402-Trigger: signup`. Fire-and-forget, no user JWT (function uses its own service key). Only fires on first signup, not on login.
+
 Built-in helper: `import { db, email, getUser } from '@run402/functions'`
 - `getUser(req)` -- verify caller's JWT, returns `{ id, role }` or `null`
 - `email.send(opts)` -- send email from the project's mailbox (see below)
@@ -1026,6 +1031,19 @@ Subscribe to a tier via x402. All operations (projects, deploys, forks, sites, m
 | Prototype | **FREE** ($0.10 testnet USDC -- verifies wallet setup, costs $0 real money) | 7 days | 250 MB | 500,000 |
 | Hobby | $5.00 (real USDC on Base, or Stripe credits) | 30 days | 1 GB | 5,000,000 |
 | Team | $20.00 (real USDC on Base, or Stripe credits) | 30 days | 10 GB | 50,000,000 |
+
+### Resource limits per tier
+
+| Resource | Prototype | Hobby | Team |
+|----------|-----------|-------|------|
+| Functions | 8 | 25 | 100 |
+| Function timeout | 10s | 30s | 60s |
+| Function memory | 128 MB | 256 MB | 512 MB |
+| Scheduled functions | 1 | 3 | 10 |
+| Min schedule interval | 15 min | 5 min | 1 min |
+| Secrets | 10 | 50 | 200 |
+| Emails per day | 10 | 50 | 500 |
+| Unique email recipients per lease | 25 | 200 | 1,000 |
 
 Subscribe/Renew/Upgrade: `POST /tiers/v1/:tier` (x402, auto-detected)
 

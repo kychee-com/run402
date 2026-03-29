@@ -293,6 +293,8 @@ Column narrowing works with writes: `.insert({...}).select('id, title')` returns
 - `run402 functions logs <id> <name> [--tail <n>]`
 - `run402 functions <list|delete> <id> [<name>]`
 
+Schedule tier limits: Prototype: 1 scheduled function, min 15 min interval. Hobby: 3, min 5 min. Team: 10, min 1 min.
+
 Secrets available as `process.env` (see secrets below).
 
 ### secrets
