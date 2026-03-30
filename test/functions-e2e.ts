@@ -25,6 +25,9 @@
  *  20. Schedule limit enforcement (bad cron → 400)
  *  21. Delete function, verify 404 on invoke
  *  22. Delete secret
+ * 22a. Project admin — create admin user, verify JWT roles
+ * 22b. Project admin — secrets management with admin JWT
+ * 22c. Promote/demote user, verify JWT role changes
  *  23. Cleanup — delete project
  *
  * Usage:
@@ -869,6 +872,159 @@ export default async (req) => {
         },
       );
       assert(res.status === 200, `Delete secret: ${res.status}`);
+    }
+
+    // --- Step 22a: Project admin — create admin user via service_key ---
+    console.log("\nStep 22a: Project admin — create admin user with is_admin");
+    let adminAccessToken = "";
+    {
+      // Sign up admin user using service_key (is_admin: true respected)
+      const signupRes = await fetch(`${BASE_URL}/auth/v1/signup`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", apikey: serviceKey },
+        body: JSON.stringify({ email: "admin-test@example.com", password: "admin-pass-123", is_admin: true }),
+      });
+      const signupBody = await signupRes.json() as Record<string, unknown>;
+      assert(signupRes.ok, `Admin user created (${signupRes.status})`);
+      assert(signupBody.is_admin === true, "Signup response should include is_admin: true");
+
+      // Sign up regular user using anon_key (is_admin: true should be ignored)
+      const regSignupRes = await fetch(`${BASE_URL}/auth/v1/signup`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", apikey: anonKey },
+        body: JSON.stringify({ email: "regular-test@example.com", password: "regular-pass-123", is_admin: true }),
+      });
+      const regSignupBody = await regSignupRes.json() as Record<string, unknown>;
+      assert(regSignupRes.ok, `Regular user created (${regSignupRes.status})`);
+      assert(regSignupBody.is_admin === false, "Anon signup should ignore is_admin flag");
+
+      // Login admin user — verify JWT role
+      const loginRes = await fetch(`${BASE_URL}/auth/v1/token`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", apikey: anonKey },
+        body: JSON.stringify({ email: "admin-test@example.com", password: "admin-pass-123" }),
+      });
+      const loginBody = await loginRes.json() as Record<string, unknown>;
+      assert(loginRes.ok, `Admin logged in`);
+      adminAccessToken = loginBody.access_token as string;
+
+      // Decode JWT and check role (base64 decode the payload)
+      const payload = JSON.parse(Buffer.from(adminAccessToken.split(".")[1], "base64url").toString());
+      assert(payload.role === "project_admin", `Admin JWT role should be project_admin, got ${payload.role}`);
+
+      // Login regular user — verify JWT role is "authenticated"
+      const regLoginRes = await fetch(`${BASE_URL}/auth/v1/token`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", apikey: anonKey },
+        body: JSON.stringify({ email: "regular-test@example.com", password: "regular-pass-123" }),
+      });
+      const regLoginBody = await regLoginRes.json() as Record<string, unknown>;
+      assert(regLoginRes.ok, `Regular user logged in`);
+      const regPayload = JSON.parse(Buffer.from((regLoginBody.access_token as string).split(".")[1], "base64url").toString());
+      assert(regPayload.role === "authenticated", `Regular JWT role should be authenticated, got ${regPayload.role}`);
+
+      passed++;
+      console.log("  ✓ Admin user created with is_admin, regular user ignores flag, JWT roles correct");
+    }
+
+    // --- Step 22b: Project admin — manage secrets with project_admin JWT ---
+    console.log("\nStep 22b: Project admin — secrets management with admin JWT");
+    {
+      // Set secret with project_admin JWT
+      const setRes = await fetch(`${BASE_URL}/projects/v1/admin/${projectId}/secrets`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${adminAccessToken}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ key: "ADMIN_SET_SECRET", value: "admin-value-123" }),
+      });
+      assert(setRes.status === 201, `Admin set secret: ${setRes.status}`);
+
+      // List secrets with project_admin JWT
+      const listRes = await fetch(`${BASE_URL}/projects/v1/admin/${projectId}/secrets`, {
+        headers: { Authorization: `Bearer ${adminAccessToken}` },
+      });
+      assert(listRes.ok, `Admin list secrets: ${listRes.status}`);
+      const listBody = await listRes.json() as Record<string, unknown>;
+      const secrets = listBody.secrets as Array<Record<string, unknown>>;
+      assert(secrets.some((s) => s.key === "ADMIN_SET_SECRET"), "Secret set by admin should appear in list");
+
+      // Delete secret with project_admin JWT
+      const delRes = await fetch(`${BASE_URL}/projects/v1/admin/${projectId}/secrets/ADMIN_SET_SECRET`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${adminAccessToken}` },
+      });
+      assert(delRes.ok, `Admin delete secret: ${delRes.status}`);
+
+      // Regular user (authenticated) should be rejected
+      const regLoginRes = await fetch(`${BASE_URL}/auth/v1/token`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", apikey: anonKey },
+        body: JSON.stringify({ email: "regular-test@example.com", password: "regular-pass-123" }),
+      });
+      const regLoginBody = await regLoginRes.json() as Record<string, unknown>;
+      const regToken = regLoginBody.access_token as string;
+
+      const regSetRes = await fetch(`${BASE_URL}/projects/v1/admin/${projectId}/secrets`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${regToken}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ key: "SHOULD_FAIL", value: "nope" }),
+      });
+      assert(regSetRes.status === 401, `Regular user rejected from secrets: ${regSetRes.status}`);
+
+      passed++;
+      console.log("  ✓ Admin JWT can set/list/delete secrets, regular user rejected");
+    }
+
+    // --- Step 22c: Promote/demote user ---
+    console.log("\nStep 22c: Promote/demote user");
+    {
+      // Promote regular user to admin
+      const promoteRes = await fetch(`${BASE_URL}/projects/v1/admin/${projectId}/promote-user`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${serviceKey}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ email: "regular-test@example.com" }),
+      });
+      assert(promoteRes.ok, `Promote user: ${promoteRes.status}`);
+      const promoteBody = await promoteRes.json() as Record<string, unknown>;
+      assert(promoteBody.status === "promoted", "Promote response status");
+
+      // Re-login — should now get project_admin role
+      const loginRes = await fetch(`${BASE_URL}/auth/v1/token`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", apikey: anonKey },
+        body: JSON.stringify({ email: "regular-test@example.com", password: "regular-pass-123" }),
+      });
+      const loginBody = await loginRes.json() as Record<string, unknown>;
+      const payload = JSON.parse(Buffer.from((loginBody.access_token as string).split(".")[1], "base64url").toString());
+      assert(payload.role === "project_admin", `Promoted user should get project_admin role, got ${payload.role}`);
+
+      // Demote back
+      const demoteRes = await fetch(`${BASE_URL}/projects/v1/admin/${projectId}/demote-user`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${serviceKey}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ email: "regular-test@example.com" }),
+      });
+      assert(demoteRes.ok, `Demote user: ${demoteRes.status}`);
+
+      // Re-login — should now get authenticated role again
+      const loginRes2 = await fetch(`${BASE_URL}/auth/v1/token`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", apikey: anonKey },
+        body: JSON.stringify({ email: "regular-test@example.com", password: "regular-pass-123" }),
+      });
+      const loginBody2 = await loginRes2.json() as Record<string, unknown>;
+      const payload2 = JSON.parse(Buffer.from((loginBody2.access_token as string).split(".")[1], "base64url").toString());
+      assert(payload2.role === "authenticated", `Demoted user should get authenticated role, got ${payload2.role}`);
+
+      // Promote nonexistent user → 404
+      const notFoundRes = await fetch(`${BASE_URL}/projects/v1/admin/${projectId}/promote-user`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${serviceKey}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ email: "nobody@example.com" }),
+      });
+      assert(notFoundRes.status === 404, `Promote nonexistent: ${notFoundRes.status}`);
+
+      passed++;
+      console.log("  ✓ Promote/demote changes JWT role, nonexistent user returns 404");
     }
 
     // --- Step 24: email.send() from function (raw mode) ---

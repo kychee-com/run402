@@ -407,6 +407,16 @@ curl -X POST https://api.run402.com/auth/v1/token \
 
 Signup does **not** return an access token. Call `/auth/v1/token` to log in. Returns `access_token` (1h JWT) and `refresh_token` (30d, one-time use).
 
+**Creating an admin user**: Pass `is_admin: true` in the signup body AND use the `service_key` as the apikey. This creates a user whose JWT has `role: project_admin` (bypasses RLS, can manage secrets from the browser). The `is_admin` flag is silently ignored when using `anon_key` -- only the agent (service_key holder) can create admins.
+
+```bash
+# Create admin user (agent-only, requires service_key)
+curl -X POST https://api.run402.com/auth/v1/signup \
+  -H "apikey: $SERVICE_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"email": "admin@example.com", "password": "securepass123", "is_admin": true}'
+```
+
 **Option B: Google OAuth** (recommended for user-facing apps)
 
 See the "Google OAuth (Social Login)" section below for the full browser-based flow. In short: your frontend calls `/auth/v1/oauth/google/start`, redirects to Google, and exchanges the returned code for tokens via `/auth/v1/token?grant_type=authorization_code`. Users get their Google name and avatar automatically.
@@ -670,6 +680,7 @@ Yes. `/projects/v1/admin/:id/usage` shows API calls, storage, lease status. `/pr
 - `anon_key` (role: anon) -- **read-only by default**. SELECT, signup, storage access. Safe for client apps. **No expiry** -- permanent project identifier. Lease enforcement happens server-side. If you apply `public_read_write` RLS to a table, anon_key gains INSERT/UPDATE/DELETE on that table -- use this for browser-side writes without login.
 - `service_key` (role: service_role) -- **full admin**. Bypasses RLS. For SQL migrations, RLS setup, seeding, usage checks. Keep server-side only. Expires with lease.
 - `access_token` (role: authenticated) -- **user-scoped read/write**. From `/auth/v1/token` after password login or Google OAuth. INSERT/UPDATE/DELETE subject to RLS. For user-facing CRUD.
+- `access_token` (role: project_admin) -- **app admin read/write + secrets**. Bypasses RLS (sees all data). Can manage secrets via the API. Created by signing up with `is_admin: true` using service_key. For app administrators who need elevated access from the browser.
 
 **Isolation**: Each project in its own Postgres schema. Cross-schema access blocked. `db-pre-request` hook validates JWT claims match the project.
 
@@ -727,9 +738,11 @@ For explicit control, use both `apikey` (project key) and `Authorization: Bearer
 | `/projects/v1/admin/:id/functions/:name` | DELETE | service_key | Delete a function. |
 | `/projects/v1/admin/:id/functions/:name/trigger` | POST | service_key | Manually trigger a function (same as cron tick). Returns `{ status, body }`. |
 | `/projects/v1/admin/:id/functions/:name/logs` | GET | service_key | Get function logs. `?tail=N` (default 50). |
-| `/projects/v1/admin/:id/secrets` | POST | service_key | Set a secret (`{ "key": "...", "value": "..." }`). Blocked in demo mode. |
-| `/projects/v1/admin/:id/secrets` | GET | service_key | List secrets (keys + `value_hash` — first 8 hex chars of SHA-256 for debugging, values not exposed). |
-| `/projects/v1/admin/:id/secrets/:key` | DELETE | service_key | Delete a secret. |
+| `/projects/v1/admin/:id/secrets` | POST | service_key or project_admin | Set a secret (`{ "key": "...", "value": "..." }`). Blocked in demo mode. |
+| `/projects/v1/admin/:id/secrets` | GET | service_key or project_admin | List secrets (keys + `value_hash` — first 8 hex chars of SHA-256 for debugging, values not exposed). |
+| `/projects/v1/admin/:id/secrets/:key` | DELETE | service_key or project_admin | Delete a secret. |
+| `/projects/v1/admin/:id/promote-user` | POST | service_key | Promote user to project_admin (`{ "email": "..." }`). |
+| `/projects/v1/admin/:id/demote-user` | POST | service_key | Demote project_admin to regular user (`{ "email": "..." }`). |
 | `/projects/v1/admin/:id/publish` | POST | service_key | Publish app as a forkable version. |
 | `/projects/v1/admin/:id/versions` | GET | service_key | List published versions. |
 | `/projects/v1/admin/:id/versions/:version_id` | PATCH | service_key | Update version metadata (tags, description, visibility, fork_allowed). |
@@ -778,7 +791,7 @@ Column narrowing: `.insert({...}).select('col1, col2')` returns only specified c
 
 | Endpoint | Method | Auth | Description |
 |----------|--------|------|-------------|
-| `/auth/v1/signup` | POST | apikey | Create user (email + password) |
+| `/auth/v1/signup` | POST | apikey | Create user (email + password). Pass `is_admin: true` with service_key to create admin. |
 | `/auth/v1/token` | POST | apikey | Login (returns access_token + refresh_token) |
 | `/auth/v1/token?grant_type=refresh_token` | POST | apikey | Refresh access token |
 | `/auth/v1/token?grant_type=authorization_code` | POST | apikey | Exchange OAuth auth code for tokens |

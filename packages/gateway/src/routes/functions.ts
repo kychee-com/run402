@@ -24,7 +24,7 @@ import {
 } from "../services/scheduler.js";
 import { asyncHandler, HttpError } from "../utils/async-handler.js";
 import { validatePaginationInt } from "../utils/validate.js";
-import { serviceKeyAuth } from "../middleware/apikey.js";
+import { serviceKeyAuth, serviceKeyOrProjectAdmin } from "../middleware/apikey.js";
 import { apikeyAuth } from "../middleware/apikey.js";
 import { meteringMiddleware } from "../middleware/metering.js";
 import { demoBlockedMiddleware, demoFunctionInvokeMiddleware } from "../middleware/demo.js";
@@ -366,7 +366,7 @@ router.get(
 // POST /projects/v1/admin/:id/secrets — set a secret (blocked in demo mode)
 router.post(
   "/projects/v1/admin/:id/secrets",
-  serviceKeyAuth,
+  serviceKeyOrProjectAdmin,
   demoBlockedMiddleware("Secret management"),
   asyncHandler(async (req: Request, res: Response) => {
     const { key, value } = req.body || {};
@@ -395,7 +395,7 @@ router.post(
 // DELETE /projects/v1/admin/:id/secrets/:key — delete a secret
 router.delete(
   "/projects/v1/admin/:id/secrets/:key",
-  serviceKeyAuth,
+  serviceKeyOrProjectAdmin,
   asyncHandler(async (req: Request, res: Response) => {
     try {
       await deleteSecret(req.params.id as string, req.params.key as string);
@@ -412,10 +412,58 @@ router.delete(
 // GET /projects/v1/admin/:id/secrets — list secrets (keys only)
 router.get(
   "/projects/v1/admin/:id/secrets",
-  serviceKeyAuth,
+  serviceKeyOrProjectAdmin,
   asyncHandler(async (req: Request, res: Response) => {
     const secrets = await listSecrets(req.params.id as string);
     res.json({ secrets });
+  }),
+);
+
+// --- Promote/demote user admin status ---
+
+// POST /projects/v1/admin/:id/promote-user — set is_admin = true
+router.post(
+  "/projects/v1/admin/:id/promote-user",
+  serviceKeyAuth,
+  asyncHandler(async (req: Request, res: Response) => {
+    const { email } = req.body || {};
+    if (!email || typeof email !== "string") {
+      throw new HttpError(400, "Missing or invalid 'email' field");
+    }
+
+    const result = await pool.query(
+      sql(`UPDATE internal.users SET is_admin = true WHERE project_id = $1 AND LOWER(email) = LOWER($2) RETURNING id, email`),
+      [req.params.id, email],
+    );
+
+    if (result.rows.length === 0) {
+      throw new HttpError(404, "User not found");
+    }
+
+    res.json({ status: "promoted", email: result.rows[0].email });
+  }),
+);
+
+// POST /projects/v1/admin/:id/demote-user — set is_admin = false
+router.post(
+  "/projects/v1/admin/:id/demote-user",
+  serviceKeyAuth,
+  asyncHandler(async (req: Request, res: Response) => {
+    const { email } = req.body || {};
+    if (!email || typeof email !== "string") {
+      throw new HttpError(400, "Missing or invalid 'email' field");
+    }
+
+    const result = await pool.query(
+      sql(`UPDATE internal.users SET is_admin = false WHERE project_id = $1 AND LOWER(email) = LOWER($2) RETURNING id, email`),
+      [req.params.id, email],
+    );
+
+    if (result.rows.length === 0) {
+      throw new HttpError(404, "User not found");
+    }
+
+    res.json({ status: "demoted", email: result.rows[0].email });
   }),
 );
 

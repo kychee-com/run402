@@ -258,7 +258,7 @@ router.post("/auth/v1/oauth/google/start", asyncHandler(async (req: Request, res
 // POST /auth/v1/signup — create user (email normalization added)
 router.post("/auth/v1/signup", demoSignupMiddleware, asyncHandler(async (req: Request, res: Response) => {
   const project = req.project!;
-  const { email: rawEmail, password } = req.body || {};
+  const { email: rawEmail, password, is_admin: rawIsAdmin } = req.body || {};
 
   if (!rawEmail || !password) {
     throw new HttpError(400, "email and password required");
@@ -266,16 +266,19 @@ router.post("/auth/v1/signup", demoSignupMiddleware, asyncHandler(async (req: Re
 
   const email = validateEmail(rawEmail, "email");
 
+  // is_admin flag only respected when called with service_role key
+  const isAdmin = rawIsAdmin === true && req.tokenPayload?.role === "service_role";
+
   try {
     const passwordHash = await bcrypt.hash(password, 10);
     const result = await pool.query(
-      sql(`INSERT INTO internal.users (project_id, email, password_hash)
-       VALUES ($1, $2, $3) RETURNING id, email, created_at`),
-      [project.id, email, passwordHash],
+      sql(`INSERT INTO internal.users (project_id, email, password_hash, is_admin)
+       VALUES ($1, $2, $3, $4) RETURNING id, email, is_admin, created_at`),
+      [project.id, email, passwordHash, isAdmin],
     );
 
     const user = result.rows[0];
-    console.log(`  User signed up: ${email} (project: ${project.id})`);
+    console.log(`  User signed up: ${email} (project: ${project.id}${user.is_admin ? ", admin" : ""})`);
 
     // Fire on-signup lifecycle hook (fire-and-forget)
     fireLifecycleHook(project.id, "signup", {
@@ -286,6 +289,7 @@ router.post("/auth/v1/signup", demoSignupMiddleware, asyncHandler(async (req: Re
     res.status(201).json({
       id: user.id,
       email: user.email,
+      is_admin: user.is_admin,
       created_at: user.created_at,
     });
   } catch (err: unknown) {
@@ -310,7 +314,7 @@ router.post("/auth/v1/token", asyncHandler(async (req: Request, res: Response) =
     validateUUID(refresh_token, "refresh_token");
 
     const result = await pool.query(
-      sql(`SELECT rt.id, rt.user_id, rt.expires_at, rt.used, u.email
+      sql(`SELECT rt.id, rt.user_id, rt.expires_at, rt.used, u.email, u.is_admin
        FROM internal.refresh_tokens rt
        JOIN internal.users u ON u.id = rt.user_id
        WHERE rt.id = $1::uuid AND rt.project_id = $2`),
@@ -334,7 +338,7 @@ router.post("/auth/v1/token", asyncHandler(async (req: Request, res: Response) =
 
     // Issue new tokens
     const accessToken = jwt.sign(
-      { sub: token.user_id, role: "authenticated", project_id: project.id, email: token.email },
+      { sub: token.user_id, role: token.is_admin ? "project_admin" : "authenticated", project_id: project.id, email: token.email },
       JWT_SECRET,
       { expiresIn: "1h" },
     );
@@ -369,7 +373,7 @@ router.post("/auth/v1/token", asyncHandler(async (req: Request, res: Response) =
 
     // Fetch user email
     const userResult = await pool.query(
-      sql(`SELECT id, email, display_name, avatar_url, email_verified_at FROM internal.users WHERE id = $1::uuid`),
+      sql(`SELECT id, email, display_name, avatar_url, email_verified_at, is_admin FROM internal.users WHERE id = $1::uuid`),
       [result.userId],
     );
     if (userResult.rows.length === 0) {
@@ -378,7 +382,7 @@ router.post("/auth/v1/token", asyncHandler(async (req: Request, res: Response) =
     const user = userResult.rows[0];
 
     const accessToken = jwt.sign(
-      { sub: result.userId, role: "authenticated", project_id: project.id, email: user.email },
+      { sub: result.userId, role: user.is_admin ? "project_admin" : "authenticated", project_id: project.id, email: user.email },
       JWT_SECRET,
       { expiresIn: "1h" },
     );
@@ -413,7 +417,7 @@ router.post("/auth/v1/token", asyncHandler(async (req: Request, res: Response) =
   const email = validateEmail(rawEmail, "email");
 
   const result = await pool.query(
-    sql(`SELECT id, password_hash FROM internal.users
+    sql(`SELECT id, password_hash, is_admin FROM internal.users
      WHERE project_id = $1 AND LOWER(email) = $2`),
     [project.id, email],
   );
@@ -438,7 +442,7 @@ router.post("/auth/v1/token", asyncHandler(async (req: Request, res: Response) =
   await pool.query(sql(`UPDATE internal.users SET last_sign_in_at = NOW() WHERE id = $1::uuid`), [user.id]);
 
   const accessToken = jwt.sign(
-    { sub: user.id, role: "authenticated", project_id: project.id, email },
+    { sub: user.id, role: user.is_admin ? "project_admin" : "authenticated", project_id: project.id, email },
     JWT_SECRET,
     { expiresIn: "1h" },
   );

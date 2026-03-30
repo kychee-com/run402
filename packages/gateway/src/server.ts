@@ -1030,6 +1030,36 @@ async function applyMigrations() {
     )
   `));
   await pool.query(sql(`CREATE INDEX IF NOT EXISTS idx_oauth_codes_expires ON internal.oauth_codes(expires_at)`));
+
+  // v1.16: project_admin role (BYPASSRLS for app-level admins)
+  await pool.query(sql(`
+    DO $$ BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'project_admin') THEN
+        CREATE ROLE project_admin NOLOGIN BYPASSRLS;
+        GRANT project_admin TO authenticator;
+      END IF;
+    END $$
+  `));
+  await pool.query(sql(`ALTER TABLE internal.users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFAULT false`));
+  // Grant project_admin on all schema slots (idempotent — runs on every startup)
+  await pool.query(sql(`
+    DO $$
+    BEGIN
+      FOR i IN 1..2000 LOOP
+        EXECUTE format('GRANT USAGE ON SCHEMA p%s TO project_admin', lpad(i::text, 4, '0'));
+        EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA p%s TO project_admin', lpad(i::text, 4, '0'));
+        EXECUTE format('GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA p%s TO project_admin', lpad(i::text, 4, '0'));
+        EXECUTE format('ALTER DEFAULT PRIVILEGES IN SCHEMA p%s GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO project_admin', lpad(i::text, 4, '0'));
+        EXECUTE format('ALTER DEFAULT PRIVILEGES IN SCHEMA p%s GRANT USAGE, SELECT ON SEQUENCES TO project_admin', lpad(i::text, 4, '0'));
+      END LOOP;
+    END $$
+  `));
+  await pool.query(sql(`GRANT USAGE ON SCHEMA internal TO project_admin`));
+  await pool.query(sql(`GRANT USAGE ON SCHEMA auth TO project_admin`));
+  await pool.query(sql(`GRANT EXECUTE ON FUNCTION auth.uid() TO project_admin`));
+  await pool.query(sql(`GRANT EXECUTE ON FUNCTION auth.role() TO project_admin`));
+  await pool.query(sql(`GRANT EXECUTE ON FUNCTION auth.project_id() TO project_admin`));
+  await pool.query(sql(`GRANT EXECUTE ON FUNCTION internal.pre_request() TO project_admin`));
 }
 
 async function start() {

@@ -711,6 +711,69 @@ async function main() {
   assert(guestReadRes.ok, "Anon can read guestbook (public_read_write)");
   assert(Array.isArray(guestReadBody) && guestReadBody.length === 1, "Anon sees 1 guestbook entry");
 
+  // Step 21b: project_admin BYPASSRLS verification
+  console.log("\n21b) project_admin BYPASSRLS...");
+  {
+    // Create an admin user (via service_key) and a second regular user
+    const adminSignup = await fetch(`${BASE_URL}/auth/v1/signup`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", apikey: service_key },
+      body: JSON.stringify({ email: "bypassrls-admin@example.com", password: "admin-pass-123", is_admin: true }),
+    });
+    assert(adminSignup.ok, "Admin user created for BYPASSRLS test");
+
+    const admin2Signup = await fetch(`${BASE_URL}/auth/v1/signup`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", apikey: anon_key },
+      body: JSON.stringify({ email: "bypassrls-user2@example.com", password: "user2-pass-123" }),
+    });
+    assert(admin2Signup.ok, "Second user created for BYPASSRLS test");
+
+    // Insert a profile row as the second user (user_owns_rows: only they can see it)
+    const user2LoginRes = await fetch(`${BASE_URL}/auth/v1/token`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", apikey: anon_key },
+      body: JSON.stringify({ email: "bypassrls-user2@example.com", password: "user2-pass-123" }),
+    });
+    const user2Login = await user2LoginRes.json() as Record<string, unknown>;
+    const user2Token = user2Login.access_token as string;
+
+    const user2InsertRes = await fetch(`${BASE_URL}/rest/v1/profiles`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        apikey: anon_key,
+        Authorization: `Bearer ${user2Token}`,
+        Prefer: "return=representation",
+      },
+      body: JSON.stringify({ name: "User2 Profile" }),
+    });
+    assert(user2InsertRes.ok, "User2 inserted their profile");
+
+    // User1 (from step 9) should NOT see user2's profile (user_owns_rows)
+    const user1ReadRes = await fetch(`${BASE_URL}/rest/v1/profiles?name=eq.User2%20Profile`, {
+      headers: { apikey: anon_key, Authorization: `Bearer ${accessToken}` },
+    });
+    const user1ReadBody = await user1ReadRes.json();
+    assert(Array.isArray(user1ReadBody) && user1ReadBody.length === 0, "User1 cannot see User2's profile (RLS enforced)");
+
+    // Admin (project_admin, BYPASSRLS) SHOULD see user2's profile
+    const adminLoginRes = await fetch(`${BASE_URL}/auth/v1/token`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", apikey: anon_key },
+      body: JSON.stringify({ email: "bypassrls-admin@example.com", password: "admin-pass-123" }),
+    });
+    const adminLogin = await adminLoginRes.json() as Record<string, unknown>;
+    const adminToken = adminLogin.access_token as string;
+
+    const adminReadRes = await fetch(`${BASE_URL}/rest/v1/profiles?name=eq.User2%20Profile`, {
+      headers: { apikey: anon_key, Authorization: `Bearer ${adminToken}` },
+    });
+    const adminReadBody = await adminReadRes.json();
+    assert(Array.isArray(adminReadBody) && adminReadBody.length === 1, "Admin sees User2's profile (BYPASSRLS)");
+    assert(adminReadBody[0].name === "User2 Profile", "Admin reads correct profile data");
+  }
+
   // Step 22: GRANT blocked with helpful hint
   console.log("\n22) GRANT blocked with hint...");
   const grantRes = await fetch(`${BASE_URL}/projects/v1/admin/${project_id}/sql`, {

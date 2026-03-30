@@ -12,6 +12,8 @@ CREATE ROLE authenticated NOLOGIN;
 GRANT authenticated TO authenticator;
 CREATE ROLE service_role NOLOGIN BYPASSRLS;
 GRANT service_role TO authenticator;
+CREATE ROLE project_admin NOLOGIN BYPASSRLS;
+GRANT project_admin TO authenticator;
 
 -- =============================================================================
 -- 2. Schema slots (p0001 - p2000)
@@ -21,12 +23,13 @@ DO $$
 BEGIN
   FOR i IN 1..2000 LOOP
     EXECUTE format('CREATE SCHEMA IF NOT EXISTS p%s', lpad(i::text, 4, '0'));
-    EXECUTE format('GRANT USAGE ON SCHEMA p%s TO anon, authenticated, service_role', lpad(i::text, 4, '0'));
+    EXECUTE format('GRANT USAGE ON SCHEMA p%s TO anon, authenticated, service_role, project_admin', lpad(i::text, 4, '0'));
     EXECUTE format('ALTER DEFAULT PRIVILEGES IN SCHEMA p%s GRANT SELECT ON TABLES TO anon', lpad(i::text, 4, '0'));
     EXECUTE format('ALTER DEFAULT PRIVILEGES IN SCHEMA p%s GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO authenticated', lpad(i::text, 4, '0'));
     EXECUTE format('ALTER DEFAULT PRIVILEGES IN SCHEMA p%s GRANT ALL ON TABLES TO service_role', lpad(i::text, 4, '0'));
+    EXECUTE format('ALTER DEFAULT PRIVILEGES IN SCHEMA p%s GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO project_admin', lpad(i::text, 4, '0'));
     -- Sequences (needed for SERIAL/BIGSERIAL columns)
-    EXECUTE format('ALTER DEFAULT PRIVILEGES IN SCHEMA p%s GRANT USAGE, SELECT ON SEQUENCES TO anon, authenticated, service_role', lpad(i::text, 4, '0'));
+    EXECUTE format('ALTER DEFAULT PRIVILEGES IN SCHEMA p%s GRANT USAGE, SELECT ON SEQUENCES TO anon, authenticated, service_role, project_admin', lpad(i::text, 4, '0'));
   END LOOP;
 END
 $$;
@@ -36,7 +39,7 @@ $$;
 -- =============================================================================
 
 CREATE SCHEMA IF NOT EXISTS internal;
-GRANT USAGE ON SCHEMA internal TO authenticator, anon, authenticated, service_role;
+GRANT USAGE ON SCHEMA internal TO authenticator, anon, authenticated, service_role, project_admin;
 
 CREATE SEQUENCE internal.slot_seq MAXVALUE 2000 NO CYCLE;
 
@@ -57,6 +60,7 @@ CREATE TABLE internal.users (
   project_id TEXT NOT NULL REFERENCES internal.projects(id),
   email TEXT NOT NULL,
   password_hash TEXT NOT NULL,
+  is_admin BOOLEAN NOT NULL DEFAULT false,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   UNIQUE(project_id, email)
 );
@@ -79,7 +83,7 @@ CREATE INDEX idx_projects_status ON internal.projects(status);
 -- =============================================================================
 
 CREATE SCHEMA IF NOT EXISTS auth;
-GRANT USAGE ON SCHEMA auth TO authenticator, anon, authenticated, service_role;
+GRANT USAGE ON SCHEMA auth TO authenticator, anon, authenticated, service_role, project_admin;
 
 CREATE OR REPLACE FUNCTION auth.uid()
 RETURNS UUID
@@ -105,9 +109,9 @@ AS $$
   SELECT NULLIF(current_setting('request.jwt.claims', true)::json->>'project_id', '');
 $$;
 
-GRANT EXECUTE ON FUNCTION auth.uid() TO anon, authenticated, service_role;
-GRANT EXECUTE ON FUNCTION auth.role() TO anon, authenticated, service_role;
-GRANT EXECUTE ON FUNCTION auth.project_id() TO anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION auth.uid() TO anon, authenticated, service_role, project_admin;
+GRANT EXECUTE ON FUNCTION auth.role() TO anon, authenticated, service_role, project_admin;
+GRANT EXECUTE ON FUNCTION auth.project_id() TO anon, authenticated, service_role, project_admin;
 
 -- =============================================================================
 -- 5. Pre-request hook (validates JWT project_id matches accessed schema)
@@ -153,7 +157,7 @@ BEGIN
 END;
 $$;
 
-GRANT EXECUTE ON FUNCTION internal.pre_request() TO authenticator, anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION internal.pre_request() TO authenticator, anon, authenticated, service_role, project_admin;
 
 -- =============================================================================
 -- 6. Event trigger: auto-reload PostgREST schema cache on DDL changes
