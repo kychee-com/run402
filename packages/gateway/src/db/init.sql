@@ -12,7 +12,7 @@ CREATE ROLE authenticated NOLOGIN;
 GRANT authenticated TO authenticator;
 CREATE ROLE service_role NOLOGIN BYPASSRLS;
 GRANT service_role TO authenticator;
-CREATE ROLE project_admin NOLOGIN BYPASSRLS;
+CREATE ROLE project_admin NOLOGIN;
 GRANT project_admin TO authenticator;
 
 -- =============================================================================

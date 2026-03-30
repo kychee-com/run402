@@ -5,7 +5,7 @@
 -- 1. Create role (skip if exists)
 DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'project_admin') THEN
-    CREATE ROLE project_admin NOLOGIN BYPASSRLS;
+    CREATE ROLE project_admin NOLOGIN;
     GRANT project_admin TO authenticator;
   END IF;
 END $$;

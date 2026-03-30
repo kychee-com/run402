@@ -680,7 +680,7 @@ Yes. `/projects/v1/admin/:id/usage` shows API calls, storage, lease status. `/pr
 - `anon_key` (role: anon) -- **read-only by default**. SELECT, signup, storage access. Safe for client apps. **No expiry** -- permanent project identifier. Lease enforcement happens server-side. If you apply `public_read_write` RLS to a table, anon_key gains INSERT/UPDATE/DELETE on that table -- use this for browser-side writes without login.
 - `service_key` (role: service_role) -- **full admin**. Bypasses RLS. For SQL migrations, RLS setup, seeding, usage checks. Keep server-side only. Expires with lease.
 - `access_token` (role: authenticated) -- **user-scoped read/write**. From `/auth/v1/token` after password login or Google OAuth. INSERT/UPDATE/DELETE subject to RLS. For user-facing CRUD.
-- `access_token` (role: project_admin) -- **app admin read/write + secrets**. Bypasses RLS (sees all data). Can manage secrets via the API. Created by signing up with `is_admin: true` using service_key. For app administrators who need elevated access from the browser.
+- `access_token` (role: project_admin) -- **app admin + secrets**. Same data access as `authenticated` (subject to RLS), but can manage secrets via the API. Created by signing up with `is_admin: true` using service_key. For app administrators who need to manage project configuration from the browser. To give admins broader data access, add RLS policies that check `auth.role() = 'project_admin'`.
 
 **Isolation**: Each project in its own Postgres schema. Cross-schema access blocked. `db-pre-request` hook validates JWT claims match the project.
 
