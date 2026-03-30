@@ -383,13 +383,13 @@ app.use(billingStripeRoutes);
 app.use(projectRoutes);
 app.use(authRoutes);
 app.use(faucetRoutes);
+app.use(functionsRoutes);  // Before adminRoutes — secrets/promote/demote use serviceKeyOrProjectAdmin
 app.use(adminRoutes);
 app.use(restRoutes);
 app.use(storageRoutes);
 app.use(deploymentRoutes);
 app.use(messageRoutes);
 app.use(subdomainRoutes);
-app.use(functionsRoutes);
 app.use(generateImageRoutes);
 app.use(bundleRoutes);
 app.use(publishRoutes);
