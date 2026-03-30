@@ -1060,6 +1060,8 @@ async function applyMigrations() {
   await pool.query(sql(`GRANT EXECUTE ON FUNCTION auth.role() TO project_admin`));
   await pool.query(sql(`GRANT EXECUTE ON FUNCTION auth.project_id() TO project_admin`));
   await pool.query(sql(`GRANT EXECUTE ON FUNCTION internal.pre_request() TO project_admin`));
+  // Reload PostgREST schema cache so it recognizes the new role
+  await pool.query(sql(`NOTIFY pgrst, 'reload schema'`));
 }
 
 async function start() {
