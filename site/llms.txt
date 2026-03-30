@@ -329,6 +329,19 @@ END $$;
 
 This is safe to re-run on every deploy. Put `CREATE TABLE IF NOT EXISTS` first, then one `DO` block per new column (or group them). Without this pattern, redeploying after adding a column will either silently skip it (`IF NOT EXISTS`) or fail with a 422 (`duplicate_column`).
 
+**Config/seed data migrations**: `INSERT ... ON CONFLICT DO NOTHING` is safe for initial seeding but won't update defaults on redeploy. When default values change between versions, use `ON CONFLICT DO UPDATE` with a guard:
+```sql
+-- Seeds initial value, never overwrites user changes
+INSERT INTO site_config (key, value) VALUES ('feature_forum', 'false')
+ON CONFLICT (key) DO NOTHING;
+
+-- Updates default: only changes rows still at old default
+INSERT INTO site_config (key, value) VALUES ('feature_forum', 'true')
+ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value
+WHERE site_config.value = 'false';
+```
+This pattern is safe to re-run on every deploy -- it updates the default without overwriting user-customized values.
+
 **PostgREST patterns**:
 
 `Prefer` header controls what the server returns on write operations:
@@ -383,6 +396,16 @@ curl -X POST https://api.run402.com/projects/v1/admin/$PROJECT_ID/rls \
     "tables": [{ "table": "guestbook" }]
   }'
 ```
+
+**RLS permissions matrix** (verified behavior):
+
+| Template | anon SELECT | anon INSERT | anon UPDATE | anon DELETE | auth SELECT | auth INSERT | auth UPDATE | auth DELETE |
+|----------|:-----------:|:-----------:|:-----------:|:-----------:|:-----------:|:-----------:|:-----------:|:-----------:|
+| `user_owns_rows` | -- | -- | -- | -- | own rows | yes | own rows | own rows |
+| `public_read` | all | -- | -- | -- | all | yes | yes | yes |
+| `public_read_write` | all | yes | yes | yes | all | yes | yes | yes |
+
+`--` = denied (permission denied error). `own rows` = only rows where `owner_column = auth.uid()`. `service_key` bypasses all RLS.
 
 ### Step 7: Create a user and login
 
@@ -762,6 +785,37 @@ Functions are deployed via the Admin endpoints above and invoked at `/functions/
 
 Handler signature: `export default async (req: Request) => Response`
 
+**Calling functions from browser JS**: Use `apikey` header with `anon_key`. For authenticated calls, add the user's `Authorization: Bearer <access_token>` header -- the function receives it and can call `getUser(req)` to verify the caller.
+```javascript
+const res = await fetch('https://api.run402.com/functions/v1/my-func', {
+  method: 'POST',
+  headers: {
+    'apikey': ANON_KEY,
+    'Authorization': `Bearer ${userAccessToken}`, // optional, for auth
+    'Content-Type': 'application/json'
+  },
+  body: JSON.stringify({ action: 'do-something' })
+});
+```
+
+**Cold starts**: First invocation after deploy takes ~2-2.5s (Lambda INIT_START + execution). Subsequent invocations reuse the warm container (~200-500ms). Containers stay warm for ~5-15 minutes of inactivity. For latency-sensitive functions, use a scheduled function to ping them every 5 minutes: deploy a keep-warm function with `"schedule": "*/5 * * * *"` that invokes the target.
+
+**Storage uploads from functions**: Functions have `process.env.RUN402_SERVICE_KEY` auto-injected. Use it to upload files via the storage API:
+```typescript
+export default async (req: Request) => {
+  const res = await fetch(
+    `${process.env.RUN402_API_BASE}/storage/v1/object/uploads/my-file.txt`,
+    {
+      method: 'POST',
+      headers: { 'apikey': process.env.RUN402_SERVICE_KEY!, 'Content-Type': 'text/plain' },
+      body: 'file content here',
+    }
+  );
+  const { key, size } = await res.json();
+  return Response.json({ key, size });
+};
+```
+
 **Scheduled functions**: Deploy with `"schedule": "*/15 * * * *"` (standard 5-field cron). The gateway invokes the function on schedule with header `X-Run402-Trigger: cron` and body `{ "trigger": "cron", "scheduled_at": "<ISO>" }`. Tier limits apply (see Resource limits per tier above). Set `"schedule": null` to remove a schedule on redeploy. Scheduled invocations count against API quota.
 
 **Lifecycle hooks**: Functions named `on-<event>` are invoked by the gateway on platform events. Currently supported: `on-signup` — fires after first user signup (password or OAuth) with body `{ "user": { "id", "email", "created_at" } }` and header `X-Run402-Trigger: signup`. Fire-and-forget, no user JWT (function uses its own service key). Only fires on first signup, not on login.
@@ -780,6 +834,7 @@ Secrets: `process.env.SECRET_NAME`
 Chainable read methods: `.select(cols?)`, `.eq(col, val)`, `.neq()`, `.gt()`, `.lt()`, `.gte()`, `.lte()`, `.like()`, `.ilike()`, `.in(col, [vals])`, `.order(col, { ascending? })`, `.limit(n)`, `.offset(n)`
 Chainable write methods: `.insert(obj | obj[])`, `.update(obj)`, `.delete()` -- all return array of affected rows.
 Column narrowing: `.insert({...}).select('col1, col2')` returns only specified columns.
+Chaining order does not matter -- `db.from('t').select('*').eq('id', 1)` and `db.from('t').eq('id', 1).select('*')` produce identical results. Filters and operations accumulate on the builder regardless of order.
 
 **email.send(opts)** -- send email from the project's mailbox. Discovers the mailbox automatically on first call (project must have a mailbox created via `POST /mailboxes/v1`).
 - Template mode: `await email.send({ to: "user@example.com", template: "notification", variables: { project_name: "My App", message: "Hello!" } })`
