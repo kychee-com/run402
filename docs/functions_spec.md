@@ -24,7 +24,7 @@ This is the #1 feature blocking agents from shipping complete apps. Without Func
 | Limits | Configurable per tier | Prototype: 10s/128MB. Hobby: 30s/256MB. Team: 60s/512MB. |
 | Cold starts | Accept Lambda defaults (200-500ms) | Optimize later if users complain. |
 | Pricing | Free within lease quotas | Invocations count against API call quota. No per-deploy charge. |
-| Function count | Fixed per tier (8/25/100) | Prototype: 8. Hobby: 25. Team: 100. |
+| Function count | Fixed per tier (15/50/250) | Prototype: 15. Hobby: 50. Team: 250. |
 | Dependencies | Curated pre-bundled list (10 packages) | Grow based on demand. Agent can also specify deps[]. |
 | Deploy flow | Pre-built Lambda layer + code-only deploy | Fast deploys (<2s). Layer rebuilt when curated deps update. |
 | Errors | Sanitized error to caller + full logs via get_function_logs | Safe by default. Fully debuggable for agents. |
@@ -377,7 +377,7 @@ export async function handler(event) {
 
 | Limit | Prototype | Hobby | Team |
 |---|---|---|---|
-| Max functions per project | 5 | 25 | 100 |
+| Max functions per project | 15 | 50 | 250 |
 | Timeout per invocation | 10s | 30s | 60s |
 | Memory per invocation | 128 MB | 256 MB | 512 MB |
 | Payload size (req + res) | 6 MB | 6 MB | 6 MB |

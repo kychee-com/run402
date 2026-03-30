@@ -347,8 +347,8 @@ describe("publishAppVersion", () => {
   });
 
   it("computes derived_min_tier as hobby when functions exceed prototype limit", async () => {
-    // prototype maxFunctions = 8, so 9 functions should require hobby
-    const fnRows = Array.from({ length: 9 }, (_, i) => ({
+    // prototype maxFunctions = 15, so 16 functions should require hobby
+    const fnRows = Array.from({ length: 16 }, (_, i) => ({
       name: `fn-${i}`,
       source: `export default () => ${i}`,
       runtime: "node22",
@@ -361,12 +361,12 @@ describe("publishAppVersion", () => {
 
     const result = await publishAppVersion("prj_tier", "tier-app", "p0010", undefined, {});
     assert.equal(result.derived_min_tier, "hobby");
-    assert.equal(result.function_count, 9);
+    assert.equal(result.function_count, 16);
   });
 
   it("computes derived_min_tier as team when functions exceed hobby limit", async () => {
-    // hobby maxFunctions = 25, so 26 functions should require team
-    const fnRows = Array.from({ length: 26 }, (_, i) => ({
+    // hobby maxFunctions = 50, so 51 functions should require team
+    const fnRows = Array.from({ length: 51 }, (_, i) => ({
       name: `fn-${i}`,
       source: `export default () => ${i}`,
       runtime: "node22",
