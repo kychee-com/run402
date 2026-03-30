@@ -460,6 +460,9 @@ describe("llms.txt alignment", { skip: !llmsTxtAvailable && "~/dev/run402/site/l
       "POST /mailboxes/v1/:id/status",
       // Function trigger is a gateway testing endpoint, not exposed as a tool
       "POST /projects/v1/admin/:id/functions/:name/trigger",
+      // User role management (not yet exposed as CLI/MCP tools)
+      "POST /projects/v1/admin/:id/promote-user",
+      "POST /projects/v1/admin/:id/demote-user",
     ]);
 
     const uncovered = documented.filter(ep => {
