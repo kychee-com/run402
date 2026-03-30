@@ -430,7 +430,7 @@ curl -X POST https://api.run402.com/auth/v1/token \
 
 Signup does **not** return an access token. Call `/auth/v1/token` to log in. Returns `access_token` (1h JWT) and `refresh_token` (30d, one-time use).
 
-**Creating an admin user**: Pass `is_admin: true` in the signup body AND use the `service_key` as the apikey. This creates a user whose JWT has `role: project_admin` (bypasses RLS, can manage secrets from the browser). The `is_admin` flag is silently ignored when using `anon_key` -- only the agent (service_key holder) can create admins.
+**Creating an admin user**: Pass `is_admin: true` in the signup body AND use the `service_key` as the apikey. This creates a user whose JWT has `role: project_admin` (can manage secrets from the browser). Same data access as `authenticated` (subject to RLS) — add policies checking `auth.role() = 'project_admin'` for elevated data access. The `is_admin` flag is silently ignored when using `anon_key` -- only the agent (service_key holder) can create admins.
 
 ```bash
 # Create admin user (agent-only, requires service_key)

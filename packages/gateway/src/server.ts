@@ -1031,7 +1031,7 @@ async function applyMigrations() {
   `));
   await pool.query(sql(`CREATE INDEX IF NOT EXISTS idx_oauth_codes_expires ON internal.oauth_codes(expires_at)`));
 
-  // v1.16: project_admin role (BYPASSRLS for app-level admins)
+  // v1.16: project_admin role (app-level admins — secrets management + distinct JWT role)
   await pool.query(sql(`
     DO $$ BEGIN
       IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'project_admin') THEN

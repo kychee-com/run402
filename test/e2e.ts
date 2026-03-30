@@ -712,10 +712,8 @@ async function main() {
   assert(Array.isArray(guestReadBody) && guestReadBody.length === 1, "Anon sees 1 guestbook entry");
 
   // Step 21b: project_admin role verification (admin signup + JWT role)
-  // NOTE: BYPASSRLS via PostgREST SET ROLE does not work (PostgreSQL checks
-  // session user's BYPASSRLS, not the SET ROLE'd user). Data-level admin
-  // access requires explicit RLS policies checking auth.role() = 'project_admin'.
-  // The project_admin role is still valuable for secrets management via the API.
+  // project_admin has same RLS as authenticated — its value is secrets management
+  // and a distinct auth.role() that apps can check in custom RLS policies.
   console.log("\n21b) project_admin role...");
   {
     const adminSignup = await fetch(`${BASE_URL}/auth/v1/signup`, {

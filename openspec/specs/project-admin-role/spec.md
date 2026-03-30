@@ -1,12 +1,12 @@
 ### Requirement: project_admin Postgres role exists
 
-The database SHALL have a `project_admin` role with `NOLOGIN BYPASSRLS`. The role SHALL be granted to `authenticator`. Each project schema slot SHALL grant `SELECT, INSERT, UPDATE, DELETE` on tables and `USAGE, SELECT` on sequences to `project_admin`.
+The database SHALL have a `project_admin` role with `NOLOGIN`. The role SHALL be granted to `authenticator`. Each project schema slot SHALL grant `SELECT, INSERT, UPDATE, DELETE` on tables and `USAGE, SELECT` on sequences to `project_admin`. RLS policies apply to `project_admin` the same as `authenticated` — apps can add policies checking `auth.role() = 'project_admin'` for elevated access.
 
 #### Scenario: project_admin role privileges
 - **WHEN** a PostgREST request arrives with a JWT containing `role: "project_admin"` and a valid `project_id`
 - **THEN** PostgREST SHALL switch to the `project_admin` Postgres role
-- **THEN** all RLS policies on the project's tables SHALL be bypassed
-- **THEN** the request SHALL have full SELECT, INSERT, UPDATE, DELETE access to the project's schema
+- **THEN** RLS policies SHALL be enforced (same as `authenticated`)
+- **THEN** the request SHALL have SELECT, INSERT, UPDATE, DELETE access subject to RLS
 
 #### Scenario: project_admin cannot access other projects
 - **WHEN** a PostgREST request arrives with a JWT containing `role: "project_admin"` and `project_id: "prj_A"`
