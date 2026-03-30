@@ -46,6 +46,10 @@ import { listSubdomainsSchema, handleListSubdomains } from "./tools/list-subdoma
 import { archiveProjectSchema, handleArchiveProject } from "./tools/archive-project.js";
 import { pinProjectSchema, handlePinProject } from "./tools/pin-project.js";
 
+// New tools — user role management
+import { promoteUserSchema, handlePromoteUser } from "./tools/promote-user.js";
+import { demoteUserSchema, handleDemoteUser } from "./tools/demote-user.js";
+
 // New tools — billing
 import { checkBalanceSchema, handleCheckBalance } from "./tools/check-balance.js";
 import { listProjectsSchema, handleListProjects } from "./tools/list-projects.js";
@@ -330,6 +334,20 @@ server.tool(
   "Pin a project so it is not garbage-collected or expired. Requires admin access.",
   pinProjectSchema,
   async (args) => handlePinProject(args),
+);
+
+server.tool(
+  "promote_user",
+  "Promote a user to project_admin role by email. Admins can manage secrets from the browser. Requires service_key.",
+  promoteUserSchema,
+  async (args) => handlePromoteUser(args),
+);
+
+server.tool(
+  "demote_user",
+  "Demote a user from project_admin role by email. Reverts to default authenticated role. Requires service_key.",
+  demoteUserSchema,
+  async (args) => handleDemoteUser(args),
 );
 
 // ─── Billing & allowance tools ───────────────────────────────────────────────

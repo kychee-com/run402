@@ -224,6 +224,8 @@ const SURFACE: Capability[] = [
 
   // ── Admin ──────────────────────────────────────────────────────────────
   { id: "pin_project",     endpoint: "POST /projects/v1/admin/:id/pin",    mcp: "pin_project",      cli: "projects:pin",     openclaw: "projects:pin" },
+  { id: "promote_user",    endpoint: "POST /projects/v1/admin/:id/promote-user", mcp: "promote_user", cli: "projects:promote-user", openclaw: "projects:promote-user" },
+  { id: "demote_user",     endpoint: "POST /projects/v1/admin/:id/demote-user",  mcp: "demote_user",  cli: "projects:demote-user",  openclaw: "projects:demote-user" },
 
   // ── Tier management ────────────────────────────────────────────────────
   { id: "tier_status",       endpoint: "GET /tiers/v1/status",             mcp: "tier_status",      cli: "tier:status",      openclaw: "tier:status" },
@@ -460,9 +462,6 @@ describe("llms.txt alignment", { skip: !llmsTxtAvailable && "~/dev/run402/site/l
       "POST /mailboxes/v1/:id/status",
       // Function trigger is a gateway testing endpoint, not exposed as a tool
       "POST /projects/v1/admin/:id/functions/:name/trigger",
-      // User role management (not yet exposed as CLI/MCP tools)
-      "POST /projects/v1/admin/:id/promote-user",
-      "POST /projects/v1/admin/:id/demote-user",
     ]);
 
     const uncovered = documented.filter(ep => {

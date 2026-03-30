@@ -20,6 +20,8 @@ Subcommands:
   rls   <id> <template> <tables_json>     Apply Row-Level Security policies
   delete <id>                             Delete a project and remove it from local state
   pin   <id>                              Pin a project (prevents expiry/GC)
+  promote-user <id> <email>               Promote a user to project_admin role
+  demote-user  <id> <email>               Demote a user from project_admin role
 
 Examples:
   run402 projects quote
@@ -190,6 +192,32 @@ async function pin(projectId) {
   console.log(JSON.stringify(data, null, 2));
 }
 
+async function promoteUser(projectId, email) {
+  if (!email) { console.error(JSON.stringify({ status: "error", message: "Usage: run402 projects promote-user <project_id> <email>" })); process.exit(1); }
+  const p = findProject(projectId);
+  const res = await fetch(`${API}/projects/v1/admin/${projectId}/promote-user`, {
+    method: "POST",
+    headers: { "Authorization": `Bearer ${p.service_key}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ email }),
+  });
+  const data = await res.json();
+  if (!res.ok) { console.error(JSON.stringify({ status: "error", http: res.status, ...data })); process.exit(1); }
+  console.log(JSON.stringify(data, null, 2));
+}
+
+async function demoteUser(projectId, email) {
+  if (!email) { console.error(JSON.stringify({ status: "error", message: "Usage: run402 projects demote-user <project_id> <email>" })); process.exit(1); }
+  const p = findProject(projectId);
+  const res = await fetch(`${API}/projects/v1/admin/${projectId}/demote-user`, {
+    method: "POST",
+    headers: { "Authorization": `Bearer ${p.service_key}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ email }),
+  });
+  const data = await res.json();
+  if (!res.ok) { console.error(JSON.stringify({ status: "error", http: res.status, ...data })); process.exit(1); }
+  console.log(JSON.stringify(data, null, 2));
+}
+
 async function deleteProject(projectId) {
   const p = findProject(projectId);
   const res = await fetch(`${API}/projects/v1/${projectId}`, { method: "DELETE", headers: { "Authorization": `Bearer ${p.service_key}` } });
@@ -220,7 +248,9 @@ export async function run(sub, args) {
     case "schema":    await schema(args[0]); break;
     case "rls":       await rls(args[0], args[1], args[2]); break;
     case "delete":    await deleteProject(args[0]); break;
-    case "pin":       await pin(args[0]); break;
+    case "pin":          await pin(args[0]); break;
+    case "promote-user": await promoteUser(args[0], args[1]); break;
+    case "demote-user":  await demoteUser(args[0], args[1]); break;
     default:
       console.error(`Unknown subcommand: ${sub}\n`);
       console.log(HELP);
