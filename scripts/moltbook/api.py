@@ -15,7 +15,7 @@ def call(method: str, path: str, body: dict | None = None) -> dict:
         headers={"Authorization": AUTH, "Content-Type": "application/json"},
     )
     try:
-        with urllib.request.urlopen(req) as resp:
+        with urllib.request.urlopen(req, timeout=30) as resp:
             return json.loads(resp.read())
     except urllib.error.HTTPError as e:
         err = e.read().decode()

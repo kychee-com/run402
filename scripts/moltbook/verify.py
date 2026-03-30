@@ -228,8 +228,11 @@ def solve(result: dict) -> bool:
 
     if len(numbers) >= 2 and op:
         if op in ("*", "/") and len(numbers) > 2:
-            # "multiplies by X" / "divides by X" — use first and last number
-            a, b = numbers[0], numbers[-1]
+            # Physics-style: "mass: X ... velocity: Y ... what is momentum (mass * velocity)"
+            # The formula hint at the end often contains small numbers (1, 2) that are false positives.
+            # Use the two largest numbers as operands for multiply/divide.
+            sorted_nums = sorted(numbers, reverse=True)
+            a, b = sorted_nums[0], sorted_nums[1]
         else:
             a, b = numbers[0], numbers[1]
         if op == "+" and len(numbers) > 2:
