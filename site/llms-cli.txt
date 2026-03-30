@@ -290,7 +290,8 @@ Column narrowing works with writes: `.insert({...}).select('id, title')` returns
 
 - `run402 functions deploy <id> <name> --file <file> [--deps "<pkg,...>"] [--timeout <s>] [--memory <mb>] [--schedule "<cron>"]`
 - `run402 functions invoke <id> <name> [--body '<json>'] [--method <GET|POST|...>]`
-- `run402 functions logs <id> <name> [--tail <n>]`
+- `run402 functions logs <id> <name> [--tail <n>] [--since <iso-timestamp>] [--follow]`
+- `run402 functions update <id> <name> [--schedule "<cron>"] [--schedule-remove] [--timeout <s>] [--memory <mb>]`
 - `run402 functions <list|delete> <id> [<name>]`
 
 Schedule tier limits: Prototype: 1 scheduled function, min 15 min interval. Hobby: 3, min 5 min. Team: 10, min 1 min.
