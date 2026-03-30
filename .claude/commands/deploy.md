@@ -32,12 +32,14 @@ Run all of these simultaneously:
 If any fail, stop and fix the issues before proceeding. Do NOT skip failures.
 
 6. **Breaking change check**: Scan the diff for changes that affect downstream consumers:
-   - **Route changes** (new/renamed/deleted endpoints, changed HTTP methods, changed request/response shapes) → flag as breaking for MCP server (`kychee-com/run402-mcp`, separate repo) and CLI (`run402` npm package)
+   - **Route changes** (new/renamed/deleted endpoints, changed HTTP methods, changed request/response shapes) → flag as breaking for MCP server (`kychee-com/run402`, public repo) and CLI (`run402` npm package)
    - **`site/openapi.json` or `site/llms.txt`** not updated to match route changes → flag as docs drift
    - **`@run402/functions` helper changes** (`packages/functions-runtime/**` or the inlined helper in `functions.ts`) → flag as breaking for deployed user functions (existing Lambda functions use the OLD layer until redeployed by the user)
    - **`packages/shared/**` type/interface changes** → flag as breaking for MCP server (it imports `@run402/shared`)
 
    For each breaking change found, report: what changed, what downstream consumers are affected, and what needs to be updated (with repo/file pointers). Do NOT silently deploy breaking changes.
+
+7. **MCP/CLI issue check**: If any new endpoints were added, existing endpoints changed auth or request/response shape, or new flags/options are needed in the CLI — open an issue on `kychee-com/run402` (the MCP/CLI repo) describing what changed and what tools/commands need to be added or updated. Include the endpoint details and auth requirements.
 
 ### Step 2: Commit and push
 
