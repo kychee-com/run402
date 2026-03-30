@@ -14,6 +14,8 @@ Subcommands:
                                        Invoke a deployed function
   logs   <id> <name> [--tail <n>] [--since <ts>] [--follow]
                                        Get function logs
+  update <id> <name> [--schedule <cron>] [--schedule-remove] [--timeout <s>] [--memory <mb>]
+                                       Update function schedule or config without re-deploying
   list   <id>                          List all functions for a project
   delete <id> <name>                   Delete a function
 
@@ -25,6 +27,9 @@ Examples:
   run402 functions logs abc123 stripe-webhook --tail 100
   run402 functions logs abc123 stripe-webhook --since 2026-03-29T14:00:00Z
   run402 functions logs abc123 stripe-webhook --follow
+  run402 functions update abc123 send-reminders --schedule '0 */4 * * *'
+  run402 functions update abc123 send-reminders --schedule-remove
+  run402 functions update abc123 my-func --timeout 15 --memory 256
   run402 functions list abc123
   run402 functions delete abc123 stripe-webhook
 
@@ -144,6 +149,43 @@ async function logs(projectId, name, args) {
   }
 }
 
+async function update(projectId, name, args) {
+  const p = findProject(projectId);
+  let schedule = undefined;
+  let scheduleRemove = false;
+  let timeout = undefined;
+  let memory = undefined;
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === "--schedule" && i + 1 < args.length) schedule = args[++i];
+    if (args[i] === "--schedule-remove") scheduleRemove = true;
+    if (args[i] === "--timeout" && args[i + 1]) timeout = parseInt(args[++i]);
+    if (args[i] === "--memory" && args[i + 1]) memory = parseInt(args[++i]);
+  }
+  const body = {};
+  if (scheduleRemove || schedule === "") {
+    body.schedule = null;
+  } else if (schedule !== undefined) {
+    body.schedule = schedule;
+  }
+  if (timeout !== undefined || memory !== undefined) {
+    body.config = {};
+    if (timeout !== undefined) body.config.timeout = timeout;
+    if (memory !== undefined) body.config.memory = memory;
+  }
+  if (Object.keys(body).length === 0) {
+    console.error(JSON.stringify({ status: "error", message: "Provide at least one of: --schedule, --schedule-remove, --timeout, --memory" }));
+    process.exit(1);
+  }
+  const res = await fetch(`${API}/projects/v1/admin/${projectId}/functions/${encodeURIComponent(name)}`, {
+    method: "PATCH",
+    headers: { "Authorization": `Bearer ${p.service_key}`, "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json();
+  if (!res.ok) { console.error(JSON.stringify({ status: "error", http: res.status, ...data })); process.exit(1); }
+  console.log(JSON.stringify(data, null, 2));
+}
+
 async function list(projectId) {
   const p = findProject(projectId);
   const res = await fetch(`${API}/projects/v1/admin/${projectId}/functions`, {
@@ -174,6 +216,7 @@ export async function run(sub, args) {
     case "deploy": await deploy(args[0], args[1], args.slice(2)); break;
     case "invoke": await invoke(args[0], args[1], args.slice(2)); break;
     case "logs":   await logs(args[0], args[1], args.slice(2)); break;
+    case "update": await update(args[0], args[1], args.slice(2)); break;
     case "list":   await list(args[0]); break;
     case "delete": await deleteFunction(args[0], args[1]); break;
     default:

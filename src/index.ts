@@ -37,6 +37,7 @@ import { listFilesSchema, handleListFiles } from "./tools/list-files.js";
 // New tools — functions & secrets CRUD
 import { listFunctionsSchema, handleListFunctions } from "./tools/list-functions.js";
 import { deleteFunctionSchema, handleDeleteFunction } from "./tools/delete-function.js";
+import { updateFunctionSchema, handleUpdateFunction } from "./tools/update-function.js";
 import { listSecretsSchema, handleListSecrets } from "./tools/list-secrets.js";
 import { deleteSecretSchema, handleDeleteSecret } from "./tools/delete-secret.js";
 
@@ -193,6 +194,13 @@ server.tool(
   "Delete a deployed function from a project.",
   deleteFunctionSchema,
   async (args) => handleDeleteFunction(args),
+);
+
+server.tool(
+  "update_function",
+  "Update a function's schedule, timeout, or memory without re-deploying code. Pass schedule as a cron expression to set/update, or null to remove.",
+  updateFunctionSchema,
+  async (args) => handleUpdateFunction(args),
 );
 
 // ─── Secrets tools ──────────────────────────────────────────────────────────

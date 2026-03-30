@@ -250,6 +250,19 @@ Get recent logs from a deployed function (console.log/error output and error sta
 
 **Returns:** Timestamped log entries from CloudWatch.
 
+### update_function
+
+Update a function's schedule, timeout, or memory without re-deploying code.
+
+**Parameters:**
+- `project_id` (required) — Project ID
+- `name` (required) — Function name
+- `schedule` (optional) — Cron expression to set/update, or `null` to remove
+- `timeout` (optional) — Timeout in seconds (tier limits apply)
+- `memory` (optional) — Memory in MB (tier limits apply)
+
+**Returns:** Updated function state (name, runtime, timeout, memory, schedule, updated_at).
+
 ### set_secret
 
 Set a project secret. Secrets are injected as `process.env` variables in all functions.
