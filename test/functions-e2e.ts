@@ -1144,13 +1144,12 @@ export default async function handler(req) {
       });
       assert(cascadeFnRes.status === 404, `Cascade: function returns 404 after delete (got ${cascadeFnRes.status})`);
 
-      // Verify cascade: list functions should return empty
+      // Verify cascade: list functions returns 404 (project archived)
       const cascadeListRes = await fetch(`${BASE_URL}/projects/v1/admin/${projectId}/functions`, {
         headers: { Authorization: `Bearer ${serviceKey}` },
       });
-      const cascadeListBody = await cascadeListRes.json();
-      assert(Array.isArray(cascadeListBody) && cascadeListBody.length === 0,
-        "Cascade: function list is empty after delete");
+      assert(cascadeListRes.status === 404,
+        `Cascade: function list returns 404 after delete (got ${cascadeListRes.status})`);
     }
   }
 
