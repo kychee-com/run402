@@ -727,7 +727,9 @@ async function main() {
       headers: { "Content-Type": "application/json", apikey: anon_key },
       body: JSON.stringify({ email: "bypassrls-user2@example.com", password: "user2-pass-123" }),
     });
+    const admin2SignupBody = await admin2Signup.json() as Record<string, unknown>;
     assert(admin2Signup.ok, "Second user created for BYPASSRLS test");
+    const user2Id = admin2SignupBody.id as string;
 
     // Insert a profile row as the second user (user_owns_rows: only they can see it)
     const user2LoginRes = await fetch(`${BASE_URL}/auth/v1/token`, {
@@ -738,6 +740,7 @@ async function main() {
     const user2Login = await user2LoginRes.json() as Record<string, unknown>;
     const user2Token = user2Login.access_token as string;
 
+    // profiles table uses owner_column: "id" = auth.uid(), so we must set id explicitly
     const user2InsertRes = await fetch(`${BASE_URL}/rest/v1/profiles`, {
       method: "POST",
       headers: {
@@ -746,12 +749,12 @@ async function main() {
         Authorization: `Bearer ${user2Token}`,
         Prefer: "return=representation",
       },
-      body: JSON.stringify({ name: "User2 Profile" }),
+      body: JSON.stringify({ id: user2Id, email: "bypassrls-user2@example.com", display_name: "User2 Profile" }),
     });
     assert(user2InsertRes.ok, "User2 inserted their profile");
 
     // User1 (from step 9) should NOT see user2's profile (user_owns_rows)
-    const user1ReadRes = await fetch(`${BASE_URL}/rest/v1/profiles?name=eq.User2%20Profile`, {
+    const user1ReadRes = await fetch(`${BASE_URL}/rest/v1/profiles?email=eq.bypassrls-user2@example.com`, {
       headers: { apikey: anon_key, Authorization: `Bearer ${accessToken}` },
     });
     const user1ReadBody = await user1ReadRes.json();
@@ -766,12 +769,12 @@ async function main() {
     const adminLogin = await adminLoginRes.json() as Record<string, unknown>;
     const adminToken = adminLogin.access_token as string;
 
-    const adminReadRes = await fetch(`${BASE_URL}/rest/v1/profiles?name=eq.User2%20Profile`, {
+    const adminReadRes = await fetch(`${BASE_URL}/rest/v1/profiles?email=eq.bypassrls-user2@example.com`, {
       headers: { apikey: anon_key, Authorization: `Bearer ${adminToken}` },
     });
     const adminReadBody = await adminReadRes.json();
     assert(Array.isArray(adminReadBody) && adminReadBody.length === 1, "Admin sees User2's profile (BYPASSRLS)");
-    assert(adminReadBody[0].name === "User2 Profile", "Admin reads correct profile data");
+    assert(adminReadBody[0].display_name === "User2 Profile", "Admin reads correct profile data");
   }
 
   // Step 22: GRANT blocked with helpful hint
