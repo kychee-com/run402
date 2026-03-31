@@ -13,6 +13,10 @@ test-results/
 remotion/out/*
 !remotion/out/claude-code-preview.html
 !remotion/out/script.md
+remotion/public/out/
+demos/*/package-lock.json
+demos/test-video/state.json
+demos/test-video/coinbase-state.json
 __pycache__/
 .moltbook-tmp/
 .claude/scheduled_tasks.lock
