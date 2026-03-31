@@ -8,7 +8,6 @@
  */
 
 import { Router, Request, Response } from "express";
-import { serviceKeyAuth } from "../middleware/apikey.js";
 import { serviceKeyOrAdmin } from "../middleware/admin-auth.js";
 import { asyncHandler, HttpError } from "../utils/async-handler.js";
 import {

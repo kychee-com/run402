@@ -63,6 +63,6 @@
 
 ## 10. Testing
 
-- [ ] 10.1 E2E test: register domain → check status (pending) → verify DNS instructions returned → delete domain
-- [ ] 10.2 E2E test: redeploy subdomain → verify custom domain KV entry updated
+- [x] 10.1 E2E test: register domain → check status (pending) → verify DNS instructions returned → delete domain
+- [x] 10.2 E2E test: redeploy subdomain → verify custom domain KV entry updated
 - [x] 10.3 Manual test: register wildlychee.com, configure DNS, verify SSL provisioning and site serving

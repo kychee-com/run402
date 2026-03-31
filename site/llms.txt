@@ -976,6 +976,17 @@ See **Deploy a Static Site** section below for request/response format and examp
 
 `POST /subdomains/v1` is **idempotent** — upserts. Only needed once per project to claim a subdomain. Subsequent deploys to the same project auto-reassign all its subdomains to the new deployment (response includes `subdomain_urls`). Subdomain rules: 3-63 chars, lowercase + numbers + hyphens, no consecutive hyphens, must start/end with alphanumeric. Reserved names: `api`, `www`, `admin`, `sites`, `mail`, `ftp`, `cdn`, `static`.
 
+### Custom Domains
+
+| Endpoint | Method | Auth | Cost | Description |
+|----------|--------|------|------|-------------|
+| `/domains/v1` | POST | service_key or admin | Free | Register a custom domain for a subdomain |
+| `/domains/v1` | GET | service_key or admin | Free | List custom domains (service_key sees project's, admin sees all) |
+| `/domains/v1/:domain` | GET | None | Free | Check domain status (pending/active) |
+| `/domains/v1/:domain` | DELETE | service_key or admin | Free | Release a custom domain |
+
+Custom domains let users point their own domain (e.g., `example.com`) at a Run402 subdomain. `POST /domains/v1` with `{ "domain": "example.com", "subdomain_name": "myapp" }` returns DNS instructions (CNAME target + TXT record for verification). Poll `GET /domains/v1/:domain` until status is `active`. When the linked subdomain is redeployed, the custom domain automatically serves the new deployment.
+
 ### Email / Mailboxes
 
 | Endpoint | Method | Auth | Cost | Description |

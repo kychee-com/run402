@@ -2677,6 +2677,130 @@
         }
       }
     },
+    "/domains/v1": {
+      "post": {
+        "tags": ["Custom Domains"],
+        "summary": "Register a custom domain",
+        "operationId": "registerDomain",
+        "description": "Register a custom domain for an existing Run402 subdomain. Returns DNS instructions for verification.",
+        "security": [{ "serviceKey": [] }, { "adminKey": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["domain", "subdomain_name"],
+                "properties": {
+                  "domain": { "type": "string", "example": "example.com" },
+                  "subdomain_name": { "type": "string", "example": "myapp" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Domain registered",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "domain": { "type": "string" },
+                    "subdomain_name": { "type": "string" },
+                    "url": { "type": "string" },
+                    "subdomain_url": { "type": "string" },
+                    "status": { "type": "string", "example": "pending" },
+                    "dns_instructions": { "type": "object" },
+                    "project_id": { "type": "string", "nullable": true },
+                    "created_at": { "type": "string" },
+                    "updated_at": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "409": { "description": "Domain already registered" }
+        }
+      },
+      "get": {
+        "tags": ["Custom Domains"],
+        "summary": "List custom domains",
+        "operationId": "listDomains",
+        "description": "List custom domains. service_key sees project's domains; admin sees all.",
+        "security": [{ "serviceKey": [] }, { "adminKey": [] }],
+        "responses": {
+          "200": {
+            "description": "List of domains",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "domains": { "type": "array", "items": { "type": "object" } }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/domains/v1/{domain}": {
+      "get": {
+        "tags": ["Custom Domains"],
+        "summary": "Check domain status",
+        "operationId": "getDomain",
+        "description": "Check verification and SSL status of a registered domain. No auth required.",
+        "parameters": [{ "name": "domain", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": {
+          "200": {
+            "description": "Domain details",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "domain": { "type": "string" },
+                    "subdomain_name": { "type": "string" },
+                    "status": { "type": "string" },
+                    "dns_instructions": { "type": "object" }
+                  }
+                }
+              }
+            }
+          },
+          "404": { "description": "Domain not found" }
+        }
+      },
+      "delete": {
+        "tags": ["Custom Domains"],
+        "summary": "Release a custom domain",
+        "operationId": "deleteDomain",
+        "description": "Release a custom domain. Accepts service_key or admin auth.",
+        "security": [{ "serviceKey": [] }, { "adminKey": [] }],
+        "parameters": [{ "name": "domain", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": {
+          "200": {
+            "description": "Domain released",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": { "type": "string", "example": "deleted" },
+                    "domain": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
+          "404": { "description": "Domain not found" }
+        }
+      }
+    },
     "/projects/v1/admin/{id}/functions": {
       "post": {
         "tags": [
