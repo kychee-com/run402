@@ -156,6 +156,12 @@ RLS templates:
 - `public_read` — anyone reads, authenticated users write
 - `public_read_write` — anyone reads and writes
 
+| Template | anon_key reads | anon_key writes | authenticated reads | authenticated writes |
+|----------|---------------|-----------------|---------------------|----------------------|
+| `public_read` | all rows | no | all rows | all rows |
+| `public_read_write` | all rows | all rows | all rows | all rows |
+| `user_owns_rows` | no | no | own rows only | own rows only |
+
 ⚠️ **Without RLS, tables are read-only via anon_key.** If your app writes data from the browser, you almost certainly need an `rls` block.
 
 Deploy:
@@ -290,13 +296,36 @@ await db.from('items').delete().eq('id', 1);
 
 Column narrowing works with writes: `.insert({...}).select('id, title')` returns only those columns.
 
+#### Calling functions from the browser
+
+Functions are accessible via HTTP at `https://api.run402.com/functions/v1/<name>`. Use the project's `anon_key` as the `apikey` header. For authenticated calls, also pass the user's `access_token`:
+
+```javascript
+const res = await fetch('https://api.run402.com/functions/v1/my-function', {
+  method: 'POST',
+  headers: {
+    apikey: ANON_KEY,
+    Authorization: 'Bearer ' + session.access_token,  // optional, for authenticated calls
+    'Content-Type': 'application/json'
+  },
+  body: JSON.stringify({ key: 'value' })
+});
+```
+
 - `run402 functions deploy <id> <name> --file <file> [--deps "<pkg,...>"] [--timeout <s>] [--memory <mb>] [--schedule "<cron>"]`
 - `run402 functions invoke <id> <name> [--body '<json>'] [--method <GET|POST|...>]`
 - `run402 functions logs <id> <name> [--tail <n>] [--since <iso-timestamp>] [--follow]`
 - `run402 functions update <id> <name> [--schedule "<cron>"] [--schedule-remove] [--timeout <s>] [--memory <mb>]`
 - `run402 functions <list|delete> <id> [<name>]`
 
-Schedule tier limits: Prototype: 1 scheduled function, min 15 min interval. Hobby: 3, min 5 min. Team: 10, min 1 min.
+#### Scheduled function limits by tier
+
+| | Prototype | Hobby | Team |
+|---|-----------|-------|------|
+| Max scheduled functions | 1 | 3 | 10 |
+| Min interval | 15 min | 5 min | 1 min |
+
+Deploying a scheduled function beyond your tier's limit returns a 403 error. Upgrade your tier or remove an existing scheduled function first.
 
 Secrets available as `process.env` (see secrets below).
 
@@ -310,6 +339,18 @@ Injected as `process.env` in functions. Values are write-only — `list` returns
 - `run402 storage upload <id> <bucket> <path> [--file <local>] [--content-type <mime>]`
 - `run402 storage <download|delete> <id> <bucket> <path>`
 - `run402 storage list <id> <bucket>`
+
+#### Uploading from edge functions
+
+Use the HTTP API to upload files from within a deployed function:
+
+```javascript
+const res = await fetch('https://api.run402.com/storage/v1/upload/<bucket>/<path>', {
+  method: 'POST',
+  headers: { Authorization: 'Bearer ' + process.env.RUN402_SERVICE_KEY },
+  body: fileBuffer,
+});
+```
 
 ### sites
 - `run402 sites deploy --manifest <file> [--project <id>]`
