@@ -18,6 +18,7 @@ Options (deploy):
   --manifest <file>     Path to manifest JSON file (or read from stdin)
   --project <id>        Project ID (defaults to active project)
   --target <target>     Deployment target (e.g. 'production')
+  --inherit             Copy unchanged files from the previous deployment (only upload changed files)
   --help, -h            Show this help message
 
 Manifest format (JSON):
@@ -51,12 +52,13 @@ async function readStdin() {
 }
 
 async function deploy(args) {
-  const opts = { manifest: null, project: undefined, target: undefined };
+  const opts = { manifest: null, project: undefined, target: undefined, inherit: false };
   for (let i = 0; i < args.length; i++) {
     if (args[i] === "--help" || args[i] === "-h") { console.log(HELP); process.exit(0); }
     if (args[i] === "--manifest" && args[i + 1]) opts.manifest = args[++i];
     if (args[i] === "--project" && args[i + 1]) opts.project = args[++i];
     if (args[i] === "--target" && args[i + 1]) opts.target = args[++i];
+    if (args[i] === "--inherit") opts.inherit = true;
   }
   const projectId = resolveProjectId(opts.project);
   const raw = opts.manifest ? readFileSync(opts.manifest, "utf-8") : await readStdin();
@@ -64,6 +66,7 @@ async function deploy(args) {
   if (opts.manifest) resolveFilePathsInManifest(manifest, dirname(resolve(opts.manifest)));
   const body = { files: manifest.files, project: projectId };
   if (opts.target) body.target = opts.target;
+  if (opts.inherit) body.inherit = true;
 
   const authHeaders = allowanceAuthHeaders("/deployments/v1");
   const res = await fetch(`${API}/deployments/v1`, {

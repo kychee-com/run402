@@ -59,6 +59,10 @@ export const bundleDeploySchema = {
     .string()
     .optional()
     .describe("Custom subdomain to claim (e.g. 'myapp' → myapp.run402.com)"),
+  inherit: z
+    .boolean()
+    .optional()
+    .describe("If true, copy unchanged site files from the previous deployment. Only include changed/new files."),
 };
 
 export async function handleBundleDeploy(args: {
@@ -69,6 +73,7 @@ export async function handleBundleDeploy(args: {
   functions?: Array<{ name: string; code: string; config?: { timeout?: number; memory?: number }; schedule?: string }>;
   files?: Array<{ file: string; data: string; encoding?: string }>;
   subdomain?: string;
+  inherit?: boolean;
 }): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
   const projectId = args.project_id;
   if (!projectId) return projectNotFound("(none — project_id is required)");
@@ -89,6 +94,7 @@ export async function handleBundleDeploy(args: {
       functions: args.functions,
       files: args.files,
       subdomain: args.subdomain,
+      ...(args.inherit ? { inherit: true } : {}),
     },
   });
 

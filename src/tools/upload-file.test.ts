@@ -73,6 +73,56 @@ describe("upload_file tool", () => {
     assert.ok(result.content[0]!.text.includes("not found in key store"));
   });
 
+  it("shows public URL when present in response", async () => {
+    saveProject("proj-u3", {
+      anon_key: "ak-u3",
+      service_key: "sk-u3",
+      tier: "prototype",
+      lease_expires_at: "2026-03-06T00:00:00Z",
+    }, storePath);
+
+    globalThis.fetch = (async () =>
+      new Response(
+        JSON.stringify({ key: "data/photo.png", size: 1024, url: "https://api.run402.com/storage/v1/public/proj-u3/data/photo.png" }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      )) as typeof fetch;
+
+    const result = await handleUploadFile({
+      project_id: "proj-u3",
+      bucket: "data",
+      path: "photo.png",
+      content: "base64data",
+    });
+
+    assert.ok(result.content[0]!.text.includes("Public URL:"));
+    assert.ok(result.content[0]!.text.includes("storage/v1/public/proj-u3/data/photo.png"));
+  });
+
+  it("omits public URL when not in response", async () => {
+    saveProject("proj-u4", {
+      anon_key: "ak-u4",
+      service_key: "sk-u4",
+      tier: "prototype",
+      lease_expires_at: "2026-03-06T00:00:00Z",
+    }, storePath);
+
+    globalThis.fetch = (async () =>
+      new Response(
+        JSON.stringify({ key: "data/test.txt", size: 5 }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      )) as typeof fetch;
+
+    const result = await handleUploadFile({
+      project_id: "proj-u4",
+      bucket: "data",
+      path: "test.txt",
+      content: "hello",
+    });
+
+    assert.ok(!result.content[0]!.text.includes("Public URL:"));
+    assert.ok(result.content[0]!.text.includes("data/test.txt"));
+  });
+
   it("returns isError on upload failure", async () => {
     saveProject("proj-u2", {
       anon_key: "ak-u2",

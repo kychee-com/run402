@@ -474,6 +474,8 @@ describe("llms.txt alignment", { skip: !llmsTxtAvailable && "~/dev/run402/site/l
       // AI add-on management (dashboard-only, not exposed as tools)
       "POST /ai/v1/addons",
       "DELETE /ai/v1/addons",
+      // Public storage access (no auth, used via url field from upload response)
+      "GET /storage/v1/public/:project_id/:bucket/*",
       // Function trigger is a gateway testing endpoint, not exposed as a tool
       "POST /projects/v1/admin/:id/functions/:name/trigger",
     ]);

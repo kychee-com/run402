@@ -39,13 +39,11 @@ export async function handleUploadFile(args: {
 
   if (!res.ok) return formatApiError(res, "uploading file");
 
-  const body = res.body as { key: string; size: number };
+  const body = res.body as { key: string; size: number; url?: string };
+  const text = body.url
+    ? `File uploaded: **${body.key}** (${body.size} bytes)\nPublic URL: ${body.url}`
+    : `File uploaded: **${body.key}** (${body.size} bytes)`;
   return {
-    content: [
-      {
-        type: "text",
-        text: `File uploaded: **${body.key}** (${body.size} bytes)`,
-      },
-    ],
+    content: [{ type: "text", text }],
   };
 }

@@ -32,11 +32,13 @@ Manifest format (JSON):
       { "file": "index.html", "data": "<html>...</html>" },
       { "file": "style.css", "path": "./dist/style.css" }
     ],
-    "subdomain": "my-app"
+    "subdomain": "my-app",
+    "inherit": true
   }
 
   project_id is required (provision first with 'run402 provision').
   All other fields are optional.
+  inherit: copy unchanged site files from previous deployment (only upload changed files).
 
   Migrations can be inline or read from a file:
     "migrations": "CREATE TABLE ..."              ← inline SQL

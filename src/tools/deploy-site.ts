@@ -24,12 +24,17 @@ export const deploySiteSchema = {
       }),
     )
     .describe("Array of files to deploy. Must include at least index.html."),
+  inherit: z
+    .boolean()
+    .optional()
+    .describe("If true, copy unchanged files from the previous deployment. Only include changed/new files in the files array."),
 };
 
 export async function handleDeploySite(args: {
   project: string;
   target?: string;
   files: Array<{ file: string; data: string; encoding?: string }>;
+  inherit?: boolean;
 }): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
   const auth = requireAllowanceAuth("/deployments/v1");
   if ("error" in auth) return auth.error;
@@ -41,6 +46,7 @@ export async function handleDeploySite(args: {
       project: args.project,
       target: args.target,
       files: args.files,
+      ...(args.inherit ? { inherit: true } : {}),
     },
   });
 
