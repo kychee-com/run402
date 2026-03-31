@@ -23,6 +23,7 @@ FALSE_POSITIVES = {
         "phone", "alone", "money", "honest", "component", "ozone", "drone",
         "clone", "throne", "opponent", "oneclaw", "onecla",
         "neoton", "oneoton", "onewoton", "newton", "neuton",
+        "combined", "combine",
     ],
     "eight": ["weight", "height", "freight", "sleight"],
     "nine": [
@@ -60,15 +61,35 @@ PHONETIC_ALTS = {
 }
 
 
-def _fuzzy_pattern(word: str) -> str:
-    """Build regex that allows optional extra vowels and phonetic swaps."""
-    parts = []
-    for c in collapse(word):
-        parts.append(PHONETIC_ALTS.get(c, re.escape(c)))
-    return "[aeiou]?".join(parts)
+def _fuzzy_pattern(word: str, loose: bool = False) -> str:
+    """Build regex that allows optional extra vowels and phonetic swaps.
+    
+    Allows skipping one interior character to handle obfuscation that
+    drops characters after collapse (e.g. 'tWeNnY' → 'tweny' missing 't').
+    Returns alternation: full pattern | each single-char-skip variant.
+    
+    If loose=True, allows up to 2 junk chars between expected chars (for number words).
+    """
+    chars = list(collapse(word))
+    
+    gap = "[a-z]{0,2}?" if loose else "[aeiou]?"
+    
+    def _build(chars_list):
+        parts = []
+        for c in chars_list:
+            parts.append(PHONETIC_ALTS.get(c, re.escape(c)))
+        return gap.join(parts)
+    
+    # Full pattern + variants with one interior char removed
+    # Only generate skip variants for words with 7+ collapsed chars — too many false positives for shorter words
+    variants = [_build(chars)]
+    if len(chars) >= 7:
+        for i in range(1, len(chars) - 1):
+            variants.append(_build(chars[:i] + chars[i+1:]))
+    return "(?:" + "|".join(variants) + ")"
 
 
-def _extract_numbers(aj: str) -> list[int]:
+def _extract_numbers(aj: str) -> list[float]:
     ct = {collapse(k): v for k, v in TENS.items()}
     co = {collapse(k): v for k, v in ONES.items()}
     ca = {collapse(k): v for k, v in ALL_NUMS.items()}
@@ -83,7 +104,7 @@ def _extract_numbers(aj: str) -> list[int]:
 
     # Pass 1: tens+ones compounds (with fuzzy matching)
     for tw, tv in sorted(ct.items(), key=lambda x: -len(x[0])):
-        pat = _fuzzy_pattern(list(TENS.keys())[list(TENS.values()).index(tv)])
+        pat = _fuzzy_pattern(list(TENS.keys())[list(TENS.values()).index(tv)], loose=True)
         for idx, after in _find_all(pat, aj):
             if any(p in used for p in range(idx, after)):
                 continue
@@ -91,7 +112,7 @@ def _extract_numbers(aj: str) -> list[int]:
             # Try all ones and pick the closest (earliest) match
             best_ones = None  # (end_pos, value)
             for ow, ov in sorted(co.items(), key=lambda x: -len(x[0])):
-                opat = _fuzzy_pattern(list(ONES.keys())[list(ONES.values()).index(ov)])
+                opat = _fuzzy_pattern(list(ONES.keys())[list(ONES.values()).index(ov)], loose=True)
                 # Allow up to 5 junk chars between tens and ones (obfuscation artifacts)
                 m = re.search(r'^.{0,5}?' + opat, aj[after:])
                 if m:
@@ -131,6 +152,19 @@ def _extract_numbers(aj: str) -> list[int]:
                 found.append((idx, v))
                 used.update(range(idx, end))
 
+    # Pass 3: detect "and a half" / "and a quarter" modifiers after number words
+    found.sort()
+    updated = []
+    for i, (pos, v) in enumerate(found):
+        next_pos = found[i + 1][0] if i + 1 < len(found) else len(aj)
+        window = aj[pos:min(next_pos, pos + 40)]
+        if re.search(r"andahalf", window):
+            v += 0.5
+        elif re.search(r"andaquarter", window):
+            v += 0.25
+        updated.append((pos, v))
+    found = updated
+
     found.sort()
     return [v for _, v in found]
 
@@ -145,11 +179,23 @@ def _detect_operation(challenge: str, aj: str) -> str | None:
     # Note: " / " and " - " skipped for literal detection — obfuscation uses
     # these chars as decoration too often, causing false positives.
 
+    # Priority: explicit question phrase ("what is the sum/difference/product") overrides story keywords
+    question_match = re.search(r'what\s*is\s*(the\s*)?(.*?)$', re.sub(r'[^a-zA-Z\s]', ' ', challenge).lower())
+    if question_match:
+        q = collapse(question_match.group(2))
+        if "sum" in q or "total" in q or "combined" in q:
+            return "+"
+        if "difference" in q:
+            return "-"
+        if "product" in q:
+            return "*"
+
     # Word-based detection (subtraction before addition to avoid false matches)
     # Use fuzzy matching to handle obfuscation artifacts
     # False positives for operation keywords (word → list of containing words)
     op_false_positives = {
         "boost": ["lobster", "loboster"],
+        "times": ["centimeter", "centimetre", "centimeters", "centimetres", "sometimes", "lifetime", "bedtimes", "overtime", "halftime", "nighttime", "daytime", "meantime", "pastime"],
     }
     ops = [
         ("multiply", "*"), ("multiplied", "*"), ("multiplies", "*"), ("multipled", "*"), ("multiple", "*"),
@@ -160,7 +206,7 @@ def _detect_operation(challenge: str, aj: str) -> str | None:
         ("remains", "-"), ("remaining", "-"),
         ("reduces", "-"), ("reducing", "-"), ("subtract", "-"), ("decreased", "-"), ("reduced", "-"),
         ("times", "*"),
-        ("adds", "+"), ("add", "+"), ("plus", "+"),
+        ("sum", "+"), ("adds", "+"), ("add", "+"), ("plus", "+"),
         ("increases", "+"), ("gains", "+"), ("speeds", "+"), ("accelerat", "+"),
         ("divided", "/"),
     ]
