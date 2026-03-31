@@ -15,6 +15,9 @@ import {
   cfKvPut,
   cfKvDelete,
   cfKvList,
+  cfZoneResolve,
+  cfWorkerCustomDomainCreate,
+  cfWorkerCustomDomainDelete,
 } from "./cloudflare.js";
 
 // ---------- Types ----------
@@ -24,6 +27,7 @@ export interface DomainRecord {
   subdomain_name: string;
   project_id: string | null;
   cloudflare_hostname_id: string | null;
+  cloudflare_zone_id: string | null;
   status: string;
   dns_instructions: DnsInstructions | null;
   created_at: string;
@@ -64,6 +68,10 @@ export async function initDomainsTable(): Promise<void> {
   await pool.query(sql(`
     CREATE INDEX IF NOT EXISTS idx_domains_project
       ON internal.domains(project_id) WHERE project_id IS NOT NULL
+  `));
+  await pool.query(sql(`
+    ALTER TABLE internal.domains
+      ADD COLUMN IF NOT EXISTS cloudflare_zone_id TEXT
   `));
 }
 
@@ -128,12 +136,28 @@ export async function createDomain(
   // Write to Cloudflare KV (domain → deployment_id)
   cfKvPut(domain, subdomain.deployment_id);
 
+  // Resolve zone and create Worker Custom Domain binding
+  let zoneId: string | null = null;
+  try {
+    zoneId = await cfZoneResolve(domain);
+    if (zoneId) {
+      cfWorkerCustomDomainCreate(domain, zoneId);
+    } else {
+      console.warn(`CF zone not found for ${domain} — Worker Custom Domain binding skipped`);
+    }
+  } catch (err) {
+    console.error(
+      `CF zone resolve failed (${domain}):`,
+      err instanceof Error ? err.message : err,
+    );
+  }
+
   // Insert DB record
   const result = await pool.query(
-    sql(`INSERT INTO internal.domains (domain, subdomain_name, project_id, cloudflare_hostname_id, status, dns_instructions)
-     VALUES ($1, $2, $3, $4, $5, $6)
-     RETURNING domain, subdomain_name, project_id, cloudflare_hostname_id, status, dns_instructions, created_at, updated_at`),
-    [domain, subdomainName, projectId || null, hostnameId, "pending", dnsInstructions ? JSON.stringify(dnsInstructions) : null],
+    sql(`INSERT INTO internal.domains (domain, subdomain_name, project_id, cloudflare_hostname_id, cloudflare_zone_id, status, dns_instructions)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)
+     RETURNING domain, subdomain_name, project_id, cloudflare_hostname_id, cloudflare_zone_id, status, dns_instructions, created_at, updated_at`),
+    [domain, subdomainName, projectId || null, hostnameId, zoneId, "pending", dnsInstructions ? JSON.stringify(dnsInstructions) : null],
   );
 
   const row = result.rows[0];
@@ -146,7 +170,7 @@ export async function createDomain(
  */
 export async function getDomain(domain: string): Promise<DomainRecord | null> {
   const result = await pool.query(
-    sql(`SELECT domain, subdomain_name, project_id, cloudflare_hostname_id, status, dns_instructions, created_at, updated_at
+    sql(`SELECT domain, subdomain_name, project_id, cloudflare_hostname_id, cloudflare_zone_id, status, dns_instructions, created_at, updated_at
      FROM internal.domains WHERE domain = $1`),
     [domain],
   );
@@ -189,12 +213,12 @@ export async function getDomainWithStatus(domain: string): Promise<DomainRecord 
 export async function listDomains(projectId?: string | null): Promise<DomainRecord[]> {
   const result = projectId
     ? await pool.query(
-        sql(`SELECT domain, subdomain_name, project_id, cloudflare_hostname_id, status, dns_instructions, created_at, updated_at
+        sql(`SELECT domain, subdomain_name, project_id, cloudflare_hostname_id, cloudflare_zone_id, status, dns_instructions, created_at, updated_at
          FROM internal.domains WHERE project_id = $1 ORDER BY created_at DESC`),
         [projectId],
       )
     : await pool.query(
-        sql(`SELECT domain, subdomain_name, project_id, cloudflare_hostname_id, status, dns_instructions, created_at, updated_at
+        sql(`SELECT domain, subdomain_name, project_id, cloudflare_hostname_id, cloudflare_zone_id, status, dns_instructions, created_at, updated_at
          FROM internal.domains ORDER BY created_at DESC`),
       );
 
@@ -225,6 +249,11 @@ export async function deleteDomain(domain: string, projectId?: string | null): P
     }
   }
 
+  // Remove Worker Custom Domain binding
+  if (record.cloudflare_zone_id) {
+    cfWorkerCustomDomainDelete(domain);
+  }
+
   // Remove from Cloudflare KV
   cfKvDelete(domain);
 
@@ -247,7 +276,7 @@ export async function deleteDomain(domain: string, projectId?: string | null): P
  */
 export async function getDomainBySubdomain(subdomainName: string): Promise<DomainRecord | null> {
   const result = await pool.query(
-    sql(`SELECT domain, subdomain_name, project_id, cloudflare_hostname_id, status, dns_instructions, created_at, updated_at
+    sql(`SELECT domain, subdomain_name, project_id, cloudflare_hostname_id, cloudflare_zone_id, status, dns_instructions, created_at, updated_at
      FROM internal.domains WHERE subdomain_name = $1`),
     [subdomainName],
   );
@@ -373,6 +402,7 @@ function rowToRecord(row: Record<string, unknown>): DomainRecord {
     subdomain_name: row.subdomain_name as string,
     project_id: row.project_id as string | null,
     cloudflare_hostname_id: row.cloudflare_hostname_id as string | null,
+    cloudflare_zone_id: row.cloudflare_zone_id as string | null,
     status: row.status as string,
     dns_instructions: row.dns_instructions as DnsInstructions | null,
     created_at: row.created_at as string,

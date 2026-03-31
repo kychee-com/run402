@@ -1,17 +1,18 @@
 /**
- * Cloudflare API client — Custom Hostnames + Workers KV.
+ * Cloudflare API client — Custom Hostnames + Workers KV + Worker Custom Domains.
  *
  * Used by the domains service to manage custom domain SSL/verification
- * (Custom Hostnames) and edge routing (KV).
+ * (Custom Hostnames), edge routing (KV), and Worker bindings (Custom Domains).
  *
- * Fire-and-forget pattern: KV mutations log errors but don't throw,
- * matching the existing kvs.ts pattern for CloudFront KVS.
+ * Fire-and-forget pattern: KV and Worker Custom Domain mutations log errors
+ * but don't throw, matching the existing kvs.ts pattern for CloudFront KVS.
  */
 
 const CLOUDFLARE_API_TOKEN = process.env.CLOUDFLARE_API_TOKEN || "";
 const CLOUDFLARE_ZONE_ID = process.env.CLOUDFLARE_ZONE_ID || "";
 const CLOUDFLARE_KV_NAMESPACE_ID = process.env.CLOUDFLARE_KV_NAMESPACE_ID || "";
 const CLOUDFLARE_KV_ACCOUNT_ID = process.env.CLOUDFLARE_KV_ACCOUNT_ID || "";
+const CLOUDFLARE_WORKER_NAME = process.env.CLOUDFLARE_WORKER_NAME || "run402-custom-domains";
 
 const CF_API = "https://api.cloudflare.com/client/v4";
 
@@ -229,4 +230,133 @@ export async function cfKvList(): Promise<Array<{ key: string; value: string }>>
   } while (cursor);
 
   return entries;
+}
+
+// ---------- Worker Custom Domains ----------
+
+/**
+ * Extract the base domain (last two labels) from a hostname.
+ * e.g., "barrio.wildlychee.com" → "wildlychee.com"
+ */
+function baseDomain(hostname: string): string {
+  const parts = hostname.split(".");
+  return parts.slice(-2).join(".");
+}
+
+/**
+ * Resolve the Cloudflare zone_id for a hostname's base domain.
+ * Returns null if the zone is not on this Cloudflare account.
+ */
+export async function cfZoneResolve(hostname: string): Promise<string | null> {
+  if (!CLOUDFLARE_API_TOKEN || !CLOUDFLARE_KV_ACCOUNT_ID) return null;
+
+  const base = baseDomain(hostname);
+  try {
+    const res = await fetch(`${CF_API}/zones?name=${encodeURIComponent(base)}`, {
+      headers: headers(),
+    });
+    const body = (await res.json()) as CfResponse<Array<{ id: string }>>;
+    if (!body.success || body.result.length === 0) return null;
+    return body.result[0].id;
+  } catch (err) {
+    console.error(
+      `CF zone resolve failed (${hostname} → ${base}):`,
+      err instanceof Error ? err.message : err,
+    );
+    return null;
+  }
+}
+
+/**
+ * Create a Worker Custom Domain binding for a hostname.
+ * Worker Custom Domains manage their own DNS, so any existing DNS record
+ * (e.g., a user-created CNAME) must be deleted first.
+ * Fire-and-forget: logs errors but does not throw.
+ */
+export function cfWorkerCustomDomainCreate(hostname: string, zoneId: string): void {
+  if (!CLOUDFLARE_API_TOKEN || !CLOUDFLARE_KV_ACCOUNT_ID) return;
+
+  // Delete any conflicting DNS record first, then create the binding
+  deleteConflictingDnsRecord(hostname, zoneId).then(() => {
+    return fetch(`${CF_API}/accounts/${CLOUDFLARE_KV_ACCOUNT_ID}/workers/domains`, {
+      method: "PUT",
+      headers: headers(),
+      body: JSON.stringify({
+        hostname,
+        service: CLOUDFLARE_WORKER_NAME,
+        zone_id: zoneId,
+        environment: "production",
+      }),
+    });
+  }).then((res) => {
+    if (!res.ok) {
+      res.text().then((t) => {
+        console.error(`CF Worker Custom Domain create failed (${hostname}): HTTP ${res.status} — ${t}`);
+      });
+    } else {
+      console.log(`  CF Worker Custom Domain created: ${hostname} → ${CLOUDFLARE_WORKER_NAME}`);
+    }
+  }).catch((err) => {
+    console.error(
+      `CF Worker Custom Domain create failed (${hostname}):`,
+      err instanceof Error ? err.message : err,
+    );
+  });
+}
+
+/**
+ * Delete an existing DNS record (CNAME/A) for a hostname on a zone.
+ * Worker Custom Domains manage their own DNS, so user-created records conflict.
+ */
+async function deleteConflictingDnsRecord(hostname: string, zoneId: string): Promise<void> {
+  try {
+    const res = await fetch(
+      `${CF_API}/zones/${zoneId}/dns_records?name=${encodeURIComponent(hostname)}&type=CNAME,A,AAAA`,
+      { headers: headers() },
+    );
+    const body = (await res.json()) as CfResponse<Array<{ id: string; type: string }>>;
+    if (!body.success || body.result.length === 0) return;
+
+    for (const record of body.result) {
+      const delRes = await fetch(`${CF_API}/zones/${zoneId}/dns_records/${record.id}`, {
+        method: "DELETE",
+        headers: headers(),
+      });
+      if (delRes.ok) {
+        console.log(`  CF DNS record deleted (${hostname}, ${record.type}) — replaced by Worker Custom Domain`);
+      }
+    }
+  } catch (err) {
+    console.error(
+      `CF DNS record cleanup failed (${hostname}):`,
+      err instanceof Error ? err.message : err,
+    );
+  }
+}
+
+/**
+ * Delete a Worker Custom Domain binding for a hostname.
+ * Fire-and-forget: logs errors but does not throw.
+ */
+export function cfWorkerCustomDomainDelete(hostname: string): void {
+  if (!CLOUDFLARE_API_TOKEN || !CLOUDFLARE_KV_ACCOUNT_ID) return;
+
+  fetch(
+    `${CF_API}/accounts/${CLOUDFLARE_KV_ACCOUNT_ID}/workers/domains/records/${encodeURIComponent(hostname)}`,
+    {
+      method: "DELETE",
+      headers: headers(),
+    },
+  ).then((res) => {
+    if (!res.ok) {
+      console.error(`CF Worker Custom Domain delete failed (${hostname}): HTTP ${res.status}`);
+    } else {
+      console.log(`  CF Worker Custom Domain deleted: ${hostname}`);
+    }
+  }).catch((err) => {
+    console.error(
+      `CF Worker Custom Domain delete failed (${hostname}):`,
+      err instanceof Error ? err.message : err,
+    );
+  });
 }
