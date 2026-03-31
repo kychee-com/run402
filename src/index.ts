@@ -50,6 +50,12 @@ import { pinProjectSchema, handlePinProject } from "./tools/pin-project.js";
 import { promoteUserSchema, handlePromoteUser } from "./tools/promote-user.js";
 import { demoteUserSchema, handleDemoteUser } from "./tools/demote-user.js";
 
+// New tools — custom domains
+import { addCustomDomainSchema, handleAddCustomDomain } from "./tools/add-custom-domain.js";
+import { listCustomDomainsSchema, handleListCustomDomains } from "./tools/list-custom-domains.js";
+import { checkDomainStatusSchema, handleCheckDomainStatus } from "./tools/check-domain-status.js";
+import { removeCustomDomainSchema, handleRemoveCustomDomain } from "./tools/remove-custom-domain.js";
+
 // New tools — billing
 import { checkBalanceSchema, handleCheckBalance } from "./tools/check-balance.js";
 import { listProjectsSchema, handleListProjects } from "./tools/list-projects.js";
@@ -258,6 +264,36 @@ server.tool(
   "List all subdomains claimed by a project.",
   listSubdomainsSchema,
   async (args) => handleListSubdomains(args),
+);
+
+// ─── Custom domain tools ────────────────────────────────────────────────────
+
+server.tool(
+  "add_custom_domain",
+  "Register a custom domain (e.g. example.com) to point at a Run402 subdomain. Returns DNS instructions for the human to configure.",
+  addCustomDomainSchema,
+  async (args) => handleAddCustomDomain(args),
+);
+
+server.tool(
+  "list_custom_domains",
+  "List all custom domains registered for a project.",
+  listCustomDomainsSchema,
+  async (args) => handleListCustomDomains(args),
+);
+
+server.tool(
+  "check_domain_status",
+  "Check if a custom domain's DNS is configured and SSL is active. Poll this after registering a domain.",
+  checkDomainStatusSchema,
+  async (args) => handleCheckDomainStatus(args),
+);
+
+server.tool(
+  "remove_custom_domain",
+  "Release a custom domain mapping. Traffic to the domain will no longer route to Run402.",
+  removeCustomDomainSchema,
+  async (args) => handleRemoveCustomDomain(args),
 );
 
 // ─── Bundle deploy & marketplace tools ──────────────────────────────────────

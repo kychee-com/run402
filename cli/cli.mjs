@@ -31,6 +31,7 @@ Commands:
   storage     Manage file storage (upload, download, list, delete)
   sites       Deploy static sites
   subdomains  Manage custom subdomains (claim, list, delete)
+  domains     Manage custom domains (add, list, status, delete)
   apps        Browse and manage the app marketplace
   image       Generate AI images via x402 or MPP micropayments
   email       Send template-based emails from your project
@@ -119,6 +120,11 @@ switch (cmd) {
   }
   case "subdomains": {
     const { run } = await import("./lib/subdomains.mjs");
+    await run(sub, rest);
+    break;
+  }
+  case "domains": {
+    const { run } = await import("./lib/domains.mjs");
     await run(sub, rest);
     break;
   }
