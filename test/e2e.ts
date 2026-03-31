@@ -391,6 +391,19 @@ async function main() {
   }
   assert(bytesMatch, "Binary roundtrip: all 256 byte values preserved");
 
+  // Step 12c: Public storage URL
+  console.log("\n12c) Public storage URL...");
+  assert(uploadBody.url, "Upload response includes url field");
+  assert(uploadBody.url.includes("/storage/v1/public/"), "URL contains public path");
+  // Fetch via public URL without auth
+  const publicRes = await fetch(uploadBody.url);
+  assert(publicRes.ok, `Public URL returns 200 (got ${publicRes.status})`);
+  const publicText = await publicRes.text();
+  assert(publicText === "E2E test workout log content", "Public URL returns correct content");
+  // Fetch nonexistent file via public URL
+  const public404Res = await fetch(`${BASE_URL}/storage/v1/public/${project_id}/logs/nonexistent.txt`);
+  assert(public404Res.status === 404, `Nonexistent public file returns 404 (got ${public404Res.status})`);
+
   // Step 13: Check usage
   console.log("\n13) Check usage...");
   const usageRes = await fetch(`${BASE_URL}/projects/v1/admin/${project_id}/usage`, {
@@ -826,6 +839,36 @@ async function main() {
 
   // Verify site deployment exists
   assert(bundleBody.site_url.includes("sites.run402.com"), "Bundle site URL points to sites.run402.com");
+
+  // Step 23b: Incremental deploy (inherit: true)
+  console.log("\n23b) Incremental deploy (inherit)...");
+  const inheritRes = await fetch(`${BASE_URL}/deploy/v1`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...bundleHeaders,
+    },
+    body: JSON.stringify({
+      project_id: bundleProjectId,
+      files: [
+        { file: "style.css", data: "body { color: red; }" },
+      ],
+      inherit: true,
+    }),
+  });
+  const inheritBody = await inheritRes.json();
+  assert(inheritRes.ok, `Incremental deploy returns 200 (got ${inheritRes.status})`);
+  assert(inheritBody.deployment_id !== bundleBody.deployment_id, "Incremental deploy creates new deployment");
+  // Verify inherited file (index.html from previous deploy) is served
+  const inheritedFileRes = await fetch(`${inheritBody.site_url}/index.html`);
+  assert(inheritedFileRes.ok, `Inherited file (index.html) returns 200 (got ${inheritedFileRes.status})`);
+  const inheritedHtml = await inheritedFileRes.text();
+  assert(inheritedHtml.includes("Bundle Test"), "Inherited file has correct content from previous deploy");
+  // Verify new file is served
+  const newFileRes = await fetch(`${inheritBody.site_url}/style.css`);
+  assert(newFileRes.ok, `New file (style.css) returns 200 (got ${newFileRes.status})`);
+  const newCss = await newFileRes.text();
+  assert(newCss.includes("color: red"), "New file has correct content");
 
   // Clean up bundle project
   const bundleDeleteRes = await fetch(`${BASE_URL}/projects/v1/${bundleProjectId}`, {

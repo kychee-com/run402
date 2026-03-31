@@ -46,6 +46,7 @@ export interface BundleRequest {
   functions?: BundleFunction[];
   files?: BundleFile[];
   subdomain?: string;
+  inherit?: boolean;
 }
 
 export interface MigrationsResult {
@@ -317,7 +318,7 @@ export async function deployBundle(
   let deploymentId: string | undefined;
   if (req.files) {
     const deployment = await createDeployment(
-      { project: project.id, files: req.files },
+      { project: project.id, files: req.files, inherit: req.inherit },
     );
     siteUrl = deployment.url;
     deploymentId = deployment.deployment_id;

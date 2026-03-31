@@ -8,6 +8,7 @@ import { apikeyAuth } from "../middleware/apikey.js";
 import { meteringMiddleware } from "../middleware/metering.js";
 import { demoStorageMiddleware } from "../middleware/demo.js";
 import { updateStorageBytes } from "../services/budget.js";
+import { getProjectById } from "../services/projects.js";
 import { hasName } from "../utils/errors.js";
 import { asyncHandler, HttpError } from "../utils/async-handler.js";
 
@@ -27,7 +28,48 @@ const s3 = S3_BUCKET
 // Fallback: local filesystem storage root
 const LOCAL_STORAGE_ROOT = process.env.STORAGE_ROOT || "./storage";
 
-// All storage routes require apikey
+// Public read route — no auth, before the apikey middleware
+router.get("/storage/v1/public/:project_id/:bucket/*splat", asyncHandler(async (req: Request, res: Response) => {
+  const projectId = req.params["project_id"] as string;
+  const bucket = req.params["bucket"] as string;
+  const splatParam = (req.params as Record<string, string | string[]>)["splat"];
+  const filePath = Array.isArray(splatParam) ? splatParam.join("/") : splatParam;
+
+  // Validate project exists and is active
+  const project = await getProjectById(projectId);
+  if (!project || project.status !== "active") {
+    throw new HttpError(404, "Not found");
+  }
+
+  try {
+    if (s3 && S3_BUCKET) {
+      const key = `${projectId}/${bucket}/${filePath}`;
+      const obj = await s3.send(new GetObjectCommand({
+        Bucket: S3_BUCKET,
+        Key: key,
+      }));
+      res.set("Content-Type", obj.ContentType || "application/octet-stream");
+      res.set("Cache-Control", "public, max-age=3600");
+      const body = await obj.Body!.transformToByteArray();
+      res.send(Buffer.from(body));
+    } else {
+      const storagePath = join(LOCAL_STORAGE_ROOT, projectId, bucket, filePath);
+      if (!existsSync(storagePath)) {
+        throw new HttpError(404, "File not found");
+      }
+      const fileContent = readFileSync(storagePath);
+      res.set("Content-Type", "application/octet-stream");
+      res.set("Cache-Control", "public, max-age=3600");
+      res.send(fileContent);
+    }
+  } catch (err: unknown) {
+    if (err instanceof HttpError) throw err;
+    if (hasName(err, "NoSuchKey")) throw new HttpError(404, "File not found");
+    throw err;
+  }
+}));
+
+// All other storage routes require apikey
 router.use("/storage/v1", apikeyAuth, meteringMiddleware, demoStorageMiddleware);
 
 // POST /storage/v1/object/:bucket/* — upload file
@@ -56,8 +98,11 @@ router.post("/storage/v1/object/:bucket/*splat", asyncHandler(async (req: Reques
 
   await updateStorageBytes(project.id, buffer.length);
 
+  const protocol = req.headers["x-forwarded-proto"] || req.protocol;
+  const publicUrl = `${protocol}://${req.get("host")}/storage/v1/public/${project.id}/${bucket}/${filePath}`;
+
   console.log(`  Storage upload: ${bucket}/${filePath} (${buffer.length}B, project: ${project.id})`);
-  res.json({ key: `${bucket}/${filePath}`, size: buffer.length });
+  res.json({ key: `${bucket}/${filePath}`, size: buffer.length, url: publicUrl });
 }));
 
 // GET /storage/v1/object/list/:bucket — list objects

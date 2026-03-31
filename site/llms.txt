@@ -471,6 +471,10 @@ curl -X POST https://api.run402.com/deployments/v1 \
   }'
 # -> { "deployment_id": "dpl_...", "url": "https://dpl-....sites.run402.com" }
 
+# Incremental deploy — only upload changed files, inherit the rest from the previous deployment:
+# Add "inherit": true to the request body. Unchanged files are copied server-side (instant).
+# curl ... -d '{"project": "...", "files": [{"file": "style.css", "data": "..."}], "inherit": true}'
+
 # Claim a custom subdomain (free, only needed once per project)
 curl -X POST https://api.run402.com/subdomains/v1 \
   -H "Authorization: Bearer $SERVICE_KEY" \
@@ -951,11 +955,12 @@ async function handleOAuthCallback() {
 
 | Endpoint | Method | Auth | Description |
 |----------|--------|------|-------------|
-| `/storage/v1/object/:bucket/*` | POST | apikey | Upload file |
-| `/storage/v1/object/:bucket/*` | GET | apikey | Download file |
+| `/storage/v1/object/:bucket/*` | POST | apikey | Upload file (returns `url` for public access) |
+| `/storage/v1/object/:bucket/*` | GET | apikey | Download file (authenticated) |
 | `/storage/v1/object/:bucket/*` | DELETE | apikey | Delete file |
 | `/storage/v1/object/sign/:bucket/*` | POST | apikey | Get signed URL (1h) |
 | `/storage/v1/object/list/:bucket` | GET | apikey | List files in bucket |
+| `/storage/v1/public/:project_id/:bucket/*` | GET | None | Public file access (use `url` from upload response) |
 
 ### Sites / Deployments
 

@@ -25,13 +25,13 @@ router.get("/deployments/v1", (_req: Request, res: Response) => {
 
 // POST /v1/deployments — create a deployment (wallet auth, free)
 router.post("/deployments/v1", walletAuth(false), asyncHandler(async (req: Request, res: Response) => {
-  const { project, target, files } = req.body || {};
+  const { project, target, files, inherit } = req.body || {};
 
   if (!project || typeof project !== "string") {
     throw new HttpError(400, "Missing or invalid 'project' field (project ID required)");
   }
 
-  if (!files || !Array.isArray(files) || files.length === 0) {
+  if (!files || !Array.isArray(files) || (!inherit && files.length === 0)) {
     throw new HttpError(400, "Missing or empty 'files' array");
   }
 
@@ -50,7 +50,7 @@ router.post("/deployments/v1", walletAuth(false), asyncHandler(async (req: Reque
 
   try {
     const deployment = await createDeployment(
-      { project, target, files },
+      { project, target, files, inherit: !!inherit },
       undefined,
     );
     res.status(201).json(deployment);

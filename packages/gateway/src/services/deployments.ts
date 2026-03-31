@@ -2,13 +2,13 @@
  * Deployment service — upload static site files to S3, record in DB.
  */
 
-import { S3Client, PutObjectCommand, ListObjectsV2Command, DeleteObjectsCommand } from "@aws-sdk/client-s3";
+import { S3Client, PutObjectCommand, ListObjectsV2Command, DeleteObjectsCommand, CopyObjectCommand } from "@aws-sdk/client-s3";
 import { S3_BUCKET, S3_REGION } from "../config.js";
 import { pool } from "../db/pool.js";
 import { sql } from "../db/sql.js";
 import { getMimeType } from "../utils/mime.js";
 import { randomBytes } from "node:crypto";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync, existsSync, readdirSync, statSync, copyFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { cacheInvalidateByNames } from "./subdomains.js";
 
@@ -26,6 +26,7 @@ export interface DeploymentRequest {
   project: string;
   target?: string;
   files: DeploymentFile[];
+  inherit?: boolean;
 }
 
 export interface DeploymentResult {
@@ -87,6 +88,17 @@ export async function initDeploymentsTable(): Promise<void> {
 }
 
 /**
+ * Get the most recent deployment ID for a project, or null if none.
+ */
+async function getPreviousDeploymentId(projectId: string): Promise<string | null> {
+  const result = await pool.query(
+    sql(`SELECT id FROM internal.deployments WHERE project_id = $1 ORDER BY created_at DESC LIMIT 1`),
+    [projectId],
+  );
+  return result.rows.length > 0 ? (result.rows[0].id as string) : null;
+}
+
+/**
  * Create a deployment: upload files to S3, record in DB.
  */
 export async function createDeployment(
@@ -117,6 +129,7 @@ export async function createDeployment(
 
   // Upload all files to S3 (or local fallback)
   const s3Prefix = `sites/${id}`;
+  const uploadedPaths = new Set(decoded.map(f => f.path));
 
   for (const file of decoded) {
     if (s3 && S3_BUCKET) {
@@ -135,16 +148,75 @@ export async function createDeployment(
     }
   }
 
+  // Inherit files from previous deployment
+  let inheritedCount = 0;
+  let inheritedSize = 0;
+  if (req.inherit) {
+    const prevId = await getPreviousDeploymentId(req.project);
+    if (prevId) {
+      const prevPrefix = `sites/${prevId}/`;
+      if (s3 && S3_BUCKET) {
+        let continuationToken: string | undefined;
+        do {
+          const list = await s3.send(new ListObjectsV2Command({
+            Bucket: S3_BUCKET,
+            Prefix: prevPrefix,
+            ContinuationToken: continuationToken,
+          }));
+          for (const obj of list.Contents || []) {
+            const relativePath = obj.Key!.slice(prevPrefix.length);
+            if (uploadedPaths.has(relativePath)) continue; // new file takes precedence
+            await s3.send(new CopyObjectCommand({
+              Bucket: S3_BUCKET,
+              CopySource: `${S3_BUCKET}/${obj.Key}`,
+              Key: `${s3Prefix}/${relativePath}`,
+            }));
+            inheritedCount++;
+            inheritedSize += obj.Size || 0;
+          }
+          continuationToken = list.IsTruncated ? list.NextContinuationToken : undefined;
+        } while (continuationToken);
+      } else {
+        // Local dev: copy files from previous deployment directory
+        const prevDir = join(LOCAL_STORAGE_ROOT, `sites/${prevId}`);
+        if (existsSync(prevDir)) {
+          const copyLocal = (dir: string, prefix: string) => {
+            for (const entry of readdirSync(dir, { withFileTypes: true })) {
+              const relPath = prefix ? `${prefix}/${entry.name}` : entry.name;
+              const fullPath = join(dir, entry.name);
+              if (entry.isDirectory()) {
+                copyLocal(fullPath, relPath);
+              } else if (!uploadedPaths.has(relPath)) {
+                const destPath = join(LOCAL_STORAGE_ROOT, s3Prefix, relPath);
+                mkdirSync(dirname(destPath), { recursive: true });
+                copyFileSync(fullPath, destPath);
+                inheritedCount++;
+                inheritedSize += statSync(fullPath).size;
+              }
+            }
+          };
+          copyLocal(prevDir, "");
+        }
+      }
+      if (inheritedCount > 0) {
+        console.log(`  Inherited ${inheritedCount} files (${inheritedSize}B) from ${prevId}`);
+      }
+    }
+  }
+
+  const totalFiles = decoded.length + inheritedCount;
+  totalSize += inheritedSize;
+
   // Record in DB
   await pool.query(
     sql(`INSERT INTO internal.deployments (id, name, project_id, target, files_count, total_size, tx_hash)
      VALUES ($1, $2, $3, $4, $5, $6, $7)`),
-    [id, req.project, req.project, req.target || null, decoded.length, totalSize, txHash || null],
+    [id, req.project, req.project, req.target || null, totalFiles, totalSize, txHash || null],
   );
 
   const url = `https://${dnsLabel}.sites.run402.com`;
 
-  console.log(`  Deployment created: ${id} (${decoded.length} files, ${totalSize}B) → ${url}`);
+  console.log(`  Deployment created: ${id} (${totalFiles} files${inheritedCount ? `, ${inheritedCount} inherited` : ""}, ${totalSize}B) → ${url}`);
 
   // Auto-reassign any subdomains that belong to this project
   const subdomainUrls: string[] = [];
