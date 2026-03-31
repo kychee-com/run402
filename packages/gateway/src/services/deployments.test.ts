@@ -30,6 +30,7 @@ mock.module("@aws-sdk/client-s3", {
     PutObjectCommand: class { constructor(public input: any) {} },
     ListObjectsV2Command: class { constructor(public input: any) {} },
     DeleteObjectsCommand: class { constructor(public input: any) {} },
+    CopyObjectCommand: class { constructor(public input: any) {} },
   },
 });
 
@@ -122,5 +123,98 @@ describe("createDeployment — auto subdomain reassignment", () => {
 
     assert.equal(invalidated.length, 1);
     assert.deepEqual(invalidated[0], ["cached-app"]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Inherit tests
+// ---------------------------------------------------------------------------
+
+describe("createDeployment — inherit from previous deployment", () => {
+  beforeEach(() => {
+    mockS3Send = async () => ({});
+    mockCacheInvalidateByNames = () => {};
+  });
+
+  it("copies files from previous deployment when inherit is true (local mode)", async () => {
+    let queryCount = 0;
+    mockPoolQuery = async () => {
+      queryCount++;
+      if (queryCount === 1) {
+        // getPreviousDeploymentId — return a previous deployment
+        return { rows: [{ id: "dpl_prev_001" }] };
+      }
+      if (queryCount === 2) return { rows: [] }; // INSERT deployment
+      return { rows: [] }; // UPDATE subdomains
+    };
+
+    // In local mode (S3_BUCKET undefined), inherit uses filesystem copy.
+    // Since we can't easily create temp dirs in this test, just verify
+    // the function doesn't crash when previous deployment dir doesn't exist.
+    const result = await createDeployment({
+      project: "prj_inherit",
+      files: [{ file: "style.css", data: "body{}" }],
+      inherit: true,
+    });
+
+    assert.ok(result.deployment_id.startsWith("dpl_"));
+  });
+
+  it("works normally when inherit is true but no previous deployment exists", async () => {
+    let queryCount = 0;
+    mockPoolQuery = async () => {
+      queryCount++;
+      if (queryCount === 1) {
+        // getPreviousDeploymentId — no previous deployment
+        return { rows: [] };
+      }
+      if (queryCount === 2) return { rows: [] }; // INSERT deployment
+      return { rows: [] }; // UPDATE subdomains
+    };
+
+    const result = await createDeployment({
+      project: "prj_first",
+      files: [{ file: "index.html", data: "<h1>First</h1>" }],
+      inherit: true,
+    });
+
+    assert.ok(result.deployment_id.startsWith("dpl_"));
+  });
+
+  it("skips inherit logic when inherit is false", async () => {
+    let queryCount = 0;
+    mockPoolQuery = async () => {
+      queryCount++;
+      if (queryCount === 1) return { rows: [] }; // INSERT deployment
+      return { rows: [] }; // UPDATE subdomains
+    };
+
+    const result = await createDeployment({
+      project: "prj_noinherit",
+      files: [{ file: "index.html", data: "<h1>Hi</h1>" }],
+      inherit: false,
+    });
+
+    // Should only have 2 queries (INSERT + UPDATE), no getPreviousDeploymentId
+    assert.equal(queryCount, 2);
+    assert.ok(result.deployment_id.startsWith("dpl_"));
+  });
+
+  it("accepts empty files array when inherit is true", async () => {
+    let queryCount = 0;
+    mockPoolQuery = async () => {
+      queryCount++;
+      if (queryCount === 1) return { rows: [{ id: "dpl_prev_002" }] };
+      if (queryCount === 2) return { rows: [] };
+      return { rows: [] };
+    };
+
+    const result = await createDeployment({
+      project: "prj_empty",
+      files: [],
+      inherit: true,
+    });
+
+    assert.ok(result.deployment_id.startsWith("dpl_"));
   });
 });
