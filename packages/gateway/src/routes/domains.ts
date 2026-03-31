@@ -45,7 +45,7 @@ function formatDomain(record: {
 }
 
 // POST /v1/domains — register a custom domain
-router.post("/domains/v1", serviceKeyAuth, asyncHandler(async (req: Request, res: Response) => {
+router.post("/domains/v1", serviceKeyOrAdmin, asyncHandler(async (req: Request, res: Response) => {
   const { domain, subdomain_name } = req.body || {};
 
   if (!domain || typeof domain !== "string") {
