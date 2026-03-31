@@ -367,6 +367,22 @@ All options default to the active project. `claim` also defaults to the project'
 
 **Subdomain auto-reassignment**: You only need to `claim` a subdomain once. Every subsequent `run402 sites deploy` or `run402 deploy` to the same project automatically updates the subdomain to point to the new deployment. The response includes `subdomain_urls` showing which subdomains were reassigned. No need to re-claim after each deploy.
 
+### domains
+- `run402 domains add <domain> <subdomain_name> [--project <id>]`
+- `run402 domains list [<id>]`
+- `run402 domains status <domain> [--project <id>]`
+- `run402 domains delete <domain> [--project <id>]`
+
+Point a custom domain (e.g. `example.com`) at a Run402 subdomain. The human must already own the domain.
+
+**Setup flow:**
+1. `run402 domains add example.com myapp` — registers the domain, returns DNS instructions
+2. Human configures DNS at their registrar (CNAME to `domains.run402.com`, or ALIAS + TXT for apex domains)
+3. `run402 domains status example.com` — poll until status is `active` (DNS propagation ~60s)
+4. Traffic to `example.com` now serves the same site as `myapp.run402.com`
+
+When the linked subdomain is redeployed, the custom domain automatically serves the new deployment.
+
 ### apps
 - `run402 apps browse [--tag <tag>]`
 - `run402 apps fork <version_id> <name> [--subdomain <name>] [--bootstrap '<json>']`
