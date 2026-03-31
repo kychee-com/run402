@@ -133,6 +133,10 @@ export class PodStack extends cdk.Stack {
       this, "CloudflareApiToken", "run402/cloudflare-api-token",
     );
 
+    const openaiApiKey = secretsmanager.Secret.fromSecretNameV2(
+      this, "OpenaiApiKey", "run402/openai-api-key",
+    );
+
     // STRIPE_WEBHOOK_SECRET: managed outside CDK — added directly to task def revisions.
     // fromSecretNameV2 generates a partial ARN that ECS can't resolve at startup.
 
@@ -417,7 +421,7 @@ export class PodStack extends cdk.Stack {
         DB_PORT: "5432",
         DB_NAME: "agentdb",
         LAMBDA_ROLE_ARN: lambdaExecRole.roleArn,
-        LAMBDA_LAYER_ARN: "arn:aws:lambda:us-east-1:472210437512:layer:run402-functions-runtime:7",
+        LAMBDA_LAYER_ARN: "arn:aws:lambda:us-east-1:472210437512:layer:run402-functions-runtime:8",
         FUNCTIONS_LOG_GROUP: functionsLogGroup.logGroupName,
         CF_LOG_BUCKET: "agentdb-site-accesslogbucketda470295-jaz7qij2zfjq",
         CF_LOG_PREFIX: "cf-logs/",
@@ -446,6 +450,7 @@ export class PodStack extends cdk.Stack {
         GOOGLE_APP_CLIENT_ID: ecs.Secret.fromSecretsManager(googleAppOauth, "client_id"),
         GOOGLE_APP_CLIENT_SECRET: ecs.Secret.fromSecretsManager(googleAppOauth, "client_secret"),
         CLOUDFLARE_API_TOKEN: ecs.Secret.fromSecretsManager(cloudflareApiToken),
+        OPENAI_API_KEY: ecs.Secret.fromSecretsManager(openaiApiKey),
         // STRIPE_WEBHOOK_SECRET: managed outside CDK (fromSecretNameV2 ARN issue)
       },
       healthCheck: {

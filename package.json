@@ -20,6 +20,7 @@
     "test:admin-sql": "node --experimental-test-module-mocks --test --import tsx packages/gateway/src/routes/admin-sql.test.ts",
     "test:siwx": "node --experimental-test-module-mocks --test --import tsx packages/gateway/src/services/siwx-storage.test.ts packages/gateway/src/middleware/wallet-auth.test.ts packages/gateway/src/middleware/x402-siwx.test.ts",
     "test:functions": "tsx test/functions-e2e.ts",
+    "test:ai": "tsx test/ai-e2e.ts",
     "test:billing": "tsx test/billing-e2e.ts",
     "test:email": "tsx test/email-e2e.ts",
     "test:mailbox": "node --experimental-test-module-mocks --test --import tsx packages/gateway/src/services/mailbox.test.ts",

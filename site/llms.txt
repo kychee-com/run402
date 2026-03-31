@@ -820,9 +820,11 @@ export default async (req: Request) => {
 
 **Lifecycle hooks**: Functions named `on-<event>` are invoked by the gateway on platform events. Currently supported: `on-signup` — fires after first user signup (password or OAuth) with body `{ "user": { "id", "email", "created_at" } }` and header `X-Run402-Trigger: signup`. Fire-and-forget, no user JWT (function uses its own service key). Only fires on first signup, not on login.
 
-Built-in helper: `import { db, email, getUser } from '@run402/functions'`
+Built-in helper: `import { db, email, ai, getUser } from '@run402/functions'`
 - `getUser(req)` -- verify caller's JWT, returns `{ id, role }` or `null`
 - `email.send(opts)` -- send email from the project's mailbox (see below)
+- `ai.translate(text, to, opts?)` -- translate text to target language (requires translation add-on)
+- `ai.moderate(text)` -- content moderation via OpenAI (free)
 Secrets: `process.env.SECRET_NAME`
 
 **db.sql(query, params?)** -- raw SQL, returns `{ status, schema, rows, rowCount }`.
@@ -1051,6 +1053,89 @@ curl -X POST https://api.run402.com/generate-image/v1 \
 ```
 
 The `image` field contains the full PNG as base64. Decode to get the image file.
+
+### AI Helpers
+
+Built-in AI capabilities available to edge functions via the `@run402/functions` runtime.
+
+| Endpoint | Method | Auth | Cost | Description |
+|----------|--------|------|------|-------------|
+| `/ai/v1/translate` | POST | Service Key | Add-on | Translate text to a target language |
+| `/ai/v1/moderate` | POST | Service Key | Free | Content moderation (OpenAI categories) |
+| `/ai/v1/usage` | GET | Service Key | Free | Translation usage for current billing period |
+| `/ai/v1/addons` | POST | Admin Key | Free | Activate translation add-on for a project |
+| `/ai/v1/addons` | DELETE | Admin Key | Free | Deactivate translation add-on |
+
+**Translation** — Translate text to any language. Requires an active AI Translation add-on (purchased as a "words/month" package). The platform picks the model and owns the prompt.
+
+```js
+import { ai } from '@run402/functions';
+
+// Basic translation
+const result = await ai.translate("Hello world", "es");
+// → { text: "Hola mundo", from: "auto", to: "es" }
+
+// With context hint (improves quality)
+const result = await ai.translate("See y'all Saturday", "es", {
+  context: "comment on a south LA community center events post"
+});
+
+// Explicit source language
+const result = await ai.translate("Bonjour", "en", { from: "fr" });
+```
+
+**Request (translate):**
+```json
+{
+  "text": "Hello world",
+  "to": "es",
+  "from": "en",
+  "context": "community forum post"
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `text` | string | Yes | Text to translate. Max 10,000 chars. |
+| `to` | string | Yes | Target language (ISO 639-1 code, e.g. `"es"`, `"fr"`, `"zh"`) |
+| `from` | string | No | Source language. Auto-detected if omitted. |
+| `context` | string | No | Context hint for tone/register. Max 200 chars. |
+
+**Response (translate):**
+```json
+{ "text": "Hola mundo", "from": "en", "to": "es" }
+```
+
+**Moderation** — Free content moderation using OpenAI's moderation API. No add-on required.
+
+```js
+import { ai } from '@run402/functions';
+
+const result = await ai.moderate("some user content");
+// → { flagged: false, categories: { harassment: false, ... }, category_scores: { harassment: 0.001, ... } }
+
+if (result.flagged) {
+  // hide or review the content
+}
+```
+
+**Request (moderate):**
+```json
+{ "text": "content to check" }
+```
+
+**Response (moderate):**
+```json
+{
+  "flagged": false,
+  "categories": { "harassment": false, "violence": false, "sexual": false, ... },
+  "category_scores": { "harassment": 0.001, "violence": 0.0, "sexual": 0.0, ... }
+}
+```
+
+**Billing:** Translation is a purchasable add-on (not tied to project tiers). Sold as "words/month" packages. Moderation is free for all projects.
+
+**Rate limits:** 60 translate requests/min, 120 moderate requests/min per project.
 
 ### Utility
 

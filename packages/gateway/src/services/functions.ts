@@ -1038,6 +1038,41 @@ function getUser(req) {
   } catch { return null; }
 }
 
+// --- ai helper ---
+const ai = {
+  async translate(text, to, opts) {
+    const body = { text, to };
+    if (opts?.from) body.from = opts.from;
+    if (opts?.context) body.context = opts.context;
+    const res = await fetch(_API_BASE + "/ai/v1/translate", {
+      method: "POST",
+      headers: { Authorization: "Bearer " + _SERVICE_KEY, "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      const errBody = await res.text();
+      let msg;
+      try { msg = JSON.parse(errBody).error || errBody; } catch { msg = errBody; }
+      throw new Error("Translation failed (" + res.status + "): " + msg);
+    }
+    return res.json();
+  },
+  async moderate(text) {
+    const res = await fetch(_API_BASE + "/ai/v1/moderate", {
+      method: "POST",
+      headers: { Authorization: "Bearer " + _SERVICE_KEY, "Content-Type": "application/json" },
+      body: JSON.stringify({ text }),
+    });
+    if (!res.ok) {
+      const errBody = await res.text();
+      let msg;
+      try { msg = JSON.parse(errBody).error || errBody; } catch { msg = errBody; }
+      throw new Error("Moderation failed (" + res.status + "): " + msg);
+    }
+    return res.json();
+  },
+};
+
 // --- email helper ---
 const email = (() => {
   let _mailboxId = null;

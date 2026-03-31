@@ -2353,6 +2353,127 @@
         }
       }
     },
+    "/ai/v1/translate": {
+      "post": {
+        "tags": ["AI"],
+        "summary": "Translate text",
+        "description": "Translate text to a target language via OpenRouter. Requires an active AI Translation add-on.",
+        "security": [{"ServiceKey": []}],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["text", "to"],
+                "properties": {
+                  "text": {"type": "string", "description": "Text to translate (max 10,000 chars)"},
+                  "to": {"type": "string", "description": "Target language (ISO 639-1 code)"},
+                  "from": {"type": "string", "description": "Source language (ISO 639-1 code, auto-detected if omitted)"},
+                  "context": {"type": "string", "description": "Context hint for tone/register (max 200 chars)"}
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Translation result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "text": {"type": "string"},
+                    "from": {"type": "string"},
+                    "to": {"type": "string"}
+                  }
+                }
+              }
+            }
+          },
+          "400": {"description": "Invalid input"},
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "402": {"description": "Translation add-on required or word limit reached"},
+          "429": {"description": "Rate limit exceeded"}
+        }
+      }
+    },
+    "/ai/v1/moderate": {
+      "post": {
+        "tags": ["AI"],
+        "summary": "Moderate content",
+        "description": "Check content against OpenAI moderation categories. Free for all projects.",
+        "security": [{"ServiceKey": []}],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["text"],
+                "properties": {
+                  "text": {"type": "string", "description": "Text to moderate (max 10,000 chars)"}
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Moderation result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "flagged": {"type": "boolean"},
+                    "categories": {"type": "object"},
+                    "category_scores": {"type": "object"}
+                  }
+                }
+              }
+            }
+          },
+          "400": {"description": "Invalid input"},
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "429": {"description": "Rate limit exceeded"}
+        }
+      }
+    },
+    "/ai/v1/usage": {
+      "get": {
+        "tags": ["AI"],
+        "summary": "Translation usage",
+        "description": "Get translation usage for the current billing period.",
+        "security": [{"ServiceKey": []}],
+        "responses": {
+          "200": {
+            "description": "Usage data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "translation": {
+                      "type": "object",
+                      "properties": {
+                        "active": {"type": "boolean"},
+                        "used_words": {"type": "integer"},
+                        "included_words": {"type": "integer"},
+                        "remaining_words": {"type": "integer"},
+                        "billing_cycle_start": {"type": "string", "format": "date-time", "nullable": true}
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {"$ref": "#/components/responses/Unauthorized"}
+        }
+      }
+    },
     "/generate-image/v1": {
       "get": {
         "tags": [

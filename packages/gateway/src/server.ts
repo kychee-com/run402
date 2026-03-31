@@ -31,6 +31,7 @@ import { initDeploymentsTable } from "./services/deployments.js";
 import { initSubdomainsTable } from "./services/subdomains.js";
 import { initDomainsTable, startCfKvReconciliation } from "./services/domains.js";
 import { initFunctionsTable } from "./services/functions.js";
+import { initAiUsageTable, initAiAddonsTable } from "./services/ai-translate.js";
 import { initAdminWalletsTable } from "./services/admin-wallets.js";
 import { subdomainMiddleware } from "./middleware/subdomain.js";
 import { startKvsReconciliation } from "./services/kvs.js";
@@ -48,6 +49,7 @@ import subdomainRoutes from "./routes/subdomains.js";
 import domainRoutes from "./routes/domains.js";
 import functionsRoutes from "./routes/functions.js";
 import generateImageRoutes from "./routes/generate-image.js";
+import aiRoutes from "./routes/ai.js";
 import bundleRoutes from "./routes/bundle.js";
 import publishRoutes from "./routes/publish.js";
 import adminDashboardRoutes from "./routes/admin-dashboard.js";
@@ -394,6 +396,7 @@ app.use(messageRoutes);
 app.use(subdomainRoutes);
 app.use(domainRoutes);
 app.use(generateImageRoutes);
+app.use(aiRoutes);
 app.use(bundleRoutes);
 app.use(publishRoutes);
 app.use(attributionRoutes);
@@ -1106,6 +1109,10 @@ async function start() {
 
   // Initialize mailbox tables (email)
   await initMailboxTables();
+
+  // Initialize AI tables (translation usage + add-ons)
+  await initAiUsageTable();
+  await initAiAddonsTable();
 
   // Initialize slot allocator
   await initSlots();

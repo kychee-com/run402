@@ -43,8 +43,11 @@ export const LAMBDA_SUBNET_IDS = process.env.LAMBDA_SUBNET_IDS || "";
 export const LAMBDA_SG_ID = process.env.LAMBDA_SG_ID || "";
 export const FUNCTIONS_LOG_GROUP = process.env.FUNCTIONS_LOG_GROUP || "/agentdb/functions";
 
-// OpenRouter (image generation)
+// OpenRouter (image generation + AI translation)
 export const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || "";
+
+// OpenAI (moderation API — free)
+export const OPENAI_API_KEY = process.env.OPENAI_API_KEY || "";
 
 // Stripe webhook (support both test + live secrets in parallel)
 export const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET || "";
