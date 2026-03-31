@@ -173,8 +173,12 @@ const BLOCKED_PATTERNS: Array<{ pattern: RegExp; hint?: string }> = [
 ];
 
 function checkSqlSafety(sql: string): { error: string; hint?: string } | null {
+  // Strip single-quoted string literals and double-quoted identifiers so
+  // keywords inside data values / column names don't trigger false positives.
+  const sqlStripped = sql.replace(/'[^']*'/g, "''").replace(/"[^"]*"/g, '""');
+
   for (const { pattern, hint } of BLOCKED_PATTERNS) {
-    if (pattern.test(sql)) {
+    if (pattern.test(sqlStripped)) {
       return {
         error: `Blocked SQL pattern: ${pattern.source}`,
         hint,
@@ -292,53 +296,65 @@ router.post("/projects/v1/admin/:id/rls", asyncHandler(async (req: Request, res:
 
       if (template === "user_owns_rows") {
         const ownerColumn = table.owner_column;
+        await client.query(sql(`DROP POLICY IF EXISTS "Users can view own rows" ON ${tableName}`));
         await client.query(sql(`
           CREATE POLICY "Users can view own rows" ON ${tableName}
             FOR SELECT USING (${ownerColumn}::text = auth.uid()::text)
         `));
+        await client.query(sql(`DROP POLICY IF EXISTS "Users can insert own rows" ON ${tableName}`));
         await client.query(sql(`
           CREATE POLICY "Users can insert own rows" ON ${tableName}
             FOR INSERT WITH CHECK (${ownerColumn}::text = auth.uid()::text)
         `));
+        await client.query(sql(`DROP POLICY IF EXISTS "Users can update own rows" ON ${tableName}`));
         await client.query(sql(`
           CREATE POLICY "Users can update own rows" ON ${tableName}
             FOR UPDATE USING (${ownerColumn}::text = auth.uid()::text)
         `));
+        await client.query(sql(`DROP POLICY IF EXISTS "Users can delete own rows" ON ${tableName}`));
         await client.query(sql(`
           CREATE POLICY "Users can delete own rows" ON ${tableName}
             FOR DELETE USING (${ownerColumn}::text = auth.uid()::text)
         `));
       } else if (template === "public_read") {
+        await client.query(sql(`DROP POLICY IF EXISTS "Anyone can read" ON ${tableName}`));
         await client.query(sql(`
           CREATE POLICY "Anyone can read" ON ${tableName}
             FOR SELECT USING (true)
         `));
+        await client.query(sql(`DROP POLICY IF EXISTS "Authenticated users can insert" ON ${tableName}`));
         await client.query(sql(`
           CREATE POLICY "Authenticated users can insert" ON ${tableName}
             FOR INSERT WITH CHECK (auth.role() = 'authenticated')
         `));
+        await client.query(sql(`DROP POLICY IF EXISTS "Authenticated users can update" ON ${tableName}`));
         await client.query(sql(`
           CREATE POLICY "Authenticated users can update" ON ${tableName}
             FOR UPDATE USING (auth.role() = 'authenticated')
         `));
+        await client.query(sql(`DROP POLICY IF EXISTS "Authenticated users can delete" ON ${tableName}`));
         await client.query(sql(`
           CREATE POLICY "Authenticated users can delete" ON ${tableName}
             FOR DELETE USING (auth.role() = 'authenticated')
         `));
       } else if (template === "public_read_write") {
         await client.query(sql(`GRANT INSERT, UPDATE, DELETE ON ${tableName} TO anon`));
+        await client.query(sql(`DROP POLICY IF EXISTS "Anyone can read" ON ${tableName}`));
         await client.query(sql(`
           CREATE POLICY "Anyone can read" ON ${tableName}
             FOR SELECT USING (true)
         `));
+        await client.query(sql(`DROP POLICY IF EXISTS "Anyone can insert" ON ${tableName}`));
         await client.query(sql(`
           CREATE POLICY "Anyone can insert" ON ${tableName}
             FOR INSERT WITH CHECK (true)
         `));
+        await client.query(sql(`DROP POLICY IF EXISTS "Anyone can update" ON ${tableName}`));
         await client.query(sql(`
           CREATE POLICY "Anyone can update" ON ${tableName}
             FOR UPDATE USING (true)
         `));
+        await client.query(sql(`DROP POLICY IF EXISTS "Anyone can delete" ON ${tableName}`));
         await client.query(sql(`
           CREATE POLICY "Anyone can delete" ON ${tableName}
             FOR DELETE USING (true)

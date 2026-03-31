@@ -60,6 +60,52 @@ router.post("/storage/v1/object/:bucket/*splat", asyncHandler(async (req: Reques
   res.json({ key: `${bucket}/${filePath}`, size: buffer.length });
 }));
 
+// GET /storage/v1/object/list/:bucket — list objects
+// NOTE: must be registered BEFORE the wildcard download route below,
+// otherwise Express matches `:bucket` = "list" on the wildcard route.
+router.get("/storage/v1/object/list/:bucket", asyncHandler(async (req: Request, res: Response) => {
+  const project = req.project!;
+  const bucket = req.params["bucket"] as string;
+
+  if (s3 && S3_BUCKET) {
+    const prefix = `${project.id}/${bucket}/`;
+    const result = await s3.send(new ListObjectsV2Command({
+      Bucket: S3_BUCKET,
+      Prefix: prefix,
+    }));
+
+    const objects = (result.Contents || []).map((obj) => ({
+      key: obj.Key!.replace(prefix, ""),
+      size: obj.Size,
+      last_modified: obj.LastModified?.toISOString(),
+    }));
+
+    res.json({ objects });
+  } else {
+    const dirPath = join(LOCAL_STORAGE_ROOT, project.id, bucket);
+    if (!existsSync(dirPath)) {
+      res.json({ objects: [] });
+      return;
+    }
+
+    const objects: StorageObject[] = [];
+    function walk(dir: string, prefix: string) {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const fullPath = join(dir, entry.name);
+        const key = prefix ? `${prefix}/${entry.name}` : entry.name;
+        if (entry.isDirectory()) {
+          walk(fullPath, key);
+        } else {
+          const stat = statSync(fullPath);
+          objects.push({ key, size: stat.size, last_modified: stat.mtime.toISOString() });
+        }
+      }
+    }
+    walk(dirPath, "");
+    res.json({ objects });
+  }
+}));
+
 // GET /storage/v1/object/:bucket/* — download file
 router.get("/storage/v1/object/:bucket/*splat", asyncHandler(async (req: Request, res: Response) => {
   const project = req.project!;
@@ -143,50 +189,6 @@ router.post("/storage/v1/object/sign/:bucket/*splat", asyncHandler(async (req: R
   );
 
   res.json({ signed_url: signedUrl, expires_in: 3600 });
-}));
-
-// GET /storage/v1/object/list/:bucket — list objects
-router.get("/storage/v1/object/list/:bucket", asyncHandler(async (req: Request, res: Response) => {
-  const project = req.project!;
-  const bucket = req.params["bucket"] as string;
-
-  if (s3 && S3_BUCKET) {
-    const prefix = `${project.id}/${bucket}/`;
-    const result = await s3.send(new ListObjectsV2Command({
-      Bucket: S3_BUCKET,
-      Prefix: prefix,
-    }));
-
-    const objects = (result.Contents || []).map((obj) => ({
-      key: obj.Key!.replace(prefix, ""),
-      size: obj.Size,
-      last_modified: obj.LastModified?.toISOString(),
-    }));
-
-    res.json({ objects });
-  } else {
-    const dirPath = join(LOCAL_STORAGE_ROOT, project.id, bucket);
-    if (!existsSync(dirPath)) {
-      res.json({ objects: [] });
-      return;
-    }
-
-    const objects: StorageObject[] = [];
-    function walk(dir: string, prefix: string) {
-      for (const entry of readdirSync(dir, { withFileTypes: true })) {
-        const fullPath = join(dir, entry.name);
-        const key = prefix ? `${prefix}/${entry.name}` : entry.name;
-        if (entry.isDirectory()) {
-          walk(fullPath, key);
-        } else {
-          const stat = statSync(fullPath);
-          objects.push({ key, size: stat.size, last_modified: stat.mtime.toISOString() });
-        }
-      }
-    }
-    walk(dirPath, "");
-    res.json({ objects });
-  }
 }));
 
 export default router;
