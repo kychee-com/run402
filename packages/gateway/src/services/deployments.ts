@@ -16,9 +16,6 @@ import { cacheInvalidateByNames } from "./subdomains.js";
 const s3 = S3_BUCKET ? new S3Client({ region: S3_REGION }) : null;
 const LOCAL_STORAGE_ROOT = process.env.STORAGE_ROOT || "./storage";
 
-// 50 MB max per deployment
-const MAX_DEPLOYMENT_SIZE = 50 * 1024 * 1024;
-
 export interface DeploymentFile {
   file: string;
   data: string;
@@ -110,12 +107,6 @@ export async function createDeployment(
       : Buffer.from(f.data, "utf-8");
 
     totalSize += buffer.length;
-    if (totalSize > MAX_DEPLOYMENT_SIZE) {
-      throw new DeploymentError(
-        `Deployment exceeds 50 MB limit (${(totalSize / 1024 / 1024).toFixed(1)} MB)`,
-        400,
-      );
-    }
 
     decoded.push({
       path: f.file,
