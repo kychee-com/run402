@@ -74,6 +74,11 @@ import { listEmailsSchema, handleListEmails } from "./tools/list-emails.js";
 import { getEmailSchema, handleGetEmail } from "./tools/get-email.js";
 import { getMailboxSchema, handleGetMailbox } from "./tools/get-mailbox.js";
 
+// New tools — AI
+import { aiTranslateSchema, handleAiTranslate } from "./tools/ai-translate.js";
+import { aiModerateSchema, handleAiModerate } from "./tools/ai-moderate.js";
+import { aiUsageSchema, handleAiUsage } from "./tools/ai-usage.js";
+
 // New tools — messaging, agent contact, billing, deployments, versions
 import { sendMessageSchema, handleSendMessage } from "./tools/send-message.js";
 import { setAgentContactSchema, handleSetAgentContact } from "./tools/set-agent-contact.js";
@@ -476,6 +481,29 @@ server.tool(
   "Get the project's mailbox info (ID, address, slug). Use to check if a mailbox exists.",
   getMailboxSchema,
   async (args) => handleGetMailbox(args),
+);
+
+// ─── AI tools ──────────────────────────────────────────────────────────────
+
+server.tool(
+  "ai_translate",
+  "Translate text to a target language. Requires service key and active AI Translation add-on. Supports optional source language and context hint.",
+  aiTranslateSchema,
+  async (args) => handleAiTranslate(args),
+);
+
+server.tool(
+  "ai_moderate",
+  "Run content moderation on text. Returns flagged status and category scores. Free for all projects, requires service key.",
+  aiModerateSchema,
+  async (args) => handleAiModerate(args),
+);
+
+server.tool(
+  "ai_usage",
+  "Get AI translation usage for the current billing period — used words, quota, and remaining balance.",
+  aiUsageSchema,
+  async (args) => handleAiUsage(args),
 );
 
 // ─── Messaging & agent contact tools ───────────────────────────────────────

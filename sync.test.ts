@@ -59,7 +59,7 @@ function parseSubcommands(filePath: string): string[] {
 /** Parse CLI commands as "module:subcommand" pairs */
 function parseCliCommands(): string[] {
   const cmds: string[] = [];
-  for (const mod of ["allowance", "tier", "projects", "image", "storage", "functions", "secrets", "sites", "subdomains", "domains", "apps", "email", "message", "agent"]) {
+  for (const mod of ["allowance", "tier", "projects", "image", "storage", "functions", "secrets", "sites", "subdomains", "domains", "apps", "email", "message", "agent", "ai"]) {
     for (const sub of parseSubcommands(join(__dirname, "cli/lib", `${mod}.mjs`))) {
       cmds.push(`${mod}:${sub}`);
     }
@@ -73,7 +73,7 @@ function parseCliCommands(): string[] {
 /** Parse OpenClaw commands as "module:subcommand" pairs */
 function parseOpenClawCommands(): string[] {
   const cmds: string[] = [];
-  for (const mod of ["allowance", "tier", "projects", "image", "storage", "functions", "secrets", "sites", "subdomains", "domains", "apps", "email", "message", "agent"]) {
+  for (const mod of ["allowance", "tier", "projects", "image", "storage", "functions", "secrets", "sites", "subdomains", "domains", "apps", "email", "message", "agent", "ai"]) {
     for (const sub of parseSubcommands(join(__dirname, "openclaw/scripts", `${mod}.mjs`))) {
       cmds.push(`${mod}:${sub}`);
     }
@@ -211,6 +211,11 @@ const SURFACE: Capability[] = [
   { id: "list_emails",     endpoint: "GET /mailboxes/v1/:id/messages",          mcp: "list_emails",     cli: "email:list",    openclaw: "email:list" },
   { id: "get_email",       endpoint: "GET /mailboxes/v1/:id/messages/:msgId",   mcp: "get_email",       cli: "email:get",     openclaw: "email:get" },
   { id: "get_mailbox",     endpoint: "GET /mailboxes/v1",                        mcp: "get_mailbox",     cli: "email:status",  openclaw: "email:status" },
+
+  // ── AI ──────────────────────────────────────────────────────────────────
+  { id: "ai_translate",    endpoint: "POST /ai/v1/translate",      mcp: "ai_translate",    cli: "ai:translate",  openclaw: "ai:translate" },
+  { id: "ai_moderate",     endpoint: "POST /ai/v1/moderate",       mcp: "ai_moderate",     cli: "ai:moderate",   openclaw: "ai:moderate" },
+  { id: "ai_usage",        endpoint: "GET /ai/v1/usage",           mcp: "ai_usage",        cli: "ai:usage",      openclaw: "ai:usage" },
 
   // ── Messaging & agent contact ──────────────────────────────────────────
   { id: "send_message",      endpoint: "POST /message/v1",                  mcp: "send_message",        cli: "message:send",     openclaw: "message:send" },
@@ -466,6 +471,9 @@ describe("llms.txt alignment", { skip: !llmsTxtAvailable && "~/dev/run402/site/l
       "DELETE /mailboxes/v1/:id",
       "POST /mailboxes/v1/:id/webhooks",
       "POST /mailboxes/v1/:id/status",
+      // AI add-on management (dashboard-only, not exposed as tools)
+      "POST /ai/v1/addons",
+      "DELETE /ai/v1/addons",
       // Function trigger is a gateway testing endpoint, not exposed as a tool
       "POST /projects/v1/admin/:id/functions/:name/trigger",
     ]);

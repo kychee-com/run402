@@ -33,6 +33,7 @@ Commands:
   subdomains  Manage custom subdomains (claim, list, delete)
   domains     Manage custom domains (add, list, status, delete)
   apps        Browse and manage the app marketplace
+  ai          AI translation and moderation tools
   image       Generate AI images via x402 or MPP micropayments
   email       Send template-based emails from your project
   message     Send messages to Run402 developers
@@ -130,6 +131,11 @@ switch (cmd) {
   }
   case "apps": {
     const { run } = await import("./lib/apps.mjs");
+    await run(sub, rest);
+    break;
+  }
+  case "ai": {
+    const { run } = await import("./lib/ai.mjs");
     await run(sub, rest);
     break;
   }
