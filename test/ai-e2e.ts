@@ -63,9 +63,8 @@ async function siwxHeaders(path: string): Promise<Record<string, string>> {
     chainId: "eip155:84532",
     type: "eip191",
   };
-  const payload = createSIWxPayload(info);
-  const header = await encodeSIWxHeader(payload, signer);
-  return { "SIGN-IN-WITH-X": header };
+  const payload = await createSIWxPayload(info, account);
+  return { "SIGN-IN-WITH-X": encodeSIWxHeader(payload) };
 }
 
 // --- Test helpers ---
@@ -89,7 +88,7 @@ function ok(name: string, condition: boolean, detail = "") {
   // 0. Setup — subscribe + create project
   console.log("0. Setup");
 
-  await ensureTestBalance(fetchPaid, BASE_URL, account.address);
+  await ensureTestBalance(account.address, BASE_URL);
 
   const tierResp = await fetchPaid(`${BASE_URL}/tiers/v1/prototype`, { method: "POST" });
   ok("subscribe tier", tierResp.status === 200 || tierResp.status === 409, `status=${tierResp.status}`);
@@ -101,8 +100,9 @@ function ok(name: string, condition: boolean, detail = "") {
   });
   ok("create project", projResp.status === 201, `status=${projResp.status}`);
   const project = await projResp.json();
-  const projectId = project.id;
+  const projectId = project.project_id;
   const serviceKey = project.service_key;
+  const anonKey = project.anon_key;
   console.log(`  project: ${projectId}`);
 
   // 1. Activate translation add-on
@@ -138,30 +138,44 @@ export default async (req) => {
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${serviceKey}` },
     body: JSON.stringify({ name: "ai-test", code: fnCode }),
   });
-  ok("deploy function", deployResp.status === 201 || deployResp.status === 200, `status=${deployResp.status}`);
+  const deployBody = await deployResp.text();
+  ok("deploy function", deployResp.status === 201 || deployResp.status === 200, `status=${deployResp.status} body=${deployBody.slice(0, 200)}`);
 
   // 3. Invoke translate
   console.log("\n3. Invoke translate");
-  const translateResp = await fetch(`${BASE_URL}/projects/v1/${projectId}/functions/ai-test?action=translate`, {
-    headers: { Authorization: `Bearer ${serviceKey}` },
+  const translateResp = await fetch(`${BASE_URL}/functions/v1/ai-test?action=translate`, {
+    headers: { apikey: anonKey },
   });
   ok("translate status", translateResp.status === 200, `status=${translateResp.status}`);
-  const translateResult = await translateResp.json();
-  ok("translate has text", typeof translateResult.text === "string" && translateResult.text.length > 0, `text=${translateResult.text}`);
-  ok("translate has to=es", translateResult.to === "es", `to=${translateResult.to}`);
-  ok("translate has from", typeof translateResult.from === "string", `from=${translateResult.from}`);
+  if (translateResp.status === 200) {
+    const translateResult = await translateResp.json();
+    ok("translate has text", typeof translateResult.text === "string" && translateResult.text.length > 0, `text=${translateResult.text}`);
+    ok("translate has to=es", translateResult.to === "es", `to=${translateResult.to}`);
+    ok("translate has from", typeof translateResult.from === "string", `from=${translateResult.from}`);
+  } else {
+    const body = await translateResp.text();
+    console.log("  translate error:", body.slice(0, 200));
+    ok("translate has text", false, "skipped"); ok("translate has to=es", false, "skipped"); ok("translate has from", false, "skipped");
+  }
 
   // 4. Invoke moderate
   console.log("\n4. Invoke moderate");
-  const moderateResp = await fetch(`${BASE_URL}/projects/v1/${projectId}/functions/ai-test?action=moderate`, {
-    headers: { Authorization: `Bearer ${serviceKey}` },
+  const moderateResp = await fetch(`${BASE_URL}/functions/v1/ai-test?action=moderate`, {
+    headers: { apikey: anonKey },
   });
   ok("moderate status", moderateResp.status === 200, `status=${moderateResp.status}`);
-  const moderateResult = await moderateResp.json();
-  ok("moderate has flagged", typeof moderateResult.flagged === "boolean", `flagged=${moderateResult.flagged}`);
-  ok("moderate has categories", typeof moderateResult.categories === "object", "has categories");
-  ok("moderate has category_scores", typeof moderateResult.category_scores === "object", "has category_scores");
-  ok("moderate not flagged (benign content)", moderateResult.flagged === false, `flagged=${moderateResult.flagged}`);
+  if (moderateResp.status === 200) {
+    const moderateResult = await moderateResp.json();
+    ok("moderate has flagged", typeof moderateResult.flagged === "boolean", `flagged=${moderateResult.flagged}`);
+    ok("moderate has categories", typeof moderateResult.categories === "object", "has categories");
+    ok("moderate has category_scores", typeof moderateResult.category_scores === "object", "has category_scores");
+    ok("moderate not flagged (benign content)", moderateResult.flagged === false, `flagged=${moderateResult.flagged}`);
+  } else {
+    const body = await moderateResp.text();
+    console.log("  moderate error:", body.slice(0, 200));
+    ok("moderate has flagged", false, "skipped"); ok("moderate has categories", false, "skipped");
+    ok("moderate has category_scores", false, "skipped"); ok("moderate not flagged", false, "skipped");
+  }
 
   // 5. Check usage
   console.log("\n5. Check usage");
@@ -224,7 +238,7 @@ export default async (req) => {
   console.log("\n9. Cleanup");
   const deleteResp = await fetch(`${BASE_URL}/projects/v1/${projectId}`, {
     method: "DELETE",
-    headers: { ...await siwxHeaders(`/projects/v1/${projectId}`) },
+    headers: { Authorization: `Bearer ${serviceKey}` },
   });
   ok("delete project", deleteResp.status === 200 || deleteResp.status === 204, `status=${deleteResp.status}`);
 
