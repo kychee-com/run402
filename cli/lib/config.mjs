@@ -29,7 +29,13 @@ export function allowanceAuthHeaders(path) {
 
 export function findProject(id) {
   const p = getProject(id);
-  if (!p) { console.error(`Project ${id} not found in local registry.`); process.exit(1); }
+  if (!p) {
+    const hint = id && !id.startsWith("prj_")
+      ? ` Hint: project IDs start with "prj_". Check that the argument order is <project_id> <name>.`
+      : "";
+    console.error(`Project ${id} not found in local registry.${hint}`);
+    process.exit(1);
+  }
   return p;
 }
 
