@@ -400,6 +400,13 @@ $0.03 per image.
 
 Without `--output`, returns `{"status":"ok","aspect":"...","content_type":"image/png","image":"<base64>"}`.
 
+### ai
+Built-in AI helpers. Translation requires the AI Translation add-on on the project. Moderation is free for all projects.
+
+- `run402 ai translate <id> "<text>" --to <lang> [--from <lang>] [--context "<hint>"]` — translate text to a target language (ISO 639-1 codes). Source language auto-detected if `--from` omitted. Context hint guides tone/register (max 200 chars).
+- `run402 ai moderate <id> "<text>"` — run content moderation. Returns flagged status and per-category scores.
+- `run402 ai usage <id>` — check translation word quota for the current billing period (used, included, remaining).
+
 ### email
 One mailbox per project. Two send modes: **template** (predefined templates) and **raw HTML** (arbitrary subject + HTML body). Single recipient per send. Rate limits by tier: prototype 10/day, hobby 50/day, team 500/day. Unique recipient cap per lease: prototype 25, hobby 200, team 1000.
 
