@@ -3,7 +3,7 @@
  *
  * POST   /v1/domains       — Register a custom domain (service_key auth)
  * GET    /v1/domains       — List project's custom domains (service_key or admin)
- * GET    /v1/domains/:domain — Check domain status (no auth)
+ * GET    /v1/domains/:domain — Check domain status (service_key or admin)
  * DELETE /v1/domains/:domain — Release a custom domain (service_key or admin)
  */
 
@@ -85,8 +85,8 @@ router.get("/domains/v1", serviceKeyOrAdmin, asyncHandler(async (req: Request, r
   }
 }));
 
-// GET /v1/domains/:domain — check domain status (no auth)
-router.get("/domains/v1/:domain", asyncHandler(async (req: Request, res: Response) => {
+// GET /v1/domains/:domain — check domain status
+router.get("/domains/v1/:domain", serviceKeyOrAdmin, asyncHandler(async (req: Request, res: Response) => {
   const record = await getDomainWithStatus(req.params.domain as string);
   if (!record) {
     throw new HttpError(404, "Domain not found");

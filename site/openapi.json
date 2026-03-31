@@ -2753,7 +2753,8 @@
         "tags": ["Custom Domains"],
         "summary": "Check domain status",
         "operationId": "getDomain",
-        "description": "Check verification and SSL status of a registered domain. No auth required.",
+        "description": "Check verification and SSL status of a registered domain. Requires service_key or admin auth.",
+        "security": [{ "serviceKey": [] }, { "adminKey": [] }],
         "parameters": [{ "name": "domain", "in": "path", "required": true, "schema": { "type": "string" } }],
         "responses": {
           "200": {
@@ -2772,6 +2773,7 @@
               }
             }
           },
+          "401": { "description": "Unauthorized" },
           "404": { "description": "Domain not found" }
         }
       },

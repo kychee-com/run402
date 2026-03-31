@@ -76,7 +76,7 @@ async function run() {
 
   // ---- Test 2: Check domain status ----
   console.log("\n2. Check domain status");
-  const statusRes = await fetch(`${BASE_URL}/domains/v1/${testDomain}`);
+  const statusRes = await adminFetch(`/domains/v1/${testDomain}`);
   const statusBody = await statusRes.json() as { domain: string; status: string; dns_instructions: unknown };
   assert(statusRes.status === 200, `GET /domains/v1/:domain returns 200 (got ${statusRes.status})`);
   assert(statusBody.domain === testDomain, `domain matches`);
@@ -133,7 +133,7 @@ async function run() {
 
   // ---- Test 8: Domain gone after delete ----
   console.log("\n8. Domain gone after delete");
-  const goneRes = await fetch(`${BASE_URL}/domains/v1/${testDomain}`);
+  const goneRes = await adminFetch(`/domains/v1/${testDomain}`);
   assert(goneRes.status === 404, `GET after delete returns 404 (got ${goneRes.status})`);
 
   // ---- Summary ----
