@@ -6,12 +6,13 @@
  */
 
 import { getProjectById, deriveProjectKeys } from "./projects.js";
-import { deployFunction, setSecret } from "./functions.js";
+import { deployFunction, deleteFunction, setSecret } from "./functions.js";
 import { createDeployment } from "./deployments.js";
 import { createOrUpdateSubdomain, validateSubdomainName } from "./subdomains.js";
 import { isValidCron, getCronIntervalMinutes, registerSchedule, cancelSchedule } from "./scheduler.js";
 import { pool } from "../db/pool.js";
 import { sql } from "../db/sql.js";
+import { checkSqlSafety } from "../utils/sql-safety.js";
 import { TIERS } from "@run402/shared";
 import type { ProjectInfo } from "@run402/shared";
 
@@ -70,19 +71,6 @@ export class BundleError extends Error {
   }
 }
 
-// SQL blocklist — same as admin routes
-const BLOCKED_PATTERNS = [
-  /\bCREATE\s+EXTENSION\b/i,
-  /\bCOPY\b.*\bPROGRAM\b/i,
-  /\bALTER\s+SYSTEM\b/i,
-  /\bSET\s+search_path\b/i,
-  /\bCREATE\s+SCHEMA\b/i,
-  /\bDROP\s+SCHEMA\b/i,
-  /\bGRANT\b/i,
-  /\bREVOKE\b/i,
-  /\bCREATE\s+ROLE\b/i,
-  /\bDROP\s+ROLE\b/i,
-];
 
 const VALID_RLS_TEMPLATES = ["user_owns_rows", "public_read", "public_read_write"];
 
@@ -104,10 +92,9 @@ export function validateBundle(req: BundleRequest): void {
     if (req.migrations.length > 1_000_000) {
       throw new BundleError("'migrations' exceeds 1MB limit", 400);
     }
-    for (const pattern of BLOCKED_PATTERNS) {
-      if (pattern.test(req.migrations)) {
-        throw new BundleError(`Blocked SQL pattern in migrations: ${pattern.source}`, 403);
-      }
+    const blocked = checkSqlSafety(req.migrations);
+    if (blocked) {
+      throw new BundleError(`Blocked SQL pattern in migrations: ${blocked.error.replace("Blocked SQL pattern: ", "")}`, 403);
     }
   }
 
@@ -309,6 +296,24 @@ export async function deployBundle(
           [project.id, fn.name],
         );
         cancelSchedule(project.id, fn.name);
+      }
+    }
+
+    // 5b. Remove stale functions — functions in DB but not in this manifest
+    const manifestNames = new Set(req.functions.map((fn) => fn.name));
+    const existing = await pool.query(
+      sql(`SELECT name FROM internal.functions WHERE project_id = $1`),
+      [project.id],
+    );
+    for (const row of existing.rows) {
+      if (!manifestNames.has(row.name)) {
+        try {
+          await deleteFunction(project.id, row.name);
+          console.log(`  Stale function removed: ${row.name} (project: ${project.id})`);
+        } catch (err) {
+          // Best-effort: log but don't fail the deploy
+          console.warn(`  Warning: failed to remove stale function ${row.name}: ${err}`);
+        }
       }
     }
   }

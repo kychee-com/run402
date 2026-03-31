@@ -72,6 +72,81 @@ router.get("/storage/v1/public/:project_id/:bucket/*splat", asyncHandler(async (
 // All other storage routes require apikey
 router.use("/storage/v1", apikeyAuth, meteringMiddleware, demoStorageMiddleware);
 
+// Specific routes MUST be registered before wildcard routes, otherwise Express
+// matches e.g. GET /storage/v1/object/list/mybucket as bucket="list", splat="mybucket".
+
+// GET /storage/v1/object/list/:bucket — list objects
+router.get("/storage/v1/object/list/:bucket", asyncHandler(async (req: Request, res: Response) => {
+  const project = req.project!;
+  const bucket = req.params["bucket"] as string;
+
+  if (s3 && S3_BUCKET) {
+    const prefix = `${project.id}/${bucket}/`;
+    const result = await s3.send(new ListObjectsV2Command({
+      Bucket: S3_BUCKET,
+      Prefix: prefix,
+    }));
+
+    const objects = (result.Contents || []).map((obj) => ({
+      key: obj.Key!.replace(prefix, ""),
+      size: obj.Size,
+      last_modified: obj.LastModified?.toISOString(),
+    }));
+
+    res.json({ objects });
+  } else {
+    const dirPath = join(LOCAL_STORAGE_ROOT, project.id, bucket);
+    if (!existsSync(dirPath)) {
+      res.json({ objects: [] });
+      return;
+    }
+
+    const objects: StorageObject[] = [];
+    function walk(dir: string, prefix: string) {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const fullPath = join(dir, entry.name);
+        const key = prefix ? `${prefix}/${entry.name}` : entry.name;
+        if (entry.isDirectory()) {
+          walk(fullPath, key);
+        } else {
+          const stat = statSync(fullPath);
+          objects.push({ key, size: stat.size, last_modified: stat.mtime.toISOString() });
+        }
+      }
+    }
+    walk(dirPath, "");
+    res.json({ objects });
+  }
+}));
+
+// POST /storage/v1/object/sign/:bucket/* — generate signed URL (S3 only)
+router.post("/storage/v1/object/sign/:bucket/*splat", asyncHandler(async (req: Request, res: Response) => {
+  const project = req.project!;
+  const bucket = req.params["bucket"] as string;
+  const splatParam = (req.params as Record<string, string | string[]>)["splat"];
+  const filePath = Array.isArray(splatParam) ? splatParam.join("/") : splatParam;
+
+  if (!s3 || !S3_BUCKET) {
+    res.json({
+      signed_url: `/storage/v1/object/${bucket}/${filePath}`,
+      expires_in: 3600,
+      note: "Local storage — no signed URL needed",
+    });
+    return;
+  }
+
+  const key = `${project.id}/${bucket}/${filePath}`;
+  const signedUrl = await getSignedUrl(
+    s3,
+    new GetObjectCommand({ Bucket: S3_BUCKET, Key: key }),
+    { expiresIn: 3600 },
+  );
+
+  res.json({ signed_url: signedUrl, expires_in: 3600 });
+}));
+
+// Wildcard routes below — must come after specific /list/ and /sign/ routes.
+
 // POST /storage/v1/object/:bucket/* — upload file
 router.post("/storage/v1/object/:bucket/*splat", asyncHandler(async (req: Request, res: Response) => {
   const project = req.project!;
