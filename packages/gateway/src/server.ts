@@ -209,7 +209,7 @@ app.use((req: Request, res: Response, next: NextFunction) => {
     return;
   }
   if (req.path.startsWith("/storage/")) {
-    express.raw({ type: "*/*", limit: "10mb" })(req, res, next);
+    express.raw({ type: "*/*", limit: "50mb" })(req, res, next);
   } else if (req.path.endsWith("/sql")) {
     express.text({ type: "*/*", limit: "10mb" })(req, res, next);
   } else if ((req.path === "/deployments/v1" || req.path === "/deploy/v1") && req.method === "POST") {
