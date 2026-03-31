@@ -1,0 +1,15 @@
+name = "run402-custom-domains"
+main = "src/index.ts"
+compatibility_date = "2024-12-01"
+
+[[kv_namespaces]]
+binding = "DOMAINS"
+id = "45c70baafc47442ca2815cd7a1defea6"
+
+[vars]
+S3_BUCKET = "agentdb-storage-472210437512"
+S3_REGION = "us-east-1"
+
+# S3 credentials — set via `wrangler secret put`:
+#   wrangler secret put AWS_ACCESS_KEY_ID
+#   wrangler secret put AWS_SECRET_ACCESS_KEY

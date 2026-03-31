@@ -29,6 +29,7 @@ import { startScheduler, stopScheduler } from "./services/scheduler.js";
 import { initIdempotencyTable, idempotencyMiddleware } from "./middleware/idempotency.js";
 import { initDeploymentsTable } from "./services/deployments.js";
 import { initSubdomainsTable } from "./services/subdomains.js";
+import { initDomainsTable, startCfKvReconciliation } from "./services/domains.js";
 import { initFunctionsTable } from "./services/functions.js";
 import { initAdminWalletsTable } from "./services/admin-wallets.js";
 import { subdomainMiddleware } from "./middleware/subdomain.js";
@@ -44,6 +45,7 @@ import messageRoutes from "./routes/message.js";
 import billingRoutes from "./routes/billing.js";
 import billingStripeRoutes from "./routes/billing-stripe.js";
 import subdomainRoutes from "./routes/subdomains.js";
+import domainRoutes from "./routes/domains.js";
 import functionsRoutes from "./routes/functions.js";
 import generateImageRoutes from "./routes/generate-image.js";
 import bundleRoutes from "./routes/bundle.js";
@@ -390,6 +392,7 @@ app.use(storageRoutes);
 app.use(deploymentRoutes);
 app.use(messageRoutes);
 app.use(subdomainRoutes);
+app.use(domainRoutes);
 app.use(generateImageRoutes);
 app.use(bundleRoutes);
 app.use(publishRoutes);
@@ -1089,6 +1092,9 @@ async function start() {
   // Initialize subdomains table
   await initSubdomainsTable();
 
+  // Initialize custom domains table
+  await initDomainsTable();
+
   // Initialize functions + secrets tables
   await initFunctionsTable();
 
@@ -1121,6 +1127,7 @@ async function start() {
   startFaucetRefill();
   startDemoResetChecker();
   startKvsReconciliation();
+  startCfKvReconciliation();
   await startScheduler();
   oauthCleanupInterval = setInterval(cleanupExpiredOAuthData, 3600_000);
 

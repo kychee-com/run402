@@ -138,3 +138,93 @@ Cons:
 - Migration effort — rewrite site upload to target R2, rewrite serving logic
 - Split infrastructure (Cloudflare for sites, AWS for everything else)
 - Need to replicate SPA fallback logic, subdomain routing, etc. in Workers
+
+## Decision: Option B (Cloudflare Worker Proxy)
+
+**Chosen: 2026-03-30**
+
+### Why Option B
+
+Option A (AWS-native) is free but operationally painful — ACM cert validation is async, CloudFront distribution updates take minutes, there's a 100-domain cap per distribution (raisable but still a limit), and we'd own the full cert lifecycle (renewal, cleanup, failure handling).
+
+Option C (full Cloudflare migration) is overkill — we'd migrate the entire site-serving stack just to get domain aliasing. The CloudFront Function → KVS → S3 architecture works well for `*.run402.com` and doesn't need replacing.
+
+Option B keeps `*.run402.com` traffic on the existing CloudFront path (untouched) and only routes custom domain traffic through Cloudflare. Cloudflare handles the hard parts: SSL provisioning, domain verification, and edge routing. The gateway just needs a `domains` table and a few API endpoints.
+
+| | Option A (AWS) | **Option B (CF proxy)** | Option C (migrate) |
+|---|---|---|---|
+| SSL provisioning | 5-15 min | ~30 sec | ~30 sec |
+| Apex domains | Needs Route53 or ALIAS | ALIAS + TXT auto-verify | ALIAS + TXT auto-verify |
+| Domain limit | 100/distro (raisable) | Unlimited | Unlimited |
+| Cost per domain | Free | $0.10/mo (first 100 free) | $0.10/mo (first 100 free) |
+| Existing infra impact | Modify CloudFront distro | None | Full migration |
+| Cert lifecycle mgmt | Us | Cloudflare | Cloudflare |
+
+### Use case: forkable apps
+
+The driving use case is **WildLychee** (wildlychee.com) — a Wild Apricot clone built on Run402 as a sister repo. wildlychee.com should point to wildlychee.run402.com.
+
+Critically, WildLychee is designed to be **forked**. Anyone who forks it and deploys on Run402 (e.g., angry-eagles.org) will also want a custom domain. This means custom domains must be self-service and automated — not a manual setup by us.
+
+### Scope
+
+**Simple 1:1 domain aliasing.** One custom domain maps to one Run402 subdomain/deployment:
+
+```
+wildlychee.com      →  wildlychee.run402.com  →  deployment dpl_xyz
+angry-eagles.org    →  angry-eagles.run402.com →  deployment dpl_abc
+```
+
+No path-based routing. No multi-site-per-domain. Just "my domain → my Run402 site."
+
+### Architecture
+
+```
+CUSTOM DOMAIN TRAFFIC (new):
+
+  angry-eagles.org
+       │
+       ▼
+  ┌─────────────┐     ┌───────────────┐     ┌────────┐
+  │ Cloudflare  │────▶│ CF Worker     │────▶│   S3   │
+  │  (SSL +     │     │ (KV lookup →  │     │(files) │
+  │  hostname)  │     │  proxy to S3) │     │        │
+  └─────────────┘     └───────────────┘     └────────┘
+
+*.run402.com TRAFFIC (unchanged):
+
+  myapp.run402.com
+       │
+       ▼
+  ┌─────────────┐     ┌───────────────┐     ┌────────┐
+  │ CloudFront  │────▶│ CF Function   │────▶│   S3   │
+  │  (edge)     │     │ (KVS lookup → │     │(files) │
+  │             │     │  rewrite URI) │     │        │
+  └─────────────┘     └───────────────┘     └────────┘
+
+CONTROL PLANE (gateway):
+
+  POST /v1/domains { domain, subdomain_name }
+       │
+       ▼
+  ┌──────────┐     ┌─────────────────┐     ┌──────────┐
+  │ Gateway  │────▶│ CF Custom       │────▶│ CF KV    │
+  │  (API)   │     │ Hostnames API   │     │(routing) │
+  └──────────┘     └─────────────────┘     └──────────┘
+       │
+       ▼
+  ┌──────────┐
+  │ domains  │
+  │  table   │
+  └──────────┘
+```
+
+### User flow
+
+1. User calls `POST /v1/domains` with `{ domain: "angry-eagles.org", subdomain_name: "angry-eagles" }`
+2. Gateway registers the custom hostname with Cloudflare, stores in `internal.domains` table
+3. Gateway returns DNS instructions: "Add CNAME → `domains.run402.com`" (or TXT record for apex)
+4. User configures their DNS
+5. Cloudflare validates, provisions SSL
+6. User polls `GET /v1/domains/angry-eagles.org` until status is `active`
+7. Traffic to angry-eagles.org hits Cloudflare Worker → resolves via KV → serves from S3

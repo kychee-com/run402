@@ -69,3 +69,9 @@ export const PUBLIC_API_URL = process.env.PUBLIC_API_URL || "https://api.run402.
 
 // CloudFront KeyValueStore (subdomain → deployment_id edge cache)
 export const CLOUDFRONT_KVS_ARN = process.env.CLOUDFRONT_KVS_ARN || "";
+
+// Cloudflare (custom domains — Custom Hostnames + Workers KV)
+export const CLOUDFLARE_API_TOKEN = process.env.CLOUDFLARE_API_TOKEN || "";
+export const CLOUDFLARE_ZONE_ID = process.env.CLOUDFLARE_ZONE_ID || "";
+export const CLOUDFLARE_KV_NAMESPACE_ID = process.env.CLOUDFLARE_KV_NAMESPACE_ID || "";
+export const CLOUDFLARE_KV_ACCOUNT_ID = process.env.CLOUDFLARE_KV_ACCOUNT_ID || "";

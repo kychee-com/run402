@@ -129,6 +129,10 @@ export class PodStack extends cdk.Stack {
       this, "GoogleAppOAuth", "agentdb/google-app-oauth",
     );
 
+    const cloudflareApiToken = secretsmanager.Secret.fromSecretNameV2(
+      this, "CloudflareApiToken", "run402/cloudflare-api-token",
+    );
+
     // STRIPE_WEBHOOK_SECRET: managed outside CDK — added directly to task def revisions.
     // fromSecretNameV2 generates a partial ARN that ECS can't resolve at startup.
 
@@ -419,6 +423,9 @@ export class PodStack extends cdk.Stack {
         CF_LOG_PREFIX: "cf-logs/",
         CLOUDFRONT_KVS_ARN: "arn:aws:cloudfront::472210437512:key-value-store/bd11de76-008e-4a74-b3cb-9954f50bd91a",
         CLOUDFRONT_CUSTOM_DISTRIBUTION_ID: "E143BVVSPQIUM8",
+        CLOUDFLARE_ZONE_ID: "497965adb4bd5571c597cd7f7e8ca441",
+        CLOUDFLARE_KV_NAMESPACE_ID: "45c70baafc47442ca2815cd7a1defea6",
+        CLOUDFLARE_KV_ACCOUNT_ID: "f56094cb0d33008e9adcf41c09f1bc66",
         BUGSNAG_API_KEY: "0751ea52d07c1449d7cd2f7724de0ede",
         RELEASE_STAGE: "production",
       },
@@ -438,6 +445,7 @@ export class PodStack extends cdk.Stack {
         MPP_SECRET_KEY: ecs.Secret.fromSecretsManager(mppSecretKey),
         GOOGLE_APP_CLIENT_ID: ecs.Secret.fromSecretsManager(googleAppOauth, "client_id"),
         GOOGLE_APP_CLIENT_SECRET: ecs.Secret.fromSecretsManager(googleAppOauth, "client_secret"),
+        CLOUDFLARE_API_TOKEN: ecs.Secret.fromSecretsManager(cloudflareApiToken),
         // STRIPE_WEBHOOK_SECRET: managed outside CDK (fromSecretNameV2 ARN issue)
       },
       healthCheck: {

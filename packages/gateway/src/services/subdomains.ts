@@ -10,6 +10,7 @@ import { sql } from "../db/sql.js";
 import { getDeployment } from "./deployments.js";
 import { projectCache, getProjectById } from "./projects.js";
 import { kvsPut, kvsDelete, cfInvalidate } from "./kvs.js";
+import { updateDomainDeployment, deleteDomainBySubdomain } from "./domains.js";
 
 export interface SubdomainRecord {
   name: string;
@@ -186,6 +187,8 @@ export async function createOrUpdateSubdomain(
   kvsPut(name, deploymentId);
   // Invalidate edge cache on reassignment so redeployed assets are served immediately
   if (existing) cfInvalidate(name);
+  // Update Cloudflare KV for any linked custom domain
+  updateDomainDeployment(name, deploymentId);
 
   console.log(`  Subdomain claimed: ${name} → ${deploymentId}`);
 
@@ -265,6 +268,8 @@ export async function deleteSubdomain(name: string, projectId?: string | null): 
   if (result.rowCount && result.rowCount > 0) {
     cacheInvalidate(name);
     kvsDelete(name);
+    // Also delete any linked custom domain
+    deleteDomainBySubdomain(name);
     console.log(`  Subdomain released: ${name}`);
     return true;
   }
