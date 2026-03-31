@@ -320,4 +320,20 @@ describe("createOrUpdateSubdomain — ownership", () => {
       },
     );
   });
+
+  it("deployment-not-found error message tells user to deploy first", async () => {
+    mockGetDeployment = async () => null;
+
+    await assert.rejects(
+      () => createOrUpdateSubdomain("myapp", "prj_123_1", "prj_123_1"),
+      (err: any) => {
+        assert.ok(err instanceof SubdomainError);
+        assert.ok(
+          err.message.toLowerCase().includes("deploy") && err.message.toLowerCase().includes("first"),
+          `Error message should guide user to deploy first, got: "${err.message}"`,
+        );
+        return true;
+      },
+    );
+  });
 });

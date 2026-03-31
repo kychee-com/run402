@@ -143,7 +143,7 @@ export async function createOrUpdateSubdomain(
   // Verify deployment exists
   const deployment = await getDeployment(deploymentId);
   if (!deployment) {
-    throw new SubdomainError(`Deployment "${deploymentId}" not found`, 404);
+    throw new SubdomainError(`Deployment "${deploymentId}" not found. Deploy your site first with 'run402 deploy', then claim a subdomain.`, 404);
   }
 
   // Check ownership if subdomain already exists
