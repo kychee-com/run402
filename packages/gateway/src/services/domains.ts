@@ -110,10 +110,16 @@ export async function createDomain(
     throw new DomainError("Subdomain owned by another project", 403);
   }
 
-  // Check domain not already registered
+  // Check domain not already registered — allow re-claiming orphaned domains
   const existing = await getDomain(domain);
   if (existing) {
-    throw new DomainError("Domain already registered", 409);
+    const isOrphaned = !existing.project_id || existing.status === "moved" || existing.status === "deleted";
+    if (!isOrphaned) {
+      throw new DomainError("Domain already registered", 409);
+    }
+    // Clean up the orphaned record so we can create a fresh one
+    await pool.query(sql(`DELETE FROM internal.domains WHERE domain = $1`), [domain]);
+    console.log(`  Orphaned domain cleaned up: ${domain} (was status=${existing.status}, project_id=${existing.project_id})`);
   }
 
   // Register with Cloudflare Custom Hostnames
