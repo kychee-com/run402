@@ -1814,6 +1814,61 @@
         }
       }
     },
+    "/storage/v1/public/{project_id}/{bucket}/{path}": {
+      "get": {
+        "tags": [
+          "Storage"
+        ],
+        "summary": "Public file access",
+        "operationId": "publicFileAccess",
+        "description": "Publicly accessible file download. No authentication required. Returns the file content with appropriate Content-Type header and Cache-Control: public, max-age=3600.",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Project ID"
+          },
+          {
+            "name": "bucket",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Storage bucket name"
+          },
+          {
+            "name": "path",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "File path within the bucket"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "File content",
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Project not found, project inactive, or file not found"
+          }
+        }
+      }
+    },
     "/faucet/v1": {
       "post": {
         "tags": [
@@ -2471,6 +2526,94 @@
             }
           },
           "401": {"$ref": "#/components/responses/Unauthorized"}
+        }
+      }
+    },
+    "/ai/v1/addons": {
+      "post": {
+        "tags": ["AI"],
+        "summary": "Activate translation add-on",
+        "operationId": "activateAddon",
+        "description": "Activate a translation add-on for a project. Admin only.",
+        "security": [{"adminKey": []}],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["project_id", "addon_type", "included_words"],
+                "properties": {
+                  "project_id": {"type": "string", "description": "Project ID to activate the add-on for"},
+                  "addon_type": {"type": "string", "enum": ["translation"], "description": "Add-on type (currently only 'translation')"},
+                  "included_words": {"type": "integer", "description": "Number of words included in the add-on package"}
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Add-on activated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "project_id": {"type": "string"},
+                    "addon_type": {"type": "string"},
+                    "included_words": {"type": "integer"},
+                    "included_tokens": {"type": "integer"},
+                    "status": {"type": "string", "enum": ["active"]}
+                  }
+                }
+              }
+            }
+          },
+          "400": {"description": "Invalid input (missing project_id, invalid addon_type, or invalid included_words)"},
+          "401": {"$ref": "#/components/responses/Unauthorized"}
+        }
+      },
+      "delete": {
+        "tags": ["AI"],
+        "summary": "Deactivate translation add-on",
+        "operationId": "deactivateAddon",
+        "description": "Deactivate a translation add-on for a project. Admin only.",
+        "security": [{"adminKey": []}],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["project_id", "addon_type"],
+                "properties": {
+                  "project_id": {"type": "string", "description": "Project ID to deactivate the add-on for"},
+                  "addon_type": {"type": "string", "enum": ["translation"], "description": "Add-on type (currently only 'translation')"}
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Add-on deactivated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {"type": "string", "enum": ["deactivated"]},
+                    "project_id": {"type": "string"},
+                    "addon_type": {"type": "string"}
+                  }
+                }
+              }
+            }
+          },
+          "400": {"description": "Invalid input (missing project_id or invalid addon_type)"},
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "404": {"description": "No active add-on found for this project"}
         }
       }
     },

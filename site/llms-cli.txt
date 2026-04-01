@@ -350,7 +350,7 @@ Upload response includes a public `url` field: `https://api.run402.com/storage/v
 Use the HTTP API to upload files from within a deployed function:
 
 ```javascript
-const res = await fetch('https://api.run402.com/storage/v1/upload/<bucket>/<path>', {
+const res = await fetch('https://api.run402.com/storage/v1/object/<bucket>/<path>', {
   method: 'POST',
   headers: { Authorization: 'Bearer ' + process.env.RUN402_SERVICE_KEY },
   body: fileBuffer,

@@ -25,13 +25,13 @@ This avoids permission prompts from the harness.
 
 ### Lambda Layer (functions runtime)
 
-The `@run402/functions` helper (`db.from()`, `db.sql()`, `getUser()`) ships as a Lambda layer, separate from the gateway Docker image. Changing `packages/functions-runtime/**` requires rebuilding and publishing the layer:
+The `@run402/functions` helper (`db.from()`, `db.sql()`, `getUser()`, `email.send()`, `ai.translate()`, `ai.moderate()`) ships as a Lambda layer, separate from the gateway Docker image. Changing `packages/functions-runtime/**` requires rebuilding and publishing the layer:
 
 1. Build + publish: `cd packages/functions-runtime && AWS_PROFILE=kychee ./build-layer.sh --publish`
 2. Update `LAMBDA_LAYER_ARN` in `infra/lib/pod-stack.ts` with the new ARN
 3. Redeploy CDK: `cd infra && eval "$(aws configure export-credentials --profile kychee --format env)" && npx cdk deploy AgentDB-Pod01 --require-approval never`
 
-Current layer: `arn:aws:lambda:us-east-1:472210437512:layer:run402-functions-runtime:2` (hardcoded in pod-stack.ts)
+Current layer: `arn:aws:lambda:us-east-1:472210437512:layer:run402-functions-runtime:8` (hardcoded in pod-stack.ts)
 
 **Important:** The gateway CI workflow does NOT rebuild the Lambda layer. If you change `build-layer.sh` or the functions runtime and only push to main, the gateway will deploy with the old layer. Always publish the layer first.
 
@@ -97,10 +97,20 @@ Without `SELLER_ADDRESS` + CDP keys, x402 payment middleware won't initialize an
 |---------|--------------|
 | `npm run test:e2e` | Full 23-step lifecycle test (workout tracker). Needs `BASE_URL`. |
 | `npm run test:bld402-compat` | bld402 template compatibility — 3 templates (shared-todo, paste-locker, landing-waitlist). Needs `BASE_URL`. |
+| `npm run test:openclaw` | OpenClaw integration E2E |
 | `npm run test:docs` | API docs alignment |
 | `npm run test:siwx` | SIWx auth unit tests |
 | `npm run test:functions` | Functions lifecycle E2E |
+| `npm run test:ai` | AI helpers E2E |
 | `npm run test:billing` | Billing/tiers E2E |
+| `npm run test:email` | Email helpers E2E |
+| `npm run test:mailbox` | Mailbox service unit tests |
+| `npm run test:subdomains` | Subdomains service unit tests |
+| `npm run test:contact` | Contact route unit tests |
+| `npm run test:admin-sql` | Admin SQL route unit tests |
+| `npm run test:sql` | SQL module unit tests |
+| `npm run test:unit` | Gateway unit tests |
+| `npm run test:unit:coverage` | Gateway unit tests with coverage |
 | `npx tsx test/cdn-e2e.ts` | CDN edge caching for custom subdomains. Needs `BASE_URL`. ~2 min. |
 
 ### Running tests locally vs production

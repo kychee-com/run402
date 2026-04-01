@@ -1213,7 +1213,7 @@ Subscribe to a tier via x402. All operations (projects, deploys, forks, sites, m
 
 | Resource | Prototype | Hobby | Team |
 |----------|-----------|-------|------|
-| Functions | 8 | 25 | 100 |
+| Functions | 15 | 50 | 250 |
 | Function timeout | 10s | 30s | 60s |
 | Function memory | 128 MB | 256 MB | 512 MB |
 | Scheduled functions | 1 | 3 | 10 |
@@ -1527,7 +1527,7 @@ This pattern is safe to re-run on every deploy. Without it, adding a column to a
 
 ### Pricing
 
-Free with active tier subscription. No per-deploy charge. Your project's tier determines resource limits: storage, API calls, and functions (Prototype: 8 functions, Hobby: 25, Team: 100).
+Free with active tier subscription. No per-deploy charge. Your project's tier determines resource limits: storage, API calls, and functions (Prototype: 15 functions, Hobby: 50, Team: 250).
 
 ### Info endpoint (free)
 
