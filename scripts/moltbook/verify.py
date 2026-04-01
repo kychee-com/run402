@@ -17,6 +17,7 @@ FALSE_POSITIVES = {
         "extent", "extend", "competent", "consistent", "persistent", "existent",
         "encounter", "encounters", "then", "whaten", "meters", "meter",
         "neuton", "neutons",
+        "centimeter", "centimeters", "centimetre", "centimetres",
     ],
     "one": [
         "someone", "done", "gone", "none", "bone", "tone", "zone", "stone",
@@ -26,11 +27,12 @@ FALSE_POSITIVES = {
         "combined", "combine",
     ],
     "eight": ["weight", "height", "freight", "sleight"],
+    "eighteen": ["eightnewton", "eightmeter", "eightknot"],
     "nine": [
         "canine", "feminine", "machine", "engine", "examine", "determine",
         "combine", "discipline", "doctrine", "medicine", "routine",
     ],
-    "six": ["sixth", "mixture"],
+    "six": ["sixth", "mixture", "physix", "physics"],
     "two": ["between", "network"],
     "three": [
         "there", "therefore", "another", "whether", "together", "other",
@@ -166,7 +168,14 @@ def _extract_numbers(aj: str) -> list[float]:
     found = updated
 
     found.sort()
-    return [v for _, v in found]
+    # Deduplicate: if the same value appears multiple times within 30 chars,
+    # it's likely the same number written in multiple obfuscated forms.
+    deduped: list[tuple[int, float]] = []
+    for pos, v in found:
+        if deduped and deduped[-1][1] == v and pos - deduped[-1][0] < 30:
+            continue  # skip duplicate nearby same value
+        deduped.append((pos, v))
+    return [v for _, v in deduped]
 
 
 def _detect_operation(challenge: str, aj: str) -> str | None:
@@ -190,6 +199,9 @@ def _detect_operation(challenge: str, aj: str) -> str | None:
         if "product" in q:
             return "*"
 
+    # "the net" → subtraction (before word-based detection to override "adds" etc.)
+    if "thenet" in aj:
+        return "-"
     # Word-based detection (subtraction before addition to avoid false matches)
     # Use fuzzy matching to handle obfuscation artifacts
     # False positives for operation keywords (word → list of containing words)
@@ -274,11 +286,13 @@ def solve(result: dict) -> bool:
 
     if len(numbers) >= 2 and op:
         if op in ("*", "/") and len(numbers) > 2:
-            # Physics-style: "mass: X ... velocity: Y ... what is momentum (mass * velocity)"
-            # The formula hint at the end often contains small numbers (1, 2) that are false positives.
-            # Use the two largest numbers as operands for multiply/divide.
-            sorted_nums = sorted(numbers, reverse=True)
-            a, b = sorted_nums[0], sorted_nums[1]
+            # When numbers repeat (e.g. [23, 14, 23, 14]), use the first two distinct values.
+            # For physics-style problems, the question usually restates the operands at the end.
+            seen = []
+            for n in numbers:
+                if n not in seen:
+                    seen.append(n)
+            a, b = seen[0], seen[1] if len(seen) >= 2 else numbers[1]
         else:
             a, b = numbers[0], numbers[1]
         if op == "+" and len(numbers) > 2:
