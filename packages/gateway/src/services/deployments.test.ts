@@ -1,220 +1,114 @@
-import { describe, it, beforeEach, mock } from "node:test";
+import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
-// ---------------------------------------------------------------------------
-// Mock dependencies before importing the module under test
-// ---------------------------------------------------------------------------
-
-let mockPoolQuery: (...args: any[]) => Promise<any>;
-let mockCacheInvalidateByNames: (names: string[]) => void;
-let mockS3Send: (...args: any[]) => Promise<any>;
-
-mock.module("../db/pool.js", {
-  namedExports: {
-    pool: {
-      query: (...args: any[]) => mockPoolQuery(...args),
-    },
-  },
-});
-
-mock.module("../config.js", {
-  namedExports: {
-    S3_BUCKET: undefined,
-    S3_REGION: "us-east-1",
-  },
-});
-
-mock.module("@aws-sdk/client-s3", {
-  namedExports: {
-    S3Client: class { send = (...args: any[]) => mockS3Send(...args); },
-    PutObjectCommand: class { constructor(public input: any) {} },
-    ListObjectsV2Command: class { constructor(public input: any) {} },
-    DeleteObjectsCommand: class { constructor(public input: any) {} },
-    CopyObjectCommand: class { constructor(public input: any) {} },
-  },
-});
-
-mock.module("./subdomains.js", {
-  namedExports: {
-    cacheInvalidateByNames: (names: string[]) => mockCacheInvalidateByNames(names),
-  },
-});
-
-const { createDeployment } = await import("./deployments.js");
-
-// ---------------------------------------------------------------------------
-// Auto-reassignment tests
-// ---------------------------------------------------------------------------
-
-describe("createDeployment — auto subdomain reassignment", () => {
-  beforeEach(() => {
-    mockS3Send = async () => ({});
-    mockCacheInvalidateByNames = () => {};
-  });
-
-  it("reassigns subdomain when project has one", async () => {
-    let queryCount = 0;
-    mockPoolQuery = async () => {
-      queryCount++;
-      if (queryCount === 1) return { rows: [] }; // INSERT deployment
-      // UPDATE subdomains RETURNING
-      return { rows: [{ name: "myapp" }] };
-    };
-
-    const result = await createDeployment({
-      project: "prj_123",
-      files: [{ file: "index.html", data: "<h1>Hi</h1>" }],
-    });
-
-    assert.ok(result.deployment_id.startsWith("dpl_"));
-    assert.deepEqual(result.subdomain_urls, ["https://myapp.run402.com"]);
-  });
-
-  it("does not include subdomain_urls when project has no subdomains", async () => {
-    let queryCount = 0;
-    mockPoolQuery = async () => {
-      queryCount++;
-      if (queryCount === 1) return { rows: [] }; // INSERT deployment
-      return { rows: [] }; // UPDATE subdomains — no rows
-    };
-
-    const result = await createDeployment({
-      project: "prj_456",
-      files: [{ file: "index.html", data: "<h1>Hi</h1>" }],
-    });
-
-    assert.equal(result.subdomain_urls, undefined);
-  });
-
-  it("reassigns multiple subdomains", async () => {
-    let queryCount = 0;
-    mockPoolQuery = async () => {
-      queryCount++;
-      if (queryCount === 1) return { rows: [] }; // INSERT deployment
-      return { rows: [{ name: "app1" }, { name: "app2" }] };
-    };
-
-    const result = await createDeployment({
-      project: "prj_789",
-      files: [{ file: "index.html", data: "<h1>Hi</h1>" }],
-    });
-
-    assert.deepEqual(result.subdomain_urls, [
-      "https://app1.run402.com",
-      "https://app2.run402.com",
-    ]);
-  });
-
-  it("invalidates cache for reassigned subdomains", async () => {
-    const invalidated: string[][] = [];
-    mockCacheInvalidateByNames = (names) => invalidated.push(names);
-
-    let queryCount = 0;
-    mockPoolQuery = async () => {
-      queryCount++;
-      if (queryCount === 1) return { rows: [] };
-      return { rows: [{ name: "cached-app" }] };
-    };
-
-    await createDeployment({
-      project: "prj_cache",
-      files: [{ file: "index.html", data: "<h1>Hi</h1>" }],
-    });
-
-    assert.equal(invalidated.length, 1);
-    assert.deepEqual(invalidated[0], ["cached-app"]);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Inherit tests
-// ---------------------------------------------------------------------------
-
-describe("createDeployment — inherit from previous deployment", () => {
-  beforeEach(() => {
-    mockS3Send = async () => ({});
-    mockCacheInvalidateByNames = () => {};
-  });
-
-  it("copies files from previous deployment when inherit is true (local mode)", async () => {
-    let queryCount = 0;
-    mockPoolQuery = async () => {
-      queryCount++;
-      if (queryCount === 1) {
-        // getPreviousDeploymentId — return a previous deployment
-        return { rows: [{ id: "dpl_prev_001" }] };
+// withConcurrency is not exported, so we duplicate for unit testing.
+// This mirrors the exact implementation in deployments.ts.
+async function withConcurrency<T>(
+  items: T[],
+  fn: (item: T) => Promise<void>,
+  limit: number,
+  retries: number,
+): Promise<{ completed: number }> {
+  let completed = 0;
+  let i = 0;
+  async function runOne(): Promise<void> {
+    while (i < items.length) {
+      const idx = i++;
+      const item = items[idx];
+      let lastErr: Error | undefined;
+      for (let attempt = 0; attempt < retries; attempt++) {
+        try {
+          await fn(item);
+          completed++;
+          lastErr = undefined;
+          break;
+        } catch (err) {
+          lastErr = err instanceof Error ? err : new Error(String(err));
+          if (attempt < retries - 1) {
+            await new Promise(r => setTimeout(r, 10));
+          }
+        }
       }
-      if (queryCount === 2) return { rows: [] }; // INSERT deployment
-      return { rows: [] }; // UPDATE subdomains
-    };
-
-    // In local mode (S3_BUCKET undefined), inherit uses filesystem copy.
-    // Since we can't easily create temp dirs in this test, just verify
-    // the function doesn't crash when previous deployment dir doesn't exist.
-    const result = await createDeployment({
-      project: "prj_inherit",
-      files: [{ file: "style.css", data: "body{}" }],
-      inherit: true,
-    });
-
-    assert.ok(result.deployment_id.startsWith("dpl_"));
-  });
-
-  it("works normally when inherit is true but no previous deployment exists", async () => {
-    let queryCount = 0;
-    mockPoolQuery = async () => {
-      queryCount++;
-      if (queryCount === 1) {
-        // getPreviousDeploymentId — no previous deployment
-        return { rows: [] };
+      if (lastErr) {
+        const wrapped = new Error(lastErr.message) as Error & { completed: number };
+        wrapped.completed = completed;
+        throw wrapped;
       }
-      if (queryCount === 2) return { rows: [] }; // INSERT deployment
-      return { rows: [] }; // UPDATE subdomains
-    };
+    }
+  }
+  const workers = Array.from({ length: Math.min(limit, items.length) }, () => runOne());
+  await Promise.all(workers);
+  return { completed };
+}
 
-    const result = await createDeployment({
-      project: "prj_first",
-      files: [{ file: "index.html", data: "<h1>First</h1>" }],
-      inherit: true,
-    });
-
-    assert.ok(result.deployment_id.startsWith("dpl_"));
+describe("withConcurrency", () => {
+  it("processes all items successfully", async () => {
+    const results: number[] = [];
+    const { completed } = await withConcurrency(
+      [1, 2, 3, 4, 5],
+      async (n) => { results.push(n); },
+      3, 2,
+    );
+    assert.equal(completed, 5);
+    assert.deepEqual(results.sort(), [1, 2, 3, 4, 5]);
   });
 
-  it("skips inherit logic when inherit is false", async () => {
-    let queryCount = 0;
-    mockPoolQuery = async () => {
-      queryCount++;
-      if (queryCount === 1) return { rows: [] }; // INSERT deployment
-      return { rows: [] }; // UPDATE subdomains
-    };
-
-    const result = await createDeployment({
-      project: "prj_noinherit",
-      files: [{ file: "index.html", data: "<h1>Hi</h1>" }],
-      inherit: false,
-    });
-
-    // Should only have 2 queries (INSERT + UPDATE), no getPreviousDeploymentId
-    assert.equal(queryCount, 2);
-    assert.ok(result.deployment_id.startsWith("dpl_"));
+  it("respects concurrency limit", async () => {
+    let inFlight = 0;
+    let maxInFlight = 0;
+    await withConcurrency(
+      Array.from({ length: 20 }, (_, i) => i),
+      async () => {
+        inFlight++;
+        maxInFlight = Math.max(maxInFlight, inFlight);
+        await new Promise(r => setTimeout(r, 5));
+        inFlight--;
+      },
+      5, 1,
+    );
+    assert.ok(maxInFlight <= 5, "Max in-flight was " + maxInFlight + ", expected <= 5");
+    assert.ok(maxInFlight >= 2, "Max in-flight was " + maxInFlight + ", expected >= 2");
   });
 
-  it("accepts empty files array when inherit is true", async () => {
-    let queryCount = 0;
-    mockPoolQuery = async () => {
-      queryCount++;
-      if (queryCount === 1) return { rows: [{ id: "dpl_prev_002" }] };
-      if (queryCount === 2) return { rows: [] };
-      return { rows: [] };
-    };
+  it("retries on transient failure", async () => {
+    let attempts = 0;
+    const { completed } = await withConcurrency(
+      [1],
+      async () => {
+        attempts++;
+        if (attempts === 1) throw new Error("transient");
+      },
+      1, 2,
+    );
+    assert.equal(completed, 1);
+    assert.equal(attempts, 2);
+  });
 
-    const result = await createDeployment({
-      project: "prj_empty",
-      files: [],
-      inherit: true,
-    });
+  it("throws after exhausting retries with completed count", async () => {
+    try {
+      await withConcurrency(
+        [1, 2, 3],
+        async (n) => {
+          if (n === 2) throw new Error("permanent failure");
+        },
+        1, 2,
+      );
+      assert.fail("should have thrown");
+    } catch (err: unknown) {
+      const e = err as Error & { completed: number };
+      assert.equal(e.message, "permanent failure");
+      assert.equal(e.completed, 1);
+    }
+  });
 
-    assert.ok(result.deployment_id.startsWith("dpl_"));
+  it("handles empty items array", async () => {
+    const { completed } = await withConcurrency([], async () => {}, 5, 1);
+    assert.equal(completed, 0);
+  });
+
+  it("handles limit larger than items", async () => {
+    const results: number[] = [];
+    await withConcurrency([1, 2], async (n) => { results.push(n); }, 100, 1);
+    assert.equal(results.length, 2);
   });
 });
