@@ -304,6 +304,13 @@ curl -X POST https://api.run402.com/rest/v1/notes \
   -H "Prefer: return=representation" \
   -d '{"title": "From the browser", "body": "No login needed!"}'
 
+# Bulk insert -- pass a JSON array
+curl -X POST https://api.run402.com/rest/v1/notes \
+  -H "apikey: $SERVICE_KEY" \
+  -H "Content-Type: application/json" \
+  -H "Prefer: return=representation" \
+  -d '[{"title": "Note A", "body": "first"}, {"title": "Note B", "body": "second"}]'
+
 # Read it back
 curl https://api.run402.com/rest/v1/notes \
   -H "apikey: $ANON_KEY"

@@ -489,6 +489,13 @@ const [newItem] = await fetch(API + '/rest/v1/items', {
   body: JSON.stringify({ title: 'New item', done: false })
 }).then(r => r.json());
 
+// Bulk insert — pass an array body
+const newItems = await fetch(API + '/rest/v1/items', {
+  method: 'POST',
+  headers: { apikey: ANON_KEY, 'Content-Type': 'application/json', Prefer: 'return=representation' },
+  body: JSON.stringify([{ title: 'Item A', done: false }, { title: 'Item B', done: false }])
+}).then(r => r.json());
+
 // Update rows matching a filter
 await fetch(API + '/rest/v1/items?id=eq.5', {
   method: 'PATCH',
