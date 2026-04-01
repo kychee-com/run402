@@ -14,6 +14,51 @@ import { cacheInvalidateByNames } from "./subdomains.js";
 
 // S3 client (only initialized if S3_BUCKET is set)
 const s3 = S3_BUCKET ? new S3Client({ region: S3_REGION }) : null;
+
+/**
+ * Run async operations with bounded concurrency and per-item retry.
+ * Returns { completed } on success, throws with { completed, failed } on failure.
+ */
+async function withConcurrency<T>(
+  items: T[],
+  fn: (item: T) => Promise<void>,
+  limit: number,
+  retries: number,
+): Promise<{ completed: number }> {
+  let completed = 0;
+  let i = 0;
+
+  async function runOne(): Promise<void> {
+    while (i < items.length) {
+      const idx = i++;
+      const item = items[idx];
+      let lastErr: Error | undefined;
+      for (let attempt = 0; attempt < retries; attempt++) {
+        try {
+          await fn(item);
+          completed++;
+          lastErr = undefined;
+          break;
+        } catch (err) {
+          lastErr = err instanceof Error ? err : new Error(String(err));
+          if (attempt < retries - 1) {
+            await new Promise(r => setTimeout(r, 100));
+          }
+        }
+      }
+      if (lastErr) {
+        const wrapped = new Error(lastErr.message) as Error & { completed: number };
+        wrapped.completed = completed;
+        throw wrapped;
+      }
+    }
+  }
+
+  const workers = Array.from({ length: Math.min(limit, items.length) }, () => runOne());
+  await Promise.all(workers);
+  return { completed };
+}
+
 const LOCAL_STORAGE_ROOT = process.env.STORAGE_ROOT || "./storage";
 
 export interface DeploymentFile {
@@ -131,17 +176,23 @@ export async function createDeployment(
   const s3Prefix = `sites/${id}`;
   const uploadedPaths = new Set(decoded.map(f => f.path));
 
-  for (const file of decoded) {
-    if (s3 && S3_BUCKET) {
-      await s3.send(new PutObjectCommand({
-        Bucket: S3_BUCKET,
-        Key: `${s3Prefix}/${file.path}`,
-        Body: file.buffer,
-        ContentType: file.mime,
-        CacheControl: "public, max-age=31536000, immutable",
-      }));
-    } else {
-      // Local filesystem fallback for dev
+  if (s3 && S3_BUCKET) {
+    try {
+      await withConcurrency(decoded, async (file) => {
+        await s3.send(new PutObjectCommand({
+          Bucket: S3_BUCKET,
+          Key: `${s3Prefix}/${file.path}`,
+          Body: file.buffer,
+          ContentType: file.mime,
+          CacheControl: "public, max-age=31536000, immutable",
+        }));
+      }, 20, 2);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      throw new DeploymentError(`Upload failed: ${msg}`, 502);
+    }
+  } else {
+    for (const file of decoded) {
       const localPath = join(LOCAL_STORAGE_ROOT, s3Prefix, file.path);
       mkdirSync(dirname(localPath), { recursive: true });
       writeFileSync(localPath, file.buffer);
@@ -156,6 +207,8 @@ export async function createDeployment(
     if (prevId) {
       const prevPrefix = `sites/${prevId}/`;
       if (s3 && S3_BUCKET) {
+        // Collect all objects to copy (paginated list, filter out already-uploaded)
+        const toCopy: Array<{ key: string; relativePath: string; size: number }> = [];
         let continuationToken: string | undefined;
         do {
           const list = await s3.send(new ListObjectsV2Command({
@@ -165,17 +218,31 @@ export async function createDeployment(
           }));
           for (const obj of list.Contents || []) {
             const relativePath = obj.Key!.slice(prevPrefix.length);
-            if (uploadedPaths.has(relativePath)) continue; // new file takes precedence
-            await s3.send(new CopyObjectCommand({
-              Bucket: S3_BUCKET,
-              CopySource: `${S3_BUCKET}/${obj.Key}`,
-              Key: `${s3Prefix}/${relativePath}`,
-            }));
-            inheritedCount++;
-            inheritedSize += obj.Size || 0;
+            if (!uploadedPaths.has(relativePath)) {
+              toCopy.push({ key: obj.Key!, relativePath, size: obj.Size || 0 });
+            }
           }
           continuationToken = list.IsTruncated ? list.NextContinuationToken : undefined;
         } while (continuationToken);
+
+        // Copy in parallel with per-file retry
+        try {
+          await withConcurrency(toCopy, async (obj) => {
+            await s3.send(new CopyObjectCommand({
+              Bucket: S3_BUCKET,
+              CopySource: `${S3_BUCKET}/${obj.key}`,
+              Key: `${s3Prefix}/${obj.relativePath}`,
+            }));
+            inheritedCount++;
+            inheritedSize += obj.size;
+          }, 20, 2);
+        } catch (err) {
+          const copied = (err as Error & { completed?: number }).completed ?? inheritedCount;
+          throw new DeploymentError(
+            `Inherit copy failed (${copied}/${toCopy.length} files copied). Retry the deploy, or remove inherit and include all files.`,
+            502,
+          );
+        }
       } else {
         // Local dev: copy files from previous deployment directory
         const prevDir = join(LOCAL_STORAGE_ROOT, `sites/${prevId}`);
