@@ -6,6 +6,7 @@ import { demoBlockedMiddleware } from "../middleware/demo.js";
 import { getTierLimits } from "@run402/shared";
 import { asyncHandler, HttpError } from "../utils/async-handler.js";
 import { validateWalletAddress } from "../utils/validate.js";
+import { checkSqlSafety } from "../utils/sql-safety.js";
 import { ADMIN_KEY } from "../config.js";
 import { isAdminWallet } from "../services/admin-wallets.js";
 import { getProjectById } from "../services/projects.js";
@@ -152,41 +153,6 @@ async function adminOrServiceKeyAuth(req: Request, res: Response, next: NextFunc
 
 router.use("/projects/v1/admin", adminOrServiceKeyAuth);
 
-// SQL statement blocklist — defense-in-depth (real boundary is search_path + pre_request hook)
-const BLOCKED_PATTERNS: Array<{ pattern: RegExp; hint?: string }> = [
-  { pattern: /\bCREATE\s+EXTENSION\b/i },
-  { pattern: /\bCOPY\b.*\bPROGRAM\b/i },
-  { pattern: /\bALTER\s+SYSTEM\b/i },
-  { pattern: /\bSET\s+search_path\b/i },
-  { pattern: /\bCREATE\s+SCHEMA\b/i },
-  { pattern: /\bDROP\s+SCHEMA\b/i },
-  {
-    pattern: /\bGRANT\b/i,
-    hint: "Permissions are managed automatically. For SERIAL/BIGSERIAL columns, sequence permissions are pre-granted. Prefer BIGINT GENERATED ALWAYS AS IDENTITY over SERIAL for new tables.",
-  },
-  {
-    pattern: /\bREVOKE\b/i,
-    hint: "Permissions are managed automatically. Use RLS policies (POST /projects/v1/admin/:id/rls) to control row-level access.",
-  },
-  { pattern: /\bCREATE\s+ROLE\b/i },
-  { pattern: /\bDROP\s+ROLE\b/i },
-];
-
-function checkSqlSafety(sql: string): { error: string; hint?: string } | null {
-  // Strip single-quoted string literals and double-quoted identifiers so
-  // keywords inside data values / column names don't trigger false positives.
-  const sqlStripped = sql.replace(/'[^']*'/g, "''").replace(/"[^"]*"/g, '""');
-
-  for (const { pattern, hint } of BLOCKED_PATTERNS) {
-    if (pattern.test(sqlStripped)) {
-      return {
-        error: `Blocked SQL pattern: ${pattern.source}`,
-        hint,
-      };
-    }
-  }
-  return null;
-}
 
 /** Verify service_key matches the project in the URL. */
 function assertProjectMatch(req: Request): void {

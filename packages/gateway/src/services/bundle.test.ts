@@ -12,6 +12,8 @@ let mockDeriveProjectKeys: (projectId: string, tier: string) => any;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let mockDeployFunction: (...args: any[]) => Promise<any>;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
+let mockDeleteFunction: (...args: any[]) => Promise<void>;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 let mockSetSecret: (...args: any[]) => Promise<void>;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let mockCreateDeployment: (...args: any[]) => Promise<any>;
@@ -33,6 +35,8 @@ mock.module("./functions.js", {
   namedExports: {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     deployFunction: (...args: any[]) => mockDeployFunction(...args),
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    deleteFunction: (...args: any[]) => mockDeleteFunction(...args),
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     setSecret: (...args: any[]) => mockSetSecret(...args),
   },
@@ -372,6 +376,59 @@ describe("bundle validation — subdomain", () => {
   });
 });
 
+describe("bundle validation — SQL pattern blocker skips string literals", () => {
+  it("allows GRANT inside a single-quoted string", () => {
+    assert.doesNotThrow(() =>
+      validateBundle({
+        project_id: "prj_123_1",
+        migrations: "INSERT INTO pages (title, body) VALUES ('Fundraising', '<li>Fundraising and grant writing</li>');",
+      }),
+    );
+  });
+
+  it("allows REVOKE inside a single-quoted string", () => {
+    assert.doesNotThrow(() =>
+      validateBundle({
+        project_id: "prj_123_1",
+        migrations: "INSERT INTO docs (content) VALUES ('We may revoke access at any time.');",
+      }),
+    );
+  });
+
+  it("allows blocked keywords in dollar-quoted strings", () => {
+    assert.doesNotThrow(() =>
+      validateBundle({
+        project_id: "prj_123_1",
+        migrations: "INSERT INTO pages (body) VALUES ($$<p>Apply for a grant today</p>$$);",
+      }),
+    );
+  });
+
+  it("still blocks GRANT as a real SQL statement", () => {
+    assert.throws(
+      () => validateBundle({ project_id: "prj_123_1", migrations: "GRANT ALL ON TABLE foo TO evil" }),
+      (err: InstanceType<typeof BundleError>) => err.statusCode === 403,
+    );
+  });
+
+  it("still blocks REVOKE as a real SQL statement", () => {
+    assert.throws(
+      () => validateBundle({ project_id: "prj_123_1", migrations: "REVOKE SELECT ON TABLE foo FROM anon" }),
+      (err: InstanceType<typeof BundleError>) => err.statusCode === 403,
+    );
+  });
+
+  it("allows mixed: real SQL with blocked words only in strings", () => {
+    assert.doesNotThrow(() =>
+      validateBundle({
+        project_id: "prj_123_1",
+        migrations: `CREATE TABLE IF NOT EXISTS orgs (id serial PRIMARY KEY, name text, mission text);
+INSERT INTO orgs (name, mission) VALUES ('Helpers', 'Grant writing and community revoke prevention');`,
+      }),
+    );
+  });
+});
+
 describe("bundle validation — full bundle", () => {
   it("accepts a complete bundle with all fields", () => {
     assert.doesNotThrow(() =>
@@ -410,6 +467,7 @@ describe("deployBundle — project lookup errors", () => {
     mockGetProjectById = async () => null;
     mockDeriveProjectKeys = () => ({ anonKey: "anon-key", serviceKey: "service-key" });
     mockDeployFunction = async () => ({ name: "test", url: "https://example.com/test" });
+    mockDeleteFunction = async () => {};
     mockSetSecret = async () => {};
     mockCreateDeployment = async () => ({ deployment_id: "dep_001", url: "https://sites.run402.com/dep_001" });
     mockCreateOrUpdateSubdomain = async () => ({ name: "test", deployment_id: "dep_001", project_id: "prj_123_1", created_at: "", updated_at: "" });
@@ -477,6 +535,7 @@ describe("deployBundle — minimal deploy (project_id only)", () => {
     mockGetProjectById = async () => makeProject();
     mockDeriveProjectKeys = () => ({ anonKey: "anon-key", serviceKey: "service-key" });
     mockDeployFunction = async () => ({ name: "test", url: "https://example.com/test" });
+    mockDeleteFunction = async () => {};
     mockSetSecret = async () => {};
     mockCreateDeployment = async () => ({ deployment_id: "dep_001", url: "https://sites.run402.com/dep_001" });
     mockCreateOrUpdateSubdomain = async () => ({ name: "test", deployment_id: "dep_001", project_id: "prj_123_1", created_at: "", updated_at: "" });
@@ -677,6 +736,114 @@ describe("deployBundle — full deploy with all features", () => {
   });
 });
 
+describe("deployBundle — stale function cleanup", () => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const capturedCalls: { deployFunction: any[][]; deleteFunction: any[][] } = {
+    deployFunction: [],
+    deleteFunction: [],
+  };
+
+  beforeEach(() => {
+    capturedCalls.deployFunction = [];
+    capturedCalls.deleteFunction = [];
+
+    mockGetProjectById = async () => makeProject();
+    mockDeriveProjectKeys = () => ({ anonKey: "anon-key", serviceKey: "service-key" });
+
+    mockDeployFunction = async (...args) => {
+      capturedCalls.deployFunction.push(args);
+      const name = args[1] as string;
+      return { name, url: `https://api.run402.com/fn/${name}` };
+    };
+
+    mockSetSecret = async () => {};
+    mockCreateDeployment = async () => ({ deployment_id: "dep_001", url: "https://sites.run402.com/dep_001" });
+    mockCreateOrUpdateSubdomain = async () => ({ name: "test", deployment_id: "dep_001", project_id: "prj_123_1", created_at: "", updated_at: "" });
+    mockPoolConnect = async () => ({
+      query: async () => ({ rows: [] }),
+      release: () => {},
+    });
+  });
+
+  it("deletes functions that exist in DB but not in the manifest", async () => {
+    // Track deleteFunction calls via the mock
+    mockDeleteFunction = async (...args) => {
+      capturedCalls.deleteFunction.push(args);
+    };
+
+    // Mock pool.query to return existing functions for the stale-check query
+    const { pool: mockPool } = await import("../db/pool.js");
+    const originalQuery = mockPool.query;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (mockPool as any).query = async (q: string) => {
+      if (typeof q === "string" && q.includes("SELECT name FROM internal.functions") && q.includes("project_id")) {
+        return { rows: [{ name: "old-fn" }, { name: "current-fn" }], rowCount: 2 };
+      }
+      return { rows: [{ cnt: 0 }], rowCount: 1 };
+    };
+
+    const result = await deployBundle(
+      {
+        project_id: "prj_123_1",
+        functions: [
+          { name: "current-fn", code: 'export default async (req) => new Response("ok")' },
+        ],
+      },
+      "https://api.run402.com",
+    );
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (mockPool as any).query = originalQuery;
+
+    // current-fn should be deployed
+    assert.equal(capturedCalls.deployFunction.length, 1);
+    assert.equal(capturedCalls.deployFunction[0][1], "current-fn");
+
+    // old-fn should be deleted (it was in DB but not in manifest)
+    assert.equal(capturedCalls.deleteFunction.length, 1);
+    assert.equal(capturedCalls.deleteFunction[0][0], "prj_123_1");
+    assert.equal(capturedCalls.deleteFunction[0][1], "old-fn");
+
+    // Result should include only the deployed function
+    assert.ok(result.functions);
+    assert.equal(result.functions!.length, 1);
+    assert.equal(result.functions![0].name, "current-fn");
+  });
+
+  it("does not delete anything when all DB functions are in the manifest", async () => {
+    mockDeleteFunction = async (...args) => {
+      capturedCalls.deleteFunction.push(args);
+    };
+
+    const { pool: mockPool } = await import("../db/pool.js");
+    const originalQuery = mockPool.query;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (mockPool as any).query = async (q: string) => {
+      if (typeof q === "string" && q.includes("SELECT name FROM internal.functions") && q.includes("project_id")) {
+        return { rows: [{ name: "fn-a" }, { name: "fn-b" }], rowCount: 2 };
+      }
+      return { rows: [{ cnt: 0 }], rowCount: 1 };
+    };
+
+    await deployBundle(
+      {
+        project_id: "prj_123_1",
+        functions: [
+          { name: "fn-a", code: 'export default async (req) => new Response("a")' },
+          { name: "fn-b", code: 'export default async (req) => new Response("b")' },
+        ],
+      },
+      "https://api.run402.com",
+    );
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (mockPool as any).query = originalQuery;
+
+    // No deletions
+    assert.equal(capturedCalls.deleteFunction.length, 0);
+  });
+});
+
 describe("deployBundle — migration SQL errors", () => {
   it("wraps SQL errors as BundleError 422 and rolls back", async () => {
     mockGetProjectById = async () => makeProject();
@@ -732,6 +899,7 @@ describe("deployBundle — RLS template application via pool", () => {
     mockGetProjectById = async () => makeProject();
     mockDeriveProjectKeys = () => ({ anonKey: "anon-key", serviceKey: "service-key" });
     mockDeployFunction = async () => ({ name: "test", url: "https://example.com/test" });
+    mockDeleteFunction = async () => {};
     mockSetSecret = async () => {};
     mockCreateDeployment = async () => ({ deployment_id: "dep_001", url: "https://sites.run402.com/dep_001" });
     mockCreateOrUpdateSubdomain = async () => ({ name: "test", deployment_id: "dep_001", project_id: "prj_123_1", created_at: "", updated_at: "" });

@@ -123,13 +123,16 @@ Create a manifest file `app.json` (use the `project_id` from provision):
   }],
   "files": [
     { "file": "index.html", "data": "<!DOCTYPE html><html>...</html>" },
-    { "file": "style.css", "data": "body { margin: 0; }" }
+    { "file": "style.css", "data": "body { margin: 0; }" },
+    { "file": "logo.png", "data": "iVBORw0KGgo...", "encoding": "base64" }
   ],
   "subdomain": "my-app"
 }
 ```
 
 `project_id` is required (from `run402 projects provision`). All other fields are optional.
+
+**Binary files (images, fonts, PDFs)**: Set `"encoding": "base64"` and provide base64-encoded data. MIME types are auto-detected from the file extension (`.png` → `image/png`, `.woff2` → `font/woff2`, etc.). Text files use `"encoding": "utf-8"` (the default — can be omitted).
 
 **Migrations** can be inline or read from a file:
 - `"migrations": "CREATE TABLE ..."` — inline SQL string
