@@ -208,6 +208,8 @@ Deploy a serverless function (Node 22) to a project. Functions are invoked via H
 import { db, email, getUser } from '@run402/functions';
 ```
 
+**Local development with TypeScript types**: `npm install run402-functions` — gives full autocomplete for `db.from()`, `getUser()`, `email.send()`, `ai.translate()`. Add `"@run402/functions": "npm:run402-functions@^1.0.0"` to package.json to match the import path.
+
 **db.sql(query, params?)** — raw SQL, returns `{ status, schema, rows, rowCount }`.
 - SELECT: `rows` = matching rows, `rowCount` = row count
 - INSERT/UPDATE/DELETE: `rows` = `[]`, `rowCount` = affected rows
