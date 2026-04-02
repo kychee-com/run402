@@ -247,9 +247,8 @@ describe("MCP integration (live API, no mocks)", { timeout: 180_000 }, () => {
   it("cleanup — delete functions", async () => {
     const { handleDeleteFunction } = await import("./src/tools/delete-function.js");
 
-    const r1 = await handleDeleteFunction({ project_id: projectId, name: "mcp-hello" });
-    assert.equal(r1.isError, undefined, `Expected no error deleting mcp-hello: ${text(r1)}`);
-
+    // mcp-hello is already deleted by bundle_deploy's stale function cleanup
+    // (bundle deploy removes functions not in the manifest), so skip it here.
     const r2 = await handleDeleteFunction({ project_id: projectId, name: "mcp-bundle-fn" });
     assert.equal(r2.isError, undefined, `Expected no error deleting mcp-bundle-fn: ${text(r2)}`);
   });
