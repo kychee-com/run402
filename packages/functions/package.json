@@ -1,0 +1,31 @@
+{
+  "name": "run402-functions",
+  "version": "1.0.1",
+  "description": "Helper library for Run402 serverless functions — db, auth, email, AI",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "!dist/*.test.*"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "test": "node --experimental-test-module-mocks --test dist/db.test.js dist/auth.test.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "jsonwebtoken": "^9.0.2"
+  },
+  "devDependencies": {
+    "@types/jsonwebtoken": "^9.0.9"
+  }
+}

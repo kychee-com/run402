@@ -22,7 +22,7 @@ import {
 } from "@aws-sdk/client-cloudwatch-logs";
 import { transform } from "esbuild";
 import { createHash } from "node:crypto";
-import { writeFileSync, mkdirSync, existsSync } from "node:fs";
+import { writeFileSync, readFileSync, mkdirSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { pool } from "../db/pool.js";
@@ -942,187 +942,45 @@ const LOCAL_FUNCTIONS_DIR = join(tmpdir(), "run402-local-functions");
 
 /**
  * Write a local function module to disk for in-process execution.
- * The file inlines the @run402/functions helper so the user code's
- * `import { db } from '@run402/functions'` resolves without a Lambda layer.
+ * The @run402/functions package is resolved from the monorepo workspace.
+ * Config env vars are set by invokeLocalFunction before dynamic import().
+ * The package uses lazy config reads (getters), so cached modules still
+ * pick up fresh env var values on each invocation.
  */
 async function writeLocalFunction(
   projectId: string,
   name: string,
   userCode: string,
-  serviceKey: string,
-  apiBase: string,
+  _serviceKey: string,
+  _apiBase: string,
 ): Promise<void> {
   const dir = join(LOCAL_FUNCTIONS_DIR, projectId);
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
 
-  // Transpile TypeScript to JavaScript, then inline the @run402/functions helper.
+  // Transpile TypeScript to JavaScript; preserve @run402/functions imports as-is.
   const transpiled = await transpileTS(userCode);
-  const stripped = transpiled
-    .replace(/import\s*\{[^}]*\}\s*from\s*['"]@run402\/functions['"]\s*;?/g, "");
 
-  // Resolve jsonwebtoken from the gateway's node_modules (not the temp dir)
-  const gatewayDir = new URL(".", import.meta.url).pathname;
+  writeFileSync(join(dir, name + ".mjs"), transpiled);
 
-  const module = `
-// --- inlined @run402/functions helper ---
-import { createRequire as _cr } from "node:module";
-const _require = _cr(${JSON.stringify("file://" + gatewayDir)});
-const _jwt = _require("jsonwebtoken");
-const _API_BASE = ${JSON.stringify(apiBase)};
-const _SERVICE_KEY = ${JSON.stringify(serviceKey)};
-const _JWT_SECRET = ${JSON.stringify(JWT_SECRET)};
-const _PROJECT_ID = ${JSON.stringify(projectId)};
+  // Write config sidecar so invokeLocalFunction can set env vars before import
+  writeFileSync(join(dir, name + ".config.json"), JSON.stringify({
+    RUN402_API_BASE: _apiBase,
+    RUN402_PROJECT_ID: projectId,
+    RUN402_SERVICE_KEY: _serviceKey,
+    RUN402_JWT_SECRET: JWT_SECRET,
+  }));
 
-class _QueryBuilder {
-  #table; #params = new URLSearchParams(); #method = "GET"; #body = undefined;
-  constructor(t) { this.#table = t; }
-  select(c = "*") { this.#params.set("select", c); return this; }
-  eq(c, v) { this.#params.append(c, "eq." + v); return this; }
-  neq(c, v) { this.#params.append(c, "neq." + v); return this; }
-  gt(c, v) { this.#params.append(c, "gt." + v); return this; }
-  lt(c, v) { this.#params.append(c, "lt." + v); return this; }
-  gte(c, v) { this.#params.append(c, "gte." + v); return this; }
-  lte(c, v) { this.#params.append(c, "lte." + v); return this; }
-  like(c, p) { this.#params.append(c, "like." + p); return this; }
-  ilike(c, p) { this.#params.append(c, "ilike." + p); return this; }
-  in(c, vs) { this.#params.append(c, "in.(" + vs.join(",") + ")"); return this; }
-  order(c, { ascending = true } = {}) { this.#params.append("order", c + "." + (ascending ? "asc" : "desc")); return this; }
-  limit(n) { this.#params.set("limit", String(n)); return this; }
-  offset(n) { this.#params.set("offset", String(n)); return this; }
-  insert(d) { this.#method = "POST"; this.#body = Array.isArray(d) ? d : [d]; return this; }
-  update(d) { this.#method = "PATCH"; this.#body = d; return this; }
-  delete() { this.#method = "DELETE"; return this; }
-  async then(resolve, reject) {
-    try {
-      const qs = this.#params.toString();
-      const url = _API_BASE + "/rest/v1/" + this.#table + (qs ? "?" + qs : "");
-      const res = await fetch(url, {
-        method: this.#method,
-        headers: { apikey: _SERVICE_KEY, Authorization: "Bearer " + _SERVICE_KEY, "Content-Type": "application/json", Prefer: "return=representation" },
-        body: this.#body ? JSON.stringify(this.#body) : undefined,
-      });
-      if (!res.ok) { reject(new Error("PostgREST error (" + res.status + "): " + await res.text())); return; }
-      resolve(await res.json());
-    } catch (e) { reject(e); }
+  // Ensure node_modules/@run402/functions symlink exists in the local functions
+  // directory so that `import { db } from '@run402/functions'` resolves.
+  const nmDir = join(LOCAL_FUNCTIONS_DIR, "node_modules", "@run402");
+  if (!existsSync(nmDir)) mkdirSync(nmDir, { recursive: true });
+  const linkTarget = join(nmDir, "functions");
+  if (!existsSync(linkTarget)) {
+    // Resolve the workspace package location
+    const pkgDir = new URL("../../../../functions", import.meta.url).pathname;
+    const { symlinkSync } = await import("node:fs");
+    try { symlinkSync(pkgDir, linkTarget, "dir"); } catch { /* already exists */ }
   }
-}
-const db = {
-  from(t) { return new _QueryBuilder(t); },
-  async sql(query, params) {
-    const url = _API_BASE + "/projects/v1/admin/" + _PROJECT_ID + "/sql";
-    const hasParams = Array.isArray(params) && params.length > 0;
-    const res = await fetch(url, {
-      method: "POST",
-      headers: {
-        Authorization: "Bearer " + _SERVICE_KEY,
-        "Content-Type": hasParams ? "application/json" : "text/plain",
-      },
-      body: hasParams ? JSON.stringify({ sql: query, params: params }) : query,
-    });
-    if (!res.ok) {
-      const errBody = await res.text();
-      throw new Error("SQL error (" + res.status + "): " + errBody);
-    }
-    return res.json();
-  },
-};
-
-function getUser(req) {
-  const authHeader = req.headers.get ? req.headers.get("authorization") : req.headers?.authorization;
-  if (!authHeader || !authHeader.startsWith("Bearer ")) return null;
-  const token = authHeader.slice(7);
-  try {
-    const payload = _jwt.verify(token, _JWT_SECRET);
-    if (payload.project_id !== _PROJECT_ID) return null;
-    return { id: payload.sub, role: payload.role, email: payload.email };
-  } catch { return null; }
-}
-
-// --- ai helper ---
-const ai = {
-  async translate(text, to, opts) {
-    const body = { text, to };
-    if (opts?.from) body.from = opts.from;
-    if (opts?.context) body.context = opts.context;
-    const res = await fetch(_API_BASE + "/ai/v1/translate", {
-      method: "POST",
-      headers: { Authorization: "Bearer " + _SERVICE_KEY, "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    if (!res.ok) {
-      const errBody = await res.text();
-      let msg;
-      try { msg = JSON.parse(errBody).error || errBody; } catch { msg = errBody; }
-      throw new Error("Translation failed (" + res.status + "): " + msg);
-    }
-    return res.json();
-  },
-  async moderate(text) {
-    const res = await fetch(_API_BASE + "/ai/v1/moderate", {
-      method: "POST",
-      headers: { Authorization: "Bearer " + _SERVICE_KEY, "Content-Type": "application/json" },
-      body: JSON.stringify({ text }),
-    });
-    if (!res.ok) {
-      const errBody = await res.text();
-      let msg;
-      try { msg = JSON.parse(errBody).error || errBody; } catch { msg = errBody; }
-      throw new Error("Moderation failed (" + res.status + "): " + msg);
-    }
-    return res.json();
-  },
-};
-
-// --- email helper ---
-const email = (() => {
-  let _mailboxId = null;
-  async function _discoverMailbox() {
-    if (_mailboxId) return _mailboxId;
-    const res = await fetch(_API_BASE + "/mailboxes/v1", {
-      headers: { Authorization: "Bearer " + _SERVICE_KEY },
-    });
-    if (!res.ok) throw new Error("Failed to discover mailbox: " + await res.text());
-    const data = await res.json();
-    if (!data.mailboxes || data.mailboxes.length === 0) {
-      throw new Error("No mailbox configured for this project");
-    }
-    _mailboxId = data.mailboxes[0].mailbox_id;
-    return _mailboxId;
-  }
-  return {
-    async send(opts) {
-      const mbxId = await _discoverMailbox();
-      const body = { to: opts.to };
-      if (opts.template) {
-        body.template = opts.template;
-        body.variables = opts.variables || {};
-      } else {
-        body.subject = opts.subject;
-        body.html = opts.html;
-        if (opts.text) body.text = opts.text;
-      }
-      if (opts.from_name) body.from_name = opts.from_name;
-      const res = await fetch(_API_BASE + "/mailboxes/v1/" + mbxId + "/messages", {
-        method: "POST",
-        headers: { Authorization: "Bearer " + _SERVICE_KEY, "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      if (!res.ok) {
-        const errBody = await res.text();
-        let msg;
-        try { msg = JSON.parse(errBody).error || errBody; } catch { msg = errBody; }
-        throw new Error("Email send failed (" + res.status + "): " + msg);
-      }
-      return res.json();
-    },
-  };
-})();
-
-// --- user code ---
-${stripped}
-`;
-
-  writeFileSync(join(dir, name + ".mjs"), module);
 }
 
 /**
@@ -1140,6 +998,14 @@ async function invokeLocalFunction(
   const filePath = join(LOCAL_FUNCTIONS_DIR, projectId, name + ".mjs");
   if (!existsSync(filePath)) {
     throw new FunctionError("Function not found locally", 404);
+  }
+
+  // Set env vars for @run402/functions before importing user code.
+  // The package reads config lazily via getters, so these take effect immediately.
+  const configPath = join(LOCAL_FUNCTIONS_DIR, projectId, name + ".config.json");
+  if (existsSync(configPath)) {
+    const cfg = JSON.parse(readFileSync(configPath, "utf-8")) as Record<string, string>;
+    for (const [k, v] of Object.entries(cfg)) process.env[k] = v;
   }
 
   // Cache-bust: append timestamp query to force re-import on redeploy

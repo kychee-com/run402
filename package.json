@@ -5,6 +5,7 @@
   "type": "module",
   "workspaces": [
     "packages/shared",
+    "packages/functions",
     "packages/gateway",
     "infra"
   ],
