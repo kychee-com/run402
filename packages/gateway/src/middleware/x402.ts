@@ -138,6 +138,7 @@ async function initMppx(): Promise<void> {
         testnet: true,
       })],
       secretKey: MPP_SECRET_KEY,
+      realm: "api.run402.com",
     };
     const { Mppx: MppxExpress } = await import("mppx/express");
     const { Mppx: MppxServer } = await import("mppx/server");
