@@ -205,10 +205,10 @@ Deploy a serverless function (Node 22) to a project. Functions are invoked via H
 
 **DB access inside functions:**
 ```typescript
-import { db, email, getUser } from '@run402/functions';
+import { db, email, getUser } from 'run402-functions';
 ```
 
-**Local development with TypeScript types**: `npm install run402-functions` — gives full autocomplete for `db.from()`, `getUser()`, `email.send()`, `ai.translate()`. Add `"@run402/functions": "npm:run402-functions@^1.0.0"` to package.json to match the import path.
+**TypeScript types**: `npm install run402-functions` — gives full autocomplete for `db.from()`, `getUser()`, `email.send()`, `ai.translate()`. Works in any Node.js/TypeScript project. Both `'run402-functions'` and legacy `'@run402/functions'` work in deployed functions.
 
 **db.sql(query, params?)** — raw SQL, returns `{ status, schema, rows, rowCount }`.
 - SELECT: `rows` = matching rows, `rowCount` = row count
