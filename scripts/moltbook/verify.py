@@ -16,7 +16,9 @@ FALSE_POSITIVES = {
         "sentence", "attention", "potential", "patent", "latent", "intent",
         "extent", "extend", "competent", "consistent", "persistent", "existent",
         "encounter", "encounters", "then", "whaten", "meters", "meter",
-        "neuton", "neutons",
+        "neuton", "neutons", "newton", "newtons",
+        "fifteen", "thirteen", "fourteen", "sixteen", "seventeen", "eighteen", "nineteen",
+        "minute", "minutes",
         "centimeter", "centimeters", "centimetre", "centimetres",
     ],
     "one": [
@@ -28,10 +30,13 @@ FALSE_POSITIVES = {
     ],
     "eight": ["weight", "height", "freight", "sleight"],
     "eighteen": ["eightnewton", "eightmeter", "eightknot"],
+    "eleven": ["twelve", "twelvth"],
     "nine": [
         "canine", "feminine", "machine", "engine", "examine", "determine",
-        "combine", "discipline", "doctrine", "medicine", "routine",
+        "combine", "discipline", "doctrine", "medicine", "routine", "minute",
     ],
+    "fifteen": ["fivenewton", "fivenewtons", "fiveknot", "fiveknots", "fivemeter", "fivemeters"],
+    "nineteen": ["minute"],
     "six": ["sixth", "mixture", "physix", "physics"],
     "two": ["between", "network"],
     "three": [
@@ -85,7 +90,7 @@ def _fuzzy_pattern(word: str, loose: bool = False) -> str:
     # Full pattern + variants with one interior char removed
     # Only generate skip variants for words with 7+ collapsed chars — too many false positives for shorter words
     variants = [_build(chars)]
-    if len(chars) >= 7:
+    if len(chars) >= 6:
         for i in range(1, len(chars) - 1):
             variants.append(_build(chars[:i] + chars[i+1:]))
     return "(?:" + "|".join(variants) + ")"
@@ -189,6 +194,13 @@ def _detect_operation(challenge: str, aj: str) -> str | None:
     # these chars as decoration too often, causing false positives.
 
     # Priority: explicit question phrase ("what is the sum/difference/product") overrides story keywords
+    # Check for explicit "multiplied by" / "divided by" in the full text BEFORE question phrase
+    aj_lower = aj  # already lowered+collapsed
+    if "multipliedby" in aj_lower or "multiplyby" in aj_lower:
+        return "*"
+    if "dividedby" in aj_lower or "divideby" in aj_lower:
+        return "/"
+
     question_match = re.search(r'what\s*is\s*(the\s*)?(.*?)$', re.sub(r'[^a-zA-Z\s]', ' ', challenge).lower())
     if question_match:
         q = collapse(question_match.group(2))
@@ -224,8 +236,17 @@ def _detect_operation(challenge: str, aj: str) -> str | None:
     ]
     for word, op in ops:
         # Try exact collapsed match first, then fuzzy pattern match
-        m = re.search(_fuzzy_pattern(word), aj) if collapse(word) not in aj else None
-        matched = collapse(word) in aj or m
+        # Skip fuzzy matching for very short words (<=3 chars collapsed) — too many false positives
+        cw = collapse(word)
+        if cw in aj:
+            matched = True
+            m = None
+        elif len(cw) > 3:
+            m = re.search(_fuzzy_pattern(word), aj)
+            matched = bool(m)
+        else:
+            matched = False
+            m = None
         if matched:
             # Check for false positives (e.g. "boost" inside "lobster")
             fp_words = op_false_positives.get(word, [])
