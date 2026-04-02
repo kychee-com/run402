@@ -29,8 +29,8 @@
 ## 5. Update Lambda Layer
 
 - [x] 5.1 Update `build-layer.sh` — remove the heredoc block, add `@run402/functions` to the layer's npm install (pin version)
-- [ ] 5.2 Verify built layer contains `node_modules/@run402/functions/` with compiled JS and types
-- [ ] 5.3 Verify layer still contains convenience deps (stripe, openai, etc.)
+- [x] 5.2 Verify built layer contains `node_modules/@run402/functions/` with compiled JS and types
+- [x] 5.3 Verify layer still contains convenience deps (stripe, openai, etc.)
 
 ## 6. Update Local Dev
 
@@ -40,9 +40,9 @@
 
 ## 7. Publish & Deploy
 
-- [ ] 7.1 Publish `@run402/functions` v1.0.0 to npm (`npm publish --access public`)
-- [ ] 7.2 Rebuild and publish Lambda layer (`build-layer.sh --publish`)
-- [ ] 7.3 Update `LAMBDA_LAYER_ARN` in `infra/lib/pod-stack.ts` with new layer ARN
-- [ ] 7.4 Deploy CDK (`cdk deploy AgentDB-Pod01`)
-- [ ] 7.5 Deploy gateway (push to main or manual deploy)
-- [ ] 7.6 Run `test:functions` E2E to verify deployed functions still work
+- [x] 7.1 Publish `@run402/functions` v1.0.0 to npm (`npm publish --access public`)
+- [x] 7.2 Rebuild and publish Lambda layer (`build-layer.sh --publish`)
+- [x] 7.3 Update `LAMBDA_LAYER_ARN` in `infra/lib/pod-stack.ts` with new layer ARN
+- [x] 7.4 Deploy CDK (`cdk deploy AgentDB-Pod01`)
+- [x] 7.5 Deploy gateway (push to main or manual deploy)
+- [x] 7.6 Run `test:functions` E2E to verify deployed functions still work
