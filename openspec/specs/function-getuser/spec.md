@@ -40,7 +40,7 @@ The gateway SHALL inject `RUN402_JWT_SECRET` as an environment variable when dep
 - **THEN** the inlined helper code SHALL have access to the JWT secret via `RUN402_JWT_SECRET` environment variable or equivalent inline constant
 
 ### Requirement: getUser uses jsonwebtoken for verification
-The `getUser` function SHALL use the `jsonwebtoken` package (already bundled in the Lambda layer) to verify the token signature, check expiry, and extract claims. It SHALL NOT use manual base64 decoding or custom verification logic.
+The `getUser` function SHALL use the `jsonwebtoken` package (a dependency of `run402-functions`) to verify the token signature, check expiry, and extract claims. It SHALL NOT use manual base64 decoding or custom verification logic.
 
 #### Scenario: Token signature verification
 - **WHEN** a function calls `getUser(req)` with a JWT signed by a different secret
@@ -73,16 +73,17 @@ The gateway SHALL include the `email` claim in all user JWTs (password login, OA
 - **THEN** the refreshed JWT SHALL contain the `email` claim set to the user's current email address
 
 ### Requirement: getUser available in both Lambda and local dev modes
-The `getUser` implementation SHALL exist in both:
-1. The Lambda layer helper (`packages/functions-runtime/build-layer.sh` HELPERJS heredoc)
-2. The local dev inline helper (`packages/gateway/src/services/functions.ts` `writeLocalFunction()`)
+The `getUser` implementation SHALL exist in the `run402-functions` npm package at `packages/functions/`. Both Lambda and local dev modes SHALL resolve `getUser` from this package — there SHALL be no separate inlined copy.
 
-Both implementations SHALL behave identically.
+1. Lambda: the Lambda layer installs `run402-functions` via npm, making `getUser` available at runtime
+2. Local dev: the monorepo workspace links `packages/functions/`, making `getUser` available via standard module resolution
+
+Both modes SHALL behave identically.
 
 #### Scenario: Lambda mode
 - **WHEN** a function deployed to Lambda calls `getUser(req)`
-- **THEN** it SHALL work using the `jsonwebtoken` package from the Lambda layer and the `RUN402_JWT_SECRET` env var
+- **THEN** it SHALL work using the `run402-functions` package installed in the Lambda layer and the `RUN402_JWT_SECRET` env var
 
 #### Scenario: Local dev mode
 - **WHEN** a function running in local dev mode calls `getUser(req)`
-- **THEN** it SHALL work using `jsonwebtoken` imported in the inlined code and the JWT secret from the gateway's environment
+- **THEN** it SHALL work using the `run402-functions` package resolved from the monorepo workspace and the `RUN402_JWT_SECRET` env var
