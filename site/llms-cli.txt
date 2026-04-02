@@ -249,9 +249,11 @@ Requires active tier and a provisioned project. Deploys to an existing project: 
 
 ### functions
 Node 22 runtime. Must export `default async (req: Request) => Response`.
-Built-in helper: `import { db, email, getUser } from '@run402/functions'`
+Built-in helper: `import { db, email, ai, getUser } from '@run402/functions'`
 - `getUser(req)` — verify caller's JWT, returns `{ id, role }` or `null`
 - `email.send(opts)` — send email from the project's mailbox (see email section below)
+
+**Local development with TypeScript types**: `npm install run402-functions` (note: npm package name is `run402-functions`, import path stays `@run402/functions`). Add `"@run402/functions": "npm:run402-functions@^1.0.0"` to your package.json dependencies to get full autocomplete for `db.from()`, `getUser()`, `email.send()`, and `ai.translate()`.
 
 #### db.sql(query, params?)
 Raw SQL. Returns `{ status, schema, rows, rowCount }`.

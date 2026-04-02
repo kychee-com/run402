@@ -838,6 +838,8 @@ Built-in helper: `import { db, email, ai, getUser } from '@run402/functions'`
 - `ai.moderate(text)` -- content moderation via OpenAI (free)
 Secrets: `process.env.SECRET_NAME`
 
+**Local development with TypeScript types**: `npm install run402-functions` (note: npm package name is `run402-functions`, import path stays `@run402/functions`). Add `"@run402/functions": "npm:run402-functions@^1.0.0"` to your package.json dependencies to get full autocomplete for `db.from()`, `getUser()`, `email.send()`, and `ai.translate()`.
+
 **db.sql(query, params?)** -- raw SQL, returns `{ status, schema, rows, rowCount }`.
 - SELECT: `rows` = matching rows, `rowCount` = row count
 - INSERT/UPDATE/DELETE: `rows` = `[]`, `rowCount` = affected rows
