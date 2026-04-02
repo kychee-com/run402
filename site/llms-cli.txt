@@ -249,11 +249,11 @@ Requires active tier and a provisioned project. Deploys to an existing project: 
 
 ### functions
 Node 22 runtime. Must export `default async (req: Request) => Response`.
-Built-in helper: `import { db, email, ai, getUser } from '@run402/functions'`
+Built-in helper: `import { db, email, ai, getUser } from 'run402-functions'`
 - `getUser(req)` — verify caller's JWT, returns `{ id, role }` or `null`
 - `email.send(opts)` — send email from the project's mailbox (see email section below)
 
-**Local development with TypeScript types**: `npm install run402-functions` (note: npm package name is `run402-functions`, import path stays `@run402/functions`). Add `"@run402/functions": "npm:run402-functions@^1.0.0"` to your package.json dependencies to get full autocomplete for `db.from()`, `getUser()`, `email.send()`, and `ai.translate()`.
+**TypeScript types**: `npm install run402-functions` to get full autocomplete for `db.from()`, `getUser()`, `email.send()`, and `ai.translate()`. Works in any Node.js/TypeScript project (Astro, Next.js, plain TS). Both `import { db } from 'run402-functions'` and legacy `import { db } from '@run402/functions'` work in deployed functions.
 
 #### db.sql(query, params?)
 Raw SQL. Returns `{ status, schema, rows, rowCount }`.
@@ -434,7 +434,7 @@ Slug rules: 3-63 chars, lowercase alphanumeric + hyphens, no consecutive hyphens
 
 **Using email from functions**: Import `email` from `@run402/functions` — no need to manage mailbox IDs or service keys manually:
 ```js
-import { email } from '@run402/functions';
+import { email } from 'run402-functions';
 
 // Template mode
 await email.send({ to: "user@example.com", template: "notification", variables: { project_name: "My App", message: "Hello!" } });

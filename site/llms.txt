@@ -831,14 +831,14 @@ export default async (req: Request) => {
 
 **Lifecycle hooks**: Functions named `on-<event>` are invoked by the gateway on platform events. Currently supported: `on-signup` — fires after first user signup (password or OAuth) with body `{ "user": { "id", "email", "created_at" } }` and header `X-Run402-Trigger: signup`. Fire-and-forget, no user JWT (function uses its own service key). Only fires on first signup, not on login.
 
-Built-in helper: `import { db, email, ai, getUser } from '@run402/functions'`
+Built-in helper: `import { db, email, ai, getUser } from 'run402-functions'`
 - `getUser(req)` -- verify caller's JWT, returns `{ id, role }` or `null`
 - `email.send(opts)` -- send email from the project's mailbox (see below)
 - `ai.translate(text, to, opts?)` -- translate text to target language (requires translation add-on)
 - `ai.moderate(text)` -- content moderation via OpenAI (free)
 Secrets: `process.env.SECRET_NAME`
 
-**Local development with TypeScript types**: `npm install run402-functions` (note: npm package name is `run402-functions`, import path stays `@run402/functions`). Add `"@run402/functions": "npm:run402-functions@^1.0.0"` to your package.json dependencies to get full autocomplete for `db.from()`, `getUser()`, `email.send()`, and `ai.translate()`.
+**TypeScript types**: `npm install run402-functions` to get full autocomplete for `db.from()`, `getUser()`, `email.send()`, and `ai.translate()`. Works in any Node.js/TypeScript project (Astro, Next.js, plain TS). The `db` query builder also works at build time for static site generation -- set `RUN402_SERVICE_KEY` in your `.env` and use `db.from()` in server-side build code to pre-render pages with data. Both `import { db } from 'run402-functions'` and legacy `import { db } from '@run402/functions'` work in deployed functions.
 
 **db.sql(query, params?)** -- raw SQL, returns `{ status, schema, rows, rowCount }`.
 - SELECT: `rows` = matching rows, `rowCount` = row count
@@ -1070,7 +1070,7 @@ The `image` field contains the full PNG as base64. Decode to get the image file.
 
 ### AI Helpers
 
-Built-in AI capabilities available to edge functions via the `@run402/functions` runtime.
+Built-in AI capabilities available to edge functions via the `run402-functions` runtime.
 
 | Endpoint | Method | Auth | Cost | Description |
 |----------|--------|------|------|-------------|
@@ -1083,7 +1083,7 @@ Built-in AI capabilities available to edge functions via the `@run402/functions`
 **Translation** — Translate text to any language. Requires an active AI Translation add-on (purchased as a "words/month" package). The platform picks the model and owns the prompt.
 
 ```js
-import { ai } from '@run402/functions';
+import { ai } from 'run402-functions';
 
 // Basic translation
 const result = await ai.translate("Hello world", "es");
@@ -1123,7 +1123,7 @@ const result = await ai.translate("Bonjour", "en", { from: "fr" });
 **Moderation** — Free content moderation using OpenAI's moderation API. No add-on required.
 
 ```js
-import { ai } from '@run402/functions';
+import { ai } from 'run402-functions';
 
 const result = await ai.moderate("some user content");
 // → { flagged: false, categories: { harassment: false, ... }, category_scores: { harassment: 0.001, ... } }
@@ -1681,7 +1681,7 @@ Each project can have one mailbox at `<slug>@mail.run402.com`. Mailboxes support
 - **Branded footer.** All outbound emails include a small "Sent via Run402" footer. Cannot be removed.
 - **Auto-suspend on spam complaints.** If recipients mark your emails as spam, the mailbox is suspended. Admin can reactivate via `POST /mailboxes/v1/:id/status`.
 - **Tombstone on project delete.** When a project is deleted, its mailbox is tombstoned. The address cannot be reused for 90 days (cooldown period).
-- **Using email from functions.** Import `email` from `@run402/functions` and call `email.send({ to, subject, html })` (raw mode) or `email.send({ to, template, variables })` (template mode). The helper auto-discovers the project's mailbox. No manual mailbox ID management needed.
+- **Using email from functions.** Import `email` from `run402-functions` and call `email.send({ to, subject, html })` (raw mode) or `email.send({ to, template, variables })` (template mode). The helper auto-discovers the project's mailbox. No manual mailbox ID management needed.
 
 ### Create a mailbox
 
@@ -1758,7 +1758,7 @@ curl -X POST https://api.run402.com/mailboxes/v1/mbx_1741340000_a1b2c3/messages 
 ### Send email from a function
 
 ```javascript
-import { db, email } from '@run402/functions';
+import { db, email } from 'run402-functions';
 
 export default async function handler(req) {
   const members = await db.from('members').select('email, display_name').eq('status', 'active');
