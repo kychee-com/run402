@@ -30,6 +30,7 @@
     "@x402/express": "^2.4.0",
     "@x402/extensions": "^2.4.0",
     "bcryptjs": "^2.4.3",
+    "bs58": "^4.0.1",
     "croner": "^10.0.1",
     "esbuild": "^0.25.0",
     "express": "^5.1.0",

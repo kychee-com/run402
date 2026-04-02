@@ -137,6 +137,21 @@ export class PodStack extends cdk.Stack {
       this, "OpenaiApiKey", "run402/openai-api-key",
     );
 
+    const googleAdminClientId = secretsmanager.Secret.fromSecretCompleteArn(
+      this, "GoogleAdminClientId",
+      "arn:aws:secretsmanager:us-east-1:472210437512:secret:agentdb/google-oauth-client-id-LKOTip",
+    );
+
+    const googleAdminClientSecret = secretsmanager.Secret.fromSecretCompleteArn(
+      this, "GoogleAdminClientSecret",
+      "arn:aws:secretsmanager:us-east-1:472210437512:secret:agentdb/google-oauth-client-secret-ch5Nbj",
+    );
+
+    const adminSessionSecret = secretsmanager.Secret.fromSecretCompleteArn(
+      this, "AdminSessionSecret",
+      "arn:aws:secretsmanager:us-east-1:472210437512:secret:agentdb/admin-session-secret-TY63qS",
+    );
+
     // STRIPE_WEBHOOK_SECRET: managed outside CDK — added directly to task def revisions.
     // fromSecretNameV2 generates a partial ARN that ECS can't resolve at startup.
 
@@ -451,6 +466,9 @@ export class PodStack extends cdk.Stack {
         GOOGLE_APP_CLIENT_SECRET: ecs.Secret.fromSecretsManager(googleAppOauth, "client_secret"),
         CLOUDFLARE_API_TOKEN: ecs.Secret.fromSecretsManager(cloudflareApiToken),
         OPENAI_API_KEY: ecs.Secret.fromSecretsManager(openaiApiKey),
+        GOOGLE_CLIENT_ID: ecs.Secret.fromSecretsManager(googleAdminClientId),
+        GOOGLE_CLIENT_SECRET: ecs.Secret.fromSecretsManager(googleAdminClientSecret),
+        ADMIN_SESSION_SECRET: ecs.Secret.fromSecretsManager(adminSessionSecret),
         // STRIPE_WEBHOOK_SECRET: managed outside CDK (fromSecretNameV2 ARN issue)
       },
       healthCheck: {
