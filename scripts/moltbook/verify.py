@@ -159,16 +159,35 @@ def _extract_numbers(aj: str) -> list[float]:
                 found.append((idx, v))
                 used.update(range(idx, end))
 
-    # Pass 3: detect "and a half" / "and a quarter" modifiers after number words
+    # Pass 3: detect "and a half" / "and a quarter" / "point X" modifiers
     found.sort()
     updated = []
+    remove_positions = set()  # positions of numbers absorbed by "point X"
     for i, (pos, v) in enumerate(found):
+        if pos in remove_positions:
+            continue
         next_pos = found[i + 1][0] if i + 1 < len(found) else len(aj)
-        window = aj[pos:min(next_pos, pos + 40)]
+        window = aj[pos:min(pos + 60, len(aj))]  # wider window for point detection
         if re.search(r"andahalf", window):
             v += 0.5
         elif re.search(r"andaquarter", window):
             v += 0.25
+        else:
+            # Handle "point X" decimals (e.g. "two point five" = 2.5)
+            point_match = re.search(r"point", window)
+            if point_match:
+                after_point = window[point_match.end():]
+                for dw, dv in sorted(ONES.items(), key=lambda x: -len(x[0])):
+                    dp = _fuzzy_pattern(dw)
+                    dm = re.match(r'.{0,3}?' + dp, after_point)
+                    if dm:
+                        v = float(int(v)) + dv * 0.1
+                        # Remove the decimal digit if it was found as separate number
+                        for j in range(i + 1, len(found)):
+                            if found[j][1] == dv:
+                                remove_positions.add(found[j][0])
+                                break
+                        break
         updated.append((pos, v))
     found = updated
 
@@ -211,9 +230,12 @@ def _detect_operation(challenge: str, aj: str) -> str | None:
         if "product" in q:
             return "*"
 
-    # "the net" → subtraction (before word-based detection to override "adds" etc.)
+    # "the net" → subtraction, BUT not if explicit multiply keyword present
     if "thenet" in aj:
-        return "-"
+        # Check for explicit multiply keywords first
+        _times_check = re.sub(r'[^a-z]', '', challenge.lower())
+        if not any(kw in _times_check for kw in ("times", "multiply", "multiplied", "product", "factor")):
+            return "-"
     # Word-based detection (subtraction before addition to avoid false matches)
     # Use fuzzy matching to handle obfuscation artifacts
     # False positives for operation keywords (word → list of containing words)
@@ -280,6 +302,12 @@ def _detect_operation(challenge: str, aj: str) -> str | None:
         return "*"
     # "how far" generic — if we have exactly 2 numbers and "how far", likely multiply
     if "howfar" in aj:
+        return "*"
+    # Physics: "how much work" = force × distance
+    if "howmuchwork" in aj:
+        return "*"
+    # "applies X over Y" = force × distance (work)
+    if "aplies" in aj or "applies" in aj or "aply" in aj:
         return "*"
     return None
 
