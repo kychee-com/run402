@@ -1,6 +1,6 @@
 ---
 product: saas-factory
-version: 1.1.0
+version: 1.4.0
 status: Draft
 type: product
 interfaces: [document]
@@ -167,6 +167,25 @@ Every SaaS-killer product launches simultaneously as two delivery modes, backed 
 
 **Why two repos:** The MIT license on the public repo must cover only the forkable template. Marketing copy, brand assets, proprietary service logic, and paid features must not be MIT-licensed. The marketing site sells the hosted service and evolves with pricing/premium features, not with the template's feature set. Forkers get a pristine repo with exactly what they need.
 
+**Build order and no-duplication rule:** The public repo is always built first as the core product. The private service repo imports/depends on the public repo and adds the service layer on top (billing, branded website, premium features, legal docs, analytics). No code duplication — the service repo never re-implements what the public repo provides. This means:
+- The public repo is the library/engine; the service repo is the application built on it
+- Building the service repo inherently exercises and tests the public repo extensively
+- Bug fixes and improvements go into the public repo (core) and flow to the service automatically
+- The plan builds the public repo first, then the service repo on top of it
+
+**Dependency model between repos:** The service repo depends on the public repo as a package dependency. Both repos are cloned under the same workspace. The dependency evolves through three stages:
+
+1. **Active development:** `"file:../{product}"` — local path reference. Changes to the public repo are instantly available in the service repo (npm/node creates a symlink). Two real repos from day one, clean boundary enforced, no commit-push-install cycle during iteration.
+2. **Stable but pre-public:** `"github:kychee-com/{product}#v1.0.0"` — git dependency pinned to a tag. Used when the public repo is stable but not yet published to npm.
+3. **Public and mature:** `"{product}"` — npm package, versioned. Used when the public repo is published on npm.
+
+Each transition is a single-line change in the service repo's `package.json`. The public repo stays private on GitHub until launch-ready, then is flipped to public. The MIT license applies from the first public commit forward.
+
+**Workspace layout and where work happens:**
+- **Product code** → product repos (`kychee-com/{product}` and `kychee-com/{product}-service`), cloned side by side under the workspace
+- **Docs (plan, spec, brainstorm)** → run402 repo (`docs/products/{product}/`, `docs/plans/`)
+- **run402 platform enhancements** triggered by a product's needs → run402 worktree on a feature branch. Product plans often surface missing platform capabilities (e.g., new payment models, auth methods). These are implemented in run402 via worktree, not in the product repos.
+
 Both options presented on the product website (in the private service repo) with a decision helper for choosing between them.
 
 ### F13. Three Audiences as First-Class
@@ -278,6 +297,13 @@ Both kychee.com and run402.com maintain an llms.txt file that serves as a centra
 - [ ] Agent-deployable (public) and agent-provisionable (private) are explicit requirements
 - [ ] Monetization model and subdomain strategy are marked as DECIDE items
 - [ ] Private service repo runs on run402 infrastructure
+- [ ] Build order specified: public repo built first as core, service repo built on top
+- [ ] No-duplication rule stated: service repo imports/depends on public repo, never re-implements core code
+- [ ] Bug fixes flow into public repo (core) and propagate to service automatically
+- [ ] Dependency model specified: three stages (local `file:` path → git dependency → npm package)
+- [ ] Both repos cloned under same workspace during development
+- [ ] Public repo stays private on GitHub until launch-ready
+- [ ] Workspace layout specified: product code in product repos, docs in run402, platform enhancements in run402 worktree
 
 ### F13. Three Audiences
 - [ ] Builders, end users, and AI agents are named in the dual delivery section

@@ -34,7 +34,7 @@ An envelope is one document (PDF) sent to one or more signers. The envelope is t
 
 - F1.1. Create an envelope by providing a PDF (upload or URL) and a list of signers (email + name per signer).
 - F1.2. Up to 5 signers included per envelope. Additional signers incur a per-signer surcharge (reflecting real gas costs).
-- F1.3. Sender specifies signing order: parallel (all signers can sign in any order) or sequential (signers are notified one at a time in the specified order).
+- F1.3. Sender specifies signing order: parallel (default — all signers can sign in any order) or sequential (signers are notified one at a time in the specified order).
 - F1.4. Sender can set per-signer options: verification level (1-3, 5 for MVP), `require_wallet` flag.
 - F1.5. Envelope lifecycle statuses: draft, active, completed, expired, voided.
 - F1.6. Sender can void an active envelope (cancels all pending signing requests, notifies signers).
@@ -61,18 +61,22 @@ What happens when a signer receives and acts on a signing request.
 - F3.1. Signer receives an email with a one-time signing link. Link expires after the envelope TTL.
 - F3.2. Signing page renders the PDF with signature fields highlighted.
 - F3.3. Signing page detects browser wallet (MetaMask, Coinbase Wallet, etc.). If wallet detected, offers both Method A and Method B. If no wallet, shows Method A only. If `require_wallet` is set for this signer, shows Method B only.
-- F3.4. **Method A (email-based signing):** Signer draws, types, or uploads their signature. Browser generates an ephemeral Ed25519 keypair client-side (private key never transmitted). Browser signs `hash(document_hash + email + timestamp)`. Server records salted commitment hash on-chain. Signer never sees or touches crypto.
-- F3.5. Method A key generation uses native Web Crypto API (Ed25519) with feature detection. If the browser does not support Ed25519 in Web Crypto, falls back to tweetnacl.js (pure JavaScript library). Detection and fallback are invisible to the signer.
-- F3.6. **Method B (wallet signing via EIP-712):** Signer clicks "Sign with wallet." Page calls `eth_signTypedData_v4` with a DocumentSignature struct. Signer's own wallet displays human-readable signing details (document name, hash, email, envelope ID, timestamp). Server records signer's Ethereum address on-chain via `ecrecover`.
-- F3.7. **Verification levels (MVP):**
+- F3.4. **Signature visual mode (sender chooses per envelope):**
+  - `require_drawn_signature: false` (default) — signer clicks "Sign this document" in one click. Auto-stamp embedded in PDF: signer's name rendered in a handwriting-style font + crypto verification details (method, timestamp, chain). Fastest possible UX.
+  - `require_drawn_signature: true` — signer gets a drawing/typing widget to create a handwritten signature. Signer confirms the signature before it is applied. Applies to both Method A and Method B signers.
+- F3.5. **Signature persistence:** After a signer draws a signature, the browser offers "Save this signature for future use?" If accepted, the signature image is stored in cookie/localStorage. On subsequent signing requests (same browser), the signer is offered "Use saved signature?" with an option to redraw. Saved signatures are never transmitted to the server until used in an actual signing event.
+- F3.6. **Method A (email-based signing):** Signer completes the signature step (one-click auto-stamp or drawn, per F3.4). Browser generates an ephemeral Ed25519 keypair client-side (private key never transmitted). Browser signs `hash(document_hash + email + timestamp)`. Server records salted commitment hash on-chain. Signer never sees or touches crypto.
+- F3.7. Method A key generation uses native Web Crypto API (Ed25519) with feature detection. If the browser does not support Ed25519 in Web Crypto, falls back to tweetnacl.js (pure JavaScript library). Detection and fallback are invisible to the signer.
+- F3.8. **Method B (wallet signing via EIP-712):** Signer completes the signature step (one-click auto-stamp or drawn, per F3.4), then clicks "Sign with wallet." Page calls `eth_signTypedData_v4` with a DocumentSignature struct. Signer's own wallet displays human-readable signing details (document name, hash, email, envelope ID, timestamp). Server records signer's Ethereum address on-chain via `ecrecover`.
+- F3.9. **Verification levels (MVP):**
   - Level 1: Email link only (low-stakes internal approvals)
   - Level 2: Email + type email confirmation (default for most contracts)
-  - Level 3: Email + SMS/WhatsApp code (~$0.02 surcharge)
   - Level 5: Wallet signature via EIP-712 (strongest proof, requires signer wallet)
-- F3.8. **Level 4 (government ID verification)** is post-MVP. The verification level system accommodates it. Implementation requires integration with a third-party identity verification service (to be selected after comparative review), exposed via run402 as a paid service.
-- F3.9. After signing, server embeds the visual signature into the PDF and sends a confirmation email to the signer.
-- F3.10. Signer can decline to sign. Sender is notified of the decline.
-- F3.11. Duplicate signing protection: if a signer who has already signed clicks a signing link again (same or different channel), they see a "You've already signed this document" message. No double-signing is possible.
+- F3.10. **Level 3 (SMS/WhatsApp code) is post-MVP.** Will be built as a run402 platform messaging service (likely AWS SNS). Until then, senders can achieve multi-channel verification manually by delivering signing links via their own SMS/WhatsApp/Slack.
+- F3.11. **Level 4 (government ID verification)** is post-MVP. The verification level system accommodates it. Implementation requires integration with a third-party identity verification service (to be selected after comparative review), exposed via run402 as a paid service.
+- F3.12. After signing, server embeds the visual signature (auto-stamp or drawn) into the PDF and sends a confirmation email to the signer.
+- F3.13. Signer can decline to sign. Sender is notified of the decline.
+- F3.14. Duplicate signing protection: if a signer who has already signed clicks a signing link again (same or different channel), they see a "You've already signed this document" message. No double-signing is possible.
 
 ### F4. On-Chain Recording `[both]`
 
@@ -248,12 +252,14 @@ Per the SaaS Factory spec (Chapter 6).
 - [ ] Browser with wallet: signing page shows both Method A and Method B options
 - [ ] Browser without wallet: signing page shows Method A only
 - [ ] Signer with `require_wallet: true`: signing page shows Method B only; Method A is not available
-- [ ] Method A: signer draws/types signature; Ed25519 keypair generated client-side; signature recorded on-chain with salted commitment hash; signer never sees crypto terminology
+- [ ] Default mode (`require_drawn_signature: false`): signer clicks "Sign this document"; auto-stamp with handwriting-font name + crypto details embedded in PDF; no drawing widget shown
+- [ ] Drawn mode (`require_drawn_signature: true`): signer draws/types signature in widget; confirms before applying; works for both Method A and Method B
+- [ ] Signature persistence: after drawing, signer offered "Save for future use?"; saved in cookie/localStorage; on next signing, offered "Use saved signature?" with redraw option
+- [ ] Method A: Ed25519 keypair generated client-side; signature recorded on-chain with salted commitment hash; signer never sees crypto terminology
 - [ ] Method A: Ed25519 via Web Crypto API succeeds on supported browsers; falls back to tweetnacl.js on unsupported browsers; signer sees no difference
-- [ ] Method B: signer's wallet displays human-readable DocumentSignature struct; signer approves; Ethereum address recorded on-chain
+- [ ] Method B: signer completes signature step (auto-stamp or drawn), then wallet displays human-readable DocumentSignature struct; signer approves; Ethereum address recorded on-chain
 - [ ] Level 1: signing completes with email link click only
 - [ ] Level 2: signer must type their email as confirmation before signing completes
-- [ ] Level 3: signer must enter a code sent via SMS/WhatsApp before signing completes
 - [ ] Level 5: signing completes only via EIP-712 wallet signature
 - [ ] Signer who has already signed clicks signing link again (any channel): sees "You've already signed this document" message; no duplicate recording
 - [ ] Signer declines: sender is notified; signer status updated to "declined"
@@ -372,10 +378,8 @@ Per the SaaS Factory spec (Chapter 6).
 8. **run402 custom domain mapping** — confirm forkers can map custom domains to their run402-hosted instances.
 9. **Email deliverability strategy** — dedicated sending domain, IP warm-up plan, deliverability monitoring for the service.
 10. **Certificate of Completion design** — what do courts/auditors expect to see? Research needed.
-11. **Sequential vs parallel signing default** — which is the default when sender doesn't specify?
-12. **Contract naming** — should SignatureRegistry.sol be named independently of kysigned (for protocol neutrality)?
+11. **Contract naming** — should SignatureRegistry.sol be named independently of kysigned (for protocol neutrality)?
 13. **Platform wallet security** — key management strategy for the server-side wallet that makes Path 3 on-chain recordings.
 14. **Credit pack tiers and pricing** — optimize for conversion vs margin after gas costs are known.
-15. **Method B visual signature** — should wallet signers also draw/type a visual signature for PDF embedding, in addition to their EIP-712 signature?
-16. **Mobile wallet signing UX** — does `eth_signTypedData_v4` work reliably in mobile wallet browsers?
+15. **Mobile wallet signing UX** — does `eth_signTypedData_v4` work reliably in mobile wallet browsers?
 17. **Future: run402 payment collection for server builders** — could run402 offer Stripe-based payment collection so repo forkers can charge their own users? Not kysigned scope, but a platform idea that benefits all SaaS-alternative products.
