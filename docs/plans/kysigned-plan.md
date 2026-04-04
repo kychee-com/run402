@@ -72,6 +72,8 @@
 - [ ] Create private GitHub repo `kychee-com/kysigned` [infra]
 - [ ] Create private GitHub repo `kychee-com/kysigned-service` [infra]
 - [ ] Clone both repos locally under `C:\Workspace-Kychee\` (`kysigned` and `kysigned-service` side by side) [infra]
+- [ ] Create VS Code multi-root workspace file `C:\Workspace-Kychee\kysigned.code-workspace` with all three repos [infra]
+- [ ] **STOP — switch to the new workspace view before continuing** [manual] `HUMAN`
 - [ ] Initialize `kysigned` repo: package.json, tsconfig, README stub, MIT LICENSE, .gitignore [code]
 - [ ] Initialize `kysigned-service` repo: package.json with `"kysigned": "file:../kysigned"` dependency, tsconfig, .gitignore [code]
 - [ ] Draft LEGAL.md for public repo (signature validity disclaimers, jurisdictional limitations, smart contract permanence, operator responsibility, excluded document types) [code] `AI -> HUMAN: Approve`

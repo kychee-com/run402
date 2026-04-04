@@ -1,6 +1,6 @@
 ---
 product: saas-factory
-version: 1.4.0
+version: 1.5.0
 status: Draft
 type: product
 interfaces: [document]
@@ -186,6 +186,18 @@ Each transition is a single-line change in the service repo's `package.json`. Th
 - **Docs (plan, spec, brainstorm)** → run402 repo (`docs/products/{product}/`, `docs/plans/`)
 - **run402 platform enhancements** triggered by a product's needs → run402 worktree on a feature branch. Product plans often surface missing platform capabilities (e.g., new payment models, auth methods). These are implemented in run402 via worktree, not in the product repos.
 
+**VS Code multi-root workspace setup:** After creating and cloning the repos, create a `{product}.code-workspace` file in the parent workspace directory with all three repos as folders:
+```json
+{
+  "folders": [
+    { "path": "{product}", "name": "{product} (public)" },
+    { "path": "{product}-service", "name": "{product}-service (private)" },
+    { "path": "run402", "name": "run402 (docs + platform)" }
+  ]
+}
+```
+Open this workspace file in VS Code before continuing implementation. This gives visibility into all three repos, independent git context per repo, cross-repo search, and working `file:` dependency resolution. **This is a STOP point in the plan** — switch to the new workspace view before proceeding with implementation.
+
 Both options presented on the product website (in the private service repo) with a decision helper for choosing between them.
 
 ### F13. Three Audiences as First-Class
@@ -304,6 +316,7 @@ Both kychee.com and run402.com maintain an llms.txt file that serves as a centra
 - [ ] Both repos cloned under same workspace during development
 - [ ] Public repo stays private on GitHub until launch-ready
 - [ ] Workspace layout specified: product code in product repos, docs in run402, platform enhancements in run402 worktree
+- [ ] VS Code multi-root workspace setup specified with STOP point before implementation continues
 
 ### F13. Three Audiences
 - [ ] Builders, end users, and AI agents are named in the dual delivery section
