@@ -69,10 +69,10 @@
 
 ### Phase 0: Foundation `AI`
 
-- [ ] Create private GitHub repo `kychee-com/kysigned` [infra]
-- [ ] Create private GitHub repo `kychee-com/kysigned-service` [infra]
-- [ ] Clone both repos locally under `C:\Workspace-Kychee\` (`kysigned` and `kysigned-service` side by side) [infra]
-- [ ] Create VS Code multi-root workspace file `C:\Workspace-Kychee\kysigned.code-workspace` with all three repos [infra]
+- [x] Create private GitHub repo `kychee-com/kysigned` [infra]
+- [x] Create private GitHub repo `kychee-com/kysigned-service` [infra]
+- [x] Clone both repos locally under `C:\Workspace-Kychee\` (`kysigned` and `kysigned-service` side by side) [infra]
+- [x] Create VS Code multi-root workspace file `C:\Workspace-Kychee\kysigned.code-workspace` with all three repos [infra]
 - [ ] **STOP — switch to the new workspace view before continuing** [manual] `HUMAN`
 - [ ] Initialize `kysigned` repo: package.json, tsconfig, README stub, MIT LICENSE, .gitignore [code]
 - [ ] Initialize `kysigned-service` repo: package.json with `"kysigned": "file:../kysigned"` dependency, tsconfig, .gitignore [code]
@@ -340,3 +340,4 @@ _None yet_
 ## Log
 
 - 2026-04-04: Plan created from spec v0.1.0 + saas-factory spec v1.3.0
+- 2026-04-05: Phase 0 — created repos (kychee-com/kysigned, kychee-com/kysigned-service), cloned locally, workspace file ready
