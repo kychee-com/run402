@@ -1,7 +1,7 @@
 ---
 product: saas-factory
-version: 0.2.0
-status: Approved
+version: 1.1.0
+status: Draft
 type: product
 interfaces: [document]
 created: 2026-04-04
@@ -99,6 +99,15 @@ Each product specifies which SaaSpocalypse channels and segment hubs it particip
 ### F8. Legal Human Gate
 
 All legal documents (ToS, Privacy Policy, Cookie notice, AUP, DPA) are drafted by AI from existing Kychee/Eleanor/run402 templates but require explicit human approval before the product launches. The factory doc marks these as `AI: [draft] -> HUMAN: Approve` and the product cannot ship until all legal approvals are checked off.
+
+**Public repo legal (LEGAL.md):** Every public MIT-licensed repo ships a `LEGAL.md` file separate from the MIT `LICENSE`. The MIT license covers code usage rights and the standard "AS IS" / no warranty disclaimer. `LEGAL.md` covers product-specific disclaimers that MIT does not address:
+- What the product's output proves and does not prove (evidentiary value, not guaranteed legal enforceability)
+- No guarantee of legal enforceability in any specific jurisdiction
+- Permanence disclaimers for on-chain or irreversible operations
+- Operator responsibility: the forker/deployer is responsible for their own privacy compliance, Terms of Service, and legal obligations — not Kychee
+- Product-specific excluded use cases or regulatory limitations
+
+`LEGAL.md` is drafted by AI and requires human approval before the repo is published: `AI: Draft LEGAL.md -> HUMAN: Approve`.
 
 ### F9. Cross-Linking to Kychee Ecosystem
 
@@ -236,10 +245,13 @@ Both kychee.com and run402.com maintain an llms.txt file that serves as a centra
 - [ ] Segment hub curation is manual (HUMAN task) based on strategic priority
 
 ### F8. Legal Human Gate
-- [ ] All 5 legal document types are listed (ToS, Privacy, Cookie, AUP, DPA)
-- [ ] Each is marked as AI-drafted, human-approved
+- [ ] All 5 service legal document types are listed (ToS, Privacy, Cookie, AUP, DPA)
+- [ ] Each service legal doc is marked as AI-drafted, human-approved
 - [ ] Reference to existing Kychee/Eleanor/run402 templates is included
 - [ ] The doc states no product ships without legal sign-off
+- [ ] Public repo LEGAL.md requirement is specified (separate from MIT LICENSE)
+- [ ] LEGAL.md covers: evidentiary value disclaimers, jurisdictional limitations, permanence/irreversibility disclaimers, operator responsibility, product-specific exclusions
+- [ ] LEGAL.md is marked as AI-drafted, human-approved before repo publication
 
 ### F9. Cross-Linking
 - [ ] All 8 cross-link targets are listed (kychee.com, run402 mention, bld402, segment hubs, SaaSpocalypse, run402.com showcase, kychee.com/llms.txt, run402.com/llms.txt)
