@@ -127,13 +127,14 @@ The factory doc is not consumed by `/implement` (plan has all tasks) or `/valida
 ### F11. Lifecycle Per Product
 
 The factory doc prescribes this lifecycle for each SaaS-killer product:
-1. Copy `saas-factory.md` into the new product's repo at `docs/saas-factory.md`
-2. Run `/brainstorm` with factory doc as reference — explores strategy, fills DECIDE items
-3. Run `/spec` with factory doc as reference — specifies all deliverables
-4. Run `/plan` with factory doc + spec as reference — decomposes all remaining tasks
-5. Run `/implement` — executes the plan (factory doc no longer needed)
-6. Run `/validate` — tests against spec
-7. Human final review — legal sign-off, collateral approval, launch go/no-go
+1. Mark the segment as "🔨 IN PROCESS" in `docs/products/saas-segments/saas-killing-segments-ranked.md` with a link to the product repo — signals that implementation has begun and prevents duplicate efforts
+2. Copy `saas-factory.md` into the new product's repo at `docs/saas-factory.md`
+3. Run `/brainstorm` with factory doc as reference — explores strategy, fills DECIDE items
+4. Run `/spec` with factory doc as reference — specifies all deliverables
+5. Run `/plan` with factory doc + spec as reference — decomposes all remaining tasks
+6. Run `/implement` — executes the plan (factory doc no longer needed)
+7. Run `/validate` — tests against spec
+8. Human final review — legal sign-off, collateral approval, launch go/no-go
 
 **Template versioning:** The product copy is a snapshot — like a printed page. Teams mark checkboxes and fill DECIDE items on their copy, but never edit the template content itself. If lessons learned require changing the template, updates go to the master copy in the run402 repo only. Future products get the improved master. In-progress products are not retroactively updated — if a critical improvement is needed, the product re-copies from master and re-fills.
 
@@ -250,10 +251,11 @@ Both kychee.com and run402.com maintain an llms.txt file that serves as a centra
 - [ ] The doc explicitly states it is not needed after `/plan`
 
 ### F11. Lifecycle
-- [ ] All 7 lifecycle steps are listed in order
-- [ ] Step 1 specifies the copy location (`docs/saas-factory.md`)
-- [ ] Steps 2-4 name the factory doc as a reference input
-- [ ] Steps 5-6 explicitly state the factory doc is not consumed
+- [ ] All 8 lifecycle steps are listed in order
+- [ ] Step 1 marks the segment as IN PROCESS in the segments ranking doc with a link to the product repo
+- [ ] Step 2 specifies the copy location (`docs/saas-factory.md`)
+- [ ] Steps 3-5 name the factory doc as a reference input
+- [ ] Steps 6-7 explicitly state the factory doc is not consumed
 - [ ] Template versioning rule is stated: product copy is a snapshot (printed page), changes go to master only, future products get the improved master
 
 ### F12. Dual Delivery
