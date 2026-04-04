@@ -205,7 +205,7 @@ def _extract_numbers(aj: str) -> list[float]:
 def _detect_operation(challenge: str, aj: str) -> str | None:
     # Check literal math operators in original text first (allow junk chars around operator)
     stripped = re.sub(r'[^a-zA-Z0-9+\-*/\s]', ' ', challenge)
-    if re.search(r'\s\*\s', stripped):
+    if re.search(r'\*', stripped):
         return "*"
     if re.search(r'\s\+\s', stripped):
         return "+"
@@ -230,6 +230,9 @@ def _detect_operation(challenge: str, aj: str) -> str | None:
         if "product" in q:
             return "*"
 
+    # "net force" / "net X" → subtraction (physics), checked BEFORE general keyword scan
+    if "netforce" in aj or "netpul" in aj or "netpush" in aj:
+        return "-"
     # "the net" → subtraction, BUT not if explicit multiply keyword present
     if "thenet" in aj:
         # Check for explicit multiply keywords first
@@ -241,6 +244,7 @@ def _detect_operation(challenge: str, aj: str) -> str | None:
     # False positives for operation keywords (word → list of containing words)
     op_false_positives = {
         "boost": ["lobster", "loboster"],
+        "minus": ["minute", "minutes"],
         "times": ["centimeter", "centimetre", "centimeters", "centimetres", "sometimes", "lifetime", "bedtimes", "overtime", "halftime", "nighttime", "daytime", "meantime", "pastime"],
     }
     ops = [
@@ -288,6 +292,12 @@ def _detect_operation(challenge: str, aj: str) -> str | None:
             return "*"
         # "exerts X and has N claws" pattern = multiply (per-unit × count)
         if re.search(r"\bexerts?\b", clean) and re.search(r"\b(has|have|with|are)\b.*\b(claws?|legs?|arms?|limbs?)\b", clean):
+            return "*"
+        # "applies X ... shares with N" pattern = multiply (force applied across multiple)
+        if re.search(r"\bappl(y|ies|ied)\b", clean) and re.search(r"\bshares?\b", clean):
+            return "*"
+        # "N lobsters grip together" / "N claws grip together" = per-unit × count
+        if re.search(r"\b(grip|clamp|squeeze|pinch|crush)\b.*\btogether\b", clean):
             return "*"
         return "+"
     # Rate × time pattern: "per second/minute/hour for N seconds/minutes/hours"
@@ -345,7 +355,12 @@ def solve(result: dict) -> bool:
         else:
             a, b = numbers[0], numbers[1]
         if op == "+" and len(numbers) > 2:
-            ans = sum(numbers)
+            # Challenges often restate numbers — deduplicate for sums
+            seen_vals = []
+            for n in numbers:
+                if n not in seen_vals:
+                    seen_vals.append(n)
+            ans = sum(seen_vals)
         else:
             ans = {"+": a + b, "-": a - b, "*": a * b, "/": a / b if b else 0}.get(op, a + b)
     elif len(numbers) >= 2:
