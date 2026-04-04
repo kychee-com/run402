@@ -35,7 +35,7 @@ The factory doc is a single markdown file organized into numbered chapters. Each
 The factory doc contains 11 chapters, in this order:
 
 1. **Product Strategy** — kill target, attack angle, beachhead segment (Crossing the Chasm), low-end disruption angle (Innovator's Dilemma), core differentiator, competitive landscape, MVP definition
-2. **Dual Delivery Model** — open source repo (MIT, agent-deployable, builder-targeted README) and hosted SaaS (run402-based, agent-provisionable, monetization model, subdomain strategy). Explicitly names three audiences: builders, end users, AI agents
+2. **Dual Delivery Model** — two repos per product: a public MIT-licensed repo (the forkable template — product code, schema, seeds, deploy script, customization guide) and a private service repo (marketing site, hosted SaaS backend, proprietary services, billing, admin tools). The public repo is agent-deployable with a builder-targeted README. The private repo runs on run402 infrastructure and contains the monetization layer, subdomain strategy, and any paid premium services. Explicitly names three audiences: builders, end users, AI agents
 3. **Domain and Branding** — product domain name selection, logo, brand assets (colors, typography, tone), domain registration
 4. **Website** — landing page (attack-angle-led, dual CTA for SaaS and repo), "SaaS vs Repo" decision helper, pricing page, documentation. Three content layers: FAQ (human), how-to snippets (human-to-agent), llms.txt (agent-native)
 5. **Legal** — Terms of Service, Privacy Policy, Cookie/consent notice, Acceptable Use Policy, DPA. All drafted from existing Kychee/Eleanor/run402 templates. All require human approval before launch
@@ -139,21 +139,25 @@ The factory doc prescribes this lifecycle for each SaaS-killer product:
 
 ### F12. Dual Delivery for Every Product
 
-Every SaaS-killer product launches simultaneously as:
+Every SaaS-killer product launches simultaneously as two delivery modes, backed by **two separate repos**:
 
-**A. Open Source Repo**
-- MIT-licensed
+**A. Public Repo** (`kychee-com/{product}`) — MIT-licensed, forkable template
+- Contains: product code (frontend, functions, schema, seeds, deploy script, customization guide, demo variants)
 - Agent-deployable (an AI agent can clone and deploy on run402 with minimal prompts)
 - README targets developers/builders
 - Human-reviewed structure
+- Clean fork experience — no marketing site, no proprietary service code, no Kychee-specific infrastructure
 
-**B. Hosted SaaS**
-- Runs on run402 infrastructure
+**B. Private Service Repo** (`kychee-com/{product}-service`) — proprietary
+- Contains: marketing/product website ({product-domain}.com), hosted SaaS backend, premium services (AI agents, concierge, pro tiers), billing/customer DB, admin tools
+- Runs on run402 infrastructure (eat our own dog food)
 - Agent-provisionable (an AI agent can provision via API or MCP)
 - Product-specific monetization model (freemium, usage-based, flat fee — decided per product)
 - Optional user subdomains (e.g., joe.productname.com — decided per product)
 
-Both options presented on the product website with a decision helper for choosing between them.
+**Why two repos:** The MIT license on the public repo must cover only the forkable template. Marketing copy, brand assets, proprietary service logic, and paid features must not be MIT-licensed. The marketing site sells the hosted service and evolves with pricing/premium features, not with the template's feature set. Forkers get a pristine repo with exactly what they need.
+
+Both options presented on the product website (in the private service repo) with a decision helper for choosing between them.
 
 ### F13. Three Audiences as First-Class
 
@@ -253,9 +257,13 @@ Both kychee.com and run402.com maintain an llms.txt file that serves as a centra
 - [ ] Template versioning rule is stated: product copy is a snapshot (printed page), changes go to master only, future products get the improved master
 
 ### F12. Dual Delivery
-- [ ] Both delivery modes (OSS repo, hosted SaaS) are specified
-- [ ] Agent-deployable and agent-provisionable are explicit requirements
+- [ ] Two-repo structure is specified: public MIT repo (`{product}`) and private service repo (`{product}-service`)
+- [ ] Public repo contents are defined (product code, schema, seeds, deploy script, customization guide, demos)
+- [ ] Private repo contents are defined (marketing site, hosted backend, premium services, billing, admin)
+- [ ] Public repo contains no marketing site, brand assets, or proprietary service code
+- [ ] Agent-deployable (public) and agent-provisionable (private) are explicit requirements
 - [ ] Monetization model and subdomain strategy are marked as DECIDE items
+- [ ] Private service repo runs on run402 infrastructure
 
 ### F13. Three Audiences
 - [ ] Builders, end users, and AI agents are named in the dual delivery section
