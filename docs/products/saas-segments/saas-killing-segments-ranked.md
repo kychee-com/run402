@@ -390,7 +390,7 @@ These have the strongest combination of angry customers, sharp niches, simple pr
 
 ---
 
-### 24. Membership / Gated Content
+### 24. Membership / Gated Content — 🔨 IN PROCESS ([kychon](https://github.com/kychee-com/kychon))
 
 **Top SaaS leaders:** Memberful ($49/mo + 4.9%), MemberSpace, Patreon, Ghost memberships
 
@@ -539,7 +539,7 @@ These are real markets with real pain, but they're better served as vertical ski
 | 43 | Inventory tracker | Business OS | "For makers/wholesalers who outgrew spreadsheets" |
 | 44 | Home services business OS | CRM + invoicing | "Jobber charges $50/mo. Run your cleaning company for free." |
 | 45 | Wedding vendor CRM | CRM | "HoneyBook charges $40/mo. Manage your couples for free." |
-| 46 | Church / community portal | Membership + events | "Planning Center charges per member. Serve your congregation for free." |
+| 46 | Church / community portal — 🔨 IN PROCESS (kychon skin) | Membership + events | "Planning Center charges per member. Serve your congregation for free." |
 | 47 | Content calendar | Board/kanban | "Planable charges $11/post. Plan your content for free." |
 | 48 | Tournament / league manager | Events | "TeamSnap charges per team. Run your league for free." |
 | 49 | Flashcard / spaced repetition | Course portal | Absorb into education vertical |
@@ -577,3 +577,21 @@ The top 5 repos, if built well, attack ~$120B+ in combined TAM:
 Each one generates ongoing run402 infrastructure usage (database queries, storage, API calls) from real production workloads — not demo apps.
 
 The vertical skin strategy (repos #35-65) multiplies the top 5 into 30+ GitHub repos targeting specific Google searches, with minimal additional engineering. One CRM codebase becomes "contractor-crm," "wedding-vendor-crm," "agency-client-tracker," "realtor-pipeline" — each a separate repo, README, and SEO target.
+
+---
+
+## Licensing strategy: why MIT
+
+All SaaS-killing repos use the MIT license. The license creates zero friction — developers see MIT and stop thinking about licensing, which maximizes GitHub stars, forks, and deployments.
+
+The lock-in is architectural, not legal: every repo is built natively around run402's SDK, auth, storage, database, and x402 payment hooks, so porting to another backend requires meaningful re-engineering that nobody will bother with when run402 is free and zero-signup.
+
+Attribution happens through four channels:
+1. **README** — opens with "Built on run402" and links to run402.com
+2. **Default config files** — point to run402 endpoints
+3. **Deploy scripts** — target run402
+4. **Footer link** — a tasteful "Powered by run402" link included in every default template — easy to remove, but most users won't
+
+We own the copyright on all repos, which means we can relicense future versions if a competitor ever strip-mines our code onto rival infrastructure at scale, exactly as MongoDB, Elastic, and Redis did when cloud providers became threats.
+
+Until that day, MIT is the right call because we're not selling software — we're selling the invisible infrastructure underneath it, and every installation that stays on run402's defaults is a production workload generating real database queries, storage hits, and API calls.
