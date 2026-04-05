@@ -29,6 +29,7 @@
     "test:docs": "tsx --test test/api-docs-alignment.test.ts",
     "test:unit": "npm run test:unit -w packages/gateway",
     "test:unit:coverage": "npm run test:unit:coverage -w packages/gateway",
+    "test:magic-link": "tsx test/magic-link-e2e.ts",
     "test:bld402-compat": "tsx test/bld402-compat.ts",
     "lint": "eslint",
     "deploy": "bash scripts/deploy.sh"

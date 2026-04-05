@@ -42,6 +42,7 @@ export interface ProjectInfo {
   demoConfig?: DemoConfig;
   demoSourceVersionId?: string;
   demoLastResetAt?: Date;
+  allowPasswordSet: boolean;
 }
 
 export type ProjectStatus = "active" | "archived" | "expired" | "deleted";

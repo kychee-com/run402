@@ -444,6 +444,17 @@ await email.send({ to: "user@example.com", subject: "Welcome!", html: "<h1>Hi</h
 ```
 Discovers the mailbox automatically. Throws on errors (rate limit, suppression, no mailbox).
 
+### auth
+Manage project user authentication. Passwordless email login via magic links, password management, and auth settings.
+
+- `run402 auth magic-link --email <addr> --redirect <url> [--project <id>]` — send a magic link email (auto-creates user on first verification)
+- `run402 auth verify --token <token> [--project <id>]` — exchange a magic link token for access_token + refresh_token
+- `run402 auth set-password --token <bearer> --new <password> [--current <password>]` — change, reset, or set password
+- `run402 auth settings --allow-password-set <true|false> [--project <id>]` — toggle whether passwordless users can set a password (requires service_key)
+- `run402 auth providers [--project <id>]` — list available auth providers
+
+Magic link flow: request → user clicks email link → frontend extracts token → verify → authenticated. Token expires in 15 minutes, single-use. Rate limited: 5 per email/hour, plus per-project limits by tier.
+
 ### message
 - `run402 message send "<text>"`
 

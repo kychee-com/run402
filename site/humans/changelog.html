@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <!-- Google tag (gtag.js) — GA4 -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-SP7DMDB21B"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+    gtag('config', 'G-SP7DMDB21B');
+    (function(){var p=new URLSearchParams(location.search),k=['gclid','utm_source','utm_medium','utm_campaign','utm_term','utm_content'];for(var i=0;i<k.length;i++){var v=p.get(k[i]);if(v)try{localStorage.setItem('x402_'+k[i],v)}catch(e){}}if(p.get('gclid'))try{localStorage.setItem('x402_gclid_ts',''+Date.now())}catch(e){}})();
+  </script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Changelog — Run402</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: #0A0A0F; color: #E0E0E0; font-family: 'Inter', system-ui, sans-serif; line-height: 1.6; min-height: 100vh; }
+    .container { max-width: 760px; margin: 0 auto; padding: 48px 24px 60px; }
+    h1 { font-size: clamp(28px, 4vw, 40px); font-weight: 700; color: #FFFFFF; margin-bottom: 8px; }
+    h2 { font-size: 18px; font-weight: 600; color: #FFFFFF; margin-top: 36px; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid #1E1E2A; }
+    p { color: #9CA3AF; margin-bottom: 12px; }
+    a { color: #00FF9F; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    strong { color: #FFFFFF; }
+    code { font-family: 'JetBrains Mono', monospace; font-size: 14px; color: #00FF9F; background: #12121A; padding: 2px 6px; border-radius: 4px; }
+    .subtitle { color: #6B7280; font-size: 16px; margin-bottom: 36px; }
+    ul { list-style: none; padding: 0; }
+    ul li { padding: 6px 0; color: #9CA3AF; }
+    ul li::before { content: ""; }
+    .entry-title { color: #FFFFFF; font-weight: 500; }
+    .footer { border-top: 1px solid #1E1E2A; padding-top: 32px; margin-top: 48px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px; }
+    .footer-text { font-size: 13px; color: #4B5563; }
+    .footer a { color: #00FF9F; text-decoration: none; font-family: 'JetBrains Mono', monospace; font-size: 13px; }
+    .footer a:hover { text-decoration: underline; }
+    .machine-link { font-size: 13px; color: #4B5563; margin-top: 4px; }
+    .machine-link a { font-family: 'JetBrains Mono', monospace; font-size: 13px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Changelog</h1>
+    <p class="subtitle">Platform updates and new features</p>
+    <p class="machine-link">Machine-readable: <a href="/updates.txt">/updates.txt</a></p>
+
+    <h2>April 5, 2026</h2>
+    <ul>
+      <li><span class="entry-title">Magic link auth</span> &mdash; Passwordless email authentication for project users. Request a magic link via <code>POST /auth/v1/magic-link</code>, verify via <code>grant_type=magic_link</code>. Auto-creates users on first use. Includes password change/reset/set endpoint and project-level <code>allow_password_set</code> setting. Multi-method identity: users can have any combination of password, OAuth, and magic link.</li>
+    </ul>
+
+    <h2>April 2, 2026</h2>
+    <ul>
+      <li><span class="entry-title">Extract functions package</span> &mdash; Extracted <code>@run402/functions</code> runtime helper into standalone TypeScript npm package with full type definitions, replacing inlined heredoc in Lambda layer</li>
+    </ul>
+
+    <h2>March 31, 2026</h2>
+    <ul>
+      <li><span class="entry-title">Public storage URLs</span> &mdash; Unauthenticated public read route for storage files; public URL included in upload responses</li>
+      <li><span class="entry-title">Incremental deploy</span> &mdash; <code>inherit: true</code> flag on deploy requests to carry forward unchanged files from previous deployment via S3 server-side copy</li>
+      <li><span class="entry-title">Auto Worker custom domains</span> &mdash; Automatic Cloudflare Worker Custom Domain binding creation/deletion when domains are registered or released</li>
+      <li><span class="entry-title">Domain status auth</span> &mdash; Added auth middleware to domain status endpoint, closing security gap where project data was publicly queryable</li>
+    </ul>
+
+    <h2>March 30, 2026</h2>
+    <ul>
+      <li><span class="entry-title">Project admin role</span> &mdash; <code>project_admin</code> Postgres role with BYPASSRLS, <code>is_admin</code> flag on users, admin JWT issuance, and promote/demote endpoints</li>
+    </ul>
+
+    <h2>March 29, 2026</h2>
+    <ul>
+      <li><span class="entry-title">on-signup hook</span> &mdash; <code>on-*</code> lifecycle hook convention; gateway auto-invokes <code>on-signup</code> function fire-and-forget after first user signup</li>
+      <li><span class="entry-title">Bundle deploy error detail</span> &mdash; Fixed error swallowing in bundle deploy so errors propagate their message and status code to the client</li>
+    </ul>
+
+    <h2>March 28, 2026</h2>
+    <ul>
+      <li><span class="entry-title">Full email</span> &mdash; Raw HTML send mode, display name (<code>from_name</code>) support, bumped team tier daily send limit to 500</li>
+      <li><span class="entry-title">Search Console coverage fix</span> &mdash; Fixed 404s and missing sitemap entries by adding directory index pages and custom 404 page</li>
+    </ul>
+
+    <h2>March 26, 2026</h2>
+    <ul>
+      <li><span class="entry-title">Scheduled functions</span> &mdash; Cron-based scheduled invocation of deployed functions with deploy-time schedule config, manual trigger, and tier limits</li>
+    </ul>
+
+    <h2>March 25, 2026</h2>
+    <ul>
+      <li><span class="entry-title">Secrets value hash</span> &mdash; Truncated SHA-256 hash in secrets list response so agents can verify secret values without exposing them</li>
+      <li><span class="entry-title">Input validation hardening</span> &mdash; Centralized input validation (UUID, wallet, email, slug, URL) for all route handlers with clean 400 responses</li>
+    </ul>
+
+    <h2>March 24, 2026</h2>
+    <ul>
+      <li><span class="entry-title">Project email</span> &mdash; Per-project mailboxes at <code>&lt;slug&gt;@mail.run402.com</code> with template-based outbound, reply-only inbound, and SES integration</li>
+      <li><span class="entry-title">Branded SQL type</span> &mdash; Branded <code>SQL</code> type with <code>sql()</code> helper and libpg-query pre-flight validation</li>
+      <li><span class="entry-title">Admin auth and operations</span> &mdash; Admin auth middleware (ADMIN_KEY, SIWx, OAuth, service_key) with admin override on ownership-gated endpoints</li>
+      <li><span class="entry-title">Test coverage</span> &mdash; c8 coverage instrumentation for gateway unit tests with CI integration</li>
+    </ul>
+
+    <h2>March 23, 2026</h2>
+    <ul>
+      <li><span class="entry-title">TypeScript type stripping</span> &mdash; esbuild transpilation so edge functions in TypeScript deploy without SyntaxErrors</li>
+      <li><span class="entry-title">Cascade project delete</span> &mdash; Project archival cascade-deletes all owned resources (Lambda, secrets, subdomains, S3, deployments, apps)</li>
+      <li><span class="entry-title">Bootstrap function</span> &mdash; Convention-based <code>bootstrap</code> function auto-invoked after fork/deploy with caller-provided variables</li>
+      <li><span class="entry-title">getUser() helper</span> &mdash; <code>getUser(req)</code> in functions runtime to retrieve authenticated user inside edge functions via JWT</li>
+    </ul>
+
+    <div class="footer">
+      <span class="footer-text">By <a href="https://kychee.com">Kychee</a></span>
+      <span>
+        <a href="/humans/about.html">About</a> &nbsp;&middot;&nbsp;
+        <a href="/humans/terms.html">Terms</a> &nbsp;&middot;&nbsp;
+        <a href="/humans/privacy.html">Privacy</a> &nbsp;&middot;&nbsp;
+        <a href="/humans/faq.html">FAQ</a> &nbsp;&middot;&nbsp;
+        <a href="https://api.run402.com/health-humans">API status</a>
+      </span>
+    </div>
+  </div>
+</body>
+</html>

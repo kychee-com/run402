@@ -694,6 +694,87 @@
         }
       }
     },
+    "/auth/v1/magic-link": {
+      "post": {
+        "tags": ["Auth"],
+        "summary": "Request a magic link email",
+        "description": "Sends a one-time login link to the given email. If the email doesn't exist, a user is auto-created on token verification. Response is always 200 regardless of whether the email exists (no account enumeration).",
+        "security": [{"apikey": []}],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["email", "redirect_url"],
+                "properties": {
+                  "email": {"type": "string", "format": "email"},
+                  "redirect_url": {"type": "string", "format": "uri", "description": "URL to redirect to with ?token=<token>. Must be an allowed origin for this project."}
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {"description": "Magic link sent (or silently skipped if email invalid)"},
+          "400": {"description": "Missing email or redirect_url, or redirect_url not allowed"},
+          "429": {"description": "Rate limited (per-email or per-project)"}
+        }
+      }
+    },
+    "/auth/v1/user/password": {
+      "put": {
+        "tags": ["Auth"],
+        "summary": "Change, reset, or set password",
+        "description": "Three modes: (1) Change: provide current_password + new_password. (2) Reset via magic link: login with magic link, call with just new_password. (3) Set for passwordless user: requires project allow_password_set=true.",
+        "security": [{"bearerAuth": []}],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["new_password"],
+                "properties": {
+                  "current_password": {"type": "string", "description": "Required for password change (not for reset/set)"},
+                  "new_password": {"type": "string"}
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {"description": "Password updated"},
+          "401": {"description": "Wrong current_password or invalid token"},
+          "403": {"description": "Password set not enabled for this project (passwordless user)"}
+        }
+      }
+    },
+    "/auth/v1/settings": {
+      "patch": {
+        "tags": ["Auth"],
+        "summary": "Update project auth settings",
+        "description": "Toggle auth settings like allow_password_set. Requires service_key.",
+        "security": [{"apikey": []}],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "allow_password_set": {"type": "boolean", "description": "Allow passwordless users to set a password (default: false)"}
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {"description": "Settings updated"},
+          "403": {"description": "Service key required"}
+        }
+      }
+    },
     "/auth/v1/token": {
       "post": {
         "tags": [

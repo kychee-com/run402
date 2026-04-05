@@ -61,6 +61,7 @@ export async function syncProjects(): Promise<void> {
       demoConfig: row.demo_config || undefined,
       demoSourceVersionId: row.demo_source_version_id || undefined,
       demoLastResetAt: row.demo_last_reset_at ? new Date(row.demo_last_reset_at) : undefined,
+      allowPasswordSet: row.allow_password_set || false,
     });
   }
 
@@ -104,6 +105,7 @@ export async function getProjectById(id: string): Promise<ProjectInfo | null> {
     demoConfig: row.demo_config || undefined,
     demoSourceVersionId: row.demo_source_version_id || undefined,
     demoLastResetAt: row.demo_last_reset_at ? new Date(row.demo_last_reset_at) : undefined,
+    allowPasswordSet: row.allow_password_set || false,
   };
 
   if (project.status === "active") {

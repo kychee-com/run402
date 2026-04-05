@@ -1,0 +1,59 @@
+# Run402 Platform Updates
+
+> URL: https://run402.com/updates.txt
+> Format: Machine-readable changelog, newest first
+> See also: https://run402.com/humans/changelog.html (human-readable)
+
+---
+
+## 2026-04-05
+
+- **Magic link auth**: Passwordless email authentication for project users. Request a magic link via `POST /auth/v1/magic-link`, verify via `grant_type=magic_link`. Auto-creates users on first use. Includes password change/reset/set endpoint (`PUT /auth/v1/user/password`) and project-level `allow_password_set` setting. Multi-method identity model: users can now have any combination of password, OAuth, and magic link auth.
+
+## 2026-04-02
+
+- **Extract functions package**: Extracted `@run402/functions` runtime helper into standalone TypeScript npm package with full type definitions, replacing inlined heredoc in Lambda layer
+
+## 2026-03-31
+
+- **Public storage URLs**: Added unauthenticated public read route for storage files; public URL included in upload responses
+- **Incremental deploy**: Added `inherit: true` flag on deploy requests to carry forward unchanged files from previous deployment via S3 server-side copy
+- **Auto Worker custom domains**: Automatic Cloudflare Worker Custom Domain binding creation/deletion when custom domains are registered or released via API
+- **Domain status auth**: Added `serviceKeyOrAdmin` middleware to domain status endpoint, closing security gap where project data was publicly queryable
+
+## 2026-03-30
+
+- **Project admin role**: Added `project_admin` Postgres role with BYPASSRLS, `is_admin` flag on users, admin JWT issuance, and promote/demote endpoints for app-level admin access
+
+## 2026-03-29
+
+- **on-signup hook**: Introduced `on-*` lifecycle hook convention; gateway auto-invokes `on-signup` function fire-and-forget after first user signup
+- **Bundle deploy error detail**: Fixed error swallowing in bundle deploy so FunctionError, DeploymentError, and unknown errors propagate message and status to client
+
+## 2026-03-28
+
+- **Full email**: Added raw HTML send mode, display name (`from_name`) support, bumped team tier daily send limit to 500
+- **Search Console coverage fix**: Fixed 404s and missing sitemap entries by adding directory index pages, updating sitemap.xml, and custom 404 page
+
+## 2026-03-26
+
+- **Scheduled functions**: Added cron-based scheduled invocation of deployed functions with deploy-time schedule config, manual trigger, execution metadata, and tier limits
+
+## 2026-03-25
+
+- **Secrets value hash**: Added truncated SHA-256 hash to secrets list response so agents can verify secret values without exposing them
+- **Input validation hardening**: Centralized input validation (UUID, wallet, email, slug, URL) for all route handlers with clean 400 responses
+
+## 2026-03-24
+
+- **Project email (Phase 1)**: Per-project mailboxes at `<slug>@mail.run402.com` with template-based outbound, reply-only inbound, tier-based limits, and SES integration
+- **Branded SQL type**: Introduced branded `SQL` type with `sql()` helper and libpg-query pre-flight validation
+- **Admin auth and operations**: Admin auth middleware (ADMIN_KEY, SIWx, OAuth, service_key) with admin override on ownership-gated endpoints
+- **Test coverage**: Added c8 coverage instrumentation for gateway unit tests with CI integration
+
+## 2026-03-23
+
+- **TypeScript type stripping**: Added esbuild transpilation so edge functions written in TypeScript deploy without SyntaxErrors
+- **Cascade project delete**: Extended project archival to cascade-delete all owned resources (Lambda, secrets, subdomains, S3, deployments, app versions)
+- **Bootstrap function**: Convention-based `bootstrap` function auto-invoked after fork/deploy with caller-provided variables
+- **getUser() helper**: Added `getUser(req)` to functions runtime to retrieve authenticated user inside edge functions via JWT

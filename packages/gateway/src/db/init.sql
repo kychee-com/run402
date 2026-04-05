@@ -52,6 +52,7 @@ CREATE TABLE internal.projects (
   api_calls INTEGER NOT NULL DEFAULT 0,
   storage_bytes BIGINT NOT NULL DEFAULT 0,
   tx_hash TEXT,
+  allow_password_set BOOLEAN NOT NULL DEFAULT false,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -59,7 +60,7 @@ CREATE TABLE internal.users (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   project_id TEXT NOT NULL REFERENCES internal.projects(id),
   email TEXT NOT NULL,
-  password_hash TEXT NOT NULL,
+  password_hash TEXT,
   is_admin BOOLEAN NOT NULL DEFAULT false,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   UNIQUE(project_id, email)
@@ -77,6 +78,19 @@ CREATE TABLE internal.refresh_tokens (
 CREATE INDEX idx_refresh_tokens_user ON internal.refresh_tokens(user_id);
 CREATE INDEX idx_refresh_tokens_project ON internal.refresh_tokens(project_id);
 CREATE INDEX idx_projects_status ON internal.projects(status);
+
+CREATE TABLE internal.magic_link_tokens (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  token_hash TEXT NOT NULL UNIQUE,
+  email TEXT NOT NULL,
+  project_id TEXT NOT NULL REFERENCES internal.projects(id) ON DELETE CASCADE,
+  redirect_url TEXT NOT NULL,
+  expires_at TIMESTAMPTZ NOT NULL,
+  used BOOLEAN NOT NULL DEFAULT false,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_magic_link_tokens_project_email ON internal.magic_link_tokens(project_id, email);
 
 -- =============================================================================
 -- 4. Auth schema (helper functions for RLS)

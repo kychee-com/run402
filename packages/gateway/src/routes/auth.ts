@@ -21,7 +21,11 @@ import {
 } from "../services/oauth.js";
 import { projectCache } from "../services/projects.js";
 import { fireLifecycleHook } from "../services/functions.js";
+import { createMagicLinkToken, verifyMagicLinkToken, checkMagicLinkRateLimit } from "../services/magic-link.js";
+import { sendEmail } from "../services/email-send.js";
+import { getDemoCounters } from "../middleware/demo.js";
 import type { TokenPayload } from "@run402/shared";
+import { DEFAULT_DEMO_CONFIG } from "@run402/shared";
 
 const router = Router();
 
@@ -152,11 +156,15 @@ router.get("/auth/v1/oauth/google/callback", asyncHandler(async (req: Request, r
 router.use("/auth/v1", apikeyAuth);
 
 // GET /auth/v1/providers — discover available auth providers
-router.get("/auth/v1/providers", asyncHandler(async (_req: Request, res: Response) => {
+router.get("/auth/v1/providers", asyncHandler(async (req: Request, res: Response) => {
   const googleEnabled = !!GOOGLE_APP_CLIENT_ID;
+  const project = req.project!;
+  const cachedProject = projectCache.get(project.id);
   res.set("Cache-Control", "no-store");
   res.json({
     password: { enabled: true },
+    magic_link: { enabled: true },
+    password_set: { enabled: cachedProject?.allowPasswordSet || false },
     oauth: [
       {
         provider: "google",
@@ -408,6 +416,83 @@ router.post("/auth/v1/token", asyncHandler(async (req: Request, res: Response) =
     return;
   }
 
+  // Magic link flow
+  if (grantType === "magic_link") {
+    const { token } = req.body || {};
+    if (!token) {
+      throw new HttpError(400, "token required");
+    }
+
+    const verified = await verifyMagicLinkToken(token);
+    if (!verified) {
+      throw new HttpError(401, "Invalid, expired, or already used magic link token");
+    }
+
+    if (verified.projectId !== project.id) {
+      throw new HttpError(401, "Magic link was issued for a different project");
+    }
+
+    // Find or create user
+    let userResult = await pool.query(
+      sql(`SELECT id, email, is_admin, email_verified_at FROM internal.users WHERE project_id = $1 AND LOWER(email) = $2`),
+      [project.id, verified.email.toLowerCase()],
+    );
+
+    let isNewUser = false;
+    if (userResult.rows.length === 0) {
+      // Auto sign-up — check demo limits
+      const cachedProject = projectCache.get(project.id);
+      if (cachedProject?.demoMode) {
+        const config = cachedProject.demoConfig || DEFAULT_DEMO_CONFIG;
+        const c = getDemoCounters(project.id);
+        if (c.signups >= config.max_auth_users) {
+          throw new HttpError(403, "Demo signup limit reached");
+        }
+        c.signups++;
+      }
+
+      userResult = await pool.query(
+        sql(`INSERT INTO internal.users (project_id, email, password_hash, email_verified_at, last_sign_in_at) VALUES ($1, $2, NULL, NOW(), NOW()) RETURNING id, email, is_admin, email_verified_at`),
+        [project.id, verified.email.toLowerCase()],
+      );
+      isNewUser = true;
+    }
+
+    const user = userResult.rows[0];
+
+    // Set email_verified_at if not already set
+    if (!user.email_verified_at) {
+      await pool.query(sql(`UPDATE internal.users SET email_verified_at = NOW(), last_sign_in_at = NOW() WHERE id = $1::uuid`), [user.id]);
+    } else {
+      await pool.query(sql(`UPDATE internal.users SET last_sign_in_at = NOW() WHERE id = $1::uuid`), [user.id]);
+    }
+
+    const accessToken = jwt.sign(
+      { sub: user.id, role: user.is_admin ? "project_admin" : "authenticated", project_id: project.id, email: user.email },
+      JWT_SECRET,
+      { expiresIn: "1h" },
+    );
+    const refreshToken = await createRefreshToken(user.id, project.id);
+
+    console.log(`  Magic link ${isNewUser ? "signup" : "login"}: ${user.email} (project: ${project.id})`);
+
+    if (isNewUser) {
+      fireLifecycleHook(project.id, "signup", {
+        user: { id: user.id, email: user.email, created_at: new Date().toISOString() },
+      });
+    }
+
+    res.set("Cache-Control", "no-store");
+    res.json({
+      access_token: accessToken,
+      token_type: "bearer",
+      expires_in: 3600,
+      refresh_token: refreshToken,
+      user: { id: user.id, email: user.email },
+    });
+    return;
+  }
+
   // Password login flow
   const { email: rawEmail, password } = req.body || {};
   if (!rawEmail || !password) {
@@ -430,7 +515,7 @@ router.post("/auth/v1/token", asyncHandler(async (req: Request, res: Response) =
 
   // Guard: social-only users have null password_hash
   if (!user.password_hash) {
-    throw new HttpError(401, "This account uses social login. Sign in with Google instead.");
+    throw new HttpError(401, "This account does not have a password. Sign in with Google or request a magic link instead.");
   }
 
   const valid = await bcrypt.compare(password, user.password_hash);
@@ -525,6 +610,165 @@ router.post("/auth/v1/logout", asyncHandler(async (req: Request, res: Response) 
   }
   res.set("Cache-Control", "no-store");
   res.json({ status: "ok" });
+}));
+
+// POST /auth/v1/magic-link — request a magic link email
+router.post("/auth/v1/magic-link", asyncHandler(async (req: Request, res: Response) => {
+  const project = req.project!;
+  const { email: rawEmail, redirect_url } = req.body || {};
+
+  if (!rawEmail) {
+    throw new HttpError(400, "email required");
+  }
+  const email = validateEmail(rawEmail, "email");
+
+  if (!redirect_url) {
+    throw new HttpError(400, "redirect_url required");
+  }
+
+  // Validate redirect_url against project's allowed origins
+  const validRedirect = await validateRedirectUrl(redirect_url, project.id);
+  if (!validRedirect) {
+    throw new HttpError(400, "redirect_url is not an allowed origin for this project");
+  }
+
+  // Rate limiting
+  const rateCheck = checkMagicLinkRateLimit(project.id, email, project.tier);
+  if (!rateCheck.allowed) {
+    res.set("Cache-Control", "no-store");
+    res.set("Retry-After", "3600");
+    res.status(429).json({ error: "Too many magic link requests", reason: rateCheck.reason });
+    return;
+  }
+
+  // Create token and send email (fire-and-forget style — always return 200)
+  // This prevents account enumeration: same response whether email exists or not
+  try {
+    const token = await createMagicLinkToken(project.id, email, redirect_url);
+    const linkUrl = `${redirect_url}${redirect_url.includes("?") ? "&" : "?"}token=${encodeURIComponent(token)}`;
+
+    // Find project mailbox for sending
+    const mailboxResult = await pool.query(
+      sql(`SELECT id FROM internal.mailboxes WHERE project_id = $1 LIMIT 1`),
+      [project.id],
+    );
+
+    if (mailboxResult.rows.length > 0) {
+      await sendEmail({
+        mailboxId: mailboxResult.rows[0].id,
+        template: "magic_link",
+        to: email,
+        variables: {
+          project_name: project.name,
+          link_url: linkUrl,
+          expires_in: "15 minutes",
+        },
+      });
+    }
+  } catch (err) {
+    // Swallow errors to prevent account enumeration via timing/error differences
+    console.error("  Magic link send error:", err);
+  }
+
+  res.set("Cache-Control", "no-store");
+  res.json({ message: "If this email is valid, a magic link has been sent." });
+}));
+
+// PUT /auth/v1/user/password — change, reset, or set password
+router.put("/auth/v1/user/password", asyncHandler(async (req: Request, res: Response) => {
+  const project = req.project!;
+  const authHeader = req.headers.authorization;
+  if (!authHeader?.startsWith("Bearer ")) {
+    throw new HttpError(401, "Missing Bearer token");
+  }
+
+  let payload: TokenPayload;
+  try {
+    payload = jwt.verify(authHeader.slice(7), JWT_SECRET) as TokenPayload;
+    if (payload.role !== "authenticated" && payload.role !== "project_admin") {
+      throw new HttpError(401, "Not an authenticated user token");
+    }
+    if (payload.project_id !== project.id) {
+      throw new HttpError(401, "Token was issued for a different project");
+    }
+  } catch (err) {
+    if (err instanceof HttpError) throw err;
+    throw new HttpError(401, "Invalid token");
+  }
+
+  const { current_password, new_password } = req.body || {};
+  if (!new_password) {
+    throw new HttpError(400, "new_password required");
+  }
+
+  // Fetch user
+  const userResult = await pool.query(
+    sql(`SELECT id, password_hash FROM internal.users WHERE id = $1::uuid AND project_id = $2`),
+    [payload.sub, project.id],
+  );
+  if (userResult.rows.length === 0) {
+    throw new HttpError(404, "User not found");
+  }
+
+  const user = userResult.rows[0];
+
+  if (user.password_hash) {
+    // User has a password
+    if (current_password) {
+      // Password change: verify current password
+      const valid = await bcrypt.compare(current_password, user.password_hash);
+      if (!valid) {
+        throw new HttpError(401, "Current password is incorrect");
+      }
+    }
+    // If no current_password provided, this is a password reset (authenticated via magic link)
+    // — allowed because they proved identity by being authenticated
+  } else {
+    // Passwordless user — check if project allows password set
+    const cachedProject = projectCache.get(project.id);
+    if (!cachedProject?.allowPasswordSet) {
+      throw new HttpError(403, "Password set is not enabled for this project");
+    }
+  }
+
+  // Set new password
+  const newHash = await bcrypt.hash(new_password, 10);
+  await pool.query(
+    sql(`UPDATE internal.users SET password_hash = $1 WHERE id = $2::uuid`),
+    [newHash, user.id],
+  );
+
+  console.log(`  Password ${user.password_hash ? "changed" : "set"}: user ${payload.sub} (project: ${project.id})`);
+
+  res.set("Cache-Control", "no-store");
+  res.json({ status: "ok" });
+}));
+
+// PATCH /auth/v1/settings — update project auth settings (service_key only)
+router.patch("/auth/v1/settings", asyncHandler(async (req: Request, res: Response) => {
+  const project = req.project!;
+  if (req.tokenPayload?.role !== "service_role") {
+    throw new HttpError(403, "Service key required to update auth settings");
+  }
+
+  const { allow_password_set } = req.body || {};
+  if (typeof allow_password_set !== "boolean") {
+    throw new HttpError(400, "allow_password_set (boolean) required");
+  }
+
+  await pool.query(
+    sql(`UPDATE internal.projects SET allow_password_set = $1 WHERE id = $2`),
+    [allow_password_set, project.id],
+  );
+
+  // Invalidate project cache
+  const cached = projectCache.get(project.id);
+  if (cached) {
+    cached.allowPasswordSet = allow_password_set;
+  }
+
+  res.set("Cache-Control", "no-store");
+  res.json({ allow_password_set });
 }));
 
 // Helper: create a refresh token

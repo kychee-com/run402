@@ -63,6 +63,7 @@ import openapiRoutes from "./routes/openapi.js";
 import { initAppVersionsTables } from "./services/publish.js";
 import { initMailboxTables } from "./services/mailbox.js";
 import { cleanupExpiredOAuthData } from "./services/oauth.js";
+import { cleanupExpiredMagicLinkTokens } from "./services/magic-link.js";
 
 Bugsnag.start({
   apiKey: BUGSNAG_API_KEY || "disabled",
@@ -1068,6 +1069,22 @@ async function applyMigrations() {
   await pool.query(sql(`GRANT EXECUTE ON FUNCTION internal.pre_request() TO project_admin`));
   // Reload PostgREST schema cache so it recognizes the new role
   await pool.query(sql(`NOTIFY pgrst, 'reload schema'`));
+
+  // v1.17: magic link auth + password management
+  await pool.query(sql(`
+    CREATE TABLE IF NOT EXISTS internal.magic_link_tokens (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      token_hash TEXT NOT NULL UNIQUE,
+      email TEXT NOT NULL,
+      project_id TEXT NOT NULL REFERENCES internal.projects(id) ON DELETE CASCADE,
+      redirect_url TEXT NOT NULL,
+      expires_at TIMESTAMPTZ NOT NULL,
+      used BOOLEAN NOT NULL DEFAULT false,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `));
+  await pool.query(sql(`CREATE INDEX IF NOT EXISTS idx_magic_link_tokens_project_email ON internal.magic_link_tokens(project_id, email)`));
+  await pool.query(sql(`ALTER TABLE internal.projects ADD COLUMN IF NOT EXISTS allow_password_set BOOLEAN NOT NULL DEFAULT false`));
 }
 
 async function start() {
@@ -1136,7 +1153,7 @@ async function start() {
   startKvsReconciliation();
   startCfKvReconciliation();
   await startScheduler();
-  oauthCleanupInterval = setInterval(cleanupExpiredOAuthData, 3600_000);
+  oauthCleanupInterval = setInterval(() => { cleanupExpiredOAuthData(); cleanupExpiredMagicLinkTokens(); }, 3600_000);
 
   server = app.listen(PORT, () => {
     console.log(`\nAgentDB Gateway running on port ${PORT}`);

@@ -7,6 +7,7 @@
 > Terms: https://run402.com/humans/terms.html
 > Health (component checks): https://api.run402.com/health
 > Status JSON: https://run402.com/status/v1.json
+> Updates: https://run402.com/updates.txt
 > Contact: POST /message/v1 (free with SIWX auth)
 
 **IMPORTANT: All API requests go to `https://api.run402.com`, NOT `https://run402.com`.** `run402.com` is a static docs site (GET only). POSTing there returns 405.
@@ -867,8 +868,34 @@ Chaining order does not matter -- `db.from('t').select('*').eq('id', 1)` and `db
 | `/auth/v1/token?grant_type=authorization_code` | POST | apikey | Exchange OAuth auth code for tokens |
 | `/auth/v1/user` | GET | Bearer | Get current user (includes linked identities) |
 | `/auth/v1/logout` | POST | Bearer | Invalidate refresh token |
-| `/auth/v1/providers` | GET | apikey | List available auth providers (password, google) |
+| `/auth/v1/magic-link` | POST | apikey | Request a magic link email (passwordless login) |
+| `/auth/v1/token?grant_type=magic_link` | POST | apikey | Exchange magic link token for access_token |
+| `/auth/v1/user/password` | PUT | Bearer | Change, reset, or set password |
+| `/auth/v1/settings` | PATCH | service_key | Update project auth settings (e.g., allow_password_set) |
+| `/auth/v1/providers` | GET | apikey | List available auth providers (password, google, magic_link) |
 | `/auth/v1/oauth/google/start` | POST | apikey | Start Google OAuth flow (returns authorization_url) |
+
+#### Magic Link (Passwordless Email Auth)
+
+Passwordless sign-in via email. Users receive a one-time login link -- no password needed. Works for both new and existing users (auto sign-up on first use).
+
+**Flow:**
+1. Frontend calls `POST /auth/v1/magic-link` with `{ "email": "user@example.com", "redirect_url": "https://yourapp.run402.com/auth/callback" }`
+2. User receives email with link pointing to `<redirect_url>?token=<token>`
+3. Frontend extracts token, calls `POST /auth/v1/token?grant_type=magic_link` with `{ "token": "<token>" }`
+4. Returns `access_token` + `refresh_token` (same shape as password login)
+
+**Key details:**
+- Token expires in 15 minutes, single-use
+- New users are auto-created with verified email (no password set)
+- Rate limited: 5 per email/hour, plus per-project limits by tier (50/200/1000)
+- Response is identical whether email exists or not (no account enumeration)
+- `redirect_url` validated against project's allowed origins (same as OAuth)
+
+**Password management:** `PUT /auth/v1/user/password` supports three cases:
+- **Change**: provide `current_password` + `new_password`
+- **Reset** (via magic link): login with magic link, then call with just `new_password`
+- **Set** (passwordless user): requires project setting `allow_password_set: true` (default: false, toggle via `PATCH /auth/v1/settings`)
 
 #### Google OAuth (Social Login)
 
