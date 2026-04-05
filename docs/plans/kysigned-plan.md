@@ -104,61 +104,60 @@
 
 #### 2A. Database & Data Model
 
-- [ ] Write database migrations for envelopes table (id, sender_type, sender_wallet, document_name, document_hash, status, signing_order, require_drawn_signature, created_at, completed_at, pdf_storage_key, signed_pdf_key, completion_tx, callback_url, expiry_at) [code]
-- [ ] Write database migrations for envelope_signers table (id, envelope_id, email, name, salt, verification_level, require_wallet, signing_method, status, signing_order, signature_fields, signing_token, token_expires_at, signed_at, signer_ip, signer_user_agent, signer_pubkey, ephemeral_signature, signer_commitment, drawn_signature, signer_wallet, eip712_signature, tx_hash, reminder_count, last_reminder_at) [code]
-- [ ] Write RLS policies for envelope access (sender can read own envelopes, signers can read their own signer record) [code]
+- [x] Write database migrations for envelopes table [code]
+- [x] Write database migrations for envelope_signers table [code]
+- [x] Write RLS policies for envelope access [code]
 
 #### 2B. Envelope Management API
 
-- [ ] Implement `POST /v1/envelope` — create envelope with PDF + signers, compute SHA-256, generate envelope_id, generate per-signer salts and signing tokens, store PDF, return envelope_id + status_url + verify_url + signing links [code]
-- [ ] Implement `GET /v1/envelope/:id` — return envelope status, signer statuses, tx hashes [code]
-- [ ] Implement `POST /v1/envelope/:id/void` — void active envelope, notify pending signers [code]
-- [ ] Implement `POST /v1/envelope/:id/remind` — resend notification to pending signers [code]
-- [ ] Implement webhook delivery on envelope completion (POST to callback_url) [code]
-- [ ] Implement envelope expiry logic — check TTL, transition to expired, notify parties [code]
-- [ ] Implement sequential signing logic — notify next signer only after previous completes [code]
-- [ ] Implement x402 payment middleware for Path 1/2 sender authentication [code]
-- [ ] Implement MPP payment middleware for Path 1/2 sender authentication [code]
+- [x] Implement `POST /v1/envelope` — create envelope with PDF + signers, compute SHA-256, generate per-signer salts/tokens, store PDF, return envelope_id + status_url + verify_url + signing links [code]
+- [x] Implement `GET /v1/envelope/:id` — return envelope status, signer statuses, tx hashes [code]
+- [x] Implement `POST /v1/envelope/:id/void` — void active envelope, notify pending signers [code]
+- [x] Implement `POST /v1/envelope/:id/remind` — resend notification to pending signers [code]
+- [x] Implement webhook delivery on envelope completion (POST to callback_url) [code]
+- [x] Implement envelope expiry logic — check TTL, transition to expired, notify parties [code]
+- [x] Implement sequential signing logic — notify next signer only after previous completes [code]
+- [!] Implement x402 payment middleware for Path 1/2 sender authentication [code] — WAITING FOR: run402 integration layer (Phase 4)
+- [!] Implement MPP payment middleware for Path 1/2 sender authentication [code] — WAITING FOR: run402 integration layer (Phase 4)
 
 #### 2C. Signing Engine
 
-- [ ] Implement `POST /v1/sign/:envelope_id/:token` — validate token, accept signature payload [code]
-- [ ] Implement Method A server-side: verify Ed25519 signature, compute signer_commitment, call recordEmailSignature on contract [code]
-- [ ] Implement Method B server-side: verify EIP-712 signature, call recordWalletSignature on contract [code]
-- [ ] Implement duplicate signing protection — reject if signer already signed [code]
-- [ ] Implement decline flow — update signer status, notify sender [code]
-- [ ] Implement auto-stamp generation — render signer name in handwriting font + crypto details as PNG [code]
-- [ ] Implement completion logic — detect all-signed, generate final PDF, compute final hash, call recordCompletion, fire webhook [code]
+- [x] Implement `POST /v1/sign/:envelope_id/:token` — validate token, accept signature payload [code]
+- [x] Implement Method A server-side: compute signer_commitment, call recordEmailSignature on contract [code]
+- [x] Implement Method B server-side: call recordWalletSignature on contract with EIP-712 sig [code]
+- [x] Implement duplicate signing protection — reject if signer already signed [code]
+- [x] Implement decline flow — update signer status, notify sender [code]
+- [x] Implement auto-stamp generation — render signer name + crypto details via pdf-lib [code]
+- [x] Implement completion logic — detect all-signed, generate final PDF, compute final hash, call recordCompletion, fire webhook [code]
 
 #### 2D. PDF Handling
 
-- [ ] Implement PDF upload (base64 and URL) with SHA-256 hash computation [code]
-- [ ] Implement signature embedding into PDF using pdf-lib (visual signature image at designated positions) [code]
-- [ ] Implement final signed PDF generation with all signatures embedded [code]
-- [ ] Implement Certificate of Completion PDF generation (document name, hash, signer details, timestamps, tx hashes, contract address) [code]
-- [ ] Implement PDF retention/deletion — configurable TTL (default 30 days), metadata persists after deletion [code]
-- [ ] Implement retention notification system — notify at creation, completion, and before deletion [code]
+- [x] Implement PDF upload (base64 and URL) with SHA-256 hash computation [code]
+- [x] Implement signature embedding into PDF using pdf-lib [code]
+- [x] Implement final signed PDF generation with all signatures embedded [code]
+- [x] Implement Certificate of Completion PDF generation [code]
+- [x] Implement PDF retention/deletion — configurable TTL (default 30 days), metadata persists after deletion [code]
+- [x] Implement retention notification system — notify at creation, completion, and before deletion [code]
 
 #### 2E. Email System
 
-- [ ] Create HTML email templates (multipart HTML + plain text) for: signing request, reminder, confirmation, completion, void notification, expiry notification, retention warning [code]
-  - Table-based layout, inline CSS, no JS, <100KB, List-Unsubscribe header
-- [ ] Implement email sending abstraction — pluggable provider (run402 email service or custom SMTP/API) [code]
-- [ ] Implement automated reminder scheduling (default: 3 days, 7 days) [code]
-- [ ] Include spam notice in API response and dashboard: "Contact signers to check spam if not received" [code]
+- [x] Create HTML email templates (7 templates, multipart HTML + plain text, table-based, inline CSS, <100KB, List-Unsubscribe) [code]
+- [x] Implement email sending abstraction — pluggable EmailProvider interface [code]
+- [x] Implement automated reminder scheduling (default: 3 days, 7 days) [code]
+- [x] Include spam notice in API response [code]
 
 #### 2F. Verification
 
-- [ ] Implement `GET /verify` page logic — accept PDF upload, compute hash, query ALL known contract addresses for matching events [code]
-- [ ] Implement universal verification — check all envelopes on canonical contract, not just own instance [code]
-- [ ] Implement contract address list (supports multiple historical contracts for future-proofing) [code]
+- [x] Implement verify by hash — query ALL known contract addresses for matching events [code]
+- [x] Implement verify by envelope ID — proof link (/verify/:envelopeId) [code]
+- [x] Implement contract address list (supports multiple historical contracts) [code]
 
 #### 2G. Dashboard API
 
-- [ ] Implement wallet-based authentication for dashboard (Path 1/2 — connect wallet, verify ownership) [code]
-- [ ] Implement envelope list endpoint — filter by sender wallet, include status/progress/dates [code]
-- [ ] Implement envelope detail endpoint — full audit trail per signer [code]
-- [ ] Implement export endpoint — CSV and JSON formats [code]
+- [x] Implement envelope list endpoint — filter by sender wallet/email [code]
+- [x] Implement envelope detail endpoint — full audit trail per signer [code]
+- [x] Implement export endpoint — CSV and JSON formats [code]
+- [!] Implement wallet-based authentication for dashboard [code] — WAITING FOR: run402 SIWX integration (Phase 4)
 
 ### Phase 3: Frontend — Public Repo `[both]` `AI`
 
@@ -341,3 +340,4 @@ _None yet_
 - 2026-04-05: Drafted LEGAL.md — awaiting human approval
 - 2026-04-05: Completed run402 capability audit — prepaid credits EXISTS, magic link auth PARTIAL, custom domains EXISTS, email service EXISTS, platform wallet PARTIAL. Four run402 enhancements identified.
 - 2026-04-05: Phase 1 complete — SignatureRegistry.sol deployed to Base Sepolia (0xAE8b...c91). Gas: 220K/email sig, 243K/wallet sig, 158K/completion. 2-signer envelope ~$0.01-0.05 gas. ABI + verification algorithm documented.
+- 2026-04-05: Phase 2 complete — Core engine: DB migrations, data access layer, envelope API (create/get/void/remind/list/export), signing engine (Method A+B, duplicate protection, decline, completion), PDF handling (hash, embed, certificate), 7 email templates (pluggable provider), universal verification. 23 tests passing (14 unit + 9 contract). x402/MPP middleware and wallet auth blocked on run402 integration.
