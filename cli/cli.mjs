@@ -37,6 +37,7 @@ Commands:
   image       Generate AI images via x402 or MPP micropayments
   email       Send template-based emails from your project
   message     Send messages to Run402 developers
+  auth        Manage project user authentication (magic link, passwords, settings)
   agent       Manage agent identity (contact info)
 
 Run 'run402 <command> --help' for detailed usage of each command.
@@ -156,6 +157,11 @@ switch (cmd) {
   }
   case "agent": {
     const { run } = await import("./lib/agent.mjs");
+    await run(sub, rest);
+    break;
+  }
+  case "auth": {
+    const { run } = await import("./lib/auth.mjs");
     await run(sub, rest);
     break;
   }

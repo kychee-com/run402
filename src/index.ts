@@ -74,6 +74,12 @@ import { listEmailsSchema, handleListEmails } from "./tools/list-emails.js";
 import { getEmailSchema, handleGetEmail } from "./tools/get-email.js";
 import { getMailboxSchema, handleGetMailbox } from "./tools/get-mailbox.js";
 
+// New tools — magic link auth
+import { requestMagicLinkSchema, handleRequestMagicLink } from "./tools/request-magic-link.js";
+import { verifyMagicLinkSchema, handleVerifyMagicLink } from "./tools/verify-magic-link.js";
+import { setUserPasswordSchema, handleSetUserPassword } from "./tools/set-user-password.js";
+import { authSettingsSchema, handleAuthSettings } from "./tools/auth-settings.js";
+
 // New tools — AI
 import { aiTranslateSchema, handleAiTranslate } from "./tools/ai-translate.js";
 import { aiModerateSchema, handleAiModerate } from "./tools/ai-moderate.js";
@@ -609,6 +615,36 @@ server.tool(
   "Get anon_key and service_key for a project from the local keystore.",
   projectKeysSchema,
   async (args) => handleProjectKeys(args),
+);
+
+// --- Magic link auth ---
+
+server.tool(
+  "request_magic_link",
+  "Send a passwordless login email (magic link) to a project user. Auto-creates the user on first verification. Rate limited per email (5/hr) and per project (by tier).",
+  requestMagicLinkSchema,
+  async (args) => handleRequestMagicLink(args),
+);
+
+server.tool(
+  "verify_magic_link",
+  "Exchange a magic link token for access_token + refresh_token. Creates the user if they don't exist. Token is single-use and expires in 15 minutes.",
+  verifyMagicLinkSchema,
+  async (args) => handleVerifyMagicLink(args),
+);
+
+server.tool(
+  "set_user_password",
+  "Change, reset, or set a user's password. Change: provide current_password + new_password. Reset (via magic link login): just new_password. Set (passwordless user): requires allow_password_set=true on project.",
+  setUserPasswordSchema,
+  async (args) => handleSetUserPassword(args),
+);
+
+server.tool(
+  "auth_settings",
+  "Update project auth settings. Currently supports allow_password_set (boolean) to control whether passwordless users can add a password. Requires service_key.",
+  authSettingsSchema,
+  async (args) => handleAuthSettings(args),
 );
 
 const transport = new StdioServerTransport();
