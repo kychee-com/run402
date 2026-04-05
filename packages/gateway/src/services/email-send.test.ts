@@ -43,6 +43,12 @@ mock.module("./mailbox.js", {
   },
 });
 
+mock.module("./email-domains.js", {
+  namedExports: {
+    getVerifiedSenderDomain: async () => null,
+  },
+});
+
 mock.module("./projects.js", {
   namedExports: {
     getProjectById: (id: string) => mockGetProjectById(id),
