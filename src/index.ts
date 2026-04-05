@@ -80,6 +80,11 @@ import { verifyMagicLinkSchema, handleVerifyMagicLink } from "./tools/verify-mag
 import { setUserPasswordSchema, handleSetUserPassword } from "./tools/set-user-password.js";
 import { authSettingsSchema, handleAuthSettings } from "./tools/auth-settings.js";
 
+// New tools — custom sender domains
+import { registerSenderDomainSchema, handleRegisterSenderDomain } from "./tools/register-sender-domain.js";
+import { senderDomainStatusSchema, handleSenderDomainStatus } from "./tools/sender-domain-status.js";
+import { removeSenderDomainSchema, handleRemoveSenderDomain } from "./tools/remove-sender-domain.js";
+
 // New tools — AI
 import { aiTranslateSchema, handleAiTranslate } from "./tools/ai-translate.js";
 import { aiModerateSchema, handleAiModerate } from "./tools/ai-moderate.js";
@@ -645,6 +650,29 @@ server.tool(
   "Update project auth settings. Currently supports allow_password_set (boolean) to control whether passwordless users can add a password. Requires service_key.",
   authSettingsSchema,
   async (args) => handleAuthSettings(args),
+);
+
+// --- Custom sender domains ---
+
+server.tool(
+  "register_sender_domain",
+  "Register a custom email sending domain for a project. Returns DNS records (DKIM CNAMEs + SPF/DMARC) to add. Once verified, email sends from your domain instead of mail.run402.com.",
+  registerSenderDomainSchema,
+  async (args) => handleRegisterSenderDomain(args),
+);
+
+server.tool(
+  "sender_domain_status",
+  "Check the verification status of a project's custom sender domain. Polls SES for pending domains.",
+  senderDomainStatusSchema,
+  async (args) => handleSenderDomainStatus(args),
+);
+
+server.tool(
+  "remove_sender_domain",
+  "Remove a project's custom sender domain. Email reverts to sending from mail.run402.com.",
+  removeSenderDomainSchema,
+  async (args) => handleRemoveSenderDomain(args),
 );
 
 const transport = new StdioServerTransport();

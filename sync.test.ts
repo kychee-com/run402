@@ -59,7 +59,7 @@ function parseSubcommands(filePath: string): string[] {
 /** Parse CLI commands as "module:subcommand" pairs */
 function parseCliCommands(): string[] {
   const cmds: string[] = [];
-  for (const mod of ["allowance", "tier", "projects", "image", "storage", "functions", "secrets", "sites", "subdomains", "domains", "apps", "email", "message", "agent", "ai", "auth"]) {
+  for (const mod of ["allowance", "tier", "projects", "image", "storage", "functions", "secrets", "sites", "subdomains", "domains", "apps", "email", "message", "agent", "ai", "auth", "sender-domain"]) {
     for (const sub of parseSubcommands(join(__dirname, "cli/lib", `${mod}.mjs`))) {
       cmds.push(`${mod}:${sub}`);
     }
@@ -73,7 +73,7 @@ function parseCliCommands(): string[] {
 /** Parse OpenClaw commands as "module:subcommand" pairs */
 function parseOpenClawCommands(): string[] {
   const cmds: string[] = [];
-  for (const mod of ["allowance", "tier", "projects", "image", "storage", "functions", "secrets", "sites", "subdomains", "domains", "apps", "email", "message", "agent", "ai", "auth"]) {
+  for (const mod of ["allowance", "tier", "projects", "image", "storage", "functions", "secrets", "sites", "subdomains", "domains", "apps", "email", "message", "agent", "ai", "auth", "sender-domain"]) {
     for (const sub of parseSubcommands(join(__dirname, "openclaw/scripts", `${mod}.mjs`))) {
       cmds.push(`${mod}:${sub}`);
     }
@@ -244,6 +244,11 @@ const SURFACE: Capability[] = [
   { id: "set_user_password",  endpoint: "PUT /auth/v1/user/password",         mcp: "set_user_password",  cli: "auth:set-password",  openclaw: "auth:set-password" },
   { id: "auth_settings",      endpoint: "PATCH /auth/v1/settings",            mcp: "auth_settings",      cli: "auth:settings",      openclaw: "auth:settings" },
   { id: "auth_providers",    endpoint: "GET /auth/v1/providers",              mcp: null,                 cli: "auth:providers",     openclaw: "auth:providers" },
+
+  // ── Custom sender domains ─────────────────────────────────────────────
+  { id: "register_sender_domain", endpoint: "POST /email/v1/domains",    mcp: "register_sender_domain", cli: "sender-domain:register", openclaw: "sender-domain:register" },
+  { id: "sender_domain_status",  endpoint: "GET /email/v1/domains",     mcp: "sender_domain_status",  cli: "sender-domain:status",   openclaw: "sender-domain:status" },
+  { id: "remove_sender_domain",  endpoint: "DELETE /email/v1/domains",  mcp: "remove_sender_domain",  cli: "sender-domain:remove",   openclaw: "sender-domain:remove" },
 
   // ── Tier management ────────────────────────────────────────────────────
   { id: "tier_status",       endpoint: "GET /tiers/v1/status",             mcp: "tier_status",      cli: "tier:status",      openclaw: "tier:status" },

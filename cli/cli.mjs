@@ -38,6 +38,7 @@ Commands:
   email       Send template-based emails from your project
   message     Send messages to Run402 developers
   auth        Manage project user authentication (magic link, passwords, settings)
+  sender-domain  Manage custom email sender domain (register, status, remove)
   agent       Manage agent identity (contact info)
 
 Run 'run402 <command> --help' for detailed usage of each command.
@@ -162,6 +163,11 @@ switch (cmd) {
   }
   case "auth": {
     const { run } = await import("./lib/auth.mjs");
+    await run(sub, rest);
+    break;
+  }
+  case "sender-domain": {
+    const { run } = await import("./lib/sender-domain.mjs");
     await run(sub, rest);
     break;
   }
