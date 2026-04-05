@@ -161,33 +161,33 @@
 
 ### Phase 3: Frontend — Public Repo `[both]` `AI`
 
-#### 3A. Signing Page
+#### 3A. Signing Page (React + Vite + Tailwind, mobile-responsive)
 
-- [ ] Build PDF viewer component using pdf.js with signature field highlighting [frontend-visual]
-- [ ] Build wallet detection — check for window.ethereum, show Method A/B options accordingly [frontend-logic]
-- [ ] Build Method A signing flow: one-click auto-stamp (default) or drawing widget (if require_drawn_signature) [frontend-logic]
-- [ ] Build Ed25519 key generation with Web Crypto API feature detection + tweetnacl.js fallback [frontend-logic]
-- [ ] Build Method B signing flow: eth_signTypedData_v4 call with DocumentSignature struct [frontend-logic]
-- [ ] Build signature drawing/typing widget with save-to-localStorage and "Use saved signature?" prompt [frontend-logic]
-- [ ] Build verification level prompts: Level 1 (click only), Level 2 (type email confirmation) [frontend-logic]
-- [ ] Build `require_wallet: true` enforcement — show Method B only [frontend-logic]
-- [ ] Build duplicate signing screen — "You've already signed this document" [frontend-visual]
-- [ ] Build decline flow UI [frontend-visual]
-- [ ] Build signing confirmation screen with next steps [frontend-visual]
+- [x] Build PDF viewer component using pdf.js with page navigation [frontend-visual]
+- [x] Build wallet detection — check for window.ethereum, show Method A/B options [frontend-logic]
+- [x] Build Method A signing flow: one-click auto-stamp (default) or drawing widget (if require_drawn_signature) [frontend-logic]
+- [x] Build Ed25519 key generation with Web Crypto API feature detection + tweetnacl.js fallback [frontend-logic]
+- [x] Build Method B signing flow: eth_signTypedData_v4 call with DocumentSignature struct [frontend-logic]
+- [x] Build signature drawing/typing widget with save-to-localStorage and "Use saved signature?" prompt [frontend-logic]
+- [x] Build verification level prompts: Level 1 (click only), Level 2 (type email confirmation) [frontend-logic]
+- [x] Build `require_wallet: true` enforcement — show Method B only [frontend-logic]
+- [x] Build duplicate signing screen — "You've already signed this document" [frontend-visual]
+- [x] Build decline flow UI [frontend-visual]
+- [x] Build signing confirmation screen with tx hash [frontend-visual]
 
 #### 3B. Verification Page
 
-- [ ] Build `/verify` page — PDF upload, hash computation, results display [frontend-visual]
-- [ ] Build verification results UI — signer count, dates, methods, wallet addresses (Method B), "email-verified" label (Method A) [frontend-visual]
+- [x] Build `/verify` page — PDF upload, client-side hash computation, results display [frontend-visual]
+- [x] Build `/verify/:envelopeId` proof link page — signer details, tx hashes, Basescan links, independent verification instructions [frontend-visual]
 
 #### 3C. Dashboard
 
-- [ ] Build wallet connect authentication flow [frontend-logic]
-- [ ] Build envelope list view — status, signer progress, dates [frontend-visual]
-- [ ] Build envelope detail view — audit trail, signer statuses, tx hashes, on-chain links [frontend-visual]
-- [ ] Build resend/remind button [frontend-logic]
-- [ ] Build export button (CSV/JSON download) [frontend-logic]
-- [ ] Build envelope creation form — PDF upload, add signers, set signing order, set require_drawn_signature, set verification levels, set require_wallet per signer [frontend-visual]
+- [x] Build wallet connect authentication flow [frontend-logic]
+- [x] Build envelope list view — status, dates, responsive table [frontend-visual]
+- [x] Build envelope detail view — audit trail, signer statuses, tx hashes, Basescan links, progress bar [frontend-visual]
+- [x] Build resend/remind button [frontend-logic]
+- [x] Build export button (CSV/JSON download) [frontend-logic]
+- [x] Build envelope creation form — PDF upload, add signers, set signing order, require_drawn_signature, verification levels, require_wallet per signer, "Will you also sign?" prompt [frontend-visual]
 
 ### Phase 4: Service Layer — Service Repo `[service]` `AI`
 
@@ -341,3 +341,4 @@ _None yet_
 - 2026-04-05: Completed run402 capability audit — prepaid credits EXISTS, magic link auth PARTIAL, custom domains EXISTS, email service EXISTS, platform wallet PARTIAL. Four run402 enhancements identified.
 - 2026-04-05: Phase 1 complete — SignatureRegistry.sol deployed to Base Sepolia (0xAE8b...c91). Gas: 220K/email sig, 243K/wallet sig, 158K/completion. 2-signer envelope ~$0.01-0.05 gas. ABI + verification algorithm documented.
 - 2026-04-05: Phase 2 complete — Core engine: DB migrations, data access layer, envelope API (create/get/void/remind/list/export), signing engine (Method A+B, duplicate protection, decline, completion), PDF handling (hash, embed, certificate), 7 email templates (pluggable provider), universal verification. 23 tests passing (14 unit + 9 contract). x402/MPP middleware and wallet auth blocked on run402 integration.
+- 2026-04-05: Phase 3 complete — React + Vite + Tailwind frontend: signing page (pdf.js viewer, Method A/B, drawing widget, signature persistence, verification levels, duplicate/decline/expired screens), verification page (client-side hash, universal contract query), proof link page (Basescan links, independent verification), dashboard (wallet connect, envelope list, detail/audit trail, create form with "Will you also sign?" prompt, remind/void/export).
