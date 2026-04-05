@@ -607,6 +607,7 @@ describe("archiveProject", () => {
       pinned: false,
       createdAt: new Date(),
       demoMode: false,
+      allowPasswordSet: false,
     });
 
     const result = await archiveProject("prj_archived_already");
@@ -627,6 +628,7 @@ describe("archiveProject", () => {
       pinned: false,
       createdAt: new Date(),
       demoMode: false,
+      allowPasswordSet: false,
     });
 
     const clientQueries: string[] = [];
@@ -664,6 +666,7 @@ describe("archiveProject", () => {
       pinned: false,
       createdAt: new Date(),
       demoMode: false,
+      allowPasswordSet: false,
     });
 
     const poolQueries: string[] = [];
@@ -699,6 +702,7 @@ describe("archiveProject", () => {
       pinned: false,
       createdAt: new Date(),
       demoMode: false,
+      allowPasswordSet: false,
     });
 
     const clientQueries: string[] = [];
@@ -735,6 +739,7 @@ describe("archiveProject", () => {
       pinned: false,
       createdAt: new Date(),
       demoMode: false,
+      allowPasswordSet: false,
     });
 
     let released = false;
@@ -777,6 +782,7 @@ describe("archiveProject", () => {
       pinned: false,
       createdAt: new Date(),
       demoMode: false,
+      allowPasswordSet: false,
     });
 
     // Make pool.query throw for the DELETE FROM internal.secrets call
@@ -813,6 +819,7 @@ describe("archiveProject", () => {
       pinned: false,
       createdAt: new Date(),
       demoMode: false,
+      allowPasswordSet: false,
     });
 
     const clientQueries: string[] = [];
