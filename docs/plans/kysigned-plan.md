@@ -222,21 +222,13 @@
 
 ### Phase 6: Website — Service Repo `[service]` `AI`
 
-- [ ] Build landing page — cost attack angle lead, no "kill" language, dual CTA (hosted service + GitHub repo) [frontend-visual]
-  - Clean minimal design (bld402.com aesthetic)
-  - Above-fold: headline, cost comparison, dual CTA
-- [ ] Build pricing page — per-envelope cost, credit pack tiers, comparison table vs DocuSign/GoodSign/others [frontend-visual]
-- [ ] Build "SaaS vs Repo" decision helper page — tradeoffs for builders, end users, agents [frontend-visual]
-- [ ] Build FAQ page — six categories [frontend-visual]:
-  - Trust/survival: "What if you shut down?"
-  - Migration: "How do I move from DocuSign?"
-  - Capability gap: honest comparison vs DocuSign
-  - Legal/compliance: "Are blockchain signatures legal?"
-  - Pricing/catch: "How is this so cheap?"
-  - SaaS vs repo: decision helper with how-to snippets
-- [ ] Write how-to snippets for agent-assisted deployment (human-to-agent content layer) [manual] `AI`
-- [ ] Create llms.txt at kysigned.com/llms.txt — machine-readable product description [code] `AI`
-- [ ] Write README.md for public repo — builder-targeted, "Built on run402" mention, deployment instructions [manual] `AI -> HUMAN: Approve`
+- [x] Build landing page — cost comparison lead, no "kill" language, dual CTA, comparison table, feature grid [frontend-visual]
+- [x] Build pricing page — 3 paths, comparison table vs DocuSign/GoodSign [frontend-visual]
+- [x] Build "SaaS vs Repo" decision helper page — tradeoffs for builders, end users, agents [frontend-visual]
+- [x] Build FAQ page — 6 categories, 9 questions with honest answers [frontend-visual]
+- [x] Write how-to snippets for agent-assisted deployment (in SaaS vs Repo page + llms.txt) [manual]
+- [x] Create llms.txt — machine-readable product description with API, MCP, contract details [code]
+- [!] Write README.md for public repo [manual] `AI -> HUMAN: Approve` — drafted. WAITING FOR: human approval
 
 ### Phase 7: Legal `AI -> HUMAN: Approve`
 
