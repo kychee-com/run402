@@ -73,7 +73,7 @@ describe("registerSenderDomain", () => {
   it("rejects blocklisted domain (run402.com)", async () => {
     const result = await registerSenderDomain("proj1", "0xwallet1", "run402.com");
     assert.equal(result.error, true);
-    assert.ok(result.message.includes("blocklist") || result.message.includes("not allowed"));
+    assert.ok(result.message!.includes("blocklist") || result.message!.includes("not allowed"));
   });
 
   it("rejects blocklisted domain (gmail.com)", async () => {
@@ -100,7 +100,7 @@ describe("registerSenderDomain", () => {
     };
     const result = await registerSenderDomain("proj1", "0xwallet1", "newdomain.com");
     assert.equal(result.error, true);
-    assert.ok(result.message.includes("already has"));
+    assert.ok(result.message!.includes("already has"));
   });
 
   it("rejects if domain registered by different wallet", async () => {
@@ -117,7 +117,7 @@ describe("registerSenderDomain", () => {
     };
     const result = await registerSenderDomain("proj1", "0xwallet1", "taken.com");
     assert.equal(result.error, true);
-    assert.ok(result.message.includes("different") || result.message.includes("another"));
+    assert.ok(result.message!.includes("different") || result.message!.includes("another"));
   });
 
   it("allows domain already verified by same wallet (instant verified)", async () => {
