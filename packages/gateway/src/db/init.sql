@@ -92,6 +92,20 @@ CREATE TABLE internal.magic_link_tokens (
 
 CREATE INDEX idx_magic_link_tokens_project_email ON internal.magic_link_tokens(project_id, email);
 
+CREATE TABLE internal.email_domains (
+  domain TEXT NOT NULL,
+  project_id TEXT NOT NULL REFERENCES internal.projects(id) ON DELETE CASCADE,
+  wallet_address TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending',
+  dkim_records JSONB NOT NULL DEFAULT '[]',
+  verified_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (domain, project_id)
+);
+
+CREATE UNIQUE INDEX idx_email_domains_project ON internal.email_domains(project_id);
+CREATE INDEX idx_email_domains_domain_wallet ON internal.email_domains(domain, wallet_address);
+
 -- =============================================================================
 -- 4. Auth schema (helper functions for RLS)
 -- =============================================================================

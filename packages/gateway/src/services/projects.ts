@@ -8,6 +8,7 @@ import { deleteProjectFunctions } from "./functions.js";
 import { deleteProjectSubdomains } from "./subdomains.js";
 import { deleteProjectDeployments } from "./deployments.js";
 import { tombstoneProjectMailbox } from "./mailbox.js";
+import { removeSenderDomain } from "./email-domains.js";
 import type { ProjectInfo, TierName } from "@run402/shared";
 
 
@@ -251,7 +252,14 @@ export async function archiveProject(projectId: string): Promise<boolean> {
     console.error(`  Warning: cascade tombstoneProjectMailbox failed for ${projectId}:`, err instanceof Error ? err.message : err);
   }
 
-  // 5. Delete DB-only resources (secrets, app versions, oauth transactions)
+  // 5. Remove custom sender domain (SES identity cleaned up if last project using it)
+  try {
+    await removeSenderDomain(projectId);
+  } catch (err) {
+    console.error(`  Warning: cascade removeSenderDomain failed for ${projectId}:`, err instanceof Error ? err.message : err);
+  }
+
+  // 6. Delete DB-only resources (secrets, app versions, oauth transactions)
   try {
     await pool.query(sql(`DELETE FROM internal.secrets WHERE project_id = $1`), [projectId]);
     await pool.query(sql(`DELETE FROM internal.app_versions WHERE project_id = $1`), [projectId]);

@@ -58,6 +58,7 @@ import adminWalletRoutes from "./routes/admin-wallet.js";
 import attributionRoutes from "./routes/attribution.js";
 import contactRoutes from "./routes/contact.js";
 import mailboxRoutes from "./routes/mailboxes.js";
+import emailDomainRoutes from "./routes/email-domains.js";
 import tierRoutes from "./routes/tiers.js";
 import openapiRoutes from "./routes/openapi.js";
 import { initAppVersionsTables } from "./services/publish.js";
@@ -403,6 +404,7 @@ app.use(publishRoutes);
 app.use(attributionRoutes);
 app.use(contactRoutes);
 app.use(mailboxRoutes);
+app.use(emailDomainRoutes);
 
 // --- Bugsnag error handler (must be before central error handler) ---
 app.use(bugsnagMiddleware.errorHandler);
@@ -1085,6 +1087,22 @@ async function applyMigrations() {
   `));
   await pool.query(sql(`CREATE INDEX IF NOT EXISTS idx_magic_link_tokens_project_email ON internal.magic_link_tokens(project_id, email)`));
   await pool.query(sql(`ALTER TABLE internal.projects ADD COLUMN IF NOT EXISTS allow_password_set BOOLEAN NOT NULL DEFAULT false`));
+
+  // v1.18: custom sender domains
+  await pool.query(sql(`
+    CREATE TABLE IF NOT EXISTS internal.email_domains (
+      domain TEXT NOT NULL,
+      project_id TEXT NOT NULL REFERENCES internal.projects(id) ON DELETE CASCADE,
+      wallet_address TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      dkim_records JSONB NOT NULL DEFAULT '[]',
+      verified_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      PRIMARY KEY (domain, project_id)
+    )
+  `));
+  await pool.query(sql(`CREATE UNIQUE INDEX IF NOT EXISTS idx_email_domains_project ON internal.email_domains(project_id)`));
+  await pool.query(sql(`CREATE INDEX IF NOT EXISTS idx_email_domains_domain_wallet ON internal.email_domains(domain, wallet_address)`));
 }
 
 async function start() {
