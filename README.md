@@ -69,6 +69,27 @@ npx run402-mcp
 | `allowance_export` | Export the local agent allowance address. |
 | `request_faucet` | Request free testnet USDC from the Run402 faucet. |
 | `generate_image` | Generate a PNG image from a text prompt. $0.03 via x402. |
+| `create_mailbox` | Create an email mailbox for a project (`slug@mail.run402.com`). |
+| `send_email` | Send email — template or raw HTML mode. Single recipient. |
+| `list_emails` | List sent emails from the project's mailbox. |
+| `get_email` | Get a specific email message with replies. |
+| `get_mailbox` | Get the project's mailbox info. |
+| `promote_user` | Promote a project user to admin role. |
+| `demote_user` | Demote a project user from admin role. |
+| `ai_translate` | Translate text via AI (OpenRouter). Metered per project. |
+| `ai_moderate` | Moderate text via AI (OpenAI). Free. |
+| `ai_usage` | Check AI translation usage and quota. |
+| `add_custom_domain` | Add a custom domain to a subdomain (Cloudflare SSL). |
+| `list_custom_domains` | List custom domains for a project. |
+| `check_domain_status` | Check custom domain verification status. |
+| `remove_custom_domain` | Remove a custom domain. |
+| `request_magic_link` | Send a passwordless login email (magic link). |
+| `verify_magic_link` | Exchange a magic link token for access + refresh tokens. |
+| `set_user_password` | Change, reset, or set a user's password. |
+| `auth_settings` | Update project auth settings (e.g., allow_password_set). |
+| `register_sender_domain` | Register a custom email sending domain (DKIM verification). |
+| `sender_domain_status` | Check sender domain verification status. |
+| `remove_sender_domain` | Remove a custom sender domain. |
 
 ## Client Configuration
 

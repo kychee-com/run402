@@ -351,6 +351,98 @@ Get the project's mailbox info (ID, address, slug). Use to check if a mailbox ex
 get_mailbox(project_id: "prj_...")
 ```
 
+### request_magic_link
+
+Send a passwordless login email (magic link) to a project user. Auto-creates the user on first verification. Rate limited per email (5/hr) and per project (by tier).
+
+**Parameters:**
+- `project_id` (required) — Project ID
+- `email` (required) — Email address to send the magic link to
+- `redirect_url` (required) — URL to redirect to with `?token=<token>`. Must be an allowed origin for this project.
+
+**Example:**
+```
+request_magic_link(project_id: "prj_...", email: "user@example.com", redirect_url: "https://myapp.run402.com/auth/callback")
+```
+
+### verify_magic_link
+
+Exchange a magic link token for access_token + refresh_token. Creates the user if they don't exist. Token is single-use and expires in 15 minutes.
+
+**Parameters:**
+- `project_id` (required) — Project ID
+- `token` (required) — The magic link token from the email link URL (`?token=...`)
+
+**Example:**
+```
+verify_magic_link(project_id: "prj_...", token: "abc123def456...")
+```
+
+### set_user_password
+
+Change, reset, or set a user's password. Change: provide current_password + new_password. Reset (via magic link login): just new_password. Set (passwordless user): requires `allow_password_set=true` on project.
+
+**Parameters:**
+- `project_id` (required) — Project ID
+- `access_token` (required) — The user's access_token (Bearer token from login)
+- `new_password` (required) — The new password to set
+- `current_password` (optional) — Current password (required for password change, omit for reset/set)
+
+**Example:**
+```
+set_user_password(project_id: "prj_...", access_token: "eyJ...", new_password: "new-pass-123")
+```
+
+### auth_settings
+
+Update project auth settings. Currently supports `allow_password_set` to control whether passwordless users can add a password. Requires service_key.
+
+**Parameters:**
+- `project_id` (required) — Project ID
+- `allow_password_set` (required) — Boolean. Allow passwordless users to set a password.
+
+**Example:**
+```
+auth_settings(project_id: "prj_...", allow_password_set: true)
+```
+
+### register_sender_domain
+
+Register a custom email sending domain for a project. Returns DNS records (DKIM CNAMEs + SPF/DMARC) to add. Once verified, email sends from your domain instead of `mail.run402.com`.
+
+**Parameters:**
+- `project_id` (required) — Project ID
+- `domain` (required) — The domain to register (e.g., `kysigned.com`)
+
+**Example:**
+```
+register_sender_domain(project_id: "prj_...", domain: "kysigned.com")
+```
+
+### sender_domain_status
+
+Check the verification status of a project's custom sender domain. Polls SES for pending domains.
+
+**Parameters:**
+- `project_id` (required) — Project ID
+
+**Example:**
+```
+sender_domain_status(project_id: "prj_...")
+```
+
+### remove_sender_domain
+
+Remove a project's custom sender domain. Email reverts to sending from `mail.run402.com`.
+
+**Parameters:**
+- `project_id` (required) — Project ID
+
+**Example:**
+```
+remove_sender_domain(project_id: "prj_...")
+```
+
 ## Standard Workflow
 
 Follow this sequence to go from zero to a working database:
