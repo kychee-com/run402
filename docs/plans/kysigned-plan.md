@@ -258,9 +258,9 @@
 
 ### Phase 9: Agent Interface `[both]` `AI`
 
-- [ ] Build MCP server exposing: create envelope, check status, list envelopes, verify document [code]
-- [ ] Implement x402/MPP authentication in MCP [code]
-- [ ] Implement configurable endpoint (default: kysigned.com, overridable for self-hosted) [code]
+- [x] Build MCP server exposing: create_envelope, check_envelope_status, list_envelopes, verify_document, verify_envelope, send_reminder, void_envelope [code]
+- [!] Implement x402/MPP authentication in MCP [code] — WAITING FOR: run402 payment middleware integration
+- [x] Implement configurable endpoint (KYSIGNED_ENDPOINT env var, default: kysigned.com) [code]
 - [ ] Publish canonical npm package (`kysigned-mcp`) [infra]
 - [ ] Write MCP documentation and usage examples [manual] `AI`
 
