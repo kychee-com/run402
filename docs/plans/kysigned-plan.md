@@ -240,21 +240,21 @@
 
 ### Phase 7: Legal `AI -> HUMAN: Approve`
 
-- [ ] Draft Terms of Service — from existing Kychee/Eleanor/run402 templates. Must state what signatures prove ("someone with access to email X signed") and what they don't guarantee [manual] `AI -> HUMAN: Approve`
-- [ ] Draft Privacy Policy [manual] `AI -> HUMAN: Approve`
-- [ ] Draft Cookie/consent notice [manual] `AI -> HUMAN: Approve`
-- [ ] Draft Acceptable Use Policy [manual] `AI -> HUMAN: Approve`
-- [ ] Draft DPA (Data Processing Agreement) [manual] `AI -> HUMAN: Approve`
+- [!] Draft Terms of Service [manual] `AI -> HUMAN: Approve` — drafted in kysigned-service/legal/. WAITING FOR: human approval
+- [!] Draft Privacy Policy [manual] `AI -> HUMAN: Approve` — drafted. WAITING FOR: human approval
+- [!] Draft Cookie/consent notice [manual] `AI -> HUMAN: Approve` — drafted. WAITING FOR: human approval
+- [!] Draft Acceptable Use Policy [manual] `AI -> HUMAN: Approve` — drafted. WAITING FOR: human approval
+- [!] Draft DPA (Data Processing Agreement) [manual] `AI -> HUMAN: Approve` — drafted. WAITING FOR: human approval
 - [ ] Publish all legal docs on kysigned.com [infra] `AI`
 - [ ] Verify LEGAL.md in public repo is approved (from Phase 0) [manual] `HUMAN`
 
 ### Phase 8: Analytics & Tracking `AI`
 
-- [ ] Create GA4 property for kysigned.com under Kychee account (account ID 361235691) [infra]
-- [ ] Configure measurement ID and data streams [infra]
-- [ ] Implement page tags on all kysigned.com pages [code]
-- [ ] Configure key events: envelope created, signature completed, envelope completed, credit pack purchased [infra]
-- [ ] Configure conversion goals: visitor → envelope creation, visitor → credit purchase, visitor → repo clone [infra]
+- [x] Create GA4 property for kysigned.com under Kychee account — property ID: 531297126 [infra]
+- [x] Configure measurement ID (G-27SFFZ8KQW) and web data stream (kysigned.com) [infra]
+- [ ] Implement page tags on all kysigned.com pages [code] — blocked on website build
+- [x] Configure key events: envelope_created, signature_completed, envelope_completed, credit_pack_purchased [infra]
+- [ ] Configure conversion goals: visitor → envelope creation, visitor → credit purchase, visitor → repo clone [infra] — needs website traffic data
 
 ### Phase 9: Agent Interface `[both]` `AI`
 
