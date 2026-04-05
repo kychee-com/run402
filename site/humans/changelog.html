@@ -49,6 +49,7 @@
 
     <h2>April 5, 2026</h2>
     <ul>
+      <li><span class="entry-title">Custom sender domains</span> &mdash; Register a custom email sending domain via <code>POST /email/v1/domains</code>. DKIM verification via SES, DNS records provided. Once verified, email sends from <code>&lt;slug&gt;@&lt;your-domain&gt;</code>. Wallet-scoped ownership for multi-project reuse.</li>
       <li><span class="entry-title">Magic link auth</span> &mdash; Passwordless email authentication for project users. Request a magic link via <code>POST /auth/v1/magic-link</code>, verify via <code>grant_type=magic_link</code>. Auto-creates users on first use. Includes password change/reset/set endpoint and project-level <code>allow_password_set</code> setting. Multi-method identity: users can have any combination of password, OAuth, and magic link.</li>
     </ul>
 

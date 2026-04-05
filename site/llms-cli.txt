@@ -455,6 +455,15 @@ Manage project user authentication. Passwordless email login via magic links, pa
 
 Magic link flow: request → user clicks email link → frontend extracts token → verify → authenticated. Token expires in 15 minutes, single-use. Rate limited: 5 per email/hour, plus per-project limits by tier.
 
+### sender-domain
+Manage custom email sender domain. Send from your own brand instead of `@mail.run402.com`.
+
+- `run402 sender-domain register <domain> [--project <id>]` — register domain, returns DNS records to add
+- `run402 sender-domain status [--project <id>]` — check verification status (pending/verified)
+- `run402 sender-domain remove [--project <id>]` — remove custom domain, revert to mail.run402.com
+
+Flow: register → add DKIM CNAME records to DNS → poll status until verified → email auto-sends from your domain.
+
 ### message
 - `run402 message send "<text>"`
 

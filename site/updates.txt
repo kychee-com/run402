@@ -8,6 +8,7 @@
 
 ## 2026-04-05
 
+- **Custom sender domains**: Register a custom email sending domain (e.g., `kysigned.com`) via `POST /email/v1/domains`. DKIM verification via SES, DNS records provided. Wallet-scoped ownership for multi-project reuse. Falls back to `@mail.run402.com` when unverified.
 - **Magic link auth**: Passwordless email authentication for project users. Request a magic link via `POST /auth/v1/magic-link`, verify via `grant_type=magic_link`. Auto-creates users on first use. Includes password change/reset/set endpoint (`PUT /auth/v1/user/password`) and project-level `allow_password_set` setting. Multi-method identity model: users can now have any combination of password, OAuth, and magic link auth.
 
 ## 2026-04-02

@@ -250,10 +250,16 @@ export class PodStack extends cdk.Stack {
       removalPolicy: cdk.RemovalPolicy.RETAIN,
     });
 
-    // Grant ECS task role SES send permissions
+    // Grant ECS task role SES send + domain management permissions
+    // Wildcard identity allows sending from any verified domain (custom sender domains)
+    // Gateway enforces ownership via DB — IAM allows all identities
     taskDef.taskRole.addToPrincipalPolicy(new iam.PolicyStatement({
       actions: ["ses:SendEmail", "ses:SendRawEmail"],
-      resources: [`arn:aws:ses:${this.region}:${this.account}:identity/run402.com`],
+      resources: [`arn:aws:ses:${this.region}:${this.account}:identity/*`],
+    }));
+    taskDef.taskRole.addToPrincipalPolicy(new iam.PolicyStatement({
+      actions: ["ses:CreateEmailIdentity", "ses:DeleteEmailIdentity", "ses:GetEmailIdentity"],
+      resources: ["*"],
     }));
 
     // Inbound email processing Lambda

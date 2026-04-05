@@ -1043,6 +1043,25 @@ Custom domains let users point their own domain (e.g., `example.com`) at a Run40
 | `/mailboxes/v1/:id/messages/:messageId` | GET | service_key | Free | Get message with replies |
 | `/mailboxes/v1/:id/webhooks` | POST | service_key | Free | Register webhook for email events |
 | `/mailboxes/v1/:id/status` | POST | admin | Free | Reactivate suspended mailbox (admin only) |
+| `/email/v1/domains` | POST | service_key | Free | Register a custom sender domain (returns DNS records) |
+| `/email/v1/domains` | GET | service_key | Free | Check sender domain verification status |
+| `/email/v1/domains` | DELETE | service_key | Free | Remove custom sender domain |
+
+#### Custom Sender Domains
+
+By default, email sends from `<slug>@mail.run402.com`. Register a custom sender domain to send from your own brand (e.g., `notifications@kysigned.com`).
+
+**Flow:**
+1. `POST /email/v1/domains` with `{ "domain": "kysigned.com" }` — returns DKIM CNAME records + recommended SPF/DMARC TXT records
+2. Add the 3 DKIM CNAME records to your DNS provider (required). SPF and DMARC are recommended.
+3. Poll `GET /email/v1/domains` — status transitions from `pending` to `verified` once DNS propagates (usually minutes)
+4. Once verified, all outbound email sends from `<slug>@kysigned.com` automatically
+
+**Key details:**
+- One custom domain per project. Mailbox slug controls the local part (e.g., `support@kysigned.com`).
+- Domain ownership is wallet-scoped: once verified by one project, other projects on the same wallet reuse it instantly.
+- Removing a custom domain (`DELETE /email/v1/domains`) reverts email to `@mail.run402.com`.
+- Unverified domains fall back to `@mail.run402.com` — no disruption during setup.
 
 **Two send modes** for `POST /mailboxes/v1/:id/messages`:
 - **Template mode**: `{"to": "user@example.com", "template": "notification", "variables": {"project_name": "My App", "message": "Hello!"}}`

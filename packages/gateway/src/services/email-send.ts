@@ -21,6 +21,7 @@ import {
   MailboxError,
 } from "./mailbox.js";
 import { getProjectById } from "./projects.js";
+import { getVerifiedSenderDomain } from "./email-domains.js";
 import { TIERS } from "@run402/shared";
 import type { TierName } from "@run402/shared";
 
@@ -136,8 +137,8 @@ function validateFromName(name: string | undefined): void {
 /**
  * Build the From address, optionally with a display name.
  */
-function buildFromAddress(slug: string, fromName?: string): string {
-  const address = formatAddress(slug);
+function buildFromAddress(slug: string, fromName?: string, customDomain?: string | null): string {
+  const address = customDomain ? `${slug}@${customDomain}` : formatAddress(slug);
   if (fromName) {
     return `"${fromName}" <${address}>`;
   }
@@ -283,7 +284,9 @@ export async function sendEmail(
     );
   }
 
-  const fromAddress = buildFromAddress(mailbox.slug, opts.from_name);
+  // Resolve custom sender domain (if verified, use it; otherwise fall back to mail.run402.com)
+  const customDomain = await getVerifiedSenderDomain(mailbox.project_id);
+  const fromAddress = buildFromAddress(mailbox.slug, opts.from_name, customDomain);
 
   // Send via SES
   const command = new SendEmailCommand({
