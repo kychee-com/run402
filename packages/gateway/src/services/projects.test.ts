@@ -116,6 +116,7 @@ describe("projectCache", () => {
       pinned: false,
       createdAt: new Date(),
       demoMode: false,
+      allowPasswordSet: false,
     };
     projectCache.set("prj_1", project);
     assert.deepStrictEqual(projectCache.get("prj_1"), project);
@@ -139,6 +140,7 @@ describe("projectCache", () => {
       pinned: false,
       createdAt: new Date(),
       demoMode: false,
+      allowPasswordSet: false,
     };
     projectCache.set("prj_2", project);
     projectCache.delete("prj_2");
@@ -159,6 +161,7 @@ describe("projectCache", () => {
       pinned: false,
       createdAt: new Date(),
       demoMode: false,
+      allowPasswordSet: false,
     };
     const p2 = {
       id: "prj_b",
@@ -173,6 +176,7 @@ describe("projectCache", () => {
       pinned: false,
       createdAt: new Date(),
       demoMode: false,
+      allowPasswordSet: false,
     };
     projectCache.set("prj_a", p1);
     projectCache.set("prj_b", p2);
@@ -294,6 +298,7 @@ describe("getProjectById", () => {
       pinned: false,
       createdAt: new Date(),
       demoMode: false,
+      allowPasswordSet: false,
     };
     projectCache.set("prj_cached", project);
 
@@ -559,6 +564,7 @@ describe("archiveProject", () => {
       pinned: false,
       createdAt: new Date(),
       demoMode: false,
+      allowPasswordSet: false,
     };
     projectCache.set("prj_to_archive", project);
 

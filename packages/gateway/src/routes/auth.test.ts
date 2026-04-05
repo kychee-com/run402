@@ -98,7 +98,7 @@ describe("POST /auth/v1/magic-link", () => {
     const req = fakeReq({ body: { email: "user@example.com", redirect_url: "https://app.run402.com/cb" } });
     const res = fakeRes();
     const err = await call("post", "/auth/v1/magic-link", req, res);
-    assert.equal(err, null || undefined);
+    assert.equal(err, undefined);
     assert.equal(res._status, 200);
     assert.ok(res._body.message.includes("magic link"));
   });

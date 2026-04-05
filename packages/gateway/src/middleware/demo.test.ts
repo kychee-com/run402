@@ -34,6 +34,7 @@ function fakeProject(overrides: Partial<ProjectInfo> = {}): ProjectInfo {
     demoConfig: { ...DEFAULT_DEMO_CONFIG },
     demoSourceVersionId: "av_test123",
     demoLastResetAt: new Date(),
+    allowPasswordSet: false,
     ...overrides,
   };
 }

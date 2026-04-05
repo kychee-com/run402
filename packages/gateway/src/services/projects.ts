@@ -207,6 +207,7 @@ export async function createProject(
     pinned: false,
     createdAt: now,
     demoMode: false,
+    allowPasswordSet: false,
   };
 
   cache.set(projectId, project);
