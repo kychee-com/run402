@@ -225,7 +225,7 @@ function ok(name: string, condition: boolean, detail = "") {
   console.log("\n9. Toggle allow_password_set");
   const settingsResp = await fetch(`${BASE_URL}/auth/v1/settings`, {
     method: "PATCH",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${serviceKey}` },
+    headers: { "Content-Type": "application/json", apikey: serviceKey },
     body: JSON.stringify({ allow_password_set: true }),
   });
   ok("toggle allow_password_set", settingsResp.status === 200, `status=${settingsResp.status}`);
