@@ -110,32 +110,32 @@
 
 #### 2B. Envelope Management API
 
-- [x] Implement `POST /v1/envelope` — create envelope with PDF + signers, compute SHA-256, generate per-signer salts/tokens, store PDF, return envelope_id + status_url + verify_url + signing links [code]
-- [x] Implement `GET /v1/envelope/:id` — return envelope status, signer statuses, tx hashes [code]
-- [x] Implement `POST /v1/envelope/:id/void` — void active envelope, notify pending signers [code]
-- [x] Implement `POST /v1/envelope/:id/remind` — resend notification to pending signers [code]
-- [x] Implement webhook delivery on envelope completion (POST to callback_url) [code]
-- [x] Implement envelope expiry logic — check TTL, transition to expired, notify parties [code]
-- [x] Implement sequential signing logic — notify next signer only after previous completes [code]
+- [x] Implement `POST /v1/envelope` — create envelope with PDF + signers, compute SHA-256, generate per-signer salts/tokens, store PDF, return envelope_id + status_url + verify_url + signing links [code] — tested
+- [x] Implement `GET /v1/envelope/:id` — return envelope status, signer statuses, tx hashes [code] — tested
+- [x] Implement `POST /v1/envelope/:id/void` — void active envelope, notify pending signers [code] — tested
+- [x] Implement `POST /v1/envelope/:id/remind` — resend notification to pending signers [code] — tested
+- [x] Implement webhook delivery on envelope completion (POST to callback_url) [code] — tested
+- [x] Implement envelope expiry logic — check TTL, transition to expired, notify parties [code] — tested
+- [x] Implement sequential signing logic — notify next signer only after previous completes [code] — tested
 - [!] Implement x402 payment middleware for Path 1/2 sender authentication [code] — WAITING FOR: run402 integration layer (Phase 4)
 - [!] Implement MPP payment middleware for Path 1/2 sender authentication [code] — WAITING FOR: run402 integration layer (Phase 4)
 
 #### 2C. Signing Engine
 
-- [x] Implement `POST /v1/sign/:envelope_id/:token` — validate token, accept signature payload [code]
-- [x] Implement Method A server-side: compute signer_commitment, call recordEmailSignature on contract [code]
-- [x] Implement Method B server-side: call recordWalletSignature on contract with EIP-712 sig [code]
-- [x] Implement duplicate signing protection — reject if signer already signed [code]
-- [x] Implement decline flow — update signer status, notify sender [code]
-- [x] Implement auto-stamp generation — render signer name + crypto details via pdf-lib [code]
-- [x] Implement completion logic — detect all-signed, generate final PDF, compute final hash, call recordCompletion, fire webhook [code]
+- [x] Implement `POST /v1/sign/:envelope_id/:token` — validate token, accept signature payload [code] — tested
+- [x] Implement Method A server-side: compute signer_commitment, call recordEmailSignature on contract [code] — tested
+- [x] Implement Method B server-side: call recordWalletSignature on contract with EIP-712 sig [code] — tested
+- [x] Implement duplicate signing protection — reject if signer already signed [code] — tested
+- [x] Implement decline flow — update signer status, notify sender [code] — tested
+- [x] Implement auto-stamp generation — render signer name + crypto details via pdf-lib [code] — tested
+- [x] Implement completion logic — detect all-signed, generate final PDF, compute final hash, call recordCompletion, fire webhook [code] — tested
 
 #### 2D. PDF Handling
 
-- [x] Implement PDF upload (base64 and URL) with SHA-256 hash computation [code]
-- [x] Implement signature embedding into PDF using pdf-lib [code]
-- [x] Implement final signed PDF generation with all signatures embedded [code]
-- [x] Implement Certificate of Completion PDF generation [code]
+- [x] Implement PDF upload (base64 and URL) with SHA-256 hash computation [code] — has tests
+- [x] Implement signature embedding into PDF using pdf-lib [code] — tested
+- [x] Implement final signed PDF generation with all signatures embedded [code] — tested
+- [x] Implement Certificate of Completion PDF generation [code] — tested
 - [x] Implement PDF retention/deletion — configurable TTL (default 30 days), metadata persists after deletion [code]
 - [x] Implement retention notification system — notify at creation, completion, and before deletion [code]
 
@@ -258,7 +258,7 @@
 
 ### Phase 9: Agent Interface `[both]` `AI`
 
-- [x] Build MCP server exposing: create_envelope, check_envelope_status, list_envelopes, verify_document, verify_envelope, send_reminder, void_envelope [code]
+- [x] Build MCP server exposing: create_envelope, check_envelope_status, list_envelopes, verify_document, verify_envelope, send_reminder, void_envelope [code] — tested
 - [!] Implement x402/MPP authentication in MCP [code] — WAITING FOR: run402 payment middleware integration
 - [x] Implement configurable endpoint (KYSIGNED_ENDPOINT env var, default: kysigned.com) [code]
 - [ ] Publish canonical npm package (`kysigned-mcp`) [infra]
