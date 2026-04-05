@@ -138,14 +138,16 @@ The factory doc is not consumed by `/implement` (plan has all tasks) or `/valida
 ### F11. Lifecycle Per Product
 
 The factory doc prescribes this lifecycle for each SaaS-killer product:
-1. Mark the segment as "🔨 IN PROCESS" in `docs/products/saas-segments/saas-killing-segments-ranked.md` with a link to the product repo — signals that implementation has begun and prevents duplicate efforts
-2. Copy `saas-factory.md` into the new product's repo at `docs/saas-factory.md`
-3. Run `/brainstorm` with factory doc as reference — explores strategy, fills DECIDE items
-4. Run `/spec` with factory doc as reference — specifies all deliverables
-5. Run `/plan` with factory doc + spec as reference — decomposes all remaining tasks
-6. Run `/implement` — executes the plan (factory doc no longer needed)
-7. Run `/validate` — tests against spec
-8. Human final review — legal sign-off, collateral approval, launch go/no-go
+1. **Name and domain** — Choose a product name. Search for available `.com` domains. Register the domain via AWS Route 53 (AI can do this — use `aws route53domains register-domain` with the `kychee` AWS profile). The domain defines the product name, repo names, doc paths, and all downstream naming. Do this first — everything else depends on it.
+2. Mark the segment as "🔨 IN PROCESS" in `docs/products/saas-segments/saas-killing-segments-ranked.md` with a link to the product repo — signals that implementation has begun and prevents duplicate efforts
+3. Create GitHub repos (`kychee-com/<product>` public, `kychee-com/<product>-service` private) using the registered name
+4. Copy `saas-factory.md` into the new product's repo at `docs/saas-factory.md`
+5. Run `/brainstorm` with factory doc as reference — explores strategy, fills DECIDE items
+6. Run `/spec` with factory doc as reference — specifies all deliverables
+7. Run `/plan` with factory doc + spec as reference — decomposes all remaining tasks
+8. Run `/implement` — executes the plan (factory doc no longer needed)
+9. Run `/validate` — tests against spec
+10. Human final review — legal sign-off, collateral approval, launch go/no-go
 
 **Template versioning:** The product copy is a snapshot — like a printed page. Teams mark checkboxes and fill DECIDE items on their copy, but never edit the template content itself. If lessons learned require changing the template, updates go to the master copy in the run402 repo only. Future products get the improved master. In-progress products are not retroactively updated — if a critical improvement is needed, the product re-copies from master and re-fills.
 

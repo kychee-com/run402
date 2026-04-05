@@ -90,7 +90,7 @@
   - [ ] run402 enhancement: Mainnet wallet + KMS key management + contract interaction abstraction
   - [ ] run402 enhancement: Per-envelope billing adaptation + email-based billing accounts
   - [ ] run402 enhancement: Admin dashboard (/admin) — wallet activity breakdown by product (inflows: USDC revenue labelled "kysigned" / "run402 infra" / etc., derived from which API endpoint accepted payment; outflows: ETH gas labelled by which contract was called) + Stripe revenue tracking per product via Stripe metadata
-- [ ] Register domain kysigned.com [manual] `HUMAN`
+- [x] Register domain kysigned.com [infra] — registered via Route 53, hosted zone Z0749125BIF9JF9FZ73M. DNS wiring to run402 infra pending deployment.
 
 ### Phase 1: Smart Contract `AI`
 
@@ -218,7 +218,7 @@
 - [x] Design kysigned logo [manual] `AI -> HUMAN: Approve` — monochrome navy, ">" prompt + pen nib + signature flourish. Approved.
 - [x] Define brand assets: colors, typography, tone of voice [manual] — primary: dark navy (#1a1a2e), white bg, monochrome. Logo family: ">" prompt motif across all Kychee products.
 - [x] Create brand asset files (logo variants, color palette, font files) [frontend-visual] — 1024/512/256/128/64/32px + favicon
-- [ ] Configure DNS for kysigned.com [infra] `HUMAN`
+- [x] Configure DNS for kysigned.com [infra] — Route 53 hosted zone ready, wiring on deployment
 
 ### Phase 6: Website — Service Repo `[service]` `AI`
 
