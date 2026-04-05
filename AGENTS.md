@@ -51,9 +51,9 @@ If you're running inside Claude Desktop, Cursor, Cline, Claude Code, or any MCP-
 - Install: `npx run402-mcp`
 - Claude Code: `claude mcp add run402 -- npx -y run402-mcp`
 
-### MCP Tools (52 tools)
+### MCP Tools
 
-The MCP server provides 52 tools across these categories:
+The MCP server provides tools across these categories:
 
 | Category | Tools |
 |----------|-------|
@@ -61,10 +61,13 @@ The MCP server provides 52 tools across these categories:
 | Projects | `provision_postgres_project`, `project_info`, `project_keys`, `project_use`, `list_projects`, `get_schema`, `get_usage`, `archive_project`, `pin_project` |
 | Database | `run_sql`, `setup_rls`, `rest_query` |
 | Deployment | `deploy_site`, `get_deployment`, `bundle_deploy` |
-| Subdomains | `claim_subdomain`, `delete_subdomain`, `list_subdomains` |
-| Functions | `deploy_function`, `invoke_function`, `list_functions`, `delete_function`, `get_function_logs`, `set_secret`, `list_secrets`, `delete_secret` |
+| Subdomains & domains | `claim_subdomain`, `delete_subdomain`, `list_subdomains`, `add_custom_domain`, `list_custom_domains`, `check_domain_status`, `remove_custom_domain` |
+| Functions | `deploy_function`, `invoke_function`, `list_functions`, `delete_function`, `get_function_logs`, `update_function`, `set_secret`, `list_secrets`, `delete_secret` |
 | Storage | `upload_file`, `download_file`, `list_files`, `delete_file` |
 | Apps | `publish_app`, `get_app`, `browse_apps`, `fork_app`, `list_versions`, `update_version`, `delete_version` |
+| Email | `create_mailbox`, `send_email`, `list_emails`, `get_email`, `get_mailbox`, `register_sender_domain`, `sender_domain_status`, `remove_sender_domain` |
+| Auth (project users) | `request_magic_link`, `verify_magic_link`, `set_user_password`, `auth_settings`, `promote_user`, `demote_user` |
+| AI | `ai_translate`, `ai_moderate`, `ai_usage` |
 | Other | `generate_image`, `send_message`, `set_agent_contact`, `get_quote` |
 
 See the [run402-mcp README](https://github.com/kychee-com/run402-mcp) for full tool documentation.
@@ -96,6 +99,27 @@ Never use `$()` command substitution or heredocs with `$(cat <<...)` in Bash cal
 **Site (run402.com):** Push changes under `site/` to `main`. The GitHub Action `.github/workflows/deploy-site.yml` syncs to S3 and invalidates CloudFront.
 
 **Demos:** Each demo under `demos/` has its own `deploy.ts`. Run with `npx tsx demos/<name>/deploy.ts`.
+
+### New Feature Release Checklist
+
+When adding a new feature to run402, update ALL of these:
+
+| What | Where | Why |
+|------|-------|-----|
+| **API docs (agents)** | `site/llms.txt` | Primary docs for AI agents — endpoints, parameters, examples |
+| **CLI docs (agents)** | `site/llms-cli.txt` | CLI command reference for AI agents |
+| **OpenAPI spec** | `site/openapi.json` | Machine-readable API schema |
+| **Changelog (agents)** | `site/updates.txt` | Machine-readable changelog for agents |
+| **Changelog (humans)** | `site/humans/changelog.html` | Human-readable changelog |
+| **AGENTS.md tool table** | `AGENTS.md` (this file) | MCP tool category table — keep in sync with run402-mcp |
+| **MCP tools** | `run402-mcp` repo: `src/tools/`, `src/index.ts` | MCP server tools for agent clients |
+| **CLI commands** | `run402-mcp` repo: `cli/lib/`, `cli/cli.mjs` | CLI commands for `run402` npm package |
+| **OpenClaw shim** | `run402-mcp` repo: `openclaw/scripts/` | OpenClaw skill re-exports |
+| **SKILL.md** | `run402-mcp` repo: `SKILL.md` | OpenClaw tool reference — validates via SKILL.test.ts |
+| **README.md** | `run402-mcp` repo: `README.md` | User-facing tool table |
+| **Sync test** | `run402-mcp` repo: `sync.test.ts` | Validates MCP/CLI/OpenClaw parity — add to SURFACE array |
+
+**After updating run402-mcp:** Run `/upgrade` to verify sync, then `/publish` to bump version + publish to npm + create GitHub release.
 
 ### Testing
 
