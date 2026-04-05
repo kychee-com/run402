@@ -31,11 +31,12 @@
 - **Chosen because:** The contract is the core product. No reason to separate unless other products use it (future concern).
 - **Trade-offs:** None meaningful.
 
-### DD-3: Platform wallet follows run402 infrastructure
-- **Decision:** Path 3 on-chain recordings use whatever wallet infrastructure run402 already has (likely CDP SDK). Not a per-product decision.
-- **Alternatives:** AWS KMS-managed key; dedicated wallet per product
-- **Chosen because:** Platform concern, not product concern. Resolved during run402 audit.
-- **Trade-offs:** Depends on run402 audit results.
+### DD-3: Shared run402 platform wallet for all on-chain activity
+- **Decision:** kysigned uses the shared run402 platform wallet (`agentdb/faucet-treasury-key` in AWS Secrets Manager) for all on-chain recordings — both testnet (Base Sepolia) and mainnet (Base). This is the same wallet used by all Kychee SaaS products. No per-product wallet.
+- **Applies to:** Contract deployment (one-time), Path 3 signature recordings (ongoing), and completion recordings. Path 1/2 users pay via x402/MPP which also flows through run402.
+- **Alternatives considered:** Dedicated wallet per product.
+- **Chosen because:** (1) The blockchain only sees a wallet address — the AWS secret name is invisible externally. (2) All SaaS products run on run402 infrastructure, so wallet management is a platform concern, not a product concern. (3) Per-product gas cost attribution doesn't require separate wallets — filter transactions by destination contract address. (4) One wallet to fund and monitor, not N. (5) A compromised key has the same blast radius either way — the contract is append-only with no admin functions, so the worst case is unauthorized recordings, not data loss.
+- **Revenue/cost tracking:** Per-product attribution via run402 admin dashboard: USDC inflows labelled by which API endpoint accepted payment, ETH gas outflows labelled by which contract was called. Stripe revenue (Path 3) tracked separately via Stripe metadata. See run402 enhancement task.
 
 ### DD-4: Signature visual mode — sender controls
 - **Decision:** Sender sets `require_drawn_signature` per envelope (default: false). Default = one-click auto-stamp (name in handwriting font + crypto details). If true = drawing widget for all signers. Saved signatures persist in browser cookie/localStorage.
@@ -73,37 +74,31 @@
 - [x] Create private GitHub repo `kychee-com/kysigned-service` [infra]
 - [x] Clone both repos locally under `C:\Workspace-Kychee\` (`kysigned` and `kysigned-service` side by side) [infra]
 - [x] Create VS Code multi-root workspace file `C:\Workspace-Kychee\kysigned.code-workspace` with all three repos [infra]
-- [ ] **STOP — switch to the new workspace view before continuing** [manual] `HUMAN`
-- [ ] Initialize `kysigned` repo: package.json, tsconfig, README stub, MIT LICENSE, .gitignore [code]
-- [ ] Initialize `kysigned-service` repo: package.json with `"kysigned": "file:../kysigned"` dependency, tsconfig, .gitignore [code]
-- [ ] Draft LEGAL.md for public repo (signature validity disclaimers, jurisdictional limitations, smart contract permanence, operator responsibility, excluded document types) [code] `AI -> HUMAN: Approve`
-- [ ] Audit run402 capabilities for kysigned dependencies [infra]:
-  - Prepaid credit/paycard model (buy credits, deduct per API call)
-  - Magic link authentication (email-only, no password)
-  - Custom domain mapping for forkers
-  - Email sending service (deliverability, SPF/DKIM/DMARC)
-  - Platform wallet for on-chain recordings
-- [ ] For each missing run402 capability: create a run402 enhancement task with scope estimate, implement in run402 worktree (feature branch) [manual] `AI`
+- [x] **STOP — switch to the new workspace view before continuing** [manual] `HUMAN`
+- [x] Initialize `kysigned` repo: package.json, tsconfig, README stub, MIT LICENSE, .gitignore [code]
+- [x] Initialize `kysigned-service` repo: package.json with `"kysigned": "file:../kysigned"` dependency, tsconfig, .gitignore [code]
+- [x] Draft LEGAL.md for public repo (signature validity disclaimers, jurisdictional limitations, smart contract permanence, operator responsibility, excluded document types) [code] `AI -> HUMAN: Approve`
+- [x] Audit run402 capabilities for kysigned dependencies [infra]:
+  - [x] Prepaid credit/paycard model — EXISTS. Full Stripe + allowance ledger (billing.ts, billing-stripe.ts). Per-envelope adaptation needed; email-based identity (Path 3) needs new account type.
+  - [x] Magic link authentication — PARTIAL. Email template exists (email-send.ts `magic_link`), but no passwordless auth flow. Needs endpoint + email-only identity table.
+  - [x] Custom domain mapping — EXISTS. Cloudflare Custom Hostnames + Workers KV. Works for repo forkers.
+  - [x] Email sending service — EXISTS. AWS SES with templates, rate limiting, suppression lists. Gap: custom sender domain (kysigned.com) and explicit DMARC config.
+  - [x] Platform wallet — PARTIAL. Viem + CDP SDK on Base Sepolia testnet. Gap: no mainnet wallet, no KMS key management, no contract interaction abstraction.
+- [!] For each missing run402 capability: create a run402 enhancement task with scope estimate, implement in run402 worktree (feature branch) [manual] `AI` — WAITING FOR: Separate run402 plans for each enhancement. Not blocking Phase 1-3.
+  - [ ] run402 enhancement: Magic link passwordless auth flow (endpoint + email-only identity)
+  - [ ] run402 enhancement: Custom sender domain support (kysigned.com email sending)
+  - [ ] run402 enhancement: Mainnet wallet + KMS key management + contract interaction abstraction
+  - [ ] run402 enhancement: Per-envelope billing adaptation + email-based billing accounts
+  - [ ] run402 enhancement: Admin dashboard (/admin) — wallet activity breakdown by product (inflows: USDC revenue labelled "kysigned" / "run402 infra" / etc., derived from which API endpoint accepted payment; outflows: ETH gas labelled by which contract was called) + Stripe revenue tracking per product via Stripe metadata
 - [ ] Register domain kysigned.com [manual] `HUMAN`
 
 ### Phase 1: Smart Contract `AI`
 
-- [ ] Write SignatureRegistry.sol with EIP-712 domain separator (Base chainId 8453) [code]
-  - `recordEmailSignature(envelopeId, documentHash, signerCommitment, signerPubkey, signature)`
-  - `recordWalletSignature(envelopeId, documentHash, documentName, signerEmail, timestamp, signature)` with ecrecover
-  - `recordCompletion(envelopeId, originalDocHash, finalDocHash, signerCount)`
-  - `getSignatures(documentHash)` and `verifyWalletSignature(documentHash, expectedSigner)` query functions
-  - Append-only — no update or delete functions
-- [ ] Write contract unit tests (Hardhat/Foundry) [code]
-  - Method A recording and retrieval
-  - Method B recording with ecrecover verification
-  - Completion event
-  - Mixed-method envelope
-  - Immutability (no modification/deletion possible)
-  - Replay protection via EIP-712 domain separator
-- [ ] Deploy to Base Sepolia testnet [infra]
-- [ ] Measure gas costs per operation on testnet (recordEmailSignature, recordWalletSignature, recordCompletion) [infra]
-- [ ] Document contract ABI and publish verification algorithm [code]
+- [x] Write SignatureRegistry.sol with EIP-712 domain separator (Base chainId 8453) [code]
+- [x] Write contract unit tests (Hardhat/Foundry) — 9 tests passing [code]
+- [x] Deploy to Base Sepolia testnet [infra] — address: 0xAE8b6702e413c6204b544D8Ff3C94852B2016c91
+- [x] Measure gas costs per operation (recordEmailSignature: 220K, recordWalletSignature: 243K, recordCompletion: 158K gas units. 2-signer envelope ~$0.01-0.05 at typical Base gas prices. $0.25/envelope pricing has strong margin.) [infra]
+- [x] Document contract ABI and publish verification algorithm [code]
 
 ### Phase 2: Core Engine — Public Repo `[both]` `AI`
 
@@ -341,3 +336,8 @@ _None yet_
 
 - 2026-04-04: Plan created from spec v0.1.0 + saas-factory spec v1.3.0
 - 2026-04-05: Phase 0 — created repos (kychee-com/kysigned, kychee-com/kysigned-service), cloned locally, workspace file ready
+- 2026-04-05: Completed "Initialize kysigned repo" — package.json (ESM, TS), tsconfig, .gitignore, MIT LICENSE, README stub, src/index.ts
+- 2026-04-05: Completed "Initialize kysigned-service repo" — package.json with file:../kysigned dep, tsconfig, .gitignore, src/index.ts importing from kysigned
+- 2026-04-05: Drafted LEGAL.md — awaiting human approval
+- 2026-04-05: Completed run402 capability audit — prepaid credits EXISTS, magic link auth PARTIAL, custom domains EXISTS, email service EXISTS, platform wallet PARTIAL. Four run402 enhancements identified.
+- 2026-04-05: Phase 1 complete — SignatureRegistry.sol deployed to Base Sepolia (0xAE8b...c91). Gas: 220K/email sig, 243K/wallet sig, 158K/completion. 2-signer envelope ~$0.01-0.05 gas. ABI + verification algorithm documented.

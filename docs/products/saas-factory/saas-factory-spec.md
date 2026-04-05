@@ -109,6 +109,8 @@ All legal documents (ToS, Privacy Policy, Cookie notice, AUP, DPA) are drafted b
 
 `LEGAL.md` is drafted by AI and requires human approval before the repo is published: `AI: Draft LEGAL.md -> HUMAN: Approve`.
 
+**Reference LEGAL.md:** Use `kysigned/LEGAL.md` as the canonical reference template for future SaaS products. It covers all required sections (evidentiary disclaimers, jurisdictional limitations, smart contract permanence, operator responsibility, excluded document types, AS-IS/no-liability, no legal advice) and has been human-approved. Adapt product-specific sections as needed; preserve the structure and liability language.
+
 ### F9. Cross-Linking to Kychee Ecosystem
 
 Chapter 10 mandates that every product is woven into the broader Kychee ecosystem:

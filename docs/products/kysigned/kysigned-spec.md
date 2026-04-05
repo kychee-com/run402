@@ -41,6 +41,7 @@ An envelope is one document (PDF) sent to one or more signers. The envelope is t
 - F1.7. Envelope expiry: configurable TTL (default TBD, validated against cost). Expired envelopes notify all parties and cannot be signed.
 - F1.8. Webhook/callback URL: sender provides a URL that receives a POST when the envelope is completed.
 - F1.9. Sender receives a list of individual signing links for each signer, deliverable through any channel (email, WhatsApp, SMS, Slack, etc.) in addition to automatic email delivery.
+- F1.10. **Sender as signer:** If the sender also needs to sign the document, they must add themselves to the signer list. There is no "pre-sign at creation" flow. The sender signs through the same process as every other signer (same link, same verification, same on-chain proof). This ensures a uniform audit trail — every signature event is identical regardless of who initiated the envelope. The UI should make this clear: when creating an envelope, prompt "Will you also sign this document?" and auto-add the sender to the signer list if yes.
 
 ### F2. Sender Authentication `[both]` / `[service]`
 
@@ -102,6 +103,7 @@ Public, universal, vendor-independent signature verification.
 - F5.4. **Owner verification (dashboard):** Full audit trail per signer — email, method used, timestamp, IP, user agent, tx hash. For Method B: signer's Ethereum address.
 - F5.5. **Certificate of Completion:** Generated on envelope completion. Includes: document name, document hash, all signer details, signing timestamps, tx hashes, contract address. This certificate enables third-party verification (court, auditor) against the blockchain without needing kysigned.com.
 - F5.6. Third-party verification: anyone with a signed PDF and its Certificate of Completion can independently verify against the blockchain. No dependency on any kysigned instance being online.
+- F5.7. **Proof link:** `/verify/<envelopeId>` displays the full verification record for a completed envelope — signer count, signing dates, methods, tx hashes, and direct links to each transaction on Basescan. No PDF upload required (the envelope ID is sufficient to query the contract). This is the link shared in the completion email (F7.4).
 
 ### F6. Dashboard `[both]` basic / `[service]` enhanced
 
@@ -124,7 +126,7 @@ Notifications and multi-channel signing link distribution.
 - F7.1. Signing request email sent to each signer with a one-time link. Email includes document name, sender name, and a message from the sender.
 - F7.2. Automated reminders at configurable intervals (default: 3 days, 7 days after initial send). Sender can trigger manual reminders.
 - F7.3. Confirmation email sent to signer after successful signing.
-- F7.4. Completion email sent to all parties (sender + all signers) with the signed PDF and Certificate of Completion attached.
+- F7.4. Completion email sent to all parties (sender + all signers) with the signed PDF, Certificate of Completion, and a **proof link** attached. The proof link points to the verification page pre-loaded with this envelope's results (e.g., `kysigned.com/verify/<envelopeId>`). The email also includes plain-text blockchain reference details: contract address, chain (Base), and transaction hashes for each signature event — so recipients can independently verify on any block explorer even if kysigned.com is unreachable.
 - F7.5. Sender receives a list of all signing links immediately after envelope creation. These links can be delivered through any channel independently of the email system.
 - F7.6. Notice to senders: prompt to contact signers and check spam if signing requests are not received. Displayed in dashboard and in API response.
 - F7.7. `[service]` Email sent from a dedicated kysigned.com sending domain with SPF/DKIM/DMARC configured.
@@ -237,6 +239,8 @@ Per the SaaS Factory spec (Chapter 6).
 - [ ] Expired envelope returns "expired" status; pending signers are notified; signing links no longer work
 - [ ] Webhook URL receives a POST with envelope completion data when all signers have signed
 - [ ] API response includes a list of individual signing links per signer for manual distribution
+- [ ] Sender adds themselves as signer: envelope creation UI prompts "Will you also sign?"; if yes, sender appears in signer list and signs through the same flow as other signers
+- [ ] Sender-as-signer produces identical on-chain proof to any other signer (no special-case recording)
 
 ### F2. Sender Authentication
 - [ ] Path 1: API call with x402 payment header succeeds; wallet address recorded as sender identity; no account or API key required
@@ -279,6 +283,8 @@ Per the SaaS Factory spec (Chapter 6).
 - [ ] Method A signers: only "email-verified signature" shown; no identity revealed
 - [ ] Certificate of Completion includes document hash, signer details, tx hashes, and contract address
 - [ ] Third party with only the signed PDF and Certificate can verify against the blockchain without any kysigned instance online
+- [ ] Proof link (`/verify/<envelopeId>`) displays full verification record without requiring PDF upload — signer count, dates, methods, tx hashes, Basescan links
+- [ ] Completion email includes proof link, contract address, chain name, and all tx hashes in plain text
 
 ### F6. Dashboard
 - [ ] Path 1/2: connect wallet; dashboard displays all envelopes sent from that wallet
