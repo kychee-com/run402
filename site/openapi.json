@@ -4767,6 +4767,52 @@
         }
       }
     },
+    "/email/v1/domains": {
+      "post": {
+        "tags": ["Email"],
+        "summary": "Register a custom sender domain",
+        "description": "Register a custom email sending domain for the project. Returns DKIM CNAME records + recommended SPF/DMARC TXT records. Add the DNS records and poll GET for verification status. Once verified, all outbound email sends from your domain.",
+        "security": [{"bearerAuth": []}],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["domain"],
+                "properties": {
+                  "domain": {"type": "string", "description": "The domain to register (e.g., 'kysigned.com')"}
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {"description": "Domain registered, DNS records returned"},
+          "400": {"description": "Invalid domain, blocklisted, or project has no wallet"},
+          "409": {"description": "Project already has a domain, or domain owned by different wallet"}
+        }
+      },
+      "get": {
+        "tags": ["Email"],
+        "summary": "Check sender domain verification status",
+        "description": "Returns the project's custom sender domain with current verification status. Polls SES for pending domains. Returns { domain: null } if no domain registered.",
+        "security": [{"bearerAuth": []}],
+        "responses": {
+          "200": {"description": "Domain status (or null if none registered)"}
+        }
+      },
+      "delete": {
+        "tags": ["Email"],
+        "summary": "Remove custom sender domain",
+        "description": "Remove the project's custom sender domain. Email reverts to sending from mail.run402.com. SES identity is only deleted when no other projects use the domain.",
+        "security": [{"bearerAuth": []}],
+        "responses": {
+          "200": {"description": "Domain removed"},
+          "404": {"description": "No sender domain registered"}
+        }
+      }
+    },
     "/mailboxes/v1": {
       "post": {
         "tags": [
