@@ -215,9 +215,9 @@
 
 ### Phase 5: Domain & Branding `AI` / `HUMAN`
 
-- [ ] Design kysigned logo [manual] `AI -> HUMAN: Approve`
-- [ ] Define brand assets: colors, typography, tone of voice [manual] `AI -> HUMAN: Approve`
-- [ ] Create brand asset files (logo variants, color palette, font files) [frontend-visual] `AI`
+- [x] Design kysigned logo [manual] `AI -> HUMAN: Approve` — monochrome navy, ">" prompt + pen nib + signature flourish. Approved.
+- [x] Define brand assets: colors, typography, tone of voice [manual] — primary: dark navy (#1a1a2e), white bg, monochrome. Logo family: ">" prompt motif across all Kychee products.
+- [x] Create brand asset files (logo variants, color palette, font files) [frontend-visual] — 1024/512/256/128/64/32px + favicon
 - [ ] Configure DNS for kysigned.com [infra] `HUMAN`
 
 ### Phase 6: Website — Service Repo `[service]` `AI`
