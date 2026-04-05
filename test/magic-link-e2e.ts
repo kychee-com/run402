@@ -91,7 +91,7 @@ function ok(name: string, condition: boolean, detail = "") {
   await ensureTestBalance(account.address, BASE_URL);
 
   const tierResp = await fetchPaid(`${BASE_URL}/tiers/v1/prototype`, { method: "POST" });
-  ok("subscribe tier", tierResp.status === 200 || tierResp.status === 409, `status=${tierResp.status}`);
+  ok("subscribe tier", tierResp.status === 200 || tierResp.status === 201 || tierResp.status === 409, `status=${tierResp.status}`);
 
   const projResp = await fetch(`${BASE_URL}/projects/v1`, {
     method: "POST",
@@ -120,7 +120,7 @@ function ok(name: string, condition: boolean, detail = "") {
   // 1. Providers
   console.log("\n1. Providers");
   const provResp = await fetch(`${BASE_URL}/auth/v1/providers`, {
-    headers: { Authorization: `Bearer ${anonKey}` },
+    headers: { apikey: anonKey },
   });
   const providers = await provResp.json();
   ok("providers includes magic_link", providers.magic_link?.enabled === true);
@@ -131,7 +131,7 @@ function ok(name: string, condition: boolean, detail = "") {
   console.log("\n2. Request magic link");
   const mlResp = await fetch(`${BASE_URL}/auth/v1/magic-link`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${anonKey}` },
+    headers: { "Content-Type": "application/json", apikey: anonKey },
     body: JSON.stringify({ email: testEmail, redirect_url: redirectUrl }),
   });
   const mlBody = await mlResp.json();
@@ -142,7 +142,7 @@ function ok(name: string, condition: boolean, detail = "") {
   console.log("\n3. Bad email");
   const badResp = await fetch(`${BASE_URL}/auth/v1/magic-link`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${anonKey}` },
+    headers: { "Content-Type": "application/json", apikey: anonKey },
     body: JSON.stringify({ email: "not-an-email", redirect_url: redirectUrl }),
   });
   ok("bad email returns 400", badResp.status === 400, `status=${badResp.status}`);
@@ -151,7 +151,7 @@ function ok(name: string, condition: boolean, detail = "") {
   console.log("\n4. No redirect_url");
   const noRedirResp = await fetch(`${BASE_URL}/auth/v1/magic-link`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${anonKey}` },
+    headers: { "Content-Type": "application/json", apikey: anonKey },
     body: JSON.stringify({ email: testEmail }),
   });
   ok("no redirect_url returns 400", noRedirResp.status === 400, `status=${noRedirResp.status}`);
@@ -177,7 +177,7 @@ function ok(name: string, condition: boolean, detail = "") {
   const pwEmail = `ml-pw-test-${Date.now()}@example.com`;
   const signupResp = await fetch(`${BASE_URL}/auth/v1/signup`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${anonKey}` },
+    headers: { "Content-Type": "application/json", apikey: anonKey },
     body: JSON.stringify({ email: pwEmail, password: "test-password-123" }),
   });
   ok("create password user", signupResp.status === 201, `status=${signupResp.status}`);
@@ -185,7 +185,7 @@ function ok(name: string, condition: boolean, detail = "") {
   // Request magic link for this user
   await fetch(`${BASE_URL}/auth/v1/magic-link`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${anonKey}` },
+    headers: { "Content-Type": "application/json", apikey: anonKey },
     body: JSON.stringify({ email: pwEmail, redirect_url: redirectUrl }),
   });
 
@@ -193,12 +193,12 @@ function ok(name: string, condition: boolean, detail = "") {
   console.log("\n7. Account enumeration prevention");
   const existResp = await fetch(`${BASE_URL}/auth/v1/magic-link`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${anonKey}` },
+    headers: { "Content-Type": "application/json", apikey: anonKey },
     body: JSON.stringify({ email: pwEmail, redirect_url: redirectUrl }),
   });
   const nonExistResp = await fetch(`${BASE_URL}/auth/v1/magic-link`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${anonKey}` },
+    headers: { "Content-Type": "application/json", apikey: anonKey },
     body: JSON.stringify({ email: `nonexistent-${Date.now()}@example.com`, redirect_url: redirectUrl }),
   });
   const existBody = await existResp.json();
@@ -211,7 +211,7 @@ function ok(name: string, condition: boolean, detail = "") {
   // Login with password to get a token
   const loginResp = await fetch(`${BASE_URL}/auth/v1/token`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${anonKey}` },
+    headers: { "Content-Type": "application/json", apikey: anonKey },
     body: JSON.stringify({ email: pwEmail, password: "test-password-123" }),
   });
   const loginBody = await loginResp.json();
@@ -232,7 +232,7 @@ function ok(name: string, condition: boolean, detail = "") {
 
   // Verify providers reflects the change
   const prov2Resp = await fetch(`${BASE_URL}/auth/v1/providers`, {
-    headers: { Authorization: `Bearer ${anonKey}` },
+    headers: { apikey: anonKey },
   });
   const prov2 = await prov2Resp.json();
   ok("password_set now true", prov2.password_set?.enabled === true);
@@ -250,7 +250,7 @@ function ok(name: string, condition: boolean, detail = "") {
   console.log("\n11. Login with new password");
   const newLoginResp = await fetch(`${BASE_URL}/auth/v1/token`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${anonKey}` },
+    headers: { "Content-Type": "application/json", apikey: anonKey },
     body: JSON.stringify({ email: pwEmail, password: "new-password-456" }),
   });
   ok("login with new password", newLoginResp.status === 200, `status=${newLoginResp.status}`);
@@ -258,7 +258,7 @@ function ok(name: string, condition: boolean, detail = "") {
   // Verify old password no longer works
   const oldLoginResp = await fetch(`${BASE_URL}/auth/v1/token`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${anonKey}` },
+    headers: { "Content-Type": "application/json", apikey: anonKey },
     body: JSON.stringify({ email: pwEmail, password: "test-password-123" }),
   });
   ok("old password rejected", oldLoginResp.status === 401, `status=${oldLoginResp.status}`);
