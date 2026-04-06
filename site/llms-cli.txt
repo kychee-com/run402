@@ -464,6 +464,19 @@ Manage custom email sender domain. Send from your own brand instead of `@mail.ru
 
 Flow: register → add DKIM CNAME records to DNS → poll status until verified → email auto-sends from your domain.
 
+### billing
+Email-based billing accounts, Stripe tier checkout, and email packs. Pay run402 with credit cards instead of crypto, or scale email sending beyond tier caps.
+
+- `run402 billing create-email <email>` — create an email-based billing account (Stripe-only, no wallet). Sends a verification email. Idempotent.
+- `run402 billing link-wallet <account_id> <wallet>` — link a wallet to an email account for hybrid Stripe + x402 access
+- `run402 billing tier-checkout <tier> [--email <e> | --wallet <w>]` — subscribe/renew/upgrade a tier (prototype $0.10 / hobby $5 / team $20) via Stripe. Returns a checkout URL.
+- `run402 billing buy-pack [--email <e> | --wallet <w>]` — buy a $5 email pack (10,000 emails, never expire). Returns a Stripe checkout URL.
+- `run402 billing auto-recharge <account_id> <on|off> [--threshold <n>]` — auto-repurchase $5 packs when credits drop below threshold. Requires saved Stripe payment method.
+- `run402 billing balance <email-or-wallet>` — balance + email_credits_remaining + tier + lease + auto_recharge state
+- `run402 billing history <email-or-wallet> [--limit <n>]` — ledger history (both identifier types supported)
+
+Email packs only activate when the tier daily limit is exhausted AND the project has a verified custom sender domain (spam protection for `mail.run402.com`).
+
 ### message
 - `run402 message send "<text>"`
 
