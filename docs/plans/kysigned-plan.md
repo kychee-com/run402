@@ -83,11 +83,11 @@
   - [x] Magic link authentication — PARTIAL. Email template exists (email-send.ts `magic_link`), but no passwordless auth flow. Needs endpoint + email-only identity table.
   - [x] Custom domain mapping — EXISTS. Cloudflare Custom Hostnames + Workers KV. Works for repo forkers.
   - [x] Email sending service — EXISTS. AWS SES with templates, rate limiting, suppression lists. Gap: custom sender domain (kysigned.com) and explicit DMARC config.
-  - [x] Platform wallet — PARTIAL. Viem + CDP SDK on Base Sepolia testnet. Gap: no mainnet wallet, no KMS key management, no contract interaction abstraction.
+  - [x] Platform wallet — RESOLVED. The run402 KMS-wallet feature landed and now provides mainnet wallet provisioning, KMS-backed key custody (private material never leaves KMS), and a contract-interaction abstraction. kysigned is the first production consumer — see Phase 13 pre-flight checklist and first-exercise watchlist. Caveat: drain endpoint, recovery address, and 90-day deletion lifecycle have zero production test coverage yet.
 - [!] For each missing run402 capability: create a run402 enhancement task with scope estimate, implement in run402 worktree (feature branch) [manual] `AI` — WAITING FOR: Separate run402 plans for each enhancement. Not blocking Phase 1-3.
   - [ ] run402 enhancement: Magic link passwordless auth flow (endpoint + email-only identity)
   - [ ] run402 enhancement: Custom sender domain support (kysigned.com email sending)
-  - [ ] run402 enhancement: Mainnet wallet + KMS key management + contract interaction abstraction
+  - [x] run402 enhancement: Mainnet wallet + KMS key management + contract interaction abstraction — shipped. kysigned will be the first production consumer. Pre-flight checklist + first-exercise watchlist captured in Phase 13.
   - [ ] run402 enhancement: Per-envelope billing adaptation + email-based billing accounts
   - [ ] run402 enhancement: Admin dashboard (/admin) — wallet activity breakdown by product (inflows: USDC revenue labelled "kysigned" / "run402 infra" / etc., derived from which API endpoint accepted payment; outflows: ETH gas labelled by which contract was called) + Stripe revenue tracking per product via Stripe metadata
 - [x] Register domain kysigned.com [infra] — registered via Route 53, hosted zone Z0749125BIF9JF9FZ73M. DNS wiring to run402 infra pending deployment.
@@ -308,12 +308,33 @@
 
 ### Phase 13: Gas Measurement & Final Pricing `AI` / `DECIDE`
 
-- [ ] Deploy SignatureRegistry.sol to Base mainnet [infra]
+> **Context: run402 KMS wallet.** The mainnet wallet is now provisioned via run402's new KMS-wallet feature, not a plaintext `agentdb/faucet-treasury-key` Secrets Manager entry. This is a DD-3 material change — DD-3 is kept for the "one platform wallet across all Kychee SaaS products" principle, but the **key custody** moves from plaintext Secrets Manager to AWS KMS with run402 as the signing intermediary. The private key material never leaves KMS. kysigned is the **first production consumer** of the KMS wallet path, so several operations (drain, recovery address, 90-day deletion lifecycle) get their first real exercise through kysigned usage. See "Pre-flight checklist" below.
+
+**Pre-flight checklist — MUST run BEFORE `run402 contracts provision-wallet --chain base-mainnet`:** `HUMAN`
+
+- [ ] **IAM simulation re-run (10 seconds).** Catch any policy drift since the run402 KMS wallet implementation was tested: `aws iam simulate-principal-policy --policy-source-arn <role-arn> --action-names kms:CreateKey kms:Sign kms:Decrypt --region us-east-1`. All three actions must return `allowed`. Do this immediately before the provision call, not days ahead.
+- [ ] **Billing balance ≥ $1.20 on the kysigned project.** The first `provision-wallet` call returns HTTP 402 (Payment Required) if the balance is insufficient. If this happens, the wallet does not yet exist — top up the project, then retry. Do not debug around the 402; it is a correct response.
+- [ ] Run `run402 contracts provision-wallet --chain base-mainnet` [manual] `HUMAN`
+- [ ] Capture the resulting wallet address and confirm it appears in the run402 admin dashboard under the kysigned project attribution [manual] `HUMAN`
+- [ ] Fund the wallet with ETH for gas (start small — `~0.02 ETH` is enough for the mainnet deploy plus hundreds of envelope recordings at Base's fees) and with USDC for the initial operating float if Path 1/2 x402 payments will route through it [manual] `HUMAN`
+
+**Deploy + measure:** `AI`
+
+- [ ] Deploy SignatureRegistry.sol to Base mainnet via the KMS-signed wallet [infra]
 - [ ] Measure actual gas costs per operation on mainnet [infra]
 - [ ] Calculate true per-envelope cost (gas + email + compute + storage for 30 days) [manual] `AI`
 - [ ] Set final per-envelope pricing (~$0.25 target, adjusted by actual costs) [manual] `DECIDE`
 - [ ] Set credit pack tiers and per-envelope rates for Path 3 [manual] `DECIDE`
 - [ ] Update pricing page with final numbers [frontend-visual] `AI`
+
+**First-exercise watchlist — kysigned is the first production consumer of these KMS-wallet operations:** `AI` / `HUMAN`
+
+The following paths have ZERO production test coverage on run402 and will get their first real exercise through kysigned in the first month of live traffic. Watch ledger entries closely.
+
+- [ ] **Drain endpoint** — verify it works end-to-end the first time we need to sweep the wallet (e.g., before migrating to a fresh wallet, or during an incident). Do not assume it works because the test suite passes. Dry-run it on a small balance before committing a real drain.
+- [ ] **Recovery address** — confirm the configured recovery address is correct, reachable, and controlled by the intended party (Barry). Check this ONCE at provisioning time and then again at the 30-day mark when the wallet has seen real use.
+- [ ] **90-day deletion lifecycle** — the KMS key deletion policy is scheduled, not permanent. If the wallet goes idle, at day ~75 we should either bump it (any signed transaction resets the clock) or explicitly extend the deletion schedule. Add a calendar reminder the day the mainnet wallet is provisioned so day 75 doesn't come as a surprise.
+- [ ] **First-month ledger audit** — at T+30 days from first mainnet envelope, export the full wallet ledger from the run402 admin dashboard and reconcile: total gas spent, total USDC received, any unexpected outflows, any failed KMS signing calls that retried. Flag anything unusual to the run402 team so they can harden the paths that kysigned is the first to touch.
 
 ### Phase 14: Launch Prep `HUMAN` / `AI`
 
@@ -374,6 +395,7 @@ _None yet_
 - 2026-04-05: Phase 1 complete — SignatureRegistry.sol deployed to Base Sepolia (0xAE8b...c91). Gas: 220K/email sig, 243K/wallet sig, 158K/completion. 2-signer envelope ~$0.01-0.05 gas. ABI + verification algorithm documented.
 - 2026-04-05: Phase 2 complete — Core engine: DB migrations, data access layer, envelope API (create/get/void/remind/list/export), signing engine (Method A+B, duplicate protection, decline, completion), PDF handling (hash, embed, certificate), 7 email templates (pluggable provider), universal verification. 23 tests passing (14 unit + 9 contract). x402/MPP middleware and wallet auth blocked on run402 integration.
 - 2026-04-05: Phase 3 complete — React + Vite + Tailwind frontend: signing page (pdf.js viewer, Method A/B, drawing widget, signature persistence, verification levels, duplicate/decline/expired screens), verification page (client-side hash, universal contract query), proof link page (Basescan links, independent verification), dashboard (wallet connect, envelope list, detail/audit trail, create form with "Will you also sign?" prompt, remind/void/export).
+- 2026-04-06: Phase 13 expanded with KMS-wallet pre-flight checklist + first-exercise watchlist. run402's KMS-wallet feature shipped, replacing the plaintext `agentdb/faucet-treasury-key` custody path. kysigned is the first production consumer of mainnet provisioning, the drain endpoint, the recovery address, and the 90-day deletion lifecycle — captured these as explicit watchlist items because they have zero production test coverage on run402 and will get their first real exercise through kysigned. Pre-flight checklist adds (a) a 10-second IAM simulation re-run immediately before provisioning to catch policy drift, and (b) a billing-balance-≥-$1.20 check to avoid the HTTP 402 on the first `provision-wallet` call. DD-3 framing stays ("one platform wallet across all Kychee SaaS products") but key custody moves to KMS — run402 audit bullet flipped from PARTIAL to RESOLVED.
 - 2026-04-06: Phase 11 hypothesis cards drafted as `.xlsx` per saas-factory F6 v1.10.0 (new format requirement). Generator script at `kysigned-service/marketing/hypothesis-cards/generate.py` emits 4 cards (freelancers, solo-consultants, small-agencies, real-estate). Each card uses the canonical 14-field schema with a Status dropdown (Draft/Approved/Running/Won/Killed) and a separate Notes sheet for assumptions/open questions/risks. Real-estate card flagged with a BLOCKER REVIEW note: ESIGN/UETA compliance per jurisdiction must be confirmed before any spend. saas-factory spec bumped 1.9.1 → 1.10.0 (new requirement: cards are xlsx, not markdown; field count grew from 8 to 14; lifecycle Status field added).
 - 2026-04-06: Documentation + automation sweep — closed every standalone item not blocked on run402 deploy. Public repo: `docs/wallet-guide.md` (signers + envelope creators), signing-page wallet-onboarding panel for Method B without an installed wallet, `mcp/README.md` with Claude Desktop/Code/Cursor setup + 3 worked examples, `src/api/accountDeletion.ts` (DPA Section 11 deletion + verification with 8 TDD tests). Service repo: `docs/incident-response.md` (severity matrix, first-response checklist, DPA 72-hour playbook), `security/` pack (overview, questionnaire, encryption, access control, subprocessors, incident history), `src/monitoring.ts` wiring `@run402/shared` to concrete Telegram/Bugsnag/SES senders + `createKysignedMonitor()` factory (7 TDD tests). All 5 monitoring/PDF/operational launch-prep tasks now ship-ready — they go live the moment the corresponding human/infra tasks (Telegram channel, Bugsnag project, SES domain, deployment) are completed. kysigned suite: 149/149. kysigned-service suite: 7/7.
 - 2026-04-06: Phase 8B / saas-factory F19 — built shared geo-aware consent banner module at `run402/packages/shared/src/consent-banner/` (regions.ts + storage.ts pure logic, banner.ts vanilla DOM init, banner.css). 58 unit tests, all green (47 region rule + 11 storage). Wired into kysigned-service static site (4 HTML pages) via single-file vanilla bundle `kysigned-service/site/consent-banner.mjs` + matching CSS, and switched GA4 to Google Consent Mode v2 (ad/analytics storage default = denied, flips on `consent update` from the banner). Footer "Cookie settings" link on home page re-opens the panel via global `window.openConsentSettings`. saas-factory spec bumped to 1.9.1 to record the canonical module path. Scope is saas-factory product sites only — broader Kychee surfaces are a separate decision.
