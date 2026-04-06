@@ -1,11 +1,11 @@
 ---
 product: saas-factory
-version: 1.5.0
+version: 1.6.0
 status: Draft
 type: product
 interfaces: [document]
 created: 2026-04-04
-updated: 2026-04-04
+updated: 2026-04-06
 ---
 
 ## Overview
@@ -238,6 +238,38 @@ The CLI/MCP is a first-class deliverable, not an afterthought — it is part of 
 
 Both kychee.com and run402.com maintain an llms.txt file that serves as a central directory of all Kychee SaaS products. Each entry links to the individual product's llms.txt. This enables AI agents to discover all available products from one endpoint. Updated as a cross-linking task (chapter 10) whenever a new product launches.
 
+### F18. T1/T2 Billing Model
+
+Every Kychee SaaS product must be designed with a clear distinction between two tiers of payment:
+
+**T1 — Infrastructure billing (app-owner → run402):**
+- The app owner (Kychee for hosted services, or a forker for self-hosted) pays run402 for infrastructure: compute, database, email, wallet custody, custom domains, KMS key management.
+- T1 is always active for any deployed instance. Without T1, nothing runs.
+- run402 currently supports T1 via its existing billing and credit system.
+
+**T2 — End-user billing (app-user → app-owner):**
+- The app's end users pay the app owner for the product's value (e.g., $0.25 per signed envelope, $2 per booking).
+- T2 may or may not exist depending on the product:
+  - **Internal-use forkers** (e.g., a law firm running kysigned for employees) have no T2 — they absorb T1 costs.
+  - **Commercial SaaS operators** (e.g., kysigned.com) need T2 to charge end users.
+- T2 can be implemented in three ways:
+  1. **Wallet-native (x402/MPP)** — the app user's wallet pays the app owner's wallet directly via an HTTP payment header. run402 provides the protocol middleware (already implemented). This is the cleanest T2 pattern because it requires no Stripe integration, no merchant-of-record liability, and works natively for wallet-having users.
+  2. **App-owned Stripe integration** — the app operates its own Stripe account and handles fiat billing itself. The app is the merchant of record. Required when targeting non-wallet users. Requires PCI compliance awareness, Stripe account lifecycle management, and careful legal framing.
+  3. **Platform T2 via run402 (FUTURE, not yet available)** — run402 would offer Stripe-collection-as-a-service: run402 accepts Stripe payments from end users on the app's behalf and credits the app's run402 balance. Would eliminate app-owned Stripe for every product. Deferred post-MVP across all products.
+
+**Design rule for every new Kychee product:**
+- Explicitly specify which T2 mechanism(s) the product uses (wallet-native, app-owned Stripe, or "no T2 — internal use only")
+- If using app-owned Stripe, keep it in the private `[service]` repo, NOT the public MIT repo, to avoid forcing forkers into PCI/merchant-of-record obligations
+- If the public repo supports only wallet-native T2 (common case), provide a clear `allowed_senders`-style access control primitive so self-hosted forkers can safely deploy without becoming an open relay (see kysigned F2.8 for reference)
+- When platform T2 via run402 becomes available, every product with app-owned Stripe should have a documented migration path to switch to it
+
+**Key language for specs, docs, and conversations:**
+- "T1" = infrastructure (app pays run402)
+- "T2" = end-user billing (user pays app)
+- "T2-native" = wallet-based payment where the user's wallet pays directly (x402/MPP)
+- "T2-reseller" = the app operates its own Stripe to resell run402 capacity as an end-user service
+- Never conflate T1 and T2 in product specs. Any ambiguity about which tier a payment belongs to must be resolved before implementation begins.
+
 ## Acceptance Criteria
 
 ### F1. Document Structure
@@ -348,6 +380,14 @@ Both kychee.com and run402.com maintain an llms.txt file that serves as a centra
 - [ ] run402.com/llms.txt specified as a central directory of all run402-hosted products
 - [ ] Each entry links to the individual product's llms.txt
 - [ ] Update is a cross-linking task in chapter 10
+
+### F18. T1/T2 Billing Model
+- [ ] Product spec explicitly identifies T1 infrastructure dependencies (compute, db, email, wallet, KMS, etc.)
+- [ ] Product spec explicitly identifies T2 mechanism(s): wallet-native (x402/MPP), app-owned Stripe, or "no T2" (internal use)
+- [ ] If app-owned Stripe is used, it lives in the private `[service]` repo, NOT the public MIT repo
+- [ ] Public repo that supports only wallet-native T2 includes an access control primitive (e.g., `allowed_senders` table) to prevent open-relay abuse by self-hosted forkers
+- [ ] Migration path to future run402 platform T2 is documented as an open question
+- [ ] Spec never conflates T1 and T2 — every payment flow is explicitly labeled with its tier
 
 ## Constraints & Dependencies
 
