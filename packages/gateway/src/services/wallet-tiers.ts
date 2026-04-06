@@ -392,6 +392,17 @@ function rowToAccount(row: Record<string, unknown>): BillingAccount {
     tier: (row.tier as string) || null,
     lease_started_at: row.lease_started_at ? new Date(row.lease_started_at as string) : null,
     lease_expires_at: row.lease_expires_at ? new Date(row.lease_expires_at as string) : null,
+    email_credits_remaining: row.email_credits_remaining !== undefined && row.email_credits_remaining !== null
+      ? Number(row.email_credits_remaining)
+      : 0,
+    auto_recharge_enabled: Boolean(row.auto_recharge_enabled),
+    auto_recharge_threshold: row.auto_recharge_threshold !== undefined && row.auto_recharge_threshold !== null
+      ? Number(row.auto_recharge_threshold)
+      : 2000,
+    auto_recharge_failure_count: row.auto_recharge_failure_count !== undefined && row.auto_recharge_failure_count !== null
+      ? Number(row.auto_recharge_failure_count)
+      : 0,
+    stripe_customer_id: (row.stripe_customer_id as string) || null,
     created_at: new Date(row.created_at as string),
     updated_at: new Date(row.updated_at as string),
   };

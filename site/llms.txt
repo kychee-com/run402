@@ -666,6 +666,72 @@ GET /wallets/v1/YOUR_WALLET_ADDRESS/projects
 
 Public endpoint — no auth required. Returns only active projects.
 
+### Email-based billing accounts
+
+In addition to wallet-based billing, you can create a billing account using an email address. Email accounts are Stripe-only (no x402 / on-chain rail). Good for app owners who prefer credit card over crypto.
+
+**Create an email account:**
+
+```
+POST /billing/v1/accounts
+Content-Type: application/json
+
+{ "email": "you@example.com" }
+```
+
+Returns: `{ "id": "acct_...", "email": "you@example.com", "email_credits_remaining": 0, "verification_sent": true }`. Idempotent — duplicate emails return the existing account.
+
+**Balance/history by email OR wallet:** `GET /billing/v1/accounts/:id` and `GET /billing/v1/accounts/:id/history` auto-detect wallet (0x...) or email (@). Response includes `identifier_type`, `available_usd_micros`, `email_credits_remaining`, `tier`, `lease_expires_at`, `auto_recharge_enabled`, `auto_recharge_threshold`.
+
+**Link a wallet to an email account** (later, if you want hybrid Stripe+x402 access):
+
+```
+POST /billing/v1/accounts/:id/link-wallet
+{ "wallet": "0x..." }
+```
+
+### Stripe tier checkout
+
+Subscribe to a tier via credit card instead of x402. One-time payment per lease period:
+
+```
+POST /billing/v1/tiers/:tier/checkout
+Content-Type: application/json
+
+{ "email": "you@example.com" }   // or { "wallet": "0x..." }
+```
+
+Returns `{ "checkout_url": "https://checkout.stripe.com/...", "topup_id": "..." }`. Send your human to the URL to complete payment. On success, the tier is applied: `subscribe` (fresh), `renew` (same tier, active), or `upgrade` (higher tier, with prorated refund of remaining old tier).
+
+### Email packs (for high-volume sending)
+
+Tier daily email limits are hard-capped (10/50/500 per day for prototype/hobby/team) to protect `mail.run402.com` shared reputation. If you need to send more, you must:
+
+1. Register a **verified custom sender domain** (see `POST /email/v1/domains` in the email section)
+2. Buy **email packs**: $5 for 10,000 emails, never expire
+
+Pack credits kick in automatically when the tier daily limit is exhausted AND a custom sender domain is verified. Without a custom domain, the tier cap is absolute.
+
+**Buy an email pack:**
+
+```
+POST /billing/v1/email-packs/checkout
+Content-Type: application/json
+
+{ "email": "you@example.com" }   // or wallet
+```
+
+Returns a Stripe checkout URL. On payment, `email_credits_remaining` increments by 10,000.
+
+**Auto-recharge:** Enable automatic pack repurchase when credits drop below a threshold:
+
+```
+POST /billing/v1/email-packs/auto-recharge
+{ "billing_account_id": "acct_...", "enabled": true, "threshold": 2000 }
+```
+
+Requires a saved Stripe payment method. 3 consecutive failures automatically disable auto-recharge.
+
 ---
 
 ## Human FAQ

@@ -47,6 +47,11 @@
     <p class="subtitle">Platform updates and new features</p>
     <p class="machine-link">Machine-readable: <a href="/updates.txt">/updates.txt</a></p>
 
+    <h2>April 6, 2026</h2>
+    <ul>
+      <li><span class="entry-title">Email billing accounts + Stripe tier checkout + email packs</span> &mdash; Create billing accounts with just an email (Stripe-only, no wallet required). Subscribe/renew/upgrade tiers via credit card at <code>POST /billing/v1/tiers/:tier/checkout</code>. Buy email packs ($5 = 10,000 emails, never expire) at <code>POST /billing/v1/email-packs/checkout</code> — require a verified custom sender domain to protect <code>mail.run402.com</code> reputation. Auto-recharge optional. Balance/history endpoints now auto-detect wallet or email identifiers. Backward compat preserved for all existing wallet flows.</li>
+    </ul>
+
     <h2>April 5, 2026</h2>
     <ul>
       <li><span class="entry-title">Custom sender domains</span> &mdash; Register a custom email sending domain via <code>POST /email/v1/domains</code>. DKIM verification via SES, DNS records provided. Once verified, email sends from <code>&lt;slug&gt;@&lt;your-domain&gt;</code>. Wallet-scoped ownership for multi-project reuse.</li>

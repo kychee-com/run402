@@ -31,6 +31,7 @@
     "test:unit:coverage": "npm run test:unit:coverage -w packages/gateway",
     "test:magic-link": "tsx test/magic-link-e2e.ts",
     "test:sender-domain": "tsx test/sender-domain-e2e.ts",
+    "test:email-billing": "tsx test/email-billing-e2e.ts",
     "test:bld402-compat": "tsx test/bld402-compat.ts",
     "lint": "eslint",
     "deploy": "bash scripts/deploy.sh"

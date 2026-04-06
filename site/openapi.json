@@ -4194,6 +4194,138 @@
         }
       }
     },
+    "/billing/v1/accounts": {
+      "post": {
+        "tags": ["Billing"],
+        "summary": "Create an email-based billing account",
+        "description": "Creates a billing account identified by email (Stripe-only, no wallet). Idempotent — duplicate emails return the existing account. Sends a verification email (rate-limited: 60s cooldown, 10/IP/hour, 500/hour + 2000/day global).",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["email"],
+                "properties": { "email": { "type": "string", "format": "email" } }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": { "description": "Account created" },
+          "400": { "description": "Invalid email" },
+          "429": { "description": "Verification rate limited" }
+        }
+      }
+    },
+    "/billing/v1/accounts/{id}/link-wallet": {
+      "post": {
+        "tags": ["Billing"],
+        "summary": "Link a wallet to an email billing account",
+        "description": "Adds a wallet to an existing email account for hybrid Stripe + x402 access. Fails with 409 if the wallet is already linked to another account.",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["wallet"],
+                "properties": { "wallet": { "type": "string", "pattern": "^0x[a-fA-F0-9]{40}$" } }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Wallet linked" },
+          "404": { "description": "Account not found" },
+          "409": { "description": "Wallet already linked" }
+        }
+      }
+    },
+    "/billing/v1/tiers/{tier}/checkout": {
+      "post": {
+        "tags": ["Billing"],
+        "summary": "Create a Stripe tier subscription checkout",
+        "description": "Subscribe/renew/upgrade to a run402 tier via credit card (alternative to x402 on-chain payment). Supports both wallet and email identifiers. One-time payment per lease period. On completion, tier is applied automatically (with prorated refund on upgrade).",
+        "parameters": [
+          { "name": "tier", "in": "path", "required": true, "schema": { "type": "string", "enum": ["prototype", "hobby", "team"] } }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "wallet": { "type": "string", "pattern": "^0x[a-fA-F0-9]{40}$" },
+                  "email": { "type": "string", "format": "email" },
+                  "success_url": { "type": "string", "format": "uri" },
+                  "cancel_url": { "type": "string", "format": "uri" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Checkout session created", "content": { "application/json": { "schema": { "type": "object", "properties": { "checkout_url": { "type": "string" }, "topup_id": { "type": "string" } } } } } },
+          "400": { "description": "Invalid tier or missing identifier" }
+        }
+      }
+    },
+    "/billing/v1/email-packs/checkout": {
+      "post": {
+        "tags": ["Billing"],
+        "summary": "Create a Stripe email pack checkout ($5 = 10,000 emails)",
+        "description": "Buy a prepaid email pack. Each pack is $5 for 10,000 emails. Packs never expire. Require a verified custom sender domain to consume (mail.run402.com is hard-capped at tier limits for spam protection).",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "wallet": { "type": "string", "pattern": "^0x[a-fA-F0-9]{40}$" },
+                  "email": { "type": "string", "format": "email" },
+                  "success_url": { "type": "string", "format": "uri" },
+                  "cancel_url": { "type": "string", "format": "uri" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Checkout session created" },
+          "400": { "description": "Missing identifier" }
+        }
+      }
+    },
+    "/billing/v1/email-packs/auto-recharge": {
+      "post": {
+        "tags": ["Billing"],
+        "summary": "Enable or disable email pack auto-recharge",
+        "description": "When enabled, the platform automatically repurchases a $5 email pack when email_credits_remaining drops below the threshold. Requires a saved Stripe payment method. 3 consecutive failures automatically disable auto-recharge.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["billing_account_id", "enabled"],
+                "properties": {
+                  "billing_account_id": { "type": "string" },
+                  "enabled": { "type": "boolean" },
+                  "threshold": { "type": "number", "default": 2000 }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Auto-recharge updated" }
+        }
+      }
+    },
     "/billing/v1/checkouts": {
       "post": {
         "tags": [

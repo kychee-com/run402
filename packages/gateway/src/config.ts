@@ -8,6 +8,12 @@ export const CDP_API_KEY_ID = process.env.CDP_API_KEY_ID || "";
 export const CDP_API_KEY_SECRET = process.env.CDP_API_KEY_SECRET || "";
 export const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY || "";
 export const STRIPE_PUBLISHABLE_KEY = process.env.STRIPE_PUBLISHABLE_KEY || "";
+export const BILLING_MAILBOX_ID = process.env.BILLING_MAILBOX_ID || "";
+// Stripe price IDs for tier + email pack products
+export const STRIPE_PRICE_PROTOTYPE = process.env.STRIPE_PRICE_PROTOTYPE || "";
+export const STRIPE_PRICE_HOBBY = process.env.STRIPE_PRICE_HOBBY || "";
+export const STRIPE_PRICE_TEAM = process.env.STRIPE_PRICE_TEAM || "";
+export const STRIPE_PRICE_EMAIL_PACK = process.env.STRIPE_PRICE_EMAIL_PACK || "";
 export const FACILITATOR_PROVIDER = process.env.FACILITATOR_PROVIDER || "cdp"; // "cdp" | "stripe"
 export const FACILITATOR_URL = process.env.FACILITATOR_URL || "https://www.x402.org/facilitator";
 export const POSTGREST_URL = process.env.POSTGREST_URL || "http://localhost:3000";

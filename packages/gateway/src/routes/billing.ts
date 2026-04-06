@@ -15,35 +15,90 @@ import { ADMIN_KEY } from "../config.js";
 import {
   getBillingAccount,
   getOrCreateBillingAccount,
+  getBillingAccountByEmail,
+  getOrCreateBillingAccountByEmail,
+  linkWalletToEmailAccount,
   adminCredit,
   adminDebit,
   getLedgerHistory,
+  type BillingAccount,
 } from "../services/billing.js";
+import { resolveAccountIdentifier } from "../services/billing-identifier.js";
+import { sendVerificationEmail } from "../services/billing-notifications.js";
+import { randomBytes } from "node:crypto";
 import { asyncHandler, HttpError } from "../utils/async-handler.js";
 import { validateWalletAddress, validatePaginationInt } from "../utils/validate.js";
 
 const router = Router();
 
-// GET /billing/v1/accounts/:wallet — balance + status
-router.get("/billing/v1/accounts/:wallet", asyncHandler(async (req: Request, res: Response) => {
-  const wallet = validateWalletAddress(req.params["wallet"], "wallet");
+// Helper: resolve an identifier to a ledger "wallet" param for getLedgerHistory.
+// For email accounts we need the wallet (if any) — or we can extend getLedgerHistory to accept accountId.
+// For now, look up the account and use it directly for balance; history by account_id.
+async function resolveAccount(identifier: string): Promise<BillingAccount | null> {
+  const id = resolveAccountIdentifier(identifier);
+  if (id.type === "wallet") {
+    return getBillingAccount(id.value);
+  } else {
+    return getBillingAccountByEmail(id.value);
+  }
+}
 
-  const account = await getBillingAccount(wallet);
+// GET /billing/v1/accounts/:id — balance + status (identifier = wallet or email)
+router.get("/billing/v1/accounts/:id", asyncHandler(async (req: Request, res: Response) => {
+  const rawId = req.params["id"] || "";
+  const identifier = resolveAccountIdentifier(rawId);
+  const account = identifier.type === "wallet"
+    ? await getBillingAccount(identifier.value)
+    : await getBillingAccountByEmail(identifier.value);
 
   res.json({
     available_usd_micros: account?.available_usd_micros ?? 0,
+    email_credits_remaining: account?.email_credits_remaining ?? 0,
+    tier: account?.tier ?? null,
+    lease_expires_at: account?.lease_expires_at ? account.lease_expires_at.toISOString() : null,
+    auto_recharge_enabled: account?.auto_recharge_enabled ?? false,
+    auto_recharge_threshold: account?.auto_recharge_threshold ?? 2000,
+    identifier_type: identifier.type,
   });
 }));
 
-// GET /billing/v1/accounts/:wallet/history — ledger entries
-router.get("/billing/v1/accounts/:wallet/history", asyncHandler(async (req: Request, res: Response) => {
-  const wallet = validateWalletAddress(req.params["wallet"], "wallet");
-
+// GET /billing/v1/accounts/:id/history — ledger entries (identifier = wallet or email)
+router.get("/billing/v1/accounts/:id/history", asyncHandler(async (req: Request, res: Response) => {
+  const rawId = req.params["id"] || "";
+  const identifier = resolveAccountIdentifier(rawId);
   const limit = validatePaginationInt(req.query["limit"], "limit", { fallback: 50, max: 200 });
-  const entries = await getLedgerHistory(wallet, limit);
+
+  let entries: Awaited<ReturnType<typeof getLedgerHistory>> = [];
+  if (identifier.type === "wallet") {
+    entries = await getLedgerHistory(identifier.value, limit);
+  } else {
+    // For email accounts, look up the account and read ledger by billing_account_id
+    const account = await getBillingAccountByEmail(identifier.value);
+    if (account) {
+      const result = await pool.query(
+        sql(`SELECT * FROM internal.allowance_ledger WHERE billing_account_id = $1 ORDER BY created_at DESC LIMIT $2`),
+        [account.id, limit],
+      );
+      entries = result.rows.map((row) => ({
+        id: row.id as string,
+        billing_account_id: row.billing_account_id as string,
+        direction: row.direction as string,
+        kind: row.kind as string,
+        amount_usd_micros: Number(row.amount_usd_micros),
+        balance_after_available: Number(row.balance_after_available),
+        balance_after_held: Number(row.balance_after_held),
+        reference_type: (row.reference_type as string) || null,
+        reference_id: (row.reference_id as string) || null,
+        idempotency_key: (row.idempotency_key as string) || null,
+        metadata: row.metadata as Record<string, unknown> | null,
+        created_at: new Date(row.created_at as string),
+      }));
+    }
+  }
 
   res.json({
-    wallet,
+    identifier: rawId,
+    identifier_type: identifier.type,
     entries: entries.map((e) => ({
       id: e.id,
       direction: e.direction,
@@ -56,6 +111,63 @@ router.get("/billing/v1/accounts/:wallet/history", asyncHandler(async (req: Requ
       metadata: e.metadata,
       created_at: e.created_at.toISOString(),
     })),
+  });
+}));
+
+// POST /billing/v1/accounts — create an email-based billing account
+// Body: { email: string }
+router.post("/billing/v1/accounts", asyncHandler(async (req: Request, res: Response) => {
+  const { email } = (req.body || {}) as { email?: unknown };
+  if (!email || typeof email !== "string") {
+    throw new HttpError(400, "email required");
+  }
+  const identifier = resolveAccountIdentifier(email);
+  if (identifier.type !== "email") {
+    throw new HttpError(400, "email must be a valid email address");
+  }
+
+  const account = await getOrCreateBillingAccountByEmail(identifier.value);
+
+  // Send verification email (rate-limited)
+  const verificationToken = randomBytes(24).toString("base64url");
+  // Store the token hash on the row — reuse verification_send_count column pattern
+  // For MVP we just send the raw token (magic link pattern); a dedicated token table can come later.
+  const ip = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || req.socket.remoteAddress || "unknown";
+  try {
+    await sendVerificationEmail(identifier.value, verificationToken, ip);
+  } catch (err) {
+    // Don't fail account creation on verification email failure — log + continue
+    console.error("Verification email send failed:", err);
+  }
+
+  res.status(201).json({
+    id: account.id,
+    email: identifier.value,
+    email_credits_remaining: account.email_credits_remaining,
+    verification_sent: true,
+  });
+}));
+
+// POST /billing/v1/accounts/:id/link-wallet — link a wallet to an existing email account
+// Body: { wallet: string } (SIWX auth enforced via walletAddress in req context)
+router.post("/billing/v1/accounts/:id/link-wallet", asyncHandler(async (req: Request, res: Response) => {
+  const accountIdRaw = req.params["id"];
+  if (!accountIdRaw || typeof accountIdRaw !== "string") {
+    throw new HttpError(400, "account id required");
+  }
+  const accountId: string = accountIdRaw;
+  const { wallet } = (req.body || {}) as { wallet?: unknown };
+  if (!wallet || typeof wallet !== "string") {
+    throw new HttpError(400, "wallet required");
+  }
+  const normalizedWallet = validateWalletAddress(wallet, "wallet");
+
+  await linkWalletToEmailAccount(accountId, normalizedWallet);
+
+  res.json({
+    status: "linked",
+    billing_account_id: accountId,
+    wallet: normalizedWallet,
   });
 }));
 

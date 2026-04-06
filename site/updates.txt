@@ -6,6 +6,10 @@
 
 ---
 
+## 2026-04-06
+
+- **Email billing accounts + Stripe tier checkout + email packs**: App owners can now create billing accounts with just an email (Stripe-only, no wallet required) via `POST /billing/v1/accounts`. Subscribe/renew/upgrade tiers via credit card at `POST /billing/v1/tiers/:tier/checkout` (supports both wallet and email identifiers). High-volume email sending via $5 email packs at `POST /billing/v1/email-packs/checkout` — each pack = 10,000 emails, never expire, require a verified custom sender domain to consume (`mail.run402.com` stays hard-capped at tier limits for spam protection). Auto-recharge optional via `POST /billing/v1/email-packs/auto-recharge`. Balance and history endpoints auto-detect wallet (0x...) or email (@) identifiers. Link a wallet to an email account later for hybrid x402+Stripe access. Full backward compat: all existing wallet-based flows unchanged. T1 scope only — no end-user charging (T2 deferred, see docs/ideas.md).
+
 ## 2026-04-05
 
 - **Custom sender domains**: Register a custom email sending domain (e.g., `kysigned.com`) via `POST /email/v1/domains`. DKIM verification via SES, DNS records provided. Wallet-scoped ownership for multi-project reuse. Falls back to `@mail.run402.com` when unverified.
