@@ -57,7 +57,7 @@ The MCP server provides tools across these categories:
 
 | Category | Tools |
 |----------|-------|
-| Setup & billing | `init`, `set_tier`, `tier_status`, `status`, `check_balance`, `allowance_create`, `allowance_status`, `allowance_export`, `request_faucet`, `create_checkout`, `billing_history` |
+| Setup & billing | `init`, `set_tier`, `tier_status`, `status`, `check_balance`, `allowance_create`, `allowance_status`, `allowance_export`, `request_faucet`, `create_checkout`, `billing_history`, `create_email_billing_account`, `link_wallet_to_account`, `tier_checkout`, `buy_email_pack`, `set_auto_recharge` |
 | Projects | `provision_postgres_project`, `project_info`, `project_keys`, `project_use`, `list_projects`, `get_schema`, `get_usage`, `archive_project`, `pin_project` |
 | Database | `run_sql`, `setup_rls`, `rest_query` |
 | Deployment | `deploy_site`, `get_deployment`, `bundle_deploy` |
