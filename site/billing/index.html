@@ -704,6 +704,23 @@
         <div id="projects-list"><div class="loading">Loading projects...</div></div>
       </div>
 
+      <!-- KMS contract wallets -->
+      <div class="section" id="kms-contract-wallets">
+        <h2>KMS contract wallets</h2>
+        <p>Run402 can sign and broadcast write transactions to EVM smart contracts on your behalf via AWS KMS-backed wallets. Private keys never leave KMS &mdash; not even in plaintext to run402.</p>
+        <ul>
+          <li><strong>$0.04/day per wallet</strong> ($1.20/month). Daily debit from your cash balance, billed as a separate <code>kms_wallet_rental</code> ledger entry.</li>
+          <li><strong>$1.20 prepay required at creation</strong> (30 days of rent). Prevents zombie wallets that suspend on day 1.</li>
+          <li><strong>Contract calls: chain gas at-cost + $0.000005 per call</strong> (KMS sign fee). The sign fee is the only run402 markup on contract calls; gas is at-cost with 0% markup.</li>
+          <li><strong>Suspension</strong>: when your cash balance can't cover the next day's rent, all wallets on the project transition to <code>suspended</code>. Reactivation is automatic on top-up &mdash; no admin action.</li>
+          <li><strong>90-day deletion</strong>: a wallet that stays suspended for 90 days has its KMS key permanently destroyed (7-day AWS deletion window). Funds-rescue mechanisms: drain endpoint, recovery address, and warning emails on days 60/75/88.</li>
+        </ul>
+        <div style="background:#1a1a1a;border-left:3px solid #ff4444;padding:12px 16px;margin:16px 0;">
+          <strong style="color:#ff4444;">Non-custodial: you are responsible for your funds.</strong>
+          <p style="margin:8px 0 0 0;">run402 provides KMS-backed signing infrastructure, not fund custody. You are solely responsible for managing the on-chain ETH balance of your wallets. The drain endpoint and recovery address are optional safety nets, not guarantees. If you do not pay rent, drain the wallet, or set a recovery address before the 90-day suspension grace period ends, on-chain funds at the wallet address become permanently inaccessible to anyone, including run402. See <a href="/humans/terms.html#non-custodial-kms-wallets">terms of service</a> for the full disclosure.</p>
+        </div>
+      </div>
+
       <div class="footer">
         <span class="footer-text">By <a href="https://kychee.com">Kychee</a></span>
         <span>

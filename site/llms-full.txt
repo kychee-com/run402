@@ -1,1 +1,67 @@
-llms.txt
+# Run402 Long-Form Documentation
+
+> Long-form companion to https://run402.com/llms.txt and
+> https://run402.com/llms-cli.txt. Those shorter files are the canonical
+> reference; this one expands on pricing, lifecycle, and security model.
+
+For the full machine-readable API reference see https://run402.com/llms.txt
+and https://run402.com/openapi.json. For the CLI reference see
+https://run402.com/llms-cli.txt.
+
+## Pricing model
+
+| Item | Cost | Notes |
+|------|------|-------|
+| Prototype tier | FREE (testnet USDC) | 7-day lease, 250 MB, 500K API calls |
+| Hobby tier | $5.00 | 30-day lease, 1 GB, 5M API calls |
+| Team tier | $20.00 | 30-day lease, 10 GB, 50M API calls |
+| Image generation | $0.03 per image | per-call x402 |
+| Email pack | $5 per 10,000 emails | never expires, requires verified custom sender domain |
+| KMS contract wallet rental | **$0.04/day** ($1.20/month) | per active wallet, billed daily as `kms_wallet_rental` ledger entries |
+| Contract call gas | at-cost | 0% markup on chain gas, billed as `contract_call_gas` |
+| Contract call KMS sign fee | **$0.000005** per call | the only run402 markup on contract calls, billed as `kms_sign_fee` |
+
+KMS contract wallet creation requires **$1.20 in cash credit** (30 days of rent prepaid) at the moment of creation. This prevents zombie wallets that suspend on day 1.
+
+## KMS contract wallet lifecycle
+
+1. **Provision** (`POST /contracts/v1/wallets`): the gateway creates an AWS KMS key (ECC_SECG_P256K1, SIGN_VERIFY) tagged `run402:project_id` and `run402:wallet_id`, derives the Ethereum address from the public key (keccak256 of the uncompressed point, last 20 bytes), inserts a row into `internal.contract_wallets` with status='active', and debits the first day's rent. Private keys never leave KMS.
+2. **Daily rent**: a background job debits $0.04 from the project's cash balance per active wallet, once per UTC day. Idempotent on `(wallet_id, today)`.
+3. **Suspension**: when the project's cash balance can't cover rent, ALL of the project's active wallets transition to `suspended` simultaneously. Suspended wallets reject `POST /contracts/v1/call` (HTTP 402) but accept `GET` (status, balance) and `POST /contracts/v1/wallets/:id/drain` (the safety valve).
+4. **Reactivation**: automatic on cash top-up. The next reconciler tick reactivates all suspended wallets and resumes daily debits.
+5. **90-day deletion**: a wallet that stays suspended for 90 consecutive days has its KMS key permanently destroyed (7-day AWS deletion window). Funds-rescue mechanisms:
+    - Days 60/75/88: warning emails sent to the project's billing email.
+    - Day 90 with on-chain balance + recovery_address set: auto-drain to recovery address, then delete.
+    - Day 90 with on-chain balance + no recovery_address: delete + send fund-loss email. Funds become permanently inaccessible to anyone, including run402.
+    - Day 90 with dust balance: simple delete.
+
+## Security model
+
+- **Private keys never leave AWS KMS.** There is no `kms:Decrypt` or `kms:GetParametersForImport` in the gateway IAM role. The codebase contains no code path that could extract key material.
+- **Signing happens inside KMS.** The gateway computes a 32-byte digest, sends it to KMS via `kms:Sign` (MessageType=DIGEST, SigningAlgorithm=ECDSA_SHA_256), parses the DER signature into Ethereum (r, s, v) form, and broadcasts the signed transaction.
+- **Per-wallet KMS keys.** No HD derivation, no shared seeds. One wallet = one KMS key. Tagged so the daily reconciler can flag orphans.
+
+## Non-custodial relationship
+
+Run402 provides KMS-backed signing infrastructure, **not fund custody**. You are solely responsible for the on-chain native-token (ETH) balance of your wallets. Run402 has no obligation to recover, refund, or compensate for funds lost due to wallet suspension or deletion. The drain endpoint and recovery address are OPTIONAL safety nets, not guarantees.
+
+If you do not pay rent, drain the wallet, or set a recovery address before the 90-day suspension grace period ends, on-chain funds at the wallet address become permanently inaccessible to anyone, including run402. The on-chain address still exists but no key exists to sign for it.
+
+See https://run402.com/humans/terms.html#non-custodial-kms-wallets for the full disclosure.
+
+## API surface (KMS contract wallets)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/contracts/v1/wallets` | Provision a wallet (requires $1.20 prepay) |
+| GET | `/contracts/v1/wallets` | List wallets |
+| GET | `/contracts/v1/wallets/{id}` | Get wallet metadata + live balance + USD value |
+| POST | `/contracts/v1/wallets/{id}/recovery-address` | Set/clear recovery address |
+| POST | `/contracts/v1/wallets/{id}/alert` | Set low-balance threshold |
+| POST | `/contracts/v1/wallets/{id}/drain` | Drain native balance (works on suspended wallets) |
+| DELETE | `/contracts/v1/wallets/{id}` | Schedule KMS key for deletion (refused if balance > dust) |
+| POST | `/contracts/v1/call` | Submit a write call (chain gas + $0.000005 sign fee) |
+| POST | `/contracts/v1/read` | Read-only call (free) |
+| GET | `/contracts/v1/calls/{id}` | Get call status, gas used, gas cost USD-micros, receipt |
+
+Auth: `Authorization: Bearer <project service key>`. Idempotency: `POST /contracts/v1/call` accepts an optional `Idempotency-Key` header. Drain and delete require `X-Confirm-Drain: <wallet_id>` and `X-Confirm-Delete: <wallet_id>` respectively.

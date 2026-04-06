@@ -49,6 +49,7 @@
 
     <h2>April 6, 2026</h2>
     <ul>
+      <li><span class="entry-title">KMS contract wallet</span> &mdash; New <code>/contracts/v1/*</code> endpoints for AWS KMS-backed Ethereum wallets per project. Private keys never leave KMS. <strong>$0.04/day rental</strong> ($1.20/month, billed daily as <code>kms_wallet_rental</code>) plus <strong>$0.000005 per contract call</strong> (KMS sign fee, billed alongside chain gas at-cost). 30-day prepay required at creation. Provision via <code>POST /contracts/v1/wallets</code>; submit calls via <code>POST /contracts/v1/call</code>; non-custodial with optional drain endpoint and recovery address as safety nets. Wallets that stay suspended for 90 days are permanently deleted. Base mainnet first; chain registry config-only for adding more chains.</li>
       <li><span class="entry-title">Email billing accounts + Stripe tier checkout + email packs</span> &mdash; Create billing accounts with just an email (Stripe-only, no wallet required). Subscribe/renew/upgrade tiers via credit card at <code>POST /billing/v1/tiers/:tier/checkout</code>. Buy email packs ($5 = 10,000 emails, never expire) at <code>POST /billing/v1/email-packs/checkout</code> — require a verified custom sender domain to protect <code>mail.run402.com</code> reputation. Auto-recharge optional. Balance/history endpoints now auto-detect wallet or email identifiers. Backward compat preserved for all existing wallet flows.</li>
     </ul>
 

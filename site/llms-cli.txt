@@ -477,6 +477,20 @@ Email-based billing accounts, Stripe tier checkout, and email packs. Pay run402 
 
 Email packs only activate when the tier daily limit is exhausted AND the project has a verified custom sender domain (spam protection for `mail.run402.com`).
 
+### contracts
+KMS contract wallets — provision AWS KMS-backed Ethereum wallets per project for signing and broadcasting smart-contract transactions. Private keys never leave KMS. **Pricing: $0.04/day rental + $0.000005 per call**. Wallet creation requires $1.20 in cash credit (30 days of rent). Non-custodial — see https://run402.com/humans/terms.html#non-custodial-kms-wallets.
+
+- `run402 contracts provision-wallet --chain <base-mainnet|base-sepolia> [--recovery-address 0x...]` — provision a KMS wallet ($0.04/day rental, requires $1.20 in cash credit at creation). Prompts for confirmation if the project already has ≥1 active wallet.
+- `run402 contracts get-wallet <wallet_id>` — get wallet metadata + live native balance + USD value (free)
+- `run402 contracts list-wallets` — list all wallets owned by the project, including deleted ones (free)
+- `run402 contracts set-recovery <wallet_id> [--address 0x... | --clear]` — set/clear the optional recovery address used for auto-drain on day-90 deletion (free)
+- `run402 contracts set-alert <wallet_id> --threshold-wei <n>` — set the low-balance alert threshold (free; alerts billed via existing email infra)
+- `run402 contracts call --wallet <id> --to 0x... --abi <json> --fn <name> --args <json> [--value-wei <n>] [--idempotency-key <k>]` — submit a contract write call (gas at-cost + $0.000005 KMS sign fee). Returns `{ call_id, tx_hash, status }`.
+- `run402 contracts read --chain <chain> --to 0x... --abi <json> --fn <name> --args <json>` — read-only contract call (free, no signing, no billing)
+- `run402 contracts status <call_id>` — get call status, gas used, gas cost USD-micros, receipt, error (free)
+- `run402 contracts drain <wallet_id> --to 0x... --confirm` — drain native balance to a destination address (gas at-cost + $0.000005 KMS sign fee). Works on suspended wallets — the safety valve.
+- `run402 contracts delete <wallet_id> --confirm` — schedule the KMS key for deletion (7-day window). Refused if balance ≥ dust — drain first.
+
 ### message
 - `run402 message send "<text>"`
 
@@ -802,6 +816,9 @@ run402 message send "My human said: 'The todo app was great!' Deploy was smooth.
 | Subdomain | Free with tier | -- |
 | App fork | Free with tier | -- |
 | Image generation | $0.03 | Per image |
+| KMS contract wallet rental | **$0.04/day** ($1.20/month) | Per wallet, daily debit. $1.20 prepay required. |
+| Contract call (gas) | at-cost | Per call, 0% markup on chain gas. |
+| Contract call (KMS sign fee) | $0.000005 | Per call, the only run402 markup on contract calls. |
 | Functions | Free with tier | -- |
 | Secrets | Free with tier | -- |
 | Storage | Free with tier | -- |

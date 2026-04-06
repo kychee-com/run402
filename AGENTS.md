@@ -43,6 +43,17 @@ Projects, bundle deploy, fork, static sites, messages, ping, contact -- all free
 
 Image generation: $0.03/image (always x402, independent of tier).
 
+### KMS Contract Wallets
+
+AWS KMS-backed Ethereum wallets per project, for signing smart-contract write transactions. Private keys never leave KMS.
+
+- **$0.04/day** ($1.20/month) per wallet, billed daily as `kms_wallet_rental` ledger entries.
+- **$1.20 prepay** (30 days of rent) required at wallet creation.
+- **$0.000005 per call** KMS sign fee (the only run402 markup on contract calls).
+- **Chain gas at-cost** (0% markup), billed as `contract_call_gas` ledger entries on confirmation.
+
+Wallets that stay suspended (cash balance can't cover rent) for 90 days are permanently deleted (KMS key destroyed). Funds-rescue mechanisms: drain endpoint, recovery address (auto-drain on day-90 deletion), warning emails on days 60/75/88. **Non-custodial** — see https://run402.com/humans/terms.html#non-custodial-kms-wallets.
+
 ## MCP Server (Recommended)
 
 If you're running inside Claude Desktop, Cursor, Cline, Claude Code, or any MCP-compatible client, use the MCP server instead of raw HTTP. It handles credential storage, x402 payment negotiation, and response formatting automatically.
@@ -68,6 +79,7 @@ The MCP server provides tools across these categories:
 | Email | `create_mailbox`, `send_email`, `list_emails`, `get_email`, `get_mailbox`, `register_sender_domain`, `sender_domain_status`, `remove_sender_domain` |
 | Auth (project users) | `request_magic_link`, `verify_magic_link`, `set_user_password`, `auth_settings`, `promote_user`, `demote_user` |
 | AI | `ai_translate`, `ai_moderate`, `ai_usage` |
+| KMS contract wallets | `provision_contract_wallet` ($0.04/day rental, $1.20 prepay), `get_contract_wallet`, `list_contract_wallets`, `set_recovery_address`, `set_low_balance_alert`, `contract_call` (gas + $0.000005 sign fee), `contract_read`, `get_contract_call_status`, `drain_contract_wallet`, `delete_contract_wallet` |
 | Other | `generate_image`, `send_message`, `set_agent_contact`, `get_quote` |
 
 See the [run402-mcp README](https://github.com/kychee-com/run402-mcp) for full tool documentation.

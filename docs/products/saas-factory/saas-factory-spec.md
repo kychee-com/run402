@@ -273,7 +273,7 @@ Both kychee.com and run402.com maintain an llms.txt file that serves as a centra
 Every Kychee SaaS product must be designed with a clear distinction between two tiers of payment:
 
 **T1 — Infrastructure billing (app-owner → run402):**
-- The app owner (Kychee for hosted services, or a forker for self-hosted) pays run402 for infrastructure: compute, database, email, wallet custody, custom domains, KMS key management.
+- The app owner (Kychee for hosted services, or a forker for self-hosted) pays run402 for infrastructure: compute, database, email, KMS contract wallets ($0.04/day rental + $0.000005/sign — non-custodial KMS-backed signing, not fund custody), and custom domains.
 - T1 is always active for any deployed instance. Without T1, nothing runs.
 - run402 currently supports T1 via its existing billing and credit system.
 
