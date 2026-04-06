@@ -299,7 +299,7 @@
 ### Phase 14: Launch Prep `HUMAN` / `AI`
 
 - [ ] Email deliverability setup — dedicated sending domain, SPF/DKIM/DMARC, warm-up plan [infra] `AI`
-- [ ] Flip public repo from private to public on GitHub [manual] `HUMAN`
+- [ ] Flip public repo from private to public on GitHub [infra] `AI` — squash all history into a single "v1.0.0" commit first (orphan branch, force-push). No development history visible. Clean audited release.
 - [ ] Human review — legal sign-off on all docs [manual] `HUMAN`
 - [ ] Human review — collateral approval [manual] `HUMAN`
 - [ ] Human review — website copy and design approval [manual] `HUMAN`

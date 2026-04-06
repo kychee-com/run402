@@ -183,7 +183,7 @@ Every SaaS-killer product launches simultaneously as two delivery modes, backed 
 2. **Stable but pre-public:** `"github:kychee-com/{product}#v1.0.0"` — git dependency pinned to a tag. Used when the public repo is stable but not yet published to npm.
 3. **Public and mature:** `"{product}"` — npm package, versioned. Used when the public repo is published on npm.
 
-Each transition is a single-line change in the service repo's `package.json`. The public repo stays private on GitHub until launch-ready, then is flipped to public. The MIT license applies from the first public commit forward.
+Each transition is a single-line change in the service repo's `package.json`. The public repo stays private on GitHub until launch-ready, then is flipped to public. **Before going public, squash all development history into a single "v1.0.0" commit** (orphan branch, force-push as main). The public sees a clean, audited first release with no draft iterations, license edits, or intermediate states. The MIT license applies from this first public commit forward.
 
 **Workspace layout and where work happens:**
 - **Product code** → product repos (`kychee-com/{product}` and `kychee-com/{product}-service`), cloned side by side under the workspace
