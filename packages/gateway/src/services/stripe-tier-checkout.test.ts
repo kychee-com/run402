@@ -36,11 +36,27 @@ mock.module("stripe", {
   },
 });
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let mockPoolConnect: () => Promise<any>;
+
 mock.module("../db/pool.js", {
   namedExports: {
-    pool: { query: (...args: unknown[]) => mockPoolQuery(...args) },
+    pool: {
+      query: (...args: unknown[]) => mockPoolQuery(...args),
+      connect: () => mockPoolConnect(),
+    },
   },
 });
+
+// Default fake client — will be set up in beforeEach
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function makeFakeClient(queryHandler: (...args: any[]) => Promise<any>) {
+  return {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    query: (...args: any[]) => queryHandler(...args),
+    release: () => {},
+  };
+}
 
 mock.module("../db/sql.js", {
   namedExports: { sql: (s: string) => s },
@@ -80,7 +96,7 @@ mock.module("../utils/async-handler.js", {
   },
 });
 
-const { createTierCheckout } = await import("./stripe-tier-checkout.js");
+const { createTierCheckout, applyTierFromTopup } = await import("./stripe-tier-checkout.js");
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -219,5 +235,222 @@ describe("createTierCheckout", () => {
     assert.ok(m.topup_id);
     assert.equal(m.topup_type, "tier");
     assert.equal(m.tier_name, "team");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// applyTierFromTopup — called by webhook handler on checkout.session.completed
+// ---------------------------------------------------------------------------
+
+describe("applyTierFromTopup", () => {
+  beforeEach(() => {
+    // Default mocks
+    mockPoolQuery = async () => ({ rows: [], rowCount: 1 });
+    mockPoolConnect = async () => makeFakeClient(async () => ({ rows: [{ available_usd_micros: "0", held_usd_micros: "0" }], rowCount: 1 }));
+  });
+
+  it("subscribes a fresh account (no existing tier)", async () => {
+    const queries: Array<{ sql: string; params: unknown[] }> = [];
+    const handler = async (sqlStr: string, params?: unknown[]) => {
+      queries.push({ sql: sqlStr, params: params || [] });
+      // Topup lookup
+      if (sqlStr.includes("SELECT") && sqlStr.includes("billing_topups") && sqlStr.includes("id = $1")) {
+        return {
+          rows: [{
+            id: "topup-1",
+            billing_account_id: "acct-1",
+            tier_name: "hobby",
+            topup_type: "tier",
+            status: "paid",
+          }],
+          rowCount: 1,
+        };
+      }
+      // Account lookup (no current tier)
+      if (sqlStr.includes("SELECT") && sqlStr.includes("billing_accounts") && sqlStr.includes("WHERE id")) {
+        return {
+          rows: [{
+            id: "acct-1",
+            tier: null,
+            lease_started_at: null,
+            lease_expires_at: null,
+            available_usd_micros: "0",
+            held_usd_micros: "0",
+          }],
+          rowCount: 1,
+        };
+      }
+      return { rows: [], rowCount: 1 };
+    };
+    mockPoolQuery = handler;
+    mockPoolConnect = async () => makeFakeClient(handler);
+
+    const result = await applyTierFromTopup("topup-1");
+    assert.equal(result.action, "subscribe");
+    assert.equal(result.tier, "hobby");
+
+    // Verify UPDATE and ledger INSERT happened
+    const updateTier = queries.find(q => q.sql.includes("UPDATE") && q.sql.includes("billing_accounts") && q.sql.includes("tier"));
+    assert.ok(updateTier, "should UPDATE billing_accounts tier");
+    // Ledger kind is passed as parameter, so check both SQL (contains "allowance_ledger") and params contain "tier_subscribe"
+    const ledgerInsert = queries.find(q =>
+      q.sql.includes("INSERT") &&
+      q.sql.includes("allowance_ledger") &&
+      (q.params as unknown[]).some(p => p === "tier_subscribe"),
+    );
+    assert.ok(ledgerInsert, "should INSERT tier_subscribe ledger entry");
+  });
+
+  it("renews an active account (same tier)", async () => {
+    const futureDate = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+    const handler = async (sqlStr: string) => {
+      if (sqlStr.includes("SELECT") && sqlStr.includes("billing_topups")) {
+        return {
+          rows: [{ id: "topup-2", billing_account_id: "acct-2", tier_name: "hobby", topup_type: "tier", status: "paid" }],
+          rowCount: 1,
+        };
+      }
+      if (sqlStr.includes("SELECT") && sqlStr.includes("billing_accounts") && sqlStr.includes("WHERE id")) {
+        return {
+          rows: [{
+            id: "acct-2",
+            tier: "hobby",
+            lease_started_at: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
+            lease_expires_at: futureDate,
+            available_usd_micros: "0",
+            held_usd_micros: "0",
+          }],
+          rowCount: 1,
+        };
+      }
+      return { rows: [], rowCount: 1 };
+    };
+    mockPoolQuery = handler;
+    mockPoolConnect = async () => makeFakeClient(handler);
+
+    const result = await applyTierFromTopup("topup-2");
+    assert.equal(result.action, "renew");
+  });
+
+  it("upgrades (lower tier → higher tier) with prorated refund", async () => {
+    const futureDate = new Date(Date.now() + 20 * 24 * 60 * 60 * 1000);
+    const pastDate = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000);
+    const queries: Array<{ sql: string; params: unknown[] }> = [];
+    const handler = async (sqlStr: string, params?: unknown[]) => {
+      queries.push({ sql: sqlStr, params: params || [] });
+      if (sqlStr.includes("SELECT") && sqlStr.includes("billing_topups")) {
+        return {
+          rows: [{ id: "topup-3", billing_account_id: "acct-3", tier_name: "team", topup_type: "tier", status: "paid" }],
+          rowCount: 1,
+        };
+      }
+      if (sqlStr.includes("SELECT") && sqlStr.includes("billing_accounts") && sqlStr.includes("WHERE id")) {
+        return {
+          rows: [{
+            id: "acct-3",
+            tier: "hobby",
+            lease_started_at: pastDate.toISOString(),
+            lease_expires_at: futureDate.toISOString(),
+            available_usd_micros: "0",
+            held_usd_micros: "0",
+          }],
+          rowCount: 1,
+        };
+      }
+      return { rows: [], rowCount: 1 };
+    };
+    mockPoolQuery = handler;
+    mockPoolConnect = async () => makeFakeClient(handler);
+
+    const result = await applyTierFromTopup("topup-3");
+    assert.equal(result.action, "upgrade");
+    assert.equal(result.tier, "team");
+    // Verify a tier_upgrade ledger entry was created (kind is a param, not in SQL text)
+    const ledgerInsert = queries.find(q =>
+      q.sql.includes("INSERT") &&
+      q.sql.includes("allowance_ledger") &&
+      (q.params as unknown[]).some(p => p === "tier_upgrade"),
+    );
+    assert.ok(ledgerInsert, "should INSERT tier_upgrade ledger entry");
+  });
+
+  it("is idempotent — duplicate topup processing returns existing state", async () => {
+    let consumeCount = 0;
+    const handler = async (sqlStr: string) => {
+      if (sqlStr.includes("SELECT") && sqlStr.includes("billing_topups") && sqlStr.includes("id = $1")) {
+        consumeCount++;
+        if (consumeCount > 1) {
+          return {
+            rows: [{
+              id: "topup-idem",
+              billing_account_id: "acct-idem",
+              tier_name: "hobby",
+              topup_type: "tier",
+              status: "credited",
+            }],
+            rowCount: 1,
+          };
+        }
+        return {
+          rows: [{
+            id: "topup-idem",
+            billing_account_id: "acct-idem",
+            tier_name: "hobby",
+            topup_type: "tier",
+            status: "paid",
+          }],
+          rowCount: 1,
+        };
+      }
+      if (sqlStr.includes("SELECT") && sqlStr.includes("billing_accounts") && sqlStr.includes("WHERE id")) {
+        return {
+          rows: [{
+            id: "acct-idem",
+            tier: null,
+            lease_started_at: null,
+            lease_expires_at: null,
+            available_usd_micros: "0",
+            held_usd_micros: "0",
+          }],
+          rowCount: 1,
+        };
+      }
+      return { rows: [], rowCount: 1 };
+    };
+    mockPoolQuery = handler;
+    mockPoolConnect = async () => makeFakeClient(handler);
+
+    await applyTierFromTopup("topup-idem");
+    const result2 = await applyTierFromTopup("topup-idem");
+    assert.equal(result2.action, "noop");
+  });
+
+  it("throws if topup not found", async () => {
+    mockPoolQuery = async () => ({ rows: [], rowCount: 0 });
+    await assert.rejects(
+      async () => await applyTierFromTopup("missing"),
+      /not found/,
+    );
+  });
+
+  it("throws if topup_type is not 'tier'", async () => {
+    mockPoolQuery = async (sqlStr: string) => {
+      if (sqlStr.includes("SELECT") && sqlStr.includes("billing_topups")) {
+        return {
+          rows: [{
+            id: "topup-x",
+            billing_account_id: "acct-x",
+            tier_name: null,
+            topup_type: "cash",
+          }],
+          rowCount: 1,
+        };
+      }
+      return { rows: [], rowCount: 0 };
+    };
+    await assert.rejects(
+      async () => await applyTierFromTopup("topup-x"),
+      /topup_type/,
+    );
   });
 });

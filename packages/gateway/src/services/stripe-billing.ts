@@ -5,6 +5,8 @@
 import Stripe from "stripe";
 import { STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET, STRIPE_WEBHOOK_SECRET_LIVE } from "../config.js";
 import { getOrCreateBillingAccount, creditFromTopup } from "./billing.js";
+import { applyTierFromTopup } from "./stripe-tier-checkout.js";
+import { creditEmailPackFromTopup } from "./stripe-email-pack.js";
 import { pool } from "../db/pool.js";
 import { sql } from "../db/sql.js";
 import { randomUUID } from "node:crypto";
@@ -150,10 +152,18 @@ export async function handleStripeWebhookEvent(rawBody: Buffer, signature: strin
         ],
       );
 
-      // Credit the allowance
-      await creditFromTopup(topupId, event.id);
-
-      console.log(`Stripe webhook: credited topup ${topupId} from session ${session.id}`);
+      // Branch on topup_type to decide how to apply the payment
+      const topupType = session.metadata?.topup_type || "cash";
+      if (topupType === "tier") {
+        const result = await applyTierFromTopup(topupId);
+        console.log(`Stripe webhook: applied tier ${result.tier} (${result.action}) from topup ${topupId}`);
+      } else if (topupType === "email_pack") {
+        await creditEmailPackFromTopup(topupId, event.id);
+        console.log(`Stripe webhook: credited email pack from topup ${topupId}`);
+      } else {
+        await creditFromTopup(topupId, event.id);
+        console.log(`Stripe webhook: credited topup ${topupId} from session ${session.id}`);
+      }
     }
 
     // Mark event as processed

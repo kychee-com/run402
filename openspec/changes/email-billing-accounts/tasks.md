@@ -38,23 +38,12 @@
 ## 7. Service — Stripe tier checkout
 
 - [x] 7.1 Create `stripe-tier-checkout.ts` with `createTierCheckout(identifier, tierName)` — supports wallet+email, creates Stripe customer, topup row with topup_type='tier' + tier_name, returns checkout URL (6 tests). Tier action (subscribe/renew/upgrade/downgrade) applied by webhook handler via setTierForAccount — deferred to task 7.2 [code]
-- [ ] 7.2 Extend `handleStripeWebhookEvent` in `stripe-billing.ts` to branch on `topup_type`: `cash` → existing `creditFromTopup`; `tier` → new `applyTierFromTopup` that calls existing `setTier()` logic. [code]
-  - TDD: Write failing test for tier webhook handling (subscribe)
-  - TDD: Write failing test for tier webhook handling (upgrade with prorated refund)
-  - TDD: Write failing test for idempotent duplicate webhook
-  - Implement
+- [x] 7.2 `handleStripeWebhookEvent` branches on topup_type metadata. `applyTierFromTopup` in stripe-tier-checkout.ts handles subscribe/renew/upgrade/downgrade with prorated refund and idempotency via status check (6 new tests) [code]
 
 ## 8. Service — email packs
 
-- [ ] 8.1 Extend `stripe-billing.ts` with `createEmailPackCheckout(identifier)` — creates Stripe checkout session for $5 pack, records topup with `topup_type='email_pack'`, `funded_email_credits=10000`. [code]
-  - TDD: Write failing test for successful checkout creation
-  - TDD: Write failing test for Stripe customer creation/reuse
-  - Implement
-- [ ] 8.2 Extend `handleStripeWebhookEvent` to handle `topup_type='email_pack'` → new `creditEmailPackFromTopup(topupId, stripeEventId)` that atomically: updates topup status, increments `email_credits_remaining` by 10000, appends ledger entry `kind='email_pack_purchase'` with `amount_usd_micros=5000000` and metadata `{email_credits_added: 10000}`. Idempotent via event ID. [code]
-  - TDD: Write failing test for pack credit application
-  - TDD: Write failing test for ledger entry format
-  - TDD: Write failing test for idempotency
-  - Implement
+- [x] 8.1 `stripe-email-pack.ts` with `createEmailPackCheckout` — $5 pack = 10,000 credits, Stripe checkout with topup_type='email_pack' metadata (5 tests) [code]
+- [x] 8.2 `creditEmailPackFromTopup` with atomic credit + ledger entry (amount_usd_micros=5_000_000, kind='email_pack_purchase', metadata includes credits added). Webhook handler extended to route email_pack topups. Idempotent via topup status check (4 tests) [code]
 
 ## 9. Service — email overage (pack consumption)
 
