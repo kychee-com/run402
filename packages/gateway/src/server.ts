@@ -1103,6 +1103,70 @@ async function applyMigrations() {
   `));
   await pool.query(sql(`CREATE UNIQUE INDEX IF NOT EXISTS idx_email_domains_project ON internal.email_domains(project_id)`));
   await pool.query(sql(`CREATE INDEX IF NOT EXISTS idx_email_domains_domain_wallet ON internal.email_domains(domain, wallet_address)`));
+
+  // v1.19: email-based billing accounts, email packs, auto-recharge, Stripe tier checkout
+  // Columns on billing_accounts
+  await pool.query(sql(`ALTER TABLE internal.billing_accounts ADD COLUMN IF NOT EXISTS email_credits_remaining INT NOT NULL DEFAULT 0`));
+  await pool.query(sql(`ALTER TABLE internal.billing_accounts ADD COLUMN IF NOT EXISTS auto_recharge_enabled BOOLEAN NOT NULL DEFAULT false`));
+  await pool.query(sql(`ALTER TABLE internal.billing_accounts ADD COLUMN IF NOT EXISTS auto_recharge_threshold INT NOT NULL DEFAULT 2000`));
+  await pool.query(sql(`ALTER TABLE internal.billing_accounts ADD COLUMN IF NOT EXISTS auto_recharge_failure_count INT NOT NULL DEFAULT 0`));
+  await pool.query(sql(`ALTER TABLE internal.billing_accounts ADD COLUMN IF NOT EXISTS stripe_customer_id TEXT`));
+  // CHECK constraint for email_credits_remaining >= 0 (idempotent add via DO block)
+  await pool.query(sql(`
+    DO $$ BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'billing_accounts_email_credits_nonneg'
+      ) THEN
+        ALTER TABLE internal.billing_accounts
+          ADD CONSTRAINT billing_accounts_email_credits_nonneg
+          CHECK (email_credits_remaining >= 0);
+      END IF;
+    END $$
+  `));
+
+  // Columns on billing_topups — topup_type discriminates cash vs email_pack vs tier
+  await pool.query(sql(`ALTER TABLE internal.billing_topups ADD COLUMN IF NOT EXISTS topup_type TEXT NOT NULL DEFAULT 'cash'`));
+  await pool.query(sql(`ALTER TABLE internal.billing_topups ADD COLUMN IF NOT EXISTS funded_email_credits INT NOT NULL DEFAULT 0`));
+  await pool.query(sql(`ALTER TABLE internal.billing_topups ADD COLUMN IF NOT EXISTS tier_name TEXT`));
+  await pool.query(sql(`
+    DO $$ BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'billing_topups_topup_type_valid'
+      ) THEN
+        ALTER TABLE internal.billing_topups
+          ADD CONSTRAINT billing_topups_topup_type_valid
+          CHECK (topup_type IN ('cash', 'email_pack', 'tier'));
+      END IF;
+    END $$
+  `));
+
+  // Email-to-account mapping (parallel to billing_account_wallets)
+  await pool.query(sql(`
+    CREATE TABLE IF NOT EXISTS internal.billing_account_emails (
+      email TEXT PRIMARY KEY,
+      billing_account_id UUID NOT NULL REFERENCES internal.billing_accounts(id),
+      email_verified_at TIMESTAMPTZ,
+      verification_send_count INT NOT NULL DEFAULT 0,
+      last_verification_sent_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `));
+  await pool.query(sql(`CREATE INDEX IF NOT EXISTS idx_billing_account_emails_account ON internal.billing_account_emails(billing_account_id)`));
+
+  // v1.19b: bootstrap platform billing mailbox (billing@mail.run402.com)
+  // Self-healing: creates the row if missing. Uses 'platform' as project_id sentinel.
+  const billingMailboxResult = await pool.query(
+    sql(`SELECT id FROM internal.mailboxes WHERE slug = 'billing' AND project_id = 'platform'`),
+  );
+  if (billingMailboxResult.rows.length === 0) {
+    const billingMbxId = `mbx_billing_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    await pool.query(
+      sql(`INSERT INTO internal.mailboxes (id, slug, project_id, status) VALUES ($1, 'billing', 'platform', 'active')
+       ON CONFLICT (slug) DO NOTHING`),
+      [billingMbxId],
+    );
+    console.log(`  Bootstrapped platform billing mailbox: billing@mail.run402.com`);
+  }
 }
 
 async function start() {

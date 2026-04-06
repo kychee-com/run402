@@ -21,6 +21,11 @@ export interface BillingAccount {
   tier: string | null;
   lease_started_at: Date | null;
   lease_expires_at: Date | null;
+  email_credits_remaining: number;
+  auto_recharge_enabled: boolean;
+  auto_recharge_threshold: number;
+  auto_recharge_failure_count: number;
+  stripe_customer_id: string | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -132,6 +137,119 @@ export async function getBillingAccount(wallet: string): Promise<BillingAccount 
     [normalized],
   );
   return result.rows.length > 0 ? rowToAccount(result.rows[0]) : null;
+}
+
+/**
+ * Lookup billing account by email address. Returns null if not found.
+ */
+export async function getBillingAccountByEmail(email: string): Promise<BillingAccount | null> {
+  const normalized = email.toLowerCase().trim();
+  const result = await pool.query(
+    sql(`SELECT ba.* FROM internal.billing_accounts ba
+     JOIN internal.billing_account_emails bae ON bae.billing_account_id = ba.id
+     WHERE bae.email = $1`),
+    [normalized],
+  );
+  return result.rows.length > 0 ? rowToAccount(result.rows[0]) : null;
+}
+
+/**
+ * Get or create a billing account for an email address.
+ * Atomic upsert: inserts billing_accounts + billing_account_emails.
+ * Idempotent — returns existing account if email already linked.
+ */
+export async function getOrCreateBillingAccountByEmail(email: string): Promise<BillingAccount> {
+  const normalized = email.toLowerCase().trim();
+
+  // Check if email already linked
+  const existing = await pool.query(
+    sql(`SELECT ba.* FROM internal.billing_accounts ba
+     JOIN internal.billing_account_emails bae ON bae.billing_account_id = ba.id
+     WHERE bae.email = $1`),
+    [normalized],
+  );
+
+  if (existing.rows.length > 0) {
+    return rowToAccount(existing.rows[0]);
+  }
+
+  // Create new account + email link in a transaction
+  const client = await pool.connect();
+  try {
+    await client.query(sql("BEGIN"));
+
+    // Double-check inside transaction (race condition protection)
+    const recheck = await client.query(
+      sql(`SELECT ba.* FROM internal.billing_accounts ba
+       JOIN internal.billing_account_emails bae ON bae.billing_account_id = ba.id
+       WHERE bae.email = $1`),
+      [normalized],
+    );
+    if (recheck.rows.length > 0) {
+      await client.query(sql("COMMIT"));
+      return rowToAccount(recheck.rows[0]);
+    }
+
+    const accountId = randomUUID();
+    await client.query(
+      sql(`INSERT INTO internal.billing_accounts (id, status, currency, available_usd_micros, held_usd_micros, funding_policy, low_balance_threshold_usd_micros, primary_contact_email)
+       VALUES ($1, 'active', 'USD', 0, 0, 'allowance_then_wallet', 1000000, $2)`),
+      [accountId, normalized],
+    );
+
+    await client.query(
+      sql(`INSERT INTO internal.billing_account_emails (email, billing_account_id)
+       VALUES ($1, $2)`),
+      [normalized, accountId],
+    );
+
+    await client.query(sql("COMMIT"));
+
+    const result = await pool.query(
+      sql(`SELECT * FROM internal.billing_accounts WHERE id = $1`),
+      [accountId],
+    );
+    return rowToAccount(result.rows[0]);
+  } catch (err) {
+    try { await client.query(sql("ROLLBACK")); } catch { /* connection may be dead */ }
+    throw err;
+  } finally {
+    try { client.release(); } catch { /* may already be released */ }
+  }
+}
+
+/**
+ * Link a wallet to an existing billing account (typically an email account).
+ * Errors with 409 if the wallet is already linked to any account.
+ * Errors with 404 if the target account does not exist.
+ */
+export async function linkWalletToEmailAccount(accountId: string, wallet: string): Promise<void> {
+  const normalizedWallet = wallet.toLowerCase();
+
+  // Check if wallet is already linked to any account
+  const existing = await pool.query(
+    sql(`SELECT billing_account_id FROM internal.billing_account_wallets WHERE wallet_address = $1`),
+    [normalizedWallet],
+  );
+  if (existing.rows.length > 0) {
+    throw new HttpError(409, "Wallet is already linked to a billing account");
+  }
+
+  // Check if target account exists
+  const account = await pool.query(
+    sql(`SELECT id FROM internal.billing_accounts WHERE id = $1`),
+    [accountId],
+  );
+  if (account.rows.length === 0) {
+    throw new HttpError(404, "Billing account not found");
+  }
+
+  // Link the wallet
+  await pool.query(
+    sql(`INSERT INTO internal.billing_account_wallets (wallet_address, billing_account_id, status, role)
+     VALUES ($1, $2, 'active', 'owner')`),
+    [normalizedWallet, accountId],
+  );
 }
 
 /**
@@ -472,6 +590,17 @@ function rowToAccount(row: Record<string, unknown>): BillingAccount {
     tier: (row.tier as string) || null,
     lease_started_at: row.lease_started_at ? new Date(row.lease_started_at as string) : null,
     lease_expires_at: row.lease_expires_at ? new Date(row.lease_expires_at as string) : null,
+    email_credits_remaining: row.email_credits_remaining !== undefined && row.email_credits_remaining !== null
+      ? Number(row.email_credits_remaining)
+      : 0,
+    auto_recharge_enabled: Boolean(row.auto_recharge_enabled),
+    auto_recharge_threshold: row.auto_recharge_threshold !== undefined && row.auto_recharge_threshold !== null
+      ? Number(row.auto_recharge_threshold)
+      : 2000,
+    auto_recharge_failure_count: row.auto_recharge_failure_count !== undefined && row.auto_recharge_failure_count !== null
+      ? Number(row.auto_recharge_failure_count)
+      : 0,
+    stripe_customer_id: (row.stripe_customer_id as string) || null,
     created_at: new Date(row.created_at as string),
     updated_at: new Date(row.updated_at as string),
   };

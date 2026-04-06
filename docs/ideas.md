@@ -4,6 +4,31 @@ Ideas sourced from competitive analysis (primarily here.now comparison, March 20
 
 ---
 
+## T2 Billing — Customer Accounts / Marketplace (deferred)
+
+**Source:** Formalized in kysigned spec v0.3.0 as the T1/T2 distinction.
+
+**Terminology:**
+- **T1** (in scope today) — app owner pays run402 for infrastructure. Examples: tier subscriptions, Stripe top-ups, email packs. Every run402 feature built so far is T1.
+- **T2** (deferred) — run402 acts as a billing intermediary, letting apps charge their own end users. Example: kysigned charges an end user $0.25 for an envelope, run402 holds the money and pays kysigned minus a platform fee.
+
+**Why deferred:** T2 is a marketplace feature with significant complexity (merchant of record, Stripe Connect, platform fees, payouts, KYC, 1099s). kysigned MVP handles its own Stripe integration directly (kysigned.com = merchant of record). Forked kysigned deployments don't need end-user billing (internal use by law firms etc., costs absorbed by operator). So T2 has no MVP customer demand.
+
+**What T2 would look like when we build it:**
+- Project-scoped customer accounts (each project has its own customer namespace)
+- Customers identified by email or wallet
+- Customers buy prepaid credits via Stripe (minimum $5 to amortize Stripe fees)
+- Apps call `chargeCustomer(customerId, sku, amount)` to debit balance
+- Run402 takes configurable platform fee (e.g., 10%)
+- App owner gets a "revenue balance" that accumulates earnings
+- Payouts via Stripe Connect or manual admin process
+
+**Migration path:** kysigned Path 3 could migrate from its own Stripe account to use run402's T2 billing if we build it post-MVP. The kysigned spec (F2.8.10) documents this explicitly. `allowed_senders` remains the authorization primitive either way.
+
+**Key principle:** Don't build T2 until we have a cross-product business case. Design it right once instead of hacking it onto each product.
+
+---
+
 ## Password Protection for Sites
 
 **Source:** here.now supports `PATCH /api/v1/publish/:slug/metadata` with `{"password": "secret"}`. Server-side enforcement, survives redeploys, removable with `{"password": null}`.
