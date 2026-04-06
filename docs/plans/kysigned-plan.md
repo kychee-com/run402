@@ -4,8 +4,8 @@
 **Created:** 2026-04-04
 **Status:** Ready for Implementation
 **Spec:** docs/products/kysigned/kysigned-spec.md
-**Spec-Version:** 0.5.0
-**Upstream References:** docs/products/saas-factory/saas-factory-spec.md (v1.8.0)
+**Spec-Version:** 0.6.0
+**Upstream References:** docs/products/saas-factory/saas-factory-spec.md (v1.9.0)
 **Source:** spec
 **Worktree:** none — product code lives in separate repos (C:\Workspace-Kychee\kysigned and C:\Workspace-Kychee\kysigned-service). run402 platform enhancements use a run402 worktree on a feature branch.
 
@@ -335,6 +335,20 @@
 - [ ] Human review — pricing approval [manual] `HUMAN`
 - [ ] Launch go/no-go decision [manual] `HUMAN`
 - [ ] Execute first marketing hypothesis card [manual] `HUMAN`
+
+### Phase 15: Ship & Verify `AI`
+
+Per saas-factory F21 / kysigned spec Shipping Surfaces section. Each `[ship]` task publishes/deploys one surface and runs the spec's smoke check from a clean working directory. **Code merged ≠ shipped** — none of these are done until the smoke check passes against the published artifact.
+
+- [ ] Ship "Marketing site" surface — deploy kysigned.com static site, smoke `curl -fsSL https://kysigned.com/ | grep -q kysigned` [ship]
+- [ ] Ship "llms.txt" surface — included in marketing site deploy, smoke `curl -fsSL https://kysigned.com/llms.txt | grep -q '^# kysigned'` [ship]
+- [ ] Ship "REST API" surface — deploy kysigned API service to run402, smoke `curl -fsSL https://kysigned.com/v1/health` [ship]
+- [ ] Ship "Verification page" surface — deployed with the API, smoke `curl -fsSL https://kysigned.com/verify | grep -q "Verify"` [ship]
+- [ ] Ship "Dashboard" surface — deployed with the API, smoke `curl -fsSL -o /dev/null -w '%{http_code}' https://kysigned.com/dashboard | grep -q '^200$'` [ship]
+- [ ] Ship "MCP server (npm)" surface — `npm publish` from `mcp/`, smoke `npx -y kysigned-mcp --version` from a fresh temp directory [ship]
+- [ ] Ship "Public repo" surface — squash history to v1.0.0 commit and flip private→public on GitHub, smoke `curl -fsSL https://api.github.com/repos/kychee-com/kysigned | grep -q '"private":\s*false'` [ship]
+- [ ] Ship "Smart contract — Base mainnet" surface — deploy SignatureRegistry.sol to Base mainnet, smoke `cast call <mainnet-address> 'DOMAIN_SEPARATOR()(bytes32)' --rpc-url https://mainnet.base.org` (depends on Phase 13) [ship]
+- [ ] Ship "Smart contract — Base Sepolia" surface — already deployed at 0xAE8b...c91, smoke `cast call 0xAE8b6702e413c6204b544D8Ff3C94852B2016c91 'DOMAIN_SEPARATOR()(bytes32)' --rpc-url https://sepolia.base.org` [ship]
 
 ---
 

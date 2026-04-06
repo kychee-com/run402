@@ -1,6 +1,6 @@
 ---
 product: saas-factory
-version: 1.8.0
+version: 1.9.0
 status: Draft
 type: product
 interfaces: [document]
@@ -374,6 +374,43 @@ A standard `docs/incident-response.md` template ships with every saas-factory pr
 - **Operational consistency** — every Kychee product behaves the same way during incidents. Engineers can switch between products without re-learning the monitoring system.
 - **Cost efficiency** — one shared module, one set of channels, one runbook template. Adding a new product means adding a Telegram chat and a Bugsnag project, not building a monitoring stack.
 
+### F21. Shipping Surfaces & Smoke Verification
+
+Every Kychee SaaS product must declare its **shipping surfaces** in the spec and verify them via the `Ship & Verify` plan phase. This is the contract that "code merged to main" became "user can use it" — and that contract is enforced by the spec → plan → implement skill chain.
+
+**Why this matters:** A common failure mode is shipping a `package.json` change without actually publishing to npm, or merging a backend change without redeploying the service. The user experience is "the bug is still there" even though `git log` shows it was "fixed." Shipping Surfaces makes this gap impossible to ignore — every user-reachable artifact must have a smoke check that proves the latest version is reachable from outside the repo.
+
+**Spec requirement:** Every product spec MUST include a `## Shipping Surfaces` section listing every user-reachable artifact (per the `/spec` skill format):
+
+| Field | Description |
+|---|---|
+| **Name** | Short label (e.g., "MCP CLI", "API", "Marketing site", "Smart contract") |
+| **Type** | One of: `npm`, `url`, `app-store`, `binary`, `library`, `service`, `other` |
+| **Reach** | One-line action a fresh user takes (e.g., `npm install -g foo`, `https://kysigned.com`) |
+| **Smoke check** | Single shell command that, run from a clean environment, proves the latest version is reachable. Exit code 0 = pass. Must NOT be version-pinned. |
+
+If a product has no external surface (internal tooling, library not yet published, etc.), it MUST state explicitly: **"internal only — no external surface"** with a one-line rationale. No spec is `/plan`-ready without this section.
+
+**Plan requirement:** Every plan MUST end with a `Ship & Verify` phase containing one `[ship]` task per shipping surface declared in the spec. The `/implement` skill executes these via the `[ship]` task type:
+1. Publish/deploy via the project's `/publish` (or `/deploy`) skill, or per the procedure documented in `CLAUDE.md` / `AGENTS.md`
+2. Run the spec's smoke check from a clean working directory (NOT the repo or worktree)
+3. Confirm exit code 0 AND the output reflects the just-shipped change (new version string, new endpoint response, etc.)
+4. Record evidence in the plan's Implementation Log
+
+If the spec is "internal only", the plan omits the `Ship & Verify` phase and adds a Design Decision (DD-N) explaining why no shipping verification is required.
+
+**Iron Law:** Code merged ≠ shipped. A `[ship]` task is done when the spec's smoke check passes against the published artifact, from outside the repo. No exceptions, including for patch releases.
+
+**Common Kychee SaaS surface examples:**
+- **Marketing/product website** — type: `url`, reach: `https://<product>.com`, smoke: `curl -fsSL https://<product>.com/health` or `curl -fsSL https://<product>.com/llms.txt`
+- **REST API** — type: `service`, reach: `https://api.<product>.com`, smoke: `curl -fsSL https://api.<product>.com/health`
+- **MCP server (npm)** — type: `npm`, reach: `npx -y <product>-mcp`, smoke: `npx -y <product>-mcp --version`
+- **Public repo (open source release)** — type: `url`, reach: `https://github.com/kychee-com/<product>`, smoke: `curl -fsSL https://api.github.com/repos/kychee-com/<product> | grep -q '"private":false'`
+- **Smart contract on Base mainnet** — type: `other`, reach: `0x<address>`, smoke: `cast call 0x<address> '<view-function>()' --rpc-url https://mainnet.base.org` (or equivalent)
+- **Mobile app (Play Store / App Store)** — type: `app-store`, reach: store URL, smoke: API call to store listing (or manual install verification)
+
+**Shipping Surfaces apply to ALL Kychee products without exception.** Even an internal-only library still gets the section — it just contains "internal only — no external surface".
+
 ## Acceptance Criteria
 
 ### F1. Document Structure
@@ -518,6 +555,16 @@ A standard `docs/incident-response.md` template ships with every saas-factory pr
 - [ ] Each product ships with `docs/incident-response.md` runbook based on the standard template
 - [ ] Daily summary post to Telegram (env created, error count, top issues)
 - [ ] Bugsnag captures every alert with timestamp for "reasonable diligence" GDPR audit trail
+
+### F21. Shipping Surfaces & Smoke Verification
+- [ ] Every product spec has a `## Shipping Surfaces` section listing all user-reachable artifacts (or "internal only — no external surface")
+- [ ] Each shipping surface row has Name, Type, Reach, and Smoke check fields
+- [ ] Smoke checks are not version-pinned (they test "latest reachable" not a specific version)
+- [ ] Every plan ends with a `Ship & Verify` phase containing one `[ship]` task per shipping surface
+- [ ] Each `[ship]` task references the spec's smoke check and is verified via the `/implement` skill `[ship]` methodology
+- [ ] Internal-only specs omit the `Ship & Verify` phase and document the rationale in a Design Decision
+- [ ] No task is marked done if it produces output that must reach users via a shipping surface and no `[ship]` task exists
+- [ ] Smoke checks are run from a clean working directory (not the repo or worktree) for verification
 
 ## Constraints & Dependencies
 
