@@ -90,6 +90,11 @@ npx run402-mcp
 | `register_sender_domain` | Register a custom email sending domain (DKIM verification). |
 | `sender_domain_status` | Check sender domain verification status. |
 | `remove_sender_domain` | Remove a custom sender domain. |
+| `create_email_billing_account` | Create a Stripe-only billing account by email (no wallet required). |
+| `link_wallet_to_account` | Link a wallet to an email account for hybrid Stripe + x402 access. |
+| `tier_checkout` | Subscribe/renew/upgrade to a tier via Stripe (alternative to x402). |
+| `buy_email_pack` | Buy a $5 email pack (10,000 emails, never expire). |
+| `set_auto_recharge` | Enable/disable auto-recharge for email packs when credits run low. |
 
 ## Client Configuration
 

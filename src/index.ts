@@ -85,6 +85,13 @@ import { registerSenderDomainSchema, handleRegisterSenderDomain } from "./tools/
 import { senderDomainStatusSchema, handleSenderDomainStatus } from "./tools/sender-domain-status.js";
 import { removeSenderDomainSchema, handleRemoveSenderDomain } from "./tools/remove-sender-domain.js";
 
+// New tools — email billing accounts + Stripe tier checkout + email packs
+import { createEmailBillingAccountSchema, handleCreateEmailBillingAccount } from "./tools/create-email-billing-account.js";
+import { linkWalletToAccountSchema, handleLinkWalletToAccount } from "./tools/link-wallet-to-account.js";
+import { tierCheckoutSchema, handleTierCheckout } from "./tools/tier-checkout.js";
+import { buyEmailPackSchema, handleBuyEmailPack } from "./tools/buy-email-pack.js";
+import { setAutoRechargeSchema, handleSetAutoRecharge } from "./tools/set-auto-recharge.js";
+
 // New tools — AI
 import { aiTranslateSchema, handleAiTranslate } from "./tools/ai-translate.js";
 import { aiModerateSchema, handleAiModerate } from "./tools/ai-moderate.js";
@@ -673,6 +680,43 @@ server.tool(
   "Remove a project's custom sender domain. Email reverts to sending from mail.run402.com.",
   removeSenderDomainSchema,
   async (args) => handleRemoveSenderDomain(args),
+);
+
+// --- Email billing accounts + Stripe tier checkout + email packs ---
+
+server.tool(
+  "create_email_billing_account",
+  "Create an email-based billing account (Stripe-only, no wallet required). Sends a verification email. Idempotent — duplicate emails return the existing account.",
+  createEmailBillingAccountSchema,
+  async (args) => handleCreateEmailBillingAccount(args),
+);
+
+server.tool(
+  "link_wallet_to_account",
+  "Link a wallet to an existing email billing account, enabling hybrid Stripe + x402 access. Fails if the wallet is already linked elsewhere.",
+  linkWalletToAccountSchema,
+  async (args) => handleLinkWalletToAccount(args),
+);
+
+server.tool(
+  "tier_checkout",
+  "Subscribe/renew/upgrade to a run402 tier via Stripe credit card. Alternative to x402 on-chain payment. Supports wallet or email identifier. Returns a Stripe checkout URL.",
+  tierCheckoutSchema,
+  async (args) => handleTierCheckout(args),
+);
+
+server.tool(
+  "buy_email_pack",
+  "Buy a $5 email pack (10,000 emails, never expire). Pack credits activate when tier daily limit is exhausted AND a custom sender domain is verified. Returns a Stripe checkout URL.",
+  buyEmailPackSchema,
+  async (args) => handleBuyEmailPack(args),
+);
+
+server.tool(
+  "set_auto_recharge",
+  "Enable or disable automatic email pack repurchase when credits drop below a threshold. Requires a saved Stripe payment method.",
+  setAutoRechargeSchema,
+  async (args) => handleSetAutoRecharge(args),
 );
 
 const transport = new StdioServerTransport();

@@ -443,6 +443,73 @@ Remove a project's custom sender domain. Email reverts to sending from `mail.run
 remove_sender_domain(project_id: "prj_...")
 ```
 
+### create_email_billing_account
+
+Create a Stripe-only billing account identified by email (no wallet required). Sends a verification email. Idempotent — duplicate emails return the existing account.
+
+**Parameters:**
+- `email` (required) — Email address
+
+**Example:**
+```
+create_email_billing_account(email: "user@example.com")
+```
+
+### link_wallet_to_account
+
+Link a wallet to an existing email billing account for hybrid Stripe + x402 access. Fails if the wallet is already linked elsewhere.
+
+**Parameters:**
+- `billing_account_id` (required) — The billing account ID
+- `wallet` (required) — Wallet address (0x...)
+
+**Example:**
+```
+link_wallet_to_account(billing_account_id: "acct_...", wallet: "0x...")
+```
+
+### tier_checkout
+
+Subscribe, renew, or upgrade a run402 tier via Stripe credit card. Alternative to x402 on-chain payment. Returns a Stripe checkout URL for the user to complete.
+
+**Parameters:**
+- `tier` (required) — `prototype`, `hobby`, or `team`
+- `email` (optional) — Email address for email-based accounts
+- `wallet` (optional) — Wallet address for wallet-based accounts
+- (must provide either email or wallet)
+
+**Example:**
+```
+tier_checkout(tier: "hobby", email: "user@example.com")
+```
+
+### buy_email_pack
+
+Buy a $5 email pack (10,000 emails, never expire). Pack credits activate only when the tier daily limit is exhausted AND the project has a verified custom sender domain. Returns a Stripe checkout URL.
+
+**Parameters:**
+- `email` (optional) — Email address for email-based accounts
+- `wallet` (optional) — Wallet address for wallet-based accounts
+
+**Example:**
+```
+buy_email_pack(email: "user@example.com")
+```
+
+### set_auto_recharge
+
+Enable or disable automatic $5 email pack repurchase when credits drop below a threshold. Requires a saved Stripe payment method. 3 consecutive failures auto-disable.
+
+**Parameters:**
+- `billing_account_id` (required) — The billing account ID
+- `enabled` (required) — Boolean
+- `threshold` (optional) — Credit threshold to trigger (default 2000)
+
+**Example:**
+```
+set_auto_recharge(billing_account_id: "acct_...", enabled: true, threshold: 2000)
+```
+
 ## Standard Workflow
 
 Follow this sequence to go from zero to a working database:
