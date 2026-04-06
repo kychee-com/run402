@@ -84,12 +84,12 @@
   - [x] Custom domain mapping — EXISTS. Cloudflare Custom Hostnames + Workers KV. Works for repo forkers.
   - [x] Email sending service — EXISTS. AWS SES with templates, rate limiting, suppression lists. Gap: custom sender domain (kysigned.com) and explicit DMARC config.
   - [x] Platform wallet — RESOLVED. The run402 KMS-wallet feature landed and now provides mainnet wallet provisioning, KMS-backed key custody (private material never leaves KMS), and a contract-interaction abstraction. kysigned is the first production consumer — see Phase 13 pre-flight checklist and first-exercise watchlist. Caveat: drain endpoint, recovery address, and 90-day deletion lifecycle have zero production test coverage yet.
-- [!] For each missing run402 capability: create a run402 enhancement task with scope estimate, implement in run402 worktree (feature branch) [manual] `AI` — WAITING FOR: Separate run402 plans for each enhancement. Not blocking Phase 1-3.
-  - [ ] run402 enhancement: Magic link passwordless auth flow (endpoint + email-only identity)
-  - [ ] run402 enhancement: Custom sender domain support (kysigned.com email sending)
-  - [x] run402 enhancement: Mainnet wallet + KMS key management + contract interaction abstraction — shipped. kysigned will be the first production consumer. Pre-flight checklist + first-exercise watchlist captured in Phase 13.
-  - [ ] run402 enhancement: Per-envelope billing adaptation + email-based billing accounts
-  - [ ] run402 enhancement: Admin dashboard (/admin) — wallet activity breakdown by product (inflows: USDC revenue labelled "kysigned" / "run402 infra" / etc., derived from which API endpoint accepted payment; outflows: ETH gas labelled by which contract was called) + Stripe revenue tracking per product via Stripe metadata
+- [~] For each missing run402 capability: create a run402 enhancement task with scope estimate, implement in run402 worktree (feature branch) [manual] `AI` — 5 of 6 enhancements shipped; last one (admin-wallet-breakdown) is non-blocking.
+  - [x] run402 enhancement: Magic link passwordless auth flow (endpoint + email-only identity) — shipped (`magic-link-auth`)
+  - [x] run402 enhancement: Custom sender domain support (kysigned.com email sending) — shipped (`custom-sender-domains`)
+  - [x] run402 enhancement: Mainnet wallet + KMS key management + contract interaction abstraction — shipped (`kms-wallet-contracts`). kysigned is the first production consumer. Pre-flight checklist + first-exercise watchlist captured in Phase 13.
+  - [x] run402 enhancement: Per-envelope billing adaptation + email-based billing accounts — shipped (`email-billing-accounts` v1.28.0)
+  - [!] run402 enhancement: Admin dashboard (/admin) — wallet activity breakdown by product (inflows: USDC revenue labelled "kysigned" / "run402 infra" / etc., derived from which API endpoint accepted payment; outflows: ETH gas labelled by which contract was called) + Stripe revenue tracking per product via Stripe metadata — LAST run402 enhancement, in progress (`admin-wallet-breakdown`). **Does NOT block kysigned launch** — it's a reporting/operational feature, not a runtime dependency. kysigned can ship and generate real revenue without it; the dashboard is the finance-visibility layer we turn on when it lands.
 - [x] Register domain kysigned.com [infra] — registered via Route 53, hosted zone Z0749125BIF9JF9FZ73M. DNS wiring to run402 infra pending deployment.
 
 ### Phase 1: Smart Contract `AI`
@@ -117,8 +117,8 @@
 - [x] Implement webhook delivery on envelope completion (POST to callback_url) [code] — tested
 - [x] Implement envelope expiry logic — check TTL, transition to expired, notify parties [code] — tested
 - [x] Implement sequential signing logic — notify next signer only after previous completes [code] — tested
-- [!] Implement x402 payment middleware for Path 1/2 sender authentication [code] — WAITING FOR: run402 integration layer (Phase 4)
-- [!] Implement MPP payment middleware for Path 1/2 sender authentication [code] — WAITING FOR: run402 integration layer (Phase 4)
+- [ ] Implement x402 payment middleware for Path 1/2 sender authentication [code] — UNBLOCKED: run402 KMS-wallet + email-billing-accounts enhancements shipped. Wire `@run402/shared` billing client + verify x402 payment header against the kysigned project's USDC receive address.
+- [ ] Implement MPP payment middleware for Path 1/2 sender authentication [code] — UNBLOCKED: same as above. MPP (Multi-Party Payment) is the fallback flow for wallets that don't natively do x402; delivery is via run402's shipped middleware.
 - [x] Implement `allowed_senders` table + migration (identity, identity_type, quota_per_month, added_at, added_by, note) [code]
 - [x] Implement `allowed_senders` enforcement middleware on `POST /v1/envelope` — authenticated AND in allowlist, default-deny [code]
 - [x] Implement admin API: add/remove/list allowed senders (requires operator auth) [code]
@@ -163,7 +163,7 @@
 - [x] Implement envelope list endpoint — filter by sender wallet/email [code]
 - [x] Implement envelope detail endpoint — full audit trail per signer [code]
 - [x] Implement export endpoint — CSV and JSON formats [code]
-- [!] Implement wallet-based authentication for dashboard [code] — WAITING FOR: run402 SIWX integration (Phase 4)
+- [ ] Implement wallet-based authentication for dashboard [code] — UNBLOCKED: the run402 KMS-wallet + magic-link-auth enhancements together provide the SIWX (Sign-In With X / SIWE) identity layer kysigned needs. Wire run402's auth client into the dashboard session middleware.
 
 ### Phase 3: Frontend — Public Repo `[both]` `AI`
 
@@ -200,27 +200,31 @@
 
 ### Phase 4: Service Layer — Service Repo `[service]` `AI`
 
-- [ ] Implement Path 3 prepaid credit system (via run402 paycard or own Stripe integration — based on Phase 0 audit) [code]
-  - Stripe checkout for credit pack purchase (branded as kysigned)
-  - Credit balance storage and per-envelope deduction
-  - Insufficient balance error handling
-  - Non-expiring credits
-  - Low-balance threshold alert
-  - Purchase history
-- [ ] Implement magic link authentication for Path 3 (via run402 or own implementation — based on Phase 0 audit) [code]
-  - Enter email → receive login link → click to authenticate
-  - No password, no social login
-  - Session management
-- [ ] Implement platform wallet for Path 3 on-chain recordings (using run402's wallet infrastructure) [code]
-  - On-chain recordings indistinguishable from Path 1/2
+> **Fully unblocked.** run402's `magic-link-auth`, `email-billing-accounts`, `kms-wallet-contracts`, and `custom-sender-domains` enhancements together provide every primitive this phase needs. Phase 4 is the glue layer that composes them into the kysigned hosted product. Implementation is `@run402/shared`-client wiring + kysigned-specific UI; no greenfield auth/billing code.
+
+- [ ] Implement Path 3 prepaid credit system via run402's `email-billing-accounts` (v1.28.0) [code]
+  - Use `@run402/shared` billing client for checkout + balance + deduction; no custom Stripe wiring
+  - Per-envelope deduction hooks on `POST /v1/envelope`
+  - Insufficient balance → return HTTP 402 with top-up link (the standard x402 shape)
+  - Non-expiring credits (platform default; verify when wiring)
+  - Low-balance threshold alert (use the shared monitoring module's `notifyInfo`)
+  - Purchase history reads from run402's billing ledger
+- [ ] Implement magic link authentication for Path 3 via run402's `magic-link-auth` enhancement [code]
+  - Wire `@run402/shared` auth client; no custom auth code
+  - Enter email → receive login link → click → authenticated session
+  - Session management is run402's responsibility
+- [ ] Implement platform wallet for Path 3 on-chain recordings via the KMS-wallet feature [code]
+  - On-chain recordings indistinguishable from Path 1/2 (same wallet, same contract)
+  - Verify the pre-flight checklist in Phase 13 ran before wiring this for production
 - [ ] Implement Path 3 dashboard extensions [frontend-logic]
-  - Magic link login flow
-  - Credit balance display
-  - Purchase history view
+  - Magic link login flow (UI only; run402 handles the token exchange)
+  - Credit balance display (reads from run402 billing API)
+  - Purchase history view (same source)
   - Low-balance indicator
   - Usage statistics (envelopes sent, signatures collected, completion rate — monthly/weekly)
   - Spending history (per-envelope cost, total spend over time)
-- [ ] Implement Path 2 wallet onboarding flow on website — guide user through wallet creation and funding [frontend-visual]
+- [ ] Implement Path 2 wallet onboarding flow on website — guide user through wallet creation and funding. Link directly to `docs/wallet-guide.md` for the long version. [frontend-visual]
+- [ ] Wire run402's `custom-sender-domains` feature to send kysigned emails from `@kysigned.com` (not `@run402.com`) via SES — SPF/DKIM/DMARC all come for free through the enhancement; kysigned just registers the domain with run402 [infra]
 
 ### Phase 5: Domain & Branding `AI` / `HUMAN`
 
@@ -273,7 +277,7 @@
 ### Phase 9: Agent Interface `[both]` `AI`
 
 - [x] Build MCP server exposing: create_envelope, check_envelope_status, list_envelopes, verify_document, verify_envelope, send_reminder, void_envelope [code] — tested
-- [!] Implement x402/MPP authentication in MCP [code] — WAITING FOR: run402 payment middleware integration
+- [ ] Implement x402/MPP authentication in MCP [code] — UNBLOCKED: wire the same `@run402/shared` payment client used by Phase 2B's x402 middleware. Agent flow: caller's wallet signs an x402 header → MCP forwards it to the kysigned API → run402's middleware validates + debits → kysigned records on-chain.
 - [x] Implement configurable endpoint (KYSIGNED_ENDPOINT env var, default: kysigned.com) [code]
 - [ ] Publish canonical npm package (`kysigned-mcp`) [infra]
 - [x] Write MCP documentation and usage examples [manual] `AI` — `mcp/README.md` covers install, Claude Desktop / Code / Cursor setup, all 7 tools, and three end-to-end examples
@@ -338,7 +342,7 @@ The following paths have ZERO production test coverage on run402 and will get th
 
 ### Phase 14: Launch Prep `HUMAN` / `AI`
 
-- [ ] Email deliverability setup — dedicated sending domain, SPF/DKIM/DMARC, warm-up plan [infra] `AI`
+- [ ] Email deliverability setup — dedicated sending domain, SPF/DKIM/DMARC, warm-up plan [infra] `AI` — UNBLOCKED: run402's `custom-sender-domains` enhancement ships SPF/DKIM/DMARC automation. Register `kysigned.com` as a run402 sender domain, validate the DNS records in Route 53, then run the 2-week SES warm-up ramp.
 - [ ] Flip public repo from private to public on GitHub [infra] `AI` — squash all history into a single "v1.0.0" commit first (orphan branch, force-push). No development history visible. Clean audited release.
 - [x] **Refactor PDF storage to ephemeral retention (per spec F8.6 v0.5.0):** delete on completion-email delivery confirmation, not 30-day fixed window. Wire SES delivery webhooks to trigger deletion. 7-day fallback for bounces. Hard 30-day cap regardless. [code] — public-repo library piece complete: migration 004, pure shouldDeletePdf, sweepRetention, markCompletionEmailDelivered/Bounced, and immediate-delete on void. Service repo still needs to wire SES → markDelivered/Bounced webhook routes and a periodic sweep cron.
 - [x] **Wire kysigned to the shared monitoring module** (`@run402/shared/monitoring`) — provide concrete senders for Telegram (kysigned chat), Bugsnag (kysigned project), and SES (CRITICAL emails). Cover all standard signals from saas-factory F20. [code] — `kysigned-service/src/monitoring.ts` ships `createTelegramSender` / `createBugsnagSender` / `createSesEmailSender` and `createKysignedMonitor()` factory. 7 unit tests, all green. Goes live the moment the bot/project/SES resources exist (Phase 14 manual tasks).
@@ -395,6 +399,7 @@ _None yet_
 - 2026-04-05: Phase 1 complete — SignatureRegistry.sol deployed to Base Sepolia (0xAE8b...c91). Gas: 220K/email sig, 243K/wallet sig, 158K/completion. 2-signer envelope ~$0.01-0.05 gas. ABI + verification algorithm documented.
 - 2026-04-05: Phase 2 complete — Core engine: DB migrations, data access layer, envelope API (create/get/void/remind/list/export), signing engine (Method A+B, duplicate protection, decline, completion), PDF handling (hash, embed, certificate), 7 email templates (pluggable provider), universal verification. 23 tests passing (14 unit + 9 contract). x402/MPP middleware and wallet auth blocked on run402 integration.
 - 2026-04-05: Phase 3 complete — React + Vite + Tailwind frontend: signing page (pdf.js viewer, Method A/B, drawing widget, signature persistence, verification levels, duplicate/decline/expired screens), verification page (client-side hash, universal contract query), proof link page (Basescan links, independent verification), dashboard (wallet connect, envelope list, detail/audit trail, create form with "Will you also sign?" prompt, remind/void/export).
+- 2026-04-06: **run402 unblock sweep** — 5 of 6 run402 enhancements are now shipped (`magic-link-auth`, `custom-sender-domains`, `email-billing-accounts` v1.28.0, `kms-wallet-contracts`, `platform-changelog`). The last one (`admin-wallet-breakdown`) is in progress but **blocks nothing** — it's reporting/operational, not a runtime dependency. Flipped every `[!]` downstream task in the kysigned plan to `[ ]` and annotated each with the specific enhancement that delivers the dependency: Phase 2B x402/MPP middleware → `kms-wallet-contracts` + `email-billing-accounts`; Phase 2G dashboard wallet auth → `magic-link-auth` + `kms-wallet-contracts` SIWX; Phase 4 service layer entirely → all 4 enhancements compose into the Path 3 glue layer; Phase 9 MCP x402 → same middleware as Phase 2B; Phase 14 email deliverability → `custom-sender-domains`. Phase 4 got an explicit "fully unblocked" header and new task notes that make clear it's now `@run402/shared`-client wiring, not greenfield billing/auth code. First Phase 0 run402-enhancement checklist fully reconciled.
 - 2026-04-06: Phase 13 expanded with KMS-wallet pre-flight checklist + first-exercise watchlist. run402's KMS-wallet feature shipped, replacing the plaintext `agentdb/faucet-treasury-key` custody path. kysigned is the first production consumer of mainnet provisioning, the drain endpoint, the recovery address, and the 90-day deletion lifecycle — captured these as explicit watchlist items because they have zero production test coverage on run402 and will get their first real exercise through kysigned. Pre-flight checklist adds (a) a 10-second IAM simulation re-run immediately before provisioning to catch policy drift, and (b) a billing-balance-≥-$1.20 check to avoid the HTTP 402 on the first `provision-wallet` call. DD-3 framing stays ("one platform wallet across all Kychee SaaS products") but key custody moves to KMS — run402 audit bullet flipped from PARTIAL to RESOLVED.
 - 2026-04-06: Phase 11 hypothesis cards drafted as `.xlsx` per saas-factory F6 v1.10.0 (new format requirement). Generator script at `kysigned-service/marketing/hypothesis-cards/generate.py` emits 4 cards (freelancers, solo-consultants, small-agencies, real-estate). Each card uses the canonical 14-field schema with a Status dropdown (Draft/Approved/Running/Won/Killed) and a separate Notes sheet for assumptions/open questions/risks. Real-estate card flagged with a BLOCKER REVIEW note: ESIGN/UETA compliance per jurisdiction must be confirmed before any spend. saas-factory spec bumped 1.9.1 → 1.10.0 (new requirement: cards are xlsx, not markdown; field count grew from 8 to 14; lifecycle Status field added).
 - 2026-04-06: Documentation + automation sweep — closed every standalone item not blocked on run402 deploy. Public repo: `docs/wallet-guide.md` (signers + envelope creators), signing-page wallet-onboarding panel for Method B without an installed wallet, `mcp/README.md` with Claude Desktop/Code/Cursor setup + 3 worked examples, `src/api/accountDeletion.ts` (DPA Section 11 deletion + verification with 8 TDD tests). Service repo: `docs/incident-response.md` (severity matrix, first-response checklist, DPA 72-hour playbook), `security/` pack (overview, questionnaire, encryption, access control, subprocessors, incident history), `src/monitoring.ts` wiring `@run402/shared` to concrete Telegram/Bugsnag/SES senders + `createKysignedMonitor()` factory (7 TDD tests). All 5 monitoring/PDF/operational launch-prep tasks now ship-ready — they go live the moment the corresponding human/infra tasks (Telegram channel, Bugsnag project, SES domain, deployment) are completed. kysigned suite: 149/149. kysigned-service suite: 7/7.
