@@ -39,8 +39,8 @@ Per saas-factory F21. Each row is a user-reachable artifact. Smoke checks are NO
 | Dashboard | url | `https://kysigned.com/dashboard` | `curl -fsSL -o /dev/null -w '%{http_code}' https://kysigned.com/dashboard \| grep -q '^200$'` |
 | MCP server (npm) | npm | `npx -y kysigned-mcp` | `npx -y kysigned-mcp --version` |
 | Public repo (open source release) | url | `https://github.com/kychee-com/kysigned` | `curl -fsSL https://api.github.com/repos/kychee-com/kysigned \| grep -q '"private":\s*false'` |
-| Smart contract — Base mainnet | other | `0x<TBD-after-mainnet-deploy>` | `cast call 0x<TBD> 'DOMAIN_SEPARATOR()(bytes32)' --rpc-url https://mainnet.base.org` |
-| Smart contract — Base Sepolia (testnet) | other | `0xAE8b6702e413c6204b544D8Ff3C94852B2016c91` | `cast call 0xAE8b6702e413c6204b544D8Ff3C94852B2016c91 'DOMAIN_SEPARATOR()(bytes32)' --rpc-url https://sepolia.base.org` |
+| Smart contract — Base mainnet | other | `0x<TBD-after-mainnet-deploy>` | `curl -fsSL -X POST https://mainnet.base.org -H 'content-type: application/json' -d '{"jsonrpc":"2.0","id":1,"method":"eth_call","params":[{"to":"0x<TBD>","data":"0x3644e515"},"latest"]}' \| grep -q '"result":"0x[0-9a-f]\{64\}"'` |
+| Smart contract — Base Sepolia (testnet) | other | `0xAE8b6702e413c6204b544D8Ff3C94852B2016c91` | `curl -fsSL -X POST https://sepolia.base.org -H 'content-type: application/json' -d '{"jsonrpc":"2.0","id":1,"method":"eth_call","params":[{"to":"0xAE8b6702e413c6204b544D8Ff3C94852B2016c91","data":"0x3644e515"},"latest"]}' \| grep -q '"result":"0x[0-9a-f]\{64\}"'` |
 
 **Notes:**
 - Mainnet contract address is `<TBD>` until Phase 13 deployment. The smoke check row is added once the address is known.
