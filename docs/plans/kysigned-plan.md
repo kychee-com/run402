@@ -4,8 +4,8 @@
 **Created:** 2026-04-04
 **Status:** Ready for Implementation
 **Spec:** docs/products/kysigned/kysigned-spec.md
-**Spec-Version:** 0.4.0
-**Upstream References:** docs/products/saas-factory/saas-factory-spec.md (v1.4.0)
+**Spec-Version:** 0.5.0
+**Upstream References:** docs/products/saas-factory/saas-factory-spec.md (v1.8.0)
 **Source:** spec
 **Worktree:** none — product code lives in separate repos (C:\Workspace-Kychee\kysigned and C:\Workspace-Kychee\kysigned-service). run402 platform enhancements use a run402 worktree on a feature branch.
 
@@ -322,6 +322,13 @@
 
 - [ ] Email deliverability setup — dedicated sending domain, SPF/DKIM/DMARC, warm-up plan [infra] `AI`
 - [ ] Flip public repo from private to public on GitHub [infra] `AI` — squash all history into a single "v1.0.0" commit first (orphan branch, force-push). No development history visible. Clean audited release.
+- [ ] **Refactor PDF storage to ephemeral retention (per spec F8.6 v0.5.0):** delete on completion-email delivery confirmation, not 30-day fixed window. Wire SES delivery webhooks to trigger deletion. 7-day fallback for bounces. Hard 30-day cap regardless. [code]
+- [ ] **Wire kysigned to the shared monitoring module** (`@run402/shared/monitoring`) — provide concrete senders for Telegram (kysigned chat), Bugsnag (kysigned project), and SES (CRITICAL emails). Cover all standard signals from saas-factory F20. [code]
+- [ ] **Create kysigned Telegram alerts channel** + add Tal and Barry as members [manual] `HUMAN`
+- [ ] **Create kysigned Bugsnag project** + store API key in AWS Secrets Manager (`kysigned/bugsnag-api-key`) [infra] `AI`
+- [ ] **Write `docs/incident-response.md` for kysigned** based on the saas-factory F20 template — severity definitions, on-call (Barry+Tal), first-response checklist, communication templates, DPA 72-hour reference [manual] `AI`
+- [ ] **Account deletion automation** — verified end-to-end procedure that deletes all off-chain personal data within 30 days (DPA Section 11 commitment). Includes envelope cache, signer records, document storage, payment records (where legally allowed). Requires explicit verification step that deletion completed. [code]
+- [ ] **Security claims documentation pack** — collect AWS encryption configuration evidence, access control policies, security questionnaire we can hand to enterprise customers on request. Stored in `kysigned-service/security/`. [manual] `AI`
 - [ ] Human review — legal sign-off on all docs [manual] `HUMAN`
 - [ ] Human review — collateral approval [manual] `HUMAN`
 - [ ] Human review — website copy and design approval [manual] `HUMAN`

@@ -1,6 +1,6 @@
 ---
 product: saas-factory
-version: 1.7.0
+version: 1.8.0
 status: Draft
 type: product
 interfaces: [document]
@@ -310,6 +310,70 @@ Every Kychee product website must implement a **geo-aware cookie consent banner*
 
 **Privacy by design:** The geo detection itself does NOT use third-party tracking cookies. It uses CDN-provided IP-derived headers, which are processed server-side and never leave our infrastructure.
 
+### F20. Monitoring & Alerting Standard
+
+Every Kychee SaaS product uses a shared monitoring and alerting standard. The implementation lives in `run402/packages/shared/monitoring/` and is consumed by all saas-factory products.
+
+**Three severity levels, three channels:**
+
+| Severity | Description | Channels |
+|---|---|---|
+| **INFO** | Notable but normal events. Not actionable. Daily summaries, signups, key milestones. | Telegram (per-product channel) |
+| **WARN** | Anomalies, recoverable failures, degradation. Actionable but not urgent. | Telegram + Bugsnag |
+| **CRITICAL** | Service-down, data loss risk, security incident, suspected breach. Urgent. | Telegram + Bugsnag + email to barry@kychee.com and tal@kychee.com |
+
+**Standard signals every product MUST monitor:**
+1. **Error rate** — unhandled exceptions captured by Bugsnag (existing)
+2. **Authentication anomalies** — failed login spikes, magic link abuse, token reuse → WARN
+3. **Authorization failures** — repeated 403s from same identity → WARN
+4. **Database health** — connection failures, slow queries (>1s), pool exhaustion → CRITICAL
+5. **External service failures** — Stripe, SES, blockchain RPC, OpenRouter — single failures → WARN, sustained failures (>5 in 5 min) → CRITICAL
+6. **Storage anomalies** — unusual S3 access patterns, large bulk reads → WARN; very large or unexpected-region downloads → CRITICAL
+7. **Rate limit hits** — when an identity hits per-sender quotas → INFO (operational signal)
+8. **Daily summary** — every morning, post a summary to Telegram with: events created, errors, top issues → INFO
+
+**Shared module API (`run402/packages/shared/monitoring/`):**
+```ts
+notifyInfo(event: string, details?: object)
+notifyWarn(event: string, details?: object, error?: Error)
+notifyCritical(event: string, details?: object, error?: Error)
+```
+
+Each function:
+- Always logs to console with severity prefix
+- WARN and CRITICAL also send to Bugsnag
+- All severities send to the configured Telegram channel
+- CRITICAL also sends an email to barry@kychee.com and tal@kychee.com via SES
+
+**Per-product configuration (AWS Secrets Manager):**
+- `<product>/telegram-bot-token` (or shared `kychee/monitoring-telegram-token`)
+- `<product>/telegram-chat-id` — distinct per product so kysigned alerts go to the kysigned channel, not run402's
+- `<product>/bugsnag-api-key`
+
+**Hard-coded recipients for CRITICAL:**
+- barry@kychee.com
+- tal@kychee.com
+
+These addresses are NOT configurable per product. CRITICAL alerts always reach the founders.
+
+**Telegram channel structure:**
+- One channel per product (e.g., `kysigned-alerts`, `run402-alerts`, `bld402-alerts`)
+- Devs are members of the channels for products they own
+- CRITICAL messages tag `@barry` and `@tal` in the message body
+
+**Incident response runbook (per product):**
+A standard `docs/incident-response.md` template ships with every saas-factory product. Includes:
+- Severity definitions (matching above)
+- On-call rotation (or "Barry + Tal for now")
+- First-response checklist: acknowledge → assess scope → contain → communicate
+- Communication templates for customer notice and internal post-mortem
+- Reference to the product's DPA breach notification timeline (typically 72 hours from confirmation)
+
+**Why this standard exists:**
+- **GDPR Article 33 alignment** — products that process personal data have a 72-hour breach notification obligation. The monitoring standard plus the runbook provide a defensible "reasonable diligence" story: alerts are captured with timestamps (Bugsnag), triaged in chat (Telegram audit trail), and escalated to humans (founder email) before the GDPR clock ends.
+- **Operational consistency** — every Kychee product behaves the same way during incidents. Engineers can switch between products without re-learning the monitoring system.
+- **Cost efficiency** — one shared module, one set of channels, one runbook template. Adding a new product means adding a Telegram chat and a Bugsnag project, not building a monitoring stack.
+
 ## Acceptance Criteria
 
 ### F1. Document Structure
@@ -441,6 +505,19 @@ Every Kychee product website must implement a **geo-aware cookie consent banner*
 - [ ] "Cookie settings" link in footer re-opens the consent panel
 - [ ] Re-prompts user when consent is older than 12 months OR cookie categories change
 - [ ] Implementation is shared across all Kychee product sites (single module, per-product brand customization only)
+
+### F20. Monitoring & Alerting Standard
+- [ ] Shared monitoring module exists in `run402/packages/shared/monitoring/`
+- [ ] Module exposes `notifyInfo`, `notifyWarn`, `notifyCritical` with consistent API
+- [ ] WARN and CRITICAL events go to Bugsnag
+- [ ] All severities post to a per-product Telegram channel
+- [ ] CRITICAL events additionally email barry@kychee.com and tal@kychee.com via SES
+- [ ] Per-product Telegram chat ID configurable via AWS Secrets Manager
+- [ ] CRITICAL recipient emails (barry+tal kychee.com) are NOT configurable per product
+- [ ] Standard signals (auth anomalies, DB health, external service failures, storage anomalies) are wired in by default
+- [ ] Each product ships with `docs/incident-response.md` runbook based on the standard template
+- [ ] Daily summary post to Telegram (env created, error count, top issues)
+- [ ] Bugsnag captures every alert with timestamp for "reasonable diligence" GDPR audit trail
 
 ## Constraints & Dependencies
 

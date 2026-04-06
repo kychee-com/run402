@@ -1,6 +1,6 @@
 ---
 product: kysigned
-version: 0.4.0
+version: 0.5.0
 status: Draft
 type: product
 interfaces: [website, api, cli, mcp, smart-contract]
@@ -207,18 +207,25 @@ Notifications and multi-channel signing link distribution.
 
 ### F8. PDF Handling `[both]`
 
-Document processing with no persistent storage in MVP.
+**Ephemeral PDF storage by design.** kysigned holds PDFs only as long as operationally necessary, not for a fixed retention period. This minimizes the breach blast radius: at any given moment, only PDFs for active envelopes (or recently completed envelopes still being delivered) exist in storage. Historical envelopes have only metadata + on-chain hashes.
 
 - F8.1. Accept PDF upload (base64 in API body or URL reference).
 - F8.2. Compute `SHA-256(pdf_bytes)` as the canonical document hash.
 - F8.3. Render PDF in browser on the signing page using pdf.js.
 - F8.4. Embed visual signature images into the PDF after each signer signs (server-side, using pdf-lib or equivalent).
 - F8.5. Generate final signed PDF with all signatures embedded on envelope completion.
-- F8.6. **No persistent document storage in MVP.** PDFs are retained for a configurable period (default 30 days, validated against storage costs) after envelope completion, then permanently deleted.
-- F8.7. Users are clearly notified of the retention policy: at envelope creation, at completion (in the completion email), and with a reminder before deletion.
-- F8.8. After deletion, only metadata persists: document name, document hash, signer statuses, tx hashes, timestamps. The on-chain hash remains forever.
-- F8.9. Future feature: paid document retention (user pays for extended storage at a per-GB/year rate). Not in MVP scope.
+- F8.6. **Ephemeral retention rule:**
+  - **Active envelope (status='active'):** PDF retained — needed for signing
+  - **Voided or expired envelope:** PDF deleted immediately (no party will sign or receive a completion email)
+  - **Completed envelope, completion emails queued:** PDF retained until delivery is confirmed
+  - **Completed envelope, ALL completion emails delivered (SES delivery webhook received for every recipient):** PDF deleted immediately. This typically happens within minutes-to-hours of completion, not days.
+  - **Completed envelope, one or more completion emails bounced:** PDF retained for 7 days. Sender is notified of the bounce. After 7 days, the PDF is deleted regardless and the sender is responsible for re-delivering via their own channel using the proof link.
+  - **Hard maximum:** No PDF is ever retained longer than 30 days from completion, regardless of delivery status. This is a hard cap, not configurable upward.
+- F8.7. Users are clearly notified at envelope creation that PDFs are ephemeral and they should keep their own copy. The completion email itself contains the signed PDF as an attachment, so all parties have a permanent copy.
+- F8.8. After PDF deletion, only metadata persists: document name, document hash, signer statuses, tx hashes, timestamps. The on-chain hash remains forever.
+- F8.9. Future feature: optional paid document retention tier (user pays for extended storage). Not in MVP scope. If/when added, retention will be opt-in per envelope and the user will be the explicit data controller for the retained content.
 - F8.10. Multi-signature PDFs (multiple signature fields per page or per section) are post-MVP. MVP supports one set of signature fields per signer per document.
+- F8.11. **Security framing:** This ephemeral retention pattern is a deliberate security property, not just a feature. It is the primary mitigation for the risk that an attacker compromising kysigned's storage could exfiltrate document content. The smaller the window of retention, the smaller the breach blast radius.
 
 ### F9. Prepaid Credits `[service]`
 
