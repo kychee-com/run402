@@ -24,7 +24,7 @@ import { getProjectById } from "./projects.js";
 import { getVerifiedSenderDomain } from "./email-domains.js";
 import { tryConsumePackCredit } from "./billing-email-overage.js";
 import { TIERS } from "@run402/shared";
-import type { TierName } from "@run402/shared";
+import type { TierName, TierConfig } from "@run402/shared";
 
 const ses = new SESv2Client({ region: process.env.AWS_REGION || "us-east-1" });
 
@@ -229,100 +229,109 @@ export async function sendEmail(
     throw new MailboxError("Mailbox has been deleted", 404);
   }
 
-  // Get project for tier info
-  const project = await getProjectById(mailbox.project_id);
-  if (!project) throw new MailboxError("Project not found", 404);
-  const tierConfig = TIERS[project.tier as TierName];
+  // Platform mailboxes (project_id='platform') bypass project/tier/rate-limit checks.
+  // They are used by run402 itself for billing notifications and other platform emails.
+  // Upstream callers (billing-notifications.ts) enforce their own rate limits.
+  const isPlatformMailbox = mailbox.project_id === "platform";
 
-  // Check suppression
-  if (await isAddressSuppressed(to, mailbox.project_id)) {
-    throw new MailboxError("Recipient address is suppressed", 400);
+  let tierConfig: TierConfig | null = null;
+  if (!isPlatformMailbox) {
+    // Get project for tier info
+    const project = await getProjectById(mailbox.project_id);
+    if (!project) throw new MailboxError("Project not found", 404);
+    tierConfig = TIERS[project.tier as TierName];
   }
 
-  // Check daily limit
-  const dailyCheck = await checkAndIncrementDailyLimit(mailboxId, tierConfig.emailsPerDay);
-  let usedPackCredit = false;
-  if (!dailyCheck.allowed) {
-    // Tier daily limit exhausted. Try email pack overage (requires verified custom domain).
-    const overage = await tryConsumePackCredit(mailbox.project_id);
-    if (overage.allowed) {
-      // Pack credit consumed — proceed with send. Rollback the tier counter increment
-      // that checkAndIncrementDailyLimit did before rejecting.
-      await pool.query(
-        sql(`UPDATE internal.mailboxes SET sends_today = sends_today - 1 WHERE id = $1`),
-        [mailboxId],
-      );
-      usedPackCredit = true;
-    } else {
-      // No pack available — roll back and return error
-      await pool.query(
-        sql(`UPDATE internal.mailboxes SET sends_today = sends_today - 1 WHERE id = $1`),
-        [mailboxId],
-      );
+  if (!isPlatformMailbox) {
+    // Check suppression
+    if (await isAddressSuppressed(to, mailbox.project_id)) {
+      throw new MailboxError("Recipient address is suppressed", 400);
+    }
 
-      // Error shape differs based on why the pack couldn't be used
-      if (overage.reason === "no_custom_domain") {
+    // Check daily limit
+    const dailyCheck = await checkAndIncrementDailyLimit(mailboxId, tierConfig!.emailsPerDay);
+    if (!dailyCheck.allowed) {
+      // Tier daily limit exhausted. Try email pack overage (requires verified custom domain).
+      const overage = await tryConsumePackCredit(mailbox.project_id);
+      if (overage.allowed) {
+        // Pack credit consumed — proceed with send. Rollback the tier counter increment
+        // that checkAndIncrementDailyLimit did before rejecting.
+        await pool.query(
+          sql(`UPDATE internal.mailboxes SET sends_today = sends_today - 1 WHERE id = $1`),
+          [mailboxId],
+        );
+      } else {
+        // No pack available — roll back and return error
+        await pool.query(
+          sql(`UPDATE internal.mailboxes SET sends_today = sends_today - 1 WHERE id = $1`),
+          [mailboxId],
+        );
+
+        // Error shape differs based on why the pack couldn't be used
+        if (overage.reason === "no_custom_domain") {
+          throw new MailboxError(
+            JSON.stringify({
+              error: "Daily send limit reached",
+              limit: tierConfig!.emailsPerDay,
+              resets_at: dailyCheck.resetsAt,
+              hint: "Register a verified custom sender domain and buy an email pack to send more. See POST /email/v1/domains.",
+            }),
+            429,
+          );
+        }
+
+        if (overage.reason === "no_credits") {
+          throw new MailboxError(
+            JSON.stringify({
+              error: "Daily send limit reached and email pack empty",
+              limit: tierConfig!.emailsPerDay,
+              resets_at: dailyCheck.resetsAt,
+              hint: "Buy an email pack to send more emails. See POST /billing/v1/email-packs/checkout.",
+            }),
+            402,
+          );
+        }
+
+        // no_billing_account — treat like the old 402 tier upgrade hint
+        const tierNames: TierName[] = ["prototype", "hobby", "team"];
+        const project = await getProjectById(mailbox.project_id);
+        const currentIdx = project ? tierNames.indexOf(project.tier as TierName) : -1;
+        if (currentIdx >= 0 && currentIdx < tierNames.length - 1) {
+          const nextTier = tierNames[currentIdx + 1];
+          const nextConfig = TIERS[nextTier];
+          throw new MailboxError(
+            JSON.stringify({
+              error: "Daily send limit reached",
+              limit: tierConfig!.emailsPerDay,
+              resets_at: dailyCheck.resetsAt,
+              upgrade: { tier: nextTier, price: nextConfig.price, daily_limit: nextConfig.emailsPerDay },
+            }),
+            402,
+          );
+        }
         throw new MailboxError(
-          JSON.stringify({
-            error: "Daily send limit reached",
-            limit: tierConfig.emailsPerDay,
-            resets_at: dailyCheck.resetsAt,
-            hint: "Register a verified custom sender domain and buy an email pack to send more. See POST /email/v1/domains.",
-          }),
+          `Daily send limit reached (${tierConfig!.emailsPerDay}). Resets at ${dailyCheck.resetsAt}`,
           429,
         );
       }
+    }
 
-      if (overage.reason === "no_credits") {
-        throw new MailboxError(
-          JSON.stringify({
-            error: "Daily send limit reached and email pack empty",
-            limit: tierConfig.emailsPerDay,
-            resets_at: dailyCheck.resetsAt,
-            hint: "Buy an email pack to send more emails. See POST /billing/v1/email-packs/checkout.",
-          }),
-          402,
-        );
-      }
-
-      // no_billing_account — treat like the old 402 tier upgrade hint
-      const tierNames: TierName[] = ["prototype", "hobby", "team"];
-      const currentIdx = tierNames.indexOf(project.tier as TierName);
-      if (currentIdx < tierNames.length - 1) {
-        const nextTier = tierNames[currentIdx + 1];
-        const nextConfig = TIERS[nextTier];
-        throw new MailboxError(
-          JSON.stringify({
-            error: "Daily send limit reached",
-            limit: tierConfig.emailsPerDay,
-            resets_at: dailyCheck.resetsAt,
-            upgrade: { tier: nextTier, price: nextConfig.price, daily_limit: nextConfig.emailsPerDay },
-          }),
-          402,
-        );
-      }
+    // Check unique recipient limit
+    const recipientCheck = await checkAndIncrementRecipientLimit(
+      mailboxId,
+      to,
+      tierConfig!.uniqueRecipientsPerLease,
+    );
+    if (!recipientCheck.allowed) {
+      await pool.query(
+        sql(`UPDATE internal.mailboxes SET sends_today = sends_today - 1 WHERE id = $1`),
+        [mailboxId],
+      );
       throw new MailboxError(
-        `Daily send limit reached (${tierConfig.emailsPerDay}). Resets at ${dailyCheck.resetsAt}`,
+        `Unique recipient limit reached (${tierConfig!.uniqueRecipientsPerLease})`,
         429,
       );
     }
-  }
-
-  // Check unique recipient limit
-  const recipientCheck = await checkAndIncrementRecipientLimit(
-    mailboxId,
-    to,
-    tierConfig.uniqueRecipientsPerLease,
-  );
-  if (!recipientCheck.allowed) {
-    await pool.query(
-      sql(`UPDATE internal.mailboxes SET sends_today = sends_today - 1 WHERE id = $1`),
-      [mailboxId],
-    );
-    throw new MailboxError(
-      `Unique recipient limit reached (${tierConfig.uniqueRecipientsPerLease})`,
-      429,
-    );
   }
 
   // Resolve custom sender domain (if verified, use it; otherwise fall back to mail.run402.com)

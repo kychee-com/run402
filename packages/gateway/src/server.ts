@@ -1153,6 +1153,9 @@ async function applyMigrations() {
   `));
   await pool.query(sql(`CREATE INDEX IF NOT EXISTS idx_billing_account_emails_account ON internal.billing_account_emails(billing_account_id)`));
 
+  // v1.19a: make billing_topups.wallet_address nullable (for email-based topups)
+  await pool.query(sql(`ALTER TABLE internal.billing_topups ALTER COLUMN wallet_address DROP NOT NULL`));
+
   // v1.19b: bootstrap platform billing mailbox (billing@mail.run402.com)
   // Self-healing: creates the row if missing. Uses 'platform' as project_id sentinel.
   const billingMailboxResult = await pool.query(
