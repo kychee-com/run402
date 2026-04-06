@@ -108,8 +108,8 @@
 
 ## 17. MCP / CLI / OpenClaw (run402-mcp repo)
 
-- [ ] 17.1 Create MCP tools in `run402-mcp`: `create_email_account`, `tier_checkout`, `buy_email_pack`, `email_pack_status`, `set_auto_recharge`, `link_wallet`. [code]
-- [ ] 17.2 Create CLI command `run402 billing` with subcommands: `create-email-account`, `tier-checkout`, `buy-pack`, `pack-status`, `auto-recharge`, `link-wallet`, `balance`, `history`. [code]
-- [ ] 17.3 Create OpenClaw shim at `openclaw/scripts/billing.mjs`. [code]
-- [ ] 17.4 Update `sync.test.ts` SURFACE array — 13/13 tests must pass. [code]
-- [ ] 17.5 Update `SKILL.md` and `README.md` with new tool documentation. [manual]
+- [x] 17.1 Created 5 MCP tools: create_email_billing_account, link_wallet_to_account, tier_checkout, buy_email_pack, set_auto_recharge [code]
+- [x] 17.2 Created `run402 billing` CLI with 7 subcommands: create-email, link-wallet, tier-checkout, buy-pack, auto-recharge, balance, history [code]
+- [x] 17.3 Created OpenClaw shim `openclaw/scripts/billing.mjs` [code]
+- [x] 17.4 Updated sync.test.ts SURFACE — 13/13 tests passing [code]
+- [x] 17.5 Updated SKILL.md (21/21 SKILL tests passing) and README.md tool table [manual]
