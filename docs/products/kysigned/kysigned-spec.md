@@ -1,6 +1,6 @@
 ---
 product: kysigned
-version: 0.2.0
+version: 0.3.0
 status: Draft
 type: product
 interfaces: [website, api, cli, mcp, smart-contract]
@@ -54,8 +54,40 @@ Three sender paths, all MVP. Each serves a different audience.
 - F2.3. **Path 3 — No wallet (prepaid credits)** `[service]`: Sender pays via Stripe for prepaid credit packs. Identity is email address. Authentication via magic link (email-based, no password). Per-envelope cost deducted from credit balance. **Path 3 is kysigned's own billing layer — kysigned operates as a T2 reseller using its own Stripe integration, not run402's billing.**
 - F2.4. Path 3 magic link authentication: user enters email, receives a one-time login link, no password required. No "Sign in with Google" or social login.
 - F2.5. Path 3 checkout experience is branded as kysigned (not run402). kysigned uses its own Stripe integration.
-- F2.6. All three paths produce the same on-chain proof. Path 3 uses a platform wallet to make on-chain recordings on the user's behalf. No second-class experience.
+- F2.6. **All three paths produce the same on-chain proof.** Regardless of how the sender pays kysigned (wallet via x402/MPP, or Stripe credits), the kysigned server always submits the on-chain transaction using a **platform wallet**. This is because signers typically sign asynchronously (hours or days after the sender creates the envelope), so the server must submit on everyone's behalf. For Method B (wallet signing), the signer's EIP-712 signature is passed to the server and verified on-chain via `ecrecover` — the signer's address ends up recorded on-chain even though the platform wallet submitted the transaction. No second-class experience for any path.
 - F2.7. Confirm that run402 supports magic link authentication for Path 3 identity. If not, implement as part of kysigned service.
+
+#### F2.9 Money Flow (revenue in, costs out)
+
+**Revenue (USDC or fiat → kysigned):**
+- **Path 1/2 (wallet):** Sender's wallet sends USDC to the kysigned platform wallet via x402/MPP payment header. The x402 middleware verifies the payment and allows the request through. run402 is the protocol layer, not a payment intermediary — funds go directly to kysigned's wallet.
+- **Path 3 (no wallet) `[service]`:** Sender pays fiat to kysigned's own Stripe account. Funds settle to Kychee's bank account. Credit balance is tracked in the kysigned database and deducted per envelope. **Kychee is the merchant of record for Path 3.** run402 does NOT act as a Stripe intermediary in the MVP.
+
+**Costs (kysigned → Base blockchain):**
+- **All paths:** The kysigned platform wallet pays ETH gas for each contract call (`recordEmailSignature`, `recordWalletSignature`, `recordCompletion`). The platform wallet holds both USDC (from Path 1/2 revenue) and ETH (for gas). kysigned tops up ETH as needed.
+- Per-envelope gas cost: ~$0.01-0.05 at typical Base gas prices.
+
+**What run402 charges kysigned for (T1 — infrastructure):**
+- Compute and database hosting
+- Email sending (SES via run402)
+- Wallet custody / KMS key management for the platform wallet
+- Custom domain serving
+- There is **no "pay for contract call" SKU** in run402. run402 provides wallet custody; kysigned pays its own gas.
+
+**What run402 does NOT currently provide (T2 — end-user billing, deferred):**
+- Stripe-collection-as-a-service: run402 does not accept Stripe payments from kysigned's end users on kysigned's behalf. kysigned operates its own Stripe account for Path 3. If run402 adds this capability post-MVP, Path 3 could migrate to use it (Open Question #17).
+- Note: Path 1/2 does NOT need run402's T2 — x402/MPP is already a native T2 mechanism (user wallet pays app wallet directly, per-call).
+
+**Per-envelope margin illustration (approximate):**
+- Path 1/2: sender pays ~$0.25 USDC → kysigned wallet; kysigned spends ~$0.03 ETH on gas; net ~$0.22 per envelope.
+- Path 3: sender pays ~$0.25 fiat → kysigned Stripe; Stripe fees ~$0.03; gas ~$0.03; net ~$0.19 per envelope.
+
+#### F2.10 Forker Billing (public repo)
+
+- F2.10.1. **The public repo ships Path 1/2 only.** Stripe integration (Path 3) lives in the service repo and is NOT included in the public MIT-licensed repo. Forkers get wallet-native billing out of the box.
+- F2.10.2. **No "insert your Stripe key here" pattern.** A forker who wants to charge their own users in fiat must build their own billing layer on top — the `allowed_senders` table (F2.8) provides the authorization primitive they can hook into.
+- F2.10.3. **Rationale:** Keeping Stripe out of the public repo avoids forcing forkers to manage PCI compliance, merchant-of-record liability, and Stripe account lifecycle. Wallet-native billing is simpler, legally cleaner, and aligns with the product's blockchain-first positioning.
+- F2.10.4. **Most forkers (internal use) don't need billing at all.** A law firm or small agency deploys kysigned for their employees, pays run402 for infrastructure, and uses `allowed_senders` to gate access. No user billing required. This is the intended primary use case for forkers.
 
 #### F2.8 Sender Access Control (`allowed_senders`) `[both]`
 
@@ -90,6 +122,18 @@ What happens when a signer receives and acts on a signing request.
 - F3.1. Signer receives an email with a one-time signing link. Link expires after the envelope TTL.
 - F3.2. Signing page renders the PDF with signature fields highlighted.
 - F3.3. Signing page detects browser wallet (MetaMask, Coinbase Wallet, etc.). If wallet detected, offers both Method A and Method B. If no wallet, shows Method A only. If `require_wallet` is set for this signer, shows Method B only.
+- F3.3.1. **Wallet onboarding — two distinct audiences:**
+  - **Envelope creators (senders) using Path 1/2 — PRIMARY audience.** Senders who want to pay kysigned via x402/MPP need a funded wallet (Coinbase Wallet, MetaMask) with USDC on Base. This is the main wallet-onboarding audience: Path 1/2 senders actively choose the wallet-native flow and need guidance on getting and funding a wallet.
+  - **Signers encountering Method B — RARE edge case.** Method A (email-based, no wallet) is the default signing method for all signers. Signers only need a wallet if the sender explicitly set `require_wallet: true` for that specific signer (rare, typically high-stakes contracts). The vast majority of signers never encounter this.
+- F3.3.2. **Signing page wallet-required edge case:** When a signer encounters `require_wallet: true` but does not have a wallet installed, the signing page shows a "How to get a wallet" panel:
+  - Plain-language explanation of why a wallet is needed for this specific document
+  - Links to Coinbase Wallet and MetaMask install guides
+  - Clarifies that signers do NOT need to fund the wallet — they only approve a signature, kysigned pays all gas
+  - Clear note that wallet signing was specifically requested by the sender for this document
+- F3.3.3. **Wallet onboarding documentation:**
+  - Public repo: `docs/wallet-guide.md` with two clearly-labeled sections: "For Envelope Creators (Path 1/2)" — how to install, fund with USDC on Base, use with x402/MPP — and "For Signers (rare, Method B only)" — how to install, no funding needed, only approving a message. Linked from README, signing page (when relevant), and `llms.txt`.
+  - `[service]` FAQ has two dedicated sections: "Do I need a wallet to SEND a document?" (depends on payment path) and "Do I need a wallet to SIGN a document?" (almost never, default is Method A email-based).
+  - Goal: Path 1/2 senders can easily get set up, and the rare `require_wallet: true` signer never hits a dead-end.
 - F3.4. **Signature visual mode (sender chooses per envelope):**
   - `require_drawn_signature: false` (default) — signer clicks "Sign this document" in one click. Auto-stamp embedded in PDF: signer's name rendered in a handwriting-style font + crypto verification details (method, timestamp, chain). Fastest possible UX.
   - `require_drawn_signature: true` — signer gets a drawing/typing widget to create a handwritten signature. Signer confirms the signature before it is applied. Applies to both Method A and Method B signers.
@@ -114,8 +158,8 @@ Every signature event is recorded on the SignatureRegistry smart contract on Bas
 
 - F4.1. One canonical SignatureRegistry contract deployed on Base. All instances (service and repo deployments) record to the same contract by default.
 - F4.2. Contract address is a constant in the repo code. Forkers can change it but have no incentive to (gas economics prevent spam, shared registry strengthens verification).
-- F4.3. **Method A recording:** `recordEmailSignature(envelopeId, documentHash, signerCommitment, signerPubkey, signature)`. The `signerCommitment` is `hash(email + documentHash + salt)` — email is never on-chain.
-- F4.4. **Method B recording:** `recordWalletSignature(envelopeId, documentHash, documentName, signerEmail, timestamp, signature)`. Contract recovers signer address via `ecrecover`. Signer's Ethereum address is on-chain (public by design — signer opted in).
+- F4.3. **Method A recording:** `recordEmailSignature(envelopeId, documentHash, signerCommitment, signerPubkey, signature)`. The `signerCommitment` is `hash(email + documentHash + salt)` — email is never on-chain. **Submitted by the kysigned server via the platform wallet**, not by the signer.
+- F4.4. **Method B recording:** `recordWalletSignature(envelopeId, documentHash, documentName, signerEmail, timestamp, signature)`. **Submitted by the kysigned server via the platform wallet**, not by the signer. The signer produces an off-chain EIP-712 signature in their wallet, passes it to the server, and the contract recovers the signer's Ethereum address via `ecrecover`. The signer's address is recorded on-chain as the verified signer even though a different wallet (the platform wallet) submitted the transaction and paid gas.
 - F4.5. **Completion recording:** `recordCompletion(envelopeId, originalDocHash, finalDocHash, signerCount)`. Fires when all signers have signed.
 - F4.6. Mixed methods per envelope: some signers can use Method A, others Method B, within the same envelope.
 - F4.7. Contract is append-only. No entry can be modified or deleted by anyone, including the contract deployer.
@@ -286,6 +330,11 @@ Per the SaaS Factory spec (Chapter 6).
 - [ ] Per-sender monthly quota: exceeding quota returns a clear error
 - [ ] kysigned.com SaaS mode: users with sufficient credits bypass explicit allowlist (credit-balance check)
 - [ ] Self-hosted mode: explicit allowlist with no credit check (internal use)
+- [ ] Public repo does NOT contain Stripe integration code (Path 3 is `[service]` only)
+- [ ] Path 1/2 sender without a wallet: README and wallet-guide.md explain how to install + fund a wallet with USDC on Base
+- [ ] Signer hitting `require_wallet: true` without a wallet: signing page shows onboarding panel with Coinbase/MetaMask links and "no funding needed" clarification
+- [ ] `docs/wallet-guide.md` exists in the public repo with two labeled sections (senders Path 1/2, signers Method B) and is linked from README + llms.txt
+- [ ] `[service]` FAQ has "Do I need a wallet to SEND?" and "Do I need a wallet to SIGN?" questions with clear, distinct answers
 
 ### F3. Signing Experience
 - [ ] Signer clicks email link; signing page renders PDF with signature fields highlighted

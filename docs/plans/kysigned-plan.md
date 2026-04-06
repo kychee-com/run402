@@ -4,7 +4,7 @@
 **Created:** 2026-04-04
 **Status:** Ready for Implementation
 **Spec:** docs/products/kysigned/kysigned-spec.md
-**Spec-Version:** 0.2.0
+**Spec-Version:** 0.3.0
 **Upstream References:** docs/products/saas-factory/saas-factory-spec.md (v1.4.0)
 **Source:** spec
 **Worktree:** none — product code lives in separate repos (C:\Workspace-Kychee\kysigned and C:\Workspace-Kychee\kysigned-service). run402 platform enhancements use a run402 worktree on a feature branch.
@@ -33,7 +33,7 @@
 
 ### DD-3: Shared run402 platform wallet for all on-chain activity
 - **Decision:** kysigned uses the shared run402 platform wallet (`agentdb/faucet-treasury-key` in AWS Secrets Manager) for all on-chain recordings — both testnet (Base Sepolia) and mainnet (Base). This is the same wallet used by all Kychee SaaS products. No per-product wallet.
-- **Applies to:** Contract deployment (one-time), Path 3 signature recordings (ongoing), and completion recordings. Path 1/2 users pay via x402/MPP which also flows through run402.
+- **Applies to:** Contract deployment (one-time), ALL signature recordings for ALL paths (Method A and Method B, Path 1/2/3), and completion recordings. The platform wallet always submits the on-chain transaction regardless of how the sender paid kysigned — because signers typically sign asynchronously and the server must submit on everyone's behalf. Path 1/2 users pay USDC to the kysigned wallet via x402/MPP (revenue), and gas is paid in ETH from the same wallet (cost).
 - **Alternatives considered:** Dedicated wallet per product.
 - **Chosen because:** (1) The blockchain only sees a wallet address — the AWS secret name is invisible externally. (2) All SaaS products run on run402 infrastructure, so wallet management is a platform concern, not a product concern. (3) Per-product gas cost attribution doesn't require separate wallets — filter transactions by destination contract address. (4) One wallet to fund and monitor, not N. (5) A compromised key has the same blast radius either way — the contract is append-only with no admin functions, so the worst case is unauthorized recordings, not data loss.
 - **Revenue/cost tracking:** Per-product attribution via run402 admin dashboard: USDC inflows labelled by which API endpoint accepted payment, ETH gas outflows labelled by which contract was called. Stripe revenue (Path 3) tracked separately via Stripe metadata. See run402 enhancement task.
@@ -180,6 +180,9 @@
 - [x] Build duplicate signing screen — "You've already signed this document" [frontend-visual]
 - [x] Build decline flow UI [frontend-visual]
 - [x] Build signing confirmation screen with tx hash [frontend-visual]
+- [ ] Build wallet onboarding panel on signing page — shown only when signer hits `require_wallet: true` without a wallet installed. Coinbase/MetaMask install links, "no funding needed for signers" clarification [frontend-visual]
+- [ ] Write `docs/wallet-guide.md` in public repo with two labeled sections: "For Envelope Creators (Path 1/2)" (install + fund with USDC on Base) and "For Signers (rare, Method B only)" (install, no funding needed) [code]
+- [ ] Link wallet-guide.md from README, signing page (when relevant), and llms.txt [code]
 
 #### 3B. Verification Page
 
@@ -232,6 +235,7 @@
 - [x] Build pricing page — 3 paths, comparison table vs DocuSign/GoodSign [frontend-visual]
 - [x] Build "SaaS vs Repo" decision helper page — tradeoffs for builders, end users, agents [frontend-visual]
 - [x] Build FAQ page — 6 categories, 9 questions with honest answers [frontend-visual]
+- [ ] Add FAQ item: "Do I need a crypto wallet to sign?" — explains Method A vs B, when wallet is required, how to get one [frontend-visual]
 - [x] Write how-to snippets for agent-assisted deployment (in SaaS vs Repo page + llms.txt) [manual]
 - [x] Create llms.txt — machine-readable product description with API, MCP, contract details [code]
 - [x] Write README.md for public repo [manual] `AI -> HUMAN: Approve` — approved
