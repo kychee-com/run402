@@ -109,6 +109,10 @@ export class PodStack extends cdk.Stack {
       this, "StripeApiKey", "eleanor/stripe/prod/secret-key",
     );
 
+    const stripePriceIds = secretsmanager.Secret.fromSecretNameV2(
+      this, "StripePriceIds", "agentdb/stripe-price-ids",
+    );
+
     const telegramSecret = secretsmanager.Secret.fromSecretNameV2(
       this, "TelegramBot", "agentdb/telegram-bot",
     );
@@ -463,6 +467,10 @@ export class PodStack extends cdk.Stack {
         CDP_API_KEY_SECRET: ecs.Secret.fromSecretsManager(cdpApiKeySecret, "key_secret"),
         FAUCET_TREASURY_KEY: ecs.Secret.fromSecretsManager(faucetTreasurySecret),
         STRIPE_SECRET_KEY: ecs.Secret.fromSecretsManager(stripeSecret),
+        STRIPE_PRICE_PROTOTYPE: ecs.Secret.fromSecretsManager(stripePriceIds, "prototype"),
+        STRIPE_PRICE_HOBBY: ecs.Secret.fromSecretsManager(stripePriceIds, "hobby"),
+        STRIPE_PRICE_TEAM: ecs.Secret.fromSecretsManager(stripePriceIds, "team"),
+        STRIPE_PRICE_EMAIL_PACK: ecs.Secret.fromSecretsManager(stripePriceIds, "email_pack"),
         TELEGRAM_BOT_TOKEN: ecs.Secret.fromSecretsManager(telegramSecret, "bot_token"),
         TELEGRAM_CHAT_ID: ecs.Secret.fromSecretsManager(telegramSecret, "chat_id"),
         ADMIN_KEY: ecs.Secret.fromSecretsManager(adminKeySecret),
