@@ -180,9 +180,9 @@
 - [x] Build duplicate signing screen — "You've already signed this document" [frontend-visual]
 - [x] Build decline flow UI [frontend-visual]
 - [x] Build signing confirmation screen with tx hash [frontend-visual]
-- [ ] Build wallet onboarding panel on signing page — shown only when signer hits `require_wallet: true` without a wallet installed. Coinbase/MetaMask install links, "no funding needed for signers" clarification [frontend-visual]
-- [ ] Write `docs/wallet-guide.md` in public repo with two labeled sections: "For Envelope Creators (Path 1/2)" (install + fund with USDC on Base) and "For Signers (rare, Method B only)" (install, no funding needed) [code]
-- [ ] Link wallet-guide.md from README, signing page (when relevant), and llms.txt [code]
+- [x] Build wallet onboarding panel on signing page — shown only when signer hits `require_wallet: true` without a wallet installed. Coinbase/MetaMask install links, "no funding needed for signers" clarification [frontend-visual]
+- [x] Write `docs/wallet-guide.md` in public repo with two labeled sections: "For Envelope Creators (Path 1/2)" (install + fund with USDC on Base) and "For Signers (rare, Method B only)" (install, no funding needed) [code]
+- [x] Link wallet-guide.md from README, signing page (when relevant), and llms.txt [code]
 
 #### 3B. Verification Page
 
@@ -235,7 +235,7 @@
 - [x] Build pricing page — 3 paths, comparison table vs DocuSign/GoodSign [frontend-visual]
 - [x] Build "SaaS vs Repo" decision helper page — tradeoffs for builders, end users, agents [frontend-visual]
 - [x] Build FAQ page — 6 categories, 9 questions with honest answers [frontend-visual]
-- [ ] Add FAQ item: "Do I need a crypto wallet to sign?" — explains Method A vs B, when wallet is required, how to get one [frontend-visual]
+- [x] Add FAQ item: "Do I need a crypto wallet to sign?" — explains Method A vs B, when wallet is required, how to get one [frontend-visual] — already present, added wallet-guide link
 - [x] Write how-to snippets for agent-assisted deployment (in SaaS vs Repo page + llms.txt) [manual]
 - [x] Create llms.txt — machine-readable product description with API, MCP, contract details [code]
 - [x] Write README.md for public repo [manual] `AI -> HUMAN: Approve` — approved
@@ -276,7 +276,7 @@
 - [!] Implement x402/MPP authentication in MCP [code] — WAITING FOR: run402 payment middleware integration
 - [x] Implement configurable endpoint (KYSIGNED_ENDPOINT env var, default: kysigned.com) [code]
 - [ ] Publish canonical npm package (`kysigned-mcp`) [infra]
-- [ ] Write MCP documentation and usage examples [manual] `AI`
+- [x] Write MCP documentation and usage examples [manual] `AI` — `mcp/README.md` covers install, Claude Desktop / Code / Cursor setup, all 7 tools, and three end-to-end examples
 
 ### Phase 10: Collateral `AI -> HUMAN: Approve`
 
@@ -323,12 +323,12 @@
 - [ ] Email deliverability setup — dedicated sending domain, SPF/DKIM/DMARC, warm-up plan [infra] `AI`
 - [ ] Flip public repo from private to public on GitHub [infra] `AI` — squash all history into a single "v1.0.0" commit first (orphan branch, force-push). No development history visible. Clean audited release.
 - [x] **Refactor PDF storage to ephemeral retention (per spec F8.6 v0.5.0):** delete on completion-email delivery confirmation, not 30-day fixed window. Wire SES delivery webhooks to trigger deletion. 7-day fallback for bounces. Hard 30-day cap regardless. [code] — public-repo library piece complete: migration 004, pure shouldDeletePdf, sweepRetention, markCompletionEmailDelivered/Bounced, and immediate-delete on void. Service repo still needs to wire SES → markDelivered/Bounced webhook routes and a periodic sweep cron.
-- [ ] **Wire kysigned to the shared monitoring module** (`@run402/shared/monitoring`) — provide concrete senders for Telegram (kysigned chat), Bugsnag (kysigned project), and SES (CRITICAL emails). Cover all standard signals from saas-factory F20. [code]
+- [x] **Wire kysigned to the shared monitoring module** (`@run402/shared/monitoring`) — provide concrete senders for Telegram (kysigned chat), Bugsnag (kysigned project), and SES (CRITICAL emails). Cover all standard signals from saas-factory F20. [code] — `kysigned-service/src/monitoring.ts` ships `createTelegramSender` / `createBugsnagSender` / `createSesEmailSender` and `createKysignedMonitor()` factory. 7 unit tests, all green. Goes live the moment the bot/project/SES resources exist (Phase 14 manual tasks).
 - [ ] **Create kysigned Telegram alerts channel** + add Tal and Barry as members [manual] `HUMAN`
 - [ ] **Create kysigned Bugsnag project** + store API key in AWS Secrets Manager (`kysigned/bugsnag-api-key`) [infra] `AI`
-- [ ] **Write `docs/incident-response.md` for kysigned** based on the saas-factory F20 template — severity definitions, on-call (Barry+Tal), first-response checklist, communication templates, DPA 72-hour reference [manual] `AI`
-- [ ] **Account deletion automation** — verified end-to-end procedure that deletes all off-chain personal data within 30 days (DPA Section 11 commitment). Includes envelope cache, signer records, document storage, payment records (where legally allowed). Requires explicit verification step that deletion completed. [code]
-- [ ] **Security claims documentation pack** — collect AWS encryption configuration evidence, access control policies, security questionnaire we can hand to enterprise customers on request. Stored in `kysigned-service/security/`. [manual] `AI`
+- [x] **Write `docs/incident-response.md` for kysigned** based on the saas-factory F20 template — severity definitions, on-call (Barry+Tal), first-response checklist, communication templates, DPA 72-hour reference [manual] `AI`
+- [x] **Account deletion automation** — verified end-to-end procedure that deletes all off-chain personal data within 30 days (DPA Section 11 commitment). Includes envelope cache, signer records, document storage, payment records (where legally allowed). Requires explicit verification step that deletion completed. [code] — `src/api/accountDeletion.ts` `deleteAccount()` + `verifyDeletion()` with TDD coverage (8 tests). Ready for service-repo to wire up an admin endpoint.
+- [x] **Security claims documentation pack** — collect AWS encryption configuration evidence, access control policies, security questionnaire we can hand to enterprise customers on request. Stored in `kysigned-service/security/`. [manual] `AI` — 6 docs: README, security-overview, security-questionnaire, encryption, access-control, subprocessors, incident-history
 - [ ] Human review — legal sign-off on all docs [manual] `HUMAN`
 - [ ] Human review — collateral approval [manual] `HUMAN`
 - [ ] Human review — website copy and design approval [manual] `HUMAN`
@@ -377,6 +377,7 @@ _None yet_
 - 2026-04-05: Phase 1 complete — SignatureRegistry.sol deployed to Base Sepolia (0xAE8b...c91). Gas: 220K/email sig, 243K/wallet sig, 158K/completion. 2-signer envelope ~$0.01-0.05 gas. ABI + verification algorithm documented.
 - 2026-04-05: Phase 2 complete — Core engine: DB migrations, data access layer, envelope API (create/get/void/remind/list/export), signing engine (Method A+B, duplicate protection, decline, completion), PDF handling (hash, embed, certificate), 7 email templates (pluggable provider), universal verification. 23 tests passing (14 unit + 9 contract). x402/MPP middleware and wallet auth blocked on run402 integration.
 - 2026-04-05: Phase 3 complete — React + Vite + Tailwind frontend: signing page (pdf.js viewer, Method A/B, drawing widget, signature persistence, verification levels, duplicate/decline/expired screens), verification page (client-side hash, universal contract query), proof link page (Basescan links, independent verification), dashboard (wallet connect, envelope list, detail/audit trail, create form with "Will you also sign?" prompt, remind/void/export).
+- 2026-04-06: Documentation + automation sweep — closed every standalone item not blocked on run402 deploy. Public repo: `docs/wallet-guide.md` (signers + envelope creators), signing-page wallet-onboarding panel for Method B without an installed wallet, `mcp/README.md` with Claude Desktop/Code/Cursor setup + 3 worked examples, `src/api/accountDeletion.ts` (DPA Section 11 deletion + verification with 8 TDD tests). Service repo: `docs/incident-response.md` (severity matrix, first-response checklist, DPA 72-hour playbook), `security/` pack (overview, questionnaire, encryption, access control, subprocessors, incident history), `src/monitoring.ts` wiring `@run402/shared` to concrete Telegram/Bugsnag/SES senders + `createKysignedMonitor()` factory (7 TDD tests). All 5 monitoring/PDF/operational launch-prep tasks now ship-ready — they go live the moment the corresponding human/infra tasks (Telegram channel, Bugsnag project, SES domain, deployment) are completed. kysigned suite: 149/149. kysigned-service suite: 7/7.
 - 2026-04-06: Phase 8B / saas-factory F19 — built shared geo-aware consent banner module at `run402/packages/shared/src/consent-banner/` (regions.ts + storage.ts pure logic, banner.ts vanilla DOM init, banner.css). 58 unit tests, all green (47 region rule + 11 storage). Wired into kysigned-service static site (4 HTML pages) via single-file vanilla bundle `kysigned-service/site/consent-banner.mjs` + matching CSS, and switched GA4 to Google Consent Mode v2 (ad/analytics storage default = denied, flips on `consent update` from the banner). Footer "Cookie settings" link on home page re-opens the panel via global `window.openConsentSettings`. saas-factory spec bumped to 1.9.1 to record the canonical module path. Scope is saas-factory product sites only — broader Kychee surfaces are a separate decision.
 - 2026-04-06: F8.6 ephemeral PDF retention library piece complete in kysigned public repo. Migration 004 adds `pdf_deleted_at` + per-signer `completion_email_delivered_at` / `completion_email_bounced_at`. New `src/pdf/retention.ts` (pure rule), `src/pdf/sweep.ts` (periodic deletion sweep), `src/api/emailWebhook.ts` (delivery/bounce hooks the service translates SES payloads into). `handleVoidEnvelope` now drops the original PDF immediately via `ctx.deletePdf`. 23 new tests (12 retention + 5 sweep + 5 webhook + 1 void integration). Full suite 141/141. Service repo still needs to wire SES → markDelivered/Bounced and a periodic `sweepRetention` cron.
 - 2026-04-06: F2.8 `allowed_senders` access control complete — DAO + migration `003_allowed_senders.sql` + sender gate (allowlist/hosted strategies) + monthly quota + admin API + README warning. TDD red-green throughout: 33 new tests added (15 DAO + 9 gate + 9 admin + 4 envelope integration). Full kysigned suite: 112/112 pass. Service repo can now wire `senderGate: { strategy: 'hosted', getCreditBalance }` in production; self-hosted forkers default to `allowlist`. Pluggable strategy + per-sender quota + default-deny all in one cohesive layer.
