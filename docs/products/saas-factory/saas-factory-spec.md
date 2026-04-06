@@ -1,6 +1,6 @@
 ---
 product: saas-factory
-version: 1.9.1
+version: 1.10.0
 status: Draft
 type: product
 interfaces: [document]
@@ -74,15 +74,45 @@ Every product website ships three distinct content layers targeting three audien
 
 ### F6. Hypothesis Card
 
-Chapter 8 (Marketing Strategy) mandates a hypothesis card that must be completed before any marketing spend. The card contains:
-- Beachhead segment — specific, findable, reachable group
-- Primary channel — single channel for the pilot (default; multi-channel allowed if justified)
-- Pilot budget — $500 reference floor, flexes up per product
-- Timeframe — 2-4 weeks typical
-- Signal metrics — product-specific (signups, stars, conversion rate, CAC, etc.)
-- Success threshold — concrete, quantified target
-- Kill criteria — what tells you to stop
-- Next step if success — budget increase, channel expansion, target KPIs
+Chapter 8 (Marketing Strategy) mandates a hypothesis card that must be completed before any marketing spend.
+
+**Format:** Each hypothesis card is delivered as a **single `.xlsx` file** so the human operator can review and edit it offline (Excel, Numbers, or Google Sheets) without needing to read markdown source. One file per segment. All cards for a product live under `<product-service-repo>/marketing/hypothesis-cards/<segment-slug>.xlsx`. The AI generator that produces these files lives at `<product-service-repo>/marketing/hypothesis-cards/generate.py` and uses `openpyxl`.
+
+**Why xlsx and not markdown:** the operator (Barry) reviews these in Excel, edits cells inline, comments cells, and may share them with potential channel partners. Markdown forces a re-read every time. xlsx is review-optimized.
+
+**Workbook structure (every card uses this same template):**
+
+| Sheet | Contents |
+|---|---|
+| `Card` | Two-column layout: field name in column A, value in column B. Standard 14-row card (see fields below). Field names are bold, frozen header row, column widths set so the value column is readable. |
+| `Notes` | Free-form notes / assumptions / open questions. |
+
+**Required fields (in order, on the `Card` sheet):**
+
+1. Product
+2. Segment name
+3. Beachhead description — specific, findable, reachable group (1-3 sentences)
+4. Why this segment first — the strategic reason this is segment #1, not segment #5
+5. Primary channel — single channel for the pilot (default; multi-channel allowed if justified)
+6. Pilot budget — `$500` reference floor, flexes up per product
+7. Timeframe — 2-4 weeks typical
+8. Signal metrics — product-specific (signups, stars, conversion rate, CAC, etc.) — comma-separated list
+9. Success threshold — concrete, quantified target
+10. Kill criteria — what tells you to stop (concrete, quantified)
+11. Next step if SUCCESS — budget increase, channel expansion, target KPIs
+12. Next step if KILL — pivot, retire, retry with different segment
+13. Status — one of `Draft`, `Approved`, `Running`, `Won`, `Killed`
+14. Last updated — ISO date
+
+**Workflow:**
+
+1. AI generates the four (or N) `.xlsx` cards via the per-product generator script
+2. Human reviews each in Excel/Numbers/Sheets, edits cells, may comment
+3. Human flips `Status` to `Approved` on at least one card
+4. Human picks ONE approved card to execute first
+5. The selected card's `Status` flips to `Running` and the marketing pilot kicks off
+6. At the end of the timeframe the operator flips `Status` to `Won` or `Killed` based on the metrics
+7. The xlsx file remains in the repo as the historical record; new cards iterate via new files
 
 ### F7. Shared Marketing Infrastructure
 
@@ -441,9 +471,13 @@ If the spec is "internal only", the plan omits the `Ship & Verify` phase and add
 - [ ] llms.txt references the llms.txt convention format
 
 ### F6. Hypothesis Card
-- [ ] All 8 fields of the hypothesis card are defined
+- [ ] All 14 fields of the hypothesis card are defined
 - [ ] The card is marked as a prerequisite to marketing spend
 - [ ] Budget is specified as a floor ($500) with flex language
+- [ ] Card delivery format is `.xlsx` (one file per segment), not markdown
+- [ ] xlsx workbook structure is specified (Card sheet + Notes sheet)
+- [ ] Each product ships a `marketing/hypothesis-cards/generate.py` script that emits the cards via openpyxl
+- [ ] Status field has a defined lifecycle (Draft → Approved → Running → Won/Killed)
 
 ### F7. Shared Marketing Infrastructure
 - [ ] SaaSpocalypse hub location is specified (kychee.com/saaspocalypse)
