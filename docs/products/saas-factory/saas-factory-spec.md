@@ -1,6 +1,6 @@
 ---
 product: saas-factory
-version: 1.9.0
+version: 1.9.1
 status: Draft
 type: product
 interfaces: [document]
@@ -304,7 +304,7 @@ Every Kychee product website must implement a **geo-aware cookie consent banner*
 - "Cookie settings" link in the footer to re-open the panel
 - Re-prompt only when the consent is older than 12 months OR the cookie/policy categories change
 
-**Implementation:** This is a **shared module** built once and reused across all Kychee product sites. It lives in `kychee/site-modules/consent-banner/` (TBD) and is symlinked or imported into each product site. Per-product customization is limited to brand colors and the link to the product's specific Cookie Notice page.
+**Implementation:** This is a **shared module** built once and reused across saas-factory product sites (kysigned, run402, bld402, etc.). The canonical TypeScript source lives in `run402/packages/shared/src/consent-banner/` and is exported as `consentBanner` from `@run402/shared`. Per-product customization is limited to brand colors, the cookie notice URL, and the GA4 / ad pixel wiring inside the host site's `onConsentChange` callback. Static HTML sites without a TS build pipeline ship a parallel single-file vanilla bundle (e.g. `kysigned-service/site/consent-banner.mjs`) that mirrors the shared logic — when the site grows a build step, replace the bundle with the compiled output. Use across non-saas-factory Kychee surfaces is a separate decision.
 
 **Why geo-aware:** The default approach of "always show the banner" creates friction for the ~70% of kysigned visitors who arrive from the United States — and US users find consent banners annoying and unnecessary. Geo-targeting cuts banner exposure to the ~25% who actually need it (EU/UK/BR/CA), without sacrificing GDPR compliance for those users.
 

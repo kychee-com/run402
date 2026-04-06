@@ -1,0 +1,117 @@
+/* Kychee consent banner — F19. Drop into any saas-factory product site. */
+
+#kychee-consent-banner {
+  position: fixed;
+  inset: auto 0 0 0;
+  z-index: 2147483646;
+  display: flex;
+  justify-content: center;
+  padding: 12px;
+  pointer-events: none;
+  font-family: -apple-system, system-ui, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+#kychee-consent-banner .kcb-card {
+  pointer-events: auto;
+  max-width: 720px;
+  width: 100%;
+  background: #ffffff;
+  color: #1a1a2e;
+  border: 1px solid #d8d8e0;
+  border-radius: 12px;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.18);
+  padding: 20px 22px;
+}
+
+#kychee-consent-banner .kcb-title {
+  margin: 0 0 8px;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+#kychee-consent-banner .kcb-text {
+  margin: 0 0 12px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+#kychee-consent-banner .kcb-text a {
+  color: #1a1a2e;
+  text-decoration: underline;
+}
+
+#kychee-consent-banner .kcb-toggles {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+@media (min-width: 560px) {
+  #kychee-consent-banner .kcb-toggles {
+    grid-template-columns: 1fr 1fr 1fr;
+  }
+}
+
+#kychee-consent-banner .kcb-toggle {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  border: 1px solid #ececf2;
+  border-radius: 8px;
+  font-size: 12px;
+}
+
+#kychee-consent-banner .kcb-toggle span {
+  font-weight: 600;
+}
+
+#kychee-consent-banner .kcb-toggle small {
+  color: #5e5e6e;
+  font-size: 11px;
+}
+
+#kychee-consent-banner .kcb-toggle input {
+  align-self: flex-start;
+  margin: 0 0 4px;
+}
+
+#kychee-consent-banner .kcb-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+#kychee-consent-banner .kcb-btn {
+  padding: 9px 16px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid #1a1a2e;
+  min-width: 120px;
+}
+
+/* Reject and Accept must be equally prominent (F19 requirement). */
+#kychee-consent-banner .kcb-btn-primary,
+#kychee-consent-banner .kcb-btn-secondary {
+  font-size: 13px;
+  padding: 9px 16px;
+  min-width: 120px;
+}
+
+#kychee-consent-banner .kcb-btn-primary {
+  background: #1a1a2e;
+  color: #ffffff;
+}
+
+#kychee-consent-banner .kcb-btn-secondary {
+  background: #ffffff;
+  color: #1a1a2e;
+}
+
+#kychee-consent-banner .kcb-btn:hover {
+  opacity: 0.9;
+}

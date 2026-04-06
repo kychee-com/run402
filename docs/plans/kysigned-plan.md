@@ -260,15 +260,15 @@
 
 #### 8B. Geo-Aware Cookie Consent (per saas-factory F19)
 
-- [ ] Build shared Kychee consent banner module (`kychee/site-modules/consent-banner/`) — single module reused across all Kychee product sites [code]
-- [ ] Implement geo detection via Cloudflare `CF-IPCountry` header (or CloudFront equivalent) [code]
-- [ ] Implement region rule: show banner for EU/UK/BR/CA/CH/California; hide for US (non-CA) and other permissive jurisdictions; fail-safe to show on detection failure [code]
-- [ ] Implement banner UI with three independent toggles (Essential/Analytics/Marketing), default-off for non-essential [frontend-visual]
-- [ ] Implement "Reject all" button equally prominent as "Accept all" [frontend-visual]
-- [ ] Implement consent state persistence in `localStorage` (`kychee_consent`) and conditional GA4/ad pixel loading [code]
-- [ ] Implement footer "Cookie settings" link to re-open panel [frontend-logic]
-- [ ] Implement 12-month re-prompt logic [code]
-- [ ] Integrate consent banner into kysigned.com (first product to use the shared module) [frontend-visual]
+- [x] Build shared saas-factory consent banner module (`run402/packages/shared/src/consent-banner/`) — single module reused across saas-factory product sites [code]
+- [x] Implement geo detection via Cloudflare `CF-IPCountry` header (or CloudFront equivalent) — sites pass `country` + optional `region` to `initConsentBanner`; edge templates inject `__CF_IPCOUNTRY__` / `__CF_IPREGION__` at deploy time [code]
+- [x] Implement region rule: show banner for EU/UK/BR/CA/CH/California; hide for US (non-CA) and other permissive jurisdictions; fail-safe to show on detection failure [code]
+- [x] Implement banner UI with three independent toggles (Essential/Analytics/Marketing), default-off for non-essential [frontend-visual]
+- [x] Implement "Reject all" button equally prominent as "Accept all" [frontend-visual]
+- [x] Implement consent state persistence in `localStorage` (`kychee_consent`) and conditional GA4/ad pixel loading via Google Consent Mode v2 [code]
+- [x] Implement footer "Cookie settings" link to re-open panel [frontend-logic]
+- [x] Implement 12-month re-prompt logic + policyVersion bump path [code]
+- [x] Integrate consent banner into kysigned.com (first product to use the shared module) — wired into all 4 static site pages with consent-mode-v2 GA4 [frontend-visual]
 
 ### Phase 9: Agent Interface `[both]` `AI`
 
@@ -377,6 +377,7 @@ _None yet_
 - 2026-04-05: Phase 1 complete — SignatureRegistry.sol deployed to Base Sepolia (0xAE8b...c91). Gas: 220K/email sig, 243K/wallet sig, 158K/completion. 2-signer envelope ~$0.01-0.05 gas. ABI + verification algorithm documented.
 - 2026-04-05: Phase 2 complete — Core engine: DB migrations, data access layer, envelope API (create/get/void/remind/list/export), signing engine (Method A+B, duplicate protection, decline, completion), PDF handling (hash, embed, certificate), 7 email templates (pluggable provider), universal verification. 23 tests passing (14 unit + 9 contract). x402/MPP middleware and wallet auth blocked on run402 integration.
 - 2026-04-05: Phase 3 complete — React + Vite + Tailwind frontend: signing page (pdf.js viewer, Method A/B, drawing widget, signature persistence, verification levels, duplicate/decline/expired screens), verification page (client-side hash, universal contract query), proof link page (Basescan links, independent verification), dashboard (wallet connect, envelope list, detail/audit trail, create form with "Will you also sign?" prompt, remind/void/export).
+- 2026-04-06: Phase 8B / saas-factory F19 — built shared geo-aware consent banner module at `run402/packages/shared/src/consent-banner/` (regions.ts + storage.ts pure logic, banner.ts vanilla DOM init, banner.css). 58 unit tests, all green (47 region rule + 11 storage). Wired into kysigned-service static site (4 HTML pages) via single-file vanilla bundle `kysigned-service/site/consent-banner.mjs` + matching CSS, and switched GA4 to Google Consent Mode v2 (ad/analytics storage default = denied, flips on `consent update` from the banner). Footer "Cookie settings" link on home page re-opens the panel via global `window.openConsentSettings`. saas-factory spec bumped to 1.9.1 to record the canonical module path. Scope is saas-factory product sites only — broader Kychee surfaces are a separate decision.
 - 2026-04-06: F8.6 ephemeral PDF retention library piece complete in kysigned public repo. Migration 004 adds `pdf_deleted_at` + per-signer `completion_email_delivered_at` / `completion_email_bounced_at`. New `src/pdf/retention.ts` (pure rule), `src/pdf/sweep.ts` (periodic deletion sweep), `src/api/emailWebhook.ts` (delivery/bounce hooks the service translates SES payloads into). `handleVoidEnvelope` now drops the original PDF immediately via `ctx.deletePdf`. 23 new tests (12 retention + 5 sweep + 5 webhook + 1 void integration). Full suite 141/141. Service repo still needs to wire SES → markDelivered/Bounced and a periodic `sweepRetention` cron.
 - 2026-04-06: F2.8 `allowed_senders` access control complete — DAO + migration `003_allowed_senders.sql` + sender gate (allowlist/hosted strategies) + monthly quota + admin API + README warning. TDD red-green throughout: 33 new tests added (15 DAO + 9 gate + 9 admin + 4 envelope integration). Full kysigned suite: 112/112 pass. Service repo can now wire `senderGate: { strategy: 'hosted', getCreditBalance }` in production; self-hosted forkers default to `allowlist`. Pluggable strategy + per-sender quota + default-deny all in one cohesive layer.
 - 2026-04-06: Phase 15 — Shipped "Smart contract — Base Sepolia" surface. Smoke check executed from a fresh `mktemp -d` directory:
