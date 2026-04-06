@@ -244,7 +244,7 @@
 
 - [x] Draft Terms of Service [manual] `AI -> HUMAN: Approve` — approved
 - [x] Draft Privacy Policy [manual] `AI -> HUMAN: Approve` — approved
-- [!] Draft Cookie/consent notice [manual] `AI -> HUMAN: Approve` — drafted. WAITING FOR: human approval
+- [x] Draft Cookie/consent notice [manual] `AI -> HUMAN: Approve` — approved
 - [!] Draft Acceptable Use Policy [manual] `AI -> HUMAN: Approve` — drafted. WAITING FOR: human approval
 - [!] Draft DPA (Data Processing Agreement) [manual] `AI -> HUMAN: Approve` — drafted. WAITING FOR: human approval
 - [ ] Publish all legal docs on kysigned.com [infra] `AI`
