@@ -807,6 +807,23 @@ Yes. `/projects/v1/admin/:id/usage` shows API calls, storage, lease status. `/pr
 |----------|--------|------|------|-------------|
 | `/faucet/v1` | POST | None | Free | Get 0.25 testnet USDC on Base Sepolia |
 
+### KMS Contract Wallets
+
+Provision AWS KMS-backed Ethereum wallets per project for signing and broadcasting smart-contract transactions. Private keys never leave KMS — there is no export, ever. Pricing: **$0.04/day** rental ($1.20/month) plus **$0.000005 per call** KMS sign fee. Wallet creation requires **$1.20 prepay** (30 days of rent). Supported chains: `base-mainnet`, `base-sepolia`. Non-custodial — see [terms](https://run402.com/humans/terms.html#non-custodial-kms-wallets).
+
+| Endpoint | Method | Auth | Cost | Description |
+|----------|--------|------|------|-------------|
+| `/contracts/v1/wallets` | POST | service_key | Rent | Provision a KMS wallet. Body: `{ chain, recovery_address? }`. Requires $1.20 cash prepay. Returns wallet with `non_custodial_notice`. |
+| `/contracts/v1/wallets` | GET | service_key | Free | List wallets owned by project (includes deleted). |
+| `/contracts/v1/wallets/{id}` | GET | service_key | Free | Get wallet metadata + live native balance + USD-micros (Chainlink price feed cached 5 min). |
+| `/contracts/v1/wallets/{id}/recovery-address` | POST | service_key | Free | Set/clear recovery address. Body: `{ recovery_address }` or `{ recovery_address: null }`. |
+| `/contracts/v1/wallets/{id}/alert` | POST | service_key | Free | Set low-balance threshold. Body: `{ threshold_wei }`. |
+| `/contracts/v1/wallets/{id}/drain` | POST | service_key | Sign fee + gas | Drain native balance to a destination address. Header: `X-Confirm-Drain: <wallet_id>`. Body: `{ destination_address }`. Works on suspended wallets. |
+| `/contracts/v1/wallets/{id}` | DELETE | service_key | Free | Schedule KMS key for deletion (7-day window). Header: `X-Confirm-Delete: <wallet_id>`. Refused with 409 if balance ≥ dust. |
+| `/contracts/v1/call` | POST | service_key | Sign fee + gas | Submit a write call. Body: `{ wallet_id, chain, contract_address, abi_fragment, function_name, args, value? }`. Optional `Idempotency-Key` header. Returns 202 `{ call_id, tx_hash, status: "pending" }`. |
+| `/contracts/v1/read` | POST | service_key | Free | Read-only call. Body: `{ chain, contract_address, abi_fragment, function_name, args }`. No signing, no billing. |
+| `/contracts/v1/calls/{id}` | GET | service_key | Free | Get call status, gas used, gas cost (USD micros), receipt, error. Wrong-project returns 404. |
+
 ### REST API (PostgREST Proxy)
 
 | Endpoint | Method | Auth | Description |
@@ -1359,6 +1376,16 @@ Projects, bundle deploy, fork, static sites, messages, ping, contact -- all free
 | Item | Price | Notes |
 |------|-------|-------|
 | Image generation | $0.03 | square/landscape/portrait |
+
+### KMS contract wallets (per-project)
+
+| Item | Price | Notes |
+|------|-------|-------|
+| KMS contract wallet rental | **$0.04/day** ($1.20/month) | Per active wallet, billed daily as `kms_wallet_rental` ledger entry. $1.20 prepay (30 days) required at creation. |
+| Contract call gas | at-cost | Chain gas, 0% markup, billed as `contract_call_gas` ledger entry on confirmation. |
+| Contract call KMS sign fee | $0.000005/call | The only run402 markup on contract calls; billed as a separate `kms_sign_fee` ledger entry. |
+
+Wallets that can't cover the next day's rent are suspended automatically; reactivation is automatic on top-up. Wallets that stay suspended for 90 days are permanently deleted (KMS key destroyed). Funds-rescue: `POST /contracts/v1/wallets/:id/drain` works on suspended wallets too; an optional `recovery_address` triggers an auto-drain on day-90 deletion. **Non-custodial** &mdash; see https://run402.com/humans/terms.html#non-custodial-kms-wallets.
 
 Payments are x402 micropayments on **Base** (EIP-155 chain 8453). Prototype tier uses testnet on Base Sepolia (chain 84532) -- free, no real money. Hobby/Team tiers require real USDC on Base mainnet or Stripe credits.
 

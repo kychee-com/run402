@@ -156,6 +156,17 @@ export class PodStack extends cdk.Stack {
       "arn:aws:secretsmanager:us-east-1:472210437512:secret:agentdb/admin-session-secret-TY63qS",
     );
 
+    // KMS contract wallets — RPC URL secrets (one per supported chain).
+    // See packages/gateway/src/services/chain-config.ts.
+    const baseMainnetRpcUrl = secretsmanager.Secret.fromSecretCompleteArn(
+      this, "BaseMainnetRpcUrl",
+      "arn:aws:secretsmanager:us-east-1:472210437512:secret:run402/base-mainnet-rpc-url-RX5Y7v",
+    );
+    const baseSepoliaRpcUrl = secretsmanager.Secret.fromSecretCompleteArn(
+      this, "BaseSepoliaRpcUrl",
+      "arn:aws:secretsmanager:us-east-1:472210437512:secret:run402/base-sepolia-rpc-url-Eq6wib",
+    );
+
     // STRIPE_WEBHOOK_SECRET: managed outside CDK — added directly to task def revisions.
     // fromSecretNameV2 generates a partial ARN that ECS can't resolve at startup.
 
@@ -232,8 +243,29 @@ export class PodStack extends cdk.Stack {
     stripeSecret.grantRead(taskDef.taskRole);
     telegramSecret.grantRead(taskDef.taskRole);
     adminKeySecret.grantRead(taskDef.taskRole);
+    baseMainnetRpcUrl.grantRead(taskDef.taskRole);
+    baseSepoliaRpcUrl.grantRead(taskDef.taskRole);
     // stripeWebhookSecret: read granted via AgentDBSecretsWildcard policy
     storageBucket.grantReadWrite(taskDef.taskRole);
+
+    // KMS contract wallets — explicit IAM. The role gets the CRUD perms it
+    // needs for managing per-wallet KMS keys, but DELIBERATELY does NOT get
+    // kms:Decrypt or kms:GetParametersForImport (would defeat the
+    // "private key never leaves KMS" guarantee). See design.md DD-1.
+    taskDef.taskRole.addToPrincipalPolicy(new iam.PolicyStatement({
+      sid: "Run402KmsContractWallets",
+      actions: [
+        "kms:CreateKey",
+        "kms:GetPublicKey",
+        "kms:Sign",
+        "kms:DescribeKey",
+        "kms:TagResource",
+        "kms:ListResourceTags",
+        "kms:ScheduleKeyDeletion",
+        "kms:CancelKeyDeletion",
+      ],
+      resources: ["*"],
+    }));
 
     // CloudFront access log bucket (read-only for llms.txt analytics)
     const cfLogBucket = s3.Bucket.fromBucketName(this, "CfLogBucket", "agentdb-site-accesslogbucketda470295-jaz7qij2zfjq");
@@ -483,6 +515,8 @@ export class PodStack extends cdk.Stack {
         GOOGLE_CLIENT_ID: ecs.Secret.fromSecretsManager(googleAdminClientId),
         GOOGLE_CLIENT_SECRET: ecs.Secret.fromSecretsManager(googleAdminClientSecret),
         ADMIN_SESSION_SECRET: ecs.Secret.fromSecretsManager(adminSessionSecret),
+        BASE_MAINNET_RPC_URL: ecs.Secret.fromSecretsManager(baseMainnetRpcUrl),
+        BASE_SEPOLIA_RPC_URL: ecs.Secret.fromSecretsManager(baseSepoliaRpcUrl),
         // STRIPE_WEBHOOK_SECRET: managed outside CDK (fromSecretNameV2 ARN issue)
       },
       healthCheck: {

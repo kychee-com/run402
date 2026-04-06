@@ -1,5 +1,24 @@
 # CLAUDE.md
 
+## KMS contract wallets
+
+The `/contracts/v1/*` feature signs Ethereum transactions via AWS KMS-backed keys (one KMS key per wallet, ECC_SECG_P256K1, SIGN_VERIFY). Private keys never leave KMS — there is intentionally no `kms:Decrypt` or `kms:GetParametersForImport` in the gateway role.
+
+**RPC URL secrets:** `run402/base-mainnet-rpc-url` and `run402/base-sepolia-rpc-url` in AWS Secrets Manager (us-east-1, profile `kychee`). Both default to the public Base RPCs (`https://mainnet.base.org`, `https://sepolia.base.org`). To rotate to a paid provider:
+
+```
+AWS_PROFILE=kychee aws secretsmanager update-secret \
+  --secret-id run402/base-mainnet-rpc-url \
+  --secret-string "https://base-mainnet.g.alchemy.com/v2/<KEY>" \
+  --region us-east-1
+# Then force a task restart so the new value is picked up:
+AWS_PROFILE=kychee aws ecs update-service --cluster <cluster> --service <svc> --force-new-deployment --region us-east-1
+```
+
+**IAM verification:** the gateway role `AgentDB-Pod01-TaskDefTaskRole1EDB4A67-XTUia2at8urw` should have the `Run402KmsContractWallets` policy statement granting `kms:CreateKey`, `kms:GetPublicKey`, `kms:Sign`, `kms:DescribeKey`, `kms:TagResource`, `kms:ListResourceTags`, `kms:ScheduleKeyDeletion`, `kms:CancelKeyDeletion` — and **NOT** `kms:Decrypt` or `kms:GetParametersForImport`. Verify via `aws iam simulate-principal-policy`.
+
+**Pricing knobs (do not change without updating ALL pricing surfaces — see Phase 16 of openspec/changes/kms-wallet-contracts):** $0.04/day rental (`KMS_WALLET_RENT_USD_MICROS_PER_DAY = 40_000` in `packages/gateway/src/services/contract-wallets.ts`), $0.000005/call sign fee (`KMS_SIGN_FEE_USD_MICROS = 5` in `services/contract-call-reconciler.ts`), 30-day prepay = $1.20 (`PREPAY_REQUIRED_USD_MICROS` in `routes/contracts.ts`).
+
 ## MCP Server
 
 The Run402 MCP server is published at https://github.com/kychee-com/run402-mcp (npm: `run402-mcp`, v0.2.0). It exposes 52 tools covering setup/billing, projects, database, deployment, subdomains, functions, storage, apps, and more. Install: `npx run402-mcp`. Config and docs are in the separate `kychee-com/run402-mcp` repo. See AGENTS.md for the full tool list.

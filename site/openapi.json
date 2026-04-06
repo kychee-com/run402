@@ -4380,6 +4380,118 @@
         }
       }
     },
+    "/contracts/v1/wallets": {
+      "post": {
+        "tags": ["Contracts"],
+        "summary": "Provision a KMS-backed Ethereum wallet",
+        "description": "Provision a KMS-backed Ethereum wallet for signing smart-contract transactions on behalf of the project. Cost: $0.04/day rental ($1.20/month, billed daily as kms_wallet_rental). Requires $1.20 in cash credit at creation (30 days of rent). Private keys never leave AWS KMS. Supported chains: base-mainnet, base-sepolia. Non-custodial: see https://run402.com/humans/terms.html#non-custodial-kms-wallets.",
+        "operationId": "provisionContractWallet",
+        "security": [{ "ServiceKey": [] }],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "type": "object", "required": ["chain"], "properties": { "chain": { "type": "string", "enum": ["base-mainnet", "base-sepolia"] }, "recovery_address": { "type": "string", "description": "Optional 0x-prefixed address for auto-drain on day-90 deletion." } } } } }
+        },
+        "responses": { "201": { "description": "Wallet provisioned" }, "400": { "description": "Unsupported chain or invalid recovery address" }, "402": { "description": "Insufficient cash balance for 30-day prepay" } }
+      },
+      "get": {
+        "tags": ["Contracts"],
+        "summary": "List KMS contract wallets for the project",
+        "operationId": "listContractWallets",
+        "security": [{ "ServiceKey": [] }],
+        "responses": { "200": { "description": "Wallet list" } }
+      }
+    },
+    "/contracts/v1/wallets/{id}": {
+      "get": {
+        "tags": ["Contracts"],
+        "summary": "Get a KMS contract wallet by id",
+        "operationId": "getContractWallet",
+        "security": [{ "ServiceKey": [] }],
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "Wallet metadata + live native balance" }, "404": { "description": "Wallet not found (or wrong project — same response)" } }
+      },
+      "delete": {
+        "tags": ["Contracts"],
+        "summary": "Delete a KMS contract wallet (schedules KMS key deletion)",
+        "description": "Schedules the KMS key for deletion (7-day AWS minimum window). Requires header X-Confirm-Delete: <wallet_id>. Refused with 409 if balance >= dust — drain the wallet first.",
+        "operationId": "deleteContractWallet",
+        "security": [{ "ServiceKey": [] }],
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } },
+          { "name": "X-Confirm-Delete", "in": "header", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": { "200": { "description": "Wallet deleted" }, "400": { "description": "Missing/wrong confirmation header" }, "409": { "description": "Wallet has on-chain balance — drain first" } }
+      }
+    },
+    "/contracts/v1/wallets/{id}/recovery-address": {
+      "post": {
+        "tags": ["Contracts"],
+        "summary": "Set or clear the recovery address for auto-drain on deletion",
+        "operationId": "setContractWalletRecoveryAddress",
+        "security": [{ "ServiceKey": [] }],
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "recovery_address": { "type": ["string", "null"] } } } } } },
+        "responses": { "200": { "description": "Updated wallet" }, "400": { "description": "Invalid address or self-reference" }, "404": { "description": "Wallet not found" }, "410": { "description": "Wallet deleted" } }
+      }
+    },
+    "/contracts/v1/wallets/{id}/alert": {
+      "post": {
+        "tags": ["Contracts"],
+        "summary": "Set the low-balance alert threshold (in wei)",
+        "operationId": "setContractWalletAlertThreshold",
+        "security": [{ "ServiceKey": [] }],
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["threshold_wei"], "properties": { "threshold_wei": { "type": "string" } } } } } },
+        "responses": { "200": { "description": "Updated wallet" }, "404": { "description": "Wallet not found" } }
+      }
+    },
+    "/contracts/v1/wallets/{id}/drain": {
+      "post": {
+        "tags": ["Contracts"],
+        "summary": "Drain native balance to a destination address (works on suspended wallets)",
+        "description": "Drain the wallet's entire native-token balance to a destination address. Works on suspended wallets — the safety valve, so a project that runs out of cash credit can still recover its on-chain funds. Header X-Confirm-Drain: <wallet_id> required. Cost: chain gas at-cost + $0.000005 KMS sign fee.",
+        "operationId": "drainContractWallet",
+        "security": [{ "ServiceKey": [] }],
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } },
+          { "name": "X-Confirm-Drain", "in": "header", "required": true, "schema": { "type": "string" } }
+        ],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["destination_address"], "properties": { "destination_address": { "type": "string" } } } } } },
+        "responses": { "202": { "description": "Drain transaction submitted" }, "400": { "description": "Invalid destination or missing confirmation header" }, "409": { "description": "Nothing to drain" }, "410": { "description": "Wallet deleted" } }
+      }
+    },
+    "/contracts/v1/call": {
+      "post": {
+        "tags": ["Contracts"],
+        "summary": "Submit a contract write call",
+        "description": "Submit a write call to a smart contract from a KMS wallet. The gateway encodes the call via viem, signs the digest via AWS KMS, and broadcasts to the chain. Idempotent on optional Idempotency-Key header. Cost: chain gas at-cost + $0.000005 KMS sign fee per call. Returns 202 with call_id and tx_hash.",
+        "operationId": "submitContractCall",
+        "security": [{ "ServiceKey": [] }],
+        "parameters": [{ "name": "Idempotency-Key", "in": "header", "required": false, "schema": { "type": "string" } }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["wallet_id", "chain", "contract_address", "abi_fragment", "function_name", "args"], "properties": { "wallet_id": { "type": "string" }, "chain": { "type": "string" }, "contract_address": { "type": "string" }, "abi_fragment": { "type": "array" }, "function_name": { "type": "string" }, "args": { "type": "array" }, "value": { "type": "string", "description": "Optional native-token value in wei (decimal string)" } } } } } },
+        "responses": { "202": { "description": "Submitted, returns { call_id, tx_hash, status: pending }" }, "400": { "description": "Invalid request, ABI parse failure, or function not in ABI" }, "402": { "description": "Insufficient native balance, or wallet suspended" }, "404": { "description": "Wallet not found" }, "410": { "description": "Wallet deleted" }, "502": { "description": "RPC broadcast failure" } }
+      }
+    },
+    "/contracts/v1/read": {
+      "post": {
+        "tags": ["Contracts"],
+        "summary": "Read-only contract call (no signing, no billing)",
+        "operationId": "readContract",
+        "security": [{ "ServiceKey": [] }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["chain", "contract_address", "abi_fragment", "function_name", "args"], "properties": { "chain": { "type": "string" }, "contract_address": { "type": "string" }, "abi_fragment": { "type": "array" }, "function_name": { "type": "string" }, "args": { "type": "array" } } } } } },
+        "responses": { "200": { "description": "Decoded result" }, "400": { "description": "Unsupported chain or invalid ABI" }, "502": { "description": "RPC failure" } }
+      }
+    },
+    "/contracts/v1/calls/{id}": {
+      "get": {
+        "tags": ["Contracts"],
+        "summary": "Get contract call status, gas, and receipt",
+        "operationId": "getContractCallStatus",
+        "security": [{ "ServiceKey": [] }],
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "Call status (pending, confirmed, failed) with gas_used_wei, gas_cost_usd_micros, receipt" }, "404": { "description": "Call not found (or wrong project — same response)" } }
+      }
+    },
     "/deploy/v1": {
       "get": {
         "tags": [

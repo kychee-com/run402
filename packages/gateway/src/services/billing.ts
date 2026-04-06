@@ -546,6 +546,16 @@ export async function creditFromTopup(
 
     await client.query(sql("COMMIT"));
 
+    // Reactivate any suspended KMS contract wallets owned by projects
+    // attached to this billing account. Best-effort: failures here must
+    // not roll back the topup credit. (Lazy import to avoid a cycle.)
+    try {
+      const { reactivateBillingAccountWallets } = await import("./contract-wallet-reactivate.js");
+      await reactivateBillingAccountWallets(topupRow.billing_account_id);
+    } catch (err) {
+      console.error("[creditFromTopup] reactivate wallets failed (non-fatal):", err);
+    }
+
     const account = await pool.query(
       sql(`SELECT * FROM internal.billing_accounts WHERE id = $1`),
       [topupRow.billing_account_id],

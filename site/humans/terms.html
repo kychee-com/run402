@@ -55,6 +55,19 @@
 
     <h2>3. Pricing and Payment</h2>
     <p>The prototype tier is free — it uses testnet USDC (no real money) to verify wallet and x402 payment setup. Production tiers (hobby, team) require real money. Run402 offers prepaid leases with hard usage caps — no overage charges. Production payment is accepted via x402 USDC micropayments on the Base network or via prepaid Run402 credits funded through Stripe checkout. All payments are non-refundable. Lease durations, storage limits, and API call limits are specified at the time of provisioning.</p>
+    <p><strong>KMS contract wallets:</strong> $0.04/day per wallet ($1.20/month, billed daily as <code>kms_wallet_rental</code>). Wallet creation requires $1.20 in cash credit (30 days of rent). Contract calls are billed at chain gas at-cost plus a $0.000005 per-call KMS sign fee. Both line items are visible on the project's billing history.</p>
+
+    <h2 id="non-custodial-kms-wallets">3a. KMS contract wallets are non-custodial</h2>
+    <p><strong>Run402 provides KMS-backed signing infrastructure, not fund custody.</strong> A KMS contract wallet is a cryptographic key inside AWS KMS that signs Ethereum transactions on your behalf. The on-chain native-token (ETH) balance at the wallet's address is held on the blockchain &mdash; not by Run402, not by Kychee, not by AWS.</p>
+    <ol>
+      <li>Run402 provides KMS-backed signing infrastructure, not fund custody.</li>
+      <li>You are solely responsible for managing the on-chain native-token (ETH) balance of your wallets, including funding gas, monitoring balances, and recovering or draining funds before any wallet lifecycle event that would render the key unusable.</li>
+      <li>Run402 has no obligation to recover, refund, or compensate for funds lost due to wallet suspension or deletion.</li>
+      <li>The drain endpoint and recovery address features are <strong>OPTIONAL safety nets</strong> provided as a convenience, not guarantees. Run402 does not warrant their availability or correctness in any specific circumstance.</li>
+      <li>If you do not pay rent, drain the wallet, or set a recovery address before the 90-day suspension grace period ends, on-chain funds at the wallet address become <strong>permanently inaccessible to anyone, including run402</strong>. The on-chain address still exists, but no key exists to sign for it.</li>
+    </ol>
+    <p>This is non-negotiable and is enforced through (a) this terms-of-service section, (b) the disclosure on the billing page, (c) warning email language sent on days 60, 75, and 88 of suspension, (d) a <code>non_custodial_notice</code> field in every wallet-creating API response and every suspension-related HTTP 402 error.</p>
+    <p>By provisioning a KMS contract wallet you acknowledge that the relationship is non-custodial and that Run402 has no fiduciary duty regarding on-chain funds at the wallet address.</p>
 
     <h2>4. Your Content and Intellectual Property</h2>
     <p>You retain all rights to the code, data, and content you store or deploy on Run402. Run402 does not claim any ownership of, or license to, your content. You grant Run402 only the limited rights necessary to provide the service (e.g., storing your data, serving your static sites).</p>

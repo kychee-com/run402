@@ -18,6 +18,9 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { pool } from "./db/pool.js";
 import { sql } from "./db/sql.js";
+import { applyV120 } from "./db/migrations/v1_20.js";
+import { runChainBootGuards } from "./services/chain-boot.js";
+import { startContractsScheduler, stopContractsScheduler } from "./services/contracts-scheduler.js";
 import { createPaymentMiddleware } from "./middleware/x402.js";
 import { startMeteringFlush, stopMeteringFlush, flushCounters } from "./middleware/metering.js";
 import { syncProjects } from "./services/projects.js";
@@ -50,6 +53,7 @@ import domainRoutes from "./routes/domains.js";
 import functionsRoutes from "./routes/functions.js";
 import generateImageRoutes from "./routes/generate-image.js";
 import aiRoutes from "./routes/ai.js";
+import contractsRoutes from "./routes/contracts.js";
 import bundleRoutes from "./routes/bundle.js";
 import publishRoutes from "./routes/publish.js";
 import adminDashboardRoutes from "./routes/admin-dashboard.js";
@@ -399,6 +403,7 @@ app.use(subdomainRoutes);
 app.use(domainRoutes);
 app.use(generateImageRoutes);
 app.use(aiRoutes);
+app.use(contractsRoutes);
 app.use(bundleRoutes);
 app.use(publishRoutes);
 app.use(attributionRoutes);
@@ -1156,6 +1161,10 @@ async function applyMigrations() {
   // v1.19a: make billing_topups.wallet_address nullable (for email-based topups)
   await pool.query(sql(`ALTER TABLE internal.billing_topups ALTER COLUMN wallet_address DROP NOT NULL`));
 
+  // v1.20: KMS contract wallets + contract calls
+  // (extracted to a module so it can be unit-tested)
+  await applyV120((text) => pool.query(sql(text)));
+
   // v1.19b: bootstrap platform billing mailbox (billing@mail.run402.com)
   // Self-healing: creates the row if missing. Uses 'platform' as project_id sentinel.
   const billingMailboxResult = await pool.query(
@@ -1187,6 +1196,23 @@ async function start() {
 
   // Apply pending migrations (idempotent)
   await applyMigrations();
+
+  // KMS contract wallets — chain registry boot guards
+  // (RPC URLs come from BASE_*_RPC_URL env vars set by the task definition)
+  try {
+    await runChainBootGuards({
+      loadSecret: async (key) => {
+        if (key === "run402/base-mainnet-rpc-url") return process.env.BASE_MAINNET_RPC_URL || null;
+        if (key === "run402/base-sepolia-rpc-url") return process.env.BASE_SEPOLIA_RPC_URL || null;
+        return null;
+      },
+      query: (text, params) => pool.query(sql(text), params),
+    });
+    console.log("  Chain boot guards: OK");
+  } catch (err) {
+    console.error("Chain boot guards failed:", errorMessage(err));
+    process.exit(1);
+  }
 
   // Initialize idempotency table
   await initIdempotencyTable();
@@ -1238,6 +1264,7 @@ async function start() {
   startKvsReconciliation();
   startCfKvReconciliation();
   await startScheduler();
+  await startContractsScheduler();
   oauthCleanupInterval = setInterval(() => { cleanupExpiredOAuthData(); cleanupExpiredMagicLinkTokens(); }, 3600_000);
 
   server = app.listen(PORT, () => {
@@ -1268,6 +1295,7 @@ async function shutdown(signal: string) {
   stopFaucetRefill();
   stopDemoResetChecker();
   stopScheduler();
+  stopContractsScheduler();
   if (oauthCleanupInterval) clearInterval(oauthCleanupInterval);
 
   // Flush metering counters

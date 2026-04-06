@@ -91,9 +91,9 @@ Three sender paths, all MVP. Each serves a different audience.
 **What run402 charges kysigned for (T1 — infrastructure):**
 - Compute and database hosting
 - Email sending (SES via run402)
-- Wallet custody / KMS key management for the platform wallet
+- **KMS contract wallet rental: $0.04/day per wallet ($1.20/month).** Platform wallet provisioned via `POST /contracts/v1/wallets`. Private keys never leave AWS KMS. Includes lifecycle management (suspension on unpaid rent, optional recovery address, drain endpoint). 30-day prepay ($1.20) required at creation.
+- **Contract call KMS sign fee: $0.000005 per call** (the only run402 markup on contract calls). Chain gas is at-cost — kysigned still pays its own ETH gas to Base, billed as a `contract_call_gas` ledger entry with 0% markup.
 - Custom domain serving
-- There is **no "pay for contract call" SKU** in run402. run402 provides wallet custody; kysigned pays its own gas.
 
 **What run402 does NOT currently provide (T2 — end-user billing, deferred):**
 - Stripe-collection-as-a-service: run402 does not accept Stripe payments from kysigned's end users on kysigned's behalf. kysigned operates its own Stripe account for Path 3. If run402 adds this capability post-MVP, Path 3 could migrate to use it (Open Question #17).
