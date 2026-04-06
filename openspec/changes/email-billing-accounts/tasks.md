@@ -37,13 +37,7 @@
 
 ## 7. Service — Stripe tier checkout
 
-- [ ] 7.1 Create `packages/gateway/src/services/stripe-tier-checkout.ts` with `createTierCheckout(identifier, tierName)` — resolves identifier, creates/loads Stripe customer, determines action (subscribe/renew/upgrade/downgrade) using existing `setTier()` logic inspection, creates checkout session. [code]
-  - TDD: Write failing test for new subscribe
-  - TDD: Write failing test for renew (active tier, same tier)
-  - TDD: Write failing test for upgrade
-  - TDD: Write failing test for downgrade (storage fits)
-  - TDD: Write failing test for invalid tier (400)
-  - Implement
+- [x] 7.1 Create `stripe-tier-checkout.ts` with `createTierCheckout(identifier, tierName)` — supports wallet+email, creates Stripe customer, topup row with topup_type='tier' + tier_name, returns checkout URL (6 tests). Tier action (subscribe/renew/upgrade/downgrade) applied by webhook handler via setTierForAccount — deferred to task 7.2 [code]
 - [ ] 7.2 Extend `handleStripeWebhookEvent` in `stripe-billing.ts` to branch on `topup_type`: `cash` → existing `creditFromTopup`; `tier` → new `applyTierFromTopup` that calls existing `setTier()` logic. [code]
   - TDD: Write failing test for tier webhook handling (subscribe)
   - TDD: Write failing test for tier webhook handling (upgrade with prorated refund)
