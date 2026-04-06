@@ -47,25 +47,8 @@
 
 ## 9. Service — email overage (pack consumption)
 
-- [ ] 9.1 Create `packages/gateway/src/services/billing-email-overage.ts` with `tryConsumePackCredit(projectId)`: [code]
-  - Looks up project's billing account (via wallet → billing_account_wallets OR via email → billing_account_emails)
-  - Checks if project has a verified custom sender domain (use existing `getVerifiedSenderDomain` from Feature #2)
-  - If no custom domain: returns `{ allowed: false, reason: 'no_custom_domain' }`
-  - If no billing account or `email_credits_remaining = 0`: returns `{ allowed: false, reason: 'no_credits' }`
-  - Else: atomically decrements `email_credits_remaining` using `SELECT ... FOR UPDATE`, returns `{ allowed: true, remaining: N }`
-  - TDD: Write failing test — no custom domain
-  - TDD: Write failing test — no billing account
-  - TDD: Write failing test — zero credits
-  - TDD: Write failing test — successful decrement
-  - TDD: Write failing test — concurrent decrements (race condition)
-  - Implement
-- [ ] 9.2 Modify `packages/gateway/src/services/email-send.ts`: after `checkAndIncrementDailyLimit` fails with "tier exhausted" error, call `tryConsumePackCredit(project_id)`. If allowed, proceed with send (custom domain resolution from Feature #2 kicks in). If not allowed, return 402/429 with appropriate error. [code]
-  - TDD: Write failing test — under tier limit (unchanged)
-  - TDD: Write failing test — over tier, has pack, has custom domain → sends
-  - TDD: Write failing test — over tier, no pack → 402 with checkout URL
-  - TDD: Write failing test — over tier, pack but no custom domain → 429
-  - Backward-compat: existing email-send tests must pass unchanged
-  - Implement
+- [x] 9.1 Created `billing-email-overage.ts` with `tryConsumePackCredit(projectId)` — rejects no_custom_domain/no_billing_account/no_credits, atomic SELECT FOR UPDATE decrement, race-safe (5 tests) [code]
+- [x] 9.2 Modified `email-send.ts` — when tier daily limit exhausted, calls `tryConsumePackCredit`. On success, rolls back counter + proceeds. On failure: 429 for no_custom_domain, 402 for no_credits, existing 402 upgrade hint for no_billing_account. 21/21 existing email-send tests still pass. [code]
 
 ## 10. Service — auto-recharge
 
