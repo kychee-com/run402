@@ -42,13 +42,15 @@ describe("config", () => {
 
   it("derives keystore path from config dir", () => {
     process.env.RUN402_CONFIG_DIR = "/tmp/test-config";
-    assert.equal(getKeystorePath(), "/tmp/test-config/projects.json");
+    // Use path.join in the expected value so the test passes on both POSIX
+    // and Windows (Windows produces backslashes via path.join).
+    assert.equal(getKeystorePath(), join("/tmp/test-config", "projects.json"));
   });
 
   it("derives allowance path from config dir", () => {
     process.env.RUN402_CONFIG_DIR = "/tmp/test-config";
     delete process.env.RUN402_ALLOWANCE_PATH;
-    assert.equal(getAllowancePath(), "/tmp/test-config/allowance.json");
+    assert.equal(getAllowancePath(), join("/tmp/test-config", "allowance.json"));
   });
 
   it("returns custom allowance path from RUN402_ALLOWANCE_PATH env", () => {

@@ -28,8 +28,6 @@ describe("keystore", () => {
     const project: StoredProject = {
       anon_key: "anon-key-123",
       service_key: "svc-key-456",
-      tier: "prototype",
-      lease_expires_at: "2026-03-06T00:00:00Z",
     };
     saveProject("proj-001", project, storePath);
 
@@ -37,12 +35,10 @@ describe("keystore", () => {
     assert.deepEqual(loaded, project);
   });
 
-  it("creates file with 0600 permissions", () => {
+  it("creates file with 0600 permissions", { skip: process.platform === "win32" ? "POSIX file modes not enforced on Windows NTFS" : false }, () => {
     const project: StoredProject = {
       anon_key: "ak",
       service_key: "sk",
-      tier: "hobby",
-      lease_expires_at: "2026-04-01T00:00:00Z",
     };
     saveProject("proj-002", project, storePath);
 
@@ -55,14 +51,10 @@ describe("keystore", () => {
     const p1: StoredProject = {
       anon_key: "ak1",
       service_key: "sk1",
-      tier: "prototype",
-      lease_expires_at: "2026-03-01T00:00:00Z",
     };
     const p2: StoredProject = {
       anon_key: "ak2",
       service_key: "sk2",
-      tier: "team",
-      lease_expires_at: "2026-04-01T00:00:00Z",
     };
 
     saveProject("proj-a", p1, storePath);
@@ -80,14 +72,10 @@ describe("keystore", () => {
     const v1: StoredProject = {
       anon_key: "old",
       service_key: "old",
-      tier: "prototype",
-      lease_expires_at: "2026-03-01T00:00:00Z",
     };
     const v2: StoredProject = {
       anon_key: "new",
       service_key: "new",
-      tier: "hobby",
-      lease_expires_at: "2026-04-01T00:00:00Z",
     };
 
     saveProject("proj-x", v1, storePath);
@@ -112,8 +100,6 @@ describe("keystore", () => {
     const project: StoredProject = {
       anon_key: "ak",
       service_key: "sk",
-      tier: "prototype",
-      lease_expires_at: "2026-03-01T00:00:00Z",
     };
     saveProject("proj-atomic", project, storePath);
 

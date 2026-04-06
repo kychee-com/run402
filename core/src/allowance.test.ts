@@ -35,7 +35,7 @@ describe("allowance", () => {
     assert.deepEqual(loaded, allowance);
   });
 
-  it("creates file with 0600 permissions", () => {
+  it("creates file with 0600 permissions", { skip: process.platform === "win32" ? "POSIX file modes not enforced on Windows NTFS" : false }, () => {
     saveAllowance({ address: "0x1", privateKey: "0x2" }, allowancePath);
     const stats = statSync(allowancePath);
     const mode = stats.mode & 0o777;

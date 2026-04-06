@@ -34,7 +34,7 @@ describe("core keystore", () => {
     assert.deepEqual(loaded, project);
   });
 
-  it("creates file with 0600 permissions", () => {
+  it("creates file with 0600 permissions", { skip: process.platform === "win32" ? "POSIX file modes not enforced on Windows NTFS" : false }, () => {
     saveProject("proj-002", {
       anon_key: "ak", service_key: "sk",
     }, storePath);

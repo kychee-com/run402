@@ -20,6 +20,13 @@ jobs:
       - run: npm run build
       - run: npm run test:skill
       - run: npm run test:sync
-      - run: node --experimental-test-module-mocks --test --import tsx src/**/*.test.ts
+      # Use bash globstar so `**` recurses into nested dirs AND matches files
+      # at depth 0. Without this, files like src/keystore.test.ts (at depth 0)
+      # were silently skipped by CI for 20+ days. Also explicitly run the
+      # core/src tests, which were never matched by the old glob.
+      - shell: bash
+        run: |
+          shopt -s globstar
+          node --experimental-test-module-mocks --test --import tsx src/**/*.test.ts core/src/**/*.test.ts
       - run: npm run test:e2e
       - run: npm run test:integration
