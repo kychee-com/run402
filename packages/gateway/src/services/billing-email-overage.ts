@@ -17,6 +17,7 @@
 import { pool } from "../db/pool.js";
 import { sql } from "../db/sql.js";
 import { getVerifiedSenderDomain } from "./email-domains.js";
+import { triggerAutoRecharge } from "./stripe-auto-recharge.js";
 
 export type TryConsumeResult =
   | { allowed: true; remaining: number }
@@ -87,6 +88,27 @@ export async function tryConsumePackCredit(projectId: string): Promise<TryConsum
     );
 
     await client.query(sql("COMMIT"));
+
+    // Auto-recharge trigger (fire-and-forget) — don't block email send on Stripe latency
+    // Read auto_recharge_enabled and threshold from the account
+    pool.query(
+      sql(`SELECT auto_recharge_enabled, auto_recharge_threshold FROM internal.billing_accounts WHERE id = $1`),
+      [billingAccountId],
+    ).then(async (res) => {
+      if (res.rows.length === 0) return;
+      const { auto_recharge_enabled, auto_recharge_threshold } = res.rows[0] as {
+        auto_recharge_enabled: boolean;
+        auto_recharge_threshold: number;
+      };
+      if (auto_recharge_enabled && newCredits < Number(auto_recharge_threshold || 2000)) {
+        // Fire-and-forget
+        triggerAutoRecharge(billingAccountId).catch((err) => {
+          console.error(`  Auto-recharge trigger failed for ${billingAccountId}:`, err);
+        });
+      }
+    }).catch((err) => {
+      console.error(`  Auto-recharge lookup failed for ${billingAccountId}:`, err);
+    });
 
     return { allowed: true, remaining: newCredits };
   } catch (err) {

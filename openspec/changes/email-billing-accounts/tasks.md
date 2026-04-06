@@ -52,11 +52,11 @@
 
 ## 10. Service — auto-recharge
 
-- [ ] 10.1 Extend `billing-email-overage.ts` with auto-recharge trigger: after successful decrement, if `email_credits_remaining < auto_recharge_threshold` AND `auto_recharge_enabled`, fire-and-forget an off-session Stripe charge. [code]
+- [x] 10.1 `billing-email-overage.ts` triggers auto-recharge fire-and-forget after successful decrement (reads auto_recharge_enabled + threshold from account) [code]
   - TDD: Write failing test for threshold trigger
   - TDD: Write failing test for no trigger when disabled
   - Implement (fire-and-forget Promise, no blocking)
-- [ ] 10.2 Create `triggerAutoRecharge(accountId)` in `stripe-billing.ts` — uses saved Stripe payment method to charge $5 off-session, on success adds pack credits, on failure increments `auto_recharge_failure_count` and sends notification email. After 3 failures, disables auto-recharge. [code]
+- [x] 10.2 `stripe-auto-recharge.ts` — `triggerAutoRecharge(accountId)` + `setAutoRecharge(accountId, enabled, threshold)`. Off-session PaymentIntent, adds credits in transaction with ledger entry (kind='email_pack_auto_recharge'), 3-failure cutoff auto-disables (6 tests) [code]
   - TDD: Write failing test for successful auto-recharge
   - TDD: Write failing test for card decline → failure count increment
   - TDD: Write failing test for 3rd failure → disable + notification
