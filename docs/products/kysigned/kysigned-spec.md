@@ -1,6 +1,6 @@
 ---
 product: kysigned
-version: 0.3.0
+version: 0.4.0
 status: Draft
 type: product
 interfaces: [website, api, cli, mcp, smart-contract]
@@ -301,6 +301,20 @@ Per the SaaS Factory spec (Chapter 6).
 - F14.2. Key events tracked: envelope created, signature completed, envelope completed, credit pack purchased, repo fork/clone (via GitHub).
 - F14.3. Conversion goals: visitor → envelope creation, visitor → credit purchase, visitor → repo clone.
 
+### F15. Geo-Aware Cookie Consent `[service]`
+
+Per the SaaS Factory spec (F19). kysigned.com uses the shared Kychee geo-aware consent banner module.
+
+- F15.1. Banner shown only to visitors from EU, UK, Brazil, Canada, Switzerland, or California.
+- F15.2. Banner NOT shown to visitors from US (non-CA) and other permissive jurisdictions.
+- F15.3. When detection fails, banner is shown (fail-safe to compliant).
+- F15.4. GA4 (`G-27SFFZ8KQW`) and any ad pixels load only after consent in jurisdictions that require it.
+- F15.5. Three categories with independent toggles: Essential, Analytics, Marketing.
+- F15.6. "Reject all" button equally prominent as "Accept all".
+- F15.7. Consent state persisted in `localStorage` as `kychee_consent`.
+- F15.8. "Cookie settings" link in footer re-opens the panel.
+- F15.9. Re-prompts user when consent is older than 12 months.
+
 ## Acceptance Criteria
 
 ### F1. Envelope Management
@@ -444,6 +458,15 @@ Per the SaaS Factory spec (Chapter 6).
 - [ ] GA4 property active for kysigned.com under Kychee account
 - [ ] Key events firing: envelope created, signature completed, envelope completed, credit purchased
 - [ ] Conversion goals configured: visitor → envelope, visitor → credit purchase, visitor → repo clone
+
+### F15. Geo-Aware Cookie Consent
+- [ ] EU/UK/BR/CA/CH/California visitors see the consent banner; US (non-CA) visitors do not
+- [ ] When IP geolocation fails, banner is shown (fail-safe to compliant)
+- [ ] GA4 does not load until consent is recorded in jurisdictions that require it
+- [ ] Banner has Essential/Analytics/Marketing toggles, default-off for non-essential
+- [ ] "Reject all" is as prominent as "Accept all"
+- [ ] Consent persists in `localStorage` as `kychee_consent`
+- [ ] Footer "Cookie settings" link re-opens the panel
 
 ## Constraints & Dependencies
 

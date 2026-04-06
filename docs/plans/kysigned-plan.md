@@ -4,7 +4,7 @@
 **Created:** 2026-04-04
 **Status:** Ready for Implementation
 **Spec:** docs/products/kysigned/kysigned-spec.md
-**Spec-Version:** 0.3.0
+**Spec-Version:** 0.4.0
 **Upstream References:** docs/products/saas-factory/saas-factory-spec.md (v1.4.0)
 **Source:** spec
 **Worktree:** none — product code lives in separate repos (C:\Workspace-Kychee\kysigned and C:\Workspace-Kychee\kysigned-service). run402 platform enhancements use a run402 worktree on a feature branch.
@@ -257,6 +257,18 @@
 - [ ] Implement page tags on all kysigned.com pages [code] — blocked on website build
 - [x] Configure key events: envelope_created, signature_completed, envelope_completed, credit_pack_purchased [infra]
 - [ ] Configure conversion goals: visitor → envelope creation, visitor → credit purchase, visitor → repo clone [infra] — needs website traffic data
+
+#### 8B. Geo-Aware Cookie Consent (per saas-factory F19)
+
+- [ ] Build shared Kychee consent banner module (`kychee/site-modules/consent-banner/`) — single module reused across all Kychee product sites [code]
+- [ ] Implement geo detection via Cloudflare `CF-IPCountry` header (or CloudFront equivalent) [code]
+- [ ] Implement region rule: show banner for EU/UK/BR/CA/CH/California; hide for US (non-CA) and other permissive jurisdictions; fail-safe to show on detection failure [code]
+- [ ] Implement banner UI with three independent toggles (Essential/Analytics/Marketing), default-off for non-essential [frontend-visual]
+- [ ] Implement "Reject all" button equally prominent as "Accept all" [frontend-visual]
+- [ ] Implement consent state persistence in `localStorage` (`kychee_consent`) and conditional GA4/ad pixel loading [code]
+- [ ] Implement footer "Cookie settings" link to re-open panel [frontend-logic]
+- [ ] Implement 12-month re-prompt logic [code]
+- [ ] Integrate consent banner into kysigned.com (first product to use the shared module) [frontend-visual]
 
 ### Phase 9: Agent Interface `[both]` `AI`
 

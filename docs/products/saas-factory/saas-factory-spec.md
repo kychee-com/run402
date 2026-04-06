@@ -1,6 +1,6 @@
 ---
 product: saas-factory
-version: 1.6.0
+version: 1.7.0
 status: Draft
 type: product
 interfaces: [document]
@@ -270,6 +270,46 @@ Every Kychee SaaS product must be designed with a clear distinction between two 
 - "T2-reseller" = the app operates its own Stripe to resell run402 capacity as an end-user service
 - Never conflate T1 and T2 in product specs. Any ambiguity about which tier a payment belongs to must be resolved before implementation begins.
 
+### F19. Geo-Aware Cookie Consent
+
+Every Kychee product website must implement a **geo-aware cookie consent banner** that minimizes friction for users in jurisdictions where consent is not legally required, while staying compliant where it is.
+
+**The rule:** Show the banner only when required by the user's jurisdiction. Default-on for analytics (no banner) where the law permits. When the jurisdiction is unknown or detection fails, **fail-safe to compliant** — show the banner.
+
+**Required jurisdictions (banner MUST be shown):**
+- European Union member states (GDPR + ePrivacy Directive) — granular consent, default-off, equally prominent reject button
+- United Kingdom (UK GDPR + PECR) — same as EU
+- Brazil (LGPD) — same standards
+- Canada (PIPEDA) — informed consent required
+- Switzerland (revFADP)
+- California (CPRA) — show "Do Not Sell or Share" link in footer; full banner not strictly required but recommended for ad cookies
+
+**Permitted jurisdictions (no banner needed, default-on):**
+- United States (other than California) — federal law permits analytics and advertising cookies without banner
+- Most of Asia, Latin America, Africa (varies, conservative default = US-permissive)
+
+**Detection method (in order of preference):**
+1. **Cloudflare CF-IPCountry header** — free, reliable, available on Cloudflare-fronted sites
+2. **AWS CloudFront geo headers** — `cloudfront-viewer-country`
+3. **Lightweight server-side IP geolocation** — only if neither of the above is available
+4. **Browser language as a weak hint only** — never as the sole signal (a German-speaking user in Texas should not see the banner)
+5. **Fallback: show the banner** — when detection fails or returns unknown
+
+**Banner UX requirements (when shown):**
+- Three categories with independent toggles: Essential (always on, not toggleable), Analytics, Marketing
+- "Reject all" button MUST be as visually prominent and as easy to click as "Accept all"
+- Default state: all non-essential OFF (must be opt-IN, not opt-OUT)
+- Block GA4 and ad pixels until consent is recorded
+- Persist consent in `localStorage` as `kychee_consent` with shape `{essential, analytics, marketing, ts, region}`
+- "Cookie settings" link in the footer to re-open the panel
+- Re-prompt only when the consent is older than 12 months OR the cookie/policy categories change
+
+**Implementation:** This is a **shared module** built once and reused across all Kychee product sites. It lives in `kychee/site-modules/consent-banner/` (TBD) and is symlinked or imported into each product site. Per-product customization is limited to brand colors and the link to the product's specific Cookie Notice page.
+
+**Why geo-aware:** The default approach of "always show the banner" creates friction for the ~70% of kysigned visitors who arrive from the United States — and US users find consent banners annoying and unnecessary. Geo-targeting cuts banner exposure to the ~25% who actually need it (EU/UK/BR/CA), without sacrificing GDPR compliance for those users.
+
+**Privacy by design:** The geo detection itself does NOT use third-party tracking cookies. It uses CDN-provided IP-derived headers, which are processed server-side and never leave our infrastructure.
+
 ## Acceptance Criteria
 
 ### F1. Document Structure
@@ -388,6 +428,19 @@ Every Kychee SaaS product must be designed with a clear distinction between two 
 - [ ] Public repo that supports only wallet-native T2 includes an access control primitive (e.g., `allowed_senders` table) to prevent open-relay abuse by self-hosted forkers
 - [ ] Migration path to future run402 platform T2 is documented as an open question
 - [ ] Spec never conflates T1 and T2 — every payment flow is explicitly labeled with its tier
+
+### F19. Geo-Aware Cookie Consent
+- [ ] Banner is shown ONLY when the user is in EU, UK, Brazil, Canada, Switzerland, or California (or when location is unknown)
+- [ ] Banner is NOT shown for US (non-CA) and other permissive jurisdictions
+- [ ] Detection uses CDN headers (Cloudflare or CloudFront), never third-party tracking cookies
+- [ ] Failure to detect = show the banner (fail-safe to compliant)
+- [ ] When shown, banner has three independent toggles (Essential / Analytics / Marketing) with default-OFF for non-essential
+- [ ] "Reject all" button is as prominent and easy to click as "Accept all"
+- [ ] GA4 and ad pixels are NOT loaded until consent is recorded (in jurisdictions that require it)
+- [ ] Consent state persists in `localStorage` as `kychee_consent` with all required fields
+- [ ] "Cookie settings" link in footer re-opens the consent panel
+- [ ] Re-prompts user when consent is older than 12 months OR cookie categories change
+- [ ] Implementation is shared across all Kychee product sites (single module, per-product brand customization only)
 
 ## Constraints & Dependencies
 
