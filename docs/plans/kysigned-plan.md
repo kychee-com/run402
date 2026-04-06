@@ -246,7 +246,7 @@
 - [x] Draft Privacy Policy [manual] `AI -> HUMAN: Approve` — approved
 - [x] Draft Cookie/consent notice [manual] `AI -> HUMAN: Approve` — approved
 - [x] Draft Acceptable Use Policy [manual] `AI -> HUMAN: Approve` — approved
-- [!] Draft DPA (Data Processing Agreement) [manual] `AI -> HUMAN: Approve` — drafted. WAITING FOR: human approval
+- [x] Draft DPA (Data Processing Agreement) [manual] `AI -> HUMAN: Approve` — approved
 - [ ] Publish all legal docs on kysigned.com [infra] `AI`
 - [ ] Verify LEGAL.md in public repo is approved (from Phase 0) [manual] `HUMAN`
 
