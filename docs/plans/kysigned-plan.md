@@ -243,7 +243,7 @@
 ### Phase 7: Legal `AI -> HUMAN: Approve`
 
 - [x] Draft Terms of Service [manual] `AI -> HUMAN: Approve` — approved
-- [!] Draft Privacy Policy [manual] `AI -> HUMAN: Approve` — drafted. WAITING FOR: human approval
+- [x] Draft Privacy Policy [manual] `AI -> HUMAN: Approve` — approved
 - [!] Draft Cookie/consent notice [manual] `AI -> HUMAN: Approve` — drafted. WAITING FOR: human approval
 - [!] Draft Acceptable Use Policy [manual] `AI -> HUMAN: Approve` — drafted. WAITING FOR: human approval
 - [!] Draft DPA (Data Processing Agreement) [manual] `AI -> HUMAN: Approve` — drafted. WAITING FOR: human approval
