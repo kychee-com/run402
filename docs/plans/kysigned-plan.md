@@ -228,11 +228,11 @@
 - [x] Build FAQ page — 6 categories, 9 questions with honest answers [frontend-visual]
 - [x] Write how-to snippets for agent-assisted deployment (in SaaS vs Repo page + llms.txt) [manual]
 - [x] Create llms.txt — machine-readable product description with API, MCP, contract details [code]
-- [!] Write README.md for public repo [manual] `AI -> HUMAN: Approve` — drafted. WAITING FOR: human approval
+- [x] Write README.md for public repo [manual] `AI -> HUMAN: Approve` — approved
 
 ### Phase 7: Legal `AI -> HUMAN: Approve`
 
-- [!] Draft Terms of Service [manual] `AI -> HUMAN: Approve` — drafted in kysigned-service/legal/. WAITING FOR: human approval
+- [x] Draft Terms of Service [manual] `AI -> HUMAN: Approve` — approved
 - [!] Draft Privacy Policy [manual] `AI -> HUMAN: Approve` — drafted. WAITING FOR: human approval
 - [!] Draft Cookie/consent notice [manual] `AI -> HUMAN: Approve` — drafted. WAITING FOR: human approval
 - [!] Draft Acceptable Use Policy [manual] `AI -> HUMAN: Approve` — drafted. WAITING FOR: human approval
