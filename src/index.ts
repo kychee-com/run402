@@ -113,6 +113,18 @@ import { projectInfoSchema, handleProjectInfo } from "./tools/project-info.js";
 import { projectUseSchema, handleProjectUse } from "./tools/project-use.js";
 import { projectKeysSchema, handleProjectKeys } from "./tools/project-keys.js";
 
+// New tools — KMS contract wallets
+import { provisionContractWalletSchema, handleProvisionContractWallet } from "./tools/provision-contract-wallet.js";
+import { getContractWalletSchema, handleGetContractWallet } from "./tools/get-contract-wallet.js";
+import { listContractWalletsSchema, handleListContractWallets } from "./tools/list-contract-wallets.js";
+import { setRecoveryAddressSchema, handleSetRecoveryAddress } from "./tools/set-recovery-address.js";
+import { setLowBalanceAlertSchema, handleSetLowBalanceAlert } from "./tools/set-low-balance-alert.js";
+import { contractCallSchema, handleContractCall } from "./tools/contract-call.js";
+import { contractReadSchema, handleContractRead } from "./tools/contract-read.js";
+import { getContractCallStatusSchema, handleGetContractCallStatus } from "./tools/get-contract-call-status.js";
+import { drainContractWalletSchema, handleDrainContractWallet } from "./tools/drain-contract-wallet.js";
+import { deleteContractWalletSchema, handleDeleteContractWallet } from "./tools/delete-contract-wallet.js";
+
 const server = new McpServer({
   name: "run402",
   version: "1.3.0",
@@ -717,6 +729,78 @@ server.tool(
   "Enable or disable automatic email pack repurchase when credits drop below a threshold. Requires a saved Stripe payment method.",
   setAutoRechargeSchema,
   async (args) => handleSetAutoRecharge(args),
+);
+
+// ─── KMS contract wallets ──────────────────────────────────────────────────
+
+server.tool(
+  "provision_contract_wallet",
+  "Provision an AWS KMS-backed Ethereum wallet for signing smart-contract write transactions. Private keys never leave KMS. Cost: $0.04/day rental ($1.20/month) plus $0.000005 per contract call. Requires $1.20 in cash credit at creation (30 days of rent). Non-custodial.",
+  provisionContractWalletSchema,
+  async (args) => handleProvisionContractWallet(args),
+);
+
+server.tool(
+  "get_contract_wallet",
+  "Get a KMS contract wallet's metadata + live native-token balance + USD-micros (Chainlink-cached price).",
+  getContractWalletSchema,
+  async (args) => handleGetContractWallet(args),
+);
+
+server.tool(
+  "list_contract_wallets",
+  "List all KMS contract wallets owned by the project, including deleted ones.",
+  listContractWalletsSchema,
+  async (args) => handleListContractWallets(args),
+);
+
+server.tool(
+  "set_recovery_address",
+  "Set or clear the optional recovery address used for auto-drain on day-90 deletion of a KMS contract wallet.",
+  setRecoveryAddressSchema,
+  async (args) => handleSetRecoveryAddress(args),
+);
+
+server.tool(
+  "set_low_balance_alert",
+  "Set the low-balance threshold (in wei) for a KMS contract wallet. Email alerts fire when the wallet's native balance drops below this threshold.",
+  setLowBalanceAlertSchema,
+  async (args) => handleSetLowBalanceAlert(args),
+);
+
+server.tool(
+  "contract_call",
+  "Submit a smart-contract write call from a KMS wallet. The gateway encodes via viem, signs the digest via AWS KMS, and broadcasts. Idempotent on optional idempotency_key. Cost: chain gas at-cost + $0.000005 KMS sign fee per call.",
+  contractCallSchema,
+  async (args) => handleContractCall(args),
+);
+
+server.tool(
+  "contract_read",
+  "Read-only smart-contract call (view/pure functions). No signing, no gas, no billing — pure RPC convenience.",
+  contractReadSchema,
+  async (args) => handleContractRead(args),
+);
+
+server.tool(
+  "get_contract_call_status",
+  "Look up a previously submitted contract call by call_id. Returns lifecycle state (pending/confirmed/failed), block number, gas used, gas cost in USD-micros, receipt, and any error.",
+  getContractCallStatusSchema,
+  async (args) => handleGetContractCallStatus(args),
+);
+
+server.tool(
+  "drain_contract_wallet",
+  "Drain a KMS contract wallet's entire native-token balance to a destination address. Works on suspended wallets — the safety valve. Cost: chain gas + $0.000005 KMS sign fee.",
+  drainContractWalletSchema,
+  async (args) => handleDrainContractWallet(args),
+);
+
+server.tool(
+  "delete_contract_wallet",
+  "Schedule the KMS key for a contract wallet for deletion (7-day AWS minimum window). Refused if the wallet has on-chain balance ≥ dust — drain first.",
+  deleteContractWalletSchema,
+  async (args) => handleDeleteContractWallet(args),
 );
 
 const transport = new StdioServerTransport();

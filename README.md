@@ -95,6 +95,16 @@ npx run402-mcp
 | `tier_checkout` | Subscribe/renew/upgrade to a tier via Stripe (alternative to x402). |
 | `buy_email_pack` | Buy a $5 email pack (10,000 emails, never expire). |
 | `set_auto_recharge` | Enable/disable auto-recharge for email packs when credits run low. |
+| `provision_contract_wallet` | Provision an AWS KMS-backed Ethereum wallet ($0.04/day rental, $1.20 prepay required). |
+| `get_contract_wallet` | Get a KMS contract wallet's metadata + live native balance. |
+| `list_contract_wallets` | List KMS contract wallets owned by the project. |
+| `set_recovery_address` | Set/clear the optional recovery address for auto-drain on day-90 deletion. |
+| `set_low_balance_alert` | Set the low-balance alert threshold (in wei). |
+| `contract_call` | Submit a smart-contract write call (chain gas + $0.000005 KMS sign fee). |
+| `contract_read` | Read-only smart-contract call (free, no signing). |
+| `get_contract_call_status` | Look up a contract call by ID — status, gas, receipt. |
+| `drain_contract_wallet` | Drain native balance to a destination address (works on suspended wallets). |
+| `delete_contract_wallet` | Schedule the KMS key for deletion (refused if balance ≥ dust). |
 
 ## Client Configuration
 

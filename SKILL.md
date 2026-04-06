@@ -510,6 +510,54 @@ Enable or disable automatic $5 email pack repurchase when credits drop below a t
 set_auto_recharge(billing_account_id: "acct_...", enabled: true, threshold: 2000)
 ```
 
+## KMS contract wallets
+
+Provision AWS KMS-backed Ethereum wallets per project for signing smart-contract write transactions. Private keys never leave KMS — there is no export, ever. **Cost: $0.04/day rental ($1.20/month) per wallet, plus $0.000005 per contract call** (KMS sign fee). Wallet creation requires $1.20 in cash credit (30 days of rent prepaid). Chain gas billed at-cost. **Non-custodial** — see https://run402.com/humans/terms.html#non-custodial-kms-wallets.
+
+### provision_contract_wallet
+
+Provision a KMS wallet on `base-mainnet` or `base-sepolia`. Returns wallet metadata including the on-chain address and a `non_custodial_notice` field.
+
+```
+provision_contract_wallet(project_id: "prj_...", chain: "base-mainnet")
+```
+
+### get_contract_wallet, list_contract_wallets
+
+Read wallet metadata + live native-token balance + USD-micros (Chainlink price feed cached 5 min).
+
+### set_recovery_address
+
+Set the optional recovery address for auto-drain on day-90 deletion. Pass `null` to clear.
+
+### set_low_balance_alert
+
+Set a low-balance threshold in wei. Email alerts fire when the wallet's native balance drops below the threshold (24-hour cooldown per wallet).
+
+### contract_call
+
+Submit a write transaction. Cost: chain gas at-cost + $0.000005 KMS sign fee. Idempotent on `idempotency_key`.
+
+```
+contract_call(project_id: "prj_...", wallet_id: "cwlt_...", chain: "base-mainnet", contract_address: "0x...", abi_fragment: [...], function_name: "ping", args: [])
+```
+
+### contract_read
+
+Read-only call (free, no signing, no billing).
+
+### get_contract_call_status
+
+Get call lifecycle state, gas used, gas cost USD-micros, receipt, error.
+
+### drain_contract_wallet
+
+Drain native balance to a destination address. **Works on suspended wallets — the safety valve.** Cost: chain gas + $0.000005 KMS sign fee.
+
+### delete_contract_wallet
+
+Schedule the KMS key for deletion (7-day window). Refused if balance ≥ dust — drain first.
+
 ## Standard Workflow
 
 Follow this sequence to go from zero to a working database:

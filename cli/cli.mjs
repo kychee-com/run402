@@ -40,6 +40,7 @@ Commands:
   auth        Manage project user authentication (magic link, passwords, settings)
   sender-domain  Manage custom email sender domain (register, status, remove)
   billing     Email billing accounts, Stripe tier checkout, email packs
+  contracts   KMS contract wallets ($0.04/day rental + $0.000005/sign)
   agent       Manage agent identity (contact info)
 
 Run 'run402 <command> --help' for detailed usage of each command.
@@ -174,6 +175,11 @@ switch (cmd) {
   }
   case "billing": {
     const { run } = await import("./lib/billing.mjs");
+    await run(sub, rest);
+    break;
+  }
+  case "contracts": {
+    const { run } = await import("./lib/contracts.mjs");
     await run(sub, rest);
     break;
   }
