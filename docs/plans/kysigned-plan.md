@@ -4,7 +4,7 @@
 **Created:** 2026-04-04
 **Status:** Ready for Implementation
 **Spec:** docs/products/kysigned/kysigned-spec.md
-**Spec-Version:** 0.1.0
+**Spec-Version:** 0.2.0
 **Upstream References:** docs/products/saas-factory/saas-factory-spec.md (v1.4.0)
 **Source:** spec
 **Worktree:** none — product code lives in separate repos (C:\Workspace-Kychee\kysigned and C:\Workspace-Kychee\kysigned-service). run402 platform enhancements use a run402 worktree on a feature branch.
@@ -119,6 +119,12 @@
 - [x] Implement sequential signing logic — notify next signer only after previous completes [code] — tested
 - [!] Implement x402 payment middleware for Path 1/2 sender authentication [code] — WAITING FOR: run402 integration layer (Phase 4)
 - [!] Implement MPP payment middleware for Path 1/2 sender authentication [code] — WAITING FOR: run402 integration layer (Phase 4)
+- [ ] Implement `allowed_senders` table + migration (identity, identity_type, quota_per_month, added_at, added_by, note) [code]
+- [ ] Implement `allowed_senders` enforcement middleware on `POST /v1/envelope` — authenticated AND in allowlist, default-deny [code]
+- [ ] Implement admin API: add/remove/list allowed senders (requires operator auth) [code]
+- [ ] Implement per-sender monthly quota enforcement (NULL = unlimited) [code]
+- [ ] Implement pluggable enforcement strategy — hosted mode (credit-balance check) vs self-hosted mode (explicit allowlist) [code]
+- [ ] Add deployment warning in README and self-hosting guide: "configure allowed_senders before going live" [manual]
 
 #### 2C. Signing Engine
 

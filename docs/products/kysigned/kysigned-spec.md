@@ -1,11 +1,11 @@
 ---
 product: kysigned
-version: 0.1.0
+version: 0.2.0
 status: Draft
 type: product
 interfaces: [website, api, cli, mcp, smart-contract]
 created: 2026-04-04
-updated: 2026-04-04
+updated: 2026-04-06
 ---
 
 ## Overview
@@ -43,17 +43,45 @@ An envelope is one document (PDF) sent to one or more signers. The envelope is t
 - F1.9. Sender receives a list of individual signing links for each signer, deliverable through any channel (email, WhatsApp, SMS, Slack, etc.) in addition to automatic email delivery.
 - F1.10. **Sender as signer:** If the sender also needs to sign the document, they must add themselves to the signer list. There is no "pre-sign at creation" flow. The sender signs through the same process as every other signer (same link, same verification, same on-chain proof). This ensures a uniform audit trail — every signature event is identical regardless of who initiated the envelope. The UI should make this clear: when creating an envelope, prompt "Will you also sign this document?" and auto-add the sender to the signer list if yes.
 
-### F2. Sender Authentication `[both]` / `[service]`
+### F2. Sender Authentication & Access Control `[both]` / `[service]`
+
+**Context — T1 vs T2 payments:** run402 handles T1 (app-owner pays run402 for infrastructure). T2 (end-users pay the app operator) is **deferred** — run402 does not yet provide a billing layer that lets apps charge their users. Until T2 is available, each kysigned deployment must handle its own user charging (if any) AND gate access so random internet users can't drain the operator's run402 balance on gas and emails.
 
 Three sender paths, all MVP. Each serves a different audience.
 
-- F2.1. **Path 1 — Has wallet** `[both]`: Sender authenticates via x402 or MPP payment header. Wallet address is identity. No account, no signup, no API key.
+- F2.1. **Path 1 — Has wallet** `[both]`: Sender authenticates via x402 or MPP payment header. Wallet address is identity. No account, no signup, no API key. The wallet pays the x402/MPP fee directly — this is the closest thing to native T2 in the MVP.
 - F2.2. **Path 2 — Creates wallet** `[both]`: Same as Path 1 after wallet onboarding. Website guides user through wallet creation and funding. One-time setup.
-- F2.3. **Path 3 — No wallet (prepaid credits)** `[service]`: Sender pays via Stripe for prepaid credit packs. Identity is email address. Authentication via magic link (email-based, no password). Per-envelope cost deducted from credit balance.
+- F2.3. **Path 3 — No wallet (prepaid credits)** `[service]`: Sender pays via Stripe for prepaid credit packs. Identity is email address. Authentication via magic link (email-based, no password). Per-envelope cost deducted from credit balance. **Path 3 is kysigned's own billing layer — kysigned operates as a T2 reseller using its own Stripe integration, not run402's billing.**
 - F2.4. Path 3 magic link authentication: user enters email, receives a one-time login link, no password required. No "Sign in with Google" or social login.
-- F2.5. Path 3 checkout experience is branded as kysigned (not run402). If run402 payment infrastructure cannot support branded checkout, the service uses its own Stripe integration.
+- F2.5. Path 3 checkout experience is branded as kysigned (not run402). kysigned uses its own Stripe integration.
 - F2.6. All three paths produce the same on-chain proof. Path 3 uses a platform wallet to make on-chain recordings on the user's behalf. No second-class experience.
 - F2.7. Confirm that run402 supports magic link authentication for Path 3 identity. If not, implement as part of kysigned service.
+
+#### F2.8 Sender Access Control (`allowed_senders`) `[both]`
+
+**Critical:** Without this, a deployed kysigned instance is an open relay — anyone on the internet can call `POST /v1/envelope` and spend the operator's run402 balance on gas and emails. This feature is mandatory for every deployment.
+
+- F2.8.1. **Access control layer:** Every kysigned instance MUST have an authorization layer that gates the "create envelope" action. Authentication is provided by run402 (wallet, magic link, password, OAuth); kysigned adds authorization on top.
+- F2.8.2. **`allowed_senders` table:** Each instance stores a list of authorized sender identities — wallet addresses, email addresses, or role names. Schema:
+  ```
+  allowed_senders (
+    id UUID PRIMARY KEY,
+    identity TEXT NOT NULL,       -- wallet address or email
+    identity_type TEXT NOT NULL,  -- 'wallet' | 'email' | 'role'
+    quota_per_month INT,          -- optional: max envelopes/month, NULL = unlimited
+    added_at TIMESTAMPTZ,
+    added_by TEXT,
+    note TEXT                     -- human-readable label
+  )
+  ```
+- F2.8.3. **Enforcement:** `POST /v1/envelope` MUST check: (a) requester is authenticated, AND (b) requester identity is in `allowed_senders`. Requests failing either check return 403.
+- F2.8.4. **Default-deny:** An empty `allowed_senders` table means NO ONE can create envelopes. This prevents accidentally exposing a fresh deployment. The deployment wizard/docs must prompt the operator to add at least one sender.
+- F2.8.5. **Admin interface:** Operator has an admin UI and/or API to add, remove, and list allowed senders. Requires operator authentication (separate from sender authentication).
+- F2.8.6. **Optional per-sender quotas:** Each `allowed_senders` row can include a monthly envelope quota (e.g., "John Smith: 50/month"). When exceeded, envelope creation fails with a clear error. Quotas are optional — NULL means unlimited.
+- F2.8.7. **kysigned.com SaaS mode:** The hosted service at kysigned.com uses `allowed_senders` with a special rule: any user with sufficient Path 3 credit balance (or a funded wallet for Path 1/2) is effectively allowlisted for envelope creation. The gate is "has credits" rather than "on an explicit list". Implementation: the enforcement check is pluggable — hosted mode swaps the allowlist check for a credit-balance check.
+- F2.8.8. **Forked/self-hosted mode:** A forker (e.g., a law firm) deploys kysigned and maintains an explicit `allowed_senders` list (employees, contractors). No end-user payment — costs absorbed by the operator. The operator gets a clean internal tool.
+- F2.8.9. **Deployment documentation:** The README and self-hosting guide MUST prominently warn: "Before going live, configure your `allowed_senders` list or your instance is open to abuse. Default-deny is enforced, but you must explicitly add your first sender."
+- F2.8.10. **Future T2 path:** If/when run402 adds native end-user billing (T2), kysigned can optionally shift from Stripe-based Path 3 to using run402's billing layer, and the access control can shift from "explicit allowlist" to "any user with sufficient credits in the run402 customer account." This is a post-MVP enhancement; the `allowed_senders` feature stays in place as the generic authorization primitive.
 
 ### F3. Signing Experience `[both]`
 
@@ -251,6 +279,13 @@ Per the SaaS Factory spec (Chapter 6).
 - [ ] Path 3: Magic link login — user enters email, receives login link, clicks to authenticate. No password field. No social login.
 - [ ] Path 3: Envelope creation deducts from credit balance; fails with clear error if balance insufficient
 - [ ] Path 3: On-chain recording made via platform wallet is indistinguishable from Path 1/2 recording in verification results
+- [ ] `allowed_senders` enforcement: unauthenticated `POST /v1/envelope` returns 403
+- [ ] `allowed_senders` enforcement: authenticated requester NOT in allowlist returns 403
+- [ ] `allowed_senders` default-deny: empty allowlist blocks ALL envelope creation
+- [ ] Admin API: operator can add, remove, and list allowed senders
+- [ ] Per-sender monthly quota: exceeding quota returns a clear error
+- [ ] kysigned.com SaaS mode: users with sufficient credits bypass explicit allowlist (credit-balance check)
+- [ ] Self-hosted mode: explicit allowlist with no credit check (internal use)
 
 ### F3. Signing Experience
 - [ ] Signer clicks email link; signing page renders PDF with signature fields highlighted
@@ -363,7 +398,7 @@ Per the SaaS Factory spec (Chapter 6).
 
 ## Constraints & Dependencies
 
-- **run402 platform:** kysigned runs on run402 infrastructure. The prepaid credit/paycard model (buy credits, deduct per API call) may require new run402 platform capabilities. If not available, kysigned service falls back to its own Stripe integration.
+- **run402 platform:** kysigned runs on run402 infrastructure. run402 handles T1 (app-owner pays for infrastructure). T2 (end-users pay the app) is **deferred** — run402 does not currently provide end-user billing. For MVP, kysigned.com uses its own Stripe integration for Path 3 billing. Self-hosted forkers get the `allowed_senders` access control and handle user charging separately (or not at all, for internal use).
 - **run402 magic link auth:** Path 3 requires magic link authentication. Must confirm run402 supports this; if not, implement within kysigned service.
 - **run402 email service:** Repo forkers rely on run402 email service (paid) or bring their own. Email deliverability reputation is critical — signing requests in spam is product-killing.
 - **run402 custom domains:** Repo forkers can use subdomains (acme-sign.run402.com) or custom domains (acme-sign.com). Must confirm run402 supports custom domain mapping.
@@ -389,4 +424,4 @@ Per the SaaS Factory spec (Chapter 6).
 13. **Platform wallet security** — key management strategy for the server-side wallet that makes Path 3 on-chain recordings.
 14. **Credit pack tiers and pricing** — optimize for conversion vs margin after gas costs are known.
 15. **Mobile wallet signing UX** — does `eth_signTypedData_v4` work reliably in mobile wallet browsers?
-17. **Future: run402 payment collection for server builders** — could run402 offer Stripe-based payment collection so repo forkers can charge their own users? Not kysigned scope, but a platform idea that benefits all SaaS-alternative products.
+17. **Future: run402 T2 payment collection (DEFERRED)** — could run402 offer Stripe-based payment collection so repo forkers can charge their own users? Decision: **deferred post-MVP.** For now, kysigned.com handles its own Path 3 Stripe billing, and forkers rely on `allowed_senders` to gate access (they absorb run402 costs for their own authorized users). If run402 T2 is implemented later, kysigned can optionally migrate Path 3 to it; the `allowed_senders` feature stays as the generic authorization primitive.
