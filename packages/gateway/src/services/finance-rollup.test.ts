@@ -194,6 +194,34 @@ describe("finance-rollup — getRevenueBreakdownByProject", () => {
     assert.equal(result.unattributed_usd_micros, 0);
     assert.equal(result.total_usd_micros, 0);
   });
+
+  it("filters out unnamed projects with zero revenue (dashboard noise reduction)", async () => {
+    const { query } = makeMockQuery([
+      {
+        rows: [
+          // Keep: named project with revenue
+          { project_id: "proj_a", project_name: "kysigned", tier_fees: "5000000", email_packs: "0", kms_rental: "0", kms_sign_fees: "0", per_call_sku: "0", total: "5000000" },
+          // Drop: unnamed + zero total (noise)
+          { project_id: "proj_b", project_name: "(unnamed)", tier_fees: "0", email_packs: "0", kms_rental: "0", kms_sign_fees: "0", per_call_sku: "0", total: "0" },
+          { project_id: "proj_c", project_name: null, tier_fees: "0", email_packs: "0", kms_rental: "0", kms_sign_fees: "0", per_call_sku: "0", total: "0" },
+          { project_id: "proj_d", project_name: "", tier_fees: "0", email_packs: "0", kms_rental: "0", kms_sign_fees: "0", per_call_sku: "0", total: "0" },
+          // Keep: named project even with zero revenue (operator explicitly named it — might be running cost-only)
+          { project_id: "proj_e", project_name: "test-project", tier_fees: "0", email_packs: "0", kms_rental: "0", kms_sign_fees: "0", per_call_sku: "0", total: "0" },
+          // Keep: unnamed project with revenue (rare, but the revenue matters)
+          { project_id: "proj_f", project_name: "(unnamed)", tier_fees: "100000", email_packs: "0", kms_rental: "0", kms_sign_fees: "0", per_call_sku: "0", total: "100000" },
+        ],
+      },
+      { rows: [{ unattributed_usd_micros: "0" }] },
+    ]);
+    const result = await getRevenueBreakdownByProject(query, {
+      start: new Date("2026-03-07T00:00:00Z"),
+      end: new Date("2026-04-06T00:00:00Z"),
+    });
+    const keptIds = result.projects.map((p) => p.project_id);
+    assert.deepEqual(keptIds, ["proj_a", "proj_e", "proj_f"], "should drop 3 unnamed-zero rows, keep 3");
+    // Reconciliation invariant still holds (zero totals don't affect the sum)
+    assert.equal(result.total_usd_micros, 5_100_000);
+  });
 });
 
 describe("finance-rollup — getDirectCostByProject", () => {

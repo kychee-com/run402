@@ -296,6 +296,26 @@ tr.unattrib td{color:#4B5563;font-style:italic}
     b.classList.toggle("active", b.getAttribute("data-window") === currentWindow);
   });
 
+  function explainRefreshError(err) {
+    // Map backend error shapes to human-actionable messages.
+    var awsMsg = (err && err.aws_error) || "";
+    var code = err && err.error;
+    if (/not enabled for cost explorer/i.test(awsMsg) || code === "cost_explorer_unavailable" && /not enabled/i.test(awsMsg)) {
+      return "AWS Cost Explorer is not enabled on this AWS account.\\n\\n" +
+        "Enable it one time at:\\n" +
+        "https://console.aws.amazon.com/cost-management/home\\n\\n" +
+        "After enabling, wait ~24 hours for AWS to populate initial data, then click Refresh again. " +
+        "Until then, the Cost and Margin cards will stay blank — Revenue and the per-project breakdown still work.";
+    }
+    if (code === "rate_limited") {
+      return "Rate limit: Cost Explorer refresh is limited to once per 60 seconds. " + (err.message || "");
+    }
+    if (code === "cost_explorer_unavailable") {
+      return "AWS Cost Explorer is unavailable.\\n\\nAWS returned: " + awsMsg;
+    }
+    return "Refresh failed: " + (err.message || code || "unknown error");
+  }
+
   document.getElementById("refresh-costs-btn").addEventListener("click", async function() {
     this.disabled = true;
     this.textContent = "Refreshing…";
@@ -303,7 +323,7 @@ tr.unattrib td{color:#4B5563;font-style:italic}
       var res = await fetch("/admin/api/finance/refresh-costs", { method: "POST", credentials: "same-origin" });
       if (!res.ok) {
         var err = await res.json();
-        alert("Refresh failed: " + (err.message || err.error));
+        alert(explainRefreshError(err));
       } else {
         await loadAll();
       }

@@ -199,16 +199,23 @@ export async function getRevenueBreakdownByProject(
     [range.start, range.end],
   );
 
-  const projects: ProjectRevenueRow[] = perProjectResult.rows.map((r) => ({
-    project_id: r.project_id,
-    project_name: r.project_name,
-    tier_fees_usd_micros: Number(r.tier_fees),
-    email_packs_usd_micros: Number(r.email_packs),
-    kms_rental_usd_micros: Number(r.kms_rental),
-    kms_sign_fees_usd_micros: Number(r.kms_sign_fees),
-    per_call_sku_usd_micros: Number(r.per_call_sku),
-    total_usd_micros: Number(r.total),
-  }));
+  const projects: ProjectRevenueRow[] = perProjectResult.rows
+    .map((r) => ({
+      project_id: r.project_id,
+      project_name: r.project_name,
+      tier_fees_usd_micros: Number(r.tier_fees),
+      email_packs_usd_micros: Number(r.email_packs),
+      kms_rental_usd_micros: Number(r.kms_rental),
+      kms_sign_fees_usd_micros: Number(r.kms_sign_fees),
+      per_call_sku_usd_micros: Number(r.per_call_sku),
+      total_usd_micros: Number(r.total),
+    }))
+    // Drop noise: unnamed projects with zero revenue. Keep named-but-zero (operator
+    // deliberately named them) and unnamed-but-with-revenue (the revenue matters).
+    .filter((p) => {
+      const isUnnamed = p.project_name == null || p.project_name === "" || p.project_name === "(unnamed)";
+      return !(isUnnamed && p.total_usd_micros === 0);
+    });
   const unattributedRaw = unattributedResult.rows[0]?.unattributed_usd_micros;
   const unattributed_usd_micros = unattributedRaw == null ? 0 : Number(unattributedRaw);
   const projectSum = projects.reduce((s, p) => s + p.total_usd_micros, 0);
