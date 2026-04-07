@@ -1,6 +1,6 @@
 ---
 product: saas-factory
-version: 1.11.0
+version: 1.12.0
 status: Draft
 type: product
 interfaces: [document]
@@ -182,9 +182,10 @@ The factory doc prescribes this lifecycle for each SaaS-killer product:
 5. Run `/brainstorm` with factory doc as reference — explores strategy, fills DECIDE items
 6. Run `/spec` with factory doc as reference — specifies all deliverables
 7. Run `/plan` with factory doc + spec as reference — decomposes all remaining tasks
-8. Run `/implement` — executes the plan (factory doc no longer needed)
-9. Run `/validate` — tests against spec
-10. Human final review — legal sign-off, collateral approval, launch go/no-go
+8. **Bootstrap the product on run402** — provision the run402 project (ops EOA wallet → Secrets Manager → faucet → tier subscription → SIWX project create → placeholder deploy → claim `<product>.run402.com` subdomain → register `<product>.com` as a custom sender domain). See **F22. run402 Project Bootstrap** for the canonical pattern.
+9. Run `/implement` — executes the plan (factory doc no longer needed)
+10. Run `/validate` — tests against spec
+11. Human final review — legal sign-off, collateral approval, launch go/no-go
 
 **Template versioning:** The product copy is a snapshot — like a printed page. Teams mark checkboxes and fill DECIDE items on their copy, but never edit the template content itself. If lessons learned require changing the template, updates go to the master copy in the run402 repo only. Future products get the improved master. In-progress products are not retroactively updated — if a critical improvement is needed, the product re-copies from master and re-fills.
 
@@ -448,6 +449,41 @@ If the spec is "internal only", the plan omits the `Ship & Verify` phase and add
 
 **Shipping Surfaces apply to ALL Kychee products without exception.** Even an internal-only library still gets the section — it just contains "internal only — no external surface".
 
+### F22. run402 Project Bootstrap
+
+Every saas-factory product is **deployed on run402** (eat-our-own-dogfood). Each product needs the same set of run402 resources before any service code can run, and the provisioning of those resources is **a discrete, idempotent, scriptable step** that should be automated per product.
+
+**Why this is its own section:** the bootstrap mixes AWS Secrets Manager writes, x402 payments, SIWX-signed API calls, and DNS-adjacent registrations. Doing it ad-hoc by hand for every product is error-prone and produces drift. A script captures the right sequence, the idempotency invariants, and the gotchas (SIWX nonce format, faucet rate limit, sender-domain wallet scoping) so the second/third/Nth product takes 60 seconds instead of 60 minutes.
+
+**Required steps (in order, idempotent):**
+
+1. **Generate or load the ops EOA wallet** — fresh `viem` private key, written ONLY to AWS Secrets Manager as `<product>/ops-wallet-key`. Address stored separately as `<product>/ops-wallet-address` so lookups don't require pulling the private key. Private key never on disk, never printed, never logged.
+2. **Check tier status** via SIWX (free) **before** funding/subscribing. If a tier is already active, skip steps 3 and 4 — this is what makes the script safe to re-run against the run402 faucet's 1-per-IP-per-24h rate limit.
+3. **Fund via the run402 testnet faucet** — `POST /faucet/v1` for 0.25 Base Sepolia USDC. Wait for the on-chain receipt before proceeding (RPC propagation can lag — block on the receipt, not on a balance read).
+4. **Subscribe to prototype tier** via x402 — `POST /tiers/v1/prototype` with the `@x402/fetch` payment client (free, 7-day testnet lease).
+5. **Create the run402 project** via SIWX — `POST /projects/v1` with `{ "name": "<product>" }`. Persist the returned `project_id`, `anon_key`, and `service_key` as `<product>/run402-project-id`, `<product>/run402-anon-key`, `<product>/run402-service-key` in Secrets Manager. **SIWX nonce must be alphanumeric and length > 8** — `crypto.randomUUID()` is REJECTED by the SIWE spec because of hyphens; use `crypto.randomBytes(16).toString('hex')`.
+6. **Deploy a placeholder site** — `POST /deployments/v1` with one HTML file (`index.html` containing a "coming soon" page). Subdomain claim requires a `deployment_id`, so this happens before step 7.
+7. **Claim the `<product>` subdomain** — `POST /subdomains/v1` with `{ "name": "<product>", "deployment_id": "<from step 6>" }`. Idempotent — auto-reassigns to future deployments. The product is now reachable at `https://<product>.run402.com`.
+8. **Register `<product>.com` as a custom sender domain** — `POST /email/v1/domains`. Handle the **409 "Domain is registered by another wallet"** case explicitly: it usually means a prior dev/QA test left a stale row. The fix is to query `internal.email_domains` via the admin SQL endpoint (`POST /projects/v1/admin/<own-project>/sql` runs against the gateway pool, which owns the table), find the orphan row, and `DELETE FROM internal.email_domains WHERE domain = '<product>.com' AND project_id = '<orphan>'`. The new wallet can then re-register cleanly. **Bonus:** if the orphan registration was already verified, the existing DKIM CNAMEs in the product's Route 53 zone are still valid — SES's `CreateEmailIdentity` is idempotent and returns the same DKIM tokens, so the new registration should auto-verify on the first GET poll with **zero DNS changes**.
+9. **STOP and report** the DNS records (DKIM CNAMEs + SPF + DMARC) the script returned. Do NOT auto-write to Route 53 — DNS changes on the production apex are a separate human-approved step.
+
+**Idempotency invariants every bootstrap script MUST satisfy:**
+- Re-running the script with all secrets present should make zero state-changing API calls
+- The wallet generation step is gated on the absence of `<product>/ops-wallet-key`
+- The faucet/subscribe steps are gated on tier-status check
+- The project creation step is gated on the absence of all three project secrets
+- The sender-domain step uses 409→GET fallback to surface current state without creating duplicates
+
+**Reference implementation:** [`kysigned-service/scripts/bootstrap-run402.ts`](https://github.com/kychee-com/kysigned-service/blob/main/scripts/bootstrap-run402.ts) is the canonical example. Future products copy + adapt: change the `<product>` and `<product>.com` constants, the secret namespace, the placeholder HTML branding, and the project name. Everything else is portable. (When the third product needs the same script, that's the trigger to extract a generic `saas-factory-bootstrap` package — until then, copy + adapt is faster than premature abstraction.)
+
+**Outcome of a successful bootstrap:**
+- Live placeholder site at `https://<product>.run402.com`
+- `<product>.com` registered + verified as a custom sender domain on the project
+- All credentials in `<product>/*` namespace in AWS Secrets Manager (none on disk)
+- Project ready for `/contracts/v1/wallets` (KMS contract wallet provisioning, when needed for production signing — see F18 / DD-3 / kysigned Phase 13)
+- Project ready for `POST /mailboxes/v1` to start sending email from `<slug>@<product>.com`
+- Project ready for the actual product deployment via `POST /deployments/v1` (the placeholder gets replaced)
+
 ## Acceptance Criteria
 
 ### F1. Document Structure
@@ -609,6 +645,16 @@ If the spec is "internal only", the plan omits the `Ship & Verify` phase and add
 - [ ] Internal-only specs omit the `Ship & Verify` phase and document the rationale in a Design Decision
 - [ ] No task is marked done if it produces output that must reach users via a shipping surface and no `[ship]` task exists
 - [ ] Smoke checks are run from a clean working directory (not the repo or worktree) for verification
+
+### F22. run402 Project Bootstrap
+- [ ] F11 lifecycle includes a discrete "Bootstrap on run402" step
+- [ ] Every product ships a `<product>-service/scripts/bootstrap-run402.ts` script (or equivalent) that performs the 9 steps idempotently
+- [ ] The script writes the ops EOA private key ONLY to AWS Secrets Manager under `<product>/ops-wallet-key` (never on disk, never printed)
+- [ ] The script checks tier status via SIWX BEFORE calling the faucet (avoids the 1-per-IP-per-24h rate limit on re-runs)
+- [ ] The script uses `crypto.randomBytes(16).toString('hex')` for SIWX nonces, NOT `crypto.randomUUID()` (UUIDs are rejected by SIWE because of hyphens)
+- [ ] The script handles the 409 "Domain registered by another wallet" case on `POST /email/v1/domains` by surfacing the gateway-pool admin SQL release pattern
+- [ ] The script STOPS before writing DNS records to Route 53 — DNS changes on the production apex are a separate human-approved step
+- [ ] kysigned-service/scripts/bootstrap-run402.ts is called out as the canonical reference implementation in F22
 
 ## Constraints & Dependencies
 
