@@ -92,6 +92,34 @@ Available on ClawHub. Wraps `run402-mcp` and teaches your agent database provisi
 openclaw install run402
 ```
 
+## Admin Dashboard (internal, `@kychee.com` only)
+
+The gateway exposes an admin dashboard at `https://api.run402.com/admin` for Kychee operators. Gated by Google OAuth restricted to `@kychee.com`. Not exposed via MCP or CLI.
+
+### Admin pages
+
+| Page | URL | Purpose |
+|------|-----|---------|
+| Dashboard | `/admin` | Top-level stats: projects, API calls, storage, faucet balance |
+| Projects | `/admin/projects` | Table of all projects |
+| Subdomains | `/admin/subdomains` | Table of all custom subdomains |
+| **Finance** | `/admin/finance` | **Revenue / cost / margin breakdown by project × stream, plus per-category cost with AWS Cost Explorer drift detection. Supports 24h/7d/30d/90d windows and CSV export.** |
+| Project detail | `/admin/project/:id` | Per-project finance cards (revenue, direct cost, direct margin) + link to wallet activity |
+| Wallet detail | `/admin/wallet/:address` | Per-wallet activity (projects owned, subdomains, topups, ledger) |
+| llms.txt analytics | `/admin/llms-txt` | CloudFront access-log analytics |
+
+### Admin Finance API endpoints
+
+All under the existing OAuth gate. Request `Cookie: run402_admin=...` signed with `ADMIN_SESSION_SECRET`.
+
+- `GET /admin/api/finance/summary?window=24h|7d|30d|90d` — platform KPI cards (revenue, cost, margin, cache_age)
+- `GET /admin/api/finance/revenue?window=...` — per-project revenue breakdown (tier fees, email packs, KMS rental, KMS sign fees, per-call SKU) + unattributed bucket
+- `GET /admin/api/finance/costs?window=...` — per-category cost breakdown with `source: "counter" | "cost_explorer"` + drift reconciliation
+- `GET /admin/api/finance/project/:id?window=...` — per-project finance data for the augmented project detail page
+- `GET /admin/api/finance/export?scope=platform|project&id=...&window=...&format=csv` — multi-section CSV export
+- `POST /admin/api/finance/refresh-costs` — triggers immediate AWS Cost Explorer pull (rate-limited to 1/60s)
+- `POST /admin/api/finance/refresh-pricing` — triggers AWS Pricing API pull to refresh the `cost_rates` table
+
 ## Development (Contributing to This Repo)
 
 ### Lint & Type Check

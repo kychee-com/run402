@@ -224,7 +224,7 @@ router.get("/admin/api/wallet/:address", asyncHandler(async (req: Request, res: 
   });
 }));
 
-// ---- Project → wallet redirect ----
+// ---- Project detail page (augmented with finance cards) ----
 
 router.get("/admin/project/:id", asyncHandler(async (req: Request, res: Response) => {
   const session = getSession(req);
@@ -232,15 +232,15 @@ router.get("/admin/project/:id", asyncHandler(async (req: Request, res: Response
 
   const projectId = req.params.id as string;
   const result = await pool.query(
-    sql(`SELECT wallet_address FROM internal.projects WHERE id = $1`),
+    sql(`SELECT id, name, wallet_address, tier, status, created_at FROM internal.projects WHERE id = $1`),
     [projectId],
   );
-  const wallet = result.rows[0]?.wallet_address;
-  if (!wallet) {
+  const project = result.rows[0] as { id: string; name: string; wallet_address: string | null; tier: string; status: string; created_at: Date } | undefined;
+  if (!project) {
     res.status(404).type("html").send(`<!DOCTYPE html><html><head><title>Not Found</title></head><body style="background:#0A0A0F;color:#E0E0E0;font-family:system-ui;display:flex;align-items:center;justify-content:center;min-height:100vh"><div style="text-align:center"><h1 style="color:#FF5050">Project not found</h1><p style="color:#9CA3AF">${escHtml(projectId)}</p><a href="/admin" style="color:#00FF9F">Back to dashboard</a></div></body></html>`);
     return;
   }
-  res.redirect(`/admin/wallet/${wallet}#${projectId}`);
+  res.type("html").send(projectDetailPage(session.name, project));
 }));
 
 // ---- Wallet detail page ----
@@ -491,6 +491,177 @@ function render(d){
 }
 
 load();
+</script>
+</body>
+</html>`;
+}
+
+// ---- Project detail page with finance cards (Phase 10 augmentation) ----
+
+function projectDetailPage(
+  userName: string,
+  project: { id: string; name: string; wallet_address: string | null; tier: string; status: string; created_at: Date },
+): string {
+  const walletLink = project.wallet_address
+    ? `<a href="/admin/wallet/${escHtml(project.wallet_address)}" class="wallet-link">View wallet activity →</a>`
+    : `<span style="color:#4B5563">(no wallet address)</span>`;
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Project ${escHtml(project.name)} — Run402 Admin</title>
+<link rel="icon" href="https://run402.com/favicon.svg" type="image/svg+xml">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{background:#0A0A0F;color:#E0E0E0;font-family:system-ui,sans-serif;min-height:100vh}
+.wrap{max-width:1200px;margin:0 auto;padding:40px 24px}
+header{display:flex;align-items:center;justify-content:space-between;margin-bottom:32px}
+h1{font-size:22px;color:#fff}
+h1 .g{color:#00FF9F}
+.nav{display:flex;align-items:center;gap:12px;font-size:13px;color:#9CA3AF}
+.nav a{color:#9CA3AF;text-decoration:none;padding:6px 12px;border:1px solid #1E1E2A;border-radius:6px;transition:border-color .2s}
+.nav a:hover{border-color:#00FF9F;color:#00FF9F}
+
+.project-header{background:#12121A;border:1px solid #1E1E2A;border-radius:12px;padding:20px 24px;margin-bottom:24px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px}
+.project-name{font-size:20px;color:#fff;font-weight:600}
+.project-meta{font-size:12px;color:#9CA3AF;margin-top:4px}
+.project-meta span{margin-right:14px}
+.wallet-link{color:#00FF9F;text-decoration:none;font-size:13px;padding:8px 14px;border:1px solid #00FF9F;border-radius:6px;transition:background .15s}
+.wallet-link:hover{background:rgba(0,255,159,0.1)}
+
+.window-selector{display:flex;gap:8px;margin-bottom:20px}
+.window-btn{background:#12121A;border:1px solid #1E1E2A;color:#9CA3AF;padding:6px 14px;border-radius:6px;cursor:pointer;font-size:12px;font-family:inherit;transition:all .15s}
+.window-btn:hover{border-color:#00FF9F}
+.window-btn.active{background:#00FF9F;color:#0A0A0F;border-color:#00FF9F;font-weight:600}
+
+.kpi-row{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:20px}
+.kpi{background:#12121A;border:1px solid #1E1E2A;border-radius:12px;padding:24px}
+.kpi .label{font-size:12px;color:#4B5563;text-transform:uppercase;letter-spacing:.8px;margin-bottom:8px}
+.kpi .value{font-size:28px;font-weight:700;font-variant-numeric:tabular-nums;color:#fff}
+.kpi .value.positive{color:#00FF9F}
+.kpi .value.negative{color:#FF5050}
+.kpi .value.unknown{color:#4B5563}
+
+.note{background:rgba(99,102,241,0.05);border:1px solid rgba(99,102,241,0.15);color:#9CA3AF;padding:12px 16px;border-radius:8px;font-size:12px;margin-bottom:20px}
+.export-btn{background:transparent;border:1px solid #1E1E2A;color:#9CA3AF;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:12px;font-family:inherit;transition:all .15s;margin-left:12px}
+.export-btn:hover{border-color:#00FF9F;color:#00FF9F}
+
+.loading{color:#4B5563;font-size:13px;text-align:center;padding:40px}
+@media(max-width:700px){.kpi-row{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1><span class="g">run402</span> project</h1>
+    <div class="nav">
+      <a href="/admin">Dashboard</a>
+      <a href="/admin/projects">Projects</a>
+      <a href="/admin/subdomains">Subdomains</a>
+      <a href="/admin/finance">Finance</a>
+      <a href="/admin/llms-txt">llms.txt</a>
+      <span>${escHtml(userName)}</span>
+      <a href="/admin/logout">Logout</a>
+    </div>
+  </header>
+
+  <div class="project-header">
+    <div>
+      <div class="project-name">${escHtml(project.name || "(unnamed)")}</div>
+      <div class="project-meta">
+        <span><code style="color:#9CA3AF;font-family:monospace">${escHtml(project.id)}</code></span>
+        <span>tier: <strong>${escHtml(project.tier)}</strong></span>
+        <span>status: <strong>${escHtml(project.status)}</strong></span>
+        <span>created: ${escHtml(new Date(project.created_at).toLocaleDateString())}</span>
+      </div>
+    </div>
+    ${walletLink}
+  </div>
+
+  <div class="window-selector" id="window-selector">
+    <button class="window-btn" data-window="24h">24h</button>
+    <button class="window-btn" data-window="7d">7d</button>
+    <button class="window-btn active" data-window="30d">30d</button>
+    <button class="window-btn" data-window="90d">90d</button>
+    <button class="export-btn" id="export-project-btn">Export CSV</button>
+  </div>
+
+  <div class="kpi-row">
+    <div class="kpi finance-revenue-card"><div class="label">Project Revenue</div><div class="value" id="kpi-revenue">—</div></div>
+    <div class="kpi finance-cost-card"><div class="label">Project Direct Cost</div><div class="value" id="kpi-cost">—</div></div>
+    <div class="kpi finance-margin-card"><div class="label">Project Direct Margin</div><div class="value" id="kpi-margin">—</div></div>
+  </div>
+
+  <div class="note">
+    Direct costs only. Shared infrastructure overhead (RDS, ECS Fargate, ALB, CloudFront, etc.) is not allocated to individual projects. See the <a href="/admin/finance" style="color:#00FF9F">Finance tab</a> for platform totals.
+  </div>
+</div>
+
+<script>
+(function() {
+  var projectId = ${JSON.stringify(project.id)};
+  var currentWindow = "30d";
+
+  function fmtUsd(micros) {
+    if (micros === null || micros === undefined) return "—";
+    var dollars = Number(micros) / 1_000_000;
+    return "$" + dollars.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+
+  function setKpi(id, micros, isMargin) {
+    var el = document.getElementById(id);
+    if (micros === null || micros === undefined) {
+      el.textContent = "—";
+      el.className = "value unknown";
+      return;
+    }
+    el.textContent = fmtUsd(micros);
+    if (isMargin) {
+      el.className = "value " + (Number(micros) > 0 ? "positive" : Number(micros) < 0 ? "negative" : "unknown");
+    } else {
+      el.className = "value";
+    }
+  }
+
+  async function loadFinance() {
+    try {
+      var res = await fetch("/admin/api/finance/project/" + projectId + "?window=" + currentWindow, { credentials: "same-origin" });
+      if (res.status === 404) {
+        document.getElementById("kpi-revenue").textContent = "no data";
+        document.getElementById("kpi-cost").textContent = "no data";
+        document.getElementById("kpi-margin").textContent = "no data";
+        return;
+      }
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      var data = await res.json();
+      setKpi("kpi-revenue", data.revenue_usd_micros, false);
+      setKpi("kpi-cost", data.direct_cost_usd_micros, false);
+      setKpi("kpi-margin", data.direct_margin_usd_micros, true);
+    } catch (e) {
+      document.getElementById("kpi-revenue").textContent = "error";
+      document.getElementById("kpi-cost").textContent = "error";
+      document.getElementById("kpi-margin").textContent = "error";
+    }
+  }
+
+  document.getElementById("window-selector").addEventListener("click", function(e) {
+    if (e.target.tagName !== "BUTTON") return;
+    var win = e.target.getAttribute("data-window");
+    if (!win) return;
+    currentWindow = win;
+    document.querySelectorAll(".window-btn").forEach(function(b) {
+      b.classList.toggle("active", b === e.target);
+    });
+    loadFinance();
+  });
+
+  document.getElementById("export-project-btn").addEventListener("click", function() {
+    location.href = "/admin/api/finance/export?scope=project&id=" + encodeURIComponent(projectId) + "&window=" + currentWindow + "&format=csv";
+  });
+
+  loadFinance();
+})();
 </script>
 </body>
 </html>`;

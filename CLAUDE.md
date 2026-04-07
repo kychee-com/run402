@@ -19,6 +19,36 @@ AWS_PROFILE=kychee aws ecs update-service --cluster <cluster> --service <svc> --
 
 **Pricing knobs (do not change without updating ALL pricing surfaces — see Phase 16 of openspec/changes/kms-wallet-contracts):** $0.04/day rental (`KMS_WALLET_RENT_USD_MICROS_PER_DAY = 40_000` in `packages/gateway/src/services/contract-wallets.ts`), $0.000005/call sign fee (`KMS_SIGN_FEE_USD_MICROS = 5` in `services/contract-call-reconciler.ts`), 30-day prepay = $1.20 (`PREPAY_REQUIRED_USD_MICROS` in `routes/contracts.ts`).
 
+## Admin Finance dashboard
+
+The `/admin/finance` tab is an internal reporting view for `@kychee.com` operators. It shows platform revenue, cost, and margin, plus per-project breakdowns and per-category cost with drift detection.
+
+**Tables:**
+- `internal.cost_rates` — pricing constants used for counter-derived direct cost (SES, Lambda, S3, KMS). Seeded by v1.21 migration from hardcoded defaults.
+- `internal.aws_cost_cache` — daily-refreshed AWS Cost Explorer response cache, keyed by `(day, service_category)`.
+
+**Background job:**
+The `runDailyCostFetcher()` function pulls from AWS Cost Explorer once per 24 hours. It runs on the same scheduler tick as the KMS contract-call reconciler. Guarded by `latestFetchedAt < NOW() - 24h`; earlier runs are no-ops. Calls `ce:GetCostAndUsage` with `DAILY` granularity grouped by `SERVICE`, maps each AWS service name to a run402 category via the hardcoded map in `packages/gateway/src/services/aws-cost-fetcher.ts`.
+
+**Manual operator actions (from the Finance tab UI):**
+- **Refresh now** — hits `POST /admin/api/finance/refresh-costs`, bypasses the 24h guard, rate-limited to 1 call per 60 seconds per gateway instance. Use after a deploy to populate an empty cache.
+- **Update pricing from AWS** — hits `POST /admin/api/finance/refresh-pricing`, calls the AWS Pricing API for each cost category (SES, Lambda request, Lambda GB-sec, S3, KMS monthly, KMS sign), writes changes back to `internal.cost_rates`. Use when AWS raises a rate and the drift warning banner appears.
+
+**Drift warning:**
+When counter-derived direct cost (computed from our usage counters × `cost_rates`) differs from AWS Cost Explorer's billed total for the same categories (KMS, SES, Lambda, S3) by more than 5%, a yellow warning banner appears on the Finance tab. The fix is usually to click "Update pricing from AWS". If the drift persists after refreshing, investigate usage counter accuracy (the metering middleware in `packages/gateway/src/middleware/metering.ts`).
+
+**Cost Explorer unavailable:**
+The Finance tab gracefully degrades — the cost and margin KPI cards show "—" with a "Cost Explorer cache empty — refresh below" hint. Revenue is still displayed (it comes from our own ledger, not AWS). Common causes: missing IAM permission (`ce:GetCostAndUsage`), Cost Explorer API outage, or freshly-deployed gateway with no cached data yet (the 24h cron hasn't fired).
+
+**Adding a new cost category to the service-to-category mapping:**
+Edit `SERVICE_TO_CATEGORY` in `packages/gateway/src/services/aws-cost-fetcher.ts`. Add the AWS service name (exactly as it appears in Cost Explorer's `SERVICE` dimension — use the AWS console to confirm) as a key, and the run402 display category as the value. Redeploy. The next daily cron will pick up the new category automatically; old "Other shared" entries for that service will be reclassified on the next upsert for the same `(day, service_category)` key.
+
+**Adding a new revenue stream column to the breakdown table:**
+Edit the `topup_type` discriminator in `packages/gateway/src/services/finance-rollup.ts` → `getRevenueBreakdownByProject()`. Add a new `SUM(CASE WHEN ...) AS <col>` clause, then add the matching column to the frontend render in `admin-finance-html.ts`. Backward-compat note: existing rows use `topup_type IN ('cash', 'tier', 'email_pack')`; new discriminators need a value in the `billing_topups.topup_type` CHECK constraint allowlist (see v1.19 migration in `server.ts`).
+
+**IAM:**
+Gateway task role needs `ce:GetCostAndUsage` and `pricing:GetProducts` (both account-level, no resource ARN). Added in the `Run402AdminFinanceReadOnly` policy statement in `infra/lib/pod-stack.ts`. Verify deployed perms: `aws iam simulate-principal-policy --policy-source-arn <role-arn> --action-names ce:GetCostAndUsage pricing:GetProducts`.
+
 ## MCP Server
 
 The Run402 MCP server is published at https://github.com/kychee-com/run402-mcp (npm: `run402-mcp`, v0.2.0). It exposes 52 tools covering setup/billing, projects, database, deployment, subdomains, functions, storage, apps, and more. Install: `npx run402-mcp`. Config and docs are in the separate `kychee-com/run402-mcp` repo. See AGENTS.md for the full tool list.
