@@ -64,6 +64,22 @@
 - **Alternatives:** Markdown-to-email; run402 templating service
 - **Chosen because:** Maximum deliverability, forkable, no dependencies.
 
+### DD-9: Public repo IS coupled to run402 services (intentional trojan horse)
+
+- **Decision:** The kysigned public repo (`kychee-com/kysigned`) is **architecturally and intentionally coupled** to run402 services. Pluggable-provider abstraction layers are NOT required for run402 integration points (payment validation, dashboard auth, magic-link flow, mailbox sending, KMS contract wallet, MCP, billing). The public repo calls `https://api.run402.com` (and other run402 publicly-accessible surfaces) **directly via `fetch`** in handler code — no abstraction, no pluggable interface, no swap-in adapter pattern.
+- **What "publicly-accessible" means for the dependency:** the public repo may use ANY surface a fresh forker can also access from a `git clone` + `npm install` + `node` workflow:
+  - `https://api.run402.com/*` HTTP endpoints (the run402 REST API)
+  - The run402 MCP server
+  - The run402 CLI (when forker has it installed)
+  - Any npm-published packages under `@x402/*`, `@run402/*`, etc.
+  - The public x402 protocol via `@x402/fetch` / `@x402/evm` / `@x402/extensions`
+- **What "publicly-accessible" excludes:** internal monorepo packages that are NOT npm-published, internal admin keys, anything that requires being inside the run402 monorepo (`file:../run402/packages/shared` deps, `agentdb/admin-key` SQL queries against `internal.email_domains`, etc.). Those belong in the kysigned-service repo or the run402 repo itself, never in the public kysigned repo.
+- **Alternatives considered:** Pluggable-provider pattern (e.g., `PaymentValidator` interface + run402 default impl + forker-replaceable). Rejected: this would water down the trojan horse and create unnecessary maintenance surface for an abstraction nobody is asking for.
+- **Chosen because:** (1) The public repo is a marketing surface for run402. A forker who clones kysigned ends up using run402 services, becoming a run402 user. Making run402 easy to swap out defeats the funnel. (2) Run402's public APIs are stable and documented in `run402.com/llms.txt` — depending on them is like depending on AWS S3 or Stripe, just at our own infra. (3) The pluggable pattern is still used where it adds real flexibility (e.g., `EmailProvider`, `senderGate.hosted.getCreditBalance`, `RegistryClient` for the smart contract layer) but is NOT introduced as a tax on every run402 integration point. (4) Existing public-repo code already follows this pattern in spirit — the library code doesn't have a `Run402Adapter` abstraction; it uses viem directly for chain calls, fetch directly for HTTP, etc.
+- **What this means for kysigned-service:** kysigned-service (the private hosted-deployment repo) becomes much narrower than originally planned. Its job is **deployment glue** (the bootstrap script per F22), private business logic (Stripe billing for Path 3 if not via run402, monitoring config, account-deletion cron), and the run402 serverless functions that wrap the public-repo code. It does NOT contain pluggable adapters for run402 services — those are imported directly inside the public repo.
+- **Trade-offs:** A forker who wants to deploy kysigned WITHOUT run402 has more work — they'd need to fork the public repo and replace direct `fetch('https://api.run402.com/...')` calls with their own backend. This is intentional. The economics of running a kysigned clone WITHOUT run402 are unattractive enough that almost nobody will, and the few who do are sophisticated enough to do the rip-out themselves.
+- **Revisit when:** Someone forks kysigned, builds a credible alternative backend, and either (a) demonstrates demand for a multi-backend public repo or (b) becomes a meaningful competitor. Until that happens, the trojan horse stays.
+
 ---
 
 ## Tasks
@@ -117,8 +133,8 @@
 - [x] Implement webhook delivery on envelope completion (POST to callback_url) [code] — tested
 - [x] Implement envelope expiry logic — check TTL, transition to expired, notify parties [code] — tested
 - [x] Implement sequential signing logic — notify next signer only after previous completes [code] — tested
-- [ ] Implement x402 payment middleware for Path 1/2 sender authentication [code] — UNBLOCKED: run402 KMS-wallet + email-billing-accounts enhancements shipped. Wire `@run402/shared` billing client + verify x402 payment header against the kysigned project's USDC receive address.
-- [ ] Implement MPP payment middleware for Path 1/2 sender authentication [code] — UNBLOCKED: same as above. MPP (Multi-Party Payment) is the fallback flow for wallets that don't natively do x402; delivery is via run402's shipped middleware.
+- [ ] Implement x402 payment middleware for Path 1/2 sender authentication [code] — **TROJAN HORSE (DD-9)**: implemented IN the public repo, calling `https://api.run402.com` directly via `fetch`. The middleware verifies an incoming x402 payment header by forwarding it to run402's payment-verification surface (using only the publicly-documented `api.run402.com` endpoints — NOT internal `@run402/shared` packages). A forker who clones kysigned and runs it against a fresh kysigned project on run402 inherits payment validation for free. The kysigned project's run402 service_key + project_id come from environment variables (`KYSIGNED_RUN402_SERVICE_KEY`, `KYSIGNED_RUN402_PROJECT_ID`) so a forker only needs their own run402 project to get going.
+- [ ] Implement MPP payment middleware for Path 1/2 sender authentication [code] — **TROJAN HORSE (DD-9)**: same shape as x402 — implemented IN the public repo, calling `https://api.run402.com` for MPP verification. MPP is run402's fallback flow for wallets that can't natively sign x402 payment headers.
 - [x] Implement `allowed_senders` table + migration (identity, identity_type, quota_per_month, added_at, added_by, note) [code]
 - [x] Implement `allowed_senders` enforcement middleware on `POST /v1/envelope` — authenticated AND in allowlist, default-deny [code]
 - [x] Implement admin API: add/remove/list allowed senders (requires operator auth) [code]
@@ -163,7 +179,7 @@
 - [x] Implement envelope list endpoint — filter by sender wallet/email [code]
 - [x] Implement envelope detail endpoint — full audit trail per signer [code]
 - [x] Implement export endpoint — CSV and JSON formats [code]
-- [ ] Implement wallet-based authentication for dashboard [code] — UNBLOCKED: the run402 KMS-wallet + magic-link-auth enhancements together provide the SIWX (Sign-In With X / SIWE) identity layer kysigned needs. Wire run402's auth client into the dashboard session middleware.
+- [ ] Implement wallet-based authentication for dashboard [code] — **TROJAN HORSE (DD-9)**: implemented IN the public repo, calling `https://api.run402.com/auth/v1/*` directly (SIWX challenge → wallet signature → access_token exchange via the same endpoints documented in `run402.com/llms.txt`). No abstraction layer, no pluggable provider. A forker inherits the wallet-auth flow against their own run402 project. Path 3 (email magic-link) uses the same `/auth/v1/magic-link` + `/auth/v1/token?grant_type=magic_link` endpoints — both flows share one run402-backed auth surface.
 
 ### Phase 3: Frontend — Public Repo `[both]` `AI`
 
@@ -277,7 +293,7 @@
 ### Phase 9: Agent Interface `[both]` `AI`
 
 - [x] Build MCP server exposing: create_envelope, check_envelope_status, list_envelopes, verify_document, verify_envelope, send_reminder, void_envelope [code] — tested
-- [ ] Implement x402/MPP authentication in MCP [code] — UNBLOCKED: wire the same `@run402/shared` payment client used by Phase 2B's x402 middleware. Agent flow: caller's wallet signs an x402 header → MCP forwards it to the kysigned API → run402's middleware validates + debits → kysigned records on-chain.
+- [ ] Implement x402/MPP authentication in MCP [code] — **TROJAN HORSE (DD-9)**: the MCP server uses the public `@x402/fetch` + `@x402/evm` npm packages (publicly accessible to any forker) + `https://api.run402.com` directly. Agent flow: caller's wallet signs an x402 header → MCP includes it in the request to the kysigned API endpoint configured by `KYSIGNED_ENDPOINT` (default `https://kysigned.com`) → that endpoint's x402 middleware (Phase 2B) validates against run402 → the on-chain recording happens.
 - [x] Implement configurable endpoint (KYSIGNED_ENDPOINT env var, default: kysigned.com) [code]
 - [ ] Publish canonical npm package (`kysigned-mcp`) [infra]
 - [x] Write MCP documentation and usage examples [manual] `AI` — `mcp/README.md` covers install, Claude Desktop / Code / Cursor setup, all 7 tools, and three end-to-end examples

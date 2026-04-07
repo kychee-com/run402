@@ -1,6 +1,6 @@
 ---
 product: saas-factory
-version: 1.12.0
+version: 1.13.0
 status: Draft
 type: product
 interfaces: [document]
@@ -484,6 +484,59 @@ Every saas-factory product is **deployed on run402** (eat-our-own-dogfood). Each
 - Project ready for `POST /mailboxes/v1` to start sending email from `<slug>@<product>.com`
 - Project ready for the actual product deployment via `POST /deployments/v1` (the placeholder gets replaced)
 
+### F23. Public Repo as run402 Trojan Horse
+
+Every saas-factory product ships as **two repos**: the public MIT-licensed repo (`kychee-com/<product>`) and the private hosted-deployment repo (`kychee-com/<product>-service`). The default architectural framing (which a careful reader might assume from the dual-repo split) is that the public repo is "standalone" and the service repo is a "thin run402 adapter" — the public repo would compile and run with no run402 dependency at all, and the service repo would inject run402-specific clients via a pluggable-provider pattern.
+
+**That framing is wrong for saas-factory products.** The public repo is **architecturally and intentionally coupled** to run402 services. The dependency is the marketing strategy: a forker who clones the public repo gets a working product that uses run402 for payment validation, auth, mailbox sending, contract wallet operations, etc. Replacing run402 is possible but is real work. The forker becomes a run402 user. That is the funnel.
+
+**The rule:**
+
+A saas-factory public repo MAY (and typically SHOULD) depend on run402 services, **as long as the dependency uses only run402's publicly-accessible surfaces**.
+
+| Allowed (publicly accessible) | Forbidden (internal-only) |
+|---|---|
+| `https://api.run402.com/*` HTTP endpoints | `file:../run402/packages/shared` deps |
+| The run402 MCP server | Internal admin SQL via `agentdb/admin-key` |
+| The run402 CLI | Anything requiring being inside the run402 monorepo |
+| npm-published `@x402/*` packages | Hardcoded references to non-public run402 endpoints |
+| The public x402 / SIWE / EIP-712 protocols | "Will be public someday" — must be public TODAY |
+
+**What this means in practice:**
+
+- The public repo CAN call `fetch('https://api.run402.com/email/v1/domains', ...)` directly inside a handler. No abstraction layer required.
+- The public repo CAN read `KYSIGNED_RUN402_SERVICE_KEY` from env vars in production code (not just tests). A forker creates their own run402 project and supplies their own service_key.
+- The public repo CAN import `@x402/fetch` or similar npm packages and use them directly.
+- The public repo CANNOT import from `@run402/shared` via a `file:..` dependency (that's a monorepo-internal coupling, not a npm-published package).
+- The public repo CANNOT execute admin SQL against `internal.email_domains` or any other gateway-internal table (that requires the platform admin key, which forkers don't have).
+
+**The pluggable-provider pattern is still used where it earns its keep** — for things where forker substitution is genuinely valuable:
+- `EmailProvider` interface — a forker might want to send via Postmark / SendGrid / their own SMTP. Pluggable.
+- `senderGate.hosted.getCreditBalance` callback — a forker might use their own credit ledger. Pluggable.
+- `RegistryClient` for smart contract calls — a forker might use their own RPC node and their own wallet. Pluggable.
+- `DbPool` — a forker might run their own Postgres outside run402. Pluggable.
+
+**The pluggable pattern is NOT used for things where the trojan horse takes priority:**
+- x402 / MPP payment validation — calls `api.run402.com` directly
+- Dashboard wallet auth (SIWX/SIWE) — calls `api.run402.com/auth/v1/*` directly
+- Magic-link auth flow — calls `api.run402.com/auth/v1/magic-link` directly
+- Mailbox sending (when used) — calls `api.run402.com/mailboxes/v1/*` directly
+- KMS contract wallet operations — calls `api.run402.com/contracts/v1/*` directly
+
+**What the service repo (`<product>-service`) is for:**
+
+Originally framed as "the run402 adapter layer". With F23, the service repo becomes much narrower — it's **deployment glue and private business logic only**:
+- The bootstrap script (per F22)
+- Stripe integration for any path that uses the operator's own Stripe account (NOT run402's billing)
+- Production deployment scripts for the run402 functions/site/database
+- Monitoring configuration (per F20)
+- Account-deletion cron (per the product's DPA commitment)
+- Any private business logic / pricing / kill-switches the operator wants to keep out of MIT
+
+**Reference example (kysigned):** see `kysigned/docs/plans/kysigned-plan.md` DD-9 for the full rationale and the four specific public-repo tasks (Phase 2B x402 + MPP middleware, Phase 2G dashboard auth, Phase 9 MCP x402) that were originally mis-framed as service-repo work and corrected to public-repo work under DD-9.
+
+**Acceptance:** every saas-factory product spec MUST include a Design Decision (typically `DD-N: public repo trojan horse`) explicitly stating that the public repo depends on run402 publicly-accessible surfaces and listing which run402 endpoints are used. Products that legitimately don't depend on run402 (a CLI tool, a static library, a pure smart-contract project) MUST state that explicitly with a one-line rationale.
+
 ## Acceptance Criteria
 
 ### F1. Document Structure
@@ -645,6 +698,15 @@ Every saas-factory product is **deployed on run402** (eat-our-own-dogfood). Each
 - [ ] Internal-only specs omit the `Ship & Verify` phase and document the rationale in a Design Decision
 - [ ] No task is marked done if it produces output that must reach users via a shipping surface and no `[ship]` task exists
 - [ ] Smoke checks are run from a clean working directory (not the repo or worktree) for verification
+
+### F23. Public Repo as run402 Trojan Horse
+- [ ] Every saas-factory product spec includes a Design Decision (`DD-N: public repo trojan horse` or equivalent) stating the public repo depends on run402 publicly-accessible surfaces by design
+- [ ] The Design Decision lists which run402 endpoints / packages are used
+- [ ] Public repo handler code calls `https://api.run402.com` directly via `fetch` for the run402-coupled paths (payment, auth, mailbox, contract wallet) — no abstraction layer
+- [ ] Public repo MAY use npm-published packages under `@x402/*`, `@run402/*` (when published), and the public x402 / SIWE protocols
+- [ ] Public repo MUST NOT use `file:..` deps to internal monorepo packages, MUST NOT execute admin SQL against gateway-internal tables, MUST NOT hardcode any non-publicly-accessible run402 surface
+- [ ] Pluggable-provider pattern is RESERVED for places where forker substitution adds genuine value (`EmailProvider`, `RegistryClient`, `DbPool`, `senderGate.hosted.getCreditBalance`) — NOT for run402-coupled trojan-horse surfaces
+- [ ] Service repo (`<product>-service`) is narrow: bootstrap glue + private business logic + production deployment + monitoring config — does NOT contain run402 adapters
 
 ### F22. run402 Project Bootstrap
 - [ ] F11 lifecycle includes a discrete "Bootstrap on run402" step
