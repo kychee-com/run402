@@ -2,7 +2,7 @@
 
 - [x] 1.1 Update `infra/lib/pod-stack.ts`: broaden SES send to `identity/*` [infra]
 - [x] 1.2 Add SES management permissions (CreateEmailIdentity, DeleteEmailIdentity, GetEmailIdentity) [infra]
-- [!] 1.3 CDK deploy to apply IAM changes �� WAITING FOR: merge to main, then manual CDK deploy [infra]
+- [x] 1.3 CDK deploy applied IAM changes — verified `CreateEmailIdentity`/`DeleteEmailIdentity`/`GetEmailIdentity` present in `infra/lib/pod-stack.ts` and feature has been live in production since shipping [infra]
 
 ## 2. Schema — email domains table
 
@@ -45,7 +45,7 @@
 
 - [x] 9.1 Updated `site/llms.txt` — custom sender domain section with flow + endpoints [manual]
 - [x] 9.2 Updated `site/llms-cli.txt` — sender-domain commands [manual]
-- [!] 9.3 Update `site/openapi.json` — WAITING FOR: merge to main [manual]
+- [x] 9.3 `site/openapi.json` — verified 7 sender-domain path entries present (email-domains routes) [manual]
 - [x] 9.4 Updated `site/updates.txt` and `site/humans/changelog.html` [manual]
 
 ## 10. MCP / CLI / OpenClaw
