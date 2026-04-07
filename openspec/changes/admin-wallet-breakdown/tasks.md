@@ -1,14 +1,11 @@
 ## 1. Schema migrations (v1.21)
 
-- [ ] 1.1 Add startup migration block v1.21 to `server.ts` [code]
-- [ ] 1.2 `CREATE TABLE internal.cost_rates` (key PRIMARY KEY, value_usd_micros BIGINT, unit TEXT, updated_at, source TEXT default 'seed') [code]
-- [ ] 1.3 Seed `cost_rates` with 6 default rows via `INSERT ... ON CONFLICT (key) DO NOTHING`: ses_per_email_usd_micros=100, lambda_request_usd_micros=200, lambda_gb_second_usd_micros=17, s3_gb_month_usd_micros=23000, kms_key_monthly_usd_micros=1000000, kms_sign_per_op_usd_micros=3 [code]
-- [ ] 1.4 `CREATE TABLE internal.aws_cost_cache` (day DATE, service_category TEXT, cost_usd_micros BIGINT, fetched_at, PRIMARY KEY (day, service_category)) [code]
-- [ ] 1.5 Index `idx_aws_cost_cache_day` on `(day)` for window range queries [code]
-- [ ] 1.6 Migration smoke test: fresh DB → tables created, cost_rates seeded with exactly 6 rows, aws_cost_cache empty [code]
-  - TDD: Write failing test that runs the migration against an empty test DB and asserts table presence + seed row count + row values
-  - Implement the migration
-  - Verify test passes
+- [x] 1.1 Add startup migration block v1.21 to `server.ts` [code]
+- [x] 1.2 `CREATE TABLE internal.cost_rates` (key PRIMARY KEY, value_usd_micros BIGINT, unit TEXT, updated_at, source TEXT default 'seed') [code]
+- [x] 1.3 Seed `cost_rates` with 6 default rows via `INSERT ... ON CONFLICT (key) DO NOTHING` (ses=100, lambda_req=200, lambda_gb_sec=17, s3=23000, kms_month=1000000, kms_sign=3) [code]
+- [x] 1.4 `CREATE TABLE internal.aws_cost_cache` (day DATE, service_category TEXT, cost_usd_micros BIGINT, fetched_at, PRIMARY KEY (day, service_category)) [code]
+- [x] 1.5 Index `idx_aws_cost_cache_day` on `(day)` [code]
+- [x] 1.6 Migration unit test (`v1_21.test.ts`) — 8 tests covering columns, seed values/keys, composite PK, idempotency, no-ALTER guarantee. **TDD: RED → wrote `v1_21.ts` → GREEN 8/8**. Extracted per v1.20 precedent, wired into `server.ts` boot after `applyV120`. tsc clean. [code]
 
 ## 2. Service — cost rates (pricing constants)
 

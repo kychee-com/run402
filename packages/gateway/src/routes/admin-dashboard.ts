@@ -461,6 +461,7 @@ tr:last-child td{border-bottom:none}
       <a href="/admin" style="border-color:#00FF9F;color:#00FF9F">Dashboard</a>
       <a href="/admin/projects">Projects</a>
       <a href="/admin/subdomains">Subdomains</a>
+      <a href="/admin/finance">Finance</a>
       <a href="/admin/llms-txt">llms.txt</a>
       <span>${escHtml(name)}</span>
       <a href="/admin/logout">Logout</a>
@@ -518,6 +519,7 @@ tr:last-child td{border-bottom:none}
       <a href="/admin">Dashboard</a>
       <a href="/admin/projects" ${activeStyle("projects")}>Projects</a>
       <a href="/admin/subdomains" ${activeStyle("subdomains")}>Subdomains</a>
+      <a href="/admin/finance">Finance</a>
       <a href="/admin/llms-txt">llms.txt</a>
       <span>${escHtml(name)}</span>
       <a href="/admin/logout">Logout</a>

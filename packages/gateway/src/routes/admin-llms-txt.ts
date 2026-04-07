@@ -121,6 +121,7 @@ tr:last-child td{border-bottom:none}
     <h1><span class="g">run402</span> admin<span class="sub">llms.txt analytics</span></h1>
     <div class="nav">
       <a href="/admin">Dashboard</a>
+      <a href="/admin/finance">Finance</a>
       <a href="/admin/llms-txt" class="active">llms.txt</a>
       <span>${escHtml(name)}</span>
       <a href="/admin/logout">Logout</a>

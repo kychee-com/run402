@@ -267,6 +267,18 @@ export class PodStack extends cdk.Stack {
       resources: ["*"],
     }));
 
+    // Admin Finance dashboard — AWS Cost Explorer (read) + AWS Pricing API (read)
+    // Used by /admin/finance to display real AWS bill alongside counter-derived costs.
+    // Both are account-level read-only billing APIs; no per-resource ARN.
+    taskDef.taskRole.addToPrincipalPolicy(new iam.PolicyStatement({
+      sid: "Run402AdminFinanceReadOnly",
+      actions: [
+        "ce:GetCostAndUsage",
+        "pricing:GetProducts",
+      ],
+      resources: ["*"],
+    }));
+
     // CloudFront access log bucket (read-only for llms.txt analytics)
     const cfLogBucket = s3.Bucket.fromBucketName(this, "CfLogBucket", "agentdb-site-accesslogbucketda470295-jaz7qij2zfjq");
     cfLogBucket.grantRead(taskDef.taskRole);

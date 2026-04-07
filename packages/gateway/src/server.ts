@@ -19,6 +19,7 @@ import { dirname, join } from "node:path";
 import { pool } from "./db/pool.js";
 import { sql } from "./db/sql.js";
 import { applyV120 } from "./db/migrations/v1_20.js";
+import { applyV121 } from "./db/migrations/v1_21.js";
 import { runChainBootGuards } from "./services/chain-boot.js";
 import { startContractsScheduler, stopContractsScheduler } from "./services/contracts-scheduler.js";
 import { createPaymentMiddleware } from "./middleware/x402.js";
@@ -59,6 +60,7 @@ import publishRoutes from "./routes/publish.js";
 import adminDashboardRoutes from "./routes/admin-dashboard.js";
 import adminLlmsTxtRoutes from "./routes/admin-llms-txt.js";
 import adminWalletRoutes from "./routes/admin-wallet.js";
+import adminFinanceRoutes from "./routes/admin-finance.js";
 import attributionRoutes from "./routes/attribution.js";
 import contactRoutes from "./routes/contact.js";
 import mailboxRoutes from "./routes/mailboxes.js";
@@ -388,6 +390,7 @@ app.use(tierRoutes);
 app.use(adminDashboardRoutes);
 app.use(adminLlmsTxtRoutes);
 app.use(adminWalletRoutes);
+app.use(adminFinanceRoutes);
 app.use(billingRoutes);
 app.use(billingStripeRoutes);
 app.use(projectRoutes);
@@ -1164,6 +1167,11 @@ async function applyMigrations() {
   // v1.20: KMS contract wallets + contract calls
   // (extracted to a module so it can be unit-tested)
   await applyV120((text) => pool.query(sql(text)));
+
+  // v1.21: admin-wallet-breakdown finance dashboard
+  // Creates cost_rates + aws_cost_cache tables; seeds cost_rates with 6 default rates.
+  // Extracted to a module so it can be unit-tested.
+  await applyV121((text) => pool.query(sql(text)));
 
   // v1.19b: bootstrap platform billing mailbox (billing@mail.run402.com)
   // Self-healing: creates the row if missing. Uses 'platform' as project_id sentinel.

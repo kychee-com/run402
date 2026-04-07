@@ -34,6 +34,7 @@
     "test:email-billing": "tsx test/email-billing-e2e.ts",
     "test:bld402-compat": "tsx test/bld402-compat.ts",
     "test:contracts": "tsx test/contracts-e2e.ts",
+    "test:admin-finance": "tsx test/admin-finance-e2e.ts",
     "lint": "eslint",
     "deploy": "bash scripts/deploy.sh"
   },
