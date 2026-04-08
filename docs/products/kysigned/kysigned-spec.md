@@ -1,11 +1,11 @@
 ---
 product: kysigned
-version: 0.6.0
+version: 0.7.0
 status: Draft
 type: product
 interfaces: [website, api, cli, mcp, smart-contract]
 created: 2026-04-04
-updated: 2026-04-06
+updated: 2026-04-08
 ---
 
 ## Overview
@@ -342,6 +342,30 @@ Per the SaaS Factory spec (F19). kysigned.com uses the shared Kychee geo-aware c
 - F15.7. Consent state persisted in `localStorage` as `kychee_consent`.
 - F15.8. "Cookie settings" link in footer re-opens the panel.
 - F15.9. Re-prompts user when consent is older than 12 months.
+
+### F16. Document-Level Aggregation View `[both]` — DEFERRED, full spec TBD
+
+> **Status: concept-only — not yet specced for implementation.** Added 2026-04-08 to capture the idea surfaced while planning Phase 4B e2e tests. **Before this feature is implemented, `/spec kysigned` must be re-run to flesh out the full requirements and acceptance criteria.** Until then, the kysigned plan carries a placeholder Phase 2H marker pointing back here.
+
+**The concept:** kysigned currently treats every envelope as an independent unit. When a sender (X) creates envelope E1 to get signers Y1, Y2, Y3 to sign a PDF, and E1 expires with only Y1 + Y2 signed, X's only recourse is to create envelope E2 with Y3 as the sole signer — paying again. E1 and E2 have the **same `document_hash`** (same PDF) but are unrelated in the current data model. The dashboard shows them as two separate envelopes; the verify page verifies each envelope independently; nothing in the product acknowledges that both envelopes are attestations of the same document.
+
+This feature introduces a new conceptual layer above envelopes: the **document**. A document is identified by `(document_hash, creator_identity)` and aggregates all envelopes the creator has sent against that PDF. The aggregation enables:
+
+- **Document history in the dashboard:** the sender sees "NDA.pdf" as a single row with a history trail (envelope 1 expired with 2/3 signed, envelope 2 completed with 1/1 signed) and a combined signer ledger across all envelopes.
+- **Combined attestation view on the verify page:** when someone presents the final signed PDF, the verifier can check whether every intended signer has signed SOMEWHERE in the document's envelope history, not just in one specific envelope.
+- **Creator UX hints:** when a creator uploads a PDF that already has attested envelopes, kysigned surfaces "this document was partially attested in envelope XYZ — only invite the missing signer this time?"
+- **Optional — clearer cryptographic story:** each envelope still produces its own on-chain record (envelopes don't share signatures at the cryptographic layer; Method A and Method B both bind to envelope_id), but the off-chain aggregation surfaces a unified "document was attested by A + B via E1, and by C via E2" view to humans.
+
+**Why deferred:** the full scope needs a brainstorm + spec pass to answer open questions:
+- Does the `document_hash` aggregation key include the sender identity, or is any sender's attestation of the same PDF relevant? (probably sender-scoped to avoid cross-user leakage)
+- How does the on-chain verification layer handle this? (probably unchanged — each envelope is verified independently; aggregation is a UI concern only)
+- Does this interact with the F8.6 ephemeral PDF retention? (the PDF itself is deleted after completion; only the hash persists — aggregation works on the hash, so yes, compatible)
+- Should the sender get a billing discount when re-sending the same document to fewer signers? (product decision — defer until we have data)
+- New database entity: is it a materialized view over envelopes, or a first-class table with its own row per document? (affects the data model)
+- New UI routes: `/dashboard/documents/:document_hash` and `/verify/by-document/:document_hash`?
+- Email template: "envelope X for your document Y has expired — you've already collected M of N signatures on this document; would you like to re-send to only the missing signers?"
+
+**Acceptance criteria:** TBD — see concept bullets above. Full AC to be drafted during the deferred `/spec` session.
 
 ## Acceptance Criteria
 

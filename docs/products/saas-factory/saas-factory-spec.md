@@ -1,11 +1,11 @@
 ---
 product: saas-factory
-version: 1.13.0
+version: 1.14.0
 status: Draft
 type: product
 interfaces: [document]
 created: 2026-04-04
-updated: 2026-04-06
+updated: 2026-04-08
 ---
 
 ## Overview
@@ -536,6 +536,31 @@ Originally framed as "the run402 adapter layer". With F23, the service repo beco
 **Reference example (kysigned):** see `kysigned/docs/plans/kysigned-plan.md` DD-9 for the full rationale and the four specific public-repo tasks (Phase 2B x402 + MPP middleware, Phase 2G dashboard auth, Phase 9 MCP x402) that were originally mis-framed as service-repo work and corrected to public-repo work under DD-9.
 
 **Acceptance:** every saas-factory product spec MUST include a Design Decision (typically `DD-N: public repo trojan horse`) explicitly stating that the public repo depends on run402 publicly-accessible surfaces and listing which run402 endpoints are used. Products that legitimately don't depend on run402 (a CLI tool, a static library, a pure smart-contract project) MUST state that explicitly with a one-line rationale.
+
+### F24. Platform Admin Auth Service (FUTURE ENHANCEMENT — not yet specced)
+
+> **Status: Note only — deferred.** Surfaced 2026-04-08 while planning kysigned's admin-routes auth story (see `run402/docs/plans/kysigned-plan.md` DD-15). This section is a placeholder so the problem doesn't get lost — **when prioritized, run `/brainstorm` then `/spec` to properly design it before `/plan`**.
+
+Every saas-factory product that ships with operator-facing admin routes (allowed_senders management, feature flags, project configuration, etc.) faces the same auth problem: how does a forker's deployed instance verify "this admin request is from the authorized operator of this specific instance"? kysigned's MVP answer is a per-product env var (`KYSIGNED_ADMIN_WALLETS`) listing authorized admin wallet addresses, verified via SIWE on each request — see kysigned DD-15. This works but has known gaps that every saas-factory product will inherit identically:
+
+- **No backend-enforced 2FA.** The only factor is "something you have" (the wallet private key). Hardware wallets add wallet-level security but cannot be required (too much friction for forkers).
+- **No recovery path for forkers.** If a forker's single admin wallet is compromised or lost, they have no backstop — they don't have run402 platform AWS access (that's Kychee's account), so the env var cannot be updated without at least one surviving wallet in the admin list. The mitigation is "always configure ≥2 admin wallets", which is operator discipline, not a platform guarantee.
+- **No per-admin revocation.** Removing one admin requires editing the env var and redeploying, not a dashboard click.
+- **No cross-product admin identity.** A Kychee operator managing multiple saas-factory products has to maintain a separate admin wallet entry per product.
+- **No audit trail beyond what each product builds individually.** No unified "who did what across the Kychee portfolio."
+
+The platform-level solution is a **run402 admin-identity service** that saas-factory products delegate admin auth to, providing:
+1. Multi-admin per project with per-user revocation via a run402 API
+2. Backend-enforced second factor (TOTP / passkey / email confirmation / optional multisig)
+3. Recovery flows (operator-configured 2-of-N threshold, OR a Kychee-operated "admin recovery service" forkers can opt into for a fee)
+4. Unified audit trail visible in the run402 admin dashboard
+5. A thin SDK for saas-factory products to delegate admin auth (`requireAdmin(request)` returns the verified admin identity or throws)
+
+**Dependency:** this feature is likely an upstream run402 enhancement (new endpoints + new DB tables + new dashboard) that saas-factory products then consume. It is NOT a saas-factory-local capability.
+
+**Scope when prioritized:** brainstorm session → spec (this section becomes a proper F24 with acceptance criteria) → plan → implement. Not time-boxed; picked up when a forker hits the recovery-path problem in production OR when operator 2FA becomes a customer requirement.
+
+**Interim policy for saas-factory products shipping before this lands:** use the kysigned DD-15 pattern (per-product `<PRODUCT>_ADMIN_WALLETS` env var + SIWE verification) and document the recovery limitation in the product's operator README. Every product that adopts this interim pattern gains a migration task when the platform service lands (swap the env-var-based middleware for the SDK's `requireAdmin(request)` call).
 
 ## Acceptance Criteria
 
