@@ -4,8 +4,8 @@
 **Created:** 2026-04-04
 **Status:** Ready for Implementation
 **Spec:** docs/products/kysigned/kysigned-spec.md
-**Spec-Version:** 0.7.0
-**Upstream References:** docs/products/saas-factory/saas-factory-spec.md (v1.9.0)
+**Spec-Version:** 0.8.0
+**Upstream References:** docs/products/saas-factory/saas-factory-spec.md (v1.15.0)
 **Source:** spec
 **Worktree:** none — product code lives in separate repos (C:\Workspace-Kychee\kysigned and C:\Workspace-Kychee\kysigned-service). run402 platform enhancements use a run402 worktree on a feature branch.
 
@@ -163,9 +163,134 @@
 - **Trade-offs:** another small public-repo touch. The public repo was "done" before Phase 4B started, but DD-12 + DD-16 both require small additions — acknowledged as the cost of deploying an MVP that exercises the full spec.
 - **Rollback:** remove the handler + template. `getExpiredEnvelopes` continues working in DB-only mode (status transitions without notifications).
 
----
+### DD-17: Dark-Launch Canary Ritual before First Mainnet Deploy
 
-## Tasks
+> **Scope:** this DD is the plan-level instantiation of spec F17 (pre-launch dark-launch canary discipline) and saas-factory F25 (factory-level generalization). F17/F25 describe WHAT the discipline is; DD-17 describes HOW kysigned executes it, resolves the five F17 open questions (#18–#22), and re-sequences Phase 13 accordingly.
+
+**Decision:** Before deploying `SignatureRegistry.sol` to Base mainnet under the kysigned brand, deploy a functionally-identical canary contract to Base mainnet via a separate anonymous KMS wallet, run kysigned-service in full production mode against the canary contract for a dark-launch phase, dogfood the full product until a feature checklist is green AND Barry+Tal explicitly approve, then "launch" by deploying the production contract and flipping two kysigned-service env vars — no application code change. The byte-identical bytecode check is a hard pre-flip gate.
+
+**Alternatives considered:**
+- *Direct mainnet deploy under the kysigned brand (the original Phase 13 plan).* Rejected — reputational risk of a botched-but-already-verified-on-Basescan kysigned contract is permanent, and kysigned is run402's first production consumer of the KMS wallet path (drain endpoint, recovery address, 90-day KMS deletion lifecycle, KMS-signs-arbitrary-tx flow all untested in production). One bad deploy compounds both risks.
+- *Multi-environment staging (separate "staging.kysigned.com" + staging DB + staging SES + staging contract).* Rejected — complexity cost is high, staging drift from production is a known failure mode, and we'd still be launching "fresh code on fresh infra" at production flip time. The canary pattern gives us a stronger guarantee with less infrastructure.
+- *Contract-only rehearsal via raw viem scripts (deploy + call 3 methods, no product-level exercise).* Rejected — misses product-level integration bugs that are the whole reason first launches fail. Only marginal improvement over "just deploy it."
+- *Long-lived canary wallet with periodic bump cron* (explored in brainstorm Q3). Rejected — at 1-3 canary events over kysigned's lifespan, amortizing $1.20 prepay across them saves essentially nothing in exchange for real recurring ops burden. Ephemeral canary is strictly better.
+- *Single KMS wallet for both canary and production.* Rejected — Basescan's "Contract Creator" link is one click away from any contract, which would make the canary→production linkage trivially discoverable. Two wallets moves the bar from "one click" to "deliberate investigation."
+
+**Chosen because:** (1) launch day becomes a config flip instead of a fresh deploy — the lowest-risk launch posture possible; (2) the byte-identical bytecode gate is a cryptographic proof that the canary rehearsed the real thing; (3) the drain endpoint, recovery address, and KMS-signs-arbitrary-tx flow all get their first production exercise during the canary phase, on the easy path, on our schedule — not during an incident; (4) reputational exposure is limited to an anonymous bytecode-only contract rather than a branded kysigned artifact; (5) the pattern generalizes to every future saas-factory product as F25, amortizing the design thinking across the product family.
+
+**Trade-offs:** extra **$2.40 prepay** (two wallets × $1.20 prepay each — rent is charged **per wallet, not per project**, per `KMS_WALLET_RENT_USD_MICROS_PER_DAY` in `contract-wallets.ts`), extra ~$25 ETH float for the canary wallet (recoverable via drain at retirement), extra $0.04/day rent while both wallets are active (~$0.08/day during the dark-launch phase itself, dropping to $0.04/day after canary retirement), approximately **one extra week** added to the launch timeline for the dark-launch phase, and non-trivial coordination between Phase 13 and the parallel Phase 4B (service-deploy) chat — they are no longer independent.
+
+**Rollback:** abort the canary→production flip, investigate, fix the issue on the canary-pointed service, redeploy the service, re-run the affected checklist items, re-attempt the flip. The canary wallet and canary contract remain in place through the retry; only the production wallet and production contract are reprovisioned if a fix requires a new deploy. If the fundamental premise fails (e.g., run402 KMS path is broken and cannot be fixed), rollback = revert to direct mainnet deploy under the kysigned brand, accept the reputational risk.
+
+**Resolves spec F17 Open Questions:**
+
+**OQ #18 — run402 capability gaps.** Verified against `packages/gateway/src/routes/contracts.ts` + `services/contract-wallets.ts` + `services/contract-call.ts` + `services/contract-call-reconciler.ts`:
+
+- ✅ **Two wallets per project:** supported. `provisionWallet()` inserts into `internal.contract_wallets` with no uniqueness constraint beyond the primary key. A project can hold an arbitrary number of wallets.
+- ⚠️ **NO dedicated deploy endpoint exists.** The contracts/v1 surface is wallets/call/read/drain only. There is no `POST /contracts/v1/deploy` or `POST /contracts/v1/wallets/:id/deploy`. To deploy a fresh contract via a KMS wallet, one of two paths is required:
+  1. **Workaround path (preferred if it works):** use the existing `POST /contracts/v1/call` endpoint with `contract_address: "0x0000000000000000000000000000000000000000"` and pass the full creation bytecode (runtime code + constructor args) in place of `function_name` call data. This is an untested code path — the route validates `contract_address` at `contracts.ts:292`, and it's unclear whether the zero address is accepted. This MUST be verified in Phase 13A **before** any real canary work begins. If the workaround works, no run402 enhancement is needed.
+  2. **Enhancement path (fallback):** land a small run402 enhancement adding `POST /contracts/v1/wallets/:id/deploy` that accepts `{ bytecode, constructor_args?, chain }` and returns `{ call_id, tx_hash, status }` (same response shape as the existing `/call` endpoint, with a synthetic zero-address entry in the call log). ~2 hours of work, added to the run402 plan queue if workaround fails.
+- ✅ **No provision-specific rate limiting.** A global 100 req/sec per-API-key rate limit applies to all endpoints (see `server.ts` `rateLimit()` middleware, default `RATE_LIMIT_PER_SEC=100`). Two back-to-back `provision-wallet` calls are well within budget.
+- ⚠️ **Gas is pre-funded ETH on the wallet, not billing credits.** The wallet's on-chain ETH balance pays gas. Billing credits only cover rent + sign fee (5 USD-micros per call). We must fund each wallet with enough ETH for the deploys and ongoing envelope recordings BEFORE running any deploy calls.
+- ⚠️ **Rent is per-wallet, not per-project.** `PREPAY_REQUIRED_USD_MICROS = 30 * KMS_WALLET_RENT_USD_MICROS_PER_DAY = $1.20` is charged PER wallet at provision time. Canary pair = $2.40 prepay. The kysigned project's billing balance must cover both provisionings.
+
+**OQ #19 — Byte-identical bytecode check precise mechanism.** The gate runs in a kysigned-service script (NOT in the public kysigned repo, to honor DD-9 + F17's anti-leakage). Mechanism:
+1. Fetch the canary contract's runtime bytecode: `eth_getCode(canaryAddress, 'latest')` via the Base mainnet RPC (already configured as `run402/base-mainnet-rpc-url`).
+2. Fetch the production contract's runtime bytecode: `eth_getCode(productionAddress, 'latest')` via the same RPC.
+3. **Strip the Solidity metadata suffix from both bytecodes.** Solidity appends a CBOR-encoded metadata section at the end of runtime bytecode, containing compiler version, source mapping hash, and optionally IPFS/Swarm hash. The length of this section is encoded in the last 2 bytes (big-endian uint16) as the byte count of the metadata, NOT including the 2-byte length field itself. Algorithm: `metadata_len = uint16_be(bytecode[-2:]); core = bytecode[:-(metadata_len + 2)]`. This gives the "logic-only" bytecode with no compiler fingerprint.
+4. Compare `keccak256(canary_core) === keccak256(production_core)`. Match → proceed with flip. Mismatch → ABORT, investigate (see OQ #21 playbook).
+5. The check is implemented as a small script `kysigned-service/scripts/bytecode-identity-check.ts` (new file, TDD, mocked `eth_getCode` in tests, run against mainnet in anger). Executed manually by the operator during the flip ritual and its output logged to the Implementation Log.
+
+**OQ #20 — Canary checklist contents.** Enumerated here (plan-level, not spec-level). To unlock the go/no-go gate, **every item below must be confirmed working end-to-end against the canary contract**:
+
+Dashboard path:
+- [ ] Create envelope via hosted dashboard, PDF upload, 2 signers
+- [ ] Both signers receive real emails (Barry + Tal @ kychee.com)
+- [ ] Method A signer (auto-stamp) completes signing from a browser WITHOUT a wallet installed
+- [ ] Method B signer (wallet) completes signing via browser wallet, EIP-712 domain separator matches expectations
+- [ ] Both signers receive completion emails with signed PDF attached
+- [ ] Envelope status page shows `completed` with both tx hashes
+- [ ] Basescan link from the proof page resolves to the canary contract (not kysigned-branded)
+- [ ] Verify-by-hash on the completed signed PDF returns the correct signer details
+- [ ] Verify-by-envelope-id proof link displays full audit trail
+
+API path:
+- [ ] Create envelope via `POST /v1/envelope` with x402 payment header
+- [ ] Create envelope via `POST /v1/envelope` with MPP payment header
+- [ ] `GET /v1/envelope/:id` returns correct state
+- [ ] `POST /v1/envelope/:id/remind` successfully triggers reminder email
+- [ ] `POST /v1/envelope/:id/void` successfully voids an active envelope and deletes its PDF
+- [ ] Webhook `callback_url` receives correct POST on completion
+
+MCP path:
+- [ ] `kysigned-mcp` installed via `npx -y kysigned-mcp`, pointed at the canary-backed kysigned endpoint
+- [ ] MCP `create_envelope` tool creates a real envelope
+- [ ] MCP `check_envelope_status` tool returns correct state
+- [ ] MCP `verify_document` tool returns correct verification result
+
+Signing flow variations:
+- [ ] Sequential signing: signer 2 is NOT notified until signer 1 completes
+- [ ] Parallel signing: both signers notified simultaneously
+- [ ] Sender-as-signer: "Will you also sign?" prompt works, sender signs alongside other signers
+- [ ] Decline flow: a signer can decline, sender receives notification
+- [ ] Duplicate signing: a signer who already signed sees "already signed" screen on second visit
+
+Retention + F8.6:
+- [ ] Completion email delivery webhook (from SES) triggers immediate PDF deletion via `markCompletionEmailDelivered`
+- [ ] Bounce webhook triggers bounce path and eventually the 7-day fallback deletion
+- [ ] `sweepRetention` cron actually runs on the deployed schedule and deletes expired PDFs
+- [ ] Envelope metadata persists after PDF deletion
+
+Payment + billing:
+- [ ] x402 payment via run402 billing balance check returns correct wallet + deducts correct amount
+- [ ] MPP credential flow works end-to-end
+- [ ] `allowed_senders` allowlist enforces correctly in hosted mode
+- [ ] Monthly quota enforcement works for a sender with a configured quota
+
+Monitoring:
+- [ ] Bugsnag receives at least one synthetic error during the canary phase and it appears in the dashboard
+- [ ] Telegram alerts channel receives at least one INFO and one CRITICAL alert (once the channel exists — Phase 14 manual task)
+- [ ] CRITICAL email alerts via SES reach the on-call address
+
+Gas + cost verification (inherited from the pre-F17 Phase 13 intent):
+- [ ] Measure real Base mainnet gas cost per operation (recordEmailSignature, recordWalletSignature, recordCompletion) — MUST match or beat the Sepolia measurements (220K/243K/158K) within 10%
+- [ ] Calculate true per-envelope cost (gas + email + compute + Lambda + KMS sign fees) and confirm $0.25 pricing holds with healthy margin
+- [ ] If real per-envelope cost exceeds $0.15 (60% of the $0.25 target), escalate to pricing review BEFORE the flip — pricing adjustment is still reversible during canary phase
+
+Each item gets a timestamp and a short note when confirmed. The list lives inline in Phase 13C below (not duplicated here).
+
+**OQ #21 — Bytecode-divergence investigation playbook.** If the F17.3 byte-identical gate (OQ #19 above) fails at flip time:
+
+1. **Do NOT flip.** The gate is a hard abort. No override.
+2. **Diff the stripped bytecodes** with a byte-level diff tool. Identify WHERE they differ (opcode positions, approximate "function" region via a disassembler like `heimdall` or manual PUSH/JUMPDEST scan).
+3. **Check for common causes in order of likelihood:**
+   - (a) Different Solidity compiler version between the canary and production build. Check `package.json` / `hardhat.config` for version pinning. If the pin moved, that's the cause. Fix: re-build production with the pinned version that matches canary.
+   - (b) Different optimization settings (optimizer runs). Check hardhat.config. Fix: align settings.
+   - (c) Different constructor arguments. Compare the deploy tx input data for both deploys — any constructor args land inside the init code and change the resulting runtime bytecode indirectly via constructor logic.
+   - (d) Contract source was modified between canary and production deploys. `git log packages/kysigned-service/contracts/SignatureRegistry.sol` should be empty between the two deploys. If it's not, something changed that shouldn't have.
+   - (e) Genuine compiler non-determinism. Very rare with Solidity. Last resort hypothesis.
+4. **Decision matrix for remediation:**
+   - (a), (b), (d): **re-deploy production** with the corrected build settings, re-run the bytecode gate. Canary phase does NOT need to be re-run.
+   - (c): **re-deploy production** with corrected constructor args. Canary phase does NOT need to be re-run.
+   - (e): escalate to the run402 team, treat as a run402-level issue. Pause the launch.
+   - Anything else (unexpected): treat as a real bug. **Re-run the full canary checklist from scratch** against a freshly redeployed canary. The cost is a week of extra time but the safety guarantee is worth it.
+5. **Document the divergence in the Implementation Log** before attempting any fix — future-you will want to know what happened.
+
+**OQ #22 — Production-contract smoke specifics.** After the flip, run exactly one smoke-test envelope through the production contract. Specifics:
+- **Surface:** API path (`POST /v1/envelope`). Rationale: API path exercises the canonical server-side code path without any frontend rendering concerns, easiest to debug if something fails.
+- **Signer:** Barry as sender, Tal as sole signer (single-signer envelope). Rationale: simplest possible envelope structure, one signature covers the entire server-to-contract code path.
+- **Signature method:** Method A (auto-stamp). Rationale: Method A is the default and most-used path; if it works, the full-product assumption holds.
+- **Timing:** Tal MUST complete the signature within 15 minutes of the flip. If Tal can't, the smoke test is delayed until Tal is available — do NOT substitute a different signer, do NOT skip the smoke.
+- **Success criterion:** (a) envelope reaches `completed` status, (b) the production contract address appears in the proof page tx hash lookup, (c) Basescan shows the tx landed on the production contract address, (d) verify-by-hash on the signed PDF returns correct signer details.
+- **Rollback on smoke failure:** abort the launch announcement. Flip the kysigned-service env vars back to the canary address (the canary wallet still exists at this point because retirement happens AFTER smoke success). Investigate. Do NOT proceed to Phase 14's public-repo flip until the production contract smoke passes.
+
+**Canary retirement sequence (addresses F17.9 + the Q6 finding that rent is per-wallet):**
+1. Drain canary wallet's on-chain ETH back to the kysigned ops EOA wallet (`0x8D671Cd12ecf69e0B049a6B55c5b318097b4bc35`) via `POST /contracts/v1/wallets/:canary_id/drain` with `X-Confirm-Drain: <canary_id>` header and `destination_address: <ops_eoa>` body. Poll `GET /contracts/v1/calls/:call_id` until status=`confirmed`.
+2. Explicitly delete the canary wallet via `DELETE /contracts/v1/wallets/:canary_id`. **This is the critical step to stop $0.04/day rent accrual** — draining ETH alone doesn't stop the daily rent, because rent is debited from the kysigned project's billing account, not the wallet's ETH balance. The delete schedules the underlying KMS key for deletion per the 90-day lifecycle.
+3. Remove canary references from AWS Secrets Manager: `kysigned/canary-contract-address` and `kysigned/canary-wallet-address` secrets can be deleted OR renamed to `kysigned/retired-canary-*` for historical record (recommendation: rename, not delete — historical accountability).
+4. Schedule a T+75 calendar reminder for the KMS key deletion checkpoint (the 90-day lifecycle is permissive; if for any reason we want to un-delete, it's possible up to day 90). If no reason surfaces, the key deletes automatically at day 90.
+5. The canary CONTRACT itself remains on Base mainnet forever (smart contracts are immutable). It becomes an orphaned bytecode-only artifact with no known association to kysigned — per F17.10 this is the expected end state.
+
 
 ### Phase 0: Foundation `AI`
 
@@ -517,40 +642,85 @@
 - [ ] Add kysigned entry to kychee.com/llms.txt [code]
 - [ ] Add kysigned entry to run402.com/llms.txt [code]
 
-### Phase 13: Gas Measurement & Final Pricing `AI` / `DECIDE`
+### Phase 13: Mainnet Deploy via Dark-Launch Canary `AI` / `HUMAN` / `DECIDE`
 
-> **Context: run402 KMS wallet.** The mainnet wallet is now provisioned via run402's new KMS-wallet feature, not a plaintext `agentdb/faucet-treasury-key` Secrets Manager entry. This is a DD-3 material change — DD-3 is kept for the "one platform wallet across all Kychee SaaS products" principle, but the **key custody** moves from plaintext Secrets Manager to AWS KMS with run402 as the signing intermediary. The private key material never leaves KMS. kysigned is the **first production consumer** of the KMS wallet path, so several operations (drain, recovery address, 90-day deletion lifecycle) get their first real exercise through kysigned usage. See "Pre-flight checklist" below.
+> **Context:** this phase executes DD-17 (the dark-launch canary ritual), which is kysigned's instantiation of spec F17 and saas-factory F25. The phase re-sequences what used to be "provision + deploy + measure" into a longer, safer ritual: pre-flight → canary provision → canary deploy → dark-launch dogfood → go/no-go → production provision → production deploy → byte-identical gate → flip → smoke → canary retirement. Phase 13 is **no longer independent of Phase 4B** — Phase 13C (dark-launch dogfood) requires the kysigned-service HTTP router + webhooks + cron + frontend from Phase 4B to be complete and production-deployed. Phases 13A and 13B can start in parallel with Phase 4B, but 13C onward is blocked on 4B completion.
 
-**Pre-flight checklist — MUST run BEFORE `run402 contracts provision-wallet --chain base-mainnet`:** `HUMAN`
+**Phase dependencies:**
+- **13A → 13B → 13C (blocked on 4B) → 13D → 13E → Phase 14**
+- **Phase 13C blocks on Phase 4B Block 7 (e2e test against production-deployed kysigned-service).** The parallel `/implement kysigned` chat owns Phase 4B; coordinate with that chat before starting Phase 13C.
+- **Phase 14 blocks on Phase 13E** (canary retired, flip smoke green) AND on the existing Phase 14 HUMAN gates (legal, collateral, pricing approval).
 
-- [ ] **IAM simulation re-run (10 seconds).** Catch any policy drift since the run402 KMS wallet implementation was tested: `aws iam simulate-principal-policy --policy-source-arn <role-arn> --action-names kms:CreateKey kms:Sign kms:Decrypt --region us-east-1`. All three actions must return `allowed`. Do this immediately before the provision call, not days ahead.
-- [ ] **Billing balance ≥ $1.20 on the kysigned project.** The first `provision-wallet` call returns HTTP 402 (Payment Required) if the balance is insufficient. If this happens, the wallet does not yet exist — top up the project, then retry. Do not debug around the 402; it is a correct response.
-- [ ] Run `run402 contracts provision-wallet --chain base-mainnet` [manual] `HUMAN`
-- [ ] Capture the resulting wallet address and confirm it appears in the run402 admin dashboard under the kysigned project attribution [manual] `HUMAN`
-- [ ] Fund the wallet with ETH for gas (start small — `~0.02 ETH` is enough for the mainnet deploy plus hundreds of envelope recordings at Base's fees) and with USDC for the initial operating float if Path 1/2 x402 payments will route through it [manual] `HUMAN`
+#### Phase 13A: Pre-flight — verify run402 capability, check IAM, check billing `HUMAN` + `AI`
 
-**Deploy + measure:** `AI`
+> These checks MUST be run within the same day that Phase 13B begins — some are timing-sensitive and stale checks give false confidence.
 
-- [ ] Deploy SignatureRegistry.sol to Base mainnet via the KMS-signed wallet [infra]
-- [ ] Measure actual gas costs per operation on mainnet [infra]
-- [ ] Calculate true per-envelope cost (gas + email + compute + storage for 30 days) [manual] `AI`
-- [ ] Set final per-envelope pricing (~$0.25 target, adjusted by actual costs) [manual] `DECIDE`
-- [ ] Set credit pack tiers and per-envelope rates for Path 3 [manual] `DECIDE`
-- [ ] Update pricing page with final numbers [frontend-visual] `AI`
+- [ ] **⚠️ VERIFY: can `POST /contracts/v1/call` deploy a new contract with `contract_address: "0x0000000000000000000000000000000000000000"`?** [infra] `AI` — this is the single most important prerequisite. Per the contracts.ts investigation (see DD-17 OQ #18), run402 has NO dedicated deploy endpoint. The workaround path is to pass the zero address as `contract_address` and the full creation bytecode as the call data, but this is an untested path. **Test procedure:** deploy a trivial stub contract (e.g., `contract Ping { uint256 public n = 42; }`) to **Base Sepolia** first — NOT mainnet, NOT via the canary wallet, use an existing throwaway test wallet under a scratch run402 project — via the workaround path. If it succeeds, proceed to 13B. If it fails with a validation error on `contract_address`, open a run402 enhancement task to add `POST /contracts/v1/wallets/:id/deploy` (est. 2 hours of run402 work, plus a patch release) and PAUSE Phase 13B until the enhancement lands. Document the outcome in the Implementation Log regardless.
+- [ ] **IAM simulation re-run (10 seconds).** Catch any policy drift since the run402 KMS wallet implementation was tested: `aws iam simulate-principal-policy --policy-source-arn <gateway-task-role-arn> --action-names kms:CreateKey kms:Sign kms:ScheduleKeyDeletion kms:CancelKeyDeletion --region us-east-1`. All must return `allowed`. **Additionally verify that `kms:Decrypt` is NOT allowed** — per run402/CLAUDE.md, the gateway role intentionally blocks `kms:Decrypt` because contract wallets are sign-only; if `kms:Decrypt` IS allowed, that's a policy drift red flag, open a run402 issue. Do this check immediately before 13B, not days ahead. [infra] `AI`
+- [ ] **Billing balance ≥ $2.40 on the kysigned project.** The canary pattern provisions TWO wallets, each requiring a $1.20 (30-day) prepay. Per DD-17 trade-offs + CLAUDE.md pricing, rent is per-wallet. If the kysigned project balance is below $2.40, top up before running 13B. Do not debug around the HTTP 402 — it's a correct response. [infra] `AI`
+- [ ] **Prototype tier expiration check:** the kysigned project's prototype tier expires 2026-04-14. Confirm the tier is still active when Phase 13B begins. If the canary phase (13C) is expected to exceed the expiration date, plan to renew the tier before expiration to avoid a mid-canary tier lapse. [infra] `AI`
+- [ ] **Stale `internal.email_domains` release check:** if any prior dev test left a row in `internal.email_domains` claiming `kysigned.com` under a different project, release it via admin SQL before Phase 13C (otherwise canary emails cannot send from `@kysigned.com`). The release pattern is documented in STATUS.md. [infra] `AI`
+- [ ] **Fund ops EOA wallet with enough ETH for two separate ETH transfers** (~0.05 ETH total): one to the canary KMS wallet (~0.02 ETH for canary deploy + dark-launch envelope recordings), one to the production KMS wallet (~0.02 ETH for production deploy + first-day-of-launch traffic), plus a small buffer. The ops EOA is `0x8D671Cd12ecf69e0B049a6B55c5b318097b4bc35`, key in `kysigned/ops-wallet-key` Secrets Manager secret. [manual] `HUMAN`
 
-**First-exercise watchlist — kysigned is the first production consumer of these KMS-wallet operations:** `AI` / `HUMAN`
+#### Phase 13B: Canary wallet + canary contract deploy `HUMAN` + `AI`
 
-The following paths have ZERO production test coverage on run402 and will get their first real exercise through kysigned in the first month of live traffic. Watch ledger entries closely.
+- [ ] Call `POST /contracts/v1/wallets` on run402 with `{ chain: "base-mainnet" }` to provision the **canary KMS wallet**. Capture the returned wallet_id and wallet address. Store the wallet address in AWS Secrets Manager as `kysigned/canary-wallet-address`. Do NOT give the wallet a kysigned-identifying name. [infra] `AI`
+- [ ] Confirm the canary wallet appears in the run402 admin dashboard under the kysigned project attribution. Verify the wallet's chain is `base-mainnet` and status is `active`. [manual] `HUMAN`
+- [ ] Set a **calendar reminder for T+75 days** from the canary wallet provisioning date, for the KMS key deletion lifecycle bump. If the canary phase completes inside 75 days and canary retirement happens in Phase 13E, this reminder never fires. [manual] `HUMAN`
+- [ ] Fund the canary wallet with ~0.02 ETH from the ops EOA wallet for gas. Wait for confirmation on Base. Record the funding tx hash in the Implementation Log. [manual] `HUMAN`
+- [ ] Compile `kysigned/contracts/SignatureRegistry.sol` locally (pin the exact Solidity compiler version in `hardhat.config.cts` — this version becomes part of the byte-identical gate invariant). Capture the bytecode + constructor args. [code] `AI`
+- [ ] Write `kysigned-service/scripts/deploy-canary.ts` — a new kysigned-service-only script (never committed to the public repo) that deploys the compiled bytecode via the verified workaround path from Phase 13A (or the new deploy endpoint if 13A forced the enhancement path). TDD: unit tests mock `fetch` to the run402 API, verify request body contains the expected bytecode + constructor args. [code] `AI`
+- [ ] Run `deploy-canary.ts` against Base mainnet. Poll `GET /contracts/v1/calls/:call_id` until status=`confirmed`. Capture the tx hash + deployed contract address (from the receipt's `contractAddress` field or via a manual `eth_getCode` + reverse-lookup). [infra] `AI`
+- [ ] Store the canary contract address in AWS Secrets Manager as `kysigned/canary-contract-address`. This is the single-point-of-failure secret per F17.12 — it NEVER touches git. [infra] `AI`
+- [ ] **Do NOT submit canary source to Basescan for verification.** Per F17.4 the canary must remain a bytecode-only artifact with no public association to kysigned. [infra] `AI`
+- [ ] Measure real Base mainnet gas costs from the canary deploy tx + 3 test call txs (`recordEmailSignature`, `recordWalletSignature`, `recordCompletion`) signed manually via the canary wallet. Compare against the Sepolia measurements (220K/243K/158K). Document actual numbers in the Implementation Log. [infra] `AI`
+- [ ] Calculate true per-envelope cost (gas + email + compute + Lambda + KMS sign fees). Compare against the $0.25 target. If real cost exceeds $0.15, flag for pricing review BEFORE the dark-launch phase begins. [manual] `AI`
+- [ ] (If pricing needs adjustment) Set final per-envelope pricing and credit pack tiers. Update pricing page with real numbers. [frontend-visual] `DECIDE`
 
-- [ ] **Drain endpoint** — verify it works end-to-end the first time we need to sweep the wallet (e.g., before migrating to a fresh wallet, or during an incident). Do not assume it works because the test suite passes. Dry-run it on a small balance before committing a real drain.
-- [ ] **Recovery address** — confirm the configured recovery address is correct, reachable, and controlled by the intended party (Barry). Check this ONCE at provisioning time and then again at the 30-day mark when the wallet has seen real use.
-- [ ] **90-day deletion lifecycle** — the KMS key deletion policy is scheduled, not permanent. If the wallet goes idle, at day ~75 we should either bump it (any signed transaction resets the clock) or explicitly extend the deletion schedule. Add a calendar reminder the day the mainnet wallet is provisioned so day 75 doesn't come as a surprise.
-- [ ] **First-month ledger audit** — at T+30 days from first mainnet envelope, export the full wallet ledger from the run402 admin dashboard and reconcile: total gas spent, total USDC received, any unexpected outflows, any failed KMS signing calls that retried. Flag anything unusual to the run402 team so they can harden the paths that kysigned is the first to touch.
+#### Phase 13C: Dark-launch — kysigned-service in production mode against canary `HUMAN` + `AI`
+
+> **BLOCKS ON Phase 4B completion.** This phase requires the full kysigned-service deployment from Phase 4B (HTTP router, SES webhooks, sweep cron, frontend, e2e) to be live at `https://kysigned.run402.com` and routable via `https://kysigned.com` (apex + www, already resolved 2026-04-08). Do not start 13C until Phase 4B is marked Complete in the parallel /implement chat and its Phase 15 ship tasks for "REST API", "Verification page", and "Dashboard" are green.
+
+- [ ] Configure kysigned-service with canary environment variables: `KYSIGNED_CONTRACT_ADDRESS=<canary_address>` (read from `kysigned/canary-contract-address` Secrets Manager entry at deploy time) and `KYSIGNED_KMS_WALLET_ID=<canary_wallet_id>` (read from Secrets Manager at deploy time). Redeploy kysigned-service. [infra] `AI`
+- [ ] Verify the service is actually using the canary contract: create one envelope via the API, sign it, inspect the resulting tx on Basescan, confirm the target contract is the canary address (not Sepolia, not a kysigned-branded contract). [infra] `AI`
+- [ ] **Barry + Tal dogfood session 1:** run the full canary checklist from DD-17 OQ #20 (dashboard path, API path, MCP path, signing flow variations, retention + F8.6, payment + billing, monitoring, gas + cost verification). Tick each item in the checklist with a timestamp + short note. [manual] `HUMAN`
+- [ ] **Iterate on bugs discovered during dogfood.** For each bug: fix in the appropriate repo (public kysigned for library code, kysigned-service for deployment glue, run402 for platform), redeploy, re-run the affected checklist items. Bugs that require kysigned-service config changes are cheap; bugs requiring kysigned public-repo changes trigger a new public-repo commit (which stays on main — the public repo is still private and the Phase 14 squash comes later). [code] `AI`
+- [ ] **Dogfood session 2 (full checklist re-run)** if session 1 required any fixes that affected already-ticked items. Skip if session 1 was clean. [manual] `HUMAN`
+- [ ] **Go/no-go gate:** present the fully-ticked canary checklist to Barry + Tal as a ceremonial summary. Demand an explicit APPROVE / ABORT / KEEP TESTING decision. Record the decision in the Implementation Log with timestamp and approver names. No automatic advancement. [manual] `HUMAN`
+
+#### Phase 13D: Production wallet + production contract + byte-identical gate + flip + smoke `HUMAN` + `AI`
+
+> This phase runs only after Phase 13C's go/no-go gate returns APPROVE.
+
+- [ ] Call `POST /contracts/v1/wallets` on run402 with `{ chain: "base-mainnet" }` to provision the **production KMS wallet**. Capture wallet_id and address. Store as `kysigned/contract-wallet-address` (this IS the branded production wallet — store under the production namespace, not `canary-*`). [infra] `AI`
+- [ ] Confirm the production wallet appears in the run402 admin dashboard. Set its recovery address to Barry's personal wallet (per the F17 first-exercise watchlist and DD-17 retirement considerations). [manual] `HUMAN`
+- [ ] Fund the production wallet with ~0.02 ETH from the ops EOA wallet for gas. Wait for confirmation on Base. Record the funding tx hash. [manual] `HUMAN`
+- [ ] Compile `kysigned/contracts/SignatureRegistry.sol` locally using the **exact same Solidity compiler version and optimizer settings** that were used for the canary deploy in Phase 13B. This is the byte-identical gate invariant. [code] `AI`
+- [ ] Run the deploy script against the production KMS wallet. Poll `GET /contracts/v1/calls/:call_id` until status=`confirmed`. Capture the tx hash + production contract address. Store the contract address in AWS Secrets Manager as `kysigned/contract-address`. [infra] `AI`
+- [ ] **Submit the production contract source to Basescan for verification.** This IS the kysigned-branded contract — full Basescan verification is REQUIRED (the opposite of the canary). Include the Solidity compiler version, optimizer settings, and source code. Confirm the contract appears verified on Basescan with a green checkmark. [manual] `AI`
+- [ ] **Byte-identical bytecode gate:** run `kysigned-service/scripts/bytecode-identity-check.ts <canary_address> <production_address>` (the script implemented per DD-17 OQ #19). The script: (1) fetches runtime bytecode for both addresses via `eth_getCode`, (2) strips the Solidity metadata suffix from both using the `uint16_be(bytecode[-2:])` length algorithm, (3) compares `keccak256` of the stripped bytecodes. Success → proceed. Failure → ABORT, follow the OQ #21 investigation playbook, do NOT flip until the gate passes. [infra] `AI`
+- [ ] **FLIP kysigned-service environment variables** from canary references to production references: `KYSIGNED_CONTRACT_ADDRESS=<production_address>` (from `kysigned/contract-address` Secrets Manager), `KYSIGNED_KMS_WALLET_ID=<production_wallet_id>` (from Secrets Manager). Redeploy kysigned-service. **This is the launch moment.** No application code changes in this redeploy — config change only. [infra] `AI`
+- [ ] **Production smoke envelope:** per DD-17 OQ #22 — Barry creates an envelope via `POST /v1/envelope` with Tal as sole signer, Method A (auto-stamp), 15-minute turnaround window. Verify the envelope reaches `completed` status, the tx lands on the production contract on Basescan, and verify-by-hash on the signed PDF returns correct details. [manual] `HUMAN`
+- [ ] On smoke success: proceed to Phase 13E canary retirement. On smoke failure: rollback the env var flip (set them back to canary references + redeploy), investigate, do NOT proceed to Phase 14 until the smoke passes. [manual] `HUMAN`
+
+#### Phase 13E: Canary retirement `AI`
+
+> Executes DD-17's canary retirement sequence after Phase 13D smoke passes.
+
+- [ ] Call `POST /contracts/v1/wallets/:canary_id/drain` with header `X-Confirm-Drain: <canary_id>` and body `{ destination_address: "0x8D671Cd12ecf69e0B049a6B55c5b318097b4bc35" }` (the ops EOA). Poll `GET /contracts/v1/calls/:call_id` until status=`confirmed`. Verify the canary wallet's on-chain ETH balance is near-zero (dust under 1000 wei is acceptable). [infra] `AI`
+- [ ] Call `DELETE /contracts/v1/wallets/:canary_id` to explicitly retire the canary wallet. **This is the critical step to stop the daily $0.04 rent accrual.** Drain alone doesn't stop rent because rent is debited from the kysigned project's billing account, not from the wallet's ETH balance. [infra] `AI`
+- [ ] **Rename canary secrets** in AWS Secrets Manager for historical accountability: rename `kysigned/canary-contract-address` → `kysigned/retired-canary-contract-address` and `kysigned/canary-wallet-address` → `kysigned/retired-canary-wallet-address`. Do NOT delete — these are the historical record of the canary phase. [infra] `AI`
+- [ ] Record canary retirement in the Implementation Log: canary wallet symbolic reference (NOT the literal address), canary contract symbolic reference, drain tx hash, wallet delete confirmation, date + time. [manual] `AI`
+- [ ] **First-exercise watchlist items** — kysigned has now exercised several previously-untested run402 KMS paths:
+  - [ ] **Drain endpoint** — confirmed working end-to-end during canary retirement. Report any anomalies to the run402 team. [manual] `AI`
+  - [ ] **Recovery address** — verified working at production wallet provisioning in Phase 13D. Confirm again at the T+30 mark when the production wallet has seen real traffic. [manual] `HUMAN`
+  - [ ] **90-day deletion lifecycle** — applies to the canary wallet's KMS key (retirement-triggered) AND the production wallet's ongoing lifecycle. Calendar reminder set for canary T+75 in Phase 13B; new calendar reminder for production T+75 from the date of Phase 13D production provisioning. [manual] `HUMAN`
+  - [ ] **First-month ledger audit** — at T+30 days from the flip, export the full production wallet ledger from the run402 admin dashboard and reconcile: total gas spent, unexpected outflows, failed KMS signing calls that retried. Flag anomalies to the run402 team. [manual] `HUMAN`
 
 ### Phase 14: Launch Prep `HUMAN` / `AI`
 
 - [~] Email deliverability setup — dedicated sending domain, SPF/DKIM/DMARC, warm-up plan [infra] `AI` — **2026-04-07:** dedicated sender domain (`kysigned.com`) registered via run402 + SPF/DKIM/DMARC records live + status `verified`. **2026-04-08:** authoritative DNS migrated from Route 53 to Cloudflare (see DNS task in Phase 5); SPF/DKIM/DMARC records preserved end-to-end, SES verification unchanged. Remaining: run the 2-week SES warm-up ramp before high-volume launch traffic (start with low daily send volume from a real mailbox under this domain, ramp gradually).
-- [ ] Flip public repo from private to public on GitHub [infra] `AI` — squash all history into a single "v1.0.0" commit first (orphan branch, force-push). No development history visible. Clean audited release.
+- [ ] Flip public repo from private to public on GitHub [infra] `AI` — squash all history into a single "v1.0.0" commit first (orphan branch, force-push). No development history visible. Clean audited release. **MUST include the F17.11 anti-leakage scan as a hard gate immediately before the orphan-branch creation:** run `grep -rF "$(aws secretsmanager get-secret-value --secret-id kysigned/retired-canary-contract-address --query SecretString --output text --profile kychee --region us-east-1)" .` AND `grep -rF "$(aws secretsmanager get-secret-value --secret-id kysigned/retired-canary-wallet-address --query SecretString --output text --profile kychee --region us-east-1)" .` against the public `kysigned` repo working tree. **If either grep returns ANY match anywhere in the tree, ABORT the flip**, remove the leaked reference, verify clean, re-scan. Only proceed with `git checkout --orphan v1.0.0` → squash → force-push → private→public flip after BOTH scans return zero matches. Per DD-17 this is the single working-tree scan required by F17.11 (the public repo is private throughout the canary phase and the squash wipes all prior history, so this one scan is sufficient).
 - [x] **Refactor PDF storage to ephemeral retention (per spec F8.6 v0.5.0):** delete on completion-email delivery confirmation, not 30-day fixed window. Wire SES delivery webhooks to trigger deletion. 7-day fallback for bounces. Hard 30-day cap regardless. [code] — public-repo library piece complete: migration 004, pure shouldDeletePdf, sweepRetention, markCompletionEmailDelivered/Bounced, and immediate-delete on void. Service repo still needs to wire SES → markDelivered/Bounced webhook routes and a periodic sweep cron.
 - [x] **Wire kysigned to the shared monitoring module** (`@run402/shared/monitoring`) — provide concrete senders for Telegram (kysigned chat), Bugsnag (kysigned project), and SES (CRITICAL emails). Cover all standard signals from saas-factory F20. [code] — `kysigned-service/src/monitoring.ts` ships `createTelegramSender` / `createBugsnagSender` / `createSesEmailSender` and `createKysignedMonitor()` factory. 7 unit tests, all green. Goes live the moment the bot/project/SES resources exist (Phase 14 manual tasks).
 - [ ] **Create kysigned Telegram alerts channel** + add Tal and Barry as members [manual] `HUMAN`
@@ -627,3 +797,4 @@ _None yet_
     -d '{"jsonrpc":"2.0","id":1,"method":"eth_call","params":[{"to":"0xAE8b6702e413c6204b544D8Ff3C94852B2016c91","data":"0x3644e515"},"latest"]}'
   ```
   Exit code: 0. Result: `{"jsonrpc":"2.0","result":"0x8db329e11c1632d3570c4e92ee526a54f76262c122835520bd570595db9019fb","id":1}`. The returned `DOMAIN_SEPARATOR` matches the value recorded at deployment, confirming the deployed contract is reachable from outside the repo via a generic public RPC endpoint. Spec smoke check updated from `cast call ...` to portable curl form so it works without Foundry installed locally.
+- 2026-04-08: **Plan continued — DD-17 + Phase 13 re-sequenced for F17 dark-launch canary ritual.** Driven by spec v0.8.0 F17 (kysigned-spec) + saas-factory v1.15.0 F25 from the brainstorm→spec chain earlier in the day. Plan header Spec-Version bumped 0.7.0 → 0.8.0; Upstream References saas-factory 1.9.0 → 1.15.0. New DD-17 captures the canary ritual and resolves all five F17 Open Questions (#18–#22) inline: (18) run402 capability gap investigation via `Explore` subagent against `packages/gateway/src/routes/contracts.ts` + services/contract-wallets.ts + contract-call.ts — confirmed two wallets per project supported, rate limiting non-issue, drain endpoint fully implemented, BUT discovered NO dedicated deploy endpoint exists in contracts/v1 (this becomes a Phase 13A blocking prereq to verify the `POST /contracts/v1/call` + zero-address-target workaround OR land a small run402 enhancement), AND discovered rent is charged per-wallet not per-project so canary prepay is $2.40 not $1.20, AND the canary retirement MUST call `DELETE /contracts/v1/wallets/:id` after drain to stop daily rent accrual (draining ETH alone doesn't stop rent); (19) byte-identical bytecode check mechanism specified precisely — strip Solidity metadata suffix via `uint16_be(bytecode[-2:])` length algorithm then keccak256 compare, implemented as `kysigned-service/scripts/bytecode-identity-check.ts`; (20) full canary checklist enumerated (~40 items across dashboard/API/MCP/signing variations/retention/payment/monitoring/gas); (21) bytecode-divergence investigation playbook with 5 hypothesized causes + decision matrix; (22) production smoke specifics nailed down — API path, Barry→Tal single-signer, Method A auto-stamp, 15-minute window. Phase 13 restructured in place from "Gas Measurement & Final Pricing" to "Mainnet Deploy via Dark-Launch Canary" with 5 sub-phases (13A pre-flight → 13B canary provision+deploy → 13C dark-launch dogfood [BLOCKS ON Phase 4B completion in the parallel /implement chat] → 13D production provision+deploy+byte-identical-gate+flip+smoke → 13E canary retirement). Phase 14's existing "Flip public repo" task augmented with the F17.11 anti-leakage pre-squash scan as a hard gate: two `grep -rF` scans against the working tree for the retired canary contract address and retired canary wallet address, aborting the flip if either matches anywhere. Plan was NOT merged with the parallel Phase 4B chat — Phase 4B stays owned by the parallel /implement chat, Phase 13C explicitly declares the cross-chat dependency on Phase 4B Block 7 (e2e against production-deployed kysigned-service). No existing Phase 4, Phase 4A, or Phase 4B tasks were modified. All changes are additive to Phase 13 and Phase 14.
