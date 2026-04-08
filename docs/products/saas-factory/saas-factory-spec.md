@@ -1,6 +1,6 @@
 ---
 product: saas-factory
-version: 1.14.0
+version: 1.15.0
 status: Draft
 type: product
 interfaces: [document]
@@ -562,6 +562,48 @@ The platform-level solution is a **run402 admin-identity service** that saas-fac
 
 **Interim policy for saas-factory products shipping before this lands:** use the kysigned DD-15 pattern (per-product `<PRODUCT>_ADMIN_WALLETS` env var + SIWE verification) and document the recovery limitation in the product's operator README. Every product that adopts this interim pattern gains a migration task when the platform service lands (swap the env-var-based middleware for the SDK's `requireAdmin(request)` call).
 
+### F25. Pre-Launch Dark-Launch with Anonymous Backend
+
+> **Principle:** Every saas-factory product with an irreversible public launch moment SHOULD run the product in full production mode against an anonymous backend for a dark-launch phase BEFORE it becomes publicly associated with its brand. The dark-launch phase ends only when a concrete feature checklist is fully green AND a human explicitly approves. "Launch" then becomes a relabel operation — the product's configuration is flipped from anonymous backend references to production references, with no application code change — rather than a fresh deploy. This discipline decouples reputational risk (permanent public association with a branded failure) from the product's actual development, and uses the full-product exercise itself as the strongest possible pre-launch test.
+>
+> **Soft enforcement.** Every saas-factory product SHOULD adopt this discipline. Products that opt out MUST document the opt-out in their own spec with a one-paragraph rationale explaining why their launch has no meaningful irreversibility. There is no automatic waiver — products that legitimately don't have irreversible launch moments (e.g., a pure CLI tool with no public branding, a documentation site, an internal-only experiment) simply state the rationale and move on; everything else adopts F25.
+
+**What counts as an "irreversible public launch moment" (triggers for F25):**
+
+- Deploying a smart contract to a public blockchain whose address will be published in product documentation or branded artifacts
+- Submitting source code to a public verification service (Basescan, Etherscan, Sourcify, etc.) under the product's identity
+- Flipping a public git repository from private to public
+- Claiming a distinctive public subdomain or apex domain that will be cited in marketing
+- Publishing a canonical npm/PyPI/cargo package under the product's brand
+- Submitting to an app store under the product's brand
+- Registering in a public directory (W3C registries, EIP protocol registries, ENS, etc.) under the product's identity
+- Any other "contract of record" the product is signalling to the outside world for the first time
+
+Products may have multiple such moments in their launch; F25 applies to the moment(s) that are reputationally or technically the hardest to reverse.
+
+**Requirements (what the discipline consists of):**
+
+- F25.1. **Separation at the trust-root level.** Whatever backend resource embodies the irreversible moment (smart contract wallet, domain, signing key, API account) MUST exist as two separate instances during the dark-launch phase: one anonymous "canary" instance provisioned specifically for the dark-launch phase, and the eventual production instance. The two instances MUST be independently linkable to the product only via deliberate OSINT work, not via a single click of public tooling. For on-chain products, this means two separate deployer EOAs; for domain-bound products, this means a non-branded staging subdomain or IP; for package-bound products, this means an anonymously-named staging package.
+- F25.2. **Functional identity between canary and production.** The code path that the canary exercises MUST be bit-for-bit identical to the code path the production instance will run, wherever the artifact has a verifiable identity (bytecode, package hash, image digest, build artifact checksum). Cosmetic differences (names, branding strings, comments) are allowed; functional differences are not. Each product's spec (or plan) specifies the exact identity check appropriate to its artifact type (e.g., for smart contracts: runtime bytecode beyond the compiler metadata suffix; for npm packages: tarball content hash excluding package name/version; for Docker images: digest excluding tag).
+- F25.3. **Identity gate at the flip moment.** Before the canary → production flip, the product MUST verify that the canary artifact and the freshly-created production artifact pass the F25.2 identity check. If they do not, the flip MUST be aborted and the divergence investigated. A matching identity pair is a hard pre-flip gate — no flip without it.
+- F25.4. **No public verification or branding on the canary artifact.** Whatever verification surface the production artifact will use (Basescan source verification, npm README with product name, Play Store listing, etc.) MUST NOT be populated for the canary. External observers see an opaque artifact with no public association to the product.
+- F25.5. **The product runs in full production mode against canary references during the dark-launch phase.** The same deployment that will eventually serve launch traffic is configured with environment variables (or equivalent config mechanism) pointing at the canary backend(s) for the duration of the dark-launch phase. There is no separate staging environment, no mock data, no reduced feature surface. Real infrastructure, real integrations, real user flows — just against anonymous references.
+- F25.6. **Internal dogfood as primary exercise.** During the dark-launch phase, the product's operators (or a small trusted internal group) use the product as real users — creating real workloads, completing real flows, verifying real outputs. The dogfooding MUST exercise every user-facing surface the product will ship with, not just a smoke subset. The product's plan (not this spec) enumerates the specific dogfood checklist.
+- F25.7. **Exit criterion: checklist fully green AND explicit human go/no-go.** The dark-launch phase ends only when (a) every item on the product's dark-launch checklist (enumerated in the product's plan) is confirmed green, AND (b) a human operator explicitly approves the flip via a ceremonial go/no-go prompt that presents the checklist summary and demands an APPROVE / ABORT / KEEP TESTING decision. There is no automatic advancement. There is no time-boxing. A partial checklist does not unlock the flip, and a fully-green checklist does not itself trigger the flip — the human decision is independent and required.
+- F25.8. **"Launch" is a relabel, not a deploy.** The launch moment consists of: (1) provisioning the production backend instance(s), (2) running the F25.3 identity gate, (3) flipping the product's configuration from canary references to production references, (4) redeploying the product with the new config (no application code changes bundled with the flip), (5) running one smoke check against the production backend. No application code ships on launch day — every code path has already been exercised against the canary.
+- F25.9. **Canary retirement.** After a successful flip, the canary backend instance(s) MUST be retired within a short well-defined window (the specific window is set by each product's plan based on incident-response considerations — e.g., 24 hours for on-chain wallets, immediately for package registry staging, etc.). Retirement means: drain any recoverable resources back to the operator, schedule deletion of any retained credentials or keys, and remove references from active configuration. The canary artifact itself may be immutable (a deployed smart contract cannot be deleted), in which case it becomes an orphaned public artifact with no known association to the product; that is acceptable.
+- F25.10. **Anti-leakage: the canary identity is the single-point-of-failure secret.** For each saas-factory product adopting F25, the canary instance's identifying values (contract address, wallet address, package name, subdomain, etc.) MUST be treated as secrets until after the canary is retired. The minimal control is a single working-tree scan of the product's public repository for each canary identifier, run immediately before any moment that would publish the repository to a wider audience (e.g., a private → public flip, a first-time npm publish, a first-time release). The scan MUST abort the publication if any canary identifier is found anywhere in the tree. Products whose public repository is private throughout the dark-launch phase and is squashed to an orphan commit at publication time (the kysigned F17 pattern) MAY rely on that single scan as the only anti-leakage control; products with different repository lifecycles MUST define an equivalent-or-stronger control in their own spec.
+- F25.11. **Canary identity storage.** Canary identifiers MUST be stored exclusively in a secret-management system (AWS Secrets Manager, or equivalent). They MUST NOT be committed to any repository, public or private, and MUST be read at deploy time via environment injection. This applies to both public product repositories and private operator repositories; the discipline is "the canary identifier never touches disk in a git-tracked file, anywhere."
+- F25.12. **Opt-out disclosure.** Products that choose not to adopt F25 MUST include a one-paragraph rationale in their own spec explaining why their launch has no meaningful irreversibility. The opt-out MUST be a positive statement (e.g., "This product is an internal tool with no public branding or public identity, so F25 does not apply"), not silence. Silent non-adoption is a spec defect, not an opt-out.
+
+**Reference implementation: kysigned F17.** The first saas-factory product to adopt F25 is kysigned, via its `kysigned-spec.md` F17 ("Pre-Launch Dark-Launch Canary Discipline"). kysigned F17 instantiates F25 for an on-chain context: two separate KMS wallets, the F25.2 identity check is runtime bytecode comparison beyond the Solidity metadata suffix, canary exercise is Barry+Tal dogfooding the full kysigned product against an anonymous canary contract, and the anti-leakage control is a single pre-squash working-tree scan at the kysigned Phase 14 private→public flip. Any future saas-factory product with an on-chain component can use kysigned F17 as a template; products with different launch-moment shapes (domain claim, npm publish, app store submission, public registry entry, etc.) should derive their own F25 instantiation from the principles above, using kysigned F17 as a worked example.
+
+**Relationship to other factory requirements:**
+
+- **F22 (run402 project bootstrap)** is executed BEFORE the F25 dark-launch phase begins. The bootstrap creates the run402 project and provisions the initial (long-lived) production resources; F25 inserts a dark-launch phase between "bootstrap complete" and "publicly announced product," in which the bootstrap's production infrastructure runs against canary backend references.
+- **F23 (public repo as run402 trojan horse)** and F25 are independent but complementary. F23 describes how the public repo depends on run402 publicly-accessible surfaces; F25 describes how the product transitions from dark-launch to launch. A product adopting F23 still needs F25 if its launch has irreversible moments.
+- **F21 (shipping surfaces & smoke verification)** provides the smoke checks that F25 consumes — the dark-launch checklist in each product's plan is implemented on top of F21's `[ship]` task infrastructure, and the F25.8 production smoke check reuses the F21 smoke command for each surface.
+
 ## Acceptance Criteria
 
 ### F1. Document Structure
@@ -742,6 +784,22 @@ The platform-level solution is a **run402 admin-identity service** that saas-fac
 - [ ] The script handles the 409 "Domain registered by another wallet" case on `POST /email/v1/domains` by surfacing the gateway-pool admin SQL release pattern
 - [ ] The script STOPS before writing DNS records to Route 53 — DNS changes on the production apex are a separate human-approved step
 - [ ] kysigned-service/scripts/bootstrap-run402.ts is called out as the canonical reference implementation in F22
+
+### F25. Pre-Launch Dark-Launch with Anonymous Backend
+- [ ] Every product with an irreversible public launch moment has a dark-launch phase specified in its own spec (F17-style feature requirement or equivalent)
+- [ ] Products that legitimately have no irreversible launch moments include a positive opt-out paragraph in their own spec explaining why (silent non-adoption is a spec defect)
+- [ ] Each adopting product specifies two separate backend instances during the dark-launch phase: one anonymous canary, one eventual production
+- [ ] The canary backend instance has no public branding or verification linking it to the product (no Basescan source verification, no branded npm README, no product-name-in-subdomain, etc. — whatever applies to the artifact type)
+- [ ] Each adopting product specifies the exact identity check that the F25.3 pre-flip gate uses (e.g., runtime bytecode beyond metadata suffix for smart contracts; tarball content hash excluding package name/version for npm packages)
+- [ ] Each adopting product runs its full production deployment against canary backend references during the dark-launch phase (no separate staging environment, no mock data, no reduced feature surface)
+- [ ] Each adopting product's plan enumerates a concrete dark-launch exercise checklist covering every user-facing surface the product will ship with
+- [ ] The dark-launch phase exit requires (a) full checklist green AND (b) explicit human go/no-go — the spec enforces the principle, the plan enumerates the items
+- [ ] The flip from canary to production is a configuration-only operation — no application code ships on launch day
+- [ ] The pre-flip identity gate (F25.3) is enforced before any flip proceeds; flip is blocked until canary and production artifacts pass the identity check
+- [ ] After a successful flip, canary backend resources are retired within the window specified in the product's plan; canary credentials and keys are scheduled for deletion
+- [ ] Canary identifiers (address, package name, subdomain, etc.) are stored exclusively in a secret-management system; a grep of the product's public repository tree returns zero matches for any canary identifier
+- [ ] Before any moment that widens the audience for the product's public repository (private → public flip, first npm publish, first release), a working-tree scan for canary identifiers is run; the moment is aborted if any identifier is found
+- [ ] The kysigned F17 implementation is cited in F25 as the reference worked example; new products with different launch-moment shapes derive their own F25 instantiation from the principles
 
 ## Constraints & Dependencies
 
