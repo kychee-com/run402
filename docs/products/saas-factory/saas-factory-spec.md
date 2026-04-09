@@ -1,11 +1,11 @@
 ---
 product: saas-factory
-version: 1.15.0
+version: 1.16.0
 status: Draft
 type: product
 interfaces: [document]
 created: 2026-04-04
-updated: 2026-04-08
+updated: 2026-04-09
 ---
 
 ## Overview
@@ -257,11 +257,36 @@ The factory doc applies two complementary disruption frameworks:
 
 ### F15. Branding Rules
 
+**F15.1. Domain & naming**
+
 - Each product gets its own domain (only products get domains)
 - Marketing hubs and segment pages live under kychee.com
 - run402 is mentioned as infrastructure, never as the product brand
 - Kychee is the legal entity, owner, and advertiser for all products
 - SaaSpocalypse is a movement brand under Kychee (kychee.com/saaspocalypse), not a separate domain
+
+**F15.2. Public vs private brand assets — strict separation**
+
+Every SaaS-factory product has two repos (see F13: public forkable OSS repo + private service repo). Brand assets MUST be split across them along the same line:
+
+- **Private service repo** (`<product>-service/`) holds the **service marketing identity**: the final chosen product logo, favicons derived from that logo, marketing-site imagery, ad creatives, social cards, and any asset tied to the hosted commercial offering (e.g., kysigned.com's pen+">" logo). These are proprietary — they identify *the hosted service*, not the software.
+- **Public forkable repo** (`<product>/`) holds a **neutral base look-and-feel** for forkers: a generic-but-branded placeholder favicon, a neutral color palette, and a simple template logo. These assets say "this is a kysigned-family product" without saying "this is the kysigned.com hosted service." A forker running the template for their own law firm must not end up shipping the service's marketing identity.
+- The public repo MUST NOT copy run402's (or any other product's) brand assets as a placeholder. Each public repo gets its own base look-and-feel, generated alongside the service identity during chapter 3 (Domain and Branding).
+
+**F15.3. Asset generation rule — chapter 3 produces two sets**
+
+When chapter 3 (Domain and Branding) runs for a new product, it MUST produce **two** distinct asset bundles:
+
+1. **Service bundle** → destined for the private service repo. Final logo(s), favicons, marketing imagery, ad creatives. This is the "chosen" identity.
+2. **Template bundle** → destined for the public forkable repo. A neutral base look-and-feel: template favicon (distinct from the service logo — e.g., one of the rejected logo-concept alternatives, or a purpose-generated neutral variant), minimal color tokens, and any default styles a forker would expect as a starting point.
+
+Both bundles are generated in the same session so they share a common visual language (same font, same palette family, same rounded-square motif per Kychee house style) without the template bundle leaking the service's specific marketing identity. The `/brainstorm` and `/spec` skills MUST surface this split explicitly; skipping the template bundle is a spec defect.
+
+**F15.4. Enforcement**
+
+- Before any commit to a public forkable repo, brand assets in that repo MUST be verified as belonging to the template bundle, not the service bundle.
+- Service-bundle assets accidentally committed to a public repo MUST be removed and relocated to the private service repo (precedent: kysigned's 2026-04-09 favicon cleanup).
+- A public repo that references another product's brand assets (e.g., kysigned pointing to run402's favicon.svg) is a spec violation and MUST be fixed by generating the missing template bundle for that product.
 
 ### F16. Agent-Ready: Product CLI/MCP
 
@@ -710,6 +735,9 @@ Products may have multiple such moments in their launch; F25 applies to the mome
 - [ ] kychee.com for hubs is stated
 - [ ] "run402 as infrastructure, not brand" rule is stated
 - [ ] Kychee as legal entity for all products is stated
+- [ ] F15.2: public vs private brand asset split is stated; service-marketing assets live only in the private service repo
+- [ ] F15.3: chapter 3 produces BOTH a service bundle and a template bundle; the template bundle is a distinct neutral base look-and-feel (not a copy of run402's or any other product's assets)
+- [ ] F15.4: public repo brand assets are verified as template-bundle only before commit; cross-product asset references (e.g., kysigned → run402 favicon) are flagged as violations
 
 ### F16. Agent-Ready: Product CLI/MCP
 - [ ] Factory doc includes a task for CLI/MCP creation when applicable to the product's domain
