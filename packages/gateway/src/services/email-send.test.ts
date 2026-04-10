@@ -19,6 +19,9 @@ let mockS3Send: (cmd: any) => Promise<any> = async () => {
   throw new Error("mockS3Send not configured");
 };
 
+// Ensure INBOUND_EMAIL_BUCKET is set before config.ts is imported (CI doesn't set it)
+if (!process.env.INBOUND_EMAIL_BUCKET) process.env.INBOUND_EMAIL_BUCKET = "test-bucket";
+
 mock.module("../db/pool.js", {
   namedExports: {
     pool: {
