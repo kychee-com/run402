@@ -1,6 +1,6 @@
 ---
 product: kysigned
-version: 0.9.0
+version: 0.9.2
 status: Draft
 type: product
 interfaces: [website, api, cli, mcp, smart-contract]
@@ -10,7 +10,7 @@ updated: 2026-04-10
 
 ## Overview
 
-kysigned is a blockchain-verified e-signature service that replaces DocuSign's subscription model with per-envelope pricing (~$0.39/envelope). Signers sign by replying to an email with `I APPROVE` — their mail provider's DKIM signature provides cryptographic proof of mailbox control, which is captured as a zk-email proof and recorded on Base (Ethereum L2). A verifier given `(email, document)` any time in the next ~20 years can independently confirm the signature using only on-chain data and the publicly-archived IANA DNSSEC root — no dependency on kysigned.com, run402, or any operator being reachable. Two delivery modes: a hosted API at kysigned.com (`[service]`) and a free MIT-licensed repo deployable on run402 (`[repo]`).
+kysigned is a blockchain-verified e-signature service that replaces DocuSign's subscription model with per-envelope pricing (~$0.39/envelope). Signers sign by replying to an email with `I APPROVE` — their mail provider's DKIM signature provides cryptographic proof of mailbox control, which is captured as a zk-email proof and recorded on Base (Ethereum L2). A verifier given `(email, document)` any time in the next ~20 years can independently confirm the signature using only on-chain data (the zk proof, the archived DKIM key, and key consistency across signatures from the same provider) — no dependency on kysigned.com, run402, or any operator being reachable. Two delivery modes: a hosted API at kysigned.com (`[service]`) and a free MIT-licensed repo deployable on run402 (`[repo]`).
 
 ## Interfaces & Mediums
 
@@ -154,8 +154,15 @@ The primary signing method. Used by the hosted service and available in the publ
 - F3.3. `[both]` **The signing act:** the signer replies to the signing email from their own mailbox with `I APPROVE` (case-insensitive, punctuation-tolerant) as a standalone line above any quoted content. The reply goes to `reply-to-sign@<operatorDomain>` (a single inbound address, not per-envelope). The signer's mail provider DKIM-signs the outbound reply — this is the cryptographic proof of mailbox control.
 - F3.3.1. `[both]` **Subject line as binding:** the email subject carries the envelope ID and `docHash`. The subject must be present in the DKIM `h=` signed-headers list. The zk-email circuit rejects any reply where `Subject` is not among the DKIM-signed headers.
 - F3.3.2. `[both]` **`I APPROVE` validation:** the operator's inbound handler checks the reply body for `I APPROVE` as a standalone line above quoted content. Other replies (questions, blank, random text) are NOT treated as signatures. The operator auto-responds with guidance: "your reply did not match the signing format — to sign, reply with `I APPROVE`; to ask a question, contact the sender at [sender-email]."
-- F3.3.3. `[both]` **zk-email proof generation:** the operator runs a zk-email circuit over the raw DKIM-signed reply. The circuit produces a zk-SNARK proving: (a) a valid DKIM signature exists by the signer's mail provider's key, (b) `Subject` is in the DKIM `h=` list, (c) the `From:` header hashes to a committed email hash, (d) the subject contains the envelope ID and `docHash`, (e) the body contains `I APPROVE` as a standalone line. The raw email is discarded after proof generation.
-- F3.3.4. `[both]` **Bait-and-switch protection is native.** The `docHash` is in the DKIM-signed email the signer received and replied to. The zk circuit binds the signature to the exact hash present in the email. An operator cannot stage a different document — the reply's DKIM signature covers the hash the signer actually saw.
+- F3.3.3. `[both]` **zk-email proof generation:** the operator runs a zk-email circuit over the raw DKIM-signed reply. The circuit produces a zk-SNARK proving: (a) a valid DKIM signature exists by the signer's mail provider's key, (b) `Subject` is in the DKIM `h=` list, (c) the `From:` header produces a document-scoped commitment `emailCommit = Poseidon(email, docHash, envelopeId)` (not a stable email hash — prevents cross-document linkability), (d) the subject contains the envelope ID and `docHash`, (e) the body contains `I APPROVE` as a standalone line, (f) the `d=` domain in the DKIM-Signature aligns with the `From:` domain, (g) the DKIM signature does not use `l=` (partial body), (h) no duplicate critical headers (`From`, `Subject`, `To`). The raw email is discarded after proof generation.
+- F3.3.4. `[both]` **Circuit hardening requirements** (from adversarial review):
+  - **DKIM `d=` / `From` alignment:** the circuit rejects emails where the DKIM-Signature `d=` domain does not match or align with the `From:` header domain. Prevents an attacker from signing as `d=attacker.com` while claiming `From: bob@gmail.com`.
+  - **Reject DKIM `l=` tag:** partial-body DKIM signatures (`l=<length>`) allow appending arbitrary content after the signed portion. The circuit rejects any DKIM-Signature containing `l=`.
+  - **Reject duplicate critical headers:** the circuit rejects emails with duplicate `From`, `Subject`, or `To` headers (ambiguity attack).
+  - **MIME restrictions:** only `text/plain` single-part messages with ASCII/UTF-8 encoding are accepted for proof generation. `text/html`, `multipart/*`, and exotic transfer encodings are rejected at the operator pre-check layer (before circuit input preparation).
+  - **Replay nullifier:** each proof includes a nullifier derived from the canonical DKIM signature bytes, preventing the same email from being used to generate multiple proofs.
+  - **Recipient binding:** the circuit proves that the `To:` header (if in DKIM `h=`) includes the operator's designated reply address (`reply-to-sign@<operatorDomain>`), binding the reply to a specific kysigned instance.
+- F3.3.5. `[both]` **Bait-and-switch protection is native.** The `docHash` is in the DKIM-signed email the signer received and replied to. The zk circuit binds the signature to the exact hash present in the email. An operator cannot stage a different document — the reply's DKIM signature covers the hash the signer actually saw.
 - F3.4. `[both]` **No visual signature blocks in MVP.** Signers do not draw or click a visual signature. The signing act is the email reply. Visual signature blocks (drawn handwriting, auto-stamp) are deferred to a future feature.
 - F3.5. `[both]` After signing is confirmed (zk proof generated, on-chain record written), the operator sends a confirmation email to the signer with the transaction hash and a proof link.
 - F3.6. `[both]` **Decline:** a signer who does not wish to sign simply does not reply. There is no explicit decline action in the MVP. Envelope expiry (F1.7) handles the timeout case. The sender is notified when the envelope expires with incomplete signatures.
@@ -176,7 +183,7 @@ Every signature event is recorded on canonical smart contracts on Base.
 
 #### F4.A Contracts
 
-- F4.1. **Two canonical contracts deployed on Base:** `SignatureRegistry` (signature records) and `EvidenceKeyRegistry` (DKIM public keys + DNSSEC proofs). All instances (service and repo deployments) record to the same contracts by default.
+- F4.1. **Two canonical contracts deployed on Base:** `SignatureRegistry` (signature records) and `EvidenceKeyRegistry` (DKIM public keys). All instances (service and repo deployments) record to the same contracts by default.
 - F4.2. Contract addresses are constants in the repo code. Forkers can change them but have no incentive to (shared registry strengthens verification).
 - F4.3. Both contracts are immutable once deployed: no owner, no admin, no upgrade mechanism, no proxy pattern. Append-only. No entry can be modified or deleted by anyone, including the deployer.
 - F4.4. Both contracts accept permissionless writes — any funded EOA can submit records. For reply-to-sign, the contract verifies the zk proof against the referenced evidence key before accepting. Invalid proofs are rejected at write time. For wallet signing (Method B), the contract verifies the EIP-712 signature via `ecrecover` (unchanged from current).
@@ -185,9 +192,12 @@ Every signature event is recorded on canonical smart contracts on Base.
 
 #### F4.B Evidence Key Registry (new)
 
-- F4.7. `EvidenceKeyRegistry` stores DKIM public keys keyed by `keyId`. Each entry contains: provider domain, DKIM selector, raw public key bytes, a DNSSEC proof chain from the IANA DNSSEC root KSK down to the provider's `_selector._domainkey.<domain>` record, and a registration timestamp.
+- F4.7. `EvidenceKeyRegistry` stores DKIM public keys keyed by `keyId = keccak256(domain, selector, publicKey)`. Each entry contains: provider domain, DKIM selector, raw public key bytes, and a registration timestamp (`block.timestamp`). Permissionless, append-only, no admin, no revocation.
 - F4.8. One entry per (provider, selector, key rotation). Amortized across all signatures using the same key. Registered on first encounter by any operator.
-- F4.9. A 2046 verifier can independently confirm the key's authenticity by validating the DNSSEC chain against the IANA root KSK (archived globally and publicly by multiple independent parties).
+- F4.9. **Non-repudiation via key consistency:** The zk proof's existence proves the DKIM key was correct at proof generation time (wrong key → DKIM verification fails → no proof). The `EvidenceKeyRegistry` + `block.timestamp` creates an immutable on-chain record: "on day X this DKIM key was used to verify a legitimate email signature." A signer cannot repudiate by claiming the operator fabricated the key, because the same `keyId` is referenced by ALL signatures from that provider during the same key period — the operator would need to fabricate ALL Gmail (or Outlook, etc.) signatures in that window, not just the disputed one. Multiple independent operators sharing the canonical `EvidenceKeyRegistry` contract make fabrication infeasible (each operator independently verifies and registers the same key). Even with a single operator, the consistency requirement across all signatures from the same provider during the same key period makes selective fabrication detectable.
+- F4.9.1. **DNSSEC: not required.** Major providers (Gmail, Outlook, Yahoo) do not sign their `_domainkey` DNS zones with DNSSEC (~5% global DNSSEC coverage). The trust model does not depend on DNSSEC — the zk proof itself is the cryptographic attestation of key correctness. DNSSEC would add defense-in-depth for archival key provenance but is unavailable for the vast majority of real-world emails and is therefore omitted from the MVP.
+- F4.9.2. **Standardisation opportunity (future):** If multiple independent operators standardise on the same canonical `EvidenceKeyRegistry` contract, every operator's registrations corroborate every other operator's. A fabricated key would be immediately detectable as an outlier against the consensus of independent operators. This is the strongest form of non-repudiation and requires no protocol change — only adoption of the same contract address by multiple parties.
+- F4.9.3. **Operator censorship is detectable.** The operator could refuse to submit a proof on-chain, but this is detectable: the sender or signer can independently query the blockchain using the verification script (`scripts/verify-envelope.ts` in the public repo). If the signature isn't on-chain, the operator is caught. The trust model, DKIM key explanation, and verification procedure are documented in `docs/trust-model.md` in the public repo — written for non-technical users.
 
 #### F4.C Reply-to-Sign Recording `[both]`
 
@@ -198,7 +208,12 @@ Every signature event is recorded on canonical smart contracts on Base.
   - `evidenceKeyId` — reference to the DKIM key entry in `EvidenceKeyRegistry`.
   - `timestamp` — signing time.
   - Bulky data (zk proof bytes, public inputs) emitted via events, not stored in contract storage (cheaper gas, permanently retrievable from block history).
-- F4.11. **Privacy:** `searchKey = SlowHash(email || docHash)` ensures: a verifier with both inputs finds the record; an observer with only an email cannot enumerate signatures (docHash space is 2^256); an observer with only a docHash faces slow-KDF cost to enumerate emails; cross-document records by the same signer are unlinkable. No email plaintext or stable email hash is on-chain.
+- F4.11. **Privacy (tiered exposure model):** No email plaintext or stable email identifier is on-chain. The email commitment is document-scoped (`emailCommit = Poseidon(email, docHash, envelopeId)`) — different for every document, preventing cross-document linkability. Privacy degrades with attacker knowledge:
+  - **Casual observer** (no document, no email): sees opaque hashes, timestamps, provider references. Cannot determine who signed what. **Strong privacy.**
+  - **Has the document** (not the email): finds all records for that document via `docHash`. Learns signer count, timing, providers used. To identify signers: must brute-force candidate emails via argon2id (~1 second per guess, 256 MiB memory). Small candidate set (2-3 people): seconds. Employee directory (10K): hours. Global email enumeration: infeasible. **Moderate privacy — targeted confirmation is computationally expensive.**
+  - **Has email + document** (the verification scenario): confirms signature in ~1 second. **By design — this is the intended use case.**
+  - **Has email, wants all documents** (surveillance): must try every `docHash` on-chain. At 100K documents: ~28 hours. At 10M documents: ~116 days. Memory-hard KDF limits GPU/ASIC speedup. **Expensive even for state-level attackers, but not impossible for high-value targets with known email addresses.**
+  - `docHash` is public — anyone with the document can find all signature records for it. This is a deliberate design choice: verification requires the document, and document holders are expected to have it.
 - F4.12. **On write:** the contract verifies the zk proof against the referenced evidence key. Invalid proofs are rejected. Valid proofs are stored and the signature event is emitted.
 - F4.13. **Submitted by the kysigned server via the platform wallet**, not by the signer. The signer's involvement ends when their DKIM-signed reply is received.
 
@@ -221,9 +236,9 @@ Public, universal, vendor-independent signature verification — designed to wor
 - F5.2. Verification page at `/verify` accepts a PDF upload and an email address. It computes `docHash = SHA-256(pdf_bytes)` and `searchKey = SlowHash(email || docHash)`, then queries the canonical `SignatureRegistry` contract(s) for a matching record.
 - F5.3. If a record is found, the page:
   1. Retrieves the zk proof from the signature event (block history).
-  2. Looks up the `evidenceKeyId` in `EvidenceKeyRegistry` to get the DKIM public key + DNSSEC proof chain.
-  3. Verifies the DNSSEC chain (against the IANA root KSK archived in the registry entry).
-  4. Verifies the zk proof against the DKIM key with public inputs `(H(email), envelopeId, docHash)`.
+  2. Looks up the `evidenceKeyId` in `EvidenceKeyRegistry` to get the DKIM public key + registration timestamp.
+  3. Verifies the zk proof against the DKIM key with public inputs `(emailCommit, envelopeId, docHash)` where `emailCommit = Poseidon(email, docHash, envelopeId)` — document-scoped, not a stable pseudonym.
+  4. Checks key consistency: the same `keyId` is referenced by other signatures from the same provider during the same period (corroboration — see F4.9).
   5. Displays result: "This email signed this document at [timestamp]. Verification is independent — it does not depend on kysigned.com or any operator."
 - F5.4. Verification page is **universal**: it verifies ANY record on the canonical contracts, regardless of which instance (kysigned.com, acme-sign.com, etc.) created it.
 - F5.5. **No discovery.** The verification page does NOT support "search by email" or "list all documents signed by X." The verifier must provide both inputs. This is not a limitation — it is the privacy guarantee.
@@ -360,11 +375,11 @@ Marketing site and product pages at kysigned.com.
 - F12.5. `[service]` **DPA (Data Processing Agreement)** — drafted from templates. Requires human approval.
 - F12.6. `[repo]` **LICENSE** — MIT license covering the code.
 - F12.7. `[repo]` **LEGAL.md** — disclaimers separate from the MIT license:
-  - What reply-to-sign signatures prove: "the signer's mail provider's DKIM key, archived on-chain with a DNSSEC proof chain, attested an outbound email from the signer's mailbox containing `I APPROVE` and the document hash." Not "person X signed."
+  - What reply-to-sign signatures prove: "the signer's mail provider's DKIM key, archived on-chain with an immutable timestamp, attested an outbound email from the signer's mailbox containing `I APPROVE` and the document hash. The key's authenticity is corroborated by every other signature from the same provider during the same key period (see F4.9)." Not "person X signed."
   - What wallet signatures (Method B) prove and do NOT prove: "wallet address X signed document Y." The `signerEmail` field is a caller-chosen label, NOT cryptographically bound. Forkers must establish wallet ↔ identity binding externally. **This gap must be prominently documented.**
   - No guarantee of legal enforceability in any specific jurisdiction
   - Smart contract permanence disclaimer (recordings on Base are permanent, cannot be deleted or modified by anyone)
-  - Future cryptographic break acknowledgment: DKIM RSA and zk-SNARKs could theoretically be broken by quantum computing; records from before a break are evaluated in historical context
+  - Future cryptographic break acknowledgment: DKIM (RSA-2048) and zk-SNARKs (Groth16 / BN254) are not quantum-resistant. A sufficiently powerful quantum computer could forge new DKIM signatures or zk proofs. However: (1) blockchain records are immutable — quantum computers cannot alter existing on-chain records, only potentially create new fraudulent ones; (2) all pre-quantum signatures carry a blockchain timestamp proving they were created before quantum capability existed, which is strong evidence of authenticity in historical context; (3) a forged post-quantum signature would lack the corroboration of other signatures from the same provider during the same key period (F4.9), making it detectable; (4) email providers are expected to adopt quantum-safe DKIM algorithms (NIST ML-DSA, SLH-DSA) before quantum computers reach the necessary scale (~2035+), and the kysigned architecture upgrades transparently (new verifier contract, no data migration). The honest claim: pre-quantum signatures are historically valid evidence with a blockchain-anchored timestamp; they are not immune to a future world where the underlying cryptography is broken, but breaking them requires both quantum capability AND defeating the consistency checks across the key registry.
   - Operator responsibility: the forker/deployer is responsible for their own privacy compliance, Terms of Service, and legal obligations — not Kychee
   - Excluded document types that cannot be e-signed under ESIGN/UETA (wills, codicils, etc.)
 - F12.8. No product launch until all `[service]` legal documents are human-approved.
@@ -487,7 +502,7 @@ This feature introduces a new conceptual layer above envelopes: the **document**
 - [ ] Signing email `Reply-To` header is `reply-to-sign@<operatorDomain>`; subject contains envelope ID and `docHash`
 - [ ] Signer replies with `I APPROVE` (case-insensitive, punctuation-tolerant) → operator receives the reply with raw DKIM headers preserved
 - [ ] Operator validates: DKIM signature is valid, `Subject` is in the DKIM `h=` signed-headers list, `From:` matches expected signer, body contains `I APPROVE` as standalone line above quoted content, subject contains correct envelope ID and `docHash`
-- [ ] zk-email circuit produces a valid proof binding `H(email)`, `envelopeId`, and `docHash` to the DKIM signature; raw email is discarded after proof generation
+- [ ] zk-email circuit produces a valid proof binding `emailCommit = Poseidon(email, docHash, envelopeId)`, `envelopeId`, and `docHash` to the DKIM signature; email commitment is document-scoped (no stable pseudonym); raw email is discarded after proof generation
 - [ ] Signature record written to `SignatureRegistry` with correct `searchKey`, `docHash`, `envelopeId`, `evidenceKeyId`, zk proof in event
 - [ ] Reply without `I APPROVE` (question, blank, wrong text) triggers auto-reply with guidance; no signature recorded
 - [ ] Duplicate reply from same signer for same envelope: first is used, subsequent are no-ops with auto-reply "you have already signed"
@@ -502,9 +517,9 @@ This feature introduces a new conceptual layer above envelopes: the **document**
 
 ### F4. On-Chain Recording
 - [ ] `SignatureRegistry` deployed on Base; accepts reply-to-sign records with valid zk proof; rejects records with invalid proofs
-- [ ] `EvidenceKeyRegistry` deployed on Base; stores DKIM public keys with DNSSEC proof chains from IANA root
+- [ ] `EvidenceKeyRegistry` deployed on Base; stores DKIM public keys with domain, selector, raw key bytes, and registration timestamp
 - [ ] Reply-to-sign signature record keyed by `searchKey = SlowHash(email || docHash)`; contains `docHash`, `envelopeId`, `evidenceKeyId`, `timestamp`; zk proof emitted as event
-- [ ] Evidence key registered once per (provider, selector, rotation); DNSSEC proof chain validates against IANA root
+- [ ] Evidence key registered once per (provider, selector, rotation); key consistency verifiable across signatures from the same provider
 - [ ] `[repo]` Method B (wallet) signature recorded via `recordWalletSignature` with correct signer address recovered via ecrecover
 - [ ] Completion event recorded when all signers have signed, with correct `originalDocHash`, `finalDocHash`, and `signerCount`
 - [ ] `[repo]` Mixed-method envelope: some signers use reply-to-sign, others wallet; all recorded; completion fires after all sign
@@ -513,7 +528,7 @@ This feature introduces a new conceptual layer above envelopes: the **document**
 
 ### F5. Verification
 - [ ] Verification page accepts `(email, document PDF)` as inputs; computes `searchKey`; finds matching reply-to-sign record
-- [ ] Verification retrieves zk proof from event, looks up evidence key, verifies DNSSEC chain, verifies zk proof — all client-side or against on-chain data only
+- [ ] Verification retrieves zk proof from event, looks up evidence key, verifies zk proof, checks key consistency — all client-side or against on-chain data only
 - [ ] Verification page is universal: verifies ANY record on the canonical contracts regardless of which instance created it
 - [ ] No "search by email" or "list all docs signed by X" — verifier must provide both email and document
 - [ ] `[repo]` Wallet signing verification: `verifyWalletSignature(documentHash, expectedSigner)` returns correct true/false
@@ -647,7 +662,7 @@ This feature introduces a new conceptual layer above envelopes: the **document**
 - **run402 email service (inbound):** Reply-to-sign requires an inbound email surface that delivers raw RFC-822 MIME with DKIM headers preserved. Confirmed present on run402 (SES receipt rule → S3 → `packages/email-lambda/inbound.mjs` → Postgres; raw MIME persisted in S3 via `s3_key`). Two small enhancements needed: (a) raw-MIME API accessor on `GET /v1/mailboxes/:id/messages/:msgId` returning S3 bytes, (b) inbound routing on kysigned custom sender domain (or MVP ships on `reply-to-sign@mail.run402.com`). These are tracked as a parallel run402 openspec change.
 - **run402 custom domains:** Repo forkers can use subdomains (acme-sign.run402.com) or custom domains (acme-sign.com). Outbound custom sender domains confirmed available (shipped in Phase 0). Inbound custom domain routing is the enhancement tracked above.
 - **zk-email circuit:** Reply-to-sign requires a zk-email circuit that produces a zk-SNARK over a DKIM-signed email. Candidate: adopt or customize from [prove.email](https://prove.email). Circuit must match our exact public-input shape (searchKey commitment, subject format, `I APPROVE` body marker, first-non-quoted-line detection). Audit strategy TBD.
-- **DNSSEC proof chain capture:** The operator needs a way to fetch the full DNSSEC chain from IANA root down to a provider's DKIM selector record at evidence-key-registration time. Library/service TBD. Domains without DNSSEC require a fallback policy (reject? degrade?).
+- **~~DNSSEC proof chain capture:~~** REMOVED (v0.9.1). Major providers (Gmail, Outlook, Yahoo) don't have DNSSEC. The zk proof itself proves key correctness; key consistency across signatures provides non-repudiation (F4.9). DNSSEC is omitted from MVP.
 - **Slow-KDF parameters:** `searchKey = SlowHash(email || docHash)` requires committing forever to a specific KDF algorithm and parameters. Must be chosen carefully — too fast enables enumeration, too slow degrades verifier UX. Candidate: argon2id with parameters tuned for ~1 second on consumer hardware.
 - **Base gas costs:** Final per-envelope pricing depends on measured gas costs for the rewritten contracts on Base. Pricing target: ~$0.39/envelope. On-chain cost per envelope estimated at $0.01–$0.20; re-measure on Sepolia/mainnet canary.
 - **Smart contract deployment:** `SignatureRegistry` and `EvidenceKeyRegistry` must be deployed on Base mainnet before any production signing. Both contracts are immutable once deployed.
@@ -659,14 +674,19 @@ This feature introduces a new conceptual layer above envelopes: the **document**
 ### New (from signature-binding rework)
 
 1. **zk-email circuit adoption vs customization.** Can we adopt a circuit from prove.email directly, or do we need to customize for our public-input shape (`I APPROVE` marker, subject format, first-non-quoted-line rule)? Audit strategy and cost?
-2. **DNSSEC proof chain capture.** Which library/service to fetch the full DNSSEC chain from IANA root to a provider's DKIM selector? Fallback for domains without DNSSEC — reject cleanly, or degrade?
+2. **~~DNSSEC proof chain capture.~~** RESOLVED (v0.9.1). DNSSEC removed from MVP. The zk proof proves key correctness; key consistency across signatures provides non-repudiation (F4.9).
 3. **`Subject` not in DKIM `h=`.** Some mail providers do not include `Subject` in DKIM-signed headers. What fraction of real-world email is affected? Do we reject cleanly with a helpful message, or find an alternative binding?
 4. **DKIM key rotation race.** A reply's DKIM header specifies the selector. The operator must fetch the exact key version at the time of reply. Implementation detail but operationally important.
 5. **Slow-KDF parameters.** Exact algorithm (argon2id vs scrypt vs PBKDF2) and parameter values. Fixed forever once committed. Must be expensive enough to resist a 1000x hardware speedup while remaining tolerable (~1s) for a legitimate verifier.
 6. **Explicit decline phrase.** Should `I DECLINE` be a first-class decline action, or is "do not reply" the only decline path?
 7. **Retry UX for non-delivery.** Replies can bounce or be filtered. What does the nudge/re-send flow look like?
 8. **Consent language review.** Who reviews the email copy, "how it works" page, and certificate page wording before launch? Legal expertise required.
-9. **FAQ on dispute scenarios.** Lock once architecture is frozen. Enumerate: sender forgery, signer repudiation, operator forgery, future crypto break, duress.
+9. **Dispute scenarios — PARTIALLY RESOLVED (v0.9.1).** Signer repudiation analysis:
+   - **Scenario:** Bob signed, then claims the operator fabricated his signature using a fake DKIM key (after the real key rotated out of DNS).
+   - **Defense (trusted operator):** No issue — the operator is trusted, the zk proof exists, the key is archived on-chain with `block.timestamp`.
+   - **Defense (untrusted operator):** The operator would need to fabricate ALL DKIM signatures from Bob's provider (e.g., Gmail) during the key period, because every legitimate signing references the same `keyId`. A single legitimate Gmail signature from any other user during the same period corroborates the key. The on-chain `keyId = keccak256(domain, selector, publicKey)` is the anchor — all proofs referencing it are mutually corroborating.
+   - **Defense (multiple operators):** If multiple independent operators share the canonical `EvidenceKeyRegistry`, each independently verifies and registers the same key. Fabrication by one operator is immediately detectable as an outlier. This is the strongest form and requires no protocol change — only adoption.
+   - **Remaining scenarios** (sender forgery, future crypto break, duress) still open — lock before launch.
 10. **Internationalization of `I APPROVE`.** English-only for MVP. Future consideration for localized signing phrases.
 11. **Internal future-features note.** Create a separate internal file tracking: OAuth-based identity verification, wallet co-signature as additive proof, visible signature blocks, alternative delivery channels (WhatsApp etc.). Not in public repo, not mentioned publicly.
 
