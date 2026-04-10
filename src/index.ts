@@ -72,6 +72,7 @@ import { createMailboxSchema, handleCreateMailbox } from "./tools/create-mailbox
 import { sendEmailSchema, handleSendEmail } from "./tools/send-email.js";
 import { listEmailsSchema, handleListEmails } from "./tools/list-emails.js";
 import { getEmailSchema, handleGetEmail } from "./tools/get-email.js";
+import { getEmailRawSchema, handleGetEmailRaw } from "./tools/get-email-raw.js";
 import { getMailboxSchema, handleGetMailbox } from "./tools/get-mailbox.js";
 
 // New tools — magic link auth
@@ -504,6 +505,13 @@ server.tool(
   "Get a sent email with details and any replies.",
   getEmailSchema,
   async (args) => handleGetEmail(args),
+);
+
+server.tool(
+  "get_email_raw",
+  "Get the raw RFC-822 bytes of an inbound email message, base64-encoded. The decoded bytes are bit-identical to the DKIM-signed original — no parsing, normalization, or CRLF cleanup. Use this for cryptographic verification (DKIM checks, zk-email proofs). Inbound messages only; outbound returns 404. For display/threading, use get_email instead.",
+  getEmailRawSchema,
+  async (args) => handleGetEmailRaw(args),
 );
 
 server.tool(

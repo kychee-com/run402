@@ -11,6 +11,8 @@ Subcommands:
   send   --to <email> [mode flags]   Send an email (template or raw HTML)
   list   [--project <id>]            List sent emails
   get    <message_id> [--project <id>]  Get a message with replies
+  get-raw <message_id> [--project <id>] [--output <file>]
+                                         Fetch raw RFC-822 bytes (inbound only)
 
 Send modes:
   Template:  --template <name> --var key=value [--var ...]
@@ -32,6 +34,7 @@ Examples:
     --var project_name="My App" --var message="Deploy complete"
   run402 email list
   run402 email get msg_abc123
+  run402 email get-raw msg_abc123 --output reply.eml
 
 Notes:
   - One mailbox per project
@@ -246,6 +249,47 @@ async function get(args) {
   console.log(JSON.stringify(data, null, 2));
 }
 
+async function getRaw(args) {
+  let messageId = null;
+  let projectOpt = null;
+  let outputFile = null;
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === "--project" && args[i + 1]) { projectOpt = args[++i]; }
+    else if (args[i] === "--output" && args[i + 1]) { outputFile = args[++i]; }
+    else if (!args[i].startsWith("--") && !messageId) { messageId = args[i]; }
+  }
+  const projectId = resolveProjectId(projectOpt);
+  const p = findProject(projectId);
+
+  if (!messageId) {
+    console.error(JSON.stringify({ status: "error", message: "Missing message_id. Usage: run402 email get-raw <message_id> [--output <file>]" }));
+    process.exit(1);
+  }
+
+  const mailboxId = await requireMailboxId(projectId, p.service_key);
+
+  const res = await fetch(`${API}/mailboxes/v1/${mailboxId}/messages/${messageId}/raw`, {
+    headers: { "Authorization": `Bearer ${p.service_key}` },
+  });
+  if (!res.ok) {
+    let errBody;
+    try { errBody = await res.json(); } catch { errBody = { error: await res.text().catch(() => "Unknown error") }; }
+    console.error(JSON.stringify({ status: "error", http: res.status, ...errBody }));
+    process.exit(1);
+  }
+
+  const buf = Buffer.from(await res.arrayBuffer());
+
+  if (outputFile) {
+    const { writeFileSync } = await import("node:fs");
+    writeFileSync(outputFile, buf);
+    console.log(JSON.stringify({ status: "ok", message_id: messageId, bytes: buf.length, output: outputFile }));
+  } else {
+    // Write raw bytes to stdout (no JSON wrapping — binary pipe-friendly)
+    process.stdout.write(buf);
+  }
+}
+
 async function status(args) {
   const projectId = resolveProjectId(parseFlag(args, "--project"));
   const p = findProject(projectId);
@@ -277,6 +321,7 @@ export async function run(sub, args) {
     case "send":   await send(args); break;
     case "list":   await list(args); break;
     case "get":    await get(args); break;
+    case "get-raw": await getRaw(args); break;
     default:
       console.error(`Unknown subcommand: ${sub}\n`);
       console.log(HELP);

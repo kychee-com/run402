@@ -73,6 +73,7 @@ npx run402-mcp
 | `send_email` | Send email — template or raw HTML mode. Single recipient. |
 | `list_emails` | List sent emails from the project's mailbox. |
 | `get_email` | Get a specific email message with replies. |
+| `get_email_raw` | Get raw RFC-822 bytes of an inbound message (base64). For DKIM/zk-email verification. |
 | `get_mailbox` | Get the project's mailbox info. |
 | `promote_user` | Promote a project user to admin role. |
 | `demote_user` | Demote a project user from admin role. |
