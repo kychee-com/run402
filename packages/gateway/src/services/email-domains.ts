@@ -5,10 +5,16 @@
  */
 
 import { SESv2Client, CreateEmailIdentityCommand, DeleteEmailIdentityCommand, GetEmailIdentityCommand } from "@aws-sdk/client-sesv2";
+import { SESClient, DescribeReceiptRuleCommand, UpdateReceiptRuleCommand } from "@aws-sdk/client-ses";
 import { pool } from "../db/pool.js";
 import { sql } from "../db/sql.js";
 
 const ses = new SESv2Client({ region: process.env.AWS_REGION || "us-east-1" });
+const sesV1 = new SESClient({ region: process.env.AWS_REGION || "us-east-1" });
+
+const SES_RULE_SET_NAME = "run402-inbound";
+const SES_RULE_NAME = "InboundMailRule";
+const MX_RECORD = "10 inbound-smtp.us-east-1.amazonaws.com";
 
 // --- Domain blocklist ---
 
@@ -239,13 +245,18 @@ export async function getSenderDomainStatus(
 export async function removeSenderDomain(projectId: string): Promise<boolean> {
   // Find the domain for this project
   const result = await pool.query(
-    sql(`SELECT domain, project_id FROM internal.email_domains WHERE project_id = $1`),
+    sql(`SELECT domain, project_id, inbound_enabled FROM internal.email_domains WHERE project_id = $1`),
     [projectId],
   );
 
   if (result.rows.length === 0) return false;
 
-  const { domain } = result.rows[0];
+  const { domain, inbound_enabled } = result.rows[0];
+
+  // Cascade: disable inbound first if it was enabled
+  if (inbound_enabled) {
+    await disableInbound(projectId, domain);
+  }
 
   // Remove DB row for this project
   await pool.query(
@@ -269,6 +280,139 @@ export async function removeSenderDomain(projectId: string): Promise<boolean> {
   }
 
   return true;
+}
+
+// --- Inbound enable/disable ---
+
+interface InboundResult {
+  error?: true;
+  message?: string;
+  status?: string;
+  mx_record?: string;
+}
+
+/**
+ * Enable inbound email on a verified custom sender domain.
+ * Adds the domain to the SES receipt rule's recipient list so SES routes
+ * inbound mail for this domain to the inbound Lambda.
+ */
+export async function enableInbound(
+  projectId: string,
+  domain: string,
+): Promise<InboundResult> {
+  const normalizedDomain = domain.toLowerCase().trim();
+
+  const result = await pool.query(
+    sql(`SELECT domain, status, inbound_enabled FROM internal.email_domains WHERE project_id = $1 AND domain = $2`),
+    [projectId, normalizedDomain],
+  );
+  if (result.rows.length === 0) {
+    return { error: true, message: "Domain not found for this project" };
+  }
+
+  const row = result.rows[0];
+  if (row.status !== "verified") {
+    return { error: true, message: "Domain must be DKIM-verified before enabling inbound" };
+  }
+
+  // Idempotent: already enabled
+  if (row.inbound_enabled) {
+    return { status: "enabled", mx_record: MX_RECORD };
+  }
+
+  // Update DB flag
+  await pool.query(
+    sql(`UPDATE internal.email_domains SET inbound_enabled = TRUE WHERE project_id = $1 AND domain = $2`),
+    [projectId, normalizedDomain],
+  );
+
+  // Add domain to SES receipt rule recipients
+  await addDomainToReceiptRule(normalizedDomain);
+
+  return { status: "enabled", mx_record: MX_RECORD };
+}
+
+/**
+ * Disable inbound email on a custom sender domain.
+ * Removes the domain from the SES receipt rule's recipient list.
+ */
+export async function disableInbound(
+  projectId: string,
+  domain: string,
+): Promise<InboundResult> {
+  const normalizedDomain = domain.toLowerCase().trim();
+
+  const result = await pool.query(
+    sql(`SELECT domain, status, inbound_enabled FROM internal.email_domains WHERE project_id = $1 AND domain = $2`),
+    [projectId, normalizedDomain],
+  );
+  if (result.rows.length === 0) {
+    return { error: true, message: "Domain not found for this project" };
+  }
+
+  const row = result.rows[0];
+
+  // Idempotent: already disabled
+  if (!row.inbound_enabled) {
+    return { status: "disabled" };
+  }
+
+  // Update DB flag
+  await pool.query(
+    sql(`UPDATE internal.email_domains SET inbound_enabled = FALSE WHERE project_id = $1 AND domain = $2`),
+    [projectId, normalizedDomain],
+  );
+
+  // Remove domain from SES receipt rule recipients
+  await removeDomainFromReceiptRule(normalizedDomain);
+
+  return { status: "disabled" };
+}
+
+// --- SES receipt rule reconciliation ---
+
+async function addDomainToReceiptRule(domain: string): Promise<void> {
+  try {
+    const desc = await sesV1.send(new DescribeReceiptRuleCommand({
+      RuleSetName: SES_RULE_SET_NAME,
+      RuleName: SES_RULE_NAME,
+    }));
+    const rule = desc.Rule;
+    if (!rule) return;
+
+    const recipients = rule.Recipients || [];
+    if (recipients.includes(domain)) return; // already present
+
+    rule.Recipients = [...recipients, domain];
+    await sesV1.send(new UpdateReceiptRuleCommand({
+      RuleSetName: SES_RULE_SET_NAME,
+      Rule: rule,
+    }));
+  } catch (err) {
+    console.error("  SES receipt rule update (add) error:", err);
+    throw err;
+  }
+}
+
+async function removeDomainFromReceiptRule(domain: string): Promise<void> {
+  try {
+    const desc = await sesV1.send(new DescribeReceiptRuleCommand({
+      RuleSetName: SES_RULE_SET_NAME,
+      RuleName: SES_RULE_NAME,
+    }));
+    const rule = desc.Rule;
+    if (!rule) return;
+
+    const recipients = (rule.Recipients || []).filter((r: string) => r !== domain);
+    rule.Recipients = recipients;
+    await sesV1.send(new UpdateReceiptRuleCommand({
+      RuleSetName: SES_RULE_SET_NAME,
+      Rule: rule,
+    }));
+  } catch (err) {
+    console.error("  SES receipt rule update (remove) error:", err);
+    throw err;
+  }
 }
 
 // --- Lightweight lookup for email-send ---

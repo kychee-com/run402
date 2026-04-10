@@ -5057,6 +5057,59 @@
         }
       }
     },
+    "/email/v1/domains/inbound": {
+      "post": {
+        "tags": ["Email"],
+        "summary": "Enable inbound email on a custom domain",
+        "operationId": "enableInbound",
+        "description": "Enable inbound email routing on a verified custom sender domain. Adds the domain to the SES receipt rule so replies arrive at <slug>@<your-domain> instead of @mail.run402.com. Requires the domain to be DKIM-verified first. Returns the MX record to add to your DNS.",
+        "security": [{"bearerAuth": []}],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "domain": {"type": "string", "description": "The custom domain to enable inbound on"}
+                },
+                "required": ["domain"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {"description": "Inbound enabled, returns MX record to add"},
+          "400": {"description": "Missing domain"},
+          "404": {"description": "Domain not found for this project"},
+          "409": {"description": "Domain must be DKIM-verified before enabling inbound"}
+        }
+      },
+      "delete": {
+        "tags": ["Email"],
+        "summary": "Disable inbound email on a custom domain",
+        "operationId": "disableInbound",
+        "description": "Disable inbound email routing on a custom domain. Removes the domain from the SES receipt rule. Inbound mail will no longer be delivered to run402.",
+        "security": [{"bearerAuth": []}],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "domain": {"type": "string", "description": "The custom domain to disable inbound on"}
+                },
+                "required": ["domain"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {"description": "Inbound disabled"},
+          "400": {"description": "Missing domain"},
+          "404": {"description": "Domain not found for this project"}
+        }
+      }
+    },
     "/mailboxes/v1": {
       "post": {
         "tags": [

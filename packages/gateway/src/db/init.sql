@@ -98,6 +98,7 @@ CREATE TABLE internal.email_domains (
   wallet_address TEXT NOT NULL,
   status TEXT NOT NULL DEFAULT 'pending',
   dkim_records JSONB NOT NULL DEFAULT '[]',
+  inbound_enabled BOOLEAN NOT NULL DEFAULT FALSE,
   verified_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY (domain, project_id)

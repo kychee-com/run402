@@ -462,8 +462,11 @@ Manage custom email sender domain. Send from your own brand instead of `@mail.ru
 - `run402 sender-domain register <domain> [--project <id>]` — register domain, returns DNS records to add
 - `run402 sender-domain status [--project <id>]` — check verification status (pending/verified)
 - `run402 sender-domain remove [--project <id>]` — remove custom domain, revert to mail.run402.com
+- `run402 sender-domain inbound-enable <domain> [--project <id>]` — enable inbound email on custom domain (requires DKIM-verified), returns MX record to add
+- `run402 sender-domain inbound-disable <domain> [--project <id>]` — disable inbound email on custom domain
 
 Flow: register → add DKIM CNAME records to DNS → poll status until verified → email auto-sends from your domain.
+Inbound (opt-in): inbound-enable → add MX record to DNS → replies to `<slug>@<your-domain>` route through run402.
 
 ### billing
 Email-based billing accounts, Stripe tier checkout, and email packs. Pay run402 with credit cards instead of crypto, or scale email sending beyond tier caps.

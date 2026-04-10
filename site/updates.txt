@@ -6,6 +6,10 @@
 
 ---
 
+## 2026-04-10
+
+- **Custom domain inbound email**: Verified custom sender domains can now receive inbound email, not just send. Enable via `POST /email/v1/domains/inbound` with `{ "domain": "yourdomain.com" }` — returns the MX record to add to your DNS. Replies to `<slug>@yourdomain.com` route through the same inbound pipeline as `@mail.run402.com`. Opt-in, requires DKIM-verified domain. Disable with `DELETE /email/v1/domains/inbound`. Removing the sender domain cascades to disable inbound first. Motivated by kysigned's reply-to-sign flow — signers reply to `reply-to-sign@kysigned.com` rather than `@mail.run402.com`.
+
 ## 2026-04-09
 
 - **Raw inbound MIME accessor**: New `GET /mailboxes/v1/:id/messages/:messageId/raw` endpoint returns the exact RFC-822 bytes of an inbound message — fetched verbatim from S3 with no parsing, normalization, or modification. Inbound messages only; same `service_key` auth as the JSON message endpoint. `Content-Type: message/rfc822`, 10MB cap. Use this for cryptographic verification (DKIM signature checks, zk-email proofs, archival-grade email storage). The existing JSON endpoint still returns parsed `body_text` for display and threading — unchanged. Motivated by kysigned's reply-to-sign signing flow, where a zk-email circuit proves a DKIM-signed reply attests "I APPROVE" — any post-processing breaks the cryptographic chain.

@@ -47,6 +47,11 @@
     <p class="subtitle">Platform updates and new features</p>
     <p class="machine-link">Machine-readable: <a href="/updates.txt">/updates.txt</a></p>
 
+    <h2>April 10, 2026</h2>
+    <ul>
+      <li><span class="entry-title">Custom domain inbound email</span> &mdash; Verified custom sender domains can now receive inbound email. Enable via <code>POST /email/v1/domains/inbound</code>, add the MX record to your DNS, and replies to <code>&lt;slug&gt;@yourdomain.com</code> route through the same pipeline as <code>@mail.run402.com</code>. Opt-in, requires DKIM-verified domain. Removing the sender domain cascades to disable inbound. Enables kysigned reply-to-sign at branded addresses.</li>
+    </ul>
+
     <h2>April 9, 2026</h2>
     <ul>
       <li><span class="entry-title">Raw inbound MIME accessor</span> &mdash; New <code>GET /mailboxes/v1/:id/messages/:messageId/raw</code> endpoint returns the exact RFC-822 bytes of an inbound message, fetched verbatim from S3 with no parsing or normalization. Inbound messages only, <code>Content-Type: message/rfc822</code>, 10MB cap. Use this for cryptographic verification &mdash; DKIM signature checks, zk-email proofs, archival-grade email storage. The existing JSON message endpoint still returns parsed <code>body_text</code> for display and threading. Apps doing signature verification over inbound mail (kysigned reply-to-sign, etc.) should always read raw bytes &mdash; any post-processing breaks the cryptographic chain.</li>

@@ -13,6 +13,10 @@ let mockSesCreateIdentity: (...args: any[]) => Promise<any>;
 let mockSesDeleteIdentity: (...args: any[]) => Promise<any>;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let mockSesGetIdentity: (...args: any[]) => Promise<any>;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let mockSesDescribeRule: (...args: any[]) => Promise<any>;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let mockSesUpdateRule: (...args: any[]) => Promise<any>;
 
 mock.module("../db/pool.js", {
   namedExports: {
@@ -53,7 +57,30 @@ mock.module("@aws-sdk/client-sesv2", {
   },
 });
 
-const { registerSenderDomain, getSenderDomainStatus, removeSenderDomain, getVerifiedSenderDomain } = await import("./email-domains.js");
+mock.module("@aws-sdk/client-ses", {
+  namedExports: {
+    SESClient: class {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      send(cmd: any) {
+        if (cmd._type === "DescribeReceiptRule") return mockSesDescribeRule(cmd);
+        if (cmd._type === "UpdateReceiptRule") return mockSesUpdateRule(cmd);
+        throw new Error(`Unknown SES v1 command: ${cmd._type}`);
+      }
+    },
+    DescribeReceiptRuleCommand: class {
+      _type = "DescribeReceiptRule";
+      input: unknown;
+      constructor(input: unknown) { this.input = input; }
+    },
+    UpdateReceiptRuleCommand: class {
+      _type = "UpdateReceiptRule";
+      input: unknown;
+      constructor(input: unknown) { this.input = input; }
+    },
+  },
+});
+
+const { registerSenderDomain, getSenderDomainStatus, removeSenderDomain, getVerifiedSenderDomain, enableInbound, disableInbound } = await import("./email-domains.js");
 
 // ---------------------------------------------------------------------------
 // registerSenderDomain
@@ -335,5 +362,149 @@ describe("getVerifiedSenderDomain", () => {
     mockPoolQuery = async () => ({ rows: [], rowCount: 0 });
     const result = await getVerifiedSenderDomain("proj_vsd_3");
     assert.equal(result, null);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// enableInbound
+// ---------------------------------------------------------------------------
+describe("enableInbound", () => {
+  beforeEach(() => {
+    mockSesDescribeRule = async () => ({
+      Rule: { Recipients: ["mail.run402.com"], Actions: [] },
+    });
+    mockSesUpdateRule = async () => ({});
+  });
+
+  it("enables inbound on a verified domain", async () => {
+    let updatedInbound = false;
+    let sesUpdateInput: unknown = null;
+    mockPoolQuery = async (sql: string, params?: unknown[]) => {
+      if (sql.includes("SELECT") && sql.includes("email_domains")) {
+        return { rows: [{ domain: "kysigned.com", status: "verified", inbound_enabled: false }] };
+      }
+      if (sql.includes("UPDATE") && sql.includes("inbound_enabled")) {
+        updatedInbound = true;
+        return { rows: [], rowCount: 1 };
+      }
+      return { rows: [], rowCount: 0 };
+    };
+    mockSesUpdateRule = async (cmd: { input: unknown }) => {
+      sesUpdateInput = cmd.input;
+      return {};
+    };
+    const result = await enableInbound("proj1", "kysigned.com");
+    assert.equal(result.error, undefined);
+    assert.equal(result.status, "enabled");
+    assert.ok(updatedInbound);
+    assert.ok(sesUpdateInput);
+  });
+
+  it("rejects when domain is not verified", async () => {
+    mockPoolQuery = async () => ({
+      rows: [{ domain: "kysigned.com", status: "pending", inbound_enabled: false }],
+    });
+    const result = await enableInbound("proj1", "kysigned.com");
+    assert.equal(result.error, true);
+    assert.ok(result.message!.includes("verified"));
+  });
+
+  it("rejects when domain not found", async () => {
+    mockPoolQuery = async () => ({ rows: [] });
+    const result = await enableInbound("proj1", "nonexistent.com");
+    assert.equal(result.error, true);
+  });
+
+  it("is idempotent when already enabled", async () => {
+    mockPoolQuery = async () => ({
+      rows: [{ domain: "kysigned.com", status: "verified", inbound_enabled: true }],
+    });
+    const result = await enableInbound("proj1", "kysigned.com");
+    assert.equal(result.error, undefined);
+    assert.equal(result.status, "enabled");
+  });
+
+  it("adds domain to SES receipt rule recipients list", async () => {
+    let updatedRecipients: string[] = [];
+    mockPoolQuery = async (sql: string) => {
+      if (sql.includes("SELECT")) {
+        return { rows: [{ domain: "kysigned.com", status: "verified", inbound_enabled: false }] };
+      }
+      if (sql.includes("UPDATE")) return { rows: [], rowCount: 1 };
+      return { rows: [], rowCount: 0 };
+    };
+    mockSesDescribeRule = async () => ({
+      Rule: { Recipients: ["mail.run402.com"], Actions: [{ S3Action: {} }, { LambdaAction: {} }] },
+    });
+    mockSesUpdateRule = async (cmd: { input: { Rule: { Recipients: string[] } } }) => {
+      updatedRecipients = cmd.input.Rule.Recipients;
+      return {};
+    };
+    await enableInbound("proj1", "kysigned.com");
+    assert.ok(updatedRecipients.includes("kysigned.com"));
+    assert.ok(updatedRecipients.includes("mail.run402.com"));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// disableInbound
+// ---------------------------------------------------------------------------
+describe("disableInbound", () => {
+  beforeEach(() => {
+    mockSesDescribeRule = async () => ({
+      Rule: { Recipients: ["mail.run402.com", "kysigned.com"], Actions: [] },
+    });
+    mockSesUpdateRule = async () => ({});
+  });
+
+  it("disables inbound on a domain", async () => {
+    let updatedInbound = false;
+    mockPoolQuery = async (sql: string) => {
+      if (sql.includes("SELECT")) {
+        return { rows: [{ domain: "kysigned.com", status: "verified", inbound_enabled: true }] };
+      }
+      if (sql.includes("UPDATE") && sql.includes("inbound_enabled")) {
+        updatedInbound = true;
+        return { rows: [], rowCount: 1 };
+      }
+      return { rows: [], rowCount: 0 };
+    };
+    const result = await disableInbound("proj1", "kysigned.com");
+    assert.equal(result.error, undefined);
+    assert.equal(result.status, "disabled");
+    assert.ok(updatedInbound);
+  });
+
+  it("removes domain from SES receipt rule recipients list", async () => {
+    let updatedRecipients: string[] = [];
+    mockPoolQuery = async (sql: string) => {
+      if (sql.includes("SELECT")) {
+        return { rows: [{ domain: "kysigned.com", status: "verified", inbound_enabled: true }] };
+      }
+      if (sql.includes("UPDATE")) return { rows: [], rowCount: 1 };
+      return { rows: [], rowCount: 0 };
+    };
+    mockSesUpdateRule = async (cmd: { input: { Rule: { Recipients: string[] } } }) => {
+      updatedRecipients = cmd.input.Rule.Recipients;
+      return {};
+    };
+    await disableInbound("proj1", "kysigned.com");
+    assert.ok(!updatedRecipients.includes("kysigned.com"));
+    assert.ok(updatedRecipients.includes("mail.run402.com"));
+  });
+
+  it("returns not found when domain does not exist", async () => {
+    mockPoolQuery = async () => ({ rows: [] });
+    const result = await disableInbound("proj1", "nonexistent.com");
+    assert.equal(result.error, true);
+  });
+
+  it("is idempotent when already disabled", async () => {
+    mockPoolQuery = async () => ({
+      rows: [{ domain: "kysigned.com", status: "verified", inbound_enabled: false }],
+    });
+    const result = await disableInbound("proj1", "kysigned.com");
+    assert.equal(result.error, undefined);
+    assert.equal(result.status, "disabled");
   });
 });

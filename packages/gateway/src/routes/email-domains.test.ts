@@ -8,6 +8,8 @@ import assert from "node:assert/strict";
 let mockRegister: (...args: unknown[]) => Promise<unknown>;
 let mockGetStatus: (...args: unknown[]) => Promise<unknown>;
 let mockRemove: (...args: unknown[]) => Promise<unknown>;
+let mockEnableInbound: (...args: unknown[]) => Promise<unknown>;
+let mockDisableInbound: (...args: unknown[]) => Promise<unknown>;
 
 mock.module("../db/pool.js", { namedExports: { pool: { query: async () => ({ rows: [], rowCount: 0 }) } } });
 mock.module("../db/sql.js", { namedExports: { sql: (s: string) => s } });
@@ -17,6 +19,8 @@ mock.module("../services/email-domains.js", {
     registerSenderDomain: (...args: unknown[]) => mockRegister(...args),
     getSenderDomainStatus: (...args: unknown[]) => mockGetStatus(...args),
     removeSenderDomain: (...args: unknown[]) => mockRemove(...args),
+    enableInbound: (...args: unknown[]) => mockEnableInbound(...args),
+    disableInbound: (...args: unknown[]) => mockDisableInbound(...args),
     getVerifiedSenderDomain: async () => null,
   },
 });
@@ -161,5 +165,58 @@ describe("DELETE /email/v1/domains", () => {
     const err = await call("delete", "/email/v1/domains", req, res);
     assert.ok(err);
     assert.equal(err.statusCode, 404);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// POST /email/v1/domains/inbound
+// ---------------------------------------------------------------------------
+describe("POST /email/v1/domains/inbound", () => {
+  it("returns 200 with mx_record on success", async () => {
+    mockEnableInbound = async () => ({ status: "enabled", mx_record: "10 inbound-smtp.us-east-1.amazonaws.com" });
+    const req = fakeReq({ body: { domain: "kysigned.com" } });
+    const res = fakeRes();
+    await call("post", "/email/v1/domains/inbound", req, res);
+    assert.equal(res._status, 200);
+    assert.equal(res._body.status, "enabled");
+    assert.ok(res._body.mx_record);
+  });
+
+  it("returns 400 when domain missing", async () => {
+    const req = fakeReq({ body: {} });
+    const res = fakeRes();
+    const err = await call("post", "/email/v1/domains/inbound", req, res);
+    assert.ok(err);
+    assert.equal(err.statusCode, 400);
+  });
+
+  it("returns 409 when domain not verified", async () => {
+    mockEnableInbound = async () => ({ error: true, message: "Domain must be DKIM-verified before enabling inbound" });
+    const req = fakeReq({ body: { domain: "kysigned.com" } });
+    const res = fakeRes();
+    await call("post", "/email/v1/domains/inbound", req, res);
+    assert.equal(res._status, 409);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// DELETE /email/v1/domains/inbound
+// ---------------------------------------------------------------------------
+describe("DELETE /email/v1/domains/inbound", () => {
+  it("returns 200 on success", async () => {
+    mockDisableInbound = async () => ({ status: "disabled" });
+    const req = fakeReq({ body: { domain: "kysigned.com" } });
+    const res = fakeRes();
+    await call("delete", "/email/v1/domains/inbound", req, res);
+    assert.equal(res._status, 200);
+    assert.equal(res._body.status, "disabled");
+  });
+
+  it("returns 404 when domain not found", async () => {
+    mockDisableInbound = async () => ({ error: true, message: "Domain not found for this project" });
+    const req = fakeReq({ body: { domain: "nonexistent.com" } });
+    const res = fakeRes();
+    await call("delete", "/email/v1/domains/inbound", req, res);
+    assert.equal(res._status, 404);
   });
 });

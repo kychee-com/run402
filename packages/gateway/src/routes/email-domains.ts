@@ -1,11 +1,12 @@
 import { Router, Request, Response } from "express";
 import { serviceKeyAuth } from "../middleware/apikey.js";
 import { asyncHandler, HttpError } from "../utils/async-handler.js";
-import { registerSenderDomain, getSenderDomainStatus, removeSenderDomain } from "../services/email-domains.js";
+import { registerSenderDomain, getSenderDomainStatus, removeSenderDomain, enableInbound, disableInbound } from "../services/email-domains.js";
 
 const router = Router();
 
 router.use("/email/v1/domains", serviceKeyAuth);
+router.use("/email/v1/domains/inbound", serviceKeyAuth);
 
 // POST /email/v1/domains — register a custom sender domain
 router.post("/email/v1/domains", asyncHandler(async (req: Request, res: Response) => {
@@ -56,6 +57,45 @@ router.delete("/email/v1/domains", asyncHandler(async (req: Request, res: Respon
   }
 
   res.json({ status: "ok", message: "Sender domain removed. Email will send from mail.run402.com." });
+}));
+
+// POST /email/v1/domains/inbound — enable inbound email on a custom domain
+router.post("/email/v1/domains/inbound", asyncHandler(async (req: Request, res: Response) => {
+  const project = req.project!;
+  const { domain } = req.body || {};
+
+  if (!domain) {
+    throw new HttpError(400, "domain required");
+  }
+
+  const result = await enableInbound(project.id, domain);
+
+  if (result.error) {
+    const status = result.message?.includes("verified") ? 409 : 404;
+    res.status(status).json({ error: result.message });
+    return;
+  }
+
+  res.json(result);
+}));
+
+// DELETE /email/v1/domains/inbound — disable inbound email on a custom domain
+router.delete("/email/v1/domains/inbound", asyncHandler(async (req: Request, res: Response) => {
+  const project = req.project!;
+  const { domain } = req.body || {};
+
+  if (!domain) {
+    throw new HttpError(400, "domain required");
+  }
+
+  const result = await disableInbound(project.id, domain);
+
+  if (result.error) {
+    res.status(404).json({ error: result.message });
+    return;
+  }
+
+  res.json(result);
 }));
 
 export default router;

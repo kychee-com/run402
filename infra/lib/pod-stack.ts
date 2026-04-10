@@ -310,6 +310,13 @@ export class PodStack extends cdk.Stack {
       resources: ["*"],
     }));
 
+    // Grant gateway SES receipt rule management (for custom domain inbound routing).
+    // Allows adding/removing custom domains from the inbound receipt rule's recipient list.
+    taskDef.taskRole.addToPrincipalPolicy(new iam.PolicyStatement({
+      actions: ["ses:DescribeReceiptRule", "ses:UpdateReceiptRule", "ses:DescribeReceiptRuleSet"],
+      resources: ["*"],
+    }));
+
     // Grant gateway read access to inbound email raw bytes (for the raw-MIME accessor).
     // Scoped to the inbound-email/ prefix written by the inbound Lambda — no list, no write.
     taskDef.taskRole.addToPrincipalPolicy(new iam.PolicyStatement({

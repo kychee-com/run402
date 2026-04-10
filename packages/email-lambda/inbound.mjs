@@ -56,28 +56,53 @@ async function processInboundEmail(sesEvent, s3Key) {
     return;
   }
 
-  // Parse the recipient to get the mailbox slug
-  // Expected format: <slug>@mail.run402.com
+  // Parse the recipient into slug and host
   const recipient = recipients[0].toLowerCase();
-  const match = recipient.match(/^([^@]+)@mail\.run402\.com$/);
-  if (!match) {
-    console.log(`Recipient ${recipient} not under mail.run402.com, dropping`);
+  const atIdx = recipient.indexOf("@");
+  if (atIdx < 1) {
+    console.log(`Invalid recipient format: ${recipient}, dropping`);
     return;
   }
-  const slug = match[1];
+  const slug = recipient.slice(0, atIdx);
+  const host = recipient.slice(atIdx + 1);
 
   const db = getPool();
 
-  // Look up the mailbox
-  const mbxResult = await db.query(
-    `SELECT id, project_id, status FROM internal.mailboxes WHERE slug = $1`,
-    [slug],
-  );
-  if (mbxResult.rows.length === 0) {
-    console.log(`No mailbox for slug "${slug}", dropping`);
-    return;
+  // Resolve the mailbox based on the recipient host:
+  // - mail.run402.com: existing behavior — look up mailbox by slug directly
+  // - custom domain: look up the domain in email_domains, then find the mailbox by (slug, project_id)
+  let mailbox;
+  if (host === "mail.run402.com") {
+    const mbxResult = await db.query(
+      `SELECT id, project_id, status FROM internal.mailboxes WHERE slug = $1`,
+      [slug],
+    );
+    if (mbxResult.rows.length === 0) {
+      console.log(`No mailbox for slug "${slug}" on mail.run402.com, dropping`);
+      return;
+    }
+    mailbox = mbxResult.rows[0];
+  } else {
+    // Custom domain: resolve via email_domains table
+    const domainResult = await db.query(
+      `SELECT project_id FROM internal.email_domains WHERE domain = $1 AND inbound_enabled = TRUE AND status = 'verified'`,
+      [host],
+    );
+    if (domainResult.rows.length === 0) {
+      console.log(`No inbound-enabled custom domain for host "${host}", dropping`);
+      return;
+    }
+    const { project_id } = domainResult.rows[0];
+    const mbxResult = await db.query(
+      `SELECT id, project_id, status FROM internal.mailboxes WHERE slug = $1 AND project_id = $2`,
+      [slug, project_id],
+    );
+    if (mbxResult.rows.length === 0) {
+      console.log(`No mailbox for slug "${slug}" on custom domain "${host}" (project ${project_id}), dropping`);
+      return;
+    }
+    mailbox = mbxResult.rows[0];
   }
-  const mailbox = mbxResult.rows[0];
 
   if (mailbox.status === "tombstoned") {
     console.log(`Mailbox "${slug}" is tombstoned, dropping`);

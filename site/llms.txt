@@ -1130,6 +1130,8 @@ Custom domains let users point their own domain (e.g., `example.com`) at a Run40
 | `/email/v1/domains` | POST | service_key | Free | Register a custom sender domain (returns DNS records) |
 | `/email/v1/domains` | GET | service_key | Free | Check sender domain verification status |
 | `/email/v1/domains` | DELETE | service_key | Free | Remove custom sender domain |
+| `/email/v1/domains/inbound` | POST | service_key | Free | Enable inbound email on a custom domain (requires DKIM-verified) |
+| `/email/v1/domains/inbound` | DELETE | service_key | Free | Disable inbound email on a custom domain |
 
 #### Custom Sender Domains
 
@@ -1146,6 +1148,14 @@ By default, email sends from `<slug>@mail.run402.com`. Register a custom sender 
 - Domain ownership is wallet-scoped: once verified by one project, other projects on the same wallet reuse it instantly.
 - Removing a custom domain (`DELETE /email/v1/domains`) reverts email to `@mail.run402.com`.
 - Unverified domains fall back to `@mail.run402.com` — no disruption during setup.
+
+**Inbound on custom domains (opt-in):** By default, only `@mail.run402.com` receives inbound email. Enable inbound on your custom domain so replies arrive at `<slug>@<your-domain>`:
+1. Domain must already be DKIM-verified (outbound working)
+2. `POST /email/v1/domains/inbound` with `{ "domain": "kysigned.com" }` — returns the required MX record: `10 inbound-smtp.us-east-1.amazonaws.com`
+3. Add the MX record to your DNS provider
+4. Inbound mail to `<slug>@kysigned.com` now routes through the same pipeline as `@mail.run402.com`
+5. Disable with `DELETE /email/v1/domains/inbound` with `{ "domain": "kysigned.com" }`
+6. Removing the sender domain (`DELETE /email/v1/domains`) automatically disables inbound first
 
 **Two send modes** for `POST /mailboxes/v1/:id/messages`:
 - **Template mode**: `{"to": "user@example.com", "template": "notification", "variables": {"project_name": "My App", "message": "Hello!"}}`

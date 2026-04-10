@@ -1173,6 +1173,9 @@ async function applyMigrations() {
   // Extracted to a module so it can be unit-tested.
   await applyV121((text) => pool.query(sql(text)));
 
+  // v1.22: custom domain inbound — opt-in flag for receiving inbound email on a custom sender domain
+  await pool.query(sql(`ALTER TABLE internal.email_domains ADD COLUMN IF NOT EXISTS inbound_enabled BOOLEAN NOT NULL DEFAULT FALSE`));
+
   // v1.19b: bootstrap platform billing mailbox (billing@mail.run402.com)
   // Self-healing: creates the row if missing. Uses 'platform' as project_id sentinel.
   const billingMailboxResult = await pool.query(
