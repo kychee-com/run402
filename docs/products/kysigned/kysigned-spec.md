@@ -1,25 +1,25 @@
 ---
 product: kysigned
-version: 0.8.0
+version: 0.9.0
 status: Draft
 type: product
 interfaces: [website, api, cli, mcp, smart-contract]
 created: 2026-04-04
-updated: 2026-04-08
+updated: 2026-04-10
 ---
 
 ## Overview
 
-kysigned is a blockchain-verified e-signature service that replaces DocuSign's subscription model with per-envelope pricing (~$0.25/envelope, pending gas cost validation). Every signature is recorded on Base (Ethereum L2) via a canonical smart contract, creating a permanent, vendor-independent audit trail. Two delivery modes: a hosted API at kysigned.com (`[service]`) and a free MIT-licensed repo deployable on run402 (`[repo]`).
+kysigned is a blockchain-verified e-signature service that replaces DocuSign's subscription model with per-envelope pricing (~$0.39/envelope). Signers sign by replying to an email with `I APPROVE` — their mail provider's DKIM signature provides cryptographic proof of mailbox control, which is captured as a zk-email proof and recorded on Base (Ethereum L2). A verifier given `(email, document)` any time in the next ~20 years can independently confirm the signature using only on-chain data and the publicly-archived IANA DNSSEC root — no dependency on kysigned.com, run402, or any operator being reachable. Two delivery modes: a hosted API at kysigned.com (`[service]`) and a free MIT-licensed repo deployable on run402 (`[repo]`).
 
 ## Interfaces & Mediums
 
-- **Website** `[service]` — kysigned.com. Landing page, signing UI, verification page, dashboard. Clean minimal design (bld402.com as reference, not run402.com).
+- **Website** `[service]` — kysigned.com. Landing page, "how it works" page, verification page, dashboard. Clean minimal design (bld402.com as reference, not run402.com).
 - **API** `[both]` — RESTful API at `/v1/`. Envelope creation, status, verification, reminders.
 - **CLI/MCP** `[both]` — Agent-native interface. Canonical npm package (`kysigned-mcp`) defaults to kysigned.com. Repo forkers get the same CLI/MCP pointing to their own instance.
-- **Smart Contract** `[both]` — SignatureRegistry on Base. Single canonical contract address shared by all instances (service and repo deployments). Append-only, publicly queryable.
-- **Signing Page** `[both]` — Standalone page rendered per signing request. PDF viewer, signature widget, wallet detection, verification level prompts.
-- **Verification Page** `[both]` — Universal verifier at `/verify`. Checks ALL envelopes on the canonical contract, not just those created by the hosting instance.
+- **Smart Contracts** `[both]` — `SignatureRegistry` and `EvidenceKeyRegistry` on Base. Canonical contract addresses shared by all instances (service and repo deployments). Append-only, publicly queryable, permissionless writes (zk-proof-gated), no owner/admin.
+- **Review Page** `[both]` — Standalone page rendered per signing request. PDF viewer showing the document the signer is being asked to sign. Read-only; signing itself happens via email reply, not via this page.
+- **Verification Page** `[both]` — Universal verifier at `/verify`. Accepts `(email, document)` as inputs, computes `searchKey`, and checks ALL records on the canonical contracts regardless of which instance created them.
 
 **Scope tags used throughout this spec:**
 - `[both]` — feature exists in the public MIT repo AND the hosted service
@@ -33,19 +33,22 @@ Per saas-factory F21. Each row is a user-reachable artifact. Smoke checks are NO
 | Name | Type | Reach | Smoke check |
 |------|------|-------|-------------|
 | Marketing site | url | `https://kysigned.com` | `curl -fsSL https://kysigned.com/ \| grep -q kysigned` |
+| How it works page | url | `https://kysigned.com/how-it-works` | `curl -fsSL https://kysigned.com/how-it-works \| grep -q "how"` |
 | llms.txt | url | `https://kysigned.com/llms.txt` | `curl -fsSL https://kysigned.com/llms.txt \| grep -q '^# kysigned'` |
 | REST API | service | `https://kysigned.com/v1/` | `curl -fsSL https://kysigned.com/v1/health` |
 | Verification page | url | `https://kysigned.com/verify` | `curl -fsSL https://kysigned.com/verify \| grep -q "Verify"` |
 | Dashboard | url | `https://kysigned.com/dashboard` | `curl -fsSL -o /dev/null -w '%{http_code}' https://kysigned.com/dashboard \| grep -q '^200$'` |
 | MCP server (npm) | npm | `npx -y kysigned-mcp` | `npx -y kysigned-mcp --version` |
 | Public repo (open source release) | url | `https://github.com/kychee-com/kysigned` | `curl -fsSL https://api.github.com/repos/kychee-com/kysigned \| grep -q '"private":\s*false'` |
-| Smart contract — Base mainnet | other | `0x<TBD-after-mainnet-deploy>` | `curl -fsSL -X POST https://mainnet.base.org -H 'content-type: application/json' -d '{"jsonrpc":"2.0","id":1,"method":"eth_call","params":[{"to":"0x<TBD>","data":"0x3644e515"},"latest"]}' \| grep -q '"result":"0x[0-9a-f]\{64\}"'` |
-| Smart contract — Base Sepolia (testnet) | other | `0xAE8b6702e413c6204b544D8Ff3C94852B2016c91` | `curl -fsSL -X POST https://sepolia.base.org -H 'content-type: application/json' -d '{"jsonrpc":"2.0","id":1,"method":"eth_call","params":[{"to":"0xAE8b6702e413c6204b544D8Ff3C94852B2016c91","data":"0x3644e515"},"latest"]}' \| grep -q '"result":"0x[0-9a-f]\{64\}"'` |
+| SignatureRegistry — Base mainnet | other | `0x<TBD-after-mainnet-deploy>` | `curl -fsSL -X POST https://mainnet.base.org -H 'content-type: application/json' -d '{"jsonrpc":"2.0","id":1,"method":"eth_call","params":[{"to":"0x<TBD>","data":"0x3644e515"},"latest"]}' \| grep -q '"result":"0x[0-9a-f]\{64\}"'` |
+| EvidenceKeyRegistry — Base mainnet | other | `0x<TBD-after-mainnet-deploy>` | `curl -fsSL -X POST https://mainnet.base.org -H 'content-type: application/json' -d '{"jsonrpc":"2.0","id":1,"method":"eth_call","params":[{"to":"0x<TBD>","data":"0x3644e515"},"latest"]}' \| grep -q '"result":"0x[0-9a-f]\{64\}"'` |
 
 **Notes:**
-- Mainnet contract address is `<TBD>` until Phase 13 deployment. The smoke check row is added once the address is known.
-- **The mainnet contract deploy is gated by the F17 dark-launch canary discipline.** The production contract MUST NOT be deployed until the canary phase has completed its checklist and a human has explicitly approved the flip. See F17 for the full ritual.
+- Mainnet contract addresses are `<TBD>` until Phase 13 deployment. The smoke check rows are updated once addresses are known.
+- **The mainnet contract deploy is gated by the F17 dark-launch canary discipline.** The production contracts MUST NOT be deployed until the canary phase has completed its checklist and a human has explicitly approved the flip. See F17 for the full ritual.
+- The previous `SignatureRegistry` on Base Sepolia (`0xAE8b6702e413c6204b544D8Ff3C94852B2016c91`) is obsolete — it used the pre-rework Method A interface. New Sepolia deployments will be created for the rewritten contracts.
 - Email DKIM/SPF/DMARC for `kysigned.com` is verified as part of the marketing site `[ship]` task (deliverability check via SES verified-identities + a test send to a Kychee inbox).
+- Inbound email at `reply-to-sign@kysigned.com` (or `reply-to-sign@mail.run402.com` for MVP if custom-domain inbound is not yet available) is verified as part of the signing-flow smoke test.
 - Custom domain serving (`kysigned.com`) is verified as part of the marketing site smoke check — if the curl resolves and returns content, the DNS + Cloudflare/CloudFront wiring is working.
 
 ## Features & Requirements
@@ -57,12 +60,13 @@ An envelope is one document (PDF) sent to one or more signers. The envelope is t
 - F1.1. Create an envelope by providing a PDF (upload or URL) and a list of signers (email + name per signer).
 - F1.2. Up to 5 signers included per envelope. Additional signers incur a per-signer surcharge (reflecting real gas costs).
 - F1.3. Sender specifies signing order: parallel (default — all signers can sign in any order) or sequential (signers are notified one at a time in the specified order).
-- F1.4. Sender can set per-signer options: verification level (1-3, 5 for MVP), `require_wallet` flag.
+- F1.4. All signers use the same signing method (reply-to-sign). No per-signer signing options in MVP.
 - F1.5. Envelope lifecycle statuses: draft, active, completed, expired, voided.
 - F1.6. Sender can void an active envelope (cancels all pending signing requests, notifies signers).
 - F1.7. Envelope expiry: configurable TTL (default TBD, validated against cost). Expired envelopes notify all parties and cannot be signed.
 - F1.8. Webhook/callback URL: sender provides a URL that receives a POST when the envelope is completed.
-- F1.9. Sender receives a list of individual signing links for each signer, deliverable through any channel (email, WhatsApp, SMS, Slack, etc.) in addition to automatic email delivery.
+- F1.9. `[service]` Signing is email-reply-based: each signer receives a signing email and signs by replying with `I APPROVE`. The operator delivers the signing email; there are no separate "signing links" for the reply-to-sign method. A review link (read-only document preview) is included in the signing email and can be shared via any channel, but the signing act itself requires an email reply from the signer's real mailbox.
+- F1.9.1. `[repo]` The public repo also supports wallet-based signing (Method B / EIP-712) for forkers who have externally established wallet ↔ identity binding. Forkers may offer signing links that lead to the wallet-signing page. The hosted service at kysigned.com does NOT expose wallet signing to signers.
 - F1.10. **Sender as signer:** If the sender also needs to sign the document, they must add themselves to the signer list. There is no "pre-sign at creation" flow. The sender signs through the same process as every other signer (same link, same verification, same on-chain proof). This ensures a uniform audit trail — every signature event is identical regardless of who initiated the envelope. The UI should make this clear: when creating an envelope, prompt "Will you also sign this document?" and auto-add the sender to the signer list if yes.
 
 ### F2. Sender Authentication & Access Control `[both]` / `[service]`
@@ -76,7 +80,7 @@ Three sender paths, all MVP. Each serves a different audience.
 - F2.3. **Path 3 — No wallet (prepaid credits)** `[service]`: Sender pays via Stripe for prepaid credit packs. Identity is email address. Authentication via magic link (email-based, no password). Per-envelope cost deducted from credit balance. **Path 3 is kysigned's own billing layer — kysigned operates as a T2 reseller using its own Stripe integration, not run402's billing.**
 - F2.4. Path 3 magic link authentication: user enters email, receives a one-time login link, no password required. No "Sign in with Google" or social login.
 - F2.5. Path 3 checkout experience is branded as kysigned (not run402). kysigned uses its own Stripe integration.
-- F2.6. **All three paths produce the same on-chain proof.** Regardless of how the sender pays kysigned (wallet via x402/MPP, or Stripe credits), the kysigned server always submits the on-chain transaction using a **platform wallet**. This is because signers typically sign asynchronously (hours or days after the sender creates the envelope), so the server must submit on everyone's behalf. For Method B (wallet signing), the signer's EIP-712 signature is passed to the server and verified on-chain via `ecrecover` — the signer's address ends up recorded on-chain even though the platform wallet submitted the transaction. No second-class experience for any path.
+- F2.6. **All three paths produce the same on-chain proof.** Regardless of how the sender pays kysigned (wallet via x402/MPP, or Stripe credits), the kysigned server always submits the on-chain transaction using a **platform wallet**. This is because signers typically sign asynchronously (hours or days after the sender creates the envelope), so the server must submit on everyone's behalf. `[repo]` For wallet signing (Method B), the signer's EIP-712 signature is passed to the server and verified on-chain via `ecrecover` — the signer's address ends up recorded on-chain even though the platform wallet submitted the transaction. No second-class experience for any path.
 - F2.7. Confirm that run402 supports magic link authentication for Path 3 identity. If not, implement as part of kysigned service.
 
 #### F2.9 Money Flow (revenue in, costs out)
@@ -86,8 +90,8 @@ Three sender paths, all MVP. Each serves a different audience.
 - **Path 3 (no wallet) `[service]`:** Sender pays fiat to kysigned's own Stripe account. Funds settle to Kychee's bank account. Credit balance is tracked in the kysigned database and deducted per envelope. **Kychee is the merchant of record for Path 3.** run402 does NOT act as a Stripe intermediary in the MVP.
 
 **Costs (kysigned → Base blockchain):**
-- **All paths:** The kysigned platform wallet pays ETH gas for each contract call (`recordEmailSignature`, `recordWalletSignature`, `recordCompletion`). The platform wallet holds both USDC (from Path 1/2 revenue) and ETH (for gas). kysigned tops up ETH as needed.
-- Per-envelope gas cost: ~$0.01-0.05 at typical Base gas prices.
+- **All paths:** The kysigned platform wallet pays ETH gas for each contract call (`recordSignature`, `recordWalletSignature`, `recordCompletion`, and occasional `registerEvidenceKey`). The platform wallet holds both USDC (from Path 1/2 revenue) and ETH (for gas). kysigned tops up ETH as needed.
+- Per-envelope gas cost: ~$0.01-0.20 at typical Base gas prices (varies with zk-proof size and gas price fluctuations).
 
 **What run402 charges kysigned for (T1 — infrastructure):**
 - Compute and database hosting
@@ -100,9 +104,9 @@ Three sender paths, all MVP. Each serves a different audience.
 - Stripe-collection-as-a-service: run402 does not accept Stripe payments from kysigned's end users on kysigned's behalf. kysigned operates its own Stripe account for Path 3. If run402 adds this capability post-MVP, Path 3 could migrate to use it (Open Question #17).
 - Note: Path 1/2 does NOT need run402's T2 — x402/MPP is already a native T2 mechanism (user wallet pays app wallet directly, per-call).
 
-**Per-envelope margin illustration (approximate):**
-- Path 1/2: sender pays ~$0.25 USDC → kysigned wallet; kysigned spends ~$0.03 ETH on gas; net ~$0.22 per envelope.
-- Path 3: sender pays ~$0.25 fiat → kysigned Stripe; Stripe fees ~$0.03; gas ~$0.03; net ~$0.19 per envelope.
+**Per-envelope margin illustration (approximate, at $0.39/envelope target):**
+- Path 1/2: sender pays ~$0.39 USDC → kysigned wallet; kysigned spends ~$0.01-0.20 ETH on gas; net ~$0.19-0.38 per envelope.
+- Path 3: sender pays ~$0.39 fiat → kysigned Stripe; Stripe fees ~$0.03; gas ~$0.01-0.20; net ~$0.16-0.35 per envelope.
 
 #### F2.10 Forker Billing (public repo)
 
@@ -137,68 +141,103 @@ Three sender paths, all MVP. Each serves a different audience.
 - F2.8.9. **Deployment documentation:** The README and self-hosting guide MUST prominently warn: "Before going live, configure your `allowed_senders` list or your instance is open to abuse. Default-deny is enforced, but you must explicitly add your first sender."
 - F2.8.10. **Future T2 path:** If/when run402 adds native end-user billing (T2), kysigned can optionally shift from Stripe-based Path 3 to using run402's billing layer, and the access control can shift from "explicit allowlist" to "any user with sufficient credits in the run402 customer account." This is a post-MVP enhancement; the `allowed_senders` feature stays in place as the generic authorization primitive.
 
-### F3. Signing Experience `[both]`
+### F3. Signing Experience
 
 What happens when a signer receives and acts on a signing request.
 
-- F3.1. Signer receives an email with a one-time signing link. Link expires after the envelope TTL.
-- F3.2. Signing page renders the PDF with signature fields highlighted.
-- F3.3. Signing page detects browser wallet (MetaMask, Coinbase Wallet, etc.). If wallet detected, offers both Method A and Method B. If no wallet, shows Method A only. If `require_wallet` is set for this signer, shows Method B only.
-- F3.3.1. **Wallet onboarding — two distinct audiences:**
-  - **Envelope creators (senders) using Path 1/2 — PRIMARY audience.** Senders who want to pay kysigned via x402/MPP need a funded wallet (Coinbase Wallet, MetaMask) with USDC on Base. This is the main wallet-onboarding audience: Path 1/2 senders actively choose the wallet-native flow and need guidance on getting and funding a wallet.
-  - **Signers encountering Method B — RARE edge case.** Method A (email-based, no wallet) is the default signing method for all signers. Signers only need a wallet if the sender explicitly set `require_wallet: true` for that specific signer (rare, typically high-stakes contracts). The vast majority of signers never encounter this.
-- F3.3.2. **Signing page wallet-required edge case:** When a signer encounters `require_wallet: true` but does not have a wallet installed, the signing page shows a "How to get a wallet" panel:
-  - Plain-language explanation of why a wallet is needed for this specific document
-  - Links to Coinbase Wallet and MetaMask install guides
-  - Clarifies that signers do NOT need to fund the wallet — they only approve a signature, kysigned pays all gas
-  - Clear note that wallet signing was specifically requested by the sender for this document
-- F3.3.3. **Wallet onboarding documentation:**
-  - Public repo: `docs/wallet-guide.md` with two clearly-labeled sections: "For Envelope Creators (Path 1/2)" — how to install, fund with USDC on Base, use with x402/MPP — and "For Signers (rare, Method B only)" — how to install, no funding needed, only approving a message. Linked from README, signing page (when relevant), and `llms.txt`.
-  - `[service]` FAQ has two dedicated sections: "Do I need a wallet to SEND a document?" (depends on payment path) and "Do I need a wallet to SIGN a document?" (almost never, default is Method A email-based).
-  - Goal: Path 1/2 senders can easily get set up, and the rare `require_wallet: true` signer never hits a dead-end.
-- F3.4. **Signature visual mode (sender chooses per envelope):**
-  - `require_drawn_signature: false` (default) — signer clicks "Sign this document" in one click. Auto-stamp embedded in PDF: signer's name rendered in a handwriting-style font + crypto verification details (method, timestamp, chain). Fastest possible UX.
-  - `require_drawn_signature: true` — signer gets a drawing/typing widget to create a handwritten signature. Signer confirms the signature before it is applied. Applies to both Method A and Method B signers.
-- F3.5. **Signature persistence:** After a signer draws a signature, the browser offers "Save this signature for future use?" If accepted, the signature image is stored in cookie/localStorage. On subsequent signing requests (same browser), the signer is offered "Use saved signature?" with an option to redraw. Saved signatures are never transmitted to the server until used in an actual signing event.
-- F3.6. **Method A (email-based signing):** Signer completes the signature step (one-click auto-stamp or drawn, per F3.4). Browser generates an ephemeral Ed25519 keypair client-side (private key never transmitted). Browser signs `hash(document_hash + email + timestamp)`. Server records salted commitment hash on-chain. Signer never sees or touches crypto.
-- F3.7. Method A key generation uses native Web Crypto API (Ed25519) with feature detection. If the browser does not support Ed25519 in Web Crypto, falls back to tweetnacl.js (pure JavaScript library). Detection and fallback are invisible to the signer.
-- F3.8. **Method B (wallet signing via EIP-712):** Signer completes the signature step (one-click auto-stamp or drawn, per F3.4), then clicks "Sign with wallet." Page calls `eth_signTypedData_v4` with a DocumentSignature struct. Signer's own wallet displays human-readable signing details (document name, hash, email, envelope ID, timestamp). Server records signer's Ethereum address on-chain via `ecrecover`.
-- F3.9. **Verification levels (MVP):**
-  - Level 1: Email link only (low-stakes internal approvals)
-  - Level 2: Email + type email confirmation (default for most contracts)
-  - Level 5: Wallet signature via EIP-712 (strongest proof, requires signer wallet)
-- F3.10. **Level 3 (SMS/WhatsApp code) is post-MVP.** Will be built as a run402 platform messaging service (likely AWS SNS). Until then, senders can achieve multi-channel verification manually by delivering signing links via their own SMS/WhatsApp/Slack.
-- F3.11. **Level 4 (government ID verification)** is post-MVP. The verification level system accommodates it. Implementation requires integration with a third-party identity verification service (to be selected after comparative review), exposed via run402 as a paid service.
-- F3.11.1. **Legal doc impact when adding higher verification levels:** Adding Level 3 (SMS/WhatsApp), Level 4 (government ID), or any other third-party verification service requires updating the service legal docs (ToS, Privacy Policy, DPA). Specifically: the DPA must list the new sub-processor, the Privacy Policy must disclose the new data categories collected (e.g., phone numbers, ID document images), and the ToS must update "what signatures prove" language to reflect the stronger identity guarantees. No new verification level ships until these legal updates are drafted and approved.
-- F3.12. After signing, server embeds the visual signature (auto-stamp or drawn) into the PDF and sends a confirmation email to the signer.
-- F3.13. Signer can decline to sign. Sender is notified of the decline.
-- F3.14. Duplicate signing protection: if a signer who has already signed clicks a signing link again (same or different channel), they see a "You've already signed this document" message. No double-signing is possible.
+#### F3.A Reply-to-Sign (email DKIM) `[both]`
+
+The primary signing method. Used by the hosted service and available in the public repo.
+
+- F3.1. `[both]` Signer receives an email from the operator with: the document name, the sender's name, the document hash (`docHash`), the envelope ID, a review link (read-only document preview), and clear instructions to sign by replying with `I APPROVE`.
+- F3.2. `[both]` The review page renders the PDF in the browser using pdf.js. The page displays the `docHash` prominently and provides a client-side hash verification tool ("verify this document's hash in your browser"). The review page is read-only — it does not complete a signature.
+- F3.3. `[both]` **The signing act:** the signer replies to the signing email from their own mailbox with `I APPROVE` (case-insensitive, punctuation-tolerant) as a standalone line above any quoted content. The reply goes to `reply-to-sign@<operatorDomain>` (a single inbound address, not per-envelope). The signer's mail provider DKIM-signs the outbound reply — this is the cryptographic proof of mailbox control.
+- F3.3.1. `[both]` **Subject line as binding:** the email subject carries the envelope ID and `docHash`. The subject must be present in the DKIM `h=` signed-headers list. The zk-email circuit rejects any reply where `Subject` is not among the DKIM-signed headers.
+- F3.3.2. `[both]` **`I APPROVE` validation:** the operator's inbound handler checks the reply body for `I APPROVE` as a standalone line above quoted content. Other replies (questions, blank, random text) are NOT treated as signatures. The operator auto-responds with guidance: "your reply did not match the signing format — to sign, reply with `I APPROVE`; to ask a question, contact the sender at [sender-email]."
+- F3.3.3. `[both]` **zk-email proof generation:** the operator runs a zk-email circuit over the raw DKIM-signed reply. The circuit produces a zk-SNARK proving: (a) a valid DKIM signature exists by the signer's mail provider's key, (b) `Subject` is in the DKIM `h=` list, (c) the `From:` header hashes to a committed email hash, (d) the subject contains the envelope ID and `docHash`, (e) the body contains `I APPROVE` as a standalone line. The raw email is discarded after proof generation.
+- F3.3.4. `[both]` **Bait-and-switch protection is native.** The `docHash` is in the DKIM-signed email the signer received and replied to. The zk circuit binds the signature to the exact hash present in the email. An operator cannot stage a different document — the reply's DKIM signature covers the hash the signer actually saw.
+- F3.4. `[both]` **No visual signature blocks in MVP.** Signers do not draw or click a visual signature. The signing act is the email reply. Visual signature blocks (drawn handwriting, auto-stamp) are deferred to a future feature.
+- F3.5. `[both]` After signing is confirmed (zk proof generated, on-chain record written), the operator sends a confirmation email to the signer with the transaction hash and a proof link.
+- F3.6. `[both]` **Decline:** a signer who does not wish to sign simply does not reply. There is no explicit decline action in the MVP. Envelope expiry (F1.7) handles the timeout case. The sender is notified when the envelope expires with incomplete signatures.
+- F3.7. `[both]` **Duplicate signing protection:** if the operator receives a second valid `I APPROVE` reply from the same signer for the same envelope, the first is used and subsequent replies are no-ops. The operator responds with "you have already signed this document."
+
+#### F3.B Wallet Signing (Method B / EIP-712) `[repo]`
+
+Available in the public repo for forkers who have externally established wallet ↔ identity binding. NOT exposed by the hosted service at kysigned.com.
+
+- F3.8. `[repo]` Signer clicks a signing link, signing page detects browser wallet (MetaMask, Coinbase Wallet, etc.). Page calls `eth_signTypedData_v4` with a DocumentSignature struct. Signer's own wallet displays human-readable signing details (document name, hash, email, envelope ID, timestamp). Server records signer's Ethereum address on-chain via `ecrecover`.
+- F3.8.1. `[repo]` **Cryptographic gap — clearly documented.** Method B proves "wallet address X signed document Y." It does NOT prove "the person who controls email Z also controls wallet X." The `signerEmail` field in the EIP-712 struct is a caller-chosen label — anyone with the wallet private key can sign and claim any email. Forkers who use Method B are responsible for establishing the wallet ↔ identity binding externally (e.g., via their own KYC, internal directory, or prior authentication). This gap MUST be clearly stated in `docs/wallet-guide.md`, the README, and `LEGAL.md`.
+- F3.8.2. `[repo]` Wallet onboarding documentation: `docs/wallet-guide.md` with two sections — "For Envelope Creators (Path 1/2)" (install + fund with USDC on Base) and "For Signers (Method B)" (install, no funding needed, only approving a message). Linked from README and `llms.txt`.
+- F3.9. `[repo]` When a signer encounters wallet signing but has no wallet installed, the signing page shows a "How to get a wallet" panel with install guides and a note that no funding is needed.
 
 ### F4. On-Chain Recording `[both]`
 
-Every signature event is recorded on the SignatureRegistry smart contract on Base.
+Every signature event is recorded on canonical smart contracts on Base.
 
-- F4.1. One canonical SignatureRegistry contract deployed on Base. All instances (service and repo deployments) record to the same contract by default.
-- F4.2. Contract address is a constant in the repo code. Forkers can change it but have no incentive to (gas economics prevent spam, shared registry strengthens verification).
-- F4.3. **Method A recording:** `recordEmailSignature(envelopeId, documentHash, signerCommitment, signerPubkey, signature)`. The `signerCommitment` is `hash(email + documentHash + salt)` — email is never on-chain. **Submitted by the kysigned server via the platform wallet**, not by the signer.
-- F4.4. **Method B recording:** `recordWalletSignature(envelopeId, documentHash, documentName, signerEmail, timestamp, signature)`. **Submitted by the kysigned server via the platform wallet**, not by the signer. The signer produces an off-chain EIP-712 signature in their wallet, passes it to the server, and the contract recovers the signer's Ethereum address via `ecrecover`. The signer's address is recorded on-chain as the verified signer even though a different wallet (the platform wallet) submitted the transaction and paid gas.
-- F4.5. **Completion recording:** `recordCompletion(envelopeId, originalDocHash, finalDocHash, signerCount)`. Fires when all signers have signed.
-- F4.6. Mixed methods per envelope: some signers can use Method A, others Method B, within the same envelope.
-- F4.7. Contract is append-only. No entry can be modified or deleted by anyone, including the contract deployer.
-- F4.8. Contract is replaceable: new envelopes can be directed to a new contract at any time. Old envelopes remain verifiable at the old contract address forever. The verification page checks all known contract addresses.
-- F4.9. Contract ABI and verification algorithm are published and documented from day 1. Anyone can verify signatures independently without kysigned.com.
+#### F4.A Contracts
+
+- F4.1. **Two canonical contracts deployed on Base:** `SignatureRegistry` (signature records) and `EvidenceKeyRegistry` (DKIM public keys + DNSSEC proofs). All instances (service and repo deployments) record to the same contracts by default.
+- F4.2. Contract addresses are constants in the repo code. Forkers can change them but have no incentive to (shared registry strengthens verification).
+- F4.3. Both contracts are immutable once deployed: no owner, no admin, no upgrade mechanism, no proxy pattern. Append-only. No entry can be modified or deleted by anyone, including the deployer.
+- F4.4. Both contracts accept permissionless writes — any funded EOA can submit records. For reply-to-sign, the contract verifies the zk proof against the referenced evidence key before accepting. Invalid proofs are rejected at write time. For wallet signing (Method B), the contract verifies the EIP-712 signature via `ecrecover` (unchanged from current).
+- F4.5. Contracts are replaceable: new envelopes can be directed to new contracts at any time. Old records remain verifiable at old contract addresses forever. The verification page checks all known contract addresses.
+- F4.6. Contract ABIs and verification algorithms are published and documented from day 1. Anyone can verify signatures independently without kysigned.com.
+
+#### F4.B Evidence Key Registry (new)
+
+- F4.7. `EvidenceKeyRegistry` stores DKIM public keys keyed by `keyId`. Each entry contains: provider domain, DKIM selector, raw public key bytes, a DNSSEC proof chain from the IANA DNSSEC root KSK down to the provider's `_selector._domainkey.<domain>` record, and a registration timestamp.
+- F4.8. One entry per (provider, selector, key rotation). Amortized across all signatures using the same key. Registered on first encounter by any operator.
+- F4.9. A 2046 verifier can independently confirm the key's authenticity by validating the DNSSEC chain against the IANA root KSK (archived globally and publicly by multiple independent parties).
+
+#### F4.C Reply-to-Sign Recording `[both]`
+
+- F4.10. **Record structure:** each reply-to-sign signature record contains:
+  - `searchKey` — `SlowHash(email || docHash)` using a deterministic slow KDF with fixed parameters committed forever in the spec.
+  - `docHash` — SHA-256 of the original document.
+  - `envelopeId` — unique envelope identifier.
+  - `evidenceKeyId` — reference to the DKIM key entry in `EvidenceKeyRegistry`.
+  - `timestamp` — signing time.
+  - Bulky data (zk proof bytes, public inputs) emitted via events, not stored in contract storage (cheaper gas, permanently retrievable from block history).
+- F4.11. **Privacy:** `searchKey = SlowHash(email || docHash)` ensures: a verifier with both inputs finds the record; an observer with only an email cannot enumerate signatures (docHash space is 2^256); an observer with only a docHash faces slow-KDF cost to enumerate emails; cross-document records by the same signer are unlinkable. No email plaintext or stable email hash is on-chain.
+- F4.12. **On write:** the contract verifies the zk proof against the referenced evidence key. Invalid proofs are rejected. Valid proofs are stored and the signature event is emitted.
+- F4.13. **Submitted by the kysigned server via the platform wallet**, not by the signer. The signer's involvement ends when their DKIM-signed reply is received.
+
+#### F4.D Wallet Signing Recording `[repo]`
+
+- F4.14. `[repo]` **Method B recording (unchanged):** `recordWalletSignature(envelopeId, documentHash, documentName, signerEmail, timestamp, signature)`. Submitted by the server via the platform wallet. Contract recovers signer's Ethereum address via `ecrecover`. The `signerEmail` field is a caller-chosen label, NOT cryptographically bound to the wallet — see F3.8.1.
+
+#### F4.E Completion Recording `[both]`
+
+- F4.15. `recordCompletion(envelopeId, originalDocHash, finalDocHash, signerCount)`. Fires when all signers have signed. Links the original document hash to the final rendered PDF hash (which includes the certificate page).
+- F4.16. `[repo]` Mixed methods per envelope: some signers can use reply-to-sign, others wallet signing (Method B), within the same envelope. The hosted service uses reply-to-sign only.
 
 ### F5. Verification `[both]`
 
-Public, universal, vendor-independent signature verification.
+Public, universal, vendor-independent signature verification — designed to work ~20 years from now with no dependency on any operator.
 
-- F5.1. Verification page at `/verify` accepts a PDF upload, computes its SHA-256 hash, and queries the canonical contract(s) for matching signature events.
-- F5.2. Verification page is **universal**: it verifies ANY envelope recorded on the canonical contract, regardless of which instance (kysigned.com, acme-sign.com, etc.) created it.
-- F5.3. Verification results display: number of signers, signing dates, signing methods used. For Method B signers: wallet addresses. For Method A signers: "N email-verified signatures" (no identity revealed).
-- F5.4. **Owner verification (dashboard):** Full audit trail per signer — email, method used, timestamp, IP, user agent, tx hash. For Method B: signer's Ethereum address.
-- F5.5. **Certificate of Completion:** Generated on envelope completion. Includes: document name, document hash, all signer details, signing timestamps, tx hashes, contract address. This certificate enables third-party verification (court, auditor) against the blockchain without needing kysigned.com.
-- F5.6. Third-party verification: anyone with a signed PDF and its Certificate of Completion can independently verify against the blockchain. No dependency on any kysigned instance being online.
-- F5.7. **Proof link:** `/verify/<envelopeId>` displays the full verification record for a completed envelope — signer count, signing dates, methods, tx hashes, and direct links to each transaction on Basescan. No PDF upload required (the envelope ID is sufficient to query the contract). This is the link shared in the completion email (F7.4).
+#### F5.A Verification procedure (reply-to-sign)
+
+- F5.1. **Verification inputs:** `(email, document)`. The verifier must have both. There is no "lookup by email only" or "lookup by document only" — this is a deliberate privacy property.
+- F5.2. Verification page at `/verify` accepts a PDF upload and an email address. It computes `docHash = SHA-256(pdf_bytes)` and `searchKey = SlowHash(email || docHash)`, then queries the canonical `SignatureRegistry` contract(s) for a matching record.
+- F5.3. If a record is found, the page:
+  1. Retrieves the zk proof from the signature event (block history).
+  2. Looks up the `evidenceKeyId` in `EvidenceKeyRegistry` to get the DKIM public key + DNSSEC proof chain.
+  3. Verifies the DNSSEC chain (against the IANA root KSK archived in the registry entry).
+  4. Verifies the zk proof against the DKIM key with public inputs `(H(email), envelopeId, docHash)`.
+  5. Displays result: "This email signed this document at [timestamp]. Verification is independent — it does not depend on kysigned.com or any operator."
+- F5.4. Verification page is **universal**: it verifies ANY record on the canonical contracts, regardless of which instance (kysigned.com, acme-sign.com, etc.) created it.
+- F5.5. **No discovery.** The verification page does NOT support "search by email" or "list all documents signed by X." The verifier must provide both inputs. This is not a limitation — it is the privacy guarantee.
+
+#### F5.B Verification procedure (wallet signing) `[repo]`
+
+- F5.6. `[repo]` For Method B records, verification is by `(documentHash, expectedSignerAddress)`. The contract's existing `verifyWalletSignature(documentHash, expectedSigner)` function returns true/false. The verification page also supports this mode.
+
+#### F5.C Certificate of Completion and proof links
+
+- F5.7. **Certificate of Completion:** generated as a certificate page appended to the final PDF on envelope completion (see F8). Includes: document name, original `docHash`, per-signer email + timestamp + tx hash, operator identity, verification instructions, QR code linking to the verification page.
+- F5.8. Third-party verification: anyone with the signed PDF and a signer's email can independently verify against the blockchain. No dependency on any kysigned instance being online.
+- F5.9. **Proof link:** `/verify/<envelopeId>` displays the full verification record for a completed envelope — signer count, signing dates, tx hashes, and direct links to each transaction on Basescan. No PDF upload required (the envelope ID is sufficient to query the contract for the completion record). This is the link shared in the completion email (F7.4).
+- F5.10. **Owner verification (dashboard):** Full audit trail per signer — email, timestamp, tx hash. Available to the sender via the dashboard (F6).
 
 ### F6. Dashboard `[both]` basic / `[service]` enhanced
 
@@ -216,16 +255,33 @@ Envelope management and account overview.
 
 ### F7. Email & Link Delivery `[both]`
 
-Notifications and multi-channel signing link distribution.
+Email is the core signing channel, not just a notification mechanism.
 
-- F7.1. Signing request email sent to each signer with a one-time link. Email includes document name, sender name, and a message from the sender.
-- F7.2. Automated reminders at configurable intervals (default: 3 days, 7 days after initial send). Sender can trigger manual reminders.
-- F7.3. Confirmation email sent to signer after successful signing.
-- F7.4. Completion email sent to all parties (sender + all signers) with the signed PDF, Certificate of Completion, and a **proof link** attached. The proof link points to the verification page pre-loaded with this envelope's results (e.g., `kysigned.com/verify/<envelopeId>`). The email also includes plain-text blockchain reference details: contract address, chain (Base), and transaction hashes for each signature event — so recipients can independently verify on any block explorer even if kysigned.com is unreachable.
-- F7.5. Sender receives a list of all signing links immediately after envelope creation. These links can be delivered through any channel independently of the email system.
-- F7.6. Notice to senders: prompt to contact signers and check spam if signing requests are not received. Displayed in dashboard and in API response.
+#### F7.A Signing email (outbound to signer)
+
+- F7.1. `[both]` Signing email sent to each signer. Email includes: sender name, document name, `docHash`, envelope ID, a review link (read-only document preview), the `How it works →` link (F11.7), and clear instructions: "To sign, reply to this email with `I APPROVE` as the first line."
+- F7.1.1. `[both]` The `Reply-To` header is set to `reply-to-sign@<operatorDomain>` (single inbound address for all envelopes). Envelope and signer identity are inferred from the reply's `From:` header and subject line.
+- F7.1.2. `[both]` **Email tone:** privacy-first and deliberately non-scary. The primary call-to-action conveys "this is private, simple, and only findable by someone who already has both your email and the document." Legal and technical specifics live on the "how it works" page and in a collapsible footer — not in the primary signing instruction.
+- F7.1.3. `[both]` **Consent language versioning.** Every user-facing string that constitutes signing intent (email body, subject line, auto-reply wording, certificate page wording, "how it works" page text) is versioned. The version in force at the time of signing is recorded alongside each envelope in operator state. Disputes can reference the exact text a signer was shown.
+
+#### F7.B Inbound reply handling
+
+- F7.2. `[both]` Operator receives replies at `reply-to-sign@<operatorDomain>` via the run402 inbound email surface (SES receipt rule → S3 → email-lambda → Postgres). Raw MIME is preserved in S3 with DKIM headers intact.
+- F7.2.1. `[both]` The operator's signing handler retrieves raw MIME from S3 (NOT the parsed/cleaned `body_text`), validates DKIM, extracts subject and body, checks for the `I APPROVE` marker, and proceeds to zk proof generation (F3.3.3).
+- F7.2.2. `[both]` Replies that do not match the signing format (wrong subject, missing `I APPROVE`, or extra content without `I APPROVE`) trigger an auto-reply: "Your reply did not match the signing format. To sign, reply with `I APPROVE` as the first line. To ask a question, contact the sender at [sender-email]."
+
+#### F7.C Reminders, confirmation, and completion
+
+- F7.3. `[both]` Automated reminders at configurable intervals (default: 3 days, 7 days after initial send). Sender can trigger manual reminders. Reminder emails repeat the signing instructions in the reply-to-sign format.
+- F7.4. `[both]` Confirmation email sent to signer after their signature is recorded on-chain. Includes the transaction hash and a proof link.
+- F7.5. `[both]` **Completion email** sent to all parties (sender + all signers) with: the final PDF (including certificate page, see F8), a proof link (`/verify/<envelopeId>`), and plain-text blockchain reference details (contract address, chain, tx hashes). Recipients can independently verify on any block explorer even if kysigned.com is unreachable.
+- F7.6. `[both]` Notice to senders: prompt to contact signers and check spam if signing requests are not received. Displayed in dashboard and in API response.
+
+#### F7.D Infrastructure
+
 - F7.7. `[service]` Email sent from a dedicated kysigned.com sending domain with SPF/DKIM/DMARC configured.
-- F7.8. `[repo]` Email sending is configurable: use run402 email service (paid) or plug in own provider (SendGrid, SES, etc.).
+- F7.7.1. `[service]` Inbound replies received at `reply-to-sign@kysigned.com` (or `reply-to-sign@mail.run402.com` for MVP if custom-domain inbound is not yet available).
+- F7.8. `[repo]` Outbound email sending is configurable: use run402 email service (paid) or plug in own provider (SendGrid, SES, etc.). Inbound email handling requires an SES-compatible inbound pipeline that preserves raw MIME with DKIM headers.
 
 ### F8. PDF Handling `[both]`
 
@@ -233,9 +289,10 @@ Notifications and multi-channel signing link distribution.
 
 - F8.1. Accept PDF upload (base64 in API body or URL reference).
 - F8.2. Compute `SHA-256(pdf_bytes)` as the canonical document hash.
-- F8.3. Render PDF in browser on the signing page using pdf.js.
-- F8.4. Embed visual signature images into the PDF after each signer signs (server-side, using pdf-lib or equivalent).
-- F8.5. Generate final signed PDF with all signatures embedded on envelope completion.
+- F8.3. Render PDF in browser on the review page using pdf.js.
+- F8.4. **No visual signature blocks in MVP.** Visible signature images embedded in the document body (drawn handwriting, auto-stamp) are deferred to a future feature. The signing act is the email reply, not a visual mark on the document.
+- F8.5. **Certificate page appended at completion.** On envelope completion, the operator automatically appends a certificate page to the final PDF. The certificate page contains: original `docHash`, envelope ID, per-signer email + timestamp + tx hash, operator identity, verification instructions, and a QR code linking to the verification page. This is purely cosmetic rendering — the cryptographic record is against the original `docHash`, not the rendered PDF. Zero friction for signers (they never see this page during signing) and zero opt-in for the sender (added automatically by default).
+- F8.5.1. The completion record (F4.15) stores both `originalDocHash` (pre-certificate) and `finalDocHash` (post-certificate). A verifier computes `SHA-256(final PDF)`, looks up the completion record by `finalDocHash`, reads `originalDocHash`, then looks up signatures by `originalDocHash`.
 - F8.6. **Ephemeral retention rule:**
   - **Active envelope (status='active'):** PDF retained — needed for signing
   - **Voided or expired envelope:** PDF deleted immediately (no party will sign or receive a completion email)
@@ -276,7 +333,7 @@ Agent-native interface for programmatic signing.
 
 Marketing site and product pages at kysigned.com.
 
-- F11.1. Landing page led by the cost attack angle ("DocuSign charges $3-5 per signature. kysigned charges ~$0.25. Proof on the blockchain, not their servers."). No "kill" language.
+- F11.1. Landing page led by the cost attack angle ("DocuSign charges $3-5 per signature. kysigned charges ~$0.39. Proof on the blockchain, not their servers."). No "kill" language.
 - F11.2. Dual CTA: "Send a document" (hosted service) and "Deploy your own" (GitHub repo).
 - F11.3. "SaaS vs Repo" decision helper explaining the tradeoffs for each delivery mode.
 - F11.4. Pricing page showing per-envelope costs, credit pack tiers, and a comparison table vs DocuSign/GoodSign/others.
@@ -291,23 +348,27 @@ Marketing site and product pages at kysigned.com.
   - FAQ — human-readable, conversion-focused
   - How-to snippets — copyable prompts for humans using AI agents
   - llms.txt — machine-readable product description for agent discovery
-- F11.7. Clean, minimal design following bld402.com aesthetic. Not crowded.
+- F11.7. **"How it works" page** at `/how-it-works`. Public-facing, linked from every signing email. Written in entirely non-technical language — no "blockchain," "DKIM," "hash," "zero-knowledge proof." Explains to a non-technical signer: what replying does, what gets stored, who can find their signature (only someone with both their email and the document), what we cannot do (no "list all docs Alice signed"), and that records last forever on a public database no single company controls. Target: readable in under one minute by someone who has never heard of cryptography.
+- F11.8. Clean, minimal design following bld402.com aesthetic. Not crowded.
 
 ### F12. Legal `[service]` + `[repo]`
 
-- F12.1. `[service]` **Terms of Service** — drafted from existing Kychee/Eleanor/run402 templates. Must precisely state what signatures prove: "someone with access to email X signed the document," not "person X signed." Requires human approval before launch.
-- F12.2. `[service]` **Privacy Policy** — drafted from templates. Requires human approval.
+- F12.1. `[service]` **Terms of Service** — drafted from existing Kychee/Eleanor/run402 templates. Must precisely state what reply-to-sign signatures prove: "the signer's mail provider cryptographically attested that a real outbound email from the signer's mailbox contained `I APPROVE` and referenced this document's hash." Must clarify that this does NOT prove "person X signed" — it proves "someone with mailbox control of email X signed." Mailbox compromise is explicitly listed as a limitation (same as every digital signing product). Requires human approval before launch.
+- F12.2. `[service]` **Privacy Policy** — drafted from templates. Must explain: no email plaintext stored on-chain or in operator state after proof generation; raw MIME discarded after zk proof; records are only findable by someone with both the email and the document. Requires human approval.
 - F12.3. `[service]` **Cookie/consent notice** — drafted from templates. Requires human approval.
 - F12.4. `[service]` **Acceptable Use Policy** — drafted from templates. Requires human approval.
 - F12.5. `[service]` **DPA (Data Processing Agreement)** — drafted from templates. Requires human approval.
 - F12.6. `[repo]` **LICENSE** — MIT license covering the code.
 - F12.7. `[repo]` **LEGAL.md** — disclaimers separate from the MIT license:
-  - What signatures prove and don't prove (evidentiary value, not guaranteed legal enforceability)
+  - What reply-to-sign signatures prove: "the signer's mail provider's DKIM key, archived on-chain with a DNSSEC proof chain, attested an outbound email from the signer's mailbox containing `I APPROVE` and the document hash." Not "person X signed."
+  - What wallet signatures (Method B) prove and do NOT prove: "wallet address X signed document Y." The `signerEmail` field is a caller-chosen label, NOT cryptographically bound. Forkers must establish wallet ↔ identity binding externally. **This gap must be prominently documented.**
   - No guarantee of legal enforceability in any specific jurisdiction
   - Smart contract permanence disclaimer (recordings on Base are permanent, cannot be deleted or modified by anyone)
+  - Future cryptographic break acknowledgment: DKIM RSA and zk-SNARKs could theoretically be broken by quantum computing; records from before a break are evaluated in historical context
   - Operator responsibility: the forker/deployer is responsible for their own privacy compliance, Terms of Service, and legal obligations — not Kychee
   - Excluded document types that cannot be e-signed under ESIGN/UETA (wills, codicils, etc.)
 - F12.8. No product launch until all `[service]` legal documents are human-approved.
+- F12.9. `[both]` **Consent language is versioned and legally reviewed.** Every user-facing string that constitutes signing intent is versioned (F7.1.3). Legal review required before launch — the exact email copy, "how it works" page text, and certificate page wording must be approved by someone with legal expertise.
 
 ### F13. Cross-Linking `[service]`
 
@@ -355,7 +416,7 @@ This feature introduces a new conceptual layer above envelopes: the **document**
 - **Document history in the dashboard:** the sender sees "NDA.pdf" as a single row with a history trail (envelope 1 expired with 2/3 signed, envelope 2 completed with 1/1 signed) and a combined signer ledger across all envelopes.
 - **Combined attestation view on the verify page:** when someone presents the final signed PDF, the verifier can check whether every intended signer has signed SOMEWHERE in the document's envelope history, not just in one specific envelope.
 - **Creator UX hints:** when a creator uploads a PDF that already has attested envelopes, kysigned surfaces "this document was partially attested in envelope XYZ — only invite the missing signer this time?"
-- **Optional — clearer cryptographic story:** each envelope still produces its own on-chain record (envelopes don't share signatures at the cryptographic layer; Method A and Method B both bind to envelope_id), but the off-chain aggregation surfaces a unified "document was attested by A + B via E1, and by C via E2" view to humans.
+- **Optional — clearer cryptographic story:** each envelope still produces its own on-chain record (envelopes don't share signatures at the cryptographic layer; reply-to-sign and wallet signing both bind to envelope_id), but the off-chain aggregation surfaces a unified "document was attested by A + B via E1, and by C via E2" view to humans.
 
 **Why deferred:** the full scope needs a brainstorm + spec pass to answer open questions:
 - Does the `document_hash` aggregation key include the sender identity, or is any sender's attestation of the same PDF relevant? (probably sender-scoped to avoid cross-user leakage)
@@ -375,12 +436,12 @@ This feature introduces a new conceptual layer above envelopes: the **document**
 > **Why:** kysigned is run402's first production consumer of the KMS-wallet contract-deploy path (drain endpoint, recovery address, 90-day KMS deletion lifecycle, KMS-signs-arbitrary-transaction flow — all with zero production test coverage). A botched first launch is cheap in cash (~$5 of gas) but reputationally permanent (a verified-on-Basescan kysigned-branded contract is forever, even after redeploy). The canary decouples these risks: exercise every untested code path against an anonymous backend first, then "launch" by relabeling when confident.
 
 - F17.1. **Two separate KMS wallets under the kysigned run402 project.** Canary wallet is ephemeral (provisioned fresh per canary session, drained and KMS-deletion-scheduled at session end). Production wallet is long-lived (the address that lives on for every real envelope post-launch). The two wallets must not share a deployer EOA — the canary contract's `Contract Creator` on Basescan must be a distinct address from the production contract's, so linking the two requires real OSINT work rather than a single click.
-- F17.2. **Canary and production contracts compile from identical Solidity source.** The canary `SignatureRegistry` contract is not a simplified, renamed, or otherwise-differentiated rehearsal contract — it compiles from the exact same source as the eventual production contract. Identical bytecode is a feature, not a coincidence: it is the cryptographic guarantee that the canary rehearses the production path.
+- F17.2. **Canary and production contracts compile from identical Solidity source.** The canary `SignatureRegistry` and `EvidenceKeyRegistry` contracts are not simplified, renamed, or otherwise-differentiated rehearsal contracts — they compile from the exact same source as the eventual production contracts. Identical bytecode is a feature, not a coincidence: it is the cryptographic guarantee that the canary rehearses the production path.
 - F17.3. **Byte-identical bytecode gate at the flip moment.** Before flipping canary → production, the runtime bytecode of the canary contract (fetched via `eth_getCode` on the canary address) MUST be compared against the runtime bytecode of the freshly-deployed production contract (fetched via `eth_getCode` on the production address). If they differ in anything beyond the Solidity metadata suffix (the compiler-hash tail), the flip MUST be aborted and the divergence investigated. A matching bytecode pair is a hard pre-flip gate — no flip without it.
 - F17.4. **No Basescan source verification for the canary contract.** The canary contract is deployed to Base mainnet but its source is never submitted to Basescan. External observers see bytecode only. The production contract IS submitted for Basescan verification.
 - F17.5. **No kysigned branding in canary deploy artifacts.** The canary KMS wallet has no name tag referencing kysigned; the canary contract has no Basescan name tag referencing kysigned; the canary deploy transaction carries no identifying metadata linking it to kysigned. The only public information about the canary contract is its bytecode.
 - F17.6. **kysigned-service runs in full production mode against canary references during the canary phase.** The same kysigned-service deployment that will eventually be used for the launch is configured with two environment variables — `KYSIGNED_CONTRACT_ADDRESS` pointing at the canary contract address and `KYSIGNED_KMS_WALLET` pointing at the canary KMS wallet — for the duration of the canary phase. No separate staging environment. No mock data. Real frontend, real SES, real PDF rendering, real dashboard, real verification.
-- F17.7. **The canary phase exercises the full product via the full set of surfaces.** At least one end-to-end envelope MUST be created via each of: the hosted dashboard, the public REST API, and the MCP server. All of Method A, Method B, parallel signing, sequential signing, and the verification page MUST be exercised at least once against the canary contract. The plan (kysigned-plan.md) enumerates the exact checklist; the principle here is that no feature from F1–F15 is exempt from canary exercise.
+- F17.7. **The canary phase exercises the full product via the full set of surfaces.** At least one end-to-end envelope MUST be created via each of: the hosted dashboard, the public REST API, and the MCP server. The reply-to-sign flow (email reply → DKIM verification → zk proof → on-chain recording → verification), parallel signing, sequential signing, and the verification page MUST all be exercised at least once against the canary contracts. Wallet signing (Method B) is already tested against the existing Sepolia contract and does not need re-canary for the service (but the `[repo]` code path should be exercised once against the canary `SignatureRegistry` to confirm the rewritten contract still accepts EIP-712 records). The plan (kysigned-plan.md) enumerates the exact checklist; the principle here is that no feature from F1–F15 is exempt from canary exercise.
 - F17.8. **Exit criterion = checklist fully green AND explicit human go/no-go.** The canary phase ends only when (a) every item on the canary checklist (enumerated in the plan) has been confirmed to work end-to-end against the canary, AND (b) Barry and Tal explicitly approve the flip via a ceremonial go/no-go prompt that presents the checklist summary and demands an explicit APPROVE / ABORT / KEEP TESTING decision. There is no automatic advancement. There is no time-boxing. A partial checklist does not unlock the flip, and a fully-green checklist does not itself trigger the flip — the human decision is independent and required.
 - F17.9. **"Launch" is a relabel, not a deploy.** The launch moment consists of: (1) provision the production KMS wallet, (2) deploy the production `SignatureRegistry` contract via the production wallet, (3) run the F17.3 byte-identical bytecode gate, (4) flip the two kysigned-service environment variables from canary references to production references, (5) redeploy kysigned-service (config change only; no application code change), (6) send one smoke-test envelope through the production contract end-to-end, (7) drain the canary wallet back to the ops wallet, (8) schedule KMS key deletion on the canary KMS key. No application code ships on launch day — every line of code has already been exercised against the canary for the duration of the canary phase.
 - F17.10. **The canary contract remains on-chain forever after retirement.** Because smart contracts are immutable, the canary contract cannot be deleted. What IS retired: the canary wallet (drained and KMS-deletion-scheduled), the service's environment variables (flipped to production), and every reference to the canary in AWS Secrets Manager (the `kysigned/canary-*` secrets can be deleted the day after the flip is confirmed stable). The canary contract itself becomes a bytecode-only artifact on Base mainnet with no known connection to kysigned.
@@ -391,15 +452,14 @@ This feature introduces a new conceptual layer above envelopes: the **document**
 ## Acceptance Criteria
 
 ### F1. Envelope Management
-- [ ] Sender creates an envelope with a PDF and 1-5 signers; receives envelope_id, status_url, verify_url, and individual signing links per signer
+- [ ] Sender creates an envelope with a PDF and 1-5 signers; receives envelope_id, status_url, verify_url, and review links per signer
 - [ ] Envelope with 6+ signers applies a per-signer surcharge beyond 5
-- [ ] Parallel signing: all signers receive signing links simultaneously and can sign in any order
-- [ ] Sequential signing: signers are notified one at a time; next signer is notified only after previous signer completes
+- [ ] Parallel signing: all signers receive signing emails simultaneously and can reply in any order
+- [ ] Sequential signing: signers are notified one at a time; next signer receives signing email only after previous signer's reply is recorded
 - [ ] Sender voids an active envelope; all pending signers receive a cancellation notice; no further signing is possible
-- [ ] Expired envelope returns "expired" status; pending signers are notified; signing links no longer work
+- [ ] Expired envelope returns "expired" status; pending signers are notified; replies to expired envelopes trigger an auto-response explaining the expiry
 - [ ] Webhook URL receives a POST with envelope completion data when all signers have signed
-- [ ] API response includes a list of individual signing links per signer for manual distribution
-- [ ] Sender adds themselves as signer: envelope creation UI prompts "Will you also sign?"; if yes, sender appears in signer list and signs through the same flow as other signers
+- [ ] Sender adds themselves as signer: envelope creation UI prompts "Will you also sign?"; if yes, sender appears in signer list and signs through the same reply-to-sign flow as other signers
 - [ ] Sender-as-signer produces identical on-chain proof to any other signer (no special-case recording)
 
 ### F2. Sender Authentication
@@ -419,71 +479,81 @@ This feature introduces a new conceptual layer above envelopes: the **document**
 - [ ] Self-hosted mode: explicit allowlist with no credit check (internal use)
 - [ ] Public repo does NOT contain Stripe integration code (Path 3 is `[service]` only)
 - [ ] Path 1/2 sender without a wallet: README and wallet-guide.md explain how to install + fund a wallet with USDC on Base
-- [ ] Signer hitting `require_wallet: true` without a wallet: signing page shows onboarding panel with Coinbase/MetaMask links and "no funding needed" clarification
-- [ ] `docs/wallet-guide.md` exists in the public repo with two labeled sections (senders Path 1/2, signers Method B) and is linked from README + llms.txt
-- [ ] `[service]` FAQ has "Do I need a wallet to SEND?" and "Do I need a wallet to SIGN?" questions with clear, distinct answers
+- [ ] `docs/wallet-guide.md` exists in the public repo with sections for senders (Path 1/2) and signers (Method B) and is linked from README + llms.txt
+- [ ] `[service]` FAQ has "Do I need a wallet to SEND?" and "Do I need a wallet to SIGN?" questions with clear, distinct answers (answer to the latter: "No — you sign by replying to an email")
 
-### F3. Signing Experience
-- [ ] Signer clicks email link; signing page renders PDF with signature fields highlighted
-- [ ] Browser with wallet: signing page shows both Method A and Method B options
-- [ ] Browser without wallet: signing page shows Method A only
-- [ ] Signer with `require_wallet: true`: signing page shows Method B only; Method A is not available
-- [ ] Default mode (`require_drawn_signature: false`): signer clicks "Sign this document"; auto-stamp with handwriting-font name + crypto details embedded in PDF; no drawing widget shown
-- [ ] Drawn mode (`require_drawn_signature: true`): signer draws/types signature in widget; confirms before applying; works for both Method A and Method B
-- [ ] Signature persistence: after drawing, signer offered "Save for future use?"; saved in cookie/localStorage; on next signing, offered "Use saved signature?" with redraw option
-- [ ] Method A: Ed25519 keypair generated client-side; signature recorded on-chain with salted commitment hash; signer never sees crypto terminology
-- [ ] Method A: Ed25519 via Web Crypto API succeeds on supported browsers; falls back to tweetnacl.js on unsupported browsers; signer sees no difference
-- [ ] Method B: signer completes signature step (auto-stamp or drawn), then wallet displays human-readable DocumentSignature struct; signer approves; Ethereum address recorded on-chain
-- [ ] Level 1: signing completes with email link click only
-- [ ] Level 2: signer must type their email as confirmation before signing completes
-- [ ] Level 5: signing completes only via EIP-712 wallet signature
-- [ ] Signer who has already signed clicks signing link again (any channel): sees "You've already signed this document" message; no duplicate recording
-- [ ] Signer declines: sender is notified; signer status updated to "declined"
+### F3. Signing Experience — Reply-to-Sign
+- [ ] Signer receives signing email with document name, sender name, `docHash`, envelope ID, review link, and `How it works →` link
+- [ ] Signing email `Reply-To` header is `reply-to-sign@<operatorDomain>`; subject contains envelope ID and `docHash`
+- [ ] Signer replies with `I APPROVE` (case-insensitive, punctuation-tolerant) → operator receives the reply with raw DKIM headers preserved
+- [ ] Operator validates: DKIM signature is valid, `Subject` is in the DKIM `h=` signed-headers list, `From:` matches expected signer, body contains `I APPROVE` as standalone line above quoted content, subject contains correct envelope ID and `docHash`
+- [ ] zk-email circuit produces a valid proof binding `H(email)`, `envelopeId`, and `docHash` to the DKIM signature; raw email is discarded after proof generation
+- [ ] Signature record written to `SignatureRegistry` with correct `searchKey`, `docHash`, `envelopeId`, `evidenceKeyId`, zk proof in event
+- [ ] Reply without `I APPROVE` (question, blank, wrong text) triggers auto-reply with guidance; no signature recorded
+- [ ] Duplicate reply from same signer for same envelope: first is used, subsequent are no-ops with auto-reply "you have already signed"
+- [ ] Signer who does not reply: envelope expires per F1.7; no explicit decline action required
+- [ ] Review page renders PDF correctly in browser via pdf.js; displays `docHash`; provides client-side hash verification tool
+- [ ] Confirmation email sent to signer after on-chain recording with tx hash and proof link
+
+### F3. Signing Experience — Wallet Signing (Method B) `[repo]`
+- [ ] `[repo]` Signer clicks signing link; page detects wallet; calls `eth_signTypedData_v4`; wallet displays human-readable DocumentSignature struct; Ethereum address recorded on-chain via ecrecover
+- [ ] `[repo]` `LEGAL.md` and `docs/wallet-guide.md` clearly state the gap: Method B proves "wallet X signed doc Y" but NOT "wallet X = email Y"; forker must establish identity binding externally
+- [ ] `[repo]` Signing page without wallet shows onboarding panel with install guides and "no funding needed" clarification
 
 ### F4. On-Chain Recording
-- [ ] Method A signature event recorded on canonical SignatureRegistry contract on Base with correct envelopeId, documentHash, signerCommitment, signerPubkey, and signature
-- [ ] Method B signature event recorded on canonical contract with signer address recovered correctly via ecrecover
-- [ ] Completion event recorded when all signers have signed, with correct originalDocHash, finalDocHash, and signerCount
-- [ ] Mixed-method envelope: some signers use Method A, others Method B; all recorded correctly; completion event fires after all sign
-- [ ] No entry on the contract can be modified or deleted after recording
-- [ ] Contract replacement: new envelopes can be directed to a new contract; old envelopes remain verifiable at old contract address
+- [ ] `SignatureRegistry` deployed on Base; accepts reply-to-sign records with valid zk proof; rejects records with invalid proofs
+- [ ] `EvidenceKeyRegistry` deployed on Base; stores DKIM public keys with DNSSEC proof chains from IANA root
+- [ ] Reply-to-sign signature record keyed by `searchKey = SlowHash(email || docHash)`; contains `docHash`, `envelopeId`, `evidenceKeyId`, `timestamp`; zk proof emitted as event
+- [ ] Evidence key registered once per (provider, selector, rotation); DNSSEC proof chain validates against IANA root
+- [ ] `[repo]` Method B (wallet) signature recorded via `recordWalletSignature` with correct signer address recovered via ecrecover
+- [ ] Completion event recorded when all signers have signed, with correct `originalDocHash`, `finalDocHash`, and `signerCount`
+- [ ] `[repo]` Mixed-method envelope: some signers use reply-to-sign, others wallet; all recorded; completion fires after all sign
+- [ ] No entry on either contract can be modified or deleted after recording
+- [ ] Both contracts are permissionless (any funded EOA can write) and ownerless (no admin functions)
 
 ### F5. Verification
-- [ ] Upload a previously signed PDF to `/verify`; page displays correct signer count, dates, and methods
-- [ ] Verification page on instance X correctly verifies an envelope created by instance Y (universal verification)
-- [ ] Method B signers: wallet addresses displayed in verification results
-- [ ] Method A signers: only "email-verified signature" shown; no identity revealed
-- [ ] Certificate of Completion includes document hash, signer details, tx hashes, and contract address
-- [ ] Third party with only the signed PDF and Certificate can verify against the blockchain without any kysigned instance online
-- [ ] Proof link (`/verify/<envelopeId>`) displays full verification record without requiring PDF upload — signer count, dates, methods, tx hashes, Basescan links
+- [ ] Verification page accepts `(email, document PDF)` as inputs; computes `searchKey`; finds matching reply-to-sign record
+- [ ] Verification retrieves zk proof from event, looks up evidence key, verifies DNSSEC chain, verifies zk proof — all client-side or against on-chain data only
+- [ ] Verification page is universal: verifies ANY record on the canonical contracts regardless of which instance created it
+- [ ] No "search by email" or "list all docs signed by X" — verifier must provide both email and document
+- [ ] `[repo]` Wallet signing verification: `verifyWalletSignature(documentHash, expectedSigner)` returns correct true/false
+- [ ] Certificate page appended to final PDF includes `docHash`, envelope ID, per-signer audit trail, operator identity, verification instructions, QR code
+- [ ] Third party with signed PDF + signer email can verify against the blockchain without any kysigned instance online
+- [ ] Proof link (`/verify/<envelopeId>`) displays full verification record — signer count, dates, tx hashes, Basescan links
 - [ ] Completion email includes proof link, contract address, chain name, and all tx hashes in plain text
 
 ### F6. Dashboard
 - [ ] Path 1/2: connect wallet; dashboard displays all envelopes sent from that wallet
 - [ ] Path 3: magic link login; dashboard displays all envelopes associated with that email
 - [ ] Envelope list shows status, signer progress, dates for each envelope
-- [ ] Per-envelope detail view shows full audit trail per signer (email, method, timestamp, IP, user agent, tx hash)
-- [ ] Resend/remind button sends a new notification to pending signers
+- [ ] Per-envelope detail view shows full audit trail per signer (email, timestamp, tx hash)
+- [ ] Resend/remind button sends a new signing email to pending signers (reply-to-sign format)
 - [ ] Export envelopes as CSV or JSON
 - [ ] `[service]` Credit balance, purchase history, and low-balance indicator visible for Path 3 users
 - [ ] `[service]` Usage statistics displayed: envelopes sent, signatures collected, completion rate (monthly/weekly)
 - [ ] `[service]` Spending history displayed: per-envelope cost, total spend over time
 
 ### F7. Email & Link Delivery
-- [ ] Signing request email received by signer within 60 seconds of envelope creation; contains document name, sender name, message, and signing link
-- [ ] Automated reminder sent at configured intervals (default 3 days, 7 days)
-- [ ] Manual reminder triggered by sender; signer receives new notification
-- [ ] Completion email sent to all parties with signed PDF and Certificate of Completion attached
-- [ ] Signing link list returned in API response; links work regardless of delivery channel
+- [ ] Signing email received by signer within 60 seconds of envelope creation; contains document name, sender name, `docHash`, envelope ID, review link, `How it works →` link, and reply-to-sign instructions
+- [ ] Signing email `Reply-To` header set to `reply-to-sign@<operatorDomain>`
+- [ ] Email tone: privacy-first, non-scary; legal/technical details on linked "how it works" page only
+- [ ] Consent language version recorded per envelope at time of signing
+- [ ] Inbound reply received at `reply-to-sign@<operatorDomain>` via run402 inbound email surface; raw MIME preserved in S3
+- [ ] Non-matching replies trigger auto-reply with guidance; no signature recorded
+- [ ] Automated reminder sent at configured intervals (default 3 days, 7 days) in reply-to-sign format
+- [ ] Manual reminder triggered by sender; signer receives new signing email
+- [ ] Confirmation email sent to signer after on-chain recording
+- [ ] Completion email sent to all parties with final PDF (including certificate page), proof link, and blockchain reference details
 - [ ] Spam notice displayed to sender in dashboard after envelope creation
 - [ ] `[service]` Emails sent from dedicated kysigned.com domain with SPF/DKIM/DMARC
-- [ ] `[repo]` Email provider is configurable (run402 email service or custom SMTP/API)
+- [ ] `[repo]` Email provider is configurable (run402 email service or custom SMTP/API); inbound requires SES-compatible pipeline preserving raw MIME
 
 ### F8. PDF Handling
 - [ ] PDF uploaded via API (base64 or URL); SHA-256 hash computed and returned in response
-- [ ] Signing page renders PDF correctly in browser via pdf.js
-- [ ] Visual signature embedded into PDF after each signer signs
-- [ ] Final signed PDF generated with all signatures on envelope completion
+- [ ] Review page renders PDF correctly in browser via pdf.js
+- [ ] No visual signature blocks embedded in document body (deferred to future feature)
+- [ ] Certificate page automatically appended to final PDF on completion — contains `docHash`, envelope ID, per-signer audit trail, operator identity, verification instructions, QR code
+- [ ] Completion record stores both `originalDocHash` (pre-certificate) and `finalDocHash` (post-certificate)
 - [ ] PDF deleted after retention period (default 30 days); only metadata and on-chain hash persist
 - [ ] User notified of retention policy at envelope creation, in completion email, and before deletion
 - [ ] After PDF deletion, envelope metadata (name, hash, statuses, tx hashes) remains accessible in dashboard
@@ -498,7 +568,7 @@ This feature introduces a new conceptual layer above envelopes: the **document**
 
 ### F10. CLI / MCP
 - [ ] `kysigned-mcp` installable via npx; connects to kysigned.com by default
-- [ ] Agent creates envelope via MCP with x402 payment; receives envelope_id and signing links
+- [ ] Agent creates envelope via MCP with x402 payment; receives envelope_id and review links
 - [ ] Agent checks envelope status via MCP; receives current signer statuses
 - [ ] Agent verifies a document via MCP; receives verification results
 - [ ] MCP endpoint configurable to point to any kysigned instance (self-hosted or hosted)
@@ -508,18 +578,22 @@ This feature introduces a new conceptual layer above envelopes: the **document**
 - [ ] Landing page loads at kysigned.com; leads with cost comparison, not blockchain jargon
 - [ ] No "kill," "killer," or "killing" language appears anywhere on the site
 - [ ] Dual CTA visible above fold: hosted service and GitHub repo
+- [ ] "How it works" page at `/how-it-works`; entirely non-technical; no "blockchain," "DKIM," "hash," "zero-knowledge proof"; readable in under one minute
+- [ ] Every signing email links to the "how it works" page
 - [ ] Decision helper page explains SaaS vs repo tradeoffs for builders, end users, and agents
-- [ ] Pricing page shows per-envelope cost, credit pack tiers, and comparison table vs competitors
-- [ ] FAQ covers all six categories with specific questions and answers
+- [ ] Pricing page shows per-envelope cost (~$0.39), credit pack tiers, and comparison table vs competitors
+- [ ] FAQ covers all six categories with specific questions and answers; wallet FAQ updated ("Do I need a wallet to SIGN?" → "No, you reply to an email")
 - [ ] llms.txt accessible at kysigned.com/llms.txt
 - [ ] Design is clean and minimal (bld402.com aesthetic)
 
 ### F12. Legal
 - [ ] `[service]` ToS, Privacy Policy, Cookie notice, AUP, and DPA are published on kysigned.com
-- [ ] `[service]` ToS explicitly states what signatures prove ("someone with access to email X signed") and what they do not guarantee
+- [ ] `[service]` ToS states what reply-to-sign signatures prove ("signer's mail provider attested outbound email with `I APPROVE` and document hash") and what they do not guarantee (not "person X signed" — only "mailbox control of email X")
+- [ ] `[service]` Privacy Policy explains: no email plaintext on-chain; raw MIME discarded after zk proof; records only findable with both email and document
 - [ ] `[service]` No launch until all legal documents are human-approved
+- [ ] `[service]` Consent language version recorded per envelope; exact text of all signing-intent strings is recoverable for dispute
 - [ ] `[repo]` MIT LICENSE file present in repo root
-- [ ] `[repo]` LEGAL.md present with disclaimers: signature validity, jurisdictional limitations, smart contract permanence, operator responsibility, excluded document types
+- [ ] `[repo]` LEGAL.md present with disclaimers: reply-to-sign proof semantics, Method B wallet gap (prominently documented — "does NOT prove wallet X = email Y"), jurisdictional limitations, smart contract permanence, future crypto break acknowledgment, operator responsibility, excluded document types
 
 ### F13. Cross-Linking
 - [ ] kysigned listed on kychee.com portfolio page
@@ -543,58 +617,74 @@ This feature introduces a new conceptual layer above envelopes: the **document**
 
 ### F17. Pre-Launch Dark-Launch Canary Discipline
 - [ ] Canary KMS wallet is provisioned under the kysigned run402 project separately from the eventual production wallet; the two wallets have distinct deployer EOAs
-- [ ] Canary contract deploys to Base mainnet via the canary KMS wallet and compiles from the same Solidity source as the production contract
-- [ ] Canary contract source is NOT submitted to Basescan for verification; the contract is visible as bytecode only
+- [ ] Canary `SignatureRegistry` and `EvidenceKeyRegistry` deploy to Base mainnet via the canary KMS wallet and compile from the same Solidity source as the production contracts
+- [ ] Canary contract source is NOT submitted to Basescan for verification; the contracts are visible as bytecode only
 - [ ] Canary KMS wallet has no name tag, no identifying metadata, and no public reference linking it to kysigned at provision time
-- [ ] kysigned-service is deployed to production with `KYSIGNED_CONTRACT_ADDRESS` and `KYSIGNED_KMS_WALLET` pointing at the canary contract and canary wallet respectively for the duration of the canary phase
-- [ ] At least one end-to-end envelope is created via each of: the hosted dashboard, the REST API, and the MCP server during the canary phase
-- [ ] Method A (auto-stamp) and Method B (wallet signing) are both exercised end-to-end against the canary contract
-- [ ] Parallel and sequential signing flows are both exercised end-to-end against the canary contract
-- [ ] The verification page correctly verifies a canary-signed envelope using only the canary contract address
+- [ ] kysigned-service is deployed to production with contract addresses and KMS wallet pointing at canary references for the duration of the canary phase
+- [ ] At least one end-to-end reply-to-sign envelope is created via each of: the hosted dashboard, the REST API, and the MCP server during the canary phase
+- [ ] Reply-to-sign flow exercised end-to-end against canary contracts: email reply → DKIM verification → zk proof → on-chain recording → verification page confirms
+- [ ] `[repo]` Wallet signing (Method B) exercised once against canary `SignatureRegistry` to confirm rewritten contract still accepts EIP-712 records
+- [ ] Parallel and sequential signing flows both exercised end-to-end against canary contracts
+- [ ] The verification page correctly verifies a canary-signed envelope using only the canary contract addresses
 - [ ] Ephemeral PDF retention triggers as expected on at least one canary envelope (F8.6 rule holds on the canary deployment)
 - [ ] The canary exercise checklist (enumerated in kysigned-plan.md) reaches 100% green before any flip is considered
 - [ ] The go/no-go human gate is explicitly invoked with a summary of the checklist status and demands an APPROVE / ABORT / KEEP TESTING decision; no automatic advancement
-- [ ] Production KMS wallet is provisioned and production contract is deployed only AFTER the go/no-go APPROVE
-- [ ] Byte-identical bytecode gate: `eth_getCode(canary)` and `eth_getCode(production)` match beyond the Solidity metadata suffix; the flip is blocked until this check passes
-- [ ] Flip consists of updating only `KYSIGNED_CONTRACT_ADDRESS` and `KYSIGNED_KMS_WALLET` in the service configuration and redeploying kysigned-service; no application code changes are bundled with the flip
-- [ ] One smoke-test envelope completes end-to-end against the production contract immediately after the flip
+- [ ] Production KMS wallet is provisioned and production contracts are deployed only AFTER the go/no-go APPROVE
+- [ ] Byte-identical bytecode gate for BOTH contracts: `eth_getCode(canary)` and `eth_getCode(production)` match beyond the Solidity metadata suffix; the flip is blocked until both checks pass
+- [ ] Flip consists of updating contract addresses and KMS wallet in the service configuration and redeploying kysigned-service; no application code changes are bundled with the flip
+- [ ] One smoke-test envelope completes end-to-end against the production contracts immediately after the flip
 - [ ] Canary wallet is drained back to the ops wallet within 24 hours of the successful flip
 - [ ] KMS key deletion is scheduled on the canary KMS key within 24 hours of the successful flip
-- [ ] Canary contract address and canary wallet address are stored exclusively in AWS Secrets Manager under `kysigned/canary-*`; a repo-wide `grep` of both the public `kysigned` and private `kysigned-service` repositories returns zero matches for either value
-- [ ] Phase 14 checklist includes a pre-squash working-tree scan for canary address + canary wallet in the public `kysigned` repo; the private→public flip is aborted if the scan finds either value
-- [ ] The `Smart contract — Base mainnet` row in the Shipping Surfaces table is not updated from `<TBD>` until the production contract deploy completes, which cannot happen before the canary phase ends
+- [ ] Canary contract addresses and canary wallet address are stored exclusively in AWS Secrets Manager under `kysigned/canary-*`; a repo-wide `grep` of both the public `kysigned` and private `kysigned-service` repositories returns zero matches for any value
+- [ ] Phase 14 checklist includes a pre-squash working-tree scan for canary addresses + canary wallet in the public `kysigned` repo; the private→public flip is aborted if the scan finds any value
+- [ ] The `SignatureRegistry — Base mainnet` and `EvidenceKeyRegistry — Base mainnet` rows in the Shipping Surfaces table are not updated from `<TBD>` until the production contract deploy completes, which cannot happen before the canary phase ends
 
 ## Constraints & Dependencies
 
 - **run402 platform:** kysigned runs on run402 infrastructure. run402 handles T1 (app-owner pays for infrastructure). T2 (end-users pay the app) is **deferred** — run402 does not currently provide end-user billing. For MVP, kysigned.com uses its own Stripe integration for Path 3 billing. Self-hosted forkers get the `allowed_senders` access control and handle user charging separately (or not at all, for internal use).
-- **run402 magic link auth:** Path 3 requires magic link authentication. Must confirm run402 supports this; if not, implement within kysigned service.
-- **run402 email service:** Repo forkers rely on run402 email service (paid) or bring their own. Email deliverability reputation is critical — signing requests in spam is product-killing.
-- **run402 custom domains:** Repo forkers can use subdomains (acme-sign.run402.com) or custom domains (acme-sign.com). Must confirm run402 supports custom domain mapping.
-- **Base gas costs:** Final per-envelope pricing depends on measured gas costs for SignatureRegistry operations on Base. Pricing (~$0.25/envelope) is a starting assumption pending validation.
-- **Smart contract deployment:** SignatureRegistry.sol must be deployed on Base mainnet before any production signing. Contract is immutable once deployed.
-- **Existing legal templates:** Legal documents drafted from existing Kychee/Eleanor/run402 templates. All `[service]` legal docs require human approval.
-- **Third-party ID verification (Level 4):** Post-MVP. Requires integration with an identity verification provider (Jumio, Onfido, etc.) via run402 as a paid service. Comparative review needed before selection.
+- **run402 magic link auth:** Path 3 requires magic link authentication. Confirmed available (shipped in Phase 0).
+- **run402 email service (outbound):** Repo forkers rely on run402 email service (paid) or bring their own. Email deliverability reputation is critical — signing requests in spam is product-killing.
+- **run402 email service (inbound):** Reply-to-sign requires an inbound email surface that delivers raw RFC-822 MIME with DKIM headers preserved. Confirmed present on run402 (SES receipt rule → S3 → `packages/email-lambda/inbound.mjs` → Postgres; raw MIME persisted in S3 via `s3_key`). Two small enhancements needed: (a) raw-MIME API accessor on `GET /v1/mailboxes/:id/messages/:msgId` returning S3 bytes, (b) inbound routing on kysigned custom sender domain (or MVP ships on `reply-to-sign@mail.run402.com`). These are tracked as a parallel run402 openspec change.
+- **run402 custom domains:** Repo forkers can use subdomains (acme-sign.run402.com) or custom domains (acme-sign.com). Outbound custom sender domains confirmed available (shipped in Phase 0). Inbound custom domain routing is the enhancement tracked above.
+- **zk-email circuit:** Reply-to-sign requires a zk-email circuit that produces a zk-SNARK over a DKIM-signed email. Candidate: adopt or customize from [prove.email](https://prove.email). Circuit must match our exact public-input shape (searchKey commitment, subject format, `I APPROVE` body marker, first-non-quoted-line detection). Audit strategy TBD.
+- **DNSSEC proof chain capture:** The operator needs a way to fetch the full DNSSEC chain from IANA root down to a provider's DKIM selector record at evidence-key-registration time. Library/service TBD. Domains without DNSSEC require a fallback policy (reject? degrade?).
+- **Slow-KDF parameters:** `searchKey = SlowHash(email || docHash)` requires committing forever to a specific KDF algorithm and parameters. Must be chosen carefully — too fast enables enumeration, too slow degrades verifier UX. Candidate: argon2id with parameters tuned for ~1 second on consumer hardware.
+- **Base gas costs:** Final per-envelope pricing depends on measured gas costs for the rewritten contracts on Base. Pricing target: ~$0.39/envelope. On-chain cost per envelope estimated at $0.01–$0.20; re-measure on Sepolia/mainnet canary.
+- **Smart contract deployment:** `SignatureRegistry` and `EvidenceKeyRegistry` must be deployed on Base mainnet before any production signing. Both contracts are immutable once deployed.
+- **Existing legal templates:** Legal documents drafted from existing Kychee/Eleanor/run402 templates. All `[service]` legal docs require human approval. LEGAL.md must prominently document the Method B wallet gap.
 - **No "kill" language:** All public-facing materials use "alternative to," "replace," "switch from," "better than." Internal docs may use competitive framing.
 
 ## Open Questions
 
-1. **Exact gas costs on Base** — deploy SignatureRegistry.sol on Base testnet/mainnet and measure per-signature and per-completion costs. Final pricing depends on this.
-2. **Envelope expiry default** — 30 days assumed, must validate against storage costs. What is the notification sequence before deletion (e.g., 7 days before, 1 day before)?
-3. **PDF retention cost model** — future paid retention feature: what per-GB/year rate is sustainable? What tiers?
-4. **Multi-signature PDFs** — post-MVP. UX and hash structure for per-page/per-section signatures needs design.
-5. **Second-channel verification** — generating a second signing link deliverable via any channel as independent proof. Priority and scope TBD. (Note: F1.9 already provides manual signing links; this is about formalizing it as a verification level.)
-6. **run402 prepaid credit model** — does run402 currently support buy-credits-and-deduct-per-call billing? If not, scope of platform work needed.
-7. **run402 magic link auth** — does run402 support magic link (email-only, no password) authentication? If not, kysigned implements its own.
-8. **run402 custom domain mapping** — confirm forkers can map custom domains to their run402-hosted instances.
-9. **Email deliverability strategy** — dedicated sending domain, IP warm-up plan, deliverability monitoring for the service.
-10. **Certificate of Completion design** — what do courts/auditors expect to see? Research needed.
-11. **Contract naming** — should SignatureRegistry.sol be named independently of kysigned (for protocol neutrality)?
-13. **Platform wallet security** — key management strategy for the server-side wallet that makes Path 3 on-chain recordings.
-14. **Credit pack tiers and pricing** — optimize for conversion vs margin after gas costs are known.
-15. **Mobile wallet signing UX** — does `eth_signTypedData_v4` work reliably in mobile wallet browsers?
-17. **Future: run402 T2 payment collection (DEFERRED)** — could run402 offer Stripe-based payment collection so repo forkers can charge their own users? Decision: **deferred post-MVP.** For now, kysigned.com handles its own Path 3 Stripe billing, and forkers rely on `allowed_senders` to gate access (they absorb run402 costs for their own authorized users). If run402 T2 is implemented later, kysigned can optionally migrate Path 3 to it; the `allowed_senders` feature stays as the generic authorization primitive.
-18. **F17 run402 capability gaps — blockers to verify before canary execution.** Does run402 actually support two KMS wallets provisioned under the same run402 project (the F17.1 requirement depends on it)? Does the `contracts/v1` deploy API return the deployed bytecode for a post-deploy identity check, or do we need a separate `eth_getCode` call for the F17.3 byte-identical gate? Is there rate-limiting on `provision-wallet` that would bite two back-to-back provision calls (one for canary, later one for production)? These are facts to discover by reading `run402/packages/gateway/src/routes/contracts.ts` and the contracts service source; if any gap exists, it becomes a run402 enhancement task in kysigned-plan.md Phase 13 that must land before the canary workflow is executable.
-19. **F17 byte-identical bytecode check: precise mechanism.** Where does the F17.3 check run (a kysigned-service script? a one-liner in the flip ritual checklist? a CI gate?). What exactly is compared: local compilation artifact vs. deployed runtime bytecode? Two on-chain runtime bytecodes fetched via `eth_getCode`? How precisely is the Solidity metadata suffix stripped before comparison (the compiler-version hash tail that can legitimately differ even between two identical-source compilations)? Deferred to kysigned-plan.md — the spec commits to the gate existing and being hard; the plan specifies the mechanism.
-20. **F17 canary checklist contents.** F17.8 commits to "a concrete checklist exists and every item must be green before the flip is offered" but does not enumerate the items. The plan (kysigned-plan.md Phase 13 re-sequenced) enumerates them. Candidate items (not binding): end-to-end envelope via each surface, Method A + Method B, parallel + sequential signing, verify-by-hash + verify-by-envelope-id, ephemeral PDF retention triggering correctly, SES bounce handling, magic-link login (if Path 3 is live by canary time), Stripe credit purchase (if Path 3 is live), dashboard audit trail correctness, export CSV/JSON, void, remind. The plan's canary phase owns this list.
-21. **F17 bytecode-divergence investigation playbook.** If the F17.3 byte-identical check fails at flip time, what is the incident-response playbook? (a) what triggers the investigation, (b) what the remediation path looks like (fix bug → redeploy canary → re-run checklist from scratch, or from last-passed item?), (c) who decides whether the divergence is material enough to re-run canary or just redeploy production. Deferred to kysigned-plan.md Phase 13; spec commits to "abort and investigate," plan specifies the investigation.
-22. **F17 production-contract smoke specifics.** F17.9 commits to "one smoke-test envelope through the production contract end-to-end" but does not specify which surface (dashboard? API? MCP?), which signer (Barry signing to Tal? a self-sign?), or the rollback path if the smoke fails. Deferred to kysigned-plan.md Phase 13.
+### New (from signature-binding rework)
+
+1. **zk-email circuit adoption vs customization.** Can we adopt a circuit from prove.email directly, or do we need to customize for our public-input shape (`I APPROVE` marker, subject format, first-non-quoted-line rule)? Audit strategy and cost?
+2. **DNSSEC proof chain capture.** Which library/service to fetch the full DNSSEC chain from IANA root to a provider's DKIM selector? Fallback for domains without DNSSEC — reject cleanly, or degrade?
+3. **`Subject` not in DKIM `h=`.** Some mail providers do not include `Subject` in DKIM-signed headers. What fraction of real-world email is affected? Do we reject cleanly with a helpful message, or find an alternative binding?
+4. **DKIM key rotation race.** A reply's DKIM header specifies the selector. The operator must fetch the exact key version at the time of reply. Implementation detail but operationally important.
+5. **Slow-KDF parameters.** Exact algorithm (argon2id vs scrypt vs PBKDF2) and parameter values. Fixed forever once committed. Must be expensive enough to resist a 1000x hardware speedup while remaining tolerable (~1s) for a legitimate verifier.
+6. **Explicit decline phrase.** Should `I DECLINE` be a first-class decline action, or is "do not reply" the only decline path?
+7. **Retry UX for non-delivery.** Replies can bounce or be filtered. What does the nudge/re-send flow look like?
+8. **Consent language review.** Who reviews the email copy, "how it works" page, and certificate page wording before launch? Legal expertise required.
+9. **FAQ on dispute scenarios.** Lock once architecture is frozen. Enumerate: sender forgery, signer repudiation, operator forgery, future crypto break, duress.
+10. **Internationalization of `I APPROVE`.** English-only for MVP. Future consideration for localized signing phrases.
+11. **Internal future-features note.** Create a separate internal file tracking: OAuth-based identity verification, wallet co-signature as additive proof, visible signature blocks, alternative delivery channels (WhatsApp etc.). Not in public repo, not mentioned publicly.
+
+### Carried forward (unchanged)
+
+12. **Envelope expiry default** — 30 days assumed; notification sequence before deletion TBD.
+13. **PDF retention cost model** — future paid retention: per-GB/year rate, tiers.
+14. **Multi-signature PDFs** — post-MVP. UX and hash structure for per-page/per-section signatures.
+15. **run402 prepaid credit model** — does run402 support buy-credits-and-deduct-per-call? If not, scope needed.
+16. **Email deliverability strategy** — dedicated sending domain, IP warm-up, deliverability monitoring.
+17. **Certificate of Completion design** — what do courts/auditors expect to see?
+18. **Credit pack tiers and pricing** — optimize after gas costs are known.
+19. **Future: run402 T2 payment collection (DEFERRED)** — see original OQ #17 text.
+
+### Carried forward (F17 canary — unchanged)
+
+20. **F17 run402 capability gaps** — two KMS wallets per project, bytecode return on deploy, rate-limiting on provision-wallet. Facts to discover before canary execution.
+21. **F17 byte-identical bytecode check mechanism** — deferred to plan; spec commits to the gate being hard.
+22. **F17 canary checklist contents** — plan enumerates; candidate items now include: reply-to-sign end-to-end via each surface, evidence key registration, zk proof generation, verification page, parallel + sequential signing, ephemeral PDF retention, certificate page generation.
+23. **F17 bytecode-divergence playbook** — deferred to plan.
+24. **F17 production-contract smoke specifics** — deferred to plan.
