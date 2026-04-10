@@ -85,6 +85,8 @@ import { authSettingsSchema, handleAuthSettings } from "./tools/auth-settings.js
 import { registerSenderDomainSchema, handleRegisterSenderDomain } from "./tools/register-sender-domain.js";
 import { senderDomainStatusSchema, handleSenderDomainStatus } from "./tools/sender-domain-status.js";
 import { removeSenderDomainSchema, handleRemoveSenderDomain } from "./tools/remove-sender-domain.js";
+import { enableInboundSchema, handleEnableInbound } from "./tools/enable-inbound.js";
+import { disableInboundSchema, handleDisableInbound } from "./tools/disable-inbound.js";
 
 // New tools — email billing accounts + Stripe tier checkout + email packs
 import { createEmailBillingAccountSchema, handleCreateEmailBillingAccount } from "./tools/create-email-billing-account.js";
@@ -700,6 +702,20 @@ server.tool(
   "Remove a project's custom sender domain. Email reverts to sending from mail.run402.com.",
   removeSenderDomainSchema,
   async (args) => handleRemoveSenderDomain(args),
+);
+
+server.tool(
+  "enable_sender_domain_inbound",
+  "Enable inbound email on a verified custom sender domain. Replies to <slug>@<your-domain> will route through run402. Requires DKIM-verified domain. Returns the MX record to add to DNS.",
+  enableInboundSchema,
+  async (args) => handleEnableInbound(args),
+);
+
+server.tool(
+  "disable_sender_domain_inbound",
+  "Disable inbound email on a custom sender domain. Replies to <slug>@<your-domain> will no longer be delivered.",
+  disableInboundSchema,
+  async (args) => handleDisableInbound(args),
 );
 
 // --- Email billing accounts + Stripe tier checkout + email packs ---
