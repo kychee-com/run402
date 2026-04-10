@@ -5490,6 +5490,68 @@
         }
       }
     },
+    "/mailboxes/v1/{id}/messages/{messageId}/raw": {
+      "get": {
+        "tags": [
+          "Mailboxes"
+        ],
+        "summary": "Get raw RFC-822 bytes of an inbound message",
+        "operationId": "getMailboxMessageRaw",
+        "description": "Returns the exact DKIM-signed RFC-822 bytes of an inbound message, fetched verbatim from S3 with no parsing, normalization, or modification. Use this endpoint for cryptographic verification (DKIM signature checks, zk-email proofs). The `body_text` field returned by `GET /mailboxes/v1/{id}/messages/{messageId}` is parsed and quoted-content-stripped — it is suitable for display and threading only, NOT for cryptographic verification. Inbound messages only; outbound messages return 404.",
+        "security": [
+          {
+            "serviceKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Mailbox ID"
+          },
+          {
+            "name": "messageId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Message ID (must reference an inbound message)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Raw RFC-822 bytes, byte-identical to the S3 object",
+            "content": {
+              "message/rfc822": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "description": "Mailbox owned by a different project"
+          },
+          "404": {
+            "description": "Message not found, not inbound, or no raw MIME available"
+          },
+          "413": {
+            "description": "Raw MIME exceeds the 10MB size limit"
+          }
+        }
+      }
+    },
     "/mailboxes/v1/{id}/webhooks": {
       "post": {
         "tags": [

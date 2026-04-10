@@ -1124,6 +1124,7 @@ Custom domains let users point their own domain (e.g., `example.com`) at a Run40
 | `/mailboxes/v1/:id/messages` | POST | service_key | Free | Send email (template or raw HTML) |
 | `/mailboxes/v1/:id/messages` | GET | service_key | Free | List sent messages |
 | `/mailboxes/v1/:id/messages/:messageId` | GET | service_key | Free | Get message with replies |
+| `/mailboxes/v1/:id/messages/:messageId/raw` | GET | service_key | Free | Get raw RFC-822 bytes of an inbound message (for DKIM/zk-email verification) |
 | `/mailboxes/v1/:id/webhooks` | POST | service_key | Free | Register webhook for email events |
 | `/mailboxes/v1/:id/status` | POST | admin | Free | Reactivate suspended mailbox (admin only) |
 | `/email/v1/domains` | POST | service_key | Free | Register a custom sender domain (returns DNS records) |
@@ -1155,6 +1156,19 @@ By default, email sends from `<slug>@mail.run402.com`. Register a custom sender 
 Both modes support optional `from_name` for display name: `{"from_name": "My App", ...}` sends from `"My App" <slug@mail.run402.com>`. Max 78 chars, no `<>` or newlines.
 
 Rate limits: prototype 10/day, hobby 50/day, team 500/day. Unique recipient cap per lease: prototype 25, hobby 200, team 1000.
+
+#### Raw Inbound MIME (for cryptographic verification)
+
+`GET /mailboxes/v1/:id/messages/:messageId/raw` returns the **exact** RFC-822 bytes of an inbound message — fetched verbatim from S3 with no parsing, normalization, or modification. Response is `Content-Type: message/rfc822`.
+
+**When to use this:** apps doing cryptographic verification over inbound email, e.g. DKIM signature verification or zk-email proofs (kysigned uses it for reply-to-sign signing). Any post-processing (whitespace normalization, header unfolding, quoted-content stripping) invalidates the DKIM signature, so the raw byte path is the only way to do this safely.
+
+**When NOT to use this:** display, threading, or reading reply text. Use `GET /mailboxes/v1/:id/messages/:messageId` and read the parsed `body_text` field instead — it's already quoted-content-stripped and reads cleanly.
+
+**Constraints:**
+- Inbound messages only. Outbound messages return 404.
+- Maximum object size 10MB. Larger returns 413.
+- Same `service_key` auth and project ownership as the JSON message endpoint.
 
 ### Image Generation
 

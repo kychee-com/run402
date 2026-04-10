@@ -47,6 +47,11 @@
     <p class="subtitle">Platform updates and new features</p>
     <p class="machine-link">Machine-readable: <a href="/updates.txt">/updates.txt</a></p>
 
+    <h2>April 9, 2026</h2>
+    <ul>
+      <li><span class="entry-title">Raw inbound MIME accessor</span> &mdash; New <code>GET /mailboxes/v1/:id/messages/:messageId/raw</code> endpoint returns the exact RFC-822 bytes of an inbound message, fetched verbatim from S3 with no parsing or normalization. Inbound messages only, <code>Content-Type: message/rfc822</code>, 10MB cap. Use this for cryptographic verification &mdash; DKIM signature checks, zk-email proofs, archival-grade email storage. The existing JSON message endpoint still returns parsed <code>body_text</code> for display and threading. Apps doing signature verification over inbound mail (kysigned reply-to-sign, etc.) should always read raw bytes &mdash; any post-processing breaks the cryptographic chain.</li>
+    </ul>
+
     <h2>April 6, 2026</h2>
     <ul>
       <li><span class="entry-title">KMS contract wallet</span> &mdash; New <code>/contracts/v1/*</code> endpoints for AWS KMS-backed Ethereum wallets per project. Private keys never leave KMS. <strong>$0.04/day rental</strong> ($1.20/month, billed daily as <code>kms_wallet_rental</code>) plus <strong>$0.000005 per contract call</strong> (KMS sign fee, billed alongside chain gas at-cost). 30-day prepay required at creation. Provision via <code>POST /contracts/v1/wallets</code>; submit calls via <code>POST /contracts/v1/call</code>; non-custodial with optional drain endpoint and recovery address as safety nets. Wallets that stay suspended for 90 days are permanently deleted. Base mainnet first; chain registry config-only for adding more chains.</li>

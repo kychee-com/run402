@@ -310,6 +310,13 @@ export class PodStack extends cdk.Stack {
       resources: ["*"],
     }));
 
+    // Grant gateway read access to inbound email raw bytes (for the raw-MIME accessor).
+    // Scoped to the inbound-email/ prefix written by the inbound Lambda — no list, no write.
+    taskDef.taskRole.addToPrincipalPolicy(new iam.PolicyStatement({
+      actions: ["s3:GetObject"],
+      resources: [`arn:aws:s3:::agentdb-inbound-email-${this.account}/inbound-email/*`],
+    }));
+
     // Inbound email processing Lambda
     const inboundEmailLambda = new lambda.Function(this, "InboundEmailLambda", {
       functionName: "run402-inbound-email",
@@ -482,6 +489,7 @@ export class PodStack extends cdk.Stack {
         TESTNET_NETWORK: "eip155:84532",
         S3_BUCKET: storageBucket.bucketName,
         S3_REGION: this.region,
+        INBOUND_EMAIL_BUCKET: inboundEmailBucket.bucketName,
         MAX_SCHEMA_SLOTS: String(MAX_SCHEMAS),
         RATE_LIMIT_PER_SEC: "100",
         FACILITATOR_PROVIDER: "cdp",

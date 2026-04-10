@@ -10,6 +10,8 @@
  */
 
 import { SESv2Client, SendEmailCommand } from "@aws-sdk/client-sesv2";
+import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
+import { INBOUND_EMAIL_BUCKET } from "../config.js";
 import { pool } from "../db/pool.js";
 import { sql } from "../db/sql.js";
 import {
@@ -27,8 +29,13 @@ import { TIERS } from "@run402/shared";
 import type { TierName, TierConfig } from "@run402/shared";
 
 const ses = new SESv2Client({ region: process.env.AWS_REGION || "us-east-1" });
+const s3 = new S3Client({ region: process.env.AWS_REGION || "us-east-1" });
 
 const MAIL_DOMAIN = "mail.run402.com";
+
+// Maximum size of a raw inbound MIME message returned via the raw accessor.
+// Typical reply-to-sign messages are well under 200KB; 10MB is generous headroom.
+const RAW_MIME_MAX_BYTES = 10 * 1024 * 1024;
 
 // ---------- Templates ----------
 
@@ -447,6 +454,68 @@ export async function getMessage(mailboxId: string, messageId: string): Promise<
   msg.replies = repliesResult.rows.map(formatMessage);
 
   return msg;
+}
+
+/**
+ * Fetch the exact raw RFC-822 bytes of an inbound message from S3.
+ *
+ * Returns null when:
+ *  - the message row does not exist
+ *  - the row belongs to a different mailbox
+ *  - the message is outbound (raw access is inbound-only)
+ *  - the row has no s3_key (legacy or expired)
+ *
+ * Throws a 413 MailboxError when the S3 object exceeds RAW_MIME_MAX_BYTES.
+ *
+ * BYTE-PRESERVATION CONTRACT: this function MUST NOT modify the bytes in any
+ * way — no decoding, no normalization, no CRLF cleanup. The returned Buffer
+ * is bit-identical to the S3 object so that DKIM signatures over the bytes
+ * remain verifiable by the consuming application.
+ */
+export async function getMessageRaw(
+  mailboxId: string,
+  messageId: string,
+): Promise<{ bytes: Buffer; contentLength: number } | null> {
+  const result = await pool.query(
+    sql(`SELECT id, mailbox_id, direction, s3_key
+         FROM internal.email_messages
+         WHERE id = $1 AND mailbox_id = $2`),
+    [messageId, mailboxId],
+  );
+  if (result.rows.length === 0) return null;
+
+  const row = result.rows[0] as { direction: string; s3_key: string | null };
+  if (row.direction !== "inbound") return null;
+  if (!row.s3_key) return null;
+
+  if (!INBOUND_EMAIL_BUCKET) {
+    throw new MailboxError("INBOUND_EMAIL_BUCKET not configured", 500);
+  }
+
+  const s3Resp = await s3.send(new GetObjectCommand({ Bucket: INBOUND_EMAIL_BUCKET, Key: row.s3_key }));
+  const declaredLength = typeof s3Resp.ContentLength === "number" ? s3Resp.ContentLength : undefined;
+  if (declaredLength !== undefined && declaredLength > RAW_MIME_MAX_BYTES) {
+    throw new MailboxError(
+      `Raw MIME exceeds 10MB limit (${declaredLength} bytes)`,
+      413,
+    );
+  }
+
+  // Body comes back as a stream-like with transformToByteArray() in the AWS SDK v3.
+  // Use it directly — no transformToString, no normalization.
+  const body = s3Resp.Body as { transformToByteArray: () => Promise<Uint8Array> } | undefined;
+  if (!body || typeof body.transformToByteArray !== "function") {
+    throw new MailboxError("S3 object body unavailable", 500);
+  }
+  const arr = await body.transformToByteArray();
+  if (arr.length > RAW_MIME_MAX_BYTES) {
+    throw new MailboxError(
+      `Raw MIME exceeds 10MB limit (${arr.length} bytes)`,
+      413,
+    );
+  }
+  const bytes = Buffer.from(arr);
+  return { bytes, contentLength: bytes.length };
 }
 
 function formatMessage(row: Record<string, unknown>): EmailMessage {

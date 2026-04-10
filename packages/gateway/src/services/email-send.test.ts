@@ -14,6 +14,10 @@ let mockIsSuppressed: (...args: unknown[]) => Promise<boolean>;
 let mockGetProjectById: (id: string) => Promise<unknown>;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let mockSesSend: (...args: any[]) => Promise<any>;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let mockS3Send: (cmd: any) => Promise<any> = async () => {
+  throw new Error("mockS3Send not configured");
+};
 
 mock.module("../db/pool.js", {
   namedExports: {
@@ -68,7 +72,19 @@ mock.module("@aws-sdk/client-sesv2", {
   },
 });
 
-const { sendEmail, stripHtml } = await import("./email-send.js");
+mock.module("@aws-sdk/client-s3", {
+  namedExports: {
+    S3Client: class {
+      send(cmd: unknown) { return mockS3Send(cmd); }
+    },
+    GetObjectCommand: class {
+      input: unknown;
+      constructor(input: unknown) { this.input = input; }
+    },
+  },
+});
+
+const { sendEmail, stripHtml, getMessageRaw } = await import("./email-send.js");
 const { TIERS } = await import("@run402/shared");
 
 // ---------------------------------------------------------------------------
@@ -285,5 +301,115 @@ describe("sendEmail — mode detection", () => {
 describe("team tier config", () => {
   it("has emailsPerDay of 500", () => {
     assert.equal(TIERS.team.emailsPerDay, 500);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// getMessageRaw — raw inbound MIME accessor
+// ---------------------------------------------------------------------------
+
+describe("getMessageRaw", () => {
+  // Crafted RFC-822 fixture: includes DKIM-Signature header, CRLF line endings,
+  // 8-bit body. Stored as a Buffer to assert byte-identity later.
+  const RFC822_FIXTURE = Buffer.from(
+    "DKIM-Signature: v=1; a=rsa-sha256; d=example.com; s=sel;\r\n" +
+    " h=from:to:subject; bh=abc=; b=def=\r\n" +
+    "From: alice@example.com\r\n" +
+    "To: reply-to-sign@mail.run402.com\r\n" +
+    "Subject: env_123 doc_456\r\n" +
+    "Content-Type: text/plain; charset=utf-8\r\n" +
+    "\r\n" +
+    "I APPROVE\r\n" +
+    "\r\n" +
+    "On Mon, someone wrote:\r\n" +
+    "> previous message\r\n",
+    "utf-8",
+  );
+
+  function mockInboundRow(s3Key: string | null = "inbound-email/abc-123") {
+    mockPoolQuery = async () => ({
+      rows: [
+        {
+          id: "msg_1",
+          mailbox_id: "mbx_1",
+          direction: "inbound",
+          s3_key: s3Key,
+        },
+      ],
+    });
+  }
+
+  function mockS3Object(bytes: Buffer, contentLength?: number) {
+    let transformCalled = false;
+    mockS3Send = async () => ({
+      ContentLength: contentLength ?? bytes.length,
+      Body: {
+        transformToByteArray: async () => {
+          transformCalled = true;
+          return new Uint8Array(bytes);
+        },
+      },
+    });
+    return { wasTransformCalled: () => transformCalled };
+  }
+
+  it("returns null when row is missing", async () => {
+    mockPoolQuery = async () => ({ rows: [] });
+    const result = await getMessageRaw("mbx_1", "msg_missing");
+    assert.equal(result, null);
+  });
+
+  it("returns null for outbound messages", async () => {
+    mockPoolQuery = async () => ({
+      rows: [{ id: "msg_1", mailbox_id: "mbx_1", direction: "outbound", s3_key: "inbound-email/x" }],
+    });
+    const result = await getMessageRaw("mbx_1", "msg_1");
+    assert.equal(result, null);
+  });
+
+  it("returns null when inbound row has NULL s3_key", async () => {
+    mockInboundRow(null);
+    const result = await getMessageRaw("mbx_1", "msg_1");
+    assert.equal(result, null);
+  });
+
+  it("returns null when message belongs to a different mailbox", async () => {
+    mockPoolQuery = async () => ({ rows: [] }); // WHERE mailbox_id=$1 returns nothing
+    const result = await getMessageRaw("mbx_other", "msg_1");
+    assert.equal(result, null);
+  });
+
+  it("returns byte-identical content for an inbound message with s3_key", async () => {
+    mockInboundRow();
+    mockS3Object(RFC822_FIXTURE);
+    const result = await getMessageRaw("mbx_1", "msg_1");
+    assert.ok(result, "expected non-null result");
+    assert.equal(result.contentLength, RFC822_FIXTURE.length);
+    assert.equal(Buffer.compare(result.bytes, RFC822_FIXTURE), 0, "bytes must be identical");
+    // DKIM-Signature header must be present, intact, with CRLF
+    const decoded = result.bytes.toString("utf-8");
+    assert.ok(decoded.includes("DKIM-Signature:"));
+    assert.ok(decoded.includes("\r\n"));
+  });
+
+  it("throws 413 MailboxError before downloading the body when oversize", async () => {
+    mockInboundRow();
+    const oversize = 10 * 1024 * 1024 + 1;
+    const probe = mockS3Object(RFC822_FIXTURE, oversize);
+    await assert.rejects(
+      () => getMessageRaw("mbx_1", "msg_1"),
+      (err: Error & { statusCode?: number }) =>
+        err.message.includes("10MB") && err.statusCode === 413,
+    );
+    assert.equal(probe.wasTransformCalled(), false, "must not download body when oversize");
+  });
+
+  it("accepts a message exactly at the 10MB cap", async () => {
+    mockInboundRow();
+    const big = Buffer.alloc(10 * 1024 * 1024, 0x41);
+    mockS3Object(big);
+    const result = await getMessageRaw("mbx_1", "msg_1");
+    assert.ok(result);
+    assert.equal(result.bytes.length, 10 * 1024 * 1024);
   });
 });

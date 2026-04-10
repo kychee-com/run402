@@ -427,6 +427,7 @@ Templates: `project_invite` (project_name, invite_url), `magic_link` (project_na
 - `run402 email send --to <email> --subject <subject> --html <html> [--text <text>] [--from-name <name>] [--project <id>]`
 - `run402 email list [--project <id>]`
 - `run402 email get <message_id> [--project <id>]`
+- `run402 email get-raw <message_id> [--project <id>] [--output <file>]` — fetch raw RFC-822 bytes of an inbound message (for DKIM/zk-email verification). Writes to stdout or `--output` file. Inbound only; outbound returns 404.
 
 Raw HTML: `--subject` (max 998 chars) + `--html` (max 1MB). Plaintext auto-generated from HTML if `--text` omitted. `--from-name` sets display name on From header (both modes): `"My App" <slug@mail.run402.com>`.
 

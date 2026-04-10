@@ -23,6 +23,9 @@ export const MAX_SCHEMA_SLOTS = parseInt(process.env.MAX_SCHEMA_SLOTS || "2000",
 export const S3_BUCKET = process.env.S3_BUCKET || "";
 export const S3_REGION = process.env.S3_REGION || "us-east-1";
 
+// Inbound email S3 bucket (raw RFC-822 bytes written by the inbound Lambda)
+export const INBOUND_EMAIL_BUCKET = process.env.INBOUND_EMAIL_BUCKET || "";
+
 // Rate limiting
 export const RATE_LIMIT_PER_SEC = parseInt(process.env.RATE_LIMIT_PER_SEC || "100", 10);
 

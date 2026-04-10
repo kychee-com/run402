@@ -33,6 +33,7 @@ import {
   sendEmail,
   listMessages,
   getMessage,
+  getMessageRaw,
 } from "../services/email-send.js";
 
 const router = Router();
@@ -220,6 +221,38 @@ router.get("/mailboxes/v1/:id/messages/:messageId", serviceKeyAuth, asyncHandler
   if (!message) throw new HttpError(404, "Message not found");
 
   res.json(message);
+}));
+
+// GET /v1/mailboxes/:id/messages/:messageId/raw — fetch raw RFC-822 bytes (inbound only)
+//
+// Returns the exact DKIM-signed bytes of an inbound message, fetched from the
+// inbound-email S3 bucket with NO parsing, normalization, or modification.
+// Use this for cryptographic verification (DKIM checks, zk-email proofs).
+// The body_text returned by the JSON message endpoint is for display only.
+router.get("/mailboxes/v1/:id/messages/:messageId/raw", serviceKeyAuth, asyncHandler(async (req: Request, res: Response) => {
+  if (!req.params.id || typeof req.params.id !== "string") throw new HttpError(400, "Invalid mailbox_id");
+  validateUUID(req.params.messageId, "messageId");
+  const mailbox = await getMailbox(req.params.id as string);
+  if (!mailbox) throw new HttpError(404, "Mailbox not found");
+
+  const projectId = req.project?.id;
+  if (projectId && mailbox.project_id !== projectId) {
+    throw new HttpError(403, "Mailbox owned by different project");
+  }
+
+  try {
+    const raw = await getMessageRaw(req.params.id as string, req.params.messageId as string);
+    if (!raw) throw new HttpError(404, "Message not found or no raw MIME available");
+
+    res.set("Content-Type", "message/rfc822");
+    res.set("Content-Length", String(raw.contentLength));
+    res.status(200).send(raw.bytes);
+  } catch (err: unknown) {
+    if (err instanceof MailboxError) {
+      throw new HttpError(err.statusCode, err.message);
+    }
+    throw err;
+  }
 }));
 
 // POST /v1/mailboxes/:id/webhooks — register webhook

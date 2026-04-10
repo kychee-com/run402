@@ -390,12 +390,42 @@ async function run() {
         // needs to process it, which only works against production with active SES rules.
         //
         // For now, verify the message thread endpoint works:
-        const msgBody = await msgRes.json() as { replies: unknown[] };
+        const msgBody = await msgRes.json() as { replies: Array<{ message_id: string }> };
         ok("message has replies array", Array.isArray(msgBody.replies));
         ok("replies is empty (no reply yet)", msgBody.replies.length === 0);
+
+        // Verify the raw-MIME endpoint enforces inbound-only: outbound returns 404.
+        const rawOutRes = await fetch(
+          `${BASE_URL}/mailboxes/v1/${mailboxId}/messages/${outBody.message_id}/raw`,
+          { headers: authHeaders },
+        );
+        ok(
+          "raw endpoint rejects outbound message (404)",
+          rawOutRes.status === 404,
+          `status=${rawOutRes.status}`,
+        );
+
         // Full inbound reply test requires production SES — skipped in non-prod
         if (BASE_URL.includes("api.run402.com")) {
           console.log("    TODO: Send real SES reply and poll for inbound (production only)");
+          // If a real reply already exists from a prior run, fetch its raw bytes and
+          // assert DKIM-Signature is present and CRLF line endings are preserved.
+          if (msgBody.replies.length > 0) {
+            const replyId = msgBody.replies[0].message_id;
+            const rawRes = await fetch(
+              `${BASE_URL}/mailboxes/v1/${mailboxId}/messages/${replyId}/raw`,
+              { headers: authHeaders },
+            );
+            ok("raw endpoint returns 200 for inbound reply", rawRes.status === 200);
+            ok(
+              "raw response is message/rfc822",
+              (rawRes.headers.get("content-type") || "").includes("message/rfc822"),
+            );
+            const rawBuf = Buffer.from(await rawRes.arrayBuffer());
+            const rawText = rawBuf.toString("utf-8");
+            ok("raw bytes contain DKIM-Signature header", /DKIM-Signature:/i.test(rawText));
+            ok("raw bytes contain CRLF line endings", rawBuf.includes(Buffer.from("\r\n", "utf-8")));
+          }
         }
       }
     } else {

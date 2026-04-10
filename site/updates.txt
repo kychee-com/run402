@@ -6,6 +6,10 @@
 
 ---
 
+## 2026-04-09
+
+- **Raw inbound MIME accessor**: New `GET /mailboxes/v1/:id/messages/:messageId/raw` endpoint returns the exact RFC-822 bytes of an inbound message — fetched verbatim from S3 with no parsing, normalization, or modification. Inbound messages only; same `service_key` auth as the JSON message endpoint. `Content-Type: message/rfc822`, 10MB cap. Use this for cryptographic verification (DKIM signature checks, zk-email proofs, archival-grade email storage). The existing JSON endpoint still returns parsed `body_text` for display and threading — unchanged. Motivated by kysigned's reply-to-sign signing flow, where a zk-email circuit proves a DKIM-signed reply attests "I APPROVE" — any post-processing breaks the cryptographic chain.
+
 ## 2026-04-06
 
 - **KMS contract wallet**: New `/contracts/v1/*` endpoints for AWS KMS-backed Ethereum wallets per project. Provision via `POST /contracts/v1/wallets` (chain: `base-mainnet` or `base-sepolia`); private keys never leave KMS. Pricing: **$0.04/day** per wallet ($1.20/month, billed daily as `kms_wallet_rental` ledger entries) plus **$0.000005 per contract call** (KMS sign fee, billed alongside chain gas at-cost). Wallet creation requires $1.20 prepay (30 days of rent) in cash credit. Submit write calls via `POST /contracts/v1/call` with `{ wallet_id, contract_address, abi_fragment, function_name, args }`; idempotent on `Idempotency-Key` header. Status via `GET /contracts/v1/calls/:id`. Read-only calls via `POST /contracts/v1/read` (no signing, no billing). Suspension is automatic when cash balance can't cover rent; reactivation is automatic on top-up. Wallets that stay suspended for 90 days have their KMS key destroyed (7-day AWS deletion window). Funds-rescue mechanisms: drain endpoint (`POST /contracts/v1/wallets/:id/drain` with `X-Confirm-Drain` header — works on suspended wallets), recovery address (auto-drain on day-90 deletion), low-balance alerts. **Non-custodial**: run402 provides KMS-backed signing, not fund custody — see https://run402.com/humans/terms.html for the disclaimer.
