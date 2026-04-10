@@ -2,9 +2,9 @@
 
 **Owner:** Barry Volinskey
 **Created:** 2026-04-04
-**Status:** Ready for Implementation
+**Status:** In Progress
 **Spec:** docs/products/kysigned/kysigned-spec.md
-**Spec-Version:** 0.8.0
+**Spec-Version:** 0.9.0
 **Upstream References:** docs/products/saas-factory/saas-factory-spec.md (v1.15.0)
 **Source:** spec
 **Worktree:** none — product code lives in separate repos (C:\Workspace-Kychee\kysigned and C:\Workspace-Kychee\kysigned-service). run402 platform enhancements use a run402 worktree on a feature branch.
@@ -205,13 +205,13 @@
 
 Dashboard path:
 - [ ] Create envelope via hosted dashboard, PDF upload, 2 signers
-- [ ] Both signers receive real emails (Barry + Tal @ kychee.com)
-- [ ] Method A signer (auto-stamp) completes signing from a browser WITHOUT a wallet installed
-- [ ] Method B signer (wallet) completes signing via browser wallet, EIP-712 domain separator matches expectations
-- [ ] Both signers receive completion emails with signed PDF attached
+- [ ] Both signers receive signing emails at Barry + Tal @ kychee.com with correct subject (envelope ID + docHash), `Reply-To: reply-to-sign@kysigned.com`, review link, and `How it works →` link
+- [ ] Signer 1 replies `I APPROVE` from their mailbox → operator receives raw MIME with DKIM headers preserved → zk proof generated → on-chain record written to canary `SignatureRegistry`
+- [ ] Signer 2 replies `I APPROVE` → same flow completes → envelope reaches `completed` status
+- [ ] Both signers receive completion emails with signed PDF (including certificate page) attached
 - [ ] Envelope status page shows `completed` with both tx hashes
 - [ ] Basescan link from the proof page resolves to the canary contract (not kysigned-branded)
-- [ ] Verify-by-hash on the completed signed PDF returns the correct signer details
+- [ ] Verify using `(email, document)` inputs on the verification page — computes `searchKey`, finds the reply-to-sign record, retrieves zk proof from event, verifies DNSSEC chain + zk proof
 - [ ] Verify-by-envelope-id proof link displays full audit trail
 
 API path:
@@ -229,11 +229,12 @@ MCP path:
 - [ ] MCP `verify_document` tool returns correct verification result
 
 Signing flow variations:
-- [ ] Sequential signing: signer 2 is NOT notified until signer 1 completes
-- [ ] Parallel signing: both signers notified simultaneously
-- [ ] Sender-as-signer: "Will you also sign?" prompt works, sender signs alongside other signers
-- [ ] Decline flow: a signer can decline, sender receives notification
-- [ ] Duplicate signing: a signer who already signed sees "already signed" screen on second visit
+- [ ] Sequential signing: signer 2 does NOT receive signing email until signer 1's reply is processed and recorded
+- [ ] Parallel signing: both signers receive signing emails simultaneously and can reply in any order
+- [ ] Sender-as-signer: "Will you also sign?" prompt works, sender signs via same reply-to-sign flow as other signers
+- [ ] Non-matching reply: signer replies with random text → auto-reply with guidance sent, no signature recorded
+- [ ] Duplicate reply: signer sends a second `I APPROVE` → no-op, auto-reply "you have already signed"
+- [ ] No-reply / expiry: envelope expires per F1.7, all parties notified
 
 Retention + F8.6:
 - [ ] Completion email delivery webhook (from SES) triggers immediate PDF deletion via `markCompletionEmailDelivered`
@@ -253,9 +254,9 @@ Monitoring:
 - [ ] CRITICAL email alerts via SES reach the on-call address
 
 Gas + cost verification (inherited from the pre-F17 Phase 13 intent):
-- [ ] Measure real Base mainnet gas cost per operation (recordEmailSignature, recordWalletSignature, recordCompletion) — MUST match or beat the Sepolia measurements (220K/243K/158K) within 10%
-- [ ] Calculate true per-envelope cost (gas + email + compute + Lambda + KMS sign fees) and confirm $0.25 pricing holds with healthy margin
-- [ ] If real per-envelope cost exceeds $0.15 (60% of the $0.25 target), escalate to pricing review BEFORE the flip — pricing adjustment is still reversible during canary phase
+- [ ] Measure real Base mainnet gas cost per operation (`recordReplyToSignSignature` with zk proof, `recordWalletSignature`, `recordCompletion`, `registerEvidenceKey`) — compare against Sepolia measurements from Phase 1R
+- [ ] Calculate true per-envelope cost (gas + zk proof generation compute + email + Lambda + KMS sign fees) and confirm $0.39 pricing holds with healthy margin
+- [ ] If real per-envelope cost exceeds $0.20 (51% of the $0.39 target), escalate to pricing review BEFORE the flip — pricing adjustment is still reversible during canary phase
 
 Each item gets a timestamp and a short note when confirmed. The list lives inline in Phase 13C below (not duplicated here).
 
@@ -279,10 +280,10 @@ Each item gets a timestamp and a short note when confirmed. The list lives inlin
 **OQ #22 — Production-contract smoke specifics.** After the flip, run exactly one smoke-test envelope through the production contract. Specifics:
 - **Surface:** API path (`POST /v1/envelope`). Rationale: API path exercises the canonical server-side code path without any frontend rendering concerns, easiest to debug if something fails.
 - **Signer:** Barry as sender, Tal as sole signer (single-signer envelope). Rationale: simplest possible envelope structure, one signature covers the entire server-to-contract code path.
-- **Signature method:** Method A (auto-stamp). Rationale: Method A is the default and most-used path; if it works, the full-product assumption holds.
-- **Timing:** Tal MUST complete the signature within 15 minutes of the flip. If Tal can't, the smoke test is delayed until Tal is available — do NOT substitute a different signer, do NOT skip the smoke.
-- **Success criterion:** (a) envelope reaches `completed` status, (b) the production contract address appears in the proof page tx hash lookup, (c) Basescan shows the tx landed on the production contract address, (d) verify-by-hash on the signed PDF returns correct signer details.
-- **Rollback on smoke failure:** abort the launch announcement. Flip the kysigned-service env vars back to the canary address (the canary wallet still exists at this point because retirement happens AFTER smoke success). Investigate. Do NOT proceed to Phase 14's public-repo flip until the production contract smoke passes.
+- **Signature method:** Reply-to-sign (Tal replies `I APPROVE` from their mailbox). Rationale: reply-to-sign is the only signing method on the hosted service; if the full DKIM → zk proof → on-chain recording → verification pipeline works against the production contract, the full-product assumption holds.
+- **Timing:** Tal MUST complete the reply within 15 minutes of the flip. If Tal can't, the smoke test is delayed until Tal is available — do NOT substitute a different signer, do NOT skip the smoke.
+- **Success criterion:** (a) envelope reaches `completed` status, (b) the production `SignatureRegistry` address appears in the proof page tx hash lookup, (c) the `EvidenceKeyRegistry` contains the evidence key used for Tal's DKIM verification, (d) Basescan shows the recording tx landed on the production contract, (e) verify-by-`(email, document)` on the signed PDF returns correct signer details with a valid zk proof.
+- **Rollback on smoke failure:** abort the launch announcement. Flip the kysigned-service env vars back to the canary addresses (the canary wallet still exists at this point because retirement happens AFTER smoke success). Investigate. Do NOT proceed to Phase 14's public-repo flip until the production contract smoke passes.
 
 **Canary retirement sequence (addresses F17.9 + the Q6 finding that rent is per-wallet):**
 1. Drain canary wallet's on-chain ETH back to the kysigned ops EOA wallet (`0x8D671Cd12ecf69e0B049a6B55c5b318097b4bc35`) via `POST /contracts/v1/wallets/:canary_id/drain` with `X-Confirm-Drain: <canary_id>` header and `destination_address: <ops_eoa>` body. Poll `GET /contracts/v1/calls/:call_id` until status=`confirmed`.
@@ -291,6 +292,41 @@ Each item gets a timestamp and a short note when confirmed. The list lives inlin
 4. Schedule a T+75 calendar reminder for the KMS key deletion checkpoint (the 90-day lifecycle is permissive; if for any reason we want to un-delete, it's possible up to day 90). If no reason surfaces, the key deletes automatically at day 90.
 5. The canary CONTRACT itself remains on Base mainnet forever (smart contracts are immutable). It becomes an orphaned bytecode-only artifact with no known association to kysigned — per F17.10 this is the expected end state.
 
+
+### DD-18: Method A (Ed25519 auto-stamp) removed entirely — reply-to-sign is the only signing method
+
+- **Decision:** Remove Method A (Ed25519 keypair + signer_commitment + auto-stamp generation) from both the public repo and the service repo. The only signing methods are: reply-to-sign (email DKIM + zk-email proof, `[both]`) and wallet signing (Method B / EIP-712, `[repo]` only). The hosted service at kysigned.com exposes reply-to-sign only.
+- **Alternatives considered:**
+  - *Keep Method A as `[repo]` alongside reply-to-sign:* rejected — Method A's Ed25519 commitment model has no cryptographic binding between the signer's email and the signing act (the public key is generated client-side with no identity proof). Reply-to-sign is strictly superior for email-based signing because the DKIM signature IS the identity proof. Keeping Method A creates a confusing dual-path for forkers with no security benefit.
+  - *Replace Method A with a simplified click-to-sign (no Ed25519):* rejected — a click-to-sign without cryptographic proof is weaker than what the spec demands. The spec's entire value proposition is cryptographic verification independent of any operator.
+- **Chosen because:** reply-to-sign provides stronger proof (DKIM is the signer's mail provider attesting mailbox control, not a self-generated key). Removing Method A simplifies the codebase, the frontend signing page, the contract interface, and the documentation. Method B (wallet/EIP-712) stays for forkers who need wallet-based signing.
+- **What gets removed:** `src/api/sign.ts` Method A path, `recordEmailSignature` from `SignatureRegistry.sol`, Ed25519 key generation (`@noble/ed25519` dep), auto-stamp generation (`pdf-lib` signature embedding), drawing widget + signature persistence (localStorage), verification level prompts (Level 1/2), `require_drawn_signature` envelope option, frontend Method A/B choice UI, ~30+ Method A unit tests, e2e tests using Ed25519 keypairs.
+- **What stays:** Method B (wallet/EIP-712) as `[repo]`, `recordWalletSignature` in the contract, all envelope management/payment/billing/allowed_senders/dashboard/verification code (with modifications for the new signing flow).
+- **Trade-offs:** existing Method A code (~2000 LOC + tests) is discarded. This is sunk cost — the reply-to-sign pivot is a better product.
+
+### DD-19: Reply-to-sign inbound handler lives in the public repo (DD-9 alignment)
+
+- **Decision:** The inbound email signing handler — parse raw MIME, validate DKIM, extract `I APPROVE`, trigger zk proof generation, record on-chain — lives in the public repo (`kysigned/src/api/signing/`). The service repo wires the run402 mailbox webhook to this handler, same pattern as the existing `emailWebhook.ts` for delivery/bounce webhooks.
+- **Alternatives:** *Put the handler in the service repo* — rejected; violates DD-9 (trojan horse). Forkers should get the full signing pipeline out of the box. The handler is a pure function: `(rawMime: Buffer, deps: SigningDeps) => Promise<SigningResult>`. No run402-specific code.
+- **Chosen because:** (1) Forkers get the complete reply-to-sign pipeline. (2) The handler is testable in isolation with mocked MIME bytes. (3) Consistent with DD-9 — run402 dependencies are direct `fetch` calls in the handler, not abstracted away.
+- **run402 dependencies consumed by the handler:**
+  - `GET /mailboxes/v1/:id/messages/:messageId/raw` — fetch raw MIME from S3 (confirmed landed 2026-04-10)
+  - `POST /contracts/v1/call` — submit on-chain recording via KMS wallet
+  - Inbound webhook delivery from run402's email pipeline (confirmed landed 2026-04-10: custom-domain inbound routing)
+- **Trade-offs:** the handler needs access to a DKIM validation library and a zk proof generation library, both of which are new dependencies in the public repo. These are determined by the Phase R research spike.
+
+### DD-20: Quantum-resistance posture — document, don't mitigate
+
+- **Decision:** kysigned acknowledges quantum computing risks in documentation (LEGAL.md, spec F12.7) but does NOT implement post-quantum cryptographic primitives in the MVP. The posture is: document the threat, design for upgradeability, and revisit when PQ standards mature.
+- **Rationale by component:**
+  - **KDF (searchKey):** argon2id is quantum-resistant. Grover's algorithm gives quadratic speedup on brute-force, but memory-hard KDFs resist this. Doubling memory/iteration parameters restores full security. OWASP 2026 recommends argon2id at 128 MiB / 3 iterations. No action needed.
+  - **SHA-256 (docHash):** NIST assesses SHA-256 remains quantum-secure. 256-bit output provides 128-bit security against Grover's — sufficient for 20+ year horizon. No action needed.
+  - **DKIM signatures (RSA-2048):** Vulnerable to Shor's algorithm on a sufficiently large quantum computer. NIST estimates large-scale quantum ~2035+. The `EvidenceKeyRegistry`'s DNSSEC proof chain creates a permanent record of the key valid *at signing time* — this is the correct mitigation (historical proof, not preventive). Mail providers will migrate to PQ-safe DKIM keys before quantum computers can break RSA-2048; new evidence keys registered at that time will use the PQ algorithms. Existing pre-quantum signatures are evaluated in historical context (same as all digital signatures created before a cryptographic break).
+  - **zk-SNARKs:** Most SNARK proving systems (Groth16, PLONK) rely on elliptic curve pairings vulnerable to Shor's. Post-quantum SNARKs (STARKs) exist but have larger proof sizes (~50-200 KB vs ~256 bytes for Groth16) and higher gas costs. The Phase R research spike will note STARK compatibility as a future upgrade path but will NOT require PQ-safe SNARKs for the MVP.
+  - **NIST PQC standards (2024-2026):** ML-KEM, ML-DSA, SLH-DSA are finalized. HQC expected 2026-2027. These are relevant for key exchange and digital signatures, not for KDFs or hash functions. kysigned's threat model is archival integrity (signatures verified decades from now), not real-time key exchange — so the PQ migration path is: (1) mail providers adopt PQ-safe DKIM, (2) new evidence keys use PQ algorithms, (3) existing records are "pre-PQ" and evaluated historically.
+- **Documentation deliverables:** LEGAL.md F12.7 section, "How it works" page FAQ on longevity, spec OQ section acknowledging the timeline.
+- **Trade-offs:** a sufficiently advanced quantum computer before ~2035 would theoretically allow forging DKIM signatures on existing evidence keys. This is the same risk as every DKIM-reliant system (email authentication globally). The `EvidenceKeyRegistry` DNSSEC chain at least proves the key was valid when the signature was recorded — which is better than most systems that don't archive the key at all.
+- **Revisit when:** NIST PQ signature standards are widely deployed by mail providers (likely 2028-2032), OR a credible quantum threat timeline accelerates to <5 years.
 
 ### Phase 0: Foundation `AI`
 
@@ -316,6 +352,27 @@ Each item gets a timestamp and a short note when confirmed. The list lives inlin
   - [x] run402 enhancement: Admin dashboard (/admin) — wallet activity breakdown by product (inflows: USDC revenue labelled "kysigned" / "run402 infra" / etc., derived from which API endpoint accepted payment; outflows: ETH gas labelled by which contract was called) + Stripe revenue tracking per product via Stripe metadata — **shipped 2026-04-07 (`admin-wallet-breakdown`)**. Full Finance dashboard live, followup fix `94c4566` filters unnamed zero-revenue projects and clarifies the Cost Explorer error. Non-blocking finance-visibility layer as originally planned.
 - [x] Register domain kysigned.com [infra] — originally registered via Route 53 (hosted zone `Z0749125BIF9JF9FZ73M`). **2026-04-07:** DKIM CNAMEs + SPF + DMARC records live; domain `verified` as a run402 custom sender domain on the kysigned project (`prj_1775546157922_0030`). **2026-04-08:** authoritative DNS migrated from Route 53 to **Cloudflare** to resolve the apex-cannot-be-a-CNAME constraint (registrar NS flip done at AWS). SPF/DKIM/DMARC records preserved in the new Cloudflare zone — SES verification unchanged.
 
+### Phase R: zk-email & KDF Research Spike `AI` / `DECIDE`
+
+> **Prerequisite for all rework phases (1R, 2R, 3R).** This spike answers the unknowns that shape the contract interface, proof format, gas costs, verification logic, and the entire signing engine. No contract or engine rework begins until this spike's outputs are committed. `EvidenceKeyRegistry.sol` (no zk dependency) can be drafted during this spike.
+
+- [ ] **R.1** Evaluate prove.email circuits — can we adopt a circuit directly, or must we customize? Examine the public-input shape: does it support our exact requirements (`I APPROVE` body marker, subject format with envelope ID + docHash, first-non-quoted-line detection, `From:` header → H(email) commitment, `Subject` in DKIM `h=` signed-headers check)? Document the gap analysis. [code] `AI`
+- [ ] **R.2** Prototype zk proof generation — take a real DKIM-signed email (send from a kychee.com mailbox, capture raw MIME), feed it through the candidate circuit (prove.email or custom), generate a proof, verify it. Measure: proof generation time (server-side), proof size (bytes), verification time (client-side and on-chain). [code] `AI`
+- [ ] **R.3** Determine on-chain verifier strategy — Groth16 generates a per-circuit verifier contract (deployed once, called per-verification). PLONK uses a universal verifier. STARKs have larger proofs but PQ-safe. Document the gas cost per on-chain verification for each candidate. Recommend one. [code] `AI`
+- [ ] **R.4** Investigate `Subject` not in DKIM `h=` (spec OQ #3) — what fraction of real-world mail providers include `Subject` in DKIM-signed headers? Test against Gmail, Outlook, Yahoo, ProtonMail, Apple iCloud, Fastmail. If a significant provider excludes `Subject`, design the fallback: reject cleanly with a helpful message, or find an alternative binding (e.g., `In-Reply-To` or `References` header). [code] `AI`
+- [ ] **R.5** DNSSEC proof chain capture — identify a library/service to fetch the full DNSSEC chain from IANA root KSK down to a provider's `_selector._domainkey.<domain>` TXT record. Test against 3+ major providers. Determine fallback policy for domains without DNSSEC (reject cleanly? degrade with warning?). [code] `AI`
+- [ ] **R.6** DKIM key rotation handling (spec OQ #4) — the reply's DKIM header specifies the selector. The operator must fetch the exact key version at reply time. Design the key-fetch + cache + rotation-detection strategy. [code] `AI`
+- [ ] **R.7** Benchmark slow-KDF candidates for `searchKey = SlowHash(email || docHash)` (spec OQ #5): test argon2id (WASM in-browser via `argon2-browser` or `hash-wasm`) and scrypt (WASM via `scrypt-js`) at multiple parameter levels. Measure wall-clock time in: Chrome desktop, Chrome mobile (Android), Safari mobile (iOS), Node.js server. Target: ~1 second on consumer hardware, ~500ms on server. Record exact parameters that will be committed forever. [code] `AI`
+- [ ] **R.8** Document quantum-resistance posture (DD-20) in a concise internal note: KDF quantum-safe, SHA-256 quantum-safe, DKIM RSA-2048 vulnerable to Shor's (mitigated by DNSSEC key archival), zk-SNARKs vulnerable to Shor's (STARK upgrade path noted). Include NIST PQC timeline references. [manual] `AI`
+- [ ] **R.9** Draft `EvidenceKeyRegistry.sol` — stores DKIM public keys keyed by `keyId`, each entry: provider domain, DKIM selector, raw public key bytes, DNSSEC proof chain bytes, registration timestamp. One entry per (provider, selector, key rotation). Permissionless writes, no admin, append-only. Write Hardhat unit tests. This contract has NO zk dependency and can be finalized during the spike. [code] `AI`
+  - Write failing test for key registration
+  - Implement `registerEvidenceKey(domain, selector, publicKey, dnssecProof)`
+  - Write failing test for duplicate key rejection (same domain+selector+key = no-op)
+  - Implement idempotent registration
+  - Write failing test for key lookup by keyId
+  - Implement `getEvidenceKey(keyId)` view function
+- [ ] **R.10** Spike output document — summarize all findings in a structured output that Phase 1R and 2R consume: (a) chosen circuit (prove.email version or custom), (b) proof system (Groth16/PLONK), (c) on-chain verifier contract address pattern, (d) proof size + gas cost estimates, (e) KDF algorithm + exact parameters (committed forever), (f) DNSSEC capture library, (g) Subject-in-h= coverage results, (h) DKIM rotation strategy, (i) quantum-resistance summary. Present to user for approval before proceeding to Phase 1R. [manual] `AI -> HUMAN: Approve`
+
 ### Phase 1: Smart Contract `AI`
 
 - [x] Write SignatureRegistry.sol with EIP-712 domain separator (Base chainId 8453) [code]
@@ -323,6 +380,24 @@ Each item gets a timestamp and a short note when confirmed. The list lives inlin
 - [x] Deploy to Base Sepolia testnet [infra] — address: 0xAE8b6702e413c6204b544D8Ff3C94852B2016c91
 - [x] Measure gas costs per operation (recordEmailSignature: 220K, recordWalletSignature: 243K, recordCompletion: 158K gas units. 2-signer envelope ~$0.01-0.05 at typical Base gas prices. $0.25/envelope pricing has strong margin.) [infra]
 - [x] Document contract ABI and publish verification algorithm [code]
+
+### Phase 1R: Contract Rework — Reply-to-Sign `AI`
+
+> **Depends on Phase R spike output.** Rewrites `SignatureRegistry.sol` for reply-to-sign (searchKey indexing, zk proof verification on write). Removes `recordEmailSignature` (old Method A). Keeps `recordWalletSignature` and `recordCompletion` (with minor interface updates). Deploys both contracts to Base Sepolia for integration testing.
+
+- [ ] **1R.1** Rewrite `SignatureRegistry.sol` — new `recordReplyToSignSignature(searchKey, docHash, envelopeId, evidenceKeyId, timestamp, proof)` method that verifies the zk proof against the referenced evidence key (via a call to the on-chain verifier contract from Phase R.3) before accepting the record. `searchKey` is pre-computed by the caller. Emit signature event with proof bytes (cheaper gas than storage). [code] `AI`
+  - Write failing test for valid proof acceptance
+  - Implement proof verification + record storage
+  - Write failing test for invalid proof rejection
+  - Implement rejection logic
+  - Write failing test for searchKey-based lookup
+  - Implement lookup
+- [ ] **1R.2** Remove `recordEmailSignature` (old Method A Ed25519 commitment method) from `SignatureRegistry.sol`. Keep `recordWalletSignature` and `recordCompletion` unchanged. [code] `AI`
+- [ ] **1R.3** Deploy the on-chain zk verifier contract (generated by the circuit tooling from Phase R) to Base Sepolia. Store address. [infra] `AI`
+- [ ] **1R.4** Deploy updated `SignatureRegistry.sol` and `EvidenceKeyRegistry.sol` (from Phase R.9) to Base Sepolia. Store addresses. The old Sepolia deployment (`0xAE8b...c91`) is obsolete. [infra] `AI`
+- [ ] **1R.5** Measure gas costs per operation on Sepolia: `registerEvidenceKey`, `recordReplyToSignSignature` (with real zk proof), `recordWalletSignature`, `recordCompletion`. Compare against the old measurements. Document in Implementation Log. [infra] `AI`
+- [ ] **1R.6** Update `docs/contract-abi.md` in the public repo — new contract interfaces, new verification algorithm for reply-to-sign, updated ABI for both contracts. [code] `AI`
+- [ ] **1R.7** Update the contract address list in `src/verification/` to include the new Sepolia addresses alongside the old one (old contracts remain queryable for historical records, per F4.5). [code] `AI`
 
 ### Phase 2: Core Engine — Public Repo `[both]` `AI`
 
@@ -401,6 +476,78 @@ Each item gets a timestamp and a short note when confirmed. The list lives inlin
 
 - [ ] **2H.0** Run `/spec kysigned` to detail F16, then re-run `/plan kysigned` to populate this sub-phase with real tasks. Do NOT implement any aggregation code until the spec session is complete and AC exist. `DECIDE` / `AI`
 
+### Phase 2R: Engine Rework — Reply-to-Sign `[both]` `AI`
+
+> **Depends on Phase R spike output + Phase 1R contract rework.** Replaces the old Method A signing engine with the reply-to-sign pipeline: inbound email handling → DKIM validation → zk proof generation → on-chain recording. Removes all Method A code per DD-18.
+
+#### 2R-A. Method A Removal (DD-18)
+
+- [ ] **2R.1** Remove Method A signing engine from `src/api/sign.ts` — delete the Ed25519 commitment path, signer_commitment computation, `recordEmailSignature` contract call. Keep Method B (wallet/EIP-712) path. [code] `AI`
+- [ ] **2R.2** Remove auto-stamp generation from `src/pdf/` — delete signature embedding into PDF body via pdf-lib. Keep Certificate of Completion generation (appended at envelope completion). [code] `AI`
+- [ ] **2R.3** Remove `@noble/ed25519` dependency from `package.json`. Remove Ed25519 key generation code. [code] `AI`
+- [ ] **2R.4** Remove `require_drawn_signature` option from envelope creation. Remove verification level prompts (Level 1/2) — reply-to-sign has no verification levels. [code] `AI`
+- [ ] **2R.5** Update all unit tests that reference Method A — delete Method A-specific tests, update shared tests that assumed Method A existed. Run full suite, fix breakages. [code] `AI`
+
+#### 2R-B. Inbound Email Handler (DD-19)
+
+- [ ] **2R.6** Implement `handleInboundSigningReply(rawMime, deps)` in `kysigned/src/api/signing/inboundHandler.ts` — the core reply-to-sign handler. Steps: (1) parse raw MIME, (2) validate DKIM signature, (3) check `Subject` is in DKIM `h=` signed-headers, (4) extract `From:` email, (5) match envelope ID + docHash from subject, (6) check body for `I APPROVE` as standalone line above quoted content, (7) if valid → trigger zk proof generation, (8) if invalid → queue auto-reply with guidance. Returns `{ status: 'signed' | 'rejected' | 'duplicate' | 'expired', ... }`. [code] `AI`
+  - Write failing test for valid `I APPROVE` reply → signed
+  - Implement MIME parsing + DKIM validation + body extraction
+  - Write failing test for missing `I APPROVE` → rejected + auto-reply
+  - Implement rejection + auto-reply queuing
+  - Write failing test for duplicate reply → no-op
+  - Implement duplicate detection
+  - Write failing test for expired envelope reply → rejected
+  - Implement expiry check
+  - Write failing test for `Subject` not in DKIM `h=` → rejected
+  - Implement h= validation
+- [ ] **2R.7** Implement DKIM validation library integration — choose library from Phase R findings. Validate DKIM signature on raw MIME bytes. Extract DKIM selector + signing domain for evidence key lookup. [code] `AI`
+- [ ] **2R.8** Implement `I APPROVE` body extraction — case-insensitive, punctuation-tolerant, must be a standalone line above any quoted content (lines starting with `>` or `On ... wrote:`). [code] `AI`
+  - Write failing test for `I APPROVE` with various casings/punctuation
+  - Implement tolerant matching
+  - Write failing test for `I APPROVE` buried in quoted content → rejected
+  - Implement quoted-content boundary detection
+- [ ] **2R.9** Implement auto-reply for non-matching replies — queue an email: "Your reply did not match the signing format. To sign, reply with `I APPROVE` as the first line. To ask a question, contact the sender at [sender-email]." Uses existing EmailProvider. [code] `AI`
+
+#### 2R-C. zk Proof Pipeline
+
+- [ ] **2R.10** Implement zk proof generation wrapper — takes validated DKIM-signed MIME + circuit inputs, generates the zk-SNARK proof binding `H(email)`, `envelopeId`, `docHash` to the DKIM signature. Library/circuit chosen in Phase R. [code] `AI`
+  - Write failing test for proof generation from valid MIME
+  - Implement circuit input preparation + proof generation call
+  - Write failing test for proof verification (client-side, matches on-chain verifier)
+  - Implement client-side verification helper
+- [ ] **2R.11** Implement evidence key registration — on first encounter of a new (provider, selector, key), fetch DKIM public key + DNSSEC proof chain (library from Phase R.5), call `registerEvidenceKey` on `EvidenceKeyRegistry` contract. Cache registered keyIds to avoid redundant registrations. [code] `AI`
+  - Write failing test for first-encounter registration
+  - Implement key fetch + DNSSEC chain capture + contract call
+  - Write failing test for cached key (already registered) → no-op
+  - Implement cache lookup
+- [ ] **2R.12** Implement `searchKey` computation — `SlowHash(email || docHash)` using the KDF algorithm + parameters committed in Phase R.7. Expose as a pure function for both recording and verification. [code] `AI`
+- [ ] **2R.13** Implement on-chain recording — after zk proof generated, call `recordReplyToSignSignature` on `SignatureRegistry` via the platform wallet (KMS or direct, depending on deployment mode). [code] `AI`
+- [ ] **2R.14** Discard raw MIME after proof generation — per spec F3.3.3, the raw email is deleted from operator state once the zk proof is generated. Only the proof persists. [code] `AI`
+
+#### 2R-D. Signing Email Updates
+
+- [ ] **2R.15** Rewrite signing email template — new format per F7.1: document name, sender name, `docHash`, envelope ID, review link, `How it works →` link, reply-to-sign instructions ("To sign, reply to this email with `I APPROVE` as the first line"). `Reply-To` header set to `reply-to-sign@<operatorDomain>`. Subject includes envelope ID and `docHash`. [code] `AI`
+- [ ] **2R.16** Implement `consent_language_version` — add column to `envelopes` table (migration), stamp at envelope creation with the current version of all signing-intent strings. Update `POST /v1/envelope` to record it. [code] `AI`
+- [ ] **2R.17** Update reminder email template — repeat reply-to-sign instructions in the same format as the original signing email. [code] `AI`
+- [ ] **2R.18** Update confirmation email template — sent after on-chain recording, includes tx hash and proof link. [code] `AI`
+
+#### 2R-E. Verification Updates
+
+- [ ] **2R.19** Update verify-by-`(email, document)` — compute `searchKey = SlowHash(email || docHash)`, query `SignatureRegistry` for matching record, retrieve zk proof from event, look up evidence key from `EvidenceKeyRegistry`, verify DNSSEC chain, verify zk proof. [code] `AI`
+  - Write failing test for successful verification of a reply-to-sign record
+  - Implement the full verification pipeline
+  - Write failing test for no matching record → "not found"
+  - Implement not-found handling
+- [ ] **2R.20** Keep verify-by-envelope-id proof link working — query by envelope ID, display all signer records (both reply-to-sign and wallet signing in mixed-method envelopes). [code] `AI`
+
+#### 2R-F. E2E Test Rewrite
+
+- [ ] **2R.21** Rewrite `test/e2e/multiSigner.test.ts` — replace Ed25519 keypair signing with reply-to-sign flow: create envelope → poll for signing email arrival at test mailbox → reply `I APPROVE` → poll until on-chain record → verify. Uses run402 project mailboxes (`kysigned_test*@mail.run402.com`) for signer addresses (builds on P4B.31 concept). [code] `AI`
+- [ ] **2R.22** Add e2e test for non-matching reply — send a reply without `I APPROVE`, verify auto-reply is received, verify no signature recorded. [code] `AI`
+- [ ] **2R.23** Add e2e test for duplicate reply — send `I APPROVE` twice, verify second is no-op. [code] `AI`
+- [ ] **2R.24** Run full unit suite + e2e suite against local/deployed instance. Target: all green. [code] `AI`
+
 ### Phase 3: Frontend — Public Repo `[both]` `AI`
 
 #### 3A. Signing Page (React + Vite + Tailwind, mobile-responsive)
@@ -433,6 +580,35 @@ Each item gets a timestamp and a short note when confirmed. The list lives inlin
 - [x] Build resend/remind button [frontend-logic]
 - [x] Build export button (CSV/JSON download) [frontend-logic]
 - [x] Build envelope creation form — PDF upload, add signers, set signing order, require_drawn_signature, verification levels, require_wallet per signer, "Will you also sign?" prompt [frontend-visual]
+
+### Phase 3R: Frontend Rework — Reply-to-Sign `[both]` `AI`
+
+> **Depends on Phase 2R.** Updates the frontend for the reply-to-sign signing model. The signing page becomes a review-only page (PDF viewer + instructions). Removes Method A UI, drawing widget, signature persistence. Adds "How it works" page.
+
+#### 3R-A. Signing Page Rework
+
+- [ ] **3R.1** Remove Method A/B choice from the signing page — the hosted service only shows the review page with reply-to-sign instructions. No signing action happens on this page. [frontend-visual]
+- [ ] **3R.2** Remove drawing widget, signature typing widget, and localStorage signature persistence. Remove `@noble/ed25519` and `tweetnacl.js` frontend dependencies. [frontend-logic]
+- [ ] **3R.3** Remove verification level prompts (Level 1 click-only, Level 2 type-email). Reply-to-sign has no verification levels — the DKIM signature IS the verification. [frontend-logic]
+- [ ] **3R.4** Rework the signing page into a **review page** — PDF viewer (pdf.js, keep existing), document name, `docHash` displayed prominently, client-side hash verification tool ("verify this document's hash in your browser"), and clear instructions: "To sign this document, reply to the email you received with `I APPROVE` as the first line." Link to "How it works" page. [frontend-visual]
+- [ ] **3R.5** Keep Method B signing UI as `[repo]` only — behind a feature flag or route parameter that forkers enable. The hosted service build excludes it. The `require_wallet: true` enforcement and wallet onboarding panel stay in the `[repo]` build. [frontend-logic]
+- [ ] **3R.6** Update duplicate signing screen — "You've already signed this document" (unchanged message, but now triggered by checking on-chain records, not session state). [frontend-visual]
+- [ ] **3R.7** Remove decline flow UI — per spec F3.6, there is no explicit decline action. Signers who don't want to sign simply don't reply. Remove the decline button/screen. [frontend-visual]
+
+#### 3R-B. Verification Page Updates
+
+- [ ] **3R.8** Update `/verify` page — accept `(email, PDF)` as inputs (not just PDF hash). Compute `docHash = SHA-256(pdf_bytes)` and `searchKey = SlowHash(email || docHash)` client-side (using the committed KDF from Phase R.7 via WASM). Query contracts for matching record. Display zk proof verification results. [frontend-logic]
+- [ ] **3R.9** Update `/verify/:envelopeId` proof link page — display reply-to-sign verification details (evidence key, DNSSEC chain validity, zk proof status) alongside tx hashes and Basescan links. [frontend-visual]
+
+#### 3R-C. Dashboard Updates
+
+- [ ] **3R.10** Update envelope creation form — remove `require_drawn_signature` option, remove per-signer verification levels, remove per-signer `require_wallet` toggle (hosted service is reply-to-sign only). Keep: PDF upload, add signers (email + name), signing order, "Will you also sign?" prompt. [frontend-visual]
+- [ ] **3R.11** Update envelope detail view — show reply-to-sign specific audit trail per signer (email, reply timestamp, zk proof tx hash, evidence key reference). Keep Basescan links. [frontend-visual]
+
+#### 3R-D. "How it works" Page (F11.7)
+
+- [ ] **3R.12** Build `/how-it-works` page — entirely non-technical language. No "blockchain," "DKIM," "hash," "zero-knowledge proof." Explains to a non-technical signer: what replying does, what gets stored, who can find their signature (only someone with both their email AND the document), what the operator cannot do (cannot "list all docs Alice signed"), and that records last forever on a public database no single company controls. Target: readable in under one minute. [frontend-visual]
+- [ ] **3R.13** Link "How it works" from every signing email (Phase 2R.15 already includes the link), the review page (3R.4), and the FAQ page. [frontend-visual]
 
 ### Phase 4: Service Layer — Service Repo `[service]` `AI`
 
@@ -582,6 +758,14 @@ Each item gets a timestamp and a short note when confirmed. The list lives inlin
 - [x] Create llms.txt — machine-readable product description with API, MCP, contract details [code]
 - [x] Write README.md for public repo [manual] `AI -> HUMAN: Approve` — approved
 
+#### 6R. Website Updates for Reply-to-Sign
+
+- [ ] Update FAQ page — rewrite "Do I need a crypto wallet to sign?" answer: "No — you sign by replying to an email with `I APPROVE`. No wallet, no app, no account needed." Add new FAQ: "What does replying `I APPROVE` actually do?" with a non-technical explanation linking to the "How it works" page. [frontend-visual]
+- [ ] Update landing page — replace any Method A/click-to-sign references with reply-to-sign messaging. Cost comparison numbers stay. [frontend-visual]
+- [ ] Update pricing page — if per-envelope cost changed due to zk proof computation costs, update the numbers. [frontend-visual]
+- [ ] Update llms.txt — replace Method A references with reply-to-sign description, update API endpoint descriptions for the new signing flow. [code]
+- [ ] Update README.md — replace Method A references, update the "how signing works" section for reply-to-sign, update the ACME test document instructions for the new flow. [manual]
+
 ### Phase 7: Legal `AI -> HUMAN: Approve`
 
 - [x] Draft Terms of Service [manual] `AI -> HUMAN: Approve` — approved
@@ -591,6 +775,13 @@ Each item gets a timestamp and a short note when confirmed. The list lives inlin
 - [x] Draft DPA (Data Processing Agreement) [manual] `AI -> HUMAN: Approve` — approved
 - [ ] Publish all legal docs on kysigned.com [infra] `AI`
 - [ ] Verify LEGAL.md in public repo is approved (from Phase 0) [manual] `HUMAN`
+
+#### 7R. Legal Updates for Reply-to-Sign
+
+- [ ] Update Terms of Service — replace click-to-sign proof semantics with reply-to-sign: "the signer's mail provider cryptographically attested that a real outbound email from the signer's mailbox contained `I APPROVE` and referenced this document's hash." Clarify: proves mailbox control, not identity. Mailbox compromise is a listed limitation. Requires re-approval. [manual] `AI -> HUMAN: Approve`
+- [ ] Update Privacy Policy — add: no email plaintext stored on-chain or in operator state after zk proof generation; raw MIME discarded after proof; records only findable with both email AND document; cross-document signatures by the same signer are unlinkable. Requires re-approval. [manual] `AI -> HUMAN: Approve`
+- [ ] Update LEGAL.md — rewrite reply-to-sign proof semantics section (what DKIM + zk-email proves and doesn't prove), update Method B wallet gap documentation (prominently documented per F12.7), add future cryptographic break acknowledgment for both DKIM RSA and zk-SNARKs (DD-20). Requires re-approval. [manual] `AI -> HUMAN: Approve`
+- [ ] Consent language review (F12.9) — all signing-intent strings (email body, subject line, auto-reply wording, certificate page wording, "How it works" page text) must be reviewed by someone with legal expertise before launch. Version these strings in code. [manual] `HUMAN`
 
 ### Phase 8: Analytics & Tracking `AI`
 
@@ -674,12 +865,12 @@ Each item gets a timestamp and a short note when confirmed. The list lives inlin
 - [ ] Confirm the canary wallet appears in the run402 admin dashboard under the kysigned project attribution. Verify the wallet's chain is `base-mainnet` and status is `active`. [manual] `HUMAN`
 - [ ] Set a **calendar reminder for T+75 days** from the canary wallet provisioning date, for the KMS key deletion lifecycle bump. If the canary phase completes inside 75 days and canary retirement happens in Phase 13E, this reminder never fires. [manual] `HUMAN`
 - [ ] Fund the canary wallet with ~0.02 ETH from the ops EOA wallet for gas. Wait for confirmation on Base. Record the funding tx hash in the Implementation Log. [manual] `HUMAN`
-- [ ] Compile `kysigned/contracts/SignatureRegistry.sol` locally (pin the exact Solidity compiler version in `hardhat.config.cts` — this version becomes part of the byte-identical gate invariant). Capture the bytecode + constructor args. [code] `AI`
-- [ ] Write `kysigned-service/scripts/deploy-canary.ts` — a new kysigned-service-only script (never committed to the public repo) that deploys the compiled bytecode via the verified workaround path from Phase 13A (or the new deploy endpoint if 13A forced the enhancement path). TDD: unit tests mock `fetch` to the run402 API, verify request body contains the expected bytecode + constructor args. [code] `AI`
-- [ ] Run `deploy-canary.ts` against Base mainnet. Poll `GET /contracts/v1/calls/:call_id` until status=`confirmed`. Capture the tx hash + deployed contract address (from the receipt's `contractAddress` field or via a manual `eth_getCode` + reverse-lookup). [infra] `AI`
-- [ ] Store the canary contract address in AWS Secrets Manager as `kysigned/canary-contract-address`. This is the single-point-of-failure secret per F17.12 — it NEVER touches git. [infra] `AI`
-- [ ] **Do NOT submit canary source to Basescan for verification.** Per F17.4 the canary must remain a bytecode-only artifact with no public association to kysigned. [infra] `AI`
-- [ ] Measure real Base mainnet gas costs from the canary deploy tx + 3 test call txs (`recordEmailSignature`, `recordWalletSignature`, `recordCompletion`) signed manually via the canary wallet. Compare against the Sepolia measurements (220K/243K/158K). Document actual numbers in the Implementation Log. [infra] `AI`
+- [ ] Compile `kysigned/contracts/SignatureRegistry.sol` and `EvidenceKeyRegistry.sol` locally (pin the exact Solidity compiler version in `hardhat.config.cts` — this version becomes part of the byte-identical gate invariant). Capture bytecode + constructor args for both contracts. [code] `AI`
+- [ ] Write `kysigned-service/scripts/deploy-canary.ts` — a new kysigned-service-only script (never committed to the public repo) that deploys BOTH compiled bytecodes via the verified workaround path from Phase 13A (or the new deploy endpoint if 13A forced the enhancement path). TDD: unit tests mock `fetch` to the run402 API, verify request body contains the expected bytecode + constructor args for each contract. [code] `AI`
+- [ ] Run `deploy-canary.ts` against Base mainnet for both contracts. Poll `GET /contracts/v1/calls/:call_id` until status=`confirmed` for each. Capture tx hashes + deployed contract addresses. [infra] `AI`
+- [ ] Store canary contract addresses in AWS Secrets Manager as `kysigned/canary-signature-registry-address` and `kysigned/canary-evidence-key-registry-address`. These are single-point-of-failure secrets per F17.12 — they NEVER touch git. [infra] `AI`
+- [ ] **Do NOT submit canary source to Basescan for verification.** Per F17.4 both canary contracts must remain bytecode-only artifacts with no public association to kysigned. [infra] `AI`
+- [ ] Measure real Base mainnet gas costs from the canary deploy txs + test call txs (`registerEvidenceKey`, `recordReplyToSignSignature` with zk proof, `recordWalletSignature`, `recordCompletion`) signed manually via the canary wallet. Compare against Sepolia measurements from Phase 1R. Document actual numbers in the Implementation Log. [infra] `AI`
 - [ ] Calculate true per-envelope cost (gas + email + compute + Lambda + KMS sign fees). Compare against the $0.25 target. If real cost exceeds $0.15, flag for pricing review BEFORE the dark-launch phase begins. [manual] `AI`
 - [ ] (If pricing needs adjustment) Set final per-envelope pricing and credit pack tiers. Update pricing page with real numbers. [frontend-visual] `DECIDE`
 
@@ -701,12 +892,12 @@ Each item gets a timestamp and a short note when confirmed. The list lives inlin
 - [ ] Call `POST /contracts/v1/wallets` on run402 with `{ chain: "base-mainnet" }` to provision the **production KMS wallet**. Capture wallet_id and address. Store as `kysigned/contract-wallet-address` (this IS the branded production wallet — store under the production namespace, not `canary-*`). [infra] `AI`
 - [ ] Confirm the production wallet appears in the run402 admin dashboard. Set its recovery address to Barry's personal wallet (per the F17 first-exercise watchlist and DD-17 retirement considerations). [manual] `HUMAN`
 - [ ] Fund the production wallet with ~0.02 ETH from the ops EOA wallet for gas. Wait for confirmation on Base. Record the funding tx hash. [manual] `HUMAN`
-- [ ] Compile `kysigned/contracts/SignatureRegistry.sol` locally using the **exact same Solidity compiler version and optimizer settings** that were used for the canary deploy in Phase 13B. This is the byte-identical gate invariant. [code] `AI`
-- [ ] Run the deploy script against the production KMS wallet. Poll `GET /contracts/v1/calls/:call_id` until status=`confirmed`. Capture the tx hash + production contract address. Store the contract address in AWS Secrets Manager as `kysigned/contract-address`. [infra] `AI`
-- [ ] **Submit the production contract source to Basescan for verification.** This IS the kysigned-branded contract — full Basescan verification is REQUIRED (the opposite of the canary). Include the Solidity compiler version, optimizer settings, and source code. Confirm the contract appears verified on Basescan with a green checkmark. [manual] `AI`
-- [ ] **Byte-identical bytecode gate:** run `kysigned-service/scripts/bytecode-identity-check.ts <canary_address> <production_address>` (the script implemented per DD-17 OQ #19). The script: (1) fetches runtime bytecode for both addresses via `eth_getCode`, (2) strips the Solidity metadata suffix from both using the `uint16_be(bytecode[-2:])` length algorithm, (3) compares `keccak256` of the stripped bytecodes. Success → proceed. Failure → ABORT, follow the OQ #21 investigation playbook, do NOT flip until the gate passes. [infra] `AI`
-- [ ] **FLIP kysigned-service environment variables** from canary references to production references: `KYSIGNED_CONTRACT_ADDRESS=<production_address>` (from `kysigned/contract-address` Secrets Manager), `KYSIGNED_KMS_WALLET_ID=<production_wallet_id>` (from Secrets Manager). Redeploy kysigned-service. **This is the launch moment.** No application code changes in this redeploy — config change only. [infra] `AI`
-- [ ] **Production smoke envelope:** per DD-17 OQ #22 — Barry creates an envelope via `POST /v1/envelope` with Tal as sole signer, Method A (auto-stamp), 15-minute turnaround window. Verify the envelope reaches `completed` status, the tx lands on the production contract on Basescan, and verify-by-hash on the signed PDF returns correct details. [manual] `HUMAN`
+- [ ] Compile `kysigned/contracts/SignatureRegistry.sol` and `EvidenceKeyRegistry.sol` locally using the **exact same Solidity compiler version and optimizer settings** that were used for the canary deploy in Phase 13B. This is the byte-identical gate invariant. [code] `AI`
+- [ ] Run the deploy script against the production KMS wallet for both contracts. Poll `GET /contracts/v1/calls/:call_id` until status=`confirmed` for each. Capture tx hashes + production contract addresses. Store in AWS Secrets Manager as `kysigned/signature-registry-address` and `kysigned/evidence-key-registry-address`. [infra] `AI`
+- [ ] **Submit both production contract sources to Basescan for verification.** These ARE the kysigned-branded contracts — full Basescan verification is REQUIRED (the opposite of the canary). Include Solidity compiler version, optimizer settings, and source code for each. Confirm both contracts appear verified on Basescan with green checkmarks. [manual] `AI`
+- [ ] **Byte-identical bytecode gate for BOTH contracts:** run `kysigned-service/scripts/bytecode-identity-check.ts <canary_sig_reg> <prod_sig_reg>` AND `<canary_ev_key_reg> <prod_ev_key_reg>`. Success on both → proceed. Failure on either → ABORT, follow the OQ #21 investigation playbook. [infra] `AI`
+- [ ] **FLIP kysigned-service environment variables** from canary references to production references: `KYSIGNED_SIGNATURE_REGISTRY_ADDRESS`, `KYSIGNED_EVIDENCE_KEY_REGISTRY_ADDRESS`, `KYSIGNED_KMS_WALLET_ID` (all from Secrets Manager). Redeploy kysigned-service. **This is the launch moment.** No application code changes in this redeploy — config change only. [infra] `AI`
+- [ ] **Production smoke envelope:** per DD-17 OQ #22 — Barry creates an envelope via `POST /v1/envelope` with Tal as sole signer, **reply-to-sign** (Tal replies `I APPROVE` from their mailbox), 15-minute turnaround window. Verify: (a) envelope reaches `completed` status, (b) the production `SignatureRegistry` address appears in the proof page tx hash lookup, (c) the `EvidenceKeyRegistry` contains the evidence key used for Tal's DKIM verification, (d) verify-by-`(email, document)` on the signed PDF returns correct details. [manual] `HUMAN`
 - [ ] On smoke success: proceed to Phase 13E canary retirement. On smoke failure: rollback the env var flip (set them back to canary references + redeploy), investigate, do NOT proceed to Phase 14 until the smoke passes. [manual] `HUMAN`
 
 #### Phase 13E: Canary retirement `AI`
@@ -752,8 +943,10 @@ Per saas-factory F21 / kysigned spec Shipping Surfaces section. Each `[ship]` ta
 - [ ] Ship "Dashboard" surface — deployed with the API, smoke `curl -fsSL -o /dev/null -w '%{http_code}' https://kysigned.com/dashboard | grep -q '^200$'` [ship]
 - [ ] Ship "MCP server (npm)" surface — `npm publish` from `mcp/`, smoke `npx -y kysigned-mcp --version` from a fresh temp directory [ship]
 - [ ] Ship "Public repo" surface — squash history to v1.0.0 commit and flip private→public on GitHub, smoke `curl -fsSL https://api.github.com/repos/kychee-com/kysigned | grep -q '"private":\s*false'` [ship]
-- [ ] Ship "Smart contract — Base mainnet" surface — deploy SignatureRegistry.sol to Base mainnet, smoke `curl -fsSL -X POST https://mainnet.base.org -H 'content-type: application/json' -d '{"jsonrpc":"2.0","id":1,"method":"eth_call","params":[{"to":"<mainnet-addr>","data":"0x3644e515"},"latest"]}' | grep -q '"result":"0x[0-9a-f]\{64\}"'` (depends on Phase 13) [ship]
-- [x] Ship "Smart contract — Base Sepolia" surface — deployed at 0xAE8b6702e413c6204b544D8Ff3C94852B2016c91, smoke passed (see Implementation Log 2026-04-06) [ship]
+- [ ] Ship "How it works page" surface — deployed with marketing site, smoke `curl -fsSL https://kysigned.com/how-it-works | grep -q "how"` [ship]
+- [ ] Ship "SignatureRegistry — Base mainnet" surface — deploy via Phase 13, smoke `curl -fsSL -X POST https://mainnet.base.org -H 'content-type: application/json' -d '{"jsonrpc":"2.0","id":1,"method":"eth_call","params":[{"to":"<mainnet-addr>","data":"0x3644e515"},"latest"]}' | grep -q '"result":"0x[0-9a-f]\{64\}"'` (depends on Phase 13) [ship]
+- [ ] Ship "EvidenceKeyRegistry — Base mainnet" surface — deploy via Phase 13, smoke `curl -fsSL -X POST https://mainnet.base.org -H 'content-type: application/json' -d '{"jsonrpc":"2.0","id":1,"method":"eth_call","params":[{"to":"<mainnet-addr>","data":"0x3644e515"},"latest"]}' | grep -q '"result":"0x[0-9a-f]\{64\}"'` (depends on Phase 13) [ship]
+- [x] Ship "Smart contract — Base Sepolia" surface — deployed at 0xAE8b6702e413c6204b544D8Ff3C94852B2016c91, smoke passed (see Implementation Log 2026-04-06). **NOTE: this deployment is obsolete after Phase 1R deploys the rewritten contracts to Sepolia.** [ship]
 
 ---
 
@@ -841,4 +1034,5 @@ _None yet_
     -d '{"jsonrpc":"2.0","id":1,"method":"eth_call","params":[{"to":"0xAE8b6702e413c6204b544D8Ff3C94852B2016c91","data":"0x3644e515"},"latest"]}'
   ```
   Exit code: 0. Result: `{"jsonrpc":"2.0","result":"0x8db329e11c1632d3570c4e92ee526a54f76262c122835520bd570595db9019fb","id":1}`. The returned `DOMAIN_SEPARATOR` matches the value recorded at deployment, confirming the deployed contract is reachable from outside the repo via a generic public RPC endpoint. Spec smoke check updated from `cast call ...` to portable curl form so it works without Foundry installed locally.
+- 2026-04-10: **Plan continued — spec v0.9.0 reply-to-sign rework.** Spec-Version bumped 0.8.0 → 0.9.0. Major architectural shift: signing model pivoted from click-to-sign (Method A / Ed25519 auto-stamp) to reply-to-sign (email DKIM + zk-email proofs). Method A removed entirely (DD-18). New design decisions: DD-18 (Method A removal), DD-19 (inbound handler in public repo per DD-9), DD-20 (quantum-resistance posture — document, don't mitigate). New phases added: Phase R (zk-email & KDF research spike — 10 tasks), Phase 1R (contract rework — 7 tasks), Phase 2R (engine rework — 24 tasks across 6 sub-phases: Method A removal, inbound email handler, zk proof pipeline, signing email updates, verification updates, e2e rewrite), Phase 3R (frontend rework — 13 tasks across 4 sub-phases: signing page rework, verification page, dashboard, "How it works" page). Updated: Phase 6 (5 website update tasks for reply-to-sign), Phase 7 (4 legal update tasks for reply-to-sign proof semantics), Phase 13 canary checklist (all Method A references replaced with reply-to-sign), Phase 13B (two-contract deploy for SignatureRegistry + EvidenceKeyRegistry), Phase 13D (two-contract bytecode gate + reply-to-sign production smoke), Phase 15 (added "How it works" page + EvidenceKeyRegistry ship surfaces). Two run402 dependencies confirmed landed on 2026-04-10: raw-MIME API accessor (`GET /mailboxes/v1/:id/messages/:messageId/raw`) and custom-domain inbound routing — both required for reply-to-sign. Net new task count: ~63 tasks. Execution order: R → 1R → 2R → 3R → (remaining Phase 4/4B follow-ups) → Phase 13 (with updated canary checklist). P4B.31 concept (closed-loop mailbox e2e) feeds into 2R.21 (e2e rewrite for reply-to-sign).
 - 2026-04-08: **Plan continued — DD-17 + Phase 13 re-sequenced for F17 dark-launch canary ritual.** Driven by spec v0.8.0 F17 (kysigned-spec) + saas-factory v1.15.0 F25 from the brainstorm→spec chain earlier in the day. Plan header Spec-Version bumped 0.7.0 → 0.8.0; Upstream References saas-factory 1.9.0 → 1.15.0. New DD-17 captures the canary ritual and resolves all five F17 Open Questions (#18–#22) inline: (18) run402 capability gap investigation via `Explore` subagent against `packages/gateway/src/routes/contracts.ts` + services/contract-wallets.ts + contract-call.ts — confirmed two wallets per project supported, rate limiting non-issue, drain endpoint fully implemented, BUT discovered NO dedicated deploy endpoint exists in contracts/v1 (this becomes a Phase 13A blocking prereq to verify the `POST /contracts/v1/call` + zero-address-target workaround OR land a small run402 enhancement), AND discovered rent is charged per-wallet not per-project so canary prepay is $2.40 not $1.20, AND the canary retirement MUST call `DELETE /contracts/v1/wallets/:id` after drain to stop daily rent accrual (draining ETH alone doesn't stop rent); (19) byte-identical bytecode check mechanism specified precisely — strip Solidity metadata suffix via `uint16_be(bytecode[-2:])` length algorithm then keccak256 compare, implemented as `kysigned-service/scripts/bytecode-identity-check.ts`; (20) full canary checklist enumerated (~40 items across dashboard/API/MCP/signing variations/retention/payment/monitoring/gas); (21) bytecode-divergence investigation playbook with 5 hypothesized causes + decision matrix; (22) production smoke specifics nailed down — API path, Barry→Tal single-signer, Method A auto-stamp, 15-minute window. Phase 13 restructured in place from "Gas Measurement & Final Pricing" to "Mainnet Deploy via Dark-Launch Canary" with 5 sub-phases (13A pre-flight → 13B canary provision+deploy → 13C dark-launch dogfood [BLOCKS ON Phase 4B completion in the parallel /implement chat] → 13D production provision+deploy+byte-identical-gate+flip+smoke → 13E canary retirement). Phase 14's existing "Flip public repo" task augmented with the F17.11 anti-leakage pre-squash scan as a hard gate: two `grep -rF` scans against the working tree for the retired canary contract address and retired canary wallet address, aborting the flip if either matches anywhere. Plan was NOT merged with the parallel Phase 4B chat — Phase 4B stays owned by the parallel /implement chat, Phase 13C explicitly declares the cross-chat dependency on Phase 4B Block 7 (e2e against production-deployed kysigned-service). No existing Phase 4, Phase 4A, or Phase 4B tasks were modified. All changes are additive to Phase 13 and Phase 14.
