@@ -1,6 +1,6 @@
 ---
 product: kysigned
-version: 0.9.2
+version: 0.9.3
 status: Draft
 type: product
 interfaces: [website, api, cli, mcp, smart-contract]
@@ -10,7 +10,7 @@ updated: 2026-04-10
 
 ## Overview
 
-kysigned is a blockchain-verified e-signature service that replaces DocuSign's subscription model with per-envelope pricing (~$0.39/envelope). Signers sign by replying to an email with `I APPROVE` — their mail provider's DKIM signature provides cryptographic proof of mailbox control, which is captured as a zk-email proof and recorded on Base (Ethereum L2). A verifier given `(email, document)` any time in the next ~20 years can independently confirm the signature using only on-chain data (the zk proof, the archived DKIM key, and key consistency across signatures from the same provider) — no dependency on kysigned.com, run402, or any operator being reachable. Two delivery modes: a hosted API at kysigned.com (`[service]`) and a free MIT-licensed repo deployable on run402 (`[repo]`).
+kysigned is a blockchain-verified e-signature service that replaces DocuSign's subscription model with per-envelope pricing ($0.29/envelope for 2 signers, $0.10/extra signer). Signers sign by replying to an email with `I APPROVE` — their mail provider's DKIM signature provides cryptographic proof of mailbox control, which is captured as a zk-email proof and recorded on Base (Ethereum L2). A verifier given `(email, document)` any time in the next ~20 years can independently confirm the signature using only on-chain data (the zk proof, the archived DKIM key, and key consistency across signatures from the same provider) — no dependency on kysigned.com, run402, or any operator being reachable. Two delivery modes: a hosted API at kysigned.com (`[service]`) and a free MIT-licensed repo deployable on run402 (`[repo]`).
 
 ## Interfaces & Mediums
 
@@ -58,7 +58,7 @@ Per saas-factory F21. Each row is a user-reachable artifact. Smoke checks are NO
 An envelope is one document (PDF) sent to one or more signers. The envelope is the billing unit.
 
 - F1.1. Create an envelope by providing a PDF (upload or URL) and a list of signers (email + name per signer).
-- F1.2. Up to 5 signers included per envelope. Additional signers incur a per-signer surcharge (reflecting real gas costs).
+- F1.2. Base price includes up to 2 signers per envelope ($0.29). Additional signers cost $0.10 each (reflecting real gas + proof generation costs). No upper limit on signer count.
 - F1.3. Sender specifies signing order: parallel (default — all signers can sign in any order) or sequential (signers are notified one at a time in the specified order).
 - F1.4. All signers use the same signing method (reply-to-sign). No per-signer signing options in MVP.
 - F1.5. Envelope lifecycle statuses: draft, active, completed, expired, voided.
@@ -104,9 +104,22 @@ Three sender paths, all MVP. Each serves a different audience.
 - Stripe-collection-as-a-service: run402 does not accept Stripe payments from kysigned's end users on kysigned's behalf. kysigned operates its own Stripe account for Path 3. If run402 adds this capability post-MVP, Path 3 could migrate to use it (Open Question #17).
 - Note: Path 1/2 does NOT need run402's T2 — x402/MPP is already a native T2 mechanism (user wallet pays app wallet directly, per-call).
 
-**Per-envelope margin illustration (approximate, at $0.39/envelope target):**
-- Path 1/2: sender pays ~$0.39 USDC → kysigned wallet; kysigned spends ~$0.01-0.20 ETH on gas; net ~$0.19-0.38 per envelope.
-- Path 3: sender pays ~$0.39 fiat → kysigned Stripe; Stripe fees ~$0.03; gas ~$0.01-0.20; net ~$0.16-0.35 per envelope.
+**Pricing model (v0.9.3):**
+- **$0.29 per envelope** (includes up to 2 signers)
+- **$0.10 per additional signer** beyond 2
+- Example: 5-signer envelope = $0.29 + (3 × $0.10) = $0.59
+
+**Per-signer cost breakdown (PLONK proof system on Base L2):**
+- Gas (`recordReplyToSignSignature` with PLONK verify): ~$0.05
+- Proof generation (server compute): ~$0.01-0.02
+- Email (signing request + confirmation): ~$0.001
+- KMS sign fee: ~$0.005
+- Total per signer: ~$0.06-0.07
+
+**Per-envelope margin illustration:**
+- 2 signers: $0.29 revenue, ~$0.14 cost, ~52% margin
+- 5 signers: $0.59 revenue, ~$0.35 cost, ~41% margin
+- 10 signers: $1.09 revenue, ~$0.56 cost, ~49% margin
 
 #### F2.10 Forker Billing (public repo)
 
@@ -348,10 +361,10 @@ Agent-native interface for programmatic signing.
 
 Marketing site and product pages at kysigned.com.
 
-- F11.1. Landing page led by the cost attack angle ("DocuSign charges $3-5 per signature. kysigned charges ~$0.39. Proof on the blockchain, not their servers."). No "kill" language.
+- F11.1. Landing page led by the cost attack angle ("DocuSign charges $3-5 per signature. kysigned charges $0.29. Proof on the blockchain, not their servers."). No "kill" language.
 - F11.2. Dual CTA: "Send a document" (hosted service) and "Deploy your own" (GitHub repo).
 - F11.3. "SaaS vs Repo" decision helper explaining the tradeoffs for each delivery mode.
-- F11.4. Pricing page showing per-envelope costs, credit pack tiers, and a comparison table vs DocuSign/GoodSign/others.
+- F11.4. Pricing page showing per-envelope costs ($0.29 base + $0.10/extra signer), credit pack tiers, and a comparison table vs DocuSign/GoodSign/others.
 - F11.5. **FAQ as conversion weapon** — six categories:
   - Trust/survival: "What if you shut down?" → "Your proofs are on the blockchain. They survive us."
   - Migration: "How do I move from DocuSign?" → envelope-by-envelope, no lock-in.
@@ -379,7 +392,7 @@ Marketing site and product pages at kysigned.com.
   - What wallet signatures (Method B) prove and do NOT prove: "wallet address X signed document Y." The `signerEmail` field is a caller-chosen label, NOT cryptographically bound. Forkers must establish wallet ↔ identity binding externally. **This gap must be prominently documented.**
   - No guarantee of legal enforceability in any specific jurisdiction
   - Smart contract permanence disclaimer (recordings on Base are permanent, cannot be deleted or modified by anyone)
-  - Future cryptographic break acknowledgment: DKIM (RSA-2048) and zk-SNARKs (Groth16 / BN254) are not quantum-resistant. A sufficiently powerful quantum computer could forge new DKIM signatures or zk proofs. However: (1) blockchain records are immutable — quantum computers cannot alter existing on-chain records, only potentially create new fraudulent ones; (2) all pre-quantum signatures carry a blockchain timestamp proving they were created before quantum capability existed, which is strong evidence of authenticity in historical context; (3) a forged post-quantum signature would lack the corroboration of other signatures from the same provider during the same key period (F4.9), making it detectable; (4) email providers are expected to adopt quantum-safe DKIM algorithms (NIST ML-DSA, SLH-DSA) before quantum computers reach the necessary scale (~2035+), and the kysigned architecture upgrades transparently (new verifier contract, no data migration). The honest claim: pre-quantum signatures are historically valid evidence with a blockchain-anchored timestamp; they are not immune to a future world where the underlying cryptography is broken, but breaking them requires both quantum capability AND defeating the consistency checks across the key registry.
+  - Future cryptographic break acknowledgment: DKIM (RSA-2048) and zk-SNARKs (PLONK / BN254) are not quantum-resistant. A sufficiently powerful quantum computer could forge new DKIM signatures or zk proofs. However: (1) blockchain records are immutable — quantum computers cannot alter existing on-chain records, only potentially create new fraudulent ones; (2) all pre-quantum signatures carry a blockchain timestamp proving they were created before quantum capability existed, which is strong evidence of authenticity in historical context; (3) a forged post-quantum signature would lack the corroboration of other signatures from the same provider during the same key period (F4.9), making it detectable; (4) email providers are expected to adopt quantum-safe DKIM algorithms (NIST ML-DSA, SLH-DSA) before quantum computers reach the necessary scale (~2035+), and the kysigned architecture upgrades transparently (new verifier contract, no data migration). The honest claim: pre-quantum signatures are historically valid evidence with a blockchain-anchored timestamp; they are not immune to a future world where the underlying cryptography is broken, but breaking them requires both quantum capability AND defeating the consistency checks across the key registry.
   - Operator responsibility: the forker/deployer is responsible for their own privacy compliance, Terms of Service, and legal obligations — not Kychee
   - Excluded document types that cannot be e-signed under ESIGN/UETA (wills, codicils, etc.)
 - F12.8. No product launch until all `[service]` legal documents are human-approved.
@@ -596,7 +609,7 @@ This feature introduces a new conceptual layer above envelopes: the **document**
 - [ ] "How it works" page at `/how-it-works`; entirely non-technical; no "blockchain," "DKIM," "hash," "zero-knowledge proof"; readable in under one minute
 - [ ] Every signing email links to the "how it works" page
 - [ ] Decision helper page explains SaaS vs repo tradeoffs for builders, end users, and agents
-- [ ] Pricing page shows per-envelope cost (~$0.39), credit pack tiers, and comparison table vs competitors
+- [ ] Pricing page shows per-envelope cost ($0.29 base + $0.10/extra signer), credit pack tiers, and comparison table vs competitors
 - [ ] FAQ covers all six categories with specific questions and answers; wallet FAQ updated ("Do I need a wallet to SIGN?" → "No, you reply to an email")
 - [ ] llms.txt accessible at kysigned.com/llms.txt
 - [ ] Design is clean and minimal (bld402.com aesthetic)
@@ -664,7 +677,7 @@ This feature introduces a new conceptual layer above envelopes: the **document**
 - **zk-email circuit:** Reply-to-sign requires a zk-email circuit that produces a zk-SNARK over a DKIM-signed email. Candidate: adopt or customize from [prove.email](https://prove.email). Circuit must match our exact public-input shape (searchKey commitment, subject format, `I APPROVE` body marker, first-non-quoted-line detection). Audit strategy TBD.
 - **~~DNSSEC proof chain capture:~~** REMOVED (v0.9.1). Major providers (Gmail, Outlook, Yahoo) don't have DNSSEC. The zk proof itself proves key correctness; key consistency across signatures provides non-repudiation (F4.9). DNSSEC is omitted from MVP.
 - **Slow-KDF parameters:** `searchKey = SlowHash(email || docHash)` requires committing forever to a specific KDF algorithm and parameters. Must be chosen carefully — too fast enables enumeration, too slow degrades verifier UX. Candidate: argon2id with parameters tuned for ~1 second on consumer hardware.
-- **Base gas costs:** Final per-envelope pricing depends on measured gas costs for the rewritten contracts on Base. Pricing target: ~$0.39/envelope. On-chain cost per envelope estimated at $0.01–$0.20; re-measure on Sepolia/mainnet canary.
+- **Base gas costs:** Per-signer gas cost estimated at ~$0.05 (PLONK verification on Base). Pricing: $0.29 base (2 signers) + $0.10/extra signer. Re-measure on Sepolia/mainnet canary to confirm.
 - **Smart contract deployment:** `SignatureRegistry` and `EvidenceKeyRegistry` must be deployed on Base mainnet before any production signing. Both contracts are immutable once deployed.
 - **Existing legal templates:** Legal documents drafted from existing Kychee/Eleanor/run402 templates. All `[service]` legal docs require human approval. LEGAL.md must prominently document the Method B wallet gap.
 - **No "kill" language:** All public-facing materials use "alternative to," "replace," "switch from," "better than." Internal docs may use competitive framing.
