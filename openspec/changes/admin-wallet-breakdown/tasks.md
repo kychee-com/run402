@@ -242,3 +242,14 @@ All 89 tasks done. Feature is live at `https://api.run402.com/admin/finance`. Su
   - `curl /admin/project/<id> | grep finance-revenue-card` → exits 0 ✓ (per-project augmentation live)
   - `grep -F "/admin/finance" AGENTS.md` → exits 0 ✓
   - `grep -F "Admin Finance dashboard" CLAUDE.md` → exits 0 ✓
+
+**2026-04-11 — Cost Explorer verified and first real cache pull completed.**
+
+AWS Cost Explorer was enabled on 2026-04-10 in the Billing console. After ~24h data ingest:
+
+- **CLI verification:** `aws ce get-cost-and-usage` returns `ResultsByTime` with real data — $18.15 (Mar 8–Apr 1) and $36.30 (Apr 1–8, estimated).
+- **First production cache pull:** `POST /admin/api/finance/refresh-costs` → `200`, 7 rows upserted, `cost_explorer_call_count: 1`.
+- **Dashboard summary:** cache_status = "fresh", cache_age = 8s. Cost breakdown shows counter-derived categories (Lambda $0.17, SES $0.01, S3 $0.01) and Cost Explorer categories (ECS Fargate, ALB with real values).
+- **E2E tests:** 11/11 pass against production.
+- **Drift:** `drift_warning: false`, `drift_percentage: null` — drift cannot be computed because Cost Explorer doesn't break out the same per-service categories our counters track (expected behavior per spec).
+- **Note:** `directly_attributable_usd_micros` is null in the `/summary` endpoint despite being populated in `/costs` — the summary rollup only reports `shared_infra_usd_micros` from the cost cache, not counter-derived direct cost. This is the designed behavior (summary cost = shared infra only; full cost breakdown lives in `/costs`).
