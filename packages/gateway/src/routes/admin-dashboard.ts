@@ -332,6 +332,67 @@ router.delete("/admin/api/admin-wallets/:address", asyncHandler(async (req: Requ
   res.status(204).end();
 }));
 
+// ---- Admin list APIs (so admin pages work on any domain) ----
+
+router.get("/admin/api/projects", asyncHandler(async (req: Request, res: Response) => {
+  const session = getSession(req);
+  if (!session) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+  const limit = 200;
+  const result = await pool.query(
+    sql(`SELECT id, name, tier, status, wallet_address, created_at FROM internal.projects ORDER BY created_at DESC LIMIT $1`),
+    [limit + 1],
+  );
+  const hasMore = result.rows.length > limit;
+  const rows = hasMore ? result.rows.slice(0, limit) : result.rows;
+  res.json({
+    projects: rows.map((r: Record<string, unknown>) => ({
+      id: r.id, name: r.name, tier: r.tier, status: r.status,
+      wallet_address: r.wallet_address, created_at: r.created_at,
+    })),
+    has_more: hasMore,
+  });
+}));
+
+router.delete("/admin/api/projects/:id", asyncHandler(async (req: Request, res: Response) => {
+  const session = getSession(req);
+  if (!session) { res.status(401).json({ error: "Unauthorized" }); return; }
+  const result = await pool.query(
+    sql(`UPDATE internal.projects SET status = 'archived' WHERE id = $1 AND status = 'active' RETURNING id`),
+    [req.params.id],
+  );
+  if (result.rows.length === 0) { res.status(404).json({ error: "Project not found or already archived" }); return; }
+  res.json({ deleted: true });
+}));
+
+router.get("/admin/api/subdomains", asyncHandler(async (req: Request, res: Response) => {
+  const session = getSession(req);
+  if (!session) { res.status(401).json({ error: "Unauthorized" }); return; }
+  const result = await pool.query(
+    sql(`SELECT name, deployment_id, project_id, created_at, updated_at FROM internal.subdomains ORDER BY created_at DESC`),
+  );
+  res.json({
+    subdomains: result.rows.map((r: Record<string, unknown>) => ({
+      name: r.name,
+      url: `https://${r.name}.run402.com`,
+      project_id: r.project_id,
+      deployment_id: r.deployment_id,
+      created_at: r.created_at,
+    })),
+  });
+}));
+
+router.delete("/admin/api/subdomains/:name", asyncHandler(async (req: Request, res: Response) => {
+  const session = getSession(req);
+  if (!session) { res.status(401).json({ error: "Unauthorized" }); return; }
+  const result = await pool.query(
+    sql(`DELETE FROM internal.subdomains WHERE name = $1 RETURNING name`),
+    [req.params.name],
+  );
+  if (result.rows.length === 0) { res.status(404).json({ error: "Subdomain not found" }); return; }
+  res.json({ deleted: true });
+}));
+
 // ---- Dashboard page ----
 
 router.get("/admin", asyncHandler(async (req: Request, res: Response) => {
@@ -537,7 +598,7 @@ tr:last-child td{border-bottom:none}
   const countEl = document.getElementById("count");
 
   try {
-    const res = await fetch("/" + page + "/v1", { credentials: "same-origin" });
+    const res = await fetch("/admin/api/" + page, { credentials: "same-origin" });
     if (!res.ok) throw new Error("HTTP " + res.status);
     const data = await res.json();
 
@@ -573,14 +634,14 @@ tr:last-child td{border-bottom:none}
 
 async function deleteProject(id) {
   if (!confirm("Delete project " + id + "? This cannot be undone.")) return;
-  var res = await fetch("/projects/v1/" + id, { method: "DELETE", credentials: "same-origin" });
+  var res = await fetch("/admin/api/projects/" + id, { method: "DELETE", credentials: "same-origin" });
   if (res.ok) location.reload();
   else alert("Failed: " + (await res.json()).error);
 }
 
 async function deleteSubdomain(name) {
   if (!confirm("Release subdomain " + name + "?")) return;
-  var res = await fetch("/subdomains/v1/" + name, { method: "DELETE", credentials: "same-origin" });
+  var res = await fetch("/admin/api/subdomains/" + name, { method: "DELETE", credentials: "same-origin" });
   if (res.ok) location.reload();
   else alert("Failed: " + (await res.json()).error);
 }
