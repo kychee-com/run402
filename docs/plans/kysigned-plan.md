@@ -346,6 +346,87 @@ Each item gets a timestamp and a short note when confirmed. The list lives inlin
 - **Why:** PLONK costs ~$0.06-0.07 per signer (gas + compute + email). The old flat rate at 5 signers would yield only ~18% margin with PLONK. Per-signer pricing keeps margins healthy at every tier (41-52%) while being cheaper than the old price for 1-2 signer envelopes.
 - **Examples:** 2 signers = $0.29 (was $0.39). 5 signers = $0.59 (was $0.39). 10 signers = $1.09. Still massively cheaper than DocuSign ($15-45/envelope).
 
+### DD-23: Rust-native PLONK prover (replacing snarkjs), circuit unchanged
+
+> **Supersedes 1R.3's earlier "decide between (a) shrink circuit, (b) Rust tooling, (c) proving service, (d) rethink trust model" framing.** The trust model is settled (see "Settled constraints" below) and the circuit is NOT shrunk as part of this pivot. Only the prover implementation changes.
+
+**Decision:** Switch the PLONK prover from `snarkjs` to a **Rust-native PLONK-BN254 implementation that uses the Perpetual Powers of Tau ceremony** (i.e., loads a Hermez `.ptau` file). The circuit (`circuits/kysigned-approval.circom`, 4.6M r1cs / ~8.27M PLONK constraints) stays **byte-identical**. The on-chain PLONK Solidity verifier stays functionally equivalent (regenerated from the new prover's setup output if necessary, but proving the same relation over the same curve with the same SRS). Gas cost per verification: unchanged. Operational signing cost: unchanged or better (Rust provers are faster than snarkjs at any size).
+
+**Settled constraints (do not relitigate in future sessions):**
+
+1. **Groth16 is permanently off the table.** Not "maybe later," not "if PLONK fails," not "for a simpler variant." Never. Reason: Groth16 requires a per-circuit Phase 2 ceremony. Any ceremony Kychee participates in means asking users to trust Kychee, which defeats the entire value proposition of the product ("trust no one"). This has been discussed and re-confirmed across multiple sessions; do not raise Groth16 again under any framing, including "per-circuit ceremony with transparent public witnesses" or "zk-email's own Phase 2." Settled.
+2. **Moving security-critical checks out of the circuit to an "operator-verified" layer is permanently off the table.** The circuit is the cryptographic trust anchor; weakening it destroys the product. Do not propose this under any framing (including "pre-check layer that also does the real check," "lightweight operator-side verification," etc.). A pre-check layer for **UX only** (e.g., rejecting oversized bodies and asking the signer to retry clean) is allowed IFF the circuit still cryptographically enforces the real constraint on the bytes it sees. Settled.
+3. **Trust anchor must be math or a pre-existing, globally-trusted, universal ceremony** — specifically the Perpetual Powers of Tau (Hermez, 100+ contributors including EF, Vitalik, zcash, major L2 teams). This is the same SRS used by zkSync, Scroll, Polygon zkEVM. No Kychee-run ceremony, no narrow-participant ceremony, no "trust us." PLONK-BN254-over-ppot is the eligible configuration. Halo2 / STARKs / plonky2 are technically acceptable on trust grounds but have other disqualifiers (Halo2+EVM is expensive to verify, plonky2 uses Goldilocks field which is not EVM-friendly). PLONK-BN254 stays. Settled.
+4. **Circuit shrinking is NOT bundled with this pivot.** A "circuit diet" (e.g., `maxBodyLength` 1024→256, `maxHeaderLength` audit, `FromAddrRegex` reduction) remains a legitimate optimization for a future task, but it is **deferred** so that we change only one variable at a time. If and when the circuit is shrunk later, it becomes its own task with its own security review (the `FromAddrRegex` shrink in particular has a sharp edge — the binding `emailCommit = Hash(from_address_bytes, docHash, envelopeId)` must be preserved, and an attacker who could break that binding could forge sender identity — so that shrink needs adversarial TDD). None of this is relevant to 1R.3. Do not conflate.
+
+**Root cause of snarkjs failure (reference, do not re-investigate):** snarkjs is a JavaScript (Node/V8) implementation. Its PLONK setup computes polynomial evaluations on an extended domain of size ~8×N where N is the PLONK constraint count. For N=8.27M, this means ~66M BN254 field elements (32 bytes each) per polynomial, times ~10 concurrent polynomials, plus FFT scratch. This is ~20–40 GB of live typed-array allocation. V8 has **per-space heap limits** (semi-space, large-object-space) that are **not controllable via `--max-old-space-size`**. All documented attempts to raise these limits fail on circuits of this size. This is a tooling limitation, not a fundamental limitation of PLONK; native-code provers (Rust/Go/C++) do not have this ceiling because they manage their own allocators. EC2 attempts on 2026-04-11 (c5.4xlarge OOM at 30GB, r5.4xlarge spot terminated, r5.4xlarge on-demand 124GB RAM failed at V8 internal limits with zkey at 7.1GB) confirmed this — **hardware is not the bottleneck; snarkjs is**. Do not retry snarkjs on bigger hardware.
+
+**Tool selection (Rust-first, prioritized fallback list):**
+
+| Priority | Tool | Language | Trust model | Notes |
+|---|---|---|---|---|
+| 1 (primary) | `ark-circom` + `jellyfish` (Espresso Systems PLONK) | Rust (arkworks) | PLONK-BN254 + ppot ✓ | `ark-circom` loads the existing `.circom` circuit unchanged into arkworks R1CS; jellyfish is a production-grade PLONK-BN254 backend used by Espresso rollup. No circuit rewrite needed. Best primary candidate. |
+| 2 (fallback) | `ark-circom` + `dusk-plonk` (Dusk Network PLONK) | Rust | PLONK-BN254 + ppot ✓ | Alternate arkworks-compatible PLONK backend. Well-maintained by Dusk. Same circuit. Use if jellyfish integration hits snags. |
+| 3 (fallback) | `gnark` (ConsenSys) | Go (NOT Rust) | PLONK-BN254 + ppot ✓ | Production-grade, battle-tested on Linea mainnet with circuits far larger than ours. Flagged as "not Rust" per user preference, but listed as the last-resort "known to work at scale" option if both Rust options hit issues. |
+| OFF | `halo2` | Rust | No trusted setup (Pasta curves) | Different proof system, different curve; expensive EVM verification. Do not attempt. |
+| OFF | `plonky2` / `plonky3` | Rust | No trusted setup (Goldilocks) | Not EVM-friendly. Do not attempt. |
+| OFF | `rapidsnark` | C++ | Groth16 only | Cannot be used — Groth16 is off the table. |
+| OFF | Sindri / Succinct / proving services | cloud | Various | Introduces a liveness dependency on an external service. Acceptable as a ship-path fallback later, but not for 1R.3 — we want to own the prover. |
+
+**Strategy:**
+1. Start with priority 1 (`ark-circom` + `jellyfish`).
+2. Spend meaningful effort — the user explicitly said "extensively" — before falling back. This means actually debugging linker/dep/setup issues rather than bailing at the first friction.
+3. If priority 1 is fundamentally blocked (e.g., jellyfish doesn't integrate cleanly with `ark-circom`'s R1CS → PLONK conversion), try priority 2.
+4. If both Rust options are blocked, document the blockers explicitly and escalate to the user before falling back to gnark.
+5. **Circuit stays byte-identical during Phase A (working 8M proof).** Circuit shrinking is Phase B, a separate task with its own TDD and audit.
+
+**Four-phase sequencing inside 1R.3 (user-directed, 2026-04-11):**
+
+The user explicitly chose "prove working first, optimize second." Phases MUST be done in order. Each phase produces a concrete artifact and must pass its own verification before the next phase starts.
+
+- **Phase A — Working 8M Rust prover (priority 1):** Get a real end-to-end PLONK proof out of the current circuit (`kysigned-approval.circom`, ~8.27M PLONK constraints, byte-identical) using a Rust-native prover, verify the proof in a local script, and check the Solidity verifier bytecode compiles. Infrastructure for this phase is an EC2 instance — we're just proving the tooling works, not deciding where it lives in production. Exit criterion: one valid proof, verified both locally and (optionally) via a manual call to a freshly-deployed mock verifier contract on a local Anvil node. Cleanup the EC2 afterward.
+- **Phase B — Measure + shrink + 2M Rust prover:** First measure real-world DKIM header and body byte-length distributions across major providers (Gmail, Outlook/O365, Apple iCloud, corporate Exchange, at least 20 samples). Only commit to 256-byte body and 512-byte header ceilings if the measured 95th percentile supports them; otherwise pick liveable ceilings and accept the partial savings. Then execute the circuit diet (shrink `maxBodyLength`, `maxHeaderLength`, replace `FromAddrRegex` with byte-extract-and-commit preserving the `emailCommit = Hash(from_bytes, docHash, envelopeId)` binding, canonical byte-match `Subject`, kill dead gates). Adversarial TDD for the From binding is mandatory: explicit tests for "operator lies about From → circuit rejects," "mismatched emailCommit → circuit rejects," "truncated From bytes → circuit rejects." Re-prove on the shrunk circuit using the same Rust prover from Phase A. Exit criterion: ~2M constraint target hit (or best achievable given measurements), valid proof verified.
+- **Phase C — Prove BOTH infra deploy paths work:** With Phase A and B both producing valid proofs on their respective circuits, validate that each circuit size actually deploys on the infra class it needs:
+  - **C1 — 8M on external prover:** deploy the Phase A prover as a containerized service (Fargate task or equivalent), make it callable via HTTP from a simulated kysigned-service handler, generate a proof round-trip end-to-end, measure latency + memory + cost.
+  - **C2 — 2M on raw AWS Lambda (non-run402, 10 GB / 15 min):** deploy the Phase B prover as a plain AWS Lambda function (NOT through run402's tier-capped wrapper — a raw Lambda in the Kychee account), invoke it from an HTTP handler, generate a proof round-trip end-to-end, measure cold-start, warm latency, memory, cost per invocation.
+  - Both C1 and C2 must produce a valid proof in a production-like deployment, not just on the dev EC2. Failure of either blocks Phase D.
+- **Phase D — Operational deployment decision (human + data):** Present the Phase C measurements to the user in a short comparison table (cost/proof, cold-start, p50/p95 latency, infra complexity, blast radius). The user picks the operational deployment model (C1, C2, or a hybrid). Document the choice as a new Design Decision, update Phase 4B (service deploy) accordingly, close 1R.3.
+
+**Guiding principle (user-stated 2026-04-11):** "I want to have something working in any case before optimizing." Every phase produces a working artifact. Phase A is not a throwaway — the 8M prover stays alive on EC2 long enough for Phase C1 to validate its external deploy. Phase B is a real second prover, not a patch to Phase A. Phase C actually deploys both; we do NOT decide deployment on paper numbers.
+
+**AWS infrastructure (same pattern as 1R.3's snarkjs attempts, with lessons-learned):**
+- **Profile:** `kychee`, region `us-east-1` (per global AGENTS.md).
+- **Instance:** r5.4xlarge spot with on-demand fallback (128 GB RAM, 16 vCPU). Justification: ppot setup for this circuit needs headroom even for Rust tools; RAM is cheaper than debugging premature OOM.
+- **EBS:** 200 GB gp3 (enough for ppot file ~2 GB + zkey ~8 GB + scratch).
+- **AMI:** latest Ubuntu 24.04 LTS.
+- **Provisioning:** boot, install Rust toolchain (`rustup`), clone circuits, fetch the ppot file (cached on S3 if already downloaded from prior 1R.3 attempts — check first), build, run setup, run prove, verify proof locally, copy artifacts back to S3.
+- **Spend cap:** hard cap at **$20** for this investigation. Track via billing dashboard + set a 2h wall-clock timeout per attempt. If anything looks runaway, kill it.
+- **Cleanup (MANDATORY, not optional):**
+  1. Terminate the EC2 instance explicitly (`aws ec2 terminate-instances`).
+  2. Delete the EBS volume if it didn't delete with the instance (`aws ec2 delete-volume`).
+  3. Delete any temporary security groups / key pairs created for the attempt.
+  4. Leave in S3 only the final artifacts: `kysigned-approval.zkey`, `verification_key.json`, `verifier.sol` (or equivalent) — delete all intermediate files and scratch.
+  5. Confirm cleanup with `aws ec2 describe-instances --filters Name=tag:Purpose,Values=kysigned-1R3 --query 'Reservations[].Instances[].[InstanceId,State.Name]'` — should return empty or all `terminated`.
+  6. Log the spend and cleanup confirmation in the plan Implementation Log.
+
+**Expected artifacts on success:**
+- A working PLONK zkey for `kysigned-approval.circom` over Hermez ppot
+- A Solidity verifier contract compatible with the existing `SignatureRegistry.sol` constructor interface (or with a minor constructor update if the ABI differs)
+- A reproducible Rust build script (committed to `circuits/prover/` or similar) so future rebuilds don't need to rediscover the setup
+- Documented proving time + memory footprint for the working configuration
+
+**Expected artifacts on failure of all Rust options:**
+- A written post-mortem in this plan's Implementation Log enumerating: tool, version, error, debugging steps attempted, root cause (if identified)
+- A recommendation to either escalate to gnark (priority 3) or reopen the discussion with the user
+
+**Why this is safe to start without further user decisions:**
+- Trust model: unchanged (PLONK-BN254-ppot)
+- Circuit: unchanged (byte-identical)
+- On-chain verifier: functionally unchanged (same verification, same gas, same proof shape)
+- Only variable: the prover binary
+- If it works: 1R.3 unblocks, 1R.4/1R.5 cascade unblock, Phase 2R proceeds normally
+- If it fails: we've learned something concrete, costs are capped at $20 + time
+
 ### Phase 0: Foundation `AI`
 
 - [x] Create private GitHub repo `kychee-com/kysigned` [infra]
@@ -399,7 +480,57 @@ Each item gets a timestamp and a short note when confirmed. The list lives inlin
 
 - [x] **1R.1** Rewrite `SignatureRegistry.sol` — full reply-to-sign support. Constructor takes `(verifierAddress, evidenceKeyRegistryAddress)`. New `recordReplyToSignSignature` verifies Groth16 proof via `IGroth16Verifier`, validates evidence key registered, enforces nullifier uniqueness (replay protection), emits `ReplyToSignRecorded` event. New `getReplyToSignRecords(searchKey)` view. Wallet signing (Method B) and completion unchanged. Old `recordEmailSignature` (Method A) removed, `getSignatures` replaced by `getWalletSignatures`. `IGroth16Verifier.sol` interface + `MockGroth16Verifier.sol` for testing. 20/20 contract tests (6 reply-to-sign V2 + 6 wallet/completion/immutability + 8 EvidenceKeyRegistry). 197/197 unit tests. [code] `AI`
 - [x] **1R.2** `recordEmailSignature` removed — the 1R.1 rewrite replaced the entire contract. Old Method A storage struct, event, and function are gone. `getSignatures` replaced by `getWalletSignatures`. Old test file updated to remove Method A tests (was 9, now 6 — Method B + completion + immutability + EIP-712). [code] `AI`
-- [!] **1R.3** Deploy the on-chain PLONK verifier contract to Base Sepolia — **BLOCKED on architectural decision.** 2026-04-11: `KysignedApproval.circom` written + compiled (circuits/kysigned-approval.circom, 4.6M r1cs constraints = 8.27M PLONK constraints). Attempted `snarkjs plonk setup` on EC2 (c5.4xlarge OOM at 30GB, r5.4xlarge spot terminated, r5.4xlarge on-demand with 124GB RAM + 120GB heap allocation). **All attempts failed at V8 internal heap limits** ("FATAL ERROR: Scavenger: semi-space copy Allocation failed" after 58 minutes, zkey reached 7.1 GB before crash). Root cause: snarkjs is not designed for PLONK circuits this large — V8 has internal per-space limits that cannot be bypassed via `--max-old-space-size`. Hardware is NOT the bottleneck; the software tooling is. **Next session must decide:** (a) shrink the circuit (drop maxBodyLength 1024→256, drop FromAddrRegex, move body "I APPROVE" check to operator pre-check, target <3M r1cs), (b) switch to Rust-based tooling (ark-circom, rapidsnark), (c) use a proving service (Sindri, Succinct), or (d) rethink trust model and accept operator-verified body content. AWS spend ~$1-2, instance terminated, resources cleaned up. [infra] `AI`
+- [!] **1R.3** **PAUSED 2026-04-11 — work moved to the `run402-zkprover` mini-product.** This task cannot complete until Kychee has a proven, working zk-proof system that can be hosted on run402 and made available to forkers as a run402 platform service. Rather than continue to guess prover tooling inside the kysigned plan, the entire proving stack is being re-scoped as its own product with its own `/brainstorm → /spec → /plan → /implement` cycle at `docs/products/run402-zkprover/` (or equivalent path chosen by the brainstorm session). Multiple prover implementations will be built and measured in that mini-product's `/implement` phase before any is adopted by kysigned. Once `run402-zkprover` has a shipped service, this task resumes as: "deploy the chosen zk-proof system, record a proof on Base Sepolia, verify end-to-end." History preserved below for archaeology. [infra] `AI`
+  - **History (do not re-investigate — see DD-23 and the run402-zkprover mini-product for the current line of work):**
+    - Phase 1: snarkjs PLONK setup on EC2 failed on the 8M-constraint `kysigned-approval.circom` at V8 internal per-space heap limits (c5.4xlarge OOM at 30 GB, r5.4xlarge spot terminated, r5.4xlarge on-demand with 124 GB RAM failed at `"Scavenger: semi-space copy Allocation failed"` after 58 min, zkey reached 7.1 GB). `--max-semi-space-size` was NOT set during those attempts; it is plausible but not verified that correct V8 flags would have let setup complete.
+    - Phase 2: proposed pivot to Rust-native PLONK prover (ark-circom + jellyfish, fallback ark-circom + dusk-plonk). Pre-flight research (2026-04-11) established that **no working Rust pipeline exists for `circom R1CS + Hermez ppot → PLONK-BN254 proof + snarkjs-compatible Solidity verifier`**: ark-circom exposes only a Groth16 path; jellyfish and ZK-Garage PLONK have their own gate APIs with no circom R1CS bridge; fluidex/plonkit uses matter-labs bellman_ce PLONK which is NOT ppot-compatible and produces a different verifier; gnark does not load circom R1CS (would require rewriting the circuit in Go DSL). Phase A EC2 was provisioned and immediately terminated before any work was done. Total AWS cost for this history: ~$2 across all attempts.
+    - Phase 3 (user direction, 2026-04-11): pause 1R.3, treat the zk proof system as a separate mini-product, brainstorm/spec/plan/implement it with multiple actually-built-and-measured prover variants, then come back to 1R.3 once a working proof system exists.
+  - **When 1R.3 resumes (post-`run402-zkprover` delivery):**
+    - [ ] Confirm the `run402-zkprover` mini-product has a working proof system with a deployed example.
+    - [ ] Size/shrink `kysigned-approval.circom` to fit the chosen prover's budget (if needed — measured not guessed).
+    - [ ] Deploy the chosen verifier contract to Base Sepolia (replaces the original "deploy PLONK verifier" goal of 1R.3).
+    - [ ] Generate a real reply-to-sign proof using the chosen prover.
+    - [ ] Verify the proof locally AND on-chain via the deployed verifier.
+    - [ ] Update kysigned spec to import the `run402-zkprover` spec's proving-system choice.
+  - **Phase A: Working 8M Rust prover**
+    - [ ] Provision fresh EC2 r5.4xlarge (tag: `Purpose=kysigned-1R3-phaseA`)
+    - [ ] Install Rust toolchain, clone `kysigned-approval.circom` (byte-identical, NO edits this phase)
+    - [ ] Fetch Hermez ppot file fresh (no S3 cache survives from prior attempt)
+    - [ ] Priority 1: `ark-circom` + `jellyfish` — setup → prove → verify locally
+    - [ ] If priority 1 blocked: priority 2: `ark-circom` + `dusk-plonk`
+    - [ ] If both blocked: document blockers, escalate to user (do NOT silently try gnark)
+    - [ ] Verify the proof via a local Anvil node running a freshly-deployed mock Groth16-shaped verifier stub OR the real PLONK Solidity verifier if the tool emits one
+    - [ ] Record actual proving time, actual peak memory, actual setup time
+    - [ ] Commit reproducible build script to `circuits/prover/` in the kysigned public repo
+    - [ ] Copy `zkey`, `vk.json`, `verifier.sol` to S3 artifact bucket
+    - [ ] Log Phase A results + spend in Implementation Log
+    - [ ] Tear down EC2 (mandatory cleanup per DD-23), OR keep alive if Phase C1 starts immediately (document decision)
+  - **Phase B: Measure + shrink + 2M Rust prover**
+    - [ ] Measure real-world DKIM header + body byte lengths across providers (target: 20+ samples across Gmail, Outlook/O365, Apple iCloud, corporate Exchange). Record p50/p95/max for both.
+    - [ ] Commit to circuit ceilings based on measured p95 (target: body 256, header 512; fall back to larger if measurements don't support)
+    - [ ] **TDD (adversarial):** before touching the circuit, write failing tests:
+      - [ ] "operator supplies wrong emailCommit for real From bytes → circuit rejects"
+      - [ ] "operator supplies correct emailCommit but lies about which bytes were in From → circuit rejects"
+      - [ ] "body exceeds chosen ceiling → circuit rejects (via operator pre-check)"
+      - [ ] "valid reply passes with correct emailCommit bound to actual From bytes"
+    - [ ] Shrink the circuit per DD-23 plan (maxBodyLength, maxHeaderLength, FromAddrRegex → byte-extract-and-commit, canonical Subject byte-match, dead-gate pruning)
+    - [ ] Recompile, verify all adversarial tests pass
+    - [ ] Re-run Rust prover (from Phase A) on shrunk circuit → setup → prove → verify
+    - [ ] Record shrunk constraint count, actual proving time, actual peak memory
+    - [ ] Commit the shrunk circuit variant alongside the original (do NOT delete the 8M version yet — Phase C1 still needs it)
+    - [ ] Log Phase B results in Implementation Log
+  - **Phase C: Prove BOTH deploy paths**
+    - [ ] **C1 (8M, external prover):** package the Phase A prover as a container, deploy as a Fargate task (or equivalent), expose HTTP endpoint, invoke from a dummy handler, generate a proof round-trip, measure: cold-start, p50/p95 latency, peak memory, cost per invocation
+    - [ ] **C2 (2M, raw AWS Lambda):** package the Phase B prover as a raw AWS Lambda (NOT through run402's tier-capped functions; a plain Lambda in the Kychee account with 10 GB / 15 min config), deploy, invoke from a dummy handler, generate a proof round-trip, measure: cold-start, p50/p95 latency, peak memory, cost per invocation
+    - [ ] Compile both measurement sets into a comparison table for Phase D
+    - [ ] Tear down C1 Fargate infra (keep Lambda since it's free at rest) OR document why kept
+    - [ ] Log Phase C results in Implementation Log
+  - **Phase D: Decide operational deployment model (human-in-the-loop)**
+    - [ ] Present comparison table + recommendation to user
+    - [ ] User picks: (a) 8M external prover, (b) 2M raw-Lambda, (c) hybrid
+    - [ ] Document choice as new DD (DD-24 or later)
+    - [ ] Update Phase 4B (service deploy) tasks to reflect the chosen prover model
+    - [ ] Mark 1R.3 done, unblock 1R.4 and 1R.5
 - [!] **1R.4** Deploy updated `SignatureRegistry.sol` and `EvidenceKeyRegistry.sol` to Base Sepolia — WAITING FOR: 1R.3 (real verifier contract). `EvidenceKeyRegistry` can deploy independently; `SignatureRegistry` constructor requires the verifier address. Deploy script at `scripts/deploy.cjs` needs updating for new constructor args. [infra] `AI`
 - [!] **1R.5** Measure gas costs per operation on Sepolia — WAITING FOR: 1R.4 (deployed contracts). Can measure locally via Hardhat gas reporter as a preliminary estimate. [infra] `AI`
 - [x] **1R.6** `docs/contract-abi.md` rewritten — both contracts documented: `SignatureRegistry` (recordReplyToSignSignature with Groth16 verification + replay nullifier + evidence key cross-validation, recordWalletSignature Method B, recordCompletion, getReplyToSignRecords, getWalletSignatures, verifyWalletSignature, isNullifierUsed) and `EvidenceKeyRegistry` (registerEvidenceKey, getEvidenceKey, isKeyRegistered). Independent verification algorithm updated for reply-to-sign flow (searchKey → query → evidence key lookup → zk proof). Gas estimates included. [code] `AI`
