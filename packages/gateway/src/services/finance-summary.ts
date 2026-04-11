@@ -21,6 +21,7 @@ import {
 export interface FinanceSummaryDeps {
   getPlatformRevenue: (range: WindowRange) => Promise<PlatformRevenueResult>;
   getPlatformCostFromCache: (range: WindowRange) => Promise<PlatformCostResult>;
+  getDirectCostTotal: (range: WindowRange) => Promise<number>;
   now: Date;
 }
 
@@ -44,27 +45,31 @@ export async function getFinanceSummary(
 ): Promise<FinanceSummaryResult> {
   const range = windowToInterval(window, deps.now);
 
-  const [revenue, cost] = await Promise.all([
+  const [revenue, cost, directCostTotal] = await Promise.all([
     deps.getPlatformRevenue(range),
     deps.getPlatformCostFromCache(range),
+    deps.getDirectCostTotal(range),
   ]);
 
-  const margin =
-    cost.total_usd_micros === null
-      ? null
-      : revenue.total_usd_micros - cost.total_usd_micros;
+  const sharedInfra = cost.total_usd_micros;
+  // Total cost = counter-derived direct cost + Cost Explorer shared infra.
+  // If CE cache is empty, we still show counter-derived cost alone (better
+  // than showing nothing when we have real usage data).
+  const totalCost = sharedInfra === null
+    ? (directCostTotal > 0 ? directCostTotal : null)
+    : directCostTotal + sharedInfra;
+  const margin = totalCost === null
+    ? null
+    : revenue.total_usd_micros - totalCost;
 
   return {
     window,
     revenue_usd_micros: revenue.total_usd_micros,
-    cost_usd_micros: cost.total_usd_micros,
+    cost_usd_micros: totalCost,
     margin_usd_micros: margin,
     cost_source: {
-      // MVP: we don't split directly-attributable vs shared here.
-      // The cost breakdown endpoint (Phase 7) does that split.
-      // For the summary card, "shared_infra" = the Cost Explorer total.
-      directly_attributable_usd_micros: null,
-      shared_infra_usd_micros: cost.total_usd_micros,
+      directly_attributable_usd_micros: directCostTotal > 0 ? directCostTotal : null,
+      shared_infra_usd_micros: sharedInfra,
       cache_age_seconds: cost.cache_age_seconds,
       cache_status: cost.cache_status,
     },

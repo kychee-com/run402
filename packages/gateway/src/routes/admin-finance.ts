@@ -401,6 +401,12 @@ async function buildProductionDeps(): Promise<FinanceRouteDeps> {
         getPlatformRevenue: (range) => realGetPlatformRevenue(defaultFinanceQuery, range),
         getPlatformCostFromCache: (range) =>
           realGetPlatformCostFromCache(defaultFinanceQuery, range, new Date()),
+        getDirectCostTotal: async (range) => {
+          const rates = await getAllCostRates();
+          const bundle = toCostRatesBundle(rates);
+          const perProject = await realGetDirectCostByProject(defaultFinanceQuery, range, bundle);
+          return perProject.reduce((s, p) => s + p.total_usd_micros, 0);
+        },
         now: new Date(),
       });
     },
