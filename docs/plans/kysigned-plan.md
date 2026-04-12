@@ -1074,6 +1074,85 @@ _None yet_
 
 ---
 
+## Infrastructure State
+
+> **This section is the authoritative record of deployed infrastructure, tool versions, and operational context that `/implement` sessions need to continue work.** Updated after each deployment or environment change. The next `/implement` session reads this FIRST before starting any task.
+
+### Deployed Contracts (Base Sepolia — chainId 84532)
+
+| Contract | Address | Deploy Date | Notes |
+|---|---|---|---|
+| **RiscZeroGroth16Verifier** (v1.2.x) | `0x70f3b51e063A5cC09C1702daF7d87e7F50C9947B` | 2026-04-12 | Our deployment of risc0-ethereum v1.2.0 verifier. Control root: `0x8cdad924...`, BN254 control ID: `0x04446e66...`. NOT the pre-deployed router (which is v3.x only). |
+| **EvidenceKeyRegistry** | `0xe4Bc972627178C105308BE4F2F367Fc1e2EAD3fB` | 2026-04-12 | Permissionless append-only DKIM key archive. |
+| **SignatureRegistry** | `0xBfa7412608B69c883C2Bb0E800C850B337D6a97E` | 2026-04-12 | Constructor args: `(verifier=0x70f3b51e..., ekr=0xe4Bc..., imageId=0x3f4e3b3b...)`. EIP-712 domain separator bound to chainId 84532. |
+
+### RISC Zero Proof System
+
+| Property | Value |
+|---|---|
+| Proof system | RISC Zero zkVM v1.2.6 (STARK inner + Groth16 wrapper) |
+| Guest program | `zkprover-candidates/D-risc0/vendor/r0-zkEmail/` |
+| Image ID | `0x3f4e3b3b87f6d8a72447825b1fa2d9e5121a7ec364f55b5167e9968d4375226e` |
+| Seal encoding | `risc0-ethereum-contracts` v1.2.0 `encode_seal()` — 260 bytes |
+| Groth16 wrapping | Local Docker on x86_64 Linux (no Bonsai API needed) |
+| Proving time | ~5 min (STARK + Groth16 wrap), 8.4 GB peak RAM |
+| On-chain verify gas | 268,020 gas (standalone), 431,580 gas (inside `recordReplyToSignSignature`) |
+
+### Measured Gas Costs (Base Sepolia, real transactions)
+
+| Operation | Gas | Approx $ on Base | Tx Hash |
+|---|---|---|---|
+| `registerEvidenceKey` | 321,537 | ~$0.03 | `0xd1f4814e...` |
+| `recordReplyToSignSignature` | 431,580 | ~$0.04 | `0xa105aeb1dc5f1c97cde347f0473d9f499fbde1e6bb48d7866617af6a26df78bc` |
+| Standalone `verify` (view) | 268,020 | free | N/A (eth_call) |
+| **Per 2-signer envelope** | **~1,184k** | **~$0.11** | |
+
+### AWS Secrets (used by deploy/prove scripts)
+
+| Secret | Purpose |
+|---|---|
+| `agentdb/faucet-treasury-key` | Shared platform wallet for all on-chain ops. Address: `0x1D93e3bDb66541Da5182a430A857b371Bc1DE17E`. |
+| `run402/base-sepolia-rpc-url` | Base Sepolia RPC (`https://sepolia.base.org`). |
+| `kysigned/ops-wallet-address` | Alternate ops wallet `0x8D67...` — currently 0 ETH, NOT used by this plan. |
+
+### Tools Installed Locally
+
+| Tool | Version | Path |
+|---|---|---|
+| Foundry (forge/cast/anvil) | 1.5.1-stable | `/c/Users/volin/.foundry/bin/` |
+| Node.js | 20.20.2 | system |
+| dkimpy | 1.1.8 | `/c/venv/kychee/` |
+
+### Test Baseline
+
+| Suite | Count | Command |
+|---|---|---|
+| Unit tests | 183 | `npm run test` |
+| Contract tests | 22 | `npm run test:contract` |
+| **Full suite** | **205** | **`npm run test:all`** |
+| CI | GitHub Actions on push to main + PRs | `.github/workflows/test.yml` |
+
+### cfdkim Review Findings (must be implemented in 2R.7)
+
+| # | Severity | Finding | Mitigation task |
+|---|---|---|---|
+| 1 | CRITICAL | `l=` body length tag is honored — attacker can append unsigned content | 2R.7(b): reject if DKIM `l=` tag present |
+| 2 | HIGH | No duplicate `From:` header rejection | 2R.7(c): reject duplicate critical headers |
+| 3 | MEDIUM | `unwrap()` in hash.rs:129 | Low risk — `b` tag is in REQUIRED_TAGS |
+| 4 | LOW | `rsa-sha1` still accepted | Reject `a=rsa-sha1` in pre-check |
+
+### Proof Artifacts (from the test email e2e)
+
+| Artifact | Value |
+|---|---|
+| Test email | `zkprover-candidates/shared/test-input.eml` (Gmail, `volinskey@gmail.com` → `barry@kychee.com`) |
+| Seal (Groth16) | `0xc101b42b1623e6a0666a680f87e1698d9a754db5deea8f86feb111974aa11c2e...` (260 bytes) |
+| Journal digest | `0xca265c6564fc83418c726d449e0ae6e845edfc3ce87d1ea94f4880c85d42fc2d` |
+| Recording tx | `0xa105aeb1dc5f1c97cde347f0473d9f499fbde1e6bb48d7866617af6a26df78bc` |
+| Block | 40,125,234 (Base Sepolia, 2026-04-12T18:32:33Z) |
+
+---
+
 ## Log
 
 - 2026-04-04: Plan created from spec v0.1.0 + saas-factory spec v1.3.0
