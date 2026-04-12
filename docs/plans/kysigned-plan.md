@@ -4,7 +4,7 @@
 **Created:** 2026-04-04
 **Status:** In Progress
 **Spec:** docs/products/kysigned/kysigned-spec.md
-**Spec-Version:** 0.9.3
+**Spec-Version:** 0.10.0
 **Upstream References:** docs/products/saas-factory/saas-factory-spec.md (v1.15.0)
 **Source:** spec
 **Worktree:** none — product code lives in separate repos (C:\Workspace-Kychee\kysigned and C:\Workspace-Kychee\kysigned-service). run402 platform enhancements use a run402 worktree on a feature branch.
@@ -480,57 +480,16 @@ The user explicitly chose "prove working first, optimize second." Phases MUST be
 
 - [x] **1R.1** Rewrite `SignatureRegistry.sol` — full reply-to-sign support. Constructor takes `(verifierAddress, evidenceKeyRegistryAddress)`. New `recordReplyToSignSignature` verifies Groth16 proof via `IGroth16Verifier`, validates evidence key registered, enforces nullifier uniqueness (replay protection), emits `ReplyToSignRecorded` event. New `getReplyToSignRecords(searchKey)` view. Wallet signing (Method B) and completion unchanged. Old `recordEmailSignature` (Method A) removed, `getSignatures` replaced by `getWalletSignatures`. `IGroth16Verifier.sol` interface + `MockGroth16Verifier.sol` for testing. 20/20 contract tests (6 reply-to-sign V2 + 6 wallet/completion/immutability + 8 EvidenceKeyRegistry). 197/197 unit tests. [code] `AI`
 - [x] **1R.2** `recordEmailSignature` removed — the 1R.1 rewrite replaced the entire contract. Old Method A storage struct, event, and function are gone. `getSignatures` replaced by `getWalletSignatures`. Old test file updated to remove Method A tests (was 9, now 6 — Method B + completion + immutability + EIP-712). [code] `AI`
-- [!] **1R.3** **PAUSED 2026-04-11 — work moved to the `run402-zkprover` mini-product.** This task cannot complete until Kychee has a proven, working zk-proof system that can be hosted on run402 and made available to forkers as a run402 platform service. Rather than continue to guess prover tooling inside the kysigned plan, the entire proving stack is being re-scoped as its own product with its own `/brainstorm → /spec → /plan → /implement` cycle at `docs/products/run402-zkprover/` (or equivalent path chosen by the brainstorm session). Multiple prover implementations will be built and measured in that mini-product's `/implement` phase before any is adopted by kysigned. Once `run402-zkprover` has a shipped service, this task resumes as: "deploy the chosen zk-proof system, record a proof on Base Sepolia, verify end-to-end." History preserved below for archaeology. [infra] `AI`
-  - **History (do not re-investigate — see DD-23 and the run402-zkprover mini-product for the current line of work):**
-    - Phase 1: snarkjs PLONK setup on EC2 failed on the 8M-constraint `kysigned-approval.circom` at V8 internal per-space heap limits (c5.4xlarge OOM at 30 GB, r5.4xlarge spot terminated, r5.4xlarge on-demand with 124 GB RAM failed at `"Scavenger: semi-space copy Allocation failed"` after 58 min, zkey reached 7.1 GB). `--max-semi-space-size` was NOT set during those attempts; it is plausible but not verified that correct V8 flags would have let setup complete.
-    - Phase 2: proposed pivot to Rust-native PLONK prover (ark-circom + jellyfish, fallback ark-circom + dusk-plonk). Pre-flight research (2026-04-11) established that **no working Rust pipeline exists for `circom R1CS + Hermez ppot → PLONK-BN254 proof + snarkjs-compatible Solidity verifier`**: ark-circom exposes only a Groth16 path; jellyfish and ZK-Garage PLONK have their own gate APIs with no circom R1CS bridge; fluidex/plonkit uses matter-labs bellman_ce PLONK which is NOT ppot-compatible and produces a different verifier; gnark does not load circom R1CS (would require rewriting the circuit in Go DSL). Phase A EC2 was provisioned and immediately terminated before any work was done. Total AWS cost for this history: ~$2 across all attempts.
-    - Phase 3 (user direction, 2026-04-11): pause 1R.3, treat the zk proof system as a separate mini-product, brainstorm/spec/plan/implement it with multiple actually-built-and-measured prover variants, then come back to 1R.3 once a working proof system exists.
-  - **When 1R.3 resumes (post-`run402-zkprover` delivery):**
-    - [ ] Confirm the `run402-zkprover` mini-product has a working proof system with a deployed example.
-    - [ ] Size/shrink `kysigned-approval.circom` to fit the chosen prover's budget (if needed — measured not guessed).
-    - [ ] Deploy the chosen verifier contract to Base Sepolia (replaces the original "deploy PLONK verifier" goal of 1R.3).
-    - [ ] Generate a real reply-to-sign proof using the chosen prover.
-    - [ ] Verify the proof locally AND on-chain via the deployed verifier.
-    - [ ] Update kysigned spec to import the `run402-zkprover` spec's proving-system choice.
-  - **Phase A: Working 8M Rust prover**
-    - [ ] Provision fresh EC2 r5.4xlarge (tag: `Purpose=kysigned-1R3-phaseA`)
-    - [ ] Install Rust toolchain, clone `kysigned-approval.circom` (byte-identical, NO edits this phase)
-    - [ ] Fetch Hermez ppot file fresh (no S3 cache survives from prior attempt)
-    - [ ] Priority 1: `ark-circom` + `jellyfish` — setup → prove → verify locally
-    - [ ] If priority 1 blocked: priority 2: `ark-circom` + `dusk-plonk`
-    - [ ] If both blocked: document blockers, escalate to user (do NOT silently try gnark)
-    - [ ] Verify the proof via a local Anvil node running a freshly-deployed mock Groth16-shaped verifier stub OR the real PLONK Solidity verifier if the tool emits one
-    - [ ] Record actual proving time, actual peak memory, actual setup time
-    - [ ] Commit reproducible build script to `circuits/prover/` in the kysigned public repo
-    - [ ] Copy `zkey`, `vk.json`, `verifier.sol` to S3 artifact bucket
-    - [ ] Log Phase A results + spend in Implementation Log
-    - [ ] Tear down EC2 (mandatory cleanup per DD-23), OR keep alive if Phase C1 starts immediately (document decision)
-  - **Phase B: Measure + shrink + 2M Rust prover**
-    - [ ] Measure real-world DKIM header + body byte lengths across providers (target: 20+ samples across Gmail, Outlook/O365, Apple iCloud, corporate Exchange). Record p50/p95/max for both.
-    - [ ] Commit to circuit ceilings based on measured p95 (target: body 256, header 512; fall back to larger if measurements don't support)
-    - [ ] **TDD (adversarial):** before touching the circuit, write failing tests:
-      - [ ] "operator supplies wrong emailCommit for real From bytes → circuit rejects"
-      - [ ] "operator supplies correct emailCommit but lies about which bytes were in From → circuit rejects"
-      - [ ] "body exceeds chosen ceiling → circuit rejects (via operator pre-check)"
-      - [ ] "valid reply passes with correct emailCommit bound to actual From bytes"
-    - [ ] Shrink the circuit per DD-23 plan (maxBodyLength, maxHeaderLength, FromAddrRegex → byte-extract-and-commit, canonical Subject byte-match, dead-gate pruning)
-    - [ ] Recompile, verify all adversarial tests pass
-    - [ ] Re-run Rust prover (from Phase A) on shrunk circuit → setup → prove → verify
-    - [ ] Record shrunk constraint count, actual proving time, actual peak memory
-    - [ ] Commit the shrunk circuit variant alongside the original (do NOT delete the 8M version yet — Phase C1 still needs it)
-    - [ ] Log Phase B results in Implementation Log
-  - **Phase C: Prove BOTH deploy paths**
-    - [ ] **C1 (8M, external prover):** package the Phase A prover as a container, deploy as a Fargate task (or equivalent), expose HTTP endpoint, invoke from a dummy handler, generate a proof round-trip, measure: cold-start, p50/p95 latency, peak memory, cost per invocation
-    - [ ] **C2 (2M, raw AWS Lambda):** package the Phase B prover as a raw AWS Lambda (NOT through run402's tier-capped functions; a plain Lambda in the Kychee account with 10 GB / 15 min config), deploy, invoke from a dummy handler, generate a proof round-trip, measure: cold-start, p50/p95 latency, peak memory, cost per invocation
-    - [ ] Compile both measurement sets into a comparison table for Phase D
-    - [ ] Tear down C1 Fargate infra (keep Lambda since it's free at rest) OR document why kept
-    - [ ] Log Phase C results in Implementation Log
-  - **Phase D: Decide operational deployment model (human-in-the-loop)**
-    - [ ] Present comparison table + recommendation to user
-    - [ ] User picks: (a) 8M external prover, (b) 2M raw-Lambda, (c) hybrid
-    - [ ] Document choice as new DD (DD-24 or later)
-    - [ ] Update Phase 4B (service deploy) tasks to reflect the chosen prover model
-    - [ ] Mark 1R.3 done, unblock 1R.4 and 1R.5
+- [ ] **1R.3** **RESUMED 2026-04-12 — proof system chosen: RISC Zero zkVM (Candidate D from zkprover v0.1.0).** The zkprover mini-product (`docs/products/zkprover/`) built and measured four prover candidates in parallel. Winner: RISC Zero (3min/proof, 8.4 GB RAM, ~280k gas, 238-contributor ceremony, Apache-2.0, fits Lambda). See `docs/products/zkprover/research/comparison-matrix.md` and DD-12 in `docs/plans/zkprover-plan.md` for full rationale. **Remaining sub-tasks to complete 1R.3 with RISC Zero:** [infra] `AI`
+  - [ ] Set up RISC Zero Bonsai API credentials (or configure local Groth16 prover) to enable Groth16 wrapping of D's STARK proofs for on-chain verification
+  - [ ] Generate a Groth16-wrapped proof from the existing STARK proof (produced during zkprover v0.1.0 Candidate D implementation)
+  - [ ] Deploy RISC Zero's Solidity Groth16 verifier (from `risc0/risc0-ethereum`) to Base Sepolia
+  - [ ] Call `verifyProof` on-chain, confirm returns `true`, measure REAL gas cost (expected ~280k)
+  - [ ] Record verifier contract address + tx hash + gas in the kysigned plan's Implementation Log
+  - [ ] Adapt `kysigned/src/signing/contract.ts` to call the RISC Zero verifier instead of the PLONK verifier — update `SignatureRegistry.recordReplyToSignSignature()` to accept Groth16 proof format
+  - [ ] Review `cfdkim` (RISC Zero fork of Cloudflare's DKIM library, commit `3213315e`) against RFC 6376 and audited `@zk-email/circuits` — flag divergences before production adoption
+  - **History (archived, do not re-investigate):** snarkjs PLONK failed at V8 limits (2026-04-11) → zkprover mini-product built 4 candidates → D (RISC Zero) won (2026-04-12). Full history in `docs/plans/zkprover-plan.md` DD-23 and the zkprover sub-plans.
+  - _(Old Phase A-D sub-tasks for the Rust-native PLONK pivot have been removed. They were superseded by the zkprover mini-product which built and tested 4 candidates. See `docs/plans/zkprover-plan.md` for the full history.)_
 - [!] **1R.4** Deploy updated `SignatureRegistry.sol` and `EvidenceKeyRegistry.sol` to Base Sepolia — WAITING FOR: 1R.3 (real verifier contract). `EvidenceKeyRegistry` can deploy independently; `SignatureRegistry` constructor requires the verifier address. Deploy script at `scripts/deploy.cjs` needs updating for new constructor args. [infra] `AI`
 - [!] **1R.5** Measure gas costs per operation on Sepolia — WAITING FOR: 1R.4 (deployed contracts). Can measure locally via Hardhat gas reporter as a preliminary estimate. [infra] `AI`
 - [x] **1R.6** `docs/contract-abi.md` rewritten — both contracts documented: `SignatureRegistry` (recordReplyToSignSignature with Groth16 verification + replay nullifier + evidence key cross-validation, recordWalletSignature Method B, recordCompletion, getReplyToSignRecords, getWalletSignatures, verifyWalletSignature, isNullifierUsed) and `EvidenceKeyRegistry` (registerEvidenceKey, getEvidenceKey, isKeyRegistered). Independent verification algorithm updated for reply-to-sign flow (searchKey → query → evidence key lookup → zk proof). Gas estimates included. [code] `AI`

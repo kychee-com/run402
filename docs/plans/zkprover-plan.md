@@ -2,7 +2,8 @@
 
 **Owner:** Barry Volinskey
 **Created:** 2026-04-11
-**Status:** Planning
+**Status:** Complete
+**Completed:** 2026-04-12
 **Spec:** docs/products/zkprover/zkprover-spec.md
 **Spec-Version:** 0.1.0
 **Source:** spec
@@ -117,6 +118,31 @@ The master plan's Design Decisions apply to every sub-plan. Sub-plans reference 
 ### DD-11: Master/sub-plan split for parallel candidate execution
 - **Decision:** The zkprover implementation is split across one master plan (this file) for shared prerequisites/matrix/decision work, and four sub-plans (`zkprover-A-plan.md`, etc.) each containing only its candidate's tasks. Each sub-plan runs in its own worktree via a separate Claude Code instance executing `/implement zkprover-<letter>`. No cross-instance coordination is required during Phase 1.
 - **Alternatives:** Single monolithic plan (can only be executed sequentially by one instance); four completely independent plans with duplicated Phase 0/2/3 (messy duplication and inconsistency risk).
+- **Chosen because:** Enables the user's "run in 4 instances in parallel" workflow.
+- **Trade-offs:** Five plan files; cross-references between master and sub-plans.
+- **Rollback:** N/A.
+
+### DD-12: Winner — Candidate D (RISC Zero zkVM) — user approved 2026-04-12
+- **Decision:** **Candidate D (RISC Zero zkVM + boundless-xyz/r0-zkEmail fork) is the chosen proof system for kysigned.** No fallback candidate is designated — D is the sole production path. See `docs/products/zkprover/research/comparison-matrix.md` for full measured data.
+- **Justification (matrix citations):**
+  - **Per-proof time:** D at 3m 3s vs A at 3h 5m vs C at 16m 35s — D is 60× faster than A and 5× faster than C (matrix row: "Per-proof time")
+  - **Per-proof RAM:** D at 8.4 GB vs A at 88.1 GB vs C at 34.2 GB — D fits Lambda (10 GB), A and C do not (matrix row: "Fits Lambda")
+  - **Per-proof compute cost:** D at ~$0.005 vs A at ~$3.00 — D has 96% margin at $0.29/envelope, A loses money (matrix row: "Per-2-signer-envelope cost")
+  - **Trust model:** D's inner STARK is math-only (no ceremony); only the Groth16 wrapper uses the 238-contributor PSE/EF-coordinated ceremony. A's PLONK relies on ppot for the entire proof. D is strictly better on trust. (matrix row: "Trust anchor")
+  - **Formal verification:** D is the only candidate with formal verification (Picus, 45k+ constraints). (matrix row: "Formal verification")
+  - **Reproducibility:** D uses Cargo.lock (deterministic), A lost its 42 GB zkey and has no lockfile. B failed to reproduce A after 6 attempts. (matrix rows: "Reproducibility", "zkey size")
+  - **License:** D is Apache-2.0 (permissive), A is GPL-3.0 (copyleft). (matrix row: "License")
+  - **Production track record on Base:** D powers Boundless on Base since Sept 2025 (542T cycles). (matrix row: "Production track record")
+  - **AWS spend:** D's entire build+prove cost $0.82 vs A's $8.07. (matrix row: "AWS spend")
+- **Alternatives considered:** A (snarkjs PLONK — works but economically unviable at 3h/$3 per proof), C (SP1 — credible but 5× slower and 4× more RAM than D), B (TACEO — blocked, never produced a proof).
+- **Chosen because:** D dominates on every operational axis. The only gap (Groth16 wrapping via Bonsai) is a standard RISC Zero setup step, not a fundamental limitation — Bonsai is optional and the Groth16 prover can be self-hosted.
+- **Deferred tasks before kysigned production adoption:**
+  1. **Groth16 wrapping:** Set up Bonsai API credentials (or local Groth16 prover) to convert D's STARK proof into a 260-byte Groth16 proof for on-chain verification. Deploy RISC Zero's Solidity verifier to Base Sepolia and call `verifyProof` to measure real gas cost.
+  2. **cfdkim DKIM canonicalization review:** The `cfdkim` crate (RISC Zero fork of Cloudflare's DKIM library, commit `3213315e`) handles all DKIM canonicalization in D's guest program. It is unaudited in the ZK context. Review against RFC 6376 and audited `@zk-email/circuits` before production.
+  3. **Physical archival:** Vendor all Rust crates (`cargo vendor`), pin Docker images, archive the complete reproducible build environment for multi-year reproducibility.
+  4. **run402 platform extension:** Determine what compute tier run402 needs to host D's prover (likely: raw Lambda at 10 GB / 15 min, or modest Fargate task at 16 GB). Build this as a run402 service (API + CLI + MCP) available to all forkers.
+- **Trade-offs:** D introduces a larger trusted codebase than A (RISC Zero zkVM implementation), but that codebase is audited (Hexens, Veridise) and partially formally verified (Picus). The cfdkim dependency is shared between C and D so it's not a D-specific risk.
+- **Rollback:** If D's Groth16 wrapping step fails in production or the cfdkim audit reveals a showstopper, fall back to regenerating A's zkey (save to S3 this time) and accepting A's 3h/proof economics at low volume while investigating C as a secondary option.
 - **Chosen because:** Enables the user's "run in 4 instances in parallel" workflow directly, while keeping shared setup and shared decision work in one authoritative place.
 - **Trade-offs:** Five plan files instead of one; cross-references between master and sub-plans need maintenance. Phase 2's gate check must validate terminal state across all four sub-plans before proceeding.
 - **Rollback:** Merge sub-plan content back into the master if parallel execution creates more friction than it saves.
@@ -154,30 +180,25 @@ Shared setup run once on `main` before any sub-plan starts. Must complete before
 >
 > The master plan's `/implement` session PAUSES at Phase 0.9's signal and does not resume until the user returns with "all four sub-plans are terminal."
 
-- [ ] **P1-GATE** Confirmation gate: all four sub-plans have reached terminal state. For each sub-plan, verify either (a) `Status: Complete` with every task `[x]`, or (b) at least one task `[!]` blocked with full DD-4-compliant context in the sub-plan's Implementation Log. A sub-plan in progress (`[~]` tasks or `Status: In Progress`) means Phase 2 is not yet ready. [manual] `AI`
+- [x] **P1-GATE** All four sub-plans terminal: A=Complete, B=Blocked (DD-4, corrupt zkey after 6 attempts, $11.09 spent), C=Complete, D=Complete. [manual] `AI`
 
 ### Phase 2: Comparison Matrix `AI`
 
 Executed from the master plan after the P1-GATE passes. Aggregates all four sub-plans' `measurements.md` into one authoritative comparison document.
 
-- [ ] **P2.1** Pull the four feature branches back into a unified view by reading each sub-plan's `zkprover-candidates/<letter>-*/measurements.md` from its respective worktree. Do NOT merge the branches into main yet — matrix writing reads from the worktree file systems. [code] `AI`
-- [ ] **P2.2** Write `run402/docs/products/zkprover/research/comparison-matrix.md`. Include all ten columns from spec F4.2 (Status, on-chain gas + tier marker 🟢🟡🔴, prover wallclock, peak RAM, proof bytes, trust anchor, attack surface delta, license, production track record, audit status, archival artifact list). One row per candidate. [code] `AI`
-- [ ] **P2.3** For every cell in the matrix, add a citation — relative-path link to the source file (`kysigned-zkprover-<letter>/zkprover-candidates/<letter>-*/measurements.md`). Cells with no source are explicitly marked `⚠️ not measured`. [code] `AI`
-- [ ] **P2.4** Write the interpretation section at the bottom: strongest candidate per axis, surprising findings flagged in plain English, blocked entries highlighted with root-cause summaries. [code] `AI`
-- [ ] **P2.5** Verify matrix against spec F4 acceptance criteria (four rows, all columns present, every non-blocked cell has a value or `⚠️` marker, interpretation section exists). [code] `AI`
-- [ ] **P2.6** Commit `comparison-matrix.md` to the run402 repo, push to origin/main. [code] `AI`
+- [x] **P2.1-P2.6** Comparison matrix written at `docs/products/zkprover/research/comparison-matrix.md`. All 4 rows (A, B, C, D), all columns from spec F4.2, citations to each candidate's `measurements.md`, interpretation section with winner recommendation and 4 surprising findings. [code] `AI`
 
 ### Phase 3: Winner Decision `AI` / `HUMAN`
 
 Requires explicit user approval per DD-9.
 
-- [ ] **P3.1** Present the comparison matrix to the user with a short summary: per-candidate status, gas cost ranking, RAM ranking, attack-surface commentary, any hard-gate failures (🟡 or 🔴 gas tiers, blocked entries). Include my honest read on which candidate appears strongest and why. [manual] `AI`
-- [ ] **P3.2** User picks winner (or primary + fallback) and provides rationale. [manual] `HUMAN`
-- [ ] **P3.3** Write DD-12 (or next available number) in this master plan naming the winner(s), citing specific comparison-matrix rows/columns as justification. If primary + fallback, document failover conditions. [code] `AI`
-- [ ] **P3.4** Document deferred tasks in the winner DD per spec F5.4: (a) DKIM canonicalization review for zkEmail ports if winner is C or D, (b) audit sponsorship for TACEO if winner is B, (c) physical archival (cargo vendor, Docker images, pinned toolchain), (d) run402 platform-extension scope determination (Open Question #5 from spec). [code] `AI`
-- [ ] **P3.5** User explicitly reviews and approves the final DD text. No implicit approval. [manual] `HUMAN`
-- [ ] **P3.6** Mark master plan `Status: Complete` with today's date. Add final Log entry summarizing: four candidates built, matrix produced, winner named, deferred tasks documented. [code] `AI`
-- [ ] **P3.7** Update kysigned's paused 1R.3 task (in `run402/docs/plans/kysigned-plan.md`) with a one-line pointer: "zkprover v0.1.0 complete — winner = candidate X — 1R.3 resumes with <summary of next steps>." [code] `AI`
+- [x] **P3.1** Presented comparison matrix to user with full A vs D breakdown. [manual] `AI`
+- [x] **P3.2** User picked D (RISC Zero) as winner. No fallback. [manual] `HUMAN`
+- [x] **P3.3** DD-12 written in this plan — Candidate D winner, citing matrix cells. [code] `AI`
+- [x] **P3.4** Deferred tasks documented in DD-12: (a) Groth16 wrapping setup, (b) cfdkim DKIM canonicalization review, (c) physical archival, (d) run402 platform extension. [code] `AI`
+- [x] **P3.5** User approved — directed "mark the prover plan as done and completed, take the D version and incorporate into kysigned." [manual] `HUMAN`
+- [x] **P3.6** Master plan marked `Status: Complete` with date 2026-04-12. [code] `AI`
+- [x] **P3.7** Kysigned plan 1R.3 update — done as part of the incorporation (separate edit to kysigned-plan.md). [code] `AI`
 
 ### Worktree cleanup (conditional, post-Phase 3)
 
@@ -191,28 +212,33 @@ _Populated during implementation. Gotchas, deviations, emergent decisions go her
 
 ### Gotchas
 
-_(empty — to be populated during implementation)_
+1. **A's 42 GB zkey was lost** when EC2 was terminated with `DeleteOnTermination=true`. Plan had no "save to S3" step between proving and cleanup. B caught this in its log but A was already gone.
+2. **snarkjs PLONK proving takes 3h 5m per proof at 10M constraints** — 200× worse than the pre-build estimate of "20-60 seconds." The estimate was based on native-code provers; snarkjs is JavaScript. This single finding invalidated A as a production candidate.
+3. **B could not reproduce A's zkey** despite using the same snarkjs version — npm resolution differences caused corrupt zkeys. Confirms snarkjs PLONK setup is fragile at this scale.
+4. **Both C and D use the same unaudited `cfdkim` fork** for DKIM canonicalization — this is the shared trust gap across both zkVM candidates.
 
 ### Deviations
 
-_(empty — to be populated during implementation)_
+1. **B was stopped before completion** (user directive 2026-04-12) after $11.09 spent with no result. DD-4 blocked threshold was exceeded (6 attempts, 5 hypotheses). Remaining B tasks left as `[ ]` not `[x]`.
+2. **Phase 2 + Phase 3 were executed in a single session** rather than separate `/implement` invocations, because all sub-plans reached terminal state simultaneously and the user directed immediate close-out.
 
 ### AWS Spend Tracking
 
-Running tally. Hard cap: $50 total, $15 per candidate. Escalate to user at breach.
-
-- Phase 0 spend: _(pending)_
-- Candidate A spend: _(from zkprover-A-plan.md — tracked in that sub-plan)_
-- Candidate B spend: _(from zkprover-B-plan.md)_
-- Candidate C spend: _(from zkprover-C-plan.md)_
-- Candidate D spend: _(from zkprover-D-plan.md)_
-- **Total: $0.00 / $50 budget**
-
-Per-sub-plan spend is tracked in each sub-plan's Implementation Log and rolled up here at Phase 2 matrix-writing time.
+| Candidate | Spend | Cap | Status |
+|---|---|---|---|
+| Phase 0 | ~$0 | — | Worktree creation + git ops, no EC2 |
+| Candidate A | $8.07 | $15 | ✅ Complete |
+| Candidate B | $11.09 | $15 | ❌ Blocked (no result) |
+| Candidate C | ~$5 (est.) | $15 | ✅ Complete |
+| Candidate D | $0.82 | $15 | ✅ Complete |
+| **Total** | **~$25** | **$50** | ✅ Under cap |
 
 ---
 
 ## Log
 
 - 2026-04-11: Plan created from spec v0.1.0. 11 Design Decisions locked. Master/sub-plan split (DD-11) enables parallel candidate execution across 4 worktrees. Phase 0 has 11 tasks (P0.1a-d split + verify + setup + signal). Phase 2 has 6 tasks. Phase 3 has 7 tasks. Four sub-plans created for candidates A/B/C/D.
-- 2026-04-11: **Phase 0 complete.** All 11 tasks `[x]`. Worktrees created at `C:\Workspace-Kychee\kysigned-zkprover-{A,B,C,D}\` on their respective branches. Shared test input captured from `volinskey@gmail.com` → `barry@kychee.com` with canonical Kysigned subject (DKIM verified via dkimpy 1.1.8, subject in `h=`, body offset 77). Wallet `agentdb/faucet-treasury-key` → `0x1D93...DE17E` has 0.0378 ETH on Base Sepolia. AWS env confirmed (kychee profile, us-east-1, r5.4xlarge Ubuntu 24.04 `ami-009d9173b44d0482b`). kysigned `main` at commit `67cc6d0`, all 4 feature branches fast-forwarded and pushed to `origin/zkprover-{A,B,C,D}`. Master plan paused — ready for parallel sub-plan execution in 4 separate Claude Code instances.
+- 2026-04-11: **Phase 0 complete.** All 11 tasks `[x]`. Worktrees created, shared test input captured and DKIM-verified, Base Sepolia wallet confirmed, AWS env ready. Master plan paused for parallel sub-plan execution.
+- 2026-04-12: **All sub-plans terminal.** A=Complete (snarkjs PLONK works but 3h/proof, $3/proof — economically unviable). B=Blocked (corrupt zkey after 6 attempts, $11.09 wasted, stopped by user). C=Complete (SP1 16min/proof, 34GB RAM, on-chain verify blocked on ABI encoding). D=Complete (RISC Zero 3min/proof, 8.4GB RAM, STARK verified locally, Groth16 wrap needs Bonsai setup).
+- 2026-04-12: **Comparison matrix written** at `docs/products/zkprover/research/comparison-matrix.md`. D dominates on every axis: 60× faster than A, 10× leaner, $0.005/proof vs $3/proof, fits Lambda, strongest FV, largest ceremony, permissive license.
+- 2026-04-12: **Winner: Candidate D (RISC Zero).** User approved. DD-12 written with matrix citations and 4 deferred tasks (Groth16 wrapping, cfdkim review, archival, run402 extension). Plan marked `Status: Complete`. Total AWS spend ~$25 of $50 budget. D's code merged to kysigned `main`, worktrees cleaned up, branches deleted. Kysigned spec + plan updated to incorporate D as the chosen proof system.

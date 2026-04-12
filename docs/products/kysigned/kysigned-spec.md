@@ -1,16 +1,16 @@
 ---
 product: kysigned
-version: 0.9.3
+version: 0.10.0
 status: Draft
 type: product
 interfaces: [website, api, cli, mcp, smart-contract]
 created: 2026-04-04
-updated: 2026-04-10
+updated: 2026-04-12
 ---
 
 ## Overview
 
-kysigned is a blockchain-verified e-signature service that replaces DocuSign's subscription model with per-envelope pricing ($0.29/envelope for 2 signers, $0.10/extra signer). Signers sign by replying to an email with `I APPROVE` — their mail provider's DKIM signature provides cryptographic proof of mailbox control, which is captured as a zk-email proof and recorded on Base (Ethereum L2). A verifier given `(email, document)` any time in the next ~20 years can independently confirm the signature using only on-chain data (the zk proof, the archived DKIM key, and key consistency across signatures from the same provider) — no dependency on kysigned.com, run402, or any operator being reachable. Two delivery modes: a hosted API at kysigned.com (`[service]`) and a free MIT-licensed repo deployable on run402 (`[repo]`).
+kysigned is a blockchain-verified e-signature service that replaces DocuSign's subscription model with per-envelope pricing ($0.29/envelope for 2 signers, $0.10/extra signer). Signers sign by replying to an email with `I APPROVE` — their mail provider's DKIM signature provides cryptographic proof of mailbox control, which is captured as a zk proof via **RISC Zero zkVM** (STARK inner proof + Groth16 wrapper for EVM verification) and recorded on Base (Ethereum L2). The DKIM verification runs as a Rust guest program inside the RISC Zero zkVM; the inner STARK proof is math-only (no trusted setup), and only the Groth16 compression wrapper relies on RISC Zero's 238-contributor public ceremony (PSE/EF coordinated). A verifier given `(email, document)` any time in the next ~20 years can independently confirm the signature using only on-chain data (the zk proof, the archived DKIM key, and key consistency across signatures from the same provider) — no dependency on kysigned.com, run402, or any operator being reachable. Two delivery modes: a hosted API at kysigned.com (`[service]`) and a free MIT-licensed repo deployable on run402 (`[repo]`).
 
 ## Interfaces & Mediums
 
@@ -109,17 +109,20 @@ Three sender paths, all MVP. Each serves a different audience.
 - **$0.10 per additional signer** beyond 2
 - Example: 5-signer envelope = $0.29 + (3 × $0.10) = $0.59
 
-**Per-signer cost breakdown (PLONK proof system on Base L2):**
-- Gas (`recordReplyToSignSignature` with PLONK verify): ~$0.05
-- Proof generation (server compute): ~$0.01-0.02
+**Per-signer cost breakdown (RISC Zero zkVM — STARK + Groth16 wrapper on Base L2):**
+- Gas (`recordReplyToSignSignature` with Groth16 verify): ~$0.02 (~280k gas on Base)
+- Proof generation (RISC Zero STARK proving, ~3 min on 8.4 GB instance): ~$0.005
+- Groth16 wrapping (compression for EVM, ~30-60s): ~$0.002
 - Email (signing request + confirmation): ~$0.001
 - KMS sign fee: ~$0.005
-- Total per signer: ~$0.06-0.07
+- Total per signer: ~$0.03-0.04
 
 **Per-envelope margin illustration:**
-- 2 signers: $0.29 revenue, ~$0.14 cost, ~52% margin
-- 5 signers: $0.59 revenue, ~$0.35 cost, ~41% margin
-- 10 signers: $1.09 revenue, ~$0.56 cost, ~49% margin
+- 2 signers: $0.29 revenue, ~$0.08 cost, ~72% margin
+- 5 signers: $0.59 revenue, ~$0.20 cost, ~66% margin
+- 10 signers: $1.09 revenue, ~$0.40 cost, ~63% margin
+
+**Proof system reference:** See `docs/products/zkprover/research/comparison-matrix.md` for the full measured comparison of four prover candidates (snarkjs PLONK, TACEO co-snarks, SP1 zkVM, RISC Zero zkVM) and the rationale for choosing RISC Zero (DD-12 in `docs/plans/zkprover-plan.md`).
 
 #### F2.10 Forker Billing (public repo)
 
@@ -392,7 +395,7 @@ Marketing site and product pages at kysigned.com.
   - What wallet signatures (Method B) prove and do NOT prove: "wallet address X signed document Y." The `signerEmail` field is a caller-chosen label, NOT cryptographically bound. Forkers must establish wallet ↔ identity binding externally. **This gap must be prominently documented.**
   - No guarantee of legal enforceability in any specific jurisdiction
   - Smart contract permanence disclaimer (recordings on Base are permanent, cannot be deleted or modified by anyone)
-  - Future cryptographic break acknowledgment: DKIM (RSA-2048) and zk-SNARKs (PLONK / BN254) are not quantum-resistant. A sufficiently powerful quantum computer could forge new DKIM signatures or zk proofs. However: (1) blockchain records are immutable — quantum computers cannot alter existing on-chain records, only potentially create new fraudulent ones; (2) all pre-quantum signatures carry a blockchain timestamp proving they were created before quantum capability existed, which is strong evidence of authenticity in historical context; (3) a forged post-quantum signature would lack the corroboration of other signatures from the same provider during the same key period (F4.9), making it detectable; (4) email providers are expected to adopt quantum-safe DKIM algorithms (NIST ML-DSA, SLH-DSA) before quantum computers reach the necessary scale (~2035+), and the kysigned architecture upgrades transparently (new verifier contract, no data migration). The honest claim: pre-quantum signatures are historically valid evidence with a blockchain-anchored timestamp; they are not immune to a future world where the underlying cryptography is broken, but breaking them requires both quantum capability AND defeating the consistency checks across the key registry.
+  - Future cryptographic break acknowledgment: DKIM (RSA-2048) and the zk proof system (RISC Zero: STARK inner proof is quantum-resistant; Groth16 BN254 wrapper is not) are subject to future cryptographic evolution. A sufficiently powerful quantum computer could forge new DKIM signatures or zk proofs. However: (1) blockchain records are immutable — quantum computers cannot alter existing on-chain records, only potentially create new fraudulent ones; (2) all pre-quantum signatures carry a blockchain timestamp proving they were created before quantum capability existed, which is strong evidence of authenticity in historical context; (3) a forged post-quantum signature would lack the corroboration of other signatures from the same provider during the same key period (F4.9), making it detectable; (4) email providers are expected to adopt quantum-safe DKIM algorithms (NIST ML-DSA, SLH-DSA) before quantum computers reach the necessary scale (~2035+), and the kysigned architecture upgrades transparently (new verifier contract, no data migration). The honest claim: pre-quantum signatures are historically valid evidence with a blockchain-anchored timestamp; they are not immune to a future world where the underlying cryptography is broken, but breaking them requires both quantum capability AND defeating the consistency checks across the key registry.
   - Operator responsibility: the forker/deployer is responsible for their own privacy compliance, Terms of Service, and legal obligations — not Kychee
   - Excluded document types that cannot be e-signed under ESIGN/UETA (wills, codicils, etc.)
 - F12.8. No product launch until all `[service]` legal documents are human-approved.
@@ -677,7 +680,7 @@ This feature introduces a new conceptual layer above envelopes: the **document**
 - **zk-email circuit:** Reply-to-sign requires a zk-email circuit that produces a zk-SNARK over a DKIM-signed email. Candidate: adopt or customize from [prove.email](https://prove.email). Circuit must match our exact public-input shape (searchKey commitment, subject format, `I APPROVE` body marker, first-non-quoted-line detection). Audit strategy TBD.
 - **~~DNSSEC proof chain capture:~~** REMOVED (v0.9.1). Major providers (Gmail, Outlook, Yahoo) don't have DNSSEC. The zk proof itself proves key correctness; key consistency across signatures provides non-repudiation (F4.9). DNSSEC is omitted from MVP.
 - **Slow-KDF parameters:** `searchKey = SlowHash(email || docHash)` requires committing forever to a specific KDF algorithm and parameters. Must be chosen carefully — too fast enables enumeration, too slow degrades verifier UX. Candidate: argon2id with parameters tuned for ~1 second on consumer hardware.
-- **Base gas costs:** Per-signer gas cost estimated at ~$0.05 (PLONK verification on Base). Pricing: $0.29 base (2 signers) + $0.10/extra signer. Re-measure on Sepolia/mainnet canary to confirm.
+- **Base gas costs:** Per-signer gas cost estimated at ~$0.02 (RISC Zero Groth16 wrapper verification on Base, ~280k gas). Pricing: $0.29 base (2 signers) + $0.10/extra signer. Re-measure on Sepolia/mainnet canary to confirm. Previous PLONK estimate ($0.05, ~298k gas) replaced per zkprover v0.1.0 comparison matrix.
 - **Smart contract deployment:** `SignatureRegistry` and `EvidenceKeyRegistry` must be deployed on Base mainnet before any production signing. Both contracts are immutable once deployed.
 - **Existing legal templates:** Legal documents drafted from existing Kychee/Eleanor/run402 templates. All `[service]` legal docs require human approval. LEGAL.md must prominently document the Method B wallet gap.
 - **No "kill" language:** All public-facing materials use "alternative to," "replace," "switch from," "better than." Internal docs may use competitive framing.

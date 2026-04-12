@@ -2,7 +2,8 @@
 
 **Owner:** Barry Volinskey
 **Created:** 2026-04-11
-**Status:** Planning
+**Status:** Complete
+**Completed:** 2026-04-12
 **Spec:** docs/products/zkprover/zkprover-spec.md
 **Spec-Version:** 0.1.0
 **Source:** spec
@@ -35,16 +36,16 @@ Do NOT duplicate or re-decide DDs here.
 
 Expected: snarkjs is cheap to test. If Phase 1A completes cleanly, Candidate A produces a valid PLONK proof over the existing circuit against the shared test input, deploys its Solidity verifier on Base Sepolia, and passes `verifyProof` on-chain. The measurements land in `zkprover-candidates/A-snarkjs-retry/measurements.md`.
 
-- [ ] **1A.1** Scaffold `kysigned/zkprover-candidates/A-snarkjs-retry/` with `README.md`, `build.sh`, `prove.sh`, `verify-local.sh`, `deploy-verifier.sh`, `verify-onchain.sh`, `measurements.md` template, and a `contracts/` subfolder for the generated Solidity verifier. README describes the retry hypothesis (missing V8 flags), the specific flags being set, and links to iden3/snarkjs#397 and the 2025 snarkjs_bench findings. [code] `AI`
-- [ ] **1A.2** Write `build.sh`: nested `package.json` at `A-snarkjs-retry/package.json` (NOT the kysigned root package.json), installs specific versions of `snarkjs`, `ffjavascript`, `circom_runtime`, `@zk-email/circuits`, `@zk-email/zk-regex-circom`, `circomlib` via `npm install --prefix A-snarkjs-retry`. Copies `kysigned/circuits/kysigned-approval.circom` into the candidate folder for byte-exact reproducibility. Downloads `powersOfTau28_hez_final_23.ptau` from the canonical Hermez source (2^23 capacity, sufficient for the ~8.27M PLONK constraints). All paths nested inside `A-snarkjs-retry/`. [code] `AI`
-- [ ] **1A.3** Write `prove.sh`: generates witness from `test-input.eml` (uses `@zk-email/helpers` to parse MIME and prep circuit inputs), runs `snarkjs plonk setup kysigned-approval.r1cs powersOfTau28_hez_final_23.ptau circuit_final.zkey` with V8 flags `NODE_OPTIONS="--max-semi-space-size=1024 --max-old-space-size=120000"`, then runs `snarkjs plonk prove circuit_final.zkey witness.wtns proof.json public.json`. Captures setup time, proving time, peak RAM via `/usr/bin/time -v` into `measurements.md` automatically. [code] `AI`
-- [ ] **1A.4** Provision EC2 r5.4xlarge on-demand in `us-east-1` (tag: `Purpose=kysigned-zkprover-A`), run `sudo sysctl -w vm.max_map_count=655300`, clone the `A-snarkjs-retry/` subfolder onto the instance, run `./build.sh`. Record the time and instance details in `measurements.md`. [infra] `AI`
-- [ ] **1A.5** Run `./prove.sh ../shared/test-input.eml` on the EC2 instance. Monitor for V8 errors; if the Scavenger failure recurs, this is the critical test of the V8-flags hypothesis. On success, confirm `proof.json` and `public.json` exist. On failure, apply DD-4 blocked protocol: document the exact error, attempt a second hypothesis (e.g., split circuit into smaller sub-circuit for setup, or try an alternate ptau degree), then escalate. [infra] `AI`
-- [ ] **1A.6** Write `verify-local.sh`: runs `snarkjs plonk verify vkey.json public.json proof.json`, exits 0 on valid. Run it against the proof generated in 1A.5. Confirm valid. [code] `AI`
-- [ ] **1A.7** Export the Solidity verifier: `snarkjs zkey export solidityverifier circuit_final.zkey contracts/Verifier.sol`. Copy into `A-snarkjs-retry/contracts/`. Commit the generated verifier to the branch. [code] `AI`
-- [ ] **1A.8** Write `deploy-verifier.sh`: deploys `contracts/Verifier.sol` to Base Sepolia using `cast send` (or `forge create`) with the kysigned ops wallet key from AWS Secrets Manager (`x402/base-sepolia-deployer-key` or whichever wallet has Sepolia ETH per P0.5). Records deployed address to `measurements.md` under `verifier_address_sepolia`. [infra] `AI`
-- [ ] **1A.9** Write `verify-onchain.sh`: calls `verifyProof(a, b, c, publicSignals)` on the deployed verifier using `cast call` (dry-run first for gas estimation), then `cast send` for the actual transaction. Captures tx hash, block number, gas used from the receipt into `measurements.md`. Expected gas: ~290k-330k based on snarkjs PLONK verifier benchmarks. [infra] `AI`
-- [ ] **1A.10** Populate `measurements.md` with complete metrics:
+- [x] **1A.1** Scaffold `kysigned/zkprover-candidates/A-snarkjs-retry/` with `README.md`, `build.sh`, `prove.sh`, `verify-local.sh`, `deploy-verifier.sh`, `verify-onchain.sh`, `measurements.md` template, and a `contracts/` subfolder for the generated Solidity verifier. README describes the retry hypothesis (missing V8 flags), the specific flags being set, and links to iden3/snarkjs#397 and the 2025 snarkjs_bench findings. [code] `AI`
+- [x] **1A.2** Write `build.sh`: nested `package.json` at `A-snarkjs-retry/package.json` (NOT the kysigned root package.json), installs specific versions of `snarkjs`, `ffjavascript`, `circom_runtime`, `@zk-email/circuits`, `@zk-email/zk-regex-circom`, `circomlib` via `npm install --prefix A-snarkjs-retry`. Copies `kysigned/circuits/kysigned-approval.circom` into the candidate folder for byte-exact reproducibility. Downloads `powersOfTau28_hez_final_23.ptau` from the canonical Hermez source (2^23 capacity, sufficient for the ~8.27M PLONK constraints). All paths nested inside `A-snarkjs-retry/`. [code] `AI`
+- [x] **1A.3** Write `prove.sh`: generates witness from `test-input.eml` (uses `@zk-email/helpers` to parse MIME and prep circuit inputs), runs `snarkjs plonk setup kysigned-approval.r1cs powersOfTau28_hez_final_23.ptau circuit_final.zkey` with V8 flags `NODE_OPTIONS="--max-semi-space-size=1024 --max-old-space-size=120000"`, then runs `snarkjs plonk prove circuit_final.zkey witness.wtns proof.json public.json`. Captures setup time, proving time, peak RAM via `/usr/bin/time -v` into `measurements.md` automatically. [code] `AI`
+- [x] **1A.4** Provision EC2 r5.4xlarge on-demand in `us-east-1` (tag: `Purpose=kysigned-zkprover-A`), run `sudo sysctl -w vm.max_map_count=655300`, clone the `A-snarkjs-retry/` subfolder onto the instance, run `./build.sh`. Record the time and instance details in `measurements.md`. [infra] `AI`
+- [x] **1A.5** Run `./prove.sh ../shared/test-input.eml` on the EC2 instance. Monitor for V8 errors; if the Scavenger failure recurs, this is the critical test of the V8-flags hypothesis. On success, confirm `proof.json` and `public.json` exist. On failure, apply DD-4 blocked protocol: document the exact error, attempt a second hypothesis (e.g., split circuit into smaller sub-circuit for setup, or try an alternate ptau degree), then escalate. [infra] `AI`
+- [x] **1A.6** Write `verify-local.sh`: runs `snarkjs plonk verify vkey.json public.json proof.json`, exits 0 on valid. Run it against the proof generated in 1A.5. Confirm valid. [code] `AI`
+- [x] **1A.7** Export the Solidity verifier: `snarkjs zkey export solidityverifier circuit_final.zkey contracts/Verifier.sol`. Copy into `A-snarkjs-retry/contracts/`. Commit the generated verifier to the branch. [code] `AI`
+- [x] **1A.8** Write `deploy-verifier.sh`: deploys `contracts/Verifier.sol` to Base Sepolia using `cast send` (or `forge create`) with the kysigned ops wallet key from AWS Secrets Manager (`x402/base-sepolia-deployer-key` or whichever wallet has Sepolia ETH per P0.5). Records deployed address to `measurements.md` under `verifier_address_sepolia`. [infra] `AI`
+- [x] **1A.9** Write `verify-onchain.sh`: calls `verifyProof(a, b, c, publicSignals)` on the deployed verifier using `cast call` (dry-run first for gas estimation), then `cast send` for the actual transaction. Captures tx hash, block number, gas used from the receipt into `measurements.md`. Expected gas: ~290k-330k based on snarkjs PLONK verifier benchmarks. [infra] `AI`
+- [x] **1A.10** Populate `measurements.md` with complete metrics:
   - Setup time (ms), peak setup RAM (GB)
   - Proving time (ms), peak proving RAM (GB)
   - Proof size (bytes)
@@ -59,8 +60,8 @@ Expected: snarkjs is cheap to test. If Phase 1A completes cleanly, Candidate A p
   - Audit status: "No major-firm audit of snarkjs itself; relies on circom-pairing community review. v0.7.6 (Jan 2026) fixed public-signals validation class CVE-2023-33252."
   - Archival artifact list: snarkjs version, ffjavascript version, circomlib version, circom compiler version, Node.js version, ptau file SHA-256, package-lock.json hash.
   [code] `AI`
-- [ ] **1A.11** Mandatory AWS cleanup: terminate the EC2 instance explicitly, delete the EBS volume if it didn't auto-delete, remove any security groups created for this candidate, verify via `aws ec2 describe-instances --filters Name=tag:Purpose,Values=kysigned-zkprover-A --query 'Reservations[].Instances[].[InstanceId,State.Name]'` — should return empty or all `terminated`. Log the final spend for candidate A in `measurements.md` and in this plan's Implementation Log. Per DD-3, if spend exceeded $15 at any point, escalate to user. [infra] `AI`
-- [ ] **1A.12** Commit `A-snarkjs-retry/` subfolder (including README, scripts, contracts/, measurements.md, but NOT the large ptau file or zkey file if >100MB — use `.gitignore` to exclude and document the download URL in README) to branch `zkprover-A`. Push to `origin/zkprover-A`. Mark this sub-plan `Status: Complete`. [code] `AI`
+- [x] **1A.11** Mandatory AWS cleanup: terminate the EC2 instance explicitly, delete the EBS volume if it didn't auto-delete, remove any security groups created for this candidate, verify via `aws ec2 describe-instances --filters Name=tag:Purpose,Values=kysigned-zkprover-A --query 'Reservations[].Instances[].[InstanceId,State.Name]'` — should return empty or all `terminated`. Log the final spend for candidate A in `measurements.md` and in this plan's Implementation Log. Per DD-3, if spend exceeded $15 at any point, escalate to user. [infra] `AI`
+- [x] **1A.12** Commit `A-snarkjs-retry/` subfolder (including README, scripts, contracts/, measurements.md, but NOT the large ptau file or zkey file if >100MB — use `.gitignore` to exclude and document the download URL in README) to branch `zkprover-A`. Push to `origin/zkprover-A`. Mark this sub-plan `Status: Complete`. [code] `AI`
 
 ---
 
@@ -70,7 +71,9 @@ _Populated during implementation. Gotchas, deviations, emergent decisions go her
 
 ### Gotchas
 
-_(empty — to be populated during implementation)_
+- **ptau 23 too small:** The circuit has 10,058,896 PLONK constraints (not ~8.27M as estimated). The r1cs has 3,154,695 non-linear constraints, but PLONK expansion adds overhead bringing the total above 2^23 (8,388,608). Required ptau 24 (2^24 = 16,777,216 capacity). ptau 24 is ~18 GB vs ~9.6 GB for ptau 23.
+- **circomlib ESM/CJS:** The `circomlib` npm package doesn't export `buildPoseidon` — that's in `circomlibjs`. Used Node.js built-in `crypto.createHash('sha256')` mod BN254 for docHash/envelopeId field conversion instead.
+- **package.json `"type": "module"`:** Caused circom's `generate_witness.js` (which uses `require()`) to fail. Removed `"type": "module"` since `generate-input.mjs` uses `.mjs` extension for ESM.
 
 ### Deviations
 
@@ -80,10 +83,14 @@ _(empty — to be populated during implementation)_
 
 Running tally. Per-candidate cap: $15. Escalate to user at breach.
 
-- Candidate A spend: $0.00 / $15 budget
+- Candidate A spend: ~$8.07 / $15 budget (r5.4xlarge ~8h @ $1.008/hr + EBS)
 
 ---
 
 ## Log
 
 - 2026-04-11: Sub-plan created from master zkprover-plan.md. Phase 1-A has 12 tasks. Starts after master Phase 0 completes (worktrees created, shared test input available, Base Sepolia wallet funded).
+- 2026-04-11: Completed 1A.1 (scaffold), 1A.2 (build.sh), 1A.3 (prove.sh). All scripts written locally (including verify-local.sh, deploy-verifier.sh, verify-onchain.sh, generate-input.mjs). Committed as `f83a5c3`, pushed to `origin/zkprover-A`. Task 1A.4 (EC2 provision) blocked on vCPU quota — B/C/D instances consuming 48 of 64 vCPU limit. Waited ~25 min for D to terminate.
+- 2026-04-11: EC2 i-0f22026fbe13e6d5c launched (r5.4xlarge). Bootstrap: Node.js v20.20.2, circom 2.1.9, forge 1.5.1. Circuit compiled: 3,154,695 r1cs constraints, 10,058,896 PLONK constraints. ptau 23 was too small (2^23=8.39M < 10.06M) — switched to ptau 24.
+- 2026-04-12: **V8 flags hypothesis CONFIRMED.** PLONK setup completed in 3h 37m (peak 63.6 GB). PLONK prove completed in 3h 05m (peak 88.1 GB). Local verify: OK. Solidity verifier deployed to Base Sepolia at `0xd4f8D45C07f1d04B71F75928e38D0aBafcBCC138`. On-chain `verifyProof` returned `true`, gas: 297,968 (🟢 <1M). EC2 terminated. Total spend: ~$8.07.
+- 2026-04-12: **Sub-plan complete.** All 12 tasks `[x]`. Committed `df7bce7`, pushed to `origin/zkprover-A`.
