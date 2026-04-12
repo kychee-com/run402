@@ -75,6 +75,20 @@ const EXCLUDED_ENDPOINTS = new Set([
   "GET /auth/v1/oauth/google/callback",
   // Discovery spec (machine-readable, not a user-facing API endpoint)
   "GET /openapi.json",
+  // Admin finance dashboard (human-only, session auth — internal cost/revenue analytics)
+  "GET /admin/api/finance/costs",
+  "GET /admin/api/finance/export",
+  "GET /admin/api/finance/project/{_}",
+  "GET /admin/api/finance/revenue",
+  "GET /admin/api/finance/summary",
+  "POST /admin/api/finance/refresh-costs",
+  "POST /admin/api/finance/refresh-pricing",
+  "GET /admin/finance",
+  // Admin project/subdomain management (human-only, session auth)
+  "GET /admin/api/projects",
+  "GET /admin/api/subdomains",
+  "DELETE /admin/api/projects/{_}",
+  "DELETE /admin/api/subdomains/{_}",
 ]);
 
 // ---------------------------------------------------------------------------
