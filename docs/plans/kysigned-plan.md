@@ -4,7 +4,7 @@
 **Created:** 2026-04-04
 **Status:** In Progress
 **Spec:** docs/products/kysigned/kysigned-spec.md
-**Spec-Version:** 0.11.0
+**Spec-Version:** 0.12.0
 **Upstream References:** docs/products/saas-factory/saas-factory-spec.md (v1.15.0)
 **Source:** spec
 **Worktree:** none — product code lives in separate repos (C:\Workspace-Kychee\kysigned and C:\Workspace-Kychee\kysigned-service). run402 platform enhancements use a run402 worktree on a feature branch.
@@ -215,8 +215,9 @@ Dashboard path:
 - [ ] Verify-by-envelope-id proof link displays full audit trail
 
 API path:
-- [ ] Create envelope via `POST /v1/envelope` with x402 payment header
-- [ ] Create envelope via `POST /v1/envelope` with MPP payment header
+- ~~Create envelope via `POST /v1/envelope` with x402 payment header~~ — REMOVED (v0.12.0, DD-25)
+- ~~Create envelope via `POST /v1/envelope` with MPP payment header~~ — REMOVED (v0.12.0, DD-25)
+- [ ] Create envelope via `POST /v1/envelope` with credit-balance authentication (magic link session)
 - [ ] `GET /v1/envelope/:id` returns correct state
 - [ ] `POST /v1/envelope/:id/remind` successfully triggers reminder email
 - [ ] `POST /v1/envelope/:id/void` successfully voids an active envelope and deletes its PDF
@@ -243,8 +244,10 @@ Retention + F8.6:
 - [ ] Envelope metadata persists after PDF deletion
 
 Payment + billing:
-- [ ] x402 payment via run402 billing balance check returns correct wallet + deducts correct amount
-- [ ] MPP credential flow works end-to-end
+- ~~x402 payment via run402 billing balance check~~ — REMOVED (v0.12.0, DD-25)
+- ~~MPP credential flow works end-to-end~~ — REMOVED (v0.12.0, DD-25)
+- [ ] Stripe credit pack purchase → balance appears in dashboard
+- [ ] Envelope creation deducts from credit balance; insufficient balance returns clear error
 - [ ] `allowed_senders` allowlist enforces correctly in hosted mode
 - [ ] Monthly quota enforcement works for a sender with a configured quota
 
@@ -254,7 +257,7 @@ Monitoring:
 - [ ] CRITICAL email alerts via SES reach the on-call address
 
 Gas + cost verification (inherited from the pre-F17 Phase 13 intent):
-- [ ] Measure real Base mainnet gas cost per operation (`recordReplyToSignSignature` with zk proof, `recordWalletSignature`, `recordCompletion`, `registerEvidenceKey`) — compare against Sepolia measurements from Phase 1R
+- [ ] Measure real Base mainnet gas cost per operation (`recordReplyToSignSignature` with zk proof, `recordCompletion`, `registerEvidenceKey`) — compare against Sepolia measurements from Phase 1R
 - [ ] Calculate true per-envelope cost (gas + zk proof generation compute + email + Lambda + KMS sign fees) and confirm $0.39 pricing holds with healthy margin
 - [ ] If real per-envelope cost exceeds $0.20 (51% of the $0.39 target), escalate to pricing review BEFORE the flip — pricing adjustment is still reversible during canary phase
 
@@ -438,6 +441,37 @@ The user explicitly chose "prove working first, optimize second." Phases MUST be
 - **Chosen because:** Self-proving PDFs are the strongest possible portability story. The QR code serves non-technical users; the verification key string serves AI agents and developers. Aggregation is presentation-layer only — on-chain records stay per-envelope, preserving the existing cryptographic model.
 - **Trade-offs:** QR code adds a dependency (QR generation library). Proof block layout adds complexity to the PDF generation code. Aggregation query is O(envelopes-per-sender) but expected to be small (<10 per document).
 - **Rollback:** Revert to the old `generateCertificateOfCompletion`. On-chain records are unaffected.
+
+### DD-25: Remove Path 1/2 wallet payment and wallet signing from MVP (spec v0.12.0)
+
+- **Decision:** Remove x402/MPP wallet-based T2 payment (Path 1/2) AND wallet signing (Method B / EIP-712) from BOTH the hosted service and the public repo. The only payment method for end users is Stripe credit packs (hosted service only). The only signing method is reply-to-sign email. Forkers pay run402 for infrastructure (T1) and gate access via `allowed_senders` — no built-in T2 billing.
+- **Alternatives:** (1) Keep Path 1/2 for public repo forkers — rejected for MVP simplification; forkers who need wallet billing can build it themselves. (2) Keep wallet signing as `[repo]` behind feature flag — rejected; maintaining dead code paths adds test burden and documentation complexity for a feature nobody is using yet.
+- **Chosen because:** Stripe credit packs are lower friction for the target audience than wallet onboarding. Reply-to-sign is the differentiating signing method. Keeping wallet code increases surface area without proportional value. The code was already built and tested — removal is straightforward.
+- **What gets removed (dead code):** `src/api/payment/x402.ts` + tests, `src/api/payment/mpp.ts` + tests, wallet signing engine code, `VITE_ENABLE_WALLET_SIGNING` flag, wallet onboarding page (`/onboard`), `docs/wallet-guide.md`, wallet connect flow in DashboardPage, FAQ/pricing/landing/llms.txt/README wallet references, LEGAL.md Method B gap section, service repo x402/MPP buildContext wiring.
+- **What stays in the contract:** `recordWalletSignature` is removed from the Solidity source before the canary deploy (see DD-26). The Sepolia test contract retains it as a historical artifact.
+- **Rollback:** Re-add the removed code from git history if wallet payment or signing is needed later. Contract functions would require a new contract deployment (F4.5 — contracts are replaceable).
+
+### DD-26: Remove `recordWalletSignature` from contract source before mainnet deploy
+
+- **Decision:** Remove the `recordWalletSignature` function and its associated storage/events from `SignatureRegistry.sol` before the Phase 13 canary deploy. The mainnet contracts (both canary and production) will never include wallet signing.
+- **Alternatives:** Leave it in the contract as dead code — rejected because (a) smaller bytecode saves deployment gas, (b) cleaner contract = smaller attack surface, (c) the function is permanently immutable once deployed, and dead code in an immutable contract is technical debt that lasts forever.
+- **Chosen because:** The contracts haven't been deployed to mainnet yet. Now is the only chance to ship clean. Re-adding wallet signing later requires a new contract deployment, which is cheap (one-time gas) and already supported by the replaceable-contract design (F4.5).
+- **Trade-offs:** Future wallet signing feature requires a new contract deploy instead of just enabling existing code. Acceptable given F4.5.
+- **Rollback:** N/A — this is a one-way cleanup. Re-adding requires new contract deployment.
+
+### DD-27: kysigned CLI/MCP `init` command (spec F10.B)
+
+- **Decision:** The public repo ships an `init` command (both CLI and MCP tool) that bootstraps a new kysigned instance on run402. It creates an allowance wallet, subscribes a run402 tier, creates a project, stores credentials locally, registers a sender domain, and adds the operator to `allowed_senders`. It is NOT a wrapper around `run402 init` — it implements only what kysigned needs, using run402's public API surface.
+- **Alternatives:** (1) Wrap `run402 init` — rejected because run402 init does things kysigned doesn't need (testnet faucet drip) and doesn't do things kysigned does need (sender domain, allowed_senders). (2) Manual bootstrap via service-repo script only — rejected because forkers need the public repo to be self-sufficient.
+- **Chosen because:** The public repo must be a complete deployable product for forkers. `init` is the forker's entry point. The hosted service should also bootstrap using this flow (dogfooding per F10.12).
+- **Trade-offs:** Duplicates some run402 init logic (wallet creation, tier subscription). Acceptable — kysigned owns its onboarding experience.
+
+### DD-28: Stripe T2 billing under Kychee Stripe account (spec F9.8)
+
+- **Decision:** kysigned's end-user billing (credit pack purchases) uses a dedicated Stripe product under the Kychee Stripe organization. This is T2 billing (kysigned charging users), completely separate from run402's T1 billing (run402 charging kysigned for infrastructure). The Stripe integration lives in the service repo only.
+- **Alternatives:** (1) Use run402's Stripe as an intermediary — rejected because run402 doesn't provide T2 billing yet. (2) Use run402's `email-billing-accounts` for the ledger — possible for balance tracking, but the Stripe checkout and webhook handling must be kysigned's own.
+- **Chosen because:** Clear separation of T1 (infrastructure) and T2 (user) billing. Kychee is the merchant of record for kysigned credit packs. Follows the same Stripe patterns used in other Kychee products.
+- **Trade-offs:** kysigned-service must implement its own Stripe webhook handler and checkout session creation. Not complex — pattern exists in run402 and other Kychee products.
 
 ### Phase 0: Foundation `AI`
 
@@ -988,7 +1022,7 @@ The user explicitly chose "prove working first, optimize second." Phases MUST be
 - [ ] Run `deploy-canary.ts` against Base mainnet for both contracts. Poll `GET /contracts/v1/calls/:call_id` until status=`confirmed` for each. Capture tx hashes + deployed contract addresses. [infra] `AI`
 - [ ] Store canary contract addresses in AWS Secrets Manager as `kysigned/canary-signature-registry-address` and `kysigned/canary-evidence-key-registry-address`. These are single-point-of-failure secrets per F17.12 — they NEVER touch git. [infra] `AI`
 - [ ] **Do NOT submit canary source to Basescan for verification.** Per F17.4 both canary contracts must remain bytecode-only artifacts with no public association to kysigned. [infra] `AI`
-- [ ] Measure real Base mainnet gas costs from the canary deploy txs + test call txs (`registerEvidenceKey`, `recordReplyToSignSignature` with zk proof, `recordWalletSignature`, `recordCompletion`) signed manually via the canary wallet. Compare against Sepolia measurements from Phase 1R. Document actual numbers in the Implementation Log. [infra] `AI`
+- [ ] Measure real Base mainnet gas costs from the canary deploy txs + test call txs (`registerEvidenceKey`, `recordReplyToSignSignature` with zk proof, `recordCompletion`) signed manually via the canary wallet. Compare against Sepolia measurements from Phase 1R. Document actual numbers in the Implementation Log. Note: `recordWalletSignature` removed from contract per DD-26. [infra] `AI`
 - [ ] Calculate true per-envelope cost (gas + email + compute + Lambda + KMS sign fees). Compare against the $0.25 target. If real cost exceeds $0.15, flag for pricing review BEFORE the dark-launch phase begins. [manual] `AI`
 - [ ] (If pricing needs adjustment) Set final per-envelope pricing and credit pack tiers. Update pricing page with real numbers. [frontend-visual] `DECIDE`
 
@@ -1066,6 +1100,97 @@ Per saas-factory F21 / kysigned spec Shipping Surfaces section. Each `[ship]` ta
 - [ ] Ship "EvidenceKeyRegistry — Base mainnet" surface — deploy via Phase 13, smoke `curl -fsSL -X POST https://mainnet.base.org -H 'content-type: application/json' -d '{"jsonrpc":"2.0","id":1,"method":"eth_call","params":[{"to":"<mainnet-addr>","data":"0x3644e515"},"latest"]}' | grep -q '"result":"0x[0-9a-f]\{64\}"'` (depends on Phase 13) [ship]
 - [x] Ship "Smart contract — Base Sepolia" surface — deployed at 0xAE8b6702e413c6204b544D8Ff3C94852B2016c91, smoke passed (see Implementation Log 2026-04-06). **NOTE: this deployment is obsolete after Phase 1R deploys the rewritten contracts to Sepolia.** [ship]
 
+### Phase 16: Dead Code Removal — v0.12.0 cleanup `[both]` `AI`
+
+> **Spec v0.12.0 removed Path 1/2 (wallet T2 payment) and wallet signing (Method B) from both repos.** This phase removes all now-dead code, tests, documentation, and frontend UI. Every removal must be followed by a full test suite regression check. No dead code stays in the repo.
+
+**Public repo (`kychee-com/kysigned`) — code removal:**
+
+- [ ] Remove `src/api/payment/x402.ts` and `src/api/payment/x402.test.ts` (x402 payment middleware — 11 tests) [code]
+- [ ] Remove `src/api/payment/mpp.ts` and `src/api/payment/mpp.test.ts` (MPP payment middleware — 12 tests) [code]
+- [ ] Remove `src/api/payment/` directory if empty after above removals [code]
+- [ ] Remove wallet signing engine code: `processMethodBSign` from `src/signing/engine.ts` and its tests. Remove `recordWalletSignature` call site from the signing handler in `src/api/sign.ts`. Remove related test cases from `src/api/sign.test.ts`. [code]
+- [ ] Remove `recordWalletSignature`, `getWalletSignatures`, `verifyWalletSignature` from `SignatureRegistry.sol`. Remove associated storage structs, events, and test cases from `test/SignatureRegistry.test.cts`. Update contract ABI docs. This creates a NEW contract version for Phase 13 canary deploy (DD-26). [code]
+- [ ] Remove `frontend/src/lib/wallet.ts` (EIP-712, `hasWallet`, `connectWallet`, `signTypedData`) [code]
+- [ ] Remove `frontend/src/pages/WalletOnboardingPage.tsx` and its `/onboard` route from `App.tsx` [code]
+- [ ] Update `frontend/src/pages/DashboardPage.tsx` — remove wallet connect button and flow entirely. Dashboard login is email-only (magic link). [frontend-logic]
+- [ ] Remove `VITE_ENABLE_WALLET_SIGNING` env var and all conditional code that checks it [code]
+- [ ] Remove `docs/wallet-guide.md` [code]
+- [ ] Update `docs/contract-abi.md` — remove `recordWalletSignature`, `getWalletSignatures`, `verifyWalletSignature` documentation [code]
+
+**Public repo — documentation cleanup:**
+
+- [ ] Update `README.md` — remove all Path 1/2, wallet payment, wallet signing, Method B references. Update payment section to say "Hosted service: prepaid credits via Stripe. Public repo: operator pays run402, gates access via allowed_senders." [manual]
+- [ ] Update `mcp/README.md` — remove x402/MPP auth references [manual]
+- [ ] Update FAQ references if any FAQ content is in the public repo [manual]
+- [ ] Scan entire repo with `grep -ri "path.1\|path.2\|method.b\|wallet.sign\|x402\|mpp\|wallet.guide\|ENABLE_WALLET"` and clean any remaining references [code]
+
+**Public repo — legal cleanup:**
+
+- [ ] Update `LEGAL.md` — remove Method B wallet gap documentation (the "does NOT prove wallet X = email Y" section). Legal now only covers reply-to-sign proof semantics. [manual]
+
+**Service repo (`kychee-com/kysigned-service`) — code removal:**
+
+- [ ] Remove x402/MPP wiring from `src/router/buildContext.ts` — remove `buildPaymentVerifier` and `buildSenderIdentityExtractor` that compose x402/MPP middleware. Replace with credit-balance-only authentication. [code]
+- [ ] Remove x402/MPP env vars from `scripts/deploy.ts` secret injection [code]
+- [ ] Update `src/router/apiRouter.test.ts` — remove x402/MPP test cases [code]
+- [ ] Scan service repo with same grep pattern and clean remaining references [code]
+
+**Service repo — documentation/marketing cleanup:**
+
+- [ ] Update `site/llms.txt` — remove all Path 1/2, wallet, x402/MPP references [manual]
+- [ ] Update landing page — remove wallet/path references, update payment messaging [frontend-visual]
+- [ ] Update pricing page — remove wallet payment option, keep Stripe credit packs only [frontend-visual]
+- [ ] Update FAQ page — rewrite "Do I need a wallet?" to "No — you buy credits with a credit card and sign by replying to an email." Remove all Method B/wallet signing FAQ items. [frontend-visual]
+- [ ] Update "SaaS vs Repo" page — remove wallet billing references from forker section, add "charging your users is not currently available" language [frontend-visual]
+
+**Verification — full test suite after all removals:**
+
+- [ ] Run full `npm run test:all` in public repo — must pass with FEWER total tests (wallet/payment tests removed) [code]
+- [ ] Run full `npm run test` in service repo — must pass [code]
+- [ ] Run `npm run build` in both repos — clean compile [code]
+- [ ] Run Vite build for frontend — clean, no dead imports [code]
+
+### Phase 17: kysigned CLI/MCP Init `[repo]` `AI`
+
+> **New feature per spec F10.B (v0.12.0).** The public repo ships an `init` command that bootstraps a new kysigned instance on run402. This is the forker's entry point. The hosted service also uses this flow for dogfooding (F10.12).
+
+- [ ] Design `init` flow — define the exact sequence of run402 API calls, credential storage format, and error handling. Reference run402-mcp's init for patterns but do NOT wrap it. [code]
+- [ ] Implement `init` MCP tool in `mcp/src/tools/init.ts` — creates allowance wallet, subscribes run402 tier, creates project, stores credentials, registers sender domain, adds operator to `allowed_senders`. Idempotent. [code]
+- [ ] Implement `init` CLI command (if CLI exists, or add as a new `kysigned` CLI entry point) [code]
+- [ ] Implement credential storage at `~/.config/kysigned/` (or `KYSIGNED_CONFIG_DIR` env var) with 0600 permissions. Store: run402 project ID, service key, anon key, operator email, instance endpoint URL. [code]
+- [ ] Write `init` integration test — runs against live run402 testnet, provisions a real project, verifies credentials are stored. Gated by env var. [code]
+- [ ] Update README — document `kysigned init` as the first step for forkers [manual]
+- [ ] Update llms.txt — add `init` to the tool list [manual]
+
+### Phase 18: Testing Infrastructure `[both]` `AI`
+
+> **New feature per spec F18 (v0.12.0).** The public repo mirrors run402-mcp's integration testing framework. Tests exercise both directions: toward run402 (T1 infra) and toward kysigned's own CLI/MCP/API (product interface).
+
+**Integration tests toward run402 (T1):**
+
+- [ ] Create `test/integration/` directory and test helpers (`ensure-balance.ts` pattern from run402, `setup-allowance.ts` for seeding test wallet) [code]
+- [ ] Write integration test: `kysigned init` provisions a real run402 project on testnet [code]
+- [ ] Write integration test: envelope creation via the provisioned project hits real run402 DB + email surfaces [code]
+- [ ] All T1 integration tests gated by `KYSIGNED_INTEGRATION=1` env var, skip cleanly when not set [code]
+
+**Integration tests toward kysigned users (product interface):**
+
+- [ ] Write MCP integration test: `mcp/mcp-integration.test.ts` — calls real MCP tool handlers against a live kysigned endpoint (`KYSIGNED_ENDPOINT`). Create envelope, check status, verify document. [code]
+- [ ] Write API integration test: full envelope lifecycle via HTTP (create → sign → verify) against `KYSIGNED_ENDPOINT` [code]
+- [ ] All product-interface tests pointable at any deployment via `KYSIGNED_ENDPOINT` env var [code]
+
+**Stripe T2 tests (service repo):**
+
+- [ ] Create Stripe product and price tiers for kysigned under the Kychee Stripe account [infra] `HUMAN`
+- [ ] Write Stripe e2e test in service repo: magic link login → Stripe checkout (test mode, test card) → credits appear → envelope creation → balance deduction [code]
+- [ ] Follow Stripe testing patterns from run402's `billing-stripe.ts` tests and other Kychee Stripe products [code]
+
+**`init`-based test setup:**
+
+- [ ] Refactor integration test suite to use `kysigned init` as the setup step — proving the forker flow works before testing envelope operations [code]
+- [ ] Document test setup in `test/README.md` — env vars, prerequisites, how to run [manual]
+
 ---
 
 ## Implementation Log
@@ -1083,6 +1208,7 @@ _Populated during implementation by `/implement`, AFTER tasks are being executed
 - 2026-04-13: Completed "Phase 2R-F: E2E Test Rewrite" (2R.21–2R.24, all 4 tasks) — multiSigner.test.ts rewritten for reply-to-sign (synthetic MIME via `/v1/inbound/reply`). New `handleInboundEmailHttp` wrapper in public repo. Inbound reply route added to service-repo router. New tests: nonMatchingReply.test.ts, duplicateReply.test.ts. Also fixed expiration.test.ts + retention.test.ts (removed `@noble/ed25519`, rewrote for reply-to-sign). All e2e tests compile + self-skip when BASE_URL unset. Test count: 300 unit + 22 contract = 322 total, 0 fail. Service: 63 total, 0 fail.
 
 - 2026-04-13: Completed "Path 2 wallet onboarding flow" — `WalletOnboardingPage.tsx` at `/onboard` with 4-step visual guide (install wallet, switch to Base, fund USDC+ETH, connect & send). Dashboard auth screen links to it when no wallet detected. Links to full `docs/wallet-guide.md` on GitHub. Note: task was listed under Phase 4 `[service]` but all code is in the public repo (`kysigned/frontend/`) since it's a website page.
+- 2026-04-13: Plan continued — spec bumped to v0.12.0. **Major MVP simplification:** removed Path 1/2 (wallet T2 payment) and wallet signing (Method B) from both repos. Added DD-25 through DD-28. Added Phase 16 (dead code removal — ~30 tasks across both repos), Phase 17 (kysigned CLI/MCP init), Phase 18 (testing infrastructure). Updated canary checklist (OQ #20) to remove x402/MPP/wallet items, replaced with Stripe credit-balance items. Contract `recordWalletSignature` to be removed from source before canary deploy (DD-26). Note: the wallet onboarding page built earlier today (Phase 4 task, commit `521bdf9`) will be removed in Phase 16.
 
 ### Gotchas
 
