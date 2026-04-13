@@ -1,5 +1,8 @@
 User-agent: *
 Allow: /
+Disallow: /admin
+Disallow: /functions/v1
+Disallow: /storage/v1
 
 Sitemap: https://run402.com/sitemap.xml
 Sitemap: https://run402.com/llms.txt

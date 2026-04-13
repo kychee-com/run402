@@ -1,5 +1,11 @@
 # CLAUDE.md
 
+## Related Repositories
+
+- **kychee-com/kysigned** (private) — KySigned public MIT-licensed core library. Blockchain-verified e-signatures on Base. Contains API handlers (`src/api/`), smart contracts (`contracts/SignatureRegistry.sol`, `contracts/EvidenceKeyRegistry.sol`), zk-email circuits (`circuits/kysigned-approval.circom`), MCP server (`mcp/`), and verification scripts. Clone: `gh repo clone kychee-com/kysigned`
+- **kychee-com/kysigned-service** (private) — KySigned hosted service at kysigned.com. Wires the core library to run402 infrastructure via three Lambdas (`kysigned-api`, `kysigned-email-webhook`, `kysigned-sweep`). Contains route dispatch, email templates, deployment scripts, and brand assets. Clone: `gh repo clone kychee-com/kysigned-service`
+- **kychee-com/run402** — Run402 MCP server (npm: `run402-mcp`, v0.2.0). See the MCP Server section below.
+
 ## KMS contract wallets
 
 The `/contracts/v1/*` feature signs Ethereum transactions via AWS KMS-backed keys (one KMS key per wallet, ECC_SECG_P256K1, SIGN_VERIFY). Private keys never leave KMS — there is intentionally no `kms:Decrypt` or `kms:GetParametersForImport` in the gateway role.
@@ -51,7 +57,7 @@ Gateway task role needs `ce:GetCostAndUsage` and `pricing:GetProducts` (both acc
 
 ## MCP Server
 
-The Run402 MCP server is published at https://github.com/kychee-com/run402-mcp (npm: `run402-mcp`, v0.2.0). It exposes 52 tools covering setup/billing, projects, database, deployment, subdomains, functions, storage, apps, and more. Install: `npx run402-mcp`. Config and docs are in the separate `kychee-com/run402-mcp` repo. See AGENTS.md for the full tool list.
+The Run402 MCP server is published at https://github.com/kychee-com/run402 (npm: `run402-mcp`, v0.2.0). It exposes 52 tools covering setup/billing, projects, database, deployment, subdomains, functions, storage, apps, and more. Install: `npx run402-mcp`. Config and docs are in the separate `kychee-com/run402-mcp` repo. See AGENTS.md for the full tool list.
 
 ## Lint & Type Check
 
