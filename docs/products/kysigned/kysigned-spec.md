@@ -1,11 +1,11 @@
 ---
 product: kysigned
-version: 0.10.0
+version: 0.11.0
 status: Draft
 type: product
 interfaces: [website, api, cli, mcp, smart-contract]
 created: 2026-04-04
-updated: 2026-04-12
+updated: 2026-04-13
 ---
 
 ## Overview
@@ -179,7 +179,7 @@ The primary signing method. Used by the hosted service and available in the publ
   - **Replay nullifier:** each proof includes a nullifier derived from the canonical DKIM signature bytes, preventing the same email from being used to generate multiple proofs.
   - **Recipient binding:** the circuit proves that the `To:` header (if in DKIM `h=`) includes the operator's designated reply address (`reply-to-sign@<operatorDomain>`), binding the reply to a specific kysigned instance.
 - F3.3.5. `[both]` **Bait-and-switch protection is native.** The `docHash` is in the DKIM-signed email the signer received and replied to. The zk circuit binds the signature to the exact hash present in the email. An operator cannot stage a different document — the reply's DKIM signature covers the hash the signer actually saw.
-- F3.4. `[both]` **No visual signature blocks in MVP.** Signers do not draw or click a visual signature. The signing act is the email reply. Visual signature blocks (drawn handwriting, auto-stamp) are deferred to a future feature.
+- F3.4. `[both]` **No signer-drawn signatures.** Signers do not draw, scribble, or click a visual signature. The signing act is the email reply. The system auto-generates a proof block per signer (see F16) that is appended to the PDF by the operator — the signer has no input into its visual appearance.
 - F3.5. `[both]` After signing is confirmed (zk proof generated, on-chain record written), the operator sends a confirmation email to the signer with the transaction hash and a proof link.
 - F3.6. `[both]` **Decline:** a signer who does not wish to sign simply does not reply. There is no explicit decline action in the MVP. Envelope expiry (F1.7) handles the timeout case. The sender is notified when the envelope expires with incomplete signatures.
 - F3.7. `[both]` **Duplicate signing protection:** if the operator receives a second valid `I APPROVE` reply from the same signer for the same envelope, the first is used and subsequent replies are no-ops. The operator responds with "you have already signed this document."
@@ -239,7 +239,7 @@ Every signature event is recorded on canonical smart contracts on Base.
 
 #### F4.E Completion Recording `[both]`
 
-- F4.15. `recordCompletion(envelopeId, originalDocHash, finalDocHash, signerCount)`. Fires when all signers have signed. Links the original document hash to the final rendered PDF hash (which includes the certificate page).
+- F4.15. `recordCompletion(envelopeId, originalDocHash, finalDocHash, signerCount)`. Fires when all signers have signed. Links the original document hash to the final rendered PDF hash (which includes the approval page with proof blocks).
 - F4.16. `[repo]` Mixed methods per envelope: some signers can use reply-to-sign, others wallet signing (Method B), within the same envelope. The hosted service uses reply-to-sign only.
 
 ### F5. Verification `[both]`
@@ -263,10 +263,10 @@ Public, universal, vendor-independent signature verification — designed to wor
 
 - F5.6. `[repo]` For Method B records, verification is by `(documentHash, expectedSignerAddress)`. The contract's existing `verifyWalletSignature(documentHash, expectedSigner)` function returns true/false. The verification page also supports this mode.
 
-#### F5.C Certificate of Completion and proof links
+#### F5.C Approval page, proof blocks, and proof links
 
-- F5.7. **Certificate of Completion:** generated as a certificate page appended to the final PDF on envelope completion (see F8). Includes: document name, original `docHash`, per-signer email + timestamp + tx hash, operator identity, verification instructions, QR code linking to the verification page.
-- F5.8. Third-party verification: anyone with the signed PDF and a signer's email can independently verify against the blockchain. No dependency on any kysigned instance being online.
+- F5.7. **Approval page:** a single page appended to the final PDF on envelope completion (see F8, F16). Contains one **proof block** per signer (see F16.1) and document-level metadata: document name, original `docHash`, envelope ID, operator identity, verification instructions.
+- F5.8. Third-party verification: anyone with the signed PDF can independently verify against the blockchain using the proof block data. Each proof block contains a verification key string with chain, contract address, searchKey, and envelope ID — sufficient for any validator (human or AI agent) to query the on-chain record directly. No dependency on any kysigned instance being online.
 - F5.9. **Proof link:** `/verify/<envelopeId>` displays the full verification record for a completed envelope — signer count, signing dates, tx hashes, and direct links to each transaction on Basescan. No PDF upload required (the envelope ID is sufficient to query the contract for the completion record). This is the link shared in the completion email (F7.4).
 - F5.10. **Owner verification (dashboard):** Full audit trail per signer — email, timestamp, tx hash. Available to the sender via the dashboard (F6).
 
@@ -293,7 +293,7 @@ Email is the core signing channel, not just a notification mechanism.
 - F7.1. `[both]` Signing email sent to each signer. Email includes: sender name, document name, `docHash`, envelope ID, a review link (read-only document preview), the `How it works →` link (F11.7), and clear instructions: "To sign, reply to this email with `I APPROVE` as the first line."
 - F7.1.1. `[both]` The `Reply-To` header is set to `reply-to-sign@<operatorDomain>` (single inbound address for all envelopes). Envelope and signer identity are inferred from the reply's `From:` header and subject line.
 - F7.1.2. `[both]` **Email tone:** privacy-first and deliberately non-scary. The primary call-to-action conveys "this is private, simple, and only findable by someone who already has both your email and the document." Legal and technical specifics live on the "how it works" page and in a collapsible footer — not in the primary signing instruction.
-- F7.1.3. `[both]` **Consent language versioning.** Every user-facing string that constitutes signing intent (email body, subject line, auto-reply wording, certificate page wording, "how it works" page text) is versioned. The version in force at the time of signing is recorded alongside each envelope in operator state. Disputes can reference the exact text a signer was shown.
+- F7.1.3. `[both]` **Consent language versioning.** Every user-facing string that constitutes signing intent (email body, subject line, auto-reply wording, approval page wording, "how it works" page text) is versioned. The version in force at the time of signing is recorded alongside each envelope in operator state. Disputes can reference the exact text a signer was shown.
 
 #### F7.B Inbound reply handling
 
@@ -305,7 +305,7 @@ Email is the core signing channel, not just a notification mechanism.
 
 - F7.3. `[both]` Automated reminders at configurable intervals (default: 3 days, 7 days after initial send). Sender can trigger manual reminders. Reminder emails repeat the signing instructions in the reply-to-sign format.
 - F7.4. `[both]` Confirmation email sent to signer after their signature is recorded on-chain. Includes the transaction hash and a proof link.
-- F7.5. `[both]` **Completion email** sent to all parties (sender + all signers) with: the final PDF (including certificate page, see F8), a proof link (`/verify/<envelopeId>`), and plain-text blockchain reference details (contract address, chain, tx hashes). Recipients can independently verify on any block explorer even if kysigned.com is unreachable.
+- F7.5. `[both]` **Completion email** sent to all parties (sender + all signers) with: the aggregated signed PDF (including approval page with proof blocks, see F8 + F16), a proof link (`/verify/<envelopeId>`), and plain-text blockchain reference details (contract address, chain, tx hashes). Recipients can independently verify on any block explorer even if kysigned.com is unreachable.
 - F7.6. `[both]` Notice to senders: prompt to contact signers and check spam if signing requests are not received. Displayed in dashboard and in API response.
 
 #### F7.D Infrastructure
@@ -321,9 +321,9 @@ Email is the core signing channel, not just a notification mechanism.
 - F8.1. Accept PDF upload (base64 in API body or URL reference).
 - F8.2. Compute `SHA-256(pdf_bytes)` as the canonical document hash.
 - F8.3. Render PDF in browser on the review page using pdf.js.
-- F8.4. **No visual signature blocks in MVP.** Visible signature images embedded in the document body (drawn handwriting, auto-stamp) are deferred to a future feature. The signing act is the email reply, not a visual mark on the document.
-- F8.5. **Certificate page appended at completion.** On envelope completion, the operator automatically appends a certificate page to the final PDF. The certificate page contains: original `docHash`, envelope ID, per-signer email + timestamp + tx hash, operator identity, verification instructions, and a QR code linking to the verification page. This is purely cosmetic rendering — the cryptographic record is against the original `docHash`, not the rendered PDF. Zero friction for signers (they never see this page during signing) and zero opt-in for the sender (added automatically by default).
-- F8.5.1. The completion record (F4.15) stores both `originalDocHash` (pre-certificate) and `finalDocHash` (post-certificate). A verifier computes `SHA-256(final PDF)`, looks up the completion record by `finalDocHash`, reads `originalDocHash`, then looks up signatures by `originalDocHash`.
+- F8.4. **No signer-drawn signatures.** Signers do not draw or scribble a signature. The system auto-generates a proof block per signer (see F16) embedded in the approval page appended to the PDF. The signing act is the email reply, not a visual mark.
+- F8.5. **Approval page appended at completion.** On envelope completion, the operator automatically appends an approval page to the final PDF. The approval page contains one proof block per signer (see F16.1) plus document-level metadata (original `docHash`, envelope ID, operator identity, verification instructions). This is purely cosmetic rendering — the cryptographic record is against the original `docHash`, not the rendered PDF. Zero friction for signers (they never see this page during signing) and zero opt-in for the sender (added automatically by default).
+- F8.5.1. The completion record (F4.15) stores both `originalDocHash` (pre-approval-page) and `finalDocHash` (post-approval-page). A verifier computes `SHA-256(final PDF)`, looks up the completion record by `finalDocHash`, reads `originalDocHash`, then looks up signatures by `originalDocHash`.
 - F8.6. **Ephemeral retention rule:**
   - **Active envelope (status='active'):** PDF retained — needed for signing
   - **Voided or expired envelope:** PDF deleted immediately (no party will sign or receive a completion email)
@@ -334,7 +334,7 @@ Email is the core signing channel, not just a notification mechanism.
 - F8.7. Users are clearly notified at envelope creation that PDFs are ephemeral and they should keep their own copy. The completion email itself contains the signed PDF as an attachment, so all parties have a permanent copy.
 - F8.8. After PDF deletion, only metadata persists: document name, document hash, signer statuses, tx hashes, timestamps. The on-chain hash remains forever.
 - F8.9. Future feature: optional paid document retention tier (user pays for extended storage). Not in MVP scope. If/when added, retention will be opt-in per envelope and the user will be the explicit data controller for the retained content.
-- F8.10. Multi-signature PDFs (multiple signature fields per page or per section) are post-MVP. MVP supports one set of signature fields per signer per document.
+- F8.10. **Multi-section signing is out of scope.** MVP treats the entire document as a single unit — one `I APPROVE` covers the whole document. Contracts or papers that require initials on specific pages, or multiple separate signatures for different sections, are not supported. A future feature may break a document into multiple sections each with its own `I APPROVE` email, but this requires a separate brainstorm + spec cycle. See FAQ.
 - F8.11. **Security framing:** This ephemeral retention pattern is a deliberate security property, not just a feature. It is the primary mitigation for the risk that an attacker compromising kysigned's storage could exfiltrate document content. The smaller the window of retention, the smaller the breach blast radius.
 
 ### F9. Prepaid Credits `[service]`
@@ -375,6 +375,8 @@ Marketing site and product pages at kysigned.com.
   - Legal/compliance: "Are blockchain signatures legal?" → ESIGN Act, UETA, state statutes.
   - Pricing/catch: "How is this so cheap?" → you pay for infrastructure, not subscription overhead.
   - SaaS vs repo: decision helper with how-to snippets for agent-assisted deployment.
+  - Multi-section signing: "Does kysigned support initials on specific pages or multiple signatures per document?" → "Not yet. kysigned treats the entire document as a single unit — one approval covers the whole document. Multi-section signing (initials per page, separate approvals per section) is a planned future feature."
+  - Agent validation: "How can I verify a signed document?" → "Every signed PDF contains a proof block with a verification key. Give your AI agent this instruction: 'Read the verification key from the proof block and call getReplyToSignRecords(searchKey) on the Base contract at the address shown.' Any agent can validate any signed document — no account or service needed."
 - F11.6. **Three content layers:**
   - FAQ — human-readable, conversion-focused
   - How-to snippets — copyable prompts for humans using AI agents
@@ -399,7 +401,7 @@ Marketing site and product pages at kysigned.com.
   - Operator responsibility: the forker/deployer is responsible for their own privacy compliance, Terms of Service, and legal obligations — not Kychee
   - Excluded document types that cannot be e-signed under ESIGN/UETA (wills, codicils, etc.)
 - F12.8. No product launch until all `[service]` legal documents are human-approved.
-- F12.9. `[both]` **Consent language is versioned and legally reviewed.** Every user-facing string that constitutes signing intent is versioned (F7.1.3). Legal review required before launch — the exact email copy, "how it works" page text, and certificate page wording must be approved by someone with legal expertise.
+- F12.9. `[both]` **Consent language is versioned and legally reviewed.** Every user-facing string that constitutes signing intent is versioned (F7.1.3). Legal review required before launch — the exact email copy, "how it works" page text, and approval page wording must be approved by someone with legal expertise.
 
 ### F13. Cross-Linking `[service]`
 
@@ -436,29 +438,46 @@ Per the SaaS Factory spec (F19). kysigned.com uses the shared Kychee geo-aware c
 - F15.8. "Cookie settings" link in footer re-opens the panel.
 - F15.9. Re-prompts user when consent is older than 12 months.
 
-### F16. Document-Level Aggregation View `[both]` — DEFERRED, full spec TBD
+### F16. Signed PDF: Proof Blocks, Aggregation & Resend `[both]`
 
-> **Status: concept-only — not yet specced for implementation.** Added 2026-04-08 to capture the idea surfaced while planning Phase 4B e2e tests. **Before this feature is implemented, `/spec kysigned` must be re-run to flesh out the full requirements and acceptance criteria.** Until then, the kysigned plan carries a placeholder Phase 2H marker pointing back here.
+This feature covers three connected capabilities: (1) per-signer proof blocks embedded in the PDF, (2) multi-envelope aggregation into a single signed PDF, and (3) resend-to-missing-signers flow.
 
-**The concept:** kysigned currently treats every envelope as an independent unit. When a sender (X) creates envelope E1 to get signers Y1, Y2, Y3 to sign a PDF, and E1 expires with only Y1 + Y2 signed, X's only recourse is to create envelope E2 with Y3 as the sole signer — paying again. E1 and E2 have the **same `document_hash`** (same PDF) but are unrelated in the current data model. The dashboard shows them as two separate envelopes; the verify page verifies each envelope independently; nothing in the product acknowledges that both envelopes are attestations of the same document.
+#### F16.A Proof Blocks `[both]`
 
-This feature introduces a new conceptual layer above envelopes: the **document**. A document is identified by `(document_hash, creator_identity)` and aggregates all envelopes the creator has sent against that PDF. The aggregation enables:
+Each signer's signature is represented as an auto-generated **proof block** — a visual element embedded in the approval page appended to the final PDF. The signer has no input into its appearance (no drawing, no scribbling — see F3.4).
 
-- **Document history in the dashboard:** the sender sees "NDA.pdf" as a single row with a history trail (envelope 1 expired with 2/3 signed, envelope 2 completed with 1/1 signed) and a combined signer ledger across all envelopes.
-- **Combined attestation view on the verify page:** when someone presents the final signed PDF, the verifier can check whether every intended signer has signed SOMEWHERE in the document's envelope history, not just in one specific envelope.
-- **Creator UX hints:** when a creator uploads a PDF that already has attested envelopes, kysigned surfaces "this document was partially attested in envelope XYZ — only invite the missing signer this time?"
-- **Optional — clearer cryptographic story:** each envelope still produces its own on-chain record (envelopes don't share signatures at the cryptographic layer; reply-to-sign and wallet signing both bind to envelope_id), but the off-chain aggregation surfaces a unified "document was attested by A + B via E1, and by C via E2" view to humans.
+- F16.1. **Proof block contents.** Each proof block contains:
+  - Signer name and date signed
+  - **QR code** linking to the operator's verification page: `https://{operatorDomain}/verify/{envelopeId}`. The `operatorDomain` is configured per deployment — forkers set their own domain.
+  - **Verification key string** (plain text, machine-readable): `Chain: Base | Contract: 0x{signatureRegistry} | SearchKey: 0x{searchKey} | EnvelopeId: 0x{envelopeId}`. This is all any validator (human or AI agent) needs to query the on-chain record directly via `getReplyToSignRecords(searchKey)` — no dependency on any kysigned instance.
+- F16.2. **Proof block states.** A proof block shows one of three states:
+  - **Signed** — signer name, date, QR code, verification key string (full proof block)
+  - **Waiting** — signer name, "signature pending" label (envelope still active)
+  - **Failed** — signer name, "did not sign" label (envelope expired/voided without this signer's signature)
+- F16.3. **Standalone validator.** The public repo includes a standalone validator tool that accepts a PDF, reads the proof block data, and verifies each signer's record on-chain. This is independent of the kysigned hosted service. Any AI agent given the instruction "verify this document using the proof block data" can do so by calling the contract's read functions. The FAQ positions this as: "give these instructions to your agent and it can validate any signed document."
+- F16.4. **Operator domain configuration.** The QR code URL domain (`operatorDomain`) is set during deployment. Forkers configure their own domain. The verification key string uses on-chain data only (no operator URL) — so even if the operator disappears, the string alone is sufficient for verification.
 
-**Why deferred:** the full scope needs a brainstorm + spec pass to answer open questions:
-- Does the `document_hash` aggregation key include the sender identity, or is any sender's attestation of the same PDF relevant? (probably sender-scoped to avoid cross-user leakage)
-- How does the on-chain verification layer handle this? (probably unchanged — each envelope is verified independently; aggregation is a UI concern only)
-- Does this interact with the F8.6 ephemeral PDF retention? (the PDF itself is deleted after completion; only the hash persists — aggregation works on the hash, so yes, compatible)
-- Should the sender get a billing discount when re-sending the same document to fewer signers? (product decision — defer until we have data)
-- New database entity: is it a materialized view over envelopes, or a first-class table with its own row per document? (affects the data model)
-- New UI routes: `/dashboard/documents/:document_hash` and `/verify/by-document/:document_hash`?
-- Email template: "envelope X for your document Y has expired — you've already collected M of N signatures on this document; would you like to re-send to only the missing signers?"
+#### F16.B Multi-Envelope Aggregation `[both]`
 
-**Acceptance criteria:** TBD — see concept bullets above. Full AC to be drafted during the deferred `/spec` session.
+When a sender creates multiple envelopes for the same document (same `document_hash`), the system aggregates all signer signatures into a single signed PDF.
+
+- F16.5. **Aggregation key.** Envelopes are grouped by `(document_hash, sender_identity)`. The sender sees one logical "document" in their dashboard, with a history of envelopes and a combined signer ledger.
+- F16.6. **Aggregated signed PDF.** The final signed PDF contains one approval page with proof blocks for ALL signers across ALL envelopes for that document. Each proof block's verification key points to the specific envelope where that signer signed. Automatically generated on envelope completion and sent in the completion email (F7.5). Can also be regenerated anytime from the dashboard.
+- F16.7. **Dashboard document view.** The sender's dashboard shows documents (grouped by `document_hash`) rather than raw envelopes. Each document row shows: document name, combined signer status (e.g., "2 of 3 signed"), and the history of envelopes (e.g., "Envelope 1: expired with 2/3, Envelope 2: completed with 1/1").
+- F16.8. **On-chain verification is unchanged.** Each envelope still produces its own independent on-chain record. Aggregation is a presentation layer — the cryptographic story is per-envelope. A verifier checks each signer's proof block independently.
+
+#### F16.C Resend to Missing Signers `[both]`
+
+When an envelope expires or is voided with some signers still pending, the sender can resend to only the missing signers.
+
+- F16.9. **"Resend to missing" action.** Available in the dashboard when a document has pending signers from a completed/expired/voided envelope. Creates a new envelope with the same PDF (same `document_hash`) and only the signers who did not sign in previous envelopes.
+- F16.10. **Automatic detection.** When a sender uploads a PDF whose `document_hash` matches an existing document with incomplete signers, the system surfaces: "This document has N signatures already — would you like to send to only the missing signers?"
+- F16.11. **Billing.** Each resend is a new envelope and is billed at the standard per-envelope rate. No discount for resends (defer discount consideration until usage data exists).
+- F16.12. **Aggregated result.** After the resend envelope completes, the aggregated signed PDF is regenerated to include all signers across both envelopes. The sender receives the updated PDF.
+
+#### F16.D Future: Multi-Section Signing (out of scope)
+
+> **Not in MVP.** Contracts and papers that require initials on specific pages or multiple separate signatures for different sections are not supported. MVP treats the entire document as a single unit — one `I APPROVE` covers the whole document. A future feature may break a document into sections, each requiring its own `I APPROVE` email. This requires a separate brainstorm + spec cycle and is not planned.
 
 ### F17. Pre-Launch Dark-Launch Canary Discipline `[service]` + `[repo]`
 
@@ -548,8 +567,8 @@ This feature introduces a new conceptual layer above envelopes: the **document**
 - [ ] Verification page is universal: verifies ANY record on the canonical contracts regardless of which instance created it
 - [ ] No "search by email" or "list all docs signed by X" — verifier must provide both email and document
 - [ ] `[repo]` Wallet signing verification: `verifyWalletSignature(documentHash, expectedSigner)` returns correct true/false
-- [ ] Certificate page appended to final PDF includes `docHash`, envelope ID, per-signer audit trail, operator identity, verification instructions, QR code
-- [ ] Third party with signed PDF + signer email can verify against the blockchain without any kysigned instance online
+- [ ] Approval page appended to final PDF includes per-signer proof blocks (name, date, QR code, verification key string), `docHash`, envelope ID, operator identity, verification instructions
+- [ ] Third party with signed PDF can verify against the blockchain using the proof block verification key string — no kysigned instance needed, no email address needed
 - [ ] Proof link (`/verify/<envelopeId>`) displays full verification record — signer count, dates, tx hashes, Basescan links
 - [ ] Completion email includes proof link, contract address, chain name, and all tx hashes in plain text
 
@@ -574,7 +593,7 @@ This feature introduces a new conceptual layer above envelopes: the **document**
 - [ ] Automated reminder sent at configured intervals (default 3 days, 7 days) in reply-to-sign format
 - [ ] Manual reminder triggered by sender; signer receives new signing email
 - [ ] Confirmation email sent to signer after on-chain recording
-- [ ] Completion email sent to all parties with final PDF (including certificate page), proof link, and blockchain reference details
+- [ ] Completion email sent to all parties with aggregated signed PDF (including approval page with proof blocks), proof link, and blockchain reference details
 - [ ] Spam notice displayed to sender in dashboard after envelope creation
 - [ ] `[service]` Emails sent from dedicated kysigned.com domain with SPF/DKIM/DMARC
 - [ ] `[repo]` Email provider is configurable (run402 email service or custom SMTP/API); inbound requires SES-compatible pipeline preserving raw MIME
@@ -582,9 +601,9 @@ This feature introduces a new conceptual layer above envelopes: the **document**
 ### F8. PDF Handling
 - [ ] PDF uploaded via API (base64 or URL); SHA-256 hash computed and returned in response
 - [ ] Review page renders PDF correctly in browser via pdf.js
-- [ ] No visual signature blocks embedded in document body (deferred to future feature)
-- [ ] Certificate page automatically appended to final PDF on completion — contains `docHash`, envelope ID, per-signer audit trail, operator identity, verification instructions, QR code
-- [ ] Completion record stores both `originalDocHash` (pre-certificate) and `finalDocHash` (post-certificate)
+- [ ] No signer-drawn signatures — proof blocks are auto-generated by the system (F3.4, F16.1)
+- [ ] Approval page automatically appended to final PDF on completion — contains per-signer proof blocks (F16.1), `docHash`, envelope ID, operator identity, verification instructions
+- [ ] Completion record stores both `originalDocHash` (pre-approval-page) and `finalDocHash` (post-approval-page)
 - [ ] PDF deleted after retention period (default 30 days); only metadata and on-chain hash persist
 - [ ] User notified of retention policy at envelope creation, in completion email, and before deletion
 - [ ] After PDF deletion, envelope metadata (name, hash, statuses, tx hashes) remains accessible in dashboard
@@ -646,6 +665,24 @@ This feature introduces a new conceptual layer above envelopes: the **document**
 - [ ] Consent persists in `localStorage` as `kychee_consent`
 - [ ] Footer "Cookie settings" link re-opens the panel
 
+### F16. Signed PDF: Proof Blocks, Aggregation & Resend
+- [ ] Each signer's proof block in the approval page contains: name, date, QR code (operator verify URL), and verification key string (chain, contract, searchKey, envelopeId)
+- [ ] QR code domain is configurable per deployment (`operatorDomain`) — forkers set their own
+- [ ] Verification key string contains ONLY on-chain data (no operator URL) — sufficient for stateless verification even if the operator disappears
+- [ ] Proof block shows "signed" state with full data for completed signers
+- [ ] Proof block shows "waiting" state for pending signers on active envelopes
+- [ ] Proof block shows "did not sign" state for pending signers on expired/voided envelopes
+- [ ] Standalone validator in public repo accepts a PDF, reads proof block data, queries on-chain records, and reports verification results
+- [ ] An AI agent given the verification key string from a proof block can independently verify the signature by calling `getReplyToSignRecords(searchKey)` on the contract
+- [ ] Dashboard groups envelopes by `(document_hash, sender_identity)` into a single "document" view
+- [ ] Aggregated signed PDF contains proof blocks for ALL signers across ALL envelopes for the same document
+- [ ] Aggregated signed PDF is automatically generated and sent in the completion email when all intended signers have signed (across one or more envelopes)
+- [ ] Aggregated signed PDF can be regenerated anytime from the dashboard
+- [ ] "Resend to missing" creates a new envelope with same PDF and only the signers who didn't sign in previous envelopes
+- [ ] When uploading a PDF whose hash matches an existing document with incomplete signers, the system suggests sending to only missing signers
+- [ ] Each resend is billed at the standard per-envelope rate
+- [ ] After resend completes, the aggregated signed PDF is regenerated to include all signers across all envelopes
+
 ### F17. Pre-Launch Dark-Launch Canary Discipline
 - [ ] Canary KMS wallet is provisioned under the kysigned run402 project separately from the eventual production wallet; the two wallets have distinct deployer EOAs
 - [ ] Canary `SignatureRegistry` and `EvidenceKeyRegistry` deploy to Base mainnet via the canary KMS wallet and compile from the same Solidity source as the production contracts
@@ -696,7 +733,7 @@ This feature introduces a new conceptual layer above envelopes: the **document**
 5. **Slow-KDF parameters.** Exact algorithm (argon2id vs scrypt vs PBKDF2) and parameter values. Fixed forever once committed. Must be expensive enough to resist a 1000x hardware speedup while remaining tolerable (~1s) for a legitimate verifier.
 6. **Explicit decline phrase.** Should `I DECLINE` be a first-class decline action, or is "do not reply" the only decline path?
 7. **Retry UX for non-delivery.** Replies can bounce or be filtered. What does the nudge/re-send flow look like?
-8. **Consent language review.** Who reviews the email copy, "how it works" page, and certificate page wording before launch? Legal expertise required.
+8. **Consent language review.** Who reviews the email copy, "how it works" page, and approval page wording before launch? Legal expertise required.
 9. **Dispute scenarios — PARTIALLY RESOLVED (v0.9.1).** Signer repudiation analysis:
    - **Scenario:** Bob signed, then claims the operator fabricated his signature using a fake DKIM key (after the real key rotated out of DNS).
    - **Defense (trusted operator):** No issue — the operator is trusted, the zk proof exists, the key is archived on-chain with `block.timestamp`.
@@ -713,7 +750,7 @@ This feature introduces a new conceptual layer above envelopes: the **document**
 14. **Multi-signature PDFs** — post-MVP. UX and hash structure for per-page/per-section signatures.
 15. **run402 prepaid credit model** — does run402 support buy-credits-and-deduct-per-call? If not, scope needed.
 16. **Email deliverability strategy** — dedicated sending domain, IP warm-up, deliverability monitoring.
-17. **Certificate of Completion design** — what do courts/auditors expect to see?
+17. **~~Certificate of Completion design~~** — RESOLVED (v0.11.0). Renamed to "approval page" with per-signer proof blocks (F16). Design: QR code + verification key string per signer, document metadata, operator identity.
 18. **Credit pack tiers and pricing** — optimize after gas costs are known.
 19. **Future: run402 T2 payment collection (DEFERRED)** — see original OQ #17 text.
 
@@ -721,6 +758,6 @@ This feature introduces a new conceptual layer above envelopes: the **document**
 
 20. **F17 run402 capability gaps** — two KMS wallets per project, bytecode return on deploy, rate-limiting on provision-wallet. Facts to discover before canary execution.
 21. **F17 byte-identical bytecode check mechanism** — deferred to plan; spec commits to the gate being hard.
-22. **F17 canary checklist contents** — plan enumerates; candidate items now include: reply-to-sign end-to-end via each surface, evidence key registration, zk proof generation, verification page, parallel + sequential signing, ephemeral PDF retention, certificate page generation.
+22. **F17 canary checklist contents** — plan enumerates; candidate items now include: reply-to-sign end-to-end via each surface, evidence key registration, zk proof generation, verification page, parallel + sequential signing, ephemeral PDF retention, approval page generation with proof blocks.
 23. **F17 bytecode-divergence playbook** — deferred to plan.
 24. **F17 production-contract smoke specifics** — deferred to plan.
