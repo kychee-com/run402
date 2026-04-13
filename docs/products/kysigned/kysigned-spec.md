@@ -1,6 +1,6 @@
 ---
 product: kysigned
-version: 0.11.0
+version: 0.12.0
 status: Draft
 type: product
 interfaces: [website, api, cli, mcp, smart-contract]
@@ -60,37 +60,35 @@ An envelope is one document (PDF) sent to one or more signers. The envelope is t
 - F1.1. Create an envelope by providing a PDF (upload or URL) and a list of signers (email + name per signer).
 - F1.2. Base price includes up to 2 signers per envelope ($0.29). Additional signers cost $0.10 each (reflecting real gas + proof generation costs). No upper limit on signer count.
 - F1.3. Sender specifies signing order: parallel (default — all signers can sign in any order) or sequential (signers are notified one at a time in the specified order).
-- F1.4. All signers use the same signing method (reply-to-sign). No per-signer signing options in MVP.
+- F1.4. All signers use the same signing method (reply-to-sign email). No per-signer signing options in MVP.
 - F1.5. Envelope lifecycle statuses: draft, active, completed, expired, voided.
 - F1.6. Sender can void an active envelope (cancels all pending signing requests, notifies signers).
 - F1.7. Envelope expiry: configurable TTL (default TBD, validated against cost). Expired envelopes notify all parties and cannot be signed.
 - F1.8. Webhook/callback URL: sender provides a URL that receives a POST when the envelope is completed.
-- F1.9. `[service]` Signing is email-reply-based: each signer receives a signing email and signs by replying with `I APPROVE`. The operator delivers the signing email; there are no separate "signing links" for the reply-to-sign method. A review link (read-only document preview) is included in the signing email and can be shared via any channel, but the signing act itself requires an email reply from the signer's real mailbox.
-- F1.9.1. `[repo]` The public repo also supports wallet-based signing (Method B / EIP-712) for forkers who have externally established wallet ↔ identity binding. Forkers may offer signing links that lead to the wallet-signing page. The hosted service at kysigned.com does NOT expose wallet signing to signers.
+- F1.9. `[both]` Signing is email-reply-based: each signer receives a signing email and signs by replying with `I APPROVE`. The operator delivers the signing email; there are no separate "signing links" for the reply-to-sign method. A review link (read-only document preview) is included in the signing email and can be shared via any channel, but the signing act itself requires an email reply from the signer's real mailbox.
 - F1.10. **Sender as signer:** If the sender also needs to sign the document, they must add themselves to the signer list. There is no "pre-sign at creation" flow. The sender signs through the same process as every other signer (same link, same verification, same on-chain proof). This ensures a uniform audit trail — every signature event is identical regardless of who initiated the envelope. The UI should make this clear: when creating an envelope, prompt "Will you also sign this document?" and auto-add the sender to the signer list if yes.
 
 ### F2. Sender Authentication & Access Control `[both]` / `[service]`
 
-**Context — T1 vs T2 payments:** run402 handles T1 (app-owner pays run402 for infrastructure). T2 (end-users pay the app operator) is **deferred** — run402 does not yet provide a billing layer that lets apps charge their users. Until T2 is available, each kysigned deployment must handle its own user charging (if any) AND gate access so random internet users can't drain the operator's run402 balance on gas and emails.
+**Context — T1 vs T2 payments:**
+- **T1 (operator → run402):** Every kysigned deployment (hosted or forked) pays run402 for infrastructure (compute, email, KMS wallets, gas). This is handled by run402's billing ledger. The operator's wallet is their identity for T1.
+- **T2 (end-user → operator):** run402 does not yet provide a billing layer that lets apps charge their users. For the hosted service (kysigned.com), kysigned operates its own Stripe integration to sell prepaid credit packs to end users. Forkers do not get built-in T2 billing — they gate access via `allowed_senders` (F2.8) and absorb infrastructure costs themselves. If a forker wants to charge their users, they must build their own billing layer on top.
 
-Three sender paths, all MVP. Each serves a different audience.
+#### F2.1 Hosted Service Billing (kysigned.com) `[service]`
 
-- F2.1. **Path 1 — Has wallet** `[both]`: Sender authenticates via x402 or MPP payment header. Wallet address is identity. No account, no signup, no API key. The wallet pays the x402/MPP fee directly — this is the closest thing to native T2 in the MVP.
-- F2.2. **Path 2 — Creates wallet** `[both]`: Same as Path 1 after wallet onboarding. Website guides user through wallet creation and funding. One-time setup.
-- F2.3. **Path 3 — No wallet (prepaid credits)** `[service]`: Sender pays via Stripe for prepaid credit packs. Identity is email address. Authentication via magic link (email-based, no password). Per-envelope cost deducted from credit balance. **Path 3 is kysigned's own billing layer — kysigned operates as a T2 reseller using its own Stripe integration, not run402's billing.**
-- F2.4. Path 3 magic link authentication: user enters email, receives a one-time login link, no password required. No "Sign in with Google" or social login.
-- F2.5. Path 3 checkout experience is branded as kysigned (not run402). kysigned uses its own Stripe integration.
-- F2.6. **All three paths produce the same on-chain proof.** Regardless of how the sender pays kysigned (wallet via x402/MPP, or Stripe credits), the kysigned server always submits the on-chain transaction using a **platform wallet**. This is because signers typically sign asynchronously (hours or days after the sender creates the envelope), so the server must submit on everyone's behalf. `[repo]` For wallet signing (Method B), the signer's EIP-712 signature is passed to the server and verified on-chain via `ecrecover` — the signer's address ends up recorded on-chain even though the platform wallet submitted the transaction. No second-class experience for any path.
-- F2.7. Confirm that run402 supports magic link authentication for Path 3 identity. If not, implement as part of kysigned service.
+- F2.1.1. **Prepaid credits via Stripe.** Sender pays via Stripe for prepaid credit packs. Identity is email address. Authentication via magic link (email-based, no password). Per-envelope cost deducted from credit balance. **Kychee is the merchant of record.** kysigned operates its own Stripe account under the Kychee Stripe organization — this is NOT run402's billing.
+- F2.1.2. **Magic link authentication:** user enters email, receives a one-time login link, no password required. No "Sign in with Google" or social login.
+- F2.1.3. **Checkout experience is branded as kysigned** (not run402). kysigned uses its own Stripe product/price configuration under the Kychee Stripe account.
+- F2.1.4. **On-chain recording via platform wallet.** Regardless of how the sender pays, the kysigned server submits all on-chain transactions using a **platform wallet** (KMS-backed, provisioned via run402). Signers sign asynchronously (hours or days after envelope creation), so the server must submit on everyone's behalf.
+- F2.1.5. Confirm that run402 supports magic link authentication. If not, implement as part of kysigned service.
 
 #### F2.9 Money Flow (revenue in, costs out)
 
-**Revenue (USDC or fiat → kysigned):**
-- **Path 1/2 (wallet):** Sender's wallet sends USDC to the kysigned platform wallet via x402/MPP payment header. The x402 middleware verifies the payment and allows the request through. run402 is the protocol layer, not a payment intermediary — funds go directly to kysigned's wallet.
-- **Path 3 (no wallet) `[service]`:** Sender pays fiat to kysigned's own Stripe account. Funds settle to Kychee's bank account. Credit balance is tracked in the kysigned database and deducted per envelope. **Kychee is the merchant of record for Path 3.** run402 does NOT act as a Stripe intermediary in the MVP.
+**Revenue (fiat → kysigned):**
+- `[service]` Sender pays fiat to kysigned's own Stripe account. Funds settle to Kychee's bank account. Credit balance is tracked in the kysigned database and deducted per envelope. **Kychee is the merchant of record.** run402 does NOT act as a Stripe intermediary.
 
-**Costs (kysigned → Base blockchain):**
-- **All paths:** The kysigned platform wallet pays ETH gas for each contract call (`recordSignature`, `recordWalletSignature`, `recordCompletion`, and occasional `registerEvidenceKey`). The platform wallet holds both USDC (from Path 1/2 revenue) and ETH (for gas). kysigned tops up ETH as needed.
+**Costs (kysigned → run402 + Base blockchain):**
+- The kysigned platform wallet pays ETH gas for each contract call (`recordReplyToSignSignature`, `recordCompletion`, and occasional `registerEvidenceKey`). The platform wallet holds ETH for gas. kysigned tops up ETH as needed.
 - Per-envelope gas cost: ~$0.01-0.20 at typical Base gas prices (varies with zk-proof size and gas price fluctuations).
 
 **What run402 charges kysigned for (T1 — infrastructure):**
@@ -100,11 +98,10 @@ Three sender paths, all MVP. Each serves a different audience.
 - **Contract call KMS sign fee: $0.000005 per call** (the only run402 markup on contract calls). Chain gas is at-cost — kysigned still pays its own ETH gas to Base, billed as a `contract_call_gas` ledger entry with 0% markup.
 - Custom domain serving
 
-**What run402 does NOT currently provide (T2 — end-user billing, deferred):**
-- Stripe-collection-as-a-service: run402 does not accept Stripe payments from kysigned's end users on kysigned's behalf. kysigned operates its own Stripe account for Path 3. If run402 adds this capability post-MVP, Path 3 could migrate to use it (Open Question #17).
-- Note: Path 1/2 does NOT need run402's T2 — x402/MPP is already a native T2 mechanism (user wallet pays app wallet directly, per-call).
+**What run402 does NOT currently provide (T2 — end-user billing):**
+- Stripe-collection-as-a-service: run402 does not accept Stripe payments from kysigned's end users on kysigned's behalf. kysigned operates its own Stripe account. If run402 adds T2 billing capability post-MVP, kysigned could migrate to it (Open Question #17).
 
-**Pricing model (v0.9.3):**
+**Pricing model:**
 - **$0.29 per envelope** (includes up to 2 signers)
 - **$0.10 per additional signer** beyond 2
 - Example: 5-signer envelope = $0.29 + (3 × $0.10) = $0.59
@@ -124,24 +121,24 @@ Three sender paths, all MVP. Each serves a different audience.
 
 **Proof system reference:** See `docs/products/zkprover/research/comparison-matrix.md` for the full measured comparison of four prover candidates (snarkjs PLONK, TACEO co-snarks, SP1 zkVM, RISC Zero zkVM) and the rationale for choosing RISC Zero (DD-12 in `docs/plans/zkprover-plan.md`).
 
-#### F2.10 Forker Billing (public repo)
+#### F2.10 Forker Model (public repo) `[repo]`
 
-- F2.10.1. **The public repo ships Path 1/2 only.** Stripe integration (Path 3) lives in the service repo and is NOT included in the public MIT-licensed repo. Forkers get wallet-native billing out of the box.
-- F2.10.2. **No "insert your Stripe key here" pattern.** A forker who wants to charge their own users in fiat must build their own billing layer on top — the `allowed_senders` table (F2.8) provides the authorization primitive they can hook into.
-- F2.10.3. **Rationale:** Keeping Stripe out of the public repo avoids forcing forkers to manage PCI compliance, merchant-of-record liability, and Stripe account lifecycle. Wallet-native billing is simpler, legally cleaner, and aligns with the product's blockchain-first positioning.
-- F2.10.4. **Most forkers (internal use) don't need billing at all.** A law firm or small agency deploys kysigned for their employees, pays run402 for infrastructure, and uses `allowed_senders` to gate access. No user billing required. This is the intended primary use case for forkers.
+- F2.10.1. **The public repo does NOT include end-user billing.** Forkers pay run402 for infrastructure (T1) and can send as many envelopes as they like. There is no built-in mechanism for forkers to charge their own users (T2). Forkers who want to charge their users must build their own billing layer — the `allowed_senders` table (F2.8) provides the authorization primitive they can hook into.
+- F2.10.2. **Most forkers (internal use) don't need billing at all.** A law firm or small agency deploys kysigned for their employees, pays run402 for infrastructure, and uses `allowed_senders` to gate access. No user billing required. This is the intended primary use case for forkers.
+- F2.10.3. **Documentation must explicitly state:** "Charging your end users for envelopes is not currently available through kysigned or run402. If you need to bill your users, implement your own billing layer using `allowed_senders` as the authorization hook."
+- F2.10.4. **Rationale:** Keeping billing out of the public repo avoids forcing forkers to manage PCI compliance, merchant-of-record liability, and Stripe account lifecycle. The internal-use model (operator pays run402 directly, gates access via allowlist) is the simplest and most common deployment pattern.
 
 #### F2.8 Sender Access Control (`allowed_senders`) `[both]`
 
 **Critical:** Without this, a deployed kysigned instance is an open relay — anyone on the internet can call `POST /v1/envelope` and spend the operator's run402 balance on gas and emails. This feature is mandatory for every deployment.
 
 - F2.8.1. **Access control layer:** Every kysigned instance MUST have an authorization layer that gates the "create envelope" action. Authentication is provided by run402 (wallet, magic link, password, OAuth); kysigned adds authorization on top.
-- F2.8.2. **`allowed_senders` table:** Each instance stores a list of authorized sender identities — wallet addresses, email addresses, or role names. Schema:
+- F2.8.2. **`allowed_senders` table:** Each instance stores a list of authorized sender identities — email addresses or role names. Schema:
   ```
   allowed_senders (
     id UUID PRIMARY KEY,
-    identity TEXT NOT NULL,       -- wallet address or email
-    identity_type TEXT NOT NULL,  -- 'wallet' | 'email' | 'role'
+    identity TEXT NOT NULL,       -- email address or role name
+    identity_type TEXT NOT NULL,  -- 'email' | 'role'
     quota_per_month INT,          -- optional: max envelopes/month, NULL = unlimited
     added_at TIMESTAMPTZ,
     added_by TEXT,
@@ -152,10 +149,10 @@ Three sender paths, all MVP. Each serves a different audience.
 - F2.8.4. **Default-deny:** An empty `allowed_senders` table means NO ONE can create envelopes. This prevents accidentally exposing a fresh deployment. The deployment wizard/docs must prompt the operator to add at least one sender.
 - F2.8.5. **Admin interface:** Operator has an admin UI and/or API to add, remove, and list allowed senders. Requires operator authentication (separate from sender authentication).
 - F2.8.6. **Optional per-sender quotas:** Each `allowed_senders` row can include a monthly envelope quota (e.g., "John Smith: 50/month"). When exceeded, envelope creation fails with a clear error. Quotas are optional — NULL means unlimited.
-- F2.8.7. **kysigned.com SaaS mode:** The hosted service at kysigned.com uses `allowed_senders` with a special rule: any user with sufficient Path 3 credit balance (or a funded wallet for Path 1/2) is effectively allowlisted for envelope creation. The gate is "has credits" rather than "on an explicit list". Implementation: the enforcement check is pluggable — hosted mode swaps the allowlist check for a credit-balance check.
+- F2.8.7. **kysigned.com SaaS mode:** The hosted service at kysigned.com uses `allowed_senders` with a special rule: any user with sufficient credit balance is effectively allowlisted for envelope creation. The gate is "has credits" rather than "on an explicit list". Implementation: the enforcement check is pluggable — hosted mode swaps the allowlist check for a credit-balance check.
 - F2.8.8. **Forked/self-hosted mode:** A forker (e.g., a law firm) deploys kysigned and maintains an explicit `allowed_senders` list (employees, contractors). No end-user payment — costs absorbed by the operator. The operator gets a clean internal tool.
 - F2.8.9. **Deployment documentation:** The README and self-hosting guide MUST prominently warn: "Before going live, configure your `allowed_senders` list or your instance is open to abuse. Default-deny is enforced, but you must explicitly add your first sender."
-- F2.8.10. **Future T2 path:** If/when run402 adds native end-user billing (T2), kysigned can optionally shift from Stripe-based Path 3 to using run402's billing layer, and the access control can shift from "explicit allowlist" to "any user with sufficient credits in the run402 customer account." This is a post-MVP enhancement; the `allowed_senders` feature stays in place as the generic authorization primitive.
+- F2.8.10. **Future T2 path:** If/when run402 adds native end-user billing (T2), kysigned can optionally shift from its own Stripe integration to using run402's billing layer, and the access control can shift from "explicit allowlist" to "any user with sufficient credits in the run402 customer account." This is a post-MVP enhancement; the `allowed_senders` feature stays in place as the generic authorization primitive.
 
 ### F3. Signing Experience
 
@@ -184,14 +181,9 @@ The primary signing method. Used by the hosted service and available in the publ
 - F3.6. `[both]` **Decline:** a signer who does not wish to sign simply does not reply. There is no explicit decline action in the MVP. Envelope expiry (F1.7) handles the timeout case. The sender is notified when the envelope expires with incomplete signatures.
 - F3.7. `[both]` **Duplicate signing protection:** if the operator receives a second valid `I APPROVE` reply from the same signer for the same envelope, the first is used and subsequent replies are no-ops. The operator responds with "you have already signed this document."
 
-#### F3.B Wallet Signing (Method B / EIP-712) `[repo]`
+#### ~~F3.B Wallet Signing (Method B / EIP-712)~~ — REMOVED (v0.12.0)
 
-Available in the public repo for forkers who have externally established wallet ↔ identity binding. NOT exposed by the hosted service at kysigned.com.
-
-- F3.8. `[repo]` Signer clicks a signing link, signing page detects browser wallet (MetaMask, Coinbase Wallet, etc.). Page calls `eth_signTypedData_v4` with a DocumentSignature struct. Signer's own wallet displays human-readable signing details (document name, hash, email, envelope ID, timestamp). Server records signer's Ethereum address on-chain via `ecrecover`.
-- F3.8.1. `[repo]` **Cryptographic gap — clearly documented.** Method B proves "wallet address X signed document Y." It does NOT prove "the person who controls email Z also controls wallet X." The `signerEmail` field in the EIP-712 struct is a caller-chosen label — anyone with the wallet private key can sign and claim any email. Forkers who use Method B are responsible for establishing the wallet ↔ identity binding externally (e.g., via their own KYC, internal directory, or prior authentication). This gap MUST be clearly stated in `docs/wallet-guide.md`, the README, and `LEGAL.md`.
-- F3.8.2. `[repo]` Wallet onboarding documentation: `docs/wallet-guide.md` with two sections — "For Envelope Creators (Path 1/2)" (install + fund with USDC on Base) and "For Signers (Method B)" (install, no funding needed, only approving a message). Linked from README and `llms.txt`.
-- F3.9. `[repo]` When a signer encounters wallet signing but has no wallet installed, the signing page shows a "How to get a wallet" panel with install guides and a note that no funding is needed.
+> Moved to Future Features. Wallet signing was removed from both the hosted service and the public repo for MVP simplification. The only signing method is reply-to-sign email. See Future Features section.
 
 ### F4. On-Chain Recording `[both]`
 
@@ -202,7 +194,7 @@ Every signature event is recorded on canonical smart contracts on Base.
 - F4.1. **Two canonical contracts deployed on Base:** `SignatureRegistry` (signature records) and `EvidenceKeyRegistry` (DKIM public keys). All instances (service and repo deployments) record to the same contracts by default.
 - F4.2. Contract addresses are constants in the repo code. Forkers can change them but have no incentive to (shared registry strengthens verification).
 - F4.3. Both contracts are immutable once deployed: no owner, no admin, no upgrade mechanism, no proxy pattern. Append-only. No entry can be modified or deleted by anyone, including the deployer.
-- F4.4. Both contracts accept permissionless writes — any funded EOA can submit records. For reply-to-sign, the contract verifies the zk proof against the referenced evidence key before accepting. Invalid proofs are rejected at write time. For wallet signing (Method B), the contract verifies the EIP-712 signature via `ecrecover` (unchanged from current).
+- F4.4. Both contracts accept permissionless writes — any funded EOA can submit records. The contract verifies the zk proof against the referenced evidence key before accepting. Invalid proofs are rejected at write time.
 - F4.5. Contracts are replaceable: new envelopes can be directed to new contracts at any time. Old records remain verifiable at old contract addresses forever. The verification page checks all known contract addresses.
 - F4.6. Contract ABIs and verification algorithms are published and documented from day 1. Anyone can verify signatures independently without kysigned.com.
 
@@ -233,14 +225,13 @@ Every signature event is recorded on canonical smart contracts on Base.
 - F4.12. **On write:** the contract verifies the zk proof against the referenced evidence key. Invalid proofs are rejected. Valid proofs are stored and the signature event is emitted.
 - F4.13. **Submitted by the kysigned server via the platform wallet**, not by the signer. The signer's involvement ends when their DKIM-signed reply is received.
 
-#### F4.D Wallet Signing Recording `[repo]`
+#### ~~F4.D Wallet Signing Recording~~ — REMOVED (v0.12.0)
 
-- F4.14. `[repo]` **Method B recording (unchanged):** `recordWalletSignature(envelopeId, documentHash, documentName, signerEmail, timestamp, signature)`. Submitted by the server via the platform wallet. Contract recovers signer's Ethereum address via `ecrecover`. The `signerEmail` field is a caller-chosen label, NOT cryptographically bound to the wallet — see F3.8.1.
+> Moved to Future Features. `recordWalletSignature` remains in the deployed contract (immutable, cannot be removed) but is not used by any current code path.
 
 #### F4.E Completion Recording `[both]`
 
 - F4.15. `recordCompletion(envelopeId, originalDocHash, finalDocHash, signerCount)`. Fires when all signers have signed. Links the original document hash to the final rendered PDF hash (which includes the approval page with proof blocks).
-- F4.16. `[repo]` Mixed methods per envelope: some signers can use reply-to-sign, others wallet signing (Method B), within the same envelope. The hosted service uses reply-to-sign only.
 
 ### F5. Verification `[both]`
 
@@ -259,9 +250,9 @@ Public, universal, vendor-independent signature verification — designed to wor
 - F5.4. Verification page is **universal**: it verifies ANY record on the canonical contracts, regardless of which instance (kysigned.com, acme-sign.com, etc.) created it.
 - F5.5. **No discovery.** The verification page does NOT support "search by email" or "list all documents signed by X." The verifier must provide both inputs. This is not a limitation — it is the privacy guarantee.
 
-#### F5.B Verification procedure (wallet signing) `[repo]`
+#### ~~F5.B Verification procedure (wallet signing)~~ — REMOVED (v0.12.0)
 
-- F5.6. `[repo]` For Method B records, verification is by `(documentHash, expectedSignerAddress)`. The contract's existing `verifyWalletSignature(documentHash, expectedSigner)` function returns true/false. The verification page also supports this mode.
+> Moved to Future Features. `verifyWalletSignature` remains callable on the deployed contract but is not exposed in the verification UI.
 
 #### F5.C Approval page, proof blocks, and proof links
 
@@ -278,11 +269,10 @@ Envelope management and account overview.
 - F6.2. `[both]` Per-envelope detail view: audit trail, signer statuses, tx hashes, links to on-chain records.
 - F6.3. `[both]` Resend signing request / send reminder to pending signers.
 - F6.4. `[both]` Export envelope data (CSV or JSON).
-- F6.5. `[both]` **Path 1/2 dashboard access:** connect wallet to authenticate. Dashboard shows all envelopes sent from that wallet address.
-- F6.6. `[service]` **Path 3 dashboard access:** magic link login via email. Dashboard shows all envelopes associated with that email.
-- F6.7. `[service]` Credit balance display, purchase history, low-balance indicator.
-- F6.8. `[service]` Usage statistics: envelopes sent (monthly/weekly), signatures collected, completion rate.
-- F6.9. `[service]` Spending history: per-envelope cost breakdown, total spend over time.
+- F6.5. `[both]` **Dashboard access:** magic link login via email. Dashboard shows all envelopes associated with that email.
+- F6.6. `[service]` Credit balance display, purchase history, low-balance indicator.
+- F6.7. `[service]` Usage statistics: envelopes sent (monthly/weekly), signatures collected, completion rate.
+- F6.8. `[service]` Spending history: per-envelope cost breakdown, total spend over time.
 
 ### F7. Email & Link Delivery `[both]`
 
@@ -339,26 +329,47 @@ Email is the core signing channel, not just a notification mechanism.
 
 ### F9. Prepaid Credits `[service]`
 
-Pay-as-you-go billing for Path 3 (no wallet) users.
+Pay-as-you-go billing for hosted service users. This is the only payment mechanism for end users on kysigned.com.
 
-- F9.1. Credit packs purchasable via Stripe: multiple tiers (e.g., $5, $10, $20). Exact tiers and per-envelope rates set after gas cost measurement.
+- F9.1. Credit packs purchasable via Stripe: multiple tiers (e.g., $5, $10, $20). Exact tiers and per-envelope rates set after gas cost measurement. **kysigned uses its own Stripe product/price configuration under the Kychee Stripe account** — this is T2 billing (kysigned charging its users), separate from T1 billing (run402 charging kysigned for infrastructure).
 - F9.2. Per-envelope cost deducted from credit balance on envelope creation.
 - F9.3. Credit balance visible in dashboard at all times.
 - F9.4. Purchase history viewable in dashboard.
 - F9.5. Low-balance alert when credits fall below a threshold (e.g., fewer than 5 envelopes remaining).
 - F9.6. Credits do not expire.
-- F9.7. Checkout experience is branded as kysigned.
-- F9.8. **run402 dependency:** Prepaid credit/paycard model requires run402 platform support (buy credits, deduct per API call). If run402 does not currently support this, it must be implemented as a run402 feature or kysigned service uses its own Stripe integration as fallback.
+- F9.7. Checkout experience is branded as kysigned (not run402).
+- F9.8. **Stripe setup required:** Create a kysigned product in the Kychee Stripe account. Define price tiers for credit packs. Implement Stripe Checkout sessions for purchase, webhook handler for payment confirmation, and credit balance tracking in the kysigned database. This is kysigned-service code (not in the public repo).
 
 ### F10. CLI / MCP `[both]`
 
-Agent-native interface for programmatic signing.
+Agent-native interface for programmatic signing and instance setup.
+
+#### F10.A Signing Operations
 
 - F10.1. MCP server exposing core signing operations: create envelope, check status, list envelopes, verify document.
 - F10.2. Canonical npm package (`kysigned-mcp` or similar) defaults to kysigned.com endpoint.
 - F10.3. Repo includes the same MCP server, configurable to point to any instance.
-- F10.4. Agents authenticate via x402 or MPP payment header (Path 1/2). No API keys required.
+- F10.4. `[service]` Agents authenticate via a kysigned API key or session token associated with a credit-holding account. `[repo]` Forkers configure their own authentication — the `allowed_senders` check applies to MCP requests the same as API requests.
 - F10.5. Agent can discover kysigned via llms.txt on kysigned.com.
+
+#### F10.B Instance Setup (`init`) `[repo]`
+
+The kysigned CLI/MCP provides an `init` command that bootstraps a new kysigned instance on run402. This is the forker's entry point — an agent or developer runs `kysigned init` and gets a working deployment.
+
+- F10.6. **`init` command** available via both CLI (`kysigned init`) and MCP tool (`init`). Idempotent — safe to re-run.
+- F10.7. **What `init` does:** provisions everything a forker needs to run their own kysigned instance on run402. Uses run402's public APIs (REST, MCP, CLI) — does NOT require access to run402's internal monorepo or AWS. Steps include:
+  - Create or reuse a run402 allowance wallet (the operator's identity for T1 billing)
+  - Subscribe to a run402 tier (prototype for testnet, hobby/team for production)
+  - Create a run402 project for this kysigned instance
+  - Store project credentials locally (project ID, service key, anon key)
+  - Register a custom sender domain for outbound email (or use run402 default domain)
+  - Add the operator as the first `allowed_senders` entry
+  - Report next steps: "Your instance is ready. Deploy with `kysigned deploy` or configure your endpoint."
+- F10.8. **What `init` does NOT do:** give the forker testnet money, deploy contracts (those are shared canonical contracts), or set up Stripe billing (forkers handle T2 themselves if needed). The focus is on the minimum viable deployment: a run402 project with email, database, and the operator authorized to send envelopes.
+- F10.9. **Reference implementation:** kysigned's `init` is modeled after run402's own `init` flow but is NOT a wrapper around it. It implements only what kysigned needs, using run402's public API surface. The run402 `init` (which creates a generic allowance wallet and drips testnet funds) is a reference, not a dependency.
+- F10.10. **Credential storage:** operator credentials stored locally at `~/.config/kysigned/` (or `KYSIGNED_CONFIG_DIR` env var) with restricted file permissions (0600). Includes: run402 project credentials, operator identity, instance endpoint URL.
+- F10.11. **Integration testing:** the public repo's integration test suite uses `init` as the setup step — proving the same flow a real forker would follow. Tests run against testnet and exercise the full envelope lifecycle after init.
+- F10.12. **Dogfooding:** the hosted service (kysigned-service) bootstraps using the public repo's setup flow (or a close equivalent) to prove the forker path works. The service is the first and most important forker of the public repo. If the service needs a shortcut that a forker wouldn't have, that's a signal the public repo is missing something.
 
 ### F11. Website `[service]`
 
@@ -394,10 +405,8 @@ Marketing site and product pages at kysigned.com.
 - F12.6. `[repo]` **LICENSE** — MIT license covering the code.
 - F12.7. `[repo]` **LEGAL.md** — disclaimers separate from the MIT license:
   - What reply-to-sign signatures prove: "the signer's mail provider's DKIM key, archived on-chain with an immutable timestamp, attested an outbound email from the signer's mailbox containing `I APPROVE` and the document hash. The key's authenticity is corroborated by every other signature from the same provider during the same key period (see F4.9)." Not "person X signed."
-  - What wallet signatures (Method B) prove and do NOT prove: "wallet address X signed document Y." The `signerEmail` field is a caller-chosen label, NOT cryptographically bound. Forkers must establish wallet ↔ identity binding externally. **This gap must be prominently documented.**
   - No guarantee of legal enforceability in any specific jurisdiction
   - Smart contract permanence disclaimer (recordings on Base are permanent, cannot be deleted or modified by anyone)
-  - Future cryptographic break acknowledgment: DKIM (RSA-2048) and the zk proof system (RISC Zero: STARK inner proof is quantum-resistant; Groth16 BN254 wrapper is not) are subject to future cryptographic evolution. A sufficiently powerful quantum computer could forge new DKIM signatures or zk proofs. However: (1) blockchain records are immutable — quantum computers cannot alter existing on-chain records, only potentially create new fraudulent ones; (2) all pre-quantum signatures carry a blockchain timestamp proving they were created before quantum capability existed, which is strong evidence of authenticity in historical context; (3) a forged post-quantum signature would lack the corroboration of other signatures from the same provider during the same key period (F4.9), making it detectable; (4) email providers are expected to adopt quantum-safe DKIM algorithms (NIST ML-DSA, SLH-DSA) before quantum computers reach the necessary scale (~2035+), and the kysigned architecture upgrades transparently (new verifier contract, no data migration). The honest claim: pre-quantum signatures are historically valid evidence with a blockchain-anchored timestamp; they are not immune to a future world where the underlying cryptography is broken, but breaking them requires both quantum capability AND defeating the consistency checks across the key registry.
   - Operator responsibility: the forker/deployer is responsible for their own privacy compliance, Terms of Service, and legal obligations — not Kychee
   - Excluded document types that cannot be e-signed under ESIGN/UETA (wills, codicils, etc.)
 - F12.8. No product launch until all `[service]` legal documents are human-approved.
@@ -491,7 +500,7 @@ When an envelope expires or is voided with some signers still pending, the sende
 - F17.4. **No Basescan source verification for the canary contract.** The canary contract is deployed to Base mainnet but its source is never submitted to Basescan. External observers see bytecode only. The production contract IS submitted for Basescan verification.
 - F17.5. **No kysigned branding in canary deploy artifacts.** The canary KMS wallet has no name tag referencing kysigned; the canary contract has no Basescan name tag referencing kysigned; the canary deploy transaction carries no identifying metadata linking it to kysigned. The only public information about the canary contract is its bytecode.
 - F17.6. **kysigned-service runs in full production mode against canary references during the canary phase.** The same kysigned-service deployment that will eventually be used for the launch is configured with two environment variables — `KYSIGNED_CONTRACT_ADDRESS` pointing at the canary contract address and `KYSIGNED_KMS_WALLET` pointing at the canary KMS wallet — for the duration of the canary phase. No separate staging environment. No mock data. Real frontend, real SES, real PDF rendering, real dashboard, real verification.
-- F17.7. **The canary phase exercises the full product via the full set of surfaces.** At least one end-to-end envelope MUST be created via each of: the hosted dashboard, the public REST API, and the MCP server. The reply-to-sign flow (email reply → DKIM verification → zk proof → on-chain recording → verification), parallel signing, sequential signing, and the verification page MUST all be exercised at least once against the canary contracts. Wallet signing (Method B) is already tested against the existing Sepolia contract and does not need re-canary for the service (but the `[repo]` code path should be exercised once against the canary `SignatureRegistry` to confirm the rewritten contract still accepts EIP-712 records). The plan (kysigned-plan.md) enumerates the exact checklist; the principle here is that no feature from F1–F15 is exempt from canary exercise.
+- F17.7. **The canary phase exercises the full product via the full set of surfaces.** At least one end-to-end envelope MUST be created via each of: the hosted dashboard, the public REST API, and the MCP server. The reply-to-sign flow (email reply → DKIM verification → zk proof → on-chain recording → verification), parallel signing, sequential signing, and the verification page MUST all be exercised at least once against the canary contracts. The plan (kysigned-plan.md) enumerates the exact checklist; the principle here is that no feature from F1–F15 is exempt from canary exercise.
 - F17.8. **Exit criterion = checklist fully green AND explicit human go/no-go.** The canary phase ends only when (a) every item on the canary checklist (enumerated in the plan) has been confirmed to work end-to-end against the canary, AND (b) Barry and Tal explicitly approve the flip via a ceremonial go/no-go prompt that presents the checklist summary and demands an explicit APPROVE / ABORT / KEEP TESTING decision. There is no automatic advancement. There is no time-boxing. A partial checklist does not unlock the flip, and a fully-green checklist does not itself trigger the flip — the human decision is independent and required.
 - F17.9. **"Launch" is a relabel, not a deploy.** The launch moment consists of: (1) provision the production KMS wallet, (2) deploy the production `SignatureRegistry` contract via the production wallet, (3) run the F17.3 byte-identical bytecode gate, (4) flip the two kysigned-service environment variables from canary references to production references, (5) redeploy kysigned-service (config change only; no application code change), (6) send one smoke-test envelope through the production contract end-to-end, (7) drain the canary wallet back to the ops wallet, (8) schedule KMS key deletion on the canary KMS key. No application code ships on launch day — every line of code has already been exercised against the canary for the duration of the canary phase.
 - F17.10. **The canary contract remains on-chain forever after retirement.** Because smart contracts are immutable, the canary contract cannot be deleted. What IS retired: the canary wallet (drained and KMS-deletion-scheduled), the service's environment variables (flipped to production), and every reference to the canary in AWS Secrets Manager (the `kysigned/canary-*` secrets can be deleted the day after the flip is confirmed stable). The canary contract itself becomes a bytecode-only artifact on Base mainnet with no known connection to kysigned.
@@ -513,13 +522,9 @@ When an envelope expires or is voided with some signers still pending, the sende
 - [ ] Sender-as-signer produces identical on-chain proof to any other signer (no special-case recording)
 
 ### F2. Sender Authentication
-- [ ] Path 1: API call with x402 payment header succeeds; wallet address recorded as sender identity; no account or API key required
-- [ ] Path 1: API call with MPP payment header succeeds identically to x402
-- [ ] Path 2: Website guides user through wallet creation; after wallet setup, user can send envelopes via Path 1
-- [ ] Path 3: User purchases credit pack via Stripe; checkout page is branded as kysigned; credits appear in dashboard
-- [ ] Path 3: Magic link login — user enters email, receives login link, clicks to authenticate. No password field. No social login.
-- [ ] Path 3: Envelope creation deducts from credit balance; fails with clear error if balance insufficient
-- [ ] Path 3: On-chain recording made via platform wallet is indistinguishable from Path 1/2 recording in verification results
+- [ ] `[service]` User purchases credit pack via Stripe; checkout page is branded as kysigned; credits appear in dashboard
+- [ ] `[service]` Magic link login — user enters email, receives login link, clicks to authenticate. No password field. No social login.
+- [ ] `[service]` Envelope creation deducts from credit balance; fails with clear error if balance insufficient
 - [ ] `allowed_senders` enforcement: unauthenticated `POST /v1/envelope` returns 403
 - [ ] `allowed_senders` enforcement: authenticated requester NOT in allowlist returns 403
 - [ ] `allowed_senders` default-deny: empty allowlist blocks ALL envelope creation
@@ -527,10 +532,9 @@ When an envelope expires or is voided with some signers still pending, the sende
 - [ ] Per-sender monthly quota: exceeding quota returns a clear error
 - [ ] kysigned.com SaaS mode: users with sufficient credits bypass explicit allowlist (credit-balance check)
 - [ ] Self-hosted mode: explicit allowlist with no credit check (internal use)
-- [ ] Public repo does NOT contain Stripe integration code (Path 3 is `[service]` only)
-- [ ] Path 1/2 sender without a wallet: README and wallet-guide.md explain how to install + fund a wallet with USDC on Base
-- [ ] `docs/wallet-guide.md` exists in the public repo with sections for senders (Path 1/2) and signers (Method B) and is linked from README + llms.txt
-- [ ] `[service]` FAQ has "Do I need a wallet to SEND?" and "Do I need a wallet to SIGN?" questions with clear, distinct answers (answer to the latter: "No — you sign by replying to an email")
+- [ ] Public repo does NOT contain Stripe integration code (billing is `[service]` only)
+- [ ] Public repo README and documentation clearly state: "Charging your end users is not currently available through kysigned or run402. Use `allowed_senders` to gate access."
+- [ ] `[service]` FAQ explains "Do I need a wallet?" → "No — you buy credits with a credit card and sign by replying to an email"
 
 ### F3. Signing Experience — Reply-to-Sign
 - [ ] Signer receives signing email with document name, sender name, `docHash`, envelope ID, review link, and `How it works →` link
@@ -545,19 +549,14 @@ When an envelope expires or is voided with some signers still pending, the sende
 - [ ] Review page renders PDF correctly in browser via pdf.js; displays `docHash`; provides client-side hash verification tool
 - [ ] Confirmation email sent to signer after on-chain recording with tx hash and proof link
 
-### F3. Signing Experience — Wallet Signing (Method B) `[repo]`
-- [ ] `[repo]` Signer clicks signing link; page detects wallet; calls `eth_signTypedData_v4`; wallet displays human-readable DocumentSignature struct; Ethereum address recorded on-chain via ecrecover
-- [ ] `[repo]` `LEGAL.md` and `docs/wallet-guide.md` clearly state the gap: Method B proves "wallet X signed doc Y" but NOT "wallet X = email Y"; forker must establish identity binding externally
-- [ ] `[repo]` Signing page without wallet shows onboarding panel with install guides and "no funding needed" clarification
+### ~~F3. Signing Experience — Wallet Signing~~ — REMOVED (v0.12.0)
 
 ### F4. On-Chain Recording
 - [ ] `SignatureRegistry` deployed on Base; accepts reply-to-sign records with valid zk proof; rejects records with invalid proofs
 - [ ] `EvidenceKeyRegistry` deployed on Base; stores DKIM public keys with domain, selector, raw key bytes, and registration timestamp
 - [ ] Reply-to-sign signature record keyed by `searchKey = SlowHash(email || docHash)`; contains `docHash`, `envelopeId`, `evidenceKeyId`, `timestamp`; zk proof emitted as event
 - [ ] Evidence key registered once per (provider, selector, rotation); key consistency verifiable across signatures from the same provider
-- [ ] `[repo]` Method B (wallet) signature recorded via `recordWalletSignature` with correct signer address recovered via ecrecover
 - [ ] Completion event recorded when all signers have signed, with correct `originalDocHash`, `finalDocHash`, and `signerCount`
-- [ ] `[repo]` Mixed-method envelope: some signers use reply-to-sign, others wallet; all recorded; completion fires after all sign
 - [ ] No entry on either contract can be modified or deleted after recording
 - [ ] Both contracts are permissionless (any funded EOA can write) and ownerless (no admin functions)
 
@@ -566,20 +565,18 @@ When an envelope expires or is voided with some signers still pending, the sende
 - [ ] Verification retrieves zk proof from event, looks up evidence key, verifies zk proof, checks key consistency — all client-side or against on-chain data only
 - [ ] Verification page is universal: verifies ANY record on the canonical contracts regardless of which instance created it
 - [ ] No "search by email" or "list all docs signed by X" — verifier must provide both email and document
-- [ ] `[repo]` Wallet signing verification: `verifyWalletSignature(documentHash, expectedSigner)` returns correct true/false
 - [ ] Approval page appended to final PDF includes per-signer proof blocks (name, date, QR code, verification key string), `docHash`, envelope ID, operator identity, verification instructions
 - [ ] Third party with signed PDF can verify against the blockchain using the proof block verification key string — no kysigned instance needed, no email address needed
 - [ ] Proof link (`/verify/<envelopeId>`) displays full verification record — signer count, dates, tx hashes, Basescan links
 - [ ] Completion email includes proof link, contract address, chain name, and all tx hashes in plain text
 
 ### F6. Dashboard
-- [ ] Path 1/2: connect wallet; dashboard displays all envelopes sent from that wallet
-- [ ] Path 3: magic link login; dashboard displays all envelopes associated with that email
+- [ ] Magic link login; dashboard displays all envelopes associated with that email
 - [ ] Envelope list shows status, signer progress, dates for each envelope
 - [ ] Per-envelope detail view shows full audit trail per signer (email, timestamp, tx hash)
 - [ ] Resend/remind button sends a new signing email to pending signers (reply-to-sign format)
 - [ ] Export envelopes as CSV or JSON
-- [ ] `[service]` Credit balance, purchase history, and low-balance indicator visible for Path 3 users
+- [ ] `[service]` Credit balance, purchase history, and low-balance indicator visible for authenticated users
 - [ ] `[service]` Usage statistics displayed: envelopes sent, signatures collected, completion rate (monthly/weekly)
 - [ ] `[service]` Spending history displayed: per-envelope cost, total spend over time
 
@@ -618,11 +615,28 @@ When an envelope expires or is voided with some signers still pending, the sende
 
 ### F10. CLI / MCP
 - [ ] `kysigned-mcp` installable via npx; connects to kysigned.com by default
-- [ ] Agent creates envelope via MCP with x402 payment; receives envelope_id and review links
+- [ ] Agent creates envelope via MCP; receives envelope_id and review links
 - [ ] Agent checks envelope status via MCP; receives current signer statuses
 - [ ] Agent verifies a document via MCP; receives verification results
 - [ ] MCP endpoint configurable to point to any kysigned instance (self-hosted or hosted)
 - [ ] kysigned.com/llms.txt exists and describes the product for agent discovery
+- [ ] `kysigned init` (CLI) and `init` (MCP tool) provisions a new kysigned instance on run402: creates allowance wallet, subscribes tier, creates project, stores credentials locally, registers sender domain, adds operator to `allowed_senders`
+- [ ] `kysigned init` is idempotent — re-running on an already-initialized instance is a no-op with status report
+- [ ] Credentials stored at `~/.config/kysigned/` with 0600 permissions
+- [ ] Public repo integration tests use `init` as the setup step, proving the same flow a real forker follows
+
+### F18. Testing `[both]`
+
+The public repo includes comprehensive integration tests that mirror run402-mcp's testing framework. All payment/billing tests run on testnet. The canary and mainnet phases are only needed for testing the actual signing service (zk proof generation, on-chain recording), not payment flows.
+
+- F18.1. **Integration tests against run402** `[both]`: the public repo's test suite includes real integration tests that hit a live run402 instance (testnet). These are not mocked — they exercise the actual run402 API surface that a forker's deployment would use. Gated by env vars; skip cleanly when env is not configured.
+- F18.2. **MCP integration tests** `[both]`: the public repo includes integration tests for the kysigned MCP server that call real MCP tool handlers against a live kysigned API endpoint. Mirrors run402-mcp's `mcp-integration.test.ts` pattern.
+- F18.3. **Stripe end-to-end test** `[service]`: the service repo includes a test for the full credit purchase flow: magic link login → Stripe checkout → credit balance → envelope creation → balance deduction. Uses Stripe test mode with test card tokens. Follow the same Stripe testing patterns used in run402's billing tests and other Kychee Stripe-integrated products.
+- F18.4. **All payment tests on testnet.** Integration tests that involve billing (T1: kysigned paying run402) use testnet currencies. Stripe tests (T2: user paying kysigned) use Stripe test mode. No mainnet funds or real charges required for any payment testing. Mainnet and the canary phase are ONLY needed for the signing service itself (zk proof generation, on-chain recording, DKIM verification) — payment flows are identical on testnet.
+- F18.5. **`init`-based test setup.** Public repo integration tests use `kysigned init` (or equivalent programmatic setup) as the first step, proving the forker onboarding flow works end-to-end before testing envelope operations.
+- F18.6. **Two-directional integration tests** `[both]`: the public repo tests exercise BOTH directions:
+  - **Toward run402** — kysigned calling run402's APIs (project provisioning, email sending, DB operations, KMS wallet). Proves the T1 integration works.
+  - **Toward kysigned's own users** — simulating a forker (or agent) using kysigned's CLI/MCP/API to create envelopes, check status, verify documents. Proves the product interface works end-to-end. These tests can be pointed at any deployment (local, testnet service, production) via `KYSIGNED_ENDPOINT` env var.
 
 ### F11. Website
 - [ ] Landing page loads at kysigned.com; leads with cost comparison, not blockchain jargon
@@ -643,7 +657,7 @@ When an envelope expires or is voided with some signers still pending, the sende
 - [ ] `[service]` No launch until all legal documents are human-approved
 - [ ] `[service]` Consent language version recorded per envelope; exact text of all signing-intent strings is recoverable for dispute
 - [ ] `[repo]` MIT LICENSE file present in repo root
-- [ ] `[repo]` LEGAL.md present with disclaimers: reply-to-sign proof semantics, Method B wallet gap (prominently documented — "does NOT prove wallet X = email Y"), jurisdictional limitations, smart contract permanence, future crypto break acknowledgment, operator responsibility, excluded document types
+- [ ] `[repo]` LEGAL.md present with disclaimers: reply-to-sign proof semantics, jurisdictional limitations, smart contract permanence, operator responsibility, excluded document types
 
 ### F13. Cross-Linking
 - [ ] kysigned listed on kychee.com portfolio page
@@ -691,7 +705,6 @@ When an envelope expires or is voided with some signers still pending, the sende
 - [ ] kysigned-service is deployed to production with contract addresses and KMS wallet pointing at canary references for the duration of the canary phase
 - [ ] At least one end-to-end reply-to-sign envelope is created via each of: the hosted dashboard, the REST API, and the MCP server during the canary phase
 - [ ] Reply-to-sign flow exercised end-to-end against canary contracts: email reply → DKIM verification → zk proof → on-chain recording → verification page confirms
-- [ ] `[repo]` Wallet signing (Method B) exercised once against canary `SignatureRegistry` to confirm rewritten contract still accepts EIP-712 records
 - [ ] Parallel and sequential signing flows both exercised end-to-end against canary contracts
 - [ ] The verification page correctly verifies a canary-signed envelope using only the canary contract addresses
 - [ ] Ephemeral PDF retention triggers as expected on at least one canary envelope (F8.6 rule holds on the canary deployment)
@@ -707,10 +720,23 @@ When an envelope expires or is voided with some signers still pending, the sende
 - [ ] Phase 14 checklist includes a pre-squash working-tree scan for canary addresses + canary wallet in the public `kysigned` repo; the private→public flip is aborted if the scan finds any value
 - [ ] The `SignatureRegistry — Base mainnet` and `EvidenceKeyRegistry — Base mainnet` rows in the Shipping Surfaces table are not updated from `<TBD>` until the production contract deploy completes, which cannot happen before the canary phase ends
 
+### F18. Testing
+- [ ] Public repo integration tests hit a live run402 instance (testnet) and exercise the actual API surface a forker would use
+- [ ] Integration tests use `kysigned init` (or equivalent) as the setup step — same flow a real forker follows
+- [ ] MCP integration tests call real MCP tool handlers against a live kysigned API endpoint (not mocked)
+- [ ] Integration tests exercise BOTH directions: toward run402 (T1 infra) AND toward kysigned's own CLI/MCP/API users (product interface)
+- [ ] Integration tests can be pointed at any deployment via `KYSIGNED_ENDPOINT` env var (local, testnet, production)
+- [ ] `[service]` Stripe end-to-end test: magic link → checkout → credits → envelope creation → balance deduction (Stripe test mode, test card tokens)
+- [ ] `[service]` Stripe test follows the same patterns used in run402's billing tests and other Kychee Stripe-integrated products
+- [ ] All payment-related integration tests use testnet currencies (T1) or Stripe test mode (T2) — no mainnet funds or real charges required
+- [ ] Integration tests are gated by env vars and skip cleanly when the environment is not configured
+- [ ] `[service]` Hosted service bootstraps using the public repo's setup flow (dogfooding — F10.12)
+
 ## Constraints & Dependencies
 
-- **run402 platform:** kysigned runs on run402 infrastructure. run402 handles T1 (app-owner pays for infrastructure). T2 (end-users pay the app) is **deferred** — run402 does not currently provide end-user billing. For MVP, kysigned.com uses its own Stripe integration for Path 3 billing. Self-hosted forkers get the `allowed_senders` access control and handle user charging separately (or not at all, for internal use).
-- **run402 magic link auth:** Path 3 requires magic link authentication. Confirmed available (shipped in Phase 0).
+- **run402 platform:** kysigned runs on run402 infrastructure. run402 handles T1 (app-owner pays for infrastructure). T2 (end-users pay the app) is NOT provided by run402 — kysigned.com uses its own Stripe integration for end-user billing. Self-hosted forkers use `allowed_senders` to gate access and absorb infrastructure costs (no built-in T2 billing for forkers).
+- **run402 magic link auth:** Hosted service requires magic link authentication. Confirmed available (shipped in Phase 0).
+- **Kychee Stripe account:** kysigned needs its own Stripe product/price configuration under the Kychee Stripe account for T2 end-user billing (credit pack purchases). This is separate from any run402 Stripe integration.
 - **run402 email service (outbound):** Repo forkers rely on run402 email service (paid) or bring their own. Email deliverability reputation is critical — signing requests in spam is product-killing.
 - **run402 email service (inbound):** Reply-to-sign requires an inbound email surface that delivers raw RFC-822 MIME with DKIM headers preserved. Confirmed present on run402 (SES receipt rule → S3 → `packages/email-lambda/inbound.mjs` → Postgres; raw MIME persisted in S3 via `s3_key`). Two small enhancements needed: (a) raw-MIME API accessor on `GET /v1/mailboxes/:id/messages/:msgId` returning S3 bytes, (b) inbound routing on kysigned custom sender domain (or MVP ships on `reply-to-sign@mail.run402.com`). These are tracked as a parallel run402 openspec change.
 - **run402 custom domains:** Repo forkers can use subdomains (acme-sign.run402.com) or custom domains (acme-sign.com). Outbound custom sender domains confirmed available (shipped in Phase 0). Inbound custom domain routing is the enhancement tracked above.
@@ -719,7 +745,7 @@ When an envelope expires or is voided with some signers still pending, the sende
 - **Slow-KDF parameters:** `searchKey = SlowHash(email || docHash)` requires committing forever to a specific KDF algorithm and parameters. Must be chosen carefully — too fast enables enumeration, too slow degrades verifier UX. Candidate: argon2id with parameters tuned for ~1 second on consumer hardware.
 - **Base gas costs:** Per-signer gas cost estimated at ~$0.02 (RISC Zero Groth16 wrapper verification on Base, ~280k gas). Pricing: $0.29 base (2 signers) + $0.10/extra signer. Re-measure on Sepolia/mainnet canary to confirm. Previous PLONK estimate ($0.05, ~298k gas) replaced per zkprover v0.1.0 comparison matrix.
 - **Smart contract deployment:** `SignatureRegistry` and `EvidenceKeyRegistry` must be deployed on Base mainnet before any production signing. Both contracts are immutable once deployed.
-- **Existing legal templates:** Legal documents drafted from existing Kychee/Eleanor/run402 templates. All `[service]` legal docs require human approval. LEGAL.md must prominently document the Method B wallet gap.
+- **Existing legal templates:** Legal documents drafted from existing Kychee/Eleanor/run402 templates. All `[service]` legal docs require human approval.
 - **No "kill" language:** All public-facing materials use "alternative to," "replace," "switch from," "better than." Internal docs may use competitive framing.
 
 ## Open Questions
@@ -761,3 +787,23 @@ When an envelope expires or is voided with some signers still pending, the sende
 22. **F17 canary checklist contents** — plan enumerates; candidate items now include: reply-to-sign end-to-end via each surface, evidence key registration, zk proof generation, verification page, parallel + sequential signing, ephemeral PDF retention, approval page generation with proof blocks.
 23. **F17 bytecode-divergence playbook** — deferred to plan.
 24. **F17 production-contract smoke specifics** — deferred to plan.
+
+## Future Features (removed from MVP)
+
+The following features were part of earlier spec versions and have been moved here for potential future implementation. They are NOT in scope for the current MVP.
+
+### Wallet-Based Payment (formerly Path 1/2)
+
+> **Removed in v0.12.0.** Sender authentication via x402/MPP payment header with wallet address as identity. Users would pay per-envelope in USDC on Base directly from their wallet. Included wallet onboarding flow on the website.
+>
+> **Why removed:** MVP simplification. Stripe credit packs are a lower-friction payment mechanism for the target audience. Wallet-based payment adds complexity (wallet onboarding, USDC funding, gas management) without proportional value for MVP users. Forkers who want wallet-based billing can implement it themselves using the `allowed_senders` authorization primitive.
+>
+> **Revisit when:** There is demonstrated demand from users who want to pay with crypto, or when run402 ships native T2 billing that makes wallet-based payment trivial to wire.
+
+### Wallet Signing (formerly Method B / EIP-712)
+
+> **Removed in v0.12.0.** Signer proves identity by signing an EIP-712 typed-data struct with their Ethereum wallet. Was available in the public repo behind a feature flag (`VITE_ENABLE_WALLET_SIGNING`).
+>
+> **Why removed:** Reply-to-sign is the only signing method needed for MVP. Wallet signing adds complexity (wallet detection, onboarding panel, EIP-712 UI, identity binding gap documentation) and serves a niche audience (crypto-native parties who already have wallet ↔ identity binding established externally). The `recordWalletSignature` function remains in the deployed smart contract (immutable, cannot be removed) and can be re-enabled in a future version.
+>
+> **Revisit when:** A credible global crypto-identity initiative (e.g., a widely-adopted DID/verifiable credential system) makes wallet ↔ identity binding straightforward, or when a significant forker audience requests it.
