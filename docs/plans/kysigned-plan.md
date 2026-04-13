@@ -1110,13 +1110,10 @@ Per saas-factory F21 / kysigned spec Shipping Surfaces section. Each `[ship]` ta
 - [x] Remove `src/api/payment/mpp.ts` and `src/api/payment/mpp.test.ts` (MPP payment middleware — 12 tests) [code]
 - [x] Remove `src/api/payment/` directory if empty after above removals [code]
 - [x] Remove wallet signing engine code: `processMethodBSign` from `src/signing/engine.ts` and its tests. Remove `recordWalletSignature` from `contract.ts` client + ABI. Rewrite `sign.ts`: extract completion logic into `handleCompletionIfReady` + `notifyNextSequentialSigner`, delete `handleSign`. Rewrite `sign.test.ts` for new functions. Rewrite `engine.test.ts` (kept decline + completion tests). Clean barrel exports. [code]
-- [ ] Remove `recordWalletSignature`, `getWalletSignatures`, `verifyWalletSignature` from `SignatureRegistry.sol`. Remove associated storage structs, events, and test cases from `test/SignatureRegistry.test.cts`. Update contract ABI docs. This creates a NEW contract version for Phase 13 canary deploy (DD-26). [code]
-- [ ] Remove `frontend/src/lib/wallet.ts` (EIP-712, `hasWallet`, `connectWallet`, `signTypedData`) [code]
-- [ ] Remove `frontend/src/pages/WalletOnboardingPage.tsx` and its `/onboard` route from `App.tsx` [code]
-- [ ] Update `frontend/src/pages/DashboardPage.tsx` — remove wallet connect button and flow entirely. Dashboard login is email-only (magic link). [frontend-logic]
-- [ ] Remove `VITE_ENABLE_WALLET_SIGNING` env var and all conditional code that checks it [code]
-- [ ] Remove `docs/wallet-guide.md` [code]
-- [ ] Update `docs/contract-abi.md` — remove `recordWalletSignature`, `getWalletSignatures`, `verifyWalletSignature` documentation [code]
+- [x] Remove `recordWalletSignature`, `getWalletSignatures`, `verifyWalletSignature` from `SignatureRegistry.sol`. Remove associated storage structs, events, and test cases from `test/SignatureRegistry.test.cts`. This creates a NEW contract version for Phase 13 canary deploy (DD-26). Contract tests: 19 passing. [code]
+- [x] Remove `frontend/src/lib/wallet.ts`, `wallet.test.ts`, `WalletOnboardingPage.tsx`, `/onboard` route. Remove `VITE_ENABLE_WALLET_SIGNING` + all conditional wallet code from SigningPage. Clean wallet refs from VerifyPage (removed wallet verification section), EnvelopeDetailPage, VerifyEnvelopePage. [code]
+- [x] Update `frontend/src/pages/DashboardPage.tsx` — email-only login, wallet connect removed entirely. [frontend-logic]
+- [x] Remove `docs/wallet-guide.md` [code]
 
 **Public repo — documentation cleanup:**
 
@@ -1131,9 +1128,8 @@ Per saas-factory F21 / kysigned spec Shipping Surfaces section. Each `[ship]` ta
 
 **Service repo (`kychee-com/kysigned-service`) — code removal:**
 
-- [ ] Remove x402/MPP wiring from `src/router/buildContext.ts` — remove `buildPaymentVerifier` and `buildSenderIdentityExtractor` that compose x402/MPP middleware. Replace with credit-balance-only authentication. [code]
+- [x] Rewrite `src/router/buildContext.ts` — replaced x402/MPP payment verification with credit-balance-only model. `buildPaymentVerifier` now takes `checkCreditBalance` callback. `buildSenderIdentityExtractor` returns email-only. Tests rewritten: 68 passing. [code]
 - [ ] Remove x402/MPP env vars from `scripts/deploy.ts` secret injection [code]
-- [ ] Update `src/router/apiRouter.test.ts` — remove x402/MPP test cases [code]
 - [ ] Scan service repo with same grep pattern and clean remaining references [code]
 
 **Service repo — documentation/marketing cleanup:**
