@@ -1106,10 +1106,10 @@ Per saas-factory F21 / kysigned spec Shipping Surfaces section. Each `[ship]` ta
 
 **Public repo (`kychee-com/kysigned`) — code removal:**
 
-- [ ] Remove `src/api/payment/x402.ts` and `src/api/payment/x402.test.ts` (x402 payment middleware — 11 tests) [code]
-- [ ] Remove `src/api/payment/mpp.ts` and `src/api/payment/mpp.test.ts` (MPP payment middleware — 12 tests) [code]
-- [ ] Remove `src/api/payment/` directory if empty after above removals [code]
-- [ ] Remove wallet signing engine code: `processMethodBSign` from `src/signing/engine.ts` and its tests. Remove `recordWalletSignature` call site from the signing handler in `src/api/sign.ts`. Remove related test cases from `src/api/sign.test.ts`. [code]
+- [x] Remove `src/api/payment/x402.ts` and `src/api/payment/x402.test.ts` (x402 payment middleware — 11 tests) [code]
+- [x] Remove `src/api/payment/mpp.ts` and `src/api/payment/mpp.test.ts` (MPP payment middleware — 12 tests) [code]
+- [x] Remove `src/api/payment/` directory if empty after above removals [code]
+- [x] Remove wallet signing engine code: `processMethodBSign` from `src/signing/engine.ts` and its tests. Remove `recordWalletSignature` from `contract.ts` client + ABI. Rewrite `sign.ts`: extract completion logic into `handleCompletionIfReady` + `notifyNextSequentialSigner`, delete `handleSign`. Rewrite `sign.test.ts` for new functions. Rewrite `engine.test.ts` (kept decline + completion tests). Clean barrel exports. [code]
 - [ ] Remove `recordWalletSignature`, `getWalletSignatures`, `verifyWalletSignature` from `SignatureRegistry.sol`. Remove associated storage structs, events, and test cases from `test/SignatureRegistry.test.cts`. Update contract ABI docs. This creates a NEW contract version for Phase 13 canary deploy (DD-26). [code]
 - [ ] Remove `frontend/src/lib/wallet.ts` (EIP-712, `hasWallet`, `connectWallet`, `signTypedData`) [code]
 - [ ] Remove `frontend/src/pages/WalletOnboardingPage.tsx` and its `/onboard` route from `App.tsx` [code]
