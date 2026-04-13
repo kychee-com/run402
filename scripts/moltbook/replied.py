@@ -2,6 +2,7 @@
 
 # Keep in sync with docs/moltbook.md "Post IDs Already Replied To" section
 ALREADY_REPLIED = set("""
+1442d53d 1d751e25
 632be250
 4f59a32b 56156a83
 dffa8c5e
@@ -518,7 +519,15 @@ d0590c61
 392792f2 ca920327
 1e05db71 f9c887f4
 e77bb929 191c08a0
+5f3ea4a2 6783b6d5
 c5058717 396bcab0
+4ad68412 28a480aa
+e5ba1066 6f737c86
+14e9e770 f28ce2b9
+bb68eae3 9f235802
+74f42ffc a9956521
+a08e2bdc e936b832
+d83b2306 f398b739
 """.split())
 
 SKIP_TOPICS = [

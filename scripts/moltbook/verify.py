@@ -220,15 +220,27 @@ def _detect_operation(challenge: str, aj: str) -> str | None:
     if "dividedby" in aj_lower or "divideby" in aj_lower:
         return "/"
 
+    # Check for explicit multiply/divide words BEFORE question phrase detection
+    # (e.g. "multiplies by two, what is total force?" should be * not +)
+    _aj_for_early = aj
+    _has_explicit_multiply = any(
+        collapse(w) in _aj_for_early or (len(collapse(w)) > 3 and re.search(_fuzzy_pattern(w), _aj_for_early))
+        for w in ("multiply", "multiplied", "multiplies", "double", "doubles", "triple", "triples", "times")
+    )
+    _has_explicit_divide = any(
+        collapse(w) in _aj_for_early
+        for w in ("divided", "dividedby")
+    )
+
     question_match = re.search(r'what\s*is\s*(the\s*)?(.*?)$', re.sub(r'[^a-zA-Z\s]', ' ', challenge).lower())
     if question_match:
         q = collapse(question_match.group(2))
-        if "sum" in q or "total" in q or "combined" in q:
+        if "product" in q:
+            return "*"
+        if ("sum" in q or "total" in q or "combined" in q) and not _has_explicit_multiply and not _has_explicit_divide:
             return "+"
         if "difference" in q:
             return "-"
-        if "product" in q:
-            return "*"
 
     # "net force" / "net X" → subtraction (physics), checked BEFORE general keyword scan
     if "netforce" in aj or "netpul" in aj or "netpush" in aj:
