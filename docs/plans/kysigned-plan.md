@@ -1128,9 +1128,9 @@ Per saas-factory F21 / kysigned spec Shipping Surfaces section. Each `[ship]` ta
 
 - [x] Rewrite `src/router/buildContext.ts` — replaced x402/MPP payment verification with credit-balance-only model. `buildPaymentVerifier` now takes `checkCreditBalance` callback. `buildSenderIdentityExtractor` returns email-only. Tests rewritten: 68 passing. [code]
 - [x] Cleaned README.md — removed MPP credential from e2e test recipes [code]
-- [~] Marketing page cleanup — faq.html, index.html, llms.txt, pricing.html: removing wallet/path/x402 references [frontend-visual]
+- [x] Marketing page cleanup — faq.html (wallet FAQs→"How do I pay?"), index.html (wallet auth→API key), llms.txt (6 edits: wallet endpoints, auth, methods), pricing.html (removed Path 1 card, renamed Path 3→"Prepaid credits") [frontend-visual]
 
-**Verification — partial (will run final after marketing pages):**
+**Verification — all passed:**
 
 - [x] Public repo: 264 unit + 19 contract = 283 total, 0 fail [code]
 - [x] Service repo: 68 total, 0 fail [code]
@@ -1194,6 +1194,7 @@ _Populated during implementation by `/implement`, AFTER tasks are being executed
 
 - 2026-04-13: Completed "Path 2 wallet onboarding flow" — `WalletOnboardingPage.tsx` at `/onboard` with 4-step visual guide (install wallet, switch to Base, fund USDC+ETH, connect & send). Dashboard auth screen links to it when no wallet detected. Links to full `docs/wallet-guide.md` on GitHub. Note: task was listed under Phase 4 `[service]` but all code is in the public repo (`kysigned/frontend/`) since it's a website page.
 - 2026-04-13: Plan continued — spec bumped to v0.12.0. **Major MVP simplification:** removed Path 1/2 (wallet T2 payment) and wallet signing (Method B) from both repos. Added DD-25 through DD-28. Added Phase 16 (dead code removal — ~30 tasks across both repos), Phase 17 (kysigned CLI/MCP init), Phase 18 (testing infrastructure). Updated canary checklist (OQ #20) to remove x402/MPP/wallet items, replaced with Stripe credit-balance items. Contract `recordWalletSignature` to be removed from source before canary deploy (DD-26). Note: the wallet onboarding page built earlier today (Phase 4 task, commit `521bdf9`) will be removed in Phase 16.
+- 2026-04-13: **Completed Phase 16: Dead Code Removal.** Across 6 commits in the public repo + 3 commits in the service repo, removed ~2,500 lines of dead code: x402/MPP payment middleware (23 tests), wallet signing engine + handler (extracted `handleCompletionIfReady` to preserve completion logic), `recordWalletSignature` from SignatureRegistry.sol (DD-26), frontend wallet code (wallet.ts, WalletOnboardingPage, DashboardPage wallet connect, SigningPage wallet UI, VerifyPage wallet section), wallet-guide.md, contract-abi.md wallet docs, payment.test.ts, e2e helpers MPP refs. Service: buildContext.ts rewritten for credit-balance-only, README cleaned, marketing pages (FAQ, pricing, llms.txt, index.html) cleaned. Final test counts: public 283 (264 unit + 19 contract), service 68. 0 failures. Vite 672KB.
 
 ### Gotchas
 
