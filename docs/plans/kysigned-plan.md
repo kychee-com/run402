@@ -4,7 +4,7 @@
 **Created:** 2026-04-04
 **Status:** In Progress
 **Spec:** docs/products/kysigned/kysigned-spec.md
-**Spec-Version:** 0.10.0
+**Spec-Version:** 0.11.0
 **Upstream References:** docs/products/saas-factory/saas-factory-spec.md (v1.15.0)
 **Source:** spec
 **Worktree:** none — product code lives in separate repos (C:\Workspace-Kychee\kysigned and C:\Workspace-Kychee\kysigned-service). run402 platform enhancements use a run402 worktree on a feature branch.
@@ -431,6 +431,14 @@ The user explicitly chose "prove working first, optimize second." Phases MUST be
 - If it works: 1R.3 unblocks, 1R.4/1R.5 cascade unblock, Phase 2R proceeds normally
 - If it fails: we've learned something concrete, costs are capped at $20 + time
 
+### DD-24: Signed PDF proof blocks + multi-envelope aggregation (F16)
+
+- **Decision:** The "Certificate of Completion" is replaced by an **approval page** with per-signer **proof blocks**. Each proof block contains: signer name, date, QR code (operator verify URL), and a plain-text verification key string (`Chain | Contract | SearchKey | EnvelopeId`). The verification key string is sufficient for any validator (human or AI agent) to verify on-chain independently — no dependency on any kysigned instance. Multi-envelope aggregation groups envelopes by `(document_hash, sender_identity)` and produces a single signed PDF with proof blocks for all signers across all envelopes. "Resend to missing" creates a new envelope with only the signers who didn't sign.
+- **Alternatives:** (1) Keep Certificate of Completion as a separate summary page without embedded proof data — rejected because the whole point is self-proving PDFs. (2) Embed proof blocks inline within the document body near signature fields — rejected because MVP has no per-page/per-section signature fields (F8.10 out of scope). (3) Store aggregation as a first-class DB table — rejected; a query-time grouping over `envelopes` by `(document_hash, sender_identity)` is simpler and avoids a migration.
+- **Chosen because:** Self-proving PDFs are the strongest possible portability story. The QR code serves non-technical users; the verification key string serves AI agents and developers. Aggregation is presentation-layer only — on-chain records stay per-envelope, preserving the existing cryptographic model.
+- **Trade-offs:** QR code adds a dependency (QR generation library). Proof block layout adds complexity to the PDF generation code. Aggregation query is O(envelopes-per-sender) but expected to be small (<10 per document).
+- **Rollback:** Revert to the old `generateCertificateOfCompletion`. On-chain records are unaffected.
+
 ### Phase 0: Foundation `AI`
 
 - [x] Create private GitHub repo `kychee-com/kysigned` [infra]
@@ -573,17 +581,44 @@ The user explicitly chose "prove working first, optimize second." Phases MUST be
 - [x] Implement export endpoint — CSV and JSON formats [code]
 - [x] Implement wallet-based authentication for dashboard [code] — **TROJAN HORSE (DD-9)** complete in `src/api/auth/dashboardAuth.ts`. Two paths share one run402-backed surface: (1) wallet — local viem-backed SIWE message creation + `verifyMessage` signature verification (no run402 call needed for the cryptographic check); (2) email — `requestMagicLink` POSTs to `/auth/v1/magic-link`, `exchangeMagicLinkToken` POSTs to `/auth/v1/token?grant_type=magic_link`, and `fetchRun402User` validates an access token via `GET /auth/v1/user`. All three magic-link calls go directly to `https://api.run402.com` via fetch with `apikey: ${KYSIGNED_RUN402_ANON_KEY}`. 11 TDD tests.
 
-#### 2H. Document-Level Aggregation View — NOT PLANNED (deferred to future spec)
+#### 2H. Signed PDF: Proof Blocks, Aggregation & Resend (F16)
 
-> ⚠️ **NOT PLANNED — run `/spec kysigned` first before adding tasks here.**
->
-> This placeholder exists to reserve a Phase 2 slot for the document-level aggregation feature captured in `kysigned-spec.md` F16 (added 2026-04-08, concept-only, AC=TBD). The feature introduces a new conceptual layer above envelopes: a **document** identified by `(document_hash, creator_identity)` that aggregates all envelopes a creator has sent against the same PDF. Surfaces the "failed-envelope → resend to missing signers only" flow as a first-class history view on both the sender dashboard and the verify page. See spec F16 for the concept summary and open questions.
->
-> **Before implementation:** run `/spec kysigned` to fully detail F16 (acceptance criteria, data model decisions, UI routes, email templates, billing interaction) — likely bumps the spec to 0.8.0. Then re-run `/plan kysigned` to replace this placeholder with the actual implementation tasks under Phase 2H.
->
-> **Why deferred:** scope needs brainstorm + spec; orthogonal to Phase 4B service deploy; you can ship current kysigned (single-envelope model) to run402 without this feature, and the aggregation layer slots in later without breaking the existing data model.
+> **Spec F16 fully detailed in v0.11.0 (2026-04-13).** Three sub-features: proof blocks in the approval page, multi-envelope aggregation into one signed PDF, and resend-to-missing-signers flow. See DD-24.
 
-- [ ] **2H.0** Run `/spec kysigned` to detail F16, then re-run `/plan kysigned` to populate this sub-phase with real tasks. Do NOT implement any aggregation code until the spec session is complete and AC exist. `DECIDE` / `AI`
+- [x] **2H.0** Run `/spec kysigned` to detail F16, then re-run `/plan kysigned` to populate this sub-phase with real tasks. `DECIDE` / `AI` — F16 specced in v0.11.0, plan populated below.
+
+##### 2H-A. Proof Blocks (F16.A) `[both]`
+
+- [ ] **2H.1** Rewrite `generateCertificateOfCompletion` → `generateApprovalPage` in `src/pdf/embed.ts`. Generate a single approval page appended to the PDF with one proof block per signer. Each proof block contains: signer name, date signed, QR code (linking to `{operatorDomain}/verify/{envelopeId}`), and verification key string (`Chain: Base | Contract: 0x{signatureRegistry} | SearchKey: 0x{searchKey} | EnvelopeId: 0x{envelopeId}`). Three visual states: "signed" (full block), "waiting" (name + pending label), "did not sign" (name + failed label). `operatorDomain` is a parameter (configurable per deployment). [code] `AI`
+- [ ] **2H.2** Add QR code generation to the proof block. Use a lightweight QR library compatible with pdf-lib (e.g., `qrcode` npm package → PNG → embed in PDF). The QR URL is `https://{operatorDomain}/verify/{envelopeId}`. [code] `AI`
+- [ ] **2H.3** Update all callers of `generateCertificateOfCompletion` → `generateApprovalPage` (in `src/api/sign.ts` completion flow). Pass `operatorDomain` + `searchKey` per signer. [code] `AI`
+- [ ] **2H.4** Update `src/api/sign.test.ts` and `src/pdf/embed.test.ts` for the new approval page format. [code] `AI`
+
+##### 2H-B. Standalone Validator (F16.A) `[repo]`
+
+- [ ] **2H.5** Create `src/validator/validate.ts` — standalone module that accepts a PDF, extracts proof block data (verification key strings) from the last page, and verifies each signer's record on-chain via `getReplyToSignRecords(searchKey)`. Returns structured results per signer. No dependency on any kysigned service. [code] `AI`
+- [ ] **2H.6** Create `scripts/validate-pdf.ts` — CLI entry point that calls the validator. Usage: `npx tsx scripts/validate-pdf.ts <path-to-pdf>`. Prints verification results to stdout. [code] `AI`
+
+##### 2H-C. Multi-Envelope Aggregation (F16.B) `[both]`
+
+- [ ] **2H.7** Add `documents` materialized grouping in `src/db/envelopes.ts` — `getDocumentsByOwner(pool, senderIdentity)` returns envelopes grouped by `(document_hash, sender_identity)` with combined signer status across envelopes. No new DB table — this is a query over `envelopes` + `envelope_signers`. [code] `AI`
+- [ ] **2H.8** Add `generateAggregatedSignedPdf(pool, documentHash, senderIdentity, operatorDomain)` in `src/pdf/embed.ts` — fetches all envelopes for the document, collects all signers across envelopes, generates an approval page with proof blocks for every signer (each pointing to their specific envelope). Returns the PDF bytes. [code] `AI`
+- [ ] **2H.9** Update completion flow in `src/api/sign.ts` — after `processCompletion`, generate the aggregated signed PDF (not just the single-envelope cert). Attach to completion email. [code] `AI`
+- [ ] **2H.10** Add `GET /v1/document/:hash/pdf` endpoint — regenerate the aggregated signed PDF on demand from the dashboard. Returns the PDF with all current proof blocks. [code] `AI`
+
+##### 2H-D. Dashboard Document View (F16.B) `[both]`
+
+- [ ] **2H.11** Update `handleListEnvelopes` → `handleListDocuments` in `src/api/envelope.ts` — return documents grouped by hash with combined signer status. Backward-compatible: each document includes its constituent envelopes. [code] `AI`
+- [ ] **2H.12** Update frontend `DashboardPage.tsx` — display documents (grouped by hash) instead of raw envelopes. Each row shows document name, combined signer count (e.g., "2 of 3 signed"), expand to see envelope history. [frontend-visual]
+- [ ] **2H.13** Update frontend `EnvelopeDetailPage.tsx` — show document-level view when navigating from dashboard. Cross-envelope signer aggregation visible. [frontend-visual]
+
+##### 2H-E. Resend to Missing Signers (F16.C) `[both]`
+
+- [ ] **2H.14** Add `getIncompleteSigners(pool, documentHash, senderIdentity)` in `src/db/envelopes.ts` — returns signers who have NOT signed across any envelope for this document. [code] `AI`
+- [ ] **2H.15** Add "resend to missing" logic in `src/api/envelope.ts` — `handleResendToMissing(ctx, documentHash)` creates a new envelope with the same PDF and only the missing signers. Standard billing. [code] `AI`
+- [ ] **2H.16** Add auto-detection in `handleCreateEnvelope` — when the uploaded PDF's hash matches an existing document with incomplete signers, return a `suggestion` field: `{ has_existing_signatures: true, signed_count: N, total_count: M, missing_signers: [...] }`. The frontend uses this to prompt "send to missing only?". [code] `AI`
+- [ ] **2H.17** Update frontend `CreateEnvelopePage.tsx` — when suggestion is returned, show a prompt: "This document already has N signatures. Send to only the M missing signers?" with pre-filled signer list. [frontend-visual]
+- [ ] **2H.18** After resend envelope completes, regenerate the aggregated signed PDF including all signers across all envelopes. Send updated PDF in completion email. [code] `AI`
 
 ### Phase 2R: Engine Rework — Reply-to-Sign `[both]` `AI`
 
@@ -1041,6 +1076,7 @@ _Populated during implementation by `/implement`, AFTER tasks are being executed
 - 2026-04-12: Completed "2R-B: Inbound Email Handler" (2R.6–2R.9) — core reply-to-sign pipeline. 4 new modules in `src/api/signing/`: `inboundHandler.ts` (orchestration, 12 tests), `dkimPreChecks.ts` (6 hardening checks per cfdkim findings, 14 tests), `bodyValidation.ts` (two-layer I APPROVE validation, 14 tests), `autoReply.ts` (4 rejection templates + duplicate reply, 6 tests). Dependencies (DKIM verification, proof gen, on-chain recording) injected via interfaces for later implementation in 2R.10–2R.14. Test count: 229 unit + 22 contract = 251 total, 0 fail.
 - 2026-04-12: Completed "2R-C/D/E partial" (2R.12, 2R.14–2R.20) — searchKey computation (argon2id, ~700ms), MIME disposal, all email templates rewritten for reply-to-sign (Subject includes [envId] [hash], Reply-To header, I APPROVE instructions, How it works link), consent_language_version migration 006, verify-by-(email,document) handler, verify-by-envelope-id label update. Test count: 240 unit + 22 contract = 262 total, 0 fail.
 - 2026-04-13: Completed "Phase 3R: Frontend Rework" (3R.1–3R.13, all 13 tasks) — SigningPage → review page (removed Method A/B, drawing, verification levels, decline). Deleted SignatureCanvas.tsx, old crypto.ts, tweetnacl dep. Bundle 708→670KB. Wallet signing behind `VITE_ENABLE_WALLET_SIGNING` flag. CreateEnvelopePage simplified (no drawn sig, no verification levels). EnvelopeDetail + VerifyEnvelope method labels updated. VerifyPage rewritten for (email, PDF) input. HowItWorksPage built (non-technical, <1min read). `/how-it-works` + `/review/:id/:token` routes added. Deviation: 3R.8 searchKey computed server-side (256 MiB argon2id crashes browsers). Test count: 259 unit + 22 contract = 281 total, 0 fail.
+- 2026-04-13: Plan continued — F16 specced (v0.11.0), Spec-Version bumped 0.10.0 → 0.11.0, Phase 2H placeholder replaced with 18 real tasks (2H.1–2H.18) across 5 sub-phases: proof blocks, standalone validator, multi-envelope aggregation, dashboard document view, resend-to-missing. DD-24 added.
 
 ### Gotchas
 
