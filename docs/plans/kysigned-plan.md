@@ -732,28 +732,28 @@ The user explicitly chose "prove working first, optimize second." Phases MUST be
 
 > **Unblocked — but pre-deploy public-repo refactor required (see DD-10).** Phase 4 is the glue layer that composes run402's primitives into the kysigned hosted product. During the 2026-04-08 deploy attempt we hit a platform/app mismatch: kysigned's `createEnvelope` uses native `pg` transactions (`BEGIN → INSERT envelope → INSERT signers → COMMIT`), but deployed run402 Lambdas only have the HTTP-based DB surfaces `db.sql()` / `db.from()` / `/rest/v1/*` — no direct `pg` connection. Two paths were considered: (a) add a platform feature (`lambda-db-direct`) that injects `RUN402_DATABASE_URL` into Lambdas with RDS Proxy; (b) refactor the kysigned public repo so it fits the existing HTTP DB surface. **After discussion with the run402 team on 2026-04-08, path (b) was chosen** — run402 has scaling/monitoring concerns about exposing direct-pg connections at this stage and would rather let kysigned be the first adopter of the HTTP-only model, adding direct-pg as a future platform enhancement when the operational story is mature. See DD-10 for the full rationale. The pre-deploy refactor + service-layer build are now tracked as discrete tasks (`### Phase 4A` below).
 
-- [ ] Implement Path 3 prepaid credit system via run402's `email-billing-accounts` (v1.28.0) [code]
+- [x] Implement Path 3 prepaid credit system via run402's `email-billing-accounts` (v1.28.0) [code]
   - Use `@run402/shared` billing client for checkout + balance + deduction; no custom Stripe wiring
   - Per-envelope deduction hooks on `POST /v1/envelope`
   - Insufficient balance → return HTTP 402 with top-up link (the standard x402 shape)
   - Non-expiring credits (platform default; verify when wiring)
   - Low-balance threshold alert (use the shared monitoring module's `notifyInfo`)
   - Purchase history reads from run402's billing ledger
-- [ ] Implement magic link authentication for Path 3 via run402's `magic-link-auth` enhancement [code]
+- [x] Implement magic link authentication for Path 3 via run402's `magic-link-auth` enhancement [code]
   - Wire `@run402/shared` auth client; no custom auth code
   - Enter email → receive login link → click → authenticated session
   - Session management is run402's responsibility
-- [ ] Implement platform wallet for Path 3 on-chain recordings via the KMS-wallet feature [code]
+- [x] Implement platform wallet for Path 3 on-chain recordings via the KMS-wallet feature [code] — Already handled: the signing engine uses `RegistryClient` with the platform wallet (DD-3) for ALL paths. Path 3 envelope creation uses the same `processCompletion` → `recordReplyToSignSignature` flow as Path 1/2. No additional code needed.
   - On-chain recordings indistinguishable from Path 1/2 (same wallet, same contract)
   - Verify the pre-flight checklist in Phase 13 ran before wiring this for production
-- [ ] Implement Path 3 dashboard extensions [frontend-logic]
+- [x] Implement Path 3 dashboard extensions [frontend-logic]
   - Magic link login flow (UI only; run402 handles the token exchange)
   - Credit balance display (reads from run402 billing API)
   - Purchase history view (same source)
   - Low-balance indicator
   - Usage statistics (envelopes sent, signatures collected, completion rate — monthly/weekly)
   - Spending history (per-envelope cost, total spend over time)
-- [ ] Implement Path 2 wallet onboarding flow on website — guide user through wallet creation and funding. Link directly to `docs/wallet-guide.md` for the long version. [frontend-visual]
+- [~] Implement Path 2 wallet onboarding flow on website — guide user through wallet creation and funding. Link directly to `docs/wallet-guide.md` for the long version. [frontend-visual]
 - [x] Wire run402's `custom-sender-domains` feature to send kysigned emails from `@kysigned.com` (not `@run402.com`) via SES — SPF/DKIM/DMARC all come for free through the enhancement; kysigned just registers the domain with run402 [infra] — **done 2026-04-07.** kysigned project on run402 (`prj_1775546157922_0030`) has `kysigned.com` registered as a custom sender domain, status `verified`. Outbound email from this project will go from `<slug>@kysigned.com` automatically once a mailbox is created.
 
 ### Phase 4A: Pre-deploy refactor — HTTP DbPool model (DD-10) `[both]` `AI`
@@ -856,7 +856,7 @@ The user explicitly chose "prove working first, optimize second." Phases MUST be
 
 - [x] **P4B.31** Closed-loop mailbox e2e smoke harness landed. New `test/e2e-smoke/` directory with `_mailHelpers.ts` (SES mailbox simulator polling, signing-link extraction) + `signSmoke.test.ts` (1-signer ACME envelope: create → read outbound email via mailbox API → parse signing link → POST /v1/sign). Gated on `KYSIGNED_E2E_SMOKE=1`. Query-param bypass (`?_e2e_bypass=<token>`) added to router for deployed e2e (run402 gateway strips custom headers but forwards query strings). Service repo `79a8e7e` wired the query-param path. Public repo commit `bad38f8`. Note: still uses old Method A (Ed25519) signing — will be rewritten as part of Phase 2R.21 for reply-to-sign. [code]
 - [x] **P4B.32** Nonce management: wired viem `nonceManager` into `RegistryClient` at `src/signing/contract.ts` — `privateKeyToAccount(config.privateKey, { nonceManager })` tracks the next nonce in-memory and increments it locally before each send, eliminating the "replacement transaction underpriced" race when multiple signs overlap. Commit `bad38f8`. [code]
-- [ ] **P4B.33** Wire `/admin/v1/force-expire/:id` + `/admin/v1/sweep/run` + `/webhooks/v1/email` routes into the `kysigned-api` Lambda router (gated by either SIWE admin auth or the e2e bypass token). These are the routes the DD-13 scenarios 3/5 reference — currently they live on separate Lambdas (`kysigned-email-webhook`, `kysigned-sweep`) which have no HTTP surface. For e2e completeness and for ops endpoints, the api router should proxy to them. [code]
+- [x] **P4B.33** Wire `/admin/v1/force-expire/:id` + `/admin/v1/sweep/run` + `/webhooks/v1/email` routes into the `kysigned-api` Lambda router (gated by either SIWE admin auth or the e2e bypass token). These are the routes the DD-13 scenarios 3/5 reference — currently they live on separate Lambdas (`kysigned-email-webhook`, `kysigned-sweep`) which have no HTTP surface. For e2e completeness and for ops endpoints, the api router should proxy to them. [code] — Public repo: `forceExpireEnvelope()` in envelopes.ts (2 TDD tests). Service repo: 3 new routes in apiRouter.ts with `checkAdminOrBypass` + e2e bypass fallback, optional `forceExpireEnvelope`/`runSweepAndExpire`/`handleEmailWebhook` deps (4 TDD tests). kysigned 314 total, kysigned-service 57 total, 0 fail.
 
 ### Phase 5: Domain & Branding `AI` / `HUMAN`
 
