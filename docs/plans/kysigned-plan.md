@@ -1117,35 +1117,24 @@ Per saas-factory F21 / kysigned spec Shipping Surfaces section. Each `[ship]` ta
 
 **Public repo — documentation cleanup:**
 
-- [ ] Update `README.md` — remove all Path 1/2, wallet payment, wallet signing, Method B references. Update payment section to say "Hosted service: prepaid credits via Stripe. Public repo: operator pays run402, gates access via allowed_senders." [manual]
-- [ ] Update `mcp/README.md` — remove x402/MPP auth references [manual]
-- [ ] Update FAQ references if any FAQ content is in the public repo [manual]
-- [ ] Scan entire repo with `grep -ri "path.1\|path.2\|method.b\|wallet.sign\|x402\|mpp\|wallet.guide\|ENABLE_WALLET"` and clean any remaining references [code]
-
-**Public repo — legal cleanup:**
-
-- [ ] Update `LEGAL.md` — remove Method B wallet gap documentation (the "does NOT prove wallet X = email Y" section). Legal now only covers reply-to-sign proof semantics. [manual]
+- [x] Update `README.md` — removed wallet signing section, wallet-guide link, added Billing section (hosted=Stripe, self-hosted=run402+allowlist) [manual]
+- [x] Update `mcp/README.md` — removed x402/MPP auth, wallet list, sender_wallet references [manual]
+- [x] Update `LEGAL.md` — removed wallet signing proof semantics [manual]
+- [x] Removed `handleVerifyByHash` (wallet-only endpoint), cleaned verify.ts/embed.ts/validate-pdf.ts, deleted payment.test.ts, cleaned e2e helpers [code]
+- [x] Grep scan: cleaned remaining wallet/x402/MPP references across all .ts/.tsx/.md files. Updated verify.ts (removed handleVerifyByHash), embed.ts, validate-pdf.ts, e2e helpers. Deleted payment.test.ts. [code]
+- [x] Updated `docs/contract-abi.md` — removed recordWalletSignature, getWalletSignatures, verifyWalletSignature docs, EIP-712 Domain section [code]
 
 **Service repo (`kychee-com/kysigned-service`) — code removal:**
 
 - [x] Rewrite `src/router/buildContext.ts` — replaced x402/MPP payment verification with credit-balance-only model. `buildPaymentVerifier` now takes `checkCreditBalance` callback. `buildSenderIdentityExtractor` returns email-only. Tests rewritten: 68 passing. [code]
-- [ ] Remove x402/MPP env vars from `scripts/deploy.ts` secret injection [code]
-- [ ] Scan service repo with same grep pattern and clean remaining references [code]
+- [x] Cleaned README.md — removed MPP credential from e2e test recipes [code]
+- [~] Marketing page cleanup — faq.html, index.html, llms.txt, pricing.html: removing wallet/path/x402 references [frontend-visual]
 
-**Service repo — documentation/marketing cleanup:**
+**Verification — partial (will run final after marketing pages):**
 
-- [ ] Update `site/llms.txt` — remove all Path 1/2, wallet, x402/MPP references [manual]
-- [ ] Update landing page — remove wallet/path references, update payment messaging [frontend-visual]
-- [ ] Update pricing page — remove wallet payment option, keep Stripe credit packs only [frontend-visual]
-- [ ] Update FAQ page — rewrite "Do I need a wallet?" to "No — you buy credits with a credit card and sign by replying to an email." Remove all Method B/wallet signing FAQ items. [frontend-visual]
-- [ ] Update "SaaS vs Repo" page — remove wallet billing references from forker section, add "charging your users is not currently available" language [frontend-visual]
-
-**Verification — full test suite after all removals:**
-
-- [ ] Run full `npm run test:all` in public repo — must pass with FEWER total tests (wallet/payment tests removed) [code]
-- [ ] Run full `npm run test` in service repo — must pass [code]
-- [ ] Run `npm run build` in both repos — clean compile [code]
-- [ ] Run Vite build for frontend — clean, no dead imports [code]
+- [x] Public repo: 264 unit + 19 contract = 283 total, 0 fail [code]
+- [x] Service repo: 68 total, 0 fail [code]
+- [x] Vite build: 672KB, clean [code]
 
 ### Phase 17: kysigned CLI/MCP Init `[repo]` `AI`
 
