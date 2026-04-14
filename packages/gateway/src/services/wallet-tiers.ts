@@ -11,6 +11,7 @@ import { sql } from "../db/sql.js";
 import { TIERS, getTierLimits } from "@run402/shared";
 import type { TierName, WalletTierInfo } from "@run402/shared";
 import { getOrCreateBillingAccount, type BillingAccount } from "./billing.js";
+import { advanceLifecycleForWallet } from "./project-lifecycle.js";
 import { randomUUID } from "node:crypto";
 import { HttpError } from "../utils/async-handler.js";
 
@@ -56,6 +57,11 @@ export async function subscribeTier(
     );
 
     await client.query(sql("COMMIT"));
+
+    // Reactivate any projects under this wallet currently in grace. The
+    // hourly tick would catch up within an hour, but doing it inline means
+    // the owner doesn't get 402s on their next deploy after just paying.
+    await advanceLifecycleForWallet(normalized);
 
     const result = await pool.query(
       sql(`SELECT * FROM internal.billing_accounts WHERE id = $1`),
@@ -115,6 +121,8 @@ export async function renewTier(
     );
 
     await client.query(sql("COMMIT"));
+
+    await advanceLifecycleForWallet(normalized);
 
     const result = await pool.query(
       sql(`SELECT * FROM internal.billing_accounts WHERE id = $1`),
@@ -216,6 +224,8 @@ export async function upgradeTier(
     );
 
     await client.query(sql("COMMIT"));
+
+    await advanceLifecycleForWallet(normalized);
 
     const result = await pool.query(
       sql(`SELECT * FROM internal.billing_accounts WHERE id = $1`),

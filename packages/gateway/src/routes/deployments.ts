@@ -9,6 +9,7 @@ import { Router, Request, Response } from "express";
 import { createDeployment, getDeployment, DeploymentError } from "../services/deployments.js";
 import type { DeploymentFile } from "../services/deployments.js";
 import { walletAuth } from "../middleware/wallet-auth.js";
+import { lifecycleGate } from "../middleware/lifecycle-gate.js";
 import { asyncHandler, HttpError } from "../utils/async-handler.js";
 
 const router = Router();
@@ -24,7 +25,7 @@ router.get("/deployments/v1", (_req: Request, res: Response) => {
 });
 
 // POST /v1/deployments — create a deployment (wallet auth, free)
-router.post("/deployments/v1", walletAuth(false), asyncHandler(async (req: Request, res: Response) => {
+router.post("/deployments/v1", walletAuth(false), lifecycleGate, asyncHandler(async (req: Request, res: Response) => {
   const { project, target, files, inherit } = req.body || {};
 
   if (!project || typeof project !== "string") {

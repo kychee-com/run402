@@ -9,7 +9,9 @@ import { validateWalletAddress } from "../utils/validate.js";
 import { checkSqlSafety } from "../utils/sql-safety.js";
 import { ADMIN_KEY } from "../config.js";
 import { isAdminWallet } from "../services/admin-wallets.js";
-import { getProjectById } from "../services/projects.js";
+import { getProjectById, isServingStatus } from "../services/projects.js";
+import { advanceLifecycleForProject } from "../services/project-lifecycle.js";
+import { getSubdomainWithReservation } from "../services/subdomains.js";
 import { parseSIWxHeader, verifySIWxSignature } from "@x402/extensions/sign-in-with-x";
 
 interface RlsTable {
@@ -137,8 +139,10 @@ async function adminOrServiceKeyAuth(req: Request, res: Response, next: NextFunc
     const projectId = match?.[1];
     if (projectId) {
       const project = await getProjectById(projectId);
-      if (!project || project.status !== "active") {
-        res.status(404).json({ error: "Project not found or not active" });
+      // Admin wallets may operate on any non-terminal project (including grace states)
+      // so they can reactivate frozen/dormant projects on behalf of paying customers.
+      if (!project || (!isServingStatus(project.status) && project.status !== "purging")) {
+        res.status(404).json({ error: "Project not found or terminal" });
         return;
       }
       req.project = project;
@@ -367,6 +371,50 @@ router.post("/projects/v1/admin/:id/unpin", asyncHandler(async (req: Request, re
 
   console.log(`  Project ${project.id} unpinned`);
   res.json({ status: "ok", project_id: project.id, pinned: false });
+}));
+
+// POST /projects/v1/admin/:id/reactivate — operator reactivate (admin only, lifecycle rescue)
+// Transitions a project from any non-terminal grace state (past_due/frozen/dormant)
+// back to active, clearing timer columns and subdomain reservations in one transaction.
+router.post("/projects/v1/admin/:id/reactivate", asyncHandler(async (req: Request, res: Response) => {
+  await requireAdmin(req);
+
+  assertProjectMatch(req);
+  const project = req.project!;
+
+  if (project.status === "purged" || project.status === "archived") {
+    throw new HttpError(409, `Project is ${project.status} (terminal); no data to restore`);
+  }
+  if (project.status === "active") {
+    res.json({ status: "ok", project_id: project.id, note: "already active" });
+    return;
+  }
+
+  const changed = await advanceLifecycleForProject(project.id);
+  console.log(`  [admin] reactivated project ${project.id} (was ${project.status}, changed=${changed})`);
+  res.json({ status: "ok", project_id: project.id, reactivated: changed });
+}));
+
+// POST /subdomains/v1/admin/:name/release — operator-only subdomain reservation release.
+// Clears reservation columns so a reserved name can be claimed by anyone. Used for
+// dispute resolution when a reserved owner cannot be reached.
+router.post("/subdomains/v1/admin/:name/release", asyncHandler(async (req: Request, res: Response) => {
+  await requireAdmin(req);
+  const name = req.params.name as string;
+
+  const record = await getSubdomainWithReservation(name);
+  if (!record) throw new HttpError(404, "Subdomain not found");
+  if (!record.reserved_for_project_id) {
+    res.json({ status: "ok", name, note: "no reservation to release" });
+    return;
+  }
+
+  await pool.query(
+    sql(`UPDATE internal.subdomains SET reserved_for_project_id = NULL, reserved_until = NULL WHERE name = $1`),
+    [name],
+  );
+  console.log(`  [admin] released subdomain reservation: ${name} (was reserved for ${record.reserved_for_project_id})`);
+  res.json({ status: "ok", name, previously_reserved_for: record.reserved_for_project_id });
 }));
 
 // GET /projects/v1/admin/:id/usage — usage report

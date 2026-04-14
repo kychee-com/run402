@@ -602,7 +602,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Project archived",
+            "description": "Project purged (terminal delete)",
             "content": {
               "application/json": {
                 "schema": {
@@ -610,7 +610,7 @@
                   "properties": {
                     "status": {
                       "type": "string",
-                      "example": "archived"
+                      "example": "purged"
                     },
                     "project_id": {
                       "type": "string",

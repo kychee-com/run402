@@ -1176,6 +1176,20 @@ async function applyMigrations() {
   // v1.22: custom domain inbound — opt-in flag for receiving inbound email on a custom sender domain
   await pool.query(sql(`ALTER TABLE internal.email_domains ADD COLUMN IF NOT EXISTS inbound_enabled BOOLEAN NOT NULL DEFAULT FALSE`));
 
+  // v1.23: project soft-delete lifecycle (past_due → frozen → dormant → purged)
+  // Widen the status CHECK, add grace timer columns, and add subdomain reservation columns.
+  // The original schema stored `status` with no CHECK constraint, so only additive work is needed.
+  await pool.query(sql(`ALTER TABLE internal.projects ADD COLUMN IF NOT EXISTS past_due_since TIMESTAMPTZ`));
+  await pool.query(sql(`ALTER TABLE internal.projects ADD COLUMN IF NOT EXISTS frozen_at TIMESTAMPTZ`));
+  await pool.query(sql(`ALTER TABLE internal.projects ADD COLUMN IF NOT EXISTS dormant_at TIMESTAMPTZ`));
+  await pool.query(sql(`ALTER TABLE internal.projects ADD COLUMN IF NOT EXISTS scheduled_purge_at TIMESTAMPTZ`));
+  await pool.query(sql(`ALTER TABLE internal.projects ADD COLUMN IF NOT EXISTS purge_warning_sent_at TIMESTAMPTZ`));
+  await pool.query(sql(`CREATE INDEX IF NOT EXISTS idx_projects_lifecycle_status ON internal.projects(status) WHERE status IN ('past_due', 'frozen', 'dormant')`));
+
+  await pool.query(sql(`ALTER TABLE internal.subdomains ADD COLUMN IF NOT EXISTS reserved_for_project_id TEXT`));
+  await pool.query(sql(`ALTER TABLE internal.subdomains ADD COLUMN IF NOT EXISTS reserved_until TIMESTAMPTZ`));
+  await pool.query(sql(`CREATE INDEX IF NOT EXISTS idx_subdomains_reservation ON internal.subdomains(reserved_for_project_id) WHERE reserved_for_project_id IS NOT NULL`));
+
   // v1.19b: bootstrap platform billing mailbox (billing@mail.run402.com)
   // Self-healing: creates the row if missing. Uses 'platform' as project_id sentinel.
   const billingMailboxResult = await pool.query(

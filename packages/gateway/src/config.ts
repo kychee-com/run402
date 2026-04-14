@@ -45,6 +45,10 @@ export const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID || "";
 // Admin key (for privileged operations like pin/unpin)
 export const ADMIN_KEY = process.env.ADMIN_KEY || "";
 
+// Lifecycle state machine (past_due → frozen → dormant → purged).
+// Default on; flip to "false" for incident-response rollback.
+export const LIFECYCLE_ENABLED = process.env.LIFECYCLE_ENABLED !== "false";
+
 // Lambda / Functions config
 export const LAMBDA_ROLE_ARN = process.env.LAMBDA_ROLE_ARN || "";
 export const LAMBDA_LAYER_ARN = process.env.LAMBDA_LAYER_ARN || "";

@@ -30,6 +30,15 @@ mock.module("./billing.js", {
   },
 });
 
+let advanceLifecycleForWalletCalls: string[] = [];
+mock.module("./project-lifecycle.js", {
+  namedExports: {
+    advanceLifecycleForWallet: async (wallet: string) => {
+      advanceLifecycleForWalletCalls.push(wallet);
+    },
+  },
+});
+
 let CapturedHttpError: any;
 
 mock.module("../utils/async-handler.js", {
@@ -331,6 +340,21 @@ describe("getWalletTier", () => {
 // ---------------------------------------------------------------------------
 
 describe("subscribeTier", () => {
+  it("reactivates any grace-state projects owned by the wallet after commit (post-topup hook)", async () => {
+    advanceLifecycleForWalletCalls = [];
+    const account = makeBillingAccount();
+    mockGetOrCreateBillingAccount = async () => account;
+    const fakeClient = makeFakeClient();
+    mockPoolConnect = async () => fakeClient;
+    mockPoolQuery = async () => ({ rows: [makeAccountRow({ tier: "hobby", lease_started_at: new Date().toISOString(), lease_expires_at: new Date(Date.now() + 30 * 86_400_000).toISOString() })] });
+
+    await subscribeTier("0xABCDEF1234567890abcdef1234567890ABCDEF12", "hobby");
+
+    // Wallet is normalized to lowercase before the hook fires
+    assert.equal(advanceLifecycleForWalletCalls.length, 1);
+    assert.equal(advanceLifecycleForWalletCalls[0], "0xabcdef1234567890abcdef1234567890abcdef12");
+  });
+
   it("sets tier and lease on billing account within a transaction", async () => {
     const account = makeBillingAccount();
     mockGetOrCreateBillingAccount = async () => account;

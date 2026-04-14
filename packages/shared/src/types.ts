@@ -45,7 +45,16 @@ export interface ProjectInfo {
   allowPasswordSet: boolean;
 }
 
-export type ProjectStatus = "active" | "archived" | "expired" | "deleted";
+export type ProjectStatus =
+  | "active"
+  | "past_due"
+  | "frozen"
+  | "dormant"
+  | "purging"
+  | "purged"
+  | "archived"
+  | "expired"
+  | "deleted";
 export type TierName = "prototype" | "hobby" | "team";
 
 export interface TierConfig {

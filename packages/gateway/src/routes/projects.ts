@@ -1,7 +1,7 @@
 import { Router, Request, Response } from "express";
 import { TIERS } from "@run402/shared";
 import type { TierName } from "@run402/shared";
-import { createProject, archiveProject, projectCache } from "../services/projects.js";
+import { createProject, purgeProject, projectCache } from "../services/projects.js";
 import { notifyNewProject } from "../services/telegram.js";
 import { serviceKeyAuth } from "../middleware/apikey.js";
 import { walletAuth } from "../middleware/wallet-auth.js";
@@ -119,13 +119,13 @@ router.delete("/projects/v1/:id", serviceKeyOrAdmin, asyncHandler(async (req: Re
     throw new HttpError(403, "Service key does not match project");
   }
 
-  const archived = await archiveProject(projectId);
-  if (!archived) {
-    throw new HttpError(404, "Project not found or already archived");
+  const purged = await purgeProject(projectId);
+  if (!purged) {
+    throw new HttpError(404, "Project not found or already purged");
   }
 
-  console.log(`  Archived project: ${projectId}${req.isAdmin ? " (admin)" : ""}`);
-  res.json({ status: "archived", project_id: projectId });
+  console.log(`  Purged project: ${projectId}${req.isAdmin ? " (admin)" : ""}`);
+  res.json({ status: "purged", project_id: projectId });
 }));
 
 export default router;

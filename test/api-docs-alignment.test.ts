@@ -56,6 +56,8 @@ const EXCLUDED_ENDPOINTS = new Set([
   // Admin-only operations (admin-key, not agent-facing)
   "POST /projects/v1/admin/{_}/pin",
   "POST /projects/v1/admin/{_}/unpin",
+  "POST /projects/v1/admin/{_}/reactivate",
+  "POST /subdomains/v1/admin/{_}/release",
   "POST /faucet/v1/admin",
   // Admin delete app version (admin-key only)
   "DELETE /apps/v1/admin/{_}",

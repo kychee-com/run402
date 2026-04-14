@@ -15,6 +15,15 @@ import type { TierConfig } from "@run402/shared";
 /** Active cron jobs keyed by "projectId:functionName" */
 const jobs = new Map<string, Cron>();
 
+/**
+ * Whether scheduled-function invocation is allowed for a project in the given
+ * lifecycle status. active/past_due/frozen keep running; dormant and terminal
+ * states (purging/purged/archived) skip invocation and don't charge metering.
+ */
+export function scheduledInvocationAllowed(status: string): boolean {
+  return status === "active" || status === "past_due" || status === "frozen";
+}
+
 function jobKey(projectId: string, name: string): string {
   return `${projectId}:${name}`;
 }
@@ -87,13 +96,19 @@ async function updateScheduleMeta(
  */
 async function onTick(projectId: string, name: string, cronExpr: string): Promise<void> {
   try {
-    // Check API quota before invoking
+    // Check API quota and lifecycle state before invoking
     const projResult = await pool.query(
-      sql(`SELECT tier, api_calls FROM internal.projects WHERE id = $1`),
+      sql(`SELECT tier, api_calls, status FROM internal.projects WHERE id = $1`),
       [projectId],
     );
     if (projResult.rows.length === 0) {
       console.error(`  Scheduler: project ${projectId} not found, skipping tick for ${name}`);
+      return;
+    }
+    // Scheduled functions pause at dormancy.
+    const status = projResult.rows[0].status as string;
+    if (!scheduledInvocationAllowed(status)) {
+      console.log(`  Scheduler: ${projectId}/${name} skipped (project status=${status}, scheduled_function_paused)`);
       return;
     }
     const { TIERS } = await import("@run402/shared");

@@ -62,7 +62,7 @@ const {
   getProjectById,
   deriveProjectKeys,
   createProject,
-  archiveProject,
+  purgeProject,
 } = await import("./projects.js");
 
 // ---------------------------------------------------------------------------
@@ -538,10 +538,10 @@ describe("createProject — slot exhausted", () => {
 });
 
 // ---------------------------------------------------------------------------
-// archiveProject
+// purgeProject
 // ---------------------------------------------------------------------------
 
-describe("archiveProject", () => {
+describe("purgeProject", () => {
   beforeEach(() => {
     for (const p of Array.from(projectCache.values())) {
       projectCache.delete(p.id);
@@ -578,18 +578,18 @@ describe("archiveProject", () => {
     };
     mockPoolConnect = async () => fakeClient;
 
-    const result = await archiveProject("prj_to_archive");
+    const result = await purgeProject("prj_to_archive");
     assert.equal(result, true);
 
     // Verify project is removed from cache
     assert.equal(projectCache.get("prj_to_archive"), undefined);
 
     // Verify the project status was mutated
-    assert.equal(project.status, "archived");
+    assert.equal(project.status, "purged");
   });
 
   it("returns false when project is not in cache", async () => {
-    const result = await archiveProject("prj_nonexistent");
+    const result = await purgeProject("prj_nonexistent");
     assert.equal(result, false);
   });
 
@@ -610,7 +610,7 @@ describe("archiveProject", () => {
       allowPasswordSet: false,
     });
 
-    const result = await archiveProject("prj_archived_already");
+    const result = await purgeProject("prj_archived_already");
     assert.equal(result, false);
   });
 
@@ -641,14 +641,14 @@ describe("archiveProject", () => {
     };
     mockPoolConnect = async () => fakeClient;
 
-    await archiveProject("prj_tx_test");
+    await purgeProject("prj_tx_test");
 
     // Verify transaction structure
     assert.ok(clientQueries[0].includes("BEGIN"));
     assert.ok(clientQueries.some((q) => q.includes("DROP SCHEMA")));
     assert.ok(clientQueries.some((q) => q.includes("CREATE SCHEMA")));
     assert.ok(clientQueries.some((q) => q.includes("GRANT USAGE")));
-    assert.ok(clientQueries.some((q) => q.includes("status = 'archived'")));
+    assert.ok(clientQueries.some((q) => q.includes("status = 'purged'")));
     assert.ok(clientQueries[clientQueries.length - 1].includes("COMMIT"));
   });
 
@@ -681,7 +681,7 @@ describe("archiveProject", () => {
     };
     mockPoolConnect = async () => fakeClient;
 
-    await archiveProject("prj_cascade");
+    await purgeProject("prj_cascade");
 
     assert.ok(poolQueries.some((q) => q.includes("internal.secrets")));
     assert.ok(poolQueries.some((q) => q.includes("internal.app_versions")));
@@ -718,7 +718,7 @@ describe("archiveProject", () => {
     };
     mockPoolConnect = async () => fakeClient;
 
-    await assert.rejects(() => archiveProject("prj_rollback"), {
+    await assert.rejects(() => purgeProject("prj_rollback"), {
       message: "schema drop failed",
     });
 
@@ -757,7 +757,7 @@ describe("archiveProject", () => {
     mockPoolConnect = async () => fakeClient;
 
     try {
-      await archiveProject("prj_release");
+      await purgeProject("prj_release");
     } catch {
       // expected
     }
@@ -800,7 +800,7 @@ describe("archiveProject", () => {
     mockPoolConnect = async () => fakeClient;
 
     // Should still complete successfully (cascade errors are best-effort)
-    const result = await archiveProject("prj_cascade_fail");
+    const result = await purgeProject("prj_cascade_fail");
     assert.equal(result, true);
     assert.equal(projectCache.get("prj_cascade_fail"), undefined);
   });
@@ -832,7 +832,7 @@ describe("archiveProject", () => {
     };
     mockPoolConnect = async () => fakeClient;
 
-    await archiveProject("prj_users");
+    await purgeProject("prj_users");
 
     assert.ok(clientQueries.some((q) => q.includes("internal.users")));
     assert.ok(clientQueries.some((q) => q.includes("internal.refresh_tokens")));

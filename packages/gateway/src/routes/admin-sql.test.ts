@@ -105,6 +105,8 @@ mock.module("../config.js", {
     GOOGLE_APP_CLIENT_ID: "",
     GOOGLE_APP_CLIENT_SECRET: "",
     PUBLIC_API_URL: "http://localhost:4022",
+    INBOUND_EMAIL_BUCKET: "",
+    LIFECYCLE_ENABLED: false,
   },
 });
 

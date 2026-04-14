@@ -1,60 +1,31 @@
-import { pool } from "../db/pool.js";
-import { sql } from "../db/sql.js";
-import { archiveProject } from "./projects.js";
+import { advanceLifecycle } from "./project-lifecycle.js";
 import { errorMessage } from "../utils/errors.js";
 
 let leaseInterval: ReturnType<typeof setInterval> | null = null;
 
 /**
- * Check wallet-level tier leases. When a wallet's tier expires,
- * archive ALL its active projects.
+ * Hourly tick: advance the project lifecycle state machine.
+ *
+ * The previous implementation called `archiveProject` directly when a wallet's
+ * lease had been expired for more than 7 days. Under the lifecycle state
+ * machine (see services/project-lifecycle.ts), this tick now just advances
+ * transitions and the cascade fires only when a project reaches `purged` at
+ * the end of the ~100-day grace window.
+ *
+ * A failure in one project's transition does not affect others — each
+ * transition is independently error-isolated inside `advanceLifecycle`.
  */
-async function checkWalletLeases(): Promise<void> {
+async function tick(): Promise<void> {
   try {
-    // Find wallets with expired tier leases that still have active projects
-    const result = await pool.query(sql(`
-      SELECT DISTINCT baw.wallet_address, ba.tier, ba.lease_expires_at
-      FROM internal.billing_accounts ba
-      JOIN internal.billing_account_wallets baw ON baw.billing_account_id = ba.id
-      WHERE ba.tier IS NOT NULL
-        AND ba.lease_expires_at IS NOT NULL
-        AND ba.lease_expires_at < NOW() - INTERVAL '7 days'
-      AND EXISTS (
-        SELECT 1 FROM internal.projects p
-        WHERE p.wallet_address = baw.wallet_address
-        AND p.status = 'active'
-        AND p.pinned = false
-      )
-    `));
-
-    for (const row of result.rows) {
-      const wallet = row.wallet_address;
-      console.log(`  Wallet lease expired: ${wallet} (tier: ${row.tier}, expired: ${row.lease_expires_at})`);
-
-      // Find and archive all non-pinned active projects for this wallet
-      const projects = await pool.query(
-        sql(`SELECT id FROM internal.projects WHERE wallet_address = $1 AND status = 'active' AND pinned = false`),
-        [wallet],
-      );
-
-      for (const proj of projects.rows) {
-        try {
-          await archiveProject(proj.id);
-          console.log(`    Archived project ${proj.id} (wallet lease expired)`);
-        } catch (err: unknown) {
-          console.error(`    Failed to archive project ${proj.id}:`, errorMessage(err));
-        }
-      }
-    }
-  } catch (err: unknown) {
-    console.error("  Failed to check wallet leases:", errorMessage(err));
+    await advanceLifecycle();
+  } catch (err) {
+    console.error("  [lifecycle-scheduler] tick failed:", errorMessage(err));
   }
 }
 
 export function startLeaseChecker(): void {
-  // Run hourly
-  leaseInterval = setInterval(checkWalletLeases, 60 * 60 * 1000);
-  console.log("  Lease checker started (hourly)");
+  leaseInterval = setInterval(() => { void tick(); }, 60 * 60 * 1000);
+  console.log("  Lifecycle scheduler started (hourly)");
 }
 
 export function stopLeaseChecker(): void {

@@ -234,8 +234,8 @@ export async function teardownDemoProject(sourceProjectId: string): Promise<void
     console.log(`  Tearing down demo project ${demoProjectId}...`);
 
     // Archive the demo project (drops schema, marks inactive)
-    const { archiveProject } = await import("./projects.js");
-    await archiveProject(demoProjectId);
+    const { purgeProject } = await import("./projects.js");
+    await purgeProject(demoProjectId);
 
     // Release subdomain
     try {

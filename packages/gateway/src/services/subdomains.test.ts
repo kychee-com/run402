@@ -337,3 +337,107 @@ describe("createOrUpdateSubdomain — ownership", () => {
     );
   });
 });
+
+// ---------------------------------------------------------------------------
+// createOrUpdateSubdomain — lifecycle subdomain reservation
+// ---------------------------------------------------------------------------
+
+/** Helper: existing subdomain row with an active lifecycle reservation. */
+function reservedSubdomain(reservedForProjectId: string, reservedUntil: string) {
+  return {
+    name: "myapp",
+    deployment_id: "dpl_old",
+    project_id: reservedForProjectId,
+    created_at: "2026-01-01T00:00:00Z",
+    updated_at: "2026-01-01T00:00:00Z",
+    reserved_for_project_id: reservedForProjectId,
+    reserved_until: reservedUntil,
+  };
+}
+
+describe("createOrUpdateSubdomain — lifecycle reservation", () => {
+  beforeEach(() => {
+    mockGetDeployment = async () => ({ id: "dpl_new" });
+    mockProjectCacheGet = () => undefined;
+    mockGetProjectById = async () => null;
+  });
+
+  it("rejects with 409 when a different wallet tries to claim a reserved name", async () => {
+    const future = new Date(Date.now() + 30 * 86400_000).toISOString();
+    let queryCount = 0;
+    mockPoolQuery = async () => {
+      queryCount++;
+      if (queryCount === 1) return { rows: [reservedSubdomain("prj_reserving", future)] };
+      // Wallet lookup for the reservation owner
+      return { rows: [{ wallet_address: "0xRESERVINGWALLET" }] };
+    };
+
+    await assert.rejects(
+      () => createOrUpdateSubdomain("myapp", "dpl_new", "prj_new", "0xDIFFERENTWALLET"),
+      (err: any) => {
+        assert.ok(err instanceof SubdomainError);
+        assert.equal(err.statusCode, 409);
+        assert.ok(err.message.toLowerCase().includes("reserved"), `expected message to mention reservation, got: ${err.message}`);
+        return true;
+      },
+    );
+  });
+
+  it("allows the reserving wallet to reclaim via a new project", async () => {
+    const future = new Date(Date.now() + 30 * 86400_000).toISOString();
+    let queryCount = 0;
+    mockPoolQuery = async () => {
+      queryCount++;
+      if (queryCount === 1) return { rows: [reservedSubdomain("prj_reserving", future)] };
+      // Wallet lookup for reservation owner → matches the claiming wallet (case-insensitive)
+      if (queryCount === 2) return { rows: [{ wallet_address: "0xOwnerWallet" }] };
+      return upsertResult("myapp", "dpl_new", "prj_new");
+    };
+
+    const result = await createOrUpdateSubdomain("myapp", "dpl_new", "prj_new", "0xOWNERWALLET");
+    assert.equal(result.name, "myapp");
+    assert.equal(result.deployment_id, "dpl_new");
+    assert.equal(result.project_id, "prj_new");
+  });
+
+  it("does not block when reservation has expired (reserved_until in the past)", async () => {
+    const past = new Date(Date.now() - 1000).toISOString();
+    let queryCount = 0;
+    mockPoolQuery = async () => {
+      queryCount++;
+      if (queryCount === 1) {
+        // Row has reservation columns but reserved_until is in the past
+        return { rows: [{
+          ...reservedSubdomain("prj_old_reserving", past),
+          project_id: null, // name is effectively free (e.g. after purge+tail)
+        }] };
+      }
+      return upsertResult("myapp", "dpl_new", "prj_new");
+    };
+
+    const result = await createOrUpdateSubdomain("myapp", "dpl_new", "prj_new", "0xANYWALLET");
+    assert.equal(result.name, "myapp");
+  });
+
+  it("clears reservation columns on successful claim by owner wallet", async () => {
+    const future = new Date(Date.now() + 30 * 86400_000).toISOString();
+    let queryCount = 0;
+    const capturedQueries: string[] = [];
+    mockPoolQuery = async (sql: string) => {
+      queryCount++;
+      capturedQueries.push(sql);
+      if (queryCount === 1) return { rows: [reservedSubdomain("prj_reserving", future)] };
+      if (queryCount === 2) return { rows: [{ wallet_address: "0xOWNERWALLET" }] };
+      return upsertResult("myapp", "dpl_new", "prj_new");
+    };
+
+    await createOrUpdateSubdomain("myapp", "dpl_new", "prj_new", "0xOWNERWALLET");
+
+    // Find the upsert query (INSERT...ON CONFLICT) — it's not necessarily the last,
+    // because updateDomainDeployment fires fire-and-forget after the upsert returns.
+    const upsertQuery = capturedQueries.find((q) => q.includes("INSERT INTO internal.subdomains"));
+    assert.ok(upsertQuery, "upsert query must have been executed");
+    assert.ok(upsertQuery!.includes("reserved_for_project_id = NULL"), "upsert must clear reservation columns");
+    assert.ok(upsertQuery!.includes("reserved_until = NULL"));
+  });
+});

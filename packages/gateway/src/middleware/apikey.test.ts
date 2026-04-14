@@ -18,6 +18,8 @@ mock.module("../services/projects.js", {
     projectCache: {
       get: (id: string) => projectStore.get(id),
     },
+    isServingStatus: (status: string) =>
+      status === "active" || status === "past_due" || status === "frozen" || status === "dormant",
   },
 });
 

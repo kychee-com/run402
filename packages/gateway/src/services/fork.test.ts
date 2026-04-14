@@ -49,7 +49,7 @@ mock.module("./projects.js", {
       tier,
       schemaSlot: "p0042",
     }),
-    archiveProject: async () => true,
+    purgeProject: async () => true,
     deriveProjectKeys: (_projectId: string, _tier: string) => ({
       anonKey: "anon-key-abc",
       serviceKey: "service-key-xyz",

@@ -26,6 +26,7 @@ import { asyncHandler, HttpError } from "../utils/async-handler.js";
 import { validatePaginationInt } from "../utils/validate.js";
 import { serviceKeyAuth, serviceKeyOrProjectAdmin } from "../middleware/apikey.js";
 import { apikeyAuth } from "../middleware/apikey.js";
+import { lifecycleGate } from "../middleware/lifecycle-gate.js";
 import { meteringMiddleware } from "../middleware/metering.js";
 import { demoBlockedMiddleware, demoFunctionInvokeMiddleware } from "../middleware/demo.js";
 import { walletAuthOrAdmin } from "../middleware/admin-auth.js";
@@ -73,6 +74,7 @@ router.get(
 router.post(
   "/projects/v1/admin/:id/functions",
   serviceKeyAuth,
+  lifecycleGate,
   demoBlockedMiddleware("Function deployment"),
   asyncHandler(async (req: Request, res: Response) => {
     const projectId = req.params.id as string;
@@ -198,6 +200,7 @@ router.get(
 router.delete(
   "/projects/v1/admin/:id/functions/:name",
   serviceKeyAuth,
+  lifecycleGate,
   asyncHandler(async (req: Request, res: Response) => {
     try {
       cancelSchedule(req.params.id as string, req.params.name as string);
@@ -216,6 +219,7 @@ router.delete(
 router.patch(
   "/projects/v1/admin/:id/functions/:name",
   serviceKeyAuth,
+  lifecycleGate,
   asyncHandler(async (req: Request, res: Response) => {
     const projectId = req.params.id as string;
     const name = req.params.name as string;
@@ -367,6 +371,7 @@ router.get(
 router.post(
   "/projects/v1/admin/:id/secrets",
   serviceKeyOrProjectAdmin,
+  lifecycleGate,
   demoBlockedMiddleware("Secret management"),
   asyncHandler(async (req: Request, res: Response) => {
     const { key, value } = req.body || {};
@@ -396,6 +401,7 @@ router.post(
 router.delete(
   "/projects/v1/admin/:id/secrets/:key",
   serviceKeyOrProjectAdmin,
+  lifecycleGate,
   asyncHandler(async (req: Request, res: Response) => {
     try {
       await deleteSecret(req.params.id as string, req.params.key as string);

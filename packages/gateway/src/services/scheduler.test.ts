@@ -59,6 +59,7 @@ const {
   triggerFunction,
   startScheduler,
   stopScheduler,
+  scheduledInvocationAllowed,
 } = await import("./scheduler.js");
 
 // ---------------------------------------------------------------------------
@@ -211,6 +212,34 @@ describe("startScheduler", () => {
 // ---------------------------------------------------------------------------
 // Tier limit validation (tested indirectly via cron interval helpers)
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// scheduledInvocationAllowed — lifecycle gating
+// ---------------------------------------------------------------------------
+
+describe("scheduledInvocationAllowed", () => {
+  it("allows active, past_due, and frozen projects", () => {
+    assert.equal(scheduledInvocationAllowed("active"), true);
+    assert.equal(scheduledInvocationAllowed("past_due"), true);
+    assert.equal(scheduledInvocationAllowed("frozen"), true);
+  });
+
+  it("blocks dormant projects (scheduled functions paused)", () => {
+    assert.equal(scheduledInvocationAllowed("dormant"), false);
+  });
+
+  it("blocks terminal states (purging, purged, archived)", () => {
+    assert.equal(scheduledInvocationAllowed("purging"), false);
+    assert.equal(scheduledInvocationAllowed("purged"), false);
+    assert.equal(scheduledInvocationAllowed("archived"), false);
+  });
+
+  it("blocks unknown statuses by default", () => {
+    assert.equal(scheduledInvocationAllowed("deleted"), false);
+    assert.equal(scheduledInvocationAllowed("expired"), false);
+    assert.equal(scheduledInvocationAllowed(""), false);
+  });
+});
 
 describe("tier limit enforcement helpers", () => {
   it("every-minute schedule has interval of 1", () => {

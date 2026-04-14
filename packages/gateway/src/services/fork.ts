@@ -20,7 +20,7 @@ const execFileAsync = promisify(execFile);
 import { TIERS } from "@run402/shared";
 import type { TierName } from "@run402/shared";
 import { deployBundle } from "./bundle.js";
-import { createProject, archiveProject, deriveProjectKeys } from "./projects.js";
+import { createProject, purgeProject, deriveProjectKeys } from "./projects.js";
 import { decanonicalizeSchema } from "./publish.js";
 import type { BundleResult } from "./bundle.js";
 
@@ -174,7 +174,7 @@ export async function forkApp(
     // Rollback: archive the newly created project on deploy failure
     console.error(`  Fork deploy failed for ${project.id}, archiving...`);
     try {
-      await archiveProject(project.id);
+      await purgeProject(project.id);
     } catch (archiveErr) {
       console.error(`  Failed to archive project ${project.id} during fork rollback`);
     }

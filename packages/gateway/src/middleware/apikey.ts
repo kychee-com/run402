@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
 import { JWT_SECRET } from "../config.js";
-import { projectCache } from "../services/projects.js";
+import { projectCache, isServingStatus } from "../services/projects.js";
 import type { ProjectInfo, TokenPayload } from "@run402/shared";
 
 declare global {
@@ -36,7 +36,7 @@ export function apikeyAuth(req: Request, res: Response, next: NextFunction): voi
   }
 
   const project = projectCache.get(payload.project_id);
-  if (!project || project.status !== "active") {
+  if (!project || !isServingStatus(project.status)) {
     res.status(404).json({ error: "Project not found or inactive" });
     return;
   }
@@ -71,7 +71,7 @@ export function serviceKeyAuth(req: Request, res: Response, next: NextFunction):
   }
 
   const project = projectCache.get(payload.project_id);
-  if (!project || project.status !== "active") {
+  if (!project || !isServingStatus(project.status)) {
     res.status(404).json({ error: "Project not found or inactive" });
     return;
   }
@@ -114,7 +114,7 @@ export function projectAdminAuth(req: Request, res: Response, next: NextFunction
   }
 
   const project = projectCache.get(payload.project_id);
-  if (!project || project.status !== "active") {
+  if (!project || !isServingStatus(project.status)) {
     res.status(404).json({ error: "Project not found or inactive" });
     return;
   }

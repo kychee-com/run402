@@ -770,12 +770,14 @@ Yes. `/projects/v1/admin/:id/usage` shows API calls, storage, lease status. `/pr
 
 **Billing model**: Prepaid per lease. Hard-capped API calls and storage. No overage charges. When limits hit, returns 402 with usage details and renew URL.
 
-**Project lifecycle**:
-- Lease active: full read/write
-- Expires (day 0): **read-only** for 7 days
-- Grace ends (day 7): **archived** (no access)
-- Permanent deletion at **day 37**
-- Renew anytime before deletion via `POST /tiers/v1/:tier`
+**Project lifecycle** (~104-day soft-delete grace, symmetric with KMS contract wallets):
+- `active`: full read/write
+- Lease expires (day 0): status becomes `past_due`. Site and data plane keep serving end users; owner gets first email.
+- Day +14: status becomes `frozen`. Control-plane mutating ops (deploys, secret rotation, subdomain claims) return **402**. Site keeps serving; subdomain is reserved so no one else can claim the name.
+- Day +44: status becomes `dormant`. Scheduled (cron) functions pause. Site still serves.
+- Day +104: `scheduled_purge_at` elapses → full cascade runs (schema dropped, Lambdas deleted, mailbox tombstoned). Status becomes `purged`. Subdomain becomes claimable 14 days after purge.
+- Any topup / tier renewal / tier upgrade during grace reactivates the project to `active` and clears all timers in one transaction.
+- Legacy rows still show `status = 'archived'` — equivalent to `purged`, predates the grace window.
 
 **Keys and access levels**: Two JWTs after provisioning. Third after user login:
 - `anon_key` (role: anon) -- **read-only by default**. SELECT, signup, storage access. Safe for client apps. **No expiry** -- permanent project identifier. Lease enforcement happens server-side. If you apply `public_read_write` RLS to a table, anon_key gains INSERT/UPDATE/DELETE on that table -- use this for browser-side writes without login.
@@ -1998,7 +2000,7 @@ Credentials saved to `~/.config/run402/projects.json` (chmod 0600). Tools auto-l
 - **Schema isolation**: Each project in its own schema. No cross-schema access.
 - **Rate limiting**: 100 req/s per project. Exceeding returns 429.
 - **Budget enforcement**: API calls and storage metered against tier. Exceeding returns 402 with usage and renew URL.
-- **Lease enforcement**: Expired projects reject writes. 7-day read-only grace, then archived.
+- **Lease enforcement**: Expired projects enter a ~104-day soft-delete grace. End-user data plane keeps serving throughout; owner's control-plane returns 402 after day 14. Data is only destroyed at day ~104 if the owner never renews. See "Project lifecycle" above.
 - **Auth**: JWTs expire in 1h. Refresh tokens: one-time use, 30-day expiry.
 - **Schema cache**: PostgREST caches table metadata. After creating a table via SQL, REST API is available immediately -- proxy retries automatically. No sleep needed.
 

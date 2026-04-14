@@ -18,6 +18,8 @@ export interface SubdomainRecord {
   project_id: string | null;
   created_at: string;
   updated_at: string;
+  reserved_for_project_id?: string | null;
+  reserved_until?: string | null;
 }
 
 /** Reserved subdomain names that cannot be claimed. */
@@ -146,28 +148,56 @@ export async function createOrUpdateSubdomain(
     throw new SubdomainError(`Deployment "${deploymentId}" not found. Deploy your site first with 'run402 deploy', then claim a subdomain.`, 404);
   }
 
-  // Check ownership if subdomain already exists
-  const existing = await getSubdomain(name);
-  if (existing && existing.project_id && projectId && existing.project_id !== projectId) {
-    // Different project — allow if same wallet is redeploying
-    let sameWallet = false;
-    if (walletAddress) {
-      // Check cache first, fall back to DB (old project may be archived)
-      const cached = projectCache.get(existing.project_id);
-      const oldWallet = cached?.walletAddress
-        ?? (await pool.query(
-             sql(`SELECT wallet_address FROM internal.projects WHERE id = $1`),
-             [existing.project_id],
-           )).rows[0]?.wallet_address;
-      if (oldWallet && oldWallet.toLowerCase() === walletAddress.toLowerCase()) {
-        sameWallet = true;
+  // Check ownership + reservation if subdomain already exists
+  const existing = await getSubdomainWithReservation(name);
+  if (existing) {
+    // Lifecycle reservation takes precedence: a subdomain reserved for a
+    // frozen/dormant project may only be reclaimed by the reserving wallet.
+    let reservationOwnerConfirmed = false;
+    if (existing.reserved_for_project_id && existing.reserved_until &&
+        new Date(existing.reserved_until).getTime() > Date.now() &&
+        existing.reserved_for_project_id !== projectId) {
+      let reservationOwnerWallet: string | null = null;
+      if (walletAddress) {
+        const r = await pool.query(
+          sql(`SELECT wallet_address FROM internal.projects WHERE id = $1`),
+          [existing.reserved_for_project_id],
+        );
+        reservationOwnerWallet = (r.rows[0]?.wallet_address as string | undefined) ?? null;
       }
+      const matches = walletAddress && reservationOwnerWallet &&
+        reservationOwnerWallet.toLowerCase() === walletAddress.toLowerCase();
+      if (!matches) {
+        throw new SubdomainError(
+          `Subdomain "${name}" is reserved until ${existing.reserved_until}`,
+          409,
+        );
+      }
+      reservationOwnerConfirmed = true;
     }
-    if (!sameWallet) {
-      throw new SubdomainError(
-        `Subdomain "${name}" is already claimed by another wallet`,
-        403,
-      );
+
+    // Ownership check: different project, different wallet.
+    // Skipped when the reservation-owner check above already matched — same wallet is confirmed.
+    if (!reservationOwnerConfirmed &&
+        existing.project_id && projectId && existing.project_id !== projectId) {
+      let sameWallet = false;
+      if (walletAddress) {
+        const cached = projectCache.get(existing.project_id);
+        const oldWallet = cached?.walletAddress
+          ?? (await pool.query(
+               sql(`SELECT wallet_address FROM internal.projects WHERE id = $1`),
+               [existing.project_id],
+             )).rows[0]?.wallet_address;
+        if (oldWallet && oldWallet.toLowerCase() === walletAddress.toLowerCase()) {
+          sameWallet = true;
+        }
+      }
+      if (!sameWallet) {
+        throw new SubdomainError(
+          `Subdomain "${name}" is already claimed by another wallet`,
+          403,
+        );
+      }
     }
   }
 
@@ -177,6 +207,8 @@ export async function createOrUpdateSubdomain(
      ON CONFLICT (name) DO UPDATE SET
        deployment_id = EXCLUDED.deployment_id,
        project_id = COALESCE(EXCLUDED.project_id, internal.subdomains.project_id),
+       reserved_for_project_id = NULL,
+       reserved_until = NULL,
        updated_at = NOW()
      RETURNING name, deployment_id, project_id, created_at, updated_at`),
     [name, deploymentId, projectId || null],
@@ -220,6 +252,30 @@ export async function getSubdomain(name: string): Promise<SubdomainRecord | null
     project_id: row.project_id,
     created_at: row.created_at,
     updated_at: row.updated_at,
+  };
+}
+
+/**
+ * Get a subdomain record including reservation columns. Used by claim logic
+ * to enforce lifecycle-driven subdomain reservations.
+ */
+export async function getSubdomainWithReservation(name: string): Promise<SubdomainRecord | null> {
+  const result = await pool.query(
+    sql(`SELECT name, deployment_id, project_id, created_at, updated_at,
+            reserved_for_project_id, reserved_until
+     FROM internal.subdomains WHERE name = $1`),
+    [name],
+  );
+  if (result.rows.length === 0) return null;
+  const row = result.rows[0];
+  return {
+    name: row.name,
+    deployment_id: row.deployment_id,
+    project_id: row.project_id,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+    reserved_for_project_id: row.reserved_for_project_id ?? null,
+    reserved_until: row.reserved_until ?? null,
   };
 }
 

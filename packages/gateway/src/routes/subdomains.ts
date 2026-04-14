@@ -10,6 +10,7 @@
 import { Router, Request, Response } from "express";
 import { serviceKeyAuth } from "../middleware/apikey.js";
 import { serviceKeyOrAdmin, walletAuthOrAdmin } from "../middleware/admin-auth.js";
+import { lifecycleGate } from "../middleware/lifecycle-gate.js";
 import { pool } from "../db/pool.js";
 import { sql } from "../db/sql.js";
 import { asyncHandler, HttpError } from "../utils/async-handler.js";
@@ -45,7 +46,7 @@ function formatSubdomain(record: {
 }
 
 // POST /v1/subdomains — claim or reassign a subdomain
-router.post("/subdomains/v1", serviceKeyAuth, asyncHandler(async (req: Request, res: Response) => {
+router.post("/subdomains/v1", serviceKeyAuth, lifecycleGate, asyncHandler(async (req: Request, res: Response) => {
   const { name, deployment_id } = req.body || {};
 
   if (!name || typeof name !== "string") {

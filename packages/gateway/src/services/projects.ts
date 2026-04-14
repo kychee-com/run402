@@ -33,14 +33,19 @@ export const projectCache = {
 };
 
 /**
- * Sync all active projects from database into cache.
+ * Sync all non-terminal projects from database into cache.
+ *
+ * Includes `active` and all lifecycle grace states (`past_due`, `frozen`,
+ * `dormant`) so that data-plane traffic continues to resolve during grace.
+ * The control-plane write gate (middleware/lifecycle-gate.ts) separately
+ * blocks mutating admin operations on non-active projects.
  */
 export async function syncProjects(): Promise<void> {
   const result = await pool.query(
     sql(`SELECT id, name, schema_slot, tier, status, api_calls, storage_bytes,
             tx_hash, wallet_address, pinned, created_at,
             demo_mode, demo_config, demo_source_version_id, demo_last_reset_at
-     FROM internal.projects WHERE status = 'active'`),
+     FROM internal.projects WHERE status IN ('active', 'past_due', 'frozen', 'dormant')`),
   );
 
   for (const row of result.rows) {
@@ -109,11 +114,22 @@ export async function getProjectById(id: string): Promise<ProjectInfo | null> {
     allowPasswordSet: row.allow_password_set || false,
   };
 
-  if (project.status === "active") {
+  // Cache all non-terminal projects so data-plane lookups stay hot during grace.
+  if (project.status === "active" || project.status === "past_due" ||
+      project.status === "frozen" || project.status === "dormant") {
     cache.set(id, project);
   }
 
   return project;
+}
+
+/**
+ * Return true for projects whose data plane should keep serving end users.
+ * False for terminal states (purging/purged/archived/expired/deleted).
+ */
+export function isServingStatus(status: string): boolean {
+  return status === "active" || status === "past_due" ||
+         status === "frozen" || status === "dormant";
 }
 
 /**
@@ -135,7 +151,7 @@ export function deriveProjectKeys(projectId: string, tier: TierName): { anonKey:
 
 /**
  * Drop and recreate a schema slot, granting the standard roles.
- * Used by both createProject (defensive cleanup) and archiveProject.
+ * Used by both createProject (defensive cleanup) and purgeProject.
  */
 async function resetSchemaSlot(client: { query(q: SQL, v?: unknown[]): Promise<unknown> }, slot: string): Promise<void> {
   await client.query(sql(`DROP SCHEMA IF EXISTS ${slot} CASCADE`));
@@ -182,7 +198,7 @@ export async function createProject(
   );
 
   // Defensive: ensure the schema slot is clean before use.
-  // archiveProject should have cleaned it, but if that transaction rolled back
+  // purgeProject should have cleaned it, but if that transaction rolled back
   // (or the slot was recycled via direct DB update) stale tables may remain.
   await resetSchemaSlot(pool, schemaSlot);
 
@@ -216,11 +232,20 @@ export async function createProject(
 }
 
 /**
- * Archive a project: drop+recreate schema, mark archived.
+ * Purge a project: run the full destructive cascade (delete Lambdas, release
+ * subdomains, drop the tenant schema, tombstone mailbox, etc.) and mark the
+ * project `purged`. Called by (a) explicit DELETE /projects/v1/:id and
+ * (b) the terminal dormant → purged transition driven by project-lifecycle.
+ *
+ * For compatibility, a project already in terminal state (`purged` or the
+ * legacy `archived`) returns false without re-running the cascade.
  */
-export async function archiveProject(projectId: string): Promise<boolean> {
-  const project = cache.get(projectId);
-  if (!project || project.status !== "active") return false;
+export async function purgeProject(projectId: string): Promise<boolean> {
+  // Accept any non-terminal status. Dormant/frozen/past_due projects may not
+  // be in the active cache, so consult the DB via getProjectById.
+  const project = await getProjectById(projectId);
+  if (!project) return false;
+  if (project.status === "purged" || project.status === "archived") return false;
 
   // --- Cascade cleanup (best-effort, before schema drop) ---
 
@@ -282,9 +307,9 @@ export async function archiveProject(projectId: string): Promise<boolean> {
     // Delete refresh tokens
     await client.query(sql(`DELETE FROM internal.refresh_tokens WHERE project_id = $1`), [projectId]);
 
-    // Mark archived
+    // Mark purged (terminal state under the lifecycle state machine)
     await client.query(
-      sql(`UPDATE internal.projects SET status = 'archived' WHERE id = $1`),
+      sql(`UPDATE internal.projects SET status = 'purged' WHERE id = $1`),
       [projectId],
     );
 
@@ -296,7 +321,7 @@ export async function archiveProject(projectId: string): Promise<boolean> {
     client.release();
   }
 
-  project.status = "archived";
+  project.status = "purged";
   cache.delete(projectId);
   return true;
 }
