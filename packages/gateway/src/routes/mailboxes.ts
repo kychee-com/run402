@@ -15,6 +15,7 @@
 import { Router, Request, Response } from "express";
 import { serviceKeyAuth } from "../middleware/apikey.js";
 import { serviceKeyOrAdmin } from "../middleware/admin-auth.js";
+import { lifecycleGate } from "../middleware/lifecycle-gate.js";
 import { asyncHandler, HttpError } from "../utils/async-handler.js";
 import { validateUUID, validatePaginationInt, validateURL } from "../utils/validate.js";
 import { pool } from "../db/pool.js";
@@ -62,7 +63,7 @@ function formatMailboxResponse(record: {
 }
 
 // POST /v1/mailboxes — create a mailbox
-router.post("/mailboxes/v1", serviceKeyAuth, asyncHandler(async (req: Request, res: Response) => {
+router.post("/mailboxes/v1", serviceKeyAuth, lifecycleGate, asyncHandler(async (req: Request, res: Response) => {
   const { slug } = req.body || {};
 
   if (!slug || typeof slug !== "string") {
@@ -256,7 +257,7 @@ router.get("/mailboxes/v1/:id/messages/:messageId/raw", serviceKeyAuth, asyncHan
 }));
 
 // POST /v1/mailboxes/:id/webhooks — register webhook
-router.post("/mailboxes/v1/:id/webhooks", serviceKeyAuth, asyncHandler(async (req: Request, res: Response) => {
+router.post("/mailboxes/v1/:id/webhooks", serviceKeyAuth, lifecycleGate, asyncHandler(async (req: Request, res: Response) => {
   if (!req.params.id || typeof req.params.id !== "string") throw new HttpError(400, "Invalid mailbox_id");
   const { url, events } = req.body || {};
 
@@ -290,7 +291,7 @@ router.post("/mailboxes/v1/:id/webhooks", serviceKeyAuth, asyncHandler(async (re
 }));
 
 // POST /v1/mailboxes/:id/status — admin-only reactivate suspended mailbox
-router.post("/mailboxes/v1/:id/status", serviceKeyOrAdmin, asyncHandler(async (req: Request, res: Response) => {
+router.post("/mailboxes/v1/:id/status", serviceKeyOrAdmin, lifecycleGate, asyncHandler(async (req: Request, res: Response) => {
   if (!req.params.id || typeof req.params.id !== "string") throw new HttpError(400, "Invalid mailbox_id");
   if (!req.isAdmin) {
     throw new HttpError(403, "Admin access required");

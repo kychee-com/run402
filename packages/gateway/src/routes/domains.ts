@@ -9,6 +9,7 @@
 
 import { Router, Request, Response } from "express";
 import { serviceKeyOrAdmin } from "../middleware/admin-auth.js";
+import { lifecycleGate } from "../middleware/lifecycle-gate.js";
 import { asyncHandler, HttpError } from "../utils/async-handler.js";
 import {
   validateDomain,
@@ -44,7 +45,7 @@ function formatDomain(record: {
 }
 
 // POST /v1/domains — register a custom domain
-router.post("/domains/v1", serviceKeyOrAdmin, asyncHandler(async (req: Request, res: Response) => {
+router.post("/domains/v1", serviceKeyOrAdmin, lifecycleGate, asyncHandler(async (req: Request, res: Response) => {
   const { domain, subdomain_name } = req.body || {};
 
   if (!domain || typeof domain !== "string") {

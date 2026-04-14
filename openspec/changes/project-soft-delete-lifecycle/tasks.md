@@ -31,7 +31,7 @@
 
 - [x] 5.1 Create `packages/gateway/src/middleware/lifecycle-gate.ts` — middleware that looks up the target project's `status` (cached via the existing project cache) and returns `402 Payment Required` with JSON body `{ lifecycle_state, entered_state_at, next_transition_at }` when status is not `active`
 - [x] 5.2 Apply the middleware to all mutating admin/control-plane routes: `/projects/v1/:id` (non-GET methods), `/projects/v1/:id/deployments`, `/projects/v1/:id/subdomains`, `/projects/v1/:id/secrets`, `/projects/v1/:id/functions`, `/projects/v1/:id/settings`, `/projects/v1/:id/billing/*` *(applied to deployments POST, subdomains POST, functions POST/PATCH/DELETE, secrets POST/DELETE)*
-- [ ] 5.3 Audit every mutating route in `packages/gateway/src/routes/` to confirm the gate is applied and documented in the route file *(partial — high-impact mutating routes covered; full audit pending)*
+- [x] 5.3 Audit every mutating route in `packages/gateway/src/routes/` to confirm the gate is applied and documented in the route file *(full audit done using three-category rule: CONTROL PLANE gated, PAYMENT PATH never gated, DATA PLANE never gated. Gate now applied to publish.ts (3 routes), contracts.ts (3 routes), domains.ts (1), email-domains.ts (2), mailboxes.ts (3). Rule documented in the `lifecycleGate` JSDoc and CLAUDE.md so future routes follow the convention.)*
 - [x] 5.4 Verify read endpoints (`GET /projects/v1/:id`, dashboards, status queries) bypass the gate *(gate has explicit GET/HEAD/OPTIONS bypass)*
 - [x] 5.5 Verify data-plane routes (PostgREST, edge function execution, storage, email send/receive) bypass the gate entirely *(gate is only wired to control-plane routes; data-plane middlewares updated to accept grace-state projects)*
 

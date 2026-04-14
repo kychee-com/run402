@@ -12,6 +12,7 @@ import { sql } from "../db/sql.js";
 import { TIERS } from "@run402/shared";
 import type { TierName } from "@run402/shared";
 import { serviceKeyAuth } from "../middleware/apikey.js";
+import { lifecycleGate } from "../middleware/lifecycle-gate.js";
 import { asyncHandler, HttpError } from "../utils/async-handler.js";
 import {
   publishAppVersion,
@@ -34,6 +35,7 @@ const router = Router();
 router.post(
   "/projects/v1/admin/:id/publish",
   serviceKeyAuth,
+  lifecycleGate,
   asyncHandler(async (req: Request, res: Response) => {
     const project = req.project!;
     if (project.id !== req.params.id) {
@@ -100,6 +102,7 @@ router.get(
 router.patch(
   "/projects/v1/admin/:id/versions/:version_id",
   serviceKeyAuth,
+  lifecycleGate,
   asyncHandler(async (req: Request, res: Response) => {
     const project = req.project!;
     if (project.id !== req.params.id) {
@@ -159,6 +162,7 @@ router.patch(
 router.delete(
   "/projects/v1/admin/:id/versions/:version_id",
   serviceKeyAuth,
+  lifecycleGate,
   asyncHandler(async (req: Request, res: Response) => {
     const project = req.project!;
     if (project.id !== req.params.id) {

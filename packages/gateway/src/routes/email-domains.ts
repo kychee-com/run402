@@ -1,5 +1,6 @@
 import { Router, Request, Response } from "express";
 import { serviceKeyAuth } from "../middleware/apikey.js";
+import { lifecycleGate } from "../middleware/lifecycle-gate.js";
 import { asyncHandler, HttpError } from "../utils/async-handler.js";
 import { registerSenderDomain, getSenderDomainStatus, removeSenderDomain, enableInbound, disableInbound } from "../services/email-domains.js";
 
@@ -9,7 +10,7 @@ router.use("/email/v1/domains", serviceKeyAuth);
 router.use("/email/v1/domains/inbound", serviceKeyAuth);
 
 // POST /email/v1/domains — register a custom sender domain
-router.post("/email/v1/domains", asyncHandler(async (req: Request, res: Response) => {
+router.post("/email/v1/domains", lifecycleGate, asyncHandler(async (req: Request, res: Response) => {
   const project = req.project!;
   const { domain } = req.body || {};
 
@@ -60,7 +61,7 @@ router.delete("/email/v1/domains", asyncHandler(async (req: Request, res: Respon
 }));
 
 // POST /email/v1/domains/inbound — enable inbound email on a custom domain
-router.post("/email/v1/domains/inbound", asyncHandler(async (req: Request, res: Response) => {
+router.post("/email/v1/domains/inbound", lifecycleGate, asyncHandler(async (req: Request, res: Response) => {
   const project = req.project!;
   const { domain } = req.body || {};
 

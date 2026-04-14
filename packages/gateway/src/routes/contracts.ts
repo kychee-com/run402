@@ -21,6 +21,7 @@ import { Router, Request, Response } from "express";
 import { sql } from "../db/sql.js";
 import { asyncHandler, HttpError } from "../utils/async-handler.js";
 import { serviceKeyAuth } from "../middleware/apikey.js";
+import { lifecycleGate } from "../middleware/lifecycle-gate.js";
 import { pool } from "../db/pool.js";
 import { isSupportedChain } from "../services/chain-config.js";
 import {
@@ -107,7 +108,7 @@ function walletToJson(w: any, balance?: bigint, ethUsd?: number): WalletJson {
 // POST /contracts/v1/wallets — provision
 // ---------------------------------------------------------------------------
 
-router.post("/contracts/v1/wallets", serviceKeyAuth, asyncHandler(async (req: Request, res: Response) => {
+router.post("/contracts/v1/wallets", serviceKeyAuth, lifecycleGate, asyncHandler(async (req: Request, res: Response) => {
   const projectId = req.project!.id;
   const { chain, recovery_address: recoveryAddress } = req.body || {};
 
@@ -186,7 +187,7 @@ router.get("/contracts/v1/wallets/:id", serviceKeyAuth, asyncHandler(async (req:
 // POST /contracts/v1/wallets/:id/recovery-address
 // ---------------------------------------------------------------------------
 
-router.post("/contracts/v1/wallets/:id/recovery-address", serviceKeyAuth, asyncHandler(async (req: Request, res: Response) => {
+router.post("/contracts/v1/wallets/:id/recovery-address", serviceKeyAuth, lifecycleGate, asyncHandler(async (req: Request, res: Response) => {
   const projectId = req.project!.id;
   const { recovery_address: recoveryAddress } = req.body || {};
   if (recoveryAddress != null && (typeof recoveryAddress !== "string" || !/^0x[a-fA-F0-9]{40}$/.test(recoveryAddress))) {
@@ -200,7 +201,7 @@ router.post("/contracts/v1/wallets/:id/recovery-address", serviceKeyAuth, asyncH
 // POST /contracts/v1/wallets/:id/alert
 // ---------------------------------------------------------------------------
 
-router.post("/contracts/v1/wallets/:id/alert", serviceKeyAuth, asyncHandler(async (req: Request, res: Response) => {
+router.post("/contracts/v1/wallets/:id/alert", serviceKeyAuth, lifecycleGate, asyncHandler(async (req: Request, res: Response) => {
   const projectId = req.project!.id;
   const { threshold_wei: thresholdWei } = req.body || {};
   if (typeof thresholdWei !== "string" && typeof thresholdWei !== "number") {

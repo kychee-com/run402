@@ -48,6 +48,12 @@ mock.module("../middleware/admin-auth.js", {
   },
 });
 
+mock.module("../middleware/lifecycle-gate.js", {
+  namedExports: {
+    lifecycleGate: (_r: unknown, _s: unknown, n: () => void) => n(),
+  },
+});
+
 const { default: router } = await import("./mailboxes.js");
 const { MailboxError } = await import("../services/mailbox.js");
 

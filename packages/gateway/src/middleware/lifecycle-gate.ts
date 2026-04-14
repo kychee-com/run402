@@ -2,9 +2,29 @@
  * Lifecycle write gate.
  *
  * Control-plane mutating routes (deploys, subdomain claims, secret rotation,
- * function upload, billing-plumbing writes) must be blocked when the target
+ * function upload, custom domain binds, etc.) must be blocked when the target
  * project is not `active`. The live site and end-user data-plane traffic are
  * explicitly NOT gated — they continue to serve throughout grace.
+ *
+ * When classifying a route, decide one of three:
+ *
+ *   1. CONTROL PLANE → add this middleware. Examples: deploys, subdomain
+ *      claims, secrets, function upload/patch/delete, custom domain bind,
+ *      mailbox create, publish-new-version. These are owner-initiated writes
+ *      that alter the app's configuration.
+ *
+ *   2. PAYMENT PATH → NEVER add this middleware. An owner in grace must be
+ *      able to pay their way out. Gating these would return 402 BEFORE x402
+ *      gets a chance to issue its payment challenge, leaving the owner stuck.
+ *      Examples: POST /tiers/v1/:tier, all of /billing/v1/*, /webhooks/v1/*,
+ *      /faucet/v1.
+ *
+ *   3. DATA PLANE → NEVER add this middleware. End users of the product must
+ *      keep working throughout grace. The auth middlewares (apikeyAuth,
+ *      serviceKeyAuth, projectAdminAuth) already accept grace-state projects
+ *      via isServingStatus(). Examples: /rest/v1/* (PostgREST), storage
+ *      GET/PUT/DELETE, /functions/v1/:name invocation, /auth/v1/* tenant
+ *      user auth, email send/receive.
  *
  * Apply this AFTER the auth middleware that attaches req.project (or sets
  * req.tokenPayload.project_id, or after any handler that attaches a project

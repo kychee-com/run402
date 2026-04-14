@@ -45,6 +45,11 @@ Inline templates live in `packages/gateway/src/services/project-lifecycle.ts`.
 - `POST /projects/v1/admin/:id/reactivate` — force-transition a grace-state project back to `active`, clearing timer columns and subdomain reservations in one transaction. Returns `409` on `purged` / `archived` (terminal, no data to restore).
 - `POST /subdomains/v1/admin/:name/release` — clear a subdomain's lifecycle reservation so a different wallet can claim the name. Use for dispute resolution when the reserved owner can't be reached.
 
+**Where to apply `lifecycleGate`** (add to new mutating routes using the three-category rule):
+- **Control plane** → add the gate. Deploys, subdomain claims, secrets, function upload, custom domain bind, mailbox create, publish-new-version, etc.
+- **Payment path** → **never** gate. An owner in grace must pay their way out; gating these blocks the x402/Stripe payment handshake. Off-limits: `POST /tiers/v1/:tier`, all of `/billing/v1/*`, `/webhooks/v1/*`, `/faucet/v1`.
+- **Data plane** → never gate. End users keep working during grace. Covers `/rest/v1/*` (PostgREST), `/storage/v1/*`, `/functions/v1/:name` invocation, `/auth/v1/*` tenant user auth, email send/receive.
+
 ## KMS contract wallets
 
 The `/contracts/v1/*` feature signs Ethereum transactions via AWS KMS-backed keys (one KMS key per wallet, ECC_SECG_P256K1, SIGN_VERIFY). Private keys never leave KMS — there is intentionally no `kms:Decrypt` or `kms:GetParametersForImport` in the gateway role.
