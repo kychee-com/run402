@@ -103,6 +103,26 @@ function ok(name: string, condition: boolean, detail = "") {
   ok("status endpoint works", statusResp.status === 200);
   ok("domain matches", statusBody.domain === testDomain);
   ok("status is pending", statusBody.status === "pending");
+  ok("status response includes inbound object", !!statusBody.inbound);
+  ok("inbound disabled by default", statusBody.inbound?.enabled === false);
+  ok(
+    "inbound.mx_record is the SES receive endpoint",
+    statusBody.inbound?.mx_record === "10 inbound-smtp.us-east-1.amazonaws.com",
+  );
+  ok("inbound.mx_verified is false when disabled", statusBody.inbound?.mx_verified === false);
+
+  // 2b. Enable inbound should refuse on a pending (unverified) domain
+  console.log("\n2b. enableInbound refuses unverified domain");
+  const enableWhilePending = await fetch(`${BASE_URL}/email/v1/domains/inbound`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", apikey: serviceKey },
+    body: JSON.stringify({ domain: testDomain }),
+  });
+  ok(
+    "enableInbound 409 on unverified domain",
+    enableWhilePending.status === 409,
+    `status=${enableWhilePending.status}`,
+  );
 
   // 3. Remove domain
   console.log("\n3. Remove domain");

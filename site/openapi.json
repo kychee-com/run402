@@ -5040,10 +5040,10 @@
       "get": {
         "tags": ["Email"],
         "summary": "Check sender domain verification status",
-        "description": "Returns the project's custom sender domain with current verification status. Polls SES for pending domains. Returns { domain: null } if no domain registered.",
+        "description": "Returns the project's custom sender domain with current verification status. Polls SES for pending domains. Returns { domain: null } if no domain registered. The response includes an `inbound` object with `{ enabled, mx_record, mx_verified }` — use it to determine whether inbound email is opt-in-enabled for this domain and whether the required MX record is live in DNS.",
         "security": [{"bearerAuth": []}],
         "responses": {
-          "200": {"description": "Domain status (or null if none registered)"}
+          "200": {"description": "Domain status (or null if none registered). Includes `inbound: { enabled, mx_record, mx_verified }`."}
         }
       },
       "delete": {

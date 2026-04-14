@@ -53,12 +53,19 @@ interface RegisterResult {
   instructions?: string;
 }
 
+interface InboundStatus {
+  enabled: boolean;
+  mx_record: string;
+  mx_verified: boolean;
+}
+
 interface DomainStatus {
   domain: string;
   status: string;
   dkim_records: DnsRecord[];
   verified_at: string | null;
   created_at: string;
+  inbound: InboundStatus;
 }
 
 // --- Registration ---
@@ -183,7 +190,7 @@ export async function getSenderDomainStatus(
   projectId: string,
 ): Promise<DomainStatus | null> {
   const result = await pool.query(
-    sql(`SELECT domain, status, dkim_records, verified_at, created_at FROM internal.email_domains WHERE project_id = $1`),
+    sql(`SELECT domain, status, dkim_records, verified_at, created_at, inbound_enabled FROM internal.email_domains WHERE project_id = $1`),
     [projectId],
   );
 
@@ -194,6 +201,8 @@ export async function getSenderDomainStatus(
     ? JSON.parse(row.dkim_records)
     : row.dkim_records;
 
+  const inbound = await buildInboundStatus(row.domain, row.inbound_enabled === true);
+
   // If already verified, return without polling SES
   if (row.status === "verified") {
     return {
@@ -202,6 +211,7 @@ export async function getSenderDomainStatus(
       dkim_records: dkimRecords,
       verified_at: row.verified_at,
       created_at: row.created_at,
+      inbound,
     };
   }
 
@@ -225,6 +235,7 @@ export async function getSenderDomainStatus(
         dkim_records: dkimRecords,
         verified_at: new Date().toISOString(),
         created_at: row.created_at,
+        inbound,
       };
     }
   } catch (err) {
@@ -237,7 +248,38 @@ export async function getSenderDomainStatus(
     dkim_records: dkimRecords,
     verified_at: row.verified_at,
     created_at: row.created_at,
+    inbound,
   };
+}
+
+// --- MX verification for inbound ---
+
+// Small DNS cache to avoid hammering the resolver on repeated status calls.
+const mxCache = new Map<string, { verified: boolean; expiresAt: number }>();
+const MX_CACHE_TTL_MS = 5 * 60 * 1000;
+const EXPECTED_MX_SUFFIX = "inbound-smtp.us-east-1.amazonaws.com";
+
+async function buildInboundStatus(domain: string, enabled: boolean): Promise<InboundStatus> {
+  return {
+    enabled,
+    mx_record: MX_RECORD,
+    mx_verified: enabled ? await isMxVerified(domain) : false,
+  };
+}
+
+async function isMxVerified(domain: string): Promise<boolean> {
+  const cached = mxCache.get(domain);
+  if (cached && Date.now() < cached.expiresAt) return cached.verified;
+  let verified = false;
+  try {
+    const { resolveMx } = await import("node:dns/promises");
+    const records = await resolveMx(domain);
+    verified = records.some((r) => r.exchange.toLowerCase().endsWith(EXPECTED_MX_SUFFIX));
+  } catch {
+    verified = false;
+  }
+  mxCache.set(domain, { verified, expiresAt: Date.now() + MX_CACHE_TTL_MS });
+  return verified;
 }
 
 // --- Removal ---
@@ -370,24 +412,59 @@ export async function disableInbound(
 }
 
 // --- SES receipt rule reconciliation ---
+//
+// Concurrent enableInbound/disableInbound calls could race on DescribeReceiptRule
+// + UpdateReceiptRule — two readers see the same pre-state and the second writer
+// wipes the first's addition. Serialize via Postgres advisory lock keyed on the
+// rule-set name hash. Fits-in-a-single-tick operations; low-traffic path.
+
+const RULE_SET_LOCK_KEY = hashStringToInt(`ses:${SES_RULE_SET_NAME}:${SES_RULE_NAME}`);
+
+function hashStringToInt(s: string): number {
+  // 32-bit FNV-1a → fits in Postgres integer range for pg_advisory_lock(int).
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = (h * 0x01000193) >>> 0;
+  }
+  return h | 0; // coerce to signed int32
+}
+
+async function withRuleSetLock<T>(fn: () => Promise<T>): Promise<T> {
+  const client = await pool.connect();
+  try {
+    await client.query(sql("BEGIN"));
+    await client.query(sql("SELECT pg_advisory_xact_lock($1)"), [RULE_SET_LOCK_KEY]);
+    const result = await fn();
+    await client.query(sql("COMMIT"));
+    return result;
+  } catch (err) {
+    try { await client.query(sql("ROLLBACK")); } catch { /* ignore */ }
+    throw err;
+  } finally {
+    client.release();
+  }
+}
 
 async function addDomainToReceiptRule(domain: string): Promise<void> {
   try {
-    const desc = await sesV1.send(new DescribeReceiptRuleCommand({
-      RuleSetName: SES_RULE_SET_NAME,
-      RuleName: SES_RULE_NAME,
-    }));
-    const rule = desc.Rule;
-    if (!rule) return;
+    await withRuleSetLock(async () => {
+      const desc = await sesV1.send(new DescribeReceiptRuleCommand({
+        RuleSetName: SES_RULE_SET_NAME,
+        RuleName: SES_RULE_NAME,
+      }));
+      const rule = desc.Rule;
+      if (!rule) return;
 
-    const recipients = rule.Recipients || [];
-    if (recipients.includes(domain)) return; // already present
+      const recipients = rule.Recipients || [];
+      if (recipients.includes(domain)) return; // already present
 
-    rule.Recipients = [...recipients, domain];
-    await sesV1.send(new UpdateReceiptRuleCommand({
-      RuleSetName: SES_RULE_SET_NAME,
-      Rule: rule,
-    }));
+      rule.Recipients = [...recipients, domain];
+      await sesV1.send(new UpdateReceiptRuleCommand({
+        RuleSetName: SES_RULE_SET_NAME,
+        Rule: rule,
+      }));
+    });
   } catch (err) {
     console.error("  SES receipt rule update (add) error:", err);
     throw err;
@@ -396,19 +473,21 @@ async function addDomainToReceiptRule(domain: string): Promise<void> {
 
 async function removeDomainFromReceiptRule(domain: string): Promise<void> {
   try {
-    const desc = await sesV1.send(new DescribeReceiptRuleCommand({
-      RuleSetName: SES_RULE_SET_NAME,
-      RuleName: SES_RULE_NAME,
-    }));
-    const rule = desc.Rule;
-    if (!rule) return;
+    await withRuleSetLock(async () => {
+      const desc = await sesV1.send(new DescribeReceiptRuleCommand({
+        RuleSetName: SES_RULE_SET_NAME,
+        RuleName: SES_RULE_NAME,
+      }));
+      const rule = desc.Rule;
+      if (!rule) return;
 
-    const recipients = (rule.Recipients || []).filter((r: string) => r !== domain);
-    rule.Recipients = recipients;
-    await sesV1.send(new UpdateReceiptRuleCommand({
-      RuleSetName: SES_RULE_SET_NAME,
-      Rule: rule,
-    }));
+      const recipients = (rule.Recipients || []).filter((r: string) => r !== domain);
+      rule.Recipients = recipients;
+      await sesV1.send(new UpdateReceiptRuleCommand({
+        RuleSetName: SES_RULE_SET_NAME,
+        Rule: rule,
+      }));
+    });
   } catch (err) {
     console.error("  SES receipt rule update (remove) error:", err);
     throw err;

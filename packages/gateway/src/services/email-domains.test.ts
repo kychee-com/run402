@@ -18,9 +18,19 @@ let mockSesDescribeRule: (...args: any[]) => Promise<any>;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let mockSesUpdateRule: (...args: any[]) => Promise<any>;
 
+// Fake client returned by pool.connect() for the advisory-lock path.
+// All queries (BEGIN/COMMIT/pg_advisory_xact_lock) resolve with no rows.
+const fakeClient = {
+  query: async (_s?: unknown, _p?: unknown): Promise<{ rows: unknown[] }> => ({ rows: [] }),
+  release: () => {},
+};
+
 mock.module("../db/pool.js", {
   namedExports: {
-    pool: { query: (...args: unknown[]) => mockPoolQuery(...args) },
+    pool: {
+      query: (...args: unknown[]) => mockPoolQuery(...args),
+      connect: async () => fakeClient,
+    },
   },
 });
 
@@ -267,6 +277,38 @@ describe("getSenderDomainStatus", () => {
     const result = await getSenderDomainStatus("proj1");
     assert.ok(result);
     assert.equal(result.status, "pending");
+  });
+
+  it("includes inbound object with mx_record and disabled by default", async () => {
+    mockPoolQuery = async () => ({
+      rows: [{
+        domain: "mybrand.com", status: "verified", dkim_records: [],
+        verified_at: new Date(), inbound_enabled: false,
+      }],
+      rowCount: 1,
+    });
+    const result = await getSenderDomainStatus("proj1");
+    assert.ok(result);
+    assert.ok(result.inbound, "response must include inbound object");
+    assert.equal(result.inbound.enabled, false);
+    assert.equal(result.inbound.mx_record, "10 inbound-smtp.us-east-1.amazonaws.com");
+    // mx_verified is only meaningful when enabled; should be false when disabled.
+    assert.equal(result.inbound.mx_verified, false);
+  });
+
+  it("includes inbound.enabled=true when inbound_enabled column is set", async () => {
+    mockPoolQuery = async () => ({
+      rows: [{
+        domain: "mybrand.com", status: "verified", dkim_records: [],
+        verified_at: new Date(), inbound_enabled: true,
+      }],
+      rowCount: 1,
+    });
+    const result = await getSenderDomainStatus("proj1");
+    assert.ok(result);
+    assert.equal(result.inbound.enabled, true);
+    // mx_verified depends on real DNS; just assert it's a boolean.
+    assert.equal(typeof result.inbound.mx_verified, "boolean");
   });
 });
 
