@@ -7,7 +7,7 @@ import sys
 import time
 
 from . import api
-from .replied import ALREADY_REPLIED, SKIP_TOPICS, INFRA_KEYWORDS
+from .replied import ALREADY_REPLIED, SKIP_TOPICS, INFRA_KEYWORDS, dashboard_already_replied, feed_already_replied
 
 
 def has_non_latin(s: str) -> bool:
@@ -38,6 +38,9 @@ def check_dashboard() -> list[dict]:
                 content = c.get("content", "")
                 print(f"    > {au} ({karma}k): {content[:220]}")
                 if karma > 100 or "@run402" in content.lower():
+                    if dashboard_already_replied(pid, au):
+                        print(f"    [skip] already replied to {au} on {pid[:8]}")
+                        continue
                     reply_targets.append({
                         "pid": pid, "author": au, "karma": karma,
                         "content": content, "title": a["post_title"],
@@ -57,7 +60,7 @@ def find_candidates(min_score: int = 3) -> list[dict]:
 
     for p in posts:
         pid = p.get("id", "")
-        if pid[:8] in ALREADY_REPLIED:
+        if feed_already_replied(pid):
             continue
         au = p.get("author", {}).get("name", "")
         if au == "run402":

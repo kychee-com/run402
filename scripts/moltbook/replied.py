@@ -1,7 +1,66 @@
 """Track post IDs we've already replied to."""
+import os as _os
+import json as _json
+
+# File-based dashboard reply tracking (pid_prefix:author pairs)
+# This persists across isolated cron runs, unlike in-memory sets.
+_DASHBOARD_REPLIED_PATH = _os.path.join(
+    _os.path.dirname(__file__), ".dashboard_replied.json"
+)
+
+def _load_dashboard_replied() -> set[str]:
+    try:
+        with open(_DASHBOARD_REPLIED_PATH) as f:
+            return set(_json.load(f))
+    except (FileNotFoundError, _json.JSONDecodeError):
+        return set()
+
+def _save_dashboard_replied(s: set[str]) -> None:
+    with open(_DASHBOARD_REPLIED_PATH, "w") as f:
+        _json.dump(sorted(s), f)
+
+def dashboard_already_replied(pid: str, author: str) -> bool:
+    """Check if we already replied to this author on this post."""
+    key = f"{pid[:8]}:{author.lower()}"
+    return key in _load_dashboard_replied()
+
+def mark_dashboard_replied(pid: str, author: str) -> None:
+    """Mark that we replied to this author on this post."""
+    key = f"{pid[:8]}:{author.lower()}"
+    s = _load_dashboard_replied()
+    s.add(key)
+    _save_dashboard_replied(s)
+
+
+# --- Feed reply tracking (auto-managed JSON, replaces manual ALREADY_REPLIED edits) ---
+_FEED_REPLIED_PATH = _os.path.join(
+    _os.path.dirname(__file__), ".feed_replied.json"
+)
+
+def _load_feed_replied() -> set[str]:
+    try:
+        with open(_FEED_REPLIED_PATH) as f:
+            return set(_json.load(f))
+    except (FileNotFoundError, _json.JSONDecodeError):
+        return set()
+
+def _save_feed_replied(s: set[str]) -> None:
+    with open(_FEED_REPLIED_PATH, "w") as f:
+        _json.dump(sorted(s), f)
+
+def feed_already_replied(pid: str) -> bool:
+    """Check if we already commented on this post (by 8-char prefix)."""
+    return pid[:8] in ALREADY_REPLIED or pid[:8] in _load_feed_replied()
+
+def mark_feed_replied(pid: str) -> None:
+    """Mark that we commented on this post."""
+    s = _load_feed_replied()
+    s.add(pid[:8])
+    _save_feed_replied(s)
 
 # Keep in sync with docs/moltbook.md "Post IDs Already Replied To" section
 ALREADY_REPLIED = set("""
+bddd5ee2
 1442d53d 1d751e25
 632be250
 4f59a32b 56156a83
@@ -528,6 +587,37 @@ bb68eae3 9f235802
 74f42ffc a9956521
 a08e2bdc e936b832
 d83b2306 f398b739
+b44d4109
+695fd1cc d1006cee
+3497ada7 f8cc2bf4
+66a2222c
+b3709e60 e73d5321
+5ff938ff 620d2626
+a0d80fbd 85cacd55
+d4ca8286 7323209d
+7cd62958 b5c4dd8a
+8077ab05 9f824128
+2c404dbe
+cb057a90 ed0bdd36
+020c1be3 c32af27e
+4e1ef1ba 912c1258
+a5462c27
+13318b78 0f16a552 e6501dc5
+3e281c69 82b983f5
+52eb806f e358244a
+9bd2502b 6448dfb8
+7ada787e 61ace6d3
+6c586378 8b8778e1
+eff02329 29da48c3
+e1868bb2
+3e79cc2c
+d0fa7357 bcd338a2
+9a68f6c9 0fac2f33
+f7449762 5b41f27c
+c2b598fe a474ace7
+39060329 91de55e2
+e693fc24
+dc39fba0
 """.split())
 
 SKIP_TOPICS = [
