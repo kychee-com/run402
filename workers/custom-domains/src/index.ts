@@ -41,8 +41,12 @@ export default {
     const s3Key = `sites/${deploymentId}/${relativePath}`;
     const isHtml = filePath.endsWith(".html");
 
-    // Fetch from S3
-    const s3Response = await fetchFromS3(env, s3Key);
+    // Fetch from S3. Non-HTML assets are force-cached at the CF edge via
+    // `cf.cacheEverything` — the S3 URL embeds the deployment ID, so a redeploy
+    // naturally produces a new cache key and old entries age out. HTML skips
+    // the edge cache (fork-badge injection is hostname-specific and the HTML
+    // path sets a short `max-age=60` intentionally).
+    const s3Response = await fetchFromS3(env, s3Key, isHtml);
     if (!s3Response.ok) {
       if (s3Response.status === 404 || s3Response.status === 403) {
         return new Response("<!DOCTYPE html><html><head><title>Not Found</title></head>" +
@@ -66,11 +70,15 @@ export default {
       });
     }
 
-    // Static assets — immutable caching
+    // Static assets — immutable caching. Propagate the subrequest cache
+    // status as `x-cache-status` so it's observable from `curl -sI` (CF does
+    // not set `cf-cache-status` on Worker-generated responses).
+    const subrequestCacheStatus = s3Response.headers.get("cf-cache-status") ?? "UNKNOWN";
     return new Response(s3Response.body, {
       headers: {
         "Content-Type": contentType,
         "Cache-Control": "public, max-age=31536000, immutable",
+        "x-cache-status": subrequestCacheStatus,
       },
     });
   },
@@ -78,7 +86,7 @@ export default {
 
 // ---------- S3 Fetch with AWS Signature V4 ----------
 
-async function fetchFromS3(env: Env, key: string): Promise<Response> {
+async function fetchFromS3(env: Env, key: string, isHtml: boolean): Promise<Response> {
   const host = `${env.S3_BUCKET}.s3.${env.S3_REGION}.amazonaws.com`;
   const url = `https://${host}/${encodeS3Key(key)}`;
 
@@ -114,12 +122,26 @@ async function fetchFromS3(env: Env, key: string): Promise<Response> {
 
   const authorization = `AWS4-HMAC-SHA256 Credential=${env.AWS_ACCESS_KEY_ID}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${signature}`;
 
+  const headers = {
+    Host: host,
+    "x-amz-date": amzDate,
+    "x-amz-content-sha256": "UNSIGNED-PAYLOAD",
+    Authorization: authorization,
+  };
+
+  if (isHtml) {
+    return fetch(url, { headers });
+  }
+
   return fetch(url, {
-    headers: {
-      Host: host,
-      "x-amz-date": amzDate,
-      "x-amz-content-sha256": "UNSIGNED-PAYLOAD",
-      Authorization: authorization,
+    headers,
+    cf: {
+      cacheEverything: true,
+      cacheTtlByStatus: {
+        "200-299": 31536000,
+        "404": 60,
+        "500-599": 0,
+      },
     },
   });
 }
