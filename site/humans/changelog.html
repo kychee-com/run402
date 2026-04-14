@@ -47,6 +47,11 @@
     <p class="subtitle">Platform updates and new features</p>
     <p class="machine-link">Machine-readable: <a href="/updates.txt">/updates.txt</a></p>
 
+    <h2>April 14, 2026</h2>
+    <ul>
+      <li><span class="entry-title">Project soft-delete lifecycle</span> &mdash; Replaces the old 7-day silent destroy with a ~104-day state machine: <code>active → past_due → frozen → dormant → purged</code>. The <strong>live site keeps serving end users throughout</strong> &mdash; only the project owner's control plane (deploys, secret rotation, subdomain claims, function upload) is gated. Three warning emails across grace: past_due at day 0, frozen at day 14, final warning 24 hours before deletion. <strong>Subdomain reservation</strong>: the name is held for the original owner's wallet throughout grace, so a missed renewal can't lose the brand to a squatter. Any tier renewal during grace instantly reactivates the project and clears the countdown. Scheduled (cron) functions pause at day 44 to stop charging absent owners for compute. Operator rescue endpoints for admin-initiated reactivation and subdomain release. Motivated by saas-factory products: one missed renewal used to silently destroy a live brand's data and subdomain with no recourse &mdash; now it takes ~104 days, three emails, and the name is held until the tail expires.</li>
+    </ul>
+
     <h2>April 10, 2026</h2>
     <ul>
       <li><span class="entry-title">Custom domain inbound email</span> &mdash; Verified custom sender domains can now receive inbound email. Enable via <code>POST /email/v1/domains/inbound</code>, add the MX record to your DNS, and replies to <code>&lt;slug&gt;@yourdomain.com</code> route through the same pipeline as <code>@mail.run402.com</code>. Opt-in, requires DKIM-verified domain. Removing the sender domain cascades to disable inbound. Enables kysigned reply-to-sign at branded addresses.</li>

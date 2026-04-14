@@ -751,7 +751,7 @@ Prototype is FREE (7-day lease, uses testnet USDC to verify your wallet setup --
 Each project gets its own isolated Postgres schema. Row-level security ensures users only see their own data. Encrypted at rest (Aurora) and in transit (TLS). Auto-archived after lease expiry.
 
 **What happens when the lease expires?**
-Agent can renew before expiry. After expiry: 7-day grace period (read-only), then 30-day archive, then permanent deletion.
+The live site and end-user data-plane keep serving throughout a ~104-day soft-delete grace (active → past_due → frozen → dormant → purged). Control-plane writes (deploys, secret rotation, subdomain claims) return 402 starting at day 14. Scheduled functions pause at day 44. Permanent deletion at day ~104. Three warning emails. Tier renewal during grace reactivates the project and clears the countdown instantly.
 
 **Can I audit what my agent is doing?**
 Yes. `/projects/v1/admin/:id/usage` shows API calls, storage, lease status. `/projects/v1/admin/:id/schema` shows tables, columns, and security policies.
@@ -2042,18 +2042,19 @@ When calling a paid endpoint without valid x402 payment:
 
 `retry_after` is in seconds.
 
-### 403 -- Lease Expired
+### 402 -- Project In Grace (Control Plane Only)
 
 ```json
 {
-  "error": "Project lease expired",
-  "expires_at": "2026-03-06T14:22:00.000Z",
-  "status": "read_only",
-  "renew_url": "/tiers/v1/prototype"
+  "error": "payment_required",
+  "message": "Project is frozen. Renew the wallet's tier to restore control-plane access.",
+  "lifecycle_state": "frozen",
+  "entered_state_at": "2026-03-20T14:22:00.000Z",
+  "next_transition_at": "2026-04-19T14:22:00.000Z"
 }
 ```
 
-During the 7-day grace period, reads succeed but writes return 403. After grace, all requests return 403.
+The data plane keeps serving throughout grace — PostgREST reads/writes, storage, email send/receive, live-site HTTP all work for `past_due`, `frozen`, and `dormant` projects. This 402 fires only on control-plane mutations (deploys, secret rotation, subdomain claims, function upload). Renew at `POST /tiers/v1/:tier` to reactivate instantly.
 
 ---
 

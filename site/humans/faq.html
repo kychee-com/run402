@@ -67,7 +67,7 @@
     <p>Two paths: <strong>1)</strong> Buy Run402 credits with a credit card via Stripe — visit <a href="/billing/">/billing/</a> with your agent's wallet address. <strong>2)</strong> Fund your agent's wallet with real USDC on Base, and the agent pays autonomously via x402. Both paths use the same API — no code changes needed.</p>
 
     <h2>What happens when my lease expires?</h2>
-    <p>Your project goes read-only immediately. After 7 days, it's archived. After 37 days, it's permanently deleted. You can renew at any time before deletion with a single API call.</p>
+    <p>Your <strong>live site keeps serving end users the entire time</strong>. You get ~104 days of grace, escalating gradually: day 0–14 "past due" (everything works, warning email), day 14–44 "frozen" (deploys and secret rotation return 402 but the site still works, subdomain is reserved for you), day 44–104 "dormant" (scheduled cron functions pause, final warning 24h before deletion), day ~104 permanent deletion. Three warning emails. Any tier renewal during grace instantly reactivates the project and clears the countdown.</p>
 
     <h2>Which AI agents work with Run402?</h2>
     <p>Any agent that can make HTTP requests: Claude Code, ChatGPT, Cursor, Windsurf, Cline, OpenClaw, custom agents — anything. Run402 is also available as an MCP server (<code>npx run402-mcp</code>) and as an OpenClaw skill.</p>

@@ -81,14 +81,15 @@
     </ul>
 
     <h2>Data Retention</h2>
-    <p>Your data lifecycle is tied to your lease:</p>
+    <p>Your data lifecycle follows a ~104-day soft-delete grace. Your live site and end-user traffic keep working throughout — only the project owner's control-plane access (deploys, secret rotation, subdomain claims) is gated after day 14.</p>
     <ul>
-      <li><strong>Active lease</strong> — full read/write access to all data</li>
-      <li><strong>Lease expired (days 0–7)</strong> — project becomes read-only; data is preserved</li>
-      <li><strong>Archived (days 7–37)</strong> — project is archived; data is preserved but not accessible via API</li>
-      <li><strong>Deleted (day 37+)</strong> — all project data, files, and hosted sites are permanently deleted</li>
+      <li><strong>Active</strong> — full read/write access to all data</li>
+      <li><strong>Past due (days 0–14)</strong> — everything works normally; billing contact gets the first warning email</li>
+      <li><strong>Frozen (days 14–44)</strong> — site keeps serving end users; control-plane writes return 402; subdomain is reserved so no one else can claim it; second warning email</li>
+      <li><strong>Dormant (days 44–104)</strong> — site still serves; scheduled (cron) functions pause; final warning email 24 hours before deletion</li>
+      <li><strong>Purged (day ~104+)</strong> — all project data, functions, deployments, and secrets are permanently deleted; subdomain becomes claimable by others 14 days later</li>
     </ul>
-    <p>You may renew your lease at any time before permanent deletion. Server logs are retained for 30 days and then automatically deleted.</p>
+    <p>Any tier renewal, topup, or upgrade during grace instantly reactivates the project and clears the countdown. Server logs are retained for 30 days and then automatically deleted.</p>
 
     <h2>Hosted Application Data</h2>
     <p>Data stored by the applications you build on Run402 — including end-user data collected by your apps — is your responsibility. You are the data controller for any personal data your applications collect. Run402 acts as a data processor on your behalf. You are responsible for ensuring your applications comply with applicable privacy laws (GDPR, CCPA, etc.).</p>

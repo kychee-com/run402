@@ -793,15 +793,16 @@ Build a flash card app for learning Spanish:
 
     <div class="section">
       <h2>Project lifecycle</h2>
-      <p>Leases are prepaid with hard caps. No overage charges, no surprise bills.</p>
+      <p>Leases are prepaid with hard caps. No overage charges, no surprise bills. The live site keeps serving end users throughout the ~104-day soft-delete grace — only the owner's control plane gets gated.</p>
       <div class="terminal">
-        <pre><span class="comment"># After lease expires:</span>
-<span class="cmd">Day 0</span>    Lease expires &mdash; project becomes <span class="string">read-only</span>
-<span class="cmd">Day 7</span>    Grace period ends &mdash; project is <span class="string">archived</span>
-<span class="cmd">Day 37</span>   Permanent <span class="string">deletion</span>
+        <pre><span class="comment"># After lease expires (site still serves end users throughout):</span>
+<span class="cmd">Day 0</span>     <span class="string">past_due</span>  &mdash; first warning email
+<span class="cmd">Day 14</span>    <span class="string">frozen</span>    &mdash; deploys/secrets return 402; subdomain reserved
+<span class="cmd">Day 44</span>    <span class="string">dormant</span>   &mdash; scheduled (cron) functions pause
+<span class="cmd">Day ~104</span>  <span class="string">purged</span>    &mdash; permanent deletion
 
-<span class="comment"># Renew anytime before deletion:</span>
-<span class="cmd">POST</span> /v1/projects/:id/renew  (x402 or MPP)</pre>
+<span class="comment"># Renew anytime during grace to reactivate instantly:</span>
+<span class="cmd">POST</span> /tiers/v1/:tier  (x402 or Stripe)</pre>
       </div>
     </div>
 

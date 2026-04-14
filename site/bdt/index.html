@@ -1092,8 +1092,9 @@
 
       <p class="note">
         Each backend is isolated. One client&rsquo;s data is never accessible to another.
-        Leases expire cleanly &mdash; day 0 read-only, day 7 archived, day 37 deleted.
-        Renew anytime before deletion.
+        Leases expire cleanly &mdash; ~104-day soft-delete grace. The client&rsquo;s live site
+        keeps serving throughout; deploys and secret rotation lock after day 14;
+        permanent deletion at day ~104. Renew anytime during grace to reactivate instantly.
       </p>
     </div>
 
