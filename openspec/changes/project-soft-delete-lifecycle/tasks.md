@@ -76,10 +76,10 @@
 
 ## 11. Documentation
 
-- [ ] 11.1 Add a "Project lifecycle" section to `CLAUDE.md` describing each state, timer, and the email cadence
-- [ ] 11.2 Document the `LIFECYCLE_ENABLED` feature flag in CLAUDE.md environment variables section
-- [ ] 11.3 Document the `POST /admin/projects/:id/reactivate` and `POST /admin/subdomains/:name/release` operator endpoints in the admin section of CLAUDE.md
-- [ ] 11.4 Add a note in `CLAUDE.md` explaining that legacy `status = 'archived'` rows are equivalent to `purged` but predate the grace window and have no recovery path
+- [x] 11.1 Add a "Project lifecycle" section to `CLAUDE.md` describing each state, timer, and the email cadence
+- [x] 11.2 Document the `LIFECYCLE_ENABLED` feature flag in CLAUDE.md environment variables section *(documented inside the lifecycle section rather than a separate env-vars section, since CLAUDE.md doesn't have one)*
+- [x] 11.3 Document the `POST /admin/projects/:id/reactivate` and `POST /admin/subdomains/:name/release` operator endpoints in the admin section of CLAUDE.md
+- [x] 11.4 Add a note in `CLAUDE.md` explaining that legacy `status = 'archived'` rows are equivalent to `purged` but predate the grace window and have no recovery path
 
 ## 12. Deploy and verify
 

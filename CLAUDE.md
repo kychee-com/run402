@@ -6,6 +6,45 @@
 - **kychee-com/kysigned-private** (private) — KySigned hosted service at kysigned.com. Wires the core library to run402 infrastructure via three Lambdas (`kysigned-api`, `kysigned-email-webhook`, `kysigned-sweep`). Contains route dispatch, email templates, deployment scripts, and brand assets. Clone: `gh repo clone kychee-com/kysigned-private`
 - **kychee-com/run402** — Run402 MCP server (npm: `run402-mcp`, v0.2.0). See the MCP Server section below.
 
+## Project lifecycle (soft-delete grace)
+
+A project whose wallet tier lease expires no longer dies in 7 silent days. It moves through a ~104-day soft-delete state machine, and the end-user data plane (live site, PostgREST, email) keeps serving throughout. Only the owner's **control plane** (deploys, secret rotation, subdomain claims, function upload, billing-plumbing writes) gets gated.
+
+```
+ active ──lease_exp──▶ past_due ──+14d──▶ frozen ──+30d──▶ dormant ──+60d──▶ purged
+   ▲                       │                  │                │
+   └────────renewal / topup / tier upgrade────┴────────────────┘
+```
+
+| State | Control plane | Data plane | Scheduled (cron) fns | Subdomain |
+|---|---|---|---|---|
+| `active` | read+write | read+write | running | claimed by project |
+| `past_due` | read+write | read+write | running | claimed by project |
+| `frozen` | **402** | read+write | running | **reserved for the owner's wallet** |
+| `dormant` | **402** | read+write | **paused** | reserved |
+| `purged` | terminal | terminal | terminal | claimable 14 days after purge |
+
+The legacy `archived` status is preserved for rows that died under the old 7-day regime. Legacy archived rows have no recoverable data, but `purgeProject` / `getProjectById` treat them as equivalent to `purged`.
+
+**Emails** (three, sent from `billing@mail.run402.com` via `sendPlatformEmail`):
+- `project_past_due` — fired on entry to `past_due`; says site is unaffected, names the frozen date.
+- `project_frozen` — fired on entry to `frozen`; says control-plane writes are blocked, names the dormant date.
+- `project_purge_final_warning` — fired 24h before `scheduled_purge_at`; final chance to renew.
+
+Inline templates live in `packages/gateway/src/services/project-lifecycle.ts`.
+
+**Scheduler:** `services/leases.ts` runs `advanceLifecycle()` from `services/project-lifecycle.ts` once per hour. Each transition uses `UPDATE ... WHERE status = <prev> AND <timer> < NOW() - <threshold> RETURNING id` so two concurrent ticks can't both act on the same row. The `dormant → purging → purged` path uses an intermediate `purging` status as a race guard; failure reverts to `dormant` so a later tick can retry.
+
+**Reactivation** happens inline after tier subscribe/renew/upgrade (see `services/wallet-tiers.ts` post-commit `advanceLifecycleForWallet(wallet)` hook). An owner who just paid does not wait up to an hour to regain control-plane access.
+
+**Pinned projects** (`pinned = true`) bypass the state machine entirely — same as before. This remains the run402-admin-only escape hatch for projects that should never auto-archive.
+
+**Feature flag:** `LIFECYCLE_ENABLED` env var (default `true`). Flip to `false` for incident-response rollback — `advanceLifecycle`, `advanceLifecycleForProject`, and `advanceLifecycleForWallet` all early-return. The hourly tick still fires but does nothing; projects whose leases expired while the flag was off will transition on the next tick after it flips back on.
+
+**Operator endpoints** (admin-key only, not in `llms.txt` / `openapi.json`):
+- `POST /projects/v1/admin/:id/reactivate` — force-transition a grace-state project back to `active`, clearing timer columns and subdomain reservations in one transaction. Returns `409` on `purged` / `archived` (terminal, no data to restore).
+- `POST /subdomains/v1/admin/:name/release` — clear a subdomain's lifecycle reservation so a different wallet can claim the name. Use for dispute resolution when the reserved owner can't be reached.
+
 ## KMS contract wallets
 
 The `/contracts/v1/*` feature signs Ethereum transactions via AWS KMS-backed keys (one KMS key per wallet, ECC_SECG_P256K1, SIGN_VERIFY). Private keys never leave KMS — there is intentionally no `kms:Decrypt` or `kms:GetParametersForImport` in the gateway role.
