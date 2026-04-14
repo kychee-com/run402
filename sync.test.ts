@@ -522,9 +522,9 @@ describe("llms.txt alignment", { skip: !llmsTxtAvailable && "~/dev/run402/site/l
       return !surfaceEndpoints.some(se => {
         // Exact match
         if (se === ep) return true;
-        // Match with different param names: normalize :foo to :param
-        const normDoc = ep.replace(/:[a-z_]+/g, ":param");
-        const normSurf = se.replace(/:[a-z_]+/g, ":param");
+        // Match with different param names: normalize :foo and {foo} to :param
+        const normDoc = ep.replace(/:[a-z_]+/g, ":param").replace(/\{[a-z_]+\}/g, ":param");
+        const normSurf = se.replace(/:[a-z_]+/g, ":param").replace(/\{[a-z_]+\}/g, ":param");
         return normDoc === normSurf;
       });
     });
