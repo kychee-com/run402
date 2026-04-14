@@ -143,7 +143,7 @@ const SURFACE: Capability[] = [
   { id: "get_quote",         endpoint: "POST /projects/v1/quote",                mcp: "get_quote",                    cli: "projects:quote",      openclaw: "projects:quote" },
   { id: "provision",         endpoint: "POST /projects/v1",                      mcp: "provision_postgres_project",    cli: "projects:provision",  openclaw: "projects:provision" },
   { id: "set_tier",           endpoint: "POST /tiers/v1/:tier",                   mcp: "set_tier",                      cli: "tier:set",            openclaw: "tier:set" },
-  { id: "archive",           endpoint: "DELETE /projects/v1/:id",                mcp: "archive_project",               cli: "projects:delete",     openclaw: "projects:delete" },
+  { id: "delete",            endpoint: "DELETE /projects/v1/:id",                mcp: "delete_project",                cli: "projects:delete",     openclaw: "projects:delete" },
 
   // ── Faucet ───────────────────────────────────────────────────────────────
   { id: "faucet",            endpoint: "POST /faucet/v1",                        mcp: "request_faucet",                cli: "allowance:fund",      openclaw: "allowance:fund" },

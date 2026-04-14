@@ -61,7 +61,7 @@ npx run402-mcp
 | `list_versions` | List published versions of a project. |
 | `get_quote` | Get tier pricing. Free, no auth required. |
 | `set_tier` | Subscribe, renew, or upgrade tier. Auto-detects action. Handles x402 payment. |
-| `archive_project` | Archive a project and remove from local key store. |
+| `delete_project` | Immediately and irreversibly delete a project (cascade purge) and remove from local key store. |
 | `check_balance` | Check billing account balance for an agent allowance address. |
 | `list_projects` | List all active projects for an agent allowance address. |
 | `allowance_status` | Check local agent allowance status — address, network, funding. |

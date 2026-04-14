@@ -3,13 +3,13 @@ import { apiRequest } from "../client.js";
 import { getProject, loadKeyStore, saveKeyStore } from "../keystore.js";
 import { formatApiError, projectNotFound } from "../errors.js";
 
-export const archiveProjectSchema = {
+export const deleteProjectSchema = {
   project_id: z
     .string()
-    .describe("The project ID to soft-delete (enter the grace window)"),
+    .describe("The project ID to delete (irreversible cascade purge)"),
 };
 
-export async function handleArchiveProject(args: {
+export async function handleDeleteProject(args: {
   project_id: string;
 }): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
   const project = getProject(args.project_id);
@@ -24,7 +24,6 @@ export async function handleArchiveProject(args: {
 
   if (!res.ok) return formatApiError(res, "deleting project");
 
-  // Remove from local key store
   const store = loadKeyStore();
   delete store.projects[args.project_id];
   saveKeyStore(store);
@@ -33,7 +32,7 @@ export async function handleArchiveProject(args: {
     content: [
       {
         type: "text",
-        text: `Project \`${args.project_id}\` entered the soft-delete state (status: purged) and was removed from the local key store. Renewing the tier during the grace window would have reactivated it.`,
+        text: `Project \`${args.project_id}\` deleted (status: purged). Schema dropped, functions deleted, subdomains released, mailbox tombstoned. Removed from local key store. This action is irreversible.`,
       },
     ],
   };

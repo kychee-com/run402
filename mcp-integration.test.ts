@@ -254,8 +254,8 @@ describe("MCP integration (live API, no mocks)", { timeout: 180_000 }, () => {
   });
 
   it("cleanup — delete project", async () => {
-    const { handleArchiveProject } = await import("./src/tools/archive-project.js");
-    const result = await handleArchiveProject({ project_id: projectId });
+    const { handleDeleteProject } = await import("./src/tools/delete-project.js");
+    const result = await handleDeleteProject({ project_id: projectId });
     const out = text(result);
     assert.equal(result.isError, undefined, `Expected no error, got: ${out}`);
   });

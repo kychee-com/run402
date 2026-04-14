@@ -23,19 +23,19 @@ When `POST /subdomains/v1` (or equivalent subdomain-claim route) returns `HTTP 4
 - **WHEN** a subdomain-claim tool receives `HTTP 409` with body `{ "message": "Subdomain reserved", "hint": "Name held for original owner during grace period" }`
 - **THEN** the tool result includes the 409 status, the message and hint, and next-step text mentioning the reservation rather than reusing the 403 lease-expired guidance
 
-### Requirement: archive_project tool text reflects grace-period vocabulary
+### Requirement: delete_project tool name and text match the API
 
-The `archive_project` MCP tool description and success message, and the corresponding CLI subcommand output, SHALL use the new lifecycle vocabulary (purge / grace window) rather than the obsolete "archived" wording. The tool name, CLI subcommand name, HTTP method, and endpoint path SHALL remain unchanged.
+The MCP tool that calls `DELETE /projects/v1/:id` SHALL be named `delete_project` (matching the HTTP method) and its description SHALL state that the call triggers an immediate, irreversible cascade purge (drop schema, delete Lambdas, release subdomains, tombstone mailbox, etc.) and SHALL distinguish that explicit purge from the automatic lease-expiry grace state machine. The CLI subcommand SHALL remain `run402 projects delete <id>` and use equivalent wording.
 
-#### Scenario: Successful archive
+#### Scenario: Successful delete
 
-- **WHEN** the agent invokes `archive_project` on a live project and the API returns 200
-- **THEN** the tool returns success text that uses "purged" (or equivalent purge/grace vocabulary) and does not describe the project as "archived"
+- **WHEN** the agent invokes `delete_project` on a live project and the API returns 200
+- **THEN** the tool returns success text that names the action as a delete/purge, lists the cascade effects, and states that the action is irreversible
 
 #### Scenario: Tool description advertised via MCP list
 
 - **WHEN** an MCP client lists available tools
-- **THEN** the description for `archive_project` reflects the soft-delete lifecycle (grace window → purge) and does not claim the project becomes "archived" after 7 days
+- **THEN** the description for `delete_project` describes immediate destructive cascade, explicitly contrasts it with the automatic lease-expiry grace path, and does not claim the project enters a reactivatable grace window
 
 ### Requirement: SKILL.md runtime sections document the grace state machine
 

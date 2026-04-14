@@ -18,7 +18,7 @@ Subcommands:
   usage <id>                              Show compute/storage usage for a project
   schema <id>                             Inspect the database schema
   rls   <id> <template> <tables_json>     Apply Row-Level Security policies
-  delete <id>                             Soft-delete a project (enters ~104-day grace; renew to reactivate) and remove it from local state
+  delete <id>                             Immediately and irreversibly delete a project (cascade purge) and remove from local state
   pin   <id>                              Pin a project (prevents expiry/GC)
   promote-user <id> <email>               Promote a user to project_admin role
   demote-user  <id> <email>               Demote a user from project_admin role

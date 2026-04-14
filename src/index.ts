@@ -43,7 +43,7 @@ import { deleteSecretSchema, handleDeleteSecret } from "./tools/delete-secret.js
 
 // New tools — subdomains & projects
 import { listSubdomainsSchema, handleListSubdomains } from "./tools/list-subdomains.js";
-import { archiveProjectSchema, handleArchiveProject } from "./tools/archive-project.js";
+import { deleteProjectSchema, handleDeleteProject } from "./tools/delete-project.js";
 import { pinProjectSchema, handlePinProject } from "./tools/pin-project.js";
 
 // New tools — user role management
@@ -395,10 +395,10 @@ server.tool(
 );
 
 server.tool(
-  "archive_project",
-  "Soft-delete a project: the gateway moves it into the grace-period state machine (active → past_due → frozen → dormant → purged, ~104 days) and this tool removes it from the local key store. End-user data plane keeps serving during grace; renewing the tier before purge reactivates it. After purge the action cannot be undone.",
-  archiveProjectSchema,
-  async (args) => handleArchiveProject(args),
+  "delete_project",
+  "Immediately and irreversibly delete a project: the gateway runs the full destructive cascade (drop tenant schema, delete Lambda functions, release subdomains, tombstone mailbox, remove sender domain, wipe secrets and app versions) and sets status=purged. This tool also removes the project from the local key store. Distinct from the automatic lease-expiry grace window — this action is the explicit purge and cannot be undone. To recover from a missed renewal use `set_tier` instead.",
+  deleteProjectSchema,
+  async (args) => handleDeleteProject(args),
 );
 
 // ─── Admin tools ─────────────────────────────────────────────────────────────
