@@ -23,6 +23,10 @@ import { submitDrainCall } from "./contract-call.js";
 import { sendPlatformEmail } from "./platform-mail.js";
 import { pool } from "../db/pool.js";
 import { sql } from "../db/sql.js";
+import { getCachedEthUsdPrice } from "./eth-usd-price.js";
+import { buildWarningEmail, buildFundLossEmail } from "./wallet-deletion-emails.js";
+import { SUSPENSION_GRACE_DAYS } from "./wallet-deletion.js";
+import { formatEther } from "viem";
 
 void _; // re-export safety
 
@@ -53,22 +57,35 @@ const deletionDeps: SuspensionGraceDeps = {
   sendWarningEmail: async (walletId, daysLeft) => {
     const email = await lookupBillingEmailForWallet(walletId);
     if (!email) return;
-    await sendPlatformEmail({
-      to: email,
-      subject: `URGENT: Your run402 contract wallet will be deleted in ${daysLeft} days`,
-      html: `<p>Your run402 KMS contract wallet <code>${walletId}</code> has been suspended for ${90 - daysLeft} days. It will be permanently deleted in <strong>${daysLeft} days</strong>.</p><p>run402 does not hold funds on your behalf. If you do not take action (top up cash, drain the wallet, or set a recovery address) before deletion, the on-chain funds at this address will become permanently inaccessible to anyone, including run402.</p><p>Reactivate by topping up your cash balance, drain via the API, or set a recovery address now.</p>`,
-      text: `Your run402 contract wallet ${walletId} will be deleted in ${daysLeft} days. run402 does not hold funds on your behalf — top up, drain, or set a recovery address now.`,
+    const ctx = await loadWalletEmailContext(walletId);
+    if (!ctx) return;
+    const deletionDate = new Date(
+      ctx.suspendedAt.getTime() + SUSPENSION_GRACE_DAYS * 24 * 60 * 60 * 1000,
+    );
+    const body = buildWarningEmail({
+      walletId,
+      address: ctx.address,
+      chain: ctx.chain,
+      balanceEth: ctx.balanceEth,
+      balanceUsd: ctx.balanceUsd,
+      suspendedAt: ctx.suspendedAt,
+      deletionDate,
+      daysLeft,
     });
+    await sendPlatformEmail({ to: email, ...body });
   },
   sendFundLossEmail: async (walletId) => {
     const email = await lookupBillingEmailForWallet(walletId);
     if (!email) return;
-    await sendPlatformEmail({
-      to: email,
-      subject: `Your run402 contract wallet ${walletId} has been deleted (funds lost)`,
-      html: `<p>The KMS key for wallet <code>${walletId}</code> has been destroyed after 90 days of suspension and no recovery address was set. These funds cannot be recovered by run402, AWS, or any third party. The cryptographic key that controlled this address has been destroyed. run402 is not a custodian and has no obligation to compensate for this loss. You were notified on day 60, day 75, and day 88 of suspension.</p>`,
-      text: `Your run402 contract wallet ${walletId} has been deleted. The on-chain funds at this address are permanently inaccessible. run402 is not a custodian.`,
+    const ctx = await loadWalletEmailContext(walletId);
+    if (!ctx) return;
+    const body = buildFundLossEmail({
+      walletId,
+      address: ctx.address,
+      balanceEth: ctx.balanceEth,
+      balanceUsd: ctx.balanceUsd,
     });
+    await sendPlatformEmail({ to: email, ...body });
   },
   sendDrainConfirmEmail: async (walletId) => {
     const email = await lookupBillingEmailForWallet(walletId);
@@ -81,6 +98,37 @@ const deletionDeps: SuspensionGraceDeps = {
     });
   },
 };
+
+interface WalletEmailContext {
+  address: string;
+  chain: string;
+  balanceEth: string;
+  balanceUsd: string;
+  suspendedAt: Date;
+}
+
+async function loadWalletEmailContext(walletId: string): Promise<WalletEmailContext | null> {
+  const r = await pool.query(
+    sql(`SELECT address, chain, suspended_at
+     FROM internal.contract_wallets WHERE id = $1 LIMIT 1`),
+    [walletId],
+  );
+  const row = r.rows[0];
+  if (!row) return null;
+  const suspendedAt = row.suspended_at ? new Date(row.suspended_at as string | Date) : new Date();
+  const balanceWei = await getNativeBalanceWei(row.address as string, row.chain as string);
+  const ethStr = formatEther(balanceWei);
+  let ethUsd = 2000;
+  try { ethUsd = await getCachedEthUsdPrice(row.chain as string); } catch { /* fallback */ }
+  const usd = Number(ethStr) * ethUsd;
+  return {
+    address: row.address as string,
+    chain: row.chain as string,
+    balanceEth: Number(ethStr).toFixed(6),
+    balanceUsd: usd.toFixed(2),
+    suspendedAt,
+  };
+}
 
 async function lookupBillingEmailForWallet(walletId: string): Promise<string | null> {
   const r = await pool.query(
