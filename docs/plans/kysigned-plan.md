@@ -459,18 +459,19 @@ The user explicitly chose "prove working first, optimize second." Phases MUST be
 - **Trade-offs:** Future wallet signing feature requires a new contract deploy instead of just enabling existing code. Acceptable given F4.5.
 - **Rollback:** N/A — this is a one-way cleanup. Re-adding requires new contract deployment.
 
-### DD-27: kysigned CLI/MCP `init` command (spec F10.B) — production-deployment model, two funding paths
+### DD-27: kysigned CLI/MCP `init` command (spec F10.B) — testnet demo default, productionization is a separate step
 
-- **Decision:** The public repo ships an `init` command (both CLI and MCP tool) that bootstraps a new kysigned instance on run402 for a **production deployment**. It does NOT generate throwaway wallets or call the faucet — those are run402-mcp patterns for devs experimenting with the platform. kysigned init assumes the operator has **pre-funded run402** via one of two paths (wallet/x402 OR Stripe/card), verifies that funding before provisioning, then creates the project + runs migrations + seeds allowed_senders.
-- **Why reject the run402-mcp pattern:** run402-mcp's init generates a throwaway secp256k1 key and hits the testnet faucet. That's correct for "dev kicks tires on run402," but wrong for "forker deploys a real signing app." A kysigned operator deploying to production needs real infrastructure on mainnet, not testnet freebies that expire in 7 days. Default chain is `base` (mainnet). Sepolia is opt-in for rehearsal.
-- **Two funding paths (documented in README before operator runs `init`):**
-  - **Wallet (x402):** operator funds a wallet with USDC on Base mainnet (~$5 recommended for 30-day KMS rent + first envelopes buffer). Pays run402 via x402. Agent-friendly, crypto-native.
-  - **Stripe:** operator signs up at run402.com, adds card, subscribes to a tier via Stripe checkout. `init` takes `--email` + `--stripe` flag. Good for operators who don't want to deal with crypto.
-- **The funding balance check is a hard pre-flight gate.** If balance is insufficient, `init` fails fast with a clear error pointing at the README's funding section. This prevents partial-bootstrap states where the project exists but immediately 402s on the first envelope.
-- **Email packs (kysigned sends 1-3 emails per envelope):** the daily email quota may be exhausted on a busy instance. The README documents how to buy an email pack via run402's Stripe checkout (a task first verifies this endpoint is live and usable).
-- **Alternatives:** (1) Wrap `run402 init` — rejected; it does things kysigned doesn't need (faucet) and doesn't do things kysigned does need (sender domain, kysigned migrations, allowed_senders). (2) Assume operator has already manually set up everything and just save credentials — rejected; too thin, forker still needs to run migrations + seed allowed_senders + check funding, might as well automate it.
-- **Trade-offs:** Forker has to fund run402 BEFORE running init. This is a speed bump vs. the "init just works" feel of run402-mcp, but it is correct — this is a production app, not a toy. The README compensates with clear, prominent funding instructions.
-- **Rollback:** `init` is idempotent; can be re-run. `kysigned destroy` (future feature) could tear down the project and refund any leftover balance.
+- **Decision:** The public repo ships a two-command onboarding flow. `kysigned init` bootstraps a **zero-commitment testnet demo** on Base Sepolia — auto-generates a wallet, hits the run402 faucet, subscribes to prototype tier, creates a run402 project, runs migrations, and runs TWO live demo envelopes (fully-automatic slug→slug self-test + operator-email demo). `kysigned customize` is a separate, later, interactive flow for white-label productionization (branding, legal, custom domain, Stripe funding, mainnet flip). Design mirrors run402-mcp's init-with-faucet pattern but adds kysigned-specific setup steps.
+- **Why reject the "pre-fund before init" model (earlier draft):** $0.25 testnet USDC is not an abuse vector for kysigned — the prototype tier's 10-emails/day × 25-unique-recipients-per-7-day-lease hard caps abuse to roughly "10 spam attempts per day per IP with effort." The economic cost of forking kysigned and wrapping the abuse is higher than writing a simpler DKIM-capture app from scratch. Abuse is a run402 policy question, not a kysigned-code question. Removing the "pre-fund" gate removes ~30 minutes of friction from the forker's first-touch experience, which is worth much more than the marginal abuse prevention.
+- **Chain guard is automatic, not enforced in code.** Testnet instances are pinned to Base Sepolia at init time (contracts, chainId, RPC all Sepolia). Mainnet writes are physically impossible from a Sepolia-funded wallet (testnet ETH can't pay mainnet gas, mainnet contracts aren't even deployed for that instance). No per-tx refusal logic needed. When operator upgrades via `kysigned customize`, they go through the canary ritual (Phase 13 equivalent, scaled down for forkers) to bind a mainnet config.
+- **Two demo envelopes during init (both appear in the dashboard with `[TEST]` badge):**
+  - **Demo 1 — Automatic slug→slug self-test (no human):** kysigned creates two mailboxes in the same run402 project (a primary one and a signer one, both `@mail.run402.com`). Creates envelope with the ACME PDF, signer = the signer slug. Sends the signing email, programmatically reads the inbound email, constructs + sends the `I APPROVE` reply from the signer slug. Captures DKIM on both sides (both are run402-DKIM-signed), generates zk proof, records on Sepolia, receives completion email back. Then calls the standalone PDF validator against the signed PDF and asserts the proof verifies on Sepolia. End-to-end pipeline validation in ~30 seconds, zero human interaction.
+  - **Demo 2 — Operator-email demo (human):** `init` prompts "What's your email? We'll send you a signing request so you can experience the full flow." Creates a second envelope with ACME PDF, signer = operator's email. Sends signing email from the primary slug. Operator replies `I APPROVE` from their inbox. Proof generated, recorded on Sepolia. Completion email delivered with signed PDF. Dashboard shows two completed test envelopes.
+- **Testnet warning in the standalone PDF validator.** When the validator reads a proof block where `Chain: Base Sepolia`, it displays a prominent warning: "TESTNET SIGNATURE — Base Sepolia has no production SLA, may be reset, and MUST NOT be used as legal evidence. This signature is for demo/rehearsal purposes only." Trivial `if (chain === 'Base Sepolia') console.warn(...)`. The warning applies equally to Basescan links in the UI.
+- **`kysigned customize` (separate command, runs post-init when forker is ready to productionize):** Interactive MCP-driven flow that walks through: (1) branding (product name, logo, colors updates site + email templates), (2) legal (replace LEGAL.md stubs, generate ToS/Privacy from templates), (3) custom domain (register operator's real domain as run402 sender domain), (4) marketing pages (update or disable), (5) mainnet funding (operator adds real USDC to wallet OR subscribes via Stripe on run402.com), (6) tier upgrade (hobby/team for email capacity), (7) mainnet deploy (canary ritual, scaled down), (8) go-live (flip config from testnet to mainnet). During step (1) email customization, inline previews of each email template are shown in the chat/CLI. After step (8), `customize` offers an optional "send me one more envelope with my new branding to see it live?" — single envelope to operator's choice of address.
+- **Alternatives considered:** (1) Pre-fund gate before init — rejected, see rationale above. (2) No self-test in init — rejected, the self-test is the fastest proof to the operator (and their AI agent) that the pipeline works end-to-end. (3) Only operator-email demo, no auto self-test — rejected, the automatic self-test is crucial for CI/agent workflows where no human is available to reply to an email. (4) Demo in `customize` only (keep `init` minimal) — rejected, the immediate-gratification win of seeing a signed PDF 30 seconds after running `init` is the forker's "aha" moment.
+- **Trade-offs:** Some forker confusion possible if they run init, see Sepolia-signed PDFs, and expect them to be legally valid. Mitigated by the `[TEST]` badge in the dashboard, the testnet warning in the validator, the `Chain: Base Sepolia` in the proof block, and clear README language. Operator creates a second testnet mailbox per init (the signer slug) — slight run402 resource consumption, still within prototype tier limits.
+- **Rollback:** `init` is idempotent — re-running is safe. `kysigned customize --reset` (optional future feature) could drop all test envelopes and start fresh.
 
 ### DD-28: Stripe T2 billing under Kychee Stripe account (spec F9.8)
 
@@ -1142,59 +1143,63 @@ Per saas-factory F21 / kysigned spec Shipping Surfaces section. Each `[ship]` ta
 - [x] Service repo: 68 total, 0 fail [code]
 - [x] Vite build: 672KB, clean [code]
 
-### Phase 17: kysigned CLI/MCP Init `[repo]` `AI`
+### Phase 17: kysigned CLI/MCP Init + Customize `[repo]` `AI`
 
-> **New feature per spec F10.B (v0.12.0).** The public repo ships an `init` command that bootstraps a new kysigned instance on run402. This is the forker's entry point for a **production deployment** (not a dev kick-the-tires session). The operator is expected to have already funded run402 via one of two paths before running `init`.
+> **New feature per spec F10.B (v0.12.0).** Two-command onboarding for forkers:
+> - `kysigned init` — zero-commitment testnet demo (faucet → project → 2 live demo envelopes on Sepolia)
+> - `kysigned customize` — white-label productionization (branding, legal, domain, mainnet funding, mainnet flip) — runs later when forker is ready
+>
+> The hosted service (kysigned.com) uses the same flow for dogfooding (F10.12).
 
-**Design principle: `init` does NOT generate throwaway wallets or hit the faucet.** Those are run402-mcp patterns for devs trying out the platform. kysigned init assumes the operator has pre-funded run402 and is deploying a real app. Default chain is `base` (mainnet), not Sepolia.
+**`kysigned init` flow (idempotent, ~60-90 seconds total):**
 
-**Two funding paths (documented in README before `init` is run):**
-
-1. **Wallet path** — operator funds a wallet with USDC on Base mainnet (minimum ~$5 recommended to cover 30-day KMS rent + first envelopes). Pays run402 via x402.
-2. **Stripe path** — operator signs up at run402.com, adds a payment method, subscribes to a tier via Stripe checkout. Pays via credit card. For non-crypto operators.
-
-**`init` flow (9 steps, idempotent):**
-
-1. Config dir — `~/.config/kysigned/` (0700)
-2. Operator identity — save private key (wallet path, `allowance.json` 0600) OR operator email (Stripe path, `operator.json` 0600)
-3. **Verify run402 billing has sufficient funds** (this is the key guard — fail fast with clear instructions, don't 402 mid-flow):
-   - Wallet path: `GET /billing/v1/accounts/:wallet` → check `available_usd_micros >= MIN_INIT_BUDGET (default $2)`
-   - Stripe path: `GET /billing/v1/accounts` with email → check active tier OR `available_usd_micros >= MIN_INIT_BUDGET`
-   - Insufficient → STOP with error pointing at funding docs in README
-4. Create run402 project — `POST /projects/v1` with SIWX (wallet) or email session (Stripe)
-5. Save project credentials — `projects.json` (0600): project_id, anon_key, service_key
-6. Register custom sender domain (if `--domain` flag) — `POST /projects/:id/domains`
-7. Run kysigned DB migrations against the new project's Postgres
-8. Seed `allowed_senders` with operator email
-9. Print summary + next steps (how to top up, how to buy email packs, link to deploy docs)
+1. Config dir — `~/.config/kysigned/` (0700) or `KYSIGNED_CONFIG_DIR`
+2. Generate operator wallet — secp256k1 keypair, save `allowance.json` (0600). If present, reuse.
+3. Faucet drip — `POST /faucet/v1` for Sepolia testnet USDC (skip if already funded)
+4. Subscribe to prototype tier — `POST /tiers/v1/prototype` via x402 (auto-pays from faucet balance)
+5. Create run402 project — `POST /projects/v1` with SIWX auth. Save `projects.json` (0600).
+6. Create primary mailbox — `kysigned-<slug>@mail.run402.com`
+7. Create signer mailbox — `kysigned-signer-<slug>@mail.run402.com` (for Demo 1 self-test)
+8. Run kysigned DB migrations against the project's Postgres
+9. Seed `allowed_senders` with operator email (prompted if not provided via `--email`)
+10. **Demo 1 — Automatic slug→slug self-test:** create envelope with ACME PDF, signer = signer mailbox. Send signing email, programmatically read inbound, construct + send `I APPROVE` reply, capture DKIM, generate zk proof, record on Sepolia, receive completion, validate signed PDF via standalone validator. Assert proof verifies. Log result.
+11. **Demo 2 — Operator-email demo:** prompt "Send a demo signing request to your email? [Y/n]". If yes, create envelope with ACME PDF, signer = operator email. Send signing email. Print: "Check your inbox at <email>. Reply with `I APPROVE` to complete the demo. Your signed PDF will be delivered back with a Sepolia proof block you can verify on Basescan."
+12. Print final summary + dashboard URL + next steps (`kysigned customize` to productionize).
 
 **Inputs (MCP params / CLI flags):**
-- `--email <operator-email>` (required) — operator identity for allowed_senders and notifications
-- `--private-key <0x...>` OR `--stripe` — which funding path. Defaults: if `KYSIGNED_OPERATOR_PRIVATE_KEY` env set, wallet path; else stripe path.
-- `--chain base|base-sepolia` — default `base` (mainnet). Sepolia is opt-in for rehearsal/testing.
-- `--domain <custom-domain>` (optional) — register for outbound email sender domain.
+- `--email <operator-email>` (optional, prompted if absent) — signee for Demo 2 + allowed_senders seed
+- `--chain base-sepolia` (default, pinned for testnet instance; `base` opt-in but requires `customize` flow for real funding)
+- `--skip-demo-2` (optional) — skip the interactive operator-email demo (useful for CI/agent workflows)
+
+**`kysigned customize` flow (separate command, interactive, MCP-driven):**
+
+Walks through: branding → legal → custom domain → marketing pages → mainnet funding → tier upgrade → mainnet deploy (canary ritual scaled down) → go-live flip. Inline email template previews during branding step. Optional post-customize demo ("send me one more envelope with my new branding?").
 
 **Tasks:**
 
-- [x] Design `init` flow — two funding paths (wallet via x402, Stripe via run402.com). Assumes pre-funded account. Verifies balance before provisioning. Default mainnet. 9 idempotent steps. [code]
-- [ ] **Verify run402 Stripe surfaces for operator funding** [infra] `AI`
-  - Confirm `POST /billing/v1/tiers/:tier/checkout` supports email identity for Stripe tier subscription
-  - Confirm `POST /billing/v1/email-packs/checkout` is live and usable by operators (needed since kysigned sends 1-3 emails per envelope)
-  - Confirm `GET /billing/v1/accounts` by email returns `available_usd_micros` + tier status
-  - Document any gaps as run402 enhancement tasks
-- [ ] Implement `init` MCP tool in `mcp/src/init/handler.ts` — full 9-step flow, idempotent, both funding paths [code]
-- [ ] Implement `init` CLI command — `kysigned init` binary with same args as MCP tool [code]
-- [ ] Implement credential storage module at `mcp/src/init/config.ts` — `~/.config/kysigned/` (or `KYSIGNED_CONFIG_DIR`), 0600 perms. Stores: `allowance.json` (wallet path), `operator.json` (Stripe path), `projects.json` (run402 credentials). [code]
-- [ ] Implement SIWX auth helper at `mcp/src/init/siwx-auth.ts` — uses `@noble/curves` (same pattern as run402-mcp/core/src/allowance-auth.ts) for EIP-191 personal_sign [code]
-- [ ] Wire `init` tool into `mcp/src/index.ts` MCP tool registration [code]
-- [ ] Write `init` integration test — runs against live run402 testnet (opt-in via `KYSIGNED_INIT_INTEGRATION=1`), provisions a real project, verifies credentials stored, cleans up. Gated by env var. [code]
-- [ ] **Update README with a "Before you run init" section** — two funding paths documented:
-  - Wallet path: how to get a wallet, fund with USDC on Base, run `init --private-key <key>` (or env var)
-  - Stripe path: how to sign up at run402.com, add payment method, subscribe to a tier, run `init --email <email> --stripe`
-  - Email packs: when to buy one (default quota exhausted), how to buy via run402's Stripe checkout
-  - Include minimum recommended balances and what they cover [manual]
-- [ ] Update mcp/README.md — document `init` tool + link to README funding guide [manual]
-- [ ] Update llms.txt — add `init` to the tool list with the two funding paths described [manual]
+- [x] Design `init` flow — two-demo testnet bootstrap (slug→slug auto + operator-email). No pre-fund gate. Faucet-driven. Sepolia only. `customize` is separate flow for productionization. See DD-27. [code]
+- [ ] Implement config/storage module at `mcp/src/init/config.ts` — `~/.config/kysigned/` (0700), `KYSIGNED_CONFIG_DIR` override, `allowance.json` + `projects.json` read/save with 0600 perms [code]
+- [ ] Implement SIWX auth helper at `mcp/src/init/siwx-auth.ts` — EIP-191 personal_sign using `@noble/curves` (pattern from `run402-mcp/core/src/allowance-auth.ts`). Returns `SIGN-IN-WITH-X` base64 header. [code]
+- [ ] Implement run402 API client at `mcp/src/init/run402-client.ts` — typed wrappers for `/faucet/v1`, `/tiers/v1/prototype`, `/projects/v1`, `/mailboxes/v1`, admin SQL exec (for migrations), `/billing/v1/accounts/:wallet` (balance check, non-blocking) [code]
+- [ ] Implement Demo 1 (slug→slug self-test) at `mcp/src/init/demo-selftest.ts` — creates envelope, reads inbound via mailbox API, constructs reply, POSTs to `/v1/inbound/reply`, polls for completion, calls validator, asserts proof. All within run402 project, zero human interaction. [code]
+- [ ] Implement Demo 2 (operator-email demo) at `mcp/src/init/demo-operator.ts` — creates envelope with operator as signer, sends signing email, prints clear waiting message. Does not block on operator reply. [code]
+- [ ] Implement init handler orchestrator at `mcp/src/init/handler.ts` — runs all 12 steps, idempotent (each step checks state before acting), clear progress logging [code]
+- [ ] Wire `init` MCP tool into `mcp/src/index.ts` — Zod schema matching handler inputs, map to handler [code]
+- [ ] Build `kysigned init` CLI binary — thin wrapper over the handler, `bin/kysigned.mjs` with argv parsing [code]
+- [ ] Add `[TEST]` badge to dashboard frontend — `frontend/src/pages/DashboardPage.tsx`, badge shown when envelope's chainId is 84532 (Sepolia) [frontend-visual]
+- [ ] Add testnet warning to standalone PDF validator (`scripts/validate-pdf.ts`) — when proof block `Chain: Base Sepolia`, print warning about no SLA / not legal evidence [code]
+- [ ] Write `init` integration test at `mcp/src/init/init.test.ts` — gated by `KYSIGNED_INIT_INTEGRATION=1`, runs against live run402, asserts all 12 steps complete, both demos succeed, cleans up project afterward [code]
+- [ ] Implement `kysigned customize` stub at `mcp/src/customize/handler.ts` — scaffolding for interactive flow, prompts for each customization step, inline email preview [code]
+- [ ] Update README.md — "Get started in 60 seconds" section using `kysigned init`, two-demo walkthrough, `[TEST]` caveat, link to customize flow [manual]
+- [ ] Update mcp/README.md — document `init` and `customize` tools [manual]
+- [ ] Update llms.txt — add `init` + `customize` to tool list [manual]
+
+### Phase 20: saas-factory init generalization proposal `AI → HUMAN`
+
+> **Runs AFTER Phase 17 is complete and tested.** kysigned's init is the reference implementation for the saas-factory pattern. This phase drafts a proposed update to the saas-factory spec that generalizes the init bootstrap flow so future saas-factory products don't reinvent it.
+
+- [ ] Draft proposed additions to `docs/products/saas-factory/saas-factory-spec.md` covering: standardized init bootstrap contract (faucet → tier → project → migrations → demo), the "two-demo" testnet validation pattern (auto self-test + operator-email), the `[TEST]` dashboard badge convention, the customize/productionize split. Written as a markdown summary, NOT directly applied. [manual] `AI`
+- [ ] Present summary to HUMAN for review. HUMAN decides what lifts up to saas-factory vs. stays kysigned-specific. [manual] `HUMAN`
 
 ### Phase 18: Testing Infrastructure `[both]` `AI`
 
