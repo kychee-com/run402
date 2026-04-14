@@ -244,6 +244,12 @@ router.post("/contracts/v1/wallets/:id/drain", serviceKeyAuth, asyncHandler(asyn
 // ---------------------------------------------------------------------------
 
 const DUST_WEI = BigInt(1000);
+// After a confirmed drain, a small residual remains because submitDrainCall
+// reserves a 20% safety margin on gas cost (kms-drain-gas-margin-fix) to
+// survive EIP-1559 base-fee bumps between the estimate and final build.
+// Allow DELETE to accept that residual — up to 0.0001 ETH — when the wallet
+// has a prior confirmed drain. Fresh wallets still gated at 1000 wei.
+const POST_DRAIN_RESIDUAL_WEI = BigInt(10) ** BigInt(14);
 
 router.delete("/contracts/v1/wallets/:id", serviceKeyAuth, asyncHandler(async (req: Request, res: Response) => {
   const projectId = req.project!.id;
@@ -261,14 +267,27 @@ router.delete("/contracts/v1/wallets/:id", serviceKeyAuth, asyncHandler(async (r
     res.status(200).json({ id: wallet.id, status: "deleted", deleted_at: wallet.deleted_at });
     return;
   }
-  // Refuse if balance > dust
+  // Balance gate: strict 1000-wei dust for fresh wallets; relaxed to
+  // 0.0001 ETH if a confirmed drain exists (absorbs the gas-margin residual).
   const balance = await getNativeBalanceWei(wallet.address, wallet.chain);
-  if (balance >= DUST_WEI) {
+  const drainRow = await pool.query(
+    sql(`SELECT 1 FROM internal.contract_calls
+     WHERE wallet_id = $1 AND function_name IN ('<drain>', '<auto_drain_pre_deletion>')
+       AND status = 'confirmed' LIMIT 1`),
+    [walletId],
+  );
+  const hasConfirmedDrain = drainRow.rows.length > 0;
+  const threshold = hasConfirmedDrain ? POST_DRAIN_RESIDUAL_WEI : DUST_WEI;
+  if (balance >= threshold) {
     throw new HttpError(409, "wallet_has_funds", {
       error: "wallet_has_funds",
       address: wallet.address,
       native_balance_wei: balance.toString(),
-      instructions: "Drain the wallet on-chain before deleting. The on-chain balance is yours; we cannot recover it after deletion.",
+      threshold_wei: threshold.toString(),
+      has_confirmed_drain: hasConfirmedDrain,
+      instructions: hasConfirmedDrain
+        ? "Residual exceeds the post-drain tolerance (0.0001 ETH). Drain again."
+        : "Drain the wallet on-chain before deleting. The on-chain balance is yours; we cannot recover it after deletion.",
     });
   }
   // Schedule KMS deletion
