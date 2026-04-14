@@ -459,12 +459,18 @@ The user explicitly chose "prove working first, optimize second." Phases MUST be
 - **Trade-offs:** Future wallet signing feature requires a new contract deploy instead of just enabling existing code. Acceptable given F4.5.
 - **Rollback:** N/A — this is a one-way cleanup. Re-adding requires new contract deployment.
 
-### DD-27: kysigned CLI/MCP `init` command (spec F10.B)
+### DD-27: kysigned CLI/MCP `init` command (spec F10.B) — production-deployment model, two funding paths
 
-- **Decision:** The public repo ships an `init` command (both CLI and MCP tool) that bootstraps a new kysigned instance on run402. It creates an allowance wallet, subscribes a run402 tier, creates a project, stores credentials locally, registers a sender domain, and adds the operator to `allowed_senders`. It is NOT a wrapper around `run402 init` — it implements only what kysigned needs, using run402's public API surface.
-- **Alternatives:** (1) Wrap `run402 init` — rejected because run402 init does things kysigned doesn't need (testnet faucet drip) and doesn't do things kysigned does need (sender domain, allowed_senders). (2) Manual bootstrap via service-repo script only — rejected because forkers need the public repo to be self-sufficient.
-- **Chosen because:** The public repo must be a complete deployable product for forkers. `init` is the forker's entry point. The hosted service should also bootstrap using this flow (dogfooding per F10.12).
-- **Trade-offs:** Duplicates some run402 init logic (wallet creation, tier subscription). Acceptable — kysigned owns its onboarding experience.
+- **Decision:** The public repo ships an `init` command (both CLI and MCP tool) that bootstraps a new kysigned instance on run402 for a **production deployment**. It does NOT generate throwaway wallets or call the faucet — those are run402-mcp patterns for devs experimenting with the platform. kysigned init assumes the operator has **pre-funded run402** via one of two paths (wallet/x402 OR Stripe/card), verifies that funding before provisioning, then creates the project + runs migrations + seeds allowed_senders.
+- **Why reject the run402-mcp pattern:** run402-mcp's init generates a throwaway secp256k1 key and hits the testnet faucet. That's correct for "dev kicks tires on run402," but wrong for "forker deploys a real signing app." A kysigned operator deploying to production needs real infrastructure on mainnet, not testnet freebies that expire in 7 days. Default chain is `base` (mainnet). Sepolia is opt-in for rehearsal.
+- **Two funding paths (documented in README before operator runs `init`):**
+  - **Wallet (x402):** operator funds a wallet with USDC on Base mainnet (~$5 recommended for 30-day KMS rent + first envelopes buffer). Pays run402 via x402. Agent-friendly, crypto-native.
+  - **Stripe:** operator signs up at run402.com, adds card, subscribes to a tier via Stripe checkout. `init` takes `--email` + `--stripe` flag. Good for operators who don't want to deal with crypto.
+- **The funding balance check is a hard pre-flight gate.** If balance is insufficient, `init` fails fast with a clear error pointing at the README's funding section. This prevents partial-bootstrap states where the project exists but immediately 402s on the first envelope.
+- **Email packs (kysigned sends 1-3 emails per envelope):** the daily email quota may be exhausted on a busy instance. The README documents how to buy an email pack via run402's Stripe checkout (a task first verifies this endpoint is live and usable).
+- **Alternatives:** (1) Wrap `run402 init` — rejected; it does things kysigned doesn't need (faucet) and doesn't do things kysigned does need (sender domain, kysigned migrations, allowed_senders). (2) Assume operator has already manually set up everything and just save credentials — rejected; too thin, forker still needs to run migrations + seed allowed_senders + check funding, might as well automate it.
+- **Trade-offs:** Forker has to fund run402 BEFORE running init. This is a speed bump vs. the "init just works" feel of run402-mcp, but it is correct — this is a production app, not a toy. The README compensates with clear, prominent funding instructions.
+- **Rollback:** `init` is idempotent; can be re-run. `kysigned destroy` (future feature) could tear down the project and refund any leftover balance.
 
 ### DD-28: Stripe T2 billing under Kychee Stripe account (spec F9.8)
 
@@ -1138,15 +1144,57 @@ Per saas-factory F21 / kysigned spec Shipping Surfaces section. Each `[ship]` ta
 
 ### Phase 17: kysigned CLI/MCP Init `[repo]` `AI`
 
-> **New feature per spec F10.B (v0.12.0).** The public repo ships an `init` command that bootstraps a new kysigned instance on run402. This is the forker's entry point. The hosted service also uses this flow for dogfooding (F10.12).
+> **New feature per spec F10.B (v0.12.0).** The public repo ships an `init` command that bootstraps a new kysigned instance on run402. This is the forker's entry point for a **production deployment** (not a dev kick-the-tires session). The operator is expected to have already funded run402 via one of two paths before running `init`.
 
-- [ ] Design `init` flow — define the exact sequence of run402 API calls, credential storage format, and error handling. Reference run402-mcp's init for patterns but do NOT wrap it. [code]
-- [ ] Implement `init` MCP tool in `mcp/src/tools/init.ts` — creates allowance wallet, subscribes run402 tier, creates project, stores credentials, registers sender domain, adds operator to `allowed_senders`. Idempotent. [code]
-- [ ] Implement `init` CLI command (if CLI exists, or add as a new `kysigned` CLI entry point) [code]
-- [ ] Implement credential storage at `~/.config/kysigned/` (or `KYSIGNED_CONFIG_DIR` env var) with 0600 permissions. Store: run402 project ID, service key, anon key, operator email, instance endpoint URL. [code]
-- [ ] Write `init` integration test — runs against live run402 testnet, provisions a real project, verifies credentials are stored. Gated by env var. [code]
-- [ ] Update README — document `kysigned init` as the first step for forkers [manual]
-- [ ] Update llms.txt — add `init` to the tool list [manual]
+**Design principle: `init` does NOT generate throwaway wallets or hit the faucet.** Those are run402-mcp patterns for devs trying out the platform. kysigned init assumes the operator has pre-funded run402 and is deploying a real app. Default chain is `base` (mainnet), not Sepolia.
+
+**Two funding paths (documented in README before `init` is run):**
+
+1. **Wallet path** — operator funds a wallet with USDC on Base mainnet (minimum ~$5 recommended to cover 30-day KMS rent + first envelopes). Pays run402 via x402.
+2. **Stripe path** — operator signs up at run402.com, adds a payment method, subscribes to a tier via Stripe checkout. Pays via credit card. For non-crypto operators.
+
+**`init` flow (9 steps, idempotent):**
+
+1. Config dir — `~/.config/kysigned/` (0700)
+2. Operator identity — save private key (wallet path, `allowance.json` 0600) OR operator email (Stripe path, `operator.json` 0600)
+3. **Verify run402 billing has sufficient funds** (this is the key guard — fail fast with clear instructions, don't 402 mid-flow):
+   - Wallet path: `GET /billing/v1/accounts/:wallet` → check `available_usd_micros >= MIN_INIT_BUDGET (default $2)`
+   - Stripe path: `GET /billing/v1/accounts` with email → check active tier OR `available_usd_micros >= MIN_INIT_BUDGET`
+   - Insufficient → STOP with error pointing at funding docs in README
+4. Create run402 project — `POST /projects/v1` with SIWX (wallet) or email session (Stripe)
+5. Save project credentials — `projects.json` (0600): project_id, anon_key, service_key
+6. Register custom sender domain (if `--domain` flag) — `POST /projects/:id/domains`
+7. Run kysigned DB migrations against the new project's Postgres
+8. Seed `allowed_senders` with operator email
+9. Print summary + next steps (how to top up, how to buy email packs, link to deploy docs)
+
+**Inputs (MCP params / CLI flags):**
+- `--email <operator-email>` (required) — operator identity for allowed_senders and notifications
+- `--private-key <0x...>` OR `--stripe` — which funding path. Defaults: if `KYSIGNED_OPERATOR_PRIVATE_KEY` env set, wallet path; else stripe path.
+- `--chain base|base-sepolia` — default `base` (mainnet). Sepolia is opt-in for rehearsal/testing.
+- `--domain <custom-domain>` (optional) — register for outbound email sender domain.
+
+**Tasks:**
+
+- [x] Design `init` flow — two funding paths (wallet via x402, Stripe via run402.com). Assumes pre-funded account. Verifies balance before provisioning. Default mainnet. 9 idempotent steps. [code]
+- [ ] **Verify run402 Stripe surfaces for operator funding** [infra] `AI`
+  - Confirm `POST /billing/v1/tiers/:tier/checkout` supports email identity for Stripe tier subscription
+  - Confirm `POST /billing/v1/email-packs/checkout` is live and usable by operators (needed since kysigned sends 1-3 emails per envelope)
+  - Confirm `GET /billing/v1/accounts` by email returns `available_usd_micros` + tier status
+  - Document any gaps as run402 enhancement tasks
+- [ ] Implement `init` MCP tool in `mcp/src/init/handler.ts` — full 9-step flow, idempotent, both funding paths [code]
+- [ ] Implement `init` CLI command — `kysigned init` binary with same args as MCP tool [code]
+- [ ] Implement credential storage module at `mcp/src/init/config.ts` — `~/.config/kysigned/` (or `KYSIGNED_CONFIG_DIR`), 0600 perms. Stores: `allowance.json` (wallet path), `operator.json` (Stripe path), `projects.json` (run402 credentials). [code]
+- [ ] Implement SIWX auth helper at `mcp/src/init/siwx-auth.ts` — uses `@noble/curves` (same pattern as run402-mcp/core/src/allowance-auth.ts) for EIP-191 personal_sign [code]
+- [ ] Wire `init` tool into `mcp/src/index.ts` MCP tool registration [code]
+- [ ] Write `init` integration test — runs against live run402 testnet (opt-in via `KYSIGNED_INIT_INTEGRATION=1`), provisions a real project, verifies credentials stored, cleans up. Gated by env var. [code]
+- [ ] **Update README with a "Before you run init" section** — two funding paths documented:
+  - Wallet path: how to get a wallet, fund with USDC on Base, run `init --private-key <key>` (or env var)
+  - Stripe path: how to sign up at run402.com, add payment method, subscribe to a tier, run `init --email <email> --stripe`
+  - Email packs: when to buy one (default quota exhausted), how to buy via run402's Stripe checkout
+  - Include minimum recommended balances and what they cover [manual]
+- [ ] Update mcp/README.md — document `init` tool + link to README funding guide [manual]
+- [ ] Update llms.txt — add `init` to the tool list with the two funding paths described [manual]
 
 ### Phase 18: Testing Infrastructure `[both]` `AI`
 
