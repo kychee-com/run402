@@ -179,7 +179,7 @@ async function main() {
   });
   const deleteBody = await deleteRes.json();
   assert(deleteRes.ok, "Delete succeeds");
-  assert(deleteBody.status === "archived", "Project archived");
+  assert(deleteBody.status === "purged", "Project purged");
 
   // --- Results ---
   console.log(`\n=== Results: ${passed} passed, ${failed} failed ===\n`);

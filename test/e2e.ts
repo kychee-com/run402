@@ -1110,7 +1110,7 @@ async function main() {
     });
     const adminDeleteBody = await adminDeleteRes.json();
     assert(adminDeleteRes.ok, `Admin delete returns 200 (got ${adminDeleteRes.status})`);
-    assert(adminDeleteBody.status === "archived", "Admin delete archives project");
+    assert(adminDeleteBody.status === "purged", "Admin delete purges project");
 
     // Admin releases a subdomain
     console.log("\n28b) Admin release subdomain...");
@@ -1158,7 +1158,7 @@ async function main() {
   });
   const deleteBody = await deleteRes.json();
   assert(deleteRes.ok, "Delete succeeds");
-  assert(deleteBody.status === "archived", "Project archived");
+  assert(deleteBody.status === "purged", "Project purged");
 
   // --- Results ---
   console.log(`\n=== Results: ${passed} passed, ${failed} failed ===\n`);
