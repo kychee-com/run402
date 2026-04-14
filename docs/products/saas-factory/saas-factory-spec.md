@@ -1,11 +1,11 @@
 ---
 product: saas-factory
-version: 1.16.0
+version: 1.17.0
 status: Draft
 type: product
 interfaces: [document]
 created: 2026-04-04
-updated: 2026-04-09
+updated: 2026-04-14
 ---
 
 ## Overview
@@ -620,6 +620,7 @@ Products may have multiple such moments in their launch; F25 applies to the mome
 - F25.10. **Anti-leakage: the canary identity is the single-point-of-failure secret.** For each saas-factory product adopting F25, the canary instance's identifying values (contract address, wallet address, package name, subdomain, etc.) MUST be treated as secrets until after the canary is retired. The minimal control is a single working-tree scan of the product's public repository for each canary identifier, run immediately before any moment that would publish the repository to a wider audience (e.g., a private → public flip, a first-time npm publish, a first-time release). The scan MUST abort the publication if any canary identifier is found anywhere in the tree. Products whose public repository is private throughout the dark-launch phase and is squashed to an orphan commit at publication time (the kysigned F17 pattern) MAY rely on that single scan as the only anti-leakage control; products with different repository lifecycles MUST define an equivalent-or-stronger control in their own spec.
 - F25.11. **Canary identity storage.** Canary identifiers MUST be stored exclusively in a secret-management system (AWS Secrets Manager, or equivalent). They MUST NOT be committed to any repository, public or private, and MUST be read at deploy time via environment injection. This applies to both public product repositories and private operator repositories; the discipline is "the canary identifier never touches disk in a git-tracked file, anywhere."
 - F25.12. **Opt-out disclosure.** Products that choose not to adopt F25 MUST include a one-paragraph rationale in their own spec explaining why their launch has no meaningful irreversibility. The opt-out MUST be a positive statement (e.g., "This product is an internal tool with no public branding or public identity, so F25 does not apply"), not silence. Silent non-adoption is a spec defect, not an opt-out.
+- F25.13. **Reference instantiation for database-driven SaaS: demo-variant canaries.** Products whose core is a database-driven site (per F26) MAY instantiate F25 as a **demo tenant**: a deployment on the same production run402 infrastructure as the branded launch, but reached via a non-branded subdomain (e.g., `silver-pines.run402.com`) and seeded with a plausible-but-identity-free dataset (e.g., `seed-silver-pines.sql`) that exercises every user-facing surface without carrying the product's marketing brand. The F25.2 identity check for this instantiation is "same build artifact, same deployment config excluding the `BRAND_*` and `DOMAIN_*` environment variables." The launch flip consists of adding the branded subdomain to the same deployment and pointing the apex DNS — no application code ships. The demo-variant subdomain and its seed-file name are canary identifiers under F25.10 and MUST be scanned for before any private → public repo flip. `kychee-com/kychon`'s `app-silver-pines.json` is the canonical worked example; multiple concurrent demo variants (silver-pines, others) are permitted and in fact desirable — each exercises the same code path against a different seed file, broadening the dogfood surface without branding exposure.
 
 **Reference implementation: kysigned F17.** The first saas-factory product to adopt F25 is kysigned, via its `kysigned-spec.md` F17 ("Pre-Launch Dark-Launch Canary Discipline"). kysigned F17 instantiates F25 for an on-chain context: two separate KMS wallets, the F25.2 identity check is runtime bytecode comparison beyond the Solidity metadata suffix, canary exercise is Barry+Tal dogfooding the full kysigned product against an anonymous canary contract, and the anti-leakage control is a single pre-squash working-tree scan at the kysigned Phase 14 private→public flip. Any future saas-factory product with an on-chain component can use kysigned F17 as a template; products with different launch-moment shapes (domain claim, npm publish, app store submission, public registry entry, etc.) should derive their own F25 instantiation from the principles above, using kysigned F17 as a worked example.
 
@@ -628,6 +629,90 @@ Products may have multiple such moments in their launch; F25 applies to the mome
 - **F22 (run402 project bootstrap)** is executed BEFORE the F25 dark-launch phase begins. The bootstrap creates the run402 project and provisions the initial (long-lived) production resources; F25 inserts a dark-launch phase between "bootstrap complete" and "publicly announced product," in which the bootstrap's production infrastructure runs against canary backend references.
 - **F23 (public repo as run402 trojan horse)** and F25 are independent but complementary. F23 describes how the public repo depends on run402 publicly-accessible surfaces; F25 describes how the product transitions from dark-launch to launch. A product adopting F23 still needs F25 if its launch has irreversible moments.
 - **F21 (shipping surfaces & smoke verification)** provides the smoke checks that F25 consumes — the dark-launch checklist in each product's plan is implemented on top of F21's `[ship]` task infrastructure, and the F25.8 production smoke check reuses the F21 smoke command for each surface.
+
+### F26. Agent-Forkable Database-Driven Architecture
+
+Every saas-factory product whose core is a database-driven user-facing site (membership portals, directories, CRMs, event registration, client portals, booking, helpdesks — roughly half of the saas-killer segments in `docs/products/saas-segments/saas-killing-segments-ranked.md`) MUST adopt an **agent-forkable architecture**: the customization surface is **data, not code**. A coding agent takes the stock product and produces a Wild-Apricot-killer for professional associations, a Dubsado-killer for wedding vendors, or a TownSq-killer for HOAs **without writing new code** — only by editing rows and translations.
+
+**Strategic rationale — double purpose:**
+
+1. **Product benefit.** Data-first customization collapses the cost of niche variants. The "one engine, many niches" vertical-skin strategy (referenced throughout the segments doc — CRM, scheduling, forms, etc.) is only tractable if a niche is a row in a table, not a fork of the code. F26 makes that mechanism concrete and mandatory, so future saas-factory products inherit it by default.
+2. **run402 coupling (the hidden motive).** The customization surface IS the run402 Postgres database. Every agent-driven customization exercises run402's database surface (PostgREST + admin SQL) directly. run402's "simple database for agents" positioning becomes load-bearing: the database is not a backing store hidden behind an app — it IS the app's configuration, content, and localization layer. Forking, skinning, restructuring, and localizing the product all happen through run402's data plane. This deepens the F23 trojan horse: where F23 couples the product to run402 HTTP APIs for runtime paths (payment, auth, mailbox, contracts), F26 couples the product to run402's database as the **customization** surface. A forker who accepts F26 has already accepted run402 as the configuration backend.
+
+Together, F23 and F26 form a complete coupling story: F23 for runtime, F26 for customization. Both are required for the trojan-horse dynamic to hold.
+
+**F26.1. SQL as the primary agent API.**
+
+The product MUST expose a single JSONB configuration table (canonical name: `site_config`) containing all runtime-tunable settings — theme tokens (colors, typography), feature flags, navigation structure, hero copy, social links, pricing config, and any product-specific toggles. The site fetches this config on every request (or caches per-deploy) and wires it into the UI via a provider component. An agent asked to rebrand the product to "ClubNexus for yacht clubs" accomplishes 80%+ of the work via `UPDATE site_config SET value = $1 WHERE key IN (...);` — no build step, no code edit, no redeploy of application code.
+
+The JSONB schema MUST be documented in the product's `CUSTOMIZING.md`, and the product's `llms.txt` (F5) MUST list `site_config` keys with their allowed values. An agent reaching the product via `llms.txt` can customize end-to-end via run402's admin SQL endpoint with no prior product knowledge.
+
+**F26.2. Inline editing — "the page IS the admin".**
+
+The product MUST NOT ship a separate admin CMS for content editing. Member and admin users see the same URL; admins get edit overlays activated by `data-editable` attributes on editable elements. Three editing layers are standard:
+
+- Simple text: native `contenteditable` (~30 lines JS, no dependency)
+- Rich text: headless editor (e.g., Tiptap) lazy-loaded only for admin sessions
+- Images: click-to-upload handler
+
+Member page bundle stays small (< ~20kB JS); admin adds a lazy-loaded island (~60kB) via `client:idle` or equivalent. Every editable surface is edited **in place, under production styles, against production data** — no "WordPress admin dashboard" paradigm.
+
+Beyond UX, the double motive is agent ergonomics: **there is no separate admin UI for an agent to learn.** The agent customizes the same DOM a user sees, and the edits land via the same data layer as F26.1. A coding agent that understands the site's JSONB config and the `data-editable` targets can drive the entire content layer through run402's database without ever rendering an admin page.
+
+**F26.3. Schema-driven content — pages as rows, not files.**
+
+Any content area that a human (or agent) would plausibly want to restructure MUST be stored as rows in a database table, NOT as hardcoded files. The canonical pattern is a `pages` table + a `sections` table with ordering + a section-type discriminator. The site's renderer reads these tables and composes the page at runtime.
+
+Consequence: "reorganize the homepage for a yacht club variant" is a sequence of `INSERT INTO sections ...` and `UPDATE sections SET order = ...` statements, not a code change. Niche variants ship their own seed SQL that produces their own page structure out of the same rendering engine.
+
+Content that is legitimately static (privacy policy, terms) MAY live as files. Any content that vertical-skin variants would plausibly want to restructure MUST be schema-driven. The product spec MUST enumerate which areas are schema-driven and which are static.
+
+**F26.4. Seed files as the vertical-skin mechanism.**
+
+The product MUST ship one or more `seed-<variant>.sql` files under version control, one per supported vertical. Each file contains the `site_config` rows, the `pages`/`sections` rows, default content, and any variant-specific defaults for that niche. Choosing a variant at deploy time is selecting which seed file runs, nothing more.
+
+This is the concrete mechanism that makes the vertical-skin strategy real. The niche is not a fork of the code, not a branch of the repo, not a configuration file read at boot — it is a SQL script that populates the database once. A coding agent producing a new variant produces a new seed file; the application code is untouched. The product's `CUSTOMIZING.md` MUST document the seed-file naming convention and the expected schema so agents can produce new variants without reading source.
+
+Seed files also feed the F25.13 demo-variant canary pattern: a "silver-pines" demo tenant is the product deployed with a non-branded name and a seed file that produces a plausible but identity-free instance.
+
+**F26.5. i18n from day one.**
+
+The product MUST ship with a runtime i18n layer from the first release, even if only one language is shipped at launch. The canonical pattern (the "Krello pattern"):
+
+- Strings live in `custom/strings/<lang>.json` — one file per language, flat key space
+- Keys follow a stable convention (`_one` suffix for plurals, `{placeholder}` for interpolation)
+- A `t(key, vars)` function performs lookup with English fallback
+- The active language is a `site_config` value; the default is `site_config.defaultLanguage`
+- The set of available languages is `site_config.languages` (array)
+
+**Why day-one and not "add later":** retrofitting i18n onto a code-first product is a large rewrite. Shipping the layer from day one makes "localize this product for German HOAs" a file-add operation, not a refactor — same agent-forkability discipline as F26.4. The Krello-pattern convention MUST be documented in `CUSTOMIZING.md` so an agent can produce `strings/pt.json` for a Portuguese variant by translating the English file.
+
+This is also the mechanism that lets localized niche variants win SEO in non-English markets (per the segments doc, "App para barbearias" beats every English-only SaaS in Portuguese markets). The cost of a localized vertical variant is one seed file + one translations file — no engineering.
+
+**F26.6. Reference implementation and opt-out.**
+
+`kychee-com/kychon` is the canonical reference for F26. It instantiates all five sub-requirements (F26.1–F26.5) and ships three seed files (`seed-association.sql`, `seed-church.sql`, `seed-hoa.sql`) as a worked example of the vertical-skin mechanism. New saas-factory products with a database-driven core SHOULD study kychon's structure before specifying their own.
+
+Products whose core is NOT a database-driven site (CLI tool, static documentation site, smart-contract-only project, webhook inspector, etc.) MUST state the F26 opt-out explicitly with a one-paragraph rationale in their own spec. Silent non-adoption is a spec defect, not an opt-out.
+
+### F27. Live Platform-Gaps Feedback Loop
+
+Every saas-factory product MUST maintain a `docs/run402-feedback.md` file (or equivalent, named consistently across products) in the **public repo** that enumerates, in real time, the run402 platform capabilities the product needs but doesn't yet have. Each entry is a short numbered paragraph covering:
+
+- The gap (what capability is missing)
+- The workaround the product uses today (or "blocks the product" if none exists)
+- A suggested API or platform feature that would close the gap cleanly
+- Priority (blocker / important / nice-to-have)
+
+The file is kept current during the product's build — when a developer or agent discovers a platform gap while implementing a plan task, the gap is appended to `docs/run402-feedback.md` **in the same commit as the workaround**. The run402 platform team reviews these files across all saas-factory products on a recurring cadence (suggested: weekly during active build-out, monthly after launch) and prioritizes platform enhancements based on demonstrated product demand.
+
+**Strategic rationale.** Without this loop, platform priorities drift away from product reality. With it, every saas-factory product doubles as a live backlog of platform improvements, sized by the number of products hitting the same gap. "Three products need batch PATCH" is a stronger prioritization signal than any single operator's intuition.
+
+**Format requirement.** `docs/run402-feedback.md` uses a flat numbered list with one paragraph per gap, NOT a table. Tables discourage nuance; gaps need a sentence of workaround context to be actionable upstream. The file lives in the PUBLIC repo, not the service repo — it is part of the product's honest public record, visible to forkers evaluating whether to deploy on run402 or elsewhere. Transparency about platform gaps is part of the trojan-horse story, not against it: forkers who see real gaps with documented workarounds trust the platform more than forkers who see marketing claims of completeness.
+
+**Closure loop.** When a platform gap is closed upstream, the corresponding entry in each product's `run402-feedback.md` is marked `✅ FIXED` with a link to the run402 PR/commit that shipped the fix, and the product's workaround code is replaced with a call to the new capability. The entry is NOT deleted — the historical record remains as evidence of the feedback loop working.
+
+**Reference implementation.** kychon's `docs/run402-feedback.md` (14 items as of 2026-04-14) is the canonical example. It surfaced the lifecycle-hooks gap that is now shipped as run402's `on-signup` function trigger — a closed feedback loop from product demand to platform capability.
 
 ## Acceptance Criteria
 
@@ -828,6 +913,33 @@ Products may have multiple such moments in their launch; F25 applies to the mome
 - [ ] Canary identifiers (address, package name, subdomain, etc.) are stored exclusively in a secret-management system; a grep of the product's public repository tree returns zero matches for any canary identifier
 - [ ] Before any moment that widens the audience for the product's public repository (private → public flip, first npm publish, first release), a working-tree scan for canary identifiers is run; the moment is aborted if any identifier is found
 - [ ] The kysigned F17 implementation is cited in F25 as the reference worked example; new products with different launch-moment shapes derive their own F25 instantiation from the principles
+- [ ] F25.13: products whose core is database-driven (per F26) MAY instantiate F25 via a demo-variant canary on the same production infrastructure, reached via a non-branded subdomain and seeded with a plausible-but-identity-free dataset
+- [ ] F25.13: each adopting product names its demo-variant seed file (e.g., `seed-silver-pines.sql`) in its own spec and treats the demo subdomain and seed-file name as canary identifiers under F25.10
+
+### F26. Agent-Forkable Database-Driven Architecture
+- [ ] Every saas-factory product with a database-driven core adopts F26; products that legitimately don't (CLI tool, static site, smart-contract-only, etc.) include a positive one-paragraph opt-out in their own spec
+- [ ] F26.1: product exposes a single JSONB configuration table (canonical name `site_config`) covering theme, feature flags, navigation, copy, pricing config, and product-specific toggles
+- [ ] F26.1: `site_config` schema is documented in `CUSTOMIZING.md` and its keys + allowed values are listed in the product's `llms.txt`
+- [ ] F26.1: rebrand/re-skin operations are achievable via `UPDATE site_config` alone — no code edit, no build step, no application redeploy
+- [ ] F26.2: product has no separate admin CMS for content editing; admins edit inline via `data-editable` overlays on the same URLs members see
+- [ ] F26.2: member page JS bundle stays small (target < ~20kB); admin editor is a lazy-loaded island (e.g., `client:idle`), not part of the member-facing bundle
+- [ ] F26.3: any content area a niche variant would plausibly restructure (homepage sections, custom pages, navigation) is schema-driven via `pages` + `sections` tables (or equivalent), not hardcoded files
+- [ ] F26.3: the product spec enumerates which areas are schema-driven and which remain static
+- [ ] F26.4: product ships at least one `seed-<variant>.sql` file per supported vertical, under version control
+- [ ] F26.4: `CUSTOMIZING.md` documents the seed-file naming convention and expected row schema so agents can produce new variants without reading source
+- [ ] F26.4: choosing a vertical variant at deploy time is selecting a seed file, not editing code
+- [ ] F26.5: product ships a runtime i18n layer (Krello pattern: `custom/strings/<lang>.json` + `t(key, vars)` function) from the first release, even if only one language is shipped at launch
+- [ ] F26.5: active language is a `site_config` value; available languages are `site_config.languages` (array); default is `site_config.defaultLanguage`
+- [ ] F26.5: adding a new language is a file-add operation (`strings/<lang>.json`), not a code change
+- [ ] F26.6: `kychee-com/kychon` is cited as the reference implementation of F26
+
+### F27. Live Platform-Gaps Feedback Loop
+- [ ] Every saas-factory product ships a `docs/run402-feedback.md` (or equivalently named) file in the PUBLIC repo
+- [ ] Entries are flat numbered paragraphs, not a table, with four fields: gap, workaround, suggested platform feature, priority
+- [ ] When a platform gap is discovered during implementation, the entry is appended in the same commit as the workaround
+- [ ] When a platform gap is closed upstream, the entry is marked `✅ FIXED` with a link to the run402 PR/commit; the entry is NOT deleted (historical record preserved)
+- [ ] The product's workaround code is replaced with a call to the new platform capability once an entry is marked FIXED
+- [ ] kychon's `docs/run402-feedback.md` is cited as the reference implementation, with the `on-signup` lifecycle hook called out as a closed-loop example
 
 ## Constraints & Dependencies
 
