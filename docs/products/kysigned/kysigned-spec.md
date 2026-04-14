@@ -1,11 +1,11 @@
 ---
 product: kysigned
-version: 0.12.0
+version: 0.12.1
 status: Draft
 type: product
 interfaces: [website, api, cli, mcp, smart-contract]
 created: 2026-04-04
-updated: 2026-04-13
+updated: 2026-04-14
 ---
 
 ## Overview
@@ -338,7 +338,7 @@ Pay-as-you-go billing for hosted service users. This is the only payment mechani
 - F9.5. Low-balance alert when credits fall below a threshold (e.g., fewer than 5 envelopes remaining).
 - F9.6. Credits do not expire.
 - F9.7. Checkout experience is branded as kysigned (not run402).
-- F9.8. **Stripe setup required:** Create a kysigned product in the Kychee Stripe account. Define price tiers for credit packs. Implement Stripe Checkout sessions for purchase, webhook handler for payment confirmation, and credit balance tracking in the kysigned database. This is kysigned-service code (not in the public repo).
+- F9.8. **Stripe setup required:** Create a kysigned product in the Kychee Stripe account. Define price tiers for credit packs. Implement Stripe Checkout sessions for purchase, webhook handler for payment confirmation, and credit balance tracking in the kysigned database. This is kysigned-private code (not in the public repo).
 
 ### F10. CLI / MCP `[both]`
 
@@ -369,7 +369,7 @@ The kysigned CLI/MCP provides an `init` command that bootstraps a new kysigned i
 - F10.9. **Reference implementation:** kysigned's `init` is modeled after run402's own `init` flow but is NOT a wrapper around it. It implements only what kysigned needs, using run402's public API surface. The run402 `init` (which creates a generic allowance wallet and drips testnet funds) is a reference, not a dependency.
 - F10.10. **Credential storage:** operator credentials stored locally at `~/.config/kysigned/` (or `KYSIGNED_CONFIG_DIR` env var) with restricted file permissions (0600). Includes: run402 project credentials, operator identity, instance endpoint URL.
 - F10.11. **Integration testing:** the public repo's integration test suite uses `init` as the setup step — proving the same flow a real forker would follow. Tests run against testnet and exercise the full envelope lifecycle after init.
-- F10.12. **Dogfooding:** the hosted service (kysigned-service) bootstraps using the public repo's setup flow (or a close equivalent) to prove the forker path works. The service is the first and most important forker of the public repo. If the service needs a shortcut that a forker wouldn't have, that's a signal the public repo is missing something.
+- F10.12. **Dogfooding:** the hosted service (kysigned-private) bootstraps using the public repo's setup flow (or a close equivalent) to prove the forker path works. The service is the first and most important forker of the public repo. If the service needs a shortcut that a forker wouldn't have, that's a signal the public repo is missing something.
 
 ### F11. Website `[service]`
 
@@ -499,13 +499,13 @@ When an envelope expires or is voided with some signers still pending, the sende
 - F17.3. **Byte-identical bytecode gate at the flip moment.** Before flipping canary → production, the runtime bytecode of the canary contract (fetched via `eth_getCode` on the canary address) MUST be compared against the runtime bytecode of the freshly-deployed production contract (fetched via `eth_getCode` on the production address). If they differ in anything beyond the Solidity metadata suffix (the compiler-hash tail), the flip MUST be aborted and the divergence investigated. A matching bytecode pair is a hard pre-flip gate — no flip without it.
 - F17.4. **No Basescan source verification for the canary contract.** The canary contract is deployed to Base mainnet but its source is never submitted to Basescan. External observers see bytecode only. The production contract IS submitted for Basescan verification.
 - F17.5. **No kysigned branding in canary deploy artifacts.** The canary KMS wallet has no name tag referencing kysigned; the canary contract has no Basescan name tag referencing kysigned; the canary deploy transaction carries no identifying metadata linking it to kysigned. The only public information about the canary contract is its bytecode.
-- F17.6. **kysigned-service runs in full production mode against canary references during the canary phase.** The same kysigned-service deployment that will eventually be used for the launch is configured with two environment variables — `KYSIGNED_CONTRACT_ADDRESS` pointing at the canary contract address and `KYSIGNED_KMS_WALLET` pointing at the canary KMS wallet — for the duration of the canary phase. No separate staging environment. No mock data. Real frontend, real SES, real PDF rendering, real dashboard, real verification.
+- F17.6. **kysigned-private runs in full production mode against canary references during the canary phase.** The same kysigned-private deployment that will eventually be used for the launch is configured with two environment variables — `KYSIGNED_CONTRACT_ADDRESS` pointing at the canary contract address and `KYSIGNED_KMS_WALLET` pointing at the canary KMS wallet — for the duration of the canary phase. No separate staging environment. No mock data. Real frontend, real SES, real PDF rendering, real dashboard, real verification.
 - F17.7. **The canary phase exercises the full product via the full set of surfaces.** At least one end-to-end envelope MUST be created via each of: the hosted dashboard, the public REST API, and the MCP server. The reply-to-sign flow (email reply → DKIM verification → zk proof → on-chain recording → verification), parallel signing, sequential signing, and the verification page MUST all be exercised at least once against the canary contracts. The plan (kysigned-plan.md) enumerates the exact checklist; the principle here is that no feature from F1–F15 is exempt from canary exercise.
 - F17.8. **Exit criterion = checklist fully green AND explicit human go/no-go.** The canary phase ends only when (a) every item on the canary checklist (enumerated in the plan) has been confirmed to work end-to-end against the canary, AND (b) Barry and Tal explicitly approve the flip via a ceremonial go/no-go prompt that presents the checklist summary and demands an explicit APPROVE / ABORT / KEEP TESTING decision. There is no automatic advancement. There is no time-boxing. A partial checklist does not unlock the flip, and a fully-green checklist does not itself trigger the flip — the human decision is independent and required.
-- F17.9. **"Launch" is a relabel, not a deploy.** The launch moment consists of: (1) provision the production KMS wallet, (2) deploy the production `SignatureRegistry` contract via the production wallet, (3) run the F17.3 byte-identical bytecode gate, (4) flip the two kysigned-service environment variables from canary references to production references, (5) redeploy kysigned-service (config change only; no application code change), (6) send one smoke-test envelope through the production contract end-to-end, (7) drain the canary wallet back to the ops wallet, (8) schedule KMS key deletion on the canary KMS key. No application code ships on launch day — every line of code has already been exercised against the canary for the duration of the canary phase.
+- F17.9. **"Launch" is a relabel, not a deploy.** The launch moment consists of: (1) provision the production KMS wallet, (2) deploy the production `SignatureRegistry` contract via the production wallet, (3) run the F17.3 byte-identical bytecode gate, (4) flip the two kysigned-private environment variables from canary references to production references, (5) redeploy kysigned-private (config change only; no application code change), (6) send one smoke-test envelope through the production contract end-to-end, (7) drain the canary wallet back to the ops wallet, (8) schedule KMS key deletion on the canary KMS key. No application code ships on launch day — every line of code has already been exercised against the canary for the duration of the canary phase.
 - F17.10. **The canary contract remains on-chain forever after retirement.** Because smart contracts are immutable, the canary contract cannot be deleted. What IS retired: the canary wallet (drained and KMS-deletion-scheduled), the service's environment variables (flipped to production), and every reference to the canary in AWS Secrets Manager (the `kysigned/canary-*` secrets can be deleted the day after the flip is confirmed stable). The canary contract itself becomes a bytecode-only artifact on Base mainnet with no known connection to kysigned.
 - F17.11. **Anti-leakage discipline: single pre-squash working-tree scan at Phase 14.** The canary contract address and canary KMS wallet address are the single-point-of-failure secrets. The only control required to protect them is a working-tree scan of the public kysigned repository for both values, run as a Phase 14 plan checklist item immediately before the orphan-branch squash that precedes the private→public flip. If the scan matches either value anywhere in the tree, the flip MUST be aborted and the references removed. This single control is sufficient because (a) the public repo is private throughout the canary phase — references in the tree are internal state, not a leak, and (b) the Phase 14 squash creates a single `v1.0.0` orphan commit, wiping all prior history.
-- F17.12. **Canary address storage: AWS Secrets Manager only.** The canary contract address and canary wallet address are stored exclusively in AWS Secrets Manager under the `kysigned/canary-*` namespace. They are NEVER committed to any repository — not the public `kysigned` repo, not the private `kysigned-service` repo — and are read at deploy time via environment injection from Secrets Manager.
+- F17.12. **Canary address storage: AWS Secrets Manager only.** The canary contract address and canary wallet address are stored exclusively in AWS Secrets Manager under the `kysigned/canary-*` namespace. They are NEVER committed to any repository — not the public `kysigned` repo, not the private `kysigned-private` repo — and are read at deploy time via environment injection from Secrets Manager.
 - F17.13. **Human discipline for non-repo channels.** The canary address SHOULD NOT be pasted into public-facing channels (Slack messages that might be screenshotted, GitHub issues, external chat, blog drafts). Internal Kychee channels (private Telegram, private Slack, private meetings) are acceptable. This is operator discipline, not enforceable tooling.
 
 ## Acceptance Criteria
@@ -702,7 +702,7 @@ The public repo includes comprehensive integration tests that mirror run402-mcp'
 - [ ] Canary `SignatureRegistry` and `EvidenceKeyRegistry` deploy to Base mainnet via the canary KMS wallet and compile from the same Solidity source as the production contracts
 - [ ] Canary contract source is NOT submitted to Basescan for verification; the contracts are visible as bytecode only
 - [ ] Canary KMS wallet has no name tag, no identifying metadata, and no public reference linking it to kysigned at provision time
-- [ ] kysigned-service is deployed to production with contract addresses and KMS wallet pointing at canary references for the duration of the canary phase
+- [ ] kysigned-private is deployed to production with contract addresses and KMS wallet pointing at canary references for the duration of the canary phase
 - [ ] At least one end-to-end reply-to-sign envelope is created via each of: the hosted dashboard, the REST API, and the MCP server during the canary phase
 - [ ] Reply-to-sign flow exercised end-to-end against canary contracts: email reply → DKIM verification → zk proof → on-chain recording → verification page confirms
 - [ ] Parallel and sequential signing flows both exercised end-to-end against canary contracts
@@ -712,11 +712,11 @@ The public repo includes comprehensive integration tests that mirror run402-mcp'
 - [ ] The go/no-go human gate is explicitly invoked with a summary of the checklist status and demands an APPROVE / ABORT / KEEP TESTING decision; no automatic advancement
 - [ ] Production KMS wallet is provisioned and production contracts are deployed only AFTER the go/no-go APPROVE
 - [ ] Byte-identical bytecode gate for BOTH contracts: `eth_getCode(canary)` and `eth_getCode(production)` match beyond the Solidity metadata suffix; the flip is blocked until both checks pass
-- [ ] Flip consists of updating contract addresses and KMS wallet in the service configuration and redeploying kysigned-service; no application code changes are bundled with the flip
+- [ ] Flip consists of updating contract addresses and KMS wallet in the service configuration and redeploying kysigned-private; no application code changes are bundled with the flip
 - [ ] One smoke-test envelope completes end-to-end against the production contracts immediately after the flip
 - [ ] Canary wallet is drained back to the ops wallet within 24 hours of the successful flip
 - [ ] KMS key deletion is scheduled on the canary KMS key within 24 hours of the successful flip
-- [ ] Canary contract addresses and canary wallet address are stored exclusively in AWS Secrets Manager under `kysigned/canary-*`; a repo-wide `grep` of both the public `kysigned` and private `kysigned-service` repositories returns zero matches for any value
+- [ ] Canary contract addresses and canary wallet address are stored exclusively in AWS Secrets Manager under `kysigned/canary-*`; a repo-wide `grep` of both the public `kysigned` and private `kysigned-private` repositories returns zero matches for any value
 - [ ] Phase 14 checklist includes a pre-squash working-tree scan for canary addresses + canary wallet in the public `kysigned` repo; the private→public flip is aborted if the scan finds any value
 - [ ] The `SignatureRegistry — Base mainnet` and `EvidenceKeyRegistry — Base mainnet` rows in the Shipping Surfaces table are not updated from `<TBD>` until the production contract deploy completes, which cannot happen before the canary phase ends
 

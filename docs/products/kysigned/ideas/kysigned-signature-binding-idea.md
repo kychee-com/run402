@@ -155,7 +155,7 @@ Bait-and-switch is natively defeated because the doc hash appears in the DKIM-si
 
 - **kysigned remains a run402 application.** All operator functions run on run402 surfaces.
 - **Inbound email surface on run402 is a prerequisite.** Must be confirmed or enhanced before spec revision locks.
-- **`kysigned-service` (private) remains the flagship operator.** Same code as the public repo, different config and branding.
+- **`kysigned-private` (private) remains the flagship operator.** Same code as the public repo, different config and branding.
 - **Run402 has no privileged on-chain role.** Off-chain branding only.
 
 ## Work to reopen (existing plan items affected)
@@ -221,7 +221,7 @@ This rework re-opens work that is currently marked `[x]` in `docs/plans/kysigned
 
 - **REWRITE.** `LEGAL.md` in the public repo — the old language around Method A's cryptographic guarantees must be rewritten. The new language should describe the reply-to-sign mechanism, the DKIM/DNSSEC trust chain, and be truthful about what the on-chain record proves ("a mail provider cryptographically attested a real outbound email from this mailbox containing `I APPROVE` and this document hash").
 - **REWRITE.** `README.md` in the public repo — current Method A / Method B / wallet language is obsolete. New README describes reply-to-sign as *the* signing method.
-- **NEW.** `how-it-works` public page on the kysigned-service marketing site. Plain English, no jargon.
+- **NEW.** `how-it-works` public page on the kysigned-private marketing site. Plain English, no jargon.
 
 ## Work that stays as-is
 

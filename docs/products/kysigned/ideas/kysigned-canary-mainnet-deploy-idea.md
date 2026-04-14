@@ -18,8 +18,8 @@ references:
     path: C:/Workspace-Kychee/run402/CLAUDE.md
     description: KMS contract wallets section — IAM policy, prepay amount ($1.20), rpc secret rotation
   - type: doc
-    path: C:/Workspace-Kychee/kysigned-service/STATUS.md
-    description: kysigned-service current state — private repo, runs the deployment glue
+    path: C:/Workspace-Kychee/kysigned-private/STATUS.md
+    description: kysigned-private current state — private repo, runs the deployment glue
 ---
 
 ## Problem / Opportunity
@@ -46,7 +46,7 @@ Two distinct audiences:
 
 ### The principle
 
-**Run kysigned-service in full production mode against an anonymous on-chain backend (the "canary"), dogfood it until a feature checklist is fully green and a human explicitly approves, then "launch" by flipping two environment variables from canary references to production references — not by deploying new code.**
+**Run kysigned-private in full production mode against an anonymous on-chain backend (the "canary"), dogfood it until a feature checklist is fully green and a human explicitly approves, then "launch" by flipping two environment variables from canary references to production references — not by deploying new code.**
 
 The launch moment becomes a relabel operation, not a fresh deploy. By the time production users land on kysigned.com, every code path they touch has been exercised in real production use for days or weeks.
 
@@ -61,7 +61,7 @@ Canary lifecycle is a single ritual performed once per launch (and once per futu
    - **No kysigned branding in the deploy artifacts** — deployer wallet has no name, no tags referencing kysigned; the contract has no name tag; the deploy transaction carries no identifying metadata.
    - **Bytecode is identical to what the production deploy will produce** — because the canary and production deploys use the same Solidity source. This is a feature, not a coincidence.
 
-3. **Deploy kysigned-service to production for real.** Frontend bundle replaces the placeholder, SES webhooks wired, crons wired — the entire deployment-glue chat (#1 in the current next-phases list) ships. **But the service is configured with canary references**: `KYSIGNED_CONTRACT_ADDRESS=<canary>` and `KYSIGNED_KMS_WALLET=<canary wallet>`. The service is live, at `https://kysigned.run402.com` and `https://kysigned.com`, and running.
+3. **Deploy kysigned-private to production for real.** Frontend bundle replaces the placeholder, SES webhooks wired, crons wired — the entire deployment-glue chat (#1 in the current next-phases list) ships. **But the service is configured with canary references**: `KYSIGNED_CONTRACT_ADDRESS=<canary>` and `KYSIGNED_KMS_WALLET=<canary wallet>`. The service is live, at `https://kysigned.run402.com` and `https://kysigned.com`, and running.
 
 4. **Exercise the canary as real users.** Barry and Tal send real envelopes to each other via dashboard, API, and MCP — signing real PDFs, receiving real emails, verifying real documents. Every successful envelope produces a real on-chain recording on the canary contract. The full kysigned feature set is exercised.
 
@@ -73,7 +73,7 @@ Canary lifecycle is a single ritual performed once per launch (and once per futu
 
 7. **Byte-identical bytecode gate.** Before the flip, compare the runtime bytecode of the canary contract (via `eth_getCode` on the canary address) with the runtime bytecode of the production contract (via `eth_getCode` on the production address). If they differ in anything but the metadata suffix, **abort the flip** and investigate — it means something changed between the two deploys that the canary didn't catch. If they match, proceed.
 
-8. **Flip the service configuration** from canary references to production references. Redeploy kysigned-service (config change only, no application code change). This is the "launch."
+8. **Flip the service configuration** from canary references to production references. Redeploy kysigned-private (config change only, no application code change). This is the "launch."
 
 9. **Smoke test one envelope on the production contract** end-to-end. Because the service code is unchanged and the contract bytecode is byte-identical, this smoke confirms the address swap itself, not the product. If the smoke passes, kysigned is effectively launched.
 
@@ -118,9 +118,9 @@ The pattern is genuinely product-agnostic. Any saas-factory product with an irre
 
 4. **Ephemeral canary (provision fresh each session), not long-lived.** Amortizing $1.20 across 1–3 likely canary events over kysigned's lifespan is a rounding-error saving that's not worth the recurring overhead of long-lived canary infrastructure (60-day bump cron, current-canary-address bookkeeping, extra 90-day watchlist item). Ephemeral canary is self-contained: each ritual provisions, exercises, drains, and schedules deletion. **Rationale:** matches expected canary event frequency (1 at launch, maybe 1–2 more over kysigned's lifespan), gives the drain endpoint a reliable exercise home, eliminates all bookkeeping.
 
-5. **Full product soft-launch, not contract-only rehearsal.** The canary is not "exercise the wallet + contract in isolation via raw viem scripts." It is "run kysigned-service in real production mode against anonymous on-chain references — real emails, real PDFs, real signing UX, real dashboard, real verification — and dogfood the entire product until happy." **Rationale:** kysigned is the first production consumer of the KMS-signs-arbitrary-transaction path AND the full product integration is itself untested on mainnet. Both concerns are addressed by the full soft-launch approach with almost the same infrastructure effort — since the service has to be deployed to production anyway as part of the `kysigned-service` chat, routing it at the canary instead of production for an intermediate phase costs essentially nothing beyond the canary wallet itself.
+5. **Full product soft-launch, not contract-only rehearsal.** The canary is not "exercise the wallet + contract in isolation via raw viem scripts." It is "run kysigned-private in real production mode against anonymous on-chain references — real emails, real PDFs, real signing UX, real dashboard, real verification — and dogfood the entire product until happy." **Rationale:** kysigned is the first production consumer of the KMS-signs-arbitrary-transaction path AND the full product integration is itself untested on mainnet. Both concerns are addressed by the full soft-launch approach with almost the same infrastructure effort — since the service has to be deployed to production anyway as part of the `kysigned-private` chat, routing it at the canary instead of production for an intermediate phase costs essentially nothing beyond the canary wallet itself.
 
-6. **Launch = relabel, not deploy.** The moment of launch is flipping two environment variables (`KYSIGNED_CONTRACT_ADDRESS`, `KYSIGNED_KMS_WALLET`) in kysigned-service's configuration and redeploying the service. No application code changes. The byte-identical bytecode gate is the proof that this is safe. **Rationale:** launch day with deploys is the highest-risk configuration. Launch day with only a config change is the lowest-risk configuration. The canary phase earns the right to this posture.
+6. **Launch = relabel, not deploy.** The moment of launch is flipping two environment variables (`KYSIGNED_CONTRACT_ADDRESS`, `KYSIGNED_KMS_WALLET`) in kysigned-private's configuration and redeploying the service. No application code changes. The byte-identical bytecode gate is the proof that this is safe. **Rationale:** launch day with deploys is the highest-risk configuration. Launch day with only a config change is the lowest-risk configuration. The canary phase earns the right to this posture.
 
 7. **Exit criterion = checklist + explicit human go/no-go.** The canary phase ends only when (a) every item on a concrete feature checklist is fully green, AND (b) Barry and Tal explicitly approve the flip via a ceremonial go/no-go prompt. No automatic advancement, no time-boxing. The checklist content lives in the plan, not the spec; the principle ("checklist exists and must be fully green before flip is offered") lives in the spec. **Rationale:** keeps the spec stable while allowing the plan to evolve the checklist during implementation. Guarantees the highest-leverage human gate is never accidentally skipped.
 
@@ -128,7 +128,7 @@ The pattern is genuinely product-agnostic. Any saas-factory product with an irre
 
 9. **Saas-factory generalization shape = new F24, soft enforcement.** New top-level requirement in `saas-factory-spec.md` titled "Pre-launch dark-launch with anonymous backend." Products with irreversible public launch moments SHOULD adopt it; opt-outs must justify. **Rationale:** this is a genuine factory-level operating principle, deserves visibility equal to F22 (bootstrap) and F23 (trojan horse). Soft enforcement avoids forcing ceremony on products that don't have meaningful irreversibility.
 
-10. **Phase 13 and the kysigned-service deploy merge into one interleaved workflow.** They are no longer independent chats. The service deploy must land first (as a canary-pointed deployment), the canary exercise runs for as long as needed, and the "ship" step of the service deploy is the env var flip. The current plan's separation between Phase 13 (deploy contract) and the "service deploy" chat (deploy frontend+backend) no longer reflects reality. **Rationale:** the canary IS the service running in production; the two can't be decoupled.
+10. **Phase 13 and the kysigned-private deploy merge into one interleaved workflow.** They are no longer independent chats. The service deploy must land first (as a canary-pointed deployment), the canary exercise runs for as long as needed, and the "ship" step of the service deploy is the env var flip. The current plan's separation between Phase 13 (deploy contract) and the "service deploy" chat (deploy frontend+backend) no longer reflects reality. **Rationale:** the canary IS the service running in production; the two can't be decoupled.
 
 ## Open Questions
 

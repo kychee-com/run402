@@ -3,7 +3,7 @@
 ## Related Repositories
 
 - **kychee-com/kysigned** (private) — KySigned public MIT-licensed core library. Blockchain-verified e-signatures on Base. Contains API handlers (`src/api/`), smart contracts (`contracts/SignatureRegistry.sol`, `contracts/EvidenceKeyRegistry.sol`), zk-email circuits (`circuits/kysigned-approval.circom`), MCP server (`mcp/`), and verification scripts. Clone: `gh repo clone kychee-com/kysigned`
-- **kychee-com/kysigned-service** (private) — KySigned hosted service at kysigned.com. Wires the core library to run402 infrastructure via three Lambdas (`kysigned-api`, `kysigned-email-webhook`, `kysigned-sweep`). Contains route dispatch, email templates, deployment scripts, and brand assets. Clone: `gh repo clone kychee-com/kysigned-service`
+- **kychee-com/kysigned-private** (private) — KySigned hosted service at kysigned.com. Wires the core library to run402 infrastructure via three Lambdas (`kysigned-api`, `kysigned-email-webhook`, `kysigned-sweep`). Contains route dispatch, email templates, deployment scripts, and brand assets. Clone: `gh repo clone kychee-com/kysigned-private`
 - **kychee-com/run402** — Run402 MCP server (npm: `run402-mcp`, v0.2.0). See the MCP Server section below.
 
 ## KMS contract wallets

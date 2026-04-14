@@ -76,7 +76,7 @@ The run402 coupling via factory F23 + F26. F23 couples the product to run402's H
 
 3. **Dual-repo split executed on 2026-04-14.** Public `kychee-com/kychon` (MIT, forkable, demo variants included) + private `kychee-com/kychon-private` (marketing site, competitive research, operator batch-deploy config). Rationale: MIT can't cover commercial marketing identity or competitive positioning docs; pristine fork experience requires separation. How to apply: all future commercial / operator-only content goes to the private repo; demo variants (silver-pines, eagles, barrio-unido) stay public as F26.4 + F25.13 reference artifacts.
 
-4. **Naming convention `-private`, not `-service`.** Rationale: `-service` presumes hosted infrastructure; kychon's private repo is mostly marketing + ops with no hosted backend yet. `-private` generalizes across product shapes. How to apply: factory v1.18.0 updated throughout; kysigned will rename `kysigned-service` → `kysigned-private` in lockstep (no grandfather clause).
+4. **Naming convention `-private`, not `-service`.** Rationale: `-service` presumes hosted infrastructure; kychon's private repo is mostly marketing + ops with no hosted backend yet. `-private` generalizes across product shapes. How to apply: factory v1.18.0 updated throughout; kysigned will rename `kysigned-private` → `kysigned-private` in lockstep (no grandfather clause).
 
 5. **Public kychon orphan-squashed to v1.0.0.** Rationale: factory F12 mandates "squash all development history into a single v1.0.0 commit before going public." Kychon was already public with 106 commits of pre-factory iteration; orphan-squash applied retroactively. User confirmed: zero existing forks/users, so history disruption is moot. How to apply: archive branch `archive/pre-v1.0.0` preserves the pre-squash history for audit; the public repo now starts fresh at v1.0.0 with a clean MIT baseline.
 
@@ -101,7 +101,7 @@ The run402 coupling via factory F23 + F26. F23 couples the product to run402's H
 4. **Kychon.com marketing story shape.** Vertical-skin-per-page (e.g., `kychon.com/for/associations`, `/for/churches`, `/for/hoa`) vs. single generic page with vertical examples. Current `marketing/` has both HOA, church, sports, and associations pages — leaning vertical-per-page but unconfirmed.
 5. **`app.example.json` — ship one alongside `app-silver-pines.example.json`?** `.gitignore` already has the exception rule but no file. Forkers may want the base deploy config as a reference too.
 6. **Naming polish for `kychon-private/docs/`.** Currently has `docs/comparisons/` + `docs/consultations/`. `docs/strategy/` or `docs/positioning/` may be clearer categorization for future additions. Low priority.
-7. **Timing of the physical `kysigned-service` → `kysigned-private` GitHub rename.** Factory v1.18.0 prescribes it; the rename is the operator's to-do (not part of this brainstorm's execution).
+7. **Timing of the physical `kysigned-private` → `kysigned-private` GitHub rename.** Factory v1.18.0 prescribes it; the rename is the operator's to-do (not part of this brainstorm's execution).
 8. **Long-term: cross-product `run402-feedback.md` aggregation.** F27 prescribes per-product files. Once 3+ products are shipping, a central index on `run402.com/feedback` (or similar) is probably the natural consolidation — but that's future work.
 
 ## Follow-on retrofit tasks (not executed in this brainstorm)
