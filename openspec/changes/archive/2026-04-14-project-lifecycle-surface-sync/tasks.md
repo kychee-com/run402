@@ -34,4 +34,4 @@
 
 ## 6. Memory + sync bookkeeping
 
-- [ ] 6.1 After the change ships, update `~/.claude/projects/-Users-talweiss-Developer-run402-public/memory/project_last_integration.md` with the new last-synced commit (`2ab48095` from run402) and the run402-public commit that ships this change
+- [x] 6.1 After the change ships, update `~/.claude/projects/-Users-talweiss-Developer-run402-public/memory/project_last_integration.md` with the new last-synced commit (`2ab48095` from run402) and the run402-public commit that ships this change
