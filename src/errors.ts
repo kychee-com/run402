@@ -10,7 +10,9 @@ export interface ToolResult {
  * Format an API error response into an agent-friendly MCP tool result.
  *
  * Always includes: HTTP status, API error message, and actionable next-step guidance.
- * Extracts optional fields: hint, retry_after, renew_url, usage, expires_at.
+ * Extracts optional fields: hint, retry_after, renew_url, usage, expires_at,
+ * and lifecycle signals (lifecycle_state, entered_state_at, next_transition_at,
+ * scheduled_purge_at) when the gateway returns them on grace-state 402s.
  *
  * @param res  The response from apiRequest() — needs `status` and `body`.
  * @param context  Short verb phrase: "running SQL", "deploying function", etc.
@@ -35,6 +37,8 @@ export function formatApiError(
     `Error ${context}: ${primary} (HTTP ${res.status})`,
   ];
 
+  const inGrace = Boolean(body && body.lifecycle_state);
+
   // Supplementary fields from the API response
   if (body) {
     if (body.hint) lines.push(`Hint: ${body.hint}`);
@@ -53,6 +57,15 @@ export function formatApiError(
         );
       if (parts.length > 0) lines.push(`Usage: ${parts.join(", ")}`);
     }
+    if (body.lifecycle_state) {
+      const lc: string[] = [`state=${body.lifecycle_state}`];
+      if (body.entered_state_at) lc.push(`entered=${body.entered_state_at}`);
+      if (body.next_transition_at)
+        lc.push(`next=${body.next_transition_at}`);
+      if (body.scheduled_purge_at)
+        lc.push(`purge_at=${body.scheduled_purge_at}`);
+      lines.push(`Lifecycle: ${lc.join(", ")}`);
+    }
   }
 
   // Actionable guidance based on HTTP status
@@ -61,6 +74,13 @@ export function formatApiError(
       lines.push(
         `\nNext step: Re-provision the project with \`provision_postgres_project\`, or check that your service key is correct.`,
       );
+      break;
+    case 402:
+      if (inGrace) {
+        lines.push(
+          `\nNext step: Project is in the soft-delete grace window — control-plane mutations are blocked. Use \`set_tier\` to renew/upgrade and reactivate the project in one transaction.`,
+        );
+      }
       break;
     case 403:
       if (body && body.admin_required) {
@@ -74,6 +94,11 @@ export function formatApiError(
     case 404:
       lines.push(
         `\nNext step: Check that the resource name and project ID are correct.`,
+      );
+      break;
+    case 409:
+      lines.push(
+        `\nNext step: The requested name or resource is already in use or reserved (e.g., held for an original owner during a grace window). Wait for the reservation to lapse or try a different name.`,
       );
       break;
     case 429:

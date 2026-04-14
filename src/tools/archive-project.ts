@@ -4,7 +4,9 @@ import { getProject, loadKeyStore, saveKeyStore } from "../keystore.js";
 import { formatApiError, projectNotFound } from "../errors.js";
 
 export const archiveProjectSchema = {
-  project_id: z.string().describe("The project ID to archive"),
+  project_id: z
+    .string()
+    .describe("The project ID to soft-delete (enter the grace window)"),
 };
 
 export async function handleArchiveProject(args: {
@@ -20,7 +22,7 @@ export async function handleArchiveProject(args: {
     },
   });
 
-  if (!res.ok) return formatApiError(res, "archiving project");
+  if (!res.ok) return formatApiError(res, "deleting project");
 
   // Remove from local key store
   const store = loadKeyStore();
@@ -31,7 +33,7 @@ export async function handleArchiveProject(args: {
     content: [
       {
         type: "text",
-        text: `Project \`${args.project_id}\` archived and removed from local key store.`,
+        text: `Project \`${args.project_id}\` entered the soft-delete state (status: purged) and was removed from the local key store. Renewing the tier during the grace window would have reactivated it.`,
       },
     ],
   };

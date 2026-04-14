@@ -668,12 +668,15 @@ Prototype uses testnet tokens — no real money needed. With x402: Base Sepolia 
 - **Hobby** ($5): Real applications, persistent data, moderate traffic. Requires real payment.
 - **Team** ($20): Multi-user apps, heavy traffic, large storage needs. Requires real payment.
 
-**Lease lifecycle:**
-- Active: full read/write access
-- Expired (day 0): read-only for 7 days
-- Grace period ends (day 7): archived, no access
-- Permanent deletion at day 37 after expiry
-- Renew anytime before deletion with `renew_project`
+**Project lifecycle (~104-day soft-delete grace):**
+- `active`: full read/write access
+- Lease expires (day 0) → `past_due`: end-user data plane (site, PostgREST, email) keeps serving; owner gets first transition email
+- Day +14 → `frozen`: owner control-plane mutating ops (deploys, secret rotation, subdomain claims, function upload) return **402** with `lifecycle_state`, `entered_state_at`, and `next_transition_at` fields; data plane still serves; subdomain is reserved so the name can't be claimed by another wallet
+- Day +44 → `dormant`: scheduled (cron) functions pause; site still serves
+- Day +104 → `purged`: full cascade runs (schema dropped, Lambdas deleted, mailbox tombstoned); subdomain becomes claimable again 14 days later
+- Renewing or upgrading the tier at any point during grace reactivates the project to `active` and clears all timers in one transaction (use `renew_project` or `set_tier`)
+- Payment endpoints (tiers, billing, webhooks, faucet) are never gated, so renewal always works during grace
+- Pinned projects bypass the state machine entirely
 
 **Schema isolation:** Each project runs in its own Postgres schema. Cross-schema access is blocked.
 

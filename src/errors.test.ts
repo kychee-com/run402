@@ -119,6 +119,89 @@ describe("formatApiError", () => {
     );
     assert.equal(result.isError, true);
   });
+
+  it("renders full lifecycle fields on a 402 with a reactivate hint", () => {
+    const result = formatApiError(
+      {
+        status: 402,
+        body: {
+          message: "Project is past_due",
+          lifecycle_state: "past_due",
+          entered_state_at: "2026-04-01T00:00:00Z",
+          next_transition_at: "2026-04-15T00:00:00Z",
+          scheduled_purge_at: "2026-07-14T00:00:00Z",
+          renew_url: "/tiers/v1/prototype",
+        },
+      },
+      "deploying site",
+    );
+    const text = result.content[0]!.text;
+    assert.ok(text.includes("state=past_due"));
+    assert.ok(text.includes("entered=2026-04-01T00:00:00Z"));
+    assert.ok(text.includes("next=2026-04-15T00:00:00Z"));
+    assert.ok(text.includes("purge_at=2026-07-14T00:00:00Z"));
+    assert.ok(text.includes("soft-delete grace window"));
+    assert.ok(text.includes("set_tier"));
+    assert.ok(text.includes("Renew URL: /tiers/v1/prototype"));
+  });
+
+  it("renders partial lifecycle fields without undefined/null placeholders", () => {
+    const result = formatApiError(
+      {
+        status: 402,
+        body: {
+          message: "Project is frozen",
+          lifecycle_state: "frozen",
+          entered_state_at: "2026-04-14T00:00:00Z",
+        },
+      },
+      "rotating secret",
+    );
+    const text = result.content[0]!.text;
+    assert.ok(text.includes("state=frozen"));
+    assert.ok(text.includes("entered=2026-04-14T00:00:00Z"));
+    assert.ok(!text.includes("undefined"));
+    assert.ok(!text.includes("null"));
+    assert.ok(!text.includes("next="));
+    assert.ok(!text.includes("purge_at="));
+  });
+
+  it("leaves non-lifecycle 402 guidance unchanged when lifecycle_state is absent", () => {
+    const result = formatApiError(
+      {
+        status: 402,
+        body: {
+          message: "Payment required",
+          usage: { api_calls: 1000, limit: 1000 },
+          renew_url: "/tiers/v1/hobby",
+        },
+      },
+      "running SQL",
+    );
+    const text = result.content[0]!.text;
+    assert.ok(text.includes("API calls: 1000/1000"));
+    assert.ok(text.includes("Renew URL: /tiers/v1/hobby"));
+    assert.ok(!text.includes("Lifecycle:"));
+    assert.ok(!text.includes("soft-delete grace window"));
+  });
+
+  it("adds distinct 409 reserved-name guidance, not 403 lease-expired text", () => {
+    const result = formatApiError(
+      {
+        status: 409,
+        body: {
+          message: "Subdomain reserved",
+          hint: "Name held for original owner during grace period",
+        },
+      },
+      "claiming subdomain",
+    );
+    const text = result.content[0]!.text;
+    assert.ok(text.includes("409"));
+    assert.ok(text.includes("Hint: Name held for original owner"));
+    assert.ok(text.includes("reserved"));
+    assert.ok(!text.includes("lease may have expired"));
+  });
 });
 
 describe("projectNotFound", () => {

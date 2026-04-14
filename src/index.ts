@@ -396,7 +396,7 @@ server.tool(
 
 server.tool(
   "archive_project",
-  "Archive a project and remove it from the local key store. This action cannot be undone.",
+  "Soft-delete a project: the gateway moves it into the grace-period state machine (active → past_due → frozen → dormant → purged, ~104 days) and this tool removes it from the local key store. End-user data plane keeps serving during grace; renewing the tier before purge reactivates it. After purge the action cannot be undone.",
   archiveProjectSchema,
   async (args) => handleArchiveProject(args),
 );

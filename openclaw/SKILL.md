@@ -151,7 +151,7 @@ Once funded, x402 payments settle from allowance automatically. No code changes.
 | `site` | No | `[{ file, data, encoding? }]` — `base64` for binary. 50MB max |
 | `subdomain` | No | Custom subdomain → `name.run402.com` |
 
-Site deployment is free with active tier. If any step fails, project is auto-archived (no half-deployed apps).
+Site deployment is free with active tier. If any step fails, the project is rolled into the soft-delete grace window (no half-deployed apps).
 
 Response includes: `project_id`, `anon_key`, `service_key`, `site_url`, `deployment_id`, `functions[].url`, `subdomain_url`.
 
@@ -503,7 +503,7 @@ node <skill_dir>/scripts/projects.mjs usage <project_id>
 # Inspect schema (tables, columns, RLS)
 node <skill_dir>/scripts/projects.mjs schema <project_id>
 
-# Delete (archive and delete)
+# Soft-delete (enters ~104-day grace; renew to reactivate)
 node <skill_dir>/scripts/projects.mjs delete <project_id>
 
 # Run SQL
@@ -513,12 +513,13 @@ node <skill_dir>/scripts/projects.mjs sql <project_id> "SELECT 1"
 node <skill_dir>/scripts/projects.mjs rest <project_id> todos "done=eq.false&order=id"
 ```
 
-### Project Lifecycle
-- **Active**: full read/write
-- **Expired (day 0)**: read-only for 7 days
-- **Grace ends (day 7)**: archived (no access)
-- **Day 37**: permanent deletion
-- **Renew anytime** before deletion via `POST /tiers/v1/:tier`
+### Project Lifecycle (~104-day soft-delete grace)
+- **`active`**: full read/write
+- **Lease expires (day 0) → `past_due`**: end-user data plane (site, PostgREST, email) keeps serving; owner gets first transition email
+- **Day +14 → `frozen`**: owner control-plane mutating ops (deploys, secret rotation, subdomain claims, function upload) return **402** with `lifecycle_state` / `entered_state_at` / `next_transition_at`; data plane still serves; subdomain is reserved for the original wallet
+- **Day +44 → `dormant`**: scheduled (cron) functions pause; site still serves
+- **Day +104 → `purged`**: full cascade runs (schema dropped, Lambdas deleted, mailbox tombstoned); subdomain becomes claimable 14 days later
+- **Reactivation**: renewing or upgrading the tier during grace (`POST /tiers/v1/:tier`) reactivates the project to `active` and clears all timers in one transaction; payment paths are never gated so renewal always works
 
 ---
 
