@@ -712,7 +712,7 @@ The file is kept current during the product's build — when a developer or agen
 
 **Closure loop.** When a platform gap is closed upstream, the corresponding entry in each product's `run402-feedback.md` is marked `✅ FIXED` with a link to the run402 PR/commit that shipped the fix, and the product's workaround code is replaced with a call to the new capability. The entry is NOT deleted — the historical record remains as evidence of the feedback loop working.
 
-**Reference implementation.** kychon's `docs/run402-feedback.md` (14 items as of 2026-04-14) is the canonical example. It surfaced the lifecycle-hooks gap that is now shipped as run402's `on-signup` function trigger — a closed feedback loop from product demand to platform capability.
+**Reference implementation.** kychon's `docs/run402-feedback.md` (12 items as of 2026-04-14) is the canonical example. It surfaced the lifecycle-hooks gap that is now shipped as run402's `on-signup` function trigger — a closed feedback loop from product demand to platform capability. It also surfaced the silent auto-archive / pin chicken-and-egg / orphaned custom-domain issues that triggered the 2026-04-14 kychon recovery (items 1-4).
 
 ## Acceptance Criteria
 
