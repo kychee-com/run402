@@ -232,13 +232,18 @@ export async function submitDrainCall(input: SubmitDrainInput): Promise<SubmitRe
         return { r: sig.r, s: sig.s, v: sig.v };
       },
     );
-    // Recompute the actual drain value: balance - estimated gas cost
-    const drainValue = balance - built.estimatedGasCostWei;
+    // Reserve a 20% safety margin above the raw gas-cost estimate so
+    // EIP-1559 base-fee ticks between the first and second build don't
+    // make the final tx's (value + gas*maxFeePerGas) exceed balance. Any
+    // residual dust is below DUST_WEI and clears on the subsequent DELETE.
+    const gasReservation = (built.estimatedGasCostWei * BigInt(120)) / BigInt(100);
+    const drainValue = balance - gasReservation;
     if (drainValue <= BigInt(0)) {
       throw new HttpError(409, "nothing_to_drain", {
         error: "nothing_to_drain",
         balance_wei: balance.toString(),
         estimated_gas_cost_wei: built.estimatedGasCostWei.toString(),
+        reserved_gas_cost_wei: gasReservation.toString(),
       });
     }
     // Re-build with exact value

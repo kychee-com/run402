@@ -314,4 +314,60 @@ describe("submitDrainCall", () => {
       /invalid_destination_address/,
     );
   });
+
+  // Regression for kms-drain-gas-margin-fix: under EIP-1559, the base fee can
+  // tick up between the placeholder-value build and the final drain build, so
+  // the reserved `gas * firstMaxFeePerGas` undershoots the ACTUAL cost of the
+  // second broadcast. Fix: reserve a 20% safety margin when computing the
+  // drain value.
+  it("reserves a 20% gas-cost safety margin so EIP-1559 fee bumps don't revert", async () => {
+    const balance = BigInt(1_000_000_000_000_000); // 0.001 ETH
+    const firstGasCostWei = BigInt(21_000) * BigInt(1_000_000_000); // 21k × 1 gwei = 21_000_000_000_000
+    mockGetNativeBalance = async () => balance;
+    const buildCalls: Array<{ valueWei: bigint }> = [];
+    mockBuildTx = async (input: { valueWei: bigint }) => {
+      buildCalls.push({ valueWei: input.valueWei });
+      return {
+        digest32: new Uint8Array(32),
+        serializedSigned: "0xdeadbeef",
+        estimatedGasCostWei: firstGasCostWei,
+        nonce: 0,
+      };
+    };
+    const result = await submitDrainCall({
+      projectId: "p1", walletId: "w1",
+      destinationAddress: "0x000000000000000000000000000000000000dEaD",
+    });
+    assert.equal(result.tx_hash, "0xnewtx");
+    // The SECOND build (the real drain) must reserve 20% above raw gas cost.
+    const expectedReservation = (firstGasCostWei * BigInt(120)) / BigInt(100);
+    const secondValue = buildCalls[1]!.valueWei;
+    assert.equal(
+      secondValue,
+      balance - expectedReservation,
+      `drain value should be balance - 1.2*gasCost (${balance - expectedReservation}), got ${secondValue}`,
+    );
+  });
+
+  it("nothing_to_drain when balance < 1.2×gasCost (post-margin guard)", async () => {
+    const balance = BigInt(20_000) * BigInt(1_000_000_000); // 20k gas × 1 gwei = less than 1.2 × 21k gwei
+    mockGetNativeBalance = async () => balance * BigInt(1); // keep > DUST so we pass the initial dust gate
+    // Force DUST gate pass but post-margin drainValue < 0.
+    // DUST_WEI = 1000; balance 20_000 gwei = 20e12 wei > 1000 wei ✓
+    const firstGasCostWei = BigInt(21_000) * BigInt(1_000_000_000); // 21k gwei
+    mockBuildTx = async () => ({
+      digest32: new Uint8Array(32),
+      serializedSigned: "0xdeadbeef",
+      estimatedGasCostWei: firstGasCostWei,
+      nonce: 0,
+    });
+    mockGetNativeBalance = async () => firstGasCostWei; // exactly equal to raw gas; post-margin goes negative
+    await assert.rejects(
+      () => submitDrainCall({
+        projectId: "p1", walletId: "w1",
+        destinationAddress: "0x000000000000000000000000000000000000dEaD",
+      }),
+      /nothing_to_drain/,
+    );
+  });
 });
