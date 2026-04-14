@@ -65,7 +65,7 @@ export function initConsentBanner(opts: InitOptions): void {
 
   // Always expose openConsentSettings so the footer link works regardless
   // of whether the banner was auto-shown.
-  (window as any).openConsentSettings = () => buildBanner(opts, root, true);
+  (window as unknown as { openConsentSettings: () => void }).openConsentSettings = () => buildBanner(opts, root, true);
 
   // Notify host of the current effective consent (for analytics init flow).
   const stored = loadConsent(window.localStorage);

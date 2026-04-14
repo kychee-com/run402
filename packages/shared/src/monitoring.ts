@@ -90,7 +90,7 @@ export function createMonitor(config: MonitoringConfig): Monitor {
     try {
       await fn();
     } catch (err) {
-      // eslint-disable-next-line no-console
+       
       console.error(`[monitoring] ${channel} send failed:`, err);
     }
   }
@@ -98,13 +98,13 @@ export function createMonitor(config: MonitoringConfig): Monitor {
   function logToConsole(severity: Severity, event: string, details?: object, error?: Error): void {
     const prefix = `[${severity}] [${product}] ${event}`;
     if (error) {
-      // eslint-disable-next-line no-console
+       
       console.error(prefix, details ?? "", error);
     } else if (severity === "CRITICAL" || severity === "WARN") {
-      // eslint-disable-next-line no-console
+       
       console.warn(prefix, details ?? "");
     } else {
-      // eslint-disable-next-line no-console
+       
       console.log(prefix, details ?? "");
     }
   }
