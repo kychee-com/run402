@@ -54,7 +54,7 @@
 
 - [x] 8.1 Add `POST /admin/projects/:id/reactivate` in `routes/admin.ts`, scoped to admin identity; calls `advanceLifecycleForProject` with a forced `→ active` path *(landed at `POST /projects/v1/admin/:id/reactivate` to reuse the existing admin auth router scope)*
 - [x] 8.2 Return `409 Conflict` when the target is in `purged` or `archived` (terminal, no data to restore)
-- [ ] 8.3 Write an audit row recording the operator identity, project id, previous state, and optional reason *(currently logs; dedicated audit table deferred)*
+- [~] 8.3 Write an audit row recording the operator identity, project id, previous state, and optional reason *(DE-SCOPED from this change. A lifecycle-specific audit table would duplicate state that belongs in a broader "operator actions audit" feature covering pin/unpin, wallet reassignment, faucet admin drips, admin SQL, reactivate, subdomain release, etc. Parked as openspec/changes/operator-actions-audit for future work. Today: operator actions are logged to stdout → CloudWatch `/agentdb/gateway` with ~30d retention, searchable by keyword.)*
 
 ## 9. Email templates
 
