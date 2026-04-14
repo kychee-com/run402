@@ -22,3 +22,4 @@ __pycache__/
 .moltbook-tmp/
 .claude/scheduled_tasks.lock
 coverage/
+.wrangler/
