@@ -23,6 +23,11 @@ import { pool } from "../db/pool.js";
 import { sql } from "../db/sql.js";
 import { purgeProject, projectCache } from "./projects.js";
 import { sendPlatformEmail } from "./platform-mail.js";
+import {
+  renderPastDueEmail,
+  renderFrozenEmail,
+  renderFinalWarningEmail,
+} from "./project-email-templates.js";
 import { errorMessage } from "../utils/errors.js";
 import { LIFECYCLE_ENABLED } from "../config.js";
 
@@ -66,43 +71,36 @@ interface LifecycleEmailContext {
 async function emailPastDue(ctx: LifecycleEmailContext): Promise<void> {
   const to = await lookupBillingEmailForProject(ctx.projectId);
   if (!to) { console.warn(`[lifecycle] no billing email for ${ctx.projectId}, skipping past_due email`); return; }
-  const frozenOn = ctx.nextTransitionAt.toISOString().slice(0, 10);
   await sendPlatformEmail({
     to,
-    subject: `Your run402 project "${ctx.projectName}" is behind on payment`,
-    html: `<p>Your run402 project <strong>${ctx.projectName}</strong> has reached the end of its billing lease. Everything is still running — end users are not affected.</p>
-<p>If you don't renew your wallet's tier, your control-plane access (deploys, secret rotation, subdomain claims) will be <strong>blocked on ${frozenOn}</strong>. Your site will continue to serve.</p>
-<p>You have plenty of time. Renew at <code>api.run402.com</code> whenever you're ready.</p>`,
-    text: `Your run402 project "${ctx.projectName}" is behind on payment. Site traffic is unaffected. Control-plane access (deploys, secrets, subdomains) will lock on ${frozenOn} if you do not renew.`,
+    ...renderPastDueEmail({
+      projectName: ctx.projectName,
+      frozenOn: ctx.nextTransitionAt.toISOString().slice(0, 10),
+    }),
   });
 }
 
 async function emailFrozen(ctx: LifecycleEmailContext): Promise<void> {
   const to = await lookupBillingEmailForProject(ctx.projectId);
   if (!to) { console.warn(`[lifecycle] no billing email for ${ctx.projectId}, skipping frozen email`); return; }
-  const dormantOn = ctx.nextTransitionAt.toISOString().slice(0, 10);
   await sendPlatformEmail({
     to,
-    subject: `run402 project "${ctx.projectName}" is frozen — deploys disabled`,
-    html: `<p>Your run402 project <strong>${ctx.projectName}</strong> is now <strong>frozen</strong>. Deploys, subdomain claims, secret rotation, and other control-plane changes are blocked until you renew.</p>
-<p>Your site continues to serve end users as normal. Your subdomain name is reserved for you — no one else can claim it.</p>
-<p>On <strong>${dormantOn}</strong>, scheduled functions will pause. Shortly after, data deletion will be scheduled.</p>
-<p>Renew at <code>api.run402.com</code> to unfreeze immediately.</p>`,
-    text: `run402 project "${ctx.projectName}" is frozen. Site still serves; deploys blocked. Scheduled functions pause on ${dormantOn}. Renew at api.run402.com.`,
+    ...renderFrozenEmail({
+      projectName: ctx.projectName,
+      dormantOn: ctx.nextTransitionAt.toISOString().slice(0, 10),
+    }),
   });
 }
 
 async function emailPurgeFinalWarning(ctx: LifecycleEmailContext & { scheduledPurgeAt: Date }): Promise<void> {
   const to = await lookupBillingEmailForProject(ctx.projectId);
   if (!to) { console.warn(`[lifecycle] no billing email for ${ctx.projectId}, skipping purge_final_warning email`); return; }
-  const purgeAt = ctx.scheduledPurgeAt.toISOString();
   await sendPlatformEmail({
     to,
-    subject: `FINAL NOTICE: run402 project "${ctx.projectName}" will be permanently deleted tomorrow`,
-    html: `<p><strong>This is your final warning.</strong> Your run402 project <strong>${ctx.projectName}</strong> will be permanently deleted on <strong>${purgeAt}</strong> — less than 24 hours from now.</p>
-<p>All tenant data, functions, deployments, and secrets will be destroyed. Your subdomain will become claimable by others 14 days after deletion.</p>
-<p>This is irreversible. Renew now at <code>api.run402.com</code> to cancel the deletion.</p>`,
-    text: `FINAL NOTICE: run402 project "${ctx.projectName}" will be permanently deleted on ${purgeAt}. Less than 24 hours left. Renew at api.run402.com to cancel.`,
+    ...renderFinalWarningEmail({
+      projectName: ctx.projectName,
+      scheduledPurgeAt: ctx.scheduledPurgeAt.toISOString(),
+    }),
   });
 }
 

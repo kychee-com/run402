@@ -58,10 +58,10 @@
 
 ## 9. Email templates
 
-- [ ] 9.1 Add `project_past_due` template: subject, HTML, and text bodies; includes project name, the exact frozen-transition date, and the topup URL
-- [ ] 9.2 Add `project_frozen` template: names the project, states that deploys and control-plane writes are blocked, names the dormant-transition date, and explicitly warns that scheduled functions will pause on that date
-- [ ] 9.3 Add `project_purge_final_warning` template: emphasizes 24 hours remain, shows the exact `scheduled_purge_at` timestamp, and gives the renewal link one last time
-- [ ] 9.4 Verify all three templates render correctly via the existing email-send test harness
+- [x] 9.1 Add `project_past_due` template: subject, HTML, and text bodies; includes project name, the exact frozen-transition date, and the topup URL *(renderPastDueEmail in services/project-email-templates.ts)*
+- [x] 9.2 Add `project_frozen` template: names the project, states that deploys and control-plane writes are blocked, names the dormant-transition date, and explicitly warns that scheduled functions will pause on that date *(renderFrozenEmail)*
+- [x] 9.3 Add `project_purge_final_warning` template: emphasizes 24 hours remain, shows the exact `scheduled_purge_at` timestamp, and gives the renewal link one last time *(renderFinalWarningEmail, clickable `<a>` anchor)*
+- [x] 9.4 Verify all three templates render correctly via the existing email-send test harness *(15 tests in project-email-templates.test.ts: placeholder coverage, HTML escaping, urgency language, link rendering, shape regression)*
 
 ## 10. Tests
 
