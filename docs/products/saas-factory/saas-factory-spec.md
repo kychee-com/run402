@@ -1,6 +1,6 @@
 ---
 product: saas-factory
-version: 1.18.0
+version: 1.19.0
 status: Draft
 type: product
 interfaces: [document]
@@ -697,7 +697,7 @@ Products whose core is NOT a database-driven site (CLI tool, static documentatio
 
 ### F27. Live Platform-Gaps Feedback Loop
 
-Every saas-factory product MUST maintain a `docs/run402-feedback.md` file (or equivalent, named consistently across products) in the **public repo** that enumerates, in real time, the run402 platform capabilities the product needs but doesn't yet have. Each entry is a short numbered paragraph covering:
+Every saas-factory product MUST maintain a `docs/run402-feedback.md` file (or equivalent, named consistently across products) in the **private repo** that enumerates, in real time, the run402 platform capabilities the product needs but doesn't yet have. Each entry is a short numbered paragraph covering:
 
 - The gap (what capability is missing)
 - The workaround the product uses today (or "blocks the product" if none exists)
@@ -708,11 +708,11 @@ The file is kept current during the product's build — when a developer or agen
 
 **Strategic rationale.** Without this loop, platform priorities drift away from product reality. With it, every saas-factory product doubles as a live backlog of platform improvements, sized by the number of products hitting the same gap. "Three products need batch PATCH" is a stronger prioritization signal than any single operator's intuition.
 
-**Format requirement.** `docs/run402-feedback.md` uses a flat numbered list with one paragraph per gap, NOT a table. Tables discourage nuance; gaps need a sentence of workaround context to be actionable upstream. The file lives in the PUBLIC repo, not the private repo — it is part of the product's honest public record, visible to forkers evaluating whether to deploy on run402 or elsewhere. Transparency about platform gaps is part of the trojan-horse story, not against it: forkers who see real gaps with documented workarounds trust the platform more than forkers who see marketing claims of completeness.
+**Format requirement.** `docs/run402-feedback.md` uses a flat numbered list with one paragraph per gap, NOT a table. Tables discourage nuance; gaps need a sentence of workaround context to be actionable upstream. The file lives in the **private repo**, not the public repo — it is operator-internal content: incident records, admin-SQL surgery recipes, operator workarounds specific to the hosted deployment, and strategic roadmap-adjacent commentary. Forkers deploying the public template on their own run402 projects will hit different gaps than the hosted operator and should maintain their own private feedback log; listing the hosted operator's entire gap history in the MIT template both leaks strategy and gives competitors a ready-made weakness map. Public-facing platform transparency (if desired) belongs in a sanitized, generic summary on the product's marketing site — not in the raw operator feedback log.
 
 **Closure loop.** When a platform gap is closed upstream, the corresponding entry in each product's `run402-feedback.md` is marked `✅ FIXED` with a link to the run402 PR/commit that shipped the fix, and the product's workaround code is replaced with a call to the new capability. The entry is NOT deleted — the historical record remains as evidence of the feedback loop working.
 
-**Reference implementation.** kychon's `docs/run402-feedback.md` (12 items as of 2026-04-14) is the canonical example. It surfaced the lifecycle-hooks gap that is now shipped as run402's `on-signup` function trigger — a closed feedback loop from product demand to platform capability. It also surfaced the silent auto-archive / pin chicken-and-egg / orphaned custom-domain issues that triggered the 2026-04-14 kychon recovery (items 1-4).
+**Reference implementation.** `kychee-com/kychon-private/docs/run402-feedback.md` (12 items as of 2026-04-14) is the canonical example. It surfaced the lifecycle-hooks gap that is now shipped as run402's `on-signup` function trigger — a closed feedback loop from product demand to platform capability. It also surfaced the silent auto-archive / pin chicken-and-egg / orphaned custom-domain issues that triggered the 2026-04-14 kychon recovery (items 1-4).
 
 ## Acceptance Criteria
 
@@ -934,7 +934,7 @@ The file is kept current during the product's build — when a developer or agen
 - [ ] F26.6: `kychee-com/kychon` is cited as the reference implementation of F26
 
 ### F27. Live Platform-Gaps Feedback Loop
-- [ ] Every saas-factory product ships a `docs/run402-feedback.md` (or equivalently named) file in the PUBLIC repo
+- [ ] Every saas-factory product ships a `docs/run402-feedback.md` (or equivalently named) file in the PRIVATE repo (operator-internal; see F27 rationale)
 - [ ] Entries are flat numbered paragraphs, not a table, with four fields: gap, workaround, suggested platform feature, priority
 - [ ] When a platform gap is discovered during implementation, the entry is appended in the same commit as the workaround
 - [ ] When a platform gap is closed upstream, the entry is marked `✅ FIXED` with a link to the run402 PR/commit; the entry is NOT deleted (historical record preserved)
