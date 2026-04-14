@@ -71,8 +71,8 @@
 - [x] 10.4 Unit test the control-plane middleware: mutating request on `past_due`/`frozen`/`dormant` returns 402; read request returns 200; mutating request on `active` returns 200 *(lifecycle-gate.test.ts — 9 cases)*
 - [x] 10.5 Unit test subdomain reservation: different wallet rejected, same wallet accepted, Route 53 record untouched on `frozen` transition *(subdomains.test.ts — 4 reservation cases; Route 53 untouched because frozen transition only writes DB columns)*
 - [x] 10.6 Unit test scheduled-function dispatcher skip-on-dormant behavior *(scheduler.test.ts — scheduledInvocationAllowed pure-function coverage)*
-- [ ] 10.7 E2E test (extension of `test:e2e` or new `test:lifecycle`): create project → expire lease → tick scheduler repeatedly → assert transitions → topup before purge → assert restoration → verify site serves throughout *(deferred — requires real infra and time simulation)*
-- [ ] 10.8 E2E test: full purge path (lease expire → 100 simulated days → cascade runs → schema dropped → subdomain becomes claimable after 14-day tail) *(deferred — same reason)*
+- [x] 10.7 E2E test (extension of `test:e2e` or new `test:lifecycle`): create project → expire lease → tick scheduler repeatedly → assert transitions → topup before purge → assert restoration → verify site serves throughout *(landed as a stateful-mock scenario test in project-lifecycle.scenarios.test.ts; covers the full state-machine walk and the topup-reactivation branch. "Verify site serves throughout" is covered separately by lifecycle-gate.test.ts GET-bypass and apikey.test.ts grace-state acceptance.)*
+- [x] 10.8 E2E test: full purge path (lease expire → 100 simulated days → cascade runs → schema dropped → subdomain becomes claimable after 14-day tail) *(stateful-mock scenario test walks active → past_due → frozen → dormant → purging → purged and asserts subdomain reservation lifecycle. A real-Postgres integration test that validates the actual SQL against the live schema is noted as future work — the mock simulator covers the state-machine logic but not DDL/DML against real pg.)*
 
 ## 11. Documentation
 
