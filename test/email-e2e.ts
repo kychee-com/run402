@@ -450,7 +450,8 @@ async function run() {
           "X-Admin-Key": ADMIN_KEY,
         },
       });
-      // After project deletion, the service_key is expired so we need admin
+      // After project deletion, the project status is terminal so serviceKeyAuth
+      // returns 404 (not 401) — admin path bypasses the project-status check.
       if (res2.status === 200) {
         const body = await res2.json() as { status: string };
         ok("mailbox tombstoned", body.status === "tombstoned", `status=${body.status}`);

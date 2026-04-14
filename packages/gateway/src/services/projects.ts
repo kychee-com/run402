@@ -2,7 +2,6 @@ import jwt from "jsonwebtoken";
 import { pool } from "../db/pool.js";
 import { sql, type SQL } from "../db/sql.js";
 import { JWT_SECRET } from "../config.js";
-import { getLeaseDuration } from "@run402/shared";
 import { allocateSlot } from "./slots.js";
 import { deleteProjectFunctions } from "./functions.js";
 import { deleteProjectSubdomains } from "./subdomains.js";
@@ -133,10 +132,11 @@ export function isServingStatus(status: string): boolean {
 }
 
 /**
- * Derive project JWT keys. Anon key is deterministic (no exp).
+ * Derive project JWT keys. Neither key has an exp claim — lease/lifecycle
+ * enforcement happens in apikeyAuth/serviceKeyAuth middleware via projectCache
+ * + isServingStatus + lifecycleGate, not in the JWT.
  */
-export function deriveProjectKeys(projectId: string, tier: TierName): { anonKey: string; serviceKey: string } {
-  const leaseMs = getLeaseDuration(tier);
+export function deriveProjectKeys(projectId: string, _tier: TierName): { anonKey: string; serviceKey: string } {
   const anonKey = jwt.sign(
     { role: "anon", project_id: projectId, iss: "agentdb" },
     JWT_SECRET,
@@ -144,7 +144,6 @@ export function deriveProjectKeys(projectId: string, tier: TierName): { anonKey:
   const serviceKey = jwt.sign(
     { role: "service_role", project_id: projectId, iss: "agentdb" },
     JWT_SECRET,
-    { expiresIn: `${Math.floor(leaseMs / 1000)}s` },
   );
   return { anonKey, serviceKey };
 }
@@ -184,9 +183,10 @@ export async function createProject(
   if (!schemaSlot) return null;
 
   const now = new Date();
-  const leaseMs = getLeaseDuration(tier);
   const projectId = `prj_${Date.now()}_${schemaSlot.replace("p", "")}`;
 
+  // Both keys are stateless JWTs with no exp — lease/lifecycle enforcement
+  // happens in apikeyAuth/serviceKeyAuth middleware, not in the JWT.
   const anonKey = jwt.sign(
     { role: "anon", project_id: projectId, iss: "agentdb" },
     JWT_SECRET,
@@ -194,7 +194,6 @@ export async function createProject(
   const serviceKey = jwt.sign(
     { role: "service_role", project_id: projectId, iss: "agentdb" },
     JWT_SECRET,
-    { expiresIn: `${Math.floor(leaseMs / 1000)}s` },
   );
 
   // Defensive: ensure the schema slot is clean before use.

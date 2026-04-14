@@ -25,6 +25,7 @@ import { createHash } from "node:crypto";
 import { writeFileSync, readFileSync, mkdirSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import jwt from "jsonwebtoken";
 import { pool } from "../db/pool.js";
 import { sql } from "../db/sql.js";
 import {
@@ -909,6 +910,20 @@ async function refreshFunctionEnvVars(projectId: string): Promise<void> {
     existingServiceKey = fnConfig.Configuration?.Environment?.Variables?.RUN402_SERVICE_KEY || "";
   } catch {
     // Best effort
+  }
+
+  // Self-heal: legacy service_keys carry an `exp` claim from before the
+  // no-expiry change. Re-mint without `exp` so functions don't silently
+  // break at the old lease boundary. Healthy no-exp keys pass through.
+  if (existingServiceKey) {
+    const decoded = jwt.decode(existingServiceKey) as { exp?: number } | null;
+    if (decoded?.exp) {
+      existingServiceKey = jwt.sign(
+        { role: "service_role", project_id: projectId, iss: "agentdb" },
+        JWT_SECRET,
+      );
+      console.log(`  Self-healed legacy exp'd service_key for ${projectId}`);
+    }
   }
 
   const envVars: Record<string, string> = {

@@ -385,13 +385,13 @@ describe("deriveProjectKeys", () => {
     assert.equal(decoded.iss, "agentdb");
   });
 
-  it("returns valid JWT serviceKey with expiry", () => {
+  it("returns valid JWT serviceKey without expiry", () => {
     const { serviceKey } = deriveProjectKeys("prj_100", "prototype");
     const decoded = jwt.verify(serviceKey, JWT_SECRET) as jwt.JwtPayload;
     assert.equal(decoded.role, "service_role");
     assert.equal(decoded.project_id, "prj_100");
     assert.equal(decoded.iss, "agentdb");
-    assert.ok(decoded.exp, "service key should have an expiration");
+    assert.equal(decoded.exp, undefined, "service key should have no expiration");
   });
 
   it("anonKey has no expiry", () => {
@@ -407,13 +407,13 @@ describe("deriveProjectKeys", () => {
     assert.notEqual(keys1.serviceKey, keys2.serviceKey);
   });
 
-  it("produces different service keys for different tiers (different expiry)", () => {
+  it("produces identical keys for the same project across tiers", () => {
     const keys1 = deriveProjectKeys("prj_same", "prototype");
     const keys2 = deriveProjectKeys("prj_same", "team");
-    // anon keys are deterministic: same project + same secret = same token
+    // Both key types are deterministic from (project_id, JWT_SECRET) —
+    // tier no longer influences signing (no exp).
     assert.equal(keys1.anonKey, keys2.anonKey);
-    // service keys differ because of different expiresIn
-    assert.notEqual(keys1.serviceKey, keys2.serviceKey);
+    assert.equal(keys1.serviceKey, keys2.serviceKey);
   });
 });
 
@@ -460,7 +460,7 @@ describe("createProject", () => {
     const serviceDecoded = jwt.verify(project.serviceKey, JWT_SECRET) as jwt.JwtPayload;
     assert.equal(serviceDecoded.role, "service_role");
     assert.equal(serviceDecoded.project_id, project.id);
-    assert.ok(serviceDecoded.exp, "service key should have expiry");
+    assert.equal(serviceDecoded.exp, undefined, "service key should have no expiry");
   });
 
   it("caches the created project", async () => {
