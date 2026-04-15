@@ -128,7 +128,7 @@ Five discrete admin-site changes at run402.com/admin:
 
 - [x] **LIMIT cap on revenue breakdown** [code] — added `LIMIT 501`, slice to 500, `truncated: boolean` on result. When truncated, runs scalar SUM query so footer total stays accurate. +2 tests.
 - [x] **Projects Delete — move to bottom panel** [frontend-logic] — per-row Delete removed; new `.release-panel`-styled delete form below table with project-id + YES confirm gate.
-- [x] **ECS task memory 1024→1536 MB** [infra] — [pod-stack.ts:240](../../infra/lib/pod-stack.ts#L240) updated.
+- [x] **ECS task memory 1024→2048 MB** [infra] — Fargate rejected 1536 at 512 CPU (invalid combo); bumped to next valid value (2048). Task def rev 45 live. Cost ≈+$3.20/mo.
 - [x] **Regression** — 1160/1160 pass.
 - [x] **Ship** [ship] — shipped via CI gateway deploy + CDK infra deploy.
 
@@ -179,3 +179,4 @@ _Populated during implementation by /implement_
 - 2026-04-15: Added Phase 3 (e) — finance page resource safety (P0) — after gateway OOM crash at 09:25 local triggered by two concurrent `/admin/finance` loads. See DD-5.
 - 2026-04-15: Implementation complete. Commits d50fbb3 (filter + cache) and 1b8441b (admin UI + subdomain release panel) shipped to prod via CI deploy-gateway workflow. Gateway v1.0.4 healthy. Deferred defense-in-depth and DOM tests documented in Implementation Log.
 - 2026-04-15: Round 2 opened — user confirmed only 2 admins ever, so #3 (rate limit) is not needed. Adding Phase 8: LIMIT cap on revenue breakdown, ECS memory 1024→1536 MB, Projects Delete moved to bottom panel matching subdomains release UX.
+- 2026-04-15: Round 2 shipped. Commits 5410e4a (LIMIT + delete panel + 1536 attempt) and 3964975 (CI type-check fix). Fargate rejected 512 CPU + 1536 MB (unsupported combo); bumped to 2048 MB — valid and deployed via CDK. ECS task def rev 45 live at 20:19:40, Memory=2048 Running=1/1 ROLLOUT=COMPLETED. Cost delta ~+$3.20/mo (not $14). Gateway `/health` green post-deploy.
