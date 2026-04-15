@@ -428,6 +428,11 @@ Templates: `project_invite` (project_name, invite_url), `magic_link` (project_na
 - `run402 email list [--project <id>]`
 - `run402 email get <message_id> [--project <id>]`
 - `run402 email get-raw <message_id> [--project <id>] [--output <file>]` — fetch raw RFC-822 bytes of an inbound message (for DKIM/zk-email verification). Writes to stdout or `--output` file. Inbound only; outbound returns 404.
+- `run402 email webhooks list [--project <id>]` — list all webhooks registered on the project's mailbox
+- `run402 email webhooks get <webhook_id> [--project <id>]` — get webhook details
+- `run402 email webhooks delete <webhook_id> [--project <id>]` — delete a webhook (idempotent)
+- `run402 email webhooks update <webhook_id> [--url <url>] [--events <e1,e2>] [--project <id>]` — update webhook URL and/or events
+- `run402 email webhooks register --url <url> --events <e1,e2> [--project <id>]` — register a new webhook. Valid events: delivery, bounced, complained, reply_received
 
 Raw HTML: `--subject` (max 998 chars) + `--html` (max 1MB). Plaintext auto-generated from HTML if `--text` omitted. `--from-name` sets display name on From header (both modes): `"My App" <slug@mail.run402.com>`.
 
