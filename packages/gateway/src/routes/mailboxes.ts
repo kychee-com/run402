@@ -9,6 +9,10 @@
  * GET    /v1/mailboxes/:id/messages         — List messages (service_key auth)
  * GET    /v1/mailboxes/:id/messages/:msgId  — Get message with replies (service_key auth)
  * POST   /v1/mailboxes/:id/webhooks         — Register webhook (service_key auth)
+ * GET    /v1/mailboxes/:id/webhooks         — List webhooks (service_key auth)
+ * GET    /v1/mailboxes/:id/webhooks/:whkId  — Get webhook (service_key auth)
+ * DELETE /v1/mailboxes/:id/webhooks/:whkId  — Delete webhook (service_key auth)
+ * PATCH  /v1/mailboxes/:id/webhooks/:whkId  — Update webhook (service_key auth)
  * POST   /v1/mailboxes/:id/status           — Admin reactivate (admin auth)
  */
 
@@ -288,6 +292,134 @@ router.post("/mailboxes/v1/:id/webhooks", serviceKeyAuth, lifecycleGate, asyncHa
   );
 
   res.status(201).json({ webhook_id: webhookId, url, events });
+}));
+
+// GET /v1/mailboxes/:id/webhooks — list webhooks
+router.get("/mailboxes/v1/:id/webhooks", serviceKeyAuth, lifecycleGate, asyncHandler(async (req: Request, res: Response) => {
+  if (!req.params.id || typeof req.params.id !== "string") throw new HttpError(400, "Invalid mailbox_id");
+
+  const mailbox = await getMailbox(req.params.id as string);
+  if (!mailbox) throw new HttpError(404, "Mailbox not found");
+
+  const projectId = req.project?.id;
+  if (projectId && mailbox.project_id !== projectId) {
+    throw new HttpError(403, "Mailbox owned by different project");
+  }
+
+  const result = await pool.query(
+    sql(`SELECT id, url, events, created_at FROM internal.email_webhooks WHERE mailbox_id = $1 ORDER BY created_at`),
+    [req.params.id],
+  );
+
+  res.json({
+    webhooks: result.rows.map((r: { id: string; url: string; events: string[]; created_at: string }) => ({
+      webhook_id: r.id,
+      url: r.url,
+      events: r.events,
+      created_at: r.created_at,
+    })),
+  });
+}));
+
+// GET /v1/mailboxes/:id/webhooks/:webhook_id — get single webhook
+router.get("/mailboxes/v1/:id/webhooks/:webhook_id", serviceKeyAuth, lifecycleGate, asyncHandler(async (req: Request, res: Response) => {
+  if (!req.params.id || typeof req.params.id !== "string") throw new HttpError(400, "Invalid mailbox_id");
+
+  const mailbox = await getMailbox(req.params.id as string);
+  if (!mailbox) throw new HttpError(404, "Mailbox not found");
+
+  const projectId = req.project?.id;
+  if (projectId && mailbox.project_id !== projectId) {
+    throw new HttpError(403, "Mailbox owned by different project");
+  }
+
+  const result = await pool.query(
+    sql(`SELECT id, url, events, created_at FROM internal.email_webhooks WHERE id = $1 AND mailbox_id = $2`),
+    [req.params.webhook_id, req.params.id],
+  );
+
+  if (result.rows.length === 0) throw new HttpError(404, "Webhook not found");
+
+  const r = result.rows[0] as { id: string; url: string; events: string[]; created_at: string };
+  res.json({ webhook_id: r.id, url: r.url, events: r.events, created_at: r.created_at });
+}));
+
+// DELETE /v1/mailboxes/:id/webhooks/:webhook_id — delete webhook (idempotent)
+router.delete("/mailboxes/v1/:id/webhooks/:webhook_id", serviceKeyAuth, lifecycleGate, asyncHandler(async (req: Request, res: Response) => {
+  if (!req.params.id || typeof req.params.id !== "string") throw new HttpError(400, "Invalid mailbox_id");
+
+  const mailbox = await getMailbox(req.params.id as string);
+  if (!mailbox) throw new HttpError(404, "Mailbox not found");
+
+  const projectId = req.project?.id;
+  if (projectId && mailbox.project_id !== projectId) {
+    throw new HttpError(403, "Mailbox owned by different project");
+  }
+
+  await pool.query(
+    sql(`DELETE FROM internal.email_webhooks WHERE id = $1 AND mailbox_id = $2`),
+    [req.params.webhook_id, req.params.id],
+  );
+
+  res.status(204).end();
+}));
+
+// PATCH /v1/mailboxes/:id/webhooks/:webhook_id — update webhook
+router.patch("/mailboxes/v1/:id/webhooks/:webhook_id", serviceKeyAuth, lifecycleGate, asyncHandler(async (req: Request, res: Response) => {
+  if (!req.params.id || typeof req.params.id !== "string") throw new HttpError(400, "Invalid mailbox_id");
+
+  const { url, events } = req.body || {};
+  if (!url && !events) {
+    throw new HttpError(400, "Provide at least one of 'url' or 'events' to update");
+  }
+
+  if (url) validateURL(url, "url");
+
+  const validEvents = ["delivery", "bounced", "complained", "reply_received"];
+  if (events) {
+    if (!Array.isArray(events) || events.length === 0) {
+      throw new HttpError(400, "Missing or invalid 'events' array");
+    }
+    for (const e of events) {
+      if (!validEvents.includes(e)) {
+        throw new HttpError(400, `Invalid event: ${e}. Valid events: ${validEvents.join(", ")}`);
+      }
+    }
+  }
+
+  const mailbox = await getMailbox(req.params.id as string);
+  if (!mailbox) throw new HttpError(404, "Mailbox not found");
+
+  const projectId = req.project?.id;
+  if (projectId && mailbox.project_id !== projectId) {
+    throw new HttpError(403, "Mailbox owned by different project");
+  }
+
+  const setClauses: string[] = [];
+  const params: unknown[] = [];
+  let paramIdx = 1;
+
+  if (url) {
+    setClauses.push(`url = $${paramIdx++}`);
+    params.push(url);
+  }
+  if (events) {
+    setClauses.push(`events = $${paramIdx++}`);
+    params.push(JSON.stringify(events));
+  }
+
+  params.push(req.params.webhook_id);
+  params.push(req.params.id);
+
+  const result = await pool.query(
+    sql(`UPDATE internal.email_webhooks SET ${setClauses.join(", ")} WHERE id = $${paramIdx++} AND mailbox_id = $${paramIdx} RETURNING id, url, events, created_at`),
+    params,
+  );
+
+  if (result.rows.length === 0) throw new HttpError(404, "Webhook not found");
+
+  const r = result.rows[0] as { id: string; url: string; events: string[]; created_at: string };
+  res.json({ webhook_id: r.id, url: r.url, events: r.events, created_at: r.created_at });
 }));
 
 // POST /v1/mailboxes/:id/status — admin-only reactivate suspended mailbox

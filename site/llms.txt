@@ -1128,6 +1128,10 @@ Custom domains let users point their own domain (e.g., `example.com`) at a Run40
 | `/mailboxes/v1/:id/messages/:messageId` | GET | service_key | Free | Get message with replies |
 | `/mailboxes/v1/:id/messages/:messageId/raw` | GET | service_key | Free | Get raw RFC-822 bytes of an inbound message (for DKIM/zk-email verification) |
 | `/mailboxes/v1/:id/webhooks` | POST | service_key | Free | Register webhook for email events |
+| `/mailboxes/v1/:id/webhooks` | GET | service_key | Free | List webhooks for a mailbox |
+| `/mailboxes/v1/:id/webhooks/:webhook_id` | GET | service_key | Free | Get a webhook |
+| `/mailboxes/v1/:id/webhooks/:webhook_id` | DELETE | service_key | Free | Delete a webhook (idempotent) |
+| `/mailboxes/v1/:id/webhooks/:webhook_id` | PATCH | service_key | Free | Update webhook url and/or events |
 | `/mailboxes/v1/:id/status` | POST | admin | Free | Reactivate suspended mailbox (admin only) |
 | `/email/v1/domains` | POST | service_key | Free | Register a custom sender domain (returns DNS records) |
 | `/email/v1/domains` | GET | service_key | Free | Check sender domain verification status |
