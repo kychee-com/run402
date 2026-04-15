@@ -16,7 +16,13 @@ import * as sns from "aws-cdk-lib/aws-sns";
 import * as snsSubscriptions from "aws-cdk-lib/aws-sns-subscriptions";
 import * as ses from "aws-cdk-lib/aws-ses";
 import * as sesActions from "aws-cdk-lib/aws-ses-actions";
+import * as cloudwatch from "aws-cdk-lib/aws-cloudwatch";
+import * as cloudwatchActions from "aws-cdk-lib/aws-cloudwatch-actions";
 import { Construct } from "constructs";
+import * as path from "path";
+import { fileURLToPath } from "url";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const DOMAIN = "run402.com";
 const API_SUBDOMAIN = "api";
@@ -621,7 +627,7 @@ export class PodStack extends cdk.Stack {
       certificates: [cert],
     });
 
-    httpsListener.addTargets("Gateway", {
+    const gatewayTargetGroup = httpsListener.addTargets("Gateway", {
       port: 4022,
       protocol: elbv2.ApplicationProtocol.HTTP,
       targets: [fargateService],
@@ -653,6 +659,108 @@ export class PodStack extends cdk.Stack {
         new route53targets.LoadBalancerTarget(alb),
       ),
     });
+
+    // =========================================================================
+    // External alarm pipeline — CloudWatch → SNS → Lambda → Telegram
+    // See openspec/changes/external-alarm-telegram/
+    // =========================================================================
+    const alarmsTopic = new sns.Topic(this, "Run402AlarmsTopic", {
+      topicName: "run402-alarms",
+      displayName: "run402 alarms",
+    });
+
+    const alarmRelayFn = new lambda.Function(this, "Run402AlarmRelay", {
+      functionName: "Run402-AlarmRelay",
+      runtime: lambda.Runtime.NODEJS_22_X,
+      architecture: lambda.Architecture.ARM_64,
+      handler: "index.handler",
+      code: lambda.Code.fromAsset(path.join(__dirname, "../alarm-relay")),
+      memorySize: 128,
+      timeout: cdk.Duration.seconds(10),
+      environment: {
+        TELEGRAM_SECRET_ID: "agentdb/telegram-bot",
+      },
+    });
+
+    telegramSecret.grantRead(alarmRelayFn);
+    alarmsTopic.addSubscription(new snsSubscriptions.LambdaSubscription(alarmRelayFn));
+
+    const snsAction = new cloudwatchActions.SnsAction(alarmsTopic);
+    // wireBoth: fire the same SNS action on both ALARM and OK transitions so
+    // the relay Lambda produces a ✅ recovery message when conditions clear.
+    const wireBoth = (alarm: cloudwatch.Alarm) => {
+      alarm.addAlarmAction(snsAction);
+      alarm.addOkAction(snsAction);
+    };
+
+    // Alarm 1: gateway memory utilization > 80% for 2 minutes
+    wireBoth(new cloudwatch.Alarm(this, "Run402GatewayMemoryHigh", {
+      alarmName: "Run402GatewayMemoryHigh",
+      alarmDescription: "Gateway ECS task memory > 80%. OOM may follow.",
+      metric: fargateService.metricMemoryUtilization({
+        period: cdk.Duration.minutes(1),
+        statistic: "Maximum",
+      }),
+      threshold: 80,
+      comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
+      evaluationPeriods: 2,
+      datapointsToAlarm: 2,
+      treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+    }));
+
+    // Alarm 2: running task count below desired
+    wireBoth(new cloudwatch.Alarm(this, "Run402GatewayTaskCountLow", {
+      alarmName: "Run402GatewayTaskCountLow",
+      alarmDescription: "Gateway ECS running task count < 1. Service is down.",
+      metric: new cloudwatch.Metric({
+        namespace: "AWS/ECS",
+        metricName: "RunningTaskCount",
+        dimensionsMap: {
+          ClusterName: cluster.clusterName,
+          ServiceName: fargateService.serviceName,
+        },
+        period: cdk.Duration.minutes(1),
+        statistic: "Maximum",
+      }),
+      threshold: 1,
+      comparisonOperator: cloudwatch.ComparisonOperator.LESS_THAN_THRESHOLD,
+      evaluationPeriods: 2,
+      datapointsToAlarm: 2,
+      treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+    }));
+
+    // Alarm 3: ALB target group reports ≥ 1 unhealthy host
+    wireBoth(new cloudwatch.Alarm(this, "Run402AlbTargetUnhealthy", {
+      alarmName: "Run402AlbTargetUnhealthy",
+      alarmDescription: "ALB cannot reach gateway (target health check failing).",
+      metric: gatewayTargetGroup.metrics.unhealthyHostCount({
+        period: cdk.Duration.minutes(1),
+        statistic: "Maximum",
+      }),
+      threshold: 1,
+      comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+      evaluationPeriods: 2,
+      datapointsToAlarm: 2,
+      treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+    }));
+
+    // Alarm 4: ALB 5xx burst (>10 per minute for 2 minutes)
+    wireBoth(new cloudwatch.Alarm(this, "Run402Alb5xxBurst", {
+      alarmName: "Run402Alb5xxBurst",
+      alarmDescription: "Gateway returning 5xx errors to ALB above baseline.",
+      metric: gatewayTargetGroup.metrics.httpCodeTarget(
+        elbv2.HttpCodeTarget.TARGET_5XX_COUNT,
+        {
+          period: cdk.Duration.minutes(1),
+          statistic: "Sum",
+        },
+      ),
+      threshold: 10,
+      comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
+      evaluationPeriods: 2,
+      datapointsToAlarm: 2,
+      treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+    }));
 
     // =========================================================================
     // Outputs

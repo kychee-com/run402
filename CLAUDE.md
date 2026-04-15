@@ -243,3 +243,30 @@ List events for a specific error:
 ```
 curl -s -H "Authorization: token <AUTH_TOKEN>" "https://api.bugsnag.com/projects/69ac52c4c1424e001a97f2c5/errors/<ERROR_ID>/events"
 ```
+
+## External alarms (CloudWatch → Telegram)
+
+Four CloudWatch alarms fire when the gateway exhibits a liveness failure. Each alarm publishes to the `run402-alarms` SNS topic, which invokes the `Run402-AlarmRelay` Lambda, which posts to the same Telegram chat used by the gateway's own notifications.
+
+**Alarms (all `period=1min`, `evaluationPeriods=2`, `datapointsToAlarm=2`, `treatMissingData=NOT_BREACHING`):**
+
+| Alarm | Metric | Threshold | Catches |
+|---|---|---|---|
+| `Run402GatewayMemoryHigh` | ECS `MemoryUtilization` (Max) | `> 80%` | memory pressure before OOM |
+| `Run402GatewayTaskCountLow` | ECS `RunningTaskCount` (Max) | `< 1` | gateway is down |
+| `Run402AlbTargetUnhealthy` | ALB `UnHealthyHostCount` (Max) | `>= 1` | ALB can't reach gateway |
+| `Run402Alb5xxBurst` | ALB `HTTPCode_Target_5XX_Count` (Sum) | `> 10` | app-level 5xx waves |
+
+**Telegram credentials:** The `Run402-AlarmRelay` Lambda reads `agentdb/telegram-bot` from Secrets Manager (same secret the gateway uses). Rotating the bot token updates both consumers on their next invocation — no Lambda redeploy required.
+
+**Console:** https://console.aws.amazon.com/cloudwatch/home?region=us-east-1#alarmsV2:
+
+**Manual test (flip alarm state to verify Telegram delivery):**
+```
+AWS_PROFILE=kychee aws cloudwatch set-alarm-state \
+  --alarm-name Run402GatewayMemoryHigh \
+  --state-value ALARM --state-reason "manual test" --region us-east-1
+```
+Telegram message should arrive within ~10 seconds. Flip back to `OK` to test the recovery message (✅ prefix).
+
+**Infra:** CDK definitions live in `infra/lib/pod-stack.ts` alongside the ECS service. Lambda source: `infra/alarm-relay/`.
