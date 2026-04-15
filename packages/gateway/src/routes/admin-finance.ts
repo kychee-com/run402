@@ -37,6 +37,7 @@ import {
   type PlatformCostResult,
 } from "../services/finance-rollup.js";
 import { getFinanceSummary, type FinanceSummaryResult } from "../services/finance-summary.js";
+import { createFinanceCache } from "../services/finance-cache.js";
 import { getAllCostRates, type CostRateRow } from "../services/cost-rates.js";
 import { manualCostRefresh, createAwsCostExplorerClient, type ManualRefreshResult } from "../services/aws-cost-fetcher.js";
 import { refreshPricingRates, createAwsPricingClient, type RefreshPricingResult } from "../services/aws-pricing-fetcher.js";
@@ -123,14 +124,23 @@ export interface CostBreakdownResult {
   };
 }
 
+export interface FinanceFetchOptions {
+  refresh?: boolean;
+}
+
 export interface FinanceRouteDeps {
   requireSession: (req: Request) => { email: string; name: string } | null;
-  getSummary: (window: FinanceWindow) => Promise<FinanceSummaryResult>;
-  getRevenueBreakdown: (window: FinanceWindow) => Promise<RevenueBreakdownResult>;
-  getCostBreakdown: (window: FinanceWindow) => Promise<CostBreakdownResult>;
+  getSummary: (window: FinanceWindow, opts?: FinanceFetchOptions) => Promise<FinanceSummaryResult>;
+  getRevenueBreakdown: (window: FinanceWindow, opts?: FinanceFetchOptions) => Promise<RevenueBreakdownResult>;
+  getCostBreakdown: (window: FinanceWindow, opts?: FinanceFetchOptions) => Promise<CostBreakdownResult>;
   getProjectFinance: (projectId: string, window: FinanceWindow) => Promise<ProjectFinanceResult | null>;
   refreshCostExplorer: () => Promise<ManualRefreshResult>;
   refreshPricingRates: () => Promise<RefreshPricingResult>;
+}
+
+function parseRefresh(req: Request): boolean {
+  const v = req.query.refresh;
+  return v === "1" || v === "true";
 }
 
 // ------------------------------------------------------------------
@@ -163,7 +173,7 @@ export async function handleSummaryRequest(req: Request, res: Response, deps: Fi
   if (!ensureSessionOrReject(req, res, deps)) return;
   const window = safeParseWindow(req, res);
   if (!window) return;
-  const summary = await deps.getSummary(window);
+  const summary = await deps.getSummary(window, { refresh: parseRefresh(req) });
   res.status(200).json(summary);
 }
 
@@ -171,7 +181,7 @@ export async function handleRevenueRequest(req: Request, res: Response, deps: Fi
   if (!ensureSessionOrReject(req, res, deps)) return;
   const window = safeParseWindow(req, res);
   if (!window) return;
-  const breakdown = await deps.getRevenueBreakdown(window);
+  const breakdown = await deps.getRevenueBreakdown(window, { refresh: parseRefresh(req) });
   res.status(200).json(breakdown);
 }
 
@@ -179,7 +189,7 @@ export async function handleCostsRequest(req: Request, res: Response, deps: Fina
   if (!ensureSessionOrReject(req, res, deps)) return;
   const window = safeParseWindow(req, res);
   if (!window) return;
-  const costs = await deps.getCostBreakdown(window);
+  const costs = await deps.getCostBreakdown(window, { refresh: parseRefresh(req) });
   res.status(200).json(costs);
 }
 
@@ -393,36 +403,58 @@ function buildProjectCsv(project: ProjectFinanceResult): string {
 // ------------------------------------------------------------------
 
 async function buildProductionDeps(): Promise<FinanceRouteDeps> {
+  // Short-TTL in-memory cache + request coalescer to prevent OOM from concurrent
+  // /admin/finance loads. See finance-cache.ts. Set FINANCE_CACHE_TTL_MS=0 to disable.
+  const ttlMs = Number.parseInt(process.env.FINANCE_CACHE_TTL_MS ?? "30000", 10);
+  const cache = createFinanceCache({ ttlMs: Number.isFinite(ttlMs) ? ttlMs : 30000 });
+
   // These wrap the real DB/AWS so they share the same injection point as tests.
   return {
     requireSession: getSession,
-    getSummary: async (window) => {
-      return getFinanceSummary(window, {
-        getPlatformRevenue: (range) => realGetPlatformRevenue(defaultFinanceQuery, range),
-        getPlatformCostFromCache: (range) =>
-          realGetPlatformCostFromCache(defaultFinanceQuery, range, new Date()),
-        getDirectCostTotal: async (range) => {
-          const rates = await getAllCostRates();
-          const bundle = toCostRatesBundle(rates);
-          const perProject = await realGetDirectCostByProject(defaultFinanceQuery, range, bundle);
-          return perProject.reduce((s, p) => s + p.total_usd_micros, 0);
+    getSummary: async (window, opts) => {
+      return cache.get(
+        `summary:${window}`,
+        () =>
+          getFinanceSummary(window, {
+            getPlatformRevenue: (range) => realGetPlatformRevenue(defaultFinanceQuery, range),
+            getPlatformCostFromCache: (range) =>
+              realGetPlatformCostFromCache(defaultFinanceQuery, range, new Date()),
+            getDirectCostTotal: async (range) => {
+              const rates = await getAllCostRates();
+              const bundle = toCostRatesBundle(rates);
+              const perProject = await realGetDirectCostByProject(defaultFinanceQuery, range, bundle);
+              return perProject.reduce((s, p) => s + p.total_usd_micros, 0);
+            },
+            now: new Date(),
+          }),
+        { refresh: opts?.refresh },
+      );
+    },
+    getRevenueBreakdown: async (window, opts) => {
+      return cache.get(
+        `revenue:${window}`,
+        () => {
+          const range = windowToInterval(window, new Date());
+          return realGetRevenueBreakdownByProject(defaultFinanceQuery, range);
         },
-        now: new Date(),
-      });
+        { refresh: opts?.refresh },
+      );
     },
-    getRevenueBreakdown: async (window) => {
-      const range = windowToInterval(window, new Date());
-      return realGetRevenueBreakdownByProject(defaultFinanceQuery, range);
-    },
-    getCostBreakdown: async (window) => {
-      const range = windowToInterval(window, new Date());
-      const rates = await getAllCostRates();
-      const costRatesBundle = toCostRatesBundle(rates);
-      const [perProject, platformCost] = await Promise.all([
-        realGetDirectCostByProject(defaultFinanceQuery, range, costRatesBundle),
-        realGetPlatformCostFromCache(defaultFinanceQuery, range, new Date()),
-      ]);
-      return mergeIntoCostBreakdown(window, perProject, platformCost);
+    getCostBreakdown: async (window, opts) => {
+      return cache.get(
+        `costs:${window}`,
+        async () => {
+          const range = windowToInterval(window, new Date());
+          const rates = await getAllCostRates();
+          const costRatesBundle = toCostRatesBundle(rates);
+          const [perProject, platformCost] = await Promise.all([
+            realGetDirectCostByProject(defaultFinanceQuery, range, costRatesBundle),
+            realGetPlatformCostFromCache(defaultFinanceQuery, range, new Date()),
+          ]);
+          return mergeIntoCostBreakdown(window, perProject, platformCost);
+        },
+        { refresh: opts?.refresh },
+      );
     },
     getProjectFinance: async (projectId, window) => {
       const range = windowToInterval(window, new Date());

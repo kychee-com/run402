@@ -212,8 +212,11 @@ export async function getRevenueBreakdownByProject(
     }))
     // Drop noise: unnamed projects with zero revenue. Keep named-but-zero (operator
     // deliberately named them) and unnamed-but-with-revenue (the revenue matters).
+    // Match unnamed variants case-insensitively after trimming: null, empty,
+    // whitespace-only, "unnamed", "(unnamed)" in any case.
     .filter((p) => {
-      const isUnnamed = p.project_name == null || p.project_name === "" || p.project_name === "(unnamed)";
+      const normalized = (p.project_name ?? "").trim().toLowerCase();
+      const isUnnamed = normalized === "" || normalized === "unnamed" || normalized === "(unnamed)";
       return !(isUnnamed && p.total_usd_micros === 0);
     });
   const unattributedRaw = unattributedResult.rows[0]?.unattributed_usd_micros;

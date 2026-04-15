@@ -222,6 +222,32 @@ describe("finance-rollup — getRevenueBreakdownByProject", () => {
     // Reconciliation invariant still holds (zero totals don't affect the sum)
     assert.equal(result.total_usd_micros, 5_100_000);
   });
+
+  it("filters unnamed variants case-insensitively with trim (broadened unnamed match)", async () => {
+    const { query } = makeMockQuery([
+      {
+        rows: [
+          // All should be dropped: zero revenue + various 'unnamed' spellings
+          { project_id: "proj_1", project_name: "Unnamed", tier_fees: "0", email_packs: "0", kms_rental: "0", kms_sign_fees: "0", per_call_sku: "0", total: "0" },
+          { project_id: "proj_2", project_name: "UNNAMED", tier_fees: "0", email_packs: "0", kms_rental: "0", kms_sign_fees: "0", per_call_sku: "0", total: "0" },
+          { project_id: "proj_3", project_name: "unnamed", tier_fees: "0", email_packs: "0", kms_rental: "0", kms_sign_fees: "0", per_call_sku: "0", total: "0" },
+          { project_id: "proj_4", project_name: "  (unnamed)  ", tier_fees: "0", email_packs: "0", kms_rental: "0", kms_sign_fees: "0", per_call_sku: "0", total: "0" },
+          { project_id: "proj_5", project_name: "   ", tier_fees: "0", email_packs: "0", kms_rental: "0", kms_sign_fees: "0", per_call_sku: "0", total: "0" },
+          // Keep: named "Unnamed" but WITH revenue (revenue matters regardless of name)
+          { project_id: "proj_6", project_name: "Unnamed", tier_fees: "42", email_packs: "0", kms_rental: "0", kms_sign_fees: "0", per_call_sku: "0", total: "42" },
+          // Keep: real name that happens to contain "unnamed" substring — not a strict match
+          { project_id: "proj_7", project_name: "Unnamed Corp", tier_fees: "0", email_packs: "0", kms_rental: "0", kms_sign_fees: "0", per_call_sku: "0", total: "0" },
+        ],
+      },
+      { rows: [{ unattributed_usd_micros: "0" }] },
+    ]);
+    const result = await getRevenueBreakdownByProject(query, {
+      start: new Date("2026-03-07T00:00:00Z"),
+      end: new Date("2026-04-06T00:00:00Z"),
+    });
+    const keptIds = result.projects.map((p) => p.project_id);
+    assert.deepEqual(keptIds, ["proj_6", "proj_7"], "drop 5 unnamed-zero variants; keep unnamed-with-revenue and real-named");
+  });
 });
 
 describe("finance-rollup — getDirectCostByProject", () => {

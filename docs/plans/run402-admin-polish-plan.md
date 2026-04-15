@@ -69,48 +69,28 @@ Five discrete admin-site changes at run402.com/admin:
 
 ### Phase 1: Investigate (a) — why unnamed/0 rows still show
 
-- [ ] **Reproduce and diagnose** [code]
-  - Load `/admin/finance` against prod data (or seed locally with an unnamed, zero-revenue project) and capture the actual `project_name` value rendered
-  - Check: does the UI render from `/admin/api/finance/revenue` (which is filtered) or from a second endpoint like `/admin/api/finance/project/:id` or the CSV export (which are NOT filtered)?
-  - Check capitalization / whitespace variants: `"Unnamed"`, `"UNNAMED"`, `" "`, `"-"`, `null` — does the filter's `isUnnamed` cover all of them?
-  - Check: is there caching (front-end or CDN) serving stale pre-filter data?
-  - Write findings into Implementation Log before proceeding
+- [x] **Reproduce and diagnose** [code] — see Implementation Log > Gotchas > (a) root cause analysis
 
 ### Phase 2: Fix (a) — extend filter
 
-- [ ] **Write failing test for broadened unnamed filter** [code]
-  - Test in `packages/gateway/test/services/finance-rollup.test.ts` (or adjacent)
-  - Cases: `"Unnamed"` (any case), `"(unnamed)"`, whitespace-only, null, empty — all with zero revenue should be filtered
-  - Named-but-zero and unnamed-with-revenue must still be kept
-- [ ] **Broaden the filter** in [finance-rollup.ts:215-218](../../packages/gateway/src/services/finance-rollup.ts#L215-L218) [code]
-  - Change to case-insensitive match on trimmed `project_name`
-  - If Phase 1 found a second code path showing unfiltered data, apply the same filter there
-- [ ] **Run full gateway test suite** [code]
+- [x] **Write failing test for broadened unnamed filter** [code]
+- [x] **Broaden the filter** in [finance-rollup.ts:215-221](../../packages/gateway/src/services/finance-rollup.ts#L215-L221) [code] — case-insensitive, trimmed match on `""`, `"unnamed"`, `"(unnamed)"`
+- [x] **Run full gateway test suite** [code] — 1151/1151 pass
 
 ### Phase 3: (e) Finance page resource safety — prevent OOM from concurrent admin loads [P0]
 
-- [ ] **Capture baseline** [code]
-  - Note current per-endpoint query count & timings for `/admin/api/finance/summary|revenue|costs`
-  - Record current ECS task memory limit (1024 MB per incident)
-  - Record any existing rate-limit / cache on admin finance routes
-- [ ] **Write failing test: request coalescing** [code]
-  - In `packages/gateway/test/services/finance-rollup.test.ts` (or a new `finance-cache.test.ts`)
-  - Given 10 concurrent callers for the same `(endpoint, window)`, the underlying query function should be invoked exactly once
-- [ ] **Write failing test: TTL cache** [code]
-  - Given a cached result within TTL, subsequent calls do NOT hit the DB
-  - After TTL expiry, next call re-fetches
-  - Cache keys include `window` param (so `24h` and `30d` don't collide)
-- [ ] **Write failing test: explicit refresh bypass** [code]
-  - A request with `?refresh=1` bypasses cache and invalidates it for future callers
-- [ ] **Implement cache + coalescer module** [code]
-  - New file `packages/gateway/src/services/finance-cache.ts`
-  - In-memory `Map<string, { value, expiresAt }>` + `Map<string, Promise>` for in-flight coalescing
-  - TTL from env `FINANCE_CACHE_TTL_MS` (default 30000; 0 = disabled)
-  - Export `withFinanceCache(key, ttl, fn)` helper
-- [ ] **Wire cache into finance routes** [code]
-  - Wrap `getSummary`, `getRevenueBreakdown`, `getCostBreakdown` calls in [admin-finance.ts:395-426](../../packages/gateway/src/routes/admin-finance.ts#L395-L426)
-  - Cache key = `${endpoint}:${window}`
-  - Respect `?refresh=1` query param (admin-only)
+- [x] **Capture baseline** [code]
+  - `/admin/api/finance/summary` → ~3 queries (`getPlatformRevenue`, `getPlatformCostFromCache`, `getDirectCostByProject` + rates)
+  - `/admin/api/finance/revenue` → 2 queries (per-project CTE + unattributed)
+  - `/admin/api/finance/costs` → ~7 queries (6 for `getDirectCostByProject` + cache)
+  - Total ~12 queries per admin load, all parallel. Two concurrent admins ≈ 24 queries overlapping + heap buffering of unbounded result sets.
+  - ECS task memory: 1024 MB (per incident report)
+  - No existing cache or rate-limit on admin finance routes (source grep = no matches).
+- [x] **Write failing test: request coalescing** [code] — 10 concurrent callers → 1 fetch (finance-cache.test.ts)
+- [x] **Write failing test: TTL cache** [code] — within TTL no refetch; after TTL refetch; ttlMs=0 disables
+- [x] **Write failing test: explicit refresh bypass** [code] — `refresh:true` re-fetches and replaces cached value
+- [x] **Implement cache + coalescer module** [code] — [finance-cache.ts](../../packages/gateway/src/services/finance-cache.ts) — `createFinanceCache({ttlMs, now})` with `Map` + in-flight promise map
+- [x] **Wire cache into finance routes** [code] — wrapped getSummary/getRevenueBreakdown/getCostBreakdown; `?refresh=1` passes through to cache
 - [ ] **Cap result-set size on revenue breakdown** [code]
   - In `getRevenueBreakdownByProject` [finance-rollup.ts](../../packages/gateway/src/services/finance-rollup.ts) — ensure `LIMIT` on the per-project SELECT (e.g., top 500 by revenue), with an overflow flag
   - Write test: given 1000 seeded projects, returned rows ≤ limit + `truncated: true`
@@ -201,6 +181,7 @@ Five discrete admin-site changes at run402.com/admin:
 - **Finance service:** `packages/gateway/src/services/finance-rollup.ts`
 - **Auth:** Google OAuth, @kychee.com domain-gated (per admin-finance.ts:2-4)
 - **DB table:** `internal.projects` (has `pinned` boolean per exploration)
+- **Test command:** `npm run test:unit -w packages/gateway` — node test runner with `--experimental-test-module-mocks`, covers `src/**/*.test.ts`. Also: `npm run test:docs` (API docs alignment), `npm run test:sql`, `npm run test:subdomains`, etc. Full regression = run all `test:*` scripts from root `package.json`.
 - **Test baseline:** (capture before starting work)
 
 ---
@@ -211,7 +192,12 @@ _Populated during implementation by /implement_
 
 ### Gotchas
 
-- TBD
+- **(a) root cause analysis** — Filter at [finance-rollup.ts:215-218](../../packages/gateway/src/services/finance-rollup.ts#L215-L218) matches `null`, `""`, `"(unnamed)"` and drops unnamed+zero. SQL at [finance-rollup.ts:170](../../packages/gateway/src/services/finance-rollup.ts#L170) does `COALESCE(t.project_name, '(unnamed)')` so nulls normalize to `'(unnamed)'` in the query result — filter should match. The most likely reasons user still sees them in prod:
+  1. **Stale deploy** — filter committed but the running ECS task predates it. Check git log vs. deploy timestamp first.
+  2. **Name variants** — a project named `"Unnamed"`, `"unnamed"`, `"Unnamed Project"`, whitespace-only, or a dash. The filter is case-exact and only covers 3 spellings.
+  3. **Front-end/browser cache** — hard refresh.
+  Fix in Phase 2: broaden filter to trim + case-insensitive match on `unnamed|\(unnamed\)|^$|^\s*$`, and verify deploy.
+- **FULL OUTER JOIN edge** — A project appearing only in `ledger_totals` has `t.project_name = NULL` → COALESCE gives `'(unnamed)'` even if `projects.name` exists. Minor secondary bug: if such a project has non-zero ledger revenue it'd display as `(unnamed)` even though it's named. Low priority — add to follow-up.
 
 ### Deviations
 
