@@ -13,6 +13,16 @@ Subcommands:
   get    <message_id> [--project <id>]  Get a message with replies
   get-raw <message_id> [--project <id>] [--output <file>]
                                          Fetch raw RFC-822 bytes (inbound only)
+  webhooks <action> [args...]        Manage webhooks (see below)
+
+Webhook subcommands:
+  webhooks list   [--project <id>]                List webhooks
+  webhooks get    <webhook_id> [--project <id>]   Get a webhook
+  webhooks delete <webhook_id> [--project <id>]   Delete a webhook
+  webhooks update <webhook_id> [--url <url>] [--events <e1,e2>] [--project <id>]
+                                                  Update a webhook
+  webhooks register --url <url> --events <e1,e2> [--project <id>]
+                                                  Register a new webhook
 
 Send modes:
   Template:  --template <name> --var key=value [--var ...]
@@ -35,6 +45,8 @@ Examples:
   run402 email list
   run402 email get msg_abc123
   run402 email get-raw msg_abc123 --output reply.eml
+  run402 email webhooks list
+  run402 email webhooks register --url https://example.com/hook --events delivery,bounced
 
 Notes:
   - One mailbox per project
@@ -322,6 +334,11 @@ export async function run(sub, args) {
     case "list":   await list(args); break;
     case "get":    await get(args); break;
     case "get-raw": await getRaw(args); break;
+    case "webhooks": {
+      const { run: runWebhooks } = await import("./webhooks.mjs");
+      await runWebhooks(args[0], args.slice(1));
+      break;
+    }
     default:
       console.error(`Unknown subcommand: ${sub}\n`);
       console.log(HELP);

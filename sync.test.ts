@@ -59,7 +59,7 @@ function parseSubcommands(filePath: string): string[] {
 /** Parse CLI commands as "module:subcommand" pairs */
 function parseCliCommands(): string[] {
   const cmds: string[] = [];
-  for (const mod of ["allowance", "tier", "projects", "image", "storage", "functions", "secrets", "sites", "subdomains", "domains", "apps", "email", "message", "agent", "ai", "auth", "sender-domain", "billing", "contracts"]) {
+  for (const mod of ["allowance", "tier", "projects", "image", "storage", "functions", "secrets", "sites", "subdomains", "domains", "apps", "email", "message", "agent", "ai", "auth", "sender-domain", "billing", "contracts", "webhooks"]) {
     for (const sub of parseSubcommands(join(__dirname, "cli/lib", `${mod}.mjs`))) {
       cmds.push(`${mod}:${sub}`);
     }
@@ -73,7 +73,7 @@ function parseCliCommands(): string[] {
 /** Parse OpenClaw commands as "module:subcommand" pairs */
 function parseOpenClawCommands(): string[] {
   const cmds: string[] = [];
-  for (const mod of ["allowance", "tier", "projects", "image", "storage", "functions", "secrets", "sites", "subdomains", "domains", "apps", "email", "message", "agent", "ai", "auth", "sender-domain", "billing", "contracts"]) {
+  for (const mod of ["allowance", "tier", "projects", "image", "storage", "functions", "secrets", "sites", "subdomains", "domains", "apps", "email", "message", "agent", "ai", "auth", "sender-domain", "billing", "contracts", "webhooks"]) {
     for (const sub of parseSubcommands(join(__dirname, "openclaw/scripts", `${mod}.mjs`))) {
       cmds.push(`${mod}:${sub}`);
     }
@@ -213,6 +213,13 @@ const SURFACE: Capability[] = [
   { id: "get_email_raw",   endpoint: "GET /mailboxes/v1/:id/messages/:msgId/raw", mcp: "get_email_raw", cli: "email:get-raw", openclaw: "email:get-raw" },
   { id: "get_mailbox",     endpoint: "GET /mailboxes/v1",                        mcp: "get_mailbox",     cli: "email:status",  openclaw: "email:status" },
 
+  // ── Mailbox webhooks ──────────────────────────────────────────────────
+  { id: "register_mailbox_webhook", endpoint: "POST /mailboxes/v1/:id/webhooks",              mcp: "register_mailbox_webhook", cli: "webhooks:register", openclaw: "webhooks:register" },
+  { id: "list_mailbox_webhooks",    endpoint: "GET /mailboxes/v1/:id/webhooks",               mcp: "list_mailbox_webhooks",    cli: "webhooks:list",     openclaw: "webhooks:list" },
+  { id: "get_mailbox_webhook",      endpoint: "GET /mailboxes/v1/:id/webhooks/:webhook_id",   mcp: "get_mailbox_webhook",      cli: "webhooks:get",      openclaw: "webhooks:get" },
+  { id: "delete_mailbox_webhook",   endpoint: "DELETE /mailboxes/v1/:id/webhooks/:webhook_id", mcp: "delete_mailbox_webhook",  cli: "webhooks:delete",   openclaw: "webhooks:delete" },
+  { id: "update_mailbox_webhook",   endpoint: "PATCH /mailboxes/v1/:id/webhooks/:webhook_id", mcp: "update_mailbox_webhook",   cli: "webhooks:update",   openclaw: "webhooks:update" },
+
   // ── AI ──────────────────────────────────────────────────────────────────
   { id: "ai_translate",    endpoint: "POST /ai/v1/translate",      mcp: "ai_translate",    cli: "ai:translate",  openclaw: "ai:translate" },
   { id: "ai_moderate",     endpoint: "POST /ai/v1/moderate",       mcp: "ai_moderate",     cli: "ai:moderate",   openclaw: "ai:moderate" },
@@ -300,6 +307,10 @@ const EXPECTED_OPENCLAW_COMMANDS = SURFACE
   .filter((t): t is string => t !== null)
   .sort();
 
+// CLI dispatch-through commands that are routing prefixes, not leaf commands.
+// The scanner finds them as case statements but they just delegate to sub-modules.
+const CLI_DISPATCH_COMMANDS = ["email:webhooks"];
+
 // ─── Tests ───────────────────────────────────────────────────────────────────
 
 describe("MCP tool inventory", () => {
@@ -338,7 +349,7 @@ describe("CLI command inventory", () => {
   });
 
   it("has no untracked commands", () => {
-    const unexpected = actual.filter(c => !EXPECTED_CLI_COMMANDS.includes(c));
+    const unexpected = actual.filter(c => !EXPECTED_CLI_COMMANDS.includes(c) && !CLI_DISPATCH_COMMANDS.includes(c));
     assert.deepEqual(
       unexpected,
       [],
@@ -360,7 +371,7 @@ describe("OpenClaw command inventory", () => {
   });
 
   it("has no untracked commands", () => {
-    const unexpected = actual.filter(c => !EXPECTED_OPENCLAW_COMMANDS.includes(c));
+    const unexpected = actual.filter(c => !EXPECTED_OPENCLAW_COMMANDS.includes(c) && !CLI_DISPATCH_COMMANDS.includes(c));
     assert.deepEqual(
       unexpected,
       [],
@@ -505,7 +516,6 @@ describe("llms.txt alignment", { skip: !llmsTxtAvailable && "~/dev/run402/site/l
       "GET /mailboxes/v1",
       "GET /mailboxes/v1/:id",
       "DELETE /mailboxes/v1/:id",
-      "POST /mailboxes/v1/:id/webhooks",
       "POST /mailboxes/v1/:id/status",
       // AI add-on management (dashboard-only, not exposed as tools)
       "POST /ai/v1/addons",

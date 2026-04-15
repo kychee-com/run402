@@ -75,6 +75,13 @@ import { getEmailSchema, handleGetEmail } from "./tools/get-email.js";
 import { getEmailRawSchema, handleGetEmailRaw } from "./tools/get-email-raw.js";
 import { getMailboxSchema, handleGetMailbox } from "./tools/get-mailbox.js";
 
+// New tools — mailbox webhooks
+import { listMailboxWebhooksSchema, handleListMailboxWebhooks } from "./tools/list-mailbox-webhooks.js";
+import { getMailboxWebhookSchema, handleGetMailboxWebhook } from "./tools/get-mailbox-webhook.js";
+import { deleteMailboxWebhookSchema, handleDeleteMailboxWebhook } from "./tools/delete-mailbox-webhook.js";
+import { updateMailboxWebhookSchema, handleUpdateMailboxWebhook } from "./tools/update-mailbox-webhook.js";
+import { registerMailboxWebhookSchema, handleRegisterMailboxWebhook } from "./tools/register-mailbox-webhook.js";
+
 // New tools — magic link auth
 import { requestMagicLinkSchema, handleRequestMagicLink } from "./tools/request-magic-link.js";
 import { verifyMagicLinkSchema, handleVerifyMagicLink } from "./tools/verify-magic-link.js";
@@ -521,6 +528,41 @@ server.tool(
   "Get the project's mailbox info (ID, address, slug). Use to check if a mailbox exists.",
   getMailboxSchema,
   async (args) => handleGetMailbox(args),
+);
+
+server.tool(
+  "register_mailbox_webhook",
+  "Register a webhook on the project's mailbox. Receives POST notifications for email events (delivery, bounced, complained, reply_received).",
+  registerMailboxWebhookSchema,
+  async (args) => handleRegisterMailboxWebhook(args),
+);
+
+server.tool(
+  "list_mailbox_webhooks",
+  "List all webhooks registered on the project's mailbox.",
+  listMailboxWebhooksSchema,
+  async (args) => handleListMailboxWebhooks(args),
+);
+
+server.tool(
+  "get_mailbox_webhook",
+  "Get details of a specific webhook by ID.",
+  getMailboxWebhookSchema,
+  async (args) => handleGetMailboxWebhook(args),
+);
+
+server.tool(
+  "delete_mailbox_webhook",
+  "Delete a webhook. Idempotent — succeeds even if already deleted.",
+  deleteMailboxWebhookSchema,
+  async (args) => handleDeleteMailboxWebhook(args),
+);
+
+server.tool(
+  "update_mailbox_webhook",
+  "Update a webhook's URL and/or events. At least one field required. Events is a full replacement, not a merge.",
+  updateMailboxWebhookSchema,
+  async (args) => handleUpdateMailboxWebhook(args),
 );
 
 // ─── AI tools ──────────────────────────────────────────────────────────────
