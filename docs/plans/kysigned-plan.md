@@ -899,6 +899,34 @@ The user explicitly chose "prove working first, optimize second." Phases MUST be
 - [x] **P4B.32** Nonce management: wired viem `nonceManager` into `RegistryClient` at `src/signing/contract.ts` — `privateKeyToAccount(config.privateKey, { nonceManager })` tracks the next nonce in-memory and increments it locally before each send, eliminating the "replacement transaction underpriced" race when multiple signs overlap. Commit `bad38f8`. [code]
 - [x] **P4B.33** Wire `/admin/v1/force-expire/:id` + `/admin/v1/sweep/run` + `/webhooks/v1/email` routes into the `kysigned-api` Lambda router (gated by either SIWE admin auth or the e2e bypass token). These are the routes the DD-13 scenarios 3/5 reference — currently they live on separate Lambdas (`kysigned-email-webhook`, `kysigned-sweep`) which have no HTTP surface. For e2e completeness and for ops endpoints, the api router should proxy to them. [code] — Public repo: `forceExpireEnvelope()` in envelopes.ts (2 TDD tests). Service repo: 3 new routes in apiRouter.ts with `checkAdminOrBypass` + e2e bypass fallback, optional `forceExpireEnvelope`/`runSweepAndExpire`/`handleEmailWebhook` deps (4 TDD tests). kysigned 314 total, kysigned-private 57 total, 0 fail.
 
+**Follow-up (P4B Phase 16 v0.12.0 drift — discovered 2026-04-15 during Phase 13 redeploy practice):**
+
+- [x] **P4B.34** Remove v0.12.0-deleted symbols from `kysigned-private/src/router/apiRouter.ts` to unbreak `npm run build` (`tsc`). Phase 16 cleaned the public repo (deleted `handleSign`, `handleVerifyByHash`, `SignRequest` per Phase 16 task lines 1120 + 1131) but did NOT update kysigned-private's apiRouter, which still imports + re-types these symbols at L22, L32, L34 + uses them at L72-79, L85, L320-341 (POST /v1/sign/:envelope_id/:token), L358-363 (GET /v1/verify?hash=). Build error: `error TS2305: Module '"kysigned"' has no exported member 'SignRequest|handleSign|handleVerifyByHash'`. **Root-cause:** Phase 16's verification ran `npm test` (68 pass) but skipped `npm run build`. Action: (a) drop the 3 imports + their `ApiRouterHandlers` fields, (b) delete the two stale routes (POST /v1/sign and GET /v1/verify?hash=) — replaced by `POST /v1/inbound/reply` (already wired) for reply-to-sign and `GET /v1/verify/:envelope_id` for verification, (c) update `apiRouter.test.ts` (mocks at L58, L60; tests at L164, L185), (d) audit kysigned-api.mjs Lambda shim + buildContext.ts for stale handler wiring, (e) `npm run build` MUST be clean before close. Blocks: every kysigned-private redeploy via deploy.ts. [code]
+- [x] **P4B.35** Phase 16 verification gap: added `npm run build` (tsc strict) to Phase 16's verification gate, retro-active. Updated `feedback_full_test_suite_before_done.md` (memory rule) with the 2026-04-15 lesson — "full test suite" must include the build step, not just unit tests. Otherwise type-only drift like P4B.34 ships silently. [manual] — **2026-04-15:** memory updated. Going forward, every /implement task verifies BOTH unit tests AND `tsc`/`cargo build`/etc. before marking [x].
+
+**Phase 13 redeploy practice — what we tried, what's blocked, what's already done:**
+
+- [x] **P13-PRACTICE.1** Mint fresh no-exp service_key via operator one-off (per run402 commit `b9ff121` + design doc bucket C). New JWT `{role:'service_role', project_id:'prj_1775546157922_0030', iss:'agentdb'}` no `exp`, written to `kysigned/run402-service-key`. Verified against `GET /projects/v1/admin/:id/usage` (returns `tier:prototype, status:active, api_calls:331/500000`) and `/schema` (p0030 tables present). [infra]
+- [x] **P13-PRACTICE.2** deploy.ts secret-set phase verified against the new key — all KYSIGNED_* env vars pushed to project secret store including `KYSIGNED_RUN402_SERVICE_KEY` (which triggers `refreshFunctionEnvVars` self-heal on existing kysigned-* Lambdas per b9ff121). [infra]
+- [x] **P13-PRACTICE.3** deploy.ts function-build phase UNBLOCKED — P4B.34 refactor complete, kysigned-private + kysigned both build clean (`tsc`), all tests green (68 + 264). [code]
+- [ ] **P13-PRACTICE.4** After P4B.34 + P4B.35 ship: re-run deploy.ts end-to-end (overwrite-in-place). Smoke test deployed surfaces (`/v1/health` returns 200, `kysigned.run402.com` serves marketing site). [infra]
+- [ ] **P13-PRACTICE.5** Full delete + redeploy practice drill. **SCOPE — only deployable artifacts:** (a) `DELETE /projects/v1/admin/:id/functions/kysigned-api` × 3 lambdas, (b) `DELETE /subdomains/v1/kysigned.run402.com`, (c) supersede the prior deployment via fresh `POST /deployments/v1`, (d) re-register email webhook. **OUT OF SCOPE — never touch:** AWS Secrets Manager entries (`kysigned/*`, `agentdb/*`, ETH keys), run402 billing account, prototype tier subscription, `internal.projects` row, p0030 schema slot, all data tables (envelopes, signers, evidence keys, signature records), DKIM sender domain registration. Document in plan as a forker-vs-kysigned-unique table. [infra]
+
+**Forker-generic vs kysigned-unique (presumed undone, finalize after P13-PRACTICE.5):**
+
+| Step | Forker-generic | Kysigned-unique |
+|---|---|---|
+| Service-key migration (one-off no-exp mint) | No — forkers start post-fix, never had exp'd keys | Yes — only Kychee admin holds `JWT_SECRET` access |
+| Build kysigned-private (`tsc`) | Yes — every forker must rebuild on public repo upgrade | — |
+| Set project secrets | Yes — same `POST /admin/:id/secrets` for all | KYSIGNED_* secret names + values are kysigned-specific |
+| Bundle + deploy 3 Lambdas | Yes — same `POST /admin/:id/functions` pattern | Lambda names `kysigned-api`, `kysigned-email-webhook`, `kysigned-sweep` |
+| Upload site, claim subdomain | Yes | Subdomain `kysigned.run402.com`; site = kysigned-private/site/ + brand assets |
+| Register email webhook | Yes | Webhook URL points at kysigned-api function |
+| Custom apex domain DNS | Yes (any forker buying their own domain) | `kysigned.com` apex via Cloudflare AAAA-discard pattern (Phase 5) |
+| Ops wallet provisioning | Yes (every forker needs a wallet to own the project) | AWS Secrets Manager namespace `kysigned/*`; forkers may use 1Password, local keychain, etc. |
+| Brand assets | Yes (every forker has their own) | `kysigned-private/brand/logo/` |
+| Monitoring wiring | Yes (every forker needs it) | Telegram channel ID, Bugsnag project ID kysigned-specific |
+
 ### Phase 5: Domain & Branding `AI` / `HUMAN`
 
 - [x] Design kysigned logo [manual] `AI -> HUMAN: Approve` — monochrome navy, ">" prompt + pen nib + signature flourish. Approved.
