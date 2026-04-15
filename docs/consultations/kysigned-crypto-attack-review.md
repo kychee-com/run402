@@ -642,3 +642,62 @@ If you want, I can turn this into a remediation plan with exact contract/circuit
 **Wall time**: 61m 55s
 **Tokens**: 6,234 input, 73,845 output (68,503 reasoning), 80,079 total
 **Estimated cost**: $13.4791
+
+---
+
+# Response (Kychee team, 2026-04-15)
+
+**Status:** Reviewed and accepted. Spec updated to v0.13.0 addressing all findings. Plan updated to Phase 2R.B (binding rework). No finding caused a spec redesign; most are implementation-gap porting work from an already-correct spec. Two findings were consciously accepted trade-offs that were already reflected in spec v0.9.1 but whose rationale required sharpening. Four findings are about code that was removed in v0.12.0 (Method B) and reframed as revival prerequisites.
+
+## Classification summary
+
+| Category | Count | Findings |
+|---|---|---|
+| **Already in spec — implementation gap, plan task** | 5 | #1, #3, #4, #8, #9 |
+| **Spec gap — required small additions (all landed in v0.13.0)** | 6 | #6, #10, #11, #12 (integrity half), #16, #17 |
+| **Consciously accepted trade-off (spec already reflects)** | 2 | #5, #12 (privacy half) |
+| **Consultation misread due to stale artifact (legacy Circom)** | 3 | #2, #7, #18 |
+| **Already removed in spec v0.12.0 (Method B)** | 4 | #13, #14, #15, #20 |
+| **Spec tone softening** | 1 | #19 |
+
+## Per-finding response
+
+| # | Finding | Resolution | Spec reference | Plan status |
+|---|---|---|---|---|
+| 1 | Proof replay onto arbitrary metadata | **F4.12(a-e) binding rule**: contract reconstructs expected `journalDigest` from journal bytes; caller cannot relabel. Nullifier sourced from journal (c). All record fields equal journal fields (d). | F4.12 | Phase 2R.B |
+| 2 | `IGroth16Verifier[3]` vs Circom 5 outputs | **Stale artifact.** Files are from snarkjs era; live contract calls `IRiscZeroVerifier`. Plan task: move `IGroth16Verifier.sol`, `MockGroth16Verifier.sol`, `kysigned-approval.circom` to `reference/legacy-circom/`. | — (cleanup) | Phase 2R.B cleanup |
+| 3 | Circuit doesn't bind approval to document | **F3.3.1 + F3.3.3(b,d) already require** Subject in DKIM `h=` + docHash/envelopeId from signed Subject. Unimplemented in D guest — OQ 28 flags this as migration-deficit. | F3.3.1, F3.3.3(b,d), OQ 28 | Phase 2R.B guest work |
+| 4 | "I APPROVE" quote attack | **F3.3 already requires** standalone line above any quoted content. Unimplemented in D guest — plan task to port. | F3.3 | Phase 2R.B guest work |
+| 5 | Fake Gmail DKIM key / permissionless registry / no DNS auth | **Consciously accepted trade-off** in spec v0.9.1 (non-repudiation via key consistency + timestamp, not DNSSEC). v0.13.0 sharpens F4.9.0 to state this defense is load-bearing on F4.12(b) binding. | F4.9, F4.9.0, F4.9.1 | No plan change (explicit accept) |
+| 6 | `evidenceKeyId` not bound to proof's `pubkeyHash` | **New spec requirement F4.12(b)**: contract fetches `EvidenceKeyRegistry.getEvidenceKey(evidenceKeyId).publicKey`, hashes it, and requires equality with `journal.pubkeyHash`. Three-line contract fix. | F4.12(b) | Phase 2R.B contract work |
+| 7 | Header/body slack-space unconstrained (Circom) | **Moot under D path.** zkVM guest operates on variable-length raw email bytes. Circom-era concern. Residual: cfdkim library audit — covered by new spec Constraint "DKIM verifier audit" + plan task. | Constraints & Dependencies (v0.13.0) | Phase 2R.B cfdkim audit task |
+| 8 | DKIM `l=` tag handling | **F3.3.3(g) + F3.3.4 already require** rejecting `l=`. Unimplemented in D guest — plan task. | F3.3.3(g), F3.3.4 | Phase 2R.B guest work |
+| 9 | Duplicate headers / display-name spoofing | **F3.3.3(h) + F3.3.4 already require** rejecting duplicate From/Subject/To. Unimplemented in D guest — plan task. | F3.3.3(h), F3.3.4 | Phase 2R.B guest work |
+| 10 | `recordCompletion()` fully forgeable | **New F4.15.1 + F4.15.2**: `recordCompletion` is advisory metadata only; UIs compute authoritative completion from per-signer records. No contract change needed; UI/verifier change + AC enforces correct treatment. | F4.15.1, F4.15.2 | Phase 2R.B UI/verifier work |
+| 11 | Frontend verifier doesn't re-verify proof | **New F5.2a**: client-side proof re-verification is mandatory; three-outcome UI; failed re-verify is a trust-model alarm. **New F5.2b**: events must carry enough data for re-verify without calldata indexing. | F5.2a, F5.2b | Phase 2R.B UI work |
+| 12 | `searchKey` integrity + argon2id privacy | **Integrity half**: new F4.10.3 — searchKey is journal-bound. **Privacy half**: F4.11 reframed as "cost-amplification, not anonymity" — forbids "anonymous signing" claims. | F4.10.3, F4.11 | Phase 2R.B guest work; OQ 25 plan decision on in-circuit function |
+| 13 | Method B replay, low-`s` not checked | **Already removed in v0.12.0.** Documented as revival prerequisite in Future Features. | Future Features → Wallet Signing → Revival prerequisites | Revival-only (not MVP) |
+| 14 | `verifyWalletSignature` context-blind | **Already removed in v0.12.0.** Documented as revival prerequisite. | ditto | Revival-only |
+| 15 | Wallet method doesn't prove email ownership | **Already removed in v0.12.0.** Documented as revival prerequisite. | ditto | Revival-only |
+| 16 | `timestamp` caller-supplied (backdate-able) | **New F4.10**: record `timestamp` = `block.timestamp`, not caller-supplied. Removes the calldata parameter. | F4.10 | Phase 2R.B contract work |
+| 17 | `docHash` as single field element (field reduction) | **New F4.10.2**: `docHash` stored and committed as 32 raw bytes; never reduced mod field prime without explicit limb-splitting. | F4.10.2 | Phase 2R.B encoding audit |
+| 18 | `PackBytesFromRegex` 496-byte truncation | **Moot under D path.** Circom-era gadget; zkVM guest parses From directly via cfdkim. Covered by cfdkim audit task. | Constraints & Dependencies (v0.13.0) | Phase 2R.B cfdkim audit task |
+| 19 | Base finality claims too strong | **New F4.F subsection (F4.16–F4.20)**: two-tier finality model, L1 data-availability permanence, forced-inclusion escape hatch. F12.7 LEGAL.md bullet softened accordingly. | F4.16–F4.20, F12.7 | Phase 2R.B doc/UI tone pass |
+| 20 | Wallet-method privacy | **Already removed in v0.12.0.** Revival prerequisites include PII-in-events handling. | Future Features → Wallet Signing → Revival prerequisites | Revival-only |
+
+## What was NOT changed (consciously)
+
+- **DNSSEC-based key authenticity (consultation #5 / spec OQ 2).** Deliberately rejected in v0.9.1. Key consistency + blockchain timestamp + multi-operator corroboration is the chosen non-repudiation model. v0.13.0 did sharpen the dependency on F4.12(b) binding (F4.9.0), but did not reopen DNSSEC.
+- **Argon2id as anonymity claim.** v0.13.0 reframes it as cost-amplification against bulk scraping only. Targeted attackers with known candidate lists (e.g. employee directory) are in-scope threats the spec does not defend against. This is a product-scope decision, not a cryptographic limitation.
+- **Security-firm audit of cfdkim.** MVP budget does not support a paid security audit. The spec's new "DKIM verifier audit" constraint requires multi-pass internal review + a dedicated `/consult` session scoped specifically to DKIM-library soundness. If review finds defects, cfdkim is replaced with a port of an already-audited DKIM implementation rather than shipped weakened.
+
+## Follow-up actions (plan)
+
+1. **Phase 2R.B — Binding Rework + Consultation Response** (new plan phase).
+2. Consistency-sweep `kysigned-plan.md` against spec v0.13.0 per the spec-change-sweep memory rule.
+3. Append audit sub-tasks (option C: `[x]` preserved, sibling sub-task added) under every previously-completed task that touched `SignatureRegistry.sol`, `EvidenceKeyRegistry.sol`, `guest/src/main.rs`, `commitment.ts`, `verify.ts`, or the Circom circuit.
+4. Move stale artifacts (`IGroth16Verifier.sol`, `MockGroth16Verifier.sol`, `kysigned-approval.circom`) to `reference/legacy-circom/`.
+5. Dedicated cfdkim soundness `/consult` session — scope: RFC 6376 compliance, canonicalization edge cases, signature malleability, slack/truncation handling. Plus two internal code-review passes.
+6. Flag Infrastructure State entries where `imageId` will change after guest rewrite.
+
+— *End of response. Ready for /plan.*

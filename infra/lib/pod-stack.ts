@@ -237,7 +237,7 @@ export class PodStack extends cdk.Stack {
 
     const taskDef = new ecs.FargateTaskDefinition(this, "TaskDef", {
       cpu: 512,
-      memoryLimitMiB: 1536,
+      memoryLimitMiB: 2048,
     });
 
     // Grant task role access to secrets and S3

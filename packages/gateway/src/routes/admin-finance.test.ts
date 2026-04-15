@@ -77,6 +77,7 @@ function makeDeps(overrides: Partial<FinanceRouteDeps> = {}): FinanceRouteDeps {
       }],
       unattributed_usd_micros: 0,
       total_usd_micros: 6_650_000,
+      truncated: false,
     }),
     getCostBreakdown: async () => ({
       window: "30d",

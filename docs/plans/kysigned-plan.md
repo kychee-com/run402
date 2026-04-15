@@ -4,7 +4,7 @@
 **Created:** 2026-04-04
 **Status:** In Progress
 **Spec:** docs/products/kysigned/kysigned-spec.md
-**Spec-Version:** 0.12.1
+**Spec-Version:** 0.13.0
 **Upstream References:** docs/products/saas-factory/saas-factory-spec.md (v1.15.0)
 **Source:** spec
 **Worktree:** none — product code lives in separate repos (C:\Workspace-Kychee\kysigned and C:\Workspace-Kychee\kysigned-private). run402 platform enhancements use a run402 worktree on a feature branch.
@@ -556,6 +556,7 @@ The user explicitly chose "prove working first, optimize second." Phases MUST be
 - [x] **1R.5** Measured real gas costs on Base Sepolia. `registerEvidenceKey`: 321,537 gas. `recordReplyToSignSignature` (includes Groth16 verify): 431,580 gas. Standalone `verify`: 268,020 gas. Total per 2-signer envelope: ~1.18M gas (~$0.11 on Base). At $0.29/envelope: ~62% margin. Recording tx: `0xa105aeb1...`, block 40125234. Independent query via `getReplyToSignRecords(searchKey)` returns the recorded signature. **Full end-to-end chain proven.** [infra] `AI`
 - [x] **1R.6** `docs/contract-abi.md` rewritten — both contracts documented: `SignatureRegistry` (recordReplyToSignSignature with Groth16 verification + replay nullifier + evidence key cross-validation, recordWalletSignature Method B, recordCompletion, getReplyToSignRecords, getWalletSignatures, verifyWalletSignature, isNullifierUsed) and `EvidenceKeyRegistry` (registerEvidenceKey, getEvidenceKey, isKeyRegistered). Independent verification algorithm updated for reply-to-sign flow (searchKey → query → evidence key lookup → zk proof). Gas estimates included. [code] `AI`
 - [x] **1R.7** Verification module rewritten for new contract interface. `src/verification/verify.ts`: new `verifyBySearchKey(searchKey)` for reply-to-sign + `verifyWalletByDocHash(docHash)` for wallet signatures. Both query all known contract sets. `ContractSet` type holds `signatureRegistry + evidenceKeyRegistry` address pairs. Evidence key lookup integrated. `src/api/verify.ts` updated to use new functions. `KNOWN_CONTRACTS` array ready for Phase 1R.4 addresses. 197/197 unit tests + build clean. [code] `AI`
+- [ ] **1R-AUDIT.1** (v0.13.0 spec revision — sibling audit per spec-change-sweep memory rule) Re-validate 1R.1, 1R.4, 1R.6, 1R.7 against spec v0.13.0 F4.10–F4.12. Remediation happens in Phase 2R.B, not here — this task only records the audit findings. Expected outcomes: (a) **1R.1** contract source fails F4.12(a)-(e) bindings — rewrite in 2R.B.C1; (b) **1R.4** Base Sepolia deployments at `0xBfa7412…` / `0xe4Bc972…` will be superseded by 2R.B.D1 (new imageId + new contract + new binding checks); (c) **1R.6** `docs/contract-abi.md` will be rewritten in 2R.B.C1/C4 (new function signature, recordCompletion advisory marker); (d) **1R.7** `src/verification/verify.ts` does NOT re-verify the RISC Zero proof (F5.2a violation) — rewrite in 2R.B.C6. [code] `AI`
 
 ### Phase 2: Core Engine — Public Repo `[both]` `AI`
 
