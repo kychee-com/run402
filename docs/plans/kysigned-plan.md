@@ -909,8 +909,34 @@ The user explicitly chose "prove working first, optimize second." Phases MUST be
 - [x] **P13-PRACTICE.1** Mint fresh no-exp service_key via operator one-off (per run402 commit `b9ff121` + design doc bucket C). New JWT `{role:'service_role', project_id:'prj_1775546157922_0030', iss:'agentdb'}` no `exp`, written to `kysigned/run402-service-key`. Verified against `GET /projects/v1/admin/:id/usage` (returns `tier:prototype, status:active, api_calls:331/500000`) and `/schema` (p0030 tables present). [infra]
 - [x] **P13-PRACTICE.2** deploy.ts secret-set phase verified against the new key — all KYSIGNED_* env vars pushed to project secret store including `KYSIGNED_RUN402_SERVICE_KEY` (which triggers `refreshFunctionEnvVars` self-heal on existing kysigned-* Lambdas per b9ff121). [infra]
 - [x] **P13-PRACTICE.3** deploy.ts function-build phase UNBLOCKED — P4B.34 refactor complete, kysigned-private + kysigned both build clean (`tsc`), all tests green (68 + 264). [code]
-- [ ] **P13-PRACTICE.4** After P4B.34 + P4B.35 ship: re-run deploy.ts end-to-end (overwrite-in-place). Smoke test deployed surfaces (`/v1/health` returns 200, `kysigned.run402.com` serves marketing site). [infra]
-- [ ] **P13-PRACTICE.5** Full delete + redeploy practice drill. **SCOPE — only deployable artifacts:** (a) `DELETE /projects/v1/admin/:id/functions/kysigned-api` × 3 lambdas, (b) `DELETE /subdomains/v1/kysigned.run402.com`, (c) supersede the prior deployment via fresh `POST /deployments/v1`, (d) re-register email webhook. **OUT OF SCOPE — never touch:** AWS Secrets Manager entries (`kysigned/*`, `agentdb/*`, ETH keys), run402 billing account, prototype tier subscription, `internal.projects` row, p0030 schema slot, all data tables (envelopes, signers, evidence keys, signature records), DKIM sender domain registration. Document in plan as a forker-vs-kysigned-unique table. [infra]
+- [x] **P13-PRACTICE.4** Baseline deploy.ts (overwrite-in-place) — 3 Lambdas redeployed (kysigned-api 853 kB, kysigned-email-webhook 492 kB, kysigned-sweep 506 kB with `0 */12 * * *` cron), site `dpl_1776237033080_7072cf` (14 files), subdomain `kysigned.run402.com → 200`. Smoke: `/v1/health → 200 {"status":"ok"}`, `/v1/sign → 404` (removed routes verified live), `/v1/verify?hash → 404`, `/v1/inbound/reply → 403` (correctly auth-gated). **Hiccup #2 found + fixed inline:** deploy.ts L538 read `mailbox.id` but run402 API returns `mailbox_id` — POST to `/mailboxes/v1/undefined/webhooks` was 404'ing. One-word fix in scripts/deploy.ts. [infra]
+- [x] **P13-PRACTICE.5** Full delete + redeploy practice drill — completed 2026-04-15. (a) Inventoried 3 Lambdas + 1 subdomain + 1 mailbox + 1 deployment via service_key admin endpoints. (b) `DELETE /projects/v1/admin/:id/functions/<name>` × 3 → all 200. (c) `DELETE /subdomains/v1/kysigned` → 200 (note: `/subdomains/v1/admin/:name/release` requires admin SIWX, NOT service_key — use the project-scoped DELETE for service-key-only flows). (d) Verified wipe: `/v1/health → 404`, `kysigned.run402.com → 404`. (e) Verified preservation: project status active + tier prototype + 337 API calls preserved, mailbox `mbx_1775715646495_5qd48h` still active, AWS Secrets Manager `kysigned/ops-wallet-key` untouched. (f) Re-ran deploy.ts from clean state — full bootstrap success including webhook registration (now passes thanks to the mailbox_id fix). Final smoke: all routes 200/404 as expected. **Drill validates: deploy.ts is correctly idempotent + our scope discipline (artifacts only, never secrets/billing/db) holds.** [infra]
+
+**Hiccups found during the drill:**
+
+1. **Service-key migration blocker** (resolved earlier this session): `kysigned/run402-service-key` JWT was the legacy exp'd version. Resolution: operator one-off `jwt.sign` against `JWT_SECRET` per run402 design doc bucket C. Forkers won't hit this — they start post-fix.
+2. **deploy.ts mailbox_id bug** (fixed inline): API returns `mailbox_id`, deploy.ts read `id` → webhook POST 404'd silently with "Mailbox not found". Affects ANY forker using deploy.ts as a template. **Fix committed.**
+3. **kysigned-private/kysigned drift (P4B.34)**: Phase 16 cleanup deleted symbols from public but never updated kysigned-private's apiRouter or Lambda shim. Build was silently broken (Phase 16 ran `npm test` but skipped `tsc`). **Fix committed.** Forkers WILL hit equivalent drift any time they upgrade their kysigned dep — P4B.35 enforces `tsc` as part of the verification gate going forward.
+4. **`/subdomains/v1/admin/:name/release` requires admin SIWX, not service_key** (cosmetic — use project-scoped `DELETE /subdomains/v1/:name` instead, works with service_key). Worth documenting in operator README.
+5. **GET `/mailboxes/v1/:id/webhooks` doesn't exist** (only POST does). deploy.ts treats non-2xx as "no info, proceed with POST" which is correct after the mailbox_id fix. Worth a run402 enhancement to add the GET for inventory tooling, but not blocking.
+
+**Forker-generic vs kysigned-unique (finalized after the drill):**
+
+| Step | Forker-generic? | Kysigned-unique aspects |
+|---|---|---|
+| Service-key one-off mint | NO — forkers' projects are created post-fix and have no-exp keys from day 1 | Only Kychee admins hold `JWT_SECRET` access |
+| Build kysigned-private (`tsc`) | YES — every forker rebuilds when their kysigned dep updates | — |
+| Set project secrets | YES (same `POST /admin/:id/secrets` pattern) | KYSIGNED_* env-var names |
+| Bundle + deploy 3 Lambdas | YES (same `POST /admin/:id/functions` + esbuild bundling) | Lambda names + handler wiring; Sweep cron `0 */12 * * *` is kysigned policy |
+| Upload site (`POST /deployments/v1`) | YES (SIWX wallet auth, ownership-checked) | Site source = kysigned-private/site/ + brand assets |
+| Claim subdomain | YES | `kysigned` slug under run402.com |
+| Register email webhook | YES (`POST /mailboxes/v1/:id/webhooks`) | Webhook URL points at kysigned-email-webhook function |
+| DELETE Lambdas + DELETE subdomain | YES (same `DELETE` endpoints; project-scoped variant works with service_key) | — |
+| **Preserved during wipe (NEVER touch):** | YES — same preservation contract for everyone | AWS Secrets Manager namespace `kysigned/*`; mailbox slug `kysigned`; project_id `prj_1775546157922_0030` |
+| Custom apex domain DNS (`kysigned.com`) | YES (any forker buying a domain) | Cloudflare AAAA-discard pattern (Phase 5 specific) |
+| Brand assets | YES (every forker has their own) | `kysigned-private/brand/logo/` |
+| Monitoring wiring (Telegram + Bugsnag + SES) | YES (every forker needs it) | Channel ID + project ID + sender are kysigned-specific |
+| Mainnet wallets + canary ritual (Phase 13) | YES — saas-factory F25 prescribes this for every product | All addresses + KMS wallet IDs are kysigned-specific |
 
 **Forker-generic vs kysigned-unique (presumed undone, finalize after P13-PRACTICE.5):**
 
