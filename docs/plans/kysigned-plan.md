@@ -707,6 +707,96 @@ The user explicitly chose "prove working first, optimize second." Phases MUST be
 - [x] **2R.22** Add e2e test for non-matching reply — send a reply without `I APPROVE`, verify auto-reply is received, verify no signature recorded. [code] `AI` — `test/e2e/nonMatchingReply.test.ts`: creates envelope, sends reply with random text, asserts `result: 'rejected'`, asserts signer still pending. 322 total tests, 0 fail.
 - [x] **2R.23** Add e2e test for duplicate reply — send `I APPROVE` twice, verify second is no-op. [code] `AI` — `test/e2e/duplicateReply.test.ts`: creates envelope, sends `I APPROVE` twice, asserts first returns `signed`, second returns `duplicate`, signer stays `signed`. 322 total tests, 0 fail.
 - [x] **2R.24** Run full unit suite + e2e suite against local/deployed instance. Target: all green. [code] `AI` — All unit + contract tests green (322 total). Also fixed `expiration.test.ts` and `retention.test.ts` — removed `@noble/ed25519` imports, rewrote for reply-to-sign via `/v1/inbound/reply`. All 9 e2e tests compile and self-skip when BASE_URL unset. kysigned-private: 63 total, 0 fail.
+- [ ] **2R-AUDIT.1** (v0.13.0 spec revision — sibling audit per spec-change-sweep memory rule) Re-validate 2R.6–2R.13 and 2R.19–2R.20 against spec v0.13.0. Remediation happens in Phase 2R.B. Findings: (a) **2R.6** inbound handler: `Subject` in DKIM `h=` check already present ✓; STILL need `h=` enforcement ported into the zkVM guest per F3.3.1 (currently operational-only) — 2R.B.G1; (b) **2R.7** pre-checks correctly reject `l=` + duplicate headers at operator layer, but spec F3.3.4 requires these in-guest too — 2R.B.G1; (c) **2R.8** "I APPROVE" body validation is operator-layer only; spec F3.3.3(e) requires in-circuit enforcement (quote-attack defense) — 2R.B.G2; (d) **2R.10** prover.ts: journal `KysignedDKIMOutput` lacks `nullifier`, `searchKey`, `from_commitment`, `to_binding`, and commits `verified: bool` instead of asserting `verified==true` — 2R.B.G3; (e) **2R.11** evidence keys fine at operator layer, but contract doesn't bind registry pubkey to proof pubkeyHash (F4.12(b)) — 2R.B.C2; (f) **2R.12** `searchKey` computed client-side only (F4.10.3 violation — must be journal-bound) — 2R.B.G4; (g) **2R.13** on-chain recording accepts caller-supplied `journalDigest` + `nullifier` + `timestamp` opaquely (F4.12(a)+(c), F4.10 violation) — 2R.B.C1 + 2R.B.C3; (h) **2R.19/2R.20** verify API does NOT re-verify the RISC Zero proof locally (F5.2a violation) — 2R.B.F1. [code] `AI`
+
+### Phase 2R.B: Binding Rework + Consultation Response `[both]` `AI`
+
+> **Added 2026-04-15** in response to [kysigned-crypto-attack-review.md](../products/kysigned/consultations/kysigned-crypto-attack-review.md) and the spec v0.13.0 revision. Closes the on-chain binding gap (F4.12 addressing consultation #1 + #6), ports F3.3.3 / F3.3.4 hardening from the orphan Circom design into the live RISC Zero guest, adds client-side proof re-verification (F5.2a), executes the mandatory cfdkim multi-pass audit + dedicated `/consult` session (spec Constraint "DKIM verifier audit"), moves stale Circom artifacts, and redeploys to Base Sepolia.
+>
+> **Gating:** Every item in this phase MUST complete before Phase 13 canary. Phase 3/3R/4/4A/4B/5/6/7/8/11/12 (frontend, service glue, branding, marketing, legal, analytics, cross-linking) are unaffected — binding is a contract + guest + verifier-page triangle, not an API-surface change.
+>
+> **Infrastructure impact:** The guest rewrite changes `imageId`, invalidating all Base Sepolia artifacts from 1R.4 / 1R.5. Redeploy is 2R.B.D1. Flagged in Infrastructure State.
+>
+> **Consultation-response doc:** [`docs/consultations/kysigned-crypto-attack-review.md`](../consultations/kysigned-crypto-attack-review.md) end-of-file response section maps each finding → spec section → task number below.
+
+#### 2R.B.G — RISC Zero zkVM Guest Rewrite `[both]` `AI`
+
+> Ports F3.3.3 + F3.3.4 circuit-hardening requirements from the orphan Circom circuit into the live D zkVM guest (`zkprover-candidates/D-risc0/vendor/r0-zkEmail/methods/guest/src/main.rs`), and expands the journal to the full field set per F4.10.1.
+
+- [ ] **2R.B.G1** Port F3.3.4 circuit-hardening into the zkVM guest (not just the operator pre-check layer): `d=`/From alignment (F3.3.3(f)), reject `l=` (F3.3.3(g)), reject duplicate critical From/Subject/To (F3.3.3(h)), `Subject` present in DKIM `h=` (F3.3.1), and assert `verified==true` (not just commit `verified: bool`). Reason: these must be cryptographic-binding not operational. [code] `AI`
+  - TDD: proof with duplicate `From:` header fails to generate (guest panics).
+  - TDD: proof with `l=` tag fails.
+  - TDD: DKIM-verification-failed email fails to generate (currently silently commits `verified=false`).
+  - TDD: proof where `Subject` is NOT in `h=` fails.
+- [ ] **2R.B.G2** Port "I APPROVE as standalone line above quoted content" into the guest (F3.3.3(e), addresses consultation finding #4 quote attack). Replace the `[I]( )APPROVE` substring-at-index logic with a scanner that locates the first non-empty non-quoted line and requires exact byte-equality "I APPROVE". Reject if any `I APPROVE` substring appears below a quote marker. [code] `AI`
+  - TDD: reply "No." with quoted "I APPROVE" template below fails.
+  - TDD: reply "I APPROVE" above a forwarded thread passes.
+  - TDD: reply "I APPROVE... not this one" fails (suffix rule).
+- [ ] **2R.B.G3** Expand journal struct per F4.10.1 — commit ALL record fields to the journal: `pubkey_hash, from_commitment (= Poseidon(email, docHash, envelopeId) — document-scoped), docHash, envelopeId, nullifier, searchKey, to_binding_hash, verified (asserted, not a bool)`. Update `KysignedDKIMOutput` struct + postcard serialization. Derive: (a) `nullifier = SHA-256(canonical DKIM-Signature bytes)` in guest per F3.3.4 + OQ 27 (default pick: SHA-256; record as DD-31); (b) `to_binding_hash = SHA-256(operatorDomain)` and assert parsed `To:` contains `reply-to-sign@<operatorDomain>` (F3.3.4 recipient binding). [code] `AI`
+  - DD-31: nullifier function choice (SHA-256 recommended — matches `journalDigest` hash family; avoids introducing keccak-vs-sha256 mismatch).
+- [ ] **2R.B.G4** Implement journal-bound `searchKey` per F4.10.3. OQ 25 resolution needed: pick (i) fast hash in-guest, (ii) argon2id in-guest (likely infeasible), or (iii) hybrid. **Default pick for /plan: (iii) hybrid** — guest commits `fastSearchKey = SHA-256(lowercase(email) || docHash)`; the `/verify` page continues to compute argon2id-based `slowSearchKey` as a rate-limit gate on bulk lookups (this is the defense-in-depth layer, not the binding layer). Record as DD-32. Update spec F4.11 privacy language if the degradation needs to be acknowledged — triggers v0.13.1 patch bump. [code] `AI` / `DECIDE`
+- [ ] **2R.B.G5** Stop trusting caller-supplied `input.from_domain`. Parse From: address from the DKIM-`h=`-covered header block inside the guest and derive the domain there. Addresses consultation finding #3 attack path (caller lying about domain). [code] `AI`
+- [ ] **2R.B.G6** Regenerate `imageId` after all guest changes; update every `imageId` reference across plan + deploy scripts + Infrastructure State; note in Implementation Log that 1R.4 / 1R.5 Sepolia artifacts are obsoleted. [infra] `AI`
+- [ ] **2R.B.G7** Full regression: `npm run test:all` green; update Test Baseline. Guest unit tests must cover every new assertion from G1-G5. [code] `AI`
+
+#### 2R.B.C — Smart Contract Rework `[both]` `AI`
+
+> Implements F4.12 binding rule in `SignatureRegistry.sol`. Contract source change; since old Sepolia contracts are replaceable per F4.5, no on-chain migration — new deployment at 2R.B.D1 supersedes 1R.4 artifacts.
+
+- [ ] **2R.B.C1** Rewrite `recordReplyToSignSignature` per F4.12(a)-(e). New signature: `recordReplyToSignSignature(bytes journal, bytes seal)` (plus one caller hint `evidenceKeyId` since it's the lookup key). The contract: (a) reconstructs `expectedJournalDigest = sha256(journal)`, (b) decodes journal fields (pubkeyHash, fromCommitment, docHash, envelopeId, nullifier, searchKey, toBindingHash, verified), (c) asserts `verified == true`, (d) calls `verifier.verify(seal, imageId, expectedJournalDigest)` — reverts on mismatch, (e) marks `journal.nullifier` in `_usedNullifiers` (not calldata), (f) stores the record with `timestamp = block.timestamp` and the journal's own `docHash / envelopeId / searchKey / evidenceKeyId`. Removes caller-supplied `docHash / envelopeId / searchKey / timestamp / nullifier / journalDigest` from the function signature — they are all derived from the journal. [code] `AI`
+  - TDD: fuzz-submit record where caller changes any journal byte → tx reverts.
+  - TDD: submit valid seal with fake journal → verifier.verify reverts.
+  - TDD: nullifier replay across two calls with same journal → second call reverts.
+- [ ] **2R.B.C2** Implement F4.12(b) pubkeyHash binding. Contract calls `EvidenceKeyRegistry.getEvidenceKey(evidenceKeyId).publicKey`, computes `sha256(publicKey)`, requires equality with `journal.pubkeyHash`. Add `getEvidenceKey(bytes32)` to the `IEvidenceKeyRegistry.sol` interface if missing. [code] `AI`
+  - TDD: proof generated against attacker-controlled key but caller labels with real Gmail `evidenceKeyId` → tx reverts.
+- [ ] **2R.B.C3** Timestamp authority = `block.timestamp`. Remove `timestamp` from struct field name → rename to `blockTime`. Removes spoofable backdate vector (consultation finding #16). [code] `AI`
+- [ ] **2R.B.C4** Mark `recordCompletion` as advisory in NatSpec + docs/contract-abi.md per F4.15.1 / F4.15.2. No code change — just documentation. [code] `AI`
+- [ ] **2R.B.C5** Events for F5.2b client re-verify. Emit sufficient data in `ReplyToSignRecorded` (or split into `ReplyToSignRecorded` + `ReplyToSignProof`): `seal`, `imageId`, `journalDigest`, `journal_bytes`. Record choice as DD-33 (OQ 26 resolution). [code] `AI`
+  - TDD: re-verify from event logs alone (no tx-calldata indexing) succeeds.
+- [ ] **2R.B.C6** Rewrite `kysigned/src/verification/verify.ts` (1R.7 regression): `verifyBySearchKey` now fetches events, reconstructs expectedJournalDigest, calls `verifier.verify()` as an `eth_call`, and returns a structured `{ verified: bool, reverifyStatus: 'ok' | 'mismatch' | 'no-record' }`. [code] `AI`
+- [ ] **2R.B.C7** 22/22 contract test suite rewritten. TDD before implementation. Build clean. [code] `AI`
+
+#### 2R.B.F — Verification UI (F5.2a / F5.2b) `[both]` `AI`
+
+- [ ] **2R.B.F1** Client-side RISC Zero proof re-verification on the verify page (F5.2a). Retrieve `(seal, imageId, journalDigest, journal_bytes)` from events (2R.B.C5), reconstruct expectedDigest, call `IRiscZeroVerifier.verify(seal, imageId, expectedDigest)` via `eth_call`. UI: three distinct outcomes — re-verified ✅ / record-found-but-reverify-failed 🚨 (trust-model alarm, prominent red) / no-record neutral. [frontend-logic] `AI`
+  - TDD: tampered record (valid stored fields but fake journal bytes) → red alarm.
+  - TDD: genuine record → green.
+  - TDD: unknown searchKey → neutral.
+- [ ] **2R.B.F2** Update UI copy: "Proof re-verified independently — this page does not trust the on-chain record's existence alone." [frontend-visual] `AI`
+- [ ] **2R.B.F3** `/verify/<envelopeId>` proof link page: completion label derives from per-signer record count (F4.15.2), NOT from `recordCompletion` metadata. Surface `recordCompletion` separately as "recorded completion (advisory)". [frontend-logic] `AI`
+
+#### 2R.B.A — cfdkim Audit (spec Constraint) `[repo]` `AI` / `DECIDE` / `HUMAN`
+
+> Per spec v0.13.0 Constraints & Dependencies "DKIM verifier audit" — mandatory pre-launch gate. No paid security firm (user decision 2026-04-15); minimum: two internal code-review passes + one dedicated `/consult` session. Failure → replace cfdkim per fallback.
+
+- [ ] **2R.B.A1** Internal code-review pass #1 — read `zkprover-candidates/D-risc0/vendor/r0-zkEmail/vendor/cfdkim/` line-by-line against RFC 6376. Focus areas: canonicalization (simple/relaxed), signature verification logic, `l=` handling, header folding, duplicate-header behavior, `rsa-sha1` acceptance, `unwrap()` sites. Write findings to `kysigned/security/cfdkim-audit-pass-1.md`. [manual] `HUMAN`
+- [ ] **2R.B.A2** Run `/consult` session scoped specifically to cfdkim ZK-soundness. Feed the model: cfdkim source bundle, RFC 6376, the 2026-04-15 consultation response, prior cfdkim findings in Infrastructure State, pass-1 results. Expect: concrete list of soundness-relevant issues with line refs. Save as `docs/consultations/cfdkim-zk-soundness-review.md`. [manual] `HUMAN`
+- [ ] **2R.B.A3** Internal code-review pass #2 — address every pass-1 + `/consult` finding. For each: (a) fix in-line in cfdkim (vendor patch), (b) defense-in-depth pre-check in operator layer, or (c) explicitly accept with written justification. Exit criterion: zero unresolved critical/high findings. [code] `AI` / `HUMAN`
+- [ ] **2R.B.A4** Fallback trigger: if 2R.B.A3 leaves unresolved critical findings, replace cfdkim with a Rust port of `@zk-email/circuits` Circom DKIM logic (already audited). Budget-permit `DECIDE` gate. [code] `DECIDE`
+
+#### 2R.B.X — Stale Artifact Cleanup `[repo]` `AI`
+
+> Addresses consultation findings #2, #7, #18 (all Circom-era artifacts no longer in the live path; cleanup prevents future auditor confusion).
+
+- [ ] **2R.B.X1** Move `kysigned/contracts/IGroth16Verifier.sol`, `kysigned/contracts/MockGroth16Verifier.sol`, `kysigned/circuits/kysigned-approval.circom`, and `kysigned/circuits/README.md` to `kysigned/reference/legacy-circom/`. Create `kysigned/reference/legacy-circom/README.md` explaining: "Pre-D (snarkjs-era, Circom) artifacts preserved for historical context. NOT the live signing path. Live path: `zkprover-candidates/D-risc0/vendor/r0-zkEmail/` guest + `contracts/SignatureRegistry.sol` + `contracts/IRiscZeroVerifier.sol`. See DD-12 in zkprover-plan.md and DD-21/DD-23 in this plan." Run `npm run test:all` — no references to moved files should break. Update any hardhat.config / tsconfig paths that include `circuits/` or `contracts/IGroth16*`. [code] `AI`
+
+#### 2R.B.D — Redeploy to Base Sepolia `[both]` `AI`
+
+> New imageId (G6) + new contract source (C1-C7) = new deployment. Old Sepolia artifacts (`0xBfa7412…` / `0xe4Bc972…`) are obsoleted.
+
+- [ ] **2R.B.D1** Redeploy `EvidenceKeyRegistry.sol` + `SignatureRegistry.sol` to Base Sepolia with new `(verifier, ekr, imageId)` constructor. Update Infrastructure State with new addresses; mark old addresses as `OBSOLETE (pre-v0.13.0)`. [infra] `AI`
+- [ ] **2R.B.D2** Full on-chain e2e: register evidence key → generate proof via new guest → record with new binding rule → `getReplyToSignRecords(searchKey)` returns the record → call `verifier.verify()` as view, returns true. Record real gas costs. [infra] `AI`
+- [ ] **2R.B.D3** If gas shifts >10% from 1R.5 baseline (~431,580 for `recordReplyToSignSignature`), update DD-22 pricing-model Design Decision. [infra] `DECIDE`
+
+#### 2R.B.P — Permanence / Finality Copy Pass `[both]` `AI` / `HUMAN`
+
+> Addresses consultation #19 and spec F4.F / F4.19. Audits all user-facing "permanent" / "nobody can refuse" copy.
+
+- [ ] **2R.B.P1** Scan + calibrate unqualified permanence claims across: `kysigned/LEGAL.md` (already softened in F12.7 spec bullet — propagate to file), `kysigned-private/site/content/*.md` marketing copy, email templates (signing / confirmation / completion), `/how-it-works` page, FAQ section. Target wording per F4.19: OK to say "permanent" in marketing when backed by L1 data availability; NOT OK to say "nobody can refuse to record" as unqualified real-time claim. [frontend-visual] `AI` / `HUMAN`
+
+#### 2R.B.T — Regression Test Baseline Update `[both]` `AI`
+
+- [ ] **2R.B.T1** Run full `npm run test:all`; expect test count to grow from 322 → ~380+ (new binding tests in 2R.B.G/C, F5.2a tests in 2R.B.F, cleanup regressions in 2R.B.X). Update Test Baseline in Infrastructure State. [code] `AI`
 
 ### Phase 3: Frontend — Public Repo `[both]` `AI`
 
@@ -769,6 +859,7 @@ The user explicitly chose "prove working first, optimize second." Phases MUST be
 
 - [x] **3R.12** Build `/how-it-works` page — entirely non-technical language. No "blockchain," "DKIM," "hash," "zero-knowledge proof." Explains to a non-technical signer: what replying does, what gets stored, who can find their signature (only someone with both their email AND the document), what the operator cannot do (cannot "list all docs Alice signed"), and that records last forever on a public database no single company controls. Target: readable in under one minute. [frontend-visual] — `HowItWorksPage.tsx` with 5 sections: sign by replying, reply is your proof, permanent storage, privacy protection, temporary document. Zero jargon. Under 1 minute read.
 - [x] **3R.13** Link "How it works" from every signing email (Phase 2R.15 already includes the link), the review page (3R.4), and the FAQ page. [frontend-visual] �� Review page has "How it works" link. Email templates added in 2R.15. Route added at `/how-it-works` + `/review/:envelopeId/:token` alias in App.tsx.
+- [ ] **3R-AUDIT.1** (v0.13.0 spec revision — sibling audit per spec-change-sweep memory rule) Re-validate 3R.8 and 3R.9 against spec v0.13.0. Findings: (a) **3R.8** `/verify` page queries `handleVerifyByEmailAndDocument` via API but does NOT re-verify the RISC Zero proof locally (F5.2a violation) — rewrite in 2R.B.F1; deviation note about client-side searchKey computation resolves once 2R.B.G4 lands (searchKey becomes journal-bound); (b) **3R.9** proof-link page labels are correct but completion status derives from DB state, need to audit post-2R.B.F3 to confirm derivation matches per-signer-record-count rule (F4.15.2). Remediation in Phase 2R.B.F. [frontend-logic] `AI`
 
 ### Phase 4: Service Layer — Service Repo `[service]` `AI`
 
@@ -1323,23 +1414,27 @@ _None yet_
 
 ### Deployed Contracts (Base Sepolia — chainId 84532)
 
+> ⚠️ **v0.13.0 revision (2026-04-15):** The `EvidenceKeyRegistry` + `SignatureRegistry` addresses below are **OBSOLETE** under spec v0.13.0. Phase 2R.B.C1 rewrites the contract to enforce F4.12 binding (journal-digest reconstruction, pubkeyHash↔evidenceKey binding, journal-sourced nullifier, timestamp = block.timestamp). Phase 2R.B.G1–G6 rewrites the zkVM guest to port F3.3.4 hardening + expand the journal, which REGENERATES the `imageId`. Phase 2R.B.D1 redeploys both contracts with new constructor args. The RiscZeroGroth16Verifier row stays — only the two kysigned-deployed contracts change.
+
 | Contract | Address | Deploy Date | Notes |
 |---|---|---|---|
-| **RiscZeroGroth16Verifier** (v1.2.x) | `0x70f3b51e063A5cC09C1702daF7d87e7F50C9947B` | 2026-04-12 | Our deployment of risc0-ethereum v1.2.0 verifier. Control root: `0x8cdad924...`, BN254 control ID: `0x04446e66...`. NOT the pre-deployed router (which is v3.x only). |
-| **EvidenceKeyRegistry** | `0xe4Bc972627178C105308BE4F2F367Fc1e2EAD3fB` | 2026-04-12 | Permissionless append-only DKIM key archive. |
-| **SignatureRegistry** | `0xBfa7412608B69c883C2Bb0E800C850B337D6a97E` | 2026-04-12 | Constructor args: `(verifier=0x70f3b51e..., ekr=0xe4Bc..., imageId=0x3f4e3b3b...)`. EIP-712 domain separator bound to chainId 84532. |
+| **RiscZeroGroth16Verifier** (v1.2.x) | `0x70f3b51e063A5cC09C1702daF7d87e7F50C9947B` | 2026-04-12 | Our deployment of risc0-ethereum v1.2.0 verifier. Control root: `0x8cdad924...`, BN254 control ID: `0x04446e66...`. NOT the pre-deployed router (which is v3.x only). Unaffected by v0.13.0 revision. |
+| **EvidenceKeyRegistry** | `0xe4Bc972627178C105308BE4F2F367Fc1e2EAD3fB` | 2026-04-12 | Permissionless append-only DKIM key archive. ⚠️ **OBSOLETE pre-v0.13.0** — will be superseded by 2R.B.D1 redeploy (needs `getEvidenceKey().publicKey` view exposed per F4.12(b)). |
+| **SignatureRegistry** | `0xBfa7412608B69c883C2Bb0E800C850B337D6a97E` | 2026-04-12 | Constructor args: `(verifier=0x70f3b51e..., ekr=0xe4Bc..., imageId=0x3f4e3b3b...)`. EIP-712 domain separator bound to chainId 84532. ⚠️ **OBSOLETE pre-v0.13.0** — no F4.12 binding. Superseded by 2R.B.D1 redeploy with new function signature + new imageId. |
 
 ### RISC Zero Proof System
+
+> ⚠️ **v0.13.0 revision (2026-04-15):** The `imageId` below is the **pre-v0.13.0** value. Phase 2R.B.G1–G6 rewrites the guest (new assertions, expanded journal fields); once built, 2R.B.G6 regenerates a **new imageId** that replaces this one and invalidates all pre-v0.13.0 Sepolia records. Proving time and gas may shift; measured in 2R.B.D2 / 2R.B.D3.
 
 | Property | Value |
 |---|---|
 | Proof system | RISC Zero zkVM v1.2.6 (STARK inner + Groth16 wrapper) |
-| Guest program | `zkprover-candidates/D-risc0/vendor/r0-zkEmail/` |
-| Image ID | `0x3f4e3b3b87f6d8a72447825b1fa2d9e5121a7ec364f55b5167e9968d4375226e` |
+| Guest program | `zkprover-candidates/D-risc0/vendor/r0-zkEmail/` — **will be rewritten in Phase 2R.B.G1–G6** |
+| Image ID (pre-v0.13.0) | `0x3f4e3b3b87f6d8a72447825b1fa2d9e5121a7ec364f55b5167e9968d4375226e` — ⚠️ **will change after 2R.B.G6** |
 | Seal encoding | `risc0-ethereum-contracts` v1.2.0 `encode_seal()` — 260 bytes |
 | Groth16 wrapping | Local Docker on x86_64 Linux (no Bonsai API needed) |
-| Proving time | ~5 min (STARK + Groth16 wrap), 8.4 GB peak RAM |
-| On-chain verify gas | 268,020 gas (standalone), 431,580 gas (inside `recordReplyToSignSignature`) |
+| Proving time (pre-v0.13.0) | ~5 min (STARK + Groth16 wrap), 8.4 GB peak RAM — ⚠️ **may shift after guest rewrite** |
+| On-chain verify gas (pre-v0.13.0) | 268,020 gas (standalone), 431,580 gas (inside `recordReplyToSignSignature`) — ⚠️ **may shift after F4.12 binding checks land** |
 
 ### Measured Gas Costs (Base Sepolia, real transactions)
 
@@ -1377,12 +1472,16 @@ _None yet_
 
 ### cfdkim Review Findings (must be implemented in 2R.7)
 
-| # | Severity | Finding | Mitigation task |
-|---|---|---|---|
-| 1 | CRITICAL | `l=` body length tag is honored — attacker can append unsigned content | 2R.7(b): reject if DKIM `l=` tag present |
-| 2 | HIGH | No duplicate `From:` header rejection | 2R.7(c): reject duplicate critical headers |
-| 3 | MEDIUM | `unwrap()` in hash.rs:129 | Low risk — `b` tag is in REQUIRED_TAGS |
-| 4 | LOW | `rsa-sha1` still accepted | Reject `a=rsa-sha1` in pre-check |
+> ⚠️ **v0.13.0 revision (2026-04-15):** These findings were addressed as OPERATOR pre-checks in 2R.7. Spec v0.13.0 F3.3.4 now requires findings #1 and #2 to be enforced **in-guest** (zkVM), not just in the pre-check — see 2R.B.G1. The table below still captures the CURRENT implementation state; full re-audit runs in Phase 2R.B.A (multi-pass + `/consult`).
+
+| # | Severity | Finding | Operator pre-check (2R.7) | Guest enforcement (spec v0.13.0) |
+|---|---|---|---|---|
+| 1 | CRITICAL | `l=` body length tag is honored — attacker can append unsigned content | ✅ 2R.7(b): reject if `l=` present | **Required in-guest** — 2R.B.G1 |
+| 2 | HIGH | No duplicate `From:` header rejection | ✅ 2R.7(c): reject duplicates | **Required in-guest** — 2R.B.G1 |
+| 3 | MEDIUM | `unwrap()` in hash.rs:129 | N/A (DoS not soundness) | Review in 2R.B.A1/A3 |
+| 4 | LOW | `rsa-sha1` still accepted | ✅ Reject `a=rsa-sha1` in pre-check | Review in 2R.B.A1/A3 |
+
+**Note:** Phase 2R.B.A (cfdkim audit) is expected to produce additional findings beyond this table. A fresh findings section will be added to `kysigned/security/cfdkim-audit-pass-1.md` and the `/consult` output at `docs/consultations/cfdkim-zk-soundness-review.md`.
 
 ### Proof Artifacts (from the test email e2e)
 
@@ -1415,6 +1514,7 @@ _None yet_
 - 2026-04-06: Documentation + automation sweep — closed every standalone item not blocked on run402 deploy. Public repo: `docs/wallet-guide.md` (signers + envelope creators), signing-page wallet-onboarding panel for Method B without an installed wallet, `mcp/README.md` with Claude Desktop/Code/Cursor setup + 3 worked examples, `src/api/accountDeletion.ts` (DPA Section 11 deletion + verification with 8 TDD tests). Service repo: `docs/incident-response.md` (severity matrix, first-response checklist, DPA 72-hour playbook), `security/` pack (overview, questionnaire, encryption, access control, subprocessors, incident history), `src/monitoring.ts` wiring `@run402/shared` to concrete Telegram/Bugsnag/SES senders + `createKysignedMonitor()` factory (7 TDD tests). All 5 monitoring/PDF/operational launch-prep tasks now ship-ready — they go live the moment the corresponding human/infra tasks (Telegram channel, Bugsnag project, SES domain, deployment) are completed. kysigned suite: 149/149. kysigned-private suite: 7/7.
 - 2026-04-06: Phase 8B / saas-factory F19 — built shared geo-aware consent banner module at `run402/packages/shared/src/consent-banner/` (regions.ts + storage.ts pure logic, banner.ts vanilla DOM init, banner.css). 58 unit tests, all green (47 region rule + 11 storage). Wired into kysigned-private static site (4 HTML pages) via single-file vanilla bundle `kysigned-private/site/consent-banner.mjs` + matching CSS, and switched GA4 to Google Consent Mode v2 (ad/analytics storage default = denied, flips on `consent update` from the banner). Footer "Cookie settings" link on home page re-opens the panel via global `window.openConsentSettings`. saas-factory spec bumped to 1.9.1 to record the canonical module path. Scope is saas-factory product sites only — broader Kychee surfaces are a separate decision.
 - 2026-04-08: **Phase 4B Block 1 complete — public-repo additions for DD-12 + DD-16 shipped.** All 7 P4B.1-P4B.7 tasks landed in public-repo commit `d83c30e` (15 files, +575/-9). P4B.1: migration `005_completion_email_provider_msg_id.sql` adds the nullable TEXT column + partial index on `envelope_signers`. P4B.2: TDD'd `markCompletionEmailSent(pool, signer_id, provider_msg_id)` + `findSignerByCompletionEmailId(pool, provider_msg_id)` in `src/db/envelopes.ts` (4 new tests; hit one mock gotcha where the in-memory pool's `text.includes('FROM envelope_signers WHERE completion_email_provider_msg_id')` check failed because the production SQL has a newline between `envelope_signers` and `WHERE` — fixed by splitting into two independent `includes()` checks). P4B.3: wired `markCompletionEmailSent` into `sign.ts` completion-send loop after `emailProvider.send()`, wrapped in best-effort try/catch so correlation failures don't break the already-committed signing flow (1 new test). P4B.4: new `envelopeExpired` template in `src/email/templates.ts` with a `role: 'sender' | 'signer'` discriminator, signed/pending list blocks that gracefully hide when empty, both HTML + text versions (4 new tests). P4B.5: new `handleEnvelopeExpiration(pool, emailProvider, storage?)` handler in `src/api/envelope.ts` following the positional-args pattern of `sweepRetention` — iterates `getExpiredEnvelopes()`, computes signer breakdown, notifies sender + pending signers, deletes PDF per F8.6; PDF-delete and individual-envelope failures logged but don't abort the sweep (5 new tests including idempotency). P4B.6: exports wired in `src/api/index.ts` (db/email indexes already use `export *`); fixed the ripple from adding `completion_email_provider_msg_id: string | null` to the `EnvelopeSigner` type by adding the new field to 5 other test-file mock signer builders (retention, sweep, engine, verify, sign). Full suite: **197/197** (was 183, +14 new tests), `npm run build` clean. P4B.7: atomic commit + push. Public repo is now ready for Phase 4B Block 3 (service repo deploy glue) consumption. Next up: Blocks 2 + 3 (e2e suite + service-repo router/webhook/sweep/deploy) — deferred to a fresh chat per the scope-limit agreement.
+- 2026-04-15: **Plan updated to spec v0.13.0 — consultation-response revision.** Spec bumped 0.12.1 → 0.13.0 in response to [kysigned-crypto-attack-review.md](../products/kysigned/consultations/kysigned-crypto-attack-review.md). Ten F-requirement additions (F4.9.0, F4.10.1/2/3, F4.12(a-e), F4.15.1/2, F4.16-F4.20, F5.2a/b) + Constraints "DKIM verifier audit" + 29 OQs tagged with resolution-owner labels. Plan changes: (1) Spec-Version bumped; (2) three `-AUDIT` sibling tasks added per spec-change-sweep memory rule (1R-AUDIT.1 after 1R.7, 2R-AUDIT.1 after 2R.24, 3R-AUDIT.1 after 3R.13) — each enumerates findings + points to the Phase 2R.B remediation task; (3) new **Phase 2R.B — Binding Rework + Consultation Response** inserted between Phase 2R and Phase 3 with seven sub-phases: G (guest rewrite, 7 tasks), C (contract rewrite, 7 tasks), F (verification UI, 3 tasks), A (cfdkim audit — multi-pass + `/consult`, 4 tasks, no security firm per user direction), X (stale artifact move to `reference/legacy-circom/`, 1 task), D (Sepolia redeploy, 3 tasks), P (permanence/finality copy pass, 1 task), T (regression baseline, 1 task); (4) Infrastructure State flagged: EvidenceKeyRegistry + SignatureRegistry Sepolia addresses marked OBSOLETE pre-v0.13.0, imageId will change after 2R.B.G6, cfdkim review table split into "operator pre-check" + "guest enforcement" columns. The binding fix gates Phase 13 canary — no mainnet deploy until 2R.B complete. Marketing / legal / analytics / Phase 4/4A/4B unaffected (API surface unchanged).
 - 2026-04-08: **Phase 4B planned.** `/plan kysigned` session added DD-11 through DD-16 and 30 discrete Phase 4B tasks (P4B.1 through P4B.30). DD-11: three Lambdas (API router, SES webhook, sweep cron). DD-12: webhook correlation via new `completion_email_provider_msg_id` column on envelope_signers — small public-repo change rather than best-effort email-only matching (rejected due to misattribution risk on a signing platform). DD-13: net-new e2e test suite at `kysigned/test/e2e/` running against `BASE_URL`, includes the first-ever exercise of the Phase 4A CTE against real Postgres. DD-14: idempotent `deploy.ts` script complementing `bootstrap-run402.ts`. DD-15: admin auth via `KYSIGNED_ADMIN_WALLETS` env var + local SIWE verification (single-factor, forker recovery limitation documented — see saas-factory F24 cross-ref). DD-16: envelope expiration handler closing a gap in the Phase 2 work that was mis-marked complete. Also added: Phase 2H placeholder for the deferred F16 document-level aggregation view (NOT PLANNED — run `/spec kysigned` first before adding tasks). Also bumped: kysigned spec 0.6.0 → 0.7.0 (added F16 concept section), saas-factory spec 1.13.0 → 1.14.0 (added F24 future-enhancement note for platform admin auth service). Two small public-repo additions (DD-12 + DD-16) are accepted as the minimum viable public-repo delta needed to deploy an MVP that exercises the full spec. No code changes in this session — spec + plan only. Ship gate for Phase 4B is the e2e suite passing against `https://kysigned.run402.com` (P4B.27).
 - 2026-04-06: F8.6 ephemeral PDF retention library piece complete in kysigned public repo. Migration 004 adds `pdf_deleted_at` + per-signer `completion_email_delivered_at` / `completion_email_bounced_at`. New `src/pdf/retention.ts` (pure rule), `src/pdf/sweep.ts` (periodic deletion sweep), `src/api/emailWebhook.ts` (delivery/bounce hooks the service translates SES payloads into). `handleVoidEnvelope` now drops the original PDF immediately via `ctx.deletePdf`. 23 new tests (12 retention + 5 sweep + 5 webhook + 1 void integration). Full suite 141/141. Service repo still needs to wire SES → markDelivered/Bounced and a periodic `sweepRetention` cron.
 - 2026-04-06: F2.8 `allowed_senders` access control complete — DAO + migration `003_allowed_senders.sql` + sender gate (allowlist/hosted strategies) + monthly quota + admin API + README warning. TDD red-green throughout: 33 new tests added (15 DAO + 9 gate + 9 admin + 4 envelope integration). Full kysigned suite: 112/112 pass. Service repo can now wire `senderGate: { strategy: 'hosted', getCreditBalance }` in production; self-hosted forkers default to `allowlist`. Pluggable strategy + per-sender quota + default-deny all in one cohesive layer.
