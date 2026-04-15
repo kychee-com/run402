@@ -340,7 +340,7 @@ router.get("/admin/api/projects", asyncHandler(async (req: Request, res: Respons
 
   const limit = 200;
   const result = await pool.query(
-    sql(`SELECT id, name, tier, status, wallet_address, created_at FROM internal.projects ORDER BY created_at DESC LIMIT $1`),
+    sql(`SELECT id, name, tier, status, wallet_address, created_at, COALESCE(pinned, false) AS pinned FROM internal.projects ORDER BY created_at DESC LIMIT $1`),
     [limit + 1],
   );
   const hasMore = result.rows.length > limit;
@@ -349,6 +349,7 @@ router.get("/admin/api/projects", asyncHandler(async (req: Request, res: Respons
     projects: rows.map((r: Record<string, unknown>) => ({
       id: r.id, name: r.name, tier: r.tier, status: r.status,
       wallet_address: r.wallet_address, created_at: r.created_at,
+      pinned: Boolean(r.pinned),
     })),
     has_more: hasMore,
   });
@@ -523,7 +524,6 @@ tr:last-child td{border-bottom:none}
       <a href="/admin/projects">Projects</a>
       <a href="/admin/subdomains">Subdomains</a>
       <a href="/admin/finance">Finance</a>
-      <a href="/admin/llms-txt">llms.txt</a>
       <span>${escHtml(name)}</span>
       <a href="/admin/logout">Logout</a>
     </div>
@@ -570,6 +570,19 @@ tr:last-child td{border-bottom:none}
 .btn-danger:hover{background:rgba(255,80,80,0.2)}
 .loading{color:#4B5563;font-size:13px;text-align:center;padding:40px}
 .count{font-size:13px;color:#4B5563;margin-bottom:16px}
+th.sortable{cursor:pointer;user-select:none}
+th.sortable:hover{color:#9CA3AF}
+th.sort-asc::after{content:" \\25B2";font-size:10px;color:#00FF9F}
+th.sort-desc::after{content:" \\25BC";font-size:10px;color:#00FF9F}
+.toolbar{display:flex;align-items:center;gap:16px;margin-bottom:12px;font-size:13px;color:#9CA3AF}
+.toolbar label{cursor:pointer;user-select:none}
+.release-panel{margin-top:32px;padding:16px;background:#12121A;border:1px solid #1E1E2A;border-radius:12px}
+.release-panel h3{margin:0 0 12px;font-size:14px;color:#FF5050}
+.release-panel .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.release-panel input{background:#0A0A10;border:1px solid #1E1E2A;color:#E5E7EB;padding:8px 12px;border-radius:6px;font-size:13px;font-family:monospace}
+.release-panel input:focus{outline:none;border-color:#FF5050}
+.release-panel button:disabled{opacity:0.4;cursor:not-allowed}
+.release-panel .hint{font-size:11px;color:#4B5563;margin-top:8px}
 </style>
 </head>
 <body>
@@ -581,67 +594,167 @@ tr:last-child td{border-bottom:none}
       <a href="/admin/projects" ${activeStyle("projects")}>Projects</a>
       <a href="/admin/subdomains" ${activeStyle("subdomains")}>Subdomains</a>
       <a href="/admin/finance">Finance</a>
-      <a href="/admin/llms-txt">llms.txt</a>
       <span>${escHtml(name)}</span>
       <a href="/admin/logout">Logout</a>
     </div>
   </header>
 
+  <div class="toolbar" id="toolbar"></div>
   <div class="count" id="count"></div>
   <div id="content"><div class="loading">Loading...</div></div>
+  <div id="release-panel-mount"></div>
 </div>
 
 <script>
-(async function() {
-  const page = "${page}";
-  const content = document.getElementById("content");
-  const countEl = document.getElementById("count");
+(function() {
+  var page = "${page}";
+  var content = document.getElementById("content");
+  var countEl = document.getElementById("count");
+  var toolbar = document.getElementById("toolbar");
+  var releaseMount = document.getElementById("release-panel-mount");
 
-  try {
-    const res = await fetch("/admin/api/" + page, { credentials: "same-origin" });
-    if (!res.ok) throw new Error("HTTP " + res.status);
-    const data = await res.json();
+  // --- Projects page state ---
+  var INACTIVE_STATUSES = ["archived", "deleted", "purged", "purging", "expired"];
+  var SHOW_INACTIVE_KEY = "admin.projects.showInactive";
+  var showInactive = localStorage.getItem(SHOW_INACTIVE_KEY) === "1";
+  // column key → {label, get} — order matters (Name first, per user request)
+  var PROJECT_COLS = [
+    { key: "name", label: "Name", get: function(p) { return (p.name || "").toLowerCase(); } },
+    { key: "tier", label: "Tier", get: function(p) { return (p.tier || "").toLowerCase(); } },
+    { key: "status", label: "Status", get: function(p) { return (p.status || "").toLowerCase(); } },
+    { key: "id", label: "ID", get: function(p) { return p.id; } },
+    { key: "wallet_address", label: "Wallet", get: function(p) { return (p.wallet_address || "").toLowerCase(); } },
+    { key: "created_at", label: "Created", get: function(p) { return p.created_at; } },
+  ];
+  var sortKey = "created_at";
+  var sortDir = "desc"; // default: newest first
+  var allProjects = [];
 
-    if (page === "projects") {
-      const rows = data.projects || [];
-      countEl.textContent = rows.length + " projects" + (data.has_more ? " (more available)" : "");
-      content.innerHTML = "<table><thead><tr><th>ID</th><th>Name</th><th>Tier</th><th>Status</th><th>Wallet</th><th>Created</th><th></th></tr></thead><tbody>"
-        + rows.map(function(p) {
-          var statusClass = p.status === "active" ? "pill-green" : p.status === "archived" ? "pill-gray" : "pill-red";
-          return "<tr><td><code>" + p.id + "</code></td><td>" + (p.name || "-") + "</td><td>" + p.tier + "</td>"
-            + "<td><span class='pill " + statusClass + "'>" + p.status + "</span></td>"
-            + "<td style='font-size:11px;color:#4B5563'>" + (p.wallet_address ? p.wallet_address.slice(0,6) + "..." + p.wallet_address.slice(-4) : "-") + "</td>"
-            + "<td style='color:#4B5563'>" + new Date(p.created_at).toLocaleDateString() + "</td>"
-            + "<td>" + (p.status === "active" ? "<button class='btn-danger' onclick='deleteProject(\\\"" + p.id + "\\\")'>Delete</button>" : "") + "</td></tr>";
-        }).join("") + "</tbody></table>";
-    } else {
-      var rows = data.subdomains || [];
-      countEl.textContent = rows.length + " subdomains";
-      content.innerHTML = "<table><thead><tr><th>Name</th><th>URL</th><th>Project</th><th>Deployment</th><th>Created</th><th></th></tr></thead><tbody>"
-        + rows.map(function(s) {
-          return "<tr><td><strong>" + s.name + "</strong></td>"
-            + "<td><a href='" + s.url + "' target='_blank' style='color:#00FF9F;text-decoration:none'>" + s.url + "</a></td>"
-            + "<td style='font-size:11px;color:#4B5563'>" + (s.project_id || "-") + "</td>"
-            + "<td style='font-size:11px;color:#4B5563'>" + (s.deployment_id || "-") + "</td>"
-            + "<td style='color:#4B5563'>" + new Date(s.created_at).toLocaleDateString() + "</td>"
-            + "<td><button class='btn-danger' onclick='deleteSubdomain(\\\"" + s.name + "\\\")'>Release</button></td></tr>";
-        }).join("") + "</tbody></table>";
-    }
-  } catch (e) {
-    content.innerHTML = "<div class='loading'>Error: " + e.message + "</div>";
+  function fmtWallet(w) { return w ? (w.slice(0,6) + "..." + w.slice(-4)) : "-"; }
+  function statusPill(s) {
+    var cls = s === "active" ? "pill-green" : (s === "archived" || s === "purged" || s === "purging") ? "pill-gray" : "pill-red";
+    return "<span class='pill " + cls + "'>" + s + "</span>";
   }
+
+  function renderProjects() {
+    var list = allProjects.slice();
+    if (!showInactive) list = list.filter(function(p) { return INACTIVE_STATUSES.indexOf(p.status) === -1; });
+    // Sort: pinned always float to top. Within each group, apply active sort.
+    var col = PROJECT_COLS.filter(function(c) { return c.key === sortKey; })[0] || PROJECT_COLS[5];
+    list.sort(function(a, b) {
+      if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
+      var av = col.get(a), bv = col.get(b);
+      if (av < bv) return sortDir === "asc" ? -1 : 1;
+      if (av > bv) return sortDir === "asc" ? 1 : -1;
+      return 0;
+    });
+    countEl.textContent = list.length + " projects" + (allProjects.length !== list.length ? " (of " + allProjects.length + ")" : "");
+    var headers = PROJECT_COLS.map(function(c) {
+      var cls = "sortable" + (c.key === sortKey ? " sort-" + sortDir : "");
+      return "<th class='" + cls + "' data-sort='" + c.key + "'>" + c.label + "</th>";
+    }).join("");
+    content.innerHTML = "<table><thead><tr>" + headers + "<th></th></tr></thead><tbody>"
+      + list.map(function(p) {
+        var pinIcon = p.pinned ? "<span title='pinned' style='color:#00FF9F;margin-right:4px'>\\u{1F4CC}</span>" : "";
+        return "<tr>"
+          + "<td>" + pinIcon + (p.name || "-") + "</td>"
+          + "<td>" + (p.tier || "-") + "</td>"
+          + "<td>" + statusPill(p.status) + "</td>"
+          + "<td><code style='font-size:11px'>" + p.id + "</code></td>"
+          + "<td style='font-size:11px;color:#4B5563'>" + fmtWallet(p.wallet_address) + "</td>"
+          + "<td style='color:#4B5563'>" + new Date(p.created_at).toLocaleDateString() + "</td>"
+          + "<td>" + (p.status === "active" ? "<button class='btn-danger' onclick='deleteProject(\\\"" + p.id + "\\\")'>Delete</button>" : "") + "</td>"
+          + "</tr>";
+      }).join("") + "</tbody></table>";
+    // Wire up header click sorting
+    content.querySelectorAll("th.sortable").forEach(function(th) {
+      th.addEventListener("click", function() {
+        var k = th.getAttribute("data-sort");
+        if (sortKey === k) sortDir = sortDir === "asc" ? "desc" : "asc";
+        else { sortKey = k; sortDir = "asc"; }
+        renderProjects();
+      });
+    });
+  }
+
+  function renderProjectsToolbar() {
+    toolbar.innerHTML = "<label><input type='checkbox' id='toggle-inactive'" + (showInactive ? " checked" : "") + "> Show archived/purged/deleted</label>";
+    document.getElementById("toggle-inactive").addEventListener("change", function(e) {
+      showInactive = e.target.checked;
+      localStorage.setItem(SHOW_INACTIVE_KEY, showInactive ? "1" : "0");
+      renderProjects();
+    });
+  }
+
+  function renderSubdomainsTable(rows) {
+    countEl.textContent = rows.length + " subdomains";
+    content.innerHTML = "<table><thead><tr><th>Name</th><th>URL</th><th>Project</th><th>Deployment</th><th>Created</th></tr></thead><tbody>"
+      + rows.map(function(s) {
+        return "<tr><td><strong>" + s.name + "</strong></td>"
+          + "<td><a href='" + s.url + "' target='_blank' style='color:#00FF9F;text-decoration:none'>" + s.url + "</a></td>"
+          + "<td style='font-size:11px;color:#4B5563'>" + (s.project_id || "-") + "</td>"
+          + "<td style='font-size:11px;color:#4B5563'>" + (s.deployment_id || "-") + "</td>"
+          + "<td style='color:#4B5563'>" + new Date(s.created_at).toLocaleDateString() + "</td></tr>";
+      }).join("") + "</tbody></table>";
+  }
+
+  function renderReleasePanel() {
+    releaseMount.innerHTML =
+      "<div class='release-panel'>"
+      + "<h3>Release subdomain</h3>"
+      + "<div class='row'>"
+      +   "<input id='release-name' type='text' placeholder='subdomain-name' autocomplete='off'>"
+      +   "<input id='release-confirm' type='text' placeholder='type YES to confirm' autocomplete='off'>"
+      +   "<button id='release-btn' class='btn-danger' disabled>Release</button>"
+      + "</div>"
+      + "<div class='hint'>Releasing a subdomain removes it from the registry. The operation is immediate and cannot be undone from this panel.</div>"
+      + "</div>";
+    var nameEl = document.getElementById("release-name");
+    var confEl = document.getElementById("release-confirm");
+    var btnEl = document.getElementById("release-btn");
+    function check() {
+      btnEl.disabled = !(nameEl.value.trim().length > 0 && confEl.value === "YES");
+    }
+    nameEl.addEventListener("input", check);
+    confEl.addEventListener("input", check);
+    btnEl.addEventListener("click", async function() {
+      var name = nameEl.value.trim();
+      if (!name || confEl.value !== "YES") return;
+      btnEl.disabled = true;
+      try {
+        var res = await fetch("/admin/api/subdomains/" + encodeURIComponent(name), { method: "DELETE", credentials: "same-origin" });
+        if (res.ok) { location.reload(); return; }
+        var err = await res.json().catch(function() { return { error: "HTTP " + res.status }; });
+        alert("Failed: " + (err.error || "unknown"));
+      } catch (e) {
+        alert("Failed: " + e.message);
+      }
+      btnEl.disabled = false;
+    });
+  }
+
+  (async function init() {
+    try {
+      var res = await fetch("/admin/api/" + page, { credentials: "same-origin" });
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      var data = await res.json();
+      if (page === "projects") {
+        allProjects = data.projects || [];
+        renderProjectsToolbar();
+        renderProjects();
+      } else {
+        renderSubdomainsTable(data.subdomains || []);
+        renderReleasePanel();
+      }
+    } catch (e) {
+      content.innerHTML = "<div class='loading'>Error: " + e.message + "</div>";
+    }
+  })();
 })();
 
 async function deleteProject(id) {
   if (!confirm("Delete project " + id + "? This cannot be undone.")) return;
   var res = await fetch("/admin/api/projects/" + id, { method: "DELETE", credentials: "same-origin" });
-  if (res.ok) location.reload();
-  else alert("Failed: " + (await res.json()).error);
-}
-
-async function deleteSubdomain(name) {
-  if (!confirm("Release subdomain " + name + "?")) return;
-  var res = await fetch("/admin/api/subdomains/" + name, { method: "DELETE", credentials: "same-origin" });
   if (res.ok) location.reload();
   else alert("Failed: " + (await res.json()).error);
 }

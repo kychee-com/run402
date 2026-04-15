@@ -88,7 +88,6 @@ tr.unattrib td{color:#4B5563;font-style:italic}
       <a href="/admin/projects">Projects</a>
       <a href="/admin/subdomains">Subdomains</a>
       <a href="/admin/finance" style="border-color:#00FF9F;color:#00FF9F">Finance</a>
-      <a href="/admin/llms-txt">llms.txt</a>
       <span>${escHtml(name)}</span>
       <a href="/admin/logout">Logout</a>
     </div>

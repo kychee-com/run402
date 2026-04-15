@@ -58,7 +58,6 @@ import contractsRoutes from "./routes/contracts.js";
 import bundleRoutes from "./routes/bundle.js";
 import publishRoutes from "./routes/publish.js";
 import adminDashboardRoutes from "./routes/admin-dashboard.js";
-import adminLlmsTxtRoutes from "./routes/admin-llms-txt.js";
 import adminWalletRoutes from "./routes/admin-wallet.js";
 import adminFinanceRoutes from "./routes/admin-finance.js";
 import attributionRoutes from "./routes/attribution.js";
@@ -388,7 +387,6 @@ app.get("/ping/v1", walletAuth(false), (_req: Request, res: Response) => {
 // --- Routes ---
 app.use(tierRoutes);
 app.use(adminDashboardRoutes);
-app.use(adminLlmsTxtRoutes);
 app.use(adminWalletRoutes);
 app.use(adminFinanceRoutes);
 app.use(billingRoutes);

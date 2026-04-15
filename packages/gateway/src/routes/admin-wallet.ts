@@ -560,7 +560,6 @@ h1 .g{color:#00FF9F}
       <a href="/admin/projects">Projects</a>
       <a href="/admin/subdomains">Subdomains</a>
       <a href="/admin/finance">Finance</a>
-      <a href="/admin/llms-txt">llms.txt</a>
       <span>${escHtml(userName)}</span>
       <a href="/admin/logout">Logout</a>
     </div>

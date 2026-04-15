@@ -91,73 +91,37 @@ Five discrete admin-site changes at run402.com/admin:
 - [x] **Write failing test: explicit refresh bypass** [code] — `refresh:true` re-fetches and replaces cached value
 - [x] **Implement cache + coalescer module** [code] — [finance-cache.ts](../../packages/gateway/src/services/finance-cache.ts) — `createFinanceCache({ttlMs, now})` with `Map` + in-flight promise map
 - [x] **Wire cache into finance routes** [code] — wrapped getSummary/getRevenueBreakdown/getCostBreakdown; `?refresh=1` passes through to cache
-- [ ] **Cap result-set size on revenue breakdown** [code]
-  - In `getRevenueBreakdownByProject` [finance-rollup.ts](../../packages/gateway/src/services/finance-rollup.ts) — ensure `LIMIT` on the per-project SELECT (e.g., top 500 by revenue), with an overflow flag
-  - Write test: given 1000 seeded projects, returned rows ≤ limit + `truncated: true`
-- [ ] **Stream CSV export instead of buffering** [code]
-  - [admin-finance.ts:284-346 buildPlatformCsv](../../packages/gateway/src/routes/admin-finance.ts#L284-L346) currently concats all lines in memory
-  - Convert to streamed response (write row-by-row to `res`) to bound heap during large exports
-  - Test: large project count doesn't spike RSS beyond threshold
-- [ ] **Add simple admin-route rate limit / concurrency guard** [code]
-  - Per-session cap: max 1 in-flight `/admin/api/finance/*` request per session (queue or 429)
-  - Cross-session global cap: max 4 concurrent finance queries across all admins (semaphore)
-  - Test: 10 concurrent calls serialize correctly, never more than N in flight
-- [ ] **Label stale data in the Finance UI** [frontend-visual]
-  - Small "cached — Ns ago" indicator + "Refresh" button that sends `?refresh=1`
-  - In [admin-finance-html.ts](../../packages/gateway/src/routes/admin-finance-html.ts)
-- [ ] **Document operational fallback** [manual]
-  - In plan's Infrastructure State + in a short comment in finance-cache.ts: "To disable caching set `FINANCE_CACHE_TTL_MS=0`"
-- [ ] **Consider raising ECS task memory to 1536 MB as safety margin** [infra]
-  - Not a root-cause fix, but cheap defense-in-depth
-  - Check `packages/gateway/infra/*` or deploy config for the task definition
-  - HUMAN checkpoint: confirm cost impact before applying
-- [ ] **Run full gateway test suite**
-- [ ] **Load-test the fix locally** [manual]
-  - Use `curl` / `ab` / `autocannon` to fire 10 parallel `/admin/api/finance/summary?window=30d` with a valid session cookie
-  - Observe: only 1 DB burst, subsequent requests served from cache, memory stays flat
+- [x] **Document operational fallback** [manual] — documented inline in [finance-cache.ts:3-11](../../packages/gateway/src/services/finance-cache.ts#L3-L11) and in this plan's Infrastructure State. Set `FINANCE_CACHE_TTL_MS=0` to disable caching (coalescing still applies for in-flight requests).
+- [x] **Run full gateway test suite** — 1158/1158 pass after wiring cache into deps
+- [!] **Cap result-set size on revenue breakdown** [code] — DEFERRED. Current run402 project count is small (<100). Cache+coalesce handles the observed OOM. Worth adding as a follow-up when project count grows; requires a separate SUM() query to keep totals accurate under truncation.
+- [!] **Stream CSV export instead of buffering** [code] — DEFERRED. On-demand endpoint, not triggered by normal `/admin/finance` page loads (which was the OOM trigger). Low priority vs. other items.
+- [!] **Add simple admin-route rate limit / concurrency guard** [code] — DEFERRED. Coalescer already collapses duplicate in-flight work; a semaphore adds complexity without clear incremental benefit at current admin headcount (≤3). Revisit if additional incidents occur.
+- [!] **Label stale data in the Finance UI** [frontend-visual] — DEFERRED. The cache is transparent and 30s TTL is short. Add the "cached Ns ago / refresh" control when first admin notices stale data.
+- [!] **Consider raising ECS task memory to 1536 MB as safety margin** [infra] — WAITING FOR: user decision on cost impact. Not a root-cause fix.
+- [!] **Load-test the fix locally** [manual] — DEFERRED. Unit tests prove coalescer behavior; a proper load-test requires a running gateway with DB access. Validate in prod post-deploy via gateway memory metrics.
 
 ### Phase 4: (b) Remove llms.txt tab
 
-- [ ] **Remove nav link** from all three pages [frontend-visual]
-  - [admin-dashboard.ts:523-524](../../packages/gateway/src/routes/admin-dashboard.ts#L523-L524) and :581-584
-  - [admin-finance-html.ts:91](../../packages/gateway/src/routes/admin-finance-html.ts#L91)
-  - [admin-wallet.ts:560-561](../../packages/gateway/src/routes/admin-wallet.ts#L560-L561)
-- [ ] **Decide on route** [code]
-  - Find `/admin/llms-txt` route handler. If it's purely a generated file viewer with no operator workflow using it, remove the route too. If unsure, leave the route (no harm) — user just loses the nav entry. Default: remove the route.
-- [ ] **Run gateway tests**
+- [x] **Remove nav link** from all three pages [frontend-visual] — 4 `<a href="/admin/llms-txt">` links deleted across admin-dashboard.ts, admin-finance-html.ts, admin-wallet.ts
+- [x] **Remove route** [code] — deleted `packages/gateway/src/routes/admin-llms-txt.ts`, removed import + `app.use(...)` from server.ts. Public `/llms.txt` (the file itself, served via CloudFront) is untouched.
+- [x] **Run gateway tests** — 1158/1158 pass
 
 ### Phase 5: (c) Projects page — columns, sort, filter, pinned
 
-- [ ] **Write failing tests** for column order and toggle behavior [frontend-logic]
-  - DOM-level test: headers render in order Name, Tier, Status, ID, Wallet, Created
-  - DOM test: with toggle OFF, archived/deleted/purged rows are hidden
-  - DOM test: clicking a header cycles sort asc/desc and data re-renders
-  - DOM test: pinned rows float to top regardless of active sort
-- [ ] **Reorder columns** to Name, Tier, Status, ID, Wallet, Created in [admin-dashboard.ts:608-612](../../packages/gateway/src/routes/admin-dashboard.ts#L608-L612) [frontend-visual]
-- [ ] **Add pinned column data** to projects API response (include `pinned` bool from `internal.projects`) [code]
-  - Update [admin-dashboard.ts:337-355](../../packages/gateway/src/routes/admin-dashboard.ts#L337-L355) to SELECT `pinned`
-- [ ] **Render pinned indicator** (📌 prefix in Name cell) [frontend-visual]
-- [ ] **Add "Show archived/purged/deleted" toggle** above the table, OFF by default [frontend-logic]
-  - Filters client-side array before render
-  - Persist choice in `localStorage` (`admin.projects.showInactive`)
-- [ ] **Make column headers sortable** [frontend-logic]
-  - Click to cycle asc → desc → asc
-  - Visual indicator (▲/▼) on active column
-  - Default: sort by Created desc
-  - Pinned rows always float to top (stable within pinned group using active sort)
-- [ ] **Run gateway tests**
+- [!] **Write failing tests** for column order and toggle behavior [frontend-logic] — DEFERRED. Repo has no jsdom/DOM testing framework; adding one for a 4-item polish plan is out of scope. Visual verification via manual smoke (Phase 7). Filed as deviation in Implementation Log.
+- [x] **Reorder columns** to Name, Tier, Status, ID, Wallet, Created [frontend-visual]
+- [x] **Add pinned column data** to projects API response [code] — SELECT adds `COALESCE(pinned, false) AS pinned`
+- [x] **Render pinned indicator** (📌 prefix in Name cell) [frontend-visual]
+- [x] **Add "Show archived/purged/deleted" toggle** [frontend-logic] — OFF by default; persists to `localStorage["admin.projects.showInactive"]`; filters statuses `archived|deleted|purged|purging|expired` when off
+- [x] **Make column headers sortable** [frontend-logic] — click cycles asc/desc; default Created desc; pinned always floats to top
+- [x] **Run gateway tests** — 1158/1158 pass
 
 ### Phase 6: (d) Subdomains — remove per-row Release, add bottom command area
 
-- [ ] **Write failing test** — clicking Release with wrong confirm text (not literal `YES`) must not call DELETE [frontend-logic]
-- [ ] **Write failing test** — clicking Release with correct `YES` confirm calls `DELETE /admin/api/subdomains/:name` [frontend-logic]
-- [ ] **Remove per-row Release button** from [admin-dashboard.ts:627](../../packages/gateway/src/routes/admin-dashboard.ts#L627) [frontend-visual]
-- [ ] **Add bottom Release command area** below the subdomains table [frontend-visual]
-  - Structure mirrors Add Admin Wallet ([admin-dashboard.js:83-89](../../packages/gateway/public/admin-dashboard.js#L83-L89))
-  - Fields: `<input placeholder="subdomain-name">`, `<input placeholder='type YES to confirm'>`, `<button>Release</button>`
-  - Button disabled unless second input strictly equals `YES`
-  - On success, toast + refresh table
-- [ ] **Run gateway tests**
+- [!] **Write failing tests** [frontend-logic] — DEFERRED, same reason as Phase 5 (no jsdom). Manual smoke will cover it.
+- [x] **Remove per-row Release button** [frontend-visual]
+- [x] **Add bottom Release command area** [frontend-visual] — `.release-panel` with name + YES-confirm inputs + disabled Release button enabled only when `confirm === "YES"`. Posts `DELETE /admin/api/subdomains/:name`.
+- [x] **Run gateway tests** — 1158/1158 pass
 
 ### Phase 7: Regression + Ship
 
@@ -201,7 +165,8 @@ _Populated during implementation by /implement_
 
 ### Deviations
 
-- TBD
+- **Frontend-logic TDD deferred for Phases 5 & 6.** The repo has no jsdom or DOM-test infrastructure; standing that up for these polish changes would be larger than the changes themselves. Adopted spec-driven + manual verification path instead, same as the `frontend-visual` methodology. Rely on Phase 7 browser smoke to validate sort, toggle, pinned float, and YES-release.
+- **Phase 3 defense-in-depth items deferred.** LIMIT cap, streaming CSV, rate limit, UI stale-label, ECS memory bump, load-test — all marked `[!]` with reasoning. The coalescer+TTL addresses the observed OOM root cause; these items are follow-up defense-in-depth.
 
 ---
 
