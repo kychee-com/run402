@@ -2,7 +2,6 @@ import { Router, Request, Response } from "express";
 import { TIERS } from "@run402/shared";
 import type { TierName } from "@run402/shared";
 import { createProject, purgeProject, projectCache } from "../services/projects.js";
-import { notifyNewProject } from "../services/telegram.js";
 import { serviceKeyAuth } from "../middleware/apikey.js";
 import { walletAuth } from "../middleware/wallet-auth.js";
 import { serviceKeyOrAdmin, walletAuthOrAdmin } from "../middleware/admin-auth.js";
@@ -100,7 +99,6 @@ router.post("/projects/v1", walletAuth(true), asyncHandler(async (req: Request, 
   }
 
   console.log(`  Created project: ${project.id} (schema: ${project.schemaSlot}, tier: ${tier}, wallet: ${walletAddress})`);
-  notifyNewProject(name, tier, project.id, walletAddress);
 
   res.status(201).json({
     project_id: project.id,

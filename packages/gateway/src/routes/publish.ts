@@ -27,7 +27,6 @@ import { deleteAppVersion } from "../services/publish.js";
 import { createDemoProject, findDemoProject, updateDemoVersion, teardownDemoProject } from "../services/demo.js";
 import { ADMIN_KEY } from "../config.js";
 import { walletAuth } from "../middleware/wallet-auth.js";
-import { notifyNewProject } from "../services/telegram.js";
 
 const router = Router();
 
@@ -297,7 +296,6 @@ router.post(
 
     try {
       const result = await forkApp(body, tier, apiBase, undefined, walletAddress);
-      notifyNewProject(`fork:${body.name}`, tier, result.project_id);
 
       // Invoke bootstrap function if it exists
       const bootstrapVars = body.bootstrap && typeof body.bootstrap === "object" ? body.bootstrap : {};
