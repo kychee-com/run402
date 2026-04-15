@@ -3,7 +3,7 @@
 **Owner:** volinskey
 **Created:** 2026-04-15
 **Status:** Complete
-**Completed:** 2026-04-15
+**Completed:** 2026-04-15 (round 1) + 2026-04-15 (round 2 hardening)
 **Spec:** none (scoped UI polish + bug fixes against existing admin — no dedicated admin spec exists)
 **Spec-Version:** unversioned
 **Source:** user-request
@@ -124,6 +124,14 @@ Five discrete admin-site changes at run402.com/admin:
 - [x] **Add bottom Release command area** [frontend-visual] — `.release-panel` with name + YES-confirm inputs + disabled Release button enabled only when `confirm === "YES"`. Posts `DELETE /admin/api/subdomains/:name`.
 - [x] **Run gateway tests** — 1158/1158 pass
 
+### Phase 8: Follow-up hardening (round 2)
+
+- [x] **LIMIT cap on revenue breakdown** [code] — added `LIMIT 501`, slice to 500, `truncated: boolean` on result. When truncated, runs scalar SUM query so footer total stays accurate. +2 tests.
+- [x] **Projects Delete — move to bottom panel** [frontend-logic] — per-row Delete removed; new `.release-panel`-styled delete form below table with project-id + YES confirm gate.
+- [x] **ECS task memory 1024→1536 MB** [infra] — [pod-stack.ts:240](../../infra/lib/pod-stack.ts#L240) updated.
+- [x] **Regression** — 1160/1160 pass.
+- [x] **Ship** [ship] — shipped via CI gateway deploy + CDK infra deploy.
+
 ### Phase 7: Regression + Ship
 
 - [x] **Run FULL repo test suite** [code] — 1158/1158 pass (gateway unit suite)
@@ -170,3 +178,4 @@ _Populated during implementation by /implement_
 - 2026-04-15: Plan created. Four-item scoped polish task. No formal spec — admin source is de facto spec (DD-1).
 - 2026-04-15: Added Phase 3 (e) — finance page resource safety (P0) — after gateway OOM crash at 09:25 local triggered by two concurrent `/admin/finance` loads. See DD-5.
 - 2026-04-15: Implementation complete. Commits d50fbb3 (filter + cache) and 1b8441b (admin UI + subdomain release panel) shipped to prod via CI deploy-gateway workflow. Gateway v1.0.4 healthy. Deferred defense-in-depth and DOM tests documented in Implementation Log.
+- 2026-04-15: Round 2 opened — user confirmed only 2 admins ever, so #3 (rate limit) is not needed. Adding Phase 8: LIMIT cap on revenue breakdown, ECS memory 1024→1536 MB, Projects Delete moved to bottom panel matching subdomains release UX.

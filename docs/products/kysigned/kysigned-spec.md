@@ -791,51 +791,68 @@ The public repo includes comprehensive integration tests that mirror run402-mcp'
 
 ## Open Questions
 
+**Resolution-owner tags (v0.13.0).** Every OQ is tagged with who/what resolves it:
+- `[USER]` — product/policy call needing your decision. Resolved in conversation → spec patch-bump, OQ marked RESOLVED.
+- `[PLAN]` — technical choice that `/plan` owns. Resolved during task design as a Design Decision in the plan. Spec patch-bumps only if the choice changes spec wording.
+- `[RESEARCH]` — needs a measurement, external fact, or spike. Resolved during `/plan` (spike task) or `/implement` (when the measurement happens).
+- `[DEFERRED]` — legitimate future decision; tracked here to avoid forgetting, not blocking any current work.
+- `[RESOLVED: vX.Y.Z]` — kept for audit trail only.
+
+### OQ resolution scoreboard (v0.13.0)
+
+| Owner | Count | Which |
+|---|---|---|
+| `[USER]` | 4 | 6, 8, 9 (remaining), 12 |
+| `[PLAN]` | 13 | 1, 4, 5, 7, 16, 21, 22, 23, 24, 25, 26, 27, 28 |
+| `[RESEARCH]` | 5 | 3, 15, 18, 20, 9 (partial) |
+| `[DEFERRED]` | 6 | 10, 11, 13, 14, 19, 29 |
+| `[RESOLVED]` | 3 | 2 (v0.9.1), 9 (partial, v0.9.1), 17 (v0.11.0) |
+
 ### New (from signature-binding rework)
 
-1. **zk-email circuit adoption vs customization.** Can we adopt a circuit from prove.email directly, or do we need to customize for our public-input shape (`I APPROVE` marker, subject format, first-non-quoted-line rule)? Audit strategy and cost?
-2. **~~DNSSEC proof chain capture.~~** RESOLVED (v0.9.1). DNSSEC removed from MVP. The zk proof proves key correctness; key consistency across signatures provides non-repudiation (F4.9).
-3. **`Subject` not in DKIM `h=`.** Some mail providers do not include `Subject` in DKIM-signed headers. What fraction of real-world email is affected? Do we reject cleanly with a helpful message, or find an alternative binding?
-4. **DKIM key rotation race.** A reply's DKIM header specifies the selector. The operator must fetch the exact key version at the time of reply. Implementation detail but operationally important.
-5. **Slow-KDF parameters.** Exact algorithm (argon2id vs scrypt vs PBKDF2) and parameter values. Fixed forever once committed. Must be expensive enough to resist a 1000x hardware speedup while remaining tolerable (~1s) for a legitimate verifier.
-6. **Explicit decline phrase.** Should `I DECLINE` be a first-class decline action, or is "do not reply" the only decline path?
-7. **Retry UX for non-delivery.** Replies can bounce or be filtered. What does the nudge/re-send flow look like?
-8. **Consent language review.** Who reviews the email copy, "how it works" page, and approval page wording before launch? Legal expertise required.
-9. **Dispute scenarios — PARTIALLY RESOLVED (v0.9.1).** Signer repudiation analysis:
+1. `[PLAN]` **zk-email circuit adoption vs customization.** Can we adopt a circuit from prove.email directly, or do we need to customize for our public-input shape (`I APPROVE` marker, subject format, first-non-quoted-line rule)? Audit strategy and cost? *(Partially answered by zkprover v0.1.0 D pick — we're on RISC Zero zkVM. Residual: cfdkim library audit scope.)*
+2. `[RESOLVED: v0.9.1]` **~~DNSSEC proof chain capture.~~** DNSSEC removed from MVP. The zk proof proves key correctness; key consistency across signatures provides non-repudiation (F4.9).
+3. `[RESEARCH]` **`Subject` not in DKIM `h=`.** Some mail providers do not include `Subject` in DKIM-signed headers. What fraction of real-world email is affected? Do we reject cleanly with a helpful message, or find an alternative binding? *Resolution: spike during `/plan` — collect a corpus of 20+ real emails from major providers and measure.*
+4. `[PLAN]` **DKIM key rotation race.** A reply's DKIM header specifies the selector. The operator must fetch the exact key version at the time of reply. Implementation detail but operationally important.
+5. `[PLAN]` **Slow-KDF parameters.** Exact algorithm (argon2id vs scrypt vs PBKDF2) and parameter values for the `/verify` lookup path. Fixed forever once committed. Must be expensive enough to resist a 1000x hardware speedup while remaining tolerable (~1s) for a legitimate verifier. *Linked to OQ 25 — the in-circuit vs out-of-circuit decision determines whether this KDF lives in the guest, on the verify page, or both.*
+6. `[USER]` **Explicit decline phrase.** Should `I DECLINE` be a first-class decline action, or is "do not reply" the only decline path?
+7. `[PLAN]` **Retry UX for non-delivery.** Replies can bounce or be filtered. What does the nudge/re-send flow look like?
+8. `[USER]` **Consent language review.** Who reviews the email copy, "how it works" page, and approval page wording before launch? Legal expertise required.
+9. `[USER]` (remaining) / `[RESOLVED: v0.9.1]` (fabricated-key defense) **Dispute scenarios.** Signer repudiation analysis:
    - **Scenario:** Bob signed, then claims the operator fabricated his signature using a fake DKIM key (after the real key rotated out of DNS).
    - **Defense (trusted operator):** No issue — the operator is trusted, the zk proof exists, the key is archived on-chain with `block.timestamp`.
-   - **Defense (untrusted operator):** The operator would need to fabricate ALL DKIM signatures from Bob's provider (e.g., Gmail) during the key period, because every legitimate signing references the same `keyId`. A single legitimate Gmail signature from any other user during the same period corroborates the key. The on-chain `keyId = keccak256(domain, selector, publicKey)` is the anchor — all proofs referencing it are mutually corroborating.
+   - **Defense (untrusted operator):** The operator would need to fabricate ALL DKIM signatures from Bob's provider (e.g., Gmail) during the key period, because every legitimate signing references the same `keyId`. A single legitimate Gmail signature from any other user during the same period corroborates the key. The on-chain `keyId = keccak256(domain, selector, publicKey)` is the anchor — all proofs referencing it are mutually corroborating. *(Reminder: this defense is load-bearing on F4.12(b) binding — see F4.9.0.)*
    - **Defense (multiple operators):** If multiple independent operators share the canonical `EvidenceKeyRegistry`, each independently verifies and registers the same key. Fabrication by one operator is immediately detectable as an outlier. This is the strongest form and requires no protocol change — only adoption.
-   - **Remaining scenarios** (sender forgery, future crypto break, duress) still open — lock before launch.
-10. **Internationalization of `I APPROVE`.** English-only for MVP. Future consideration for localized signing phrases.
-11. **Internal future-features note.** Create a separate internal file tracking: OAuth-based identity verification, wallet co-signature as additive proof, visible signature blocks, alternative delivery channels (WhatsApp etc.). Not in public repo, not mentioned publicly.
+   - **Remaining scenarios** (sender forgery, future crypto break, duress) still open — lock before launch. Owner: `[USER]`.
+10. `[DEFERRED]` **Internationalization of `I APPROVE`.** English-only for MVP. Future consideration for localized signing phrases.
+11. `[DEFERRED]` **Internal future-features note.** Create a separate internal file tracking: OAuth-based identity verification, wallet co-signature as additive proof, visible signature blocks, alternative delivery channels (WhatsApp etc.). Not in public repo, not mentioned publicly.
 
 ### New (v0.13.0 — from consultation)
 
-25. **In-circuit `searchKey` function vs privacy trade-off (F4.10.3).** The guest must commit `searchKey` to the journal (F4.10.3) so the contract can read it rather than trust calldata. Options: (i) fast hash inside the guest (e.g., Poseidon or keccak over `(email, docHash)`) — cheap to prove, but loses the argon2id cost-amplification against bulk scraping (F4.11 privacy tier "has document, wants all signers" degrades). (ii) argon2id inside the zkVM guest — preserves privacy tier but is likely catastrophic for proof cost (memory-hard function inside a STARK). (iii) Hybrid: guest commits a fast commitment (`fastSearchKey`); verifier page computes both `fastSearchKey` and a separate argon2id-based `slowSearchKey` — contract looks up by `fastSearchKey` (cheap, authenticated), UI applies argon2id-gated rate limits on the `/verify` endpoint for additional bulk-scraping resistance. Plan decision needed. Decision affects F4.11 privacy language if (i) is chosen.
-26. **Event emission format for F5.2b re-verification.** RISC Zero seal bytes are ~260 bytes; journal bytes are small (~150 bytes). Emitting all of this in one event is feasible but pricey at gas. Options: (i) one fat event with everything, (ii) split into two events (record event + proof event), (iii) event plus auxiliary mapping lookup keyed by nullifier. Plan decides; spec requires only "sufficient data to re-verify from logs without calldata indexing" (F5.2b).
-27. **Nullifier derivation function in the zkVM guest.** F4.10 and F3.3.4 require the nullifier to be derived from the canonical DKIM-Signature bytes inside the guest. Concrete function (keccak, sha256, Poseidon) is a plan decision. Must be deterministic given the DKIM-Signature bytes and collision-resistant for the expected signature space.
-28. **Subject header `h=` membership check (v0.13.0 affirmation).** F3.3.1 and F3.3.3(b) require the guest to verify the Subject header is listed in DKIM `h=`. The current D zkVM guest parses Subject from raw email bytes without verifying `h=` coverage. Plan must port this requirement from Circom-era design to the zkVM guest. Not a new spec question, but flagged here as an implementation task that was dropped during the snarkjs → RISC Zero migration.
-29. **Forced-inclusion UX for F4.18.** If the Base sequencer delays a tx, our UI should gracefully degrade. Today we have no flow for forced-inclusion via L1. Is this a pre-launch requirement or a deferred enhancement? MVP recommendation: deferred. Document in runbook.
+25. `[PLAN]` **In-circuit `searchKey` function vs privacy trade-off (F4.10.3).** The guest must commit `searchKey` to the journal (F4.10.3) so the contract can read it rather than trust calldata. Options: (i) fast hash inside the guest (e.g., Poseidon or keccak over `(email, docHash)`) — cheap to prove, but loses the argon2id cost-amplification against bulk scraping (F4.11 privacy tier "has document, wants all signers" degrades). (ii) argon2id inside the zkVM guest — preserves privacy tier but is likely catastrophic for proof cost (memory-hard function inside a STARK). (iii) Hybrid: guest commits a fast commitment (`fastSearchKey`); verifier page computes both `fastSearchKey` and a separate argon2id-based `slowSearchKey` — contract looks up by `fastSearchKey` (cheap, authenticated), UI applies argon2id-gated rate limits on the `/verify` endpoint for additional bulk-scraping resistance. Plan decision needed. Decision affects F4.11 privacy language if (i) is chosen.
+26. `[PLAN]` **Event emission format for F5.2b re-verification.** RISC Zero seal bytes are ~260 bytes; journal bytes are small (~150 bytes). Emitting all of this in one event is feasible but pricey at gas. Options: (i) one fat event with everything, (ii) split into two events (record event + proof event), (iii) event plus auxiliary mapping lookup keyed by nullifier. Plan decides; spec requires only "sufficient data to re-verify from logs without calldata indexing" (F5.2b).
+27. `[PLAN]` **Nullifier derivation function in the zkVM guest.** F4.10 and F3.3.4 require the nullifier to be derived from the canonical DKIM-Signature bytes inside the guest. Concrete function (keccak, sha256, Poseidon) is a plan decision. Must be deterministic given the DKIM-Signature bytes and collision-resistant for the expected signature space.
+28. `[PLAN]` **Subject header `h=` membership check (v0.13.0 affirmation).** F3.3.1 and F3.3.3(b) require the guest to verify the Subject header is listed in DKIM `h=`. The current D zkVM guest parses Subject from raw email bytes without verifying `h=` coverage. Plan must port this requirement from Circom-era design to the zkVM guest. Not a new spec question, but flagged here as an implementation task that was dropped during the snarkjs → RISC Zero migration.
+29. `[DEFERRED]` **Forced-inclusion UX for F4.18.** If the Base sequencer delays a tx, our UI should gracefully degrade. Today we have no flow for forced-inclusion via L1. Is this a pre-launch requirement or a deferred enhancement? MVP recommendation: deferred. Document in runbook.
 
 ### Carried forward (unchanged)
 
-12. **Envelope expiry default** — 30 days assumed; notification sequence before deletion TBD.
-13. **PDF retention cost model** — future paid retention: per-GB/year rate, tiers.
-14. **Multi-signature PDFs** — post-MVP. UX and hash structure for per-page/per-section signatures.
-15. **run402 prepaid credit model** — does run402 support buy-credits-and-deduct-per-call? If not, scope needed.
-16. **Email deliverability strategy** — dedicated sending domain, IP warm-up, deliverability monitoring.
-17. **~~Certificate of Completion design~~** — RESOLVED (v0.11.0). Renamed to "approval page" with per-signer proof blocks (F16). Design: QR code + verification key string per signer, document metadata, operator identity.
-18. **Credit pack tiers and pricing** — optimize after gas costs are known.
-19. **Future: run402 T2 payment collection (DEFERRED)** — see original OQ #17 text.
+12. `[USER]` **Envelope expiry default** — 30 days assumed; notification sequence before deletion TBD.
+13. `[DEFERRED]` **PDF retention cost model** — future paid retention: per-GB/year rate, tiers.
+14. `[DEFERRED]` **Multi-signature PDFs** — post-MVP. UX and hash structure for per-page/per-section signatures.
+15. `[RESEARCH]` **run402 prepaid credit model** — does run402 support buy-credits-and-deduct-per-call? If not, scope needed. *Resolved by reading run402 API docs / consulting run402 team.*
+16. `[PLAN]` **Email deliverability strategy** — dedicated sending domain, IP warm-up, deliverability monitoring.
+17. `[RESOLVED: v0.11.0]` **~~Certificate of Completion design~~** Renamed to "approval page" with per-signer proof blocks (F16). Design: QR code + verification key string per signer, document metadata, operator identity.
+18. `[RESEARCH]` **Credit pack tiers and pricing** — optimize after gas costs are measured on mainnet.
+19. `[DEFERRED]` **Future: run402 T2 payment collection** — see original OQ #17 text.
 
 ### Carried forward (F17 canary — unchanged)
 
-20. **F17 run402 capability gaps** — two KMS wallets per project, bytecode return on deploy, rate-limiting on provision-wallet. Facts to discover before canary execution.
-21. **F17 byte-identical bytecode check mechanism** — deferred to plan; spec commits to the gate being hard.
-22. **F17 canary checklist contents** — plan enumerates; candidate items now include: reply-to-sign end-to-end via each surface, evidence key registration, zk proof generation, verification page, parallel + sequential signing, ephemeral PDF retention, approval page generation with proof blocks.
-23. **F17 bytecode-divergence playbook** — deferred to plan.
-24. **F17 production-contract smoke specifics** — deferred to plan.
+20. `[RESEARCH]` **F17 run402 capability gaps** — two KMS wallets per project, bytecode return on deploy, rate-limiting on provision-wallet. Facts to discover before canary execution.
+21. `[PLAN]` **F17 byte-identical bytecode check mechanism** — deferred to plan; spec commits to the gate being hard.
+22. `[PLAN]` **F17 canary checklist contents** — plan enumerates; candidate items now include: reply-to-sign end-to-end via each surface, evidence key registration, zk proof generation, verification page, parallel + sequential signing, ephemeral PDF retention, approval page generation with proof blocks.
+23. `[PLAN]` **F17 bytecode-divergence playbook** — deferred to plan.
+24. `[PLAN]` **F17 production-contract smoke specifics** — deferred to plan.
 
 ## Future Features (removed from MVP)
 

@@ -223,6 +223,46 @@ describe("finance-rollup — getRevenueBreakdownByProject", () => {
     assert.equal(result.total_usd_micros, 5_100_000);
   });
 
+  it("caps result rows at LIMIT with truncated flag when overflow", async () => {
+    // 501 rows returned from SQL (LIMIT 501); service should return top 500 and flag truncated
+    const rows = Array.from({ length: 501 }, (_, i) => ({
+      project_id: `proj_${i.toString().padStart(4, "0")}`,
+      project_name: `Project ${i}`,
+      tier_fees: "100",
+      email_packs: "0",
+      kms_rental: "0",
+      kms_sign_fees: "0",
+      per_call_sku: "0",
+      total: "100",
+    }));
+    const { query } = makeMockQuery([
+      { rows },
+      { rows: [{ unattributed_usd_micros: "0" }] },
+      { rows: [{ total_usd_micros: "55555" }] }, // true total (separate scalar query)
+    ]);
+    const result = await getRevenueBreakdownByProject(query, {
+      start: new Date("2026-03-07T00:00:00Z"),
+      end: new Date("2026-04-06T00:00:00Z"),
+    });
+    assert.equal(result.projects.length, 500, "caps at 500");
+    assert.equal(result.truncated, true, "sets truncated flag");
+    // True total from scalar query, not sum of kept rows
+    assert.equal(result.total_usd_micros, 55555);
+  });
+
+  it("does not set truncated when result count ≤ LIMIT", async () => {
+    const { query } = makeMockQuery([
+      { rows: [{ project_id: "p1", project_name: "x", tier_fees: "100", email_packs: "0", kms_rental: "0", kms_sign_fees: "0", per_call_sku: "0", total: "100" }] },
+      { rows: [{ unattributed_usd_micros: "0" }] },
+    ]);
+    const result = await getRevenueBreakdownByProject(query, {
+      start: new Date("2026-03-07T00:00:00Z"),
+      end: new Date("2026-04-06T00:00:00Z"),
+    });
+    assert.equal(result.truncated, false);
+    assert.equal(result.projects.length, 1);
+  });
+
   it("filters unnamed variants case-insensitively with trim (broadened unnamed match)", async () => {
     const { query } = makeMockQuery([
       {

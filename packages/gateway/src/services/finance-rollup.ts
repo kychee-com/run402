@@ -127,7 +127,10 @@ export interface RevenueBreakdownResult {
   projects: ProjectRevenueRow[];
   unattributed_usd_micros: number;
   total_usd_micros: number;
+  truncated: boolean;
 }
+
+export const REVENUE_BREAKDOWN_MAX_ROWS = 500;
 
 export async function getRevenueBreakdownByProject(
   query: FinanceRollupQueryFn,
@@ -178,9 +181,14 @@ export async function getRevenueBreakdownByProject(
     FROM topup_totals t
     FULL OUTER JOIN ledger_totals l USING (project_id)
     ORDER BY total DESC
+    LIMIT ${REVENUE_BREAKDOWN_MAX_ROWS + 1}
     `,
     [range.start, range.end],
   );
+  const truncated = perProjectResult.rows.length > REVENUE_BREAKDOWN_MAX_ROWS;
+  if (truncated) {
+    perProjectResult.rows.length = REVENUE_BREAKDOWN_MAX_ROWS;
+  }
 
   // Unattributed: topups whose wallet_address does NOT match any project.
   const unattributedResult = await query(
@@ -221,11 +229,45 @@ export async function getRevenueBreakdownByProject(
     });
   const unattributedRaw = unattributedResult.rows[0]?.unattributed_usd_micros;
   const unattributed_usd_micros = unattributedRaw == null ? 0 : Number(unattributedRaw);
-  const projectSum = projects.reduce((s, p) => s + p.total_usd_micros, 0);
+
+  // When truncated, the kept-row sum would under-report; run a scalar query for
+  // the true per-project sum so the footer total stays accurate.
+  let projectSum: number;
+  if (truncated) {
+    const totalResult = await query(
+      `
+      WITH topup_totals AS (
+        SELECT p.id AS project_id,
+          SUM(bt.funded_usd_micros)::BIGINT AS revenue
+        FROM internal.billing_topups bt
+        JOIN internal.projects p ON LOWER(p.wallet_address) = LOWER(bt.wallet_address)
+        WHERE bt.status = 'credited' AND bt.created_at >= $1 AND bt.created_at < $2
+        GROUP BY p.id
+      ),
+      ledger_totals AS (
+        SELECT p.id AS project_id,
+          SUM(CASE WHEN al.kind IN ('kms_wallet_rental','kms_sign_fee','image') THEN ABS(al.amount_usd_micros) ELSE 0 END)::BIGINT AS revenue
+        FROM internal.allowance_ledger al
+        JOIN internal.billing_account_wallets baw ON baw.billing_account_id = al.billing_account_id
+        JOIN internal.projects p ON LOWER(p.wallet_address) = LOWER(baw.wallet_address)
+        WHERE al.created_at >= $1 AND al.created_at < $2
+        GROUP BY p.id
+      )
+      SELECT COALESCE(SUM(COALESCE(t.revenue,0) + COALESCE(l.revenue,0)), 0)::BIGINT AS total_usd_micros
+      FROM topup_totals t FULL OUTER JOIN ledger_totals l USING (project_id)
+      `,
+      [range.start, range.end],
+    );
+    projectSum = Number(totalResult.rows[0]?.total_usd_micros ?? 0);
+  } else {
+    projectSum = projects.reduce((s, p) => s + p.total_usd_micros, 0);
+  }
+
   return {
     projects,
     unattributed_usd_micros,
     total_usd_micros: projectSum + unattributed_usd_micros,
+    truncated,
   };
 }
 

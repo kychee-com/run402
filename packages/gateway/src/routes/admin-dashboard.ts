@@ -653,7 +653,7 @@ th.sort-desc::after{content:" \\25BC";font-size:10px;color:#00FF9F}
       var cls = "sortable" + (c.key === sortKey ? " sort-" + sortDir : "");
       return "<th class='" + cls + "' data-sort='" + c.key + "'>" + c.label + "</th>";
     }).join("");
-    content.innerHTML = "<table><thead><tr>" + headers + "<th></th></tr></thead><tbody>"
+    content.innerHTML = "<table><thead><tr>" + headers + "</tr></thead><tbody>"
       + list.map(function(p) {
         var pinIcon = p.pinned ? "<span title='pinned' style='color:#00FF9F;margin-right:4px'>\\u{1F4CC}</span>" : "";
         return "<tr>"
@@ -663,7 +663,6 @@ th.sort-desc::after{content:" \\25BC";font-size:10px;color:#00FF9F}
           + "<td><code style='font-size:11px'>" + p.id + "</code></td>"
           + "<td style='font-size:11px;color:#4B5563'>" + fmtWallet(p.wallet_address) + "</td>"
           + "<td style='color:#4B5563'>" + new Date(p.created_at).toLocaleDateString() + "</td>"
-          + "<td>" + (p.status === "active" ? "<button class='btn-danger' onclick='deleteProject(\\\"" + p.id + "\\\")'>Delete</button>" : "") + "</td>"
           + "</tr>";
       }).join("") + "</tbody></table>";
     // Wire up header click sorting
@@ -683,6 +682,41 @@ th.sort-desc::after{content:" \\25BC";font-size:10px;color:#00FF9F}
       showInactive = e.target.checked;
       localStorage.setItem(SHOW_INACTIVE_KEY, showInactive ? "1" : "0");
       renderProjects();
+    });
+  }
+
+  function renderDeletePanel() {
+    releaseMount.innerHTML =
+      "<div class='release-panel'>"
+      + "<h3>Delete (archive) project</h3>"
+      + "<div class='row'>"
+      +   "<input id='del-id' type='text' placeholder='project-id' autocomplete='off'>"
+      +   "<input id='del-confirm' type='text' placeholder='type YES to confirm' autocomplete='off'>"
+      +   "<button id='del-btn' class='btn-danger' disabled>Delete</button>"
+      + "</div>"
+      + "<div class='hint'>Active projects only. Sets status to 'archived'. Cannot be undone from this panel.</div>"
+      + "</div>";
+    var idEl = document.getElementById("del-id");
+    var confEl = document.getElementById("del-confirm");
+    var btnEl = document.getElementById("del-btn");
+    function check() {
+      btnEl.disabled = !(idEl.value.trim().length > 0 && confEl.value === "YES");
+    }
+    idEl.addEventListener("input", check);
+    confEl.addEventListener("input", check);
+    btnEl.addEventListener("click", async function() {
+      var id = idEl.value.trim();
+      if (!id || confEl.value !== "YES") return;
+      btnEl.disabled = true;
+      try {
+        var res = await fetch("/admin/api/projects/" + encodeURIComponent(id), { method: "DELETE", credentials: "same-origin" });
+        if (res.ok) { location.reload(); return; }
+        var err = await res.json().catch(function() { return { error: "HTTP " + res.status }; });
+        alert("Failed: " + (err.error || "unknown"));
+      } catch (e) {
+        alert("Failed: " + e.message);
+      }
+      btnEl.disabled = false;
     });
   }
 
@@ -742,6 +776,7 @@ th.sort-desc::after{content:" \\25BC";font-size:10px;color:#00FF9F}
         allProjects = data.projects || [];
         renderProjectsToolbar();
         renderProjects();
+        renderDeletePanel();
       } else {
         renderSubdomainsTable(data.subdomains || []);
         renderReleasePanel();
@@ -752,12 +787,6 @@ th.sort-desc::after{content:" \\25BC";font-size:10px;color:#00FF9F}
   })();
 })();
 
-async function deleteProject(id) {
-  if (!confirm("Delete project " + id + "? This cannot be undone.")) return;
-  var res = await fetch("/admin/api/projects/" + id, { method: "DELETE", credentials: "same-origin" });
-  if (res.ok) location.reload();
-  else alert("Failed: " + (await res.json()).error);
-}
 </script>
 </body>
 </html>`;
