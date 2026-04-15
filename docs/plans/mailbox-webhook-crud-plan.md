@@ -2,7 +2,7 @@
 
 **Owner:** Barry Volinskey
 **Created:** 2026-04-15
-**Status:** In Progress
+**Status:** Complete
 **Spec:** `openspec/changes/mailbox-webhook-crud/proposal.md` + `openspec/changes/mailbox-webhook-crud/design.md`
 **Spec-Version:** unversioned
 **Source:** spec
@@ -97,8 +97,8 @@ Tests go in `packages/gateway/src/routes/mailboxes-raw.test.ts` or a new sibling
 
 ### Phase 8: run402-mcp update & publish
 
-- [ ] 8.1 Run `/update` skill in `run402-mcp` to sync docs, tables, and prepare for publish. [ship]
-- [ ] 8.2 Run `/publish` skill in `run402-mcp` to version bump, publish to npm, tag, release. [ship]
+- [x] 8.1 Run `/update` skill in `run402-mcp` to sync docs, tables, and prepare for publish. (No /update skill exists — handled manually.) [ship]
+- [x] 8.2 Run `/publish` skill in `run402-mcp` — v1.33.0 published to npm, tagged, GH release created, llms-cli.txt updated. [ship]
 
 ### Phase 9: OpenSpec update
 
