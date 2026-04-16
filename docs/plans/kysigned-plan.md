@@ -798,6 +798,27 @@ The user explicitly chose "prove working first, optimize second." Phases MUST be
 - [ ] **2R.B.G8.6** Strict tag parsing — assert `v=1` is the first tag; use label-boundary domain matching for `i=/d=` (not `ends_with`); reject bare `\r`/`\n` in header folds. Prevents finding #8 bundle. [code] `AI`
 - [ ] **2R.B.G8.7** Full regression after all G8 tasks: `cargo build` clean for guest, all guest unit tests pass. [code] `AI`
 
+#### 2R.B.G9 — Upstream Merge Gate (recurring check) `[both]` `AI` / `HUMAN`
+
+> **Purpose:** G8 in-guest hardening and the cfdkim library patches (Path B, `cfdkim-patches-spec.md`) fix the SAME findings via different layers. When an upstream PR is merged into `zkemail/cfdkim`, the corresponding G8 in-guest workaround becomes redundant defense-in-depth. This gate checks upstream status and removes workarounds that are now library-guaranteed.
+>
+> **When to run:** Before Phase 2R.B.D1 (Sepolia redeploy) AND before Phase 13 (mainnet canary). Also re-run anytime a cfdkim PR is merged.
+
+- [ ] **2R.B.G9.1** Check upstream merge status for each cfdkim PR. For each merged PR, evaluate: can the corresponding G8 in-guest assertion be removed or downgraded to a log-warning? Decision table:
+
+  | Finding | G8 in-guest task | cfdkim PR (Path B) | If PR merged → action |
+  |---|---|---|---|
+  | #1 b= replace | G8.5 | F1 | Remove G8.5 assertion; rely on library fix. Keep as `debug_assert` if desired. |
+  | #2 a= key-type | G8.4 | F2 | Remove G8.4; rely on library `IncompatibleAlgorithms` error. |
+  | #4 simple canon | G8.2 | F3 | **Keep G8.2 regardless** — rejecting `simple/*` is a policy decision (spec F3.3.4 scope), not just a bug workaround. |
+  | #6 dupe DKIM tags | G8.3 | F4 | Remove G8.3; rely on library `DuplicateTagName` error. |
+  | #8 RFC parsing | G8.6 | F5 | Remove G8.6 strict-parsing checks that duplicate library enforcement. Keep any that go beyond what the library enforces. |
+
+  For each removal: update guest code, regenerate `imageId` (2R.B.G6 re-run), update tests. [code] `AI` / `DECIDE`
+
+- [ ] **2R.B.G9.2** Update `kychee-com/cfdkim` fork pin to the upstream commit that includes the merged PRs. Run `cargo build` + `cargo test` to confirm the pin works. [code] `AI`
+- [ ] **2R.B.G9.3** If ALL 5 library PRs are merged: switch Cargo.toml pin from `kychee-com/cfdkim` back to `zkemail/cfdkim` at the merge commit. We no longer need our own fork. [code] `AI`
+
 #### 2R.B.C — Smart Contract Rework `[both]` `AI`
 
 > Implements F4.12 binding rule in `SignatureRegistry.sol`. Contract source change; since old Sepolia contracts are replaceable per F4.5, no on-chain migration — new deployment at 2R.B.D1 supersedes 1R.4 artifacts.
