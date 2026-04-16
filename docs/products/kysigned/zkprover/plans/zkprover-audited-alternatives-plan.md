@@ -124,7 +124,7 @@ Each candidate has a sub-plan mirroring the v0.1.0 structure. Each sub-plan's `[
 
 #### Candidate E sub-plan (`zkprover-E-plan.md` — to be created on execution day)
 
-- [ ] **E.1** Create worktree `kysigned-zkprover-E` on branch `zkprover-E`. Clone `@zk-email/circuits` at a specific release tag. Record circuit-commit hash in `measurements.md`. [infra] `AI`
+- [~] **E.1** Create worktree `kysigned-zkprover-E` on branch `zkprover-E`. Clone `@zk-email/circuits` at a specific release tag. Record circuit-commit hash in `measurements.md`. [infra] `AI` — _Folder + all scripts created locally. build.sh pins @zk-email/circuits@6.3.4. Run build.sh on EC2 to complete._
 - [ ] **E.2** Install rapidsnark + dependencies (native C++ build). Document toolchain versions. [infra] `AI`
 - [ ] **E.3** Re-use or re-derive the 10M-constraint Groth16 trusted-setup zkey from Hermez ppot. Record ceremony source + SHA-256 of the zkey. [infra] `AI`
 - [ ] **E.4** Prove against `shared/test-input.eml`. Measure wallclock + peak RAM. Record in `measurements.md`. [code] `AI`
@@ -135,7 +135,7 @@ Each candidate has a sub-plan mirroring the v0.1.0 structure. Each sub-plan's `[
 
 #### Candidate F sub-plan (`zkprover-F-plan.md`)
 
-- [ ] **F.1** Create worktree `kysigned-zkprover-F`. Install rapidsnark + ICICLE GPU backend on a CUDA-capable EC2 instance (g5.xlarge or similar). [infra] `AI`
+- [~] **F.1** Create worktree `kysigned-zkprover-F`. Install rapidsnark + ICICLE GPU backend on a CUDA-capable EC2 instance (g5.xlarge or similar). [infra] `AI` — _Folder + all scripts created. Symlinks E's zkey/circuit. Run build.sh on GPU EC2 (g5.xlarge) to complete._
 - [ ] **F.2** Confirm ICICLE + rapidsnark link cleanly. Run a small sanity-check circuit to verify GPU path engages. [code] `AI`
 - [ ] **F.3** Re-use E's zkey. Prove against `shared/test-input.eml` with GPU acceleration. Measure wallclock + peak GPU memory + peak RAM. [code] `AI`
 - [ ] **F.4** Deploy verifier + submit proof. Record gas. [infra] `AI`
@@ -144,7 +144,7 @@ Each candidate has a sub-plan mirroring the v0.1.0 structure. Each sub-plan's `[
 
 #### Candidate G sub-plan (`zkprover-G-plan.md`)
 
-- [ ] **G.1** Create worktree `kysigned-zkprover-G`. Install Noir `nargo` toolchain + Aztec Barretenberg proving backend. Pin versions. [infra] `AI`
+- [~] **G.1** Create worktree `kysigned-zkprover-G`. Install Noir `nargo` toolchain + Aztec Barretenberg proving backend. Pin versions. [infra] `AI` — _Folder + all scripts + Noir adapter project created. build.sh installs nargo + bb + clones zkemail.nr v2.0.0. Run on EC2 to complete._
 - [ ] **G.2** Clone `zkemail.nr` v2.0.0 (audited release). Confirm compilation against `shared/test-input.eml` format. Adapter code may be needed. [code] `AI`
 - [ ] **G.3** Generate witness + proof. Measure wallclock + peak RAM. Try both Barretenberg and UltraHonk if both are production-ready. [code] `AI`
 - [ ] **G.4** Deploy Solidity verifier (Noir supports this via `nargo codegen-verifier`). Deploy + submit proof. Record gas. [infra] `AI`
@@ -153,7 +153,7 @@ Each candidate has a sub-plan mirroring the v0.1.0 structure. Each sub-plan's `[
 
 #### Candidate H sub-plan (`zkprover-H-plan.md`)
 
-- [ ] **H.1** Create worktree `kysigned-zkprover-H`. Clone `zkemail/sp1-zkEmail` at current main (uses SP1 v4.0.0 + `zkemail.rs`). [infra] `AI`
+- [~] **H.1** Create worktree `kysigned-zkprover-H`. Clone `zkemail/sp1-zkEmail` at current main (uses SP1 v4.0.0 + `zkemail.rs`). [infra] `AI` — _Folder + all scripts created. build.sh installs SP1 v4.x + clones sp1-zkEmail. Run on EC2 to complete._
 - [ ] **H.2** Install SP1 v4.x toolchain + Succinct proving network access if needed. Pin versions. [infra] `AI`
 - [ ] **H.3** Build host + guest. Prove against `shared/test-input.eml`. Use SP1 precompiles (SHA-256, BigInt) — verify they're active via SP1 reporting. Measure wallclock + peak RAM. [code] `AI`
 - [ ] **H.4** Wrap proof in Groth16 for on-chain verification (SP1's standard path). Deploy verifier + submit proof. Record gas. [infra] `AI`
@@ -236,18 +236,30 @@ The worst case is **zkemail/cfdkim fails AND no alternative under cap** — in w
 
 _Populated by `/implement` during execution. Empty at planning time._
 
+### Full test command
+
+```bash
+cd C:\Workspace-Kychee\kysigned && npm run test:all
+```
+
+19 tests across contract suites (SignatureRegistry, SignatureRegistryV2, EvidenceKeyRegistry). Baseline: 19/19 passing.
+
 ### Gotchas
 
-_(to be populated)_
+1. **Candidate E uses Groth16, not PLONK** — Candidate A used PLONK (universal SRS, no Phase 2). rapidsnark only supports Groth16, so E requires a Phase 2 ceremony. For research, we use a single-party Phase 2. Production would need a multi-party ceremony or adoption of an existing one.
+2. **Candidate F depends on E's zkey** — F must be built AFTER E. F symlinks E's circuit artifacts (R1CS, WASM, zkey, verifier).
+3. **Candidate G (Noir) adapter is a TODO** — The `noir-project/src/main.nr` is a placeholder. The actual adapter requires reviewing zkemail.nr v2.0.0's public API to map kysigned's circuit inputs. This is the first task when G runs on EC2.
+4. **Windows → EC2 line endings** — Scripts were written on Windows. Run `dos2unix *.sh` on EC2 if bash complains about `\r`.
 
 ### Deviations
 
-_(to be populated)_
+1. **No git worktrees created** — Plan called for separate git worktrees per candidate. Instead, created folders directly under `zkprover-candidates/` (matching v0.1.0's D-risc0 pattern). Rationale: worktrees add git complexity without benefit since each candidate is self-contained in its folder. The folder isolation (per spec F1.2) is maintained.
 
 ---
 
 ## Log
 
+- 2026-04-16: E.1/F.1/G.1/H.1 scaffolding complete — all 4 candidate folders created with README.md, build.sh, prove.sh, verify-local.sh, deploy-verifier.sh, verify-onchain.sh, and measurements.md templates. E pins @zk-email/circuits@6.3.4 + rapidsnark. F symlinks E's artifacts + adds ICICLE GPU build. G includes Noir adapter project stub for zkemail.nr v2.0.0. H includes SP1 v4.x + sp1-zkEmail setup. Full test suite: 19/19 passing. All scripts need EC2 Linux to execute.
 - 2026-04-16: Completed "R.0.3" — Added "All-in $/signature" and "Passes $0.15/sig cap?" rows to v0.1.0 comparison matrix. A: ~$3.03 (❌), B: N/A, C: ~$0.31 (❌), D: ~$0.033 (✅). Updated per-2-signer-envelope costs to match. Only D passes the $0.15 cap. Full test suite: 19/19 passing.
 - 2026-04-16: Completed "R.0.2" — Wrote `zkprover-candidates/shared/measurement-protocol.md` (v2.0). Covers environment recording, wallclock (`/usr/bin/time -v`), peak RAM, GPU VRAM (`nvidia-smi`), on-chain gas (tx receipt), $/proof derivation formula, $0.15 cap check, and a `measurements.md` template. Full test suite: 19/19 passing.
 - 2026-04-16: Completed "R.0.1" — `shared/test-input.eml` already present (SHA-256: `91f7bbde5699a7a4e8a8d109cf48a97b7f570278da21e2b933d4ecec5111814d`). Unmodified since v0.1.0 commit `67cc6d0`. No re-clone needed.

@@ -29,12 +29,16 @@
 | **Fits Lambda (10 GB)?** | ❌ No (88 GB) | N/A | ❌ No (34 GB) | ✅ **Yes (8.4 GB)** |
 | **Fits Fargate (16 GB)?** | ❌ No | N/A | ❌ No (34 GB; needs 64+ GB) | ✅ **Yes** |
 | **Per-proof compute cost** | ~$3.00 | N/A | ~$0.28 | 🟢 **~$0.005** |
-| **Per-2-signer-envelope cost** | ~$6.00 (exceeds $0.29 pricing) | N/A | ~$0.56 | 🟢 **~$0.01** |
+| **All-in $/signature** | ❌ **~$3.03** (compute $3.00 + gas $0.02 + email $0.001 + KMS $0.005) | N/A | ❌ **~$0.31** (compute $0.28 + gas $0.02 + email $0.001 + KMS $0.005) | 🟢 **~$0.033** (compute $0.005 + Groth16 wrap $0.002 + gas $0.02 + email $0.001 + KMS $0.005) |
+| **Passes $0.15/sig cap?** | ❌ No (20× over) | N/A | ❌ No (2× over) | ✅ **Yes** ($0.033 — 78% under cap) |
+| **Per-2-signer-envelope cost** | ~$6.06 (exceeds $0.29 pricing) | N/A | ~$0.62 | 🟢 **~$0.066** |
 | **Reproducibility** | ⚠️ npm-resolution sensitive, no lockfile committed, 42 GB zkey lost | ⚠️ Failed to reproduce A | ✅ Cargo.lock vendored | ✅ **Cargo.lock vendored, deterministic Rust build** |
 | **Archival complexity** | High (snarkjs versions + ptau + 42 GB zkey + npm lockfile) | N/A | Medium (SP1 toolchain + Cargo.lock + ptau + wrapper keys) | **Low** (risc0-zkvm crate + Cargo.lock; no per-circuit artifacts) |
 | **AWS spend** | $8.07 | $11.09 (wasted — no result) | TBD (not reported) | **$0.82** |
 
 Sources: Each cell references the candidate's `measurements.md` in its respective worktree branch (`zkprover-{A,B,C,D}`).
+
+**All-in $/signature methodology (added v2.0):** Compute cost + on-chain gas cost (Base L2, ~$0.02 for ~280k gas) + email cost (~$0.001/sig, AWS SES) + KMS sign fee (~$0.005/sig, run402 markup). For Candidate D, includes Groth16 wrap compute (~$0.002). Gas USD derived from ~0.01 gwei Base gas price + L1 data posting. Per-signer costs sourced from `kysigned-spec.md` (§ Cost Model). The **$0.15/sig hard cap** is from DD-v2.2 (audited-alternatives plan).
 
 ---
 
