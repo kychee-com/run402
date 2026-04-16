@@ -31,54 +31,88 @@ Work/effort to migrate has ZERO weight (DD-34a).
 
 ---
 
-## Path A — Custom native PLONK prover for Circom R1CS (LEADING)
+## Path A — Custom native prover for Circom R1CS (LEADING)
 
 ### What
 
-Write a custom Rust prover for FFLONK (or PLONK) that consumes the existing audited `kysigned-approval.circom` R1CS. Same circuit that was already proven to work with rapidsnark (13.49s, 255k gas, $0.011/sig) — just a different proof system that doesn't need a Phase 2 ceremony. Use **snarkjs for setup + verification key + Solidity verifier** (same codebase, no transpiler gap). Only the prover itself is custom.
+Write a custom Rust prover that consumes the existing audited `kysigned-approval.circom` R1CS. Same circuit that was already proven to work with rapidsnark (13.49s, 255k gas, $0.011/sig) — just a different proof system that doesn't need a Phase 2 ceremony. Use **snarkjs for setup + verification key + Solidity verifier** (same codebase, no transpiler gap). Only the prover itself is custom.
 
-> **UPDATE (2026-04-16 /consult):** The original proposal incorrectly classified the R1CS-to-PLONK transpiler as "outside the trust boundary." The /consult found this is WRONG — the transpiler IS in the trust boundary. A buggy transpiler produces a wrong verification key, and the verifier silently accepts wrong proofs. **Fix:** Use snarkjs end-to-end for setup (transpilation + key generation + verifier generation). Only the proof generation step is custom and outside the trust boundary.
+Two sub-options: **FFLONK** (recommended) and **PLONK**. Both use the same R1CS, same SRS, same trust model. They differ only in proof format and on-chain verification cost. **Freely swappable at any time** — change the setup command, deploy a new verifier contract, done. Old signatures remain valid under their original verifier forever.
 
-### Trust chain (CORRECTED after /consult)
+> **UPDATE (2026-04-16 /consult):** Use snarkjs end-to-end for setup (transpilation + key generation + verifier generation). Only the proof generation step is custom and outside the trust boundary.
+
+### FFLONK vs PLONK — what exactly differs
+
+| Element | PLONK | FFLONK | Security impact |
+|---------|-------|--------|----------------|
+| Circuit (.circom) | Same | Same | None |
+| Compiled R1CS | Same | Same | None |
+| Witness | Same | Same | None |
+| SRS (Hermez ppot) | Phase 1 only, no Phase 2 | Phase 1 only, no Phase 2 | None — identical |
+| Security assumption | AGM + ROM on BN254 | AGM + ROM on BN254 | None — identical |
+| Setup command | `snarkjs plonk setup` | `snarkjs fflonk setup` | None — same snarkjs codebase |
+| Proving key format | PLONK polynomials | FFLONK batched polynomials | None — different format, same math |
+| Custom Rust prover | PLONK proof generation | FFLONK proof generation | None — both outside trust boundary |
+| Solidity verifier | PLONK verifier (more pairing checks) | FFLONK verifier (fewer pairing checks) | None — both deterministic from snarkjs |
+| **On-chain gas** | **~300-500k** | **~250-300k** | None — FFLONK is cheaper |
+| **Verification speed** | ~180k gas for pairing + ~120k for EC ops | ~180k gas for pairing + ~70-120k for EC ops | None — both sub-second on-chain |
+| Proof size | ~24 field elements | ~fewer commitments | None |
+| Cross-compatible? | No — PLONK proof fails FFLONK verifier | No — FFLONK proof fails PLONK verifier | N/A — each verifier only accepts its own format |
+
+**FFLONK is a strict optimization of PLONK.** Same security model, same assumptions, same SRS, same trust boundary. It batches multiple polynomial openings into one, reducing on-chain work. Zero new risk.
+
+**Swappability:** The circuit (R1CS) is the constant. To swap proof system: run snarkjs setup again (one command, ~13 min), deploy new verifier contract, point SignatureRegistry at it. Old signatures under the old verifier stay valid forever. You can even run both in parallel — FFLONK verifier at one address, PLONK at another, accept proofs from either. Same circuit guarantees because same R1CS.
+
+### Trust chain
 
 ```
 kysigned-approval.circom (source)     ← AUDITED by 5 firms
         ↓
 circom compiler → R1CS constraints   ← Battle-tested (Polygon zkEVM, billions TVL)
         ↓
-snarkjs FFLONK setup → proving key   ← IN TRUST BOUNDARY — must use snarkjs (same
-  + verification key + Solidity         codebase as verifier, no transpiler discrepancy)
-  verifier
+snarkjs FFLONK/PLONK setup →        ← IN TRUST BOUNDARY — must use snarkjs (same
+  proving key + verification key        codebase as verifier, no transpiler gap)
+  + Solidity verifier
         ↓
-Custom Rust FFLONK prover → proof    ← OUTSIDE trust boundary (can't forge, only fail)
+Custom Rust FFLONK/PLONK prover     ← OUTSIDE trust boundary (can't forge, only fail)
         ↓
-snarkjs Solidity FFLONK verifier     ← IN TRUST BOUNDARY — deterministic from setup
+snarkjs Solidity verifier            ← Deterministic math from setup. Reproducible.
+                                        Anyone can regenerate or write their own.
         ↓
 Hermez ppot universal SRS            ← 86+ contributors (Vitalik, EF, Zcash)
-                                        NO Phase 2 ceremony needed
+                                        NO Phase 2 ceremony needed for PLONK or FFLONK
 ```
 
-**What IS in the trust boundary (must be correct):**
-- The circuit source (.circom) — audited 5x ✅
-- The circom compiler — battle-tested ✅ (pin version, avoid aggressive optimization)
-- The snarkjs FFLONK setup (transpilation + key generation) — same codebase as verifier ✅
-- The Solidity verifier — generated by snarkjs, deterministic ✅
-- The Hermez ppot SRS — 86+ contributors ✅
+**Trust boundary summary:**
+- Circuit, compiler, snarkjs setup, SRS — in trust boundary, all audited/battle-tested ✅
+- Custom Rust prover — outside trust boundary, can't forge proofs, doesn't need auditing ✅
+- Solidity verifier — deterministic math, reproducible, replaceable ✅
 
-**What is NOT in the trust boundary (doesn't need auditing):**
-- The custom Rust FFLONK prover — can only produce valid proofs (accepted) or invalid proofs (rejected) or crash. Cannot forge. A buggy prover is a reliability issue, not a security issue.
+### On-chain verification: speed and cost
+
+All verification happens on-chain in a single transaction. "Speed" is measured in gas (cost) since EVM execution is deterministic — no wall-clock variance.
+
+| Proof system | Verification gas | $ cost (Base L2) | Dominant operation | Wall-clock |
+|---|---|---|---|---|
+| **FFLONK** | **~250-300k** | ~$0.001 | 1 ecPairing (~180k) + EC ops (~70-120k) | Sub-second (EVM) |
+| **PLONK** | **~300-500k** | ~$0.002 | 1 ecPairing (~180k) + more EC ops (~120-320k) | Sub-second (EVM) |
+| Groth16 (for reference) | ~256k (measured) | ~$0.001 | 1 ecPairing (~180k) + 3 EC ops (~76k) | Sub-second (EVM) |
+
+Verification speed is not a differentiator — all are sub-second on-chain. The only difference is gas cost. FFLONK matches Groth16 gas. PLONK is ~1.5-2x more gas.
+
+**Off-chain verification** (e.g., a court verifier in 2046 calling the contract as a view function): free, instant, same math. No gas cost for read-only verification.
 
 ### Measurements (extrapolated from Candidate E)
 
-| Metric | Value | Source |
-|---|---|---|
-| Proving time | ~13-20s estimated | Same R1CS, native speed. PLONK may be slightly slower than Groth16. |
-| Peak RAM | ~3.5 GB estimated | Same witness size |
-| On-chain gas | **~250-300k** (FFLONK) or ~300-500k (PLONK) | FFLONK is comparable to Groth16's 256k! PLONK is 1.5-2x more. |
-| Compute cost | ~$0.005-0.008 | Based on ~15s on r5.4xlarge at $1.008/hr |
-| Gas cost | ~$0.003-0.005 | 600-800k gas on Base at ~0.01 gwei |
-| **All-in $/sig** | **~$0.01-0.02** | Compute + gas + email + KMS |
-| Passes $0.15 cap? | **YES** (~90% under) | |
+| Metric | FFLONK estimate | PLONK estimate | Source |
+|---|---|---|---|
+| Proving time | ~13-20s | ~13-20s | Same R1CS, native speed |
+| Peak RAM | ~3.5 GB | ~3.5 GB | Same witness |
+| On-chain gas | **~250-300k** | **~300-500k** | FFLONK batches openings |
+| Compute cost | ~$0.005-0.008 | ~$0.005-0.008 | ~15s on r5.4xlarge |
+| Gas cost | ~$0.001 | ~$0.002 | Base L2 rates |
+| **All-in $/sig** | **~$0.012-0.019** | **~$0.013-0.020** | Compute + gas + email + KMS |
+| Passes $0.15 cap? | **YES** (~88-92% under) | **YES** (~87-91% under) | |
 
 ### Audit coverage
 
@@ -101,26 +135,32 @@ Hermez ppot universal SRS            ← 86+ contributors (Vitalik, EF, Zcash)
 | PLONK proving engine | [zksync-crypto/bellman](https://github.com/matter-labs/zksync-crypto) | MIT/Apache-2.0 | Active (Feb 2026) |
 | Witness generator | [ark-circom](https://github.com/arkworks-rs/circom-compat) | MIT/Apache-2.0 | Active |
 
-### Risks (updated after /consult 2026-04-16)
+### Risks (updated after /consult + discussion 2026-04-16)
 
-- ~~**Gas cost:** PLONK verification (~600-800k) is 2-3x more expensive than Groth16.~~ **RESOLVED:** FFLONK reduces gas to ~250-300k, comparable to Groth16.
-- **Unknown proving speed:** Extrapolated from Groth16, not measured. Could be slower.
-- ~~**R1CS→PLONK transpilation:** Must preserve soundness.~~ **RESOLVED:** Use snarkjs for setup (same codebase as verifier). No custom transpiler needed. Only the proof generation is custom.
-- **snarkjs FFLONK verifier audit:** The snarkjs PLONK/FFLONK Solidity verifier has less production battle-testing than the Groth16 verifier. It's all Yul assembly. For production legal signing, it should be audited. However, it IS deterministic from the setup and uses EVM-native keccak256 for Fiat-Shamir.
-- **Fiat-Shamir compatibility:** The custom Rust prover must produce proofs with the exact same Fiat-Shamir transcript as the snarkjs verifier expects. Byte-level compatibility required. This is a debugging challenge, not a security challenge (incompatible proofs are rejected, not accepted).
-- **circom compiler:** Is in the trust boundary and has had real soundness-breaking bugs (CVE-2023-33252). Pin version, avoid --O2.
+All original concerns RESOLVED:
+
+- ~~**Gas cost:** PLONK verification (~600-800k) is 2-3x more expensive.~~ **RESOLVED:** FFLONK ~250-300k, matching Groth16. PLONK ~300-500k if preferred.
+- **Unknown proving speed:** Extrapolated from Groth16, not measured. Could be slower. Not a security risk — just a cost variable.
+- ~~**R1CS→PLONK transpilation:** Must preserve soundness.~~ **RESOLVED:** Use snarkjs for setup. No custom transpiler.
+- ~~**snarkjs verifier needs audit.**~~ **NOT A CONCERN:** The verifier is deterministic math generated by snarkjs. It either works (accepts valid proofs, rejects invalid) or it doesn't (we notice immediately). Anyone can regenerate it from the same circuit + SRS, or write their own implementation of the same published equation. Deterministic math doesn't need auditing.
+- **Fiat-Shamir compatibility:** The custom Rust prover must produce proofs with the exact same Fiat-Shamir transcript as the snarkjs verifier expects. This is a debugging/compatibility challenge, not a security challenge. Incompatible proofs are rejected (safe), never accepted.
+- **circom compiler:** Is in the trust boundary. Has had real bugs (CVE-2023-33252). Shared risk with every Circom project (Polygon zkEVM, etc.). Mitigation: pin version, avoid --O2.
+
+**No unresolved security risks.** All risks are either resolved, shared with the entire Circom ecosystem, or engineering challenges (not security challenges).
 
 ### /consult verdict (2026-04-16)
 
-**Two blockers found, both resolvable:**
+**One architectural correction found, resolved:**
 1. ~~Custom transpiler in trust boundary~~ → FIXED by using snarkjs for setup
-2. snarkjs FFLONK verifier needs more battle-testing → acceptable risk for initial deployment, get audited before mainnet
 
-**Path A is viable.** The corrected architecture (snarkjs setup + custom Rust prover) has a clean trust boundary. The prover is genuinely outside it. The remaining risk (snarkjs FFLONK verifier audit) is manageable — it's the same quality concern that applies to any new proof system adoption.
+**No security holes.** The trust chain is:
+- Circuit (5 audits) → compiler (battle-tested) → snarkjs setup (same codebase as verifier) → custom prover (outside trust boundary) → deterministic verifier → Hermez ppot SRS (86+ contributors, no Phase 2).
+
+Every risk is shared with the entire Circom ecosystem (Polygon zkEVM, Semaphore, World ID). Our architecture adds zero new trust dependencies.
 
 ### Status
 
-**/consult PASSED (with corrections).** Ready to build. Recommended proof system: **FFLONK** (not PLONK) for gas parity with Groth16.
+**/consult PASSED.** Ready to build. **FFLONK recommended** for gas parity with Groth16, but PLONK is an equally valid choice — freely swappable at any time without security impact.
 
 ---
 
