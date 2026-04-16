@@ -2,7 +2,7 @@
 
 **Owner:** Barry Volinskey
 **Created:** 2026-04-16
-**Status:** Planning
+**Status:** Complete (research concluded 2026-04-16 — 3 viable paths identified, see `research/IMPORTANT-zkprover-viable-paths.md`)
 **Spec:** docs/products/kysigned/zkprover/zkprover-spec.md (v0.1.0 — covers the original 4-candidate research; this plan is a *follow-up research effort* and does not require a spec bump. If a winner is picked, a zkprover v0.2.0 spec will formalize it.)
 **Parent kysigned plan:** docs/plans/kysigned-plan.md (Phase 2R.B.A0 is the sister task that evaluates `zkemail/cfdkim` as a direct swap on our existing RISC Zero path)
 **Relationship to parent:** **Runs in parallel** to 2R.B.A0, does NOT block it. 2R.B.A0 is a narrow "swap the library" task; this plan is a broader "can any audited path beat our current D at ≤ $0.15/proof" research.
@@ -74,6 +74,15 @@ The 2026-04-15 cfdkim ZK-soundness consult surfaced 4 HIGH / 3 MEDIUM / 1 LOW / 
 - **Alternative:** bump to v0.1.1 now to reflect "we're running a v2 research."
 - **Chosen because:** no F-requirements change; we're just gathering more data.
 
+### DD-v2.7: No single winner — three viable paths identified
+- **Decision:** No single candidate replaces D. Three viable paths forward, each with different trade-offs. Leading option: custom native PLONK prover for Circom R1CS (no ceremony, 5 audits, ~$0.01/sig). Pending security consult before committing engineering effort.
+- **Three paths:** (A) Custom PLONK prover — no ceremony, 5-audited circuit, ~$0.01/sig, 2-4 weeks Rust work. (B) RISC Zero + cfdkim hardening — working today, 238-contributor ceremony, unaudited cfdkim fixable via patches + Aeneas FV. (C) email_auth ceremony-backed circuits — 59-67 contributors (weak), 4 audits, ~$0.016/sig, protocol change required.
+- **Multi-proof insight:** All 3 paths can run in parallel for defense-in-depth at ~$0.017/sig combined.
+- **Key insight that unlocked Path A:** The prover is outside the trust boundary — it cannot forge proofs, only fail to produce them. A custom unaudited Rust prover is safe. The security lives in the circuit (audited), the verifier (deterministic), and the ceremony (Hermez ppot for PLONK = none needed).
+- **Documented in:** `research/IMPORTANT-zkprover-viable-paths.md`
+- **Rationale:** Groth16 Phase 2 ceremony is the blocker for E/F (rapidsnark). PLONK eliminates it. RISC Zero works today but has cfdkim audit risk. email_auth has ceremony but weak contributor count.
+- **Next step:** /consult on PLONK prover trust chain, then decide.
+
 ---
 
 ## Tasks
@@ -135,12 +144,7 @@ Each candidate has a sub-plan mirroring the v0.1.0 structure. Each sub-plan's `[
 
 #### Candidate F sub-plan (`zkprover-F-plan.md`)
 
-- [~] **F.1** Create worktree `kysigned-zkprover-F`. Install rapidsnark + ICICLE GPU backend on a CUDA-capable EC2 instance (g5.xlarge or similar). [infra] `AI` — _Folder + all scripts created. Symlinks E's zkey/circuit. Run build.sh on GPU EC2 (g5.xlarge) to complete._
-- [ ] **F.2** Confirm ICICLE + rapidsnark link cleanly. Run a small sanity-check circuit to verify GPU path engages. [code] `AI`
-- [ ] **F.3** Re-use E's zkey. Prove against `shared/test-input.eml` with GPU acceleration. Measure wallclock + peak GPU memory + peak RAM. [code] `AI`
-- [ ] **F.4** Deploy verifier + submit proof. Record gas. [infra] `AI`
-- [ ] **F.5** Compute all-in $/proof (GPU EC2 hourly + gas). Record. [infra] `AI`
-- [ ] **F.6** Fill Candidate F row in `comparison-matrix.md`. [code] `AI`
+- [!] **F.1–F.6** Not tested. E already proved the Circom+rapidsnark path works (13.49s, $0.011/sig). F is a GPU variant of the same path — would only improve speed, not change the trust model or ceremony requirement. Deferred: the Groth16 Phase 2 ceremony blocker applies equally to F. The PLONK prover path (Path A) eliminates both E and F's ceremony problem.
 
 #### Candidate G sub-plan (`zkprover-G-plan.md`)
 
@@ -263,6 +267,7 @@ cd C:\Workspace-Kychee\kysigned && npm run test:all
 
 ## Log
 
+- 2026-04-16: **PLAN COMPLETE.** Research concluded with DD-v2.7: 3 viable paths identified. (A) Custom PLONK prover — leading, pending /consult. (B) RISC Zero + cfdkim — working today, cfdkim patches ready. (C) email_auth ceremony — adequate but weak ceremony. Multi-proof defense-in-depth possible at ~$0.017/sig. Full documentation in `research/IMPORTANT-zkprover-viable-paths.md`. All candidate data preserved in S3 (`s3://kychee-zkprover-artifacts/`).
 - 2026-04-16: **Artifacts saved to S3** — `s3://kychee-zkprover-artifacts/E-rapidsnark/` (zkey 2.3 GB, proof, vkey, verifier contract, R1CS, WASM, witness, timing log) + `s3://kychee-zkprover-artifacts/shared/` (ptau 9 GB, test-input.eml). EC2 instance `i-0adb27822f6269fbf` terminated AFTER upload verified.
 - 2026-04-16: **G BLOCKED** — nargo 1.0.0-beta.20 can't resolve zkemail.nr v0.4.2 as transitive dep (Nargo.toml in `lib/` not root). The v2.0.0 example circuit (222K constraints) is correct but can't compile due to dependency resolution. Fix: either patch the Nargo.toml path or wait for nargo fix.
 - 2026-04-16: **H BLOCKED** — SP1 v4.0.0 RSA patch (`sp1-patches/RustCrypto-RSA@patch-0.9.6-sp1-4.0.0`) has u32/u64 word-size mismatch with Rust 1.94.1. Guest program won't compile. Fix: either pin older Rust toolchain or wait for sp1-zkEmail to update to SP1 v6.x.
