@@ -144,7 +144,7 @@ Each candidate has a sub-plan mirroring the v0.1.0 structure. Each sub-plan's `[
 
 #### Candidate G sub-plan (`zkprover-G-plan.md`)
 
-- [~] **G.1** Create worktree `kysigned-zkprover-G`. Install Noir `nargo` toolchain + Aztec Barretenberg proving backend. Pin versions. [infra] `AI` — _Folder + scripts + real Noir adapter circuit written (main.nr). Pins zkemail.nr v0.4.2 (latest stable, NOT v2.0.0 as originally planned). Requires Noir 1.0.0-beta.8. Run build.sh on EC2 to complete._
+- [!] **G.1** Create worktree `kysigned-zkprover-G`. Install Noir `nargo` toolchain + Aztec Barretenberg proving backend. Pin versions. [infra] `AI` — WAITING FOR: nargo dependency resolution fix. nargo 1.0.0-beta.20 installed, zkemail.nr v2.0.0 cloned. Example circuit `verify_email_2048_bit_dkim` (222K constraints) fails to compile — nargo tries to clone a transitive dep `zkemail.nr@v0.4.2` via git tag but the v0.4.2 tag's repo structure puts Nargo.toml in `lib/` not root. This is a nargo workspace resolution bug. The circuit code itself is correct (86K constraints for DKIM verify + 114K for SHA-256 body hash).
 - [ ] **G.2** Clone `zkemail.nr` v2.0.0 (audited release). Confirm compilation against `shared/test-input.eml` format. Adapter code may be needed. [code] `AI`
 - [ ] **G.3** Generate witness + proof. Measure wallclock + peak RAM. Try both Barretenberg and UltraHonk if both are production-ready. [code] `AI`
 - [ ] **G.4** Deploy Solidity verifier (Noir supports this via `nargo codegen-verifier`). Deploy + submit proof. Record gas. [infra] `AI`
@@ -153,7 +153,7 @@ Each candidate has a sub-plan mirroring the v0.1.0 structure. Each sub-plan's `[
 
 #### Candidate H sub-plan (`zkprover-H-plan.md`)
 
-- [~] **H.1** Create worktree `kysigned-zkprover-H`. Clone `zkemail/sp1-zkEmail` at current main (uses SP1 v4.0.0 + `zkemail.rs`). [infra] `AI` — _Folder + all scripts created. build.sh installs SP1 v4.x + clones sp1-zkEmail. Run on EC2 to complete._
+- [!] **H.1** Create worktree `kysigned-zkprover-H`. Clone `zkemail/sp1-zkEmail` at current main (uses SP1 v4.0.0 + `zkemail.rs`). [infra] `AI` — WAITING FOR: SP1 RSA crate patch fix. sp1-zkEmail cloned, SP1 v4.0.0 installed, guest program build fails with type mismatch in `sp1-patches/RustCrypto-RSA@patch-0.9.6-sp1-4.0.0`: `expected [u64; 64], found [u32; 128]`. This is a word-size incompatibility between the SP1-patched RSA crate and the current Rust toolchain (1.94.1). The SP1 RSA patch was designed for a 32-bit RISC-V target but has a 64-bit host compilation path bug.
 - [ ] **H.2** Install SP1 v4.x toolchain + Succinct proving network access if needed. Pin versions. [infra] `AI`
 - [ ] **H.3** Build host + guest. Prove against `shared/test-input.eml`. Use SP1 precompiles (SHA-256, BigInt) — verify they're active via SP1 reporting. Measure wallclock + peak RAM. [code] `AI`
 - [ ] **H.4** Wrap proof in Groth16 for on-chain verification (SP1's standard path). Deploy verifier + submit proof. Record gas. [infra] `AI`
@@ -263,6 +263,10 @@ cd C:\Workspace-Kychee\kysigned && npm run test:all
 
 ## Log
 
+- 2026-04-16: **Artifacts saved to S3** — `s3://kychee-zkprover-artifacts/E-rapidsnark/` (zkey 2.3 GB, proof, vkey, verifier contract, R1CS, WASM, witness, timing log) + `s3://kychee-zkprover-artifacts/shared/` (ptau 9 GB, test-input.eml). EC2 instance `i-0adb27822f6269fbf` terminated AFTER upload verified.
+- 2026-04-16: **G BLOCKED** — nargo 1.0.0-beta.20 can't resolve zkemail.nr v0.4.2 as transitive dep (Nargo.toml in `lib/` not root). The v2.0.0 example circuit (222K constraints) is correct but can't compile due to dependency resolution. Fix: either patch the Nargo.toml path or wait for nargo fix.
+- 2026-04-16: **H BLOCKED** — SP1 v4.0.0 RSA patch (`sp1-patches/RustCrypto-RSA@patch-0.9.6-sp1-4.0.0`) has u32/u64 word-size mismatch with Rust 1.94.1. Guest program won't compile. Fix: either pin older Rust toolchain or wait for sp1-zkEmail to update to SP1 v6.x.
+- 2026-04-16: **E CONFIRMED (2nd run): 12.91s proving, 3.57 GB RAM, proof verified OK.** Consistent with first run (13.49s). All artifacts saved.
 - 2026-04-16: **🟢 CANDIDATE E MEASURED: 13.49s proving, 3.57 GB RAM, ~$0.007/proof all-in.** rapidsnark on r5.4xlarge (16 vCPU, 128 GB). Proof verified OK via snarkjs. This is 95% under the $0.15 cap AND has 5 audits on the circuit. Cheaper than D ($0.033) with dramatically better audit posture.
 - 2026-04-16: **Moved all zkprover-candidates/ from kysigned (public) to kysigned-private.** Public repo is a forkable template — ZK prover research is service infra. Also moved docs/plans/zkprover-D-plan.md to private. Public repo cleaned: 0 zkprover artifacts remain. Tests: 19/19 passing.
 - 2026-04-16: E.1/F.1/G.1/H.1 scaffolding complete — all 4 candidate folders created with README.md, build.sh, prove.sh, verify-local.sh, deploy-verifier.sh, verify-onchain.sh, and measurements.md templates. E pins @zk-email/circuits@6.3.4 + rapidsnark. F symlinks E's artifacts + adds ICICLE GPU build. G includes Noir adapter project stub for zkemail.nr v2.0.0. H includes SP1 v4.x + sp1-zkEmail setup. Full test suite: 19/19 passing. All scripts need EC2 Linux to execute.
