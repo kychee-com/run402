@@ -10,21 +10,39 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { createHash, randomBytes } from "node:crypto";
 import { S3Client, PutObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
+import { mkdirSync, writeFileSync, unlinkSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { pool } from "../db/pool.js";
 import { sql } from "../db/sql.js";
 import { S3_BUCKET, S3_REGION } from "../config.js";
 import { TIERS } from "@run402/shared";
 import type { TierName } from "@run402/shared";
+import { resolvePgBinary } from "../utils/pg-binaries.js";
+import { getDeploymentUrl, getSubdomainUrl } from "../utils/public-urls.js";
 
 const execFileAsync = promisify(execFile);
 
 const s3 = S3_BUCKET ? new S3Client({ region: S3_REGION }) : null;
+const LOCAL_STORAGE_ROOT = process.env.STORAGE_ROOT || "./storage";
 
 /**
- * Delete an S3 bundle by URI. Logs and swallows errors — orphaned objects are harmless.
+ * Delete a persisted bundle by URI. Logs and swallows errors — orphaned objects
+ * are harmless in both S3 and local-dev storage.
  */
-async function deleteS3Bundle(bundleUri: string): Promise<void> {
-  if (!s3 || !S3_BUCKET) return;
+async function deleteBundle(bundleUri: string): Promise<void> {
+  if (bundleUri.startsWith("local://")) {
+    const localPath = join(LOCAL_STORAGE_ROOT, bundleUri.slice("local://".length));
+    try {
+      unlinkSync(localPath);
+    } catch (err) {
+      const code = err && typeof err === "object" && "code" in err ? String((err as { code?: unknown }).code) : "";
+      if (code !== "ENOENT") console.warn(`  Failed to delete local bundle ${localPath}:`, err);
+    }
+    return;
+  }
+
+  if (!bundleUri.startsWith("s3://") || !s3 || !S3_BUCKET) return;
+
   const key = bundleUri.replace(`s3://${S3_BUCKET}/`, "");
   try {
     await s3.send(new DeleteObjectCommand({ Bucket: S3_BUCKET, Key: key }));
@@ -212,7 +230,7 @@ async function pgDumpSchema(
   const dbPort = process.env.DB_PORT || "5432";
   const dbName = process.env.DB_NAME || "agentdb";
   const dbUser = process.env.DB_USER || "postgres";
-  const dbPassword = process.env.DB_PASSWORD || "";
+  const dbPassword = process.env.DB_PASSWORD || "postgres";
 
   const args = [
     `--host=${dbHost}`,
@@ -222,6 +240,7 @@ async function pgDumpSchema(
     `--schema=${schemaSlot}`,
     `--no-owner`,
     `--no-comments`,
+    `--no-password`,
   ];
 
   if (section === "data") {
@@ -242,11 +261,14 @@ async function pgDumpSchema(
   const env = { ...process.env, PGPASSWORD: dbPassword };
 
   try {
-    const { stdout } = await execFileAsync("pg_dump", args, {
+    const { stdout } = await execFileAsync(resolvePgBinary("pg_dump"), args, {
       env,
       maxBuffer: 10 * 1024 * 1024, // 10MB
     });
-    return stdout;
+    // pg_dump from newer client builds may emit session-level SET commands
+    // unsupported by older local Postgres servers (for example PG17 client
+    // against PG16 server). They are safe to drop from the portable bundle.
+    return stdout.replace(/^SET transaction_timeout = 0;\s*$/gm, "");
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     throw new PublishError(`pg_dump failed: ${msg}`, 500);
@@ -364,10 +386,9 @@ export async function publishAppVersion(
       [projectId],
     );
     if (subdomainResult.rows.length > 0) {
-      liveUrl = `https://${subdomainResult.rows[0].name}.run402.com`;
+      liveUrl = getSubdomainUrl(subdomainResult.rows[0].name as string);
     } else if (siteDeploymentId) {
-      const dnsLabel = siteDeploymentId.replace(/_/g, "-");
-      liveUrl = `https://${dnsLabel}.sites.run402.com`;
+      liveUrl = getDeploymentUrl(siteDeploymentId as string);
     }
 
     // Compute stats and derived min tier
@@ -383,7 +404,7 @@ export async function publishAppVersion(
     );
     const maxOldVersion = oldVersions.rows.length > 0 ? (oldVersions.rows[0].version as number) : 0;
     for (const old of oldVersions.rows) {
-      await deleteS3Bundle(old.bundle_uri as string);
+      await deleteBundle(old.bundle_uri as string);
       if (old.site_deployment_id) {
         await pool.query(
           sql(`UPDATE internal.deployments SET ref_count = GREATEST(ref_count - 1, 0) WHERE id = $1`),
@@ -411,10 +432,9 @@ export async function publishAppVersion(
     const bundleJson = JSON.stringify(bundle);
     const bundleSha256 = createHash("sha256").update(bundleJson).digest("hex");
 
-    // Upload to S3
+    // Persist bundle artifact
     const bundleKey = `app-versions/${versionId}/bundle.json`;
-    const bundleUri = `s3://${S3_BUCKET}/${bundleKey}`;
-
+    let bundleUri: string;
     if (s3 && S3_BUCKET) {
       await s3.send(new PutObjectCommand({
         Bucket: S3_BUCKET,
@@ -422,6 +442,12 @@ export async function publishAppVersion(
         Body: bundleJson,
         ContentType: "application/json",
       }));
+      bundleUri = `s3://${S3_BUCKET}/${bundleKey}`;
+    } else {
+      const localPath = join(LOCAL_STORAGE_ROOT, bundleKey);
+      mkdirSync(dirname(localPath), { recursive: true });
+      writeFileSync(localPath, bundleJson);
+      bundleUri = `local://${bundleKey}`;
     }
 
     // Insert app version
@@ -604,7 +630,7 @@ export async function deleteAppVersion(versionId: string, projectId: string): Pr
   if (!delResult.rowCount || delResult.rowCount === 0) return false;
 
   // Clean up S3 bundle
-  if (bundleUri) await deleteS3Bundle(bundleUri as string);
+  if (bundleUri) await deleteBundle(bundleUri as string);
 
   // Decrement site deployment ref_count
   if (siteDeploymentId) {

@@ -4,6 +4,10 @@
 
 import { describe, it, beforeEach, mock } from "node:test";
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 // ---------------------------------------------------------------------------
 // Mock dependencies before importing the module under test
@@ -349,6 +353,66 @@ describe("forkApp", () => {
       },
     );
   });
+
+  it("loads a local bundle when S3 is not configured", async () => {
+    const storageRoot = join(process.cwd(), "storage");
+    const versionId = "ver_local";
+    const bundleKey = `app-versions/${versionId}/bundle.json`;
+    const bundle = {
+      pre_schema_sql: "",
+      post_schema_sql: "",
+      seed_sql: null,
+    };
+    const bundleJson = JSON.stringify(bundle);
+    const bundleSha256 = createHash("sha256").update(bundleJson).digest("hex");
+
+    try {
+      mkdirSync(join(storageRoot, `app-versions/${versionId}`), { recursive: true });
+      writeFileSync(join(storageRoot, bundleKey), bundleJson);
+
+      let queryIndex = 0;
+      mockPoolQuery = async () => {
+        queryIndex++;
+        if (queryIndex === 1) {
+          return {
+            rows: [{
+              id: versionId,
+              project_id: "prj_src",
+              name: "Local App",
+              visibility: "public",
+              fork_allowed: true,
+              status: "published",
+              min_tier: "prototype",
+              derived_min_tier: "prototype",
+              bundle_uri: `local://${bundleKey}`,
+              bundle_sha256: bundleSha256,
+              required_secrets: [],
+              required_actions: [],
+              site_deployment_id: null,
+            }],
+          };
+        }
+        if (queryIndex === 2) return { rows: [] };
+        if (queryIndex === 3) return { rows: [{ schema_slot: "p0042" }] };
+        if (queryIndex === 4) return { rows: [] };
+        if (queryIndex === 5) return { rows: [] };
+        if (queryIndex === 6) return { rows: [] };
+        if (queryIndex === 7) return { rows: [], rowCount: 1 };
+        return { rows: [] };
+      };
+
+      const result = await forkApp({ version_id: versionId, name: "local-fork" }, "hobby", "https://api.run402.com");
+
+      assert.equal(result.project_id, "prj_123");
+      assert.equal(result.anon_key, "anon-key-abc");
+      assert.equal(result.service_key, "service-key-xyz");
+      assert.equal(result.schema_slot, "p0042");
+      assert.equal(result.source_version_id, versionId);
+      assert.equal(result.readiness, "ready");
+    } finally {
+      rmSync(join(storageRoot, `app-versions/${versionId}`), { recursive: true, force: true });
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -357,16 +421,21 @@ describe("forkApp", () => {
 
 describe("executeSqlViaPsql", () => {
   it("throws ForkError when psql is not available or fails", async () => {
-    // psql is unlikely to be on the test machine with valid DB credentials,
-    // so this should fail and wrap the error in a ForkError
-    await assert.rejects(
-      () => executeSqlViaPsql("SELECT 1", "test label"),
-      (err: any) => {
-        assert.ok(err instanceof ForkError);
-        assert.equal(err.statusCode, 500);
-        assert.ok(err.message.includes("Fork test label failed"));
-        return true;
-      },
-    );
+    const oldPort = process.env.DB_PORT;
+    process.env.DB_PORT = "1"; // force connection failure regardless of local Postgres availability
+    try {
+      await assert.rejects(
+        () => executeSqlViaPsql("SELECT 1", "test label"),
+        (err: any) => {
+          assert.ok(err instanceof ForkError);
+          assert.equal(err.statusCode, 500);
+          assert.ok(err.message.includes("Fork test label failed"));
+          return true;
+        },
+      );
+    } finally {
+      if (oldPort === undefined) delete process.env.DB_PORT;
+      else process.env.DB_PORT = oldPort;
+    }
   });
 });

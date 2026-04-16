@@ -18,11 +18,29 @@ services:
 
   postgrest:
     image: postgrest/postgrest:v12.2.3
+    command:
+      - /bin/sh
+      - -ec
+      - |
+        schema_list=""
+        i=1
+        max_slots="$${MAX_SCHEMA_SLOTS:-2000}"
+        while [ "$$i" -le "$$max_slots" ]; do
+          schema="$$(printf 'p%04d' "$$i")"
+          if [ -n "$$schema_list" ]; then
+            schema_list="$$schema_list,$$schema"
+          else
+            schema_list="$$schema"
+          fi
+          i=$$(($$i + 1))
+        done
+        export PGRST_DB_SCHEMAS="$$schema_list"
+        exec postgrest
     ports:
       - "3000:3000"
     environment:
       PGRST_DB_URI: postgres://authenticator:authenticator@postgres:5432/agentdb
-      PGRST_DB_SCHEMAS: ${PGRST_DB_SCHEMAS:-p0001,p0002,p0003,p0004,p0005,p0006,p0007,p0008,p0009,p0010}
+      MAX_SCHEMA_SLOTS: ${MAX_SCHEMA_SLOTS:-2000}
       PGRST_DB_ANON_ROLE: anon
       PGRST_JWT_SECRET: ${JWT_SECRET:-super-secret-jwt-key-for-agentdb-test-only-32chars!!}
       PGRST_DB_PRE_REQUEST: internal.pre_request

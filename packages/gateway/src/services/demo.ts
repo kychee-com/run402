@@ -6,6 +6,8 @@
  */
 
 import { S3Client, GetObjectCommand, DeleteObjectCommand, ListObjectsV2Command } from "@aws-sdk/client-s3";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { pool } from "../db/pool.js";
 import { sql } from "../db/sql.js";
 import { S3_BUCKET, S3_REGION } from "../config.js";
@@ -19,6 +21,7 @@ import type { DemoConfig } from "@run402/shared";
 import { errorMessage } from "../utils/errors.js";
 
 const s3 = S3_BUCKET ? new S3Client({ region: S3_REGION }) : null;
+const LOCAL_STORAGE_ROOT = process.env.STORAGE_ROOT || "./storage";
 
 /**
  * Create a demo project for a newly published app version.
@@ -84,15 +87,19 @@ export async function resetDemoProject(projectId: string): Promise<void> {
     }
 
     const version = versionResult.rows[0];
-    const bundleKey = version.bundle_uri.replace(`s3://${S3_BUCKET}/`, "");
+    let bundleJson: string;
 
-    if (!s3 || !S3_BUCKET) {
-      console.error("  Demo reset failed: S3 not configured");
+    if (version.bundle_uri.startsWith("local://")) {
+      const localPath = join(LOCAL_STORAGE_ROOT, version.bundle_uri.slice("local://".length));
+      bundleJson = readFileSync(localPath, "utf-8");
+    } else if (s3 && S3_BUCKET) {
+      const bundleKey = version.bundle_uri.replace(`s3://${S3_BUCKET}/`, "");
+      const obj = await s3.send(new GetObjectCommand({ Bucket: S3_BUCKET, Key: bundleKey }));
+      bundleJson = await obj.Body!.transformToString();
+    } else {
+      console.error("  Demo reset failed: bundle storage not configured");
       return;
     }
-
-    const obj = await s3.send(new GetObjectCommand({ Bucket: S3_BUCKET, Key: bundleKey }));
-    const bundleJson = await obj.Body!.transformToString();
 
     // Verify integrity
     const crypto = await import("node:crypto");

@@ -522,6 +522,29 @@ describe("publishAppVersion", () => {
     assert.equal(insertedParams.length, 1);
   });
 
+  it("strips pg_dump transaction_timeout statements from the stored bundle", async () => {
+    const uploadedBodies: string[] = [];
+    mockS3Send = async (command: { input?: { Body?: string } }) => {
+      if (typeof command.input?.Body === "string") {
+        uploadedBodies.push(command.input.Body);
+      }
+      return {};
+    };
+    mockExecFileAsync = async (_cmd: string, args: string[], _opts: unknown) => {
+      const schemaArg = args.find((a) => a.startsWith("--schema="));
+      const schema = schemaArg?.split("=")[1] || "p0001";
+      return {
+        stdout: `SET transaction_timeout = 0;\nCREATE TABLE ${schema}.users (id uuid PRIMARY KEY);\n`,
+        stderr: "",
+      };
+    };
+
+    await publishAppVersion("prj_strip", "strip-app", "p0001", undefined, {});
+
+    assert.equal(uploadedBodies.length, 1);
+    assert.ok(!uploadedBodies[0].includes("transaction_timeout"));
+  });
+
   it("pins site deployment ref_count when site exists", async () => {
     const updatedDeployments: string[] = [];
     const baseMock = buildPublishQueryMock({

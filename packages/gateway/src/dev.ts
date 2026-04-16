@@ -1,5 +1,4 @@
-import { loadDevSecretsFromAws } from "./dev-secrets.js";
-
 process.env.RUN402_LOCALHOST_PUBLIC_URLS = process.env.RUN402_LOCALHOST_PUBLIC_URLS || "1";
-await loadDevSecretsFromAws();
 await import("./server.js");
+
+export {};

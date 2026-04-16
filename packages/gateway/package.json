@@ -6,7 +6,7 @@
   "main": "dist/server.js",
   "scripts": {
     "build": "tsc",
-    "dev": "tsx --env-file=../../.env src/server.ts",
+    "dev": "tsx --env-file=../../.env src/dev.ts",
     "dev:aws-secrets": "tsx --env-file=../../.env src/dev-with-aws-secrets.ts",
     "start": "node dist/server.js",
     "test:unit": "node --experimental-test-module-mocks --test --import tsx 'src/**/*.test.ts'",

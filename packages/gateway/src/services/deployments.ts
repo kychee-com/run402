@@ -11,6 +11,7 @@ import { randomBytes } from "node:crypto";
 import { mkdirSync, writeFileSync, existsSync, readdirSync, statSync, copyFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { cacheInvalidateByNames } from "./subdomains.js";
+import { getDeploymentUrl, getSubdomainUrl } from "../utils/public-urls.js";
 
 // S3 client (only initialized if S3_BUCKET is set)
 const s3 = S3_BUCKET ? new S3Client({ region: S3_REGION }) : null;
@@ -102,14 +103,6 @@ function generateDeploymentId(): string {
 }
 
 /**
- * Convert deployment ID to DNS-safe subdomain.
- * Underscores → hyphens (reversible since IDs never contain hyphens).
- */
-function toDnsLabel(id: string): string {
-  return id.replace(/_/g, "-");
-}
-
-/**
  * Ensure the deployments table exists (idempotent).
  */
 export async function initDeploymentsTable(): Promise<void> {
@@ -151,7 +144,6 @@ export async function createDeployment(
   txHash?: string,
 ): Promise<DeploymentResult> {
   const id = generateDeploymentId();
-  const dnsLabel = toDnsLabel(id);
 
   // Decode and measure all files
   const decoded: Array<{ path: string; buffer: Buffer; mime: string }> = [];
@@ -281,7 +273,7 @@ export async function createDeployment(
     [id, req.project, req.project, req.target || null, totalFiles, totalSize, txHash || null],
   );
 
-  const url = `https://${dnsLabel}.sites.run402.com`;
+  const url = getDeploymentUrl(id);
 
   console.log(`  Deployment created: ${id} (${totalFiles} files${inheritedCount ? `, ${inheritedCount} inherited` : ""}, ${totalSize}B) → ${url}`);
 
@@ -299,7 +291,7 @@ export async function createDeployment(
       const names = subResult.rows.map((r: { name: string }) => r.name);
       cacheInvalidateByNames(names);
       for (const name of names) {
-        subdomainUrls.push(`https://${name}.run402.com`);
+        subdomainUrls.push(getSubdomainUrl(name));
         console.log(`  Subdomain auto-reassigned: ${name} → ${id}`);
       }
     }
@@ -323,12 +315,11 @@ export async function getDeployment(id: string): Promise<DeploymentRecord | null
   if (result.rows.length === 0) return null;
 
   const row = result.rows[0];
-  const dnsLabel = toDnsLabel(row.id);
 
   return {
     id: row.id,
     name: row.name,
-    url: `https://${dnsLabel}.sites.run402.com`,
+    url: getDeploymentUrl(row.id as string),
     project_id: row.project_id,
     status: "READY",
     created_at: row.created_at,

@@ -9,7 +9,7 @@
 import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { writeFileSync, unlinkSync } from "node:fs";
+import { readFileSync, writeFileSync, unlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pool } from "../db/pool.js";
@@ -23,8 +23,10 @@ import { deployBundle } from "./bundle.js";
 import { createProject, purgeProject, deriveProjectKeys } from "./projects.js";
 import { decanonicalizeSchema } from "./publish.js";
 import type { BundleResult } from "./bundle.js";
+import { resolvePgBinary } from "../utils/pg-binaries.js";
 
 const s3 = S3_BUCKET ? new S3Client({ region: S3_REGION }) : null;
+const LOCAL_STORAGE_ROOT = process.env.STORAGE_ROOT || "./storage";
 
 // Tier ordering for comparison
 const TIER_ORDER: Record<string, number> = { prototype: 0, hobby: 1, team: 2 };
@@ -110,10 +112,13 @@ export async function forkApp(
   }
 
   // Load bundle from S3
-  const bundleKey = version.bundle_uri.replace(`s3://${S3_BUCKET}/`, "");
   let bundleJson: string;
 
-  if (s3 && S3_BUCKET) {
+  if (version.bundle_uri.startsWith("local://")) {
+    const localPath = join(LOCAL_STORAGE_ROOT, version.bundle_uri.slice("local://".length));
+    bundleJson = readFileSync(localPath, "utf-8");
+  } else if (s3 && S3_BUCKET) {
+    const bundleKey = version.bundle_uri.replace(`s3://${S3_BUCKET}/`, "");
     const obj = await s3.send(new GetObjectCommand({
       Bucket: S3_BUCKET,
       Key: bundleKey,
@@ -279,19 +284,20 @@ export async function executeSqlViaPsql(sql: string, label: string): Promise<voi
   const dbPort = process.env.DB_PORT || "5432";
   const dbName = process.env.DB_NAME || "agentdb";
   const dbUser = process.env.DB_USER || "postgres";
-  const dbPassword = process.env.DB_PASSWORD || "";
+  const dbPassword = process.env.DB_PASSWORD || "postgres";
 
   // Write SQL to temp file (psql -f is more reliable than stdin for large scripts)
   const tmpFile = join(tmpdir(), `fork-${Date.now()}-${Math.random().toString(36).slice(2)}.sql`);
   writeFileSync(tmpFile, sql);
 
   try {
-    await execFileAsync("psql", [
+    await execFileAsync(resolvePgBinary("psql"), [
       `--host=${dbHost}`,
       `--port=${dbPort}`,
       `--username=${dbUser}`,
       `--dbname=${dbName}`,
       "--no-psqlrc",
+      "--no-password",
       "--set=ON_ERROR_STOP=1",
       `-f`, tmpFile,
     ], {

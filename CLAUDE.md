@@ -168,7 +168,7 @@ Run with `npx tsx demos/<name>/deploy.ts`. Requires `BUYER_PRIVATE_KEY`, `OPENAI
 ### Starting the local server
 
 1. Start Postgres: `docker run -d --name run402-postgres -p 5432:5432 -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=agentdb -v ./packages/gateway/src/db/init.sql:/docker-entrypoint-initdb.d/init-db.sql postgres:16`
-2. Start PostgREST: `docker run -d --name run402-postgrest -p 3000:3000 -e PGRST_DB_URI="postgres://authenticator:authenticator@<postgres-ip>:5432/agentdb" -e PGRST_DB_SCHEMAS="p0001,p0002,p0003,p0004,p0005,p0006,p0007,p0008,p0009,p0010" -e PGRST_DB_ANON_ROLE=anon -e 'PGRST_JWT_SECRET=super-secret-jwt-key-for-agentdb-test-only-32chars!!' -e PGRST_DB_PRE_REQUEST=internal.pre_request postgrest/postgrest:v12.2.3` (get postgres IP via `docker inspect run402-postgres --format '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}'`)
+2. Start PostgREST: `docker run -d --name run402-postgrest -p 3000:3000 -e PGRST_DB_URI="postgres://authenticator:authenticator@<postgres-ip>:5432/agentdb" -e MAX_SCHEMA_SLOTS=2000 -e PGRST_DB_ANON_ROLE=anon -e 'PGRST_JWT_SECRET=super-secret-jwt-key-for-agentdb-test-only-32chars!!' -e PGRST_DB_PRE_REQUEST=internal.pre_request --entrypoint /bin/sh postgrest/postgrest:v12.2.3 -ec 'schema_list=""; i=1; while [ "$i" -le "${MAX_SCHEMA_SLOTS:-2000}" ]; do schema="$(printf "p%04d" "$i")"; if [ -n "$schema_list" ]; then schema_list="$schema_list,$schema"; else schema_list="$schema"; fi; i=$((i + 1)); done; export PGRST_DB_SCHEMAS="$schema_list"; exec postgrest'` (get postgres IP via `docker inspect run402-postgres --format '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}'`)
 3. Start gateway: `npm run dev`
 
 ### ESM dotenv loading

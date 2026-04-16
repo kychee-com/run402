@@ -10,16 +10,26 @@ import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { S3_BUCKET, S3_REGION } from "../config.js";
+import { pool } from "../db/pool.js";
+import { sql } from "../db/sql.js";
 import { resolveSubdomain } from "../services/subdomains.js";
 import { getMimeType } from "../utils/mime.js";
 import { hasName } from "../utils/errors.js";
 import { injectForkBadge } from "../utils/fork-badge.js";
+import { parseDeploymentHost, parseManagedSubdomain } from "../utils/public-urls.js";
 
 const s3 = S3_BUCKET ? new S3Client({ region: S3_REGION }) : null;
 const LOCAL_STORAGE_ROOT = process.env.STORAGE_ROOT || "./storage";
 
 /** Hosts that should bypass subdomain routing entirely. */
-const SKIP_HOSTS = new Set(["api.run402.com", "www.run402.com", "run402.com"]);
+const SKIP_HOSTS = new Set([
+  "api.run402.com",
+  "www.run402.com",
+  "run402.com",
+  "api.run402.com.localhost",
+  "www.run402.com.localhost",
+  "run402.com.localhost",
+]);
 
 /**
  * Early middleware: if the request is for a custom subdomain, serve the
@@ -28,30 +38,25 @@ const SKIP_HOSTS = new Set(["api.run402.com", "www.run402.com", "run402.com"]);
 export function subdomainMiddleware(req: Request, res: Response, next: NextFunction): void {
   const host = (req.hostname || "").toLowerCase();
 
-  // Skip non-run402 hosts (local dev, health checks, etc.)
-  if (!host.endsWith(".run402.com") && host !== "run402.com") {
-    next();
-    return;
-  }
-
   // Skip known system hosts
   if (SKIP_HOSTS.has(host)) {
     next();
     return;
   }
 
-  // Skip *.sites.run402.com (deployment subdomains handled by CloudFront)
-  if (host.endsWith(".sites.run402.com")) {
-    next();
+  const deploymentId = parseDeploymentHost(host);
+  if (deploymentId) {
+    handleDeploymentRequest(deploymentId, req, res).catch((err) => {
+      console.error(`Deployment host middleware error (${deploymentId}):`, err);
+      if (!res.headersSent) {
+        res.status(500).send("Internal server error");
+      }
+    });
     return;
   }
 
-  // Extract subdomain: "myapp.run402.com" → "myapp"
-  const suffix = ".run402.com";
-  const subdomain = host.slice(0, -suffix.length);
-
-  // Skip multi-level subdomains (e.g. "a.b.run402.com")
-  if (subdomain.includes(".")) {
+  const subdomain = parseManagedSubdomain(host);
+  if (!subdomain) {
     next();
     return;
   }
@@ -80,6 +85,32 @@ async function handleSubdomainRequest(
     return;
   }
 
+  await serveDeploymentRequest(deploymentId, req, res, true, subdomain);
+}
+
+async function handleDeploymentRequest(
+  deploymentId: string,
+  req: Request,
+  res: Response,
+): Promise<void> {
+  const exists = await deploymentExists(deploymentId);
+  if (!exists) {
+    res.status(404).set("Content-Type", "text/html").send(
+      `<!DOCTYPE html><html><head><title>Not Found</title></head>` +
+      `<body><h1>404</h1><p>Deployment not found.</p></body></html>`,
+    );
+    return;
+  }
+  await serveDeploymentRequest(deploymentId, req, res, false);
+}
+
+async function serveDeploymentRequest(
+  deploymentId: string,
+  req: Request,
+  res: Response,
+  injectBadge: boolean,
+  subdomain?: string,
+): Promise<void> {
   // Determine file path with SPA fallback
   let filePath = req.path;
   if (filePath === "/") {
@@ -105,16 +136,16 @@ async function handleSubdomainRequest(
       const body = await obj.Body!.transformToByteArray();
 
       // Inject fork badge into HTML responses
-      if (isHtml) {
+      if (isHtml && injectBadge) {
         let html = Buffer.from(body).toString("utf-8");
-        html = await injectForkBadge(html, subdomain);
+        html = await injectForkBadge(html, subdomain || deploymentId);
         res.set("Content-Type", "text/html; charset=utf-8");
         res.set("Cache-Control", "public, max-age=60");
         res.send(html);
       } else {
-        res.set("Content-Type", contentType);
+        res.set("Content-Type", isHtml ? "text/html; charset=utf-8" : contentType);
         res.set("Cache-Control", "public, max-age=60");
-        res.send(Buffer.from(body));
+        res.send(isHtml ? Buffer.from(body).toString("utf-8") : Buffer.from(body));
       }
     } else {
       // Local filesystem fallback for dev
@@ -129,16 +160,16 @@ async function handleSubdomainRequest(
       let fileContent: string | Buffer = readFileSync(localPath);
 
       // Inject fork badge into HTML responses
-      if (isHtml) {
+      if (isHtml && injectBadge) {
         let html = fileContent.toString("utf-8");
-        html = await injectForkBadge(html, subdomain);
+        html = await injectForkBadge(html, subdomain || deploymentId);
         res.set("Content-Type", "text/html; charset=utf-8");
         res.set("Cache-Control", "public, max-age=60");
         res.send(html);
       } else {
-        res.set("Content-Type", getMimeType(filePath));
+        res.set("Content-Type", isHtml ? "text/html; charset=utf-8" : getMimeType(filePath));
         res.set("Cache-Control", "public, max-age=60");
-        res.send(fileContent);
+        res.send(isHtml ? fileContent.toString("utf-8") : fileContent);
       }
     }
   } catch (err: unknown) {
@@ -158,6 +189,14 @@ function hasExtension(path: string): boolean {
   const lastSlash = path.lastIndexOf("/");
   const basename = lastSlash >= 0 ? path.slice(lastSlash + 1) : path;
   return basename.includes(".");
+}
+
+async function deploymentExists(deploymentId: string): Promise<boolean> {
+  const result = await pool.query(
+    sql(`SELECT 1 FROM internal.deployments WHERE id = $1 LIMIT 1`),
+    [deploymentId],
+  );
+  return result.rows.length > 0;
 }
 
 /** Minimal HTML escaping. */

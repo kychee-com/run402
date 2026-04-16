@@ -22,6 +22,7 @@ import {
   deleteSubdomain,
   SubdomainError,
 } from "../services/subdomains.js";
+import { getDeploymentUrl, getSubdomainUrl } from "../utils/public-urls.js";
 
 const router = Router();
 
@@ -33,12 +34,11 @@ function formatSubdomain(record: {
   created_at: string;
   updated_at: string;
 }) {
-  const dnsLabel = record.deployment_id.replace(/_/g, "-");
   return {
     name: record.name,
     deployment_id: record.deployment_id,
-    url: `https://${record.name}.run402.com`,
-    deployment_url: `https://${dnsLabel}.sites.run402.com`,
+    url: getSubdomainUrl(record.name),
+    deployment_url: getDeploymentUrl(record.deployment_id),
     project_id: record.project_id,
     created_at: record.created_at,
     updated_at: record.updated_at,
