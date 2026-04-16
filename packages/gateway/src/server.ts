@@ -1217,6 +1217,15 @@ async function start() {
   // Auto-initialize database on first run
   await initDatabase();
 
+  // Some additive migrations ALTER service-owned tables that are normally
+  // created lazily by their modules. Create those base tables first so a
+  // completely fresh local database can boot without manual SQL.
+  await initDeploymentsTable();
+  await initSubdomainsTable();
+  await initFunctionsTable();
+  await initAppVersionsTables();
+  await initMailboxTables();
+
   // Apply pending migrations (idempotent)
   await applyMigrations();
 
@@ -1240,26 +1249,11 @@ async function start() {
   // Initialize idempotency table
   await initIdempotencyTable();
 
-  // Initialize deployments table
-  await initDeploymentsTable();
-
-  // Initialize subdomains table
-  await initSubdomainsTable();
-
   // Initialize custom domains table
   await initDomainsTable();
 
-  // Initialize functions + secrets tables
-  await initFunctionsTable();
-
   // Initialize admin wallets table
   await initAdminWalletsTable();
-
-  // Initialize app versions tables (publish/fork)
-  await initAppVersionsTables();
-
-  // Initialize mailbox tables (email)
-  await initMailboxTables();
 
   // Initialize AI tables (translation usage + add-ons)
   await initAiUsageTable();

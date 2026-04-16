@@ -7,6 +7,7 @@
   "scripts": {
     "build": "tsc",
     "dev": "tsx --env-file=../../.env src/server.ts",
+    "dev:aws-secrets": "tsx --env-file=../../.env src/dev-with-aws-secrets.ts",
     "start": "node dist/server.js",
     "test:unit": "node --experimental-test-module-mocks --test --import tsx 'src/**/*.test.ts'",
     "test:unit:coverage": "c8 --reporter=text --reporter=html --reporter=json --exclude='src/**/*.test.ts' --exclude='node_modules/**' --exclude='dist/**' --exclude='src/services/kvs.ts' node --experimental-test-module-mocks --test --import tsx 'src/**/*.test.ts'"
@@ -20,6 +21,7 @@
     "@aws-sdk/client-lambda": "^3.700.0",
     "@aws-sdk/client-pricing": "^3.1025.0",
     "@aws-sdk/client-s3": "^3.700.0",
+    "@aws-sdk/client-secrets-manager": "^3.1028.0",
     "@aws-sdk/client-ses": "^3.1028.0",
     "@aws-sdk/client-sesv2": "^3.1015.0",
     "@aws-sdk/s3-request-presigner": "^3.700.0",

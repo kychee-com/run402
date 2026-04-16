@@ -226,6 +226,27 @@ export async function deployBundle(
   const tierConfig = TIERS[tier];
   const { serviceKey } = deriveProjectKeys(project.id, tier);
 
+  // Acquire per-project advisory lock to prevent concurrent deploys from
+  // racing on internal.functions rows ("tuple concurrently updated").
+  const lockId = Buffer.from(req.project_id).readUInt32BE(0) || 1;
+  await pool.query(sql(`SELECT pg_advisory_lock($1)`), [lockId]);
+
+  try {
+    return await _deployBundleLocked(req, project, tier, tierConfig, serviceKey, apiBase, walletAddress);
+  } finally {
+    await pool.query(sql(`SELECT pg_advisory_unlock($1)`), [lockId]).catch(() => {});
+  }
+}
+
+async function _deployBundleLocked(
+  req: BundleRequest,
+  project: ProjectInfo,
+  tier: string,
+  tierConfig: (typeof TIERS)[keyof typeof TIERS],
+  serviceKey: string,
+  apiBase: string,
+  walletAddress?: string,
+): Promise<BundleResult> {
   // 2. Run migrations
   let migrationsResult: MigrationsResult | undefined;
   if (req.migrations) {
@@ -247,6 +268,14 @@ export async function deployBundle(
   // 5. Deploy functions
   const deployedFunctions: Array<{ name: string; url: string }> = [];
   if (req.functions) {
+    const existingFunctionsResult = await pool.query(
+      sql(`SELECT name, schedule FROM internal.functions WHERE project_id = $1`),
+      [project.id],
+    );
+    const existingSchedules = new Map<string, string | null>(
+      existingFunctionsResult.rows.map((row) => [String(row.name), row.schedule as string | null]),
+    );
+
     for (const fn of req.functions) {
       const result = await deployFunction(
         project.id,
@@ -265,23 +294,26 @@ export async function deployBundle(
         fn.schedule != null && fn.schedule !== "" ? fn.schedule : fn.schedule;
 
       if (typeof scheduleExpr === "string") {
-        // Enforce tier limits
-        const intervalMinutes = getCronIntervalMinutes(scheduleExpr);
-        if (intervalMinutes < tierConfig.minScheduleIntervalMinutes) {
-          throw new BundleError(
-            `Function '${fn.name}': schedule interval too frequent (${intervalMinutes}min). Your ${tier} tier requires at least ${tierConfig.minScheduleIntervalMinutes} minutes between runs.`,
-            403,
+        const scheduleUnchanged = existingSchedules.get(fn.name) === scheduleExpr;
+        if (!scheduleUnchanged) {
+          // Enforce tier limits only when the schedule is actually changing.
+          const intervalMinutes = getCronIntervalMinutes(scheduleExpr);
+          if (intervalMinutes < tierConfig.minScheduleIntervalMinutes) {
+            throw new BundleError(
+              `Function '${fn.name}': schedule interval too frequent (${intervalMinutes}min). Your ${tier} tier requires at least ${tierConfig.minScheduleIntervalMinutes} minutes between runs.`,
+              403,
+            );
+          }
+          const { rows } = await pool.query(
+            sql(`SELECT count(*)::int AS cnt FROM internal.functions WHERE project_id = $1 AND schedule IS NOT NULL AND name != $2`),
+            [project.id, fn.name],
           );
-        }
-        const { rows } = await pool.query(
-          sql(`SELECT count(*)::int AS cnt FROM internal.functions WHERE project_id = $1 AND schedule IS NOT NULL AND name != $2`),
-          [project.id, fn.name],
-        );
-        if (rows[0].cnt >= tierConfig.maxScheduledFunctions) {
-          throw new BundleError(
-            `Function '${fn.name}': scheduled function limit reached (${tierConfig.maxScheduledFunctions} for your ${tier} tier). Remove a schedule or upgrade.`,
-            403,
-          );
+          if (rows[0].cnt >= tierConfig.maxScheduledFunctions) {
+            throw new BundleError(
+              `Function '${fn.name}': scheduled function limit reached (${tierConfig.maxScheduledFunctions} for your ${tier} tier). Remove a schedule or upgrade.`,
+              403,
+            );
+          }
         }
         // Persist and register
         await pool.query(

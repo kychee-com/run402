@@ -844,6 +844,97 @@ describe("deployBundle — stale function cleanup", () => {
   });
 });
 
+describe("deployBundle — unchanged scheduled functions", () => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const capturedCalls: { deployFunction: any[][]; createDeployment: any[][]; scheduleCountChecks: number } = {
+    deployFunction: [],
+    createDeployment: [],
+    scheduleCountChecks: 0,
+  };
+
+  beforeEach(() => {
+    capturedCalls.deployFunction = [];
+    capturedCalls.createDeployment = [];
+    capturedCalls.scheduleCountChecks = 0;
+
+    mockGetProjectById = async () => makeProject({ tier: "prototype" });
+    mockDeriveProjectKeys = () => ({ anonKey: "anon-key", serviceKey: "service-key" });
+    mockDeployFunction = async (...args) => {
+      capturedCalls.deployFunction.push(args);
+      const name = args[1] as string;
+      return { name, url: `https://api.run402.com/fn/${name}` };
+    };
+    mockDeleteFunction = async () => {};
+    mockSetSecret = async () => {};
+    mockCreateDeployment = async (...args) => {
+      capturedCalls.createDeployment.push(args);
+      return { deployment_id: "dep_sched_001", url: "https://sites.run402.com/dep_sched_001" };
+    };
+    mockCreateOrUpdateSubdomain = async () => ({ name: "test", deployment_id: "dep_sched_001", project_id: "prj_123_1", created_at: "", updated_at: "" });
+    mockPoolConnect = async () => ({
+      query: async () => ({ rows: [] }),
+      release: () => {},
+    });
+  });
+
+  it("allows site redeploy when schedules are unchanged even if the current tier limit is lower", async () => {
+    const { pool: mockPool } = await import("../db/pool.js");
+    const originalQuery = mockPool.query;
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (mockPool as any).query = async (q: string) => {
+      if (typeof q === "string" && q.includes("SELECT name, schedule FROM internal.functions") && q.includes("project_id")) {
+        return {
+          rows: [
+            { name: "check-expirations", schedule: "0 0 * * *" },
+            { name: "event-reminders", schedule: "15 0 * * *" },
+          ],
+          rowCount: 2,
+        };
+      }
+      if (typeof q === "string" && q.includes("SELECT count(*)::int AS cnt FROM internal.functions") && q.includes("schedule IS NOT NULL")) {
+        capturedCalls.scheduleCountChecks++;
+        return { rows: [{ cnt: 1 }], rowCount: 1 };
+      }
+      if (typeof q === "string" && q.includes("UPDATE internal.functions SET schedule = $3")) {
+        return { rows: [], rowCount: 1 };
+      }
+      if (typeof q === "string" && q.includes("SELECT name FROM internal.functions") && q.includes("project_id")) {
+        return {
+          rows: [
+            { name: "check-expirations" },
+            { name: "event-reminders" },
+          ],
+          rowCount: 2,
+        };
+      }
+      return { rows: [], rowCount: 0 };
+    };
+
+    try {
+      const result = await deployBundle(
+        {
+          project_id: "prj_123_1",
+          functions: [
+            { name: "check-expirations", code: 'export default async () => new Response("ok")', schedule: "0 0 * * *" },
+            { name: "event-reminders", code: 'export default async () => new Response("ok")', schedule: "15 0 * * *" },
+          ],
+          files: [{ file: "index.html", data: "<h1>Updated site</h1>" }],
+        },
+        "https://api.run402.com",
+      );
+
+      assert.equal(capturedCalls.deployFunction.length, 2);
+      assert.equal(capturedCalls.createDeployment.length, 1);
+      assert.equal(capturedCalls.scheduleCountChecks, 0);
+      assert.equal(result.site_url, "https://sites.run402.com/dep_sched_001");
+    } finally {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (mockPool as any).query = originalQuery;
+    }
+  });
+});
+
 describe("deployBundle — migration SQL errors", () => {
   it("wraps SQL errors as BundleError 422 and rolls back", async () => {
     mockGetProjectById = async () => makeProject();
@@ -1042,5 +1133,119 @@ describe("deployBundle — RLS template application via pool", () => {
     // Should have RLS enabled for both tables
     const rlsQueries = queries.filter((q) => q.includes("ENABLE ROW LEVEL SECURITY"));
     assert.ok(rlsQueries.length >= 2, "RLS should be enabled on both tables");
+  });
+});
+
+describe("deployBundle — per-project advisory lock", () => {
+  it("acquires pg_advisory_lock before work and releases it after", async () => {
+    const queries: string[] = [];
+
+    mockGetProjectById = async () => makeProject();
+    mockDeriveProjectKeys = () => ({ anonKey: "anon-key", serviceKey: "service-key" });
+    mockDeployFunction = async (...args) => {
+      const name = args[1] as string;
+      return { name, url: `https://api.run402.com/fn/${name}` };
+    };
+    mockDeleteFunction = async () => {};
+    mockSetSecret = async () => {};
+    mockCreateDeployment = async () => ({ deployment_id: "dep_001", url: "https://sites.run402.com/dep_001" });
+    mockCreateOrUpdateSubdomain = async () => ({ name: "test", deployment_id: "dep_001", project_id: "prj_123_1", created_at: "", updated_at: "" });
+    mockPoolConnect = async () => ({
+      query: async () => ({ rows: [] }),
+      release: () => {},
+    });
+
+    const { pool: mockPool } = await import("../db/pool.js");
+    const originalQuery = mockPool.query;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (mockPool as any).query = async (q: string, params?: unknown[]) => {
+      queries.push(typeof q === "string" ? q : "");
+      if (q.includes("pg_advisory_lock") || q.includes("pg_advisory_unlock")) {
+        return { rows: [{}], rowCount: 1 };
+      }
+      if (q.includes("SELECT name, schedule FROM internal.functions")) {
+        return { rows: [], rowCount: 0 };
+      }
+      if (q.includes("SELECT name FROM internal.functions")) {
+        return { rows: [], rowCount: 0 };
+      }
+      return { rows: [{ cnt: 0 }], rowCount: 1 };
+    };
+
+    try {
+      await deployBundle(
+        {
+          project_id: "prj_123_1",
+          functions: [{ name: "hello", code: 'export default async () => new Response("ok")' }],
+        },
+        "https://api.run402.com",
+      );
+
+      // Verify advisory lock was acquired
+      const lockQuery = queries.find((q) => q.includes("pg_advisory_lock") && !q.includes("unlock"));
+      assert.ok(lockQuery, "Should acquire pg_advisory_lock before deploying");
+
+      // Verify advisory lock was released
+      const unlockQuery = queries.find((q) => q.includes("pg_advisory_unlock"));
+      assert.ok(unlockQuery, "Should release pg_advisory_unlock after deploying");
+
+      // Verify lock comes before any function-related queries
+      const lockIdx = queries.indexOf(lockQuery!);
+      const firstFnQuery = queries.findIndex((q) => q.includes("internal.functions"));
+      assert.ok(lockIdx < firstFnQuery, "Advisory lock should be acquired before function queries");
+    } finally {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (mockPool as any).query = originalQuery;
+    }
+  });
+
+  it("releases advisory lock even when deployBundle throws", async () => {
+    const queries: string[] = [];
+
+    mockGetProjectById = async () => makeProject();
+    mockDeriveProjectKeys = () => ({ anonKey: "anon-key", serviceKey: "service-key" });
+    // Make deployFunction throw to simulate an error mid-deploy
+    mockDeployFunction = async () => { throw new Error("Lambda deploy failed"); };
+    mockDeleteFunction = async () => {};
+    mockSetSecret = async () => {};
+    mockCreateDeployment = async () => ({ deployment_id: "dep_001", url: "https://sites.run402.com/dep_001" });
+    mockCreateOrUpdateSubdomain = async () => ({ name: "test", deployment_id: "dep_001", project_id: "prj_123_1", created_at: "", updated_at: "" });
+    mockPoolConnect = async () => ({
+      query: async () => ({ rows: [] }),
+      release: () => {},
+    });
+
+    const { pool: mockPool } = await import("../db/pool.js");
+    const originalQuery = mockPool.query;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (mockPool as any).query = async (q: string) => {
+      queries.push(typeof q === "string" ? q : "");
+      if (q.includes("pg_advisory_lock") || q.includes("pg_advisory_unlock")) {
+        return { rows: [{}], rowCount: 1 };
+      }
+      if (q.includes("SELECT name, schedule FROM internal.functions")) {
+        return { rows: [], rowCount: 0 };
+      }
+      return { rows: [{ cnt: 0 }], rowCount: 1 };
+    };
+
+    try {
+      await assert.rejects(
+        () => deployBundle(
+          {
+            project_id: "prj_123_1",
+            functions: [{ name: "hello", code: 'export default async () => new Response("ok")' }],
+          },
+          "https://api.run402.com",
+        ),
+      );
+
+      // Even though deploy failed, unlock must still be called
+      const unlockQuery = queries.find((q) => q.includes("pg_advisory_unlock"));
+      assert.ok(unlockQuery, "Should release pg_advisory_unlock even on error");
+    } finally {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (mockPool as any).query = originalQuery;
+    }
   });
 });

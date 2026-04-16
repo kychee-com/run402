@@ -14,6 +14,7 @@
     "build:gateway": "npm run build -w packages/gateway",
     "build:infra": "npm run build -w infra",
     "dev": "npm run dev -w packages/gateway",
+    "dev:aws-secrets": "npm run dev:aws-secrets -w packages/gateway",
     "test:e2e": "tsx test/e2e.ts",
     "test:openclaw": "tsx test/openclaw-e2e.ts",
     "test:subdomains": "node --experimental-test-module-mocks --test --import tsx packages/gateway/src/services/subdomains.test.ts",
