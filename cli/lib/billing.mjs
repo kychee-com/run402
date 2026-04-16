@@ -9,7 +9,7 @@ Subcommands:
   create-email <email>                     Create an email billing account
   link-wallet <account_id> <wallet>        Link a wallet to an email account
   tier-checkout <tier> [--email <e> | --wallet <w>]    Stripe tier checkout
-  buy-pack [--email <e> | --wallet <w>]    Buy \$5 email pack (10,000 emails)
+  buy-email-pack [--email <e> | --wallet <w>]  Buy \$5 email pack (10,000 emails)
   auto-recharge <account_id> <on|off> [--threshold <n>]
   balance <identifier>                     Balance by email or wallet (0x...)
   history <identifier> [--limit <n>]       Ledger history by email or wallet
@@ -17,7 +17,7 @@ Subcommands:
 Examples:
   run402 billing create-email user@example.com
   run402 billing tier-checkout hobby --email user@example.com
-  run402 billing buy-pack --wallet 0x1234...
+  run402 billing buy-email-pack --wallet 0x1234...
   run402 billing auto-recharge acct_abc on --threshold 2000
   run402 billing balance user@example.com
 `;
@@ -157,7 +157,7 @@ export async function run(sub, args) {
     case "create-email": await createEmail(args); break;
     case "link-wallet": await linkWallet(args); break;
     case "tier-checkout": await tierCheckout(args); break;
-    case "buy-pack": await buyPack(args); break;
+    case "buy-email-pack": await buyPack(args); break;
     case "auto-recharge": await autoRecharge(args); break;
     case "balance": await balance(args); break;
     case "history": await history(args); break;

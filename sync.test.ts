@@ -264,7 +264,7 @@ const SURFACE: Capability[] = [
   { id: "create_email_billing_account", endpoint: "POST /billing/v1/accounts",                   mcp: "create_email_billing_account", cli: "billing:create-email",   openclaw: "billing:create-email" },
   { id: "link_wallet_to_account",       endpoint: "POST /billing/v1/accounts/:id/link-wallet",   mcp: "link_wallet_to_account",       cli: "billing:link-wallet",    openclaw: "billing:link-wallet" },
   { id: "tier_checkout",                endpoint: "POST /billing/v1/tiers/:tier/checkout",       mcp: "tier_checkout",                cli: "billing:tier-checkout",  openclaw: "billing:tier-checkout" },
-  { id: "buy_email_pack",               endpoint: "POST /billing/v1/email-packs/checkout",       mcp: "buy_email_pack",               cli: "billing:buy-pack",       openclaw: "billing:buy-pack" },
+  { id: "buy_email_pack",               endpoint: "POST /billing/v1/email-packs/checkout",       mcp: "buy_email_pack",               cli: "billing:buy-email-pack", openclaw: "billing:buy-email-pack" },
   { id: "set_auto_recharge",            endpoint: "POST /billing/v1/email-packs/auto-recharge",  mcp: "set_auto_recharge",            cli: "billing:auto-recharge",  openclaw: "billing:auto-recharge" },
   { id: "billing_balance",              endpoint: "GET /billing/v1/accounts/:id",                mcp: null,                           cli: "billing:balance",        openclaw: "billing:balance" },
   { id: "billing_history_cli",          endpoint: "GET /billing/v1/accounts/:id/history",        mcp: null,                           cli: "billing:history",        openclaw: "billing:history" },
