@@ -254,11 +254,13 @@ cd C:\Workspace-Kychee\kysigned && npm run test:all
 ### Deviations
 
 1. **No git worktrees created** — Plan called for separate git worktrees per candidate. Instead, created folders directly under `zkprover-candidates/` (matching v0.1.0's D-risc0 pattern). Rationale: worktrees add git complexity without benefit since each candidate is self-contained in its folder. The folder isolation (per spec F1.2) is maintained.
+2. **Moved zkprover-candidates/ from kysigned (public) to kysigned-private** — The public repo is a forkable template. ZK prover research scripts, vendor snapshots, and measurement data are service-specific infrastructure and must not be in the public repo. All candidate folders (D-risc0, E-rapidsnark, F-rapidsnark-gpu, G-noir, H-sp1) plus shared/ now live at `kysigned-private/zkprover-candidates/`. The `docs/plans/zkprover-D-plan.md` was also moved to `kysigned-private/docs/plans/`.
 
 ---
 
 ## Log
 
+- 2026-04-16: **Moved all zkprover-candidates/ from kysigned (public) to kysigned-private.** Public repo is a forkable template — ZK prover research is service infra. Also moved docs/plans/zkprover-D-plan.md to private. Public repo cleaned: 0 zkprover artifacts remain. Tests: 19/19 passing.
 - 2026-04-16: E.1/F.1/G.1/H.1 scaffolding complete — all 4 candidate folders created with README.md, build.sh, prove.sh, verify-local.sh, deploy-verifier.sh, verify-onchain.sh, and measurements.md templates. E pins @zk-email/circuits@6.3.4 + rapidsnark. F symlinks E's artifacts + adds ICICLE GPU build. G includes Noir adapter project stub for zkemail.nr v2.0.0. H includes SP1 v4.x + sp1-zkEmail setup. Full test suite: 19/19 passing. All scripts need EC2 Linux to execute.
 - 2026-04-16: Completed "R.0.3" — Added "All-in $/signature" and "Passes $0.15/sig cap?" rows to v0.1.0 comparison matrix. A: ~$3.03 (❌), B: N/A, C: ~$0.31 (❌), D: ~$0.033 (✅). Updated per-2-signer-envelope costs to match. Only D passes the $0.15 cap. Full test suite: 19/19 passing.
 - 2026-04-16: Completed "R.0.2" — Wrote `zkprover-candidates/shared/measurement-protocol.md` (v2.0). Covers environment recording, wallclock (`/usr/bin/time -v`), peak RAM, GPU VRAM (`nvidia-smi`), on-chain gas (tx receipt), $/proof derivation formula, $0.15 cap check, and a `measurements.md` template. Full test suite: 19/19 passing.
