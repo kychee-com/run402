@@ -757,6 +757,8 @@ The user explicitly chose "prove working first, optimize second." Phases MUST be
 
 ### Phase 2R.B: Binding Rework + Consultation Response `[both]` `AI`
 
+> **UPDATE 2026-04-16:** The zkprover alternatives evaluation is **complete**. Three viable proving paths identified — see [`IMPORTANT-zkprover-viable-paths.md`](../products/kysigned/zkprover/research/IMPORTANT-zkprover-viable-paths.md). Leading option: custom PLONK prover (no ceremony, 5 audits). RISC Zero (Path B below) remains the working fallback. The 2R.B.G tasks below apply specifically to the RISC Zero path. If PLONK prover is built, 2R.B.G tasks become unnecessary (Circom circuit-based approach doesn't use cfdkim).
+
 > **Added 2026-04-15** in response to [kysigned-crypto-attack-review.md](../products/kysigned/consultations/kysigned-crypto-attack-review.md) and the spec v0.13.0 revision. Closes the on-chain binding gap (F4.12 addressing consultation #1 + #6), ports F3.3.3 / F3.3.4 hardening from the orphan Circom design into the live RISC Zero guest, adds client-side proof re-verification (F5.2a), executes the mandatory cfdkim multi-pass audit + dedicated `/consult` session (spec Constraint "DKIM verifier audit"), moves stale Circom artifacts, and redeploys to Base Sepolia.
 >
 > **Gating:** Every item in this phase MUST complete before Phase 13 canary. Phase 3/3R/4/4A/4B/5/6/7/8/11/12 (frontend, service glue, branding, marketing, legal, analytics, cross-linking) are unaffected — binding is a contract + guest + verifier-page triangle, not an API-surface change.
