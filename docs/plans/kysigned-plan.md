@@ -1232,6 +1232,13 @@ The user explicitly chose "prove working first, optimize second." Phases MUST be
 ### Phase 13: Mainnet Deploy via Dark-Launch Canary `AI` / `HUMAN` / `DECIDE`
 
 > **Context:** this phase executes DD-17 (the dark-launch canary ritual), which is kysigned's instantiation of spec F17 and saas-factory F25. The phase re-sequences what used to be "provision + deploy + measure" into a longer, safer ritual: pre-flight → canary provision → canary deploy → dark-launch dogfood → go/no-go → production provision → production deploy → byte-identical gate → flip → smoke → canary retirement. Phase 13 is **no longer independent of Phase 4B** — Phase 13C (dark-launch dogfood) requires the kysigned-private HTTP router + webhooks + cron + frontend from Phase 4B to be complete and production-deployed. Phases 13A and 13B can start in parallel with Phase 4B, but 13C onward is blocked on 4B completion.
+>
+> **v0.13.0 gating note (2026-04-16):** Phase 13 does NOT block full product testing. The entire product — frontend, API, MCP, email flow, proof generation, on-chain recording, verification UI, Stripe billing, red-team `/systemtest` — is fully testable on Base Sepolia. Phase 13 adds ONLY "real ETH, real permanence." Do NOT start Phase 13 until:
+> 1. **Phase 2R.B is complete** (binding rework + cfdkim in-guest hardening on Sepolia).
+> 2. **2R.B.G9 merge gate has been run at least once** — we have visibility on which cfdkim upstream PRs (Path B) have been accepted. If most/all PRs are merged, we deploy with a cleaner codebase (library fixes, fewer in-guest workarounds). If PRs are pending/rejected, we deploy with full in-guest workarounds (safe but more code surface).
+> 3. **All other phases that CAN be tested on Sepolia HAVE been tested** — including `/systemtest` red-team pass.
+>
+> In short: ship everything on testnet first, red-team it, fix it, THEN go mainnet. Phase 13 is a deployment ceremony, not a development gate.
 
 **Phase dependencies:**
 - **13A → 13B → 13C (blocked on 4B) → 13D → 13E → Phase 14**
