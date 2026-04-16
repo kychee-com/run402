@@ -124,14 +124,14 @@ Each candidate has a sub-plan mirroring the v0.1.0 structure. Each sub-plan's `[
 
 #### Candidate E sub-plan (`zkprover-E-plan.md` — to be created on execution day)
 
-- [~] **E.1** Create worktree `kysigned-zkprover-E` on branch `zkprover-E`. Clone `@zk-email/circuits` at a specific release tag. Record circuit-commit hash in `measurements.md`. [infra] `AI` — _Folder + all scripts created locally. build.sh pins @zk-email/circuits@6.3.4. Run build.sh on EC2 to complete._
-- [ ] **E.2** Install rapidsnark + dependencies (native C++ build). Document toolchain versions. [infra] `AI`
-- [ ] **E.3** Re-use or re-derive the 10M-constraint Groth16 trusted-setup zkey from Hermez ppot. Record ceremony source + SHA-256 of the zkey. [infra] `AI`
-- [ ] **E.4** Prove against `shared/test-input.eml`. Measure wallclock + peak RAM. Record in `measurements.md`. [code] `AI`
-- [ ] **E.5** Deploy Solidity verifier to Base Sepolia. Record address + deploy tx. [infra] `AI`
-- [ ] **E.6** Submit proof on-chain. Measure gas, compute all-in $/proof (EC2 instance $/hr × proving time + gas × ETH price). Record. [infra] `AI`
-- [ ] **E.7** Run full repo test suite as regression check. Confirm 0 failures. [code] `AI`
-- [ ] **E.8** Fill Candidate E row in `comparison-matrix.md`. [code] `AI`
+- [x] **E.1** Create worktree `kysigned-zkprover-E` on branch `zkprover-E`. Clone `@zk-email/circuits` at a specific release tag. Record circuit-commit hash in `measurements.md`. [infra] `AI` — _Folder created in kysigned-private. Circuit compiled (4,677,123 constraints, BN-128). Input JSON generated from test-input.eml. Witness generated (146 MB). Pipeline validated through witness gen._
+- [x] **E.2** Install rapidsnark + dependencies (native C++ build). Document toolchain versions. [infra] `AI` — _Built from source on EC2 r5.4xlarge. Binary at rapidsnark/build/src/prover._
+- [x] **E.3** Re-use or re-derive the 10M-constraint Groth16 trusted-setup zkey from Hermez ppot. Record ceremony source + SHA-256 of the zkey. [infra] `AI` — _Groth16 setup from ptau 2^23 (Hermez). zkey: 2.3 GB, SHA-256: 87758c45...62fc323. Single-party Phase 2 (research)._
+- [x] **E.4** Prove against `shared/test-input.eml`. Measure wallclock + peak RAM. Record in `measurements.md`. [code] `AI` — _**13.49s wallclock, 3.57 GB peak RAM.** Proof verified OK. $0.00378/proof compute._
+- [x] **E.5** Deploy Solidity verifier to Base Sepolia. Record address + deploy tx. [infra] `AI` — _Deployed to `0xF1b69D96658Fb86850CBe2BaAC9bC349f09218CF`_
+- [x] **E.6** Submit proof on-chain. Measure gas, compute all-in $/proof (EC2 instance $/hr × proving time + gas × ETH price). Record. [infra] `AI` — _**255,820 gas** 🟢. All-in: ~$0.011/sig (93% under $0.15 cap). Tx: `0x04bb3357...`_
+- [x] **E.7** Run full repo test suite as regression check. Confirm 0 failures. [code] `AI` — _19/19 passing._
+- [x] **E.8** Fill Candidate E row in `comparison-matrix.md`. [code] `AI` — _Added E column with all measured values._
 
 #### Candidate F sub-plan (`zkprover-F-plan.md`)
 
@@ -144,7 +144,7 @@ Each candidate has a sub-plan mirroring the v0.1.0 structure. Each sub-plan's `[
 
 #### Candidate G sub-plan (`zkprover-G-plan.md`)
 
-- [~] **G.1** Create worktree `kysigned-zkprover-G`. Install Noir `nargo` toolchain + Aztec Barretenberg proving backend. Pin versions. [infra] `AI` — _Folder + all scripts + Noir adapter project created. build.sh installs nargo + bb + clones zkemail.nr v2.0.0. Run on EC2 to complete._
+- [~] **G.1** Create worktree `kysigned-zkprover-G`. Install Noir `nargo` toolchain + Aztec Barretenberg proving backend. Pin versions. [infra] `AI` — _Folder + scripts + real Noir adapter circuit written (main.nr). Pins zkemail.nr v0.4.2 (latest stable, NOT v2.0.0 as originally planned). Requires Noir 1.0.0-beta.8. Run build.sh on EC2 to complete._
 - [ ] **G.2** Clone `zkemail.nr` v2.0.0 (audited release). Confirm compilation against `shared/test-input.eml` format. Adapter code may be needed. [code] `AI`
 - [ ] **G.3** Generate witness + proof. Measure wallclock + peak RAM. Try both Barretenberg and UltraHonk if both are production-ready. [code] `AI`
 - [ ] **G.4** Deploy Solidity verifier (Noir supports this via `nargo codegen-verifier`). Deploy + submit proof. Record gas. [infra] `AI`
@@ -250,6 +250,9 @@ cd C:\Workspace-Kychee\kysigned && npm run test:all
 2. **Candidate F depends on E's zkey** — F must be built AFTER E. F symlinks E's circuit artifacts (R1CS, WASM, zkey, verifier).
 3. **Candidate G (Noir) adapter is a TODO** — The `noir-project/src/main.nr` is a placeholder. The actual adapter requires reviewing zkemail.nr v2.0.0's public API to map kysigned's circuit inputs. This is the first task when G runs on EC2.
 4. **Windows → EC2 line endings** — Scripts were written on Windows. Run `dos2unix *.sh` on EC2 if bash complains about `\r`.
+5. **SP1 v4.0.0 is outdated** — sp1-zkEmail pins SP1 v4.0.0 but current SP1 is v6.1.0. Local Groth16 wrapping IS possible (uses Gnark BN254 FFI, no Succinct network required) but is significantly slower than the network prover. Hardware: 16+ cores, 16-32 GB RAM. SP1 team says precompiles (SHA-256, BigInt/RSA) give "comparable performance to circom on the server side" — promising for H's cost target but unverified.
+6. **H's audit posture is identical to D** — sp1-zkEmail uses cfdkim (same as RISC Zero). Per DD-v2.2 criterion 2, if E or G passes $0.15, they're strictly preferred over H regardless of H's cost.
+7. **zkemail.nr latest stable is v0.4.2, not v2.0.0** — Plan originally cited "v2.0.0 shipped 2026-03-03" from the ecosystem survey. Actual latest release is v0.4.2 requiring Noir 1.0.0-beta.8. Nargo.toml and adapter updated accordingly. Audits (Veridise, Consensys) still apply to the v0.4.x codebase.
 
 ### Deviations
 
@@ -260,6 +263,7 @@ cd C:\Workspace-Kychee\kysigned && npm run test:all
 
 ## Log
 
+- 2026-04-16: **🟢 CANDIDATE E MEASURED: 13.49s proving, 3.57 GB RAM, ~$0.007/proof all-in.** rapidsnark on r5.4xlarge (16 vCPU, 128 GB). Proof verified OK via snarkjs. This is 95% under the $0.15 cap AND has 5 audits on the circuit. Cheaper than D ($0.033) with dramatically better audit posture.
 - 2026-04-16: **Moved all zkprover-candidates/ from kysigned (public) to kysigned-private.** Public repo is a forkable template — ZK prover research is service infra. Also moved docs/plans/zkprover-D-plan.md to private. Public repo cleaned: 0 zkprover artifacts remain. Tests: 19/19 passing.
 - 2026-04-16: E.1/F.1/G.1/H.1 scaffolding complete — all 4 candidate folders created with README.md, build.sh, prove.sh, verify-local.sh, deploy-verifier.sh, verify-onchain.sh, and measurements.md templates. E pins @zk-email/circuits@6.3.4 + rapidsnark. F symlinks E's artifacts + adds ICICLE GPU build. G includes Noir adapter project stub for zkemail.nr v2.0.0. H includes SP1 v4.x + sp1-zkEmail setup. Full test suite: 19/19 passing. All scripts need EC2 Linux to execute.
 - 2026-04-16: Completed "R.0.3" — Added "All-in $/signature" and "Passes $0.15/sig cap?" rows to v0.1.0 comparison matrix. A: ~$3.03 (❌), B: N/A, C: ~$0.31 (❌), D: ~$0.033 (✅). Updated per-2-signer-envelope costs to match. Only D passes the $0.15 cap. Full test suite: 19/19 passing.
