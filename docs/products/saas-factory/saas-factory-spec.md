@@ -1,11 +1,11 @@
 ---
 product: saas-factory
-version: 1.19.0
+version: 1.20.0
 status: Draft
 type: product
 interfaces: [document]
 created: 2026-04-04
-updated: 2026-04-14
+updated: 2026-04-16
 ---
 
 ## Overview
@@ -948,6 +948,7 @@ The file is kept current during the product's build — when a developer or agen
 - **GA4 infrastructure:** All product analytics run under the Kychee GA4 account (account ID 361235691). New properties created per product.
 - **run402 platform:** Products are built on run402 infrastructure. Infrastructure gaps are addressed as tasks, not gates.
 - **Kychee as legal entity:** All products are owned by Kychee. Legal docs, advertising accounts, and domain registrations are under Kychee.
+- **Product docs live in the product's private repo (v1.20.0 — 2026-04-16).** Every saas-factory product has (at least) a private repo for service code + internal docs. All product-level documentation — spec (`docs/product/<product>-spec.md`), plan (`docs/plans/<product>-plan.md`), consultations (`docs/consultations/`), ideas (`docs/ideas/`), research (`docs/research/`), scripts (`docs/scripts/`) — MUST live in that private repo, NOT in run402. Earlier products (pre-2026-04-16) may have docs parked in `run402/docs/products/<product>/` as a bootstrap shortcut; those should be migrated (simple copy) to their respective product repos when convenient. The `run402` repo holds ONLY run402-platform-level docs (platform spec, platform plans, platform features). **New-product bootstrap**: do NOT create `run402/docs/products/<product>/` even as a placeholder. Create the product's private repo first, then put docs there from day one.
 
 ## Open Questions
 
