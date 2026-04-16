@@ -41,11 +41,19 @@ The 2026-04-15 cfdkim ZK-soundness consult surfaced 4 HIGH / 3 MEDIUM / 1 LOW / 
 - **Trade-offs:** 1–2 weeks of research before any real pivot.
 - **Rollback:** if research shows nothing beats D at the cost cap, we proceed with 2R.B.A0's zkemail/cfdkim swap as the best-available option.
 
-### DD-v2.2: Hard cost cap = $0.15/proof (compute + gas, all-in)
-- **Decision:** Any candidate whose fully-loaded per-proof cost (measured, not estimated) exceeds $0.15 is disqualified.
-- **Rationale:** at $0.29/envelope with 2 signers, cost envelope = $0.58. Current Candidate D uses ~$0.056 of that ($0.028 × 2). A $0.15/proof ceiling → $0.30/envelope for the 2-signer case = ~50% margin. That's the minimum livable margin for run402 + Stripe fees + emails + AWS overhead.
-- **Alternative:** soft cap, let audit pedigree drag us to $0.30–$0.50/proof.
-- **Chosen because:** user direction 2026-04-16. Non-negotiable floor.
+### DD-v2.2: Standing decision criteria (inherited from DD-34a in kysigned-plan.md)
+
+**These two criteria govern EVERY decision in this plan.** No other criterion matters.
+
+| Priority | Criterion | Weight |
+|---|---|---|
+| **1** | **Cost per signing ≤ $0.15** hard cap (compute + gas, all-in). Non-negotiable. | Pass/fail gate |
+| **2** | **More eyes on the ball** — does this candidate place our security-critical code on a surface with independent reviewers, active maintenance, published audits, or production usage? More eyes = safer. | Primary differentiator among candidates that pass cost gate |
+
+**Work to migrate, patch, or integrate has ZERO weight.** If the safest option takes 10× more effort, we take it. If "saves work" is the only argument for a candidate, that argument is worth nothing.
+
+- **Rationale for $0.15 cap:** at $0.29/envelope with 2 signers → $0.30/envelope cost at the cap = ~50% margin. Minimum livable margin for run402 + Stripe fees + emails + infra.
+- **User direction:** 2026-04-16. Non-negotiable.
 
 ### DD-v2.3: Reuse zkprover v0.1.0 measurement protocol
 - **Decision:** Same `shared/test-input.eml`, same wrapper-script contract (`build.sh`, `prove.sh`, `verify-local.sh`, `deploy-verifier.sh`, `verify-onchain.sh`), same output file (`measurements.md`) per candidate.
@@ -72,9 +80,9 @@ The 2026-04-15 cfdkim ZK-soundness consult surfaced 4 HIGH / 3 MEDIUM / 1 LOW / 
 
 ### Phase R.0: Setup + inventory
 
-- [ ] **R.0.1** Re-clone `shared/test-input.eml` under `kysigned/zkprover-candidates/shared/` if not already present. Confirm checksum matches the v0.1.0 test input so all measurements use identical input. [infra] `AI`
-- [ ] **R.0.2** Write `zkprover-candidates/shared/measurement-protocol.md` — the exact procedure for measuring wallclock + peak RAM + per-proof compute cost + on-chain gas + all-in $/proof. Document the AWS instance type used for each candidate, hourly rate, and how $/proof is derived. Enforce: `/usr/bin/time -v` for RAM, tx receipt gas for on-chain cost, documented instance pricing from AWS on the day of measurement. [code] `AI`
-- [ ] **R.0.3** Update the v0.1.0 `comparison-matrix.md` table header to add an "all-in $/signature" column for clarity (compute + gas + emails + KMS), filling it in for A/B/C/D from historical data. This becomes the reference column the new candidates have to beat under the $0.15 cap. [code] `AI`
+- [x] **R.0.1** Re-clone `shared/test-input.eml` under `kysigned/zkprover-candidates/shared/` if not already present. Confirm checksum matches the v0.1.0 test input so all measurements use identical input. [infra] `AI`
+- [x] **R.0.2** Write `zkprover-candidates/shared/measurement-protocol.md` — the exact procedure for measuring wallclock + peak RAM + per-proof compute cost + on-chain gas + all-in $/proof. Document the AWS instance type used for each candidate, hourly rate, and how $/proof is derived. Enforce: `/usr/bin/time -v` for RAM, tx receipt gas for on-chain cost, documented instance pricing from AWS on the day of measurement. [code] `AI`
+- [x] **R.0.3** Update the v0.1.0 `comparison-matrix.md` table header to add an "all-in $/signature" column for clarity (compute + gas + emails + KMS), filling it in for A/B/C/D from historical data. This becomes the reference column the new candidates have to beat under the $0.15 cap. [code] `AI`
 
 ### Phase R.1: Candidate list
 
@@ -240,4 +248,7 @@ _(to be populated)_
 
 ## Log
 
+- 2026-04-16: Completed "R.0.3" — Added "All-in $/signature" and "Passes $0.15/sig cap?" rows to v0.1.0 comparison matrix. A: ~$3.03 (❌), B: N/A, C: ~$0.31 (❌), D: ~$0.033 (✅). Updated per-2-signer-envelope costs to match. Only D passes the $0.15 cap. Full test suite: 19/19 passing.
+- 2026-04-16: Completed "R.0.2" — Wrote `zkprover-candidates/shared/measurement-protocol.md` (v2.0). Covers environment recording, wallclock (`/usr/bin/time -v`), peak RAM, GPU VRAM (`nvidia-smi`), on-chain gas (tx receipt), $/proof derivation formula, $0.15 cap check, and a `measurements.md` template. Full test suite: 19/19 passing.
+- 2026-04-16: Completed "R.0.1" — `shared/test-input.eml` already present (SHA-256: `91f7bbde5699a7a4e8a8d109cf48a97b7f570278da21e2b933d4ecec5111814d`). Unmodified since v0.1.0 commit `67cc6d0`. No re-clone needed.
 - 2026-04-16: Plan created in response to user direction: "find something we can prove can sign an envelope at a low cost AND safe; cost per signature is the only criterion — max $0.15 hard cap; willing to test as many new solutions as needed." Built on top of the 2026-04-15 cfdkim ZK-soundness consult findings + the 2026-04-15 ZK-Email Rust ecosystem survey. Four candidates (E/F/G/H) selected based on the survey's map of audited paths. Parallel to 2R.B.A0 (which stays unchanged).

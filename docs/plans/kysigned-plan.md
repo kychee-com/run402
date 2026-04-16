@@ -480,36 +480,51 @@ The user explicitly chose "prove working first, optimize second." Phases MUST be
 - **Chosen because:** Clear separation of T1 (infrastructure) and T2 (user) billing. Kychee is the merchant of record for kysigned credit packs. Follows the same Stripe patterns used in other Kychee products.
 - **Trade-offs:** kysigned-private must implement its own Stripe webhook handler and checkout session creation. Not complex — pattern exists in run402 and other Kychee products.
 
-### DD-34: Switch to zkemail/cfdkim despite only 1/8 findings fixed upstream (2R.B.A0 result)
+### DD-34: Switch to zkemail/cfdkim (2R.B.A0 result)
 
-- **Decision:** Switch `methods/guest/Cargo.toml` + `host/Cargo.toml` from `github.com/boundless-xyz/dkim` (commit `3213315e`, abandoned 2024-11-08) to `github.com/zkemail/cfdkim` (pin commit `861f5e0`, 2025-06-25).
-- **Finding classification (8 consult findings vs zkemail/cfdkim diff):**
+- **Decision:** Switch from `boundless-xyz/dkim@3213315e` (abandoned) to `zkemail/cfdkim@861f5e0` (maintained). Pin commit `861f5e0` (2025-06-25).
 
-  | # | Finding | Status | Evidence |
+- **Decision criteria (applies to ALL library/prover/stack choices going forward — see DD-34a):**
+
+  | Priority | Criterion | Weight |
+  |---|---|---|
+  | **1** | **Cost per signing** ≤ $0.15 hard cap (compute + gas, all-in) | Non-negotiable |
+  | **2** | **More eyes on the ball** — does the choice increase reputability/safety by placing our code on a surface that has independent reviewers, an active maintenance team, published audits, or production usage? | Primary differentiator when cost is equal |
+
+  Work saved, migration effort, patch count — **zero weight.** These are never a factor in library/prover/stack decisions. We do whatever it takes to maximize criteria 1 and 2.
+
+- **Evaluation against criteria:**
+
+  | Criterion | boundless-xyz/dkim | zkemail/cfdkim | Winner |
   |---|---|---|---|
-  | 1 | `b=` global `String::replace` | **(c) NOT fixed** | `canonicalize_header_email` still uses `raw_bytes.replace(&sign, "")` |
-  | 2 | `a=` not bound to key type | **(c) NOT fixed** | Ed25519 branch in `verify_signature` still doesn't check `hash_algo == Ed25519Sha256` |
-  | 3 | LF-only body hash → empty | **(b) PARTIALLY fixed** | `verify_email_with_key` normalizes `\n`→`\r\n` before parsing (commit `7f93100`). Blocks the empty-body-hash attack. But `get_body()` itself unchanged; approach is "normalize" not "reject." |
-  | 4 | `simple` header canon not byte-exact | **(c) NOT fixed** | Commit `89c4228` only fixed relaxed LF handling, not simple |
-  | 5 | Duplicate Subject/To ambiguity | **(c) NOT fixed** | No duplicate-header rejection in `validate_header` |
-  | 6 | Duplicate DKIM tag names | **(c) NOT fixed** | IndexMap last-wins; HashSet only checks required-tags presence |
-  | 7 | Selector-record policy tags | **(c) NOT fixed** | Architectural; `verify_email_with_key` still takes bare public key |
-  | 8 | RFC parsing bundle | **(c) NOT fixed** | v= not first, i=/d= naive suffix, FWS loose, parser remainder discarded |
+  | Cost per signing | Same (RISC Zero, ~$0.028) | Same | Tie |
+  | Eyes on the ball | **0 eyes** — abandoned 2024-11, 1 star, no contributors, no one will ever review or fix anything | **The ZK Email team** (PSE / Ethereum Foundation funded) — same people who wrote the 5×-audited Circom circuits. Active commits through June 2025. Security fixes landing independently. Our patches can be upstreamed for community review. | **zkemail/cfdkim** |
 
-  **Score: 0 (a) fixed, 1 (b) partial, 7 (c) not addressed. Mechanical rule (≥5/8 → switch) NOT met.**
+  **Verdict: switch. Unambiguous.** Same cost, strictly more eyes.
 
-- **Decision to switch anyway, on maintenance + risk grounds:**
-  1. `boundless-xyz/dkim` is dead. No one will ever fix any of the 8 findings there. We'd be sole maintainer of a DKIM parser on an abandoned fork — exactly the antipattern the ecosystem survey warned against.
-  2. `zkemail/cfdkim` is alive. The ZK Email team (PSE/EF-funded) maintains it. Security fixes landed June 2025 including the one that blocks finding #3 (the most catastrophic attack: trivial body-hash forgery).
-  3. All 7 remaining findings need in-guest hardening (Phase 2R.B.G8.*) regardless of which fork we use. Switching forks saves zero patch work but puts us on a maintained codebase.
-  4. The new `verify_email_with_key` signature adds `ignore_body_hash: bool`. Guest MUST pass `false`. Migration task.
-  5. Patches we develop for findings 1-8 can potentially be upstreamed to `zkemail/cfdkim`, giving them community review. On the dead fork, patches die with us.
+- **Finding classification (for the record — findings still need in-guest hardening regardless):**
 
-- **New soundness regressions introduced by zkemail/cfdkim:** None found. The `ignore_body_hash` parameter is a call-site concern (our guest must pass `false`), not a library regression.
-- **Pin commit:** `861f5e0` ("fix: email normalization", 2025-06-25).
-- **Ecosystem survey reference:** `docs/consultations/zk-email-rust-ecosystem-survey.md` (2026-04-15). No other Rust DKIM library for zkVM use exists. `zkemail.rs` (wraps cfdkim) is a medium-term consideration for further abstraction.
-- **Trade-offs:** We inherit zkemail/cfdkim's specific normalization choices (LF→CRLF in verify path). Our 2R.B.G8.1 in-guest CRLF enforcement will reject LF-only before it reaches this normalization, so the gap is defense-in-depth only.
-- **Rollback:** One-line Cargo.toml revert if needed.
+  | # | Finding | Fixed upstream? |
+  |---|---|---|
+  | 1 | `b=` global replace | No |
+  | 2 | `a=` ↔ key type | No |
+  | 3 | LF-only body hash | **Partially** (normalize, not reject) |
+  | 4 | `simple` header canon | No |
+  | 5 | Duplicate Subject/To | No |
+  | 6 | Duplicate DKIM tags | No |
+  | 7 | Selector policy | No (architectural) |
+  | 8 | RFC parsing | No |
+
+- **Migration note:** `verify_email_with_key` now takes 5th param `ignore_body_hash: bool`. Guest MUST pass `false`.
+- **Rollback:** One-line Cargo.toml revert.
+
+### DD-34a: Standing decision criteria for ALL library/prover/stack choices
+
+> **This DD is permanent.** It applies to every future choice in this project — cfdkim vs alternatives, RISC Zero vs SP1, Circom vs Noir, any prover swap, any library swap. Recorded 2026-04-16 per user direction.
+
+1. **Cost per signing ≤ $0.15** — non-negotiable hard cap. If it costs more, it's out.
+2. **More eyes on the ball** — does this choice place our security-critical code on a surface that is independently reviewed, actively maintained, audited, or production-used by others? More eyes = more safety. This is the tiebreaker and primary quality signal.
+3. **Work to migrate / patch / integrate — ZERO weight.** We do not factor effort into security decisions. If the safer option takes 10× more work, we take it. If "saving work" is the only argument FOR a choice, that argument is worth nothing.
 
 ### Phase 0: Foundation `AI`
 
