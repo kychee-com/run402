@@ -405,14 +405,14 @@ The kysigned CLI/MCP provides an `init` command that bootstraps a new kysigned i
 
 Marketing site and product pages at kysigned.com.
 
-- F11.1. Landing page led by the cost attack angle ("DocuSign charges $3-5 per signature. kysigned charges $0.29. Proof on the blockchain, not their servers."). No "kill" language.
+- F11.1. Landing page led by the cost attack angle ("Traditional providers charge $3-5 per signature. kysigned charges $0.29. Proof on the blockchain, not their servers."). No "kill" language. **No naming competitors** — use generic terms ("traditional e-signature providers," "subscription-based platforms," "established providers") per the standing no-competitor-names policy.
 - F11.2. Dual CTA: "Send a document" (hosted service) and "Deploy your own" (GitHub repo).
 - F11.3. "SaaS vs Repo" decision helper explaining the tradeoffs for each delivery mode.
-- F11.4. Pricing page showing per-envelope costs ($0.29 base + $0.10/extra signer), credit pack tiers, and a comparison table vs DocuSign/GoodSign/others.
+- F11.4. Pricing page showing per-envelope costs ($0.29 base + $0.10/extra signer), credit pack tiers, and a comparison table vs generic competitor categories ("subscription provider," "pay-per-use alternative"). **No naming competitors by name.**
 - F11.5. **FAQ as conversion weapon** — six categories:
   - Trust/survival: "What if you shut down?" → "Your proofs are on the blockchain. They survive us."
-  - Migration: "How do I move from DocuSign?" → envelope-by-envelope, no lock-in.
-  - Capability gap: honest comparison of what kysigned does and does not do vs DocuSign.
+  - Migration: "How do I move from my current e-signature provider?" → envelope-by-envelope, no lock-in.
+  - Capability gap: honest comparison of what kysigned does and does not do vs established providers. **No naming competitors.**
   - Legal/compliance: "Are blockchain signatures legal?" → ESIGN Act, UETA, state statutes.
   - Pricing/catch: "How is this so cheap?" → you pay for infrastructure, not subscription overhead.
   - SaaS vs repo: decision helper with how-to snippets for agent-assisted deployment.
@@ -789,6 +789,7 @@ The public repo includes comprehensive integration tests that mirror run402-mcp'
 - **Smart contract deployment:** `SignatureRegistry` and `EvidenceKeyRegistry` must be deployed on Base mainnet before any production signing. Both contracts are immutable once deployed.
 - **Existing legal templates:** Legal documents drafted from existing Kychee/Eleanor/run402 templates. All `[service]` legal docs require human approval.
 - **No "kill" language:** All public-facing materials use "alternative to," "replace," "switch from," "better than." Internal docs may use competitive framing.
+- **No naming competitors (v0.13.0).** Public-facing materials (website, README, trust-model.md, llms.txt, emails, FAQ, pricing page, any content reachable by end users) MUST NOT name specific competitors by brand. Use generic terms: "traditional e-signature providers," "subscription-based platforms," "established providers," "pay-per-use alternatives." Internal docs (specs, plans, brainstorm, consultations) may name competitors for analysis. Rationale: avoids legal exposure, trademark issues, and positioning that ages poorly. The product speaks for itself on cost and trust model.
 
 ## Open Questions
 
