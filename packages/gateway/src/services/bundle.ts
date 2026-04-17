@@ -13,6 +13,7 @@ import { isValidCron, getCronIntervalMinutes, registerSchedule, cancelSchedule }
 import { pool } from "../db/pool.js";
 import { sql } from "../db/sql.js";
 import { checkSqlSafety } from "../utils/sql-safety.js";
+import { fnv1a32 } from "../utils/hash.js";
 import { TIERS } from "@run402/shared";
 import type { ProjectInfo } from "@run402/shared";
 
@@ -228,7 +229,9 @@ export async function deployBundle(
 
   // Acquire per-project advisory lock to prevent concurrent deploys from
   // racing on internal.functions rows ("tuple concurrently updated").
-  const lockId = Buffer.from(req.project_id).readUInt32BE(0) || 1;
+  // Hash the full project_id — reading the first 4 bytes collides across all
+  // projects (every id starts with "prj_") and serializes the whole platform.
+  const lockId = fnv1a32(req.project_id);
   await pool.query(sql(`SELECT pg_advisory_lock($1)`), [lockId]);
 
   try {

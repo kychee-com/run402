@@ -18,6 +18,7 @@ import { S3_BUCKET, S3_REGION } from "../config.js";
 import { TIERS } from "@run402/shared";
 import type { TierName } from "@run402/shared";
 import { resolvePgBinary } from "../utils/pg-binaries.js";
+import { fnv1a32 } from "../utils/hash.js";
 import { getDeploymentUrl, getSubdomainUrl } from "../utils/public-urls.js";
 
 const execFileAsync = promisify(execFile);
@@ -313,8 +314,10 @@ export async function publishAppVersion(
     if (tagError) throw new PublishError(tagError, 400);
   }
 
-  // Acquire advisory lock to prevent concurrent publish/deploy
-  const lockId = Buffer.from(projectId).readUInt32BE(0) || 1;
+  // Acquire advisory lock to prevent concurrent publish/deploy.
+  // Hash the full projectId — reading the first 4 bytes collides across all
+  // projects (every id starts with "prj_") and serializes the whole platform.
+  const lockId = fnv1a32(projectId);
   await pool.query(sql(`SELECT pg_advisory_lock($1)`), [lockId]);
 
   try {
