@@ -1,11 +1,15 @@
 import { readFileSync } from "fs";
 import { dirname, resolve } from "path";
-import { Agent } from "undici";
+import { Agent, fetch as undiciFetch } from "undici";
 import { API, allowanceAuthHeaders, findProject } from "./config.mjs";
 import { resolveFilePathsInManifest, resolveMigrationsFile } from "./manifest.mjs";
 
 // Custom undici dispatcher with longer timeouts for large-batch deploys.
 // Default Node undici headersTimeout is ~5 min; large image uploads can exceed it.
+// We MUST pair this Agent (from the installed undici major) with undici.fetch
+// — not globalThis.fetch — because Node's built-in fetch ships its own bundled
+// undici whose Dispatcher interface may differ by major version, which would
+// cause UND_ERR_INVALID_ARG ("invalid onRequestStart method") at dispatch time.
 const deployDispatcher = new Agent({
   headersTimeout: 600_000, // 10 min
   bodyTimeout:    600_000,
@@ -25,6 +29,12 @@ const RETRY_CAUSE_CODES = new Set([
 ]);
 const RETRY_HTTP_STATUSES = new Set([502, 503, 504]);
 
+// Test-only injection seam. Tests can replace the fetch implementation used by
+// run() without monkey-patching globalThis.fetch (which would not intercept
+// undici.fetch anyway). Pass null/undefined to reset.
+let _runFetchImpl = undiciFetch;
+export function _setFetchImpl(fn) { _runFetchImpl = fn ?? undiciFetch; }
+
 function isRetriableError(err) {
   if (!err) return false;
   const code = err.code || (err.cause && err.cause.code);
@@ -42,10 +52,10 @@ function sleep(ms) {
  * - Retries on RETRY_CAUSE_CODES network errors and RETRY_HTTP_STATUSES
  * - Silent: no stdout noise on retry (CLI is agent-first)
  */
-export async function fetchWithRetry(url, init, { attempts = 3 } = {}) {
+export async function fetchWithRetry(url, init, { attempts = 3, fetchImpl = undiciFetch } = {}) {
   for (let attempt = 1; attempt <= attempts; attempt++) {
     try {
-      const res = await fetch(url, init);
+      const res = await fetchImpl(url, init);
       if (attempt < attempts && RETRY_HTTP_STATUSES.has(res.status)) {
         // Drain body so the connection can be reused, then retry.
         try { await res.arrayBuffer(); } catch { /* noop */ }
@@ -183,7 +193,7 @@ export async function run(args) {
     headers: { "Content-Type": "application/json", ...authHeaders },
     body,
     dispatcher: deployDispatcher,
-  });
+  }, { fetchImpl: _runFetchImpl });
 
   // Content-type aware parsing: gateways (ALB, CloudFront, etc.) return HTML on
   // 504/413/etc., which would otherwise crash res.json() with SyntaxError.

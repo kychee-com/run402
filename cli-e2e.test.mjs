@@ -386,14 +386,21 @@ function captured() {
 
 // ─── Setup & teardown ────────────────────────────────────────────────────────
 
-before(() => {
+before(async () => {
   globalThis.fetch = mockFetch;
+  // Also route deploy.mjs's undici.fetch path through the same mock — the
+  // CLI deploy no longer uses globalThis.fetch (it uses undici.fetch so its
+  // custom dispatcher is honored), so we inject the mock via its test seam.
+  const { _setFetchImpl } = await import("./cli/lib/deploy.mjs");
+  _setFetchImpl(mockFetch);
   // Override process.exit to throw
   process.exit = (code) => { throw new Error(`process.exit(${code})`); };
 });
 
-after(() => {
+after(async () => {
   globalThis.fetch = originalFetch;
+  const { _setFetchImpl } = await import("./cli/lib/deploy.mjs");
+  _setFetchImpl(null);
   console.log = originalLog;
   console.error = originalError;
   process.exit = originalExit;
@@ -585,15 +592,17 @@ describe("CLI e2e happy path", () => {
   });
 
   it("deploy surfaces HTML gateway errors without SyntaxError (GH-28)", async () => {
-    const { run } = await import("./cli/lib/deploy.mjs");
+    const deployMod = await import("./cli/lib/deploy.mjs");
+    const { run, _setFetchImpl } = deployMod;
     const { writeFileSync: wf } = await import("node:fs");
     const manifestPath = join(tempDir, "html-err-manifest.json");
     wf(manifestPath, JSON.stringify({
       files: [{ file: "index.html", data: "<h1>Hello</h1>" }],
     }));
-    // Temporarily stub fetch to return an HTML 504 on /deploy/v1.
-    const priorFetch = globalThis.fetch;
-    globalThis.fetch = (input, init) => {
+    // Replace deploy's fetch with a stub that returns HTML 504 on /deploy/v1.
+    // Note: globalThis.fetch cannot intercept undici.fetch, so we inject via
+    // the module's test seam.
+    _setFetchImpl((input, init) => {
       const url = typeof input === "string" ? input : (input instanceof Request ? input.url : String(input));
       const method = (init?.method || (input instanceof Request ? input.method : "GET") || "GET").toUpperCase();
       if (url.endsWith("/deploy/v1") && method === "POST") {
@@ -603,8 +612,8 @@ describe("CLI e2e happy path", () => {
           headers: { "Content-Type": "text/html" },
         }));
       }
-      return priorFetch(input, init);
-    };
+      return Promise.reject(new Error(`unexpected url: ${url}`));
+    });
     let threw = null;
     captureStart();
     try {
@@ -613,7 +622,7 @@ describe("CLI e2e happy path", () => {
       threw = e;
     } finally {
       captureStop();
-      globalThis.fetch = priorFetch;
+      _setFetchImpl(mockFetch);
     }
     const out = captured();
     // process.exit stub throws, so we expect a non-zero exit.
@@ -634,35 +643,35 @@ describe("CLI e2e happy path", () => {
   });
 
   it("deploy retries on UND_ERR_HEADERS_TIMEOUT and succeeds (GH-29)", async () => {
-    const { run } = await import("./cli/lib/deploy.mjs");
+    const { run, _setFetchImpl } = await import("./cli/lib/deploy.mjs");
     const { writeFileSync: wf } = await import("node:fs");
     const manifestPath = join(tempDir, "retry-headers-timeout-manifest.json");
     wf(manifestPath, JSON.stringify({
       files: [{ file: "index.html", data: "<h1>Hello</h1>" }],
     }));
-    const priorFetch = globalThis.fetch;
     let attempts = 0;
-    globalThis.fetch = (input, init) => {
+    _setFetchImpl((input, init) => {
       const url = typeof input === "string" ? input : (input instanceof Request ? input.url : String(input));
       const method = (init?.method || (input instanceof Request ? input.method : "GET") || "GET").toUpperCase();
       if (url.endsWith("/deploy/v1") && method === "POST") {
         attempts++;
         if (attempts === 1) {
-          // Simulate undici headers timeout: TypeError with cause.code
           const err = new TypeError("fetch failed");
           err.cause = Object.assign(new Error("Headers Timeout Error"), { code: "UND_ERR_HEADERS_TIMEOUT" });
           return Promise.reject(err);
         }
-        // Subsequent attempts: success (fall through to mock)
+        return Promise.resolve(new Response(JSON.stringify({ project_id: "prj_test123", site_url: "https://x" }), {
+          status: 200, headers: { "Content-Type": "application/json" },
+        }));
       }
-      return priorFetch(input, init);
-    };
+      return Promise.reject(new Error(`unexpected url: ${url}`));
+    });
     captureStart();
     try {
       await run(["--manifest", manifestPath, "--project", "prj_test123"]);
     } finally {
       captureStop();
-      globalThis.fetch = priorFetch;
+      _setFetchImpl(mockFetch);
     }
     const out = captured();
     assert.equal(attempts, 2, `should retry once after UND_ERR_HEADERS_TIMEOUT, got ${attempts} attempts`);
@@ -670,34 +679,35 @@ describe("CLI e2e happy path", () => {
   });
 
   it("deploy retries on HTTP 503 and succeeds (GH-29)", async () => {
-    const { run } = await import("./cli/lib/deploy.mjs");
+    const { run, _setFetchImpl } = await import("./cli/lib/deploy.mjs");
     const { writeFileSync: wf } = await import("node:fs");
     const manifestPath = join(tempDir, "retry-503-manifest.json");
     wf(manifestPath, JSON.stringify({
       files: [{ file: "index.html", data: "<h1>Hello</h1>" }],
     }));
-    const priorFetch = globalThis.fetch;
     let attempts = 0;
-    globalThis.fetch = (input, init) => {
+    _setFetchImpl((input, init) => {
       const url = typeof input === "string" ? input : (input instanceof Request ? input.url : String(input));
       const method = (init?.method || (input instanceof Request ? input.method : "GET") || "GET").toUpperCase();
       if (url.endsWith("/deploy/v1") && method === "POST") {
         attempts++;
         if (attempts === 1) {
           return Promise.resolve(new Response("Service Unavailable", {
-            status: 503,
-            headers: { "Content-Type": "text/plain" },
+            status: 503, headers: { "Content-Type": "text/plain" },
           }));
         }
+        return Promise.resolve(new Response(JSON.stringify({ project_id: "prj_test123", site_url: "https://x" }), {
+          status: 200, headers: { "Content-Type": "application/json" },
+        }));
       }
-      return priorFetch(input, init);
-    };
+      return Promise.reject(new Error(`unexpected url: ${url}`));
+    });
     captureStart();
     try {
       await run(["--manifest", manifestPath, "--project", "prj_test123"]);
     } finally {
       captureStop();
-      globalThis.fetch = priorFetch;
+      _setFetchImpl(mockFetch);
     }
     const out = captured();
     assert.equal(attempts, 2, `should retry once after 503, got ${attempts} attempts`);
@@ -705,26 +715,24 @@ describe("CLI e2e happy path", () => {
   });
 
   it("deploy does NOT retry on HTTP 400 (GH-29)", async () => {
-    const { run } = await import("./cli/lib/deploy.mjs");
+    const { run, _setFetchImpl } = await import("./cli/lib/deploy.mjs");
     const { writeFileSync: wf } = await import("node:fs");
     const manifestPath = join(tempDir, "no-retry-400-manifest.json");
     wf(manifestPath, JSON.stringify({
       files: [{ file: "index.html", data: "<h1>Hello</h1>" }],
     }));
-    const priorFetch = globalThis.fetch;
     let attempts = 0;
-    globalThis.fetch = (input, init) => {
+    _setFetchImpl((input, init) => {
       const url = typeof input === "string" ? input : (input instanceof Request ? input.url : String(input));
       const method = (init?.method || (input instanceof Request ? input.method : "GET") || "GET").toUpperCase();
       if (url.endsWith("/deploy/v1") && method === "POST") {
         attempts++;
         return Promise.resolve(new Response(JSON.stringify({ error: "bad request" }), {
-          status: 400,
-          headers: { "Content-Type": "application/json" },
+          status: 400, headers: { "Content-Type": "application/json" },
         }));
       }
-      return priorFetch(input, init);
-    };
+      return Promise.reject(new Error(`unexpected url: ${url}`));
+    });
     let threw = null;
     captureStart();
     try {
@@ -733,7 +741,7 @@ describe("CLI e2e happy path", () => {
       threw = e;
     } finally {
       captureStop();
-      globalThis.fetch = priorFetch;
+      _setFetchImpl(mockFetch);
     }
     assert.equal(attempts, 1, `should NOT retry on 400, got ${attempts} attempts`);
     assert.ok(threw && /process\.exit\(1\)/.test(threw.message), "should exit non-zero on 400");
