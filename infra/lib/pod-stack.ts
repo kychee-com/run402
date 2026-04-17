@@ -618,7 +618,7 @@ export class PodStack extends cdk.Stack {
       vpc,
       internetFacing: true,
       securityGroup: albSg,
-      idleTimeout: cdk.Duration.seconds(300),
+      idleTimeout: cdk.Duration.seconds(330),
     });
 
     // HTTPS listener
