@@ -114,7 +114,35 @@ export async function run(args) {
 
   const authHeaders = allowanceAuthHeaders("/deploy/v1");
   const res = await fetch(`${API}/deploy/v1`, { method: "POST", headers: { "Content-Type": "application/json", ...authHeaders }, body: JSON.stringify(manifest) });
-  const result = await res.json();
-  if (!res.ok) { console.error(JSON.stringify({ status: "error", http: res.status, ...result })); process.exit(1); }
+
+  // Content-type aware parsing: gateways (ALB, CloudFront, etc.) return HTML on
+  // 504/413/etc., which would otherwise crash res.json() with SyntaxError.
+  const contentType = res.headers.get("content-type") || "";
+  let result = null;
+  let parseError = null;
+  let bodyText = null;
+  if (contentType.includes("application/json")) {
+    try {
+      result = await res.json();
+    } catch (e) {
+      parseError = e;
+      try { bodyText = await res.text(); } catch { bodyText = ""; }
+    }
+  } else {
+    try { bodyText = await res.text(); } catch { bodyText = ""; }
+  }
+
+  if (!res.ok || parseError || result === null) {
+    const err = { status: "error", http: res.status, content_type: contentType || null };
+    if (result && typeof result === "object") {
+      Object.assign(err, result);
+    } else {
+      const preview = typeof bodyText === "string" ? bodyText.slice(0, 500) : "";
+      err.body_preview = preview;
+      if (parseError) err.parse_error = "response body was not valid JSON";
+    }
+    console.error(JSON.stringify(err));
+    process.exit(1);
+  }
   console.log(JSON.stringify(result, null, 2));
 }

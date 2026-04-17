@@ -560,6 +560,55 @@ describe("CLI e2e happy path", () => {
     assert.ok(captured().includes("prj_test123"), "should return project info");
   });
 
+  it("deploy surfaces HTML gateway errors without SyntaxError (GH-28)", async () => {
+    const { run } = await import("./cli/lib/deploy.mjs");
+    const { writeFileSync: wf } = await import("node:fs");
+    const manifestPath = join(tempDir, "html-err-manifest.json");
+    wf(manifestPath, JSON.stringify({
+      files: [{ file: "index.html", data: "<h1>Hello</h1>" }],
+    }));
+    // Temporarily stub fetch to return an HTML 504 on /deploy/v1.
+    const priorFetch = globalThis.fetch;
+    globalThis.fetch = (input, init) => {
+      const url = typeof input === "string" ? input : (input instanceof Request ? input.url : String(input));
+      const method = (init?.method || (input instanceof Request ? input.method : "GET") || "GET").toUpperCase();
+      if (url.endsWith("/deploy/v1") && method === "POST") {
+        const html = "<html><head></head><body>504 Gateway Timeout</body></html>";
+        return Promise.resolve(new Response(html, {
+          status: 504,
+          headers: { "Content-Type": "text/html" },
+        }));
+      }
+      return priorFetch(input, init);
+    };
+    let threw = null;
+    captureStart();
+    try {
+      await run(["--manifest", manifestPath, "--project", "prj_test123"]);
+    } catch (e) {
+      threw = e;
+    } finally {
+      captureStop();
+      globalThis.fetch = priorFetch;
+    }
+    const out = captured();
+    // process.exit stub throws, so we expect a non-zero exit.
+    assert.ok(threw && /process\.exit\(1\)/.test(threw.message), `should exit non-zero, got: ${threw && threw.message}`);
+    // Output must NOT contain the raw SyntaxError / tokeniser complaint.
+    assert.ok(!/SyntaxError/i.test(out), `must not leak SyntaxError, got: ${out}`);
+    assert.ok(!/Unexpected token/i.test(out), `must not leak JSON parser message, got: ${out}`);
+    // Output must be a JSON line with structured fields.
+    const line = out.split("\n").map(s => s.trim()).find(s => s.startsWith("{") && s.endsWith("}"));
+    assert.ok(line, `should emit a JSON error line, got: ${out}`);
+    const parsed = JSON.parse(line);
+    assert.equal(parsed.status, "error");
+    assert.equal(parsed.http, 504);
+    assert.ok(/text\/html/.test(parsed.content_type || ""), `content_type should be text/html, got: ${parsed.content_type}`);
+    assert.ok(typeof parsed.body_preview === "string" && parsed.body_preview.length > 0, "body_preview should be non-empty string");
+    assert.ok(parsed.body_preview.includes("504 Gateway Timeout"), `body_preview should include the HTML body, got: ${parsed.body_preview}`);
+    assert.ok(parsed.body_preview.length <= 500, `body_preview should be truncated to <=500 chars, got length ${parsed.body_preview.length}`);
+  });
+
   it("deploy with path fields in manifest", async () => {
     const { run } = await import("./cli/lib/deploy.mjs");
     const { writeFileSync: wf, mkdirSync } = await import("node:fs");
