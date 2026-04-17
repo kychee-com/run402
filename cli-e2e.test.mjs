@@ -633,6 +633,112 @@ describe("CLI e2e happy path", () => {
     assert.ok(parsed.body_preview.length <= 500, `body_preview should be truncated to <=500 chars, got length ${parsed.body_preview.length}`);
   });
 
+  it("deploy retries on UND_ERR_HEADERS_TIMEOUT and succeeds (GH-29)", async () => {
+    const { run } = await import("./cli/lib/deploy.mjs");
+    const { writeFileSync: wf } = await import("node:fs");
+    const manifestPath = join(tempDir, "retry-headers-timeout-manifest.json");
+    wf(manifestPath, JSON.stringify({
+      files: [{ file: "index.html", data: "<h1>Hello</h1>" }],
+    }));
+    const priorFetch = globalThis.fetch;
+    let attempts = 0;
+    globalThis.fetch = (input, init) => {
+      const url = typeof input === "string" ? input : (input instanceof Request ? input.url : String(input));
+      const method = (init?.method || (input instanceof Request ? input.method : "GET") || "GET").toUpperCase();
+      if (url.endsWith("/deploy/v1") && method === "POST") {
+        attempts++;
+        if (attempts === 1) {
+          // Simulate undici headers timeout: TypeError with cause.code
+          const err = new TypeError("fetch failed");
+          err.cause = Object.assign(new Error("Headers Timeout Error"), { code: "UND_ERR_HEADERS_TIMEOUT" });
+          return Promise.reject(err);
+        }
+        // Subsequent attempts: success (fall through to mock)
+      }
+      return priorFetch(input, init);
+    };
+    captureStart();
+    try {
+      await run(["--manifest", manifestPath, "--project", "prj_test123"]);
+    } finally {
+      captureStop();
+      globalThis.fetch = priorFetch;
+    }
+    const out = captured();
+    assert.equal(attempts, 2, `should retry once after UND_ERR_HEADERS_TIMEOUT, got ${attempts} attempts`);
+    assert.ok(out.includes("prj_test123"), `should return project info after retry, got: ${out}`);
+  });
+
+  it("deploy retries on HTTP 503 and succeeds (GH-29)", async () => {
+    const { run } = await import("./cli/lib/deploy.mjs");
+    const { writeFileSync: wf } = await import("node:fs");
+    const manifestPath = join(tempDir, "retry-503-manifest.json");
+    wf(manifestPath, JSON.stringify({
+      files: [{ file: "index.html", data: "<h1>Hello</h1>" }],
+    }));
+    const priorFetch = globalThis.fetch;
+    let attempts = 0;
+    globalThis.fetch = (input, init) => {
+      const url = typeof input === "string" ? input : (input instanceof Request ? input.url : String(input));
+      const method = (init?.method || (input instanceof Request ? input.method : "GET") || "GET").toUpperCase();
+      if (url.endsWith("/deploy/v1") && method === "POST") {
+        attempts++;
+        if (attempts === 1) {
+          return Promise.resolve(new Response("Service Unavailable", {
+            status: 503,
+            headers: { "Content-Type": "text/plain" },
+          }));
+        }
+      }
+      return priorFetch(input, init);
+    };
+    captureStart();
+    try {
+      await run(["--manifest", manifestPath, "--project", "prj_test123"]);
+    } finally {
+      captureStop();
+      globalThis.fetch = priorFetch;
+    }
+    const out = captured();
+    assert.equal(attempts, 2, `should retry once after 503, got ${attempts} attempts`);
+    assert.ok(out.includes("prj_test123"), `should return project info after retry, got: ${out}`);
+  });
+
+  it("deploy does NOT retry on HTTP 400 (GH-29)", async () => {
+    const { run } = await import("./cli/lib/deploy.mjs");
+    const { writeFileSync: wf } = await import("node:fs");
+    const manifestPath = join(tempDir, "no-retry-400-manifest.json");
+    wf(manifestPath, JSON.stringify({
+      files: [{ file: "index.html", data: "<h1>Hello</h1>" }],
+    }));
+    const priorFetch = globalThis.fetch;
+    let attempts = 0;
+    globalThis.fetch = (input, init) => {
+      const url = typeof input === "string" ? input : (input instanceof Request ? input.url : String(input));
+      const method = (init?.method || (input instanceof Request ? input.method : "GET") || "GET").toUpperCase();
+      if (url.endsWith("/deploy/v1") && method === "POST") {
+        attempts++;
+        return Promise.resolve(new Response(JSON.stringify({ error: "bad request" }), {
+          status: 400,
+          headers: { "Content-Type": "application/json" },
+        }));
+      }
+      return priorFetch(input, init);
+    };
+    let threw = null;
+    captureStart();
+    try {
+      await run(["--manifest", manifestPath, "--project", "prj_test123"]);
+    } catch (e) {
+      threw = e;
+    } finally {
+      captureStop();
+      globalThis.fetch = priorFetch;
+    }
+    assert.equal(attempts, 1, `should NOT retry on 400, got ${attempts} attempts`);
+    assert.ok(threw && /process\.exit\(1\)/.test(threw.message), "should exit non-zero on 400");
+  });
+
   it("deploy with path fields in manifest", async () => {
     const { run } = await import("./cli/lib/deploy.mjs");
     const { writeFileSync: wf, mkdirSync } = await import("node:fs");

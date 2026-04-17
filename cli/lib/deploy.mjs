@@ -1,7 +1,71 @@
 import { readFileSync } from "fs";
 import { dirname, resolve } from "path";
+import { Agent } from "undici";
 import { API, allowanceAuthHeaders, findProject } from "./config.mjs";
 import { resolveFilePathsInManifest, resolveMigrationsFile } from "./manifest.mjs";
+
+// Custom undici dispatcher with longer timeouts for large-batch deploys.
+// Default Node undici headersTimeout is ~5 min; large image uploads can exceed it.
+const deployDispatcher = new Agent({
+  headersTimeout: 600_000, // 10 min
+  bodyTimeout:    600_000,
+  connectTimeout:  30_000,
+});
+
+// Retry policy for transient network errors and 5xx gateway errors.
+// We retry on these because they tend to be load-shedding/blip-related; we do
+// NOT retry on other 4xx/5xx (402, 400, etc.) — those are deterministic.
+const RETRY_CAUSE_CODES = new Set([
+  "UND_ERR_HEADERS_TIMEOUT",
+  "UND_ERR_BODY_TIMEOUT",
+  "UND_ERR_SOCKET",
+  "ECONNRESET",
+  "ECONNREFUSED",
+  "ETIMEDOUT",
+]);
+const RETRY_HTTP_STATUSES = new Set([502, 503, 504]);
+
+function isRetriableError(err) {
+  if (!err) return false;
+  const code = err.code || (err.cause && err.cause.code);
+  return typeof code === "string" && RETRY_CAUSE_CODES.has(code);
+}
+
+function sleep(ms) {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+/**
+ * Fetch with bounded retries on transient errors. Exported for testability.
+ * - 2 retries (3 total attempts)
+ * - Backoff ~1s then ~4s with small jitter
+ * - Retries on RETRY_CAUSE_CODES network errors and RETRY_HTTP_STATUSES
+ * - Silent: no stdout noise on retry (CLI is agent-first)
+ */
+export async function fetchWithRetry(url, init, { attempts = 3 } = {}) {
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    try {
+      const res = await fetch(url, init);
+      if (attempt < attempts && RETRY_HTTP_STATUSES.has(res.status)) {
+        // Drain body so the connection can be reused, then retry.
+        try { await res.arrayBuffer(); } catch { /* noop */ }
+        const delay = (attempt === 1 ? 1000 : 4000) + Math.floor(Math.random() * 250);
+        await sleep(delay);
+        continue;
+      }
+      return res;
+    } catch (err) {
+      if (attempt < attempts && isRetriableError(err)) {
+        const delay = (attempt === 1 ? 1000 : 4000) + Math.floor(Math.random() * 250);
+        await sleep(delay);
+        continue;
+      }
+      throw err;
+    }
+  }
+  // Unreachable: the loop above either returns a response or throws.
+  throw new Error("fetchWithRetry: exhausted attempts without returning");
+}
 
 const HELP = `run402 deploy — Deploy to an existing project on Run402
 
@@ -113,7 +177,13 @@ export async function run(args) {
   delete manifest.name;
 
   const authHeaders = allowanceAuthHeaders("/deploy/v1");
-  const res = await fetch(`${API}/deploy/v1`, { method: "POST", headers: { "Content-Type": "application/json", ...authHeaders }, body: JSON.stringify(manifest) });
+  const body = JSON.stringify(manifest);
+  const res = await fetchWithRetry(`${API}/deploy/v1`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders },
+    body,
+    dispatcher: deployDispatcher,
+  });
 
   // Content-type aware parsing: gateways (ALB, CloudFront, etc.) return HTML on
   // 504/413/etc., which would otherwise crash res.json() with SyntaxError.
