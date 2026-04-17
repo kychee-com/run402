@@ -39,10 +39,10 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/kychee-com/run402-mcp.git"
+    "url": "git+https://github.com/kychee-com/run402.git"
   },
   "homepage": "https://run402.com",
-  "bugs": "https://github.com/kychee-com/run402-mcp/issues",
+  "bugs": "https://github.com/kychee-com/run402/issues",
   "author": "Kychee Technologies",
   "publishConfig": {
     "access": "public"

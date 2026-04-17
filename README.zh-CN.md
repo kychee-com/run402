@@ -156,7 +156,7 @@ Run402 上的公开应用可以一键复制（Fork），每个副本拥有独立
 - **应用市场**：[run402.com/apps](https://run402.com/apps)
 - **API 状态**：[api.run402.com/health](https://api.run402.com/health)
 - **npm**：[npmjs.com/package/run402-mcp](https://www.npmjs.com/package/run402-mcp)
-- **GitHub**：[github.com/kychee-com/run402-mcp](https://github.com/kychee-com/run402-mcp)
+- **GitHub**：[github.com/kychee-com/run402](https://github.com/kychee-com/run402)
 
 ## 开发
 
