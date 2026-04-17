@@ -1,0 +1,16 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "AssumeCdkBootstrapRoles",
+      "Effect": "Allow",
+      "Action": "sts:AssumeRole",
+      "Resource": [
+        "arn:aws:iam::472210437512:role/cdk-hnb659fds-deploy-role-472210437512-us-east-1",
+        "arn:aws:iam::472210437512:role/cdk-hnb659fds-file-publishing-role-472210437512-us-east-1",
+        "arn:aws:iam::472210437512:role/cdk-hnb659fds-image-publishing-role-472210437512-us-east-1",
+        "arn:aws:iam::472210437512:role/cdk-hnb659fds-lookup-role-472210437512-us-east-1"
+      ]
+    }
+  ]
+}

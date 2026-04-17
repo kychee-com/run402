@@ -1,0 +1,47 @@
+name: Deploy Infra
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - infra/**
+      - .github/workflows/deploy-infra.yml
+  workflow_dispatch:
+    inputs:
+      stack:
+        description: Stack to deploy
+        required: false
+        default: AgentDB-Pod01
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: us-east-1
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::472210437512:role/run402-infra-deploy
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: CDK diff
+        working-directory: infra
+        run: npx cdk diff ${{ github.event.inputs.stack || 'AgentDB-Pod01' }}
+
+      - name: CDK deploy
+        working-directory: infra
+        run: npx cdk deploy ${{ github.event.inputs.stack || 'AgentDB-Pod01' }} --require-approval never --no-rollback
