@@ -48,7 +48,9 @@ Stage all three files and commit: `git add package.json cli/package.json package
 
 ## Twitter summary
 
-Write a tweet-ready summary of the release. This is the last thing you do.
+**Skip this step for patch releases.** Patch bumps are bug fixes / internal changes and don't warrant a tweet. If the user picked `patch` in the version-bump step, stop here — do not generate tweet options.
+
+For `minor` or `major` releases, write a tweet-ready summary of the release. This is the last thing you do.
 
 Guidelines:
 - **Focus on what developers can now build**, not what changed internally. "Your agents can now send HTML emails" not "Added raw HTML mode to email tool".
