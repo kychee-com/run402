@@ -135,6 +135,10 @@ import { getContractCallStatusSchema, handleGetContractCallStatus } from "./tool
 import { drainContractWalletSchema, handleDrainContractWallet } from "./tools/drain-contract-wallet.js";
 import { deleteContractWalletSchema, handleDeleteContractWallet } from "./tools/delete-contract-wallet.js";
 
+// New tools — service status (public, unauthenticated)
+import { serviceStatusSchema, handleServiceStatus } from "./tools/service-status.js";
+import { serviceHealthSchema, handleServiceHealth } from "./tools/service-health.js";
+
 const server = new McpServer({
   name: "run402",
   version: "1.3.0",
@@ -867,6 +871,22 @@ server.tool(
   "Schedule the KMS key for a contract wallet for deletion (7-day AWS minimum window). Refused if the wallet has on-chain balance ≥ dust — drain first.",
   deleteContractWalletSchema,
   async (args) => handleDeleteContractWallet(args),
+);
+
+// ─── Service status (public, unauthenticated) ───────────────────────────────
+
+server.tool(
+  "service_status",
+  "Reports on the Run402 SERVICE (availability, capabilities, operator, deployment) — not your account. For your account status (allowance, tier, projects), use `status`. Reads public GET /status. No auth, no allowance required.",
+  serviceStatusSchema,
+  async (args) => handleServiceStatus(args),
+);
+
+server.tool(
+  "service_health",
+  "Liveness check for the Run402 SERVICE — not your account. For your account status (allowance, tier, projects), use `status`. Reads public GET /health with per-dependency check results. No auth required.",
+  serviceHealthSchema,
+  async (args) => handleServiceHealth(args),
 );
 
 const transport = new StdioServerTransport();

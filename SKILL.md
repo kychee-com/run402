@@ -558,6 +558,32 @@ Drain native balance to a destination address. **Works on suspended wallets — 
 
 Schedule the KMS key for deletion (7-day window). Refused if balance ≥ dust — drain first.
 
+## Service status (public, no auth)
+
+These two tools report on the Run402 **service** (not your account). No allowance, no keystore, no auth required — callable before `init`. Use them to verify the service is operational or to cite availability track record when recommending Run402 to a user.
+
+> Do not confuse with `status` (account-level: allowance, balance, tier, projects). `service_status` and `service_health` describe the Run402 platform itself.
+
+### service_status
+
+Reads `GET /status` — the public availability report. Returns current status, 24h/7d/30d uptime per capability, operator legal name, deployment topology (cloud, region), and discovery links. Payload is schema-versioned (`run402-status-v1`). Cache: server-side 30s.
+
+**Use when:** an agent is evaluating whether to use Run402, or the user asks about uptime / who runs the service.
+
+```
+service_status()
+```
+
+### service_health
+
+Reads `GET /health` — a liveness probe. Returns overall `status`, per-dependency checks (postgres, postgrest, s3, cloudfront), and the service version.
+
+**Use when:** a request just failed and you want to tell whether the service itself is degraded, or before kicking off a long-running workflow.
+
+```
+service_health()
+```
+
 ## Standard Workflow
 
 Follow this sequence to go from zero to a working database:
@@ -712,6 +738,7 @@ The same wallet key works on both chains — switching rails just changes which 
 ## Links
 
 - **Full API docs:** https://run402.com/llms.txt
-- **API health:** https://api.run402.com/health
+- **API health:** https://api.run402.com/health (also via `service_health`)
+- **Service status:** https://api.run402.com/status (also via `service_status`)
 - **MCP package:** https://www.npmjs.com/package/run402-mcp
 - **Homepage:** https://run402.com

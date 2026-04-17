@@ -330,6 +330,30 @@ function mockFetch(input, init) {
     return Promise.resolve(json({ status: "ok", delivered: true }));
   }
 
+  // Service status (public, unauthenticated)
+  if (path === "/status" && method === "GET") {
+    return Promise.resolve(json({
+      schema_version: "run402-status-v1",
+      service: "Run402",
+      current_status: "operational",
+      operator: { legal_name: "Kychee LLC" },
+      availability: {
+        last_24h: { uptime_pct: 100 },
+        last_7d: { uptime_pct: 99.99 },
+        last_30d: { uptime_pct: 99.95 },
+      },
+      capabilities: { database_api: "operational" },
+      links: { health: "https://api.run402.com/health" },
+    }));
+  }
+  if (path === "/health" && method === "GET") {
+    return Promise.resolve(json({
+      status: "healthy",
+      checks: { postgres: "ok", postgrest: "ok", s3: "ok", cloudfront: "ok" },
+      version: "1.0.4",
+    }));
+  }
+
   // Agent contact
   if (path === "/agent/v1/contact" && method === "POST") {
     return Promise.resolve(json({
@@ -923,6 +947,46 @@ describe("CLI e2e happy path", () => {
     assert.ok(data.allowance, "should include allowance");
     assert.ok(data.allowance.address, "should include allowance address");
     assert.ok(Array.isArray(data.projects), "should include projects array");
+  });
+
+  it("service status", async () => {
+    const { run } = await import("./cli/lib/service.mjs");
+    captureStart();
+    await run("status", []);
+    captureStop();
+    const data = JSON.parse(captured());
+    assert.equal(data.schema_version, "run402-status-v1");
+    assert.equal(data.current_status, "operational");
+  });
+
+  it("service health", async () => {
+    const { run } = await import("./cli/lib/service.mjs");
+    captureStart();
+    await run("health", []);
+    captureStop();
+    const data = JSON.parse(captured());
+    assert.equal(data.status, "healthy");
+    assert.ok(data.checks.postgres === "ok");
+  });
+
+  it("service (no subcommand prints help and exits 0)", async () => {
+    const { run } = await import("./cli/lib/service.mjs");
+    captureStart();
+    let threw = null;
+    try { await run(undefined, []); } catch (e) { threw = e; }
+    captureStop();
+    assert.equal(threw?.message, "process.exit(0)");
+    assert.ok(captured().includes("run402 service"));
+  });
+
+  it("service foo (unknown subcommand exits 1)", async () => {
+    const { run } = await import("./cli/lib/service.mjs");
+    captureStart();
+    let threw = null;
+    try { await run("foo", []); } catch (e) { threw = e; }
+    captureStop();
+    assert.equal(threw?.message, "process.exit(1)");
+    assert.ok(captured().includes("Unknown subcommand"));
   });
 
   // ── MPP rail ─────────────────────────────────────────────────────────────

@@ -42,6 +42,7 @@ Commands:
   billing     Email billing accounts, Stripe tier checkout, email packs
   contracts   KMS contract wallets ($0.04/day rental + $0.000005/sign)
   agent       Manage agent identity (contact info)
+  service     Run402 service health and availability (status, health)
 
 Run 'run402 <command> --help' for detailed usage of each command.
 
@@ -180,6 +181,11 @@ switch (cmd) {
   }
   case "contracts": {
     const { run } = await import("./lib/contracts.mjs");
+    await run(sub, rest);
+    break;
+  }
+  case "service": {
+    const { run } = await import("./lib/service.mjs");
     await run(sub, rest);
     break;
   }
