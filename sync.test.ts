@@ -437,10 +437,10 @@ describe("SURFACE consistency", () => {
 
 // ─── llms.txt alignment (conditional — only if the main repo is available) ───
 
-const LLMS_TXT_PATH = join(homedir(), "dev/run402/site/llms.txt");
+const LLMS_TXT_PATH = join(homedir(), "Developer/run402-private/site/llms.txt");
 const llmsTxtAvailable = existsSync(LLMS_TXT_PATH);
 
-describe("llms.txt alignment", { skip: !llmsTxtAvailable && "~/dev/run402/site/llms.txt not found" }, () => {
+describe("llms.txt alignment", { skip: !llmsTxtAvailable && "~/Developer/run402-private/site/llms.txt not found" }, () => {
   const llmsTxt = llmsTxtAvailable ? readFileSync(LLMS_TXT_PATH, "utf-8") : "";
 
   it("MCP Tools table lists all actual MCP tools", { skip: !llmsTxt.includes("### MCP Tools") && "llms.txt has no MCP Tools table" }, () => {

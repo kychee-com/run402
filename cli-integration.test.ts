@@ -78,8 +78,7 @@ before(async () => {
     const { dirname } = await import("node:path");
     const thisDir = dirname(fileURLToPath(import.meta.url));
     const searchPaths = [
-      join(thisDir, "..", "run402", ".env"),       // ~/Developer/run402/.env
-      join(thisDir, "..", "..", "dev", "run402", ".env"), // ~/dev/run402/.env
+      join(thisDir, "..", "run402-private", ".env"), // ~/Developer/run402-private/.env
     ];
     for (const envPath of searchPaths) {
       try {

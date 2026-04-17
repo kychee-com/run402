@@ -7,7 +7,7 @@ Read the memory file `project_last_integration.md` to get the last known sync co
 ## Step 2: Gather new commits from run402
 
 ```bash
-cd ~/dev/run402 && git log --oneline --format="%h %ai %s" <last_synced_commit>..HEAD
+cd ~/Developer/run402-private && git log --oneline --format="%h %ai %s" <last_synced_commit>..HEAD
 ```
 
 If the last synced commit is missing (rebased/squashed), use `--since` with the sync date instead.
@@ -35,8 +35,8 @@ Focus on commits that touch `packages/gateway/src/routes/`, `packages/gateway/sr
 For each commit classified as "Yes" or "Maybe":
 
 ```bash
-cd ~/dev/run402 && git show --stat <commit>
-cd ~/dev/run402 && git show <commit> -- <relevant_files>
+cd ~/Developer/run402-private && git show --stat <commit>
+cd ~/Developer/run402-private && git show <commit> -- <relevant_files>
 ```
 
 Determine specifically:

@@ -126,7 +126,7 @@ The CLI `email` module SHALL include a HELP string matching the existing module 
 - **THEN** the system prints the full help text and exits with code 0
 
 ### Requirement: llms-cli.txt documentation
-The `~/dev/run402/site/llms-cli.txt` file SHALL include an `### email` section in the Command Reference area documenting all email subcommands with their arguments, matching the existing format.
+The `~/Developer/run402-private/site/llms-cli.txt` file SHALL include an `### email` section in the Command Reference area documenting all email subcommands with their arguments, matching the existing format.
 
 #### Scenario: Email commands documented in llms-cli.txt
 - **WHEN** the llms-cli.txt file is read

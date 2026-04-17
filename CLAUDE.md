@@ -44,7 +44,7 @@ Tests are excluded from the build (`tsconfig.json` and `core/tsconfig.json` both
 - CLI commands in `cli/lib/*.mjs` match the expected set
 - OpenClaw commands in `openclaw/scripts/*.mjs` match the expected set (follows re-exports to CLI)
 - CLI and OpenClaw have identical command sets (parity)
-- If `~/dev/run402/site/llms.txt` exists: MCP Tools table lists all tools, all endpoints documented
+- If `~/Developer/run402-private/site/llms.txt` exists: MCP Tools table lists all tools, all endpoints documented
 
 When adding a new tool/command, add it to the `SURFACE` array in `sync.test.ts`.
 

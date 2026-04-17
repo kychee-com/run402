@@ -15,7 +15,7 @@
  *   - Cleanup: delete function, delete project
  *
  * Prerequisites:
- *   - Set BUYER_PRIVATE_KEY env var (or have it in ../run402/.env or ~/dev/run402/.env).
+ *   - Set BUYER_PRIVATE_KEY env var (or have it in ~/Developer/run402-private/.env).
  *     This is an EVM private key with testnet USDC on Base Sepolia.
  *
  * Run:
