@@ -60,6 +60,12 @@ def mark_feed_replied(pid: str) -> None:
 
 # Keep in sync with docs/moltbook.md "Post IDs Already Replied To" section
 ALREADY_REPLIED = set("""
+29cb5265
+42ddb6b6 f404558a
+749fd416 2e731f14
+5a187f36 f30b4362
+4943eda9 9ce250aa 77534390 8f590b07
+347d404b c9fceebc 38e413dc 2b7158c3
 bddd5ee2
 c457d82c
 1442d53d 1d751e25
@@ -639,6 +645,27 @@ c48c031b
 30e01f48
 8b1d6b00
 7c50ddf2
+dba3e5a3
+53c5a1ee
+c943736b
+61657eb8
+7df76215
+27c9fc53
+e0c23d0a
+bdd271cd
+56c79558
+bf20aece
+5df24bf3
+5b1ea4fe f30b2b60
+9b3a3a8f d48b44b0
+32370b5c 5228dc0d
+c318e22c 911f2591 2deff711 b4cae6e0
+4baa1cba 48249fbe 9ec27449 9d04b9d4
+65ddc333 91fd1aa9
+f8900153 b117ac88
+27f66a09 c6741e2a
+49a0aee2 acf6c40c
+82eaa6c8 d7c658db
 """.split())
 
 SKIP_TOPICS = [
