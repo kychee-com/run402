@@ -34,6 +34,13 @@ import { downloadFileSchema, handleDownloadFile } from "./tools/download-file.js
 import { deleteFileSchema, handleDeleteFile } from "./tools/delete-file.js";
 import { listFilesSchema, handleListFiles } from "./tools/list-files.js";
 
+// New tools — direct-to-S3 blob storage (supersedes upload_file/download_file/list_files/delete_file)
+import { blobPutSchema, handleBlobPut } from "./tools/blob-put.js";
+import { blobGetSchema, handleBlobGet } from "./tools/blob-get.js";
+import { blobLsSchema, handleBlobLs } from "./tools/blob-ls.js";
+import { blobRmSchema, handleBlobRm } from "./tools/blob-rm.js";
+import { blobSignSchema, handleBlobSign } from "./tools/blob-sign.js";
+
 // New tools — functions & secrets CRUD
 import { listFunctionsSchema, handleListFunctions } from "./tools/list-functions.js";
 import { deleteFunctionSchema, handleDeleteFunction } from "./tools/delete-function.js";
@@ -191,29 +198,64 @@ server.tool(
 // ─── Storage tools ──────────────────────────────────────────────────────────
 
 server.tool(
+  "blob_put",
+  "Upload a blob (file or inline content) to project storage via direct-to-S3. Accepts local_path (any size up to 5 TiB) or content (≤ 1 MB inline). Public blobs get a CDN URL; private blobs require authenticated reads. Use `immutable: true` to produce a content-addressed URL that never needs cache invalidation. This supersedes `upload_file`.",
+  blobPutSchema,
+  async (args) => handleBlobPut(args),
+);
+
+server.tool(
+  "blob_get",
+  "Download a blob to a local file path. Writes bytes directly to disk (no context-window bloat). Returns size + SHA-256 header (if the blob has one stored). This supersedes `download_file`.",
+  blobGetSchema,
+  async (args) => handleBlobGet(args),
+);
+
+server.tool(
+  "blob_ls",
+  "List blobs in a project with optional prefix filter. Supports pagination via cursor. This supersedes `list_files` (which is bucket-scoped; blob_ls is prefix-based over a flat key namespace).",
+  blobLsSchema,
+  async (args) => handleBlobLs(args),
+);
+
+server.tool(
+  "blob_rm",
+  "Delete a blob from project storage and decrement the project's storage_bytes. This supersedes `delete_file`.",
+  blobRmSchema,
+  async (args) => handleBlobRm(args),
+);
+
+server.tool(
+  "blob_sign",
+  "Generate a time-boxed S3 presigned GET URL for a blob. Use this to share a private blob externally without exposing your apikey. Default TTL 1 hour, max 7 days.",
+  blobSignSchema,
+  async (args) => handleBlobSign(args),
+);
+
+server.tool(
   "upload_file",
-  "Upload text content to project storage. Returns the storage key and size.",
+  "(DEPRECATED — use blob_put. Sunset 2026-06-01.) Upload text content to project storage. Returns the storage key and size.",
   uploadFileSchema,
   async (args) => handleUploadFile(args),
 );
 
 server.tool(
   "download_file",
-  "Download a file from project storage. Returns the file content.",
+  "(DEPRECATED — use blob_get. Sunset 2026-06-01.) Download a file from project storage. Returns the file content.",
   downloadFileSchema,
   async (args) => handleDownloadFile(args),
 );
 
 server.tool(
   "delete_file",
-  "Delete a file from project storage.",
+  "(DEPRECATED — use blob_rm. Sunset 2026-06-01.) Delete a file from project storage.",
   deleteFileSchema,
   async (args) => handleDeleteFile(args),
 );
 
 server.tool(
   "list_files",
-  "List files in a storage bucket. Shows file names, sizes, and last modified dates.",
+  "(DEPRECATED — use blob_ls. Sunset 2026-06-01.) List files in a storage bucket. Shows file names, sizes, and last modified dates.",
   listFilesSchema,
   async (args) => handleListFiles(args),
 );

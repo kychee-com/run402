@@ -28,7 +28,8 @@ Commands:
   deploy      Deploy a full-stack app or static site (requires active tier)
   functions   Manage serverless functions (deploy, invoke, logs, list, delete)
   secrets     Manage project secrets (set, list, delete)
-  storage     Manage file storage (upload, download, list, delete)
+  blob        Direct-to-S3 blob storage (put, get, ls, rm, sign) — up to 5 TiB
+  storage     Legacy file storage (deprecated — sunset 2026-06-01, use 'blob')
   sites       Deploy static sites
   subdomains  Manage custom subdomains (claim, list, delete)
   domains     Manage custom domains (add, list, status, delete)
@@ -115,7 +116,16 @@ switch (cmd) {
     break;
   }
   case "storage": {
+    process.stderr.write(
+      "run402 storage is deprecated — sunset 2026-06-01. Use `run402 blob` instead.\n" +
+      "See https://run402.com/docs/blob#migration\n\n",
+    );
     const { run } = await import("./lib/storage.mjs");
+    await run(sub, rest);
+    break;
+  }
+  case "blob": {
+    const { run } = await import("./lib/blob.mjs");
     await run(sub, rest);
     break;
   }
