@@ -59,7 +59,7 @@ function parseSubcommands(filePath: string): string[] {
 /** Parse CLI commands as "module:subcommand" pairs */
 function parseCliCommands(): string[] {
   const cmds: string[] = [];
-  for (const mod of ["allowance", "tier", "projects", "image", "storage", "functions", "secrets", "sites", "subdomains", "domains", "apps", "email", "message", "agent", "ai", "auth", "sender-domain", "billing", "contracts", "webhooks", "service"]) {
+  for (const mod of ["allowance", "tier", "projects", "image", "storage", "blob", "functions", "secrets", "sites", "subdomains", "domains", "apps", "email", "message", "agent", "ai", "auth", "sender-domain", "billing", "contracts", "webhooks", "service"]) {
     for (const sub of parseSubcommands(join(__dirname, "cli/lib", `${mod}.mjs`))) {
       cmds.push(`${mod}:${sub}`);
     }
@@ -73,7 +73,7 @@ function parseCliCommands(): string[] {
 /** Parse OpenClaw commands as "module:subcommand" pairs */
 function parseOpenClawCommands(): string[] {
   const cmds: string[] = [];
-  for (const mod of ["allowance", "tier", "projects", "image", "storage", "functions", "secrets", "sites", "subdomains", "domains", "apps", "email", "message", "agent", "ai", "auth", "sender-domain", "billing", "contracts", "webhooks", "service"]) {
+  for (const mod of ["allowance", "tier", "projects", "image", "storage", "blob", "functions", "secrets", "sites", "subdomains", "domains", "apps", "email", "message", "agent", "ai", "auth", "sender-domain", "billing", "contracts", "webhooks", "service"]) {
     for (const sub of parseSubcommands(join(__dirname, "openclaw/scripts", `${mod}.mjs`))) {
       cmds.push(`${mod}:${sub}`);
     }
@@ -155,11 +155,18 @@ const SURFACE: Capability[] = [
   { id: "get_schema",        endpoint: "GET /projects/v1/admin/:id/schema",      mcp: "get_schema",                    cli: "projects:schema",     openclaw: "projects:schema" },
   { id: "get_usage",         endpoint: "GET /projects/v1/admin/:id/usage",       mcp: "get_usage",                     cli: "projects:usage",      openclaw: "projects:usage" },
 
-  // ── Storage ──────────────────────────────────────────────────────────────
+  // ── Storage (legacy — sunset 2026-06-01, superseded by blob_*) ───────────
   { id: "upload_file",       endpoint: "POST /storage/v1/object/:bucket/*",      mcp: "upload_file",    cli: "storage:upload",   openclaw: "storage:upload" },
   { id: "download_file",     endpoint: "GET /storage/v1/object/:bucket/*",       mcp: "download_file",  cli: "storage:download", openclaw: "storage:download" },
   { id: "delete_file",       endpoint: "DELETE /storage/v1/object/:bucket/*",    mcp: "delete_file",    cli: "storage:delete",   openclaw: "storage:delete" },
   { id: "list_files",        endpoint: "GET /storage/v1/object/list/:bucket",    mcp: "list_files",     cli: "storage:list",     openclaw: "storage:list" },
+
+  // ── Blob (direct-to-S3 storage) ──────────────────────────────────────────
+  { id: "blob_put",          endpoint: "POST /storage/v1/uploads",               mcp: "blob_put",       cli: "blob:put",         openclaw: "blob:put" },
+  { id: "blob_get",          endpoint: "GET /storage/v1/blob/{key}",             mcp: "blob_get",       cli: "blob:get",         openclaw: "blob:get" },
+  { id: "blob_ls",           endpoint: "GET /storage/v1/blobs",                  mcp: "blob_ls",        cli: "blob:ls",          openclaw: "blob:ls" },
+  { id: "blob_rm",           endpoint: "DELETE /storage/v1/blob/{key}",          mcp: "blob_rm",        cli: "blob:rm",          openclaw: "blob:rm" },
+  { id: "blob_sign",         endpoint: "POST /storage/v1/blob/{key}/sign",       mcp: "blob_sign",      cli: "blob:sign",        openclaw: "blob:sign" },
 
   // ── Functions ────────────────────────────────────────────────────────────
   { id: "deploy_function",   endpoint: "POST /projects/v1/admin/:id/functions",              mcp: "deploy_function",   cli: "functions:deploy", openclaw: "functions:deploy" },
@@ -527,6 +534,10 @@ describe("llms.txt alignment", { skip: !llmsTxtAvailable && "~/Developer/run402-
       "GET /storage/v1/public/:project_id/:bucket/*",
       // Function trigger is a gateway testing endpoint, not exposed as a tool
       "POST /projects/v1/admin/:id/functions/:name/trigger",
+      // Blob upload session internals — driven by blob_put under the hood
+      "GET /storage/v1/uploads/{id}",
+      "POST /storage/v1/uploads/{id}/complete",
+      "DELETE /storage/v1/uploads/{id}",
     ]);
 
     const uncovered = documented.filter(ep => {
