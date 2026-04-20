@@ -202,21 +202,28 @@ async function putOne(project, filePath, opts) {
   // this loop runs once.
   const etags = Array(initRes.part_count);
   for (const pn of Object.keys(state.parts_done || {})) {
-    etags[parseInt(pn, 10) - 1] = state.parts_done[pn];
+    const pd = state.parts_done[pn];
+    // Legacy resume state stored just the etag string; new code stores
+    // { etag, sha256 }. Normalize on load.
+    etags[parseInt(pn, 10) - 1] = typeof pd === "string" ? { etag: pd, sha256: undefined } : pd;
   }
 
+  // Presigned URLs are signed WITHOUT ChecksumAlgorithm (see gateway
+  // s3-presign.ts). The client-asserted sha256 declared at init is the
+  // integrity attestation — no x-amz-checksum-sha256 header on PUTs, and
+  // the gateway trusts the declared value at complete when S3 has none.
   const todo = initRes.parts.filter((p) => !(state.parts_done || {})[String(p.part_number)]);
   await withConcurrency(todo, opts.concurrency, async (part) => {
     const { etag } = await putPart(filePath, part);
-    etags[part.part_number - 1] = etag;
-    state.parts_done[String(part.part_number)] = etag;
+    etags[part.part_number - 1] = { etag };
+    state.parts_done[String(part.part_number)] = { etag };
     saveState(state);
     log(opts, { event: "part", upload_id: state.upload_id, part_number: part.part_number, etag });
   });
 
   // Complete
   const body = initRes.mode === "multipart"
-    ? { parts: etags.map((e, i) => ({ part_number: i + 1, etag: e })) }
+    ? { parts: etags.map((e, i) => ({ part_number: i + 1, etag: e.etag })) }
     : {};
   const complete = await apiFetch(`${API}/storage/v1/uploads/${state.upload_id}/complete`, "POST", project, body);
   if (complete.status !== 200) die(`Complete failed: HTTP ${complete.status}: ${JSON.stringify(complete.body)}`);
@@ -242,7 +249,8 @@ async function putPart(filePath, part) {
 
   const res = await fetch(part.url, { method: "PUT", body });
   if (!res.ok) {
-    throw new Error(`Part ${part.part_number} PUT failed: ${res.status} ${res.statusText}`);
+    const errBody = await res.text().catch(() => "");
+    throw new Error(`Part ${part.part_number} PUT failed: ${res.status} ${res.statusText}${errBody ? " — " + errBody.slice(0, 200) : ""}`);
   }
   const etag = res.headers.get("etag") ?? "";
   return { etag };

@@ -103,23 +103,29 @@ export async function handleBlobPut(args: Args): Promise<{ content: Array<{ type
     part_count: number;
   };
 
-  // 2. PUT each part (bytes direct to S3 — NOT through the gateway)
-  const etags: string[] = new Array(initBody.part_count);
+  // 2. PUT each part (bytes direct to S3 — NOT through the gateway).
+  //    Presigned URLs sign without ChecksumAlgorithm (see gateway
+  //    s3-presign.ts); the client-asserted sha256 is the integrity
+  //    attestation. No x-amz-checksum-sha256 header is sent.
+  const partEtags: Array<{ etag: string }> = new Array(initBody.part_count);
   for (const part of initBody.parts) {
     const partBuffer = await readPart(bodyBuffer, args.local_path, part.byte_start, part.byte_end);
     const putRes = await fetch(part.url, { method: "PUT", body: partBuffer as unknown as BodyInit });
     if (!putRes.ok) {
+      const errBody = await putRes.text().catch(() => "");
       return {
-        content: [{ type: "text", text: `Part ${part.part_number} PUT failed: ${putRes.status} ${putRes.statusText}` }],
+        content: [{ type: "text", text: `Part ${part.part_number} PUT failed: ${putRes.status} ${putRes.statusText}${errBody ? " — " + errBody.slice(0, 200) : ""}` }],
         isError: true,
       };
     }
-    etags[part.part_number - 1] = (putRes.headers.get("etag") ?? "").replace(/^"|"$/g, "");
+    partEtags[part.part_number - 1] = {
+      etag: (putRes.headers.get("etag") ?? "").replace(/^"|"$/g, ""),
+    };
   }
 
   // 3. Complete
   const completeBody = initBody.mode === "multipart"
-    ? { parts: etags.map((e, i) => ({ part_number: i + 1, etag: `"${e}"` })) }
+    ? { parts: partEtags.map((e, i) => ({ part_number: i + 1, etag: `"${e.etag}"` })) }
     : {};
   const complete = await apiRequest(`/storage/v1/uploads/${initBody.upload_id}/complete`, {
     method: "POST",
