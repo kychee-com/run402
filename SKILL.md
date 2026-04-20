@@ -95,9 +95,71 @@ rest_query(project_id: "prj_...", table: "todos", method: "DELETE", params: { id
 
 Use `key_type: "anon"` for user-facing reads. Use `key_type: "service"` for admin writes or when RLS would block access.
 
-### upload_file
+### blob_put
 
-Upload text content to project storage (S3-backed).
+Upload a blob (any size, up to 5 TiB) to project storage via direct-to-S3 presigned URLs. The gateway signs URLs and verifies completion; bytes flow directly between client and S3 (no gateway body-size cap).
+
+**Parameters:**
+- `project_id` (required) — Project ID
+- `key` (required) — Object key (e.g. `"assets/videos/intro.mp4"`)
+- `local_path` (optional) — Local file to upload. Use for anything non-trivial; streams via single-PUT (≤ 5 GiB) or multipart.
+- `content` (optional) — Inline content, ≤ 1 MB. Use only for small text blobs.
+- `content_type` (optional) — MIME type
+- `visibility` (optional, default: `"public"`) — `"public"` (bypasses auth) or `"private"` (requires apikey)
+- `immutable` (optional, default: `false`) — If true with `sha256`, also produces a content-addressed URL that gets `Cache-Control: immutable`.
+- `sha256` (optional) — Required when `immutable: true`. Client-asserted hash; gateway verifies if S3 returns one.
+
+**Returns:** `{ key, size_bytes, sha256, url, immutable_url? }`. `url` is the CDN URL (on `pr-<public_id>.run402.com`); `immutable_url` is the content-addressed variant when applicable.
+
+Supersedes `upload_file` (deprecated).
+
+### blob_get
+
+Download a blob to a local file. Writes bytes directly to disk — no context-window bloat.
+
+**Parameters:**
+- `project_id` (required) — Project ID
+- `key` (required) — Object key
+- `local_path` (required) — Local path to write
+
+**Returns:** `{ key, size_bytes, sha256? }`. Supersedes `download_file` (deprecated).
+
+### blob_ls
+
+List blobs in a project with optional prefix filter and keyset pagination.
+
+**Parameters:**
+- `project_id` (required) — Project ID
+- `prefix` (optional) — Filter keys starting with this prefix
+- `limit` (optional, default: 100, max: 1000)
+- `cursor` (optional) — Pagination cursor from a prior call
+
+**Returns:** `{ blobs: [{ key, size_bytes, content_type, visibility, sha256?, created_at }], next_cursor? }`. Supersedes `list_files` (deprecated).
+
+### blob_rm
+
+Delete a blob and decrement the project's storage usage. Supersedes `delete_file` (deprecated).
+
+**Parameters:**
+- `project_id` (required) — Project ID
+- `key` (required) — Object key
+
+**Returns:** `{ key, deleted: true }`.
+
+### blob_sign
+
+Generate a time-boxed S3 presigned GET URL for a private blob. Use this to share a private blob externally without exposing your apikey.
+
+**Parameters:**
+- `project_id` (required) — Project ID
+- `key` (required) — Object key
+- `ttl_seconds` (optional, default: 3600, max: 604800) — URL expiry in seconds (max 7 days)
+
+**Returns:** `{ url, expires_at }`.
+
+### upload_file (deprecated)
+
+Legacy file upload. **Deprecated — sunset 2026-06-01.** Use `blob_put` instead.
 
 **Parameters:**
 - `project_id` (required) — Project ID
