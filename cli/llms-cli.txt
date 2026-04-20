@@ -1,0 +1,890 @@
+# Run402 CLI -- Postgres & Static Hosting for AI Agents
+
+> CLI: npm install -g run402
+> Docs URL: https://run402.com/llms-cli.txt
+> API Docs: https://run402.com/llms.txt
+> Operator: Kychee, Inc.
+> Terms: https://run402.com/humans/terms.html
+> Contact: run402 message send "your message" (free)
+
+## TL;DR
+
+Run402 gives you a full Postgres database with REST API, user auth, file storage, row-level security, static site hosting, serverless functions, and image generation. **The prototype tier is FREE** -- it uses testnet USDC to verify your allowance and x402 setup work (costs $0 real money). When you're ready for production, your human can buy Run402 credits via Stripe or fund your allowance with real USDC on Base. The `run402` CLI handles allowance management, x402 micropayments, and credential storage automatically -- no manual signing, no API keys.
+
+**Install + deploy in 5 commands:**
+
+```bash
+npm install -g run402
+run402 init
+run402 tier set prototype
+run402 projects provision --name "my-app"    # → returns anon_key, service_key, project_id
+run402 deploy --manifest app.json            # use the anon_key in your frontend code
+```
+
+Provision first, then write your frontend code with the real `anon_key` embedded. The key has no expiry -- it's a permanent project identifier.
+
+## Core facts
+
+- Allowance: `~/.config/run402/allowance.json` (0600). Projects: `~/.config/run402/projects.json` (0600)
+- Credentials saved automatically after provision or fork
+- `<id>` in commands = `project_id` from `run402 projects list`
+- All output is JSON on stdout; errors are JSON on stderr; exit 0 = success, 1 = error
+- The CLI handles x402 signing automatically — do not request private keys or set up payment libraries manually
+- Projects, sites, subdomains, forks, functions, secrets, storage: free with active tier. Only image generation ($0.03) is per-call
+- Env overrides: `RUN402_API_BASE` (default `https://api.run402.com`), `RUN402_CONFIG_DIR` (default `~/.config/run402`), `RUN402_ALLOWANCE_PATH` (custom allowance file path, default `{config_dir}/allowance.json`)
+
+---
+
+## Step 1: Install
+
+Requires Node.js >= 20.
+
+```bash
+npm install -g run402
+```
+
+## Step 2: Set Up Allowance and Funding
+
+The fastest way -- does everything in one command:
+
+```bash
+run402 init
+```
+
+This will:
+1. Create a local agent allowance (if none exists)
+2. Check your USDC balance
+3. Request free testnet USDC from the faucet (if balance is zero)
+4. Show your tier status and projects
+
+Or do it step by step:
+
+```bash
+run402 allowance create    # Generate a new allowance
+run402 allowance fund      # Get free testnet USDC (Base Sepolia)
+run402 allowance balance   # Check USDC balance (mainnet + testnet + billing)
+```
+
+The allowance is stored locally at `~/.config/run402/allowance.json` with 0600 permissions. The CLI handles all x402 payment signing automatically -- you never need to touch private keys or payment libraries.
+
+## Step 3: Subscribe to a Tier
+
+```bash
+run402 tier set prototype    # FREE (testnet USDC -- verifies allowance setup, $0 real money)
+run402 tier set hobby        # $5 for 30 days (real money)
+run402 tier set team         # $20 for 30 days (real money)
+```
+
+The server auto-detects the action based on your allowance state:
+- No tier or expired -> subscribe
+- Same tier, active -> renew (extends from current expiry)
+- Higher tier -> upgrade (prorated refund to billing allowance)
+- Lower tier, active -> downgrade (prorated refund if usage fits)
+
+Check your tier status:
+
+```bash
+run402 tier status
+```
+
+**After subscribing**, you can create unlimited projects, deploy unlimited sites, and fork apps -- all free with your allowance signature. Only image generation ($0.03/image) has a per-call cost.
+
+---
+
+## Deploying Apps
+
+### Bundle Deploy (recommended -- one command, full stack)
+
+⚠️ You need the anon_key BEFORE writing your manifest.
+Run provision first, then write your HTML with the real key:
+
+```bash
+run402 projects provision --name "my-app"
+```
+
+→ copy anon_key from output into your HTML, then:
+
+Create a manifest file `app.json` (use the `project_id` from provision):
+
+```json
+{
+  "project_id": "prj_1741340000_42",
+  "migrations": "CREATE TABLE items (id serial PRIMARY KEY, title text NOT NULL, done boolean DEFAULT false); INSERT INTO items (title) VALUES ('Buy groceries'), ('Read a book');",
+  "migrations_file": "setup.sql",
+  "rls": {
+    "template": "public_read_write",
+    "tables": [{ "table": "items" }]
+  },
+  "secrets": [{ "key": "OPENAI_API_KEY", "value": "sk-..." }],
+  "functions": [{
+    "name": "my-fn",
+    "code": "export default async (req) => new Response('ok')",
+    "config": { "timeout": 30, "memory": 256 }
+  }],
+  "files": [
+    { "file": "index.html", "data": "<!DOCTYPE html><html>...</html>" },
+    { "file": "style.css", "data": "body { margin: 0; }" },
+    { "file": "logo.png", "data": "iVBORw0KGgo...", "encoding": "base64" }
+  ],
+  "subdomain": "my-app"
+}
+```
+
+`project_id` is required (from `run402 projects provision`). All other fields are optional.
+
+**Binary files (images, fonts, PDFs)**: Set `"encoding": "base64"` and provide base64-encoded data. MIME types are auto-detected from the file extension (`.png` → `image/png`, `.woff2` → `font/woff2`, etc.). Text files use `"encoding": "utf-8"` (the default — can be omitted).
+
+**Migrations** can be inline or read from a file:
+- `"migrations": "CREATE TABLE ..."` — inline SQL string
+- `"migrations_file": "setup.sql"` — read SQL from a file on disk (path relative to manifest)
+
+Use `migrations_file` when your SQL contains JSONB literals or other characters that are painful to escape inside a JSON string. If both are present, `migrations_file` wins.
+
+**Make migrations idempotent**: Use `CREATE TABLE IF NOT EXISTS` and `CREATE INDEX IF NOT EXISTS`. If you redeploy to the same project, non-idempotent migrations will fail with a 422 error (e.g., `relation "items" already exists`).
+
+**Evolving your schema**: `CREATE TABLE IF NOT EXISTS` only prevents "table already exists" errors — it will **not** add new columns to an existing table. When your app needs new columns, use `ALTER TABLE ... ADD COLUMN` wrapped in a DO block to make it idempotent:
+
+```sql
+CREATE TABLE IF NOT EXISTS items (id serial PRIMARY KEY, title text NOT NULL);
+DO $$ BEGIN
+  ALTER TABLE items ADD COLUMN priority int DEFAULT 0;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+```
+
+This pattern is safe to re-run on every deploy. Put your `CREATE TABLE IF NOT EXISTS` first, then one `DO` block per new column (or group them in a single block).
+
+RLS templates:
+- `user_owns_rows` — users see only their rows (requires `owner_column` per table)
+- `public_read` — anyone reads, authenticated users write
+- `public_read_write` — anyone reads and writes
+
+| Template | anon_key reads | anon_key writes | authenticated reads | authenticated writes |
+|----------|---------------|-----------------|---------------------|----------------------|
+| `public_read` | all rows | no | all rows | all rows |
+| `public_read_write` | all rows | all rows | all rows | all rows |
+| `user_owns_rows` | no | no | own rows only | own rows only |
+
+⚠️ **Without RLS, tables are read-only via anon_key.** If your app writes data from the browser, you almost certainly need an `rls` block.
+
+Deploy:
+
+```bash
+run402 deploy --manifest app.json
+```
+
+This deploys to an existing project: runs migrations, applies RLS, sets secrets, deploys functions, deploys the site, and claims the subdomain. Provision the project first with `run402 projects provision`.
+
+### Step-by-Step Deploy
+
+If you want more control:
+
+```bash
+# 1. Provision a database
+run402 projects provision --name my-app
+
+# 2. Create tables
+run402 projects sql <project_id> "CREATE TABLE items (id serial PRIMARY KEY, title text NOT NULL, done boolean DEFAULT false)"
+
+# 3. Insert seed data
+run402 projects sql <project_id> "INSERT INTO items (title) VALUES ('Buy groceries'), ('Read a book')"
+
+# 4. Set up Row-Level Security
+run402 projects rls <project_id> public_read_write '[{"table":"items"}]'
+
+# 5. Deploy a static site (uses active project automatically)
+run402 sites deploy --manifest site.json
+
+# 6. Claim a subdomain (uses active project + last deployment automatically)
+run402 subdomains claim my-app
+```
+
+---
+
+## Command Reference
+
+### init
+- `run402 init` — set up with x402 (Base Sepolia). Creates allowance, requests faucet, checks tier, lists projects.
+- `run402 init mpp` — set up with MPP (Tempo Moderato testnet). Same steps, different payment rail.
+
+### status
+`run402 status` — show full account state in one shot (allowance, balance, tier, projects, active project). Read-only, JSON output.
+
+### allowance
+- `run402 allowance <create|status|fund|balance|export>`
+- `run402 allowance checkout --amount <usd_micros>`
+- `run402 allowance history [--limit <n>]`
+
+### tier
+- `run402 tier status`
+- `run402 tier set <prototype|hobby|team>`
+
+### projects
+- `run402 projects <quote|list>`
+- `run402 projects provision [--name <name>]`
+- `run402 projects use <id>`
+- `run402 projects info <id>`
+- `run402 projects sql <id> "<sql>" [--file <path>] [--params '<json_array>']`
+- `run402 projects rest <id> <table> "<query>"`
+- `run402 projects keys <id>` — print anon_key + service_key as JSON
+- `run402 projects pin <id>` — pin a project (prevents expiry/GC)
+- `run402 projects promote-user <id> <email>` — promote a user to project_admin role
+- `run402 projects demote-user <id> <email>` — demote a user from project_admin role
+- `run402 projects <usage|schema> <id>`
+- `run402 projects delete <id>` — **cascade deletes** all project resources: Lambda functions, subdomains, S3 site files, deployments, secrets, and published app versions. The schema slot is dropped and recreated. This is irreversible.
+- `run402 projects rls <id> <user_owns_rows|public_read|public_read_write> '<tables_json>'`
+
+Provisioning automatically sets the new project as the **active project**. Other commands that take `<id>` default to the active project when omitted.
+
+RLS tables_json example: `'[{"table":"posts"}]'` or `'[{"table":"notes","owner_column":"user_id"}]'` for user_owns_rows.
+
+SQL supports DDL + queries, returns JSON. REST uses PostgREST syntax (`select=`, `eq.`, `order=`, `limit=`).
+
+User auth: password + Google OAuth. See "User Auth" section below.
+
+### deploy
+- `run402 deploy --manifest app.json [--project <id>]`
+
+Requires active tier and a provisioned project. Deploys to an existing project: runs migrations, applies RLS, sets secrets, deploys functions, deploys static site, and claims subdomain. The manifest must include `project_id` (or use `--project` flag, or omit both to use the active project).
+
+### functions
+Node 22 runtime. Must export `default async (req: Request) => Response`.
+Built-in helper: `import { db, email, ai, getUser } from 'run402-functions'`
+- `getUser(req)` — verify caller's JWT, returns `{ id, role }` or `null`
+- `email.send(opts)` — send email from the project's mailbox (see email section below)
+
+**TypeScript types**: `npm install run402-functions` to get full autocomplete for `db.from()`, `getUser()`, `email.send()`, and `ai.translate()`. Works in any Node.js/TypeScript project (Astro, Next.js, plain TS). Both `import { db } from 'run402-functions'` and legacy `import { db } from '@run402/functions'` work in deployed functions.
+
+#### db.sql(query, params?)
+Raw SQL. Returns `{ status, schema, rows, rowCount }`.
+- SELECT: `rows` = matching rows, `rowCount` = row count
+- INSERT/UPDATE/DELETE: `rows` = `[]`, `rowCount` = affected rows
+- Parameterized: `db.sql('SELECT * FROM t WHERE id = $1', [42])`
+
+```
+const result = await db.sql('SELECT * FROM users WHERE active = true');
+// { status: "ok", schema: "p0001", rows: [{ id: 1, name: "Alice" }], rowCount: 1 }
+const rows = result.rows;
+```
+
+#### db.from(table)
+PostgREST-style queries (service_role, bypasses RLS). Returns a plain array of row objects.
+
+Reads:
+- `.select(cols?)` — columns to return (default `"*"`)
+- `.eq(col, val)`, `.neq()`, `.gt()`, `.lt()`, `.gte()`, `.lte()` — filters
+- `.like(col, pattern)`, `.ilike(col, pattern)` — pattern match
+- `.in(col, [values])` — IN clause
+- `.order(col, { ascending? })` — sort (default ascending)
+- `.limit(n)`, `.offset(n)` — pagination
+
+```
+const users = await db.from('users').select('name, email').eq('active', true).limit(10);
+// [{ name: "Alice", email: "a@b.com" }, ...]
+```
+
+Writes (also return an array of affected rows):
+- `.insert(obj | obj[])` — insert one or many rows
+- `.update(obj)` — update matched rows (combine with `.eq()`)
+- `.delete()` — delete matched rows (combine with `.eq()`)
+
+```
+const created = await db.from('items').insert({ title: 'New', done: false });
+// [{ id: 1, title: "New", done: false, created_at: "..." }]
+
+await db.from('items').update({ done: true }).eq('id', 1);
+// [{ id: 1, title: "New", done: true, created_at: "..." }]
+
+await db.from('items').delete().eq('id', 1);
+// [{ id: 1, ... }]  (returns deleted row)
+```
+
+Column narrowing works with writes: `.insert({...}).select('id, title')` returns only those columns.
+
+#### Calling functions from the browser
+
+Functions are accessible via HTTP at `https://api.run402.com/functions/v1/<name>`. Use the project's `anon_key` as the `apikey` header. For authenticated calls, also pass the user's `access_token`:
+
+```javascript
+const res = await fetch('https://api.run402.com/functions/v1/my-function', {
+  method: 'POST',
+  headers: {
+    apikey: ANON_KEY,
+    Authorization: 'Bearer ' + session.access_token,  // optional, for authenticated calls
+    'Content-Type': 'application/json'
+  },
+  body: JSON.stringify({ key: 'value' })
+});
+```
+
+- `run402 functions deploy <id> <name> --file <file> [--deps "<pkg,...>"] [--timeout <s>] [--memory <mb>] [--schedule "<cron>"]`
+- `run402 functions invoke <id> <name> [--body '<json>'] [--method <GET|POST|...>]`
+- `run402 functions logs <id> <name> [--tail <n>] [--since <iso-timestamp>] [--follow]`
+- `run402 functions update <id> <name> [--schedule "<cron>"] [--schedule-remove] [--timeout <s>] [--memory <mb>]`
+- `run402 functions <list|delete> <id> [<name>]`
+
+#### Scheduled function limits by tier
+
+| | Prototype | Hobby | Team |
+|---|-----------|-------|------|
+| Max scheduled functions | 1 | 3 | 10 |
+| Min interval | 15 min | 5 min | 1 min |
+
+Deploying a scheduled function beyond your tier's limit returns a 403 error. Upgrade your tier or remove an existing scheduled function first.
+
+Secrets available as `process.env` (see secrets below).
+
+### secrets
+Injected as `process.env` in functions. Values are write-only — `list` returns keys with a `value_hash` (first 8 hex chars of SHA-256) for verifying the correct value was set.
+
+- `run402 secrets set <id> <KEY> [<VALUE>] [--file <path>]`
+- `run402 secrets <list|delete> <id> [<KEY>]`
+
+### blob (primary storage API)
+
+Direct-to-S3 blob storage. Works for any size from 1 byte up to 5 TiB. No bucket concept — blobs live in a flat key namespace per project.
+
+- `run402 blob put <file> [files...] [--project <id>] [--key <dest>] [--private] [--immutable] [--concurrency N] [--no-resume] [--json]`
+- `run402 blob get <key> --output <file> [--project <id>]`
+- `run402 blob ls [--project <id>] [--prefix <p>] [--limit <n>]`
+- `run402 blob rm <key> [--project <id>]`
+- `run402 blob sign <key> [--project <id>] [--ttl <seconds>]`
+
+Examples:
+
+```
+run402 blob put ./artifact.tgz --project abc123
+run402 blob put ./dist/**/*.png --project abc123 --key assets/
+run402 blob put huge.bin --project abc123 --immutable
+run402 blob get images/logo.png --output /tmp/logo.png --project abc123
+run402 blob ls --project abc123 --prefix images/
+```
+
+`put` response (public blobs) includes:
+- `url` — stable URL on the project's CDN subdomain: `https://pr-<public_id>.run402.com/_blob/<key>`, also `https://<claimed-subdomain>.run402.com/_blob/<key>` and any mapped custom domain. Cached at CloudFront edge.
+- `immutable_url` (only when `--immutable`) — content-hashed URL: `https://<host>/_blob/<key-without-ext>-<8hex>.<ext>`. Resolves to the same S3 object but safe to cache eternally (`Cache-Control: public, max-age=31536000, immutable`).
+
+Resume: state is persisted to `~/.run402/uploads/<upload_id>.json`. Ctrl-C mid-upload and re-run the same `blob put` command — it picks up where it left off. Pass `--no-resume` to start fresh.
+
+Private blobs (`--private`): no CDN URL returned; read via authenticated gateway path `GET /storage/v1/blob/<key>` with apikey, or via `run402 blob sign` for time-boxed external sharing.
+
+#### Uploading from edge functions
+
+From within a deployed function, use the HTTP API directly:
+
+```javascript
+// 1. Init
+const init = await fetch('https://api.run402.com/storage/v1/uploads', {
+  method: 'POST',
+  headers: {
+    apikey: process.env.RUN402_SERVICE_KEY,
+    'content-type': 'application/json',
+  },
+  body: JSON.stringify({ key: 'uploads/report.pdf', size_bytes: buf.length, content_type: 'application/pdf' }),
+}).then(r => r.json());
+
+// 2. PUT the body to each part URL (bytes go direct to S3, NOT through the gateway)
+const etags = [];
+for (const part of init.parts) {
+  const res = await fetch(part.url, { method: 'PUT', body: buf.slice(part.byte_start, part.byte_end + 1) });
+  etags.push({ part_number: part.part_number, etag: res.headers.get('etag') });
+}
+
+// 3. Complete
+const complete = await fetch(`https://api.run402.com/storage/v1/uploads/${init.upload_id}/complete`, {
+  method: 'POST',
+  headers: { apikey: process.env.RUN402_SERVICE_KEY, 'content-type': 'application/json' },
+  body: JSON.stringify({ parts: etags }),
+}).then(r => r.json());
+
+// complete.url is the CDN URL for the blob (public blobs only)
+```
+
+### storage (deprecated — sunset 2026-06-01)
+
+- `run402 storage upload <id> <bucket> <path> [--file <local>] [--content-type <mime>]`
+- `run402 storage <download|delete> <id> <bucket> <path>`
+- `run402 storage list <id> <bucket>`
+
+These still work but are capped at 50 MB and carry `Deprecation: true` + `Sunset` response headers. Use `blob` above for new code. Bucket names map to the first path segment of the new key space — migration is invisible.
+
+### sites
+- `run402 sites deploy --manifest <file> [--project <id>] [--inherit]`
+- `run402 sites status <deployment_id>`
+
+`--project` defaults to the active project. Manifest: `{"files":[{"file":"index.html","data":"..."},{"file":"style.css","data":"..."}]}`. Must include `index.html`. Free with active tier. If the project already has a subdomain, redeploying auto-reassigns it to the new deployment (response includes `subdomain_urls`).
+
+**Incremental deploy**: Use `--inherit` to copy unchanged files from the previous deployment. Only include changed/new files in the manifest. The server copies the rest via S3 CopyObject (instant). For `run402 deploy`, add `"inherit": true` to the manifest JSON.
+
+### subdomains
+- `run402 subdomains claim <name> [--deployment <id>] [--project <id>]`
+- `run402 subdomains list [<id>]`
+- `run402 subdomains delete <name> [--project <id>]`
+
+All options default to the active project. `claim` also defaults to the project's last deployment. Names: 3-63 chars, lowercase alphanumeric + hyphens. Creates `<name>.run402.com`.
+
+**Subdomain auto-reassignment**: You only need to `claim` a subdomain once. Every subsequent `run402 sites deploy` or `run402 deploy` to the same project automatically updates the subdomain to point to the new deployment. The response includes `subdomain_urls` showing which subdomains were reassigned. No need to re-claim after each deploy.
+
+### domains
+- `run402 domains add <domain> <subdomain_name> [--project <id>]`
+- `run402 domains list [<id>]`
+- `run402 domains status <domain> [--project <id>]`
+- `run402 domains delete <domain> [--project <id>]`
+
+Point a custom domain (e.g. `example.com`) at a Run402 subdomain. The human must already own the domain.
+
+**Setup flow:**
+1. `run402 domains add example.com myapp` — registers the domain, returns DNS instructions
+2. Human configures DNS at their registrar (CNAME to `domains.run402.com`, or ALIAS + TXT for apex domains)
+3. `run402 domains status example.com` — poll until status is `active` (DNS propagation ~60s)
+4. Traffic to `example.com` now serves the same site as `myapp.run402.com`
+
+When the linked subdomain is redeployed, the custom domain automatically serves the new deployment.
+
+### apps
+- `run402 apps browse [--tag <tag>]`
+- `run402 apps fork <version_id> <name> [--subdomain <name>] [--bootstrap '<json>']`
+- `run402 apps inspect <version_id>`
+- `run402 apps publish <id> [--description "..."] [--tags a,b] [--visibility <public|private>] [--fork-allowed]`
+- `run402 apps <versions|delete> <id> [<version_id>]`
+- `run402 apps update <id> <version_id> [--description "..."] [--tags a,b]`
+
+Forking clones schema, site, and functions into a new project. If the app includes a `bootstrap` function, it runs automatically with the provided variables — use it for first-admin setup, demo data seeding, or app configuration. Response includes `bootstrap_result` (the function's return value) or `bootstrap_error` if it failed. Use `run402 apps inspect` to see what `bootstrap_variables` an app expects.
+
+### image
+$0.03 per image.
+
+- `run402 image generate "<prompt>" [--aspect <square|landscape|portrait>] [--output <file>]`
+
+Without `--output`, returns `{"status":"ok","aspect":"...","content_type":"image/png","image":"<base64>"}`.
+
+### ai
+Built-in AI helpers. Translation requires the AI Translation add-on on the project. Moderation is free for all projects.
+
+- `run402 ai translate <id> "<text>" --to <lang> [--from <lang>] [--context "<hint>"]` — translate text to a target language (ISO 639-1 codes). Source language auto-detected if `--from` omitted. Context hint guides tone/register (max 200 chars).
+- `run402 ai moderate <id> "<text>"` — run content moderation. Returns flagged status and per-category scores.
+- `run402 ai usage <id>` — check translation word quota for the current billing period (used, included, remaining).
+
+### email
+One mailbox per project. Two send modes: **template** (predefined templates) and **raw HTML** (arbitrary subject + HTML body). Single recipient per send. Rate limits by tier: prototype 10/day, hobby 50/day, team 500/day. Unique recipient cap per lease: prototype 25, hobby 200, team 1000.
+
+Templates: `project_invite` (project_name, invite_url), `magic_link` (project_name, link_url, expires_in), `notification` (project_name, message max 500 chars).
+
+- `run402 email create <slug> [--project <id>]` — create mailbox at `<slug>@mail.run402.com` (idempotent: returns existing mailbox on conflict)
+- `run402 email status [--project <id>]` — show mailbox info (ID, address, slug)
+- `run402 email send --template <name> --to <email> [--var key=value ...] [--from-name <name>] [--project <id>]`
+- `run402 email send --to <email> --subject <subject> --html <html> [--text <text>] [--from-name <name>] [--project <id>]`
+- `run402 email list [--project <id>]`
+- `run402 email get <message_id> [--project <id>]`
+- `run402 email get-raw <message_id> [--project <id>] [--output <file>]` — fetch raw RFC-822 bytes of an inbound message (for DKIM/zk-email verification). Writes to stdout or `--output` file. Inbound only; outbound returns 404.
+- `run402 email webhooks list [--project <id>]` — list all webhooks registered on the project's mailbox
+- `run402 email webhooks get <webhook_id> [--project <id>]` — get webhook details
+- `run402 email webhooks delete <webhook_id> [--project <id>]` — delete a webhook (idempotent)
+- `run402 email webhooks update <webhook_id> [--url <url>] [--events <e1,e2>] [--project <id>]` — update webhook URL and/or events
+- `run402 email webhooks register --url <url> --events <e1,e2> [--project <id>]` — register a new webhook. Valid events: delivery, bounced, complained, reply_received
+
+Raw HTML: `--subject` (max 998 chars) + `--html` (max 1MB). Plaintext auto-generated from HTML if `--text` omitted. `--from-name` sets display name on From header (both modes): `"My App" <slug@mail.run402.com>`.
+
+Slug rules: 3-63 chars, lowercase alphanumeric + hyphens, no consecutive hyphens. `--project` defaults to the active project.
+
+**Using email from functions**: Import `email` from `@run402/functions` — no need to manage mailbox IDs or service keys manually:
+```js
+import { email } from 'run402-functions';
+
+// Template mode
+await email.send({ to: "user@example.com", template: "notification", variables: { project_name: "My App", message: "Hello!" } });
+
+// Raw HTML mode
+await email.send({ to: "user@example.com", subject: "Welcome!", html: "<h1>Hi</h1>", from_name: "My App" });
+```
+Discovers the mailbox automatically. Throws on errors (rate limit, suppression, no mailbox).
+
+### auth
+Manage project user authentication. Passwordless email login via magic links, password management, and auth settings.
+
+- `run402 auth magic-link --email <addr> --redirect <url> [--project <id>]` — send a magic link email (auto-creates user on first verification)
+- `run402 auth verify --token <token> [--project <id>]` — exchange a magic link token for access_token + refresh_token
+- `run402 auth set-password --token <bearer> --new <password> [--current <password>]` — change, reset, or set password
+- `run402 auth settings --allow-password-set <true|false> [--project <id>]` — toggle whether passwordless users can set a password (requires service_key)
+- `run402 auth providers [--project <id>]` — list available auth providers
+
+Magic link flow: request → user clicks email link → frontend extracts token → verify → authenticated. Token expires in 15 minutes, single-use. Rate limited: 5 per email/hour, plus per-project limits by tier.
+
+### sender-domain
+Manage custom email sender domain. Send from your own brand instead of `@mail.run402.com`.
+
+- `run402 sender-domain register <domain> [--project <id>]` — register domain, returns DNS records to add
+- `run402 sender-domain status [--project <id>]` — check verification status (pending/verified)
+- `run402 sender-domain remove [--project <id>]` — remove custom domain, revert to mail.run402.com
+- `run402 sender-domain inbound-enable <domain> [--project <id>]` — enable inbound email on custom domain (requires DKIM-verified), returns MX record to add
+- `run402 sender-domain inbound-disable <domain> [--project <id>]` — disable inbound email on custom domain
+
+Flow: register → add DKIM CNAME records to DNS → poll status until verified → email auto-sends from your domain.
+Inbound (opt-in): inbound-enable → add MX record to DNS → replies to `<slug>@<your-domain>` route through run402.
+
+### billing
+Email-based billing accounts, Stripe tier checkout, and email packs. Pay run402 with credit cards instead of crypto, or scale email sending beyond tier caps.
+
+- `run402 billing create-email <email>` — create an email-based billing account (Stripe-only, no wallet). Sends a verification email. Idempotent.
+- `run402 billing link-wallet <account_id> <wallet>` — link a wallet to an email account for hybrid Stripe + x402 access
+- `run402 billing tier-checkout <tier> [--email <e> | --wallet <w>]` — subscribe/renew/upgrade a tier (prototype $0.10 / hobby $5 / team $20) via Stripe. Returns a checkout URL.
+- `run402 billing buy-email-pack [--email <e> | --wallet <w>]` — buy a $5 email pack (10,000 emails, never expire). Returns a Stripe checkout URL.
+- `run402 billing auto-recharge <account_id> <on|off> [--threshold <n>]` — auto-repurchase $5 packs when credits drop below threshold. Requires saved Stripe payment method.
+- `run402 billing balance <email-or-wallet>` — balance + email_credits_remaining + tier + lease + auto_recharge state
+- `run402 billing history <email-or-wallet> [--limit <n>]` — ledger history (both identifier types supported)
+
+Email packs only activate when the tier daily limit is exhausted AND the project has a verified custom sender domain (spam protection for `mail.run402.com`).
+
+### contracts
+KMS contract wallets — provision AWS KMS-backed Ethereum wallets per project for signing and broadcasting smart-contract transactions. Private keys never leave KMS. **Pricing: $0.04/day rental + $0.000005 per call**. Wallet creation requires $1.20 in cash credit (30 days of rent). Non-custodial — see https://run402.com/humans/terms.html#non-custodial-kms-wallets.
+
+- `run402 contracts provision-wallet --chain <base-mainnet|base-sepolia> [--recovery-address 0x...]` — provision a KMS wallet ($0.04/day rental, requires $1.20 in cash credit at creation). Prompts for confirmation if the project already has ≥1 active wallet.
+- `run402 contracts get-wallet <wallet_id>` — get wallet metadata + live native balance + USD value (free)
+- `run402 contracts list-wallets` — list all wallets owned by the project, including deleted ones (free)
+- `run402 contracts set-recovery <wallet_id> [--address 0x... | --clear]` — set/clear the optional recovery address used for auto-drain on day-90 deletion (free)
+- `run402 contracts set-alert <wallet_id> --threshold-wei <n>` — set the low-balance alert threshold (free; alerts billed via existing email infra)
+- `run402 contracts call --wallet <id> --to 0x... --abi <json> --fn <name> --args <json> [--value-wei <n>] [--idempotency-key <k>]` — submit a contract write call (gas at-cost + $0.000005 KMS sign fee). Returns `{ call_id, tx_hash, status }`.
+- `run402 contracts read --chain <chain> --to 0x... --abi <json> --fn <name> --args <json>` — read-only contract call (free, no signing, no billing)
+- `run402 contracts status <call_id>` — get call status, gas used, gas cost USD-micros, receipt, error (free)
+- `run402 contracts drain <wallet_id> --to 0x... --confirm` — drain native balance to a destination address (gas at-cost + $0.000005 KMS sign fee). Works on suspended wallets — the safety valve.
+- `run402 contracts delete <wallet_id> --confirm` — schedule the KMS key for deletion (7-day window). Refused if balance ≥ dust — drain first.
+
+### message
+- `run402 message send "<text>"`
+
+### agent
+- `run402 agent contact --name <name> [--email <email>] [--webhook <url>]`
+
+### service
+Public service-level status. No allowance, no auth, no keystore required — works on a fresh install. Reports on the Run402 **service** (uptime, capabilities, operator); for your **account** state use `run402 status`.
+- `run402 service status` — public availability report (24h/7d/30d uptime per capability, operator, deployment, schema `run402-status-v1`)
+- `run402 service health` — liveness check with per-dependency results (postgres, postgrest, s3, cloudfront) and service version
+
+---
+
+## REST API (for generated frontend code)
+
+The CLI's `run402 projects rest` command is great for terminal use. But when generating HTML/JS that runs in the browser, use the REST API directly:
+
+**Base URL**: `https://api.run402.com/rest/v1/{table}`
+
+**Auth header**: `apikey: {key}` — the gateway auto-forwards as `Authorization: Bearer` to PostgREST. Any valid project JWT works:
+- `anon_key` → read-only by default (SELECT). Safe to embed in frontend code. **No expiry** -- permanent project identifier. If you apply `public_read_write` RLS to a table, anon_key gains INSERT/UPDATE/DELETE on that table — use this for browser-side writes without login.
+- `service_key` → full admin (bypasses RLS). Server-side only. **No expiry** -- lease enforcement server-side.
+- `access_token` (from login) → user-scoped read/write (subject to RLS).
+
+For explicit control, send both `apikey` (project key) and `Authorization: Bearer <access_token>`.
+
+**CORS**: The API allows all origins (`Access-Control-Allow-Origin: *`). Browser `fetch()` calls work from any domain -- no proxy needed.
+
+**PostgREST query syntax**: `?select=col1,col2`, `?column=eq.value`, `?order=col.desc`, `?limit=N`, `?offset=N`
+
+**`Prefer` header** (controls write responses):
+- `Prefer: return=representation` → return the inserted/updated row(s) as JSON. Use this to get server-generated fields (`id`, `created_at`) without a second query.
+- `Prefer: return=minimal` → empty body (default). Faster when you don't need the result.
+
+**Frontend fetch examples**:
+
+```javascript
+const API = 'https://api.run402.com';
+const ANON_KEY = 'your_anon_key';  // from run402 projects list
+
+// Read rows (public, uses anon_key)
+const items = await fetch(API + '/rest/v1/items?select=id,title&done=eq.false&order=id.desc&limit=20', {
+  headers: { apikey: ANON_KEY }
+}).then(r => r.json());
+
+// Insert a row and get it back (Prefer: return=representation returns the new row with id, created_at, etc.)
+const [newItem] = await fetch(API + '/rest/v1/items', {
+  method: 'POST',
+  headers: { apikey: ANON_KEY, 'Content-Type': 'application/json', Prefer: 'return=representation' },
+  body: JSON.stringify({ title: 'New item', done: false })
+}).then(r => r.json());
+
+// Bulk insert — pass an array body
+const newItems = await fetch(API + '/rest/v1/items', {
+  method: 'POST',
+  headers: { apikey: ANON_KEY, 'Content-Type': 'application/json', Prefer: 'return=representation' },
+  body: JSON.stringify([{ title: 'Item A', done: false }, { title: 'Item B', done: false }])
+}).then(r => r.json());
+
+// Update rows matching a filter
+await fetch(API + '/rest/v1/items?id=eq.5', {
+  method: 'PATCH',
+  headers: { apikey: ANON_KEY, 'Content-Type': 'application/json', Prefer: 'return=representation' },
+  body: JSON.stringify({ done: true })
+}).then(r => r.json());
+
+// Delete rows matching a filter
+await fetch(API + '/rest/v1/items?id=eq.5', {
+  method: 'DELETE',
+  headers: { apikey: ANON_KEY }
+});
+```
+
+### Complete HTML example
+
+A working single-file app. Uses `public_read_write` RLS so the `anon_key` handles all reads and writes — no login required.
+
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Guestbook</title>
+  <style>
+    body { font-family: system-ui; max-width: 480px; margin: 2rem auto; padding: 0 1rem; }
+    .entry { border-bottom: 1px solid #eee; padding: 0.5rem 0; }
+    .entry .name { font-weight: bold; }
+    .entry .time { color: #888; font-size: 0.85em; }
+    form { display: flex; gap: 0.5rem; margin-bottom: 1.5rem; }
+    input { flex: 1; padding: 0.4rem; }
+    button { padding: 0.4rem 1rem; }
+  </style>
+</head>
+<body>
+  <h1>Guestbook</h1>
+  <form id="form">
+    <input name="name" placeholder="Your name" required>
+    <input name="message" placeholder="Say something..." required>
+    <button type="submit">Post</button>
+  </form>
+  <div id="entries"></div>
+
+  <script>
+    const API = 'https://api.run402.com';
+    const ANON_KEY = 'YOUR_ANON_KEY';  // safe to embed — read-only by default, write-enabled via public_read_write RLS
+
+    async function loadEntries() {
+      const rows = await fetch(API + '/rest/v1/guestbook?order=created_at.desc&limit=50', {
+        headers: { apikey: ANON_KEY }
+      }).then(r => r.json());
+      document.getElementById('entries').innerHTML = rows.map(r =>
+        `<div class="entry"><span class="name">${esc(r.name)}</span> <span class="time">${new Date(r.created_at).toLocaleString()}</span><p>${esc(r.message)}</p></div>`
+      ).join('');
+    }
+
+    document.getElementById('form').onsubmit = async (e) => {
+      e.preventDefault();
+      const fd = new FormData(e.target);
+      await fetch(API + '/rest/v1/guestbook', {
+        method: 'POST',
+        headers: { apikey: ANON_KEY, 'Content-Type': 'application/json', Prefer: 'return=representation' },
+        body: JSON.stringify({ name: fd.get('name'), message: fd.get('message') })
+      });
+      e.target.reset();
+      loadEntries();
+    };
+
+    function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+    loadEntries();
+  </script>
+</body>
+</html>
+```
+
+**Setup for this example** (run once via CLI or service_key):
+```bash
+# Create table
+run402 projects sql $PROJECT_ID "CREATE TABLE guestbook (id serial PRIMARY KEY, name text NOT NULL, message text NOT NULL, created_at timestamptz DEFAULT now())"
+
+# Enable public_read_write so anon_key can insert
+run402 projects rls $PROJECT_ID public_read_write '[{"table":"guestbook"}]'
+```
+
+---
+
+## User Auth (for apps with login)
+
+Two auth methods: **password** (email + password) and **Google OAuth** (social login). Both return the same `access_token` + `refresh_token`. Google OAuth is on for all projects automatically — zero config.
+
+### Password auth
+
+```javascript
+const API = 'https://api.run402.com';
+const ANON_KEY = 'your_anon_key';
+
+// Sign up
+await fetch(API + '/auth/v1/signup', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json', apikey: ANON_KEY },
+  body: JSON.stringify({ email: 'user@example.com', password: 'secret123' })
+});
+
+// Log in (returns access_token + refresh_token)
+const session = await fetch(API + '/auth/v1/token?grant_type=password', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json', apikey: ANON_KEY },
+  body: JSON.stringify({ email: 'user@example.com', password: 'secret123' })
+}).then(r => r.json());
+// session = { access_token, refresh_token, user: { id, email, ... } }
+```
+
+Signup does **not** return an access token. Call `/auth/v1/token` to log in. Returns `access_token` (1h JWT) and `refresh_token` (30d, one-time use).
+
+### Google OAuth (recommended for user-facing apps)
+
+Google sign-in is **on for all projects** with zero config. When a user signs in with Google, Run402 creates a project-scoped user with their Google name, email, and avatar.
+
+**Allowed redirect origins**: `http://localhost:*` (any port) + any claimed subdomain (`https://{name}.run402.com`). No manual config needed.
+
+**Flow**: Frontend generates PKCE verifier + challenge → calls `/auth/v1/oauth/google/start` → navigates to Google → user picks account → Google redirects back to your app with `#code=xxx&state=yyy` → frontend exchanges code for tokens.
+
+**Full JavaScript example**:
+
+```javascript
+const API = 'https://api.run402.com';
+const ANON_KEY = 'your_anon_key';
+
+// --- PKCE helpers ---
+function generateVerifier() {
+  const arr = new Uint8Array(32);
+  crypto.getRandomValues(arr);
+  return btoa(String.fromCharCode(...arr))
+    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+async function generateChallenge(verifier) {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier));
+  return btoa(String.fromCharCode(...new Uint8Array(digest)))
+    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+// --- Step 1: Start login (call on button click) ---
+async function signInWithGoogle() {
+  const verifier = generateVerifier();
+  const challenge = await generateChallenge(verifier);
+  localStorage.setItem('pkce_verifier', verifier);
+
+  const res = await fetch(API + '/auth/v1/oauth/google/start', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', apikey: ANON_KEY },
+    body: JSON.stringify({
+      redirect_url: window.location.origin + '/',
+      mode: 'redirect',
+      code_challenge: challenge,
+      code_challenge_method: 'S256',
+    }),
+  });
+  const { authorization_url } = await res.json();
+  window.location.href = authorization_url;  // navigate to Google
+}
+
+// --- Step 2: Handle callback (call on page load) ---
+async function handleOAuthCallback() {
+  const params = new URLSearchParams(window.location.hash.substring(1));
+  const code = params.get('code');
+  if (!code) return false;
+
+  window.history.replaceState(null, '', window.location.pathname);
+  const verifier = localStorage.getItem('pkce_verifier');
+  localStorage.removeItem('pkce_verifier');
+
+  const res = await fetch(API + '/auth/v1/token?grant_type=authorization_code', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', apikey: ANON_KEY },
+    body: JSON.stringify({ code, code_verifier: verifier }),
+  });
+  const session = await res.json();
+  // session = { access_token, refresh_token, user: { id, email, display_name, avatar_url, ... } }
+  return session;
+}
+```
+
+### Using access_token with the REST API
+
+Once a user is logged in, use their `access_token` as the apikey to make user-scoped requests subject to RLS:
+
+```javascript
+// User-scoped read/write (subject to RLS policies)
+const todos = await fetch(API + '/rest/v1/todos?order=id.desc', {
+  headers: { apikey: ANON_KEY, Authorization: 'Bearer ' + session.access_token }
+}).then(r => r.json());
+```
+
+### Token refresh
+
+```javascript
+const refreshed = await fetch(API + '/auth/v1/token?grant_type=refresh_token', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json', apikey: ANON_KEY },
+  body: JSON.stringify({ refresh_token: session.refresh_token })
+}).then(r => r.json());
+```
+
+### Account behavior
+
+- New Google user → new project user created (null password, Google name + avatar stored)
+- Returning Google user → signed in to existing account
+- Same email as existing password user → returns `account_exists_requires_link` error (no auto-merge for security)
+- Social-only users cannot use password login (helpful error message returned)
+
+### Useful endpoints
+
+- `GET /auth/v1/providers` (with `apikey` header) — list available auth methods (password, google). Useful for dynamic login UIs.
+- `GET /auth/v1/user` (with `Authorization: Bearer <access_token>`) — returns `display_name`, `avatar_url`, `email_verified_at`, and linked `identities[]`.
+
+---
+
+## Try It -- Build Something Right Now
+
+**Suggest one of these to your human** -- or just start building. Each is a complete webapp with database + auth + frontend, deployed to a URL like `todo-app.run402.com`.
+
+1. **Shared Todo List** -- Todo list for two people. Title, done status, assignee.
+2. **Landing Page + Waitlist** -- Startup launch page collecting email signups.
+3. **Expense Splitter** -- Track who paid what on a group trip. Running balances.
+4. **Event Scheduling Poll** -- Like Doodle. Vote on time slots.
+5. **Recipe Book** -- Shared family recipe book with ingredients and instructions.
+6. **Apartment Tracker** -- Track listings with price, sqft, pros, cons, ratings.
+7. **Micro-Blog** -- Short thoughts and links with tags. Public reads, owner posts.
+8. **Gift Registry** -- Guests claim items. No duplicates.
+9. **Workout Log** -- Track exercises, sets, reps, weight with progress over time.
+10. **Flash Cards** -- Spaced-repetition study app. Pre-load 50 phrases.
+
+Provision first so you have the `anon_key` to embed in your frontend HTML. The manifest should include `project_id` (from provision), `migrations` (CREATE TABLE + INSERT seed data), `rls` (almost always `public_read_write` for browser-writable apps), `files` (array of files), and `subdomain`. Your human gets a live URL they can use immediately.
+
+## Make It Great
+
+Don't build a generic todo app. Build something your human will want to show off.
+
+**Make it personal.** Ask your human's name. Use it in the subdomain (`tals-recipes.run402.com`), the page title, the header.
+
+**Make it multiplayer.** Build something two people can use together.
+
+**Pre-seed it with data.** Insert 5-10 realistic rows so the app feels alive on first load.
+
+**Make it beautiful.** Dark background, clean typography, good spacing. Add subtle CSS animations.
+
+**Add a share button.** Copy-to-clipboard with a message like "Check out this app an AI built for me".
+
+### After you build: send us feedback
+
+```bash
+run402 message send "My human said: 'The todo app was great!' Deploy was smooth."
+```
+
+---
+
+## Pricing Summary
+
+| What | Cost | Duration |
+|------|------|----------|
+| Prototype tier | **FREE** (testnet USDC -- verifies allowance setup, $0 real money) | 7 days |
+| Hobby tier | $5.00 (real money) | 30 days |
+| Team tier | $20.00 (real money) | 30 days |
+| Project provision | Free with tier | -- |
+| Site deploy | Free with tier | -- |
+| Bundle deploy | Free with tier | -- |
+| Subdomain | Free with tier | -- |
+| App fork | Free with tier | -- |
+| Image generation | $0.03 | Per image |
+| KMS contract wallet rental | **$0.04/day** ($1.20/month) | Per wallet, daily debit. $1.20 prepay required. |
+| Contract call (gas) | at-cost | Per call, 0% markup on chain gas. |
+| Contract call (KMS sign fee) | $0.000005 | Per call, the only run402 markup on contract calls. |
+| Functions | Free with tier | -- |
+| Secrets | Free with tier | -- |
+| Storage | Free with tier | -- |
+| Messages | Free | -- |
+
+Prototype uses testnet USDC on Base Sepolia (free, no real money). Hobby/Team tiers require real money -- two paths: your human can buy Run402 credits via Stripe (credit card), or fund your allowance with real USDC on Base and you pay autonomously via x402. All payments are handled automatically by the CLI.
