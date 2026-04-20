@@ -30,7 +30,7 @@ Provision first, then write your frontend code with the real `anon_key` embedded
 - `<id>` in commands = `project_id` from `run402 projects list`
 - All output is JSON on stdout; errors are JSON on stderr; exit 0 = success, 1 = error
 - The CLI handles x402 signing automatically — do not request private keys or set up payment libraries manually
-- Projects, sites, subdomains, forks, functions, secrets, storage: free with active tier. Only image generation ($0.03) is per-call
+- Projects, sites, subdomains, forks, functions, secrets, blob storage: free with active tier. Only image generation ($0.03) is per-call
 - Env overrides: `RUN402_API_BASE` (default `https://api.run402.com`), `RUN402_CONFIG_DIR` (default `~/.config/run402`), `RUN402_ALLOWANCE_PATH` (custom allowance file path, default `{config_dir}/allowance.json`)
 
 ---
@@ -402,11 +402,7 @@ const complete = await fetch(`https://api.run402.com/storage/v1/uploads/${init.u
 
 ### storage (deprecated — sunset 2026-06-01)
 
-- `run402 storage upload <id> <bucket> <path> [--file <local>] [--content-type <mime>]`
-- `run402 storage <download|delete> <id> <bucket> <path>`
-- `run402 storage list <id> <bucket>`
-
-These still work but are capped at 50 MB and carry `Deprecation: true` + `Sunset` response headers. Use `blob` above for new code. Bucket names map to the first path segment of the new key space — migration is invisible.
+`run402 storage <upload|download|delete|list>` still works (50 MB cap, prints a deprecation banner on stderr) but is being retired. Use `run402 blob` above for all new code — bucket names map to the first path segment of the new key space, so migration is invisible. See https://run402.com/docs/blob#migration.
 
 ### sites
 - `run402 sites deploy --manifest <file> [--project <id>] [--inherit]`
