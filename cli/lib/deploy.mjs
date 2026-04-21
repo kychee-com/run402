@@ -262,7 +262,23 @@ export async function run(args) {
   }
   const manifest = manifestResult.manifest;
 
-  // --project flag overrides manifest's project_id
+  // If both sources set project_id and they disagree, refuse to deploy rather
+  // than silently shipping to the wrong target. Agents and humans should be
+  // forced to be explicit when the two sources conflict (GH-42).
+  if (opts.project && manifest.project_id && opts.project !== manifest.project_id) {
+    const err = {
+      status: "error",
+      message: `project_id conflict: manifest.project_id=${manifest.project_id} but --project=${opts.project}`,
+      manifest_project_id: manifest.project_id,
+      flag_project_id: opts.project,
+      hint: "Remove one of them or make them match. The --project flag and manifest.project_id must agree (or only one of them must be set).",
+    };
+    console.error(JSON.stringify(err));
+    process.exit(1);
+  }
+
+  // --project flag fills in manifest's project_id when the manifest doesn't
+  // specify one. (When both are set they must already agree — enforced above.)
   if (opts.project) manifest.project_id = opts.project;
 
   // If no project_id in manifest, fall back to the active project.
