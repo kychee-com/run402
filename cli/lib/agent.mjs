@@ -41,6 +41,10 @@ async function contact(args) {
 
 export async function run(sub, args) {
   if (!sub || sub === '--help' || sub === '-h') { console.log(HELP); process.exit(0); }
+  if (Array.isArray(args) && (args.includes("--help") || args.includes("-h"))) {
+    console.log(HELP);
+    process.exit(0);
+  }
   if (sub !== "contact") {
     console.error(`Unknown subcommand: ${sub}\n`);
     console.log(HELP);

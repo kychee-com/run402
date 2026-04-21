@@ -139,6 +139,10 @@ async function providers(args) {
 
 export async function run(sub, args) {
   if (!sub || sub === "--help" || sub === "-h") { console.log(HELP); process.exit(0); }
+  if (Array.isArray(args) && (args.includes("--help") || args.includes("-h"))) {
+    console.log(HELP);
+    process.exit(0);
+  }
   switch (sub) {
     case "magic-link": await magicLink(args); break;
     case "verify": await verify(args); break;

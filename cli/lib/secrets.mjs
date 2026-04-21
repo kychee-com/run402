@@ -68,6 +68,10 @@ async function deleteSecret(projectId, key) {
 
 export async function run(sub, args) {
   if (!sub || sub === '--help' || sub === '-h') { console.log(HELP); process.exit(0); }
+  if (Array.isArray(args) && (args.includes("--help") || args.includes("-h"))) {
+    console.log(HELP);
+    process.exit(0);
+  }
   switch (sub) {
     case "set":    await set(args[0], args[1], args.slice(2)); break;
     case "list":   await list(args[0]); break;

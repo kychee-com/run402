@@ -55,6 +55,10 @@ export async function run(sub, args) {
     console.log(HELP);
     process.exit(0);
   }
+  if (Array.isArray(args) && (args.includes("--help") || args.includes("-h"))) {
+    console.log(HELP);
+    process.exit(0);
+  }
   switch (sub) {
     case "status": await status(); break;
     case "set":    await set(args[0]); break;

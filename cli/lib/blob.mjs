@@ -427,6 +427,10 @@ export async function run(sub, args) {
     console.log(HELP);
     process.exit(0);
   }
+  if (Array.isArray(args) && (args.includes("--help") || args.includes("-h"))) {
+    console.log(HELP);
+    process.exit(0);
+  }
   const defaultProject = process.env.RUN402_PROJECT ?? null;
   switch (sub) {
     case "put":   await put(defaultProject, args); break;

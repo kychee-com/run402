@@ -212,6 +212,10 @@ async function deleteFunction(projectId, name) {
 
 export async function run(sub, args) {
   if (!sub || sub === '--help' || sub === '-h') { console.log(HELP); process.exit(0); }
+  if (Array.isArray(args) && (args.includes("--help") || args.includes("-h"))) {
+    console.log(HELP);
+    process.exit(0);
+  }
   switch (sub) {
     case "deploy": await deploy(args[0], args[1], args.slice(2)); break;
     case "invoke": await invoke(args[0], args[1], args.slice(2)); break;

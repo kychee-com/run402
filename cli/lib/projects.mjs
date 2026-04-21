@@ -239,6 +239,10 @@ export async function run(sub, args) {
     console.log(HELP);
     process.exit(0);
   }
+  if (Array.isArray(args) && (args.includes("--help") || args.includes("-h"))) {
+    console.log(HELP);
+    process.exit(0);
+  }
   switch (sub) {
     case "quote":     await quote(); break;
     case "provision": await provision(args); break;

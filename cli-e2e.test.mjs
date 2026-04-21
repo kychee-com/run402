@@ -1616,4 +1616,226 @@ describe("CLI e2e happy path", () => {
     const allowance = JSON.parse(readFileSync(join(tempDir, "allowance.json"), "utf-8"));
     assert.equal(allowance.rail, "x402", "rail should be x402");
   });
+
+  // ── Subcommand --help / -h (GH #48–67) ────────────────────────────────────
+  //
+  // Every `cli/lib/<cmd>.mjs` exports `run(sub, args)`. When the user runs
+  // `run402 <cmd> <sub> --help`, `sub` is the subcommand name and `--help`
+  // lives inside `args`. Without an args-level --help check, the inner
+  // handler either validates required flags (producing confusing errors),
+  // treats `--help` as a positional argument, or — worst — makes a live API
+  // call that provisions a project, sends a message, or hits a 404.
+  //
+  // Each test spies on fetch and asserts:
+  //   1. The command exits 0 (process.exit stub throws "process.exit(0)")
+  //   2. The module HELP banner is printed to stdout
+  //   3. NO fetch call is made (no network I/O, no side effects)
+  //
+  // Coverage picks representative cases for each failure mode. The
+  // side-effect paths (#49 projects provision, #54 message send) are the
+  // most critical — a broken --help here SENDS A REAL MESSAGE or
+  // PROVISIONS A REAL PROJECT.
+
+  function makeHelpTest({ label, module, sub, bannerRegex, extraArgs = [] }) {
+    it(label, async () => {
+      const { run } = await import(module);
+      // Spy on fetch — any call here is a bug, regardless of mock behaviour.
+      let fetchCalled = false;
+      const prevFetch = globalThis.fetch;
+      globalThis.fetch = (...args) => {
+        fetchCalled = true;
+        return prevFetch(...args);
+      };
+      let threw = null;
+      captureStart();
+      try {
+        await run(sub, [...extraArgs, "--help"]);
+      } catch (e) {
+        threw = e;
+      } finally {
+        captureStop();
+        globalThis.fetch = prevFetch;
+      }
+      assert.equal(threw?.message, "process.exit(0)",
+        `'${sub} --help' should exit 0, got: ${threw?.message}`);
+      assert.equal(fetchCalled, false,
+        `'${sub} --help' must not make any fetch/API call`);
+      const stdout = capturedStdout();
+      assert.ok(bannerRegex.test(stdout),
+        `stdout should begin with module HELP banner; got: ${stdout}`);
+    });
+  }
+
+  // #48 — tier-name parsing: "Unknown tier: --help"
+  makeHelpTest({
+    label: "tier set --help prints help (GH-48)",
+    module: "./cli/lib/tier.mjs",
+    sub: "set",
+    bannerRegex: /^run402 tier/,
+  });
+
+  // #49 — CRITICAL: provisions a real project if --help isn't short-circuited
+  makeHelpTest({
+    label: "projects provision --help prints help and does not provision (GH-49)",
+    module: "./cli/lib/projects.mjs",
+    sub: "provision",
+    bannerRegex: /^run402 projects/,
+  });
+
+  // #50 — runs live list
+  makeHelpTest({
+    label: "projects list --help prints help (GH-50)",
+    module: "./cli/lib/projects.mjs",
+    sub: "list",
+    bannerRegex: /^run402 projects/,
+  });
+
+  // #51 — treats --help as project id
+  makeHelpTest({
+    label: "projects delete --help prints help (GH-51)",
+    module: "./cli/lib/projects.mjs",
+    sub: "delete",
+    bannerRegex: /^run402 projects/,
+  });
+
+  // #52, #58, #59, #60 — functions subcommands treat --help as project id
+  makeHelpTest({
+    label: "functions deploy --help prints help (GH-52)",
+    module: "./cli/lib/functions.mjs",
+    sub: "deploy",
+    bannerRegex: /^run402 functions/,
+  });
+  makeHelpTest({
+    label: "functions invoke --help prints help (GH-58)",
+    module: "./cli/lib/functions.mjs",
+    sub: "invoke",
+    bannerRegex: /^run402 functions/,
+  });
+  makeHelpTest({
+    label: "functions logs --help prints help (GH-59)",
+    module: "./cli/lib/functions.mjs",
+    sub: "logs",
+    bannerRegex: /^run402 functions/,
+  });
+  makeHelpTest({
+    label: "functions delete --help prints help (GH-60)",
+    module: "./cli/lib/functions.mjs",
+    sub: "delete",
+    bannerRegex: /^run402 functions/,
+  });
+
+  // #53 — executes live list
+  makeHelpTest({
+    label: "blob ls --help prints help (GH-53)",
+    module: "./cli/lib/blob.mjs",
+    sub: "ls",
+    bannerRegex: /^run402 blob/,
+  });
+
+  // #64 — blob put: "no project specified"
+  makeHelpTest({
+    label: "blob put --help prints help (GH-64)",
+    module: "./cli/lib/blob.mjs",
+    sub: "put",
+    bannerRegex: /^run402 blob/,
+  });
+
+  // #54 — CRITICAL: sends a real message if --help isn't short-circuited
+  makeHelpTest({
+    label: "message send --help prints help and does not send (GH-54)",
+    module: "./cli/lib/message.mjs",
+    sub: "send",
+    bannerRegex: /^run402 message/,
+  });
+
+  // #55 — "Missing --email"
+  makeHelpTest({
+    label: "auth magic-link --help prints help (GH-55)",
+    module: "./cli/lib/auth.mjs",
+    sub: "magic-link",
+    bannerRegex: /^run402 auth/,
+  });
+
+  // #65 — auth verify: "no project specified" (findProject called)
+  makeHelpTest({
+    label: "auth verify --help prints help (GH-65)",
+    module: "./cli/lib/auth.mjs",
+    sub: "verify",
+    bannerRegex: /^run402 auth/,
+  });
+
+  // #66 — auth set-password: "Missing --token"
+  makeHelpTest({
+    label: "auth set-password --help prints help (GH-66)",
+    module: "./cli/lib/auth.mjs",
+    sub: "set-password",
+    bannerRegex: /^run402 auth/,
+  });
+
+  // #67 — auth settings: "no project specified"
+  makeHelpTest({
+    label: "auth settings --help prints help (GH-67)",
+    module: "./cli/lib/auth.mjs",
+    sub: "settings",
+    bannerRegex: /^run402 auth/,
+  });
+
+  // #56 — "Missing --name"
+  makeHelpTest({
+    label: "agent contact --help prints help (GH-56)",
+    module: "./cli/lib/agent.mjs",
+    sub: "contact",
+    bannerRegex: /^run402 agent/,
+  });
+
+  // #57 — live GET /status returns 404
+  makeHelpTest({
+    label: "service status --help prints help and does not hit /status (GH-57)",
+    module: "./cli/lib/service.mjs",
+    sub: "status",
+    bannerRegex: /^run402 service/,
+  });
+
+  // #61, #62 — secrets subcommands treat --help as project id
+  makeHelpTest({
+    label: "secrets set --help prints help (GH-61)",
+    module: "./cli/lib/secrets.mjs",
+    sub: "set",
+    bannerRegex: /^run402 secrets/,
+  });
+  makeHelpTest({
+    label: "secrets list --help prints help (GH-62)",
+    module: "./cli/lib/secrets.mjs",
+    sub: "list",
+    bannerRegex: /^run402 secrets/,
+  });
+
+  // #63 — projects sql: treats --help as project id ("Project --help not found")
+  makeHelpTest({
+    label: "projects sql --help prints help (GH-63)",
+    module: "./cli/lib/projects.mjs",
+    sub: "sql",
+    bannerRegex: /^run402 projects/,
+  });
+
+  // Also spot-check the short flag alias -h works.
+  it("projects sql -h prints help (GH-63 short flag)", async () => {
+    const { run } = await import("./cli/lib/projects.mjs");
+    let fetchCalled = false;
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = (...args) => { fetchCalled = true; return prevFetch(...args); };
+    let threw = null;
+    captureStart();
+    try {
+      await run("sql", ["-h"]);
+    } catch (e) {
+      threw = e;
+    } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+    assert.equal(threw?.message, "process.exit(0)", "-h should exit 0");
+    assert.equal(fetchCalled, false, "-h must not make any fetch/API call");
+    assert.ok(/^run402 projects/.test(capturedStdout()), "stdout should include help banner");
+  });
 });
