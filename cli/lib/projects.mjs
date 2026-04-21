@@ -141,13 +141,17 @@ async function sqlCmd(projectId, args = []) {
   const headers = { "Authorization": `Bearer ${p.service_key}`, "Content-Type": useParams ? "application/json" : "text/plain" };
   const body = useParams ? JSON.stringify({ sql, params }) : sql;
   const res = await fetch(`${API}/projects/v1/admin/${projectId}/sql`, { method: "POST", headers, body });
-  console.log(JSON.stringify(await res.json(), null, 2));
+  const data = await res.json();
+  if (!res.ok) { console.error(JSON.stringify({ status: "error", http: res.status, ...data })); process.exit(1); }
+  console.log(JSON.stringify(data, null, 2));
 }
 
 async function rest(projectId, table, queryParams) {
   const p = findProject(projectId);
   const res = await fetch(`${API}/rest/v1/${table}${queryParams ? '?' + queryParams : ''}`, { headers: { "apikey": p.anon_key } });
-  console.log(JSON.stringify(await res.json(), null, 2));
+  const data = await res.json();
+  if (!res.ok) { console.error(JSON.stringify({ status: "error", http: res.status, ...data })); process.exit(1); }
+  console.log(JSON.stringify(data, null, 2));
 }
 
 async function usage(projectId) {

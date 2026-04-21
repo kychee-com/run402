@@ -543,12 +543,74 @@ describe("CLI e2e happy path", () => {
     assert.ok(captured().includes("test"), "should return query results from file");
   });
 
+  it("projects sql exits non-zero on blocked SQL (GH-34)", async () => {
+    const { run } = await import("./cli/lib/projects.mjs");
+    // Swap in a fetch that returns a 400 with a blocked-SQL error body.
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = (input, init) => {
+      const url = typeof input === "string" ? input : (input instanceof Request ? input.url : String(input));
+      const method = (init?.method || (input instanceof Request ? input.method : "GET") || "GET").toUpperCase();
+      if (/\/sql$/.test(url) && method === "POST") {
+        return Promise.resolve(json({ error: "Blocked SQL pattern: \\bCREATE\\s+EXTENSION\\b" }, 400));
+      }
+      return prevFetch(input, init);
+    };
+    let threw = null;
+    captureStart();
+    try {
+      await run("sql", ["prj_test123", "CREATE EXTENSION pgcrypto;"]);
+    } catch (e) {
+      threw = e;
+    } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+    assert.ok(threw && /process\.exit\(1\)/.test(threw.message), `should exit non-zero, got: ${threw && threw.message}`);
+    const out = captured();
+    const line = out.split("\n").map(s => s.trim()).find(s => s.startsWith("{") && s.endsWith("}"));
+    assert.ok(line, `should emit a JSON error line, got: ${out}`);
+    const parsed = JSON.parse(line);
+    assert.equal(parsed.status, "error");
+    assert.equal(parsed.http, 400);
+    assert.ok(/Blocked SQL pattern/.test(parsed.error), `error message should be propagated, got: ${parsed.error}`);
+  });
+
   it("projects rest", async () => {
     const { run } = await import("./cli/lib/projects.mjs");
     captureStart();
     await run("rest", ["prj_test123", "items", "limit=10"]);
     captureStop();
     assert.ok(captured().includes("Test item"), "should return REST data");
+  });
+
+  it("projects rest exits non-zero on API error (GH-34)", async () => {
+    const { run } = await import("./cli/lib/projects.mjs");
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = (input, init) => {
+      const url = typeof input === "string" ? input : (input instanceof Request ? input.url : String(input));
+      if (url.includes("/rest/v1/")) {
+        return Promise.resolve(json({ message: "relation does not exist", code: "42P01" }, 404));
+      }
+      return prevFetch(input, init);
+    };
+    let threw = null;
+    captureStart();
+    try {
+      await run("rest", ["prj_test123", "nonexistent", "limit=1"]);
+    } catch (e) {
+      threw = e;
+    } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+    assert.ok(threw && /process\.exit\(1\)/.test(threw.message), `should exit non-zero, got: ${threw && threw.message}`);
+    const out = captured();
+    const line = out.split("\n").map(s => s.trim()).find(s => s.startsWith("{") && s.endsWith("}"));
+    assert.ok(line, `should emit a JSON error line, got: ${out}`);
+    const parsed = JSON.parse(line);
+    assert.equal(parsed.status, "error");
+    assert.equal(parsed.http, 404);
+    assert.ok(/relation does not exist/.test(parsed.message), `error message should be propagated, got: ${parsed.message}`);
   });
 
   it("projects schema", async () => {
