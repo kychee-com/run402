@@ -34,7 +34,7 @@ import { basename, dirname, join, resolve as resolvePath } from "node:path";
 import { homedir } from "node:os";
 import { pipeline } from "node:stream/promises";
 
-import { findProject, API } from "./config.mjs";
+import { resolveProject, API } from "./config.mjs";
 
 const HELP = `run402 blob — Direct-to-S3 blob storage
 
@@ -95,13 +95,6 @@ function parseArgs(args) {
     else if (!a.startsWith("--")) out.positional.push(a);
   }
   return out;
-}
-
-function resolveProject(projectId) {
-  if (!projectId) die("--project is required (or run 'run402 projects use <id>' to set default)");
-  const p = findProject(projectId);
-  if (!p) die(`Project not found: ${projectId}`);
-  return p;
 }
 
 async function sha256File(filePath) {

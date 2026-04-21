@@ -248,6 +248,11 @@ function mockFetch(input, init) {
     return Promise.resolve(json({ status: "ok" }));
   }
 
+  // Blob (direct-to-S3)
+  if (pathNoQuery === "/storage/v1/blobs" && method === "GET") {
+    return Promise.resolve(json({ blobs: [{ key: "defaults/file.txt", size: 13, last_modified: "2026-03-15T12:00:00Z" }] }));
+  }
+
   // Bundle deploy
   if (path === "/deploy/v1" && method === "POST") {
     const migrations_result = body?.migrations
@@ -945,6 +950,59 @@ describe("CLI e2e happy path", () => {
     captureStop();
     // download uses process.stdout.write, not console.log — just verify no error
     assert.ok(true, "should download without error");
+  });
+
+  // ── Blob (GH-40: fall back to active project from 'projects use') ───────
+
+  it("blob ls falls back to active project (GH-40)", async () => {
+    const { run } = await import("./cli/lib/blob.mjs");
+    const { setActiveProjectId } = await import("./cli/core-dist/keystore.js");
+    // Prerequisite: the "projects provision" test above has saved prj_test123
+    // to the keystore. Make it the active project.
+    setActiveProjectId("prj_test123");
+    // Explicitly clear the env var escape hatch so only the active project
+    // fallback can satisfy the command.
+    const prevEnv = process.env.RUN402_PROJECT;
+    delete process.env.RUN402_PROJECT;
+    let threw = null;
+    captureStart();
+    try {
+      await run("ls", []);
+    } catch (e) {
+      threw = e;
+    } finally {
+      captureStop();
+      if (prevEnv !== undefined) process.env.RUN402_PROJECT = prevEnv;
+    }
+    assert.equal(threw, null, `should not throw, got: ${threw?.message}\nout: ${captured()}`);
+    assert.ok(captured().includes("defaults/file.txt"), `should list blobs; got: ${captured()}`);
+  });
+
+  it("blob ls errors cleanly when no project and no active project (GH-40)", async () => {
+    const { run } = await import("./cli/lib/blob.mjs");
+    const { setActiveProjectId, loadKeyStore, saveKeyStore } = await import("./cli/core-dist/keystore.js");
+    // Clear active project + RUN402_PROJECT env var.
+    const store = loadKeyStore();
+    delete store.active_project_id;
+    saveKeyStore(store);
+    const prevEnv = process.env.RUN402_PROJECT;
+    delete process.env.RUN402_PROJECT;
+    let threw = null;
+    captureStart();
+    try {
+      await run("ls", []);
+    } catch (e) {
+      threw = e;
+    } finally {
+      captureStop();
+      if (prevEnv !== undefined) process.env.RUN402_PROJECT = prevEnv;
+      // Restore the active project so subsequent tests still work.
+      setActiveProjectId("prj_test123");
+    }
+    assert.ok(threw && /process\.exit\(1\)/.test(threw.message),
+      `should exit 1 when no project is available, got: ${threw?.message}`);
+    assert.ok(captured().includes("no active project") || captured().includes("no project specified"),
+      `error should mention missing active project; got: ${captured()}`);
   });
 
   // ── Sites ───────────────────────────────────────────────────────────────
