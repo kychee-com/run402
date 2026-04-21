@@ -44,7 +44,7 @@ async function register(args) {
 
   const res = await fetch(`${API}/email/v1/domains`, {
     method: "POST",
-    headers: { apikey: p.service_key, "Content-Type": "application/json" },
+    headers: { Authorization: `Bearer ${p.service_key}`, "Content-Type": "application/json" },
     body: JSON.stringify({ domain }),
   });
   const data = await res.json();
@@ -60,7 +60,7 @@ async function status(args) {
   const p = findProject(projectId);
 
   const res = await fetch(`${API}/email/v1/domains`, {
-    headers: { apikey: p.service_key },
+    headers: { Authorization: `Bearer ${p.service_key}` },
   });
   const data = await res.json();
   if (!res.ok) {
@@ -76,7 +76,7 @@ async function remove(args) {
 
   const res = await fetch(`${API}/email/v1/domains`, {
     method: "DELETE",
-    headers: { apikey: p.service_key },
+    headers: { Authorization: `Bearer ${p.service_key}` },
   });
   const data = await res.json();
   if (!res.ok) {
@@ -104,7 +104,7 @@ async function inboundToggle(action, args) {
   const method = action === "enable" ? "POST" : "DELETE";
   const res = await fetch(`${API}/email/v1/domains/inbound`, {
     method,
-    headers: { apikey: p.service_key, "Content-Type": "application/json" },
+    headers: { Authorization: `Bearer ${p.service_key}`, "Content-Type": "application/json" },
     body: JSON.stringify({ domain }),
   });
   const data = await res.json();

@@ -15,7 +15,7 @@ export async function handleRemoveSenderDomain(args: {
 
   const res = await apiRequest(`/email/v1/domains`, {
     method: "DELETE",
-    headers: { apikey: project.service_key },
+    headers: { Authorization: `Bearer ${project.service_key}` },
   });
 
   if (!res.ok) return formatApiError(res, "removing sender domain");

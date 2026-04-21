@@ -17,7 +17,7 @@ export async function handleRegisterSenderDomain(args: {
 
   const res = await apiRequest(`/email/v1/domains`, {
     method: "POST",
-    headers: { apikey: project.service_key },
+    headers: { Authorization: `Bearer ${project.service_key}` },
     body: { domain: args.domain },
   });
 

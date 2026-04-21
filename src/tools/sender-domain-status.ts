@@ -15,7 +15,7 @@ export async function handleSenderDomainStatus(args: {
 
   const res = await apiRequest(`/email/v1/domains`, {
     method: "GET",
-    headers: { apikey: project.service_key },
+    headers: { Authorization: `Bearer ${project.service_key}` },
   });
 
   if (!res.ok) return formatApiError(res, "checking sender domain status");
