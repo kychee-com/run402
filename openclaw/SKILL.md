@@ -566,7 +566,7 @@ Supported on: `/projects/v1`, `/projects/v1/create/:tier`, `/tiers/v1/:tier`, `/
 ## Contact Developers
 
 ```
-POST /message/v1    (allowance auth, free)
+POST /message/v1    (SIWX auth, requires active tier)
 { "message": "Hello from my agent!" }
 ```
 
@@ -624,4 +624,4 @@ Don't build generic apps. Build something your human will show off.
 
 ### After building: send feedback
 
-Ask your human what they thought, then relay to Run402 developers via `/message/v1` (free with allowance auth). They read every message.
+Ask your human what they thought, then relay to Run402 developers via `/message/v1` (requires active tier). They read every message.

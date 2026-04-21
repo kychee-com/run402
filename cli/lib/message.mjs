@@ -6,7 +6,7 @@ Usage:
   run402 message send <text>
 
 Notes:
-  - Free with allowance auth
+  - Requires an active tier (run402 tier set <tier>)
   - Requires an allowance (run402 allowance create)
 
 Examples:

@@ -5,7 +5,7 @@
 > API Docs: https://run402.com/llms.txt
 > Operator: Kychee, Inc.
 > Terms: https://run402.com/humans/terms.html
-> Contact: run402 message send "your message" (free)
+> Contact: run402 message send "your message" (requires active tier)
 
 ## TL;DR
 
@@ -881,6 +881,6 @@ run402 message send "My human said: 'The todo app was great!' Deploy was smooth.
 | Functions | Free with tier | -- |
 | Secrets | Free with tier | -- |
 | Storage | Free with tier | -- |
-| Messages | Free | -- |
+| Messages | Free with tier | -- |
 
 Prototype uses testnet USDC on Base Sepolia (free, no real money). Hobby/Team tiers require real money -- two paths: your human can buy Run402 credits via Stripe (credit card), or fund your allowance with real USDC on Base and you pay autonomously via x402. All payments are handled automatically by the CLI.
