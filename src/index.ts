@@ -638,7 +638,7 @@ server.tool(
 
 server.tool(
   "send_message",
-  "Send a message to the Run402 developers. Free with allowance auth.",
+  "Send a message to the Run402 developers. Requires an active tier.",
   sendMessageSchema,
   async (args) => handleSendMessage(args),
 );
