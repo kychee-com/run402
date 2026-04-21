@@ -52,24 +52,42 @@ For each bug:
    - `cli/lib/` - CLI command modules (`*.mjs`)
    - `openclaw/scripts/` - OpenClaw skill shims (`*.mjs`, usually re-export from `cli/lib/`)
 3. Check git log to see if the relevant code has already been changed
-4. Categorize into exactly one bucket:
+4. **Ask: where does the root cause OPTIMALLY live?** Not "where *can* I patch it" — where does the fix belong architecturally. This repo (`run402-public`) is a thin client over a server API. The server lives in `~/Developer/run402-private` (GitHub: `kychee-com/run402-private`). If the symptom surfaces in the CLI/MCP but the clean fix is server-side (API contract, error-body shape, auth model, pricing logic, rate limits, payment flow, etc.), the bug belongs in the private repo. **Do NOT patch the client to compensate for a non-optimal server response, even if you can.** Client-side band-aids ossify bad server contracts — every consumer (CLI, MCP, OpenClaw, third-party integrations) then has to reimplement the same workaround. Example from v1.35.1 triage: the image endpoint returned a bare 402 with no error body. The CLI *could* have added a hardcoded "check your allowance" hint on empty 402s, but that would hide the real issue (server not returning `message`/`hint`/`accepts`) and only patch one of the three consumers. That bug was moved to the private repo so the server can be fixed once for all clients.
+5. Categorize into exactly one bucket:
 
 | Category | Criteria | Action |
 |----------|----------|--------|
 | `already-fixed` | Code already changed, or a release was published that contains the fix | Close |
 | `not-a-bug` | Expected behavior, environment issue, or user error | Close with explanation |
+| `wrong-repo` | Symptom is here but root cause OPTIMALLY belongs in `run402-private` (server API, backend logic, infra) | Move to private repo, close here with pointer |
 | `needs-spec-change` | "Bug" is actually missing functionality or a design decision | Flag as feature request - do NOT fix |
-| `fixable` | Real code bug with a clear fix | Spawn fix agent |
+| `fixable` | Real code bug with a clear client-side fix (the root cause genuinely lives in this repo) | Spawn fix agent |
 
 Print a summary table as you go so progress is visible.
 
-## Step 3: Close resolved bugs and flag feature requests
+## Step 3: Close resolved bugs, move wrong-repo bugs, flag feature requests
 
 ### Already-fixed / not-a-bug
 
 ```
 gh issue close <NUMBER> --repo kychee-com/run402 --comment "<one-line explanation>"
 ```
+
+### Wrong-repo (server-side root cause)
+
+Create a new issue in the private repo with the full reproduction, then close the public issue with a pointer:
+
+```
+gh issue create --repo kychee-com/run402-private --title "<original title>" --body "Moved from kychee-com/run402#<NUMBER> — root cause is server-side (<one-line why>).
+
+<original body>
+
+## Where to fix
+<one or two sentences on which server module / endpoint owns the fix, and what the corrected behavior should look like>"
+gh issue close <NUMBER> --repo kychee-com/run402 --comment "Moved to private repo for server-side fix: kychee-com/run402-private#<N>. <one-line on why the client-side workaround is not the right layer>"
+```
+
+Do NOT also ship a client-side band-aid unless the user explicitly asks for one. Move the bug and move on.
 
 ### Needs-spec-change
 
@@ -129,6 +147,7 @@ After all agents complete (or if there were no fixable bugs), present the full r
 - Total: N open GitHub issues
 - Closed (already-fixed): N
 - Closed (not-a-bug): N
+- Moved to private repo (server-side root cause): N
 - Feature requests (flagged): N
 - Fixes ready: N
 - Fix failures: N
@@ -140,6 +159,10 @@ After all agents complete (or if there were no fixable bugs), present the full r
 ### Failed Fixes (if any)
 | ID | Title | What went wrong |
 |---|---|---|
+
+### Moved to Private Repo
+| ID | Title | Destination | Why server-side |
+|---|---|---|---|
 
 ### Closed Bugs
 | ID | Title | Reason |
