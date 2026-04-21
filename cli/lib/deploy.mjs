@@ -1,7 +1,7 @@
 import { readFileSync } from "fs";
 import { dirname, resolve } from "path";
 import { Agent, fetch as undiciFetch } from "undici";
-import { API, allowanceAuthHeaders, findProject } from "./config.mjs";
+import { API, allowanceAuthHeaders, resolveProjectId } from "./config.mjs";
 import { resolveFilePathsInManifest, resolveMigrationsFile } from "./manifest.mjs";
 
 // Custom undici dispatcher with longer timeouts for large-batch deploys.
@@ -177,10 +177,12 @@ export async function run(args) {
   // --project flag overrides manifest's project_id
   if (opts.project) manifest.project_id = opts.project;
 
-  // If no project_id in manifest, use active project
+  // If no project_id in manifest, fall back to the active project.
+  // resolveProjectId() returns the active project id when its argument is
+  // falsy, and emits a clear error + exits non-zero when no active project
+  // is set either.
   if (!manifest.project_id) {
-    const { id } = findProject(null);
-    manifest.project_id = id;
+    manifest.project_id = resolveProjectId(null);
   }
 
   // Remove legacy 'name' field if present
