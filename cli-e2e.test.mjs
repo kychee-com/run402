@@ -976,6 +976,85 @@ describe("CLI e2e happy path", () => {
     assert.ok(parsed.hint, `hint should be present, got: ${parsed.hint}`);
   });
 
+  it("deploy falls back to active project when manifest omits project_id (GH-41)", async () => {
+    const { run, _setFetchImpl } = await import("./cli/lib/deploy.mjs");
+    const { setActiveProjectId } = await import("./cli/lib/config.mjs");
+    const { writeFileSync: wf } = await import("node:fs");
+
+    // Set an active project in the keystore (provision test earlier seeded prj_test123)
+    setActiveProjectId("prj_test123");
+
+    // Manifest with NO project_id field
+    const manifestPath = join(tempDir, "no-project-id-manifest.json");
+    wf(manifestPath, JSON.stringify({
+      files: [{ file: "index.html", data: "<h1>Hello</h1>" }],
+    }));
+
+    // Capture the request body so we can assert project_id was filled in
+    let sentBody = null;
+    _setFetchImpl((input, init) => {
+      const url = typeof input === "string" ? input : (input instanceof Request ? input.url : String(input));
+      const method = (init?.method || (input instanceof Request ? input.method : "GET") || "GET").toUpperCase();
+      if (url.endsWith("/deploy/v1") && method === "POST") {
+        try { sentBody = JSON.parse(init?.body); } catch { sentBody = init?.body; }
+        assert.equal(sentBody?.project_id, "prj_test123",
+          `request body project_id should be active project, got: ${sentBody?.project_id}`);
+        return Promise.resolve(new Response(JSON.stringify({
+          project_id: "prj_test123",
+          site_url: "https://test.sites.run402.com",
+        }), { status: 200, headers: { "Content-Type": "application/json" } }));
+      }
+      return Promise.reject(new Error(`unexpected url: ${url}`));
+    });
+
+    captureStart();
+    try {
+      await run(["--manifest", manifestPath]);
+    } finally {
+      captureStop();
+      _setFetchImpl(mockFetch);
+    }
+    assert.ok(sentBody, "deploy should have called /deploy/v1");
+    assert.equal(sentBody.project_id, "prj_test123", "body project_id should match active project");
+    assert.ok(captured().includes("prj_test123"), "should return project info");
+  });
+
+  it("deploy errors cleanly when no active project and no --project and no manifest.project_id (GH-41)", async () => {
+    const { run } = await import("./cli/lib/deploy.mjs");
+    const { loadKeyStore, saveKeyStore } = await import("./cli/lib/config.mjs");
+    const { writeFileSync: wf } = await import("node:fs");
+
+    // Clear the active project in the keystore
+    const store = loadKeyStore();
+    delete store.active_project_id;
+    saveKeyStore(store);
+
+    const manifestPath = join(tempDir, "no-active-no-project-manifest.json");
+    wf(manifestPath, JSON.stringify({
+      files: [{ file: "index.html", data: "<h1>Hello</h1>" }],
+    }));
+
+    let threw = null;
+    captureStart();
+    try {
+      await run(["--manifest", manifestPath]);
+    } catch (e) {
+      threw = e;
+    } finally {
+      captureStop();
+      // Restore the active project for any following tests that expect it set.
+      const { setActiveProjectId } = await import("./cli/lib/config.mjs");
+      setActiveProjectId("prj_test123");
+    }
+    const out = captured();
+    assert.ok(threw && /process\.exit\(1\)/.test(threw.message),
+      `should exit non-zero, got: ${threw && threw.message}`);
+    assert.ok(!/Project null not found/.test(out),
+      `must not leak 'Project null not found', got: ${out}`);
+    assert.ok(/no project specified|no active project/i.test(out),
+      `should surface a clear no-active-project error, got: ${out}`);
+  });
+
   // ── Functions ───────────────────────────────────────────────────────────
 
   it("functions deploy", async () => {
