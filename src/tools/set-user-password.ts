@@ -24,7 +24,10 @@ export async function handleSetUserPassword(args: {
 
   const res = await apiRequest(`/auth/v1/user/password`, {
     method: "PUT",
-    headers: { Authorization: `Bearer ${args.access_token}` },
+    headers: {
+      apikey: project.anon_key,
+      Authorization: `Bearer ${args.access_token}`,
+    },
     body,
   });
 

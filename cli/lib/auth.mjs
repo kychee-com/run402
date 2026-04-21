@@ -47,7 +47,11 @@ async function magicLink(args) {
 
   const res = await fetch(`${API}/auth/v1/magic-link`, {
     method: "POST",
-    headers: { "Authorization": `Bearer ${p.anon_key}`, "Content-Type": "application/json" },
+    headers: {
+      "apikey": p.anon_key,
+      "Authorization": `Bearer ${p.anon_key}`,
+      "Content-Type": "application/json",
+    },
     body: JSON.stringify({ email, redirect_url: redirect }),
   });
   const data = await res.json();
@@ -67,7 +71,11 @@ async function verify(args) {
 
   const res = await fetch(`${API}/auth/v1/token?grant_type=magic_link`, {
     method: "POST",
-    headers: { "Authorization": `Bearer ${p.anon_key}`, "Content-Type": "application/json" },
+    headers: {
+      "apikey": p.anon_key,
+      "Authorization": `Bearer ${p.anon_key}`,
+      "Content-Type": "application/json",
+    },
     body: JSON.stringify({ token }),
   });
   const data = await res.json();
@@ -111,7 +119,11 @@ async function settings(args) {
 
   const res = await fetch(`${API}/auth/v1/settings`, {
     method: "PATCH",
-    headers: { "Authorization": `Bearer ${p.service_key}`, "Content-Type": "application/json" },
+    headers: {
+      "apikey": p.anon_key,
+      "Authorization": `Bearer ${p.service_key}`,
+      "Content-Type": "application/json",
+    },
     body: JSON.stringify({ allow_password_set: allowPasswordSet === "true" }),
   });
   const data = await res.json();
@@ -127,7 +139,10 @@ async function providers(args) {
   const p = findProject(projectId);
 
   const res = await fetch(`${API}/auth/v1/providers`, {
-    headers: { "Authorization": `Bearer ${p.anon_key}` },
+    headers: {
+      "apikey": p.anon_key,
+      "Authorization": `Bearer ${p.anon_key}`,
+    },
   });
   const data = await res.json();
   if (!res.ok) {

@@ -19,7 +19,10 @@ export async function handleRequestMagicLink(args: {
 
   const res = await apiRequest(`/auth/v1/magic-link`, {
     method: "POST",
-    headers: { Authorization: `Bearer ${project.anon_key}` },
+    headers: {
+      apikey: project.anon_key,
+      Authorization: `Bearer ${project.anon_key}`,
+    },
     body: {
       email: args.email,
       redirect_url: args.redirect_url,
