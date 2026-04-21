@@ -17,7 +17,10 @@ export async function handleAuthSettings(args: {
 
   const res = await apiRequest(`/auth/v1/settings`, {
     method: "PATCH",
-    headers: { Authorization: `Bearer ${project.service_key}` },
+    headers: {
+      apikey: project.anon_key,
+      Authorization: `Bearer ${project.service_key}`,
+    },
     body: {
       allow_password_set: args.allow_password_set,
     },
