@@ -851,6 +851,72 @@ describe("CLI e2e happy path", () => {
     assert.ok(captured().includes("prj_test123"), "should deploy with resolved paths");
   });
 
+  it("deploy errors when manifest.project_id conflicts with --project (GH-42)", async () => {
+    const { run, _setFetchImpl } = await import("./cli/lib/deploy.mjs");
+    const { writeFileSync: wf } = await import("node:fs");
+    const manifestPath = join(tempDir, "conflict-manifest.json");
+    wf(manifestPath, JSON.stringify({
+      project_id: "prj_manifest",
+      files: [{ file: "index.html", data: "<h1>Hello</h1>" }],
+    }));
+    // Swap in a fetch that tracks whether /deploy/v1 was called. The fix
+    // should make deploy error out BEFORE issuing any POST to the deploy
+    // endpoint, preventing accidental cross-project deploys.
+    let deployCalled = false;
+    _setFetchImpl((input, init) => {
+      const url = typeof input === "string" ? input : (input instanceof Request ? input.url : String(input));
+      const method = (init?.method || (input instanceof Request ? input.method : "GET") || "GET").toUpperCase();
+      if (url.endsWith("/deploy/v1") && method === "POST") {
+        deployCalled = true;
+        return Promise.resolve(new Response(JSON.stringify({ project_id: "should-not-be-reached" }), {
+          status: 200, headers: { "Content-Type": "application/json" },
+        }));
+      }
+      return Promise.reject(new Error(`unexpected url: ${url}`));
+    });
+    let threw = null;
+    captureStart();
+    try {
+      await run(["--manifest", manifestPath, "--project", "prj_flag"]);
+    } catch (e) {
+      threw = e;
+    } finally {
+      captureStop();
+      _setFetchImpl(mockFetch);
+    }
+    // Must exit non-zero.
+    assert.ok(threw && /process\.exit\(1\)/.test(threw.message), `should exit non-zero, got: ${threw && threw.message}`);
+    // Must NOT have issued a deploy POST — silently deploying to the wrong
+    // project is exactly the bug we're fixing.
+    assert.equal(deployCalled, false, "must not POST to /deploy/v1 on project_id conflict");
+    const out = capturedStderr();
+    const line = out.split("\n").map(s => s.trim()).find(s => s.startsWith("{") && s.endsWith("}"));
+    assert.ok(line, `should emit a JSON error line on stderr, got: ${out}`);
+    const parsed = JSON.parse(line);
+    assert.equal(parsed.status, "error");
+    // Both project IDs must be mentioned somewhere in the payload so agents
+    // can see what conflicted.
+    const blob = JSON.stringify(parsed);
+    assert.ok(blob.includes("prj_manifest"), `error payload must mention manifest project_id, got: ${blob}`);
+    assert.ok(blob.includes("prj_flag"), `error payload must mention --project flag value, got: ${blob}`);
+    // Must include actionable hint.
+    assert.ok(typeof parsed.hint === "string" && parsed.hint.length > 0, `error must include a hint, got: ${blob}`);
+  });
+
+  it("deploy accepts --project matching manifest.project_id (GH-42)", async () => {
+    const { run } = await import("./cli/lib/deploy.mjs");
+    const { writeFileSync: wf } = await import("node:fs");
+    const manifestPath = join(tempDir, "match-manifest.json");
+    wf(manifestPath, JSON.stringify({
+      project_id: "prj_test123",
+      files: [{ file: "index.html", data: "<h1>Hello</h1>" }],
+    }));
+    captureStart();
+    await run(["--manifest", manifestPath, "--project", "prj_test123"]);
+    captureStop();
+    assert.ok(captured().includes("prj_test123"), "should deploy when manifest and flag agree");
+  });
+
   // ── Functions ───────────────────────────────────────────────────────────
 
   it("functions deploy", async () => {
