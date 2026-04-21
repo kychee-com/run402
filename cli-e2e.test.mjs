@@ -23,6 +23,8 @@ const originalLog = console.log;
 const originalError = console.error;
 const originalExit = process.exit;
 let output = [];
+let stdoutLines = [];
+let stderrLines = [];
 
 // Known test project returned by provision/deploy
 const TEST_PROJECT = {
@@ -371,8 +373,18 @@ function mockFetch(input, init) {
 
 function captureStart() {
   output = [];
-  console.log = (...args) => output.push(args.map(a => typeof a === "string" ? a : JSON.stringify(a)).join(" "));
-  console.error = (...args) => output.push(args.map(a => typeof a === "string" ? a : JSON.stringify(a)).join(" "));
+  stdoutLines = [];
+  stderrLines = [];
+  console.log = (...args) => {
+    const line = args.map(a => typeof a === "string" ? a : JSON.stringify(a)).join(" ");
+    output.push(line);
+    stdoutLines.push(line);
+  };
+  console.error = (...args) => {
+    const line = args.map(a => typeof a === "string" ? a : JSON.stringify(a)).join(" ");
+    output.push(line);
+    stderrLines.push(line);
+  };
 }
 
 function captureStop() {
@@ -382,6 +394,14 @@ function captureStop() {
 
 function captured() {
   return output.join("\n");
+}
+
+function capturedStdout() {
+  return stdoutLines.join("\n");
+}
+
+function capturedStderr() {
+  return stderrLines.join("\n");
 }
 
 // ─── Setup & teardown ────────────────────────────────────────────────────────
@@ -1111,9 +1131,42 @@ describe("CLI e2e happy path", () => {
     assert.ok(out.includes("Allowance"), "should show allowance");
     assert.ok(out.includes("Balance") || out.includes("USDC"), "should show balance");
     assert.ok(out.includes("Tier") || out.includes("prototype"), "should show tier");
+    // GH-32: the Projects line must say "saved", not the misleading "active"
+    assert.ok(/Projects\s+\d+\s+saved/.test(out), `should say "N saved" not "N active", got: ${out}`);
+    assert.ok(!/Projects\s+\d+\s+active/.test(out), `must not use the misleading "N active" wording, got: ${out}`);
   });
 
-  it("status", async () => {
+  it("init --json emits JSON on stdout and human lines on stderr (GH-32)", async () => {
+    const { run } = await import("./cli/lib/init.mjs");
+    captureStart();
+    await run(["--json"]);
+    captureStop();
+    const stdout = capturedStdout();
+    const stderr = capturedStderr();
+    // stdout must be a single JSON object; no human-readable padded lines.
+    assert.ok(stdout.trim().length > 0, "stdout must not be empty");
+    assert.ok(!/Config\s{2,}/.test(stdout), `stdout must not contain human lines, got: ${stdout}`);
+    let parsed;
+    try {
+      parsed = JSON.parse(stdout);
+    } catch (e) {
+      assert.fail(`stdout must be parseable JSON, got: ${stdout}`);
+    }
+    assert.ok(typeof parsed === "object" && parsed !== null, "stdout must be a JSON object");
+    assert.ok(typeof parsed.config_dir === "string", "should include config_dir");
+    assert.ok(typeof parsed.allowance === "object" && parsed.allowance?.address, "should include allowance.address");
+    assert.ok(parsed.rail === "x402" || parsed.rail === "mpp", `should include rail, got: ${parsed.rail}`);
+    assert.ok(typeof parsed.network === "string", "should include network");
+    assert.ok(Object.prototype.hasOwnProperty.call(parsed, "balance"), "should include balance field");
+    assert.ok(Object.prototype.hasOwnProperty.call(parsed, "tier"), "should include tier field");
+    assert.equal(typeof parsed.projects_saved, "number", "should include projects_saved (number)");
+    assert.ok(typeof parsed.next_step === "string", "should include next_step");
+    // Human-readable lines should still be emitted somewhere so agent can log them,
+    // but they must go to stderr in JSON mode.
+    assert.ok(stderr.includes("Config"), `stderr should contain human lines, got: ${stderr}`);
+  });
+
+  it("status has billing, wallet_balance_usd_micros, and project_id fields (GH-32)", async () => {
     const { run } = await import("./cli/lib/status.mjs");
     captureStart();
     await run();
@@ -1123,6 +1176,23 @@ describe("CLI e2e happy path", () => {
     assert.ok(data.allowance, "should include allowance");
     assert.ok(data.allowance.address, "should include allowance address");
     assert.ok(Array.isArray(data.projects), "should include projects array");
+    // GH-32 sub-issue 2: rename balance → billing, add wallet_balance_usd_micros
+    assert.ok(!Object.prototype.hasOwnProperty.call(data, "balance"),
+      `status should not expose ambiguous "balance" field; got: ${JSON.stringify(data)}`);
+    assert.ok(Object.prototype.hasOwnProperty.call(data, "billing"),
+      `status should expose "billing" field; got: ${JSON.stringify(data)}`);
+    assert.ok(Object.prototype.hasOwnProperty.call(data, "wallet_balance_usd_micros"),
+      `status should expose "wallet_balance_usd_micros"; got: ${JSON.stringify(data)}`);
+    const wb = data.wallet_balance_usd_micros;
+    assert.ok(wb === null || typeof wb === "number",
+      `wallet_balance_usd_micros must be number or null; got: ${JSON.stringify(wb)}`);
+    // GH-32 sub-issue 4: projects entries must use project_id
+    for (const p of data.projects) {
+      assert.ok(typeof p.project_id === "string" && p.project_id.length > 0,
+        `each project should have a project_id; got: ${JSON.stringify(p)}`);
+      assert.ok(!Object.prototype.hasOwnProperty.call(p, "id"),
+        `status projects[*] should not use "id" field; got: ${JSON.stringify(p)}`);
+    }
   });
 
   it("service status", async () => {

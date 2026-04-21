@@ -12,6 +12,8 @@ const HELP = `run402 init — Set up allowance, funding, and check tier status
 Usage:
   run402 init          Set up with x402 (Base Sepolia) — default
   run402 init mpp      Set up with MPP (Tempo Moderato)
+  run402 init --json   Same as init, but emit a JSON summary on stdout
+                       (human lines go to stderr — for agent automation)
 
 Steps (idempotent — safe to re-run):
   1. Creates config directory (~/.config/run402)
@@ -25,12 +27,28 @@ Run this once to get started, or again to check your setup.
 `;
 
 function short(addr) { return addr.slice(0, 6) + "..." + addr.slice(-4); }
-function line(label, value) { console.log(`  ${label.padEnd(10)} ${value}`); }
 
 export async function run(args = []) {
   if (args.includes("--help") || args.includes("-h")) { console.log(HELP); process.exit(0); }
+  const jsonMode = args.includes("--json");
   const isMpp = args[0] === "mpp";
-  console.log();
+
+  // In --json mode, human-readable lines go to stderr so stdout stays clean for
+  // agents. We also collect structured data for the final JSON emit.
+  const write = jsonMode ? (s) => console.error(s) : (s) => console.log(s);
+  const line = (label, value) => write(`  ${label.padEnd(10)} ${value}`);
+  const summary = {
+    config_dir: CONFIG_DIR,
+    allowance: null,
+    rail: null,
+    network: null,
+    balance: null,
+    tier: null,
+    projects_saved: 0,
+    next_step: null,
+  };
+
+  write("");
 
   // 1. Config directory
   mkdirSync(CONFIG_DIR, { recursive: true });
@@ -57,6 +75,10 @@ export async function run(args = []) {
     }
     line("Allowance", short(allowance.address));
   }
+
+  summary.allowance = { address: allowance.address, funded: allowance.funded || false };
+  summary.network = isMpp ? "tempo-moderato" : "base-sepolia";
+  summary.rail = isMpp ? "mpp" : "x402";
 
   line("Network", isMpp ? "Tempo Moderato (testnet)" : "Base Sepolia (testnet)");
   line("Rail", isMpp ? "mpp" : "x402");
@@ -110,6 +132,7 @@ export async function run(args = []) {
     } else {
       line("Balance", `${(balance / 1e6).toFixed(2)} pathUSD`);
     }
+    summary.balance = { symbol: "pathUSD", usd_micros: balance };
   } else {
     // Base Sepolia: read USDC balance (existing behavior)
     const { createPublicClient, http } = await import("viem");
@@ -152,6 +175,7 @@ export async function run(args = []) {
     } else {
       line("Balance", `${(balance / 1e6).toFixed(2)} USDC`);
     }
+    summary.balance = { symbol: "USDC", usd_micros: balance };
   }
 
   // Show note if switching rails
@@ -176,19 +200,32 @@ export async function run(args = []) {
   if (tierInfo && tierInfo.tier && tierInfo.active) {
     const expiry = tierInfo.lease_expires_at ? tierInfo.lease_expires_at.split("T")[0] : "unknown";
     line("Tier", `${tierInfo.tier} (expires ${expiry})`);
+    summary.tier = { name: tierInfo.tier, expires: tierInfo.lease_expires_at || null };
   } else {
     line("Tier", "(none)");
+    summary.tier = null;
   }
 
-  // 5. Projects
-  line("Projects", `${Object.keys(store.projects).length} active`);
+  // 5. Projects — count locally saved project entries. Note: "saved" (not
+  // "active") — these are all projects in the keystore, regardless of whether
+  // the server considers them active.
+  summary.projects_saved = Object.keys(store.projects).length;
+  line("Projects", `${summary.projects_saved} saved`);
 
   // 6. Next step
-  console.log();
+  write("");
+  const nextStep = (!tierInfo || !tierInfo.tier || !tierInfo.active)
+    ? "run402 tier set prototype"
+    : "run402 deploy --manifest app.json";
   if (!tierInfo || !tierInfo.tier || !tierInfo.active) {
-    console.log("  Next: run402 tier set prototype");
+    write("  Next: run402 tier set prototype");
   } else {
-    console.log("  Ready to deploy. Run: run402 deploy --manifest app.json");
+    write("  Ready to deploy. Run: run402 deploy --manifest app.json");
   }
-  console.log();
+  write("");
+  summary.next_step = nextStep;
+
+  if (jsonMode) {
+    console.log(JSON.stringify(summary, null, 2));
+  }
 }
