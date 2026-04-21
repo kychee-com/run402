@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { apiRequest } from "../client.js";
-import { formatApiError } from "../errors.js";
-import { requireAllowanceAuth } from "../allowance-auth.js";
+import { getProject } from "../keystore.js";
+import { formatApiError, projectNotFound } from "../errors.js";
 
 export const pinProjectSchema = {
   project_id: z.string().describe("The project ID to pin"),
@@ -10,12 +10,14 @@ export const pinProjectSchema = {
 export async function handlePinProject(
   args: { project_id: string },
 ): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
-  const auth = requireAllowanceAuth(`/projects/v1/admin/${args.project_id}/pin`);
-  if ("error" in auth) return auth.error;
+  const project = getProject(args.project_id);
+  if (!project) return projectNotFound(args.project_id);
 
   const res = await apiRequest(`/projects/v1/admin/${args.project_id}/pin`, {
     method: "POST",
-    headers: { ...auth.headers },
+    headers: {
+      Authorization: `Bearer ${project.service_key}`,
+    },
   });
 
   if (!res.ok) return formatApiError(res, "pinning project");

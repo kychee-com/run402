@@ -179,20 +179,13 @@ async function use(projectId) {
 
 async function pin(projectId) {
   if (!projectId) { console.error(JSON.stringify({ status: "error", message: "Usage: run402 projects pin <project_id>" })); process.exit(1); }
-  const authHeaders = allowanceAuthHeaders(`/projects/v1/admin/${projectId}/pin`);
+  const p = findProject(projectId);
   const res = await fetch(`${API}/projects/v1/admin/${projectId}/pin`, {
     method: "POST",
-    headers: { ...authHeaders },
+    headers: { "Authorization": `Bearer ${p.service_key}` },
   });
   const data = await res.json();
-  if (!res.ok) {
-    if (res.status === 403 && data.admin_required) {
-      console.error(JSON.stringify({ status: "error", message: "This command requires admin access." }));
-    } else {
-      console.error(JSON.stringify({ status: "error", http: res.status, ...data }));
-    }
-    process.exit(1);
-  }
+  if (!res.ok) { console.error(JSON.stringify({ status: "error", http: res.status, ...data })); process.exit(1); }
   console.log(JSON.stringify(data, null, 2));
 }
 
