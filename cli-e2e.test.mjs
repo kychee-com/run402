@@ -851,6 +851,126 @@ describe("CLI e2e happy path", () => {
     assert.ok(captured().includes("prj_test123"), "should deploy with resolved paths");
   });
 
+  it("deploy with missing files[].path returns structured JSON error (GH-44)", async () => {
+    const { run } = await import("./cli/lib/deploy.mjs");
+    const { writeFileSync: wf } = await import("node:fs");
+    const manifestPath = join(tempDir, "gh44-missing-file-manifest.json");
+    const missingName = "definitely-missing-file.html";
+    wf(manifestPath, JSON.stringify({
+      functions: [{
+        name: "partial-file-good-fn",
+        code: "export default async () => new Response('ok')",
+      }],
+      files: [
+        { file: "index.html", path: `./${missingName}` },
+      ],
+    }));
+    let threw = null;
+    captureStart();
+    try {
+      await run(["--manifest", manifestPath, "--project", "prj_test123"]);
+    } catch (e) {
+      threw = e;
+    } finally {
+      captureStop();
+    }
+    // Must exit non-zero.
+    assert.ok(threw && /process\.exit\(1\)/.test(threw.message),
+      `should exit non-zero, got: ${threw && threw.message}`);
+    // Must NOT leak a raw Node stack trace.
+    const stderr = capturedStderr();
+    assert.ok(!/node:fs:\d+/.test(stderr),
+      `must not leak raw node:fs stack, got: ${stderr}`);
+    assert.ok(!/\bat readFileSync\b/.test(stderr),
+      `must not leak raw readFileSync stack frame, got: ${stderr}`);
+    assert.ok(!/\bat resolveFilePathsInManifest\b/.test(stderr),
+      `must not leak internal resolve fn stack frame, got: ${stderr}`);
+    // Must emit a single JSON line on stderr with structured fields.
+    const line = stderr.split("\n").map(s => s.trim()).find(s => s.startsWith("{") && s.endsWith("}"));
+    assert.ok(line, `should emit a JSON error line on stderr, got: ${stderr}`);
+    const parsed = JSON.parse(line);
+    assert.equal(parsed.status, "error");
+    assert.ok(parsed.message && parsed.message.includes(missingName),
+      `message should mention missing filename, got: ${parsed.message}`);
+    assert.equal(parsed.field, "files[0].path",
+      `field should identify the offending manifest field, got: ${parsed.field}`);
+    assert.ok(parsed.path && parsed.path.endsWith(missingName),
+      `path should be the absolute missing path, got: ${parsed.path}`);
+    assert.ok(parsed.hint && /relative to the manifest/i.test(parsed.hint),
+      `hint should explain relative-path resolution, got: ${parsed.hint}`);
+    // No raw `stack` field should be leaked.
+    assert.equal(parsed.stack, undefined, "must not leak a stack field");
+    // stdout should stay empty (errors go to stderr, not stdout).
+    assert.equal(capturedStdout().trim(), "",
+      `stdout should stay empty on error, got: ${capturedStdout()}`);
+  });
+
+  it("deploy with missing migrations_file returns structured JSON error (GH-44)", async () => {
+    const { run } = await import("./cli/lib/deploy.mjs");
+    const { writeFileSync: wf } = await import("node:fs");
+    const manifestPath = join(tempDir, "gh44-missing-migrations-manifest.json");
+    const missingName = "does-not-exist.sql";
+    wf(manifestPath, JSON.stringify({
+      migrations_file: `./${missingName}`,
+    }));
+    let threw = null;
+    captureStart();
+    try {
+      await run(["--manifest", manifestPath, "--project", "prj_test123"]);
+    } catch (e) {
+      threw = e;
+    } finally {
+      captureStop();
+    }
+    assert.ok(threw && /process\.exit\(1\)/.test(threw.message),
+      `should exit non-zero, got: ${threw && threw.message}`);
+    const stderr = capturedStderr();
+    assert.ok(!/node:fs:\d+/.test(stderr),
+      `must not leak raw node:fs stack, got: ${stderr}`);
+    const line = stderr.split("\n").map(s => s.trim()).find(s => s.startsWith("{") && s.endsWith("}"));
+    assert.ok(line, `should emit a JSON error line on stderr, got: ${stderr}`);
+    const parsed = JSON.parse(line);
+    assert.equal(parsed.status, "error");
+    assert.ok(parsed.message && parsed.message.includes(missingName),
+      `message should mention missing SQL filename, got: ${parsed.message}`);
+    assert.equal(parsed.field, "migrations_file",
+      `field should be migrations_file, got: ${parsed.field}`);
+    assert.ok(parsed.path && parsed.path.endsWith(missingName),
+      `path should be the absolute missing path, got: ${parsed.path}`);
+    assert.ok(parsed.hint && /relative to the manifest/i.test(parsed.hint),
+      `hint should explain relative-path resolution, got: ${parsed.hint}`);
+  });
+
+  it("deploy with missing --manifest path returns structured JSON error (GH-44)", async () => {
+    const { run } = await import("./cli/lib/deploy.mjs");
+    const missingPath = join(tempDir, "definitely-not-a-real-manifest.json");
+    let threw = null;
+    captureStart();
+    try {
+      await run(["--manifest", missingPath, "--project", "prj_test123"]);
+    } catch (e) {
+      threw = e;
+    } finally {
+      captureStop();
+    }
+    assert.ok(threw && /process\.exit\(1\)/.test(threw.message),
+      `should exit non-zero, got: ${threw && threw.message}`);
+    const stderr = capturedStderr();
+    assert.ok(!/node:fs:\d+/.test(stderr),
+      `must not leak raw node:fs stack, got: ${stderr}`);
+    assert.ok(!/\bat readFileSync\b/.test(stderr),
+      `must not leak raw readFileSync stack frame, got: ${stderr}`);
+    const line = stderr.split("\n").map(s => s.trim()).find(s => s.startsWith("{") && s.endsWith("}"));
+    assert.ok(line, `should emit a JSON error line on stderr, got: ${stderr}`);
+    const parsed = JSON.parse(line);
+    assert.equal(parsed.status, "error");
+    assert.equal(parsed.field, "manifest",
+      `field should be manifest, got: ${parsed.field}`);
+    assert.ok(parsed.path && parsed.path.endsWith("definitely-not-a-real-manifest.json"),
+      `path should be the absolute missing manifest path, got: ${parsed.path}`);
+    assert.ok(parsed.hint, `hint should be present, got: ${parsed.hint}`);
+  });
+
   // ── Functions ───────────────────────────────────────────────────────────
 
   it("functions deploy", async () => {

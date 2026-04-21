@@ -11,6 +11,12 @@ const TEXT_EXTS = new Set([
  * read the SQL from that file path and set `migrations` to its contents.
  * `migrations_file` is resolved relative to `baseDir`.
  *
+ * On read failure, re-throws the underlying fs error with additional context
+ * attached:
+ *   err.field = "migrations_file"
+ *   err.absPath = <absolute path that was attempted>
+ * (the original Error.code / Error.message / Error.path are preserved).
+ *
  * @param {object} manifest  Parsed manifest JSON (mutated in place)
  * @param {string} baseDir   Directory to resolve relative paths from
  * @returns {object}         The same manifest object
@@ -18,7 +24,13 @@ const TEXT_EXTS = new Set([
 export function resolveMigrationsFile(manifest, baseDir) {
   if (!manifest.migrations_file) return manifest;
   const abs = resolve(baseDir, manifest.migrations_file);
-  manifest.migrations = readFileSync(abs, "utf-8");
+  try {
+    manifest.migrations = readFileSync(abs, "utf-8");
+  } catch (err) {
+    err.field = "migrations_file";
+    err.absPath = abs;
+    throw err;
+  }
   delete manifest.migrations_file;
   return manifest;
 }
@@ -31,6 +43,12 @@ export function resolveMigrationsFile(manifest, baseDir) {
  *
  * Entries with `data` already set are left untouched.
  *
+ * On read failure, re-throws the underlying fs error with additional context
+ * attached:
+ *   err.field = `files[<i>].path`
+ *   err.absPath = <absolute path that was attempted>
+ * (the original Error.code / Error.message / Error.path are preserved).
+ *
  * @param {object} manifest  Parsed manifest JSON (mutated in place)
  * @param {string} baseDir   Directory to resolve relative paths from
  * @returns {object}         The same manifest object
@@ -38,18 +56,25 @@ export function resolveMigrationsFile(manifest, baseDir) {
 export function resolveFilePathsInManifest(manifest, baseDir) {
   if (!Array.isArray(manifest.files)) return manifest;
 
-  for (const entry of manifest.files) {
+  for (let i = 0; i < manifest.files.length; i++) {
+    const entry = manifest.files[i];
     if (!entry.path || entry.data !== undefined) continue;
 
     const abs = resolve(baseDir, entry.path);
     const ext = extname(abs).toLowerCase();
     const isText = TEXT_EXTS.has(ext);
 
-    if (isText) {
-      entry.data = readFileSync(abs, "utf-8");
-    } else {
-      entry.data = readFileSync(abs).toString("base64");
-      entry.encoding = "base64";
+    try {
+      if (isText) {
+        entry.data = readFileSync(abs, "utf-8");
+      } else {
+        entry.data = readFileSync(abs).toString("base64");
+        entry.encoding = "base64";
+      }
+    } catch (err) {
+      err.field = `files[${i}].path`;
+      err.absPath = abs;
+      throw err;
     }
 
     // If no explicit file (deploy target name), use the path value

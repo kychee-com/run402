@@ -158,6 +158,91 @@ async function readStdin() {
   return Buffer.concat(chunks).toString("utf-8");
 }
 
+/**
+ * Load + parse the manifest from --manifest file or stdin, and resolve any
+ * referenced files[].path / migrations_file against the manifest's directory.
+ *
+ * Returns { manifest } on success, or { error } with a structured error object
+ * on any fs / parse failure. Never throws.
+ *
+ * The returned error shape (GH-44):
+ *   { status: "error", message, field, path?, hint? }
+ * where `field` is one of: "manifest", "stdin", "migrations_file", "files[<i>].path".
+ */
+async function loadManifest(opts) {
+  let raw;
+  let baseDir = null;
+
+  // Step 1: read the manifest source.
+  if (opts.manifest) {
+    const manifestAbs = resolve(opts.manifest);
+    baseDir = dirname(manifestAbs);
+    try {
+      raw = readFileSync(opts.manifest, "utf-8");
+    } catch (err) {
+      if (err && err.code === "ENOENT") {
+        return { error: {
+          status: "error",
+          message: `File not found: ${manifestAbs}`,
+          field: "manifest",
+          path: manifestAbs,
+          hint: "Check that --manifest points to an existing JSON file.",
+        } };
+      }
+      return { error: {
+        status: "error",
+        message: err && err.message ? err.message : String(err),
+        field: "manifest",
+        path: manifestAbs,
+        ...(err && err.code ? { code: err.code } : {}),
+      } };
+    }
+  } else {
+    raw = await readStdin();
+  }
+
+  // Step 2: parse JSON.
+  let manifest;
+  try {
+    manifest = JSON.parse(raw);
+  } catch (err) {
+    return { error: {
+      status: "error",
+      message: `Manifest is not valid JSON: ${err.message}`,
+      field: opts.manifest ? "manifest" : "stdin",
+      ...(opts.manifest ? { path: resolve(opts.manifest) } : {}),
+    } };
+  }
+
+  // Step 3: resolve file paths (only when reading from a manifest file — we
+  // can't resolve relative paths without a baseDir).
+  if (opts.manifest) {
+    try {
+      resolveMigrationsFile(manifest, baseDir);
+      resolveFilePathsInManifest(manifest, baseDir);
+    } catch (err) {
+      if (err && err.code === "ENOENT") {
+        return { error: {
+          status: "error",
+          message: `File not found: ${err.absPath || err.path || "<unknown>"}`,
+          field: err.field || "manifest",
+          ...(err.absPath || err.path ? { path: err.absPath || err.path } : {}),
+          hint: `Paths in manifest.${err.field || "files[].path"} are resolved relative to the manifest file's directory (${baseDir}).`,
+        } };
+      }
+      return { error: {
+        status: "error",
+        message: err && err.message ? err.message : String(err),
+        ...(err && err.field ? { field: err.field } : {}),
+        ...(err && (err.absPath || err.path) ? { path: err.absPath || err.path } : {}),
+        ...(err && err.code ? { code: err.code } : {}),
+      } };
+    }
+  }
+
+  return { manifest };
+}
+
 export async function run(args) {
   const opts = { manifest: null, project: null };
   for (let i = 0; i < args.length; i++) {
@@ -166,13 +251,16 @@ export async function run(args) {
     if (args[i] === "--project" && args[i + 1]) opts.project = args[++i];
   }
 
-  const raw = opts.manifest ? readFileSync(opts.manifest, "utf-8") : await readStdin();
-  const manifest = JSON.parse(raw);
-  if (opts.manifest) {
-    const baseDir = dirname(resolve(opts.manifest));
-    resolveMigrationsFile(manifest, baseDir);
-    resolveFilePathsInManifest(manifest, baseDir);
+  // Load + parse the manifest. Errors here (missing --manifest path, malformed
+  // JSON, or any referenced files[].path / migrations_file that doesn't exist)
+  // must be surfaced as structured JSON on stderr — never as a raw Node stack
+  // trace (GH-44). The CLI is agent-first; stack traces break JSON consumers.
+  const manifestResult = await loadManifest(opts);
+  if (manifestResult.error) {
+    console.error(JSON.stringify(manifestResult.error));
+    process.exit(1);
   }
+  const manifest = manifestResult.manifest;
 
   // --project flag overrides manifest's project_id
   if (opts.project) manifest.project_id = opts.project;
