@@ -23,12 +23,12 @@ For each new commit in run402, classify it:
 | **Changed API endpoint** | Maybe — if request/response schema changed |
 | **Infra/CDK/deploy** | No |
 | **Lambda runtime/layer** | No (but docs may need updating if getUser/db API changed) |
-| **Docs (llms.txt, llms-cli.txt)** | Check — if it documents new CLI flags, the public SKILL.md may need updating |
+| **Docs (site/llms.txt)** | Check — if it documents new API behavior, the public `SKILL.md` / `cli/llms-cli.txt` may need updating (both now live in this public repo; private-site sync pulls them automatically at deploy time) |
 | **OpenSpec artifacts** | No |
 | **Tests** | No |
 | **CORS/auth/middleware** | No (server-side only) |
 
-Focus on commits that touch `packages/gateway/src/routes/`, `packages/gateway/src/services/`, or `site/llms*.txt`.
+Focus on commits that touch `packages/gateway/src/routes/`, `packages/gateway/src/services/`, or `site/llms.txt`. (`site/llms-cli.txt` and `site/SKILL.md` in the private repo are build artifacts — the canonical copies live in this public repo under `cli/llms-cli.txt` and `SKILL.md`.)
 
 ## Step 4: Deep-dive impactful changes
 

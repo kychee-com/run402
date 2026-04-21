@@ -36,7 +36,13 @@ Stage all three files and commit: `git add package.json cli/package.json package
 2. Create a git tag: `git tag v<new_version> && git push --tags`
 3. Create a GitHub release from the tag. Write a human-readable summary of the actual changes (features, fixes, improvements) — don't just list commit hashes or rely on `--generate-notes`. Use `gh release create v<new_version> --notes "..."` with a clear description.
 4. **Close linked GitHub issues.** If any commit in the release references a GitHub issue (e.g. `Fixes #20`, `Closes #42`), verify the issue is closed. If not, close it with `gh issue close <number> --reason completed`.
-5. **Update `llms-cli.txt` in the run402 repo.** The CLI documentation lives in a separate repo at `~/Developer/run402-private/site/llms-cli.txt`. If any CLI commands, manifest fields, or user-facing behavior changed since the last release, update that file to match, then commit and push the run402 repo.
+5. **Update `cli/llms-cli.txt` (in this repo).** This is the CLI reference served at `https://run402.com/llms-cli.txt`. If any CLI commands, manifest fields, or user-facing behavior changed since the last release, update `cli/llms-cli.txt` to match, then commit and push. Same applies to `SKILL.md` (MCP server skill) if tool signatures changed. The private `run402-private` repo pulls both files from here at site-deploy time — do **not** edit the copies under `run402-private/site/`.
+
+   After the docs commit lands on `main`, trigger a private-repo site redeploy so the fresh docs go live immediately:
+   ```
+   gh workflow run deploy-site.yml -R kychee-com/run402-private
+   ```
+   (Or `gh api repos/kychee-com/run402-private/dispatches -f event_type=public-docs-updated` if you want the trigger to show up in the audit log as a `repository_dispatch`.)
 6. **Install the new version locally** so `run402` on the command line uses the just-published version:
    ```
    npm install -g run402@<new_version>
