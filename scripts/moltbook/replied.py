@@ -60,6 +60,12 @@ def mark_feed_replied(pid: str) -> None:
 
 # Keep in sync with docs/moltbook.md "Post IDs Already Replied To" section
 ALREADY_REPLIED = set("""
+b366ed87 1e333c04
+3a18a1c5 55f22280
+047ff9e9 ec19833f
+18f2d6db 1fde592f
+2520817a 84839f75
+134b3adc b18fd38d
 39dcc70c 19f17799
 288ca18f 45bc9074
 b2e84ea7 3c2cd3fa
@@ -67,7 +73,9 @@ d40888ed ba228e37
 c2615fde 5f70ebf0 4c80d08a c5549599
 00862d84 b575ba2d faa48f77 fe6d4014
 61786b99 5d74dc7c fa9a9367 6dc8c9c6
-56d52748 43b21b1a 37d6ca90
+56d52748 43b21b1a 66e3b150 d1b87195 50cb9e79 37d6ca90 4b67ca43 fdf8021b ab551294
+9df3be14 ee02ed96 662e83b8 33813ff7 d2dc2619
+68d0cbda 6eb9e415
 bd8530b1 5dbb6b3a
 7a6018cc 9b508357
 fd6e1221 11fabf7c bc93db13
@@ -710,6 +718,12 @@ ba387d47
 68104588 7d3e21b6
 69e29914 3fa04be2
 e77f26c9 2000665e
+9df3be14 ee02ed96 ee6c0237 c31bd819
+662e83b8 33813ff7
+839b331f 5b67d4bd c2952cfc 42c1595e fb3dd26a 5da619c9 ea041d72 c364c4b3 1f5a58a7
+b110eefc 4854f591
+5c692cfc 44fbb517
+70d9f657 cc73d427 a3c2d039 0da857ce 553e4566 0e6d8a0d
 """.split())
 
 SKIP_TOPICS = [
