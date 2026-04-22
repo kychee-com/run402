@@ -358,34 +358,39 @@ create_mailbox(project_id: "prj_...", slug: "my-app")
 
 ### send_email
 
-Send an email from the project's mailbox. Two modes: template or raw HTML. Single recipient only.
+Send an email from the project's mailbox. Two modes: template or raw HTML. Raw HTML mode requires BOTH `subject` AND `html`. Single recipient only.
 
 **Parameters:**
 - `project_id` (required) — Project ID
 - `to` (required) — Recipient email address
 - `template` (optional) — Template name: `project_invite`, `magic_link`, or `notification` (template mode)
 - `variables` (optional) — Template variables object (template mode). `project_invite`: `project_name`, `invite_url`. `magic_link`: `project_name`, `link_url`, `expires_in`. `notification`: `project_name`, `message` (max 500 chars).
-- `subject` (optional) — Email subject line (raw HTML mode, max 998 chars)
-- `html` (optional) — HTML email body (raw HTML mode, max 1MB)
+- `subject` (optional) — Email subject line (raw HTML mode, max 998 chars; required with `html`)
+- `html` (optional) — HTML email body (raw HTML mode, max 1MB; required with `subject`)
 - `text` (optional) — Plain text fallback (raw HTML mode, auto-generated from HTML if omitted)
 - `from_name` (optional) — Display name for From header, e.g. "My App" (max 78 chars, both modes)
+- `in_reply_to` (optional) — ID of a prior message to thread this one under. The server uses it to set RFC-822 `In-Reply-To` / `References` headers. Typically set via reply flows.
 
 **Examples:**
 ```
 send_email(project_id: "prj_...", template: "project_invite", to: "user@example.com", variables: {"project_name": "My App", "invite_url": "https://..."})
 send_email(project_id: "prj_...", to: "user@example.com", subject: "Welcome!", html: "<h1>Hello</h1>", from_name: "My App")
+send_email(project_id: "prj_...", to: "user@example.com", subject: "Re: invoice #42", html: "<p>Paid.</p>", in_reply_to: "msg_abc123")
 ```
 
 ### list_emails
 
-List sent emails from the project's mailbox.
+List messages in the project's mailbox (sent + received). Paginated.
 
 **Parameters:**
 - `project_id` (required) — Project ID
+- `limit` (optional) — Max messages to return. Server caps at 200.
+- `after` (optional) — Pagination cursor (message ID from the prior page).
 
 **Example:**
 ```
 list_emails(project_id: "prj_...")
+list_emails(project_id: "prj_...", limit: 50, after: "msg_abc123")
 ```
 
 ### get_email
@@ -411,6 +416,20 @@ Get the project's mailbox info (ID, address, slug). Use to check if a mailbox ex
 **Example:**
 ```
 get_mailbox(project_id: "prj_...")
+```
+
+### delete_mailbox
+
+Delete the project's mailbox. **Destructive and irreversible** — drops all messages and webhook subscriptions. Requires `confirm=true`. If `mailbox_id` is omitted, resolves the project's mailbox automatically.
+
+**Parameters:**
+- `project_id` (required): The project ID
+- `confirm` (required): Must be `true`. Explicit acknowledgment of the destructive action.
+- `mailbox_id` (optional): Mailbox ID (`mbx_...`) to delete; defaults to the project's mailbox.
+
+**Example:**
+```
+delete_mailbox(project_id: "prj_...", confirm: true)
 ```
 
 ### request_magic_link

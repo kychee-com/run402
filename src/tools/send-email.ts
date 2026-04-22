@@ -20,6 +20,12 @@ export const sendEmailSchema = {
   html: z.string().optional().describe("HTML email body (raw HTML mode, max 1MB)"),
   text: z.string().optional().describe("Plain text fallback (raw HTML mode, auto-generated from HTML if omitted)"),
   from_name: z.string().optional().describe("Display name for From header, e.g. \"My App\" (max 78 chars)"),
+  in_reply_to: z
+    .string()
+    .optional()
+    .describe(
+      "ID of a prior message (typically inbound) to thread this one under. The server uses it to set RFC-822 In-Reply-To and References headers. Usually set via reply flows; leave empty for new threads.",
+    ),
 };
 
 async function resolveMailboxId(
@@ -74,15 +80,31 @@ export async function handleSendEmail(args: {
   html?: string;
   text?: string;
   from_name?: string;
+  in_reply_to?: string;
 }): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
   const project = getProject(args.project_id);
   if (!project) return projectNotFound(args.project_id);
 
-  const isRaw = !!(args.subject || args.html);
+  const hasSubject = !!args.subject;
+  const hasHtml = !!args.html;
+  const isRaw = hasSubject || hasHtml;
   const isTemplate = !!(args.template);
   if (!isRaw && !isTemplate) {
     return {
-      content: [{ type: "text", text: "Error: Provide either `template` + `variables` (template mode) or `subject` + `html` (raw HTML mode)." }],
+      content: [{ type: "text", text: "Error: Provide either `template` + `variables` (template mode) or both `subject` AND `html` (raw HTML mode)." }],
+      isError: true,
+    };
+  }
+  if (isRaw && isTemplate) {
+    return {
+      content: [{ type: "text", text: "Error: Provide `template` OR raw mode (`subject` + `html`), not both." }],
+      isError: true,
+    };
+  }
+  if (isRaw && !(hasSubject && hasHtml)) {
+    const missing = hasSubject ? "html" : "subject";
+    return {
+      content: [{ type: "text", text: `Error: Raw mode requires both \`subject\` and \`html\` (missing \`${missing}\`).` }],
       isError: true,
     };
   }
@@ -100,6 +122,7 @@ export async function handleSendEmail(args: {
     if (args.text) body.text = args.text;
   }
   if (args.from_name) body.from_name = args.from_name;
+  if (args.in_reply_to) body.in_reply_to = args.in_reply_to;
 
   const res = await apiRequest(`/mailboxes/v1/${mailbox.id}/messages`, {
     method: "POST",

@@ -2233,4 +2233,221 @@ describe("CLI e2e happy path", () => {
     assert.equal(fetchCalled, false, "-h must not make any fetch/API call");
     assert.ok(/^run402 projects/.test(capturedStdout()), "stdout should include help banner");
   });
+
+  // ── Email feature additions (GH-87) ─────────────────────────────────────
+  // Covers: send validation (subject+html required together), --vars JSON,
+  // list pagination, info alias, delete, reply. Each test stubs fetch inline
+  // so it doesn't depend on the main happy-path mock having email routes.
+  //
+  // Earlier tests in the happy-path suite may have deleted the active
+  // project from the keystore (via projects:delete). Re-seed TEST_PROJECT
+  // and set it active before each email test so they're order-independent.
+  async function seedTestProject() {
+    const { saveProject, setActiveProjectId } = await import("./cli/lib/config.mjs");
+    saveProject(TEST_PROJECT.project_id, {
+      anon_key: TEST_PROJECT.anon_key,
+      service_key: TEST_PROJECT.service_key,
+    });
+    setActiveProjectId(TEST_PROJECT.project_id);
+  }
+
+  /**
+   * Build an isolated fetch mock for email tests. Optional `overrides` is a
+   * map keyed by "METHOD path" that returns a Response (or null to fall
+   * through). Captured requests are pushed to `calls`.
+   */
+  function buildEmailFetch(calls, overrides = {}) {
+    const MAILBOX_ID = "mbx_test_1";
+    const MAILBOX_ADDRESS = "test@mail.run402.com";
+    return (input, init) => {
+      const url = typeof input === "string" ? input : (input instanceof Request ? input.url : String(input));
+      const method = (init?.method || (input instanceof Request ? input.method : "GET") || "GET").toUpperCase();
+      let body = null;
+      if (init?.body && typeof init.body === "string") {
+        try { body = JSON.parse(init.body); } catch { body = init.body; }
+      }
+      let path = url;
+      if (url.startsWith(API)) path = url.slice(API.length);
+      const pathNoQuery = path.split("?")[0];
+      const query = path.includes("?") ? new URLSearchParams(path.split("?")[1]) : new URLSearchParams();
+      calls.push({ method, path, pathNoQuery, query: Object.fromEntries(query), body, headers: init?.headers || {} });
+
+      const key = `${method} ${pathNoQuery}`;
+      if (key in overrides) {
+        const v = overrides[key];
+        if (typeof v === "function") return Promise.resolve(v({ method, path, pathNoQuery, query, body }));
+        if (v) return Promise.resolve(v);
+      }
+
+      // Defaults
+      if (method === "GET" && pathNoQuery === "/mailboxes/v1") {
+        return Promise.resolve(json({ mailboxes: [{ mailbox_id: MAILBOX_ID, address: MAILBOX_ADDRESS, slug: "test" }] }));
+      }
+      if (method === "DELETE" && pathNoQuery === `/mailboxes/v1/${MAILBOX_ID}`) {
+        return Promise.resolve(noContent());
+      }
+      if (method === "POST" && pathNoQuery === `/mailboxes/v1/${MAILBOX_ID}/messages`) {
+        return Promise.resolve(json({ id: "msg_sent_1", to: body?.to, template: body?.template || null, subject: body?.subject || null, status: "sent" }));
+      }
+      if (method === "GET" && pathNoQuery === `/mailboxes/v1/${MAILBOX_ID}/messages`) {
+        return Promise.resolve(json({ messages: [], next_cursor: null }));
+      }
+      if (method === "GET" && /^\/mailboxes\/v1\/[^/]+\/messages\/[^/]+$/.test(pathNoQuery)) {
+        const msgId = pathNoQuery.split("/").pop();
+        return Promise.resolve(json({ id: msgId, from: "sender@example.com", subject: "original", html: "<p>hi</p>" }));
+      }
+
+      originalError(`[EMAIL-MOCK] Unhandled: ${method} ${pathNoQuery}`);
+      return Promise.resolve(new Response("Not Found", { status: 404 }));
+    };
+  }
+
+  it("email send raw mode requires both --subject and --html (GH-87)", async () => {
+    await seedTestProject();
+    const { run } = await import("./cli/lib/email.mjs");
+    const calls = [];
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = buildEmailFetch(calls);
+    let threw = null;
+    captureStart();
+    try {
+      await run("send", ["--to", "user@example.com", "--subject", "Hi"]);
+    } catch (e) { threw = e; } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+    assert.equal(threw?.message, "process.exit(1)", "should exit non-zero on missing --html");
+    assert.ok(/Raw mode requires both/.test(capturedStderr()), `stderr should mention the validation rule, got: ${capturedStderr()}`);
+    assert.equal(calls.filter(c => c.method === "POST" && c.pathNoQuery.endsWith("/messages")).length, 0, "must not attempt to send");
+  });
+
+  it("email send --vars JSON populates template variables (GH-87)", async () => {
+    await seedTestProject();
+    const { run } = await import("./cli/lib/email.mjs");
+    const calls = [];
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = buildEmailFetch(calls);
+    let threw = null;
+    captureStart();
+    try {
+      await run("send", [
+        "--to", "user@example.com",
+        "--template", "notification",
+        "--vars", '{"project_name":"MyApp","message":"Hello"}',
+      ]);
+    } catch (e) { threw = e; } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+    assert.equal(threw, null, `should succeed, got: ${threw?.message || "(no throw)"} / ${capturedStderr()}`);
+    const send = calls.find(c => c.method === "POST" && c.pathNoQuery.endsWith("/messages"));
+    assert.ok(send, "must POST to messages");
+    assert.equal(send.body.template, "notification");
+    assert.deepEqual(send.body.variables, { project_name: "MyApp", message: "Hello" });
+  });
+
+  it("email list passes --limit and --after as query params (GH-87)", async () => {
+    await seedTestProject();
+    const { run } = await import("./cli/lib/email.mjs");
+    const calls = [];
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = buildEmailFetch(calls);
+    let threw = null;
+    captureStart();
+    try {
+      await run("list", ["--limit", "50", "--after", "msg_abc123"]);
+    } catch (e) { threw = e; } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+    assert.equal(threw, null, `should succeed, got: ${threw?.message || ""} / ${capturedStderr()}`);
+    const listCall = calls.find(c => c.method === "GET" && c.pathNoQuery.endsWith("/messages"));
+    assert.ok(listCall, "must GET messages");
+    assert.equal(listCall.query.limit, "50");
+    assert.equal(listCall.query.after, "msg_abc123");
+  });
+
+  it("email info is an alias for status (GH-87)", async () => {
+    await seedTestProject();
+    const { run } = await import("./cli/lib/email.mjs");
+    const calls = [];
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = buildEmailFetch(calls);
+    let threw = null;
+    captureStart();
+    try {
+      await run("info", []);
+    } catch (e) { threw = e; } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+    assert.equal(threw, null, `should succeed, got: ${threw?.message || ""} / ${capturedStderr()}`);
+    const stdout = capturedStdout();
+    assert.ok(stdout.includes("mbx_test_1"), `stdout should include mailbox_id, got: ${stdout}`);
+    assert.ok(stdout.includes("test@mail.run402.com"), `stdout should include address, got: ${stdout}`);
+  });
+
+  it("email delete without --confirm refuses to mutate (GH-87)", async () => {
+    await seedTestProject();
+    const { run } = await import("./cli/lib/email.mjs");
+    const calls = [];
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = buildEmailFetch(calls);
+    let threw = null;
+    captureStart();
+    try {
+      await run("delete", []);
+    } catch (e) { threw = e; } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+    assert.equal(threw?.message, "process.exit(1)", "should exit non-zero");
+    assert.equal(calls.filter(c => c.method === "DELETE").length, 0, "must not issue any DELETE");
+    assert.ok(/Destructive/.test(capturedStderr()), `stderr should explain the guard, got: ${capturedStderr()}`);
+  });
+
+  it("email delete --confirm issues DELETE and clears cached mailbox (GH-87)", async () => {
+    await seedTestProject();
+    const { run } = await import("./cli/lib/email.mjs");
+    const calls = [];
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = buildEmailFetch(calls);
+    let threw = null;
+    captureStart();
+    try {
+      await run("delete", ["--confirm"]);
+    } catch (e) { threw = e; } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+    assert.equal(threw, null, `should succeed, got: ${threw?.message || ""} / ${capturedStderr()}`);
+    const del = calls.find(c => c.method === "DELETE" && c.pathNoQuery.startsWith("/mailboxes/v1/"));
+    assert.ok(del, "must issue DELETE /mailboxes/v1/<id>");
+    assert.ok(/"deleted":\s*true/.test(capturedStdout()), `stdout should confirm deletion, got: ${capturedStdout()}`);
+  });
+
+  it("email reply fetches original and sends with in_reply_to (GH-87)", async () => {
+    await seedTestProject();
+    const { run } = await import("./cli/lib/email.mjs");
+    const calls = [];
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = buildEmailFetch(calls);
+    let threw = null;
+    captureStart();
+    try {
+      await run("reply", ["msg_abc123", "--html", "<p>Thanks!</p>"]);
+    } catch (e) { threw = e; } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+    assert.equal(threw, null, `should succeed, got: ${threw?.message || ""} / ${capturedStderr()}`);
+    const getCall = calls.find(c => c.method === "GET" && /\/messages\/msg_abc123$/.test(c.pathNoQuery));
+    assert.ok(getCall, "must GET the original message first");
+    const send = calls.find(c => c.method === "POST" && c.pathNoQuery.endsWith("/messages"));
+    assert.ok(send, "must POST a new message");
+    assert.equal(send.body.to, "sender@example.com", "should address the reply to original sender");
+    assert.equal(send.body.subject, "Re: original", "should prefix subject with Re:");
+    assert.equal(send.body.in_reply_to, "msg_abc123", "must forward in_reply_to for server threading");
+    assert.equal(send.body.html, "<p>Thanks!</p>");
+  });
 });

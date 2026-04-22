@@ -81,6 +81,7 @@ import { listEmailsSchema, handleListEmails } from "./tools/list-emails.js";
 import { getEmailSchema, handleGetEmail } from "./tools/get-email.js";
 import { getEmailRawSchema, handleGetEmailRaw } from "./tools/get-email-raw.js";
 import { getMailboxSchema, handleGetMailbox } from "./tools/get-mailbox.js";
+import { deleteMailboxSchema, handleDeleteMailbox } from "./tools/delete-mailbox.js";
 
 // New tools — mailbox webhooks
 import { listMailboxWebhooksSchema, handleListMailboxWebhooks } from "./tools/list-mailbox-webhooks.js";
@@ -574,6 +575,13 @@ server.tool(
   "Get the project's mailbox info (ID, address, slug). Use to check if a mailbox exists.",
   getMailboxSchema,
   async (args) => handleGetMailbox(args),
+);
+
+server.tool(
+  "delete_mailbox",
+  "Delete the project's mailbox (irreversible — drops all messages and webhook subscriptions). Requires confirm=true. If mailbox_id is omitted, resolves the project's mailbox.",
+  deleteMailboxSchema,
+  async (args) => handleDeleteMailbox(args),
 );
 
 server.tool(

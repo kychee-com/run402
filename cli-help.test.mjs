@@ -82,8 +82,8 @@ const MATRIX = {
   ai: { shared: ["moderate", "usage"], specific: ["translate"] },
   image: { shared: ["generate"], specific: [] },
   email: {
-    shared: ["create", "status", "list", "get"],
-    specific: ["send", "get-raw"],
+    shared: ["create", "get"],
+    specific: ["info", "status", "send", "list", "get-raw", "reply", "delete"],
   },
   message: { shared: ["send"], specific: [] },
   auth: {

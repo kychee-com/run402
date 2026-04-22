@@ -7,12 +7,18 @@ Usage:
 
 Subcommands:
   create <slug> [--project <id>]     Create a mailbox (<slug>@mail.run402.com)
-  status [--project <id>]            Show mailbox info (ID, address, slug)
+  info   [--project <id>]            Show mailbox info (ID, address, slug)
+  status [--project <id>]            Alias for 'info' (prefer 'info')
   send   --to <email> [mode flags]   Send an email (template or raw HTML)
-  list   [--project <id>]            List sent emails
+  list   [--limit <n>] [--after <cursor>] [--project <id>]
+                                      List sent/received messages (paginated)
   get    <message_id> [--project <id>]  Get a message with replies
   get-raw <message_id> [--project <id>] [--output <file>]
-                                         Fetch raw RFC-822 bytes (inbound only)
+                                      Fetch raw RFC-822 bytes (inbound only)
+  reply  <message_id> --html "..." [--text "..."] [--subject "..."] [--from-name "..."] [--project <id>]
+                                      Reply to an inbound message (threads via In-Reply-To)
+  delete [<mailbox_id>] --confirm [--project <id>]
+                                      Delete the project's mailbox (irreversible)
   webhooks <action> [args...]        Manage webhooks (see below)
 
 Webhook subcommands:
@@ -25,8 +31,8 @@ Webhook subcommands:
                                                   Register a new webhook
 
 Send modes:
-  Template:  --template <name> --var key=value [--var ...]
-  Raw HTML:  --subject "..." --html "..." [--text "..."]
+  Template:  --template <name> --var key=value [--var ...]  OR --vars '{"k":"v",...}'
+  Raw HTML:  --subject "..." --html "..." [--text "..."]    (both --subject and --html required)
   Both modes support: --from-name "Display Name" --project <id>
 
 Templates:
@@ -38,13 +44,19 @@ Examples:
   run402 email create my-app
   run402 email send --template project_invite --to user@example.com \\
     --var project_name="My App" --var invite_url="https://example.com/invite/abc"
+  run402 email send --template project_invite --to user@example.com \\
+    --vars '{"project_name":"My App","invite_url":"https://example.com/invite/abc"}'
   run402 email send --to user@example.com --subject "Welcome!" \\
     --html "<h1>Hello</h1><p>Welcome aboard.</p>" --from-name "My App"
   run402 email send --template notification --to admin@example.com \\
     --var project_name="My App" --var message="Deploy complete"
-  run402 email list
+  run402 email list --limit 50
+  run402 email list --limit 50 --after msg_abc123
+  run402 email info
   run402 email get msg_abc123
   run402 email get-raw msg_abc123 --output reply.eml
+  run402 email reply msg_abc123 --html "<p>Thanks!</p>"
+  run402 email delete --confirm
   run402 email webhooks list
   run402 email webhooks register --url https://example.com/hook --events delivery,bounced
 
@@ -61,6 +73,7 @@ const SUB_HELP = {
 
 Usage:
   run402 email send --to <email> --template <name> --var key=value [--var ...]
+  run402 email send --to <email> --template <name> --vars '{"k":"v",...}'
   run402 email send --to <email> --subject "..." --html "..." [--text "..."]
 
 Options:
@@ -69,24 +82,105 @@ Options:
                       notification
   --var key=value     Template variable (repeatable; required keys vary by
                       template)
-  --subject "..."     Subject line (raw HTML mode)
-  --html "..."        HTML body (raw HTML mode)
+  --vars '<json>'     All template variables as a single JSON object
+                      (alternative to multiple --var). Later --var overrides.
+  --subject "..."     Subject line (raw HTML mode; required with --html)
+  --html "..."        HTML body (raw HTML mode; required with --subject)
   --text "..."        Plain-text body (raw HTML mode; optional)
   --from-name "..."   Display name for the From header
   --project <id>      Project ID (defaults to the active project)
 
 Templates:
-  project_invite      --var project_name=... --var invite_url=...
-  magic_link          --var project_name=... --var link_url=... --var expires_in=...
-  notification        --var project_name=... --var message=... (max 500 chars)
+  project_invite      project_name, invite_url
+  magic_link          project_name, link_url, expires_in
+  notification        project_name, message (max 500 chars)
 
 Examples:
   run402 email send --template project_invite --to user@example.com \\
     --var project_name="My App" --var invite_url="https://example.com/invite/abc"
+  run402 email send --template project_invite --to user@example.com \\
+    --vars '{"project_name":"My App","invite_url":"https://example.com/invite/abc"}'
   run402 email send --to user@example.com --subject "Welcome!" \\
     --html "<h1>Hello</h1><p>Welcome aboard.</p>" --from-name "My App"
-  run402 email send --template notification --to admin@example.com \\
-    --var project_name="My App" --var message="Deploy complete"
+`,
+  list: `run402 email list — List messages in the mailbox
+
+Usage:
+  run402 email list [--limit <n>] [--after <cursor>] [--project <id>]
+
+Options:
+  --limit <n>         Max messages to return (server caps at 200)
+  --after <cursor>    Pagination cursor (message id from prior page)
+  --project <id>      Project ID (defaults to the active project)
+
+Examples:
+  run402 email list
+  run402 email list --limit 50
+  run402 email list --limit 50 --after msg_abc123
+`,
+  reply: `run402 email reply — Reply to an inbound message (threaded via In-Reply-To)
+
+Usage:
+  run402 email reply <message_id> --html "..." [--text "..."] [options]
+
+Arguments:
+  <message_id>        Inbound message ID to reply to
+
+Options:
+  --html "..."        HTML reply body (required unless --text is given)
+  --text "..."        Plain-text reply body (required unless --html is given)
+  --subject "..."     Override the reply subject (default: "Re: <original>")
+  --from-name "..."   Display name for the From header
+  --project <id>      Project ID (defaults to the active project)
+
+Notes:
+  The CLI fetches the original message to derive the reply-to address and
+  subject, then POSTs a new message with in_reply_to = <message_id> so the
+  server can wire the RFC-822 In-Reply-To / References headers.
+
+Examples:
+  run402 email reply msg_abc123 --html "<p>Thanks, here's the info you asked for.</p>"
+  run402 email reply msg_abc123 --subject "Re: invoice #42" --text "Paid, thanks."
+`,
+  delete: `run402 email delete — Delete the project's mailbox (irreversible)
+
+Usage:
+  run402 email delete [<mailbox_id>] --confirm [--project <id>]
+
+Arguments:
+  <mailbox_id>        Mailbox ID to delete (defaults to the project's mailbox)
+
+Options:
+  --confirm           Required: explicit confirmation flag
+  --project <id>      Project ID (defaults to the active project)
+
+Notes:
+  Destructive. Drops all messages and webhook subscriptions. Cached
+  mailbox_id in the local keystore is cleared on success.
+
+Examples:
+  run402 email delete --confirm
+  run402 email delete mbx_abc123 --confirm
+`,
+  info: `run402 email info — Show mailbox info (ID, address, slug)
+
+Usage:
+  run402 email info [--project <id>]
+
+Options:
+  --project <id>      Project ID (defaults to the active project)
+
+Notes:
+  Same output as 'run402 email status' (kept as an alias for backward
+  compatibility). 'info' is the preferred name.
+`,
+  status: `run402 email status — Alias for 'run402 email info' (prefer 'info')
+
+Usage:
+  run402 email status [--project <id>]
+
+See 'run402 email info --help' for details. 'status' is kept for backward
+compatibility; new code should use 'info'.
 `,
   "get-raw": `run402 email get-raw — Fetch raw RFC-822 bytes for an inbound message
 
@@ -117,6 +211,23 @@ function parseFlag(args, flag) {
 
 function parseVars(args) {
   const vars = {};
+  // Apply --vars '<json>' first so later --var can override on key collision.
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === "--vars" && args[i + 1]) {
+      const raw = args[++i];
+      let parsed;
+      try { parsed = JSON.parse(raw); } catch {
+        console.error(JSON.stringify({ status: "error", message: "Invalid JSON for --vars. Expected a JSON object, e.g. '{\"key\":\"value\"}'" }));
+        process.exit(1);
+      }
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+        console.error(JSON.stringify({ status: "error", message: "--vars must be a JSON object, e.g. '{\"key\":\"value\"}'" }));
+        process.exit(1);
+      }
+      for (const [k, v] of Object.entries(parsed)) vars[k] = typeof v === "string" ? v : String(v);
+    }
+  }
+  // Then --var key=value (later wins).
   for (let i = 0; i < args.length; i++) {
     if (args[i] === "--var" && args[i + 1]) {
       const raw = args[++i];
@@ -231,10 +342,21 @@ async function send(args) {
     process.exit(1);
   }
 
-  const isRaw = !!(subject || html);
+  const hasSubject = !!subject;
+  const hasHtml = !!html;
+  const isRaw = hasSubject || hasHtml;
   const isTemplate = !!template;
   if (!isRaw && !isTemplate) {
-    console.error(JSON.stringify({ status: "error", message: "Provide --template (template mode) or --subject + --html (raw HTML mode)" }));
+    console.error(JSON.stringify({ status: "error", message: "Provide --template (template mode) or both --subject and --html (raw HTML mode)" }));
+    process.exit(1);
+  }
+  if (isRaw && isTemplate) {
+    console.error(JSON.stringify({ status: "error", message: "Provide --template OR raw mode (--subject + --html), not both" }));
+    process.exit(1);
+  }
+  if (isRaw && !(hasSubject && hasHtml)) {
+    const missing = hasSubject ? "--html" : "--subject";
+    console.error(JSON.stringify({ status: "error", message: `Raw mode requires both --subject and --html (missing ${missing})` }));
     process.exit(1);
   }
 
@@ -268,9 +390,16 @@ async function send(args) {
 async function list(args) {
   const projectId = resolveProjectId(parseFlag(args, "--project"));
   const p = findProject(projectId);
+  const limit = parseFlag(args, "--limit");
+  const after = parseFlag(args, "--after");
   const mailboxId = await requireMailboxId(projectId, p.service_key);
 
-  const res = await fetch(`${API}/mailboxes/v1/${mailboxId}/messages`, {
+  const qs = new URLSearchParams();
+  if (limit) qs.set("limit", limit);
+  if (after) qs.set("after", after);
+  const url = `${API}/mailboxes/v1/${mailboxId}/messages${qs.toString() ? "?" + qs.toString() : ""}`;
+
+  const res = await fetch(url, {
     headers: { "Authorization": `Bearer ${p.service_key}` },
   });
   const data = await res.json();
@@ -352,6 +481,121 @@ async function getRaw(args) {
   }
 }
 
+async function reply(args) {
+  let messageId = null;
+  let projectOpt = null;
+  let outputFile = null;
+  void outputFile;
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i];
+    if (a === "--project" && args[i + 1]) { projectOpt = args[++i]; }
+    else if (a === "--html" || a === "--text" || a === "--subject" || a === "--from-name") { i++; }
+    else if (!a.startsWith("--") && !messageId) { messageId = a; }
+  }
+  const html = parseFlag(args, "--html");
+  const text = parseFlag(args, "--text");
+  const subjectOverride = parseFlag(args, "--subject");
+  const fromName = parseFlag(args, "--from-name");
+  const projectId = resolveProjectId(projectOpt);
+  const p = findProject(projectId);
+
+  if (!messageId) {
+    console.error(JSON.stringify({ status: "error", message: "Missing message_id. Usage: run402 email reply <message_id> --html \"...\"" }));
+    process.exit(1);
+  }
+  if (!html && !text) {
+    console.error(JSON.stringify({ status: "error", message: "Provide --html and/or --text for the reply body" }));
+    process.exit(1);
+  }
+
+  const mailboxId = await requireMailboxId(projectId, p.service_key);
+
+  const getRes = await fetch(`${API}/mailboxes/v1/${mailboxId}/messages/${messageId}`, {
+    headers: { "Authorization": `Bearer ${p.service_key}` },
+  });
+  const original = await getRes.json().catch(() => ({}));
+  if (!getRes.ok) {
+    console.error(JSON.stringify({ status: "error", http: getRes.status, message: "Failed to fetch original message", ...original }));
+    process.exit(1);
+  }
+
+  const replyTo = original.from || original.from_address || original.sender || null;
+  if (!replyTo) {
+    console.error(JSON.stringify({ status: "error", message: "Original message has no from address to reply to", original_keys: Object.keys(original) }));
+    process.exit(1);
+  }
+  const origSubject = typeof original.subject === "string" ? original.subject : "";
+  const defaultSubject = origSubject && origSubject.toLowerCase().startsWith("re:")
+    ? origSubject
+    : `Re: ${origSubject || "(no subject)"}`;
+  const replySubject = subjectOverride || defaultSubject;
+
+  const body = { to: replyTo, subject: replySubject, in_reply_to: messageId };
+  if (html) body.html = html;
+  if (text) body.text = text;
+  if (fromName) body.from_name = fromName;
+
+  const res = await fetch(`${API}/mailboxes/v1/${mailboxId}/messages`, {
+    method: "POST",
+    headers: { "Authorization": `Bearer ${p.service_key}`, "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    console.error(JSON.stringify({ status: "error", http: res.status, ...data }));
+    process.exit(1);
+  }
+
+  console.log(JSON.stringify({ status: "ok", message_id: data.id, to: data.to, subject: replySubject, in_reply_to: messageId }));
+}
+
+async function deleteMailbox(args) {
+  let positional = null;
+  let projectOpt = null;
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i];
+    if (a === "--project" && args[i + 1]) { projectOpt = args[++i]; }
+    else if (a === "--confirm") { /* flag */ }
+    else if (!a.startsWith("--") && !positional) { positional = a; }
+  }
+  const projectId = resolveProjectId(projectOpt);
+  const p = findProject(projectId);
+  const confirmed = args.includes("--confirm");
+
+  if (!confirmed) {
+    console.error(JSON.stringify({
+      status: "error",
+      message: "Destructive: deleting a mailbox is irreversible (drops all messages and webhook subscriptions). Re-run with --confirm to proceed.",
+    }));
+    process.exit(1);
+  }
+
+  const mailboxId = positional || await requireMailboxId(projectId, p.service_key);
+
+  const res = await fetch(`${API}/mailboxes/v1/${mailboxId}`, {
+    method: "DELETE",
+    headers: { "Authorization": `Bearer ${p.service_key}` },
+  });
+  if (res.status !== 204 && !res.ok) {
+    let errBody;
+    try { errBody = await res.json(); } catch { errBody = {}; }
+    console.error(JSON.stringify({ status: "error", http: res.status, ...errBody }));
+    process.exit(1);
+  }
+
+  // Clear the cached mailbox_id/address from the local keystore so future
+  // email commands re-discover (or fail-fast with "no mailbox found").
+  const store = loadKeyStore();
+  const proj = store.projects[projectId];
+  if (proj) {
+    delete proj.mailbox_id;
+    delete proj.mailbox_address;
+    saveKeyStore(store);
+  }
+
+  console.log(JSON.stringify({ status: "ok", mailbox_id: mailboxId, deleted: true }));
+}
+
 async function status(args) {
   const projectId = resolveProjectId(parseFlag(args, "--project"));
   const p = findProject(projectId);
@@ -380,11 +624,14 @@ export async function run(sub, args) {
   if (Array.isArray(args) && (args.includes("--help") || args.includes("-h")) && sub !== "webhooks") { console.log(SUB_HELP[sub] || HELP); process.exit(0); }
   switch (sub) {
     case "create": await create(args); break;
+    case "info":   // fall through — 'info' is the preferred name; 'status' is a backward-compat alias
     case "status": await status(args); break;
     case "send":   await send(args); break;
     case "list":   await list(args); break;
     case "get":    await get(args); break;
     case "get-raw": await getRaw(args); break;
+    case "reply":  await reply(args); break;
+    case "delete": await deleteMailbox(args); break;
     case "webhooks": {
       const { run: runWebhooks } = await import("./webhooks.mjs");
       await runWebhooks(args[0], args.slice(1));

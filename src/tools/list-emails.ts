@@ -6,10 +6,23 @@ import { resolveMailboxId } from "./send-email.js";
 
 export const listEmailsSchema = {
   project_id: z.string().describe("The project ID"),
+  limit: z
+    .number()
+    .int()
+    .positive()
+    .max(200)
+    .optional()
+    .describe("Max messages to return (server caps at 200)"),
+  after: z
+    .string()
+    .optional()
+    .describe("Pagination cursor (message id from prior page)"),
 };
 
 export async function handleListEmails(args: {
   project_id: string;
+  limit?: number;
+  after?: string;
 }): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
   const project = getProject(args.project_id);
   if (!project) return projectNotFound(args.project_id);
@@ -17,7 +30,12 @@ export async function handleListEmails(args: {
   const mailbox = await resolveMailboxId(args.project_id, project.service_key);
   if ("error" in mailbox) return mailbox.error;
 
-  const res = await apiRequest(`/mailboxes/v1/${mailbox.id}/messages`, {
+  const qs = new URLSearchParams();
+  if (args.limit !== undefined) qs.set("limit", String(args.limit));
+  if (args.after) qs.set("after", args.after);
+  const path = `/mailboxes/v1/${mailbox.id}/messages${qs.toString() ? "?" + qs.toString() : ""}`;
+
+  const res = await apiRequest(path, {
     method: "GET",
     headers: {
       Authorization: `Bearer ${project.service_key}`,

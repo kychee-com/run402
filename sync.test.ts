@@ -218,7 +218,9 @@ const SURFACE: Capability[] = [
   { id: "list_emails",     endpoint: "GET /mailboxes/v1/:id/messages",          mcp: "list_emails",     cli: "email:list",    openclaw: "email:list" },
   { id: "get_email",       endpoint: "GET /mailboxes/v1/:id/messages/:msgId",   mcp: "get_email",       cli: "email:get",     openclaw: "email:get" },
   { id: "get_email_raw",   endpoint: "GET /mailboxes/v1/:id/messages/:msgId/raw", mcp: "get_email_raw", cli: "email:get-raw", openclaw: "email:get-raw" },
-  { id: "get_mailbox",     endpoint: "GET /mailboxes/v1",                        mcp: "get_mailbox",     cli: "email:status",  openclaw: "email:status" },
+  { id: "get_mailbox",     endpoint: "GET /mailboxes/v1",                        mcp: "get_mailbox",     cli: "email:info",    openclaw: "email:info" },
+  { id: "delete_mailbox",  endpoint: "DELETE /mailboxes/v1/:id",                 mcp: "delete_mailbox",  cli: "email:delete",  openclaw: "email:delete" },
+  { id: "reply_email",     endpoint: "POST /mailboxes/v1/:id/messages",          mcp: null,              cli: "email:reply",   openclaw: "email:reply" },
 
   // ── Mailbox webhooks ──────────────────────────────────────────────────
   { id: "register_mailbox_webhook", endpoint: "POST /mailboxes/v1/:id/webhooks",              mcp: "register_mailbox_webhook", cli: "webhooks:register", openclaw: "webhooks:register" },
@@ -322,6 +324,11 @@ const EXPECTED_OPENCLAW_COMMANDS = SURFACE
 // The scanner finds them as case statements but they just delegate to sub-modules.
 const CLI_DISPATCH_COMMANDS = ["email:webhooks"];
 
+// CLI aliases that route to the same handler as a primary command already in
+// SURFACE. Listed here so the "no untracked commands" check doesn't fail.
+// Primary name is what appears in SURFACE; the alias is kept for backward compat.
+const CLI_ALIAS_COMMANDS = ["email:status"]; // alias of email:info
+
 // ─── Tests ───────────────────────────────────────────────────────────────────
 
 describe("MCP tool inventory", () => {
@@ -360,7 +367,7 @@ describe("CLI command inventory", () => {
   });
 
   it("has no untracked commands", () => {
-    const unexpected = actual.filter(c => !EXPECTED_CLI_COMMANDS.includes(c) && !CLI_DISPATCH_COMMANDS.includes(c));
+    const unexpected = actual.filter(c => !EXPECTED_CLI_COMMANDS.includes(c) && !CLI_DISPATCH_COMMANDS.includes(c) && !CLI_ALIAS_COMMANDS.includes(c));
     assert.deepEqual(
       unexpected,
       [],
@@ -382,7 +389,7 @@ describe("OpenClaw command inventory", () => {
   });
 
   it("has no untracked commands", () => {
-    const unexpected = actual.filter(c => !EXPECTED_OPENCLAW_COMMANDS.includes(c) && !CLI_DISPATCH_COMMANDS.includes(c));
+    const unexpected = actual.filter(c => !EXPECTED_OPENCLAW_COMMANDS.includes(c) && !CLI_DISPATCH_COMMANDS.includes(c) && !CLI_ALIAS_COMMANDS.includes(c));
     assert.deepEqual(
       unexpected,
       [],
@@ -523,9 +530,10 @@ describe("llms.txt alignment", { skip: !llmsTxtAvailable && "~/Developer/run402-
       // Functions discovery (covered by list_functions per-project)
       "GET /functions/v1",
       // Mailbox endpoints not yet exposed as tools
+      // GET /mailboxes/v1 is covered by get_mailbox (discovery via list)
+      // DELETE /mailboxes/v1/:id is now covered by delete_mailbox — do NOT ignore
       "GET /mailboxes/v1",
       "GET /mailboxes/v1/:id",
-      "DELETE /mailboxes/v1/:id",
       "POST /mailboxes/v1/:id/status",
       // AI add-on management (dashboard-only, not exposed as tools)
       "POST /ai/v1/addons",
