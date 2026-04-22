@@ -267,20 +267,27 @@ Deploy a serverless function (Node 22) to a project. Functions are invoked via H
 
 **DB access inside functions:**
 ```typescript
-import { db, email, getUser } from 'run402-functions';
+import { db, adminDb, email, getUser } from 'run402-functions';
 ```
 
-**TypeScript types**: `npm install run402-functions` — gives full autocomplete for `db.from()`, `getUser()`, `email.send()`, `ai.translate()`. Works in any Node.js/TypeScript project. Both `'run402-functions'` and legacy `'@run402/functions'` work in deployed functions.
+The SDK exposes two distinct DB clients:
 
-**db.sql(query, params?)** — raw SQL, returns `{ status, schema, rows, rowCount }`.
+- **`db(req).from(table)`** — caller-context client. Forwards the incoming request's `Authorization` header to PostgREST; RLS policies evaluate against the caller's role. Routes to `/rest/v1/*`. Use this by default.
+- **`adminDb().from(table)`** — BYPASSRLS client. Uses the project's `service_key`. Routes to `/admin/v1/rest/*` (the gateway rejects `role=service_role` on `/rest/v1/*`, so bypass traffic lives on its own surface). Use only when the function acts on behalf of the platform, not the caller — audit logs, webhook handlers, cron cleanup, platform-authored writes.
+
+**TypeScript types**: `npm install run402-functions` — gives full autocomplete for `db(req)`, `adminDb()`, `getUser()`, `email.send()`, `ai.translate()`. For static site generation, use `adminDb().from()` at build time with `RUN402_SERVICE_KEY` + `RUN402_PROJECT_ID` in your `.env`. Both `'run402-functions'` and legacy `'@run402/functions'` work in deployed functions.
+
+**adminDb().sql(query, params?)** — raw SQL, always BYPASSRLS. Returns `{ status, schema, rows, rowCount }`.
 - SELECT: `rows` = matching rows, `rowCount` = row count
 - INSERT/UPDATE/DELETE: `rows` = `[]`, `rowCount` = affected rows
-- Parameterized: `db.sql('SELECT * FROM t WHERE id = $1', [42])`
+- Parameterized: `adminDb().sql('SELECT * FROM t WHERE id = $1', [42])`
 
-**db.from(table)** — PostgREST-style queries (service_role, bypasses RLS). Returns a plain array of row objects.
+**Fluent query surface** (same on both `db(req).from(t)` and `adminDb().from(t)`):
 Chainable read methods: `.select(cols?)`, `.eq(col, val)`, `.neq()`, `.gt()`, `.lt()`, `.gte()`, `.lte()`, `.like()`, `.ilike()`, `.in(col, [vals])`, `.order(col, { ascending? })`, `.limit(n)`, `.offset(n)`
 Chainable write methods: `.insert(obj | obj[])`, `.update(obj)`, `.delete()` — all return array of affected rows.
 Column narrowing: `.insert({...}).select('col1, col2')` returns only specified columns.
+
+**Legacy `db.from(...)` / `db.sql(...)`** (without the `(req)` call) remains as a deprecation shim that routes through `adminDb()` and warns once per cold start. Will be removed in the next release — port to `db(req)` or `adminDb()`.
 
 **email.send(opts)** — send email from the project's mailbox. Auto-discovers the mailbox on first call (project must have a mailbox created via `create_mailbox`).
 - Template mode: `await email.send({ to: "user@example.com", template: "notification", variables: { project_name: "My App", message: "Hello!" } })`
