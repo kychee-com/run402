@@ -112,16 +112,23 @@ export async function run(args = []) {
         });
         const data = await res.json();
         if (data.result) {
-          // Tempo faucet is instant — re-read balance once
-          try {
-            const raw = await client.readContract({ address: PATH_USD, abi: USDC_ABI, functionName: "balanceOf", args: [allowance.address] });
-            balance = Number(raw);
-          } catch {}
+          // Tempo faucet is "instant" on-chain, but the client RPC read can be
+          // racy relative to faucet settlement — poll up to 30s (GH-81), mirroring
+          // the x402 path below.
+          for (let i = 0; i < 30; i++) {
+            await new Promise(r => setTimeout(r, 1000));
+            try {
+              const raw = await client.readContract({ address: PATH_USD, abi: USDC_ABI, functionName: "balanceOf", args: [allowance.address] });
+              balance = Number(raw);
+              if (balance > 0) break;
+            } catch {}
+          }
           saveAllowance({ ...allowance, funded: true, lastFaucet: new Date().toISOString() });
+          summary.allowance.funded = true;
           if (balance > 0) {
             line("Balance", `${(balance / 1e6).toFixed(2)} pathUSD (funded)`);
           } else {
-            line("Balance", "faucet sent — checking balance...");
+            line("Balance", "faucet sent — not yet confirmed on-chain");
           }
         } else {
           line("Balance", `faucet failed: ${data.error?.message || "unknown error"}`);
@@ -131,6 +138,7 @@ export async function run(args = []) {
       }
     } else {
       line("Balance", `${(balance / 1e6).toFixed(2)} pathUSD`);
+      summary.allowance.funded = balance > 0;
     }
     summary.balance = { symbol: "pathUSD", usd_micros: balance };
   } else {
@@ -162,6 +170,7 @@ export async function run(args = []) {
           } catch {}
         }
         saveAllowance({ ...allowance, funded: true, lastFaucet: new Date().toISOString() });
+        summary.allowance.funded = true;
         if (balance > 0) {
           line("Balance", `${(balance / 1e6).toFixed(2)} USDC (funded)`);
         } else {
@@ -174,6 +183,7 @@ export async function run(args = []) {
       }
     } else {
       line("Balance", `${(balance / 1e6).toFixed(2)} USDC`);
+      summary.allowance.funded = balance > 0;
     }
     summary.balance = { symbol: "USDC", usd_micros: balance };
   }
