@@ -17,15 +17,15 @@ async function fetchAndEmit(path) {
   try {
     res = await fetch(`${API}${path}`);
   } catch (err) {
-    console.log(JSON.stringify({ error: "fetch_failed", message: err?.message || String(err) }));
-    return;
+    console.error(JSON.stringify({ status: "error", message: err?.message || String(err) }));
+    process.exit(1);
   }
   const text = await res.text();
   let body;
   try { body = JSON.parse(text); } catch { body = text; }
   if (!res.ok) {
-    console.log(JSON.stringify({ error: "non_2xx", status: res.status, body }, null, 2));
-    return;
+    console.error(JSON.stringify({ status: "error", http: res.status, body }));
+    process.exit(1);
   }
   console.log(JSON.stringify(body, null, 2));
 }

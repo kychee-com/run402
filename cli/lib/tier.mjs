@@ -29,7 +29,14 @@ async function status() {
   const res = await fetch(`${API}/tiers/v1/status`, {
     headers: { ...authHeaders },
   });
-  const data = await res.json();
+  const text = await res.text();
+  let data;
+  try {
+    data = JSON.parse(text);
+  } catch {
+    console.error(JSON.stringify({ status: "error", http: res.status, message: "Non-JSON response from server", body: text.slice(0, 500) }));
+    process.exit(1);
+  }
   if (!res.ok) { console.error(JSON.stringify({ status: "error", http: res.status, ...data })); process.exit(1); }
   console.log(JSON.stringify(data, null, 2));
 }

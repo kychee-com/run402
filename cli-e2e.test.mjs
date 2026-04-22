@@ -520,6 +520,45 @@ describe("CLI e2e happy path", () => {
     assert.ok(captured().includes("subscribe"), "should show action");
   });
 
+  it("tier status surfaces HTML gateway errors without SyntaxError (GH-83)", async () => {
+    const { run } = await import("./cli/lib/tier.mjs");
+    // Swap in a fetch that returns a 502 HTML gateway error on /tiers/v1/status.
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = (input, init) => {
+      const url = typeof input === "string" ? input : (input instanceof Request ? input.url : String(input));
+      const method = (init?.method || (input instanceof Request ? input.method : "GET") || "GET").toUpperCase();
+      if (/\/tiers\/v1\/status$/.test(url) && method === "GET") {
+        return Promise.resolve(new Response("<html>502 Bad Gateway</html>", {
+          status: 502,
+          headers: { "Content-Type": "text/html" },
+        }));
+      }
+      return prevFetch(input, init);
+    };
+    let threw = null;
+    captureStart();
+    try {
+      await run("status", []);
+    } catch (e) {
+      threw = e;
+    } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+    const out = captured();
+    // process.exit stub throws, so we expect a non-zero exit.
+    assert.ok(threw && /process\.exit\(1\)/.test(threw.message), `should exit non-zero, got: ${threw && threw.message}`);
+    // Output must NOT contain the raw SyntaxError / tokeniser complaint.
+    assert.ok(!/SyntaxError/i.test(out), `must not leak SyntaxError, got: ${out}`);
+    assert.ok(!/Unexpected token/i.test(out), `must not leak JSON parser message, got: ${out}`);
+    // Output must be a single JSON line with structured fields.
+    const line = out.split("\n").map(s => s.trim()).find(s => s.startsWith("{") && s.endsWith("}"));
+    assert.ok(line, `should emit a JSON error line, got: ${out}`);
+    const parsed = JSON.parse(line);
+    assert.equal(parsed.status, "error");
+    assert.equal(parsed.http, 502);
+  });
+
   // ── Projects ────────────────────────────────────────────────────────────
 
   it("projects quote", async () => {
@@ -1536,6 +1575,69 @@ describe("CLI e2e happy path", () => {
     const data = JSON.parse(captured());
     assert.equal(data.status, "healthy");
     assert.ok(data.checks.postgres === "ok");
+  });
+
+  it("service health exits non-zero and uses stderr on 503 (GH-85)", async () => {
+    const { run } = await import("./cli/lib/service.mjs");
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = (input, init) => {
+      const url = typeof input === "string" ? input : (input instanceof Request ? input.url : String(input));
+      const method = (init?.method || (input instanceof Request ? input.method : "GET") || "GET").toUpperCase();
+      if (/\/health$/.test(url) && method === "GET") {
+        return Promise.resolve(new Response(JSON.stringify({
+          status: "degraded",
+          checks: { postgres: "ok", postgrest: "fail", s3: "ok", cloudfront: "ok" },
+          version: "1.0.4",
+        }), { status: 503, headers: { "Content-Type": "application/json" } }));
+      }
+      return prevFetch(input, init);
+    };
+    let threw = null;
+    captureStart();
+    try {
+      await run("health", []);
+    } catch (e) {
+      threw = e;
+    } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+    assert.ok(threw && /process\.exit\(1\)/.test(threw.message),
+      `should exit non-zero, got: ${threw && threw.message}`);
+    const stderr = capturedStderr();
+    assert.ok(stderr.includes('"http":503'),
+      `stderr should include "http":503, got: ${stderr}`);
+    const stdout = capturedStdout();
+    assert.equal(stdout, "",
+      `stdout should be empty on error, got: ${stdout}`);
+    const line = stderr.split("\n").map(s => s.trim()).find(s => s.startsWith("{") && s.endsWith("}"));
+    assert.ok(line, `should emit a JSON error line on stderr, got: ${stderr}`);
+    const parsed = JSON.parse(line);
+    assert.equal(parsed.status, "error");
+    assert.equal(parsed.http, 503);
+    assert.ok(!/"error":\s*"non_2xx"/.test(stderr),
+      `must not use old 'non_2xx' envelope, got: ${stderr}`);
+  });
+
+  it("service health exits 0 on 200 and writes body to stdout (GH-85)", async () => {
+    const { run } = await import("./cli/lib/service.mjs");
+    let threw = null;
+    captureStart();
+    try {
+      await run("health", []);
+    } catch (e) {
+      threw = e;
+    } finally {
+      captureStop();
+    }
+    assert.equal(threw, null,
+      `should not throw (exit 0 expected), got: ${threw && threw.message}`);
+    const stdout = capturedStdout();
+    assert.ok(stdout.includes('"status": "healthy"'),
+      `stdout should include body on 200, got: ${stdout}`);
+    const stderr = capturedStderr();
+    assert.equal(stderr, "",
+      `stderr should be empty on 200, got: ${stderr}`);
   });
 
   it("service (no subcommand prints help and exits 0)", async () => {
