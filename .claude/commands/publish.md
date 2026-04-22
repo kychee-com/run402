@@ -2,9 +2,10 @@ Publish all three packages in this monorepo. Run each step in order, stopping on
 
 ## Pre-publish checks
 
-1. Make sure the working tree is clean (`git status`). If there are uncommitted changes, stop and tell the user.
-2. Run the full test suite: `npm test`. If any test fails, stop and tell the user.
-3. Run the build: `npm run build`. If it fails, stop and tell the user.
+1. **Verify you are on `main` and in sync with `origin/main`.** Run `git rev-parse --abbrev-ref HEAD` — if the output is not `main`, **STOP IMMEDIATELY**. Do not run tests, do not run the build, do not bump the version. Tell the user: "You're on branch `<branch>`, not `main`. Releases must be cut from `main` so the tag matches the published commit and the private-repo docs deploy picks it up. Merge the branch first, then re-run `/publish`." Do not offer to switch branches or merge for them — just stop. Then run `git fetch origin main && git rev-list --count HEAD..origin/main` — if non-zero, stop and tell the user `main` is behind `origin/main` and needs a pull.
+2. Make sure the working tree is clean (`git status`). If there are uncommitted changes, stop and tell the user.
+3. Run the full test suite: `npm test`. If any test fails, stop and tell the user.
+4. Run the build: `npm run build`. If it fails, stop and tell the user.
 
 ## Version bump
 
