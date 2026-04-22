@@ -1641,6 +1641,69 @@ describe("CLI e2e happy path", () => {
     assert.ok(captured().includes("test-agent"), "should set agent contact");
   });
 
+  // ── Auth (GH-90) ────────────────────────────────────────────────────────
+  //
+  // `auth set-password` hits /auth/v1/user/password, which is gated by the
+  // apikeyAuth middleware. The CLI MUST send `apikey: <anon_key>` so the
+  // middleware lets the request through, and `Authorization: Bearer <token>`
+  // must remain the user's access_token (NOT the anon_key) so the server
+  // knows which authenticated user to mutate.
+  //
+  // This was the gap left by commit 90e1e9b which fixed the same class of
+  // bug for magic-link / verify / settings / providers but missed
+  // set-password. See run402-public#90.
+
+  it("auth set-password sends apikey and keeps user access_token as Bearer (GH-90)", async () => {
+    const { run } = await import("./cli/lib/auth.mjs");
+    let capturedUrl = null;
+    let capturedMethod = null;
+    let capturedHeaders = null;
+    let capturedBody = null;
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = (input, init) => {
+      const url = typeof input === "string" ? input : input.url;
+      const method = (init?.method || "GET").toUpperCase();
+      if (url.endsWith("/auth/v1/user/password") && method === "PUT") {
+        capturedUrl = url;
+        capturedMethod = method;
+        capturedHeaders = init?.headers || {};
+        try { capturedBody = init?.body ? JSON.parse(init.body) : null; } catch { capturedBody = init?.body; }
+        return Promise.resolve(new Response(JSON.stringify({ ok: true }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }));
+      }
+      return prevFetch(input, init);
+    };
+    captureStart();
+    try {
+      await run("set-password", [
+        "--project", "prj_test123",
+        "--token", "user-jwt-access-token",
+        "--new", "Secr3t!Pass",
+      ]);
+    } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+    assert.ok(capturedUrl, "PUT /auth/v1/user/password should have been called");
+    assert.equal(capturedMethod, "PUT", "must be a PUT request");
+    // apikey identifies the project to apikeyAuth middleware
+    assert.equal(
+      capturedHeaders.apikey ?? capturedHeaders.Apikey,
+      "anon_test_key",
+      `apikey header must equal the project's anon_key; got headers: ${JSON.stringify(capturedHeaders)}`,
+    );
+    // Bearer must remain the user's access_token — NOT the anon_key.
+    assert.equal(
+      capturedHeaders.Authorization ?? capturedHeaders.authorization,
+      "Bearer user-jwt-access-token",
+      `Authorization header must be Bearer <user access_token>, not the anon_key; got headers: ${JSON.stringify(capturedHeaders)}`,
+    );
+    assert.equal(capturedBody?.new_password, "Secr3t!Pass", "body should carry new_password");
+    assert.ok(captured().includes("ok"), "should print ok status");
+  });
+
   // ── Cleanup commands (deletions) ────────────────────────────────────────
 
   it("storage delete", async () => {

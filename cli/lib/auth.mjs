@@ -168,6 +168,8 @@ async function setPassword(args) {
   const accessToken = parseFlag(args, "--token");
   const newPassword = parseFlag(args, "--new");
   const currentPassword = parseFlag(args, "--current");
+  const projectId = resolveProjectId(parseFlag(args, "--project"));
+  const p = findProject(projectId);
 
   if (!accessToken) { console.error(JSON.stringify({ status: "error", message: "Missing --token <bearer_token>" })); process.exit(1); }
   if (!newPassword) { console.error(JSON.stringify({ status: "error", message: "Missing --new <password>" })); process.exit(1); }
@@ -175,9 +177,16 @@ async function setPassword(args) {
   const body = { new_password: newPassword };
   if (currentPassword) body.current_password = currentPassword;
 
+  // /auth/v1/* is gated by apikeyAuth middleware: the `apikey` header must be
+  // the project's anon_key. `Authorization: Bearer <access_token>` stays as
+  // the user's identity so the server knows whose password to change.
   const res = await fetch(`${API}/auth/v1/user/password`, {
     method: "PUT",
-    headers: { "Authorization": `Bearer ${accessToken}`, "Content-Type": "application/json" },
+    headers: {
+      "apikey": p.anon_key,
+      "Authorization": `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
     body: JSON.stringify(body),
   });
   const data = await res.json();
