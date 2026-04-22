@@ -176,7 +176,7 @@ server.tool(
 
 server.tool(
   "setup_rls",
-  "Apply row-level security to tables. Templates: user_owns_rows (users access own rows only), public_read (anyone reads, authenticated writes), public_read_write (open access).",
+  "Apply row-level security to tables. Prefer `user_owns_rows` for anything user-scoped. Templates: user_owns_rows (users access only their own rows), public_read_authenticated_write (anyone reads; any authenticated user writes ANY row), public_read_write_UNRESTRICTED (⚠ fully open including anon_key; requires i_understand_this_is_unrestricted: true).",
   setupRlsSchema,
   async (args) => handleSetupRls(args),
 );

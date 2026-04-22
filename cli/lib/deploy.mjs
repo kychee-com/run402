@@ -94,8 +94,9 @@ Manifest format (JSON):
     "migrations": "CREATE TABLE items (...)",
     "migrations_file": "setup.sql",
     "rls": {
-      "template": "public_read_write",
-      "tables": [{ "table": "items" }]
+      "template": "public_read_write_UNRESTRICTED",
+      "tables": [{ "table": "items" }],
+      "i_understand_this_is_unrestricted": true
     },
     "secrets": [{ "key": "OPENAI_API_KEY", "value": "sk-..." }],
     "functions": [{
@@ -128,10 +129,20 @@ Manifest format (JSON):
   Paths are resolved relative to the manifest file's directory.
   Binary files (images, fonts, etc.) are auto-detected and base64-encoded.
 
-  RLS templates:
-    user_owns_rows   — users see only their rows (requires owner_column per table)
-    public_read      — anyone reads, authenticated users write
-    public_read_write — anyone reads and writes
+  RLS templates (prefer user_owns_rows for anything user-scoped):
+    user_owns_rows                    users see only their own rows (requires
+                                      owner_column per table; uuid columns get
+                                      index-friendly policies automatically)
+    public_read_authenticated_write   anyone reads; any authenticated user can
+                                      INSERT/UPDATE/DELETE any row (not just
+                                      their own). For collaborative content
+                                      like shared boards or announcements.
+    public_read_write_UNRESTRICTED    ⚠  fully open — anon_key can read AND
+                                      write any row. Only for intentionally
+                                      public tables (guestbooks, waitlists,
+                                      feedback forms). REQUIRES the manifest's
+                                      rls block to include
+                                      "i_understand_this_is_unrestricted": true.
 
   ⚠️  Without RLS, tables are read-only via anon_key. If your app writes
   data from the browser, you almost certainly need an rls block.

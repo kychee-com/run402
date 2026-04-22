@@ -657,7 +657,7 @@ describe("CLI e2e happy path", () => {
   it("projects rls", async () => {
     const { run } = await import("./cli/lib/projects.mjs");
     captureStart();
-    await run("rls", ["prj_test123", "public_read", '[{"table":"items"}]']);
+    await run("rls", ["prj_test123", "public_read_authenticated_write", '[{"table":"items"}]']);
     captureStop();
     assert.ok(captured().includes("ok"), "should apply RLS");
   });

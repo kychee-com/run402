@@ -36,7 +36,7 @@ Examples:
   run402 projects rest abc123 users "limit=10&select=id,name"
   run402 projects usage abc123
   run402 projects schema abc123
-  run402 projects rls abc123 public_read '[{"table":"posts"}]'
+  run402 projects rls abc123 public_read_authenticated_write '[{"table":"posts"}]'
   run402 projects keys abc123
   run402 projects delete abc123
 
@@ -45,7 +45,11 @@ Notes:
   - Most commands that take <id> default to the active project if omitted
   - 'rest' uses PostgREST query syntax (table name + optional query string)
   - 'provision' requires a funded allowance — payment is automatic via x402
-  - RLS templates: user_owns_rows, public_read, public_read_write
+  - RLS templates (prefer user_owns_rows for user-scoped data):
+      user_owns_rows                    users access only their own rows (requires owner_column)
+      public_read_authenticated_write   anyone reads; any authenticated user writes any row
+      public_read_write_UNRESTRICTED    fully open (anon_key writes); use 'run402 deploy' with a manifest
+                                        that includes "i_understand_this_is_unrestricted": true
 `;
 
 async function quote() {

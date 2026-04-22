@@ -355,24 +355,28 @@ GET /storage/v1/object/list/assets
 
 ## Row-Level Security (RLS)
 
-Three templates. Applied via `POST /projects/v1/admin/:id/rls` with `service_key`.
+Three templates. Applied via `POST /projects/v1/admin/:id/rls` with `service_key`. **Prefer `user_owns_rows` for anything user-scoped.**
 
 ### `user_owns_rows`
-Users access only rows where `owner_column = auth.uid()`. Best for user-scoped data.
+Users access only rows where the owner column matches `auth.uid()`. Best for user-scoped data (todos, workouts, messages). `uuid` owner columns get an index-friendly policy; other types fall back to a `::text` cast with a warning. The endpoint auto-creates a btree index on the owner column.
 ```json
 { "template": "user_owns_rows", "tables": [{ "table": "todos", "owner_column": "user_id" }] }
 ```
 
-### `public_read`
-Anyone can read (anon_key works). Only authenticated users can write.
+### `public_read_authenticated_write`
+Anyone can read (including `anon_key`). **Any authenticated user can INSERT/UPDATE/DELETE any row** (not just their own). Appropriate for collaborative content like shared boards or announcements; do not use where users should only edit their own rows.
 ```json
-{ "template": "public_read", "tables": [{ "table": "announcements" }] }
+{ "template": "public_read_authenticated_write", "tables": [{ "table": "announcements" }] }
 ```
 
-### `public_read_write`
-Anyone can read and write. For guestbooks, public logs, open data.
+### `public_read_write_UNRESTRICTED`
+⚠ Fully open. Anyone (including `anon_key`) can read, insert, update, or delete any row. Only appropriate for intentionally public tables (guestbooks, waitlists, feedback forms). **Requires** `"i_understand_this_is_unrestricted": true` in the request body and logs an audit line on the gateway.
 ```json
-{ "template": "public_read_write", "tables": [{ "table": "guestbook" }] }
+{
+  "template": "public_read_write_UNRESTRICTED",
+  "tables": [{ "table": "guestbook" }],
+  "i_understand_this_is_unrestricted": true
+}
 ```
 
 ---

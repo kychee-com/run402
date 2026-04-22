@@ -674,10 +674,10 @@ Use `run_sql` to apply RLS if users should only see their own rows:
 run_sql(project_id: "prj_...", sql: "-- Use the /projects/v1/admin/:id/rls endpoint via HTTP for RLS templates")
 ```
 
-Three RLS templates are available via the API:
-- **`user_owns_rows`** — Users can only access rows where `owner_column = auth.uid()`. Best for user-scoped data.
-- **`public_read`** — Anyone can read. Only authenticated users can write.
-- **`public_read_write`** — Anyone can read and write. Use for guestbooks, public logs.
+Three RLS templates are available via the API. **Prefer `user_owns_rows` for anything user-scoped.**
+- **`user_owns_rows`** — Users can only access rows where the owner column matches `auth.uid()`. Best for user-scoped data (todos, workouts, messages). `uuid` owner columns get an index-friendly policy; other types fall back to a `::text` cast (the response includes a warning). The endpoint auto-creates a btree index on the owner column.
+- **`public_read_authenticated_write`** — Anyone can read. **Any authenticated user can INSERT/UPDATE/DELETE any row** (not just their own). Appropriate for collaborative content like shared boards or announcements; do not use where users should only edit their own rows.
+- **`public_read_write_UNRESTRICTED`** — ⚠ Fully open. Anyone (including `anon_key`) can read, insert, update, or delete any row. Only appropriate for intentionally public tables (guestbooks, waitlists, feedback forms). This template **requires** `"i_understand_this_is_unrestricted": true` in the request body and logs an audit line on the gateway.
 
 ### Step 4: Insert data
 

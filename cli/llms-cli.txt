@@ -112,8 +112,9 @@ Create a manifest file `app.json` (use the `project_id` from provision):
   "migrations": "CREATE TABLE items (id serial PRIMARY KEY, title text NOT NULL, done boolean DEFAULT false); INSERT INTO items (title) VALUES ('Buy groceries'), ('Read a book');",
   "migrations_file": "setup.sql",
   "rls": {
-    "template": "public_read_write",
-    "tables": [{ "table": "items" }]
+    "template": "public_read_write_UNRESTRICTED",
+    "tables": [{ "table": "items" }],
+    "i_understand_this_is_unrestricted": true
   },
   "secrets": [{ "key": "OPENAI_API_KEY", "value": "sk-..." }],
   "functions": [{
@@ -154,16 +155,16 @@ END $$;
 
 This pattern is safe to re-run on every deploy. Put your `CREATE TABLE IF NOT EXISTS` first, then one `DO` block per new column (or group them in a single block).
 
-RLS templates:
-- `user_owns_rows` — users see only their rows (requires `owner_column` per table)
-- `public_read` — anyone reads, authenticated users write
-- `public_read_write` — anyone reads and writes
+RLS templates (prefer `user_owns_rows` for anything user-scoped):
+- `user_owns_rows` — users access only their own rows (requires `owner_column` per table; `uuid` columns are index-friendly, others fall back to `::text` cast with a warning; a btree index is auto-created)
+- `public_read_authenticated_write` — anyone reads; **any authenticated user can INSERT/UPDATE/DELETE any row** (not just their own). For collaborative content (shared boards, announcements).
+- `public_read_write_UNRESTRICTED` — ⚠ fully open; `anon_key` can read AND write any row. For intentionally public tables only (guestbooks, waitlists, feedback forms). **Requires** `"i_understand_this_is_unrestricted": true` in the request body; logs an audit line on the gateway.
 
 | Template | anon_key reads | anon_key writes | authenticated reads | authenticated writes |
 |----------|---------------|-----------------|---------------------|----------------------|
-| `public_read` | all rows | no | all rows | all rows |
-| `public_read_write` | all rows | all rows | all rows | all rows |
 | `user_owns_rows` | no | no | own rows only | own rows only |
+| `public_read_authenticated_write` | all rows | no | all rows | all rows (any row) |
+| `public_read_write_UNRESTRICTED` | all rows | all rows | all rows | all rows |
 
 ⚠️ **Without RLS, tables are read-only via anon_key.** If your app writes data from the browser, you almost certainly need an `rls` block.
 
@@ -190,7 +191,10 @@ run402 projects sql <project_id> "CREATE TABLE items (id serial PRIMARY KEY, tit
 run402 projects sql <project_id> "INSERT INTO items (title) VALUES ('Buy groceries'), ('Read a book')"
 
 # 4. Set up Row-Level Security
-run402 projects rls <project_id> public_read_write '[{"table":"items"}]'
+#    (The 3-arg CLI does not accept the UNRESTRICTED ACK; for that,
+#     use `run402 deploy` with a manifest including
+#     "i_understand_this_is_unrestricted": true.)
+run402 projects rls <project_id> public_read_authenticated_write '[{"table":"items"}]'
 
 # 5. Deploy a static site (uses active project automatically)
 run402 sites deploy --manifest site.json
@@ -232,7 +236,8 @@ run402 subdomains claim my-app
 - `run402 projects demote-user <id> <email>` — demote a user from project_admin role
 - `run402 projects <usage|schema> <id>`
 - `run402 projects delete <id>` — **cascade deletes** all project resources: Lambda functions, subdomains, S3 site files, deployments, secrets, and published app versions. The schema slot is dropped and recreated. This is irreversible.
-- `run402 projects rls <id> <user_owns_rows|public_read|public_read_write> '<tables_json>'`
+- `run402 projects rls <id> <user_owns_rows|public_read_authenticated_write|public_read_write_UNRESTRICTED> '<tables_json>'`
+  (The 3-arg form cannot set the UNRESTRICTED ACK. For UNRESTRICTED, use `run402 deploy` with a manifest that includes `"i_understand_this_is_unrestricted": true` in the `rls` block.)
 
 Provisioning automatically sets the new project as the **active project**. Other commands that take `<id>` default to the active project when omitted.
 
@@ -565,7 +570,7 @@ The CLI's `run402 projects rest` command is great for terminal use. But when gen
 **Base URL**: `https://api.run402.com/rest/v1/{table}`
 
 **Auth header**: `apikey: {key}` — the gateway auto-forwards as `Authorization: Bearer` to PostgREST. Any valid project JWT works:
-- `anon_key` → read-only by default (SELECT). Safe to embed in frontend code. **No expiry** -- permanent project identifier. If you apply `public_read_write` RLS to a table, anon_key gains INSERT/UPDATE/DELETE on that table — use this for browser-side writes without login.
+- `anon_key` → read-only by default (SELECT). Safe to embed in frontend code. **No expiry** -- permanent project identifier. If you apply `public_read_write_UNRESTRICTED` RLS to a table, anon_key gains INSERT/UPDATE/DELETE on that table — use this for browser-side writes without login (only on intentionally public tables).
 - `service_key` → full admin (bypasses RLS). Server-side only. **No expiry** -- lease enforcement server-side.
 - `access_token` (from login) → user-scoped read/write (subject to RLS).
 
@@ -620,7 +625,7 @@ await fetch(API + '/rest/v1/items?id=eq.5', {
 
 ### Complete HTML example
 
-A working single-file app. Uses `public_read_write` RLS so the `anon_key` handles all reads and writes — no login required.
+A working single-file app. Uses `public_read_write_UNRESTRICTED` RLS so the `anon_key` handles all reads and writes — no login required. (This template is intentionally open; only apply it to tables where anyone on the internet is allowed to write anything, like guestbooks.)
 
 ```html
 <!DOCTYPE html>
@@ -650,7 +655,7 @@ A working single-file app. Uses `public_read_write` RLS so the `anon_key` handle
 
   <script>
     const API = 'https://api.run402.com';
-    const ANON_KEY = 'YOUR_ANON_KEY';  // safe to embed — read-only by default, write-enabled via public_read_write RLS
+    const ANON_KEY = 'YOUR_ANON_KEY';  // safe to embed — read-only by default, write-enabled here via public_read_write_UNRESTRICTED RLS
 
     async function loadEntries() {
       const rows = await fetch(API + '/rest/v1/guestbook?order=created_at.desc&limit=50', {
@@ -686,8 +691,12 @@ A working single-file app. Uses `public_read_write` RLS so the `anon_key` handle
 # Create table
 run402 projects sql $PROJECT_ID "CREATE TABLE guestbook (id serial PRIMARY KEY, name text NOT NULL, message text NOT NULL, created_at timestamptz DEFAULT now())"
 
-# Enable public_read_write so anon_key can insert
-run402 projects rls $PROJECT_ID public_read_write '[{"table":"guestbook"}]'
+# Enable public_read_write_UNRESTRICTED so anon_key can insert.
+# The 3-arg `projects rls` CLI cannot set the required ACK flag; use
+# `run402 deploy` with a manifest that includes:
+#   "rls": { "template": "public_read_write_UNRESTRICTED",
+#            "tables": [{"table":"guestbook"}],
+#            "i_understand_this_is_unrestricted": true }
 ```
 
 ---
@@ -838,7 +847,7 @@ const refreshed = await fetch(API + '/auth/v1/token?grant_type=refresh_token', {
 9. **Workout Log** -- Track exercises, sets, reps, weight with progress over time.
 10. **Flash Cards** -- Spaced-repetition study app. Pre-load 50 phrases.
 
-Provision first so you have the `anon_key` to embed in your frontend HTML. The manifest should include `project_id` (from provision), `migrations` (CREATE TABLE + INSERT seed data), `rls` (almost always `public_read_write` for browser-writable apps), `files` (array of files), and `subdomain`. Your human gets a live URL they can use immediately.
+Provision first so you have the `anon_key` to embed in your frontend HTML. The manifest should include `project_id` (from provision), `migrations` (CREATE TABLE + INSERT seed data), `rls` (for browser-writable apps: `public_read_write_UNRESTRICTED` + `"i_understand_this_is_unrestricted": true`; for user-scoped apps use `user_owns_rows`), `files` (array of files), and `subdomain`. Your human gets a live URL they can use immediately.
 
 ## Make It Great
 

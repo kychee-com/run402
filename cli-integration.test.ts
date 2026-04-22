@@ -252,7 +252,10 @@ describe("CLI integration (live API, no mocks)", { timeout: 180_000 }, () => {
   it("projects rls", async () => {
     const { run } = await import("./cli/lib/projects.mjs");
     captureStart();
-    await run("rls", [projectId, "public_read_write", '[{"table":"items"}]']);
+    // 3-arg CLI form cannot send the UNRESTRICTED ACK, so use the
+    // collaborative template here. UNRESTRICTED is exercised via the
+    // deploy-manifest path elsewhere.
+    await run("rls", [projectId, "public_read_authenticated_write", '[{"table":"items"}]']);
     captureStop();
     assert.ok(captured().includes("ok") || captured().includes("updated"), "should apply RLS");
   });

@@ -4,6 +4,38 @@ import { formatApiError, projectNotFound } from "../errors.js";
 import { requireAllowanceAuth } from "../allowance-auth.js";
 import { getProject } from "../keystore.js";
 
+// Refined rls schema for pre-network validation.
+// MCP SDK accepts only raw shapes, so the refinement runs at the handler boundary.
+// Exported for unit tests.
+export const bundleDeployRlsRefined = z
+  .object({
+    template: z.enum([
+      "user_owns_rows",
+      "public_read_authenticated_write",
+      "public_read_write_UNRESTRICTED",
+    ]),
+    tables: z.array(
+      z.object({
+        table: z.string(),
+        owner_column: z.string().optional(),
+      }),
+    ),
+    i_understand_this_is_unrestricted: z.boolean().optional(),
+  })
+  .superRefine((data, ctx) => {
+    if (
+      data.template === "public_read_write_UNRESTRICTED" &&
+      data.i_understand_this_is_unrestricted !== true
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["i_understand_this_is_unrestricted"],
+        message:
+          "i_understand_this_is_unrestricted must be true when template is public_read_write_UNRESTRICTED",
+      });
+    }
+  });
+
 export const bundleDeploySchema = {
   project_id: z.string().describe("Project ID to deploy to (from provision). Uses active project if omitted.").optional(),
   migrations: z
@@ -12,16 +44,30 @@ export const bundleDeploySchema = {
     .describe("SQL migrations to run (CREATE TABLE statements, etc.)"),
   rls: z
     .object({
-      template: z.enum(["user_owns_rows", "public_read", "public_read_write"]),
+      template: z.enum([
+        "user_owns_rows",
+        "public_read_authenticated_write",
+        "public_read_write_UNRESTRICTED",
+      ]),
       tables: z.array(
         z.object({
           table: z.string(),
           owner_column: z.string().optional(),
         }),
       ),
+      i_understand_this_is_unrestricted: z
+        .boolean()
+        .optional()
+        .describe(
+          "Required to be true when template is public_read_write_UNRESTRICTED. Ignored otherwise.",
+        ),
     })
     .optional()
-    .describe("RLS configuration to apply after migrations"),
+    .describe(
+      "RLS configuration to apply after migrations. Prefer `user_owns_rows` for anything user-scoped. " +
+      "`public_read_authenticated_write`: anyone reads, any authenticated user writes any row. " +
+      "`public_read_write_UNRESTRICTED`: fully open (anon_key writes); requires i_understand_this_is_unrestricted: true.",
+    ),
   secrets: z
     .array(z.object({ key: z.string(), value: z.string() }))
     .optional()
@@ -68,7 +114,11 @@ export const bundleDeploySchema = {
 export async function handleBundleDeploy(args: {
   project_id?: string;
   migrations?: string;
-  rls?: { template: string; tables: Array<{ table: string; owner_column?: string }> };
+  rls?: {
+    template: string;
+    tables: Array<{ table: string; owner_column?: string }>;
+    i_understand_this_is_unrestricted?: boolean;
+  };
   secrets?: Array<{ key: string; value: string }>;
   functions?: Array<{ name: string; code: string; config?: { timeout?: number; memory?: number }; schedule?: string }>;
   files?: Array<{ file: string; data: string; encoding?: string }>;
@@ -79,6 +129,19 @@ export async function handleBundleDeploy(args: {
   if (!projectId) return projectNotFound("(none — project_id is required)");
   const project = getProject(projectId);
   if (!project) return projectNotFound(projectId);
+
+  if (args.rls) {
+    const parsed = bundleDeployRlsRefined.safeParse(args.rls);
+    if (!parsed.success) {
+      const issues = parsed.error.issues
+        .map((i) => `rls.${i.path.join(".") || "(root)"}: ${i.message}`)
+        .join("; ");
+      return {
+        content: [{ type: "text", text: `Validation error: ${issues}` }],
+        isError: true,
+      };
+    }
+  }
 
   const auth = requireAllowanceAuth("/deploy/v1");
   if ("error" in auth) return auth.error;
