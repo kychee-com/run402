@@ -92,6 +92,7 @@ async function deleteDomain(args) {
 
 export async function run(sub, args) {
   if (!sub || sub === '--help' || sub === '-h') { console.log(HELP); process.exit(0); }
+  if (Array.isArray(args) && (args.includes("--help") || args.includes("-h"))) { console.log(HELP); process.exit(0); }
   switch (sub) {
     case "add":    await add(args); break;
     case "list":   await list(args[0]); break;

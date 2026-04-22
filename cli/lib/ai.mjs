@@ -22,6 +22,32 @@ Notes:
   - usage shows translation word quota for the current billing period
 `;
 
+const SUB_HELP = {
+  translate: `run402 ai translate — Translate text to another language
+
+Usage:
+  run402 ai translate <project_id> <text> --to <lang> [--from <lang>] [--context <hint>]
+
+Arguments:
+  <project_id>        Project ID (defaults to the active project if omitted)
+  <text>              Text to translate (quote it to preserve spaces)
+
+Options:
+  --to <lang>         Target language code (required, e.g. es, ja, fr)
+  --from <lang>       Source language code (optional; auto-detected if omitted)
+  --context <hint>    Optional translation hint (e.g. "formal business email")
+
+Notes:
+  - Requires the AI Translation add-on on the project
+  - Counts against the project's translation word quota
+
+Examples:
+  run402 ai translate proj-001 "Hello world" --to es
+  run402 ai translate proj-001 "Hello" --to ja --from en \\
+    --context "formal business email"
+`,
+};
+
 function parseFlag(args, flag) {
   for (let i = 0; i < args.length; i++) {
     if (args[i] === flag && args[i + 1]) return args[i + 1];
@@ -119,6 +145,7 @@ async function usage(args) {
 
 export async function run(sub, args) {
   if (!sub || sub === '--help' || sub === '-h') { console.log(HELP); process.exit(0); }
+  if (Array.isArray(args) && (args.includes("--help") || args.includes("-h"))) { console.log(SUB_HELP[sub] || HELP); process.exit(0); }
   switch (sub) {
     case "translate": await translate(args); break;
     case "moderate":  await moderate(args); break;

@@ -117,6 +117,7 @@ async function inboundToggle(action, args) {
 
 export async function run(sub, args) {
   if (!sub || sub === "--help" || sub === "-h") { console.log(HELP); process.exit(0); }
+  if (Array.isArray(args) && (args.includes("--help") || args.includes("-h"))) { console.log(HELP); process.exit(0); }
   switch (sub) {
     case "register": await register(args); break;
     case "status": await status(args); break;

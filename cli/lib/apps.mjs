@@ -28,6 +28,78 @@ Examples:
   run402 apps delete proj123 ver_abc123
 `;
 
+const SUB_HELP = {
+  browse: `run402 apps browse — Browse public apps in the marketplace
+
+Usage:
+  run402 apps browse [--tag <tag>]
+
+Options:
+  --tag <tag>         Filter by tag; repeat the flag to filter on multiple tags
+
+Examples:
+  run402 apps browse
+  run402 apps browse --tag auth
+  run402 apps browse --tag todo --tag auth
+`,
+  fork: `run402 apps fork — Fork a published app into your own project
+
+Usage:
+  run402 apps fork <version_id> <name> [options]
+
+Arguments:
+  <version_id>        Published version ID (e.g. ver_abc123)
+  <name>              Name for the forked project
+
+Options:
+  --tier <tier>       Tier for the new project (default: prototype)
+  --subdomain <name>  Claim a subdomain for the forked project
+
+Examples:
+  run402 apps fork ver_abc123 my-todo
+  run402 apps fork ver_abc123 my-todo --tier hobby --subdomain todo-v2
+`,
+  publish: `run402 apps publish — Publish a project as an app
+
+Usage:
+  run402 apps publish <id> [options]
+
+Arguments:
+  <id>                Project ID to publish
+
+Options:
+  --description <d>   Human-readable description of the app
+  --tags <t1,t2>      Comma-separated list of tags
+  --visibility <v>    Visibility: 'public' or 'private'
+  --fork-allowed      Allow other users to fork this app
+
+Examples:
+  run402 apps publish proj123 --description "Todo app" --tags todo,auth
+  run402 apps publish proj123 --visibility public --fork-allowed
+`,
+  update: `run402 apps update — Update a published version's metadata
+
+Usage:
+  run402 apps update <project_id> <version_id> [options]
+
+Arguments:
+  <project_id>        Project ID that owns the version
+  <version_id>        Published version ID to update
+
+Options:
+  --description <d>   New description
+  --tags <t1,t2>      New comma-separated list of tags
+  --visibility <v>    New visibility ('public' or 'private')
+  --fork-allowed      Enable forking for this version
+  --no-fork           Disable forking for this version
+
+Examples:
+  run402 apps update proj123 ver_abc123 --description "Updated"
+  run402 apps update proj123 ver_abc123 --tags todo,auth --fork-allowed
+  run402 apps update proj123 ver_abc123 --no-fork
+`,
+};
+
 async function browse(args) {
   let url = `${API}/apps/v1`;
   const tags = [];
@@ -152,6 +224,7 @@ async function deleteVersion(projectId, versionId) {
 
 export async function run(sub, args) {
   if (!sub || sub === '--help' || sub === '-h') { console.log(HELP); process.exit(0); }
+  if (Array.isArray(args) && (args.includes("--help") || args.includes("-h"))) { console.log(SUB_HELP[sub] || HELP); process.exit(0); }
   switch (sub) {
     case "browse":   await browse(args); break;
     case "fork":     await fork(args[0], args[1], args.slice(2)); break;

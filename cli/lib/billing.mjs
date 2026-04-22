@@ -22,6 +22,69 @@ Examples:
   run402 billing balance user@example.com
 `;
 
+const SUB_HELP = {
+  "tier-checkout": `run402 billing tier-checkout — Create a Stripe tier checkout session
+
+Usage:
+  run402 billing tier-checkout <tier> [--email <e> | --wallet <w>]
+
+Arguments:
+  <tier>              Tier name (e.g. hobby, pro)
+
+Options:
+  --email <e>         Email billing account to charge
+  --wallet <w>        Wallet address (0x...) to associate with the checkout
+
+Examples:
+  run402 billing tier-checkout hobby --email user@example.com
+  run402 billing tier-checkout pro --wallet 0x1234...
+`,
+  "buy-email-pack": `run402 billing buy-email-pack — Buy a $5 email pack (10,000 emails)
+
+Usage:
+  run402 billing buy-email-pack [--email <e> | --wallet <w>]
+
+Options:
+  --email <e>         Email billing account to charge
+  --wallet <w>        Wallet address (0x...) to associate with the purchase
+
+Examples:
+  run402 billing buy-email-pack --email user@example.com
+  run402 billing buy-email-pack --wallet 0x1234...
+`,
+  "auto-recharge": `run402 billing auto-recharge — Toggle email-pack auto-recharge
+
+Usage:
+  run402 billing auto-recharge <account_id> <on|off> [--threshold <n>]
+
+Arguments:
+  <account_id>        Billing account ID
+  <on|off>            Enable or disable auto-recharge
+
+Options:
+  --threshold <n>     Remaining-email threshold that triggers auto-recharge
+
+Examples:
+  run402 billing auto-recharge acct_abc on --threshold 2000
+  run402 billing auto-recharge acct_abc off
+`,
+  history: `run402 billing history — Show ledger history for an email or wallet
+
+Usage:
+  run402 billing history <identifier> [--limit <n>]
+
+Arguments:
+  <identifier>        Email address or wallet (0x...)
+
+Options:
+  --limit <n>         Max entries to return (default: 50)
+
+Examples:
+  run402 billing history user@example.com
+  run402 billing history 0x1234... --limit 100
+`,
+};
+
 function parseFlag(args, flag) {
   for (let i = 0; i < args.length; i++) {
     if (args[i] === flag && args[i + 1]) return args[i + 1];
@@ -153,6 +216,7 @@ async function history(args) {
 
 export async function run(sub, args) {
   if (!sub || sub === "--help" || sub === "-h") { console.log(HELP); process.exit(0); }
+  if (Array.isArray(args) && (args.includes("--help") || args.includes("-h"))) { console.log(SUB_HELP[sub] || HELP); process.exit(0); }
   switch (sub) {
     case "create-email": await createEmail(args); break;
     case "link-wallet": await linkWallet(args); break;

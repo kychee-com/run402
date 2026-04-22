@@ -38,6 +38,95 @@ Notes:
   - Deploy may require payment if the project lease has expired
 `;
 
+const SUB_HELP = {
+  deploy: `run402 functions deploy — Deploy a function to a project
+
+Usage:
+  run402 functions deploy <project_id> <name> --file <file> [options]
+
+Arguments:
+  <project_id>        Target project ID
+  <name>              Function name (used in the invoke URL path)
+
+Options:
+  --file <file>       Required: path to the function source file
+  --timeout <s>       Runtime timeout in seconds
+  --memory <mb>       Memory in MB
+  --deps <pkg,...>    Comma-separated npm deps to bundle
+  --schedule <cron>   Cron schedule; pass '' to clear an existing schedule
+
+Notes:
+  Code must export a default async function:
+    export default async (req: Request) => Response
+  Deploy may require payment if the project lease has expired.
+
+Examples:
+  run402 functions deploy abc123 stripe-webhook --file handler.ts
+  run402 functions deploy abc123 send-reminders --file remind.ts \\
+    --schedule '*/15 * * * *'
+  run402 functions deploy abc123 send-reminders --file remind.ts --schedule ''
+`,
+  invoke: `run402 functions invoke — Invoke a deployed function
+
+Usage:
+  run402 functions invoke <project_id> <name> [options]
+
+Arguments:
+  <project_id>        Target project ID
+  <name>              Function name
+
+Options:
+  --method <M>        HTTP method (default POST)
+  --body <json>       Request body (ignored for GET/HEAD)
+
+Examples:
+  run402 functions invoke abc123 stripe-webhook --body '{"event":"test"}'
+  run402 functions invoke abc123 ping --method GET
+`,
+  logs: `run402 functions logs — Fetch or tail function logs
+
+Usage:
+  run402 functions logs <project_id> <name> [options]
+
+Arguments:
+  <project_id>        Target project ID
+  <name>              Function name
+
+Options:
+  --tail <n>          Number of most-recent entries (default 50)
+  --since <ts>        ISO timestamp or epoch ms; only entries after this
+  --follow            Poll every 3s and stream new entries (Ctrl-C to stop)
+
+Examples:
+  run402 functions logs abc123 stripe-webhook --tail 100
+  run402 functions logs abc123 stripe-webhook --since 2026-03-29T14:00:00Z
+  run402 functions logs abc123 stripe-webhook --follow
+`,
+  update: `run402 functions update — Update function config without re-deploying
+
+Usage:
+  run402 functions update <project_id> <name> [options]
+
+Arguments:
+  <project_id>        Target project ID
+  <name>              Function name
+
+Options:
+  --schedule <cron>   New cron schedule (pass '' to clear)
+  --schedule-remove   Explicitly remove the schedule
+  --timeout <s>       Runtime timeout in seconds
+  --memory <mb>       Memory in MB
+
+Notes:
+  Must provide at least one of the options above.
+
+Examples:
+  run402 functions update abc123 send-reminders --schedule '0 */4 * * *'
+  run402 functions update abc123 send-reminders --schedule-remove
+  run402 functions update abc123 my-func --timeout 15 --memory 256
+`,
+};
+
 async function deploy(projectId, name, args) {
   const p = findProject(projectId);
   const opts = { file: null, timeout: undefined, memory: undefined, deps: undefined, schedule: undefined };
@@ -213,7 +302,7 @@ async function deleteFunction(projectId, name) {
 export async function run(sub, args) {
   if (!sub || sub === '--help' || sub === '-h') { console.log(HELP); process.exit(0); }
   if (Array.isArray(args) && (args.includes("--help") || args.includes("-h"))) {
-    console.log(HELP);
+    console.log(SUB_HELP[sub] || HELP);
     process.exit(0);
   }
   switch (sub) {

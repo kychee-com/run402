@@ -25,6 +25,29 @@ Notes:
   - Upload reads from --file or stdin if no --file is given
 `;
 
+const SUB_HELP = {
+  upload: `run402 storage upload — Upload a file to a project's storage bucket
+
+Usage:
+  run402 storage upload <id> <bucket> <path> [--file <local>] [--content-type <mime>]
+  echo "..." | run402 storage upload <id> <bucket> <path> [--content-type <mime>]
+
+Arguments:
+  <id>                Project ID (from 'run402 projects list')
+  <bucket>            Target bucket name
+  <path>              Destination path within the bucket
+
+Options:
+  --file <local>      Local file to upload; if omitted, content is read from stdin
+  --content-type <mime>  MIME type of the upload (default: text/plain)
+
+Examples:
+  run402 storage upload abc123 assets logo.png --file ./logo.png \\
+    --content-type image/png
+  echo "hello" | run402 storage upload abc123 data notes.txt
+`,
+};
+
 async function readStdin() {
   const chunks = [];
   for await (const chunk of process.stdin) chunks.push(chunk);
@@ -88,6 +111,7 @@ async function list(projectId, bucket) {
 
 export async function run(sub, args) {
   if (!sub || sub === '--help' || sub === '-h') { console.log(HELP); process.exit(0); }
+  if (Array.isArray(args) && (args.includes("--help") || args.includes("-h"))) { console.log(SUB_HELP[sub] || HELP); process.exit(0); }
   switch (sub) {
     case "upload":   await upload(args[0], args[1], args[2], args.slice(3)); break;
     case "download": await download(args[0], args[1], args[2]); break;

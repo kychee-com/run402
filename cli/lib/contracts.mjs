@@ -36,6 +36,144 @@ Examples:
   run402 contracts call proj_abc cwlt_xyz --to 0x1234... --abi '[{"type":"function","name":"ping","inputs":[],"outputs":[]}]' --fn ping --args '[]'
 `;
 
+const SUB_HELP = {
+  "provision-wallet": `run402 contracts provision-wallet — Provision a KMS-backed wallet
+
+Usage:
+  run402 contracts provision-wallet <project_id> --chain <chain> [options]
+
+Arguments:
+  <project_id>        Target project ID
+
+Options:
+  --chain <chain>     Required: base-mainnet or base-sepolia
+  --recovery 0x...    Optional recovery address (can be set later)
+  --yes               Skip confirmation when project already has a wallet
+
+Pricing:
+  $0.04/day per wallet ($1.20/month). Creation requires $1.20 prepay
+  (30 days of rent). Non-custodial — see terms.html#non-custodial-kms-wallets.
+
+Examples:
+  run402 contracts provision-wallet proj_abc --chain base-mainnet
+  run402 contracts provision-wallet proj_abc --chain base-sepolia --recovery 0xAbC...
+`,
+  "set-recovery": `run402 contracts set-recovery — Set or clear the wallet recovery address
+
+Usage:
+  run402 contracts set-recovery <project_id> <wallet_id> [options]
+
+Arguments:
+  <project_id>        Target project ID
+  <wallet_id>         KMS wallet ID (cwlt_...)
+
+Options:
+  --address 0x...     New recovery address
+  --clear             Clear the recovery address (mutually exclusive with --address)
+
+Examples:
+  run402 contracts set-recovery proj_abc cwlt_xyz --address 0xAbC...
+  run402 contracts set-recovery proj_abc cwlt_xyz --clear
+`,
+  "set-alert": `run402 contracts set-alert — Set the low-balance alert threshold
+
+Usage:
+  run402 contracts set-alert <project_id> <wallet_id> --threshold-wei <n>
+
+Arguments:
+  <project_id>        Target project ID
+  <wallet_id>         KMS wallet ID (cwlt_...)
+
+Options:
+  --threshold-wei <n> Required: alert threshold in wei
+
+Examples:
+  run402 contracts set-alert proj_abc cwlt_xyz --threshold-wei 1000000000000000
+`,
+  call: `run402 contracts call — Submit a contract write call
+
+Usage:
+  run402 contracts call <project_id> <wallet_id> --to 0x... --abi <json>
+    --fn <name> --args <json> [options]
+
+Arguments:
+  <project_id>        Target project ID
+  <wallet_id>         KMS wallet ID (cwlt_...)
+
+Options:
+  --to 0x...          Required: contract address
+  --abi <json>        Required: ABI fragment (JSON string)
+  --fn <name>         Required: function name to invoke
+  --args <json>       Required: function args (JSON array)
+  --value-wei <n>     Native value to send (default 0)
+  --chain <chain>     Chain override (default: base-mainnet)
+  --idempotency-key <k>  Idempotency key for safe retries
+
+Pricing:
+  Chain gas + $0.000005 KMS sign fee per call.
+
+Examples:
+  run402 contracts call proj_abc cwlt_xyz --to 0x1234... \\
+    --abi '[{"type":"function","name":"ping","inputs":[],"outputs":[]}]' \\
+    --fn ping --args '[]'
+`,
+  read: `run402 contracts read — Read-only contract call (free)
+
+Usage:
+  run402 contracts read --chain <chain> --to 0x... --abi <json>
+    --fn <name> --args <json>
+
+Options:
+  --chain <chain>     Required: base-mainnet or base-sepolia
+  --to 0x...          Required: contract address
+  --abi <json>        Required: ABI fragment (JSON string)
+  --fn <name>         Required: function name to invoke
+  --args <json>       Required: function args (JSON array)
+
+Examples:
+  run402 contracts read --chain base-mainnet --to 0x1234... \\
+    --abi '[{"type":"function","name":"balanceOf","inputs":[{"type":"address"}],"outputs":[{"type":"uint256"}]}]' \\
+    --fn balanceOf --args '["0xAbC..."]'
+`,
+  drain: `run402 contracts drain — Drain native balance to a destination address
+
+Usage:
+  run402 contracts drain <project_id> <wallet_id> --to 0x... --confirm
+
+Arguments:
+  <project_id>        Target project ID
+  <wallet_id>         KMS wallet ID (cwlt_...)
+
+Options:
+  --to 0x...          Required: destination address
+  --confirm           Required: explicit confirmation flag
+
+Notes:
+  Works on suspended wallets. Cost: chain gas + $0.000005 KMS sign fee.
+
+Examples:
+  run402 contracts drain proj_abc cwlt_xyz --to 0xAbC... --confirm
+`,
+  delete: `run402 contracts delete — Schedule the KMS key for deletion
+
+Usage:
+  run402 contracts delete <project_id> <wallet_id> --confirm
+
+Arguments:
+  <project_id>        Target project ID
+  <wallet_id>         KMS wallet ID (cwlt_...)
+
+Options:
+  --confirm           Required: explicit confirmation flag
+
+Notes:
+  Refused if wallet balance is greater than or equal to dust. Drain first.
+
+Examples:
+  run402 contracts delete proj_abc cwlt_xyz --confirm
+`,
+};
+
 function parseFlag(args, flag) {
   for (let i = 0; i < args.length; i++) {
     if (args[i] === flag && args[i + 1]) return args[i + 1];
@@ -243,6 +381,7 @@ async function deleteWallet(projectId, walletId, args) {
 
 export async function run(sub, args) {
   if (!sub || sub === "--help" || sub === "-h") { console.log(HELP); process.exit(0); }
+  if (Array.isArray(args) && (args.includes("--help") || args.includes("-h"))) { console.log(SUB_HELP[sub] || HELP); process.exit(0); }
   switch (sub) {
     case "provision-wallet": await provisionWallet(args[0], args.slice(1)); break;
     case "get-wallet":       await getWallet(args[0], args[1]); break;

@@ -56,6 +56,56 @@ Notes:
   - --project defaults to the active project
 `;
 
+const SUB_HELP = {
+  send: `run402 email send — Send an email (template or raw HTML)
+
+Usage:
+  run402 email send --to <email> --template <name> --var key=value [--var ...]
+  run402 email send --to <email> --subject "..." --html "..." [--text "..."]
+
+Options:
+  --to <email>        Recipient email address (required; single recipient)
+  --template <name>   Template name (template mode): project_invite, magic_link,
+                      notification
+  --var key=value     Template variable (repeatable; required keys vary by
+                      template)
+  --subject "..."     Subject line (raw HTML mode)
+  --html "..."        HTML body (raw HTML mode)
+  --text "..."        Plain-text body (raw HTML mode; optional)
+  --from-name "..."   Display name for the From header
+  --project <id>      Project ID (defaults to the active project)
+
+Templates:
+  project_invite      --var project_name=... --var invite_url=...
+  magic_link          --var project_name=... --var link_url=... --var expires_in=...
+  notification        --var project_name=... --var message=... (max 500 chars)
+
+Examples:
+  run402 email send --template project_invite --to user@example.com \\
+    --var project_name="My App" --var invite_url="https://example.com/invite/abc"
+  run402 email send --to user@example.com --subject "Welcome!" \\
+    --html "<h1>Hello</h1><p>Welcome aboard.</p>" --from-name "My App"
+  run402 email send --template notification --to admin@example.com \\
+    --var project_name="My App" --var message="Deploy complete"
+`,
+  "get-raw": `run402 email get-raw — Fetch raw RFC-822 bytes for an inbound message
+
+Usage:
+  run402 email get-raw <message_id> [--output <file>] [--project <id>]
+
+Arguments:
+  <message_id>        Message ID to fetch (inbound messages only)
+
+Options:
+  --output <file>     Write raw bytes to this file; omit to stream to stdout
+  --project <id>      Project ID (defaults to the active project)
+
+Examples:
+  run402 email get-raw msg_abc123 --output reply.eml
+  run402 email get-raw msg_abc123 > reply.eml
+`,
+};
+
 const SLUG_RE = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/;
 
 function parseFlag(args, flag) {
@@ -327,6 +377,7 @@ async function status(args) {
 
 export async function run(sub, args) {
   if (!sub || sub === '--help' || sub === '-h') { console.log(HELP); process.exit(0); }
+  if (Array.isArray(args) && (args.includes("--help") || args.includes("-h")) && sub !== "webhooks") { console.log(SUB_HELP[sub] || HELP); process.exit(0); }
   switch (sub) {
     case "create": await create(args); break;
     case "status": await status(args); break;

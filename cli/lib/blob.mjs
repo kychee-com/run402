@@ -68,6 +68,89 @@ Examples:
   run402 blob sign images/logo.png --project abc123 --ttl 600
 `;
 
+const SUB_HELP = {
+  put: `run402 blob put — Upload one or more files to blob storage
+
+Usage:
+  run402 blob put <file> [files...] [options]
+
+Arguments:
+  <file>              Path to a file (or glob); pass multiple files to batch-upload
+
+Options:
+  --project <id>      Project ID (defaults to active project from 'run402 projects use')
+  --key <dest>        Destination key; defaults to file basename. Use trailing '/' as prefix.
+  --private           Upload as private (not served by CDN; apikey required to read)
+  --immutable         Append content-hash suffix so overwrites produce distinct URLs
+  --concurrency N     Concurrent part PUTs for multipart uploads (default 4)
+  --no-resume         Ignore any cached resumable-upload state and start fresh
+  --json              Emit NDJSON progress events on stdout (for agent consumption)
+
+Examples:
+  run402 blob put ./artifact.tgz --project abc123
+  run402 blob put ./dist/**/*.png --project abc123 --key assets/
+  run402 blob put huge.bin --project abc123 --immutable --concurrency 8
+`,
+  get: `run402 blob get — Download a blob by key
+
+Usage:
+  run402 blob get <key> --output <file> [options]
+
+Arguments:
+  <key>               Blob key to download
+
+Options:
+  --output <file>     Local destination path (required)
+  --project <id>      Project ID (defaults to active project)
+
+Examples:
+  run402 blob get images/logo.png --output /tmp/logo.png --project abc123
+`,
+  ls: `run402 blob ls — List blob keys in a project
+
+Usage:
+  run402 blob ls [options]
+
+Options:
+  --project <id>      Project ID (defaults to active project)
+  --prefix <p>        Only list keys starting with this prefix
+  --limit <n>         Max results (default 100, max 1000)
+
+Examples:
+  run402 blob ls --project abc123
+  run402 blob ls --project abc123 --prefix images/ --limit 500
+`,
+  rm: `run402 blob rm — Delete a blob
+
+Usage:
+  run402 blob rm <key> [options]
+
+Arguments:
+  <key>               Blob key to delete
+
+Options:
+  --project <id>      Project ID (defaults to active project)
+
+Examples:
+  run402 blob rm images/logo.png --project abc123
+`,
+  sign: `run402 blob sign — Create a presigned download URL for a blob
+
+Usage:
+  run402 blob sign <key> [options]
+
+Arguments:
+  <key>               Blob key to sign
+
+Options:
+  --project <id>      Project ID (defaults to active project)
+  --ttl <seconds>     Signed-URL TTL (default 3600, max 604800)
+
+Examples:
+  run402 blob sign reports/2025-q4.pdf --project abc123 --ttl 600
+`,
+};
+
 const UPLOAD_STATE_DIR = join(homedir(), ".run402", "uploads");
 
 function die(msg, code = 1) {
@@ -428,7 +511,7 @@ export async function run(sub, args) {
     process.exit(0);
   }
   if (Array.isArray(args) && (args.includes("--help") || args.includes("-h"))) {
-    console.log(HELP);
+    console.log(SUB_HELP[sub] || HELP);
     process.exit(0);
   }
   const defaultProject = process.env.RUN402_PROJECT ?? null;

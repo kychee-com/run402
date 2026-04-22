@@ -45,6 +45,41 @@ Notes:
   - Free with active tier — requires allowance auth
 `;
 
+const SUB_HELP = {
+  deploy: `run402 sites deploy — Deploy a static site from a manifest
+
+Usage:
+  run402 sites deploy --manifest <file> [--project <id>] [--target <target>] [--inherit]
+  cat manifest.json | run402 sites deploy [--project <id>] [--target <target>]
+
+Options:
+  --manifest <file>   Path to manifest JSON file (or read from stdin)
+  --project <id>      Project ID (defaults to the active project)
+  --target <target>   Deployment target (e.g. 'production')
+  --inherit           Copy unchanged files from the previous deployment
+                      (only upload changed files)
+
+Manifest format (JSON):
+  {
+    "files": [
+      { "file": "index.html", "data": "<html>...</html>" },
+      { "file": "style.css", "path": "./dist/style.css" }
+    ]
+  }
+  Paths are resolved relative to the manifest file's directory.
+  Binary files are auto-detected and base64-encoded.
+
+Notes:
+  - Must include at least index.html in the files array
+  - Free with active tier — requires allowance auth
+
+Examples:
+  run402 sites deploy --manifest site.json
+  run402 sites deploy --manifest site.json --target production --inherit
+  cat site.json | run402 sites deploy
+`,
+};
+
 async function readStdin() {
   const chunks = [];
   for await (const chunk of process.stdin) chunks.push(chunk);
@@ -96,6 +131,7 @@ async function status(args) {
 
 export async function run(sub, args) {
   if (!sub || sub === '--help' || sub === '-h') { console.log(HELP); process.exit(0); }
+  if (Array.isArray(args) && (args.includes("--help") || args.includes("-h"))) { console.log(SUB_HELP[sub] || HELP); process.exit(0); }
   switch (sub) {
     case "deploy":  await deploy(args); break;
     case "status":  await status(args); break;

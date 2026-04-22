@@ -22,6 +22,31 @@ Notes:
   - Values are write-only — list returns keys with a value_hash (first 8 hex chars of SHA-256) for verifying the correct value was set
 `;
 
+const SUB_HELP = {
+  set: `run402 secrets set — Set a secret on a project
+
+Usage:
+  run402 secrets set <id> <key> <value> [--file <path>]
+  run402 secrets set <id> <key> --file <path>
+
+Arguments:
+  <id>                Project ID (from 'run402 projects list')
+  <key>               Secret key name (exposed as process.env.<key>)
+  <value>             Inline secret value (omit if using --file)
+
+Options:
+  --file <path>       Read the secret value from a file instead of inline
+
+Notes:
+  - Secrets are injected as process.env in serverless functions
+  - Values are write-only; 'list' returns a value_hash for verification
+
+Examples:
+  run402 secrets set abc123 STRIPE_KEY sk-1234
+  run402 secrets set abc123 TLS_CERT --file cert.pem
+`,
+};
+
 async function set(projectId, key, args = []) {
   const p = findProject(projectId);
   let file = null;
@@ -69,7 +94,7 @@ async function deleteSecret(projectId, key) {
 export async function run(sub, args) {
   if (!sub || sub === '--help' || sub === '-h') { console.log(HELP); process.exit(0); }
   if (Array.isArray(args) && (args.includes("--help") || args.includes("-h"))) {
-    console.log(HELP);
+    console.log(SUB_HELP[sub] || HELP);
     process.exit(0);
   }
   switch (sub) {

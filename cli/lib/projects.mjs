@@ -52,6 +52,46 @@ Notes:
                                         that includes "i_understand_this_is_unrestricted": true
 `;
 
+const SUB_HELP = {
+  provision: `run402 projects provision — Provision a new Postgres project
+
+Usage:
+  run402 projects provision [--tier <tier>] [--name <name>]
+
+Options:
+  --tier <tier>       Tier for the new project (default: prototype)
+  --name <name>       Human-readable name for the project
+
+Notes:
+  - Payment is automatic via x402; requires a funded allowance
+  - The new project becomes the active project after provisioning
+
+Examples:
+  run402 projects provision
+  run402 projects provision --tier prototype
+  run402 projects provision --tier hobby --name my-app
+`,
+  sql: `run402 projects sql — Run a SQL query against a project's database
+
+Usage:
+  run402 projects sql <id> "<query>" [options]
+  run402 projects sql <id> --file <path> [options]
+
+Arguments:
+  <id>                Project ID (defaults to the active project if omitted)
+  <query>             Inline SQL query (quote it to preserve spaces)
+
+Options:
+  --file <path>       Read SQL from a file instead of an inline query
+  --params '<json>'   JSON array of parameters for a parameterized query
+
+Examples:
+  run402 projects sql abc123 "SELECT * FROM users LIMIT 5"
+  run402 projects sql abc123 "SELECT * FROM users WHERE id = $1" --params '[42]'
+  run402 projects sql abc123 --file setup.sql
+`,
+};
+
 async function quote() {
   const res = await fetch(`${API}/tiers/v1`);
   const data = await res.json();
@@ -237,7 +277,7 @@ export async function run(sub, args) {
     process.exit(0);
   }
   if (Array.isArray(args) && (args.includes("--help") || args.includes("-h"))) {
-    console.log(HELP);
+    console.log(SUB_HELP[sub] || HELP);
     process.exit(0);
   }
   switch (sub) {

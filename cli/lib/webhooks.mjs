@@ -21,6 +21,47 @@ Examples:
   run402 email webhooks delete whk_123
 `;
 
+const SUB_HELP = {
+  update: `run402 email webhooks update — Update an existing webhook
+
+Usage:
+  run402 email webhooks update <webhook_id> [--url <url>] [--events <e1,e2>] [--project <id>]
+
+Arguments:
+  <webhook_id>        Webhook ID to update
+
+Options:
+  --url <url>         New delivery URL for the webhook
+  --events <e1,e2>    Comma-separated event list to replace the current events
+                      Valid: delivery, bounced, complained, reply_received
+  --project <id>      Project ID (defaults to the active project)
+
+Notes:
+  - Provide at least one of --url or --events
+
+Examples:
+  run402 email webhooks update whk_123 --url https://new.example.com/hook
+  run402 email webhooks update whk_123 --events delivery,bounced
+`,
+  register: `run402 email webhooks register — Register a new webhook
+
+Usage:
+  run402 email webhooks register --url <url> --events <e1,e2> [--project <id>]
+
+Options:
+  --url <url>         Delivery URL for the webhook (required)
+  --events <e1,e2>    Comma-separated event list (required)
+                      Valid: delivery, bounced, complained, reply_received
+  --project <id>      Project ID (defaults to the active project)
+
+Examples:
+  run402 email webhooks register --url https://example.com/hook \\
+    --events delivery,bounced
+  run402 email webhooks register --url https://example.com/hook \\
+    --events reply_received --project proj123
+`,
+};
+
 function parseFlag(args, flag) {
   for (let i = 0; i < args.length; i++) {
     if (args[i] === flag && args[i + 1]) return args[i + 1];
@@ -207,6 +248,7 @@ async function register(args) {
 
 export async function run(sub, args) {
   if (!sub || sub === '--help' || sub === '-h') { console.log(HELP); process.exit(0); }
+  if (Array.isArray(args) && (args.includes("--help") || args.includes("-h"))) { console.log(SUB_HELP[sub] || HELP); process.exit(0); }
   switch (sub) {
     case "list":     await list(args); break;
     case "get":      await get(args); break;

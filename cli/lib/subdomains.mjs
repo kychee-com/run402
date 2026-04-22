@@ -24,6 +24,31 @@ Notes:
   - Creates <name>.run402.com pointing to the deployment
 `;
 
+const SUB_HELP = {
+  claim: `run402 subdomains claim — Claim a custom subdomain for a deployment
+
+Usage:
+  run402 subdomains claim <name> [--project <id>] [--deployment <id>]
+
+Arguments:
+  <name>              Subdomain name (3-63 chars, lowercase alphanumeric +
+                      hyphens). Creates <name>.run402.com.
+
+Options:
+  --project <id>      Project ID (defaults to the active project)
+  --deployment <id>   Deployment ID to point at (defaults to the project's
+                      last deployment)
+
+Notes:
+  - Legacy syntax 'claim <deployment_id> <name>' is still supported
+  - Deploy a site first (or pass --deployment) so there is a target to claim
+
+Examples:
+  run402 subdomains claim myapp
+  run402 subdomains claim myapp --deployment dpl_abc123 --project proj123
+`,
+};
+
 async function claim(positionalArgs, flagArgs) {
   const opts = { project: null, deployment: null };
   for (let i = 0; i < flagArgs.length; i++) {
@@ -85,6 +110,7 @@ async function list(projectId) {
 
 export async function run(sub, args) {
   if (!sub || sub === '--help' || sub === '-h') { console.log(HELP); process.exit(0); }
+  if (Array.isArray(args) && (args.includes("--help") || args.includes("-h"))) { console.log(SUB_HELP[sub] || HELP); process.exit(0); }
   switch (sub) {
     case "claim": {
       const positional = [];

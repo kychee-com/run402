@@ -29,6 +29,33 @@ Examples:
   run402 allowance history --limit 10
 `;
 
+const SUB_HELP = {
+  checkout: `run402 allowance checkout — Create a billing checkout session
+
+Usage:
+  run402 allowance checkout --amount <usd_micros>
+
+Options:
+  --amount <n>        Amount in USD micros (required; e.g. 5000000 for $5)
+
+Examples:
+  run402 allowance checkout --amount 5000000
+  run402 allowance checkout --amount 10000000
+`,
+  history: `run402 allowance history — View billing transaction history
+
+Usage:
+  run402 allowance history [--limit <n>]
+
+Options:
+  --limit <n>         Max entries to return (default: 20)
+
+Examples:
+  run402 allowance history
+  run402 allowance history --limit 10
+`,
+};
+
 const USDC_ABI = [{ name: "balanceOf", type: "function", stateMutability: "view", inputs: [{ name: "account", type: "address" }], outputs: [{ name: "", type: "uint256" }] }];
 const USDC_MAINNET = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
 const USDC_SEPOLIA = "0x036CbD53842c5426634e7929541eC2318f3dCF7e";
@@ -211,6 +238,10 @@ async function history(args) {
 export async function run(sub, args) {
   if (!sub || sub === '--help' || sub === '-h') {
     console.log(HELP);
+    process.exit(0);
+  }
+  if (Array.isArray(args) && (args.includes("--help") || args.includes("-h"))) {
+    console.log(SUB_HELP[sub] || HELP);
     process.exit(0);
   }
   switch (sub) {
