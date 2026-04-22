@@ -1575,6 +1575,26 @@ describe("CLI e2e happy path", () => {
     assert.equal(allowance.rail, "mpp", "rail should be mpp");
   });
 
+  // GH-81: after MPP faucet succeeds, `--json` summary must reflect funded=true
+  // and the polled balance. Previously `summary.allowance` was captured before
+  // the faucet branch ran, so the JSON reported `funded: false` and
+  // `usd_micros: 0` even when the human-readable lines said "funded".
+  it("init mpp --json reports funded=true after faucet settles (GH-81)", async () => {
+    tempoRpcCallCount = 0; // first eth_call returns 0 → triggers faucet path
+    const { run } = await import("./cli/lib/init.mjs");
+    captureStart();
+    await run(["mpp", "--json"]);
+    captureStop();
+    const stdout = capturedStdout();
+    const parsed = JSON.parse(stdout);
+    assert.equal(parsed.rail, "mpp", `rail must be mpp; got: ${parsed.rail}`);
+    assert.equal(parsed.allowance.funded, true,
+      `summary.allowance.funded must be true after successful faucet; got: ${JSON.stringify(parsed.allowance)}`);
+    assert.equal(parsed.balance.symbol, "pathUSD");
+    assert.ok(parsed.balance.usd_micros > 0,
+      `summary.balance.usd_micros must reflect polled balance (>0); got: ${parsed.balance.usd_micros}`);
+  });
+
   it("allowance status (MPP rail)", async () => {
     const { run } = await import("./cli/lib/allowance.mjs");
     captureStart();
