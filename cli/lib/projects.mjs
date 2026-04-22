@@ -1,5 +1,5 @@
 import { readFileSync } from "fs";
-import { findProject, loadKeyStore, saveProject, removeProject, API, allowanceAuthHeaders, setActiveProjectId, getActiveProjectId } from "./config.mjs";
+import { findProject, loadKeyStore, saveProject, removeProject, API, allowanceAuthHeaders, setActiveProjectId, getActiveProjectId, resolveProjectId } from "./config.mjs";
 
 const HELP = `run402 projects — Manage your deployed Run402 projects
 
@@ -11,17 +11,17 @@ Subcommands:
   provision [--tier <tier>] [--name <n>]  Provision a new Postgres project (pays via x402)
   use   <id>                              Set the active project (used as default for other commands)
   list                                    List all your projects (IDs, URLs, active marker)
-  info  <id>                              Show project details: REST URL, keys
-  keys  <id>                              Print anon_key and service_key as JSON
-  sql   <id> "<query>" [--file <path>] [--params '<json>']  Run a SQL query (supports parameterized queries)
-  rest  <id> <table> [params]             Query a table via the REST API (PostgREST)
-  usage <id>                              Show compute/storage usage for a project
-  schema <id>                             Inspect the database schema
-  rls   <id> <template> <tables_json>     Apply Row-Level Security policies
-  delete <id>                             Immediately and irreversibly delete a project (cascade purge) and remove from local state
-  pin   <id>                              Pin a project (prevents expiry/GC)
-  promote-user <id> <email>               Promote a user to project_admin role
-  demote-user  <id> <email>               Demote a user from project_admin role
+  info  [id]                              Show project details: REST URL, keys
+  keys  [id]                              Print anon_key and service_key as JSON
+  sql   [id] "<query>" [--file <path>] [--params '<json>']  Run a SQL query (supports parameterized queries)
+  rest  [id] <table> [params]             Query a table via the REST API (PostgREST)
+  usage [id]                              Show compute/storage usage for a project
+  schema [id]                             Inspect the database schema
+  rls   [id] <template> <tables_json>     Apply Row-Level Security policies
+  delete [id]                             Immediately and irreversibly delete a project (cascade purge) and remove from local state
+  pin   [id]                              Pin a project (prevents expiry/GC)
+  promote-user [id] <email>               Promote a user to project_admin role
+  demote-user  [id] <email>               Demote a user from project_admin role
 
 Examples:
   run402 projects quote
@@ -41,8 +41,10 @@ Examples:
   run402 projects delete abc123
 
 Notes:
-  - <id> is the project_id shown in 'run402 projects list'
-  - Most commands that take <id> default to the active project if omitted
+  - <id> is the project_id shown in 'run402 projects list' (prefix: 'prj_')
+  - Most commands that take <id> default to the active project when omitted
+    (set it with 'run402 projects use <id>'). Project IDs start with 'prj_';
+    any first positional that doesn't is treated as the next argument instead.
   - 'rest' uses PostgREST query syntax (table name + optional query string)
   - 'provision' requires a funded allowance — payment is automatic via x402
   - RLS templates (prefer user_owns_rows for user-scoped data):
@@ -74,11 +76,13 @@ Examples:
   sql: `run402 projects sql — Run a SQL query against a project's database
 
 Usage:
-  run402 projects sql <id> "<query>" [options]
-  run402 projects sql <id> --file <path> [options]
+  run402 projects sql [id] "<query>" [options]
+  run402 projects sql [id] --file <path> [options]
 
 Arguments:
-  <id>                Project ID (defaults to the active project if omitted)
+  [id]                Project ID (defaults to the active project if omitted;
+                      must start with 'prj_' — any other first arg is treated
+                      as the query instead)
   <query>             Inline SQL query (quote it to preserve spaces)
 
 Options:
@@ -113,8 +117,34 @@ async function provision(args) {
     headers: { "Content-Type": "application/json", ...authHeaders },
     body: JSON.stringify(body),
   });
-  const data = await res.json();
-  if (!res.ok) { console.error(JSON.stringify({ status: "error", http: res.status, ...data })); process.exit(1); }
+  // Content-type aware parsing: gateways (ALB, CloudFront, etc.) return HTML on
+  // 502/504/etc., which would otherwise crash res.json() with SyntaxError (GH-84).
+  const contentType = res.headers.get("content-type") || "";
+  let data = null;
+  let parseError = null;
+  let bodyText = null;
+  if (contentType.includes("application/json")) {
+    try {
+      data = await res.json();
+    } catch (e) {
+      parseError = e;
+      try { bodyText = await res.text(); } catch { bodyText = ""; }
+    }
+  } else {
+    try { bodyText = await res.text(); } catch { bodyText = ""; }
+  }
+  if (!res.ok || parseError || data === null) {
+    const err = { status: "error", http: res.status, content_type: contentType || null };
+    if (data && typeof data === "object") {
+      Object.assign(err, data);
+    } else {
+      const preview = typeof bodyText === "string" ? bodyText.slice(0, 500) : "";
+      err.body_preview = preview;
+      if (parseError) err.parse_error = "response body was not valid JSON";
+    }
+    console.error(JSON.stringify(err));
+    process.exit(1);
+  }
   // Save project credentials locally and set as active
   if (data.project_id) {
     saveProject(data.project_id, {
@@ -271,6 +301,19 @@ async function deleteProject(projectId) {
   }
 }
 
+// Resolve a positional project_id argument with active-project fallback (GH-102).
+// Heuristic: real project IDs start with "prj_". If args[0] is missing OR
+// doesn't start with "prj_", fall back to the active project and return the
+// full args array as remaining positionals. Otherwise consume args[0] as the
+// project_id and return args.slice(1) as remaining positionals.
+function resolvePositionalProject(args) {
+  const first = Array.isArray(args) ? args[0] : undefined;
+  if (typeof first === "string" && first.startsWith("prj_")) {
+    return { projectId: first, rest: args.slice(1) };
+  }
+  return { projectId: resolveProjectId(null), rest: Array.isArray(args) ? args : [] };
+}
+
 export async function run(sub, args) {
   if (!sub || sub === '--help' || sub === '-h') {
     console.log(HELP);
@@ -285,17 +328,17 @@ export async function run(sub, args) {
     case "provision": await provision(args); break;
     case "use":       await use(args[0]); break;
     case "list":      await list(); break;
-    case "info":      await info(args[0]); break;
-    case "keys":      await keys(args[0]); break;
-    case "sql":       await sqlCmd(args[0], args.slice(1)); break;
-    case "rest":      await rest(args[0], args[1], args[2]); break;
-    case "usage":     await usage(args[0]); break;
-    case "schema":    await schema(args[0]); break;
-    case "rls":       await rls(args[0], args[1], args[2]); break;
-    case "delete":    await deleteProject(args[0]); break;
-    case "pin":          await pin(args[0]); break;
-    case "promote-user": await promoteUser(args[0], args[1]); break;
-    case "demote-user":  await demoteUser(args[0], args[1]); break;
+    case "info":      { const { projectId } = resolvePositionalProject(args); await info(projectId); break; }
+    case "keys":      { const { projectId } = resolvePositionalProject(args); await keys(projectId); break; }
+    case "sql":       { const { projectId, rest } = resolvePositionalProject(args); await sqlCmd(projectId, rest); break; }
+    case "rest":      { const { projectId, rest: restArgs } = resolvePositionalProject(args); await rest(projectId, restArgs[0], restArgs[1]); break; }
+    case "usage":     { const { projectId } = resolvePositionalProject(args); await usage(projectId); break; }
+    case "schema":    { const { projectId } = resolvePositionalProject(args); await schema(projectId); break; }
+    case "rls":       { const { projectId, rest } = resolvePositionalProject(args); await rls(projectId, rest[0], rest[1]); break; }
+    case "delete":    { const { projectId } = resolvePositionalProject(args); await deleteProject(projectId); break; }
+    case "pin":       { const { projectId } = resolvePositionalProject(args); await pin(projectId); break; }
+    case "promote-user": { const { projectId, rest } = resolvePositionalProject(args); await promoteUser(projectId, rest[0]); break; }
+    case "demote-user":  { const { projectId, rest } = resolvePositionalProject(args); await demoteUser(projectId, rest[0]); break; }
     default:
       console.error(`Unknown subcommand: ${sub}\n`);
       console.log(HELP);

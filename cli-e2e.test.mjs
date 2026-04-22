@@ -701,6 +701,216 @@ describe("CLI e2e happy path", () => {
     assert.ok(captured().includes("ok"), "should apply RLS");
   });
 
+  // GH-84: provision must not crash on non-JSON gateway error
+  it("projects provision surfaces HTML 502 without SyntaxError (GH-84)", async () => {
+    const { run } = await import("./cli/lib/projects.mjs");
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = (input, init) => {
+      const url = typeof input === "string" ? input : (input instanceof Request ? input.url : String(input));
+      const method = (init?.method || (input instanceof Request ? input.method : "GET") || "GET").toUpperCase();
+      if (url.endsWith("/projects/v1") && method === "POST") {
+        const html = "<html><head></head><body>502 Bad Gateway</body></html>";
+        return Promise.resolve(new Response(html, {
+          status: 502,
+          headers: { "Content-Type": "text/html" },
+        }));
+      }
+      return prevFetch(input, init);
+    };
+    let threw = null;
+    captureStart();
+    try {
+      await run("provision", ["--tier", "prototype"]);
+    } catch (e) {
+      threw = e;
+    } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+    const out = captured();
+    assert.ok(threw && /process\.exit\(1\)/.test(threw.message),
+      `should exit non-zero, got: ${threw && threw.message}`);
+    assert.ok(!/SyntaxError/i.test(out), `must not leak SyntaxError, got: ${out}`);
+    assert.ok(!/Unexpected token/i.test(out), `must not leak JSON parser message, got: ${out}`);
+    const stderr = capturedStderr();
+    const line = stderr.split("\n").map(s => s.trim()).find(s => s.startsWith("{") && s.endsWith("}"));
+    assert.ok(line, `should emit a JSON error line on stderr, got: ${stderr}`);
+    const parsed = JSON.parse(line);
+    assert.equal(parsed.status, "error");
+    assert.equal(parsed.http, 502);
+    assert.ok(typeof parsed.body_preview === "string" && parsed.body_preview.length > 0,
+      `body_preview should be non-empty, got: ${JSON.stringify(parsed)}`);
+    assert.ok(parsed.body_preview.includes("502 Bad Gateway"),
+      `body_preview should include the HTML body, got: ${parsed.body_preview}`);
+  });
+
+  // GH-102: subcommands default to active project
+  // The "projects provision" test above saves prj_test123 to the keystore
+  // and sets it as the active project, so these tests can omit the id.
+
+  it("projects info defaults to active project (GH-102)", async () => {
+    const { run } = await import("./cli/lib/projects.mjs");
+    const { setActiveProjectId } = await import("./cli/lib/config.mjs");
+    setActiveProjectId("prj_test123");
+    captureStart();
+    await run("info", []);
+    captureStop();
+    const stdout = capturedStdout();
+    assert.ok(stdout.includes("prj_test123"),
+      `should use active project in info output; got: ${stdout}`);
+    assert.ok(!/not found/i.test(stdout),
+      `should not complain about missing project; got: ${stdout}`);
+    assert.ok(!/undefined/.test(stdout),
+      `should not include "undefined"; got: ${stdout}`);
+  });
+
+  it("projects keys defaults to active project (GH-102)", async () => {
+    const { run } = await import("./cli/lib/projects.mjs");
+    const { setActiveProjectId } = await import("./cli/lib/config.mjs");
+    setActiveProjectId("prj_test123");
+    captureStart();
+    await run("keys", []);
+    captureStop();
+    const stdout = capturedStdout();
+    assert.ok(stdout.includes("prj_test123"),
+      `should use active project in keys output; got: ${stdout}`);
+    assert.ok(stdout.includes("anon_test_key"),
+      `should print anon key from active project; got: ${stdout}`);
+  });
+
+  it("projects usage defaults to active project (GH-102)", async () => {
+    const { run } = await import("./cli/lib/projects.mjs");
+    const { setActiveProjectId } = await import("./cli/lib/config.mjs");
+    setActiveProjectId("prj_test123");
+    let seenUrl = null;
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = (input, init) => {
+      const url = typeof input === "string" ? input : (input instanceof Request ? input.url : String(input));
+      if (url.includes("/usage")) seenUrl = url;
+      return prevFetch(input, init);
+    };
+    captureStart();
+    try {
+      await run("usage", []);
+    } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+    assert.ok(seenUrl && seenUrl.includes("/projects/v1/admin/prj_test123/usage"),
+      `usage should hit the active project URL; got: ${seenUrl}`);
+    assert.ok(captured().includes("api_calls"), "should show usage for active project");
+  });
+
+  it("projects schema defaults to active project (GH-102)", async () => {
+    const { run } = await import("./cli/lib/projects.mjs");
+    const { setActiveProjectId } = await import("./cli/lib/config.mjs");
+    setActiveProjectId("prj_test123");
+    let seenUrl = null;
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = (input, init) => {
+      const url = typeof input === "string" ? input : (input instanceof Request ? input.url : String(input));
+      if (url.includes("/schema")) seenUrl = url;
+      return prevFetch(input, init);
+    };
+    captureStart();
+    try {
+      await run("schema", []);
+    } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+    assert.ok(seenUrl && seenUrl.includes("/projects/v1/admin/prj_test123/schema"),
+      `schema should hit the active project URL; got: ${seenUrl}`);
+    assert.ok(captured().includes("tables"), "should show schema for active project");
+  });
+
+  it("projects sql \"SELECT 1\" treats query as query, defaults to active (GH-102)", async () => {
+    const { run } = await import("./cli/lib/projects.mjs");
+    const { setActiveProjectId } = await import("./cli/lib/config.mjs");
+    setActiveProjectId("prj_test123");
+    let seenUrl = null;
+    let seenBody = null;
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = (input, init) => {
+      const url = typeof input === "string" ? input : (input instanceof Request ? input.url : String(input));
+      const method = (init?.method || (input instanceof Request ? input.method : "GET") || "GET").toUpperCase();
+      if (/\/sql$/.test(url) && method === "POST") {
+        seenUrl = url;
+        const body = init?.body ?? null;
+        seenBody = typeof body === "string" ? body : String(body);
+      }
+      return prevFetch(input, init);
+    };
+    captureStart();
+    try {
+      await run("sql", ["SELECT 1"]);
+    } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+    assert.ok(seenUrl && seenUrl.includes("/projects/v1/admin/prj_test123/sql"),
+      `sql should hit the active project URL; got: ${seenUrl}`);
+    assert.ok(seenBody && seenBody.includes("SELECT 1"),
+      `request body should contain the SQL query "SELECT 1"; got: ${seenBody}`);
+    assert.ok(captured().includes("test"), "should return query results");
+  });
+
+  it("projects rls defaults to active project (GH-102)", async () => {
+    const { run } = await import("./cli/lib/projects.mjs");
+    const { setActiveProjectId } = await import("./cli/lib/config.mjs");
+    setActiveProjectId("prj_test123");
+    let seenUrl = null;
+    let seenBody = null;
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = (input, init) => {
+      const url = typeof input === "string" ? input : (input instanceof Request ? input.url : String(input));
+      const method = (init?.method || (input instanceof Request ? input.method : "GET") || "GET").toUpperCase();
+      if (/\/rls$/.test(url) && method === "POST") {
+        seenUrl = url;
+        const body = init?.body;
+        try { seenBody = JSON.parse(body); } catch { seenBody = body; }
+      }
+      return prevFetch(input, init);
+    };
+    captureStart();
+    try {
+      await run("rls", ["public_read_authenticated_write", '[{"table":"items"}]']);
+    } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+    assert.ok(seenUrl && seenUrl.includes("/projects/v1/admin/prj_test123/rls"),
+      `rls should hit the active project URL; got: ${seenUrl}`);
+    assert.equal(seenBody?.template, "public_read_authenticated_write",
+      `template should be the first positional arg; got: ${JSON.stringify(seenBody)}`);
+    assert.deepEqual(seenBody?.tables, [{ table: "items" }],
+      `tables should be parsed JSON from second positional arg; got: ${JSON.stringify(seenBody)}`);
+    assert.ok(captured().includes("ok"), "should apply RLS");
+  });
+
+  it("projects rest defaults to active project (GH-102)", async () => {
+    const { run } = await import("./cli/lib/projects.mjs");
+    const { setActiveProjectId } = await import("./cli/lib/config.mjs");
+    setActiveProjectId("prj_test123");
+    let seenUrl = null;
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = (input, init) => {
+      const url = typeof input === "string" ? input : (input instanceof Request ? input.url : String(input));
+      if (url.includes("/rest/v1/")) seenUrl = url;
+      return prevFetch(input, init);
+    };
+    captureStart();
+    try {
+      await run("rest", ["items", "limit=10"]);
+    } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+    assert.ok(seenUrl && seenUrl.includes("/rest/v1/items?limit=10"),
+      `rest should use positional args as table + querystring; got: ${seenUrl}`);
+    assert.ok(captured().includes("Test item"), "should return REST data");
+  });
+
   // ── Deploy ──────────────────────────────────────────────────────────────
 
   it("deploy", async () => {
