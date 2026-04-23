@@ -9,6 +9,7 @@ export const setupRlsSchema = {
   template: z
     .enum(["user_owns_rows", "public_read_authenticated_write", "public_read_write_UNRESTRICTED"])
     .describe(
+      "⚠ DEPRECATED — use `apply_expose` instead. Sunset: 2026-05-23. " +
       "RLS template. Prefer `user_owns_rows` for anything user-scoped. " +
       "user_owns_rows (users access only their own rows; requires owner_column), " +
       "public_read_authenticated_write (anyone reads; any authenticated user can write ANY row — collaborative tables only), " +
@@ -92,6 +93,8 @@ export async function handleSetupRls(args: {
     `Template **${resBody.template}** applied to: ${resBody.tables.map((t) => `\`${t}\``).join(", ")}`,
     ``,
     `Row-level security is now active on these tables.`,
+    ``,
+    `⚠ **Deprecated** — this endpoint is sunset on 2026-05-23. Migrate to \`apply_expose\` for future RLS changes. See https://run402.com/llms-cli.txt for the manifest format.`,
   ];
 
   return { content: [{ type: "text", text: lines.join("\n") }] };

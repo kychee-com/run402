@@ -152,6 +152,8 @@ const SURFACE: Capability[] = [
   { id: "run_sql",           endpoint: "POST /projects/v1/admin/:id/sql",        mcp: "run_sql",                       cli: "projects:sql",        openclaw: "projects:sql" },
   { id: "rest_query",        endpoint: "/rest/v1/:table",                        mcp: "rest_query",                    cli: "projects:rest",       openclaw: "projects:rest" },
   { id: "setup_rls",         endpoint: "POST /projects/v1/admin/:id/rls",        mcp: "setup_rls",                     cli: "projects:rls",        openclaw: "projects:rls" },
+  { id: "apply_expose",      endpoint: "POST /projects/v1/admin/:id/expose",     mcp: "apply_expose",                  cli: "projects:apply-expose", openclaw: "projects:apply-expose" },
+  { id: "get_expose",        endpoint: "GET /projects/v1/admin/:id/expose",      mcp: "get_expose",                    cli: "projects:get-expose",   openclaw: "projects:get-expose" },
   { id: "get_schema",        endpoint: "GET /projects/v1/admin/:id/schema",      mcp: "get_schema",                    cli: "projects:schema",     openclaw: "projects:schema" },
   { id: "get_usage",         endpoint: "GET /projects/v1/admin/:id/usage",       mcp: "get_usage",                     cli: "projects:usage",      openclaw: "projects:usage" },
 

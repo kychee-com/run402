@@ -18,6 +18,8 @@ import { setSecretSchema, handleSetSecret } from "./tools/set-secret.js";
 
 // New tools — database
 import { setupRlsSchema, handleSetupRls } from "./tools/setup-rls.js";
+import { applyExposeSchema, handleApplyExpose } from "./tools/apply-expose.js";
+import { getExposeSchema, handleGetExpose } from "./tools/get-expose.js";
 import { getSchemaSchema, handleGetSchema } from "./tools/get-schema.js";
 import { getUsageSchema, handleGetUsage } from "./tools/get-usage.js";
 
@@ -177,9 +179,23 @@ server.tool(
 
 server.tool(
   "setup_rls",
-  "Apply row-level security to tables. Prefer `user_owns_rows` for anything user-scoped. Templates: user_owns_rows (users access only their own rows), public_read_authenticated_write (anyone reads; any authenticated user writes ANY row), public_read_write_UNRESTRICTED (⚠ fully open including anon_key; requires i_understand_this_is_unrestricted: true).",
+  "⚠ DEPRECATED — use `apply_expose` instead. Sunset: 2026-05-23. The `/rls` endpoint still works during the deprecation window and returns Deprecation/Sunset headers; after the sunset date it will return 410 Gone. Apply row-level security to tables. Templates: user_owns_rows, public_read_authenticated_write, public_read_write_UNRESTRICTED (requires i_understand_this_is_unrestricted: true).",
   setupRlsSchema,
   async (args) => handleSetupRls(args),
+);
+
+server.tool(
+  "apply_expose",
+  "Apply a declarative authorization manifest to a project (POST /projects/v1/admin/:id/expose). The manifest describes the full authorization surface: tables (with policy, owner_column, force_owner_on_insert, i_understand_this_is_unrestricted, custom_sql), views (with base, select, filter), and rpcs (with signature, grant_to). Convergent: applying the same manifest twice is a no-op; items dropped between applies have their policies/grants/triggers/views revoked. Tables are dark by default — any table not declared with expose:true is unreachable via anon/authenticated. Supersedes `setup_rls`.",
+  applyExposeSchema,
+  async (args) => handleApplyExpose(args),
+);
+
+server.tool(
+  "get_expose",
+  "Get the current authorization manifest for a project (GET /projects/v1/admin/:id/expose). Returns the last-applied manifest from `internal.project_manifest`, or a manifest reconstructed by introspecting live DB state if none has ever been applied. The `source` field is `\"applied\"` or `\"introspected\"`.",
+  getExposeSchema,
+  async (args) => handleGetExpose(args),
 );
 
 server.tool(

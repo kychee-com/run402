@@ -17,7 +17,10 @@ Subcommands:
   rest  [id] <table> [params]             Query a table via the REST API (PostgREST)
   usage [id]                              Show compute/storage usage for a project
   schema [id]                             Inspect the database schema
-  rls   [id] <template> <tables_json>     Apply Row-Level Security policies
+  rls   [id] <template> <tables_json>     ⚠ DEPRECATED (sunset 2026-05-23) - use 'apply-expose' instead
+  apply-expose [id] <manifest_json>       Apply a declarative authorization manifest (supersedes 'rls')
+  apply-expose [id] --file <path>         Apply a manifest from a JSON file
+  get-expose   [id]                       Get the current authorization manifest
   delete [id]                             Immediately and irreversibly delete a project (cascade purge) and remove from local state
   pin   [id]                              Pin a project (prevents expiry/GC)
   promote-user [id] <email>               Promote a user to project_admin role
@@ -37,6 +40,8 @@ Examples:
   run402 projects usage abc123
   run402 projects schema abc123
   run402 projects rls abc123 public_read_authenticated_write '[{"table":"posts"}]'
+  run402 projects apply-expose abc123 --file manifest.json
+  run402 projects get-expose abc123
   run402 projects keys abc123
   run402 projects delete abc123
 
@@ -52,6 +57,14 @@ Notes:
       public_read_authenticated_write   anyone reads; any authenticated user writes any row
       public_read_write_UNRESTRICTED    fully open (anon_key writes); use 'run402 deploy' with a manifest
                                         that includes "i_understand_this_is_unrestricted": true
+  - 'rls' is deprecated (sunset 2026-05-23) — migrate to 'apply-expose'.
+    The expose manifest declares the full authorization surface (tables, views,
+    RPCs) in one convergent call. Tables not listed with expose:true are dark
+    by default. Sample manifest:
+      {"version":"1",
+       "tables":[{"name":"posts","expose":true,"policy":"user_owns_rows","owner_column":"user_id","force_owner_on_insert":true}],
+       "views":[],
+       "rpcs":[]}
 `;
 
 const SUB_HELP = {
@@ -163,6 +176,42 @@ async function rls(projectId, template, tablesJson) {
     method: "POST",
     headers: { "Authorization": `Bearer ${p.service_key}`, "Content-Type": "application/json" },
     body: JSON.stringify({ template, tables }),
+  });
+  const data = await res.json();
+  if (!res.ok) { console.error(JSON.stringify({ status: "error", http: res.status, ...data })); process.exit(1); }
+  console.log(JSON.stringify(data, null, 2));
+}
+
+async function applyExpose(projectId, args = []) {
+  const p = findProject(projectId);
+  let file = null;
+  let inline = null;
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === "--file" && args[i + 1]) { file = args[++i]; }
+    else if (!inline && !args[i].startsWith("--")) { inline = args[i]; }
+  }
+  const raw = file ? readFileSync(file, "utf-8") : inline;
+  if (!raw) {
+    console.error(JSON.stringify({ status: "error", message: "Missing manifest. Provide inline JSON or use --file <path>" }));
+    process.exit(1);
+  }
+  let manifest;
+  try { manifest = JSON.parse(raw); }
+  catch { console.error(JSON.stringify({ status: "error", message: "Invalid JSON for manifest" })); process.exit(1); }
+  const res = await fetch(`${API}/projects/v1/admin/${projectId}/expose`, {
+    method: "POST",
+    headers: { "Authorization": `Bearer ${p.service_key}`, "Content-Type": "application/json" },
+    body: JSON.stringify(manifest),
+  });
+  const data = await res.json();
+  if (!res.ok) { console.error(JSON.stringify({ status: "error", http: res.status, ...data })); process.exit(1); }
+  console.log(JSON.stringify(data, null, 2));
+}
+
+async function getExpose(projectId) {
+  const p = findProject(projectId);
+  const res = await fetch(`${API}/projects/v1/admin/${projectId}/expose`, {
+    headers: { "Authorization": `Bearer ${p.service_key}` },
   });
   const data = await res.json();
   if (!res.ok) { console.error(JSON.stringify({ status: "error", http: res.status, ...data })); process.exit(1); }
@@ -335,6 +384,8 @@ export async function run(sub, args) {
     case "usage":     { const { projectId } = resolvePositionalProject(args); await usage(projectId); break; }
     case "schema":    { const { projectId } = resolvePositionalProject(args); await schema(projectId); break; }
     case "rls":       { const { projectId, rest } = resolvePositionalProject(args); await rls(projectId, rest[0], rest[1]); break; }
+    case "apply-expose": { const { projectId, rest } = resolvePositionalProject(args); await applyExpose(projectId, rest); break; }
+    case "get-expose":   { const { projectId } = resolvePositionalProject(args); await getExpose(projectId); break; }
     case "delete":    { const { projectId } = resolvePositionalProject(args); await deleteProject(projectId); break; }
     case "pin":       { const { projectId } = resolvePositionalProject(args); await pin(projectId); break; }
     case "promote-user": { const { projectId, rest } = resolvePositionalProject(args); await promoteUser(projectId, rest[0]); break; }

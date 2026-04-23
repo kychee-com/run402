@@ -155,10 +155,11 @@ END $$;
 
 This pattern is safe to re-run on every deploy. Put your `CREATE TABLE IF NOT EXISTS` first, then one `DO` block per new column (or group them in a single block).
 
-RLS templates (prefer `user_owns_rows` for anything user-scoped):
+Authorization policy templates (prefer `user_owns_rows` for anything user-scoped):
 - `user_owns_rows` — users access only their own rows (requires `owner_column` per table; `uuid` columns are index-friendly, others fall back to `::text` cast with a warning; a btree index is auto-created)
 - `public_read_authenticated_write` — anyone reads; **any authenticated user can INSERT/UPDATE/DELETE any row** (not just their own). For collaborative content (shared boards, announcements).
-- `public_read_write_UNRESTRICTED` — ⚠ fully open; `anon_key` can read AND write any row. For intentionally public tables only (guestbooks, waitlists, feedback forms). **Requires** `"i_understand_this_is_unrestricted": true` in the request body; logs an audit line on the gateway.
+- `public_read_write_UNRESTRICTED` — ⚠ fully open; `anon_key` can read AND write any row. For intentionally public tables only (guestbooks, waitlists, feedback forms). **Requires** `"i_understand_this_is_unrestricted": true` on the table entry.
+- `custom` — escape hatch. Provide `custom_sql` containing `CREATE POLICY` statements; they run inside the apply transaction after RLS is enabled + forced.
 
 | Template | anon_key reads | anon_key writes | authenticated reads | authenticated writes |
 |----------|---------------|-----------------|---------------------|----------------------|
@@ -166,7 +167,26 @@ RLS templates (prefer `user_owns_rows` for anything user-scoped):
 | `public_read_authenticated_write` | all rows | no | all rows | all rows (any row) |
 | `public_read_write_UNRESTRICTED` | all rows | all rows | all rows | all rows |
 
-⚠️ **Without RLS, tables are read-only via anon_key.** If your app writes data from the browser, you almost certainly need an `rls` block.
+⚠️ **Dark by default (v1.31+)**: tables created via `run402 projects sql` are NOT readable by anon or authenticated until the expose manifest declares them with `expose: true`. Pre-v1.31 tables on Pod 01 are grandfathered and keep their existing grants until a manifest is applied.
+
+**Migration from `rls` → `expose`**: the `rls` block below and `run402 projects rls` are deprecated (sunset **2026-05-23**). Bundle deploys containing an `rls` block are auto-translated to an expose manifest during the deprecation window. After the sunset date, the legacy endpoint returns `410 Gone`.
+
+Equivalent manifest (use this going forward):
+
+```json
+{
+  "version": "1",
+  "tables": [
+    { "name": "items", "expose": true, "policy": "public_read_write_UNRESTRICTED", "i_understand_this_is_unrestricted": true }
+  ],
+  "views": [],
+  "rpcs": []
+}
+```
+
+Apply it with `run402 projects apply-expose <project_id> --file manifest.json` (or inline JSON). Inspect current state with `run402 projects get-expose <project_id>` — `source: "applied"` means it came from `internal.project_manifest`; `"introspected"` means the manifest was regenerated from live DB state (no manifest has ever been applied).
+
+The manifest is **convergent**: applying the same manifest twice is a no-op; items removed between applies have their policies revoked, grants revoked, triggers dropped, and views dropped. Include everything you want exposed in every apply.
 
 Deploy:
 
@@ -190,11 +210,10 @@ run402 projects sql <project_id> "CREATE TABLE items (id serial PRIMARY KEY, tit
 # 3. Insert seed data
 run402 projects sql <project_id> "INSERT INTO items (title) VALUES ('Buy groceries'), ('Read a book')"
 
-# 4. Set up Row-Level Security
-#    (The 3-arg CLI does not accept the UNRESTRICTED ACK; for that,
-#     use `run402 deploy` with a manifest including
-#     "i_understand_this_is_unrestricted": true.)
-run402 projects rls <project_id> public_read_authenticated_write '[{"table":"items"}]'
+# 4. Declare the authorization manifest (supersedes `projects rls`, sunset 2026-05-23).
+#    Write the manifest to manifest.json first, then apply:
+#    {"version":"1","tables":[{"name":"items","expose":true,"policy":"public_read_authenticated_write"}],"views":[],"rpcs":[]}
+run402 projects apply-expose <project_id> --file manifest.json
 
 # 5. Deploy a static site (uses active project automatically)
 run402 sites deploy --manifest site.json
@@ -236,12 +255,14 @@ run402 subdomains claim my-app
 - `run402 projects demote-user <id> <email>` — demote a user from project_admin role
 - `run402 projects <usage|schema> <id>`
 - `run402 projects delete <id>` — **cascade deletes** all project resources: Lambda functions, subdomains, S3 site files, deployments, secrets, and published app versions. The schema slot is dropped and recreated. This is irreversible.
-- `run402 projects rls <id> <user_owns_rows|public_read_authenticated_write|public_read_write_UNRESTRICTED> '<tables_json>'`
-  (The 3-arg form cannot set the UNRESTRICTED ACK. For UNRESTRICTED, use `run402 deploy` with a manifest that includes `"i_understand_this_is_unrestricted": true` in the `rls` block.)
+- `run402 projects apply-expose <id> <manifest_json>` — apply a declarative authorization manifest
+- `run402 projects apply-expose <id> --file manifest.json` — apply from a JSON file
+- `run402 projects get-expose <id>` — print the current manifest (`source: applied | introspected`)
+- `run402 projects rls <id> <user_owns_rows|public_read_authenticated_write|public_read_write_UNRESTRICTED> '<tables_json>'` — ⚠ DEPRECATED (sunset 2026-05-23). Migrate to `apply-expose`. For UNRESTRICTED, `apply-expose` accepts `"i_understand_this_is_unrestricted": true` on the table entry.
 
 Provisioning automatically sets the new project as the **active project**. Other commands that take `<id>` default to the active project when omitted.
 
-RLS tables_json example: `'[{"table":"posts"}]'` or `'[{"table":"notes","owner_column":"user_id"}]'` for user_owns_rows.
+RLS `tables_json` (legacy): `'[{"table":"posts"}]'` or `'[{"table":"notes","owner_column":"user_id"}]'` for user_owns_rows. Prefer the expose manifest for new work.
 
 SQL supports DDL + queries, returns JSON. REST uses PostgREST syntax (`select=`, `eq.`, `order=`, `limit=`).
 
@@ -708,12 +729,11 @@ A working single-file app. Uses `public_read_write_UNRESTRICTED` RLS so the `ano
 # Create table
 run402 projects sql $PROJECT_ID "CREATE TABLE guestbook (id serial PRIMARY KEY, name text NOT NULL, message text NOT NULL, created_at timestamptz DEFAULT now())"
 
-# Enable public_read_write_UNRESTRICTED so anon_key can insert.
-# The 3-arg `projects rls` CLI cannot set the required ACK flag; use
-# `run402 deploy` with a manifest that includes:
-#   "rls": { "template": "public_read_write_UNRESTRICTED",
-#            "tables": [{"table":"guestbook"}],
-#            "i_understand_this_is_unrestricted": true }
+# Expose guestbook so anon_key can insert. Write manifest.json:
+# {"version":"1",
+#  "tables":[{"name":"guestbook","expose":true,"policy":"public_read_write_UNRESTRICTED","i_understand_this_is_unrestricted":true}],
+#  "views":[],"rpcs":[]}
+run402 projects apply-expose $PROJECT_ID --file manifest.json
 ```
 
 ---
