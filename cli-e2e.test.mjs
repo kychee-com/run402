@@ -520,6 +520,30 @@ describe("CLI e2e happy path", () => {
     assert.ok(captured().includes("subscribe"), "should show action");
   });
 
+  // GH-110: help text must reflect actual prototype pricing ($0.10/7d), not "free/testnet"
+  it("tier --help shows prototype as $0.10/7d (GH-110)", async () => {
+    const { run } = await import("./cli/lib/tier.mjs");
+    let threw = null;
+    captureStart();
+    try {
+      await run("--help", []);
+    } catch (e) {
+      threw = e;
+    } finally {
+      captureStop();
+    }
+    assert.equal(threw?.message, "process.exit(0)", "tier --help should exit 0");
+    const out = capturedStdout();
+    assert.ok(
+      !/free\/testnet/i.test(out),
+      `tier --help must not advertise prototype as 'free/testnet' — server charges $0.10. Got: ${out}`,
+    );
+    assert.ok(
+      /\$0\.10\/7d/.test(out),
+      `tier --help must describe prototype as '$0.10/7d' to match server pricing. Got: ${out}`,
+    );
+  });
+
   it("tier status surfaces HTML gateway errors without SyntaxError (GH-83)", async () => {
     const { run } = await import("./cli/lib/tier.mjs");
     // Swap in a fetch that returns a 502 HTML gateway error on /tiers/v1/status.

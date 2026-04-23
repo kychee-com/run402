@@ -53,7 +53,7 @@ echo '<manifest_json>' | node <skill_dir>/scripts/deploy.mjs --tier prototype
 
 Returns project_id, keys, live URL. Saved to `~/.config/run402/projects.json`.
 
-**Tiers:** prototype (free/testnet, 7d, 250MB, 500k calls), hobby ($5, 30d, 1GB, 5M calls), team ($20, 30d, 10GB, 50M calls).
+**Tiers:** prototype ($0.10/7d, 250MB, 500k calls), hobby ($5, 30d, 1GB, 5M calls), team ($20, 30d, 10GB, 50M calls).
 
 ### Post-Deploy
 

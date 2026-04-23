@@ -16,7 +16,7 @@ mock.module("../allowance-auth.js", {
   },
 });
 
-const { handleProvision } = await import("./provision.js");
+const { handleProvision, provisionSchema } = await import("./provision.js");
 const { getProject, getActiveProjectId } = await import("../keystore.js");
 
 const originalFetch = globalThis.fetch;
@@ -119,5 +119,20 @@ describe("provision tool", () => {
     await handleProvision({ tier: "hobby" });
     const stored = getProject("proj-dup", storePath);
     assert.equal(stored!.anon_key, "ak-new");
+  });
+
+  // GH-110: tier description must reflect actual $0.10 price, not "free/testnet"
+  it("tier schema description shows prototype as $0.10/7d (GH-110)", () => {
+    const desc = provisionSchema.tier.description || "";
+    assert.doesNotMatch(
+      desc,
+      /free\/testnet/i,
+      `prototype tier must not be described as 'free/testnet' — server charges $0.10. Got: ${desc}`,
+    );
+    assert.match(
+      desc,
+      /\$0\.10\/7d/,
+      `prototype tier must be described as '$0.10/7d' to match server pricing. Got: ${desc}`,
+    );
   });
 });
