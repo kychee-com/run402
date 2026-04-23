@@ -21,6 +21,44 @@ After updating all three package.json files, run `npm install --package-lock-onl
 
 Stage and commit: `git add package.json cli/package.json sdk/package.json package-lock.json && git commit -m "chore: bump version to <new_version>"`
 
+## Pre-publish tarball smoke test
+
+`npm test` runs against the source tree, not a packed tarball, so it misses bugs like monorepo-relative imports that escape the `files` allowlist. Pack each tarball, install it in a scratch dir, and verify the entry points actually load before publishing. v1.40.1 shipped broken because this step didn't exist — every `run402` command threw `ERR_MODULE_NOT_FOUND`.
+
+**About `--before=9999-12-31`:** the user's global npm has a `before` date pinned as a supply-chain mitigation (blocks installing packages published after that date, in case a dependency is compromised). Scratch installs in `/tmp` can safely bypass it per-invocation with `--before=9999-12-31`. Do **not** suggest the user remove the global config — they want it.
+
+Run these in sequence. If any check fails, stop and fix the root cause. Do **not** `npm publish`.
+
+```
+SMOKE=/tmp/smoke-<new_version> && rm -rf $SMOKE && mkdir $SMOKE
+npm pack --pack-destination $SMOKE
+(cd cli && npm pack --pack-destination $SMOKE)
+(cd sdk && npm pack --pack-destination $SMOKE)
+```
+
+1. **CLI** — extract, install, check `--version`:
+   ```
+   mkdir $SMOKE/cli && tar xzf $SMOKE/run402-<new_version>.tgz -C $SMOKE/cli
+   (cd $SMOKE/cli/package && npm install --omit=dev --before=9999-12-31)
+   node $SMOKE/cli/package/cli.mjs --version
+   ```
+   Expect exit 0 and the new version string.
+
+2. **MCP** — extract, install, verify the SDK import resolves (don't boot the stdio server — it won't exit):
+   ```
+   mkdir $SMOKE/mcp && tar xzf $SMOKE/run402-mcp-<new_version>.tgz -C $SMOKE/mcp
+   (cd $SMOKE/mcp/package && npm install --omit=dev --before=9999-12-31)
+   (cd $SMOKE/mcp/package && node -e "import('./dist/sdk.js').then(m => console.log('OK', typeof m.getSdk)).catch(e => { console.error('FAIL', e.message); process.exit(1) })")
+   ```
+
+3. **SDK** — extract, install, verify both entry points:
+   ```
+   mkdir $SMOKE/sdk && tar xzf $SMOKE/run402-sdk-<new_version>.tgz -C $SMOKE/sdk
+   (cd $SMOKE/sdk/package && npm install --omit=dev --before=9999-12-31)
+   (cd $SMOKE/sdk/package && node -e "import('./dist/node/index.js').then(m => console.log('OK node', typeof m.run402)).catch(e => { console.error('FAIL', e.message); process.exit(1) })")
+   (cd $SMOKE/sdk/package && node -e "import('./dist/index.js').then(m => console.log('OK iso', typeof m.Run402)).catch(e => { console.error('FAIL', e.message); process.exit(1) })")
+   ```
+
 ## Publish
 
 1. **MCP server** (`run402-mcp`):
@@ -55,11 +93,15 @@ Stage and commit: `git add package.json cli/package.json sdk/package.json packag
    gh workflow run deploy-site.yml -R kychee-com/run402-private
    ```
    (Or `gh api repos/kychee-com/run402-private/dispatches -f event_type=public-docs-updated` if you want the trigger to show up in the audit log as a `repository_dispatch`.)
-6. **Install the new version locally** so `run402` on the command line uses the just-published version:
+6. **Install the new version locally and smoke-test it** so `run402` on the command line uses the just-published version — and so a broken publish gets caught immediately, not when the user next runs a command:
    ```
-   npm install -g run402@<new_version>
+   npm install -g run402@<new_version> --prefer-online --before=9999-12-31
+   run402 --version
+   run402 allowance status
    ```
-   Verify with `run402 --version` and confirm it matches the new version.
+   - `--prefer-online` forces npm to hit the registry instead of a stale local cache (the new version can otherwise appear missing for a minute after publish).
+   - `--before=9999-12-31` bypasses the user's global `before` supply-chain guard for this one install. Keep the global config intact — do not run `npm config delete before`.
+   - Expect `run402 --version` to print the new version, and `run402 allowance status` to return valid JSON with the user's wallet info. If either fails with `ERR_MODULE_NOT_FOUND` or similar, the published tarball is broken — tell the user loudly and prepare a hotfix version immediately.
 7. Print a summary of what was published, including the new version and npm URLs:
    - https://www.npmjs.com/package/run402-mcp
    - https://www.npmjs.com/package/run402
