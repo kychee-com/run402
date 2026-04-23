@@ -10,15 +10,6 @@ mock.module("../allowance-auth.js", {
   },
 });
 
-mock.module("../paid-fetch.js", {
-  namedExports: {
-    paidApiRequest: async (path: string, opts: any) => {
-      const { apiRequest } = await import("../client.js");
-      return apiRequest(path, opts);
-    },
-  },
-});
-
 const { handleBundleDeploy, bundleDeployRlsRefined } = await import("./bundle-deploy.js");
 
 const originalFetch = globalThis.fetch;

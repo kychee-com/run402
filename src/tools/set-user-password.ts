@@ -1,7 +1,6 @@
 import { z } from "zod";
-import { apiRequest } from "../client.js";
-import { getProject } from "../keystore.js";
-import { formatApiError, projectNotFound } from "../errors.js";
+import { getSdk } from "../sdk.js";
+import { mapSdkError } from "../errors.js";
 
 export const setUserPasswordSchema = {
   project_id: z.string().describe("The project ID"),
@@ -16,30 +15,22 @@ export async function handleSetUserPassword(args: {
   new_password: string;
   current_password?: string;
 }): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
-  const project = getProject(args.project_id);
-  if (!project) return projectNotFound(args.project_id);
-
-  const body: Record<string, string> = { new_password: args.new_password };
-  if (args.current_password) body.current_password = args.current_password;
-
-  const res = await apiRequest(`/auth/v1/user/password`, {
-    method: "PUT",
-    headers: {
-      apikey: project.anon_key,
-      Authorization: `Bearer ${args.access_token}`,
-    },
-    body,
-  });
-
-  if (!res.ok) return formatApiError(res, "setting user password");
-
-  const mode = args.current_password ? "changed" : "set";
-  return {
-    content: [
-      {
-        type: "text",
-        text: `## Password ${mode.charAt(0).toUpperCase() + mode.slice(1)}\n\nPassword successfully ${mode} for the authenticated user. They can now log in with email + password.`,
-      },
-    ],
-  };
+  try {
+    await getSdk().auth.setUserPassword(args.project_id, {
+      accessToken: args.access_token,
+      newPassword: args.new_password,
+      currentPassword: args.current_password,
+    });
+    const mode = args.current_password ? "changed" : "set";
+    return {
+      content: [
+        {
+          type: "text",
+          text: `## Password ${mode.charAt(0).toUpperCase() + mode.slice(1)}\n\nPassword successfully ${mode} for the authenticated user. They can now log in with email + password.`,
+        },
+      ],
+    };
+  } catch (err) {
+    return mapSdkError(err, "setting user password");
+  }
 }

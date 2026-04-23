@@ -1,7 +1,6 @@
 import { z } from "zod";
-import { apiRequest } from "../client.js";
-import { getProject } from "../keystore.js";
-import { formatApiError, projectNotFound } from "../errors.js";
+import { getSdk } from "../sdk.js";
+import { mapSdkError } from "../errors.js";
 
 export const setSecretSchema = {
   project_id: z.string().describe("The project ID"),
@@ -18,28 +17,17 @@ export async function handleSetSecret(args: {
   key: string;
   value: string;
 }): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
-  const project = getProject(args.project_id);
-  if (!project) return projectNotFound(args.project_id);
-
-  const res = await apiRequest(`/projects/v1/admin/${args.project_id}/secrets`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${project.service_key}`,
-    },
-    body: {
-      key: args.key,
-      value: args.value,
-    },
-  });
-
-  if (!res.ok) return formatApiError(res, "setting secret");
-
-  return {
-    content: [
-      {
-        type: "text",
-        text: `## Secret Set\n\nSecret \`${args.key}\` has been set for project \`${args.project_id}\`.\n\nAccess it in your functions via \`process.env.${args.key}\`.`,
-      },
-    ],
-  };
+  try {
+    await getSdk().secrets.set(args.project_id, args.key, args.value);
+    return {
+      content: [
+        {
+          type: "text",
+          text: `## Secret Set\n\nSecret \`${args.key}\` has been set for project \`${args.project_id}\`.\n\nAccess it in your functions via \`process.env.${args.key}\`.`,
+        },
+      ],
+    };
+  } catch (err) {
+    return mapSdkError(err, "setting secret");
+  }
 }

@@ -1,7 +1,6 @@
 import { z } from "zod";
-import { apiRequest } from "../client.js";
-import { getProject } from "../keystore.js";
-import { formatApiError, projectNotFound } from "../errors.js";
+import { getSdk } from "../sdk.js";
+import { mapSdkError } from "../errors.js";
 
 export const contractCallSchema = {
   project_id: z.string().describe("The project ID"),
@@ -16,20 +15,19 @@ export const contractCallSchema = {
 };
 
 export async function handleContractCall(args: { project_id: string; wallet_id: string; chain: "base-mainnet" | "base-sepolia"; contract_address: string; abi_fragment: unknown[]; function_name: string; args: unknown[]; value?: string; idempotency_key?: string }): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
-  const project = getProject(args.project_id);
-  if (!project) return projectNotFound(args.project_id);
-  const headers: Record<string, string> = { Authorization: `Bearer ${project.service_key}` };
-  if (args.idempotency_key) headers["Idempotency-Key"] = args.idempotency_key;
-  const body: Record<string, unknown> = {
-    wallet_id: args.wallet_id,
-    chain: args.chain,
-    contract_address: args.contract_address,
-    abi_fragment: args.abi_fragment,
-    function_name: args.function_name,
-    args: args.args,
-  };
-  if (args.value) body.value = args.value;
-  const res = await apiRequest("/contracts/v1/call", { method: "POST", headers, body });
-  if (!res.ok) return formatApiError(res, "submitting contract call");
-  return { content: [{ type: "text", text: "## Contract Call Submitted\n\n```json\n" + JSON.stringify(res.body, null, 2) + "\n```\n\n**Cost**: chain gas at-cost + $0.000005 KMS sign fee" }] };
+  try {
+    const body = await getSdk().contracts.call(args.project_id, {
+      walletId: args.wallet_id,
+      chain: args.chain,
+      contractAddress: args.contract_address,
+      abiFragment: args.abi_fragment,
+      functionName: args.function_name,
+      args: args.args,
+      value: args.value,
+      idempotencyKey: args.idempotency_key,
+    });
+    return { content: [{ type: "text", text: "## Contract Call Submitted\n\n```json\n" + JSON.stringify(body, null, 2) + "\n```\n\n**Cost**: chain gas at-cost + $0.000005 KMS sign fee" }] };
+  } catch (err) {
+    return mapSdkError(err, "submitting contract call");
+  }
 }

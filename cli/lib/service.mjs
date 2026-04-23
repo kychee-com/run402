@@ -1,4 +1,5 @@
-import { API } from "./config.mjs";
+import { getSdk } from "./sdk.mjs";
+import { reportSdkError } from "./sdk-errors.mjs";
 
 const HELP = `run402 service — Run402 service health and availability
 
@@ -12,22 +13,22 @@ Notes:
     balance, tier, projects), use 'run402 status'.
 `;
 
-async function fetchAndEmit(path) {
-  let res;
+async function status() {
   try {
-    res = await fetch(`${API}${path}`);
+    const data = await getSdk().service.status();
+    console.log(JSON.stringify(data, null, 2));
   } catch (err) {
-    console.error(JSON.stringify({ status: "error", message: err?.message || String(err) }));
-    process.exit(1);
+    reportSdkError(err);
   }
-  const text = await res.text();
-  let body;
-  try { body = JSON.parse(text); } catch { body = text; }
-  if (!res.ok) {
-    console.error(JSON.stringify({ status: "error", http: res.status, body }));
-    process.exit(1);
+}
+
+async function health() {
+  try {
+    const data = await getSdk().service.health();
+    console.log(JSON.stringify(data, null, 2));
+  } catch (err) {
+    reportSdkError(err);
   }
-  console.log(JSON.stringify(body, null, 2));
 }
 
 export async function run(sub, args) {
@@ -37,12 +38,8 @@ export async function run(sub, args) {
     process.exit(0);
   }
   switch (sub) {
-    case "status":
-      await fetchAndEmit("/status");
-      return;
-    case "health":
-      await fetchAndEmit("/health");
-      return;
+    case "status": await status(); break;
+    case "health": await health(); break;
     default:
       console.error(`Unknown subcommand: ${sub}\n`);
       console.log(HELP);

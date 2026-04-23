@@ -1,7 +1,7 @@
 import { z } from "zod";
-import { apiRequest } from "../client.js";
-import { getProject } from "../keystore.js";
-import { formatApiError, projectNotFound } from "../errors.js";
+import { getSdk } from "../sdk.js";
+import { mapSdkError } from "../errors.js";
+import { PaymentRequired } from "../../sdk/dist/index.js";
 
 export const aiTranslateSchema = {
   project_id: z.string().describe("The project ID"),
@@ -18,48 +18,41 @@ export async function handleAiTranslate(args: {
   from?: string;
   context?: string;
 }): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
-  const project = getProject(args.project_id);
-  if (!project) return projectNotFound(args.project_id);
+  try {
+    const body = await getSdk().ai.translate(args.project_id, {
+      text: args.text,
+      to: args.to,
+      from: args.from,
+      context: args.context,
+    });
 
-  const body: Record<string, string> = { text: args.text, to: args.to };
-  if (args.from) body.from = args.from;
-  if (args.context) body.context = args.context;
-
-  const res = await apiRequest(`/ai/v1/translate`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${project.service_key}` },
-    body,
-  });
-
-  if (res.status === 402) {
-    const resBody = res.body as Record<string, unknown>;
-    const message = (resBody.message as string) || "AI Translation add-on required or quota exceeded";
     const lines = [
-      `## Translation Unavailable`,
+      `## Translation`,
       ``,
-      `${message}`,
+      `| Field | Value |`,
+      `|-------|-------|`,
+      `| from | ${body.from} |`,
+      `| to | ${body.to} |`,
       ``,
-      `This is not a payment — the AI Translation add-on must be enabled on the project, or the word quota for the current billing cycle has been exceeded.`,
-      ``,
-      `Use \`ai_usage\` to check current quota, or enable the add-on from the project dashboard.`,
+      body.text,
     ];
+
     return { content: [{ type: "text", text: lines.join("\n") }] };
+  } catch (err) {
+    if (err instanceof PaymentRequired) {
+      const resBody = (err.body ?? {}) as Record<string, unknown>;
+      const message = (resBody.message as string) || "AI Translation add-on required or quota exceeded";
+      const lines = [
+        `## Translation Unavailable`,
+        ``,
+        `${message}`,
+        ``,
+        `This is not a payment — the AI Translation add-on must be enabled on the project, or the word quota for the current billing cycle has been exceeded.`,
+        ``,
+        `Use \`ai_usage\` to check current quota, or enable the add-on from the project dashboard.`,
+      ];
+      return { content: [{ type: "text", text: lines.join("\n") }] };
+    }
+    return mapSdkError(err, "translating text");
   }
-
-  if (!res.ok) return formatApiError(res, "translating text");
-
-  const resBody = res.body as { text: string; from: string; to: string };
-
-  const lines = [
-    `## Translation`,
-    ``,
-    `| Field | Value |`,
-    `|-------|-------|`,
-    `| from | ${resBody.from} |`,
-    `| to | ${resBody.to} |`,
-    ``,
-    resBody.text,
-  ];
-
-  return { content: [{ type: "text", text: lines.join("\n") }] };
 }

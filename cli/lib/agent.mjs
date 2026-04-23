@@ -1,4 +1,6 @@
-import { API, allowanceAuthHeaders } from "./config.mjs";
+import { allowanceAuthHeaders } from "./config.mjs";
+import { getSdk } from "./sdk.mjs";
+import { reportSdkError } from "./sdk-errors.mjs";
 
 const HELP = `run402 agent — Manage agent identity
 
@@ -23,20 +25,19 @@ async function contact(args) {
     if (args[i] === "--webhook" && args[i + 1]) webhook = args[++i];
   }
   if (!name) { console.error(JSON.stringify({ status: "error", message: "Missing --name <name>" })); process.exit(1); }
-  const authHeaders = allowanceAuthHeaders("/agent/v1/contact");
+  // Preserve the aggressive early exit when no allowance is configured.
+  allowanceAuthHeaders("/agent/v1/contact");
 
-  const body = { name };
-  if (email) body.email = email;
-  if (webhook) body.webhook = webhook;
-
-  const res = await fetch(`${API}/agent/v1/contact`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", ...authHeaders },
-    body: JSON.stringify(body),
-  });
-  const data = await res.json();
-  if (!res.ok) { console.error(JSON.stringify({ status: "error", http: res.status, ...data })); process.exit(1); }
-  console.log(JSON.stringify(data, null, 2));
+  try {
+    const data = await getSdk().admin.setAgentContact({
+      name,
+      email: email ?? undefined,
+      webhook: webhook ?? undefined,
+    });
+    console.log(JSON.stringify(data, null, 2));
+  } catch (err) {
+    reportSdkError(err);
+  }
 }
 
 export async function run(sub, args) {

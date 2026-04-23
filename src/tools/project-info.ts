@@ -1,7 +1,7 @@
 import { z } from "zod";
-import { getProject } from "../keystore.js";
+import { getSdk } from "../sdk.js";
 import { getApiBase } from "../config.js";
-import { projectNotFound } from "../errors.js";
+import { mapSdkError } from "../errors.js";
 
 export const projectInfoSchema = {
   project_id: z.string().describe("Project ID to inspect"),
@@ -12,23 +12,25 @@ type McpResult = { content: Array<{ type: "text"; text: string }>; isError?: boo
 export async function handleProjectInfo(args: {
   project_id: string;
 }): Promise<McpResult> {
-  const project = getProject(args.project_id);
-  if (!project) return projectNotFound(args.project_id);
+  try {
+    const info = await getSdk().projects.info(args.project_id);
+    const apiBase = getApiBase();
 
-  const apiBase = getApiBase();
+    const lines = [
+      `## Project Info: ${args.project_id}`,
+      ``,
+      `| Field | Value |`,
+      `|-------|-------|`,
+      `| project_id | \`${args.project_id}\` |`,
+      `| rest_url | \`${apiBase}/rest/v1\` |`,
+      `| anon_key | \`${info.anon_key}\` |`,
+      `| service_key | \`${info.service_key}\` |`,
+      `| site_url | ${info.site_url ? `\`${info.site_url}\`` : "(none)"} |`,
+      `| deployed_at | ${info.deployed_at || "(never)"} |`,
+    ];
 
-  const lines = [
-    `## Project Info: ${args.project_id}`,
-    ``,
-    `| Field | Value |`,
-    `|-------|-------|`,
-    `| project_id | \`${args.project_id}\` |`,
-    `| rest_url | \`${apiBase}/rest/v1\` |`,
-    `| anon_key | \`${project.anon_key}\` |`,
-    `| service_key | \`${project.service_key}\` |`,
-    `| site_url | ${project.site_url ? `\`${project.site_url}\`` : "(none)"} |`,
-    `| deployed_at | ${project.deployed_at || "(never)"} |`,
-  ];
-
-  return { content: [{ type: "text", text: lines.join("\n") }] };
+    return { content: [{ type: "text", text: lines.join("\n") }] };
+  } catch (err) {
+    return mapSdkError(err, "fetching project info");
+  }
 }

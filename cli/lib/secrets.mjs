@@ -1,5 +1,6 @@
 import { readFileSync } from "fs";
-import { findProject, API } from "./config.mjs";
+import { getSdk } from "./sdk.mjs";
+import { reportSdkError } from "./sdk-errors.mjs";
 
 const HELP = `run402 secrets — Manage project secrets
 
@@ -48,7 +49,6 @@ Examples:
 };
 
 async function set(projectId, key, args = []) {
-  const p = findProject(projectId);
   let file = null;
   let value = null;
   for (let i = 0; i < args.length; i++) {
@@ -57,37 +57,29 @@ async function set(projectId, key, args = []) {
   }
   const val = file ? readFileSync(file, "utf-8") : value;
   if (!val) { console.error(JSON.stringify({ status: "error", message: "Missing secret value. Provide inline or use --file <path>" })); process.exit(1); }
-  const res = await fetch(`${API}/projects/v1/admin/${projectId}/secrets`, {
-    method: "POST",
-    headers: { "Authorization": `Bearer ${p.service_key}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ key, value: val }),
-  });
-  const data = await res.json();
-  if (!res.ok) { console.error(JSON.stringify({ status: "error", http: res.status, ...data })); process.exit(1); }
-  console.log(JSON.stringify({ status: "ok", message: `Secret '${key}' set for project ${projectId}.` }));
+  try {
+    await getSdk().secrets.set(projectId, key, val);
+    console.log(JSON.stringify({ status: "ok", message: `Secret '${key}' set for project ${projectId}.` }));
+  } catch (err) {
+    reportSdkError(err);
+  }
 }
 
 async function list(projectId) {
-  const p = findProject(projectId);
-  const res = await fetch(`${API}/projects/v1/admin/${projectId}/secrets`, {
-    headers: { "Authorization": `Bearer ${p.service_key}` },
-  });
-  const data = await res.json();
-  if (!res.ok) { console.error(JSON.stringify({ status: "error", http: res.status, ...data })); process.exit(1); }
-  console.log(JSON.stringify(data, null, 2));
+  try {
+    const data = await getSdk().secrets.list(projectId);
+    console.log(JSON.stringify(data, null, 2));
+  } catch (err) {
+    reportSdkError(err);
+  }
 }
 
 async function deleteSecret(projectId, key) {
-  const p = findProject(projectId);
-  const res = await fetch(`${API}/projects/v1/admin/${projectId}/secrets/${encodeURIComponent(key)}`, {
-    method: "DELETE",
-    headers: { "Authorization": `Bearer ${p.service_key}` },
-  });
-  if (res.status === 204 || res.ok) {
+  try {
+    await getSdk().secrets.delete(projectId, key);
     console.log(JSON.stringify({ status: "ok", message: `Secret '${key}' deleted.` }));
-  } else {
-    const data = await res.json().catch(() => ({}));
-    console.error(JSON.stringify({ status: "error", http: res.status, ...data })); process.exit(1);
+  } catch (err) {
+    reportSdkError(err);
   }
 }
 

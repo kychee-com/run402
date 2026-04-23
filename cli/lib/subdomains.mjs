@@ -1,4 +1,6 @@
-import { resolveProject, resolveProjectId, API } from "./config.mjs";
+import { resolveProject, resolveProjectId } from "./config.mjs";
+import { getSdk } from "./sdk.mjs";
+import { reportSdkError } from "./sdk-errors.mjs";
 
 const HELP = `run402 subdomains — Manage custom subdomains
 
@@ -55,7 +57,6 @@ async function claim(positionalArgs, flagArgs) {
     if (flagArgs[i] === "--project" && flagArgs[i + 1]) opts.project = flagArgs[++i];
     if (flagArgs[i] === "--deployment" && flagArgs[i + 1]) opts.deployment = flagArgs[++i];
   }
-  // positional: [name] or [deployment_id, name]
   let name, deploymentId;
   if (positionalArgs.length >= 2) {
     deploymentId = positionalArgs[0];
@@ -68,15 +69,12 @@ async function claim(positionalArgs, flagArgs) {
   const p = resolveProject(opts.project);
   deploymentId = opts.deployment || deploymentId || p.last_deployment_id;
   if (!deploymentId) { console.error("Error: no deployment_id specified and no recent deployment found. Deploy a site first or pass --deployment <id>."); process.exit(1); }
-  const headers = { "Content-Type": "application/json", "Authorization": `Bearer ${p.service_key}` };
-  const res = await fetch(`${API}/subdomains/v1`, {
-    method: "POST",
-    headers,
-    body: JSON.stringify({ name, deployment_id: deploymentId }),
-  });
-  const data = await res.json();
-  if (!res.ok) { console.error(JSON.stringify({ status: "error", http: res.status, ...data })); process.exit(1); }
-  console.log(JSON.stringify(data, null, 2));
+  try {
+    const data = await getSdk().subdomains.claim(name, deploymentId, { projectId });
+    console.log(JSON.stringify(data, null, 2));
+  } catch (err) {
+    reportSdkError(err);
+  }
 }
 
 async function deleteSubdomain(name, args) {
@@ -84,28 +82,23 @@ async function deleteSubdomain(name, args) {
   for (let i = 0; i < args.length; i++) {
     if (args[i] === "--project" && args[i + 1]) opts.project = args[++i];
   }
-  const p = resolveProject(opts.project);
-  const headers = { "Authorization": `Bearer ${p.service_key}` };
-  const res = await fetch(`${API}/subdomains/v1/${encodeURIComponent(name)}`, {
-    method: "DELETE",
-    headers,
-  });
-  if (res.status === 204 || res.ok) {
+  const projectId = resolveProjectId(opts.project);
+  try {
+    await getSdk().subdomains.delete(name, { projectId });
     console.log(JSON.stringify({ status: "ok", message: `Subdomain '${name}' released.` }));
-  } else {
-    const data = await res.json().catch(() => ({}));
-    console.error(JSON.stringify({ status: "error", http: res.status, ...data })); process.exit(1);
+  } catch (err) {
+    reportSdkError(err);
   }
 }
 
-async function list(projectId) {
-  const p = resolveProject(projectId);
-  const res = await fetch(`${API}/subdomains/v1`, {
-    headers: { "Authorization": `Bearer ${p.service_key}` },
-  });
-  const data = await res.json();
-  if (!res.ok) { console.error(JSON.stringify({ status: "error", http: res.status, ...data })); process.exit(1); }
-  console.log(JSON.stringify(data, null, 2));
+async function list(projectIdArg) {
+  const projectId = resolveProjectId(projectIdArg);
+  try {
+    const data = await getSdk().subdomains.list(projectId);
+    console.log(JSON.stringify(data, null, 2));
+  } catch (err) {
+    reportSdkError(err);
+  }
 }
 
 export async function run(sub, args) {

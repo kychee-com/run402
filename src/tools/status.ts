@@ -1,8 +1,6 @@
-import { z } from "zod";
 import { readAllowance } from "../allowance.js";
 import { loadKeyStore, getActiveProjectId } from "../keystore.js";
-import { getAllowanceAuthHeaders } from "../allowance-auth.js";
-import { apiRequest } from "../client.js";
+import { getSdk } from "../sdk.js";
 
 export const statusSchema = {};
 
@@ -25,27 +23,15 @@ export async function handleStatus(
   }
 
   const wallet = allowance.address.toLowerCase();
-  const authHeaders = getAllowanceAuthHeaders("/tiers/v1/status");
+  const sdk = getSdk();
 
-  // Parallel API calls: tier + billing + server-side projects
-  const [tierRes, balanceRes, projectsRes] = await Promise.all([
-    authHeaders
-      ? apiRequest("/tiers/v1/status", { method: "GET", headers: { ...authHeaders } }).catch(() => null)
-      : Promise.resolve(null),
-    apiRequest(`/billing/v1/accounts/${wallet}`, { method: "GET" }).catch(() => null),
-    apiRequest(`/wallets/v1/${wallet}/projects`, { method: "GET" }).catch(() => null),
+  // Parallel SDK calls — each swallowed to a best-effort null so missing
+  // data doesn't block the summary.
+  const [tier, billing, remote] = await Promise.all([
+    sdk.tier.status().catch(() => null),
+    sdk.billing.checkBalance(wallet).catch(() => null),
+    sdk.projects.list(wallet).catch(() => null),
   ]);
-
-  // Parse results
-  const tier = tierRes?.ok
-    ? (tierRes.body as { tier?: string; status?: string; lease_expires_at?: string })
-    : null;
-  const billing = balanceRes?.ok
-    ? (balanceRes.body as { exists?: boolean; available_usd_micros?: number; held_usd_micros?: number })
-    : null;
-  const remote = projectsRes?.ok
-    ? (projectsRes.body as { projects?: Array<{ id: string }> })
-    : null;
 
   // Local keystore
   const store = loadKeyStore();

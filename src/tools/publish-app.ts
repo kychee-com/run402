@@ -1,7 +1,6 @@
 import { z } from "zod";
-import { apiRequest } from "../client.js";
-import { getProject } from "../keystore.js";
-import { formatApiError, projectNotFound } from "../errors.js";
+import { getSdk } from "../sdk.js";
+import { mapSdkError } from "../errors.js";
 
 export const publishAppSchema = {
   project_id: z.string().describe("The project ID to publish"),
@@ -24,52 +23,34 @@ export async function handlePublishApp(args: {
   visibility?: string;
   fork_allowed?: boolean;
 }): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
-  const project = getProject(args.project_id);
-  if (!project) return projectNotFound(args.project_id);
-
-  const res = await apiRequest(`/projects/v1/admin/${args.project_id}/publish`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${project.service_key}`,
-    },
-    body: {
+  try {
+    const body = await getSdk().apps.publish(args.project_id, {
       description: args.description,
       tags: args.tags,
-      visibility: args.visibility,
+      visibility: args.visibility as "public" | "unlisted" | "private" | undefined,
       fork_allowed: args.fork_allowed,
-    },
-  });
+    });
 
-  if (!res.ok) return formatApiError(res, "publishing app");
+    const lines = [
+      `## App Published`,
+      ``,
+      `| Field | Value |`,
+      `|-------|-------|`,
+      `| version_id | \`${body.id}\` |`,
+      `| project | \`${body.project_id}\` |`,
+      `| name | ${body.project_name} |`,
+      `| visibility | ${body.visibility} |`,
+      `| forkable | ${body.fork_allowed ? "Yes" : "No"} |`,
+      `| tags | ${body.tags.length > 0 ? body.tags.join(", ") : "-"} |`,
+    ];
 
-  const body = res.body as {
-    id: string;
-    project_id: string;
-    project_name: string;
-    description: string | null;
-    tags: string[];
-    visibility: string;
-    fork_allowed: boolean;
-    created_at: string;
-  };
+    if (body.fork_allowed && body.visibility === "public") {
+      lines.push(``);
+      lines.push(`This app is now listed in \`browse_apps\` and can be forked by other users.`);
+    }
 
-  const lines = [
-    `## App Published`,
-    ``,
-    `| Field | Value |`,
-    `|-------|-------|`,
-    `| version_id | \`${body.id}\` |`,
-    `| project | \`${body.project_id}\` |`,
-    `| name | ${body.project_name} |`,
-    `| visibility | ${body.visibility} |`,
-    `| forkable | ${body.fork_allowed ? "Yes" : "No"} |`,
-    `| tags | ${body.tags.length > 0 ? body.tags.join(", ") : "-"} |`,
-  ];
-
-  if (body.fork_allowed && body.visibility === "public") {
-    lines.push(``);
-    lines.push(`This app is now listed in \`browse_apps\` and can be forked by other users.`);
+    return { content: [{ type: "text", text: lines.join("\n") }] };
+  } catch (err) {
+    return mapSdkError(err, "publishing app");
   }
-
-  return { content: [{ type: "text", text: lines.join("\n") }] };
 }

@@ -1,8 +1,9 @@
 import { z } from "zod";
-import { paidApiRequest } from "../paid-fetch.js";
-import { formatApiError, projectNotFound } from "../errors.js";
+import { getSdk } from "../sdk.js";
+import { mapSdkError, projectNotFound } from "../errors.js";
 import { requireAllowanceAuth } from "../allowance-auth.js";
-import { getProject } from "../keystore.js";
+import { PaymentRequired } from "../../sdk/dist/index.js";
+import type { RlsTemplate } from "../../sdk/dist/namespaces/projects.types.js";
 
 // Refined rls schema for pre-network validation.
 // MCP SDK accepts only raw shapes, so the refinement runs at the handler boundary.
@@ -127,8 +128,6 @@ export async function handleBundleDeploy(args: {
 }): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
   const projectId = args.project_id;
   if (!projectId) return projectNotFound("(none — project_id is required)");
-  const project = getProject(projectId);
-  if (!project) return projectNotFound(projectId);
 
   if (args.rls) {
     const parsed = bundleDeployRlsRefined.safeParse(args.rls);
@@ -146,105 +145,94 @@ export async function handleBundleDeploy(args: {
   const auth = requireAllowanceAuth("/deploy/v1");
   if ("error" in auth) return auth.error;
 
-  const res = await paidApiRequest("/deploy/v1", {
-    method: "POST",
-    headers: { ...auth.headers },
-    body: {
-      project_id: projectId,
+  try {
+    const body = await getSdk().apps.bundleDeploy(projectId, {
       migrations: args.migrations,
-      rls: args.rls,
+      rls: args.rls
+        ? {
+            template: args.rls.template as RlsTemplate,
+            tables: args.rls.tables,
+            i_understand_this_is_unrestricted: args.rls.i_understand_this_is_unrestricted,
+          }
+        : undefined,
       secrets: args.secrets,
       functions: args.functions,
-      files: args.files,
+      files: args.files as Array<{ file: string; data: string; encoding?: "utf-8" | "base64" }> | undefined,
       subdomain: args.subdomain,
-      ...(args.inherit ? { inherit: true } : {}),
-    },
-  });
+      inherit: args.inherit,
+    });
 
-  if (res.is402) {
-    const body = res.body as Record<string, unknown>;
     const lines = [
-      `## Payment Required`,
+      `## Bundle Deployed`,
       ``,
-      `To deploy this bundle, an x402 payment is needed.`,
-      ``,
+      `| Field | Value |`,
+      `|-------|-------|`,
+      `| project_id | \`${body.project_id}\` |`,
     ];
-    if (body.x402) {
-      lines.push(`**Payment details:**`);
-      lines.push("```json");
-      lines.push(JSON.stringify(body.x402, null, 2));
-      lines.push("```");
-    } else {
-      lines.push(`**Server response:**`);
-      lines.push("```json");
-      lines.push(JSON.stringify(body, null, 2));
-      lines.push("```");
+
+    if (body.site_url) {
+      lines.push(`| site | ${body.site_url} |`);
     }
-    lines.push(``);
-    lines.push(
-      `The user's agent allowance or payment agent must send the required amount. ` +
-      `Once payment is confirmed, retry this tool call.`,
-    );
+    if (body.subdomain_url) {
+      lines.push(`| subdomain | ${body.subdomain_url} |`);
+    }
+    if (body.deployment_id) {
+      lines.push(`| deployment_id | \`${body.deployment_id}\` |`);
+    }
+
+    if (body.migrations_result) {
+      const mr = body.migrations_result;
+      if (mr.status === "no_changes") {
+        lines.push(``, `**Migrations:** schema unchanged`);
+      } else {
+        const parts: string[] = [];
+        if (mr.tables_created.length > 0) {
+          parts.push(`tables created: ${mr.tables_created.map((t) => `\`${t}\``).join(", ")}`);
+        }
+        if (mr.columns_added.length > 0) {
+          parts.push(`columns added: ${mr.columns_added.map((c) => `\`${c}\``).join(", ")}`);
+        }
+        lines.push(``, `**Migrations:** ${parts.join("; ")}`);
+      }
+    }
+
+    if (body.functions && body.functions.length > 0) {
+      lines.push(``);
+      lines.push(`**Functions:**`);
+      for (const fn of body.functions) {
+        const sched = fn.schedule ? ` (${fn.schedule})` : "";
+        lines.push(`- \`${fn.name}\` → ${fn.url}${sched}`);
+      }
+    }
+
     return { content: [{ type: "text", text: lines.join("\n") }] };
-  }
-
-  if (!res.ok) return formatApiError(res, "deploying bundle");
-
-  const body = res.body as {
-    project_id: string;
-    migrations_result?: {
-      tables_created: string[];
-      columns_added: string[];
-      status: string;
-    };
-    site_url?: string;
-    deployment_id?: string;
-    functions?: Array<{ name: string; url: string; schedule?: string | null }>;
-    subdomain_url?: string;
-  };
-
-  const lines = [
-    `## Bundle Deployed`,
-    ``,
-    `| Field | Value |`,
-    `|-------|-------|`,
-    `| project_id | \`${body.project_id}\` |`,
-  ];
-
-  if (body.site_url) {
-    lines.push(`| site | ${body.site_url} |`);
-  }
-  if (body.subdomain_url) {
-    lines.push(`| subdomain | ${body.subdomain_url} |`);
-  }
-  if (body.deployment_id) {
-    lines.push(`| deployment_id | \`${body.deployment_id}\` |`);
-  }
-
-  if (body.migrations_result) {
-    const mr = body.migrations_result;
-    if (mr.status === "no_changes") {
-      lines.push(``, `**Migrations:** schema unchanged`);
-    } else {
-      const parts: string[] = [];
-      if (mr.tables_created.length > 0) {
-        parts.push(`tables created: ${mr.tables_created.map((t) => `\`${t}\``).join(", ")}`);
+  } catch (err) {
+    if (err instanceof PaymentRequired) {
+      const body = (err.body ?? {}) as Record<string, unknown>;
+      const lines = [
+        `## Payment Required`,
+        ``,
+        `To deploy this bundle, an x402 payment is needed.`,
+        ``,
+      ];
+      if (body.x402) {
+        lines.push(`**Payment details:**`);
+        lines.push("```json");
+        lines.push(JSON.stringify(body.x402, null, 2));
+        lines.push("```");
+      } else {
+        lines.push(`**Server response:**`);
+        lines.push("```json");
+        lines.push(JSON.stringify(body, null, 2));
+        lines.push("```");
       }
-      if (mr.columns_added.length > 0) {
-        parts.push(`columns added: ${mr.columns_added.map((c) => `\`${c}\``).join(", ")}`);
-      }
-      lines.push(``, `**Migrations:** ${parts.join("; ")}`);
+      lines.push(``);
+      lines.push(
+        `The user's agent allowance or payment agent must send the required amount. ` +
+        `Once payment is confirmed, retry this tool call.`,
+      );
+      return { content: [{ type: "text", text: lines.join("\n") }] };
     }
+    return mapSdkError(err, "deploying bundle");
   }
-
-  if (body.functions && body.functions.length > 0) {
-    lines.push(``);
-    lines.push(`**Functions:**`);
-    for (const fn of body.functions) {
-      const sched = fn.schedule ? ` (${fn.schedule})` : "";
-      lines.push(`- \`${fn.name}\` → ${fn.url}${sched}`);
-    }
-  }
-
-  return { content: [{ type: "text", text: lines.join("\n") }] };
 }

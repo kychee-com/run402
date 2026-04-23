@@ -3,9 +3,8 @@ import { createWriteStream, mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { pipeline } from "node:stream/promises";
 import { Readable } from "node:stream";
-import { getApiBase } from "../config.js";
-import { getProject } from "../keystore.js";
-import { projectNotFound } from "../errors.js";
+import { getSdk } from "../sdk.js";
+import { mapSdkError } from "../errors.js";
 
 export const blobGetSchema = {
   project_id: z.string().describe("Project ID"),
@@ -15,21 +14,14 @@ export const blobGetSchema = {
 
 type Args = { project_id: string; key: string; output_path: string };
 
-function encodeKey(key: string): string {
-  return key.split("/").map(encodeURIComponent).join("/");
-}
-
 export async function handleBlobGet(args: Args): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
-  const project = getProject(args.project_id);
-  if (!project) return projectNotFound(args.project_id);
-
-  const url = `${getApiBase()}/storage/v1/blob/${encodeKey(args.key)}`;
-  const res = await fetch(url, {
-    headers: { apikey: project.anon_key, Authorization: `Bearer ${project.anon_key}` },
-  });
-  if (!res.ok) {
-    return { content: [{ type: "text", text: `GET ${args.key} failed: HTTP ${res.status}` }], isError: true };
+  let res: Response;
+  try {
+    res = await getSdk().blobs.get(args.project_id, args.key);
+  } catch (err) {
+    return mapSdkError(err, "downloading blob");
   }
+
   if (!res.body) {
     return { content: [{ type: "text", text: "Empty response body" }], isError: true };
   }

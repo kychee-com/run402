@@ -1,8 +1,8 @@
 import { z } from "zod";
-import { apiRequest } from "../client.js";
-import { updateProject } from "../keystore.js";
-import { formatApiError } from "../errors.js";
+import { getSdk } from "../sdk.js";
+import { mapSdkError } from "../errors.js";
 import { requireAllowanceAuth } from "../allowance-auth.js";
+import { updateProject } from "../keystore.js";
 
 export const deploySiteSchema = {
   project: z
@@ -39,37 +39,29 @@ export async function handleDeploySite(args: {
   const auth = requireAllowanceAuth("/deployments/v1");
   if ("error" in auth) return auth.error;
 
-  const res = await apiRequest("/deployments/v1", {
-    method: "POST",
-    headers: { ...auth.headers },
-    body: {
-      project: args.project,
-      target: args.target,
-      files: args.files,
-      ...(args.inherit ? { inherit: true } : {}),
-    },
-  });
+  try {
+    const body = await getSdk().sites.deploy(
+      args.project,
+      args.files as Array<{ file: string; data: string; encoding?: "utf-8" | "base64" }>,
+      { target: args.target, inherit: args.inherit },
+    );
 
-  if (!res.ok) return formatApiError(res, "deploying site");
+    // Persist the last deployment ID on the project (MCP-local side effect).
+    updateProject(args.project, { last_deployment_id: body.deployment_id });
 
-  const body = res.body as {
-    deployment_id: string;
-    url: string;
-  };
+    const lines = [
+      `## Site Deployed`,
+      ``,
+      `| Field | Value |`,
+      `|-------|-------|`,
+      `| deployment_id | \`${body.deployment_id}\` |`,
+      `| url | ${body.url} |`,
+      ``,
+      `The site is live at **${body.url}**`,
+    ];
 
-  // Store last deployment ID on the project
-  updateProject(args.project, { last_deployment_id: body.deployment_id });
-
-  const lines = [
-    `## Site Deployed`,
-    ``,
-    `| Field | Value |`,
-    `|-------|-------|`,
-    `| deployment_id | \`${body.deployment_id}\` |`,
-    `| url | ${body.url} |`,
-    ``,
-    `The site is live at **${body.url}**`,
-  ];
-
-  return { content: [{ type: "text", text: lines.join("\n") }] };
+    return { content: [{ type: "text", text: lines.join("\n") }] };
+  } catch (err) {
+    return mapSdkError(err, "deploying site");
+  }
 }

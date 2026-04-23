@@ -1,7 +1,7 @@
 import { z } from "zod";
-import { paidApiRequest } from "../paid-fetch.js";
-import { getProject } from "../keystore.js";
-import { formatApiError, projectNotFound } from "../errors.js";
+import { getSdk } from "../sdk.js";
+import { mapSdkError } from "../errors.js";
+import { PaymentRequired } from "../../sdk/dist/index.js";
 
 export const invokeFunctionSchema = {
   project_id: z.string().describe("The project ID"),
@@ -27,56 +27,44 @@ export async function handleInvokeFunction(args: {
   body?: string | Record<string, unknown>;
   headers?: Record<string, string>;
 }): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
-  const project = getProject(args.project_id);
-  if (!project) return projectNotFound(args.project_id);
+  try {
+    const result = await getSdk().functions.invoke(args.project_id, args.name, {
+      method: args.method,
+      body: args.body,
+      headers: args.headers,
+    });
 
-  const method = args.method || "POST";
-  const requestHeaders: Record<string, string> = {
-    apikey: project.service_key,
-    ...(args.headers || {}),
-  };
+    const bodyStr = typeof result.body === "string"
+      ? result.body
+      : JSON.stringify(result.body, null, 2);
 
-  const startTime = Date.now();
+    const lines = [
+      `## Function Response`,
+      ``,
+      `| Field | Value |`,
+      `|-------|-------|`,
+      `| status | ${result.status} |`,
+      `| duration | ${result.duration_ms}ms |`,
+      ``,
+      `**Response body:**`,
+      `\`\`\`json`,
+      bodyStr,
+      `\`\`\``,
+    ];
 
-  const res = await paidApiRequest(`/functions/v1/${args.name}`, {
-    method,
-    headers: requestHeaders,
-    body: method !== "GET" && method !== "HEAD" ? args.body : undefined,
-  });
-
-  const durationMs = Date.now() - startTime;
-
-  if (res.is402) {
-    const body = res.body as Record<string, unknown>;
-    return {
-      content: [
-        {
-          type: "text",
-          text: `## Payment Required\n\nAPI call limit exceeded. Renew or upgrade your project.\n\n\`\`\`json\n${JSON.stringify(body, null, 2)}\n\`\`\``,
-        },
-      ],
-    };
+    return { content: [{ type: "text", text: lines.join("\n") }] };
+  } catch (err) {
+    if (err instanceof PaymentRequired) {
+      const body = (err.body ?? {}) as Record<string, unknown>;
+      return {
+        content: [
+          {
+            type: "text",
+            text: `## Payment Required\n\nAPI call limit exceeded. Renew or upgrade your project.\n\n\`\`\`json\n${JSON.stringify(body, null, 2)}\n\`\`\``,
+          },
+        ],
+      };
+    }
+    return mapSdkError(err, "invoking function");
   }
-
-  if (!res.ok) return formatApiError(res, "invoking function");
-
-  const bodyStr = typeof res.body === "string"
-    ? res.body
-    : JSON.stringify(res.body, null, 2);
-
-  const lines = [
-    `## Function Response`,
-    ``,
-    `| Field | Value |`,
-    `|-------|-------|`,
-    `| status | ${res.status} |`,
-    `| duration | ${durationMs}ms |`,
-    ``,
-    `**Response body:**`,
-    `\`\`\`json`,
-    bodyStr,
-    `\`\`\``,
-  ];
-
-  return { content: [{ type: "text", text: lines.join("\n") }] };
 }

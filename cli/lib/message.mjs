@@ -1,4 +1,6 @@
-import { API, allowanceAuthHeaders } from "./config.mjs";
+import { allowanceAuthHeaders } from "./config.mjs";
+import { getSdk } from "./sdk.mjs";
+import { reportSdkError } from "./sdk-errors.mjs";
 
 const HELP = `run402 message — Send messages to Run402 developers
 
@@ -15,16 +17,15 @@ Examples:
 
 async function send(text) {
   if (!text) { console.error(JSON.stringify({ status: "error", message: "Missing message text" })); process.exit(1); }
-  const authHeaders = allowanceAuthHeaders("/message/v1");
+  // Preserve the aggressive early exit when no allowance is configured.
+  allowanceAuthHeaders("/message/v1");
 
-  const res = await fetch(`${API}/message/v1`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", ...authHeaders },
-    body: JSON.stringify({ message: text }),
-  });
-  const data = await res.json();
-  if (!res.ok) { console.error(JSON.stringify({ status: "error", http: res.status, ...data })); process.exit(1); }
-  console.log(JSON.stringify(data, null, 2));
+  try {
+    await getSdk().admin.sendMessage(text);
+    console.log(JSON.stringify({ status: "ok", message: "Message sent to Run402 developers." }));
+  } catch (err) {
+    reportSdkError(err);
+  }
 }
 
 export async function run(sub, args) {

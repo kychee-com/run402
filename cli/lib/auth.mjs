@@ -1,4 +1,6 @@
 import { findProject, resolveProjectId, API } from "./config.mjs";
+import { getSdk } from "./sdk.mjs";
+import { reportSdkError } from "./sdk-errors.mjs";
 
 const HELP = `run402 auth — Manage project user authentication
 
@@ -118,50 +120,30 @@ async function magicLink(args) {
   const email = parseFlag(args, "--email");
   const redirect = parseFlag(args, "--redirect");
   const projectId = resolveProjectId(parseFlag(args, "--project"));
-  const p = findProject(projectId);
 
   if (!email) { console.error(JSON.stringify({ status: "error", message: "Missing --email" })); process.exit(1); }
   if (!redirect) { console.error(JSON.stringify({ status: "error", message: "Missing --redirect <url>" })); process.exit(1); }
 
-  const res = await fetch(`${API}/auth/v1/magic-link`, {
-    method: "POST",
-    headers: {
-      "apikey": p.anon_key,
-      "Authorization": `Bearer ${p.anon_key}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ email, redirect_url: redirect }),
-  });
-  const data = await res.json();
-  if (!res.ok) {
-    console.error(JSON.stringify({ status: "error", http: res.status, ...data }));
-    process.exit(1);
+  try {
+    await getSdk().auth.requestMagicLink(projectId, { email, redirectUrl: redirect });
+    console.log(JSON.stringify({ status: "ok", email, redirect_url: redirect }));
+  } catch (err) {
+    reportSdkError(err);
   }
-  console.log(JSON.stringify({ status: "ok", ...data }));
 }
 
 async function verify(args) {
   const token = parseFlag(args, "--token");
   const projectId = resolveProjectId(parseFlag(args, "--project"));
-  const p = findProject(projectId);
 
   if (!token) { console.error(JSON.stringify({ status: "error", message: "Missing --token" })); process.exit(1); }
 
-  const res = await fetch(`${API}/auth/v1/token?grant_type=magic_link`, {
-    method: "POST",
-    headers: {
-      "apikey": p.anon_key,
-      "Authorization": `Bearer ${p.anon_key}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ token }),
-  });
-  const data = await res.json();
-  if (!res.ok) {
-    console.error(JSON.stringify({ status: "error", http: res.status, ...data }));
-    process.exit(1);
+  try {
+    const data = await getSdk().auth.verifyMagicLink(projectId, token);
+    console.log(JSON.stringify({ status: "ok", ...data }));
+  } catch (err) {
+    reportSdkError(err);
   }
-  console.log(JSON.stringify({ status: "ok", ...data }));
 }
 
 async function setPassword(args) {
@@ -169,59 +151,38 @@ async function setPassword(args) {
   const newPassword = parseFlag(args, "--new");
   const currentPassword = parseFlag(args, "--current");
   const projectId = resolveProjectId(parseFlag(args, "--project"));
-  const p = findProject(projectId);
 
   if (!accessToken) { console.error(JSON.stringify({ status: "error", message: "Missing --token <bearer_token>" })); process.exit(1); }
   if (!newPassword) { console.error(JSON.stringify({ status: "error", message: "Missing --new <password>" })); process.exit(1); }
 
-  const body = { new_password: newPassword };
-  if (currentPassword) body.current_password = currentPassword;
-
-  // /auth/v1/* is gated by apikeyAuth middleware: the `apikey` header must be
-  // the project's anon_key. `Authorization: Bearer <access_token>` stays as
-  // the user's identity so the server knows whose password to change.
-  const res = await fetch(`${API}/auth/v1/user/password`, {
-    method: "PUT",
-    headers: {
-      "apikey": p.anon_key,
-      "Authorization": `Bearer ${accessToken}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(body),
-  });
-  const data = await res.json();
-  if (!res.ok) {
-    console.error(JSON.stringify({ status: "error", http: res.status, ...data }));
-    process.exit(1);
+  try {
+    await getSdk().auth.setUserPassword(projectId, {
+      accessToken,
+      newPassword,
+      currentPassword: currentPassword ?? undefined,
+    });
+    console.log(JSON.stringify({ status: "ok" }));
+  } catch (err) {
+    reportSdkError(err);
   }
-  console.log(JSON.stringify({ status: "ok", ...data }));
 }
 
 async function settings(args) {
   const allowPasswordSet = parseFlag(args, "--allow-password-set");
   const projectId = resolveProjectId(parseFlag(args, "--project"));
-  const p = findProject(projectId);
 
   if (allowPasswordSet === null) { console.error(JSON.stringify({ status: "error", message: "Missing --allow-password-set <true|false>" })); process.exit(1); }
 
-  const res = await fetch(`${API}/auth/v1/settings`, {
-    method: "PATCH",
-    headers: {
-      "apikey": p.anon_key,
-      "Authorization": `Bearer ${p.service_key}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ allow_password_set: allowPasswordSet === "true" }),
-  });
-  const data = await res.json();
-  if (!res.ok) {
-    console.error(JSON.stringify({ status: "error", http: res.status, ...data }));
-    process.exit(1);
+  try {
+    await getSdk().auth.settings(projectId, { allow_password_set: allowPasswordSet === "true" });
+    console.log(JSON.stringify({ status: "ok", allow_password_set: allowPasswordSet === "true" }));
+  } catch (err) {
+    reportSdkError(err);
   }
-  console.log(JSON.stringify({ status: "ok", ...data }));
 }
 
 async function providers(args) {
+  // `providers` isn't in the pilot SDK surface — keep the direct fetch.
   const projectId = resolveProjectId(parseFlag(args, "--project"));
   const p = findProject(projectId);
 

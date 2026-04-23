@@ -1,8 +1,6 @@
 import { z } from "zod";
-import { apiRequest } from "../client.js";
-import { getProject } from "../keystore.js";
-import { formatApiError, projectNotFound } from "../errors.js";
-import { resolveMailboxId } from "./send-email.js";
+import { getSdk } from "../sdk.js";
+import { mapSdkError } from "../errors.js";
 
 export const listEmailsSchema = {
   project_id: z.string().describe("The project ID"),
@@ -24,57 +22,35 @@ export async function handleListEmails(args: {
   limit?: number;
   after?: string;
 }): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
-  const project = getProject(args.project_id);
-  if (!project) return projectNotFound(args.project_id);
+  try {
+    const body = await getSdk().email.list(args.project_id, { limit: args.limit, after: args.after });
 
-  const mailbox = await resolveMailboxId(args.project_id, project.service_key);
-  if ("error" in mailbox) return mailbox.error;
+    if (!Array.isArray(body) || body.length === 0) {
+      return { content: [{ type: "text", text: `## Sent Emails\n\n_No emails sent yet._` }] };
+    }
 
-  const qs = new URLSearchParams();
-  if (args.limit !== undefined) qs.set("limit", String(args.limit));
-  if (args.after) qs.set("after", args.after);
-  const path = `/mailboxes/v1/${mailbox.id}/messages${qs.toString() ? "?" + qs.toString() : ""}`;
+    const lines = [
+      `## Sent Emails (${body.length})`,
+      ``,
+      `| ID | Template | To | Status | Sent |`,
+      `|----|----------|----|--------|------|`,
+    ];
 
-  const res = await apiRequest(path, {
-    method: "GET",
-    headers: {
-      Authorization: `Bearer ${project.service_key}`,
-    },
-  });
+    for (const msg of body) {
+      lines.push(
+        `| \`${msg.id}\` | ${msg.template} | ${msg.to} | ${msg.status} | ${msg.created_at} |`,
+      );
+    }
 
-  if (!res.ok) return formatApiError(res, "listing emails");
-
-  const body = res.body as Array<{
-    id: string;
-    template: string;
-    to: string;
-    status: string;
-    created_at: string;
-  }>;
-
-  if (!Array.isArray(body) || body.length === 0) {
-    return {
-      content: [
-        {
-          type: "text",
-          text: `## Sent Emails\n\n_No emails sent yet._`,
-        },
-      ],
-    };
+    return { content: [{ type: "text", text: lines.join("\n") }] };
+  } catch (err) {
+    const msg = (err as Error)?.message ?? "";
+    if (/No mailbox found/.test(msg)) {
+      return {
+        content: [{ type: "text", text: "Error: No mailbox found for this project. Use `create_mailbox` to create one first." }],
+        isError: true,
+      };
+    }
+    return mapSdkError(err, "listing emails");
   }
-
-  const lines = [
-    `## Sent Emails (${body.length})`,
-    ``,
-    `| ID | Template | To | Status | Sent |`,
-    `|----|----------|----|--------|------|`,
-  ];
-
-  for (const msg of body) {
-    lines.push(
-      `| \`${msg.id}\` | ${msg.template} | ${msg.to} | ${msg.status} | ${msg.created_at} |`,
-    );
-  }
-
-  return { content: [{ type: "text", text: lines.join("\n") }] };
 }

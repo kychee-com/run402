@@ -1,7 +1,6 @@
 import { z } from "zod";
-import { apiRequest } from "../client.js";
-import { getProject } from "../keystore.js";
-import { formatApiError, projectNotFound } from "../errors.js";
+import { getSdk } from "../sdk.js";
+import { mapSdkError } from "../errors.js";
 
 export const requestMagicLinkSchema = {
   project_id: z.string().describe("The project ID"),
@@ -14,29 +13,20 @@ export async function handleRequestMagicLink(args: {
   email: string;
   redirect_url: string;
 }): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
-  const project = getProject(args.project_id);
-  if (!project) return projectNotFound(args.project_id);
-
-  const res = await apiRequest(`/auth/v1/magic-link`, {
-    method: "POST",
-    headers: {
-      apikey: project.anon_key,
-      Authorization: `Bearer ${project.anon_key}`,
-    },
-    body: {
+  try {
+    await getSdk().auth.requestMagicLink(args.project_id, {
       email: args.email,
-      redirect_url: args.redirect_url,
-    },
-  });
-
-  if (!res.ok) return formatApiError(res, "requesting magic link");
-
-  return {
-    content: [
-      {
-        type: "text",
-        text: `## Magic Link Sent\n\n- **Email:** ${args.email}\n- **Redirect:** ${args.redirect_url}\n\nThe user will receive an email with a login link. The link expires in 15 minutes. If they don't have an account, one will be created automatically when they verify the link.`,
-      },
-    ],
-  };
+      redirectUrl: args.redirect_url,
+    });
+    return {
+      content: [
+        {
+          type: "text",
+          text: `## Magic Link Sent\n\n- **Email:** ${args.email}\n- **Redirect:** ${args.redirect_url}\n\nThe user will receive an email with a login link. The link expires in 15 minutes. If they don't have an account, one will be created automatically when they verify the link.`,
+        },
+      ],
+    };
+  } catch (err) {
+    return mapSdkError(err, "requesting magic link");
+  }
 }

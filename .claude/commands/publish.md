@@ -1,4 +1,4 @@
-Publish all three packages in this monorepo. Run each step in order, stopping on any failure.
+Publish all four packages in this monorepo. Run each step in order, stopping on any failure.
 
 ## Pre-publish checks
 
@@ -11,11 +11,15 @@ Publish all three packages in this monorepo. Run each step in order, stopping on
 
 Ask the user what kind of version bump they want: patch, minor, or major.
 
-Then bump the version in **both** package.json files (root `package.json` and `cli/package.json`) to the same new version. The MCP package (`run402-mcp`) and CLI package (`run402`) must always have matching versions. Use `npm version <patch|minor|major> --no-git-tag-version` in the root, then manually update `cli/package.json` to match.
+The MCP server (`run402-mcp`), CLI (`run402`), and SDK (`@run402/sdk`) **must always share the same version**. Bump all three `package.json` files to the same new version:
 
-After updating both package.json files, run `npm install --package-lock-only` to sync `package-lock.json` with the new version.
+1. Root `package.json` — bump with `npm version <patch|minor|major> --no-git-tag-version` (this reads the current version and applies the bump).
+2. `cli/package.json` — manually update the `"version"` field to match the new root version.
+3. `sdk/package.json` — manually update the `"version"` field to match the new root version.
 
-Stage all three files and commit: `git add package.json cli/package.json package-lock.json && git commit -m "chore: bump version to <new_version>"`
+After updating all three package.json files, run `npm install --package-lock-only` to sync `package-lock.json` with the new version.
+
+Stage and commit: `git add package.json cli/package.json sdk/package.json package-lock.json && git commit -m "chore: bump version to <new_version>"`
 
 ## Publish
 
@@ -28,8 +32,15 @@ Stage all three files and commit: `git add package.json cli/package.json package
    ```
    cd cli && npm publish
    ```
+   The CLI's `prepack` script copies `core/dist/*.js` into `core-dist/` so the published tarball is self-contained.
 
-3. **OpenClaw skill**: No registry publish needed. The OpenClaw skill is distributed as a directory copy and uses `run402-mcp` via npx. Confirm to the user that OpenClaw is automatically up to date since its SKILL.md `install` field points to the `run402-mcp` npm package.
+3. **SDK** (`@run402/sdk`):
+   ```
+   cd sdk && npm publish
+   ```
+   The SDK's `prepack` script copies `core/dist/*.js` and `core/dist/*.d.ts` into `core-dist/` so the published tarball is self-contained. The SDK ships two entry points: `@run402/sdk` (isomorphic — works in Node, Deno, Bun, V8 isolates) and `@run402/sdk/node` (Node defaults: keystore + allowance + x402-wrapped fetch).
+
+4. **OpenClaw skill**: No registry publish needed. The OpenClaw skill is distributed as a directory copy and uses `run402-mcp` via npx. Confirm to the user that OpenClaw is automatically up to date since its SKILL.md `install` field points to the `run402-mcp` npm package.
 
 ## Post-publish
 
@@ -52,6 +63,7 @@ Stage all three files and commit: `git add package.json cli/package.json package
 7. Print a summary of what was published, including the new version and npm URLs:
    - https://www.npmjs.com/package/run402-mcp
    - https://www.npmjs.com/package/run402
+   - https://www.npmjs.com/package/@run402/sdk
 
 ## Twitter summary
 

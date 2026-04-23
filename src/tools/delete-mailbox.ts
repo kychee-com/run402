@@ -1,7 +1,6 @@
 import { z } from "zod";
-import { apiRequest } from "../client.js";
-import { getProject, loadKeyStore, saveKeyStore } from "../keystore.js";
-import { formatApiError, projectNotFound } from "../errors.js";
+import { getSdk } from "../sdk.js";
+import { mapSdkError } from "../errors.js";
 
 export const deleteMailboxSchema = {
   project_id: z.string().describe("The project ID"),
@@ -23,69 +22,29 @@ export async function handleDeleteMailbox(args: {
   mailbox_id?: string;
   confirm: boolean;
 }): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
-  const project = getProject(args.project_id);
-  if (!project) return projectNotFound(args.project_id);
-
   if (args.confirm !== true) {
     return {
-      content: [
-        {
-          type: "text",
-          text: "Error: `confirm` must be `true` to delete a mailbox. Deletion is irreversible (drops all messages and webhook subscriptions).",
-        },
-      ],
+      content: [{
+        type: "text",
+        text: "Error: `confirm` must be `true` to delete a mailbox. Deletion is irreversible (drops all messages and webhook subscriptions).",
+      }],
       isError: true,
     };
   }
 
-  let mailboxId = args.mailbox_id;
-
-  if (!mailboxId) {
-    const cached = (project as unknown as Record<string, unknown>).mailbox_id;
-    if (typeof cached === "string" && cached.length > 0) {
-      mailboxId = cached;
-    } else {
-      const mbRes = await apiRequest(`/mailboxes/v1`, {
-        method: "GET",
-        headers: { Authorization: `Bearer ${project.service_key}` },
-      });
-      if (!mbRes.ok) return formatApiError(mbRes, "looking up mailbox");
-      const raw = mbRes.body as
-        | { mailboxes?: Array<{ mailbox_id: string }> }
-        | Array<{ mailbox_id: string }>;
-      const list = Array.isArray(raw) ? raw : (raw.mailboxes || []);
-      if (list.length === 0) {
-        return {
-          content: [
-            {
-              type: "text",
-              text: "Error: No mailbox found for this project — nothing to delete.",
-            },
-          ],
-          isError: true,
-        };
-      }
-      mailboxId = list[0]!.mailbox_id;
+  try {
+    await getSdk().email.deleteMailbox(args.project_id, args.mailbox_id);
+    // SDK clears its cache; the response doesn't carry the id back, so echo the input (or "(resolved)" when unspecified).
+    const id = args.mailbox_id ?? "(resolved)";
+    return { content: [{ type: "text", text: `Mailbox \`${id}\` deleted.` }] };
+  } catch (err) {
+    const msg = (err as Error)?.message ?? "";
+    if (/No mailbox found for this project — nothing to delete/.test(msg)) {
+      return {
+        content: [{ type: "text", text: "Error: No mailbox found for this project — nothing to delete." }],
+        isError: true,
+      };
     }
+    return mapSdkError(err, "deleting mailbox");
   }
-
-  const res = await apiRequest(`/mailboxes/v1/${mailboxId}`, {
-    method: "DELETE",
-    headers: { Authorization: `Bearer ${project.service_key}` },
-  });
-  if (!res.ok && res.status !== 204) return formatApiError(res, "deleting mailbox");
-
-  // Clear the cached mailbox_id/address so future email tools re-discover
-  // (or fail-fast with "no mailbox found") instead of hitting a stale ID.
-  const store = loadKeyStore();
-  const proj = store.projects[args.project_id] as unknown as Record<string, unknown> | undefined;
-  if (proj) {
-    delete proj.mailbox_id;
-    delete proj.mailbox_address;
-    saveKeyStore(store);
-  }
-
-  return {
-    content: [{ type: "text", text: `Mailbox \`${mailboxId}\` deleted.` }],
-  };
 }

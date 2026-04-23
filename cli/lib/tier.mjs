@@ -1,5 +1,5 @@
-import { readAllowance, ALLOWANCE_FILE, API, allowanceAuthHeaders } from "./config.mjs";
-import { setupPaidFetch } from "./paid-fetch.mjs";
+import { getSdk } from "./sdk.mjs";
+import { reportSdkError } from "./sdk-errors.mjs";
 
 const HELP = `run402 tier — Manage your Run402 tier subscription
 
@@ -25,36 +25,22 @@ Examples:
 `;
 
 async function status() {
-  const authHeaders = allowanceAuthHeaders("/tiers/v1/status");
-  const res = await fetch(`${API}/tiers/v1/status`, {
-    headers: { ...authHeaders },
-  });
-  const text = await res.text();
-  let data;
   try {
-    data = JSON.parse(text);
-  } catch {
-    console.error(JSON.stringify({ status: "error", http: res.status, message: "Non-JSON response from server", body: text.slice(0, 500) }));
-    process.exit(1);
+    const data = await getSdk().tier.status();
+    console.log(JSON.stringify(data, null, 2));
+  } catch (err) {
+    reportSdkError(err);
   }
-  if (!res.ok) { console.error(JSON.stringify({ status: "error", http: res.status, ...data })); process.exit(1); }
-  console.log(JSON.stringify(data, null, 2));
 }
 
 async function set(tierName) {
   if (!tierName) { console.error(JSON.stringify({ status: "error", message: "Usage: run402 tier set <prototype|hobby|team>" })); process.exit(1); }
-  const fetchPaid = await setupPaidFetch();
-  const res = await fetchPaid(`${API}/tiers/v1/${tierName}`, { method: "POST", headers: { "Content-Type": "application/json" } });
-  const text = await res.text();
-  let data;
   try {
-    data = JSON.parse(text);
-  } catch {
-    console.error(JSON.stringify({ status: "error", http: res.status, message: "Non-JSON response from server", body: text.slice(0, 500) }));
-    process.exit(1);
+    const data = await getSdk().tier.set(tierName);
+    console.log(JSON.stringify(data, null, 2));
+  } catch (err) {
+    reportSdkError(err);
   }
-  if (!res.ok) { console.error(JSON.stringify({ status: "error", http: res.status, ...data })); process.exit(1); }
-  console.log(JSON.stringify(data, null, 2));
 }
 
 export async function run(sub, args) {

@@ -1,6 +1,7 @@
 import { readFileSync } from "fs";
 import { findProject, API } from "./config.mjs";
-import { setupPaidFetch } from "./paid-fetch.mjs";
+import { getSdk } from "./sdk.mjs";
+import { reportSdkError } from "./sdk-errors.mjs";
 
 const HELP = `run402 functions — Manage serverless functions
 
@@ -128,7 +129,6 @@ Examples:
 };
 
 async function deploy(projectId, name, args) {
-  const p = findProject(projectId);
   const opts = { file: null, timeout: undefined, memory: undefined, deps: undefined, schedule: undefined };
   for (let i = 0; i < args.length; i++) {
     if (args[i] === "--file" && args[i + 1]) opts.file = args[++i];
@@ -139,47 +139,48 @@ async function deploy(projectId, name, args) {
   }
   if (!opts.file) { console.error(JSON.stringify({ status: "error", message: "Missing --file <file>" })); process.exit(1); }
   const code = readFileSync(opts.file, "utf-8");
-  const body = { name, code };
-  if (opts.timeout || opts.memory) body.config = {};
-  if (opts.timeout) body.config.timeout = opts.timeout;
-  if (opts.memory) body.config.memory = opts.memory;
-  if (opts.deps) body.deps = opts.deps;
-  if (opts.schedule !== undefined) body.schedule = opts.schedule === "" ? null : opts.schedule;
 
-  const fetchPaid = await setupPaidFetch();
-  const res = await fetchPaid(`${API}/projects/v1/admin/${projectId}/functions`, {
-    method: "POST",
-    headers: { "Authorization": `Bearer ${p.service_key}`, "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  const data = await res.json();
-  if (!res.ok) { console.error(JSON.stringify({ status: "error", http: res.status, ...data })); process.exit(1); }
-  console.log(JSON.stringify(data, null, 2));
+  const deployOpts = { name, code };
+  if (opts.timeout !== undefined || opts.memory !== undefined) {
+    deployOpts.config = {};
+    if (opts.timeout !== undefined) deployOpts.config.timeout = opts.timeout;
+    if (opts.memory !== undefined) deployOpts.config.memory = opts.memory;
+  }
+  if (opts.deps !== undefined) deployOpts.deps = opts.deps;
+  if (opts.schedule !== undefined) deployOpts.schedule = opts.schedule === "" ? null : opts.schedule;
+
+  try {
+    const data = await getSdk().functions.deploy(projectId, deployOpts);
+    console.log(JSON.stringify(data, null, 2));
+  } catch (err) {
+    reportSdkError(err);
+  }
 }
 
 async function invoke(projectId, name, args) {
-  const p = findProject(projectId);
   const opts = { method: "POST", body: undefined };
   for (let i = 0; i < args.length; i++) {
     if (args[i] === "--method" && args[i + 1]) opts.method = args[++i];
     if (args[i] === "--body" && args[i + 1]) opts.body = args[++i];
   }
-  const fetchOpts = {
-    method: opts.method,
-    headers: { "apikey": p.service_key },
-  };
-  if (opts.body && opts.method !== "GET" && opts.method !== "HEAD") {
-    fetchOpts.headers["Content-Type"] = "application/json";
-    fetchOpts.body = opts.body;
+  const invokeOpts = { method: opts.method };
+  if (opts.body !== undefined && opts.method !== "GET" && opts.method !== "HEAD") {
+    invokeOpts.body = opts.body;
   }
-  const res = await fetch(`${API}/functions/v1/${name}`, fetchOpts);
-  const text = await res.text();
-  if (!res.ok) { console.error(JSON.stringify({ status: "error", http: res.status, body: text })); process.exit(1); }
-  try { console.log(JSON.stringify(JSON.parse(text), null, 2)); } catch { process.stdout.write(text + "\n"); }
+  try {
+    const result = await getSdk().functions.invoke(projectId, name, invokeOpts);
+    const body = result.body;
+    if (typeof body === "string") {
+      process.stdout.write(body + "\n");
+    } else {
+      console.log(JSON.stringify(body, null, 2));
+    }
+  } catch (err) {
+    reportSdkError(err);
+  }
 }
 
 async function logs(projectId, name, args) {
-  const p = findProject(projectId);
   let tail = 50;
   let since = undefined;
   let follow = false;
@@ -189,21 +190,28 @@ async function logs(projectId, name, args) {
     if (args[i] === "--follow") follow = true;
   }
 
-  // Parse since: accept ISO string or epoch ms
-  let sinceMs = undefined;
+  // Parse since: accept ISO string or epoch ms — keep CLI-side validation
+  // so a bad `--since` errors with a clear message rather than silently
+  // being dropped by the SDK.
+  let sinceIso = undefined;
   if (since !== undefined) {
     const parsed = Number(since);
-    sinceMs = Number.isNaN(parsed) ? new Date(since).getTime() : parsed;
-    if (Number.isNaN(sinceMs)) { console.error(JSON.stringify({ status: "error", message: `Invalid --since value: ${since}` })); process.exit(1); }
+    const ms = Number.isNaN(parsed) ? new Date(since).getTime() : parsed;
+    if (Number.isNaN(ms)) { console.error(JSON.stringify({ status: "error", message: `Invalid --since value: ${since}` })); process.exit(1); }
+    sinceIso = new Date(ms).toISOString();
   }
 
   const fetchLogs = async () => {
-    let url = `${API}/projects/v1/admin/${projectId}/functions/${encodeURIComponent(name)}/logs?tail=${tail}`;
-    if (sinceMs !== undefined) url += `&since=${sinceMs}`;
-    const res = await fetch(url, { headers: { "Authorization": `Bearer ${p.service_key}` } });
-    const data = await res.json();
-    if (!res.ok) { console.error(JSON.stringify({ status: "error", http: res.status, ...data })); process.exit(1); }
-    return data.logs || [];
+    try {
+      const data = await getSdk().functions.logs(projectId, name, {
+        tail,
+        since: sinceIso,
+      });
+      return data.logs || [];
+    } catch (err) {
+      reportSdkError(err);
+      return [];
+    }
   };
 
   if (!follow) {
@@ -212,17 +220,16 @@ async function logs(projectId, name, args) {
     return;
   }
 
-  // Follow mode: poll every 3s, print new entries
+  // Follow mode: poll every 3s, print new entries.
   let running = true;
   process.on("SIGINT", () => { running = false; });
 
-  // Initial fetch
   const initial = await fetchLogs();
   for (const entry of initial) {
     console.log(`[${entry.timestamp}] ${entry.message}`);
   }
   if (initial.length > 0) {
-    sinceMs = new Date(initial[initial.length - 1].timestamp).getTime() + 1;
+    sinceIso = new Date(new Date(initial[initial.length - 1].timestamp).getTime() + 1).toISOString();
   }
 
   while (running) {
@@ -233,13 +240,12 @@ async function logs(projectId, name, args) {
       console.log(`[${entry.timestamp}] ${entry.message}`);
     }
     if (entries.length > 0) {
-      sinceMs = new Date(entries[entries.length - 1].timestamp).getTime() + 1;
+      sinceIso = new Date(new Date(entries[entries.length - 1].timestamp).getTime() + 1).toISOString();
     }
   }
 }
 
 async function update(projectId, name, args) {
-  const p = findProject(projectId);
   let schedule = undefined;
   let scheduleRemove = false;
   let timeout = undefined;
@@ -250,52 +256,44 @@ async function update(projectId, name, args) {
     if (args[i] === "--timeout" && args[i + 1]) timeout = parseInt(args[++i]);
     if (args[i] === "--memory" && args[i + 1]) memory = parseInt(args[++i]);
   }
-  const body = {};
+
+  const updateOpts = {};
   if (scheduleRemove || schedule === "") {
-    body.schedule = null;
+    updateOpts.schedule = null;
   } else if (schedule !== undefined) {
-    body.schedule = schedule;
+    updateOpts.schedule = schedule;
   }
-  if (timeout !== undefined || memory !== undefined) {
-    body.config = {};
-    if (timeout !== undefined) body.config.timeout = timeout;
-    if (memory !== undefined) body.config.memory = memory;
-  }
-  if (Object.keys(body).length === 0) {
+  if (timeout !== undefined) updateOpts.timeout = timeout;
+  if (memory !== undefined) updateOpts.memory = memory;
+
+  if (Object.keys(updateOpts).length === 0) {
     console.error(JSON.stringify({ status: "error", message: "Provide at least one of: --schedule, --schedule-remove, --timeout, --memory" }));
     process.exit(1);
   }
-  const res = await fetch(`${API}/projects/v1/admin/${projectId}/functions/${encodeURIComponent(name)}`, {
-    method: "PATCH",
-    headers: { "Authorization": `Bearer ${p.service_key}`, "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  const data = await res.json();
-  if (!res.ok) { console.error(JSON.stringify({ status: "error", http: res.status, ...data })); process.exit(1); }
-  console.log(JSON.stringify(data, null, 2));
+
+  try {
+    const data = await getSdk().functions.update(projectId, name, updateOpts);
+    console.log(JSON.stringify(data, null, 2));
+  } catch (err) {
+    reportSdkError(err);
+  }
 }
 
 async function list(projectId) {
-  const p = findProject(projectId);
-  const res = await fetch(`${API}/projects/v1/admin/${projectId}/functions`, {
-    headers: { "Authorization": `Bearer ${p.service_key}` },
-  });
-  const data = await res.json();
-  if (!res.ok) { console.error(JSON.stringify({ status: "error", http: res.status, ...data })); process.exit(1); }
-  console.log(JSON.stringify(data, null, 2));
+  try {
+    const data = await getSdk().functions.list(projectId);
+    console.log(JSON.stringify(data, null, 2));
+  } catch (err) {
+    reportSdkError(err);
+  }
 }
 
 async function deleteFunction(projectId, name) {
-  const p = findProject(projectId);
-  const res = await fetch(`${API}/projects/v1/admin/${projectId}/functions/${encodeURIComponent(name)}`, {
-    method: "DELETE",
-    headers: { "Authorization": `Bearer ${p.service_key}` },
-  });
-  if (res.status === 204 || res.ok) {
+  try {
+    await getSdk().functions.delete(projectId, name);
     console.log(JSON.stringify({ status: "ok", message: `Function '${name}' deleted.` }));
-  } else {
-    const data = await res.json().catch(() => ({}));
-    console.error(JSON.stringify({ status: "error", http: res.status, ...data })); process.exit(1);
+  } catch (err) {
+    reportSdkError(err);
   }
 }
 

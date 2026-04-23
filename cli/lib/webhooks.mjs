@@ -1,4 +1,6 @@
-import { findProject, resolveProjectId, API, loadKeyStore, updateProject } from "./config.mjs";
+import { resolveProjectId } from "./config.mjs";
+import { getSdk } from "./sdk.mjs";
+import { reportSdkError } from "./sdk-errors.mjs";
 
 const HELP = `run402 email webhooks — Manage mailbox webhooks
 
@@ -26,39 +28,11 @@ const SUB_HELP = {
 
 Usage:
   run402 email webhooks update <webhook_id> [--url <url>] [--events <e1,e2>] [--project <id>]
-
-Arguments:
-  <webhook_id>        Webhook ID to update
-
-Options:
-  --url <url>         New delivery URL for the webhook
-  --events <e1,e2>    Comma-separated event list to replace the current events
-                      Valid: delivery, bounced, complained, reply_received
-  --project <id>      Project ID (defaults to the active project)
-
-Notes:
-  - Provide at least one of --url or --events
-
-Examples:
-  run402 email webhooks update whk_123 --url https://new.example.com/hook
-  run402 email webhooks update whk_123 --events delivery,bounced
 `,
   register: `run402 email webhooks register — Register a new webhook
 
 Usage:
   run402 email webhooks register --url <url> --events <e1,e2> [--project <id>]
-
-Options:
-  --url <url>         Delivery URL for the webhook (required)
-  --events <e1,e2>    Comma-separated event list (required)
-                      Valid: delivery, bounced, complained, reply_received
-  --project <id>      Project ID (defaults to the active project)
-
-Examples:
-  run402 email webhooks register --url https://example.com/hook \\
-    --events delivery,bounced
-  run402 email webhooks register --url https://example.com/hook \\
-    --events reply_received --project proj123
 `,
 };
 
@@ -69,53 +43,14 @@ function parseFlag(args, flag) {
   return null;
 }
 
-async function resolveMailboxId(projectId, serviceKey) {
-  const store = loadKeyStore();
-  const proj = store.projects[projectId];
-  if (proj && proj.mailbox_id) return proj.mailbox_id;
-
-  const res = await fetch(`${API}/mailboxes/v1`, {
-    headers: { "Authorization": `Bearer ${serviceKey}` },
-  });
-  if (!res.ok) {
-    const data = await res.json().catch(() => ({}));
-    throw Object.assign(new Error("Failed to resolve mailbox"), { http: res.status, ...data });
-  }
-  const body = await res.json();
-  const mailboxes = body.mailboxes || body;
-  if (!Array.isArray(mailboxes) || mailboxes.length === 0) {
-    throw new Error("No mailbox found. Run: run402 email create <slug>");
-  }
-  const mb = mailboxes[0];
-  updateProject(projectId, { mailbox_id: mb.mailbox_id, mailbox_address: mb.address });
-  return mb.mailbox_id;
-}
-
-async function requireMailboxId(projectId, serviceKey) {
-  try {
-    return await resolveMailboxId(projectId, serviceKey);
-  } catch (err) {
-    const out = { status: "error", message: err.message };
-    if (err.http) out.http = err.http;
-    console.error(JSON.stringify(out));
-    process.exit(1);
-  }
-}
-
 async function list(args) {
   const projectId = resolveProjectId(parseFlag(args, "--project"));
-  const p = findProject(projectId);
-  const mailboxId = await requireMailboxId(projectId, p.service_key);
-
-  const res = await fetch(`${API}/mailboxes/v1/${mailboxId}/webhooks`, {
-    headers: { "Authorization": `Bearer ${p.service_key}` },
-  });
-  const data = await res.json();
-  if (!res.ok) {
-    console.error(JSON.stringify({ status: "error", http: res.status, ...data }));
-    process.exit(1);
+  try {
+    const data = await getSdk().email.webhooks.list(projectId);
+    console.log(JSON.stringify(data, null, 2));
+  } catch (err) {
+    reportSdkError(err);
   }
-  console.log(JSON.stringify(data, null, 2));
 }
 
 async function get(args) {
@@ -126,23 +61,16 @@ async function get(args) {
     else if (!args[i].startsWith("--") && !webhookId) { webhookId = args[i]; }
   }
   const projectId = resolveProjectId(projectOpt);
-  const p = findProject(projectId);
-
   if (!webhookId) {
     console.error(JSON.stringify({ status: "error", message: "Missing webhook_id. Usage: run402 email webhooks get <webhook_id>" }));
     process.exit(1);
   }
-
-  const mailboxId = await requireMailboxId(projectId, p.service_key);
-  const res = await fetch(`${API}/mailboxes/v1/${mailboxId}/webhooks/${webhookId}`, {
-    headers: { "Authorization": `Bearer ${p.service_key}` },
-  });
-  const data = await res.json();
-  if (!res.ok) {
-    console.error(JSON.stringify({ status: "error", http: res.status, ...data }));
-    process.exit(1);
+  try {
+    const data = await getSdk().email.webhooks.get(projectId, webhookId);
+    console.log(JSON.stringify(data, null, 2));
+  } catch (err) {
+    reportSdkError(err);
   }
-  console.log(JSON.stringify(data, null, 2));
 }
 
 async function del(args) {
@@ -153,25 +81,16 @@ async function del(args) {
     else if (!args[i].startsWith("--") && !webhookId) { webhookId = args[i]; }
   }
   const projectId = resolveProjectId(projectOpt);
-  const p = findProject(projectId);
-
   if (!webhookId) {
     console.error(JSON.stringify({ status: "error", message: "Missing webhook_id. Usage: run402 email webhooks delete <webhook_id>" }));
     process.exit(1);
   }
-
-  const mailboxId = await requireMailboxId(projectId, p.service_key);
-  const res = await fetch(`${API}/mailboxes/v1/${mailboxId}/webhooks/${webhookId}`, {
-    method: "DELETE",
-    headers: { "Authorization": `Bearer ${p.service_key}` },
-  });
-  if (!res.ok) {
-    let errBody;
-    try { errBody = await res.json(); } catch { errBody = {}; }
-    console.error(JSON.stringify({ status: "error", http: res.status, ...errBody }));
-    process.exit(1);
+  try {
+    await getSdk().email.webhooks.delete(projectId, webhookId);
+    console.log(JSON.stringify({ status: "ok", webhook_id: webhookId, deleted: true }));
+  } catch (err) {
+    reportSdkError(err);
   }
-  console.log(JSON.stringify({ status: "ok", webhook_id: webhookId, deleted: true }));
 }
 
 async function update(args) {
@@ -186,8 +105,6 @@ async function update(args) {
     else if (!args[i].startsWith("--") && !webhookId) { webhookId = args[i]; }
   }
   const projectId = resolveProjectId(projectOpt);
-  const p = findProject(projectId);
-
   if (!webhookId) {
     console.error(JSON.stringify({ status: "error", message: "Missing webhook_id. Usage: run402 email webhooks update <webhook_id> [--url <url>] [--events <e1,e2>]" }));
     process.exit(1);
@@ -197,22 +114,15 @@ async function update(args) {
     process.exit(1);
   }
 
-  const body = {};
-  if (url) body.url = url;
-  if (eventsRaw) body.events = eventsRaw.split(",").map(e => e.trim());
-
-  const mailboxId = await requireMailboxId(projectId, p.service_key);
-  const res = await fetch(`${API}/mailboxes/v1/${mailboxId}/webhooks/${webhookId}`, {
-    method: "PATCH",
-    headers: { "Authorization": `Bearer ${p.service_key}`, "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  const data = await res.json();
-  if (!res.ok) {
-    console.error(JSON.stringify({ status: "error", http: res.status, ...data }));
-    process.exit(1);
+  try {
+    const data = await getSdk().email.webhooks.update(projectId, webhookId, {
+      url: url ?? undefined,
+      events: eventsRaw ? eventsRaw.split(",").map((e) => e.trim()) : undefined,
+    });
+    console.log(JSON.stringify({ status: "ok", ...data }));
+  } catch (err) {
+    reportSdkError(err);
   }
-  console.log(JSON.stringify({ status: "ok", ...data }));
 }
 
 async function register(args) {
@@ -220,7 +130,6 @@ async function register(args) {
   const eventsRaw = parseFlag(args, "--events");
   const projectOpt = parseFlag(args, "--project");
   const projectId = resolveProjectId(projectOpt);
-  const p = findProject(projectId);
 
   if (!url) {
     console.error(JSON.stringify({ status: "error", message: "Missing --url. Usage: run402 email webhooks register --url <url> --events <e1,e2>" }));
@@ -231,19 +140,13 @@ async function register(args) {
     process.exit(1);
   }
 
-  const events = eventsRaw.split(",").map(e => e.trim());
-  const mailboxId = await requireMailboxId(projectId, p.service_key);
-  const res = await fetch(`${API}/mailboxes/v1/${mailboxId}/webhooks`, {
-    method: "POST",
-    headers: { "Authorization": `Bearer ${p.service_key}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ url, events }),
-  });
-  const data = await res.json();
-  if (!res.ok) {
-    console.error(JSON.stringify({ status: "error", http: res.status, ...data }));
-    process.exit(1);
+  const events = eventsRaw.split(",").map((e) => e.trim());
+  try {
+    const data = await getSdk().email.webhooks.register(projectId, { url, events });
+    console.log(JSON.stringify({ status: "ok", ...data }));
+  } catch (err) {
+    reportSdkError(err);
   }
-  console.log(JSON.stringify({ status: "ok", ...data }));
 }
 
 export async function run(sub, args) {

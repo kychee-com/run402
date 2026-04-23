@@ -1,7 +1,6 @@
 import { z } from "zod";
-import { apiRequest } from "../client.js";
-import { getProject } from "../keystore.js";
-import { formatApiError, projectNotFound } from "../errors.js";
+import { getSdk } from "../sdk.js";
+import { mapSdkError } from "../errors.js";
 
 export const drainContractWalletSchema = {
   project_id: z.string().describe("The project ID"),
@@ -10,16 +9,10 @@ export const drainContractWalletSchema = {
 };
 
 export async function handleDrainContractWallet(args: { project_id: string; wallet_id: string; destination_address: string }): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
-  const project = getProject(args.project_id);
-  if (!project) return projectNotFound(args.project_id);
-  const res = await apiRequest(`/contracts/v1/wallets/${encodeURIComponent(args.wallet_id)}/drain`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${project.service_key}`,
-      "X-Confirm-Drain": args.wallet_id,
-    },
-    body: { destination_address: args.destination_address },
-  });
-  if (!res.ok) return formatApiError(res, "draining wallet");
-  return { content: [{ type: "text", text: "## Drain Submitted\n\n```json\n" + JSON.stringify(res.body, null, 2) + "\n```" }] };
+  try {
+    const body = await getSdk().contracts.drain(args.project_id, args.wallet_id, args.destination_address);
+    return { content: [{ type: "text", text: "## Drain Submitted\n\n```json\n" + JSON.stringify(body, null, 2) + "\n```" }] };
+  } catch (err) {
+    return mapSdkError(err, "draining wallet");
+  }
 }

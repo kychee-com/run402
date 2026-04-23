@@ -1,4 +1,6 @@
 import { readAllowance, saveAllowance, ALLOWANCE_FILE, API } from "./config.mjs";
+import { getSdk } from "./sdk.mjs";
+import { reportSdkError } from "./sdk-errors.mjs";
 
 const HELP = `run402 allowance — Manage your agent allowance
 
@@ -76,24 +78,43 @@ async function loadDeps() {
 }
 
 async function status() {
-  const w = readAllowance();
-  if (!w) {
-    console.log(JSON.stringify({ status: "no_wallet", message: "No agent allowance found. Run: run402 allowance create" }));
-    return;
+  try {
+    const data = await getSdk().allowance.status();
+    if (!data.configured) {
+      console.log(JSON.stringify({ status: "no_wallet", message: "No agent allowance found. Run: run402 allowance create" }));
+      return;
+    }
+    // Preserve CLI's rail field (SDK doesn't surface it; read from local allowance).
+    const w = readAllowance();
+    console.log(JSON.stringify({
+      status: "ok",
+      address: data.address,
+      created: data.created,
+      funded: data.funded || false,
+      rail: w?.rail || "x402",
+      path: data.path ?? ALLOWANCE_FILE,
+    }));
+  } catch (err) {
+    reportSdkError(err);
   }
-  console.log(JSON.stringify({ status: "ok", address: w.address, created: w.created, funded: w.funded || false, rail: w.rail || "x402", path: ALLOWANCE_FILE }));
 }
 
 async function create() {
-  if (readAllowance()) {
-    console.log(JSON.stringify({ status: "error", message: "Agent allowance already exists. Use 'status' to check it." }));
-    process.exit(1);
+  try {
+    const result = await getSdk().allowance.create();
+    console.log(JSON.stringify({
+      status: "ok",
+      address: result.address,
+      message: `Agent allowance created. Stored locally at ${result.path ?? ALLOWANCE_FILE}`,
+    }));
+  } catch (err) {
+    const msg = (err instanceof Error) ? err.message : String(err);
+    if (/already exists/i.test(msg)) {
+      console.log(JSON.stringify({ status: "error", message: "Agent allowance already exists. Use 'status' to check it." }));
+      process.exit(1);
+    }
+    reportSdkError(err);
   }
-  const { generatePrivateKey, privateKeyToAccount } = await loadDeps();
-  const privateKey = generatePrivateKey();
-  const account = privateKeyToAccount(privateKey);
-  saveAllowance({ address: account.address, privateKey, created: new Date().toISOString(), funded: false });
-  console.log(JSON.stringify({ status: "ok", address: account.address, message: `Agent allowance created. Stored locally at ${ALLOWANCE_FILE}` }));
 }
 
 async function fund() {
@@ -199,9 +220,13 @@ async function balance() {
 }
 
 async function exportAddr() {
-  const w = readAllowance();
-  if (!w) { console.log(JSON.stringify({ status: "error", message: "No agent allowance." })); process.exit(1); }
-  console.log(w.address);
+  try {
+    const address = await getSdk().allowance.export();
+    console.log(address);
+  } catch {
+    console.log(JSON.stringify({ status: "error", message: "No agent allowance." }));
+    process.exit(1);
+  }
 }
 
 async function checkout(args) {

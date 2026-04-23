@@ -1,41 +1,30 @@
-import { apiRequest } from "../client.js";
+import { getSdk } from "../sdk.js";
+import { NetworkError, Run402Error } from "../../sdk/dist/index.js";
 
 export const serviceStatusSchema = {};
 
 type McpResult = { content: Array<{ type: "text"; text: string }>; isError?: boolean };
 
-interface StatusPayload {
-  schema_version?: string;
-  service?: string;
-  current_status?: string;
-  operator?: { legal_name?: string; terms_url?: string; contact?: string };
-  availability?: {
-    last_30d?: { uptime_pct?: number; total_probes?: number; healthy_probes?: number };
-    last_7d?: { uptime_pct?: number };
-    last_24h?: { uptime_pct?: number };
-  };
-  capabilities?: Record<string, string>;
-  deployment?: { cloud?: string; region?: string; topology?: string };
-  links?: { health?: string };
-}
-
 export async function handleServiceStatus(
   _args: Record<string, never>,
 ): Promise<McpResult> {
-  const res = await apiRequest("/status", { method: "GET" });
-
-  if (!res.ok) {
-    const bodyMsg = (res.body as { error?: string })?.error;
-    const detail = res.status === 0
-      ? `network error${bodyMsg ? `: ${bodyMsg}` : ""}`
-      : `HTTP ${res.status}`;
+  let body: Awaited<ReturnType<ReturnType<typeof getSdk>["service"]["status"]>>;
+  try {
+    body = await getSdk().service.status();
+  } catch (err) {
+    let detail: string;
+    if (err instanceof NetworkError) {
+      detail = `network error: ${err.message}`;
+    } else if (err instanceof Run402Error) {
+      detail = `HTTP ${err.status ?? "?"}`;
+    } else {
+      detail = (err as Error)?.message ?? String(err);
+    }
     return {
       content: [{ type: "text", text: `Service /status check failed (${detail}).` }],
       isError: true,
     };
   }
-
-  const body = res.body as StatusPayload;
 
   if (body?.schema_version !== "run402-status-v1") {
     return {

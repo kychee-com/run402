@@ -2,7 +2,7 @@
   <img src=".github/logo.svg" width="120" alt="run402 logo">
 </p>
 
-<h1 align="center">run402 — MCP Server, CLI & OpenClaw Skill</h1>
+<h1 align="center">run402 — SDK, MCP Server, CLI & OpenClaw Skill</h1>
 
 [![Tests](https://github.com/kychee-com/run402/actions/workflows/test.yml/badge.svg)](https://github.com/kychee-com/run402/actions/workflows/test.yml)
 [![CodeQL](https://github.com/kychee-com/run402/actions/workflows/codeql.yml/badge.svg)](https://github.com/kychee-com/run402/actions/workflows/codeql.yml)
@@ -10,7 +10,7 @@
 [![npm: run402](https://img.shields.io/npm/v/run402?label=run402)](https://www.npmjs.com/package/run402)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 
-Developer tools for [Run402](https://run402.com) — provision Postgres databases, deploy static sites, serverless functions, generate images, and manage agent allowances. Available as an MCP server, an OpenClaw skill, and a CLI.
+Developer tools for [Run402](https://run402.com) — provision Postgres databases, deploy static sites, serverless functions, generate images, and manage agent allowances. Available as a typed TypeScript SDK, an MCP server, an OpenClaw skill, and a CLI.
 
 English | [简体中文](./README.zh-CN.md)
 
@@ -18,9 +18,33 @@ English | [简体中文](./README.zh-CN.md)
 
 | Interface | Use when... |
 |-----------|-------------|
+| [`sdk/`](./sdk/) (`@run402/sdk`) | Calling run402 from code — inside user-deployed functions, custom agents, or future code-mode sandboxes |
 | [`cli/`](./cli/) | Terminal, scripts, CI/CD |
 | [`openclaw/`](./openclaw/) | OpenClaw agent (no MCP required) |
 | MCP server (this package) | Claude Desktop, Cursor, Cline, Claude Code |
+
+## SDK
+
+```bash
+npm install @run402/sdk
+```
+
+Two entry points: `@run402/sdk` (isomorphic — works in Node 22, Deno, Bun, V8 isolates) and `@run402/sdk/node` (zero-config Node defaults: keystore + allowance + x402):
+
+```ts
+import { run402 } from "@run402/sdk/node";
+
+const r = run402();
+const project = await r.projects.provision({ tier: "prototype" });
+await r.blobs.put(project.project_id, "hello.txt", { content: "hi" });
+await r.sites.deploy(project.project_id, [
+  { file: "index.html", data: "<h1>hello</h1>" },
+]);
+```
+
+17 namespaces: `projects`, `blobs`, `functions`, `secrets`, `subdomains`, `domains`, `sites`, `service`, `tier`, `allowance`, `ai`, `auth`, `senderDomain`, `billing`, `apps`, `email` (+ `webhooks`), `contracts`, `admin`.
+
+All failures throw typed errors (`PaymentRequired`, `ProjectNotFound`, `Unauthorized`, `ApiError`, `NetworkError`). See [`sdk/README.md`](./sdk/README.md) for details.
 
 ## Quick Start
 

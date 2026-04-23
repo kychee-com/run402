@@ -1,4 +1,6 @@
 import { API } from "./config.mjs";
+import { getSdk } from "./sdk.mjs";
+import { reportSdkError } from "./sdk-errors.mjs";
 
 const HELP = `run402 billing — Email billing accounts, Stripe tier checkout, email packs
 
@@ -98,14 +100,12 @@ async function createEmail(args) {
     console.error(JSON.stringify({ status: "error", message: "Missing email. Usage: run402 billing create-email <email>" }));
     process.exit(1);
   }
-  const res = await fetch(`${API}/billing/v1/accounts`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email }),
-  });
-  const data = await res.json();
-  if (!res.ok) { console.error(JSON.stringify({ status: "error", http: res.status, ...data })); process.exit(1); }
-  console.log(JSON.stringify(data, null, 2));
+  try {
+    const data = await getSdk().billing.createEmailAccount(email);
+    console.log(JSON.stringify(data, null, 2));
+  } catch (err) {
+    reportSdkError(err);
+  }
 }
 
 async function linkWallet(args) {
@@ -115,14 +115,12 @@ async function linkWallet(args) {
     console.error(JSON.stringify({ status: "error", message: "Usage: run402 billing link-wallet <account_id> <wallet>" }));
     process.exit(1);
   }
-  const res = await fetch(`${API}/billing/v1/accounts/${encodeURIComponent(accountId)}/link-wallet`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ wallet }),
-  });
-  const data = await res.json();
-  if (!res.ok) { console.error(JSON.stringify({ status: "error", http: res.status, ...data })); process.exit(1); }
-  console.log(JSON.stringify(data, null, 2));
+  try {
+    await getSdk().billing.linkWallet(accountId, wallet);
+    console.log(JSON.stringify({ status: "ok", billing_account_id: accountId, wallet }));
+  } catch (err) {
+    reportSdkError(err);
+  }
 }
 
 async function tierCheckout(args) {
@@ -137,15 +135,12 @@ async function tierCheckout(args) {
     console.error(JSON.stringify({ status: "error", message: "Must provide --email or --wallet" }));
     process.exit(1);
   }
-  const body = email ? { email } : { wallet };
-  const res = await fetch(`${API}/billing/v1/tiers/${encodeURIComponent(tier)}/checkout`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  const data = await res.json();
-  if (!res.ok) { console.error(JSON.stringify({ status: "error", http: res.status, ...data })); process.exit(1); }
-  console.log(JSON.stringify(data, null, 2));
+  try {
+    const data = await getSdk().billing.tierCheckout(tier, { email: email ?? undefined, wallet: wallet ?? undefined });
+    console.log(JSON.stringify(data, null, 2));
+  } catch (err) {
+    reportSdkError(err);
+  }
 }
 
 async function buyPack(args) {
@@ -155,15 +150,12 @@ async function buyPack(args) {
     console.error(JSON.stringify({ status: "error", message: "Must provide --email or --wallet" }));
     process.exit(1);
   }
-  const body = email ? { email } : { wallet };
-  const res = await fetch(`${API}/billing/v1/email-packs/checkout`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  const data = await res.json();
-  if (!res.ok) { console.error(JSON.stringify({ status: "error", http: res.status, ...data })); process.exit(1); }
-  console.log(JSON.stringify(data, null, 2));
+  try {
+    const data = await getSdk().billing.buyEmailPack({ email: email ?? undefined, wallet: wallet ?? undefined });
+    console.log(JSON.stringify(data, null, 2));
+  } catch (err) {
+    reportSdkError(err);
+  }
 }
 
 async function autoRecharge(args) {
@@ -174,22 +166,20 @@ async function autoRecharge(args) {
     process.exit(1);
   }
   const thresholdStr = parseFlag(args, "--threshold");
-  const body = {
-    billing_account_id: accountId,
-    enabled: state === "on",
-  };
-  if (thresholdStr) body.threshold = Number(thresholdStr);
-  const res = await fetch(`${API}/billing/v1/email-packs/auto-recharge`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  const data = await res.json();
-  if (!res.ok) { console.error(JSON.stringify({ status: "error", http: res.status, ...data })); process.exit(1); }
-  console.log(JSON.stringify(data, null, 2));
+  try {
+    await getSdk().billing.setAutoRecharge({
+      billingAccountId: accountId,
+      enabled: state === "on",
+      threshold: thresholdStr ? Number(thresholdStr) : undefined,
+    });
+    console.log(JSON.stringify({ status: "ok", billing_account_id: accountId, enabled: state === "on" }));
+  } catch (err) {
+    reportSdkError(err);
+  }
 }
 
 async function balance(args) {
+  // Accepts email OR wallet — SDK only models wallet, so keep direct fetch.
   const id = args[0];
   if (!id) {
     console.error(JSON.stringify({ status: "error", message: "Usage: run402 billing balance <email-or-wallet>" }));

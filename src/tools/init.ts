@@ -1,12 +1,9 @@
 import { z } from "zod";
 import { mkdirSync } from "node:fs";
-import { randomBytes, createECDH } from "node:crypto";
-import { keccak_256 } from "@noble/hashes/sha3.js";
 import { getConfigDir } from "../config.js";
 import { readAllowance, saveAllowance } from "../allowance.js";
 import { loadKeyStore } from "../keystore.js";
-import { getAllowanceAuthHeaders } from "../allowance-auth.js";
-import { apiRequest } from "../client.js";
+import { getSdk } from "../sdk.js";
 
 const TEMPO_RPC = "https://rpc.moderato.tempo.xyz/";
 
@@ -31,38 +28,33 @@ export async function handleInit(args: { rail?: "x402" | "mpp" }): Promise<McpRe
   const configDir = getConfigDir();
   mkdirSync(configDir, { recursive: true });
 
-  // 2. Allowance — create or reuse
+  // 2. Allowance — create or reuse (via SDK when possible)
   let allowance = readAllowance();
   let allowanceCreated = false;
 
   if (!allowance) {
-    const privateKeyBytes = randomBytes(32);
-    const privateKey = `0x${privateKeyBytes.toString("hex")}`;
-
-    const ecdh = createECDH("secp256k1");
-    ecdh.setPrivateKey(privateKeyBytes);
-    const uncompressedPubKey = ecdh.getPublicKey();
-    const pubKeyBody = uncompressedPubKey.subarray(1);
-
-    const hash = keccak_256(pubKeyBody);
-    const addressBytes = hash.slice(-20);
-    const address = `0x${Buffer.from(addressBytes).toString("hex")}`;
-
-    allowance = {
-      address,
-      privateKey,
-      created: new Date().toISOString(),
-      funded: false,
-      rail,
-    };
-    saveAllowance(allowance);
-    allowanceCreated = true;
-  } else {
-    // Update rail if switching or missing
-    if (allowance.rail !== rail) {
+    try {
+      await getSdk().allowance.create();
+    } catch {
+      // `allowance already exists` would only fire if another process created one between the check and the call — ignore
+    }
+    allowance = readAllowance();
+    // Stamp the rail on the newly-created allowance.
+    if (allowance) {
       allowance = { ...allowance, rail };
       saveAllowance(allowance);
     }
+    allowanceCreated = true;
+  } else if (allowance.rail !== rail) {
+    allowance = { ...allowance, rail };
+    saveAllowance(allowance);
+  }
+
+  if (!allowance) {
+    return {
+      content: [{ type: "text", text: "Error: Failed to create or read the agent allowance." }],
+      isError: true,
+    };
   }
 
   // 3. Faucet — request if not yet funded
@@ -70,7 +62,7 @@ export async function handleInit(args: { rail?: "x402" | "mpp" }): Promise<McpRe
 
   if (!allowance.funded) {
     if (rail === "mpp") {
-      // Tempo Moderato faucet via JSON-RPC
+      // Tempo Moderato faucet via JSON-RPC — not in the SDK surface (x402-only).
       try {
         const res = await fetch(TEMPO_RPC, {
           method: "POST",
@@ -94,38 +86,29 @@ export async function handleInit(args: { rail?: "x402" | "mpp" }): Promise<McpRe
         faucetStatus = `error: ${(err as Error).message}`;
       }
     } else {
-      // x402 faucet via Run402 API
-      const res = await apiRequest("/faucet/v1", {
-        method: "POST",
-        body: { address: allowance.address },
-      });
-      if (res.ok) {
-        allowance = { ...allowance, funded: true, lastFaucet: new Date().toISOString() };
-        saveAllowance(allowance);
-        const body = res.body as { amount?: string; token?: string };
+      // x402 faucet via SDK (updates `funded` / `lastFaucet` via the provider).
+      try {
+        const body = await getSdk().allowance.faucet(allowance.address);
         faucetStatus = body.amount ? `funded (${body.amount} ${body.token || "USDC"})` : "funded";
-      } else {
-        const body = res.body as { error?: string; message?: string };
-        faucetStatus = `failed: ${body.error || body.message || `HTTP ${res.status}`}`;
+        // Re-read allowance to pick up the funded/lastFaucet fields the SDK wrote.
+        allowance = readAllowance() ?? allowance;
+      } catch (err) {
+        const msg = (err as Error)?.message ?? String(err);
+        faucetStatus = `failed: ${msg}`;
       }
     }
   }
 
   // 4. Tier status
   let tierDisplay = "(none)";
-  const authHeaders = getAllowanceAuthHeaders("/tiers/v1/status");
-  if (authHeaders) {
-    const res = await apiRequest("/tiers/v1/status", {
-      method: "GET",
-      headers: { ...authHeaders },
-    });
-    if (res.ok) {
-      const body = res.body as { tier?: string; active?: boolean; lease_expires_at?: string };
-      if (body.tier && body.active) {
-        const expiry = body.lease_expires_at ? body.lease_expires_at.split("T")[0] : "unknown";
-        tierDisplay = `${body.tier} (expires ${expiry})`;
-      }
+  try {
+    const body = await getSdk().tier.status();
+    if (body.tier && body.status !== "none") {
+      const expiry = body.lease_expires_at ? body.lease_expires_at.split("T")[0] : "unknown";
+      tierDisplay = `${body.tier} (expires ${expiry})`;
     }
+  } catch {
+    // tier status is best-effort — leave at (none)
   }
 
   // 5. Project count

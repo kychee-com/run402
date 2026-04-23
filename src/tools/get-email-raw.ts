@@ -1,8 +1,6 @@
 import { z } from "zod";
-import { getProject } from "../keystore.js";
-import { formatApiError, projectNotFound } from "../errors.js";
-import { resolveMailboxId } from "./send-email.js";
-import { getApiBase } from "../../core/dist/config.js";
+import { getSdk } from "../sdk.js";
+import { mapSdkError } from "../errors.js";
 
 export const getEmailRawSchema = {
   project_id: z.string().describe("The project ID"),
@@ -24,53 +22,34 @@ export async function handleGetEmailRaw(args: {
   project_id: string;
   message_id: string;
 }): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
-  const project = getProject(args.project_id);
-  if (!project) return projectNotFound(args.project_id);
-
-  const mailbox = await resolveMailboxId(args.project_id, project.service_key);
-  if ("error" in mailbox) return mailbox.error;
-
-  // Use raw fetch instead of apiRequest because the response is binary
-  // (message/rfc822), not JSON/text.
-  const url = `${getApiBase()}/mailboxes/v1/${mailbox.id}/messages/${args.message_id}/raw`;
-  let res: Response;
   try {
-    res = await fetch(url, {
-      method: "GET",
-      headers: { Authorization: `Bearer ${project.service_key}` },
-    });
+    const result = await getSdk().email.getRaw(args.project_id, args.message_id);
+    const bytes = Buffer.from(result.bytes);
+    const base64 = bytes.toString("base64");
+
+    const lines = [
+      `## Raw MIME: \`${args.message_id}\``,
+      ``,
+      `- **Content-Type:** ${result.content_type}`,
+      `- **Size:** ${bytes.length} bytes`,
+      `- **Encoding:** base64 (decode to get the exact RFC-822 bytes — bit-identical to the DKIM-signed original)`,
+      ``,
+      "```",
+      base64,
+      "```",
+      ``,
+      `**Note:** The decoded bytes preserve the original DKIM signature, CRLF line endings, and all headers verbatim. For display/threading, use \`get_email\` instead.`,
+    ];
+
+    return { content: [{ type: "text", text: lines.join("\n") }] };
   } catch (err) {
-    return {
-      content: [{ type: "text", text: `Error fetching raw MIME: ${(err as Error).message}` }],
-      isError: true,
-    };
+    const msg = (err as Error)?.message ?? "";
+    if (/No mailbox found/.test(msg)) {
+      return {
+        content: [{ type: "text", text: "Error: No mailbox found for this project. Use `create_mailbox` to create one first." }],
+        isError: true,
+      };
+    }
+    return mapSdkError(err, "fetching raw MIME");
   }
-
-  if (!res.ok) {
-    // Parse the JSON error body if possible
-    let body: unknown;
-    try { body = await res.json(); } catch { body = await res.text().catch(() => ""); }
-    return formatApiError({ status: res.status, body }, "fetching raw MIME");
-  }
-
-  const arrayBuffer = await res.arrayBuffer();
-  const bytes = Buffer.from(arrayBuffer);
-  const base64 = bytes.toString("base64");
-  const contentType = res.headers.get("content-type") || "message/rfc822";
-
-  const lines = [
-    `## Raw MIME: \`${args.message_id}\``,
-    ``,
-    `- **Content-Type:** ${contentType}`,
-    `- **Size:** ${bytes.length} bytes`,
-    `- **Encoding:** base64 (decode to get the exact RFC-822 bytes — bit-identical to the DKIM-signed original)`,
-    ``,
-    "```",
-    base64,
-    "```",
-    ``,
-    `**Note:** The decoded bytes preserve the original DKIM signature, CRLF line endings, and all headers verbatim. For display/threading, use \`get_email\` instead.`,
-  ];
-
-  return { content: [{ type: "text", text: lines.join("\n") }] };
 }

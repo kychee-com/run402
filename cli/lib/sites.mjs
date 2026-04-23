@@ -1,7 +1,9 @@
 import { readFileSync } from "fs";
 import { dirname, resolve } from "path";
-import { API, allowanceAuthHeaders, resolveProjectId, updateProject } from "./config.mjs";
+import { allowanceAuthHeaders, resolveProjectId, updateProject } from "./config.mjs";
 import { resolveFilePathsInManifest } from "./manifest.mjs";
+import { getSdk } from "./sdk.mjs";
+import { reportSdkError } from "./sdk-errors.mjs";
 
 const HELP = `run402 sites — Deploy and manage static sites
 
@@ -99,22 +101,22 @@ async function deploy(args) {
   const raw = opts.manifest ? readFileSync(opts.manifest, "utf-8") : await readStdin();
   const manifest = JSON.parse(raw);
   if (opts.manifest) resolveFilePathsInManifest(manifest, dirname(resolve(opts.manifest)));
-  const body = { files: manifest.files, project: projectId };
-  if (opts.target) body.target = opts.target;
-  if (opts.inherit) body.inherit = true;
 
-  const authHeaders = allowanceAuthHeaders("/deployments/v1");
-  const res = await fetch(`${API}/deployments/v1`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", ...authHeaders },
-    body: JSON.stringify(body),
-  });
-  const data = await res.json();
-  if (!res.ok) { console.error(JSON.stringify({ status: "error", http: res.status, ...data })); process.exit(1); }
-  if (data.deployment_id) {
-    updateProject(projectId, { last_deployment_id: data.deployment_id });
+  // Preserve the aggressive early exit when no allowance is configured.
+  allowanceAuthHeaders("/deployments/v1");
+
+  try {
+    const data = await getSdk().sites.deploy(projectId, manifest.files, {
+      target: opts.target,
+      inherit: opts.inherit,
+    });
+    if (data.deployment_id) {
+      updateProject(projectId, { last_deployment_id: data.deployment_id });
+    }
+    console.log(JSON.stringify(data, null, 2));
+  } catch (err) {
+    reportSdkError(err);
   }
-  console.log(JSON.stringify(data, null, 2));
 }
 
 async function status(args) {
@@ -123,10 +125,12 @@ async function status(args) {
     if (!args[i].startsWith("-")) { deploymentId = args[i]; break; }
   }
   if (!deploymentId) { console.error(JSON.stringify({ status: "error", message: "Missing deployment ID" })); process.exit(1); }
-  const res = await fetch(`${API}/deployments/v1/${deploymentId}`);
-  const data = await res.json();
-  if (!res.ok) { console.error(JSON.stringify({ status: "error", http: res.status, ...data })); process.exit(1); }
-  console.log(JSON.stringify(data, null, 2));
+  try {
+    const data = await getSdk().sites.getDeployment(deploymentId);
+    console.log(JSON.stringify(data, null, 2));
+  } catch (err) {
+    reportSdkError(err);
+  }
 }
 
 export async function run(sub, args) {

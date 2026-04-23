@@ -1,6 +1,6 @@
 import { writeFileSync } from "fs";
-import { API, ALLOWANCE_FILE } from "./config.mjs";
-import { setupPaidFetch } from "./paid-fetch.mjs";
+import { getSdk } from "./sdk.mjs";
+import { reportSdkError } from "./sdk-errors.mjs";
 
 const HELP = `run402 image — Generate AI images via x402 micropayments
 
@@ -51,17 +51,16 @@ export async function run(sub, args) {
 
   if (!opts.prompt) { console.error(JSON.stringify({ status: "error", message: "Prompt required. Usage: run402 image generate \"your prompt\"" })); process.exit(1); }
 
-  const fetchPaid = await setupPaidFetch();
-
-  const res = await fetchPaid(`${API}/generate-image/v1`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt: opts.prompt, aspect: opts.aspect }) });
-  const data = await res.json();
-  if (!res.ok) { console.error(JSON.stringify({ status: "error", http: res.status, ...data })); process.exit(1); }
-
-  if (opts.output) {
-    const buf = Buffer.from(data.image, "base64");
-    writeFileSync(opts.output, buf);
-    console.log(JSON.stringify({ status: "ok", file: opts.output, size: buf.length, aspect: data.aspect }));
-  } else {
-    console.log(JSON.stringify({ status: "ok", aspect: data.aspect, content_type: data.content_type, image: data.image }));
+  try {
+    const data = await getSdk().ai.generateImage({ prompt: opts.prompt, aspect: opts.aspect });
+    if (opts.output) {
+      const buf = Buffer.from(data.image, "base64");
+      writeFileSync(opts.output, buf);
+      console.log(JSON.stringify({ status: "ok", file: opts.output, size: buf.length, aspect: data.aspect }));
+    } else {
+      console.log(JSON.stringify({ status: "ok", aspect: data.aspect, content_type: data.content_type, image: data.image }));
+    }
+  } catch (err) {
+    reportSdkError(err);
   }
 }

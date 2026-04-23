@@ -1,5 +1,11 @@
 /** Shared error formatting for MCP tool handlers. */
 
+import {
+  Run402Error,
+  NetworkError,
+  ProjectNotFound as SdkProjectNotFound,
+} from "../sdk/dist/index.js";
+
 /** Standard return shape for all MCP tool handlers. */
 export interface ToolResult {
   content: Array<{ type: "text"; text: string }>;
@@ -124,6 +130,48 @@ export function projectNotFound(projectId: string): ToolResult {
         text:
           `Error: Project \`${projectId}\` not found in key store. ` +
           `Use \`provision_postgres_project\` to create a project first.`,
+      },
+    ],
+    isError: true,
+  };
+}
+
+/**
+ * Translate an SDK error into the MCP tool-result shape.
+ *
+ * Routing:
+ *   - `ProjectNotFound` → {@link projectNotFound} (preserves existing text)
+ *   - HTTP-backed errors (status !== null) → {@link formatApiError}
+ *   - `NetworkError` / other `Run402Error` with no status → plain isError text
+ *   - Unknown throwables → plain isError text
+ *
+ * Call this in the catch branch of a thin MCP shim that otherwise does
+ * nothing but delegate to an SDK method and format the successful result.
+ */
+export function mapSdkError(err: unknown, context: string): ToolResult {
+  if (err instanceof SdkProjectNotFound) {
+    return projectNotFound(err.projectId);
+  }
+  if (err instanceof Run402Error) {
+    if (err.status !== null) {
+      return formatApiError({ status: err.status, body: err.body }, context);
+    }
+    if (err instanceof NetworkError) {
+      return {
+        content: [{ type: "text", text: `Error ${context}: ${err.message}` }],
+        isError: true,
+      };
+    }
+    return {
+      content: [{ type: "text", text: `Error ${context}: ${err.message}` }],
+      isError: true,
+    };
+  }
+  return {
+    content: [
+      {
+        type: "text",
+        text: `Error ${context}: ${(err as Error)?.message ?? String(err)}`,
       },
     ],
     isError: true,

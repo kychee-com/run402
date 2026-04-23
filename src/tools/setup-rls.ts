@@ -1,7 +1,7 @@
 import { z } from "zod";
-import { apiRequest } from "../client.js";
-import { getProject } from "../keystore.js";
-import { formatApiError, projectNotFound } from "../errors.js";
+import { getSdk } from "../sdk.js";
+import { mapSdkError } from "../errors.js";
+import type { RlsTemplate } from "../../sdk/dist/namespaces/projects.types.js";
 
 // Raw shape exported for MCP registration (server.tool() accepts ZodRawShape only).
 export const setupRlsSchema = {
@@ -64,38 +64,25 @@ export async function handleSetupRls(args: {
     };
   }
 
-  const project = getProject(args.project_id);
-  if (!project) return projectNotFound(args.project_id);
+  try {
+    const resBody = await getSdk().projects.setupRls(args.project_id, {
+      template: args.template as RlsTemplate,
+      tables: args.tables,
+      i_understand_this_is_unrestricted: args.i_understand_this_is_unrestricted,
+    });
 
-  const body: Record<string, unknown> = {
-    template: args.template,
-    tables: args.tables,
-  };
-  if (args.i_understand_this_is_unrestricted !== undefined) {
-    body.i_understand_this_is_unrestricted = args.i_understand_this_is_unrestricted;
+    const lines = [
+      `## RLS Applied`,
+      ``,
+      `Template **${resBody.template}** applied to: ${resBody.tables.map((t) => `\`${t}\``).join(", ")}`,
+      ``,
+      `Row-level security is now active on these tables.`,
+      ``,
+      `⚠ **Deprecated** — this endpoint is sunset on 2026-05-23. Migrate to \`apply_expose\` for future RLS changes. See https://run402.com/llms-cli.txt for the manifest format.`,
+    ];
+
+    return { content: [{ type: "text", text: lines.join("\n") }] };
+  } catch (err) {
+    return mapSdkError(err, "setting up RLS");
   }
-
-  const res = await apiRequest(`/projects/v1/admin/${args.project_id}/rls`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${project.service_key}`,
-    },
-    body,
-  });
-
-  if (!res.ok) return formatApiError(res, "setting up RLS");
-
-  const resBody = res.body as { status: string; template: string; tables: string[] };
-
-  const lines = [
-    `## RLS Applied`,
-    ``,
-    `Template **${resBody.template}** applied to: ${resBody.tables.map((t) => `\`${t}\``).join(", ")}`,
-    ``,
-    `Row-level security is now active on these tables.`,
-    ``,
-    `⚠ **Deprecated** — this endpoint is sunset on 2026-05-23. Migrate to \`apply_expose\` for future RLS changes. See https://run402.com/llms-cli.txt for the manifest format.`,
-  ];
-
-  return { content: [{ type: "text", text: lines.join("\n") }] };
 }

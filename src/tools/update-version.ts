@@ -1,7 +1,6 @@
 import { z } from "zod";
-import { apiRequest } from "../client.js";
-import { getProject } from "../keystore.js";
-import { formatApiError, projectNotFound } from "../errors.js";
+import { getSdk } from "../sdk.js";
+import { mapSdkError } from "../errors.js";
 
 export const updateVersionSchema = {
   project_id: z.string().describe("The project ID"),
@@ -20,27 +19,15 @@ export async function handleUpdateVersion(args: {
   visibility?: string;
   fork_allowed?: boolean;
 }): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
-  const project = getProject(args.project_id);
-  if (!project) return projectNotFound(args.project_id);
-
-  const body: Record<string, unknown> = {};
-  if (args.description !== undefined) body.description = args.description;
-  if (args.tags !== undefined) body.tags = args.tags;
-  if (args.visibility !== undefined) body.visibility = args.visibility;
-  if (args.fork_allowed !== undefined) body.fork_allowed = args.fork_allowed;
-
-  const res = await apiRequest(
-    `/projects/v1/admin/${args.project_id}/versions/${args.version_id}`,
-    {
-      method: "PATCH",
-      headers: { Authorization: `Bearer ${project.service_key}` },
-      body,
-    },
-  );
-
-  if (!res.ok) return formatApiError(res, "updating version");
-
-  return {
-    content: [{ type: "text", text: `Version \`${args.version_id}\` updated.` }],
-  };
+  try {
+    await getSdk().apps.updateVersion(args.project_id, args.version_id, {
+      description: args.description,
+      tags: args.tags,
+      visibility: args.visibility as "public" | "unlisted" | "private" | undefined,
+      fork_allowed: args.fork_allowed,
+    });
+    return { content: [{ type: "text", text: `Version \`${args.version_id}\` updated.` }] };
+  } catch (err) {
+    return mapSdkError(err, "updating version");
+  }
 }

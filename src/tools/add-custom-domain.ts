@@ -1,7 +1,6 @@
 import { z } from "zod";
-import { apiRequest } from "../client.js";
-import { getProject } from "../keystore.js";
-import { formatApiError, projectNotFound } from "../errors.js";
+import { getSdk } from "../sdk.js";
+import { mapSdkError } from "../errors.js";
 
 export const addCustomDomainSchema = {
   domain: z
@@ -20,60 +19,42 @@ export async function handleAddCustomDomain(args: {
   subdomain_name: string;
   project_id: string;
 }): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
-  const project = getProject(args.project_id);
-  if (!project) return projectNotFound(args.project_id);
+  try {
+    const body = await getSdk().domains.add(args.project_id, args.domain, args.subdomain_name);
 
-  const res = await apiRequest("/domains/v1", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${project.service_key}`,
-    },
-    body: { domain: args.domain, subdomain_name: args.subdomain_name },
-  });
-
-  if (!res.ok) return formatApiError(res, "registering custom domain");
-
-  const body = res.body as {
-    domain: string;
-    subdomain_name: string;
-    url: string;
-    subdomain_url: string;
-    status: string;
-    dns_instructions: { cname_target?: string; txt_name?: string; txt_value?: string } | null;
-    project_id: string | null;
-    created_at: string;
-  };
-
-  const lines = [
-    `## Custom Domain Registered`,
-    ``,
-    `| Field | Value |`,
-    `|-------|-------|`,
-    `| domain | \`${body.domain}\` |`,
-    `| url | ${body.url} |`,
-    `| subdomain | ${body.subdomain_url} |`,
-    `| status | ${body.status} |`,
-  ];
-
-  if (body.dns_instructions) {
-    const dns = body.dns_instructions;
-    lines.push(
+    const lines = [
+      `## Custom Domain Registered`,
       ``,
-      `## DNS Configuration Required`,
-      ``,
-      `Add the following DNS records at your domain registrar:`,
-    );
-    if (dns.cname_target) {
-      lines.push(`- **CNAME**: \`${body.domain}\` → \`${dns.cname_target}\``);
+      `| Field | Value |`,
+      `|-------|-------|`,
+      `| domain | \`${body.domain}\` |`,
+      `| url | ${body.url} |`,
+      `| subdomain | ${body.subdomain_url} |`,
+      `| status | ${body.status} |`,
+    ];
+
+    if (body.dns_instructions) {
+      const dns = body.dns_instructions;
+      lines.push(
+        ``,
+        `## DNS Configuration Required`,
+        ``,
+        `Add the following DNS records at your domain registrar:`,
+      );
+      if (dns.cname_target) {
+        lines.push(`- **CNAME**: \`${body.domain}\` → \`${dns.cname_target}\``);
+      }
+      if (dns.txt_name && dns.txt_value) {
+        lines.push(`- **TXT**: \`${dns.txt_name}\` → \`${dns.txt_value}\``);
+      }
+      lines.push(
+        ``,
+        `After DNS propagates (up to 60 seconds), check status with \`check_domain_status\`.`,
+      );
     }
-    if (dns.txt_name && dns.txt_value) {
-      lines.push(`- **TXT**: \`${dns.txt_name}\` → \`${dns.txt_value}\``);
-    }
-    lines.push(
-      ``,
-      `After DNS propagates (up to 60 seconds), check status with \`check_domain_status\`.`,
-    );
+
+    return { content: [{ type: "text", text: lines.join("\n") }] };
+  } catch (err) {
+    return mapSdkError(err, "registering custom domain");
   }
-
-  return { content: [{ type: "text", text: lines.join("\n") }] };
 }

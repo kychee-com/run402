@@ -37,8 +37,9 @@ describe("check_balance tool", () => {
 
   it("lowercases wallet address", async () => {
     let capturedUrl = "";
-    globalThis.fetch = (async (url: string | URL | Request) => {
-      capturedUrl = String(url);
+    globalThis.fetch = (async (input: string | URL | Request) => {
+      // Handle Request instances (paid-fetch wrapper may normalize args).
+      capturedUrl = input instanceof Request ? input.url : String(input);
       return new Response(
         JSON.stringify({ wallet: "0xabc", exists: true, available_usd_micros: 0, held_usd_micros: 0, status: "active" }),
         { status: 200, headers: { "Content-Type": "application/json" } },

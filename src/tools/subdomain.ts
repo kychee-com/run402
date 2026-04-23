@@ -1,7 +1,6 @@
 import { z } from "zod";
-import { apiRequest } from "../client.js";
-import { getProject } from "../keystore.js";
-import { formatApiError, projectNotFound } from "../errors.js";
+import { getSdk } from "../sdk.js";
+import { mapSdkError } from "../errors.js";
 
 export const claimSubdomainSchema = {
   name: z
@@ -21,46 +20,28 @@ export async function handleClaimSubdomain(args: {
   deployment_id: string;
   project_id?: string;
 }): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
-  let authHeader: Record<string, string> = {};
+  try {
+    const body = await getSdk().subdomains.claim(args.name, args.deployment_id, {
+      projectId: args.project_id,
+    });
 
-  if (args.project_id) {
-    const project = getProject(args.project_id);
-    if (!project) return projectNotFound(args.project_id);
-    authHeader = { Authorization: `Bearer ${project.service_key}` };
+    const lines = [
+      `## Subdomain Claimed`,
+      ``,
+      `| Field | Value |`,
+      `|-------|-------|`,
+      `| subdomain | \`${body.name}\` |`,
+      `| url | ${body.url} |`,
+      `| deployment | \`${body.deployment_id}\` |`,
+      `| deployment_url | ${body.deployment_url} |`,
+      ``,
+      `The site is now live at **${body.url}**`,
+    ];
+
+    return { content: [{ type: "text", text: lines.join("\n") }] };
+  } catch (err) {
+    return mapSdkError(err, "claiming subdomain");
   }
-
-  const res = await apiRequest("/subdomains/v1", {
-    method: "POST",
-    headers: authHeader,
-    body: { name: args.name, deployment_id: args.deployment_id },
-  });
-
-  if (!res.ok) return formatApiError(res, "claiming subdomain");
-
-  const body = res.body as {
-    name: string;
-    deployment_id: string;
-    url: string;
-    deployment_url: string;
-    project_id: string | null;
-    created_at: string;
-    updated_at: string;
-  };
-
-  const lines = [
-    `## Subdomain Claimed`,
-    ``,
-    `| Field | Value |`,
-    `|-------|-------|`,
-    `| subdomain | \`${body.name}\` |`,
-    `| url | ${body.url} |`,
-    `| deployment | \`${body.deployment_id}\` |`,
-    `| deployment_url | ${body.deployment_url} |`,
-    ``,
-    `The site is now live at **${body.url}**`,
-  ];
-
-  return { content: [{ type: "text", text: lines.join("\n") }] };
 }
 
 export const deleteSubdomainSchema = {
@@ -77,22 +58,12 @@ export async function handleDeleteSubdomain(args: {
   name: string;
   project_id?: string;
 }): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
-  let authHeader: Record<string, string> = {};
-
-  if (args.project_id) {
-    const project = getProject(args.project_id);
-    if (!project) return projectNotFound(args.project_id);
-    authHeader = { Authorization: `Bearer ${project.service_key}` };
+  try {
+    await getSdk().subdomains.delete(args.name, { projectId: args.project_id });
+    return {
+      content: [{ type: "text", text: `## Subdomain Released\n\nSubdomain \`${args.name}\` has been deleted. The URL \`https://${args.name}.run402.com\` is no longer active.` }],
+    };
+  } catch (err) {
+    return mapSdkError(err, "deleting subdomain");
   }
-
-  const res = await apiRequest(`/subdomains/v1/${encodeURIComponent(args.name)}`, {
-    method: "DELETE",
-    headers: authHeader,
-  });
-
-  if (!res.ok) return formatApiError(res, "deleting subdomain");
-
-  return {
-    content: [{ type: "text", text: `## Subdomain Released\n\nSubdomain \`${args.name}\` has been deleted. The URL \`https://${args.name}.run402.com\` is no longer active.` }],
-  };
 }

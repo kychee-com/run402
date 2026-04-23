@@ -1,4 +1,6 @@
-import { findProject, resolveProjectId, API } from "./config.mjs";
+import { resolveProjectId } from "./config.mjs";
+import { getSdk } from "./sdk.mjs";
+import { reportSdkError } from "./sdk-errors.mjs";
 
 const HELP = `run402 ai — AI translation and moderation tools
 
@@ -68,7 +70,6 @@ async function translate(args) {
   }
 
   const projectId = resolveProjectId(projectOpt || positional[0]);
-  const p = findProject(projectId);
   text = positional[1] || null;
 
   const to = parseFlag(args, "--to");
@@ -78,19 +79,12 @@ async function translate(args) {
   if (!text) { console.error(JSON.stringify({ status: "error", message: "Text required. Usage: run402 ai translate <project_id> <text> --to <lang>" })); process.exit(1); }
   if (!to) { console.error(JSON.stringify({ status: "error", message: "--to <lang> is required" })); process.exit(1); }
 
-  const body = { text, to };
-  if (from) body.from = from;
-  if (context) body.context = context;
-
-  const res = await fetch(`${API}/ai/v1/translate`, {
-    method: "POST",
-    headers: { "Authorization": `Bearer ${p.service_key}`, "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  const data = await res.json();
-  if (!res.ok) { console.error(JSON.stringify({ status: "error", http: res.status, ...data })); process.exit(1); }
-
-  console.log(JSON.stringify({ status: "ok", text: data.text, from: data.from, to: data.to }));
+  try {
+    const data = await getSdk().ai.translate(projectId, { text, to, from: from ?? undefined, context: context ?? undefined });
+    console.log(JSON.stringify({ status: "ok", text: data.text, from: data.from, to: data.to }));
+  } catch (err) {
+    reportSdkError(err);
+  }
 }
 
 async function moderate(args) {
@@ -105,20 +99,16 @@ async function moderate(args) {
   }
 
   const projectId = resolveProjectId(projectOpt || positional[0]);
-  const p = findProject(projectId);
   text = positional[1] || null;
 
   if (!text) { console.error(JSON.stringify({ status: "error", message: "Text required. Usage: run402 ai moderate <project_id> <text>" })); process.exit(1); }
 
-  const res = await fetch(`${API}/ai/v1/moderate`, {
-    method: "POST",
-    headers: { "Authorization": `Bearer ${p.service_key}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ text }),
-  });
-  const data = await res.json();
-  if (!res.ok) { console.error(JSON.stringify({ status: "error", http: res.status, ...data })); process.exit(1); }
-
-  console.log(JSON.stringify({ status: "ok", flagged: data.flagged, categories: data.categories, category_scores: data.category_scores }));
+  try {
+    const data = await getSdk().ai.moderate(projectId, text);
+    console.log(JSON.stringify({ status: "ok", flagged: data.flagged, categories: data.categories, category_scores: data.category_scores }));
+  } catch (err) {
+    reportSdkError(err);
+  }
 }
 
 async function usage(args) {
@@ -132,15 +122,13 @@ async function usage(args) {
   }
 
   const projectId = resolveProjectId(projectOpt || positional[0]);
-  const p = findProject(projectId);
 
-  const res = await fetch(`${API}/ai/v1/usage`, {
-    headers: { "Authorization": `Bearer ${p.service_key}` },
-  });
-  const data = await res.json();
-  if (!res.ok) { console.error(JSON.stringify({ status: "error", http: res.status, ...data })); process.exit(1); }
-
-  console.log(JSON.stringify({ status: "ok", ...data }));
+  try {
+    const data = await getSdk().ai.usage(projectId);
+    console.log(JSON.stringify({ status: "ok", ...data }));
+  } catch (err) {
+    reportSdkError(err);
+  }
 }
 
 export async function run(sub, args) {

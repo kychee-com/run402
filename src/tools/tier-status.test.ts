@@ -1,5 +1,8 @@
 import { describe, it, beforeEach, afterEach, mock } from "node:test";
 import assert from "node:assert/strict";
+import { mkdtempSync, rmSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 
 let allowanceAuthReturn: any = {
   headers: {
@@ -14,11 +17,16 @@ mock.module("../allowance-auth.js", {
 });
 
 const { handleTierStatus } = await import("./tier-status.js");
+const { _resetSdk } = await import("../sdk.js");
 
 const originalFetch = globalThis.fetch;
+let tempDir: string;
 
 beforeEach(() => {
+  tempDir = mkdtempSync(join(tmpdir(), "run402-tier-status-test-"));
+  process.env.RUN402_CONFIG_DIR = tempDir;
   process.env.RUN402_API_BASE = "https://test-api.run402.com";
+  _resetSdk();
   allowanceAuthReturn = {
     headers: {
       "SIGN-IN-WITH-X": "dGVzdA==",
@@ -28,6 +36,8 @@ beforeEach(() => {
 
 afterEach(() => {
   globalThis.fetch = originalFetch;
+  rmSync(tempDir, { recursive: true, force: true });
+  delete process.env.RUN402_CONFIG_DIR;
   delete process.env.RUN402_API_BASE;
 });
 

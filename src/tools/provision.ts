@@ -1,8 +1,8 @@
 import { z } from "zod";
-import { paidApiRequest } from "../paid-fetch.js";
-import { saveProject, setActiveProjectId } from "../keystore.js";
-import { formatApiError } from "../errors.js";
+import { getSdk } from "../sdk.js";
+import { mapSdkError } from "../errors.js";
 import { requireAllowanceAuth } from "../allowance-auth.js";
+import { PaymentRequired } from "../../sdk/dist/index.js";
 
 export const provisionSchema = {
   tier: z
@@ -25,65 +25,50 @@ export async function handleProvision(args: {
   const tier = args.tier || "prototype";
   const name = args.name;
 
-  const res = await paidApiRequest("/projects/v1", {
-    method: "POST",
-    headers: { ...auth.headers },
-    body: { tier, name },
-  });
+  try {
+    const body = await getSdk().projects.provision({
+      tier: tier as "prototype" | "hobby" | "team",
+      name,
+    });
 
-  if (res.is402) {
-    const body = res.body as Record<string, unknown>;
     const lines = [
-      `## Payment Required`,
+      `## Project Provisioned`,
       ``,
-      `To provision a **${tier}** project, an x402 payment is needed.`,
+      `| Field | Value |`,
+      `|-------|-------|`,
+      `| project_id | \`${body.project_id}\` |`,
+      `| schema | ${body.schema_slot} |`,
       ``,
+      `Keys saved to local key store. You can now use \`run_sql\`, \`rest_query\`, and \`upload_file\` with this project.`,
     ];
-    if (body.x402) {
-      lines.push(`**Payment details:**`);
-      lines.push("```json");
-      lines.push(JSON.stringify(body.x402, null, 2));
-      lines.push("```");
-    } else {
-      lines.push(`**Server response:**`);
-      lines.push("```json");
-      lines.push(JSON.stringify(body, null, 2));
-      lines.push("```");
-    }
-    lines.push(``);
-    lines.push(
-      `The user's agent allowance or payment agent must send the required amount. ` +
-      `Once payment is confirmed, retry this tool call.`,
-    );
     return { content: [{ type: "text", text: lines.join("\n") }] };
+  } catch (err) {
+    if (err instanceof PaymentRequired) {
+      const body = (err.body ?? {}) as Record<string, unknown>;
+      const lines = [
+        `## Payment Required`,
+        ``,
+        `To provision a **${tier}** project, an x402 payment is needed.`,
+        ``,
+      ];
+      if (body.x402) {
+        lines.push(`**Payment details:**`);
+        lines.push("```json");
+        lines.push(JSON.stringify(body.x402, null, 2));
+        lines.push("```");
+      } else {
+        lines.push(`**Server response:**`);
+        lines.push("```json");
+        lines.push(JSON.stringify(body, null, 2));
+        lines.push("```");
+      }
+      lines.push(``);
+      lines.push(
+        `The user's agent allowance or payment agent must send the required amount. ` +
+        `Once payment is confirmed, retry this tool call.`,
+      );
+      return { content: [{ type: "text", text: lines.join("\n") }] };
+    }
+    return mapSdkError(err, "provisioning project");
   }
-
-  if (!res.ok) return formatApiError(res, "provisioning project");
-
-  const body = res.body as {
-    project_id: string;
-    anon_key: string;
-    service_key: string;
-    schema_slot: string;
-  };
-
-  // Save credentials to local key store and set as active project
-  saveProject(body.project_id, {
-    anon_key: body.anon_key,
-    service_key: body.service_key,
-  });
-  setActiveProjectId(body.project_id);
-
-  const lines = [
-    `## Project Provisioned`,
-    ``,
-    `| Field | Value |`,
-    `|-------|-------|`,
-    `| project_id | \`${body.project_id}\` |`,
-    `| schema | ${body.schema_slot} |`,
-    ``,
-    `Keys saved to local key store. You can now use \`run_sql\`, \`rest_query\`, and \`upload_file\` with this project.`,
-  ];
-
-  return { content: [{ type: "text", text: lines.join("\n") }] };
 }

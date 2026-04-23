@@ -1,6 +1,6 @@
 import { z } from "zod";
-import { apiRequest } from "../client.js";
-import { formatApiError } from "../errors.js";
+import { getSdk } from "../sdk.js";
+import { mapSdkError } from "../errors.js";
 
 export const billingHistorySchema = {
   wallet: z.string().describe("Wallet address (0x...) to get billing history for"),
@@ -12,42 +12,31 @@ export async function handleBillingHistory(args: {
   limit?: number;
 }): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
   const wallet = args.wallet.toLowerCase();
-  let path = `/billing/v1/accounts/${wallet}/history`;
-  if (args.limit) path += `?limit=${args.limit}`;
 
-  const res = await apiRequest(path, { method: "GET" });
+  try {
+    const body = await getSdk().billing.history(wallet, args.limit);
 
-  if (!res.ok) return formatApiError(res, "fetching billing history");
+    if (body.entries.length === 0) {
+      return {
+        content: [{ type: "text", text: `## Billing History: ${wallet}\n\n_No transactions found._` }],
+      };
+    }
 
-  const body = res.body as {
-    wallet: string;
-    entries: Array<{
-      direction: string;
-      kind: string;
-      amount_usd_micros: number;
-      balance_after_available: number;
-      created_at: string;
-    }>;
-  };
+    const lines = [
+      `## Billing History: ${wallet} (${body.entries.length} entries)`,
+      ``,
+      `| Date | Direction | Kind | Amount | Balance After |`,
+      `|------|-----------|------|--------|---------------|`,
+    ];
 
-  if (body.entries.length === 0) {
-    return {
-      content: [{ type: "text", text: `## Billing History: ${wallet}\n\n_No transactions found._` }],
-    };
+    for (const e of body.entries) {
+      const amount = (e.amount_usd_micros / 1_000_000).toFixed(2);
+      const balance = (e.balance_after_available / 1_000_000).toFixed(2);
+      lines.push(`| ${e.created_at} | ${e.direction} | ${e.kind} | $${amount} | $${balance} |`);
+    }
+
+    return { content: [{ type: "text", text: lines.join("\n") }] };
+  } catch (err) {
+    return mapSdkError(err, "fetching billing history");
   }
-
-  const lines = [
-    `## Billing History: ${wallet} (${body.entries.length} entries)`,
-    ``,
-    `| Date | Direction | Kind | Amount | Balance After |`,
-    `|------|-----------|------|--------|---------------|`,
-  ];
-
-  for (const e of body.entries) {
-    const amount = (e.amount_usd_micros / 1_000_000).toFixed(2);
-    const balance = (e.balance_after_available / 1_000_000).toFixed(2);
-    lines.push(`| ${e.created_at} | ${e.direction} | ${e.kind} | $${amount} | $${balance} |`);
-  }
-
-  return { content: [{ type: "text", text: lines.join("\n") }] };
 }

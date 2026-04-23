@@ -1,4 +1,6 @@
-import { resolveProject, API } from "./config.mjs";
+import { resolveProjectId } from "./config.mjs";
+import { getSdk } from "./sdk.mjs";
+import { reportSdkError } from "./sdk-errors.mjs";
 
 const HELP = `run402 domains — Manage custom domains
 
@@ -39,54 +41,48 @@ async function add(args) {
   const domain = rest[0];
   const subdomainName = rest[1];
   if (!domain || !subdomainName) { console.error("Usage: run402 domains add <domain> <subdomain_name> [--project <id>]"); process.exit(1); }
-  const p = resolveProject(project);
-  const res = await fetch(`${API}/domains/v1`, {
-    method: "POST",
-    headers: { "Authorization": `Bearer ${p.service_key}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ domain, subdomain_name: subdomainName }),
-  });
-  const data = await res.json();
-  if (!res.ok) { console.error(JSON.stringify({ status: "error", http: res.status, ...data })); process.exit(1); }
-  console.log(JSON.stringify(data, null, 2));
+  const projectId = resolveProjectId(project);
+  try {
+    const data = await getSdk().domains.add(projectId, domain, subdomainName);
+    console.log(JSON.stringify(data, null, 2));
+  } catch (err) {
+    reportSdkError(err);
+  }
 }
 
-async function list(projectId) {
-  const p = resolveProject(projectId);
-  const res = await fetch(`${API}/domains/v1`, {
-    headers: { "Authorization": `Bearer ${p.service_key}` },
-  });
-  const data = await res.json();
-  if (!res.ok) { console.error(JSON.stringify({ status: "error", http: res.status, ...data })); process.exit(1); }
-  console.log(JSON.stringify(data, null, 2));
+async function list(projectIdArg) {
+  const projectId = resolveProjectId(projectIdArg);
+  try {
+    const data = await getSdk().domains.list(projectId);
+    console.log(JSON.stringify(data, null, 2));
+  } catch (err) {
+    reportSdkError(err);
+  }
 }
 
 async function status(args) {
   const { project, rest } = parseProjectFlag(args);
   const domain = rest[0];
   if (!domain) { console.error("Usage: run402 domains status <domain> [--project <id>]"); process.exit(1); }
-  const p = resolveProject(project);
-  const res = await fetch(`${API}/domains/v1/${encodeURIComponent(domain)}`, {
-    headers: { "Authorization": `Bearer ${p.service_key}` },
-  });
-  const data = await res.json();
-  if (!res.ok) { console.error(JSON.stringify({ status: "error", http: res.status, ...data })); process.exit(1); }
-  console.log(JSON.stringify(data, null, 2));
+  const projectId = resolveProjectId(project);
+  try {
+    const data = await getSdk().domains.status(projectId, domain);
+    console.log(JSON.stringify(data, null, 2));
+  } catch (err) {
+    reportSdkError(err);
+  }
 }
 
 async function deleteDomain(args) {
   const { project, rest } = parseProjectFlag(args);
   const domain = rest[0];
   if (!domain) { console.error("Usage: run402 domains delete <domain> [--project <id>]"); process.exit(1); }
-  const p = resolveProject(project);
-  const res = await fetch(`${API}/domains/v1/${encodeURIComponent(domain)}`, {
-    method: "DELETE",
-    headers: { "Authorization": `Bearer ${p.service_key}` },
-  });
-  if (res.status === 204 || res.ok) {
+  const projectId = resolveProjectId(project);
+  try {
+    await getSdk().domains.remove(domain, { projectId });
     console.log(JSON.stringify({ status: "ok", message: `Domain '${domain}' released.` }));
-  } else {
-    const data = await res.json().catch(() => ({}));
-    console.error(JSON.stringify({ status: "error", http: res.status, ...data })); process.exit(1);
+  } catch (err) {
+    reportSdkError(err);
   }
 }
 

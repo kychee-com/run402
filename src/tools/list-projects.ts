@@ -1,6 +1,6 @@
 import { z } from "zod";
-import { apiRequest } from "../client.js";
-import { formatApiError } from "../errors.js";
+import { getSdk } from "../sdk.js";
+import { mapSdkError } from "../errors.js";
 
 export const listProjectsSchema = {
   wallet: z
@@ -13,49 +13,35 @@ export async function handleListProjects(args: {
 }): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
   const wallet = args.wallet.toLowerCase();
 
-  const res = await apiRequest(`/wallets/v1/${wallet}/projects`, {
-    method: "GET",
-  });
+  try {
+    const body = await getSdk().projects.list(wallet);
 
-  if (!res.ok) return formatApiError(res, "listing projects");
+    if (body.projects.length === 0) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `## Projects for ${wallet}\n\n_No active projects found._`,
+          },
+        ],
+      };
+    }
 
-  const body = res.body as {
-    wallet: string;
-    projects: Array<{
-      id: string;
-      name: string;
-      tier: string;
-      status: string;
-      api_calls: number;
-      storage_bytes: number;
-      lease_expires_at: string;
-      created_at: string;
-    }>;
-  };
+    const lines = [
+      `## Projects for ${wallet} (${body.projects.length})`,
+      ``,
+      `| ID | Name | Tier | Status | Expires |`,
+      `|----|------|------|--------|---------|`,
+    ];
 
-  if (body.projects.length === 0) {
-    return {
-      content: [
-        {
-          type: "text",
-          text: `## Projects for ${wallet}\n\n_No active projects found._`,
-        },
-      ],
-    };
+    for (const p of body.projects) {
+      lines.push(
+        `| \`${p.id}\` | ${p.name} | ${p.tier} | ${p.status} | ${p.lease_expires_at} |`,
+      );
+    }
+
+    return { content: [{ type: "text", text: lines.join("\n") }] };
+  } catch (err) {
+    return mapSdkError(err, "listing projects");
   }
-
-  const lines = [
-    `## Projects for ${wallet} (${body.projects.length})`,
-    ``,
-    `| ID | Name | Tier | Status | Expires |`,
-    `|----|------|------|--------|---------|`,
-  ];
-
-  for (const p of body.projects) {
-    lines.push(
-      `| \`${p.id}\` | ${p.name} | ${p.tier} | ${p.status} | ${p.lease_expires_at} |`,
-    );
-  }
-
-  return { content: [{ type: "text", text: lines.join("\n") }] };
 }

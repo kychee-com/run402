@@ -2,8 +2,8 @@
  * mcp-integration.test.ts — MCP tool handler integration test against LIVE production.
  *
  * NO MOCKS. Every tool handler call hits https://api.run402.com for real.
- * Uses a pre-funded allowance wallet. Tests that MCP tools with paidApiRequest
- * can auto-pay x402 and succeed — the same flow the CLI uses.
+ * Uses a pre-funded allowance wallet. Tests that MCP tools routed through
+ * `@run402/sdk/node` can auto-pay x402 and succeed — the same flow the CLI uses.
  *
  * Covers:
  *   - set_tier (x402 payment for prototype tier)
@@ -83,9 +83,10 @@ before(async () => {
     { mode: 0o600 },
   );
 
-  // Reset the paid fetch cache so it picks up our fresh allowance
-  const { _resetPaidFetchCache } = await import("./src/paid-fetch.js");
-  _resetPaidFetchCache();
+  // Reset the SDK singleton so it reconstructs with the fresh allowance
+  // (paid-fetch lives inside each Run402 instance now, not at module scope).
+  const { _resetSdk } = await import("./src/sdk.js");
+  _resetSdk();
 });
 
 after(() => {

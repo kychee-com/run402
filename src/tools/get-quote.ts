@@ -1,6 +1,5 @@
-import { z } from "zod";
-import { apiRequest } from "../client.js";
-import { formatApiError } from "../errors.js";
+import { getSdk } from "../sdk.js";
+import { mapSdkError } from "../errors.js";
 
 export const getQuoteSchema = {};
 
@@ -8,32 +7,27 @@ export async function handleGetQuote(_args: Record<string, never>): Promise<{
   content: Array<{ type: "text"; text: string }>;
   isError?: boolean;
 }> {
-  const res = await apiRequest("/tiers/v1", { method: "GET" });
+  try {
+    const body = await getSdk().projects.getQuote();
 
-  if (!res.ok) return formatApiError(res, "getting quote");
+    const lines = [
+      `## Run402 Pricing`,
+      ``,
+      `| Tier | Price (USDC) | Lease | Storage | API Calls |`,
+      `|------|-------------|-------|---------|-----------|`,
+    ];
 
-  const body = res.body as {
-    tiers: Record<
-      string,
-      { price: string; lease_days: number; storage_mb: number; api_calls: number }
-    >;
-  };
+    for (const [name, tier] of Object.entries(body.tiers)) {
+      lines.push(
+        `| ${name} | $${tier.price} | ${tier.lease_days}d | ${tier.storage_mb}MB | ${(tier.api_calls / 1000).toFixed(0)}k |`,
+      );
+    }
 
-  const lines = [
-    `## Run402 Pricing`,
-    ``,
-    `| Tier | Price (USDC) | Lease | Storage | API Calls |`,
-    `|------|-------------|-------|---------|-----------|`,
-  ];
+    lines.push(``);
+    lines.push(`Use \`provision_postgres_project\` or \`bundle_deploy\` to create a project.`);
 
-  for (const [name, tier] of Object.entries(body.tiers)) {
-    lines.push(
-      `| ${name} | $${tier.price} | ${tier.lease_days}d | ${tier.storage_mb}MB | ${(tier.api_calls / 1000).toFixed(0)}k |`,
-    );
+    return { content: [{ type: "text", text: lines.join("\n") }] };
+  } catch (err) {
+    return mapSdkError(err, "getting quote");
   }
-
-  lines.push(``);
-  lines.push(`Use \`provision_postgres_project\` or \`bundle_deploy\` to create a project.`);
-
-  return { content: [{ type: "text", text: lines.join("\n") }] };
 }

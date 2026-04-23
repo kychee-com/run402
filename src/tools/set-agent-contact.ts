@@ -1,6 +1,6 @@
 import { z } from "zod";
-import { apiRequest } from "../client.js";
-import { formatApiError } from "../errors.js";
+import { getSdk } from "../sdk.js";
+import { mapSdkError } from "../errors.js";
 import { requireAllowanceAuth } from "../allowance-auth.js";
 
 export const setAgentContactSchema = {
@@ -14,34 +14,30 @@ export async function handleSetAgentContact(args: {
   email?: string;
   webhook?: string;
 }): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
-  const body: Record<string, string> = { name: args.name };
-  if (args.email) body.email = args.email;
-  if (args.webhook) body.webhook = args.webhook;
-
   const auth = requireAllowanceAuth("/agent/v1/contact");
   if ("error" in auth) return auth.error;
 
-  const res = await apiRequest("/agent/v1/contact", {
-    method: "POST",
-    headers: { ...auth.headers },
-    body,
-  });
+  try {
+    const result = await getSdk().admin.setAgentContact({
+      name: args.name,
+      email: args.email,
+      webhook: args.webhook,
+    });
 
-  if (!res.ok) return formatApiError(res, "setting agent contact");
+    const lines = [
+      `## Agent Contact Updated`,
+      ``,
+      `| Field | Value |`,
+      `|-------|-------|`,
+      `| wallet | ${result.wallet} |`,
+      `| name | ${result.name} |`,
+      `| email | ${result.email || "-"} |`,
+      `| webhook | ${result.webhook || "-"} |`,
+      `| updated_at | ${result.updated_at} |`,
+    ];
 
-  const result = res.body as { wallet: string; name: string; email?: string; webhook?: string; updated_at: string };
-
-  const lines = [
-    `## Agent Contact Updated`,
-    ``,
-    `| Field | Value |`,
-    `|-------|-------|`,
-    `| wallet | ${result.wallet} |`,
-    `| name | ${result.name} |`,
-    `| email | ${result.email || "-"} |`,
-    `| webhook | ${result.webhook || "-"} |`,
-    `| updated_at | ${result.updated_at} |`,
-  ];
-
-  return { content: [{ type: "text", text: lines.join("\n") }] };
+    return { content: [{ type: "text", text: lines.join("\n") }] };
+  } catch (err) {
+    return mapSdkError(err, "setting agent contact");
+  }
 }

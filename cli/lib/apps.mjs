@@ -1,4 +1,6 @@
-import { findProject, API, allowanceAuthHeaders, saveProject } from "./config.mjs";
+import { allowanceAuthHeaders, saveProject } from "./config.mjs";
+import { getSdk } from "./sdk.mjs";
+import { reportSdkError } from "./sdk-errors.mjs";
 
 const HELP = `run402 apps — Browse and manage the app marketplace
 
@@ -101,16 +103,16 @@ Examples:
 };
 
 async function browse(args) {
-  let url = `${API}/apps/v1`;
   const tags = [];
   for (let i = 0; i < args.length; i++) {
     if (args[i] === "--tag" && args[i + 1]) tags.push(args[++i]);
   }
-  if (tags.length > 0) url += "?" + tags.map(t => `tag=${encodeURIComponent(t)}`).join("&");
-  const res = await fetch(url);
-  const data = await res.json();
-  if (!res.ok) { console.error(JSON.stringify({ status: "error", http: res.status, ...data })); process.exit(1); }
-  console.log(JSON.stringify(data, null, 2));
+  try {
+    const data = await getSdk().apps.browse(tags.length > 0 ? tags : undefined);
+    console.log(JSON.stringify(data, null, 2));
+  } catch (err) {
+    reportSdkError(err);
+  }
 }
 
 async function fork(versionId, name, args) {
@@ -119,33 +121,34 @@ async function fork(versionId, name, args) {
     if (args[i] === "--tier" && args[i + 1]) opts.tier = args[++i];
     if (args[i] === "--subdomain" && args[i + 1]) opts.subdomain = args[++i];
   }
-  const authHeaders = allowanceAuthHeaders("/fork/v1");
+  // Preserve the aggressive early exit when no allowance is configured.
+  allowanceAuthHeaders("/fork/v1");
 
-  const body = { version_id: versionId, name };
-  if (opts.subdomain) body.subdomain = opts.subdomain;
-
-  const res = await fetch(`${API}/fork/v1`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", ...authHeaders },
-    body: JSON.stringify(body),
-  });
-  const data = await res.json();
-  if (!res.ok) { console.error(JSON.stringify({ status: "error", http: res.status, ...data })); process.exit(1); }
-
-  // Save project credentials locally
-  if (data.project_id) {
-    saveProject(data.project_id, {
-      anon_key: data.anon_key, service_key: data.service_key,
-      tier: data.tier, lease_expires_at: data.lease_expires_at,
-      site_url: data.site_url || data.subdomain_url,
-      deployed_at: new Date().toISOString(),
+  try {
+    const data = await getSdk().apps.fork({
+      versionId,
+      name,
+      subdomain: opts.subdomain,
     });
+
+    // SDK persists via the Node provider's saveProject/setActiveProject; we
+    // mirror the old CLI behavior here (deployed_at + site_url surfaced from
+    // the fork response) with a follow-up updateProject for the extra fields.
+    if (data.project_id) {
+      saveProject(data.project_id, {
+        anon_key: data.anon_key,
+        service_key: data.service_key,
+        site_url: data.site_url || data.subdomain_url,
+        deployed_at: new Date().toISOString(),
+      });
+    }
+    console.log(JSON.stringify(data, null, 2));
+  } catch (err) {
+    reportSdkError(err);
   }
-  console.log(JSON.stringify(data, null, 2));
 }
 
 async function publish(projectId, args) {
-  const p = findProject(projectId);
   const opts = { description: undefined, tags: undefined, visibility: undefined, forkAllowed: undefined };
   for (let i = 0; i < args.length; i++) {
     if (args[i] === "--description" && args[i + 1]) opts.description = args[++i];
@@ -153,72 +156,61 @@ async function publish(projectId, args) {
     if (args[i] === "--visibility" && args[i + 1]) opts.visibility = args[++i];
     if (args[i] === "--fork-allowed") opts.forkAllowed = true;
   }
-  const body = {};
-  if (opts.description) body.description = opts.description;
-  if (opts.tags) body.tags = opts.tags;
-  if (opts.visibility) body.visibility = opts.visibility;
-  if (opts.forkAllowed !== undefined) body.fork_allowed = opts.forkAllowed;
-
-  const res = await fetch(`${API}/projects/v1/admin/${projectId}/publish`, {
-    method: "POST",
-    headers: { "Authorization": `Bearer ${p.service_key}`, "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  const data = await res.json();
-  if (!res.ok) { console.error(JSON.stringify({ status: "error", http: res.status, ...data })); process.exit(1); }
-  console.log(JSON.stringify(data, null, 2));
+  try {
+    const data = await getSdk().apps.publish(projectId, {
+      description: opts.description,
+      tags: opts.tags,
+      visibility: opts.visibility,
+      fork_allowed: opts.forkAllowed,
+    });
+    console.log(JSON.stringify(data, null, 2));
+  } catch (err) {
+    reportSdkError(err);
+  }
 }
 
 async function versions(projectId) {
-  const p = findProject(projectId);
-  const res = await fetch(`${API}/projects/v1/admin/${projectId}/versions`, {
-    headers: { "Authorization": `Bearer ${p.service_key}` },
-  });
-  const data = await res.json();
-  if (!res.ok) { console.error(JSON.stringify({ status: "error", http: res.status, ...data })); process.exit(1); }
-  console.log(JSON.stringify(data, null, 2));
+  try {
+    const data = await getSdk().apps.listVersions(projectId);
+    console.log(JSON.stringify(data, null, 2));
+  } catch (err) {
+    reportSdkError(err);
+  }
 }
 
 async function inspect(versionId) {
   if (!versionId) { console.error(JSON.stringify({ status: "error", message: "Missing version ID" })); process.exit(1); }
-  const res = await fetch(`${API}/apps/v1/${versionId}`);
-  const data = await res.json();
-  if (!res.ok) { console.error(JSON.stringify({ status: "error", http: res.status, ...data })); process.exit(1); }
-  console.log(JSON.stringify(data, null, 2));
+  try {
+    const data = await getSdk().apps.getApp(versionId);
+    console.log(JSON.stringify(data, null, 2));
+  } catch (err) {
+    reportSdkError(err);
+  }
 }
 
 async function update(projectId, versionId, args) {
-  const p = findProject(projectId);
-  const body = {};
+  const opts = {};
   for (let i = 0; i < args.length; i++) {
-    if (args[i] === "--description" && args[i + 1]) body.description = args[++i];
-    if (args[i] === "--tags" && args[i + 1]) body.tags = args[++i].split(",");
-    if (args[i] === "--visibility" && args[i + 1]) body.visibility = args[++i];
-    if (args[i] === "--fork-allowed") body.fork_allowed = true;
-    if (args[i] === "--no-fork") body.fork_allowed = false;
+    if (args[i] === "--description" && args[i + 1]) opts.description = args[++i];
+    if (args[i] === "--tags" && args[i + 1]) opts.tags = args[++i].split(",");
+    if (args[i] === "--visibility" && args[i + 1]) opts.visibility = args[++i];
+    if (args[i] === "--fork-allowed") opts.fork_allowed = true;
+    if (args[i] === "--no-fork") opts.fork_allowed = false;
   }
-  const res = await fetch(`${API}/projects/v1/admin/${projectId}/versions/${versionId}`, {
-    method: "PATCH",
-    headers: { "Authorization": `Bearer ${p.service_key}`, "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  const data = await res.json();
-  if (!res.ok) { console.error(JSON.stringify({ status: "error", http: res.status, ...data })); process.exit(1); }
-  console.log(JSON.stringify(data, null, 2));
+  try {
+    await getSdk().apps.updateVersion(projectId, versionId, opts);
+    console.log(JSON.stringify({ status: "ok", project_id: projectId, version_id: versionId }));
+  } catch (err) {
+    reportSdkError(err);
+  }
 }
 
 async function deleteVersion(projectId, versionId) {
-  const p = findProject(projectId);
-  const res = await fetch(`${API}/projects/v1/admin/${projectId}/versions/${versionId}`, {
-    method: "DELETE",
-    headers: { "Authorization": `Bearer ${p.service_key}` },
-  });
-  if (res.status === 204 || res.ok) {
+  try {
+    await getSdk().apps.deleteVersion(projectId, versionId);
     console.log(JSON.stringify({ status: "ok", message: `Version ${versionId} deleted.` }));
-  } else {
-    const data = await res.json();
-    console.error(JSON.stringify({ status: "error", http: res.status, ...data }));
-    process.exit(1);
+  } catch (err) {
+    reportSdkError(err);
   }
 }
 

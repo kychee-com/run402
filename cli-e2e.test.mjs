@@ -862,13 +862,18 @@ describe("CLI e2e happy path", () => {
     let seenUrl = null;
     let seenBody = null;
     const prevFetch = globalThis.fetch;
-    globalThis.fetch = (input, init) => {
+    globalThis.fetch = async (input, init) => {
       const url = typeof input === "string" ? input : (input instanceof Request ? input.url : String(input));
       const method = (init?.method || (input instanceof Request ? input.method : "GET") || "GET").toUpperCase();
       if (/\/rls$/.test(url) && method === "POST") {
         seenUrl = url;
-        const body = init?.body;
-        try { seenBody = JSON.parse(body); } catch { seenBody = body; }
+        // Body may be on init (direct fetch call) or on the Request object
+        // (when a fetch wrapper like @x402/fetch normalizes the args).
+        let rawBody = init?.body;
+        if (rawBody === undefined && input instanceof Request) {
+          rawBody = await input.clone().text();
+        }
+        try { seenBody = JSON.parse(rawBody); } catch { seenBody = rawBody; }
       }
       return prevFetch(input, init);
     };
@@ -1660,14 +1665,26 @@ describe("CLI e2e happy path", () => {
     let capturedHeaders = null;
     let capturedBody = null;
     const prevFetch = globalThis.fetch;
-    globalThis.fetch = (input, init) => {
+    globalThis.fetch = async (input, init) => {
       const url = typeof input === "string" ? input : input.url;
-      const method = (init?.method || "GET").toUpperCase();
+      const method = (init?.method || (input instanceof Request ? input.method : "GET") || "GET").toUpperCase();
       if (url.endsWith("/auth/v1/user/password") && method === "PUT") {
         capturedUrl = url;
         capturedMethod = method;
-        capturedHeaders = init?.headers || {};
-        try { capturedBody = init?.body ? JSON.parse(init.body) : null; } catch { capturedBody = init?.body; }
+        // Headers and body may be on init (direct fetch) or on the Request
+        // object (when a wrapper like @x402/fetch normalizes the args).
+        if (init?.headers) {
+          capturedHeaders = init.headers;
+        } else if (input instanceof Request) {
+          capturedHeaders = Object.fromEntries(input.headers.entries());
+        } else {
+          capturedHeaders = {};
+        }
+        let rawBody = init?.body;
+        if (rawBody === undefined && input instanceof Request) {
+          rawBody = await input.clone().text();
+        }
+        try { capturedBody = rawBody ? JSON.parse(rawBody) : null; } catch { capturedBody = rawBody; }
         return Promise.resolve(new Response(JSON.stringify({ ok: true }), {
           status: 200,
           headers: { "Content-Type": "application/json" },
@@ -2259,12 +2276,18 @@ describe("CLI e2e happy path", () => {
   function buildEmailFetch(calls, overrides = {}) {
     const MAILBOX_ID = "mbx_test_1";
     const MAILBOX_ADDRESS = "test@mail.run402.com";
-    return (input, init) => {
+    return async (input, init) => {
       const url = typeof input === "string" ? input : (input instanceof Request ? input.url : String(input));
       const method = (init?.method || (input instanceof Request ? input.method : "GET") || "GET").toUpperCase();
       let body = null;
-      if (init?.body && typeof init.body === "string") {
-        try { body = JSON.parse(init.body); } catch { body = init.body; }
+      // Body may be on init (direct fetch) or on the Request object (when a
+      // wrapper like @x402/fetch normalizes args).
+      let rawBody = init?.body;
+      if (rawBody === undefined && input instanceof Request) {
+        try { rawBody = await input.clone().text(); } catch { rawBody = undefined; }
+      }
+      if (rawBody && typeof rawBody === "string") {
+        try { body = JSON.parse(rawBody); } catch { body = rawBody; }
       }
       let path = url;
       if (url.startsWith(API)) path = url.slice(API.length);

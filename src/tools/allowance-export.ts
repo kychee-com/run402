@@ -1,14 +1,14 @@
-import { z } from "zod";
-import { readAllowance } from "../allowance.js";
+import { getSdk } from "../sdk.js";
 
 export const allowanceExportSchema = {};
 
 export async function handleAllowanceExport(
   _args: Record<string, never>,
 ): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
-  const allowance = readAllowance();
-
-  if (!allowance) {
+  try {
+    const address = await getSdk().allowance.export();
+    return { content: [{ type: "text", text: address }] };
+  } catch {
     return {
       content: [
         {
@@ -19,8 +19,4 @@ export async function handleAllowanceExport(
       isError: true,
     };
   }
-
-  return {
-    content: [{ type: "text", text: allowance.address }],
-  };
 }

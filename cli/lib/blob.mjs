@@ -34,7 +34,9 @@ import { basename, dirname, join, resolve as resolvePath } from "node:path";
 import { homedir } from "node:os";
 import { pipeline } from "node:stream/promises";
 
-import { resolveProject, API } from "./config.mjs";
+import { resolveProject, resolveProjectId, API } from "./config.mjs";
+import { getSdk } from "./sdk.mjs";
+import { reportSdkError } from "./sdk-errors.mjs";
 
 const HELP = `run402 blob — Direct-to-S3 blob storage
 
@@ -381,15 +383,18 @@ async function put(projectId, argv) {
 async function get(projectId, argv) {
   const opts = parseArgs(argv);
   opts.project = opts.project || projectId;
-  const project = resolveProject(opts.project);
+  const resolvedId = resolveProjectId(opts.project);
   if (opts.positional.length === 0) die("Key required");
   if (!opts.output) die("--output <file> required");
   const key = opts.positional[0];
 
-  const res = await fetch(`${API}/storage/v1/blob/${encodeKey(key)}`, {
-    headers: { apikey: project.anon_key, Authorization: `Bearer ${project.anon_key}` },
-  });
-  if (!res.ok) die(`GET failed: HTTP ${res.status}`);
+  let res;
+  try {
+    res = await getSdk().blobs.get(resolvedId, key);
+  } catch (err) {
+    reportSdkError(err);
+    return;
+  }
   if (!res.body) die("Empty response body");
 
   mkdirSync(dirname(resolvePath(opts.output)), { recursive: true });
@@ -404,19 +409,17 @@ async function get(projectId, argv) {
 async function ls(projectId, argv) {
   const opts = parseArgs(argv);
   opts.project = opts.project || projectId;
-  const project = resolveProject(opts.project);
+  const resolvedId = resolveProjectId(opts.project);
 
-  const qs = new URLSearchParams();
-  if (opts.prefix) qs.set("prefix", opts.prefix);
-  if (opts.limit) qs.set("limit", String(opts.limit));
-  const url = `${API}/storage/v1/blobs${qs.toString() ? "?" + qs.toString() : ""}`;
-
-  const res = await fetch(url, {
-    headers: { apikey: project.anon_key, Authorization: `Bearer ${project.anon_key}` },
-  });
-  const data = await res.json();
-  if (!res.ok) { console.error(JSON.stringify({ status: "error", http: res.status, ...data })); process.exit(1); }
-  console.log(JSON.stringify(data, null, 2));
+  try {
+    const data = await getSdk().blobs.ls(resolvedId, {
+      prefix: opts.prefix ?? undefined,
+      limit: opts.limit ?? undefined,
+    });
+    console.log(JSON.stringify(data, null, 2));
+  } catch (err) {
+    reportSdkError(err);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -426,17 +429,16 @@ async function ls(projectId, argv) {
 async function rm(projectId, argv) {
   const opts = parseArgs(argv);
   opts.project = opts.project || projectId;
-  const project = resolveProject(opts.project);
+  const resolvedId = resolveProjectId(opts.project);
   if (opts.positional.length === 0) die("Key required");
   const key = opts.positional[0];
 
-  const res = await fetch(`${API}/storage/v1/blob/${encodeKey(key)}`, {
-    method: "DELETE",
-    headers: { apikey: project.anon_key, Authorization: `Bearer ${project.anon_key}` },
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) { console.error(JSON.stringify({ status: "error", http: res.status, ...data })); process.exit(1); }
-  console.log(JSON.stringify(data, null, 2));
+  try {
+    await getSdk().blobs.rm(resolvedId, key);
+    console.log(JSON.stringify({ status: "ok", key }));
+  } catch (err) {
+    reportSdkError(err);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -446,18 +448,18 @@ async function rm(projectId, argv) {
 async function sign(projectId, argv) {
   const opts = parseArgs(argv);
   opts.project = opts.project || projectId;
-  const project = resolveProject(opts.project);
+  const resolvedId = resolveProjectId(opts.project);
   if (opts.positional.length === 0) die("Key required");
   const key = opts.positional[0];
 
-  const res = await fetch(`${API}/storage/v1/blob/${encodeKey(key)}/sign`, {
-    method: "POST",
-    headers: { "content-type": "application/json", apikey: project.anon_key, Authorization: `Bearer ${project.anon_key}` },
-    body: JSON.stringify(opts.ttl ? { ttl_seconds: opts.ttl } : {}),
-  });
-  const data = await res.json();
-  if (!res.ok) { console.error(JSON.stringify({ status: "error", http: res.status, ...data })); process.exit(1); }
-  console.log(JSON.stringify(data, null, 2));
+  try {
+    const data = await getSdk().blobs.sign(resolvedId, key, {
+      ttl_seconds: opts.ttl ?? undefined,
+    });
+    console.log(JSON.stringify(data, null, 2));
+  } catch (err) {
+    reportSdkError(err);
+  }
 }
 
 // ---------------------------------------------------------------------------

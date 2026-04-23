@@ -1,7 +1,6 @@
 import { z } from "zod";
-import { apiRequest } from "../client.js";
-import { getProject } from "../keystore.js";
-import { formatApiError, projectNotFound } from "../errors.js";
+import { getSdk } from "../sdk.js";
+import { mapSdkError } from "../errors.js";
 
 export const removeCustomDomainSchema = {
   domain: z.string().describe("The custom domain to release (e.g. 'example.com')"),
@@ -15,27 +14,17 @@ export async function handleRemoveCustomDomain(args: {
   domain: string;
   project_id?: string;
 }): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
-  let authHeader: Record<string, string> = {};
-
-  if (args.project_id) {
-    const project = getProject(args.project_id);
-    if (!project) return projectNotFound(args.project_id);
-    authHeader = { Authorization: `Bearer ${project.service_key}` };
+  try {
+    await getSdk().domains.remove(args.domain, { projectId: args.project_id });
+    return {
+      content: [
+        {
+          type: "text",
+          text: `## Custom Domain Removed\n\nDomain \`${args.domain}\` has been released. Traffic to this domain will no longer be routed to Run402.`,
+        },
+      ],
+    };
+  } catch (err) {
+    return mapSdkError(err, "removing custom domain");
   }
-
-  const res = await apiRequest(`/domains/v1/${encodeURIComponent(args.domain)}`, {
-    method: "DELETE",
-    headers: authHeader,
-  });
-
-  if (!res.ok) return formatApiError(res, "removing custom domain");
-
-  return {
-    content: [
-      {
-        type: "text",
-        text: `## Custom Domain Removed\n\nDomain \`${args.domain}\` has been released. Traffic to this domain will no longer be routed to Run402.`,
-      },
-    ],
-  };
 }

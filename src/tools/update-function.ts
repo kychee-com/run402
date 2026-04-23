@@ -1,7 +1,6 @@
 import { z } from "zod";
-import { apiRequest } from "../client.js";
-import { getProject } from "../keystore.js";
-import { formatApiError, projectNotFound } from "../errors.js";
+import { getSdk } from "../sdk.js";
+import { mapSdkError } from "../errors.js";
 
 export const updateFunctionSchema = {
   project_id: z.string().describe("The project ID"),
@@ -30,53 +29,28 @@ export async function handleUpdateFunction(args: {
   timeout?: number;
   memory?: number;
 }): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
-  const project = getProject(args.project_id);
-  if (!project) return projectNotFound(args.project_id);
+  try {
+    const result = await getSdk().functions.update(args.project_id, args.name, {
+      schedule: args.schedule,
+      timeout: args.timeout,
+      memory: args.memory,
+    });
 
-  const body: Record<string, unknown> = {};
-  if (args.schedule !== undefined) body.schedule = args.schedule;
-  if (args.timeout !== undefined || args.memory !== undefined) {
-    const config: Record<string, number> = {};
-    if (args.timeout !== undefined) config.timeout = args.timeout;
-    if (args.memory !== undefined) config.memory = args.memory;
-    body.config = config;
+    const lines = [
+      `## Function Updated`,
+      ``,
+      `| Field | Value |`,
+      `|-------|-------|`,
+      `| name | \`${result.name}\` |`,
+      `| runtime | ${result.runtime} |`,
+      `| timeout | ${result.timeout}s |`,
+      `| memory | ${result.memory}MB |`,
+      `| schedule | ${result.schedule ? `\`${result.schedule}\`` : "—"} |`,
+      `| updated_at | ${result.updated_at} |`,
+    ];
+
+    return { content: [{ type: "text", text: lines.join("\n") }] };
+  } catch (err) {
+    return mapSdkError(err, "updating function");
   }
-
-  const res = await apiRequest(
-    `/projects/v1/admin/${args.project_id}/functions/${encodeURIComponent(args.name)}`,
-    {
-      method: "PATCH",
-      headers: {
-        Authorization: `Bearer ${project.service_key}`,
-      },
-      body,
-    },
-  );
-
-  if (!res.ok) return formatApiError(res, "updating function");
-
-  const result = res.body as {
-    name: string;
-    runtime: string;
-    timeout: number;
-    memory: number;
-    schedule: string | null;
-    schedule_meta: Record<string, unknown> | null;
-    updated_at: string;
-  };
-
-  const lines = [
-    `## Function Updated`,
-    ``,
-    `| Field | Value |`,
-    `|-------|-------|`,
-    `| name | \`${result.name}\` |`,
-    `| runtime | ${result.runtime} |`,
-    `| timeout | ${result.timeout}s |`,
-    `| memory | ${result.memory}MB |`,
-    `| schedule | ${result.schedule ? `\`${result.schedule}\`` : "—"} |`,
-    `| updated_at | ${result.updated_at} |`,
-  ];
-
-  return { content: [{ type: "text", text: lines.join("\n") }] };
 }

@@ -305,6 +305,220 @@ const SURFACE: Capability[] = [
   { id: "delete_contract_wallet",    endpoint: "DELETE /contracts/v1/wallets/:id",                 mcp: "delete_contract_wallet",    cli: "contracts:delete",           openclaw: "contracts:delete" },
 ];
 
+// ─── SDK namespace mapping ──────────────────────────────────────────────────
+// Each SURFACE capability that has an MCP/CLI implementation should map to
+// an SDK method path `"namespace.method"`. Capabilities that are intentionally
+// not on the SDK (legacy storage aliases, pure wire passthroughs like run_sql)
+// map to null.
+//
+// When you add a new capability to SURFACE that ships an SDK method, also
+// add the id → path mapping here. The tests below enforce both sides.
+
+const SDK_BY_CAPABILITY: Record<string, string | null> = {
+  // Local-only compound flows — MCP handlers compose SDK calls internally.
+  init: null,
+  status: null,
+
+  // Project lifecycle
+  get_quote: "projects.getQuote",
+  provision: "projects.provision",
+  set_tier: "tier.set",
+  delete: "projects.delete",
+  faucet: "allowance.faucet",
+
+  // Database / Admin — SQL / REST / expose stay on raw fetch today.
+  run_sql: null,
+  rest_query: null,
+  setup_rls: "projects.setupRls",
+  apply_expose: null,
+  get_expose: null,
+  get_schema: "projects.getSchema",
+  get_usage: "projects.getUsage",
+
+  // Storage legacy (pre-blob) — MCP handlers kept on raw apiRequest.
+  upload_file: null,
+  download_file: null,
+  delete_file: null,
+  list_files: null,
+
+  // Blob (direct-to-S3)
+  blob_put: "blobs.put",
+  blob_get: "blobs.get",
+  blob_ls: "blobs.ls",
+  blob_rm: "blobs.rm",
+  blob_sign: "blobs.sign",
+
+  // Functions
+  deploy_function: "functions.deploy",
+  invoke_function: "functions.invoke",
+  get_function_logs: "functions.logs",
+  list_functions: "functions.list",
+  delete_function: "functions.delete",
+  update_function: "functions.update",
+
+  // Secrets
+  set_secret: "secrets.set",
+  list_secrets: "secrets.list",
+  delete_secret: "secrets.delete",
+
+  // Sites / Subdomains
+  deploy_site: "sites.deploy",
+  claim_subdomain: "subdomains.claim",
+  delete_subdomain: "subdomains.delete",
+  list_subdomains: "subdomains.list",
+
+  // Custom domains
+  add_custom_domain: "domains.add",
+  list_custom_domains: "domains.list",
+  check_domain_status: "domains.status",
+  remove_custom_domain: "domains.remove",
+
+  // Bundle / marketplace
+  bundle_deploy: "apps.bundleDeploy",
+  browse_apps: "apps.browse",
+  fork_app: "apps.fork",
+  publish_app: "apps.publish",
+  list_versions: "apps.listVersions",
+  update_version: "apps.updateVersion",
+  delete_version: "apps.deleteVersion",
+  get_app: "apps.getApp",
+
+  // Billing
+  check_balance: "billing.checkBalance",
+  list_projects: "projects.list",
+  project_info: "projects.info",
+  project_use: "projects.use",
+  project_keys: "projects.keys",
+  create_checkout: "billing.createCheckout",
+  billing_history: "billing.history",
+  create_email_billing_account: "billing.createEmailAccount",
+  link_wallet_to_account: "billing.linkWallet",
+  tier_checkout: "billing.tierCheckout",
+  buy_email_pack: "billing.buyEmailPack",
+  set_auto_recharge: "billing.setAutoRecharge",
+  billing_balance: null, // CLI-only; identifier can be email or wallet — SDK models wallet
+  billing_history_cli: null, // same reason
+
+  // Image / AI
+  generate_image: "ai.generateImage",
+  ai_translate: "ai.translate",
+  ai_moderate: "ai.moderate",
+  ai_usage: "ai.usage",
+
+  // Email
+  create_mailbox: "email.createMailbox",
+  send_email: "email.send",
+  list_emails: "email.list",
+  get_email: "email.get",
+  get_email_raw: "email.getRaw",
+  get_mailbox: "email.getMailbox",
+  delete_mailbox: "email.deleteMailbox",
+  reply_email: null, // CLI compound flow (email.get + email.send in sequence)
+
+  // Mailbox webhooks
+  register_mailbox_webhook: "email.webhooks.register",
+  list_mailbox_webhooks: "email.webhooks.list",
+  get_mailbox_webhook: "email.webhooks.get",
+  delete_mailbox_webhook: "email.webhooks.delete",
+  update_mailbox_webhook: "email.webhooks.update",
+
+  // Messaging & agent contact
+  send_message: "admin.sendMessage",
+  set_agent_contact: "admin.setAgentContact",
+
+  // Deployment status
+  get_deployment: "sites.getDeployment",
+
+  // Admin
+  pin_project: "projects.pin",
+  promote_user: "auth.promote",
+  demote_user: "auth.demote",
+
+  // Auth
+  request_magic_link: "auth.requestMagicLink",
+  verify_magic_link: "auth.verifyMagicLink",
+  set_user_password: "auth.setUserPassword",
+  auth_settings: "auth.settings",
+  auth_providers: null, // CLI-only wrapper around /auth/v1/providers
+
+  // Sender domains
+  register_sender_domain: "senderDomain.register",
+  sender_domain_status: "senderDomain.status",
+  remove_sender_domain: "senderDomain.remove",
+  enable_sender_domain_inbound: "senderDomain.enableInbound",
+  disable_sender_domain_inbound: "senderDomain.disableInbound",
+
+  // Tier
+  tier_status: "tier.status",
+
+  // Allowance (local-managed via Node provider)
+  allowance_status: "allowance.status",
+  allowance_create: "allowance.create",
+  allowance_export: "allowance.export",
+
+  // Service
+  service_status: "service.status",
+  service_health: "service.health",
+
+  // KMS contract wallets
+  provision_contract_wallet: "contracts.provisionWallet",
+  get_contract_wallet: "contracts.getWallet",
+  list_contract_wallets: "contracts.listWallets",
+  set_recovery_address: "contracts.setRecovery",
+  set_low_balance_alert: "contracts.setLowBalanceAlert",
+  contract_call: "contracts.call",
+  contract_read: "contracts.read",
+  get_contract_call_status: "contracts.callStatus",
+  drain_contract_wallet: "contracts.drain",
+  delete_contract_wallet: "contracts.deleteWallet",
+};
+
+/** Walk the SDK `Run402` class and list every namespace.method pair (including nested email.webhooks.*). */
+async function listSdkMethods(): Promise<string[]> {
+  // Dynamic import of the built SDK. Build runs before tests via npm run build.
+  const sdkModule = await import("./sdk/dist/index.js");
+  const Run402 = (sdkModule as { Run402: new (opts: unknown) => unknown }).Run402;
+  // Construct with a stub provider so method discovery works without network or FS.
+  const stub = {
+    async getAuth() { return null; },
+    async getProject() { return null; },
+  };
+  const instance = new Run402({
+    apiBase: "https://invalid.example",
+    credentials: stub,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  }) as any;
+
+  const methods: string[] = [];
+  for (const ns of Object.keys(instance)) {
+    const namespaceObj = instance[ns];
+    if (!namespaceObj || typeof namespaceObj !== "object") continue;
+    // Top-level methods on the namespace class prototype.
+    const proto = Object.getPrototypeOf(namespaceObj);
+    if (!proto) continue;
+    for (const name of Object.getOwnPropertyNames(proto)) {
+      if (name === "constructor") continue;
+      if (typeof proto[name] !== "function") continue;
+      methods.push(`${ns}.${name}`);
+    }
+    // Nested sub-namespaces (e.g. email.webhooks). Skip internal fields like
+    // `client` whose prototype is plain Object.
+    for (const inner of Object.keys(namespaceObj)) {
+      const innerObj = namespaceObj[inner];
+      if (!innerObj || typeof innerObj !== "object") continue;
+      const innerProto = Object.getPrototypeOf(innerObj);
+      // Only walk objects that have a real class prototype (not Object.prototype).
+      if (!innerProto || innerProto === Object.prototype) continue;
+      for (const name of Object.getOwnPropertyNames(innerProto)) {
+        if (name === "constructor") continue;
+        if (typeof innerProto[name] !== "function") continue;
+        methods.push(`${ns}.${inner}.${name}`);
+      }
+    }
+  }
+  return methods.sort();
+}
+
 // ─── Derived expected sets ───────────────────────────────────────────────────
 
 const EXPECTED_MCP_TOOLS = SURFACE
@@ -422,6 +636,59 @@ describe("CLI ↔ OpenClaw parity", () => {
       [],
       "Every SURFACE entry must have identical cli and openclaw values (or both null). " +
         `Mismatches: ${mismatches.map(c => `${c.id}: cli=${c.cli}, openclaw=${c.openclaw}`).join("; ")}`,
+    );
+  });
+});
+
+describe("SDK surface alignment", () => {
+  it("every SURFACE capability has an SDK mapping (or explicit null)", () => {
+    const missing = SURFACE
+      .map((c) => c.id)
+      .filter((id) => !(id in SDK_BY_CAPABILITY));
+    assert.deepEqual(
+      missing,
+      [],
+      `Add these capabilities to SDK_BY_CAPABILITY (either \`"namespace.method"\` or \`null\` if intentionally not on the SDK): ${missing.join(", ")}`,
+    );
+  });
+
+  it("every non-null SDK mapping resolves to a real SDK method", async () => {
+    const sdkMethods = new Set(await listSdkMethods());
+    const missing: string[] = [];
+    for (const [id, path] of Object.entries(SDK_BY_CAPABILITY)) {
+      if (path !== null && !sdkMethods.has(path)) {
+        missing.push(`${id} → ${path}`);
+      }
+    }
+    assert.deepEqual(
+      missing,
+      [],
+      `SDK methods referenced in SDK_BY_CAPABILITY but missing from the built SDK: ${missing.join(", ")}`,
+    );
+  });
+
+  it("every SDK method is referenced by some SURFACE mapping", async () => {
+    // SDK-internal helpers that don't have a corresponding MCP/CLI entry.
+    // Private in TypeScript but enumerable at runtime (TS `private` isn't
+    // runtime-enforced), plus convenience methods consumers can compose
+    // without needing their own MCP tool.
+    const SDK_ONLY_METHODS = new Set([
+      "email.listMailboxes",   // private helper
+      "email.resolveMailbox",  // private helper
+      "projects.active",       // returns active project id from the provider
+    ]);
+
+    const sdkMethods = await listSdkMethods();
+    const referenced = new Set(
+      Object.values(SDK_BY_CAPABILITY).filter((v): v is string => v !== null),
+    );
+    const orphans = sdkMethods
+      .filter((m) => !referenced.has(m))
+      .filter((m) => !SDK_ONLY_METHODS.has(m));
+    assert.deepEqual(
+      orphans,
+      [],
+      `SDK exports methods that aren't referenced in SDK_BY_CAPABILITY. Either add them to SURFACE+SDK_BY_CAPABILITY, add to SDK_ONLY_METHODS for internal helpers, or remove from the SDK: ${orphans.join(", ")}`,
     );
   });
 });

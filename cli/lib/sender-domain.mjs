@@ -1,4 +1,6 @@
-import { findProject, resolveProjectId, API } from "./config.mjs";
+import { resolveProjectId } from "./config.mjs";
+import { getSdk } from "./sdk.mjs";
+import { reportSdkError } from "./sdk-errors.mjs";
 
 const HELP = `run402 sender-domain — Manage custom email sender domain
 
@@ -35,55 +37,38 @@ async function register(args) {
     else if (!args[i].startsWith("--") && !domain) { domain = args[i]; }
   }
   const projectId = resolveProjectId(projectOpt);
-  const p = findProject(projectId);
 
   if (!domain) {
     console.error(JSON.stringify({ status: "error", message: "Missing domain. Usage: run402 sender-domain register <domain>" }));
     process.exit(1);
   }
 
-  const res = await fetch(`${API}/email/v1/domains`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${p.service_key}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ domain }),
-  });
-  const data = await res.json();
-  if (!res.ok) {
-    console.error(JSON.stringify({ status: "error", http: res.status, ...data }));
-    process.exit(1);
+  try {
+    const data = await getSdk().senderDomain.register(projectId, domain);
+    console.log(JSON.stringify(data, null, 2));
+  } catch (err) {
+    reportSdkError(err);
   }
-  console.log(JSON.stringify(data, null, 2));
 }
 
 async function status(args) {
   const projectId = resolveProjectId(parseFlag(args, "--project"));
-  const p = findProject(projectId);
-
-  const res = await fetch(`${API}/email/v1/domains`, {
-    headers: { Authorization: `Bearer ${p.service_key}` },
-  });
-  const data = await res.json();
-  if (!res.ok) {
-    console.error(JSON.stringify({ status: "error", http: res.status, ...data }));
-    process.exit(1);
+  try {
+    const data = await getSdk().senderDomain.status(projectId);
+    console.log(JSON.stringify(data, null, 2));
+  } catch (err) {
+    reportSdkError(err);
   }
-  console.log(JSON.stringify(data, null, 2));
 }
 
 async function remove(args) {
   const projectId = resolveProjectId(parseFlag(args, "--project"));
-  const p = findProject(projectId);
-
-  const res = await fetch(`${API}/email/v1/domains`, {
-    method: "DELETE",
-    headers: { Authorization: `Bearer ${p.service_key}` },
-  });
-  const data = await res.json();
-  if (!res.ok) {
-    console.error(JSON.stringify({ status: "error", http: res.status, ...data }));
-    process.exit(1);
+  try {
+    await getSdk().senderDomain.remove(projectId);
+    console.log(JSON.stringify({ status: "ok" }));
+  } catch (err) {
+    reportSdkError(err);
   }
-  console.log(JSON.stringify(data));
 }
 
 async function inboundToggle(action, args) {
@@ -94,25 +79,23 @@ async function inboundToggle(action, args) {
     else if (!args[i].startsWith("--") && !domain) { domain = args[i]; }
   }
   const projectId = resolveProjectId(projectOpt);
-  const p = findProject(projectId);
 
   if (!domain) {
     console.error(JSON.stringify({ status: "error", message: `Missing domain. Usage: run402 sender-domain inbound-${action} <domain>` }));
     process.exit(1);
   }
 
-  const method = action === "enable" ? "POST" : "DELETE";
-  const res = await fetch(`${API}/email/v1/domains/inbound`, {
-    method,
-    headers: { Authorization: `Bearer ${p.service_key}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ domain }),
-  });
-  const data = await res.json();
-  if (!res.ok) {
-    console.error(JSON.stringify({ status: "error", http: res.status, ...data }));
-    process.exit(1);
+  try {
+    if (action === "enable") {
+      const data = await getSdk().senderDomain.enableInbound(projectId, domain);
+      console.log(JSON.stringify(data, null, 2));
+    } else {
+      await getSdk().senderDomain.disableInbound(projectId, domain);
+      console.log(JSON.stringify({ status: "ok", domain }));
+    }
+  } catch (err) {
+    reportSdkError(err);
   }
-  console.log(JSON.stringify(data, null, 2));
 }
 
 export async function run(sub, args) {

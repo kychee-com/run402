@@ -1,0 +1,58 @@
+{
+  "name": "@run402/sdk",
+  "version": "1.39.0",
+  "description": "Typed TypeScript client for the Run402 API. Kernel shared by the run402-mcp server, the run402 CLI, and user-deployed run402 functions.",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./node": {
+      "types": "./dist/node/index.d.ts",
+      "import": "./dist/node/index.js"
+    }
+  },
+  "scripts": {
+    "prepack": "mkdir -p core-dist && cp ../core/dist/*.js core-dist/ && cp ../core/dist/*.d.ts core-dist/"
+  },
+  "files": [
+    "dist",
+    "core-dist",
+    "README.md"
+  ],
+  "dependencies": {
+    "@noble/curves": "^2.0.1",
+    "@noble/hashes": "^2.0.1"
+  },
+  "optionalDependencies": {
+    "@x402/evm": "^2.6.0",
+    "@x402/fetch": "^2.6.0",
+    "mppx": "^0.4.7",
+    "viem": "^2.47.1"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kychee-com/run402.git",
+    "directory": "sdk"
+  },
+  "homepage": "https://run402.com",
+  "bugs": "https://github.com/kychee-com/run402/issues",
+  "author": "Kychee Technologies",
+  "license": "MIT",
+  "keywords": [
+    "run402",
+    "x402",
+    "sdk",
+    "api-client",
+    "ai-agent"
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
+}

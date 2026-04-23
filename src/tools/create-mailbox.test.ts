@@ -4,6 +4,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { handleCreateMailbox } from "./create-mailbox.js";
+import { _resetSdk } from "../sdk.js";
 
 const originalFetch = globalThis.fetch;
 let tempDir: string;
@@ -12,6 +13,7 @@ beforeEach(() => {
   tempDir = mkdtempSync(join(tmpdir(), "run402-mailbox-test-"));
   process.env.RUN402_CONFIG_DIR = tempDir;
   process.env.RUN402_API_BASE = "https://test-api.run402.com";
+  _resetSdk();
 
   const store = {
     projects: {

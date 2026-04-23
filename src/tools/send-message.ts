@@ -1,6 +1,6 @@
 import { z } from "zod";
-import { apiRequest } from "../client.js";
-import { formatApiError } from "../errors.js";
+import { getSdk } from "../sdk.js";
+import { mapSdkError } from "../errors.js";
 import { requireAllowanceAuth } from "../allowance-auth.js";
 
 export const sendMessageSchema = {
@@ -13,15 +13,10 @@ export async function handleSendMessage(args: {
   const auth = requireAllowanceAuth("/message/v1");
   if ("error" in auth) return auth.error;
 
-  const res = await apiRequest("/message/v1", {
-    method: "POST",
-    headers: { ...auth.headers },
-    body: { message: args.message },
-  });
-
-  if (!res.ok) return formatApiError(res, "sending message");
-
-  return {
-    content: [{ type: "text", text: `Message sent to Run402 developers.` }],
-  };
+  try {
+    await getSdk().admin.sendMessage(args.message);
+    return { content: [{ type: "text", text: `Message sent to Run402 developers.` }] };
+  } catch (err) {
+    return mapSdkError(err, "sending message");
+  }
 }
