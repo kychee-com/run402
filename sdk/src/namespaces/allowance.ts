@@ -14,7 +14,13 @@ import type { AllowanceData } from "../credentials.js";
 export interface AllowanceStatusResult {
   address: string;
   created?: string;
-  funded?: boolean;
+  /**
+   * True once the faucet has been invoked on this allowance. This tracks
+   * "faucet has been used," not "account can pay right now" — the two diverge
+   * once funds are spent or expire. Callers wanting a real pay-readiness
+   * check should call `allowance balance` (see GH-109).
+   */
+  faucet_used?: boolean;
   lastFaucet?: string;
   path?: string;
   /** true when the local provider holds an allowance, false otherwise. */
@@ -48,7 +54,10 @@ export class Allowance {
     return {
       address: data.address,
       created: data.created,
-      funded: data.funded,
+      // Map the on-disk `funded` marker (which only tracks faucet invocations)
+      // to `faucet_used` in the output. `!!` coerces undefined → false so
+      // callers can branch cleanly.
+      faucet_used: !!data.funded,
       lastFaucet: data.lastFaucet,
       path: this.client.credentials.getAllowancePath?.call(this.client.credentials),
       configured: true,
@@ -104,7 +113,8 @@ export class Allowance {
   /**
    * Request testnet USDC from the Run402 faucet. When `address` is omitted,
    * the SDK uses the provider's local allowance address. Updates the
-   * allowance's `funded` flag on success.
+   * allowance's internal `funded` marker on success (surfaced as
+   * `faucet_used` in `status()`).
    */
   async faucet(address?: string): Promise<FaucetResult> {
     let resolvedAddress = address;
