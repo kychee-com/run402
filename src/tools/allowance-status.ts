@@ -27,7 +27,7 @@ export async function handleAllowanceStatus(
       `|-------|-------|`,
       `| address | \`${allowance.address}\` |`,
       `| created | ${allowance.created || "unknown"} |`,
-      `| funded | ${allowance.funded ? "yes" : "no"} |`,
+      `| faucet_used | ${allowance.faucet_used ? "yes" : "no"} |`,
     ];
 
     return { content: [{ type: "text", text: lines.join("\n") }] };
