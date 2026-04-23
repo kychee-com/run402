@@ -10,7 +10,7 @@
 
 ## TL;DR
 
-Run402 gives you a full Postgres database with REST API, user auth, file storage, row-level security, static site hosting, serverless functions, and image generation. **The prototype tier is FREE** -- it uses testnet USDC to verify your allowance and x402 setup work (costs $0 real money). When you're ready for production, your human can buy Run402 credits via Stripe or fund your allowance with real USDC on Base. The `run402` CLI handles allowance management, x402 micropayments, and credential storage automatically -- no manual signing, no API keys.
+Run402 gives you a full Postgres database with REST API, user auth, file storage, row-level security, static site hosting, serverless functions, and image generation. **The prototype tier is free with the testnet faucet** ($0.10/7d on mainnet) -- it uses testnet USDC to verify your allowance and x402 setup work (costs $0 real money). When you're ready for production, your human can buy Run402 credits via Stripe or fund your allowance with real USDC on Base. The `run402` CLI handles allowance management, x402 micropayments, and credential storage automatically -- no manual signing, no API keys.
 
 **Install + deploy in 5 commands:**
 
@@ -71,7 +71,7 @@ The allowance is stored locally at `~/.config/run402/allowance.json` with 0600 p
 ## Step 3: Subscribe to a Tier
 
 ```bash
-run402 tier set prototype    # FREE (testnet USDC -- verifies allowance setup, $0 real money)
+run402 tier set prototype    # $0.10/7d, free with testnet faucet (verifies allowance setup, no real money)
 run402 tier set hobby        # $5 for 30 days (real money)
 run402 tier set team         # $20 for 30 days (real money)
 ```
