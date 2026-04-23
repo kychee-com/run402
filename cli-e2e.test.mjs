@@ -2254,6 +2254,37 @@ describe("CLI e2e happy path", () => {
     bannerRegex: /^run402 projects/,
   });
 
+  // GH-103: `projects pin` must be clearly marked as admin-only in help text.
+  // The server-side /projects/v1/admin/:id/pin endpoint rejects project-owner
+  // auth (service_key / SIWX) with 403 admin_required. Help text that omits
+  // the admin caveat leads owners into an error they cannot resolve.
+  it("projects pin --help marks pin as admin-only (GH-103)", async () => {
+    const { run } = await import("./cli/lib/projects.mjs");
+    let fetchCalled = false;
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = (...args) => { fetchCalled = true; return prevFetch(...args); };
+    let threw = null;
+    captureStart();
+    try {
+      await run("pin", ["--help"]);
+    } catch (e) {
+      threw = e;
+    } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+    assert.equal(threw?.message, "process.exit(0)", "pin --help should exit 0");
+    assert.equal(fetchCalled, false, "pin --help must not make any fetch/API call");
+    const stdout = capturedStdout();
+    // Find the pin line in the subcommand list and assert it mentions admin.
+    const pinLine = stdout.split("\n").find(l => /^\s*pin\s/.test(l)) ?? "";
+    assert.match(
+      pinLine,
+      /admin/i,
+      `pin subcommand line should mention admin-only; got: ${pinLine}`,
+    );
+  });
+
   // Also spot-check the short flag alias -h works.
   it("projects sql -h prints help (GH-63 short flag)", async () => {
     const { run } = await import("./cli/lib/projects.mjs");

@@ -3,7 +3,11 @@ import { getSdk } from "../sdk.js";
 import { mapSdkError } from "../errors.js";
 
 export const pinProjectSchema = {
-  project_id: z.string().describe("The project ID to pin"),
+  project_id: z
+    .string()
+    .describe(
+      "The project ID to pin. Admin only — requires run402 platform admin auth; project owners authenticating with service_key or SIWX will receive 403 admin_required.",
+    ),
 };
 
 export async function handlePinProject(

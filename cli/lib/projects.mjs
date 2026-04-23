@@ -24,7 +24,7 @@ Subcommands:
   apply-expose [id] --file <path>         Apply a manifest from a JSON file
   get-expose   [id]                       Get the current authorization manifest
   delete [id]                             Immediately and irreversibly delete a project (cascade purge) and remove from local state
-  pin   [id]                              Pin a project (prevents expiry/GC)
+  pin   [id]                              Pin a project (admin only; project owners get 403 admin_required)
   promote-user [id] <email>               Promote a user to project_admin role
   demote-user  [id] <email>               Demote a user from project_admin role
 

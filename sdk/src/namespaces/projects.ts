@@ -164,8 +164,13 @@ export class Projects {
   }
 
   /**
-   * Pin a project so it is not garbage-collected or expired. Requires
-   * admin-level credentials (operator-only in production).
+   * Pin a project so it is not garbage-collected or expired.
+   *
+   * Admin only — the server-side `POST /projects/v1/admin/:id/pin`
+   * endpoint requires run402 platform admin auth. Project owners
+   * calling this with their `service_key` or SIWX session will receive
+   * `403 admin_required`; this is by design and not a bug in the SDK.
+   * The method is retained so operator tooling can share the same SDK.
    */
   async pin(id: string): Promise<PinResult> {
     const keys = await this.client.getProject(id);
