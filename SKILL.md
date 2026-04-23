@@ -829,4 +829,5 @@ The same wallet key works on both chains — switching rails just changes which 
 - **API health:** https://api.run402.com/health (also via `service_health`)
 - **Service status:** https://api.run402.com/status (also via `service_status`)
 - **MCP package:** https://www.npmjs.com/package/run402-mcp
+- **SDK package:** https://www.npmjs.com/package/@run402/sdk (typed TS client for custom code — same namespaces as the MCP tools)
 - **Homepage:** https://run402.com
