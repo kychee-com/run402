@@ -253,7 +253,6 @@ const SURFACE: Capability[] = [
   { id: "get_app",           endpoint: "GET /apps/v1/:version_id",          mcp: "get_app",             cli: "apps:inspect",     openclaw: "apps:inspect" },
 
   // ── Admin ──────────────────────────────────────────────────────────────
-  { id: "pin_project",     endpoint: "POST /projects/v1/admin/:id/pin",    mcp: "pin_project",      cli: "projects:pin",     openclaw: "projects:pin" },
   { id: "promote_user",    endpoint: "POST /projects/v1/admin/:id/promote-user", mcp: "promote_user", cli: "projects:promote-user", openclaw: "projects:promote-user" },
   { id: "demote_user",     endpoint: "POST /projects/v1/admin/:id/demote-user",  mcp: "demote_user",  cli: "projects:demote-user",  openclaw: "projects:demote-user" },
 
@@ -430,7 +429,6 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   get_deployment: "sites.getDeployment",
 
   // Admin
-  pin_project: "projects.pin",
   promote_user: "auth.promote",
   demote_user: "auth.demote",
 

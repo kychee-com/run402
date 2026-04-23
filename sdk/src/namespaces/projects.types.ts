@@ -122,14 +122,6 @@ export interface RlsSetupResult {
   tables: string[];
 }
 
-// ─── pin ────────────────────────────────────────────────────────────────
-
-export interface PinResult {
-  status: string;
-  project_id: string;
-  message?: string;
-}
-
 // ─── quote ──────────────────────────────────────────────────────────────
 
 export interface TierQuote {

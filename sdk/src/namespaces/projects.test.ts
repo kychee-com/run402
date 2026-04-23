@@ -314,20 +314,6 @@ describe("projects.setupRls", () => {
   });
 });
 
-describe("projects.pin", () => {
-  it("POSTs /projects/v1/admin/:id/pin", async () => {
-    const { fetch, calls } = mockFetch(() =>
-      jsonResponse({ status: "pinned", project_id: "prj_known" }),
-    );
-    const sdk = makeSdk(makeCreds(), fetch);
-    const result = await sdk.projects.pin("prj_known");
-
-    assert.equal(calls[0]!.url, "https://api.example.test/projects/v1/admin/prj_known/pin");
-    assert.equal(calls[0]!.method, "POST");
-    assert.equal(result.status, "pinned");
-  });
-});
-
 describe("projects.getQuote", () => {
   it("GETs /tiers/v1 without auth", async () => {
     const { fetch, calls } = mockFetch(() =>

@@ -24,7 +24,6 @@ Subcommands:
   apply-expose [id] --file <path>         Apply a manifest from a JSON file
   get-expose   [id]                       Get the current authorization manifest
   delete [id]                             Immediately and irreversibly delete a project (cascade purge) and remove from local state
-  pin   [id]                              Pin a project (prevents expiry/GC)
   promote-user [id] <email>               Promote a user to project_admin role
   demote-user  [id] <email>               Demote a user from project_admin role
 
@@ -285,16 +284,6 @@ async function use(projectId) {
   }
 }
 
-async function pin(projectId) {
-  if (!projectId) { console.error(JSON.stringify({ status: "error", message: "Usage: run402 projects pin <project_id>" })); process.exit(1); }
-  try {
-    const data = await getSdk().projects.pin(projectId);
-    console.log(JSON.stringify(data, null, 2));
-  } catch (err) {
-    reportSdkError(err);
-  }
-}
-
 async function promoteUser(projectId, email) {
   if (!email) { console.error(JSON.stringify({ status: "error", message: "Usage: run402 projects promote-user <project_id> <email>" })); process.exit(1); }
   const p = findProject(projectId);
@@ -367,7 +356,6 @@ export async function run(sub, args) {
     case "apply-expose": { const { projectId, rest } = resolvePositionalProject(args); await applyExpose(projectId, rest); break; }
     case "get-expose":   { const { projectId } = resolvePositionalProject(args); await getExpose(projectId); break; }
     case "delete":    { const { projectId } = resolvePositionalProject(args); await deleteProject(projectId); break; }
-    case "pin":       { const { projectId } = resolvePositionalProject(args); await pin(projectId); break; }
     case "promote-user": { const { projectId, rest } = resolvePositionalProject(args); await promoteUser(projectId, rest[0]); break; }
     case "demote-user":  { const { projectId, rest } = resolvePositionalProject(args); await demoteUser(projectId, rest[0]); break; }
     default:

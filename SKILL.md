@@ -790,7 +790,6 @@ Prototype uses testnet tokens — no real money needed. With x402: Base Sepolia 
 - Day +104 → `purged`: full cascade runs (schema dropped, Lambdas deleted, mailbox tombstoned); subdomain becomes claimable again 14 days later
 - Renewing or upgrading the tier at any point during grace reactivates the project to `active` and clears all timers in one transaction (use `renew_project` or `set_tier`)
 - Payment endpoints (tiers, billing, webhooks, faucet) are never gated, so renewal always works during grace
-- Pinned projects bypass the state machine entirely
 
 **Schema isolation:** Each project runs in its own Postgres schema. Cross-schema access is blocked.
 

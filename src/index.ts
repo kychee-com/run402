@@ -53,7 +53,6 @@ import { deleteSecretSchema, handleDeleteSecret } from "./tools/delete-secret.js
 // New tools — subdomains & projects
 import { listSubdomainsSchema, handleListSubdomains } from "./tools/list-subdomains.js";
 import { deleteProjectSchema, handleDeleteProject } from "./tools/delete-project.js";
-import { pinProjectSchema, handlePinProject } from "./tools/pin-project.js";
 
 // New tools — user role management
 import { promoteUserSchema, handlePromoteUser } from "./tools/promote-user.js";
@@ -472,13 +471,6 @@ server.tool(
 );
 
 // ─── Admin tools ─────────────────────────────────────────────────────────────
-
-server.tool(
-  "pin_project",
-  "Pin a project so it is not garbage-collected or expired. Requires admin access.",
-  pinProjectSchema,
-  async (args) => handlePinProject(args),
-);
 
 server.tool(
   "promote_user",

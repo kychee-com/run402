@@ -2,7 +2,7 @@
  * `projects` namespace — project lifecycle, introspection, and admin.
  *
  * Covers:
- *   - remote: provision, delete, list, getUsage, getSchema, setupRls, pin, getQuote
+ *   - remote: provision, delete, list, getUsage, getSchema, setupRls, getQuote
  *   - local:  info, keys, use (require provider support for persistence methods)
  */
 
@@ -11,7 +11,6 @@ import type { ProjectKeys } from "../credentials.js";
 import { ProjectNotFound, Run402Error } from "../errors.js";
 import type {
   ListProjectsResult,
-  PinResult,
   ProjectInfo,
   ProvisionOptions,
   ProvisionResult,
@@ -160,21 +159,6 @@ export class Projects {
       headers: { Authorization: `Bearer ${keys.service_key}` },
       body,
       context: "setting up RLS",
-    });
-  }
-
-  /**
-   * Pin a project so it is not garbage-collected or expired. Requires
-   * admin-level credentials (operator-only in production).
-   */
-  async pin(id: string): Promise<PinResult> {
-    const keys = await this.client.getProject(id);
-    if (!keys) throw new ProjectNotFound(id, "pinning project");
-
-    return this.client.request<PinResult>(`/projects/v1/admin/${id}/pin`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${keys.service_key}` },
-      context: "pinning project",
     });
   }
 
