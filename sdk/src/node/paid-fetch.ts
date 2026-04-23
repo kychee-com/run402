@@ -96,14 +96,18 @@ export async function setupPaidFetch(): Promise<FetchFn | null> {
     );
 
     if (mainnetBalance > 0 || sepoliaBalance > 0) {
+      // Compare against the requested amount, not > 0. A chain with dust below
+      // the request amount would otherwise be picked by x402Client and fail
+      // at settlement (silent 402 leak when dust sits on one chain and funds
+      // sit on another).
       client.registerPolicy((_version, reqs) => {
-        const funded = reqs.filter((r) => {
-          const net = (r as { network?: string }).network;
-          if (net === "eip155:8453") return mainnetBalance > 0;
-          if (net === "eip155:84532") return sepoliaBalance > 0;
+        return reqs.filter((r) => {
+          const typed = r as { network?: string; amount?: string };
+          const required = Number(typed.amount ?? 0);
+          if (typed.network === "eip155:8453") return mainnetBalance >= required;
+          if (typed.network === "eip155:84532") return sepoliaBalance >= required;
           return false;
         });
-        return funded.length > 0 ? funded : reqs;
       });
     }
 
