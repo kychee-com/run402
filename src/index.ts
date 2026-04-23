@@ -475,7 +475,7 @@ server.tool(
 
 server.tool(
   "pin_project",
-  "Pin a project so it is not garbage-collected or expired. Requires admin access.",
+  "Pin a project so it is not garbage-collected or expired. Admin only — requires run402 platform admin auth; project owners authenticating with service_key or SIWX will receive 403 admin_required. Not a self-service command for regular users.",
   pinProjectSchema,
   async (args) => handlePinProject(args),
 );

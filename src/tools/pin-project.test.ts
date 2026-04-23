@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { handlePinProject } from "./pin-project.js";
+import { handlePinProject, pinProjectSchema } from "./pin-project.js";
 
 const originalFetch = globalThis.fetch;
 let tempDir: string;
@@ -69,5 +69,19 @@ describe("pin_project tool", () => {
     const result = await handlePinProject({ project_id: "proj-001" });
     assert.equal(result.isError, true);
     assert.ok(result.content[0]!.text.includes("500"));
+  });
+
+  // GH-103: The server-side /projects/v1/admin/:id/pin endpoint is admin-only
+  // and rejects project-owner service_key / SIWX auth with 403 admin_required.
+  // The Zod project_id description must surface this constraint so the LLM
+  // does not misadvertise the tool to project owners.
+  it("schema describes pin as admin-only (GH-103)", () => {
+    const descr = (pinProjectSchema.project_id as { description?: string })
+      .description ?? "";
+    assert.match(
+      descr,
+      /admin/i,
+      `pinProjectSchema.project_id description should note admin-only; got: ${descr}`,
+    );
   });
 });
