@@ -1,6 +1,7 @@
 node_modules/
 dist/
 cli/core-dist/
+cli/sdk/
 sdk/core-dist/
 *.tgz
 .claude/worktrees/

@@ -7,7 +7,7 @@
  * RUN402_API_BASE between runs.
  */
 
-import { run402 } from "../../sdk/dist/node/index.js";
+import { run402 } from "../sdk/dist/node/index.js";
 
 export function getSdk() {
   return run402();
