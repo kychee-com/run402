@@ -10,7 +10,7 @@ Subcommands:
   status                Show current tier (tier name, status, expiry)
   set <tier>            Subscribe, renew, or upgrade (pays via x402)
 
-Tiers: prototype ($0.10/7d), hobby ($5/30d), team ($20/30d)
+Tiers: prototype ($0.10/7d, free with testnet faucet), hobby ($5/30d), team ($20/30d)
 
 The server auto-detects the action based on your allowance state:
   - No tier or expired  → subscribe

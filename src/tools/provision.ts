@@ -8,7 +8,7 @@ export const provisionSchema = {
   tier: z
     .enum(["prototype", "hobby", "team"])
     .default("prototype")
-    .describe("Database tier: prototype ($0.10/7d), hobby ($5/30d), team ($20/30d)"),
+    .describe("Database tier: prototype ($0.10/7d, free with testnet faucet), hobby ($5/30d), team ($20/30d)"),
   name: z
     .string()
     .optional()

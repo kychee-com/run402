@@ -34,7 +34,7 @@ You have 10 tools available through the `run402-mcp` server.
 Provision a new Postgres database. Handles x402 payment negotiation. Saves credentials locally.
 
 **Parameters:**
-- `tier` (optional, default: `"prototype"`) — `"prototype"` ($0.10, 7 days), `"hobby"` ($5, 30 days), or `"team"` ($20, 30 days)
+- `tier` (optional, default: `"prototype"`) — `"prototype"` ($0.10, 7 days — free with testnet USDC from `run402 allowance fund`), `"hobby"` ($5, 30 days), or `"team"` ($20, 30 days)
 - `name` (optional) — Human-readable project name. Auto-generated if omitted.
 
 **Returns on success:**

@@ -3,7 +3,7 @@ import { getSdk } from "../sdk.js";
 import { mapSdkError } from "../errors.js";
 
 export const tierCheckoutSchema = {
-  tier: z.enum(["prototype", "hobby", "team"]).describe("Tier name: prototype ($0.10/7d), hobby ($5/30d), team ($20/30d)"),
+  tier: z.enum(["prototype", "hobby", "team"]).describe("Tier name: prototype ($0.10/7d, free with testnet faucet), hobby ($5/30d), team ($20/30d)"),
   email: z.string().optional().describe("Email address (for email-based accounts)"),
   wallet: z.string().optional().describe("Wallet address (for wallet-based accounts)"),
 };
