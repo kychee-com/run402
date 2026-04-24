@@ -229,6 +229,35 @@ deploy_site(name: "my-app", files: [
 
 SPA fallback: paths without file extensions (e.g. `/about`) serve `index.html`. Static assets are served with correct Content-Type headers. Max 50 MB per deployment.
 
+### deploy_site_dir
+
+Deploy a static site from a **local directory**. The MCP/CLI walks the directory on the caller's host, auto-detects binary vs. UTF-8 files (base64-encoding binaries), and builds the deployment manifest for you. This is the "directory in, URL out" helper — agents should prefer this over `deploy_site` whenever they have a directory path rather than a pre-built manifest.
+
+**Parameters:**
+- `project` (required) — Project ID to link this deployment to
+- `dir` (required) — Local directory path (relative or absolute)
+- `target` (optional) — Deployment target (e.g. `"production"`)
+- `inherit` (optional) — If `true`, copy unchanged files from the previous deployment server-side (faster incremental redeploys)
+
+**Walk behavior:**
+- Recurses into subdirectories
+- Skips `.git/`, `node_modules/`, and `.DS_Store` entries at every depth
+- UTF-8-decodable files are inlined as text; everything else is base64-encoded
+- Symlinks cause an error (not followed, to avoid cycles and surprise)
+- Manifest paths use forward slashes regardless of host OS
+
+**Returns on success:** `deployment_id` and `url`, same shape as `deploy_site`.
+
+**Size limit:** Practical cap is ~100 MB (inline JSON payload). For larger sites, use `bundle_deploy` with a pre-built manifest or wait for blob-backed deploys.
+
+**Examples:**
+```
+deploy_site_dir(project: "prj_abc", dir: "./my-site")
+deploy_site_dir(project: "prj_abc", dir: "./dist", target: "production", inherit: true)
+```
+
+Free with active tier. Requires allowance auth.
+
 ### deploy_function
 
 Deploy a serverless function (Node 22) to a project. Functions are invoked via HTTP at `/functions/v1/:name`.

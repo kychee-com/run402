@@ -47,3 +47,12 @@ export class NetworkError extends Run402Error {
     this.cause = cause;
   }
 }
+
+/** Local/filesystem error — input validation, missing path, unreadable dir. No HTTP involved. */
+export class LocalError extends Run402Error {
+  readonly cause?: unknown;
+  constructor(message: string, context: string, cause?: unknown) {
+    super(message, null, null, context);
+    if (cause !== undefined) this.cause = cause;
+  }
+}

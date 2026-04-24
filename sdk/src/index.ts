@@ -103,6 +103,7 @@ export {
   Unauthorized,
   ApiError,
   NetworkError,
+  LocalError,
 } from "./errors.js";
 export type { CredentialsProvider, ProjectKeys } from "./credentials.js";
 export type { RequestOptions, Client } from "./kernel.js";

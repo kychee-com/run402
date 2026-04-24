@@ -1563,6 +1563,36 @@ describe("CLI e2e happy path", () => {
     assert.ok(captured().includes("dpl_test456"), "should return deployment id");
   });
 
+  it("sites deploy-dir", async () => {
+    const { run } = await import("./cli/lib/sites.mjs");
+    const siteDir = join(tempDir, "site-from-dir");
+    const { writeFileSync: wf, mkdirSync: md } = await import("node:fs");
+    md(siteDir, { recursive: true });
+    wf(join(siteDir, "index.html"), "<h1>From dir</h1>");
+    wf(join(siteDir, "style.css"), "body { color: blue; }");
+    captureStart();
+    await run("deploy-dir", [siteDir, "--project", "prj_test123"]);
+    captureStop();
+    assert.ok(captured().includes("dpl_test456"), "should return deployment id from dir");
+    assert.ok(captured().includes("\"status\": \"ok\""), "should emit JSON envelope with status ok");
+  });
+
+  it("sites deploy-dir fails on missing directory", async () => {
+    const { run } = await import("./cli/lib/sites.mjs");
+    const missing = join(tempDir, "does-not-exist-" + Date.now());
+    let threw = null;
+    captureStart();
+    try {
+      await run("deploy-dir", [missing, "--project", "prj_test123"]);
+    } catch (e) {
+      threw = e;
+    } finally {
+      captureStop();
+    }
+    assert.ok(threw && /process\.exit\(1\)/.test(threw.message),
+      `should exit 1 when dir is missing, got: ${threw?.message}`);
+  });
+
   it("sites status", async () => {
     const { run } = await import("./cli/lib/sites.mjs");
     captureStart();

@@ -9,6 +9,7 @@ import { restQuerySchema, handleRestQuery } from "./tools/rest-query.js";
 import { uploadFileSchema, handleUploadFile } from "./tools/upload-file.js";
 import { setTierSchema, handleSetTier } from "./tools/set-tier.js";
 import { deploySiteSchema, handleDeploySite } from "./tools/deploy-site.js";
+import { deploySiteDirSchema, handleDeploySiteDir } from "./tools/deploy-site-dir.js";
 import { claimSubdomainSchema, handleClaimSubdomain } from "./tools/subdomain.js";
 import { deleteSubdomainSchema, handleDeleteSubdomain } from "./tools/subdomain.js";
 import { deployFunctionSchema, handleDeployFunction } from "./tools/deploy-function.js";
@@ -351,6 +352,13 @@ server.tool(
   "Deploy a static site (HTML/CSS/JS). Files are uploaded to S3 and served via CloudFront at a unique URL. Free with active tier.",
   deploySiteSchema,
   async (args) => handleDeploySite(args),
+);
+
+server.tool(
+  "deploy_site_dir",
+  "Deploy a static site from a local directory. Walks the directory, auto-detects binary files, base64-encodes them, and uploads the manifest. Files named .git, node_modules, or .DS_Store are skipped. Symlinks are rejected. Practical size limit today is ~100 MB — use `deploy_site` with a pre-built manifest if you need finer control, or expect a future blob-backed path for larger sites. Free with active tier.",
+  deploySiteDirSchema,
+  async (args) => handleDeploySiteDir(args),
 );
 
 server.tool(

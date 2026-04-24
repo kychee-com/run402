@@ -8,11 +8,11 @@
  * the cached apiBase and credentials provider.
  */
 
-import { run402 as createNodeSdk, type Run402 } from "../sdk/dist/node/index.js";
+import { run402 as createNodeSdk, type NodeRun402 } from "../sdk/dist/node/index.js";
 
-let cached: Run402 | null = null;
+let cached: NodeRun402 | null = null;
 
-export function getSdk(): Run402 {
+export function getSdk(): NodeRun402 {
   if (!cached) cached = createNodeSdk();
   return cached;
 }

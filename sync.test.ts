@@ -185,6 +185,7 @@ const SURFACE: Capability[] = [
 
   // ── Sites / Deployments ──────────────────────────────────────────────────
   { id: "deploy_site",       endpoint: "POST /deployments/v1",              mcp: "deploy_site",       cli: "sites:deploy",       openclaw: "sites:deploy" },
+  { id: "deploy_site_dir",   endpoint: "POST /deployments/v1",              mcp: "deploy_site_dir",   cli: "sites:deploy-dir",   openclaw: "sites:deploy-dir" },
   { id: "claim_subdomain",   endpoint: "POST /subdomains/v1",              mcp: "claim_subdomain",   cli: "subdomains:claim",   openclaw: "subdomains:claim" },
   { id: "delete_subdomain",  endpoint: "DELETE /subdomains/v1/:name",      mcp: "delete_subdomain",  cli: "subdomains:delete",  openclaw: "subdomains:delete" },
   { id: "list_subdomains",   endpoint: "GET /subdomains/v1",               mcp: "list_subdomains",   cli: "subdomains:list",    openclaw: "subdomains:list" },
@@ -363,6 +364,7 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
 
   // Sites / Subdomains
   deploy_site: "sites.deploy",
+  deploy_site_dir: "sites.deployDir", // Node-only SDK helper (walks fs, delegates to sites.deploy)
   claim_subdomain: "subdomains.claim",
   delete_subdomain: "subdomains.delete",
   list_subdomains: "subdomains.list",
@@ -516,6 +518,27 @@ async function listSdkMethods(): Promise<string[]> {
       }
     }
   }
+
+  // Node-only augmentations (methods that live in @run402/sdk/node but not in
+  // the isomorphic entry). These are added to a namespace at factory time —
+  // e.g. NodeSites adds deployDir on top of Sites. Walk their class
+  // prototypes directly and expose them as "namespace.method" so they can be
+  // referenced from SDK_BY_CAPABILITY like any other method.
+  const nodeAugments: Array<{ namespace: string; modulePath: string; exportName: string }> = [
+    { namespace: "sites", modulePath: "./sdk/dist/node/sites-node.js", exportName: "NodeSites" },
+  ];
+  for (const aug of nodeAugments) {
+    const mod = (await import(aug.modulePath)) as Record<string, unknown>;
+    const ctor = mod[aug.exportName] as { prototype: Record<string, unknown> } | undefined;
+    if (!ctor) continue;
+    for (const name of Object.getOwnPropertyNames(ctor.prototype)) {
+      if (name === "constructor") continue;
+      if (typeof ctor.prototype[name] !== "function") continue;
+      const path = `${aug.namespace}.${name}`;
+      if (!methods.includes(path)) methods.push(path);
+    }
+  }
+
   return methods.sort();
 }
 
