@@ -8,7 +8,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
 import { Run402 } from "../index.js";
-import { ProjectNotFound, PaymentRequired } from "../errors.js";
+import { ProjectNotFound, PaymentRequired, Run402Error } from "../errors.js";
 import type { CredentialsProvider } from "../credentials.js";
 
 interface FetchCall {
@@ -185,7 +185,7 @@ describe("projects.delete", () => {
 });
 
 describe("projects.list", () => {
-  it("GETs /wallets/v1/:wallet/projects without auth", async () => {
+  it("GETs /wallets/v1/:wallet/projects without auth when wallet is explicit", async () => {
     const { fetch, calls } = mockFetch(() =>
       jsonResponse({
         wallet: "0xabc",
@@ -201,6 +201,80 @@ describe("projects.list", () => {
     // Public endpoint — no SIWX header injected.
     assert.equal(calls[0]!.headers["SIGN-IN-WITH-X"], undefined);
     assert.deepEqual(result, { wallet: "0xabc", projects: [] });
+  });
+
+  it("falls back to readAllowance().address when wallet is omitted", async () => {
+    const { fetch, calls } = mockFetch(() =>
+      jsonResponse({ wallet: "0xfeed", projects: [] }),
+    );
+    const creds = makeCreds({
+      async readAllowance() {
+        return { address: "0xFeeD", privateKey: "0xpriv" };
+      },
+    });
+    const sdk = makeSdk(creds, fetch);
+    const result = await sdk.projects.list();
+
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0]!.url, "https://api.example.test/wallets/v1/0xfeed/projects");
+    assert.equal(calls[0]!.headers["SIGN-IN-WITH-X"], undefined);
+    assert.deepEqual(result, { wallet: "0xfeed", projects: [] });
+  });
+
+  it("throws Run402Error when wallet omitted and provider lacks readAllowance", async () => {
+    const { fetch, calls } = mockFetch(() => jsonResponse({}));
+    const creds = makeCreds(); // no readAllowance
+    const sdk = makeSdk(creds, fetch);
+
+    await assert.rejects(
+      sdk.projects.list(),
+      (err: unknown) =>
+        err instanceof Run402Error &&
+        err.context === "listing projects" &&
+        /pass an explicit wallet/i.test(err.message) &&
+        /@run402\/sdk\/node/.test(err.message),
+    );
+    assert.equal(calls.length, 0);
+  });
+
+  it("throws Run402Error when readAllowance returns null", async () => {
+    const { fetch, calls } = mockFetch(() => jsonResponse({}));
+    const creds = makeCreds({
+      async readAllowance() {
+        return null;
+      },
+    });
+    const sdk = makeSdk(creds, fetch);
+
+    await assert.rejects(
+      sdk.projects.list(),
+      (err: unknown) =>
+        err instanceof Run402Error &&
+        err.context === "listing projects" &&
+        /run402 allowance create/.test(err.message) &&
+        /pass an explicit wallet/i.test(err.message),
+    );
+    assert.equal(calls.length, 0);
+  });
+
+  it("uses the explicit wallet when provided, even if local allowance differs", async () => {
+    const { fetch, calls } = mockFetch(() =>
+      jsonResponse({ wallet: "0xother", projects: [] }),
+    );
+    let readAllowanceCalls = 0;
+    const creds = makeCreds({
+      async readAllowance() {
+        readAllowanceCalls++;
+        return { address: "0xLocal", privateKey: "0xpriv" };
+      },
+    });
+    const sdk = makeSdk(creds, fetch);
+    const result = await sdk.projects.list("0xOther");
+
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0]!.url, "https://api.example.test/wallets/v1/0xother/projects");
+    assert.equal(readAllowanceCalls, 0);
+    assert.deepEqual(result, { wallet: "0xother", projects: [] });
   });
 });
 

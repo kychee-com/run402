@@ -6,6 +6,9 @@
   "bin": {
     "run402": "cli.mjs"
   },
+  "imports": {
+    "#sdk/node": "./sdk/dist/node/index.js"
+  },
   "scripts": {
     "prepack": "mkdir -p core-dist sdk/dist sdk/core-dist && cp ../core/dist/*.js core-dist/ && cp -R ../sdk/dist/. sdk/dist/ && cp ../sdk/core-dist/*.js sdk/core-dist/"
   },

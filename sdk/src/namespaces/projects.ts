@@ -84,9 +84,40 @@ export class Projects {
   /**
    * List active projects for a wallet address. Public endpoint — no auth
    * required, no payment.
+   *
+   * When `wallet` is omitted, the SDK resolves it from the credential
+   * provider's local allowance via `credentials.readAllowance()`. This mirrors
+   * the optional-argument shape of {@link Allowance.faucet}.
+   *
+   * @throws {Run402Error} with `context: "listing projects"` when the
+   *   argument is omitted and the provider does not implement
+   *   `readAllowance` (typical for sandbox providers), or when
+   *   `readAllowance()` returns `null` (no local allowance configured).
    */
-  async list(wallet: string): Promise<ListProjectsResult> {
-    const w = wallet.toLowerCase();
+  async list(wallet?: string): Promise<ListProjectsResult> {
+    let resolvedWallet = wallet;
+    if (resolvedWallet === undefined) {
+      const reader = this.client.credentials.readAllowance;
+      if (!reader) {
+        throw new (class extends Run402Error {})(
+          "projects.list() with no wallet requires a credential provider that implements readAllowance(). Pass an explicit wallet, or use @run402/sdk/node.",
+          null,
+          null,
+          "listing projects",
+        );
+      }
+      const data = await reader.call(this.client.credentials);
+      if (!data) {
+        throw new (class extends Run402Error {})(
+          "No local allowance configured. Run `run402 allowance create`, or pass an explicit wallet.",
+          null,
+          null,
+          "listing projects",
+        );
+      }
+      resolvedWallet = data.address;
+    }
+    const w = resolvedWallet.toLowerCase();
     return this.client.request<ListProjectsResult>(`/wallets/v1/${w}/projects`, {
       context: "listing projects",
       withAuth: false,
