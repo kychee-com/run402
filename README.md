@@ -37,9 +37,9 @@ import { run402 } from "@run402/sdk/node";
 const r = run402();
 const project = await r.projects.provision({ tier: "prototype" });
 await r.blobs.put(project.project_id, "hello.txt", { content: "hi" });
-await r.sites.deploy(project.project_id, [
-  { file: "index.html", data: "<h1>hello</h1>" },
-]);
+await r.sites.deploy(project.project_id, {
+  files: [{ file: "index.html", data: "<h1>hello</h1>" }],
+});
 ```
 
 17 namespaces: `projects`, `blobs`, `functions`, `secrets`, `subdomains`, `domains`, `sites`, `service`, `tier`, `allowance`, `ai`, `auth`, `senderDomain`, `billing`, `apps`, `email` (+ `webhooks`), `contracts`, `admin`.

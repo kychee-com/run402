@@ -106,7 +106,8 @@ async function deploy(args) {
   allowanceAuthHeaders("/deployments/v1");
 
   try {
-    const data = await getSdk().sites.deploy(projectId, manifest.files, {
+    const data = await getSdk().sites.deploy(projectId, {
+      files: manifest.files,
       target: opts.target,
       inherit: opts.inherit,
     });

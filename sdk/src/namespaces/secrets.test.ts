@@ -132,7 +132,7 @@ describe("domains (custom)", () => {
 describe("sites", () => {
   it("deploy POSTs project+files", async () => {
     const { fetch, calls } = mockFetch(() => json({ deployment_id: "dpl_1", url: "https://dpl_1.run402.com" }));
-    await sdk(fetch).sites.deploy("prj_k", [{ file: "index.html", data: "<p>hi</p>" }]);
+    await sdk(fetch).sites.deploy("prj_k", { files: [{ file: "index.html", data: "<p>hi</p>" }] });
     assert.equal(calls[0]!.url, "https://api.test/deployments/v1");
     const body = JSON.parse(calls[0]!.body as string);
     assert.equal(body.project, "prj_k");
@@ -142,7 +142,7 @@ describe("sites", () => {
 
   it("deploy includes inherit when set", async () => {
     const { fetch, calls } = mockFetch(() => json({ deployment_id: "d", url: "u" }));
-    await sdk(fetch).sites.deploy("prj_k", [{ file: "i.html", data: "x" }], { inherit: true, target: "prod" });
+    await sdk(fetch).sites.deploy("prj_k", { files: [{ file: "i.html", data: "x" }], inherit: true, target: "prod" });
     const body = JSON.parse(calls[0]!.body as string);
     assert.equal(body.inherit, true);
     assert.equal(body.target, "prod");

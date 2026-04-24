@@ -17,6 +17,8 @@ export interface SiteFile {
 }
 
 export interface SiteDeployOptions {
+  /** Files to deploy. Paths are relative to the site root. */
+  files: SiteFile[];
   /** Deployment target label, e.g. `"production"`. */
   target?: string;
   /**
@@ -49,12 +51,8 @@ export class Sites {
    * (x402 in Node when a tier purchase is required; typically free with an
    * active tier).
    */
-  async deploy(
-    project: string,
-    files: SiteFile[],
-    opts: SiteDeployOptions = {},
-  ): Promise<SiteDeployResult> {
-    const body: Record<string, unknown> = { project, files };
+  async deploy(projectId: string, opts: SiteDeployOptions): Promise<SiteDeployResult> {
+    const body: Record<string, unknown> = { project: projectId, files: opts.files };
     if (opts.target !== undefined) body.target = opts.target;
     if (opts.inherit) body.inherit = true;
 

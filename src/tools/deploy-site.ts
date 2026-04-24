@@ -40,11 +40,11 @@ export async function handleDeploySite(args: {
   if ("error" in auth) return auth.error;
 
   try {
-    const body = await getSdk().sites.deploy(
-      args.project,
-      args.files as Array<{ file: string; data: string; encoding?: "utf-8" | "base64" }>,
-      { target: args.target, inherit: args.inherit },
-    );
+    const body = await getSdk().sites.deploy(args.project, {
+      files: args.files as Array<{ file: string; data: string; encoding?: "utf-8" | "base64" }>,
+      target: args.target,
+      inherit: args.inherit,
+    });
 
     // Persist the last deployment ID on the project (MCP-local side effect).
     updateProject(args.project, { last_deployment_id: body.deployment_id });
