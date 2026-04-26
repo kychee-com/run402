@@ -1,3 +1,6 @@
+import { mkdtempSync, writeFileSync, mkdirSync, rmSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { tmpdir } from "node:os";
 import { z } from "zod";
 import { getSdk } from "../sdk.js";
 import { mapSdkError } from "../errors.js";
@@ -24,29 +27,36 @@ export const deploySiteSchema = {
       }),
     )
     .describe("Array of files to deploy. Must include at least index.html."),
-  inherit: z
-    .boolean()
-    .optional()
-    .describe("If true, copy unchanged files from the previous deployment. Only include changed/new files in the files array."),
 };
 
 export async function handleDeploySite(args: {
   project: string;
   target?: string;
   files: Array<{ file: string; data: string; encoding?: string }>;
-  inherit?: boolean;
 }): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
-  const auth = requireAllowanceAuth("/deployments/v1");
+  const auth = requireAllowanceAuth("/deploy/v1/plan");
   if ("error" in auth) return auth.error;
 
+  // The SDK's inline-bytes overload is removed in v1.32 — every deploy goes
+  // through the plan/commit transport, which reads from a directory. Stage
+  // the inline files in a temp dir, run deployDir, then clean up.
+  const stage = mkdtempSync(join(tmpdir(), "run402-deploy-stage-"));
   try {
-    const body = await getSdk().sites.deploy(args.project, {
-      files: args.files as Array<{ file: string; data: string; encoding?: "utf-8" | "base64" }>,
+    for (const f of args.files) {
+      const target = join(stage, f.file);
+      mkdirSync(dirname(target), { recursive: true });
+      const buf = (f.encoding ?? "utf-8") === "base64"
+        ? Buffer.from(f.data, "base64")
+        : Buffer.from(f.data, "utf-8");
+      writeFileSync(target, buf);
+    }
+
+    const body = await getSdk().sites.deployDir({
+      project: args.project,
+      dir: stage,
       target: args.target,
-      inherit: args.inherit,
     });
 
-    // Persist the last deployment ID on the project (MCP-local side effect).
     updateProject(args.project, { last_deployment_id: body.deployment_id });
 
     const lines = [
@@ -63,5 +73,7 @@ export async function handleDeploySite(args: {
     return { content: [{ type: "text", text: lines.join("\n") }] };
   } catch (err) {
     return mapSdkError(err, "deploying site");
+  } finally {
+    rmSync(stage, { recursive: true, force: true });
   }
 }

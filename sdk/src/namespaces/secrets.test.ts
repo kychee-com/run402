@@ -130,24 +130,9 @@ describe("domains (custom)", () => {
 });
 
 describe("sites", () => {
-  it("deploy POSTs project+files", async () => {
-    const { fetch, calls } = mockFetch(() => json({ deployment_id: "dpl_1", url: "https://dpl_1.run402.com" }));
-    await sdk(fetch).sites.deploy("prj_k", { files: [{ file: "index.html", data: "<p>hi</p>" }] });
-    assert.equal(calls[0]!.url, "https://api.test/deployments/v1");
-    const body = JSON.parse(calls[0]!.body as string);
-    assert.equal(body.project, "prj_k");
-    assert.equal(body.files.length, 1);
-    assert.equal(body.inherit, undefined);
-  });
-
-  it("deploy includes inherit when set", async () => {
-    const { fetch, calls } = mockFetch(() => json({ deployment_id: "d", url: "u" }));
-    await sdk(fetch).sites.deploy("prj_k", { files: [{ file: "i.html", data: "x" }], inherit: true, target: "prod" });
-    const body = JSON.parse(calls[0]!.body as string);
-    assert.equal(body.inherit, true);
-    assert.equal(body.target, "prod");
-  });
-
+  // Inline-bytes `sites.deploy(files)` was removed in v1.32 (see sdk/src/node/
+  // sites-node.test.ts for plan/commit transport coverage). The isomorphic
+  // surface only retains the public read-only `getDeployment` helper.
   it("getDeployment GETs public endpoint with no auth", async () => {
     const { fetch, calls } = mockFetch(() => json({ id: "dpl_1", name: "site", url: "u", status: "active", files_count: 3, total_size: 1024 }));
     await sdk(fetch).sites.getDeployment("dpl_1");

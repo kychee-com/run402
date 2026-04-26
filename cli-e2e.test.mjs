@@ -266,10 +266,26 @@ function mockFetch(input, init) {
     }));
   }
 
-  // Deployments (sites)
-  if (path === "/deployments/v1" && method === "POST") {
+  // Deployments (sites) — v1.32 plan/commit transport
+  if (path === "/deploy/v1/plan" && method === "POST") {
+    // Mark every file in the inbound manifest as `present: true` so the
+    // SDK skips S3 PUTs and goes straight to commit. This keeps the e2e
+    // tests focused on CLI/SDK wiring without needing an S3 mock.
+    const files = (body?.manifest?.files ?? []).map((f) => ({
+      sha256: f.sha256,
+      present: true,
+      size: f.size,
+      content_type: f.content_type,
+    }));
+    return Promise.resolve(json({ plan_id: "plan_test", files }));
+  }
+  if (path === "/deploy/v1/commit" && method === "POST") {
     return Promise.resolve(json({
-      deployment_id: "dpl_test456", url: "https://dpl_test456.sites.run402.com",
+      deployment_id: "dpl_test456",
+      url: "https://dpl_test456.sites.run402.com",
+      status: "applied",
+      bytes_total: 0,
+      bytes_uploaded: 0,
     }));
   }
   if (path.match(/^\/deployments\/v1\//) && method === "GET") {

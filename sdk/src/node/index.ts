@@ -14,6 +14,10 @@
  * const project = await r.projects.provision({ tier: "prototype" });
  * await r.sites.deployDir({ project: project.project_id, dir: "./my-site" });
  * ```
+ *
+ * `deployDir` uses the v1.32 plan/commit transport and only uploads the
+ * bytes the gateway doesn't already have. Re-deploying an unchanged tree
+ * issues no S3 PUTs.
  */
 
 import { getApiBase } from "../../core-dist/config.js";

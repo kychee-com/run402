@@ -349,14 +349,14 @@ server.tool(
 
 server.tool(
   "deploy_site",
-  "Deploy a static site (HTML/CSS/JS). Files are uploaded to S3 and served via CloudFront at a unique URL. Free with active tier.",
+  "Deploy a static site (HTML/CSS/JS) from inline file bytes. Files are staged to a temp directory, then uploaded via the v1.32 plan/commit transport — only bytes the gateway doesn't already have are PUT. Served at a unique URL via CloudFront. Free with active tier.",
   deploySiteSchema,
   async (args) => handleDeploySite(args),
 );
 
 server.tool(
   "deploy_site_dir",
-  "Deploy a static site from a local directory. Walks the directory, auto-detects binary files, base64-encodes them, and uploads the manifest. Files named .git, node_modules, or .DS_Store are skipped. Symlinks are rejected. Practical size limit today is ~100 MB — use `deploy_site` with a pre-built manifest if you need finer control, or expect a future blob-backed path for larger sites. Free with active tier.",
+  "Deploy a static site from a local directory. Walks the tree, hashes each file, and uploads only the bytes the gateway doesn't already have via the v1.32 plan/commit transport. Files named .git, node_modules, or .DS_Store are skipped; symlinks are rejected. Re-deploying an unchanged tree issues no S3 PUTs. Free with active tier.",
   deploySiteDirSchema,
   async (args) => handleDeploySiteDir(args),
 );

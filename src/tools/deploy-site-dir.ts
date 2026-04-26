@@ -11,27 +11,20 @@ export const deploySiteDirSchema = {
   dir: z
     .string()
     .describe(
-      "Local directory to deploy. The server walks this directory, auto-detects binary files, and builds the deployment manifest. Files named .git, node_modules, or .DS_Store are skipped. Symlinks are rejected. Practical size limit today is ~100 MB (inline JSON payload) — use smaller sites or wait for blob-backed deploys for larger.",
+      "Local directory to deploy. The SDK walks this directory, hashes each file, and uploads only bytes the gateway doesn't already have via the v1.32 plan/commit transport. Files named .git, node_modules, or .DS_Store are skipped. Symlinks are rejected.",
     ),
   target: z
     .string()
     .optional()
     .describe("Deployment target (e.g. 'production'). Tracked in DB for future alias support."),
-  inherit: z
-    .boolean()
-    .optional()
-    .describe(
-      "If true, copy unchanged files from the previous deployment server-side. Useful for faster incremental deploys when most files are the same.",
-    ),
 };
 
 export async function handleDeploySiteDir(args: {
   project: string;
   dir: string;
   target?: string;
-  inherit?: boolean;
 }): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
-  const auth = requireAllowanceAuth("/deployments/v1");
+  const auth = requireAllowanceAuth("/deploy/v1/plan");
   if ("error" in auth) return auth.error;
 
   try {
@@ -39,20 +32,28 @@ export async function handleDeploySiteDir(args: {
       project: args.project,
       dir: args.dir,
       target: args.target,
-      inherit: args.inherit,
     });
 
-    // Persist the last deployment ID on the project (MCP-local side effect).
     updateProject(args.project, { last_deployment_id: body.deployment_id });
+
+    const rows = [
+      `| deployment_id | \`${body.deployment_id}\` |`,
+      `| url | ${body.url} |`,
+      `| source | \`${args.dir}\` |`,
+    ];
+    if (body.bytes_total !== undefined) {
+      rows.push(`| bytes_total | ${body.bytes_total} |`);
+    }
+    if (body.bytes_uploaded !== undefined) {
+      rows.push(`| bytes_uploaded | ${body.bytes_uploaded} |`);
+    }
 
     const lines = [
       `## Site Deployed`,
       ``,
       `| Field | Value |`,
       `|-------|-------|`,
-      `| deployment_id | \`${body.deployment_id}\` |`,
-      `| url | ${body.url} |`,
-      `| source | \`${args.dir}\` |`,
+      ...rows,
       ``,
       `The site is live at **${body.url}**`,
     ];

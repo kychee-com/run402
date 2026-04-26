@@ -363,8 +363,8 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   delete_secret: "secrets.delete",
 
   // Sites / Subdomains
-  deploy_site: "sites.deploy",
-  deploy_site_dir: "sites.deployDir", // Node-only SDK helper (walks fs, delegates to sites.deploy)
+  deploy_site: null, // v1.32: inline-bytes overload removed; MCP stages files to a temp dir and composes deployDir
+  deploy_site_dir: "sites.deployDir", // Node-only SDK helper: walks fs + plan/commit transport
   claim_subdomain: "subdomains.claim",
   delete_subdomain: "subdomains.delete",
   list_subdomains: "subdomains.list",
