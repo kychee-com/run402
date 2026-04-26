@@ -449,12 +449,13 @@ const complete = await fetch(`https://api.run402.com/storage/v1/uploads/${init.u
 `run402 storage <upload|download|delete|list>` still works (50 MB cap, prints a deprecation banner on stderr) but is being retired. Use `run402 blob` above for all new code — bucket names map to the first path segment of the new key space, so migration is invisible. See https://run402.com/docs/blob#migration.
 
 ### sites
-- `run402 sites deploy --manifest <file> [--project <id>] [--inherit]`
+- `run402 sites deploy --manifest <file> [--project <id>] [--target <target>]`
+- `run402 sites deploy-dir <path> [--project <id>] [--target <target>]`
 - `run402 sites status <deployment_id>`
 
 `--project` defaults to the active project. Manifest: `{"files":[{"file":"index.html","data":"..."},{"file":"style.css","data":"..."}]}`. Must include `index.html`. Free with active tier. If the project already has a subdomain, redeploying auto-reassigns it to the new deployment (response includes `subdomain_urls`).
 
-**Incremental deploy**: Use `--inherit` to copy unchanged files from the previous deployment. Only include changed/new files in the manifest. The server copies the rest via S3 CopyObject (instant). For `run402 deploy`, add `"inherit": true` to the manifest JSON.
+**Plan/commit transport (v1.32+)**: Both `sites deploy` and `sites deploy-dir` hash each file locally and only PUT bytes the gateway doesn't already have. Re-deploying an unchanged tree returns immediately with `bytes_uploaded: 0`. The previous `--inherit` flag is removed (passing it exits 1 with a deprecation message) — incremental upload now happens automatically.
 
 ### subdomains
 - `run402 subdomains claim <name> [--deployment <id>] [--project <id>]`

@@ -193,11 +193,10 @@ Updates the local keystore with the new expiry date.
 
 ### deploy_site
 
-Deploy a static site (HTML/CSS/JS/images). Files are uploaded to S3 and served via CloudFront at a unique URL.
+Deploy a static site (HTML/CSS/JS/images) from inline file bytes. Files are staged to a temp directory, hashed, and only the bytes the gateway doesn't already have are PUT to S3 (v1.32 plan/commit transport). Served via CloudFront at a unique URL.
 
 **Parameters:**
-- `name` (required) — Site name (e.g. `"family-todo"`, `"portfolio"`)
-- `project` (optional) — Project ID to link this deployment to an existing Run402 project
+- `project` (required) — Project ID to link this deployment to an existing Run402 project
 - `target` (optional) — Deployment target (e.g. `"production"`)
 - `files` (required) — Array of files to deploy:
   - `file` — File path (e.g. `"index.html"`, `"assets/logo.png"`)
@@ -207,12 +206,8 @@ Deploy a static site (HTML/CSS/JS/images). Files are uploaded to S3 and served v
 **Returns on success:**
 ```json
 {
-  "id": "dpl_1709337600000_a1b2c3",
-  "name": "family-todo",
-  "url": "https://dpl-1709337600000-a1b2c3.sites.run402.com",
-  "status": "READY",
-  "files_count": 3,
-  "total_size": 4096
+  "deployment_id": "dpl_1709337600000_a1b2c3",
+  "url": "https://dpl-1709337600000-a1b2c3.sites.run402.com"
 }
 ```
 
@@ -220,40 +215,37 @@ Free with active tier. Requires allowance auth.
 
 **Examples:**
 ```
-deploy_site(name: "my-app", files: [
+deploy_site(project: "prj_abc", files: [
   { file: "index.html", data: "<!DOCTYPE html><html>..." },
   { file: "style.css", data: "body { margin: 0; }" },
   { file: "app.js", data: "console.log('hello');" }
 ])
 ```
 
-SPA fallback: paths without file extensions (e.g. `/about`) serve `index.html`. Static assets are served with correct Content-Type headers. Max 50 MB per deployment.
+SPA fallback: paths without file extensions (e.g. `/about`) serve `index.html`. Static assets are served with correct Content-Type headers.
 
 ### deploy_site_dir
 
-Deploy a static site from a **local directory**. The MCP/CLI walks the directory on the caller's host, auto-detects binary vs. UTF-8 files (base64-encoding binaries), and builds the deployment manifest for you. This is the "directory in, URL out" helper — agents should prefer this over `deploy_site` whenever they have a directory path rather than a pre-built manifest.
+Deploy a static site from a **local directory**. The SDK walks the directory on the caller's host, hashes each file, and uploads only bytes the gateway doesn't already have via the v1.32 plan/commit transport. This is the "directory in, URL out" helper — agents should prefer this over `deploy_site` whenever they have a directory path rather than a pre-built manifest.
 
 **Parameters:**
 - `project` (required) — Project ID to link this deployment to
 - `dir` (required) — Local directory path (relative or absolute)
 - `target` (optional) — Deployment target (e.g. `"production"`)
-- `inherit` (optional) — If `true`, copy unchanged files from the previous deployment server-side (faster incremental redeploys)
 
 **Walk behavior:**
 - Recurses into subdirectories
 - Skips `.git/`, `node_modules/`, and `.DS_Store` entries at every depth
-- UTF-8-decodable files are inlined as text; everything else is base64-encoded
+- Computes per-file SHA-256 + content-type from the extension
 - Symlinks cause an error (not followed, to avoid cycles and surprise)
 - Manifest paths use forward slashes regardless of host OS
 
-**Returns on success:** `deployment_id` and `url`, same shape as `deploy_site`.
-
-**Size limit:** Practical cap is ~100 MB (inline JSON payload). For larger sites, use `bundle_deploy` with a pre-built manifest or wait for blob-backed deploys.
+**Returns on success:** `deployment_id`, `url`, plus optional `bytes_total` and `bytes_uploaded` (`bytes_uploaded` is `0` on a re-deploy of an unchanged tree).
 
 **Examples:**
 ```
 deploy_site_dir(project: "prj_abc", dir: "./my-site")
-deploy_site_dir(project: "prj_abc", dir: "./dist", target: "production", inherit: true)
+deploy_site_dir(project: "prj_abc", dir: "./dist", target: "production")
 ```
 
 Free with active tier. Requires allowance auth.
