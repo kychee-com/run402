@@ -91,7 +91,15 @@ describe("blobs.put", () => {
     });
 
     const sdk = makeSdk(fetch);
-    const result = await sdk.blobs.put("prj_known", "hello.txt", { content: "hello world\n" });
+    // Pass `immutable: false` explicitly: this test verifies the basic flow
+    // shape (init → PUT → complete) and the legacy non-immutable behavior
+    // (no SHA pre-computation, immutable: false propagated to the gateway).
+    // The v1.45 default is `immutable: true`; the dedicated default-and-
+    // tag-emitter tests below cover that path.
+    const result = await sdk.blobs.put(
+      "prj_known", "hello.txt", { content: "hello world\n" },
+      { immutable: false },
+    );
 
     assert.equal(calls.length, 3);
     assert.equal(calls[0]!.url, "https://api.example.test/storage/v1/uploads");
@@ -110,6 +118,52 @@ describe("blobs.put", () => {
     assert.equal(calls[2]!.url, "https://api.example.test/storage/v1/uploads/u_42/complete");
     assert.equal(result.key, "hello.txt");
     assert.equal(result.url, "https://cdn.test/hello.txt");
+  });
+
+  it("defaults to immutable: true (v1.45) — computes SHA + sends content-hashed flag", async () => {
+    let initBody: Record<string, unknown> | null = null;
+    const { fetch } = mockFetch((call) => {
+      if (call.url.endsWith("/storage/v1/uploads")) {
+        initBody = JSON.parse(call.body as string);
+        return json({
+          upload_id: "u_d",
+          mode: "single",
+          part_count: 1,
+          parts: [{ part_number: 1, url: "https://s3.test/u_d/p1", byte_start: 0, byte_end: 2 }],
+        });
+      }
+      if (call.url.startsWith("https://s3.test/")) {
+        return new Response("", { status: 200, headers: { etag: '"e"' } });
+      }
+      if (call.url.endsWith("/complete")) {
+        return json({
+          key: "hello.txt",
+          size_bytes: 3,
+          sha256: "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+          visibility: "public",
+          content_type: "text/plain",
+          immutable_suffix: "ba7816bf",
+          url: "https://cdn.test/hello.txt",
+          immutable_url: "https://cdn.test/hello-ba7816bf.txt",
+          cdn_url: "https://pr-abc.run402.com/_blob/hello.txt",
+          cdn_immutable_url: "https://pr-abc.run402.com/_blob/hello-ba7816bf.txt",
+        });
+      }
+      throw new Error("unexpected: " + call.url);
+    });
+    const sdk = makeSdk(fetch);
+    // No opts — relying on v1.45 defaults.
+    const asset = await sdk.blobs.put("prj_known", "hello.txt", { content: "abc" });
+    assert.equal(initBody!.immutable, true);
+    assert.equal(
+      initBody!.sha256,
+      "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+    );
+    assert.ok(asset.cdnUrl, "cdnUrl populated by default");
+    assert.ok(asset.sri, "sri populated by default");
+    // Tag emitters work without the agent ever passing { immutable: true }.
+    const tag = asset.scriptTag();
+    assert.match(tag, /integrity="sha256-/);
   });
 
   it("attaches parts with etags in multipart mode", async () => {
@@ -137,7 +191,12 @@ describe("blobs.put", () => {
       throw new Error("unexpected");
     });
     const sdk = makeSdk(fetch);
-    await sdk.blobs.put("prj_known", "multi.bin", { bytes: new Uint8Array(12) });
+    // Pin immutable: false — this test asserts on the multipart-complete
+    // shape, not on the sha-computation path.
+    await sdk.blobs.put(
+      "prj_known", "multi.bin", { bytes: new Uint8Array(12) },
+      { immutable: false },
+    );
     const completeBody = JSON.parse(calls[3]!.body as string);
     assert.deepEqual(completeBody.parts, [
       { part_number: 1, etag: '"e1"' },
@@ -393,17 +452,29 @@ describe("blobs.put — AssetRef widening (v1.45)", () => {
     const sdk = makeSdk(fetch);
     const asset = await sdk.blobs.put("prj_known", "app.js", { content: "abc" }, { immutable: true });
 
-    // Default scriptTag.
+    // Default scriptTag — emits `defer` by default (modern best practice).
     const tag = asset.scriptTag();
     assert.match(tag, /^<script /);
     assert.match(tag, /src="https:\/\/pr-abc\.run402\.com\/_blob\/app-ba7816bf\.js"/);
+    assert.match(tag, /\bdefer\b/);
     assert.match(tag, /integrity="sha256-[A-Za-z0-9+/]+={0,2}"/);
     assert.match(tag, /crossorigin/);
+    // No async by default.
+    assert.equal(/\basync\b/.test(tag), false);
 
-    // Module + defer.
+    // Explicit defer: false opts out.
+    const noDefer = asset.scriptTag({ defer: false });
+    assert.equal(/\bdefer\b/.test(noDefer), false);
+
+    // Module + explicit defer.
     const moduleTag = asset.scriptTag({ type: "module", defer: true });
     assert.match(moduleTag, /type="module"/);
-    assert.match(moduleTag, / defer /);
+    assert.match(moduleTag, /\bdefer\b/);
+
+    // async: true overrides defer (mutually exclusive per HTML spec).
+    const asyncTag = asset.scriptTag({ async: true });
+    assert.match(asyncTag, /\basync\b/);
+    assert.equal(/\bdefer\b/.test(asyncTag), false);
 
     // Default linkTag (stylesheet).
     const link = asset.linkTag();
@@ -411,18 +482,23 @@ describe("blobs.put — AssetRef widening (v1.45)", () => {
     assert.match(link, /rel="stylesheet"/);
     assert.match(link, /href="https:\/\/pr-abc\.run402\.com\/_blob\/app-ba7816bf\.js"/);
     assert.match(link, /integrity="sha256-/);
+    assert.match(link, /crossorigin/);
 
-    // Custom rel + as (preload).
+    // Custom rel + as (preload). crossorigin still emitted (required for
+    // SRI to be enforced AND for preload-fetch deduping).
     const preload = asset.linkTag({ rel: "preload", as: "font" });
     assert.match(preload, /rel="preload"/);
     assert.match(preload, /as="font"/);
+    assert.match(preload, /crossorigin/);
 
-    // imgTag with alt.
+    // imgTag — emits loading="lazy" + decoding="async" by default.
     const img = asset.imgTag("Company logo");
     assert.match(img, /^<img /);
     assert.match(img, /src="https:\/\/pr-abc\.run402\.com\/_blob\/app-ba7816bf\.js"/);
     assert.match(img, /alt="Company logo"/);
-    // No SRI on <img>.
+    assert.match(img, /loading="lazy"/);
+    assert.match(img, /decoding="async"/);
+    // No SRI on <img> per HTML spec.
     assert.equal(/integrity=/.test(img), false);
   });
 

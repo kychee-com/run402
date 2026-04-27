@@ -201,17 +201,30 @@ function buildAssetRef(
     cdn,
 
     scriptTag(opts) {
+      // Default `defer: true` — modern best practice. Defer prevents
+      // render-blocking when placed in <head> and is a no-op when placed
+      // at the end of <body> (the script runs after DOMContentLoaded
+      // either way). Pass `{ defer: false }` to opt out for the rare
+      // case requiring synchronous execution. `async` and `defer` are
+      // mutually exclusive; passing async overrides defer.
       const { url, sri } = requireImmutable("scriptTag");
       const attrs: string[] = [`src="${escapeHtmlAttr(url)}"`];
       if (opts?.type === "module") attrs.push(`type="module"`);
-      if (opts?.defer) attrs.push("defer");
-      if (opts?.async) attrs.push("async");
+      const wantsAsync = opts?.async === true;
+      const wantsDefer = opts?.defer ?? !wantsAsync;
+      if (wantsAsync) attrs.push("async");
+      else if (wantsDefer) attrs.push("defer");
       attrs.push(`integrity="${escapeHtmlAttr(sri)}"`);
       attrs.push("crossorigin");
       return `<script ${attrs.join(" ")}></script>`;
     },
 
     linkTag(opts) {
+      // Always emit crossorigin — required for SRI to actually be
+      // enforced. Without crossorigin the browser silently ignores the
+      // integrity attribute (HTML spec). This applies to rel="preload"
+      // too: matching crossorigin on the preload + the eventual fetch is
+      // what lets the browser dedupe instead of double-fetching.
       const { url, sri } = requireImmutable("linkTag");
       const rel = opts?.rel ?? "stylesheet";
       const attrs: string[] = [`rel="${escapeHtmlAttr(rel)}"`];
@@ -223,12 +236,18 @@ function buildAssetRef(
     },
 
     imgTag(alt) {
-      // <img> doesn't take SRI per HTML5 spec — agents who need integrity
-      // for images should fetch + verify Content-Digest server-side. We
-      // still require immutable so the URL is stable across re-deploys.
+      // Defaults: loading="lazy" + decoding="async" — modern best
+      // practice. Lazy is harmless for above-fold images (browsers
+      // handle the heuristic) and a flat win for the much more common
+      // below-fold case. Async decoding moves the decode off the main
+      // thread. Both are baseline-supported in all major browsers.
+      // <img> doesn't accept SRI per HTML5; the URL is content-hashed
+      // so it's still stable across re-deploys. Agents who need
+      // byte-level integrity for images should verify Content-Digest
+      // server-side.
       const { url } = requireImmutable("imgTag");
       const a = alt ?? "";
-      return `<img src="${escapeHtmlAttr(url)}" alt="${escapeHtmlAttr(a)}">`;
+      return `<img src="${escapeHtmlAttr(url)}" alt="${escapeHtmlAttr(a)}" loading="lazy" decoding="async">`;
     },
   };
 }
@@ -270,7 +289,13 @@ export class Blobs {
     }
 
     const contentType = opts.contentType ?? guessContentType(key);
-    const sha256 = opts.immutable ? await sha256Hex(bytes) : undefined;
+    // v1.45 default: `immutable: true`. The agent-DX surface (cdnUrl, sri,
+    // scriptTag/linkTag/imgTag) only works for content-addressed uploads,
+    // so the default reaches for the best path. Pass `{ immutable: false }`
+    // explicitly when you specifically want a non-content-hashed URL
+    // (e.g. very large file where you want to skip the SHA pass).
+    const immutable = opts.immutable ?? true;
+    const sha256 = immutable ? await sha256Hex(bytes) : undefined;
 
     // 1. Init upload — gateway returns presigned S3 URLs for each part.
     const init = await this.client.request<UploadInitResponse>("/storage/v1/uploads", {
@@ -284,7 +309,7 @@ export class Blobs {
         size_bytes: sizeBytes,
         content_type: contentType,
         visibility: opts.visibility ?? "public",
-        immutable: opts.immutable ?? false,
+        immutable,
         sha256,
       },
       context: "initializing upload",

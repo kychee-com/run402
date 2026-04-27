@@ -411,13 +411,13 @@ run402 cdn wait-fresh https://app.run402.com/_blob/avatar.png --sha ba78... --ti
 `put` response (an `AssetRef`) — the agent-DX way:
 
 ```js
-const asset = await client.blobs.put(projectId, key, { bytes }, { immutable: true });
-html += asset.scriptTag();          // <script src=... integrity=... crossorigin></script>
-html += asset.linkTag();            // <link rel="stylesheet" href=... integrity=... crossorigin>
-html += asset.imgTag("Company logo"); // <img src=... alt="Company logo">
+const asset = await client.blobs.put(projectId, key, { bytes });  // v1.45 defaults to immutable: true
+html += asset.scriptTag();             // <script src=... defer integrity=... crossorigin></script>
+html += asset.linkTag();               // <link rel="stylesheet" href=... integrity=... crossorigin>
+html += asset.imgTag("Company logo");  // <img src=... alt="Company logo" loading="lazy" decoding="async">
 ```
 
-Always upload with `immutable: true` when you plan to embed in HTML/CSS/JS. The tag emitters require it (they bind to a SHA), and the resulting URL is content-addressed → never needs cache invalidation, never breaks on re-deploys, never needs `cdn wait-fresh` follow-up.
+`immutable: true` is the default since v1.45 — the SDK computes the SHA-256 client-side and the gateway returns a content-addressed URL paired with SRI. The resulting URL never needs cache invalidation, never breaks on re-deploys, never needs `cdn wait-fresh` follow-up. Pass `{ immutable: false }` explicitly only when you want to skip the SHA pass on a very large upload (in that case the tag emitters throw because there's no SHA to bind for SRI). The tag emitters also bake in modern best-practice attributes — `defer` on `<script>`, `loading="lazy"` + `decoding="async"` on `<img>` — so the agent doesn't have to remember.
 
 Other AssetRef fields for advanced use:
 - `cdnUrl` — the content-addressed URL the emitters use directly. `https://pr-<public_id>.run402.com/_blob/<key-without-ext>-<8hex>.<ext>`. Served via the v1.33 CDN; guaranteed-reachable.

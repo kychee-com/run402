@@ -19,7 +19,20 @@ export interface BlobPutOptions {
   contentType?: string;
   /** Default: `"public"`. Public blobs get a CDN URL; private requires auth. */
   visibility?: BlobVisibility;
-  /** When true, the returned URL includes a content-hash suffix — overwrites produce distinct URLs. Forces sha256 computation. */
+  /**
+   * Default (v1.45+): `true`. Returns an `AssetRef` with `cdnUrl` populated
+   * and the `scriptTag()` / `linkTag()` / `imgTag()` emitters working —
+   * this is the agent-DX flow (paste-and-go HTML with SRI baked in).
+   *
+   * Cost: one SHA-256 pass over the bytes on the client side. For small
+   * assets (the typical case — images, JS, CSS, fonts, JSON < 1 MB) it's
+   * a few ms dominated by network. Pass `false` to skip the SHA pass for
+   * very large uploads where you specifically don't need a content-hashed
+   * URL or SRI.
+   *
+   * When `false`, the returned `AssetRef` has `cdnUrl: null`, `sri: null`,
+   * and the tag emitters throw with an "immutable: true required" hint.
+   */
   immutable?: boolean;
 }
 
@@ -130,32 +143,54 @@ export interface AssetRef {
    * URL + Subresource Integrity + `crossorigin`. The browser will refuse
    * to execute the script if the bytes don't match the SHA.
    *
+   * **Defaults:** `defer: true`. Modern best practice — non-render-
+   * blocking when placed in `<head>` and a no-op at end of `<body>`.
+   * Pass `{ defer: false }` for the rare case requiring sync execution.
+   * `async: true` overrides defer (the two are mutually exclusive).
+   *
    * @example
-   *   const asset = await client.blobs.put(p, "app.js", { content }, { immutable: true });
+   *   const asset = await client.blobs.put(p, "app.js", { content });
    *   html += asset.scriptTag();
-   *   // → <script src="https://pr-abc.run402.com/_blob/app-3a7fc02e.js" integrity="sha256-…" crossorigin></script>
+   *   // → <script src="https://pr-abc.run402.com/_blob/app-3a7fc02e.js" defer integrity="sha256-…" crossorigin></script>
+   *
+   *   asset.scriptTag({ type: "module" });
+   *   // → <script src="…" type="module" defer integrity="…" crossorigin></script>
    */
   scriptTag(opts?: { type?: "module" | "text/javascript"; defer?: boolean; async?: boolean }): string;
 
   /**
    * Returns a ready-to-paste `<link>` tag (default `rel="stylesheet"`)
-   * with content-addressed URL + SRI + `crossorigin`.
+   * with content-addressed URL + SRI + `crossorigin`. `crossorigin` is
+   * always emitted — required for SRI to actually be enforced (also
+   * required for rel="preload" to dedupe with the matching fetch).
    *
    * @example
-   *   asset.linkTag();                       // stylesheet by default
+   *   asset.linkTag();                            // stylesheet
    *   asset.linkTag({ rel: "preload", as: "font" });
+   *   asset.linkTag({ rel: "modulepreload" });
    */
   linkTag(opts?: { rel?: string; as?: string }): string;
 
   /**
    * Returns a ready-to-paste `<img>` tag with the content-addressed URL.
-   * `alt` is the image's accessibility text (default `""`). Browsers don't
-   * support SRI on `<img>`, so no `integrity` attribute is emitted —
-   * integrity is still verifiable by reading `Content-Digest` server-side.
+   *
+   * **Defaults:** `loading="lazy"` + `decoding="async"`. Modern best
+   * practice — lazy loads below-fold images on demand, async decoding
+   * moves the decode off the main thread. Both are baseline-supported
+   * in all major browsers. Agents who specifically need an above-fold
+   * eager image can wrap the result and override.
+   *
+   * Browsers don't support SRI on `<img>`, so no `integrity` attribute
+   * is emitted. The URL is content-hashed so it's still stable across
+   * re-deploys; for byte-level verification, read `Content-Digest`
+   * server-side.
+   *
+   * `alt` is the image's accessibility text (default `""` for decorative
+   * images). Pass a description when the image conveys information.
    *
    * @example
    *   asset.imgTag("Company logo")
-   *   // → <img src="https://pr-abc.run402.com/_blob/logo-a1b2c3d4.png" alt="Company logo">
+   *   // → <img src="https://pr-abc.run402.com/_blob/logo-a1b2c3d4.png" alt="Company logo" loading="lazy" decoding="async">
    */
   imgTag(alt?: string): string;
 }

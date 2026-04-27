@@ -106,21 +106,21 @@ Upload a blob (any size, up to 5 TiB) to project storage via direct-to-S3 presig
 - `content` (optional) — Inline content, ≤ 1 MB. Use only for small text blobs.
 - `content_type` (optional) — MIME type
 - `visibility` (optional, default: `"public"`) — `"public"` (bypasses auth) or `"private"` (requires apikey)
-- `immutable` (optional, default: `false`) — If true with `sha256`, also produces a content-addressed URL that gets `Cache-Control: immutable`.
-- `sha256` (optional) — Required when `immutable: true`. Client-asserted hash; gateway verifies if S3 returns one.
+- `immutable` (optional, **default `true` since v1.45**) — Produces a content-addressed URL that pairs with SRI and never needs cache invalidation. Pass `{ immutable: false }` only when you specifically want to skip the SHA-256 pass on a very large upload (storage cost is identical; immutable just adds the content-hashed URL).
+- `sha256` (optional) — Computed automatically by the SDK when `immutable: true` (the default). You don't need to set this.
 
-**Returns:** an `AssetRef`. The agent-DX way to use it: **upload with `immutable: true`, then call `result.scriptTag()`, `result.linkTag()`, or `result.imgTag()` and paste the output directly into your generated HTML.** The tag emitters return ready-to-use HTML with `src` / `href` set to a content-hashed URL on `pr-<public_id>.run402.com`, `integrity` set to the SRI hash, and `crossorigin` set so browsers verify the bytes.
+**Returns:** an `AssetRef`. The agent-DX way to use it: **call `result.scriptTag()`, `result.linkTag()`, or `result.imgTag()` and paste the output directly into your generated HTML.** The tag emitters return ready-to-use HTML with `src` / `href` set to a content-hashed URL on `pr-<public_id>.run402.com`, `integrity` set to the SRI hash, and `crossorigin` set so browsers verify the bytes. They also bake in modern best-practice attributes — `defer` on `<script>`, `loading="lazy"` + `decoding="async"` on `<img>` — so you don't have to remember.
 
 ```ts
-const logo = await client.blobs.put(projectId, "logo.png", { bytes }, { immutable: true });
+const logo = await client.blobs.put(projectId, "logo.png", { bytes });
 html += logo.imgTag("Company logo");
-// → <img src="https://pr-abc.run402.com/_blob/logo-3a7fc02e.png" alt="Company logo">
+// → <img src="https://pr-abc.run402.com/_blob/logo-3a7fc02e.png" alt="Company logo" loading="lazy" decoding="async">
 
-const app = await client.blobs.put(projectId, "app.js", { content }, { immutable: true });
+const app = await client.blobs.put(projectId, "app.js", { content });
 html += app.scriptTag({ type: "module" });
-// → <script src="https://pr-abc.run402.com/_blob/app-deadbeef.js" type="module" integrity="sha256-…" crossorigin></script>
+// → <script src="https://pr-abc.run402.com/_blob/app-deadbeef.js" type="module" defer integrity="sha256-…" crossorigin></script>
 
-const styles = await client.blobs.put(projectId, "styles.css", { content }, { immutable: true });
+const styles = await client.blobs.put(projectId, "styles.css", { content });
 html += styles.linkTag();
 // → <link rel="stylesheet" href="https://pr-abc.run402.com/_blob/styles-aabbccdd.css" integrity="sha256-…" crossorigin>
 ```
