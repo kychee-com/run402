@@ -53,7 +53,31 @@ export interface DeployDirOptions {
   dir: string;
   /** Deployment target label, e.g. `"production"`. */
   target?: string;
+  /**
+   * Optional progress callback. Invoked synchronously at four phases of the
+   * deploy. Errors thrown from the callback are caught and dropped — a buggy
+   * consumer can't abort the deploy.
+   */
+  onEvent?: (event: DeployEvent) => void;
 }
+
+/**
+ * Progress event emitted by {@link NodeSites.deployDir} when the caller
+ * supplies an `onEvent` callback. A discriminated union keyed by `phase`.
+ */
+export type DeployEvent =
+  /** `POST /deploy/v1/plan` returned. Fires once per deploy. */
+  | { phase: "plan"; manifest_size: number }
+  /**
+   * One file's bytes were successfully PUT to S3. Fires once per `missing`
+   * entry in the plan response — files reported as `present` or
+   * `satisfied_by_plan` do not trigger an upload event.
+   */
+  | { phase: "upload"; file: string; sha256: string; done: number; total: number }
+  /** About to call `POST /deploy/v1/commit`. Fires once per deploy. */
+  | { phase: "commit" }
+  /** Stage-2 copy poll tick (`GET /deployments/v1/:id`). Fires per iteration when commit returned `copying`. */
+  | { phase: "poll"; status: string; elapsed_ms: number };
 
 /** One walked file plus everything we need to hash, plan, and upload it. */
 interface WalkedFile {
@@ -118,6 +142,15 @@ export class NodeSites extends Sites {
    * depth. Symlinks cause a {@link LocalError} — they are not followed.
    */
   async deployDir(opts: DeployDirOptions): Promise<SiteDeployResult> {
+    const emit = (event: DeployEvent): void => {
+      if (!opts.onEvent) return;
+      try {
+        opts.onEvent(event);
+      } catch {
+        // Swallow — a buggy consumer must not abort a deploy in progress.
+      }
+    };
+
     const files = await collectFiles(opts.dir);
     if (files.length === 0) {
       throw new LocalError(
@@ -139,7 +172,13 @@ export class NodeSites extends Sites {
     // Map sha → bytes so we can satisfy the plan response without re-walking.
     // Multiple paths may share the same sha (identical files); any copy works.
     const bytesBySha = new Map<string, Buffer>();
-    for (const f of files) bytesBySha.set(f.sha256, f.bytes);
+    // Map sha → first manifest path with that content, so upload events can
+    // report a human-readable file path even when multiple paths dedupe.
+    const pathBySha = new Map<string, string>();
+    for (const f of files) {
+      bytesBySha.set(f.sha256, f.bytes);
+      if (!pathBySha.has(f.sha256)) pathBySha.set(f.sha256, f.path);
+    }
 
     // Reach through to the kernel client. `Sites.client` is `private` in TS
     // but enumerable at runtime; the cast bypasses the visibility check.
@@ -147,6 +186,11 @@ export class NodeSites extends Sites {
     const planClient = new ClientFromBase(client);
     const plan = await planClient.requestPlan(opts.project, manifest, manifestDigest);
     const planAt = Date.now();
+
+    emit({ phase: "plan", manifest_size: manifest.files.length });
+
+    const totalMissing = plan.files.filter(isMissing).length;
+    let doneCounter = 0;
 
     let activePlan = plan;
     let activePlanAt = planAt;
@@ -185,15 +229,25 @@ export class NodeSites extends Sites {
           throw err;
         }
       }
+
+      doneCounter += 1;
+      emit({
+        phase: "upload",
+        file: pathBySha.get(target.sha256) ?? target.sha256,
+        sha256: target.sha256,
+        done: doneCounter,
+        total: totalMissing,
+      });
     }
 
+    emit({ phase: "commit" });
     const commit = await planClient.commit(opts.project, activePlan.plan_id);
 
     if (commit.status === "applied" || commit.status === "noop") {
       return shapeResult(commit);
     }
     if (commit.status === "copying") {
-      const final = await pollUntilReady(this, commit.deployment_id);
+      const final = await pollUntilReady(this, commit.deployment_id, emit);
       return { deployment_id: commit.deployment_id, url: commit.url, ...final };
     }
     // status === "failed": stage 2 exhausted retries. Surface as ApiError so
@@ -315,7 +369,11 @@ interface PollResult {
   bytes_uploaded?: number;
 }
 
-async function pollUntilReady(sites: NodeSites, deploymentId: string): Promise<PollResult> {
+async function pollUntilReady(
+  sites: NodeSites,
+  deploymentId: string,
+  emit: (event: DeployEvent) => void,
+): Promise<PollResult> {
   const start = Date.now();
   let interval = COPY_POLL_INITIAL_MS;
   while (Date.now() - start < COPY_POLL_TIMEOUT_MS) {
@@ -330,6 +388,7 @@ async function pollUntilReady(sites: NodeSites, deploymentId: string): Promise<P
       }
       throw err;
     }
+    emit({ phase: "poll", status: info.status, elapsed_ms: Date.now() - start });
     if (info.status === "ready" || info.status === "applied") {
       return { status: info.status, url: info.url };
     }

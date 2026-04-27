@@ -143,4 +143,99 @@ describe("deploy_site_dir tool (plan/commit transport)", () => {
     assert.match(result.content[0].text, /deploying site directory/);
     assert.equal(fetchCalled, false, "must not issue a deploy request on LocalError");
   });
+
+  it("appends a progress events block to the success response", async () => {
+    const html = "<html>events</html>";
+    writeFileSync(join(siteDir, "index.html"), html);
+    const sha = shaHex(html);
+
+    globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+      const path = url.replace("https://test-api.run402.com", "");
+      if (path === "/deploy/v1/plan" && init?.method === "POST") {
+        return new Response(JSON.stringify({
+          plan_id: "plan_ev",
+          files: [{
+            sha256: sha,
+            missing: true,
+            upload_id: "u",
+            mode: "single",
+            key: "cas/ev",
+            staging_key: "_staging/plan_ev/" + sha,
+            part_size_bytes: html.length,
+            part_count: 1,
+            parts: [{ part_number: 1, url: "https://s3.example/ev?sig=1", byte_start: 0, byte_end: html.length - 1 }],
+            expires_at: new Date(Date.now() + 3600_000).toISOString(),
+          }],
+        }), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      if (path === "/deploy/v1/commit" && init?.method === "POST") {
+        return new Response(JSON.stringify({
+          deployment_id: "dpl_ev",
+          url: "https://dpl-ev.sites.run402.com",
+          status: "applied",
+        }), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      if (url.startsWith("https://s3.example/")) {
+        return new Response(null, { status: 200 });
+      }
+      throw new Error(`unexpected fetch ${path}`);
+    }) as typeof fetch;
+
+    const result = await handleDeploySiteDir({ project: "prj_ev", dir: siteDir });
+    assert.ok(!result.isError);
+    assert.equal(result.content.length, 2, "expected URL entry + events entry");
+
+    // Second content entry is a fenced JSON code block; extract and parse.
+    const eventsText = result.content[1].text;
+    assert.match(eventsText, /### Progress events/);
+    const fenceMatch = eventsText.match(/```json\n([\s\S]+?)\n```/);
+    assert.ok(fenceMatch, "events block must contain a ```json fenced block");
+    const events = JSON.parse(fenceMatch![1]) as Array<{ phase: string }>;
+    const phases = events.map((e) => e.phase);
+    assert.deepEqual(phases, ["plan", "upload", "commit"]);
+  });
+
+  it("appends partial events to the error response when deploy fails mid-flight", async () => {
+    const html = "<html>fail</html>";
+    writeFileSync(join(siteDir, "index.html"), html);
+    const sha = shaHex(html);
+
+    // Plan succeeds (events buffered: plan); commit returns failed (no upload
+    // because all entries are present-after-plan? Actually, simpler — make plan
+    // return all-present, commit returns failed. That gives us plan + commit
+    // events buffered before the ApiError.
+    globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+      const path = url.replace("https://test-api.run402.com", "");
+      if (path === "/deploy/v1/plan" && init?.method === "POST") {
+        return new Response(JSON.stringify({
+          plan_id: "plan_fail",
+          files: [{ sha256: sha, present: true, size: html.length, content_type: "text/html; charset=utf-8" }],
+        }), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      if (path === "/deploy/v1/commit" && init?.method === "POST") {
+        return new Response(JSON.stringify({
+          deployment_id: "dpl_fail",
+          url: "https://dpl-fail.sites.run402.com",
+          status: "failed",
+        }), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      throw new Error(`unexpected fetch ${path}`);
+    }) as typeof fetch;
+
+    const result = await handleDeploySiteDir({ project: "prj_fail", dir: siteDir });
+    assert.equal(result.isError, true);
+    // The last content entry should be the events block — error message in
+    // earlier entries.
+    const last = result.content[result.content.length - 1].text;
+    assert.match(last, /### Progress events/);
+    const fenceMatch = last.match(/```json\n([\s\S]+?)\n```/);
+    assert.ok(fenceMatch, "error response should still surface the partial event log");
+    const events = JSON.parse(fenceMatch![1]) as Array<{ phase: string }>;
+    // plan event fires before the commit fail; commit event fires immediately
+    // before the commit POST; both should be in the buffer.
+    assert.ok(events.some((e) => e.phase === "plan"));
+    assert.ok(events.some((e) => e.phase === "commit"));
+  });
 });

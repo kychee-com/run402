@@ -29,6 +29,7 @@ Options (deploy-dir):
   <path>                Positional: local directory to deploy
   --project <id>        Project ID (defaults to active project)
   --target <target>     Deployment target (e.g. 'production')
+  --quiet               Suppress progress events on stderr
 
 Manifest format (JSON):
   {
@@ -56,6 +57,9 @@ Notes:
     unchanged tree make no S3 PUTs.
   - deploy-dir walks the directory, skips .git / node_modules / .DS_Store,
     and auto-detects binary files. Symlinks are rejected.
+  - Progress events are emitted as JSON-line objects on stderr by default
+    (one object per line: {"phase":"plan",...}/{"phase":"upload",...}/...).
+    Final result envelope goes to stdout. Pass --quiet to silence stderr.
   - Free with active tier - requires allowance auth
 `;
 
@@ -93,7 +97,7 @@ Examples:
   "deploy-dir": `run402 sites deploy-dir - Deploy a static site from a local directory
 
 Usage:
-  run402 sites deploy-dir <path> [--project <id>] [--target <target>]
+  run402 sites deploy-dir <path> [--project <id>] [--target <target>] [--quiet]
 
 Arguments:
   <path>              Local directory to deploy (positional, required)
@@ -101,6 +105,8 @@ Arguments:
 Options:
   --project <id>      Project ID (defaults to the active project)
   --target <target>   Deployment target (e.g. 'production')
+  --quiet             Suppress progress events on stderr (events are on by
+                      default — see Progress events below)
 
 Behavior:
   - Walks <path> recursively, skips .git / node_modules / .DS_Store
@@ -108,6 +114,18 @@ Behavior:
     already have (plan/commit transport, v1.32+)
   - Symlinks are rejected (no following)
   - Paths in the manifest are POSIX-style relative to <path>
+
+Progress events:
+  By default, the CLI streams JSON-line events to stderr while the deploy
+  progresses. Each line is one JSON object terminated by \\n. Phases:
+    {"phase":"plan","manifest_size":N}            - after POST /deploy/v1/plan
+    {"phase":"upload","file":"...","sha256":"...","done":k,"total":N}
+                                                  - per uploaded file (k of N)
+    {"phase":"commit"}                            - before POST /deploy/v1/commit
+    {"phase":"poll","status":"copying","elapsed_ms":N}
+                                                  - per Stage-2 copy poll tick
+  Stdout receives only the final result envelope. To consume both streams
+  separately: \`run402 sites deploy-dir ./dist --project p > result.json 2> events.log\`.
 
 Notes:
   - Re-deploying an unchanged tree makes no S3 PUTs (returns immediately
@@ -117,6 +135,7 @@ Notes:
 Examples:
   run402 sites deploy-dir ./dist --project prj_abc
   run402 sites deploy-dir ./my-site --project prj_abc --target production
+  run402 sites deploy-dir ./dist --project prj_abc --quiet
 `,
 };
 
@@ -147,13 +166,30 @@ function stageFilesToTempDir(files) {
   return stage;
 }
 
+/**
+ * Returns an onEvent callback that writes each event as a single-line JSON
+ * object to stderr — or a no-op when --quiet was passed. The CLI is
+ * agent-first; structured stderr lets a piping agent stream progress with
+ * `2>events.log` while keeping stdout reserved for the final result envelope.
+ *
+ * Uses `console.error` so that test harnesses intercepting console output
+ * see each event line; `console.error` appends a newline by default.
+ */
+function makeStderrEventWriter(quiet) {
+  if (quiet) return undefined;
+  return (event) => {
+    console.error(JSON.stringify(event));
+  };
+}
+
 async function deploy(args) {
-  const opts = { manifest: null, project: undefined, target: undefined };
+  const opts = { manifest: null, project: undefined, target: undefined, quiet: false };
   for (let i = 0; i < args.length; i++) {
     if (args[i] === "--help" || args[i] === "-h") { console.log(HELP); process.exit(0); }
     if (args[i] === "--manifest" && args[i + 1]) opts.manifest = args[++i];
     if (args[i] === "--project" && args[i + 1]) opts.project = args[++i];
     if (args[i] === "--target" && args[i + 1]) opts.target = args[++i];
+    if (args[i] === "--quiet") opts.quiet = true;
     if (args[i] === "--inherit") {
       console.error(JSON.stringify({
         status: "error",
@@ -176,6 +212,7 @@ async function deploy(args) {
       project: projectId,
       dir: stage,
       target: opts.target,
+      onEvent: makeStderrEventWriter(opts.quiet),
     });
     if (data.deployment_id) {
       updateProject(projectId, { last_deployment_id: data.deployment_id });
@@ -189,11 +226,12 @@ async function deploy(args) {
 }
 
 async function deployDir(args) {
-  const opts = { dir: null, project: undefined, target: undefined };
+  const opts = { dir: null, project: undefined, target: undefined, quiet: false };
   for (let i = 0; i < args.length; i++) {
     if (args[i] === "--help" || args[i] === "-h") { console.log(SUB_HELP["deploy-dir"]); process.exit(0); }
     if (args[i] === "--project" && args[i + 1]) { opts.project = args[++i]; continue; }
     if (args[i] === "--target" && args[i + 1]) { opts.target = args[++i]; continue; }
+    if (args[i] === "--quiet") { opts.quiet = true; continue; }
     if (args[i] === "--inherit") {
       console.error(JSON.stringify({
         status: "error",
@@ -217,6 +255,7 @@ async function deployDir(args) {
       project: projectId,
       dir: opts.dir,
       target: opts.target,
+      onEvent: makeStderrEventWriter(opts.quiet),
     });
     if (data.deployment_id) {
       updateProject(projectId, { last_deployment_id: data.deployment_id });

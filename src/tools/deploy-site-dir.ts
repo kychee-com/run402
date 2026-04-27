@@ -3,6 +3,7 @@ import { getSdk } from "../sdk.js";
 import { mapSdkError } from "../errors.js";
 import { requireAllowanceAuth } from "../allowance-auth.js";
 import { updateProject } from "../keystore.js";
+import type { DeployEvent } from "../../sdk/dist/node/index.js";
 
 export const deploySiteDirSchema = {
   project: z
@@ -19,6 +20,21 @@ export const deploySiteDirSchema = {
     .describe("Deployment target (e.g. 'production'). Tracked in DB for future alias support."),
 };
 
+/**
+ * Render the buffered progress events as a fenced JSON code block. The agent
+ * reading the MCP response can `JSON.parse` the contents to inspect what
+ * happened during the deploy (file count, dedup ratio, copy duration, etc.).
+ */
+function renderEventsBlock(events: DeployEvent[]): string {
+  return [
+    `### Progress events`,
+    ``,
+    "```json",
+    JSON.stringify(events, null, 2),
+    "```",
+  ].join("\n");
+}
+
 export async function handleDeploySiteDir(args: {
   project: string;
   dir: string;
@@ -27,11 +43,14 @@ export async function handleDeploySiteDir(args: {
   const auth = requireAllowanceAuth("/deploy/v1/plan");
   if ("error" in auth) return auth.error;
 
+  const events: DeployEvent[] = [];
+
   try {
     const body = await getSdk().sites.deployDir({
       project: args.project,
       dir: args.dir,
       target: args.target,
+      onEvent: (e) => events.push(e),
     });
 
     updateProject(args.project, { last_deployment_id: body.deployment_id });
@@ -58,8 +77,19 @@ export async function handleDeploySiteDir(args: {
       `The site is live at **${body.url}**`,
     ];
 
-    return { content: [{ type: "text", text: lines.join("\n") }] };
+    return {
+      content: [
+        { type: "text", text: lines.join("\n") },
+        { type: "text", text: renderEventsBlock(events) },
+      ],
+    };
   } catch (err) {
-    return mapSdkError(err, "deploying site directory");
+    const errResp = mapSdkError(err, "deploying site directory");
+    // Surface the partial event log so the agent can see how far the deploy
+    // got before failing — diagnostic info that's otherwise lost.
+    if (events.length > 0) {
+      errResp.content.push({ type: "text", text: renderEventsBlock(events) });
+    }
+    return errResp;
   }
 }

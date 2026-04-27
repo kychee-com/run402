@@ -21,7 +21,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
 
-import { NodeSites, normalizeRelPath, _collectFilesForTest } from "./sites-node.js";
+import { NodeSites, normalizeRelPath, _collectFilesForTest, type DeployEvent } from "./sites-node.js";
 import { LocalError, Run402Error, ApiError } from "../errors.js";
 import { computeManifestDigest, buildCanonicalManifest } from "./canonicalize.js";
 import type { Client } from "../kernel.js";
@@ -525,5 +525,256 @@ describe("NodeSites.deployDir — plan/commit transport", () => {
     );
     assert.equal(wiring.requests.length, 0);
     assert.equal(wiring.puts.length, 0);
+  });
+});
+
+// ─── deployDir: progress events via onEvent ──────────────────────────────────
+
+describe("NodeSites.deployDir — onEvent progress events", () => {
+  it("emits plan, upload, commit events in order with correct counters", async () => {
+    const root = makeTempDir();
+    try {
+      const indexHtml = "<html>idx</html>";
+      const aboutHtml = "<html>abt</html>";
+      const presentTxt = "shared";
+      writeFileSync(join(root, "index.html"), indexHtml);
+      writeFileSync(join(root, "about.html"), aboutHtml);
+      writeFileSync(join(root, "present.txt"), presentTxt);
+
+      const indexSha = shaHex(indexHtml);
+      const aboutSha = shaHex(aboutHtml);
+      const presentSha = shaHex(presentTxt);
+
+      const wiring = makeWiring();
+      wiring.setHandler((req) => {
+        if (req.path === "/deploy/v1/plan") {
+          return {
+            plan_id: "plan_e",
+            files: [
+              {
+                sha256: indexSha,
+                missing: true,
+                upload_id: "u-idx",
+                mode: "single",
+                key: "cas/idx",
+                staging_key: "_staging/plan_e/" + indexSha,
+                part_size_bytes: indexHtml.length,
+                part_count: 1,
+                parts: [{ part_number: 1, url: "https://s3.example/idx?sig=1", byte_start: 0, byte_end: indexHtml.length - 1 }],
+                expires_at: new Date(Date.now() + 3600_000).toISOString(),
+              },
+              {
+                sha256: aboutSha,
+                missing: true,
+                upload_id: "u-abt",
+                mode: "single",
+                key: "cas/abt",
+                staging_key: "_staging/plan_e/" + aboutSha,
+                part_size_bytes: aboutHtml.length,
+                part_count: 1,
+                parts: [{ part_number: 1, url: "https://s3.example/abt?sig=1", byte_start: 0, byte_end: aboutHtml.length - 1 }],
+                expires_at: new Date(Date.now() + 3600_000).toISOString(),
+              },
+              {
+                sha256: presentSha,
+                present: true,
+                size: presentTxt.length,
+                content_type: "text/plain; charset=utf-8",
+              },
+            ],
+          };
+        }
+        if (req.path === "/deploy/v1/commit") {
+          return { deployment_id: "dpl_e", url: "https://dpl-e.sites.run402.com", status: "applied" };
+        }
+        throw new Error(`unexpected ${req.path}`);
+      });
+
+      const events: DeployEvent[] = [];
+      const sites = new NodeSites(wiring.client);
+      await sites.deployDir({
+        project: "prj_e",
+        dir: root,
+        onEvent: (e) => events.push(e),
+      });
+
+      // plan once, then upload×2, then commit. Order matters.
+      const phases = events.map((e) => e.phase);
+      assert.deepEqual(phases, ["plan", "upload", "upload", "commit"]);
+
+      const plan = events[0];
+      assert.equal(plan.phase, "plan");
+      if (plan.phase === "plan") {
+        assert.equal(plan.manifest_size, 3, "manifest_size = total files in manifest, not just missing");
+      }
+
+      const up1 = events[1];
+      const up2 = events[2];
+      assert.equal(up1.phase, "upload");
+      assert.equal(up2.phase, "upload");
+      if (up1.phase === "upload" && up2.phase === "upload") {
+        // total = 2 (only missing entries trigger upload events)
+        assert.equal(up1.total, 2);
+        assert.equal(up2.total, 2);
+        // done counter increments 1, 2
+        assert.equal(up1.done, 1);
+        assert.equal(up2.done, 2);
+        // file paths come from the local manifest, not the plan response
+        assert.ok(["index.html", "about.html"].includes(up1.file));
+        assert.ok(["index.html", "about.html"].includes(up2.file));
+        // sha256 round-trips
+        assert.ok([indexSha, aboutSha].includes(up1.sha256));
+      }
+
+      // No upload event for the present.txt entry
+      const uploadFiles = events.filter((e) => e.phase === "upload").map((e) => (e as { file: string }).file);
+      assert.ok(!uploadFiles.includes("present.txt"));
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("emits poll events with monotonically increasing elapsed_ms when commit returns copying", async () => {
+    const root = makeTempDir();
+    try {
+      writeFileSync(join(root, "index.html"), "<html></html>");
+
+      let pollCount = 0;
+      const wiring = makeWiring();
+      wiring.setHandler((req) => {
+        if (req.path === "/deploy/v1/plan") {
+          return {
+            plan_id: "plan_pp",
+            files: [{
+              sha256: shaHex("<html></html>"),
+              present: true,
+              size: 13,
+              content_type: "text/html; charset=utf-8",
+            }],
+          };
+        }
+        if (req.path === "/deploy/v1/commit") {
+          return { deployment_id: "dpl_pp", url: "https://dpl-pp.sites.run402.com", status: "copying" };
+        }
+        if (req.path === "/deployments/v1/dpl_pp") {
+          pollCount++;
+          if (pollCount < 3) {
+            return { id: "dpl_pp", name: "dpl_pp", url: "https://dpl-pp.sites.run402.com", status: "copying", files_count: 1, total_size: 13 };
+          }
+          return { id: "dpl_pp", name: "dpl_pp", url: "https://dpl-pp.sites.run402.com", status: "ready", files_count: 1, total_size: 13 };
+        }
+        throw new Error(`unexpected ${req.path}`);
+      });
+
+      const events: DeployEvent[] = [];
+      const sites = new NodeSites(wiring.client);
+      await sites.deployDir({
+        project: "prj_pp",
+        dir: root,
+        onEvent: (e) => events.push(e),
+      });
+
+      const polls = events.filter((e) => e.phase === "poll") as Array<Extract<DeployEvent, { phase: "poll" }>>;
+      assert.ok(polls.length >= 3, `expected at least 3 poll events, got ${polls.length}`);
+      // Last poll should report the final ready status.
+      assert.equal(polls[polls.length - 1].status, "ready");
+      // First two polls should report copying.
+      assert.equal(polls[0].status, "copying");
+      // elapsed_ms is monotonic non-decreasing.
+      for (let i = 1; i < polls.length; i++) {
+        assert.ok(polls[i].elapsed_ms >= polls[i - 1].elapsed_ms);
+      }
+      // commit event fires before any poll event.
+      const commitIdx = events.findIndex((e) => e.phase === "commit");
+      const firstPollIdx = events.findIndex((e) => e.phase === "poll");
+      assert.ok(commitIdx >= 0 && commitIdx < firstPollIdx);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("a callback that throws does not abort the deploy or skip subsequent events", async () => {
+    const root = makeTempDir();
+    try {
+      writeFileSync(join(root, "index.html"), "<html>x</html>");
+      const sha = shaHex("<html>x</html>");
+
+      const wiring = makeWiring();
+      wiring.setHandler((req) => {
+        if (req.path === "/deploy/v1/plan") {
+          return {
+            plan_id: "plan_t",
+            files: [{
+              sha256: sha,
+              missing: true,
+              upload_id: "u",
+              mode: "single",
+              key: "cas/x",
+              staging_key: "_staging/plan_t/" + sha,
+              part_size_bytes: "<html>x</html>".length,
+              part_count: 1,
+              parts: [{ part_number: 1, url: "https://s3.example/x?sig=1", byte_start: 0, byte_end: "<html>x</html>".length - 1 }],
+              expires_at: new Date(Date.now() + 3600_000).toISOString(),
+            }],
+          };
+        }
+        if (req.path === "/deploy/v1/commit") {
+          return { deployment_id: "dpl_t", url: "https://dpl-t.sites.run402.com", status: "applied" };
+        }
+        throw new Error(`unexpected ${req.path}`);
+      });
+
+      let invocations = 0;
+      const sites = new NodeSites(wiring.client);
+      const result = await sites.deployDir({
+        project: "prj_t",
+        dir: root,
+        onEvent: () => {
+          invocations++;
+          throw new Error("intentional");
+        },
+      });
+
+      assert.equal(result.deployment_id, "dpl_t");
+      // Each phase still attempts the callback (plan + 1 upload + commit = 3).
+      assert.equal(invocations, 3, "every event still invokes the callback even after a throw");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("emits no events when onEvent is omitted", async () => {
+    const root = makeTempDir();
+    try {
+      writeFileSync(join(root, "index.html"), "<html>n</html>");
+
+      const wiring = makeWiring();
+      wiring.setHandler((req) => {
+        if (req.path === "/deploy/v1/plan") {
+          return {
+            plan_id: "plan_n",
+            files: [{
+              sha256: shaHex("<html>n</html>"),
+              present: true,
+              size: 14,
+              content_type: "text/html; charset=utf-8",
+            }],
+          };
+        }
+        if (req.path === "/deploy/v1/commit") {
+          return { deployment_id: "dpl_n", url: "https://dpl-n.sites.run402.com", status: "applied" };
+        }
+        throw new Error(`unexpected ${req.path}`);
+      });
+
+      const sites = new NodeSites(wiring.client);
+      // No onEvent — just confirm it returns successfully and the request
+      // sequence is unchanged from the legacy test (plan + commit, no extras).
+      const r = await sites.deployDir({ project: "prj_n", dir: root });
+      assert.equal(r.deployment_id, "dpl_n");
+      assert.deepEqual(wiring.requests.map((q) => q.path), ["/deploy/v1/plan", "/deploy/v1/commit"]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });

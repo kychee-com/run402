@@ -81,7 +81,7 @@ export function run402(opts: NodeRun402Options = {}): NodeRun402 {
 }
 
 export { NodeSites } from "./sites-node.js";
-export type { DeployDirOptions } from "./sites-node.js";
+export type { DeployDirOptions, DeployEvent } from "./sites-node.js";
 export { NodeCredentialsProvider } from "./credentials.js";
 export { setupPaidFetch, createLazyPaidFetch } from "./paid-fetch.js";
 // Re-export the isomorphic surface so Node consumers don't need two imports.

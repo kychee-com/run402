@@ -1,0 +1,259 @@
+# deploy-dir Specification
+
+## Purpose
+TBD - created by archiving change add-deploy-dir. Update Purpose after archive.
+## Requirements
+### Requirement: SDK exposes deployDir on Node entry
+
+The `@run402/sdk/node` entry point SHALL expose a `deployDir` method on the `sites` namespace that takes `{ project: string, dir: string, target?: string }` and returns the same `SiteDeployResult` shape (`{ deployment_id, url, bytes_total?, bytes_uploaded? }`) as a successful deploy.
+
+The isomorphic `@run402/sdk` entry point SHALL NOT expose `deployDir` — it remains a Node-only capability because directory traversal depends on `node:fs/promises`, which is unavailable in V8 isolates.
+
+#### Scenario: Node consumer deploys a directory
+
+- **WHEN** a Node consumer calls `r402.sites.deployDir({ project: "prj_abc", dir: "./my-site" })`
+- **THEN** the SDK walks the directory, hashes each file, builds a canonical content-addressed manifest, ships it via the v1.32 plan/commit transport (`POST /deploy/v1/plan`, `PUT` to presigned S3 URLs for missing bytes only, `POST /deploy/v1/commit`), and polls `GET /deployments/v1/:id` if commit returns `copying`
+- **AND** returns the `{ deployment_id, url }` from the gateway response
+
+#### Scenario: Sandbox consumer has no deployDir
+
+- **WHEN** a V8-isolate consumer imports `Run402` from `@run402/sdk` (the isomorphic entry)
+- **THEN** the `sites` namespace does NOT expose a `deployDir` method
+- **AND** only `getDeployment(deploymentId)` (the public read-only call) is available on `sites`
+
+### Requirement: Manifest entries are content-addressed with sha256, size, and content_type
+
+`deployDir` SHALL build the manifest entry for each file from `{ path, sha256 (hex SHA-256), size (bytes), content_type (extension-mapped MIME) }`. The content-type SHALL be derived from the file extension via a static map covering common static-site assets (HTML, CSS, JS, JSON, SVG, PNG/JPG/GIF/WebP/ICO, common font formats, TXT, MD, XML, PDF, WASM); unknown extensions SHALL fall back to `application/octet-stream`. Bytes themselves SHALL NOT be included in the manifest — they are uploaded separately to the presigned S3 URLs returned by `/deploy/v1/plan` only when missing from CAS.
+
+#### Scenario: HTML file gets text/html content_type
+
+- **WHEN** `deployDir` walks a directory containing `index.html`
+- **THEN** the manifest entry for `index.html` has `content_type: "text/html; charset=utf-8"` and a non-zero `size` and a 64-character hex `sha256`
+
+#### Scenario: PNG file gets image/png content_type
+
+- **WHEN** `deployDir` walks a directory containing `assets/logo.png`
+- **THEN** the manifest entry for `assets/logo.png` has `content_type: "image/png"`
+
+#### Scenario: Unknown extension falls back to octet-stream
+
+- **WHEN** `deployDir` walks a directory containing a file with an extension not in the static map (e.g. `data.bin`)
+- **THEN** the manifest entry has `content_type: "application/octet-stream"`
+
+### Requirement: File paths in the manifest are POSIX-style and relative to dir
+
+`deployDir` SHALL produce manifest entries whose `path` field is a POSIX-style (forward-slash) path relative to the directory root. On Windows hosts, backslashes from `path.relative` SHALL be normalized to forward slashes before being placed in the manifest.
+
+#### Scenario: Nested file path uses forward slashes
+
+- **WHEN** `deployDir` walks a directory containing `./assets/images/logo.png`
+- **THEN** the manifest entry's `path` field is exactly `"assets/images/logo.png"`
+- **AND** does not contain `./`, a leading `/`, or backslashes
+
+#### Scenario: Windows path separators are normalized
+
+- **WHEN** `deployDir` is invoked on Windows and walks a file at `assets\images\logo.png`
+- **THEN** the manifest entry's `path` field is `"assets/images/logo.png"`
+
+### Requirement: Default ignore list skips .git, node_modules, and .DS_Store
+
+`deployDir` SHALL skip files and directories whose names match `.git`, `node_modules`, or `.DS_Store` at any depth in the directory tree. These entries SHALL NOT appear in the manifest.
+
+#### Scenario: .git directory is skipped
+
+- **WHEN** `deployDir` walks a directory tree containing a `.git/` subdirectory
+- **THEN** no files under `.git/` appear in the manifest
+- **AND** the traversal does not descend into `.git/`
+
+#### Scenario: node_modules directory is skipped
+
+- **WHEN** `deployDir` walks a directory tree containing a `node_modules/` subdirectory
+- **THEN** no files under `node_modules/` appear in the manifest
+
+#### Scenario: .DS_Store file is skipped
+
+- **WHEN** `deployDir` walks a directory containing a `.DS_Store` file at any depth
+- **THEN** that file does not appear in the manifest
+
+### Requirement: Empty or missing directory raises a typed error
+
+`deployDir` SHALL throw a `Run402Error` (not `process.exit`, not an untyped throw) when the directory does not exist, is not readable, or contains no deployable files after the ignore list is applied.
+
+#### Scenario: Directory does not exist
+
+- **WHEN** `deployDir` is called with a `dir` path that does not exist on disk
+- **THEN** a `Run402Error` is thrown with a message identifying the missing path
+- **AND** no network request is issued
+
+#### Scenario: Directory contains only ignored entries
+
+- **WHEN** `deployDir` is called on a directory whose only contents are `.git/` and `node_modules/`
+- **THEN** a `Run402Error` is thrown with a message stating the directory contains no deployable files
+- **AND** no network request is issued
+
+### Requirement: Symlinks are rejected
+
+`deployDir` SHALL throw a `Run402Error` when it encounters a symlink during traversal, identifying the offending path. Following symlinks is out of scope for this change.
+
+#### Scenario: Symlink in the tree
+
+- **WHEN** `deployDir` walks a directory tree that contains a symlink
+- **THEN** a `Run402Error` is thrown naming the symlink path
+- **AND** no network request is issued
+
+### Requirement: Plan/commit transport handles dedup, URL refresh, and copy polling
+
+`deployDir` SHALL upload only files reported as `missing` by `/deploy/v1/plan`; files reported as `present` (already in CAS) or `satisfied_by_plan` (covered by another entry in this same plan) SHALL NOT be re-uploaded. When a presigned URL has been held for longer than 50 minutes (under the gateway's 1-hour TTL), `deployDir` SHALL re-call `/deploy/v1/plan` to refresh URLs before continuing uploads. On HTTP 403 from S3 (expired URL), `deployDir` SHALL refresh once and retry the failed PUT. After commit, if the gateway returns `status: "copying"`, `deployDir` SHALL poll `GET /deployments/v1/:id` (initial 1 s interval, backing off to 30 s max, total cap 10 minutes) until `status` becomes `ready` or `applied`.
+
+#### Scenario: Re-deploy of unchanged tree makes no S3 PUTs
+
+- **WHEN** a caller invokes `deployDir` on a directory whose every file's SHA-256 already exists in CAS
+- **THEN** `/deploy/v1/plan` reports every entry as `present`
+- **AND** no `PUT` requests are sent to S3
+- **AND** the commit returns immediately (`applied` or `noop`)
+
+#### Scenario: Stage-2 copy polls until ready
+
+- **WHEN** the commit response has `status: "copying"`
+- **THEN** `deployDir` polls `GET /deployments/v1/:deployment_id` until `status` is `ready` or `applied`
+- **AND** returns the final `{ deployment_id, url }` from the poll result
+
+### Requirement: MCP tool deploy_site_dir exposes the helper
+
+The MCP server SHALL register a tool named `deploy_site_dir` with input schema `{ project: string, dir: string, target?: string }`. The handler SHALL be a thin shim over `getSdk().sites.deployDir(...)` that translates `Run402Error` via the existing `mapSdkError` helper.
+
+The existing `deploy_site` MCP tool SHALL remain registered with the same name and an inline-bytes input schema (`files: SiteFile[]`). Its handler SHALL stage the inline files into a temp directory and route through `sites.deployDir`, so all deploys ride the v1.32 plan/commit transport regardless of which entry point the agent chose.
+
+#### Scenario: Agent invokes deploy_site_dir
+
+- **WHEN** an MCP client calls the `deploy_site_dir` tool with `{ project, dir }`
+- **THEN** the handler calls `getSdk().sites.deployDir({ project, dir })`
+- **AND** returns the deployment URL in the MCP content array on success
+
+#### Scenario: deploy_site_dir maps SDK errors
+
+- **WHEN** `sites.deployDir` throws a `Run402Error`
+- **THEN** the `deploy_site_dir` handler returns the shape produced by `mapSdkError`
+- **AND** sets `isError: true` in the MCP response
+
+### Requirement: CLI subcommand sites deploy-dir exposes the helper
+
+The CLI SHALL accept a subcommand invoked as `run402 sites deploy-dir <path> --project <id> [--target <label>]`. The subcommand SHALL be a thin shim over `sdk.sites.deployDir(...)`, emit the JSON envelope `{ status: "ok", deployment_id, url }` on success, and call `reportSdkError` with exit code 1 on failure.
+
+The existing `run402 sites deploy --manifest <path>` subcommand SHALL remain registered. Both `sites deploy` and `sites deploy-dir` SHALL reject `--inherit` with an explicit error message ("--inherit is removed in v1.32; the SDK now uploads only changed files automatically.") because the v1.32 plan/commit transport's CAS dedup makes the legacy `inherit` flag unnecessary.
+
+#### Scenario: CLI deploys a directory
+
+- **WHEN** a user runs `run402 sites deploy-dir ./my-site --project prj_abc`
+- **THEN** the CLI calls `sdk.sites.deployDir({ project: "prj_abc", dir: "./my-site" })`
+- **AND** writes `{ "status": "ok", "deployment_id": "...", "url": "..." }` to stdout
+- **AND** exits with code 0
+
+#### Scenario: CLI deploy-dir failure
+
+- **WHEN** `sdk.sites.deployDir` throws a `Run402Error`
+- **THEN** the CLI writes the standard JSON error envelope to stderr via `reportSdkError`
+- **AND** exits with code 1
+
+#### Scenario: CLI rejects --inherit
+
+- **WHEN** a user runs `run402 sites deploy-dir ./my-site --project prj_abc --inherit`
+- **THEN** the CLI exits with the error message "--inherit is removed in v1.32; the SDK now uploads only changed files automatically."
+
+### Requirement: OpenClaw inherits the subcommand via CLI re-export
+
+The OpenClaw skill SHALL expose the new subcommand via the existing `openclaw/scripts/*.mjs` re-export pattern, without duplicating implementation.
+
+#### Scenario: OpenClaw exposes deploy-dir
+
+- **WHEN** an OpenClaw consumer inspects the skill's available commands
+- **THEN** a module under `openclaw/scripts/` corresponds to the `sites` CLI group and re-exports `run` from `cli/lib/sites.mjs`
+- **AND** the behavior of `sites deploy-dir` matches the CLI exactly
+
+### Requirement: deployDir emits progress events via onEvent callback
+
+`NodeSites.deployDir` SHALL accept an optional `onEvent: (event: DeployEvent) => void` field on its options object. When provided, the SDK SHALL invoke the callback synchronously at four well-defined points in the deploy lifecycle:
+
+1. After the `POST /deploy/v1/plan` response is parsed, exactly once, with `{ phase: "plan", manifest_size: number }` where `manifest_size` is the number of files in the manifest.
+2. After each file's bytes are successfully PUT to S3 (single-mode or multipart, whichever applies), with `{ phase: "upload", file: string, sha256: string, done: number, total: number }`. `total` SHALL be the count of files reported as `missing` by the plan response (i.e. files that actually need uploading). `done` SHALL be the count of files completed including this one. Files reported as `present` or `satisfied_by_plan` SHALL NOT trigger an `upload` event.
+3. Immediately before `POST /deploy/v1/commit` is called, exactly once, with `{ phase: "commit" }`.
+4. After each `GET /deployments/v1/:id` poll response when commit returned `status: "copying"`, with `{ phase: "poll", status: string, elapsed_ms: number }`. `status` SHALL be the gateway's latest status field; `elapsed_ms` SHALL be wall time elapsed since the first poll iteration started.
+
+Errors thrown synchronously from the callback SHALL be caught and silently dropped. A buggy `onEvent` consumer SHALL NOT abort the deploy.
+
+The `DeployEvent` type SHALL be exported from `@run402/sdk/node` so consumers can import it for type-safe handlers.
+
+#### Scenario: Plan event fires once with manifest size
+
+- **WHEN** a caller invokes `deployDir({ project, dir, onEvent })` on a directory of 5 files
+- **THEN** the callback is invoked exactly once with `{ phase: "plan", manifest_size: 5 }` after `/deploy/v1/plan` returns
+- **AND** the callback fires before any S3 PUT is issued
+
+#### Scenario: Upload event fires per missing file with progress counter
+
+- **WHEN** the plan response reports 3 of the 5 files as `missing` (the other 2 already in CAS)
+- **THEN** the callback receives 3 `upload` events, each with `total: 3` and `done: 1, 2, 3` in order
+- **AND** each event's `file` and `sha256` correspond to the file just uploaded
+- **AND** no `upload` events fire for the 2 files reported as `present` or `satisfied_by_plan`
+
+#### Scenario: Commit event fires before commit POST
+
+- **WHEN** all uploads complete
+- **THEN** the callback receives `{ phase: "commit" }` exactly once
+- **AND** this fires before `POST /deploy/v1/commit` is sent
+
+#### Scenario: Poll event fires per poll iteration when copying
+
+- **WHEN** the commit response is `{ status: "copying", ... }` and Stage-2 copy takes 4 poll iterations to finish
+- **THEN** the callback receives 4 `poll` events with monotonically increasing `elapsed_ms`
+- **AND** each event's `status` is the gateway's reported status at that poll tick (e.g. `"copying"`, then `"ready"` on the last)
+
+#### Scenario: Callback that throws does not break the deploy
+
+- **WHEN** a caller passes an `onEvent` callback that throws on the first invocation
+- **THEN** the deploy completes successfully and returns `{ deployment_id, url }`
+- **AND** subsequent events are still attempted (each invocation is independently guarded)
+
+#### Scenario: Existing callers without onEvent are unaffected
+
+- **WHEN** a caller invokes `deployDir({ project, dir })` without `onEvent`
+- **THEN** behavior is byte-identical to the v1.44.0 implementation
+- **AND** no callback is invoked
+
+### Requirement: CLI sites deploy-dir emits JSON-line progress events on stderr
+
+The CLI subcommand `run402 sites deploy-dir` SHALL pass an `onEvent` callback to `sdk.sites.deployDir` that writes each event as a single newline-terminated JSON object to `stderr`. The final `{ status: "ok", deployment_id, url }` envelope SHALL continue to be written to `stdout`, so a calling agent can capture stdout for the result and stderr for the trace independently.
+
+When `--quiet` is passed, the CLI SHALL suppress event emission (stderr stays empty for events; the final result still goes to stdout). No flag is required to enable events — they are emitted by default because the CLI is agent-first and structured stderr is non-disruptive to agents that ignore stderr.
+
+#### Scenario: Default invocation streams events to stderr
+
+- **WHEN** an agent runs `run402 sites deploy-dir ./site --project prj_abc` and pipes stderr to a file
+- **THEN** the file contains one JSON object per line, one per event in the order they were emitted
+- **AND** stdout contains exactly one line: the final `{ "status": "ok", "deployment_id": "...", "url": "..." }` envelope
+
+#### Scenario: --quiet suppresses event lines
+
+- **WHEN** an agent runs `run402 sites deploy-dir ./site --project prj_abc --quiet`
+- **THEN** stderr contains no event lines
+- **AND** stdout still contains the final result envelope
+
+### Requirement: MCP deploy_site_dir returns event log in content array
+
+The MCP tool `deploy_site_dir` SHALL pass an `onEvent` callback to `sdk.sites.deployDir` that buffers events into an in-memory array. On success, the tool's response `content` array SHALL include the existing URL/id text content entry plus a second text content entry containing a fenced JSON code block with the buffered events array. On `Run402Error`, the buffered events SHALL still be appended to the error response so the agent can see how far the deploy progressed before failing.
+
+The events are emitted as a JSON array (not JSON-lines) because MCP content entries are atomic strings and a JSON array round-trips cleanly through `JSON.parse`.
+
+#### Scenario: Successful deploy includes events in content array
+
+- **WHEN** an MCP client calls `deploy_site_dir` with a directory of 5 files where 3 are missing
+- **THEN** the response `content` has 2 entries
+- **AND** the first entry contains the deployment URL text
+- **AND** the second entry contains a fenced ```json``` block parseable as `[{plan}, {upload×3}, {commit}, ...]`
+
+#### Scenario: Failed deploy includes partial event log
+
+- **WHEN** an MCP client calls `deploy_site_dir` and the deploy fails during upload
+- **THEN** the response has `isError: true`
+- **AND** the response `content` includes a fenced JSON block with the events that fired before the failure (e.g. `[{plan}, {upload×1}]`)
+

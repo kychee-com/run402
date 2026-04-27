@@ -1589,8 +1589,36 @@ describe("CLI e2e happy path", () => {
     captureStart();
     await run("deploy-dir", [siteDir, "--project", "prj_test123"]);
     captureStop();
-    assert.ok(captured().includes("dpl_test456"), "should return deployment id from dir");
-    assert.ok(captured().includes("\"status\": \"ok\""), "should emit JSON envelope with status ok");
+    assert.ok(capturedStdout().includes("dpl_test456"), "should return deployment id from dir on stdout");
+    assert.ok(capturedStdout().includes("\"status\": \"ok\""), "should emit JSON envelope with status ok on stdout");
+
+    // Progress events are emitted as JSON-line on stderr by default.
+    const stderr = capturedStderr();
+    const jsonLines = stderr.split("\n").filter(Boolean).filter((l) => {
+      try { JSON.parse(l); return true; } catch { return false; }
+    });
+    assert.ok(jsonLines.length > 0, `expected JSON event lines on stderr; got: ${stderr}`);
+    const phases = jsonLines.map((l) => JSON.parse(l).phase);
+    assert.ok(phases.includes("plan"), `expected a plan event; got phases: ${phases.join(",")}`);
+    assert.ok(phases.includes("commit"), `expected a commit event; got phases: ${phases.join(",")}`);
+  });
+
+  it("sites deploy-dir --quiet suppresses stderr events", async () => {
+    const { run } = await import("./cli/lib/sites.mjs");
+    const siteDir = join(tempDir, "site-from-dir-quiet");
+    const { writeFileSync: wf, mkdirSync: md } = await import("node:fs");
+    md(siteDir, { recursive: true });
+    wf(join(siteDir, "index.html"), "<h1>Quiet</h1>");
+    captureStart();
+    await run("deploy-dir", [siteDir, "--project", "prj_test123", "--quiet"]);
+    captureStop();
+    assert.ok(capturedStdout().includes("\"status\": \"ok\""), "stdout still has the result envelope");
+    // No JSON event lines on stderr.
+    const stderr = capturedStderr();
+    const eventLines = stderr.split("\n").filter(Boolean).filter((l) => {
+      try { return typeof JSON.parse(l).phase === "string"; } catch { return false; }
+    });
+    assert.equal(eventLines.length, 0, `--quiet should suppress event lines; got: ${stderr}`);
   });
 
   it("sites deploy-dir fails on missing directory", async () => {

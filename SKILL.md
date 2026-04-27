@@ -242,6 +242,17 @@ Deploy a static site from a **local directory**. The SDK walks the directory on 
 
 **Returns on success:** `deployment_id`, `url`, plus optional `bytes_total` and `bytes_uploaded` (`bytes_uploaded` is `0` on a re-deploy of an unchanged tree).
 
+**Progress events:** the response `content` array includes a second text entry with a fenced `\`\`\`json` block containing the buffered progress events. Each event is an object keyed by `phase`:
+
+| phase | When fired | Extra fields |
+|-------|------------|--------------|
+| `plan` | After `POST /deploy/v1/plan` returns | `manifest_size` (file count) |
+| `upload` | After each missing file's bytes finish PUTing to S3 | `file`, `sha256`, `done`, `total` (only `missing` files trigger this) |
+| `commit` | Just before `POST /deploy/v1/commit` | — |
+| `poll` | Per `GET /deployments/v1/:id` poll tick when commit returned `copying` | `status`, `elapsed_ms` |
+
+On error, the buffered events are still appended so the agent can see how far the deploy got. The agent can `JSON.parse` the fenced block to inspect dedup ratio (`upload.total` / `plan.manifest_size`), copy duration (last `poll.elapsed_ms`), and which files were uploaded.
+
 **Examples:**
 ```
 deploy_site_dir(project: "prj_abc", dir: "./my-site")
