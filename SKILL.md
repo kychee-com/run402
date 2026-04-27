@@ -106,17 +106,35 @@ Upload a blob (any size, up to 5 TiB) to project storage via direct-to-S3 presig
 - `content` (optional) — Inline content, ≤ 1 MB. Use only for small text blobs.
 - `content_type` (optional) — MIME type
 - `visibility` (optional, default: `"public"`) — `"public"` (bypasses auth) or `"private"` (requires apikey)
-- `immutable` (optional, default: `false`) — If true with `sha256`, also produces a content-addressed URL that gets `Cache-Control: immutable`.
-- `sha256` (optional) — Required when `immutable: true`. Client-asserted hash; gateway verifies if S3 returns one.
+- `immutable` (optional, **default `true` since v1.45**) — Produces a content-addressed URL that pairs with SRI and never needs cache invalidation. Pass `{ immutable: false }` only when you specifically want to skip the SHA-256 pass on a very large upload (storage cost is identical; immutable just adds the content-hashed URL).
+- `sha256` (optional) — Computed automatically by the SDK when `immutable: true` (the default). You don't need to set this.
 
-**Returns:** an `AssetRef`: `{ key, size_bytes, sha256, visibility, url, immutable_url, size, contentSha256, contentType, immutableUrl, etag, sri, contentDigest, cacheKind, cdn: { version, invalidationId, invalidationStatus, ready, hint } }`. The legacy snake_case fields (`size_bytes`, `sha256`, `immutable_url`) are kept for back-compat; the camelCase fields are the v1.45 agent-DX surface.
+**Returns:** an `AssetRef`. The agent-DX way to use it: **call `result.scriptTag()`, `result.linkTag()`, or `result.imgTag()` and paste the output directly into your generated HTML.** The tag emitters return ready-to-use HTML with `src` / `href` set to a content-hashed URL on `pr-<public_id>.run402.com`, `integrity` set to the SRI hash, and `crossorigin` set so browsers verify the bytes. They also bake in modern best-practice attributes — `defer` on `<script>`, `loading="lazy"` + `decoding="async"` on `<img>` — so you don't have to remember.
 
-**Prefer `immutableUrl` in generated HTML/CSS/JS code.** Reasoning:
-- Read-after-write correctness: the immutable URL is bound to the SHA at upload time and was never previously cached. The mutable `url` is "eventually fresh" — invalidation is asynchronous, so a `<script>` tag pointing at it may load the OLD version for seconds-to-minutes after a re-upload.
-- Built-in integrity: pair `immutableUrl` with `integrity={sri}` on `<script>` and `<link>` tags so browsers verify the hash before executing.
-- No follow-up calls needed: an agent emitting `<script src={immutableUrl} integrity={sri}>` doesn't need to call `wait_for_cdn_freshness` afterwards. Use the mutable `url` only when the URL must remain stable across re-uploads.
+```ts
+const logo = await client.blobs.put(projectId, "logo.png", { bytes });
+html += logo.imgTag("Company logo");
+// → <img src="https://pr-abc.run402.com/_blob/logo-3a7fc02e.png" alt="Company logo" loading="lazy" decoding="async">
 
-If you must use the mutable `url` (e.g. you're updating an `<img>` referenced by an external system that won't accept a new URL), call `wait_for_cdn_freshness` before publishing the change. **Mutable URLs only**; never call wait_for_cdn_freshness on `immutableUrl`.
+const app = await client.blobs.put(projectId, "app.js", { content });
+html += app.scriptTag({ type: "module" });
+// → <script src="https://pr-abc.run402.com/_blob/app-deadbeef.js" type="module" defer integrity="sha256-…" crossorigin></script>
+
+const styles = await client.blobs.put(projectId, "styles.css", { content });
+html += styles.linkTag();
+// → <link rel="stylesheet" href="https://pr-abc.run402.com/_blob/styles-aabbccdd.css" integrity="sha256-…" crossorigin>
+```
+
+**Why this is the recommended path.** The URL the emitters use (`cdnUrl`) is content-addressed (no cache invalidation, no `wait_for_cdn_freshness`), served from the auto-subdomain `pr-<public_id>.run402.com` (the host that's guaranteed to work through the v1.33 CDN), and stable across re-deploys of the same content. SRI guarantees the browser refuses execution on byte mismatch. There are no decisions for the agent to make.
+
+**Other AssetRef fields** for advanced use:
+- `cdnUrl` — the content-addressed auto-subdomain URL the tag emitters use. Use this directly if you're not generating HTML (e.g. CSS `url()` references, JSON data URLs).
+- `cdnMutableUrl` — mutable form of the auto-subdomain URL. Eventual-consistency caveats apply; prefer `cdnUrl` for generated code.
+- `url` / `immutableUrl` (preferred-host forms) — the URL on the project's pretty host (claimed subdomain or custom domain when configured). Currently NOT served through the CDN — keep using these for direct-API consumers (e.g. `client.blobs.get`), not in `<script>`/`<img>` embeds.
+- `etag`, `sri`, `contentDigest` — the integrity values the tag emitters bake in. Useful if you're constructing tags by hand for an unsupported context.
+- `cdn: { version, invalidationId, invalidationStatus, ready, hint }` — CloudFront invalidation envelope. For immutable uploads `cdn.ready === true` and no further work is required.
+
+The legacy `size_bytes`, `sha256`, `immutable_url` fields stay populated for back-compat with pre-v1.45 callers.
 
 Supersedes `upload_file` (deprecated).
 

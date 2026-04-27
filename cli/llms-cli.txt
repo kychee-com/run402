@@ -408,16 +408,28 @@ run402 blob diagnose https://app.run402.com/_blob/avatar.png --project abc123
 run402 cdn wait-fresh https://app.run402.com/_blob/avatar.png --sha ba78... --timeout 120
 ```
 
-`put` response (an `AssetRef`) includes both legacy snake_case and v1.45 camelCase fields:
-- `url` / (no camelCase alias) — stable mutable URL: `https://pr-<public_id>.run402.com/_blob/<key>`, also any claimed subdomain or mapped custom domain. Cached at CloudFront edge; invalidation is asynchronous on overwrite.
-- `immutable_url` / `immutableUrl` (only when `--immutable`) — content-hashed URL: `https://<host>/_blob/<key-without-ext>-<8hex>.<ext>`. Bound to a SHA at upload time; never previously cached. **Prefer this in generated HTML/CSS/JS code** — it doesn't need waiting and pairs with `sri` for browser SRI verification.
-- `etag` — strong `"sha256-<hex>"` ETag (when `--immutable`).
-- `sri` — `sha256-<base64>` for `<script integrity={sri}>` and `<link integrity={sri}>`.
+`put` response (an `AssetRef`) — the agent-DX way:
+
+```js
+const asset = await client.blobs.put(projectId, key, { bytes });  // v1.45 defaults to immutable: true
+html += asset.scriptTag();             // <script src=... defer integrity=... crossorigin></script>
+html += asset.linkTag();               // <link rel="stylesheet" href=... integrity=... crossorigin>
+html += asset.imgTag("Company logo");  // <img src=... alt="Company logo" loading="lazy" decoding="async">
+```
+
+`immutable: true` is the default since v1.45 — the SDK computes the SHA-256 client-side and the gateway returns a content-addressed URL paired with SRI. The resulting URL never needs cache invalidation, never breaks on re-deploys, never needs `cdn wait-fresh` follow-up. Pass `{ immutable: false }` explicitly only when you want to skip the SHA pass on a very large upload (in that case the tag emitters throw because there's no SHA to bind for SRI). The tag emitters also bake in modern best-practice attributes — `defer` on `<script>`, `loading="lazy"` + `decoding="async"` on `<img>` — so the agent doesn't have to remember.
+
+Other AssetRef fields for advanced use:
+- `cdnUrl` — the content-addressed URL the emitters use directly. `https://pr-<public_id>.run402.com/_blob/<key-without-ext>-<8hex>.<ext>`. Served via the v1.33 CDN; guaranteed-reachable.
+- `cdnMutableUrl` — mutable URL on the auto-subdomain. Eventual-consistency caveats; prefer `cdnUrl` in code.
+- `url` / `immutableUrl` (preferred-host forms) — URL on the project's pretty host (claimed subdomain / custom domain when configured). Currently NOT served through the CDN — keep using for direct-API consumers (e.g. `run402 blob get`), not in `<script>`/`<img>` embeds.
+- `etag` — strong `"sha256-<hex>"` ETag (when `immutable`).
+- `sri` — `sha256-<base64>` for `<script integrity={sri}>` if you must construct tags by hand.
 - `contentDigest` — RFC 9530 `sha-256=:<base64>:` for HTTP integrity.
 - `cacheKind` — `"immutable" | "mutable" | "private"`.
 - `cdn.{version,invalidationId,invalidationStatus,ready,hint}` — CloudFront invalidation envelope; `cdn.ready === true` for immutable uploads.
 
-**Agent guidance.** When emitting HTML/CSS/JS that links a just-uploaded asset, use `immutableUrl` + `integrity={sri}`. Read-after-write is correct and you don't need a follow-up `cdn wait-fresh` poll. Use the mutable `url` only when the URL must remain stable across re-uploads; in that case, `run402 cdn wait-fresh <url> --sha <new-sha>` blocks until the CDN serves the new SHA.
+**Agent loop pattern (mutable URL only):** if you must use a stable mutable URL across re-uploads, `run402 cdn wait-fresh <mutable-url> --sha <new-sha>` blocks until the CDN serves the new SHA. **Don't call wait-fresh on immutable URLs** — they're correct from the moment of upload.
 
 Resume: state is persisted to `~/.run402/uploads/<upload_id>.json`. Ctrl-C mid-upload and re-run the same `blob put` command — it picks up where it left off. Pass `--no-resume` to start fresh.
 

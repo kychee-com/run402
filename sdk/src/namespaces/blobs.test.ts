@@ -91,7 +91,15 @@ describe("blobs.put", () => {
     });
 
     const sdk = makeSdk(fetch);
-    const result = await sdk.blobs.put("prj_known", "hello.txt", { content: "hello world\n" });
+    // Pass `immutable: false` explicitly: this test verifies the basic flow
+    // shape (init → PUT → complete) and the legacy non-immutable behavior
+    // (no SHA pre-computation, immutable: false propagated to the gateway).
+    // The v1.45 default is `immutable: true`; the dedicated default-and-
+    // tag-emitter tests below cover that path.
+    const result = await sdk.blobs.put(
+      "prj_known", "hello.txt", { content: "hello world\n" },
+      { immutable: false },
+    );
 
     assert.equal(calls.length, 3);
     assert.equal(calls[0]!.url, "https://api.example.test/storage/v1/uploads");
@@ -110,6 +118,52 @@ describe("blobs.put", () => {
     assert.equal(calls[2]!.url, "https://api.example.test/storage/v1/uploads/u_42/complete");
     assert.equal(result.key, "hello.txt");
     assert.equal(result.url, "https://cdn.test/hello.txt");
+  });
+
+  it("defaults to immutable: true (v1.45) — computes SHA + sends content-hashed flag", async () => {
+    let initBody: Record<string, unknown> | null = null;
+    const { fetch } = mockFetch((call) => {
+      if (call.url.endsWith("/storage/v1/uploads")) {
+        initBody = JSON.parse(call.body as string);
+        return json({
+          upload_id: "u_d",
+          mode: "single",
+          part_count: 1,
+          parts: [{ part_number: 1, url: "https://s3.test/u_d/p1", byte_start: 0, byte_end: 2 }],
+        });
+      }
+      if (call.url.startsWith("https://s3.test/")) {
+        return new Response("", { status: 200, headers: { etag: '"e"' } });
+      }
+      if (call.url.endsWith("/complete")) {
+        return json({
+          key: "hello.txt",
+          size_bytes: 3,
+          sha256: "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+          visibility: "public",
+          content_type: "text/plain",
+          immutable_suffix: "ba7816bf",
+          url: "https://cdn.test/hello.txt",
+          immutable_url: "https://cdn.test/hello-ba7816bf.txt",
+          cdn_url: "https://pr-abc.run402.com/_blob/hello.txt",
+          cdn_immutable_url: "https://pr-abc.run402.com/_blob/hello-ba7816bf.txt",
+        });
+      }
+      throw new Error("unexpected: " + call.url);
+    });
+    const sdk = makeSdk(fetch);
+    // No opts — relying on v1.45 defaults.
+    const asset = await sdk.blobs.put("prj_known", "hello.txt", { content: "abc" });
+    assert.equal(initBody!.immutable, true);
+    assert.equal(
+      initBody!.sha256,
+      "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+    );
+    assert.ok(asset.cdnUrl, "cdnUrl populated by default");
+    assert.ok(asset.sri, "sri populated by default");
+    // Tag emitters work without the agent ever passing { immutable: true }.
+    const tag = asset.scriptTag();
+    assert.match(tag, /integrity="sha256-/);
   });
 
   it("attaches parts with etags in multipart mode", async () => {
@@ -137,7 +191,12 @@ describe("blobs.put", () => {
       throw new Error("unexpected");
     });
     const sdk = makeSdk(fetch);
-    await sdk.blobs.put("prj_known", "multi.bin", { bytes: new Uint8Array(12) });
+    // Pin immutable: false — this test asserts on the multipart-complete
+    // shape, not on the sha-computation path.
+    await sdk.blobs.put(
+      "prj_known", "multi.bin", { bytes: new Uint8Array(12) },
+      { immutable: false },
+    );
     const completeBody = JSON.parse(calls[3]!.body as string);
     assert.deepEqual(completeBody.parts, [
       { part_number: 1, etag: '"e1"' },
@@ -327,6 +386,8 @@ describe("blobs.put — AssetRef widening (v1.45)", () => {
           immutable_suffix: SHA.slice(0, 8),
           url: "https://app.run402.com/_blob/x.txt",
           immutable_url: "https://app.run402.com/_blob/x-ba7816bf.txt",
+          cdn_url: "https://pr-abc.run402.com/_blob/x.txt",
+          cdn_immutable_url: "https://pr-abc.run402.com/_blob/x-ba7816bf.txt",
         });
       }
       throw new Error("unexpected: " + call.url);
@@ -344,6 +405,9 @@ describe("blobs.put — AssetRef widening (v1.45)", () => {
     assert.equal(result.contentSha256, SHA);
     assert.equal(result.immutableUrl, "https://app.run402.com/_blob/x-ba7816bf.txt");
     assert.equal(result.contentType, "text/plain");
+    // v1.45 cdn-reachable URLs (auto-subdomain, guaranteed-working).
+    assert.equal(result.cdnUrl, "https://pr-abc.run402.com/_blob/x-ba7816bf.txt");
+    assert.equal(result.cdnMutableUrl, "https://pr-abc.run402.com/_blob/x.txt");
     // Integrity fields derived from the SHA.
     assert.equal(result.etag, `"sha256-${SHA}"`);
     assert.match(result.sri ?? "", /^sha256-[A-Za-z0-9+/]+={0,2}$/);
@@ -352,7 +416,151 @@ describe("blobs.put — AssetRef widening (v1.45)", () => {
     assert.equal(result.cacheKind, "immutable");
     assert.equal(result.cdn.version, "blob-gateway-v2");
     assert.equal(result.cdn.ready, true);
-    assert.match(result.cdn.hint ?? "", /immutableUrl is ready immediately/);
+    assert.match(result.cdn.hint ?? "", /Use cdnUrl/);
+  });
+
+  it("scriptTag/linkTag/imgTag emit ready-to-paste tags with SRI + crossorigin", async () => {
+    const SHA = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
+    const { fetch } = mockFetch((call) => {
+      if (call.url.endsWith("/storage/v1/uploads")) {
+        return json({
+          upload_id: "u_t",
+          mode: "single",
+          part_count: 1,
+          parts: [{ part_number: 1, url: "https://s3.test/u_t/p1", byte_start: 0, byte_end: 2 }],
+        });
+      }
+      if (call.url.startsWith("https://s3.test/")) {
+        return new Response("", { status: 200, headers: { etag: '"e"' } });
+      }
+      if (call.url.endsWith("/complete")) {
+        return json({
+          key: "app.js",
+          size_bytes: 3,
+          sha256: SHA,
+          visibility: "public",
+          content_type: "text/javascript",
+          immutable_suffix: SHA.slice(0, 8),
+          url: "https://app.run402.com/_blob/app.js",
+          immutable_url: "https://app.run402.com/_blob/app-ba7816bf.js",
+          cdn_url: "https://pr-abc.run402.com/_blob/app.js",
+          cdn_immutable_url: "https://pr-abc.run402.com/_blob/app-ba7816bf.js",
+        });
+      }
+      throw new Error("unexpected: " + call.url);
+    });
+    const sdk = makeSdk(fetch);
+    const asset = await sdk.blobs.put("prj_known", "app.js", { content: "abc" }, { immutable: true });
+
+    // Default scriptTag — emits `defer` by default (modern best practice).
+    const tag = asset.scriptTag();
+    assert.match(tag, /^<script /);
+    assert.match(tag, /src="https:\/\/pr-abc\.run402\.com\/_blob\/app-ba7816bf\.js"/);
+    assert.match(tag, /\bdefer\b/);
+    assert.match(tag, /integrity="sha256-[A-Za-z0-9+/]+={0,2}"/);
+    assert.match(tag, /crossorigin/);
+    // No async by default.
+    assert.equal(/\basync\b/.test(tag), false);
+
+    // Explicit defer: false opts out.
+    const noDefer = asset.scriptTag({ defer: false });
+    assert.equal(/\bdefer\b/.test(noDefer), false);
+
+    // Module + explicit defer.
+    const moduleTag = asset.scriptTag({ type: "module", defer: true });
+    assert.match(moduleTag, /type="module"/);
+    assert.match(moduleTag, /\bdefer\b/);
+
+    // async: true overrides defer (mutually exclusive per HTML spec).
+    const asyncTag = asset.scriptTag({ async: true });
+    assert.match(asyncTag, /\basync\b/);
+    assert.equal(/\bdefer\b/.test(asyncTag), false);
+
+    // Default linkTag (stylesheet).
+    const link = asset.linkTag();
+    assert.match(link, /^<link /);
+    assert.match(link, /rel="stylesheet"/);
+    assert.match(link, /href="https:\/\/pr-abc\.run402\.com\/_blob\/app-ba7816bf\.js"/);
+    assert.match(link, /integrity="sha256-/);
+    assert.match(link, /crossorigin/);
+
+    // Custom rel + as (preload). crossorigin still emitted (required for
+    // SRI to be enforced AND for preload-fetch deduping).
+    const preload = asset.linkTag({ rel: "preload", as: "font" });
+    assert.match(preload, /rel="preload"/);
+    assert.match(preload, /as="font"/);
+    assert.match(preload, /crossorigin/);
+
+    // imgTag — emits loading="lazy" + decoding="async" by default.
+    const img = asset.imgTag("Company logo");
+    assert.match(img, /^<img /);
+    assert.match(img, /src="https:\/\/pr-abc\.run402\.com\/_blob\/app-ba7816bf\.js"/);
+    assert.match(img, /alt="Company logo"/);
+    assert.match(img, /loading="lazy"/);
+    assert.match(img, /decoding="async"/);
+    // No SRI on <img> per HTML spec.
+    assert.equal(/integrity=/.test(img), false);
+  });
+
+  it("tag emitters escape HTML special chars in alt + url + sri", async () => {
+    // sha256 of "abc"
+    const SHA = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
+    // URL with characters that need attribute escaping.
+    const HOSTILE_URL = "https://pr-abc.run402.com/_blob/a&b\"c<d>.png";
+    const { fetch } = mockFetch((call) => {
+      if (call.url.endsWith("/storage/v1/uploads")) {
+        return json({
+          upload_id: "u_e", mode: "single", part_count: 1,
+          parts: [{ part_number: 1, url: "https://s3.test/u_e/p1", byte_start: 0, byte_end: 2 }],
+        });
+      }
+      if (call.url.startsWith("https://s3.test/")) {
+        return new Response("", { status: 200, headers: { etag: '"e"' } });
+      }
+      if (call.url.endsWith("/complete")) {
+        return json({
+          key: 'a&b"c<d>.png',
+          size_bytes: 3, sha256: SHA, visibility: "public",
+          content_type: "image/png", immutable_suffix: SHA.slice(0, 8),
+          url: HOSTILE_URL, immutable_url: HOSTILE_URL,
+          cdn_url: HOSTILE_URL, cdn_immutable_url: HOSTILE_URL,
+        });
+      }
+      throw new Error("unexpected: " + call.url);
+    });
+    const sdk = makeSdk(fetch);
+    const asset = await sdk.blobs.put("prj_known", 'a&b"c<d>.png', { content: "abc" }, { immutable: true });
+    const img = asset.imgTag('Bad <alt> "quoted"');
+    assert.match(img, /alt="Bad &lt;alt&gt; &quot;quoted&quot;"/);
+    assert.match(img, /a&amp;b&quot;c&lt;d&gt;\.png/);
+  });
+
+  it("tag emitters throw on non-immutable uploads with an actionable hint", async () => {
+    const { fetch } = mockFetch((call) => {
+      if (call.url.endsWith("/storage/v1/uploads")) {
+        return json({
+          upload_id: "u_n", mode: "single", part_count: 1,
+          parts: [{ part_number: 1, url: "https://s3.test/u_n/p1", byte_start: 0, byte_end: 2 }],
+        });
+      }
+      if (call.url.startsWith("https://s3.test/")) {
+        return new Response("", { status: 200, headers: { etag: '"e"' } });
+      }
+      if (call.url.endsWith("/complete")) {
+        return json({
+          key: "x.png", size_bytes: 3, sha256: null, visibility: "public",
+          content_type: "image/png", immutable_suffix: null,
+          url: "https://app.run402.com/_blob/x.png", immutable_url: null,
+          cdn_url: "https://pr-abc.run402.com/_blob/x.png", cdn_immutable_url: null,
+        });
+      }
+      throw new Error("unexpected: " + call.url);
+    });
+    const sdk = makeSdk(fetch);
+    const asset = await sdk.blobs.put("prj_known", "x.png", { content: "abc" });
+    assert.throws(() => asset.scriptTag(), /immutable: true/);
+    assert.throws(() => asset.linkTag(), /immutable: true/);
+    assert.throws(() => asset.imgTag(), /immutable: true/);
   });
 
   it("leaves integrity fields null on non-immutable upload (sha256 not computed)", async () => {
