@@ -10,6 +10,9 @@
 import type { Client } from "../kernel.js";
 import { ApiError, ProjectNotFound } from "../errors.js";
 import type {
+  BlobCacheKind,
+  BlobCdnEnvelope,
+  BlobDiagnoseEnvelope,
   BlobLsOptions,
   BlobLsResult,
   BlobPutOptions,
@@ -17,6 +20,8 @@ import type {
   BlobPutSource,
   BlobSignOptions,
   BlobSignResult,
+  BlobWaitFreshOptions,
+  BlobWaitFreshResult,
 } from "./blobs.types.js";
 
 function encodeKey(key: string): string {
@@ -60,6 +65,106 @@ interface UploadInitResponse {
   mode: "single" | "multipart";
   parts: Array<{ part_number: number; url: string; byte_start: number; byte_end: number }>;
   part_count: number;
+}
+
+/**
+ * Gateway upload-completion response shape (legacy snake_case fields plus
+ * any new agent-DX fields the gateway emits). Used internally by `put` to
+ * widen into the AssetRef return type the SDK exposes.
+ */
+interface UploadCompleteResponse {
+  key: string;
+  size_bytes: number;
+  sha256: string | null;
+  visibility: "public" | "private";
+  content_type: string | null;
+  immutable_suffix: string | null;
+  etag?: string;
+  url: string | null;
+  immutable_url: string | null;
+  /** Optional: future gateway versions emit a `cdn` envelope on completion
+   *  with the CloudFront invalidation ID + status for mutable overwrites
+   *  (and `ready: true` for immutable uploads). When absent (current
+   *  gateway), the SDK fills in safe defaults from local information. */
+  cdn?: Partial<BlobCdnEnvelope>;
+}
+
+/**
+ * Convert hex (e.g. `"abcd…"`) to base64 in environments that have either
+ * Buffer (Node) or `btoa` (browsers). The helper is here because Browser SDK
+ * builds may run without `Buffer`.
+ */
+function hexToBase64(hex: string): string {
+  const len = hex.length;
+  const bytes = new Uint8Array(len / 2);
+  for (let i = 0; i < len; i += 2) {
+    bytes[i / 2] = parseInt(hex.slice(i, i + 2), 16);
+  }
+  // Prefer Buffer when available (faster on Node).
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const g = globalThis as unknown as { Buffer?: any; btoa?: (s: string) => string };
+  if (g.Buffer) return g.Buffer.from(bytes).toString("base64");
+  let s = "";
+  for (const b of bytes) s += String.fromCharCode(b);
+  return g.btoa ? g.btoa(s) : "";
+}
+
+/**
+ * Widen the gateway's snake_case completion response into the AssetRef
+ * shape (which adds camelCase aliases + locally-derived integrity fields
+ * for any URL the consumer is about to embed in code). For non-immutable
+ * uploads where the SHA is null, the integrity fields are null and the
+ * agent guidance steers them to use `--immutable` before linking.
+ */
+function buildAssetRef(
+  resp: UploadCompleteResponse,
+  contentType: string,
+): BlobPutResult {
+  const sha = resp.sha256;
+  const immutable = !!resp.immutable_url;
+  const cacheKind: BlobCacheKind =
+    resp.visibility === "private"
+      ? "private"
+      : immutable
+      ? "immutable"
+      : "mutable";
+  const etag = sha ? `"sha256-${sha}"` : null;
+  const sri = sha ? `sha256-${hexToBase64(sha)}` : null;
+  const contentDigest = sha ? `sha-256=:${hexToBase64(sha)}:` : null;
+
+  // The cdn envelope: prefer what the gateway returns; fall back to
+  // best-effort defaults so older gateway versions don't break the SDK
+  // surface. immutable URLs are always-ready by definition.
+  const cdnFromGw = resp.cdn ?? {};
+  const cdn: BlobCdnEnvelope = {
+    version: cdnFromGw.version ?? "blob-gateway-v2",
+    invalidationId: cdnFromGw.invalidationId ?? null,
+    invalidationStatus: cdnFromGw.invalidationStatus ?? null,
+    ready: cdnFromGw.ready ?? immutable,
+    hint:
+      cdnFromGw.hint ??
+      (immutable
+        ? "immutableUrl is ready immediately."
+        : "For mutable URLs, propagation is asynchronous. Prefer immutableUrl in generated HTML/CSS/JS, or call wait_for_cdn_freshness."),
+  };
+
+  return {
+    key: resp.key,
+    size_bytes: resp.size_bytes,
+    sha256: sha,
+    visibility: resp.visibility,
+    url: resp.url,
+    immutable_url: resp.immutable_url,
+    size: resp.size_bytes,
+    contentSha256: sha,
+    contentType,
+    immutableUrl: resp.immutable_url,
+    etag,
+    sri,
+    contentDigest,
+    cacheKind,
+    cdn,
+  };
 }
 
 export class Blobs {
@@ -145,7 +250,7 @@ export class Blobs {
     const completeBody = init.mode === "multipart"
       ? { parts: partEtags.map((e, i) => ({ part_number: i + 1, etag: `"${e.etag}"` })) }
       : {};
-    return this.client.request<BlobPutResult>(
+    const completion = await this.client.request<UploadCompleteResponse>(
       `/storage/v1/uploads/${init.upload_id}/complete`,
       {
         method: "POST",
@@ -157,6 +262,110 @@ export class Blobs {
         context: "completing upload",
       },
     );
+
+    // Widen the gateway response into the v1.45 AssetRef return type. Older
+    // gateway versions don't emit the `cdn` envelope; `buildAssetRef` fills
+    // safe defaults derived from the SHA + visibility so the SDK surface is
+    // stable across gateway versions.
+    return buildAssetRef(completion, contentType);
+  }
+
+  /**
+   * Diagnose a public blob URL. Returns a JSON envelope describing the live
+   * CDN state (expected vs observed SHA, cache headers, recent invalidation
+   * status, vantage). The gateway probes the URL once from us-east-1 with
+   * `Range: bytes=0-0` and returns within 5 s even if the inner probe is
+   * slow.
+   *
+   * **Vantage caveat:** the result reflects ONE CloudFront PoP at the time
+   * of the call. Other PoPs may serve different cached states. The
+   * `probeMayHaveWarmedCache: true` field reminds the agent that the probe
+   * itself populates the cache, so a subsequent read may differ.
+   *
+   * The URL must belong to the requesting project — cross-project URLs are
+   * rejected by the gateway with `403`. SSRF is enforced gateway-side: only
+   * `*.run402.com` and the project's active custom domains are accepted.
+   *
+   * @example
+   *   const diag = await client.blobs.diagnoseUrl("prj_abc", "https://app.run402.com/_blob/avatar.png");
+   *   if (diag.observedSha256 !== diag.expectedSha256) console.log(diag.hint);
+   */
+  async diagnoseUrl(projectId: string, url: string): Promise<BlobDiagnoseEnvelope> {
+    const project = await this.client.getProject(projectId);
+    if (!project) throw new ProjectNotFound(projectId, "diagnosing blob URL");
+
+    const path = `/storage/v1/blobs/diagnose?url=${encodeURIComponent(url)}`;
+    return this.client.request<BlobDiagnoseEnvelope>(path, {
+      headers: {
+        apikey: project.anon_key,
+        Authorization: `Bearer ${project.anon_key}`,
+      },
+      context: "diagnosing blob URL",
+    });
+  }
+
+  /**
+   * Poll the CDN until a mutable URL serves the expected SHA-256, or the
+   * timeout elapses. **For mutable URLs only** — for immutable URLs (the
+   * `immutableUrl` returned by `put`) no waiting is needed; they're bound
+   * at upload time and never previously cached.
+   *
+   * Default `timeoutMs` is 60_000 (60 s). The helper polls the gateway's
+   * diagnose endpoint with exponential backoff bounded by 1 s; each poll
+   * may itself warm the cache for the probed PoP, so subsequent reads from
+   * other PoPs may still be stale until invalidation propagation completes.
+   *
+   * @example
+   *   await client.blobs.waitFresh("prj_abc", {
+   *     url: result.url,           // the mutable URL from blobs.put
+   *     sha256: result.contentSha256,
+   *     timeoutMs: 30_000,
+   *   });
+   */
+  async waitFresh(
+    projectId: string,
+    opts: BlobWaitFreshOptions,
+  ): Promise<BlobWaitFreshResult> {
+    const project = await this.client.getProject(projectId);
+    if (!project) throw new ProjectNotFound(projectId, "waiting for CDN freshness");
+
+    const expected = opts.sha256.toLowerCase();
+    const timeoutMs = opts.timeoutMs ?? 60_000;
+    const start = Date.now();
+
+    let attempts = 0;
+    let observed: string | null = null;
+    let delay = 100;
+    while (Date.now() - start < timeoutMs) {
+      attempts++;
+      try {
+        const envelope = await this.diagnoseUrl(projectId, opts.url);
+        observed = envelope.observedSha256;
+        if (observed && observed.toLowerCase() === expected) {
+          return {
+            fresh: true,
+            observedSha256: observed,
+            attempts,
+            elapsedMs: Date.now() - start,
+            vantage: "gateway-us-east-1",
+          };
+        }
+      } catch {
+        // Swallow & retry — `diagnoseUrl` can fail on transient gateway
+        // hiccups (e.g. ALB cycling). The next poll re-attempts.
+      }
+      const remaining = timeoutMs - (Date.now() - start);
+      if (remaining <= 0) break;
+      await new Promise((r) => setTimeout(r, Math.min(delay, remaining)));
+      delay = Math.min(delay * 2, 1000);
+    }
+    return {
+      fresh: false,
+      observedSha256: observed,
+      attempts,
+      elapsedMs: Date.now() - start,
+      vantage: "gateway-us-east-1",
+    };
   }
 
   /**

@@ -59,7 +59,7 @@ function parseSubcommands(filePath: string): string[] {
 /** Parse CLI commands as "module:subcommand" pairs */
 function parseCliCommands(): string[] {
   const cmds: string[] = [];
-  for (const mod of ["allowance", "tier", "projects", "image", "storage", "blob", "functions", "secrets", "sites", "subdomains", "domains", "apps", "email", "message", "agent", "ai", "auth", "sender-domain", "billing", "contracts", "webhooks", "service"]) {
+  for (const mod of ["allowance", "tier", "projects", "image", "storage", "blob", "cdn", "functions", "secrets", "sites", "subdomains", "domains", "apps", "email", "message", "agent", "ai", "auth", "sender-domain", "billing", "contracts", "webhooks", "service"]) {
     for (const sub of parseSubcommands(join(__dirname, "cli/lib", `${mod}.mjs`))) {
       cmds.push(`${mod}:${sub}`);
     }
@@ -73,7 +73,7 @@ function parseCliCommands(): string[] {
 /** Parse OpenClaw commands as "module:subcommand" pairs */
 function parseOpenClawCommands(): string[] {
   const cmds: string[] = [];
-  for (const mod of ["allowance", "tier", "projects", "image", "storage", "blob", "functions", "secrets", "sites", "subdomains", "domains", "apps", "email", "message", "agent", "ai", "auth", "sender-domain", "billing", "contracts", "webhooks", "service"]) {
+  for (const mod of ["allowance", "tier", "projects", "image", "storage", "blob", "cdn", "functions", "secrets", "sites", "subdomains", "domains", "apps", "email", "message", "agent", "ai", "auth", "sender-domain", "billing", "contracts", "webhooks", "service"]) {
     for (const sub of parseSubcommands(join(__dirname, "openclaw/scripts", `${mod}.mjs`))) {
       cmds.push(`${mod}:${sub}`);
     }
@@ -169,6 +169,9 @@ const SURFACE: Capability[] = [
   { id: "blob_ls",           endpoint: "GET /storage/v1/blobs",                  mcp: "blob_ls",        cli: "blob:ls",          openclaw: "blob:ls" },
   { id: "blob_rm",           endpoint: "DELETE /storage/v1/blob/{key}",          mcp: "blob_rm",        cli: "blob:rm",          openclaw: "blob:rm" },
   { id: "blob_sign",         endpoint: "POST /storage/v1/blob/{key}/sign",       mcp: "blob_sign",      cli: "blob:sign",        openclaw: "blob:sign" },
+  // v1.45: agent-DX blob CDN diagnostics (CLI: blob diagnose / cdn wait-fresh).
+  { id: "diagnose_public_url",   endpoint: "GET /storage/v1/blobs/diagnose",       mcp: "diagnose_public_url",     cli: "blob:diagnose",     openclaw: "blob:diagnose" },
+  { id: "wait_for_cdn_freshness", endpoint: "GET /storage/v1/blobs/diagnose (poll)", mcp: "wait_for_cdn_freshness",  cli: "cdn:wait-fresh",    openclaw: "cdn:wait-fresh" },
 
   // ── Functions ────────────────────────────────────────────────────────────
   { id: "deploy_function",   endpoint: "POST /projects/v1/admin/:id/functions",              mcp: "deploy_function",   cli: "functions:deploy", openclaw: "functions:deploy" },
@@ -348,6 +351,9 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   blob_ls: "blobs.ls",
   blob_rm: "blobs.rm",
   blob_sign: "blobs.sign",
+  // v1.45: agent-DX blob CDN diagnostics
+  diagnose_public_url: "blobs.diagnoseUrl",
+  wait_for_cdn_freshness: "blobs.waitFresh",
 
   // Functions
   deploy_function: "functions.deploy",

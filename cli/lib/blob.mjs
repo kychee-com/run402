@@ -46,6 +46,7 @@ Usage:
   run402 blob ls [options]
   run402 blob rm <key> [options]
   run402 blob sign <key> [options]
+  run402 blob diagnose <url> [options]
 
 Options:
   --project <id>      Project ID (defaults to active project from 'run402 projects use')
@@ -150,6 +151,32 @@ Options:
 
 Examples:
   run402 blob sign reports/2025-q4.pdf --project abc123 --ttl 600
+`,
+  diagnose: `run402 blob diagnose — Inspect the live CDN state for a public blob URL
+
+Usage:
+  run402 blob diagnose <url> [options]
+
+Arguments:
+  <url>               Full blob URL (e.g. https://app.run402.com/_blob/avatar.png)
+
+Options:
+  --project <id>      Project ID (defaults to active project)
+
+Output:
+  - Prints the JSON envelope on stdout (parseable by agent shell loops).
+  - Vantage caveat ("# probed once from gateway-us-east-1; not a global view")
+    on stderr — visible to TTY operators, ignored by piped consumers.
+
+Exit codes:
+  0   observed SHA matches the gateway's expected SHA
+  1   observed SHA does not match (or probe returned no SHA)
+
+Agent loop pattern:
+  until run402 blob diagnose <url>; do sleep 1; done
+
+Examples:
+  run402 blob diagnose https://app.run402.com/_blob/avatar.png
 `,
 };
 
@@ -445,6 +472,33 @@ async function rm(projectId, argv) {
 // sign
 // ---------------------------------------------------------------------------
 
+async function diagnose(projectId, argv) {
+  const opts = parseArgs(argv);
+  opts.project = opts.project || projectId;
+  const resolvedId = resolveProjectId(opts.project);
+  if (opts.positional.length === 0) die("URL required");
+  const url = opts.positional[0];
+
+  try {
+    const env = await getSdk().blobs.diagnoseUrl(resolvedId, url);
+    // Always print the JSON envelope for agent consumption (parseable).
+    console.log(JSON.stringify(env, null, 2));
+    // Vantage caveat to stderr so a TTY operator sees it; agent shell loops
+    // that pipe stdout into another tool aren't affected.
+    process.stderr.write(
+      `\n# probed once from ${env.vantage}; not a global view\n`,
+    );
+    // Exit code: 0 if observed === expected, 1 otherwise. Lets agents
+    // shell-script `until run402 blob diagnose <url>; do sleep 1; done`.
+    if (env.observedSha256 && env.observedSha256 === env.expectedSha256) {
+      process.exit(0);
+    }
+    process.exit(1);
+  } catch (err) {
+    reportSdkError(err);
+  }
+}
+
 async function sign(projectId, argv) {
   const opts = parseArgs(argv);
   opts.project = opts.project || projectId;
@@ -518,11 +572,12 @@ export async function run(sub, args) {
   }
   const defaultProject = process.env.RUN402_PROJECT ?? null;
   switch (sub) {
-    case "put":   await put(defaultProject, args); break;
-    case "get":   await get(defaultProject, args); break;
-    case "ls":    await ls(defaultProject, args); break;
-    case "rm":    await rm(defaultProject, args); break;
-    case "sign":  await sign(defaultProject, args); break;
+    case "put":      await put(defaultProject, args); break;
+    case "get":      await get(defaultProject, args); break;
+    case "ls":       await ls(defaultProject, args); break;
+    case "rm":       await rm(defaultProject, args); break;
+    case "sign":     await sign(defaultProject, args); break;
+    case "diagnose": await diagnose(defaultProject, args); break;
     default:
       console.error(`Unknown subcommand: ${sub}`);
       console.log(HELP);

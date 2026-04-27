@@ -109,7 +109,14 @@ Upload a blob (any size, up to 5 TiB) to project storage via direct-to-S3 presig
 - `immutable` (optional, default: `false`) — If true with `sha256`, also produces a content-addressed URL that gets `Cache-Control: immutable`.
 - `sha256` (optional) — Required when `immutable: true`. Client-asserted hash; gateway verifies if S3 returns one.
 
-**Returns:** `{ key, size_bytes, sha256, url, immutable_url? }`. `url` is the CDN URL (on `pr-<public_id>.run402.com`); `immutable_url` is the content-addressed variant when applicable.
+**Returns:** an `AssetRef`: `{ key, size_bytes, sha256, visibility, url, immutable_url, size, contentSha256, contentType, immutableUrl, etag, sri, contentDigest, cacheKind, cdn: { version, invalidationId, invalidationStatus, ready, hint } }`. The legacy snake_case fields (`size_bytes`, `sha256`, `immutable_url`) are kept for back-compat; the camelCase fields are the v1.45 agent-DX surface.
+
+**Prefer `immutableUrl` in generated HTML/CSS/JS code.** Reasoning:
+- Read-after-write correctness: the immutable URL is bound to the SHA at upload time and was never previously cached. The mutable `url` is "eventually fresh" — invalidation is asynchronous, so a `<script>` tag pointing at it may load the OLD version for seconds-to-minutes after a re-upload.
+- Built-in integrity: pair `immutableUrl` with `integrity={sri}` on `<script>` and `<link>` tags so browsers verify the hash before executing.
+- No follow-up calls needed: an agent emitting `<script src={immutableUrl} integrity={sri}>` doesn't need to call `wait_for_cdn_freshness` afterwards. Use the mutable `url` only when the URL must remain stable across re-uploads.
+
+If you must use the mutable `url` (e.g. you're updating an `<img>` referenced by an external system that won't accept a new URL), call `wait_for_cdn_freshness` before publishing the change. **Mutable URLs only**; never call wait_for_cdn_freshness on `immutableUrl`.
 
 Supersedes `upload_file` (deprecated).
 
@@ -156,6 +163,34 @@ Generate a time-boxed S3 presigned GET URL for a private blob. Use this to share
 - `ttl_seconds` (optional, default: 3600, max: 604800) — URL expiry in seconds (max 7 days)
 
 **Returns:** `{ url, expires_at }`.
+
+### diagnose_public_url
+
+Returns the live CDN state for a public blob URL — expected vs observed SHA, CloudFront cache headers, recent invalidation status, vantage. Use this when a deployed asset shows the wrong version or you suspect cache staleness.
+
+**Parameters:**
+- `project_id` (required) — Project ID that owns the URL
+- `url` (required) — Full blob URL (e.g. `https://app.run402.com/_blob/avatar.png`)
+
+**Returns:** the diagnose envelope including `expectedSha256`, `observedSha256`, `cache.{xCache,ageSeconds,cacheKind}`, `invalidation.{id,status}`, `vantage: "gateway-us-east-1"`, `probeMethod: "GET_RANGE_0_0"`, `probeMayHaveWarmedCache: true`, and a human-readable `hint` with actionable next steps.
+
+**Vantage caveat:** The probe is single-region (us-east-1). Other CloudFront PoPs may serve different cached states. The `probeMayHaveWarmedCache: true` field warns that the probe itself populates the cache for that PoP, so subsequent reads from elsewhere may differ.
+
+**Errors:**
+- 403 — URL belongs to a different project than your apikey
+- 400 — URL is not on `*.run402.com` AND not on one of your active custom domains (SSRF guard)
+
+### wait_for_cdn_freshness
+
+Polls the CDN until a **mutable** blob URL serves the expected SHA-256, or the timeout elapses. **For mutable URLs only** — for immutable URLs (the `immutableUrl` field returned by `blob_put`), no waiting is needed; they're bound at upload time and never previously cached.
+
+**Parameters:**
+- `project_id` (required) — Project ID that owns the URL
+- `url` (required) — Mutable blob URL to poll
+- `sha256` (required) — Expected hex SHA-256
+- `timeout_ms` (optional, default 60_000, max 600_000) — Max wait in milliseconds
+
+**Returns:** `{ fresh, observedSha256, attempts, elapsedMs, vantage }`. The tool returns `isError=true` on timeout so an agent can branch into a fallback (typically: switch to the immutableUrl, which is always immediately correct).
 
 ### upload_file (deprecated)
 

@@ -28,9 +28,10 @@ Commands:
   deploy      Deploy a full-stack app or static site (requires active tier)
   functions   Manage serverless functions (deploy, invoke, logs, list, delete)
   secrets     Manage project secrets (set, list, delete)
-  blob        Direct-to-S3 blob storage (put, get, ls, rm, sign) — up to 5 TiB
+  blob        Direct-to-S3 blob storage (put, get, ls, rm, sign, diagnose) — up to 5 TiB
   storage     Legacy file storage (deprecated — sunset 2026-06-01, use 'blob')
   sites       Deploy static sites
+  cdn         CloudFront CDN diagnostics (wait-fresh) for public blob URLs
   subdomains  Manage custom subdomains (claim, list, delete)
   domains     Manage custom domains (add, list, status, delete)
   apps        Browse and manage the app marketplace
@@ -126,6 +127,11 @@ switch (cmd) {
   }
   case "blob": {
     const { run } = await import("./lib/blob.mjs");
+    await run(sub, rest);
+    break;
+  }
+  case "cdn": {
+    const { run } = await import("./lib/cdn.mjs");
     await run(sub, rest);
     break;
   }
