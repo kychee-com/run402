@@ -82,11 +82,25 @@ interface UploadCompleteResponse {
   etag?: string;
   url: string | null;
   immutable_url: string | null;
+  /** v1.45+ agent-DX URLs from the gateway. Always on the auto-subdomain
+   *  (`pr-<public_id>.run402.com`) which is guaranteed to work through the
+   *  v1.33 CDN path. May be null on private uploads or older gateway
+   *  versions that don't emit them. */
+  cdn_url?: string | null;
+  cdn_immutable_url?: string | null;
   /** Optional: future gateway versions emit a `cdn` envelope on completion
    *  with the CloudFront invalidation ID + status for mutable overwrites
    *  (and `ready: true` for immutable uploads). When absent (current
    *  gateway), the SDK fills in safe defaults from local information. */
   cdn?: Partial<BlobCdnEnvelope>;
+}
+
+function escapeHtmlAttr(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
 }
 
 /**
@@ -132,6 +146,12 @@ function buildAssetRef(
   const sri = sha ? `sha256-${hexToBase64(sha)}` : null;
   const contentDigest = sha ? `sha-256=:${hexToBase64(sha)}:` : null;
 
+  // v1.45 agent-DX URLs — guaranteed CDN-reachable on the auto-subdomain.
+  // Older gateway versions don't emit them; null in that case (callers fall
+  // back to the preferred-host `url` / `immutableUrl`).
+  const cdnUrl = resp.cdn_immutable_url ?? null;
+  const cdnMutableUrl = resp.cdn_url ?? null;
+
   // The cdn envelope: prefer what the gateway returns; fall back to
   // best-effort defaults so older gateway versions don't break the SDK
   // surface. immutable URLs are always-ready by definition.
@@ -144,9 +164,22 @@ function buildAssetRef(
     hint:
       cdnFromGw.hint ??
       (immutable
-        ? "immutableUrl is ready immediately."
-        : "For mutable URLs, propagation is asynchronous. Prefer immutableUrl in generated HTML/CSS/JS, or call wait_for_cdn_freshness."),
+        ? "Use cdnUrl + scriptTag()/linkTag()/imgTag() — paste-and-go."
+        : "For mutable URLs, propagation is asynchronous. Prefer cdnUrl (immutable, content-hashed) for generated HTML/CSS/JS, or call wait_for_cdn_freshness."),
   };
+
+  // Emitter helpers. Throw with an actionable hint when the SHA is null
+  // (non-immutable upload) — the agent should re-upload with `immutable:
+  // true` to get content-hashed URLs that pair with SRI.
+  function requireImmutable(name: string): { url: string; sri: string } {
+    if (!cdnUrl || !sri) {
+      throw new Error(
+        `${name}() requires an immutable upload (pass { immutable: true } to blobs.put). ` +
+          `Without immutable, there is no SHA to bind for SRI and the URL would change on re-upload.`,
+      );
+    }
+    return { url: cdnUrl, sri };
+  }
 
   return {
     key: resp.key,
@@ -159,11 +192,44 @@ function buildAssetRef(
     contentSha256: sha,
     contentType,
     immutableUrl: resp.immutable_url,
+    cdnUrl,
+    cdnMutableUrl,
     etag,
     sri,
     contentDigest,
     cacheKind,
     cdn,
+
+    scriptTag(opts) {
+      const { url, sri } = requireImmutable("scriptTag");
+      const attrs: string[] = [`src="${escapeHtmlAttr(url)}"`];
+      if (opts?.type === "module") attrs.push(`type="module"`);
+      if (opts?.defer) attrs.push("defer");
+      if (opts?.async) attrs.push("async");
+      attrs.push(`integrity="${escapeHtmlAttr(sri)}"`);
+      attrs.push("crossorigin");
+      return `<script ${attrs.join(" ")}></script>`;
+    },
+
+    linkTag(opts) {
+      const { url, sri } = requireImmutable("linkTag");
+      const rel = opts?.rel ?? "stylesheet";
+      const attrs: string[] = [`rel="${escapeHtmlAttr(rel)}"`];
+      attrs.push(`href="${escapeHtmlAttr(url)}"`);
+      if (opts?.as) attrs.push(`as="${escapeHtmlAttr(opts.as)}"`);
+      attrs.push(`integrity="${escapeHtmlAttr(sri)}"`);
+      attrs.push("crossorigin");
+      return `<link ${attrs.join(" ")}>`;
+    },
+
+    imgTag(alt) {
+      // <img> doesn't take SRI per HTML5 spec — agents who need integrity
+      // for images should fetch + verify Content-Digest server-side. We
+      // still require immutable so the URL is stable across re-deploys.
+      const { url } = requireImmutable("imgTag");
+      const a = alt ?? "";
+      return `<img src="${escapeHtmlAttr(url)}" alt="${escapeHtmlAttr(a)}">`;
+    },
   };
 }
 
