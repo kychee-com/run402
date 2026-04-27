@@ -43,6 +43,8 @@ import { blobGetSchema, handleBlobGet } from "./tools/blob-get.js";
 import { blobLsSchema, handleBlobLs } from "./tools/blob-ls.js";
 import { blobRmSchema, handleBlobRm } from "./tools/blob-rm.js";
 import { blobSignSchema, handleBlobSign } from "./tools/blob-sign.js";
+import { blobDiagnoseSchema, handleBlobDiagnose } from "./tools/blob-diagnose.js";
+import { blobWaitFreshSchema, handleBlobWaitFresh } from "./tools/blob-wait-fresh.js";
 
 // New tools — functions & secrets CRUD
 import { listFunctionsSchema, handleListFunctions } from "./tools/list-functions.js";
@@ -248,6 +250,20 @@ server.tool(
   "Generate a time-boxed S3 presigned GET URL for a blob. Use this to share a private blob externally without exposing your apikey. Default TTL 1 hour, max 7 days.",
   blobSignSchema,
   async (args) => handleBlobSign(args),
+);
+
+server.tool(
+  "diagnose_public_url",
+  "Returns the live CDN state for a public blob URL (probed once from gateway-us-east-1 — NOT a global view). Use this when a deployed asset shows the wrong version or you suspect cache staleness. The result includes `expectedSha256` (from gateway DB), `observedSha256` (what CloudFront just served), recent `invalidation` status, and a human-readable `hint` with actionable next-steps. The `probeMayHaveWarmedCache: true` field warns that the probe itself populates the cache, so subsequent reads from elsewhere may differ. URLs outside the requesting project return 403; non-`*.run402.com` URLs return 400 unless they're on one of your active custom domains.",
+  blobDiagnoseSchema,
+  async (args) => handleBlobDiagnose(args),
+);
+
+server.tool(
+  "wait_for_cdn_freshness",
+  "Polls the CDN until a MUTABLE blob URL serves the expected SHA-256, or the timeout elapses. **For mutable URLs only** — for immutable URLs (the `immutableUrl` returned by `blob_put`), no waiting is needed; they're bound to a SHA at upload time and never previously cached. Use this after a re-upload to an existing public mutable key when an end-user-visible URL must reflect the new content before continuing. The probe is single-vantage (us-east-1). On timeout, the tool returns isError=true so an agent can branch into a fallback — typically: switch to the immutableUrl.",
+  blobWaitFreshSchema,
+  async (args) => handleBlobWaitFresh(args),
 );
 
 server.tool(

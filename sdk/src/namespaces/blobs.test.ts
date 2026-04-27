@@ -296,3 +296,247 @@ describe("blobs.sign", () => {
     assert.equal(result.expires_in, 3600);
   });
 });
+
+// ---------------------------------------------------------------------------
+// v1.45 — AssetRef widened return + diagnoseUrl + waitFresh
+// ---------------------------------------------------------------------------
+
+describe("blobs.put — AssetRef widening (v1.45)", () => {
+  it("populates camelCase aliases + integrity fields for immutable upload", async () => {
+    // sha256 of "abc"
+    const SHA = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
+    const { fetch } = mockFetch((call) => {
+      if (call.url.endsWith("/storage/v1/uploads")) {
+        return json({
+          upload_id: "u_a",
+          mode: "single",
+          part_count: 1,
+          parts: [{ part_number: 1, url: "https://s3.test/u_a/p1", byte_start: 0, byte_end: 2 }],
+        });
+      }
+      if (call.url.startsWith("https://s3.test/")) {
+        return new Response("", { status: 200, headers: { etag: '"e"' } });
+      }
+      if (call.url.endsWith("/complete")) {
+        return json({
+          key: "x.txt",
+          size_bytes: 3,
+          sha256: SHA,
+          visibility: "public",
+          content_type: "text/plain",
+          immutable_suffix: SHA.slice(0, 8),
+          url: "https://app.run402.com/_blob/x.txt",
+          immutable_url: "https://app.run402.com/_blob/x-ba7816bf.txt",
+        });
+      }
+      throw new Error("unexpected: " + call.url);
+    });
+    const sdk = makeSdk(fetch);
+    const result = await sdk.blobs.put("prj_known", "x.txt", { content: "abc" }, { immutable: true });
+
+    // Legacy snake_case fields stay populated for back-compat.
+    assert.equal(result.size_bytes, 3);
+    assert.equal(result.sha256, SHA);
+    assert.equal(result.url, "https://app.run402.com/_blob/x.txt");
+    assert.equal(result.immutable_url, "https://app.run402.com/_blob/x-ba7816bf.txt");
+    // New camelCase aliases.
+    assert.equal(result.size, 3);
+    assert.equal(result.contentSha256, SHA);
+    assert.equal(result.immutableUrl, "https://app.run402.com/_blob/x-ba7816bf.txt");
+    assert.equal(result.contentType, "text/plain");
+    // Integrity fields derived from the SHA.
+    assert.equal(result.etag, `"sha256-${SHA}"`);
+    assert.match(result.sri ?? "", /^sha256-[A-Za-z0-9+/]+={0,2}$/);
+    assert.match(result.contentDigest ?? "", /^sha-256=:[A-Za-z0-9+/]+={0,2}:$/);
+    // Cache kind + cdn envelope.
+    assert.equal(result.cacheKind, "immutable");
+    assert.equal(result.cdn.version, "blob-gateway-v2");
+    assert.equal(result.cdn.ready, true);
+    assert.match(result.cdn.hint ?? "", /immutableUrl is ready immediately/);
+  });
+
+  it("leaves integrity fields null on non-immutable upload (sha256 not computed)", async () => {
+    const { fetch } = mockFetch((call) => {
+      if (call.url.endsWith("/storage/v1/uploads")) {
+        return json({
+          upload_id: "u_b",
+          mode: "single",
+          part_count: 1,
+          parts: [{ part_number: 1, url: "https://s3.test/u_b/p1", byte_start: 0, byte_end: 2 }],
+        });
+      }
+      if (call.url.startsWith("https://s3.test/")) {
+        return new Response("", { status: 200, headers: { etag: '"e"' } });
+      }
+      if (call.url.endsWith("/complete")) {
+        return json({
+          key: "y.txt",
+          size_bytes: 3,
+          sha256: null,
+          visibility: "public",
+          content_type: null,
+          immutable_suffix: null,
+          url: "https://app.run402.com/_blob/y.txt",
+          immutable_url: null,
+        });
+      }
+      throw new Error("unexpected: " + call.url);
+    });
+    const sdk = makeSdk(fetch);
+    const result = await sdk.blobs.put("prj_known", "y.txt", { content: "abc" });
+    assert.equal(result.contentSha256, null);
+    assert.equal(result.etag, null);
+    assert.equal(result.sri, null);
+    assert.equal(result.contentDigest, null);
+    assert.equal(result.cacheKind, "mutable");
+    assert.equal(result.cdn.ready, false);
+    assert.match(result.cdn.hint ?? "", /Prefer immutableUrl|wait_for_cdn_freshness/);
+  });
+
+  it("propagates a gateway-emitted cdn envelope verbatim when present", async () => {
+    const { fetch } = mockFetch((call) => {
+      if (call.url.endsWith("/storage/v1/uploads")) {
+        return json({
+          upload_id: "u_c",
+          mode: "single",
+          part_count: 1,
+          parts: [{ part_number: 1, url: "https://s3.test/u_c/p1", byte_start: 0, byte_end: 2 }],
+        });
+      }
+      if (call.url.startsWith("https://s3.test/")) {
+        return new Response("", { status: 200, headers: { etag: '"e"' } });
+      }
+      if (call.url.endsWith("/complete")) {
+        return json({
+          key: "z.txt",
+          size_bytes: 3,
+          sha256: null,
+          visibility: "public",
+          content_type: "text/plain",
+          immutable_suffix: null,
+          url: "https://app.run402.com/_blob/z.txt",
+          immutable_url: null,
+          cdn: {
+            version: "blob-gateway-v2",
+            invalidationId: "I-1234",
+            invalidationStatus: "InProgress",
+            hint: "Invalidation is asynchronous; use wait_for_cdn_freshness.",
+          },
+        });
+      }
+      throw new Error("unexpected: " + call.url);
+    });
+    const sdk = makeSdk(fetch);
+    const result = await sdk.blobs.put("prj_known", "z.txt", { content: "abc" });
+    assert.equal(result.cdn.invalidationId, "I-1234");
+    assert.equal(result.cdn.invalidationStatus, "InProgress");
+    assert.match(result.cdn.hint ?? "", /asynchronous/);
+  });
+});
+
+describe("blobs.diagnoseUrl", () => {
+  it("GETs /storage/v1/blobs/diagnose with the URL query-encoded", async () => {
+    const { fetch, calls } = mockFetch(() =>
+      json({
+        projectId: "prj_known",
+        key: "avatar.png",
+        expectedSha256: "abc",
+        observedSha256: "abc",
+        vantage: "gateway-us-east-1",
+        probeMethod: "GET_RANGE_0_0",
+        acceptEncoding: "identity",
+        observedAt: "2026-04-27T00:00:00Z",
+        probeMayHaveWarmedCache: true,
+        canonicalUrl: "https://app.run402.com/_blob/avatar.png",
+        pathKind: "blob-mutable",
+        cache: { xCache: "Hit from cloudfront", ageSeconds: 5, cacheKind: "mutable" },
+        invalidation: { id: null, status: null },
+        hint: "CDN is serving the current SHA.",
+      }),
+    );
+    const sdk = makeSdk(fetch);
+    const env = await sdk.blobs.diagnoseUrl(
+      "prj_known",
+      "https://app.run402.com/_blob/avatar.png",
+    );
+    assert.equal(env.observedSha256, "abc");
+    assert.equal(env.vantage, "gateway-us-east-1");
+    assert.equal(env.probeMethod, "GET_RANGE_0_0");
+    assert.equal(env.probeMayHaveWarmedCache, true);
+    assert.match(
+      calls[0]!.url,
+      /\/storage\/v1\/blobs\/diagnose\?url=https%3A%2F%2Fapp\.run402\.com%2F_blob%2Favatar\.png/,
+    );
+  });
+
+  it("throws ProjectNotFound for unknown project", async () => {
+    const { fetch } = mockFetch(() => json({}));
+    const sdk = makeSdk(fetch);
+    await assert.rejects(
+      sdk.blobs.diagnoseUrl("prj_missing", "https://app.run402.com/_blob/x"),
+      ProjectNotFound,
+    );
+  });
+});
+
+describe("blobs.waitFresh", () => {
+  function envelope(observed: string | null) {
+    return {
+      projectId: "prj_known",
+      key: "k",
+      expectedSha256: "ff",
+      observedSha256: observed,
+      vantage: "gateway-us-east-1" as const,
+      probeMethod: "GET_RANGE_0_0" as const,
+      acceptEncoding: "identity",
+      observedAt: "2026-04-27T00:00:00Z",
+      probeMayHaveWarmedCache: true as const,
+      canonicalUrl: "https://app.run402.com/_blob/k",
+      pathKind: "blob-mutable" as const,
+      cache: { xCache: null, ageSeconds: null, cacheKind: "mutable" as const },
+      invalidation: { id: null, status: null },
+      hint: "",
+    };
+  }
+
+  it("returns fresh: true once observedSha256 matches expected", async () => {
+    let calls = 0;
+    const { fetch } = mockFetch(() => {
+      calls++;
+      // First two calls return the old SHA, third returns the new one.
+      return json(envelope(calls < 3 ? "00".repeat(32) : "ff"));
+    });
+    const sdk = makeSdk(fetch);
+    const result = await sdk.blobs.waitFresh("prj_known", {
+      url: "https://app.run402.com/_blob/k",
+      sha256: "ff",
+      timeoutMs: 5_000,
+    });
+    assert.equal(result.fresh, true);
+    assert.equal(result.observedSha256, "ff");
+    assert.ok(result.attempts >= 3);
+    assert.equal(result.vantage, "gateway-us-east-1");
+  });
+
+  it("returns fresh: false on timeout (no exception thrown)", async () => {
+    const { fetch } = mockFetch(() => json(envelope("00".repeat(32))));
+    const sdk = makeSdk(fetch);
+    const result = await sdk.blobs.waitFresh("prj_known", {
+      url: "https://app.run402.com/_blob/k",
+      sha256: "ff",
+      timeoutMs: 250,
+    });
+    assert.equal(result.fresh, false);
+    assert.ok(result.attempts >= 1);
+    assert.ok(result.elapsedMs >= 250 - 50);
+  });
+
+  it("throws ProjectNotFound for unknown project", async () => {
+    const { fetch } = mockFetch(() => json({}));
+    const sdk = makeSdk(fetch);
+    await assert.rejects(
+      sdk.blobs.waitFresh("prj_missing", { url: "https://app.run402.com/_blob/k", sha256: "ff" }),
+      ProjectNotFound,
+    );
+  });
+});
