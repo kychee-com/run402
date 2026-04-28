@@ -71,7 +71,6 @@ const MATRIX = {
     shared: [],
     specific: ["put", "get", "ls", "rm", "sign"],
   },
-  storage: { shared: ["download", "delete", "list"], specific: ["upload"] },
   sites: { shared: ["status"], specific: ["deploy", "deploy-dir"] },
   subdomains: { shared: ["delete", "list"], specific: ["claim"] },
   domains: { shared: ["add", "list", "status", "delete"], specific: [] },

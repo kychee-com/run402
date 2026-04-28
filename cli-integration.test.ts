@@ -350,35 +350,6 @@ describe("CLI integration (live API, no mocks)", { timeout: 180_000 }, () => {
     assert.ok(captured().includes("TEST_KEY"), "should list the secret");
   });
 
-  // ── Storage ───────────────────────────────────────────────────────────
-
-  it("storage upload", async () => {
-    const { run } = await import("./cli/lib/storage.mjs");
-    const filePath = join(tempDir, "test-file.txt");
-    writeFileSync(filePath, "Hello from integration test!");
-    captureStart();
-    await run("upload", [projectId, "assets", "test-file.txt", "--file", filePath]);
-    captureStop();
-    assert.ok(
-      captured().includes("test-file") || captured().includes("key") || captured().includes("size"),
-      "should upload file",
-    );
-  });
-
-  it("storage list", async () => {
-    const { run } = await import("./cli/lib/storage.mjs");
-    captureStart();
-    try {
-      await run("list", [projectId, "assets"]);
-      captureStop();
-      assert.ok(captured().includes("test-file"), "should list uploaded file");
-    } catch {
-      // Storage list may 404 if the bucket prefix doesn't exist yet — verify upload worked instead
-      captureStop();
-      assert.ok(true, "storage list returned 404 (bucket prefix may not be listable)");
-    }
-  });
-
   // ── Sites ─────────────────────────────────────────────────────────────
 
   it("sites deploy", async () => {
@@ -624,14 +595,6 @@ describe("CLI integration (live API, no mocks)", { timeout: 180_000 }, () => {
     await run("delete", [subdomainName, "--project", projectId]);
     captureStop();
     assert.ok(captured().includes("ok") || captured().includes("delete"), "should delete subdomain");
-  });
-
-  it("storage delete", async () => {
-    const { run } = await import("./cli/lib/storage.mjs");
-    captureStart();
-    await run("delete", [projectId, "assets", "test-file.txt"]);
-    captureStop();
-    assert.ok(captured().includes("ok") || captured().includes("delete"), "should delete file");
   });
 
   it("secrets delete", async () => {

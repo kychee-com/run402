@@ -469,10 +469,6 @@ const complete = await fetch(`https://api.run402.com/storage/v1/uploads/${init.u
 // complete.url is the CDN URL for the blob (public blobs only)
 ```
 
-### storage (deprecated — sunset 2026-06-01)
-
-`run402 storage <upload|download|delete|list>` still works (50 MB cap, prints a deprecation banner on stderr) but is being retired. Use `run402 blob` above for all new code — bucket names map to the first path segment of the new key space, so migration is invisible. See https://run402.com/docs/blob#migration.
-
 ### sites
 - `run402 sites deploy --manifest <file> [--project <id>] [--target <target>]`
 - `run402 sites deploy-dir <path> [--project <id>] [--target <target>] [--quiet]`

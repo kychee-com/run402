@@ -327,29 +327,46 @@ await fetch(`${API}/rest/v1/items`, {
 
 ## File Storage
 
+Direct-to-S3 blob storage. Flat key namespace per project; works for any size from 1 byte up to 5 TiB. Three steps: init → PUT parts to S3 → complete.
+
 ```bash
-# Upload
-POST /storage/v1/object/assets/photo.jpg
-  -H "apikey: $ANON_KEY"
-  -H "Content-Type: image/jpeg"
+# 1. Init upload (gateway returns presigned S3 part URLs)
+POST /storage/v1/uploads
+  -H "apikey: $SERVICE_KEY"
+  -H "Content-Type: application/json"
+  --data '{"key":"assets/photo.jpg","size_bytes":12345,"content_type":"image/jpeg"}'
+# → { upload_id, parts: [{ part_number, url, byte_start, byte_end }] }
+
+# 2. PUT bytes directly to S3 (NOT through the gateway) — capture each part's ETag
+PUT <part.url>
   --data-binary @photo.jpg
 
-# Download
-GET /storage/v1/object/assets/photo.jpg
+# 3. Complete with the part ETags
+POST /storage/v1/uploads/<upload_id>/complete
+  -H "apikey: $SERVICE_KEY"
+  -H "Content-Type: application/json"
+  --data '{"parts":[{"part_number":1,"etag":"..."}]}'
+# → { key, url, immutable_url, cdn_url, cdn_immutable_url, content_sha256, etag, sri, size, content_type }
+
+# Authenticated read
+GET /storage/v1/blob/assets/photo.jpg
   -H "apikey: $ANON_KEY"
 
 # Delete
-DELETE /storage/v1/object/assets/photo.jpg
+DELETE /storage/v1/blob/assets/photo.jpg
+  -H "apikey: $SERVICE_KEY"
+
+# List by prefix
+GET /storage/v1/blobs?prefix=assets/&limit=100
   -H "apikey: $ANON_KEY"
 
-# Signed URL (1h expiry)
-POST /storage/v1/object/sign/assets/photo.jpg
-  -H "apikey: $ANON_KEY"
-
-# List files
-GET /storage/v1/object/list/assets
-  -H "apikey: $ANON_KEY"
+# Signed URL (1h default, 7d max) for sharing private blobs
+POST /storage/v1/blob/assets/photo.jpg/sign
+  -H "apikey: $SERVICE_KEY"
+  --data '{"ttl_seconds":3600}'
 ```
+
+Public blobs are CDN-served at `https://pr-<public_id>.run402.com/_blob/<key>` (auto-subdomain) or any claimed subdomain / mapped custom domain. Prefer the `cdn_immutable_url` from the complete response for read-after-write correctness without polling.
 
 ---
 

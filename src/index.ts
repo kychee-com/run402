@@ -6,7 +6,6 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { provisionSchema, handleProvision } from "./tools/provision.js";
 import { runSqlSchema, handleRunSql } from "./tools/run-sql.js";
 import { restQuerySchema, handleRestQuery } from "./tools/rest-query.js";
-import { uploadFileSchema, handleUploadFile } from "./tools/upload-file.js";
 import { setTierSchema, handleSetTier } from "./tools/set-tier.js";
 import { deploySiteSchema, handleDeploySite } from "./tools/deploy-site.js";
 import { deploySiteDirSchema, handleDeploySiteDir } from "./tools/deploy-site-dir.js";
@@ -32,12 +31,7 @@ import { getQuoteSchema, handleGetQuote } from "./tools/get-quote.js";
 import { publishAppSchema, handlePublishApp } from "./tools/publish-app.js";
 import { listVersionsSchema, handleListVersions } from "./tools/list-versions.js";
 
-// New tools — storage CRUD
-import { downloadFileSchema, handleDownloadFile } from "./tools/download-file.js";
-import { deleteFileSchema, handleDeleteFile } from "./tools/delete-file.js";
-import { listFilesSchema, handleListFiles } from "./tools/list-files.js";
-
-// New tools — direct-to-S3 blob storage (supersedes upload_file/download_file/list_files/delete_file)
+// Direct-to-S3 blob storage
 import { blobPutSchema, handleBlobPut } from "./tools/blob-put.js";
 import { blobGetSchema, handleBlobGet } from "./tools/blob-get.js";
 import { blobLsSchema, handleBlobLs } from "./tools/blob-ls.js";
@@ -219,28 +213,28 @@ server.tool(
 
 server.tool(
   "blob_put",
-  "Upload a blob (file or inline content) to project storage via direct-to-S3. Accepts local_path (any size up to 5 TiB) or content (≤ 1 MB inline). Public blobs get a CDN URL; private blobs require authenticated reads. Use `immutable: true` to produce a content-addressed URL that never needs cache invalidation. This supersedes `upload_file`.",
+  "Upload a blob (file or inline content) to project storage via direct-to-S3. Accepts local_path (any size up to 5 TiB) or content (≤ 1 MB inline). Public blobs get a CDN URL; private blobs require authenticated reads. Use `immutable: true` to produce a content-addressed URL that never needs cache invalidation.",
   blobPutSchema,
   async (args) => handleBlobPut(args),
 );
 
 server.tool(
   "blob_get",
-  "Download a blob to a local file path. Writes bytes directly to disk (no context-window bloat). Returns size + SHA-256 header (if the blob has one stored). This supersedes `download_file`.",
+  "Download a blob to a local file path. Writes bytes directly to disk (no context-window bloat). Returns size + SHA-256 header (if the blob has one stored).",
   blobGetSchema,
   async (args) => handleBlobGet(args),
 );
 
 server.tool(
   "blob_ls",
-  "List blobs in a project with optional prefix filter. Supports pagination via cursor. This supersedes `list_files` (which is bucket-scoped; blob_ls is prefix-based over a flat key namespace).",
+  "List blobs in a project with optional prefix filter over a flat key namespace. Supports pagination via cursor.",
   blobLsSchema,
   async (args) => handleBlobLs(args),
 );
 
 server.tool(
   "blob_rm",
-  "Delete a blob from project storage and decrement the project's storage_bytes. This supersedes `delete_file`.",
+  "Delete a blob from project storage and decrement the project's storage_bytes.",
   blobRmSchema,
   async (args) => handleBlobRm(args),
 );
@@ -264,34 +258,6 @@ server.tool(
   "Polls the CDN until a MUTABLE blob URL serves the expected SHA-256, or the timeout elapses. **For mutable URLs only** — for immutable URLs (the `immutableUrl` returned by `blob_put`), no waiting is needed; they're bound to a SHA at upload time and never previously cached. Use this after a re-upload to an existing public mutable key when an end-user-visible URL must reflect the new content before continuing. The probe is single-vantage (us-east-1). On timeout, the tool returns isError=true so an agent can branch into a fallback — typically: switch to the immutableUrl.",
   blobWaitFreshSchema,
   async (args) => handleBlobWaitFresh(args),
-);
-
-server.tool(
-  "upload_file",
-  "(DEPRECATED — use blob_put. Sunset 2026-06-01.) Upload text content to project storage. Returns the storage key and size.",
-  uploadFileSchema,
-  async (args) => handleUploadFile(args),
-);
-
-server.tool(
-  "download_file",
-  "(DEPRECATED — use blob_get. Sunset 2026-06-01.) Download a file from project storage. Returns the file content.",
-  downloadFileSchema,
-  async (args) => handleDownloadFile(args),
-);
-
-server.tool(
-  "delete_file",
-  "(DEPRECATED — use blob_rm. Sunset 2026-06-01.) Delete a file from project storage.",
-  deleteFileSchema,
-  async (args) => handleDeleteFile(args),
-);
-
-server.tool(
-  "list_files",
-  "(DEPRECATED — use blob_ls. Sunset 2026-06-01.) List files in a storage bucket. Shows file names, sizes, and last modified dates.",
-  listFilesSchema,
-  async (args) => handleListFiles(args),
 );
 
 // ─── Functions tools ────────────────────────────────────────────────────────

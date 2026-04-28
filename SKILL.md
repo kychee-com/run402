@@ -136,8 +136,6 @@ html += styles.linkTag();
 
 The legacy `size_bytes`, `sha256`, `immutable_url` fields stay populated for back-compat with pre-v1.45 callers.
 
-Supersedes `upload_file` (deprecated).
-
 ### blob_get
 
 Download a blob to a local file. Writes bytes directly to disk — no context-window bloat.
@@ -147,7 +145,7 @@ Download a blob to a local file. Writes bytes directly to disk — no context-wi
 - `key` (required) — Object key
 - `local_path` (required) — Local path to write
 
-**Returns:** `{ key, size_bytes, sha256? }`. Supersedes `download_file` (deprecated).
+**Returns:** `{ key, size_bytes, sha256? }`.
 
 ### blob_ls
 
@@ -159,11 +157,11 @@ List blobs in a project with optional prefix filter and keyset pagination.
 - `limit` (optional, default: 100, max: 1000)
 - `cursor` (optional) — Pagination cursor from a prior call
 
-**Returns:** `{ blobs: [{ key, size_bytes, content_type, visibility, sha256?, created_at }], next_cursor? }`. Supersedes `list_files` (deprecated).
+**Returns:** `{ blobs: [{ key, size_bytes, content_type, visibility, sha256?, created_at }], next_cursor? }`.
 
 ### blob_rm
 
-Delete a blob and decrement the project's storage usage. Supersedes `delete_file` (deprecated).
+Delete a blob and decrement the project's storage usage.
 
 **Parameters:**
 - `project_id` (required) — Project ID
@@ -209,26 +207,6 @@ Polls the CDN until a **mutable** blob URL serves the expected SHA-256, or the t
 - `timeout_ms` (optional, default 60_000, max 600_000) — Max wait in milliseconds
 
 **Returns:** `{ fresh, observedSha256, attempts, elapsedMs, vantage }`. The tool returns `isError=true` on timeout so an agent can branch into a fallback (typically: switch to the immutableUrl, which is always immediately correct).
-
-### upload_file (deprecated)
-
-Legacy file upload. **Deprecated — sunset 2026-06-01.** Use `blob_put` instead.
-
-**Parameters:**
-- `project_id` (required) — Project ID
-- `bucket` (required) — Storage bucket name (e.g., `"assets"`)
-- `path` (required) — File path within bucket (e.g., `"logs/2024-01-01.txt"`)
-- `content` (required) — Text content to upload
-- `content_type` (optional, default: `"text/plain"`) — MIME type
-
-**Returns:** `{ key: "assets/logs/2024-01-01.txt", size: 1234 }` with the stored file path and size in bytes.
-
-**Example:**
-```
-upload_file(project_id: "prj_...", bucket: "assets", path: "data.csv", content: "name,age\nAlice,30\nBob,25")
-```
-
-Uses the stored `anon_key` automatically.
 
 ### renew_project
 
@@ -816,7 +794,7 @@ If your app has users, use the HTTP auth endpoints directly:
 ### Step 7: Upload files (optional)
 
 ```
-upload_file(project_id: "prj_...", bucket: "assets", path: "report.csv", content: "col1,col2\nval1,val2")
+blob_put(project_id: "prj_...", key: "assets/report.csv", content: "col1,col2\nval1,val2")
 ```
 
 ### Step 8: Monitor usage
@@ -830,7 +808,7 @@ run_sql(project_id: "prj_...", sql: "SELECT count(*) FROM todos")
 
 Run402 supports two payment protocols: **x402** (USDC on Base) and **MPP** (pathUSD on Tempo). Both use the same wallet key. Here's what you need to know:
 
-**When payment is needed:** Only `provision_postgres_project` and `renew_project` require x402 payment. All other tools (run_sql, rest_query, upload_file) use stored project keys — no payment needed.
+**When payment is needed:** Only `provision_postgres_project` and `renew_project` require x402 payment. All other tools (run_sql, rest_query, blob_put) use stored project keys — no payment needed.
 
 **What a 402 response looks like:** When payment is required, the tool returns payment details as informational text (not an error). The response includes the price, network (Base L2), and payment address.
 
@@ -859,7 +837,7 @@ Prototype uses testnet tokens — no real money needed. With x402: Base Sepolia 
 
 **Key usage patterns:**
 - Use `service_key` (via `run_sql` or `key_type: "service"`) for: table creation, RLS setup, seeding data, admin queries
-- Use `anon_key` (via `rest_query` default or `upload_file`) for: user-facing reads, file uploads
+- Use `anon_key` (via `rest_query` default or `blob_put`) for: user-facing reads, file uploads
 - Use `access_token` (from auth login, via HTTP) for: user-scoped CRUD subject to RLS
 
 **Tier selection:**
