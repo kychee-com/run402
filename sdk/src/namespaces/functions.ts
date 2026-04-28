@@ -23,10 +23,12 @@ export class Functions {
   constructor(private readonly client: Client) {}
 
   /**
-   * Deploy a serverless function. Pre-bundled packages include `stripe`,
-   * `openai`, `@anthropic-ai/sdk`, `resend`, `zod`, `uuid`, `jsonwebtoken`,
-   * `bcryptjs`, `cheerio`, `csv-parse`. Additional deps are bundled when
-   * listed in `opts.deps`.
+   * Deploy a serverless function. Deployed functions can
+   * `import { db, adminDb, getUser, email, ai } from "@run402/functions"` —
+   * the in-function helper library is provided by the platform.
+   *
+   * `opts.deps` is reserved for a follow-up release that will install
+   * user-supplied packages at deploy time; until then it has no effect.
    *
    * @throws {PaymentRequired} when the project lease has expired.
    */

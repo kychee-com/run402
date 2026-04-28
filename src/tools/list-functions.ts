@@ -70,6 +70,29 @@ export async function handleListFunctions(args: {
       }
     }
 
+    // Render runtime_version + deps_resolved per function when present.
+    // Both fields are populated by the bundling-at-deploy regime in the
+    // companion `drop-functions-layer-and-fix-deps` change. Older functions
+    // (deployed under the Lambda-layer regime) have null for both — omit
+    // those rows entirely so we don't print "Runtime: null" placeholders.
+    const withRuntime = body.functions.filter((fn) => fn.runtime_version != null);
+    if (withRuntime.length > 0) {
+      lines.push(``);
+      lines.push(`### Bundled Runtime`);
+      for (const fn of withRuntime) {
+        const depsCount = Object.keys(fn.deps_resolved ?? {}).length;
+        const depsBit = depsCount > 0
+          ? `, ${depsCount} resolved dep${depsCount === 1 ? "" : "s"}`
+          : "";
+        lines.push(`- **${fn.name}** — \`@run402/functions@${fn.runtime_version}\`${depsBit}`);
+        if (fn.deps_resolved && depsCount > 0) {
+          for (const [name, version] of Object.entries(fn.deps_resolved)) {
+            lines.push(`  - \`${name}@${version}\``);
+          }
+        }
+      }
+    }
+
     return { content: [{ type: "text", text: lines.join("\n") }] };
   } catch (err) {
     return mapSdkError(err, "listing functions");

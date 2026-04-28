@@ -298,7 +298,7 @@ server.tool(
 
 server.tool(
   "deploy_function",
-  "Deploy a serverless function (Node 22) to a project. Handler signature: export default async (req: Request) => Response. Pre-bundled packages: stripe, openai, @anthropic-ai/sdk, resend, zod, uuid, jsonwebtoken, bcryptjs, cheerio, csv-parse.",
+  "Deploy a serverless function (Node 22) to a project. Handler signature: export default async (req: Request) => Response. The function can `import { db, adminDb, getUser, email, ai } from '@run402/functions'` — these helpers are provided by the platform. Other npm packages are not yet supported in deployed code (the `deps` field is reserved for a follow-up release that will install user-supplied packages).",
   deployFunctionSchema,
   async (args) => handleDeployFunction(args),
 );

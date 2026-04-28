@@ -4,21 +4,23 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What This Is
 
-run402-mcp is an MCP (Model Context Protocol) server that exposes Run402 developer tools — provisioning Postgres databases, deploying static sites and serverless functions, managing storage, secrets, subdomains, and x402 USDC micropayments. It ships four interfaces from this monorepo:
+run402-mcp is an MCP (Model Context Protocol) server that exposes Run402 developer tools — provisioning Postgres databases, deploying static sites and serverless functions, managing storage, secrets, subdomains, and x402 USDC micropayments. It ships five interfaces from this monorepo:
 
-- **SDK** (`sdk/`) — typed TypeScript client, kernel shared by MCP/CLI/OpenClaw; published as `@run402/sdk` on npm. Two entry points: root (isomorphic — works in Node 22, Deno, Bun, V8 isolates) and `/node` (zero-config Node defaults — keystore + allowance + x402).
+- **SDK** (`sdk/`) — typed TypeScript client for the run402 API. Used by external integrators, MCP/CLI/OpenClaw, and (eventually) inside deployed functions. Published as `@run402/sdk` on npm. Two entry points: root (isomorphic — works in Node 22, Deno, Bun, V8 isolates) and `/node` (zero-config Node defaults — keystore + allowance + x402).
 - **MCP server** (root `src/`) — the main package, published as `run402-mcp` on npm. Each tool is a thin shim over an SDK call.
 - **CLI** (`cli/`) — standalone CLI published as `run402` on npm. Each subcommand is a thin shim over an SDK call; argv parsing and JSON output stay at the CLI edge.
+- **Functions library** (`functions/`) — in-function helper library used inside deployed serverless functions. Exposes `db(req)`, `adminDb()`, `getUser()`, `email`, `ai`. Published as `@run402/functions` on npm. Distinct from the SDK: this is the request-scoped, in-function shape; the SDK is the typed external client. The two are complementary, not redundant.
 - **OpenClaw skill** (`openclaw/`) — skill for OpenClaw agents, re-exports from CLI modules.
 
-All four share the request kernel via `@run402/sdk`. `core/` holds filesystem primitives (keystore, allowance) that the Node SDK provider wraps.
+The first four packages release in lockstep via the `/publish` skill at the same version (the skill also supports per-package selection for off-cycle patches). All four also share the request kernel via `@run402/sdk` (except `@run402/functions`, which makes raw `fetch()` calls against the project's own endpoints using ambient request context). `core/` holds filesystem primitives (keystore, allowance) that the Node SDK provider wraps.
 
 ## Build & Test Commands
 
 ```bash
-npm run build:core     # tsc -p core/tsconfig.json → core/dist/
-npm run build:sdk      # tsc -p sdk/tsconfig.json  → sdk/dist/
-npm run build          # build:core + build:sdk + tsc → dist/
+npm run build:core      # tsc -p core/tsconfig.json → core/dist/
+npm run build:sdk       # tsc -p sdk/tsconfig.json  → sdk/dist/
+npm run build:functions # tsc -p functions/tsconfig.json → functions/dist/
+npm run build           # build:core + build:sdk + build:functions + tsc → dist/
 npm run start          # node dist/index.js (stdio MCP transport)
 npm run test:skill     # node --test --import tsx SKILL.test.ts (validates SKILL.md frontmatter/body)
 npm run test:sync      # node --test --import tsx sync.test.ts (checks MCP/CLI/OpenClaw/SDK stay in sync)

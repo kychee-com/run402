@@ -5,3 +5,4 @@ cli/sdk/
 sdk/core-dist/
 *.tgz
 .claude/worktrees/
+tmp/

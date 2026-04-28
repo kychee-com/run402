@@ -18,7 +18,8 @@
   "scripts": {
     "build:core": "tsc -p core/tsconfig.json",
     "build:sdk": "mkdir -p sdk/core-dist && cp core/dist/*.js sdk/core-dist/ && cp core/dist/*.d.ts sdk/core-dist/ && tsc -p sdk/tsconfig.json",
-    "build": "npm run build:core && npm run build:sdk && tsc && mkdir -p cli/core-dist cli/sdk/dist cli/sdk/core-dist && cp core/dist/*.js cli/core-dist/ && cp -R sdk/dist/. cli/sdk/dist/ && cp sdk/core-dist/*.js cli/sdk/core-dist/",
+    "build:functions": "tsc -p functions/tsconfig.json",
+    "build": "npm run build:core && npm run build:sdk && npm run build:functions && tsc && mkdir -p cli/core-dist cli/sdk/dist cli/sdk/core-dist && cp core/dist/*.js cli/core-dist/ && cp -R sdk/dist/. cli/sdk/dist/ && cp sdk/core-dist/*.js cli/sdk/core-dist/",
     "start": "node dist/index.js",
     "test:skill": "node --test --import tsx SKILL.test.ts",
     "test:sync": "node --test --import tsx sync.test.ts",

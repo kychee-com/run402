@@ -276,13 +276,13 @@ Requires active tier and a provisioned project. Deploys to an existing project: 
 
 ### functions
 Node 22 runtime. Must export `default async (req: Request) => Response`.
-Built-in helper: `import { db, adminDb, email, ai, getUser } from 'run402-functions'`
+Built-in helper: `import { db, adminDb, email, ai, getUser } from '@run402/functions'`
 - `db(req)` — caller-context DB client. Forwards the caller's `Authorization` header to PostgREST; RLS policies apply to the caller's role. Routes to `/rest/v1/*`. Use this by default.
 - `adminDb()` — BYPASSRLS DB client. Uses the project's service_key. Routes to `/admin/v1/rest/*` (the gateway rejects `role=service_role` on `/rest/v1/*`). Use ONLY when the function acts on behalf of the platform, not the caller — audit logs, webhook handlers, cron cleanup.
 - `getUser(req)` — verify caller's JWT, returns `{ id, role }` or `null`
 - `email.send(opts)` — send email from the project's mailbox (see email section below)
 
-**TypeScript types**: `npm install run402-functions` to get full autocomplete for `db(req)`, `adminDb()`, `getUser()`, `email.send()`, and `ai.translate()`. Works in any Node.js/TypeScript project (Astro, Next.js, plain TS). For static site generation, use `adminDb().from()` at build time with `RUN402_SERVICE_KEY` + `RUN402_PROJECT_ID` in your `.env`. Both `import { db } from 'run402-functions'` and legacy `import { db } from '@run402/functions'` work in deployed functions.
+**TypeScript types**: `npm install @run402/functions` to get full autocomplete for `db(req)`, `adminDb()`, `getUser()`, `email.send()`, and `ai.translate()`. Works in any Node.js/TypeScript project (Astro, Next.js, plain TS). For static site generation, use `adminDb().from()` at build time with `RUN402_SERVICE_KEY` + `RUN402_PROJECT_ID` in your `.env`. The legacy `run402-functions` name on npm is deprecated — install `@run402/functions` instead.
 
 #### db(req).from(table) — caller-context, RLS applies
 
@@ -557,7 +557,7 @@ Slug rules: 3-63 chars, lowercase alphanumeric + hyphens, no consecutive hyphens
 
 **Using email from functions**: Import `email` from `@run402/functions` — no need to manage mailbox IDs or service keys manually:
 ```js
-import { email } from 'run402-functions';
+import { email } from '@run402/functions';
 
 // Template mode
 await email.send({ to: "user@example.com", template: "notification", variables: { project_name: "My App", message: "Hello!" } });

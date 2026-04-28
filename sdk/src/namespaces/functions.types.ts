@@ -16,7 +16,12 @@ export interface FunctionDeployOptions {
   /** Source code. TypeScript or JavaScript. Must `export default async (req: Request) => Response`. */
   code: string;
   config?: FunctionConfig;
-  /** Additional npm packages to bundle with the function (beyond the pre-bundled set). */
+  /**
+   * Additional npm packages to bundle with the function. Reserved for a
+   * follow-up release that will install user-supplied packages at deploy
+   * time. Until then, only `@run402/functions` is available inside
+   * deployed functions; this field has no effect.
+   */
   deps?: string[];
   /** Cron schedule (5-field). Omit to deploy without a schedule. */
   schedule?: string | null;
@@ -31,6 +36,24 @@ export interface FunctionDeployResult {
   memory: number;
   schedule?: string | null;
   created_at: string;
+  /**
+   * The version of `@run402/functions` bundled into the function at deploy
+   * time. Set when the function is deployed under the bundling-at-deploy
+   * regime (see the companion `drop-functions-layer-and-fix-deps` change).
+   * `null` (or omitted) for functions deployed before that change shipped.
+   */
+  runtime_version?: string | null;
+  /**
+   * Resolved direct user dependency versions from `--deps`. Map of dep
+   * name → actually-installed concrete version (NOT the user's spec
+   * string). `{}` when the function was deployed with empty `--deps` under
+   * the new regime; `null` (or omitted) for legacy functions.
+   *
+   * Direct dependencies only — transitive deps, integrity hashes, and
+   * peer-dep relationships are NOT included. This is "resolved direct
+   * dependency versions," not a lockfile.
+   */
+  deps_resolved?: Record<string, string> | null;
 }
 
 export interface FunctionInvokeOptions {
@@ -84,6 +107,19 @@ export interface FunctionSummary {
   schedule_meta?: FunctionScheduleMeta | null;
   created_at: string;
   updated_at: string;
+  /**
+   * The version of `@run402/functions` bundled into the function at deploy
+   * time. `null` for functions deployed before the bundling-at-deploy
+   * regime (see the companion `drop-functions-layer-and-fix-deps` change).
+   */
+  runtime_version?: string | null;
+  /**
+   * Resolved direct user dependency versions from `--deps`. Map of dep
+   * name → actually-installed concrete version. `{}` for empty-deps
+   * deploys under the new regime; `null` for legacy functions.
+   * Direct deps only, not a full lockfile.
+   */
+  deps_resolved?: Record<string, string> | null;
 }
 
 export interface FunctionListResult {
@@ -105,4 +141,8 @@ export interface FunctionUpdateResult {
   schedule: string | null;
   schedule_meta: Record<string, unknown> | null;
   updated_at: string;
+  /** See `FunctionSummary.runtime_version`. */
+  runtime_version?: string | null;
+  /** See `FunctionSummary.deps_resolved`. */
+  deps_resolved?: Record<string, string> | null;
 }

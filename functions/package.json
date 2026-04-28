@@ -1,0 +1,51 @@
+{
+  "name": "@run402/functions",
+  "version": "1.45.0",
+  "description": "In-function helper library for Run402 serverless functions — db, adminDb, getUser, email, ai. Auto-bundled into deployed functions; also installable for local TypeScript autocomplete.",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "!dist/*.test.*",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "test": "node --experimental-test-module-mocks --test --import tsx src/db.test.ts src/auth.test.ts"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "jsonwebtoken": "^9.0.2"
+  },
+  "devDependencies": {
+    "@types/jsonwebtoken": "^9.0.9"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kychee-com/run402.git",
+    "directory": "functions"
+  },
+  "homepage": "https://run402.com",
+  "bugs": "https://github.com/kychee-com/run402/issues",
+  "author": "Kychee Technologies",
+  "license": "MIT",
+  "keywords": [
+    "run402",
+    "serverless",
+    "lambda",
+    "in-function-helpers",
+    "ai-agent"
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
+}
