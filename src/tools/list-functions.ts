@@ -70,15 +70,15 @@ export async function handleListFunctions(args: {
       }
     }
 
-    // Render runtime_version + deps_resolved per function when present.
-    // Both fields are populated by the bundling-at-deploy regime in the
-    // companion `drop-functions-layer-and-fix-deps` change. Older functions
-    // (deployed under the Lambda-layer regime) have null for both — omit
-    // those rows entirely so we don't print "Runtime: null" placeholders.
+    // "Functions runtime version" labels the bundled @run402/functions
+    // version — never bare "runtime", which collides with the existing
+    // runtime: "node22" field. Legacy functions (deployed before the
+    // bundling-at-deploy regime) have null for both fields and are omitted
+    // from this section.
     const withRuntime = body.functions.filter((fn) => fn.runtime_version != null);
     if (withRuntime.length > 0) {
       lines.push(``);
-      lines.push(`### Bundled Runtime`);
+      lines.push(`### Functions runtime version & resolved deps`);
       for (const fn of withRuntime) {
         const depsCount = Object.keys(fn.deps_resolved ?? {}).length;
         const depsBit = depsCount > 0

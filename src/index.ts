@@ -264,7 +264,7 @@ server.tool(
 
 server.tool(
   "deploy_function",
-  "Deploy a serverless function (Node 22) to a project. Handler signature: export default async (req: Request) => Response. The function can `import { db, adminDb, getUser, email, ai } from '@run402/functions'` — these helpers are provided by the platform. Other npm packages are not yet supported in deployed code (the `deps` field is reserved for a follow-up release that will install user-supplied packages).",
+  "Deploy a serverless function (Node 22) to a project. Handler signature: export default async (req: Request) => Response. The function can `import { db, adminDb, getUser, email, ai } from '@run402/functions'` — auto-bundled by the platform. Additional npm packages are bundled at deploy time when listed in `deps` (bare names resolve to latest; pinned/range specs are honored verbatim; `@run402/functions` and `run402-functions` rejected; max 30 entries; native binaries rejected). The response includes `runtime_version` (the bundled `@run402/functions` version — surface as 'Functions runtime version', never bare 'runtime'), `deps_resolved` (map of dep name → installed concrete version), and an optional top-level `warnings` array (sibling to the function record).",
   deployFunctionSchema,
   async (args) => handleDeployFunction(args),
 );
@@ -285,7 +285,7 @@ server.tool(
 
 server.tool(
   "list_functions",
-  "List all deployed functions for a project. Shows names, URLs, runtime, timeout, and memory.",
+  "List all deployed functions for a project. Shows names, URLs, runtime, timeout, memory, and (for functions deployed under bundling-at-deploy) the Functions runtime version (`@run402/functions` version) and resolved direct deps. Functions deployed before that change have `runtime_version` and `deps_resolved` set to null.",
   listFunctionsSchema,
   async (args) => handleListFunctions(args),
 );

@@ -17,10 +17,18 @@ export interface FunctionDeployOptions {
   code: string;
   config?: FunctionConfig;
   /**
-   * Additional npm packages to bundle with the function. Reserved for a
-   * follow-up release that will install user-supplied packages at deploy
-   * time. Until then, only `@run402/functions` is available inside
-   * deployed functions; this field has no effect.
+   * Additional npm packages to bundle with the function. Each entry is an
+   * npm spec: a bare name (`"lodash"`) resolves to latest at deploy time;
+   * a pinned spec (`"lodash@4.17.21"`) uses that exact version; a range
+   * (`"date-fns@^3.0.0"`) is resolved by npm at deploy time.
+   *
+   * `@run402/functions` is auto-bundled and `run402-functions` is the
+   * deprecated package name — both are rejected with HTTP 400. Native
+   * binary modules (e.g. `sharp`, `canvas`) are rejected at install time.
+   * Limits: max 30 entries, max 200 chars per spec.
+   *
+   * The actually-installed concrete versions land in
+   * {@link FunctionDeployResult.deps_resolved}.
    */
   deps?: string[];
   /** Cron schedule (5-field). Omit to deploy without a schedule. */
@@ -54,6 +62,15 @@ export interface FunctionDeployResult {
    * dependency versions," not a lockfile.
    */
   deps_resolved?: Record<string, string> | null;
+  /**
+   * Non-fatal warnings surfaced during the deploy (e.g. bundle size
+   * exceeded the 10 MB recommended threshold but stayed under the 25 MB
+   * hard limit; esbuild emitted a warning about a non-literal dynamic
+   * import). Sibling to the function record at the top level of the
+   * response, NOT inside it. Omitted (or `[]`) when there are no
+   * warnings.
+   */
+  warnings?: string[];
 }
 
 export interface FunctionInvokeOptions {

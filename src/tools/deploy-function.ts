@@ -21,7 +21,9 @@ export const deployFunctionSchema = {
   deps: z
     .array(z.string())
     .optional()
-    .describe("Optional npm packages to install alongside pre-bundled packages"),
+    .describe(
+      "Optional npm package specs to install and bundle. Bare names (e.g. 'lodash') resolve to latest at deploy time; pinned (e.g. 'lodash@4.17.21') or range specs ('date-fns@^3.0.0') are honored verbatim. '@run402/functions' (auto-bundled) and 'run402-functions' (legacy name) are rejected. Max 30 entries, max 200 chars per spec. Native binary modules (sharp, canvas, native bcrypt, etc.) are rejected.",
+    ),
   schedule: z
     .string()
     .nullable()
@@ -60,11 +62,37 @@ export async function handleDeployFunction(args: {
       `| timeout | ${body.timeout}s |`,
       `| memory | ${body.memory}MB |`,
       `| schedule | ${body.schedule ? `\`${body.schedule}\`` : "—"} |`,
+    ];
+
+    if (body.runtime_version != null) {
+      lines.push(`| Functions runtime version | \`@run402/functions@${body.runtime_version}\` |`);
+    }
+
+    if (body.deps_resolved) {
+      const entries = Object.entries(body.deps_resolved);
+      if (entries.length === 0) {
+        lines.push(``, `**Resolved deps:** _none_`);
+      } else {
+        lines.push(``, `**Resolved deps:**`);
+        for (const [name, version] of entries) {
+          lines.push(`- \`${name}@${version}\``);
+        }
+      }
+    }
+
+    if (body.warnings && body.warnings.length > 0) {
+      lines.push(``, `### Warnings`);
+      for (const warning of body.warnings) {
+        lines.push(`- ${warning}`);
+      }
+    }
+
+    lines.push(
       ``,
       `The function is live at **${body.url}**`,
       ``,
       `Invoke with: \`invoke_function(project_id: "${args.project_id}", name: "${body.name}")\``,
-    ];
+    );
 
     return { content: [{ type: "text", text: lines.join("\n") }] };
   } catch (err) {

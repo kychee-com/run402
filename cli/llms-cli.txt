@@ -282,7 +282,7 @@ Built-in helper: `import { db, adminDb, email, ai, getUser } from '@run402/funct
 - `getUser(req)` — verify caller's JWT, returns `{ id, role }` or `null`
 - `email.send(opts)` — send email from the project's mailbox (see email section below)
 
-**TypeScript types**: `npm install @run402/functions` to get full autocomplete for `db(req)`, `adminDb()`, `getUser()`, `email.send()`, and `ai.translate()`. Works in any Node.js/TypeScript project (Astro, Next.js, plain TS). For static site generation, use `adminDb().from()` at build time with `RUN402_SERVICE_KEY` + `RUN402_PROJECT_ID` in your `.env`. The legacy `run402-functions` name on npm is deprecated — install `@run402/functions` instead.
+**TypeScript types**: `npm install @run402/functions` to get full autocomplete for `db(req)`, `adminDb()`, `getUser()`, `email.send()`, and `ai.translate()`. Works in any Node.js/TypeScript project (Astro, Next.js, plain TS). For static site generation, use `adminDb().from()` at build time with `RUN402_SERVICE_KEY` + `RUN402_PROJECT_ID` in your `.env`.
 
 #### db(req).from(table) — caller-context, RLS applies
 
@@ -361,11 +361,26 @@ const res = await fetch('https://api.run402.com/functions/v1/my-function', {
 });
 ```
 
-- `run402 functions deploy <id> <name> --file <file> [--deps "<pkg,...>"] [--timeout <s>] [--memory <mb>] [--schedule "<cron>"]`
+- `run402 functions deploy <id> <name> --file <file> [--deps "<spec,...>"] [--timeout <s>] [--memory <mb>] [--schedule "<cron>"]`
 - `run402 functions invoke <id> <name> [--body '<json>'] [--method <GET|POST|...>]`
 - `run402 functions logs <id> <name> [--tail <n>] [--since <iso-timestamp>] [--follow]`
 - `run402 functions update <id> <name> [--schedule "<cron>"] [--schedule-remove] [--timeout <s>] [--memory <mb>]`
 - `run402 functions <list|delete> <id> [<name>]`
+
+#### --deps semantics, runtime_version, deps_resolved
+
+`--deps` is a comma-separated list of npm specs that the gateway installs and bundles into the function zip alongside the user code:
+- Bare names (`lodash`) resolve to the latest published version at deploy time.
+- Pinned (`lodash@4.17.21`) and range (`date-fns@^3.6.0`) specs are honored verbatim.
+- `@run402/functions` (auto-bundled) and the legacy `run402-functions` name are rejected.
+- Limits: max 30 entries, max 200 chars per spec.
+- Native binary modules (sharp, canvas, native bcrypt, etc.) are rejected.
+
+The deploy / list / update responses include two fields populated under bundling-at-deploy:
+- `runtime_version` — the bundled `@run402/functions` version (e.g. `"1.48.0"`). Surface this as **"Functions runtime version"** — never bare "runtime", which already names the Node runtime (e.g. `node22`). `null` for legacy functions.
+- `deps_resolved` — map of each `--deps` name to the actually-installed concrete version (e.g. `{"date-fns": "3.7.0"}` for a `^3.6.0` spec). Direct deps only; this is **not** a lockfile. `{}` for an empty `--deps`; `null` for legacy functions.
+
+The deploy response also gains an optional top-level `warnings: string[]` (sibling to the function record, **not** inside it) for non-fatal deploy notes such as bundle-size advisories. Omitted or `[]` when there are no warnings.
 
 #### Scheduled function limits by tier
 

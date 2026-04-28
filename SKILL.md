@@ -301,7 +301,7 @@ Deploy a serverless function (Node 22) to a project. Functions are invoked via H
 - `name` (required) — Function name (URL-safe slug: lowercase, hyphens, alphanumeric)
 - `code` (required) — TypeScript or JavaScript source code. Handler: `export default async (req: Request) => Response`
 - `config` (optional) — `{ timeout?: number, memory?: number }` — Timeout (seconds) and memory (MB), capped by tier
-- `deps` (optional) — Array of npm package names to install alongside pre-bundled packages
+- `deps` (optional) — Array of npm specs to install and bundle. Bare names (e.g. `"lodash"`) resolve to latest at deploy time; pinned (e.g. `"lodash@4.17.21"`) or range specs (e.g. `"date-fns@^3.0.0"`) are honored verbatim. `@run402/functions` (auto-bundled) and the legacy `run402-functions` name are rejected. Max 30 entries, max 200 chars per spec. Native binary modules (sharp, canvas, native bcrypt, etc.) are rejected.
 - `schedule` (optional) — Cron expression (5-field, e.g. `"*/15 * * * *"`) to run the function on a schedule. Pass `null` to remove an existing schedule. Scheduled invocations count against API call quota.
 
 **Schedule tier limits:**
@@ -322,11 +322,18 @@ Deploy a serverless function (Node 22) to a project. Functions are invoked via H
   "runtime": "node22",
   "timeout": 10,
   "memory": 128,
-  "schedule": "*/15 * * * *"
+  "schedule": "*/15 * * * *",
+  "runtime_version": "1.48.0",
+  "deps_resolved": { "lodash": "4.17.21" },
+  "warnings": []
 }
 ```
 
-**Available imports:** All deployed functions can `import { db, adminDb, getUser, email, ai } from '@run402/functions'`. Other npm packages are not yet supported in deployed code; this changes in a follow-up release that will make `--deps` install user-supplied packages.
+- `runtime_version` — the bundled `@run402/functions` version (e.g. `"1.48.0"`); `null` for functions deployed before bundling-at-deploy shipped. Surface this as **"Functions runtime version"**, never bare "runtime" (which already names the Node runtime, e.g. `node22`).
+- `deps_resolved` — map of each `--deps` name to the actually-installed concrete version (e.g. `{"date-fns": "3.7.0"}` for a `^3.6.0` spec). Direct deps only — not a lockfile. `{}` for empty `--deps`; `null` for legacy functions.
+- `warnings` — optional top-level array (sibling to the function record, **not** inside it) of non-fatal notes such as bundle-size advisories. Omitted or `[]` when there are no warnings.
+
+**Available imports:** All deployed functions can `import { db, adminDb, getUser, email, ai } from '@run402/functions'` — auto-bundled by the platform. Additional npm packages are bundled at deploy time when listed in `--deps` (see the parameter description above for spec syntax and limits).
 
 **DB access inside functions:**
 ```typescript
@@ -338,7 +345,7 @@ The SDK exposes two distinct DB clients:
 - **`db(req).from(table)`** — caller-context client. Forwards the incoming request's `Authorization` header to PostgREST; RLS policies evaluate against the caller's role. Routes to `/rest/v1/*`. Use this by default.
 - **`adminDb().from(table)`** — BYPASSRLS client. Uses the project's `service_key`. Routes to `/admin/v1/rest/*` (the gateway rejects `role=service_role` on `/rest/v1/*`, so bypass traffic lives on its own surface). Use only when the function acts on behalf of the platform, not the caller — audit logs, webhook handlers, cron cleanup, platform-authored writes.
 
-**TypeScript types**: `npm install @run402/functions` — gives full autocomplete for `db(req)`, `adminDb()`, `getUser()`, `email.send()`, `ai.translate()`. For static site generation, use `adminDb().from()` at build time with `RUN402_SERVICE_KEY` + `RUN402_PROJECT_ID` in your `.env`. The legacy `run402-functions` name on npm is deprecated — install `@run402/functions` instead.
+**TypeScript types**: `npm install @run402/functions` — gives full autocomplete for `db(req)`, `adminDb()`, `getUser()`, `email.send()`, `ai.translate()`. For static site generation, use `adminDb().from()` at build time with `RUN402_SERVICE_KEY` + `RUN402_PROJECT_ID` in your `.env`.
 
 **adminDb().sql(query, params?)** — raw SQL, always BYPASSRLS. Returns `{ status, schema, rows, rowCount }`.
 - SELECT: `rows` = matching rows, `rowCount` = row count
@@ -395,7 +402,7 @@ Update a function's schedule, timeout, or memory without re-deploying code.
 - `timeout` (optional) — Timeout in seconds (tier limits apply)
 - `memory` (optional) — Memory in MB (tier limits apply)
 
-**Returns:** Updated function state (name, runtime, timeout, memory, schedule, updated_at).
+**Returns:** Updated function state (name, runtime, timeout, memory, schedule, updated_at). Also includes `runtime_version` and `deps_resolved` from the most recent code-changing deploy (preserved across config-only updates; `null` for legacy functions).
 
 ### set_secret
 
