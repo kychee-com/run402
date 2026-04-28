@@ -1481,36 +1481,6 @@ describe("CLI e2e happy path", () => {
     assert.ok(captured().includes("TEST_KEY"), "should list secrets");
   });
 
-  // ── Storage ─────────────────────────────────────────────────────────────
-
-  it("storage upload", async () => {
-    const { run } = await import("./cli/lib/storage.mjs");
-    const filePath = join(tempDir, "readme.txt");
-    const { writeFileSync: wf } = await import("node:fs");
-    wf(filePath, "Hello, world!");
-    captureStart();
-    await run("upload", ["prj_test123", "assets", "readme.txt", "--file", filePath]);
-    captureStop();
-    assert.ok(captured().includes("readme.txt") || captured().includes("key"), "should upload file");
-  });
-
-  it("storage list", async () => {
-    const { run } = await import("./cli/lib/storage.mjs");
-    captureStart();
-    await run("list", ["prj_test123", "assets"]);
-    captureStop();
-    assert.ok(captured().includes("readme.txt"), "should list files");
-  });
-
-  it("storage download", async () => {
-    const { run } = await import("./cli/lib/storage.mjs");
-    captureStart();
-    await run("download", ["prj_test123", "assets", "readme.txt"]);
-    captureStop();
-    // download uses process.stdout.write, not console.log — just verify no error
-    assert.ok(true, "should download without error");
-  });
-
   // ── Blob (GH-40: fall back to active project from 'projects use') ───────
 
   it("blob ls falls back to active project (GH-40)", async () => {
@@ -1820,14 +1790,6 @@ describe("CLI e2e happy path", () => {
   });
 
   // ── Cleanup commands (deletions) ────────────────────────────────────────
-
-  it("storage delete", async () => {
-    const { run } = await import("./cli/lib/storage.mjs");
-    captureStart();
-    await run("delete", ["prj_test123", "assets", "readme.txt"]);
-    captureStop();
-    assert.ok(captured().includes("ok") || captured().includes("delete"), "should delete file");
-  });
 
   it("secrets delete", async () => {
     const { run } = await import("./cli/lib/secrets.mjs");

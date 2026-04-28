@@ -157,12 +157,6 @@ const SURFACE: Capability[] = [
   { id: "get_schema",        endpoint: "GET /projects/v1/admin/:id/schema",      mcp: "get_schema",                    cli: "projects:schema",     openclaw: "projects:schema" },
   { id: "get_usage",         endpoint: "GET /projects/v1/admin/:id/usage",       mcp: "get_usage",                     cli: "projects:usage",      openclaw: "projects:usage" },
 
-  // ── Storage (legacy — sunset 2026-06-01, superseded by blob_*) ───────────
-  { id: "upload_file",       endpoint: "POST /storage/v1/object/:bucket/*",      mcp: "upload_file",    cli: "storage:upload",   openclaw: "storage:upload" },
-  { id: "download_file",     endpoint: "GET /storage/v1/object/:bucket/*",       mcp: "download_file",  cli: "storage:download", openclaw: "storage:download" },
-  { id: "delete_file",       endpoint: "DELETE /storage/v1/object/:bucket/*",    mcp: "delete_file",    cli: "storage:delete",   openclaw: "storage:delete" },
-  { id: "list_files",        endpoint: "GET /storage/v1/object/list/:bucket",    mcp: "list_files",     cli: "storage:list",     openclaw: "storage:list" },
-
   // ── Blob (direct-to-S3 storage) ──────────────────────────────────────────
   { id: "blob_put",          endpoint: "POST /storage/v1/uploads",               mcp: "blob_put",       cli: "blob:put",         openclaw: "blob:put" },
   { id: "blob_get",          endpoint: "GET /storage/v1/blob/{key}",             mcp: "blob_get",       cli: "blob:get",         openclaw: "blob:get" },
@@ -338,12 +332,6 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   get_expose: null,
   get_schema: "projects.getSchema",
   get_usage: "projects.getUsage",
-
-  // Storage legacy (pre-blob) — MCP handlers kept on raw apiRequest.
-  upload_file: null,
-  download_file: null,
-  delete_file: null,
-  list_files: null,
 
   // Blob (direct-to-S3)
   blob_put: "blobs.put",
@@ -812,7 +800,13 @@ describe("llms.txt alignment", { skip: !llmsTxtAvailable && "~/Developer/run402-
       "POST /auth/v1/token?grant_type=refresh_token",
       "GET /auth/v1/user",
       "POST /auth/v1/logout",
-      // Storage signed URLs (niche, not yet implemented)
+      // Legacy storage shim — retired 2026-04-28 from the gateway. Upstream
+      // llms.txt may still list these until the private repo's docs catch up;
+      // ignore them on our side so this test stays green either way.
+      "POST /storage/v1/object/:bucket/*",
+      "GET /storage/v1/object/:bucket/*",
+      "DELETE /storage/v1/object/:bucket/*",
+      "GET /storage/v1/object/list/:bucket",
       "POST /storage/v1/object/sign/:bucket/*",
       // Invocation variants (covered by invoke_function)
       "GET /functions/v1/:name",
