@@ -80,7 +80,7 @@ const TOOLS = [
   "provision_postgres_project",
   "run_sql",
   "rest_query",
-  "upload_file",
+  "blob_put",
   "renew_project",
 ];
 

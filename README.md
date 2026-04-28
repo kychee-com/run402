@@ -62,10 +62,6 @@ npx run402-mcp
 | `setup_rls` | Apply row-level security templates to tables. |
 | `get_schema` | Introspect database schema — tables, columns, types, constraints, RLS policies. |
 | `get_usage` | Get project usage report — API calls, storage, limits, lease expiry. |
-| `upload_file` | Upload text content to project storage. |
-| `download_file` | Download a file from project storage. |
-| `delete_file` | Delete a file from project storage. |
-| `list_files` | List files in a storage bucket. |
 | `deploy_function` | Deploy a serverless function (Node 22) to a project. |
 | `invoke_function` | Invoke a deployed function via HTTP. |
 | `get_function_logs` | Get recent logs from a deployed function. |
@@ -214,7 +210,7 @@ claude mcp add run402 -- npx -y run402-mcp
 ## How It Works
 
 1. **Provision** — Call `provision_postgres_project` to create a database. The server handles x402 payment negotiation and stores credentials locally.
-2. **Build** — Use `run_sql` to create tables, `rest_query` to insert/query data, and `upload_file` for storage.
+2. **Build** — Use `run_sql` to create tables, `rest_query` to insert/query data, and `blob_put` for storage.
 3. **Deploy** — Use `deploy_site` for static sites, `deploy_function` for serverless functions, or `bundle_deploy` for a full-stack app in one call.
 4. **Renew** — Call `set_tier` before your lease expires.
 

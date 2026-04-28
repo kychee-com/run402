@@ -39,7 +39,7 @@ export async function handleProvision(args: {
       `| project_id | \`${body.project_id}\` |`,
       `| schema | ${body.schema_slot} |`,
       ``,
-      `Keys saved to local key store. You can now use \`run_sql\`, \`rest_query\`, and \`upload_file\` with this project.`,
+      `Keys saved to local key store. You can now use \`run_sql\`, \`rest_query\`, and \`blob_put\` with this project.`,
     ];
     return { content: [{ type: "text", text: lines.join("\n") }] };
   } catch (err) {

@@ -29,7 +29,6 @@ Commands:
   functions   Manage serverless functions (deploy, invoke, logs, list, delete)
   secrets     Manage project secrets (set, list, delete)
   blob        Direct-to-S3 blob storage (put, get, ls, rm, sign, diagnose) — up to 5 TiB
-  storage     Legacy file storage (deprecated — sunset 2026-06-01, use 'blob')
   sites       Deploy static sites
   cdn         CloudFront CDN diagnostics (wait-fresh) for public blob URLs
   subdomains  Manage custom subdomains (claim, list, delete)
@@ -113,15 +112,6 @@ switch (cmd) {
   }
   case "secrets": {
     const { run } = await import("./lib/secrets.mjs");
-    await run(sub, rest);
-    break;
-  }
-  case "storage": {
-    process.stderr.write(
-      "run402 storage is deprecated — sunset 2026-06-01. Use `run402 blob` instead.\n" +
-      "See https://run402.com/docs/blob#migration\n\n",
-    );
-    const { run } = await import("./lib/storage.mjs");
     await run(sub, rest);
     break;
   }

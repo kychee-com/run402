@@ -20,7 +20,6 @@ npx run402-mcp
 | `provision_postgres_project` | 创建新的 Postgres 数据库（prototype/hobby/team 等级） |
 | `run_sql` | 对项目执行 SQL（DDL 或查询） |
 | `rest_query` | 通过 PostgREST 查询/修改数据 |
-| `upload_file` | 上传文件到项目存储 |
 | `renew_project` | 续期数据库租约 |
 | `deploy_site` | 部署静态 HTML/CSS/JS 站点 |
 | `deploy_function` | 部署 Node 22 Serverless 函数 |
@@ -103,7 +102,7 @@ Run402 已发布为 OpenClaw Skill。支持所有 OpenClaw 兼容的模型和平
 ## 工作流程
 
 1. **创建项目** — 调用 `provision_postgres_project` 创建数据库。服务器自动处理 x402 支付协商，并在本地保存凭证。
-2. **构建应用** — 用 `run_sql` 创建表结构，`rest_query` 插入/查询数据，`upload_file` 管理文件存储。
+2. **构建应用** — 用 `run_sql` 创建表结构，`rest_query` 插入/查询数据，`blob_put` 管理文件存储。
 3. **部署上线** — 用 `deploy_site` 部署前端，`deploy_function` 部署后端函数。
 4. **续期维护** — 在租约到期前调用 `renew_project`。
 
