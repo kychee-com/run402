@@ -63,4 +63,4 @@
 - [x] 7.1 Run `openspec validate sunset-legacy-storage-surfaces` and resolve any errors
 - [x] 7.2 Apply the spec delta to `openspec/specs/incremental-deploy/spec.md`: remove the `### Requirement: Upload file shows public URL` block (header + all three scenarios)
 - [x] 7.3 Re-run `openspec validate sunset-legacy-storage-surfaces` after the spec edit; confirm clean
-- [ ] 7.4 After the PR merges, run `openspec archive sunset-legacy-storage-surfaces -y` to move the change into `openspec/changes/archive/<date>-sunset-legacy-storage-surfaces/`. Use `--skip-specs` if the parser quirk reported in the v1.32 handoff (REMOVED-against-legacy-delta-spec) trips on this archive
+- [x] 7.4 Archived 2026-04-28 to `openspec/changes/archive/2026-04-28-sunset-legacy-storage-surfaces/` (manual `mv` rather than the `openspec archive` CLI; spec delta was already applied during implementation in task 7.2, so `--skip-specs`-equivalent semantics applied)
