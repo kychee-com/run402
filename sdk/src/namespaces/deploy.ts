@@ -22,6 +22,7 @@
 import type { Client } from "../kernel.js";
 import {
   ApiError,
+  NetworkError,
   Run402DeployError,
   type Run402DeployErrorCode,
   type Run402DeployErrorFix,
@@ -1370,9 +1371,19 @@ function translateDeployError(
       context: err.context,
     });
   }
-  // Re-throw other Run402Error subclasses (PaymentRequired, Unauthorized,
-  // NetworkError, etc.) as-is — the consumer handles them at a different
-  // layer than deploy-state-machine errors.
+  if (err instanceof NetworkError) {
+    return new Run402DeployError(err.message, {
+      code: "NETWORK_ERROR",
+      phase,
+      retryable: true,
+      operationId,
+      planId,
+      context: phase,
+    });
+  }
+  // Re-throw other Run402Error subclasses (PaymentRequired, Unauthorized, etc.)
+  // as-is — the consumer handles them at a different layer than
+  // deploy-state-machine errors.
   if (err instanceof Error) {
     return new Run402DeployError(err.message, {
       code: "INTERNAL_ERROR",
