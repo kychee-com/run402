@@ -924,3 +924,115 @@ describe("Deploy.apply (retry on retryable CONTENT_UPLOAD_FAILED)", () => {
     assert.equal(putAttempts, 3, "stopped at MAX_ATTEMPTS=3 (1 initial + 2 retries)");
   });
 });
+
+describe("Deploy.start (events iterator lifecycle)", () => {
+  it("late iteration after op.result() drains buffered events and exits cleanly (GH-138)", async () => {
+    const w = makeWiring();
+    const html = "<html>hi</html>";
+
+    const plan: PlanResponse = {
+      plan_id: "plan_late",
+      operation_id: "op_late",
+      base_release_id: null,
+      manifest_digest: "feed",
+      missing_content: [],
+      diff: {},
+    };
+    const commit: CommitResponse = {
+      operation_id: "op_late",
+      status: "ready",
+      release_id: "rel_late",
+      urls: { site: "https://prj.run402.test" },
+    };
+    w.setHandler((req) => {
+      if (req.path === "/deploy/v2/plans") return plan;
+      if (req.path === "/deploy/v2/plans/plan_late/commit") return commit;
+      throw new Error(`unexpected ${req.path}`);
+    });
+
+    const deploy = new Deploy(w.client);
+    const op = await deploy.start({
+      project: "prj_test",
+      site: { replace: { "index.html": html } },
+    });
+
+    // Drive the deploy to completion before iterating events.
+    const result = await op.result();
+    assert.equal(result.release_id, "rel_late");
+
+    // Now consume events post-completion. The iterator MUST yield the
+    // buffered events (including the terminal "ready") and then exit
+    // cleanly within a deterministic window — not hang.
+    const collected: string[] = [];
+    const consume = (async () => {
+      for await (const ev of op.events()) {
+        collected.push(ev.type);
+      }
+    })();
+
+    const HANG_MS = 500;
+    const timeout = new Promise<"timeout">((resolve) =>
+      setTimeout(() => resolve("timeout"), HANG_MS),
+    );
+    const winner = await Promise.race([
+      consume.then(() => "done" as const),
+      timeout,
+    ]);
+
+    assert.notEqual(
+      winner,
+      "timeout",
+      "events() iterator hung after late iteration — never delivered done signal",
+    );
+    assert(
+      collected.includes("ready"),
+      "buffered terminal 'ready' event was delivered before iterator closed",
+    );
+  });
+
+  it("late iteration after a failed deploy exits cleanly", async () => {
+    const w = makeWiring();
+    const plan: PlanResponse = {
+      plan_id: "plan_fail",
+      operation_id: "op_fail",
+      base_release_id: null,
+      manifest_digest: "dead",
+      missing_content: [],
+      diff: {},
+    };
+    w.setHandler((req) => {
+      if (req.path === "/deploy/v2/plans") return plan;
+      if (req.path === "/deploy/v2/plans/plan_fail/commit") {
+        return {
+          operation_id: "op_fail",
+          status: "failed",
+          release_id: null,
+          urls: null,
+          error: { code: "INTERNAL_ERROR", message: "boom" },
+        } as unknown as CommitResponse;
+      }
+      throw new Error(`unexpected ${req.path}`);
+    });
+
+    const deploy = new Deploy(w.client);
+    const op = await deploy.start({
+      project: "prj_test",
+      site: { replace: { "x.html": "x" } },
+    });
+
+    await assert.rejects(() => op.result());
+
+    const consume = (async () => {
+      for await (const _ev of op.events()) {
+        /* drain */
+      }
+    })();
+
+    const HANG_MS = 500;
+    const winner = await Promise.race([
+      consume.then(() => "done" as const),
+      new Promise<"timeout">((resolve) => setTimeout(() => resolve("timeout"), HANG_MS)),
+    ]);
+    assert.notEqual(winner, "timeout", "events() iterator hung after failed deploy");
+  });
+});

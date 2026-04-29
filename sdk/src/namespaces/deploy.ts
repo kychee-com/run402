@@ -760,6 +760,14 @@ async function startInternal(
           const queue: DeployEvent[] = [...buffered];
           let resolveNext: ((v: IteratorResult<DeployEvent>) => void) | null = null;
           let done = false;
+          // If a terminal event was already buffered before this iterator
+          // attached (e.g. iteration starts after `await op.result()`
+          // resolved), we'll go done after the queue drains. Without this,
+          // late iteration would hang forever waiting for an emit that
+          // will never come.
+          const terminalAlreadyBuffered = buffered.some(
+            (ev) => ev.type === "ready",
+          );
           const subscriber = (ev: DeployEvent): void => {
             const waiter = resolveNext;
             if (waiter) {
@@ -776,22 +784,27 @@ async function startInternal(
             }
           };
           subscribers.push(subscriber);
-          // Surface terminal failure as iterator end.
-          resultPromise.catch(() => {
+          // Wake up on either success or failure of the result promise
+          // so an iterator attached after termination always exits.
+          const finalize = (): void => {
             done = true;
             if (resolveNext) {
               const r = resolveNext;
               resolveNext = null;
               r({ value: undefined as unknown as DeployEvent, done: true });
             }
-          });
+          };
+          resultPromise.then(finalize, finalize);
 
           return {
             next(): Promise<IteratorResult<DeployEvent>> {
               if (queue.length > 0) {
                 return Promise.resolve({ value: queue.shift()!, done: false });
               }
-              if (done) {
+              // After queue drain, if we already saw the terminal event
+              // in the initial buffer (or the result promise has
+              // resolved/rejected), we're done.
+              if (done || terminalAlreadyBuffered) {
                 return Promise.resolve({
                   value: undefined as unknown as DeployEvent,
                   done: true,
