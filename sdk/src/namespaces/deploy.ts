@@ -1463,6 +1463,8 @@ function extractGatewayError(
     if (body.fix !== undefined) out.fix = body.fix as GatewayDeployError["fix"];
     if (Array.isArray(body.logs)) out.logs = body.logs as string[];
     if (typeof body.rolled_back === "boolean") out.rolled_back = body.rolled_back;
+    if (typeof body.operation_id === "string") out.operation_id = body.operation_id;
+    if (typeof body.plan_id === "string") out.plan_id = body.plan_id;
     return out;
   }
   return null;
@@ -1489,13 +1491,20 @@ function translateGatewayError(
   // (`operation_not_found`) while services return uppercase
   // (`OPERATION_NOT_FOUND`); consumers expect the canonical uppercase form.
   const normalizedCode = gw.code.toUpperCase() as Run402DeployErrorCode;
+  // Prefer body-supplied ids — the gateway is the authoritative source for
+  // which operation/plan an error belongs to. The caller-provided arguments
+  // are only used as a fallback (e.g., commit failures where the call site
+  // already knows the plan id but the body omits it).
+  const opId =
+    (gw && (gw as { operation_id?: string }).operation_id) ?? operationId;
+  const pId = (gw && (gw as { plan_id?: string }).plan_id) ?? planId;
   return new Run402DeployError(gw.message ?? `Deploy failed: ${gw.code}`, {
     code: normalizedCode,
     phase: gw.phase ?? phase,
     resource: gw.resource ?? null,
     retryable: gw.retryable ?? false,
-    operationId,
-    planId,
+    operationId: opId,
+    planId: pId,
     fix: (gw.fix ?? null) as Run402DeployErrorFix | null,
     logs: gw.logs ?? null,
     rolledBack: gw.rolled_back ?? false,

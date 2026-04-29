@@ -314,6 +314,14 @@ export interface GatewayDeployError {
   fix?: { action: string; path?: string; [key: string]: unknown } | null;
   logs?: string[] | null;
   rolled_back?: boolean;
+  /** Operation id supplied by the gateway when the error is associated with a
+   *  specific deploy operation (e.g., MIGRATION_CHECKSUM_MISMATCH). The SDK
+   *  prefers this over the caller-supplied operation id when constructing
+   *  `Run402DeployError`, so resume hints round-trip correctly. */
+  operation_id?: string;
+  /** Plan id supplied by the gateway when the error originates inside a plan
+   *  context. Same precedence rule as `operation_id`. */
+  plan_id?: string;
   [key: string]: unknown;
 }
 

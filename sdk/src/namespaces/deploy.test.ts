@@ -709,3 +709,48 @@ describe("Deploy.resume (input validation + error wrapping)", () => {
     );
   });
 });
+
+describe("Deploy.apply (gateway error translation)", () => {
+  it("preserves operation_id and plan_id from the gateway error body (#127)", async () => {
+    // Regression for GH-127: when the gateway returns a structured deploy
+    // error with operation_id/plan_id in the body (e.g.
+    // MIGRATION_CHECKSUM_MISMATCH), the resulting Run402DeployError must
+    // surface them — even though the call site for the plan request passes
+    // null for both ids (it has no other source of truth at that moment).
+    const w = makeWiring();
+    w.setHandler((req) => {
+      if (req.path === "/deploy/v2/plans") {
+        throw new ApiError(
+          "Migration checksum mismatch",
+          409,
+          {
+            code: "MIGRATION_CHECKSUM_MISMATCH",
+            message: "Migration checksum mismatch",
+            operation_id: "op_from_body_123",
+            plan_id: "plan_from_body_456",
+          },
+          "planning deploy",
+        );
+      }
+      throw new Error(`unexpected ${req.path}`);
+    });
+
+    const deploy = new Deploy(w.client);
+    let caught: unknown;
+    try {
+      await deploy.apply({
+        project: "prj_test",
+        database: { migrations: [{ id: "001_init", sql: "select 1" }] },
+      });
+      assert.fail("expected deploy.apply to reject");
+    } catch (err) {
+      caught = err;
+    }
+
+    assert(caught instanceof Run402DeployError, "error is Run402DeployError");
+    const e = caught as Run402DeployError;
+    assert.equal(e.code, "MIGRATION_CHECKSUM_MISMATCH");
+    assert.equal(e.operationId, "op_from_body_123");
+    assert.equal(e.planId, "plan_from_body_456");
+  });
+});
