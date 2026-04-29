@@ -19,8 +19,7 @@ Subcommands:
   rest  [id] <table> [params]             Query a table via the REST API (PostgREST)
   usage [id]                              Show compute/storage usage for a project
   schema [id]                             Inspect the database schema
-  rls   [id] <template> <tables_json>     ⚠ DEPRECATED (sunset 2026-05-23) - use 'apply-expose' instead
-  apply-expose [id] <manifest_json>       Apply a declarative authorization manifest (supersedes 'rls')
+  apply-expose [id] <manifest_json>       Apply a declarative authorization manifest
   apply-expose [id] --file <path>         Apply a manifest from a JSON file
   get-expose   [id]                       Get the current authorization manifest
   delete [id]                             Immediately and irreversibly delete a project (cascade purge) and remove from local state
@@ -41,7 +40,6 @@ Examples:
   run402 projects rest abc123 users "limit=10&select=id,name"
   run402 projects usage abc123
   run402 projects schema abc123
-  run402 projects rls abc123 public_read_authenticated_write '[{"table":"posts"}]'
   run402 projects apply-expose abc123 --file manifest.json
   run402 projects get-expose abc123
   run402 projects keys abc123
@@ -54,19 +52,19 @@ Notes:
     any first positional that doesn't is treated as the next argument instead.
   - 'rest' uses PostgREST query syntax (table name + optional query string)
   - 'provision' requires a funded allowance — payment is automatic via x402
-  - RLS templates (prefer user_owns_rows for user-scoped data):
-      user_owns_rows                    users access only their own rows (requires owner_column)
-      public_read_authenticated_write   anyone reads; any authenticated user writes any row
-      public_read_write_UNRESTRICTED    fully open (anon_key writes); use 'run402 deploy' with a manifest
-                                        that includes "i_understand_this_is_unrestricted": true
-  - 'rls' is deprecated (sunset 2026-05-23) — migrate to 'apply-expose'.
-    The expose manifest declares the full authorization surface (tables, views,
-    RPCs) in one convergent call. Tables not listed with expose:true are dark
-    by default. Sample manifest:
+  - 'apply-expose' declares the full authorization surface (tables, views, RPCs)
+    in one convergent call. Tables not listed with expose:true are dark by
+    default. Schema: https://run402.com/schemas/manifest.v1.json. Sample:
       {"version":"1",
        "tables":[{"name":"posts","expose":true,"policy":"user_owns_rows","owner_column":"user_id","force_owner_on_insert":true}],
        "views":[],
        "rpcs":[]}
+    Per-table policies: user_owns_rows (requires owner_column;
+    force_owner_on_insert sets it from auth.uid() automatically),
+    public_read_authenticated_write (anyone reads, any auth'd user writes any
+    row), public_read_write_UNRESTRICTED (fully open; requires
+    "i_understand_this_is_unrestricted": true on the entry), custom (provide
+    custom_sql with CREATE POLICY statements).
 `;
 
 const SUB_HELP = {
