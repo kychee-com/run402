@@ -274,17 +274,30 @@ export class Blobs {
     const project = await this.client.getProject(projectId);
     if (!project) throw new ProjectNotFound(projectId, "uploading blob");
 
-    if ((source.content !== undefined && source.bytes !== undefined) ||
-        (source.content === undefined && source.bytes === undefined)) {
+    // Normalize the polymorphic source shape (GH-126). Bare strings and
+    // Uint8Arrays are accepted as a shorthand for `{ content }` / `{ bytes }`
+    // so callers don't need to know about the wrapper object — every other
+    // ContentSource-shaped surface in the SDK accepts the bare form.
+    let normalized: { content?: string; bytes?: Uint8Array };
+    if (typeof source === "string") {
+      normalized = { content: source };
+    } else if (source instanceof Uint8Array) {
+      normalized = { bytes: source };
+    } else {
+      normalized = source as { content?: string; bytes?: Uint8Array };
+    }
+
+    if ((normalized.content !== undefined && normalized.bytes !== undefined) ||
+        (normalized.content === undefined && normalized.bytes === undefined)) {
       throw new Error("Provide exactly one of `content` or `bytes` in BlobPutSource.");
     }
 
-    const bytes: Uint8Array = source.bytes
-      ? source.bytes
-      : new TextEncoder().encode(source.content!);
+    const bytes: Uint8Array = normalized.bytes
+      ? normalized.bytes
+      : new TextEncoder().encode(normalized.content!);
     const sizeBytes = bytes.byteLength;
 
-    if (source.content !== undefined && sizeBytes > 1_048_576) {
+    if (normalized.content !== undefined && sizeBytes > 1_048_576) {
       throw new Error("`content` is limited to 1 MB. Use `bytes` for larger uploads.");
     }
 

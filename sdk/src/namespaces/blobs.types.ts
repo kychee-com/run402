@@ -8,11 +8,24 @@
 
 export type BlobVisibility = "public" | "private";
 
-/** Source for an upload. Pass exactly one of `content` (UTF-8 string) or `bytes`. */
-export interface BlobPutSource {
-  content?: string;
-  bytes?: Uint8Array;
-}
+/**
+ * Source for an upload.
+ *
+ * Polymorphic — pass any of:
+ *   - a bare `string` (UTF-8) — shorthand for `{ content: <string> }`
+ *   - a bare `Uint8Array` — shorthand for `{ bytes: <u8> }`
+ *   - `{ content: <string> }` — explicit UTF-8 form (≤ 1 MB)
+ *   - `{ bytes: <u8> }` — explicit binary form (no size cap on this end)
+ *
+ * The shorthand forms exist because every other `ContentSource`-shaped
+ * surface in the SDK accepts bare strings/Uint8Arrays — `{ content: ... }`
+ * was an outlier that surprised callers (GH-126).
+ */
+export type BlobPutSource =
+  | string
+  | Uint8Array
+  | { content: string; bytes?: never }
+  | { bytes: Uint8Array; content?: never };
 
 export interface BlobPutOptions {
   /** MIME type. Auto-detected from `key`'s extension when omitted. */
