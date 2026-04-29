@@ -16,26 +16,32 @@ import type {
 /**
  * MCP `deploy` tool — exposes the unified `r.deploy.apply` primitive.
  *
- * The Zod schema mirrors `ReleaseSpec` but constrains byte sources to
- * `{ data: string, encoding?: "utf-8" | "base64" }` (the same shape used
- * by the legacy `bundle_deploy`/`deploy_site` tools). Agents that want to
- * ship a real app via patch semantics, multi-resource atomicity, or the
- * resumable operation model use this tool; the legacy tools continue to
- * work and route through the same SDK shim under the hood.
+ * The Zod schema mirrors `ReleaseSpec` and accepts byte sources in either
+ * shape: a bare UTF-8 string (the natural shape, e.g. `"<h1>hi</h1>"`) or
+ * the `{ data, encoding?, contentType? }` object — the latter is required
+ * for binary payloads via base64 or for explicit `contentType` override.
+ * The SDK's `resolveContent` already accepts both polymorphically; this
+ * schema mirrors that. Agents that want to ship a real app via patch
+ * semantics, multi-resource atomicity, or the resumable operation model
+ * use this tool; the legacy `bundle_deploy`/`deploy_site` tools continue
+ * to work and route through the same SDK shim under the hood.
  */
 
-const fileEntry = z
-  .object({
-    data: z.string(),
-    encoding: z.enum(["utf-8", "base64"]).optional(),
-    contentType: z
-      .string()
-      .optional()
-      .describe(
-        "MIME type override. Auto-detected from the path's extension when omitted.",
-      ),
-  })
-  .strict();
+const fileEntry = z.union([
+  z.string(),
+  z
+    .object({
+      data: z.string(),
+      encoding: z.enum(["utf-8", "base64"]).optional(),
+      contentType: z
+        .string()
+        .optional()
+        .describe(
+          "MIME type override. Auto-detected from the path's extension when omitted.",
+        ),
+    })
+    .strict(),
+]);
 
 const fileMap = z.record(fileEntry);
 
@@ -414,6 +420,9 @@ function mapFiles(map: FileMapInput): Record<string, ContentSource> {
 }
 
 function fileEntryToContentSource(entry: FileEntryInput): ContentSource {
+  // Bare string — the natural shape. Forward as-is; the SDK's
+  // resolveContent accepts strings polymorphically.
+  if (typeof entry === "string") return entry;
   if (entry.encoding === "base64") {
     const bytes = base64ToBytes(entry.data);
     return entry.contentType ? { data: bytes, contentType: entry.contentType } : bytes;
