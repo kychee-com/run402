@@ -93,6 +93,8 @@ run402 projects get-expose   <project_id>
 
 Built-in policies: `user_owns_rows` (rows where `owner_column = auth.uid()`; with `force_owner_on_insert: true` a BEFORE INSERT trigger sets it), `public_read_authenticated_write` (anyone reads, any authenticated user writes), `public_read_write_UNRESTRICTED` (fully open; requires `i_understand_this_is_unrestricted: true`), and `custom` (escape hatch — your own `CREATE POLICY` SQL).
 
+**Auth-as-SDLC alternative:** drop the same JSON as `manifest.json` into your bundle's `files[]` and the gateway reads it, validates it against your migration SQL, applies it, and strips it before serving the site — so authorization travels with your code and never gets publicly served. The deploy returns `manifest_applied: true`; if a table referenced by the manifest isn't in the migration, the deploy is rejected with a structured `errors` array listing every violation.
+
 ### Slick deploys — `deployDir` + plan/commit + progress
 
 `deployDir` walks a local directory, hashes every file client-side, asks the gateway _which_ bytes it doesn't already have, and PUTs only those. Re-deploying an unchanged tree returns immediately with `bytes_uploaded: 0`.
@@ -301,7 +303,7 @@ The full MCP surface — every tool is a thin shim over an SDK call.
 | `claim_subdomain` | Claim `<name>.run402.com` (idempotent; reassigns to latest deployment on subsequent deploys). |
 | `list_subdomains` / `delete_subdomain` | Manage subdomains. |
 | `add_custom_domain` / `list_custom_domains` / `check_domain_status` / `remove_custom_domain` | Point your own domain at a Run402 subdomain. |
-| `bundle_deploy` | One-call full-stack deploy: database + migrations + manifest + secrets + functions + site + subdomain. |
+| `bundle_deploy` | One-call full-stack deploy: database + migrations + authorization manifest (`manifest.json` in `files[]` — gateway validates it, applies it, then strips it before serving the site) + secrets + functions + site + subdomain. |
 
 ### Functions & secrets
 

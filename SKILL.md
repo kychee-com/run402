@@ -95,21 +95,12 @@ For a database + migrations + manifest + secrets + functions + site + subdomain 
 run402 deploy --manifest app.json
 ```
 
-The manifest looks like this:
+The manifest looks like this — note the `manifest.json` entry inside `files[]`:
 
 ```json
 {
   "project_id": "prj_…",
   "migrations_file": "setup.sql",
-  "expose": {
-    "version": "1",
-    "tables": [
-      { "name": "items", "expose": true, "policy": "user_owns_rows",
-        "owner_column": "user_id", "force_owner_on_insert": true }
-    ],
-    "views": [],
-    "rpcs": []
-  },
   "secrets": [{ "key": "OPENAI_API_KEY", "value": "sk-…" }],
   "functions": [{
     "name": "my-fn",
@@ -117,6 +108,7 @@ The manifest looks like this:
     "config": { "timeout": 30, "memory": 256 }
   }],
   "files": [
+    { "file": "manifest.json", "data": "{\"$schema\":\"https://run402.com/schemas/manifest.v1.json\",\"version\":\"1\",\"tables\":[{\"name\":\"items\",\"expose\":true,\"policy\":\"user_owns_rows\",\"owner_column\":\"user_id\",\"force_owner_on_insert\":true}]}" },
     { "file": "index.html", "data": "<!doctype html>…" },
     { "file": "logo.png", "data": "iVBORw0…", "encoding": "base64" }
   ],
@@ -124,14 +116,21 @@ The manifest looks like this:
 }
 ```
 
+The `manifest.json` entry is **auth-as-SDLC** — your authorization travels with your code. The gateway reads it, validates it against the migration SQL, applies it, and **strips it from `files[]` before the site deploys**, so it's never publicly reachable on your subdomain. The deploy response includes `manifest_applied: true` on success. If the manifest references a table the migration doesn't create, the deploy is rejected with HTTP 400 and a structured `errors` array listing every violation.
+
 Provision first (`run402 projects provision`) so you have the `anon_key` to embed in your HTML before deploying.
 
 ## Authorization — the expose manifest
 
-**Tables you create are dark by default.** Until your manifest declares a table with `expose: true`, it's invisible to anon and authenticated callers. This eliminates the "agent forgot RLS, data leaked" footgun.
+**Tables you create are dark by default.** Until your manifest declares a table with `expose: true`, it's invisible to anon and authenticated callers. This eliminates the "agent forgot RLS, data leaked" footgun. The manifest is the single source of truth for what's reachable via `/rest/v1/*`.
 
-```bash
-cat > manifest.json <<'EOF'
+JSON Schema: <https://run402.com/schemas/manifest.v1.json>. Set `$schema` on your manifest file and your editor gets autocomplete for free.
+
+### Preferred: ship `manifest.json` in your bundle
+
+Authorization travels with your code. Put a file named `manifest.json` in the bundle's `files[]` and the gateway reads it, validates it against your migration SQL, applies it, and **strips it from `files[]` before the site deploys** — so it's never publicly reachable on your subdomain. The deploy response includes `manifest_applied: true` on success.
+
+```json
 {
   "$schema": "https://run402.com/schemas/manifest.v1.json",
   "version": "1",
@@ -147,11 +146,20 @@ cat > manifest.json <<'EOF'
     { "name": "compute_streak", "signature": "(user_id uuid)", "grant_to": ["authenticated"] }
   ]
 }
-EOF
-
-run402 projects apply-expose <id> --file manifest.json
-run402 projects get-expose   <id>     # see current state (source: applied | introspected)
 ```
+
+If the manifest references a table the migration doesn't create, the deploy is rejected with HTTP 400 and a structured `errors` array listing **every** violation (not just the first).
+
+### Imperative escape hatch: `apply-expose`
+
+For ad-hoc changes outside a deploy — same JSON shape, no bundle:
+
+```bash
+run402 projects apply-expose <id> --file manifest.json
+run402 projects get-expose   <id>     # source: "applied" | "introspected"
+```
+
+`get-expose` returns the live state. `source: "applied"` means it came from a prior `apply-expose` (or a bundled `manifest.json`); `"introspected"` means no manifest has ever been applied and the response was reconstructed from live DB state.
 
 **Convergent**: applying the same manifest twice is a no-op. Items removed between applies have their policies, grants, triggers, and views dropped. Always include everything you want exposed.
 
@@ -242,7 +250,8 @@ Node 22 runtime. Handler: `export default async (req: Request) => Response`.
 ```bash
 run402 functions deploy <id> my-fn --file fn.ts \
   --timeout 30 --memory 256 \
-  --schedule "*/15 * * * *"
+  --schedule "*/15 * * * *" \
+  --deps "stripe,zod@^3,date-fns@3.6.0"
 
 run402 functions invoke <id> my-fn --body '{"hello":"world"}'
 run402 functions logs   <id> my-fn --tail 100 --follow
@@ -250,6 +259,13 @@ run402 functions update <id> my-fn --schedule "0 */6 * * *"
 run402 functions list   <id>
 run402 functions delete <id> my-fn
 ```
+
+`--deps` accepts npm specs: bare names (`lodash`) resolve to the latest version at deploy time, pinned (`lodash@4.17.21`) and ranges (`date-fns@^3.0.0`) are honored verbatim. Max 30 entries, 200 chars each. **Native binary modules (`sharp`, `canvas`, native bcrypt, etc.) are rejected** — pure JS only. Don't list `@run402/functions` (auto-bundled).
+
+The deploy response surfaces:
+- `runtime_version` — the bundled `@run402/functions` version
+- `deps_resolved` — `{ name: version }` for every package the gateway pinned, including transitives
+- `warnings` — non-fatal notes (e.g. when a bare spec resolved to a version that's later than what's typical)
 
 ### Inside the function — `@run402/functions`
 
