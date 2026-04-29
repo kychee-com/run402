@@ -383,7 +383,7 @@ async function uploadMissing(
       );
     }
     const bytes = await reader();
-    await uploadOne(client.fetch, session, bytes);
+    await uploadOneWithRetry(client.fetch, session, bytes);
 
     // Per-session completion — promotes the staged object to CAS via
     // services/cas-promote.ts. The plan-level `/content/v1/plans/:id/commit`
@@ -426,6 +426,30 @@ async function uploadMissing(
     `/content/v1/plans/${encodeURIComponent(planRes.plan_id)}/commit`,
     { method: "POST", headers, body: {}, context: "committing content upload" },
   );
+}
+
+// Wrap `uploadOne` with exponential backoff for retryable failures.
+// `putToS3` raises Run402DeployError(retryable: true) for transient network
+// drops and 5xx/403 responses; one network blip should not fail the entire
+// deploy. Cap at 3 attempts (1 initial + 2 retries) with delays 1s, 2s.
+// Non-retryable errors (4xx other than 403, internal SDK invariants) bubble
+// up on the first attempt. See GH-140.
+async function uploadOneWithRetry(
+  fetchFn: typeof globalThis.fetch,
+  session: MissingContent,
+  bytes: Uint8Array,
+): Promise<void> {
+  const MAX_ATTEMPTS = 3;
+  for (let attempt = 1; ; attempt++) {
+    try {
+      await uploadOne(fetchFn, session, bytes);
+      return;
+    } catch (err) {
+      const retryable = err instanceof Run402DeployError && err.retryable;
+      if (!retryable || attempt >= MAX_ATTEMPTS) throw err;
+      await sleep(1000 * Math.pow(2, attempt - 1)); // 1s, 2s
+    }
+  }
 }
 
 async function uploadOne(
