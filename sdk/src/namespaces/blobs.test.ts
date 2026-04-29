@@ -234,6 +234,79 @@ describe("blobs.put", () => {
     assert.equal(initBody.sha256, "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
   });
 
+  it("accepts a bare string as a polymorphic source (GH-126)", async () => {
+    let initBody: Record<string, unknown> | null = null;
+    const { fetch } = mockFetch((call) => {
+      if (call.url.endsWith("/storage/v1/uploads")) {
+        initBody = JSON.parse(call.body as string);
+        return json({
+          upload_id: "u_str",
+          mode: "single",
+          part_count: 1,
+          parts: [{ part_number: 1, url: "https://s3.test/u_str/p1", byte_start: 0, byte_end: 9 }],
+        });
+      }
+      if (call.url.startsWith("https://s3.test/")) {
+        return new Response("", { status: 200, headers: { etag: '"e"' } });
+      }
+      if (call.url.endsWith("/complete")) {
+        return json({
+          key: "blob.txt",
+          size_bytes: 10,
+          sha256: null,
+          visibility: "public",
+          url: "https://cdn.test/blob.txt",
+          immutable_url: null,
+        });
+      }
+      throw new Error("unexpected: " + call.url);
+    });
+    const sdk = makeSdk(fetch);
+    // The natural "just give me a string" call shape — no { content: ... } wrapper.
+    const result = await sdk.blobs.put(
+      "prj_known", "blob.txt", "hello blob",
+      { immutable: false },
+    );
+    assert.equal(result.key, "blob.txt");
+    assert.equal(initBody!.size_bytes, 10);
+  });
+
+  it("accepts a bare Uint8Array as a polymorphic source (GH-126)", async () => {
+    let initBody: Record<string, unknown> | null = null;
+    const { fetch } = mockFetch((call) => {
+      if (call.url.endsWith("/storage/v1/uploads")) {
+        initBody = JSON.parse(call.body as string);
+        return json({
+          upload_id: "u_u8",
+          mode: "single",
+          part_count: 1,
+          parts: [{ part_number: 1, url: "https://s3.test/u_u8/p1", byte_start: 0, byte_end: 4 }],
+        });
+      }
+      if (call.url.startsWith("https://s3.test/")) {
+        return new Response("", { status: 200, headers: { etag: '"e"' } });
+      }
+      if (call.url.endsWith("/complete")) {
+        return json({
+          key: "raw.bin",
+          size_bytes: 5,
+          sha256: null,
+          visibility: "public",
+          url: "https://cdn.test/raw.bin",
+          immutable_url: null,
+        });
+      }
+      throw new Error("unexpected: " + call.url);
+    });
+    const sdk = makeSdk(fetch);
+    const result = await sdk.blobs.put(
+      "prj_known", "raw.bin", new TextEncoder().encode("bytes"),
+      { immutable: false },
+    );
+    assert.equal(result.key, "raw.bin");
+    assert.equal(initBody!.size_bytes, 5);
+  });
+
   it("throws when both content and bytes are provided", async () => {
     const { fetch } = mockFetch(() => json({}));
     const sdk = makeSdk(fetch);
