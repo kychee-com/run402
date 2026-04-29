@@ -4,7 +4,7 @@
  */
 
 import type { Client } from "../kernel.js";
-import { ProjectNotFound } from "../errors.js";
+import { ProjectNotFound, Run402DeployError } from "../errors.js";
 import type { RlsTemplate, RlsTableSpec } from "./projects.types.js";
 import type { SiteFile } from "./sites.js";
 import { Deploy } from "./deploy.js";
@@ -335,6 +335,23 @@ async function translateBundleToReleaseSpec(
       ];
     }
     if (opts.rls !== undefined) {
+      if (
+        typeof opts.rls !== "object" ||
+        opts.rls === null ||
+        !Array.isArray((opts.rls as { tables?: unknown }).tables)
+      ) {
+        throw new Run402DeployError(
+          `bundleDeploy: opts.rls must be { template, tables[] } (got ${typeof opts.rls})`,
+          {
+            code: "INVALID_SPEC",
+            phase: "validate",
+            resource: "rls",
+            retryable: false,
+            fix: { action: "set_field", path: "rls" },
+            context: "translating bundle to release spec",
+          },
+        );
+      }
       spec.database.expose = translateRlsToExpose(opts.rls);
     }
   }
