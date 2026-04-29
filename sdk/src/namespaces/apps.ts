@@ -156,7 +156,7 @@ export class Apps {
    * the only behavior change vs. v1's blind re-execution and is safe for
    * idempotent migrations (the documented agent norm).
    *
-   * `inherit: true` is silently ignored with a one-time deprecation warning;
+   * `inherit: true` is silently ignored;
    * patch semantics on `r.deploy.apply` replace it.
    */
   async bundleDeploy(
@@ -165,8 +165,6 @@ export class Apps {
   ): Promise<BundleDeployResult> {
     const project = await this.client.getProject(projectId);
     if (!project) throw new ProjectNotFound(projectId, "deploying bundle");
-
-    if (opts.inherit) warnInheritOnce();
 
     const spec = await translateBundleToReleaseSpec(projectId, opts);
     const deploy = new Deploy(this.client);
@@ -302,16 +300,6 @@ export class Apps {
 }
 
 // ─── bundleDeploy compat shim helpers ────────────────────────────────────────
-
-let inheritWarned = false;
-function warnInheritOnce(): void {
-  if (inheritWarned) return;
-  inheritWarned = true;
-  // eslint-disable-next-line no-console
-  console.warn(
-    "[run402] bundleDeploy: `inherit: true` is deprecated. The v2 deploy primitive uses explicit replace/patch semantics; pass `r.deploy.apply({ ..., site: { patch: { put: {...} } } })` for partial updates. The flag will be ignored.",
-  );
-}
 
 async function translateBundleToReleaseSpec(
   projectId: string,
