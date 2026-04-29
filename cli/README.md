@@ -1,8 +1,10 @@
 # run402 CLI
 
-Command-line interface for [Run402](https://run402.com) — provision Postgres databases, deploy static sites, generate images, and manage agent allowances via x402 micropayments.
+Command-line interface for [Run402](https://run402.com) — provision Postgres databases, deploy static sites, run Node 22 serverless functions, host content-addressed CDN assets, send email, sign on-chain. Paid autonomously with x402 USDC on Base. **Prototype tier is free on testnet.**
 
-## Installation
+For the full CLI reference (every flag, every subcommand) see **<https://run402.com/llms-cli.txt>**.
+
+## Install
 
 ```bash
 npm install -g run402
@@ -14,83 +16,128 @@ Or run without installing:
 npx run402 <command>
 ```
 
-## Getting Started
+## 30-second start
 
 ```bash
-# 1. Create a local agent allowance
-run402 allowance create
-
-# 2. Fund it with test USDC (Base Sepolia faucet)
-run402 allowance fund
-
-# 3. Deploy your app
-run402 deploy --tier prototype --manifest app.json
+run402 init                                # one-shot: allowance + faucet + tier check
+run402 tier set prototype                  # FREE on testnet (verifies x402 setup)
+run402 projects provision --name my-app    # → anon_key, service_key, project_id
+run402 sites deploy-dir ./dist             # incremental upload
+run402 subdomains claim my-app             # → https://my-app.run402.com
 ```
 
-## Commands
+That's a real Postgres database + a deployed static site, paid for autonomously with testnet USDC.
 
-### `run402 allowance`
+## Output contract
 
-Manage your local agent allowance.
+Every command prints **JSON to stdout**, **JSON errors to stderr**, and exits **0 on success / 1 on failure**. Designed for shells, scripts, and agent loops — pipe everything to `jq`.
+
+## Common commands
+
+### Allowance
 
 ```bash
-run402 allowance create    # Generate a new allowance
-run402 allowance status    # Show address, network, funding status
-run402 allowance fund      # Request test USDC from the faucet
-run402 allowance export    # Print allowance address (for scripting)
+run402 allowance create    # generate the local allowance
+run402 allowance fund      # request testnet USDC from the faucet
+run402 allowance balance   # mainnet + testnet + billing balance
+run402 allowance export    # print address (for funding)
 ```
 
-### `run402 deploy`
-
-Deploy a full-stack app or static site.
+### Database
 
 ```bash
-run402 deploy --tier prototype --manifest app.json
-run402 deploy --tier hobby --manifest app.json
-cat app.json | run402 deploy --tier team
+run402 projects sql <id> "CREATE TABLE items (id serial PRIMARY KEY, …)"
+run402 projects apply-expose <id> --file manifest.json   # declare what's reachable
+run402 projects rest <id> items "select=*&order=id.desc&limit=10"
+run402 projects schema <id>                              # introspect tables + RLS
 ```
 
-**Tiers:** `prototype` | `hobby` | `team`
-
-**Manifest format:**
-```json
-{
-  "name": "my-app",
-  "files": {
-    "index.html": "<html>...</html>",
-    "style.css": "body { margin: 0; }"
-  },
-  "env": {
-    "MY_VAR": "value"
-  }
-}
-```
-
-### `run402 projects`
-
-Manage your deployed projects.
+### Static sites
 
 ```bash
-run402 projects list                              # List all projects
-run402 projects sql <id> "SELECT * FROM users"   # Run SQL query
-run402 projects rest <id> users "limit=10"       # REST API query
-run402 projects usage <id>                        # Compute/storage usage
-run402 projects schema <id>                       # Database schema
-run402 projects renew <id>                        # Extend lease (pays via x402)
-run402 projects delete <id>                       # Delete project
+run402 sites deploy-dir ./dist                # incremental upload (plan/commit transport)
+run402 deploy --manifest app.json             # one-call full stack deploy
+run402 subdomains claim my-app                # → my-app.run402.com (auto-reassigns on next deploy)
 ```
 
-### `run402 image`
+`deploy-dir` hashes each file client-side and only uploads bytes the gateway doesn't already have. Re-deploying an unchanged tree returns immediately with `bytes_uploaded: 0`. Progress events stream to stderr.
 
-Generate AI images via x402 micropayments.
+### Storage (paste-and-go CDN assets)
 
 ```bash
-run402 image generate "a startup mascot, pixel art"
-run402 image generate "futuristic city at night" --aspect landscape
-run402 image generate "portrait of a cat CEO" --aspect portrait --output cat.png
+run402 blob put ./logo.png        # → AssetRef with cdn_url, sri, etag
+run402 blob get <key> --output /tmp/logo.png
+run402 blob diagnose <url>        # exit 0 if fresh, 1 if stale
 ```
 
-**Options:** `--aspect square|landscape|portrait` · `--output <file>`
+The returned `cdn_url` is content-addressed (`pr-<public_id>.run402.com/_blob/<key>-<8hex>.<ext>`) — paste it straight into HTML. SRI is bundled in `sri`.
+
+### Functions
+
+```bash
+run402 functions deploy <id> my-fn --file fn.ts \
+  --timeout 30 --memory 256 \
+  --schedule "*/15 * * * *" \
+  --deps "stripe,zod@^3"
+run402 functions logs <id> my-fn --tail 100 --follow
+run402 functions invoke <id> my-fn --body '{"hello":"world"}'
+```
+
+Functions run on Node 22 with `@run402/functions` auto-bundled. Inside the handler:
+
+```ts
+import { db, adminDb, getUser, email, ai } from "@run402/functions";
+```
+
+`db(req)` is the caller-context client (RLS applies); `adminDb()` bypasses RLS for platform-authored writes.
+
+### Email
+
+```bash
+run402 email create my-app
+run402 email send --to user@example.com --subject "Welcome" --html "<h1>Hi</h1>"
+run402 email send --to user@example.com --template notification --var project_name="My App"
+```
+
+### Image generation
+
+```bash
+run402 image generate "a serif logo" --aspect square --output logo.png
+```
+
+$0.03 per image via x402.
+
+### On-chain (KMS contract wallets)
+
+```bash
+run402 contracts provision-wallet --chain base-mainnet
+run402 contracts call --wallet <id> --to 0x… --abi @abi.json --fn transfer --args '["0x…","1000000"]'
+```
+
+Private keys never leave AWS KMS. $0.04/day rental + $0.000005/call.
+
+### Tier and billing
+
+```bash
+run402 tier set prototype                                    # free on testnet
+run402 tier set hobby                                        # $5 / 30 days
+run402 billing tier-checkout hobby --email me@example.com    # Stripe alternative
+```
+
+## State
+
+Local state lives at:
+
+- `~/.config/run402/projects.json` (`0600`) — project credentials (`anon_key`, `service_key`, `tier`, `lease_expires_at`)
+- `~/.config/run402/allowance.json` (`0600`) — wallet for x402 signing
+
+Override with `RUN402_CONFIG_DIR` or `RUN402_ALLOWANCE_PATH`. Override the API base with `RUN402_API_BASE`.
+
+The CLI handles all x402 payment signing automatically — never ask the human for a private key or set up payment libraries by hand.
+
+## Active project (sticky default)
+
+After `provision`, the new project becomes the active one. `run402 projects use <id>` switches it. Most commands that take `<id>` default to the active project when omitted.
 
 ## Help
 
@@ -98,18 +145,30 @@ Every command supports `--help` / `-h`:
 
 ```bash
 run402 --help
-run402 allowance --help
-run402 deploy --help
 run402 projects --help
-run402 image --help
+run402 sites --help
+run402 blob --help
+run402 functions --help
 ```
 
-## Notes
+## Full reference
 
-- Agent allowance stored at `~/.run402/allowance.json`
-- Project credentials stored at `~/.run402/projects.json`
-- Network: Base Sepolia (testnet) for prototype tier (free). Base mainnet or Stripe for paid tiers (hobby/team).
-- Payments are handled automatically — no manual signing required
+The canonical, comprehensive CLI reference — every flag, every subcommand, edge cases, troubleshooting — lives at:
+
+**<https://run402.com/llms-cli.txt>**
+
+Same content also at [`cli/llms-cli.txt`](./llms-cli.txt) in the repo. Treat that file as authoritative; this README is a quick-orientation landing page.
+
+## Other interfaces
+
+`run402` is one of five surfaces:
+
+- [`@run402/sdk`](https://www.npmjs.com/package/@run402/sdk) — typed TypeScript client (isomorphic + Node entry)
+- [`run402-mcp`](https://www.npmjs.com/package/run402-mcp) — MCP server (Claude Desktop, Cursor, Cline, Claude Code)
+- [`@run402/functions`](https://www.npmjs.com/package/@run402/functions) — in-function helper imported inside deployed functions
+- OpenClaw skill — script-based skill for OpenClaw agents
+
+All five release in lockstep at the same version and share `@run402/sdk` as the kernel.
 
 ## License
 

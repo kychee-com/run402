@@ -2,6 +2,8 @@
 
 This file is the single source of truth for AI coding agents working in this repository (Claude Code, Codex, Cursor, Cline, OpenClaw, etc.). `CLAUDE.md` imports it via `@AGENTS.md`.
 
+> **Updating docs?** See [`documentation.md`](documentation.md) — the map of every doc surface (public + private repo), with target audience, content summary, and update triggers. **Scan it before merging code changes.**
+
 ## What This Is
 
 run402 is a developer platform that ships Postgres databases, content-addressed CDN storage, static site hosting, Node 22 serverless functions, email, image generation, and KMS-backed Ethereum signing — provisioned by AI agents and paid for autonomously via x402 USDC on Base, MPP pathUSD on Tempo, or Stripe credits. Prototype tier is free on testnet.
