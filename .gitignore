@@ -6,3 +6,4 @@ sdk/core-dist/
 *.tgz
 .claude/worktrees/
 tmp/
+.DS_Store
