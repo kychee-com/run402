@@ -11,6 +11,8 @@ import { deploySiteSchema, handleDeploySite } from "./tools/deploy-site.js";
 import { deploySiteDirSchema, handleDeploySiteDir } from "./tools/deploy-site-dir.js";
 import { deploySchema, handleDeploy } from "./tools/deploy.js";
 import { deployResumeSchema, handleDeployResume } from "./tools/deploy-resume.js";
+import { deployListSchema, handleDeployList } from "./tools/deploy-list.js";
+import { deployEventsSchema, handleDeployEvents } from "./tools/deploy-events.js";
 import { claimSubdomainSchema, handleClaimSubdomain } from "./tools/subdomain.js";
 import { deleteSubdomainSchema, handleDeleteSubdomain } from "./tools/subdomain.js";
 import { deployFunctionSchema, handleDeployFunction } from "./tools/deploy-function.js";
@@ -357,6 +359,20 @@ server.tool(
   "Resume a deploy operation that ended in `activation_pending` or `schema_settling` (e.g. transient gateway failure between SQL commit and the pointer-swap activation). The gateway re-runs only the failed phase forward — SQL is never replayed. Idempotent: calling on an already-terminal operation returns the snapshot without re-running.",
   deployResumeSchema,
   async (args) => handleDeployResume(args),
+);
+
+server.tool(
+  "deploy_list",
+  "List recent deploy operations for a project. Returns operation_id, status, release_id, and timestamps. Use this to build deploy-history UIs or to find a recent operation_id to feed into `deploy_resume` / `deploy_events`. Pass `limit` to bound the result set; the gateway also returns a `cursor` for pagination when there are more.",
+  deployListSchema,
+  async (args) => handleDeployList(args),
+);
+
+server.tool(
+  "deploy_events",
+  "Fetch the recorded phase-event stream for a deploy operation. Returns the same `DeployEvent` shapes the `deploy` tool emits inline during an in-flight deploy — useful for inspecting a deploy after the fact (e.g., a deploy that the agent didn't observe directly, or one being resumed from a different process).",
+  deployEventsSchema,
+  async (args) => handleDeployEvents(args),
 );
 
 server.tool(

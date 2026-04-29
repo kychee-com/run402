@@ -1114,3 +1114,121 @@ describe("Deploy.start (events iterator lifecycle)", () => {
     assert.notEqual(winner, "timeout", "events() iterator hung after failed deploy");
   });
 });
+
+describe("Deploy.list", () => {
+  it("GETs /deploy/v2/operations with the project's apikey", async () => {
+    const w = makeWiring();
+    const sample = {
+      operations: [
+        {
+          operation_id: "op_1",
+          project_id: "prj_test",
+          plan_id: "plan_1",
+          status: "ready",
+          base_release_id: null,
+          target_release_id: "rel_1",
+          release_id: "rel_1",
+          urls: { project: "https://prj.run402.test" },
+          payment_required: null,
+          error: null,
+          activate_attempts: 1,
+          last_activate_attempt_at: null,
+          created_at: "2026-04-29T00:00:00Z",
+          updated_at: "2026-04-29T00:00:01Z",
+        },
+      ],
+      cursor: null,
+    };
+    w.setHandler((req) => {
+      if (req.path === "/deploy/v2/operations") return sample;
+      throw new Error(`unexpected ${req.path}`);
+    });
+
+    const deploy = new Deploy(w.client);
+    const result = await deploy.list({ project: "prj_test" });
+
+    assert.equal(result.operations.length, 1);
+    assert.equal(result.operations[0].operation_id, "op_1");
+    assert.equal(result.cursor, null);
+    assert.equal(w.requests.length, 1);
+    assert.equal(w.requests[0].path, "/deploy/v2/operations");
+  });
+
+  it("forwards limit as a query string", async () => {
+    const w = makeWiring();
+    w.setHandler(() => ({ operations: [], cursor: null }));
+    const deploy = new Deploy(w.client);
+    await deploy.list({ project: "prj_test", limit: 5 });
+    assert.equal(w.requests[0].path, "/deploy/v2/operations?limit=5");
+  });
+});
+
+describe("Deploy.events", () => {
+  it("GETs /deploy/v2/operations/:id/events and returns the event list", async () => {
+    const w = makeWiring();
+    const sample = {
+      events: [
+        { type: "plan.started" },
+        { type: "ready", releaseId: "rel_1", urls: { project: "https://prj.run402.test" } },
+      ],
+    };
+    w.setHandler((req) => {
+      if (req.path === "/deploy/v2/operations/op_42/events") return sample;
+      throw new Error(`unexpected ${req.path}`);
+    });
+
+    const deploy = new Deploy(w.client);
+    const result = await deploy.events("op_42", { project: "prj_test" });
+
+    assert.equal(result.events.length, 2);
+    assert.equal(result.events[0].type, "plan.started");
+    const last = result.events[1] as Extract<DeployEvent, { type: "ready" }>;
+    assert.equal(last.releaseId, "rel_1");
+  });
+
+  it("rejects empty operation id without issuing a request", async () => {
+    const w = makeWiring();
+    const deploy = new Deploy(w.client);
+    await assert.rejects(
+      () => deploy.events("", { project: "prj_test" }),
+      (err: unknown) =>
+        err instanceof Run402DeployError &&
+        (err as Run402DeployError).code === "OPERATION_NOT_FOUND",
+    );
+    assert.equal(w.requests.length, 0);
+  });
+
+  it("rejects non-`op_`-prefixed operation id without issuing a request", async () => {
+    const w = makeWiring();
+    const deploy = new Deploy(w.client);
+    await assert.rejects(
+      () => deploy.events("notop_xx", { project: "prj_test" }),
+      (err: unknown) =>
+        err instanceof Run402DeployError &&
+        (err as Run402DeployError).code === "OPERATION_NOT_FOUND",
+    );
+    assert.equal(w.requests.length, 0);
+  });
+
+  it("translates a gateway 404 into a structured Run402DeployError", async () => {
+    const w = makeWiring();
+    w.setHandler((req) => {
+      if (req.path === "/deploy/v2/operations/op_missing/events") {
+        throw new ApiError(
+          "API error while fetching deploy events (HTTP 404)",
+          404,
+          { code: "operation_not_found", message: "operation not found" },
+          "fetching deploy events",
+        );
+      }
+      throw new Error(`unexpected ${req.path}`);
+    });
+    const deploy = new Deploy(w.client);
+    await assert.rejects(
+      () => deploy.events("op_missing", { project: "prj_test" }),
+      (err: unknown) =>
+        err instanceof Run402DeployError &&
+        (err as Run402DeployError).code === "OPERATION_NOT_FOUND",
+    );
+  });
+});

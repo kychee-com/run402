@@ -77,9 +77,36 @@ Output:
   stderr: one JSON event per line (suppressed with --quiet)
 `;
 
+const LIST_HELP = `run402 deploy list — List recent deploy operations for a project
+
+Usage:
+  run402 deploy list [--project <id>] [--limit <n>]
+
+Options:
+  --project <id>          Project ID to list operations for (default: active project)
+  --limit <n>             Maximum number of operations to return
+
+Output:
+  stdout: { "status": "ok", "operations": [...], "cursor": "..." | null }
+`;
+
+const EVENTS_HELP = `run402 deploy events — Fetch the recorded event stream for a deploy operation
+
+Usage:
+  run402 deploy events <operation_id> [--project <id>]
+
+Options:
+  --project <id>          Project ID that owns the operation (default: active project)
+
+Output:
+  stdout: { "status": "ok", "events": [...] }
+`;
+
 export async function runDeployV2(sub, args) {
   if (sub === "apply") return await applyCmd(args);
   if (sub === "resume") return await resumeCmd(args);
+  if (sub === "list") return await listCmd(args);
+  if (sub === "events") return await eventsCmd(args);
   console.error(JSON.stringify({ status: "error", message: `Unknown deploy subcommand: ${sub}` }));
   process.exit(1);
 }
@@ -181,6 +208,50 @@ async function resumeCmd(args) {
     const result = await getSdk().deploy.resume(opts.operationId, {
       onEvent: makeStderrEventWriter(opts.quiet),
     });
+    console.log(JSON.stringify({ status: "ok", ...result }, null, 2));
+  } catch (err) {
+    reportSdkError(err);
+  }
+}
+
+async function listCmd(args) {
+  const opts = { project: null, limit: null };
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === "--help" || args[i] === "-h") { console.log(LIST_HELP); process.exit(0); }
+    if (args[i] === "--project" && args[i + 1]) { opts.project = args[++i]; continue; }
+    if (args[i] === "--limit" && args[i + 1]) { opts.limit = Number(args[++i]); continue; }
+  }
+
+  const project = resolveProjectId(opts.project);
+  allowanceAuthHeaders("/deploy/v2/operations");
+
+  try {
+    const sdkOpts = { project };
+    if (opts.limit !== null && Number.isFinite(opts.limit)) sdkOpts.limit = opts.limit;
+    const result = await getSdk().deploy.list(sdkOpts);
+    console.log(JSON.stringify({ status: "ok", ...result }, null, 2));
+  } catch (err) {
+    reportSdkError(err);
+  }
+}
+
+async function eventsCmd(args) {
+  const opts = { operationId: null, project: null };
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === "--help" || args[i] === "-h") { console.log(EVENTS_HELP); process.exit(0); }
+    if (args[i] === "--project" && args[i + 1]) { opts.project = args[++i]; continue; }
+    if (!args[i].startsWith("-") && !opts.operationId) opts.operationId = args[i];
+  }
+  if (!opts.operationId) {
+    console.error(JSON.stringify({ status: "error", message: "Usage: run402 deploy events <operation_id>" }));
+    process.exit(1);
+  }
+
+  const project = resolveProjectId(opts.project);
+  allowanceAuthHeaders("/deploy/v2/operations");
+
+  try {
+    const result = await getSdk().deploy.events(opts.operationId, { project });
     console.log(JSON.stringify({ status: "ok", ...result }, null, 2));
   } catch (err) {
     reportSdkError(err);

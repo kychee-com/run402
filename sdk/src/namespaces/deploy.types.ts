@@ -301,6 +301,22 @@ export interface OperationSnapshot {
   updated_at: string;
 }
 
+/** Response from `GET /deploy/v2/operations`. The gateway may return a
+ *  pagination cursor when there are more operations than the requested
+ *  page size; clients pass it back as `?cursor=` to fetch the next page. */
+export interface DeployListResponse {
+  operations: OperationSnapshot[];
+  cursor?: string | null;
+}
+
+/** Response from `GET /deploy/v2/operations/:id/events`. Returns the
+ *  synthesized phase event stream the gateway has recorded so far for the
+ *  operation. Same shape as the events emitted by `r.deploy.start().events()`
+ *  during an in-flight deploy. */
+export interface DeployEventsResponse {
+  events: DeployEvent[];
+}
+
 /** Wire-shape for a structured deploy error from the gateway. The SDK
  *  translates this into `Run402DeployError` for callers. The gateway is
  *  permitted to omit `message` for terse validation errors (e.g. just
