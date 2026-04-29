@@ -53,13 +53,28 @@ Options:
   --file <file>       Required: path to the function source file
   --timeout <s>       Runtime timeout in seconds
   --memory <mb>       Memory in MB
-  --deps <pkg,...>    Comma-separated npm deps to bundle
+  --deps <spec,...>   Comma-separated npm specs to install and bundle.
+                      Bare names (e.g. 'lodash') resolve to latest at
+                      deploy time; pinned ('lodash@4.17.21') or range
+                      ('date-fns@^3.0.0') specs are honored verbatim.
+                      '@run402/functions' is auto-bundled and is rejected
+                      here; the legacy 'run402-functions' name is also
+                      rejected. Max 30 entries, max 200 chars per spec.
+                      Native binary modules (sharp, canvas, native bcrypt)
+                      are rejected.
   --schedule <cron>   Cron schedule; pass '' to clear an existing schedule
 
 Notes:
   Code must export a default async function:
     export default async (req: Request) => Response
   Deploy may require payment if the project lease has expired.
+
+  The deploy response includes:
+  - runtime_version: the bundled @run402/functions version (e.g. "1.48.0")
+  - deps_resolved: map of each --deps name to the actually-installed
+    concrete version (e.g. {"lodash":"4.17.21"})
+  - warnings (optional, top-level, sibling to the record): non-fatal
+    notes such as bundle-size advisories
 
 Examples:
   run402 functions deploy abc123 stripe-webhook --file handler.ts

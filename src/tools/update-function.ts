@@ -49,6 +49,20 @@ export async function handleUpdateFunction(args: {
       `| updated_at | ${result.updated_at} |`,
     ];
 
+    if (result.runtime_version != null) {
+      lines.push(`| Functions runtime version | \`@run402/functions@${result.runtime_version}\` |`);
+    }
+
+    if (result.deps_resolved) {
+      const entries = Object.entries(result.deps_resolved);
+      if (entries.length > 0) {
+        lines.push(``, `**Resolved deps:**`);
+        for (const [name, version] of entries) {
+          lines.push(`- \`${name}@${version}\``);
+        }
+      }
+    }
+
     return { content: [{ type: "text", text: lines.join("\n") }] };
   } catch (err) {
     return mapSdkError(err, "updating function");

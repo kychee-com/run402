@@ -25,10 +25,18 @@ export class Functions {
   /**
    * Deploy a serverless function. Deployed functions can
    * `import { db, adminDb, getUser, email, ai } from "@run402/functions"` —
-   * the in-function helper library is provided by the platform.
+   * the in-function helper library is auto-bundled by the platform at the
+   * version recorded in {@link FunctionDeployResult.runtime_version}.
    *
-   * `opts.deps` is reserved for a follow-up release that will install
-   * user-supplied packages at deploy time; until then it has no effect.
+   * `opts.deps` lists additional npm packages to install and bundle. Bare
+   * names resolve to the latest published version at deploy time; pinned
+   * or range specs (`"lodash@4.17.21"`, `"date-fns@^3.0.0"`) are honored
+   * verbatim. The actually-installed concrete versions are returned in
+   * {@link FunctionDeployResult.deps_resolved}. `@run402/functions` and
+   * the deprecated `run402-functions` are rejected.
+   *
+   * Non-fatal deploy issues (bundle size warnings, esbuild advisories)
+   * surface in {@link FunctionDeployResult.warnings}.
    *
    * @throws {PaymentRequired} when the project lease has expired.
    */
