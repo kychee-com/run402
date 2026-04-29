@@ -93,17 +93,16 @@ Manifest format (JSON):
     "project_id": "prj_...",
     "migrations": "CREATE TABLE items (...)",
     "migrations_file": "setup.sql",
-    "rls": {
-      "template": "public_read_write_UNRESTRICTED",
-      "tables": [{ "table": "items" }],
-      "i_understand_this_is_unrestricted": true
-    },
     "secrets": [{ "key": "OPENAI_API_KEY", "value": "sk-..." }],
     "functions": [{
       "name": "my-fn",
       "code": "export default async (req) => new Response('ok')"
     }],
     "files": [
+      {
+        "file": "manifest.json",
+        "data": "{\\"version\\":\\"1\\",\\"tables\\":[{\\"name\\":\\"items\\",\\"expose\\":true,\\"policy\\":\\"public_read_write_UNRESTRICTED\\",\\"i_understand_this_is_unrestricted\\":true}]}"
+      },
       { "file": "index.html", "data": "<html>...</html>" },
       { "file": "style.css", "path": "./dist/style.css" }
     ],
@@ -129,23 +128,34 @@ Manifest format (JSON):
   Paths are resolved relative to the manifest file's directory.
   Binary files (images, fonts, etc.) are auto-detected and base64-encoded.
 
-  RLS templates (prefer user_owns_rows for anything user-scoped):
-    user_owns_rows                    users see only their own rows (requires
-                                      owner_column per table; uuid columns get
-                                      index-friendly policies automatically)
-    public_read_authenticated_write   anyone reads; any authenticated user can
-                                      INSERT/UPDATE/DELETE any row (not just
-                                      their own). For collaborative content
-                                      like shared boards or announcements.
-    public_read_write_UNRESTRICTED    ⚠  fully open — anon_key can read AND
-                                      write any row. Only for intentionally
-                                      public tables (guestbooks, waitlists,
-                                      feedback forms). REQUIRES the manifest's
-                                      rls block to include
-                                      "i_understand_this_is_unrestricted": true.
+  Authorization (manifest.json file pattern):
+    Tables are dark by default — anon/authenticated can't read them until a
+    manifest declares them with expose:true. Ship a "manifest.json" entry in
+    files[] (preferred — auth-as-SDLC) and the platform reads, validates,
+    applies, and strips it before the site deploys. Schema:
+    https://run402.com/schemas/manifest.v1.json
 
-  ⚠️  Without RLS, tables are read-only via anon_key. If your app writes
-  data from the browser, you almost certainly need an rls block.
+    Per-table policies:
+      user_owns_rows                    users see only their own rows. Requires
+                                        "owner_column"; with
+                                        "force_owner_on_insert": true the gateway
+                                        sets it from auth.uid() automatically.
+                                        uuid columns get index-friendly policies.
+      public_read_authenticated_write   anyone reads; any authenticated user can
+                                        INSERT/UPDATE/DELETE any row (not just
+                                        their own). For collaborative content
+                                        like shared boards or announcements.
+      public_read_write_UNRESTRICTED    ⚠  fully open — anon_key can read AND
+                                        write any row. Only for intentionally
+                                        public tables (guestbooks, waitlists,
+                                        feedback forms). REQUIRES
+                                        "i_understand_this_is_unrestricted":
+                                        true on the table entry.
+      custom                            escape hatch. Provide "custom_sql" with
+                                        CREATE POLICY statements.
+
+  ⚠️  Without a manifest, tables are unreachable via anon_key. If your app
+  reads or writes data from the browser, you need a manifest.json entry.
 
 Examples:
   run402 deploy --manifest app.json

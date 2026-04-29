@@ -430,7 +430,7 @@ server.tool(
 
 server.tool(
   "bundle_deploy",
-  "Deploy to an existing project. Runs migrations, applies RLS, sets secrets, deploys functions, deploys a static site, and claims a subdomain. Requires a provisioned project_id. Free with active tier.",
+  "Deploy to an existing project. Runs migrations, applies the authorization manifest, sets secrets, deploys functions, deploys a static site, and claims a subdomain. Requires a provisioned project_id. Free with active tier. To declare authorization, include a `manifest.json` entry in `files[]` (preferred — the gateway reads it, validates against the migrations, applies it, and strips it before the site deploys). Schema: https://run402.com/schemas/manifest.v1.json. The legacy top-level `rls` field still works during the deprecation window (sunset 2026-05-23) but is not recommended for new code.",
   bundleDeploySchema,
   async (args) => handleBundleDeploy(args),
 );

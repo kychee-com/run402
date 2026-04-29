@@ -762,18 +762,34 @@ run_sql(project_id: "prj_...", sql: "CREATE TABLE todos (id serial PRIMARY KEY, 
 
 Design tables based on what the user needs. Add `user_id uuid` columns if you plan to use row-level security.
 
-### Step 3: Enable row-level security (optional)
+### Step 3: Declare authorization (optional)
 
-Use `run_sql` to apply RLS if users should only see their own rows:
+Tables you create are **dark by default** — `anon` and `authenticated` can't read them until your manifest declares them with `expose: true`. Closes the "agent created a table, forgot to set RLS, data leaked" footgun.
+
+Use the `apply_expose` tool to apply a declarative authorization manifest:
 
 ```
-run_sql(project_id: "prj_...", sql: "-- Use the /projects/v1/admin/:id/rls endpoint via HTTP for RLS templates")
+apply_expose(project_id: "prj_...", manifest: {
+  version: "1",
+  tables: [
+    { name: "todos", expose: true, policy: "user_owns_rows", owner_column: "user_id", force_owner_on_insert: true }
+  ]
+})
 ```
 
-Three RLS templates are available via the API. **Prefer `user_owns_rows` for anything user-scoped.**
-- **`user_owns_rows`** — Users can only access rows where the owner column matches `auth.uid()`. Best for user-scoped data (todos, workouts, messages). `uuid` owner columns get an index-friendly policy; other types fall back to a `::text` cast (the response includes a warning). The endpoint auto-creates a btree index on the owner column.
-- **`public_read_authenticated_write`** — Anyone can read. **Any authenticated user can INSERT/UPDATE/DELETE any row** (not just their own). Appropriate for collaborative content like shared boards or announcements; do not use where users should only edit their own rows.
-- **`public_read_write_UNRESTRICTED`** — ⚠ Fully open. Anyone (including `anon_key`) can read, insert, update, or delete any row. Only appropriate for intentionally public tables (guestbooks, waitlists, feedback forms). This template **requires** `"i_understand_this_is_unrestricted": true` in the request body and logs an audit line on the gateway.
+JSON Schema: `https://run402.com/schemas/manifest.v1.json` — point your editor's `$schema` at it for autocomplete.
+
+**Built-in policies** (one per table):
+- **`user_owns_rows`** — owner column matches `auth.uid()`. Requires `owner_column`. With `force_owner_on_insert: true`, a `BEFORE INSERT` trigger sets `owner_column := auth.uid()` automatically. Best for user-scoped data (todos, workouts, messages).
+- **`public_read_authenticated_write`** — anyone reads; **any authenticated user can INSERT/UPDATE/DELETE any row** (not just their own). For collaborative content (shared boards, announcements).
+- **`public_read_write_UNRESTRICTED`** — ⚠ fully open; `anon_key` can read AND write any row. Only for intentionally public tables (guestbooks, waitlists, feedback forms). **Requires** `"i_understand_this_is_unrestricted": true` on the table entry.
+- **`custom`** — escape hatch. Provide `custom_sql` with `CREATE POLICY` statements; runs inside the apply transaction after RLS is enabled and forced.
+
+The manifest is **convergent**: applying the same manifest twice is a no-op; tables removed between applies have their policies revoked, grants revoked, triggers dropped. Include everything you want exposed in every apply.
+
+Use `get_expose` to inspect the current manifest. `source: "applied"` means it came from a prior `apply_expose`; `source: "introspected"` means it was reconstructed from live DB state (no manifest has ever been applied).
+
+For full-stack deploys, the same manifest can travel with your code as `manifest.json` in the bundle's `files[]` — see the `bundle_deploy` and `deploy` tools.
 
 ### Step 4: Insert data
 
@@ -840,7 +856,7 @@ Prototype uses testnet tokens — no real money needed. With x402: Base Sepolia 
 
 **SQL blocklist:** The SQL endpoint blocks dangerous operations: `CREATE EXTENSION`, `COPY ... PROGRAM`, `ALTER SYSTEM`, `SET search_path`, `CREATE/DROP SCHEMA`, `GRANT/REVOKE`, `CREATE/DROP ROLE`. If you hit a 403, check the `hint` field for alternatives.
 
-**No GRANT needed:** Table and sequence permissions are managed automatically. Use RLS templates for access control instead of GRANT/REVOKE.
+**No GRANT needed:** Table and sequence permissions are managed automatically. Declare what's reachable via the authorization manifest (`apply_expose`, or `manifest.json` in a bundle's `files[]`) instead of GRANT/REVOKE.
 
 **Key usage patterns:**
 - Use `service_key` (via `run_sql` or `key_type: "service"`) for: table creation, RLS setup, seeding data, admin queries

@@ -31,11 +31,11 @@ Agent allowance persists at `~/.config/run402/allowance.json`. Faucet gives 0.25
 {
   "name": "my-app",
   "migrations": "CREATE TABLE items (id serial PRIMARY KEY, title text NOT NULL, done boolean DEFAULT false, user_id uuid, created_at timestamptz DEFAULT now());",
-  "rls": {
-    "template": "user_owns_rows",
-    "tables": [{ "table": "items", "owner_column": "user_id" }]
-  },
-  "site": [
+  "files": [
+    {
+      "file": "manifest.json",
+      "data": "{\"$schema\":\"https://run402.com/schemas/manifest.v1.json\",\"version\":\"1\",\"tables\":[{\"name\":\"items\",\"expose\":true,\"policy\":\"user_owns_rows\",\"owner_column\":\"user_id\",\"force_owner_on_insert\":true}]}"
+    },
     { "file": "index.html", "data": "<!DOCTYPE html>..." },
     { "file": "style.css", "data": "body { ... }" }
   ],
@@ -43,7 +43,7 @@ Agent allowance persists at `~/.config/run402/allowance.json`. Faucet gives 0.25
 }
 ```
 
-All fields except `name` are optional. Can also include `secrets`, `functions`.
+All fields except `name` are optional. Can also include `secrets`, `functions`. The `manifest.json` entry in `files[]` declares the project's authorization surface (which tables/views/RPCs are reachable via PostgREST) — see "Authorization Manifest" below. The platform reads it, validates it against the migrations, applies it, and **strips it from `files[]` before deploying the site**, so it's never publicly reachable on your subdomain.
 
 ### Step 3: Deploy
 
@@ -82,7 +82,7 @@ node <skill_dir>/scripts/projects.mjs list
 5. **Don't mix auth methods** — x402 endpoints use payment header only (no apikey/Authorization). REST/auth/storage use apikey only (no payment header).
 6. **`POST /subdomains/v1` is idempotent** — upserts. Safe to call every deploy.
 7. **Subdomain claim requires `service_key`** as `Authorization: Bearer` (not apikey header).
-8. **Don't GRANT/REVOKE** — permissions managed automatically. Use RLS templates for access control.
+8. **Don't GRANT/REVOKE** — permissions managed automatically. Declare what's reachable via a `manifest.json` entry in your bundle's `files[]` (see "Authorization Manifest").
 9. **Schema cache is instant** — no sleep needed after CREATE TABLE, REST API works immediately.
 
 ---
@@ -130,13 +130,18 @@ Once funded, x402 payments settle from allowance automatically. No code changes.
 {
   "name": "my-saas-app",
   "migrations": "CREATE TABLE ...; CREATE TABLE ...;",
-  "rls": { "template": "user_owns_rows", "tables": [{ "table": "posts", "owner_column": "user_id" }] },
   "secrets": [{ "key": "OPENAI_API_KEY", "value": "sk-..." }],
   "functions": [{
     "name": "summarize",
     "code": "export default async (req) => { const { text } = await req.json(); return new Response(JSON.stringify({ result: text.slice(0, 100) })); }"
   }],
-  "site": [{ "file": "index.html", "data": "<!DOCTYPE html>..." }],
+  "files": [
+    {
+      "file": "manifest.json",
+      "data": "{\"version\":\"1\",\"tables\":[{\"name\":\"posts\",\"expose\":true,\"policy\":\"user_owns_rows\",\"owner_column\":\"user_id\",\"force_owner_on_insert\":true}]}"
+    },
+    { "file": "index.html", "data": "<!DOCTYPE html>..." }
+  ],
   "subdomain": "my-saas"
 }
 ```
@@ -145,10 +150,9 @@ Once funded, x402 payments settle from allowance automatically. No code changes.
 |-------|----------|-------------|
 | `name` | Yes | App/project name |
 | `migrations` | No | SQL string (CREATE TABLE, etc.) |
-| `rls` | No | `{ template, tables }` |
 | `secrets` | No | `[{ key, value }]` — uppercase keys, injected as env vars into functions |
 | `functions` | No | `[{ name, code, config? }]` — serverless functions (Lambda). Limits: prototype=5, hobby=25, team=100 |
-| `site` | No | `[{ file, data, encoding? }]` — `base64` for binary. 50MB max |
+| `files` | No | `[{ file, data, encoding? }]` — site files; `base64` for binary; 50MB max. Include a `manifest.json` entry to declare authorization (see "Authorization Manifest"). |
 | `subdomain` | No | Custom subdomain → `name.run402.com` |
 
 Site deployment is free with active tier. If any step fails, the project is rolled into the soft-delete grace window (no half-deployed apps).
@@ -185,14 +189,21 @@ Returns: `{ "status": "ok", "schema": "p0001", "rows": [], "rowCount": 0 }`
 
 Both `SERIAL` and `BIGINT GENERATED ALWAYS AS IDENTITY` work. Sequence permissions granted automatically.
 
-### 3. Apply RLS (Optional)
+### 3. Declare Authorization (Optional)
+
+Tables you create are dark by default — invisible to PostgREST's `anon` role until a manifest declares them. Apply a manifest with `POST /projects/v1/admin/:id/expose`:
 
 ```bash
-curl -X POST https://api.run402.com/projects/v1/admin/$PROJECT_ID/rls \
+curl -X POST https://api.run402.com/projects/v1/admin/$PROJECT_ID/expose \
   -H "Authorization: Bearer $SERVICE_KEY" \
   -H "Content-Type: application/json" \
-  -d '{"template": "user_owns_rows", "tables": [{"table": "todos", "owner_column": "user_id"}]}'
+  -d '{
+    "version": "1",
+    "tables": [{ "name": "todos", "expose": true, "policy": "user_owns_rows", "owner_column": "user_id", "force_owner_on_insert": true }]
+  }'
 ```
+
+Or include a `manifest.json` entry in your bundle's `files[]` on the next `POST /deployments/v1` — same shape, gateway applies it before the site deploys. See "Authorization Manifest" for the full schema.
 
 ### 4. Deploy Site
 
@@ -370,31 +381,71 @@ Public blobs are CDN-served at `https://pr-<public_id>.run402.com/_blob/<key>` (
 
 ---
 
-## Row-Level Security (RLS)
+## Authorization Manifest
 
-Three templates. Applied via `POST /projects/v1/admin/:id/rls` with `service_key`. **Prefer `user_owns_rows` for anything user-scoped.**
+The manifest is the single source of truth for which tables, views, and RPCs in your project are reachable through PostgREST (`/rest/v1/*`). **Tables you create are dark by default** — `anon` and `authenticated` can't read them until the manifest says so. Closes the "agent created a table, forgot to set RLS, data leaked" footgun.
 
-### `user_owns_rows`
-Users access only rows where the owner column matches `auth.uid()`. Best for user-scoped data (todos, workouts, messages). `uuid` owner columns get an index-friendly policy; other types fall back to a `::text` cast with a warning. The endpoint auto-creates a btree index on the owner column.
-```json
-{ "template": "user_owns_rows", "tables": [{ "table": "todos", "owner_column": "user_id" }] }
-```
+JSON Schema: `https://run402.com/schemas/manifest.v1.json` — point your editor's `$schema` at it for autocomplete.
 
-### `public_read_authenticated_write`
-Anyone can read (including `anon_key`). **Any authenticated user can INSERT/UPDATE/DELETE any row** (not just their own). Appropriate for collaborative content like shared boards or announcements; do not use where users should only edit their own rows.
-```json
-{ "template": "public_read_authenticated_write", "tables": [{ "table": "announcements" }] }
-```
+### Preferred: `manifest.json` in the bundle's `files[]`
 
-### `public_read_write_UNRESTRICTED`
-⚠ Fully open. Anyone (including `anon_key`) can read, insert, update, or delete any row. Only appropriate for intentionally public tables (guestbooks, waitlists, feedback forms). **Requires** `"i_understand_this_is_unrestricted": true` in the request body and logs an audit line on the gateway.
+Authorization travels with your code. Include a file named `manifest.json` in `files[]` and the platform reads it, validates it against the migration SQL, applies it, and **strips it from `files[]` before the site deploys** (so it's never publicly reachable on your subdomain). The deploy response includes `manifest_applied: true` on success.
+
 ```json
 {
-  "template": "public_read_write_UNRESTRICTED",
-  "tables": [{ "table": "guestbook" }],
-  "i_understand_this_is_unrestricted": true
+  "$schema": "https://run402.com/schemas/manifest.v1.json",
+  "version": "1",
+  "tables": [
+    { "name": "workouts", "expose": true, "policy": "user_owns_rows", "owner_column": "user_id", "force_owner_on_insert": true },
+    { "name": "internal_metrics", "expose": false }
+  ],
+  "views": [
+    { "name": "public_leaderboard", "base": "workouts", "select": ["user_id", "score"], "expose": true }
+  ],
+  "rpcs": [
+    { "name": "compute_streak", "signature": "(user_id uuid)", "grant_to": ["authenticated"] }
+  ]
 }
 ```
+
+If the manifest references a table your migration doesn't create, the deploy is rejected with HTTP 400 and a structured `errors` array listing **every** violation (not just the first).
+
+### Imperative escape hatch: `POST /admin/v1/projects/:id/expose`
+
+Same JSON shape, no bundle. Useful for ad-hoc changes outside a deploy.
+
+```bash
+curl -X POST https://api.run402.com/projects/v1/admin/$PROJECT_ID/expose \
+  -H "Authorization: Bearer $SERVICE_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{ "version": "1", "tables": [ ... ], "views": [ ... ], "rpcs": [ ... ] }'
+```
+
+Bundles that include both inline `expose` and `manifest.json` (or legacy `rls` + `manifest.json`) are rejected with 400 — the platform refuses to silently pick one source over another.
+
+### Convergence
+
+Applying the same manifest twice is a no-op. Removing a table (or flipping `expose` to `false`) drops policies, revokes anon SELECT, drops owner triggers, drops views. The manifest is the contract; DB state follows.
+
+### Built-in policies
+
+- **`user_owns_rows`** — owner column matches `auth.uid()`. Requires `owner_column`. With `force_owner_on_insert: true`, a `BEFORE INSERT` trigger sets `owner_column := auth.uid()` when the agent forgets to pass it. Best for user-scoped data (todos, workouts, messages).
+- **`public_read_authenticated_write`** — anyone reads; **any authenticated user can INSERT/UPDATE/DELETE any row** (not just their own). For collaborative content (shared boards, announcements).
+- **`public_read_write_UNRESTRICTED`** — ⚠ fully open; `anon_key` can read AND write any row. Only for intentionally public tables (guestbooks, waitlists, feedback forms). **Requires** `"i_understand_this_is_unrestricted": true` on the table entry.
+- **`custom`** — escape hatch. Provide `custom_sql` containing `CREATE POLICY` statements; they run inside the apply transaction after RLS is enabled and forced.
+
+| Policy | anon SELECT | anon INSERT/UPDATE/DELETE | auth SELECT | auth INSERT/UPDATE/DELETE |
+|--------|:-----------:|:-------------------------:|:-----------:|:-------------------------:|
+| (omitted from manifest) | — | — | — | — |
+| `user_owns_rows` | — | — | own rows | own rows |
+| `public_read_authenticated_write` | all | — | all | all rows |
+| `public_read_write_UNRESTRICTED` | all | yes | all | yes |
+
+`—` = denied. `service_key` bypasses all policies.
+
+**Views** are always created with `security_invoker=true` — they inherit the underlying table's RLS.
+
+**RPCs** — `CREATE FUNCTION` revokes PUBLIC EXECUTE automatically; the manifest's `rpcs[*]` section is the explicit opt-in to make a function callable as `/rest/v1/rpc/<fn>`. List the roles in `grant_to` (one of `anon`, `authenticated`, `service_role`, `project_admin`).
 
 ---
 
