@@ -56,3 +56,83 @@ export class LocalError extends Run402Error {
     if (cause !== undefined) this.cause = cause;
   }
 }
+
+/**
+ * Deploy-state-machine failure surfaced from the v2 deploy flow. Carries the
+ * structured error envelope the gateway returns alongside the operation
+ * snapshot — phase, resource, retryability, and an optional remediation hint.
+ *
+ * The `code` enumerates the gateway's deploy error codes; consumers may
+ * switch on it to decide whether to retry, prompt the user for payment, ask
+ * for a fix, or escalate. Unknown codes from a newer gateway pass through
+ * verbatim — callers should treat unrecognized values as opaque.
+ */
+export type Run402DeployErrorCode =
+  | "MIGRATION_FAILED"
+  | "MIGRATION_CHECKSUM_MISMATCH"
+  | "MIGRATION_SQL_NOT_FOUND"
+  | "BASE_RELEASE_CONFLICT"
+  | "PAYMENT_REQUIRED"
+  | "SUBDOMAIN_MULTI_NOT_SUPPORTED"
+  | "SCHEMA_SETTLE_TIMEOUT"
+  | "ACTIVATION_FAILED"
+  | "STORAGE_UNAVAILABLE"
+  | "SITE_STAGE_FAILED"
+  | "FUNCTION_BUILD_FAILED"
+  | "CONTENT_UPLOAD_FAILED"
+  | "INVALID_SPEC"
+  | "OPERATION_NOT_FOUND"
+  | "PLAN_NOT_FOUND"
+  | "NOT_RESUMABLE"
+  | "INVALID_STATE"
+  | "RESUME_FAILED"
+  | "INTERNAL_ERROR"
+  | "PROJECT_NOT_FOUND"
+  | (string & {});
+
+export interface Run402DeployErrorFix {
+  action: string;
+  path?: string;
+  [key: string]: unknown;
+}
+
+export class Run402DeployError extends Run402Error {
+  readonly code: Run402DeployErrorCode;
+  readonly phase: string | null;
+  readonly resource: string | null;
+  readonly retryable: boolean;
+  readonly operationId: string | null;
+  readonly planId: string | null;
+  readonly fix: Run402DeployErrorFix | null;
+  readonly logs: string[] | null;
+  readonly rolledBack: boolean;
+
+  constructor(
+    message: string,
+    init: {
+      code: Run402DeployErrorCode;
+      phase?: string | null;
+      resource?: string | null;
+      retryable?: boolean;
+      operationId?: string | null;
+      planId?: string | null;
+      fix?: Run402DeployErrorFix | null;
+      logs?: string[] | null;
+      rolledBack?: boolean;
+      status?: number | null;
+      body?: unknown;
+      context: string;
+    },
+  ) {
+    super(message, init.status ?? null, init.body ?? null, init.context);
+    this.code = init.code;
+    this.phase = init.phase ?? null;
+    this.resource = init.resource ?? null;
+    this.retryable = init.retryable ?? false;
+    this.operationId = init.operationId ?? null;
+    this.planId = init.planId ?? null;
+    this.fix = init.fix ?? null;
+    this.logs = init.logs ?? null;
+    this.rolledBack = init.rolledBack ?? false;
+  }
+}

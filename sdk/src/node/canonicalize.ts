@@ -1,10 +1,17 @@
 /**
- * RFC 8785 (JCS) canonical JSON for the v1.32 deploy-plan manifest digest.
+ * RFC 8785 (JCS) canonical JSON utility — kept as a UX / diagnostic helper.
  *
- * MUST stay byte-for-byte identical to the gateway's
- * `services/deploy-plans.ts:canonicalizeJson`. A digest mismatch breaks
- * idempotency: the SDK's hash won't match the gateway's, so retrying a
- * plan creates a NEW plan instead of finding the existing one.
+ * **As of v1.34, the gateway is authoritative for the deploy manifest
+ * digest.** `POST /deploy/v2/plans` returns the gateway-computed digest in
+ * the response, and operation idempotency keys on it (combined with
+ * `project_id`, `base_release_id`, and an optional client idempotency key).
+ * A drift between this implementation and the gateway's canonicalize
+ * therefore SHALL NOT silently break idempotency — retries still find the
+ * existing plan because the lookup uses the gateway-computed value.
+ *
+ * This module remains exported so callers can still produce a stable local
+ * digest for caching or debugging output. New code should treat the local
+ * digest as advisory.
  *
  * Spec for our value domain:
  *   - object keys sorted ASCII-ascending

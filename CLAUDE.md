@@ -73,12 +73,25 @@ The SDK is the canonical kernel — a single typed client with a `CredentialsPro
 
 ### SDK (`sdk/src/`)
 
-- **`index.ts`** — `Run402` class + `run402()` factory. Isomorphic entry point.
+- **`index.ts`** — `Run402` class + `run402()` factory + `files()` helper. Isomorphic entry point.
 - **`kernel.ts`** — Request function, `Client` interface. Only place that calls `globalThis.fetch`.
-- **`errors.ts`** — `Run402Error` hierarchy: `PaymentRequired`, `ProjectNotFound`, `Unauthorized`, `ApiError`, `NetworkError`. Never calls `process.exit`.
+- **`errors.ts`** — `Run402Error` hierarchy: `PaymentRequired`, `ProjectNotFound`, `Unauthorized`, `ApiError`, `NetworkError`, `Run402DeployError` (the v1.34+ structured envelope from the deploy state machine). Never calls `process.exit`.
 - **`credentials.ts`** — `CredentialsProvider` interface. Required: `getAuth`, `getProject`. Optional: `saveProject`, `updateProject`, `removeProject`, `setActiveProject`, `getActiveProject`, `readAllowance`, `saveAllowance`, `createAllowance`, `getAllowancePath`.
-- **`namespaces/*.ts`** — One class per resource group (projects, blobs, functions, email, …). Namespaces hold a `Client` and expose typed methods.
-- **`node/*.ts`** — Node-only entry point (`@run402/sdk/node`). Wraps `core/` keystore + allowance into `NodeCredentialsProvider`. Sets up x402-wrapped fetch via `createLazyPaidFetch()`.
+- **`namespaces/*.ts`** — One class per resource group (projects, blobs, functions, email, …). Namespaces hold a `Client` and expose typed methods. The canonical deploy primitive lives at **`namespaces/deploy.ts`** (with shared types in `deploy.types.ts`) — see "Unified Deploy" below.
+- **`node/*.ts`** — Node-only entry point (`@run402/sdk/node`). Wraps `core/` keystore + allowance into `NodeCredentialsProvider`. Sets up x402-wrapped fetch via `createLazyPaidFetch()`. Adds `fileSetFromDir(path)` for filesystem byte sources to the deploy primitive.
+
+### Unified Deploy (v1.34+)
+
+- **`namespaces/deploy.ts`** — `Deploy` class exposing the canonical primitive. Three layers:
+  - `r.deploy.apply(spec, opts?)` — one-shot, awaits to terminal (most agents use this).
+  - `r.deploy.start(spec, opts?)` — returns a `DeployOperation` with `events()` async iterator + `result()` promise.
+  - `r.deploy.plan` / `upload` / `commit` — low-level steps for CLI debugging.
+  - Plus `r.deploy.resume(operationId)`, `status`, `getRelease`, `diff`.
+- **All bytes ride through CAS.** The plan request body never carries inline bytes — only `ContentRef` objects. When the normalized spec exceeds 5 MB JSON, the SDK uploads the manifest itself as a CAS object and references it (`manifest_ref` escape hatch — no body-size cliff).
+- **Replace vs patch semantics per resource.** `site.replace` = "this is the whole site" (files absent are removed in the new release); `site.patch.put` / `patch.delete` = surgical updates. Same for `functions`, `secrets`, `subdomains`. Top-level absence = leave untouched.
+- **Server-authoritative manifest digest.** The gateway returns the canonical digest in the plan response. The SDK no longer requires byte-for-byte canonicalize agreement — `canonicalize.ts` is now a UX helper only.
+- **Backward-compat shims.** `apps.bundleDeploy` translates legacy options (including `inherit: true` with a deprecation warning) into a `ReleaseSpec` and delegates to `deploy.apply`. `sites.deployDir` is a thin wrapper that uses `fileSetFromDir(dir)` and synthesizes both unified `DeployEvent` shapes and the legacy `{ phase: ... }` shapes for v1.32-era event consumers.
+- **MCP/CLI surface.** `deploy` and `deploy_resume` MCP tools (in `src/tools/deploy.ts` and `src/tools/deploy-resume.ts`) expose the new primitive directly. CLI subcommands `run402 deploy apply` and `run402 deploy resume` (in `cli/lib/deploy-v2.mjs`) mirror them. The legacy `bundle_deploy`/`deploy_site`/`deploy_site_dir` MCP tools and `run402 deploy --manifest` CLI continue to work and route through the same SDK shim.
 
 ### Shared Core (`core/src/`)
 

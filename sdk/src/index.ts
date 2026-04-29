@@ -26,6 +26,8 @@ import { Apps } from "./namespaces/apps.js";
 import { Email } from "./namespaces/email.js";
 import { Contracts } from "./namespaces/contracts.js";
 import { Admin } from "./namespaces/admin.js";
+import { Deploy } from "./namespaces/deploy.js";
+import type { ContentSource, FileSet } from "./namespaces/deploy.types.js";
 
 export interface Run402Options {
   /** API base URL, e.g. `https://api.run402.com`. */
@@ -59,6 +61,7 @@ export class Run402 {
   readonly email: Email;
   readonly contracts: Contracts;
   readonly admin: Admin;
+  readonly deploy: Deploy;
 
   constructor(opts: Run402Options) {
     const kernel: KernelConfig = {
@@ -85,7 +88,28 @@ export class Run402 {
     this.email = new Email(client);
     this.contracts = new Contracts(client);
     this.admin = new Admin(client);
+    this.deploy = new Deploy(client);
   }
+}
+
+/**
+ * Build a `FileSet` from a path-keyed record of byte sources. A passthrough
+ * convenience: the SDK can consume the same shape whether you call this or
+ * pass the literal directly. Useful for IDE autocomplete on the
+ * `ContentSource` union and for keeping deploy specs declarative.
+ *
+ * @example
+ *   await r.deploy.apply({
+ *     project,
+ *     site: { replace: files({
+ *       "index.html": "<h1>hi</h1>",
+ *       "logo.png": logoBytes,
+ *       "data.json": new Blob([JSON.stringify(d)], { type: "application/json" }),
+ *     })},
+ *   });
+ */
+export function files(record: Record<string, ContentSource>): FileSet {
+  return record;
 }
 
 /**
@@ -104,6 +128,43 @@ export {
   ApiError,
   NetworkError,
   LocalError,
+  Run402DeployError,
+} from "./errors.js";
+export type {
+  Run402DeployErrorCode,
+  Run402DeployErrorFix,
 } from "./errors.js";
 export type { CredentialsProvider, ProjectKeys } from "./credentials.js";
 export type { RequestOptions, Client } from "./kernel.js";
+export { Deploy } from "./namespaces/deploy.js";
+export type {
+  ApplyOptions,
+  CommitResponse,
+  CommitStatus,
+  ContentRef,
+  ContentSource,
+  DatabaseSpec,
+  DeployDiff,
+  DeployEvent,
+  DeployOperation,
+  DeployResult,
+  ExposeManifest,
+  FileSet,
+  FsFileSource,
+  FunctionSpec,
+  FunctionsSpec,
+  MigrationSpec,
+  MissingContent,
+  OperationSnapshot,
+  OperationStatus,
+  PaymentRequiredHint,
+  PlanRequest,
+  PlanResponse,
+  ReleaseSpec,
+  RouteSpec,
+  SecretsSpec,
+  SiteSpec,
+  SmokeCheck,
+  StartOptions,
+  SubdomainsSpec,
+} from "./namespaces/deploy.types.js";

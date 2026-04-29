@@ -255,6 +255,20 @@ async function loadManifest(opts) {
 }
 
 export async function run(args) {
+  // Subcommand dispatch (v1.34+):
+  //   run402 deploy apply  ...    → unified deploy primitive (deploy.apply)
+  //   run402 deploy resume <op>   → resume an activation_pending operation
+  //   run402 deploy --manifest …  → legacy bundle deploy (still works)
+  const sub = args[0];
+  switch (sub) {
+    case "apply":
+    case "resume": {
+      const { runDeployV2 } = await import("./deploy-v2.mjs");
+      await runDeployV2(sub, args.slice(1));
+      return;
+    }
+  }
+
   const opts = { manifest: null, project: null };
   for (let i = 0; i < args.length; i++) {
     if (args[i] === "--help" || args[i] === "-h") { console.log(HELP); process.exit(0); }

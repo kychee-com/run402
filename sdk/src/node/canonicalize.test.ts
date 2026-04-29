@@ -1,7 +1,10 @@
 /**
- * Cross-repo digest fixture: must produce the same byte sequence the gateway
- * produces for the same manifest. If this test ever fails after a gateway
- * change, idempotency is broken — coordinate before merging.
+ * Self-consistency tests for the local canonicalize / digest helper.
+ *
+ * As of v1.34 the gateway is authoritative for the deploy manifest digest;
+ * the SDK's local digest is advisory only. These tests assert the helper
+ * produces stable, deterministic output (so it remains useful for caching
+ * + debugging) without making any cross-repo byte-for-byte claim.
  */
 
 import { describe, it } from "node:test";
@@ -81,11 +84,11 @@ describe("buildCanonicalManifest", () => {
   });
 });
 
-describe("computeManifestDigest (cross-repo fixture)", () => {
-  it("matches the gateway's hex digest for a fixed manifest", async () => {
-    // Cross-repo fixture. Gateway-side: services/deploy-plans.ts must produce
-    // this exact digest when fed this exact canonical manifest. If you change
-    // canonicalize, regenerate here AND in the gateway test together.
+describe("computeManifestDigest (self-consistency)", () => {
+  it("produces a 64-char hex digest from a canonical manifest", async () => {
+    // Smoke test only. The gateway computes its own authoritative digest
+    // and the SDK no longer asserts byte-for-byte agreement; this test
+    // pins canonical-form output and confirms the SHA-256 is deterministic.
     const manifest = buildCanonicalManifest([
       { path: "index.html", sha256: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", size: 0, content_type: "text/html" },
       { path: "assets/logo.png", sha256: "abc1230000000000000000000000000000000000000000000000000000000000", size: 1024, content_type: "image/png" },
