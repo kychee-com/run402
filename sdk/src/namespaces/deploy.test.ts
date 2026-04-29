@@ -310,6 +310,110 @@ describe("Deploy.apply (validation)", () => {
   });
 });
 
+describe("Deploy.apply (validate-phase structured error context)", () => {
+  it("populates phase/resource/fix when the spec is not an object", async () => {
+    const w = makeWiring();
+    const deploy = new Deploy(w.client);
+    await assert.rejects(
+      () => deploy.apply(null as never),
+      (err: unknown) => {
+        assert(err instanceof Run402DeployError);
+        const e = err as Run402DeployError;
+        assert.equal(e.code, "INVALID_SPEC");
+        assert.equal(e.phase, "validate");
+        assert.equal(e.resource, "spec");
+        assert.deepEqual(e.fix, { action: "set_field", path: "" });
+        return true;
+      },
+    );
+  });
+
+  it("populates phase/resource/fix when project is missing", async () => {
+    const w = makeWiring();
+    const deploy = new Deploy(w.client);
+    await assert.rejects(
+      () => deploy.apply({} as never),
+      (err: unknown) => {
+        assert(err instanceof Run402DeployError);
+        const e = err as Run402DeployError;
+        assert.equal(e.code, "INVALID_SPEC");
+        assert.equal(e.phase, "validate");
+        assert.equal(e.resource, "spec.project");
+        assert.deepEqual(e.fix, { action: "set_field", path: "project" });
+        return true;
+      },
+    );
+  });
+
+  it("populates phase/resource/fix when subdomains.set has multiple entries", async () => {
+    const w = makeWiring();
+    const deploy = new Deploy(w.client);
+    await assert.rejects(
+      () =>
+        deploy.apply({
+          project: "prj_test",
+          subdomains: { set: ["a", "b"] },
+        }),
+      (err: unknown) => {
+        assert(err instanceof Run402DeployError);
+        const e = err as Run402DeployError;
+        assert.equal(e.code, "SUBDOMAIN_MULTI_NOT_SUPPORTED");
+        assert.equal(e.phase, "validate");
+        assert.equal(e.resource, "subdomains.set");
+        assert.deepEqual(e.fix, { action: "set_field", path: "subdomains.set" });
+        return true;
+      },
+    );
+  });
+
+  it("populates phase/resource/fix when a migration is missing its id", async () => {
+    const w = makeWiring();
+    const deploy = new Deploy(w.client);
+    await assert.rejects(
+      () =>
+        deploy.apply({
+          project: "prj_test",
+          database: { migrations: [{ sql: "SELECT 1" } as never] },
+        }),
+      (err: unknown) => {
+        assert(err instanceof Run402DeployError);
+        const e = err as Run402DeployError;
+        assert.equal(e.code, "INVALID_SPEC");
+        assert.equal(e.phase, "validate");
+        assert.equal(e.resource, "database.migrations");
+        assert(e.fix !== null);
+        assert.equal(e.fix!.action, "set_field");
+        assert.equal(typeof e.fix!.path, "string");
+        return true;
+      },
+    );
+  });
+
+  it("populates phase/resource/fix when a migration has neither sql nor sql_ref", async () => {
+    const w = makeWiring();
+    const deploy = new Deploy(w.client);
+    await assert.rejects(
+      () =>
+        deploy.apply({
+          project: "prj_test",
+          database: { migrations: [{ id: "001_init" }] },
+        }),
+      (err: unknown) => {
+        assert(err instanceof Run402DeployError);
+        const e = err as Run402DeployError;
+        assert.equal(e.code, "INVALID_SPEC");
+        assert.equal(e.phase, "validate");
+        assert.equal(e.resource, "database.migrations.001_init");
+        assert.deepEqual(e.fix, {
+          action: "set_field",
+          path: "database.migrations.001_init.sql",
+        });
+        return true;
+      },
+    );
+  });
+});
+
 describe("Deploy.apply (byte source normalization)", () => {
   it("hashes a string source and includes it as a ContentRef in the plan", async () => {
     const w = makeWiring();
