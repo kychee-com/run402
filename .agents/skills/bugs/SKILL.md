@@ -28,9 +28,13 @@ If `main` has diverged (local commits that aren't on remote), stop and ask the u
 
 ### GitHub issues
 
+`gh issue list` defaults to 30 results and silently truncates the rest — pass `--limit` high enough to cover the full backlog and paginate internally:
+
 ```
-gh issue list --repo kychee-com/run402 --state open --json number,title,body,labels,createdAt
+gh issue list --repo kychee-com/run402 --state open --limit 1000 --json number,title,body,labels,createdAt
 ```
+
+If the result count equals the limit, the backlog may be larger — re-run with `gh api "/repos/kychee-com/run402/issues?state=open&per_page=100" --paginate --jq '[.[] | select(.pull_request | not) | {number, title, body, labels, createdAt: .created_at}]'` (the REST endpoint mixes issues and PRs, so the `select(.pull_request | not)` filter is required) and proceed with the full list.
 
 ### Build unified list
 
