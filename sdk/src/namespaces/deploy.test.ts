@@ -22,7 +22,7 @@ import type {
   OperationSnapshot,
   PlanResponse,
 } from "./deploy.types.js";
-import { Run402DeployError } from "../errors.js";
+import { NetworkError, Run402DeployError } from "../errors.js";
 import { fileSetFromDir } from "../node/files.js";
 
 interface RecordedRequest {
@@ -306,6 +306,38 @@ describe("Deploy.apply (validation)", () => {
       (err: unknown) =>
         err instanceof Run402DeployError &&
         (err as Run402DeployError).code === "INVALID_SPEC",
+    );
+  });
+});
+
+describe("Deploy.apply (network errors)", () => {
+  it("translates NetworkError thrown during plan into Run402DeployError NETWORK_ERROR retryable", async () => {
+    const w = makeWiring();
+    w.setHandler((req) => {
+      if (req.path === "/deploy/v2/plans") {
+        throw new NetworkError(
+          "simulated DNS failure",
+          new Error("ENOTFOUND"),
+          "planning deploy",
+        );
+      }
+      throw new Error(`unexpected ${req.path}`);
+    });
+
+    const deploy = new Deploy(w.client);
+    await assert.rejects(
+      () =>
+        deploy.apply({
+          project: "prj_test",
+          site: { replace: { "index.html": "<h1>hi</h1>" } },
+        }),
+      (err: unknown) => {
+        assert(err instanceof Run402DeployError, "is Run402DeployError");
+        const e = err as Run402DeployError;
+        assert.equal(e.code, "NETWORK_ERROR", "code is NETWORK_ERROR");
+        assert.equal(e.retryable, true, "retryable is true");
+        return true;
+      },
     );
   });
 });

@@ -87,6 +87,7 @@ export type Run402DeployErrorCode =
   | "INVALID_STATE"
   | "RESUME_FAILED"
   | "INTERNAL_ERROR"
+  | "NETWORK_ERROR"
   | "PROJECT_NOT_FOUND"
   | (string & {});
 
