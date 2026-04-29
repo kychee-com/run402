@@ -91,7 +91,15 @@ export class NodeSites extends Sites {
 
     const out: SiteDeployResult = {
       deployment_id: pickFromUrls(result.urls, "deployment_id") ?? result.release_id,
-      url: pickFromUrls(result.urls, "site") ?? "",
+      // v2 commit returns `urls = { project, release }` — no `site` key. Use
+      // the live project URL as the canonical `url` for the legacy result
+      // shape; fall back to `urls.site` for forward compat with any gateway
+      // build that resurrects the old key, and `""` only as a last resort
+      // (matches prior behaviour). See bug GH-130.
+      url:
+        pickFromUrls(result.urls, "project") ??
+        pickFromUrls(result.urls, "site") ??
+        "",
     };
     return out;
   }
