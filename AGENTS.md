@@ -1,43 +1,54 @@
 # AGENTS.md
 
-This file provides guidance to Codex (Codex.ai/code) when working with code in this repository.
+This file is the single source of truth for AI coding agents working in this repository (Claude Code, Codex, Cursor, Cline, OpenClaw, etc.). `CLAUDE.md` imports it via `@AGENTS.md`.
 
 ## What This Is
 
-run402-mcp is an MCP (Model Context Protocol) server that exposes Run402 developer tools — provisioning Postgres databases, deploying static sites and serverless functions, managing storage, secrets, subdomains, and x402 USDC micropayments. It ships four interfaces from this monorepo:
+run402 is a developer platform that ships Postgres databases, content-addressed CDN storage, static site hosting, Node 22 serverless functions, email, image generation, and KMS-backed Ethereum signing — provisioned by AI agents and paid for autonomously via x402 USDC on Base, MPP pathUSD on Tempo, or Stripe credits. Prototype tier is free on testnet.
 
-- **SDK** (`sdk/`) — typed TypeScript client, kernel shared by MCP/CLI/OpenClaw; published as `@run402/sdk` on npm. Two entry points: root (isomorphic — works in Node 22, Deno, Bun, V8 isolates) and `/node` (zero-config Node defaults — keystore + allowance + x402).
-- **MCP server** (root `src/`) — the main package, published as `run402-mcp` on npm. Each tool is a thin shim over an SDK call.
+This monorepo ships **five interfaces**:
+
+- **SDK** (`sdk/`) — typed TypeScript client for the run402 API. Used by external integrators, MCP/CLI/OpenClaw, and (eventually) inside deployed functions. Published as `@run402/sdk` on npm. Two entry points: root (isomorphic — works in Node 22, Deno, Bun, V8 isolates) and `/node` (zero-config Node defaults — keystore + allowance + x402).
+- **MCP server** (root `src/`) — published as `run402-mcp` on npm. Each tool is a thin shim over an SDK call. Read by Claude Desktop / Cursor / Cline / Claude Code.
 - **CLI** (`cli/`) — standalone CLI published as `run402` on npm. Each subcommand is a thin shim over an SDK call; argv parsing and JSON output stay at the CLI edge.
-- **OpenClaw skill** (`openclaw/`) — skill for OpenClaw agents, re-exports from CLI modules.
+- **Functions library** (`functions/`) — in-function helper imported _inside_ deployed serverless functions. Exposes `db(req)`, `adminDb()`, `getUser()`, `email`, `ai`. Published as `@run402/functions` on npm. Distinct from the SDK: this is the request-scoped, in-function shape; the SDK is the typed external client. The two are complementary, not redundant.
+- **OpenClaw skill** (`openclaw/`) — script-based skill for OpenClaw agents, re-exports from CLI modules.
 
-All four share the request kernel via `@run402/sdk`. `core/` holds filesystem primitives (keystore, allowance) that the Node SDK provider wraps.
+Workspace layout: `package.json` declares `cli`, `sdk`, and `functions` as npm workspaces. `core/` is shared internal code, not an npm package.
+
+The first four packages release in lockstep via the `/publish` skill at the same version (the skill also supports per-package selection for off-cycle patches). MCP, CLI, OpenClaw, and the Node SDK all share the request kernel via `@run402/sdk`. `@run402/functions` is the exception — it makes raw `fetch()` calls against the project's own endpoints using ambient request context. `core/` holds filesystem primitives (keystore, allowance, SIWE signing) that the Node SDK provider wraps.
 
 ## Build & Test Commands
 
 ```bash
-npm run build:core     # tsc -p core/tsconfig.json → core/dist/
-npm run build:sdk      # tsc -p sdk/tsconfig.json  → sdk/dist/
-npm run build          # build:core + build:sdk + tsc → dist/
-npm run start          # node dist/index.js (stdio MCP transport)
-npm run test:skill     # node --test --import tsx SKILL.test.ts (validates SKILL.md frontmatter/body)
-npm run test:sync      # node --test --import tsx sync.test.ts (checks MCP/CLI/OpenClaw/SDK stay in sync)
-npm test               # runs all tests (SKILL.test.ts + sync.test.ts + core/src/**/*.test.ts + sdk/src/**/*.test.ts + src/**/*.test.ts)
-npm run test:e2e       # node --test cli-e2e.test.mjs (47 CLI end-to-end tests)
+npm run build:core         # tsc -p core/tsconfig.json → core/dist/
+npm run build:sdk          # tsc -p sdk/tsconfig.json  → sdk/dist/
+npm run build:functions    # tsc -p functions/tsconfig.json → functions/dist/
+npm run build              # build:core + build:sdk + build:functions + tsc → dist/ (also stages dist copies under cli/)
+npm run start              # node dist/index.js (stdio MCP transport)
+
+npm run test:skill         # validates SKILL.md and openclaw/SKILL.md (49 tests across both)
+npm run test:sync          # checks MCP/CLI/OpenClaw/SDK stay in sync
+npm test                   # SKILL + sync + unit (core/src + sdk/src + src) + CLI e2e
+npm run test:e2e           # node --test cli-e2e.test.mjs cli-deploy-dispatcher.test.mjs cli-help.test.mjs
+npm run test:help          # CLI help-text snapshots only
+npm run test:integration         # SIWX integration (core/src/siwx-integration.integ.ts)
+npm run test:integration:full    # full CLI integration (cli-integration.test.ts)
+npm run test:integration:mcp     # MCP integration (mcp-integration.test.ts)
 ```
 
 Unit tests use Node's built-in `node:test` runner with `tsx` for TypeScript:
 
 ```bash
 # Run all unit tests
-node --test --import tsx core/src/**/*.test.ts src/**/*.test.ts
+node --test --import tsx core/src/**/*.test.ts sdk/src/**/*.test.ts src/**/*.test.ts
 
 # Run a single test file
 node --test --import tsx src/tools/run-sql.test.ts
 node --test --import tsx core/src/keystore.test.ts
 ```
 
-Tests are excluded from the build (`tsconfig.json` and `core/tsconfig.json` both exclude `**/*.test.ts`).
+Tests are excluded from the build (`tsconfig.json`, `core/tsconfig.json`, and friends all exclude `**/*.test.ts`).
 
 ### Sync Test (`sync.test.ts`)
 
@@ -54,33 +65,50 @@ When adding a new tool/command, add it to the `SURFACE` array **and** `SDK_BY_CA
 ## Architecture
 
 ```
-@run402/sdk  (typed TypeScript kernel — 17 namespaces, ~90 methods)
+@run402/sdk  (typed TypeScript kernel — 18 namespaces, ~100 methods)
    │
    │   /index.ts    (isomorphic: Node + sandbox)
-   │   /node        (Node-only: keystore + allowance + x402-wrapped fetch)
+   │   /node        (Node-only: keystore + allowance + x402-wrapped fetch + fileSetFromDir)
    │
    ├─── MCP tools  (src/tools/*.ts)  — thin shim → SDK → markdown format
    ├─── CLI        (cli/lib/*.mjs)   — thin shim → SDK → JSON output + exit code
    └─── OpenClaw   (openclaw/scripts/*.mjs) — re-exports from CLI
 
-core/  ← Node-only primitives (keystore, allowance, SIWE signing, config paths)
-        Imported by `sdk/src/node` via `../../../core/dist/`; not an npm package.
+core/      ← Node-only primitives (keystore, allowance, SIWE signing, config paths)
+              Imported by sdk/src/node via ../../../core/dist/; not an npm package.
+
+functions/ ← @run402/functions in-function helper (db, adminDb, getUser, email, ai).
+              Auto-bundled into deployed function zips at deploy time;
+              also installable for local TypeScript autocomplete.
 ```
 
 The SDK is the canonical kernel — a single typed client with a `CredentialsProvider` interface for credential access and a pluggable `fetch` (for x402 wrapping in Node, session tokens in sandboxes). MCP handlers and CLI commands are thin shims: argv/schema parsing + SDK call + output formatting. When code-mode MCP ships, the same SDK runs inside a V8 isolate.
 
 ### SDK (`sdk/src/`)
 
-- **`index.ts`** — `Run402` class + `run402()` factory. Isomorphic entry point.
+- **`index.ts`** — `Run402` class + `run402()` factory + `files()` helper. Isomorphic entry point.
 - **`kernel.ts`** — Request function, `Client` interface. Only place that calls `globalThis.fetch`.
-- **`errors.ts`** — `Run402Error` hierarchy: `PaymentRequired`, `ProjectNotFound`, `Unauthorized`, `ApiError`, `NetworkError`. Never calls `process.exit`.
+- **`errors.ts`** — `Run402Error` hierarchy: `PaymentRequired`, `ProjectNotFound`, `Unauthorized`, `ApiError`, `NetworkError`, `Run402DeployError` (the v1.34+ structured envelope from the deploy state machine). Never calls `process.exit`.
 - **`credentials.ts`** — `CredentialsProvider` interface. Required: `getAuth`, `getProject`. Optional: `saveProject`, `updateProject`, `removeProject`, `setActiveProject`, `getActiveProject`, `readAllowance`, `saveAllowance`, `createAllowance`, `getAllowancePath`.
-- **`namespaces/*.ts`** — One class per resource group (projects, blobs, functions, email, …). Namespaces hold a `Client` and expose typed methods.
-- **`node/*.ts`** — Node-only entry point (`@run402/sdk/node`). Wraps `core/` keystore + allowance into `NodeCredentialsProvider`. Sets up x402-wrapped fetch via `createLazyPaidFetch()`.
+- **`namespaces/*.ts`** — One class per resource group (projects, blobs, functions, email, …). Namespaces hold a `Client` and expose typed methods. The canonical deploy primitive lives at **`namespaces/deploy.ts`** (with shared types in `deploy.types.ts`) — see "Unified Deploy" below.
+- **`node/*.ts`** — Node-only entry point (`@run402/sdk/node`). Wraps `core/` keystore + allowance into `NodeCredentialsProvider`. Sets up x402-wrapped fetch via `createLazyPaidFetch()`. Adds `fileSetFromDir(path)` for filesystem byte sources to the deploy primitive.
+
+### Unified Deploy (v1.34+)
+
+- **`namespaces/deploy.ts`** — `Deploy` class exposing the canonical primitive. Three layers:
+  - `r.deploy.apply(spec, opts?)` — one-shot, awaits to terminal (most agents use this).
+  - `r.deploy.start(spec, opts?)` — returns a `DeployOperation` with `events()` async iterator + `result()` promise.
+  - `r.deploy.plan` / `upload` / `commit` — low-level steps for CLI debugging.
+  - Plus `r.deploy.resume(operationId)`, `status`, `getRelease`, `diff`.
+- **All bytes ride through CAS.** The plan request body never carries inline bytes — only `ContentRef` objects. When the normalized spec exceeds 5 MB JSON, the SDK uploads the manifest itself as a CAS object and references it (`manifest_ref` escape hatch — no body-size cliff).
+- **Replace vs patch semantics per resource.** `site.replace` = "this is the whole site" (files absent are removed in the new release); `site.patch.put` / `patch.delete` = surgical updates. Same for `functions`, `secrets`, `subdomains`. Top-level absence = leave untouched.
+- **Server-authoritative manifest digest.** The gateway returns the canonical digest in the plan response. The SDK no longer requires byte-for-byte canonicalize agreement — `canonicalize.ts` is now a UX helper only.
+- **Backward-compat shims.** `apps.bundleDeploy` translates legacy options into a `ReleaseSpec` and delegates to `deploy.apply` (the `inherit: true` flag is silently ignored — deprecation is preserved in the JSDoc only, the runtime warning was removed in #162 because it misled callers when an unrelated error followed). `sites.deployDir` is a thin wrapper that uses `fileSetFromDir(dir)` and synthesizes both unified `DeployEvent` shapes and the legacy `{ phase: ... }` shapes for v1.32-era event consumers.
+- **MCP/CLI surface.** `deploy` and `deploy_resume` MCP tools (in `src/tools/deploy.ts` and `src/tools/deploy-resume.ts`) expose the new primitive directly. CLI subcommands `run402 deploy apply` and `run402 deploy resume` (in `cli/lib/deploy-v2.mjs`) mirror them. The legacy `bundle_deploy`/`deploy_site`/`deploy_site_dir` MCP tools and `run402 deploy --manifest` CLI continue to work and route through the same SDK shim.
 
 ### Shared Core (`core/src/`)
 
-The `core/` module contains shared logic imported by all three interfaces:
+The `core/` module contains shared logic imported by all interfaces:
 
 - **`config.ts`** — Path resolution and env vars: `getApiBase()`, `getConfigDir()`, `getKeystorePath()`, `getAllowancePath()`.
 - **`allowance.ts`** — `readAllowance()`, `saveAllowance()` with atomic writes (temp-file + rename, mode 0600).
@@ -89,6 +117,14 @@ The `core/` module contains shared logic imported by all three interfaces:
 - **`client.ts`** — `apiRequest()` fetch wrapper. Handles JSON/text responses, 402 payment detection.
 
 Core functions return `null` or throw — they never call `process.exit()`. Each interface wraps with its own error behavior.
+
+### Functions library (`functions/`)
+
+- **`functions/src/index.ts`** — Public exports: `db`, `adminDb`, `getUser`, `email`, `ai`. Each helper makes raw `fetch()` calls against the project's own gateway endpoints using ambient request context (the function's `RUN402_PROJECT_ID` / `RUN402_SERVICE_KEY` env vars baked at deploy time).
+- **`db(req)`** — caller-context PostgREST client. Forwards the incoming `Authorization` header; RLS evaluates against the caller's role.
+- **`adminDb()`** — service-key client. Routes to `/admin/v1/rest/*` (the gateway rejects `role=service_role` on `/rest/v1/*`, so bypass traffic lives on its own surface). Use only when the function acts on behalf of the platform.
+- **`adminDb().sql(query, params?)`** — raw parameterized SQL, always BYPASSRLS.
+- This library is auto-bundled into deployed function zips alongside any user-declared `--deps` (npm-installed and esbuild-bundled at deploy time, native binaries rejected). Also installable in your editor for full TypeScript autocomplete.
 
 ### MCP Server (`src/`)
 
@@ -107,6 +143,7 @@ Core functions return `null` or throw — they never call `process.exit()`. Each
 - **`cli/lib/*.mjs`** — Each module exports `async run(sub, args)`. Subcommand bodies: argv parse + SDK call + JSON output + `reportSdkError` on failure.
 - **`cli/lib/blob.mjs`** retains raw `fetch` for the `put` subcommand only — resumable uploads + per-part concurrency are CLI-specific UX not modeled in the SDK.
 - **`cli/lib/deploy.mjs`** retains raw `undici.fetch` for long-timeout bundle deploys and retry-on-5xx. The SDK covers `apps.bundleDeploy` but the CLI wraps it with a custom dispatcher.
+- **`cli/lib/deploy-v2.mjs`** — `run402 deploy apply` and `run402 deploy resume` subcommands. Thin wrapper over `r.deploy.apply` / `r.deploy.resume`.
 
 ### OpenClaw (`openclaw/`)
 
@@ -120,15 +157,15 @@ Every tool in `src/tools/` exports two things:
 1. A Zod schema object (e.g., `provisionSchema`) defining input parameters
 2. An async handler function (e.g., `handleProvision`) returning `{ content: [{type: "text", text: string}], isError?: boolean }`
 
-Tools that require payment (provision, renew, deploy_site, bundle_deploy) return 402 payment details as **informational text** (not errors) so the LLM can reason about payment flow.
+Tools that require payment (provision, renew, deploy_site, bundle_deploy, deploy) return 402 payment details as **informational text** (not errors) so the LLM can reason about payment flow.
 
 ### Error Handling Pattern
 
 All tools use shared error helpers from `src/errors.ts`:
 
 - **`formatApiError(res, context)`** — Formats a non-OK API response into the standard `{ content: [...], isError: true }` shape. Includes HTTP status, extracts `hint`/`retry_after`/`renew_url`/`usage`/`expires_at` from the response body, and adds actionable guidance based on status code. The `context` parameter is a short verb phrase describing what failed (e.g. "running SQL").
-
 - **`projectNotFound(projectId)`** — Returns a consistent "project not found in key store" error with guidance to provision first.
+- **`mapSdkError(err)`** — Translates a thrown `Run402Error` subclass into the same `{isError, content}` shape, preserving payment-required envelopes as informational text.
 
 When adding a new tool, use these helpers instead of inline error formatting:
 ```ts
@@ -143,9 +180,14 @@ Tests mock `globalThis.fetch` and use temp directories for keystore isolation. E
 - `beforeEach`: set `RUN402_API_BASE` env, create temp keystore, mock fetch
 - `afterEach`: restore original fetch and env, clean up temp dir
 
-### SKILL.md
+### Skill files
 
-`SKILL.md` is the OpenClaw skill definition with YAML frontmatter + markdown body. `SKILL.test.ts` validates its structure (frontmatter fields, required sections, tool references, markdown integrity). Run with `npm run test:skill`.
+Two skill files coexist, serving different runtimes:
+
+- **`SKILL.md`** (root) — MCP-host skill. Frontmatter `install: run402-mcp`. Body teaches the platform via MCP tool names (`provision_postgres_project`, `apply_expose`, `deploy_site_dir`, `blob_put`, …) in natural-language framings — no JSON tool-call blobs. Read by Claude Desktop / Cursor / Cline / Claude Code agents that already have the run402-mcp tools loaded.
+- **`openclaw/SKILL.md`** — OpenClaw script-based skill. Frontmatter `install: run402` (the CLI). Body teaches the platform exclusively via `run402 <verb>` commands. Read by OpenClaw's script runner, where `openclaw/scripts/*.mjs` re-export from the CLI's lib.
+
+`SKILL.test.ts` validates both files with shape-appropriate guards (root requires the run402-mcp install + 9 MCP tool names; openclaw requires the run402 CLI install + 7 CLI verbs). Both ban `setup_rls` / `projects rls` / `inherit:true` regressions. Run with `npm run test:skill`.
 
 ## Environment Variables
 
