@@ -789,14 +789,20 @@ function validateSpec(spec: ReleaseSpec): void {
   if (!spec || typeof spec !== "object") {
     throw new Run402DeployError("ReleaseSpec must be an object", {
       code: "INVALID_SPEC",
+      phase: "validate",
+      resource: "spec",
       retryable: false,
+      fix: { action: "set_field", path: "" },
       context: "validating spec",
     });
   }
   if (!spec.project || typeof spec.project !== "string") {
     throw new Run402DeployError("ReleaseSpec.project is required", {
       code: "INVALID_SPEC",
+      phase: "validate",
+      resource: "spec.project",
       retryable: false,
+      fix: { action: "set_field", path: "project" },
       context: "validating spec",
     });
   }
@@ -805,8 +811,10 @@ function validateSpec(spec: ReleaseSpec): void {
       "subdomains.set accepts at most one subdomain per project; multi-subdomain support is not yet available",
       {
         code: "SUBDOMAIN_MULTI_NOT_SUPPORTED",
+        phase: "validate",
         resource: "subdomains.set",
         retryable: false,
+        fix: { action: "set_field", path: "subdomains.set" },
         context: "validating spec",
       },
     );
@@ -961,8 +969,10 @@ async function normalizeMigration(
   if (!m.id) {
     throw new Run402DeployError("MigrationSpec.id is required", {
       code: "INVALID_SPEC",
+      phase: "validate",
       resource: "database.migrations",
       retryable: false,
+      fix: { action: "set_field", path: "database.migrations[].id" },
       context: "validating spec",
     });
   }
@@ -984,8 +994,13 @@ async function normalizeMigration(
       `MigrationSpec ${m.id} must include sql or sql_ref`,
       {
         code: "INVALID_SPEC",
+        phase: "validate",
         resource: `database.migrations.${m.id}`,
         retryable: false,
+        fix: {
+          action: "set_field",
+          path: `database.migrations.${m.id}.sql`,
+        },
         context: "validating spec",
       },
     );
