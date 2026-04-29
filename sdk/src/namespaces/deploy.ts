@@ -189,11 +189,23 @@ export class Deploy {
     operationId: string,
     opts: { onEvent?: (event: DeployEvent) => void; project?: string } = {},
   ): Promise<DeployResult> {
+    if (!operationId || !operationId.startsWith("op_")) {
+      throw new Run402DeployError(`Invalid operation id: "${operationId}"`, {
+        code: "OPERATION_NOT_FOUND",
+        retryable: false,
+        context: "resuming deploy operation",
+      });
+    }
     const emit = makeEmitter(opts.onEvent);
-    const snapshot = await this.client.request<OperationSnapshot>(
-      `/deploy/v2/operations/${operationId}/resume`,
-      { method: "POST", context: "resuming deploy operation" },
-    );
+    let snapshot: OperationSnapshot;
+    try {
+      snapshot = await this.client.request<OperationSnapshot>(
+        `/deploy/v2/operations/${encodeURIComponent(operationId)}/resume`,
+        { method: "POST", context: "resuming deploy operation" },
+      );
+    } catch (err) {
+      throw translateDeployError(err, "resume", null, operationId);
+    }
     return await pollSnapshotUntilReady(this.client, snapshot, {}, emit, opts.project);
   }
 
@@ -1472,8 +1484,13 @@ function translateGatewayError(
       context: phase,
     });
   }
+  // Normalize the gateway code to the SCREAMING_SNAKE_CASE convention used
+  // by `Run402DeployErrorCode`. Some gateway routes return lowercase
+  // (`operation_not_found`) while services return uppercase
+  // (`OPERATION_NOT_FOUND`); consumers expect the canonical uppercase form.
+  const normalizedCode = gw.code.toUpperCase() as Run402DeployErrorCode;
   return new Run402DeployError(gw.message ?? `Deploy failed: ${gw.code}`, {
-    code: gw.code as Run402DeployErrorCode,
+    code: normalizedCode,
     phase: gw.phase ?? phase,
     resource: gw.resource ?? null,
     retryable: gw.retryable ?? false,

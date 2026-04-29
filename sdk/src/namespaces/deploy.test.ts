@@ -22,7 +22,7 @@ import type {
   OperationSnapshot,
   PlanResponse,
 } from "./deploy.types.js";
-import { NetworkError, Run402DeployError } from "../errors.js";
+import { ApiError, NetworkError, Run402DeployError } from "../errors.js";
 import { fileSetFromDir } from "../node/files.js";
 
 interface RecordedRequest {
@@ -657,5 +657,55 @@ describe("Deploy.apply (manifest-ref escape hatch)", () => {
     assert(casPlanCalled, "manifest-ref path called /content/v1/plans");
     assert(casCommitCalled, "manifest-ref path called /content/v1/plans/:id/commit");
     assert(planRefSeen, "deploy plan body uses manifest_ref instead of inline manifest");
+  });
+});
+
+describe("Deploy.resume (input validation + error wrapping)", () => {
+  it("throws Run402DeployError without issuing any request when operationId is empty", async () => {
+    const w = makeWiring();
+    const deploy = new Deploy(w.client);
+    await assert.rejects(
+      () => deploy.resume(""),
+      (err: unknown) =>
+        err instanceof Run402DeployError &&
+        (err as Run402DeployError).code === "OPERATION_NOT_FOUND" &&
+        (err as Run402DeployError).retryable === false,
+    );
+    assert.equal(w.requests.length, 0, "no HTTP request issued for empty operationId");
+  });
+
+  it("throws Run402DeployError without issuing any request when operationId is not prefixed with op_", async () => {
+    const w = makeWiring();
+    const deploy = new Deploy(w.client);
+    await assert.rejects(
+      () => deploy.resume("notop_xx"),
+      (err: unknown) =>
+        err instanceof Run402DeployError &&
+        (err as Run402DeployError).code === "OPERATION_NOT_FOUND" &&
+        (err as Run402DeployError).retryable === false,
+    );
+    assert.equal(w.requests.length, 0, "no HTTP request issued for invalid prefix");
+  });
+
+  it("translates a gateway 404 with {code:'operation_not_found'} into a Run402DeployError", async () => {
+    const w = makeWiring();
+    w.setHandler((req) => {
+      if (req.path === "/deploy/v2/operations/op_does_not_exist/resume") {
+        throw new ApiError(
+          "API error while resuming deploy operation (HTTP 404)",
+          404,
+          { code: "operation_not_found", message: "operation not found" },
+          "resuming deploy operation",
+        );
+      }
+      throw new Error(`unexpected ${req.path}`);
+    });
+    const deploy = new Deploy(w.client);
+    await assert.rejects(
+      () => deploy.resume("op_does_not_exist"),
+      (err: unknown) =>
+        err instanceof Run402DeployError &&
+        (err as Run402DeployError).code === "OPERATION_NOT_FOUND",
+    );
   });
 });
