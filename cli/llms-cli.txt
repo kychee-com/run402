@@ -175,6 +175,15 @@ run402 deploy resume <operation_id>
 
 The gateway re-runs only the failed phase forward — SQL is never replayed.
 
+**Inspect deploy history**: list recent operations for a project, or pull the recorded phase-event stream for a specific operation (after the fact — for live progress events during an in-flight deploy, the `apply` command already streams them on stderr):
+
+```bash
+run402 deploy list --project prj_... --limit 10
+run402 deploy events <operation_id> --project prj_...
+```
+
+`list` returns `{ operations: [...], cursor }` (page through with `--cursor` against the gateway when the cursor is non-null). `events` returns the same `DeployEvent` shapes that `apply` emits inline.
+
 **Migration registry**: each migration is identified by `(id, checksum)`. Re-shipping the same `id` + same SQL is a registry noop; same `id` + different SQL is a hard error (`MIGRATION_CHECKSUM_MISMATCH`). Ship idempotent migrations (`CREATE TABLE IF NOT EXISTS`, `ADD COLUMN IF NOT EXISTS` in a `DO` block) and re-deploys are free.
 
 ---
@@ -357,7 +366,11 @@ SQL supports DDL + queries, returns JSON. REST uses PostgREST syntax (`select=`,
 User auth: password + Google OAuth. See "User Auth" section below.
 
 ### deploy
-- `run402 deploy --manifest app.json [--project <id>]`
+- `run402 deploy --manifest app.json [--project <id>]` — legacy bundle deploy, routes through the v2 primitive
+- `run402 deploy apply --manifest app.json [--project <id>] [--quiet]` — unified deploy primitive (v1.34+)
+- `run402 deploy resume <operation_id> [--quiet]` — re-run a stuck operation forward
+- `run402 deploy list [--project <id>] [--limit <n>]` — list recent deploy operations
+- `run402 deploy events <operation_id> [--project <id>]` — fetch the recorded event stream for an operation
 
 Requires active tier and a provisioned project. Deploys to an existing project: runs migrations, applies RLS, sets secrets, deploys functions, deploys static site, and claims subdomain. The manifest must include `project_id` (or use `--project` flag, or omit both to use the active project).
 

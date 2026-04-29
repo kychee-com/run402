@@ -34,6 +34,8 @@ import type {
   ContentRef,
   ContentSource,
   DeployEvent,
+  DeployEventsResponse,
+  DeployListResponse,
   DeployOperation,
   DeployResult,
   FileSet,
@@ -223,6 +225,60 @@ export class Deploy {
       `/deploy/v2/operations/${operationId}`,
       { headers, context: "fetching deploy operation" },
     );
+  }
+
+  /**
+   * List recent deploy operations for a project. The endpoint requires
+   * `apikey` auth, so `project` is required. `limit` is forwarded to the
+   * gateway as a query string when set; the gateway picks a default
+   * otherwise.
+   */
+  async list(opts: {
+    project: string;
+    limit?: number;
+  }): Promise<DeployListResponse> {
+    const headers = await apikeyHeaders(this.client, opts.project);
+    const qs = new URLSearchParams();
+    if (opts.limit !== undefined) qs.set("limit", String(opts.limit));
+    const path =
+      qs.toString().length > 0
+        ? `/deploy/v2/operations?${qs.toString()}`
+        : `/deploy/v2/operations`;
+    return this.client.request<DeployListResponse>(path, {
+      headers,
+      context: "listing deploy operations",
+    });
+  }
+
+  /**
+   * Fetch the synthesized phase event stream for an operation. Returns the
+   * events the gateway has recorded so far — useful for inspecting a deploy
+   * after the fact, or resuming an event subscription from a different
+   * process. For live subscription during an in-flight deploy, use
+   * {@link Deploy.start} and iterate `op.events()`.
+   *
+   * The endpoint requires `apikey` auth, so `project` is required.
+   */
+  async events(
+    operationId: string,
+    opts: { project: string },
+  ): Promise<DeployEventsResponse> {
+    if (!operationId || !operationId.startsWith("op_")) {
+      throw new Run402DeployError(`Invalid operation id: "${operationId}"`, {
+        code: "OPERATION_NOT_FOUND",
+        retryable: false,
+        context: "fetching deploy events",
+      });
+    }
+    const headers = await apikeyHeaders(this.client, opts.project);
+    try {
+      return await this.client.request<DeployEventsResponse>(
+        `/deploy/v2/operations/${encodeURIComponent(operationId)}/events`,
+        { headers, context: "fetching deploy events" },
+      );
+    } catch (err) {
+      throw translateDeployError(err, "events", null, operationId);
+    }
   }
 
   /**

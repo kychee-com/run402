@@ -199,6 +199,8 @@ const SURFACE: Capability[] = [
   // ── Unified deploy (v1.34+) ──────────────────────────────────────────────
   { id: "deploy",            endpoint: "POST /deploy/v2/plans",                            mcp: "deploy",            cli: "deploy:apply",      openclaw: "deploy:apply" },
   { id: "deploy_resume",     endpoint: "POST /deploy/v2/operations/:id/resume",            mcp: "deploy_resume",     cli: "deploy:resume",     openclaw: "deploy:resume" },
+  { id: "deploy_list",       endpoint: "GET /deploy/v2/operations",                        mcp: "deploy_list",       cli: "deploy:list",       openclaw: "deploy:list" },
+  { id: "deploy_events",     endpoint: "GET /deploy/v2/operations/:id/events",             mcp: "deploy_events",     cli: "deploy:events",     openclaw: "deploy:events" },
 
   // ── Marketplace ──────────────────────────────────────────────────────────
   { id: "browse_apps",       endpoint: "GET /apps/v1",                              mcp: "browse_apps",   cli: "apps:browse",   openclaw: "apps:browse" },
@@ -376,6 +378,8 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   // Unified deploy (v1.34+)
   deploy: "deploy.apply",
   deploy_resume: "deploy.resume",
+  deploy_list: "deploy.list",
+  deploy_events: "deploy.events",
 
   // Bundle / marketplace
   bundle_deploy: "apps.bundleDeploy",
@@ -860,14 +864,13 @@ describe("llms.txt alignment", { skip: !llmsTxtAvailable && "~/Developer/run402-
       "GET /storage/v1/uploads/{id}",
       "POST /storage/v1/uploads/{id}/complete",
       "DELETE /storage/v1/uploads/{id}",
-      // Unified deploy v2 (v1.34+) — these are internal plumbing for the
-      // `deploy` and `deploy_resume` MCP tools. The SDK orchestrates plan +
-      // upload + commit + poll + resume across them; agents call
-      // `deploy.apply` / `deploy.resume`, not these endpoints directly.
+      // Unified deploy v2 (v1.34+) — internal plumbing for the deploy
+      // primitive. The SDK orchestrates plan + upload + commit + poll across
+      // these; agents call `deploy.apply` / `deploy.resume` /
+      // `deploy.list` / `deploy.events`. The :id snapshot endpoint is exposed
+      // as `r.deploy.status()` on the SDK but not as its own MCP/CLI tool.
       "POST /deploy/v2/plans/:id/commit",
-      "GET /deploy/v2/operations",
       "GET /deploy/v2/operations/:id",
-      "GET /deploy/v2/operations/:id/events",
       // CAS content service — internal substrate shared by deploy.apply,
       // blobs.put, and the manifest-ref escape hatch. Not surfaced as its
       // own tool; the SDK uses it transparently.

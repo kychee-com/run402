@@ -258,11 +258,15 @@ export async function run(args) {
   // Subcommand dispatch (v1.34+):
   //   run402 deploy apply  ...    → unified deploy primitive (deploy.apply)
   //   run402 deploy resume <op>   → resume an activation_pending operation
+  //   run402 deploy list          → list recent deploy operations
+  //   run402 deploy events <op>   → fetch recorded event stream for an operation
   //   run402 deploy --manifest …  → legacy bundle deploy (still works)
   const sub = args[0];
   switch (sub) {
     case "apply":
-    case "resume": {
+    case "resume":
+    case "list":
+    case "events": {
       const { runDeployV2 } = await import("./deploy-v2.mjs");
       await runDeployV2(sub, args.slice(1));
       return;
