@@ -15,6 +15,11 @@
     "sdk/core-dist",
     "README.md"
   ],
+  "workspaces": [
+    "cli",
+    "sdk",
+    "functions"
+  ],
   "scripts": {
     "build:core": "tsc -p core/tsconfig.json",
     "build:sdk": "mkdir -p sdk/core-dist && cp core/dist/*.js sdk/core-dist/ && cp core/dist/*.d.ts sdk/core-dist/ && tsc -p sdk/tsconfig.json",
