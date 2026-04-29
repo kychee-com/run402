@@ -523,3 +523,120 @@ describe("Deploy.apply (manifest-ref escape hatch)", () => {
     assert(planRefSeen, "deploy plan body uses manifest_ref instead of inline manifest");
   });
 });
+
+// ─── GH-140: retry retryable CONTENT_UPLOAD_FAILED with backoff ─────────────
+//
+// When `uploadOne` throws Run402DeployError with `retryable: true` (e.g. a
+// transient network drop on a presigned-PUT), the SDK must retry with
+// exponential backoff up to MAX_ATTEMPTS (1 initial + 2 retries). A single
+// network blip should not fail the whole deploy. See GH-140.
+describe("Deploy.apply (retry on retryable CONTENT_UPLOAD_FAILED)", () => {
+  // Helper that wires a deploy with one missing file and lets the test
+  // control how each PUT attempt resolves.
+  function setupSingleMissing(w: ReturnType<typeof makeWiring>): {
+    indexSha: string;
+    htmlBytes: string;
+  } {
+    const html = "<html><body>retry-me</body></html>";
+    const indexSha = shaHex(html);
+
+    const plan: PlanResponse = {
+      plan_id: "plan_retry",
+      operation_id: "op_retry",
+      base_release_id: null,
+      manifest_digest: "deadbeef",
+      missing_content: [{ sha256: indexSha, size: html.length, present: false }],
+      diff: { resources: { site: { added: 1 } } },
+    };
+    const contentPlan = {
+      plan_id: "cplan_retry",
+      expires_at: new Date(Date.now() + 3600_000).toISOString(),
+      missing: [
+        {
+          sha256: indexSha,
+          mode: "single",
+          parts: [
+            {
+              part_number: 1,
+              url: "https://s3.example/upload?part=1",
+              byte_start: 0,
+              byte_end: html.length - 1,
+            },
+          ],
+          part_size_bytes: html.length,
+          part_count: 1,
+          upload_id: "u_retry",
+          staging_key: "_staging/u_retry/" + indexSha,
+          expires_at: new Date(Date.now() + 3600_000).toISOString(),
+        },
+      ],
+      entries: [{ sha256: indexSha, missing: true }],
+    };
+    const commit: CommitResponse = {
+      operation_id: "op_retry",
+      status: "ready",
+      release_id: "rel_retry",
+      urls: { site: "https://prj.run402.test", deployment_id: "dpl_retry" },
+    };
+    w.setHandler((req) => {
+      if (req.path === "/deploy/v2/plans") return plan;
+      if (req.path === "/content/v1/plans") return contentPlan;
+      if (req.path === "/storage/v1/uploads/u_retry/complete") return { status: "ok" };
+      if (req.path === "/content/v1/plans/cplan_retry/commit") return {};
+      if (req.path === "/deploy/v2/plans/plan_retry/commit") return commit;
+      throw new Error(`unexpected path ${req.path}`);
+    });
+    return { indexSha, htmlBytes: html };
+  }
+
+  it("retries a single transient PUT failure and completes successfully", async () => {
+    const w = makeWiring();
+    const { htmlBytes } = setupSingleMissing(w);
+
+    let putAttempts = 0;
+    w.setS3Handler(() => {
+      putAttempts += 1;
+      if (putAttempts === 1) {
+        // Simulate a transient network drop. fetch() throwing here causes
+        // putToS3() to wrap it in Run402DeployError(retryable: true).
+        throw new TypeError("network drop");
+      }
+      return new Response("", { status: 200 });
+    });
+
+    const deploy = new Deploy(w.client);
+    const result = await deploy.apply({
+      project: "prj_test",
+      site: { replace: { "index.html": htmlBytes } },
+    });
+
+    assert.equal(result.release_id, "rel_retry");
+    assert.equal(putAttempts, 2, "exactly one retry happened (2 PUT attempts total)");
+    assert.equal(w.puts.length, 2, "fake fetch saw 2 PUT calls");
+  });
+
+  it("gives up after MAX_ATTEMPTS and surfaces the last Run402DeployError", async () => {
+    const w = makeWiring();
+    setupSingleMissing(w);
+
+    let putAttempts = 0;
+    w.setS3Handler(() => {
+      putAttempts += 1;
+      throw new TypeError("network drop");
+    });
+
+    const deploy = new Deploy(w.client);
+    await assert.rejects(
+      () =>
+        deploy.apply({
+          project: "prj_test",
+          site: { replace: { "index.html": "<html><body>retry-me</body></html>" } },
+        }),
+      (err: unknown) =>
+        err instanceof Run402DeployError &&
+        (err as Run402DeployError).code === "CONTENT_UPLOAD_FAILED" &&
+        (err as Run402DeployError).retryable === true,
+    );
+    assert.equal(putAttempts, 3, "stopped at MAX_ATTEMPTS=3 (1 initial + 2 retries)");
+  });
+});
