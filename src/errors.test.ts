@@ -1,6 +1,10 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { formatApiError, projectNotFound } from "./errors.js";
+import {
+  formatApiError,
+  formatCanonicalErrorContext,
+  projectNotFound,
+} from "./errors.js";
 
 describe("formatApiError", () => {
   it("includes context, error message, and status code", () => {
@@ -71,6 +75,79 @@ describe("formatApiError", () => {
       "deploying",
     );
     assert.ok(result.content[0]!.text.includes("Internal failure"));
+  });
+
+  it("renders canonical scalar context and code-specific guidance", () => {
+    const result = formatApiError(
+      {
+        status: 403,
+        body: {
+          error: "frozen",
+          message: "Project is frozen.",
+          code: "PROJECT_FROZEN",
+          category: "lifecycle",
+          retryable: false,
+          safe_to_retry: true,
+          mutation_state: "none",
+          trace_id: "trc_abc",
+        },
+      },
+      "deploying release",
+    );
+    const text = result.content[0]!.text;
+
+    assert.ok(text.includes("Project is frozen."));
+    assert.ok(text.includes("HTTP 403"));
+    assert.ok(text.includes("Code: `PROJECT_FROZEN`"));
+    assert.ok(text.includes("Category: lifecycle"));
+    assert.ok(text.includes("Retryable: false"));
+    assert.ok(text.includes("Safe to retry: true"));
+    assert.ok(text.includes("Mutation state: none"));
+    assert.ok(text.includes("Trace: trc_abc"));
+    assert.ok(text.includes("get_usage"));
+    assert.ok(text.includes("set_tier"));
+    assert.ok(!text.includes("lease may have expired"));
+  });
+
+  it("renders canonical next actions without executing them", () => {
+    const result = formatApiError(
+      {
+        status: 402,
+        body: {
+          message: "Payment required.",
+          code: "PAYMENT_REQUIRED",
+          category: "payment",
+          next_actions: [
+            { action: "submit_payment", label: "Submit the x402 payment" },
+            { action: "renew_tier" },
+            { action: "check_usage", description: "Inspect current limits" },
+          ],
+        },
+      },
+      "renewing project",
+    );
+    const text = result.content[0]!.text;
+
+    assert.ok(text.includes("Next actions:"));
+    assert.ok(text.includes("submit_payment: Submit the x402 payment"));
+    assert.ok(text.includes("renew_tier"));
+    assert.ok(text.includes("check_usage: Inspect current limits"));
+  });
+
+  it("formats canonical details when requested", () => {
+    const lines = formatCanonicalErrorContext(
+      {
+        code: "MIGRATION_FAILED",
+        details: { statement_offset: 184, migration_id: "001_init" },
+      },
+      { includeDetails: true },
+    );
+    const text = lines.join("\n");
+
+    assert.ok(text.includes("Code: `MIGRATION_FAILED`"));
+    assert.ok(text.includes("Details:"));
+    assert.ok(text.includes('"statement_offset": 184'));
+    assert.ok(text.includes('"migration_id": "001_init"'));
   });
 
   it("handles string body gracefully", () => {

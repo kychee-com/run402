@@ -110,7 +110,7 @@ export async function request<T>(
 
   if (res.status === 402) {
     throw new PaymentRequired(
-      `Payment required while ${context}`,
+      `${displayMessage(resBody, "Payment required")} while ${context}`,
       402,
       resBody,
       context,
@@ -118,7 +118,7 @@ export async function request<T>(
   }
   if (res.status === 401 || res.status === 403) {
     throw new Unauthorized(
-      `Unauthorized while ${context} (HTTP ${res.status})`,
+      `${displayMessage(resBody, "Unauthorized")} while ${context} (HTTP ${res.status})`,
       res.status,
       resBody,
       context,
@@ -126,11 +126,20 @@ export async function request<T>(
   }
 
   throw new ApiError(
-    `API error while ${context} (HTTP ${res.status})`,
+    `${displayMessage(resBody, "API error")} while ${context} (HTTP ${res.status})`,
     res.status,
     resBody,
     context,
   );
+}
+
+function displayMessage(body: unknown, fallback: string): string {
+  if (body && typeof body === "object" && !Array.isArray(body)) {
+    const obj = body as Record<string, unknown>;
+    if (typeof obj.message === "string" && obj.message.length > 0) return obj.message;
+    if (typeof obj.error === "string" && obj.error.length > 0) return obj.error;
+  }
+  return fallback;
 }
 
 export function buildClient(kernel: KernelConfig): Client {

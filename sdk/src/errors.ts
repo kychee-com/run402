@@ -11,6 +11,22 @@ export abstract class Run402Error extends Error {
   readonly body: unknown;
   /** Short verb phrase identifying the attempted operation (e.g. "provisioning project"). */
   readonly context: string;
+  /** Canonical machine-readable Run402 error code, when the gateway provided one. */
+  readonly code?: string;
+  /** High-level error category, e.g. lifecycle, deploy, auth. */
+  readonly category?: string;
+  /** Whether the same request may succeed later. */
+  readonly retryable?: boolean;
+  /** Whether repeating the same request should avoid duplicating/corrupting a mutation. */
+  readonly safeToRetry?: boolean;
+  /** Gateway-known mutation progress for failed mutating operations. */
+  readonly mutationState?: string;
+  /** Trace id suitable for support/debugging. */
+  readonly traceId?: string;
+  /** Canonical structured context. Preserved by reference from the response body. */
+  readonly details?: unknown;
+  /** Advisory next actions from the gateway. Rendering them must not execute them. */
+  readonly nextActions?: unknown[];
 
   constructor(message: string, status: number | null, body: unknown, context: string) {
     super(message);
@@ -18,7 +34,24 @@ export abstract class Run402Error extends Error {
     this.status = status;
     this.body = body;
     this.context = context;
+    const envelope = canonicalEnvelope(body);
+    if (typeof envelope?.code === "string") this.code = envelope.code;
+    if (typeof envelope?.category === "string") this.category = envelope.category;
+    if (typeof envelope?.retryable === "boolean") this.retryable = envelope.retryable;
+    if (typeof envelope?.safe_to_retry === "boolean") this.safeToRetry = envelope.safe_to_retry;
+    if (typeof envelope?.mutation_state === "string") this.mutationState = envelope.mutation_state;
+    if (typeof envelope?.trace_id === "string") this.traceId = envelope.trace_id;
+    if (envelope && Object.prototype.hasOwnProperty.call(envelope, "details")) {
+      this.details = envelope.details;
+    }
+    if (Array.isArray(envelope?.next_actions)) this.nextActions = envelope.next_actions;
   }
+}
+
+function canonicalEnvelope(body: unknown): Record<string, unknown> | null {
+  return body && typeof body === "object" && !Array.isArray(body)
+    ? (body as Record<string, unknown>)
+    : null;
 }
 
 /** HTTP 402 — the gateway requires payment (lease expired, insufficient balance, or x402 quote). */
@@ -83,6 +116,7 @@ export type Run402DeployErrorCode =
   | "INVALID_SPEC"
   | "OPERATION_NOT_FOUND"
   | "PLAN_NOT_FOUND"
+  | "MIGRATE_GATE_ACTIVE"
   | "NOT_RESUMABLE"
   | "INVALID_STATE"
   | "RESUME_FAILED"

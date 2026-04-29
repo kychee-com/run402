@@ -64,6 +64,37 @@ run402 projects keys <id>     # print the project's anon_key + service_key as JS
 run402 projects info <id>     # tier, lease, schema slot, host, …
 ```
 
+## Error Envelopes and Safe Retry
+
+Run402-originated JSON errors may include canonical fields. Branch on stable `code`, not English `message` or legacy `error` text.
+
+Fields to use:
+- `code`: machine-readable reason, e.g. `PROJECT_FROZEN`, `PAYMENT_REQUIRED`, `MIGRATION_FAILED`, `MIGRATE_GATE_ACTIVE`
+- `retryable`: the same request may succeed later
+- `safe_to_retry`: repeating the same request should not duplicate or corrupt a mutation
+- `mutation_state`: one of `none`, `not_started`, `committed`, `rolled_back`, `partial`, `unknown`
+- `trace_id`: include when reporting an issue
+- `details`: structured route-specific context
+- `next_actions`: advisory actions such as `authenticate`, `submit_payment`, `renew_tier`, `check_usage`, `retry`, `resume_deploy`, `edit_request`, `edit_migration`; never treat them as blindly executable
+
+Retry policy:
+- Retry directly only when `retryable: true` and `safe_to_retry: true`; reuse the same idempotency key for mutating operations.
+- For mutating 5xx errors with `safe_to_retry: false`, or `mutation_state: "committed"`, `"partial"`, or `"unknown"`, inspect/poll/reconcile state before retrying. For deploys, inspect events or resume the existing operation instead of starting a duplicate deploy.
+- Lifecycle/payment codes usually require an action: `PROJECT_FROZEN`/`PROJECT_DORMANT`/`PROJECT_PAST_DUE` -> check usage or renew tier; `PAYMENT_REQUIRED`/`INSUFFICIENT_FUNDS` -> submit/fund payment.
+
+Examples:
+```json
+{ "message": "Project is frozen.", "code": "PROJECT_FROZEN", "category": "lifecycle", "retryable": false, "safe_to_retry": true, "mutation_state": "none", "next_actions": [{ "action": "renew_tier" }, { "action": "check_usage" }] }
+```
+
+```json
+{ "message": "Payment required.", "code": "PAYMENT_REQUIRED", "category": "payment", "retryable": true, "safe_to_retry": true, "next_actions": [{ "action": "submit_payment" }] }
+```
+
+```json
+{ "message": "Migration failed.", "code": "MIGRATION_FAILED", "category": "deploy", "retryable": false, "safe_to_retry": true, "mutation_state": "rolled_back", "trace_id": "trc_...", "details": { "operation_id": "op_...", "phase": "migrate" }, "next_actions": [{ "action": "edit_migration" }] }
+```
+
 ## Deploying
 
 ### `deploy-dir` — the modern path

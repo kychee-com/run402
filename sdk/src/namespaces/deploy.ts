@@ -1579,28 +1579,82 @@ function extractGatewayError(
     typeof body.error === "object" &&
     typeof (body.error as { code?: unknown }).code === "string"
   ) {
-    return body.error as GatewayDeployError;
+    const nested = body.error as GatewayDeployError;
+    return {
+      ...nested,
+      category: nested.category ?? stringField(body, "category"),
+      retryable: nested.retryable ?? booleanField(body, "retryable"),
+      safe_to_retry: nested.safe_to_retry ?? booleanField(body, "safe_to_retry"),
+      mutation_state: nested.mutation_state ?? stringField(body, "mutation_state"),
+      trace_id: nested.trace_id ?? stringField(body, "trace_id"),
+      details: nested.details ?? objectField(body, "details"),
+      next_actions: nested.next_actions ?? arrayField(body, "next_actions"),
+    };
   }
   if (typeof body.code === "string") {
+    const details = objectField(body, "details");
     const out: GatewayDeployError = { code: body.code };
     if (typeof body.message === "string") {
       out.message = body.message;
     } else if (typeof body.error === "string") {
       out.message = body.error;
+    } else if (typeof details?.message === "string") {
+      out.message = details.message;
     } else {
       out.message = `Deploy error: ${body.code}`;
     }
-    if (typeof body.phase === "string") out.phase = body.phase;
-    if (typeof body.resource === "string") out.resource = body.resource;
-    if (typeof body.retryable === "boolean") out.retryable = body.retryable;
-    if (body.fix !== undefined) out.fix = body.fix as GatewayDeployError["fix"];
-    if (Array.isArray(body.logs)) out.logs = body.logs as string[];
-    if (typeof body.rolled_back === "boolean") out.rolled_back = body.rolled_back;
-    if (typeof body.operation_id === "string") out.operation_id = body.operation_id;
-    if (typeof body.plan_id === "string") out.plan_id = body.plan_id;
+    const phase = stringField(body, "phase") ?? stringField(details, "phase");
+    const resource = stringField(body, "resource") ?? stringField(details, "resource");
+    const retryable = booleanField(body, "retryable") ?? booleanField(details, "retryable");
+    const rolledBack = booleanField(body, "rolled_back") ?? booleanField(details, "rolled_back");
+    const operationId = stringField(body, "operation_id") ?? stringField(details, "operation_id");
+    const planId = stringField(body, "plan_id") ?? stringField(details, "plan_id");
+    const fix = body.fix !== undefined ? body.fix : details?.fix;
+    const logs = arrayField(body, "logs") ?? arrayField(details, "logs");
+    if (phase !== undefined) out.phase = phase;
+    if (resource !== undefined) out.resource = resource;
+    if (retryable !== undefined) out.retryable = retryable;
+    if (typeof body.category === "string") out.category = body.category;
+    if (typeof body.safe_to_retry === "boolean") out.safe_to_retry = body.safe_to_retry;
+    if (typeof body.mutation_state === "string") out.mutation_state = body.mutation_state;
+    if (typeof body.trace_id === "string") out.trace_id = body.trace_id;
+    if (details !== null) out.details = details;
+    if (Array.isArray(body.next_actions)) out.next_actions = body.next_actions;
+    if (fix !== undefined) out.fix = fix as GatewayDeployError["fix"];
+    if (logs !== undefined) out.logs = logs as string[];
+    if (rolledBack !== undefined) out.rolled_back = rolledBack;
+    if (operationId !== undefined) out.operation_id = operationId;
+    if (planId !== undefined) out.plan_id = planId;
+    out.source_body = body;
     return out;
   }
   return null;
+}
+
+function stringField(obj: unknown, key: string): string | undefined {
+  return obj && typeof obj === "object" && typeof (obj as Record<string, unknown>)[key] === "string"
+    ? ((obj as Record<string, unknown>)[key] as string)
+    : undefined;
+}
+
+function booleanField(obj: unknown, key: string): boolean | undefined {
+  return obj && typeof obj === "object" && typeof (obj as Record<string, unknown>)[key] === "boolean"
+    ? ((obj as Record<string, unknown>)[key] as boolean)
+    : undefined;
+}
+
+function objectField(obj: unknown, key: string): Record<string, unknown> | null {
+  const value =
+    obj && typeof obj === "object" ? (obj as Record<string, unknown>)[key] : undefined;
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function arrayField(obj: unknown, key: string): unknown[] | undefined {
+  const value =
+    obj && typeof obj === "object" ? (obj as Record<string, unknown>)[key] : undefined;
+  return Array.isArray(value) ? value : undefined;
 }
 
 function translateGatewayError(
@@ -1628,20 +1682,29 @@ function translateGatewayError(
   // which operation/plan an error belongs to. The caller-provided arguments
   // are only used as a fallback (e.g., commit failures where the call site
   // already knows the plan id but the body omits it).
+  const details = objectField(gw, "details");
   const opId =
-    (gw && (gw as { operation_id?: string }).operation_id) ?? operationId;
-  const pId = (gw && (gw as { plan_id?: string }).plan_id) ?? planId;
+    (gw && (gw as { operation_id?: string }).operation_id) ??
+    stringField(details, "operation_id") ??
+    operationId;
+  const pId =
+    (gw && (gw as { plan_id?: string }).plan_id) ??
+    stringField(details, "plan_id") ??
+    planId;
+  const body = (gw as { source_body?: unknown }).source_body ?? gw;
+  const fix = (gw.fix ?? details?.fix ?? null) as Run402DeployErrorFix | null;
+  const logs = (gw.logs ?? arrayField(details, "logs") ?? null) as string[] | null;
   return new Run402DeployError(gw.message ?? `Deploy failed: ${gw.code}`, {
     code: normalizedCode,
-    phase: gw.phase ?? phase,
-    resource: gw.resource ?? null,
+    phase: gw.phase ?? stringField(details, "phase") ?? phase,
+    resource: gw.resource ?? stringField(details, "resource") ?? null,
     retryable: gw.retryable ?? false,
     operationId: opId,
     planId: pId,
-    fix: (gw.fix ?? null) as Run402DeployErrorFix | null,
-    logs: gw.logs ?? null,
-    rolledBack: gw.rolled_back ?? false,
-    body: gw,
+    fix,
+    logs,
+    rolledBack: gw.rolled_back ?? booleanField(details, "rolled_back") ?? false,
+    body,
     context: phase,
   });
 }

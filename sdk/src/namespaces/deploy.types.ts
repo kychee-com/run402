@@ -326,7 +326,13 @@ export interface GatewayDeployError {
   phase?: string | null;
   resource?: string | null;
   message?: string;
+  category?: string;
   retryable?: boolean;
+  safe_to_retry?: boolean;
+  mutation_state?: string;
+  trace_id?: string;
+  details?: Record<string, unknown> | null;
+  next_actions?: unknown[];
   fix?: { action: string; path?: string; [key: string]: unknown } | null;
   logs?: string[] | null;
   rolled_back?: boolean;

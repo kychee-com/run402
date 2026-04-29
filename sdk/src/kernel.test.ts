@@ -103,6 +103,115 @@ describe("kernel request", () => {
     exitSpy.restore();
   });
 
+  it("projects canonical envelope fields onto SDK errors without rewriting body", async () => {
+    const canonical = {
+      status: "degraded",
+      error: "frozen",
+      message: "Project is frozen.",
+      code: "PROJECT_FROZEN",
+      category: "lifecycle",
+      retryable: false,
+      safe_to_retry: true,
+      mutation_state: "none",
+      trace_id: "trc_123",
+      details: { project_id: "prj_1" },
+      next_actions: [{ action: "renew_tier" }],
+    };
+    const kernel = makeKernel(async () => makeRes(canonical, { status: 403 }));
+    await assert.rejects(
+      request(kernel, "/projects/v1/prj_1", { context: "updating project" }),
+      (err: unknown) => {
+        assert.ok(err instanceof Unauthorized);
+        const e = err as Unauthorized;
+        assert.equal(e.status, 403);
+        assert.deepEqual(e.body, canonical);
+        assert.equal((e.body as typeof canonical).status, "degraded");
+        assert.equal(e.message, "Project is frozen. while updating project (HTTP 403)");
+        assert.equal(e.code, "PROJECT_FROZEN");
+        assert.equal(e.category, "lifecycle");
+        assert.equal(e.retryable, false);
+        assert.equal(e.safeToRetry, true);
+        assert.equal(e.mutationState, "none");
+        assert.equal(e.traceId, "trc_123");
+        assert.deepEqual(e.details, { project_id: "prj_1" });
+        assert.deepEqual(e.nextActions, [{ action: "renew_tier" }]);
+        return true;
+      },
+    );
+    exitSpy.restore();
+  });
+
+  it("leaves canonical projections undefined for legacy-only bodies", async () => {
+    const body = { error: "internal" };
+    const kernel = makeKernel(async () => makeRes(body, { status: 500 }));
+    await assert.rejects(
+      request(kernel, "/x", { context: "calling x" }),
+      (err: unknown) => {
+        assert.ok(err instanceof ApiError);
+        const e = err as ApiError;
+        assert.deepEqual(e.body, body);
+        assert.equal(e.message, "internal while calling x (HTTP 500)");
+        assert.equal(e.code, undefined);
+        assert.equal(e.category, undefined);
+        assert.equal(e.safeToRetry, undefined);
+        assert.equal(e.mutationState, undefined);
+        assert.equal(e.traceId, undefined);
+        assert.equal(e.nextActions, undefined);
+        return true;
+      },
+    );
+    exitSpy.restore();
+  });
+
+  it("keeps passthrough and non-envelope bodies useful across error subclasses", async () => {
+    const paymentKernel = makeKernel(async () =>
+      makeRes("Payment Required", { status: 402, contentType: "text/plain" }),
+    );
+    await assert.rejects(
+      request(paymentKernel, "/projects/v1", { context: "provisioning" }),
+      (err: unknown) => {
+        assert.ok(err instanceof PaymentRequired);
+        const e = err as PaymentRequired;
+        assert.equal(e.status, 402);
+        assert.equal(e.body, "Payment Required");
+        assert.equal(e.message, "Payment required while provisioning");
+        return true;
+      },
+    );
+
+    const unauthorizedBody = { message: "relation does not exist", code: "42P01" };
+    const unauthorizedKernel = makeKernel(async () => makeRes(unauthorizedBody, { status: 403 }));
+    await assert.rejects(
+      request(unauthorizedKernel, "/rest/v1/todos", { context: "querying REST" }),
+      (err: unknown) => {
+        assert.ok(err instanceof Unauthorized);
+        const e = err as Unauthorized;
+        assert.equal(e.status, 403);
+        assert.deepEqual(e.body, unauthorizedBody);
+        assert.equal(e.message, "relation does not exist while querying REST (HTTP 403)");
+        assert.equal(e.category, undefined);
+        assert.equal(e.mutationState, undefined);
+        return true;
+      },
+    );
+
+    const apiKernel = makeKernel(async () =>
+      makeRes("<html>Bad Gateway</html>", { status: 502, contentType: "text/html" }),
+    );
+    await assert.rejects(
+      request(apiKernel, "/x", { context: "calling x" }),
+      (err: unknown) => {
+        assert.ok(err instanceof ApiError);
+        const e = err as ApiError;
+        assert.equal(e.status, 502);
+        assert.equal(e.body, "<html>Bad Gateway</html>");
+        assert.equal(e.message, "API error while calling x (HTTP 502)");
+        return true;
+      },
+    );
+    exitSpy.restore();
+  });
+
   it("throws Unauthorized on 401", async () => {
     const kernel = makeKernel(async () => makeRes({ error: "bad auth" }, { status: 401 }));
     await assert.rejects(

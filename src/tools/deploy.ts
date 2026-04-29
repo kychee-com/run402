@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { getSdk } from "../sdk.js";
-import { mapSdkError, projectNotFound } from "../errors.js";
+import { formatCanonicalErrorContext, mapSdkError, projectNotFound } from "../errors.js";
 import { requireAllowanceAuth } from "../allowance-auth.js";
 import { updateProject } from "../keystore.js";
 import {
@@ -285,11 +285,10 @@ export async function handleDeploy(
       const lines = [
         `## Deploy Failed`,
         ``,
-        `**Code:** \`${err.code}\``,
+        ...formatCanonicalErrorContext(err, { includeDetails: true }),
       ];
       if (err.phase) lines.push(`**Phase:** \`${err.phase}\``);
       if (err.resource) lines.push(`**Resource:** \`${err.resource}\``);
-      lines.push(`**Retryable:** ${err.retryable}`);
       if (err.operationId) lines.push(`**Operation:** \`${err.operationId}\``);
       if (err.planId) lines.push(`**Plan:** \`${err.planId}\``);
       lines.push(``, err.message);

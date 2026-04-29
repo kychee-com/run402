@@ -34,6 +34,62 @@ Six tool calls, zero-to-deployed:
 
 Optional next: **`deploy_function`** for server logic, **`blob_put`** to host images/JS/CSS with paste-and-go URLs, **`create_mailbox` + `send_email`** for transactional mail.
 
+## Error Envelopes and Safe Retry
+
+Run402-originated JSON errors may include a canonical envelope. Branch on the stable `code`, not English `message` or legacy `error` text. `message` is for display; `error` is a legacy fallback.
+
+Important fields:
+- `code` — stable machine-readable reason, e.g. `PROJECT_FROZEN`, `PAYMENT_REQUIRED`, `MIGRATION_FAILED`, `MIGRATE_GATE_ACTIVE`
+- `retryable` — the same request may succeed later
+- `safe_to_retry` — repeating the same request should not duplicate or corrupt a mutation
+- `mutation_state` — gateway-known mutation progress: `none`, `not_started`, `committed`, `rolled_back`, `partial`, or `unknown`
+- `trace_id` — include this when reporting a Run402 issue
+- `details` — structured route-specific context
+- `next_actions` — advisory suggestions such as `authenticate`, `submit_payment`, `renew_tier`, `check_usage`, `retry`, `resume_deploy`, `edit_request`, or `edit_migration`; render or follow them only after validating the action is safe
+
+Safe retry policy:
+- If `retryable: true` and `safe_to_retry: true`, retry the same request, preferably with the same idempotency key for mutating operations.
+- If a mutating request returns a 5xx with `safe_to_retry: false`, or `mutation_state` is `committed`, `partial`, or `unknown`, inspect or poll state before retrying. For deploys, use deploy events/list/resume context before sending another mutation.
+- Lifecycle/payment errors usually want an action rather than a blind retry: `PROJECT_FROZEN`/`PROJECT_DORMANT`/`PROJECT_PAST_DUE` -> `get_usage` or `set_tier`; `PAYMENT_REQUIRED`/`INSUFFICIENT_FUNDS` -> submit/fund payment.
+
+Examples:
+```json
+{
+  "message": "Project is frozen.",
+  "code": "PROJECT_FROZEN",
+  "category": "lifecycle",
+  "retryable": false,
+  "safe_to_retry": true,
+  "mutation_state": "none",
+  "next_actions": [{ "action": "renew_tier" }, { "action": "check_usage" }]
+}
+```
+
+```json
+{
+  "message": "Payment required.",
+  "code": "PAYMENT_REQUIRED",
+  "category": "payment",
+  "retryable": true,
+  "safe_to_retry": true,
+  "next_actions": [{ "action": "submit_payment" }]
+}
+```
+
+```json
+{
+  "message": "Migration failed.",
+  "code": "MIGRATION_FAILED",
+  "category": "deploy",
+  "retryable": false,
+  "safe_to_retry": true,
+  "mutation_state": "rolled_back",
+  "trace_id": "trc_...",
+  "details": { "phase": "migrate", "operation_id": "op_..." },
+  "next_actions": [{ "action": "edit_migration" }]
+}
+```
+
 ## Project credentials
 
 After `provision_postgres_project`, two keys are saved automatically to `~/.config/run402/projects.json` and reused by every subsequent tool call:

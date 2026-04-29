@@ -50,6 +50,7 @@ mock.module("../sdk.js", {
 });
 
 const { handleDeploy, deploySchema } = await import("./deploy.js");
+const { Run402DeployError } = await import("../../sdk/dist/index.js");
 const { z } = await import("zod");
 
 let tempDir: string;
@@ -225,6 +226,65 @@ describe("handleDeploy bare-string file entries (GH-136)", () => {
       spec.functions!.replace!["api"].files!["lib.mjs"],
       "export const x = 1;",
     );
+  });
+});
+
+describe("handleDeploy deploy error formatting", () => {
+  it("renders canonical deploy error context", async () => {
+    nextApplyImpl = async () => {
+      throw new Run402DeployError("Migration failed.", {
+        code: "MIGRATION_FAILED",
+        phase: "migrate",
+        resource: "database.migrations.001_init",
+        retryable: false,
+        operationId: "op_1",
+        planId: "plan_1",
+        rolledBack: true,
+        body: {
+          message: "Migration failed.",
+          code: "MIGRATION_FAILED",
+          category: "deploy",
+          retryable: false,
+          safe_to_retry: true,
+          mutation_state: "rolled_back",
+          trace_id: "trc_tool",
+          details: {
+            statement_offset: 184,
+            migration_id: "001_init",
+          },
+          next_actions: [
+            { action: "edit_migration", label: "Fix migration SQL" },
+            { action: "resume_deploy", label: "Resume after correction" },
+          ],
+        },
+        context: "commit",
+      });
+    };
+
+    const result = await handleDeploy({
+      project_id: "prj_xxx",
+      database: {
+        migrations: [{ id: "001_init", sql: "select 1" }],
+      },
+    });
+    const text = result.content[0]!.text;
+
+    assert.equal(result.isError, true);
+    assert.ok(text.includes("## Deploy Failed"));
+    assert.ok(text.includes("Code: `MIGRATION_FAILED`"));
+    assert.ok(text.includes("Category: deploy"));
+    assert.ok(text.includes("Retryable: false"));
+    assert.ok(text.includes("Safe to retry: true"));
+    assert.ok(text.includes("Mutation state: rolled_back"));
+    assert.ok(text.includes("Trace: trc_tool"));
+    assert.ok(text.includes("Details:"));
+    assert.ok(text.includes('"statement_offset": 184'));
+    assert.ok(text.includes("edit_migration: Fix migration SQL"));
+    assert.ok(text.includes("resume_deploy: Resume after correction"));
+    assert.ok(text.includes("**Phase:** `migrate`"));
+    assert.ok(text.includes("**Resource:** `database.migrations.001_init`"));
+    assert.ok(text.includes("**Operation:** `op_1`"));
+    assert.ok(text.includes("**Plan:** `plan_1`"));
   });
 });
 

@@ -503,6 +503,118 @@ beforeEach(() => {
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
 
+describe("CLI SDK error reporting", () => {
+  async function reportAndParse(err) {
+    const { reportSdkError } = await import("./cli/lib/sdk-errors.mjs");
+    let threw = null;
+    captureStart();
+    try {
+      reportSdkError(err);
+    } catch (e) {
+      threw = e;
+    } finally {
+      captureStop();
+    }
+    assert.equal(threw?.message, "process.exit(1)");
+    const line = capturedStderr().split("\n").find((s) => s.trim().startsWith("{"));
+    assert.ok(line, `expected JSON stderr, got: ${capturedStderr()}`);
+    return JSON.parse(line);
+  }
+
+  it("forwards canonical gateway fields while preserving CLI status sentinel", async () => {
+    const parsed = await reportAndParse({
+      name: "Unauthorized",
+      message: "Project is frozen. while setting tier (HTTP 403)",
+      status: 403,
+      body: {
+        status: "degraded",
+        error: "frozen",
+        message: "Project is frozen.",
+        code: "PROJECT_FROZEN",
+        category: "lifecycle",
+        retryable: false,
+        safe_to_retry: true,
+        mutation_state: "none",
+        trace_id: "trc_cli",
+        details: { project_id: "prj_1" },
+        next_actions: [{ action: "renew_tier" }],
+        hint: "Renew the project tier",
+        retry_after_seconds: 30,
+        admin_required: true,
+      },
+    });
+
+    assert.equal(parsed.status, "error");
+    assert.equal(parsed.http, 403);
+    assert.equal(parsed.message, "Project is frozen.");
+    assert.equal(parsed.code, "PROJECT_FROZEN");
+    assert.equal(parsed.category, "lifecycle");
+    assert.equal(parsed.retryable, false);
+    assert.equal(parsed.safe_to_retry, true);
+    assert.equal(parsed.mutation_state, "none");
+    assert.equal(parsed.trace_id, "trc_cli");
+    assert.deepEqual(parsed.details, { project_id: "prj_1" });
+    assert.deepEqual(parsed.next_actions, [{ action: "renew_tier" }]);
+    assert.equal(parsed.hint, "Renew the project tier");
+    assert.equal(parsed.retry_after_seconds, 30);
+    assert.equal(parsed.admin_required, true);
+  });
+
+  it("emits structured JSON for status-null deploy errors", async () => {
+    const parsed = await reportAndParse({
+      name: "Run402DeployError",
+      message: "Migration failed.",
+      status: null,
+      body: null,
+      code: "MIGRATION_FAILED",
+      phase: "migrate",
+      resource: "database.migrations.001_init",
+      retryable: false,
+      safeToRetry: true,
+      mutationState: "rolled_back",
+      traceId: "trc_dep_cli",
+      details: { statement_offset: 184 },
+      nextActions: [{ action: "edit_migration" }],
+      operationId: "op_1",
+      planId: "plan_1",
+      fix: { action: "edit_request", path: "database.migrations.001_init" },
+      logs: ["ERROR at offset 184"],
+      rolledBack: true,
+    });
+
+    assert.equal(parsed.status, "error");
+    assert.equal(parsed.message, "Migration failed.");
+    assert.equal(parsed.code, "MIGRATION_FAILED");
+    assert.equal(parsed.phase, "migrate");
+    assert.equal(parsed.resource, "database.migrations.001_init");
+    assert.equal(parsed.retryable, false);
+    assert.equal(parsed.safe_to_retry, true);
+    assert.equal(parsed.mutation_state, "rolled_back");
+    assert.equal(parsed.trace_id, "trc_dep_cli");
+    assert.deepEqual(parsed.details, { statement_offset: 184 });
+    assert.deepEqual(parsed.next_actions, [{ action: "edit_migration" }]);
+    assert.equal(parsed.operation_id, "op_1");
+    assert.equal(parsed.plan_id, "plan_1");
+    assert.deepEqual(parsed.fix, { action: "edit_request", path: "database.migrations.001_init" });
+    assert.deepEqual(parsed.logs, ["ERROR at offset 184"]);
+    assert.equal(parsed.rolled_back, true);
+  });
+
+  it("keeps non-JSON body_preview behavior", async () => {
+    const parsed = await reportAndParse({
+      name: "ApiError",
+      message: "API error while provisioning (HTTP 502)",
+      status: 502,
+      body: "<html><body>502 Bad Gateway</body></html>",
+    });
+
+    assert.equal(parsed.status, "error");
+    assert.equal(parsed.http, 502);
+    assert.ok(parsed.body_preview.includes("502 Bad Gateway"));
+    assert.ok(parsed.body_preview.length <= 500);
+  });
+});
+
 describe("CLI e2e happy path", () => {
 
   // ── Allowance ───────────────────────────────────────────────────────────

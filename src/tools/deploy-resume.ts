@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { getSdk } from "../sdk.js";
-import { mapSdkError } from "../errors.js";
+import { formatCanonicalErrorContext, mapSdkError } from "../errors.js";
 import { requireAllowanceAuth } from "../allowance-auth.js";
 import { Run402DeployError } from "../../sdk/dist/index.js";
 import type { DeployEvent } from "../../sdk/dist/index.js";
@@ -57,11 +57,10 @@ export async function handleDeployResume(args: {
       const lines = [
         `## Resume Failed`,
         ``,
-        `**Code:** \`${err.code}\``,
+        ...formatCanonicalErrorContext(err, { includeDetails: true }),
       ];
       if (err.phase) lines.push(`**Phase:** \`${err.phase}\``);
       if (err.resource) lines.push(`**Resource:** \`${err.resource}\``);
-      lines.push(`**Retryable:** ${err.retryable}`);
       lines.push(``, err.message);
       const out: { content: Array<{ type: "text"; text: string }>; isError?: boolean } = {
         content: [{ type: "text", text: lines.join("\n") }],

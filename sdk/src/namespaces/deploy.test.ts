@@ -806,6 +806,230 @@ describe("Deploy.apply (gateway error translation)", () => {
     assert.equal(e.operationId, "op_from_body_123");
     assert.equal(e.planId, "plan_from_body_456");
   });
+
+  it("translates canonical deploy envelopes and exposes inherited projections", async () => {
+    const w = makeWiring();
+    const canonical = {
+      message: "Migration failed.",
+      code: "MIGRATION_FAILED",
+      category: "deploy",
+      retryable: false,
+      safe_to_retry: true,
+      mutation_state: "rolled_back",
+      trace_id: "trc_dep",
+      details: {
+        phase: "migrate",
+        resource: "database.migrations.001_init",
+        operation_id: "op_1",
+        plan_id: "plan_1",
+        rolled_back: true,
+      },
+      next_actions: [{ action: "edit_migration", path: "database.migrations.001_init" }],
+    };
+    w.setHandler((req) => {
+      if (req.path === "/deploy/v2/plans/plan_1/commit") {
+        return {
+          operation_id: "op_1",
+          status: "failed",
+          error: canonical,
+        } satisfies CommitResponse;
+      }
+      throw new Error(`unexpected ${req.path}`);
+    });
+
+    const deploy = new Deploy(w.client);
+    await assert.rejects(
+      () => deploy.commit("plan_1"),
+      (err: unknown) => {
+        assert.ok(err instanceof Run402DeployError);
+        const e = err as Run402DeployError;
+        assert.equal(e.code, "MIGRATION_FAILED");
+        assert.equal(e.phase, "migrate");
+        assert.equal(e.resource, "database.migrations.001_init");
+        assert.equal(e.retryable, false);
+        assert.equal(e.safeToRetry, true);
+        assert.equal(e.mutationState, "rolled_back");
+        assert.equal(e.traceId, "trc_dep");
+        assert.equal(e.operationId, "op_1");
+        assert.equal(e.planId, "plan_1");
+        assert.equal(e.rolledBack, true);
+        assert.deepEqual(e.details, canonical.details);
+        assert.deepEqual(e.nextActions, canonical.next_actions);
+        return true;
+      },
+    );
+  });
+
+  it("lets legacy top-level deploy fields win while canonical details fill gaps", async () => {
+    const w = makeWiring();
+    w.setHandler((req) => {
+      if (req.path === "/deploy/v2/plans") {
+        throw new ApiError(
+          "Gateway rejected migration",
+          409,
+          {
+            code: "MIGRATION_CHECKSUM_MISMATCH",
+            message: "Migration checksum mismatch",
+            phase: "validate",
+            resource: "database.migrations.top",
+            retryable: false,
+            safe_to_retry: true,
+            mutation_state: "none",
+            trace_id: "trc_mix",
+            details: {
+              phase: "migrate",
+              resource: "database.migrations.detail",
+              operation_id: "op_detail",
+              plan_id: "plan_detail",
+              rolled_back: true,
+            },
+          },
+          "planning deploy",
+        );
+      }
+      throw new Error(`unexpected ${req.path}`);
+    });
+
+    const deploy = new Deploy(w.client);
+    await assert.rejects(
+      () =>
+        deploy.apply({
+          project: "prj_test",
+          database: { migrations: [{ id: "001_init", sql: "select 1" }] },
+        }),
+      (err: unknown) => {
+        assert.ok(err instanceof Run402DeployError);
+        const e = err as Run402DeployError;
+        assert.equal(e.code, "MIGRATION_CHECKSUM_MISMATCH");
+        assert.equal(e.phase, "validate");
+        assert.equal(e.resource, "database.migrations.top");
+        assert.equal(e.operationId, "op_detail");
+        assert.equal(e.planId, "plan_detail");
+        assert.equal(e.safeToRetry, true);
+        assert.equal(e.mutationState, "none");
+        assert.equal(e.traceId, "trc_mix");
+        assert.equal(e.rolledBack, true);
+        return true;
+      },
+    );
+  });
+
+  it("projects canonical fields from nested gateway error wrappers", async () => {
+    const w = makeWiring();
+    w.setHandler((req) => {
+      if (req.path === "/deploy/v2/plans") {
+        throw new ApiError(
+          "Gateway rejected deploy",
+          503,
+          {
+            error: {
+              code: "MIGRATE_GATE_ACTIVE",
+              message: "Migration gate active.",
+              retryable: true,
+              operation_id: "op_nested",
+            },
+            category: "deploy",
+            safe_to_retry: true,
+            mutation_state: "not_started",
+            trace_id: "trc_nested",
+            details: { phase: "migrate-gate", plan_id: "plan_nested" },
+            next_actions: [{ action: "retry" }],
+          },
+          "planning deploy",
+        );
+      }
+      throw new Error(`unexpected ${req.path}`);
+    });
+
+    const deploy = new Deploy(w.client);
+    await assert.rejects(
+      () =>
+        deploy.apply({
+          project: "prj_test",
+          database: { migrations: [{ id: "001_init", sql: "select 1" }] },
+        }),
+      (err: unknown) => {
+        assert.ok(err instanceof Run402DeployError);
+        const e = err as Run402DeployError;
+        assert.equal(e.code, "MIGRATE_GATE_ACTIVE");
+        assert.equal(e.category, "deploy");
+        assert.equal(e.retryable, true);
+        assert.equal(e.safeToRetry, true);
+        assert.equal(e.mutationState, "not_started");
+        assert.equal(e.traceId, "trc_nested");
+        assert.equal(e.operationId, "op_nested");
+        assert.equal(e.planId, "plan_nested");
+        assert.deepEqual(e.nextActions, [{ action: "retry" }]);
+        return true;
+      },
+    );
+  });
+
+  it("branches on terse deploy codes without parsing English messages", async () => {
+    const w = makeWiring();
+    w.setHandler((req) => {
+      if (req.path === "/deploy/v2/plans/plan_missing/commit") {
+        throw new ApiError(
+          "HTTP 404",
+          404,
+          { code: "PLAN_NOT_FOUND" },
+          "committing deploy",
+        );
+      }
+      throw new Error(`unexpected ${req.path}`);
+    });
+
+    const deploy = new Deploy(w.client);
+    await assert.rejects(
+      () => deploy.commit("plan_missing"),
+      (err: unknown) => {
+        assert.ok(err instanceof Run402DeployError);
+        const e = err as Run402DeployError;
+        assert.equal(e.code, "PLAN_NOT_FOUND");
+        assert.equal(e.message, "Deploy error: PLAN_NOT_FOUND");
+        assert.equal(e.planId, "plan_missing");
+        return true;
+      },
+    );
+  });
+
+  it("recognizes canonical migrate-gate active codes from HTTP errors", async () => {
+    const w = makeWiring();
+    w.setHandler((req) => {
+      if (req.path === "/deploy/v2/plans/plan_gate/commit") {
+        throw new ApiError(
+          "HTTP 503",
+          503,
+          {
+            code: "MIGRATE_GATE_ACTIVE",
+            retryable: true,
+            safe_to_retry: true,
+            mutation_state: "not_started",
+            trace_id: "trc_gate",
+            details: { phase: "migrate-gate" },
+          },
+          "committing deploy",
+        );
+      }
+      throw new Error(`unexpected ${req.path}`);
+    });
+
+    const deploy = new Deploy(w.client);
+    await assert.rejects(
+      () => deploy.commit("plan_gate"),
+      (err: unknown) => {
+        assert.ok(err instanceof Run402DeployError);
+        const e = err as Run402DeployError;
+        assert.equal(e.code, "MIGRATE_GATE_ACTIVE");
+        assert.equal(e.phase, "migrate-gate");
+        assert.equal(e.retryable, true);
+        assert.equal(e.safeToRetry, true);
+        assert.equal(e.mutationState, "not_started");
+        assert.equal(e.traceId, "trc_gate");
+        return true;
+      },
+    );
+  });
 });
 
 // ─── GH-140: retry retryable CONTENT_UPLOAD_FAILED with backoff ─────────────
