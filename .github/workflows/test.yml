@@ -26,6 +26,6 @@ jobs:
       # we relied on `shopt -s globstar`, which silently dropped sdk/src
       # tests because they weren't listed and dropped depth-0 files on
       # systems where globstar isn't enabled.)
-      - run: node --experimental-test-module-mocks --test --import tsx 'src/**/*.test.ts' 'core/src/**/*.test.ts' 'sdk/src/**/*.test.ts'
+      - run: node --experimental-test-module-mocks --test --import tsx 'src/**/*.test.ts' 'core/src/**/*.test.ts' 'sdk/src/**/*.test.ts' 'functions/src/**/*.test.ts'
       - run: npm run test:e2e
       - run: npm run test:integration
