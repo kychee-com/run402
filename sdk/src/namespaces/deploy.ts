@@ -621,11 +621,34 @@ async function pollSnapshotUntilReady(
     return map[status] ?? null;
   };
 
+  // Close out the previously-emitted phase as `done` (or `failed`) before
+  // emitting the next phase's `started` event. Skips when there's no prior
+  // phase, when the prior emission wasn't a `started` event (e.g. the
+  // `activation_pending` path which already emits `failed`), or when the
+  // prior phase string equals the next phase. (#135)
+  const closePreviousPhase = (
+    nextPhase?: string,
+    closeStatus: "done" | "failed" = "done",
+  ): void => {
+    if (lastPhaseEmitted === null) return;
+    const prev = phaseFor(lastPhaseEmitted);
+    if (!prev || prev.type !== "commit.phase") return;
+    if (prev.status !== "started") return;
+    if (nextPhase !== undefined && prev.phase === nextPhase) return;
+    emit({ type: "commit.phase", phase: prev.phase, status: closeStatus });
+  };
+
   while (true) {
     if (lastPhaseEmitted !== snapshot.status) {
       const ev = phaseFor(snapshot.status);
-      if (ev) emit(ev);
-      lastPhaseEmitted = snapshot.status;
+      if (ev) {
+        if (ev.type === "commit.phase") closePreviousPhase(ev.phase);
+        emit(ev);
+        lastPhaseEmitted = snapshot.status;
+      }
+      // If `ev` is null (status not in the phase map, e.g. "ready"), leave
+      // lastPhaseEmitted pointing at the prior in-flight phase so the
+      // terminal-success closePreviousPhase() below can emit its `done`.
     }
 
     if (snapshot.status === SUCCESS_STATUS) {
@@ -641,6 +664,7 @@ async function pollSnapshotUntilReady(
           },
         );
       }
+      closePreviousPhase();
       emit({ type: "ready", releaseId: snapshot.release_id, urls: snapshot.urls });
       return {
         release_id: snapshot.release_id,
@@ -651,6 +675,7 @@ async function pollSnapshotUntilReady(
     }
 
     if (TERMINAL_STATUSES.includes(snapshot.status)) {
+      closePreviousPhase(undefined, "failed");
       throw translateGatewayError(
         snapshot.error,
         snapshot.status,

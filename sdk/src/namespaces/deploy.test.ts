@@ -925,6 +925,84 @@ describe("Deploy.apply (retry on retryable CONTENT_UPLOAD_FAILED)", () => {
   });
 });
 
+describe("Deploy.apply (commit.phase done events between transitions)", () => {
+  it("emits commit.phase done before the next phase's started, plus done on terminal ready (#135)", async () => {
+    const w = makeWiring();
+    const html = "<html>phase</html>";
+    const indexSha = shaHex(html);
+
+    const plan: PlanResponse = {
+      plan_id: "plan_phase",
+      operation_id: "op_phase",
+      base_release_id: null,
+      manifest_digest: "phase",
+      missing_content: [],
+      diff: {},
+    };
+    // Simulate the operation walking through staging → migrating → activating → ready.
+    const sequence: OperationSnapshot[] = [
+      { operation_id: "op_phase", status: "staging", plan_id: "plan_phase" } as OperationSnapshot,
+      { operation_id: "op_phase", status: "migrating", plan_id: "plan_phase" } as OperationSnapshot,
+      { operation_id: "op_phase", status: "activating", plan_id: "plan_phase" } as OperationSnapshot,
+      {
+        operation_id: "op_phase",
+        status: "ready",
+        plan_id: "plan_phase",
+        release_id: "rel_phase",
+        urls: { site: "https://prj.run402.test" },
+      } as OperationSnapshot,
+    ];
+    let snapshotIndex = 0;
+    w.setHandler((req) => {
+      if (req.path === "/deploy/v2/plans") return plan;
+      if (req.path === "/deploy/v2/plans/plan_phase/commit") {
+        return {
+          operation_id: "op_phase",
+          status: "staging",
+          release_id: null,
+          urls: null,
+        } as unknown as CommitResponse;
+      }
+      if (req.path.startsWith("/deploy/v2/operations/op_phase")) {
+        const snap = sequence[Math.min(snapshotIndex, sequence.length - 1)];
+        snapshotIndex += 1;
+        return snap;
+      }
+      throw new Error(`unexpected ${req.path}`);
+    });
+
+    const events: DeployEvent[] = [];
+    const deploy = new Deploy(w.client);
+    await deploy.apply(
+      { project: "prj_test", site: { replace: { "index.html": html } } },
+      { onEvent: (e) => events.push(e) },
+    );
+
+    // Filter to the commit.phase events (the validate-started one is emitted
+    // by apply() itself before the snapshot sequence kicks in).
+    const phaseEvents = events
+      .filter((e): e is Extract<DeployEvent, { type: "commit.phase" }> => e.type === "commit.phase")
+      .map((e) => `${e.phase}:${e.status}`);
+
+    // The exact lead-in includes validate:started; what we lock down is the
+    // done/started pairing across stage → migrate → activate → ready.
+    assert(phaseEvents.includes("stage:started"), "stage:started emitted");
+    assert(phaseEvents.includes("stage:done"), "stage:done emitted between stage and migrate");
+    assert(phaseEvents.includes("migrate:started"), "migrate:started emitted");
+    assert(phaseEvents.includes("migrate:done"), "migrate:done emitted between migrate and activate");
+    assert(phaseEvents.includes("activate:started"), "activate:started emitted");
+    assert(phaseEvents.includes("activate:done"), "activate:done emitted before terminal ready");
+
+    // Done must precede the next started for the same transition.
+    const stageDoneIdx = phaseEvents.indexOf("stage:done");
+    const migrateStartedIdx = phaseEvents.indexOf("migrate:started");
+    assert(stageDoneIdx < migrateStartedIdx, "stage:done precedes migrate:started");
+    const migrateDoneIdx = phaseEvents.indexOf("migrate:done");
+    const activateStartedIdx = phaseEvents.indexOf("activate:started");
+    assert(migrateDoneIdx < activateStartedIdx, "migrate:done precedes activate:started");
+  });
+});
+
 describe("Deploy.start (events iterator lifecycle)", () => {
   it("late iteration after op.result() drains buffered events and exits cleanly (GH-138)", async () => {
     const w = makeWiring();
