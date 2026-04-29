@@ -49,15 +49,19 @@ describe("frontmatter", () => {
     assert.deepEqual(frontmatter.metadata.openclaw.requires.bins, ["npx"]);
   });
 
-  it("has node install spec for run402-mcp", () => {
+  it("installs the run402 CLI package", () => {
     const install = frontmatter.metadata.openclaw.install;
     assert.ok(Array.isArray(install), "install must be an array");
     assert.equal(install.length, 1);
     assert.equal(install[0].kind, "node");
-    assert.equal(install[0].package, "run402-mcp");
+    assert.equal(
+      install[0].package,
+      "run402",
+      "this skill is CLI-based — install must be the `run402` npm package",
+    );
     assert.ok(
-      install[0].bins.includes("run402-mcp"),
-      "bins must include run402-mcp",
+      install[0].bins.includes("run402"),
+      "bins must include the run402 binary",
     );
   });
 
@@ -74,20 +78,51 @@ describe("skill slug", () => {
   });
 });
 
-// ── Body — tool references ─────────────────────────────────────
+// ── Body — CLI verb references ─────────────────────────────────
+//
+// The skill teaches the platform exclusively via `run402 …` commands.
+// These are the verbs we expect every reader to encounter — the modern
+// happy-path surfaces (provision, sql, expose manifest, deploy-dir, blob put,
+// tier set). If any of these go missing, an agent loses a primary entry
+// point.
 
-const TOOLS = [
-  "provision_postgres_project",
-  "run_sql",
-  "rest_query",
-  "blob_put",
-  "renew_project",
+const CLI_VERBS = [
+  "run402 init",
+  "run402 projects provision",
+  "run402 projects sql",
+  "run402 projects apply-expose",
+  "run402 sites deploy-dir",
+  "run402 blob put",
+  "run402 tier set",
 ];
 
-describe("body tool references", () => {
-  for (const tool of TOOLS) {
-    it(`references tool: ${tool}`, () => {
-      assert.ok(body.includes(tool), `body must mention ${tool}`);
+describe("body CLI verb references", () => {
+  for (const verb of CLI_VERBS) {
+    it(`references CLI verb: ${verb}`, () => {
+      assert.ok(body.includes(verb), `body must mention "${verb}"`);
+    });
+  }
+});
+
+// ── Body — anti-patterns ───────────────────────────────────────
+//
+// The skill is intentionally CLI-only. Catch regressions where deprecated
+// surfaces or non-CLI modalities sneak back in. We ban:
+//   - the legacy `setup_rls` / `projects rls` flow (replaced by apply-expose)
+//   - the removed `inherit: true` deploy flag
+//   - MCP tool-call JSON pasted into the body (the run402-mcp package is
+//     a sibling, not what this skill teaches)
+
+const BANNED_PATTERNS: Array<{ pattern: RegExp; reason: string }> = [
+  { pattern: /\bsetup_rls\b/, reason: "setup_rls is replaced by apply-expose; do not document it" },
+  { pattern: /\bprojects rls\b/, reason: "`projects rls` is replaced by `projects apply-expose`" },
+  { pattern: /"inherit"\s*:\s*true/, reason: "the `inherit: true` deploy flag was removed in v1.32" },
+];
+
+describe("body anti-patterns", () => {
+  for (const { pattern, reason } of BANNED_PATTERNS) {
+    it(`does not contain: ${pattern.source}`, () => {
+      assert.ok(!pattern.test(body), `${reason}`);
     });
   }
 });
@@ -95,11 +130,16 @@ describe("body tool references", () => {
 // ── Body — required sections ───────────────────────────────────
 
 const REQUIRED_SECTIONS = [
+  "30-second start",
+  "Authorization — the expose manifest",
+  "Storage — paste-and-go assets",
+  "Functions",
   "Standard Workflow",
   "Payment Handling",
   "Tips & Guardrails",
-  "Tools Reference",
   "Agent Allowance Setup",
+  "Troubleshooting",
+  "Tools Reference",
 ];
 
 describe("body required sections", () => {

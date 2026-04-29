@@ -2,34 +2,174 @@
   <img src=".github/logo.svg" width="120" alt="run402 logo">
 </p>
 
-<h1 align="center">run402 — SDK, MCP Server, CLI & OpenClaw Skill</h1>
+<h1 align="center">run402 — Postgres, storage & deploys for AI agents</h1>
 
 [![Tests](https://github.com/kychee-com/run402/actions/workflows/test.yml/badge.svg)](https://github.com/kychee-com/run402/actions/workflows/test.yml)
 [![CodeQL](https://github.com/kychee-com/run402/actions/workflows/codeql.yml/badge.svg)](https://github.com/kychee-com/run402/actions/workflows/codeql.yml)
-[![npm: run402-mcp](https://img.shields.io/npm/v/run402-mcp?label=run402-mcp)](https://www.npmjs.com/package/run402-mcp)
+[![npm: @run402/sdk](https://img.shields.io/npm/v/@run402/sdk?label=%40run402%2Fsdk)](https://www.npmjs.com/package/@run402/sdk)
 [![npm: run402](https://img.shields.io/npm/v/run402?label=run402)](https://www.npmjs.com/package/run402)
+[![npm: run402-mcp](https://img.shields.io/npm/v/run402-mcp?label=run402-mcp)](https://www.npmjs.com/package/run402-mcp)
+[![npm: @run402/functions](https://img.shields.io/npm/v/@run402/functions?label=%40run402%2Ffunctions)](https://www.npmjs.com/package/@run402/functions)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 
-Developer tools for [Run402](https://run402.com) — provision Postgres databases, deploy static sites, serverless functions, generate images, and manage agent allowances. Available as a typed TypeScript SDK, an MCP server, an OpenClaw skill, and a CLI.
+[Run402](https://run402.com) gives an agent a full Postgres database, REST API, user auth, content-addressed file storage, static site hosting, serverless functions, and image generation — provisioned with one call, paid with x402 USDC on Base (or Stripe credits). The prototype tier is free on testnet.
 
-English | [简体中文](./README.zh-CN.md)
+This monorepo ships every surface an agent can pick up:
 
-## Integrations
+| Package | Use when… |
+|---------|-----------|
+| [`@run402/sdk`](./sdk/) | Calling Run402 from TypeScript — typed kernel, isomorphic (Node 22 / Deno / Bun / V8 isolates) with a Node entry that auto-loads the local keystore + allowance + x402 fetch |
+| [`run402` CLI](./cli/) | Terminal, scripts, CI, agent-controlled shells — JSON in, JSON out, exit code on failure |
+| [`run402-mcp`](./src/) | Claude Desktop, Cursor, Cline, Claude Code — every CLI capability as an MCP tool |
+| [OpenClaw skill](./openclaw/) | OpenClaw agents (no MCP server required) |
+| [`@run402/functions`](./functions/) | Imported _inside_ deployed functions (`db(req)`, `adminDb()`, `getUser()`, `email`, `ai`) and for TypeScript autocomplete in your editor |
 
-| Interface | Use when... |
-|-----------|-------------|
-| [`sdk/`](./sdk/) (`@run402/sdk`) | Calling run402 from code — inside user-deployed functions, custom agents, or future code-mode sandboxes |
-| [`cli/`](./cli/) | Terminal, scripts, CI/CD |
-| [`openclaw/`](./openclaw/) | OpenClaw agent (no MCP required) |
-| MCP server (this package) | Claude Desktop, Cursor, Cline, Claude Code |
+All four shipped surfaces release in lockstep at the same version and share a single typed kernel: `@run402/sdk`. MCP tools, CLI subcommands, and OpenClaw scripts are thin shims over SDK calls. Pick whichever interface fits your runtime.
 
-## SDK
+## 30-second start
+
+```bash
+npm install -g run402
+run402 init                                          # creates allowance, requests testnet faucet
+run402 tier set prototype                            # free on testnet (verifies x402 setup)
+run402 projects provision --name my-app              # → anon_key, service_key, project_id
+run402 sites deploy-dir ./dist                       # incremental deploy of a directory → live URL
+run402 subdomains claim my-app                       # → https://my-app.run402.com
+```
+
+That's a real Postgres database + a deployed static site, paid for autonomously with testnet USDC.
+
+## The patterns
+
+### Paste-and-go assets — content-addressed URLs with SRI
+
+`blobs.put()` returns an `AssetRef` whose `scriptTag()` / `linkTag()` / `imgTag()` emitters produce HTML with the URL, the SRI integrity hash, and modern best-practice attributes (`defer`, `loading="lazy"`, `decoding="async"`, `crossorigin`) already wired. The URL is content-addressed (`pr-<public_id>.run402.com/_blob/<key>-<8hex>.<ext>`), served through the v1.33 CDN, and never needs invalidation:
+
+```ts
+import { run402 } from "@run402/sdk/node";
+const r = run402();
+
+const logo  = await r.blobs.put(projectId, "logo.png", { bytes: pngBytes });
+const app   = await r.blobs.put(projectId, "app.js",   { content: jsSource });
+const style = await r.blobs.put(projectId, "app.css",  { content: css });
+
+const html = `
+<!doctype html>
+<html>
+  <head>${style.linkTag()}${app.scriptTag({ type: "module" })}</head>
+  <body>${logo.imgTag("Company logo")}</body>
+</html>
+`;
+```
+
+`immutable: true` is the default — the SDK computes the SHA-256 client-side, the gateway returns a content-hashed URL, and the browser refuses execution on byte mismatch. No cache-invalidation choreography, no waiting, no integrity-attribute construction.
+
+### Dark-by-default tables + the expose manifest
+
+Tables you create are unreachable via `/rest/v1/*` until you declare them in a manifest. That closes the "agent created a table, forgot to set RLS, data leaked" footgun. The manifest is convergent — applying it twice is a no-op; items removed between applies have their policies, grants, triggers, and views dropped.
+
+```bash
+cat > manifest.json <<'EOF'
+{
+  "$schema": "https://run402.com/schemas/manifest.v1.json",
+  "version": "1",
+  "tables": [
+    { "name": "items",  "expose": true,  "policy": "user_owns_rows",
+      "owner_column": "user_id", "force_owner_on_insert": true },
+    { "name": "audit",  "expose": false }
+  ],
+  "views": [
+    { "name": "leaderboard", "base": "items", "select": ["user_id", "score"], "expose": true }
+  ],
+  "rpcs": [
+    { "name": "compute_streak", "signature": "(user_id uuid)", "grant_to": ["authenticated"] }
+  ]
+}
+EOF
+
+run402 projects apply-expose <project_id> --file manifest.json
+run402 projects get-expose   <project_id>
+```
+
+Built-in policies: `user_owns_rows` (rows where `owner_column = auth.uid()`; with `force_owner_on_insert: true` a BEFORE INSERT trigger sets it), `public_read_authenticated_write` (anyone reads, any authenticated user writes), `public_read_write_UNRESTRICTED` (fully open; requires `i_understand_this_is_unrestricted: true`), and `custom` (escape hatch — your own `CREATE POLICY` SQL).
+
+### Slick deploys — `deployDir` + plan/commit + progress
+
+`deployDir` walks a local directory, hashes every file client-side, asks the gateway _which_ bytes it doesn't already have, and PUTs only those. Re-deploying an unchanged tree returns immediately with `bytes_uploaded: 0`.
+
+```ts
+import { run402 } from "@run402/sdk/node";
+
+const r = run402();
+const { url, bytes_uploaded, bytes_total } = await r.sites.deployDir({
+  project: projectId,
+  dir: "./dist",
+  onEvent: (e) => process.stderr.write(JSON.stringify(e) + "\n"),
+});
+```
+
+Progress events stream over `onEvent` (or stderr from the CLI):
+
+| phase | Fires | Extra |
+|-------|-------|-------|
+| `plan`   | After `POST /deploy/v1/plan` | `manifest_size` (file count) |
+| `upload` | After each missing file's bytes finish PUTing | `file`, `sha256`, `done`, `total` |
+| `commit` | Just before `POST /deploy/v1/commit` | — |
+| `poll`   | Per server-side copy poll tick | `status`, `elapsed_ms` |
+
+CLI:
+
+```bash
+run402 sites deploy-dir ./dist --project prj_… > result.json 2> events.log
+```
+
+### In-function helpers — caller-context vs BYPASSRLS
+
+Inside a deployed function, import from `@run402/functions`. Two distinct DB clients keep RLS clean:
+
+```ts
+import { db, adminDb, getUser, email, ai } from "@run402/functions";
+
+export default async (req: Request) => {
+  const user = await getUser(req);
+  if (!user) return new Response("unauthorized", { status: 401 });
+
+  // Caller-context — Authorization header is forwarded; RLS evaluates against the caller's role.
+  const mine = await db(req).from("items").select("*").eq("user_id", user.id);
+
+  // BYPASSRLS — for platform-authored writes (audit logs, cron cleanup, webhook handlers).
+  await adminDb().from("audit").insert({ event: "items_read", user_id: user.id });
+
+  // Send mail from the project's mailbox — discovers it automatically.
+  if (mine.length === 0) {
+    await email.send({ to: user.email, subject: "Welcome", html: "<h1>hi</h1>" });
+  }
+
+  return Response.json(mine);
+};
+```
+
+`adminDb().sql(query, params?)` runs raw parameterized SQL and always bypasses RLS:
+
+```ts
+const { rows, rowCount } = await adminDb().sql(
+  "SELECT count(*)::int AS n FROM items WHERE user_id = $1",
+  [user.id],
+);
+```
+
+`@run402/functions` is auto-bundled into deployed code; install it in your editor for full TypeScript autocomplete (also works at build time for static-site generation with `RUN402_SERVICE_KEY` + `RUN402_PROJECT_ID` set).
+
+## SDK — `@run402/sdk`
 
 ```bash
 npm install @run402/sdk
 ```
 
-Two entry points: `@run402/sdk` (isomorphic — works in Node 22, Deno, Bun, V8 isolates) and `@run402/sdk/node` (zero-config Node defaults: keystore + allowance + x402):
+Two entry points:
+
+- **`@run402/sdk`** — isomorphic. Bring your own `CredentialsProvider` (a session-token shim, a remote vault, anything that resolves project keys + auth headers). Works in Node 22, Deno, Bun, V8 isolates.
+- **`@run402/sdk/node`** — Node-only convenience. Reads `~/.config/run402/projects.json`, signs x402 payments from the local allowance, exposes `sites.deployDir(...)`.
 
 ```ts
 import { run402 } from "@run402/sdk/node";
@@ -37,212 +177,261 @@ import { run402 } from "@run402/sdk/node";
 const r = run402();
 const project = await r.projects.provision({ tier: "prototype" });
 await r.blobs.put(project.project_id, "hello.txt", { content: "hi" });
-await r.sites.deploy(project.project_id, {
-  files: [{ file: "index.html", data: "<h1>hello</h1>" }],
-});
 ```
 
-17 namespaces: `projects`, `blobs`, `functions`, `secrets`, `subdomains`, `domains`, `sites`, `service`, `tier`, `allowance`, `ai`, `auth`, `senderDomain`, `billing`, `apps`, `email` (+ `webhooks`), `contracts`, `admin`.
+18 namespaces: `projects`, `blobs`, `functions`, `secrets`, `subdomains`, `domains`, `sites`, `service`, `tier`, `allowance`, `ai`, `auth`, `senderDomain`, `billing`, `apps`, `email` (+ `webhooks`), `contracts`, `admin`. Every operation throws a typed `Run402Error` subclass on failure: `PaymentRequired`, `ProjectNotFound`, `Unauthorized`, `ApiError`, `NetworkError`. See [`sdk/README.md`](./sdk/README.md).
 
-All failures throw typed errors (`PaymentRequired`, `ProjectNotFound`, `Unauthorized`, `ApiError`, `NetworkError`). See [`sdk/README.md`](./sdk/README.md) for details.
-
-## Quick Start
-
-```bash
-npx run402-mcp
-```
-
-## MCP Tools
-
-| Tool | Description |
-|------|-------------|
-| `provision_postgres_project` | Provision a Postgres database. Handles x402 payment. Saves credentials locally. |
-| `run_sql` | Execute SQL (DDL or queries). Returns markdown table. |
-| `rest_query` | Query/mutate via PostgREST. GET/POST/PATCH/DELETE with query params. |
-| `apply_expose` | Apply a declarative authorization manifest to a project (tables/views/RPCs reachable via PostgREST). |
-| `get_expose` | Get the current authorization manifest (`source: applied | introspected`). |
-| `get_schema` | Introspect database schema — tables, columns, types, constraints, RLS policies. |
-| `get_usage` | Get project usage report — API calls, storage, limits, lease expiry. |
-| `deploy_function` | Deploy a serverless function (Node 22) to a project. |
-| `invoke_function` | Invoke a deployed function via HTTP. |
-| `get_function_logs` | Get recent logs from a deployed function. |
-| `list_functions` | List all deployed functions for a project. |
-| `delete_function` | Delete a deployed function. |
-| `set_secret` | Set a project secret. Injected as process.env in functions. |
-| `list_secrets` | List secret keys for a project (values not shown). |
-| `delete_secret` | Delete a secret from a project. |
-| `deploy_site` | Deploy static site. Free with active tier. Returns live URL. |
-| `claim_subdomain` | Claim custom subdomain (e.g. myapp.run402.com). Free. |
-| `delete_subdomain` | Release a subdomain. |
-| `list_subdomains` | List all subdomains claimed by a project. |
-| `bundle_deploy` | One-call full-stack deploy: database + migrations + authorization manifest (`manifest.json` in `files[]`) + secrets + functions + site + subdomain. |
-| `browse_apps` | Browse public apps available for forking. |
-| `fork_app` | Fork a published app into a new project. |
-| `publish_app` | Publish a project as a forkable app. |
-| `list_versions` | List published versions of a project. |
-| `get_quote` | Get tier pricing. Free, no auth required. |
-| `set_tier` | Subscribe, renew, or upgrade tier. Auto-detects action. Handles x402 payment. |
-| `delete_project` | Immediately and irreversibly delete a project (cascade purge) and remove from local key store. |
-| `check_balance` | Check billing account balance for an agent allowance address. |
-| `list_projects` | List all active projects for an agent allowance address. |
-| `allowance_status` | Check local agent allowance status — address, network, funding. |
-| `allowance_create` | Create a new local agent allowance (Base Sepolia testnet). |
-| `allowance_export` | Export the local agent allowance address. |
-| `request_faucet` | Request free testnet USDC from the Run402 faucet. |
-| `generate_image` | Generate a PNG image from a text prompt. $0.03 via x402. |
-| `create_mailbox` | Create an email mailbox for a project (`slug@mail.run402.com`). |
-| `send_email` | Send email — template or raw HTML mode. Single recipient. |
-| `list_emails` | List sent emails from the project's mailbox. |
-| `get_email` | Get a specific email message with replies. |
-| `get_email_raw` | Get raw RFC-822 bytes of an inbound message (base64). For DKIM/zk-email verification. |
-| `get_mailbox` | Get the project's mailbox info. |
-| `promote_user` | Promote a project user to admin role. |
-| `demote_user` | Demote a project user from admin role. |
-| `ai_translate` | Translate text via AI (OpenRouter). Metered per project. |
-| `ai_moderate` | Moderate text via AI (OpenAI). Free. |
-| `ai_usage` | Check AI translation usage and quota. |
-| `add_custom_domain` | Add a custom domain to a subdomain (Cloudflare SSL). |
-| `list_custom_domains` | List custom domains for a project. |
-| `check_domain_status` | Check custom domain verification status. |
-| `remove_custom_domain` | Remove a custom domain. |
-| `request_magic_link` | Send a passwordless login email (magic link). |
-| `verify_magic_link` | Exchange a magic link token for access + refresh tokens. |
-| `set_user_password` | Change, reset, or set a user's password. |
-| `auth_settings` | Update project auth settings (e.g., allow_password_set). |
-| `register_sender_domain` | Register a custom email sending domain (DKIM verification). |
-| `sender_domain_status` | Check sender domain verification status. |
-| `remove_sender_domain` | Remove a custom sender domain. |
-| `create_email_billing_account` | Create a Stripe-only billing account by email (no wallet required). |
-| `link_wallet_to_account` | Link a wallet to an email account for hybrid Stripe + x402 access. |
-| `tier_checkout` | Subscribe/renew/upgrade to a tier via Stripe (alternative to x402). |
-| `buy_email_pack` | Buy a $5 email pack (10,000 emails, never expire). |
-| `set_auto_recharge` | Enable/disable auto-recharge for email packs when credits run low. |
-| `provision_contract_wallet` | Provision an AWS KMS-backed Ethereum wallet ($0.04/day rental, $1.20 prepay required). |
-| `get_contract_wallet` | Get a KMS contract wallet's metadata + live native balance. |
-| `list_contract_wallets` | List KMS contract wallets owned by the project. |
-| `set_recovery_address` | Set/clear the optional recovery address for auto-drain on day-90 deletion. |
-| `set_low_balance_alert` | Set the low-balance alert threshold (in wei). |
-| `contract_call` | Submit a smart-contract write call (chain gas + $0.000005 KMS sign fee). |
-| `contract_read` | Read-only smart-contract call (free, no signing). |
-| `get_contract_call_status` | Look up a contract call by ID — status, gas, receipt. |
-| `drain_contract_wallet` | Drain native balance to a destination address (works on suspended wallets). |
-| `delete_contract_wallet` | Schedule the KMS key for deletion (refused if balance ≥ dust). |
-
-## Client Configuration
-
-### CLI
-
-A standalone CLI is available in the [`cli/`](./cli/) directory.
+## CLI — `run402`
 
 ```bash
 npm install -g run402
-
-run402 allowance create
-run402 allowance fund
-run402 deploy --tier prototype --manifest app.json
 ```
 
-See [`cli/README.md`](./cli/README.md) for full usage.
-
-### OpenClaw
-
-A standalone skill is available in the [`openclaw/`](./openclaw/) directory — no MCP server required. It calls the Run402 API directly via Node.js scripts.
+Every subcommand prints JSON to stdout, JSON errors to stderr, exits 0 on success and 1 on failure — designed for an agent shell, not a human. Full reference: [`cli/llms-cli.txt`](./cli/llms-cli.txt) (also at <https://run402.com/llms-cli.txt>).
 
 ```bash
-cp -r openclaw ~/.openclaw/skills/run402
-cd ~/.openclaw/skills/run402/scripts && npm install
+run402 init                              # one-shot allowance + faucet + tier check
+run402 status                            # account snapshot (allowance, balance, tier, projects)
+run402 projects provision --name my-app
+run402 projects sql <id> "CREATE TABLE …"
+run402 projects apply-expose <id> --file manifest.json
+run402 sites deploy-dir ./dist
+run402 functions deploy <id> <name> --file fn.ts
+run402 blob put ./asset.png --immutable
+run402 blob diagnose <url>               # inspect live CDN state for a public URL
+run402 cdn wait-fresh <url> --sha <hex>  # poll until a mutable URL serves the new SHA
 ```
 
-See [`openclaw/README.md`](./openclaw/README.md) for details.
+The active project is sticky: `run402 projects use <id>` makes `<id>` the default for every subsequent `<id>`-taking subcommand, so most commands work without it.
 
-### MCP Clients
+## MCP server — `run402-mcp`
 
-#### Claude Desktop
+```bash
+npx -y run402-mcp                        # standalone test
+```
+
+### Claude Desktop
 
 Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
 
 ```json
 {
   "mcpServers": {
-    "run402": {
-      "command": "npx",
-      "args": ["-y", "run402-mcp"]
-    }
+    "run402": { "command": "npx", "args": ["-y", "run402-mcp"] }
   }
 }
 ```
 
-#### Cursor
+### Cursor
 
-Add to `.cursor/mcp.json` in your project:
+Add to `.cursor/mcp.json`:
 
 ```json
 {
   "mcpServers": {
-    "run402": {
-      "command": "npx",
-      "args": ["-y", "run402-mcp"]
-    }
+    "run402": { "command": "npx", "args": ["-y", "run402-mcp"] }
   }
 }
 ```
 
-#### Cline
+### Cline
 
-Add to Cline MCP settings:
+Add to your Cline MCP settings:
 
 ```json
 {
   "mcpServers": {
-    "run402": {
-      "command": "npx",
-      "args": ["-y", "run402-mcp"]
-    }
+    "run402": { "command": "npx", "args": ["-y", "run402-mcp"] }
   }
 }
 ```
 
-#### Claude Code
+### Claude Code
 
 ```bash
 claude mcp add run402 -- npx -y run402-mcp
 ```
 
-## How It Works
+## OpenClaw skill
 
-1. **Provision** — Call `provision_postgres_project` to create a database. The server handles x402 payment negotiation and stores credentials locally.
-2. **Build** — Use `run_sql` to create tables, `rest_query` to insert/query data, and `blob_put` for storage.
-3. **Deploy** — Use `deploy_site` for static sites, `deploy_function` for serverless functions, or `bundle_deploy` for a full-stack app in one call.
-4. **Renew** — Call `set_tier` before your lease expires.
+```bash
+cp -r openclaw ~/.openclaw/skills/run402
+cd ~/.openclaw/skills/run402/scripts && npm install
+```
 
-### Payment Flow
+Each script re-exports from `cli/lib/*.mjs` — the OpenClaw command surface is identical to the CLI command surface by construction. See [`openclaw/README.md`](./openclaw/README.md).
 
-The prototype tier is free — it uses testnet USDC to test the x402 payment flow end-to-end (no real money). Hobby and team tiers, renewals, and image generation require real x402 micropayments (USDC on Base or Stripe credits). When payment is needed, tools return payment details (not errors) so the LLM can reason about them and guide the user through payment.
+## MCP tools
 
-### Key Storage
+The full MCP surface — every tool is a thin shim over an SDK call.
 
-Project credentials are saved to `~/.config/run402/projects.json` with `0600` permissions. Each project stores:
-- `anon_key` — for public-facing queries (respects RLS)
-- `service_key` — for admin operations (bypasses RLS)
-- `tier` — prototype, hobby, or team
-- `expires_at` — lease expiration timestamp
+### Database
 
-## Environment Variables
+| Tool | Description |
+|------|-------------|
+| `provision_postgres_project` | Provision a new database. Auto-handles x402 payment. |
+| `run_sql` | Execute SQL (DDL or queries). Returns a markdown table. |
+| `rest_query` | Query/mutate via PostgREST. |
+| `apply_expose` | Apply the declarative authorization manifest (tables, views, RPCs). Convergent — drops items removed between applies. |
+| `get_expose` | Return the current manifest. `source` is either `applied` (from the tracking table) or `introspected` (regenerated from live DB state). |
+| `get_schema` | Introspect tables, columns, types, constraints, RLS policies. |
+| `get_usage` | Per-project usage report (API calls, storage, lease expiry). |
+| `promote_user` / `demote_user` | Manage `project_admin` role on a project user. |
+| `delete_project` | Cascade purge — schema, Lambdas, S3 site files, deployments, secrets, published versions. Irreversible. |
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `RUN402_API_BASE` | `https://api.run402.com` | API base URL |
-| `RUN402_CONFIG_DIR` | `~/.config/run402` | Config directory for key storage |
-| `RUN402_ALLOWANCE_PATH` | `{config_dir}/allowance.json` | Custom allowance (wallet) file path |
+### Blob storage (content-addressed CDN)
+
+| Tool | Description |
+|------|-------------|
+| `blob_put` | Upload a blob (any size, up to 5 TiB) via direct-to-S3 presigned URLs. Returns an `AssetRef` with `scriptTag()` / `linkTag()` / `imgTag()` emitters. |
+| `blob_get` | Download a blob to a local file. |
+| `blob_ls` | Keyset-paginated list with prefix filter. |
+| `blob_rm` | Delete a blob. |
+| `blob_sign` | Time-boxed presigned GET URL for a private blob. |
+| `diagnose_public_url` | Live CDN state for a public URL — expected vs observed SHA, cache headers, invalidation status. |
+| `wait_for_cdn_freshness` | Poll a mutable URL until it serves the expected SHA-256. |
+
+### Sites & subdomains
+
+| Tool | Description |
+|------|-------------|
+| `deploy_site` | Deploy a static site from inline file bytes. |
+| `deploy_site_dir` | Deploy a static site from a local directory. v1.32 plan/commit transport — only uploads bytes the gateway doesn't have. |
+| `get_deployment` | Fetch deployment status and URL. |
+| `claim_subdomain` | Claim `<name>.run402.com` (idempotent; reassigns to latest deployment on subsequent deploys). |
+| `list_subdomains` / `delete_subdomain` | Manage subdomains. |
+| `add_custom_domain` / `list_custom_domains` / `check_domain_status` / `remove_custom_domain` | Point your own domain at a Run402 subdomain. |
+| `bundle_deploy` | One-call full-stack deploy: database + migrations + manifest + secrets + functions + site + subdomain. |
+
+### Functions & secrets
+
+| Tool | Description |
+|------|-------------|
+| `deploy_function` | Deploy a Node 22 serverless function. Cron-schedulable. |
+| `invoke_function` | Invoke a deployed function (test path). |
+| `get_function_logs` | Recent logs (CloudWatch). |
+| `update_function` | Update schedule / timeout / memory without redeploying code. |
+| `list_functions` / `delete_function` | List / remove functions. |
+| `set_secret` / `list_secrets` / `delete_secret` | Manage `process.env` secrets injected into all functions. |
+
+### Auth & email
+
+| Tool | Description |
+|------|-------------|
+| `request_magic_link` | Send a passwordless login email. |
+| `verify_magic_link` | Exchange the magic link token for `access_token` + `refresh_token`. |
+| `set_user_password` | Change, reset, or set a user's password. |
+| `auth_settings` | Toggle `allow_password_set` for passwordless users. |
+| `create_mailbox` / `get_mailbox` / `delete_mailbox` | Per-project mailbox at `<slug>@mail.run402.com`. |
+| `send_email` | Template (`project_invite`, `magic_link`, `notification`) or raw HTML. Single recipient. |
+| `list_emails` / `get_email` / `get_email_raw` | Read messages. `get_email_raw` returns RFC-822 bytes for DKIM / zk-email verification. |
+| `register_mailbox_webhook` / `list_mailbox_webhooks` / `get_mailbox_webhook` / `update_mailbox_webhook` / `delete_mailbox_webhook` | Email-event webhooks (delivery, bounced, complained, reply_received). |
+| `register_sender_domain` / `sender_domain_status` / `remove_sender_domain` | Send from your own domain (DKIM verified). |
+| `enable_sender_domain_inbound` / `disable_sender_domain_inbound` | Receive replies on your custom sender domain. |
+
+### AI helpers
+
+| Tool | Description |
+|------|-------------|
+| `generate_image` | Text-to-PNG via x402 ($0.03 / image). |
+| `ai_translate` | Translate text. Metered per project. |
+| `ai_moderate` | Moderate text (free). |
+| `ai_usage` | Translation quota (used / included / remaining). |
+
+### Apps marketplace
+
+| Tool | Description |
+|------|-------------|
+| `browse_apps` | Browse public forkable apps. |
+| `get_app` | Inspect an app, including expected `bootstrap_variables`. |
+| `fork_app` | Clone schema + site + functions into a new project. Runs the app's `bootstrap` function with provided variables. |
+| `publish_app` | Publish a project as a forkable app. |
+| `list_versions` / `update_version` / `delete_version` | Manage published versions. |
+
+### Tier & billing
+
+| Tool | Description |
+|------|-------------|
+| `set_tier` | Subscribe / renew / upgrade a tier (auto-detects action). x402 payment. |
+| `tier_status` | Current tier and lease expiry. |
+| `get_quote` | Tier pricing (free, no auth). |
+| `tier_checkout` | Stripe checkout for a tier (alternative to x402). |
+| `create_email_billing_account` / `link_wallet_to_account` | Email-based billing accounts; hybrid Stripe + x402. |
+| `billing_history` | Ledger history. |
+| `buy_email_pack` | $5 for 10,000 emails (never expire). |
+| `set_auto_recharge` | Auto-buy email packs when credits run low. |
+
+### KMS contract wallets (on-chain signing)
+
+| Tool | Description |
+|------|-------------|
+| `provision_contract_wallet` | AWS KMS-backed Ethereum wallet. $0.04/day rental + $0.000005 per call. Private keys never leave KMS. |
+| `get_contract_wallet` / `list_contract_wallets` | Metadata + live native balance. |
+| `set_recovery_address` / `set_low_balance_alert` | Optional safety nets. |
+| `contract_call` | Submit a write call (chain gas at-cost + KMS sign fee). |
+| `contract_read` | Read-only call (free). |
+| `get_contract_call_status` | Lifecycle, gas, receipt. |
+| `drain_contract_wallet` | Drain native balance (works on suspended wallets — the safety valve). |
+| `delete_contract_wallet` | Schedule KMS key deletion (refused if balance ≥ dust). |
+
+### Allowance & account
+
+| Tool | Description |
+|------|-------------|
+| `init` | One-shot setup: allowance + faucet + tier check + project list. |
+| `status` | Full account snapshot (allowance, balance, tier, projects). |
+| `allowance_status` / `allowance_create` / `allowance_export` | Local allowance management. |
+| `request_faucet` | Request testnet USDC. |
+| `check_balance` | USDC balance for an allowance address. |
+| `list_projects` | Active projects for a wallet. |
+| `pin_project` | Pin a project (admin only — bypasses lifecycle state machine). |
+| `project_info` / `project_keys` / `project_use` | Inspect / set the active project. |
+| `create_checkout` | Stripe checkout to add cash credit. |
+| `send_message` / `set_agent_contact` | Send feedback to the Run402 team; register agent contact info. |
+
+### Service status (no auth)
+
+| Tool | Description |
+|------|-------------|
+| `service_status` | Public availability report — 24h/7d/30d uptime per capability, operator, deployment topology. |
+| `service_health` | Liveness probe with per-dependency results. |
+
+## Configuration
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `RUN402_API_BASE`        | `https://api.run402.com`         | API base URL (override for staging) |
+| `RUN402_CONFIG_DIR`      | `~/.config/run402`               | Local credential storage directory |
+| `RUN402_ALLOWANCE_PATH`  | `{config_dir}/allowance.json`    | Custom allowance file path |
+
+Local state lives at:
+
+- `~/.config/run402/projects.json` (`0600`) — `{ projects: { <id>: { anon_key, service_key, tier, lease_expires_at } } }`
+- `~/.config/run402/allowance.json` (`0600`) — wallet for x402 signing
+
+`anon_key` and `service_key` have no expiry — lease enforcement happens server-side. Rotate them by deleting the project and re-provisioning.
 
 ## Development
 
 ```bash
-npm run build          # tsc → dist/
-npm test               # all tests (SKILL + sync + unit)
-npm run test:sync      # check MCP/CLI/OpenClaw stay in sync
-npm run test:skill     # validate SKILL.md structure
+npm run build           # builds core/, sdk/, functions/, then the MCP server
+npm test                # SKILL + sync + unit tests
+npm run test:e2e        # 47 CLI end-to-end tests
+npm run test:sync       # checks MCP/CLI/OpenClaw/SDK stay in sync
+npm run test:skill      # validates SKILL.md frontmatter + body
 ```
+
+Architecture: every tool / subcommand / skill script is a thin shim over an `@run402/sdk` call. `core/` holds Node-only filesystem primitives (keystore, allowance, SIWE signing) wrapped by the SDK's Node provider. See [`CLAUDE.md`](./CLAUDE.md) for the full layout.
+
+## Links
+
+- Web: <https://run402.com>
+- API docs (HTTP): <https://run402.com/llms.txt> · <https://run402.com/openapi.json>
+- CLI docs: <https://run402.com/llms-cli.txt>
+- Status: <https://api.run402.com/status>
+- Health: <https://api.run402.com/health>
+
+[简体中文](./README.zh-CN.md)
 
 ## License
 
