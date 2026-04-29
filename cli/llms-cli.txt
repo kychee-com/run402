@@ -208,11 +208,6 @@ Create a manifest file `app.json` (use the `project_id` from provision):
   "project_id": "prj_1741340000_42",
   "migrations": "CREATE TABLE items (id serial PRIMARY KEY, title text NOT NULL, done boolean DEFAULT false); INSERT INTO items (title) VALUES ('Buy groceries'), ('Read a book');",
   "migrations_file": "setup.sql",
-  "rls": {
-    "template": "public_read_write_UNRESTRICTED",
-    "tables": [{ "table": "items" }],
-    "i_understand_this_is_unrestricted": true
-  },
   "secrets": [{ "key": "OPENAI_API_KEY", "value": "sk-..." }],
   "functions": [{
     "name": "my-fn",
@@ -220,6 +215,10 @@ Create a manifest file `app.json` (use the `project_id` from provision):
     "config": { "timeout": 30, "memory": 256 }
   }],
   "files": [
+    {
+      "file": "manifest.json",
+      "data": "{\"$schema\":\"https://run402.com/schemas/manifest.v1.json\",\"version\":\"1\",\"tables\":[{\"name\":\"items\",\"expose\":true,\"policy\":\"public_read_write_UNRESTRICTED\",\"i_understand_this_is_unrestricted\":true}]}"
+    },
     { "file": "index.html", "data": "<!DOCTYPE html><html>...</html>" },
     { "file": "style.css", "data": "body { margin: 0; }" },
     { "file": "logo.png", "data": "iVBORw0KGgo...", "encoding": "base64" }
@@ -252,38 +251,35 @@ END $$;
 
 This pattern is safe to re-run on every deploy. Put your `CREATE TABLE IF NOT EXISTS` first, then one `DO` block per new column (or group them in a single block).
 
-Authorization policy templates (prefer `user_owns_rows` for anything user-scoped):
-- `user_owns_rows` — users access only their own rows (requires `owner_column` per table; `uuid` columns are index-friendly, others fall back to `::text` cast with a warning; a btree index is auto-created)
+**Authorization (the `manifest.json` file pattern)**
+
+Tables you create are **dark by default** — `anon` and `authenticated` can't read them until your manifest declares them with `expose: true`. Closes the "agent created a table, forgot to set RLS, data leaked" footgun.
+
+JSON Schema: `https://run402.com/schemas/manifest.v1.json` — point your editor's `$schema` at it for autocomplete.
+
+The preferred way to declare authorization is to ship a `manifest.json` file in the bundle's `files[]` (shown above). The platform reads it, validates it against the migration SQL, applies it, and **strips it from `files[]` before the site deploys** so it's never publicly reachable on your subdomain. The deploy response includes `manifest_applied: true` on success. If the manifest references a table your migration doesn't create, the deploy is rejected with HTTP 400 and a structured `errors` array listing **every** violation.
+
+Built-in policies (one per table):
+
+- `user_owns_rows` — owner column matches `auth.uid()`. Requires `owner_column`. With `force_owner_on_insert: true`, a `BEFORE INSERT` trigger sets `owner_column := auth.uid()` automatically. Best for user-scoped data (todos, workouts, messages). `uuid` owner columns get index-friendly policies; other types fall back to a `::text` cast with a warning; a btree index is auto-created.
 - `public_read_authenticated_write` — anyone reads; **any authenticated user can INSERT/UPDATE/DELETE any row** (not just their own). For collaborative content (shared boards, announcements).
 - `public_read_write_UNRESTRICTED` — ⚠ fully open; `anon_key` can read AND write any row. For intentionally public tables only (guestbooks, waitlists, feedback forms). **Requires** `"i_understand_this_is_unrestricted": true` on the table entry.
 - `custom` — escape hatch. Provide `custom_sql` containing `CREATE POLICY` statements; they run inside the apply transaction after RLS is enabled + forced.
 
-| Template | anon_key reads | anon_key writes | authenticated reads | authenticated writes |
-|----------|---------------|-----------------|---------------------|----------------------|
-| `user_owns_rows` | no | no | own rows only | own rows only |
-| `public_read_authenticated_write` | all rows | no | all rows | all rows (any row) |
-| `public_read_write_UNRESTRICTED` | all rows | all rows | all rows | all rows |
+| Policy | anon SELECT | anon writes | auth SELECT | auth writes |
+|--------|:-----------:|:-----------:|:-----------:|:-----------:|
+| (omitted from manifest) | — | — | — | — |
+| `user_owns_rows` | — | — | own rows | own rows |
+| `public_read_authenticated_write` | all | — | all | all rows |
+| `public_read_write_UNRESTRICTED` | all | yes | all | yes |
 
-⚠️ **Dark by default (v1.31+)**: tables created via `run402 projects sql` are NOT readable by anon or authenticated until the expose manifest declares them with `expose: true`. Pre-v1.31 tables on Pod 01 are grandfathered and keep their existing grants until a manifest is applied.
+`—` = denied. `service_key` bypasses all policies. **Views** are always created with `security_invoker=true` — they inherit the underlying table's RLS. **RPCs** require an entry in `rpcs[*]` with `grant_to` to be callable as `/rest/v1/rpc/<fn>` (since v1.30, `CREATE FUNCTION` revokes PUBLIC EXECUTE automatically).
 
-**Migration from `rls` → `expose`**: the `rls` block below and `run402 projects rls` are deprecated (sunset **2026-05-23**). Bundle deploys containing an `rls` block are auto-translated to an expose manifest during the deprecation window. After the sunset date, the legacy endpoint returns `410 Gone`.
+**Imperative escape hatch:** for ad-hoc changes outside a deploy, use `run402 projects apply-expose <project_id> --file manifest.json`. Inspect current state with `run402 projects get-expose <project_id>` — `source: "applied"` means it came from a prior apply; `"introspected"` means it was reconstructed from live DB state.
 
-Equivalent manifest (use this going forward):
+The manifest is **convergent**: applying the same manifest twice is a no-op; items removed between applies have their policies revoked, grants revoked, triggers dropped, views dropped. Include everything you want exposed in every apply.
 
-```json
-{
-  "version": "1",
-  "tables": [
-    { "name": "items", "expose": true, "policy": "public_read_write_UNRESTRICTED", "i_understand_this_is_unrestricted": true }
-  ],
-  "views": [],
-  "rpcs": []
-}
-```
-
-Apply it with `run402 projects apply-expose <project_id> --file manifest.json` (or inline JSON). Inspect current state with `run402 projects get-expose <project_id>` — `source: "applied"` means it came from `internal.project_manifest`; `"introspected"` means the manifest was regenerated from live DB state (no manifest has ever been applied).
-
-The manifest is **convergent**: applying the same manifest twice is a no-op; items removed between applies have their policies revoked, grants revoked, triggers dropped, and views dropped. Include everything you want exposed in every apply.
+**Conflicting sources:** bundles that include both inline `expose` and a `manifest.json` file (or legacy `rls` + `manifest.json`) are rejected with 400 — the platform refuses to silently pick one source over another.
 
 Deploy:
 
@@ -291,7 +287,7 @@ Deploy:
 run402 deploy --manifest app.json
 ```
 
-This deploys to an existing project: runs migrations, applies RLS, sets secrets, deploys functions, deploys the site, and claims the subdomain. Provision the project first with `run402 projects provision`.
+This deploys to an existing project: runs migrations, applies the authorization manifest (from `manifest.json` in `files[]`), sets secrets, deploys functions, deploys the site, and claims the subdomain. Provision the project first with `run402 projects provision`.
 
 ### Step-by-Step Deploy
 
@@ -307,9 +303,8 @@ run402 projects sql <project_id> "CREATE TABLE items (id serial PRIMARY KEY, tit
 # 3. Insert seed data
 run402 projects sql <project_id> "INSERT INTO items (title) VALUES ('Buy groceries'), ('Read a book')"
 
-# 4. Declare the authorization manifest (supersedes `projects rls`, sunset 2026-05-23).
-#    Write the manifest to manifest.json first, then apply:
-#    {"version":"1","tables":[{"name":"items","expose":true,"policy":"public_read_authenticated_write"}],"views":[],"rpcs":[]}
+# 4. Declare authorization. Write manifest.json first:
+#    {"version":"1","tables":[{"name":"items","expose":true,"policy":"public_read_authenticated_write"}]}
 run402 projects apply-expose <project_id> --file manifest.json
 
 # 5. Deploy a static site (uses active project automatically)
@@ -355,11 +350,8 @@ run402 subdomains claim my-app
 - `run402 projects apply-expose <id> <manifest_json>` — apply a declarative authorization manifest
 - `run402 projects apply-expose <id> --file manifest.json` — apply from a JSON file
 - `run402 projects get-expose <id>` — print the current manifest (`source: applied | introspected`)
-- `run402 projects rls <id> <user_owns_rows|public_read_authenticated_write|public_read_write_UNRESTRICTED> '<tables_json>'` — ⚠ DEPRECATED (sunset 2026-05-23). Migrate to `apply-expose`. For UNRESTRICTED, `apply-expose` accepts `"i_understand_this_is_unrestricted": true` on the table entry.
 
 Provisioning automatically sets the new project as the **active project**. Other commands that take `<id>` default to the active project when omitted.
-
-RLS `tables_json` (legacy): `'[{"table":"posts"}]'` or `'[{"table":"notes","owner_column":"user_id"}]'` for user_owns_rows. Prefer the expose manifest for new work.
 
 SQL supports DDL + queries, returns JSON. REST uses PostgREST syntax (`select=`, `eq.`, `order=`, `limit=`).
 
@@ -372,7 +364,7 @@ User auth: password + Google OAuth. See "User Auth" section below.
 - `run402 deploy list [--project <id>] [--limit <n>]` — list recent deploy operations
 - `run402 deploy events <operation_id> [--project <id>]` — fetch the recorded event stream for an operation
 
-Requires active tier and a provisioned project. Deploys to an existing project: runs migrations, applies RLS, sets secrets, deploys functions, deploys static site, and claims subdomain. The manifest must include `project_id` (or use `--project` flag, or omit both to use the active project).
+Requires active tier and a provisioned project. Deploys to an existing project: runs migrations, applies the authorization manifest (from a `manifest.json` entry in `files[]`), sets secrets, deploys functions, deploys static site, and claims subdomain. The manifest must include `project_id` (or use `--project` flag, or omit both to use the active project).
 
 ### functions
 Node 22 runtime. Must export `default async (req: Request) => Response`.
@@ -1024,7 +1016,7 @@ const refreshed = await fetch(API + '/auth/v1/token?grant_type=refresh_token', {
 9. **Workout Log** -- Track exercises, sets, reps, weight with progress over time.
 10. **Flash Cards** -- Spaced-repetition study app. Pre-load 50 phrases.
 
-Provision first so you have the `anon_key` to embed in your frontend HTML. The manifest should include `project_id` (from provision), `migrations` (CREATE TABLE + INSERT seed data), `rls` (for browser-writable apps: `public_read_write_UNRESTRICTED` + `"i_understand_this_is_unrestricted": true`; for user-scoped apps use `user_owns_rows`), `files` (array of files), and `subdomain`. Your human gets a live URL they can use immediately.
+Provision first so you have the `anon_key` to embed in your frontend HTML. The manifest should include `project_id` (from provision), `migrations` (CREATE TABLE + INSERT seed data), `files` (array of files — including a `manifest.json` entry to declare authorization: `public_read_write_UNRESTRICTED` + `"i_understand_this_is_unrestricted": true` for browser-writable apps; `user_owns_rows` for user-scoped apps), and `subdomain`. Your human gets a live URL they can use immediately.
 
 ## Make It Great
 

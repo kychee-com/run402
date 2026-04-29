@@ -65,9 +65,10 @@ export const bundleDeploySchema = {
     })
     .optional()
     .describe(
-      "RLS configuration to apply after migrations. Prefer `user_owns_rows` for anything user-scoped. " +
-      "`public_read_authenticated_write`: anyone reads, any authenticated user writes any row. " +
-      "`public_read_write_UNRESTRICTED`: fully open (anon_key writes); requires i_understand_this_is_unrestricted: true.",
+      "⚠ DEPRECATED (sunset 2026-05-23) — prefer a `manifest.json` entry in `files[]`. " +
+      "The gateway auto-translates this block to a manifest during the deprecation window. " +
+      "Templates: user_owns_rows, public_read_authenticated_write, public_read_write_UNRESTRICTED " +
+      "(requires i_understand_this_is_unrestricted: true).",
     ),
   secrets: z
     .array(z.object({ key: z.string(), value: z.string() }))
@@ -101,7 +102,12 @@ export const bundleDeploySchema = {
       }),
     )
     .optional()
-    .describe("Static site files to deploy (must include index.html)"),
+    .describe(
+      "Static site files to deploy (must include index.html). May include a `manifest.json` entry " +
+      "to declare the authorization surface (tables/views/RPCs reachable via PostgREST). The gateway " +
+      "reads it, validates against the migrations, applies it, and strips it from `files[]` before " +
+      "the site deploys. Schema: https://run402.com/schemas/manifest.v1.json.",
+    ),
   subdomain: z
     .string()
     .optional()

@@ -59,7 +59,8 @@ npx run402-mcp
 | `provision_postgres_project` | Provision a Postgres database. Handles x402 payment. Saves credentials locally. |
 | `run_sql` | Execute SQL (DDL or queries). Returns markdown table. |
 | `rest_query` | Query/mutate via PostgREST. GET/POST/PATCH/DELETE with query params. |
-| `setup_rls` | Apply row-level security templates to tables. |
+| `apply_expose` | Apply a declarative authorization manifest to a project (tables/views/RPCs reachable via PostgREST). |
+| `get_expose` | Get the current authorization manifest (`source: applied | introspected`). |
 | `get_schema` | Introspect database schema — tables, columns, types, constraints, RLS policies. |
 | `get_usage` | Get project usage report — API calls, storage, limits, lease expiry. |
 | `deploy_function` | Deploy a serverless function (Node 22) to a project. |
@@ -74,7 +75,7 @@ npx run402-mcp
 | `claim_subdomain` | Claim custom subdomain (e.g. myapp.run402.com). Free. |
 | `delete_subdomain` | Release a subdomain. |
 | `list_subdomains` | List all subdomains claimed by a project. |
-| `bundle_deploy` | One-call full-stack deploy: database + migrations + RLS + secrets + functions + site + subdomain. |
+| `bundle_deploy` | One-call full-stack deploy: database + migrations + authorization manifest (`manifest.json` in `files[]`) + secrets + functions + site + subdomain. |
 | `browse_apps` | Browse public apps available for forking. |
 | `fork_app` | Fork a published app into a new project. |
 | `publish_app` | Publish a project as a forkable app. |
