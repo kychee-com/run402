@@ -20,13 +20,12 @@ jobs:
       - run: npm run build
       - run: npm run test:skill
       - run: npm run test:sync
-      # Use bash globstar so `**` recurses into nested dirs AND matches files
-      # at depth 0. Without this, files like src/keystore.test.ts (at depth 0)
-      # were silently skipped by CI for 20+ days. Also explicitly run the
-      # core/src tests, which were never matched by the old glob.
-      - shell: bash
-        run: |
-          shopt -s globstar
-          node --experimental-test-module-mocks --test --import tsx src/**/*.test.ts core/src/**/*.test.ts
+      # Quote the globs so Node handles expansion natively. Node's --test
+      # glob matching recurses into nested dirs AND matches depth-0 files,
+      # so it works regardless of the shell's globstar support. (Earlier
+      # we relied on `shopt -s globstar`, which silently dropped sdk/src
+      # tests because they weren't listed and dropped depth-0 files on
+      # systems where globstar isn't enabled.)
+      - run: node --experimental-test-module-mocks --test --import tsx 'src/**/*.test.ts' 'core/src/**/*.test.ts' 'sdk/src/**/*.test.ts'
       - run: npm run test:e2e
       - run: npm run test:integration
