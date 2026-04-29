@@ -215,6 +215,59 @@ describe("Deploy.apply (happy path)", () => {
     assert.equal(w.puts.length, 0, "no PUTs when nothing is missing");
   });
 
+  it("emits content.upload.skipped for CAS-deduped (already-present) refs (#124, #134)", async () => {
+    const w = makeWiring();
+    const html = "<h1>cached</h1>";
+    const indexSha = shaHex(html);
+    const plan: PlanResponse = {
+      plan_id: "plan_skip",
+      operation_id: "op_skip",
+      base_release_id: "rel_prev",
+      manifest_digest: "abcd",
+      // Gateway reports the ref as already present in CAS (dedup hit).
+      missing_content: [
+        { sha256: indexSha, size: html.length, present: true },
+      ],
+      diff: { resources: { site: { changed: 1 } } },
+    };
+    const commit: CommitResponse = {
+      operation_id: "op_skip",
+      status: "ready",
+      release_id: "rel_skip",
+      urls: { site: "https://prj.run402.test" },
+    };
+    w.setHandler((req) => {
+      if (req.path === "/deploy/v2/plans") return plan;
+      if (req.path === "/deploy/v2/plans/plan_skip/commit") return commit;
+      throw new Error(`unexpected ${req.path}`);
+    });
+
+    const events: Array<{ type: string } & Record<string, unknown>> = [];
+    const deploy = new Deploy(w.client);
+    await deploy.apply(
+      {
+        project: "prj_test",
+        site: { replace: { "index.html": html } },
+      },
+      {
+        onEvent: (ev) => {
+          events.push(ev as { type: string } & Record<string, unknown>);
+        },
+      },
+    );
+
+    // No bytes should hit S3 — the ref is already in CAS.
+    assert.equal(w.puts.length, 0, "no PUTs when ref is already present");
+
+    // The SDK must surface the dedup hit so agents can distinguish
+    // "33 files / 12 MB dedup'd" from "nothing happened".
+    const skipped = events.filter((e) => e.type === "content.upload.skipped");
+    assert.equal(skipped.length, 1, "one skipped event for the deduped ref");
+    assert.equal(skipped[0].sha256, indexSha);
+    assert.equal(skipped[0].label, "index.html");
+    assert.equal(skipped[0].reason, "present");
+  });
+
   it("polls operation when commit returns running", async () => {
     const w = makeWiring();
     const plan: PlanResponse = {

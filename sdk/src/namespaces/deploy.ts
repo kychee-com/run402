@@ -323,6 +323,21 @@ async function uploadMissing(
   byteReaders: Map<string, ByteReader>,
   emit: (event: DeployEvent) => void,
 ): Promise<void> {
+  // Surface CAS dedup hits so agents can distinguish "N files were already
+  // present" from "nothing happened". The gateway reports both present and
+  // missing refs in `missing_content`; emit a skipped event for each present
+  // one before short-circuiting on a fully-deduped plan. (#124, #134)
+  const skipped = presence.filter((p) => p.present);
+  for (const p of skipped) {
+    const reader = byteReaders.get(p.sha256);
+    emit({
+      type: "content.upload.skipped",
+      label: reader?.label ?? p.sha256,
+      sha256: p.sha256,
+      reason: "present",
+    });
+  }
+
   // Filter to refs the gateway reported as missing for this project.
   const needsUpload = presence.filter((p) => !p.present);
   if (needsUpload.length === 0) return;
