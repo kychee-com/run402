@@ -1,406 +1,146 @@
 ---
 name: run402
-description: Provision Postgres databases, deploy static sites, generate images, and build full-stack webapps on Run402 using x402 or MPP micropayments. Use when the user asks to build a webapp, deploy a site, create a database, generate images, or mentions Run402.
+description: Provision Postgres + REST API + auth + content-addressed storage + serverless functions + email — paid with x402 USDC on Base. Prototype tier is free on testnet.
+metadata:
+  openclaw:
+    emoji: "🐘"
+    homepage: https://run402.com
+    requires:
+      bins:
+        - npx
+    install:
+      - kind: node
+        package: "run402"
+        bins: [run402]
+    primaryEnv: RUN402_API_BASE
 ---
 
-# Run402 — AI-Native Postgres & Static Hosting
+# Run402 — Postgres, storage & deploys for AI agents
 
-API base: `https://api.run402.com` (NOT `run402.com` — that's a static docs site, POSTing returns 405)
+Run402 gives an agent a real Postgres database with REST API and user auth, content-addressed CDN storage, static site hosting, Node 22 serverless functions, email, image generation, and KMS-backed on-chain signing. One command provisions; payment happens automatically with x402 USDC on Base. **Prototype tier is free on testnet** — no real money, no human signup.
 
----
+Every example below is a CLI command. The CLI prints JSON to stdout, JSON errors to stderr, and exits 0 on success / 1 on failure — designed for shells, scripts, and agent loops.
 
-## Quick Start: Build & Deploy a Full-Stack App
-
-Three steps. Takes ~60 seconds on testnet (free).
-
-### Step 1: Allowance Setup (once)
+## 30-second start
 
 ```bash
-node <skill_dir>/scripts/allowance.mjs status
-# If no allowance:
-node <skill_dir>/scripts/allowance.mjs create
-node <skill_dir>/scripts/allowance.mjs fund
-# Wait ~10s for faucet settlement
+run402 init                                # one-shot: allowance + faucet + tier check
+run402 tier set prototype                  # FREE on testnet (verifies x402 setup)
+run402 projects provision --name my-app    # → anon_key, service_key, project_id
+run402 sites deploy-dir ./dist             # incremental upload of a directory
+run402 subdomains claim my-app             # → https://my-app.run402.com
 ```
 
-Agent allowance persists at `~/.config/run402/allowance.json`. Faucet gives 0.25 testnet USDC (enough for 2 prototype deploys). Rate limit: 1 per IP per 24h — don't call if already funded.
+That's a real Postgres database + a deployed static site, paid for autonomously with testnet USDC.
 
-### Step 2: Build a Manifest
+## How to think about it
+
+| You want to… | Reach for… |
+|---|---|
+| Set up a wallet from scratch | `run402 init` |
+| Make a database | `run402 projects provision` |
+| Run SQL on it | `run402 projects sql` |
+| Make a table reachable from the browser | `run402 projects apply-expose` |
+| Deploy a frontend from a directory | `run402 sites deploy-dir <path>` |
+| Stash a file with a paste-able CDN URL | `run402 blob put <file>` |
+| Run code on the server | `run402 functions deploy` |
+| Send email | `run402 email send` |
+| Sign on-chain | `run402 contracts call` |
+| One-call full-stack deploy | `run402 deploy --manifest app.json` |
+
+The active project is sticky — `run402 projects use <id>` makes it the default for every subsequent `<id>`-taking command. Most commands work without an explicit `<id>` once a project is active.
+
+## Project credentials
+
+After `provision`, two keys land in `~/.config/run402/projects.json`:
+
+- **`anon_key`** — for the browser. Read-only by default; safe to embed in HTML. RLS still applies.
+- **`service_key`** — server-side admin. **Never embed in browser code.** CORS is intentionally open for x402 clients, so a leaked service_key is exploitable from any origin. Use only inside functions or when running CLI as the agent.
+
+Neither expires. Lease enforcement happens server-side.
+
+```bash
+run402 projects keys <id>     # print the project's anon_key + service_key as JSON
+run402 projects info <id>     # tier, lease, schema slot, host, …
+```
+
+## Deploying
+
+### `deploy-dir` — the modern path
+
+`deploy-dir` walks a local directory, hashes each file client-side, and only PUTs bytes the gateway doesn't already have. Re-deploying an unchanged tree returns immediately with `bytes_uploaded: 0`.
+
+```bash
+run402 sites deploy-dir ./dist > result.json 2> events.log
+```
+
+Skips `.git/`, `node_modules/`, `.DS_Store` automatically. Symlinks throw (no cycles).
+
+`stderr` streams progress events — one JSON object per line:
+
+| phase | When fired | Extra fields |
+|-------|------------|--------------|
+| `plan`   | After the planning request | `manifest_size` (file count) |
+| `upload` | After each missing file finishes PUTing | `file`, `sha256`, `done`, `total` |
+| `commit` | Just before commit | — |
+| `poll`   | Per server-side copy poll | `status`, `elapsed_ms` |
+
+Pass `--quiet` to suppress events; the final result envelope still goes to stdout.
+
+### `deploy` — one-call full stack
+
+For a database + migrations + manifest + secrets + functions + site + subdomain in one command, write a manifest and run:
+
+```bash
+run402 deploy --manifest app.json
+```
+
+The manifest looks like this — note the `manifest.json` entry inside `files[]`:
 
 ```json
 {
-  "name": "my-app",
-  "migrations": "CREATE TABLE items (id serial PRIMARY KEY, title text NOT NULL, done boolean DEFAULT false, user_id uuid, created_at timestamptz DEFAULT now());",
+  "project_id": "prj_…",
+  "migrations_file": "setup.sql",
+  "secrets": [{ "key": "OPENAI_API_KEY", "value": "sk-…" }],
+  "functions": [{
+    "name": "my-fn",
+    "code": "export default async (req) => new Response('ok')",
+    "config": { "timeout": 30, "memory": 256 }
+  }],
   "files": [
-    {
-      "file": "manifest.json",
-      "data": "{\"$schema\":\"https://run402.com/schemas/manifest.v1.json\",\"version\":\"1\",\"tables\":[{\"name\":\"items\",\"expose\":true,\"policy\":\"user_owns_rows\",\"owner_column\":\"user_id\",\"force_owner_on_insert\":true}]}"
-    },
-    { "file": "index.html", "data": "<!DOCTYPE html>..." },
-    { "file": "style.css", "data": "body { ... }" }
+    { "file": "manifest.json", "data": "{\"$schema\":\"https://run402.com/schemas/manifest.v1.json\",\"version\":\"1\",\"tables\":[{\"name\":\"items\",\"expose\":true,\"policy\":\"user_owns_rows\",\"owner_column\":\"user_id\",\"force_owner_on_insert\":true}]}" },
+    { "file": "index.html", "data": "<!doctype html>…" },
+    { "file": "logo.png", "data": "iVBORw0…", "encoding": "base64" }
   ],
   "subdomain": "my-app"
 }
 ```
 
-All fields except `name` are optional. Can also include `secrets`, `functions`. The `manifest.json` entry in `files[]` declares the project's authorization surface (which tables/views/RPCs are reachable via PostgREST) — see "Authorization Manifest" below. The platform reads it, validates it against the migrations, applies it, and **strips it from `files[]` before deploying the site**, so it's never publicly reachable on your subdomain.
+The `manifest.json` entry is **auth-as-SDLC** — your authorization travels with your code. The gateway reads it, validates it against the migration SQL, applies it, and **strips it from `files[]` before the site deploys**, so it's never publicly reachable on your subdomain. The deploy response includes `manifest_applied: true` on success. If the manifest references a table the migration doesn't create, the deploy is rejected with HTTP 400 and a structured `errors` array listing every violation.
 
-### Step 3: Deploy
+Provision first (`run402 projects provision`) so you have the `anon_key` to embed in your HTML before deploying.
 
-```bash
-echo '<manifest_json>' | node <skill_dir>/scripts/deploy.mjs --tier prototype
-```
+## Authorization — the expose manifest
 
-Returns project_id, keys, live URL. Saved to `~/.config/run402/projects.json`.
+**Tables you create are dark by default.** Until your manifest declares a table with `expose: true`, it's invisible to anon and authenticated callers. This eliminates the "agent forgot RLS, data leaked" footgun. The manifest is the single source of truth for what's reachable via `/rest/v1/*`.
 
-**Tiers:** prototype ($0.10/7d, 250MB, 500k calls — free with testnet faucet), hobby ($5, 30d, 1GB, 5M calls), team ($20, 30d, 10GB, 50M calls).
+JSON Schema: <https://run402.com/schemas/manifest.v1.json>. Set `$schema` on your manifest file and your editor gets autocomplete for free.
 
-### Post-Deploy
+### Preferred: ship `manifest.json` in your bundle
 
-```bash
-# Seed data
-node <skill_dir>/scripts/projects.mjs sql <project_id> "INSERT INTO items (title) VALUES ('Example')"
-# Query via REST
-node <skill_dir>/scripts/projects.mjs rest <project_id> items
-# Check usage
-node <skill_dir>/scripts/projects.mjs usage <project_id>
-# List all projects
-node <skill_dir>/scripts/projects.mjs list
-```
-
----
-
-## ⚠️ Key Rules (Gotchas That Trip Agents Up)
-
-1. **API base is `api.run402.com`** NOT `run402.com`
-2. **Register for `eip155:84532`** (Base Sepolia) specifically, NOT `eip155:*` — wildcard matches mainnet first, testnet allowance fails with `insufficient_funds`
-3. **`toClientEvmSigner(account, publicClient)`** NOT `toClientEvmSigner(walletClient)` — walletClient has wrong shape, produces `Address "undefined" is invalid`
-4. **Key scopes:**
-   - `anon_key` = read-only (SELECT, signup, storage). Safe for client-side.
-   - `service_key` = full admin (bypasses RLS). Server-side only.
-   - `access_token` = user-scoped read/write (from login). Subject to RLS.
-5. **Don't mix auth methods** — x402 endpoints use payment header only (no apikey/Authorization). REST/auth/storage use apikey only (no payment header).
-6. **`POST /subdomains/v1` is idempotent** — upserts. Safe to call every deploy.
-7. **Subdomain claim requires `service_key`** as `Authorization: Bearer` (not apikey header).
-8. **Don't GRANT/REVOKE** — permissions managed automatically. Declare what's reachable via a `manifest.json` entry in your bundle's `files[]` (see "Authorization Manifest").
-9. **Schema cache is instant** — no sleep needed after CREATE TABLE, REST API works immediately.
-
----
-
-## Allowance Management
-
-```bash
-node <skill_dir>/scripts/allowance.mjs status   # Show address, network, funded status
-node <skill_dir>/scripts/allowance.mjs create   # Generate new allowance (fails if exists)
-node <skill_dir>/scripts/allowance.mjs fund     # Request testnet USDC from faucet
-node <skill_dir>/scripts/allowance.mjs export   # Print allowance address (safe to share)
-```
-
-### Upgrade to Mainnet
-
-For production (hobby/team tiers), change chain from `baseSepolia` to `base` and register `eip155:8453`. Prototype is free on testnet — no mainnet funding needed.
-
-Two funding options for paid tiers:
-
-**Option A: USDC on Base (agent-native)**
-Ask your human to send USDC on Base to your allowance address. Scripts for asking:
-
-> **Project ($10):** "I need a database for our project. A Hobby tier costs $5/month. Could you send $10 in USDC (Base L2)?"
->
-> **Monthly ($10/mo):** "I'd like a $10/month allowance for databases. Covers two Hobby projects."
->
-> My allowance address: `<address from allowance.mjs export>`
-
-If your human doesn't have crypto: "Download Coinbase Wallet, buy USDC, send to my address on Base. Transactions cost under $0.01."
-
-**Option B: Stripe (credit card fallback)**
-Send your human to: `https://run402.com/billing?wallet=<ALLOWANCE_ADDRESS>`
-
-> "You can add credit at this link — takes 30 seconds with a credit card. A $10 top-up covers two Hobby projects."
-
-Once funded, x402 payments settle from allowance automatically. No code changes.
-
----
-
-## Bundle Deploy (One-Call Full-Stack App)
-
-`POST /deploy/v1/:tier` — deploys everything atomically. One x402 payment.
-
-```json
-{
-  "name": "my-saas-app",
-  "migrations": "CREATE TABLE ...; CREATE TABLE ...;",
-  "secrets": [{ "key": "OPENAI_API_KEY", "value": "sk-..." }],
-  "functions": [{
-    "name": "summarize",
-    "code": "export default async (req) => { const { text } = await req.json(); return new Response(JSON.stringify({ result: text.slice(0, 100) })); }"
-  }],
-  "files": [
-    {
-      "file": "manifest.json",
-      "data": "{\"version\":\"1\",\"tables\":[{\"name\":\"posts\",\"expose\":true,\"policy\":\"user_owns_rows\",\"owner_column\":\"user_id\",\"force_owner_on_insert\":true}]}"
-    },
-    { "file": "index.html", "data": "<!DOCTYPE html>..." }
-  ],
-  "subdomain": "my-saas"
-}
-```
-
-| Field | Required | Description |
-|-------|----------|-------------|
-| `name` | Yes | App/project name |
-| `migrations` | No | SQL string (CREATE TABLE, etc.) |
-| `secrets` | No | `[{ key, value }]` — uppercase keys, injected as env vars into functions |
-| `functions` | No | `[{ name, code, config? }]` — serverless functions (Lambda). Limits: prototype=5, hobby=25, team=100 |
-| `files` | No | `[{ file, data, encoding? }]` — site files; `base64` for binary; 50MB max. Include a `manifest.json` entry to declare authorization (see "Authorization Manifest"). |
-| `subdomain` | No | Custom subdomain → `name.run402.com` |
-
-Site deployment is free with active tier. If any step fails, the project is rolled into the soft-delete grace window (no half-deployed apps).
-
-Response includes: `project_id`, `anon_key`, `service_key`, `site_url`, `deployment_id`, `functions[].url`, `subdomain_url`.
-
-Functions accessible at: `https://api.run402.com/functions/v1/<name>`
-
----
-
-## Step-by-Step Deploy (Iterative Building)
-
-For when you want to build incrementally instead of all-at-once.
-
-### 1. Create Project
-
-```
-POST /projects/v1                    (x402, default prototype)
-POST /projects/v1/create/:tier       (x402, specific tier)
-```
-
-Returns: `project_id`, `anon_key`, `service_key`, `schema_slot`, `lease_expires_at`
-
-### 2. Create Tables (SQL)
-
-```bash
-curl -X POST https://api.run402.com/projects/v1/admin/$PROJECT_ID/sql \
-  -H "Authorization: Bearer $SERVICE_KEY" \
-  -H "Content-Type: text/plain" \
-  -d "CREATE TABLE todos (id serial PRIMARY KEY, task text NOT NULL, done boolean DEFAULT false, user_id uuid);"
-```
-
-Returns: `{ "status": "ok", "schema": "p0001", "rows": [], "rowCount": 0 }`
-
-Both `SERIAL` and `BIGINT GENERATED ALWAYS AS IDENTITY` work. Sequence permissions granted automatically.
-
-### 3. Declare Authorization (Optional)
-
-Tables you create are dark by default — invisible to PostgREST's `anon` role until a manifest declares them. Apply a manifest with `POST /projects/v1/admin/:id/expose`:
-
-```bash
-curl -X POST https://api.run402.com/projects/v1/admin/$PROJECT_ID/expose \
-  -H "Authorization: Bearer $SERVICE_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "version": "1",
-    "tables": [{ "name": "todos", "expose": true, "policy": "user_owns_rows", "owner_column": "user_id", "force_owner_on_insert": true }]
-  }'
-```
-
-Or include a `manifest.json` entry in your bundle's `files[]` on the next `POST /deployments/v1` — same shape, gateway applies it before the site deploys. See "Authorization Manifest" for the full schema.
-
-### 4. Deploy Site
-
-```
-POST /deployments/v1    (allowance auth, free with tier)
-{ "name": "my-app", "project": "prj_...", "files": [{ "file": "index.html", "data": "..." }] }
-```
-
-Returns permanent URL at `https://{id}.sites.run402.com`. SPA-friendly (paths without extensions serve index.html).
-
-### 5. Claim Subdomain (Free)
-
-```bash
-curl -X POST https://api.run402.com/subdomains/v1 \
-  -H "Authorization: Bearer $SERVICE_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"name": "my-app", "deployment_id": "dpl_..."}'
-```
-
-→ `https://my-app.run402.com`
-
----
-
-## REST API Queries (PostgREST Syntax)
-
-All use `apikey` header. `anon_key` for reads, `service_key` for admin, `access_token` for user-scoped.
-
-```bash
-# Read with filtering
-GET /rest/v1/todos?done=eq.false&order=id.desc&limit=10&offset=0
-  -H "apikey: $ANON_KEY"
-
-# Select specific columns
-GET /rest/v1/todos?select=id,task,done
-
-# Insert (needs service_key or access_token with RLS)
-POST /rest/v1/todos
-  -H "apikey: $SERVICE_KEY"
-  -H "Content-Type: application/json"
-  -H "Prefer: return=representation"
-  -d '{"task": "Build something", "done": false}'
-
-# Update
-PATCH /rest/v1/todos?id=eq.1
-  -H "apikey: $SERVICE_KEY"
-  -H "Content-Type: application/json"
-  -d '{"done": true}'
-
-# Delete
-DELETE /rest/v1/todos?id=eq.1
-  -H "apikey: $SERVICE_KEY"
-```
-
-**Filter operators:** `eq`, `neq`, `gt`, `gte`, `lt`, `lte`, `like`, `ilike`, `is`, `in`
-**Ordering:** `?order=column.asc` or `?order=column.desc`
-**Pagination:** `?limit=N&offset=M`
-
----
-
-## SQL Queries (Admin)
-
-```bash
-curl -X POST https://api.run402.com/projects/v1/admin/$PROJECT_ID/sql \
-  -H "Authorization: Bearer $SERVICE_KEY" \
-  -H "Content-Type: text/plain" \
-  -d "SELECT * FROM todos WHERE done = false;"
-```
-
-Returns: `{ "status": "ok", "rows": [...], "rowCount": 3 }`
-
-Works for DDL and DML. Blocked statements: `CREATE EXTENSION`, `COPY ... PROGRAM`, `ALTER SYSTEM`, `SET search_path`, `CREATE/DROP SCHEMA`, `GRANT/REVOKE`, `CREATE/DROP ROLE` (returns 403 with hint).
-
----
-
-## User Auth
-
-```bash
-# Signup (no session returned)
-POST /auth/v1/signup
-  -H "apikey: $ANON_KEY"
-  -d '{"email": "user@example.com", "password": "securepass123"}'
-# → { "id": "uuid", "email": "...", "created_at": "..." }
-
-# Login (returns tokens)
-POST /auth/v1/token
-  -H "apikey: $ANON_KEY"
-  -d '{"email": "user@example.com", "password": "securepass123"}'
-# → { "access_token": "...", "refresh_token": "..." }
-# access_token: 1h JWT. refresh_token: 30d, one-time use.
-
-# Refresh
-POST /auth/v1/token?grant_type=refresh_token
-  -H "apikey: $ANON_KEY"
-  -d '{"refresh_token": "..."}'
-
-# Get current user
-GET /auth/v1/user
-  -H "Authorization: Bearer $ACCESS_TOKEN"
-
-# Logout
-POST /auth/v1/logout
-  -H "Authorization: Bearer $ACCESS_TOKEN"
-```
-
-### Frontend Auth Pattern
-
-```javascript
-const API = "https://api.run402.com";
-const ANON_KEY = "..."; // from deploy response
-
-// Signup
-await fetch(`${API}/auth/v1/signup`, {
-  method: "POST",
-  headers: { "apikey": ANON_KEY, "Content-Type": "application/json" },
-  body: JSON.stringify({ email, password })
-});
-
-// Login
-const { access_token } = await fetch(`${API}/auth/v1/token`, {
-  method: "POST",
-  headers: { "apikey": ANON_KEY, "Content-Type": "application/json" },
-  body: JSON.stringify({ email, password })
-}).then(r => r.json());
-
-// Authenticated requests — use access_token as apikey
-await fetch(`${API}/rest/v1/items`, {
-  headers: { "apikey": access_token }
-});
-```
-
----
-
-## File Storage
-
-Direct-to-S3 blob storage. Flat key namespace per project; works for any size from 1 byte up to 5 TiB. Three steps: init → PUT parts to S3 → complete.
-
-```bash
-# 1. Init upload (gateway returns presigned S3 part URLs)
-POST /storage/v1/uploads
-  -H "apikey: $SERVICE_KEY"
-  -H "Content-Type: application/json"
-  --data '{"key":"assets/photo.jpg","size_bytes":12345,"content_type":"image/jpeg"}'
-# → { upload_id, parts: [{ part_number, url, byte_start, byte_end }] }
-
-# 2. PUT bytes directly to S3 (NOT through the gateway) — capture each part's ETag
-PUT <part.url>
-  --data-binary @photo.jpg
-
-# 3. Complete with the part ETags
-POST /storage/v1/uploads/<upload_id>/complete
-  -H "apikey: $SERVICE_KEY"
-  -H "Content-Type: application/json"
-  --data '{"parts":[{"part_number":1,"etag":"..."}]}'
-# → { key, url, immutable_url, cdn_url, cdn_immutable_url, content_sha256, etag, sri, size, content_type }
-
-# Authenticated read
-GET /storage/v1/blob/assets/photo.jpg
-  -H "apikey: $ANON_KEY"
-
-# Delete
-DELETE /storage/v1/blob/assets/photo.jpg
-  -H "apikey: $SERVICE_KEY"
-
-# List by prefix
-GET /storage/v1/blobs?prefix=assets/&limit=100
-  -H "apikey: $ANON_KEY"
-
-# Signed URL (1h default, 7d max) for sharing private blobs
-POST /storage/v1/blob/assets/photo.jpg/sign
-  -H "apikey: $SERVICE_KEY"
-  --data '{"ttl_seconds":3600}'
-```
-
-Public blobs are CDN-served at `https://pr-<public_id>.run402.com/_blob/<key>` (auto-subdomain) or any claimed subdomain / mapped custom domain. Prefer the `cdn_immutable_url` from the complete response for read-after-write correctness without polling.
-
----
-
-## Authorization Manifest
-
-The manifest is the single source of truth for which tables, views, and RPCs in your project are reachable through PostgREST (`/rest/v1/*`). **Tables you create are dark by default** — `anon` and `authenticated` can't read them until the manifest says so. Closes the "agent created a table, forgot to set RLS, data leaked" footgun.
-
-JSON Schema: `https://run402.com/schemas/manifest.v1.json` — point your editor's `$schema` at it for autocomplete.
-
-### Preferred: `manifest.json` in the bundle's `files[]`
-
-Authorization travels with your code. Include a file named `manifest.json` in `files[]` and the platform reads it, validates it against the migration SQL, applies it, and **strips it from `files[]` before the site deploys** (so it's never publicly reachable on your subdomain). The deploy response includes `manifest_applied: true` on success.
+Authorization travels with your code. Put a file named `manifest.json` in the bundle's `files[]` and the gateway reads it, validates it against your migration SQL, applies it, and **strips it from `files[]` before the site deploys** — so it's never publicly reachable on your subdomain. The deploy response includes `manifest_applied: true` on success.
 
 ```json
 {
   "$schema": "https://run402.com/schemas/manifest.v1.json",
   "version": "1",
   "tables": [
-    { "name": "workouts", "expose": true, "policy": "user_owns_rows", "owner_column": "user_id", "force_owner_on_insert": true },
-    { "name": "internal_metrics", "expose": false }
+    { "name": "items", "expose": true, "policy": "user_owns_rows",
+      "owner_column": "user_id", "force_owner_on_insert": true },
+    { "name": "audit", "expose": false }
   ],
   "views": [
-    { "name": "public_leaderboard", "base": "workouts", "select": ["user_id", "score"], "expose": true }
+    { "name": "leaderboard", "base": "items", "select": ["user_id", "score"], "expose": true }
   ],
   "rpcs": [
     { "name": "compute_streak", "signature": "(user_id uuid)", "grant_to": ["authenticated"] }
@@ -408,292 +148,512 @@ Authorization travels with your code. Include a file named `manifest.json` in `f
 }
 ```
 
-If the manifest references a table your migration doesn't create, the deploy is rejected with HTTP 400 and a structured `errors` array listing **every** violation (not just the first).
+If the manifest references a table the migration doesn't create, the deploy is rejected with HTTP 400 and a structured `errors` array listing **every** violation (not just the first).
 
-### Imperative escape hatch: `POST /admin/v1/projects/:id/expose`
+### Imperative escape hatch: `apply-expose`
 
-Same JSON shape, no bundle. Useful for ad-hoc changes outside a deploy.
+For ad-hoc changes outside a deploy — same JSON shape, no bundle:
 
 ```bash
-curl -X POST https://api.run402.com/projects/v1/admin/$PROJECT_ID/expose \
-  -H "Authorization: Bearer $SERVICE_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{ "version": "1", "tables": [ ... ], "views": [ ... ], "rpcs": [ ... ] }'
+run402 projects apply-expose <id> --file manifest.json
+run402 projects get-expose   <id>     # source: "applied" | "introspected"
 ```
 
-Bundles that include both inline `expose` and `manifest.json` (or legacy `rls` + `manifest.json`) are rejected with 400 — the platform refuses to silently pick one source over another.
+`get-expose` returns the live state. `source: "applied"` means it came from a prior `apply-expose` (or a bundled `manifest.json`); `"introspected"` means no manifest has ever been applied and the response was reconstructed from live DB state.
 
-### Convergence
-
-Applying the same manifest twice is a no-op. Removing a table (or flipping `expose` to `false`) drops policies, revokes anon SELECT, drops owner triggers, drops views. The manifest is the contract; DB state follows.
+**Convergent**: applying the same manifest twice is a no-op. Items removed between applies have their policies, grants, triggers, and views dropped. Always include everything you want exposed.
 
 ### Built-in policies
 
-- **`user_owns_rows`** — owner column matches `auth.uid()`. Requires `owner_column`. With `force_owner_on_insert: true`, a `BEFORE INSERT` trigger sets `owner_column := auth.uid()` when the agent forgets to pass it. Best for user-scoped data (todos, workouts, messages).
-- **`public_read_authenticated_write`** — anyone reads; **any authenticated user can INSERT/UPDATE/DELETE any row** (not just their own). For collaborative content (shared boards, announcements).
-- **`public_read_write_UNRESTRICTED`** — ⚠ fully open; `anon_key` can read AND write any row. Only for intentionally public tables (guestbooks, waitlists, feedback forms). **Requires** `"i_understand_this_is_unrestricted": true` on the table entry.
-- **`custom`** — escape hatch. Provide `custom_sql` containing `CREATE POLICY` statements; they run inside the apply transaction after RLS is enabled and forced.
+| Policy | Allows |
+|---|---|
+| `user_owns_rows` | Rows where `owner_column = auth.uid()`. With `force_owner_on_insert: true`, a BEFORE INSERT trigger sets it automatically. **Default for anything user-scoped.** |
+| `public_read_authenticated_write` | Anyone reads. Any authenticated user writes any row. For shared boards / collaborative content. |
+| `public_read_write_UNRESTRICTED` | Fully open. Requires `i_understand_this_is_unrestricted: true` on the table entry. Only for guestbooks / waitlists / feedback forms. |
+| `custom` | Escape hatch. Provide `custom_sql` with `CREATE POLICY` statements. |
 
-| Policy | anon SELECT | anon INSERT/UPDATE/DELETE | auth SELECT | auth INSERT/UPDATE/DELETE |
-|--------|:-----------:|:-------------------------:|:-----------:|:-------------------------:|
-| (omitted from manifest) | — | — | — | — |
-| `user_owns_rows` | — | — | own rows | own rows |
-| `public_read_authenticated_write` | all | — | all | all rows |
-| `public_read_write_UNRESTRICTED` | all | yes | all | yes |
+Views always run with `security_invoker=true` — they inherit the underlying table's RLS, so they can't accidentally leak hidden columns. RPCs are not exposed unless listed in `rpcs[]` (a database event trigger revokes PUBLIC EXECUTE on every newly-created function).
 
-`—` = denied. `service_key` bypasses all policies.
+## Storage — paste-and-go assets
 
-**Views** are always created with `security_invoker=true` — they inherit the underlying table's RLS.
-
-**RPCs** — `CREATE FUNCTION` revokes PUBLIC EXECUTE automatically; the manifest's `rpcs[*]` section is the explicit opt-in to make a function callable as `/rest/v1/rpc/<fn>`. List the roles in `grant_to` (one of `anon`, `authenticated`, `service_role`, `project_admin`).
-
----
-
-## Image Generation
-
-$0.03/image via x402. Three aspect ratios: `square` (1:1), `landscape` (16:9), `portrait` (9:16).
+`run402 blob put` returns an `AssetRef`. The URL is content-addressed (`pr-<public_id>.run402.com/_blob/<key>-<8hex>.<ext>`), served through CloudFront, and never needs cache invalidation:
 
 ```bash
-node <skill_dir>/scripts/image.mjs generate "a cat in a top hat" --aspect landscape --output cat.png
+run402 blob put ./logo.png    --json
+run402 blob put ./app.js      --json
+run402 blob put ./styles.css  --json
 ```
 
-Or via API directly:
-```
-POST /generate-image/v1    (x402, $0.03)
-{ "prompt": "a cat wearing a top hat, watercolor style", "aspect": "square" }
-```
+Each response includes:
 
-Response: `{ "image": "<base64 PNG>", "content_type": "image/png", "aspect": "landscape" }`
+| Field | Use |
+|---|---|
+| `cdn_url` | The content-addressed URL — paste straight into `src=` / `href=` |
+| `sri` | `sha256-<base64>` for `<script integrity="…">` if you build tags by hand |
+| `etag` | Strong `"sha256-<hex>"` ETag |
+| `cache_kind` | `immutable` / `mutable` / `private` |
 
-`prompt` max 1000 chars. `aspect` defaults to `square`.
+Immutable upload is the default since v1.45 — the SDK computes the SHA-256 client-side and pairs the URL with SRI. The browser refuses execution on byte mismatch. No invalidation choreography.
 
----
-
-## Serverless Functions
-
-Included in bundle deploy. Each function is a JS module with a default export.
-
-```json
-{
-  "functions": [{
-    "name": "hello",
-    "code": "export default async (req) => { return new Response(JSON.stringify({ hello: 'world' }), { headers: { 'Content-Type': 'application/json' } }); }"
-  }]
-}
-```
-
-Functions access secrets via `process.env.SECRET_NAME`. Deployed to Lambda. Accessible at `https://api.run402.com/functions/v1/<name>`.
-
-Limits per tier: prototype=5, hobby=25, team=100.
-
----
-
-## Secrets Management
-
-Set secrets in bundle deploy:
-```json
-{ "secrets": [{ "key": "OPENAI_API_KEY", "value": "sk-..." }] }
-```
-
-Keys must be uppercase. Injected as environment variables into serverless functions.
-
----
-
-## Publish & Fork
-
-Share your app as a template. Other agents fork it — get their own independent copy.
-
-### Publish
-```
-POST /projects/v1/admin/:id/publish
-Authorization: Bearer <service_key>
-{
-  "visibility": "public",
-  "fork_allowed": true,
-  "description": "Todo app with auth and RLS",
-  "required_secrets": [{ "key": "OPENAI_API_KEY", "description": "For AI summaries" }]
-}
-```
-
-Snapshots: schema, functions, site files, secret names (never values). NOT copied: live data, secret values, auth users, storage files.
-
-### Inspect (free)
-```
-GET /apps/v1/:versionId
-```
-
-### Fork
-```
-POST /fork/v1/:tier    (x402, same pricing as project creation)
-{ "version_id": "ver_...", "name": "my-copy", "subdomain": "my-copy" }
-```
-
-Creates fully independent project. Readiness: `ready`, `configuration_required` (set secrets), or `manual_setup_required`.
-
-### List versions
-```
-GET /projects/v1/admin/:id/versions
-Authorization: Bearer <service_key>
-```
-
----
-
-## Custom Subdomains
+### List, fetch, remove, sign
 
 ```bash
-# Claim/reassign (idempotent upsert, free)
-POST /subdomains/v1
-  -H "Authorization: Bearer $SERVICE_KEY"
-  -d '{"name": "myapp", "deployment_id": "dpl_..."}'
-# → https://myapp.run402.com
-
-# Lookup (free, no auth)
-GET /subdomains/v1/myapp
-
-# List project's subdomains
-GET /subdomains/v1
-  -H "Authorization: Bearer $SERVICE_KEY"
-
-# Release
-DELETE /subdomains/v1/myapp
-  -H "Authorization: Bearer $SERVICE_KEY"
+run402 blob ls --prefix images/
+run402 blob get images/logo.png --output /tmp/logo.png
+run402 blob rm images/old.png
+run402 blob sign secrets/report.pdf --ttl 3600    # presigned URL for private blobs
 ```
 
-Rules: 3-63 chars, lowercase + numbers + hyphens, start/end with letter or number, no `--`. Reserved: `api`, `www`, `admin`, `sites`, `mail`, `ftp`, `cdn`, `static`.
-
----
-
-## Project Management
+### Diagnose a stale CDN
 
 ```bash
-# List saved projects
-node <skill_dir>/scripts/projects.mjs list
-
-# Check usage vs limits
-node <skill_dir>/scripts/projects.mjs usage <project_id>
-
-# Inspect schema (tables, columns, RLS)
-node <skill_dir>/scripts/projects.mjs schema <project_id>
-
-# Soft-delete (enters ~104-day grace; renew to reactivate)
-node <skill_dir>/scripts/projects.mjs delete <project_id>
-
-# Run SQL
-node <skill_dir>/scripts/projects.mjs sql <project_id> "SELECT 1"
-
-# REST query
-node <skill_dir>/scripts/projects.mjs rest <project_id> todos "done=eq.false&order=id"
+run402 blob diagnose <url>                                  # exit 0 if fresh, 1 if stale
+run402 cdn wait-fresh <url> --sha <hex> --timeout 120       # poll until fresh
 ```
 
-### Project Lifecycle (~104-day soft-delete grace)
-- **`active`**: full read/write
-- **Lease expires (day 0) → `past_due`**: end-user data plane (site, PostgREST, email) keeps serving; owner gets first transition email
-- **Day +14 → `frozen`**: owner control-plane mutating ops (deploys, secret rotation, subdomain claims, function upload) return **402** with `lifecycle_state` / `entered_state_at` / `next_transition_at`; data plane still serves; subdomain is reserved for the original wallet
-- **Day +44 → `dormant`**: scheduled (cron) functions pause; site still serves
-- **Day +104 → `purged`**: full cascade runs (schema dropped, Lambdas deleted, mailbox tombstoned); subdomain becomes claimable 14 days later
-- **Reactivation**: renewing or upgrading the tier during grace (`POST /tiers/v1/:tier`) reactivates the project to `active` and clears all timers in one transaction; payment paths are never gated so renewal always works
+`diagnose` is shell-loop friendly: `until run402 blob diagnose <url>; do sleep 1; done` blocks until the CDN catches up. Vantage is single-region (us-east-1) — other PoPs may differ. **Don't call `wait-fresh` on immutable URLs** — they're correct from the moment of upload.
 
----
-
-## Billing API
+## Database
 
 ```bash
-# Check balance (micro-USD: 1 USD = 1,000,000)
-GET /billing/v1/accounts/<WALLET_ADDRESS>
-# → { "available_usd_micros": 4900000, ... }
+run402 projects sql <id> "CREATE TABLE items (id serial PRIMARY KEY, title text NOT NULL, user_id uuid)"
+run402 projects sql <id> --file migrations.sql
+run402 projects sql <id> "SELECT * FROM items WHERE id = \$1" --params '[42]'
 
-# Transaction history
-GET /billing/v1/accounts/<WALLET_ADDRESS>/history?limit=20
-
-# Create Stripe checkout (for your human)
-POST /billing/v1/checkouts
-  -d '{"wallet": "<WALLET_ADDRESS>", "amount_usd_micros": 5000000}'
-# → { "checkout_url": "https://checkout.stripe.com/..." }
+run402 projects rest <id> items "select=id,title&order=id.desc&limit=10"
+run402 projects schema <id>          # introspect tables, columns, RLS
+run402 projects usage  <id>          # API calls, storage, lease expiry
 ```
 
-Micro-USD amounts: prototype=100,000 (testnet only — free), hobby=5,000,000, team=20,000,000.
+### Idempotent migrations
 
-Settlement headers on paid responses:
-- `X-Run402-Settlement-Rail: allowance` or `x402`
-- `X-Run402-Allowance-Remaining: <micros>` (allowance-paid only)
+`CREATE TABLE IF NOT EXISTS` only handles "already exists" errors — it won't add new columns to an existing table. For evolving schemas, wrap `ALTER TABLE` in a `DO` block:
 
----
+```sql
+CREATE TABLE IF NOT EXISTS items (id serial PRIMARY KEY, title text NOT NULL);
+DO $$ BEGIN
+  ALTER TABLE items ADD COLUMN priority int DEFAULT 0;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+```
 
-## Idempotency
+This pattern is safe to re-run on every deploy.
 
-Add `Idempotency-Key` header to prevent double-charging on retries. Same key + method + path = same response, no duplicate payment. Keys valid 24h.
+### SQL guardrails
+
+The SQL endpoint blocks: `CREATE EXTENSION`, `COPY ... PROGRAM`, `ALTER SYSTEM`, `SET search_path`, `CREATE/DROP SCHEMA`, `GRANT/REVOKE`, `CREATE/DROP ROLE`. Table and sequence permissions are granted automatically — use the expose manifest for access control instead of `GRANT`.
+
+## Functions
+
+Node 22 runtime. Handler: `export default async (req: Request) => Response`.
 
 ```bash
-curl -X POST https://api.run402.com/projects/v1 \
-  -H "Idempotency-Key: $(uuidgen)" \
-  -H "X-402-Payment: <payment>"
+run402 functions deploy <id> my-fn --file fn.ts \
+  --timeout 30 --memory 256 \
+  --schedule "*/15 * * * *" \
+  --deps "stripe,zod@^3,date-fns@3.6.0"
+
+run402 functions invoke <id> my-fn --body '{"hello":"world"}'
+run402 functions logs   <id> my-fn --tail 100 --follow
+run402 functions update <id> my-fn --schedule "0 */6 * * *"
+run402 functions list   <id>
+run402 functions delete <id> my-fn
 ```
 
-Supported on: `/projects/v1`, `/projects/v1/create/:tier`, `/tiers/v1/:tier`, `/deployments/v1`, `/message/v1`, `/generate-image/v1`, `/deploy/v1/:tier`.
+`--deps` accepts npm specs: bare names (`lodash`) resolve to the latest version at deploy time, pinned (`lodash@4.17.21`) and ranges (`date-fns@^3.0.0`) are honored verbatim. Max 30 entries, 200 chars each. **Native binary modules (`sharp`, `canvas`, native bcrypt, etc.) are rejected** — pure JS only. Don't list `@run402/functions` (auto-bundled).
 
-**Always include an Idempotency-Key when provisioning or renewing.**
+The deploy response surfaces:
+- `runtime_version` — the bundled `@run402/functions` version
+- `deps_resolved` — `{ name: version }` for every package the gateway pinned, including transitives
+- `warnings` — non-fatal notes (e.g. when a bare spec resolved to a version that's later than what's typical)
 
----
+### Inside the function — `@run402/functions`
 
-## Contact Developers
+The one place to write code, not commands. Built-in helpers are auto-bundled:
+
+```ts
+import { db, adminDb, getUser, email, ai } from "@run402/functions";
+
+export default async (req: Request) => {
+  const user = await getUser(req);
+  if (!user) return new Response("unauthorized", { status: 401 });
+
+  // Caller-context — Authorization header is forwarded; RLS evaluates against the caller's role.
+  const mine = await db(req).from("items").select("*").eq("user_id", user.id);
+
+  // Bypass RLS — only when the function acts on behalf of the platform.
+  await adminDb().from("audit").insert({ event: "items_read", user_id: user.id });
+
+  if (mine.length === 0) {
+    await email.send({ to: user.email, subject: "Welcome", html: "<h1>Hi</h1>" });
+  }
+
+  return Response.json(mine);
+};
+```
+
+- **`db(req)`** — caller-context. Forwards Authorization header. RLS applies. Default choice.
+- **`adminDb()`** — bypass RLS. Use only for audit logs, cron cleanup, webhook handlers, platform-authored writes.
+- **`adminDb().sql(query, params?)`** — raw parameterized SQL. Always bypass.
+
+Fluent surface on both `db(req).from(t)` and `adminDb().from(t)`:
+- Reads: `.select()`, `.eq()`, `.neq()`, `.gt()`, `.lt()`, `.gte()`, `.lte()`, `.like()`, `.ilike()`, `.in()`, `.order()`, `.limit()`, `.offset()`
+- Writes: `.insert(obj | obj[])`, `.update(obj)`, `.delete()` — return arrays of affected rows
+- Column narrowing on writes: `.insert({…}).select("id, title")`
+
+For TypeScript autocomplete in your editor: `npm install @run402/functions` in your project. Also works at build time for static-site generation if you set `RUN402_SERVICE_KEY` + `RUN402_PROJECT_ID` in `.env`.
+
+### Calling a function from the browser
+
+```js
+const res = await fetch("https://api.run402.com/functions/v1/my-fn", {
+  method: "POST",
+  headers: {
+    apikey: ANON_KEY,
+    Authorization: "Bearer " + session.access_token,   // optional, for authenticated calls
+    "Content-Type": "application/json",
+  },
+  body: JSON.stringify({ hello: "world" }),
+});
+```
+
+### Scheduled functions
+
+Pass a 5-field cron expression. To remove a schedule: `--schedule-remove`. Tier limits:
+
+| Tier | Max scheduled | Min interval |
+|------|---------------|--------------|
+| Prototype | 1 | 15 min |
+| Hobby | 3 | 5 min |
+| Team | 10 | 1 min |
+
+## Secrets
+
+Injected as `process.env.<KEY>` inside every function. Values are write-only — `list` returns keys with a `value_hash` (8 hex chars of SHA-256) so you can verify you set the right value.
+
+```bash
+run402 secrets set    <id> STRIPE_KEY sk_live_…
+run402 secrets set    <id> JWT_PRIVATE --file ./private.pem
+run402 secrets list   <id>
+run402 secrets delete <id> STALE_KEY
+```
+
+## Email
+
+One mailbox per project at `<slug>@mail.run402.com`. Optionally bring your own domain.
+
+```bash
+run402 email create my-app                          # idempotent
+run402 email send --to user@example.com \
+  --template notification \
+  --var project_name="My App" --var message="Hello"
+
+run402 email send --to user@example.com \
+  --subject "Welcome" --html '<h1>Hi</h1>' --from-name "My App"
+
+run402 email list
+run402 email get <message_id>
+run402 email get-raw <message_id> --output msg.eml   # raw RFC-822 for DKIM / zk-email
+```
+
+Templates: `project_invite` (`project_name`, `invite_url`), `magic_link` (`project_name`, `link_url`, `expires_in`), `notification` (`project_name`, `message` ≤ 500 chars).
+
+Tier rate limits: prototype 10/day, hobby 50/day, team 500/day. Unique recipients per lease: 25 / 200 / 1000.
+
+### Webhooks
+
+```bash
+run402 email webhooks register --url https://… --events delivery,bounced,reply_received
+run402 email webhooks list
+run402 email webhooks update <id> --events delivery,bounced,complained,reply_received
+run402 email webhooks delete <id>
+```
+
+### Custom sender domain
+
+```bash
+run402 sender-domain register example.com         # → DKIM CNAMEs to add to DNS
+run402 sender-domain status                       # poll until verified
+run402 sender-domain inbound-enable example.com   # → MX record (opt-in)
+```
+
+## User auth
+
+Two methods: passwords and Google OAuth. Google is on for all projects with **zero config** — `http://localhost:*` and any claimed subdomain are allowed redirect origins automatically.
+
+```bash
+run402 auth magic-link --email user@example.com --redirect https://my-app.run402.com/cb
+run402 auth verify --token <token>                       # → access_token + refresh_token
+run402 auth set-password --token <bearer> --new <pwd>    # change | reset | set
+run402 auth providers
+```
+
+Magic-link tokens are single-use, expire in 15 min, rate-limited 5/email/hour. The `access_token` works as `apikey` for user-scoped REST calls subject to RLS.
+
+For browser-side flows (PKCE, Google OAuth, refresh-token rotation), see <https://run402.com/llms-cli.txt>.
+
+## Subdomains and custom domains
+
+```bash
+run402 subdomains claim my-app                    # → https://my-app.run402.com
+run402 subdomains list
+run402 subdomains delete my-app
+
+run402 domains add example.com my-app             # → DNS records to set
+run402 domains status example.com                 # poll until active
+run402 domains list
+run402 domains delete example.com
+```
+
+**Subdomain auto-reassignment**: claim once. Every subsequent `run402 sites deploy-dir` to the same project automatically points the subdomain at the new deployment. The deploy response includes `subdomain_urls` showing what got reassigned. No re-claim needed.
+
+## On-chain — KMS contract wallets
+
+For agents that need to sign Ethereum transactions. Private keys never leave AWS KMS — there is no export, ever. **$0.04/day rental + $0.000005/call.** Wallet creation requires $1.20 in cash credit (30 days prepaid). **Non-custodial** — see <https://run402.com/humans/terms.html#non-custodial-kms-wallets>.
+
+```bash
+run402 contracts provision-wallet --chain base-mainnet [--recovery-address 0x…]
+run402 contracts list-wallets
+run402 contracts get-wallet <wallet_id>          # metadata + live balance + USD value
+
+run402 contracts call --wallet <id> --to 0x… \
+  --abi @abi.json --fn transfer --args '["0x…", "1000000"]' \
+  [--value-wei 0] [--idempotency-key <k>]
+
+run402 contracts read --chain base-mainnet \
+  --to 0x… --abi @abi.json --fn balanceOf --args '["0x…"]'
+
+run402 contracts status <call_id>
+run402 contracts drain  <wallet_id> --to 0x… --confirm     # safety valve (works on suspended)
+run402 contracts delete <wallet_id> --confirm              # 7-day KMS deletion window
+```
+
+## Tier and billing
+
+```bash
+run402 tier set prototype     # FREE on testnet (verifies x402 setup)
+run402 tier set hobby         # $5 / 30 days
+run402 tier set team          # $20 / 30 days
+run402 tier status
+
+# Pay with Stripe instead of x402
+run402 billing create-email user@example.com
+run402 billing tier-checkout hobby --email user@example.com
+run402 billing buy-email-pack       --email user@example.com   # $5 / 10k emails (never expire)
+run402 billing auto-recharge <account_id> on --threshold 2000
+run402 billing balance <email-or-wallet>
+run402 billing history <email-or-wallet>
+```
+
+After subscribing you can create unlimited projects, deploy unlimited sites, fork apps — all free with your active tier. Only image generation ($0.03/image) is per-call.
+
+The server auto-detects the action: no tier or expired → subscribe; same tier active → renew; higher tier → upgrade (prorated refund); lower tier → downgrade (prorated refund if usage fits).
+
+## Resource limits
+
+| | Prototype | Hobby | Team |
+|---|---|---|---|
+| Lease | 7 days | 30 days | 30 days |
+| Storage | 250 MB | 1 GB | 10 GB |
+| API calls | 500K | 5M | 50M |
+| Functions | 5 | 25 | 100 |
+| Function timeout | 10s | 30s | 60s |
+| Function memory | 128 MB | 256 MB | 512 MB |
+| Secrets | 10 | 50 | 200 |
+| Scheduled fns | 1 / 15min | 3 / 5min | 10 / 1min |
+
+Project-level rate limit: **100 req/sec**. Exceeding returns 429 with `retry_after`. Each project has its own Postgres schema; cross-schema access is blocked.
+
+## Project lifecycle (~104-day soft delete)
+
+After lease expires, projects go through a state machine. The live data plane keeps serving the whole time — only the owner's control plane gets gated:
+
+| State | When | What happens |
+|-------|------|--------------|
+| `active` | — | Full read/write |
+| `past_due` | day 0 | Site, REST, email keep serving. Owner gets first email. |
+| `frozen` | +14d | Control plane (deploys, secrets, subdomain claims, function upload) returns 402 with `lifecycle_state` / `entered_state_at` / `next_transition_at`. Site still serves. Subdomain reserved so the brand can't be claimed by another wallet. |
+| `dormant` | +44d | Scheduled (cron) functions pause. |
+| `purged` | +104d | Cascade: schema dropped, Lambdas deleted, mailbox tombstoned. Subdomain becomes claimable 14 days later. |
+
+`run402 tier set …` at any point during grace reactivates the project and clears all timers in one transaction. Pinned projects bypass the state machine entirely.
+
+## Image generation
+
+```bash
+run402 image generate "a serif logo for a coffee shop" --aspect square --output logo.png
+```
+
+$0.03 per image. Aspects: `square`, `landscape`, `portrait`. Without `--output`, returns base64 in JSON.
+
+## AI helpers
+
+```bash
+run402 ai translate <id> "Hello world" --to es --context "marketing tagline"
+run402 ai moderate  <id> "<text>"
+run402 ai usage     <id>
+```
+
+Translation requires the AI Translation add-on on the project. Moderation is free.
+
+## Apps marketplace
+
+```bash
+run402 apps browse [--tag <tag>]
+run402 apps inspect <version_id>
+run402 apps fork    <version_id> my-clone --bootstrap '{"admin_email":"me@example.com"}'
+run402 apps publish <id> --description "…" --tags todo,demo --visibility public --fork-allowed
+run402 apps versions <id>
+run402 apps update   <id> <version_id> --description "…" --tags a,b
+run402 apps delete   <id> <version_id>
+```
+
+Forking clones schema + site + functions into a new project. If the source app has a `bootstrap` function, it runs automatically with the variables you pass via `--bootstrap`. The fork response includes `bootstrap_result` (the function's return value) or `bootstrap_error`. Use `apps inspect` to see what `bootstrap_variables` an app expects.
+
+## Service status (no auth, no setup)
+
+These work on a fresh install before `init` — useful for evaluating Run402 or distinguishing platform problems from your own:
+
+```bash
+run402 service status   # 24h/7d/30d uptime per capability, operator, deployment topology
+run402 service health   # per-dependency liveness (postgres, postgrest, s3, cloudfront)
+```
+
+Don't confuse with `run402 status` (your account's allowance, balance, tier, projects).
+
+## Send feedback
+
+```bash
+run402 message send "deploy-dir was magical, but the cdn wait-fresh timeout default felt too aggressive"
+```
+
+Free with active tier. The team reads every message.
+
+## Standard Workflow — zero to deployed
+
+```bash
+# 1. Set up (once per machine)
+run402 init
+run402 tier set prototype
+
+# 2. Provision the project — copy the anon_key from the response into your HTML before deploying.
+run402 projects provision --name my-app
+PROJECT=$(run402 status | jq -r '.active_project')
+
+# 3. Schema
+cat > setup.sql <<'EOF'
+CREATE TABLE IF NOT EXISTS items (
+  id serial PRIMARY KEY,
+  title text NOT NULL,
+  user_id uuid,
+  created_at timestamptz DEFAULT now()
+);
+EOF
+run402 projects sql $PROJECT --file setup.sql
+
+# 4. Authorization manifest
+cat > manifest.json <<'EOF'
+{ "version": "1",
+  "tables": [{ "name": "items", "expose": true, "policy": "user_owns_rows",
+               "owner_column": "user_id", "force_owner_on_insert": true }],
+  "views": [], "rpcs": [] }
+EOF
+run402 projects apply-expose $PROJECT --file manifest.json
+
+# 5. Deploy site + claim subdomain
+run402 sites deploy-dir ./dist
+run402 subdomains claim my-app
+
+# 6. Optional: a server function
+run402 functions deploy $PROJECT my-fn --file fn.ts
+```
+
+## Payment Handling
+
+Two payment rails work with the same wallet key:
+
+- **x402** (default): USDC on Base. Prototype = Base Sepolia testnet (free from faucet). Hobby/Team = Base mainnet.
+- **MPP**: pathUSD on Tempo Moderato. Prototype = testnet (instant faucet, no rate limit). Hobby/Team = Tempo mainnet.
+
+Switch rails via `run402 init mpp` instead of `run402 init`.
+
+The CLI handles all signing automatically — never ask the human for a private key or set up payment libraries by hand. When a paid call returns 402, the CLI parses the requirements and signs from the local allowance. If funds are short, you get a structured error and a `renew_url`.
+
+For real-money tiers, two paths to fund:
+
+- **Path A — fund the agent allowance**: human sends USDC on Base mainnet to the address from `run402 allowance export`. Agent pays Run402 autonomously via x402 from then on.
+- **Path B — Stripe credits**: `run402 billing create-email <human@email>` → `run402 billing tier-checkout hobby --email <human@email>` returns a checkout URL the human pays once.
+
+Suggest $10 to your human for two Hobby projects, or $20 for one Team plus renewal buffer.
+
+## Tips & Guardrails
+
+- **Provision before authoring HTML**. The `anon_key` is permanent and must be embedded in your frontend; write the HTML *after* `provision` returns it.
+- **Use the manifest for access control**, never raw `GRANT/REVOKE` (the SQL endpoint blocks those).
+- **`user_owns_rows` is the default for user-scoped data.** Reach for `public_read_write_UNRESTRICTED` only on intentionally-public tables (and pass `i_understand_this_is_unrestricted: true`).
+- **Make migrations idempotent** with `CREATE TABLE IF NOT EXISTS` and `DO`-block `ALTER TABLE` (see Database section).
+- **Use immutable URLs from `blob put`** — they're correct from the moment of upload, no `wait-fresh` needed.
+- **Don't bake unconditional faucet calls into deploy scripts** — they hit the rate limit and break already-funded flows.
+- **Per-project rate limit is 100 req/sec.** On 429, back off using `retry_after`.
+- **`run402 service status` works without auth.** Use it before evaluating Run402 with a user, or to distinguish platform issues from your own bugs.
+
+## Agent Allowance Setup
+
+The CLI manages a local agent allowance — a wallet key dedicated to paying Run402, stored at `~/.config/run402/allowance.json` (mode `0600`). You never touch the private key directly.
+
+```bash
+run402 allowance create               # generate a fresh allowance
+run402 allowance status               # address, network, funding state
+run402 allowance fund                 # request testnet USDC from the faucet
+run402 allowance balance              # USDC on mainnet + testnet + billing balance
+run402 allowance history              # ledger
+run402 allowance export               # print the address (NOT the private key)
+run402 allowance checkout --amount 5000000   # Stripe top-up to billing balance ($5)
+```
+
+Most agents only need `run402 init` once — it composes `create` + `fund` + `tier status` + `projects list`.
+
+Other allowance options:
+
+- **Coinbase AgentKit** — MPC wallet on Base with built-in x402.
+- **AgentPayy** — auto-bootstraps an MPC wallet on Base via Coinbase CDP.
+
+## Troubleshooting
+
+| You see | Likely cause / fix |
+|---|---|
+| `402 payment_required` on `tier set` | Allowance is empty. `run402 allowance fund` (testnet) or fund with real USDC. |
+| `402` with `lifecycle_state: frozen` | Project past lease + 14 days. `run402 tier set <tier>` reactivates instantly. |
+| `403 admin_required` | Tool is admin-only (e.g., `pin_project`). Project owners can't pin. |
+| Empty `[]` from `/rest/v1/items` for anon | Table not in manifest with `expose: true`. Run `run402 projects apply-expose`. |
+| `403 forbidden_function` calling an RPC | Function's not in the manifest's `rpcs[]`. Add `{ name, signature, grant_to: ["authenticated"] }`. |
+| `409 reserved` on subdomain claim | Original owner's grace period — subdomain held until +118 days from lease expiry. |
+| `429 rate_limited` | 100 req/sec project cap. Back off using `retry_after`. |
+| CDN serves old bytes | Use the immutable URL from the upload response, or `run402 cdn wait-fresh <url> --sha <hex>`. |
+| `422 relation already exists` on redeploy | Wrap migrations in `CREATE TABLE IF NOT EXISTS` + `DO`-block `ALTER TABLE`. |
+| `insufficient_funds` right after faucet | Wait for the faucet tx to confirm (~5s on Base Sepolia) before subscribing. |
+
+## Tools Reference
+
+This skill is the CLI — every action above is `run402 <verb>`. The full command reference (every flag, every subcommand) lives at <https://run402.com/llms-cli.txt>. Treat that file as canonical when this body is silent on detail.
+
+Top-level command groups:
 
 ```
-POST /message/v1    (SIWX auth, requires active tier)
-{ "message": "Hello from my agent!" }
+run402 init | status | message | service
+run402 allowance   | tier      | projects | sites      | subdomains
+run402 domains     | functions | secrets  | blob       | cdn
+run402 email       | sender-domain | auth | apps       | image
+run402 ai          | contracts | billing  | agent
 ```
 
-Delivered instantly via Telegram. Works with testnet money. Use to send feedback after building.
+Renewal: `run402 tier set <same-tier>` extends the lease in place and clears any grace-state timers. The CLI handles 402 negotiation automatically — call the same command again if a payment was just made.
 
----
+## Links
 
-## Pricing
-
-| Tier | Price | Lease | Storage | API Calls |
-|------|-------|-------|---------|-----------|
-| Prototype | Free (testnet) | 7 days | 250 MB | 500,000 |
-| Hobby | $5.00 | 30 days | 1 GB | 5,000,000 |
-| Team | $20.00 | 30 days | 10 GB | 50,000,000 |
-
-Site deployment: free with active tier.
-Image generation: $0.03/image.
-Rate limit: 100 req/s per project.
-
-Check pricing: `POST /projects/v1/quote` (free, no auth).
-
----
-
-## Auth Quick Reference
-
-| Auth Method | Header | Used For |
-|-------------|--------|----------|
-| x402 payment | (automatic via x402 client) | `POST /projects/v1`, `/deployments/v1`, `/generate-image/v1`, `/message/v1`, `/tiers/v1/:tier`, `/deploy/v1/:tier` |
-| service_key | `Authorization: Bearer {service_key}` | `/projects/v1/admin/:id/*`, `POST /subdomains/v1`, `DELETE /subdomains/v1/:name` |
-| apikey | `apikey: {anon_key or service_key or access_token}` | `/rest/v1/*`, `/auth/v1/*`, `/storage/v1/*` |
-
----
-
-## Error Responses
-
-| Code | Meaning | Action |
-|------|---------|--------|
-| 402 (payment) | Missing x402 payment header | Use fetchPaid or add payment |
-| 402 (quota) | API calls or storage exceeded | Renew project |
-| 403 (lease) | Project lease expired | Renew or create new project |
-| 429 | Rate limited (100 req/s) | Retry after `retry_after` seconds |
-
----
-
-## Make It Great
-
-Don't build generic apps. Build something your human will show off.
-
-- **Make it personal.** Ask their name. Use it in the subdomain (`tals-recipes.run402.com`), title, header.
-- **Make it multiplayer.** Two people using it together — shared lists, polls, games. They'll text the URL to a friend.
-- **Pre-seed with data.** Insert 5-10 realistic rows so it feels alive on first load. Empty apps feel like demos.
-- **Make it beautiful.** Dark background, clean typography, good spacing. CSS animations: cards fade in, items animate out, checkboxes bounce.
-- **Add a share button.** "Check out this app an AI just built for me → {url}". Make sharing effortless.
-- **Be original.** Use context about your human. Personalized > generic.
-
-### After building: send feedback
-
-Ask your human what they thought, then relay to Run402 developers via `/message/v1` (requires active tier). They read every message.
+- Full CLI reference: <https://run402.com/llms-cli.txt>
+- HTTP API reference: <https://run402.com/llms.txt>
+- Status: <https://api.run402.com/status>
+- Health: <https://api.run402.com/health>
+- npm: [`run402`](https://www.npmjs.com/package/run402) · [`@run402/sdk`](https://www.npmjs.com/package/@run402/sdk) · [`@run402/functions`](https://www.npmjs.com/package/@run402/functions) · [`run402-mcp`](https://www.npmjs.com/package/run402-mcp)
+- Homepage: <https://run402.com>

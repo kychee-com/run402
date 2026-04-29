@@ -1,6 +1,6 @@
 ---
 name: run402
-description: Provision Postgres + REST API + auth + content-addressed storage + serverless functions + email — paid with x402 USDC on Base. Prototype tier is free on testnet.
+description: Provision Postgres + REST API + auth + content-addressed storage + serverless functions + email — paid with x402 USDC on Base. Prototype tier is free on testnet. Use when the user asks to build a webapp, deploy a site, create a database, generate images, or mentions Run402.
 metadata:
   openclaw:
     emoji: "🐘"
@@ -10,125 +10,65 @@ metadata:
         - npx
     install:
       - kind: node
-        package: "run402"
-        bins: [run402]
+        package: "run402-mcp"
+        bins: [run402-mcp]
     primaryEnv: RUN402_API_BASE
 ---
 
 # Run402 — Postgres, storage & deploys for AI agents
 
-Run402 gives an agent a real Postgres database with REST API and user auth, content-addressed CDN storage, static site hosting, Node 22 serverless functions, email, image generation, and KMS-backed on-chain signing. One command provisions; payment happens automatically with x402 USDC on Base. **Prototype tier is free on testnet** — no real money, no human signup.
+Run402 gives an agent a real Postgres database with REST API and user auth, content-addressed CDN storage, static site hosting, Node 22 serverless functions, email, image generation, and KMS-backed on-chain signing. **Prototype tier is free on testnet** — no real money, no human signup. Payment happens automatically via x402 USDC on Base, MPP pathUSD on Tempo, or Stripe credits.
 
-Every example below is a CLI command. The CLI prints JSON to stdout, JSON errors to stderr, and exits 0 on success / 1 on failure — designed for shells, scripts, and agent loops.
+This skill assumes you're calling `run402-mcp` tools directly (Claude Desktop, Cursor, Cline, Claude Code). The body teaches you which tool to reach for and what the modern patterns are; full parameter schemas live in the MCP tool descriptions.
 
-## 30-second start
+## Quickstart
 
-```bash
-run402 init                                # one-shot: allowance + faucet + tier check
-run402 tier set prototype                  # FREE on testnet (verifies x402 setup)
-run402 projects provision --name my-app    # → anon_key, service_key, project_id
-run402 sites deploy-dir ./dist             # incremental upload of a directory
-run402 subdomains claim my-app             # → https://my-app.run402.com
-```
+Six tool calls, zero-to-deployed:
 
-That's a real Postgres database + a deployed static site, paid for autonomously with testnet USDC.
+1. **`init`** — set up the local allowance, request the testnet faucet, snapshot tier + projects.
+2. **`set_tier`** with `tier: "prototype"` — free on testnet; verifies x402 setup end-to-end.
+3. **`provision_postgres_project`** with `name` — returns `project_id`, `anon_key`, `service_key`. Embed `anon_key` in your HTML before deploying.
+4. **`run_sql`** with `sql: "CREATE TABLE …"` — set up your schema. Make migrations idempotent.
+5. **`apply_expose`** with a manifest — declare which tables are reachable via PostgREST. Tables are dark by default.
+6. **`deploy_site_dir`** with `dir` (or `deploy_site` with inline files) — incremental upload, only PUTs bytes the gateway doesn't already have. Returns a live URL plus auto-claimed subdomain on subsequent deploys.
 
-## How to think about it
-
-| You want to… | Reach for… |
-|---|---|
-| Set up a wallet from scratch | `run402 init` |
-| Make a database | `run402 projects provision` |
-| Run SQL on it | `run402 projects sql` |
-| Make a table reachable from the browser | `run402 projects apply-expose` |
-| Deploy a frontend from a directory | `run402 sites deploy-dir <path>` |
-| Stash a file with a paste-able CDN URL | `run402 blob put <file>` |
-| Run code on the server | `run402 functions deploy` |
-| Send email | `run402 email send` |
-| Sign on-chain | `run402 contracts call` |
-| One-call full-stack deploy | `run402 deploy --manifest app.json` |
-
-The active project is sticky — `run402 projects use <id>` makes it the default for every subsequent `<id>`-taking command. Most commands work without an explicit `<id>` once a project is active.
+Optional next: **`deploy_function`** for server logic, **`blob_put`** to host images/JS/CSS with paste-and-go URLs, **`create_mailbox` + `send_email`** for transactional mail.
 
 ## Project credentials
 
-After `provision`, two keys land in `~/.config/run402/projects.json`:
+After `provision_postgres_project`, two keys are saved automatically to `~/.config/run402/projects.json` and reused by every subsequent tool call:
 
-- **`anon_key`** — for the browser. Read-only by default; safe to embed in HTML. RLS still applies.
-- **`service_key`** — server-side admin. **Never embed in browser code.** CORS is intentionally open for x402 clients, so a leaked service_key is exploitable from any origin. Use only inside functions or when running CLI as the agent.
+- **`anon_key`** — read-only by default; safe in browser HTML. RLS still applies.
+- **`service_key`** — server-side admin. **Never embed in browser code.** CORS is intentionally open for x402 clients, so a leaked service_key is exploitable from any origin. Use only inside functions or when calling tools as the agent.
 
-Neither expires. Lease enforcement happens server-side.
+Neither key expires. Lease enforcement happens server-side. To inspect, call **`project_keys`**; to switch the active project for sticky-default tools, call **`project_use`**.
 
-```bash
-run402 projects keys <id>     # print the project's anon_key + service_key as JSON
-run402 projects info <id>     # tier, lease, schema slot, host, …
-```
+## The patterns
 
-## Deploying
+### Paste-and-go assets — content-addressed URLs with SRI
 
-### `deploy-dir` — the modern path
+When you upload a file with **`blob_put`**, the response is an `AssetRef`. The URL is content-addressed (`pr-<public_id>.run402.com/_blob/<key>-<8hex>.<ext>`), served through CloudFront, and never needs cache invalidation:
 
-`deploy-dir` walks a local directory, hashes each file client-side, and only PUTs bytes the gateway doesn't already have. Re-deploying an unchanged tree returns immediately with `bytes_uploaded: 0`.
+| Field on the response | Use it for |
+|---|---|
+| `cdn_url` | Drop straight into `src=` / `href=` in generated HTML |
+| `sri` | `sha256-<base64>` for `<script integrity="…">` if you build tags by hand |
+| `etag` | Strong `"sha256-<hex>"` ETag |
+| `cache_kind` | `immutable` / `mutable` / `private` |
 
-```bash
-run402 sites deploy-dir ./dist > result.json 2> events.log
-```
+`immutable: true` is the default — the gateway hashes the bytes client-side, returns a content-hashed URL, and the browser refuses execution on byte mismatch. No cache-invalidation choreography. Pass `immutable: false` only for very large uploads where you don't need a content-hashed URL or SRI.
 
-Skips `.git/`, `node_modules/`, `.DS_Store` automatically. Symlinks throw (no cycles).
+When you need to verify a deployed asset is fresh (e.g. you suspect cache staleness), call **`diagnose_public_url`** — it returns expected vs observed SHA, cache headers, invalidation status, and an actionable `hint`. For mutable URLs only, **`wait_for_cdn_freshness`** polls until the CDN serves the expected SHA. **Don't call `wait_for_cdn_freshness` on immutable URLs** — they're correct from the moment of upload.
 
-`stderr` streams progress events — one JSON object per line:
+### Dark-by-default tables + the expose manifest
 
-| phase | When fired | Extra fields |
-|-------|------------|--------------|
-| `plan`   | After the planning request | `manifest_size` (file count) |
-| `upload` | After each missing file finishes PUTing | `file`, `sha256`, `done`, `total` |
-| `commit` | Just before commit | — |
-| `poll`   | Per server-side copy poll | `status`, `elapsed_ms` |
+**Tables you create are dark by default.** Until your manifest declares a table with `expose: true`, it's invisible to anon and authenticated callers via `/rest/v1/*`. This eliminates the "agent created a table, forgot to set RLS, data leaked" footgun. The manifest is the single source of truth for what's reachable.
 
-Pass `--quiet` to suppress events; the final result envelope still goes to stdout.
+JSON Schema: <https://run402.com/schemas/manifest.v1.json>. Set `$schema` on your manifest object and any editor gives autocomplete.
 
-### `deploy` — one-call full stack
+#### Preferred: ship `manifest.json` in your bundle
 
-For a database + migrations + manifest + secrets + functions + site + subdomain in one command, write a manifest and run:
-
-```bash
-run402 deploy --manifest app.json
-```
-
-The manifest looks like this — note the `manifest.json` entry inside `files[]`:
-
-```json
-{
-  "project_id": "prj_…",
-  "migrations_file": "setup.sql",
-  "secrets": [{ "key": "OPENAI_API_KEY", "value": "sk-…" }],
-  "functions": [{
-    "name": "my-fn",
-    "code": "export default async (req) => new Response('ok')",
-    "config": { "timeout": 30, "memory": 256 }
-  }],
-  "files": [
-    { "file": "manifest.json", "data": "{\"$schema\":\"https://run402.com/schemas/manifest.v1.json\",\"version\":\"1\",\"tables\":[{\"name\":\"items\",\"expose\":true,\"policy\":\"user_owns_rows\",\"owner_column\":\"user_id\",\"force_owner_on_insert\":true}]}" },
-    { "file": "index.html", "data": "<!doctype html>…" },
-    { "file": "logo.png", "data": "iVBORw0…", "encoding": "base64" }
-  ],
-  "subdomain": "my-app"
-}
-```
-
-The `manifest.json` entry is **auth-as-SDLC** — your authorization travels with your code. The gateway reads it, validates it against the migration SQL, applies it, and **strips it from `files[]` before the site deploys**, so it's never publicly reachable on your subdomain. The deploy response includes `manifest_applied: true` on success. If the manifest references a table the migration doesn't create, the deploy is rejected with HTTP 400 and a structured `errors` array listing every violation.
-
-Provision first (`run402 projects provision`) so you have the `anon_key` to embed in your HTML before deploying.
-
-## Authorization — the expose manifest
-
-**Tables you create are dark by default.** Until your manifest declares a table with `expose: true`, it's invisible to anon and authenticated callers. This eliminates the "agent forgot RLS, data leaked" footgun. The manifest is the single source of truth for what's reachable via `/rest/v1/*`.
-
-JSON Schema: <https://run402.com/schemas/manifest.v1.json>. Set `$schema` on your manifest file and your editor gets autocomplete for free.
-
-### Preferred: ship `manifest.json` in your bundle
-
-Authorization travels with your code. Put a file named `manifest.json` in the bundle's `files[]` and the gateway reads it, validates it against your migration SQL, applies it, and **strips it from `files[]` before the site deploys** — so it's never publicly reachable on your subdomain. The deploy response includes `manifest_applied: true` on success.
+Authorization travels with your code. When you call **`bundle_deploy`**, include a file named `manifest.json` in `files[]` and the gateway reads it, validates it against the migration SQL, applies it, and **strips it from `files[]` before the site deploys** — so it's never publicly reachable on your subdomain. The deploy response includes `manifest_applied: true` on success.
 
 ```json
 {
@@ -148,22 +88,16 @@ Authorization travels with your code. Put a file named `manifest.json` in the bu
 }
 ```
 
-If the manifest references a table the migration doesn't create, the deploy is rejected with HTTP 400 and a structured `errors` array listing **every** violation (not just the first).
+If the manifest references a table the migration doesn't create, the deploy is rejected with HTTP 400 and a structured `errors` array listing every violation.
 
-### Imperative escape hatch: `apply-expose`
+#### Imperative: `apply_expose` and `get_expose`
 
 For ad-hoc changes outside a deploy — same JSON shape, no bundle:
 
-```bash
-run402 projects apply-expose <id> --file manifest.json
-run402 projects get-expose   <id>     # source: "applied" | "introspected"
-```
+- **`apply_expose`** with `project_id` + `manifest` — applies the manifest. Convergent: applying the same manifest twice is a no-op; items removed between applies have their policies, grants, triggers, and views dropped.
+- **`get_expose`** with `project_id` — returns the live state. `source: "applied"` means it came from a prior apply (or a bundled `manifest.json`); `source: "introspected"` means no manifest has ever been applied and the response was reconstructed from live DB state.
 
-`get-expose` returns the live state. `source: "applied"` means it came from a prior `apply-expose` (or a bundled `manifest.json`); `"introspected"` means no manifest has ever been applied and the response was reconstructed from live DB state.
-
-**Convergent**: applying the same manifest twice is a no-op. Items removed between applies have their policies, grants, triggers, and views dropped. Always include everything you want exposed.
-
-### Built-in policies
+#### Built-in policies
 
 | Policy | Allows |
 |---|---|
@@ -174,102 +108,24 @@ run402 projects get-expose   <id>     # source: "applied" | "introspected"
 
 Views always run with `security_invoker=true` — they inherit the underlying table's RLS, so they can't accidentally leak hidden columns. RPCs are not exposed unless listed in `rpcs[]` (a database event trigger revokes PUBLIC EXECUTE on every newly-created function).
 
-## Storage — paste-and-go assets
+### Slick deploys — `deploy_site_dir` + plan/commit
 
-`run402 blob put` returns an `AssetRef`. The URL is content-addressed (`pr-<public_id>.run402.com/_blob/<key>-<8hex>.<ext>`), served through CloudFront, and never needs cache invalidation:
+Prefer **`deploy_site_dir`** over `deploy_site` whenever you have a directory path. It walks the directory, hashes each file client-side, asks the gateway _which_ bytes it doesn't already have, and only uploads those. Re-deploying an unchanged tree returns immediately with `bytes_uploaded: 0`.
 
-```bash
-run402 blob put ./logo.png    --json
-run402 blob put ./app.js      --json
-run402 blob put ./styles.css  --json
-```
+The response's `content` array includes a fenced `json` block of buffered progress events you can `JSON.parse`:
 
-Each response includes:
+| phase | When fired | Extra |
+|-------|------------|------|
+| `plan`   | After the planning request | `manifest_size` |
+| `upload` | After each missing file finishes PUTing | `file`, `sha256`, `done`, `total` |
+| `commit` | Just before commit | — |
+| `poll`   | Per server-side copy poll | `status`, `elapsed_ms` |
 
-| Field | Use |
-|---|---|
-| `cdn_url` | The content-addressed URL — paste straight into `src=` / `href=` |
-| `sri` | `sha256-<base64>` for `<script integrity="…">` if you build tags by hand |
-| `etag` | Strong `"sha256-<hex>"` ETag |
-| `cache_kind` | `immutable` / `mutable` / `private` |
+For one-call full-stack deploys (database + migrations + manifest + secrets + functions + site + subdomain), use **`bundle_deploy`** with a manifest. Include `manifest.json` in `files[]` for auth-as-SDLC.
 
-Immutable upload is the default since v1.45 — the SDK computes the SHA-256 client-side and pairs the URL with SRI. The browser refuses execution on byte mismatch. No invalidation choreography.
+### In-function helpers — `db(req)` vs `adminDb()`
 
-### List, fetch, remove, sign
-
-```bash
-run402 blob ls --prefix images/
-run402 blob get images/logo.png --output /tmp/logo.png
-run402 blob rm images/old.png
-run402 blob sign secrets/report.pdf --ttl 3600    # presigned URL for private blobs
-```
-
-### Diagnose a stale CDN
-
-```bash
-run402 blob diagnose <url>                                  # exit 0 if fresh, 1 if stale
-run402 cdn wait-fresh <url> --sha <hex> --timeout 120       # poll until fresh
-```
-
-`diagnose` is shell-loop friendly: `until run402 blob diagnose <url>; do sleep 1; done` blocks until the CDN catches up. Vantage is single-region (us-east-1) — other PoPs may differ. **Don't call `wait-fresh` on immutable URLs** — they're correct from the moment of upload.
-
-## Database
-
-```bash
-run402 projects sql <id> "CREATE TABLE items (id serial PRIMARY KEY, title text NOT NULL, user_id uuid)"
-run402 projects sql <id> --file migrations.sql
-run402 projects sql <id> "SELECT * FROM items WHERE id = \$1" --params '[42]'
-
-run402 projects rest <id> items "select=id,title&order=id.desc&limit=10"
-run402 projects schema <id>          # introspect tables, columns, RLS
-run402 projects usage  <id>          # API calls, storage, lease expiry
-```
-
-### Idempotent migrations
-
-`CREATE TABLE IF NOT EXISTS` only handles "already exists" errors — it won't add new columns to an existing table. For evolving schemas, wrap `ALTER TABLE` in a `DO` block:
-
-```sql
-CREATE TABLE IF NOT EXISTS items (id serial PRIMARY KEY, title text NOT NULL);
-DO $$ BEGIN
-  ALTER TABLE items ADD COLUMN priority int DEFAULT 0;
-EXCEPTION WHEN duplicate_column THEN NULL;
-END $$;
-```
-
-This pattern is safe to re-run on every deploy.
-
-### SQL guardrails
-
-The SQL endpoint blocks: `CREATE EXTENSION`, `COPY ... PROGRAM`, `ALTER SYSTEM`, `SET search_path`, `CREATE/DROP SCHEMA`, `GRANT/REVOKE`, `CREATE/DROP ROLE`. Table and sequence permissions are granted automatically — use the expose manifest for access control instead of `GRANT`.
-
-## Functions
-
-Node 22 runtime. Handler: `export default async (req: Request) => Response`.
-
-```bash
-run402 functions deploy <id> my-fn --file fn.ts \
-  --timeout 30 --memory 256 \
-  --schedule "*/15 * * * *" \
-  --deps "stripe,zod@^3,date-fns@3.6.0"
-
-run402 functions invoke <id> my-fn --body '{"hello":"world"}'
-run402 functions logs   <id> my-fn --tail 100 --follow
-run402 functions update <id> my-fn --schedule "0 */6 * * *"
-run402 functions list   <id>
-run402 functions delete <id> my-fn
-```
-
-`--deps` accepts npm specs: bare names (`lodash`) resolve to the latest version at deploy time, pinned (`lodash@4.17.21`) and ranges (`date-fns@^3.0.0`) are honored verbatim. Max 30 entries, 200 chars each. **Native binary modules (`sharp`, `canvas`, native bcrypt, etc.) are rejected** — pure JS only. Don't list `@run402/functions` (auto-bundled).
-
-The deploy response surfaces:
-- `runtime_version` — the bundled `@run402/functions` version
-- `deps_resolved` — `{ name: version }` for every package the gateway pinned, including transitives
-- `warnings` — non-fatal notes (e.g. when a bare spec resolved to a version that's later than what's typical)
-
-### Inside the function — `@run402/functions`
-
-The one place to write code, not commands. Built-in helpers are auto-bundled:
+Inside a deployed function, import from `@run402/functions`. Two distinct DB clients keep RLS clean:
 
 ```ts
 import { db, adminDb, getUser, email, ai } from "@run402/functions";
@@ -278,7 +134,7 @@ export default async (req: Request) => {
   const user = await getUser(req);
   if (!user) return new Response("unauthorized", { status: 401 });
 
-  // Caller-context — Authorization header is forwarded; RLS evaluates against the caller's role.
+  // Caller-context — Authorization header forwarded; RLS evaluates against the caller's role.
   const mine = await db(req).from("items").select("*").eq("user_id", user.id);
 
   // Bypass RLS — only when the function acts on behalf of the platform.
@@ -292,162 +148,151 @@ export default async (req: Request) => {
 };
 ```
 
-- **`db(req)`** — caller-context. Forwards Authorization header. RLS applies. Default choice.
-- **`adminDb()`** — bypass RLS. Use only for audit logs, cron cleanup, webhook handlers, platform-authored writes.
-- **`adminDb().sql(query, params?)`** — raw parameterized SQL. Always bypass.
+- **`db(req)`** — caller-context. Forwards the Authorization header. RLS applies. Default choice.
+- **`adminDb()`** — bypasses RLS. Use only for audit logs, cron cleanup, webhook handlers, platform-authored writes.
+- **`adminDb().sql(query, params?)`** — raw parameterized SQL, always bypasses RLS.
 
 Fluent surface on both `db(req).from(t)` and `adminDb().from(t)`:
 - Reads: `.select()`, `.eq()`, `.neq()`, `.gt()`, `.lt()`, `.gte()`, `.lte()`, `.like()`, `.ilike()`, `.in()`, `.order()`, `.limit()`, `.offset()`
-- Writes: `.insert(obj | obj[])`, `.update(obj)`, `.delete()` — return arrays of affected rows
+- Writes: `.insert()`, `.update()`, `.delete()` — return arrays of affected rows
 - Column narrowing on writes: `.insert({…}).select("id, title")`
 
-For TypeScript autocomplete in your editor: `npm install @run402/functions` in your project. Also works at build time for static-site generation if you set `RUN402_SERVICE_KEY` + `RUN402_PROJECT_ID` in `.env`.
+For TypeScript autocomplete, `npm install @run402/functions` in your editor's project. Same package also works at build time for static-site generation if you set `RUN402_SERVICE_KEY` + `RUN402_PROJECT_ID` in `.env`.
 
-### Calling a function from the browser
+## Tools by category
 
-```js
-const res = await fetch("https://api.run402.com/functions/v1/my-fn", {
-  method: "POST",
-  headers: {
-    apikey: ANON_KEY,
-    Authorization: "Bearer " + session.access_token,   // optional, for authenticated calls
-    "Content-Type": "application/json",
-  },
-  body: JSON.stringify({ hello: "world" }),
-});
+### Database
+
+- **`provision_postgres_project`** — provision a new database. Auto-handles x402 payment.
+- **`run_sql`** — execute SQL (DDL or queries). Service-key-authenticated.
+- **`rest_query`** — query/mutate via PostgREST. Pass `key_type: "anon"` (default) for RLS-applied access, `"service"` to bypass.
+- **`apply_expose`** / **`get_expose`** — declarative authorization manifest (see "expose manifest" above).
+- **`get_schema`** — introspect tables, columns, types, constraints, RLS policies.
+- **`get_usage`** — per-project usage report (API calls, storage, lease expiry).
+- **`promote_user`** / **`demote_user`** — manage `project_admin` role on a project user.
+- **`delete_project`** — cascade purge. Irreversible.
+
+### Blob storage (content-addressed CDN)
+
+- **`blob_put`** — upload (any size, up to 5 TiB). Returns an `AssetRef` with `cdn_url`, `sri`, `etag`, `cache_kind`.
+- **`blob_get`** — download to a local file (no context-window bloat).
+- **`blob_ls`** — keyset-paginated list with prefix filter.
+- **`blob_rm`** — delete.
+- **`blob_sign`** — time-boxed presigned GET URL for a private blob.
+- **`diagnose_public_url`** — live CDN state for a public URL — expected vs observed SHA, cache headers, invalidation status.
+- **`wait_for_cdn_freshness`** — poll a mutable URL until it serves the expected SHA-256.
+
+### Sites & subdomains
+
+- **`deploy_site`** — deploy from inline file bytes.
+- **`deploy_site_dir`** — deploy from a local directory. Plan/commit transport — only uploads bytes the gateway doesn't have.
+- **`get_deployment`** — fetch deployment status and URL.
+- **`claim_subdomain`** — claim `<name>.run402.com` (idempotent; auto-reassigns to latest deployment on subsequent deploys, no re-claim needed).
+- **`list_subdomains`** / **`delete_subdomain`** — manage subdomains.
+- **`add_custom_domain`** / **`list_custom_domains`** / **`check_domain_status`** / **`remove_custom_domain`** — point your own domain at a Run402 subdomain.
+- **`bundle_deploy`** — one-call full-stack deploy with auth-as-SDLC manifest in `files[]`.
+
+### Functions & secrets
+
+- **`deploy_function`** — deploy a Node 22 serverless function. Cron-schedulable via `schedule`. Pass `deps` as npm specs (bare names → latest at deploy time, pinned `lodash@4.17.21` or ranges `date-fns@^3.0.0` honored verbatim, max 30 entries / 200 chars each, native binaries rejected). Response surfaces `runtime_version`, `deps_resolved`, `warnings`.
+- **`invoke_function`** — invoke for testing.
+- **`get_function_logs`** — recent logs (CloudWatch). Use `since` for incremental polling.
+- **`update_function`** — change schedule / timeout / memory without redeploying code.
+- **`list_functions`** / **`delete_function`** — list / remove.
+- **`set_secret`** / **`list_secrets`** / **`delete_secret`** — `process.env` secrets injected into every function. `list_secrets` returns keys with a `value_hash` (8 hex chars of SHA-256) for verification.
+
+Scheduled function limits per tier: prototype 1 / 15 min, hobby 3 / 5 min, team 10 / 1 min.
+
+### Auth & email
+
+- **`request_magic_link`** / **`verify_magic_link`** — passwordless login. Tokens single-use, 15-min TTL, 5/email/hour rate limit.
+- **`set_user_password`** — change, reset, or set a user's password.
+- **`auth_settings`** — toggle `allow_password_set` for passwordless users.
+- **`create_mailbox`** / **`get_mailbox`** / **`delete_mailbox`** — per-project mailbox at `<slug>@mail.run402.com`.
+- **`send_email`** — template (`project_invite`, `magic_link`, `notification`) or raw HTML. Single recipient.
+- **`list_emails`** / **`get_email`** / **`get_email_raw`** — read messages. `get_email_raw` returns RFC-822 bytes for DKIM / zk-email verification.
+- **`register_mailbox_webhook`** / **`list_mailbox_webhooks`** / **`get_mailbox_webhook`** / **`update_mailbox_webhook`** / **`delete_mailbox_webhook`** — email-event webhooks (delivery, bounced, complained, reply_received).
+- **`register_sender_domain`** / **`sender_domain_status`** / **`remove_sender_domain`** — send from your own domain (DKIM verified).
+- **`enable_sender_domain_inbound`** / **`disable_sender_domain_inbound`** — receive replies on your custom sender domain.
+
+Tier rate limits: prototype 10/day, hobby 50/day, team 500/day. Unique recipients per lease: 25 / 200 / 1000. Google OAuth is on for all projects with zero config — `http://localhost:*` and any claimed subdomain are allowed redirect origins.
+
+### AI helpers
+
+- **`generate_image`** — text-to-PNG via x402 ($0.03/image). Aspects: `square`, `landscape`, `portrait`.
+- **`ai_translate`** — translate text. Metered per project (requires AI Translation add-on).
+- **`ai_moderate`** — moderate text. Free.
+- **`ai_usage`** — translation quota.
+
+### Apps marketplace
+
+- **`browse_apps`** — browse public forkable apps.
+- **`get_app`** — inspect including expected `bootstrap_variables`.
+- **`fork_app`** — clone schema + site + functions into a new project. Runs the app's `bootstrap` function with provided variables.
+- **`publish_app`** — publish a project as a forkable app.
+- **`list_versions`** / **`update_version`** / **`delete_version`** — manage published versions.
+
+### Tier & billing
+
+- **`set_tier`** — subscribe / renew / upgrade. Auto-detects action. x402 payment.
+- **`tier_status`** — current tier + lease.
+- **`get_quote`** — pricing (free, no auth).
+- **`tier_checkout`** — Stripe checkout (alternative to x402).
+- **`create_email_billing_account`** / **`link_wallet_to_account`** — email-based accounts; hybrid Stripe + x402.
+- **`billing_history`** — ledger.
+- **`buy_email_pack`** — $5 / 10,000 emails (never expire).
+- **`set_auto_recharge`** — auto-buy email packs when credits run low.
+- **`create_checkout`** — Stripe top-up to billing balance.
+
+### KMS contract wallets (on-chain signing)
+
+For agents that need to sign Ethereum transactions. Private keys never leave AWS KMS. **$0.04/day rental + $0.000005/call.** Wallet creation requires $1.20 cash credit (30 days prepaid). **Non-custodial.**
+
+- **`provision_contract_wallet`** — `chain: "base-mainnet"` or `"base-sepolia"`. Optional `recovery_address`.
+- **`get_contract_wallet`** / **`list_contract_wallets`** — metadata + live balance + USD value.
+- **`set_recovery_address`** / **`set_low_balance_alert`** — optional safety nets.
+- **`contract_call`** — submit a write call (chain gas at-cost + KMS sign fee). Idempotent on `idempotency_key`.
+- **`contract_read`** — read-only call (free).
+- **`get_contract_call_status`** — lifecycle, gas, receipt.
+- **`drain_contract_wallet`** — drain native balance (works on suspended wallets — the safety valve).
+- **`delete_contract_wallet`** — schedule KMS key deletion (refused if balance ≥ dust).
+
+### Allowance & account
+
+- **`init`** — one-shot setup: allowance + faucet + tier check + project list.
+- **`status`** — full account snapshot.
+- **`allowance_status`** / **`allowance_create`** / **`allowance_export`** — local allowance management.
+- **`request_faucet`** — testnet USDC.
+- **`check_balance`** — USDC for an allowance address.
+- **`list_projects`** — active projects for a wallet.
+- **`pin_project`** — pin a project (admin only — bypasses lifecycle state machine).
+- **`project_info`** / **`project_keys`** / **`project_use`** — inspect / set the active project.
+- **`send_message`** / **`set_agent_contact`** — send feedback to the Run402 team; register agent contact info.
+
+### Service status (no auth, no setup)
+
+- **`service_status`** — public availability report (24h/7d/30d uptime per capability).
+- **`service_health`** — liveness probe with per-dependency results.
+
+These work before `init` — useful for evaluating Run402 or distinguishing platform problems from your own.
+
+## Idempotent migrations
+
+`CREATE TABLE IF NOT EXISTS` only handles "already exists" — it won't add new columns. For evolving schemas, wrap `ALTER TABLE` in a `DO` block:
+
+```sql
+CREATE TABLE IF NOT EXISTS items (id serial PRIMARY KEY, title text NOT NULL);
+DO $$ BEGIN
+  ALTER TABLE items ADD COLUMN priority int DEFAULT 0;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
 ```
 
-### Scheduled functions
+Safe to re-run on every deploy.
 
-Pass a 5-field cron expression. To remove a schedule: `--schedule-remove`. Tier limits:
+## SQL guardrails
 
-| Tier | Max scheduled | Min interval |
-|------|---------------|--------------|
-| Prototype | 1 | 15 min |
-| Hobby | 3 | 5 min |
-| Team | 10 | 1 min |
-
-## Secrets
-
-Injected as `process.env.<KEY>` inside every function. Values are write-only — `list` returns keys with a `value_hash` (8 hex chars of SHA-256) so you can verify you set the right value.
-
-```bash
-run402 secrets set    <id> STRIPE_KEY sk_live_…
-run402 secrets set    <id> JWT_PRIVATE --file ./private.pem
-run402 secrets list   <id>
-run402 secrets delete <id> STALE_KEY
-```
-
-## Email
-
-One mailbox per project at `<slug>@mail.run402.com`. Optionally bring your own domain.
-
-```bash
-run402 email create my-app                          # idempotent
-run402 email send --to user@example.com \
-  --template notification \
-  --var project_name="My App" --var message="Hello"
-
-run402 email send --to user@example.com \
-  --subject "Welcome" --html '<h1>Hi</h1>' --from-name "My App"
-
-run402 email list
-run402 email get <message_id>
-run402 email get-raw <message_id> --output msg.eml   # raw RFC-822 for DKIM / zk-email
-```
-
-Templates: `project_invite` (`project_name`, `invite_url`), `magic_link` (`project_name`, `link_url`, `expires_in`), `notification` (`project_name`, `message` ≤ 500 chars).
-
-Tier rate limits: prototype 10/day, hobby 50/day, team 500/day. Unique recipients per lease: 25 / 200 / 1000.
-
-### Webhooks
-
-```bash
-run402 email webhooks register --url https://… --events delivery,bounced,reply_received
-run402 email webhooks list
-run402 email webhooks update <id> --events delivery,bounced,complained,reply_received
-run402 email webhooks delete <id>
-```
-
-### Custom sender domain
-
-```bash
-run402 sender-domain register example.com         # → DKIM CNAMEs to add to DNS
-run402 sender-domain status                       # poll until verified
-run402 sender-domain inbound-enable example.com   # → MX record (opt-in)
-```
-
-## User auth
-
-Two methods: passwords and Google OAuth. Google is on for all projects with **zero config** — `http://localhost:*` and any claimed subdomain are allowed redirect origins automatically.
-
-```bash
-run402 auth magic-link --email user@example.com --redirect https://my-app.run402.com/cb
-run402 auth verify --token <token>                       # → access_token + refresh_token
-run402 auth set-password --token <bearer> --new <pwd>    # change | reset | set
-run402 auth providers
-```
-
-Magic-link tokens are single-use, expire in 15 min, rate-limited 5/email/hour. The `access_token` works as `apikey` for user-scoped REST calls subject to RLS.
-
-For browser-side flows (PKCE, Google OAuth, refresh-token rotation), see <https://run402.com/llms-cli.txt>.
-
-## Subdomains and custom domains
-
-```bash
-run402 subdomains claim my-app                    # → https://my-app.run402.com
-run402 subdomains list
-run402 subdomains delete my-app
-
-run402 domains add example.com my-app             # → DNS records to set
-run402 domains status example.com                 # poll until active
-run402 domains list
-run402 domains delete example.com
-```
-
-**Subdomain auto-reassignment**: claim once. Every subsequent `run402 sites deploy-dir` to the same project automatically points the subdomain at the new deployment. The deploy response includes `subdomain_urls` showing what got reassigned. No re-claim needed.
-
-## On-chain — KMS contract wallets
-
-For agents that need to sign Ethereum transactions. Private keys never leave AWS KMS — there is no export, ever. **$0.04/day rental + $0.000005/call.** Wallet creation requires $1.20 in cash credit (30 days prepaid). **Non-custodial** — see <https://run402.com/humans/terms.html#non-custodial-kms-wallets>.
-
-```bash
-run402 contracts provision-wallet --chain base-mainnet [--recovery-address 0x…]
-run402 contracts list-wallets
-run402 contracts get-wallet <wallet_id>          # metadata + live balance + USD value
-
-run402 contracts call --wallet <id> --to 0x… \
-  --abi @abi.json --fn transfer --args '["0x…", "1000000"]' \
-  [--value-wei 0] [--idempotency-key <k>]
-
-run402 contracts read --chain base-mainnet \
-  --to 0x… --abi @abi.json --fn balanceOf --args '["0x…"]'
-
-run402 contracts status <call_id>
-run402 contracts drain  <wallet_id> --to 0x… --confirm     # safety valve (works on suspended)
-run402 contracts delete <wallet_id> --confirm              # 7-day KMS deletion window
-```
-
-## Tier and billing
-
-```bash
-run402 tier set prototype     # FREE on testnet (verifies x402 setup)
-run402 tier set hobby         # $5 / 30 days
-run402 tier set team          # $20 / 30 days
-run402 tier status
-
-# Pay with Stripe instead of x402
-run402 billing create-email user@example.com
-run402 billing tier-checkout hobby --email user@example.com
-run402 billing buy-email-pack       --email user@example.com   # $5 / 10k emails (never expire)
-run402 billing auto-recharge <account_id> on --threshold 2000
-run402 billing balance <email-or-wallet>
-run402 billing history <email-or-wallet>
-```
-
-After subscribing you can create unlimited projects, deploy unlimited sites, fork apps — all free with your active tier. Only image generation ($0.03/image) is per-call.
-
-The server auto-detects the action: no tier or expired → subscribe; same tier active → renew; higher tier → upgrade (prorated refund); lower tier → downgrade (prorated refund if usage fits).
+The SQL endpoint blocks: `CREATE EXTENSION`, `COPY ... PROGRAM`, `ALTER SYSTEM`, `SET search_path`, `CREATE/DROP SCHEMA`, `GRANT/REVOKE`, `CREATE/DROP ROLE`. Table and sequence permissions are granted automatically — use the expose manifest for access control instead of `GRANT`.
 
 ## Resource limits
 
@@ -462,7 +307,7 @@ The server auto-detects the action: no tier or expired → subscribe; same tier 
 | Secrets | 10 | 50 | 200 |
 | Scheduled fns | 1 / 15min | 3 / 5min | 10 / 1min |
 
-Project-level rate limit: **100 req/sec**. Exceeding returns 429 with `retry_after`. Each project has its own Postgres schema; cross-schema access is blocked.
+Project rate limit: **100 req/sec**. Exceeding returns 429 with `retry_after`. Each project runs in its own Postgres schema; cross-schema access is blocked.
 
 ## Project lifecycle (~104-day soft delete)
 
@@ -473,148 +318,64 @@ After lease expires, projects go through a state machine. The live data plane ke
 | `active` | — | Full read/write |
 | `past_due` | day 0 | Site, REST, email keep serving. Owner gets first email. |
 | `frozen` | +14d | Control plane (deploys, secrets, subdomain claims, function upload) returns 402 with `lifecycle_state` / `entered_state_at` / `next_transition_at`. Site still serves. Subdomain reserved so the brand can't be claimed by another wallet. |
-| `dormant` | +44d | Scheduled (cron) functions pause. |
+| `dormant` | +44d | Scheduled functions pause. |
 | `purged` | +104d | Cascade: schema dropped, Lambdas deleted, mailbox tombstoned. Subdomain becomes claimable 14 days later. |
 
-`run402 tier set …` at any point during grace reactivates the project and clears all timers in one transaction. Pinned projects bypass the state machine entirely.
+Calling **`set_tier`** during grace reactivates the project and clears all timers in one transaction. Pinned projects bypass the state machine entirely.
 
-## Image generation
+## Standard Workflow
 
-```bash
-run402 image generate "a serif logo for a coffee shop" --aspect square --output logo.png
+```
+1. init                                                    → allowance + faucet
+2. set_tier(tier: "prototype")                             → free on testnet
+3. provision_postgres_project(name: "my-app")              → keys + project_id
+4. run_sql(project_id, sql: "CREATE TABLE …")              → schema
+5. apply_expose(project_id, manifest: {…})                 → declare reachability
+6. deploy_site_dir(project, dir: "./dist")                 → live URL
+7. claim_subdomain(project_id, name: "my-app")             → my-app.run402.com
+   (optional) deploy_function(project_id, name, code, …)
+   (optional) blob_put(project_id, key, content/local_path) for assets
 ```
 
-$0.03 per image. Aspects: `square`, `landscape`, `portrait`. Without `--output`, returns base64 in JSON.
-
-## AI helpers
-
-```bash
-run402 ai translate <id> "Hello world" --to es --context "marketing tagline"
-run402 ai moderate  <id> "<text>"
-run402 ai usage     <id>
-```
-
-Translation requires the AI Translation add-on on the project. Moderation is free.
-
-## Apps marketplace
-
-```bash
-run402 apps browse [--tag <tag>]
-run402 apps inspect <version_id>
-run402 apps fork    <version_id> my-clone --bootstrap '{"admin_email":"me@example.com"}'
-run402 apps publish <id> --description "…" --tags todo,demo --visibility public --fork-allowed
-run402 apps versions <id>
-run402 apps update   <id> <version_id> --description "…" --tags a,b
-run402 apps delete   <id> <version_id>
-```
-
-Forking clones schema + site + functions into a new project. If the source app has a `bootstrap` function, it runs automatically with the variables you pass via `--bootstrap`. The fork response includes `bootstrap_result` (the function's return value) or `bootstrap_error`. Use `apps inspect` to see what `bootstrap_variables` an app expects.
-
-## Service status (no auth, no setup)
-
-These work on a fresh install before `init` — useful for evaluating Run402 or distinguishing platform problems from your own:
-
-```bash
-run402 service status   # 24h/7d/30d uptime per capability, operator, deployment topology
-run402 service health   # per-dependency liveness (postgres, postgrest, s3, cloudfront)
-```
-
-Don't confuse with `run402 status` (your account's allowance, balance, tier, projects).
-
-## Send feedback
-
-```bash
-run402 message send "deploy-dir was magical, but the cdn wait-fresh timeout default felt too aggressive"
-```
-
-Free with active tier. The team reads every message.
-
-## Standard Workflow — zero to deployed
-
-```bash
-# 1. Set up (once per machine)
-run402 init
-run402 tier set prototype
-
-# 2. Provision the project — copy the anon_key from the response into your HTML before deploying.
-run402 projects provision --name my-app
-PROJECT=$(run402 status | jq -r '.active_project')
-
-# 3. Schema
-cat > setup.sql <<'EOF'
-CREATE TABLE IF NOT EXISTS items (
-  id serial PRIMARY KEY,
-  title text NOT NULL,
-  user_id uuid,
-  created_at timestamptz DEFAULT now()
-);
-EOF
-run402 projects sql $PROJECT --file setup.sql
-
-# 4. Authorization manifest
-cat > manifest.json <<'EOF'
-{ "version": "1",
-  "tables": [{ "name": "items", "expose": true, "policy": "user_owns_rows",
-               "owner_column": "user_id", "force_owner_on_insert": true }],
-  "views": [], "rpcs": [] }
-EOF
-run402 projects apply-expose $PROJECT --file manifest.json
-
-# 5. Deploy site + claim subdomain
-run402 sites deploy-dir ./dist
-run402 subdomains claim my-app
-
-# 6. Optional: a server function
-run402 functions deploy $PROJECT my-fn --file fn.ts
-```
+Provision before authoring HTML — the `anon_key` is permanent and you embed it in your frontend.
 
 ## Payment Handling
 
 Two payment rails work with the same wallet key:
 
-- **x402** (default): USDC on Base. Prototype = Base Sepolia testnet (free from faucet). Hobby/Team = Base mainnet.
-- **MPP**: pathUSD on Tempo Moderato. Prototype = testnet (instant faucet, no rate limit). Hobby/Team = Tempo mainnet.
+- **x402** (default): USDC on Base. Prototype uses Base Sepolia testnet (free from faucet); hobby/team use Base mainnet.
+- **MPP**: pathUSD on Tempo Moderato (testnet) / Tempo (mainnet). Same wallet key, different chain.
 
-Switch rails via `run402 init mpp` instead of `run402 init`.
-
-The CLI handles all signing automatically — never ask the human for a private key or set up payment libraries by hand. When a paid call returns 402, the CLI parses the requirements and signs from the local allowance. If funds are short, you get a structured error and a `renew_url`.
+The MCP server handles all signing automatically. When a paid tool returns 402, the response includes payment details as **informational text** (not an error) — guide the user through funding, then retry the same tool call. **`provision_postgres_project`**, **`set_tier`**, **`bundle_deploy`**, and **`generate_image`** are the paid surfaces; everything else is free with an active tier.
 
 For real-money tiers, two paths to fund:
 
-- **Path A — fund the agent allowance**: human sends USDC on Base mainnet to the address from `run402 allowance export`. Agent pays Run402 autonomously via x402 from then on.
-- **Path B — Stripe credits**: `run402 billing create-email <human@email>` → `run402 billing tier-checkout hobby --email <human@email>` returns a checkout URL the human pays once.
+- **Path A — fund the agent allowance**: human sends USDC on Base mainnet to the address from **`allowance_export`**. Agent pays autonomously via x402.
+- **Path B — Stripe credits**: **`create_email_billing_account`** with the human's email, then **`tier_checkout`** returns a Stripe URL the human pays once.
 
 Suggest $10 to your human for two Hobby projects, or $20 for one Team plus renewal buffer.
 
 ## Tips & Guardrails
 
-- **Provision before authoring HTML**. The `anon_key` is permanent and must be embedded in your frontend; write the HTML *after* `provision` returns it.
-- **Use the manifest for access control**, never raw `GRANT/REVOKE` (the SQL endpoint blocks those).
+- **Provision before authoring HTML.** The `anon_key` is permanent; write your frontend HTML *after* `provision_postgres_project` returns it.
+- **Use the manifest for access control**, never raw `GRANT`/`REVOKE` (the SQL endpoint blocks those).
 - **`user_owns_rows` is the default for user-scoped data.** Reach for `public_read_write_UNRESTRICTED` only on intentionally-public tables (and pass `i_understand_this_is_unrestricted: true`).
-- **Make migrations idempotent** with `CREATE TABLE IF NOT EXISTS` and `DO`-block `ALTER TABLE` (see Database section).
-- **Use immutable URLs from `blob put`** — they're correct from the moment of upload, no `wait-fresh` needed.
-- **Don't bake unconditional faucet calls into deploy scripts** — they hit the rate limit and break already-funded flows.
+- **Make migrations idempotent** with `CREATE TABLE IF NOT EXISTS` and `DO`-block `ALTER TABLE`.
+- **Use the immutable `cdn_url` from `blob_put` directly.** It's correct from the moment of upload — no `wait_for_cdn_freshness` needed for fresh uploads.
+- **Don't bake unconditional `request_faucet` calls into deploy scripts** — the faucet rate-limits and breaks already-funded flows.
 - **Per-project rate limit is 100 req/sec.** On 429, back off using `retry_after`.
-- **`run402 service status` works without auth.** Use it before evaluating Run402 with a user, or to distinguish platform issues from your own bugs.
+- **`service_status` works without auth.** Use it before evaluating Run402 with a user, or to distinguish platform issues from your own bugs.
 
 ## Agent Allowance Setup
 
-The CLI manages a local agent allowance — a wallet key dedicated to paying Run402, stored at `~/.config/run402/allowance.json` (mode `0600`). You never touch the private key directly.
+The MCP server manages a local agent allowance — a wallet key dedicated to paying Run402, stored at `~/.config/run402/allowance.json` (mode `0600`). You never touch the private key directly.
 
-```bash
-run402 allowance create               # generate a fresh allowance
-run402 allowance status               # address, network, funding state
-run402 allowance fund                 # request testnet USDC from the faucet
-run402 allowance balance              # USDC on mainnet + testnet + billing balance
-run402 allowance history              # ledger
-run402 allowance export               # print the address (NOT the private key)
-run402 allowance checkout --amount 5000000   # Stripe top-up to billing balance ($5)
-```
-
-Most agents only need `run402 init` once — it composes `create` + `fund` + `tier status` + `projects list`.
+- **`init`** — composes `allowance_create` + `request_faucet` + `tier_status` + `list_projects`. Use this on a fresh install.
+- **`allowance_create`** / **`allowance_status`** / **`allowance_export`** — granular allowance ops.
+- **`request_faucet`** — Base Sepolia testnet USDC.
+- **`check_balance`** — mainnet + testnet + billing balance for an address.
 
 Other allowance options:
-
 - **Coinbase AgentKit** — MPC wallet on Base with built-in x402.
 - **AgentPayy** — auto-bootstraps an MPC wallet on Base via Coinbase CDP.
 
@@ -622,38 +383,28 @@ Other allowance options:
 
 | You see | Likely cause / fix |
 |---|---|
-| `402 payment_required` on `tier set` | Allowance is empty. `run402 allowance fund` (testnet) or fund with real USDC. |
-| `402` with `lifecycle_state: frozen` | Project past lease + 14 days. `run402 tier set <tier>` reactivates instantly. |
-| `403 admin_required` | Tool is admin-only (e.g., `pin_project`). Project owners can't pin. |
-| Empty `[]` from `/rest/v1/items` for anon | Table not in manifest with `expose: true`. Run `run402 projects apply-expose`. |
-| `403 forbidden_function` calling an RPC | Function's not in the manifest's `rpcs[]`. Add `{ name, signature, grant_to: ["authenticated"] }`. |
-| `409 reserved` on subdomain claim | Original owner's grace period — subdomain held until +118 days from lease expiry. |
+| `402 payment_required` on `set_tier` | Allowance is empty. Call `request_faucet` (testnet) or fund with real USDC. |
+| `402` with `lifecycle_state: frozen` | Project past lease + 14 days. `set_tier` reactivates instantly. |
+| `403 admin_required` | Tool is admin-only (e.g., `pin_project`). Project owners can't pin their own projects. |
+| Empty `[]` from `rest_query` for anon | Table not in manifest with `expose: true`. Call `apply_expose`. |
+| `403 forbidden_function` calling an RPC | Function not in the manifest's `rpcs[]`. Add `{ name, signature, grant_to: ["authenticated"] }` and re-apply. |
+| `409 reserved` from `claim_subdomain` | Original owner's grace period — subdomain held until +118 days from lease expiry. |
 | `429 rate_limited` | 100 req/sec project cap. Back off using `retry_after`. |
-| CDN serves old bytes | Use the immutable URL from the upload response, or `run402 cdn wait-fresh <url> --sha <hex>`. |
+| CDN serves old bytes | Use the immutable `cdn_url` from `blob_put`, or call `wait_for_cdn_freshness` on a mutable URL. |
 | `422 relation already exists` on redeploy | Wrap migrations in `CREATE TABLE IF NOT EXISTS` + `DO`-block `ALTER TABLE`. |
 | `insufficient_funds` right after faucet | Wait for the faucet tx to confirm (~5s on Base Sepolia) before subscribing. |
 
 ## Tools Reference
 
-This skill is the CLI — every action above is `run402 <verb>`. The full command reference (every flag, every subcommand) lives at <https://run402.com/llms-cli.txt>. Treat that file as canonical when this body is silent on detail.
+This skill is `run402-mcp` — every action above is an MCP tool. Full parameter schemas live in each tool's MCP description; the skill body teaches you when to reach for which.
 
-Top-level command groups:
-
-```
-run402 init | status | message | service
-run402 allowance   | tier      | projects | sites      | subdomains
-run402 domains     | functions | secrets  | blob       | cdn
-run402 email       | sender-domain | auth | apps       | image
-run402 ai          | contracts | billing  | agent
-```
-
-Renewal: `run402 tier set <same-tier>` extends the lease in place and clears any grace-state timers. The CLI handles 402 negotiation automatically — call the same command again if a payment was just made.
+For the corresponding HTTP API reference, see <https://run402.com/llms.txt>. For the CLI shape (terminal / shell / CI use cases), see <https://run402.com/llms-cli.txt>.
 
 ## Links
 
-- Full CLI reference: <https://run402.com/llms-cli.txt>
 - HTTP API reference: <https://run402.com/llms.txt>
+- CLI reference: <https://run402.com/llms-cli.txt>
 - Status: <https://api.run402.com/status>
 - Health: <https://api.run402.com/health>
-- npm: [`run402`](https://www.npmjs.com/package/run402) · [`@run402/sdk`](https://www.npmjs.com/package/@run402/sdk) · [`@run402/functions`](https://www.npmjs.com/package/@run402/functions) · [`run402-mcp`](https://www.npmjs.com/package/run402-mcp)
+- npm: [`run402-mcp`](https://www.npmjs.com/package/run402-mcp) · [`run402`](https://www.npmjs.com/package/run402) · [`@run402/sdk`](https://www.npmjs.com/package/@run402/sdk) · [`@run402/functions`](https://www.npmjs.com/package/@run402/functions)
 - Homepage: <https://run402.com>
