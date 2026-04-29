@@ -6,6 +6,17 @@ export function getApiBase(): string {
   return process.env.RUN402_API_BASE || "https://api.run402.com";
 }
 
+/**
+ * API base for the deploy-v2 routes. Defaults to the same value as
+ * `getApiBase()`. Set `RUN402_DEPLOY_API_BASE` to point only deploy traffic
+ * elsewhere — useful when running deploy-v2 against a staging gateway while
+ * the rest of the SDK still talks to production. In normal use callers
+ * should not need this override.
+ */
+export function getDeployApiBase(): string {
+  return process.env.RUN402_DEPLOY_API_BASE || getApiBase();
+}
+
 export function getConfigDir(): string {
   return process.env.RUN402_CONFIG_DIR || join(homedir(), ".config", "run402");
 }

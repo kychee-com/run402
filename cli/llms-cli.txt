@@ -94,7 +94,94 @@ run402 tier status
 
 ## Deploying Apps
 
-### Bundle Deploy (recommended -- one command, full stack)
+### Unified Deploy (v1.34+, recommended)
+
+The canonical deploy primitive. All bytes ride through CAS (no inline-body cap), supports both `replace` and `patch` semantics per resource, atomic multi-resource activation, and resumable recovery from partial failures. This is the path the SDK exposes as `r.deploy.apply(...)`.
+
+⚠️ You still need the `anon_key` BEFORE writing your manifest -- provision first, then embed the real key in your HTML.
+
+```bash
+run402 projects provision --name "my-app"
+# → copy anon_key from output into your HTML
+```
+
+Manifest format mirrors a `ReleaseSpec`:
+
+```json
+{
+  "project_id": "prj_1741340000_42",
+  "database": {
+    "migrations": [
+      {
+        "id": "001_init",
+        "sql": "CREATE TABLE IF NOT EXISTS items (id serial PRIMARY KEY, title text NOT NULL); INSERT INTO items (title) VALUES ('Buy groceries');"
+      }
+    ],
+    "expose": {
+      "version": "1",
+      "tables": [
+        { "name": "items", "expose": true, "policy": "public_read_authenticated_write" }
+      ]
+    }
+  },
+  "secrets": { "set": { "OPENAI_API_KEY": { "value": "sk-..." } } },
+  "functions": {
+    "replace": {
+      "api": {
+        "runtime": "node22",
+        "source": { "data": "export default async (req) => new Response('ok')" },
+        "config": { "timeoutSeconds": 30, "memoryMb": 256 }
+      }
+    }
+  },
+  "site": {
+    "replace": {
+      "index.html": { "data": "<!doctype html><html>...</html>" },
+      "assets/logo.png": { "data": "iVBORw0KGgo...", "encoding": "base64" }
+    }
+  },
+  "subdomains": { "set": ["my-app"] }
+}
+```
+
+Apply it:
+
+```bash
+run402 deploy apply --manifest app.json
+```
+
+Stdout returns `{ status: "ok", release_id, operation_id, urls, ... }`. Stderr streams structured progress events as JSON-line (one event per line). Pass `--quiet` to silence stderr.
+
+**Patch semantics — only the listed file changes**:
+
+```json
+{
+  "project_id": "prj_...",
+  "site": { "patch": { "put": { "index.html": { "data": "<h1>v2</h1>" } } } }
+}
+```
+
+Or via `--spec` for a one-line CLI invocation:
+
+```bash
+run402 deploy apply --spec '{"project_id":"prj_...","site":{"patch":{"delete":["old.html"]}}}'
+```
+
+**Recovery from a stuck deploy**: when an `apply` ends in `activation_pending` (rare; transient gateway failure between SQL commit and the pointer-swap activation), the gateway auto-resumes on the hourly tick. Or call resume explicitly:
+
+```bash
+run402 deploy resume <operation_id>
+```
+
+The gateway re-runs only the failed phase forward — SQL is never replayed.
+
+**Migration registry**: each migration is identified by `(id, checksum)`. Re-shipping the same `id` + same SQL is a registry noop; same `id` + different SQL is a hard error (`MIGRATION_CHECKSUM_MISMATCH`). Ship idempotent migrations (`CREATE TABLE IF NOT EXISTS`, `ADD COLUMN IF NOT EXISTS` in a `DO` block) and re-deploys are free.
+
+---
+
+### Bundle Deploy (legacy compat — still works)
+
+The legacy `run402 deploy --manifest` command continues to work and routes through the v2 primitive under the hood. Prefer `run402 deploy apply` for new manifests; the legacy form is kept for the deprecation window so existing scripts and CI pipelines don't break.
 
 ⚠️ You need the anon_key BEFORE writing your manifest.
 Run provision first, then write your HTML with the real key:

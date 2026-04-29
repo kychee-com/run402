@@ -9,6 +9,8 @@ import { restQuerySchema, handleRestQuery } from "./tools/rest-query.js";
 import { setTierSchema, handleSetTier } from "./tools/set-tier.js";
 import { deploySiteSchema, handleDeploySite } from "./tools/deploy-site.js";
 import { deploySiteDirSchema, handleDeploySiteDir } from "./tools/deploy-site-dir.js";
+import { deploySchema, handleDeploy } from "./tools/deploy.js";
+import { deployResumeSchema, handleDeployResume } from "./tools/deploy-resume.js";
 import { claimSubdomainSchema, handleClaimSubdomain } from "./tools/subdomain.js";
 import { deleteSubdomainSchema, handleDeleteSubdomain } from "./tools/subdomain.js";
 import { deployFunctionSchema, handleDeployFunction } from "./tools/deploy-function.js";
@@ -341,6 +343,20 @@ server.tool(
   "Deploy a static site from a local directory. Walks the tree, hashes each file, and uploads only the bytes the gateway doesn't already have via the v1.32 plan/commit transport. Files named .git, node_modules, or .DS_Store are skipped; symlinks are rejected. Re-deploying an unchanged tree issues no S3 PUTs. Free with active tier.",
   deploySiteDirSchema,
   async (args) => handleDeploySiteDir(args),
+);
+
+server.tool(
+  "deploy",
+  "Unified deploy primitive (v1.34+). Accepts a structured ReleaseSpec — database (migrations + expose), secrets, functions, site, subdomains — with explicit replace vs patch semantics per resource. All bytes ride through CAS (no inline-body cap). Returns release_id + URLs and a structured progress-event log. Use this for full-stack atomic deploys, partial updates (patch one file, patch one function), and any case where the legacy `bundle_deploy` would hit the 50 MB inline-base64 ceiling. The legacy tools (`bundle_deploy`, `deploy_site`, `deploy_site_dir`, `deploy_function`) continue to work and route through the same SDK shim under the hood.",
+  deploySchema,
+  async (args) => handleDeploy(args),
+);
+
+server.tool(
+  "deploy_resume",
+  "Resume a deploy operation that ended in `activation_pending` or `schema_settling` (e.g. transient gateway failure between SQL commit and the pointer-swap activation). The gateway re-runs only the failed phase forward — SQL is never replayed. Idempotent: calling on an already-terminal operation returns the snapshot without re-running.",
+  deployResumeSchema,
+  async (args) => handleDeployResume(args),
 );
 
 server.tool(

@@ -7,6 +7,13 @@ import type { Client } from "../kernel.js";
 import { ProjectNotFound } from "../errors.js";
 import type { RlsTemplate, RlsTableSpec } from "./projects.types.js";
 import type { SiteFile } from "./sites.js";
+import { Deploy } from "./deploy.js";
+import type {
+  ContentSource,
+  ExposeManifest,
+  FunctionSpec,
+  ReleaseSpec,
+} from "./deploy.types.js";
 
 export interface BundleRlsOptions {
   template: RlsTemplate;
@@ -137,25 +144,35 @@ export class Apps {
    * secrets, deploys functions, deploys a static site, and claims a
    * subdomain. Payment flows through x402 when the project lease needs
    * renewal.
+   *
+   * **As of v1.34, this method is a thin compatibility shim over
+   * {@link Deploy.apply}.** It translates the legacy bundle options into a
+   * v2 {@link ReleaseSpec} and delegates to `r.deploy.apply` — bytes ride
+   * through CAS, never inline. The method's input shape and return shape
+   * remain unchanged for existing callers.
+   *
+   * Migrations get a deterministic id `bundle_legacy_<sha256(sql)[0:16]>`.
+   * Re-shipping identical SQL is a registry noop on the v2 path; this is
+   * the only behavior change vs. v1's blind re-execution and is safe for
+   * idempotent migrations (the documented agent norm).
+   *
+   * `inherit: true` is silently ignored with a one-time deprecation warning;
+   * patch semantics on `r.deploy.apply` replace it.
    */
-  async bundleDeploy(projectId: string, opts: BundleDeployOptions = {}): Promise<BundleDeployResult> {
+  async bundleDeploy(
+    projectId: string,
+    opts: BundleDeployOptions = {},
+  ): Promise<BundleDeployResult> {
     const project = await this.client.getProject(projectId);
     if (!project) throw new ProjectNotFound(projectId, "deploying bundle");
 
-    const body: Record<string, unknown> = { project_id: projectId };
-    if (opts.migrations !== undefined) body.migrations = opts.migrations;
-    if (opts.rls !== undefined) body.rls = opts.rls;
-    if (opts.secrets !== undefined) body.secrets = opts.secrets;
-    if (opts.functions !== undefined) body.functions = opts.functions;
-    if (opts.files !== undefined) body.files = opts.files;
-    if (opts.subdomain !== undefined) body.subdomain = opts.subdomain;
-    if (opts.inherit) body.inherit = true;
+    if (opts.inherit) warnInheritOnce();
 
-    return this.client.request<BundleDeployResult>("/deploy/v1", {
-      method: "POST",
-      body,
-      context: "deploying bundle",
-    });
+    const spec = await translateBundleToReleaseSpec(projectId, opts);
+    const deploy = new Deploy(this.client);
+    const result = await deploy.apply(spec);
+
+    return reshapeAsBundleResult(projectId, result);
   }
 
   /** Browse public forkable apps. Optional `tags` filter is OR-combined. */
@@ -282,4 +299,170 @@ export class Apps {
       withAuth: false,
     });
   }
+}
+
+// ─── bundleDeploy compat shim helpers ────────────────────────────────────────
+
+let inheritWarned = false;
+function warnInheritOnce(): void {
+  if (inheritWarned) return;
+  inheritWarned = true;
+  // eslint-disable-next-line no-console
+  console.warn(
+    "[run402] bundleDeploy: `inherit: true` is deprecated. The v2 deploy primitive uses explicit replace/patch semantics; pass `r.deploy.apply({ ..., site: { patch: { put: {...} } } })` for partial updates. The flag will be ignored.",
+  );
+}
+
+async function translateBundleToReleaseSpec(
+  projectId: string,
+  opts: BundleDeployOptions,
+): Promise<ReleaseSpec> {
+  const spec: ReleaseSpec = { project: projectId };
+
+  // database (migrations + expose translation)
+  if (opts.migrations !== undefined || opts.rls !== undefined) {
+    spec.database = {};
+    if (opts.migrations !== undefined && opts.migrations.trim().length > 0) {
+      const sqlBytes = new TextEncoder().encode(opts.migrations);
+      const fullSha = await sha256Hex(sqlBytes);
+      const id = `bundle_legacy_${fullSha.slice(0, 16)}`;
+      spec.database.migrations = [
+        {
+          id,
+          checksum: fullSha,
+          sql: opts.migrations,
+        },
+      ];
+    }
+    if (opts.rls !== undefined) {
+      spec.database.expose = translateRlsToExpose(opts.rls);
+    }
+  }
+
+  // secrets — array → set object
+  if (opts.secrets !== undefined && opts.secrets.length > 0) {
+    const set: Record<string, { value: string }> = {};
+    for (const { key, value } of opts.secrets) set[key] = { value };
+    spec.secrets = { set };
+  }
+
+  // functions — array → replace map
+  if (opts.functions !== undefined && opts.functions.length > 0) {
+    const replace: Record<string, FunctionSpec> = {};
+    for (const fn of opts.functions) {
+      const f: FunctionSpec = {
+        runtime: "node22",
+        source: fn.code,
+      };
+      if (fn.config) f.config = mapFunctionConfig(fn.config);
+      if (fn.schedule !== undefined) f.schedule = fn.schedule ?? null;
+      replace[fn.name] = f;
+    }
+    spec.functions = { replace };
+  }
+
+  // files — base64-decoded inline bytes → site.replace FileSet
+  if (opts.files !== undefined && opts.files.length > 0) {
+    const fileMap: Record<string, ContentSource> = {};
+    for (const f of opts.files) {
+      fileMap[f.file] = decodeSiteFile(f);
+    }
+    spec.site = { replace: fileMap };
+  }
+
+  // subdomain string → subdomains.set [string]
+  if (opts.subdomain !== undefined && opts.subdomain.length > 0) {
+    spec.subdomains = { set: [opts.subdomain] };
+  }
+
+  return spec;
+}
+
+function decodeSiteFile(f: SiteFile): ContentSource {
+  if (f.encoding === "base64") {
+    const bytes = base64ToBytes(f.data);
+    return { data: bytes };
+  }
+  return f.data;
+}
+
+function base64ToBytes(b64: string): Uint8Array {
+  if (typeof Buffer !== "undefined") {
+    const buf = Buffer.from(b64, "base64");
+    return new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength);
+  }
+  const bin = atob(b64);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+
+function mapFunctionConfig(
+  cfg: { timeout?: number; memory?: number },
+): { timeoutSeconds?: number; memoryMb?: number } {
+  const out: { timeoutSeconds?: number; memoryMb?: number } = {};
+  if (typeof cfg.timeout === "number") out.timeoutSeconds = cfg.timeout;
+  if (typeof cfg.memory === "number") out.memoryMb = cfg.memory;
+  return out;
+}
+
+interface ManifestTableV1 {
+  name: string;
+  expose: true;
+  policy: RlsTemplate;
+  owner_column?: string;
+  i_understand_this_is_unrestricted?: true;
+}
+
+function translateRlsToExpose(
+  rls: { template: RlsTemplate; tables: RlsTableSpec[]; i_understand_this_is_unrestricted?: boolean },
+): ExposeManifest {
+  const tables: ManifestTableV1[] = rls.tables.map((t) => {
+    const out: ManifestTableV1 = {
+      name: t.table,
+      expose: true,
+      policy: rls.template,
+    };
+    if (t.owner_column) out.owner_column = t.owner_column;
+    if (
+      rls.template === "public_read_write_UNRESTRICTED" &&
+      rls.i_understand_this_is_unrestricted
+    ) {
+      out.i_understand_this_is_unrestricted = true;
+    }
+    return out;
+  });
+  return {
+    version: "1",
+    tables: tables as unknown as Array<Record<string, unknown>>,
+    views: [],
+    rpcs: [],
+  };
+}
+
+function reshapeAsBundleResult(
+  projectId: string,
+  result: { release_id: string; operation_id: string; urls: Record<string, string> },
+): BundleDeployResult {
+  const urls = result.urls ?? {};
+  const out: BundleDeployResult = { project_id: projectId };
+  if (urls.site) out.site_url = urls.site;
+  if (urls.deployment_id) out.deployment_id = urls.deployment_id;
+  if (urls.subdomain) out.subdomain_url = urls.subdomain;
+  if (urls.functions) {
+    try {
+      const parsed = JSON.parse(urls.functions);
+      if (Array.isArray(parsed)) out.functions = parsed;
+    } catch {
+      /* not a structured payload — skip */
+    }
+  }
+  return out;
+}
+
+async function sha256Hex(bytes: Uint8Array): Promise<string> {
+  const buf = await crypto.subtle.digest("SHA-256", bytes as unknown as BufferSource);
+  return Array.from(new Uint8Array(buf))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
 }

@@ -266,7 +266,7 @@ function mockFetch(input, init) {
     }));
   }
 
-  // Deployments (sites) — v1.32 plan/commit transport
+  // Deployments (sites) — v1.32 plan/commit transport (legacy)
   if (path === "/deploy/v1/plan" && method === "POST") {
     // Mark every file in the inbound manifest as `present: true` so the
     // SDK skips S3 PUTs and goes straight to commit. This keeps the e2e
@@ -290,6 +290,53 @@ function mockFetch(input, init) {
   }
   if (path.match(/^\/deployments\/v1\//) && method === "GET") {
     return Promise.resolve(json({ id: "dpl_test456", status: "live", url: "https://dpl_test456.sites.run402.com" }));
+  }
+
+  // Deploy v2 — unified plan/commit. The CLI's `sites deploy` and
+  // `sites deploy-dir` route through r.deploy.apply against these endpoints.
+  // The fake gateway reports every content ref as already-present (empty
+  // missing_content) so the SDK skips S3 PUTs and goes straight to commit.
+  if (path === "/deploy/v2/plans" && method === "POST") {
+    return Promise.resolve(json({
+      plan_id: "plan_v2_test",
+      operation_id: "op_v2_test",
+      base_release_id: null,
+      manifest_digest: "deadbeef".repeat(8),
+      missing_content: [],
+      diff: { resources: { site: { unchanged: true } } },
+    }));
+  }
+  if (path.match(/^\/deploy\/v2\/plans\/[^/]+\/commit$/) && method === "POST") {
+    return Promise.resolve(json({
+      operation_id: "op_v2_test",
+      status: "ready",
+      release_id: "rel_v2_test",
+      urls: {
+        site: "https://dpl_test456.sites.run402.com",
+        deployment_id: "dpl_test456",
+      },
+    }));
+  }
+  if (path.match(/^\/deploy\/v2\/operations\/[^/]+$/) && method === "GET") {
+    return Promise.resolve(json({
+      operation_id: "op_v2_test",
+      project_id: TEST_PROJECT.project_id,
+      plan_id: "plan_v2_test",
+      status: "ready",
+      base_release_id: null,
+      target_release_id: "rel_v2_test",
+      release_id: "rel_v2_test",
+      urls: {
+        site: "https://dpl_test456.sites.run402.com",
+        deployment_id: "dpl_test456",
+      },
+      payment_required: null,
+      error: null,
+      activate_attempts: 0,
+      last_activate_attempt_at: null,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }));
   }
 
   // Subdomains

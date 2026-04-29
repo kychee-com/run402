@@ -3,7 +3,7 @@ import { getSdk } from "../sdk.js";
 import { mapSdkError } from "../errors.js";
 import { requireAllowanceAuth } from "../allowance-auth.js";
 import { updateProject } from "../keystore.js";
-import type { DeployEvent } from "../../sdk/dist/node/index.js";
+import type { DeployEvent } from "../../sdk/dist/node/sites-node.js";
 
 export const deploySiteDirSchema = {
   project: z
