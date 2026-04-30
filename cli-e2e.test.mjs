@@ -138,9 +138,9 @@ function mockFetch(input, init) {
   // Strip query string for route matching
   const pathNoQuery = path.split("?")[0];
 
-  // Faucet
+  // Faucet — wire shape: snake_case + amount in micros (SDK normalizes).
   if (path === "/faucet/v1" && method === "POST") {
-    return Promise.resolve(json({ tx_hash: "0xabc123", amount: "250000", token: "USDC", network: "base-sepolia" }));
+    return Promise.resolve(json({ transaction_hash: "0xabc123", amount_usd_micros: 250000, token: "USDC", network: "base-sepolia" }));
   }
 
   // Tiers
@@ -344,7 +344,8 @@ function mockFetch(input, init) {
     return Promise.resolve(json({ name: "my-app", url: "https://my-app.run402.com", deployment_id: "dpl_test456" }, 201));
   }
   if (path === "/subdomains/v1" && method === "GET") {
-    return Promise.resolve(json([{ name: "my-app", url: "https://my-app.run402.com" }]));
+    // Wire shape: gateway responds `{ subdomains: [...] }`; SDK unwraps.
+    return Promise.resolve(json({ subdomains: [{ name: "my-app", url: "https://my-app.run402.com", deployment_id: "dpl_test456", deployment_url: "https://dpl_test456.run402.com" }] }));
   }
   if (path.match(/^\/subdomains\/v1\//) && method === "DELETE") {
     return Promise.resolve(json({ status: "ok" }));
