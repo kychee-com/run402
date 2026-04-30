@@ -181,7 +181,7 @@ const project = await r.projects.provision({ tier: "prototype" });
 await r.blobs.put(project.project_id, "hello.txt", { content: "hi" });
 ```
 
-18 namespaces: `projects`, `blobs`, `functions`, `secrets`, `subdomains`, `domains`, `sites`, `service`, `tier`, `allowance`, `ai`, `auth`, `senderDomain`, `billing`, `apps`, `email` (+ `webhooks`), `contracts`, `admin`. Every operation throws a typed `Run402Error` subclass on failure: `PaymentRequired`, `ProjectNotFound`, `Unauthorized`, `ApiError`, `NetworkError`. See [`sdk/README.md`](./sdk/README.md).
+19 namespaces: `projects`, `deploy`, `sites`, `blobs`, `functions`, `secrets`, `subdomains`, `domains`, `email` (+ `webhooks`), `senderDomain`, `auth`, `apps`, `tier`, `billing`, `contracts`, `ai`, `allowance`, `service`, `admin`. Every operation throws a typed `Run402Error` subclass on failure: `PaymentRequired`, `ProjectNotFound`, `Unauthorized`, `ApiError`, `NetworkError`, `LocalError`, `Run402DeployError`. See [`sdk/README.md`](./sdk/README.md).
 
 ## CLI — `run402`
 

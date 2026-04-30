@@ -1,64 +1,80 @@
 # Run402 OpenClaw Skill
 
-This directory contains the [OpenClaw](https://openclaw.ai) skill for Run402 — the standalone, script-based integration that works without an MCP server.
+[OpenClaw](https://openclaw.ai) skill for [Run402](https://run402.com) — provision Postgres databases, deploy static sites, run serverless functions, host content-addressed CDN assets, send email, and sign on-chain. Paid autonomously via x402.
 
-## Installation
+This is the **CLI-shaped** distribution. The skill body in [`SKILL.md`](./SKILL.md) teaches the platform exclusively via `run402 <verb>` commands — it doesn't depend on an MCP host.
 
-In OpenClaw, go to **Settings → Skills → Add from path** and point it at this directory, or copy the contents to `~/.openclaw/skills/run402/`.
+## Install
+
+In OpenClaw: **Settings → Skills → Add from path** and point at this directory, or:
 
 ```bash
 cp -r openclaw ~/.openclaw/skills/run402
 cd ~/.openclaw/skills/run402/scripts && npm install
 ```
 
-## How It Works
+The skill's frontmatter declares `install: run402` so OpenClaw also installs the [`run402`](https://www.npmjs.com/package/run402) CLI globally — every script in `scripts/` re-exports from `cli/lib/`, so the CLI is the runtime. Allowance and project credentials live at `~/.config/run402/` and are shared across the CLI / MCP server / OpenClaw skill.
 
-Unlike the MCP server (which requires an MCP-compatible client like Claude Desktop or Cursor), this skill calls the Run402 API directly via Node.js scripts — no MCP setup needed.
+## How it works
 
-OpenClaw reads `SKILL.md` and uses it as instructions, then invokes the helper scripts in `scripts/` when needed.
-
-### Scripts
-
-| Script | Description |
-|--------|-------------|
-| `scripts/allowance.mjs` | Manage your agent allowance (create, fund, status) |
-| `scripts/deploy.mjs` | Deploy a full-stack app bundle |
-| `scripts/projects.mjs` | Manage projects (list, SQL, REST, renew, delete) |
-| `scripts/image.mjs` | Generate images via Run402 |
-
-### Dependencies
-
-Scripts use `@x402/fetch` and `viem` for x402 micropayment handling. Install them once:
+The scripts in `scripts/` are thin shims that re-export from the [`run402`](https://www.npmjs.com/package/run402) CLI's internals — same code path as `run402 <verb>` from a shell. OpenClaw's runtime invokes them directly:
 
 ```bash
-cd scripts && npm install
+node scripts/projects.mjs sql <project_id> "SELECT * FROM items"
+node scripts/blob.mjs put ./logo.png
+node scripts/deploy.mjs apply --project <id> --dir ./dist
 ```
 
-Credentials are shared with the MCP server — both use `~/.config/run402/projects.json` and `~/.config/run402/allowance.json`.
+In practice, **prefer reading [`SKILL.md`](./SKILL.md)** — it teaches the modern surface end-to-end:
 
-## Quick Start
+- **Paste-and-go assets** — `run402 blob put` returns content-addressed CDN URLs with SRI baked in
+- **Dark-by-default tables + the expose manifest** — `run402 projects apply-expose` (preferred: ship `manifest.json` in the bundle's `files[]`)
+- **Slick deploys** — `run402 sites deploy-dir` with plan/commit transport, only uploads bytes the gateway doesn't already have
+- **In-function helpers** — `db(req)` (caller-context, RLS) vs `adminDb()` (bypass) inside deployed functions
+
+## Two skill files in this repo
+
+This skill body is one of two parallel skill bodies that ship from the same monorepo:
+
+| File | Audience | Modality |
+|---|---|---|
+| [`openclaw/SKILL.md`](./SKILL.md) | OpenClaw script-runtime agents | CLI verbs (`run402 …`) — installs the `run402` package |
+| [`SKILL.md`](../SKILL.md) (root) | MCP-host agents (Claude Desktop / Cursor / Cline / Claude Code) | MCP tool names — installs `run402-mcp` |
+
+Both teach the same patterns; pick the file matching your runtime.
+
+## Quick start
 
 ```bash
 # Set up allowance (once)
-node scripts/allowance.mjs status
-node scripts/allowance.mjs create   # if no allowance yet
-node scripts/allowance.mjs fund     # get testnet USDC
+node scripts/init.mjs                              # composes allowance create + faucet + tier check
 
-# Deploy an app
-echo '{"name":"my-app","migrations":"CREATE TABLE todos (id serial PRIMARY KEY, task text)","site":[{"file":"index.html","data":"<!DOCTYPE html><html><body>Hello</body></html>"}]}' \
-  | node scripts/deploy.mjs --tier prototype
+# Provision a project
+node scripts/projects.mjs provision --name my-app  # → anon_key, service_key, project_id
 
-# Manage projects
-node scripts/projects.mjs list
-node scripts/projects.mjs sql <project_id> "SELECT * FROM todos"
-node scripts/projects.mjs rest <project_id> todos
+# Deploy a directory
+node scripts/sites.mjs deploy-dir ./dist           # incremental upload via plan/commit
+node scripts/subdomains.mjs claim my-app           # → https://my-app.run402.com
 ```
+
+## Output contract
+
+Every script prints **JSON to stdout**, **JSON errors to stderr**, and exits **0 on success / 1 on failure** — pipe through `jq`. Same contract as the `run402` CLI.
 
 ## OpenClaw vs MCP
 
-| | OpenClaw Skill | MCP Server |
-|--|----------------|------------|
-| **Works with** | OpenClaw | Claude Desktop, Cursor, Cline, Claude Code |
-| **Setup** | Copy skill + `npm install` | `npx run402-mcp` |
+| | OpenClaw skill (this) | `run402-mcp` |
+|---|---|---|
+| **Runtime** | OpenClaw script runner (Node) | MCP-host (Claude Desktop / Cursor / Cline / Claude Code) |
+| **Install** | Copy directory + `npm install` (frontmatter installs `run402` globally) | `npx run402-mcp` |
+| **Skill body** | [`openclaw/SKILL.md`](./SKILL.md) — `run402 <verb>` examples | [root `SKILL.md`](../SKILL.md) — MCP tool names |
 | **Credentials** | `~/.config/run402/` (shared) | `~/.config/run402/` (shared) |
-| **Payment** | Script-based x402 | Built-in x402 handling |
+| **Payment** | x402 via the CLI's allowance | x402 via the CLI's allowance |
+
+## Full reference
+
+Treat [`https://run402.com/llms-cli.txt`](https://run402.com/llms-cli.txt) as the authoritative CLI reference (every flag, every subcommand, every flow, troubleshooting). The skill body teaches when to reach for which verb; the llms-cli file is the manual.
+
+## License
+
+MIT

@@ -67,7 +67,7 @@ When adding a new tool/command, add it to the `SURFACE` array **and** `SDK_BY_CA
 ## Architecture
 
 ```
-@run402/sdk  (typed TypeScript kernel — 18 namespaces, ~100 methods)
+@run402/sdk  (typed TypeScript kernel — 19 namespaces, ~100 methods)
    │
    │   /index.ts    (isomorphic: Node + sandbox)
    │   /node        (Node-only: keystore + allowance + x402-wrapped fetch + fileSetFromDir)
