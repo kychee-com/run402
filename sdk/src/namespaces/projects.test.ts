@@ -280,6 +280,8 @@ describe("projects.list", () => {
 
 describe("projects.getUsage", () => {
   it("GETs /projects/v1/admin/:id/usage with service key", async () => {
+    // Mirrors the live gateway shape — `lease_expires_at` is intentionally
+    // absent because the endpoint doesn't compute it (see GH-163).
     const { fetch, calls } = mockFetch(() =>
       jsonResponse({
         project_id: "prj_known",
@@ -288,7 +290,6 @@ describe("projects.getUsage", () => {
         api_calls_limit: 1000,
         storage_bytes: 1024,
         storage_limit_bytes: 1048576,
-        lease_expires_at: "2026-05-01T00:00:00Z",
         status: "active",
       }),
     );
@@ -299,6 +300,8 @@ describe("projects.getUsage", () => {
     assert.equal(calls[0]!.headers["Authorization"], "Bearer service_xxx");
     assert.equal(result.tier, "prototype");
     assert.equal(result.api_calls, 10);
+    assert.equal(result.lease_expires_at, undefined,
+      "gateway omits lease_expires_at; type is optional so callers don't read a non-existent string");
   });
 
   it("throws ProjectNotFound for unknown ids before hitting the network", async () => {

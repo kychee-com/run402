@@ -53,7 +53,12 @@ export interface UsageReport {
   api_calls_limit: number;
   storage_bytes: number;
   storage_limit_bytes: number;
-  lease_expires_at: string;
+  /**
+   * Optional: the `/projects/v1/admin/:id/usage` endpoint does not currently
+   * include the lease expiry. Read it from `tier.status()` if you need it.
+   * `null` is reserved for unleased accounts (see GH-163).
+   */
+  lease_expires_at?: string | null;
   status: string;
 }
 

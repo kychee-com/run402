@@ -35,7 +35,17 @@ export interface AllowanceCreateResult {
 
 export interface FaucetResult {
   transactionHash: string;
+  /** Display-formatted amount, e.g. `"0.25"`. Computed from `amountUsdMicros`. */
   amount: string;
+  /** Raw amount in micro-USD (1_000_000 = $1.00). */
+  amountUsdMicros: number;
+  token: string;
+  network: string;
+}
+
+interface FaucetWireBody {
+  transaction_hash: string;
+  amount_usd_micros: number;
   token: string;
   network: string;
 }
@@ -130,12 +140,21 @@ export class Allowance {
       resolvedAddress = data.address;
     }
 
-    const result = await this.client.request<FaucetResult>("/faucet/v1", {
+    // Wire shape is snake_case (`transaction_hash`, `amount_usd_micros`);
+    // normalize to the typed camelCase surface (regression: GH-163).
+    const wire = await this.client.request<FaucetWireBody>("/faucet/v1", {
       method: "POST",
       body: { address: resolvedAddress },
       withAuth: false,
       context: "requesting faucet funds",
     });
+    const result: FaucetResult = {
+      transactionHash: wire.transaction_hash,
+      amountUsdMicros: wire.amount_usd_micros,
+      amount: (wire.amount_usd_micros / 1_000_000).toFixed(2),
+      token: wire.token,
+      network: wire.network,
+    };
 
     // Best-effort update of the local allowance's funded/lastFaucet fields.
     const reader = this.client.credentials.readAllowance;

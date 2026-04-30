@@ -45,8 +45,9 @@ function mockFetch(opts: {
     const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
 
     if (url.includes("/faucet/v1")) {
+      // Wire shape (snake_case + micros) — SDK normalizes for callers.
       return new Response(
-        JSON.stringify(opts.faucetBody ?? { transactionHash: "0xabc", amount: "0.25", token: "USDC", network: "base-sepolia" }),
+        JSON.stringify(opts.faucetBody ?? { transaction_hash: "0xabc", amount_usd_micros: 250000, token: "USDC", network: "base-sepolia" }),
         { status: opts.faucetOk !== false ? 200 : 429, headers: { "Content-Type": "application/json" } },
       );
     }
@@ -104,7 +105,7 @@ describe("init tool", () => {
       funded: false,
       rail: "x402",
     });
-    mockFetch({ faucetOk: true, faucetBody: { transactionHash: "0xabc", amount: "0.25", token: "USDC", network: "base-sepolia" } });
+    mockFetch({ faucetOk: true, faucetBody: { transaction_hash: "0xabc", amount_usd_micros: 250000, token: "USDC", network: "base-sepolia" } });
 
     const result = await handleInit({});
     const text = result.content[0]!.text;

@@ -74,9 +74,15 @@ export class Subdomains {
     const project = await this.client.getProject(projectId);
     if (!project) throw new ProjectNotFound(projectId, "listing subdomains");
 
-    return this.client.request<SubdomainSummary[]>("/subdomains/v1", {
-      headers: { Authorization: `Bearer ${project.service_key}` },
-      context: "listing subdomains",
-    });
+    // Gateway responds `{ subdomains: [...] }`; unwrap so callers get the
+    // array shape the type promises (regression: GH-163).
+    const body = await this.client.request<{ subdomains: SubdomainSummary[] }>(
+      "/subdomains/v1",
+      {
+        headers: { Authorization: `Bearer ${project.service_key}` },
+        context: "listing subdomains",
+      },
+    );
+    return body.subdomains ?? [];
   }
 }
