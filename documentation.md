@@ -48,9 +48,9 @@ Only listed here are files that **originate in the private repo** — i.e., auth
 
 | Status | File | Audience | What's there | Update when… |
 |:------:|------|----------|--------------|--------------|
-| 🔴 | `site/llms-full.txt` | AI agents fetching <https://run402.com/llms-full.txt> — the HTTP API reference | Comprehensive HTTP / `curl`-shaped reference: every endpoint, request/response shapes, auth header rules, pricing, lifecycle. Currently a symlink to `site/llms.txt` and historically scoped only to KMS contract wallets — **needs to be split out and rewritten as the canonical HTTP API reference** | API surface (HTTP routes, request/response shape, auth) changes; new endpoint ships |
-| 🟡 | `site/updates.txt` | AI-readable changelog (`/updates.txt`) | `## YYYY-MM-DD` headings, newest first. Has 2026-04-28 (functions bundling) and 2026-04-29 (error envelopes). **Missing backfill** for v1.31 expose-manifest, v1.32 plan/commit, v1.33 blob CDN, v1.34 unified deploy, v1.45 paste-and-go AssetRef, legacy storage shim sunset | Backfill the missing v1.31–v1.45 entries; new entry on every user-visible feature ship |
-| 🟡 | `site/humans/changelog.md` | Human-readable changelog (rendered to `/humans/changelog.html`) | Mirrors `updates.txt` in prose form — same gaps | Backfill in lockstep with `updates.txt` |
+| 🟢 | `site/llms-full.txt` | AI agents fetching <https://run402.com/llms-full.txt> — the HTTP API reference | Comprehensive HTTP / `curl`-shaped reference: every endpoint, request/response shapes, auth header rules, pricing, lifecycle. ~740 lines. (Verified live 2026-04-30 after the private-repo team rewrote it from the prior 67-line KMS-only stub.) | API surface (HTTP routes, request/response shape, auth) changes; new endpoint ships |
+| 🟢 | `site/updates.txt` | AI-readable changelog (`/updates.txt`) | `## YYYY-MM-DD` headings, newest first. 25 dated entries spanning 2026-03-29 → 2026-04-30, including the v1.31 expose-manifest, v1.32 CAS substrate, v1.33 agent-DX blob CDN, v1.34 unified deploy, deploy-time functions bundling, error envelopes, and `/deploy/v2` hardening backfills | New entry on every user-visible feature ship |
+| 🟢 | `site/humans/changelog.md` | Human-readable changelog (rendered to `/humans/changelog.html`) | Mirrors `updates.txt` in prose form. Same date coverage (2026-03-29 → 2026-04-30) | New entry in lockstep with `updates.txt` |
 
 ## Common change → docs to update
 
