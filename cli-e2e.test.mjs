@@ -196,11 +196,6 @@ function mockFetch(input, init) {
     return Promise.resolve(json({ api_calls: 42, limit: 500000, storage_bytes: 1024, storage_limit: 262144000 }));
   }
 
-  // RLS
-  if (path.match(/\/rls$/) && method === "POST") {
-    return Promise.resolve(json({ status: "ok", tables_updated: 1 }));
-  }
-
   // REST
   if (path.startsWith("/rest/v1/")) {
     return Promise.resolve(json([{ id: 1, title: "Test item", done: false }]));
@@ -253,47 +248,9 @@ function mockFetch(input, init) {
     return Promise.resolve(json({ blobs: [{ key: "defaults/file.txt", size: 13, last_modified: "2026-03-15T12:00:00Z" }] }));
   }
 
-  // Bundle deploy
-  if (path === "/deploy/v1" && method === "POST") {
-    const migrations_result = body?.migrations
-      ? { tables_created: ["items"], columns_added: [], status: "applied" }
-      : undefined;
-    return Promise.resolve(json({
-      project_id: TEST_PROJECT.project_id,
-      ...(migrations_result && { migrations_result }),
-      site_url: "https://test.sites.run402.com",
-      subdomain_url: "https://test-app.run402.com",
-    }));
-  }
-
-  // Deployments (sites) — v1.32 plan/commit transport (legacy)
-  if (path === "/deploy/v1/plan" && method === "POST") {
-    // Mark every file in the inbound manifest as `present: true` so the
-    // SDK skips S3 PUTs and goes straight to commit. This keeps the e2e
-    // tests focused on CLI/SDK wiring without needing an S3 mock.
-    const files = (body?.manifest?.files ?? []).map((f) => ({
-      sha256: f.sha256,
-      present: true,
-      size: f.size,
-      content_type: f.content_type,
-    }));
-    return Promise.resolve(json({ plan_id: "plan_test", files }));
-  }
-  if (path === "/deploy/v1/commit" && method === "POST") {
-    return Promise.resolve(json({
-      deployment_id: "dpl_test456",
-      url: "https://dpl_test456.sites.run402.com",
-      status: "applied",
-      bytes_total: 0,
-      bytes_uploaded: 0,
-    }));
-  }
-  if (path.match(/^\/deployments\/v1\//) && method === "GET") {
-    return Promise.resolve(json({ id: "dpl_test456", status: "live", url: "https://dpl_test456.sites.run402.com" }));
-  }
-
-  // Deploy v2 — unified plan/commit. The CLI's `sites deploy` and
-  // `sites deploy-dir` route through r.deploy.apply against these endpoints.
+  // Deploy v2 — unified plan/commit. All deploy paths (CLI `deploy`, `sites
+  // deploy`, `sites deploy-dir`, MCP `bundle_deploy`/`deploy_site*`) route
+  // through r.deploy.apply against these endpoints.
   // The fake gateway reports every content ref as already-present (empty
   // missing_content) so the SDK skips S3 PUTs and goes straight to commit.
   if (path === "/deploy/v2/plans" && method === "POST") {
@@ -477,19 +434,12 @@ function capturedStderr() {
 
 before(async () => {
   globalThis.fetch = mockFetch;
-  // Also route deploy.mjs's undici.fetch path through the same mock — the
-  // CLI deploy no longer uses globalThis.fetch (it uses undici.fetch so its
-  // custom dispatcher is honored), so we inject the mock via its test seam.
-  const { _setFetchImpl } = await import("./cli/lib/deploy.mjs");
-  _setFetchImpl(mockFetch);
   // Override process.exit to throw
   process.exit = (code) => { throw new Error(`process.exit(${code})`); };
 });
 
 after(async () => {
   globalThis.fetch = originalFetch;
-  const { _setFetchImpl } = await import("./cli/lib/deploy.mjs");
-  _setFetchImpl(null);
   console.log = originalLog;
   console.error = originalError;
   process.exit = originalExit;
@@ -893,14 +843,6 @@ describe("CLI e2e happy path", () => {
     assert.ok(captured().includes("api_calls"), "should show usage");
   });
 
-  it("projects rls", async () => {
-    const { run } = await import("./cli/lib/projects.mjs");
-    captureStart();
-    await run("rls", ["prj_test123", "public_read_authenticated_write", '[{"table":"items"}]']);
-    captureStop();
-    assert.ok(captured().includes("ok"), "should apply RLS");
-  });
-
   // GH-84: provision must not crash on non-JSON gateway error
   it("projects provision surfaces HTML 502 without SyntaxError (GH-84)", async () => {
     const { run } = await import("./cli/lib/projects.mjs");
@@ -1055,44 +997,6 @@ describe("CLI e2e happy path", () => {
     assert.ok(captured().includes("test"), "should return query results");
   });
 
-  it("projects rls defaults to active project (GH-102)", async () => {
-    const { run } = await import("./cli/lib/projects.mjs");
-    const { setActiveProjectId } = await import("./cli/lib/config.mjs");
-    setActiveProjectId("prj_test123");
-    let seenUrl = null;
-    let seenBody = null;
-    const prevFetch = globalThis.fetch;
-    globalThis.fetch = async (input, init) => {
-      const url = typeof input === "string" ? input : (input instanceof Request ? input.url : String(input));
-      const method = (init?.method || (input instanceof Request ? input.method : "GET") || "GET").toUpperCase();
-      if (/\/rls$/.test(url) && method === "POST") {
-        seenUrl = url;
-        // Body may be on init (direct fetch call) or on the Request object
-        // (when a fetch wrapper like @x402/fetch normalizes the args).
-        let rawBody = init?.body;
-        if (rawBody === undefined && input instanceof Request) {
-          rawBody = await input.clone().text();
-        }
-        try { seenBody = JSON.parse(rawBody); } catch { seenBody = rawBody; }
-      }
-      return prevFetch(input, init);
-    };
-    captureStart();
-    try {
-      await run("rls", ["public_read_authenticated_write", '[{"table":"items"}]']);
-    } finally {
-      captureStop();
-      globalThis.fetch = prevFetch;
-    }
-    assert.ok(seenUrl && seenUrl.includes("/projects/v1/admin/prj_test123/rls"),
-      `rls should hit the active project URL; got: ${seenUrl}`);
-    assert.equal(seenBody?.template, "public_read_authenticated_write",
-      `template should be the first positional arg; got: ${JSON.stringify(seenBody)}`);
-    assert.deepEqual(seenBody?.tables, [{ table: "items" }],
-      `tables should be parsed JSON from second positional arg; got: ${JSON.stringify(seenBody)}`);
-    assert.ok(captured().includes("ok"), "should apply RLS");
-  });
-
   it("projects rest defaults to active project (GH-102)", async () => {
     const { run } = await import("./cli/lib/projects.mjs");
     const { setActiveProjectId } = await import("./cli/lib/config.mjs");
@@ -1130,162 +1034,6 @@ describe("CLI e2e happy path", () => {
     await run(["--manifest", manifestPath, "--project", "prj_test123"]);
     captureStop();
     assert.ok(captured().includes("prj_test123"), "should return project info");
-  });
-
-  it("deploy surfaces HTML gateway errors without SyntaxError (GH-28)", async () => {
-    const deployMod = await import("./cli/lib/deploy.mjs");
-    const { run, _setFetchImpl } = deployMod;
-    const { writeFileSync: wf } = await import("node:fs");
-    const manifestPath = join(tempDir, "html-err-manifest.json");
-    wf(manifestPath, JSON.stringify({
-      files: [{ file: "index.html", data: "<h1>Hello</h1>" }],
-    }));
-    // Replace deploy's fetch with a stub that returns HTML 504 on /deploy/v1.
-    // Note: globalThis.fetch cannot intercept undici.fetch, so we inject via
-    // the module's test seam.
-    _setFetchImpl((input, init) => {
-      const url = typeof input === "string" ? input : (input instanceof Request ? input.url : String(input));
-      const method = (init?.method || (input instanceof Request ? input.method : "GET") || "GET").toUpperCase();
-      if (url.endsWith("/deploy/v1") && method === "POST") {
-        const html = "<html><head></head><body>504 Gateway Timeout</body></html>";
-        return Promise.resolve(new Response(html, {
-          status: 504,
-          headers: { "Content-Type": "text/html" },
-        }));
-      }
-      return Promise.reject(new Error(`unexpected url: ${url}`));
-    });
-    let threw = null;
-    captureStart();
-    try {
-      await run(["--manifest", manifestPath, "--project", "prj_test123"]);
-    } catch (e) {
-      threw = e;
-    } finally {
-      captureStop();
-      _setFetchImpl(mockFetch);
-    }
-    const out = captured();
-    // process.exit stub throws, so we expect a non-zero exit.
-    assert.ok(threw && /process\.exit\(1\)/.test(threw.message), `should exit non-zero, got: ${threw && threw.message}`);
-    // Output must NOT contain the raw SyntaxError / tokeniser complaint.
-    assert.ok(!/SyntaxError/i.test(out), `must not leak SyntaxError, got: ${out}`);
-    assert.ok(!/Unexpected token/i.test(out), `must not leak JSON parser message, got: ${out}`);
-    // Output must be a JSON line with structured fields.
-    const line = out.split("\n").map(s => s.trim()).find(s => s.startsWith("{") && s.endsWith("}"));
-    assert.ok(line, `should emit a JSON error line, got: ${out}`);
-    const parsed = JSON.parse(line);
-    assert.equal(parsed.status, "error");
-    assert.equal(parsed.http, 504);
-    assert.ok(/text\/html/.test(parsed.content_type || ""), `content_type should be text/html, got: ${parsed.content_type}`);
-    assert.ok(typeof parsed.body_preview === "string" && parsed.body_preview.length > 0, "body_preview should be non-empty string");
-    assert.ok(parsed.body_preview.includes("504 Gateway Timeout"), `body_preview should include the HTML body, got: ${parsed.body_preview}`);
-    assert.ok(parsed.body_preview.length <= 500, `body_preview should be truncated to <=500 chars, got length ${parsed.body_preview.length}`);
-  });
-
-  it("deploy retries on UND_ERR_HEADERS_TIMEOUT and succeeds (GH-29)", async () => {
-    const { run, _setFetchImpl } = await import("./cli/lib/deploy.mjs");
-    const { writeFileSync: wf } = await import("node:fs");
-    const manifestPath = join(tempDir, "retry-headers-timeout-manifest.json");
-    wf(manifestPath, JSON.stringify({
-      files: [{ file: "index.html", data: "<h1>Hello</h1>" }],
-    }));
-    let attempts = 0;
-    _setFetchImpl((input, init) => {
-      const url = typeof input === "string" ? input : (input instanceof Request ? input.url : String(input));
-      const method = (init?.method || (input instanceof Request ? input.method : "GET") || "GET").toUpperCase();
-      if (url.endsWith("/deploy/v1") && method === "POST") {
-        attempts++;
-        if (attempts === 1) {
-          const err = new TypeError("fetch failed");
-          err.cause = Object.assign(new Error("Headers Timeout Error"), { code: "UND_ERR_HEADERS_TIMEOUT" });
-          return Promise.reject(err);
-        }
-        return Promise.resolve(new Response(JSON.stringify({ project_id: "prj_test123", site_url: "https://x" }), {
-          status: 200, headers: { "Content-Type": "application/json" },
-        }));
-      }
-      return Promise.reject(new Error(`unexpected url: ${url}`));
-    });
-    captureStart();
-    try {
-      await run(["--manifest", manifestPath, "--project", "prj_test123"]);
-    } finally {
-      captureStop();
-      _setFetchImpl(mockFetch);
-    }
-    const out = captured();
-    assert.equal(attempts, 2, `should retry once after UND_ERR_HEADERS_TIMEOUT, got ${attempts} attempts`);
-    assert.ok(out.includes("prj_test123"), `should return project info after retry, got: ${out}`);
-  });
-
-  it("deploy retries on HTTP 503 and succeeds (GH-29)", async () => {
-    const { run, _setFetchImpl } = await import("./cli/lib/deploy.mjs");
-    const { writeFileSync: wf } = await import("node:fs");
-    const manifestPath = join(tempDir, "retry-503-manifest.json");
-    wf(manifestPath, JSON.stringify({
-      files: [{ file: "index.html", data: "<h1>Hello</h1>" }],
-    }));
-    let attempts = 0;
-    _setFetchImpl((input, init) => {
-      const url = typeof input === "string" ? input : (input instanceof Request ? input.url : String(input));
-      const method = (init?.method || (input instanceof Request ? input.method : "GET") || "GET").toUpperCase();
-      if (url.endsWith("/deploy/v1") && method === "POST") {
-        attempts++;
-        if (attempts === 1) {
-          return Promise.resolve(new Response("Service Unavailable", {
-            status: 503, headers: { "Content-Type": "text/plain" },
-          }));
-        }
-        return Promise.resolve(new Response(JSON.stringify({ project_id: "prj_test123", site_url: "https://x" }), {
-          status: 200, headers: { "Content-Type": "application/json" },
-        }));
-      }
-      return Promise.reject(new Error(`unexpected url: ${url}`));
-    });
-    captureStart();
-    try {
-      await run(["--manifest", manifestPath, "--project", "prj_test123"]);
-    } finally {
-      captureStop();
-      _setFetchImpl(mockFetch);
-    }
-    const out = captured();
-    assert.equal(attempts, 2, `should retry once after 503, got ${attempts} attempts`);
-    assert.ok(out.includes("prj_test123"), `should return project info after retry, got: ${out}`);
-  });
-
-  it("deploy does NOT retry on HTTP 400 (GH-29)", async () => {
-    const { run, _setFetchImpl } = await import("./cli/lib/deploy.mjs");
-    const { writeFileSync: wf } = await import("node:fs");
-    const manifestPath = join(tempDir, "no-retry-400-manifest.json");
-    wf(manifestPath, JSON.stringify({
-      files: [{ file: "index.html", data: "<h1>Hello</h1>" }],
-    }));
-    let attempts = 0;
-    _setFetchImpl((input, init) => {
-      const url = typeof input === "string" ? input : (input instanceof Request ? input.url : String(input));
-      const method = (init?.method || (input instanceof Request ? input.method : "GET") || "GET").toUpperCase();
-      if (url.endsWith("/deploy/v1") && method === "POST") {
-        attempts++;
-        return Promise.resolve(new Response(JSON.stringify({ error: "bad request" }), {
-          status: 400, headers: { "Content-Type": "application/json" },
-        }));
-      }
-      return Promise.reject(new Error(`unexpected url: ${url}`));
-    });
-    let threw = null;
-    captureStart();
-    try {
-      await run(["--manifest", manifestPath, "--project", "prj_test123"]);
-    } catch (e) {
-      threw = e;
-    } finally {
-      captureStop();
-      _setFetchImpl(mockFetch);
-    }
-    assert.equal(attempts, 1, `should NOT retry on 400, got ${attempts} attempts`);
-    assert.ok(threw && /process\.exit\(1\)/.test(threw.message), "should exit non-zero on 400");
   });
 
   it("deploy with path fields in manifest", async () => {
@@ -1431,45 +1179,42 @@ describe("CLI e2e happy path", () => {
   });
 
   it("deploy falls back to active project when manifest omits project_id (GH-41)", async () => {
-    const { run, _setFetchImpl } = await import("./cli/lib/deploy.mjs");
+    const { run } = await import("./cli/lib/deploy.mjs");
     const { setActiveProjectId } = await import("./cli/lib/config.mjs");
     const { writeFileSync: wf } = await import("node:fs");
 
-    // Set an active project in the keystore (provision test earlier seeded prj_test123)
     setActiveProjectId("prj_test123");
 
-    // Manifest with NO project_id field
     const manifestPath = join(tempDir, "no-project-id-manifest.json");
     wf(manifestPath, JSON.stringify({
       files: [{ file: "index.html", data: "<h1>Hello</h1>" }],
     }));
 
-    // Capture the request body so we can assert project_id was filled in
-    let sentBody = null;
-    _setFetchImpl((input, init) => {
+    // Capture the v2 plan request body so we can assert project_id was filled in.
+    let sentSpec = null;
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = async (input, init) => {
       const url = typeof input === "string" ? input : (input instanceof Request ? input.url : String(input));
       const method = (init?.method || (input instanceof Request ? input.method : "GET") || "GET").toUpperCase();
-      if (url.endsWith("/deploy/v1") && method === "POST") {
-        try { sentBody = JSON.parse(init?.body); } catch { sentBody = init?.body; }
-        assert.equal(sentBody?.project_id, "prj_test123",
-          `request body project_id should be active project, got: ${sentBody?.project_id}`);
-        return Promise.resolve(new Response(JSON.stringify({
-          project_id: "prj_test123",
-          site_url: "https://test.sites.run402.com",
-        }), { status: 200, headers: { "Content-Type": "application/json" } }));
+      if (url.endsWith("/deploy/v2/plans") && method === "POST") {
+        let rawBody = init?.body;
+        if (rawBody === undefined && input instanceof Request) {
+          rawBody = await input.clone().text();
+        }
+        try { sentSpec = JSON.parse(rawBody)?.spec; } catch { sentSpec = null; }
       }
-      return Promise.reject(new Error(`unexpected url: ${url}`));
-    });
+      return prevFetch(input, init);
+    };
 
     captureStart();
     try {
       await run(["--manifest", manifestPath]);
     } finally {
       captureStop();
-      _setFetchImpl(mockFetch);
+      globalThis.fetch = prevFetch;
     }
-    assert.ok(sentBody, "deploy should have called /deploy/v1");
-    assert.equal(sentBody.project_id, "prj_test123", "body project_id should match active project");
+    assert.ok(sentSpec, "deploy should have called /deploy/v2/plans");
+    assert.equal(sentSpec.project, "prj_test123", "spec.project should match active project");
     assert.ok(captured().includes("prj_test123"), "should return project info");
   });
 
@@ -1510,28 +1255,26 @@ describe("CLI e2e happy path", () => {
   });
 
   it("deploy errors when manifest.project_id conflicts with --project (GH-42)", async () => {
-    const { run, _setFetchImpl } = await import("./cli/lib/deploy.mjs");
+    const { run } = await import("./cli/lib/deploy.mjs");
     const { writeFileSync: wf } = await import("node:fs");
     const manifestPath = join(tempDir, "conflict-manifest.json");
     wf(manifestPath, JSON.stringify({
       project_id: "prj_manifest",
       files: [{ file: "index.html", data: "<h1>Hello</h1>" }],
     }));
-    // Swap in a fetch that tracks whether /deploy/v1 was called. The fix
-    // should make deploy error out BEFORE issuing any POST to the deploy
-    // endpoint, preventing accidental cross-project deploys.
+    // Track whether the deploy plan endpoint was hit. The conflict check must
+    // fire BEFORE any HTTP — silently deploying to the wrong project would be
+    // exactly the bug this guards against.
     let deployCalled = false;
-    _setFetchImpl((input, init) => {
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = (input, init) => {
       const url = typeof input === "string" ? input : (input instanceof Request ? input.url : String(input));
       const method = (init?.method || (input instanceof Request ? input.method : "GET") || "GET").toUpperCase();
-      if (url.endsWith("/deploy/v1") && method === "POST") {
+      if (url.endsWith("/deploy/v2/plans") && method === "POST") {
         deployCalled = true;
-        return Promise.resolve(new Response(JSON.stringify({ project_id: "should-not-be-reached" }), {
-          status: 200, headers: { "Content-Type": "application/json" },
-        }));
       }
-      return Promise.reject(new Error(`unexpected url: ${url}`));
-    });
+      return prevFetch(input, init);
+    };
     let threw = null;
     captureStart();
     try {
@@ -1540,24 +1283,18 @@ describe("CLI e2e happy path", () => {
       threw = e;
     } finally {
       captureStop();
-      _setFetchImpl(mockFetch);
+      globalThis.fetch = prevFetch;
     }
-    // Must exit non-zero.
     assert.ok(threw && /process\.exit\(1\)/.test(threw.message), `should exit non-zero, got: ${threw && threw.message}`);
-    // Must NOT have issued a deploy POST — silently deploying to the wrong
-    // project is exactly the bug we're fixing.
-    assert.equal(deployCalled, false, "must not POST to /deploy/v1 on project_id conflict");
+    assert.equal(deployCalled, false, "must not POST to /deploy/v2/plans on project_id conflict");
     const out = capturedStderr();
     const line = out.split("\n").map(s => s.trim()).find(s => s.startsWith("{") && s.endsWith("}"));
     assert.ok(line, `should emit a JSON error line on stderr, got: ${out}`);
     const parsed = JSON.parse(line);
     assert.equal(parsed.status, "error");
-    // Both project IDs must be mentioned somewhere in the payload so agents
-    // can see what conflicted.
     const blob = JSON.stringify(parsed);
     assert.ok(blob.includes("prj_manifest"), `error payload must mention manifest project_id, got: ${blob}`);
     assert.ok(blob.includes("prj_flag"), `error payload must mention --project flag value, got: ${blob}`);
-    // Must include actionable hint.
     assert.ok(typeof parsed.hint === "string" && parsed.hint.length > 0, `error must include a hint, got: ${blob}`);
   });
 
@@ -1765,14 +1502,6 @@ describe("CLI e2e happy path", () => {
     }
     assert.ok(threw && /process\.exit\(1\)/.test(threw.message),
       `should exit 1 when dir is missing, got: ${threw?.message}`);
-  });
-
-  it("sites status", async () => {
-    const { run } = await import("./cli/lib/sites.mjs");
-    captureStart();
-    await run("status", ["dpl_test456"]);
-    captureStop();
-    assert.ok(captured().includes("live"), "should show deployment status");
   });
 
   // ── Subdomains ──────────────────────────────────────────────────────────

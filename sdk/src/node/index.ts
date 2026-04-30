@@ -15,9 +15,9 @@
  * await r.sites.deployDir({ project: project.project_id, dir: "./my-site" });
  * ```
  *
- * `deployDir` uses the v1.32 plan/commit transport and only uploads the
- * bytes the gateway doesn't already have. Re-deploying an unchanged tree
- * issues no S3 PUTs.
+ * `deployDir` is a thin wrapper over `r.deploy.apply` — bytes ride through
+ * the unified CAS substrate, so only files the gateway doesn't already have
+ * are uploaded. Re-deploying an unchanged tree issues no S3 PUTs.
  */
 
 import { getApiBase } from "../../core-dist/config.js";
@@ -54,8 +54,7 @@ export type NodeRun402 = Omit<Run402, "sites"> & { sites: NodeSites };
  * `@x402/fetch` when the allowance wallet has USDC balance.
  *
  * The returned instance's `sites` namespace is a {@link NodeSites}, which
- * adds a `deployDir({ dir })` helper on top of the isomorphic `deploy()`
- * and `getDeployment()` methods.
+ * exposes the `deployDir({ dir })` helper.
  */
 export function run402(opts: NodeRun402Options = {}): NodeRun402 {
   const runOpts: Run402Options = {

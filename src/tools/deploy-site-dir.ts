@@ -12,7 +12,7 @@ export const deploySiteDirSchema = {
   dir: z
     .string()
     .describe(
-      "Local directory to deploy. The SDK walks this directory, hashes each file, and uploads only bytes the gateway doesn't already have via the v1.32 plan/commit transport. Files named .git, node_modules, or .DS_Store are skipped. Symlinks are rejected.",
+      "Local directory to deploy. The SDK walks this directory, hashes each file, and uploads only bytes the gateway doesn't already have via the unified deploy primitive (CAS-backed). Files named .git, node_modules, or .DS_Store are skipped. Symlinks are rejected.",
     ),
   target: z
     .string()
@@ -40,7 +40,7 @@ export async function handleDeploySiteDir(args: {
   dir: string;
   target?: string;
 }): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
-  const auth = requireAllowanceAuth("/deploy/v1/plan");
+  const auth = requireAllowanceAuth("/deploy/v2/plans");
   if ("error" in auth) return auth.error;
 
   const events: DeployEvent[] = [];

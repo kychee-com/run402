@@ -97,7 +97,7 @@ export interface SchemaReport {
   tables: TableSchema[];
 }
 
-// ─── RLS ────────────────────────────────────────────────────────────────
+// ─── RLS templates (used by apps.bundleDeploy expose translation) ─────
 
 export type RlsTemplate =
   | "user_owns_rows"
@@ -109,22 +109,6 @@ export interface RlsTableSpec {
   table: string;
   /** Column holding the owning user's id. Required when `template: "user_owns_rows"`. */
   owner_column?: string;
-}
-
-export interface RlsSetupOptions {
-  template: RlsTemplate;
-  tables: RlsTableSpec[];
-  /**
-   * Required to be `true` when `template: "public_read_write_UNRESTRICTED"`.
-   * Acknowledges that the anon key gains INSERT/UPDATE/DELETE on the listed tables.
-   */
-  i_understand_this_is_unrestricted?: boolean;
-}
-
-export interface RlsSetupResult {
-  status: string;
-  template: string;
-  tables: string[];
 }
 
 // ─── pin ────────────────────────────────────────────────────────────────

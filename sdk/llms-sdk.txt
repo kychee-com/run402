@@ -297,10 +297,7 @@ events(operationId): AsyncIterable<DeployEvent>
 ### `r.sites`
 
 ```ts
-deploy(project: string, files: SiteFile[]): Promise<DeployResult>
-getDeployment(deploymentId: string): Promise<DeploymentInfo>
-
-// Node-only:
+// Node-only convenience over r.deploy.apply:
 deployDir(opts: { project, dir, target?, onEvent? }): Promise<DeployResult>
 ```
 

@@ -136,22 +136,6 @@ async function provision(args) {
   }
 }
 
-async function rls(projectId, template, tablesJson) {
-  let tables;
-  try {
-    tables = JSON.parse(tablesJson);
-  } catch {
-    console.error(JSON.stringify({ status: "error", message: "Invalid JSON for tables argument" }));
-    process.exit(1);
-  }
-  try {
-    const data = await getSdk().projects.setupRls(projectId, { template, tables });
-    console.log(JSON.stringify(data, null, 2));
-  } catch (err) {
-    reportSdkError(err);
-  }
-}
-
 async function applyExpose(projectId, args = []) {
   const p = findProject(projectId);
   let file = null;
@@ -360,7 +344,6 @@ export async function run(sub, args) {
     case "rest":      { const { projectId, rest: restArgs } = resolvePositionalProject(args); await rest(projectId, restArgs[0], restArgs[1]); break; }
     case "usage":     { const { projectId } = resolvePositionalProject(args); await usage(projectId); break; }
     case "schema":    { const { projectId } = resolvePositionalProject(args); await schema(projectId); break; }
-    case "rls":       { const { projectId, rest } = resolvePositionalProject(args); await rls(projectId, rest[0], rest[1]); break; }
     case "apply-expose": { const { projectId, rest } = resolvePositionalProject(args); await applyExpose(projectId, rest); break; }
     case "get-expose":   { const { projectId } = resolvePositionalProject(args); await getExpose(projectId); break; }
     case "delete":    { const { projectId } = resolvePositionalProject(args); await deleteProject(projectId); break; }

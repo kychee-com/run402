@@ -151,7 +151,6 @@ const SURFACE: Capability[] = [
   // ── Database / Admin ─────────────────────────────────────────────────────
   { id: "run_sql",           endpoint: "POST /projects/v1/admin/:id/sql",        mcp: "run_sql",                       cli: "projects:sql",        openclaw: "projects:sql" },
   { id: "rest_query",        endpoint: "/rest/v1/:table",                        mcp: "rest_query",                    cli: "projects:rest",       openclaw: "projects:rest" },
-  { id: "setup_rls",         endpoint: "POST /projects/v1/admin/:id/rls",        mcp: "setup_rls",                     cli: "projects:rls",        openclaw: "projects:rls" },
   { id: "apply_expose",      endpoint: "POST /projects/v1/admin/:id/expose",     mcp: "apply_expose",                  cli: "projects:apply-expose", openclaw: "projects:apply-expose" },
   { id: "get_expose",        endpoint: "GET /projects/v1/admin/:id/expose",      mcp: "get_expose",                    cli: "projects:get-expose",   openclaw: "projects:get-expose" },
   { id: "get_schema",        endpoint: "GET /projects/v1/admin/:id/schema",      mcp: "get_schema",                    cli: "projects:schema",     openclaw: "projects:schema" },
@@ -180,9 +179,9 @@ const SURFACE: Capability[] = [
   { id: "list_secrets",      endpoint: "GET /projects/v1/admin/:id/secrets",         mcp: "list_secrets",  cli: "secrets:list",   openclaw: "secrets:list" },
   { id: "delete_secret",     endpoint: "DELETE /projects/v1/admin/:id/secrets/:key", mcp: "delete_secret", cli: "secrets:delete", openclaw: "secrets:delete" },
 
-  // ── Sites / Deployments ──────────────────────────────────────────────────
-  { id: "deploy_site",       endpoint: "POST /deployments/v1",              mcp: "deploy_site",       cli: "sites:deploy",       openclaw: "sites:deploy" },
-  { id: "deploy_site_dir",   endpoint: "POST /deployments/v1",              mcp: "deploy_site_dir",   cli: "sites:deploy-dir",   openclaw: "sites:deploy-dir" },
+  // ── Sites / Subdomains ───────────────────────────────────────────────────
+  { id: "deploy_site",       endpoint: "POST /deploy/v2/plans",             mcp: "deploy_site",       cli: "sites:deploy",       openclaw: "sites:deploy" },
+  { id: "deploy_site_dir",   endpoint: "POST /deploy/v2/plans",             mcp: "deploy_site_dir",   cli: "sites:deploy-dir",   openclaw: "sites:deploy-dir" },
   { id: "claim_subdomain",   endpoint: "POST /subdomains/v1",              mcp: "claim_subdomain",   cli: "subdomains:claim",   openclaw: "subdomains:claim" },
   { id: "delete_subdomain",  endpoint: "DELETE /subdomains/v1/:name",      mcp: "delete_subdomain",  cli: "subdomains:delete",  openclaw: "subdomains:delete" },
   { id: "list_subdomains",   endpoint: "GET /subdomains/v1",               mcp: "list_subdomains",   cli: "subdomains:list",    openclaw: "subdomains:list" },
@@ -193,8 +192,8 @@ const SURFACE: Capability[] = [
   { id: "check_domain_status",  endpoint: "GET /domains/v1/:domain",       mcp: "check_domain_status",  cli: "domains:status", openclaw: "domains:status" },
   { id: "remove_custom_domain", endpoint: "DELETE /domains/v1/:domain",    mcp: "remove_custom_domain", cli: "domains:delete", openclaw: "domains:delete" },
 
-  // ── Bundle deploy ────────────────────────────────────────────────────────
-  { id: "bundle_deploy",     endpoint: "POST /deploy/v1",                  mcp: "bundle_deploy",     cli: "deploy",           openclaw: "deploy" },
+  // ── Bundle deploy (legacy entry point — routes through v2 via SDK shim) ─
+  { id: "bundle_deploy",     endpoint: "POST /deploy/v2/plans",            mcp: "bundle_deploy",     cli: "deploy",           openclaw: "deploy" },
 
   // ── Unified deploy (v1.34+) ──────────────────────────────────────────────
   { id: "deploy",            endpoint: "POST /deploy/v2/plans",                            mcp: "deploy",            cli: "deploy:apply",      openclaw: "deploy:apply" },
@@ -247,9 +246,6 @@ const SURFACE: Capability[] = [
   // ── Additional billing ─────────────────────────────────────────────────
   { id: "create_checkout",   endpoint: "POST /billing/v1/checkouts",        mcp: "create_checkout",     cli: "allowance:checkout",  openclaw: "allowance:checkout" },
   { id: "billing_history",   endpoint: "GET /billing/v1/accounts/:wallet/history", mcp: "billing_history", cli: "allowance:history", openclaw: "allowance:history" },
-
-  // ── Deployment status ──────────────────────────────────────────────────
-  { id: "get_deployment",    endpoint: "GET /deployments/v1/:id",           mcp: "get_deployment",      cli: "sites:status",     openclaw: "sites:status" },
 
   // ── Version management ─────────────────────────────────────────────────
   { id: "update_version",    endpoint: "PATCH /projects/v1/admin/:id/versions/:version_id", mcp: "update_version", cli: "apps:update", openclaw: "apps:update" },
@@ -333,7 +329,6 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   // Database / Admin — SQL / REST / expose stay on raw fetch today.
   run_sql: null,
   rest_query: null,
-  setup_rls: "projects.setupRls",
   apply_expose: null,
   get_expose: null,
   get_schema: "projects.getSchema",
@@ -363,8 +358,8 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   delete_secret: "secrets.delete",
 
   // Sites / Subdomains
-  deploy_site: null, // v1.32: inline-bytes overload removed; MCP stages files to a temp dir and composes deployDir
-  deploy_site_dir: "sites.deployDir", // Node-only SDK helper: walks fs + plan/commit transport
+  deploy_site: null, // MCP stages files to a temp dir and composes deployDir
+  deploy_site_dir: "sites.deployDir", // Node-only SDK helper: walks fs + unified deploy primitive
   claim_subdomain: "subdomains.claim",
   delete_subdomain: "subdomains.delete",
   list_subdomains: "subdomains.list",
@@ -433,9 +428,6 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   // Messaging & agent contact
   send_message: "admin.sendMessage",
   set_agent_contact: "admin.setAgentContact",
-
-  // Deployment status
-  get_deployment: "sites.getDeployment",
 
   // Admin
   pin_project: "projects.pin",
@@ -807,8 +799,6 @@ describe("llms.txt alignment", { skip: !llmsTxtAvailable && "~/Developer/run402-
       "GET /tiers/v1",
       // Info/discovery endpoints (return pricing or schema, no action)
       "GET /projects/v1",
-      "GET /deployments/v1",
-      "GET /deploy/v1",
       "GET /fork/v1",
       "GET /generate-image/v1",
       "GET /message/v1",

@@ -34,7 +34,7 @@ export async function handleDeploySite(args: {
   target?: string;
   files: Array<{ file: string; data: string; encoding?: string }>;
 }): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
-  const auth = requireAllowanceAuth("/deploy/v1/plan");
+  const auth = requireAllowanceAuth("/deploy/v2/plans");
   if ("error" in auth) return auth.error;
 
   // The SDK's inline-bytes overload is removed in v1.32 — every deploy goes

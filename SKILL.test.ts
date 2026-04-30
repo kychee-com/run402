@@ -99,7 +99,8 @@ describe("SKILL.md (root, MCP-based)", () => {
 
   describe("body — anti-patterns (deprecated surfaces must not return)", () => {
     const banned: Array<{ pattern: RegExp; reason: string }> = [
-      { pattern: /\bsetup_rls\b/, reason: "setup_rls is replaced by apply_expose" },
+      { pattern: /\bsetup_rls\b/, reason: "setup_rls was removed; use apply_expose" },
+      { pattern: /\bget_deployment\b/, reason: "get_deployment was removed; use deploy/deploy_events/deploy_list" },
       { pattern: /"inherit"\s*:\s*true/, reason: "the inherit:true deploy flag was removed in v1.32" },
     ];
     for (const { pattern, reason } of banned) {
@@ -182,8 +183,9 @@ describe("openclaw/SKILL.md (CLI-based)", () => {
 
   describe("body — anti-patterns (deprecated surfaces must not return)", () => {
     const banned: Array<{ pattern: RegExp; reason: string }> = [
-      { pattern: /\bsetup_rls\b/, reason: "setup_rls is replaced by apply-expose" },
-      { pattern: /\bprojects rls\b/, reason: "`projects rls` is replaced by `projects apply-expose`" },
+      { pattern: /\bsetup_rls\b/, reason: "setup_rls was removed; use apply-expose" },
+      { pattern: /\bprojects rls\b/, reason: "`projects rls` was removed; use `projects apply-expose`" },
+      { pattern: /\bsites\s+status\b/, reason: "`sites status` was removed; use `deploy events` / `deploy list`" },
       { pattern: /"inherit"\s*:\s*true/, reason: "the inherit:true deploy flag was removed in v1.32" },
     ];
     for (const { pattern, reason } of banned) {

@@ -2,7 +2,7 @@
  * `projects` namespace — project lifecycle, introspection, and admin.
  *
  * Covers:
- *   - remote: provision, delete, list, getUsage, getSchema, setupRls, pin, getQuote
+ *   - remote: provision, delete, list, getUsage, getSchema, pin, getQuote
  *   - local:  info, keys, use (require provider support for persistence methods)
  */
 
@@ -16,8 +16,6 @@ import type {
   ProvisionOptions,
   ProvisionResult,
   QuoteResult,
-  RlsSetupOptions,
-  RlsSetupResult,
   SchemaReport,
   UsageReport,
 } from "./projects.types.js";
@@ -149,48 +147,6 @@ export class Projects {
     return this.client.request<SchemaReport>(`/projects/v1/admin/${id}/schema`, {
       headers: { Authorization: `Bearer ${keys.service_key}` },
       context: "fetching schema",
-    });
-  }
-
-  /**
-   * Apply a row-level-security template to one or more tables.
-   *
-   * ⚠ The gateway endpoint is deprecated (sunset 2026-05-23). Prefer the
-   *   manifest-based `apply_expose` flow for new code.
-   *
-   * @throws {Run402Error} with `context: "setting up RLS"` when
-   *   `i_understand_this_is_unrestricted` is missing for the
-   *   `public_read_write_UNRESTRICTED` template.
-   */
-  async setupRls(id: string, opts: RlsSetupOptions): Promise<RlsSetupResult> {
-    if (
-      opts.template === "public_read_write_UNRESTRICTED" &&
-      opts.i_understand_this_is_unrestricted !== true
-    ) {
-      throw new (class extends Run402Error {})(
-        "i_understand_this_is_unrestricted must be true when template is public_read_write_UNRESTRICTED",
-        null,
-        null,
-        "setting up RLS",
-      );
-    }
-
-    const keys = await this.client.getProject(id);
-    if (!keys) throw new ProjectNotFound(id, "setting up RLS");
-
-    const body: Record<string, unknown> = {
-      template: opts.template,
-      tables: opts.tables,
-    };
-    if (opts.i_understand_this_is_unrestricted !== undefined) {
-      body.i_understand_this_is_unrestricted = opts.i_understand_this_is_unrestricted;
-    }
-
-    return this.client.request<RlsSetupResult>(`/projects/v1/admin/${id}/rls`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${keys.service_key}` },
-      body,
-      context: "setting up RLS",
     });
   }
 

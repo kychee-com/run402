@@ -191,8 +191,7 @@ For TypeScript autocomplete, `npm install @run402/functions` in your editor's pr
 ### Sites & subdomains
 
 - **`deploy_site`** — deploy from inline file bytes. Params: `project`, `target?`, `files: [{ file, data, encoding? }]`. Free with active tier.
-- **`deploy_site_dir`** — deploy from a local directory. Plan/commit transport — only uploads bytes the gateway doesn't have. Params: `project`, `dir`, `target?`. Skips `.git/`, `node_modules/`, `.DS_Store`. Symlinks throw.
-- **`get_deployment`** — fetch deployment status and URL. Params: `deployment_id`.
+- **`deploy_site_dir`** — deploy from a local directory. Routes through the unified deploy primitive (CAS-backed) — only uploads bytes the gateway doesn't have. Params: `project`, `dir`, `target?`. Skips `.git/`, `node_modules/`, `.DS_Store`. Symlinks throw.
 - **`claim_subdomain`** — claim `<name>.run402.com`. Idempotent; auto-reassigns to latest deployment on subsequent deploys. Params: `project_id`, `name`, `deployment_id?`.
 - **`list_subdomains`** / **`delete_subdomain`** — manage subdomains.
 - **`add_custom_domain`** / **`list_custom_domains`** / **`check_domain_status`** / **`remove_custom_domain`** — point your own domain at a Run402 subdomain.

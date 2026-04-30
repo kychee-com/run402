@@ -1,81 +1,9 @@
 import { readFileSync } from "fs";
 import { dirname, resolve } from "path";
-import { Agent, fetch as undiciFetch } from "undici";
-import { API, allowanceAuthHeaders, resolveProjectId } from "./config.mjs";
+import { resolveProjectId } from "./config.mjs";
 import { resolveFilePathsInManifest, resolveMigrationsFile } from "./manifest.mjs";
-
-// Custom undici dispatcher with longer timeouts for large-batch deploys.
-// Default Node undici headersTimeout is ~5 min; large image uploads can exceed it.
-// We MUST pair this Agent (from the installed undici major) with undici.fetch
-// — not globalThis.fetch — because Node's built-in fetch ships its own bundled
-// undici whose Dispatcher interface may differ by major version, which would
-// cause UND_ERR_INVALID_ARG ("invalid onRequestStart method") at dispatch time.
-const deployDispatcher = new Agent({
-  headersTimeout: 600_000, // 10 min
-  bodyTimeout:    600_000,
-  connectTimeout:  30_000,
-});
-
-// Retry policy for transient network errors and 5xx gateway errors.
-// We retry on these because they tend to be load-shedding/blip-related; we do
-// NOT retry on other 4xx/5xx (402, 400, etc.) — those are deterministic.
-const RETRY_CAUSE_CODES = new Set([
-  "UND_ERR_HEADERS_TIMEOUT",
-  "UND_ERR_BODY_TIMEOUT",
-  "UND_ERR_SOCKET",
-  "ECONNRESET",
-  "ECONNREFUSED",
-  "ETIMEDOUT",
-]);
-const RETRY_HTTP_STATUSES = new Set([502, 503, 504]);
-
-// Test-only injection seam. Tests can replace the fetch implementation used by
-// run() without monkey-patching globalThis.fetch (which would not intercept
-// undici.fetch anyway). Pass null/undefined to reset.
-let _runFetchImpl = undiciFetch;
-export function _setFetchImpl(fn) { _runFetchImpl = fn ?? undiciFetch; }
-
-function isRetriableError(err) {
-  if (!err) return false;
-  const code = err.code || (err.cause && err.cause.code);
-  return typeof code === "string" && RETRY_CAUSE_CODES.has(code);
-}
-
-function sleep(ms) {
-  return new Promise((r) => setTimeout(r, ms));
-}
-
-/**
- * Fetch with bounded retries on transient errors. Exported for testability.
- * - 2 retries (3 total attempts)
- * - Backoff ~1s then ~4s with small jitter
- * - Retries on RETRY_CAUSE_CODES network errors and RETRY_HTTP_STATUSES
- * - Silent: no stdout noise on retry (CLI is agent-first)
- */
-export async function fetchWithRetry(url, init, { attempts = 3, fetchImpl = undiciFetch } = {}) {
-  for (let attempt = 1; attempt <= attempts; attempt++) {
-    try {
-      const res = await fetchImpl(url, init);
-      if (attempt < attempts && RETRY_HTTP_STATUSES.has(res.status)) {
-        // Drain body so the connection can be reused, then retry.
-        try { await res.arrayBuffer(); } catch { /* noop */ }
-        const delay = (attempt === 1 ? 1000 : 4000) + Math.floor(Math.random() * 250);
-        await sleep(delay);
-        continue;
-      }
-      return res;
-    } catch (err) {
-      if (attempt < attempts && isRetriableError(err)) {
-        const delay = (attempt === 1 ? 1000 : 4000) + Math.floor(Math.random() * 250);
-        await sleep(delay);
-        continue;
-      }
-      throw err;
-    }
-  }
-  // Unreachable: the loop above either returns a response or throws.
-  throw new Error("fetchWithRetry: exhausted attempts without returning");
-}
+import { getSdk } from "./sdk.mjs";
+import { reportSdkError } from "./sdk-errors.mjs";
 
 const HELP = `run402 deploy — Deploy to an existing project on Run402
 
@@ -106,13 +34,11 @@ Manifest format (JSON):
       { "file": "index.html", "data": "<html>...</html>" },
       { "file": "style.css", "path": "./dist/style.css" }
     ],
-    "subdomain": "my-app",
-    "inherit": true
+    "subdomain": "my-app"
   }
 
   project_id is required (provision first with 'run402 provision').
   All other fields are optional.
-  inherit: copy unchanged site files from previous deployment (only upload changed files).
 
   Migrations can be inline or read from a file:
     "migrations": "CREATE TABLE ..."              ← inline SQL
@@ -168,6 +94,8 @@ Prerequisites:
   - run402 provision                Provision a project first
 
 Notes:
+  - Routes through the unified deploy primitive (POST /deploy/v2/plans);
+    bytes ride through the CAS substrate, only changed files get uploaded.
   - Requires an active tier subscription (run402 tier set <tier>)
   - Provision a project first with 'run402 provision', then deploy to it
   - Use 'run402 projects list' to see all provisioned projects
@@ -185,16 +113,11 @@ async function readStdin() {
  *
  * Returns { manifest } on success, or { error } with a structured error object
  * on any fs / parse failure. Never throws.
- *
- * The returned error shape (GH-44):
- *   { status: "error", message, field, path?, hint? }
- * where `field` is one of: "manifest", "stdin", "migrations_file", "files[<i>].path".
  */
 async function loadManifest(opts) {
   let raw;
   let baseDir = null;
 
-  // Step 1: read the manifest source.
   if (opts.manifest) {
     const manifestAbs = resolve(opts.manifest);
     baseDir = dirname(manifestAbs);
@@ -222,7 +145,6 @@ async function loadManifest(opts) {
     raw = await readStdin();
   }
 
-  // Step 2: parse JSON.
   let manifest;
   try {
     manifest = JSON.parse(raw);
@@ -235,8 +157,6 @@ async function loadManifest(opts) {
     } };
   }
 
-  // Step 3: resolve file paths (only when reading from a manifest file — we
-  // can't resolve relative paths without a baseDir).
   if (opts.manifest) {
     try {
       resolveMigrationsFile(manifest, baseDir);
@@ -270,7 +190,7 @@ export async function run(args) {
   //   run402 deploy resume <op>   → resume an activation_pending operation
   //   run402 deploy list          → list recent deploy operations
   //   run402 deploy events <op>   → fetch recorded event stream for an operation
-  //   run402 deploy --manifest …  → legacy bundle deploy (still works)
+  //   run402 deploy --manifest …  → legacy bundle deploy (routes through v2)
   const sub = args[0];
   switch (sub) {
     case "apply":
@@ -290,10 +210,6 @@ export async function run(args) {
     if (args[i] === "--project" && args[i + 1]) opts.project = args[++i];
   }
 
-  // Load + parse the manifest. Errors here (missing --manifest path, malformed
-  // JSON, or any referenced files[].path / migrations_file that doesn't exist)
-  // must be surfaced as structured JSON on stderr — never as a raw Node stack
-  // trace (GH-44). The CLI is agent-first; stack traces break JSON consumers.
   const manifestResult = await loadManifest(opts);
   if (manifestResult.error) {
     console.error(JSON.stringify(manifestResult.error));
@@ -302,8 +218,7 @@ export async function run(args) {
   const manifest = manifestResult.manifest;
 
   // If both sources set project_id and they disagree, refuse to deploy rather
-  // than silently shipping to the wrong target. Agents and humans should be
-  // forced to be explicit when the two sources conflict (GH-42).
+  // than silently shipping to the wrong target.
   if (opts.project && manifest.project_id && opts.project !== manifest.project_id) {
     const err = {
       status: "error",
@@ -316,58 +231,21 @@ export async function run(args) {
     process.exit(1);
   }
 
-  // --project flag fills in manifest's project_id when the manifest doesn't
-  // specify one. (When both are set they must already agree — enforced above.)
   if (opts.project) manifest.project_id = opts.project;
-
-  // If no project_id in manifest, fall back to the active project.
-  // resolveProjectId() returns the active project id when its argument is
-  // falsy, and emits a clear error + exits non-zero when no active project
-  // is set either.
   if (!manifest.project_id) {
     manifest.project_id = resolveProjectId(null);
   }
 
-  // Remove legacy 'name' field if present
+  // Strip fields that aren't part of the bundleDeploy contract.
+  const projectId = manifest.project_id;
+  delete manifest.project_id;
   delete manifest.name;
+  delete manifest.migrations_file;
 
-  const authHeaders = allowanceAuthHeaders("/deploy/v1");
-  const body = JSON.stringify(manifest);
-  const res = await fetchWithRetry(`${API}/deploy/v1`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", ...authHeaders },
-    body,
-    dispatcher: deployDispatcher,
-  }, { fetchImpl: _runFetchImpl });
-
-  // Content-type aware parsing: gateways (ALB, CloudFront, etc.) return HTML on
-  // 504/413/etc., which would otherwise crash res.json() with SyntaxError.
-  const contentType = res.headers.get("content-type") || "";
-  let result = null;
-  let parseError = null;
-  let bodyText = null;
-  if (contentType.includes("application/json")) {
-    try {
-      result = await res.json();
-    } catch (e) {
-      parseError = e;
-      try { bodyText = await res.text(); } catch { bodyText = ""; }
-    }
-  } else {
-    try { bodyText = await res.text(); } catch { bodyText = ""; }
+  try {
+    const result = await getSdk().apps.bundleDeploy(projectId, manifest);
+    console.log(JSON.stringify(result, null, 2));
+  } catch (err) {
+    reportSdkError(err);
   }
-
-  if (!res.ok || parseError || result === null) {
-    const err = { status: "error", http: res.status, content_type: contentType || null };
-    if (result && typeof result === "object") {
-      Object.assign(err, result);
-    } else {
-      const preview = typeof bodyText === "string" ? bodyText.slice(0, 500) : "";
-      err.body_preview = preview;
-      if (parseError) err.parse_error = "response body was not valid JSON";
-    }
-    console.error(JSON.stringify(err));
-    process.exit(1);
-  }
-  console.log(JSON.stringify(result, null, 2));
 }

@@ -1,14 +1,14 @@
 /**
  * `sites` namespace — static site deployments.
  *
- * As of v1.32 the inline-bytes deploy path (`POST /deployments/v1` with
- * base64 file blobs) is REMOVED at the gateway (returns 410 Gone). Callers
- * migrate to `NodeSites.deployDir` from `@run402/sdk/node`, which uses the
- * plan/commit transport over `/deploy/v1/plan` + `/deploy/v1/commit`.
+ * As of v1.34 every static-site deploy flows through the unified
+ * {@link Deploy.apply} primitive. The legacy isomorphic surface is empty
+ * here; the Node-only `deployDir` convenience lives in
+ * {@link "../node/sites-node".NodeSites}.
  *
- * The isomorphic surface keeps only the public read-only `getDeployment`
- * call. `SiteFile` is preserved for `apps.bundleDeploy` (separate `/deploy/v1`
- * endpoint, unaffected by the v1.32 cutover).
+ * `SiteFile` is preserved for `apps.bundleDeploy` callers that still pass
+ * inline file bytes; the bundle shim translates these into a v2
+ * {@link ReleaseSpec} before dispatching.
  */
 
 import type { Client } from "../kernel.js";
@@ -30,24 +30,6 @@ export interface SiteDeployResult {
   bytes_uploaded?: number;
 }
 
-export interface DeploymentInfo {
-  id: string;
-  name: string;
-  url: string;
-  project_id?: string;
-  status: string;
-  files_count: number;
-  total_size: number;
-}
-
 export class Sites {
   constructor(private readonly client: Client) {}
-
-  /** Get deployment metadata by id. Public — no project auth. */
-  async getDeployment(deploymentId: string): Promise<DeploymentInfo> {
-    return this.client.request<DeploymentInfo>(`/deployments/v1/${deploymentId}`, {
-      context: "fetching deployment",
-      withAuth: false,
-    });
-  }
 }

@@ -21,7 +21,6 @@ import { getFunctionLogsSchema, handleGetFunctionLogs } from "./tools/get-functi
 import { setSecretSchema, handleSetSecret } from "./tools/set-secret.js";
 
 // New tools — database
-import { setupRlsSchema, handleSetupRls } from "./tools/setup-rls.js";
 import { applyExposeSchema, handleApplyExpose } from "./tools/apply-expose.js";
 import { getExposeSchema, handleGetExpose } from "./tools/get-expose.js";
 import { getSchemaSchema, handleGetSchema } from "./tools/get-schema.js";
@@ -123,7 +122,6 @@ import { sendMessageSchema, handleSendMessage } from "./tools/send-message.js";
 import { setAgentContactSchema, handleSetAgentContact } from "./tools/set-agent-contact.js";
 import { createCheckoutSchema, handleCreateCheckout } from "./tools/create-checkout.js";
 import { billingHistorySchema, handleBillingHistory } from "./tools/billing-history.js";
-import { getDeploymentSchema, handleGetDeployment } from "./tools/get-deployment.js";
 import { updateVersionSchema, handleUpdateVersion } from "./tools/update-version.js";
 import { deleteVersionSchema, handleDeleteVersion } from "./tools/delete-version.js";
 import { getAppSchema, handleGetApp } from "./tools/get-app.js";
@@ -179,15 +177,8 @@ server.tool(
 );
 
 server.tool(
-  "setup_rls",
-  "⚠ DEPRECATED — use `apply_expose` instead. Sunset: 2026-05-23. The `/rls` endpoint still works during the deprecation window and returns Deprecation/Sunset headers; after the sunset date it will return 410 Gone. Apply row-level security to tables. Templates: user_owns_rows, public_read_authenticated_write, public_read_write_UNRESTRICTED (requires i_understand_this_is_unrestricted: true).",
-  setupRlsSchema,
-  async (args) => handleSetupRls(args),
-);
-
-server.tool(
   "apply_expose",
-  "Apply a declarative authorization manifest to a project (POST /projects/v1/admin/:id/expose). The manifest describes the full authorization surface: tables (with policy, owner_column, force_owner_on_insert, i_understand_this_is_unrestricted, custom_sql), views (with base, select, filter), and rpcs (with signature, grant_to). Convergent: applying the same manifest twice is a no-op; items dropped between applies have their policies/grants/triggers/views revoked. Tables are dark by default — any table not declared with expose:true is unreachable via anon/authenticated. Supersedes `setup_rls`.",
+  "Apply a declarative authorization manifest to a project (POST /projects/v1/admin/:id/expose). The manifest describes the full authorization surface: tables (with policy, owner_column, force_owner_on_insert, i_understand_this_is_unrestricted, custom_sql), views (with base, select, filter), and rpcs (with signature, grant_to). Convergent: applying the same manifest twice is a no-op; items dropped between applies have their policies/grants/triggers/views revoked. Tables are dark by default — any table not declared with expose:true is unreachable via anon/authenticated.",
   applyExposeSchema,
   async (args) => handleApplyExpose(args),
 );
@@ -710,15 +701,6 @@ server.tool(
   "View billing transaction history for an agent allowance address.",
   billingHistorySchema,
   async (args) => handleBillingHistory(args),
-);
-
-// ─── Deployment status tool ────────────────────────────────────────────────
-
-server.tool(
-  "get_deployment",
-  "Get deployment status and URL for a static site deployment.",
-  getDeploymentSchema,
-  async (args) => handleGetDeployment(args),
 );
 
 // ─── Version management tools ──────────────────────────────────────────────

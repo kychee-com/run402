@@ -139,18 +139,6 @@ describe("domains (custom)", () => {
   });
 });
 
-describe("sites", () => {
-  // Inline-bytes `sites.deploy(files)` was removed in v1.32 (see sdk/src/node/
-  // sites-node.test.ts for plan/commit transport coverage). The isomorphic
-  // surface only retains the public read-only `getDeployment` helper.
-  it("getDeployment GETs public endpoint with no auth", async () => {
-    const { fetch, calls } = mockFetch(() => json({ id: "dpl_1", name: "site", url: "u", status: "active", files_count: 3, total_size: 1024 }));
-    await sdk(fetch).sites.getDeployment("dpl_1");
-    assert.equal(calls[0]!.url, "https://api.test/deployments/v1/dpl_1");
-    assert.equal(calls[0]!.headers["SIGN-IN-WITH-X"], undefined);
-  });
-});
-
 describe("service (public)", () => {
   it("status GETs /status with no auth", async () => {
     const { fetch, calls } = mockFetch(() => json({ schema_version: "run402-status-v1", current_status: "ok" }));

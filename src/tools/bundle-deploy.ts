@@ -148,7 +148,7 @@ export async function handleBundleDeploy(args: {
     }
   }
 
-  const auth = requireAllowanceAuth("/deploy/v1");
+  const auth = requireAllowanceAuth("/deploy/v2/plans");
   if ("error" in auth) return auth.error;
 
   try {

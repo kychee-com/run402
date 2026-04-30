@@ -110,13 +110,15 @@ const { url, bytes_uploaded, bytes_total } = await r.sites.deployDir({
 });
 ```
 
-Progress events stream over `onEvent` (or stderr from the CLI):
+Progress events stream over `onEvent` (or stderr from the CLI). Both the
+unified `DeployEvent` shapes (from the v2 deploy primitive) and the legacy
+phase events below are emitted for back-compat:
 
 | phase | Fires | Extra |
 |-------|-------|-------|
-| `plan`   | After `POST /deploy/v1/plan` | `manifest_size` (file count) |
+| `plan`   | After the plan response is parsed | `manifest_size` (file count) |
 | `upload` | After each missing file's bytes finish PUTing | `file`, `sha256`, `done`, `total` |
-| `commit` | Just before `POST /deploy/v1/commit` | — |
+| `commit` | Just before the commit POST | — |
 | `poll`   | Per server-side copy poll tick | `status`, `elapsed_ms` |
 
 CLI:
@@ -307,8 +309,7 @@ The full MCP surface — every tool is a thin shim over an SDK call.
 | Tool | Description |
 |------|-------------|
 | `deploy_site` | Deploy a static site from inline file bytes. |
-| `deploy_site_dir` | Deploy a static site from a local directory. v1.32 plan/commit transport — only uploads bytes the gateway doesn't have. |
-| `get_deployment` | Fetch deployment status and URL. |
+| `deploy_site_dir` | Deploy a static site from a local directory. Routes through the unified deploy primitive (CAS-backed) — only uploads bytes the gateway doesn't have. |
 | `claim_subdomain` | Claim `<name>.run402.com` (idempotent; reassigns to latest deployment on subsequent deploys). |
 | `list_subdomains` / `delete_subdomain` | Manage subdomains. |
 | `add_custom_domain` / `list_custom_domains` / `check_domain_status` / `remove_custom_domain` | Point your own domain at a Run402 subdomain. |

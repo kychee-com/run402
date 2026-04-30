@@ -47,7 +47,7 @@ The `CredentialsProvider` interface has two required methods (`getAuth`, `getPro
 |---|---|
 | `projects` | `provision`, `delete`, `list`, `getUsage`, `getSchema`, `info`, `keys`, `use`, `pin` |
 | `deploy` | **The unified deploy primitive (v1.34+).** `apply` / `start` / `resume` / `status` / `getRelease` / `diff` / `plan` / `upload` / `commit` |
-| `sites` | `deploy` (inline files), `getDeployment`, plus `deployDir` on the Node entry |
+| `sites` | `deployDir` (Node entry only) — thin wrapper over `r.deploy.apply` |
 | `blobs` | `put` (returns `AssetRef` with `cdn_url`/`sri`/`etag`), `get`, `ls`, `rm`, `sign`, `diagnoseUrl`, `waitFresh` |
 | `functions` | `deploy`, `invoke`, `getLogs`, `update`, `list`, `delete` |
 | `secrets` | `set`, `list`, `delete` |

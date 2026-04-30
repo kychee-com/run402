@@ -11,13 +11,11 @@ const HELP = `run402 sites - Deploy and manage static sites
 Usage:
   run402 sites deploy --manifest <file> [--project <id>] [--target <target>]
   run402 sites deploy-dir <path> --project <id> [--target <target>]
-  run402 sites status <deployment_id>
   cat manifest.json | run402 sites deploy
 
 Subcommands:
   deploy      Deploy a static site from a manifest JSON
   deploy-dir  Deploy a static site from a local directory (SDK walks it for you)
-  status      Check the status of a deployment
 
 Options (deploy):
   --manifest <file>     Path to manifest JSON file (or read from stdin)
@@ -48,18 +46,19 @@ Manifest format (JSON):
 Examples:
   run402 sites deploy --manifest site.json
   run402 sites deploy-dir ./my-site --project prj_abc
-  run402 sites status dpl_abc123
   cat site.json | run402 sites deploy
 
 Notes:
-  - Both deploy and deploy-dir use the v1.32 plan/commit transport: only
-    bytes the gateway doesn't already have are uploaded. Re-deploys of an
-    unchanged tree make no S3 PUTs.
+  - Both deploy and deploy-dir route through the unified deploy primitive
+    (CAS-backed): only bytes the gateway doesn't already have are uploaded.
+    Re-deploys of an unchanged tree make no S3 PUTs.
+  - To check status of an in-flight deploy, use 'run402 deploy events <op>'
+    or 'run402 deploy list --project <id>'.
   - deploy-dir walks the directory, skips .git / node_modules / .DS_Store,
     and auto-detects binary files. Symlinks are rejected.
   - Progress events are emitted as JSON-line objects on stderr by default
-    (one object per line: {"phase":"plan",...}/{"phase":"upload",...}/...).
-    Final result envelope goes to stdout. Pass --quiet to silence stderr.
+    (one object per line). Final result envelope goes to stdout. Pass --quiet
+    to silence stderr.
   - Free with active tier - requires allowance auth
 `;
 
@@ -111,21 +110,17 @@ Options:
 Behavior:
   - Walks <path> recursively, skips .git / node_modules / .DS_Store
   - Computes per-file SHA-256 and uploads only bytes the gateway doesn't
-    already have (plan/commit transport, v1.32+)
+    already have (CAS-backed unified deploy primitive)
   - Symlinks are rejected (no following)
   - Paths in the manifest are POSIX-style relative to <path>
 
 Progress events:
   By default, the CLI streams JSON-line events to stderr while the deploy
-  progresses. Each line is one JSON object terminated by \\n. Phases:
-    {"phase":"plan","manifest_size":N}            - after POST /deploy/v1/plan
-    {"phase":"upload","file":"...","sha256":"...","done":k,"total":N}
-                                                  - per uploaded file (k of N)
-    {"phase":"commit"}                            - before POST /deploy/v1/commit
-    {"phase":"poll","status":"copying","elapsed_ms":N}
-                                                  - per Stage-2 copy poll tick
-  Stdout receives only the final result envelope. To consume both streams
-  separately: \`run402 sites deploy-dir ./dist --project p > result.json 2> events.log\`.
+  progresses. Each line is one JSON object terminated by \\n. Both the
+  unified DeployEvent shapes and legacy phase events ({"phase":...}) are
+  emitted for back-compat. Stdout receives only the final result envelope.
+  To consume both streams separately:
+    \`run402 sites deploy-dir ./dist --project p > result.json 2> events.log\`
 
 Notes:
   - Re-deploying an unchanged tree makes no S3 PUTs (returns immediately
@@ -145,11 +140,6 @@ async function readStdin() {
   return Buffer.concat(chunks).toString("utf-8");
 }
 
-/**
- * Stage manifest files to a temp directory so the SDK's deployDir can walk
- * them. The v1.32 SDK no longer accepts inline file bytes — every deploy
- * goes through plan/commit and reads from a directory.
- */
 function stageFilesToTempDir(files) {
   const stage = mkdtempSync(join(tmpdir(), "run402-deploy-stage-"));
   for (const f of files) {
@@ -166,15 +156,6 @@ function stageFilesToTempDir(files) {
   return stage;
 }
 
-/**
- * Returns an onEvent callback that writes each event as a single-line JSON
- * object to stderr — or a no-op when --quiet was passed. The CLI is
- * agent-first; structured stderr lets a piping agent stream progress with
- * `2>events.log` while keeping stdout reserved for the final result envelope.
- *
- * Uses `console.error` so that test harnesses intercepting console output
- * see each event line; `console.error` appends a newline by default.
- */
 function makeStderrEventWriter(quiet) {
   if (quiet) return undefined;
   return (event) => {
@@ -193,7 +174,7 @@ async function deploy(args) {
     if (args[i] === "--inherit") {
       console.error(JSON.stringify({
         status: "error",
-        message: "--inherit is removed in v1.32; the SDK now uploads only changed files automatically.",
+        message: "--inherit is removed; the SDK now uploads only changed files automatically.",
       }));
       process.exit(1);
     }
@@ -204,7 +185,7 @@ async function deploy(args) {
   if (opts.manifest) resolveFilePathsInManifest(manifest, dirname(resolve(opts.manifest)));
 
   // Preserve the aggressive early exit when no allowance is configured.
-  allowanceAuthHeaders("/deploy/v1/plan");
+  allowanceAuthHeaders("/deploy/v2/plans");
 
   const stage = stageFilesToTempDir(manifest.files || []);
   try {
@@ -235,7 +216,7 @@ async function deployDir(args) {
     if (args[i] === "--inherit") {
       console.error(JSON.stringify({
         status: "error",
-        message: "--inherit is removed in v1.32; the SDK now uploads only changed files automatically.",
+        message: "--inherit is removed; the SDK now uploads only changed files automatically.",
       }));
       process.exit(1);
     }
@@ -248,7 +229,7 @@ async function deployDir(args) {
   const projectId = resolveProjectId(opts.project);
 
   // Preserve the aggressive early exit when no allowance is configured.
-  allowanceAuthHeaders("/deploy/v1/plan");
+  allowanceAuthHeaders("/deploy/v2/plans");
 
   try {
     const data = await getSdk().sites.deployDir({
@@ -266,27 +247,12 @@ async function deployDir(args) {
   }
 }
 
-async function status(args) {
-  let deploymentId = null;
-  for (let i = 0; i < args.length; i++) {
-    if (!args[i].startsWith("-")) { deploymentId = args[i]; break; }
-  }
-  if (!deploymentId) { console.error(JSON.stringify({ status: "error", message: "Missing deployment ID" })); process.exit(1); }
-  try {
-    const data = await getSdk().sites.getDeployment(deploymentId);
-    console.log(JSON.stringify(data, null, 2));
-  } catch (err) {
-    reportSdkError(err);
-  }
-}
-
 export async function run(sub, args) {
   if (!sub || sub === '--help' || sub === '-h') { console.log(HELP); process.exit(0); }
   if (Array.isArray(args) && (args.includes("--help") || args.includes("-h"))) { console.log(SUB_HELP[sub] || HELP); process.exit(0); }
   switch (sub) {
     case "deploy":      await deploy(args); break;
     case "deploy-dir":  await deployDir(args); break;
-    case "status":      await status(args); break;
     default:
       console.error(`Unknown subcommand: ${sub}\n`);
       console.log(HELP);

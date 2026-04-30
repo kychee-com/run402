@@ -28,8 +28,8 @@
     "start": "node dist/index.js",
     "test:skill": "node --test --import tsx SKILL.test.ts",
     "test:sync": "node --test --import tsx sync.test.ts",
-    "test": "node --experimental-test-module-mocks --test --import tsx SKILL.test.ts sync.test.ts core/src/**/*.test.ts sdk/src/**/*.test.ts src/**/*.test.ts && node --test cli-e2e.test.mjs cli-deploy-dispatcher.test.mjs cli-help.test.mjs",
-    "test:e2e": "node --test cli-e2e.test.mjs cli-deploy-dispatcher.test.mjs cli-help.test.mjs",
+    "test": "node --experimental-test-module-mocks --test --import tsx SKILL.test.ts sync.test.ts core/src/**/*.test.ts sdk/src/**/*.test.ts src/**/*.test.ts && node --test cli-e2e.test.mjs cli-help.test.mjs",
+    "test:e2e": "node --test cli-e2e.test.mjs cli-help.test.mjs",
     "test:help": "node --test cli-help.test.mjs",
     "test:integration": "node --test --import tsx core/src/siwx-integration.integ.ts",
     "test:integration:full": "node --test --import tsx cli-integration.test.ts",
@@ -64,7 +64,6 @@
     "@modelcontextprotocol/sdk": "^1.27.1",
     "@noble/curves": "^2.0.1",
     "@noble/hashes": "^2.0.1",
-    "undici": "^8.0.2",
     "zod": "^3.24.0"
   },
   "devDependencies": {

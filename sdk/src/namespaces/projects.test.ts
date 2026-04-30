@@ -340,57 +340,6 @@ describe("projects.getSchema", () => {
   });
 });
 
-describe("projects.setupRls", () => {
-  it("POSTs the template and tables to /projects/v1/admin/:id/rls", async () => {
-    const { fetch, calls } = mockFetch(() =>
-      jsonResponse({ status: "ok", template: "user_owns_rows", tables: ["notes"] }),
-    );
-    const sdk = makeSdk(makeCreds(), fetch);
-    const result = await sdk.projects.setupRls("prj_known", {
-      template: "user_owns_rows",
-      tables: [{ table: "notes", owner_column: "user_id" }],
-    });
-
-    assert.equal(calls[0]!.url, "https://api.example.test/projects/v1/admin/prj_known/rls");
-    assert.equal(calls[0]!.method, "POST");
-    assert.deepEqual(JSON.parse(calls[0]!.body as string), {
-      template: "user_owns_rows",
-      tables: [{ table: "notes", owner_column: "user_id" }],
-    });
-    assert.equal(result.status, "ok");
-  });
-
-  it("refuses the UNRESTRICTED template without the ack flag", async () => {
-    const { fetch, calls } = mockFetch(() => jsonResponse({ status: "ok" }));
-    const sdk = makeSdk(makeCreds(), fetch);
-    await assert.rejects(
-      sdk.projects.setupRls("prj_known", {
-        template: "public_read_write_UNRESTRICTED",
-        tables: [{ table: "t" }],
-      }),
-      (err: unknown) =>
-        err instanceof Error &&
-        /i_understand_this_is_unrestricted/.test((err as Error).message),
-    );
-    assert.equal(calls.length, 0);
-  });
-
-  it("allows the UNRESTRICTED template when acknowledged", async () => {
-    const { fetch, calls } = mockFetch(() =>
-      jsonResponse({ status: "ok", template: "public_read_write_UNRESTRICTED", tables: ["t"] }),
-    );
-    const sdk = makeSdk(makeCreds(), fetch);
-    await sdk.projects.setupRls("prj_known", {
-      template: "public_read_write_UNRESTRICTED",
-      tables: [{ table: "t" }],
-      i_understand_this_is_unrestricted: true,
-    });
-    assert.equal(calls.length, 1);
-    const body = JSON.parse(calls[0]!.body as string);
-    assert.equal(body.i_understand_this_is_unrestricted, true);
-  });
-});
-
 describe("projects.pin", () => {
   it("POSTs /projects/v1/admin/:id/pin", async () => {
     const { fetch, calls } = mockFetch(() =>

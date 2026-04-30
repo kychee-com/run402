@@ -144,7 +144,7 @@ Core functions return `null` or throw — they never call `process.exit()`. Each
 - **`cli/lib/config.mjs`** — Imports from `../core-dist/`, adds CLI wrappers (`allowanceAuthHeaders()` with process.exit, `findProject()` with process.exit). Re-exports core keystore functions.
 - **`cli/lib/*.mjs`** — Each module exports `async run(sub, args)`. Subcommand bodies: argv parse + SDK call + JSON output + `reportSdkError` on failure.
 - **`cli/lib/blob.mjs`** retains raw `fetch` for the `put` subcommand only — resumable uploads + per-part concurrency are CLI-specific UX not modeled in the SDK.
-- **`cli/lib/deploy.mjs`** retains raw `undici.fetch` for long-timeout bundle deploys and retry-on-5xx. The SDK covers `apps.bundleDeploy` but the CLI wraps it with a custom dispatcher.
+- **`cli/lib/deploy.mjs`** delegates to `getSdk().apps.bundleDeploy(...)` (the v2 shim). The legacy custom undici dispatcher and retry-on-5xx logic was retired with the v1 route removal — v2 doesn't ship inline bytes, so the long-timeout rationale no longer applies.
 - **`cli/lib/deploy-v2.mjs`** — `run402 deploy apply` and `run402 deploy resume` subcommands. Thin wrapper over `r.deploy.apply` / `r.deploy.resume`.
 
 ### OpenClaw (`openclaw/`)
@@ -189,7 +189,7 @@ Two skill files coexist, serving different runtimes:
 - **`SKILL.md`** (root) — MCP-host skill. Frontmatter `install: run402-mcp`. Body teaches the platform via MCP tool names (`provision_postgres_project`, `apply_expose`, `deploy_site_dir`, `blob_put`, …) in natural-language framings — no JSON tool-call blobs. Read by Claude Desktop / Cursor / Cline / Claude Code agents that already have the run402-mcp tools loaded.
 - **`openclaw/SKILL.md`** — OpenClaw script-based skill. Frontmatter `install: run402` (the CLI). Body teaches the platform exclusively via `run402 <verb>` commands. Read by OpenClaw's script runner, where `openclaw/scripts/*.mjs` re-export from the CLI's lib.
 
-`SKILL.test.ts` validates both files with shape-appropriate guards (root requires the run402-mcp install + 9 MCP tool names; openclaw requires the run402 CLI install + 7 CLI verbs). Both ban `setup_rls` / `projects rls` / `inherit:true` regressions. Run with `npm run test:skill`.
+`SKILL.test.ts` validates both files with shape-appropriate guards (root requires the run402-mcp install + 9 MCP tool names; openclaw requires the run402 CLI install + 7 CLI verbs). Both ban `setup_rls` / `get_deployment` / `projects rls` / `sites status` / `inherit:true` regressions. Run with `npm run test:skill`.
 
 ## Environment Variables
 
