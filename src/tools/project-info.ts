@@ -26,7 +26,6 @@ export async function handleProjectInfo(args: {
       `| anon_key | \`${info.anon_key}\` |`,
       `| service_key | \`${info.service_key}\` |`,
       `| site_url | ${info.site_url ? `\`${info.site_url}\`` : "(none)"} |`,
-      `| deployed_at | ${info.deployed_at || "(never)"} |`,
     ];
 
     return { content: [{ type: "text", text: lines.join("\n") }] };

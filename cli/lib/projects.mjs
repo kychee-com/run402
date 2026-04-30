@@ -193,7 +193,7 @@ async function list() {
   const entries = Object.entries(store.projects);
   if (entries.length === 0) { console.log(JSON.stringify({ status: "ok", projects: [], message: "No projects yet." })); return; }
   const activeId = store.active_project_id;
-  console.log(JSON.stringify(entries.map(([id, p]) => ({ project_id: id, active: id === activeId, site_url: p.site_url, deployed_at: p.deployed_at })), null, 2));
+  console.log(JSON.stringify(entries.map(([id, p]) => ({ project_id: id, active: id === activeId, site_url: p.site_url })), null, 2));
 }
 
 async function info(projectId) {
@@ -205,7 +205,6 @@ async function info(projectId) {
       anon_key: data.anon_key,
       service_key: data.service_key,
       site_url: data.site_url || null,
-      deployed_at: data.deployed_at || null,
     }, null, 2));
   } catch (err) {
     reportSdkError(err);

@@ -131,15 +131,13 @@ async function fork(versionId, name, args) {
       subdomain: opts.subdomain,
     });
 
-    // SDK persists via the Node provider's saveProject/setActiveProject; we
-    // mirror the old CLI behavior here (deployed_at + site_url surfaced from
-    // the fork response) with a follow-up updateProject for the extra fields.
+    // SDK persists keys via the Node provider's saveProject; mirror that
+    // here so we also capture site_url from the fork response.
     if (data.project_id) {
       saveProject(data.project_id, {
         anon_key: data.anon_key,
         service_key: data.service_key,
         site_url: data.site_url || data.subdomain_url,
-        deployed_at: new Date().toISOString(),
       });
     }
     console.log(JSON.stringify(data, null, 2));

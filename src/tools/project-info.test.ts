@@ -28,7 +28,7 @@ describe("project_info tool", () => {
   it("returns project details from keystore", async () => {
     writeKeystore({
       projects: {
-        "proj-1": { anon_key: "ak-123", service_key: "sk-456", site_url: "https://example.run402.com", deployed_at: "2026-01-01T00:00:00Z" },
+        "proj-1": { anon_key: "ak-123", service_key: "sk-456", site_url: "https://example.run402.com" },
       },
     });
 
