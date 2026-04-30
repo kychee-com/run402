@@ -1,0 +1,557 @@
+# @run402/sdk — comprehensive reference
+
+> Package: `@run402/sdk` (npm)
+> Wayfinder: https://run402.com/llms.txt
+> Sibling references: CLI at https://run402.com/llms-cli.txt · MCP at https://run402.com/llms-mcp.txt · HTTP at https://run402.com/llms-full.txt
+> Source: sdk/llms-sdk.txt in https://github.com/kychee-com/run402
+
+The canonical agent-facing reference for the typed TypeScript SDK. Every Run402 capability is a method on a resource namespace; the CLI and MCP server are thin shims over this kernel.
+
+**The SDK is the recommended surface** when you're authoring code. Fewer process boundaries than the CLI, typed error envelopes, identical behavior. If you're already in TypeScript, prefer this.
+
+## Install
+
+```bash
+npm install @run402/sdk
+```
+
+Two entry points:
+
+| Import | Use when | Bundles |
+|---|---|---|
+| `@run402/sdk/node` | Running in Node 22 with the local keystore + allowance | Auto-loads `~/.config/run402/projects.json` and signs x402 payments from `~/.config/run402/allowance.json`. Includes `r.sites.deployDir(dir)` and `fileSetFromDir(dir)`. |
+| `@run402/sdk` | Isomorphic — Node, Deno, Bun, V8 isolates. No filesystem. | Bring your own `CredentialsProvider`. |
+
+## Quick start (Node)
+
+```ts
+import { run402 } from "@run402/sdk/node";
+
+const r = run402();
+const project = await r.projects.provision({ tier: "prototype" });
+await r.blobs.put(project.project_id, "hello.txt", { content: "hi" });
+```
+
+That's it — credentials are read, x402 payments are signed, results are typed.
+
+## Quick start (isomorphic / sandbox)
+
+```ts
+import { Run402, type CredentialsProvider } from "@run402/sdk";
+
+const credentials: CredentialsProvider = {
+  async getAuth() {
+    return { Authorization: `Bearer ${session.token}` };
+  },
+  async getProject(id) {
+    return session.projects[id] ?? null;
+  },
+};
+
+const r = new Run402({
+  apiBase: "https://api.run402.com",
+  credentials,
+});
+```
+
+The `CredentialsProvider` interface has two **required** methods (`getAuth`, `getProject`) plus optional ones for hosts that want full sticky-default behavior (`saveProject`, `updateProject`, `removeProject`, `setActiveProject`, `getActiveProject`, `readAllowance`, `saveAllowance`, `createAllowance`, `getAllowancePath`).
+
+## Mental model
+
+The SDK is the canonical kernel. **A single typed `Run402` class** with one namespace per resource group (`r.projects`, `r.deploy`, `r.blobs`, …). Every method:
+- Takes typed parameters (TS interfaces in `*.types.ts`)
+- Returns a typed `Promise<T>`
+- Throws a typed subclass of `Run402Error` on failure
+- Never calls `process.exit`
+
+The MCP server's tools and the CLI's subcommands are argv-/schema-parsing wrappers around these methods. They share `~/.config/run402/projects.json` so credentials carry across surfaces.
+
+## Project credentials
+
+After `r.projects.provision(...)`, the result has `project_id`, `anon_key`, `service_key`, `tier`, `schema_slot`, `lease_expires_at`. The Node entry's credentials provider auto-saves these to `~/.config/run402/projects.json`.
+
+- **`anon_key`** — read-only by default; safe in browser HTML. RLS policies apply.
+- **`service_key`** — server-side admin. **Never embed in browser code.**
+
+Neither key expires. Lease enforcement happens server-side.
+
+```ts
+await r.projects.use(project.project_id);    // make this the active project
+const keys = await r.projects.keys(id);
+const info = await r.projects.info(id);
+```
+
+## Errors
+
+All failures throw subclasses of `Run402Error`. Branch on instance, not English message:
+
+| Class | When | Notable fields |
+|---|---|---|
+| `PaymentRequired` | HTTP 402 | x402 payment requirements in `body` |
+| `ProjectNotFound` | Project ID not in the credential provider | `projectId` |
+| `Unauthorized` | HTTP 401 / 403 | — |
+| `ApiError` | Other non-2xx responses | `status`, `body` |
+| `NetworkError` | Fetch rejected with no HTTP response | `cause` |
+| `LocalError` | Local-host issues (filesystem, signing) | — |
+| `Run402DeployError` | Structured envelope from the deploy state machine (v1.34+) | `code`, `phase`, `operation_id`, `safe_to_retry`, `mutation_state`, `next_actions` |
+
+```ts
+import { PaymentRequired, Run402DeployError } from "@run402/sdk";
+
+try {
+  await r.deploy.apply(spec);
+} catch (e) {
+  if (e instanceof PaymentRequired) {
+    // present payment requirements to the user
+  } else if (e instanceof Run402DeployError && e.safe_to_retry) {
+    // safe to retry — same idempotency key
+  } else throw e;
+}
+```
+
+`Run402DeployError.code` is one of: `PROJECT_FROZEN`, `PAYMENT_REQUIRED`, `MIGRATION_FAILED`, `MIGRATE_GATE_ACTIVE`, `RATE_LIMITED`, `INSUFFICIENT_FUNDS`, `INTERNAL_ERROR`. Its `next_actions` array contains advisory hints: `authenticate`, `submit_payment`, `renew_tier`, `check_usage`, `retry`, `resume_deploy`, `edit_request`, `edit_migration`. Render or follow them only after validating the action is safe.
+
+## The patterns
+
+### Paste-and-go assets — content-addressed URLs with SRI
+
+`r.blobs.put` returns an `AssetRef`:
+
+```ts
+const logo = await r.blobs.put(projectId, "logo.png", { bytes });
+
+logo.cdn_url       // → "https://pr-<public_id>.run402.com/_blob/logo-3a7fc02e.png"
+logo.sri           // → "sha256-…" for <script integrity="…">
+logo.etag          // → strong "sha256-<hex>" ETag
+logo.cache_kind    // → "immutable" | "mutable" | "private"
+```
+
+The URL is content-addressed and served through CloudFront. **No cache-invalidation choreography needed.** The browser refuses execution on byte mismatch via SRI.
+
+`immutable: true` is the default. Pass `false` only when you specifically want to skip the SHA-256 pass on a very large upload (the returned `cdn_url` and `sri` are then `null`).
+
+If you suspect cache staleness on a *mutable* URL, the SDK has helpers:
+
+```ts
+const diag = await r.blobs.diagnoseUrl(projectId, url);
+//   diag.expectedSha256 / observedSha256 / cache.* / invalidation.* / hint
+
+const fresh = await r.blobs.waitFresh(projectId, url, expectedSha, { timeoutMs: 60_000 });
+//   throws on timeout — handle by switching to immutable
+```
+
+**Don't call `waitFresh` on immutable URLs** — they're correct from upload time.
+
+### Unified deploy — `r.deploy.apply` (v1.34+)
+
+The canonical primitive for any deploy (database + migrations + manifest + secrets + functions + site + subdomain). Three layers:
+
+```ts
+// One-shot — most agents use this. Awaits to a terminal state.
+const result = await r.deploy.apply(spec);
+
+// Long-running with progress events.
+const op = await r.deploy.start(spec);
+for await (const e of op.events()) {
+  console.log(e.phase, e);
+}
+const final = await op.result();
+
+// Resume by id (e.g. after an interrupted process or a 5xx).
+const resumed = await r.deploy.resume(operationId);
+
+// Lower-level steps for CLI debugging.
+await r.deploy.plan(spec);
+await r.deploy.upload(...);
+await r.deploy.commit(...);
+```
+
+#### `ReleaseSpec` shape
+
+```ts
+{
+  project_id: "prj_…",
+  migrations?: { sql?: string, file?: string },
+  site?: { replace?: { files: ContentRef[] } } | { patch?: { put?: …, delete?: … } },
+  functions?: { replace?: FunctionDecl[] } | { patch?: … },
+  secrets?: { replace?: SecretDecl[] } | { patch?: … },
+  subdomains?: { replace?: SubdomainDecl[] } | { patch?: … },
+}
+```
+
+- **Replace vs patch semantics per resource.** `site.replace` = "this is the whole site" (files absent are removed). `site.patch.put` / `patch.delete` = surgical updates. Same shape for `functions`, `secrets`, `subdomains`. Top-level absence = leave untouched.
+- **All bytes ride through CAS.** Plan request bodies never carry inline bytes — only `ContentRef` objects. When the spec exceeds 5 MB JSON, the SDK uploads the manifest itself as a CAS object and references it (`manifest_ref` escape hatch — no body-size cliff).
+- **Server-authoritative manifest digest.** The gateway returns the canonical digest; the SDK no longer requires byte-for-byte canonicalize agreement.
+
+The Node entry adds `fileSetFromDir(path)` for filesystem byte sources:
+
+```ts
+import { run402, fileSetFromDir } from "@run402/sdk/node";
+
+const r = run402();
+const result = await r.deploy.apply({
+  project_id,
+  site: { replace: { files: await fileSetFromDir("./dist") } },
+  subdomains: { replace: [{ name: "my-app" }] },
+});
+```
+
+`fileSetFromDir` walks the directory, hashes each file, and returns `ContentRef` objects. Skips `.git/`, `node_modules/`, `.DS_Store`. Symlinks throw.
+
+#### Backward-compat shims
+
+- `r.apps.bundleDeploy(...)` — translates legacy options into a `ReleaseSpec` and routes through `deploy.apply`. The `inherit: true` flag is silently ignored (deprecation preserved in JSDoc only).
+- `r.sites.deployDir(...)` — Node-only thin wrapper that uses `fileSetFromDir(dir)` and synthesizes both unified `DeployEvent` shapes and the legacy `{ phase: ... }` shapes for v1.32-era event consumers.
+
+### Dark-by-default tables + the expose manifest
+
+Tables you create are unreachable via `/rest/v1/*` until your manifest declares them with `expose: true`. The manifest is convergent — applying it twice is a no-op; items removed between applies have their policies, grants, triggers, and views dropped.
+
+The manifest itself is a JSON object:
+
+```ts
+{
+  "$schema": "https://run402.com/schemas/manifest.v1.json",
+  version: "1",
+  tables: [
+    { name: "items", expose: true, policy: "user_owns_rows",
+      owner_column: "user_id", force_owner_on_insert: true },
+    { name: "audit", expose: false }
+  ],
+  views: [
+    { name: "leaderboard", base: "items", select: ["user_id", "score"], expose: true }
+  ],
+  rpcs: [
+    { name: "compute_streak", signature: "(user_id uuid)", grant_to: ["authenticated"] }
+  ]
+}
+```
+
+Built-in policies: `user_owns_rows` (rows where `owner_column = auth.uid()`), `public_read_authenticated_write` (anyone reads, any auth user writes), `public_read_write_UNRESTRICTED` (fully open; requires `i_understand_this_is_unrestricted: true`), `custom` (provide `custom_sql`).
+
+**Preferred path: ship the manifest as `manifest.json` inside `bundle_deploy`'s `files[]`.** The gateway reads it, validates against migration SQL, applies it, and **strips it from `files[]` before serving the site** — auth-as-SDLC. Response includes `manifest_applied: true`.
+
+**Imperative path:** raw POST to `/projects/v1/admin/:id/expose` with the same JSON shape. The SDK doesn't have a typed `applyExpose` method on the `projects` namespace — the MCP/CLI layers wrap the HTTP call directly. To apply from the SDK, use `r.deploy.apply` with the manifest in the bundle, or fall back to `r.client.fetch(...)`.
+
+### In-function helpers — `@run402/functions`
+
+A separate package. Imported _inside_ a deployed serverless function, not by the SDK. Auto-bundled at deploy time (don't list `@run402/functions` in `--deps`). See <https://www.npmjs.com/package/@run402/functions> for full details.
+
+```ts
+import { db, adminDb, getUser, email, ai } from "@run402/functions";
+
+export default async (req: Request) => {
+  const user = await getUser(req);
+  if (!user) return new Response("unauthorized", { status: 401 });
+
+  const mine = await db(req).from("items").select("*").eq("user_id", user.id);
+  await adminDb().from("audit").insert({ event: "items_read", user_id: user.id });
+  return Response.json(mine);
+};
+```
+
+- **`db(req)`** — caller-context. Forwards Authorization header. RLS applies.
+- **`adminDb()`** — bypass RLS. Routes to `/admin/v1/rest/*`.
+- **`adminDb().sql(query, params?)`** — raw parameterized SQL.
+
+The helper makes raw `fetch()` calls to the project's own gateway endpoints using ambient request context (`RUN402_PROJECT_ID` / `RUN402_SERVICE_KEY` baked at deploy time). It does NOT use `@run402/sdk`.
+
+## Namespaces — full surface
+
+The `Run402` class exposes 19 namespaces. Click into the SDK source for full method signatures.
+
+### `r.projects`
+
+```ts
+provision(opts?: { tier?, name?, idempotency_key? }): Promise<ProvisionResult>
+delete(id: string): Promise<void>
+list(wallet?: string): Promise<ListProjectsResult>
+getUsage(id: string): Promise<UsageReport>
+getSchema(id: string): Promise<SchemaReport>
+pin(id: string): Promise<PinResult>
+getQuote(): Promise<QuoteResult>
+info(id: string): Promise<ProjectInfo>
+keys(id: string): Promise<ProjectKeys>
+use(id: string): Promise<void>             // sets the active project (sticky default)
+active(): Promise<string | null>
+```
+
+### `r.deploy`
+
+The unified deploy primitive. See "Unified deploy" above.
+
+```ts
+apply(spec, opts?): Promise<DeployResult>
+start(spec, opts?): Promise<DeployOperation>
+resume(operationId, opts?): Promise<DeployResult>
+status(operationId): Promise<DeployStatus>
+getRelease(releaseId): Promise<Release>
+diff(operationId): Promise<DeployDiff>
+list(opts?): Promise<DeployOperationList>
+plan(spec): Promise<PlanResult>
+upload(planResult, contents): Promise<UploadResult>
+commit(planResult): Promise<CommitResult>
+events(operationId): AsyncIterable<DeployEvent>
+```
+
+### `r.sites`
+
+```ts
+deploy(project: string, files: SiteFile[]): Promise<DeployResult>
+getDeployment(deploymentId: string): Promise<DeploymentInfo>
+
+// Node-only:
+deployDir(opts: { project, dir, target?, onEvent? }): Promise<DeployResult>
+```
+
+### `r.blobs`
+
+```ts
+put(projectId, key, source: { content?: string } | { bytes: Uint8Array }, opts?: BlobPutOptions): Promise<AssetRef>
+get(projectId, key): Promise<Response>
+ls(projectId, opts?: { prefix?, limit?, cursor? }): Promise<BlobLsResult>
+rm(projectId, key): Promise<void>
+sign(projectId, key, opts?: { ttlSeconds? }): Promise<{ url, expires_at }>
+diagnoseUrl(projectId, url): Promise<BlobDiagnoseEnvelope>
+waitFresh(projectId, url, sha256, opts?: { timeoutMs? }): Promise<BlobWaitFreshResult>
+```
+
+`AssetRef` shape: `{ cdn_url, sri, etag, cache_kind, cdn_immutable_url?, cdn_mutable_url?, url?, immutable_url?, content_digest, cdn: { version, invalidationId, invalidationStatus, ready, hint } }`.
+
+### `r.functions`
+
+```ts
+deploy(projectId, name, opts: {
+  code: string, config?: { timeout?, memory? },
+  deps?: string[], schedule?: string | null,
+}): Promise<FunctionDeployResult>      // result: { name, url, status, runtime, runtime_version, deps_resolved, warnings, ... }
+invoke(projectId, name, opts?: { method?, body?, headers? }): Promise<InvokeResult>
+getLogs(projectId, name, opts?: { tail?, since? }): Promise<LogsResult>
+update(projectId, name, opts: { schedule?, timeout?, memory? }): Promise<UpdateResult>
+list(projectId): Promise<FunctionList>
+delete(projectId, name): Promise<void>
+```
+
+`deps` accepts npm specs: bare names → latest at deploy time, pinned (`lodash@4.17.21`) and ranges (`date-fns@^3.0.0`) honored verbatim. Max 30 entries / 200 chars each. **Native binary modules are rejected.** Don't list `@run402/functions` (auto-bundled).
+
+### `r.secrets`
+
+```ts
+set(projectId, key, value): Promise<void>
+list(projectId): Promise<SecretList>      // { secrets: [{ key, value_hash, created_at }] }
+delete(projectId, key): Promise<void>
+```
+
+### `r.subdomains`
+
+```ts
+claim(projectId, name, opts?: { deploymentId? }): Promise<SubdomainClaim>
+list(projectId): Promise<SubdomainList>
+delete(projectId, name): Promise<void>
+```
+
+Subdomain auto-reassignment: claim once. Every subsequent deploy to the same project automatically points the subdomain at the new deployment.
+
+### `r.domains`
+
+```ts
+add(projectId, domain, subdomainName): Promise<DomainAddResult>      // returns DNS records
+list(projectId): Promise<DomainList>
+status(projectId, domain): Promise<DomainStatus>      // poll until "active"
+remove(projectId, domain): Promise<void>
+```
+
+### `r.email`
+
+```ts
+createMailbox(projectId, slug): Promise<Mailbox>      // idempotent
+getMailbox(projectId): Promise<Mailbox>
+deleteMailbox(projectId, opts: { confirm: true }): Promise<void>
+
+sendEmail(projectId, opts: EmailSendOptions): Promise<EmailSendResult>
+listEmails(projectId, opts?: { limit?, after? }): Promise<EmailList>
+getEmail(projectId, messageId): Promise<EmailMessage>
+getEmailRaw(projectId, messageId): Promise<Uint8Array>      // raw RFC-822 bytes
+
+// Webhooks:
+webhooks.register(projectId, opts: { url, events }): Promise<Webhook>
+webhooks.list(projectId): Promise<WebhookList>
+webhooks.get(projectId, webhookId): Promise<Webhook>
+webhooks.update(projectId, webhookId, opts: { url?, events? }): Promise<Webhook>
+webhooks.delete(projectId, webhookId): Promise<void>
+```
+
+Templates: `project_invite`, `magic_link`, `notification`. Or pass `subject` + `html` for raw mode. Tier rate limits: prototype 10/day, hobby 50/day, team 500/day.
+
+### `r.senderDomain`
+
+```ts
+register(projectId, domain): Promise<SenderDomainSetup>      // returns DKIM CNAMEs
+status(projectId): Promise<SenderDomainStatus>
+remove(projectId): Promise<void>
+enableInbound(projectId, domain): Promise<{ mx_record }>
+disableInbound(projectId, domain): Promise<void>
+```
+
+### `r.auth`
+
+```ts
+magicLink(projectId, opts: { email, redirect_url }): Promise<void>
+verifyMagicLink(projectId, token): Promise<{ access_token, refresh_token, user }>
+setUserPassword(opts: { access_token, new_password, current_password? }): Promise<void>
+settings(projectId, opts: { allow_password_set: boolean }): Promise<void>
+providers(projectId): Promise<{ providers: string[] }>
+```
+
+Magic-link tokens are single-use, expire in 15 min, rate-limited 5/email/hour. Google OAuth is on for all projects with zero config.
+
+### `r.apps`
+
+```ts
+browse(opts?: { tag? }): Promise<AppList>
+get(versionId): Promise<AppVersion>
+fork(versionId, name, opts?: { subdomain?, bootstrap? }): Promise<ForkResult>
+publish(projectId, opts?: { description?, tags?, visibility?, fork_allowed? }): Promise<App>
+versions(projectId): Promise<VersionList>
+updateVersion(projectId, versionId, opts: { description?, tags? }): Promise<Version>
+deleteVersion(projectId, versionId): Promise<void>
+
+bundleDeploy(opts: BundleDeployOptions): Promise<DeployResult>      // legacy shim → routes through r.deploy.apply
+```
+
+Forking clones schema + site + functions into a new project. If the source has a `bootstrap` function, it runs automatically with the variables you pass; result includes `bootstrap_result` or `bootstrap_error`.
+
+### `r.tier`
+
+```ts
+set(opts: { tier: "prototype" | "hobby" | "team" }): Promise<TierSetResult>
+status(): Promise<TierStatus>
+quote(): Promise<TierQuote>
+```
+
+`set` auto-detects subscribe / renew / upgrade / downgrade based on current state.
+
+### `r.billing`
+
+```ts
+createEmailAccount(email): Promise<BillingAccount>
+linkWallet(billingAccountId, wallet): Promise<void>
+tierCheckout(opts: { tier, email? } | { tier, wallet? }): Promise<{ checkout_url }>
+buyEmailPack(opts: { email? } | { wallet? }): Promise<{ checkout_url }>
+setAutoRecharge(billingAccountId, opts: { enabled: boolean, threshold? }): Promise<void>
+balance(emailOrWallet): Promise<Balance>
+history(emailOrWallet, opts?: { limit? }): Promise<LedgerHistory>
+createCheckout(opts: { amount_micros }): Promise<{ checkout_url }>
+```
+
+### `r.contracts`
+
+```ts
+provisionWallet(opts: { chain: "base-mainnet" | "base-sepolia", recovery_address? }): Promise<Wallet>
+getWallet(walletId): Promise<Wallet>
+listWallets(opts?: { include_deleted? }): Promise<WalletList>
+setRecoveryAddress(walletId, opts: { address? }): Promise<void>
+setLowBalanceAlert(walletId, opts: { threshold_wei: bigint }): Promise<void>
+
+call(opts: { wallet_id, contract_address, abi_fragment, function_name, args, value_wei?, idempotency_key? }): Promise<{ call_id, tx_hash, status }>
+read(opts: { chain, contract_address, abi_fragment, function_name, args }): Promise<{ result }>
+getCallStatus(callId): Promise<CallStatus>
+drainWallet(walletId, opts: { to: string }): Promise<{ tx_hash }>
+deleteWallet(walletId): Promise<void>      // refused if balance ≥ dust
+```
+
+Private keys never leave AWS KMS. **$0.04/day rental + $0.000005/call.** Wallet creation requires $1.20 cash credit. Non-custodial.
+
+### `r.ai`
+
+```ts
+translate(projectId, text, opts: { to, from?, context? }): Promise<{ text, from, to }>
+moderate(projectId, text): Promise<ModerationResult>
+usage(projectId): Promise<AiUsage>
+generateImage(opts: { prompt, aspect? }): Promise<ImageResult>      // $0.03 via x402
+```
+
+### `r.allowance`
+
+```ts
+status(): Promise<AllowanceStatus>
+create(): Promise<{ address, network }>
+export(): Promise<{ address }>      // address only, never the private key
+requestFaucet(opts: { address }): Promise<{ transaction_hash, amount_usd_micros, token, network }>
+checkBalance(address): Promise<Balance>
+checkout(opts: { amount_usd_micros }): Promise<{ checkout_url }>
+history(opts?: { limit? }): Promise<AllowanceHistory>
+```
+
+### `r.service`
+
+```ts
+status(): Promise<ServiceStatus>      // 24h/7d/30d uptime per capability — no auth, no setup
+health(): Promise<ServiceHealth>      // per-dependency liveness — no auth, no setup
+```
+
+### `r.admin`
+
+Admin-only endpoints (pinning, lifecycle reactivation, dispute resolution). Most agents won't reach for these — they're for platform operators.
+
+## Resource limits
+
+| | Prototype | Hobby | Team |
+|---|---|---|---|
+| Lease | 7 days | 30 days | 30 days |
+| Storage | 250 MB | 1 GB | 10 GB |
+| API calls | 500K | 5M | 50M |
+| Functions | 5 | 25 | 100 |
+| Function timeout | 10s | 30s | 60s |
+| Function memory | 128 MB | 256 MB | 512 MB |
+| Secrets | 10 | 50 | 200 |
+| Scheduled fns | 1 / 15min | 3 / 5min | 10 / 1min |
+
+Project rate limit: **100 req/sec** — exceeding throws `ApiError` with status 429 and `retry_after` in the body.
+
+## Idempotent migrations
+
+`CREATE TABLE IF NOT EXISTS` only handles "already exists" — it won't add new columns. For evolving schemas, wrap `ALTER TABLE` in a `DO` block:
+
+```sql
+CREATE TABLE IF NOT EXISTS items (id serial PRIMARY KEY, title text NOT NULL);
+DO $$ BEGIN
+  ALTER TABLE items ADD COLUMN priority int DEFAULT 0;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+```
+
+Safe to re-run on every deploy.
+
+## SQL guardrails
+
+The SQL endpoint blocks: `CREATE EXTENSION`, `COPY ... PROGRAM`, `ALTER SYSTEM`, `SET search_path`, `CREATE/DROP SCHEMA`, `GRANT/REVOKE`, `CREATE/DROP ROLE`. Use the expose manifest for access control.
+
+## Stability
+
+This package is `0.x` while the API surface stabilizes for `1.0`. Breaking changes may occur between minor versions. Pin an exact version in production dependencies:
+
+```json
+{ "dependencies": { "@run402/sdk": "1.51.0" } }
+```
+
+The CLI (`run402`), MCP server (`run402-mcp`), `@run402/functions`, and the OpenClaw skill release in lockstep at the same version.
+
+## Patterns & gotchas
+
+- **Provision before authoring HTML.** The `anon_key` is permanent and must be embedded in your frontend; provision first, then write the HTML.
+- **Use the manifest for access control**, never raw `GRANT/REVOKE`.
+- **`user_owns_rows` is the default for user-scoped data.** Reach for `public_read_write_UNRESTRICTED` only on intentionally-public tables.
+- **Use immutable `cdn_url` from `r.blobs.put`.** It's correct from the moment of upload — no `waitFresh` needed.
+- **Don't bake unconditional `r.allowance.requestFaucet()` into deploy scripts** — the faucet rate-limits and breaks already-funded flows.
+- **Per-project rate limit is 100 req/sec.** On 429, back off using `retry_after`.
+- **`r.service.status()` works without auth.** Use it before evaluating Run402, or to distinguish platform issues from your own bugs.
+
+## See also
+
+- Wayfinder: <https://run402.com/llms.txt>
+- CLI reference: <https://run402.com/llms-cli.txt>
+- MCP reference: <https://run402.com/llms-mcp.txt>
+- HTTP API reference: <https://run402.com/llms-full.txt>
+- npm: <https://www.npmjs.com/package/@run402/sdk>
+- Source: <https://github.com/kychee-com/run402>
