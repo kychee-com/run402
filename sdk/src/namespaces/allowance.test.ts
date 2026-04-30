@@ -13,19 +13,27 @@ import assert from "node:assert/strict";
 import { Run402 } from "../index.js";
 import type { AllowanceData, CredentialsProvider } from "../credentials.js";
 
-function makeCreds(allowance: AllowanceData | null): CredentialsProvider {
-  return {
+function makeCreds(allowance: AllowanceData | null, opts: { saveAllowance?: boolean } = {}): CredentialsProvider {
+  const provider: CredentialsProvider = {
     async getAuth() { return null; },
     async getProject() { return null; },
     async readAllowance() { return allowance; },
     getAllowancePath() { return "/tmp/allowance.json"; },
   };
+  if (opts.saveAllowance) {
+    provider.saveAllowance = async () => {};
+  }
+  return provider;
 }
 
 function sdk(creds: CredentialsProvider): Run402 {
   // `fetch` is unused here because `status()` is fully local.
   const stubFetch: typeof globalThis.fetch = async () => new Response("{}", { status: 200 });
   return new Run402({ apiBase: "https://api.test", credentials: creds, fetch: stubFetch });
+}
+
+function sdkWithFetch(creds: CredentialsProvider, fetchImpl: typeof globalThis.fetch): Run402 {
+  return new Run402({ apiBase: "https://api.test", credentials: creds, fetch: fetchImpl });
 }
 
 describe("allowance.status", () => {
@@ -64,5 +72,38 @@ describe("allowance.status", () => {
     assert.equal(result.configured, false);
     assert.equal(result.address, "");
     assert.ok(!Object.prototype.hasOwnProperty.call(result, "funded"));
+  });
+});
+
+describe("allowance.faucet", () => {
+  // Regression test for GH-163: the live gateway responds with snake_case keys
+  // and `amount_usd_micros` (number). The SDK must normalize to the typed
+  // camelCase shape so callers don't see `undefined` for transactionHash/amount.
+  it("normalizes the snake_case + micros wire shape into the typed camelCase result", async () => {
+    const wireBody = {
+      transaction_hash: "0xabc123",
+      amount_usd_micros: 250000,
+      token: "USDC",
+      network: "base-sepolia",
+    };
+    const fetchImpl: typeof globalThis.fetch = async () =>
+      new Response(JSON.stringify(wireBody), { status: 200, headers: { "Content-Type": "application/json" } });
+
+    const creds = makeCreds({
+      address: "0xAbC",
+      privateKey: "0xpk",
+      created: "2026-01-01T00:00:00.000Z",
+    }, { saveAllowance: true });
+
+    const result = await sdkWithFetch(creds, fetchImpl).allowance.faucet();
+
+    assert.equal(result.transactionHash, "0xabc123",
+      "wire's `transaction_hash` must surface as `transactionHash`");
+    assert.equal(result.amountUsdMicros, 250000,
+      "wire's `amount_usd_micros` must surface as `amountUsdMicros`");
+    assert.equal(result.amount, "0.25",
+      "amount must be a display-formatted string derived from micros");
+    assert.equal(result.token, "USDC");
+    assert.equal(result.network, "base-sepolia");
   });
 });

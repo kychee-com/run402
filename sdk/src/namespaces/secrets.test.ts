@@ -92,11 +92,21 @@ describe("subdomains", () => {
     assert.equal(calls[0]!.method, "DELETE");
   });
 
-  it("list requires a projectId and GETs with bearer", async () => {
-    const { fetch, calls } = mockFetch(() => json([]));
-    await sdk(fetch).subdomains.list("prj_k");
+  it("list requires a projectId and GETs with bearer, unwrapping the gateway envelope", async () => {
+    // Gateway shape is `{ subdomains: [...] }`; SDK must hand back a bare array.
+    const { fetch, calls } = mockFetch(() =>
+      json({
+        subdomains: [
+          { name: "demo", url: "https://demo.run402.com", deployment_id: "dep_1", deployment_url: "https://x.run402.com" },
+        ],
+      }),
+    );
+    const result = await sdk(fetch).subdomains.list("prj_k");
     assert.equal(calls[0]!.method, "GET");
     assert.equal(calls[0]!.headers["Authorization"], "Bearer s");
+    assert.ok(Array.isArray(result), "list() must return a bare array, not the envelope");
+    assert.equal(result.length, 1);
+    assert.equal(result[0]!.name, "demo");
   });
 });
 
