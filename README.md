@@ -162,6 +162,15 @@ const { rows, rowCount } = await adminDb().sql(
 
 `@run402/functions` is auto-bundled into deployed code; install it in your editor for full TypeScript autocomplete (also works at build time for static-site generation with `RUN402_SERVICE_KEY` + `RUN402_PROJECT_ID` set).
 
+**Calling from outside a function entirely** (raw `curl`/`fetch` from CI scripts, bash bootstrappers, non-TS runtimes) — service-key writes go to `/admin/v1/rest/<table>`, not `/rest/v1/*`. The gateway 403s service-role tokens on `/rest/v1/*` so a leaked key can't silently bypass RLS, which means `curl ... > /dev/null` against the wrong path looks like success but writes nothing. SQL-shaped admin work uses `POST /projects/v1/admin/:id/sql` (or `run402 projects sql`).
+
+```bash
+curl -X POST https://api.run402.com/admin/v1/rest/audit \
+  -H "Authorization: Bearer $RUN402_SERVICE_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"event":"seed","ts":"2026-04-30"}'
+```
+
 ## SDK — `@run402/sdk`
 
 ```bash
