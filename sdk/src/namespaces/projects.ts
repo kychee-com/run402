@@ -8,7 +8,7 @@
 
 import type { Client } from "../kernel.js";
 import type { ProjectKeys } from "../credentials.js";
-import { ProjectNotFound, Run402Error } from "../errors.js";
+import { LocalError, ProjectNotFound } from "../errors.js";
 import type {
   ListProjectsResult,
   PinResult,
@@ -97,19 +97,15 @@ export class Projects {
     if (resolvedWallet === undefined) {
       const reader = this.client.credentials.readAllowance;
       if (!reader) {
-        throw new (class extends Run402Error {})(
+        throw new LocalError(
           "projects.list() with no wallet requires a credential provider that implements readAllowance(). Pass an explicit wallet, or use @run402/sdk/node.",
-          null,
-          null,
           "listing projects",
         );
       }
       const data = await reader.call(this.client.credentials);
       if (!data) {
-        throw new (class extends Run402Error {})(
+        throw new LocalError(
           "No local allowance configured. Run `run402 allowance create`, or pass an explicit wallet.",
-          null,
-          null,
           "listing projects",
         );
       }
