@@ -30,6 +30,10 @@ export interface InboundEnableResult {
   mx_record?: string;
 }
 
+export interface DisableInboundResult {
+  status: string;
+}
+
 export class SenderDomain {
   constructor(private readonly client: Client) {}
 
@@ -83,11 +87,11 @@ export class SenderDomain {
   }
 
   /** Disable inbound email for a custom sender domain. */
-  async disableInbound(projectId: string, domain: string): Promise<void> {
+  async disableInbound(projectId: string, domain: string): Promise<DisableInboundResult> {
     const project = await this.client.getProject(projectId);
     if (!project) throw new ProjectNotFound(projectId, "disabling inbound email");
 
-    await this.client.request<unknown>("/email/v1/domains/inbound", {
+    return this.client.request<DisableInboundResult>("/email/v1/domains/inbound", {
       method: "DELETE",
       headers: { Authorization: `Bearer ${project.service_key}` },
       body: { domain },

@@ -72,6 +72,7 @@ import type {
 import type {
   CustomDomainAddResult,
   CustomDomainListResult,
+  CustomDomainRemoveResult,
   CustomDomainStatusResult,
 } from "./namespaces/domains.js";
 import type {
@@ -90,6 +91,7 @@ import type {
   UpdateWebhookOptions,
 } from "./namespaces/email.js";
 import type {
+  DeleteFunctionResult,
   FunctionDeployOptions,
   FunctionDeployResult,
   FunctionInvokeOptions,
@@ -100,8 +102,9 @@ import type {
   FunctionUpdateOptions,
   FunctionUpdateResult,
 } from "./namespaces/functions.types.js";
-import type { SecretListResult } from "./namespaces/secrets.js";
+import type { DeleteSecretResult, SecretListResult } from "./namespaces/secrets.js";
 import type {
+  DisableInboundResult,
   InboundEnableResult,
   SenderDomainRegisterResult,
   SenderDomainStatusResult,
@@ -386,7 +389,7 @@ class ScopedDomains {
   status(domain: string): Promise<CustomDomainStatusResult> {
     return this.parent.domains.status(this.projectId, domain);
   }
-  remove(domain: string, opts: { projectId?: string } = {}): Promise<void> {
+  remove(domain: string, opts: { projectId?: string } = {}): Promise<CustomDomainRemoveResult> {
     return this.parent.domains.remove(domain, { projectId: opts.projectId ?? this.projectId });
   }
 }
@@ -456,7 +459,7 @@ class ScopedFunctions {
   list(): Promise<FunctionListResult> {
     return this.parent.functions.list(this.projectId);
   }
-  delete(name: string): Promise<void> {
+  delete(name: string): Promise<DeleteFunctionResult> {
     return this.parent.functions.delete(this.projectId, name);
   }
   update(name: string, opts: FunctionUpdateOptions): Promise<FunctionUpdateResult> {
@@ -473,7 +476,7 @@ class ScopedSecrets {
   list(): Promise<SecretListResult> {
     return this.parent.secrets.list(this.projectId);
   }
-  delete(key: string): Promise<void> {
+  delete(key: string): Promise<DeleteSecretResult> {
     return this.parent.secrets.delete(this.projectId, key);
   }
 }
@@ -493,7 +496,7 @@ class ScopedSenderDomain {
   enableInbound(domain: string): Promise<InboundEnableResult> {
     return this.parent.senderDomain.enableInbound(this.projectId, domain);
   }
-  disableInbound(domain: string): Promise<void> {
+  disableInbound(domain: string): Promise<DisableInboundResult> {
     return this.parent.senderDomain.disableInbound(this.projectId, domain);
   }
 }
