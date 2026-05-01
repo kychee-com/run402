@@ -16,19 +16,7 @@ export async function handleCheckBalance(args: {
   try {
     const body = await getSdk().billing.checkBalance(wallet);
 
-    if (!body.exists) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `## Billing: ${wallet}\n\nNo billing account found. Top up via Stripe or on-chain USDC to create one.`,
-          },
-        ],
-      };
-    }
-
     const availableUsd = (body.available_usd_micros / 1_000_000).toFixed(2);
-    const heldUsd = (body.held_usd_micros / 1_000_000).toFixed(2);
 
     const lines = [
       `## Billing: ${wallet}`,
@@ -36,8 +24,10 @@ export async function handleCheckBalance(args: {
       `| Field | Value |`,
       `|-------|-------|`,
       `| available | $${availableUsd} |`,
-      `| held | $${heldUsd} |`,
-      `| status | ${body.status} |`,
+      `| email credits | ${body.email_credits_remaining} |`,
+      `| tier | ${body.tier ?? "(none)"} |`,
+      `| lease expires | ${body.lease_expires_at ?? "(none)"} |`,
+      `| auto-recharge | ${body.auto_recharge_enabled ? `at $${(body.auto_recharge_threshold / 1_000_000).toFixed(2)}` : "off"} |`,
     ];
 
     return { content: [{ type: "text", text: lines.join("\n") }] };

@@ -50,10 +50,9 @@ export async function handleStatus(
   ];
 
   // Balance
-  if (billing?.exists) {
-    const available = ((billing.available_usd_micros ?? 0) / 1_000_000).toFixed(2);
-    const held = ((billing.held_usd_micros ?? 0) / 1_000_000).toFixed(2);
-    lines.push(`| balance | $${available} available, $${held} held |`);
+  if (billing) {
+    const available = (billing.available_usd_micros / 1_000_000).toFixed(2);
+    lines.push(`| balance | $${available} available |`);
   } else {
     lines.push(`| balance | (unavailable) |`);
   }
