@@ -1,10 +1,13 @@
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { dirname, join, resolve } from "path";
+import { fileSetFromDir } from "#sdk/node";
 import { allowanceAuthHeaders, resolveProjectId, updateProject } from "./config.mjs";
 import { resolveFilePathsInManifest } from "./manifest.mjs";
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError } from "./sdk-errors.mjs";
+
+const SMALL_DIR_THRESHOLD = 5;
 
 const HELP = `run402 sites - Deploy and manage static sites
 
@@ -28,6 +31,9 @@ Options (deploy-dir):
   --project <id>        Project ID (defaults to active project)
   --target <target>     Deployment target (e.g. 'production')
   --quiet               Suppress progress events on stderr
+  --dry-run             Plan-only: print the diff envelope and exit
+  --confirm-prune       Required when <path> has fewer files than the
+                        small-dir guardrail threshold
 
 Manifest format (JSON):
   {
@@ -97,6 +103,7 @@ Examples:
 
 Usage:
   run402 sites deploy-dir <path> [--project <id>] [--target <target>] [--quiet]
+                                  [--dry-run] [--confirm-prune]
 
 Arguments:
   <path>              Local directory to deploy (positional, required)
@@ -106,11 +113,23 @@ Options:
   --target <target>   Deployment target (e.g. 'production')
   --quiet             Suppress progress events on stderr (events are on by
                       default — see Progress events below)
+  --dry-run           Plan the deploy and print a JSON envelope describing
+                      what would happen, then exit. Does NOT upload bytes
+                      or commit a release.
+  --confirm-prune     Acknowledge that deploying <path> may remove files
+                      that exist in the current site but are absent from
+                      <path>. Required when <path> contains fewer than
+                      ${SMALL_DIR_THRESHOLD} files (the small-dir guardrail).
 
 Behavior:
   - Walks <path> recursively, skips .git / node_modules / .DS_Store
   - Computes per-file SHA-256 and uploads only bytes the gateway doesn't
     already have (CAS-backed unified deploy primitive)
+  - A static-site deploy REPLACES the live release: any path in the current
+    site that is absent from <path> is removed from the new release. To
+    avoid accidentally wiping a multi-page site by deploying a single-file
+    directory, a small <path> (fewer than ${SMALL_DIR_THRESHOLD} files) requires
+    --confirm-prune.
   - Symlinks are rejected (no following)
   - Paths in the manifest are POSIX-style relative to <path>
 
@@ -131,6 +150,8 @@ Examples:
   run402 sites deploy-dir ./dist --project prj_abc
   run402 sites deploy-dir ./my-site --project prj_abc --target production
   run402 sites deploy-dir ./dist --project prj_abc --quiet
+  run402 sites deploy-dir ./tiny-site --project prj_abc --confirm-prune
+  run402 sites deploy-dir ./dist --project prj_abc --dry-run
 `,
 };
 
@@ -207,12 +228,21 @@ async function deploy(args) {
 }
 
 async function deployDir(args) {
-  const opts = { dir: null, project: undefined, target: undefined, quiet: false };
+  const opts = {
+    dir: null,
+    project: undefined,
+    target: undefined,
+    quiet: false,
+    dryRun: false,
+    confirmPrune: false,
+  };
   for (let i = 0; i < args.length; i++) {
     if (args[i] === "--help" || args[i] === "-h") { console.log(SUB_HELP["deploy-dir"]); process.exit(0); }
     if (args[i] === "--project" && args[i + 1]) { opts.project = args[++i]; continue; }
     if (args[i] === "--target" && args[i + 1]) { opts.target = args[++i]; continue; }
     if (args[i] === "--quiet") { opts.quiet = true; continue; }
+    if (args[i] === "--dry-run") { opts.dryRun = true; continue; }
+    if (args[i] === "--confirm-prune") { opts.confirmPrune = true; continue; }
     if (args[i] === "--inherit") {
       console.error(JSON.stringify({
         status: "error",
@@ -230,6 +260,59 @@ async function deployDir(args) {
 
   // Preserve the aggressive early exit when no allowance is configured.
   allowanceAuthHeaders("/deploy/v2/plans");
+
+  let fileSet;
+  try {
+    fileSet = await fileSetFromDir(opts.dir);
+  } catch (err) {
+    reportSdkError(err);
+    return;
+  }
+  const fileCount = Object.keys(fileSet).length;
+
+  if (
+    fileCount < SMALL_DIR_THRESHOLD &&
+    !opts.confirmPrune &&
+    !opts.dryRun
+  ) {
+    console.error(JSON.stringify({
+      status: "error",
+      code: "PRUNE_CONFIRMATION_REQUIRED",
+      message:
+        `sites deploy-dir would replace the entire site with ${fileCount} ` +
+        `file(s) from ${opts.dir}. Any files in the current release that ` +
+        `are absent from this directory will be removed. Pass ` +
+        `--confirm-prune to proceed, or --dry-run to preview the diff.`,
+      details: {
+        local_file_count: fileCount,
+        threshold: SMALL_DIR_THRESHOLD,
+        dir: opts.dir,
+      },
+    }));
+    process.exit(1);
+  }
+
+  if (opts.dryRun) {
+    try {
+      const { plan } = await getSdk().deploy.plan({
+        project: projectId,
+        site: { replace: fileSet },
+      });
+      console.log(JSON.stringify({
+        status: "ok",
+        dry_run: true,
+        local_file_count: fileCount,
+        plan_id: plan.plan_id,
+        operation_id: plan.operation_id,
+        manifest_digest: plan.manifest_digest,
+        diff: plan.diff,
+        missing_content_count: plan.missing_content.filter((p) => !p.present).length,
+      }, null, 2));
+    } catch (err) {
+      reportSdkError(err);
+    }
+    return;
+  }
 
   try {
     const data = await getSdk().sites.deployDir({
