@@ -2547,11 +2547,17 @@ describe("CLI destructive delete --confirm guard (GH-212)", () => {
   }
 
   function buildSpyFetch(calls) {
+    const apiOrigin = new URL(API).origin;
     return async (input, init) => {
       const url = typeof input === "string" ? input : (input instanceof Request ? input.url : String(input));
       const method = (init?.method || (input instanceof Request ? input.method : "GET") || "GET").toUpperCase();
       let path = url;
-      if (url.startsWith(API)) path = url.slice(API.length);
+      try {
+        const parsed = new URL(url);
+        if (parsed.origin === apiOrigin) path = parsed.pathname + parsed.search;
+      } catch {
+        // non-URL input — leave path as the raw string
+      }
       calls.push({ method, path, url });
       // Default success for any DELETE so the --confirm path completes.
       if (method === "DELETE") return Promise.resolve(noContent());

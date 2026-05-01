@@ -44,7 +44,7 @@ describe("service_status tool", () => {
     assert.equal(result.isError, undefined);
     assert.ok(text.includes("ok"), "includes status");
     assert.ok(text.includes("Run402"), "includes operator name");
-    assert.ok(text.includes("https://run402.com"), "includes operator contact");
+    assert.match(text, /\(https:\/\/run402\.com\)/, "includes operator contact");
     assert.ok(text.includes("1.0.4"), "includes deployment version");
     assert.ok(text.includes("x402"), "includes capability");
     assert.ok(text.includes("24.0h"), "renders uptime in hours");
