@@ -11,14 +11,14 @@ Subcommands:
   add    <domain> <subdomain_name> [--project <id>]   Register a custom domain
   list   [<id>]                                        List custom domains for a project
   status <domain> [--project <id>]                     Check domain DNS/SSL status
-  delete <domain> [--project <id>]                     Release a custom domain
+  delete <domain> --confirm [--project <id>]           Release a custom domain. Requires --confirm.
 
 Examples:
   run402 domains add example.com myapp
   run402 domains add example.com myapp --project prj_123
   run402 domains list
   run402 domains status example.com
-  run402 domains delete example.com
+  run402 domains delete example.com --confirm
 
 Notes:
   - After adding a domain, configure DNS as shown in the response
@@ -75,8 +75,17 @@ async function status(args) {
 
 async function deleteDomain(args) {
   const { project, rest } = parseProjectFlag(args);
-  const domain = rest[0];
-  if (!domain) { console.error("Usage: run402 domains delete <domain> [--project <id>]"); process.exit(1); }
+  const domain = rest.find((a) => !a.startsWith("--"));
+  if (!domain) { console.error("Usage: run402 domains delete <domain> --confirm [--project <id>]"); process.exit(1); }
+  if (!Array.isArray(args) || !args.includes("--confirm")) {
+    console.error(JSON.stringify({
+      status: "error",
+      code: "CONFIRMATION_REQUIRED",
+      message: `Destructive: releasing custom domain '${domain}' detaches it from this project and clears its DNS/SSL configuration. This is irreversible. Re-run with --confirm to proceed.`,
+      details: { domain },
+    }));
+    process.exit(1);
+  }
   const projectId = resolveProjectId(project);
   try {
     await getSdk().domains.remove(domain, { projectId });

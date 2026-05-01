@@ -571,7 +571,7 @@ describe("CLI integration (live API, no mocks)", { timeout: 180_000 }, () => {
     if (!mppProjectId) return;
     const { run } = await import("./cli/lib/projects.mjs");
     captureStart();
-    await run("delete", [mppProjectId]);
+    await run("delete", [mppProjectId, "--confirm"]);
     captureStop();
     assert.ok(captured().includes("ok") || captured().includes("delete"), "should delete MPP project");
   });
@@ -592,7 +592,7 @@ describe("CLI integration (live API, no mocks)", { timeout: 180_000 }, () => {
   it("subdomains delete", async () => {
     const { run } = await import("./cli/lib/subdomains.mjs");
     captureStart();
-    await run("delete", [subdomainName, "--project", projectId]);
+    await run("delete", [subdomainName, "--confirm", "--project", projectId]);
     captureStop();
     assert.ok(captured().includes("ok") || captured().includes("delete"), "should delete subdomain");
   });
@@ -625,7 +625,7 @@ describe("CLI integration (live API, no mocks)", { timeout: 180_000 }, () => {
     if (!forkedProjectId) return;
     const { run } = await import("./cli/lib/projects.mjs");
     captureStart();
-    await run("delete", [forkedProjectId]);
+    await run("delete", [forkedProjectId, "--confirm"]);
     captureStop();
     assert.ok(captured().includes("ok") || captured().includes("delete"), "should delete forked project");
   });
@@ -633,7 +633,7 @@ describe("CLI integration (live API, no mocks)", { timeout: 180_000 }, () => {
   it("projects delete (main)", async () => {
     const { run } = await import("./cli/lib/projects.mjs");
     captureStart();
-    await run("delete", [projectId]);
+    await run("delete", [projectId, "--confirm"]);
     captureStop();
     assert.ok(captured().includes("ok") || captured().includes("delete"), "should delete main project");
   });

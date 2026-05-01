@@ -22,7 +22,7 @@ Subcommands:
   apply-expose [id] <manifest_json>       Apply a declarative authorization manifest
   apply-expose [id] --file <path>         Apply a manifest from a JSON file
   get-expose   [id]                       Get the current authorization manifest
-  delete [id]                             Immediately and irreversibly delete a project (cascade purge) and remove from local state
+  delete [id] --confirm                   Immediately and irreversibly delete a project (cascade purge) and remove from local state. Requires --confirm.
   pin   [id]                              Pin a project (admin only; project owners get 403 admin_required)
   promote-user [id] <email>               Promote a user to project_admin role
   demote-user  [id] <email>               Demote a user from project_admin role
@@ -43,7 +43,7 @@ Examples:
   run402 projects apply-expose abc123 --file manifest.json
   run402 projects get-expose abc123
   run402 projects keys abc123
-  run402 projects delete abc123
+  run402 projects delete abc123 --confirm
 
 Notes:
   - <id> is the project_id shown in 'run402 projects list' (prefix: 'prj_')
@@ -302,7 +302,17 @@ async function demoteUser(projectId, email) {
   console.log(JSON.stringify(data, null, 2));
 }
 
-async function deleteProject(projectId) {
+async function deleteProject(projectId, args = []) {
+  const confirmed = Array.isArray(args) && args.includes("--confirm");
+  if (!confirmed) {
+    console.error(JSON.stringify({
+      status: "error",
+      code: "CONFIRMATION_REQUIRED",
+      message: `Destructive: deleting project ${projectId} drops all DB schemas, functions, subdomains, mailbox, blobs, and secrets. This is irreversible. Re-run with --confirm to proceed.`,
+      details: { project_id: projectId, destroys: ["schemas", "functions", "subdomains", "mailbox", "blobs", "secrets"] },
+    }));
+    process.exit(1);
+  }
   try {
     await getSdk().projects.delete(projectId);
     console.log(JSON.stringify({ status: "ok", message: `Project ${projectId} deleted.` }));
@@ -346,7 +356,7 @@ export async function run(sub, args) {
     case "schema":    { const { projectId } = resolvePositionalProject(args); await schema(projectId); break; }
     case "apply-expose": { const { projectId, rest } = resolvePositionalProject(args); await applyExpose(projectId, rest); break; }
     case "get-expose":   { const { projectId } = resolvePositionalProject(args); await getExpose(projectId); break; }
-    case "delete":    { const { projectId } = resolvePositionalProject(args); await deleteProject(projectId); break; }
+    case "delete":    { const { projectId, rest } = resolvePositionalProject(args); await deleteProject(projectId, rest); break; }
     case "pin":       { const { projectId } = resolvePositionalProject(args); await pin(projectId); break; }
     case "promote-user": { const { projectId, rest } = resolvePositionalProject(args); await promoteUser(projectId, rest[0]); break; }
     case "demote-user":  { const { projectId, rest } = resolvePositionalProject(args); await demoteUser(projectId, rest[0]); break; }

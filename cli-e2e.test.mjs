@@ -308,6 +308,11 @@ function mockFetch(input, init) {
     return Promise.resolve(json({ status: "ok" }));
   }
 
+  // Domains
+  if (path.match(/^\/domains\/v1\//) && method === "DELETE") {
+    return Promise.resolve(noContent());
+  }
+
   // Apps
   if (path === "/apps/v1" && method === "GET") {
     return Promise.resolve(json([{ version_id: "ver_abc", name: "demo-app", description: "A demo", tags: ["demo"] }]));
@@ -1699,7 +1704,7 @@ describe("CLI e2e happy path", () => {
   it("subdomains delete", async () => {
     const { run } = await import("./cli/lib/subdomains.mjs");
     captureStart();
-    await run("delete", ["my-app", "--project", "prj_test123"]);
+    await run("delete", ["my-app", "--confirm", "--project", "prj_test123"]);
     captureStop();
     assert.ok(captured().includes("ok"), "should delete subdomain");
   });
@@ -1715,7 +1720,7 @@ describe("CLI e2e happy path", () => {
   it("projects delete", async () => {
     const { run } = await import("./cli/lib/projects.mjs");
     captureStart();
-    await run("delete", ["prj_test123"]);
+    await run("delete", ["prj_test123", "--confirm"]);
     captureStop();
     assert.ok(captured().includes("deleted") || captured().includes("ok"), "should delete project");
   });
@@ -2452,5 +2457,175 @@ describe("CLI e2e happy path", () => {
     assert.equal(send.body.subject, "Re: original", "should prefix subject with Re:");
     assert.equal(send.body.in_reply_to, "msg_abc123", "must forward in_reply_to for server threading");
     assert.equal(send.body.html, "<p>Thanks!</p>");
+  });
+});
+
+// ── --confirm guard for destructive deletes (GH-212) ────────────────────────
+// `projects delete`, `subdomains delete`, `domains delete` must refuse to run
+// without --confirm. The `projects delete` case is most dangerous: with no
+// positional, it falls back to the active project, so a typo like
+// `run402 projects delete $WRONG_VAR` (where $WRONG_VAR is empty) silently
+// destroys the active project unless the guard fires first.
+
+describe("CLI destructive delete --confirm guard (GH-212)", () => {
+  async function seedActiveProject() {
+    const { saveProject, setActiveProjectId } = await import("./cli/lib/config.mjs");
+    saveProject(TEST_PROJECT.project_id, {
+      anon_key: TEST_PROJECT.anon_key,
+      service_key: TEST_PROJECT.service_key,
+    });
+    setActiveProjectId(TEST_PROJECT.project_id);
+  }
+
+  function buildSpyFetch(calls) {
+    return async (input, init) => {
+      const url = typeof input === "string" ? input : (input instanceof Request ? input.url : String(input));
+      const method = (init?.method || (input instanceof Request ? input.method : "GET") || "GET").toUpperCase();
+      let path = url;
+      if (url.startsWith(API)) path = url.slice(API.length);
+      calls.push({ method, path, url });
+      // Default success for any DELETE so the --confirm path completes.
+      if (method === "DELETE") return Promise.resolve(noContent());
+      return Promise.resolve(new Response("Not Found", { status: 404 }));
+    };
+  }
+
+  it("projects delete (no args, no --confirm) refuses and does not call gateway", async () => {
+    await seedActiveProject();
+    const { run } = await import("./cli/lib/projects.mjs");
+    const calls = [];
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = buildSpyFetch(calls);
+    let threw = null;
+    captureStart();
+    try {
+      await run("delete", []);
+    } catch (e) { threw = e; } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+    assert.equal(threw?.message, "process.exit(1)", "must exit non-zero");
+    assert.equal(calls.filter(c => c.method === "DELETE").length, 0, "must not issue any DELETE");
+    const stderr = capturedStderr();
+    assert.ok(/CONFIRMATION_REQUIRED/.test(stderr), `stderr should include CONFIRMATION_REQUIRED, got: ${stderr}`);
+    assert.ok(/Destructive/.test(stderr), `stderr should explain the guard, got: ${stderr}`);
+    assert.ok(/--confirm/.test(stderr), `stderr should mention --confirm, got: ${stderr}`);
+  });
+
+  it("projects delete <id> (no --confirm) refuses and does not call gateway", async () => {
+    await seedActiveProject();
+    const { run } = await import("./cli/lib/projects.mjs");
+    const calls = [];
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = buildSpyFetch(calls);
+    let threw = null;
+    captureStart();
+    try {
+      await run("delete", ["prj_test123"]);
+    } catch (e) { threw = e; } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+    assert.equal(threw?.message, "process.exit(1)", "must exit non-zero");
+    assert.equal(calls.filter(c => c.method === "DELETE").length, 0, "must not issue any DELETE");
+    assert.ok(/CONFIRMATION_REQUIRED/.test(capturedStderr()), `stderr: ${capturedStderr()}`);
+  });
+
+  it("projects delete <id> --confirm proceeds and DELETEs the project", async () => {
+    await seedActiveProject();
+    const { run } = await import("./cli/lib/projects.mjs");
+    const calls = [];
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = buildSpyFetch(calls);
+    let threw = null;
+    captureStart();
+    try {
+      await run("delete", ["prj_test123", "--confirm"]);
+    } catch (e) { threw = e; } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+    assert.equal(threw, null, `should succeed, got: ${threw?.message || ""} / ${capturedStderr()}`);
+    const del = calls.find(c => c.method === "DELETE" && c.path === "/projects/v1/prj_test123");
+    assert.ok(del, `must issue DELETE /projects/v1/prj_test123, calls: ${JSON.stringify(calls)}`);
+    assert.ok(/deleted/.test(capturedStdout()), `stdout should confirm deletion, got: ${capturedStdout()}`);
+  });
+
+  it("subdomains delete <name> (no --confirm) refuses and does not call gateway", async () => {
+    await seedActiveProject();
+    const { run } = await import("./cli/lib/subdomains.mjs");
+    const calls = [];
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = buildSpyFetch(calls);
+    let threw = null;
+    captureStart();
+    try {
+      await run("delete", ["my-app"]);
+    } catch (e) { threw = e; } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+    assert.equal(threw?.message, "process.exit(1)", "must exit non-zero");
+    assert.equal(calls.filter(c => c.method === "DELETE").length, 0, "must not issue any DELETE");
+    assert.ok(/CONFIRMATION_REQUIRED/.test(capturedStderr()), `stderr: ${capturedStderr()}`);
+    assert.ok(/--confirm/.test(capturedStderr()), `stderr: ${capturedStderr()}`);
+  });
+
+  it("subdomains delete <name> --confirm proceeds and DELETEs the subdomain", async () => {
+    await seedActiveProject();
+    const { run } = await import("./cli/lib/subdomains.mjs");
+    const calls = [];
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = buildSpyFetch(calls);
+    let threw = null;
+    captureStart();
+    try {
+      await run("delete", ["my-app", "--confirm"]);
+    } catch (e) { threw = e; } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+    assert.equal(threw, null, `should succeed, got: ${threw?.message || ""} / ${capturedStderr()}`);
+    const del = calls.find(c => c.method === "DELETE" && c.path.startsWith("/subdomains/v1/"));
+    assert.ok(del, `must issue DELETE /subdomains/v1/my-app, calls: ${JSON.stringify(calls)}`);
+  });
+
+  it("domains delete <domain> (no --confirm) refuses and does not call gateway", async () => {
+    await seedActiveProject();
+    const { run } = await import("./cli/lib/domains.mjs");
+    const calls = [];
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = buildSpyFetch(calls);
+    let threw = null;
+    captureStart();
+    try {
+      await run("delete", ["example.com"]);
+    } catch (e) { threw = e; } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+    assert.equal(threw?.message, "process.exit(1)", "must exit non-zero");
+    assert.equal(calls.filter(c => c.method === "DELETE").length, 0, "must not issue any DELETE");
+    assert.ok(/CONFIRMATION_REQUIRED/.test(capturedStderr()), `stderr: ${capturedStderr()}`);
+    assert.ok(/--confirm/.test(capturedStderr()), `stderr: ${capturedStderr()}`);
+  });
+
+  it("domains delete <domain> --confirm proceeds and DELETEs the domain", async () => {
+    await seedActiveProject();
+    const { run } = await import("./cli/lib/domains.mjs");
+    const calls = [];
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = buildSpyFetch(calls);
+    let threw = null;
+    captureStart();
+    try {
+      await run("delete", ["example.com", "--confirm"]);
+    } catch (e) { threw = e; } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+    assert.equal(threw, null, `should succeed, got: ${threw?.message || ""} / ${capturedStderr()}`);
+    const del = calls.find(c => c.method === "DELETE" && c.path.startsWith("/domains/v1/"));
+    assert.ok(del, `must issue DELETE /domains/v1/example.com, calls: ${JSON.stringify(calls)}`);
   });
 });
