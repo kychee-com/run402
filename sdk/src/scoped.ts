@@ -76,6 +76,7 @@ import type {
 } from "./namespaces/domains.js";
 import type {
   CreateMailboxResult,
+  DeleteMailboxResult,
   EmailDetail,
   EmailSummary,
   ListEmailsOptions,
@@ -417,7 +418,7 @@ class ScopedEmail {
     this.webhooks = new ScopedEmailWebhooks(parent, projectId);
   }
 
-  createMailbox(slug: string): Promise<CreateMailboxResult | MailboxInfo> {
+  createMailbox(slug: string): Promise<CreateMailboxResult> {
     return this.parent.email.createMailbox(this.projectId, slug);
   }
   send(opts: SendEmailOptions): Promise<SendEmailResult> {
@@ -435,7 +436,7 @@ class ScopedEmail {
   getMailbox(): Promise<MailboxInfo> {
     return this.parent.email.getMailbox(this.projectId);
   }
-  deleteMailbox(mailboxId?: string): Promise<void> {
+  deleteMailbox(mailboxId?: string): Promise<DeleteMailboxResult> {
     return this.parent.email.deleteMailbox(this.projectId, mailboxId);
   }
 }

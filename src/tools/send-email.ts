@@ -54,7 +54,7 @@ export async function handleSendEmail(args: {
     return {
       content: [{
         type: "text",
-        text: `## Email Sent\n\n- **Message ID:** \`${body.id}\`\n- **To:** ${body.to}\n- ${mode}\n- **Status:** ${body.status}`,
+        text: `## Email Sent\n\n- **Message ID:** \`${body.message_id}\`\n- **To:** ${body.to}\n- ${mode}\n- **Status:** ${body.status}`,
       }],
     };
   } catch (err) {
