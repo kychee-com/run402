@@ -5,7 +5,7 @@
 
 import type { Client } from "../kernel.js";
 import { ProjectNotFound, Run402DeployError } from "../errors.js";
-import type { RlsTemplate, RlsTableSpec } from "./projects.types.js";
+import type { ProjectTier, RlsTemplate, RlsTableSpec } from "./projects.types.js";
 import type { SiteFile } from "./sites.js";
 import { Deploy } from "./deploy.js";
 import type {
@@ -55,12 +55,27 @@ export interface BundleDeployResult {
 
 export interface AppSummary {
   id: string;
-  project_name: string;
+  project_id: string;
+  version: number;
+  name: string;
   description: string | null;
-  tags: string[];
+  visibility: "public" | "unlisted" | "private";
   fork_allowed: boolean;
   fork_pricing?: Record<string, string>;
+  min_tier: ProjectTier;
+  derived_min_tier: ProjectTier;
+  status: "published" | "draft" | "archived";
+  table_count: number;
+  function_count: number;
+  site_file_count: number;
+  site_total_bytes: number;
+  required_secrets: Array<{ key: string; description?: string }>;
+  required_actions: Array<{ action: string; description?: string }>;
+  tags: string[];
+  live_url: string | null;
+  bootstrap_variables: unknown[] | null;
   created_at: string;
+  compatibility_warnings: string[];
 }
 
 export interface BrowseAppsResult {
@@ -91,22 +106,13 @@ export interface PublishAppOptions {
   fork_allowed?: boolean;
 }
 
-export interface PublishedVersion {
-  id: string;
-  project_id: string;
-  project_name: string;
-  description: string | null;
-  tags: string[];
-  visibility: string;
-  fork_allowed: boolean;
-  created_at: string;
-}
+export type PublishedVersion = AppSummary;
 
 export interface VersionSummary {
   id: string;
   description: string | null;
   tags: string[];
-  visibility: string;
+  visibility: "public" | "unlisted" | "private";
   fork_allowed: boolean;
   created_at: string;
 }
@@ -122,19 +128,7 @@ export interface UpdateVersionOptions {
   fork_allowed?: boolean;
 }
 
-export interface AppDetails {
-  id: string;
-  project_name: string;
-  description: string | null;
-  tags: string[];
-  fork_allowed: boolean;
-  min_tier: string;
-  table_count: number;
-  function_count: number;
-  site_file_count: number;
-  required_secrets: Array<{ key: string; description: string }>;
-  created_at: string;
-}
+export type AppDetails = AppSummary;
 
 export class Apps {
   constructor(private readonly client: Client) {}

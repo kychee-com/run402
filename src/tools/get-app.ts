@@ -13,7 +13,7 @@ export async function handleGetApp(args: {
     const body = await getSdk().apps.getApp(args.version_id);
 
     const lines = [
-      `## App: ${body.project_name}`,
+      `## App: ${body.name}`,
       ``,
       `| Field | Value |`,
       `|-------|-------|`,

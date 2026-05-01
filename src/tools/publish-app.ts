@@ -38,7 +38,7 @@ export async function handlePublishApp(args: {
       `|-------|-------|`,
       `| version_id | \`${body.id}\` |`,
       `| project | \`${body.project_id}\` |`,
-      `| name | ${body.project_name} |`,
+      `| name | ${body.name} |`,
       `| visibility | ${body.visibility} |`,
       `| forkable | ${body.fork_allowed ? "Yes" : "No"} |`,
       `| tags | ${body.tags.length > 0 ? body.tags.join(", ") : "-"} |`,
