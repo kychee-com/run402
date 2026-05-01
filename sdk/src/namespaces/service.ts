@@ -6,24 +6,17 @@
 import type { Client } from "../kernel.js";
 
 export interface ServiceStatusPayload {
-  schema_version?: string;
-  service?: string;
-  current_status?: string;
-  operator?: { legal_name?: string; terms_url?: string; contact?: string };
-  availability?: {
-    last_30d?: { uptime_pct?: number; total_probes?: number; healthy_probes?: number };
-    last_7d?: { uptime_pct?: number };
-    last_24h?: { uptime_pct?: number };
-  };
-  capabilities?: Record<string, string>;
-  deployment?: { cloud?: string; region?: string; topology?: string };
-  links?: { health?: string };
+  status: string;
+  uptime_seconds: number;
+  deployment: { version: string };
+  capabilities: string[];
+  operator: { name: string; contact: string };
 }
 
 export interface ServiceHealthPayload {
-  status?: string;
-  checks?: Record<string, string>;
-  version?: string;
+  status: string;
+  checks: Record<string, string>;
+  version: string;
 }
 
 export class Service {

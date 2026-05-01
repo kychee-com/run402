@@ -377,7 +377,7 @@ run402 subdomains claim my-app
 - `run402 projects promote-user <id> <email>` — promote a user to project_admin role
 - `run402 projects demote-user <id> <email>` — demote a user from project_admin role
 - `run402 projects <usage|schema> <id>`
-- `run402 projects delete <id>` — **cascade deletes** all project resources: Lambda functions, subdomains, S3 site files, deployments, secrets, and published app versions. The schema slot is dropped and recreated. This is irreversible.
+- `run402 projects delete <id> --confirm` — **cascade deletes** all project resources: Lambda functions, subdomains, S3 site files, deployments, secrets, and published app versions. The schema slot is dropped and recreated. This is irreversible. `--confirm` is required.
 - `run402 projects apply-expose <id> <manifest_json>` — apply a declarative authorization manifest
 - `run402 projects apply-expose <id> --file manifest.json` — apply from a JSON file
 - `run402 projects get-expose <id>` — print the current manifest (`source: applied | introspected`)
@@ -622,7 +622,7 @@ To inspect deploy status, use `run402 deploy events <operation_id>` or `run402 d
 ### subdomains
 - `run402 subdomains claim <name> [--deployment <id>] [--project <id>]`
 - `run402 subdomains list [<id>]`
-- `run402 subdomains delete <name> [--project <id>]`
+- `run402 subdomains delete <name> --confirm [--project <id>]` — `--confirm` required (irreversible release).
 
 All options default to the active project. `claim` also defaults to the project's last deployment. Names: 3-63 chars, lowercase alphanumeric + hyphens. Creates `<name>.run402.com`.
 
@@ -632,7 +632,7 @@ All options default to the active project. `claim` also defaults to the project'
 - `run402 domains add <domain> <subdomain_name> [--project <id>]`
 - `run402 domains list [<id>]`
 - `run402 domains status <domain> [--project <id>]`
-- `run402 domains delete <domain> [--project <id>]`
+- `run402 domains delete <domain> --confirm [--project <id>]` — `--confirm` required (irreversible release).
 
 Point a custom domain (e.g. `example.com`) at a Run402 subdomain. The human must already own the domain.
 

@@ -428,12 +428,12 @@ For browser-side flows (PKCE, Google OAuth, refresh-token rotation), see <https:
 ```bash
 run402 subdomains claim my-app                    # → https://my-app.run402.com
 run402 subdomains list
-run402 subdomains delete my-app
+run402 subdomains delete my-app --confirm
 
 run402 domains add example.com my-app             # → DNS records to set
 run402 domains status example.com                 # poll until active
 run402 domains list
-run402 domains delete example.com
+run402 domains delete example.com --confirm
 ```
 
 **Subdomain auto-reassignment**: claim once. Every subsequent `run402 sites deploy-dir` to the same project automatically points the subdomain at the new deployment. The deploy response includes `subdomain_urls` showing what got reassigned. No re-claim needed.

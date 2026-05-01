@@ -51,6 +51,11 @@ export interface CustomDomainRemoveOptions {
   projectId?: string;
 }
 
+export interface CustomDomainRemoveResult {
+  status: string;
+  domain: string;
+}
+
 export class Domains {
   constructor(private readonly client: Client) {}
 
@@ -97,7 +102,10 @@ export class Domains {
   }
 
   /** Release a custom domain. `projectId` is optional for ownership-free removal. */
-  async remove(domain: string, opts: CustomDomainRemoveOptions = {}): Promise<void> {
+  async remove(
+    domain: string,
+    opts: CustomDomainRemoveOptions = {},
+  ): Promise<CustomDomainRemoveResult> {
     const headers: Record<string, string> = {};
     if (opts.projectId) {
       const project = await this.client.getProject(opts.projectId);
@@ -105,10 +113,13 @@ export class Domains {
       headers.Authorization = `Bearer ${project.service_key}`;
     }
 
-    await this.client.request<unknown>(`/domains/v1/${encodeURIComponent(domain)}`, {
-      method: "DELETE",
-      headers,
-      context: "removing custom domain",
-    });
+    return this.client.request<CustomDomainRemoveResult>(
+      `/domains/v1/${encodeURIComponent(domain)}`,
+      {
+        method: "DELETE",
+        headers,
+        context: "removing custom domain",
+      },
+    );
   }
 }

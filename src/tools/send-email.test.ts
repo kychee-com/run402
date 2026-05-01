@@ -37,7 +37,7 @@ describe("send_email tool", () => {
   it("returns success on 200", async () => {
     globalThis.fetch = (async () =>
       new Response(
-        JSON.stringify({ id: "msg-001", status: "sent", to: "user@example.com", template: "project_invite" }),
+        JSON.stringify({ message_id: "msg-001", status: "sent", to: "user@example.com", template: "project_invite", subject: null, sent_at: "2026-05-01T00:00:00.000Z" }),
         { status: 200, headers: { "Content-Type": "application/json" } },
       )) as typeof fetch;
 
@@ -100,7 +100,7 @@ describe("send_email tool", () => {
     globalThis.fetch = (async (_url: string | URL | Request, init?: RequestInit) => {
       capturedBody = init?.body as string;
       return new Response(
-        JSON.stringify({ id: "msg-002", status: "sent", to: "user@example.com", subject: "Welcome!" }),
+        JSON.stringify({ message_id: "msg-002", status: "sent", to: "user@example.com", subject: "Welcome!", template: null, sent_at: "2026-05-01T00:00:00.000Z" }),
         { status: 200, headers: { "Content-Type": "application/json" } },
       );
     }) as typeof fetch;
@@ -126,7 +126,7 @@ describe("send_email tool", () => {
     globalThis.fetch = (async (_url: string | URL | Request, init?: RequestInit) => {
       capturedBody = init?.body as string;
       return new Response(
-        JSON.stringify({ id: "msg-003", status: "sent", to: "user@example.com", subject: "Hi" }),
+        JSON.stringify({ message_id: "msg-003", status: "sent", to: "user@example.com", subject: "Hi", template: null, sent_at: "2026-05-01T00:00:00.000Z" }),
         { status: 200, headers: { "Content-Type": "application/json" } },
       );
     }) as typeof fetch;

@@ -31,7 +31,7 @@ export async function handleBrowseApps(args: {
     for (const app of body.apps) {
       const tags = app.tags.length > 0 ? app.tags.join(", ") : "-";
       const desc = app.description || "-";
-      lines.push(`| ${app.project_name} | ${desc} | ${tags} | ${app.fork_allowed ? "Yes" : "No"} |`);
+      lines.push(`| ${app.name} | ${desc} | ${tags} | ${app.fork_allowed ? "Yes" : "No"} |`);
     }
 
     lines.push(``);

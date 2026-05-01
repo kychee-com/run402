@@ -26,49 +26,26 @@ export async function handleServiceStatus(
     };
   }
 
-  if (body?.schema_version !== "run402-status-v1") {
-    return {
-      content: [
-        {
-          type: "text",
-          text: `## Run402 Service Status\n\nCurrent status: **${body?.current_status ?? "unknown"}**.\n\n(Unrecognized schema_version: \`${body?.schema_version ?? "missing"}\`. Showing minimal view.)`,
-        },
-      ],
-    };
-  }
-
-  const uptime30d = body.availability?.last_30d?.uptime_pct;
-  const uptime7d = body.availability?.last_7d?.uptime_pct;
-  const uptime24h = body.availability?.last_24h?.uptime_pct;
+  const uptimeHours = (body.uptime_seconds / 3600).toFixed(1);
 
   const lines: string[] = [
     `## Run402 Service Status`,
     ``,
-    `Current status: **${body.current_status ?? "unknown"}**`,
+    `Current status: **${body.status}**`,
     ``,
     `| Field | Value |`,
     `|-------|-------|`,
-    `| operator | ${body.operator?.legal_name ?? "(unknown)"} |`,
-    `| uptime (24h) | ${uptime24h != null ? `${uptime24h}%` : "(unknown)"} |`,
-    `| uptime (7d) | ${uptime7d != null ? `${uptime7d}%` : "(unknown)"} |`,
-    `| uptime (30d) | ${uptime30d != null ? `${uptime30d}%` : "(unknown)"} |`,
+    `| operator | ${body.operator.name} (${body.operator.contact}) |`,
+    `| uptime | ${uptimeHours}h |`,
+    `| version | ${body.deployment.version} |`,
   ];
 
-  if (body.deployment?.cloud || body.deployment?.region) {
-    lines.push(`| deployment | ${body.deployment.cloud ?? "?"} / ${body.deployment.region ?? "?"} |`);
-  }
-
-  if (body.capabilities && Object.keys(body.capabilities).length > 0) {
+  if (body.capabilities.length > 0) {
     lines.push(``);
     lines.push(`### Capabilities`);
-    for (const [name, state] of Object.entries(body.capabilities)) {
-      lines.push(`- \`${name}\`: ${state}`);
+    for (const name of body.capabilities) {
+      lines.push(`- \`${name}\``);
     }
-  }
-
-  if (body.links?.health) {
-    lines.push(``);
-    lines.push(`Health probe: ${body.links.health}`);
   }
 
   return { content: [{ type: "text", text: lines.join("\n") }] };

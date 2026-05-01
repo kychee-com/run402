@@ -23,12 +23,16 @@ export interface AgentContactResult {
   updated_at: string;
 }
 
+export interface SendMessageResult {
+  status: string;
+}
+
 export class Admin {
   constructor(private readonly client: Client) {}
 
   /** Send a message to the Run402 developers. Requires an active tier. */
-  async sendMessage(message: string): Promise<void> {
-    await this.client.request<unknown>("/message/v1", {
+  async sendMessage(message: string): Promise<SendMessageResult> {
+    return this.client.request<SendMessageResult>("/message/v1", {
       method: "POST",
       body: { message },
       context: "sending message",

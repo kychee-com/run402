@@ -9,7 +9,7 @@ Usage:
 
 Subcommands:
   claim  <name> [--project <id>] [--deployment <id>]   Claim a subdomain
-  delete <name> [--project <id>]                        Release a subdomain
+  delete <name> --confirm [--project <id>]              Release a subdomain. Requires --confirm.
   list   [<id>]                                         List subdomains for a project
 
 Options default to the active project and its last deployment when omitted.
@@ -18,7 +18,7 @@ Legacy syntax 'claim <deployment_id> <name>' is still supported.
 Examples:
   run402 subdomains claim myapp
   run402 subdomains claim myapp --deployment dpl_abc123 --project proj123
-  run402 subdomains delete myapp
+  run402 subdomains delete myapp --confirm
   run402 subdomains list
 
 Notes:
@@ -77,10 +77,26 @@ async function claim(positionalArgs, flagArgs) {
   }
 }
 
-async function deleteSubdomain(name, args) {
-  const opts = { project: null };
-  for (let i = 0; i < args.length; i++) {
-    if (args[i] === "--project" && args[i + 1]) opts.project = args[++i];
+async function deleteSubdomain(allArgs) {
+  const argList = Array.isArray(allArgs) ? allArgs : [];
+  let opts = { project: null };
+  let name = null;
+  for (let i = 0; i < argList.length; i++) {
+    if (argList[i] === "--project" && argList[i + 1]) { opts.project = argList[++i]; }
+    else if (!argList[i].startsWith("--") && !name) { name = argList[i]; }
+  }
+  if (!name) {
+    console.error(JSON.stringify({ status: "error", message: "Usage: run402 subdomains delete <name> --confirm [--project <id>]" }));
+    process.exit(1);
+  }
+  if (!argList.includes("--confirm")) {
+    console.error(JSON.stringify({
+      status: "error",
+      code: "CONFIRMATION_REQUIRED",
+      message: `Destructive: releasing subdomain '${name}' makes it available for any other project to claim. This is irreversible. Re-run with --confirm to proceed.`,
+      details: { name },
+    }));
+    process.exit(1);
   }
   const projectId = resolveProjectId(opts.project);
   try {
@@ -116,7 +132,7 @@ export async function run(sub, args) {
       await claim(positional, flags);
       break;
     }
-    case "delete": await deleteSubdomain(args[0], args.slice(1)); break;
+    case "delete": await deleteSubdomain(args); break;
     case "list":   await list(args[0]); break;
     default:
       console.error(`Unknown subcommand: ${sub}\n`);

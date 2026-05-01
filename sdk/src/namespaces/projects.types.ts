@@ -35,7 +35,12 @@ export interface ProjectSummary {
   status: string;
   api_calls: number;
   storage_bytes: number;
-  lease_expires_at: string;
+  /**
+   * Optional: the gateway's project list does not currently include the
+   * lease expiry. Read it from `r.tier.status()` if you need it.
+   * `null` is reserved for unleased accounts.
+   */
+  lease_expires_at?: string | null;
   created_at: string;
 }
 
@@ -126,10 +131,13 @@ export interface TierQuote {
   lease_days: number;
   storage_mb: number;
   api_calls: number;
+  max_functions: number;
+  description: string;
 }
 
 export interface QuoteResult {
   tiers: Record<string, TierQuote>;
+  auth?: Record<string, unknown>;
 }
 
 // ─── local (keystore-backed) ────────────────────────────────────────────

@@ -143,6 +143,11 @@ export interface FunctionListResult {
   functions: FunctionSummary[];
 }
 
+export interface DeleteFunctionResult {
+  status: string;
+  name: string;
+}
+
 export interface FunctionUpdateOptions {
   /** Pass `null` to remove an existing schedule. `undefined` leaves the schedule unchanged. */
   schedule?: string | null;

@@ -8,6 +8,7 @@
 import type { Client } from "../kernel.js";
 import { ProjectNotFound } from "../errors.js";
 import type {
+  DeleteFunctionResult,
   FunctionDeployOptions,
   FunctionDeployResult,
   FunctionInvokeOptions,
@@ -144,11 +145,11 @@ export class Functions {
   }
 
   /** Delete a deployed function. */
-  async delete(projectId: string, name: string): Promise<void> {
+  async delete(projectId: string, name: string): Promise<DeleteFunctionResult> {
     const project = await this.client.getProject(projectId);
     if (!project) throw new ProjectNotFound(projectId, "deleting function");
 
-    await this.client.request<unknown>(
+    return this.client.request<DeleteFunctionResult>(
       `/projects/v1/admin/${projectId}/functions/${encodeURIComponent(name)}`,
       {
         method: "DELETE",

@@ -18,11 +18,13 @@ describe("check_balance tool", () => {
     globalThis.fetch = (async () =>
       new Response(
         JSON.stringify({
-          wallet: "0xabc",
-          exists: true,
+          identifier_type: "wallet",
           available_usd_micros: 2500000,
-          held_usd_micros: 100000,
-          status: "active",
+          email_credits_remaining: 42,
+          tier: "prototype",
+          lease_expires_at: "2026-05-07T14:49:10.884Z",
+          auto_recharge_enabled: false,
+          auto_recharge_threshold: 2000,
         }),
         { status: 200, headers: { "Content-Type": "application/json" } },
       )) as typeof fetch;
@@ -30,18 +32,25 @@ describe("check_balance tool", () => {
     const result = await handleCheckBalance({ wallet: "0xABC" });
     const text = result.content[0]!.text;
     assert.ok(text.includes("$2.50"));
-    assert.ok(text.includes("$0.10"));
-    assert.ok(text.includes("active"));
+    assert.ok(text.includes("prototype"));
+    assert.ok(text.includes("42"));
     assert.equal(result.isError, undefined);
   });
 
   it("lowercases wallet address", async () => {
     let capturedUrl = "";
     globalThis.fetch = (async (input: string | URL | Request) => {
-      // Handle Request instances (paid-fetch wrapper may normalize args).
       capturedUrl = input instanceof Request ? input.url : String(input);
       return new Response(
-        JSON.stringify({ wallet: "0xabc", exists: true, available_usd_micros: 0, held_usd_micros: 0, status: "active" }),
+        JSON.stringify({
+          identifier_type: "wallet",
+          available_usd_micros: 0,
+          email_credits_remaining: 0,
+          tier: null,
+          lease_expires_at: null,
+          auto_recharge_enabled: false,
+          auto_recharge_threshold: 0,
+        }),
         { status: 200, headers: { "Content-Type": "application/json" } },
       );
     }) as typeof fetch;
@@ -50,16 +59,24 @@ describe("check_balance tool", () => {
     assert.ok(capturedUrl.includes("0xabcdef"));
   });
 
-  it("returns guidance when no billing account exists", async () => {
+  it("renders (none) when tier and lease are null", async () => {
     globalThis.fetch = (async () =>
       new Response(
-        JSON.stringify({ wallet: "0xabc", exists: false, available_usd_micros: 0, held_usd_micros: 0 }),
+        JSON.stringify({
+          identifier_type: "wallet",
+          available_usd_micros: 0,
+          email_credits_remaining: 0,
+          tier: null,
+          lease_expires_at: null,
+          auto_recharge_enabled: false,
+          auto_recharge_threshold: 0,
+        }),
         { status: 200, headers: { "Content-Type": "application/json" } },
       )) as typeof fetch;
 
     const result = await handleCheckBalance({ wallet: "0xABC" });
     const text = result.content[0]!.text;
-    assert.ok(text.includes("No billing account found"));
+    assert.ok(text.includes("(none)"));
     assert.equal(result.isError, undefined);
   });
 

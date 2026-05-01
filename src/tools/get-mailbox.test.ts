@@ -47,20 +47,6 @@ describe("get_mailbox tool", () => {
     assert.ok(result.content[0]!.text.includes("my-app"));
   });
 
-  it("handles array response format", async () => {
-    globalThis.fetch = (async () =>
-      new Response(
-        JSON.stringify([{ mailbox_id: "mbx-002", address: "test@mail.run402.com" }]),
-        { status: 200, headers: { "Content-Type": "application/json" } },
-      )) as typeof fetch;
-
-    const result = await handleGetMailbox({ project_id: "proj-001" });
-
-    assert.equal(result.isError, undefined);
-    assert.ok(result.content[0]!.text.includes("mbx-002"));
-    assert.ok(result.content[0]!.text.includes("test@mail.run402.com"));
-  });
-
   it("returns error when no mailbox found", async () => {
     globalThis.fetch = (async () =>
       new Response(

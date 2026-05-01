@@ -9,22 +9,30 @@ import { ApiError, ProjectNotFound } from "../errors.js";
 
 const SLUG_RE = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/;
 
-export interface CreateMailboxResult {
+export interface MailboxRecord {
   mailbox_id: string;
   address: string;
   slug: string;
-  status: string;
+  project_id: string;
+  status: "active" | "suspended" | "deleted";
+  sends_today: number;
+  unique_recipients: number;
+  created_at: string;
+  updated_at: string;
 }
 
-export interface MailboxInfo {
+export type CreateMailboxResult = MailboxRecord;
+
+export type MailboxInfo = MailboxRecord;
+
+export interface MailboxListResponse {
+  mailboxes: MailboxRecord[];
+}
+
+export interface DeleteMailboxResult {
   mailbox_id: string;
   address: string;
-  slug?: string;
 }
-
-export type MailboxListResponse =
-  | { mailboxes?: MailboxInfo[] }
-  | MailboxInfo[];
 
 export type EmailTemplate = "project_invite" | "magic_link" | "notification";
 
@@ -40,11 +48,12 @@ export interface SendEmailOptions {
 }
 
 export interface SendEmailResult {
-  id: string;
+  message_id: string;
   status: string;
   to: string;
-  template?: string;
-  subject?: string;
+  template: string | null;
+  subject: string | null;
+  sent_at: string;
 }
 
 export interface EmailSummary {
@@ -213,16 +222,16 @@ export class Email {
     return { id: first.mailbox_id, serviceKey: project.service_key };
   }
 
-  private async listMailboxes(serviceKey: string): Promise<MailboxInfo[]> {
+  private async listMailboxes(serviceKey: string): Promise<MailboxRecord[]> {
     const raw = await this.client.request<MailboxListResponse>(`/mailboxes/v1`, {
       headers: { Authorization: `Bearer ${serviceKey}` },
       context: "listing mailboxes",
     });
-    return Array.isArray(raw) ? raw : raw.mailboxes ?? [];
+    return raw.mailboxes ?? [];
   }
 
   /** Create a mailbox for a project. Idempotent: returns the existing one on 409. */
-  async createMailbox(projectId: string, slug: string): Promise<CreateMailboxResult | MailboxInfo> {
+  async createMailbox(projectId: string, slug: string): Promise<CreateMailboxResult> {
     const project = await this.client.getProject(projectId);
     if (!project) throw new ProjectNotFound(projectId, "creating mailbox");
 
@@ -396,9 +405,10 @@ export class Email {
   /**
    * Delete the project's mailbox. Destructive — drops all messages and
    * webhook subscriptions. Pass `mailboxId` explicitly to delete a specific
-   * mailbox; otherwise the project's current mailbox is resolved.
+   * mailbox; otherwise the project's current mailbox is resolved. Returns
+   * the deleted record echoed by the gateway.
    */
-  async deleteMailbox(projectId: string, mailboxId?: string): Promise<void> {
+  async deleteMailbox(projectId: string, mailboxId?: string): Promise<DeleteMailboxResult> {
     const project = await this.client.getProject(projectId);
     if (!project) throw new ProjectNotFound(projectId, "deleting mailbox");
 
@@ -420,13 +430,12 @@ export class Email {
       }
     }
 
-    await this.client.request<unknown>(`/mailboxes/v1/${id}`, {
+    const result = await this.client.request<DeleteMailboxResult>(`/mailboxes/v1/${id}`, {
       method: "DELETE",
       headers: { Authorization: `Bearer ${project.service_key}` },
       context: "deleting mailbox",
     });
 
-    // Clear the cached mailbox_id so future calls re-discover.
     const updater = this.client.credentials.updateProject;
     if (updater) {
       try {
@@ -438,5 +447,7 @@ export class Email {
         // best-effort
       }
     }
+
+    return result;
   }
 }

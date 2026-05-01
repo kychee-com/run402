@@ -103,7 +103,7 @@ export async function handleInit(args: { rail?: "x402" | "mpp" }): Promise<McpRe
   let tierDisplay = "(none)";
   try {
     const body = await getSdk().tier.status();
-    if (body.tier && body.status !== "none") {
+    if (body.tier && body.active) {
       const expiry = body.lease_expires_at ? body.lease_expires_at.split("T")[0] : "unknown";
       tierDisplay = `${body.tier} (expires ${expiry})`;
     }

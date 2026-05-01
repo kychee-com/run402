@@ -72,10 +72,12 @@ import type {
 import type {
   CustomDomainAddResult,
   CustomDomainListResult,
+  CustomDomainRemoveResult,
   CustomDomainStatusResult,
 } from "./namespaces/domains.js";
 import type {
   CreateMailboxResult,
+  DeleteMailboxResult,
   EmailDetail,
   EmailSummary,
   ListEmailsOptions,
@@ -89,6 +91,7 @@ import type {
   UpdateWebhookOptions,
 } from "./namespaces/email.js";
 import type {
+  DeleteFunctionResult,
   FunctionDeployOptions,
   FunctionDeployResult,
   FunctionInvokeOptions,
@@ -99,8 +102,9 @@ import type {
   FunctionUpdateOptions,
   FunctionUpdateResult,
 } from "./namespaces/functions.types.js";
-import type { SecretListResult } from "./namespaces/secrets.js";
+import type { DeleteSecretResult, SecretListResult } from "./namespaces/secrets.js";
 import type {
+  DisableInboundResult,
   InboundEnableResult,
   SenderDomainRegisterResult,
   SenderDomainStatusResult,
@@ -108,6 +112,7 @@ import type {
 import type {
   SubdomainClaimOptions,
   SubdomainClaimResult,
+  SubdomainDeleteResult,
   SubdomainSummary,
 } from "./namespaces/subdomains.js";
 import type {
@@ -384,7 +389,7 @@ class ScopedDomains {
   status(domain: string): Promise<CustomDomainStatusResult> {
     return this.parent.domains.status(this.projectId, domain);
   }
-  remove(domain: string, opts: { projectId?: string } = {}): Promise<void> {
+  remove(domain: string, opts: { projectId?: string } = {}): Promise<CustomDomainRemoveResult> {
     return this.parent.domains.remove(domain, { projectId: opts.projectId ?? this.projectId });
   }
 }
@@ -416,7 +421,7 @@ class ScopedEmail {
     this.webhooks = new ScopedEmailWebhooks(parent, projectId);
   }
 
-  createMailbox(slug: string): Promise<CreateMailboxResult | MailboxInfo> {
+  createMailbox(slug: string): Promise<CreateMailboxResult> {
     return this.parent.email.createMailbox(this.projectId, slug);
   }
   send(opts: SendEmailOptions): Promise<SendEmailResult> {
@@ -434,7 +439,7 @@ class ScopedEmail {
   getMailbox(): Promise<MailboxInfo> {
     return this.parent.email.getMailbox(this.projectId);
   }
-  deleteMailbox(mailboxId?: string): Promise<void> {
+  deleteMailbox(mailboxId?: string): Promise<DeleteMailboxResult> {
     return this.parent.email.deleteMailbox(this.projectId, mailboxId);
   }
 }
@@ -454,7 +459,7 @@ class ScopedFunctions {
   list(): Promise<FunctionListResult> {
     return this.parent.functions.list(this.projectId);
   }
-  delete(name: string): Promise<void> {
+  delete(name: string): Promise<DeleteFunctionResult> {
     return this.parent.functions.delete(this.projectId, name);
   }
   update(name: string, opts: FunctionUpdateOptions): Promise<FunctionUpdateResult> {
@@ -471,7 +476,7 @@ class ScopedSecrets {
   list(): Promise<SecretListResult> {
     return this.parent.secrets.list(this.projectId);
   }
-  delete(key: string): Promise<void> {
+  delete(key: string): Promise<DeleteSecretResult> {
     return this.parent.secrets.delete(this.projectId, key);
   }
 }
@@ -491,7 +496,7 @@ class ScopedSenderDomain {
   enableInbound(domain: string): Promise<InboundEnableResult> {
     return this.parent.senderDomain.enableInbound(this.projectId, domain);
   }
-  disableInbound(domain: string): Promise<void> {
+  disableInbound(domain: string): Promise<DisableInboundResult> {
     return this.parent.senderDomain.disableInbound(this.projectId, domain);
   }
 }
@@ -508,7 +513,7 @@ class ScopedSubdomains {
       projectId: opts.projectId ?? this.projectId,
     });
   }
-  delete(name: string, opts: SubdomainClaimOptions = {}): Promise<void> {
+  delete(name: string, opts: SubdomainClaimOptions = {}): Promise<SubdomainDeleteResult> {
     return this.parent.subdomains.delete(name, {
       ...opts,
       projectId: opts.projectId ?? this.projectId,
