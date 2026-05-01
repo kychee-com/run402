@@ -5,25 +5,34 @@
  */
 
 import type { Client } from "../kernel.js";
+import type { ProjectTier } from "./projects.types.js";
 
 export interface BillingBalance {
-  wallet: string;
-  exists: boolean;
+  identifier_type: "wallet" | "email";
   available_usd_micros: number;
-  held_usd_micros: number;
-  status?: string;
+  email_credits_remaining: number;
+  tier: ProjectTier | null;
+  lease_expires_at: string | null;
+  auto_recharge_enabled: boolean;
+  auto_recharge_threshold: number;
 }
 
 export interface BillingHistoryEntry {
-  direction: string;
+  id: string;
+  direction: "credit" | "debit";
   kind: string;
   amount_usd_micros: number;
   balance_after_available: number;
+  balance_after_held: number;
+  reference_type: string | null;
+  reference_id: string | null;
+  metadata: Record<string, unknown>;
   created_at: string;
 }
 
 export interface BillingHistoryResult {
-  wallet: string;
+  identifier: string;
+  identifier_type: "wallet" | "email";
   entries: BillingHistoryEntry[];
 }
 
