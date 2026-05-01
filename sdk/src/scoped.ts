@@ -108,6 +108,7 @@ import type {
 import type {
   SubdomainClaimOptions,
   SubdomainClaimResult,
+  SubdomainDeleteResult,
   SubdomainSummary,
 } from "./namespaces/subdomains.js";
 import type {
@@ -508,7 +509,7 @@ class ScopedSubdomains {
       projectId: opts.projectId ?? this.projectId,
     });
   }
-  delete(name: string, opts: SubdomainClaimOptions = {}): Promise<void> {
+  delete(name: string, opts: SubdomainClaimOptions = {}): Promise<SubdomainDeleteResult> {
     return this.parent.subdomains.delete(name, {
       ...opts,
       projectId: opts.projectId ?? this.projectId,
