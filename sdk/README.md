@@ -173,7 +173,7 @@ try {
 } catch (e) {
   if (e instanceof PaymentRequired) {
     // present payment requirements to the user
-  } else if (e instanceof Run402DeployError && e.safeToRetry) {
+  } else if (e instanceof Run402DeployError && e.safe_to_retry) {
     // safe to retry — same idempotency key
   } else throw e;
 }
