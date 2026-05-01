@@ -45,25 +45,53 @@ The `CredentialsProvider` interface has two required methods (`getAuth`, `getPro
 
 | Namespace | Highlights |
 |---|---|
-| `projects` | `provision`, `delete`, `list`, `getUsage`, `getSchema`, `info`, `keys`, `use`, `pin` |
-| `deploy` | **The unified deploy primitive (v1.34+).** `apply` / `start` / `resume` / `status` / `getRelease` / `diff` / `plan` / `upload` / `commit` |
-| `sites` | `deployDir` (Node entry only) — thin wrapper over `r.deploy.apply` |
-| `blobs` | `put` (returns `AssetRef` with `cdn_url`/`sri`/`etag`), `get`, `ls`, `rm`, `sign`, `diagnoseUrl`, `waitFresh` |
-| `functions` | `deploy`, `invoke`, `getLogs`, `update`, `list`, `delete` |
+| `projects` | `provision`, `delete`, `list`, `getUsage`, `getSchema`, `info`, `keys`, `use`, `active`, `pin`, `getQuote` |
+| `deploy` | **The unified deploy primitive (v1.34+).** `apply` / `start` / `resume` / `status` / `list` / `events` / `getRelease` / `diff` / `plan` / `upload` / `commit` |
+| `sites` | `deployDir` — Node entry only (`@run402/sdk/node`); thin wrapper over `r.deploy.apply` |
+| `blobs` | `put` (returns `AssetRef` with `cdnUrl` / `sri` / `etag` / `cacheKind` and `scriptTag()`/`linkTag()`/`imgTag()` emitters), `get`, `ls`, `rm`, `sign`, `diagnoseUrl`, `waitFresh` |
+| `functions` | `deploy`, `invoke`, `logs`, `update`, `list`, `delete` |
 | `secrets` | `set`, `list`, `delete` |
-| `subdomains` | `claim`, `list`, `delete` |
+| `subdomains` | `claim`, `list`, `delete` (most agents declare subdomains in `r.deploy.apply({ subdomains: { set: [...] } })` instead) |
 | `domains` | `add`, `list`, `status`, `remove` |
-| `email` | `createMailbox`, `sendEmail`, `listEmails`, `getEmail`, `getEmailRaw`, `webhooks.*` |
+| `email` | `createMailbox`, `getMailbox`, `deleteMailbox`, `send`, `list`, `get`, `getRaw`, `webhooks.*` |
 | `senderDomain` | `register`, `status`, `remove`, `enableInbound`, `disableInbound` |
-| `auth` | `magicLink`, `verifyMagicLink`, `setUserPassword`, `settings`, `providers` |
-| `apps` | `browse`, `get`, `fork`, `publish`, `versions.*`, `bundleDeploy` (legacy shim → routes through `deploy`) |
-| `tier` | `set`, `status`, `quote` |
+| `auth` | `requestMagicLink`, `verifyMagicLink`, `setUserPassword`, `settings`, `promote`, `demote` |
+| `apps` | `browse`, `getApp`, `fork`, `publish`, `listVersions`, `updateVersion`, `deleteVersion`, `bundleDeploy` (legacy shim → routes through `deploy`) |
+| `tier` | `set`, `status` (tier pricing lives on `r.projects.getQuote()`) |
 | `billing` | `createEmailAccount`, `linkWallet`, `tierCheckout`, `buyEmailPack`, `setAutoRecharge`, `balance`, `history`, `createCheckout` |
-| `contracts` | `provisionWallet`, `getWallet`, `listWallets`, `setRecoveryAddress`, `setLowBalanceAlert`, `call`, `read`, `getCallStatus`, `drainWallet`, `deleteWallet` |
-| `ai` | `translate`, `moderate`, `usage` |
-| `allowance` | `status`, `create`, `export`, `requestFaucet`, `checkBalance` |
+| `contracts` | `provisionWallet`, `getWallet`, `listWallets`, `setRecovery`, `setLowBalanceAlert`, `call`, `read`, `callStatus`, `drain`, `deleteWallet` |
+| `ai` | `translate`, `moderate`, `usage`, `generateImage` |
+| `allowance` | `status`, `create`, `export`, `faucet` |
 | `service` | `status`, `health` (no auth, no setup — works on a fresh install) |
 | `admin` | Admin-only endpoints (pinning, lifecycle reactivation, dispute resolution) |
+
+### Casing in returned shapes
+
+Two casings coexist by design — agents reading the type surface should
+classify a field by the SHAPE it belongs to:
+
+- **Raw API result shapes preserve the gateway's snake_case fields.** Examples:
+  `ProvisionResult.project_id`, `ProvisionResult.anon_key`,
+  `ProvisionResult.service_key`, `ProvisionResult.schema_slot`,
+  `ProjectInfo.project_id`, `ProjectSummary.lease_expires_at`,
+  `UsageReport.api_calls`, `SchemaReport.schema`. These mirror the HTTP
+  response bodies one-to-one.
+- **SDK-specific helper shapes use camelCase.** Examples:
+  `AssetRef.cdnUrl` / `AssetRef.cacheKind` / `AssetRef.contentSha256`,
+  `Run402DeployError.safeToRetry` / `operationId` / `mutationState`,
+  every `DeployEvent` variant's discriminator (`type`, plus per-variant
+  fields like `releaseId`, `urls`).
+
+This split is intentional and stays through `1.x`. Doc examples in this
+README and in `llms-sdk.txt` use the exact field names the types export —
+copy them verbatim. CI fails any TypeScript-fenced example that accesses a
+field that does not exist on the actual type.
+
+> **Reference tables (in `llms-sdk.txt`) use plain code fences, not `ts`
+> fences.** They document the type surface in compact form for visual
+> scanning — they are not runnable programs and are exempt from CI
+> type-checking. Runnable example snippets still use ```` ```ts ```` and are
+> CI-gated against the published types.
 
 ## Patterns
 
@@ -89,9 +117,9 @@ The canonical primitive for any deploy (database + migrations + manifest + secre
 // One-shot — most agents use this.
 const result = await r.deploy.apply(spec);
 
-// Long-running with progress events.
+// Long-running with progress events. Events are a discriminated union on `type`.
 const op = await r.deploy.start(spec);
-for await (const e of op.events()) console.log(e.phase);
+for await (const ev of op.events()) console.log(ev.type);
 const final = await op.result();
 
 // Resume a previously-started deploy by id.
@@ -99,7 +127,7 @@ const resumed = await r.deploy.resume(operationId);
 ```
 
 - **All bytes ride through CAS.** The plan request body never carries inline bytes — only `ContentRef` objects. When the spec exceeds 5 MB JSON, the SDK uploads the manifest itself as a CAS object (`manifest_ref` escape hatch).
-- **Replace vs patch semantics per resource.** `site.replace` = "this is the whole site" (files absent are removed); `site.patch.put` / `patch.delete` = surgical updates. Same shape for `functions`, `secrets`, `subdomains`. Top-level absence = leave untouched.
+- **Per-resource semantics on the spec.** `site.replace` = "this is the whole site" (files absent are removed). `site.patch.put` / `patch.delete` are surgical updates. `functions.replace` / `functions.patch.set` / `functions.patch.delete` mirror that. `secrets.set` / `secrets.delete` / `secrets.replace_all` and `subdomains.set` / `subdomains.add` / `subdomains.remove` use their own shapes (see `ReleaseSpec` types). Top-level absence = leave untouched.
 - **Server-authoritative manifest digest** — no byte-for-byte canonicalize requirement on the client.
 - The Node entry adds `fileSetFromDir(path)` for filesystem byte sources:
 
@@ -107,9 +135,9 @@ const resumed = await r.deploy.resume(operationId);
   import { run402, fileSetFromDir } from "@run402/sdk/node";
   const r = run402();
   await r.deploy.apply({
-    project_id,
-    site: { replace: { files: await fileSetFromDir("./dist") } },
-    subdomains: { replace: [{ name: "my-app" }] },
+    project: projectId,
+    site: { replace: await fileSetFromDir("./dist") },
+    subdomains: { set: ["my-app"] },
   });
   ```
 
@@ -125,19 +153,27 @@ All failures throw subclasses of `Run402Error`:
 | `ApiError` | Other non-2xx responses | `status`, `body` |
 | `NetworkError` | Fetch rejected with no HTTP response | — |
 | `LocalError` | Local-host issues (filesystem, signing) | — |
-| `Run402DeployError` | Structured envelope from the deploy state machine (v1.34+) | `code`, `phase`, `operation_id`, `safe_to_retry`, `mutation_state`, `next_actions` |
+| `Run402DeployError` | Structured envelope from the deploy state machine (v1.34+) | `code`, `phase`, `operationId`, `safeToRetry`, `mutationState`, `nextActions` |
 
 Branch on the structured fields, not English `message` text:
 
 ```ts
-import { PaymentRequired, Run402DeployError } from "@run402/sdk";
+import {
+  run402,
+  PaymentRequired,
+  Run402DeployError,
+  type ReleaseSpec,
+} from "@run402/sdk/node";
+
+declare const spec: ReleaseSpec;
+const r = run402();
 
 try {
   await r.deploy.apply(spec);
 } catch (e) {
   if (e instanceof PaymentRequired) {
     // present payment requirements to the user
-  } else if (e instanceof Run402DeployError && e.safe_to_retry) {
+  } else if (e instanceof Run402DeployError && e.safeToRetry) {
     // safe to retry — same idempotency key
   } else throw e;
 }

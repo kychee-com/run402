@@ -16,7 +16,9 @@
     }
   },
   "scripts": {
-    "prepack": "mkdir -p core-dist && cp ../core/dist/*.js core-dist/ && cp ../core/dist/*.d.ts core-dist/"
+    "prepack": "mkdir -p core-dist && cp ../core/dist/*.js core-dist/ && cp ../core/dist/*.d.ts core-dist/",
+    "check:docs": "tsx scripts/check-doc-snippets.ts",
+    "test": "npm run check:docs"
   },
   "files": [
     "dist",

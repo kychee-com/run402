@@ -1,0 +1,12 @@
+{
+  "//": "Doc-snippet type-checking config. Extends the SDK's main tsconfig and",
+  "//1": "loosens nothing — same strict, target, module, moduleResolution. The",
+  "//2": "snippet check (sdk/scripts/check-doc-snippets.ts) drives compilation",
+  "//3": "via the TS compiler API and applies these compiler options",
+  "//4": "programmatically; this file exists for clarity and IDE awareness.",
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true
+  },
+  "include": []
+}
