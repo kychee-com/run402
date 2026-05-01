@@ -61,7 +61,8 @@ export async function handleStatus(
   // Tier
   if (tier?.tier) {
     const expiry = tier.lease_expires_at ? tier.lease_expires_at.split("T")[0] : "unknown";
-    lines.push(`| tier | ${tier.tier} (${tier.status}, expires ${expiry}) |`);
+    const state = tier.active ? "active" : "inactive";
+    lines.push(`| tier | ${tier.tier} (${state}, expires ${expiry}) |`);
   } else {
     lines.push(`| tier | (none) |`);
   }

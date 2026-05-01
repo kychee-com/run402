@@ -48,8 +48,16 @@ describe("tier_status tool", () => {
         JSON.stringify({
           wallet: "0xabc",
           tier: "prototype",
+          lease_started_at: "2026-03-07T00:00:00.000Z",
           lease_expires_at: "2026-03-21T00:00:00.000Z",
-          status: "active",
+          active: true,
+          pool_usage: {
+            projects: 5,
+            total_api_calls: 1234,
+            total_storage_bytes: 50_000_000,
+            api_calls_limit: 500_000,
+            storage_bytes_limit: 250_000_000,
+          },
         }),
         { status: 200, headers: { "Content-Type": "application/json" } },
       )) as typeof fetch;
@@ -57,7 +65,7 @@ describe("tier_status tool", () => {
     const result = await handleTierStatus({} as Record<string, never>);
     const text = result.content[0]!.text;
     assert.ok(text.includes("prototype"));
-    assert.ok(text.includes("active"));
+    assert.ok(text.includes("yes"));
     assert.ok(text.includes("2026-03-21"));
     assert.equal(result.isError, undefined);
   });
@@ -68,8 +76,16 @@ describe("tier_status tool", () => {
         JSON.stringify({
           wallet: "0xabc",
           tier: null,
+          lease_started_at: null,
           lease_expires_at: null,
-          status: "none",
+          active: false,
+          pool_usage: {
+            projects: 0,
+            total_api_calls: 0,
+            total_storage_bytes: 0,
+            api_calls_limit: 0,
+            storage_bytes_limit: 0,
+          },
         }),
         { status: 200, headers: { "Content-Type": "application/json" } },
       )) as typeof fetch;

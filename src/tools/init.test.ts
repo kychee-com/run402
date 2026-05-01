@@ -53,7 +53,7 @@ function mockFetch(opts: {
     }
     if (url.includes("/tiers/v1/status")) {
       return new Response(
-        JSON.stringify(opts.tierBody ?? { wallet: "0xabc", tier: null, lease_expires_at: null, status: "none" }),
+        JSON.stringify(opts.tierBody ?? { wallet: "0xabc", tier: null, lease_started_at: null, lease_expires_at: null, active: false, pool_usage: { projects: 0, total_api_calls: 0, total_storage_bytes: 0, api_calls_limit: 0, storage_bytes_limit: 0 } }),
         { status: opts.tierOk !== false ? 200 : 500, headers: { "Content-Type": "application/json" } },
       );
     }
@@ -128,7 +128,7 @@ describe("init tool", () => {
       }
       if (url.includes("/tiers/v1/status")) {
         return new Response(
-          JSON.stringify({ wallet: "0xabc", tier: null, lease_expires_at: null, status: "none" }),
+          JSON.stringify({ wallet: "0xabc", tier: null, lease_started_at: null, lease_expires_at: null, active: false, pool_usage: { projects: 0, total_api_calls: 0, total_storage_bytes: 0, api_calls_limit: 0, storage_bytes_limit: 0 } }),
           { status: 200, headers: { "Content-Type": "application/json" } },
         );
       }
@@ -161,7 +161,7 @@ describe("init tool", () => {
       if (url.includes("/faucet/v1")) faucetCalled = true;
       if (url.includes("/tiers/v1/status")) {
         return new Response(
-          JSON.stringify({ wallet: "0xabc", tier: null, lease_expires_at: null, status: "none" }),
+          JSON.stringify({ wallet: "0xabc", tier: null, lease_started_at: null, lease_expires_at: null, active: false, pool_usage: { projects: 0, total_api_calls: 0, total_storage_bytes: 0, api_calls_limit: 0, storage_bytes_limit: 0 } }),
           { status: 200, headers: { "Content-Type": "application/json" } },
         );
       }
@@ -193,7 +193,7 @@ describe("init tool", () => {
     });
     mockFetch({
       tierOk: true,
-      tierBody: { wallet: "0xabc", tier: "prototype", active: true, lease_expires_at: "2026-04-01T00:00:00.000Z", status: "active" },
+      tierBody: { wallet: "0xabc", tier: "prototype", active: true, lease_started_at: "2026-03-18T00:00:00.000Z", lease_expires_at: "2026-04-01T00:00:00.000Z", pool_usage: { projects: 1, total_api_calls: 0, total_storage_bytes: 0, api_calls_limit: 500_000, storage_bytes_limit: 250_000_000 } },
     });
 
     const result = await handleInit({});
