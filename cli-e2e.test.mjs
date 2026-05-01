@@ -1457,7 +1457,10 @@ describe("CLI e2e happy path", () => {
     const { writeFileSync: wf, mkdirSync: md } = await import("node:fs");
     md(siteDir, { recursive: true });
     wf(join(siteDir, "index.html"), "<h1>From dir</h1>");
+    wf(join(siteDir, "about.html"), "<h1>About</h1>");
+    wf(join(siteDir, "contact.html"), "<h1>Contact</h1>");
     wf(join(siteDir, "style.css"), "body { color: blue; }");
+    wf(join(siteDir, "script.js"), "console.log('hi')");
     captureStart();
     await run("deploy-dir", [siteDir, "--project", "prj_test123"]);
     captureStop();
@@ -1482,7 +1485,7 @@ describe("CLI e2e happy path", () => {
     md(siteDir, { recursive: true });
     wf(join(siteDir, "index.html"), "<h1>Quiet</h1>");
     captureStart();
-    await run("deploy-dir", [siteDir, "--project", "prj_test123", "--quiet"]);
+    await run("deploy-dir", [siteDir, "--project", "prj_test123", "--quiet", "--confirm-prune"]);
     captureStop();
     assert.ok(capturedStdout().includes("\"status\": \"ok\""), "stdout still has the result envelope");
     // No JSON event lines on stderr.
@@ -1507,6 +1510,72 @@ describe("CLI e2e happy path", () => {
     }
     assert.ok(threw && /process\.exit\(1\)/.test(threw.message),
       `should exit 1 when dir is missing, got: ${threw?.message}`);
+  });
+
+  it("sites deploy-dir refuses small dir without --confirm-prune", async () => {
+    const { run } = await import("./cli/lib/sites.mjs");
+    const siteDir = join(tempDir, "site-tiny-no-confirm");
+    const { writeFileSync: wf, mkdirSync: md } = await import("node:fs");
+    md(siteDir, { recursive: true });
+    wf(join(siteDir, "index.html"), "<h1>oneshot</h1>");
+    let threw = null;
+    captureStart();
+    try {
+      await run("deploy-dir", [siteDir, "--project", "prj_test123"]);
+    } catch (e) {
+      threw = e;
+    } finally {
+      captureStop();
+    }
+    assert.ok(threw && /process\.exit\(1\)/.test(threw.message),
+      `should exit 1 when small dir lacks --confirm-prune, got: ${threw?.message}`);
+    const stderr = capturedStderr();
+    assert.ok(stderr.includes("PRUNE_CONFIRMATION_REQUIRED"),
+      `stderr should mention PRUNE_CONFIRMATION_REQUIRED, got: ${stderr}`);
+    assert.ok(stderr.includes("--confirm-prune"),
+      `stderr should hint at --confirm-prune, got: ${stderr}`);
+    // Must not have made any plan/commit network calls.
+    assert.ok(!stderr.includes("\"phase\":\"commit\""),
+      `should not have committed; stderr: ${stderr}`);
+  });
+
+  it("sites deploy-dir small dir proceeds with --confirm-prune", async () => {
+    const { run } = await import("./cli/lib/sites.mjs");
+    const siteDir = join(tempDir, "site-tiny-confirm");
+    const { writeFileSync: wf, mkdirSync: md } = await import("node:fs");
+    md(siteDir, { recursive: true });
+    wf(join(siteDir, "index.html"), "<h1>oneshot</h1>");
+    captureStart();
+    await run("deploy-dir", [siteDir, "--project", "prj_test123", "--confirm-prune"]);
+    captureStop();
+    assert.ok(capturedStdout().includes("dpl_test456"),
+      `should commit when --confirm-prune is set; stdout: ${capturedStdout()}`);
+    assert.ok(capturedStdout().includes("\"status\": \"ok\""),
+      `should emit ok envelope; stdout: ${capturedStdout()}`);
+  });
+
+  it("sites deploy-dir --dry-run plans without committing", async () => {
+    const { run } = await import("./cli/lib/sites.mjs");
+    const siteDir = join(tempDir, "site-dry-run");
+    const { writeFileSync: wf, mkdirSync: md } = await import("node:fs");
+    md(siteDir, { recursive: true });
+    wf(join(siteDir, "index.html"), "<h1>dry</h1>");
+    captureStart();
+    await run("deploy-dir", [siteDir, "--project", "prj_test123", "--dry-run"]);
+    captureStop();
+    const stdout = capturedStdout();
+    assert.ok(stdout.includes("\"status\": \"ok\""),
+      `dry-run should emit status ok; stdout: ${stdout}`);
+    assert.ok(stdout.includes("\"dry_run\": true"),
+      `dry-run envelope should include dry_run: true; stdout: ${stdout}`);
+    assert.ok(stdout.includes("\"plan_id\""),
+      `dry-run envelope should include plan_id; stdout: ${stdout}`);
+    // Must not have committed (no deployment_id from the commit handler).
+    assert.ok(!stdout.includes("dpl_test456"),
+      `dry-run should not commit; stdout: ${stdout}`);
+    const stderr = capturedStderr();
+    assert.ok(!stderr.includes("\"phase\":\"commit\""),
+      `dry-run should not emit commit events; stderr: ${stderr}`);
   });
 
   // ── Subdomains ──────────────────────────────────────────────────────────
