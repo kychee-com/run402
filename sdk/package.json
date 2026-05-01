@@ -1,6 +1,6 @@
 {
   "name": "@run402/sdk",
-  "version": "1.52.0",
+  "version": "1.53.0",
   "description": "Typed TypeScript client for the Run402 API. Kernel shared by the run402-mcp server, the run402 CLI, and user-deployed run402 functions.",
   "type": "module",
   "main": "dist/index.js",
