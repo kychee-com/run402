@@ -215,6 +215,14 @@ describe("functions.delete", () => {
     assert.equal(calls[0]!.url, "https://api.example.test/projects/v1/admin/prj_known/functions/hello");
     assert.equal(calls[0]!.method, "DELETE");
   });
+
+  it("returns the gateway envelope with status and name", async () => {
+    const { fetch } = mockFetch(() => json({ status: "deleted", name: "hello" }));
+    const sdk = makeSdk(fetch);
+    const result = await sdk.functions.delete("prj_known", "hello");
+    assert.equal(result.status, "deleted");
+    assert.equal(result.name, "hello");
+  });
 });
 
 describe("functions.update", () => {

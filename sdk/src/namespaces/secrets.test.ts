@@ -59,6 +59,13 @@ describe("secrets", () => {
     assert.equal(calls[0]!.method, "DELETE");
   });
 
+  it("delete returns the gateway envelope with status and key", async () => {
+    const { fetch } = mockFetch(() => json({ status: "deleted", key: "STRIPE_KEY" }));
+    const result = await sdk(fetch).secrets.delete("prj_k", "STRIPE_KEY");
+    assert.equal(result.status, "deleted");
+    assert.equal(result.key, "STRIPE_KEY");
+  });
+
   it("throws ProjectNotFound without any fetch for unknown project", async () => {
     const { fetch, calls } = mockFetch(() => json({}));
     await assert.rejects(sdk(fetch).secrets.set("prj_missing", "K", "V"), ProjectNotFound);
@@ -136,6 +143,13 @@ describe("domains (custom)", () => {
     assert.equal(calls[0]!.headers["Authorization"], undefined);
     await sdk(fetch).domains.remove("ex.com", { projectId: "prj_k" });
     assert.equal(calls[1]!.headers["Authorization"], "Bearer s");
+  });
+
+  it("remove returns the gateway envelope with status and domain", async () => {
+    const { fetch } = mockFetch(() => json({ status: "deleted", domain: "ex.com" }));
+    const result = await sdk(fetch).domains.remove("ex.com");
+    assert.equal(result.status, "deleted");
+    assert.equal(result.domain, "ex.com");
   });
 });
 

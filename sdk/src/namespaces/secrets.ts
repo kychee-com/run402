@@ -15,6 +15,11 @@ export interface SecretListResult {
   secrets: SecretSummary[];
 }
 
+export interface DeleteSecretResult {
+  status: string;
+  key: string;
+}
+
 export class Secrets {
   constructor(private readonly client: Client) {}
 
@@ -49,11 +54,11 @@ export class Secrets {
   }
 
   /** Delete a secret. */
-  async delete(projectId: string, key: string): Promise<void> {
+  async delete(projectId: string, key: string): Promise<DeleteSecretResult> {
     const project = await this.client.getProject(projectId);
     if (!project) throw new ProjectNotFound(projectId, "deleting secret");
 
-    await this.client.request<unknown>(
+    return this.client.request<DeleteSecretResult>(
       `/projects/v1/admin/${projectId}/secrets/${encodeURIComponent(key)}`,
       {
         method: "DELETE",
