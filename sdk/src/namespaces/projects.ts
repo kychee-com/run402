@@ -209,6 +209,12 @@ export class Projects {
    * Set the active/default project in local state. Requires the credential
    * provider to support `setActiveProject`.
    *
+   * Returns `void`. To both persist the active project AND get a project-scoped
+   * client in one call, use {@link Run402.useProject} instead:
+   *
+   *   const p = await r.useProject("prj_xxx");
+   *   await p.deploy.apply({ site: { ... } });
+   *
    * @throws {ProjectNotFound} if the id is unknown to the provider.
    * @throws {Error} if the provider does not support active-project state.
    */
@@ -228,6 +234,12 @@ export class Projects {
   /**
    * Return the active/default project id in local state, or null when none
    * is set or the provider does not track active-project state.
+   *
+   * To resolve the active project AND build a scoped sub-client in one call,
+   * use {@link Run402.project} (no arg):
+   *
+   *   const p = await r.project();   // throws if no active project is set
+   *   await p.functions.list();
    */
   async active(): Promise<string | null> {
     const getter = this.client.credentials.getActiveProject;

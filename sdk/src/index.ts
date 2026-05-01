@@ -28,6 +28,8 @@ import { Contracts } from "./namespaces/contracts.js";
 import { Admin } from "./namespaces/admin.js";
 import { Deploy } from "./namespaces/deploy.js";
 import type { ContentSource, FileSet } from "./namespaces/deploy.types.js";
+import { ScopedRun402 } from "./scoped.js";
+import { LocalError } from "./errors.js";
 
 export interface Run402Options {
   /** API base URL, e.g. `https://api.run402.com`. */
@@ -63,6 +65,8 @@ export class Run402 {
   readonly admin: Admin;
   readonly deploy: Deploy;
 
+  readonly #client: Client;
+
   constructor(opts: Run402Options) {
     const kernel: KernelConfig = {
       apiBase: opts.apiBase,
@@ -70,6 +74,7 @@ export class Run402 {
       credentials: opts.credentials,
     };
     const client: Client = buildClient(kernel);
+    this.#client = client;
     this.projects = new Projects(client);
     this.blobs = new Blobs(client);
     this.functions = new Functions(client);
@@ -89,6 +94,62 @@ export class Run402 {
     this.contracts = new Contracts(client);
     this.admin = new Admin(client);
     this.deploy = new Deploy(client);
+  }
+
+  /**
+   * Return a project-scoped sub-client where every project-id-bearing namespace
+   * method has the id pre-bound. Methods on the scoped client drop their
+   * `id`/`project_id`/`project` argument; caller-supplied values still win
+   * (so you can address a different project ad-hoc through a scoped handle).
+   *
+   * Resolution rules:
+   * - Explicit `id`: scope is bound to that id immediately. The keystore is
+   *   NOT consulted at construction; the first method call that needs keys
+   *   will throw `ProjectNotFound` if the id is unknown.
+   * - No argument: the SDK calls `credentials.getActiveProject()`. Throws
+   *   `LocalError` (context: "scoping client to project") when the provider
+   *   does not implement `getActiveProject` or returns `null`.
+   *
+   * `project()` does NOT mutate keystore state — use {@link useProject} for
+   * the persist-then-scope shorthand.
+   */
+  async project(id?: string): Promise<ScopedRun402> {
+    let resolvedId = id;
+    if (resolvedId === undefined) {
+      const getter = this.#client.credentials.getActiveProject;
+      if (!getter) {
+        throw new LocalError(
+          "r.project() with no id requires a credential provider that implements getActiveProject(). Pass an explicit id, or use @run402/sdk/node.",
+          "scoping client to project",
+        );
+      }
+      const active = await getter.call(this.#client.credentials);
+      if (!active) {
+        throw new LocalError(
+          "No active project set. Call `r.projects.use(id)` (or `run402 projects use <id>`) to set one, or pass an explicit id to `r.project(id)`.",
+          "scoping client to project",
+        );
+      }
+      resolvedId = active;
+    }
+    return new ScopedRun402(this, this.#client, resolvedId);
+  }
+
+  /**
+   * Persist `id` as the active project (via `r.projects.use(id)`) AND return a
+   * project-scoped sub-client in one call. Equivalent to:
+   *
+   *   await r.projects.use(id);
+   *   return r.project(id);
+   *
+   * Note: this mutates the credential provider's persistent active-project
+   * state (the keystore on Node). Concurrent CLI runs share that state. For
+   * transient in-script scoping that does not change the user's CLI default,
+   * use {@link project} instead.
+   */
+  async useProject(id: string): Promise<ScopedRun402> {
+    await this.projects.use(id);
+    return this.project(id);
   }
 }
 
@@ -137,6 +198,7 @@ export type {
 export type { CredentialsProvider, ProjectKeys } from "./credentials.js";
 export type { RequestOptions, Client } from "./kernel.js";
 export { Deploy } from "./namespaces/deploy.js";
+export { ScopedRun402 } from "./scoped.js";
 export type {
   ApplyOptions,
   CommitResponse,

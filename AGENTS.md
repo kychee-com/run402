@@ -94,6 +94,14 @@ The SDK is the canonical kernel — a single typed client with a `CredentialsPro
 - **`credentials.ts`** — `CredentialsProvider` interface. Required: `getAuth`, `getProject`. Optional: `saveProject`, `updateProject`, `removeProject`, `setActiveProject`, `getActiveProject`, `readAllowance`, `saveAllowance`, `createAllowance`, `getAllowancePath`.
 - **`namespaces/*.ts`** — One class per resource group (projects, blobs, functions, email, …). Namespaces hold a `Client` and expose typed methods. The canonical deploy primitive lives at **`namespaces/deploy.ts`** (with shared types in `deploy.types.ts`) — see "Unified Deploy" below.
 - **`node/*.ts`** — Node-only entry point (`@run402/sdk/node`). Wraps `core/` keystore + allowance into `NodeCredentialsProvider`. Sets up x402-wrapped fetch via `createLazyPaidFetch()`. Adds `fileSetFromDir(path)` for filesystem byte sources to the deploy primitive.
+- **`scoped.ts`** — `ScopedRun402` sub-client. Returned by `r.project(id?)` and `r.useProject(id)`. Wraps every project-id-bearing namespace method with the id pre-bound, so `p.deploy.apply({ site })` (no `project`), `p.functions.list()`, `p.blobs.put(key, src)` all "just work" once the scope is set. Caller-supplied `project_id` / `project` still wins (override-friendly). The unwrapped namespaces (`r.deploy`, `r.functions`, …) keep their required-id signatures unchanged — scoped is sugar, not a replacement.
+
+### Project-scoped sub-client (`r.project(id?)`)
+
+- `r.project(id)` — bind to an explicit id; no keystore lookup at construction (lazy: errors surface from the first method call that needs keys).
+- `r.project()` — resolve from `credentials.getActiveProject()`. Throws `LocalError` (context: "scoping client to project") when the provider has no active-project state or returns null.
+- `r.useProject(id)` — sugar: `r.projects.use(id)` + `r.project(id)` in one call. Mutates persistent keystore state (the active project is shared with concurrent CLI runs); use `r.project(id)` for transient in-script scoping.
+- The drift-protection test in `sdk/src/scoped.test.ts` asserts every project-id-bearing namespace method has a corresponding wrapper — adding a new method without a wrapper fails CI.
 
 ### Unified Deploy (v1.34+)
 

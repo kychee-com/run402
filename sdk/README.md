@@ -25,6 +25,19 @@ await r.blobs.put(project.project_id, "hello.txt", { content: "hi" });
 
 That's it — credentials are read, x402 payments are signed, results are typed.
 
+### Project-scoped sub-client
+
+If you're working on a single project for the duration of a script, bind it once and skip the id arg on every call:
+
+```ts
+const p = await r.useProject(project.project_id);   // persists active project + returns scoped handle
+await p.blobs.put("hello.txt", { content: "hi" });  // no project_id arg
+await p.functions.list();
+await p.deploy.apply({ site: { replace: { ... } } });
+```
+
+`r.useProject(id)` writes the active project to the keystore (shared with concurrent CLI runs). For transient in-script scoping that does NOT mutate that state, use `r.project(id)` (or `r.project()` with no arg to resolve from whatever the keystore currently considers active).
+
 ## Quick start (isomorphic)
 
 ```ts
