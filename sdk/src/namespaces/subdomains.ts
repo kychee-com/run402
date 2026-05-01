@@ -27,6 +27,16 @@ export interface SubdomainSummary {
   url: string;
   deployment_id: string;
   deployment_url: string;
+  project_id: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SubdomainDeleteResult {
+  name: string;
+  deployment_id: string;
+  project_id: string;
+  deleted_at: string;
 }
 
 export class Subdomains {
@@ -54,7 +64,10 @@ export class Subdomains {
   }
 
   /** Release a subdomain. */
-  async delete(name: string, opts: SubdomainClaimOptions = {}): Promise<void> {
+  async delete(
+    name: string,
+    opts: SubdomainClaimOptions = {},
+  ): Promise<SubdomainDeleteResult> {
     const headers: Record<string, string> = {};
     if (opts.projectId) {
       const project = await this.client.getProject(opts.projectId);
@@ -62,11 +75,14 @@ export class Subdomains {
       headers.Authorization = `Bearer ${project.service_key}`;
     }
 
-    await this.client.request<unknown>(`/subdomains/v1/${encodeURIComponent(name)}`, {
-      method: "DELETE",
-      headers,
-      context: "deleting subdomain",
-    });
+    return this.client.request<SubdomainDeleteResult>(
+      `/subdomains/v1/${encodeURIComponent(name)}`,
+      {
+        method: "DELETE",
+        headers,
+        context: "deleting subdomain",
+      },
+    );
   }
 
   /** List all subdomains claimed by a project. */
