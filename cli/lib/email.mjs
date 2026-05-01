@@ -167,12 +167,7 @@ async function create(args) {
 
   try {
     const data = await getSdk().email.createMailbox(projectId, slug);
-    // SDK may return CreateMailboxResult (with slug) on success, or MailboxInfo on 409 idempotency.
-    if (data.slug) {
-      console.log(JSON.stringify({ status: "ok", mailbox_id: data.mailbox_id, address: data.address, slug: data.slug }));
-    } else {
-      console.log(JSON.stringify({ status: "ok", mailbox_id: data.mailbox_id, address: data.address, already_existed: true }));
-    }
+    console.log(JSON.stringify({ status: "ok", mailbox_id: data.mailbox_id, address: data.address, slug: data.slug }));
   } catch (err) {
     reportSdkError(err);
   }
@@ -203,7 +198,7 @@ async function send(args) {
       text: text ?? undefined,
       from_name: fromName ?? undefined,
     });
-    console.log(JSON.stringify({ status: "ok", message_id: data.id, to: data.to, template: data.template || null, subject: data.subject || null }));
+    console.log(JSON.stringify({ status: "ok", message_id: data.message_id, to: data.to, template: data.template, subject: data.subject }));
   } catch (err) {
     reportSdkError(err);
   }
@@ -325,7 +320,7 @@ async function reply(args) {
       from_name: fromName ?? undefined,
       in_reply_to: messageId,
     });
-    console.log(JSON.stringify({ status: "ok", message_id: data.id, to: data.to, subject: replySubject, in_reply_to: messageId }));
+    console.log(JSON.stringify({ status: "ok", message_id: data.message_id, to: data.to, subject: replySubject, in_reply_to: messageId }));
   } catch (err) {
     reportSdkError(err);
   }
@@ -352,8 +347,8 @@ async function deleteMailbox(args) {
   }
 
   try {
-    await getSdk().email.deleteMailbox(projectId, positional ?? undefined);
-    console.log(JSON.stringify({ status: "ok", mailbox_id: positional ?? "(resolved)", deleted: true }));
+    const data = await getSdk().email.deleteMailbox(projectId, positional ?? undefined);
+    console.log(JSON.stringify({ status: "ok", mailbox_id: data.mailbox_id, address: data.address, deleted: true }));
   } catch (err) {
     reportSdkError(err);
   }
