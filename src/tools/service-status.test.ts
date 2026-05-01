@@ -30,48 +30,24 @@ function jsonResponse(body: unknown, status = 200) {
 }
 
 describe("service_status tool", () => {
-  it("summarizes a full run402-status-v1 payload", async () => {
+  it("summarizes the runtime payload shape", async () => {
     globalThis.fetch = (async () => jsonResponse({
-      schema_version: "run402-status-v1",
-      service: "Run402",
-      current_status: "operational",
-      operator: { legal_name: "Kychee LLC" },
-      availability: {
-        last_24h: { uptime_pct: 100 },
-        last_7d: { uptime_pct: 99.99 },
-        last_30d: { uptime_pct: 99.95 },
-      },
-      capabilities: {
-        database_api: "operational",
-        file_storage: "operational",
-      },
-      deployment: { cloud: "AWS", region: "us-east-1" },
-      links: { health: "https://api.run402.com/health" },
+      status: "ok",
+      uptime_seconds: 86400,
+      deployment: { version: "1.0.4" },
+      capabilities: ["x402", "siwx", "postgres", "functions"],
+      operator: { name: "Run402", contact: "https://run402.com" },
     })) as typeof fetch;
 
     const result = await handleServiceStatus({} as Record<string, never>);
     const text = result.content[0]!.text;
     assert.equal(result.isError, undefined);
-    assert.ok(text.includes("operational"), "includes current_status");
-    assert.ok(text.includes("Kychee LLC"), "includes operator");
-    assert.ok(text.includes("99.95%"), "includes 30d uptime");
-    assert.ok(text.includes("AWS"), "includes deployment");
-    assert.ok(text.includes("database_api"), "includes capability");
-    assert.ok(text.includes("https://api.run402.com/health"), "includes health link");
-  });
-
-  it("falls back to minimal view on unknown schema_version", async () => {
-    globalThis.fetch = (async () => jsonResponse({
-      schema_version: "some-future-v7",
-      current_status: "operational",
-    })) as typeof fetch;
-
-    const result = await handleServiceStatus({} as Record<string, never>);
-    assert.equal(result.isError, undefined);
-    const text = result.content[0]!.text;
-    assert.ok(text.includes("operational"));
-    assert.ok(text.includes("Unrecognized schema_version"));
-    assert.ok(text.includes("some-future-v7"));
+    assert.ok(text.includes("ok"), "includes status");
+    assert.ok(text.includes("Run402"), "includes operator name");
+    assert.ok(text.includes("https://run402.com"), "includes operator contact");
+    assert.ok(text.includes("1.0.4"), "includes deployment version");
+    assert.ok(text.includes("x402"), "includes capability");
+    assert.ok(text.includes("24.0h"), "renders uptime in hours");
   });
 
   it("returns isError on non-2xx response", async () => {
@@ -91,18 +67,17 @@ describe("service_status tool", () => {
   });
 
   it("works with no allowance file (fresh install)", async () => {
-    // tempDir is empty — no allowance.json, no projects.json
     globalThis.fetch = (async () => jsonResponse({
-      schema_version: "run402-status-v1",
-      current_status: "operational",
-      operator: { legal_name: "Kychee LLC" },
-      availability: { last_30d: { uptime_pct: 99.9 } },
+      status: "ok",
+      uptime_seconds: 100,
+      deployment: { version: "1.0.4" },
+      capabilities: [],
+      operator: { name: "Run402", contact: "https://run402.com" },
     })) as typeof fetch;
 
     const result = await handleServiceStatus({} as Record<string, never>);
     assert.equal(result.isError, undefined);
-    assert.ok(result.content[0]!.text.includes("operational"));
-    // Config dir stays empty — tool wrote nothing
+    assert.ok(result.content[0]!.text.includes("ok"));
     assert.deepEqual(readdirSync(tempDir), []);
   });
 });

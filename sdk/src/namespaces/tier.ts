@@ -11,8 +11,16 @@ export type TierName = "prototype" | "hobby" | "team";
 export interface TierStatusResult {
   wallet: string;
   tier: string | null;
+  lease_started_at: string | null;
   lease_expires_at: string | null;
-  status: string;
+  active: boolean;
+  pool_usage: {
+    projects: number;
+    total_api_calls: number;
+    total_storage_bytes: number;
+    api_calls_limit: number;
+    storage_bytes_limit: number;
+  };
 }
 
 export interface TierSetResult {
