@@ -29,3 +29,9 @@ jobs:
       - run: node --experimental-test-module-mocks --test --import tsx 'src/**/*.test.ts' 'core/src/**/*.test.ts' 'sdk/src/**/*.test.ts' 'functions/src/**/*.test.ts'
       - run: npm run test:e2e
       - run: npm run test:integration
+      # Type-check every TypeScript fenced block in sdk/README.md,
+      # sdk/llms-sdk.txt, and the top-level README.md against the
+      # published @run402/sdk and @run402/sdk/node types. Fails the PR if
+      # any example references a method or field that does not exist on
+      # the actual exports.
+      - run: npm run test:docs

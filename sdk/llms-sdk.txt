@@ -66,9 +66,30 @@ The SDK is the canonical kernel. **A single typed `Run402` class** with one name
 
 The MCP server's tools and the CLI's subcommands are argv-/schema-parsing wrappers around these methods. They share `~/.config/run402/projects.json` so credentials carry across surfaces.
 
+### Casing in returned shapes
+
+Two casings coexist by design — classify a field by the shape it belongs to:
+
+- **Raw API result shapes preserve the gateway's snake_case fields.** Examples:
+  `ProvisionResult.project_id`, `ProvisionResult.anon_key`,
+  `ProvisionResult.service_key`, `ProvisionResult.schema_slot`,
+  `ProjectInfo.project_id`, `ProjectSummary.lease_expires_at`,
+  `UsageReport.api_calls`, `SchemaReport.schema`. These mirror the HTTP
+  response bodies one-to-one.
+- **SDK-specific helper shapes use camelCase.** Examples:
+  `AssetRef.cdnUrl` / `AssetRef.cacheKind` / `AssetRef.contentSha256`,
+  `Run402DeployError.safeToRetry` / `operationId` / `mutationState`,
+  every `DeployEvent` variant's discriminator (`type`, plus per-variant
+  fields like `releaseId`, `urls`).
+
+The split stays through `1.x`. CI fails any TypeScript-fenced example that
+accesses a field that does not exist on the actual type. Reference tables
+below use plain code fences (no `ts`) — they document the type surface for
+visual scanning, are not runnable, and are exempt from type-checking.
+
 ## Project credentials
 
-After `r.projects.provision(...)`, the result has `project_id`, `anon_key`, `service_key`, `tier`, `schema_slot`, `lease_expires_at`. The Node entry's credentials provider auto-saves these to `~/.config/run402/projects.json`.
+After `r.projects.provision(...)`, the result has `project_id`, `anon_key`, `service_key`, `schema_slot`. The Node entry's credentials provider auto-saves these to `~/.config/run402/projects.json`.
 
 - **`anon_key`** — read-only by default; safe in browser HTML. RLS policies apply.
 - **`service_key`** — server-side admin. **Never embed in browser code.**
@@ -76,9 +97,9 @@ After `r.projects.provision(...)`, the result has `project_id`, `anon_key`, `ser
 Neither key expires. Lease enforcement happens server-side.
 
 ```ts
-await r.projects.use(project.project_id);    // make this the active project
-const keys = await r.projects.keys(id);
-const info = await r.projects.info(id);
+await r.projects.use(projectId);             // make this the active project
+const keys = await r.projects.keys(projectId);
+const info = await r.projects.info(projectId);
 ```
 
 ## Errors
@@ -93,23 +114,31 @@ All failures throw subclasses of `Run402Error`. Branch on instance, not English 
 | `ApiError` | Other non-2xx responses | `status`, `body` |
 | `NetworkError` | Fetch rejected with no HTTP response | `cause` |
 | `LocalError` | Local-host issues (filesystem, signing) | — |
-| `Run402DeployError` | Structured envelope from the deploy state machine (v1.34+) | `code`, `phase`, `operation_id`, `safe_to_retry`, `mutation_state`, `next_actions` |
+| `Run402DeployError` | Structured envelope from the deploy state machine (v1.34+) | `code`, `phase`, `operationId`, `safeToRetry`, `mutationState`, `nextActions` |
 
 ```ts
-import { PaymentRequired, Run402DeployError } from "@run402/sdk";
+import {
+  run402,
+  PaymentRequired,
+  Run402DeployError,
+  type ReleaseSpec,
+} from "@run402/sdk/node";
+
+declare const spec: ReleaseSpec;
+const r = run402();
 
 try {
   await r.deploy.apply(spec);
 } catch (e) {
   if (e instanceof PaymentRequired) {
     // present payment requirements to the user
-  } else if (e instanceof Run402DeployError && e.safe_to_retry) {
+  } else if (e instanceof Run402DeployError && e.safeToRetry) {
     // safe to retry — same idempotency key
   } else throw e;
 }
 ```
 
-`Run402DeployError.code` is one of: `PROJECT_FROZEN`, `PAYMENT_REQUIRED`, `MIGRATION_FAILED`, `MIGRATE_GATE_ACTIVE`, `RATE_LIMITED`, `INSUFFICIENT_FUNDS`, `INTERNAL_ERROR`. Its `next_actions` array contains advisory hints: `authenticate`, `submit_payment`, `renew_tier`, `check_usage`, `retry`, `resume_deploy`, `edit_request`, `edit_migration`. Render or follow them only after validating the action is safe.
+`Run402DeployError.code` is one of `MIGRATION_FAILED`, `MIGRATION_CHECKSUM_MISMATCH`, `BASE_RELEASE_CONFLICT`, `PAYMENT_REQUIRED`, `SCHEMA_SETTLE_TIMEOUT`, `ACTIVATION_FAILED`, `STORAGE_UNAVAILABLE`, `SITE_STAGE_FAILED`, `FUNCTION_BUILD_FAILED`, `CONTENT_UPLOAD_FAILED`, `INVALID_SPEC`, `OPERATION_NOT_FOUND`, `MIGRATE_GATE_ACTIVE`, `INTERNAL_ERROR`, `NETWORK_ERROR`, `PROJECT_NOT_FOUND` (or any other string the gateway emits — consumers SHALL treat unknown codes as opaque). Pair it with the structured `nextActions` advisory array carried in the error body.
 
 ## The patterns
 
@@ -120,24 +149,29 @@ try {
 ```ts
 const logo = await r.blobs.put(projectId, "logo.png", { bytes });
 
-logo.cdn_url       // → "https://pr-<public_id>.run402.com/_blob/logo-3a7fc02e.png"
+logo.cdnUrl        // → "https://pr-<public_id>.run402.com/_blob/logo-3a7fc02e.png"
 logo.sri           // → "sha256-…" for <script integrity="…">
 logo.etag          // → strong "sha256-<hex>" ETag
-logo.cache_kind    // → "immutable" | "mutable" | "private"
+logo.cacheKind     // → "immutable" | "mutable" | "private"
 ```
 
 The URL is content-addressed and served through CloudFront. **No cache-invalidation choreography needed.** The browser refuses execution on byte mismatch via SRI.
 
-`immutable: true` is the default. Pass `false` only when you specifically want to skip the SHA-256 pass on a very large upload (the returned `cdn_url` and `sri` are then `null`).
+`immutable: true` is the default. Pass `false` only when you specifically want to skip the SHA-256 pass on a very large upload (the returned `cdnUrl` and `sri` are then `null`).
 
 If you suspect cache staleness on a *mutable* URL, the SDK has helpers:
 
 ```ts
-const diag = await r.blobs.diagnoseUrl(projectId, url);
+const blobUrl = "https://pr-….run402.com/_blob/avatar.png";
+const diag = await r.blobs.diagnoseUrl(projectId, blobUrl);
 //   diag.expectedSha256 / observedSha256 / cache.* / invalidation.* / hint
 
-const fresh = await r.blobs.waitFresh(projectId, url, expectedSha, { timeoutMs: 60_000 });
-//   throws on timeout — handle by switching to immutable
+const fresh = await r.blobs.waitFresh(projectId, {
+  url: blobUrl,
+  sha256: expectedSha,
+  timeoutMs: 60_000,
+});
+//   `fresh.fresh === false` on timeout — handle by switching to immutable
 ```
 
 **Don't call `waitFresh` on immutable URLs** — they're correct from upload time.
@@ -150,32 +184,41 @@ The canonical primitive for any deploy (database + migrations + manifest + secre
 // One-shot — most agents use this. Awaits to a terminal state.
 const result = await r.deploy.apply(spec);
 
-// Long-running with progress events.
+// Long-running with progress events. Events are a discriminated union on `type`.
 const op = await r.deploy.start(spec);
-for await (const e of op.events()) {
-  console.log(e.phase, e);
+for await (const ev of op.events()) {
+  console.log(ev.type, ev);
 }
 const final = await op.result();
 
 // Resume by id (e.g. after an interrupted process or a 5xx).
 const resumed = await r.deploy.resume(operationId);
 
-// Lower-level steps for CLI debugging.
-await r.deploy.plan(spec);
-await r.deploy.upload(...);
-await r.deploy.commit(...);
+// Lower-level steps for CLI debugging:
+const { plan: lowPlan, byteReaders } = await r.deploy.plan(spec);
+await r.deploy.upload(lowPlan, { project: projectId, byteReaders });
+const committed = await r.deploy.commit(lowPlan.plan_id, { project: projectId });
 ```
 
 #### `ReleaseSpec` shape
 
-```ts
+The full type is exported as `ReleaseSpec` from `@run402/sdk` and `@run402/sdk/node`. Sketch:
+
+```
 {
-  project_id: "prj_…",
-  migrations?: { sql?: string, file?: string },
-  site?: { replace?: { files: ContentRef[] } } | { patch?: { put?: …, delete?: … } },
-  functions?: { replace?: FunctionDecl[] } | { patch?: … },
-  secrets?: { replace?: SecretDecl[] } | { patch?: … },
-  subdomains?: { replace?: SubdomainDecl[] } | { patch?: … },
+  project: "prj_…",                        // SDK field is `project`, not `project_id`
+  base?: { release: "current" | "empty" } | { release_id: "rel_…" },
+  database?: {
+    migrations?: MigrationSpec[],          // each has { id, sql? | sql_ref?, checksum?, transaction? }
+    expose?: ExposeManifest,               // dark-by-default authorization manifest
+    zero_downtime?: boolean,
+  },
+  secrets?: SecretsSpec,                   // { set?, delete?, replace_all? }
+  functions?: FunctionsSpec,               // { replace? } | { patch?: { set?, delete? } }
+  site?: SiteSpec,                         // { replace: FileSet } | { patch: { put?, delete? } }
+  subdomains?: SubdomainsSpec,             // { set? } | { add? } | { remove? }
+  routes?: RouteSpec,
+  checks?: SmokeCheck[],
 }
 ```
 
@@ -190,9 +233,9 @@ import { run402, fileSetFromDir } from "@run402/sdk/node";
 
 const r = run402();
 const result = await r.deploy.apply({
-  project_id,
-  site: { replace: { files: await fileSetFromDir("./dist") } },
-  subdomains: { replace: [{ name: "my-app" }] },
+  project: projectId,
+  site: { replace: await fileSetFromDir("./dist") },
+  subdomains: { set: ["my-app"] },
 });
 ```
 
@@ -209,20 +252,20 @@ Tables you create are unreachable via `/rest/v1/*` until your manifest declares 
 
 The manifest itself is a JSON object:
 
-```ts
+```json
 {
   "$schema": "https://run402.com/schemas/manifest.v1.json",
-  version: "1",
-  tables: [
-    { name: "items", expose: true, policy: "user_owns_rows",
-      owner_column: "user_id", force_owner_on_insert: true },
-    { name: "audit", expose: false }
+  "version": "1",
+  "tables": [
+    { "name": "items", "expose": true, "policy": "user_owns_rows",
+      "owner_column": "user_id", "force_owner_on_insert": true },
+    { "name": "audit", "expose": false }
   ],
-  views: [
-    { name: "leaderboard", base: "items", select: ["user_id", "score"], expose: true }
+  "views": [
+    { "name": "leaderboard", "base": "items", "select": ["user_id", "score"], "expose": true }
   ],
-  rpcs: [
-    { name: "compute_streak", signature: "(user_id uuid)", grant_to: ["authenticated"] }
+  "rpcs": [
+    { "name": "compute_streak", "signature": "(user_id uuid)", "grant_to": ["authenticated"] }
   ]
 }
 ```
@@ -260,10 +303,15 @@ The helper makes raw `fetch()` calls to the project's own gateway endpoints usin
 
 The `Run402` class exposes 19 namespaces. Click into the SDK source for full method signatures.
 
+> **Reference tables below use plain fences, not `ts` fences.** They document the
+> type surface in compact form — they are not runnable programs. Runnable example
+> snippets in this document still use ```` ```ts ```` and are type-checked by CI
+> against the published `@run402/sdk` and `@run402/sdk/node` types.
+
 ### `r.projects`
 
-```ts
-provision(opts?: { tier?, name?, idempotency_key? }): Promise<ProvisionResult>
+```
+provision(opts?: { tier?, name? }): Promise<ProvisionResult>
 delete(id: string): Promise<void>
 list(wallet?: string): Promise<ListProjectsResult>
 getUsage(id: string): Promise<UsageReport>
@@ -278,54 +326,75 @@ active(): Promise<string | null>
 
 ### `r.deploy`
 
-The unified deploy primitive. See "Unified deploy" above.
+The unified deploy primitive. See "Unified deploy" above. Most agents call only
+`apply` (one-shot) or `start` (progress events). The lower-level
+`plan` / `upload` / `commit` layer exists for CLI debugging.
 
-```ts
+```
 apply(spec, opts?): Promise<DeployResult>
 start(spec, opts?): Promise<DeployOperation>
 resume(operationId, opts?): Promise<DeployResult>
-status(operationId): Promise<DeployStatus>
-getRelease(releaseId): Promise<Release>
-diff(operationId): Promise<DeployDiff>
-list(opts?): Promise<DeployOperationList>
-plan(spec): Promise<PlanResult>
-upload(planResult, contents): Promise<UploadResult>
-commit(planResult): Promise<CommitResult>
-events(operationId): AsyncIterable<DeployEvent>
+status(operationId, opts?: { project? }): Promise<OperationSnapshot>
+list(opts: { project, limit? }): Promise<DeployListResponse>
+events(operationId, opts: { project }): Promise<DeployEventsResponse>   // recorded so far
+getRelease(releaseId): Promise<unknown>                                  // early-v2: may 404
+diff(opts: { from, to }): Promise<unknown>                               // early-v2: may 404
+
+// Low-level (CLI debugging — most agents use apply / start):
+plan(spec, opts?: { idempotencyKey? }): Promise<{ plan, byteReaders }>
+upload(plan, opts: { project, byteReaders, onEvent? }): Promise<void>
+commit(planId, opts?: { project, idempotencyKey?, onEvent? }): Promise<DeployResult>
 ```
+
+For live event streaming during an in-flight deploy, use `r.deploy.start(spec)` and
+iterate `op.events()` (an `AsyncIterable<DeployEvent>`). The `r.deploy.events(operationId)`
+method returns the events the gateway has recorded so far for an operation —
+useful for inspecting a deploy after the fact, not for live streaming.
 
 ### `r.sites`
 
-```ts
-// Node-only convenience over r.deploy.apply:
-deployDir(opts: { project, dir, target?, onEvent? }): Promise<DeployResult>
+`deployDir` is exposed only on the Node entry (`@run402/sdk/node`); the
+isomorphic entry's `r.sites` namespace is empty.
+
+```
+// Node-only — @run402/sdk/node:
+deployDir(opts: { project, dir, target?, onEvent? }): Promise<SiteDeployResult>
 ```
 
 ### `r.blobs`
 
-```ts
-put(projectId, key, source: { content?: string } | { bytes: Uint8Array }, opts?: BlobPutOptions): Promise<AssetRef>
+```
+put(projectId, key, source, opts?: BlobPutOptions): Promise<BlobPutResult>
 get(projectId, key): Promise<Response>
 ls(projectId, opts?: { prefix?, limit?, cursor? }): Promise<BlobLsResult>
 rm(projectId, key): Promise<void>
-sign(projectId, key, opts?: { ttlSeconds? }): Promise<{ url, expires_at }>
+sign(projectId, key, opts?: { ttl_seconds? }): Promise<BlobSignResult>
 diagnoseUrl(projectId, url): Promise<BlobDiagnoseEnvelope>
-waitFresh(projectId, url, sha256, opts?: { timeoutMs? }): Promise<BlobWaitFreshResult>
+waitFresh(projectId, opts: { url, sha256, timeoutMs? }): Promise<BlobWaitFreshResult>
 ```
 
-`AssetRef` shape: `{ cdn_url, sri, etag, cache_kind, cdn_immutable_url?, cdn_mutable_url?, url?, immutable_url?, content_digest, cdn: { version, invalidationId, invalidationStatus, ready, hint } }`.
+`source` is one of: a bare `string` (UTF-8 ≤ 1 MB), a bare `Uint8Array`,
+`{ content: string }`, or `{ bytes: Uint8Array }`.
+
+`BlobPutResult` extends the legacy snake_case fields (`key`, `size_bytes`,
+`sha256`, `visibility`, `url`, `immutable_url`) with the v1.45+ camelCase
+helpers used by paste-and-go HTML emitters: `cdnUrl`, `cdnMutableUrl`,
+`immutableUrl`, `etag`, `sri`, `contentDigest`, `cacheKind` (`"immutable" |
+"mutable" | "private"`), `contentSha256`, `contentType`, plus `scriptTag()`,
+`linkTag()`, `imgTag()` methods. See `sdk/src/namespaces/blobs.types.ts` for
+the full shape.
 
 ### `r.functions`
 
-```ts
-deploy(projectId, name, opts: {
-  code: string, config?: { timeout?, memory? },
+```
+deploy(projectId, opts: {
+  name: string, code: string, config?: { timeout?, memory? },
   deps?: string[], schedule?: string | null,
 }): Promise<FunctionDeployResult>      // result: { name, url, status, runtime, runtime_version, deps_resolved, warnings, ... }
-invoke(projectId, name, opts?: { method?, body?, headers? }): Promise<InvokeResult>
-getLogs(projectId, name, opts?: { tail?, since? }): Promise<LogsResult>
-update(projectId, name, opts: { schedule?, timeout?, memory? }): Promise<UpdateResult>
-list(projectId): Promise<FunctionList>
+invoke(projectId, name, opts?: { method?, body?, headers? }): Promise<FunctionInvokeResult>
+logs(projectId, name, opts?: { tail?, since? }): Promise<FunctionLogsResult>
+update(projectId, name, opts: { schedule?, timeout?, memory? }): Promise<FunctionUpdateResult>
+list(projectId): Promise<FunctionListResult>
 delete(projectId, name): Promise<void>
 ```
 
@@ -333,25 +402,29 @@ delete(projectId, name): Promise<void>
 
 ### `r.secrets`
 
-```ts
+```
 set(projectId, key, value): Promise<void>
-list(projectId): Promise<SecretList>      // { secrets: [{ key, value_hash, created_at }] }
+list(projectId): Promise<SecretListResult>      // { secrets: [{ key, value_hash? }] }
 delete(projectId, key): Promise<void>
 ```
 
 ### `r.subdomains`
 
-```ts
-claim(projectId, name, opts?: { deploymentId? }): Promise<SubdomainClaim>
-list(projectId): Promise<SubdomainList>
-delete(projectId, name): Promise<void>
 ```
+claim(name, deploymentId, opts?: { projectId? }): Promise<SubdomainClaimResult>
+delete(name, opts?: { projectId? }): Promise<void>
+list(projectId): Promise<SubdomainSummary[]>
+```
+
+Most agents do not call `claim` directly — declare subdomains in
+`r.deploy.apply({ subdomains: { set: ["my-app"] } })` and the deploy primitive
+claims them as part of the release.
 
 Subdomain auto-reassignment: claim once. Every subsequent deploy to the same project automatically points the subdomain at the new deployment.
 
 ### `r.domains`
 
-```ts
+```
 add(projectId, domain, subdomainName): Promise<DomainAddResult>      // returns DNS records
 list(projectId): Promise<DomainList>
 status(projectId, domain): Promise<DomainStatus>      // poll until "active"
@@ -360,21 +433,21 @@ remove(projectId, domain): Promise<void>
 
 ### `r.email`
 
-```ts
-createMailbox(projectId, slug): Promise<Mailbox>      // idempotent
-getMailbox(projectId): Promise<Mailbox>
-deleteMailbox(projectId, opts: { confirm: true }): Promise<void>
+```
+createMailbox(projectId, slug): Promise<CreateMailboxResult | MailboxInfo>     // idempotent
+getMailbox(projectId): Promise<MailboxInfo>
+deleteMailbox(projectId, mailboxId?): Promise<void>
 
-sendEmail(projectId, opts: EmailSendOptions): Promise<EmailSendResult>
-listEmails(projectId, opts?: { limit?, after? }): Promise<EmailList>
-getEmail(projectId, messageId): Promise<EmailMessage>
-getEmailRaw(projectId, messageId): Promise<Uint8Array>      // raw RFC-822 bytes
+send(projectId, opts: SendEmailOptions): Promise<SendEmailResult>
+list(projectId, opts?: { limit?, after? }): Promise<EmailSummary[]>
+get(projectId, messageId): Promise<EmailDetail>
+getRaw(projectId, messageId): Promise<RawEmailResult>                          // bytes + content_type
 
-// Webhooks:
-webhooks.register(projectId, opts: { url, events }): Promise<Webhook>
-webhooks.list(projectId): Promise<WebhookList>
-webhooks.get(projectId, webhookId): Promise<Webhook>
-webhooks.update(projectId, webhookId, opts: { url?, events? }): Promise<Webhook>
+// Webhooks (sub-namespace):
+webhooks.register(projectId, opts: { url, events }): Promise<MailboxWebhookSummary>
+webhooks.list(projectId): Promise<MailboxWebhooksResult>
+webhooks.get(projectId, webhookId): Promise<MailboxWebhookSummary>
+webhooks.update(projectId, webhookId, opts: { url?, events? }): Promise<MailboxWebhookSummary>
 webhooks.delete(projectId, webhookId): Promise<void>
 ```
 
@@ -382,7 +455,7 @@ Templates: `project_invite`, `magic_link`, `notification`. Or pass `subject` + `
 
 ### `r.senderDomain`
 
-```ts
+```
 register(projectId, domain): Promise<SenderDomainSetup>      // returns DKIM CNAMEs
 status(projectId): Promise<SenderDomainStatus>
 remove(projectId): Promise<void>
@@ -392,49 +465,51 @@ disableInbound(projectId, domain): Promise<void>
 
 ### `r.auth`
 
-```ts
-magicLink(projectId, opts: { email, redirect_url }): Promise<void>
-verifyMagicLink(projectId, token): Promise<{ access_token, refresh_token, user }>
-setUserPassword(opts: { access_token, new_password, current_password? }): Promise<void>
+```
+requestMagicLink(projectId, opts: { email, redirectUrl }): Promise<void>
+verifyMagicLink(projectId, token): Promise<MagicLinkVerifyResult>      // { access_token, refresh_token, ... }
+setUserPassword(projectId, opts: { accessToken, newPassword, currentPassword? }): Promise<void>
 settings(projectId, opts: { allow_password_set: boolean }): Promise<void>
-providers(projectId): Promise<{ providers: string[] }>
+promote(projectId, email): Promise<void>
+demote(projectId, email): Promise<void>
 ```
 
 Magic-link tokens are single-use, expire in 15 min, rate-limited 5/email/hour. Google OAuth is on for all projects with zero config.
 
 ### `r.apps`
 
-```ts
-browse(opts?: { tag? }): Promise<AppList>
-get(versionId): Promise<AppVersion>
-fork(versionId, name, opts?: { subdomain?, bootstrap? }): Promise<ForkResult>
-publish(projectId, opts?: { description?, tags?, visibility?, fork_allowed? }): Promise<App>
-versions(projectId): Promise<VersionList>
-updateVersion(projectId, versionId, opts: { description?, tags? }): Promise<Version>
+```
+browse(tags?: string[]): Promise<BrowseAppsResult>
+getApp(versionId): Promise<AppDetails>
+fork(opts: { versionId, name, subdomain? }): Promise<ForkAppResult>
+publish(projectId, opts?: { description?, tags?, visibility?, fork_allowed? }): Promise<PublishedVersion>
+listVersions(projectId): Promise<ListVersionsResult>
+updateVersion(projectId, versionId, opts: { description?, tags?, visibility?, fork_allowed? }): Promise<void>
 deleteVersion(projectId, versionId): Promise<void>
 
-bundleDeploy(opts: BundleDeployOptions): Promise<DeployResult>      // legacy shim → routes through r.deploy.apply
+bundleDeploy(projectId, opts?: BundleDeployOptions): Promise<BundleDeployResult>   // legacy shim → routes through r.deploy.apply
 ```
 
 Forking clones schema + site + functions into a new project. If the source has a `bootstrap` function, it runs automatically with the variables you pass; result includes `bootstrap_result` or `bootstrap_error`.
 
 ### `r.tier`
 
-```ts
-set(opts: { tier: "prototype" | "hobby" | "team" }): Promise<TierSetResult>
-status(): Promise<TierStatus>
-quote(): Promise<TierQuote>
+```
+set(tier: "prototype" | "hobby" | "team"): Promise<TierSetResult>
+status(): Promise<TierStatusResult>
 ```
 
 `set` auto-detects subscribe / renew / upgrade / downgrade based on current state.
+For tier pricing, call `r.projects.getQuote()` (the SDK does not expose a separate
+`tier.quote()` method).
 
 ### `r.billing`
 
-```ts
+```
 createEmailAccount(email): Promise<BillingAccount>
 linkWallet(billingAccountId, wallet): Promise<void>
-tierCheckout(opts: { tier, email? } | { tier, wallet? }): Promise<{ checkout_url }>
-buyEmailPack(opts: { email? } | { wallet? }): Promise<{ checkout_url }>
+tierCheckout(opts): Promise<{ checkout_url }>
+buyEmailPack(opts): Promise<{ checkout_url }>
 setAutoRecharge(billingAccountId, opts: { enabled: boolean, threshold? }): Promise<void>
 balance(emailOrWallet): Promise<Balance>
 history(emailOrWallet, opts?: { limit? }): Promise<LedgerHistory>
@@ -443,46 +518,47 @@ createCheckout(opts: { amount_micros }): Promise<{ checkout_url }>
 
 ### `r.contracts`
 
-```ts
-provisionWallet(opts: { chain: "base-mainnet" | "base-sepolia", recovery_address? }): Promise<Wallet>
-getWallet(walletId): Promise<Wallet>
-listWallets(opts?: { include_deleted? }): Promise<WalletList>
-setRecoveryAddress(walletId, opts: { address? }): Promise<void>
-setLowBalanceAlert(walletId, opts: { threshold_wei: bigint }): Promise<void>
+```
+provisionWallet(projectId, opts: { chain: "base-mainnet" | "base-sepolia", recoveryAddress? }): Promise<unknown>
+getWallet(projectId, walletId): Promise<unknown>
+listWallets(projectId): Promise<unknown>
+setRecovery(projectId, walletId, recoveryAddress: string | null): Promise<void>
+setLowBalanceAlert(projectId, walletId, thresholdWei: string): Promise<void>
 
-call(opts: { wallet_id, contract_address, abi_fragment, function_name, args, value_wei?, idempotency_key? }): Promise<{ call_id, tx_hash, status }>
-read(opts: { chain, contract_address, abi_fragment, function_name, args }): Promise<{ result }>
-getCallStatus(callId): Promise<CallStatus>
-drainWallet(walletId, opts: { to: string }): Promise<{ tx_hash }>
-deleteWallet(walletId): Promise<void>      // refused if balance ≥ dust
+call(projectId, opts: { walletId, chain, contractAddress, abiFragment, functionName, args, value?, idempotencyKey? }): Promise<unknown>
+read(opts: { chain, contractAddress, abiFragment, functionName, args }): Promise<unknown>
+callStatus(projectId, callId): Promise<unknown>
+drain(projectId, walletId, destinationAddress): Promise<unknown>
+deleteWallet(projectId, walletId): Promise<unknown>     // refused if balance ≥ dust
 ```
 
-Private keys never leave AWS KMS. **$0.04/day rental + $0.000005/call.** Wallet creation requires $1.20 cash credit. Non-custodial.
+Private keys never leave AWS KMS. **$0.04/day rental + $0.000005/call.** Wallet creation requires $1.20 cash credit. Non-custodial. The contracts surface is intentionally untyped (`Promise<unknown>`) — return shapes are versioned by the gateway and consumers must narrow at the call site.
 
 ### `r.ai`
 
-```ts
-translate(projectId, text, opts: { to, from?, context? }): Promise<{ text, from, to }>
-moderate(projectId, text): Promise<ModerationResult>
-usage(projectId): Promise<AiUsage>
-generateImage(opts: { prompt, aspect? }): Promise<ImageResult>      // $0.03 via x402
+```
+translate(projectId, opts: { text, to, from?, context? }): Promise<TranslateResult>
+moderate(projectId, text): Promise<ModerateResult>
+usage(projectId): Promise<AiUsageResult>
+generateImage(opts: { prompt, aspect? }): Promise<GenerateImageResult>  // $0.03 via x402, no projectId
 ```
 
 ### `r.allowance`
 
-```ts
-status(): Promise<AllowanceStatus>
-create(): Promise<{ address, network }>
-export(): Promise<{ address }>      // address only, never the private key
-requestFaucet(opts: { address }): Promise<{ transaction_hash, amount_usd_micros, token, network }>
-checkBalance(address): Promise<Balance>
-checkout(opts: { amount_usd_micros }): Promise<{ checkout_url }>
-history(opts?: { limit? }): Promise<AllowanceHistory>
 ```
+status(): Promise<AllowanceStatusResult>
+create(): Promise<AllowanceCreateResult>
+export(): Promise<string>                     // address only, never the private key
+faucet(address?: string): Promise<FaucetResult>
+```
+
+`faucet` defaults to the local allowance's address when no argument is passed.
+The Node entry's credentials provider also writes a `lastFaucet` marker after
+success — surfaced via `status().faucet_used`.
 
 ### `r.service`
 
-```ts
+```
 status(): Promise<ServiceStatus>      // 24h/7d/30d uptime per capability — no auth, no setup
 health(): Promise<ServiceHealth>      // per-dependency liveness — no auth, no setup
 ```
@@ -539,7 +615,7 @@ The CLI (`run402`), MCP server (`run402-mcp`), `@run402/functions`, and the Open
 - **Provision before authoring HTML.** The `anon_key` is permanent and must be embedded in your frontend; provision first, then write the HTML.
 - **Use the manifest for access control**, never raw `GRANT/REVOKE`.
 - **`user_owns_rows` is the default for user-scoped data.** Reach for `public_read_write_UNRESTRICTED` only on intentionally-public tables.
-- **Use immutable `cdn_url` from `r.blobs.put`.** It's correct from the moment of upload — no `waitFresh` needed.
+- **Use immutable `cdnUrl` from `r.blobs.put`.** It's correct from the moment of upload — no `waitFresh` needed.
 - **Don't bake unconditional `r.allowance.requestFaucet()` into deploy scripts** — the faucet rate-limits and breaks already-funded flows.
 - **Per-project rate limit is 100 req/sec.** On 429, back off using `retry_after`.
 - **`r.service.status()` works without auth.** Use it before evaluating Run402, or to distinguish platform issues from your own bugs.

@@ -153,13 +153,22 @@ export default async (req: Request) => {
 };
 ```
 
-`adminDb().sql(query, params?)` runs raw parameterized SQL and always bypasses RLS:
+`adminDb().sql(query, params?)` runs raw parameterized SQL and always bypasses RLS. It returns a flat `Promise<Record<string, unknown>[]>` (just the rows — no envelope):
 
 ```ts
-const { rows, rowCount } = await adminDb().sql(
-  "SELECT count(*)::int AS n FROM items WHERE user_id = $1",
-  [user.id],
-);
+import { adminDb, getUser } from "@run402/functions";
+
+export default async (req: Request) => {
+  const user = await getUser(req);
+  if (!user) return new Response("unauthorized", { status: 401 });
+
+  const rows = await adminDb().sql(
+    "SELECT count(*)::int AS n FROM items WHERE user_id = $1",
+    [user.id],
+  );
+  const n = (rows[0]?.n as number | undefined) ?? 0;
+  return Response.json({ count: n });
+};
 ```
 
 `@run402/functions` is auto-bundled into deployed code; install it in your editor for full TypeScript autocomplete (also works at build time for static-site generation with `RUN402_SERVICE_KEY` + `RUN402_PROJECT_ID` set).
