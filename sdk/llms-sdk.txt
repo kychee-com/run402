@@ -104,23 +104,32 @@ const info = await r.projects.info(projectId);
 
 ## Errors
 
-All failures throw subclasses of `Run402Error`. Branch on instance, not English message:
+All failures throw subclasses of `Run402Error`. Every subclass carries a stable
+`kind` string discriminator and an `isRun402Error` brand. Branch with the
+exported type guards (or by comparing `e.kind`) — NOT with `instanceof X`:
+identity-based checks fail silently when the consumer's runtime holds a
+different copy of the SDK (duplicate npm installs, bundler chunk splits,
+ESM/CJS interop, V8-isolate realms). `instanceof` continues to work for
+single-copy single-realm callers as a back-compat path.
 
-| Class | When | Notable fields |
-|---|---|---|
-| `PaymentRequired` | HTTP 402 | x402 payment requirements in `body` |
-| `ProjectNotFound` | Project ID not in the credential provider | `projectId` |
-| `Unauthorized` | HTTP 401 / 403 | — |
-| `ApiError` | Other non-2xx responses | `status`, `body` |
-| `NetworkError` | Fetch rejected with no HTTP response | `cause` |
-| `LocalError` | Local-host issues (filesystem, signing) | — |
-| `Run402DeployError` | Structured envelope from the deploy state machine (v1.34+) | `code`, `phase`, `operationId`, `safeToRetry`, `mutationState`, `nextActions` |
+| Class | `kind` | When | Notable fields |
+|---|---|---|---|
+| `PaymentRequired` | `"payment_required"` | HTTP 402 | x402 payment requirements in `body` |
+| `ProjectNotFound` | `"project_not_found"` | Project ID not in the credential provider | `projectId` |
+| `Unauthorized` | `"unauthorized"` | HTTP 401 / 403 | — |
+| `ApiError` | `"api_error"` | Other non-2xx responses | `status`, `body` |
+| `NetworkError` | `"network_error"` | Fetch rejected with no HTTP response | `cause` |
+| `LocalError` | `"local_error"` | Local-host issues (filesystem, signing) | `cause` |
+| `Run402DeployError` | `"deploy_error"` | Structured envelope from the deploy state machine (v1.34+) | `code`, `phase`, `operationId`, `safeToRetry`, `mutationState`, `nextActions` |
+
+The exported `Run402ErrorKind` union type (`"payment_required" | "project_not_found" | "unauthorized" | "api_error" | "network_error" | "local_error" | "deploy_error"`) supports exhaustive `switch` statements with TypeScript exhaustiveness checking.
 
 ```ts
 import {
   run402,
-  PaymentRequired,
-  Run402DeployError,
+  withRetry,
+  isPaymentRequired,
+  isDeployError,
   type ReleaseSpec,
 } from "@run402/sdk/node";
 
@@ -128,17 +137,44 @@ declare const spec: ReleaseSpec;
 const r = run402();
 
 try {
-  await r.deploy.apply(spec);
+  const release = await withRetry(
+    () => r.deploy.apply(spec, { idempotencyKey: "deploy-2026-05-01" }),
+    {
+      attempts: 3,
+      onRetry: (_e, attempt, delayMs) =>
+        process.stderr.write(`retry ${attempt} in ${delayMs}ms\n`),
+    },
+  );
+  console.log(release.urls);
 } catch (e) {
-  if (e instanceof PaymentRequired) {
-    // present payment requirements to the user
-  } else if (e instanceof Run402DeployError && e.safeToRetry) {
-    // safe to retry — same idempotency key
+  if (isPaymentRequired(e)) {
+    // narrowed to PaymentRequired — read e.body for the x402 quote
+  } else if (isDeployError(e)) {
+    // narrowed to Run402DeployError — log the structured envelope for triage
+    process.stderr.write(JSON.stringify(e) + "\n");
   } else throw e;
 }
 ```
 
 `Run402DeployError.code` is one of `MIGRATION_FAILED`, `MIGRATION_CHECKSUM_MISMATCH`, `BASE_RELEASE_CONFLICT`, `PAYMENT_REQUIRED`, `SCHEMA_SETTLE_TIMEOUT`, `ACTIVATION_FAILED`, `STORAGE_UNAVAILABLE`, `SITE_STAGE_FAILED`, `FUNCTION_BUILD_FAILED`, `CONTENT_UPLOAD_FAILED`, `INVALID_SPEC`, `OPERATION_NOT_FOUND`, `MIGRATE_GATE_ACTIVE`, `INTERNAL_ERROR`, `NETWORK_ERROR`, `PROJECT_NOT_FOUND` (or any other string the gateway emits — consumers SHALL treat unknown codes as opaque). Pair it with the structured `nextActions` advisory array carried in the error body.
+
+### Type guards and the canonical retry policy
+
+The SDK exports identity-free guards plus a single canonical "should I retry this?" function:
+
+- `isRun402Error(e)` — true for any `Run402Error` subclass instance, regardless of which SDK copy created it.
+- `isPaymentRequired(e)`, `isProjectNotFound(e)`, `isUnauthorized(e)`, `isApiError(e)`, `isNetworkError(e)`, `isLocalError(e)`, `isDeployError(e)` — narrow `unknown` to the named subclass.
+- `isRetryableRun402Error(e)` — encapsulates the retry policy: `e.retryable || e.safeToRetry || kind === "network_error" || status in {408, 425, 429} || status >= 500`. Returns `false` for non-Run402 inputs so it's safe to call from any `catch` block.
+
+`Run402Error.toJSON()` returns a canonical envelope (`name`, `kind`, `message`, `status`, `code`, `category`, `retryable`, `safeToRetry`, `mutationState`, `traceId`, `context`, `details`, `nextActions`, `body`). `Run402DeployError.toJSON()` extends it with `phase`, `resource`, `operationId`, `planId`, `fix`, `logs`, `rolledBack`. `JSON.stringify(error)` produces a populated structured object — never the empty `"{}"` plain `Error` produces.
+
+### `withRetry(fn, opts?)`
+
+`withRetry` runs an async function with exponential backoff. Defaults: 3 attempts (1 + 2 retries), 250 ms base delay, 5 s cap. Uses `isRetryableRun402Error` as the default retry decision. Pair with the SDK method's own `idempotencyKey` so retried mutations dedup server-side — the closure carries the same key on every attempt.
+
+`RetryOptions`: `attempts?: number`, `baseDelayMs?: number`, `maxDelayMs?: number`, `retryIf?: (error, attempt) => boolean`, `onRetry?: (error, attempt, delayMs) => void`.
+
+After exhausting attempts, `withRetry` throws the LAST observed error — your catch handler sees the original structured envelope, not a wrapper. A buggy `onRetry` that throws is swallowed; the retry chain is unaffected.
 
 ## The patterns
 

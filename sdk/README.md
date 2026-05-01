@@ -156,25 +156,32 @@ const resumed = await r.deploy.resume(operationId);
 
 ### Errors
 
-All failures throw subclasses of `Run402Error`:
+All failures throw subclasses of `Run402Error`. Every subclass carries a stable
+`kind` discriminator string and an `isRun402Error` brand:
 
-| Class | When | Notable fields |
-|---|---|---|
-| `PaymentRequired` | HTTP 402 | x402 payment requirements |
-| `ProjectNotFound` | Project ID not in the credential provider | — |
-| `Unauthorized` | HTTP 401 / 403 | — |
-| `ApiError` | Other non-2xx responses | `status`, `body` |
-| `NetworkError` | Fetch rejected with no HTTP response | — |
-| `LocalError` | Local-host issues (filesystem, signing) | — |
-| `Run402DeployError` | Structured envelope from the deploy state machine (v1.34+) | `code`, `phase`, `operationId`, `safeToRetry`, `mutationState`, `nextActions` |
+| Class | `kind` | When | Notable fields |
+|---|---|---|---|
+| `PaymentRequired` | `"payment_required"` | HTTP 402 | x402 payment requirements in `body` |
+| `ProjectNotFound` | `"project_not_found"` | Project ID not in the credential provider | `projectId` |
+| `Unauthorized` | `"unauthorized"` | HTTP 401 / 403 | — |
+| `ApiError` | `"api_error"` | Other non-2xx responses | `status`, `body` |
+| `NetworkError` | `"network_error"` | Fetch rejected with no HTTP response | `cause` |
+| `LocalError` | `"local_error"` | Local-host issues (filesystem, signing) | `cause` |
+| `Run402DeployError` | `"deploy_error"` | Structured envelope from the deploy state machine (v1.34+) | `code`, `phase`, `operationId`, `safeToRetry`, `mutationState`, `nextActions` |
 
-Branch on the structured fields, not English `message` text:
+**Branch with type guards, not `instanceof`.** `instanceof X` is an identity
+check on the class object — it fails silently when the consumer's runtime
+holds a different copy of the SDK (duplicate npm installs, bundler chunk
+splits, ESM/CJS interop, V8-isolate realms). The exported guards
+(`isPaymentRequired`, `isDeployError`, …) check `isRun402Error` + `kind`,
+which is identity-free and survives all of those scenarios. `instanceof`
+continues to work for back-compat in the simple single-copy case.
 
 ```ts
 import {
   run402,
-  PaymentRequired,
-  Run402DeployError,
+  isPaymentRequired,
+  isDeployError,
   type ReleaseSpec,
 } from "@run402/sdk/node";
 
@@ -184,13 +191,65 @@ const r = run402();
 try {
   await r.deploy.apply(spec);
 } catch (e) {
-  if (e instanceof PaymentRequired) {
-    // present payment requirements to the user
-  } else if (e instanceof Run402DeployError && e.safeToRetry) {
-    // safe to retry — same idempotency key
+  if (isPaymentRequired(e)) {
+    // e is narrowed to PaymentRequired
+    // present payment requirements to the user — read e.body, e.context, etc.
+  } else if (isDeployError(e) && e.safeToRetry) {
+    // e is narrowed to Run402DeployError; it's safe to retry with the same idempotency key
   } else throw e;
 }
 ```
+
+`Run402Error.toJSON()` returns a canonical envelope, so `JSON.stringify(e)`
+produces a populated structured object instead of the empty `"{}"` plain
+`Error` produces. Use this for telemetry, MCP tool results, CLI JSON output,
+and any inter-process boundary where the error needs to survive serialization.
+
+#### Retry idempotent operations with `withRetry`
+
+`withRetry(fn, opts?)` wraps any async call with exponential backoff. It uses
+`isRetryableRun402Error` (the canonical "should I retry this?" policy: 408 /
+425 / 429 / 5xx / `NetworkError` / gateway-flagged `retryable` or
+`safeToRetry`) by default. Pair it with the SDK method's own
+`idempotencyKey` so retried mutations dedup server-side:
+
+```ts
+import {
+  run402,
+  withRetry,
+  isPaymentRequired,
+  isDeployError,
+  type ReleaseSpec,
+} from "@run402/sdk/node";
+
+declare const spec: ReleaseSpec;
+const r = run402();
+
+try {
+  const release = await withRetry(
+    () => r.deploy.apply(spec, { idempotencyKey: "deploy-2026-05-01" }),
+    {
+      attempts: 3,
+      onRetry: (e, attempt, delayMs) =>
+        process.stderr.write(`retry ${attempt} in ${delayMs}ms\n`),
+    },
+  );
+  console.log(release.urls);
+} catch (e) {
+  if (isPaymentRequired(e)) {
+    // ... present payment
+  } else if (isDeployError(e)) {
+    // log structured envelope for triage
+    process.stderr.write(JSON.stringify(e) + "\n");
+  } else throw e;
+}
+```
+
+Defaults: 3 attempts (1 initial + 2 retries), 250 ms base delay, 5 s cap. Pass
+a custom `retryIf` to override the default policy (e.g., retry on
+`PaymentRequired` if your sandbox auto-funds). After exhausting attempts
+`withRetry` throws the LAST error — your catch handler sees the original
+structured envelope, not a wrapper.
 
 The SDK never calls `process.exit`. Each interface (MCP tools, CLI, your code) wraps with its own error behavior.
 

@@ -190,11 +190,23 @@ export {
   NetworkError,
   LocalError,
   Run402DeployError,
+  isRun402Error,
+  isPaymentRequired,
+  isProjectNotFound,
+  isUnauthorized,
+  isApiError,
+  isNetworkError,
+  isLocalError,
+  isDeployError,
+  isRetryableRun402Error,
 } from "./errors.js";
 export type {
   Run402DeployErrorCode,
   Run402DeployErrorFix,
+  Run402ErrorKind,
 } from "./errors.js";
+export { withRetry } from "./retry.js";
+export type { RetryOptions } from "./retry.js";
 export type { CredentialsProvider, ProjectKeys } from "./credentials.js";
 export type { RequestOptions, Client } from "./kernel.js";
 export { Deploy } from "./namespaces/deploy.js";
