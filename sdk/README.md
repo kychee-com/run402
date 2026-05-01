@@ -97,14 +97,14 @@ field that does not exist on the actual type.
 
 ### Paste-and-go assets — content-addressed URLs with SRI
 
-`r.blobs.put` returns an `AssetRef`. The `cdn_url` is content-addressed (`pr-<public_id>.run402.com/_blob/<key>-<8hex>.<ext>`), served through CloudFront, and never needs cache invalidation. The browser refuses execution on byte mismatch via SRI:
+`r.blobs.put` returns an `AssetRef`. The `cdnUrl` is content-addressed (`pr-<public_id>.run402.com/_blob/<key>-<8hex>.<ext>`), served through CloudFront, and never needs cache invalidation. The browser refuses execution on byte mismatch via SRI:
 
 ```ts
 const logo = await r.blobs.put(projectId, "logo.png", { bytes });
-//   logo.cdn_url   → drop into <img src="…">
-//   logo.sri       → "sha256-…" for <script integrity="…">
-//   logo.etag      → strong "sha256-<hex>"
-//   logo.cache_kind → "immutable" | "mutable" | "private"
+//   logo.cdnUrl     → drop into <img src="…">
+//   logo.sri        → "sha256-…" for <script integrity="…">
+//   logo.etag       → strong "sha256-<hex>"
+//   logo.cacheKind  → "immutable" | "mutable" | "private"
 ```
 
 `immutable: true` is the default since v1.45 — pass `false` only when you specifically want to skip the SHA-256 pass on a very large upload.

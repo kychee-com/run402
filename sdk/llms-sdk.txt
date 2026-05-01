@@ -615,7 +615,7 @@ The CLI (`run402`), MCP server (`run402-mcp`), `@run402/functions`, and the Open
 - **Provision before authoring HTML.** The `anon_key` is permanent and must be embedded in your frontend; provision first, then write the HTML.
 - **Use the manifest for access control**, never raw `GRANT/REVOKE`.
 - **`user_owns_rows` is the default for user-scoped data.** Reach for `public_read_write_UNRESTRICTED` only on intentionally-public tables.
-- **Use immutable `cdn_url` from `r.blobs.put`.** It's correct from the moment of upload — no `waitFresh` needed.
+- **Use immutable `cdnUrl` from `r.blobs.put`.** It's correct from the moment of upload — no `waitFresh` needed.
 - **Don't bake unconditional `r.allowance.requestFaucet()` into deploy scripts** — the faucet rate-limits and breaks already-funded flows.
 - **Per-project rate limit is 100 req/sec.** On 429, back off using `retry_after`.
 - **`r.service.status()` works without auth.** Use it before evaluating Run402, or to distinguish platform issues from your own bugs.
