@@ -72,7 +72,7 @@ Arguments:
 Options:
   --description <d>   Human-readable description of the app
   --tags <t1,t2>      Comma-separated list of tags
-  --visibility <v>    Visibility: 'public' or 'private'
+  --visibility <v>    Visibility: 'public', 'unlisted', or 'private'
   --fork-allowed      Allow other users to fork this app
 
 Examples:
