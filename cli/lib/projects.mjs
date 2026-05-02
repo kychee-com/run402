@@ -2,6 +2,7 @@ import { readFileSync } from "fs";
 import { findProject, loadKeyStore, API, allowanceAuthHeaders, resolveProjectId, getActiveProjectId } from "./config.mjs";
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail, parseFlagJson } from "./sdk-errors.mjs";
+import { assertKnownFlags, failBadProjectId, hasHelp, normalizeArgv, positionalArgs } from "./argparse.mjs";
 
 const HELP = `run402 projects — Manage your deployed Run402 projects
 
@@ -33,17 +34,17 @@ Examples:
   run402 projects provision --tier hobby --name my-app
   run402 projects use prj_abc123
   run402 projects list
-  run402 projects info abc123
-  run402 projects sql abc123 "SELECT * FROM users LIMIT 5"
-  run402 projects sql abc123 "SELECT * FROM users WHERE id = $1" --params '[42]'
-  run402 projects sql abc123 --file setup.sql
-  run402 projects rest abc123 users "limit=10&select=id,name"
-  run402 projects usage abc123
-  run402 projects schema abc123
-  run402 projects apply-expose abc123 --file manifest.json
-  run402 projects get-expose abc123
-  run402 projects keys abc123
-  run402 projects delete abc123 --confirm
+  run402 projects info prj_abc123
+  run402 projects sql prj_abc123 "SELECT * FROM users LIMIT 5"
+  run402 projects sql prj_abc123 "SELECT * FROM users WHERE id = $1" --params '[42]'
+  run402 projects sql prj_abc123 --file setup.sql
+  run402 projects rest prj_abc123 users "limit=10&select=id,name"
+  run402 projects usage prj_abc123
+  run402 projects schema prj_abc123
+  run402 projects apply-expose prj_abc123 --file manifest.json
+  run402 projects get-expose prj_abc123
+  run402 projects keys prj_abc123
+  run402 projects delete prj_abc123 --confirm
 
 Notes:
   - <id> is the project_id shown in 'run402 projects list' (prefix: 'prj_')
@@ -103,9 +104,9 @@ Options:
   --params '<json>'   JSON array of parameters for a parameterized query
 
 Examples:
-  run402 projects sql abc123 "SELECT * FROM users LIMIT 5"
-  run402 projects sql abc123 "SELECT * FROM users WHERE id = $1" --params '[42]'
-  run402 projects sql abc123 --file setup.sql
+  run402 projects sql prj_abc123 "SELECT * FROM users LIMIT 5"
+  run402 projects sql prj_abc123 "SELECT * FROM users WHERE id = $1" --params '[42]'
+  run402 projects sql prj_abc123 --file setup.sql
 `,
 };
 
@@ -373,16 +374,44 @@ async function deleteProject(projectId, args = []) {
 }
 
 // Resolve a positional project_id argument with active-project fallback (GH-102).
-// Heuristic: real project IDs start with "prj_". If args[0] is missing OR
-// doesn't start with "prj_", fall back to the active project and return the
-// full args array as remaining positionals. Otherwise consume args[0] as the
-// project_id and return args.slice(1) as remaining positionals.
-function resolvePositionalProject(args) {
+// Callers can tighten the legacy shorthand when a bare non-prj positional is
+// more likely a mistyped project id than an argument for the active project.
+function resolvePositionalProject(args, opts = {}) {
   const first = Array.isArray(args) ? args[0] : undefined;
   if (typeof first === "string" && first.startsWith("prj_")) {
     return { projectId: first, rest: args.slice(1) };
   }
+  if (
+    typeof first === "string" &&
+    first.length > 0 &&
+    !first.startsWith("-") &&
+    Array.isArray(opts.rejectBareFirstWhenFlagPresent) &&
+    opts.rejectBareFirstWhenFlagPresent.some((flag) => args.includes(flag))
+  ) {
+    failBadProjectId(first);
+  }
+  if (typeof first === "string" && first.length > 0 && !first.startsWith("-") && opts.rejectBareFirst) {
+    failBadProjectId(first);
+  }
+  if (typeof first === "string" && first.length > 0 && !first.startsWith("-") && opts.maxBarePositionals !== undefined) {
+    const bare = positionalArgs(args, opts.valueFlags ?? []);
+    if (bare.length > opts.maxBarePositionals) {
+      failBadProjectId(first);
+    }
+  }
   return { projectId: resolveProjectId(null), rest: Array.isArray(args) ? args : [] };
+}
+
+const FLAGS_BY_SUB = {
+  provision: { known: ["--tier", "--name"], values: ["--tier", "--name"] },
+  sql: { known: ["--file", "--params"], values: ["--file", "--params"] },
+  "apply-expose": { known: ["--file"], values: ["--file"] },
+  delete: { known: ["--confirm"], values: [] },
+};
+
+function validateFlags(sub, args) {
+  const spec = FLAGS_BY_SUB[sub] ?? { known: [], values: [] };
+  assertKnownFlags(args, [...spec.known, "--help", "-h"], spec.values);
 }
 
 export async function run(sub, args) {
@@ -390,25 +419,27 @@ export async function run(sub, args) {
     console.log(HELP);
     process.exit(0);
   }
-  if (Array.isArray(args) && (args.includes("--help") || args.includes("-h"))) {
+  args = normalizeArgv(args);
+  if (Array.isArray(args) && hasHelp(args)) {
     console.log(SUB_HELP[sub] || HELP);
     process.exit(0);
   }
+  validateFlags(sub, args);
   switch (sub) {
     case "quote":     await quote(); break;
     case "provision": await provision(args); break;
     case "use":       await use(args[0]); break;
     case "list":      await list(); break;
-    case "info":      { const { projectId } = resolvePositionalProject(args); await info(projectId); break; }
-    case "keys":      { const { projectId } = resolvePositionalProject(args); await keys(projectId); break; }
-    case "sql":       { const { projectId, rest } = resolvePositionalProject(args); await sqlCmd(projectId, rest); break; }
+    case "info":      { const { projectId } = resolvePositionalProject(args, { rejectBareFirst: true }); await info(projectId); break; }
+    case "keys":      { const { projectId } = resolvePositionalProject(args, { rejectBareFirst: true }); await keys(projectId); break; }
+    case "sql":       { const { projectId, rest } = resolvePositionalProject(args, { maxBarePositionals: 1, valueFlags: FLAGS_BY_SUB.sql.values, rejectBareFirstWhenFlagPresent: ["--file"] }); await sqlCmd(projectId, rest); break; }
     case "rest":      { const { projectId, rest: restArgs } = resolvePositionalProject(args); await rest(projectId, restArgs[0], restArgs[1]); break; }
-    case "usage":     { const { projectId } = resolvePositionalProject(args); await usage(projectId); break; }
-    case "schema":    { const { projectId } = resolvePositionalProject(args); await schema(projectId); break; }
-    case "apply-expose": { const { projectId, rest } = resolvePositionalProject(args); await applyExpose(projectId, rest); break; }
-    case "get-expose":   { const { projectId } = resolvePositionalProject(args); await getExpose(projectId); break; }
-    case "delete":    { const { projectId, rest } = resolvePositionalProject(args); await deleteProject(projectId, rest); break; }
-    case "pin":       { const { projectId } = resolvePositionalProject(args); await pin(projectId); break; }
+    case "usage":     { const { projectId } = resolvePositionalProject(args, { rejectBareFirst: true }); await usage(projectId); break; }
+    case "schema":    { const { projectId } = resolvePositionalProject(args, { rejectBareFirst: true }); await schema(projectId); break; }
+    case "apply-expose": { const { projectId, rest } = resolvePositionalProject(args, { maxBarePositionals: 1, valueFlags: FLAGS_BY_SUB["apply-expose"].values, rejectBareFirstWhenFlagPresent: ["--file"] }); await applyExpose(projectId, rest); break; }
+    case "get-expose":   { const { projectId } = resolvePositionalProject(args, { rejectBareFirst: true }); await getExpose(projectId); break; }
+    case "delete":    { const { projectId, rest } = resolvePositionalProject(args, { rejectBareFirst: true }); await deleteProject(projectId, rest); break; }
+    case "pin":       { const { projectId } = resolvePositionalProject(args, { rejectBareFirst: true }); await pin(projectId); break; }
     case "promote-user": { const { projectId, rest } = resolvePositionalProject(args); await promoteUser(projectId, rest[0]); break; }
     case "demote-user":  { const { projectId, rest } = resolvePositionalProject(args); await demoteUser(projectId, rest[0]); break; }
     default:

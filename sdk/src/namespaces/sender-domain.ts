@@ -35,7 +35,13 @@ export interface DisableInboundResult {
 }
 
 export class SenderDomain {
-  constructor(private readonly client: Client) {}
+  readonly inboundEnable: (projectId: string, domain: string) => Promise<InboundEnableResult>;
+  readonly inboundDisable: (projectId: string, domain: string) => Promise<DisableInboundResult>;
+
+  constructor(private readonly client: Client) {
+    this.inboundEnable = this.enableInbound.bind(this);
+    this.inboundDisable = this.disableInbound.bind(this);
+  }
 
   /** Register a custom email sending domain. Returns DKIM + SPF/DMARC DNS records. */
   async register(projectId: string, domain: string): Promise<SenderDomainRegisterResult> {

@@ -1,5 +1,6 @@
 import { readAllowance, loadKeyStore, getActiveProjectId, API } from "./config.mjs";
 import { getAllowanceAuthHeaders } from "../core-dist/allowance-auth.js";
+import { assertKnownFlags, hasHelp, normalizeArgv } from "./argparse.mjs";
 
 const HELP = `run402 status — Show full account state in one shot
 
@@ -75,7 +76,9 @@ function normalizeProject(raw) {
 }
 
 export async function run(args = []) {
-  if (args.includes("--help") || args.includes("-h")) { console.log(HELP); process.exit(0); }
+  args = normalizeArgv(args);
+  if (hasHelp(args)) { console.log(HELP); process.exit(0); }
+  assertKnownFlags(args, ["--help", "-h"]);
   const allowance = readAllowance();
   if (!allowance) {
     console.log(JSON.stringify({ status: "no_allowance", message: "No agent allowance found. Run: run402 init" }));

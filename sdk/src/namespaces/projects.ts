@@ -9,6 +9,7 @@
 import type { Client } from "../kernel.js";
 import type { ProjectKeys } from "../credentials.js";
 import { LocalError, ProjectNotFound } from "../errors.js";
+import type { ExposeManifest } from "./deploy.types.js";
 import type {
   ListProjectsResult,
   PinResult,
@@ -21,7 +22,29 @@ import type {
 } from "./projects.types.js";
 
 export class Projects {
-  constructor(private readonly client: Client) {}
+  readonly schema: (id: string) => Promise<SchemaReport>;
+  readonly usage: (id: string) => Promise<UsageReport>;
+  readonly quote: () => Promise<QuoteResult>;
+  readonly promoteUser: (id: string, email: string) => Promise<void>;
+  readonly demoteUser: (id: string, email: string) => Promise<void>;
+
+  constructor(private readonly client: Client) {
+    this.schema = this.getSchema.bind(this);
+    this.usage = this.getUsage.bind(this);
+    this.quote = this.getQuote.bind(this);
+    const role = async (id: string, email: string, action: "promote-user" | "demote-user", context: string) => {
+      const keys = await this.client.getProject(id);
+      if (!keys) throw new ProjectNotFound(id, context);
+      await this.client.request<unknown>(`/projects/v1/admin/${id}/${action}`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${keys.service_key}` },
+        body: { email },
+        context,
+      });
+    };
+    this.promoteUser = (id, email) => role(id, email, "promote-user", "promoting user");
+    this.demoteUser = (id, email) => role(id, email, "demote-user", "demoting user");
+  }
 
   /**
    * Provision a new Postgres project. Requires allowance auth; payment
@@ -143,6 +166,58 @@ export class Projects {
     return this.client.request<SchemaReport>(`/projects/v1/admin/${id}/schema`, {
       headers: { Authorization: `Bearer ${keys.service_key}` },
       context: "fetching schema",
+    });
+  }
+
+  /** Run SQL against the project's database using the service key. */
+  async sql(id: string, sql: string, params?: unknown[]): Promise<unknown> {
+    const keys = await this.client.getProject(id);
+    if (!keys) throw new ProjectNotFound(id, "running SQL");
+
+    const useParams = Array.isArray(params) && params.length > 0;
+    return this.client.request<unknown>(`/projects/v1/admin/${id}/sql`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${keys.service_key}`,
+        "Content-Type": useParams ? "application/json" : "text/plain",
+      },
+      body: useParams ? { sql, params } : undefined,
+      rawBody: useParams ? undefined : sql,
+      context: "running SQL",
+    });
+  }
+
+  /** Query a project table through PostgREST using the project's anon key. */
+  async rest<T = unknown>(id: string, table: string, queryParams?: string): Promise<T> {
+    const keys = await this.client.getProject(id);
+    if (!keys) throw new ProjectNotFound(id, "querying REST");
+    const suffix = queryParams ? `?${queryParams}` : "";
+    return this.client.request<T>(`/rest/v1/${encodeURIComponent(table)}${suffix}`, {
+      headers: { apikey: keys.anon_key },
+      context: "querying REST",
+      withAuth: false,
+    });
+  }
+
+  /** Apply the project's declarative expose manifest. */
+  async applyExpose(id: string, manifest: ExposeManifest): Promise<unknown> {
+    const keys = await this.client.getProject(id);
+    if (!keys) throw new ProjectNotFound(id, "applying expose manifest");
+    return this.client.request<unknown>(`/projects/v1/admin/${id}/expose`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${keys.service_key}` },
+      body: manifest,
+      context: "applying expose manifest",
+    });
+  }
+
+  /** Fetch the project's current expose manifest. */
+  async getExpose(id: string): Promise<ExposeManifest> {
+    const keys = await this.client.getProject(id);
+    if (!keys) throw new ProjectNotFound(id, "getting expose manifest");
+    return this.client.request<ExposeManifest>(`/projects/v1/admin/${id}/expose`, {
+      headers: { Authorization: `Bearer ${keys.service_key}` },
+      context: "getting expose manifest",
     });
   }
 

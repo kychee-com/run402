@@ -56,6 +56,7 @@ export class Run402 {
   readonly tier: Tier;
   readonly allowance: Allowance;
   readonly ai: Ai;
+  readonly image!: Ai;
   readonly auth: Auth;
   readonly senderDomain: SenderDomain;
   readonly billing: Billing;
@@ -113,6 +114,10 @@ export class Run402 {
     this.tier = new Tier(client);
     this.allowance = new Allowance(client);
     this.ai = new Ai(client);
+    Object.defineProperty(this, "image", {
+      value: this.ai,
+      enumerable: false,
+    });
     this.auth = new Auth(client);
     this.senderDomain = new SenderDomain(client);
     this.billing = new Billing(client);

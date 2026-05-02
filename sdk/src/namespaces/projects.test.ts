@@ -431,6 +431,76 @@ describe("projects.getQuote", () => {
   });
 });
 
+describe("projects admin helpers (SDK/CLI parity)", () => {
+  it("runs SQL via the same admin endpoint as the CLI (GH-181)", async () => {
+    const { fetch, calls } = mockFetch(() => jsonResponse({ rows: [{ ok: true }], rowCount: 1 }));
+    const sdk = makeSdk(makeCreds(), fetch);
+    const result = await sdk.projects.sql("prj_known", "SELECT $1::int AS n", [42]);
+
+    assert.equal(calls[0]!.url, "https://api.example.test/projects/v1/admin/prj_known/sql");
+    assert.equal(calls[0]!.method, "POST");
+    assert.equal(calls[0]!.headers["Authorization"], "Bearer service_xxx");
+    assert.equal(calls[0]!.headers["Content-Type"], "application/json");
+    assert.deepEqual(JSON.parse(calls[0]!.body as string), {
+      sql: "SELECT $1::int AS n",
+      params: [42],
+    });
+    assert.deepEqual(result, { rows: [{ ok: true }], rowCount: 1 });
+  });
+
+  it("runs raw SQL as text/plain when no params are provided (GH-181)", async () => {
+    const { fetch, calls } = mockFetch(() => jsonResponse({ rows: [], rowCount: 0 }));
+    const sdk = makeSdk(makeCreds(), fetch);
+    await sdk.projects.sql("prj_known", "SELECT 1");
+
+    assert.equal(calls[0]!.headers["Content-Type"], "text/plain");
+    assert.equal(calls[0]!.body, "SELECT 1");
+  });
+
+  it("queries project REST tables with the anon key (GH-181)", async () => {
+    const { fetch, calls } = mockFetch(() => jsonResponse([{ id: 1 }]));
+    const sdk = makeSdk(makeCreds(), fetch);
+    const result = await sdk.projects.rest("prj_known", "todos", "select=id&limit=1");
+
+    assert.equal(calls[0]!.url, "https://api.example.test/rest/v1/todos?select=id&limit=1");
+    assert.equal(calls[0]!.headers["apikey"], "anon_xxx");
+    assert.deepEqual(result, [{ id: 1 }]);
+  });
+
+  it("applies and fetches expose manifests (GH-181)", async () => {
+    const seen: FetchCall[] = [];
+    const { fetch } = mockFetch((call) => {
+      seen.push(call);
+      if (call.method === "POST") return jsonResponse({ status: "ok" });
+      return jsonResponse({ version: "1", tables: [] });
+    });
+    const sdk = makeSdk(makeCreds(), fetch);
+    const manifest = { version: "1", tables: [] };
+
+    assert.deepEqual(await sdk.projects.applyExpose("prj_known", manifest), { status: "ok" });
+    assert.deepEqual(await sdk.projects.getExpose("prj_known"), manifest);
+
+    assert.equal(seen[0]!.url, "https://api.example.test/projects/v1/admin/prj_known/expose");
+    assert.equal(seen[0]!.method, "POST");
+    assert.equal(seen[0]!.headers["Authorization"], "Bearer service_xxx");
+    assert.deepEqual(JSON.parse(seen[0]!.body as string), manifest);
+    assert.equal(seen[1]!.url, "https://api.example.test/projects/v1/admin/prj_known/expose");
+    assert.equal(seen[1]!.method, "GET");
+  });
+
+  it("exposes project-admin role helpers under the projects namespace (GH-181)", async () => {
+    const { fetch, calls } = mockFetch(() => jsonResponse({ status: "ok" }));
+    const sdk = makeSdk(makeCreds(), fetch);
+
+    await sdk.projects.promoteUser("prj_known", "admin@example.com");
+    await sdk.projects.demoteUser("prj_known", "admin@example.com");
+
+    assert.equal(calls[0]!.url, "https://api.example.test/projects/v1/admin/prj_known/promote-user");
+    assert.deepEqual(JSON.parse(calls[0]!.body as string), { email: "admin@example.com" });
+    assert.equal(calls[1]!.url, "https://api.example.test/projects/v1/admin/prj_known/demote-user");
+  });
+});
+
 describe("projects.info / .keys / .use / .active (local)", () => {
   it("info returns stored keys + id without any fetch", async () => {
     const { fetch, calls } = mockFetch(() => jsonResponse({}));

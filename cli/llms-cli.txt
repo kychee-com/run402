@@ -540,12 +540,12 @@ Direct-to-S3 blob storage. Works for any size from 1 byte up to 5 TiB. No bucket
 Examples:
 
 ```
-run402 blob put ./artifact.tgz --project abc123
-run402 blob put ./dist/**/*.png --project abc123 --key assets/
-run402 blob put huge.bin --project abc123 --immutable
-run402 blob get images/logo.png --output /tmp/logo.png --project abc123
-run402 blob ls --project abc123 --prefix images/
-run402 blob diagnose https://app.run402.com/_blob/avatar.png --project abc123
+run402 blob put ./artifact.tgz --project prj_abc123
+run402 blob put ./dist/**/*.png --project prj_abc123 --key assets/
+run402 blob put huge.bin --project prj_abc123 --immutable
+run402 blob get images/logo.png --output /tmp/logo.png --project prj_abc123
+run402 blob ls --project prj_abc123 --prefix images/
+run402 blob diagnose https://app.run402.com/_blob/avatar.png --project prj_abc123
 run402 cdn wait-fresh https://app.run402.com/_blob/avatar.png --sha ba78... --timeout 120
 ```
 

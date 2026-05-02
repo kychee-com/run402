@@ -180,9 +180,17 @@ export class Webhooks {
 
 export class Email {
   readonly webhooks: Webhooks;
+  readonly create: (projectId: string, slug: string) => Promise<CreateMailboxResult>;
+  readonly status: (projectId: string) => Promise<MailboxInfo>;
+  readonly info: (projectId: string) => Promise<MailboxInfo>;
+  readonly delete: (projectId: string, mailboxId?: string) => Promise<DeleteMailboxResult>;
 
   constructor(private readonly client: Client) {
     this.webhooks = new Webhooks(client, (projectId) => this.resolveMailbox(projectId));
+    this.create = this.createMailbox.bind(this);
+    this.status = this.getMailbox.bind(this);
+    this.info = this.getMailbox.bind(this);
+    this.delete = this.deleteMailbox.bind(this);
   }
 
   /**

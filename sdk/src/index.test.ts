@@ -110,6 +110,40 @@ describe("Run402 constructor validation", () => {
     assert.ok(r.service);
   });
 
+  it("exposes CLI-style SDK aliases for grep-friendly parity (GH-179)", () => {
+    const r = new Run402({
+      apiBase: "https://api.example.test",
+      credentials: makeCreds(),
+    }) as any;
+
+    assert.equal(r.image, r.ai);
+    for (const path of [
+      "contracts.setAlert",
+      "contracts.delete",
+      "contracts.status",
+      "billing.balance",
+      "billing.createEmail",
+      "billing.autoRecharge",
+      "auth.magicLink",
+      "auth.verify",
+      "auth.setPassword",
+      "auth.promoteUser",
+      "auth.demoteUser",
+      "email.create",
+      "email.status",
+      "email.info",
+      "email.delete",
+      "projects.schema",
+      "projects.usage",
+      "projects.quote",
+      "senderDomain.inboundEnable",
+      "senderDomain.inboundDisable",
+    ]) {
+      const value = path.split(".").reduce((obj, key) => obj?.[key], r);
+      assert.equal(typeof value, "function", `${path} should be a function`);
+    }
+  });
+
   it("LocalError thrown from the constructor carries the constructing-client context", () => {
     try {
       new Run402({} as never);

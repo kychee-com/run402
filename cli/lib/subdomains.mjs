@@ -17,7 +17,7 @@ Legacy syntax 'claim <deployment_id> <name>' is still supported.
 
 Examples:
   run402 subdomains claim myapp
-  run402 subdomains claim myapp --deployment dpl_abc123 --project proj123
+  run402 subdomains claim myapp --deployment dpl_abc123 --project prj_abc123
   run402 subdomains delete myapp --confirm
   run402 subdomains list
 
@@ -47,7 +47,7 @@ Notes:
 
 Examples:
   run402 subdomains claim myapp
-  run402 subdomains claim myapp --deployment dpl_abc123 --project proj123
+  run402 subdomains claim myapp --deployment dpl_abc123 --project prj_abc123
 `,
 };
 

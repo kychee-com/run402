@@ -100,7 +100,15 @@ export interface ContractReadOptions {
 }
 
 export class Contracts {
-  constructor(private readonly client: Client) {}
+  readonly setAlert: (projectId: string, walletId: string, thresholdWei: string) => Promise<void>;
+  readonly delete: (projectId: string, walletId: string) => Promise<DeleteWalletResult>;
+  readonly status: (projectId: string, callId: string) => Promise<ContractCallResult>;
+
+  constructor(private readonly client: Client) {
+    this.setAlert = this.setLowBalanceAlert.bind(this);
+    this.delete = this.deleteWallet.bind(this);
+    this.status = this.callStatus.bind(this);
+  }
 
   /** Provision a new KMS-backed contract wallet. */
   async provisionWallet(projectId: string, opts: ProvisionWalletOptions): Promise<ProvisionWalletResult> {

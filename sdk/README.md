@@ -58,7 +58,7 @@ The `CredentialsProvider` interface has two required methods (`getAuth`, `getPro
 
 | Namespace | Highlights |
 |---|---|
-| `projects` | `provision`, `delete`, `list`, `getUsage`, `getSchema`, `info`, `keys`, `use`, `active`, `pin`, `getQuote` |
+| `projects` | `provision`, `delete`, `list`, `sql`, `rest`, `applyExpose`, `getExpose`, `getUsage`, `getSchema`, `info`, `keys`, `use`, `active`, `pin`, `getQuote` |
 | `deploy` | **The unified deploy primitive (v1.34+).** `apply` / `start` / `resume` / `status` / `list` / `events` / `getRelease` / `diff` / `plan` / `upload` / `commit` |
 | `sites` | `deployDir` — Node entry only (`@run402/sdk/node`); thin wrapper over `r.deploy.apply` |
 | `blobs` | `put` (returns `AssetRef` with `cdnUrl` / `sri` / `etag` / `cacheKind` and `scriptTag()`/`linkTag()`/`imgTag()` emitters), `get`, `ls`, `rm`, `sign`, `diagnoseUrl`, `waitFresh` |
@@ -68,7 +68,7 @@ The `CredentialsProvider` interface has two required methods (`getAuth`, `getPro
 | `domains` | `add`, `list`, `status`, `remove` |
 | `email` | `createMailbox`, `getMailbox`, `deleteMailbox`, `send`, `list`, `get`, `getRaw`, `webhooks.*` |
 | `senderDomain` | `register`, `status`, `remove`, `enableInbound`, `disableInbound` |
-| `auth` | `requestMagicLink`, `verifyMagicLink`, `setUserPassword`, `settings`, `promote`, `demote` |
+| `auth` | `requestMagicLink`, `verifyMagicLink`, `setUserPassword`, `settings`, `providers`, `promote`, `demote` |
 | `apps` | `browse`, `getApp`, `fork`, `publish`, `listVersions`, `updateVersion`, `deleteVersion`, `bundleDeploy` (legacy shim → routes through `deploy`) |
 | `tier` | `set`, `status` (tier pricing lives on `r.projects.getQuote()`) |
 | `billing` | `createEmailAccount`, `linkWallet`, `tierCheckout`, `buyEmailPack`, `setAutoRecharge`, `balance`, `history`, `createCheckout` |
@@ -77,6 +77,11 @@ The `CredentialsProvider` interface has two required methods (`getAuth`, `getPro
 | `allowance` | `status`, `create`, `export`, `faucet` |
 | `service` | `status`, `health` (no auth, no setup — works on a fresh install) |
 | `admin` | Admin-only endpoints (pinning, lifecycle reactivation, dispute resolution) |
+
+CLI-style aliases are available for agent ergonomics: `r.image` aliases `r.ai`,
+and common command names such as `r.billing.balance`, `r.auth.magicLink`,
+`r.projects.schema`, `r.email.create`, and `r.contracts.setAlert` point at the
+canonical camelCase methods.
 
 ### Casing in returned shapes
 

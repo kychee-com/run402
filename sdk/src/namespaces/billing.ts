@@ -60,7 +60,15 @@ export interface AutoRechargeOptions {
 }
 
 export class Billing {
-  constructor(private readonly client: Client) {}
+  readonly balance: (wallet: string) => Promise<BillingBalance>;
+  readonly createEmail: (email: string) => Promise<EmailBillingAccount>;
+  readonly autoRecharge: (opts: AutoRechargeOptions) => Promise<void>;
+
+  constructor(private readonly client: Client) {
+    this.balance = this.checkBalance.bind(this);
+    this.createEmail = this.createEmailAccount.bind(this);
+    this.autoRecharge = this.setAutoRecharge.bind(this);
+  }
 
   /** Check a wallet's billing balance (available / held / status). Public, no auth. */
   async checkBalance(wallet: string): Promise<BillingBalance> {

@@ -140,6 +140,30 @@ describe("auth.settings", () => {
   });
 });
 
+describe("auth.providers", () => {
+  it("lists configured auth providers with the project anon key (GH-181)", async () => {
+    const { fetch, calls } = mockFetch(() =>
+      jsonResponse({ providers: ["email", "google"] }),
+    );
+    const sdk = makeSdk(makeCreds(), fetch);
+    const result = await sdk.auth.providers("prj_known");
+
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0]!.url, "https://api.example.test/auth/v1/providers");
+    assert.equal(calls[0]!.method, "GET");
+    assert.equal(calls[0]!.headers["apikey"], "anon_xxx");
+    assert.equal(calls[0]!.headers["Authorization"], "Bearer anon_xxx");
+    assert.deepEqual(result, { providers: ["email", "google"] });
+  });
+
+  it("throws ProjectNotFound for unknown ids before hitting the network", async () => {
+    const { fetch, calls } = mockFetch(() => jsonResponse({}));
+    const sdk = makeSdk(makeCreds(), fetch);
+    await assert.rejects(sdk.auth.providers("prj_missing"), ProjectNotFound);
+    assert.equal(calls.length, 0);
+  });
+});
+
 describe("auth.requestMagicLink", () => {
   it("POSTs /auth/v1/magic-link with anon-key apikey + bearer", async () => {
     const { fetch, calls } = mockFetch(() => jsonResponse({ ok: true }));
