@@ -116,6 +116,40 @@ compatibility; new code should use 'info'.
 Usage:
   run402 email get-raw <message_id> [--output <file>] [--project <id>]
 `,
+  create: `run402 email create — Create a project mailbox
+
+Usage:
+  run402 email create <slug> [--project <id>]
+
+Arguments:
+  <slug>              Mailbox slug (3-63 chars, lowercase alphanumeric +
+                      hyphens, no consecutive hyphens). Becomes
+                      <slug>@mail.run402.com.
+
+Options:
+  --project <id>      Project ID (defaults to the active project)
+
+Notes:
+  - One mailbox per project
+
+Examples:
+  run402 email create my-app
+  run402 email create my-app --project prj_abc123
+`,
+  get: `run402 email get — Get a message with replies
+
+Usage:
+  run402 email get <message_id> [--project <id>]
+
+Arguments:
+  <message_id>        Message ID to fetch
+
+Options:
+  --project <id>      Project ID (defaults to the active project)
+
+Examples:
+  run402 email get msg_abc123
+`,
 };
 
 function parseFlag(args, flag) {

@@ -100,6 +100,40 @@ Examples:
   run402 apps update prj_abc123 ver_abc123 --tags todo,auth --fork-allowed
   run402 apps update prj_abc123 ver_abc123 --no-fork
 `,
+  inspect: `run402 apps inspect — Inspect a published app version
+
+Usage:
+  run402 apps inspect <version_id>
+
+Arguments:
+  <version_id>        Published version ID (e.g. ver_abc123)
+
+Examples:
+  run402 apps inspect ver_abc123
+`,
+  versions: `run402 apps versions — List published versions of a project
+
+Usage:
+  run402 apps versions <id>
+
+Arguments:
+  <id>                Project ID (e.g. prj_abc123)
+
+Examples:
+  run402 apps versions prj_abc123
+`,
+  delete: `run402 apps delete — Delete a published version
+
+Usage:
+  run402 apps delete <project_id> <version_id>
+
+Arguments:
+  <project_id>        Project ID that owns the version
+  <version_id>        Published version ID to delete
+
+Examples:
+  run402 apps delete prj_abc123 ver_abc123
+`,
 };
 
 async function browse(args) {

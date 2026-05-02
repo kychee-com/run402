@@ -85,6 +85,41 @@ Examples:
   run402 billing history user@example.com
   run402 billing history 0x1234... --limit 100
 `,
+  balance: `run402 billing balance — Show balance for an email or wallet
+
+Usage:
+  run402 billing balance <identifier>
+
+Arguments:
+  <identifier>        Email address or wallet (0x...)
+
+Examples:
+  run402 billing balance user@example.com
+  run402 billing balance 0x1234abcd...
+`,
+  "create-email": `run402 billing create-email — Create an email billing account
+
+Usage:
+  run402 billing create-email <email>
+
+Arguments:
+  <email>             Email address to register as a billing account
+
+Examples:
+  run402 billing create-email user@example.com
+`,
+  "link-wallet": `run402 billing link-wallet — Link a wallet to an email billing account
+
+Usage:
+  run402 billing link-wallet <account_id> <wallet>
+
+Arguments:
+  <account_id>        Billing account ID (e.g. acct_abc123)
+  <wallet>            Wallet address (0x...) to link
+
+Examples:
+  run402 billing link-wallet acct_abc123 0x1234abcd...
+`,
 };
 
 function parseFlag(args, flag) {

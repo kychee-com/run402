@@ -18,6 +18,29 @@ Examples:
   run402 agent contact --name my-agent --email ops@example.com --webhook https://example.com/hook
 `;
 
+const SUB_HELP = {
+  contact: `run402 agent contact — Register agent contact info
+
+Usage:
+  run402 agent contact --name <name> [--email <email>] [--webhook <url>]
+
+Options:
+  --name <name>       Required: agent name (e.g. "my-agent")
+  --email <email>     Optional: contact email address
+  --webhook <url>     Optional: webhook URL Run402 can call to reach the
+                      agent
+
+Notes:
+  - Free with allowance auth (run an 'allowance create' first)
+  - Registers contact info so Run402 can reach your agent
+
+Examples:
+  run402 agent contact --name my-agent
+  run402 agent contact --name my-agent --email ops@example.com \\
+    --webhook https://example.com/hook
+`,
+};
+
 async function contact(args) {
   let name = null, email = null, webhook = null;
   for (let i = 0; i < args.length; i++) {
@@ -50,7 +73,7 @@ async function contact(args) {
 export async function run(sub, args) {
   if (!sub || sub === '--help' || sub === '-h') { console.log(HELP); process.exit(0); }
   if (Array.isArray(args) && (args.includes("--help") || args.includes("-h"))) {
-    console.log(HELP);
+    console.log(SUB_HELP[sub] || HELP);
     process.exit(0);
   }
   if (sub !== "contact") {

@@ -26,6 +26,74 @@ Notes:
   - The domain must CNAME to domains.run402.com (or ALIAS for apex domains)
 `;
 
+const SUB_HELP = {
+  add: `run402 domains add — Register a custom domain for a project
+
+Usage:
+  run402 domains add <domain> <subdomain_name> [--project <id>]
+
+Arguments:
+  <domain>            Custom domain (e.g. example.com)
+  <subdomain_name>    Existing subdomain to map the custom domain to
+
+Options:
+  --project <id>      Project ID (defaults to the active project)
+
+Notes:
+  - After adding, configure DNS as shown in the response
+  - Poll 'run402 domains status <domain>' until active
+  - The domain must CNAME to domains.run402.com (or ALIAS for apex domains)
+
+Examples:
+  run402 domains add example.com myapp
+  run402 domains add example.com myapp --project prj_abc123
+`,
+  list: `run402 domains list — List custom domains for a project
+
+Usage:
+  run402 domains list [<id>]
+
+Arguments:
+  <id>                Project ID (defaults to the active project)
+
+Examples:
+  run402 domains list
+  run402 domains list prj_abc123
+`,
+  status: `run402 domains status — Check DNS/SSL status of a custom domain
+
+Usage:
+  run402 domains status <domain> [--project <id>]
+
+Arguments:
+  <domain>            Custom domain to check
+
+Options:
+  --project <id>      Project ID (defaults to the active project)
+
+Examples:
+  run402 domains status example.com
+  run402 domains status example.com --project prj_abc123
+`,
+  delete: `run402 domains delete — Release a custom domain
+
+Usage:
+  run402 domains delete <domain> --confirm [--project <id>]
+
+Arguments:
+  <domain>            Custom domain to release
+
+Options:
+  --confirm           Required: releasing detaches the domain from this
+                      project and clears its DNS/SSL configuration
+                      (irreversible)
+  --project <id>      Project ID (defaults to the active project)
+
+Examples:
+  run402 domains delete example.com --confirm
+`,
+};
+
 function parseProjectFlag(args) {
   let project = null;
   const rest = [];
@@ -119,7 +187,7 @@ async function deleteDomain(args) {
 
 export async function run(sub, args) {
   if (!sub || sub === '--help' || sub === '-h') { console.log(HELP); process.exit(0); }
-  if (Array.isArray(args) && (args.includes("--help") || args.includes("-h"))) { console.log(HELP); process.exit(0); }
+  if (Array.isArray(args) && (args.includes("--help") || args.includes("-h"))) { console.log(SUB_HELP[sub] || HELP); process.exit(0); }
   switch (sub) {
     case "add":    await add(args); break;
     case "list":   await list(args); break;
