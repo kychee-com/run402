@@ -186,6 +186,25 @@ function mockFetch(input, init) {
     return Promise.resolve(json({ status: "ok", rows: [{ id: 1, name: "test" }], rowCount: 1 }));
   }
 
+  // AI (must come before the generic /usage$ catch-all below)
+  if (path === "/ai/v1/translate" && method === "POST") {
+    return Promise.resolve(json({ text: `[es] ${body?.text ?? ""}`, from: body?.from || "en", to: body?.to || "es" }));
+  }
+  if (path === "/ai/v1/moderate" && method === "POST") {
+    return Promise.resolve(json({ flagged: false, categories: { hate: false }, category_scores: { hate: 0.01 } }));
+  }
+  if (path === "/ai/v1/usage" && method === "GET") {
+    return Promise.resolve(json({
+      translation: {
+        active: true,
+        used_words: 12,
+        included_words: 1000,
+        remaining_words: 988,
+        billing_cycle_start: "2026-05-01T00:00:00Z",
+      },
+    }));
+  }
+
   // Schema
   if (path.match(/\/schema$/) && method === "GET") {
     return Promise.resolve(json({ tables: [{ name: "items", columns: [{ name: "id", type: "integer" }] }] }));
@@ -735,6 +754,109 @@ describe("CLI e2e happy path", () => {
     assert.ok(store.projects && store.projects["prj_test123"], "project should be saved locally");
   });
 
+  // GH-176: --name validation rejects empty string, control chars, over-length.
+  // Validation runs before any network call, so allowance state is irrelevant.
+  it("projects provision --name '' rejects empty name (GH-176)", async () => {
+    const { run } = await import("./cli/lib/projects.mjs");
+    let threw = null;
+    captureStart();
+    try {
+      await run("provision", ["--tier", "prototype", "--name", ""]);
+    } catch (e) {
+      threw = e;
+    } finally {
+      captureStop();
+    }
+    assert.ok(threw && /process\.exit\(1\)/.test(threw.message),
+      `should exit non-zero, got: ${threw && threw.message}`);
+    const stderr = capturedStderr();
+    const line = stderr.split("\n").map(s => s.trim()).find(s => s.startsWith("{") && s.endsWith("}"));
+    assert.ok(line, `should emit a JSON error line on stderr, got: ${stderr}`);
+    const parsed = JSON.parse(line);
+    assert.equal(parsed.status, "error");
+    assert.equal(parsed.code, "BAD_PROJECT_NAME");
+    assert.ok(/empty/i.test(parsed.message),
+      `message should mention "empty", got: ${parsed.message}`);
+  });
+
+  it("projects provision --name with control char rejects (GH-176)", async () => {
+    const { run } = await import("./cli/lib/projects.mjs");
+    let threw = null;
+    captureStart();
+    try {
+      await run("provision", ["--tier", "prototype", "--name", "ab\ncd"]);
+    } catch (e) {
+      threw = e;
+    } finally {
+      captureStop();
+    }
+    assert.ok(threw && /process\.exit\(1\)/.test(threw.message),
+      `should exit non-zero, got: ${threw && threw.message}`);
+    const stderr = capturedStderr();
+    const line = stderr.split("\n").map(s => s.trim()).find(s => s.startsWith("{") && s.endsWith("}"));
+    assert.ok(line, `should emit a JSON error line on stderr, got: ${stderr}`);
+    const parsed = JSON.parse(line);
+    assert.equal(parsed.status, "error");
+    assert.equal(parsed.code, "BAD_PROJECT_NAME");
+    assert.ok(/control/i.test(parsed.message),
+      `message should mention "control" characters, got: ${parsed.message}`);
+  });
+
+  it("projects provision --name over 128 chars rejects (GH-176)", async () => {
+    const { run } = await import("./cli/lib/projects.mjs");
+    const tooLong = "a".repeat(129);
+    let threw = null;
+    captureStart();
+    try {
+      await run("provision", ["--tier", "prototype", "--name", tooLong]);
+    } catch (e) {
+      threw = e;
+    } finally {
+      captureStop();
+    }
+    assert.ok(threw && /process\.exit\(1\)/.test(threw.message),
+      `should exit non-zero, got: ${threw && threw.message}`);
+    const stderr = capturedStderr();
+    const line = stderr.split("\n").map(s => s.trim()).find(s => s.startsWith("{") && s.endsWith("}"));
+    assert.ok(line, `should emit a JSON error line on stderr, got: ${stderr}`);
+    const parsed = JSON.parse(line);
+    assert.equal(parsed.status, "error");
+    assert.equal(parsed.code, "BAD_PROJECT_NAME");
+    assert.ok(/128|length|characters/i.test(parsed.message),
+      `message should mention length or 128, got: ${parsed.message}`);
+  });
+
+  it("projects provision with no --name skips validation (GH-176)", async () => {
+    const { run } = await import("./cli/lib/projects.mjs");
+    captureStart();
+    await run("provision", ["--tier", "prototype"]);
+    captureStop();
+    // Validation must NOT trigger; SDK call is mocked and returns prj_test123.
+    assert.ok(captured().includes("prj_test123"),
+      "should reach SDK call when --name is omitted");
+  });
+
+  it("projects provision --name 'valid-name-123' passes validation (GH-176)", async () => {
+    const { run } = await import("./cli/lib/projects.mjs");
+    captureStart();
+    await run("provision", ["--tier", "prototype", "--name", "valid-name-123"]);
+    captureStop();
+    // Validation must NOT trigger; SDK call is mocked and returns prj_test123.
+    assert.ok(captured().includes("prj_test123"),
+      "should reach SDK call when --name is valid");
+  });
+
+  it("projects provision --name with exactly 128 chars passes validation (GH-176)", async () => {
+    const { run } = await import("./cli/lib/projects.mjs");
+    const exact128 = "a".repeat(128);
+    assert.equal(exact128.length, 128, "test setup: name must be exactly 128 chars");
+    captureStart();
+    await run("provision", ["--tier", "prototype", "--name", exact128]);
+    captureStop();
+    assert.ok(captured().includes("prj_test123"),
+      "should reach SDK call when --name is exactly 128 chars");
+  });
+
   it("projects list", async () => {
     const { run } = await import("./cli/lib/projects.mjs");
     captureStart();
@@ -800,6 +922,43 @@ describe("CLI e2e happy path", () => {
     await run("rest", ["prj_test123", "items", "limit=10"]);
     captureStop();
     assert.ok(captured().includes("Test item"), "should return REST data");
+  });
+
+  it("projects rest fails locally with BAD_USAGE when <table> is missing (GH-199)", async () => {
+    const { run } = await import("./cli/lib/projects.mjs");
+    // Sentinel: if the CLI ever sends the request, the test should still fail
+    // because the fetch should not happen. Wrap to detect unexpected calls.
+    const prevFetch = globalThis.fetch;
+    let restCalled = false;
+    globalThis.fetch = (input, init) => {
+      const url = typeof input === "string" ? input : (input instanceof Request ? input.url : String(input));
+      if (url.includes("/rest/v1/")) {
+        restCalled = true;
+      }
+      return prevFetch(input, init);
+    };
+    let threw = null;
+    captureStart();
+    try {
+      await run("rest", ["prj_test123"]);
+    } catch (e) {
+      threw = e;
+    } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+    assert.equal(threw?.message, "process.exit(1)", "should exit non-zero with BAD_USAGE");
+    assert.equal(restCalled, false, "should not call /rest/v1/ when table is missing");
+    const stderr = capturedStderr();
+    const line = stderr.split("\n").map(s => s.trim()).find(s => s.startsWith("{") && s.endsWith("}"));
+    assert.ok(line, `should emit a JSON error line on stderr, got: ${stderr}`);
+    const parsed = JSON.parse(line);
+    assert.equal(parsed.status, "error");
+    assert.equal(parsed.code, "BAD_USAGE");
+    assert.ok(/Missing <table>/.test(parsed.message), `message should mention "Missing <table>", got: ${parsed.message}`);
+    // Must NOT leak server-side schema slot or stringified `undefined`
+    assert.ok(!/undefined/.test(stderr), `error must not contain literal "undefined", got: ${stderr}`);
+    assert.ok(!/\bp\d{3,5}\b/.test(stderr), `error must not contain Postgres schema slot pNNN, got: ${stderr}`);
   });
 
   it("projects rest exits non-zero on API error (GH-34)", async () => {
@@ -1317,6 +1476,114 @@ describe("CLI e2e happy path", () => {
     assert.ok(captured().includes("prj_test123"), "should deploy when manifest and flag agree");
   });
 
+  // ── GH-185: deploy --manifest must reject empty manifests client-side ────
+  // The MCP `deploy` tool was hardened against empty specs in #133. The CLI
+  // `deploy --manifest` path was not. Without this guard, `echo '{}' |
+  // run402 deploy` would silently succeed, returning a `dpl_*` id while the
+  // live site survived (no signal that nothing was deployed). The check must
+  // fire BEFORE any HTTP — see assertions on `deployCalled` below.
+  async function deployAndCapture(manifestObj, manifestName) {
+    const { run } = await import("./cli/lib/deploy.mjs");
+    const { writeFileSync: wf } = await import("node:fs");
+    const manifestPath = join(tempDir, manifestName);
+    wf(manifestPath, JSON.stringify(manifestObj));
+    let deployCalled = false;
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = (input, init) => {
+      const url = typeof input === "string" ? input : (input instanceof Request ? input.url : String(input));
+      const method = (init?.method || (input instanceof Request ? input.method : "GET") || "GET").toUpperCase();
+      if (url.endsWith("/deploy/v2/plans") && method === "POST") deployCalled = true;
+      return prevFetch(input, init);
+    };
+    let threw = null;
+    captureStart();
+    try {
+      await run(["--manifest", manifestPath, "--project", "prj_test123"]);
+    } catch (e) {
+      threw = e;
+    } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+    return { threw, stderr: capturedStderr(), stdout: capturedStdout(), deployCalled };
+  }
+
+  function parseStderrEnvelope(stderr) {
+    const line = stderr.split("\n").map(s => s.trim()).find(s => s.startsWith("{") && s.endsWith("}"));
+    assert.ok(line, `should emit a JSON error line on stderr, got: ${stderr}`);
+    return JSON.parse(line);
+  }
+
+  it("deploy rejects empty manifest object (GH-185)", async () => {
+    const { threw, stderr, deployCalled } = await deployAndCapture({}, "gh185-empty-object.json");
+    assert.ok(threw && /process\.exit\(1\)/.test(threw.message),
+      `should exit non-zero, got: ${threw && threw.message}`);
+    assert.equal(deployCalled, false, "must not POST to /deploy/v2/plans on empty manifest");
+    const parsed = parseStderrEnvelope(stderr);
+    assert.equal(parsed.status, "error");
+    assert.equal(parsed.code, "MANIFEST_EMPTY");
+    assert.ok(parsed.message && /no deployable sections/i.test(parsed.message),
+      `message should explain no deployable sections, got: ${parsed.message}`);
+    assert.ok(parsed.hint, `hint should be present, got: ${JSON.stringify(parsed)}`);
+  });
+
+  it("deploy rejects manifest with only project_id (GH-185)", async () => {
+    const { threw, stderr, deployCalled } = await deployAndCapture(
+      { project_id: "prj_test123" }, "gh185-project-id-only.json");
+    assert.ok(threw && /process\.exit\(1\)/.test(threw.message),
+      `should exit non-zero, got: ${threw && threw.message}`);
+    assert.equal(deployCalled, false, "must not POST to /deploy/v2/plans on project-id-only manifest");
+    const parsed = parseStderrEnvelope(stderr);
+    assert.equal(parsed.code, "MANIFEST_EMPTY");
+  });
+
+  it("deploy rejects manifest with empty secrets array (GH-185)", async () => {
+    const { threw, stderr, deployCalled } = await deployAndCapture(
+      { project_id: "prj_test123", secrets: [] }, "gh185-empty-secrets.json");
+    assert.ok(threw && /process\.exit\(1\)/.test(threw.message),
+      `should exit non-zero, got: ${threw && threw.message}`);
+    assert.equal(deployCalled, false, "must not POST to /deploy/v2/plans on empty-secrets manifest");
+    const parsed = parseStderrEnvelope(stderr);
+    assert.equal(parsed.code, "MANIFEST_EMPTY");
+  });
+
+  it("deploy rejects v2 manifest with empty site.replace (GH-185)", async () => {
+    const { threw, stderr, deployCalled } = await deployAndCapture(
+      { project_id: "prj_test123", site: { replace: {} } }, "gh185-empty-site-replace.json");
+    assert.ok(threw && /process\.exit\(1\)/.test(threw.message),
+      `should exit non-zero, got: ${threw && threw.message}`);
+    assert.equal(deployCalled, false, "must not POST to /deploy/v2/plans on empty-site manifest");
+    const parsed = parseStderrEnvelope(stderr);
+    assert.equal(parsed.code, "MANIFEST_EMPTY");
+  });
+
+  it("deploy accepts manifest with subdomain claim alone (GH-185)", async () => {
+    const { run } = await import("./cli/lib/deploy.mjs");
+    const { writeFileSync: wf } = await import("node:fs");
+    const manifestPath = join(tempDir, "gh185-subdomain-only.json");
+    wf(manifestPath, JSON.stringify({ project_id: "prj_test123", subdomain: "my-app" }));
+    captureStart();
+    await run(["--manifest", manifestPath, "--project", "prj_test123"]);
+    captureStop();
+    assert.ok(captured().includes("prj_test123"),
+      `subdomain-only manifest should be accepted, got: ${capturedStderr()}`);
+  });
+
+  it("deploy accepts manifest with database.migrations (GH-185)", async () => {
+    const { run } = await import("./cli/lib/deploy.mjs");
+    const { writeFileSync: wf } = await import("node:fs");
+    const manifestPath = join(tempDir, "gh185-database-migrations.json");
+    wf(manifestPath, JSON.stringify({
+      project_id: "prj_test123",
+      database: { migrations: [{ id: "a", sql: "SELECT 1" }] },
+    }));
+    captureStart();
+    await run(["--manifest", manifestPath, "--project", "prj_test123"]);
+    captureStop();
+    assert.ok(captured().includes("prj_test123"),
+      `database.migrations manifest should be accepted, got: ${capturedStderr()}`);
+  });
+
   // ── Functions ───────────────────────────────────────────────────────────
 
   it("functions deploy", async () => {
@@ -1328,6 +1595,71 @@ describe("CLI e2e happy path", () => {
     await run("deploy", ["prj_test123", "hello", "--file", codePath]);
     captureStop();
     assert.ok(captured().includes("hello"), "should deploy function");
+  });
+
+  it("functions deploy with missing --file path returns structured JSON error (GH-195)", async () => {
+    const { run } = await import("./cli/lib/functions.mjs");
+    const missingPath = join(tempDir, `definitely-not-a-real-handler-${Date.now()}.js`);
+    let threw = null;
+    captureStart();
+    try {
+      await run("deploy", ["prj_test123", "hello", "--file", missingPath]);
+    } catch (e) {
+      threw = e;
+    } finally {
+      captureStop();
+    }
+    assert.ok(threw && /process\.exit\(1\)/.test(threw.message),
+      `should exit non-zero, got: ${threw && threw.message}`);
+    const stderr = capturedStderr();
+    assert.ok(!/node:fs/.test(stderr),
+      `must not leak raw node:fs path, got: ${stderr}`);
+    assert.ok(!/readFileUtf8/.test(stderr),
+      `must not leak readFileUtf8 V8 source pointer, got: ${stderr}`);
+    assert.ok(!/ENOENT/.test(stderr),
+      `must not leak raw ENOENT error, got: ${stderr}`);
+    assert.ok(!/EISDIR/.test(stderr),
+      `must not leak raw EISDIR error, got: ${stderr}`);
+    const line = stderr.split("\n").map(s => s.trim()).find(s => s.startsWith("{") && s.endsWith("}"));
+    assert.ok(line, `should emit a JSON error line on stderr, got: ${stderr}`);
+    const parsed = JSON.parse(line);
+    assert.equal(parsed.status, "error");
+    assert.equal(parsed.code, "FILE_NOT_FOUND",
+      `code should be FILE_NOT_FOUND, got: ${parsed.code}`);
+    assert.ok(parsed.message && parsed.message.includes(missingPath),
+      `message should include missing path, got: ${parsed.message}`);
+  });
+
+  it("functions deploy with directory --file path returns structured JSON error (GH-195)", async () => {
+    const { run } = await import("./cli/lib/functions.mjs");
+    let threw = null;
+    captureStart();
+    try {
+      await run("deploy", ["prj_test123", "hello", "--file", tempDir]);
+    } catch (e) {
+      threw = e;
+    } finally {
+      captureStop();
+    }
+    assert.ok(threw && /process\.exit\(1\)/.test(threw.message),
+      `should exit non-zero, got: ${threw && threw.message}`);
+    const stderr = capturedStderr();
+    assert.ok(!/node:fs/.test(stderr),
+      `must not leak raw node:fs path, got: ${stderr}`);
+    assert.ok(!/readFileUtf8/.test(stderr),
+      `must not leak readFileUtf8 V8 source pointer, got: ${stderr}`);
+    assert.ok(!/ENOENT/.test(stderr),
+      `must not leak raw ENOENT error, got: ${stderr}`);
+    assert.ok(!/EISDIR/.test(stderr),
+      `must not leak raw EISDIR error, got: ${stderr}`);
+    const line = stderr.split("\n").map(s => s.trim()).find(s => s.startsWith("{") && s.endsWith("}"));
+    assert.ok(line, `should emit a JSON error line on stderr, got: ${stderr}`);
+    const parsed = JSON.parse(line);
+    assert.equal(parsed.status, "error");
+    assert.equal(parsed.code, "NOT_A_FILE",
+      `code should be NOT_A_FILE, got: ${parsed.code}`);
+    assert.ok(parsed.message && parsed.message.includes(tempDir),
+      `message should include directory path, got: ${parsed.message}`);
   });
 
   it("functions list", async () => {
@@ -1750,6 +2082,136 @@ describe("CLI e2e happy path", () => {
     );
     assert.equal(capturedBody?.new_password, "Secr3t!Pass", "body should carry new_password");
     assert.ok(captured().includes("ok"), "should print ok status");
+  });
+
+  // ── auth settings --allow-password-set boolean validation (GH-204) ──────
+  //
+  // `auth settings --allow-password-set <value>` previously did
+  // `allow_password_set: value === "true"` without validating the input,
+  // silently coercing any non-"true" string (including "1", "yes", "TRUE",
+  // "bogus") to `false` and printing `{"status":"ok"}` — the user got the
+  // OPPOSITE of what they probably intended for this security-adjacent flag.
+  //
+  // The fix: reject any value that is not literally the string "true" or
+  // "false" with a canonical BAD_FLAG envelope, and never call the SDK.
+  //
+  // Note: these tests run AFTER `projects provision` so prj_test123 is in
+  // the keystore.
+
+  it("auth settings --allow-password-set rejects non-boolean values (GH-204)", async () => {
+    const { run } = await import("./cli/lib/auth.mjs");
+    let settingsFetchCount = 0;
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = async (input, init) => {
+      const url = typeof input === "string" ? input : input.url;
+      if (url.endsWith("/auth/v1/settings")) {
+        settingsFetchCount++;
+      }
+      return prevFetch(input, init);
+    };
+    let threw = null;
+    captureStart();
+    try {
+      await run("settings", ["--project", "prj_test123", "--allow-password-set", "bogus"]);
+    } catch (e) {
+      threw = e;
+    } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+    assert.equal(threw?.message, "process.exit(1)", "must exit non-zero on invalid flag value");
+    assert.equal(settingsFetchCount, 0, "must NOT call /auth/v1/settings on invalid flag value");
+    const errLine = capturedStderr().split("\n").find((s) => s.trim().startsWith("{"));
+    assert.ok(errLine, `expected JSON error on stderr, got: ${capturedStderr()}`);
+    const env = JSON.parse(errLine);
+    assert.equal(env.status, "error", "envelope status must be 'error'");
+    assert.equal(env.code, "BAD_FLAG", "code must be BAD_FLAG");
+    assert.match(
+      env.message ?? "",
+      /allow-password-set/,
+      "error message must mention --allow-password-set",
+    );
+    assert.equal(
+      capturedStdout().includes('"status":"ok"'),
+      false,
+      "must NOT print {\"status\":\"ok\"} on invalid input",
+    );
+  });
+
+  it("auth settings --allow-password-set true succeeds (GH-204 regression guard)", async () => {
+    const { run } = await import("./cli/lib/auth.mjs");
+    let capturedBody = null;
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = async (input, init) => {
+      const url = typeof input === "string" ? input : input.url;
+      const method = (init?.method || (input instanceof Request ? input.method : "GET") || "GET").toUpperCase();
+      if (url.endsWith("/auth/v1/settings") && method === "PATCH") {
+        let rawBody = init?.body;
+        if (rawBody === undefined && input instanceof Request) {
+          rawBody = await input.clone().text();
+        }
+        try { capturedBody = rawBody ? JSON.parse(rawBody) : null; } catch { capturedBody = rawBody; }
+        return new Response(JSON.stringify({ ok: true }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      return prevFetch(input, init);
+    };
+    captureStart();
+    try {
+      await run("settings", ["--project", "prj_test123", "--allow-password-set", "true"]);
+    } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+    assert.equal(capturedBody?.allow_password_set, true, "must send allow_password_set:true");
+    assert.ok(
+      capturedStdout().includes('"status":"ok"'),
+      `should print ok status, got stdout: ${capturedStdout()}`,
+    );
+    assert.ok(
+      capturedStdout().includes('"allow_password_set":true'),
+      "should print allow_password_set:true",
+    );
+  });
+
+  it("auth settings --allow-password-set false succeeds (GH-204 regression guard)", async () => {
+    const { run } = await import("./cli/lib/auth.mjs");
+    let capturedBody = null;
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = async (input, init) => {
+      const url = typeof input === "string" ? input : input.url;
+      const method = (init?.method || (input instanceof Request ? input.method : "GET") || "GET").toUpperCase();
+      if (url.endsWith("/auth/v1/settings") && method === "PATCH") {
+        let rawBody = init?.body;
+        if (rawBody === undefined && input instanceof Request) {
+          rawBody = await input.clone().text();
+        }
+        try { capturedBody = rawBody ? JSON.parse(rawBody) : null; } catch { capturedBody = rawBody; }
+        return new Response(JSON.stringify({ ok: true }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      return prevFetch(input, init);
+    };
+    captureStart();
+    try {
+      await run("settings", ["--project", "prj_test123", "--allow-password-set", "false"]);
+    } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+    assert.equal(capturedBody?.allow_password_set, false, "must send allow_password_set:false");
+    assert.ok(
+      capturedStdout().includes('"status":"ok"'),
+      `should print ok status, got stdout: ${capturedStdout()}`,
+    );
+    assert.ok(
+      capturedStdout().includes('"allow_password_set":false'),
+      "should print allow_password_set:false",
+    );
   });
 
   // ── Cleanup commands (deletions) ────────────────────────────────────────
@@ -2984,6 +3446,116 @@ describe("CLI status exit codes (GH-191)", () => {
   });
 });
 
+describe("CLI malformed allowance.json (GH-194)", () => {
+  // The bug: valid JSON with the wrong shape (e.g. `{}` or a too-short
+  // `privateKey`) used to crash the CLI with raw Node stack traces and source
+  // path leaks. The fix validates shape in core's `readAllowance()` and
+  // converts the throw into a structured `BAD_ALLOWANCE_FILE` envelope at the
+  // CLI wrapper.
+  function parseStderrJson() {
+    const stderr = capturedStderr();
+    const line = stderr.split("\n").map(s => s.trim()).find(s => s.startsWith("{"));
+    assert.ok(line, `expected JSON envelope on stderr, got: ${stderr}`);
+    return JSON.parse(line);
+  }
+
+  function restoreValidAllowance() {
+    return import("./cli/lib/config.mjs").then(({ saveAllowance }) =>
+      saveAllowance({
+        address: "0x1234567890123456789012345678901234567890",
+        privateKey: "0x" + "11".repeat(32),
+        created: "2026-01-01T00:00:00.000Z",
+        funded: true,
+        rail: "x402",
+      }),
+    );
+  }
+
+  it("status with empty-object allowance.json emits BAD_ALLOWANCE_FILE (no stack trace)", async () => {
+    const { ALLOWANCE_FILE } = await import("./cli/lib/config.mjs");
+    const fs = await import("node:fs");
+    fs.writeFileSync(ALLOWANCE_FILE, "{}");
+    const { run } = await import("./cli/lib/status.mjs");
+    let threw = null;
+    captureStart();
+    try {
+      await run([]);
+    } catch (e) { threw = e; } finally {
+      captureStop();
+      await restoreValidAllowance();
+    }
+    assert.equal(threw?.message, "process.exit(1)",
+      `status with malformed allowance must exit 1, got: ${threw?.message || "no exit"}`);
+    const out = captured();
+    // Must NOT leak Node internals or source paths.
+    assert.ok(!/TypeError/.test(out), `must not leak TypeError stack, got: ${out}`);
+    assert.ok(!/node_modules/.test(out), `must not leak node_modules path, got: ${out}`);
+    assert.ok(!/Cannot read properties of undefined/.test(out),
+      `must not leak the raw "toLowerCase of undefined" message, got: ${out}`);
+    // Must surface a structured error envelope.
+    const parsed = parseStderrJson();
+    assert.equal(parsed.status, "error");
+    assert.equal(parsed.code, "BAD_ALLOWANCE_FILE",
+      `code should be BAD_ALLOWANCE_FILE; got: ${JSON.stringify(parsed)}`);
+    assert.ok(/address/i.test(parsed.message),
+      `message should mention the missing address; got: ${parsed.message}`);
+    assert.ok(/run402 init/.test(parsed.hint || parsed.message),
+      `output should suggest 'run402 init' as the recovery; got: ${JSON.stringify(parsed)}`);
+  });
+
+  it("status with too-short privateKey emits BAD_ALLOWANCE_FILE (no noble stack trace)", async () => {
+    const { ALLOWANCE_FILE } = await import("./cli/lib/config.mjs");
+    const fs = await import("node:fs");
+    fs.writeFileSync(ALLOWANCE_FILE, JSON.stringify({
+      address: "0xa1234567890abcdef1234567890abcdef1234567",
+      privateKey: "0xdeadbeef",
+      weirdfield: "value",
+    }));
+    const { run } = await import("./cli/lib/status.mjs");
+    let threw = null;
+    captureStart();
+    try {
+      await run([]);
+    } catch (e) { threw = e; } finally {
+      captureStop();
+      await restoreValidAllowance();
+    }
+    assert.equal(threw?.message, "process.exit(1)");
+    const out = captured();
+    // Must NOT leak the noble-curves stack trace ("expected 32 bytes, got 4").
+    assert.ok(!/expected 32 bytes/.test(out),
+      `must not leak the @noble/curves error message, got: ${out}`);
+    assert.ok(!/@noble/.test(out), `must not leak the @noble import path, got: ${out}`);
+    const parsed = parseStderrJson();
+    assert.equal(parsed.status, "error");
+    assert.equal(parsed.code, "BAD_ALLOWANCE_FILE");
+    assert.ok(/privateKey/i.test(parsed.message),
+      `message should mention privateKey; got: ${parsed.message}`);
+  });
+
+  it("status with unparseable allowance.json still returns no_allowance (existing UX preserved)", async () => {
+    const { ALLOWANCE_FILE } = await import("./cli/lib/config.mjs");
+    const fs = await import("node:fs");
+    fs.writeFileSync(ALLOWANCE_FILE, "not json");
+    const { run } = await import("./cli/lib/status.mjs");
+    let threw = null;
+    captureStart();
+    try {
+      await run([]);
+    } catch (e) { threw = e; } finally {
+      captureStop();
+      await restoreValidAllowance();
+    }
+    assert.equal(threw?.message, "process.exit(1)");
+    const stdout = capturedStdout();
+    const line = stdout.split("\n").find(s => s.trim().startsWith("{"));
+    assert.ok(line, `should emit status payload on stdout, got: ${stdout}`);
+    const parsed = JSON.parse(line);
+    assert.equal(parsed.status, "no_allowance",
+      `unparseable JSON should still surface as no_allowance, not BAD_ALLOWANCE_FILE; got: ${parsed.status}`);
+  });
+});
+
 describe("CLI contracts JSON-flag parse errors (GH-177)", () => {
   function parseStderrJson() {
     const stderr = capturedStderr();
@@ -3040,5 +3612,684 @@ describe("CLI contracts JSON-flag parse errors (GH-177)", () => {
     assert.equal(parsed.code, "BAD_JSON_FLAG");
     assert.equal(parsed.details?.flag, "--abi",
       `with both --abi and --args potentially bad, --abi parses first and wins; got: ${JSON.stringify(parsed.details)}`);
+  });
+});
+
+// ── domains list flag/positional parity (GH-209) ────────────────────────────
+// `domains add`, `domains status`, `domains delete` all accept `--project <id>`,
+// but `domains list` historically only accepted a positional [<id>] arg. Running
+// `run402 domains list --project prj_xxx` would parse `--project` as the
+// positional id and emit 'Project --project not found' — confusing and
+// inconsistent with the rest of the namespace. The fix wires `--project` through
+// `domains list` while keeping the positional form working (option #1: pure
+// extension; legacy callers unaffected).
+
+describe("CLI domains list --project / positional parity (GH-209)", () => {
+  async function seedActiveProject() {
+    const { saveProject, setActiveProjectId } = await import("./cli/lib/config.mjs");
+    saveProject(TEST_PROJECT.project_id, {
+      anon_key: TEST_PROJECT.anon_key,
+      service_key: TEST_PROJECT.service_key,
+    });
+    setActiveProjectId(TEST_PROJECT.project_id);
+  }
+
+  function buildListSpyFetch(calls) {
+    const apiOrigin = new URL(API).origin;
+    return async (input, init) => {
+      const url = typeof input === "string" ? input : (input instanceof Request ? input.url : String(input));
+      const method = (init?.method || (input instanceof Request ? input.method : "GET") || "GET").toUpperCase();
+      let path = url;
+      try {
+        const parsed = new URL(url);
+        if (parsed.origin === apiOrigin) path = parsed.pathname + parsed.search;
+      } catch {
+        // non-URL input — leave as raw
+      }
+      calls.push({ method, path, url });
+      if (method === "GET" && path === "/domains/v1") {
+        return Promise.resolve(json({ domains: [] }));
+      }
+      return Promise.resolve(new Response("Not Found", { status: 404 }));
+    };
+  }
+
+  it("domains list --project <id> resolves the project (does not parse '--project' as the id)", async () => {
+    await seedActiveProject();
+    const { run } = await import("./cli/lib/domains.mjs");
+    const calls = [];
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = buildListSpyFetch(calls);
+    let threw = null;
+    captureStart();
+    try {
+      await run("list", ["--project", TEST_PROJECT.project_id]);
+    } catch (e) { threw = e; } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+    assert.equal(threw, null,
+      `domains list --project <id> must not exit; got: ${threw?.message || ""} / stderr: ${capturedStderr()}`);
+    assert.ok(
+      !/Project\s+--project\s+not found/.test(capturedStderr()),
+      `must not parse '--project' as the positional id, got stderr: ${capturedStderr()}`,
+    );
+    const get = calls.find(c => c.method === "GET" && c.path === "/domains/v1");
+    assert.ok(get, `must issue GET /domains/v1, calls: ${JSON.stringify(calls)}`);
+  });
+
+  it("domains list <id> (legacy positional) still works", async () => {
+    await seedActiveProject();
+    const { run } = await import("./cli/lib/domains.mjs");
+    const calls = [];
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = buildListSpyFetch(calls);
+    let threw = null;
+    captureStart();
+    try {
+      await run("list", [TEST_PROJECT.project_id]);
+    } catch (e) { threw = e; } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+    assert.equal(threw, null,
+      `legacy 'domains list <id>' must keep working, got: ${threw?.message || ""} / stderr: ${capturedStderr()}`);
+    const get = calls.find(c => c.method === "GET" && c.path === "/domains/v1");
+    assert.ok(get, `legacy positional must still issue GET /domains/v1, calls: ${JSON.stringify(calls)}`);
+  });
+
+  it("domains list (no args) falls back to active project", async () => {
+    await seedActiveProject();
+    const { run } = await import("./cli/lib/domains.mjs");
+    const calls = [];
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = buildListSpyFetch(calls);
+    let threw = null;
+    captureStart();
+    try {
+      await run("list", []);
+    } catch (e) { threw = e; } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+    assert.equal(threw, null,
+      `'domains list' (no args) should resolve via active project, got: ${threw?.message || ""} / stderr: ${capturedStderr()}`);
+    const get = calls.find(c => c.method === "GET" && c.path === "/domains/v1");
+    assert.ok(get, `must still issue GET /domains/v1, calls: ${JSON.stringify(calls)}`);
+  });
+});
+
+// ── Message size cap (GH-175) ──────────────────────────────────────────────
+// `run402 message send <text>` previously had no client-side cap, so a
+// 200 KB single message was happily POSTed to /message/v1 and stored in the
+// developer inbox. We now enforce an 8 KB UTF-8 byte cap at the CLI edge
+// with a structured MESSAGE_TOO_LONG error. The success envelope echoes
+// `bytes_sent` so callers can confirm the payload size that landed.
+
+describe("CLI message send size cap (GH-175)", () => {
+  // The cap check must run BEFORE the allowance check so that oversize
+  // payloads surface MESSAGE_TOO_LONG regardless of allowance state. We
+  // still seed an allowance here so the happy-path 8192-byte / "hi" tests
+  // can reach the SDK call (otherwise the missing-allowance early exit fires
+  // first).
+  before(async () => {
+    const { saveAllowance } = await import("./cli/lib/config.mjs");
+    saveAllowance({
+      address: "0x1234567890123456789012345678901234567890",
+      privateKey: "0x" + "11".repeat(32),
+      created: "2026-01-01T00:00:00.000Z",
+      funded: true,
+      rail: "x402",
+    });
+  });
+
+  function parseStderrJson() {
+    const stderr = capturedStderr();
+    const line = stderr.split("\n").map(s => s.trim()).find(s => s.startsWith("{"));
+    assert.ok(line, `expected JSON envelope on stderr, got: ${stderr}`);
+    return JSON.parse(line);
+  }
+
+  function trackMessagePosts() {
+    let postCount = 0;
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = (input, init) => {
+      const url = typeof input === "string" ? input : (input?.url ?? String(input));
+      const method = (init?.method || (input instanceof Request ? input.method : "GET") || "GET").toUpperCase();
+      if (url.includes("/message/v1") && method === "POST") postCount++;
+      return prevFetch(input, init);
+    };
+    return {
+      restore: () => { globalThis.fetch = prevFetch; },
+      get count() { return postCount; },
+    };
+  }
+
+  it("rejects 200 KB message with MESSAGE_TOO_LONG and does NOT call admin.sendMessage", async () => {
+    const { run } = await import("./cli/lib/message.mjs");
+    const big = "a".repeat(200000);
+    const tracker = trackMessagePosts();
+    let threw = null;
+    captureStart();
+    try {
+      await run("send", [big]);
+    } catch (e) { threw = e; } finally {
+      captureStop();
+      tracker.restore();
+    }
+    assert.equal(threw?.message, "process.exit(1)",
+      `should exit non-zero, got: ${threw?.message}`);
+    const parsed = parseStderrJson();
+    assert.equal(parsed.status, "error");
+    assert.equal(parsed.code, "MESSAGE_TOO_LONG");
+    assert.ok(/200000/.test(parsed.message),
+      `message should mention actual byte count, got: ${parsed.message}`);
+    assert.ok(/8192/.test(parsed.message),
+      `message should mention 8192 byte limit, got: ${parsed.message}`);
+    assert.equal(tracker.count, 0,
+      "must NOT POST to /message/v1 when payload exceeds the cap");
+  });
+
+  it("rejects 8193 bytes (one byte over cap) with MESSAGE_TOO_LONG", async () => {
+    const { run } = await import("./cli/lib/message.mjs");
+    const justOver = "b".repeat(8193);
+    const tracker = trackMessagePosts();
+    let threw = null;
+    captureStart();
+    try {
+      await run("send", [justOver]);
+    } catch (e) { threw = e; } finally {
+      captureStop();
+      tracker.restore();
+    }
+    assert.equal(threw?.message, "process.exit(1)",
+      `should exit non-zero, got: ${threw?.message}`);
+    const parsed = parseStderrJson();
+    assert.equal(parsed.code, "MESSAGE_TOO_LONG");
+    assert.equal(tracker.count, 0, "must NOT POST when payload is one byte over cap");
+  });
+
+  it("accepts exactly 8192 bytes and echoes bytes_sent", async () => {
+    const { run } = await import("./cli/lib/message.mjs");
+    const exact = "c".repeat(8192);
+    const tracker = trackMessagePosts();
+    let threw = null;
+    captureStart();
+    try {
+      await run("send", [exact]);
+    } catch (e) { threw = e; } finally {
+      captureStop();
+      tracker.restore();
+    }
+    assert.equal(threw, null,
+      `8192 bytes should be accepted, got threw: ${threw?.message}\nstderr: ${capturedStderr()}`);
+    assert.equal(tracker.count, 1, "should POST exactly once at the cap boundary");
+    const stdout = capturedStdout();
+    const line = stdout.split("\n").map(s => s.trim()).find(s => s.startsWith("{"));
+    assert.ok(line, `expected JSON envelope on stdout, got: ${stdout}`);
+    const parsed = JSON.parse(line);
+    assert.equal(parsed.status, "ok");
+    assert.equal(parsed.bytes_sent, 8192,
+      `bytes_sent should echo payload size, got: ${parsed.bytes_sent}`);
+  });
+
+  it("accepts a short message and echoes bytes_sent", async () => {
+    const { run } = await import("./cli/lib/message.mjs");
+    const tracker = trackMessagePosts();
+    let threw = null;
+    captureStart();
+    try {
+      await run("send", ["hi"]);
+    } catch (e) { threw = e; } finally {
+      captureStop();
+      tracker.restore();
+    }
+    assert.equal(threw, null, `short message should succeed, got: ${threw?.message}`);
+    assert.equal(tracker.count, 1, "should POST exactly once for a short message");
+    const stdout = capturedStdout();
+    const line = stdout.split("\n").map(s => s.trim()).find(s => s.startsWith("{"));
+    assert.ok(line, `expected JSON envelope on stdout, got: ${stdout}`);
+    const parsed = JSON.parse(line);
+    assert.equal(parsed.status, "ok");
+    assert.equal(parsed.bytes_sent, 2, `bytes_sent should be 2 for "hi", got: ${parsed.bytes_sent}`);
+  });
+
+  it("counts bytes (not characters) — multibyte UTF-8 over cap is rejected", async () => {
+    // Each "é" is 2 bytes in UTF-8. 4097 chars = 8194 bytes, which exceeds 8192.
+    const { run } = await import("./cli/lib/message.mjs");
+    const multibyte = "é".repeat(4097); // 8194 bytes
+    const tracker = trackMessagePosts();
+    let threw = null;
+    captureStart();
+    try {
+      await run("send", [multibyte]);
+    } catch (e) { threw = e; } finally {
+      captureStop();
+      tracker.restore();
+    }
+    assert.equal(threw?.message, "process.exit(1)",
+      `multibyte string over byte-cap should exit non-zero, got: ${threw?.message}`);
+    const parsed = parseStderrJson();
+    assert.equal(parsed.code, "MESSAGE_TOO_LONG");
+    assert.ok(/8194/.test(parsed.message),
+      `message should report byte count (8194), not char count (4097), got: ${parsed.message}`);
+    assert.equal(tracker.count, 0);
+  });
+});
+
+// ── Webhook URL scheme validation (GH-192) ─────────────────────────────────
+// The CLI must reject non-https:// webhook URLs locally before any network
+// call. This protects against `javascript:`, `file:`, and `http://` schemes
+// being shipped to the gateway. Server-side SSRF defenses (private-IP
+// filtering, DNS rebinding, IMDS blocking) are out of scope for the CLI fix.
+
+describe("CLI webhook URL scheme validation (GH-192)", () => {
+  function parseStderrJson() {
+    const stderr = capturedStderr();
+    const line = stderr.split("\n").map(s => s.trim()).find(s => s.startsWith("{"));
+    assert.ok(line, `expected JSON envelope on stderr, got: ${stderr}`);
+    return JSON.parse(line);
+  }
+
+  // Spy fetch that records every call so we can assert "no network call" for
+  // the rejection cases.
+  function buildSpyFetch(calls) {
+    return async (input, init) => {
+      const url = typeof input === "string" ? input : (input instanceof Request ? input.url : String(input));
+      const method = (init?.method || (input instanceof Request ? input.method : "GET") || "GET").toUpperCase();
+      calls.push({ method, url });
+      return Promise.resolve(new Response("Not Found", { status: 404 }));
+    };
+  }
+
+  async function seedTestProject() {
+    const { saveProject, setActiveProjectId } = await import("./cli/lib/config.mjs");
+    saveProject(TEST_PROJECT.project_id, {
+      anon_key: TEST_PROJECT.anon_key,
+      service_key: TEST_PROJECT.service_key,
+    });
+    setActiveProjectId(TEST_PROJECT.project_id);
+  }
+
+  // ── email webhooks register ─────────────────────────────────────────────
+
+  it("email webhooks register --url javascript:alert(1) is rejected locally", async () => {
+    await seedTestProject();
+    const { run } = await import("./cli/lib/webhooks.mjs");
+    const calls = [];
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = buildSpyFetch(calls);
+    let threw = null;
+    captureStart();
+    try {
+      await run("register", ["--url", "javascript:alert(1)", "--events", "delivered"]);
+    } catch (e) { threw = e; } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+    assert.equal(threw?.message, "process.exit(1)", "should exit non-zero");
+    assert.equal(calls.length, 0, "must not make a network call");
+    const parsed = parseStderrJson();
+    assert.equal(parsed.status, "error");
+    assert.equal(parsed.code, "BAD_WEBHOOK_URL");
+    assert.equal(parsed.field, "--url");
+    assert.ok(/https:\/\//.test(parsed.message), `message should mention https://, got: ${parsed.message}`);
+  });
+
+  it("email webhooks register --url http://example.com/hook is rejected (must be https)", async () => {
+    await seedTestProject();
+    const { run } = await import("./cli/lib/webhooks.mjs");
+    const calls = [];
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = buildSpyFetch(calls);
+    let threw = null;
+    captureStart();
+    try {
+      await run("register", ["--url", "http://example.com/hook", "--events", "delivered"]);
+    } catch (e) { threw = e; } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+    assert.equal(threw?.message, "process.exit(1)");
+    assert.equal(calls.length, 0, "must not make a network call");
+    const parsed = parseStderrJson();
+    assert.equal(parsed.code, "BAD_WEBHOOK_URL");
+    assert.equal(parsed.field, "--url");
+    assert.ok(/https:\/\//.test(parsed.message), `message should mention https://, got: ${parsed.message}`);
+  });
+
+  it("email webhooks register --url file:///etc/passwd is rejected", async () => {
+    await seedTestProject();
+    const { run } = await import("./cli/lib/webhooks.mjs");
+    const calls = [];
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = buildSpyFetch(calls);
+    let threw = null;
+    captureStart();
+    try {
+      await run("register", ["--url", "file:///etc/passwd", "--events", "delivered"]);
+    } catch (e) { threw = e; } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+    assert.equal(threw?.message, "process.exit(1)");
+    assert.equal(calls.length, 0, "must not make a network call");
+    const parsed = parseStderrJson();
+    assert.equal(parsed.code, "BAD_WEBHOOK_URL");
+    assert.equal(parsed.field, "--url");
+  });
+
+  it("email webhooks register --url not-a-url is rejected with 'not a valid URL'", async () => {
+    await seedTestProject();
+    const { run } = await import("./cli/lib/webhooks.mjs");
+    const calls = [];
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = buildSpyFetch(calls);
+    let threw = null;
+    captureStart();
+    try {
+      await run("register", ["--url", "not-a-url", "--events", "delivered"]);
+    } catch (e) { threw = e; } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+    assert.equal(threw?.message, "process.exit(1)");
+    assert.equal(calls.length, 0, "must not make a network call");
+    const parsed = parseStderrJson();
+    assert.equal(parsed.code, "BAD_WEBHOOK_URL");
+    assert.equal(parsed.field, "--url");
+    assert.ok(/not a valid URL/.test(parsed.message), `message should mention 'not a valid URL', got: ${parsed.message}`);
+  });
+
+  it("email webhooks register --url https://valid.com/hook passes URL validation", async () => {
+    // The URL validator must NOT block a valid https:// URL. The command may
+    // still fail downstream (mailbox/auth/etc) — we only assert it gets past
+    // the URL validator (i.e. no BAD_WEBHOOK_URL code).
+    await seedTestProject();
+    const { run } = await import("./cli/lib/webhooks.mjs");
+    const calls = [];
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = buildSpyFetch(calls);
+    let threw = null;
+    captureStart();
+    try {
+      await run("register", ["--url", "https://valid.com/hook", "--events", "delivered"]);
+    } catch (e) { threw = e; } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+    // It might fail later for unrelated reasons (mailbox lookup etc). But if
+    // there's a stderr JSON envelope, it must not be BAD_WEBHOOK_URL.
+    const stderr = capturedStderr();
+    if (stderr.trim()) {
+      const line = stderr.split("\n").map(s => s.trim()).find(s => s.startsWith("{"));
+      if (line) {
+        const parsed = JSON.parse(line);
+        assert.notEqual(parsed.code, "BAD_WEBHOOK_URL",
+          `valid https URL must not trigger BAD_WEBHOOK_URL, got: ${stderr}`);
+      }
+    }
+  });
+
+  // ── email webhooks update ───────────────────────────────────────────────
+
+  it("email webhooks update <id> --url javascript:alert(1) is rejected locally", async () => {
+    await seedTestProject();
+    const { run } = await import("./cli/lib/webhooks.mjs");
+    const calls = [];
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = buildSpyFetch(calls);
+    let threw = null;
+    captureStart();
+    try {
+      await run("update", ["whk_123", "--url", "javascript:alert(1)"]);
+    } catch (e) { threw = e; } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+    assert.equal(threw?.message, "process.exit(1)");
+    assert.equal(calls.length, 0, "must not make a network call");
+    const parsed = parseStderrJson();
+    assert.equal(parsed.code, "BAD_WEBHOOK_URL");
+    assert.equal(parsed.field, "--url");
+  });
+
+  // ── agent contact ────────────────────────────────────────────────────────
+
+  it("agent contact --webhook javascript:alert(1) is rejected locally", async () => {
+    const { run } = await import("./cli/lib/agent.mjs");
+    const calls = [];
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = buildSpyFetch(calls);
+    let threw = null;
+    captureStart();
+    try {
+      await run("contact", ["--name", "test", "--webhook", "javascript:alert(1)"]);
+    } catch (e) { threw = e; } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+    assert.equal(threw?.message, "process.exit(1)");
+    assert.equal(calls.length, 0, "must not make a network call");
+    const parsed = parseStderrJson();
+    assert.equal(parsed.code, "BAD_WEBHOOK_URL");
+    assert.equal(parsed.field, "--webhook");
+  });
+
+  it("agent contact --name test (no webhook) does not trigger URL validation", async () => {
+    // Webhook is optional — omitting it must not trigger BAD_WEBHOOK_URL.
+    // The agent contact endpoint mock returns a success response, so the
+    // command should complete normally.
+    const { run } = await import("./cli/lib/agent.mjs");
+    let threw = null;
+    captureStart();
+    try {
+      await run("contact", ["--name", "test"]);
+    } catch (e) { threw = e; } finally {
+      captureStop();
+    }
+    const stderr = capturedStderr();
+    // Should not produce a BAD_WEBHOOK_URL envelope. If there's no envelope at
+    // all that's fine — the command may simply succeed.
+    if (stderr.trim()) {
+      const line = stderr.split("\n").map(s => s.trim()).find(s => s.startsWith("{"));
+      if (line) {
+        const parsed = JSON.parse(line);
+        assert.notEqual(parsed.code, "BAD_WEBHOOK_URL",
+          `omitting --webhook must not trigger BAD_WEBHOOK_URL, got: ${stderr}`);
+      }
+    }
+  });
+
+  it("agent contact --webhook https://valid.com/hook passes URL validation", async () => {
+    const { run } = await import("./cli/lib/agent.mjs");
+    let threw = null;
+    captureStart();
+    try {
+      await run("contact", ["--name", "test", "--webhook", "https://valid.com/hook"]);
+    } catch (e) { threw = e; } finally {
+      captureStop();
+    }
+    const stderr = capturedStderr();
+    if (stderr.trim()) {
+      const line = stderr.split("\n").map(s => s.trim()).find(s => s.startsWith("{"));
+      if (line) {
+        const parsed = JSON.parse(line);
+        assert.notEqual(parsed.code, "BAD_WEBHOOK_URL",
+          `valid https webhook must not trigger BAD_WEBHOOK_URL, got: ${stderr}`);
+      }
+    }
+  });
+});
+
+// ── ai translate / moderate / usage default to active project (GH-187) ──────
+// `ai translate <text> --to <lang>` (no project_id) should resolve from the
+// active project, mirroring `projects sql`. Similarly for `ai moderate <text>`
+// and `ai usage`. The legacy form `ai translate prj_xxx <text> --to <lang>`
+// must keep working.
+
+describe("CLI ai active-project default (GH-187)", () => {
+  async function seedActiveProject() {
+    const { saveProject, setActiveProjectId } = await import("./cli/lib/config.mjs");
+    saveProject(TEST_PROJECT.project_id, {
+      anon_key: TEST_PROJECT.anon_key,
+      service_key: TEST_PROJECT.service_key,
+    });
+    setActiveProjectId(TEST_PROJECT.project_id);
+  }
+
+  // x402 may wrap fetch and pass Request objects whose body/headers are not on
+  // `init`; mirror the email-test pattern of normalizing both cases.
+  async function readFetchCall(input, init) {
+    const url = typeof input === "string" ? input : (input instanceof Request ? input.url : String(input));
+    const method = (init?.method || (input instanceof Request ? input.method : "GET") || "GET").toUpperCase();
+    let rawBody = init?.body;
+    if (rawBody === undefined && input instanceof Request) {
+      try { rawBody = await input.clone().text(); } catch { rawBody = undefined; }
+    }
+    let body = null;
+    if (rawBody && typeof rawBody === "string") {
+      try { body = JSON.parse(rawBody); } catch { body = rawBody; }
+    } else if (rawBody) {
+      body = rawBody;
+    }
+    let auth = null;
+    if (init?.headers) {
+      const h = init.headers;
+      if (typeof h.get === "function") auth = h.get("authorization");
+      else auth = h.Authorization ?? h.authorization ?? null;
+    }
+    if (!auth && input instanceof Request) {
+      auth = input.headers.get("authorization");
+    }
+    return { url, method, body, auth };
+  }
+
+  it("ai translate <text> --to <lang> defaults to active project (GH-187)", async () => {
+    await seedActiveProject();
+    const { run } = await import("./cli/lib/ai.mjs");
+    let seen = null;
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = async (input, init) => {
+      const call = await readFetchCall(input, init);
+      if (/\/ai\/v1\/translate$/.test(call.url) && call.method === "POST") {
+        seen = call;
+      }
+      return prevFetch(input, init);
+    };
+    let threw = null;
+    captureStart();
+    try {
+      await run("translate", ["hello world", "--to", "es"]);
+    } catch (e) { threw = e; } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+    assert.equal(threw, null,
+      `should succeed without explicit project; got: ${threw && threw.message}\nstderr: ${capturedStderr()}`);
+    assert.ok(seen, `should hit /ai/v1/translate; stdout: ${capturedStdout()}, stderr: ${capturedStderr()}`);
+    assert.equal(seen.body?.text, "hello world",
+      `request body must contain the text positional, got: ${JSON.stringify(seen.body)}`);
+    assert.equal(seen.body?.to, "es",
+      `request body must contain --to value, got: ${JSON.stringify(seen.body)}`);
+    // The active project's service_key should be in the Authorization header.
+    assert.ok(seen.auth && String(seen.auth).includes("svc_test_key"),
+      `Authorization header must use the active project's service_key; got: ${seen.auth}`);
+  });
+
+  it("ai translate prj_<id> <text> --to <lang> still uses explicit id (GH-187)", async () => {
+    await seedActiveProject();
+    // Seed a second project so the explicit id resolves.
+    const { saveProject } = await import("./cli/lib/config.mjs");
+    saveProject("prj_explicit", {
+      anon_key: "anon_explicit",
+      service_key: "svc_explicit",
+    });
+
+    const { run } = await import("./cli/lib/ai.mjs");
+    let seen = null;
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = async (input, init) => {
+      const call = await readFetchCall(input, init);
+      if (/\/ai\/v1\/translate$/.test(call.url) && call.method === "POST") {
+        seen = call;
+      }
+      return prevFetch(input, init);
+    };
+    let threw = null;
+    captureStart();
+    try {
+      await run("translate", ["prj_explicit", "hello world", "--to", "es"]);
+    } catch (e) { threw = e; } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+      const { removeProject } = await import("./cli/lib/config.mjs");
+      removeProject("prj_explicit");
+    }
+    assert.equal(threw, null, `should succeed; got: ${threw && threw.message}`);
+    assert.ok(seen, `should hit /ai/v1/translate; stderr: ${capturedStderr()}`);
+    assert.equal(seen.body?.text, "hello world",
+      `request body must contain the text positional, got: ${JSON.stringify(seen.body)}`);
+    assert.ok(seen.auth && String(seen.auth).includes("svc_explicit"),
+      `must use explicit project's service_key (svc_explicit); got: ${seen.auth}`);
+  });
+
+  it("ai moderate <text> defaults to active project (GH-187)", async () => {
+    await seedActiveProject();
+    const { run } = await import("./cli/lib/ai.mjs");
+    let seen = null;
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = async (input, init) => {
+      const call = await readFetchCall(input, init);
+      if (/\/ai\/v1\/moderate$/.test(call.url) && call.method === "POST") {
+        seen = call;
+      }
+      return prevFetch(input, init);
+    };
+    let threw = null;
+    captureStart();
+    try {
+      await run("moderate", ["test text"]);
+    } catch (e) { threw = e; } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+    assert.equal(threw, null,
+      `should succeed without explicit project; got: ${threw && threw.message}\nstderr: ${capturedStderr()}`);
+    assert.ok(seen, `should hit /ai/v1/moderate; stdout: ${capturedStdout()}, stderr: ${capturedStderr()}`);
+    assert.equal(seen.body?.text, "test text",
+      `request body must contain the text positional, got: ${JSON.stringify(seen.body)}`);
+    assert.ok(seen.auth && String(seen.auth).includes("svc_test_key"),
+      `Authorization header must use the active project's service_key; got: ${seen.auth}`);
+  });
+
+  it("ai usage with no args defaults to active project (GH-187)", async () => {
+    await seedActiveProject();
+    const { run } = await import("./cli/lib/ai.mjs");
+    let seen = null;
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = async (input, init) => {
+      const call = await readFetchCall(input, init);
+      if (/\/ai\/v1\/usage$/.test(call.url) && call.method === "GET") {
+        seen = call;
+      }
+      return prevFetch(input, init);
+    };
+    let threw = null;
+    captureStart();
+    try {
+      await run("usage", []);
+    } catch (e) { threw = e; } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+    assert.equal(threw, null,
+      `should succeed without args; got: ${threw && threw.message}\nstderr: ${capturedStderr()}`);
+    assert.ok(seen, `should hit /ai/v1/usage; stdout: ${capturedStdout()}, stderr: ${capturedStderr()}`);
+    assert.ok(seen.auth && String(seen.auth).includes("svc_test_key"),
+      `Authorization header must use the active project's service_key; got: ${seen.auth}`);
+    // Output should reflect the AI usage shape, not the projects-usage shape.
+    assert.ok(capturedStdout().includes("translation"),
+      `stdout should include translation usage block, got: ${capturedStdout()}`);
   });
 });

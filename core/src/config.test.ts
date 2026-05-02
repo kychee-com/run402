@@ -4,15 +4,18 @@ import { join } from "node:path";
 import { homedir } from "node:os";
 import { mkdtempSync, writeFileSync, existsSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { getApiBase, getConfigDir, getKeystorePath, getAllowancePath } from "./config.js";
+import { getApiBase, getDeployApiBase, getConfigDir, getKeystorePath, getAllowancePath } from "./config.js";
 
 const origApiBase = process.env.RUN402_API_BASE;
+const origDeployApiBase = process.env.RUN402_DEPLOY_API_BASE;
 const origConfigDir = process.env.RUN402_CONFIG_DIR;
 const origAllowancePath = process.env.RUN402_ALLOWANCE_PATH;
 
 afterEach(() => {
   if (origApiBase !== undefined) process.env.RUN402_API_BASE = origApiBase;
   else delete process.env.RUN402_API_BASE;
+  if (origDeployApiBase !== undefined) process.env.RUN402_DEPLOY_API_BASE = origDeployApiBase;
+  else delete process.env.RUN402_DEPLOY_API_BASE;
   if (origConfigDir !== undefined) process.env.RUN402_CONFIG_DIR = origConfigDir;
   else delete process.env.RUN402_CONFIG_DIR;
   if (origAllowancePath !== undefined) process.env.RUN402_ALLOWANCE_PATH = origAllowancePath;
@@ -28,6 +31,85 @@ describe("config", () => {
   it("returns custom API base from env", () => {
     process.env.RUN402_API_BASE = "https://custom.api.com";
     assert.equal(getApiBase(), "https://custom.api.com");
+  });
+
+  it("accepts http:// API base (local dev / staging)", () => {
+    process.env.RUN402_API_BASE = "http://localhost:8080";
+    assert.equal(getApiBase(), "http://localhost:8080");
+  });
+
+  it("warns and falls back to default when RUN402_API_BASE is empty string", () => {
+    process.env.RUN402_API_BASE = "";
+    const origWrite = process.stderr.write.bind(process.stderr);
+    let captured = "";
+    // @ts-expect-error monkey-patch for test
+    process.stderr.write = (chunk: string | Uint8Array) => {
+      captured += typeof chunk === "string" ? chunk : Buffer.from(chunk).toString("utf8");
+      return true;
+    };
+    try {
+      assert.equal(getApiBase(), "https://api.run402.com");
+    } finally {
+      process.stderr.write = origWrite;
+    }
+    assert.match(captured, /RUN402_API_BASE/);
+    assert.match(captured, /empty/i);
+  });
+
+  it("throws when RUN402_API_BASE has no scheme", () => {
+    process.env.RUN402_API_BASE = "api.run402.com";
+    assert.throws(
+      () => getApiBase(),
+      /RUN402_API_BASE.*not a valid URL.*api\.run402\.com/,
+    );
+  });
+
+  it("throws when RUN402_API_BASE uses a non-http(s) scheme (javascript:)", () => {
+    process.env.RUN402_API_BASE = "javascript:alert(1)";
+    assert.throws(
+      () => getApiBase(),
+      /RUN402_API_BASE.*http\(s\).*javascript:/,
+    );
+  });
+
+  it("throws when RUN402_API_BASE uses a non-http(s) scheme (file:)", () => {
+    process.env.RUN402_API_BASE = "file:///etc/passwd";
+    assert.throws(
+      () => getApiBase(),
+      /RUN402_API_BASE.*http\(s\).*file:/,
+    );
+  });
+
+  it("getDeployApiBase falls back to getApiBase when not set", () => {
+    delete process.env.RUN402_DEPLOY_API_BASE;
+    process.env.RUN402_API_BASE = "https://custom.api.com";
+    assert.equal(getDeployApiBase(), "https://custom.api.com");
+  });
+
+  it("getDeployApiBase validates its own value", () => {
+    process.env.RUN402_DEPLOY_API_BASE = "javascript:alert(1)";
+    assert.throws(
+      () => getDeployApiBase(),
+      /RUN402_DEPLOY_API_BASE.*http\(s\).*javascript:/,
+    );
+  });
+
+  it("getDeployApiBase warns on empty string and falls back to getApiBase", () => {
+    process.env.RUN402_DEPLOY_API_BASE = "";
+    process.env.RUN402_API_BASE = "https://custom.api.com";
+    const origWrite = process.stderr.write.bind(process.stderr);
+    let captured = "";
+    // @ts-expect-error monkey-patch for test
+    process.stderr.write = (chunk: string | Uint8Array) => {
+      captured += typeof chunk === "string" ? chunk : Buffer.from(chunk).toString("utf8");
+      return true;
+    };
+    try {
+      assert.equal(getDeployApiBase(), "https://custom.api.com");
+    } finally {
+      process.stderr.write = origWrite;
+    }
+    assert.match(captured, /RUN402_DEPLOY_API_BASE/);
   });
 
   it("returns default config dir", () => {

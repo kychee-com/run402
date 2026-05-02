@@ -13,6 +13,35 @@ Notes:
     balance, tier, projects), use 'run402 status'.
 `;
 
+const SUB_HELP = {
+  status: `run402 service status — Public service availability report
+
+Usage:
+  run402 service status
+
+Notes:
+  - Unauthenticated and free; no allowance required
+  - Returns uptime, supported capabilities, operator, and deployment info
+  - For account state (allowance, balance, tier, projects), use
+    'run402 status' instead
+
+Examples:
+  run402 service status
+`,
+  health: `run402 service health — Service liveness check
+
+Usage:
+  run402 service health
+
+Notes:
+  - Unauthenticated and free; no allowance required
+  - Returns per-dependency status and the deployed version
+
+Examples:
+  run402 service health
+`,
+};
+
 async function status() {
   try {
     const data = await getSdk().service.status();
@@ -34,7 +63,7 @@ async function health() {
 export async function run(sub, args) {
   if (!sub || sub === "--help" || sub === "-h") { console.log(HELP); process.exit(0); }
   if (Array.isArray(args) && (args.includes("--help") || args.includes("-h"))) {
-    console.log(HELP);
+    console.log(SUB_HELP[sub] || HELP);
     process.exit(0);
   }
   switch (sub) {

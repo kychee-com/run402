@@ -1,4 +1,4 @@
-import { readFileSync } from "fs";
+import { readFileSync, existsSync, statSync } from "fs";
 import { findProject, API } from "./config.mjs";
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail } from "./sdk-errors.mjs";
@@ -142,6 +142,29 @@ Examples:
   run402 functions update prj_abc123 send-reminders --schedule-remove
   run402 functions update prj_abc123 my-func --timeout 15 --memory 256
 `,
+  list: `run402 functions list — List all functions for a project
+
+Usage:
+  run402 functions list <project_id>
+
+Arguments:
+  <project_id>        Target project ID
+
+Examples:
+  run402 functions list prj_abc123
+`,
+  delete: `run402 functions delete — Delete a function from a project
+
+Usage:
+  run402 functions delete <project_id> <name>
+
+Arguments:
+  <project_id>        Target project ID
+  <name>              Function name to delete
+
+Examples:
+  run402 functions delete prj_abc123 stripe-webhook
+`,
 };
 
 async function deploy(projectId, name, args) {
@@ -157,6 +180,24 @@ async function deploy(projectId, name, args) {
   }
   if (!opts.file) {
     fail({ code: "BAD_USAGE", message: "Missing --file <file>" });
+  }
+  if (!existsSync(opts.file)) {
+    fail({
+      code: "FILE_NOT_FOUND",
+      message: `File not found: ${opts.file}`,
+      field: "--file",
+      path: opts.file,
+      hint: "Check that --file points to an existing source file.",
+    });
+  }
+  const stat = statSync(opts.file);
+  if (!stat.isFile()) {
+    fail({
+      code: "NOT_A_FILE",
+      message: `--file points to a ${stat.isDirectory() ? "directory" : "non-regular file"}: ${opts.file}`,
+      field: "--file",
+      path: opts.file,
+    });
   }
   const code = readFileSync(opts.file, "utf-8");
 

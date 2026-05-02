@@ -72,7 +72,7 @@ Examples:
 
 ## Step 1: Install
 
-Requires Node.js >= 20.
+Requires Node.js >= 22.
 
 ```bash
 npm install -g run402

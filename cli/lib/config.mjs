@@ -14,8 +14,27 @@ export const ALLOWANCE_FILE = getAllowancePath();
 export const PROJECTS_FILE = getKeystorePath();
 export const API = getApiBase();
 
+/**
+ * Wraps core's `readAllowance()` and converts the malformed-shape throw
+ * (GH-194) into the canonical CLI failure envelope. Without this guard, every
+ * CLI subcommand that touches the allowance leaks a Node stack trace and
+ * source paths the moment a user has a malformed `allowance.json`.
+ *
+ * The unparseable-JSON case still returns `null` (matching the historical
+ * "no_allowance" UX); only valid-JSON-but-wrong-shape becomes a structured
+ * error with `code: BAD_ALLOWANCE_FILE`.
+ */
 export function readAllowance() {
-  return coreReadAllowance();
+  try {
+    return coreReadAllowance();
+  } catch (err) {
+    fail({
+      code: "BAD_ALLOWANCE_FILE",
+      message: err?.message ?? "allowance.json is malformed",
+      hint: "Back up ~/.config/run402/allowance.json and run 'run402 init' to recreate it.",
+      details: { path: ALLOWANCE_FILE },
+    });
+  }
 }
 
 export function saveAllowance(data) {

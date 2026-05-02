@@ -53,7 +53,7 @@ const MATRIX = {
     shared: ["status", "create", "fund", "balance", "export"],
     specific: ["checkout", "history"],
   },
-  tier: { shared: ["status", "set"], specific: [] },
+  tier: { shared: [], specific: ["status", "set"] },
   projects: {
     shared: [
       "quote", "use", "list", "info", "keys", "rest",
@@ -63,48 +63,49 @@ const MATRIX = {
   },
   deploy: { shared: [], specific: [] },
   functions: {
-    shared: ["list", "delete"],
-    specific: ["deploy", "invoke", "logs", "update"],
+    shared: [],
+    specific: ["deploy", "invoke", "logs", "update", "list", "delete"],
   },
-  secrets: { shared: ["list", "delete"], specific: ["set"] },
+  secrets: { shared: [], specific: ["set", "list", "delete"] },
   blob: {
     shared: [],
     specific: ["put", "get", "ls", "rm", "sign"],
   },
   sites: { shared: ["status"], specific: ["deploy", "deploy-dir"] },
-  subdomains: { shared: ["delete", "list"], specific: ["claim"] },
-  domains: { shared: ["add", "list", "status", "delete"], specific: [] },
+  subdomains: { shared: [], specific: ["claim", "list", "delete"] },
+  domains: { shared: [], specific: ["add", "list", "status", "delete"] },
   apps: {
-    shared: ["versions", "inspect", "delete"],
-    specific: ["browse", "fork", "publish", "update"],
+    shared: [],
+    specific: ["browse", "fork", "publish", "update", "versions", "inspect", "delete"],
   },
-  ai: { shared: ["moderate", "usage"], specific: ["translate"] },
-  image: { shared: ["generate"], specific: [] },
+  ai: { shared: [], specific: ["translate", "moderate", "usage"] },
+  image: { shared: [], specific: ["generate"] },
   email: {
-    shared: ["create", "get"],
-    specific: ["info", "status", "send", "list", "get-raw", "reply", "delete"],
+    shared: [],
+    specific: ["info", "status", "send", "list", "get-raw", "reply", "delete", "create", "get"],
   },
-  message: { shared: ["send"], specific: [] },
+  message: { shared: [], specific: ["send"] },
   auth: {
     shared: [],
     specific: ["magic-link", "verify", "set-password", "settings", "providers"],
   },
   "sender-domain": {
-    shared: ["register", "status", "remove", "inbound-enable", "inbound-disable"],
-    specific: [],
+    shared: [],
+    specific: ["register", "status", "remove", "inbound-enable", "inbound-disable"],
   },
   billing: {
-    shared: ["create-email", "link-wallet", "balance"],
-    specific: ["tier-checkout", "buy-email-pack", "auto-recharge", "history"],
+    shared: [],
+    specific: ["tier-checkout", "buy-email-pack", "auto-recharge", "history", "create-email", "link-wallet", "balance"],
   },
   contracts: {
-    shared: ["get-wallet", "list-wallets", "status"],
+    shared: [],
     specific: [
       "provision-wallet", "set-recovery", "set-alert", "call", "read", "drain", "delete",
+      "get-wallet", "list-wallets", "status",
     ],
   },
-  agent: { shared: ["contact"], specific: [] },
-  service: { shared: ["status", "health"], specific: [] },
+  agent: { shared: [], specific: ["contact"] },
+  service: { shared: [], specific: ["status", "health"] },
 };
 
 // `run402 email webhooks <action>` delegates to lib/webhooks.mjs.
@@ -269,6 +270,83 @@ describe("CLI --help contract", () => {
         assertHelp(await runCli(["email", "webhooks", action, "--help"]),
           `run402 email webhooks ${action} --help`,
           { expectHeadingStartsWith: `run402 email webhooks ${action}` });
+      });
+    }
+  });
+
+  // GH-198 — `run402 deploy --help` was showing the v1 bundle manifest format
+  // (top-level `migrations` string, `secrets` array, `functions` array, `files`
+  // array) which the v2 gateway rejects. The example must match the v2
+  // ReleaseSpec shape documented in cli/llms-cli.txt: object trees rooted at
+  // `database`, `site`, `functions.replace`, `secrets.set`, `subdomains`.
+  describe("run402 deploy --help shows v2 manifest format (GH-198)", () => {
+    it("deploy --help example uses v2 keys (database/site/replace), not v1 arrays", async () => {
+      const result = await runCli(["deploy", "--help"]);
+      assertHelp(result, "run402 deploy --help");
+
+      const out = result.stdout;
+
+      // v2 keys must be present in the example block.
+      assert.match(out, /"database":/,
+        `deploy --help: example must contain a top-level "database": key (v2 ReleaseSpec)\nstdout:\n${out}`);
+      assert.match(out, /"site":/,
+        `deploy --help: example must contain a top-level "site": key (v2 ReleaseSpec)\nstdout:\n${out}`);
+      assert.match(out, /"replace":/,
+        `deploy --help: example must contain a "replace": key (v2 site/functions shape)\nstdout:\n${out}`);
+      assert.match(out, /"set":/,
+        `deploy --help: example must contain a "set": key (v2 secrets/subdomains shape)\nstdout:\n${out}`);
+      assert.match(out, /"subdomains":/,
+        `deploy --help: example must contain a "subdomains": key (v2 ReleaseSpec)\nstdout:\n${out}`);
+
+      // v1 shapes that are NOT accepted by the v2 gateway must be gone.
+      // - top-level `"migrations":` as a string (v1) — v2 nests under database.migrations as an array of {id, sql}
+      assert.doesNotMatch(out, /^\s*"migrations":\s*"/m,
+        `deploy --help: example must not have v1 top-level "migrations": "<string>" (use database.migrations: [{id, sql}])\nstdout:\n${out}`);
+      // - top-level `"files":` as an array (v1) — v2 uses site.replace as an object map
+      assert.doesNotMatch(out, /^\s*"files":\s*\[/m,
+        `deploy --help: example must not have v1 top-level "files": [...] array (use site.replace: { "<path>": {...} })\nstdout:\n${out}`);
+      // - top-level `"secrets":` as an array (v1) — v2 uses secrets.set as an object map
+      assert.doesNotMatch(out, /^\s*"secrets":\s*\[/m,
+        `deploy --help: example must not have v1 top-level "secrets": [...] array (use secrets.set: { "<KEY>": {...} })\nstdout:\n${out}`);
+      // - top-level `"functions":` as an array (v1) — v2 uses functions.replace as an object map
+      assert.doesNotMatch(out, /^\s*"functions":\s*\[/m,
+        `deploy --help: example must not have v1 top-level "functions": [...] array (use functions.replace: { "<name>": {...} })\nstdout:\n${out}`);
+      // - top-level `"subdomain":` (singular, v1) — v2 uses `subdomains.set: ["..."]`
+      assert.doesNotMatch(out, /^\s*"subdomain":/m,
+        `deploy --help: example must not have v1 top-level "subdomain" (singular); use "subdomains": { "set": [...] }\nstdout:\n${out}`);
+    });
+  });
+
+  // Regression test for GH-188: confirm the previously-broken subcommands now
+  // print their own per-subcommand help instead of falling back to the parent
+  // namespace's help page. The MATRIX above also covers these (each one moved
+  // from `shared` to `specific`), but this explicit suite spot-checks a
+  // representative sample across namespaces and asserts both that the
+  // subcommand-specific title is present AND that the parent's general
+  // "Manage ..." headline is NOT.
+  describe("GH-188 regression — SUB_HELP entries for previously-broken subs", () => {
+    const cases = [
+      // [command sequence, parent-help heading that should NOT appear]
+      [["secrets", "list"],            "run402 secrets — Manage project secrets"],
+      [["functions", "list"],          "run402 functions — Manage serverless functions"],
+      [["domains", "list"],            "run402 domains — Manage custom domains"],
+      [["ai", "moderate"],             "run402 ai — AI translation and moderation tools"],
+      [["tier", "status"],             "run402 tier — Manage your Run402 tier subscription"],
+      [["service", "status"],          "run402 service — Run402 service health and availability"],
+      [["sender-domain", "register"],  "run402 sender-domain — Manage custom email sender domain"],
+      [["contracts", "get-wallet"],    "run402 contracts — KMS-backed Ethereum wallets"],
+    ];
+    for (const [argv, parentHeading] of cases) {
+      it(`run402 ${argv.join(" ")} --help shows per-subcommand title`, async () => {
+        const result = await runCli([...argv, "--help"]);
+        const expectedHeading = `run402 ${argv.join(" ")}`;
+        assertHelp(result, `run402 ${argv.join(" ")} --help`, {
+          expectHeadingStartsWith: expectedHeading,
+        });
+        // Belt-and-suspenders: parent-only headline must NOT be the first line.
+        const firstLine = result.stdout.trimStart().split(/\r?\n/, 1)[0];
+        assert.ok(!firstLine.startsWith(parentHeading.split(" — ")[0] + " —"),
+          `run402 ${argv.join(" ")} --help fell through to parent help: first line was "${firstLine}"`);
       });
     }
   });

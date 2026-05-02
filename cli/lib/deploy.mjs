@@ -16,77 +16,100 @@ Options:
   --project <id>       Project ID to deploy to     (default: active project)
   --help, -h           Show this help message
 
-Manifest format (JSON):
+Subcommands (recommended for new manifests):
+  run402 deploy apply --manifest <file>     unified deploy primitive (v1.34+)
+  run402 deploy resume <operation_id>       resume a stuck operation
+  run402 deploy list [--project <id>]       list recent deploy operations
+  run402 deploy events <operation_id>       fetch event stream for an operation
+
+Manifest format (JSON, v2 ReleaseSpec — recommended):
   {
     "project_id": "prj_...",
-    "migrations": "CREATE TABLE items (...)",
-    "migrations_file": "setup.sql",
-    "secrets": [{ "key": "OPENAI_API_KEY", "value": "sk-..." }],
-    "functions": [{
-      "name": "my-fn",
-      "code": "export default async (req) => new Response('ok')"
-    }],
-    "files": [
-      {
-        "file": "manifest.json",
-        "data": "{\\"version\\":\\"1\\",\\"tables\\":[{\\"name\\":\\"items\\",\\"expose\\":true,\\"policy\\":\\"public_read_write_UNRESTRICTED\\",\\"i_understand_this_is_unrestricted\\":true}]}"
-      },
-      { "file": "index.html", "data": "<html>...</html>" },
-      { "file": "style.css", "path": "./dist/style.css" }
-    ],
-    "subdomain": "my-app"
+    "database": {
+      "migrations": [
+        { "id": "001_init", "sql": "CREATE TABLE IF NOT EXISTS items (...)" }
+      ],
+      "expose": {
+        "version": "1",
+        "tables": [
+          { "name": "items", "expose": true, "policy": "public_read_authenticated_write" }
+        ]
+      }
+    },
+    "secrets":   { "set": { "OPENAI_API_KEY": { "value": "sk-..." } } },
+    "functions": {
+      "replace": {
+        "api": {
+          "runtime": "node22",
+          "source": { "data": "export default async (req) => new Response('ok')" }
+        }
+      }
+    },
+    "site": {
+      "replace": {
+        "index.html": { "data": "<!doctype html><html>...</html>" },
+        "assets/logo.png": { "data": "iVBORw0KGgo...", "encoding": "base64" }
+      }
+    },
+    "subdomains": { "set": ["my-app"] }
   }
 
   project_id is required (provision first with 'run402 provision').
-  All other fields are optional.
+  All other fields are optional. Top-level absence = "leave untouched".
 
-  Migrations can be inline or read from a file:
-    "migrations": "CREATE TABLE ..."              ← inline SQL
-    "migrations_file": "setup.sql"                ← read from disk
-  Use migrations_file when your SQL contains JSONB literals or other
-  characters that are painful to escape inside a JSON string.
-  Paths are resolved relative to the manifest file's directory.
-  If both are present, migrations_file wins.
+  Source of truth for the v2 ReleaseSpec shape:
+    https://run402.com/llms-cli.txt  (search for "Unified Deploy")
 
-  Files can use either inline "data" or a local "path":
-    { "file": "index.html", "data": "<html>...</html>" }   ← inline content
-    { "file": "style.css",  "path": "./dist/style.css" }   ← read from disk
-  Paths are resolved relative to the manifest file's directory.
-  Binary files (images, fonts, etc.) are auto-detected and base64-encoded.
+  Replace vs patch semantics per resource:
+    "site": { "replace": {...} }        whole-site (omitted files removed)
+    "site": { "patch": { "put": {...}, "delete": [...] } }   surgical updates
+  Same for "functions" and "secrets". Migrations are always additive (each
+  is keyed by id; re-shipping the same id+sql is a registry noop, same id
+  with different sql is a hard MIGRATION_CHECKSUM_MISMATCH error).
 
-  Authorization (manifest.json file pattern):
-    Tables are dark by default — anon/authenticated can't read them until a
-    manifest declares them with expose:true. Ship a "manifest.json" entry in
-    files[] (preferred — auth-as-SDLC) and the platform reads, validates,
-    applies, and strips it before the site deploys. Schema:
-    https://run402.com/schemas/manifest.v1.json
+  File entries accept inline "data", a local "path", or a "sql_path"
+  (migrations only) — paths are resolved relative to the manifest file's
+  directory. Binary files (images, fonts, PDFs) take "encoding": "base64";
+  text defaults to UTF-8.
 
-    Per-table policies:
-      user_owns_rows                    users see only their own rows. Requires
-                                        "owner_column"; with
-                                        "force_owner_on_insert": true the gateway
-                                        sets it from auth.uid() automatically.
-                                        uuid columns get index-friendly policies.
-      public_read_authenticated_write   anyone reads; any authenticated user can
-                                        INSERT/UPDATE/DELETE any row (not just
-                                        their own). For collaborative content
-                                        like shared boards or announcements.
-      public_read_write_UNRESTRICTED    ⚠  fully open — anon_key can read AND
-                                        write any row. Only for intentionally
-                                        public tables (guestbooks, waitlists,
-                                        feedback forms). REQUIRES
+  Authorization (database.expose):
+    Tables are dark by default — anon/authenticated can't read them until
+    you declare them via "database.expose". Per-table policies:
+      user_owns_rows                    users see only their own rows.
+                                        Requires "owner_column"; with
+                                        "force_owner_on_insert": true the
+                                        gateway sets it from auth.uid()
+                                        automatically.
+      public_read_authenticated_write   anyone reads; any authenticated
+                                        user can INSERT/UPDATE/DELETE any
+                                        row (not just their own).
+      public_read_write_UNRESTRICTED    ⚠  fully open — anon_key reads AND
+                                        writes. REQUIRES
                                         "i_understand_this_is_unrestricted":
                                         true on the table entry.
-      custom                            escape hatch. Provide "custom_sql" with
-                                        CREATE POLICY statements.
+      custom                            escape hatch. Provide "custom_sql"
+                                        with CREATE POLICY statements.
+  Schema for the expose section: https://run402.com/schemas/manifest.v1.json
 
-  ⚠️  Without a manifest, tables are unreachable via anon_key. If your app
-  reads or writes data from the browser, you need a manifest.json entry.
+  ⚠️  Without an "expose" entry, tables are unreachable via anon_key.
+
+Legacy v1 bundle format (still accepted via compatibility shim):
+  Existing manifests with top-level "migrations" (string), "secrets" (array),
+  "functions" (array), "files" (array), "subdomain" (string), and the
+  "files[].file/data/path" + inline "manifest.json" entry continue to work —
+  the SDK translates them into a v2 ReleaseSpec under the hood. Prefer the
+  v2 shape above for new manifests; the legacy form is preserved for the
+  deprecation window so existing scripts don't break.
+
+  "migrations_file": "setup.sql"   (legacy convenience) reads SQL from disk
+  relative to the manifest file. Useful when JSONB literals make inline
+  strings painful. Still supported on the legacy code path.
 
 Examples:
   run402 deploy --manifest app.json
   run402 deploy --manifest app.json --project prj_123_1
   cat app.json | run402 deploy
+  run402 deploy apply --manifest app.json   # unified primitive (recommended)
 
 Prerequisites:
   - run402 init                     Set up allowance and funding
@@ -153,6 +176,50 @@ async function loadManifest(opts) {
         field: opts.manifest ? "manifest" : "stdin",
         ...(opts.manifest ? { path: resolve(opts.manifest) } : {}),
         parse_error: err.message,
+      },
+    });
+  }
+
+  // GH-185: Reject empty manifests client-side. Without this guard,
+  // `echo '{}' | run402 deploy` silently succeeds against the gateway with
+  // no signal that nothing was deployed. The MCP `deploy` tool was hardened
+  // for the same class of bug in #133; this is the CLI-side analog.
+  //
+  // "Meaningful" = at least one of these keys exists with non-empty content.
+  // We accept both shapes because this CLI path receives v1 manifests
+  // (translated by the bundleDeploy shim) and may also receive v2 manifests.
+  //   v1: migrations, migrations_file, secrets, functions, files, subdomain
+  //   v2: database, site, functions, secrets, subdomains, domains
+  // For object-typed v2 sections (site, database, functions, secrets,
+  // subdomains, domains) the "container is non-empty" check isn't enough —
+  // `site:{replace:{}}` has one key but ships nothing. We recurse one level
+  // so any object whose own values are all empty containers is still empty.
+  const meaningfulV1 = ["migrations", "migrations_file", "secrets", "functions", "files", "subdomain"];
+  const meaningfulV2 = ["database", "site", "functions", "secrets", "subdomains", "domains"];
+  const meaningful = [...new Set([...meaningfulV1, ...meaningfulV2])];
+
+  function hasContent(v) {
+    if (v == null) return false;
+    if (Array.isArray(v)) return v.length > 0;
+    if (typeof v === "object") {
+      const keys = Object.keys(v);
+      if (keys.length === 0) return false;
+      return keys.some((k) => hasContent(v[k]));
+    }
+    if (typeof v === "string") return v.length > 0;
+    return true;
+  }
+
+  const hasMeaningfulContent = manifest && typeof manifest === "object" && !Array.isArray(manifest) && meaningful.some((key) => hasContent(manifest[key]));
+  if (!hasMeaningfulContent) {
+    fail({
+      code: "MANIFEST_EMPTY",
+      message: `Manifest contains no deployable sections. Expected at least one of: ${meaningful.join(", ")}`,
+      hint: "Did you mean to write a 'site.replace' or 'database.migrations' block? See https://run402.com/schemas/manifest.v1.json",
+      details: {
+        field: opts.manifest ? "manifest" : "stdin",
+        ...(opts.manifest ? { path: resolve(opts.manifest) } : {}),
+        meaningful_keys: meaningful,
       },
     });
   }

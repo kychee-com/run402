@@ -49,6 +49,35 @@ Examples:
   run402 subdomains claim myapp
   run402 subdomains claim myapp --deployment dpl_abc123 --project prj_abc123
 `,
+  list: `run402 subdomains list — List subdomains claimed by a project
+
+Usage:
+  run402 subdomains list [<id>]
+
+Arguments:
+  <id>                Project ID (defaults to the active project)
+
+Examples:
+  run402 subdomains list
+  run402 subdomains list prj_abc123
+`,
+  delete: `run402 subdomains delete — Release a claimed subdomain
+
+Usage:
+  run402 subdomains delete <name> --confirm [--project <id>]
+
+Arguments:
+  <name>              Subdomain name to release
+
+Options:
+  --confirm           Required: releasing a subdomain is irreversible and
+                      makes it available for any other project to claim
+  --project <id>      Project ID (defaults to the active project)
+
+Examples:
+  run402 subdomains delete myapp --confirm
+  run402 subdomains delete myapp --confirm --project prj_abc123
+`,
 };
 
 async function claim(positionalArgs, flagArgs) {

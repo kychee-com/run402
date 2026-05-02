@@ -2,7 +2,7 @@ import { readFileSync } from "fs";
 import { findProject, loadKeyStore, API, allowanceAuthHeaders, resolveProjectId, getActiveProjectId } from "./config.mjs";
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail, parseFlagJson } from "./sdk-errors.mjs";
-import { assertKnownFlags, failBadProjectId, hasHelp, normalizeArgv, positionalArgs } from "./argparse.mjs";
+import { assertKnownFlags, failBadProjectId, hasHelp, normalizeArgv, positionalArgs, resolvePositionalProject } from "./argparse.mjs";
 
 const HELP = `run402 projects — Manage your deployed Run402 projects
 
@@ -123,7 +123,37 @@ async function provision(args) {
   const opts = { tier: "prototype", name: undefined };
   for (let i = 0; i < args.length; i++) {
     if (args[i] === "--tier" && args[i + 1]) opts.tier = args[++i];
-    if (args[i] === "--name" && args[i + 1]) opts.name = args[++i];
+    // Use !== undefined so an empty-string value is captured (and rejected
+    // below) rather than silently dropped by the falsy-check pattern (GH-176).
+    if (args[i] === "--name" && args[i + 1] !== undefined) opts.name = args[++i];
+  }
+  // Validate --name when provided. Omitted --name lets the server pick a
+  // default. The same envelope should also be enforced server-side (GH-176).
+  if (opts.name !== undefined) {
+    if (opts.name === "") {
+      fail({
+        code: "BAD_PROJECT_NAME",
+        message: "--name must not be empty.",
+        details: { field: "--name" },
+        hint: "Provide a 1-128 character name, or omit --name to use the server-assigned default.",
+      });
+    }
+    if (opts.name.length > 128) {
+      fail({
+        code: "BAD_PROJECT_NAME",
+        message: `--name must be 1-128 characters, got ${opts.name.length}.`,
+        details: { field: "--name", length: opts.name.length, max: 128 },
+      });
+    }
+    // eslint-disable-next-line no-control-regex
+    if (/[\x00-\x1f\x7f]/.test(opts.name)) {
+      fail({
+        code: "BAD_PROJECT_NAME",
+        message: "--name contains control characters (newline, tab, etc).",
+        details: { field: "--name" },
+        hint: "Project names should be a single-line label.",
+      });
+    }
   }
   // Preserve the aggressive early exit when no allowance is configured —
   // gives the user a more specific prompt than the SDK's 401/402 path.
@@ -259,6 +289,13 @@ async function sqlCmd(projectId, args = []) {
 }
 
 async function rest(projectId, table, queryParams) {
+  if (!table) {
+    fail({
+      code: "BAD_USAGE",
+      message: "Missing <table> argument. Usage: run402 projects rest [id] <table> [\"<query>\"]",
+      hint: "Run 'run402 projects schema <id>' to list tables.",
+    });
+  }
   const p = findProject(projectId);
   const res = await fetch(`${API}/rest/v1/${table}${queryParams ? '?' + queryParams : ''}`, { headers: { "apikey": p.anon_key } });
   const data = await res.json();
@@ -371,35 +408,6 @@ async function deleteProject(projectId, args = []) {
   } catch (err) {
     reportSdkError(err);
   }
-}
-
-// Resolve a positional project_id argument with active-project fallback (GH-102).
-// Callers can tighten the legacy shorthand when a bare non-prj positional is
-// more likely a mistyped project id than an argument for the active project.
-function resolvePositionalProject(args, opts = {}) {
-  const first = Array.isArray(args) ? args[0] : undefined;
-  if (typeof first === "string" && first.startsWith("prj_")) {
-    return { projectId: first, rest: args.slice(1) };
-  }
-  if (
-    typeof first === "string" &&
-    first.length > 0 &&
-    !first.startsWith("-") &&
-    Array.isArray(opts.rejectBareFirstWhenFlagPresent) &&
-    opts.rejectBareFirstWhenFlagPresent.some((flag) => args.includes(flag))
-  ) {
-    failBadProjectId(first);
-  }
-  if (typeof first === "string" && first.length > 0 && !first.startsWith("-") && opts.rejectBareFirst) {
-    failBadProjectId(first);
-  }
-  if (typeof first === "string" && first.length > 0 && !first.startsWith("-") && opts.maxBarePositionals !== undefined) {
-    const bare = positionalArgs(args, opts.valueFlags ?? []);
-    if (bare.length > opts.maxBarePositionals) {
-      failBadProjectId(first);
-    }
-  }
-  return { projectId: resolveProjectId(null), rest: Array.isArray(args) ? args : [] };
 }
 
 const FLAGS_BY_SUB = {

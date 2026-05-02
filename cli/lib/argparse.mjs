@@ -1,4 +1,5 @@
 import { fail } from "./sdk-errors.mjs";
+import { resolveProjectId } from "./config.mjs";
 
 export function normalizeArgv(argv = []) {
   const out = [];
@@ -99,6 +100,49 @@ export function failBadProjectId(value) {
   });
 }
 
+/**
+ * Validate a webhook URL: parse it locally and reject non-https:// schemes.
+ *
+ * Scope (GH-192): scheme-only validation. Reject `javascript:`, `file:`,
+ * `http:`, `data:`, `ftp:`, etc. before the request leaves the CLI process.
+ * Server-side SSRF defenses (private-IP filtering, DNS rebinding, IMDS
+ * blocking) live on the gateway, not here — this helper is the cheap
+ * client-side guard against the obvious classes.
+ *
+ * No-op when `url` is null/undefined/empty so callers can pass optional
+ * flag values directly. Required-vs-optional handling stays at the call
+ * site (e.g. `webhooks register` does its own missing-flag check first).
+ *
+ * On failure: `fail()` writes the canonical error envelope and exits 1.
+ *
+ * @param {string|null|undefined} url - The webhook URL to validate.
+ * @param {string} fieldName - The CLI flag name for the error envelope (e.g. "--url", "--webhook").
+ */
+export function validateWebhookUrl(url, fieldName = "--url") {
+  if (!url) return;
+  let parsed;
+  try {
+    parsed = new URL(url);
+  } catch {
+    fail({
+      code: "BAD_WEBHOOK_URL",
+      message: `${fieldName} is not a valid URL: ${JSON.stringify(url)}`,
+      field: fieldName,
+      hint: "Webhook URL must be a fully-qualified https:// URL.",
+      details: { flag: fieldName, value: url },
+    });
+  }
+  if (parsed.protocol !== "https:") {
+    fail({
+      code: "BAD_WEBHOOK_URL",
+      message: `${fieldName} must use https://, got ${parsed.protocol}`,
+      field: fieldName,
+      hint: "Webhook URLs must be https:// for transport security.",
+      details: { flag: fieldName, value: url, scheme: parsed.protocol },
+    });
+  }
+}
+
 export function positionalArgs(args = [], flagsWithValues = []) {
   const valueFlags = new Set(flagsWithValues);
   const out = [];
@@ -112,6 +156,49 @@ export function positionalArgs(args = [], flagsWithValues = []) {
     out.push(arg);
   }
   return out;
+}
+
+// Resolve a positional project_id argument with active-project fallback (GH-102, GH-187).
+// If the first positional starts with "prj_", treat it as the project id and
+// strip it from the rest. Otherwise, fall through to the active project from
+// the keystore. Callers can tighten the legacy shorthand when a bare non-prj
+// positional is more likely a mistyped project id than an argument for the
+// active project.
+//
+// Options:
+//   rejectBareFirst:                   when true, error if the first positional
+//                                      is non-empty and doesn't start with "prj_".
+//   rejectBareFirstWhenFlagPresent:    when one of these flags is present in
+//                                      args AND the first positional doesn't
+//                                      start with "prj_", error out.
+//   maxBarePositionals + valueFlags:   when set, count the bare (non-flag)
+//                                      positionals using `positionalArgs(args,
+//                                      valueFlags)` and error if the count
+//                                      exceeds maxBarePositionals.
+export function resolvePositionalProject(args, opts = {}) {
+  const first = Array.isArray(args) ? args[0] : undefined;
+  if (typeof first === "string" && first.startsWith("prj_")) {
+    return { projectId: first, rest: args.slice(1) };
+  }
+  if (
+    typeof first === "string" &&
+    first.length > 0 &&
+    !first.startsWith("-") &&
+    Array.isArray(opts.rejectBareFirstWhenFlagPresent) &&
+    opts.rejectBareFirstWhenFlagPresent.some((flag) => args.includes(flag))
+  ) {
+    failBadProjectId(first);
+  }
+  if (typeof first === "string" && first.length > 0 && !first.startsWith("-") && opts.rejectBareFirst) {
+    failBadProjectId(first);
+  }
+  if (typeof first === "string" && first.length > 0 && !first.startsWith("-") && opts.maxBarePositionals !== undefined) {
+    const bare = positionalArgs(args, opts.valueFlags ?? []);
+    if (bare.length > opts.maxBarePositionals) {
+      failBadProjectId(first);
+    }
+  }
+  return { projectId: resolveProjectId(null), rest: Array.isArray(args) ? args : [] };
 }
 
 function closestFlag(flag, candidates) {

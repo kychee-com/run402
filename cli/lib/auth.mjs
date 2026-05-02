@@ -187,10 +187,23 @@ async function settings(args) {
       message: "Missing --allow-password-set <true|false>",
     });
   }
+  // Reject anything that isn't literally "true" or "false". Without this guard,
+  // the previous `=== "true"` coercion silently turned every other input
+  // (including "1", "yes", "TRUE", "bogus") into `false` and printed
+  // `{"status":"ok"}`, giving the user the OPPOSITE of what they likely
+  // intended for this security-adjacent flag. See GH-204.
+  if (allowPasswordSet !== "true" && allowPasswordSet !== "false") {
+    fail({
+      code: "BAD_FLAG",
+      message: "--allow-password-set must be 'true' or 'false'",
+      hint: "Use the literal strings 'true' or 'false'.",
+    });
+  }
 
+  const allow = allowPasswordSet === "true";
   try {
-    await getSdk().auth.settings(projectId, { allow_password_set: allowPasswordSet === "true" });
-    console.log(JSON.stringify({ status: "ok", allow_password_set: allowPasswordSet === "true" }));
+    await getSdk().auth.settings(projectId, { allow_password_set: allow });
+    console.log(JSON.stringify({ status: "ok", allow_password_set: allow }));
   } catch (err) {
     reportSdkError(err);
   }

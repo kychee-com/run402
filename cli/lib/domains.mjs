@@ -9,7 +9,7 @@ Usage:
 
 Subcommands:
   add    <domain> <subdomain_name> [--project <id>]   Register a custom domain
-  list   [<id>]                                        List custom domains for a project
+  list   [<id>] | list --project <id>                  List custom domains for a project
   status <domain> [--project <id>]                     Check domain DNS/SSL status
   delete <domain> --confirm [--project <id>]           Release a custom domain. Requires --confirm.
 
@@ -25,6 +25,74 @@ Notes:
   - Poll 'status' until the domain is active (DNS propagation ~60s)
   - The domain must CNAME to domains.run402.com (or ALIAS for apex domains)
 `;
+
+const SUB_HELP = {
+  add: `run402 domains add — Register a custom domain for a project
+
+Usage:
+  run402 domains add <domain> <subdomain_name> [--project <id>]
+
+Arguments:
+  <domain>            Custom domain (e.g. example.com)
+  <subdomain_name>    Existing subdomain to map the custom domain to
+
+Options:
+  --project <id>      Project ID (defaults to the active project)
+
+Notes:
+  - After adding, configure DNS as shown in the response
+  - Poll 'run402 domains status <domain>' until active
+  - The domain must CNAME to domains.run402.com (or ALIAS for apex domains)
+
+Examples:
+  run402 domains add example.com myapp
+  run402 domains add example.com myapp --project prj_abc123
+`,
+  list: `run402 domains list — List custom domains for a project
+
+Usage:
+  run402 domains list [<id>]
+
+Arguments:
+  <id>                Project ID (defaults to the active project)
+
+Examples:
+  run402 domains list
+  run402 domains list prj_abc123
+`,
+  status: `run402 domains status — Check DNS/SSL status of a custom domain
+
+Usage:
+  run402 domains status <domain> [--project <id>]
+
+Arguments:
+  <domain>            Custom domain to check
+
+Options:
+  --project <id>      Project ID (defaults to the active project)
+
+Examples:
+  run402 domains status example.com
+  run402 domains status example.com --project prj_abc123
+`,
+  delete: `run402 domains delete — Release a custom domain
+
+Usage:
+  run402 domains delete <domain> --confirm [--project <id>]
+
+Arguments:
+  <domain>            Custom domain to release
+
+Options:
+  --confirm           Required: releasing detaches the domain from this
+                      project and clears its DNS/SSL configuration
+                      (irreversible)
+  --project <id>      Project ID (defaults to the active project)
+
+Examples:
+  run402 domains delete example.com --confirm
+`,
+};
 
 function parseProjectFlag(args) {
   let project = null;
@@ -56,8 +124,14 @@ async function add(args) {
   }
 }
 
-async function list(projectIdArg) {
-  const projectId = resolveProjectId(projectIdArg);
+async function list(args) {
+  const argList = Array.isArray(args) ? args : [];
+  const { project, rest } = parseProjectFlag(argList);
+  // Either --project <id> or a positional id is accepted; --project wins
+  // when both are supplied. Falls back to the active project when neither
+  // is given. Keeps backward-compat with the legacy `domains list <id>`
+  // form (GH-209).
+  const projectId = resolveProjectId(project || rest[0]);
   try {
     const data = await getSdk().domains.list(projectId);
     console.log(JSON.stringify(data, null, 2));
@@ -113,10 +187,10 @@ async function deleteDomain(args) {
 
 export async function run(sub, args) {
   if (!sub || sub === '--help' || sub === '-h') { console.log(HELP); process.exit(0); }
-  if (Array.isArray(args) && (args.includes("--help") || args.includes("-h"))) { console.log(HELP); process.exit(0); }
+  if (Array.isArray(args) && (args.includes("--help") || args.includes("-h"))) { console.log(SUB_HELP[sub] || HELP); process.exit(0); }
   switch (sub) {
     case "add":    await add(args); break;
-    case "list":   await list(args[0]); break;
+    case "list":   await list(args); break;
     case "status": await status(args); break;
     case "delete": await deleteDomain(args); break;
     default:
