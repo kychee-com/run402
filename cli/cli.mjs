@@ -74,6 +74,23 @@ if (!cmd || cmd === '--help' || cmd === '-h') {
   process.exit(0);
 }
 
+try {
+  await dispatch();
+} catch (err) {
+  // Surface env/config errors (e.g. invalid RUN402_API_BASE) as a clean
+  // JSON envelope on stderr instead of a raw stack trace. We import the
+  // helper lazily so a broken env doesn't fail this catch handler too.
+  const { fail } = await import("./lib/sdk-errors.mjs");
+  fail({
+    code: "BAD_ENV",
+    message: err && err.message ? err.message : String(err),
+    hint: typeof err?.message === "string" && err.message.includes("RUN402_API_BASE")
+      ? "Check the RUN402_API_BASE env var."
+      : undefined,
+  });
+}
+
+async function dispatch() {
 switch (cmd) {
   case "init": {
     const { run } = await import("./lib/init.mjs");
@@ -199,4 +216,5 @@ switch (cmd) {
     console.error(`Unknown command: ${cmd}\n`);
     console.log(HELP);
     process.exit(1);
+}
 }

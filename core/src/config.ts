@@ -2,8 +2,45 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { existsSync, renameSync, mkdirSync } from "node:fs";
 
+const DEFAULT_API_BASE = "https://api.run402.com";
+
+/**
+ * Validate a user-supplied API base URL. Throws a clear error message that
+ * names the env var when the URL is malformed or uses a scheme other than
+ * http(s). Empty string is treated as "set but empty" (almost always a
+ * templating mishap) and emits a stderr warning before falling back to
+ * `fallback`.
+ *
+ * Returns the validated URL string (unchanged) or `null` if the env var was
+ * unset.
+ */
+function validateApiBase(envVar: string, raw: string | undefined, fallback: string): string | null {
+  if (raw == null) return null;
+  if (raw === "") {
+    process.stderr.write(
+      `warning: ${envVar} is set but empty - using default. Unset the env var to suppress this warning.\n`,
+    );
+    return fallback;
+  }
+  let u: URL;
+  try {
+    u = new URL(raw);
+  } catch {
+    throw new Error(
+      `${envVar} is not a valid URL: ${JSON.stringify(raw)}. Expected an http(s) URL like https://api.run402.com.`,
+    );
+  }
+  if (u.protocol !== "https:" && u.protocol !== "http:") {
+    throw new Error(
+      `${envVar} must use http(s):, got ${u.protocol} (full value: ${JSON.stringify(raw)}).`,
+    );
+  }
+  return raw;
+}
+
 export function getApiBase(): string {
-  return process.env.RUN402_API_BASE || "https://api.run402.com";
+  const validated = validateApiBase("RUN402_API_BASE", process.env.RUN402_API_BASE, DEFAULT_API_BASE);
+  return validated ?? DEFAULT_API_BASE;
 }
 
 /**
@@ -14,7 +51,9 @@ export function getApiBase(): string {
  * should not need this override.
  */
 export function getDeployApiBase(): string {
-  return process.env.RUN402_DEPLOY_API_BASE || getApiBase();
+  const fallback = getApiBase();
+  const validated = validateApiBase("RUN402_DEPLOY_API_BASE", process.env.RUN402_DEPLOY_API_BASE, fallback);
+  return validated ?? fallback;
 }
 
 export function getConfigDir(): string {
