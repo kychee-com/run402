@@ -1457,6 +1457,114 @@ describe("CLI e2e happy path", () => {
     assert.ok(captured().includes("prj_test123"), "should deploy when manifest and flag agree");
   });
 
+  // ── GH-185: deploy --manifest must reject empty manifests client-side ────
+  // The MCP `deploy` tool was hardened against empty specs in #133. The CLI
+  // `deploy --manifest` path was not. Without this guard, `echo '{}' |
+  // run402 deploy` would silently succeed, returning a `dpl_*` id while the
+  // live site survived (no signal that nothing was deployed). The check must
+  // fire BEFORE any HTTP — see assertions on `deployCalled` below.
+  async function deployAndCapture(manifestObj, manifestName) {
+    const { run } = await import("./cli/lib/deploy.mjs");
+    const { writeFileSync: wf } = await import("node:fs");
+    const manifestPath = join(tempDir, manifestName);
+    wf(manifestPath, JSON.stringify(manifestObj));
+    let deployCalled = false;
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = (input, init) => {
+      const url = typeof input === "string" ? input : (input instanceof Request ? input.url : String(input));
+      const method = (init?.method || (input instanceof Request ? input.method : "GET") || "GET").toUpperCase();
+      if (url.endsWith("/deploy/v2/plans") && method === "POST") deployCalled = true;
+      return prevFetch(input, init);
+    };
+    let threw = null;
+    captureStart();
+    try {
+      await run(["--manifest", manifestPath, "--project", "prj_test123"]);
+    } catch (e) {
+      threw = e;
+    } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+    return { threw, stderr: capturedStderr(), stdout: capturedStdout(), deployCalled };
+  }
+
+  function parseStderrEnvelope(stderr) {
+    const line = stderr.split("\n").map(s => s.trim()).find(s => s.startsWith("{") && s.endsWith("}"));
+    assert.ok(line, `should emit a JSON error line on stderr, got: ${stderr}`);
+    return JSON.parse(line);
+  }
+
+  it("deploy rejects empty manifest object (GH-185)", async () => {
+    const { threw, stderr, deployCalled } = await deployAndCapture({}, "gh185-empty-object.json");
+    assert.ok(threw && /process\.exit\(1\)/.test(threw.message),
+      `should exit non-zero, got: ${threw && threw.message}`);
+    assert.equal(deployCalled, false, "must not POST to /deploy/v2/plans on empty manifest");
+    const parsed = parseStderrEnvelope(stderr);
+    assert.equal(parsed.status, "error");
+    assert.equal(parsed.code, "MANIFEST_EMPTY");
+    assert.ok(parsed.message && /no deployable sections/i.test(parsed.message),
+      `message should explain no deployable sections, got: ${parsed.message}`);
+    assert.ok(parsed.hint, `hint should be present, got: ${JSON.stringify(parsed)}`);
+  });
+
+  it("deploy rejects manifest with only project_id (GH-185)", async () => {
+    const { threw, stderr, deployCalled } = await deployAndCapture(
+      { project_id: "prj_test123" }, "gh185-project-id-only.json");
+    assert.ok(threw && /process\.exit\(1\)/.test(threw.message),
+      `should exit non-zero, got: ${threw && threw.message}`);
+    assert.equal(deployCalled, false, "must not POST to /deploy/v2/plans on project-id-only manifest");
+    const parsed = parseStderrEnvelope(stderr);
+    assert.equal(parsed.code, "MANIFEST_EMPTY");
+  });
+
+  it("deploy rejects manifest with empty secrets array (GH-185)", async () => {
+    const { threw, stderr, deployCalled } = await deployAndCapture(
+      { project_id: "prj_test123", secrets: [] }, "gh185-empty-secrets.json");
+    assert.ok(threw && /process\.exit\(1\)/.test(threw.message),
+      `should exit non-zero, got: ${threw && threw.message}`);
+    assert.equal(deployCalled, false, "must not POST to /deploy/v2/plans on empty-secrets manifest");
+    const parsed = parseStderrEnvelope(stderr);
+    assert.equal(parsed.code, "MANIFEST_EMPTY");
+  });
+
+  it("deploy rejects v2 manifest with empty site.replace (GH-185)", async () => {
+    const { threw, stderr, deployCalled } = await deployAndCapture(
+      { project_id: "prj_test123", site: { replace: {} } }, "gh185-empty-site-replace.json");
+    assert.ok(threw && /process\.exit\(1\)/.test(threw.message),
+      `should exit non-zero, got: ${threw && threw.message}`);
+    assert.equal(deployCalled, false, "must not POST to /deploy/v2/plans on empty-site manifest");
+    const parsed = parseStderrEnvelope(stderr);
+    assert.equal(parsed.code, "MANIFEST_EMPTY");
+  });
+
+  it("deploy accepts manifest with subdomain claim alone (GH-185)", async () => {
+    const { run } = await import("./cli/lib/deploy.mjs");
+    const { writeFileSync: wf } = await import("node:fs");
+    const manifestPath = join(tempDir, "gh185-subdomain-only.json");
+    wf(manifestPath, JSON.stringify({ project_id: "prj_test123", subdomain: "my-app" }));
+    captureStart();
+    await run(["--manifest", manifestPath, "--project", "prj_test123"]);
+    captureStop();
+    assert.ok(captured().includes("prj_test123"),
+      `subdomain-only manifest should be accepted, got: ${capturedStderr()}`);
+  });
+
+  it("deploy accepts manifest with database.migrations (GH-185)", async () => {
+    const { run } = await import("./cli/lib/deploy.mjs");
+    const { writeFileSync: wf } = await import("node:fs");
+    const manifestPath = join(tempDir, "gh185-database-migrations.json");
+    wf(manifestPath, JSON.stringify({
+      project_id: "prj_test123",
+      database: { migrations: [{ id: "a", sql: "SELECT 1" }] },
+    }));
+    captureStart();
+    await run(["--manifest", manifestPath, "--project", "prj_test123"]);
+    captureStop();
+    assert.ok(captured().includes("prj_test123"),
+      `database.migrations manifest should be accepted, got: ${capturedStderr()}`);
+  });
+
   // ── Functions ───────────────────────────────────────────────────────────
 
   it("functions deploy", async () => {

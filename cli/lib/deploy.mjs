@@ -157,6 +157,50 @@ async function loadManifest(opts) {
     });
   }
 
+  // GH-185: Reject empty manifests client-side. Without this guard,
+  // `echo '{}' | run402 deploy` silently succeeds against the gateway with
+  // no signal that nothing was deployed. The MCP `deploy` tool was hardened
+  // for the same class of bug in #133; this is the CLI-side analog.
+  //
+  // "Meaningful" = at least one of these keys exists with non-empty content.
+  // We accept both shapes because this CLI path receives v1 manifests
+  // (translated by the bundleDeploy shim) and may also receive v2 manifests.
+  //   v1: migrations, migrations_file, secrets, functions, files, subdomain
+  //   v2: database, site, functions, secrets, subdomains, domains
+  // For object-typed v2 sections (site, database, functions, secrets,
+  // subdomains, domains) the "container is non-empty" check isn't enough —
+  // `site:{replace:{}}` has one key but ships nothing. We recurse one level
+  // so any object whose own values are all empty containers is still empty.
+  const meaningfulV1 = ["migrations", "migrations_file", "secrets", "functions", "files", "subdomain"];
+  const meaningfulV2 = ["database", "site", "functions", "secrets", "subdomains", "domains"];
+  const meaningful = [...new Set([...meaningfulV1, ...meaningfulV2])];
+
+  function hasContent(v) {
+    if (v == null) return false;
+    if (Array.isArray(v)) return v.length > 0;
+    if (typeof v === "object") {
+      const keys = Object.keys(v);
+      if (keys.length === 0) return false;
+      return keys.some((k) => hasContent(v[k]));
+    }
+    if (typeof v === "string") return v.length > 0;
+    return true;
+  }
+
+  const hasMeaningfulContent = manifest && typeof manifest === "object" && !Array.isArray(manifest) && meaningful.some((key) => hasContent(manifest[key]));
+  if (!hasMeaningfulContent) {
+    fail({
+      code: "MANIFEST_EMPTY",
+      message: `Manifest contains no deployable sections. Expected at least one of: ${meaningful.join(", ")}`,
+      hint: "Did you mean to write a 'site.replace' or 'database.migrations' block? See https://run402.com/schemas/manifest.v1.json",
+      details: {
+        field: opts.manifest ? "manifest" : "stdin",
+        ...(opts.manifest ? { path: resolve(opts.manifest) } : {}),
+        meaningful_keys: meaningful,
+      },
+    });
+  }
+
   if (opts.manifest) {
     try {
       resolveMigrationsFile(manifest, baseDir);
