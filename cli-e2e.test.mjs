@@ -1584,6 +1584,92 @@ describe("CLI e2e happy path", () => {
       `database.migrations manifest should be accepted, got: ${capturedStderr()}`);
   });
 
+  // ── GH-232: deploy apply (v2 unified primitive) must reject empty specs ──
+  // The legacy `deploy --manifest` path was hardened in GH-185, but the v2
+  // `deploy apply --manifest` / `--spec` path silently sent empty specs to
+  // the gateway. This block mirrors the GH-185 guard pattern for v2 keys.
+  async function deployApplyAndCapture(args) {
+    const { run } = await import("./cli/lib/deploy.mjs");
+    let deployCalled = false;
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = (input, init) => {
+      const url = typeof input === "string" ? input : (input instanceof Request ? input.url : String(input));
+      const method = (init?.method || (input instanceof Request ? input.method : "GET") || "GET").toUpperCase();
+      if (url.endsWith("/deploy/v2/plans") && method === "POST") deployCalled = true;
+      return prevFetch(input, init);
+    };
+    let threw = null;
+    captureStart();
+    try {
+      await run(["apply", ...args]);
+    } catch (e) {
+      threw = e;
+    } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+    return { threw, stderr: capturedStderr(), stdout: capturedStdout(), deployCalled };
+  }
+
+  it("deploy apply rejects empty manifest file (GH-232)", async () => {
+    const { writeFileSync: wf } = await import("node:fs");
+    const manifestPath = join(tempDir, "gh232-empty-manifest.json");
+    wf(manifestPath, JSON.stringify({}));
+    const { threw, stderr, deployCalled } = await deployApplyAndCapture(
+      ["--manifest", manifestPath, "--project", "prj_test123"]);
+    assert.ok(threw && /process\.exit\(1\)/.test(threw.message),
+      `should exit non-zero, got: ${threw && threw.message}`);
+    assert.equal(deployCalled, false, "must not POST to /deploy/v2/plans on empty manifest");
+    const parsed = parseStderrEnvelope(stderr);
+    assert.equal(parsed.status, "error");
+    assert.equal(parsed.code, "MANIFEST_EMPTY");
+    assert.ok(parsed.message && /no deployable sections/i.test(parsed.message),
+      `message should explain no deployable sections, got: ${parsed.message}`);
+    assert.ok(parsed.hint, `hint should be present, got: ${JSON.stringify(parsed)}`);
+  });
+
+  it("deploy apply rejects --spec '{}' (GH-232)", async () => {
+    const { threw, stderr, deployCalled } = await deployApplyAndCapture(
+      ["--spec", "{}", "--project", "prj_test123"]);
+    assert.ok(threw && /process\.exit\(1\)/.test(threw.message),
+      `should exit non-zero, got: ${threw && threw.message}`);
+    assert.equal(deployCalled, false, "must not POST to /deploy/v2/plans on empty --spec");
+    const parsed = parseStderrEnvelope(stderr);
+    assert.equal(parsed.code, "MANIFEST_EMPTY");
+  });
+
+  it("deploy apply rejects --spec with only project_id (GH-232)", async () => {
+    const { threw, stderr, deployCalled } = await deployApplyAndCapture(
+      ["--spec", JSON.stringify({ project_id: "prj_test123" })]);
+    assert.ok(threw && /process\.exit\(1\)/.test(threw.message),
+      `should exit non-zero, got: ${threw && threw.message}`);
+    assert.equal(deployCalled, false, "must not POST to /deploy/v2/plans on project-id-only spec");
+    const parsed = parseStderrEnvelope(stderr);
+    assert.equal(parsed.code, "MANIFEST_EMPTY");
+  });
+
+  it("deploy apply rejects --spec with empty site.replace (GH-232)", async () => {
+    const { threw, stderr, deployCalled } = await deployApplyAndCapture(
+      ["--spec", JSON.stringify({ site: { replace: {} } }), "--project", "prj_test123"]);
+    assert.ok(threw && /process\.exit\(1\)/.test(threw.message),
+      `should exit non-zero, got: ${threw && threw.message}`);
+    assert.equal(deployCalled, false, "must not POST to /deploy/v2/plans on empty site.replace spec");
+    const parsed = parseStderrEnvelope(stderr);
+    assert.equal(parsed.code, "MANIFEST_EMPTY");
+  });
+
+  it("deploy apply accepts --spec with non-empty site.replace (GH-232)", async () => {
+    const { threw, deployCalled } = await deployApplyAndCapture(
+      ["--spec", JSON.stringify({ site: { replace: { "index.html": { data: "x" } } } }),
+        "--project", "prj_test123"]);
+    // The validator must NOT block this spec; the SDK call may proceed
+    // (and against the mock /deploy/v2/plans + commit endpoints, succeed).
+    assert.ok(!threw || !/MANIFEST_EMPTY/.test(threw.message),
+      `non-empty site.replace must pass the empty-manifest guard, got: ${threw && threw.message}`);
+    assert.equal(deployCalled, true,
+      "non-empty site.replace must reach /deploy/v2/plans");
+  });
+
   // ── Functions ───────────────────────────────────────────────────────────
 
   it("functions deploy", async () => {

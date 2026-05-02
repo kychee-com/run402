@@ -166,6 +166,43 @@ async function applyCmd(args) {
     });
   }
 
+  // GH-232: Reject empty specs client-side. Without this guard,
+  // `run402 deploy apply --spec '{}'` (and `--manifest <empty>`) would silently
+  // send an empty ReleaseSpec to /deploy/v2/plans with no signal that nothing
+  // was deployed. This mirrors the GH-185 guard already in place for the
+  // legacy `run402 deploy --manifest` path.
+  //
+  // `deploy apply` is v2-only — only meaningful keys are the v2 ReleaseSpec
+  // shape (database, site, functions, secrets, subdomains, domains).
+  // For object-typed sections the "container is non-empty" check isn't enough
+  // — `site:{replace:{}}` has one key but ships nothing. We recurse one level
+  // so any object whose own values are all empty containers is still empty.
+  const meaningful = ["database", "site", "functions", "secrets", "subdomains", "domains"];
+  function hasContent(v) {
+    if (v == null) return false;
+    if (Array.isArray(v)) return v.length > 0;
+    if (typeof v === "object") {
+      const keys = Object.keys(v);
+      if (keys.length === 0) return false;
+      return keys.some((k) => hasContent(v[k]));
+    }
+    if (typeof v === "string") return v.length > 0;
+    return true;
+  }
+  const hasMeaningfulContent = spec && typeof spec === "object" && !Array.isArray(spec) && meaningful.some((key) => hasContent(spec[key]));
+  if (!hasMeaningfulContent) {
+    fail({
+      code: "MANIFEST_EMPTY",
+      message: `Manifest contains no deployable sections. Expected at least one of: ${meaningful.join(", ")}`,
+      hint: "Did you mean to write a 'site.replace' or 'database.migrations' block? See https://run402.com/schemas/manifest.v1.json",
+      details: {
+        field: opts.manifest ? "manifest" : opts.spec ? "spec" : "stdin",
+        ...(opts.manifest ? { path: resolve(opts.manifest) } : {}),
+        meaningful_keys: meaningful,
+      },
+    });
+  }
+
   if (opts.manifest) resolveFileDataPaths(spec, dirname(resolve(opts.manifest)));
 
   if (opts.project && spec.project_id && spec.project_id !== opts.project) {
