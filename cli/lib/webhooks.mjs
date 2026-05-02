@@ -1,6 +1,7 @@
 import { resolveProjectId } from "./config.mjs";
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail } from "./sdk-errors.mjs";
+import { validateWebhookUrl } from "./argparse.mjs";
 
 const HELP = `run402 email webhooks — Manage mailbox webhooks
 
@@ -121,6 +122,11 @@ async function update(args) {
   if (!url && !eventsRaw) {
     fail({ code: "BAD_USAGE", message: "Provide at least --url or --events" });
   }
+  // GH-192: scheme-only local validation. Server-side SSRF defenses are out
+  // of scope for the CLI (private-IP / DNS rebinding / IMDS belongs on the
+  // gateway). `validateWebhookUrl` is a no-op when `url` is null/undefined,
+  // so partial updates that change only `--events` still work.
+  validateWebhookUrl(url, "--url");
 
   try {
     const data = await getSdk().email.webhooks.update(projectId, webhookId, {
@@ -146,6 +152,10 @@ async function register(args) {
       hint: "run402 email webhooks register --url <url> --events <e1,e2>",
     });
   }
+  // GH-192: validate scheme locally before any network call. Catches
+  // javascript:/file:/http:/data: schemes that the gateway would reject
+  // anyway, but with a friendlier round-trip-free error.
+  validateWebhookUrl(url, "--url");
   if (!eventsRaw) {
     fail({
       code: "BAD_USAGE",

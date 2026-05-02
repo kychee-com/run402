@@ -29,7 +29,7 @@
  * validation: the call wasn't sent, so retrying is safe and won't help unless
  * the user fixes input.
  */
-export function fail({ message, code, hint, details, next_actions, retryable = false, safe_to_retry = true, exit_code = 1 } = {}) {
+export function fail({ message, code, hint, details, next_actions, field, retryable = false, safe_to_retry = true, exit_code = 1 } = {}) {
   const envelope = {
     status: "error",
     code: code ?? "BAD_USAGE",
@@ -39,6 +39,7 @@ export function fail({ message, code, hint, details, next_actions, retryable = f
   };
   if (hint !== undefined) envelope.hint = hint;
   if (details !== undefined) envelope.details = details;
+  if (field !== undefined) envelope.field = field;
   envelope.next_actions = Array.isArray(next_actions) ? next_actions : [];
   envelope.trace_id = null;
   console.error(JSON.stringify(envelope));

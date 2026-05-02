@@ -99,6 +99,49 @@ export function failBadProjectId(value) {
   });
 }
 
+/**
+ * Validate a webhook URL: parse it locally and reject non-https:// schemes.
+ *
+ * Scope (GH-192): scheme-only validation. Reject `javascript:`, `file:`,
+ * `http:`, `data:`, `ftp:`, etc. before the request leaves the CLI process.
+ * Server-side SSRF defenses (private-IP filtering, DNS rebinding, IMDS
+ * blocking) live on the gateway, not here — this helper is the cheap
+ * client-side guard against the obvious classes.
+ *
+ * No-op when `url` is null/undefined/empty so callers can pass optional
+ * flag values directly. Required-vs-optional handling stays at the call
+ * site (e.g. `webhooks register` does its own missing-flag check first).
+ *
+ * On failure: `fail()` writes the canonical error envelope and exits 1.
+ *
+ * @param {string|null|undefined} url - The webhook URL to validate.
+ * @param {string} fieldName - The CLI flag name for the error envelope (e.g. "--url", "--webhook").
+ */
+export function validateWebhookUrl(url, fieldName = "--url") {
+  if (!url) return;
+  let parsed;
+  try {
+    parsed = new URL(url);
+  } catch {
+    fail({
+      code: "BAD_WEBHOOK_URL",
+      message: `${fieldName} is not a valid URL: ${JSON.stringify(url)}`,
+      field: fieldName,
+      hint: "Webhook URL must be a fully-qualified https:// URL.",
+      details: { flag: fieldName, value: url },
+    });
+  }
+  if (parsed.protocol !== "https:") {
+    fail({
+      code: "BAD_WEBHOOK_URL",
+      message: `${fieldName} must use https://, got ${parsed.protocol}`,
+      field: fieldName,
+      hint: "Webhook URLs must be https:// for transport security.",
+      details: { flag: fieldName, value: url, scheme: parsed.protocol },
+    });
+  }
+}
+
 export function positionalArgs(args = [], flagsWithValues = []) {
   const valueFlags = new Set(flagsWithValues);
   const out = [];

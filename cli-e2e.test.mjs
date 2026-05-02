@@ -3042,3 +3042,248 @@ describe("CLI contracts JSON-flag parse errors (GH-177)", () => {
       `with both --abi and --args potentially bad, --abi parses first and wins; got: ${JSON.stringify(parsed.details)}`);
   });
 });
+
+// ── Webhook URL scheme validation (GH-192) ─────────────────────────────────
+// The CLI must reject non-https:// webhook URLs locally before any network
+// call. This protects against `javascript:`, `file:`, and `http://` schemes
+// being shipped to the gateway. Server-side SSRF defenses (private-IP
+// filtering, DNS rebinding, IMDS blocking) are out of scope for the CLI fix.
+
+describe("CLI webhook URL scheme validation (GH-192)", () => {
+  function parseStderrJson() {
+    const stderr = capturedStderr();
+    const line = stderr.split("\n").map(s => s.trim()).find(s => s.startsWith("{"));
+    assert.ok(line, `expected JSON envelope on stderr, got: ${stderr}`);
+    return JSON.parse(line);
+  }
+
+  // Spy fetch that records every call so we can assert "no network call" for
+  // the rejection cases.
+  function buildSpyFetch(calls) {
+    return async (input, init) => {
+      const url = typeof input === "string" ? input : (input instanceof Request ? input.url : String(input));
+      const method = (init?.method || (input instanceof Request ? input.method : "GET") || "GET").toUpperCase();
+      calls.push({ method, url });
+      return Promise.resolve(new Response("Not Found", { status: 404 }));
+    };
+  }
+
+  async function seedTestProject() {
+    const { saveProject, setActiveProjectId } = await import("./cli/lib/config.mjs");
+    saveProject(TEST_PROJECT.project_id, {
+      anon_key: TEST_PROJECT.anon_key,
+      service_key: TEST_PROJECT.service_key,
+    });
+    setActiveProjectId(TEST_PROJECT.project_id);
+  }
+
+  // ── email webhooks register ─────────────────────────────────────────────
+
+  it("email webhooks register --url javascript:alert(1) is rejected locally", async () => {
+    await seedTestProject();
+    const { run } = await import("./cli/lib/webhooks.mjs");
+    const calls = [];
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = buildSpyFetch(calls);
+    let threw = null;
+    captureStart();
+    try {
+      await run("register", ["--url", "javascript:alert(1)", "--events", "delivered"]);
+    } catch (e) { threw = e; } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+    assert.equal(threw?.message, "process.exit(1)", "should exit non-zero");
+    assert.equal(calls.length, 0, "must not make a network call");
+    const parsed = parseStderrJson();
+    assert.equal(parsed.status, "error");
+    assert.equal(parsed.code, "BAD_WEBHOOK_URL");
+    assert.equal(parsed.field, "--url");
+    assert.ok(/https:\/\//.test(parsed.message), `message should mention https://, got: ${parsed.message}`);
+  });
+
+  it("email webhooks register --url http://example.com/hook is rejected (must be https)", async () => {
+    await seedTestProject();
+    const { run } = await import("./cli/lib/webhooks.mjs");
+    const calls = [];
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = buildSpyFetch(calls);
+    let threw = null;
+    captureStart();
+    try {
+      await run("register", ["--url", "http://example.com/hook", "--events", "delivered"]);
+    } catch (e) { threw = e; } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+    assert.equal(threw?.message, "process.exit(1)");
+    assert.equal(calls.length, 0, "must not make a network call");
+    const parsed = parseStderrJson();
+    assert.equal(parsed.code, "BAD_WEBHOOK_URL");
+    assert.equal(parsed.field, "--url");
+    assert.ok(/https:\/\//.test(parsed.message), `message should mention https://, got: ${parsed.message}`);
+  });
+
+  it("email webhooks register --url file:///etc/passwd is rejected", async () => {
+    await seedTestProject();
+    const { run } = await import("./cli/lib/webhooks.mjs");
+    const calls = [];
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = buildSpyFetch(calls);
+    let threw = null;
+    captureStart();
+    try {
+      await run("register", ["--url", "file:///etc/passwd", "--events", "delivered"]);
+    } catch (e) { threw = e; } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+    assert.equal(threw?.message, "process.exit(1)");
+    assert.equal(calls.length, 0, "must not make a network call");
+    const parsed = parseStderrJson();
+    assert.equal(parsed.code, "BAD_WEBHOOK_URL");
+    assert.equal(parsed.field, "--url");
+  });
+
+  it("email webhooks register --url not-a-url is rejected with 'not a valid URL'", async () => {
+    await seedTestProject();
+    const { run } = await import("./cli/lib/webhooks.mjs");
+    const calls = [];
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = buildSpyFetch(calls);
+    let threw = null;
+    captureStart();
+    try {
+      await run("register", ["--url", "not-a-url", "--events", "delivered"]);
+    } catch (e) { threw = e; } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+    assert.equal(threw?.message, "process.exit(1)");
+    assert.equal(calls.length, 0, "must not make a network call");
+    const parsed = parseStderrJson();
+    assert.equal(parsed.code, "BAD_WEBHOOK_URL");
+    assert.equal(parsed.field, "--url");
+    assert.ok(/not a valid URL/.test(parsed.message), `message should mention 'not a valid URL', got: ${parsed.message}`);
+  });
+
+  it("email webhooks register --url https://valid.com/hook passes URL validation", async () => {
+    // The URL validator must NOT block a valid https:// URL. The command may
+    // still fail downstream (mailbox/auth/etc) — we only assert it gets past
+    // the URL validator (i.e. no BAD_WEBHOOK_URL code).
+    await seedTestProject();
+    const { run } = await import("./cli/lib/webhooks.mjs");
+    const calls = [];
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = buildSpyFetch(calls);
+    let threw = null;
+    captureStart();
+    try {
+      await run("register", ["--url", "https://valid.com/hook", "--events", "delivered"]);
+    } catch (e) { threw = e; } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+    // It might fail later for unrelated reasons (mailbox lookup etc). But if
+    // there's a stderr JSON envelope, it must not be BAD_WEBHOOK_URL.
+    const stderr = capturedStderr();
+    if (stderr.trim()) {
+      const line = stderr.split("\n").map(s => s.trim()).find(s => s.startsWith("{"));
+      if (line) {
+        const parsed = JSON.parse(line);
+        assert.notEqual(parsed.code, "BAD_WEBHOOK_URL",
+          `valid https URL must not trigger BAD_WEBHOOK_URL, got: ${stderr}`);
+      }
+    }
+  });
+
+  // ── email webhooks update ───────────────────────────────────────────────
+
+  it("email webhooks update <id> --url javascript:alert(1) is rejected locally", async () => {
+    await seedTestProject();
+    const { run } = await import("./cli/lib/webhooks.mjs");
+    const calls = [];
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = buildSpyFetch(calls);
+    let threw = null;
+    captureStart();
+    try {
+      await run("update", ["whk_123", "--url", "javascript:alert(1)"]);
+    } catch (e) { threw = e; } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+    assert.equal(threw?.message, "process.exit(1)");
+    assert.equal(calls.length, 0, "must not make a network call");
+    const parsed = parseStderrJson();
+    assert.equal(parsed.code, "BAD_WEBHOOK_URL");
+    assert.equal(parsed.field, "--url");
+  });
+
+  // ── agent contact ────────────────────────────────────────────────────────
+
+  it("agent contact --webhook javascript:alert(1) is rejected locally", async () => {
+    const { run } = await import("./cli/lib/agent.mjs");
+    const calls = [];
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = buildSpyFetch(calls);
+    let threw = null;
+    captureStart();
+    try {
+      await run("contact", ["--name", "test", "--webhook", "javascript:alert(1)"]);
+    } catch (e) { threw = e; } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+    assert.equal(threw?.message, "process.exit(1)");
+    assert.equal(calls.length, 0, "must not make a network call");
+    const parsed = parseStderrJson();
+    assert.equal(parsed.code, "BAD_WEBHOOK_URL");
+    assert.equal(parsed.field, "--webhook");
+  });
+
+  it("agent contact --name test (no webhook) does not trigger URL validation", async () => {
+    // Webhook is optional — omitting it must not trigger BAD_WEBHOOK_URL.
+    // The agent contact endpoint mock returns a success response, so the
+    // command should complete normally.
+    const { run } = await import("./cli/lib/agent.mjs");
+    let threw = null;
+    captureStart();
+    try {
+      await run("contact", ["--name", "test"]);
+    } catch (e) { threw = e; } finally {
+      captureStop();
+    }
+    const stderr = capturedStderr();
+    // Should not produce a BAD_WEBHOOK_URL envelope. If there's no envelope at
+    // all that's fine — the command may simply succeed.
+    if (stderr.trim()) {
+      const line = stderr.split("\n").map(s => s.trim()).find(s => s.startsWith("{"));
+      if (line) {
+        const parsed = JSON.parse(line);
+        assert.notEqual(parsed.code, "BAD_WEBHOOK_URL",
+          `omitting --webhook must not trigger BAD_WEBHOOK_URL, got: ${stderr}`);
+      }
+    }
+  });
+
+  it("agent contact --webhook https://valid.com/hook passes URL validation", async () => {
+    const { run } = await import("./cli/lib/agent.mjs");
+    let threw = null;
+    captureStart();
+    try {
+      await run("contact", ["--name", "test", "--webhook", "https://valid.com/hook"]);
+    } catch (e) { threw = e; } finally {
+      captureStop();
+    }
+    const stderr = capturedStderr();
+    if (stderr.trim()) {
+      const line = stderr.split("\n").map(s => s.trim()).find(s => s.startsWith("{"));
+      if (line) {
+        const parsed = JSON.parse(line);
+        assert.notEqual(parsed.code, "BAD_WEBHOOK_URL",
+          `valid https webhook must not trigger BAD_WEBHOOK_URL, got: ${stderr}`);
+      }
+    }
+  });
+});
