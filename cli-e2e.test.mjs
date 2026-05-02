@@ -1979,7 +1979,7 @@ describe("CLI e2e happy path", () => {
     tempoRpcCallCount = 0; // reset for fresh faucet flow
     const { run } = await import("./cli/lib/init.mjs");
     captureStart();
-    await run(["mpp"]);
+    await run(["mpp", "--switch-rail"]);
     captureStop();
     const out = captured();
     assert.ok(out.includes("Tempo"), "should show Tempo network");
@@ -1998,7 +1998,7 @@ describe("CLI e2e happy path", () => {
     tempoRpcCallCount = 0; // first eth_call returns 0 → triggers faucet path
     const { run } = await import("./cli/lib/init.mjs");
     captureStart();
-    await run(["mpp", "--json"]);
+    await run(["mpp", "--json", "--switch-rail"]);
     captureStop();
     const stdout = capturedStdout();
     const parsed = JSON.parse(stdout);
@@ -2042,7 +2042,7 @@ describe("CLI e2e happy path", () => {
   it("init (switch back to x402)", async () => {
     const { run } = await import("./cli/lib/init.mjs");
     captureStart();
-    await run([]);
+    await run(["--switch-rail"]);
     captureStop();
     const out = captured();
     assert.ok(out.includes("Base Sepolia"), "should show Base Sepolia network");
@@ -2702,5 +2702,146 @@ describe("CLI destructive delete --confirm guard (GH-212)", () => {
     assert.equal(threw, null, `should succeed, got: ${threw?.message || ""} / ${capturedStderr()}`);
     const del = calls.find(c => c.method === "DELETE" && c.path.startsWith("/domains/v1/"));
     assert.ok(del, `must issue DELETE /domains/v1/example.com, calls: ${JSON.stringify(calls)}`);
+  });
+});
+
+// ── init <rail> --switch-rail guard (GH-210) ────────────────────────────────
+// `run402 init mpp` (or `init` with x402 default) must NOT silently switch the
+// persisted payment rail when the existing allowance is on the other rail.
+// Switching is destructive in the sense that it changes which network the
+// agent's autonomous payments will land on; it must be explicit.
+
+describe("CLI init rail-switch guard (GH-210)", () => {
+  async function seedAllowance(rail) {
+    const { saveAllowance } = await import("./cli/lib/config.mjs");
+    saveAllowance({
+      address: "0x1234567890123456789012345678901234567890",
+      privateKey: "0x" + "11".repeat(32),
+      created: "2026-01-01T00:00:00.000Z",
+      funded: true,
+      rail,
+    });
+  }
+
+  async function clearAllowance() {
+    const { ALLOWANCE_FILE } = await import("./cli/lib/config.mjs");
+    try { rmSync(ALLOWANCE_FILE, { force: true }); } catch {}
+  }
+
+  it("init mpp (no flag) on x402 allowance refuses and leaves rail unchanged", async () => {
+    await seedAllowance("x402");
+    const { ALLOWANCE_FILE } = await import("./cli/lib/config.mjs");
+    const before = JSON.parse(readFileSync(ALLOWANCE_FILE, "utf8"));
+    const { run } = await import("./cli/lib/init.mjs");
+    let threw = null;
+    captureStart();
+    try {
+      await run(["mpp"]);
+    } catch (e) { threw = e; } finally {
+      captureStop();
+    }
+    assert.equal(threw?.message, "process.exit(1)", "must exit non-zero");
+    const stderr = capturedStderr();
+    const line = stderr.split("\n").find((s) => s.trim().startsWith("{"));
+    assert.ok(line, `expected JSON envelope on stderr, got: ${stderr}`);
+    const parsed = JSON.parse(line);
+    assert.equal(parsed.status, "error");
+    assert.equal(parsed.code, "RAIL_SWITCH_REQUIRES_CONFIRM");
+    assert.ok(/--switch-rail/.test(parsed.message), `message should mention --switch-rail, got: ${parsed.message}`);
+    assert.equal(parsed.details?.current_rail, "x402");
+    assert.equal(parsed.details?.requested_rail, "mpp");
+    const after = JSON.parse(readFileSync(ALLOWANCE_FILE, "utf8"));
+    assert.equal(after.rail, before.rail, "allowance.rail must NOT change without --switch-rail");
+    assert.equal(after.address, before.address, "allowance.address must not change");
+  });
+
+  it("init mpp --switch-rail on x402 allowance proceeds and updates rail", async () => {
+    await seedAllowance("x402");
+    const { run } = await import("./cli/lib/init.mjs");
+    let threw = null;
+    captureStart();
+    try {
+      await run(["mpp", "--switch-rail"]);
+    } catch (e) { threw = e; } finally {
+      captureStop();
+    }
+    assert.equal(threw, null, `should succeed, got: ${threw?.message || ""} / ${capturedStderr()}`);
+    const { ALLOWANCE_FILE } = await import("./cli/lib/config.mjs");
+    const after = JSON.parse(readFileSync(ALLOWANCE_FILE, "utf8"));
+    assert.equal(after.rail, "mpp", "rail should be updated to mpp");
+    const out = captured();
+    assert.ok(/Switched from x402/.test(out), `should retain "Switched from x402" UX note, got: ${out}`);
+  });
+
+  it("init x402 on x402 allowance is idempotent (no flag needed)", async () => {
+    await seedAllowance("x402");
+    const { run } = await import("./cli/lib/init.mjs");
+    let threw = null;
+    captureStart();
+    try {
+      await run([]);
+    } catch (e) { threw = e; } finally {
+      captureStop();
+    }
+    assert.equal(threw, null, `same-rail re-run should succeed, got: ${threw?.message || ""} / ${capturedStderr()}`);
+    const { ALLOWANCE_FILE } = await import("./cli/lib/config.mjs");
+    const after = JSON.parse(readFileSync(ALLOWANCE_FILE, "utf8"));
+    assert.equal(after.rail, "x402", "rail should remain x402");
+  });
+
+  it("init mpp on mpp allowance is idempotent (no flag needed)", async () => {
+    await seedAllowance("mpp");
+    const { run } = await import("./cli/lib/init.mjs");
+    let threw = null;
+    captureStart();
+    try {
+      await run(["mpp"]);
+    } catch (e) { threw = e; } finally {
+      captureStop();
+    }
+    assert.equal(threw, null, `same-rail re-run should succeed, got: ${threw?.message || ""} / ${capturedStderr()}`);
+    const { ALLOWANCE_FILE } = await import("./cli/lib/config.mjs");
+    const after = JSON.parse(readFileSync(ALLOWANCE_FILE, "utf8"));
+    assert.equal(after.rail, "mpp", "rail should remain mpp");
+  });
+
+  it("init mpp with no existing allowance succeeds (no rail to switch from)", async () => {
+    await clearAllowance();
+    const { run } = await import("./cli/lib/init.mjs");
+    let threw = null;
+    captureStart();
+    try {
+      await run(["mpp"]);
+    } catch (e) { threw = e; } finally {
+      captureStop();
+    }
+    assert.equal(threw, null, `fresh init should succeed, got: ${threw?.message || ""} / ${capturedStderr()}`);
+    const { ALLOWANCE_FILE } = await import("./cli/lib/config.mjs");
+    const after = JSON.parse(readFileSync(ALLOWANCE_FILE, "utf8"));
+    assert.equal(after.rail, "mpp", "fresh allowance should be created with rail=mpp");
+  });
+
+  it("init x402 (default) on mpp allowance refuses and leaves rail unchanged", async () => {
+    await seedAllowance("mpp");
+    const { ALLOWANCE_FILE } = await import("./cli/lib/config.mjs");
+    const before = JSON.parse(readFileSync(ALLOWANCE_FILE, "utf8"));
+    const { run } = await import("./cli/lib/init.mjs");
+    let threw = null;
+    captureStart();
+    try {
+      await run([]);
+    } catch (e) { threw = e; } finally {
+      captureStop();
+    }
+    assert.equal(threw?.message, "process.exit(1)", "must exit non-zero");
+    const stderr = capturedStderr();
+    const line = stderr.split("\n").find((s) => s.trim().startsWith("{"));
+    assert.ok(line, `expected JSON envelope on stderr, got: ${stderr}`);
+    const parsed = JSON.parse(line);
+    assert.equal(parsed.code, "RAIL_SWITCH_REQUIRES_CONFIRM");
+    assert.equal(parsed.details?.current_rail, "mpp");
+    assert.equal(parsed.details?.requested_rail, "x402");
+    const after = JSON.parse(readFileSync(ALLOWANCE_FILE, "utf8"));
+    assert.equal(after.rail, before.rail, "allowance.rail must NOT change without --switch-rail");
   });
 });
