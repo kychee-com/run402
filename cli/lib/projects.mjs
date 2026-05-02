@@ -123,7 +123,37 @@ async function provision(args) {
   const opts = { tier: "prototype", name: undefined };
   for (let i = 0; i < args.length; i++) {
     if (args[i] === "--tier" && args[i + 1]) opts.tier = args[++i];
-    if (args[i] === "--name" && args[i + 1]) opts.name = args[++i];
+    // Use !== undefined so an empty-string value is captured (and rejected
+    // below) rather than silently dropped by the falsy-check pattern (GH-176).
+    if (args[i] === "--name" && args[i + 1] !== undefined) opts.name = args[++i];
+  }
+  // Validate --name when provided. Omitted --name lets the server pick a
+  // default. The same envelope should also be enforced server-side (GH-176).
+  if (opts.name !== undefined) {
+    if (opts.name === "") {
+      fail({
+        code: "BAD_PROJECT_NAME",
+        message: "--name must not be empty.",
+        details: { field: "--name" },
+        hint: "Provide a 1-128 character name, or omit --name to use the server-assigned default.",
+      });
+    }
+    if (opts.name.length > 128) {
+      fail({
+        code: "BAD_PROJECT_NAME",
+        message: `--name must be 1-128 characters, got ${opts.name.length}.`,
+        details: { field: "--name", length: opts.name.length, max: 128 },
+      });
+    }
+    // eslint-disable-next-line no-control-regex
+    if (/[\x00-\x1f\x7f]/.test(opts.name)) {
+      fail({
+        code: "BAD_PROJECT_NAME",
+        message: "--name contains control characters (newline, tab, etc).",
+        details: { field: "--name" },
+        hint: "Project names should be a single-line label.",
+      });
+    }
   }
   // Preserve the aggressive early exit when no allowance is configured —
   // gives the user a more specific prompt than the SDK's 401/402 path.

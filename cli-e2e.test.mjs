@@ -735,6 +735,109 @@ describe("CLI e2e happy path", () => {
     assert.ok(store.projects && store.projects["prj_test123"], "project should be saved locally");
   });
 
+  // GH-176: --name validation rejects empty string, control chars, over-length.
+  // Validation runs before any network call, so allowance state is irrelevant.
+  it("projects provision --name '' rejects empty name (GH-176)", async () => {
+    const { run } = await import("./cli/lib/projects.mjs");
+    let threw = null;
+    captureStart();
+    try {
+      await run("provision", ["--tier", "prototype", "--name", ""]);
+    } catch (e) {
+      threw = e;
+    } finally {
+      captureStop();
+    }
+    assert.ok(threw && /process\.exit\(1\)/.test(threw.message),
+      `should exit non-zero, got: ${threw && threw.message}`);
+    const stderr = capturedStderr();
+    const line = stderr.split("\n").map(s => s.trim()).find(s => s.startsWith("{") && s.endsWith("}"));
+    assert.ok(line, `should emit a JSON error line on stderr, got: ${stderr}`);
+    const parsed = JSON.parse(line);
+    assert.equal(parsed.status, "error");
+    assert.equal(parsed.code, "BAD_PROJECT_NAME");
+    assert.ok(/empty/i.test(parsed.message),
+      `message should mention "empty", got: ${parsed.message}`);
+  });
+
+  it("projects provision --name with control char rejects (GH-176)", async () => {
+    const { run } = await import("./cli/lib/projects.mjs");
+    let threw = null;
+    captureStart();
+    try {
+      await run("provision", ["--tier", "prototype", "--name", "ab\ncd"]);
+    } catch (e) {
+      threw = e;
+    } finally {
+      captureStop();
+    }
+    assert.ok(threw && /process\.exit\(1\)/.test(threw.message),
+      `should exit non-zero, got: ${threw && threw.message}`);
+    const stderr = capturedStderr();
+    const line = stderr.split("\n").map(s => s.trim()).find(s => s.startsWith("{") && s.endsWith("}"));
+    assert.ok(line, `should emit a JSON error line on stderr, got: ${stderr}`);
+    const parsed = JSON.parse(line);
+    assert.equal(parsed.status, "error");
+    assert.equal(parsed.code, "BAD_PROJECT_NAME");
+    assert.ok(/control/i.test(parsed.message),
+      `message should mention "control" characters, got: ${parsed.message}`);
+  });
+
+  it("projects provision --name over 128 chars rejects (GH-176)", async () => {
+    const { run } = await import("./cli/lib/projects.mjs");
+    const tooLong = "a".repeat(129);
+    let threw = null;
+    captureStart();
+    try {
+      await run("provision", ["--tier", "prototype", "--name", tooLong]);
+    } catch (e) {
+      threw = e;
+    } finally {
+      captureStop();
+    }
+    assert.ok(threw && /process\.exit\(1\)/.test(threw.message),
+      `should exit non-zero, got: ${threw && threw.message}`);
+    const stderr = capturedStderr();
+    const line = stderr.split("\n").map(s => s.trim()).find(s => s.startsWith("{") && s.endsWith("}"));
+    assert.ok(line, `should emit a JSON error line on stderr, got: ${stderr}`);
+    const parsed = JSON.parse(line);
+    assert.equal(parsed.status, "error");
+    assert.equal(parsed.code, "BAD_PROJECT_NAME");
+    assert.ok(/128|length|characters/i.test(parsed.message),
+      `message should mention length or 128, got: ${parsed.message}`);
+  });
+
+  it("projects provision with no --name skips validation (GH-176)", async () => {
+    const { run } = await import("./cli/lib/projects.mjs");
+    captureStart();
+    await run("provision", ["--tier", "prototype"]);
+    captureStop();
+    // Validation must NOT trigger; SDK call is mocked and returns prj_test123.
+    assert.ok(captured().includes("prj_test123"),
+      "should reach SDK call when --name is omitted");
+  });
+
+  it("projects provision --name 'valid-name-123' passes validation (GH-176)", async () => {
+    const { run } = await import("./cli/lib/projects.mjs");
+    captureStart();
+    await run("provision", ["--tier", "prototype", "--name", "valid-name-123"]);
+    captureStop();
+    // Validation must NOT trigger; SDK call is mocked and returns prj_test123.
+    assert.ok(captured().includes("prj_test123"),
+      "should reach SDK call when --name is valid");
+  });
+
+  it("projects provision --name with exactly 128 chars passes validation (GH-176)", async () => {
+    const { run } = await import("./cli/lib/projects.mjs");
+    const exact128 = "a".repeat(128);
+    assert.equal(exact128.length, 128, "test setup: name must be exactly 128 chars");
+    captureStart();
+    await run("provision", ["--tier", "prototype", "--name", exact128]);
+    captureStop();
+    assert.ok(captured().includes("prj_test123"),
+      "should reach SDK call when --name is exactly 128 chars");
+  });
+
   it("projects list", async () => {
     const { run } = await import("./cli/lib/projects.mjs");
     captureStart();
