@@ -9,7 +9,7 @@ Usage:
 
 Subcommands:
   add    <domain> <subdomain_name> [--project <id>]   Register a custom domain
-  list   [<id>]                                        List custom domains for a project
+  list   [<id>] | list --project <id>                  List custom domains for a project
   status <domain> [--project <id>]                     Check domain DNS/SSL status
   delete <domain> --confirm [--project <id>]           Release a custom domain. Requires --confirm.
 
@@ -56,8 +56,14 @@ async function add(args) {
   }
 }
 
-async function list(projectIdArg) {
-  const projectId = resolveProjectId(projectIdArg);
+async function list(args) {
+  const argList = Array.isArray(args) ? args : [];
+  const { project, rest } = parseProjectFlag(argList);
+  // Either --project <id> or a positional id is accepted; --project wins
+  // when both are supplied. Falls back to the active project when neither
+  // is given. Keeps backward-compat with the legacy `domains list <id>`
+  // form (GH-209).
+  const projectId = resolveProjectId(project || rest[0]);
   try {
     const data = await getSdk().domains.list(projectId);
     console.log(JSON.stringify(data, null, 2));
@@ -116,7 +122,7 @@ export async function run(sub, args) {
   if (Array.isArray(args) && (args.includes("--help") || args.includes("-h"))) { console.log(HELP); process.exit(0); }
   switch (sub) {
     case "add":    await add(args); break;
-    case "list":   await list(args[0]); break;
+    case "list":   await list(args); break;
     case "status": await status(args); break;
     case "delete": await deleteDomain(args); break;
     default:
