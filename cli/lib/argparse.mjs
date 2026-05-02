@@ -1,4 +1,5 @@
 import { fail } from "./sdk-errors.mjs";
+import { resolveProjectId } from "./config.mjs";
 
 export function normalizeArgv(argv = []) {
   const out = [];
@@ -155,6 +156,49 @@ export function positionalArgs(args = [], flagsWithValues = []) {
     out.push(arg);
   }
   return out;
+}
+
+// Resolve a positional project_id argument with active-project fallback (GH-102, GH-187).
+// If the first positional starts with "prj_", treat it as the project id and
+// strip it from the rest. Otherwise, fall through to the active project from
+// the keystore. Callers can tighten the legacy shorthand when a bare non-prj
+// positional is more likely a mistyped project id than an argument for the
+// active project.
+//
+// Options:
+//   rejectBareFirst:                   when true, error if the first positional
+//                                      is non-empty and doesn't start with "prj_".
+//   rejectBareFirstWhenFlagPresent:    when one of these flags is present in
+//                                      args AND the first positional doesn't
+//                                      start with "prj_", error out.
+//   maxBarePositionals + valueFlags:   when set, count the bare (non-flag)
+//                                      positionals using `positionalArgs(args,
+//                                      valueFlags)` and error if the count
+//                                      exceeds maxBarePositionals.
+export function resolvePositionalProject(args, opts = {}) {
+  const first = Array.isArray(args) ? args[0] : undefined;
+  if (typeof first === "string" && first.startsWith("prj_")) {
+    return { projectId: first, rest: args.slice(1) };
+  }
+  if (
+    typeof first === "string" &&
+    first.length > 0 &&
+    !first.startsWith("-") &&
+    Array.isArray(opts.rejectBareFirstWhenFlagPresent) &&
+    opts.rejectBareFirstWhenFlagPresent.some((flag) => args.includes(flag))
+  ) {
+    failBadProjectId(first);
+  }
+  if (typeof first === "string" && first.length > 0 && !first.startsWith("-") && opts.rejectBareFirst) {
+    failBadProjectId(first);
+  }
+  if (typeof first === "string" && first.length > 0 && !first.startsWith("-") && opts.maxBarePositionals !== undefined) {
+    const bare = positionalArgs(args, opts.valueFlags ?? []);
+    if (bare.length > opts.maxBarePositionals) {
+      failBadProjectId(first);
+    }
+  }
+  return { projectId: resolveProjectId(null), rest: Array.isArray(args) ? args : [] };
 }
 
 function closestFlag(flag, candidates) {
