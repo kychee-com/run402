@@ -93,7 +93,7 @@ Notes:
 
 Examples:
   run402 auth settings --allow-password-set true
-  run402 auth settings --allow-password-set false --project abc123
+  run402 auth settings --allow-password-set false --project prj_abc123
 `,
   providers: `run402 auth providers — List available auth providers
 
@@ -105,7 +105,7 @@ Options:
 
 Examples:
   run402 auth providers
-  run402 auth providers --project abc123
+  run402 auth providers --project prj_abc123
 `,
 };
 

@@ -2,6 +2,7 @@ import { readFileSync } from "fs";
 import { findProject, API } from "./config.mjs";
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail } from "./sdk-errors.mjs";
+import { assertKnownFlags, hasHelp, normalizeArgv, parseIntegerFlag } from "./argparse.mjs";
 
 const HELP = `run402 functions — Manage serverless functions
 
@@ -21,18 +22,18 @@ Subcommands:
   delete <id> <name>                   Delete a function
 
 Examples:
-  run402 functions deploy abc123 stripe-webhook --file handler.ts
-  run402 functions deploy abc123 send-reminders --file remind.ts --schedule '*/15 * * * *'
-  run402 functions deploy abc123 send-reminders --file remind.ts --schedule ''   # remove schedule
-  run402 functions invoke abc123 stripe-webhook --body '{"event":"test"}'
-  run402 functions logs abc123 stripe-webhook --tail 100
-  run402 functions logs abc123 stripe-webhook --since 2026-03-29T14:00:00Z
-  run402 functions logs abc123 stripe-webhook --follow
-  run402 functions update abc123 send-reminders --schedule '0 */4 * * *'
-  run402 functions update abc123 send-reminders --schedule-remove
-  run402 functions update abc123 my-func --timeout 15 --memory 256
-  run402 functions list abc123
-  run402 functions delete abc123 stripe-webhook
+  run402 functions deploy prj_abc123 stripe-webhook --file handler.ts
+  run402 functions deploy prj_abc123 send-reminders --file remind.ts --schedule '*/15 * * * *'
+  run402 functions deploy prj_abc123 send-reminders --file remind.ts --schedule ''   # remove schedule
+  run402 functions invoke prj_abc123 stripe-webhook --body '{"event":"test"}'
+  run402 functions logs prj_abc123 stripe-webhook --tail 100
+  run402 functions logs prj_abc123 stripe-webhook --since 2026-03-29T14:00:00Z
+  run402 functions logs prj_abc123 stripe-webhook --follow
+  run402 functions update prj_abc123 send-reminders --schedule '0 */4 * * *'
+  run402 functions update prj_abc123 send-reminders --schedule-remove
+  run402 functions update prj_abc123 my-func --timeout 15 --memory 256
+  run402 functions list prj_abc123
+  run402 functions delete prj_abc123 stripe-webhook
 
 Notes:
   - Code must export a default async function: export default async (req: Request) => Response
@@ -77,10 +78,10 @@ Notes:
     notes such as bundle-size advisories
 
 Examples:
-  run402 functions deploy abc123 stripe-webhook --file handler.ts
-  run402 functions deploy abc123 send-reminders --file remind.ts \\
+  run402 functions deploy prj_abc123 stripe-webhook --file handler.ts
+  run402 functions deploy prj_abc123 send-reminders --file remind.ts \\
     --schedule '*/15 * * * *'
-  run402 functions deploy abc123 send-reminders --file remind.ts --schedule ''
+  run402 functions deploy prj_abc123 send-reminders --file remind.ts --schedule ''
 `,
   invoke: `run402 functions invoke — Invoke a deployed function
 
@@ -96,8 +97,8 @@ Options:
   --body <json>       Request body (ignored for GET/HEAD)
 
 Examples:
-  run402 functions invoke abc123 stripe-webhook --body '{"event":"test"}'
-  run402 functions invoke abc123 ping --method GET
+  run402 functions invoke prj_abc123 stripe-webhook --body '{"event":"test"}'
+  run402 functions invoke prj_abc123 ping --method GET
 `,
   logs: `run402 functions logs — Fetch or tail function logs
 
@@ -114,9 +115,9 @@ Options:
   --follow            Poll every 3s and stream new entries (Ctrl-C to stop)
 
 Examples:
-  run402 functions logs abc123 stripe-webhook --tail 100
-  run402 functions logs abc123 stripe-webhook --since 2026-03-29T14:00:00Z
-  run402 functions logs abc123 stripe-webhook --follow
+  run402 functions logs prj_abc123 stripe-webhook --tail 100
+  run402 functions logs prj_abc123 stripe-webhook --since 2026-03-29T14:00:00Z
+  run402 functions logs prj_abc123 stripe-webhook --follow
 `,
   update: `run402 functions update — Update function config without re-deploying
 
@@ -137,18 +138,20 @@ Notes:
   Must provide at least one of the options above.
 
 Examples:
-  run402 functions update abc123 send-reminders --schedule '0 */4 * * *'
-  run402 functions update abc123 send-reminders --schedule-remove
-  run402 functions update abc123 my-func --timeout 15 --memory 256
+  run402 functions update prj_abc123 send-reminders --schedule '0 */4 * * *'
+  run402 functions update prj_abc123 send-reminders --schedule-remove
+  run402 functions update prj_abc123 my-func --timeout 15 --memory 256
 `,
 };
 
 async function deploy(projectId, name, args) {
+  assertRequiredProjectAndName(projectId, name, "run402 functions deploy <project_id> <name> --file <file>");
+  assertKnownFlags(args, ["--file", "--timeout", "--memory", "--deps", "--schedule", "--help", "-h"], ["--file", "--timeout", "--memory", "--deps", "--schedule"]);
   const opts = { file: null, timeout: undefined, memory: undefined, deps: undefined, schedule: undefined };
   for (let i = 0; i < args.length; i++) {
     if (args[i] === "--file" && args[i + 1]) opts.file = args[++i];
-    if (args[i] === "--timeout" && args[i + 1]) opts.timeout = parseInt(args[++i]);
-    if (args[i] === "--memory" && args[i + 1]) opts.memory = parseInt(args[++i]);
+    if (args[i] === "--timeout") opts.timeout = parseIntegerFlag("--timeout", args[++i], { min: 1 });
+    if (args[i] === "--memory") opts.memory = parseIntegerFlag("--memory", args[++i], { min: 1 });
     if (args[i] === "--deps" && args[i + 1]) opts.deps = args[++i].split(",");
     if (args[i] === "--schedule" && i + 1 < args.length) opts.schedule = args[++i];
   }
@@ -175,6 +178,8 @@ async function deploy(projectId, name, args) {
 }
 
 async function invoke(projectId, name, args) {
+  assertRequiredProjectAndName(projectId, name, "run402 functions invoke <project_id> <name> [--method <M>] [--body <json>]");
+  assertKnownFlags(args, ["--method", "--body", "--help", "-h"], ["--method", "--body"]);
   const opts = { method: "POST", body: undefined };
   for (let i = 0; i < args.length; i++) {
     if (args[i] === "--method" && args[i + 1]) opts.method = args[++i];
@@ -198,11 +203,13 @@ async function invoke(projectId, name, args) {
 }
 
 async function logs(projectId, name, args) {
+  assertRequiredProjectAndName(projectId, name, "run402 functions logs <project_id> <name> [--tail <n>]");
+  assertKnownFlags(args, ["--tail", "--since", "--follow", "--help", "-h"], ["--tail", "--since"]);
   let tail = 50;
   let since = undefined;
   let follow = false;
   for (let i = 0; i < args.length; i++) {
-    if (args[i] === "--tail" && args[i + 1]) tail = parseInt(args[++i]);
+    if (args[i] === "--tail") tail = parseIntegerFlag("--tail", args[++i], { min: 1 });
     if (args[i] === "--since" && args[i + 1]) since = args[++i];
     if (args[i] === "--follow") follow = true;
   }
@@ -269,6 +276,8 @@ async function logs(projectId, name, args) {
 }
 
 async function update(projectId, name, args) {
+  assertRequiredProjectAndName(projectId, name, "run402 functions update <project_id> <name> [options]");
+  assertKnownFlags(args, ["--schedule", "--schedule-remove", "--timeout", "--memory", "--help", "-h"], ["--schedule", "--timeout", "--memory"]);
   let schedule = undefined;
   let scheduleRemove = false;
   let timeout = undefined;
@@ -276,8 +285,8 @@ async function update(projectId, name, args) {
   for (let i = 0; i < args.length; i++) {
     if (args[i] === "--schedule" && i + 1 < args.length) schedule = args[++i];
     if (args[i] === "--schedule-remove") scheduleRemove = true;
-    if (args[i] === "--timeout" && args[i + 1]) timeout = parseInt(args[++i]);
-    if (args[i] === "--memory" && args[i + 1]) memory = parseInt(args[++i]);
+    if (args[i] === "--timeout") timeout = parseIntegerFlag("--timeout", args[++i], { min: 1 });
+    if (args[i] === "--memory") memory = parseIntegerFlag("--memory", args[++i], { min: 1 });
   }
 
   const updateOpts = {};
@@ -305,6 +314,7 @@ async function update(projectId, name, args) {
 }
 
 async function list(projectId) {
+  assertRequiredProject(projectId, "run402 functions list <project_id>");
   try {
     const data = await getSdk().functions.list(projectId);
     console.log(JSON.stringify(data, null, 2));
@@ -314,6 +324,7 @@ async function list(projectId) {
 }
 
 async function deleteFunction(projectId, name) {
+  assertRequiredProjectAndName(projectId, name, "run402 functions delete <project_id> <name>");
   try {
     await getSdk().functions.delete(projectId, name);
     console.log(JSON.stringify({ status: "ok", message: `Function '${name}' deleted.` }));
@@ -324,7 +335,8 @@ async function deleteFunction(projectId, name) {
 
 export async function run(sub, args) {
   if (!sub || sub === '--help' || sub === '-h') { console.log(HELP); process.exit(0); }
-  if (Array.isArray(args) && (args.includes("--help") || args.includes("-h"))) {
+  args = normalizeArgv(args);
+  if (Array.isArray(args) && hasHelp(args)) {
     console.log(SUB_HELP[sub] || HELP);
     process.exit(0);
   }
@@ -339,5 +351,26 @@ export async function run(sub, args) {
       console.error(`Unknown subcommand: ${sub}\n`);
       console.log(HELP);
       process.exit(1);
+  }
+}
+
+function assertRequiredProject(projectId, usage) {
+  if (!projectId || String(projectId).startsWith("-")) {
+    fail({
+      code: "BAD_USAGE",
+      message: "Missing <project_id>.",
+      hint: usage,
+    });
+  }
+}
+
+function assertRequiredProjectAndName(projectId, name, usage) {
+  assertRequiredProject(projectId, usage);
+  if (!name || String(name).startsWith("-")) {
+    fail({
+      code: "BAD_USAGE",
+      message: "Missing <name>.",
+      hint: usage,
+    });
   }
 }

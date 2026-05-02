@@ -310,7 +310,7 @@ Built-in policies: `user_owns_rows` (rows where `owner_column = auth.uid()`), `p
 
 **Preferred path: ship the manifest as `manifest.json` inside `bundle_deploy`'s `files[]`.** The gateway reads it, validates against migration SQL, applies it, and **strips it from `files[]` before serving the site** — auth-as-SDLC. Response includes `manifest_applied: true`.
 
-**Imperative path:** raw POST to `/projects/v1/admin/:id/expose` with the same JSON shape. The SDK doesn't have a typed `applyExpose` method on the `projects` namespace — the MCP/CLI layers wrap the HTTP call directly. To apply from the SDK, use `r.deploy.apply` with the manifest in the bundle, or fall back to `r.client.fetch(...)`.
+**Imperative path:** `r.projects.applyExpose(projectId, manifest)` POSTs the same JSON shape to `/projects/v1/admin/:id/expose`; `r.projects.getExpose(projectId)` reads the currently-applied manifest. Prefer `r.deploy.apply` for production deploys so schema migrations and expose policy land together, but the direct methods are useful for round-tripping an existing manifest.
 
 ### In-function helpers — `@run402/functions`
 
@@ -352,12 +352,23 @@ delete(id: string): Promise<void>
 list(wallet?: string): Promise<ListProjectsResult>
 getUsage(id: string): Promise<UsageReport>
 getSchema(id: string): Promise<SchemaReport>
+sql(id: string, sql: string, params?: unknown[]): Promise<unknown>
+rest<T = unknown>(id: string, table: string, queryParams?: string): Promise<T>
+applyExpose(id: string, manifest: ExposeManifest): Promise<unknown>
+getExpose(id: string): Promise<ExposeManifest>
 pin(id: string): Promise<PinResult>
 getQuote(): Promise<QuoteResult>
 info(id: string): Promise<ProjectInfo>
 keys(id: string): Promise<ProjectKeys>
 use(id: string): Promise<void>             // sets the active project (sticky default)
 active(): Promise<string | null>
+
+// CLI-style aliases:
+usage(id): Promise<UsageReport>            // alias of getUsage
+schema(id): Promise<SchemaReport>          // alias of getSchema
+quote(): Promise<QuoteResult>              // alias of getQuote
+promoteUser(id, email): Promise<void>       // project-admin role helper
+demoteUser(id, email): Promise<void>
 ```
 
 ### `r.deploy`
@@ -485,6 +496,12 @@ webhooks.list(projectId): Promise<MailboxWebhooksResult>
 webhooks.get(projectId, webhookId): Promise<MailboxWebhookSummary>
 webhooks.update(projectId, webhookId, opts: { url?, events? }): Promise<MailboxWebhookSummary>
 webhooks.delete(projectId, webhookId): Promise<void>
+
+// CLI-style aliases:
+create(projectId, slug): Promise<CreateMailboxResult | MailboxInfo>
+status(projectId): Promise<MailboxInfo>
+info(projectId): Promise<MailboxInfo>
+delete(projectId, mailboxId?): Promise<void>
 ```
 
 Templates: `project_invite`, `magic_link`, `notification`. Or pass `subject` + `html` for raw mode. Tier rate limits: prototype 10/day, hobby 50/day, team 500/day.
@@ -497,6 +514,10 @@ status(projectId): Promise<SenderDomainStatus>
 remove(projectId): Promise<void>
 enableInbound(projectId, domain): Promise<{ mx_record }>
 disableInbound(projectId, domain): Promise<void>
+
+// CLI-style aliases:
+inboundEnable(projectId, domain): Promise<{ mx_record }>
+inboundDisable(projectId, domain): Promise<void>
 ```
 
 ### `r.auth`
@@ -506,8 +527,16 @@ requestMagicLink(projectId, opts: { email, redirectUrl }): Promise<void>
 verifyMagicLink(projectId, token): Promise<MagicLinkVerifyResult>      // { access_token, refresh_token, ... }
 setUserPassword(projectId, opts: { accessToken, newPassword, currentPassword? }): Promise<void>
 settings(projectId, opts: { allow_password_set: boolean }): Promise<void>
+providers(projectId): Promise<unknown>
 promote(projectId, email): Promise<void>
 demote(projectId, email): Promise<void>
+
+// CLI-style aliases:
+magicLink(projectId, opts): Promise<void>
+verify(projectId, token): Promise<MagicLinkVerifyResult>
+setPassword(projectId, opts): Promise<void>
+promoteUser(projectId, email): Promise<void>
+demoteUser(projectId, email): Promise<void>
 ```
 
 Magic-link tokens are single-use, expire in 15 min, rate-limited 5/email/hour. Google OAuth is on for all projects with zero config.
@@ -550,6 +579,10 @@ setAutoRecharge(billingAccountId, opts: { enabled: boolean, threshold? }): Promi
 balance(emailOrWallet): Promise<Balance>
 history(emailOrWallet, opts?: { limit? }): Promise<LedgerHistory>
 createCheckout(opts: { amount_micros }): Promise<{ checkout_url }>
+
+// CLI-style aliases:
+createEmail(email): Promise<BillingAccount>
+autoRecharge(opts): Promise<void>
 ```
 
 ### `r.contracts`
@@ -566,6 +599,11 @@ read(opts: { chain, contractAddress, abiFragment, functionName, args }): Promise
 callStatus(projectId, callId): Promise<unknown>
 drain(projectId, walletId, destinationAddress): Promise<unknown>
 deleteWallet(projectId, walletId): Promise<unknown>     // refused if balance ≥ dust
+
+// CLI-style aliases:
+setAlert(projectId, walletId, thresholdWei): Promise<void>
+status(projectId, callId): Promise<unknown>
+delete(projectId, walletId): Promise<unknown>
 ```
 
 Private keys never leave AWS KMS. **$0.04/day rental + $0.000005/call.** Wallet creation requires $1.20 cash credit. Non-custodial. The contracts surface is intentionally untyped (`Promise<unknown>`) — return shapes are versioned by the gateway and consumers must narrow at the call site.
@@ -578,6 +616,9 @@ moderate(projectId, text): Promise<ModerateResult>
 usage(projectId): Promise<AiUsageResult>
 generateImage(opts: { prompt, aspect? }): Promise<GenerateImageResult>  // $0.03 via x402, no projectId
 ```
+
+`r.image` is an alias of `r.ai`, so CLI readers can translate
+`run402 image generate ...` to `r.image.generateImage(...)`.
 
 ### `r.allowance`
 

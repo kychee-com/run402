@@ -13,10 +13,10 @@ Subcommands:
   delete <id> <key>            Delete a secret from a project
 
 Examples:
-  run402 secrets set abc123 STRIPE_KEY sk-1234
-  run402 secrets set abc123 TLS_CERT --file cert.pem
-  run402 secrets list abc123
-  run402 secrets delete abc123 STRIPE_KEY
+  run402 secrets set prj_abc123 STRIPE_KEY sk-1234
+  run402 secrets set prj_abc123 TLS_CERT --file cert.pem
+  run402 secrets list prj_abc123
+  run402 secrets delete prj_abc123 STRIPE_KEY
 
 Notes:
   - Secrets are injected as process.env in serverless functions
@@ -43,8 +43,8 @@ Notes:
   - Values are write-only; 'list' returns a value_hash for verification
 
 Examples:
-  run402 secrets set abc123 STRIPE_KEY sk-1234
-  run402 secrets set abc123 TLS_CERT --file cert.pem
+  run402 secrets set prj_abc123 STRIPE_KEY sk-1234
+  run402 secrets set prj_abc123 TLS_CERT --file cert.pem
 `,
 };
 

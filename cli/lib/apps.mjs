@@ -23,11 +23,11 @@ Examples:
   run402 apps browse
   run402 apps browse --tag auth
   run402 apps fork ver_abc123 my-todo --tier prototype
-  run402 apps publish proj123 --description "Todo app" --tags todo,auth --visibility public --fork-allowed
-  run402 apps versions proj123
+  run402 apps publish prj_abc123 --description "Todo app" --tags todo,auth --visibility public --fork-allowed
+  run402 apps versions prj_abc123
   run402 apps inspect ver_abc123
-  run402 apps update proj123 ver_abc123 --description "Updated" --tags todo
-  run402 apps delete proj123 ver_abc123
+  run402 apps update prj_abc123 ver_abc123 --description "Updated" --tags todo
+  run402 apps delete prj_abc123 ver_abc123
 `;
 
 const SUB_HELP = {
@@ -76,8 +76,8 @@ Options:
   --fork-allowed      Allow other users to fork this app
 
 Examples:
-  run402 apps publish proj123 --description "Todo app" --tags todo,auth
-  run402 apps publish proj123 --visibility public --fork-allowed
+  run402 apps publish prj_abc123 --description "Todo app" --tags todo,auth
+  run402 apps publish prj_abc123 --visibility public --fork-allowed
 `,
   update: `run402 apps update — Update a published version's metadata
 
@@ -96,9 +96,9 @@ Options:
   --no-fork           Disable forking for this version
 
 Examples:
-  run402 apps update proj123 ver_abc123 --description "Updated"
-  run402 apps update proj123 ver_abc123 --tags todo,auth --fork-allowed
-  run402 apps update proj123 ver_abc123 --no-fork
+  run402 apps update prj_abc123 ver_abc123 --description "Updated"
+  run402 apps update prj_abc123 ver_abc123 --tags todo,auth --fork-allowed
+  run402 apps update prj_abc123 ver_abc123 --no-fork
 `,
 };
 

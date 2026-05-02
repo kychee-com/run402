@@ -13,10 +13,10 @@ Subcommands:
   usage     <project_id>
 
 Examples:
-  run402 ai translate proj-001 "Hello world" --to es
-  run402 ai translate proj-001 "Hello" --to ja --from en --context "formal business email"
-  run402 ai moderate proj-001 "content to check"
-  run402 ai usage proj-001
+  run402 ai translate prj_abc123 "Hello world" --to es
+  run402 ai translate prj_abc123 "Hello" --to ja --from en --context "formal business email"
+  run402 ai moderate prj_abc123 "content to check"
+  run402 ai usage prj_abc123
 
 Notes:
   - translate requires the AI Translation add-on on the project
@@ -44,8 +44,8 @@ Notes:
   - Counts against the project's translation word quota
 
 Examples:
-  run402 ai translate proj-001 "Hello world" --to es
-  run402 ai translate proj-001 "Hello" --to ja --from en \\
+  run402 ai translate prj_abc123 "Hello world" --to es
+  run402 ai translate prj_abc123 "Hello" --to ja --from en \\
     --context "formal business email"
 `,
 };

@@ -118,6 +118,7 @@ import type {
 import type {
   ApplyOptions,
   DeployEvent,
+  ExposeManifest,
   DeployListResponse,
   DeployOperation,
   DeployResult,
@@ -139,6 +140,24 @@ class ScopedProjects {
   }
   getSchema(): Promise<SchemaReport> {
     return this.parent.projects.getSchema(this.projectId);
+  }
+  sql(sql: string, params?: unknown[]): Promise<unknown> {
+    return this.parent.projects.sql(this.projectId, sql, params);
+  }
+  rest<T = unknown>(table: string, queryParams?: string): Promise<T> {
+    return this.parent.projects.rest<T>(this.projectId, table, queryParams);
+  }
+  applyExpose(manifest: ExposeManifest): Promise<unknown> {
+    return this.parent.projects.applyExpose(this.projectId, manifest);
+  }
+  getExpose(): Promise<ExposeManifest> {
+    return this.parent.projects.getExpose(this.projectId);
+  }
+  promoteUser(email: string): Promise<void> {
+    return this.parent.projects.promoteUser(this.projectId, email);
+  }
+  demoteUser(email: string): Promise<void> {
+    return this.parent.projects.demoteUser(this.projectId, email);
   }
   pin(): Promise<PinResult> {
     return this.parent.projects.pin(this.projectId);
@@ -223,6 +242,9 @@ class ScopedAuth {
   }
   settings(settings: AuthSettings): Promise<void> {
     return this.parent.auth.settings(this.projectId, settings);
+  }
+  providers(): Promise<unknown> {
+    return this.parent.auth.providers(this.projectId);
   }
   promote(email: string): Promise<void> {
     return this.parent.auth.promote(this.projectId, email);

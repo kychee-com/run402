@@ -39,7 +39,19 @@ export interface AuthSettings {
 }
 
 export class Auth {
-  constructor(private readonly client: Client) {}
+  readonly magicLink: (projectId: string, opts: MagicLinkOptions) => Promise<void>;
+  readonly verify: (projectId: string, token: string) => Promise<MagicLinkVerifyResult>;
+  readonly setPassword: (projectId: string, opts: SetPasswordOptions) => Promise<void>;
+  readonly promoteUser: (projectId: string, email: string) => Promise<void>;
+  readonly demoteUser: (projectId: string, email: string) => Promise<void>;
+
+  constructor(private readonly client: Client) {
+    this.magicLink = this.requestMagicLink.bind(this);
+    this.verify = this.verifyMagicLink.bind(this);
+    this.setPassword = this.setUserPassword.bind(this);
+    this.promoteUser = this.promote.bind(this);
+    this.demoteUser = this.demote.bind(this);
+  }
 
   /** Send a passwordless login email (magic link). 15-minute token. */
   async requestMagicLink(projectId: string, opts: MagicLinkOptions): Promise<void> {
@@ -130,6 +142,21 @@ export class Auth {
       },
       body: { allow_password_set: settings.allow_password_set },
       context: "updating auth settings",
+    });
+  }
+
+  /** List configured auth providers for a project. Uses the project's anon key. */
+  async providers(projectId: string): Promise<unknown> {
+    const project = await this.client.getProject(projectId);
+    if (!project) throw new ProjectNotFound(projectId, "listing auth providers");
+
+    return this.client.request<unknown>("/auth/v1/providers", {
+      headers: {
+        apikey: project.anon_key,
+        Authorization: `Bearer ${project.anon_key}`,
+      },
+      context: "listing auth providers",
+      withAuth: false,
     });
   }
 

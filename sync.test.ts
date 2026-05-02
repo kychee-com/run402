@@ -326,11 +326,11 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   delete: "projects.delete",
   faucet: "allowance.faucet",
 
-  // Database / Admin — SQL / REST / expose stay on raw fetch today.
-  run_sql: null,
-  rest_query: null,
-  apply_expose: null,
-  get_expose: null,
+  // Database / Admin
+  run_sql: "projects.sql",
+  rest_query: "projects.rest",
+  apply_expose: "projects.applyExpose",
+  get_expose: "projects.getExpose",
   get_schema: "projects.getSchema",
   get_usage: "projects.getUsage",
 
@@ -439,7 +439,7 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   verify_magic_link: "auth.verifyMagicLink",
   set_user_password: "auth.setUserPassword",
   auth_settings: "auth.settings",
-  auth_providers: null, // CLI-only wrapper around /auth/v1/providers
+  auth_providers: "auth.providers",
 
   // Sender domains
   register_sender_domain: "senderDomain.register",

@@ -37,6 +37,7 @@ import { pipeline } from "node:stream/promises";
 import { resolveProject, resolveProjectId, API } from "./config.mjs";
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail } from "./sdk-errors.mjs";
+import { assertKnownFlags, hasHelp, normalizeArgv, parseIntegerFlag } from "./argparse.mjs";
 
 const HELP = `run402 blob — Direct-to-S3 blob storage
 
@@ -62,13 +63,13 @@ Options:
   --ttl <seconds>     Signed-URL TTL (sign only; default 3600, max 604800)
 
 Examples:
-  run402 blob put ./artifact.tgz --project abc123
-  run402 blob put ./dist/**/*.png --project abc123 --key assets/
-  run402 blob put huge.bin --project abc123 --immutable
-  run402 blob get images/logo.png --output /tmp/logo.png --project abc123
-  run402 blob ls --project abc123 --prefix images/
-  run402 blob rm images/logo.png --project abc123
-  run402 blob sign images/logo.png --project abc123 --ttl 600
+  run402 blob put ./artifact.tgz --project prj_abc123
+  run402 blob put ./dist/**/*.png --project prj_abc123 --key assets/
+  run402 blob put huge.bin --project prj_abc123 --immutable
+  run402 blob get images/logo.png --output /tmp/logo.png --project prj_abc123
+  run402 blob ls --project prj_abc123 --prefix images/
+  run402 blob rm images/logo.png --project prj_abc123
+  run402 blob sign images/logo.png --project prj_abc123 --ttl 600
 `;
 
 const SUB_HELP = {
@@ -90,9 +91,9 @@ Options:
   --json              Emit NDJSON progress events on stdout (for agent consumption)
 
 Examples:
-  run402 blob put ./artifact.tgz --project abc123
-  run402 blob put ./dist/**/*.png --project abc123 --key assets/
-  run402 blob put huge.bin --project abc123 --immutable --concurrency 8
+  run402 blob put ./artifact.tgz --project prj_abc123
+  run402 blob put ./dist/**/*.png --project prj_abc123 --key assets/
+  run402 blob put huge.bin --project prj_abc123 --immutable --concurrency 8
 `,
   get: `run402 blob get — Download a blob by key
 
@@ -107,7 +108,7 @@ Options:
   --project <id>      Project ID (defaults to active project)
 
 Examples:
-  run402 blob get images/logo.png --output /tmp/logo.png --project abc123
+  run402 blob get images/logo.png --output /tmp/logo.png --project prj_abc123
 `,
   ls: `run402 blob ls — List blob keys in a project
 
@@ -120,8 +121,8 @@ Options:
   --limit <n>         Max results (default 100, max 1000)
 
 Examples:
-  run402 blob ls --project abc123
-  run402 blob ls --project abc123 --prefix images/ --limit 500
+  run402 blob ls --project prj_abc123
+  run402 blob ls --project prj_abc123 --prefix images/ --limit 500
 `,
   rm: `run402 blob rm — Delete a blob
 
@@ -135,7 +136,7 @@ Options:
   --project <id>      Project ID (defaults to active project)
 
 Examples:
-  run402 blob rm images/logo.png --project abc123
+  run402 blob rm images/logo.png --project prj_abc123
 `,
   sign: `run402 blob sign — Create a presigned download URL for a blob
 
@@ -150,7 +151,7 @@ Options:
   --ttl <seconds>     Signed-URL TTL (default 3600, max 604800)
 
 Examples:
-  run402 blob sign reports/2025-q4.pdf --project abc123 --ttl 600
+  run402 blob sign reports/2025-q4.pdf --project prj_abc123 --ttl 600
 `,
   diagnose: `run402 blob diagnose — Inspect the live CDN state for a public blob URL
 
@@ -186,7 +187,38 @@ function die(msg, exit_code = 1) {
   fail({ code: "BAD_USAGE", message: msg, exit_code });
 }
 
-function parseArgs(args) {
+function dieApiFailure(prefix, http, body) {
+  if (body && typeof body === "object" && !Array.isArray(body)) {
+    const envelope = { status: "error", http, ...body };
+    if (!envelope.message && envelope.error) envelope.message = envelope.error;
+    console.error(JSON.stringify(envelope));
+    process.exit(1);
+  }
+  fail({
+    message: `${prefix}: HTTP ${http}${typeof body === "string" && body ? `: ${body.slice(0, 500)}` : ""}`,
+    details: { http },
+  });
+}
+
+function parseArgs(rawArgs) {
+  const args = normalizeArgv(rawArgs);
+  const valueFlags = ["--project", "--key", "--concurrency", "--prefix", "--limit", "--output", "-o", "--ttl"];
+  assertKnownFlags(args, [
+    "--project",
+    "--key",
+    "--private",
+    "--immutable",
+    "--concurrency",
+    "--no-resume",
+    "--json",
+    "--prefix",
+    "--limit",
+    "--output",
+    "-o",
+    "--ttl",
+    "--help",
+    "-h",
+  ], valueFlags);
   const out = { positional: [], project: null, key: null, private: false, immutable: false,
                  concurrency: 4, resume: true, json: false, prefix: null, limit: null,
                  output: null, ttl: null };
@@ -196,13 +228,13 @@ function parseArgs(args) {
     else if (a === "--key") out.key = args[++i];
     else if (a === "--private") out.private = true;
     else if (a === "--immutable") out.immutable = true;
-    else if (a === "--concurrency") out.concurrency = parseInt(args[++i], 10);
+    else if (a === "--concurrency") out.concurrency = parseIntegerFlag("--concurrency", args[++i], { min: 1 });
     else if (a === "--no-resume") out.resume = false;
     else if (a === "--json") out.json = true;
     else if (a === "--prefix") out.prefix = args[++i];
-    else if (a === "--limit") out.limit = parseInt(args[++i], 10);
+    else if (a === "--limit") out.limit = parseIntegerFlag("--limit", args[++i], { min: 1, max: 1000 });
     else if (a === "--output" || a === "-o") out.output = args[++i];
-    else if (a === "--ttl") out.ttl = parseInt(args[++i], 10);
+    else if (a === "--ttl") out.ttl = parseIntegerFlag("--ttl", args[++i], { min: 1, max: 604800 });
     else if (!a.startsWith("--")) out.positional.push(a);
   }
   return out;
@@ -284,7 +316,7 @@ async function putOne(project, filePath, opts) {
       immutable: opts.immutable,
       sha256,
     });
-    if (init.status !== 201) die(`Init failed: HTTP ${init.status}: ${JSON.stringify(init.body)}`);
+    if (init.status !== 201) dieApiFailure("Init failed", init.status, init.body);
     initRes = init.body;
     saveState({
       upload_id: initRes.upload_id,
@@ -330,7 +362,7 @@ async function putOne(project, filePath, opts) {
     ? { parts: etags.map((e, i) => ({ part_number: i + 1, etag: e.etag })) }
     : {};
   const complete = await apiFetch(`${API}/storage/v1/uploads/${state.upload_id}/complete`, "POST", project, body);
-  if (complete.status !== 200) die(`Complete failed: HTTP ${complete.status}: ${JSON.stringify(complete.body)}`);
+  if (complete.status !== 200) dieApiFailure("Complete failed", complete.status, complete.body);
 
   removeState(state.upload_id);
   log(opts, { event: "done", ...complete.body });
@@ -565,7 +597,8 @@ export async function run(sub, args) {
     console.log(HELP);
     process.exit(0);
   }
-  if (Array.isArray(args) && (args.includes("--help") || args.includes("-h"))) {
+  args = normalizeArgv(args);
+  if (Array.isArray(args) && hasHelp(args)) {
     console.log(SUB_HELP[sub] || HELP);
     process.exit(0);
   }
