@@ -2,7 +2,7 @@ import { readFileSync } from "fs";
 import { findProject, loadKeyStore, API, allowanceAuthHeaders, resolveProjectId, getActiveProjectId } from "./config.mjs";
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail, parseFlagJson } from "./sdk-errors.mjs";
-import { assertKnownFlags, failBadProjectId, hasHelp, normalizeArgv, positionalArgs, resolvePositionalProject } from "./argparse.mjs";
+import { assertKnownFlags, failBadProjectId, hasHelp, normalizeArgv, positionalArgs, resolvePositionalProject, validateRegularFile } from "./argparse.mjs";
 
 const HELP = `run402 projects — Manage your deployed Run402 projects
 
@@ -175,13 +175,14 @@ async function provision(args) {
 }
 
 async function applyExpose(projectId, args = []) {
-  const p = findProject(projectId);
   let file = null;
   let inline = null;
   for (let i = 0; i < args.length; i++) {
     if (args[i] === "--file" && args[i + 1]) { file = args[++i]; }
     else if (!inline && !args[i].startsWith("--")) { inline = args[i]; }
   }
+  if (file) validateRegularFile(file, "--file");
+  const p = findProject(projectId);
   const raw = file ? readFileSync(file, "utf-8") : inline;
   if (!raw) {
     fail({
@@ -252,7 +253,6 @@ async function keys(projectId) {
 }
 
 async function sqlCmd(projectId, args = []) {
-  const p = findProject(projectId);
   let file = null;
   let query = null;
   let paramsRaw = null;
@@ -261,6 +261,8 @@ async function sqlCmd(projectId, args = []) {
     else if (args[i] === "--params" && args[i + 1]) { paramsRaw = args[++i]; }
     else if (!query && !args[i].startsWith("--")) { query = args[i]; }
   }
+  if (file) validateRegularFile(file, "--file");
+  const p = findProject(projectId);
   const sql = file ? readFileSync(file, "utf-8") : query;
   if (!sql) {
     fail({

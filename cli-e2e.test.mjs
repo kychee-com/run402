@@ -884,6 +884,120 @@ describe("CLI e2e happy path", () => {
     assert.ok(captured().includes("test"), "should return query results from file");
   });
 
+  it("projects sql with missing --file path returns structured JSON error (GH-233)", async () => {
+    const { run } = await import("./cli/lib/projects.mjs");
+    const missingPath = join(tempDir, `definitely-not-a-real-sql-${Date.now()}.sql`);
+    let threw = null;
+    captureStart();
+    try {
+      await run("sql", ["prj_test123", "--file", missingPath]);
+    } catch (e) {
+      threw = e;
+    } finally {
+      captureStop();
+    }
+    assert.ok(threw && /process\.exit\(1\)/.test(threw.message),
+      `should exit non-zero, got: ${threw && threw.message}`);
+    const stderr = capturedStderr();
+    assert.ok(!/node:fs/.test(stderr), `must not leak raw node:fs path, got: ${stderr}`);
+    assert.ok(!/readFileUtf8/.test(stderr), `must not leak readFileUtf8 V8 source pointer, got: ${stderr}`);
+    assert.ok(!/ENOENT/.test(stderr), `must not leak raw ENOENT error, got: ${stderr}`);
+    assert.ok(!/EISDIR/.test(stderr), `must not leak raw EISDIR error, got: ${stderr}`);
+    const line = stderr.split("\n").map(s => s.trim()).find(s => s.startsWith("{") && s.endsWith("}"));
+    assert.ok(line, `should emit a JSON error line on stderr, got: ${stderr}`);
+    const parsed = JSON.parse(line);
+    assert.equal(parsed.status, "error");
+    assert.equal(parsed.code, "FILE_NOT_FOUND",
+      `code should be FILE_NOT_FOUND, got: ${parsed.code}`);
+    assert.ok(parsed.message && parsed.message.includes(missingPath),
+      `message should include missing path, got: ${parsed.message}`);
+  });
+
+  it("projects sql with directory --file path returns structured JSON error (GH-233)", async () => {
+    const { run } = await import("./cli/lib/projects.mjs");
+    let threw = null;
+    captureStart();
+    try {
+      await run("sql", ["prj_test123", "--file", tempDir]);
+    } catch (e) {
+      threw = e;
+    } finally {
+      captureStop();
+    }
+    assert.ok(threw && /process\.exit\(1\)/.test(threw.message),
+      `should exit non-zero, got: ${threw && threw.message}`);
+    const stderr = capturedStderr();
+    assert.ok(!/node:fs/.test(stderr), `must not leak raw node:fs path, got: ${stderr}`);
+    assert.ok(!/readFileUtf8/.test(stderr), `must not leak readFileUtf8 V8 source pointer, got: ${stderr}`);
+    assert.ok(!/ENOENT/.test(stderr), `must not leak raw ENOENT error, got: ${stderr}`);
+    assert.ok(!/EISDIR/.test(stderr), `must not leak raw EISDIR error, got: ${stderr}`);
+    const line = stderr.split("\n").map(s => s.trim()).find(s => s.startsWith("{") && s.endsWith("}"));
+    assert.ok(line, `should emit a JSON error line on stderr, got: ${stderr}`);
+    const parsed = JSON.parse(line);
+    assert.equal(parsed.status, "error");
+    assert.equal(parsed.code, "NOT_A_FILE",
+      `code should be NOT_A_FILE, got: ${parsed.code}`);
+    assert.ok(parsed.message && parsed.message.includes(tempDir),
+      `message should include directory path, got: ${parsed.message}`);
+  });
+
+  it("projects apply-expose with missing --file path returns structured JSON error (GH-233)", async () => {
+    const { run } = await import("./cli/lib/projects.mjs");
+    const missingPath = join(tempDir, `definitely-not-a-real-manifest-${Date.now()}.json`);
+    let threw = null;
+    captureStart();
+    try {
+      await run("apply-expose", ["prj_test123", "--file", missingPath]);
+    } catch (e) {
+      threw = e;
+    } finally {
+      captureStop();
+    }
+    assert.ok(threw && /process\.exit\(1\)/.test(threw.message),
+      `should exit non-zero, got: ${threw && threw.message}`);
+    const stderr = capturedStderr();
+    assert.ok(!/node:fs/.test(stderr), `must not leak raw node:fs path, got: ${stderr}`);
+    assert.ok(!/readFileUtf8/.test(stderr), `must not leak readFileUtf8 V8 source pointer, got: ${stderr}`);
+    assert.ok(!/ENOENT/.test(stderr), `must not leak raw ENOENT error, got: ${stderr}`);
+    assert.ok(!/EISDIR/.test(stderr), `must not leak raw EISDIR error, got: ${stderr}`);
+    const line = stderr.split("\n").map(s => s.trim()).find(s => s.startsWith("{") && s.endsWith("}"));
+    assert.ok(line, `should emit a JSON error line on stderr, got: ${stderr}`);
+    const parsed = JSON.parse(line);
+    assert.equal(parsed.status, "error");
+    assert.equal(parsed.code, "FILE_NOT_FOUND",
+      `code should be FILE_NOT_FOUND, got: ${parsed.code}`);
+    assert.ok(parsed.message && parsed.message.includes(missingPath),
+      `message should include missing path, got: ${parsed.message}`);
+  });
+
+  it("projects apply-expose with directory --file path returns structured JSON error (GH-233)", async () => {
+    const { run } = await import("./cli/lib/projects.mjs");
+    let threw = null;
+    captureStart();
+    try {
+      await run("apply-expose", ["prj_test123", "--file", tempDir]);
+    } catch (e) {
+      threw = e;
+    } finally {
+      captureStop();
+    }
+    assert.ok(threw && /process\.exit\(1\)/.test(threw.message),
+      `should exit non-zero, got: ${threw && threw.message}`);
+    const stderr = capturedStderr();
+    assert.ok(!/node:fs/.test(stderr), `must not leak raw node:fs path, got: ${stderr}`);
+    assert.ok(!/readFileUtf8/.test(stderr), `must not leak readFileUtf8 V8 source pointer, got: ${stderr}`);
+    assert.ok(!/ENOENT/.test(stderr), `must not leak raw ENOENT error, got: ${stderr}`);
+    assert.ok(!/EISDIR/.test(stderr), `must not leak raw EISDIR error, got: ${stderr}`);
+    const line = stderr.split("\n").map(s => s.trim()).find(s => s.startsWith("{") && s.endsWith("}"));
+    assert.ok(line, `should emit a JSON error line on stderr, got: ${stderr}`);
+    const parsed = JSON.parse(line);
+    assert.equal(parsed.status, "error");
+    assert.equal(parsed.code, "NOT_A_FILE",
+      `code should be NOT_A_FILE, got: ${parsed.code}`);
+    assert.ok(parsed.message && parsed.message.includes(tempDir),
+      `message should include directory path, got: ${parsed.message}`);
+  });
+
   it("projects sql exits non-zero on blocked SQL (GH-34)", async () => {
     const { run } = await import("./cli/lib/projects.mjs");
     // Swap in a fetch that returns a 400 with a blocked-SQL error body.
@@ -1584,6 +1698,92 @@ describe("CLI e2e happy path", () => {
       `database.migrations manifest should be accepted, got: ${capturedStderr()}`);
   });
 
+  // ── GH-232: deploy apply (v2 unified primitive) must reject empty specs ──
+  // The legacy `deploy --manifest` path was hardened in GH-185, but the v2
+  // `deploy apply --manifest` / `--spec` path silently sent empty specs to
+  // the gateway. This block mirrors the GH-185 guard pattern for v2 keys.
+  async function deployApplyAndCapture(args) {
+    const { run } = await import("./cli/lib/deploy.mjs");
+    let deployCalled = false;
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = (input, init) => {
+      const url = typeof input === "string" ? input : (input instanceof Request ? input.url : String(input));
+      const method = (init?.method || (input instanceof Request ? input.method : "GET") || "GET").toUpperCase();
+      if (url.endsWith("/deploy/v2/plans") && method === "POST") deployCalled = true;
+      return prevFetch(input, init);
+    };
+    let threw = null;
+    captureStart();
+    try {
+      await run(["apply", ...args]);
+    } catch (e) {
+      threw = e;
+    } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+    return { threw, stderr: capturedStderr(), stdout: capturedStdout(), deployCalled };
+  }
+
+  it("deploy apply rejects empty manifest file (GH-232)", async () => {
+    const { writeFileSync: wf } = await import("node:fs");
+    const manifestPath = join(tempDir, "gh232-empty-manifest.json");
+    wf(manifestPath, JSON.stringify({}));
+    const { threw, stderr, deployCalled } = await deployApplyAndCapture(
+      ["--manifest", manifestPath, "--project", "prj_test123"]);
+    assert.ok(threw && /process\.exit\(1\)/.test(threw.message),
+      `should exit non-zero, got: ${threw && threw.message}`);
+    assert.equal(deployCalled, false, "must not POST to /deploy/v2/plans on empty manifest");
+    const parsed = parseStderrEnvelope(stderr);
+    assert.equal(parsed.status, "error");
+    assert.equal(parsed.code, "MANIFEST_EMPTY");
+    assert.ok(parsed.message && /no deployable sections/i.test(parsed.message),
+      `message should explain no deployable sections, got: ${parsed.message}`);
+    assert.ok(parsed.hint, `hint should be present, got: ${JSON.stringify(parsed)}`);
+  });
+
+  it("deploy apply rejects --spec '{}' (GH-232)", async () => {
+    const { threw, stderr, deployCalled } = await deployApplyAndCapture(
+      ["--spec", "{}", "--project", "prj_test123"]);
+    assert.ok(threw && /process\.exit\(1\)/.test(threw.message),
+      `should exit non-zero, got: ${threw && threw.message}`);
+    assert.equal(deployCalled, false, "must not POST to /deploy/v2/plans on empty --spec");
+    const parsed = parseStderrEnvelope(stderr);
+    assert.equal(parsed.code, "MANIFEST_EMPTY");
+  });
+
+  it("deploy apply rejects --spec with only project_id (GH-232)", async () => {
+    const { threw, stderr, deployCalled } = await deployApplyAndCapture(
+      ["--spec", JSON.stringify({ project_id: "prj_test123" })]);
+    assert.ok(threw && /process\.exit\(1\)/.test(threw.message),
+      `should exit non-zero, got: ${threw && threw.message}`);
+    assert.equal(deployCalled, false, "must not POST to /deploy/v2/plans on project-id-only spec");
+    const parsed = parseStderrEnvelope(stderr);
+    assert.equal(parsed.code, "MANIFEST_EMPTY");
+  });
+
+  it("deploy apply rejects --spec with empty site.replace (GH-232)", async () => {
+    const { threw, stderr, deployCalled } = await deployApplyAndCapture(
+      ["--spec", JSON.stringify({ site: { replace: {} } }), "--project", "prj_test123"]);
+    assert.ok(threw && /process\.exit\(1\)/.test(threw.message),
+      `should exit non-zero, got: ${threw && threw.message}`);
+    assert.equal(deployCalled, false, "must not POST to /deploy/v2/plans on empty site.replace spec");
+    const parsed = parseStderrEnvelope(stderr);
+    assert.equal(parsed.code, "MANIFEST_EMPTY");
+  });
+
+  it("deploy apply accepts --spec with non-empty site.replace (GH-232)", async () => {
+    const { threw, deployCalled } = await deployApplyAndCapture(
+      ["--spec", JSON.stringify({ site: { replace: { "index.html": { data: "x" } } } }),
+        "--project", "prj_test123"]);
+    // The validator must NOT block this spec; the SDK call may proceed
+    // (and against the mock /deploy/v2/plans + commit endpoints, succeed).
+    assert.ok(!threw || !/MANIFEST_EMPTY/.test(threw.message),
+      `non-empty site.replace must pass the empty-manifest guard, got: ${threw && threw.message}`);
+    assert.equal(deployCalled, true,
+      "non-empty site.replace must reach /deploy/v2/plans");
+  });
+
   // ── Functions ───────────────────────────────────────────────────────────
 
   it("functions deploy", async () => {
@@ -1705,6 +1905,63 @@ describe("CLI e2e happy path", () => {
     await run("set", ["prj_test123", "FILE_KEY", "--file", valPath]);
     captureStop();
     assert.ok(captured().includes("ok"), "should set secret from file");
+  });
+
+  it("secrets set with missing --file path returns structured JSON error (GH-233)", async () => {
+    const { run } = await import("./cli/lib/secrets.mjs");
+    const missingPath = join(tempDir, `definitely-not-a-real-secret-${Date.now()}.txt`);
+    let threw = null;
+    captureStart();
+    try {
+      await run("set", ["prj_test123", "TLS_CERT", "--file", missingPath]);
+    } catch (e) {
+      threw = e;
+    } finally {
+      captureStop();
+    }
+    assert.ok(threw && /process\.exit\(1\)/.test(threw.message),
+      `should exit non-zero, got: ${threw && threw.message}`);
+    const stderr = capturedStderr();
+    assert.ok(!/node:fs/.test(stderr), `must not leak raw node:fs path, got: ${stderr}`);
+    assert.ok(!/readFileUtf8/.test(stderr), `must not leak readFileUtf8 V8 source pointer, got: ${stderr}`);
+    assert.ok(!/ENOENT/.test(stderr), `must not leak raw ENOENT error, got: ${stderr}`);
+    assert.ok(!/EISDIR/.test(stderr), `must not leak raw EISDIR error, got: ${stderr}`);
+    const line = stderr.split("\n").map(s => s.trim()).find(s => s.startsWith("{") && s.endsWith("}"));
+    assert.ok(line, `should emit a JSON error line on stderr, got: ${stderr}`);
+    const parsed = JSON.parse(line);
+    assert.equal(parsed.status, "error");
+    assert.equal(parsed.code, "FILE_NOT_FOUND",
+      `code should be FILE_NOT_FOUND, got: ${parsed.code}`);
+    assert.ok(parsed.message && parsed.message.includes(missingPath),
+      `message should include missing path, got: ${parsed.message}`);
+  });
+
+  it("secrets set with directory --file path returns structured JSON error (GH-233)", async () => {
+    const { run } = await import("./cli/lib/secrets.mjs");
+    let threw = null;
+    captureStart();
+    try {
+      await run("set", ["prj_test123", "TLS_CERT", "--file", tempDir]);
+    } catch (e) {
+      threw = e;
+    } finally {
+      captureStop();
+    }
+    assert.ok(threw && /process\.exit\(1\)/.test(threw.message),
+      `should exit non-zero, got: ${threw && threw.message}`);
+    const stderr = capturedStderr();
+    assert.ok(!/node:fs/.test(stderr), `must not leak raw node:fs path, got: ${stderr}`);
+    assert.ok(!/readFileUtf8/.test(stderr), `must not leak readFileUtf8 V8 source pointer, got: ${stderr}`);
+    assert.ok(!/ENOENT/.test(stderr), `must not leak raw ENOENT error, got: ${stderr}`);
+    assert.ok(!/EISDIR/.test(stderr), `must not leak raw EISDIR error, got: ${stderr}`);
+    const line = stderr.split("\n").map(s => s.trim()).find(s => s.startsWith("{") && s.endsWith("}"));
+    assert.ok(line, `should emit a JSON error line on stderr, got: ${stderr}`);
+    const parsed = JSON.parse(line);
+    assert.equal(parsed.status, "error");
+    assert.equal(parsed.code, "NOT_A_FILE",
+      `code should be NOT_A_FILE, got: ${parsed.code}`);
+    assert.ok(parsed.message && parsed.message.includes(tempDir),
+      `message should include directory path, got: ${parsed.message}`);
   });
 
   it("secrets list", async () => {
@@ -3716,6 +3973,111 @@ describe("CLI domains list --project / positional parity (GH-209)", () => {
       `'domains list' (no args) should resolve via active project, got: ${threw?.message || ""} / stderr: ${capturedStderr()}`);
     const get = calls.find(c => c.method === "GET" && c.path === "/domains/v1");
     assert.ok(get, `must still issue GET /domains/v1, calls: ${JSON.stringify(calls)}`);
+  });
+});
+
+// ── subdomains list flag/positional parity (GH-231) ─────────────────────────
+// Same shape as GH-209 but for `subdomains list`. `subdomains claim` and
+// `subdomains delete` accept `--project <id>`, but `subdomains list`
+// previously only accepted a positional [<id>] arg. Running
+// `run402 subdomains list --project prj_xxx` parsed `--project` as the
+// positional id and emitted 'Project --project not found' — same misleading
+// PROJECT_NOT_FOUND that GH-209 fixed for `domains list`. The fix mirrors
+// GH-209 (option #1: pure extension) — the legacy positional form keeps
+// working, and `--project` now resolves correctly.
+
+describe("CLI subdomains list --project / positional parity (GH-231)", () => {
+  async function seedActiveProject() {
+    const { saveProject, setActiveProjectId } = await import("./cli/lib/config.mjs");
+    saveProject(TEST_PROJECT.project_id, {
+      anon_key: TEST_PROJECT.anon_key,
+      service_key: TEST_PROJECT.service_key,
+    });
+    setActiveProjectId(TEST_PROJECT.project_id);
+  }
+
+  function buildListSpyFetch(calls) {
+    const apiOrigin = new URL(API).origin;
+    return async (input, init) => {
+      const url = typeof input === "string" ? input : (input instanceof Request ? input.url : String(input));
+      const method = (init?.method || (input instanceof Request ? input.method : "GET") || "GET").toUpperCase();
+      let path = url;
+      try {
+        const parsed = new URL(url);
+        if (parsed.origin === apiOrigin) path = parsed.pathname + parsed.search;
+      } catch {
+        // non-URL input — leave as raw
+      }
+      calls.push({ method, path, url });
+      if (method === "GET" && path === "/subdomains/v1") {
+        return Promise.resolve(json({ subdomains: [] }));
+      }
+      return Promise.resolve(new Response("Not Found", { status: 404 }));
+    };
+  }
+
+  it("subdomains list --project <id> resolves the project (does not parse '--project' as the id)", async () => {
+    await seedActiveProject();
+    const { run } = await import("./cli/lib/subdomains.mjs");
+    const calls = [];
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = buildListSpyFetch(calls);
+    let threw = null;
+    captureStart();
+    try {
+      await run("list", ["--project", TEST_PROJECT.project_id]);
+    } catch (e) { threw = e; } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+    assert.equal(threw, null,
+      `subdomains list --project <id> must not exit; got: ${threw?.message || ""} / stderr: ${capturedStderr()}`);
+    assert.ok(
+      !/Project\s+--project\s+not found/.test(capturedStderr()),
+      `must not parse '--project' as the positional id, got stderr: ${capturedStderr()}`,
+    );
+    const get = calls.find(c => c.method === "GET" && c.path === "/subdomains/v1");
+    assert.ok(get, `must issue GET /subdomains/v1, calls: ${JSON.stringify(calls)}`);
+  });
+
+  it("subdomains list <id> (legacy positional) still works", async () => {
+    await seedActiveProject();
+    const { run } = await import("./cli/lib/subdomains.mjs");
+    const calls = [];
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = buildListSpyFetch(calls);
+    let threw = null;
+    captureStart();
+    try {
+      await run("list", [TEST_PROJECT.project_id]);
+    } catch (e) { threw = e; } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+    assert.equal(threw, null,
+      `legacy 'subdomains list <id>' must keep working, got: ${threw?.message || ""} / stderr: ${capturedStderr()}`);
+    const get = calls.find(c => c.method === "GET" && c.path === "/subdomains/v1");
+    assert.ok(get, `legacy positional must still issue GET /subdomains/v1, calls: ${JSON.stringify(calls)}`);
+  });
+
+  it("subdomains list (no args) falls back to active project", async () => {
+    await seedActiveProject();
+    const { run } = await import("./cli/lib/subdomains.mjs");
+    const calls = [];
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = buildListSpyFetch(calls);
+    let threw = null;
+    captureStart();
+    try {
+      await run("list", []);
+    } catch (e) { threw = e; } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+    assert.equal(threw, null,
+      `'subdomains list' (no args) should resolve via active project, got: ${threw?.message || ""} / stderr: ${capturedStderr()}`);
+    const get = calls.find(c => c.method === "GET" && c.path === "/subdomains/v1");
+    assert.ok(get, `must still issue GET /subdomains/v1, calls: ${JSON.stringify(calls)}`);
   });
 });
 

@@ -1,3 +1,4 @@
+import { existsSync, statSync } from "node:fs";
 import { fail } from "./sdk-errors.mjs";
 import { resolveProjectId } from "./config.mjs";
 
@@ -139,6 +140,46 @@ export function validateWebhookUrl(url, fieldName = "--url") {
       field: fieldName,
       hint: "Webhook URLs must be https:// for transport security.",
       details: { flag: fieldName, value: url, scheme: parsed.protocol },
+    });
+  }
+}
+
+/**
+ * Validate that a CLI flag pointing at a filesystem path resolves to an
+ * existing regular file. Replaces the GH-195 inline pattern that was
+ * duplicated across `functions deploy`, `secrets set`, `projects sql`,
+ * and `projects apply-expose` (GH-233).
+ *
+ * Without this guard, `readFileSync` against a missing path leaks a raw
+ * `node:fs` ENOENT/EISDIR stack to stderr (with the V8 source pointer),
+ * which violates the CLI's structured-error contract.
+ *
+ * No-op: this helper is meant to be called only when the flag is set.
+ * Callers handle the optional/required dichotomy themselves.
+ *
+ * On failure: `fail()` writes a `FILE_NOT_FOUND` or `NOT_A_FILE` envelope
+ * to stderr and exits 1.
+ *
+ * @param {string} path - The filesystem path captured from the flag.
+ * @param {string} fieldName - The flag name for the envelope (default "--file").
+ */
+export function validateRegularFile(path, fieldName = "--file") {
+  if (!existsSync(path)) {
+    fail({
+      code: "FILE_NOT_FOUND",
+      message: `File not found: ${path}`,
+      field: fieldName,
+      path,
+      hint: `Check that ${fieldName} points to an existing file.`,
+    });
+  }
+  const stat = statSync(path);
+  if (!stat.isFile()) {
+    fail({
+      code: "NOT_A_FILE",
+      message: `${fieldName} points to a ${stat.isDirectory() ? "directory" : "non-regular file"}: ${path}`,
+      field: fieldName,
+      path,
     });
   }
 }
