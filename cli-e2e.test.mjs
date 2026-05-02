@@ -3719,6 +3719,111 @@ describe("CLI domains list --project / positional parity (GH-209)", () => {
   });
 });
 
+// ── subdomains list flag/positional parity (GH-231) ─────────────────────────
+// Same shape as GH-209 but for `subdomains list`. `subdomains claim` and
+// `subdomains delete` accept `--project <id>`, but `subdomains list`
+// previously only accepted a positional [<id>] arg. Running
+// `run402 subdomains list --project prj_xxx` parsed `--project` as the
+// positional id and emitted 'Project --project not found' — same misleading
+// PROJECT_NOT_FOUND that GH-209 fixed for `domains list`. The fix mirrors
+// GH-209 (option #1: pure extension) — the legacy positional form keeps
+// working, and `--project` now resolves correctly.
+
+describe("CLI subdomains list --project / positional parity (GH-231)", () => {
+  async function seedActiveProject() {
+    const { saveProject, setActiveProjectId } = await import("./cli/lib/config.mjs");
+    saveProject(TEST_PROJECT.project_id, {
+      anon_key: TEST_PROJECT.anon_key,
+      service_key: TEST_PROJECT.service_key,
+    });
+    setActiveProjectId(TEST_PROJECT.project_id);
+  }
+
+  function buildListSpyFetch(calls) {
+    const apiOrigin = new URL(API).origin;
+    return async (input, init) => {
+      const url = typeof input === "string" ? input : (input instanceof Request ? input.url : String(input));
+      const method = (init?.method || (input instanceof Request ? input.method : "GET") || "GET").toUpperCase();
+      let path = url;
+      try {
+        const parsed = new URL(url);
+        if (parsed.origin === apiOrigin) path = parsed.pathname + parsed.search;
+      } catch {
+        // non-URL input — leave as raw
+      }
+      calls.push({ method, path, url });
+      if (method === "GET" && path === "/subdomains/v1") {
+        return Promise.resolve(json({ subdomains: [] }));
+      }
+      return Promise.resolve(new Response("Not Found", { status: 404 }));
+    };
+  }
+
+  it("subdomains list --project <id> resolves the project (does not parse '--project' as the id)", async () => {
+    await seedActiveProject();
+    const { run } = await import("./cli/lib/subdomains.mjs");
+    const calls = [];
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = buildListSpyFetch(calls);
+    let threw = null;
+    captureStart();
+    try {
+      await run("list", ["--project", TEST_PROJECT.project_id]);
+    } catch (e) { threw = e; } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+    assert.equal(threw, null,
+      `subdomains list --project <id> must not exit; got: ${threw?.message || ""} / stderr: ${capturedStderr()}`);
+    assert.ok(
+      !/Project\s+--project\s+not found/.test(capturedStderr()),
+      `must not parse '--project' as the positional id, got stderr: ${capturedStderr()}`,
+    );
+    const get = calls.find(c => c.method === "GET" && c.path === "/subdomains/v1");
+    assert.ok(get, `must issue GET /subdomains/v1, calls: ${JSON.stringify(calls)}`);
+  });
+
+  it("subdomains list <id> (legacy positional) still works", async () => {
+    await seedActiveProject();
+    const { run } = await import("./cli/lib/subdomains.mjs");
+    const calls = [];
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = buildListSpyFetch(calls);
+    let threw = null;
+    captureStart();
+    try {
+      await run("list", [TEST_PROJECT.project_id]);
+    } catch (e) { threw = e; } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+    assert.equal(threw, null,
+      `legacy 'subdomains list <id>' must keep working, got: ${threw?.message || ""} / stderr: ${capturedStderr()}`);
+    const get = calls.find(c => c.method === "GET" && c.path === "/subdomains/v1");
+    assert.ok(get, `legacy positional must still issue GET /subdomains/v1, calls: ${JSON.stringify(calls)}`);
+  });
+
+  it("subdomains list (no args) falls back to active project", async () => {
+    await seedActiveProject();
+    const { run } = await import("./cli/lib/subdomains.mjs");
+    const calls = [];
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = buildListSpyFetch(calls);
+    let threw = null;
+    captureStart();
+    try {
+      await run("list", []);
+    } catch (e) { threw = e; } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+    assert.equal(threw, null,
+      `'subdomains list' (no args) should resolve via active project, got: ${threw?.message || ""} / stderr: ${capturedStderr()}`);
+    const get = calls.find(c => c.method === "GET" && c.path === "/subdomains/v1");
+    assert.ok(get, `must still issue GET /subdomains/v1, calls: ${JSON.stringify(calls)}`);
+  });
+});
+
 // ── Message size cap (GH-175) ──────────────────────────────────────────────
 // `run402 message send <text>` previously had no client-side cap, so a
 // 200 KB single message was happily POSTed to /message/v1 and stored in the

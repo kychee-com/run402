@@ -10,7 +10,7 @@ Usage:
 Subcommands:
   claim  <name> [--project <id>] [--deployment <id>]   Claim a subdomain
   delete <name> --confirm [--project <id>]              Release a subdomain. Requires --confirm.
-  list   [<id>]                                         List subdomains for a project
+  list   [<id>] | list --project <id>                   List subdomains for a project
 
 Options default to the active project and its last deployment when omitted.
 Legacy syntax 'claim <deployment_id> <name>' is still supported.
@@ -151,8 +151,24 @@ async function deleteSubdomain(allArgs) {
   }
 }
 
-async function list(projectIdArg) {
-  const projectId = resolveProjectId(projectIdArg);
+function parseProjectFlag(args) {
+  let project = null;
+  const rest = [];
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === "--project" && args[i + 1]) { project = args[++i]; }
+    else { rest.push(args[i]); }
+  }
+  return { project, rest };
+}
+
+async function list(args) {
+  const argList = Array.isArray(args) ? args : [];
+  const { project, rest } = parseProjectFlag(argList);
+  // Either --project <id> or a positional id is accepted; --project wins
+  // when both are supplied. Falls back to the active project when neither
+  // is given. Keeps backward-compat with the legacy `subdomains list <id>`
+  // form (GH-231; mirrors the GH-209 fix for `domains list`).
+  const projectId = resolveProjectId(project || rest[0]);
   try {
     const data = await getSdk().subdomains.list(projectId);
     console.log(JSON.stringify(data, null, 2));
@@ -177,7 +193,7 @@ export async function run(sub, args) {
       break;
     }
     case "delete": await deleteSubdomain(args); break;
-    case "list":   await list(args[0]); break;
+    case "list":   await list(args); break;
     default:
       console.error(`Unknown subcommand: ${sub}\n`);
       console.log(HELP);
