@@ -1,5 +1,5 @@
 import { readFileSync } from "fs";
-import { findProject, loadKeyStore, API, allowanceAuthHeaders, resolveProjectId } from "./config.mjs";
+import { findProject, loadKeyStore, API, allowanceAuthHeaders, resolveProjectId, getActiveProjectId } from "./config.mjs";
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError } from "./sdk-errors.mjs";
 
@@ -128,9 +128,16 @@ async function provision(args) {
   // gives the user a more specific prompt than the SDK's 401/402 path.
   allowanceAuthHeaders("/projects/v1");
 
+  const activeBefore = getActiveProjectId();
   try {
     const data = await getSdk().projects.provision({ tier: opts.tier, name: opts.name });
-    console.log(JSON.stringify(data, null, 2));
+    const activeAfter = getActiveProjectId();
+    const out = { ...data };
+    if (activeBefore && activeAfter && activeBefore !== activeAfter) {
+      out.note = `active project changed: ${activeBefore} -> ${activeAfter}`;
+      out.previous_active_project_id = activeBefore;
+    }
+    console.log(JSON.stringify(out, null, 2));
   } catch (err) {
     reportSdkError(err);
   }
