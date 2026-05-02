@@ -1,7 +1,7 @@
 import { readFileSync } from "fs";
 import { findProject, API } from "./config.mjs";
 import { getSdk } from "./sdk.mjs";
-import { reportSdkError } from "./sdk-errors.mjs";
+import { reportSdkError, fail } from "./sdk-errors.mjs";
 
 const HELP = `run402 functions — Manage serverless functions
 
@@ -152,7 +152,9 @@ async function deploy(projectId, name, args) {
     if (args[i] === "--deps" && args[i + 1]) opts.deps = args[++i].split(",");
     if (args[i] === "--schedule" && i + 1 < args.length) opts.schedule = args[++i];
   }
-  if (!opts.file) { console.error(JSON.stringify({ status: "error", message: "Missing --file <file>" })); process.exit(1); }
+  if (!opts.file) {
+    fail({ code: "BAD_USAGE", message: "Missing --file <file>" });
+  }
   const code = readFileSync(opts.file, "utf-8");
 
   const deployOpts = { name, code };
@@ -212,7 +214,13 @@ async function logs(projectId, name, args) {
   if (since !== undefined) {
     const parsed = Number(since);
     const ms = Number.isNaN(parsed) ? new Date(since).getTime() : parsed;
-    if (Number.isNaN(ms)) { console.error(JSON.stringify({ status: "error", message: `Invalid --since value: ${since}` })); process.exit(1); }
+    if (Number.isNaN(ms)) {
+      fail({
+        code: "BAD_USAGE",
+        message: `Invalid --since value: ${since}`,
+        details: { flag: "--since", value: since },
+      });
+    }
     sinceIso = new Date(ms).toISOString();
   }
 
@@ -282,8 +290,10 @@ async function update(projectId, name, args) {
   if (memory !== undefined) updateOpts.memory = memory;
 
   if (Object.keys(updateOpts).length === 0) {
-    console.error(JSON.stringify({ status: "error", message: "Provide at least one of: --schedule, --schedule-remove, --timeout, --memory" }));
-    process.exit(1);
+    fail({
+      code: "BAD_USAGE",
+      message: "Provide at least one of: --schedule, --schedule-remove, --timeout, --memory",
+    });
   }
 
   try {

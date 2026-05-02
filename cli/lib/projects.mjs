@@ -1,7 +1,7 @@
 import { readFileSync } from "fs";
 import { findProject, loadKeyStore, API, allowanceAuthHeaders, resolveProjectId, getActiveProjectId } from "./config.mjs";
 import { getSdk } from "./sdk.mjs";
-import { reportSdkError } from "./sdk-errors.mjs";
+import { reportSdkError, fail, parseFlagJson } from "./sdk-errors.mjs";
 
 const HELP = `run402 projects — Manage your deployed Run402 projects
 
@@ -153,12 +153,21 @@ async function applyExpose(projectId, args = []) {
   }
   const raw = file ? readFileSync(file, "utf-8") : inline;
   if (!raw) {
-    console.error(JSON.stringify({ status: "error", message: "Missing manifest. Provide inline JSON or use --file <path>" }));
-    process.exit(1);
+    fail({
+      code: "BAD_USAGE",
+      message: "Missing manifest.",
+      hint: "Provide inline JSON or use --file <path>",
+    });
   }
   let manifest;
   try { manifest = JSON.parse(raw); }
-  catch { console.error(JSON.stringify({ status: "error", message: "Invalid JSON for manifest" })); process.exit(1); }
+  catch (err) {
+    fail({
+      code: "BAD_USAGE",
+      message: "Invalid JSON for manifest",
+      details: { parse_error: err.message },
+    });
+  }
   const res = await fetch(`${API}/projects/v1/admin/${projectId}/expose`, {
     method: "POST",
     headers: { "Authorization": `Bearer ${p.service_key}`, "Content-Type": "application/json" },
@@ -222,11 +231,22 @@ async function sqlCmd(projectId, args = []) {
     else if (!query && !args[i].startsWith("--")) { query = args[i]; }
   }
   const sql = file ? readFileSync(file, "utf-8") : query;
-  if (!sql) { console.error(JSON.stringify({ status: "error", message: "Missing SQL query. Provide inline or use --file <path>" })); process.exit(1); }
+  if (!sql) {
+    fail({
+      code: "BAD_USAGE",
+      message: "Missing SQL query.",
+      hint: "Provide inline or use --file <path>",
+    });
+  }
   let params;
   if (paramsRaw) {
-    try { params = JSON.parse(paramsRaw); } catch { console.error(JSON.stringify({ status: "error", message: "Invalid JSON for --params. Expected a JSON array, e.g. '[42, \"hello\"]'" })); process.exit(1); }
-    if (!Array.isArray(params)) { console.error(JSON.stringify({ status: "error", message: "--params must be a JSON array, e.g. '[42, \"hello\"]'" })); process.exit(1); }
+    params = parseFlagJson("--params", paramsRaw);
+    if (!Array.isArray(params)) {
+      fail({
+        code: "BAD_USAGE",
+        message: "--params must be a JSON array, e.g. '[42, \"hello\"]'",
+      });
+    }
   }
   const useParams = params && params.length > 0;
   const headers = { "Authorization": `Bearer ${p.service_key}`, "Content-Type": useParams ? "application/json" : "text/plain" };
@@ -264,7 +284,13 @@ async function schema(projectId) {
 }
 
 async function use(projectId) {
-  if (!projectId) { console.error("Usage: run402 projects use <project_id>"); process.exit(1); }
+  if (!projectId) {
+    fail({
+      code: "BAD_USAGE",
+      message: "Missing <project_id>.",
+      hint: "run402 projects use <project_id>",
+    });
+  }
   try {
     await getSdk().projects.use(projectId);
     console.log(JSON.stringify({ status: "ok", active_project_id: projectId }));
@@ -274,7 +300,13 @@ async function use(projectId) {
 }
 
 async function pin(projectId) {
-  if (!projectId) { console.error(JSON.stringify({ status: "error", message: "Usage: run402 projects pin <project_id>" })); process.exit(1); }
+  if (!projectId) {
+    fail({
+      code: "BAD_USAGE",
+      message: "Missing <project_id>.",
+      hint: "run402 projects pin <project_id>",
+    });
+  }
   try {
     const data = await getSdk().projects.pin(projectId);
     console.log(JSON.stringify(data, null, 2));
@@ -284,7 +316,13 @@ async function pin(projectId) {
 }
 
 async function promoteUser(projectId, email) {
-  if (!email) { console.error(JSON.stringify({ status: "error", message: "Usage: run402 projects promote-user <project_id> <email>" })); process.exit(1); }
+  if (!email) {
+    fail({
+      code: "BAD_USAGE",
+      message: "Missing <email>.",
+      hint: "run402 projects promote-user <project_id> <email>",
+    });
+  }
   const p = findProject(projectId);
   const res = await fetch(`${API}/projects/v1/admin/${projectId}/promote-user`, {
     method: "POST",
@@ -297,7 +335,13 @@ async function promoteUser(projectId, email) {
 }
 
 async function demoteUser(projectId, email) {
-  if (!email) { console.error(JSON.stringify({ status: "error", message: "Usage: run402 projects demote-user <project_id> <email>" })); process.exit(1); }
+  if (!email) {
+    fail({
+      code: "BAD_USAGE",
+      message: "Missing <email>.",
+      hint: "run402 projects demote-user <project_id> <email>",
+    });
+  }
   const p = findProject(projectId);
   const res = await fetch(`${API}/projects/v1/admin/${projectId}/demote-user`, {
     method: "POST",

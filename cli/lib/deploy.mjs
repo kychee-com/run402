@@ -3,7 +3,7 @@ import { dirname, resolve } from "path";
 import { resolveProjectId } from "./config.mjs";
 import { resolveFilePathsInManifest, resolveMigrationsFile } from "./manifest.mjs";
 import { getSdk } from "./sdk.mjs";
-import { reportSdkError } from "./sdk-errors.mjs";
+import { reportSdkError, fail } from "./sdk-errors.mjs";
 
 const HELP = `run402 deploy — Deploy to an existing project on Run402
 
@@ -111,8 +111,8 @@ async function readStdin() {
  * Load + parse the manifest from --manifest file or stdin, and resolve any
  * referenced files[].path / migrations_file against the manifest's directory.
  *
- * Returns { manifest } on success, or { error } with a structured error object
- * on any fs / parse failure. Never throws.
+ * Returns the parsed manifest on success. On any fs / parse failure, calls
+ * `fail()` (which writes the canonical error envelope to stderr and exits 1).
  */
 async function loadManifest(opts) {
   let raw;
@@ -125,21 +125,18 @@ async function loadManifest(opts) {
       raw = readFileSync(opts.manifest, "utf-8");
     } catch (err) {
       if (err && err.code === "ENOENT") {
-        return { error: {
-          status: "error",
+        fail({
+          code: "BAD_USAGE",
           message: `File not found: ${manifestAbs}`,
-          field: "manifest",
-          path: manifestAbs,
           hint: "Check that --manifest points to an existing JSON file.",
-        } };
+          details: { field: "manifest", path: manifestAbs },
+        });
       }
-      return { error: {
-        status: "error",
+      fail({
+        code: "BAD_USAGE",
         message: err && err.message ? err.message : String(err),
-        field: "manifest",
-        path: manifestAbs,
-        ...(err && err.code ? { code: err.code } : {}),
-      } };
+        details: { field: "manifest", path: manifestAbs, ...(err && err.code ? { syscall_code: err.code } : {}) },
+      });
     }
   } else {
     raw = await readStdin();
@@ -149,12 +146,15 @@ async function loadManifest(opts) {
   try {
     manifest = JSON.parse(raw);
   } catch (err) {
-    return { error: {
-      status: "error",
+    fail({
+      code: "BAD_USAGE",
       message: `Manifest is not valid JSON: ${err.message}`,
-      field: opts.manifest ? "manifest" : "stdin",
-      ...(opts.manifest ? { path: resolve(opts.manifest) } : {}),
-    } };
+      details: {
+        field: opts.manifest ? "manifest" : "stdin",
+        ...(opts.manifest ? { path: resolve(opts.manifest) } : {}),
+        parse_error: err.message,
+      },
+    });
   }
 
   if (opts.manifest) {
@@ -163,25 +163,29 @@ async function loadManifest(opts) {
       resolveFilePathsInManifest(manifest, baseDir);
     } catch (err) {
       if (err && err.code === "ENOENT") {
-        return { error: {
-          status: "error",
+        fail({
+          code: "BAD_USAGE",
           message: `File not found: ${err.absPath || err.path || "<unknown>"}`,
-          field: err.field || "manifest",
-          ...(err.absPath || err.path ? { path: err.absPath || err.path } : {}),
           hint: `Paths in manifest.${err.field || "files[].path"} are resolved relative to the manifest file's directory (${baseDir}).`,
-        } };
+          details: {
+            field: err.field || "manifest",
+            ...(err.absPath || err.path ? { path: err.absPath || err.path } : {}),
+          },
+        });
       }
-      return { error: {
-        status: "error",
+      fail({
+        code: "BAD_USAGE",
         message: err && err.message ? err.message : String(err),
-        ...(err && err.field ? { field: err.field } : {}),
-        ...(err && (err.absPath || err.path) ? { path: err.absPath || err.path } : {}),
-        ...(err && err.code ? { code: err.code } : {}),
-      } };
+        details: {
+          ...(err && err.field ? { field: err.field } : {}),
+          ...(err && (err.absPath || err.path) ? { path: err.absPath || err.path } : {}),
+          ...(err && err.code ? { syscall_code: err.code } : {}),
+        },
+      });
     }
   }
 
-  return { manifest };
+  return manifest;
 }
 
 export async function run(args) {
@@ -210,25 +214,20 @@ export async function run(args) {
     if (args[i] === "--project" && args[i + 1]) opts.project = args[++i];
   }
 
-  const manifestResult = await loadManifest(opts);
-  if (manifestResult.error) {
-    console.error(JSON.stringify(manifestResult.error));
-    process.exit(1);
-  }
-  const manifest = manifestResult.manifest;
+  const manifest = await loadManifest(opts);
 
   // If both sources set project_id and they disagree, refuse to deploy rather
   // than silently shipping to the wrong target.
   if (opts.project && manifest.project_id && opts.project !== manifest.project_id) {
-    const err = {
-      status: "error",
+    fail({
+      code: "BAD_USAGE",
       message: `project_id conflict: manifest.project_id=${manifest.project_id} but --project=${opts.project}`,
-      manifest_project_id: manifest.project_id,
-      flag_project_id: opts.project,
       hint: "Remove one of them or make them match. The --project flag and manifest.project_id must agree (or only one of them must be set).",
-    };
-    console.error(JSON.stringify(err));
-    process.exit(1);
+      details: {
+        manifest_project_id: manifest.project_id,
+        flag_project_id: opts.project,
+      },
+    });
   }
 
   if (opts.project) manifest.project_id = opts.project;

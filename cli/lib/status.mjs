@@ -79,7 +79,7 @@ export async function run(args = []) {
   const allowance = readAllowance();
   if (!allowance) {
     console.log(JSON.stringify({ status: "no_allowance", message: "No agent allowance found. Run: run402 init" }));
-    return;
+    process.exit(1);
   }
 
   const wallet = allowance.address.toLowerCase();

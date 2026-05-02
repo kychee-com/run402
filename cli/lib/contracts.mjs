@@ -1,6 +1,6 @@
 import { findProject, API } from "./config.mjs";
 import { getSdk } from "./sdk.mjs";
-import { reportSdkError } from "./sdk-errors.mjs";
+import { reportSdkError, fail, parseFlagJson } from "./sdk-errors.mjs";
 
 const HELP = `run402 contracts — KMS-backed Ethereum wallets for smart-contract calls
 
@@ -100,8 +100,10 @@ async function provisionWallet(projectId, args) {
   const p = findProject(projectId);
   const chain = parseFlag(args, "--chain");
   if (!chain) {
-    console.error(JSON.stringify({ status: "error", message: "Missing --chain (base-mainnet or base-sepolia)" }));
-    process.exit(1);
+    fail({
+      code: "BAD_USAGE",
+      message: "Missing --chain (base-mainnet or base-sepolia)",
+    });
   }
   const recovery = parseFlag(args, "--recovery");
   // Soft default of one wallet — confirm if project already has one. This
@@ -115,8 +117,11 @@ async function provisionWallet(projectId, args) {
       const list = await listRes.json();
       const active = (list.wallets || []).filter((w) => w.status === "active");
       if (active.length >= 1 && !hasFlag(args, "--yes")) {
-        console.error(`This project already has ${active.length} active wallet(s). Adding another costs $0.04/day each ($1.20/month). Re-run with --yes to confirm.`);
-        process.exit(1);
+        fail({
+          code: "CONFIRMATION_REQUIRED",
+          message: `This project already has ${active.length} active wallet(s). Adding another costs $0.04/day each ($1.20/month). Re-run with --yes to confirm.`,
+          details: { active_wallets: active.length },
+        });
       }
     }
   } catch { /* best-effort */ }
@@ -154,8 +159,10 @@ async function setRecovery(projectId, walletId, args) {
   const clear = hasFlag(args, "--clear");
   const address = parseFlag(args, "--address");
   if (!clear && !address) {
-    console.error(JSON.stringify({ status: "error", message: "Provide --address 0x... or --clear" }));
-    process.exit(1);
+    fail({
+      code: "BAD_USAGE",
+      message: "Provide --address 0x... or --clear",
+    });
   }
   try {
     await getSdk().contracts.setRecovery(projectId, walletId, clear ? null : address);
@@ -168,8 +175,7 @@ async function setRecovery(projectId, walletId, args) {
 async function setAlert(projectId, walletId, args) {
   const threshold = parseFlag(args, "--threshold-wei");
   if (!threshold) {
-    console.error(JSON.stringify({ status: "error", message: "Missing --threshold-wei <n>" }));
-    process.exit(1);
+    fail({ code: "BAD_USAGE", message: "Missing --threshold-wei <n>" });
   }
   try {
     await getSdk().contracts.setLowBalanceAlert(projectId, walletId, threshold);
@@ -188,17 +194,22 @@ async function call(projectId, walletId, args) {
   const chain = parseFlag(args, "--chain") || "base-mainnet";
   const idempotency = parseFlag(args, "--idempotency-key");
   if (!to || !abi || !fn || !argsJson) {
-    console.error(JSON.stringify({ status: "error", message: "Required flags: --to, --abi, --fn, --args. Cost: chain gas + $0.000005 KMS sign fee." }));
-    process.exit(1);
+    fail({
+      code: "BAD_USAGE",
+      message: "Required flags: --to, --abi, --fn, --args.",
+      hint: "Cost: chain gas + $0.000005 KMS sign fee.",
+    });
   }
+  const abiFragment = parseFlagJson("--abi", abi);
+  const callArgs = parseFlagJson("--args", argsJson);
   try {
     const data = await getSdk().contracts.call(projectId, {
       walletId,
       chain,
       contractAddress: to,
-      abiFragment: JSON.parse(abi),
+      abiFragment,
       functionName: fn,
-      args: JSON.parse(argsJson),
+      args: callArgs,
       value: value ?? undefined,
       idempotencyKey: idempotency ?? undefined,
     });
@@ -215,16 +226,20 @@ async function read(args) {
   const fn = parseFlag(args, "--fn");
   const argsJson = parseFlag(args, "--args");
   if (!chain || !to || !abi || !fn || !argsJson) {
-    console.error(JSON.stringify({ status: "error", message: "Required flags: --chain, --to, --abi, --fn, --args" }));
-    process.exit(1);
+    fail({
+      code: "BAD_USAGE",
+      message: "Required flags: --chain, --to, --abi, --fn, --args",
+    });
   }
+  const abiFragment = parseFlagJson("--abi", abi);
+  const callArgs = parseFlagJson("--args", argsJson);
   try {
     const data = await getSdk().contracts.read({
       chain,
       contractAddress: to,
-      abiFragment: JSON.parse(abi),
+      abiFragment,
       functionName: fn,
-      args: JSON.parse(argsJson),
+      args: callArgs,
     });
     console.log(JSON.stringify(data, null, 2));
   } catch (err) {
@@ -244,8 +259,11 @@ async function status(projectId, callId) {
 async function drain(projectId, walletId, args) {
   const to = parseFlag(args, "--to");
   if (!to || !hasFlag(args, "--confirm")) {
-    console.error(JSON.stringify({ status: "error", message: "Required: --to 0x... and --confirm. Cost: chain gas + $0.000005 KMS sign fee." }));
-    process.exit(1);
+    fail({
+      code: "BAD_USAGE",
+      message: "Required: --to 0x... and --confirm.",
+      hint: "Cost: chain gas + $0.000005 KMS sign fee.",
+    });
   }
   try {
     const data = await getSdk().contracts.drain(projectId, walletId, to);
@@ -257,8 +275,7 @@ async function drain(projectId, walletId, args) {
 
 async function deleteWallet(projectId, walletId, args) {
   if (!hasFlag(args, "--confirm")) {
-    console.error(JSON.stringify({ status: "error", message: "Required: --confirm" }));
-    process.exit(1);
+    fail({ code: "BAD_USAGE", message: "Required: --confirm" });
   }
   try {
     const data = await getSdk().contracts.deleteWallet(projectId, walletId);

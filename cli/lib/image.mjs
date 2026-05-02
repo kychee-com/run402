@@ -1,6 +1,6 @@
 import { writeFileSync } from "fs";
 import { getSdk } from "./sdk.mjs";
-import { reportSdkError } from "./sdk-errors.mjs";
+import { reportSdkError, fail } from "./sdk-errors.mjs";
 
 const HELP = `run402 image — Generate AI images via x402 micropayments
 
@@ -49,7 +49,13 @@ export async function run(sub, args) {
     i++;
   }
 
-  if (!opts.prompt) { console.error(JSON.stringify({ status: "error", message: "Prompt required. Usage: run402 image generate \"your prompt\"" })); process.exit(1); }
+  if (!opts.prompt) {
+    fail({
+      code: "BAD_USAGE",
+      message: "Prompt required.",
+      hint: 'run402 image generate "your prompt"',
+    });
+  }
 
   try {
     const data = await getSdk().ai.generateImage({ prompt: opts.prompt, aspect: opts.aspect });

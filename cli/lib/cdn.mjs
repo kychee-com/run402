@@ -15,7 +15,7 @@
 
 import { resolveProjectId } from "./config.mjs";
 import { getSdk } from "./sdk.mjs";
-import { reportSdkError } from "./sdk-errors.mjs";
+import { reportSdkError, fail } from "./sdk-errors.mjs";
 
 const HELP = `run402 cdn — CloudFront CDN diagnostics for public blob URLs
 
@@ -68,9 +68,8 @@ Examples:
 `,
 };
 
-function die(msg, code = 1) {
-  console.error(JSON.stringify({ status: "error", message: msg }));
-  process.exit(code);
+function die(msg, exit_code = 1) {
+  fail({ code: "BAD_USAGE", message: msg, exit_code });
 }
 
 function parseArgs(args) {

@@ -1,6 +1,6 @@
 import { readAllowance, saveAllowance, ALLOWANCE_FILE, API } from "./config.mjs";
 import { getSdk } from "./sdk.mjs";
-import { reportSdkError } from "./sdk-errors.mjs";
+import { reportSdkError, fail } from "./sdk-errors.mjs";
 
 const HELP = `run402 allowance — Manage your agent allowance
 
@@ -82,7 +82,7 @@ async function status() {
     const data = await getSdk().allowance.status();
     if (!data.configured) {
       console.log(JSON.stringify({ status: "no_wallet", message: "No agent allowance found. Run: run402 allowance create" }));
-      return;
+      process.exit(1);
     }
     // Preserve CLI's rail field (SDK doesn't surface it; read from local allowance).
     const w = readAllowance();
@@ -115,8 +115,11 @@ async function create() {
   } catch (err) {
     const msg = (err instanceof Error) ? err.message : String(err);
     if (/already exists/i.test(msg)) {
-      console.log(JSON.stringify({ status: "error", message: "Agent allowance already exists. Use 'status' to check it." }));
-      process.exit(1);
+      fail({
+        code: "ALLOWANCE_EXISTS",
+        message: "Agent allowance already exists.",
+        hint: "Use 'status' to check it.",
+      });
     }
     reportSdkError(err);
   }
@@ -124,7 +127,13 @@ async function create() {
 
 async function fund() {
   const w = readAllowance();
-  if (!w) { console.log(JSON.stringify({ status: "error", message: "No agent allowance. Run: run402 allowance create" })); process.exit(1); }
+  if (!w) {
+    fail({
+      code: "NO_ALLOWANCE",
+      message: "No agent allowance.",
+      hint: "Run: run402 allowance create",
+    });
+  }
 
   if (w.rail === "mpp") {
     // Tempo Moderato faucet — instant, no polling needed
@@ -139,8 +148,11 @@ async function fund() {
     });
     const data = await res.json();
     if (data.error) {
-      console.log(JSON.stringify({ status: "error", message: data.error.message || "Tempo faucet failed" }));
-      process.exit(1);
+      fail({
+        code: "FAUCET_FAILED",
+        message: data.error.message || "Tempo faucet failed",
+        details: { rail: "mpp" },
+      });
     }
 
     // Re-read balance once (instant confirmation)
@@ -164,8 +176,11 @@ async function fund() {
   const res = await fetch(`${API}/faucet/v1`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ address: w.address }) });
   const data = await res.json();
   if (!res.ok) {
-    console.log(JSON.stringify({ status: "error", ...data }));
-    process.exit(1);
+    fail({
+      code: data?.code || "FAUCET_FAILED",
+      message: data?.message || "Faucet request failed",
+      details: { http: res.status, ...data },
+    });
   }
 
   const MAX_WAIT = 30;
@@ -196,7 +211,13 @@ async function readUsdcBalance(client, usdc, address) {
 
 async function balance() {
   const w = readAllowance();
-  if (!w) { console.log(JSON.stringify({ status: "error", message: "No agent allowance. Run: run402 allowance create" })); process.exit(1); }
+  if (!w) {
+    fail({
+      code: "NO_ALLOWANCE",
+      message: "No agent allowance.",
+      hint: "Run: run402 allowance create",
+    });
+  }
 
   const { createPublicClient, http, base, baseSepolia, tempoModerato } = await loadDeps();
   const mainnetClient = createPublicClient({ chain: base, transport: http() });
@@ -229,19 +250,30 @@ async function exportAddr() {
     const address = await getSdk().allowance.export();
     console.log(address);
   } catch {
-    console.log(JSON.stringify({ status: "error", message: "No agent allowance." }));
-    process.exit(1);
+    fail({ code: "NO_ALLOWANCE", message: "No agent allowance." });
   }
 }
 
 async function checkout(args) {
   const w = readAllowance();
-  if (!w) { console.log(JSON.stringify({ status: "error", message: "No agent allowance. Run: run402 allowance create" })); process.exit(1); }
+  if (!w) {
+    fail({
+      code: "NO_ALLOWANCE",
+      message: "No agent allowance.",
+      hint: "Run: run402 allowance create",
+    });
+  }
   let amount = null;
   for (let i = 0; i < args.length; i++) {
     if (args[i] === "--amount" && args[i + 1]) amount = parseInt(args[++i], 10);
   }
-  if (!amount) { console.error(JSON.stringify({ status: "error", message: "Missing --amount <usd_micros> (e.g. --amount 5000000 for $5)" })); process.exit(1); }
+  if (!amount) {
+    fail({
+      code: "BAD_USAGE",
+      message: "Missing --amount <usd_micros>",
+      hint: "e.g. --amount 5000000 for $5",
+    });
+  }
   const res = await fetch(`${API}/billing/v1/checkouts`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -254,7 +286,13 @@ async function checkout(args) {
 
 async function history(args) {
   const w = readAllowance();
-  if (!w) { console.log(JSON.stringify({ status: "error", message: "No agent allowance. Run: run402 allowance create" })); process.exit(1); }
+  if (!w) {
+    fail({
+      code: "NO_ALLOWANCE",
+      message: "No agent allowance.",
+      hint: "Run: run402 allowance create",
+    });
+  }
   let limit = 20;
   for (let i = 0; i < args.length; i++) {
     if (args[i] === "--limit" && args[i + 1]) limit = parseInt(args[++i], 10);

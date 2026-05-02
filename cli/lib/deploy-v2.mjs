@@ -26,7 +26,7 @@
 import { readFileSync } from "node:fs";
 import { resolve, dirname, isAbsolute, join } from "node:path";
 import { getSdk } from "./sdk.mjs";
-import { reportSdkError } from "./sdk-errors.mjs";
+import { reportSdkError, fail } from "./sdk-errors.mjs";
 import { allowanceAuthHeaders, resolveProjectId } from "./config.mjs";
 
 const APPLY_HELP = `run402 deploy apply — Unified deploy primitive (v1.34+)
@@ -107,8 +107,11 @@ export async function runDeployV2(sub, args) {
   if (sub === "resume") return await resumeCmd(args);
   if (sub === "list") return await listCmd(args);
   if (sub === "events") return await eventsCmd(args);
-  console.error(JSON.stringify({ status: "error", message: `Unknown deploy subcommand: ${sub}` }));
-  process.exit(1);
+  fail({
+    code: "BAD_USAGE",
+    message: `Unknown deploy subcommand: ${sub}`,
+    details: { subcommand: sub },
+  });
 }
 
 async function readStdin() {
@@ -142,8 +145,11 @@ async function applyCmd(args) {
       const manifestPath = isAbsolute(opts.manifest) ? opts.manifest : resolve(process.cwd(), opts.manifest);
       raw = readFileSync(manifestPath, "utf-8");
     } catch (err) {
-      console.error(JSON.stringify({ status: "error", message: `Failed to read manifest: ${err.message}` }));
-      process.exit(1);
+      fail({
+        code: "BAD_USAGE",
+        message: `Failed to read manifest: ${err.message}`,
+        details: { flag: "--manifest", path: opts.manifest },
+      });
     }
   } else {
     raw = await readStdin();
@@ -153,18 +159,21 @@ async function applyCmd(args) {
   try {
     spec = JSON.parse(raw);
   } catch (err) {
-    console.error(JSON.stringify({ status: "error", message: `Manifest is not valid JSON: ${err.message}` }));
-    process.exit(1);
+    fail({
+      code: "BAD_USAGE",
+      message: `Manifest is not valid JSON: ${err.message}`,
+      details: { source: opts.manifest ? "manifest" : opts.spec ? "spec" : "stdin", parse_error: err.message },
+    });
   }
 
   if (opts.manifest) resolveFileDataPaths(spec, dirname(resolve(opts.manifest)));
 
   if (opts.project && spec.project_id && spec.project_id !== opts.project) {
-    console.error(JSON.stringify({
-      status: "error",
+    fail({
+      code: "BAD_USAGE",
       message: `project_id conflict: spec.project_id=${spec.project_id} but --project=${opts.project}`,
-    }));
-    process.exit(1);
+      details: { spec_project_id: spec.project_id, flag_project_id: opts.project },
+    });
   }
   if (opts.project) spec.project_id = opts.project;
   if (!spec.project_id) spec.project_id = resolveProjectId(null);
@@ -198,8 +207,11 @@ async function resumeCmd(args) {
     if (!args[i].startsWith("-") && !opts.operationId) opts.operationId = args[i];
   }
   if (!opts.operationId) {
-    console.error(JSON.stringify({ status: "error", message: "Usage: run402 deploy resume <operation_id>" }));
-    process.exit(1);
+    fail({
+      code: "BAD_USAGE",
+      message: "Missing <operation_id>.",
+      hint: "run402 deploy resume <operation_id>",
+    });
   }
 
   allowanceAuthHeaders("/deploy/v2/operations");
@@ -243,8 +255,11 @@ async function eventsCmd(args) {
     if (!args[i].startsWith("-") && !opts.operationId) opts.operationId = args[i];
   }
   if (!opts.operationId) {
-    console.error(JSON.stringify({ status: "error", message: "Usage: run402 deploy events <operation_id>" }));
-    process.exit(1);
+    fail({
+      code: "BAD_USAGE",
+      message: "Missing <operation_id>.",
+      hint: "run402 deploy events <operation_id>",
+    });
   }
 
   const project = resolveProjectId(opts.project);
@@ -383,11 +398,11 @@ function resolveFileDataPaths(spec, baseDir) {
           m.sql = readFileSync(p, "utf-8");
           delete m.sql_path;
         } catch (err) {
-          console.error(JSON.stringify({
-            status: "error",
+          fail({
+            code: "BAD_USAGE",
             message: `Failed to read migration sql_path '${m.sql_path}': ${err.message}`,
-          }));
-          process.exit(1);
+            details: { migration_id: m.id, sql_path: m.sql_path },
+          });
         }
       }
     }
@@ -421,10 +436,10 @@ function readFileEntry(entry, baseDir) {
     if (entry.contentType) out.contentType = entry.contentType;
     return out;
   } catch (err) {
-    console.error(JSON.stringify({
-      status: "error",
+    fail({
+      code: "BAD_USAGE",
       message: `Failed to read file '${entry.path}': ${err.message}`,
-    }));
-    process.exit(1);
+      details: { path: entry.path },
+    });
   }
 }

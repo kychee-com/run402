@@ -1,5 +1,5 @@
 import { getSdk } from "./sdk.mjs";
-import { reportSdkError } from "./sdk-errors.mjs";
+import { reportSdkError, fail } from "./sdk-errors.mjs";
 
 const HELP = `run402 tier — Manage your Run402 tier subscription
 
@@ -34,7 +34,13 @@ async function status() {
 }
 
 async function set(tierName) {
-  if (!tierName) { console.error(JSON.stringify({ status: "error", message: "Usage: run402 tier set <prototype|hobby|team>" })); process.exit(1); }
+  if (!tierName) {
+    fail({
+      code: "BAD_USAGE",
+      message: "Missing <tier>.",
+      hint: "run402 tier set <prototype|hobby|team>",
+    });
+  }
   try {
     const data = await getSdk().tier.set(tierName);
     console.log(JSON.stringify(data, null, 2));
