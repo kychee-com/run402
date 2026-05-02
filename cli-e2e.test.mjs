@@ -3481,3 +3481,161 @@ describe("CLI domains list --project / positional parity (GH-209)", () => {
     assert.ok(get, `must still issue GET /domains/v1, calls: ${JSON.stringify(calls)}`);
   });
 });
+
+// ── Message size cap (GH-175) ──────────────────────────────────────────────
+// `run402 message send <text>` previously had no client-side cap, so a
+// 200 KB single message was happily POSTed to /message/v1 and stored in the
+// developer inbox. We now enforce an 8 KB UTF-8 byte cap at the CLI edge
+// with a structured MESSAGE_TOO_LONG error. The success envelope echoes
+// `bytes_sent` so callers can confirm the payload size that landed.
+
+describe("CLI message send size cap (GH-175)", () => {
+  // The cap check must run BEFORE the allowance check so that oversize
+  // payloads surface MESSAGE_TOO_LONG regardless of allowance state. We
+  // still seed an allowance here so the happy-path 8192-byte / "hi" tests
+  // can reach the SDK call (otherwise the missing-allowance early exit fires
+  // first).
+  before(async () => {
+    const { saveAllowance } = await import("./cli/lib/config.mjs");
+    saveAllowance({
+      address: "0x1234567890123456789012345678901234567890",
+      privateKey: "0x" + "11".repeat(32),
+      created: "2026-01-01T00:00:00.000Z",
+      funded: true,
+      rail: "x402",
+    });
+  });
+
+  function parseStderrJson() {
+    const stderr = capturedStderr();
+    const line = stderr.split("\n").map(s => s.trim()).find(s => s.startsWith("{"));
+    assert.ok(line, `expected JSON envelope on stderr, got: ${stderr}`);
+    return JSON.parse(line);
+  }
+
+  function trackMessagePosts() {
+    let postCount = 0;
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = (input, init) => {
+      const url = typeof input === "string" ? input : (input?.url ?? String(input));
+      const method = (init?.method || (input instanceof Request ? input.method : "GET") || "GET").toUpperCase();
+      if (url.includes("/message/v1") && method === "POST") postCount++;
+      return prevFetch(input, init);
+    };
+    return {
+      restore: () => { globalThis.fetch = prevFetch; },
+      get count() { return postCount; },
+    };
+  }
+
+  it("rejects 200 KB message with MESSAGE_TOO_LONG and does NOT call admin.sendMessage", async () => {
+    const { run } = await import("./cli/lib/message.mjs");
+    const big = "a".repeat(200000);
+    const tracker = trackMessagePosts();
+    let threw = null;
+    captureStart();
+    try {
+      await run("send", [big]);
+    } catch (e) { threw = e; } finally {
+      captureStop();
+      tracker.restore();
+    }
+    assert.equal(threw?.message, "process.exit(1)",
+      `should exit non-zero, got: ${threw?.message}`);
+    const parsed = parseStderrJson();
+    assert.equal(parsed.status, "error");
+    assert.equal(parsed.code, "MESSAGE_TOO_LONG");
+    assert.ok(/200000/.test(parsed.message),
+      `message should mention actual byte count, got: ${parsed.message}`);
+    assert.ok(/8192/.test(parsed.message),
+      `message should mention 8192 byte limit, got: ${parsed.message}`);
+    assert.equal(tracker.count, 0,
+      "must NOT POST to /message/v1 when payload exceeds the cap");
+  });
+
+  it("rejects 8193 bytes (one byte over cap) with MESSAGE_TOO_LONG", async () => {
+    const { run } = await import("./cli/lib/message.mjs");
+    const justOver = "b".repeat(8193);
+    const tracker = trackMessagePosts();
+    let threw = null;
+    captureStart();
+    try {
+      await run("send", [justOver]);
+    } catch (e) { threw = e; } finally {
+      captureStop();
+      tracker.restore();
+    }
+    assert.equal(threw?.message, "process.exit(1)",
+      `should exit non-zero, got: ${threw?.message}`);
+    const parsed = parseStderrJson();
+    assert.equal(parsed.code, "MESSAGE_TOO_LONG");
+    assert.equal(tracker.count, 0, "must NOT POST when payload is one byte over cap");
+  });
+
+  it("accepts exactly 8192 bytes and echoes bytes_sent", async () => {
+    const { run } = await import("./cli/lib/message.mjs");
+    const exact = "c".repeat(8192);
+    const tracker = trackMessagePosts();
+    let threw = null;
+    captureStart();
+    try {
+      await run("send", [exact]);
+    } catch (e) { threw = e; } finally {
+      captureStop();
+      tracker.restore();
+    }
+    assert.equal(threw, null,
+      `8192 bytes should be accepted, got threw: ${threw?.message}\nstderr: ${capturedStderr()}`);
+    assert.equal(tracker.count, 1, "should POST exactly once at the cap boundary");
+    const stdout = capturedStdout();
+    const line = stdout.split("\n").map(s => s.trim()).find(s => s.startsWith("{"));
+    assert.ok(line, `expected JSON envelope on stdout, got: ${stdout}`);
+    const parsed = JSON.parse(line);
+    assert.equal(parsed.status, "ok");
+    assert.equal(parsed.bytes_sent, 8192,
+      `bytes_sent should echo payload size, got: ${parsed.bytes_sent}`);
+  });
+
+  it("accepts a short message and echoes bytes_sent", async () => {
+    const { run } = await import("./cli/lib/message.mjs");
+    const tracker = trackMessagePosts();
+    let threw = null;
+    captureStart();
+    try {
+      await run("send", ["hi"]);
+    } catch (e) { threw = e; } finally {
+      captureStop();
+      tracker.restore();
+    }
+    assert.equal(threw, null, `short message should succeed, got: ${threw?.message}`);
+    assert.equal(tracker.count, 1, "should POST exactly once for a short message");
+    const stdout = capturedStdout();
+    const line = stdout.split("\n").map(s => s.trim()).find(s => s.startsWith("{"));
+    assert.ok(line, `expected JSON envelope on stdout, got: ${stdout}`);
+    const parsed = JSON.parse(line);
+    assert.equal(parsed.status, "ok");
+    assert.equal(parsed.bytes_sent, 2, `bytes_sent should be 2 for "hi", got: ${parsed.bytes_sent}`);
+  });
+
+  it("counts bytes (not characters) — multibyte UTF-8 over cap is rejected", async () => {
+    // Each "é" is 2 bytes in UTF-8. 4097 chars = 8194 bytes, which exceeds 8192.
+    const { run } = await import("./cli/lib/message.mjs");
+    const multibyte = "é".repeat(4097); // 8194 bytes
+    const tracker = trackMessagePosts();
+    let threw = null;
+    captureStart();
+    try {
+      await run("send", [multibyte]);
+    } catch (e) { threw = e; } finally {
+      captureStop();
+      tracker.restore();
+    }
+    assert.equal(threw?.message, "process.exit(1)",
+      `multibyte string over byte-cap should exit non-zero, got: ${threw?.message}`);
+    const parsed = parseStderrJson();
+    assert.equal(parsed.code, "MESSAGE_TOO_LONG");
+    assert.ok(/8194/.test(parsed.message),
+      `message should report byte count (8194), not char count (4097), got: ${parsed.message}`);
+    assert.equal(tracker.count, 0);
+  });
+});
