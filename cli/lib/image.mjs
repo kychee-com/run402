@@ -27,9 +27,41 @@ Notes:
   - Use --output to save directly to a file instead of printing base64
 `;
 
+const SUB_HELP = {
+  generate: `run402 image generate — Generate an AI image from a text prompt
+
+Usage:
+  run402 image generate "<prompt>" [options]
+
+Arguments:
+  <prompt>            Text prompt describing the image (quote it)
+
+Options:
+  --aspect <ratio>    Image aspect ratio: square | landscape | portrait
+                      (default: square)
+  --output <file>     Save image to file (e.g. output.png). If omitted,
+                      returns base64 JSON to stdout.
+
+Notes:
+  - Requires a funded allowance (run402 allowance create && run402 allowance fund)
+  - Payments are processed automatically via x402 micropayments
+  - Use --output to save directly to a file instead of printing base64
+
+Examples:
+  run402 image generate "a startup mascot, pixel art"
+  run402 image generate "futuristic city at night" --aspect landscape
+  run402 image generate "portrait of a cat CEO" --aspect portrait --output cat.png
+`,
+};
+
 export async function run(sub, args) {
   if (!sub || sub === '--help' || sub === '-h') {
     console.log(HELP);
+    process.exit(0);
+  }
+
+  if (Array.isArray(args) && (args.includes("--help") || args.includes("-h"))) {
+    console.log(SUB_HELP[sub] || HELP);
     process.exit(0);
   }
 
@@ -43,7 +75,7 @@ export async function run(sub, args) {
   let i = 0;
   if (i < args.length && !args[i].startsWith("--")) opts.prompt = args[i++];
   while (i < args.length) {
-    if (args[i] === "--help" || args[i] === "-h") { console.log(HELP); process.exit(0); }
+    if (args[i] === "--help" || args[i] === "-h") { console.log(SUB_HELP[sub] || HELP); process.exit(0); }
     else if (args[i] === "--aspect" && args[i + 1]) { opts.aspect = args[++i]; }
     else if (args[i] === "--output" && args[i + 1]) { opts.output = args[++i]; }
     i++;

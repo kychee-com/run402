@@ -84,6 +84,47 @@ Usage:
 Usage:
   run402 contracts delete <project_id> <wallet_id> --confirm
 `,
+  "get-wallet": `run402 contracts get-wallet — Get wallet metadata + live balance
+
+Usage:
+  run402 contracts get-wallet <project_id> <wallet_id>
+
+Arguments:
+  <project_id>        Project ID that owns the wallet
+  <wallet_id>         Wallet ID (e.g. cwlt_abc123)
+
+Examples:
+  run402 contracts get-wallet prj_abc123 cwlt_abc123
+`,
+  "list-wallets": `run402 contracts list-wallets — List all KMS wallets for a project
+
+Usage:
+  run402 contracts list-wallets <project_id>
+
+Arguments:
+  <project_id>        Project ID to list wallets for
+
+Notes:
+  - Includes deleted wallets
+
+Examples:
+  run402 contracts list-wallets prj_abc123
+`,
+  status: `run402 contracts status — Get a contract call's status and receipt
+
+Usage:
+  run402 contracts status <project_id> <call_id>
+
+Arguments:
+  <project_id>        Project ID that submitted the call
+  <call_id>           Contract call ID returned from 'contracts call'
+
+Notes:
+  - Returns status, gas used, gas cost (USD-micros), and receipt
+
+Examples:
+  run402 contracts status prj_abc123 ccall_abc123
+`,
 };
 
 function parseFlag(args, flag) {

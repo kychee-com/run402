@@ -15,6 +15,25 @@ Examples:
   run402 message send "Hello from my agent!"
 `;
 
+const SUB_HELP = {
+  send: `run402 message send — Send a message to Run402 developers
+
+Usage:
+  run402 message send <text>
+
+Arguments:
+  <text>              Message body (quote it; remaining args are joined with
+                      spaces if multiple positional words are provided)
+
+Notes:
+  - Requires an active tier (run402 tier set <tier>)
+  - Requires an allowance (run402 allowance create)
+
+Examples:
+  run402 message send "Hello from my agent!"
+`,
+};
+
 async function send(text) {
   if (!text) {
     fail({ code: "BAD_USAGE", message: "Missing message text." });
@@ -33,7 +52,7 @@ async function send(text) {
 export async function run(sub, args) {
   if (!sub || sub === '--help' || sub === '-h') { console.log(HELP); process.exit(0); }
   if (Array.isArray(args) && (args.includes("--help") || args.includes("-h"))) {
-    console.log(HELP);
+    console.log(SUB_HELP[sub] || HELP);
     process.exit(0);
   }
   if (sub !== "send") {

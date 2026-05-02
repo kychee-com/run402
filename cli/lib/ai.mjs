@@ -48,6 +48,33 @@ Examples:
   run402 ai translate prj_abc123 "Hello" --to ja --from en \\
     --context "formal business email"
 `,
+  moderate: `run402 ai moderate — Check text against a moderation classifier
+
+Usage:
+  run402 ai moderate <project_id> <text>
+
+Arguments:
+  <project_id>        Project ID (defaults to the active project if omitted)
+  <text>              Text to classify (quote it to preserve spaces)
+
+Notes:
+  - Free for all projects
+  - Returns flagged status, categories, and per-category scores
+
+Examples:
+  run402 ai moderate prj_abc123 "content to check"
+`,
+  usage: `run402 ai usage — Show translation word usage for the current period
+
+Usage:
+  run402 ai usage <project_id>
+
+Arguments:
+  <project_id>        Project ID (defaults to the active project if omitted)
+
+Examples:
+  run402 ai usage prj_abc123
+`,
 };
 
 function parseFlag(args, flag) {

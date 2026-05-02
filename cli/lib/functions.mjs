@@ -142,6 +142,29 @@ Examples:
   run402 functions update prj_abc123 send-reminders --schedule-remove
   run402 functions update prj_abc123 my-func --timeout 15 --memory 256
 `,
+  list: `run402 functions list — List all functions for a project
+
+Usage:
+  run402 functions list <project_id>
+
+Arguments:
+  <project_id>        Target project ID
+
+Examples:
+  run402 functions list prj_abc123
+`,
+  delete: `run402 functions delete — Delete a function from a project
+
+Usage:
+  run402 functions delete <project_id> <name>
+
+Arguments:
+  <project_id>        Target project ID
+  <name>              Function name to delete
+
+Examples:
+  run402 functions delete prj_abc123 stripe-webhook
+`,
 };
 
 async function deploy(projectId, name, args) {

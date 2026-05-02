@@ -24,6 +24,46 @@ Examples:
   run402 tier set hobby
 `;
 
+const SUB_HELP = {
+  status: `run402 tier status — Show current tier subscription state
+
+Usage:
+  run402 tier status
+
+Notes:
+  - Returns the current tier name, status, and expiry
+  - Use 'run402 tier set <tier>' to subscribe, renew, or upgrade
+
+Examples:
+  run402 tier status
+`,
+  set: `run402 tier set — Subscribe, renew, or upgrade your tier
+
+Usage:
+  run402 tier set <tier>
+
+Arguments:
+  <tier>              One of: prototype, hobby, team
+
+Tiers:
+  prototype           $0.10/7d (free with testnet faucet)
+  hobby               $5/30d
+  team                $20/30d
+
+Notes:
+  Server auto-detects action based on current allowance state:
+    - No tier or expired -> subscribe
+    - Same tier, active  -> renew (extends from expiry)
+    - Higher tier        -> upgrade (prorated refund to allowance)
+    - Lower tier, active -> rejected (wait for expiry)
+  Pays via x402 micropayments.
+
+Examples:
+  run402 tier set prototype
+  run402 tier set hobby
+`,
+};
+
 async function status() {
   try {
     const data = await getSdk().tier.status();
@@ -55,7 +95,7 @@ export async function run(sub, args) {
     process.exit(0);
   }
   if (Array.isArray(args) && (args.includes("--help") || args.includes("-h"))) {
-    console.log(HELP);
+    console.log(SUB_HELP[sub] || HELP);
     process.exit(0);
   }
   switch (sub) {

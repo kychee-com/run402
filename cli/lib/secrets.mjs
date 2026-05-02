@@ -46,6 +46,33 @@ Examples:
   run402 secrets set prj_abc123 STRIPE_KEY sk-1234
   run402 secrets set prj_abc123 TLS_CERT --file cert.pem
 `,
+  list: `run402 secrets list — List all secrets for a project
+
+Usage:
+  run402 secrets list <id>
+
+Arguments:
+  <id>                Project ID (from 'run402 projects list')
+
+Notes:
+  - Returns secret keys with a value_hash (first 8 hex chars of SHA-256)
+    for verifying the correct value was set; raw values are write-only
+
+Examples:
+  run402 secrets list prj_abc123
+`,
+  delete: `run402 secrets delete — Delete a secret from a project
+
+Usage:
+  run402 secrets delete <id> <key>
+
+Arguments:
+  <id>                Project ID (from 'run402 projects list')
+  <key>               Secret key name to remove
+
+Examples:
+  run402 secrets delete prj_abc123 STRIPE_KEY
+`,
 };
 
 async function set(projectId, key, args = []) {
