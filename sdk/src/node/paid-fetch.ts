@@ -46,7 +46,17 @@ async function checkBalance(
 }
 
 export async function setupPaidFetch(): Promise<FetchFn | null> {
-  const allowance = readAllowance();
+  // GH-194: readAllowance throws on a malformed-shape file. The SDK's
+  // contract is graceful degradation here (return null and let the caller
+  // fall back to unwrapped fetch), so swallow the error — the CLI's own
+  // readAllowance wrapper has already surfaced a structured envelope to
+  // the user.
+  let allowance;
+  try {
+    allowance = readAllowance();
+  } catch {
+    return null;
+  }
   if (!allowance) return null;
 
   try {

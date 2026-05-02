@@ -29,7 +29,18 @@ export async function handleInit(args: { rail?: "x402" | "mpp" }): Promise<McpRe
   mkdirSync(configDir, { recursive: true });
 
   // 2. Allowance — create or reuse (via SDK when possible)
-  let allowance = readAllowance();
+  // GH-194: readAllowance throws on a malformed-shape file; surface a friendly
+  // error rather than crashing the tool.
+  let allowance;
+  try {
+    allowance = readAllowance();
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return {
+      content: [{ type: "text", text: `Allowance file is malformed: ${msg}` }],
+      isError: true,
+    };
+  }
   let allowanceCreated = false;
 
   if (!allowance) {
@@ -38,7 +49,15 @@ export async function handleInit(args: { rail?: "x402" | "mpp" }): Promise<McpRe
     } catch {
       // `allowance already exists` would only fire if another process created one between the check and the call — ignore
     }
-    allowance = readAllowance();
+    try {
+      allowance = readAllowance();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return {
+        content: [{ type: "text", text: `Allowance file is malformed: ${msg}` }],
+        isError: true,
+      };
+    }
     // Stamp the rail on the newly-created allowance.
     if (allowance) {
       allowance = { ...allowance, rail };
