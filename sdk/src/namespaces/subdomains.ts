@@ -5,10 +5,10 @@
  */
 
 import type { Client } from "../kernel.js";
-import { ProjectNotFound } from "../errors.js";
+import { LocalError, ProjectNotFound } from "../errors.js";
 
 export interface SubdomainClaimOptions {
-  /** Optional project ID. If provided, the SDK sends the project's service key as bearer auth. */
+  /** Optional project ID. If omitted, falls back to the active project (set with `r.projects.use(id)`). The SDK sends the project's service key as bearer auth. */
   projectId?: string;
 }
 
@@ -42,22 +42,35 @@ export interface SubdomainDeleteResult {
 export class Subdomains {
   constructor(private readonly client: Client) {}
 
+  async #resolveProjectId(
+    opts: SubdomainClaimOptions,
+    context: string,
+  ): Promise<string> {
+    if (opts.projectId) return opts.projectId;
+    const getActive = this.client.credentials.getActiveProject;
+    if (typeof getActive === "function") {
+      const active = await getActive.call(this.client.credentials);
+      if (active) return active;
+    }
+    throw new LocalError(
+      "Subdomains operation requires opts.projectId or an active project (set with `r.projects.use(id)` or pass it explicitly).",
+      context,
+    );
+  }
+
   /** Claim a subdomain and point it at a deployment. */
   async claim(
     name: string,
     deploymentId: string,
     opts: SubdomainClaimOptions = {},
   ): Promise<SubdomainClaimResult> {
-    const headers: Record<string, string> = {};
-    if (opts.projectId) {
-      const project = await this.client.getProject(opts.projectId);
-      if (!project) throw new ProjectNotFound(opts.projectId, "claiming subdomain");
-      headers.Authorization = `Bearer ${project.service_key}`;
-    }
+    const projectId = await this.#resolveProjectId(opts, "claiming subdomain");
+    const project = await this.client.getProject(projectId);
+    if (!project) throw new ProjectNotFound(projectId, "claiming subdomain");
 
     return this.client.request<SubdomainClaimResult>("/subdomains/v1", {
       method: "POST",
-      headers,
+      headers: { Authorization: `Bearer ${project.service_key}` },
       body: { name, deployment_id: deploymentId },
       context: "claiming subdomain",
     });
@@ -68,18 +81,15 @@ export class Subdomains {
     name: string,
     opts: SubdomainClaimOptions = {},
   ): Promise<SubdomainDeleteResult> {
-    const headers: Record<string, string> = {};
-    if (opts.projectId) {
-      const project = await this.client.getProject(opts.projectId);
-      if (!project) throw new ProjectNotFound(opts.projectId, "deleting subdomain");
-      headers.Authorization = `Bearer ${project.service_key}`;
-    }
+    const projectId = await this.#resolveProjectId(opts, "deleting subdomain");
+    const project = await this.client.getProject(projectId);
+    if (!project) throw new ProjectNotFound(projectId, "deleting subdomain");
 
     return this.client.request<SubdomainDeleteResult>(
       `/subdomains/v1/${encodeURIComponent(name)}`,
       {
         method: "DELETE",
-        headers,
+        headers: { Authorization: `Bearer ${project.service_key}` },
         context: "deleting subdomain",
       },
     );

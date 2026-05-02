@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync, mkdirSync, renameSync, chmodSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync, renameSync, chmodSync, rmdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { randomBytes } from "node:crypto";
 import { getKeystorePath } from "./config.js";
@@ -13,7 +13,34 @@ export interface StoredProject {
 
 export interface KeyStore {
   active_project_id?: string;
+  previous_active_project_id?: string;
   projects: Record<string, StoredProject>;
+}
+
+function withFileLock<T>(
+  path: string,
+  fn: () => T,
+  { retries = 200, delayMs = 20 }: { retries?: number; delayMs?: number } = {},
+): T {
+  const lockDir = path + ".lock";
+  mkdirSync(dirname(path), { recursive: true });
+  for (let i = 0; i < retries; i++) {
+    try {
+      mkdirSync(lockDir, { mode: 0o700 });
+    } catch (e: unknown) {
+      const code = (e as NodeJS.ErrnoException).code;
+      if (code !== "EEXIST") throw e;
+      const until = Date.now() + delayMs;
+      while (Date.now() < until) { /* spin */ }
+      continue;
+    }
+    try {
+      return fn();
+    } finally {
+      try { rmdirSync(lockDir); } catch { /* best-effort */ }
+    }
+  }
+  throw new Error(`Could not acquire keystore lock after ${retries} retries: ${lockDir}`);
 }
 
 /**
@@ -28,7 +55,6 @@ export function loadKeyStore(path?: string): KeyStore {
     const data = readFileSync(p, "utf-8");
     const parsed = JSON.parse(data);
 
-    // Auto-migrate array format (CLI legacy) to object format
     if (Array.isArray(parsed)) {
       const projects: Record<string, StoredProject> = {};
       for (const item of parsed) {
@@ -45,7 +71,6 @@ export function loadKeyStore(path?: string): KeyStore {
     }
 
     if (parsed && typeof parsed === "object" && parsed.projects) {
-      // Strip legacy fields (tier, lease_expires_at, expires_at) from projects
       for (const proj of Object.values(parsed.projects)) {
         const rec = proj as Record<string, unknown>;
         delete rec.tier;
@@ -54,6 +79,7 @@ export function loadKeyStore(path?: string): KeyStore {
       }
       return {
         ...(parsed.active_project_id && { active_project_id: parsed.active_project_id }),
+        ...(parsed.previous_active_project_id && { previous_active_project_id: parsed.previous_active_project_id }),
         projects: parsed.projects,
       } as KeyStore;
     }
@@ -89,9 +115,11 @@ export function saveProject(
   path?: string,
 ): void {
   const p = path ?? getKeystorePath();
-  const store = loadKeyStore(p);
-  store.projects[projectId] = project;
-  saveKeyStore(store, p);
+  withFileLock(p, () => {
+    const store = loadKeyStore(p);
+    store.projects[projectId] = project;
+    saveKeyStore(store, p);
+  });
 }
 
 export function updateProject(
@@ -100,12 +128,14 @@ export function updateProject(
   path?: string,
 ): void {
   const p = path ?? getKeystorePath();
-  const store = loadKeyStore(p);
-  const existing = store.projects[projectId];
-  if (existing) {
-    store.projects[projectId] = { ...existing, ...update };
-    saveKeyStore(store, p);
-  }
+  withFileLock(p, () => {
+    const store = loadKeyStore(p);
+    const existing = store.projects[projectId];
+    if (existing) {
+      store.projects[projectId] = { ...existing, ...update };
+      saveKeyStore(store, p);
+    }
+  });
 }
 
 export function removeProject(
@@ -113,12 +143,20 @@ export function removeProject(
   path?: string,
 ): void {
   const p = path ?? getKeystorePath();
-  const store = loadKeyStore(p);
-  delete store.projects[projectId];
-  if (store.active_project_id === projectId) {
-    delete store.active_project_id;
-  }
-  saveKeyStore(store, p);
+  withFileLock(p, () => {
+    const store = loadKeyStore(p);
+    delete store.projects[projectId];
+    if (store.active_project_id === projectId) {
+      const fallback = store.previous_active_project_id;
+      if (fallback && fallback !== projectId && store.projects[fallback]) {
+        store.active_project_id = fallback;
+      } else {
+        delete store.active_project_id;
+      }
+      delete store.previous_active_project_id;
+    }
+    saveKeyStore(store, p);
+  });
 }
 
 export function getActiveProjectId(path?: string): string | undefined {
@@ -131,7 +169,12 @@ export function setActiveProjectId(
   path?: string,
 ): void {
   const p = path ?? getKeystorePath();
-  const store = loadKeyStore(p);
-  store.active_project_id = projectId;
-  saveKeyStore(store, p);
+  withFileLock(p, () => {
+    const store = loadKeyStore(p);
+    if (store.active_project_id && store.active_project_id !== projectId) {
+      store.previous_active_project_id = store.active_project_id;
+    }
+    store.active_project_id = projectId;
+    saveKeyStore(store, p);
+  });
 }

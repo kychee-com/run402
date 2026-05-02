@@ -10,12 +10,23 @@ const TEMPO_RPC = "https://rpc.moderato.tempo.xyz/";
 const HELP = `run402 init — Set up allowance, funding, and check tier status
 
 Usage:
-  run402 init          Set up with x402 (Base Sepolia) — default
-  run402 init mpp      Set up with MPP (Tempo Moderato)
-  run402 init --json   Same as init, but emit a JSON summary on stdout
-                       (human lines go to stderr — for agent automation)
+  run402 init                Set up with x402 (Base Sepolia) — default
+  run402 init mpp            Set up with MPP (Tempo Moderato)
+  run402 init <rail> --switch-rail
+                             Switch the persisted payment rail to <rail>.
+                             Required when an allowance already exists on
+                             the other rail; protects scripted re-runs from
+                             silently flipping billing networks.
+  run402 init --json         Same as init, but emit a JSON summary on stdout
+                             (human lines go to stderr — for agent automation)
 
-Steps (idempotent — safe to re-run):
+Options:
+  --switch-rail   Confirm switching the persisted payment rail. Re-running
+                  init with the SAME rail as the existing allowance is always
+                  idempotent and does not need this flag.
+  --json          Emit a structured JSON summary on stdout.
+
+Steps (idempotent when re-run with the same rail; pass --switch-rail to change rails):
   1. Creates config directory (~/.config/run402)
   2. Creates agent allowance if none exists
   3. Checks on-chain balance; requests faucet if zero
@@ -32,6 +43,19 @@ export async function run(args = []) {
   if (args.includes("--help") || args.includes("-h")) { console.log(HELP); process.exit(0); }
   const jsonMode = args.includes("--json");
   const isMpp = args[0] === "mpp";
+  const requestedRail = isMpp ? "mpp" : "x402";
+  const switchRailConfirmed = args.includes("--switch-rail");
+
+  const existingAllowance = readAllowance();
+  if (existingAllowance?.rail && existingAllowance.rail !== requestedRail && !switchRailConfirmed) {
+    console.error(JSON.stringify({
+      status: "error",
+      code: "RAIL_SWITCH_REQUIRES_CONFIRM",
+      message: `Already on rail '${existingAllowance.rail}'. Pass --switch-rail to switch to '${requestedRail}'.`,
+      details: { current_rail: existingAllowance.rail, requested_rail: requestedRail },
+    }));
+    process.exit(1);
+  }
 
   // In --json mode, human-readable lines go to stderr so stdout stays clean for
   // agents. We also collect structured data for the final JSON emit.
@@ -55,7 +79,7 @@ export async function run(args = []) {
   line("Config", CONFIG_DIR);
 
   // 2. Allowance
-  let allowance = readAllowance();
+  let allowance = existingAllowance;
   const previousRail = allowance?.rail;
   if (!allowance) {
     const { generatePrivateKey, privateKeyToAccount } = await import("viem/accounts");

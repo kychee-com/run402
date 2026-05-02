@@ -68,6 +68,33 @@ export class Run402 {
   readonly #client: Client;
 
   constructor(opts: Run402Options) {
+    if (!opts || typeof opts !== "object") {
+      throw new LocalError(
+        "Run402 requires an options object",
+        "constructing client",
+      );
+    }
+    if (!opts.apiBase || typeof opts.apiBase !== "string") {
+      throw new LocalError(
+        "Run402 requires opts.apiBase (a non-empty string)",
+        "constructing client",
+      );
+    }
+    if (!opts.credentials) {
+      throw new LocalError(
+        "Run402 requires opts.credentials. For Node defaults use `import { run402 } from '@run402/sdk/node'`. For sandbox/Deno/V8, pass a CredentialsProvider directly.",
+        "constructing client",
+      );
+    }
+    if (
+      typeof opts.credentials.getAuth !== "function" ||
+      typeof opts.credentials.getProject !== "function"
+    ) {
+      throw new LocalError(
+        "Run402 credentials provider is missing required methods (getAuth, getProject)",
+        "constructing client",
+      );
+    }
     const kernel: KernelConfig = {
       apiBase: opts.apiBase,
       fetch: opts.fetch ?? globalThis.fetch.bind(globalThis),

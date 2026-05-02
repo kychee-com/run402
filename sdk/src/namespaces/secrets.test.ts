@@ -74,14 +74,12 @@ describe("secrets", () => {
 });
 
 describe("subdomains", () => {
-  it("claim POSTs name/deployment_id without auth when no projectId", async () => {
-    const { fetch, calls } = mockFetch(() =>
-      json({ name: "app", deployment_id: "dpl_1", url: "u", deployment_url: "du", project_id: null, created_at: "t", updated_at: "t" }),
+  it("claim throws LocalError when no projectId and no active project", async () => {
+    const { fetch } = mockFetch(() => json({}));
+    await assert.rejects(
+      sdk(fetch).subdomains.claim("app", "dpl_1"),
+      (err: Error) => /projectId|active project/.test(err.message),
     );
-    await sdk(fetch).subdomains.claim("app", "dpl_1");
-    assert.equal(calls[0]!.url, "https://api.test/subdomains/v1");
-    assert.equal(calls[0]!.headers["Authorization"], undefined);
-    assert.deepEqual(JSON.parse(calls[0]!.body as string), { name: "app", deployment_id: "dpl_1" });
   });
 
   it("claim adds bearer auth when projectId is given", async () => {
@@ -92,11 +90,12 @@ describe("subdomains", () => {
     assert.equal(calls[0]!.headers["Authorization"], "Bearer s");
   });
 
-  it("delete DELETEs the encoded name path", async () => {
-    const { fetch, calls } = mockFetch(() => json({}));
-    await sdk(fetch).subdomains.delete("my app");
-    assert.equal(calls[0]!.url, "https://api.test/subdomains/v1/my%20app");
-    assert.equal(calls[0]!.method, "DELETE");
+  it("delete throws LocalError when no projectId and no active project", async () => {
+    const { fetch } = mockFetch(() => json({}));
+    await assert.rejects(
+      sdk(fetch).subdomains.delete("my app"),
+      (err: Error) => /projectId|active project/.test(err.message),
+    );
   });
 
   it("list requires a projectId and GETs with bearer, unwrapping the gateway envelope", async () => {
