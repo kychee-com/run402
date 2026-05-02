@@ -22,6 +22,7 @@
 import type { Client } from "../kernel.js";
 import {
   ApiError,
+  LocalError,
   NetworkError,
   Run402DeployError,
   type Run402DeployErrorCode,
@@ -229,17 +230,25 @@ export class Deploy {
 
   /**
    * List recent deploy operations for a project. The endpoint requires
-   * `apikey` auth, so `project` is required. `limit` is forwarded to the
-   * gateway as a query string when set; the gateway picks a default
-   * otherwise.
+   * `apikey` auth, so a project id is required — accepted as a bare string
+   * (matches `r.functions.list(projectId)` and friends) or as `{ project,
+   * limit? }`. `limit` is forwarded to the gateway as a query string when
+   * set; the gateway picks a default otherwise.
    */
-  async list(opts: {
-    project: string;
-    limit?: number;
-  }): Promise<DeployListResponse> {
-    const headers = await apikeyHeaders(this.client, opts.project);
+  async list(
+    opts: string | { project: string; limit?: number },
+  ): Promise<DeployListResponse> {
+    const project = typeof opts === "string" ? opts : opts?.project;
+    const limit = typeof opts === "string" ? undefined : opts?.limit;
+    if (!project) {
+      throw new LocalError(
+        "r.deploy.list requires a project id (as a string or { project: 'prj_...' })",
+        "listing deploy operations",
+      );
+    }
+    const headers = await apikeyHeaders(this.client, project);
     const qs = new URLSearchParams();
-    if (opts.limit !== undefined) qs.set("limit", String(opts.limit));
+    if (limit !== undefined) qs.set("limit", String(limit));
     const path =
       qs.toString().length > 0
         ? `/deploy/v2/operations?${qs.toString()}`

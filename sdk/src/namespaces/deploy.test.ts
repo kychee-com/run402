@@ -22,13 +22,14 @@ import type {
   OperationSnapshot,
   PlanResponse,
 } from "./deploy.types.js";
-import { ApiError, NetworkError, Run402DeployError } from "../errors.js";
+import { ApiError, LocalError, NetworkError, Run402DeployError } from "../errors.js";
 import { fileSetFromDir } from "../node/files.js";
 
 interface RecordedRequest {
   path: string;
   method?: string;
   body?: unknown;
+  headers?: Record<string, string>;
 }
 
 interface RecordedPut {
@@ -64,7 +65,12 @@ function makeWiring(): FakeWiring {
   const client: Client = {
     apiBase: "https://test.run402.test",
     request: async <T>(path: string, opts: RequestOptions): Promise<T> => {
-      const recorded: RecordedRequest = { path, method: opts.method, body: opts.body };
+      const recorded: RecordedRequest = {
+        path,
+        method: opts.method,
+        body: opts.body,
+        headers: opts.headers as Record<string, string> | undefined,
+      };
       requests.push(recorded);
       return handler(recorded) as T;
     },
@@ -1384,6 +1390,83 @@ describe("Deploy.list", () => {
     const deploy = new Deploy(w.client);
     await deploy.list({ project: "prj_test", limit: 5 });
     assert.equal(w.requests[0].path, "/deploy/v2/operations?limit=5");
+  });
+
+  it("accepts a bare projectId string and issues the same request as the options form", async () => {
+    const projectLookups: string[] = [];
+    const wiringFor = (): FakeWiring => {
+      const w = makeWiring();
+      const orig = w.client.getProject;
+      (w.client as { getProject: (id: string) => Promise<unknown> }).getProject = async (
+        id: string,
+      ) => {
+        projectLookups.push(id);
+        return orig(id);
+      };
+      return w;
+    };
+
+    const w = wiringFor();
+    w.setHandler(() => ({ operations: [], cursor: null }));
+    const deploy = new Deploy(w.client);
+    await deploy.list("prj_test");
+    assert.equal(w.requests.length, 1);
+    assert.equal(w.requests[0].path, "/deploy/v2/operations");
+    assert.equal(w.requests[0].headers?.apikey, "ak");
+
+    const w2 = wiringFor();
+    w2.setHandler(() => ({ operations: [], cursor: null }));
+    const deploy2 = new Deploy(w2.client);
+    await deploy2.list({ project: "prj_test" });
+    assert.equal(w2.requests.length, 1);
+    assert.equal(w2.requests[0].path, w.requests[0].path);
+    assert.equal(w2.requests[0].headers?.apikey, w.requests[0].headers?.apikey);
+
+    assert.equal(projectLookups.length, 2);
+    assert.equal(projectLookups[0], "prj_test", "bare-string form looked up project by id");
+    assert.equal(projectLookups[1], "prj_test", "options form looked up project by id");
+  });
+
+  it("accepts a bare projectId string with limit forwarded via the options form", async () => {
+    const w = makeWiring();
+    w.setHandler(() => ({ operations: [], cursor: null }));
+    const deploy = new Deploy(w.client);
+    await deploy.list({ project: "prj_test", limit: 5 });
+    assert.equal(w.requests[0].path, "/deploy/v2/operations?limit=5");
+    assert.equal(w.requests[0].headers?.apikey, "ak");
+  });
+
+  it("rejects undefined input with a LocalError mentioning project id", async () => {
+    const w = makeWiring();
+    const deploy = new Deploy(w.client);
+    await assert.rejects(
+      () => deploy.list(undefined as unknown as string),
+      (err: unknown) =>
+        err instanceof LocalError && /project id/i.test((err as LocalError).message),
+    );
+    assert.equal(w.requests.length, 0);
+  });
+
+  it("rejects an empty options object with a LocalError mentioning project id", async () => {
+    const w = makeWiring();
+    const deploy = new Deploy(w.client);
+    await assert.rejects(
+      () => deploy.list({} as { project: string }),
+      (err: unknown) =>
+        err instanceof LocalError && /project id/i.test((err as LocalError).message),
+    );
+    assert.equal(w.requests.length, 0);
+  });
+
+  it("rejects an empty string projectId with a LocalError", async () => {
+    const w = makeWiring();
+    const deploy = new Deploy(w.client);
+    await assert.rejects(
+      () => deploy.list(""),
+      (err: unknown) =>
+        err instanceof LocalError && /project id/i.test((err as LocalError).message),
+    );
+    assert.equal(w.requests.length, 0);
   });
 });
 
