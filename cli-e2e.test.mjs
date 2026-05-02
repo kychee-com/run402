@@ -3427,6 +3427,116 @@ describe("CLI status exit codes (GH-191)", () => {
   });
 });
 
+describe("CLI malformed allowance.json (GH-194)", () => {
+  // The bug: valid JSON with the wrong shape (e.g. `{}` or a too-short
+  // `privateKey`) used to crash the CLI with raw Node stack traces and source
+  // path leaks. The fix validates shape in core's `readAllowance()` and
+  // converts the throw into a structured `BAD_ALLOWANCE_FILE` envelope at the
+  // CLI wrapper.
+  function parseStderrJson() {
+    const stderr = capturedStderr();
+    const line = stderr.split("\n").map(s => s.trim()).find(s => s.startsWith("{"));
+    assert.ok(line, `expected JSON envelope on stderr, got: ${stderr}`);
+    return JSON.parse(line);
+  }
+
+  function restoreValidAllowance() {
+    return import("./cli/lib/config.mjs").then(({ saveAllowance }) =>
+      saveAllowance({
+        address: "0x1234567890123456789012345678901234567890",
+        privateKey: "0x" + "11".repeat(32),
+        created: "2026-01-01T00:00:00.000Z",
+        funded: true,
+        rail: "x402",
+      }),
+    );
+  }
+
+  it("status with empty-object allowance.json emits BAD_ALLOWANCE_FILE (no stack trace)", async () => {
+    const { ALLOWANCE_FILE } = await import("./cli/lib/config.mjs");
+    const fs = await import("node:fs");
+    fs.writeFileSync(ALLOWANCE_FILE, "{}");
+    const { run } = await import("./cli/lib/status.mjs");
+    let threw = null;
+    captureStart();
+    try {
+      await run([]);
+    } catch (e) { threw = e; } finally {
+      captureStop();
+      await restoreValidAllowance();
+    }
+    assert.equal(threw?.message, "process.exit(1)",
+      `status with malformed allowance must exit 1, got: ${threw?.message || "no exit"}`);
+    const out = captured();
+    // Must NOT leak Node internals or source paths.
+    assert.ok(!/TypeError/.test(out), `must not leak TypeError stack, got: ${out}`);
+    assert.ok(!/node_modules/.test(out), `must not leak node_modules path, got: ${out}`);
+    assert.ok(!/Cannot read properties of undefined/.test(out),
+      `must not leak the raw "toLowerCase of undefined" message, got: ${out}`);
+    // Must surface a structured error envelope.
+    const parsed = parseStderrJson();
+    assert.equal(parsed.status, "error");
+    assert.equal(parsed.code, "BAD_ALLOWANCE_FILE",
+      `code should be BAD_ALLOWANCE_FILE; got: ${JSON.stringify(parsed)}`);
+    assert.ok(/address/i.test(parsed.message),
+      `message should mention the missing address; got: ${parsed.message}`);
+    assert.ok(/run402 init/.test(parsed.hint || parsed.message),
+      `output should suggest 'run402 init' as the recovery; got: ${JSON.stringify(parsed)}`);
+  });
+
+  it("status with too-short privateKey emits BAD_ALLOWANCE_FILE (no noble stack trace)", async () => {
+    const { ALLOWANCE_FILE } = await import("./cli/lib/config.mjs");
+    const fs = await import("node:fs");
+    fs.writeFileSync(ALLOWANCE_FILE, JSON.stringify({
+      address: "0xa1234567890abcdef1234567890abcdef1234567",
+      privateKey: "0xdeadbeef",
+      weirdfield: "value",
+    }));
+    const { run } = await import("./cli/lib/status.mjs");
+    let threw = null;
+    captureStart();
+    try {
+      await run([]);
+    } catch (e) { threw = e; } finally {
+      captureStop();
+      await restoreValidAllowance();
+    }
+    assert.equal(threw?.message, "process.exit(1)");
+    const out = captured();
+    // Must NOT leak the noble-curves stack trace ("expected 32 bytes, got 4").
+    assert.ok(!/expected 32 bytes/.test(out),
+      `must not leak the @noble/curves error message, got: ${out}`);
+    assert.ok(!/@noble/.test(out), `must not leak the @noble import path, got: ${out}`);
+    const parsed = parseStderrJson();
+    assert.equal(parsed.status, "error");
+    assert.equal(parsed.code, "BAD_ALLOWANCE_FILE");
+    assert.ok(/privateKey/i.test(parsed.message),
+      `message should mention privateKey; got: ${parsed.message}`);
+  });
+
+  it("status with unparseable allowance.json still returns no_allowance (existing UX preserved)", async () => {
+    const { ALLOWANCE_FILE } = await import("./cli/lib/config.mjs");
+    const fs = await import("node:fs");
+    fs.writeFileSync(ALLOWANCE_FILE, "not json");
+    const { run } = await import("./cli/lib/status.mjs");
+    let threw = null;
+    captureStart();
+    try {
+      await run([]);
+    } catch (e) { threw = e; } finally {
+      captureStop();
+      await restoreValidAllowance();
+    }
+    assert.equal(threw?.message, "process.exit(1)");
+    const stdout = capturedStdout();
+    const line = stdout.split("\n").find(s => s.trim().startsWith("{"));
+    assert.ok(line, `should emit status payload on stdout, got: ${stdout}`);
+    const parsed = JSON.parse(line);
+    assert.equal(parsed.status, "no_allowance",
+      `unparseable JSON should still surface as no_allowance, not BAD_ALLOWANCE_FILE; got: ${parsed.status}`);
+  });
+});
+
 describe("CLI contracts JSON-flag parse errors (GH-177)", () => {
   function parseStderrJson() {
     const stderr = capturedStderr();
