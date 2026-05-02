@@ -1,6 +1,7 @@
 import { readFileSync } from "fs";
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail } from "./sdk-errors.mjs";
+import { validateRegularFile } from "./argparse.mjs";
 
 const HELP = `run402 secrets — Manage project secrets
 
@@ -82,6 +83,7 @@ async function set(projectId, key, args = []) {
     if (args[i] === "--file" && args[i + 1]) { file = args[++i]; }
     else if (!value && !args[i].startsWith("--")) { value = args[i]; }
   }
+  if (file) validateRegularFile(file, "--file");
   const val = file ? readFileSync(file, "utf-8") : value;
   if (!val) {
     fail({
