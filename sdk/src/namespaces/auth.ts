@@ -7,7 +7,7 @@
  */
 
 import type { Client } from "../kernel.js";
-import { ProjectNotFound } from "../errors.js";
+import { LocalError, ProjectNotFound } from "../errors.js";
 
 export interface MagicLinkOptions {
   email: string;
@@ -43,6 +43,12 @@ export class Auth {
 
   /** Send a passwordless login email (magic link). 15-minute token. */
   async requestMagicLink(projectId: string, opts: MagicLinkOptions): Promise<void> {
+    if (!opts || typeof opts !== "object") {
+      throw new LocalError(
+        "r.auth.requestMagicLink(projectId, opts) requires an opts object as the 2nd argument (e.g., { email, redirectUrl })",
+        "requesting magic link",
+      );
+    }
     const project = await this.client.getProject(projectId);
     if (!project) throw new ProjectNotFound(projectId, "requesting magic link");
 
@@ -82,6 +88,12 @@ export class Auth {
    * Bearer credential.
    */
   async setUserPassword(projectId: string, opts: SetPasswordOptions): Promise<void> {
+    if (!opts || typeof opts !== "object") {
+      throw new LocalError(
+        "r.auth.setUserPassword(projectId, opts) requires an opts object as the 2nd argument (e.g., { accessToken, newPassword })",
+        "setting user password",
+      );
+    }
     const project = await this.client.getProject(projectId);
     if (!project) throw new ProjectNotFound(projectId, "setting user password");
 
@@ -101,6 +113,12 @@ export class Auth {
 
   /** Update project-level auth settings. Requires service key. */
   async settings(projectId: string, settings: AuthSettings): Promise<void> {
+    if (!settings || typeof settings !== "object") {
+      throw new LocalError(
+        "r.auth.settings(projectId, settings) requires a settings object as the 2nd argument (e.g., { allow_password_set: true })",
+        "updating auth settings",
+      );
+    }
     const project = await this.client.getProject(projectId);
     if (!project) throw new ProjectNotFound(projectId, "updating auth settings");
 
