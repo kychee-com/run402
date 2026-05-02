@@ -195,7 +195,7 @@ async function settings(args) {
   if (allowPasswordSet !== "true" && allowPasswordSet !== "false") {
     fail({
       code: "BAD_FLAG",
-      message: `--allow-password-set must be 'true' or 'false', got: ${JSON.stringify(allowPasswordSet)}`,
+      message: "--allow-password-set must be 'true' or 'false'",
       hint: "Use the literal strings 'true' or 'false'.",
     });
   }
