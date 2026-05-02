@@ -1,25 +1,81 @@
 /**
  * CLI-side SDK error translator.
  *
- * Maps SDK `Run402Error` subclasses into the CLI's existing error output
- * format: `{status: "error", http: ?, ...bodyFields}` on stderr, `process.exit(1)`.
- * Preserves specific behaviors:
- *   - `ProjectNotFound` → plain-text "Project <id> not found in local registry"
- *     with the "Hint: project IDs start with prj_" guidance when the id
- *     doesn't start with `prj_`.
+ * Maps SDK `Run402Error` subclasses into the CLI's canonical error envelope:
+ * `{status: "error", code, message, retryable, safe_to_retry, ...}` on stderr,
+ * `process.exit(1)`. Preserves specific behaviors:
+ *   - `ProjectNotFound` → canonical envelope with `code: "PROJECT_NOT_FOUND"`
+ *     and `details.source: "local_registry"` so callers can distinguish the
+ *     local-registry miss from a gateway 404.
  *   - HTML / non-JSON error bodies → `body_preview` field (first 500 chars),
  *     matching GH-84 behavior.
  *   - Network errors → `{status: "error", message: "..."}`.
+ *
+ * For client-side validation failures (missing flags, bad JSON, no-op
+ * environments), use `fail()` instead — `reportSdkError` is strictly for
+ * thrown `Run402Error` instances.
  */
+
+/**
+ * Canonical client-side failure emitter.
+ *
+ * Writes a single JSON envelope to stderr and exits with `exit_code` (default 1).
+ * The envelope shape matches the gateway's structured error contract so callers
+ * branching on `code` / `retryable` / `safe_to_retry` work uniformly across
+ * client-side validation errors and SDK-thrown errors.
+ *
+ * `code` defaults to "BAD_USAGE" so the helper is safe to call without one.
+ * `retryable: false` and `safe_to_retry: true` are sane defaults for client-side
+ * validation: the call wasn't sent, so retrying is safe and won't help unless
+ * the user fixes input.
+ */
+export function fail({ message, code, hint, details, next_actions, retryable = false, safe_to_retry = true, exit_code = 1 } = {}) {
+  const envelope = {
+    status: "error",
+    code: code ?? "BAD_USAGE",
+    message,
+    retryable,
+    safe_to_retry,
+  };
+  if (hint !== undefined) envelope.hint = hint;
+  if (details !== undefined) envelope.details = details;
+  envelope.next_actions = Array.isArray(next_actions) ? next_actions : [];
+  envelope.trace_id = null;
+  console.error(JSON.stringify(envelope));
+  process.exit(exit_code);
+}
+
+/**
+ * Parse a JSON-bearing CLI flag value, naming the flag in the failure envelope.
+ *
+ * Wraps `JSON.parse` so the failure says which flag was bad and includes a
+ * truncated value preview, instead of leaking a raw V8 `JSON.parse` message
+ * that doesn't tell the caller which flag failed.
+ */
+export function parseFlagJson(name, value) {
+  try {
+    return JSON.parse(value);
+  } catch (e) {
+    fail({
+      code: "BAD_JSON_FLAG",
+      message: `${name} value is not valid JSON`,
+      details: { flag: name, value_preview: String(value).slice(0, 32), parse_error: e.message },
+    });
+  }
+}
 
 export function reportSdkError(err) {
   if (err?.name === "ProjectNotFound") {
     const id = err.projectId || "";
     const hint = id && !String(id).startsWith("prj_")
-      ? ` Hint: project IDs start with "prj_". Check that the argument order is <project_id> <name>.`
-      : "";
-    console.error(`Project ${id} not found in local registry.${hint}`);
-    process.exit(1);
+      ? `project IDs start with "prj_". Check that the argument order is <project_id> <name>.`
+      : undefined;
+    fail({
+      code: "PROJECT_NOT_FOUND",
+      message: `Project ${id} not found in local registry.`,
+      hint,
+      details: { project_id: id, source: "local_registry" },
+    });
   }
 
   const payload = { status: "error" };

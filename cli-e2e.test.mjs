@@ -1104,10 +1104,10 @@ describe("CLI e2e happy path", () => {
     assert.equal(parsed.status, "error");
     assert.ok(parsed.message && parsed.message.includes(missingName),
       `message should mention missing filename, got: ${parsed.message}`);
-    assert.equal(parsed.field, "files[0].path",
-      `field should identify the offending manifest field, got: ${parsed.field}`);
-    assert.ok(parsed.path && parsed.path.endsWith(missingName),
-      `path should be the absolute missing path, got: ${parsed.path}`);
+    assert.equal(parsed.details?.field, "files[0].path",
+      `details.field should identify the offending manifest field, got: ${parsed.details?.field}`);
+    assert.ok(parsed.details?.path && parsed.details.path.endsWith(missingName),
+      `details.path should be the absolute missing path, got: ${parsed.details?.path}`);
     assert.ok(parsed.hint && /relative to the manifest/i.test(parsed.hint),
       `hint should explain relative-path resolution, got: ${parsed.hint}`);
     // No raw `stack` field should be leaked.
@@ -1145,10 +1145,10 @@ describe("CLI e2e happy path", () => {
     assert.equal(parsed.status, "error");
     assert.ok(parsed.message && parsed.message.includes(missingName),
       `message should mention missing SQL filename, got: ${parsed.message}`);
-    assert.equal(parsed.field, "migrations_file",
-      `field should be migrations_file, got: ${parsed.field}`);
-    assert.ok(parsed.path && parsed.path.endsWith(missingName),
-      `path should be the absolute missing path, got: ${parsed.path}`);
+    assert.equal(parsed.details?.field, "migrations_file",
+      `details.field should be migrations_file, got: ${parsed.details?.field}`);
+    assert.ok(parsed.details?.path && parsed.details.path.endsWith(missingName),
+      `details.path should be the absolute missing path, got: ${parsed.details?.path}`);
     assert.ok(parsed.hint && /relative to the manifest/i.test(parsed.hint),
       `hint should explain relative-path resolution, got: ${parsed.hint}`);
   });
@@ -1176,10 +1176,10 @@ describe("CLI e2e happy path", () => {
     assert.ok(line, `should emit a JSON error line on stderr, got: ${stderr}`);
     const parsed = JSON.parse(line);
     assert.equal(parsed.status, "error");
-    assert.equal(parsed.field, "manifest",
-      `field should be manifest, got: ${parsed.field}`);
-    assert.ok(parsed.path && parsed.path.endsWith("definitely-not-a-real-manifest.json"),
-      `path should be the absolute missing manifest path, got: ${parsed.path}`);
+    assert.equal(parsed.details?.field, "manifest",
+      `details.field should be manifest, got: ${parsed.details?.field}`);
+    assert.ok(parsed.details?.path && parsed.details.path.endsWith("definitely-not-a-real-manifest.json"),
+      `details.path should be the absolute missing manifest path, got: ${parsed.details?.path}`);
     assert.ok(parsed.hint, `hint should be present, got: ${parsed.hint}`);
   });
 
@@ -2843,5 +2843,202 @@ describe("CLI init rail-switch guard (GH-210)", () => {
     assert.equal(parsed.details?.requested_rail, "x402");
     const after = JSON.parse(readFileSync(ALLOWANCE_FILE, "utf8"));
     assert.equal(after.rail, before.rail, "allowance.rail must NOT change without --switch-rail");
+  });
+});
+
+// ── Canonical error envelope migration (GH-215, GH-174, GH-191, GH-177) ────
+// Every client-side validation failure emits the same shape:
+// {status:"error", code, message, retryable, safe_to_retry, hint?, details?,
+//  next_actions, trace_id}. Exits with code 1 (status === "ok" ? 0 : 1).
+
+describe("CLI canonical error envelope (GH-215, GH-174)", () => {
+  function parseStderrJson() {
+    const stderr = capturedStderr();
+    const line = stderr.split("\n").map(s => s.trim()).find(s => s.startsWith("{"));
+    assert.ok(line, `expected JSON envelope on stderr, got: ${stderr}`);
+    return JSON.parse(line);
+  }
+
+  it("subdomains claim with empty name emits BAD_USAGE envelope", async () => {
+    const { run } = await import("./cli/lib/subdomains.mjs");
+    let threw = null;
+    captureStart();
+    try {
+      await run("claim", [""]);
+    } catch (e) { threw = e; } finally {
+      captureStop();
+    }
+    assert.equal(threw?.message, "process.exit(1)");
+    const parsed = parseStderrJson();
+    assert.equal(parsed.status, "error");
+    assert.equal(parsed.code, "BAD_USAGE");
+    assert.ok(/run402 subdomains claim/.test(parsed.hint || ""), `hint should retain usage, got: ${parsed.hint}`);
+  });
+
+  it("subdomains claim without deployment emits NO_DEPLOYMENT envelope", async () => {
+    const { setActiveProjectId, saveProject } = await import("./cli/lib/config.mjs");
+    saveProject("prj_no_deploy_test", { anon_key: "a", service_key: "s" });
+    setActiveProjectId("prj_no_deploy_test");
+
+    const { run } = await import("./cli/lib/subdomains.mjs");
+    let threw = null;
+    captureStart();
+    try {
+      await run("claim", ["foo"]);
+    } catch (e) { threw = e; } finally {
+      captureStop();
+      const { removeProject } = await import("./cli/lib/config.mjs");
+      removeProject("prj_no_deploy_test");
+      setActiveProjectId("prj_test123");
+    }
+    assert.equal(threw?.message, "process.exit(1)");
+    const parsed = parseStderrJson();
+    assert.equal(parsed.code, "NO_DEPLOYMENT");
+    assert.ok(Array.isArray(parsed.next_actions), "next_actions should be an array");
+    assert.deepEqual(parsed.next_actions, [{ action: "deploy_site_first" }],
+      `next_actions should populate with deploy_site_first, got: ${JSON.stringify(parsed.next_actions)}`);
+  });
+
+  it("domains add with no args emits BAD_USAGE envelope with usage hint", async () => {
+    const { run } = await import("./cli/lib/domains.mjs");
+    let threw = null;
+    captureStart();
+    try {
+      await run("add", []);
+    } catch (e) { threw = e; } finally {
+      captureStop();
+    }
+    assert.equal(threw?.message, "process.exit(1)");
+    const parsed = parseStderrJson();
+    assert.equal(parsed.status, "error");
+    assert.equal(parsed.code, "BAD_USAGE");
+    assert.ok(/run402 domains add/.test(parsed.hint || ""), `hint should mention usage, got: ${parsed.hint}`);
+  });
+
+  it("blob put with unknown local project emits PROJECT_NOT_FOUND with details.source: local_registry", async () => {
+    const { run } = await import("./cli/lib/blob.mjs");
+    const tmpFile = join(tempDir, "blob-put-canary.bin");
+    const { writeFileSync: wf } = await import("node:fs");
+    wf(tmpFile, "x");
+    let threw = null;
+    captureStart();
+    try {
+      await run("put", [tmpFile, "--project", "prj_xxx_unknown"]);
+    } catch (e) { threw = e; } finally {
+      captureStop();
+    }
+    assert.equal(threw?.message, "process.exit(1)");
+    const parsed = parseStderrJson();
+    assert.equal(parsed.status, "error");
+    assert.equal(parsed.code, "PROJECT_NOT_FOUND");
+    assert.equal(parsed.details?.project_id, "prj_xxx_unknown");
+    assert.equal(parsed.details?.source, "local_registry",
+      `must distinguish local-registry miss from gateway 404, got: ${JSON.stringify(parsed.details)}`);
+  });
+});
+
+describe("CLI status exit codes (GH-191)", () => {
+  it("status with no allowance exits 1 with status: no_allowance", async () => {
+    const { ALLOWANCE_FILE } = await import("./cli/lib/config.mjs");
+    try { rmSync(ALLOWANCE_FILE, { force: true }); } catch {}
+    const { run } = await import("./cli/lib/status.mjs");
+    let threw = null;
+    captureStart();
+    try {
+      await run([]);
+    } catch (e) { threw = e; } finally {
+      captureStop();
+    }
+    assert.equal(threw?.message, "process.exit(1)",
+      "status with no allowance must exit 1 (status !== 'ok' rule), got: " + (threw?.message || "no exit"));
+    const stdout = capturedStdout();
+    const line = stdout.split("\n").find(s => s.trim().startsWith("{"));
+    assert.ok(line, `should emit status payload on stdout, got: ${stdout}`);
+    const parsed = JSON.parse(line);
+    assert.equal(parsed.status, "no_allowance",
+      `payload status should remain 'no_allowance' for shell sentinels, got: ${parsed.status}`);
+  });
+
+  it("allowance status with no allowance exits 1 with status: no_wallet", async () => {
+    const { ALLOWANCE_FILE } = await import("./cli/lib/config.mjs");
+    try { rmSync(ALLOWANCE_FILE, { force: true }); } catch {}
+    const { run } = await import("./cli/lib/allowance.mjs");
+    let threw = null;
+    captureStart();
+    try {
+      await run("status", []);
+    } catch (e) { threw = e; } finally {
+      captureStop();
+      // Restore the allowance for any following test that expects it set.
+      const { saveAllowance } = await import("./cli/lib/config.mjs");
+      saveAllowance({
+        address: "0x1234567890123456789012345678901234567890",
+        privateKey: "0x" + "11".repeat(32),
+        created: "2026-01-01T00:00:00.000Z",
+        funded: true,
+        rail: "x402",
+      });
+    }
+    assert.equal(threw?.message, "process.exit(1)",
+      "allowance status with no wallet must exit 1, got: " + (threw?.message || "no exit"));
+  });
+});
+
+describe("CLI contracts JSON-flag parse errors (GH-177)", () => {
+  function parseStderrJson() {
+    const stderr = capturedStderr();
+    const line = stderr.split("\n").map(s => s.trim()).find(s => s.startsWith("{"));
+    assert.ok(line, `expected JSON envelope on stderr, got: ${stderr}`);
+    return JSON.parse(line);
+  }
+
+  it("contracts call --abi 'not json' names the offending flag", async () => {
+    const { saveProject } = await import("./cli/lib/config.mjs");
+    saveProject("prj_contracts_test", { anon_key: "a", service_key: "s" });
+    const { run } = await import("./cli/lib/contracts.mjs");
+    let threw = null;
+    captureStart();
+    try {
+      await run("call", [
+        "prj_contracts_test", "cwlt_xyz",
+        "--to", "0xabc",
+        "--abi", "not json",
+        "--fn", "ping",
+        "--args", "[]",
+      ]);
+    } catch (e) { threw = e; } finally {
+      captureStop();
+      const { removeProject } = await import("./cli/lib/config.mjs");
+      removeProject("prj_contracts_test");
+    }
+    assert.equal(threw?.message, "process.exit(1)");
+    const parsed = parseStderrJson();
+    assert.equal(parsed.code, "BAD_JSON_FLAG");
+    assert.equal(parsed.details?.flag, "--abi",
+      `must name the offending flag, got: ${JSON.stringify(parsed.details)}`);
+    assert.ok(parsed.details?.value_preview, "must include value_preview");
+    assert.ok(parsed.details?.parse_error, "must include parse_error");
+  });
+
+  it("contracts read --abi '{garbage' names --abi (first bad flag wins)", async () => {
+    const { run } = await import("./cli/lib/contracts.mjs");
+    let threw = null;
+    captureStart();
+    try {
+      await run("read", [
+        "--chain", "base-sepolia",
+        "--to", "0xabc",
+        "--abi", "{garbage",
+        "--fn", "ping",
+        "--args", "[]",
+      ]);
+    } catch (e) { threw = e; } finally {
+      captureStop();
+    }
+    assert.equal(threw?.message, "process.exit(1)");
+    const parsed = parseStderrJson();
+    assert.equal(parsed.code, "BAD_JSON_FLAG");
+    assert.equal(parsed.details?.flag, "--abi",
+      `with both --abi and --args potentially bad, --abi parses first and wins; got: ${JSON.stringify(parsed.details)}`);
   });
 });

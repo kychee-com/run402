@@ -1,6 +1,6 @@
 import { resolveProject, resolveProjectId } from "./config.mjs";
 import { getSdk } from "./sdk.mjs";
-import { reportSdkError } from "./sdk-errors.mjs";
+import { reportSdkError, fail } from "./sdk-errors.mjs";
 
 const HELP = `run402 subdomains — Manage custom subdomains
 
@@ -64,11 +64,25 @@ async function claim(positionalArgs, flagArgs) {
   } else if (positionalArgs.length === 1) {
     name = positionalArgs[0];
   }
-  if (!name) { console.error("Usage: run402 subdomains claim <name> [--project <id>] [--deployment <id>]"); process.exit(1); }
+  if (!name) {
+    fail({
+      code: "BAD_USAGE",
+      message: "Missing <name>.",
+      hint: "run402 subdomains claim <name> [--project <id>] [--deployment <id>]",
+    });
+  }
   const projectId = resolveProjectId(opts.project);
   const p = resolveProject(opts.project);
   deploymentId = opts.deployment || deploymentId || p.last_deployment_id;
-  if (!deploymentId) { console.error("Error: no deployment_id specified and no recent deployment found. Deploy a site first or pass --deployment <id>."); process.exit(1); }
+  if (!deploymentId) {
+    fail({
+      code: "NO_DEPLOYMENT",
+      message: "no deployment_id specified and no recent deployment found.",
+      hint: "Deploy a site first or pass --deployment <id>.",
+      details: { project_id: projectId },
+      next_actions: [{ action: "deploy_site_first" }],
+    });
+  }
   try {
     const data = await getSdk().subdomains.claim(name, deploymentId, { projectId });
     console.log(JSON.stringify(data, null, 2));
@@ -86,17 +100,18 @@ async function deleteSubdomain(allArgs) {
     else if (!argList[i].startsWith("--") && !name) { name = argList[i]; }
   }
   if (!name) {
-    console.error(JSON.stringify({ status: "error", message: "Usage: run402 subdomains delete <name> --confirm [--project <id>]" }));
-    process.exit(1);
+    fail({
+      code: "BAD_USAGE",
+      message: "Missing <name>.",
+      hint: "run402 subdomains delete <name> --confirm [--project <id>]",
+    });
   }
   if (!argList.includes("--confirm")) {
-    console.error(JSON.stringify({
-      status: "error",
+    fail({
       code: "CONFIRMATION_REQUIRED",
       message: `Destructive: releasing subdomain '${name}' makes it available for any other project to claim. This is irreversible. Re-run with --confirm to proceed.`,
       details: { name },
-    }));
-    process.exit(1);
+    });
   }
   const projectId = resolveProjectId(opts.project);
   try {

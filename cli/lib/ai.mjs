@@ -1,6 +1,6 @@
 import { resolveProjectId } from "./config.mjs";
 import { getSdk } from "./sdk.mjs";
-import { reportSdkError } from "./sdk-errors.mjs";
+import { reportSdkError, fail } from "./sdk-errors.mjs";
 
 const HELP = `run402 ai — AI translation and moderation tools
 
@@ -76,8 +76,16 @@ async function translate(args) {
   const from = parseFlag(args, "--from");
   const context = parseFlag(args, "--context");
 
-  if (!text) { console.error(JSON.stringify({ status: "error", message: "Text required. Usage: run402 ai translate <project_id> <text> --to <lang>" })); process.exit(1); }
-  if (!to) { console.error(JSON.stringify({ status: "error", message: "--to <lang> is required" })); process.exit(1); }
+  if (!text) {
+    fail({
+      code: "BAD_USAGE",
+      message: "Text required.",
+      hint: "run402 ai translate <project_id> <text> --to <lang>",
+    });
+  }
+  if (!to) {
+    fail({ code: "BAD_USAGE", message: "--to <lang> is required" });
+  }
 
   try {
     const data = await getSdk().ai.translate(projectId, { text, to, from: from ?? undefined, context: context ?? undefined });
@@ -101,7 +109,13 @@ async function moderate(args) {
   const projectId = resolveProjectId(projectOpt || positional[0]);
   text = positional[1] || null;
 
-  if (!text) { console.error(JSON.stringify({ status: "error", message: "Text required. Usage: run402 ai moderate <project_id> <text>" })); process.exit(1); }
+  if (!text) {
+    fail({
+      code: "BAD_USAGE",
+      message: "Text required.",
+      hint: "run402 ai moderate <project_id> <text>",
+    });
+  }
 
   try {
     const data = await getSdk().ai.moderate(projectId, text);

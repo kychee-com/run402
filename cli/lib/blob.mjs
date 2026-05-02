@@ -36,7 +36,7 @@ import { pipeline } from "node:stream/promises";
 
 import { resolveProject, resolveProjectId, API } from "./config.mjs";
 import { getSdk } from "./sdk.mjs";
-import { reportSdkError } from "./sdk-errors.mjs";
+import { reportSdkError, fail } from "./sdk-errors.mjs";
 
 const HELP = `run402 blob — Direct-to-S3 blob storage
 
@@ -182,9 +182,8 @@ Examples:
 
 const UPLOAD_STATE_DIR = join(homedir(), ".run402", "uploads");
 
-function die(msg, code = 1) {
-  console.error(JSON.stringify({ status: "error", message: msg }));
-  process.exit(code);
+function die(msg, exit_code = 1) {
+  fail({ code: "BAD_USAGE", message: msg, exit_code });
 }
 
 function parseArgs(args) {

@@ -1,6 +1,6 @@
 import { resolveProjectId } from "./config.mjs";
 import { getSdk } from "./sdk.mjs";
-import { reportSdkError } from "./sdk-errors.mjs";
+import { reportSdkError, fail } from "./sdk-errors.mjs";
 
 const HELP = `run402 sender-domain — Manage custom email sender domain
 
@@ -39,8 +39,11 @@ async function register(args) {
   const projectId = resolveProjectId(projectOpt);
 
   if (!domain) {
-    console.error(JSON.stringify({ status: "error", message: "Missing domain. Usage: run402 sender-domain register <domain>" }));
-    process.exit(1);
+    fail({
+      code: "BAD_USAGE",
+      message: "Missing domain.",
+      hint: "run402 sender-domain register <domain>",
+    });
   }
 
   try {
@@ -81,8 +84,11 @@ async function inboundToggle(action, args) {
   const projectId = resolveProjectId(projectOpt);
 
   if (!domain) {
-    console.error(JSON.stringify({ status: "error", message: `Missing domain. Usage: run402 sender-domain inbound-${action} <domain>` }));
-    process.exit(1);
+    fail({
+      code: "BAD_USAGE",
+      message: "Missing domain.",
+      hint: `run402 sender-domain inbound-${action} <domain>`,
+    });
   }
 
   try {

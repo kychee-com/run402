@@ -1,6 +1,6 @@
 import { API } from "./config.mjs";
 import { getSdk } from "./sdk.mjs";
-import { reportSdkError } from "./sdk-errors.mjs";
+import { reportSdkError, fail } from "./sdk-errors.mjs";
 
 const HELP = `run402 billing — Email billing accounts, Stripe tier checkout, email packs
 
@@ -97,8 +97,11 @@ function parseFlag(args, flag) {
 async function createEmail(args) {
   const email = args[0];
   if (!email) {
-    console.error(JSON.stringify({ status: "error", message: "Missing email. Usage: run402 billing create-email <email>" }));
-    process.exit(1);
+    fail({
+      code: "BAD_USAGE",
+      message: "Missing email.",
+      hint: "run402 billing create-email <email>",
+    });
   }
   try {
     const data = await getSdk().billing.createEmailAccount(email);
@@ -112,8 +115,11 @@ async function linkWallet(args) {
   const accountId = args[0];
   const wallet = args[1];
   if (!accountId || !wallet) {
-    console.error(JSON.stringify({ status: "error", message: "Usage: run402 billing link-wallet <account_id> <wallet>" }));
-    process.exit(1);
+    fail({
+      code: "BAD_USAGE",
+      message: "Missing <account_id> and/or <wallet>.",
+      hint: "run402 billing link-wallet <account_id> <wallet>",
+    });
   }
   try {
     await getSdk().billing.linkWallet(accountId, wallet);
@@ -126,14 +132,16 @@ async function linkWallet(args) {
 async function tierCheckout(args) {
   const tier = args[0];
   if (!tier) {
-    console.error(JSON.stringify({ status: "error", message: "Usage: run402 billing tier-checkout <tier> [--email <e> | --wallet <w>]" }));
-    process.exit(1);
+    fail({
+      code: "BAD_USAGE",
+      message: "Missing <tier>.",
+      hint: "run402 billing tier-checkout <tier> [--email <e> | --wallet <w>]",
+    });
   }
   const email = parseFlag(args, "--email");
   const wallet = parseFlag(args, "--wallet");
   if (!email && !wallet) {
-    console.error(JSON.stringify({ status: "error", message: "Must provide --email or --wallet" }));
-    process.exit(1);
+    fail({ code: "BAD_USAGE", message: "Must provide --email or --wallet" });
   }
   try {
     const data = await getSdk().billing.tierCheckout(tier, { email: email ?? undefined, wallet: wallet ?? undefined });
@@ -147,8 +155,7 @@ async function buyPack(args) {
   const email = parseFlag(args, "--email");
   const wallet = parseFlag(args, "--wallet");
   if (!email && !wallet) {
-    console.error(JSON.stringify({ status: "error", message: "Must provide --email or --wallet" }));
-    process.exit(1);
+    fail({ code: "BAD_USAGE", message: "Must provide --email or --wallet" });
   }
   try {
     const data = await getSdk().billing.buyEmailPack({ email: email ?? undefined, wallet: wallet ?? undefined });
@@ -162,8 +169,11 @@ async function autoRecharge(args) {
   const accountId = args[0];
   const state = args[1];
   if (!accountId || !state || !["on", "off"].includes(state)) {
-    console.error(JSON.stringify({ status: "error", message: "Usage: run402 billing auto-recharge <account_id> <on|off> [--threshold <n>]" }));
-    process.exit(1);
+    fail({
+      code: "BAD_USAGE",
+      message: "Missing <account_id> and/or <on|off>.",
+      hint: "run402 billing auto-recharge <account_id> <on|off> [--threshold <n>]",
+    });
   }
   const thresholdStr = parseFlag(args, "--threshold");
   try {
@@ -182,8 +192,11 @@ async function balance(args) {
   // Accepts email OR wallet — SDK only models wallet, so keep direct fetch.
   const id = args[0];
   if (!id) {
-    console.error(JSON.stringify({ status: "error", message: "Usage: run402 billing balance <email-or-wallet>" }));
-    process.exit(1);
+    fail({
+      code: "BAD_USAGE",
+      message: "Missing <email-or-wallet>.",
+      hint: "run402 billing balance <email-or-wallet>",
+    });
   }
   const res = await fetch(`${API}/billing/v1/accounts/${encodeURIComponent(id)}`);
   const data = await res.json();
@@ -194,8 +207,11 @@ async function balance(args) {
 async function history(args) {
   const id = args[0];
   if (!id) {
-    console.error(JSON.stringify({ status: "error", message: "Usage: run402 billing history <email-or-wallet> [--limit <n>]" }));
-    process.exit(1);
+    fail({
+      code: "BAD_USAGE",
+      message: "Missing <email-or-wallet>.",
+      hint: "run402 billing history <email-or-wallet> [--limit <n>]",
+    });
   }
   const limit = parseFlag(args, "--limit") || "50";
   const res = await fetch(`${API}/billing/v1/accounts/${encodeURIComponent(id)}/history?limit=${encodeURIComponent(limit)}`);

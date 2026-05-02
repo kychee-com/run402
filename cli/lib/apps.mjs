@@ -1,6 +1,6 @@
 import { allowanceAuthHeaders, saveProject } from "./config.mjs";
 import { getSdk } from "./sdk.mjs";
-import { reportSdkError } from "./sdk-errors.mjs";
+import { reportSdkError, fail } from "./sdk-errors.mjs";
 
 const HELP = `run402 apps — Browse and manage the app marketplace
 
@@ -177,7 +177,9 @@ async function versions(projectId) {
 }
 
 async function inspect(versionId) {
-  if (!versionId) { console.error(JSON.stringify({ status: "error", message: "Missing version ID" })); process.exit(1); }
+  if (!versionId) {
+    fail({ code: "BAD_USAGE", message: "Missing version ID" });
+  }
   try {
     const data = await getSdk().apps.getApp(versionId);
     console.log(JSON.stringify(data, null, 2));

@@ -5,7 +5,7 @@ import { fileSetFromDir } from "#sdk/node";
 import { allowanceAuthHeaders, resolveProjectId, updateProject } from "./config.mjs";
 import { resolveFilePathsInManifest } from "./manifest.mjs";
 import { getSdk } from "./sdk.mjs";
-import { reportSdkError } from "./sdk-errors.mjs";
+import { reportSdkError, fail } from "./sdk-errors.mjs";
 
 const SMALL_DIR_THRESHOLD = 5;
 
@@ -244,17 +244,19 @@ async function deployDir(args) {
     if (args[i] === "--dry-run") { opts.dryRun = true; continue; }
     if (args[i] === "--confirm-prune") { opts.confirmPrune = true; continue; }
     if (args[i] === "--inherit") {
-      console.error(JSON.stringify({
-        status: "error",
+      fail({
+        code: "BAD_USAGE",
         message: "--inherit is removed; the SDK now uploads only changed files automatically.",
-      }));
-      process.exit(1);
+      });
     }
     if (!args[i].startsWith("-") && opts.dir === null) { opts.dir = args[i]; continue; }
   }
   if (!opts.dir) {
-    console.error(JSON.stringify({ status: "error", message: "Missing <path>. Usage: run402 sites deploy-dir <path> --project <id>" }));
-    process.exit(1);
+    fail({
+      code: "BAD_USAGE",
+      message: "Missing <path>.",
+      hint: "run402 sites deploy-dir <path> --project <id>",
+    });
   }
   const projectId = resolveProjectId(opts.project);
 

@@ -1,6 +1,6 @@
 import { allowanceAuthHeaders } from "./config.mjs";
 import { getSdk } from "./sdk.mjs";
-import { reportSdkError } from "./sdk-errors.mjs";
+import { reportSdkError, fail } from "./sdk-errors.mjs";
 
 const HELP = `run402 agent — Manage agent identity
 
@@ -24,7 +24,9 @@ async function contact(args) {
     if (args[i] === "--email" && args[i + 1]) email = args[++i];
     if (args[i] === "--webhook" && args[i + 1]) webhook = args[++i];
   }
-  if (!name) { console.error(JSON.stringify({ status: "error", message: "Missing --name <name>" })); process.exit(1); }
+  if (!name) {
+    fail({ code: "BAD_USAGE", message: "Missing --name <name>" });
+  }
   // Preserve the aggressive early exit when no allowance is configured.
   allowanceAuthHeaders("/agent/v1/contact");
 

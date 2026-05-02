@@ -1,6 +1,6 @@
 import { resolveProjectId } from "./config.mjs";
 import { getSdk } from "./sdk.mjs";
-import { reportSdkError } from "./sdk-errors.mjs";
+import { reportSdkError, fail, parseFlagJson } from "./sdk-errors.mjs";
 
 const HELP = `run402 email — Send emails from your project
 
@@ -130,14 +130,12 @@ function parseVars(args) {
   for (let i = 0; i < args.length; i++) {
     if (args[i] === "--vars" && args[i + 1]) {
       const raw = args[++i];
-      let parsed;
-      try { parsed = JSON.parse(raw); } catch {
-        console.error(JSON.stringify({ status: "error", message: "Invalid JSON for --vars. Expected a JSON object, e.g. '{\"key\":\"value\"}'" }));
-        process.exit(1);
-      }
+      const parsed = parseFlagJson("--vars", raw);
       if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-        console.error(JSON.stringify({ status: "error", message: "--vars must be a JSON object, e.g. '{\"key\":\"value\"}'" }));
-        process.exit(1);
+        fail({
+          code: "BAD_USAGE",
+          message: "--vars must be a JSON object, e.g. '{\"key\":\"value\"}'",
+        });
       }
       for (const [k, v] of Object.entries(parsed)) vars[k] = typeof v === "string" ? v : String(v);
     }
@@ -161,8 +159,11 @@ async function create(args) {
   }
   const projectId = resolveProjectId(projectOpt);
   if (!slug) {
-    console.error(JSON.stringify({ status: "error", message: "Missing slug. Usage: run402 email create <slug>" }));
-    process.exit(1);
+    fail({
+      code: "BAD_USAGE",
+      message: "Missing slug.",
+      hint: "run402 email create <slug>",
+    });
   }
 
   try {
@@ -184,8 +185,7 @@ async function send(args) {
   const variables = parseVars(args);
 
   if (!to) {
-    console.error(JSON.stringify({ status: "error", message: "Missing --to <email>" }));
-    process.exit(1);
+    fail({ code: "BAD_USAGE", message: "Missing --to <email>" });
   }
 
   try {
@@ -228,8 +228,11 @@ async function get(args) {
   }
   const projectId = resolveProjectId(projectOpt);
   if (!messageId) {
-    console.error(JSON.stringify({ status: "error", message: "Missing message_id. Usage: run402 email get <message_id>" }));
-    process.exit(1);
+    fail({
+      code: "BAD_USAGE",
+      message: "Missing message_id.",
+      hint: "run402 email get <message_id>",
+    });
   }
   try {
     const data = await getSdk().email.get(projectId, messageId);
@@ -250,8 +253,11 @@ async function getRaw(args) {
   }
   const projectId = resolveProjectId(projectOpt);
   if (!messageId) {
-    console.error(JSON.stringify({ status: "error", message: "Missing message_id. Usage: run402 email get-raw <message_id> [--output <file>]" }));
-    process.exit(1);
+    fail({
+      code: "BAD_USAGE",
+      message: "Missing message_id.",
+      hint: "run402 email get-raw <message_id> [--output <file>]",
+    });
   }
 
   try {
@@ -286,12 +292,17 @@ async function reply(args) {
   const projectId = resolveProjectId(projectOpt);
 
   if (!messageId) {
-    console.error(JSON.stringify({ status: "error", message: "Missing message_id. Usage: run402 email reply <message_id> --html \"...\"" }));
-    process.exit(1);
+    fail({
+      code: "BAD_USAGE",
+      message: "Missing message_id.",
+      hint: 'run402 email reply <message_id> --html "..."',
+    });
   }
   if (!html && !text) {
-    console.error(JSON.stringify({ status: "error", message: "Provide --html and/or --text for the reply body" }));
-    process.exit(1);
+    fail({
+      code: "BAD_USAGE",
+      message: "Provide --html and/or --text for the reply body",
+    });
   }
 
   try {
@@ -299,12 +310,11 @@ async function reply(args) {
     const original = await getSdk().email.get(projectId, messageId);
     const replyTo = original.from || original.from_address || original.sender || null;
     if (!replyTo) {
-      console.error(JSON.stringify({
-        status: "error",
+      fail({
+        code: "BAD_USAGE",
         message: "Original message has no from address to reply to",
-        original_keys: Object.keys(original),
-      }));
-      process.exit(1);
+        details: { original_keys: Object.keys(original) },
+      });
     }
     const origSubject = typeof original.subject === "string" ? original.subject : "";
     const defaultSubject = origSubject && origSubject.toLowerCase().startsWith("re:")
@@ -339,11 +349,10 @@ async function deleteMailbox(args) {
   const confirmed = args.includes("--confirm");
 
   if (!confirmed) {
-    console.error(JSON.stringify({
-      status: "error",
+    fail({
+      code: "CONFIRMATION_REQUIRED",
       message: "Destructive: deleting a mailbox is irreversible (drops all messages and webhook subscriptions). Re-run with --confirm to proceed.",
-    }));
-    process.exit(1);
+    });
   }
 
   try {

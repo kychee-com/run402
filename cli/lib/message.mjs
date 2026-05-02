@@ -1,6 +1,6 @@
 import { allowanceAuthHeaders } from "./config.mjs";
 import { getSdk } from "./sdk.mjs";
-import { reportSdkError } from "./sdk-errors.mjs";
+import { reportSdkError, fail } from "./sdk-errors.mjs";
 
 const HELP = `run402 message — Send messages to Run402 developers
 
@@ -16,7 +16,9 @@ Examples:
 `;
 
 async function send(text) {
-  if (!text) { console.error(JSON.stringify({ status: "error", message: "Missing message text" })); process.exit(1); }
+  if (!text) {
+    fail({ code: "BAD_USAGE", message: "Missing message text." });
+  }
   // Preserve the aggressive early exit when no allowance is configured.
   allowanceAuthHeaders("/message/v1");
 

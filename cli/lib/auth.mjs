@@ -1,6 +1,6 @@
 import { findProject, resolveProjectId, API } from "./config.mjs";
 import { getSdk } from "./sdk.mjs";
-import { reportSdkError } from "./sdk-errors.mjs";
+import { reportSdkError, fail } from "./sdk-errors.mjs";
 
 const HELP = `run402 auth — Manage project user authentication
 
@@ -121,8 +121,12 @@ async function magicLink(args) {
   const redirect = parseFlag(args, "--redirect");
   const projectId = resolveProjectId(parseFlag(args, "--project"));
 
-  if (!email) { console.error(JSON.stringify({ status: "error", message: "Missing --email" })); process.exit(1); }
-  if (!redirect) { console.error(JSON.stringify({ status: "error", message: "Missing --redirect <url>" })); process.exit(1); }
+  if (!email) {
+    fail({ code: "BAD_USAGE", message: "Missing --email" });
+  }
+  if (!redirect) {
+    fail({ code: "BAD_USAGE", message: "Missing --redirect <url>" });
+  }
 
   try {
     await getSdk().auth.requestMagicLink(projectId, { email, redirectUrl: redirect });
@@ -136,7 +140,9 @@ async function verify(args) {
   const token = parseFlag(args, "--token");
   const projectId = resolveProjectId(parseFlag(args, "--project"));
 
-  if (!token) { console.error(JSON.stringify({ status: "error", message: "Missing --token" })); process.exit(1); }
+  if (!token) {
+    fail({ code: "BAD_USAGE", message: "Missing --token" });
+  }
 
   try {
     const data = await getSdk().auth.verifyMagicLink(projectId, token);
@@ -152,8 +158,12 @@ async function setPassword(args) {
   const currentPassword = parseFlag(args, "--current");
   const projectId = resolveProjectId(parseFlag(args, "--project"));
 
-  if (!accessToken) { console.error(JSON.stringify({ status: "error", message: "Missing --token <bearer_token>" })); process.exit(1); }
-  if (!newPassword) { console.error(JSON.stringify({ status: "error", message: "Missing --new <password>" })); process.exit(1); }
+  if (!accessToken) {
+    fail({ code: "BAD_USAGE", message: "Missing --token <bearer_token>" });
+  }
+  if (!newPassword) {
+    fail({ code: "BAD_USAGE", message: "Missing --new <password>" });
+  }
 
   try {
     await getSdk().auth.setUserPassword(projectId, {
@@ -171,7 +181,12 @@ async function settings(args) {
   const allowPasswordSet = parseFlag(args, "--allow-password-set");
   const projectId = resolveProjectId(parseFlag(args, "--project"));
 
-  if (allowPasswordSet === null) { console.error(JSON.stringify({ status: "error", message: "Missing --allow-password-set <true|false>" })); process.exit(1); }
+  if (allowPasswordSet === null) {
+    fail({
+      code: "BAD_USAGE",
+      message: "Missing --allow-password-set <true|false>",
+    });
+  }
 
   try {
     await getSdk().auth.settings(projectId, { allow_password_set: allowPasswordSet === "true" });

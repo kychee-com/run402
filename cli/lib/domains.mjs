@@ -1,6 +1,6 @@
 import { resolveProjectId } from "./config.mjs";
 import { getSdk } from "./sdk.mjs";
-import { reportSdkError } from "./sdk-errors.mjs";
+import { reportSdkError, fail } from "./sdk-errors.mjs";
 
 const HELP = `run402 domains — Manage custom domains
 
@@ -40,7 +40,13 @@ async function add(args) {
   const { project, rest } = parseProjectFlag(args);
   const domain = rest[0];
   const subdomainName = rest[1];
-  if (!domain || !subdomainName) { console.error("Usage: run402 domains add <domain> <subdomain_name> [--project <id>]"); process.exit(1); }
+  if (!domain || !subdomainName) {
+    fail({
+      code: "BAD_USAGE",
+      message: "Missing <domain> and/or <subdomain_name>.",
+      hint: "run402 domains add <domain> <subdomain_name> [--project <id>]",
+    });
+  }
   const projectId = resolveProjectId(project);
   try {
     const data = await getSdk().domains.add(projectId, domain, subdomainName);
@@ -63,7 +69,13 @@ async function list(projectIdArg) {
 async function status(args) {
   const { project, rest } = parseProjectFlag(args);
   const domain = rest[0];
-  if (!domain) { console.error("Usage: run402 domains status <domain> [--project <id>]"); process.exit(1); }
+  if (!domain) {
+    fail({
+      code: "BAD_USAGE",
+      message: "Missing <domain>.",
+      hint: "run402 domains status <domain> [--project <id>]",
+    });
+  }
   const projectId = resolveProjectId(project);
   try {
     const data = await getSdk().domains.status(projectId, domain);
@@ -76,15 +88,19 @@ async function status(args) {
 async function deleteDomain(args) {
   const { project, rest } = parseProjectFlag(args);
   const domain = rest.find((a) => !a.startsWith("--"));
-  if (!domain) { console.error("Usage: run402 domains delete <domain> --confirm [--project <id>]"); process.exit(1); }
+  if (!domain) {
+    fail({
+      code: "BAD_USAGE",
+      message: "Missing <domain>.",
+      hint: "run402 domains delete <domain> --confirm [--project <id>]",
+    });
+  }
   if (!Array.isArray(args) || !args.includes("--confirm")) {
-    console.error(JSON.stringify({
-      status: "error",
+    fail({
       code: "CONFIRMATION_REQUIRED",
       message: `Destructive: releasing custom domain '${domain}' detaches it from this project and clears its DNS/SSL configuration. This is irreversible. Re-run with --confirm to proceed.`,
       details: { domain },
-    }));
-    process.exit(1);
+    });
   }
   const projectId = resolveProjectId(project);
   try {

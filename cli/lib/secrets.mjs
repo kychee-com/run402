@@ -1,6 +1,6 @@
 import { readFileSync } from "fs";
 import { getSdk } from "./sdk.mjs";
-import { reportSdkError } from "./sdk-errors.mjs";
+import { reportSdkError, fail } from "./sdk-errors.mjs";
 
 const HELP = `run402 secrets — Manage project secrets
 
@@ -56,7 +56,13 @@ async function set(projectId, key, args = []) {
     else if (!value && !args[i].startsWith("--")) { value = args[i]; }
   }
   const val = file ? readFileSync(file, "utf-8") : value;
-  if (!val) { console.error(JSON.stringify({ status: "error", message: "Missing secret value. Provide inline or use --file <path>" })); process.exit(1); }
+  if (!val) {
+    fail({
+      code: "BAD_USAGE",
+      message: "Missing secret value.",
+      hint: "Provide inline or use --file <path>",
+    });
+  }
   try {
     await getSdk().secrets.set(projectId, key, val);
     console.log(JSON.stringify({ status: "ok", message: `Secret '${key}' set for project ${projectId}.` }));

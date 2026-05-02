@@ -1,6 +1,6 @@
 import { resolveProjectId } from "./config.mjs";
 import { getSdk } from "./sdk.mjs";
-import { reportSdkError } from "./sdk-errors.mjs";
+import { reportSdkError, fail } from "./sdk-errors.mjs";
 
 const HELP = `run402 email webhooks — Manage mailbox webhooks
 
@@ -62,8 +62,11 @@ async function get(args) {
   }
   const projectId = resolveProjectId(projectOpt);
   if (!webhookId) {
-    console.error(JSON.stringify({ status: "error", message: "Missing webhook_id. Usage: run402 email webhooks get <webhook_id>" }));
-    process.exit(1);
+    fail({
+      code: "BAD_USAGE",
+      message: "Missing webhook_id.",
+      hint: "run402 email webhooks get <webhook_id>",
+    });
   }
   try {
     const data = await getSdk().email.webhooks.get(projectId, webhookId);
@@ -82,8 +85,11 @@ async function del(args) {
   }
   const projectId = resolveProjectId(projectOpt);
   if (!webhookId) {
-    console.error(JSON.stringify({ status: "error", message: "Missing webhook_id. Usage: run402 email webhooks delete <webhook_id>" }));
-    process.exit(1);
+    fail({
+      code: "BAD_USAGE",
+      message: "Missing webhook_id.",
+      hint: "run402 email webhooks delete <webhook_id>",
+    });
   }
   try {
     await getSdk().email.webhooks.delete(projectId, webhookId);
@@ -106,12 +112,14 @@ async function update(args) {
   }
   const projectId = resolveProjectId(projectOpt);
   if (!webhookId) {
-    console.error(JSON.stringify({ status: "error", message: "Missing webhook_id. Usage: run402 email webhooks update <webhook_id> [--url <url>] [--events <e1,e2>]" }));
-    process.exit(1);
+    fail({
+      code: "BAD_USAGE",
+      message: "Missing webhook_id.",
+      hint: "run402 email webhooks update <webhook_id> [--url <url>] [--events <e1,e2>]",
+    });
   }
   if (!url && !eventsRaw) {
-    console.error(JSON.stringify({ status: "error", message: "Provide at least --url or --events" }));
-    process.exit(1);
+    fail({ code: "BAD_USAGE", message: "Provide at least --url or --events" });
   }
 
   try {
@@ -132,12 +140,18 @@ async function register(args) {
   const projectId = resolveProjectId(projectOpt);
 
   if (!url) {
-    console.error(JSON.stringify({ status: "error", message: "Missing --url. Usage: run402 email webhooks register --url <url> --events <e1,e2>" }));
-    process.exit(1);
+    fail({
+      code: "BAD_USAGE",
+      message: "Missing --url.",
+      hint: "run402 email webhooks register --url <url> --events <e1,e2>",
+    });
   }
   if (!eventsRaw) {
-    console.error(JSON.stringify({ status: "error", message: "Missing --events. Valid events: delivery, bounced, complained, reply_received" }));
-    process.exit(1);
+    fail({
+      code: "BAD_USAGE",
+      message: "Missing --events.",
+      hint: "Valid events: delivery, bounced, complained, reply_received",
+    });
   }
 
   const events = eventsRaw.split(",").map((e) => e.trim());
