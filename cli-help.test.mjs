@@ -272,4 +272,47 @@ describe("CLI --help contract", () => {
       });
     }
   });
+
+  // GH-198 — `run402 deploy --help` was showing the v1 bundle manifest format
+  // (top-level `migrations` string, `secrets` array, `functions` array, `files`
+  // array) which the v2 gateway rejects. The example must match the v2
+  // ReleaseSpec shape documented in cli/llms-cli.txt: object trees rooted at
+  // `database`, `site`, `functions.replace`, `secrets.set`, `subdomains`.
+  describe("run402 deploy --help shows v2 manifest format (GH-198)", () => {
+    it("deploy --help example uses v2 keys (database/site/replace), not v1 arrays", async () => {
+      const result = await runCli(["deploy", "--help"]);
+      assertHelp(result, "run402 deploy --help");
+
+      const out = result.stdout;
+
+      // v2 keys must be present in the example block.
+      assert.match(out, /"database":/,
+        `deploy --help: example must contain a top-level "database": key (v2 ReleaseSpec)\nstdout:\n${out}`);
+      assert.match(out, /"site":/,
+        `deploy --help: example must contain a top-level "site": key (v2 ReleaseSpec)\nstdout:\n${out}`);
+      assert.match(out, /"replace":/,
+        `deploy --help: example must contain a "replace": key (v2 site/functions shape)\nstdout:\n${out}`);
+      assert.match(out, /"set":/,
+        `deploy --help: example must contain a "set": key (v2 secrets/subdomains shape)\nstdout:\n${out}`);
+      assert.match(out, /"subdomains":/,
+        `deploy --help: example must contain a "subdomains": key (v2 ReleaseSpec)\nstdout:\n${out}`);
+
+      // v1 shapes that are NOT accepted by the v2 gateway must be gone.
+      // - top-level `"migrations":` as a string (v1) — v2 nests under database.migrations as an array of {id, sql}
+      assert.doesNotMatch(out, /^\s*"migrations":\s*"/m,
+        `deploy --help: example must not have v1 top-level "migrations": "<string>" (use database.migrations: [{id, sql}])\nstdout:\n${out}`);
+      // - top-level `"files":` as an array (v1) — v2 uses site.replace as an object map
+      assert.doesNotMatch(out, /^\s*"files":\s*\[/m,
+        `deploy --help: example must not have v1 top-level "files": [...] array (use site.replace: { "<path>": {...} })\nstdout:\n${out}`);
+      // - top-level `"secrets":` as an array (v1) — v2 uses secrets.set as an object map
+      assert.doesNotMatch(out, /^\s*"secrets":\s*\[/m,
+        `deploy --help: example must not have v1 top-level "secrets": [...] array (use secrets.set: { "<KEY>": {...} })\nstdout:\n${out}`);
+      // - top-level `"functions":` as an array (v1) — v2 uses functions.replace as an object map
+      assert.doesNotMatch(out, /^\s*"functions":\s*\[/m,
+        `deploy --help: example must not have v1 top-level "functions": [...] array (use functions.replace: { "<name>": {...} })\nstdout:\n${out}`);
+      // - top-level `"subdomain":` (singular, v1) — v2 uses `subdomains.set: ["..."]`
+      assert.doesNotMatch(out, /^\s*"subdomain":/m,
+        `deploy --help: example must not have v1 top-level "subdomain" (singular); use "subdomains": { "set": [...] }\nstdout:\n${out}`);
+    });
+  });
 });
