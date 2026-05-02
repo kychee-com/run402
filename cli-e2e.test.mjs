@@ -1854,6 +1854,136 @@ describe("CLI e2e happy path", () => {
     assert.ok(captured().includes("ok"), "should print ok status");
   });
 
+  // ── auth settings --allow-password-set boolean validation (GH-204) ──────
+  //
+  // `auth settings --allow-password-set <value>` previously did
+  // `allow_password_set: value === "true"` without validating the input,
+  // silently coercing any non-"true" string (including "1", "yes", "TRUE",
+  // "bogus") to `false` and printing `{"status":"ok"}` — the user got the
+  // OPPOSITE of what they probably intended for this security-adjacent flag.
+  //
+  // The fix: reject any value that is not literally the string "true" or
+  // "false" with a canonical BAD_FLAG envelope, and never call the SDK.
+  //
+  // Note: these tests run AFTER `projects provision` so prj_test123 is in
+  // the keystore.
+
+  it("auth settings --allow-password-set rejects non-boolean values (GH-204)", async () => {
+    const { run } = await import("./cli/lib/auth.mjs");
+    let settingsFetchCount = 0;
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = async (input, init) => {
+      const url = typeof input === "string" ? input : input.url;
+      if (url.endsWith("/auth/v1/settings")) {
+        settingsFetchCount++;
+      }
+      return prevFetch(input, init);
+    };
+    let threw = null;
+    captureStart();
+    try {
+      await run("settings", ["--project", "prj_test123", "--allow-password-set", "bogus"]);
+    } catch (e) {
+      threw = e;
+    } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+    assert.equal(threw?.message, "process.exit(1)", "must exit non-zero on invalid flag value");
+    assert.equal(settingsFetchCount, 0, "must NOT call /auth/v1/settings on invalid flag value");
+    const errLine = capturedStderr().split("\n").find((s) => s.trim().startsWith("{"));
+    assert.ok(errLine, `expected JSON error on stderr, got: ${capturedStderr()}`);
+    const env = JSON.parse(errLine);
+    assert.equal(env.status, "error", "envelope status must be 'error'");
+    assert.equal(env.code, "BAD_FLAG", "code must be BAD_FLAG");
+    assert.match(
+      env.message ?? "",
+      /allow-password-set/,
+      "error message must mention --allow-password-set",
+    );
+    assert.equal(
+      capturedStdout().includes('"status":"ok"'),
+      false,
+      "must NOT print {\"status\":\"ok\"} on invalid input",
+    );
+  });
+
+  it("auth settings --allow-password-set true succeeds (GH-204 regression guard)", async () => {
+    const { run } = await import("./cli/lib/auth.mjs");
+    let capturedBody = null;
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = async (input, init) => {
+      const url = typeof input === "string" ? input : input.url;
+      const method = (init?.method || (input instanceof Request ? input.method : "GET") || "GET").toUpperCase();
+      if (url.endsWith("/auth/v1/settings") && method === "PATCH") {
+        let rawBody = init?.body;
+        if (rawBody === undefined && input instanceof Request) {
+          rawBody = await input.clone().text();
+        }
+        try { capturedBody = rawBody ? JSON.parse(rawBody) : null; } catch { capturedBody = rawBody; }
+        return new Response(JSON.stringify({ ok: true }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      return prevFetch(input, init);
+    };
+    captureStart();
+    try {
+      await run("settings", ["--project", "prj_test123", "--allow-password-set", "true"]);
+    } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+    assert.equal(capturedBody?.allow_password_set, true, "must send allow_password_set:true");
+    assert.ok(
+      capturedStdout().includes('"status":"ok"'),
+      `should print ok status, got stdout: ${capturedStdout()}`,
+    );
+    assert.ok(
+      capturedStdout().includes('"allow_password_set":true'),
+      "should print allow_password_set:true",
+    );
+  });
+
+  it("auth settings --allow-password-set false succeeds (GH-204 regression guard)", async () => {
+    const { run } = await import("./cli/lib/auth.mjs");
+    let capturedBody = null;
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = async (input, init) => {
+      const url = typeof input === "string" ? input : input.url;
+      const method = (init?.method || (input instanceof Request ? input.method : "GET") || "GET").toUpperCase();
+      if (url.endsWith("/auth/v1/settings") && method === "PATCH") {
+        let rawBody = init?.body;
+        if (rawBody === undefined && input instanceof Request) {
+          rawBody = await input.clone().text();
+        }
+        try { capturedBody = rawBody ? JSON.parse(rawBody) : null; } catch { capturedBody = rawBody; }
+        return new Response(JSON.stringify({ ok: true }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      return prevFetch(input, init);
+    };
+    captureStart();
+    try {
+      await run("settings", ["--project", "prj_test123", "--allow-password-set", "false"]);
+    } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+    assert.equal(capturedBody?.allow_password_set, false, "must send allow_password_set:false");
+    assert.ok(
+      capturedStdout().includes('"status":"ok"'),
+      `should print ok status, got stdout: ${capturedStdout()}`,
+    );
+    assert.ok(
+      capturedStdout().includes('"allow_password_set":false'),
+      "should print allow_password_set:false",
+    );
+  });
+
   // ── Cleanup commands (deletions) ────────────────────────────────────────
 
   it("secrets delete", async () => {
