@@ -3274,3 +3274,107 @@ describe("CLI contracts JSON-flag parse errors (GH-177)", () => {
       `with both --abi and --args potentially bad, --abi parses first and wins; got: ${JSON.stringify(parsed.details)}`);
   });
 });
+
+// ── domains list flag/positional parity (GH-209) ────────────────────────────
+// `domains add`, `domains status`, `domains delete` all accept `--project <id>`,
+// but `domains list` historically only accepted a positional [<id>] arg. Running
+// `run402 domains list --project prj_xxx` would parse `--project` as the
+// positional id and emit 'Project --project not found' — confusing and
+// inconsistent with the rest of the namespace. The fix wires `--project` through
+// `domains list` while keeping the positional form working (option #1: pure
+// extension; legacy callers unaffected).
+
+describe("CLI domains list --project / positional parity (GH-209)", () => {
+  async function seedActiveProject() {
+    const { saveProject, setActiveProjectId } = await import("./cli/lib/config.mjs");
+    saveProject(TEST_PROJECT.project_id, {
+      anon_key: TEST_PROJECT.anon_key,
+      service_key: TEST_PROJECT.service_key,
+    });
+    setActiveProjectId(TEST_PROJECT.project_id);
+  }
+
+  function buildListSpyFetch(calls) {
+    const apiOrigin = new URL(API).origin;
+    return async (input, init) => {
+      const url = typeof input === "string" ? input : (input instanceof Request ? input.url : String(input));
+      const method = (init?.method || (input instanceof Request ? input.method : "GET") || "GET").toUpperCase();
+      let path = url;
+      try {
+        const parsed = new URL(url);
+        if (parsed.origin === apiOrigin) path = parsed.pathname + parsed.search;
+      } catch {
+        // non-URL input — leave as raw
+      }
+      calls.push({ method, path, url });
+      if (method === "GET" && path === "/domains/v1") {
+        return Promise.resolve(json({ domains: [] }));
+      }
+      return Promise.resolve(new Response("Not Found", { status: 404 }));
+    };
+  }
+
+  it("domains list --project <id> resolves the project (does not parse '--project' as the id)", async () => {
+    await seedActiveProject();
+    const { run } = await import("./cli/lib/domains.mjs");
+    const calls = [];
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = buildListSpyFetch(calls);
+    let threw = null;
+    captureStart();
+    try {
+      await run("list", ["--project", TEST_PROJECT.project_id]);
+    } catch (e) { threw = e; } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+    assert.equal(threw, null,
+      `domains list --project <id> must not exit; got: ${threw?.message || ""} / stderr: ${capturedStderr()}`);
+    assert.ok(
+      !/Project\s+--project\s+not found/.test(capturedStderr()),
+      `must not parse '--project' as the positional id, got stderr: ${capturedStderr()}`,
+    );
+    const get = calls.find(c => c.method === "GET" && c.path === "/domains/v1");
+    assert.ok(get, `must issue GET /domains/v1, calls: ${JSON.stringify(calls)}`);
+  });
+
+  it("domains list <id> (legacy positional) still works", async () => {
+    await seedActiveProject();
+    const { run } = await import("./cli/lib/domains.mjs");
+    const calls = [];
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = buildListSpyFetch(calls);
+    let threw = null;
+    captureStart();
+    try {
+      await run("list", [TEST_PROJECT.project_id]);
+    } catch (e) { threw = e; } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+    assert.equal(threw, null,
+      `legacy 'domains list <id>' must keep working, got: ${threw?.message || ""} / stderr: ${capturedStderr()}`);
+    const get = calls.find(c => c.method === "GET" && c.path === "/domains/v1");
+    assert.ok(get, `legacy positional must still issue GET /domains/v1, calls: ${JSON.stringify(calls)}`);
+  });
+
+  it("domains list (no args) falls back to active project", async () => {
+    await seedActiveProject();
+    const { run } = await import("./cli/lib/domains.mjs");
+    const calls = [];
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = buildListSpyFetch(calls);
+    let threw = null;
+    captureStart();
+    try {
+      await run("list", []);
+    } catch (e) { threw = e; } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+    assert.equal(threw, null,
+      `'domains list' (no args) should resolve via active project, got: ${threw?.message || ""} / stderr: ${capturedStderr()}`);
+    const get = calls.find(c => c.method === "GET" && c.path === "/domains/v1");
+    assert.ok(get, `must still issue GET /domains/v1, calls: ${JSON.stringify(calls)}`);
+  });
+});
