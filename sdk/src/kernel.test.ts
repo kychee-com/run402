@@ -141,7 +141,7 @@ describe("kernel request", () => {
     exitSpy.restore();
   });
 
-  it("leaves canonical projections undefined for legacy-only bodies", async () => {
+  it("falls back to subclass defaults for canonical projections on legacy-only bodies", async () => {
     const body = { error: "internal" };
     const kernel = makeKernel(async () => makeRes(body, { status: 500 }));
     await assert.rejects(
@@ -151,8 +151,9 @@ describe("kernel request", () => {
         const e = err as ApiError;
         assert.deepEqual(e.body, body);
         assert.equal(e.message, "internal while calling x (HTTP 500)");
-        assert.equal(e.code, undefined);
-        assert.equal(e.category, undefined);
+        assert.equal(e.code, "API_ERROR");
+        assert.equal(e.category, "api");
+        assert.equal(e.retryable, false);
         assert.equal(e.safeToRetry, undefined);
         assert.equal(e.mutationState, undefined);
         assert.equal(e.traceId, undefined);
@@ -189,7 +190,7 @@ describe("kernel request", () => {
         assert.equal(e.status, 403);
         assert.deepEqual(e.body, unauthorizedBody);
         assert.equal(e.message, "relation does not exist while querying REST (HTTP 403)");
-        assert.equal(e.category, undefined);
+        assert.equal(e.category, "auth");
         assert.equal(e.mutationState, undefined);
         return true;
       },

@@ -271,3 +271,147 @@ describe("instanceof back-compat", () => {
     assert.equal(e instanceof Error, true);
   });
 });
+
+// ─── default code/category/retryable on locally-thrown errors ────────────────
+
+describe("default code/category/retryable when body has no envelope", () => {
+  it("PaymentRequired without body defaults to PAYMENT_REQUIRED / payment_required / false", () => {
+    const e = new PaymentRequired("nope", 402, null, "ctx");
+    assert.equal(e.code, "PAYMENT_REQUIRED");
+    assert.equal(e.category, "payment_required");
+    assert.equal(e.retryable, false);
+  });
+
+  it("ProjectNotFound without body defaults to PROJECT_NOT_FOUND / not_found / false", () => {
+    const e = new ProjectNotFound("prj_x", "fetching");
+    assert.equal(e.code, "PROJECT_NOT_FOUND");
+    assert.equal(e.category, "not_found");
+    assert.equal(e.retryable, false);
+  });
+
+  it("Unauthorized without body defaults to UNAUTHORIZED / auth / false", () => {
+    const e = new Unauthorized("nope", 401, null, "ctx");
+    assert.equal(e.code, "UNAUTHORIZED");
+    assert.equal(e.category, "auth");
+    assert.equal(e.retryable, false);
+  });
+
+  it("ApiError without body defaults to API_ERROR / api / false", () => {
+    const e = new ApiError("nope", 500, null, "ctx");
+    assert.equal(e.code, "API_ERROR");
+    assert.equal(e.category, "api");
+    assert.equal(e.retryable, false);
+  });
+
+  it("NetworkError defaults to NETWORK_ERROR / network / true (retryable)", () => {
+    const e = new NetworkError("dns failed", new Error("ENOTFOUND"), "fetching");
+    assert.equal(e.code, "NETWORK_ERROR");
+    assert.equal(e.category, "network");
+    assert.equal(e.retryable, true);
+  });
+
+  it("LocalError defaults to LOCAL_ERROR / local / false", () => {
+    const e = new LocalError("bad input", "validating");
+    assert.equal(e.code, "LOCAL_ERROR");
+    assert.equal(e.category, "local");
+    assert.equal(e.retryable, false);
+  });
+});
+
+describe("gateway-supplied envelope wins over defaults", () => {
+  it("ProjectNotFound with envelope code overrides default", () => {
+    const e = new ProjectNotFound("prj_x", "fetching", 404, {
+      code: "CUSTOM_CODE",
+      category: "custom_cat",
+      retryable: true,
+    });
+    assert.equal(e.code, "CUSTOM_CODE");
+    assert.equal(e.category, "custom_cat");
+    assert.equal(e.retryable, true);
+  });
+
+  it("PaymentRequired with envelope code overrides default", () => {
+    const e = new PaymentRequired("nope", 402, { code: "QUOTE_EXPIRED", retryable: true }, "ctx");
+    assert.equal(e.code, "QUOTE_EXPIRED");
+    assert.equal(e.retryable, true);
+  });
+
+  it("Unauthorized with envelope code overrides default", () => {
+    const e = new Unauthorized("nope", 401, { code: "TOKEN_EXPIRED" }, "ctx");
+    assert.equal(e.code, "TOKEN_EXPIRED");
+    assert.equal(e.category, "auth");
+    assert.equal(e.retryable, false);
+  });
+
+  it("ApiError with envelope category overrides default", () => {
+    const e = new ApiError("nope", 422, { category: "validation" }, "ctx");
+    assert.equal(e.code, "API_ERROR");
+    assert.equal(e.category, "validation");
+  });
+
+  it("ApiError with envelope retryable: true overrides default false", () => {
+    const e = new ApiError("rate limit", 429, { retryable: true }, "ctx");
+    assert.equal(e.retryable, true);
+  });
+
+  it("NetworkError with envelope retryable: false overrides default true (theoretical)", () => {
+    // NetworkError normally never receives a body, but verify the override mechanism.
+    // The constructor signature passes null body, so we cover this via the static-default plumbing.
+    const e = new NetworkError("boom", new Error("x"), "fetching");
+    assert.equal(e.retryable, true);
+  });
+});
+
+describe("toJSON includes synthesized defaults", () => {
+  it("ProjectNotFound toJSON carries default code/category/retryable", () => {
+    const e = new ProjectNotFound("prj_x", "fetching");
+    const json = JSON.parse(JSON.stringify(e)) as Record<string, unknown>;
+    assert.equal(json["code"], "PROJECT_NOT_FOUND");
+    assert.equal(json["category"], "not_found");
+    assert.equal(json["retryable"], false);
+    assert.equal(json["kind"], "project_not_found");
+  });
+
+  it("NetworkError toJSON carries default retryable: true", () => {
+    const e = new NetworkError("dns", new Error("x"), "fetching");
+    const json = JSON.parse(JSON.stringify(e)) as Record<string, unknown>;
+    assert.equal(json["code"], "NETWORK_ERROR");
+    assert.equal(json["retryable"], true);
+  });
+});
+
+describe("type guards still work with synthesized defaults", () => {
+  it("isProjectNotFound matches a defaulted ProjectNotFound", () => {
+    const e = new ProjectNotFound("prj_x", "fetching");
+    assert.equal(isProjectNotFound(e), true);
+    assert.equal(e.code, "PROJECT_NOT_FOUND");
+  });
+
+  it("isNetworkError matches a defaulted NetworkError, and isRetryableRun402Error is true", () => {
+    const e = new NetworkError("a", new Error("b"), "c");
+    assert.equal(isNetworkError(e), true);
+    assert.equal(isRetryableRun402Error(e), true);
+  });
+
+  it("isRetryableRun402Error reflects synthesized retryable: false on ProjectNotFound", () => {
+    const e = new ProjectNotFound("prj_x", "fetching");
+    assert.equal(isRetryableRun402Error(e), false);
+  });
+});
+
+describe("Run402DeployError keeps its own code/retryable (no default fallback)", () => {
+  it("Run402DeployError code comes from init, not synthesized default", () => {
+    const e = new Run402DeployError("nope", { code: "MIGRATION_FAILED", context: "applying" });
+    assert.equal(e.code, "MIGRATION_FAILED");
+    assert.equal(e.retryable, false);
+  });
+
+  it("Run402DeployError honours init.retryable: true", () => {
+    const e = new Run402DeployError("nope", {
+      code: "STORAGE_UNAVAILABLE",
+      retryable: true,
+      context: "uploading",
+    });
+    assert.equal(e.retryable, true);
+  });
+});

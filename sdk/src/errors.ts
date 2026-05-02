@@ -69,9 +69,20 @@ export abstract class Run402Error extends Error {
     this.body = body;
     this.context = context;
     const envelope = canonicalEnvelope(body);
-    if (typeof envelope?.code === "string") this.code = envelope.code;
-    if (typeof envelope?.category === "string") this.category = envelope.category;
-    if (typeof envelope?.retryable === "boolean") this.retryable = envelope.retryable;
+    const ctor = this.constructor as typeof Run402Error & {
+      DEFAULT_CODE?: string;
+      DEFAULT_CATEGORY?: string;
+      DEFAULT_RETRYABLE?: boolean;
+    };
+    const envelopeCode = typeof envelope?.code === "string" ? envelope.code : undefined;
+    const envelopeCategory = typeof envelope?.category === "string" ? envelope.category : undefined;
+    const envelopeRetryable = typeof envelope?.retryable === "boolean" ? envelope.retryable : undefined;
+    if (envelopeCode !== undefined) this.code = envelopeCode;
+    else if (ctor.DEFAULT_CODE !== undefined) this.code = ctor.DEFAULT_CODE;
+    if (envelopeCategory !== undefined) this.category = envelopeCategory;
+    else if (ctor.DEFAULT_CATEGORY !== undefined) this.category = ctor.DEFAULT_CATEGORY;
+    if (envelopeRetryable !== undefined) this.retryable = envelopeRetryable;
+    else if (ctor.DEFAULT_RETRYABLE !== undefined) this.retryable = ctor.DEFAULT_RETRYABLE;
     if (typeof envelope?.safe_to_retry === "boolean") this.safeToRetry = envelope.safe_to_retry;
     if (typeof envelope?.mutation_state === "string") this.mutationState = envelope.mutation_state;
     if (typeof envelope?.trace_id === "string") this.traceId = envelope.trace_id;
@@ -116,11 +127,17 @@ function canonicalEnvelope(body: unknown): Record<string, unknown> | null {
 
 /** HTTP 402 — the gateway requires payment (lease expired, insufficient balance, or x402 quote). */
 export class PaymentRequired extends Run402Error {
+  static readonly DEFAULT_CODE = "PAYMENT_REQUIRED";
+  static readonly DEFAULT_CATEGORY = "payment_required";
+  static readonly DEFAULT_RETRYABLE = false;
   readonly kind = "payment_required" as const;
 }
 
 /** Project ID is not present in the credential provider (local miss) or the gateway returned 404. */
 export class ProjectNotFound extends Run402Error {
+  static readonly DEFAULT_CODE = "PROJECT_NOT_FOUND";
+  static readonly DEFAULT_CATEGORY = "not_found";
+  static readonly DEFAULT_RETRYABLE = false;
   readonly kind = "project_not_found" as const;
   readonly projectId: string;
   constructor(projectId: string, context: string, status: number | null = null, body: unknown = null) {
@@ -131,16 +148,25 @@ export class ProjectNotFound extends Run402Error {
 
 /** HTTP 401 or 403 — authentication missing, invalid, or insufficient for the operation. */
 export class Unauthorized extends Run402Error {
+  static readonly DEFAULT_CODE = "UNAUTHORIZED";
+  static readonly DEFAULT_CATEGORY = "auth";
+  static readonly DEFAULT_RETRYABLE = false;
   readonly kind = "unauthorized" as const;
 }
 
 /** Any other non-2xx HTTP response from the gateway. */
 export class ApiError extends Run402Error {
+  static readonly DEFAULT_CODE = "API_ERROR";
+  static readonly DEFAULT_CATEGORY = "api";
+  static readonly DEFAULT_RETRYABLE = false;
   readonly kind = "api_error" as const;
 }
 
 /** The underlying `fetch` threw before producing a response (DNS, connection reset, offline). */
 export class NetworkError extends Run402Error {
+  static readonly DEFAULT_CODE = "NETWORK_ERROR";
+  static readonly DEFAULT_CATEGORY = "network";
+  static readonly DEFAULT_RETRYABLE = true;
   readonly kind = "network_error" as const;
   readonly cause: unknown;
   constructor(message: string, cause: unknown, context: string) {
@@ -151,6 +177,9 @@ export class NetworkError extends Run402Error {
 
 /** Local/filesystem error — input validation, missing path, unreadable dir. No HTTP involved. */
 export class LocalError extends Run402Error {
+  static readonly DEFAULT_CODE = "LOCAL_ERROR";
+  static readonly DEFAULT_CATEGORY = "local";
+  static readonly DEFAULT_RETRYABLE = false;
   readonly kind = "local_error" as const;
   readonly cause?: unknown;
   constructor(message: string, context: string, cause?: unknown) {
