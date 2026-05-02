@@ -259,6 +259,13 @@ async function sqlCmd(projectId, args = []) {
 }
 
 async function rest(projectId, table, queryParams) {
+  if (!table) {
+    fail({
+      code: "BAD_USAGE",
+      message: "Missing <table> argument. Usage: run402 projects rest [id] <table> [\"<query>\"]",
+      hint: "Run 'run402 projects schema <id>' to list tables.",
+    });
+  }
   const p = findProject(projectId);
   const res = await fetch(`${API}/rest/v1/${table}${queryParams ? '?' + queryParams : ''}`, { headers: { "apikey": p.anon_key } });
   const data = await res.json();
