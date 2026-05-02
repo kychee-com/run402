@@ -8,7 +8,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
 import { Run402 } from "../index.js";
-import { ProjectNotFound } from "../errors.js";
+import { LocalError, ProjectNotFound } from "../errors.js";
 import type { CredentialsProvider } from "../credentials.js";
 
 interface FetchCall {
@@ -143,21 +143,85 @@ describe("subdomains.delete", () => {
     assert.equal(result.deleted_at, "2026-05-01T12:00:00.000Z");
   });
 
-  it("works without a projectId (no Authorization header)", async () => {
+  it("falls back to the active project when projectId is omitted", async () => {
     const { fetch, calls } = mockFetch(() =>
       jsonResponse({
         name: "x",
         deployment_id: "dpl_y",
-        project_id: "prj_z",
+        project_id: "prj_known",
         deleted_at: "2026-05-01T12:00:00.000Z",
       }),
     );
-    const sdk = makeSdk(makeCreds(), fetch);
+    const sdk = makeSdk(
+      makeCreds({
+        async getActiveProject() {
+          return "prj_known";
+        },
+      }),
+      fetch,
+    );
     const result = await sdk.subdomains.delete("x");
 
     assert.equal(calls.length, 1);
-    assert.equal(calls[0]!.headers["Authorization"], undefined);
+    assert.equal(calls[0]!.headers["Authorization"], "Bearer service_xxx");
     assert.equal(result.name, "x");
+  });
+
+  it("explicit projectId wins over the active project", async () => {
+    const { fetch, calls } = mockFetch(() =>
+      jsonResponse({
+        name: "x",
+        deployment_id: "dpl_y",
+        project_id: "prj_known",
+        deleted_at: "2026-05-01T12:00:00.000Z",
+      }),
+    );
+    let activeCalled = 0;
+    const sdk = makeSdk(
+      makeCreds({
+        async getActiveProject() {
+          activeCalled += 1;
+          return "prj_active_other";
+        },
+      }),
+      fetch,
+    );
+    await sdk.subdomains.delete("x", { projectId: "prj_known" });
+
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0]!.headers["Authorization"], "Bearer service_xxx");
+    assert.equal(activeCalled, 0);
+  });
+
+  it("throws LocalError when no projectId and no active project resolver", async () => {
+    const { fetch, calls } = mockFetch(() => jsonResponse({}));
+    const sdk = makeSdk(makeCreds(), fetch);
+    await assert.rejects(
+      sdk.subdomains.delete("x"),
+      (err: unknown) =>
+        err instanceof LocalError &&
+        /projectId|active project/i.test((err as LocalError).message),
+    );
+    assert.equal(calls.length, 0);
+  });
+
+  it("throws LocalError when getActiveProject returns null", async () => {
+    const { fetch, calls } = mockFetch(() => jsonResponse({}));
+    const sdk = makeSdk(
+      makeCreds({
+        async getActiveProject() {
+          return null;
+        },
+      }),
+      fetch,
+    );
+    await assert.rejects(
+      sdk.subdomains.delete("x"),
+      (err: unknown) =>
+        err instanceof LocalError &&
+        /projectId|active project/i.test((err as LocalError).message),
+    );
+    assert.equal(calls.length, 0);
   });
 
   it("throws ProjectNotFound for unknown ids before hitting the network", async () => {
@@ -196,5 +260,92 @@ describe("subdomains.claim", () => {
       deployment_id: "dpl_y",
     });
     assert.equal(result.name, "x");
+  });
+
+  it("falls back to the active project when projectId is omitted", async () => {
+    const { fetch, calls } = mockFetch(() =>
+      jsonResponse({
+        name: "x",
+        deployment_id: "dpl_y",
+        url: "https://x.run402.com",
+        deployment_url: "https://dpl-y.sites.run402.com",
+        project_id: "prj_known",
+        created_at: "2026-05-01T12:00:00.000Z",
+        updated_at: "2026-05-01T12:00:00.000Z",
+      }),
+    );
+    const sdk = makeSdk(
+      makeCreds({
+        async getActiveProject() {
+          return "prj_known";
+        },
+      }),
+      fetch,
+    );
+    const result = await sdk.subdomains.claim("x", "dpl_y");
+
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0]!.headers["Authorization"], "Bearer service_xxx");
+    assert.equal(result.name, "x");
+  });
+
+  it("explicit projectId wins over the active project", async () => {
+    const { fetch, calls } = mockFetch(() =>
+      jsonResponse({
+        name: "x",
+        deployment_id: "dpl_y",
+        url: "https://x.run402.com",
+        deployment_url: "https://dpl-y.sites.run402.com",
+        project_id: "prj_known",
+        created_at: "2026-05-01T12:00:00.000Z",
+        updated_at: "2026-05-01T12:00:00.000Z",
+      }),
+    );
+    let activeCalled = 0;
+    const sdk = makeSdk(
+      makeCreds({
+        async getActiveProject() {
+          activeCalled += 1;
+          return "prj_active_other";
+        },
+      }),
+      fetch,
+    );
+    await sdk.subdomains.claim("x", "dpl_y", { projectId: "prj_known" });
+
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0]!.headers["Authorization"], "Bearer service_xxx");
+    assert.equal(activeCalled, 0);
+  });
+
+  it("throws LocalError when no projectId and no active project resolver", async () => {
+    const { fetch, calls } = mockFetch(() => jsonResponse({}));
+    const sdk = makeSdk(makeCreds(), fetch);
+    await assert.rejects(
+      sdk.subdomains.claim("x", "dpl_y"),
+      (err: unknown) =>
+        err instanceof LocalError &&
+        /projectId|active project/i.test((err as LocalError).message),
+    );
+    assert.equal(calls.length, 0);
+  });
+
+  it("throws LocalError when getActiveProject returns null", async () => {
+    const { fetch, calls } = mockFetch(() => jsonResponse({}));
+    const sdk = makeSdk(
+      makeCreds({
+        async getActiveProject() {
+          return null;
+        },
+      }),
+      fetch,
+    );
+    await assert.rejects(
+      sdk.subdomains.claim("x", "dpl_y"),
+      (err: unknown) =>
+        err instanceof LocalError &&
+        /projectId|active project/i.test((err as LocalError).message),
+    );
+    assert.equal(calls.length, 0);
   });
 });
