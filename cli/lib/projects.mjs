@@ -2,7 +2,7 @@ import { readFileSync } from "fs";
 import { findProject, loadKeyStore, API, allowanceAuthHeaders, resolveProjectId, getActiveProjectId } from "./config.mjs";
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail, parseFlagJson } from "./sdk-errors.mjs";
-import { assertKnownFlags, failBadProjectId, hasHelp, normalizeArgv, positionalArgs } from "./argparse.mjs";
+import { assertKnownFlags, failBadProjectId, hasHelp, normalizeArgv, positionalArgs, resolvePositionalProject } from "./argparse.mjs";
 
 const HELP = `run402 projects — Manage your deployed Run402 projects
 
@@ -371,35 +371,6 @@ async function deleteProject(projectId, args = []) {
   } catch (err) {
     reportSdkError(err);
   }
-}
-
-// Resolve a positional project_id argument with active-project fallback (GH-102).
-// Callers can tighten the legacy shorthand when a bare non-prj positional is
-// more likely a mistyped project id than an argument for the active project.
-function resolvePositionalProject(args, opts = {}) {
-  const first = Array.isArray(args) ? args[0] : undefined;
-  if (typeof first === "string" && first.startsWith("prj_")) {
-    return { projectId: first, rest: args.slice(1) };
-  }
-  if (
-    typeof first === "string" &&
-    first.length > 0 &&
-    !first.startsWith("-") &&
-    Array.isArray(opts.rejectBareFirstWhenFlagPresent) &&
-    opts.rejectBareFirstWhenFlagPresent.some((flag) => args.includes(flag))
-  ) {
-    failBadProjectId(first);
-  }
-  if (typeof first === "string" && first.length > 0 && !first.startsWith("-") && opts.rejectBareFirst) {
-    failBadProjectId(first);
-  }
-  if (typeof first === "string" && first.length > 0 && !first.startsWith("-") && opts.maxBarePositionals !== undefined) {
-    const bare = positionalArgs(args, opts.valueFlags ?? []);
-    if (bare.length > opts.maxBarePositionals) {
-      failBadProjectId(first);
-    }
-  }
-  return { projectId: resolveProjectId(null), rest: Array.isArray(args) ? args : [] };
 }
 
 const FLAGS_BY_SUB = {

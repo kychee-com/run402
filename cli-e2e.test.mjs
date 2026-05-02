@@ -186,6 +186,25 @@ function mockFetch(input, init) {
     return Promise.resolve(json({ status: "ok", rows: [{ id: 1, name: "test" }], rowCount: 1 }));
   }
 
+  // AI (must come before the generic /usage$ catch-all below)
+  if (path === "/ai/v1/translate" && method === "POST") {
+    return Promise.resolve(json({ text: `[es] ${body?.text ?? ""}`, from: body?.from || "en", to: body?.to || "es" }));
+  }
+  if (path === "/ai/v1/moderate" && method === "POST") {
+    return Promise.resolve(json({ flagged: false, categories: { hate: false }, category_scores: { hate: 0.01 } }));
+  }
+  if (path === "/ai/v1/usage" && method === "GET") {
+    return Promise.resolve(json({
+      translation: {
+        active: true,
+        used_words: 12,
+        included_words: 1000,
+        remaining_words: 988,
+        billing_cycle_start: "2026-05-01T00:00:00Z",
+      },
+    }));
+  }
+
   // Schema
   if (path.match(/\/schema$/) && method === "GET") {
     return Promise.resolve(json({ tables: [{ name: "items", columns: [{ name: "id", type: "integer" }] }] }));
@@ -3040,5 +3059,177 @@ describe("CLI contracts JSON-flag parse errors (GH-177)", () => {
     assert.equal(parsed.code, "BAD_JSON_FLAG");
     assert.equal(parsed.details?.flag, "--abi",
       `with both --abi and --args potentially bad, --abi parses first and wins; got: ${JSON.stringify(parsed.details)}`);
+  });
+});
+
+// ── ai translate / moderate / usage default to active project (GH-187) ──────
+// `ai translate <text> --to <lang>` (no project_id) should resolve from the
+// active project, mirroring `projects sql`. Similarly for `ai moderate <text>`
+// and `ai usage`. The legacy form `ai translate prj_xxx <text> --to <lang>`
+// must keep working.
+
+describe("CLI ai active-project default (GH-187)", () => {
+  async function seedActiveProject() {
+    const { saveProject, setActiveProjectId } = await import("./cli/lib/config.mjs");
+    saveProject(TEST_PROJECT.project_id, {
+      anon_key: TEST_PROJECT.anon_key,
+      service_key: TEST_PROJECT.service_key,
+    });
+    setActiveProjectId(TEST_PROJECT.project_id);
+  }
+
+  // x402 may wrap fetch and pass Request objects whose body/headers are not on
+  // `init`; mirror the email-test pattern of normalizing both cases.
+  async function readFetchCall(input, init) {
+    const url = typeof input === "string" ? input : (input instanceof Request ? input.url : String(input));
+    const method = (init?.method || (input instanceof Request ? input.method : "GET") || "GET").toUpperCase();
+    let rawBody = init?.body;
+    if (rawBody === undefined && input instanceof Request) {
+      try { rawBody = await input.clone().text(); } catch { rawBody = undefined; }
+    }
+    let body = null;
+    if (rawBody && typeof rawBody === "string") {
+      try { body = JSON.parse(rawBody); } catch { body = rawBody; }
+    } else if (rawBody) {
+      body = rawBody;
+    }
+    let auth = null;
+    if (init?.headers) {
+      const h = init.headers;
+      if (typeof h.get === "function") auth = h.get("authorization");
+      else auth = h.Authorization ?? h.authorization ?? null;
+    }
+    if (!auth && input instanceof Request) {
+      auth = input.headers.get("authorization");
+    }
+    return { url, method, body, auth };
+  }
+
+  it("ai translate <text> --to <lang> defaults to active project (GH-187)", async () => {
+    await seedActiveProject();
+    const { run } = await import("./cli/lib/ai.mjs");
+    let seen = null;
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = async (input, init) => {
+      const call = await readFetchCall(input, init);
+      if (/\/ai\/v1\/translate$/.test(call.url) && call.method === "POST") {
+        seen = call;
+      }
+      return prevFetch(input, init);
+    };
+    let threw = null;
+    captureStart();
+    try {
+      await run("translate", ["hello world", "--to", "es"]);
+    } catch (e) { threw = e; } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+    assert.equal(threw, null,
+      `should succeed without explicit project; got: ${threw && threw.message}\nstderr: ${capturedStderr()}`);
+    assert.ok(seen, `should hit /ai/v1/translate; stdout: ${capturedStdout()}, stderr: ${capturedStderr()}`);
+    assert.equal(seen.body?.text, "hello world",
+      `request body must contain the text positional, got: ${JSON.stringify(seen.body)}`);
+    assert.equal(seen.body?.to, "es",
+      `request body must contain --to value, got: ${JSON.stringify(seen.body)}`);
+    // The active project's service_key should be in the Authorization header.
+    assert.ok(seen.auth && String(seen.auth).includes("svc_test_key"),
+      `Authorization header must use the active project's service_key; got: ${seen.auth}`);
+  });
+
+  it("ai translate prj_<id> <text> --to <lang> still uses explicit id (GH-187)", async () => {
+    await seedActiveProject();
+    // Seed a second project so the explicit id resolves.
+    const { saveProject } = await import("./cli/lib/config.mjs");
+    saveProject("prj_explicit", {
+      anon_key: "anon_explicit",
+      service_key: "svc_explicit",
+    });
+
+    const { run } = await import("./cli/lib/ai.mjs");
+    let seen = null;
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = async (input, init) => {
+      const call = await readFetchCall(input, init);
+      if (/\/ai\/v1\/translate$/.test(call.url) && call.method === "POST") {
+        seen = call;
+      }
+      return prevFetch(input, init);
+    };
+    let threw = null;
+    captureStart();
+    try {
+      await run("translate", ["prj_explicit", "hello world", "--to", "es"]);
+    } catch (e) { threw = e; } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+      const { removeProject } = await import("./cli/lib/config.mjs");
+      removeProject("prj_explicit");
+    }
+    assert.equal(threw, null, `should succeed; got: ${threw && threw.message}`);
+    assert.ok(seen, `should hit /ai/v1/translate; stderr: ${capturedStderr()}`);
+    assert.equal(seen.body?.text, "hello world",
+      `request body must contain the text positional, got: ${JSON.stringify(seen.body)}`);
+    assert.ok(seen.auth && String(seen.auth).includes("svc_explicit"),
+      `must use explicit project's service_key (svc_explicit); got: ${seen.auth}`);
+  });
+
+  it("ai moderate <text> defaults to active project (GH-187)", async () => {
+    await seedActiveProject();
+    const { run } = await import("./cli/lib/ai.mjs");
+    let seen = null;
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = async (input, init) => {
+      const call = await readFetchCall(input, init);
+      if (/\/ai\/v1\/moderate$/.test(call.url) && call.method === "POST") {
+        seen = call;
+      }
+      return prevFetch(input, init);
+    };
+    let threw = null;
+    captureStart();
+    try {
+      await run("moderate", ["test text"]);
+    } catch (e) { threw = e; } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+    assert.equal(threw, null,
+      `should succeed without explicit project; got: ${threw && threw.message}\nstderr: ${capturedStderr()}`);
+    assert.ok(seen, `should hit /ai/v1/moderate; stdout: ${capturedStdout()}, stderr: ${capturedStderr()}`);
+    assert.equal(seen.body?.text, "test text",
+      `request body must contain the text positional, got: ${JSON.stringify(seen.body)}`);
+    assert.ok(seen.auth && String(seen.auth).includes("svc_test_key"),
+      `Authorization header must use the active project's service_key; got: ${seen.auth}`);
+  });
+
+  it("ai usage with no args defaults to active project (GH-187)", async () => {
+    await seedActiveProject();
+    const { run } = await import("./cli/lib/ai.mjs");
+    let seen = null;
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = async (input, init) => {
+      const call = await readFetchCall(input, init);
+      if (/\/ai\/v1\/usage$/.test(call.url) && call.method === "GET") {
+        seen = call;
+      }
+      return prevFetch(input, init);
+    };
+    let threw = null;
+    captureStart();
+    try {
+      await run("usage", []);
+    } catch (e) { threw = e; } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+    assert.equal(threw, null,
+      `should succeed without args; got: ${threw && threw.message}\nstderr: ${capturedStderr()}`);
+    assert.ok(seen, `should hit /ai/v1/usage; stdout: ${capturedStdout()}, stderr: ${capturedStderr()}`);
+    assert.ok(seen.auth && String(seen.auth).includes("svc_test_key"),
+      `Authorization header must use the active project's service_key; got: ${seen.auth}`);
+    // Output should reflect the AI usage shape, not the projects-usage shape.
+    assert.ok(capturedStdout().includes("translation"),
+      `stdout should include translation usage block, got: ${capturedStdout()}`);
   });
 });

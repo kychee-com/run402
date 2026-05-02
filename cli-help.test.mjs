@@ -78,7 +78,7 @@ const MATRIX = {
     shared: ["versions", "inspect", "delete"],
     specific: ["browse", "fork", "publish", "update"],
   },
-  ai: { shared: ["moderate", "usage"], specific: ["translate"] },
+  ai: { shared: [], specific: ["translate", "moderate", "usage"] },
   image: { shared: ["generate"], specific: [] },
   email: {
     shared: ["create", "get"],
