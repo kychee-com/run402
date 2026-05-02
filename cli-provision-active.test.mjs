@@ -67,11 +67,19 @@ function mockFetch(input, init) {
     return Promise.resolve(json({ jsonrpc: "2.0", result: "0x0", id: body.id }));
   }
 
+  const allowedOrigins = new Set([new URL(API).origin, "https://api.run402.com"]);
   let path = url;
-  if (url.startsWith(API)) path = url.slice(API.length);
-  else if (url.startsWith("https://api.run402.com")) path = url.slice("https://api.run402.com".length);
-  else if (!url.startsWith("/")) {
-    return Promise.resolve(new Response("{}", { status: 200, headers: { "Content-Type": "application/json" } }));
+  try {
+    const parsed = new URL(url);
+    if (allowedOrigins.has(parsed.origin)) {
+      path = parsed.pathname + parsed.search;
+    } else {
+      return Promise.resolve(new Response("{}", { status: 200, headers: { "Content-Type": "application/json" } }));
+    }
+  } catch {
+    if (!url.startsWith("/")) {
+      return Promise.resolve(new Response("{}", { status: 200, headers: { "Content-Type": "application/json" } }));
+    }
   }
 
   if (path === "/projects/v1" && method === "POST") {
