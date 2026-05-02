@@ -802,6 +802,43 @@ describe("CLI e2e happy path", () => {
     assert.ok(captured().includes("Test item"), "should return REST data");
   });
 
+  it("projects rest fails locally with BAD_USAGE when <table> is missing (GH-199)", async () => {
+    const { run } = await import("./cli/lib/projects.mjs");
+    // Sentinel: if the CLI ever sends the request, the test should still fail
+    // because the fetch should not happen. Wrap to detect unexpected calls.
+    const prevFetch = globalThis.fetch;
+    let restCalled = false;
+    globalThis.fetch = (input, init) => {
+      const url = typeof input === "string" ? input : (input instanceof Request ? input.url : String(input));
+      if (url.includes("/rest/v1/")) {
+        restCalled = true;
+      }
+      return prevFetch(input, init);
+    };
+    let threw = null;
+    captureStart();
+    try {
+      await run("rest", ["prj_test123"]);
+    } catch (e) {
+      threw = e;
+    } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+    assert.equal(threw?.message, "process.exit(1)", "should exit non-zero with BAD_USAGE");
+    assert.equal(restCalled, false, "should not call /rest/v1/ when table is missing");
+    const stderr = capturedStderr();
+    const line = stderr.split("\n").map(s => s.trim()).find(s => s.startsWith("{") && s.endsWith("}"));
+    assert.ok(line, `should emit a JSON error line on stderr, got: ${stderr}`);
+    const parsed = JSON.parse(line);
+    assert.equal(parsed.status, "error");
+    assert.equal(parsed.code, "BAD_USAGE");
+    assert.ok(/Missing <table>/.test(parsed.message), `message should mention "Missing <table>", got: ${parsed.message}`);
+    // Must NOT leak server-side schema slot or stringified `undefined`
+    assert.ok(!/undefined/.test(stderr), `error must not contain literal "undefined", got: ${stderr}`);
+    assert.ok(!/\bp\d{3,5}\b/.test(stderr), `error must not contain Postgres schema slot pNNN, got: ${stderr}`);
+  });
+
   it("projects rest exits non-zero on API error (GH-34)", async () => {
     const { run } = await import("./cli/lib/projects.mjs");
     const prevFetch = globalThis.fetch;
