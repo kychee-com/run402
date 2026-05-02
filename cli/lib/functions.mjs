@@ -1,4 +1,4 @@
-import { readFileSync } from "fs";
+import { readFileSync, existsSync, statSync } from "fs";
 import { findProject, API } from "./config.mjs";
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail } from "./sdk-errors.mjs";
@@ -157,6 +157,24 @@ async function deploy(projectId, name, args) {
   }
   if (!opts.file) {
     fail({ code: "BAD_USAGE", message: "Missing --file <file>" });
+  }
+  if (!existsSync(opts.file)) {
+    fail({
+      code: "FILE_NOT_FOUND",
+      message: `File not found: ${opts.file}`,
+      field: "--file",
+      path: opts.file,
+      hint: "Check that --file points to an existing source file.",
+    });
+  }
+  const stat = statSync(opts.file);
+  if (!stat.isFile()) {
+    fail({
+      code: "NOT_A_FILE",
+      message: `--file points to a ${stat.isDirectory() ? "directory" : "non-regular file"}: ${opts.file}`,
+      field: "--file",
+      path: opts.file,
+    });
   }
   const code = readFileSync(opts.file, "utf-8");
 
