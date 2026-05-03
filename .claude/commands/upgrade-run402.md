@@ -1,5 +1,33 @@
 Check what's changed in the private run402 repo since the last sync and determine if any changes need to flow into run402-public (CLI, MCP, or OpenClaw skill).
 
+## Step 0: Update the private repo first
+
+Before reading logs or classifying anything, make sure `~/Developer/run402-private` is current with its upstream:
+
+```bash
+cd ~/Developer/run402-private
+git fetch origin
+git status --short
+git rev-list --left-right --count HEAD...origin/main
+```
+
+If local `main` is behind `origin/main`, pull before continuing:
+
+```bash
+cd ~/Developer/run402-private
+git pull --ff-only --autostash
+git rev-parse HEAD
+git rev-parse origin/main
+```
+
+Continue only when `HEAD` equals `origin/main`. If the pull is blocked by local changes, untracked files, or an autostash conflict, stop and report:
+- the current `HEAD`
+- the `origin/main` commit
+- the ahead/behind count
+- the paths blocking the pull
+
+Do **not** classify stale local commits as the latest private updates. If the repo cannot be pulled cleanly, the upgrade report must say that the private checkout is not current and no conclusions were made from stale `HEAD`.
+
 ## Step 1: Find the sync point
 
 Read the memory file `project_last_integration.md` to get the last known sync commits. If no memory exists, fall back to comparing recent git logs in both repos to find the divergence point.
