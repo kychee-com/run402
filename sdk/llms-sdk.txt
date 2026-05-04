@@ -834,8 +834,9 @@ getProjectFinance(id: string, opts?: {
 ```
 
 `getProjectFinance` reads the internal Finance-tab JSON for a project. It is
-admin OAuth-gated; a project `service_key` is not enough. In Node operator
-scripts, pass `cookie: process.env.RUN402_ADMIN_COOKIE`.
+platform-admin gated; a project `service_key` is not enough. In Node operator
+scripts, use an admin allowance wallet or pass
+`cookie: process.env.RUN402_ADMIN_COOKIE` for browser-session auth.
 
 ## Resource limits
 

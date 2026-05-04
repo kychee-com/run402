@@ -34,8 +34,8 @@ export interface AdminProjectFinanceOptions {
   window?: AdminFinanceWindow;
   /**
    * Optional admin session cookie header. Node operators can pass the value of
-   * RUN402_ADMIN_COOKIE; custom credential providers may instead inject auth
-   * headers through getAuth().
+   * RUN402_ADMIN_COOKIE when they want browser-session auth; otherwise the
+   * credential provider's normal auth headers are used.
    */
   cookie?: string;
 }
@@ -89,9 +89,10 @@ export class Admin {
    * Fetch per-project finance for platform operators.
    *
    * This is the same admin-only surface used by the Run402 Finance tab. It is
-   * gated by the gateway's admin OAuth session; project service keys are not
-   * sufficient. Pass `cookie` when using the Node SDK directly, or provide a
-   * credential provider whose `getAuth()` returns suitable admin headers.
+   * gated by platform-admin auth; project service keys are not sufficient.
+   * Use the Node SDK with an admin allowance wallet, pass `cookie` for browser
+   * session auth, or provide a credential provider whose `getAuth()` returns
+   * suitable admin headers.
    */
   async getProjectFinance(
     projectId: string,

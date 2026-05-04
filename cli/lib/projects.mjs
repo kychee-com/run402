@@ -41,7 +41,7 @@ Examples:
   run402 projects sql prj_abc123 --file setup.sql
   run402 projects rest prj_abc123 users "limit=10&select=id,name"
   run402 projects usage prj_abc123
-  RUN402_ADMIN_COOKIE='run402_admin=...' run402 projects costs prj_abc123 --window 30d
+  run402 projects costs prj_abc123 --window 30d
   run402 projects schema prj_abc123
   run402 projects apply-expose prj_abc123 --file manifest.json
   run402 projects get-expose prj_abc123
@@ -122,15 +122,17 @@ Options:
   --window <w>        Finance window (default: 30d). One of: 24h, 7d, 30d, 90d
 
 Environment:
-  RUN402_ADMIN_COOKIE Admin OAuth cookie header, e.g. "run402_admin=..."
+  RUN402_ADMIN_COOKIE Optional admin OAuth cookie header, e.g. "run402_admin=..."
 
 Notes:
-  - Platform-admin only. Project service keys and normal allowance auth are
-    not enough for this endpoint.
+  - Platform-admin only. The configured allowance wallet must be an admin
+    wallet, or RUN402_ADMIN_COOKIE must contain an admin OAuth cookie.
+  - Project service keys are not enough for this endpoint.
   - Output is the gateway's per-project finance JSON: revenue, direct cost,
     direct margin, and direct_cost_breakdown rows.
 
 Examples:
+  run402 projects costs prj_abc123
   RUN402_ADMIN_COOKIE='run402_admin=...' run402 projects costs prj_abc123
   RUN402_ADMIN_COOKIE='run402_admin=...' run402 projects costs --window 7d
 `,
@@ -344,14 +346,7 @@ async function usage(projectId) {
 
 function adminCookieFromEnv() {
   const raw = process.env.RUN402_ADMIN_COOKIE?.trim();
-  if (!raw) {
-    fail({
-      code: "ADMIN_COOKIE_REQUIRED",
-      message: "run402 projects costs requires RUN402_ADMIN_COOKIE.",
-      hint: "Sign in to /admin, then set RUN402_ADMIN_COOKIE to the run402_admin cookie header.",
-      details: { env: "RUN402_ADMIN_COOKIE" },
-    });
-  }
+  if (!raw) return undefined;
   return raw.includes("=") ? raw : `run402_admin=${raw}`;
 }
 
@@ -368,7 +363,7 @@ async function costs(projectId, args = []) {
   try {
     const data = await getSdk().admin.getProjectFinance(projectId, {
       window,
-      cookie,
+      ...(cookie ? { cookie } : {}),
     });
     console.log(JSON.stringify(data, null, 2));
   } catch (err) {

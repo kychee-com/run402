@@ -139,15 +139,7 @@ describe("unknown flags", () => {
 describe("projects costs argv validation", () => {
   it("rejects invalid --window before network", async () => {
     const { run } = await import("./cli/lib/projects.mjs");
-    const previous = process.env.RUN402_ADMIN_COOKIE;
-    process.env.RUN402_ADMIN_COOKIE = "run402_admin=test";
-    let err;
-    try {
-      err = await expectExit1(() => run("costs", ["--window", "1y"]));
-    } finally {
-      if (previous === undefined) delete process.env.RUN402_ADMIN_COOKIE;
-      else process.env.RUN402_ADMIN_COOKIE = previous;
-    }
+    const err = await expectExit1(() => run("costs", ["--window", "1y"]));
 
     assert.equal(err.code, "BAD_FLAG");
     assert.equal(err.details.flag, "--window");

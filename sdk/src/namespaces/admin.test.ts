@@ -52,7 +52,7 @@ describe("admin.sendMessage", () => {
 });
 
 describe("admin.getProjectFinance", () => {
-  it("GETs the admin finance project endpoint with window and cookie", async () => {
+  it("GETs the admin finance project endpoint with window and optional cookie", async () => {
     const { fetch, calls } = mockFetch(() => json({
       project_id: "prj_known",
       project_name: "Test Project",
@@ -115,6 +115,8 @@ describe("admin.getProjectFinance", () => {
       calls[0]!.url,
       "https://api.test/admin/api/finance/project/prj_known?window=30d",
     );
+    assert.equal(calls[0]!.headers.Cookie, undefined);
+    assert.equal(calls[0]!.headers["SIGN-IN-WITH-X"], "t");
   });
 
   it("rejects invalid windows before making a request", async () => {
