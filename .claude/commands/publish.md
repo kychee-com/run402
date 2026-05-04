@@ -166,7 +166,9 @@ For `minor` or `major` releases, write a tweet-ready summary of the release. Thi
 
 Guidelines:
 - **Focus on what developers can now build**, not what changed internally. "Your agents can now send HTML emails" not "Added raw HTML mode to email tool".
-- Keep it under 280 characters. No hashtags, no emojis unless the user asks.
+- Lead with the big picture, not the release bookkeeping. Say "run402 adds GitHub Actions OIDC..." instead of "run402 v1.55.0 adds GitHub Actions OIDC..." because people care about the capability, not the exact version number.
+- Keep it under 280 characters. No hashtags. A small personal touch is welcome when it feels natural, including an emoji if it adds warmth.
 - If the release has multiple features, pick the 1-2 most compelling and lead with those.
-- End with the version number, e.g. `(run402 v1.21.0)`
+- Do not end with the exact version number. Version details belong in the release summary and npm/GitHub links, not in the tweet.
+- Example personal touch: "OIDC is really cool 😎"
 - Present 2-3 options so the user can pick or remix.
