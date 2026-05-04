@@ -250,6 +250,7 @@ Views always run with `security_invoker=true` — they inherit the underlying ta
 run402 blob put ./logo.png    --json
 run402 blob put ./app.js      --json
 run402 blob put ./styles.css  --json
+run402 blob put ./asset       --key assets/logo --content-type image/svg+xml --json
 ```
 
 Each response includes:
@@ -262,6 +263,8 @@ Each response includes:
 | `cache_kind` | `immutable` / `mutable` / `private` |
 
 Immutable upload is the default since v1.45 — the SDK computes the SHA-256 client-side and pairs the URL with SRI. The browser refuses execution on byte mismatch. No invalidation choreography.
+
+`blob put` infers MIME type from the destination key. Use `--content-type <mime>` for extensionless assets, unusual file types, or deliberate overrides.
 
 ### List, fetch, remove, sign
 

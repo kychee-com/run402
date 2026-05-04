@@ -196,6 +196,74 @@ describe("numeric flag validation", () => {
     assert.equal(calls.length, 0, "bad --concurrency must not init an upload");
   });
 
+  it("blob put validates --content-type before upload init (GH-237)", async () => {
+    const { run } = await import("./cli/lib/blob.mjs");
+    const file = join(tempDir, "bad-mime.txt");
+    writeFileSync(file, "hello");
+    for (const value of ["", "image", "/svg", "image/"]) {
+      calls = [];
+      const argv = value === ""
+        ? [file, "--project", "prj_test123", "--content-type"]
+        : [file, "--project", "prj_test123", "--content-type", value];
+      const err = await expectExit1(() => run("put", argv));
+      assert.equal(err.code, "BAD_FLAG");
+      assert.match(err.message, /--content-type/);
+      assert.equal(calls.length, 0, `bad --content-type ${JSON.stringify(value)} must not init an upload`);
+    }
+  });
+
+  it("blob put sends explicit --content-type to upload init (GH-237)", async () => {
+    const { run } = await import("./cli/lib/blob.mjs");
+    const file = join(tempDir, "extensionless-asset");
+    writeFileSync(file, "<svg></svg>");
+    let initBody = null;
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = (input, init) => {
+      const info = requestInfo(input, init);
+      calls.push(info);
+      if (info.path === "/storage/v1/uploads" && info.method === "POST") {
+        initBody = JSON.parse(String(info.init.body));
+        return Promise.resolve(json({
+          upload_id: "upload_mime",
+          mode: "single",
+          part_count: 1,
+          parts: [{ part_number: 1, url: "https://s3.example.test/upload_mime/p1", byte_start: 0, byte_end: 10 }],
+        }, 201));
+      }
+      if (info.url === "https://s3.example.test/upload_mime/p1" && info.method === "PUT") {
+        return Promise.resolve(new Response("", { status: 200, headers: { etag: "\"etag-1\"" } }));
+      }
+      if (info.path === "/storage/v1/uploads/upload_mime/complete" && info.method === "POST") {
+        return Promise.resolve(json({
+          key: "assets/logo",
+          size_bytes: 11,
+          sha256: null,
+          visibility: "public",
+          content_type: "image/svg+xml",
+          url: "https://pr-test.run402.com/_blob/assets/logo",
+          immutable_url: null,
+        }));
+      }
+      return mockFetch(input, init);
+    };
+    captureStart();
+    try {
+      await run("put", [
+        file,
+        "--project", "prj_test123",
+        "--key", "assets/logo",
+        "--content-type", "image/svg+xml",
+        "--no-resume",
+      ]);
+    } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+
+    assert.equal(initBody?.content_type, "image/svg+xml");
+    assert.equal(initBody?.key, "assets/logo");
+  });
+
   it("blob put surfaces upload-init gateway errors as structured JSON (GH-186)", async () => {
     const { run } = await import("./cli/lib/blob.mjs");
     const file = join(tempDir, "upload-init-fails.txt");
