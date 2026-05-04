@@ -198,6 +198,11 @@ For TypeScript autocomplete, `npm install @run402/functions` in your editor's pr
 - **`bundle_deploy`** — legacy one-call full-stack deploy: database + migrations + manifest (`manifest.json` in `files[]`) + optional legacy in-memory secrets + functions + site + subdomain. Secret writes happen before deploy and are not rolled back. For new code, prefer `set_secret` + unified `deploy`.
 - **`deploy`** — the unified deploy primitive (v1.34+). Pass a `ReleaseSpec` with replace-vs-patch semantics per resource and value-free `secrets.require` / `secrets.delete`. Returns the deploy operation and structured warnings; stops before upload/commit on confirmation-required warnings unless `allow_warnings` is true.
 - **`deploy_resume`** — resume a deploy operation by `operation_id`.
+- **`deploy_list`** — list recent deploy operations. Params: `project_id`, `limit?`.
+- **`deploy_events`** — fetch recorded events for a deploy operation. Params: `project_id`, `operation_id`.
+- **`deploy_release_get`** — fetch release inventory by id. Params: `project_id`, `release_id`, `site_limit?`. Returns release metadata, state kind, site paths, functions, secret keys, subdomains, and applied migrations.
+- **`deploy_release_active`** — fetch the current-live release inventory. Params: `project_id`, `site_limit?`.
+- **`deploy_release_diff`** — diff release targets. Params: `project_id`, `from` (`empty` / `active` / release id), `to` (`active` / release id), `limit?`. Returns `migrations.applied_between_releases`; secret and subdomain diffs expose `added` / `removed` only.
 
 ### Functions
 

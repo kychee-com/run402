@@ -32,7 +32,7 @@ npm run start              # node dist/index.js (stdio MCP transport)
 npm run test:skill         # validates SKILL.md and openclaw/SKILL.md (49 tests across both)
 npm run test:sync          # checks MCP/CLI/OpenClaw/SDK stay in sync
 npm test                   # SKILL + sync + unit (core/src + sdk/src + src) + CLI e2e
-npm run test:e2e           # node --test cli-e2e.test.mjs cli-deploy-dispatcher.test.mjs cli-help.test.mjs
+npm run test:e2e           # node --test cli-e2e.test.mjs cli-help.test.mjs cli-provision-active.test.mjs cli-argv.test.mjs cli-env.test.mjs
 npm run test:help          # CLI help-text snapshots only
 npm run test:integration         # SIWX integration (core/src/siwx-integration.integ.ts)
 npm run test:integration:full    # full CLI integration (cli-integration.test.ts)
@@ -109,13 +109,14 @@ The SDK is the canonical kernel — a single typed client with a `CredentialsPro
   - `r.deploy.apply(spec, opts?)` — one-shot, awaits to terminal (most agents use this).
   - `r.deploy.start(spec, opts?)` — returns a `DeployOperation` with `events()` async iterator + `result()` promise.
   - `r.deploy.plan` / `upload` / `commit` — low-level steps for CLI debugging.
-  - Plus `r.deploy.resume(operationId)`, `status`, `getRelease`, `diff`.
+  - Plus `r.deploy.resume(operationId)`, `status`, `getRelease`, `getActiveRelease`, `diff`.
 - **All bytes ride through CAS.** The plan request body never carries inline bytes — only `ContentRef` objects. When the normalized spec exceeds 5 MB JSON, the SDK uploads the manifest itself as a CAS object and references it (`manifest_ref` escape hatch — no body-size cliff).
 - **Replace vs patch semantics per resource.** `site.replace` = "this is the whole site" (files absent are removed in the new release); `site.patch.put` / `patch.delete` = surgical updates. Same for `functions`. Secrets are value-free declarations: `secrets.require` asserts keys already exist, and `secrets.delete` removes keys at activation. Set secret values out-of-band through the secrets API. `subdomains` use `set` / `add` / `remove`. Top-level absence = leave untouched.
 - **Structured warnings.** Plan responses include `warnings: WarningEntry[]`. `deploy.apply` emits `plan.warnings` and aborts before upload/commit when a warning requires confirmation (including `MISSING_REQUIRED_SECRET`) unless the caller explicitly passes `allowWarnings`.
+- **Release observability.** `getRelease({ project, releaseId, siteLimit? })`, `getActiveRelease({ project, siteLimit? })`, and `diff({ project, from, to, limit? })` are typed apikey reads over `/deploy/v2/releases*`. `active` means the current-live target; release-to-release diffs expose `migrations.applied_between_releases`, not plan migration buckets. Secret diffs expose keys only.
 - **Server-authoritative manifest digest.** The gateway returns the canonical digest in the plan response. The SDK no longer requires byte-for-byte canonicalize agreement — `canonicalize.ts` is now a UX helper only.
 - **Backward-compat shims.** `apps.bundleDeploy` translates legacy options into a `ReleaseSpec` and delegates to `deploy.apply` (the `inherit: true` flag is silently ignored — deprecation is preserved in the JSDoc only, the runtime warning was removed in #162 because it misled callers when an unrelated error followed). `sites.deployDir` is a thin wrapper that uses `fileSetFromDir(dir)` and synthesizes both unified `DeployEvent` shapes and the legacy `{ phase: ... }` shapes for v1.32-era event consumers.
-- **MCP/CLI surface.** `deploy` and `deploy_resume` MCP tools (in `src/tools/deploy.ts` and `src/tools/deploy-resume.ts`) expose the new primitive directly. CLI subcommands `run402 deploy apply` and `run402 deploy resume` (in `cli/lib/deploy-v2.mjs`) mirror them. The legacy `bundle_deploy`/`deploy_site`/`deploy_site_dir` MCP tools and `run402 deploy --manifest` CLI continue to work and route through the same SDK shim.
+- **MCP/CLI surface.** `deploy` and `deploy_resume` MCP tools (in `src/tools/deploy.ts` and `src/tools/deploy-resume.ts`) expose the new primitive directly; `deploy_release_get` / `deploy_release_active` / `deploy_release_diff` expose release observability reads. CLI subcommands `run402 deploy apply`, `run402 deploy resume`, and `run402 deploy release <get|active|diff>` (in `cli/lib/deploy-v2.mjs`) mirror them. The legacy `bundle_deploy`/`deploy_site`/`deploy_site_dir` MCP tools and `run402 deploy --manifest` CLI continue to work and route through the same SDK shim.
 
 ### CI/OIDC Federation (GitHub Actions)
 
@@ -162,7 +163,7 @@ Core functions return `null` or throw — they never call `process.exit()`. Each
 - **`cli/lib/*.mjs`** — Each module exports `async run(sub, args)`. Subcommand bodies: argv parse + SDK call + JSON output + `reportSdkError` on failure.
 - **`cli/lib/blob.mjs`** retains raw `fetch` for the `put` subcommand only — resumable uploads + per-part concurrency are CLI-specific UX not modeled in the SDK.
 - **`cli/lib/deploy.mjs`** delegates to `getSdk().apps.bundleDeploy(...)` (the v2 shim). The legacy custom undici dispatcher and retry-on-5xx logic was retired with the v1 route removal — v2 doesn't ship inline bytes, so the long-timeout rationale no longer applies.
-- **`cli/lib/deploy-v2.mjs`** — `run402 deploy apply` and `run402 deploy resume` subcommands. Thin wrapper over `r.deploy.apply` / `r.deploy.resume`.
+- **`cli/lib/deploy-v2.mjs`** — `run402 deploy apply`, `resume`, `list`, `events`, and `release <get|active|diff>` subcommands. Thin wrappers over `r.deploy.*`.
 - **`cli/lib/ci.mjs`** — `run402 ci link github`, `run402 ci list`, and `run402 ci revoke`. Link signs the canonical delegation locally, verifies/inserts the GitHub repository id, and writes a workflow using GitHub OIDC (`permissions: id-token: write`) plus the existing `deploy apply` command.
 
 ### OpenClaw (`openclaw/`)

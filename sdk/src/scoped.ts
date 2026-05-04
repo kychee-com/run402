@@ -117,6 +117,7 @@ import type {
 } from "./namespaces/subdomains.js";
 import type {
   ApplyOptions,
+  ActiveReleaseInventory,
   DeployEvent,
   ExposeManifest,
   DeployListResponse,
@@ -124,7 +125,11 @@ import type {
   DeployResult,
   OperationSnapshot,
   PlanResponse,
+  ReleaseDiffOptions,
+  ReleaseInventory,
+  ReleaseInventoryOptions,
   ReleaseSpec,
+  ReleaseToReleaseDiff,
   StartOptions,
 } from "./namespaces/deploy.types.js";
 import type { ByteReader } from "./namespaces/deploy.js";
@@ -386,12 +391,30 @@ class ScopedDeploy {
       project: opts.project ?? this.projectId,
     });
   }
-  // Pass-through (not project-scoped).
-  getRelease(releaseId: string): Promise<unknown> {
-    return this.parent.deploy.getRelease(releaseId);
+  getRelease(
+    releaseId: string,
+    opts: Partial<ReleaseInventoryOptions> = {},
+  ): Promise<ReleaseInventory> {
+    return this.parent.deploy.getRelease(releaseId, {
+      project: opts.project ?? this.projectId,
+      siteLimit: opts.siteLimit,
+    });
   }
-  diff(opts: { from: string; to: string }): Promise<unknown> {
-    return this.parent.deploy.diff(opts);
+  getActiveRelease(
+    opts: Partial<ReleaseInventoryOptions> = {},
+  ): Promise<ActiveReleaseInventory> {
+    return this.parent.deploy.getActiveRelease({
+      project: opts.project ?? this.projectId,
+      siteLimit: opts.siteLimit,
+    });
+  }
+  diff(
+    opts: Omit<ReleaseDiffOptions, "project"> & { project?: string },
+  ): Promise<ReleaseToReleaseDiff> {
+    return this.parent.deploy.diff({
+      ...opts,
+      project: opts.project ?? this.projectId,
+    });
   }
 
   private bindProject(spec: Omit<ReleaseSpec, "project"> & { project?: string }): ReleaseSpec {

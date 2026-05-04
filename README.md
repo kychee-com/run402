@@ -244,6 +244,7 @@ run402 projects provision --name my-app
 run402 projects sql <id> "CREATE TABLE …"
 run402 projects apply-expose <id> --file manifest.json
 run402 sites deploy-dir ./dist
+run402 deploy release active --project <id>  # inspect current-live release inventory
 run402 functions deploy <id> <name> --file fn.ts
 run402 ci link github --project <id>       # GitHub Actions OIDC deploy binding
 run402 blob put ./asset.png --immutable
@@ -350,6 +351,8 @@ The full MCP surface — every tool is a thin shim over an SDK call.
 | `list_subdomains` / `delete_subdomain` | Manage subdomains. |
 | `add_custom_domain` / `list_custom_domains` / `check_domain_status` / `remove_custom_domain` | Point your own domain at a Run402 subdomain. |
 | `bundle_deploy` | Legacy one-call full-stack deploy: database + migrations + authorization manifest (`manifest.json` in `files[]` — gateway validates it, applies it, then strips it before serving the site) + optional legacy in-memory secrets + functions + site + subdomain. For new secret-bearing deploys, use `set_secret` first, then `deploy` with `secrets.require`. |
+| `deploy` / `deploy_resume` / `deploy_list` / `deploy_events` | Apply, resume, list, and inspect deploy operations. |
+| `deploy_release_get` / `deploy_release_active` / `deploy_release_diff` | Inspect release inventory and release-to-release diffs without starting a new deploy mutation. |
 
 ### Functions & secrets
 

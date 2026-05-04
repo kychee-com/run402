@@ -57,10 +57,13 @@ run402 projects schema <id>                              # introspect tables + R
 ```bash
 run402 sites deploy-dir ./dist                # incremental upload (plan/commit transport)
 run402 deploy --manifest app.json             # one-call full stack deploy
+run402 deploy release active                  # inspect current-live release inventory
+run402 deploy release diff --from empty --to active
 run402 subdomains claim my-app                # → my-app.run402.com (auto-reassigns on next deploy)
 ```
 
 `deploy-dir` hashes each file client-side and only uploads bytes the gateway doesn't already have. Re-deploying an unchanged tree returns immediately with `bytes_uploaded: 0`. Progress events stream to stderr.
+Release inspection commands print `{ status: "ok", release: ... }` or `{ status: "ok", diff: ... }`; use them after deploys to compare release inventory without starting another mutation.
 
 ### GitHub Actions OIDC deploys
 

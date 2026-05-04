@@ -314,6 +314,72 @@ function mockFetch(input, init) {
       updated_at: new Date().toISOString(),
     }));
   }
+  if (pathNoQuery === "/deploy/v2/releases/active" && method === "GET") {
+    return Promise.resolve(json({
+      kind: "release_inventory",
+      schema_version: "agent-deploy-observability.v1",
+      release_id: "rel_v2_test",
+      project_id: TEST_PROJECT.project_id,
+      parent_id: null,
+      status: "active",
+      manifest_digest: "deadbeef".repeat(8),
+      created_at: "2026-05-04T00:00:00Z",
+      created_by: "0xtest",
+      activated_at: "2026-05-04T00:01:00Z",
+      superseded_at: null,
+      operation_id: null,
+      plan_id: null,
+      events_url: null,
+      effective: true,
+      state_kind: "current_live",
+      site: { paths: [] },
+      functions: [],
+      secrets: { keys: [] },
+      subdomains: { names: [] },
+      migrations_applied: [],
+    }));
+  }
+  if (pathNoQuery === "/deploy/v2/releases/diff" && method === "GET") {
+    return Promise.resolve(json({
+      kind: "release_diff",
+      schema_version: "agent-deploy-observability.v1",
+      from_release_id: null,
+      to_release_id: "rel_v2_test",
+      is_noop: false,
+      summary: "1 migration applied between releases",
+      warnings: [],
+      migrations: { applied_between_releases: ["001_init"] },
+      site: { added: [], removed: [], changed: [] },
+      functions: { added: [], removed: [], changed: [] },
+      secrets: { added: [], removed: [] },
+      subdomains: { added: [], removed: [] },
+    }));
+  }
+  if (pathNoQuery.match(/^\/deploy\/v2\/releases\/[^/]+$/) && method === "GET") {
+    return Promise.resolve(json({
+      kind: "release_inventory",
+      schema_version: "agent-deploy-observability.v1",
+      release_id: decodeURIComponent(pathNoQuery.split("/").pop()),
+      project_id: TEST_PROJECT.project_id,
+      parent_id: null,
+      status: "active",
+      manifest_digest: "deadbeef".repeat(8),
+      created_at: "2026-05-04T00:00:00Z",
+      created_by: "0xtest",
+      activated_at: "2026-05-04T00:01:00Z",
+      superseded_at: null,
+      operation_id: null,
+      plan_id: null,
+      events_url: null,
+      effective: true,
+      state_kind: "effective",
+      site: { paths: [] },
+      functions: [],
+      secrets: { keys: [] },
+      subdomains: { names: [] },
+      migrations_applied: [],
+    }));
+  }
 
   // Subdomains
   if (path === "/subdomains/v1" && method === "POST") {
@@ -1312,6 +1378,77 @@ describe("CLI e2e happy path", () => {
     await run(["--manifest", manifestPath, "--project", "prj_test123"]);
     captureStop();
     assert.ok(captured().includes("prj_test123"), "should return project info");
+  });
+
+  it("deploy release get wraps the inventory payload", async () => {
+    const { run } = await import("./cli/lib/deploy.mjs");
+    captureStart();
+    await run(["release", "get", "rel_v2_test", "--project", "prj_test123", "--site-limit", "2"]);
+    captureStop();
+    const body = JSON.parse(captured());
+    assert.equal(body.status, "ok");
+    assert.equal(body.release.kind, "release_inventory");
+    assert.equal(body.release.release_id, "rel_v2_test");
+  });
+
+  it("deploy release active wraps the active inventory payload", async () => {
+    const { run } = await import("./cli/lib/deploy.mjs");
+    captureStart();
+    await run(["release", "active", "--project", "prj_test123"]);
+    captureStop();
+    const body = JSON.parse(captured());
+    assert.equal(body.status, "ok");
+    assert.equal(body.release.state_kind, "current_live");
+  });
+
+  it("deploy release diff wraps the diff payload", async () => {
+    const { run } = await import("./cli/lib/deploy.mjs");
+    captureStart();
+    await run([
+      "release",
+      "diff",
+      "--from",
+      "empty",
+      "--to",
+      "active",
+      "--project",
+      "prj_test123",
+      "--limit",
+      "3",
+    ]);
+    captureStop();
+    const body = JSON.parse(captured());
+    assert.equal(body.status, "ok");
+    assert.equal(body.diff.kind, "release_diff");
+    assert.deepEqual(body.diff.migrations.applied_between_releases, ["001_init"]);
+  });
+
+  it("deploy release diff rejects missing selectors before network", async () => {
+    const { run } = await import("./cli/lib/deploy.mjs");
+    const prevFetch = globalThis.fetch;
+    let releaseDiffCalled = false;
+    globalThis.fetch = (input, init) => {
+      const url = typeof input === "string" ? input : (input instanceof Request ? input.url : String(input));
+      if (url.includes("/deploy/v2/releases/diff")) releaseDiffCalled = true;
+      return prevFetch(input, init);
+    };
+
+    let threw = null;
+    captureStart();
+    try {
+      await run(["release", "diff", "--from", "empty", "--project", "prj_test123"]);
+    } catch (e) {
+      threw = e;
+    } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+
+    assert.equal(threw?.message, "process.exit(1)");
+    assert.equal(releaseDiffCalled, false, "must not call release diff with missing --to");
+    const parsed = JSON.parse(capturedStderr());
+    assert.equal(parsed.code, "BAD_USAGE");
+    assert.match(parsed.message, /Missing --from or --to/);
   });
 
   it("deploy with path fields in manifest", async () => {

@@ -179,6 +179,8 @@ The response's `content` array includes a fenced `json` block of buffered progre
 
 For one-call full-stack deploys (database + migrations + manifest + secret dependencies + functions + site + subdomain), prefer **`deploy`**. Set secret values first with **`set_secret`**, then deploy with value-free `secrets.require[]`; never put secret values in deploy specs. **`bundle_deploy`** remains for legacy in-memory compatibility and writes secrets before deploy, but those writes are not atomic with the deploy commit.
 
+After deploys, use read-only release observability instead of starting another mutation: **`deploy_release_active`** for the current-live inventory, **`deploy_release_get`** for a specific release id, and **`deploy_release_diff`** to compare `empty`, `active`, or release-id targets. Inventories expose site paths, functions, secret keys only, subdomains, and applied migrations; diffs use `migrations.applied_between_releases`.
+
 ### In-function helpers — `db(req)` vs `adminDb()`
 
 Inside a deployed function, import from `@run402/functions`. Two distinct DB clients keep RLS clean:
@@ -246,6 +248,8 @@ For TypeScript autocomplete, `npm install @run402/functions` in your editor's pr
 - **`list_subdomains`** / **`delete_subdomain`** — manage subdomains.
 - **`add_custom_domain`** / **`list_custom_domains`** / **`check_domain_status`** / **`remove_custom_domain`** — point your own domain at a Run402 subdomain.
 - **`bundle_deploy`** — legacy one-call full-stack deploy with auth-as-SDLC manifest in `files[]`. Prefer `set_secret` + `deploy` for new code when secrets are involved.
+- **`deploy`** / **`deploy_resume`** / **`deploy_list`** / **`deploy_events`** — apply, resume, list, and inspect deploy operations.
+- **`deploy_release_get`** / **`deploy_release_active`** / **`deploy_release_diff`** — inspect release inventory and release-to-release diffs.
 
 ### Functions & secrets
 

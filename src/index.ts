@@ -13,6 +13,14 @@ import { deploySchema, handleDeploy } from "./tools/deploy.js";
 import { deployResumeSchema, handleDeployResume } from "./tools/deploy-resume.js";
 import { deployListSchema, handleDeployList } from "./tools/deploy-list.js";
 import { deployEventsSchema, handleDeployEvents } from "./tools/deploy-events.js";
+import {
+  deployReleaseActiveSchema,
+  deployReleaseDiffSchema,
+  deployReleaseGetSchema,
+  handleDeployReleaseActive,
+  handleDeployReleaseDiff,
+  handleDeployReleaseGet,
+} from "./tools/deploy-release.js";
 import { claimSubdomainSchema, handleClaimSubdomain } from "./tools/subdomain.js";
 import { deleteSubdomainSchema, handleDeleteSubdomain } from "./tools/subdomain.js";
 import { deployFunctionSchema, handleDeployFunction } from "./tools/deploy-function.js";
@@ -364,6 +372,27 @@ server.tool(
   "Fetch the recorded phase-event stream for a deploy operation. Returns the same `DeployEvent` shapes the `deploy` tool emits inline during an in-flight deploy — useful for inspecting a deploy after the fact (e.g., a deploy that the agent didn't observe directly, or one being resumed from a different process).",
   deployEventsSchema,
   async (args) => handleDeployEvents(args),
+);
+
+server.tool(
+  "deploy_release_get",
+  "Fetch a release inventory by id. Returns release metadata, effective/desired state kind, site path inventory, function inventory, secret keys, subdomains, and applied migrations. Use `site_limit` to cap large site inventories. If the gateway disables this observability surface, the canonical SDK error is preserved.",
+  deployReleaseGetSchema,
+  async (args) => handleDeployReleaseGet(args),
+);
+
+server.tool(
+  "deploy_release_active",
+  "Fetch the current-live release inventory for a project. Returns `release_id: null` with an empty current-live inventory when no release is active yet. Use this before deploy diffs to understand what is currently serving. If the gateway disables this observability surface, the canonical SDK error is preserved.",
+  deployReleaseActiveSchema,
+  async (args) => handleDeployReleaseActive(args),
+);
+
+server.tool(
+  "deploy_release_diff",
+  "Diff two release targets for a project. `from` may be `empty`, `active`, or a release id; `to` may be `active` or a release id. Returns release-to-release diff buckets and `migrations.applied_between_releases`. Semantic gateway errors such as invalid targets, same-release diffs, disabled feature flags, or no active release are preserved.",
+  deployReleaseDiffSchema,
+  async (args) => handleDeployReleaseDiff(args),
 );
 
 server.tool(

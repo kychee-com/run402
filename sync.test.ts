@@ -64,6 +64,9 @@ function parseCliCommands(): string[] {
       cmds.push(`${mod}:${sub}`);
     }
   }
+  for (const action of parseDeployReleaseActions()) {
+    cmds.push(`deploy:release:${action}`);
+  }
   if (existsSync(join(__dirname, "cli/lib/deploy.mjs"))) cmds.push("deploy");
   if (existsSync(join(__dirname, "cli/lib/init.mjs"))) cmds.push("init");
   if (existsSync(join(__dirname, "cli/lib/status.mjs"))) cmds.push("status");
@@ -78,10 +81,24 @@ function parseOpenClawCommands(): string[] {
       cmds.push(`${mod}:${sub}`);
     }
   }
+  for (const action of parseDeployReleaseActions()) {
+    cmds.push(`deploy:release:${action}`);
+  }
   if (existsSync(join(__dirname, "openclaw/scripts/deploy.mjs"))) cmds.push("deploy");
   if (existsSync(join(__dirname, "openclaw/scripts/init.mjs"))) cmds.push("init");
   if (existsSync(join(__dirname, "openclaw/scripts/status.mjs"))) cmds.push("status");
   return cmds.sort();
+}
+
+function parseDeployReleaseActions(): string[] {
+  const filePath = join(__dirname, "cli/lib/deploy-v2.mjs");
+  if (!existsSync(filePath)) return [];
+  const src = readFileSync(filePath, "utf-8");
+  const actions: string[] = [];
+  const re = /if\s*\(\s*action\s*===\s*"([\w-]+)"\s*\)/g;
+  let m;
+  while ((m = re.exec(src))) actions.push(m[1]);
+  return [...new Set(actions)].sort();
 }
 
 /** Parse MCP tool names from the llms.txt MCP Tools table */
@@ -200,6 +217,9 @@ const SURFACE: Capability[] = [
   { id: "deploy_resume",     endpoint: "POST /deploy/v2/operations/:id/resume",            mcp: "deploy_resume",     cli: "deploy:resume",     openclaw: "deploy:resume" },
   { id: "deploy_list",       endpoint: "GET /deploy/v2/operations",                        mcp: "deploy_list",       cli: "deploy:list",       openclaw: "deploy:list" },
   { id: "deploy_events",     endpoint: "GET /deploy/v2/operations/:id/events",             mcp: "deploy_events",     cli: "deploy:events",     openclaw: "deploy:events" },
+  { id: "deploy_release_get",    endpoint: "GET /deploy/v2/releases/:id",                  mcp: "deploy_release_get",    cli: "deploy:release:get",    openclaw: "deploy:release:get" },
+  { id: "deploy_release_active", endpoint: "GET /deploy/v2/releases/active",               mcp: "deploy_release_active", cli: "deploy:release:active", openclaw: "deploy:release:active" },
+  { id: "deploy_release_diff",   endpoint: "GET /deploy/v2/releases/diff",                 mcp: "deploy_release_diff",   cli: "deploy:release:diff",   openclaw: "deploy:release:diff" },
 
   // ── CI/OIDC federation (CLI v1; MCP intentionally deferred) ─────────────
   { id: "ci_link_github",    endpoint: "POST /ci/v1/bindings",                              mcp: null,                cli: "ci:link",          openclaw: "ci:link" },
@@ -380,6 +400,9 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   deploy_resume: "deploy.resume",
   deploy_list: "deploy.list",
   deploy_events: "deploy.events",
+  deploy_release_get: "deploy.getRelease",
+  deploy_release_active: "deploy.getActiveRelease",
+  deploy_release_diff: "deploy.diff",
   ci_link_github: "ci.createBinding",
   ci_list_bindings: "ci.listBindings",
   ci_revoke_binding: "ci.revokeBinding",
@@ -567,7 +590,7 @@ const EXPECTED_OPENCLAW_COMMANDS = SURFACE
 
 // CLI dispatch-through commands that are routing prefixes, not leaf commands.
 // The scanner finds them as case statements but they just delegate to sub-modules.
-const CLI_DISPATCH_COMMANDS = ["email:webhooks"];
+const CLI_DISPATCH_COMMANDS = ["email:webhooks", "deploy:release"];
 
 // CLI aliases that route to the same handler as a primary command already in
 // SURFACE. Listed here so the "no untracked commands" check doesn't fail.
@@ -717,8 +740,6 @@ describe("SDK surface alignment", () => {
       "deploy.upload",
       "deploy.commit",
       "deploy.status",
-      "deploy.getRelease",
-      "deploy.diff",
       // CI token exchange is intentionally credential-helper-only in v1.
       // `getBinding` is SDK/debug surface; public CLI exposes list/revoke.
       "ci.getBinding",

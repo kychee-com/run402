@@ -236,6 +236,16 @@ await r.deploy.upload(lowPlan, { project: projectId, byteReaders });
 const committed = await r.deploy.commit(lowPlan.plan_id, { project: projectId });
 ```
 
+Release observability reads are also part of `r.deploy`:
+
+```ts
+const release = await r.deploy.getRelease({ project: projectId, releaseId: "rel_...", siteLimit: 5000 });
+const active = await r.deploy.getActiveRelease({ project: projectId });
+const diff = await r.deploy.diff({ project: projectId, from: "empty", to: "active", limit: 1000 });
+```
+
+`getRelease` / `getActiveRelease` return `ReleaseInventory` (`kind: "release_inventory"`, `state_kind: "current_live" | "effective" | "desired_manifest"`, site paths, functions, secret keys, subdomains, applied migrations). `diff` returns `ReleaseToReleaseDiff` (`kind: "release_diff"`) with `migrations.applied_between_releases`; secret and subdomain diffs have only `added` / `removed`, never `changed`.
+
 #### `ReleaseSpec` shape
 
 The full type is exported as `ReleaseSpec` from `@run402/sdk` and `@run402/sdk/node`. Sketch:
@@ -260,18 +270,19 @@ The full type is exported as `ReleaseSpec` from `@run402/sdk` and `@run402/sdk/n
 
 - **Replace vs patch semantics per resource.** `site.replace` = "this is the whole site" (files absent are removed). `site.patch.put` / `patch.delete` = surgical updates. `functions` has the same replace/patch split. Secrets are declaration-only: use `r.secrets.set(project, key, value)` for values, then `secrets.require[]` to assert keys exist and `secrets.delete[]` to remove keys at activation. `subdomains` use `set` / `add` / `remove`. Top-level absence = leave untouched.
 - **Plan warnings are structured.** `PlanResponse.warnings` and `DeployResult.warnings` are `WarningEntry[]`; `deploy.apply()` emits `plan.warnings` and aborts before upload/commit when a warning requires confirmation unless `allowWarnings` is set. `MISSING_REQUIRED_SECRET` means set the affected keys with `r.secrets.set`, then retry.
+- **Modern plan/diff types are split.** Deploy plans may expose `PlanDiffEnvelope` with migration buckets `{ new, noop }`; release-to-release diffs expose `{ applied_between_releases }`. Migration checksum mismatch is a hard deploy error (`Run402DeployError`), not a normal successful diff bucket. Legacy flag-off plan arrays remain represented by `DeployDiff` for compatibility.
 
-`WarningEntry`:
+`WarningEntry` is a compatibility union. Legacy plan warnings used low/medium/high severity; deploy-observability warnings use info/warn/high severity with heuristic confidence. Shared fields:
 
 ```
 {
   code: string,
-  severity: "low" | "medium" | "high",
+  severity: "low" | "medium" | "high" | "info" | "warn",
   requires_confirmation: boolean,
   message: string,
   affected?: string[],
   details?: Record<string, unknown>,
-  confidence?: "low" | "medium" | "high",
+  confidence?: "low" | "medium" | "high" | "heuristic",
 }
 ```
 - **All bytes ride through CAS.** Plan request bodies never carry inline bytes — only `ContentRef` objects. When the spec exceeds 5 MB JSON, the SDK uploads the manifest itself as a CAS object and references it (`manifest_ref` escape hatch — no body-size cliff).
@@ -458,8 +469,10 @@ resume(operationId, opts?): Promise<DeployResult>
 status(operationId, opts?: { project? }): Promise<OperationSnapshot>
 list(opts: { project, limit? }): Promise<DeployListResponse>
 events(operationId, opts: { project }): Promise<DeployEventsResponse>   // recorded so far
-getRelease(releaseId): Promise<unknown>                                  // early-v2: may 404
-diff(opts: { from, to }): Promise<unknown>                               // early-v2: may 404
+getRelease(opts: { project, releaseId, siteLimit? }): Promise<ReleaseInventory>
+getRelease(releaseId, opts: { project, siteLimit? }): Promise<ReleaseInventory>
+getActiveRelease(opts: { project, siteLimit? }): Promise<ActiveReleaseInventory>
+diff(opts: { project, from, to, limit? }): Promise<ReleaseToReleaseDiff>
 
 // Low-level (CLI debugging — most agents use apply / start):
 plan(spec, opts?: { idempotencyKey? }): Promise<{ plan, byteReaders }>

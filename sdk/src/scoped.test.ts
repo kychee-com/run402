@@ -232,6 +232,80 @@ describe("ScopedRun402 wrapper routing", () => {
     assert.deepEqual(ledger, ["lookup:prj_other"]);
   });
 
+  it("scoped release observability wrappers bind project and preserve overrides", async () => {
+    const ledger: string[] = [];
+    const creds = makeCreds({
+      async getProject(id: string) {
+        ledger.push(`lookup:${id}`);
+        if (id === "prj_known") return { anon_key: "anon_known", service_key: "service_known" };
+        if (id === "prj_other") return { anon_key: "anon_other", service_key: "service_other" };
+        return null;
+      },
+    });
+    const { fetch, calls } = mockFetch(() =>
+      jsonResponse({
+        kind: "release_inventory",
+        schema_version: "agent-deploy-observability.v1",
+        release_id: "rel_1",
+        project_id: "prj_known",
+        parent_id: null,
+        status: "active",
+        manifest_digest: null,
+        created_at: null,
+        created_by: null,
+        activated_at: null,
+        superseded_at: null,
+        operation_id: null,
+        plan_id: null,
+        events_url: null,
+        effective: true,
+        state_kind: "effective",
+        site: { paths: [] },
+        functions: [],
+        secrets: { keys: [] },
+        subdomains: { names: [] },
+        migrations_applied: [],
+      }),
+    );
+    const sdk = makeSdk(creds, fetch);
+    const p = await sdk.project("prj_known");
+
+    await p.deploy.getRelease("rel_1");
+    await p.deploy.getActiveRelease({ project: "prj_other", siteLimit: 3 });
+
+    assert.match(calls[0]!.url, /\/deploy\/v2\/releases\/rel_1$/);
+    assert.equal(calls[0]!.headers.apikey, "anon_known");
+    assert.match(calls[1]!.url, /\/deploy\/v2\/releases\/active\?site_limit=3$/);
+    assert.equal(calls[1]!.headers.apikey, "anon_other");
+    assert.deepEqual(ledger, ["lookup:prj_known", "lookup:prj_other"]);
+  });
+
+  it("scoped release diff binds the project id", async () => {
+    const { fetch, calls } = mockFetch(() =>
+      jsonResponse({
+        kind: "release_diff",
+        schema_version: "agent-deploy-observability.v1",
+        from_release_id: null,
+        to_release_id: "rel_1",
+        is_noop: true,
+        summary: "No changes",
+        warnings: [],
+        migrations: { applied_between_releases: [] },
+        site: { added: [], removed: [], changed: [] },
+        functions: { added: [], removed: [], changed: [] },
+        secrets: { added: [], removed: [] },
+        subdomains: { added: [], removed: [] },
+      }),
+    );
+    const sdk = makeSdk(makeCreds(), fetch);
+    const p = await sdk.project("prj_known");
+
+    await p.deploy.diff({ from: "empty", to: "active", limit: 10 });
+
+    assert.match(calls[0]!.url, /\/deploy\/v2\/releases\/diff\?from=empty&to=active&limit=10$/);
+    assert.equal(calls[0]!.headers.apikey, "anon_xxx");
+  });
+
   it("non-id-bearing methods pass through unchanged (projects.list)", async () => {
     const { fetch, calls } = mockFetch(() => jsonResponse({ projects: [] }));
     const sdk = makeSdk(makeCreds(), fetch);
@@ -315,7 +389,7 @@ describe("ScopedRun402 drift protection", () => {
     projects: new Set(["provision", "list", "getQuote", "use", "active"]),
     apps: new Set(["browse", "fork", "getApp"]),
     ai: new Set(["generateImage"]),
-    deploy: new Set(["getRelease", "diff"]),
+    deploy: new Set(),
     contracts: new Set(["read"]),
     // The following namespaces are project-scoped end-to-end:
     auth: new Set(),

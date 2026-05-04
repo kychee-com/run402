@@ -21,6 +21,7 @@ Subcommands (recommended for new manifests):
   run402 deploy resume <operation_id>       resume a stuck operation
   run402 deploy list [--project <id>]       list recent deploy operations
   run402 deploy events <operation_id>       fetch event stream for an operation
+  run402 deploy release ...                 inspect release inventory and diffs
 
 Manifest format (JSON, v2 ReleaseSpec — recommended):
   {
@@ -303,13 +304,15 @@ export async function run(args) {
   //   run402 deploy resume <op>   → resume an activation_pending operation
   //   run402 deploy list          → list recent deploy operations
   //   run402 deploy events <op>   → fetch recorded event stream for an operation
+  //   run402 deploy release ...   → release inventory/diff observability
   //   run402 deploy --manifest …  → legacy bundle deploy (routes through v2)
   const sub = args[0];
   switch (sub) {
     case "apply":
     case "resume":
     case "list":
-    case "events": {
+    case "events":
+    case "release": {
       const { runDeployV2 } = await import("./deploy-v2.mjs");
       await runDeployV2(sub, args.slice(1));
       return;

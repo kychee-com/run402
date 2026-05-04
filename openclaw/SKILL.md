@@ -128,6 +128,16 @@ run402 secrets set <project_id> OPENAI_API_KEY --file ./.secrets/openai-key
 run402 deploy apply --manifest app.json
 ```
 
+After deploys, inspect release state without starting another mutation:
+
+```bash
+run402 deploy release active --project prj_...
+run402 deploy release get rel_... --project prj_...
+run402 deploy release diff --from empty --to active --project prj_...
+```
+
+Inventories expose site paths, functions, secret keys only, subdomains, and applied migrations. Release diffs use `migrations.applied_between_releases`.
+
 The manifest looks like this — note the `manifest.json` entry inside `files[]`:
 
 ```json
@@ -702,7 +712,7 @@ run402 init | status | message | service
 run402 allowance   | tier      | projects | sites      | subdomains
 run402 domains     | functions | secrets  | blob       | cdn
 run402 email       | sender-domain | auth | apps       | image
-run402 ai          | contracts | billing  | agent
+run402 deploy      | ai        | contracts | billing   | agent
 ```
 
 Renewal: `run402 tier set <same-tier>` extends the lease in place and clears any grace-state timers. The CLI handles 402 negotiation automatically — call the same command again if a payment was just made.

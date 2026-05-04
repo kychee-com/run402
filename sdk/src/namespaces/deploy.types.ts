@@ -194,7 +194,9 @@ export interface PlanResponse {
   payment_required?: PaymentRequiredHint | null;
 }
 
-export interface WarningEntry {
+export type WarningEntry = LegacyWarningEntry | DeployObservabilityWarningEntry;
+
+export interface LegacyWarningEntry {
   code: string;
   severity: "low" | "medium" | "high";
   requires_confirmation: boolean;
@@ -246,17 +248,222 @@ export interface PaymentRequiredHint {
   reason: string;
 }
 
+// ─── Release inventory + diff observability ─────────────────────────────────
+
+export type ReleaseInventoryStatus =
+  | "active"
+  | "superseded"
+  | "failed"
+  | "staged";
+
+export type ReleaseInventoryStateKind =
+  | "current_live"
+  | "effective"
+  | "desired_manifest";
+
+export interface SitePathEntry {
+  path: string;
+  content_sha256: string;
+  content_type: string;
+}
+
+export interface ReleaseFunctionEntry {
+  name: string;
+  code_hash: string;
+  runtime: string;
+  timeout_seconds: number;
+  memory_mb: number;
+  schedule: string | null;
+}
+
+export interface MigrationAppliedEntry {
+  migration_id: string;
+  checksum_hex: string;
+  applied_at: string;
+}
+
+export interface ReleaseInventoryBase<
+  StateKind extends ReleaseInventoryStateKind = ReleaseInventoryStateKind,
+> {
+  kind: "release_inventory";
+  schema_version: "agent-deploy-observability.v1";
+  release_id: string | null;
+  project_id: string;
+  parent_id: string | null;
+  status: ReleaseInventoryStatus | null;
+  manifest_digest: string | null;
+  created_at: string | null;
+  created_by: string | null;
+  activated_at: string | null;
+  superseded_at: string | null;
+  operation_id: string | null;
+  plan_id: string | null;
+  events_url: string | null;
+  effective: boolean;
+  state_kind: StateKind;
+  site: {
+    paths: SitePathEntry[];
+    totals?: { paths: number };
+  };
+  functions: ReleaseFunctionEntry[];
+  secrets: { keys: string[] };
+  subdomains: { names: string[] };
+  migrations_applied: MigrationAppliedEntry[];
+}
+
+/** Inventory built from the currently live project state. */
+export type ActiveReleaseInventory = ReleaseInventoryBase<"current_live">;
+
+/** Inventory for a specific release id. Superseded/active releases are
+ *  materialized effective state; staged/failed releases are desired manifests. */
+export type ReleaseSnapshotInventory = ReleaseInventoryBase<
+  "effective" | "desired_manifest"
+>;
+
+export type ReleaseInventory = ActiveReleaseInventory | ReleaseSnapshotInventory;
+
+export interface DeployObservabilityWarningEntry {
+  code: string;
+  severity: "info" | "warn" | "high";
+  requires_confirmation: boolean;
+  message: string;
+  affected?: string[];
+  details?: Record<string, unknown>;
+  confidence?: "heuristic";
+}
+
+export interface PlanMigrationDiff {
+  new: Array<{
+    id: string;
+    checksum_hex: string;
+    transaction: "default" | "none";
+  }>;
+  noop: Array<{
+    id: string;
+    checksum_hex: string;
+  }>;
+}
+
+export interface SiteDiff {
+  added: Array<{
+    path: string;
+    sha256: string;
+    content_type: string;
+  }>;
+  removed: string[];
+  changed: Array<{
+    path: string;
+    sha256_old: string;
+    sha256_new: string;
+    content_type_old: string;
+    content_type_new: string;
+    content_type_inferred?: true;
+  }>;
+  totals?: { added: number; removed: number; changed: number };
+}
+
+export interface FunctionsDiff {
+  added: string[];
+  removed: string[];
+  changed: Array<{
+    name: string;
+    fields_changed: Array<
+      | "code_hash"
+      | "runtime"
+      | "timeout_seconds"
+      | "memory_mb"
+      | "schedule"
+    >;
+  }>;
+}
+
+/** Secrets have no `changed` bucket; values and value-derived signals are
+ *  intentionally absent from deploy observability responses. */
+export interface SecretsDiff {
+  added: string[];
+  removed: string[];
+}
+
+/** Subdomains have no `changed` bucket. */
+export interface SubdomainsDiff {
+  added: string[];
+  removed: string[];
+}
+
+export interface PlanDiffEnvelope {
+  is_noop: boolean;
+  summary: string;
+  warnings: DeployObservabilityWarningEntry[];
+  migrations: PlanMigrationDiff;
+  site: SiteDiff;
+  functions: FunctionsDiff;
+  secrets: SecretsDiff;
+  subdomains: SubdomainsDiff;
+}
+
+export interface ReleaseToReleaseDiff {
+  kind: "release_diff";
+  schema_version: "agent-deploy-observability.v1";
+  from_release_id: string | null;
+  to_release_id: string | null;
+  is_noop: boolean;
+  summary: string;
+  warnings: DeployObservabilityWarningEntry[];
+  migrations: {
+    applied_between_releases: string[];
+  };
+  site: SiteDiff;
+  functions: FunctionsDiff;
+  secrets: SecretsDiff;
+  subdomains: SubdomainsDiff;
+}
+
+export type ReleaseDiffTarget = "empty" | "active" | (string & {});
+export type ReleaseDiffToTarget = "active" | (string & {});
+
+export interface ReleaseInventoryOptions {
+  project: string;
+  /** Maximum number of site path entries to include. Gateway default: 5,000;
+   *  gateway hard maximum: 25,000. */
+  siteLimit?: number;
+}
+
+export interface ReleaseInventoryByIdOptions extends ReleaseInventoryOptions {
+  releaseId: string;
+}
+
+export interface ReleaseDiffOptions {
+  project: string;
+  from: ReleaseDiffTarget;
+  to: ReleaseDiffToTarget;
+  /** Maximum number of entries in each site diff bucket. Gateway default:
+   *  1,000. */
+  limit?: number;
+}
+
 /** Server-side summary of the diff between the base release and the new
- *  spec. Pass-through shape — the gateway authors the contents and the SDK
- *  surfaces it via the `plan.diff` event. */
+ *  spec. v1.39+ plans may return the structured `PlanDiffEnvelope`; older
+ *  gateways may still return legacy buckets. Migrations mismatch is a hard
+ *  deploy error in the modern success path, but the legacy array is kept here
+ *  for flag-off/backward compatibility. */
 export interface DeployDiff {
   resources?: Record<string, unknown>;
-  migrations?: Array<{
-    id: string;
-    state: "new" | "noop" | "checksum_mismatch";
-  }>;
+  is_noop?: boolean;
+  summary?: string;
+  warnings?: DeployObservabilityWarningEntry[];
+  migrations?:
+    | PlanMigrationDiff
+    | Array<{
+        id: string;
+        state: "new" | "noop" | "checksum_mismatch";
+      }>;
+  site?: SiteDiff;
+  functions?: FunctionsDiff;
+  secrets?: SecretsDiff;
   routes?: Array<{ kind: "added" | "removed"; path: string }>;
-  subdomains?: Array<{ kind: "added" | "removed"; subdomain: string }>;
+  subdomains?:
+    | SubdomainsDiff
+    | Array<{ kind: "added" | "removed"; subdomain: string }>;
   [key: string]: unknown;
 }
 

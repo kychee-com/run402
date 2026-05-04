@@ -215,9 +215,16 @@ The gateway re-runs only the failed phase forward — SQL is never replayed.
 ```bash
 run402 deploy list --project prj_... --limit 10
 run402 deploy events <operation_id> --project prj_...
+run402 deploy release active --project prj_... --site-limit 5000
+run402 deploy release get rel_... --project prj_...
+run402 deploy release diff --from empty --to active --project prj_... --limit 1000
 ```
 
 `list` returns `{ operations: [...], cursor }` (page through with `--cursor` against the gateway when the cursor is non-null). `events` returns the same `DeployEvent` shapes that `apply` emits inline.
+
+`release active` and `release get` return `{ "status": "ok", "release": ReleaseInventory }`. Inventories include release metadata, `state_kind` (`current_live`, `effective`, or `desired_manifest`), site paths (capped by `--site-limit`), functions, secret keys only, subdomains, and applied migrations.
+
+`release diff` returns `{ "status": "ok", "diff": ReleaseToReleaseDiff }`. `--from` accepts `empty`, `active`, or a release id. `--to` accepts `active` or a release id. Diff migrations use `migrations.applied_between_releases`; secrets and subdomains expose `added` / `removed` only.
 
 **Migration registry**: each migration is identified by `(id, checksum)`. Re-shipping the same `id` + same SQL is a registry noop; same `id` + different SQL is a hard error (`MIGRATION_CHECKSUM_MISMATCH`). Ship idempotent migrations (`CREATE TABLE IF NOT EXISTS`, `ADD COLUMN IF NOT EXISTS` in a `DO` block) and re-deploys are free.
 
@@ -502,6 +509,9 @@ User auth: password + Google OAuth. See "User Auth" section below.
 - `run402 deploy resume <operation_id> [--quiet]` — re-run a stuck operation forward
 - `run402 deploy list [--project <id>] [--limit <n>]` — list recent deploy operations
 - `run402 deploy events <operation_id> [--project <id>]` — fetch the recorded event stream for an operation
+- `run402 deploy release get <release_id> [--project <id>] [--site-limit <n>]` — fetch release inventory
+- `run402 deploy release active [--project <id>] [--site-limit <n>]` — fetch current-live release inventory
+- `run402 deploy release diff --from <empty|active|release_id> --to <active|release_id> [--project <id>] [--limit <n>]` — diff release targets
 
 Requires active tier and a provisioned project. Deploys to an existing project: runs migrations, applies the authorization manifest (from a `manifest.json` entry in `files[]`), deploys functions, deploys static site, and claims subdomain. Secret values are write-only: set them with `run402 secrets set <id> <KEY> --file <path>` before deploy, then use value-free `secrets.require` in `deploy apply` manifests. `deploy apply` stops before upload/commit on confirmation-required warnings unless `--allow-warnings` is passed. The manifest must include `project_id` (or use `--project` flag, or omit both to use the active project).
 

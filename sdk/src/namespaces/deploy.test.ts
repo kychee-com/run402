@@ -1899,3 +1899,133 @@ describe("Deploy.events", () => {
     );
   });
 });
+
+describe("Deploy release observability", () => {
+  const inventory = {
+    kind: "release_inventory",
+    schema_version: "agent-deploy-observability.v1",
+    release_id: "rel_1",
+    project_id: "prj_test",
+    parent_id: null,
+    status: "active",
+    manifest_digest: "abc123",
+    created_at: "2026-04-29T00:00:00Z",
+    created_by: "0xabc",
+    activated_at: "2026-04-29T00:01:00Z",
+    superseded_at: null,
+    operation_id: null,
+    plan_id: null,
+    events_url: null,
+    effective: true,
+    state_kind: "effective",
+    site: { paths: [], totals: undefined },
+    functions: [],
+    secrets: { keys: [] },
+    subdomains: { names: [] },
+    migrations_applied: [],
+  };
+
+  it("fetches a release inventory with project apikey auth and encoded query values", async () => {
+    const w = makeWiring();
+    w.setHandler((req) => {
+      if (req.path === "/deploy/v2/releases/rel_%2Fweird?site_limit=123") return inventory;
+      throw new Error(`unexpected ${req.path}`);
+    });
+
+    const deploy = new Deploy(w.client);
+    const result = await deploy.getRelease({
+      project: "prj_test",
+      releaseId: "rel_/weird",
+      siteLimit: 123,
+    });
+
+    assert.equal(result.release_id, "rel_1");
+    assert.equal(w.requests[0].headers?.apikey, "ak");
+  });
+
+  it("supports the string release id overload when a project is supplied", async () => {
+    const w = makeWiring();
+    w.setHandler((req) => {
+      if (req.path === "/deploy/v2/releases/rel_1") return inventory;
+      throw new Error(`unexpected ${req.path}`);
+    });
+
+    const deploy = new Deploy(w.client);
+    await deploy.getRelease("rel_1", { project: "prj_test" });
+
+    assert.equal(w.requests[0].headers?.apikey, "ak");
+  });
+
+  it("rejects legacy getRelease(releaseId) without issuing a request", async () => {
+    const w = makeWiring();
+    const deploy = new Deploy(w.client);
+    await assert.rejects(
+      () => deploy.getRelease("rel_1"),
+      (err: unknown) =>
+        err instanceof LocalError && /project id/i.test((err as LocalError).message),
+    );
+    assert.equal(w.requests.length, 0);
+  });
+
+  it("fetches the active release inventory with site_limit", async () => {
+    const w = makeWiring();
+    const activeInventory = { ...inventory, release_id: "rel_active", state_kind: "current_live" };
+    w.setHandler((req) => {
+      if (req.path === "/deploy/v2/releases/active?site_limit=7") return activeInventory;
+      throw new Error(`unexpected ${req.path}`);
+    });
+
+    const deploy = new Deploy(w.client);
+    const result = await deploy.getActiveRelease({ project: "prj_test", siteLimit: 7 });
+
+    assert.equal(result.release_id, "rel_active");
+    assert.equal(result.state_kind, "current_live");
+    assert.equal(w.requests[0].headers?.apikey, "ak");
+  });
+
+  it("diffs release targets with encoded selectors, limit, and project apikey auth", async () => {
+    const w = makeWiring();
+    const diff = {
+      kind: "release_diff",
+      schema_version: "agent-deploy-observability.v1",
+      from_release_id: null,
+      to_release_id: "rel_2",
+      is_noop: false,
+      summary: "1 site path added",
+      warnings: [],
+      migrations: { applied_between_releases: ["001_init"] },
+      site: { added: [], removed: [], changed: [] },
+      functions: { added: [], removed: [], changed: [] },
+      secrets: { added: [], removed: [] },
+      subdomains: { added: [], removed: [] },
+    };
+    w.setHandler((req) => {
+      if (req.path === "/deploy/v2/releases/diff?from=empty&to=rel_%2Ftwo&limit=9") {
+        return diff;
+      }
+      throw new Error(`unexpected ${req.path}`);
+    });
+
+    const deploy = new Deploy(w.client);
+    const result = await deploy.diff({
+      project: "prj_test",
+      from: "empty",
+      to: "rel_/two",
+      limit: 9,
+    });
+
+    assert.equal(result.migrations.applied_between_releases[0], "001_init");
+    assert.equal(w.requests[0].headers?.apikey, "ak");
+  });
+
+  it("rejects legacy diff({ from, to }) without issuing a request", async () => {
+    const w = makeWiring();
+    const deploy = new Deploy(w.client);
+    await assert.rejects(
+      () => deploy.diff({ from: "empty", to: "active" }),
+      (err: unknown) =>
+        err instanceof LocalError && /project id/i.test((err as LocalError).message),
+    );
+    assert.equal(w.requests.length, 0);
+  });
+});

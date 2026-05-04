@@ -61,7 +61,7 @@ const MATRIX = {
     ],
     specific: ["provision", "sql"],
   },
-  deploy: { shared: [], specific: [] },
+  deploy: { shared: [], specific: ["apply", "resume", "list", "events", "release"] },
   ci: { shared: [], specific: ["link", "list", "revoke"] },
   functions: {
     shared: [],
@@ -113,6 +113,11 @@ const MATRIX = {
 const EMAIL_WEBHOOKS = {
   shared: ["list", "get", "delete"],
   specific: ["update", "register"],
+};
+
+const DEPLOY_RELEASE = {
+  shared: [],
+  specific: ["get", "active", "diff"],
 };
 
 // ─── Mock API server ────────────────────────────────────────────────────────
@@ -271,6 +276,21 @@ describe("CLI --help contract", () => {
         assertHelp(await runCli(["email", "webhooks", action, "--help"]),
           `run402 email webhooks ${action} --help`,
           { expectHeadingStartsWith: `run402 email webhooks ${action}` });
+      });
+    }
+  });
+
+  describe("run402 deploy release (nested)", () => {
+    it("deploy release --help prints usage without side effects", async () => {
+      assertHelp(await runCli(["deploy", "release", "--help"]),
+        "run402 deploy release --help",
+        { expectHeadingStartsWith: "run402 deploy release" });
+    });
+    for (const action of DEPLOY_RELEASE.specific) {
+      it(`deploy release ${action} --help prints PER-SUBCOMMAND help`, async () => {
+        assertHelp(await runCli(["deploy", "release", action, "--help"]),
+          `run402 deploy release ${action} --help`,
+          { expectHeadingStartsWith: `run402 deploy release ${action}` });
       });
     }
   });

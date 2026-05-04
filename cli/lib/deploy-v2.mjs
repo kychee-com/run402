@@ -110,11 +110,70 @@ Output:
   stdout: { "status": "ok", "events": [...] }
 `;
 
+const RELEASE_HELP = `run402 deploy release — Inspect deploy release inventory and diffs
+
+Usage:
+  run402 deploy release get <release_id> [--project <id>] [--site-limit <n>]
+  run402 deploy release active [--project <id>] [--site-limit <n>]
+  run402 deploy release diff --from <empty|active|release_id> --to <active|release_id> [--project <id>] [--limit <n>]
+
+Subcommands:
+  get       Fetch the inventory for a specific release id
+  active    Fetch the current-live release inventory for the project
+  diff      Diff two release targets
+
+Output:
+  get/active: { "status": "ok", "release": {...} }
+  diff:       { "status": "ok", "diff": {...} }
+`;
+
+const RELEASE_GET_HELP = `run402 deploy release get — Fetch a release inventory by id
+
+Usage:
+  run402 deploy release get <release_id> [--project <id>] [--site-limit <n>]
+
+Options:
+  --project <id>          Project ID that owns the release (default: active project)
+  --site-limit <n>        Maximum site path entries to include (gateway default: 5000)
+
+Output:
+  stdout: { "status": "ok", "release": {...} }
+`;
+
+const RELEASE_ACTIVE_HELP = `run402 deploy release active — Fetch the active release inventory
+
+Usage:
+  run402 deploy release active [--project <id>] [--site-limit <n>]
+
+Options:
+  --project <id>          Project ID to inspect (default: active project)
+  --site-limit <n>        Maximum site path entries to include (gateway default: 5000)
+
+Output:
+  stdout: { "status": "ok", "release": {...} }
+`;
+
+const RELEASE_DIFF_HELP = `run402 deploy release diff — Diff two release targets
+
+Usage:
+  run402 deploy release diff --from <empty|active|release_id> --to <active|release_id> [--project <id>] [--limit <n>]
+
+Options:
+  --from <target>         Diff source: empty, active, or rel_...
+  --to <target>           Diff target: active or rel_...
+  --project <id>          Project ID to inspect (default: active project)
+  --limit <n>             Maximum entries per site diff bucket (gateway default: 1000)
+
+Output:
+  stdout: { "status": "ok", "diff": {...} }
+`;
+
 export async function runDeployV2(sub, args) {
   if (sub === "apply") return await applyCmd(args);
   if (sub === "resume") return await resumeCmd(args);
   if (sub === "list") return await listCmd(args);
   if (sub === "events") return await eventsCmd(args);
+  if (sub === "release") return await releaseCmd(args);
   fail({
     code: "BAD_USAGE",
     message: `Unknown deploy subcommand: ${sub}`,
@@ -496,6 +555,118 @@ async function eventsCmd(args) {
   } catch (err) {
     reportSdkError(err);
   }
+}
+
+async function releaseCmd(args) {
+  const action = args[0];
+  if (!action || action === "--help" || action === "-h") {
+    console.log(RELEASE_HELP);
+    process.exit(0);
+  }
+  if (action === "get") return await releaseGetCmd(args.slice(1));
+  if (action === "active") return await releaseActiveCmd(args.slice(1));
+  if (action === "diff") return await releaseDiffCmd(args.slice(1));
+  fail({
+    code: "BAD_USAGE",
+    message: `Unknown deploy release subcommand: ${action}`,
+    details: { subcommand: action },
+  });
+}
+
+async function releaseGetCmd(args) {
+  const opts = { releaseId: null, project: null, siteLimit: null };
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === "--help" || args[i] === "-h") { console.log(RELEASE_GET_HELP); process.exit(0); }
+    if (args[i] === "--project" && args[i + 1]) { opts.project = args[++i]; continue; }
+    if (args[i] === "--site-limit" && args[i + 1]) { opts.siteLimit = parsePositiveInt(args[++i], "--site-limit"); continue; }
+    if (!args[i].startsWith("-") && !opts.releaseId) opts.releaseId = args[i];
+  }
+  if (!opts.releaseId) {
+    fail({
+      code: "BAD_USAGE",
+      message: "Missing <release_id>.",
+      hint: "run402 deploy release get <release_id>",
+    });
+  }
+
+  const project = resolveProjectId(opts.project);
+
+  try {
+    const sdkOpts = { project };
+    if (opts.siteLimit !== null) sdkOpts.siteLimit = opts.siteLimit;
+    const release = await getSdk().deploy.getRelease(opts.releaseId, sdkOpts);
+    console.log(JSON.stringify({ status: "ok", release }, null, 2));
+  } catch (err) {
+    reportSdkError(err);
+  }
+}
+
+async function releaseActiveCmd(args) {
+  const opts = { project: null, siteLimit: null };
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === "--help" || args[i] === "-h") { console.log(RELEASE_ACTIVE_HELP); process.exit(0); }
+    if (args[i] === "--project" && args[i + 1]) { opts.project = args[++i]; continue; }
+    if (args[i] === "--site-limit" && args[i + 1]) { opts.siteLimit = parsePositiveInt(args[++i], "--site-limit"); continue; }
+  }
+
+  const project = resolveProjectId(opts.project);
+
+  try {
+    const sdkOpts = { project };
+    if (opts.siteLimit !== null) sdkOpts.siteLimit = opts.siteLimit;
+    const release = await getSdk().deploy.getActiveRelease(sdkOpts);
+    console.log(JSON.stringify({ status: "ok", release }, null, 2));
+  } catch (err) {
+    reportSdkError(err);
+  }
+}
+
+async function releaseDiffCmd(args) {
+  const opts = { project: null, from: null, to: null, limit: null };
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === "--help" || args[i] === "-h") { console.log(RELEASE_DIFF_HELP); process.exit(0); }
+    if (args[i] === "--project" && args[i + 1]) { opts.project = args[++i]; continue; }
+    if (args[i] === "--from" && args[i + 1]) { opts.from = args[++i]; continue; }
+    if (args[i] === "--to" && args[i + 1]) { opts.to = args[++i]; continue; }
+    if (args[i] === "--limit" && args[i + 1]) { opts.limit = parsePositiveInt(args[++i], "--limit"); continue; }
+  }
+  if (!opts.from || !opts.to) {
+    fail({
+      code: "BAD_USAGE",
+      message: "Missing --from or --to release target.",
+      hint: "run402 deploy release diff --from empty --to active",
+    });
+  }
+  if (opts.to === "empty") {
+    fail({
+      code: "BAD_USAGE",
+      message: "--to cannot be empty. Use active or a release id.",
+      details: { flag: "--to", value: opts.to },
+    });
+  }
+
+  const project = resolveProjectId(opts.project);
+
+  try {
+    const sdkOpts = { project, from: opts.from, to: opts.to };
+    if (opts.limit !== null) sdkOpts.limit = opts.limit;
+    const diff = await getSdk().deploy.diff(sdkOpts);
+    console.log(JSON.stringify({ status: "ok", diff }, null, 2));
+  } catch (err) {
+    reportSdkError(err);
+  }
+}
+
+function parsePositiveInt(value, flag) {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 1) {
+    fail({
+      code: "BAD_USAGE",
+      message: `${flag} must be a positive integer.`,
+      details: { flag, value },
+    });
+  }
+  return parsed;
 }
 
 // ─── Manifest → ReleaseSpec ──────────────────────────────────────────────────
