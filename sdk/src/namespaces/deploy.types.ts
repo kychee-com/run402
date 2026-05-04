@@ -119,12 +119,12 @@ export interface ExposeManifest {
 }
 
 export interface SecretsSpec {
-  /** Set or update specific secrets. Existing secrets not in `set` remain. */
-  set?: Record<string, { value: string }>;
-  /** Delete specific secrets by key. */
+  /** Keys that must already exist in the project's secret store at commit time.
+   *  Plan-time emits a MISSING_REQUIRED_SECRET warning for absent keys;
+   *  commit-time hard-errors if they are still missing. */
+  require?: string[];
+  /** Delete specific secrets by key at activation. Unknown keys hard-error at commit-time gating. */
   delete?: string[];
-  /** Replace all secrets with this exact set (anything else is removed). */
-  replace_all?: Record<string, { value: string }>;
 }
 
 export interface FunctionsSpec {
@@ -190,7 +190,18 @@ export interface PlanResponse {
    *  the deploy commit will succeed. */
   missing_content: PlanContentRef[];
   diff: DeployDiff;
+  warnings: WarningEntry[];
   payment_required?: PaymentRequiredHint | null;
+}
+
+export interface WarningEntry {
+  code: string;
+  severity: "low" | "medium" | "high";
+  requires_confirmation: boolean;
+  message: string;
+  affected?: string[];
+  details?: Record<string, unknown>;
+  confidence?: "low" | "medium" | "high";
 }
 
 export interface PlanContentRef {
@@ -409,6 +420,7 @@ export type NormalizedSiteSpec =
 export type DeployEvent =
   | { type: "plan.started" }
   | { type: "plan.diff"; diff: DeployDiff }
+  | { type: "plan.warnings"; warnings: WarningEntry[] }
   | {
       type: "payment.required";
       amount: string;
@@ -457,6 +469,8 @@ export interface DeployResult {
   /** The `diff` from the plan response — useful for "what changed in this
    *  deploy" UX. */
   diff: DeployDiff;
+  /** Structured plan warnings that were observed before commit. */
+  warnings: WarningEntry[];
 }
 
 // ─── Apply / start / low-level options ───────────────────────────────────────
@@ -469,6 +483,10 @@ export interface ApplyOptions {
    *  combines it with the manifest digest to deduplicate retries. Default:
    *  the gateway-computed manifest digest itself acts as the key. */
   idempotencyKey?: string;
+  /** Continue past plan warnings that require confirmation. Default false:
+   *  `apply()` aborts before upload/commit so agents can set missing secrets,
+   *  inspect warnings, or use the low-level plan/upload/commit flow. */
+  allowWarnings?: boolean;
 }
 
 export interface StartOptions extends ApplyOptions {}

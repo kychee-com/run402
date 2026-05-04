@@ -162,6 +162,55 @@ describe("Apps.bundleDeploy (rls validation)", () => {
     assert.equal(exposeTables[0].name, "todos");
     assert.equal(exposeTables[0].policy, "user_owns_rows");
   });
+
+  it("pre-sets legacy in-memory secrets and deploys only value-free require keys", async () => {
+    const w = makeWiring();
+    const plan: PlanResponse = {
+      plan_id: "plan_secret",
+      operation_id: "op_secret",
+      base_release_id: null,
+      manifest_digest: "secret",
+      missing_content: [],
+      diff: {},
+      warnings: [
+        {
+          code: "NON_BLOCKING_SECRET_NOTE",
+          severity: "low",
+          requires_confirmation: false,
+          message: "Secret was already set",
+        },
+      ],
+    };
+    const commit: CommitResponse = {
+      operation_id: "op_secret",
+      status: "ready",
+      release_id: "rel_secret",
+      urls: {},
+    };
+
+    w.setHandler((req) => {
+      if (req.path === "/projects/v1/admin/prj_xxx/secrets/API_KEY") return {};
+      if (req.path === "/deploy/v2/plans") return plan;
+      if (req.path === "/deploy/v2/plans/plan_secret/commit") return commit;
+      throw new Error(`unexpected path ${req.path}`);
+    });
+
+    const apps = new Apps(w.client);
+    const result = await apps.bundleDeploy("prj_xxx", {
+      secrets: [{ key: "API_KEY", value: "sk_test" }],
+    });
+
+    assert.deepEqual(result.warnings, plan.warnings);
+    const secretReq = w.requests.find((r) => r.path.includes("/secrets/API_KEY"));
+    assert(secretReq, "secret write was issued");
+    assert.equal(secretReq.method, "POST");
+    assert.deepEqual(secretReq.body, { value: "sk_test" });
+    const planReq = w.requests.find((r) => r.path === "/deploy/v2/plans");
+    assert(planReq, "plan request was issued");
+    assert.deepEqual((planReq.body as { spec: { secrets?: unknown } }).spec.secrets, {
+      require: ["API_KEY"],
+    });
+  });
 });
 
 describe("Apps.browse (AppSummary runtime shape)", () => {

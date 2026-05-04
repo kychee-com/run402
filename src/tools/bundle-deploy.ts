@@ -73,7 +73,9 @@ export const bundleDeploySchema = {
   secrets: z
     .array(z.object({ key: z.string(), value: z.string() }))
     .optional()
-    .describe("Secrets to set (e.g. [{key: 'STRIPE_SECRET_KEY', value: 'sk_...'}])"),
+    .describe(
+      "Legacy compatibility only: writes secrets before deploy, then deploys with secrets.require. Not atomic; prefer set_secret first, then the deploy tool with secrets.require.",
+    ),
   functions: z
     .array(
       z.object({
@@ -208,6 +210,15 @@ export async function handleBundleDeploy(args: {
       for (const fn of body.functions) {
         const sched = fn.schedule ? ` (${fn.schedule})` : "";
         lines.push(`- \`${fn.name}\` → ${fn.url}${sched}`);
+      }
+    }
+    if (body.warnings && body.warnings.length > 0) {
+      lines.push(``, `**Warnings:**`);
+      for (const warning of body.warnings) {
+        const affected = warning.affected && warning.affected.length > 0
+          ? ` (${warning.affected.map((item: string) => `\`${item}\``).join(", ")})`
+          : "";
+        lines.push(`- **${warning.code}** [${warning.severity}]${affected}: ${warning.message}`);
       }
     }
 

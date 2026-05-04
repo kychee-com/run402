@@ -214,7 +214,7 @@ const fresh = await r.blobs.waitFresh(projectId, {
 
 ### Unified deploy — `r.deploy.apply` (v1.34+)
 
-The canonical primitive for any deploy (database + migrations + manifest + secrets + functions + site + subdomain). Three layers:
+The canonical primitive for any deploy (database + migrations + manifest + value-free secret declarations + functions + site + subdomain). Three layers:
 
 ```ts
 // One-shot — most agents use this. Awaits to a terminal state.
@@ -249,7 +249,7 @@ The full type is exported as `ReleaseSpec` from `@run402/sdk` and `@run402/sdk/n
     expose?: ExposeManifest,               // dark-by-default authorization manifest
     zero_downtime?: boolean,
   },
-  secrets?: SecretsSpec,                   // { set?, delete?, replace_all? }
+  secrets?: SecretsSpec,                   // { require?: string[], delete?: string[] }
   functions?: FunctionsSpec,               // { replace? } | { patch?: { set?, delete? } }
   site?: SiteSpec,                         // { replace: FileSet } | { patch: { put?, delete? } }
   subdomains?: SubdomainsSpec,             // { set? } | { add? } | { remove? }
@@ -258,7 +258,22 @@ The full type is exported as `ReleaseSpec` from `@run402/sdk` and `@run402/sdk/n
 }
 ```
 
-- **Replace vs patch semantics per resource.** `site.replace` = "this is the whole site" (files absent are removed). `site.patch.put` / `patch.delete` = surgical updates. Same shape for `functions`, `secrets`, `subdomains`. Top-level absence = leave untouched.
+- **Replace vs patch semantics per resource.** `site.replace` = "this is the whole site" (files absent are removed). `site.patch.put` / `patch.delete` = surgical updates. `functions` has the same replace/patch split. Secrets are declaration-only: use `r.secrets.set(project, key, value)` for values, then `secrets.require[]` to assert keys exist and `secrets.delete[]` to remove keys at activation. `subdomains` use `set` / `add` / `remove`. Top-level absence = leave untouched.
+- **Plan warnings are structured.** `PlanResponse.warnings` and `DeployResult.warnings` are `WarningEntry[]`; `deploy.apply()` emits `plan.warnings` and aborts before upload/commit when a warning requires confirmation unless `allowWarnings` is set. `MISSING_REQUIRED_SECRET` means set the affected keys with `r.secrets.set`, then retry.
+
+`WarningEntry`:
+
+```
+{
+  code: string,
+  severity: "low" | "medium" | "high",
+  requires_confirmation: boolean,
+  message: string,
+  affected?: string[],
+  details?: Record<string, unknown>,
+  confidence?: "low" | "medium" | "high",
+}
+```
 - **All bytes ride through CAS.** Plan request bodies never carry inline bytes — only `ContentRef` objects. When the spec exceeds 5 MB JSON, the SDK uploads the manifest itself as a CAS object and references it (`manifest_ref` escape hatch — no body-size cliff).
 - **Server-authoritative manifest digest.** The gateway returns the canonical digest; the SDK no longer requires byte-for-byte canonicalize agreement.
 
@@ -593,9 +608,11 @@ delete(projectId, name): Promise<void>
 
 ```
 set(projectId, key, value): Promise<void>
-list(projectId): Promise<SecretListResult>      // { secrets: [{ key, value_hash? }] }
+list(projectId): Promise<SecretListResult>      // { secrets: [{ key, created_at?, updated_at? }] }
 delete(projectId, key): Promise<void>
 ```
+
+Secret values and value-derived hashes are never returned. For deploys, use `secrets.require[]` only as a dependency gate; it is not an injection allowlist.
 
 ### `r.subdomains`
 

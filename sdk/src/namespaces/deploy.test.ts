@@ -21,6 +21,7 @@ import type { Client, RequestOptions } from "../kernel.js";
 import type { CredentialsProvider } from "../credentials.js";
 import type {
   CommitResponse,
+  DeployEvent,
   OperationSnapshot,
   PlanResponse,
 } from "./deploy.types.js";
@@ -290,7 +291,7 @@ describe("Deploy.apply (happy path)", () => {
     await assert.rejects(
       deploy.apply({
         project: "prj_test",
-        secrets: {},
+        secrets: { require: ["API_KEY"] },
         site: { replace: { "index.html": "<h1>nope</h1>" } },
       }),
       (err: unknown) =>
@@ -358,14 +359,17 @@ describe("Deploy.apply (happy path)", () => {
     const deploy = new Deploy(w.client);
     const result = await deploy.apply({
       project: "prj_test",
-      secrets: {},
+      secrets: { require: ["API_KEY"], delete: ["OLD_KEY"] },
     });
 
     assert.equal(result.release_id, "rel_user");
     const planReq = w.requests.find((r) => r.path === "/deploy/v2/plans");
     assert(planReq);
     assert.equal(planReq.headers?.Authorization, "Bearer user-session");
-    assert.deepEqual((planReq.body as { spec: { secrets?: unknown } }).spec.secrets, {});
+    assert.deepEqual((planReq.body as { spec: { secrets?: unknown } }).spec.secrets, {
+      require: ["API_KEY"],
+      delete: ["OLD_KEY"],
+    });
   });
 
   it("re-deploy of unchanged content makes no S3 PUTs", async () => {
@@ -531,6 +535,57 @@ describe("Deploy.apply (validation)", () => {
     );
   });
 
+  it("rejects legacy value-bearing secrets.set and replace_all before gateway calls", async () => {
+    const w = makeWiring();
+    const deploy = new Deploy(w.client);
+    for (const [field, resource] of [
+      ["set", "secrets.set"],
+      ["replace_all", "secrets.replace_all"],
+    ] as const) {
+      await assert.rejects(
+        () =>
+          deploy.apply({
+            project: "prj_test",
+            secrets: { [field]: { API_KEY: { value: "secret" } } } as never,
+          }),
+        (err: unknown) =>
+          err instanceof Run402DeployError &&
+          err.code === "INVALID_SPEC" &&
+          err.resource === resource &&
+          /secrets API/.test(err.message),
+      );
+    }
+    assert.equal(w.requests.length, 0);
+  });
+
+  it("validates value-free secret declarations before gateway calls", async () => {
+    const w = makeWiring();
+    const deploy = new Deploy(w.client);
+    await assert.rejects(
+      () =>
+        deploy.apply({
+          project: "prj_test",
+          secrets: { require: ["bad-key"] },
+        }),
+      (err: unknown) =>
+        err instanceof Run402DeployError &&
+        err.code === "INVALID_SPEC" &&
+        err.resource === "secrets.require",
+    );
+    await assert.rejects(
+      () =>
+        deploy.apply({
+          project: "prj_test",
+          secrets: { require: ["API_KEY"], delete: ["API_KEY"] },
+        }),
+      (err: unknown) =>
+        err instanceof Run402DeployError &&
+        err.code === "INVALID_SPEC" &&
+        err.resource === "secrets",
+    );
+    assert.equal(w.requests.length, 0);
+  });
+
   it("requires sql or sql_ref on a migration", async () => {
     const w = makeWiring();
     const deploy = new Deploy(w.client);
@@ -544,6 +599,101 @@ describe("Deploy.apply (validation)", () => {
         err instanceof Run402DeployError &&
         (err as Run402DeployError).code === "INVALID_SPEC",
     );
+  });
+});
+
+describe("Deploy.apply (plan warnings)", () => {
+  it("emits warnings and aborts before upload or commit by default", async () => {
+    const w = makeWiring();
+    const events: DeployEvent[] = [];
+    const plan: PlanResponse = {
+      plan_id: "plan_warn",
+      operation_id: "op_warn",
+      base_release_id: null,
+      manifest_digest: "warn",
+      missing_content: [],
+      diff: {},
+      warnings: [
+        {
+          code: "MISSING_REQUIRED_SECRET",
+          severity: "high",
+          requires_confirmation: true,
+          message: "OPENAI_API_KEY is required but missing",
+          affected: ["OPENAI_API_KEY"],
+        },
+      ],
+    };
+    w.setHandler((req) => {
+      if (req.path === "/deploy/v2/plans") return plan;
+      throw new Error(`unexpected ${req.path}`);
+    });
+
+    const deploy = new Deploy(w.client);
+    await assert.rejects(
+      () =>
+        deploy.apply(
+          {
+            project: "prj_test",
+            secrets: { require: ["OPENAI_API_KEY"] },
+          },
+          { onEvent: (event) => events.push(event) },
+        ),
+      (err: unknown) => {
+        assert(err instanceof Run402DeployError);
+        assert.equal(err.code, "MISSING_REQUIRED_SECRET");
+        assert.equal(err.phase, "plan");
+        assert.deepEqual(err.body, { warnings: plan.warnings });
+        return true;
+      },
+    );
+    assert.deepEqual(w.requests.map((r) => r.path), ["/deploy/v2/plans"]);
+    assert.equal(events.some((event) => event.type === "plan.warnings"), true);
+  });
+
+  it("continues with allowWarnings and preserves warnings on the result", async () => {
+    const w = makeWiring();
+    const warnings = [
+      {
+        code: "UNUSUAL_DELETE",
+        severity: "medium" as const,
+        requires_confirmation: true,
+        message: "Deleting OLD_KEY",
+        affected: ["OLD_KEY"],
+      },
+    ];
+    w.setHandler((req) => {
+      if (req.path === "/deploy/v2/plans") {
+        return {
+          plan_id: "plan_warn_ok",
+          operation_id: "op_warn_ok",
+          base_release_id: null,
+          manifest_digest: "warn-ok",
+          missing_content: [],
+          diff: {},
+          warnings,
+        } satisfies PlanResponse;
+      }
+      if (req.path === "/deploy/v2/plans/plan_warn_ok/commit") {
+        return {
+          operation_id: "op_warn_ok",
+          status: "ready",
+          release_id: "rel_warn_ok",
+          urls: {},
+        } satisfies CommitResponse;
+      }
+      throw new Error(`unexpected ${req.path}`);
+    });
+
+    const deploy = new Deploy(w.client);
+    const result = await deploy.apply(
+      {
+        project: "prj_test",
+        secrets: { delete: ["OLD_KEY"] },
+      },
+      { allowWarnings: true },
+    );
+    assert.equal(result.release_id, "rel_warn_ok");
+    assert.deepEqual(result.warnings, warnings);
   });
 });
 

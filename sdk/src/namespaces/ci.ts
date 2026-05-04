@@ -280,6 +280,12 @@ export function assertCiDeployableSpec(specOrPlanBody: ReleaseSpec | PlanRequest
   const obj = spec as Record<string, unknown>;
   for (const key of Object.keys(obj)) {
     if (!CI_DEPLOY_SPEC_ALLOWED_KEYS.has(key)) {
+      if (key === "secrets") {
+        throwCiDeploySpecError(
+          "secrets",
+          "CI deploy manifests must omit spec.secrets. Set secrets locally or admin-side before CI runs; CI credentials do not have secret-write authority or secret-existence authority.",
+        );
+      }
       throwCiDeploySpecError(
         key,
         `CI deploy cannot ship spec.${key}; only project, database, functions, site, and base:{release:"current"} are allowed.`,

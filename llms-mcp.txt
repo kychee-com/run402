@@ -129,7 +129,7 @@ The response's `content` array includes a fenced `json` block of buffered progre
 | `commit` | Just before commit | — |
 | `poll`   | Per server-side copy poll | `status`, `elapsed_ms` |
 
-For one-call full-stack deploys (database + migrations + manifest + secrets + functions + site + subdomain), use **`bundle_deploy`** with a manifest. Include `manifest.json` in `files[]` for auth-as-SDLC. The newer **`deploy`** / **`deploy_resume`** tools expose the unified `r.deploy.apply` v1.34+ primitive directly — use those when you need fine-grained event streams or resume support.
+For one-call full-stack deploys (database + migrations + manifest + value-free secret declarations + functions + site + subdomain), use the newer **`deploy`** / **`deploy_resume`** tools. Set secret values first with **`set_secret`**, then deploy with `secrets.require[]`; never put secret values in a deploy spec. **`bundle_deploy`** remains as a legacy compatibility tool and writes legacy in-memory secrets before deploy, but those writes are not atomic with the later commit.
 
 ### In-function helpers — `db(req)` vs `adminDb()`
 
@@ -195,8 +195,8 @@ For TypeScript autocomplete, `npm install @run402/functions` in your editor's pr
 - **`claim_subdomain`** — claim `<name>.run402.com`. Idempotent; auto-reassigns to latest deployment on subsequent deploys. Params: `project_id`, `name`, `deployment_id?`.
 - **`list_subdomains`** / **`delete_subdomain`** — manage subdomains.
 - **`add_custom_domain`** / **`list_custom_domains`** / **`check_domain_status`** / **`remove_custom_domain`** — point your own domain at a Run402 subdomain.
-- **`bundle_deploy`** — one-call full-stack deploy: database + migrations + manifest (`manifest.json` in `files[]`) + secrets + functions + site + subdomain. The legacy entry point. For new code, prefer the unified `deploy` tool.
-- **`deploy`** — the unified deploy primitive (v1.34+). Pass a `ReleaseSpec` with replace-vs-patch semantics per resource. Returns the deploy operation.
+- **`bundle_deploy`** — legacy one-call full-stack deploy: database + migrations + manifest (`manifest.json` in `files[]`) + optional legacy in-memory secrets + functions + site + subdomain. Secret writes happen before deploy and are not rolled back. For new code, prefer `set_secret` + unified `deploy`.
+- **`deploy`** — the unified deploy primitive (v1.34+). Pass a `ReleaseSpec` with replace-vs-patch semantics per resource and value-free `secrets.require` / `secrets.delete`. Returns the deploy operation and structured warnings; stops before upload/commit on confirmation-required warnings unless `allow_warnings` is true.
 - **`deploy_resume`** — resume a deploy operation by `operation_id`.
 
 ### Functions
@@ -212,7 +212,7 @@ Scheduled function tier limits: prototype 1 / 15 min, hobby 3 / 5 min, team 10 /
 ### Secrets
 
 - **`set_secret`** — set a secret as `process.env.<KEY>` inside every function. Params: `project_id`, `key` (uppercase alphanumeric + underscores), `value`.
-- **`list_secrets`** — list keys with `value_hash` (8 hex chars of SHA-256). Values are write-only.
+- **`list_secrets`** — list secret keys and timestamps. Values and value-derived hashes are write-only and never returned.
 - **`delete_secret`** — params: `project_id`, `key`.
 
 ### Auth & email

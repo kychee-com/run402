@@ -321,4 +321,5 @@ export type {
   SmokeCheck,
   StartOptions,
   SubdomainsSpec,
+  WarningEntry,
 } from "./namespaces/deploy.types.js";

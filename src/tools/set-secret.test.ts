@@ -67,7 +67,7 @@ describe("set_secret tool", () => {
     });
 
     assert.equal(result.isError, true);
-    assert.ok(result.content[0]!.text.includes("uppercase"));
+    assert.ok(result.content[0]!.text.includes("Secret key must match"));
   });
 
   it("returns isError on 403 (quota exceeded)", async () => {

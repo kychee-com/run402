@@ -1,7 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { Run402 } from "../index.js";
-import { ProjectNotFound } from "../errors.js";
+import { LocalError, ProjectNotFound } from "../errors.js";
 import type { CredentialsProvider } from "../credentials.js";
 
 function creds(): CredentialsProvider {
@@ -39,17 +39,39 @@ describe("secrets", () => {
   it("set POSTs key/value with service bearer", async () => {
     const { fetch, calls } = mockFetch(() => json({}));
     await sdk(fetch).secrets.set("prj_k", "STRIPE_KEY", "sk_xxx");
-    assert.equal(calls[0]!.url, "https://api.test/projects/v1/admin/prj_k/secrets");
+    assert.equal(calls[0]!.url, "https://api.test/projects/v1/admin/prj_k/secrets/STRIPE_KEY");
     assert.equal(calls[0]!.method, "POST");
     assert.equal(calls[0]!.headers["Authorization"], "Bearer s");
-    assert.deepEqual(JSON.parse(calls[0]!.body as string), { key: "STRIPE_KEY", value: "sk_xxx" });
+    assert.deepEqual(JSON.parse(calls[0]!.body as string), { value: "sk_xxx" });
   });
 
-  it("list GETs secrets endpoint", async () => {
-    const { fetch, calls } = mockFetch(() => json({ secrets: [{ key: "K", value_hash: "a1b2c3d4" }] }));
+  it("list GETs raw secrets endpoint and strips value_hash from legacy envelopes", async () => {
+    const { fetch, calls } = mockFetch(() =>
+      json({ secrets: [{ key: "K", value_hash: "a1b2c3d4", created_at: "c", updated_at: "u" }] }),
+    );
     const res = await sdk(fetch).secrets.list("prj_k");
     assert.equal(calls[0]!.method, "GET");
-    assert.equal(res.secrets.length, 1);
+    assert.deepEqual(res.secrets, [{ key: "K", created_at: "c", updated_at: "u" }]);
+    assert.equal("value_hash" in res.secrets[0]!, false);
+  });
+
+  it("list accepts the shipped raw array response", async () => {
+    const { fetch } = mockFetch(() => json([{ key: "K", created_at: "c" }]));
+    const res = await sdk(fetch).secrets.list("prj_k");
+    assert.deepEqual(res.secrets, [{ key: "K", created_at: "c" }]);
+  });
+
+  it("set validates keys and the 4 KiB UTF-8 value cap before fetch", async () => {
+    const { fetch, calls } = mockFetch(() => json({}));
+    await assert.rejects(
+      sdk(fetch).secrets.set("prj_k", "bad-key", "v"),
+      LocalError,
+    );
+    await assert.rejects(
+      sdk(fetch).secrets.set("prj_k", "BIG", "x".repeat(4097)),
+      LocalError,
+    );
+    assert.equal(calls.length, 0);
   });
 
   it("delete DELETEs the secret path with URL-encoded key", async () => {

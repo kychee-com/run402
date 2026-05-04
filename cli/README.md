@@ -119,6 +119,16 @@ import { db, adminDb, getUser, email, ai } from "@run402/functions";
 
 `db(req)` is the caller-context client (RLS applies); `adminDb()` bypasses RLS for platform-authored writes.
 
+### Secrets
+
+```bash
+run402 secrets set <id> OPENAI_API_KEY --file ./.secrets/openai-key
+run402 secrets list <id>
+run402 deploy apply --manifest run402.deploy.json   # manifest uses secrets.require, not values
+```
+
+Secret values are write-only. `list` returns keys and timestamps only; deploy manifests should declare dependencies with `secrets.require` and never contain values.
+
 ### Email
 
 ```bash

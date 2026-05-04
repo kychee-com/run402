@@ -11,6 +11,7 @@ import type {
   ContentSource,
   DeployEvent,
   ReleaseSpec,
+  WarningEntry,
 } from "../../sdk/dist/index.js";
 
 /**
@@ -136,9 +137,13 @@ export const deploySchema = {
     .optional(),
   secrets: z
     .object({
-      set: z.record(z.object({ value: z.string() }).strict()).optional(),
+      require: z
+        .array(z.string())
+        .optional()
+        .describe(
+          "Secret keys that must already exist. Set values first with `set_secret`; never put secret values in deploy specs.",
+        ),
       delete: z.array(z.string()).optional(),
-      replace_all: z.record(z.object({ value: z.string() }).strict()).optional(),
     })
     .strict()
     .optional(),
@@ -187,6 +192,12 @@ export const deploySchema = {
     .describe(
       "Optional client idempotency key. Combined with the project id and gateway-computed manifest digest to deduplicate retries.",
     ),
+  allow_warnings: z
+    .boolean()
+    .optional()
+    .describe(
+      "Continue past plan warnings that require confirmation. Default false: the tool stops before upload/commit so an agent can set missing secrets or inspect warnings.",
+    ),
 };
 
 type FileEntryInput = z.infer<typeof fileEntry>;
@@ -213,6 +224,7 @@ type DeployArgs = {
     | { patch: { put?: FileMapInput; delete?: string[] } };
   subdomains?: ReleaseSpec["subdomains"];
   idempotency_key?: string;
+  allow_warnings?: boolean;
 };
 
 export async function handleDeploy(
@@ -239,6 +251,7 @@ export async function handleDeploy(
     const result = await getSdk().deploy.apply(spec, {
       onEvent,
       idempotencyKey: args.idempotency_key,
+      allowWarnings: args.allow_warnings === true,
     });
 
     if (result.urls.deployment_id) {
@@ -256,6 +269,9 @@ export async function handleDeploy(
     ];
     for (const [k, v] of Object.entries(result.urls)) {
       lines.push(`| ${k} | ${v} |`);
+    }
+    if (result.warnings.length > 0) {
+      lines.push(``, renderWarningsMarkdown(result.warnings));
     }
 
     return {
@@ -291,6 +307,10 @@ export async function handleDeploy(
       if (err.resource) lines.push(`**Resource:** \`${err.resource}\``);
       if (err.operationId) lines.push(`**Operation:** \`${err.operationId}\``);
       if (err.planId) lines.push(`**Plan:** \`${err.planId}\``);
+      const warnings = warningsFromDeployError(err);
+      if (warnings.length > 0) {
+        lines.push(``, renderWarningsMarkdown(warnings));
+      }
       lines.push(``, err.message);
       if (err.fix) {
         lines.push(``, `**Suggested fix:**`);
@@ -315,6 +335,39 @@ export async function handleDeploy(
     }
     return errResp;
   }
+}
+
+function warningsFromDeployError(err: Run402DeployError): WarningEntry[] {
+  const body = err.body;
+  if (!body || typeof body !== "object" || Array.isArray(body)) return [];
+  const warnings = (body as { warnings?: unknown }).warnings;
+  return Array.isArray(warnings) ? warnings as WarningEntry[] : [];
+}
+
+function renderWarningsMarkdown(warnings: WarningEntry[]): string {
+  const lines = [`### Plan warnings`];
+  for (const warning of warnings) {
+    const affected = warning.affected && warning.affected.length > 0
+      ? ` (${warning.affected.map((item: string) => `\`${item}\``).join(", ")})`
+      : "";
+    lines.push(
+      `- **${warning.code}** [${warning.severity}]${affected}: ${warning.message}`,
+    );
+  }
+  if (warnings.some((w) => w.code === "MISSING_REQUIRED_SECRET")) {
+    const keys = Array.from(new Set(warnings.flatMap((w) => w.affected ?? [])));
+    const suffix = keys.length > 0 ? ` for ${keys.map((k) => `\`${k}\``).join(", ")}` : "";
+    lines.push(
+      ``,
+      `Set the missing secret value${keys.length === 1 ? "" : "s"}${suffix} with \`set_secret\`, then retry \`deploy\` with \`secrets.require\`.`,
+    );
+  } else if (warnings.some((w) => w.requires_confirmation)) {
+    lines.push(
+      ``,
+      `Review these warnings before retrying with \`allow_warnings: true\`.`,
+    );
+  }
+  return lines.join("\n");
 }
 
 function renderEventsBlock(events: DeployEvent[]): string {

@@ -121,10 +121,11 @@ Pass `--quiet` to suppress events; the final result envelope still goes to stdou
 
 ### `deploy` — one-call full stack
 
-For a database + migrations + manifest + secrets + functions + site + subdomain in one command, write a manifest and run:
+For a database + migrations + manifest + secret dependencies + functions + site + subdomain, set secret values first, then deploy a value-free manifest:
 
 ```bash
-run402 deploy --manifest app.json
+run402 secrets set <project_id> OPENAI_API_KEY --file ./.secrets/openai-key
+run402 deploy apply --manifest app.json
 ```
 
 The manifest looks like this — note the `manifest.json` entry inside `files[]`:
@@ -133,7 +134,7 @@ The manifest looks like this — note the `manifest.json` entry inside `files[]`
 {
   "project_id": "prj_…",
   "migrations_file": "setup.sql",
-  "secrets": [{ "key": "OPENAI_API_KEY", "value": "sk-…" }],
+  "secrets": { "require": ["OPENAI_API_KEY"] },
   "functions": [{
     "name": "my-fn",
     "code": "export default async (req) => new Response('ok')",
@@ -386,10 +387,10 @@ Pass a 5-field cron expression. To remove a schedule: `--schedule-remove`. Tier 
 
 ## Secrets
 
-Injected as `process.env.<KEY>` inside every function. Values are write-only — `list` returns keys with a `value_hash` (8 hex chars of SHA-256) so you can verify you set the right value.
+Injected as `process.env.<KEY>` inside every function. Values are write-only — `list` returns keys and timestamps only, never values or value-derived hashes. Deploy manifests use `secrets.require[]` to assert keys exist; they never carry secret values.
 
 ```bash
-run402 secrets set    <id> STRIPE_KEY sk_live_…
+run402 secrets set    <id> STRIPE_KEY --file ./.secrets/stripe-key
 run402 secrets set    <id> JWT_PRIVATE --file ./private.pem
 run402 secrets list   <id>
 run402 secrets delete <id> STALE_KEY

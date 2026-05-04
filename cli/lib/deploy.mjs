@@ -36,7 +36,7 @@ Manifest format (JSON, v2 ReleaseSpec — recommended):
         ]
       }
     },
-    "secrets":   { "set": { "OPENAI_API_KEY": { "value": "sk-..." } } },
+    "secrets":   { "require": ["OPENAI_API_KEY"], "delete": ["OLD_KEY"] },
     "functions": {
       "replace": {
         "api": {
@@ -63,9 +63,13 @@ Manifest format (JSON, v2 ReleaseSpec — recommended):
   Replace vs patch semantics per resource:
     "site": { "replace": {...} }        whole-site (omitted files removed)
     "site": { "patch": { "put": {...}, "delete": [...] } }   surgical updates
-  Same for "functions" and "secrets". Migrations are always additive (each
-  is keyed by id; re-shipping the same id+sql is a registry noop, same id
-  with different sql is a hard MIGRATION_CHECKSUM_MISMATCH error).
+  Same for "functions". Secrets are value-free declarations:
+    "secrets": { "require": ["OPENAI_API_KEY"], "delete": ["OLD_KEY"] }
+  Secret values must be set outside deploy manifests with:
+    run402 secrets set prj_... OPENAI_API_KEY --file ./.secrets/openai-key
+  Migrations are always additive (each is keyed by id; re-shipping the same
+  id+sql is a registry noop, same id with different sql is a hard
+  MIGRATION_CHECKSUM_MISMATCH error).
 
   File entries accept inline "data", a local "path", or a "sql_path"
   (migrations only) — paths are resolved relative to the manifest file's
@@ -94,12 +98,14 @@ Manifest format (JSON, v2 ReleaseSpec — recommended):
   ⚠️  Without an "expose" entry, tables are unreachable via anon_key.
 
 Legacy v1 bundle format (still accepted via compatibility shim):
-  Existing manifests with top-level "migrations" (string), "secrets" (array),
-  "functions" (array), "files" (array), "subdomain" (string), and the
+  Existing manifests with top-level "migrations" (string), "functions" (array),
+  "files" (array), "subdomain" (string), and the
   "files[].file/data/path" + inline "manifest.json" entry continue to work —
   the SDK translates them into a v2 ReleaseSpec under the hood. Prefer the
   v2 shape above for new manifests; the legacy form is preserved for the
-  deprecation window so existing scripts don't break.
+  deprecation window so existing scripts don't break. Legacy file manifests
+  with secret values no longer deploy: run 'run402 secrets set' first, then
+  use 'run402 deploy apply' with 'secrets.require'.
 
   "migrations_file": "setup.sql"   (legacy convenience) reads SQL from disk
   relative to the manifest file. Useful when JSONB literals make inline
@@ -224,6 +230,11 @@ async function loadManifest(opts) {
     });
   }
 
+  rejectUnsafeSecretManifest(manifest, {
+    source: opts.manifest ? "manifest" : "stdin",
+    ...(opts.manifest ? { path: resolve(opts.manifest) } : {}),
+  });
+
   if (opts.manifest) {
     try {
       resolveMigrationsFile(manifest, baseDir);
@@ -253,6 +264,37 @@ async function loadManifest(opts) {
   }
 
   return manifest;
+}
+
+function rejectUnsafeSecretManifest(manifest, details) {
+  if (!manifest || typeof manifest !== "object" || Array.isArray(manifest)) return;
+  const secrets = manifest.secrets;
+  if (secrets === undefined) return;
+  if (Array.isArray(secrets) && secrets.length > 0) {
+    fail({
+      code: "UNSAFE_SECRET_MANIFEST",
+      message: "Deploy manifests must not contain secret values. Legacy top-level secrets arrays are no longer supported.",
+      hint: "Run `run402 secrets set <project> <KEY> --file <path>` first, then use `run402 deploy apply` with `\"secrets\": { \"require\": [\"KEY\"] }`.",
+      details: { ...details, field: "secrets", legacy_shape: "array" },
+    });
+  }
+  if (!secrets || typeof secrets !== "object" || Array.isArray(secrets)) return;
+  if (Object.prototype.hasOwnProperty.call(secrets, "set")) {
+    fail({
+      code: "UNSAFE_SECRET_MANIFEST",
+      message: "Deploy manifests must not use secrets.set. Secret values are write-only and must be set outside deploy specs.",
+      hint: "Run `run402 secrets set <project> <KEY> --file <path>` first, then deploy with `\"secrets\": { \"require\": [\"KEY\"] }`.",
+      details: { ...details, field: "secrets.set" },
+    });
+  }
+  if (Object.prototype.hasOwnProperty.call(secrets, "replace_all")) {
+    fail({
+      code: "UNSAFE_SECRET_MANIFEST",
+      message: "Deploy manifests must not use secrets.replace_all. Exact replacement is not representable in the value-free deploy contract.",
+      hint: "Use `secrets.require` for keys that must exist and `secrets.delete` for explicit removals.",
+      details: { ...details, field: "secrets.replace_all" },
+    });
+  }
 }
 
 export async function run(args) {

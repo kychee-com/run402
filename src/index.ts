@@ -303,14 +303,14 @@ server.tool(
 
 server.tool(
   "set_secret",
-  "Set a project secret (e.g. STRIPE_SECRET_KEY). Secrets are injected as process.env variables in functions. Setting an existing key overwrites it.",
+  "Set a project secret (e.g. STRIPE_SECRET_KEY). Values are write-only and injected as process.env variables in functions. Setting an existing key overwrites it. Use this before deploy, then declare the key with secrets.require.",
   setSecretSchema,
   async (args) => handleSetSecret(args),
 );
 
 server.tool(
   "list_secrets",
-  "List secret keys for a project (values are not shown). Useful for checking which secrets are configured.",
+  "List secret keys for a project. Values and value-derived hashes are never shown; use this only to check which keys are configured.",
   listSecretsSchema,
   async (args) => handleListSecrets(args),
 );
@@ -340,7 +340,7 @@ server.tool(
 
 server.tool(
   "deploy",
-  "Unified deploy primitive (v1.34+). Accepts a structured ReleaseSpec — database (migrations + expose), secrets, functions, site, subdomains — with explicit replace vs patch semantics per resource. All bytes ride through CAS (no inline-body cap). Returns release_id + URLs and a structured progress-event log. Use this for full-stack atomic deploys, partial updates (patch one file, patch one function), and any case where the legacy `bundle_deploy` would hit the 50 MB inline-base64 ceiling. The legacy tools (`bundle_deploy`, `deploy_site`, `deploy_site_dir`, `deploy_function`) continue to work and route through the same SDK shim under the hood.",
+  "Unified deploy primitive (v1.34+). Accepts a structured ReleaseSpec — database (migrations + expose), value-free secrets.require/delete declarations, functions, site, subdomains — with explicit replace vs patch semantics per resource. Secret values must be set first with set_secret, never placed in deploy specs. All bytes ride through CAS (no inline-body cap). Returns release_id, URLs, warnings, and a structured progress-event log. Stops before upload/commit on confirmation-required warnings unless allow_warnings is true.",
   deploySchema,
   async (args) => handleDeploy(args),
 );
@@ -421,7 +421,7 @@ server.tool(
 
 server.tool(
   "bundle_deploy",
-  "Deploy to an existing project. Runs migrations, applies the authorization manifest, sets secrets, deploys functions, deploys a static site, and claims a subdomain. Requires a provisioned project_id. Free with active tier. To declare authorization, include a `manifest.json` entry in `files[]` (preferred — the gateway reads it, validates against the migrations, applies it, and strips it before the site deploys). Schema: https://run402.com/schemas/manifest.v1.json. The legacy top-level `rls` field still works during the deprecation window (sunset 2026-05-23) but is not recommended for new code.",
+  "Legacy compatibility deploy. Runs migrations, applies the authorization manifest, optionally writes legacy in-memory secrets before deploy, deploys functions, deploys a static site, and claims a subdomain. Secret writes are not atomic with deploy; prefer set_secret first, then the deploy tool with secrets.require. Requires a provisioned project_id. Free with active tier. To declare authorization, include a `manifest.json` entry in `files[]`. Schema: https://run402.com/schemas/manifest.v1.json.",
   bundleDeploySchema,
   async (args) => handleBundleDeploy(args),
 );

@@ -349,7 +349,7 @@ The full MCP surface — every tool is a thin shim over an SDK call.
 | `claim_subdomain` | Claim `<name>.run402.com` (idempotent; reassigns to latest deployment on subsequent deploys). |
 | `list_subdomains` / `delete_subdomain` | Manage subdomains. |
 | `add_custom_domain` / `list_custom_domains` / `check_domain_status` / `remove_custom_domain` | Point your own domain at a Run402 subdomain. |
-| `bundle_deploy` | One-call full-stack deploy: database + migrations + authorization manifest (`manifest.json` in `files[]` — gateway validates it, applies it, then strips it before serving the site) + secrets + functions + site + subdomain. |
+| `bundle_deploy` | Legacy one-call full-stack deploy: database + migrations + authorization manifest (`manifest.json` in `files[]` — gateway validates it, applies it, then strips it before serving the site) + optional legacy in-memory secrets + functions + site + subdomain. For new secret-bearing deploys, use `set_secret` first, then `deploy` with `secrets.require`. |
 
 ### Functions & secrets
 
@@ -360,7 +360,7 @@ The full MCP surface — every tool is a thin shim over an SDK call.
 | `get_function_logs` | Recent logs (CloudWatch). |
 | `update_function` | Update schedule / timeout / memory without redeploying code. |
 | `list_functions` / `delete_function` | List / remove functions. |
-| `set_secret` / `list_secrets` / `delete_secret` | Manage `process.env` secrets injected into all functions. |
+| `set_secret` / `list_secrets` / `delete_secret` | Manage `process.env` secrets injected into all functions. Values are write-only; list returns keys and timestamps only. |
 
 ### Auth & email
 

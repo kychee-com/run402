@@ -11,7 +11,7 @@
  *     "project_id": "...",
  *     "base":  { "release": "current" } | { "release": "empty" } | { "release_id": "..." },
  *     "database": { "migrations": [...], "expose": {...}, "zero_downtime": false },
- *     "secrets":   { "set": {...}, "delete": [...], "replace_all": {...} },
+ *     "secrets":   { "require": ["OPENAI_API_KEY"], "delete": ["OLD_KEY"] },
  *     "functions": { "replace": {...}, "patch": { "set": {...}, "delete": [...] } },
  *     "site":      { "replace": {...} } | { "patch": { "put": {...}, "delete": [...] } },
  *     "subdomains": { "set": ["..."], "add": [...], "remove": [...] },
@@ -33,8 +33,8 @@ import { API, allowanceAuthHeaders, getActiveProjectId, resolveProjectId } from 
 const APPLY_HELP = `run402 deploy apply — Unified deploy primitive (v1.34+)
 
 Usage:
-  run402 deploy apply --manifest <path> [--project <id>] [--quiet]
-  run402 deploy apply --spec '<json>' [--project <id>] [--quiet]
+  run402 deploy apply --manifest <path> [--project <id>] [--quiet] [--allow-warnings]
+  run402 deploy apply --spec '<json>' [--project <id>] [--quiet] [--allow-warnings]
   cat spec.json | run402 deploy apply [--project <id>]
 
 Manifest format mirrors the MCP \`deploy\` tool's ReleaseSpec:
@@ -42,7 +42,7 @@ Manifest format mirrors the MCP \`deploy\` tool's ReleaseSpec:
     "project_id": "prj_...",
     "base": { "release": "current" },
     "database": { "migrations": [{ "id": "001_init", "sql": "CREATE TABLE ..." }], "expose": {...} },
-    "secrets":   { "set": { "OPENAI_API_KEY": { "value": "sk-..." } } },
+    "secrets":   { "require": ["OPENAI_API_KEY"], "delete": ["OLD_KEY"] },
     "functions": { "replace": { "api": { "source": { "data": "export default ..." } } } },
     "site":      { "replace": { "index.html": { "data": "<html>..." } } },
     "subdomains": { "set": ["my-app"] }
@@ -53,10 +53,17 @@ Options:
   --spec '<json>'         Inline JSON spec (single-quote in shell)
   --project <id>          Override project_id from the manifest
   --quiet                 Suppress per-event JSON-line stderr (final result still on stdout)
+  --allow-warnings        Continue past plan warnings that require confirmation
 
 Output:
-  stdout: { "status": "ok", "release_id": "rel_...", "operation_id": "op_...", "urls": {...} }
+  stdout: { "status": "ok", "release_id": "rel_...", "operation_id": "op_...", "urls": {...}, "warnings": [...] }
   stderr: one JSON event per line (suppressed with --quiet)
+
+Secrets:
+  Secret values do not belong in deploy manifests. Set them first:
+    run402 secrets set prj_... OPENAI_API_KEY --file ./.secrets/openai-key
+  Then deploy a value-free declaration:
+    { "project_id": "prj_...", "secrets": { "require": ["OPENAI_API_KEY"] } }
 
 Patch examples (only the listed file changes):
   { "project_id": "prj_...", "site": { "patch": { "put": { "index.html": { "data": "..." } } } } }
@@ -129,13 +136,14 @@ function makeStderrEventWriter(quiet) {
 }
 
 async function applyCmd(args) {
-  const opts = { manifest: null, spec: null, project: null, quiet: false };
+  const opts = { manifest: null, spec: null, project: null, quiet: false, allowWarnings: false };
   for (let i = 0; i < args.length; i++) {
     if (args[i] === "--help" || args[i] === "-h") { console.log(APPLY_HELP); process.exit(0); }
     if (args[i] === "--manifest" && args[i + 1]) { opts.manifest = args[++i]; continue; }
     if (args[i] === "--spec" && args[i + 1]) { opts.spec = args[++i]; continue; }
     if (args[i] === "--project" && args[i + 1]) { opts.project = args[++i]; continue; }
     if (args[i] === "--quiet") { opts.quiet = true; continue; }
+    if (args[i] === "--allow-warnings") { opts.allowWarnings = true; continue; }
   }
 
   let raw;
@@ -166,6 +174,10 @@ async function applyCmd(args) {
       details: { source: opts.manifest ? "manifest" : opts.spec ? "spec" : "stdin", parse_error: err.message },
     });
   }
+  rejectLegacySecretManifest(spec, {
+    source: opts.manifest ? "manifest" : opts.spec ? "spec" : "stdin",
+    ...(opts.manifest ? { path: resolve(opts.manifest) } : {}),
+  });
 
   // GH-232: Reject empty specs client-side. Without this guard,
   // `run402 deploy apply --spec '{}'` (and `--manifest <empty>`) would silently
@@ -241,6 +253,7 @@ async function applyCmd(args) {
     const result = await getSdk(sdkOpts).deploy.apply(releaseSpec, {
       onEvent: makeStderrEventWriter(opts.quiet),
       idempotencyKey,
+      allowWarnings: opts.allowWarnings,
     });
     console.log(JSON.stringify({ status: "ok", ...result }, null, 2));
   } catch (err) {
@@ -320,8 +333,43 @@ const CI_DEPLOY_ERROR_GUIDANCE = {
 };
 
 function reportDeployApplyError(err, useGithubActionsOidc) {
-  if (!useGithubActionsOidc) return reportSdkError(err);
-  return reportSdkError(enhanceCiDeployError(err));
+  const warningEnhanced = enhanceDeployWarningError(err);
+  if (!useGithubActionsOidc) return reportSdkError(warningEnhanced);
+  return reportSdkError(enhanceCiDeployError(warningEnhanced));
+}
+
+function enhanceDeployWarningError(err) {
+  const existingBody = err?.body && typeof err.body === "object" && !Array.isArray(err.body)
+    ? err.body
+    : {};
+  const warnings = Array.isArray(existingBody.warnings) ? existingBody.warnings : null;
+  const code = existingBody.code || err?.code || null;
+  if (!warnings && code !== "MISSING_REQUIRED_SECRET") return err;
+
+  const enhanced = Object.assign(new Error(err?.message || existingBody.message || String(code)), err);
+  const affected = warnings
+    ? warnings.flatMap((w) => Array.isArray(w?.affected) ? w.affected : [])
+    : [];
+  enhanced.body = {
+    ...existingBody,
+    code: code || "DEPLOY_WARNING_REQUIRES_CONFIRMATION",
+    message: existingBody.message || err?.message || "Deploy plan returned warnings that require confirmation.",
+    hint: existingBody.hint ||
+      (code === "MISSING_REQUIRED_SECRET"
+        ? "Set the missing secret values with `run402 secrets set`, then retry deploy apply. Use --allow-warnings only after explicit review."
+        : "Review the plan warnings, then retry with --allow-warnings if you intentionally accept them."),
+    next_actions: Array.isArray(existingBody.next_actions) && existingBody.next_actions.length > 0
+      ? existingBody.next_actions
+      : [
+          ...(affected.length > 0
+            ? [`Set or inspect affected secrets: ${Array.from(new Set(affected)).join(", ")}`]
+            : []),
+          "Retry `run402 deploy apply` after resolving warnings.",
+          "Use `--allow-warnings` only when the warning was explicitly reviewed.",
+        ],
+    ...(warnings ? { warnings } : {}),
+  };
+  return enhanced;
 }
 
 function enhanceCiDeployError(err) {
@@ -343,6 +391,37 @@ function enhanceCiDeployError(err) {
       : guidance.next_actions,
   };
   return enhanced;
+}
+
+function rejectLegacySecretManifest(spec, details) {
+  if (!spec || typeof spec !== "object" || Array.isArray(spec)) return;
+  const secrets = spec.secrets;
+  if (secrets === undefined) return;
+  if (Array.isArray(secrets) && secrets.length > 0) {
+    fail({
+      code: "UNSAFE_SECRET_MANIFEST",
+      message: "Deploy manifests must not contain secret values. Legacy secrets arrays are no longer supported by deploy apply.",
+      hint: "Run `run402 secrets set <project> <KEY> --file <path>` first, then use `\"secrets\": { \"require\": [\"KEY\"] }` in the deploy manifest.",
+      details: { ...details, field: "secrets", legacy_shape: "array" },
+    });
+  }
+  if (typeof secrets !== "object" || secrets === null) return;
+  if (Object.prototype.hasOwnProperty.call(secrets, "set")) {
+    fail({
+      code: "UNSAFE_SECRET_MANIFEST",
+      message: "Deploy manifests must not use secrets.set. Secret values are write-only and must be set outside deploy specs.",
+      hint: "Run `run402 secrets set <project> <KEY> --file <path>` first, then use `\"secrets\": { \"require\": [\"KEY\"] }`.",
+      details: { ...details, field: "secrets.set" },
+    });
+  }
+  if (Object.prototype.hasOwnProperty.call(secrets, "replace_all")) {
+    fail({
+      code: "UNSAFE_SECRET_MANIFEST",
+      message: "Deploy manifests must not use secrets.replace_all. Exact replacement is not representable in the value-free deploy contract.",
+      hint: "Use `secrets.require` for keys that must exist and `secrets.delete` for explicit removals.",
+      details: { ...details, field: "secrets.replace_all" },
+    });
+  }
 }
 
 async function resumeCmd(args) {

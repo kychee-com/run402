@@ -102,6 +102,9 @@ describe("SKILL.md (root, MCP-based)", () => {
       { pattern: /\bsetup_rls\b/, reason: "setup_rls was removed; use apply_expose" },
       { pattern: /\bget_deployment\b/, reason: "get_deployment was removed; use deploy/deploy_events/deploy_list" },
       { pattern: /"inherit"\s*:\s*true/, reason: "the inherit:true deploy flag was removed in v1.32" },
+      { pattern: /\bvalue_hash\b/, reason: "secret value hashes are no longer public; list only keys/timestamps" },
+      { pattern: /"secrets"\s*:\s*\{\s*"set"\s*:/, reason: "deploy specs must not carry secret values; use secrets.require" },
+      { pattern: /\breplace_all\b/, reason: "secrets.replace_all is not representable in value-free deploy specs" },
     ];
     for (const { pattern, reason } of banned) {
       it(`does not contain: ${pattern.source}`, () => {
@@ -190,6 +193,10 @@ describe("openclaw/SKILL.md (CLI-based)", () => {
       { pattern: /\bprojects rls\b/, reason: "`projects rls` was removed; use `projects apply-expose`" },
       { pattern: /\bsites\s+status\b/, reason: "`sites status` was removed; use `deploy events` / `deploy list`" },
       { pattern: /"inherit"\s*:\s*true/, reason: "the inherit:true deploy flag was removed in v1.32" },
+      { pattern: /\bvalue_hash\b/, reason: "secret value hashes are no longer public; list only keys/timestamps" },
+      { pattern: /"secrets"\s*:\s*\[/, reason: "CLI deploy manifests must not carry legacy secret value arrays" },
+      { pattern: /"secrets"\s*:\s*\{\s*"set"\s*:/, reason: "deploy specs must not carry secret values; use secrets.require" },
+      { pattern: /\breplace_all\b/, reason: "secrets.replace_all is not representable in value-free deploy specs" },
     ];
     for (const { pattern, reason } of banned) {
       it(`does not contain: ${pattern.source}`, () => {
@@ -218,4 +225,34 @@ describe("skill slug", () => {
   it("openclaw: matches ^[a-z0-9][a-z0-9-]*$", () => {
     assert.match(openclaw.frontmatter.name, /^[a-z0-9][a-z0-9-]*$/);
   });
+});
+
+describe("public docs — secrets isolation drift", () => {
+  const docs = [
+    "README.md",
+    "cli/README.md",
+    "SKILL.md",
+    "openclaw/SKILL.md",
+    "AGENTS.md",
+    "sdk/README.md",
+    "sdk/llms-sdk.txt",
+    "cli/llms-cli.txt",
+    "llms-mcp.txt",
+    "llms.txt",
+  ];
+  const banned: Array<{ pattern: RegExp; reason: string }> = [
+    { pattern: /\bvalue_hash\b/, reason: "secret value hashes are no longer public" },
+    { pattern: /\breplace_all\b/, reason: "deploy secret replace_all is no longer supported" },
+    { pattern: /"secrets"\s*:\s*\{\s*"set"\s*:/, reason: "deploy manifests must use secrets.require, not secrets.set" },
+    { pattern: /"secrets"\s*:\s*\[/, reason: "deploy manifests must not carry legacy secret arrays" },
+  ];
+
+  for (const relPath of docs) {
+    const body = readFileSync(join(__dirname, relPath), "utf-8");
+    for (const { pattern, reason } of banned) {
+      it(`${relPath} avoids ${pattern.source}`, () => {
+        assert.ok(!pattern.test(body), reason);
+      });
+    }
+  }
 });

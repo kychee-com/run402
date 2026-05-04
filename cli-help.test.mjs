@@ -279,7 +279,7 @@ describe("CLI --help contract", () => {
   // (top-level `migrations` string, `secrets` array, `functions` array, `files`
   // array) which the v2 gateway rejects. The example must match the v2
   // ReleaseSpec shape documented in cli/llms-cli.txt: object trees rooted at
-  // `database`, `site`, `functions.replace`, `secrets.set`, `subdomains`.
+  // `database`, `site`, `functions.replace`, `secrets.require`, `subdomains`.
   describe("run402 deploy --help shows v2 manifest format (GH-198)", () => {
     it("deploy --help example uses v2 keys (database/site/replace), not v1 arrays", async () => {
       const result = await runCli(["deploy", "--help"]);
@@ -294,8 +294,10 @@ describe("CLI --help contract", () => {
         `deploy --help: example must contain a top-level "site": key (v2 ReleaseSpec)\nstdout:\n${out}`);
       assert.match(out, /"replace":/,
         `deploy --help: example must contain a "replace": key (v2 site/functions shape)\nstdout:\n${out}`);
+      assert.match(out, /"require":/,
+        `deploy --help: example must contain a "require": key (value-free secrets shape)\nstdout:\n${out}`);
       assert.match(out, /"set":/,
-        `deploy --help: example must contain a "set": key (v2 secrets/subdomains shape)\nstdout:\n${out}`);
+        `deploy --help: example must contain a "set": key (v2 subdomains shape)\nstdout:\n${out}`);
       assert.match(out, /"subdomains":/,
         `deploy --help: example must contain a "subdomains": key (v2 ReleaseSpec)\nstdout:\n${out}`);
 
@@ -306,9 +308,11 @@ describe("CLI --help contract", () => {
       // - top-level `"files":` as an array (v1) — v2 uses site.replace as an object map
       assert.doesNotMatch(out, /^\s*"files":\s*\[/m,
         `deploy --help: example must not have v1 top-level "files": [...] array (use site.replace: { "<path>": {...} })\nstdout:\n${out}`);
-      // - top-level `"secrets":` as an array (v1) — v2 uses secrets.set as an object map
+      // - top-level `"secrets":` as an array (v1) — v2 uses secrets.require/delete as value-free declarations
       assert.doesNotMatch(out, /^\s*"secrets":\s*\[/m,
-        `deploy --help: example must not have v1 top-level "secrets": [...] array (use secrets.set: { "<KEY>": {...} })\nstdout:\n${out}`);
+        `deploy --help: example must not have v1 top-level "secrets": [...] array (use secrets.require: ["<KEY>"])\nstdout:\n${out}`);
+      assert.doesNotMatch(out, /"secrets"\s*:\s*\{\s*"set"\s*:/,
+        `deploy --help: example must not put secret values in secrets.set (use secrets.require)\nstdout:\n${out}`);
       // - top-level `"functions":` as an array (v1) — v2 uses functions.replace as an object map
       assert.doesNotMatch(out, /^\s*"functions":\s*\[/m,
         `deploy --help: example must not have v1 top-level "functions": [...] array (use functions.replace: { "<name>": {...} })\nstdout:\n${out}`);

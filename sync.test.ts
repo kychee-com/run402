@@ -175,7 +175,7 @@ const SURFACE: Capability[] = [
   { id: "update_function",   endpoint: "PATCH /projects/v1/admin/:id/functions/:name",     mcp: "update_function",   cli: "functions:update", openclaw: "functions:update" },
 
   // ── Secrets ──────────────────────────────────────────────────────────────
-  { id: "set_secret",        endpoint: "POST /projects/v1/admin/:id/secrets",        mcp: "set_secret",    cli: "secrets:set",    openclaw: "secrets:set" },
+  { id: "set_secret",        endpoint: "POST /projects/v1/admin/:id/secrets/:key",   mcp: "set_secret",    cli: "secrets:set",    openclaw: "secrets:set" },
   { id: "list_secrets",      endpoint: "GET /projects/v1/admin/:id/secrets",         mcp: "list_secrets",  cli: "secrets:list",   openclaw: "secrets:list" },
   { id: "delete_secret",     endpoint: "DELETE /projects/v1/admin/:id/secrets/:key", mcp: "delete_secret", cli: "secrets:delete", openclaw: "secrets:delete" },
 

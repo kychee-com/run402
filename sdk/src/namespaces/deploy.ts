@@ -69,6 +69,7 @@ const COMMIT_POLL_MAX_MS = 30_000;
 const COMMIT_POLL_BACKOFF_AFTER_MS = 30_000;
 const COMMIT_POLL_TIMEOUT_MS = 10 * 60 * 1000;
 const URL_REFRESH_AT_MS = 50 * 60 * 1000;
+const SECRET_KEY_RE = /^[A-Z_][A-Z0-9_]{0,127}$/;
 
 const MANIFEST_CONTENT_TYPE =
   "application/vnd.run402.deploy-manifest+json";
@@ -97,6 +98,8 @@ export class Deploy {
     emit({ type: "plan.started" });
     const { plan, byteReaders } = await planInternal(this.client, spec, opts.idempotencyKey);
     emit({ type: "plan.diff", diff: plan.diff });
+    emitPlanWarnings(plan, emit);
+    abortOnConfirmationWarnings(plan, opts);
 
     if (plan.payment_required) {
       emit({
@@ -116,7 +119,7 @@ export class Deploy {
 
     emit({ type: "commit.phase", phase: "validate", status: "started" });
     const commit = await commitInternal(this.client, plan.plan_id, opts.idempotencyKey);
-    return await pollUntilReady(this.client, commit, plan.diff, emit, spec.project);
+    return await pollUntilReady(this.client, commit, plan.diff, plan.warnings, emit, spec.project);
   }
 
   /**
@@ -179,7 +182,7 @@ export class Deploy {
   ): Promise<DeployResult> {
     const emit = makeEmitter(opts.onEvent);
     const commit = await commitInternal(this.client, planId, opts.idempotencyKey);
-    return await pollUntilReady(this.client, commit, {}, emit, opts.project);
+    return await pollUntilReady(this.client, commit, {}, [], emit, opts.project);
   }
 
   /**
@@ -213,7 +216,7 @@ export class Deploy {
     } catch (err) {
       throw translateDeployError(err, "resume", null, operationId);
     }
-    return await pollSnapshotUntilReady(this.client, snapshot, {}, emit, opts.project);
+    return await pollSnapshotUntilReady(this.client, snapshot, {}, [], emit, opts.project);
   }
 
   /**
@@ -323,8 +326,8 @@ async function planInternal(
   idempotencyKey?: string,
 ): Promise<{ plan: PlanResponse; byteReaders: Map<string, ByteReader> }> {
   const ciCredentials = isCiClient(client);
-  if (ciCredentials) assertCiDeployableSpec(spec);
   validateSpec(spec);
+  if (ciCredentials) assertCiDeployableSpec(spec);
 
   const { normalized, byteReaders } = await normalizeReleaseSpec(client, spec);
 
@@ -369,11 +372,11 @@ async function planInternal(
 
   let plan: PlanResponse;
   try {
-    plan = await client.request<PlanResponse>("/deploy/v2/plans", {
+    plan = normalizePlanResponse(await client.request<PlanResponse>("/deploy/v2/plans", {
       method: "POST",
       body,
       context: "planning deploy",
-    });
+    }));
   } catch (err) {
     throw translateDeployError(err, "plan", null, null);
   }
@@ -637,6 +640,7 @@ async function pollUntilReady(
   client: Client,
   commit: CommitResponse,
   diff: PlanResponse["diff"],
+  warnings: PlanResponse["warnings"],
   emit: (event: DeployEvent) => void,
   projectId: string | undefined,
 ): Promise<DeployResult> {
@@ -662,6 +666,7 @@ async function pollUntilReady(
       operation_id: commit.operation_id,
       urls: commit.urls,
       diff,
+      warnings,
     };
   }
 
@@ -670,13 +675,14 @@ async function pollUntilReady(
     `/deploy/v2/operations/${encodeURIComponent(commit.operation_id)}`,
     { headers: opHeaders, context: "fetching deploy operation" },
   );
-  return await pollSnapshotUntilReady(client, initialSnapshot, diff, emit, projectId);
+  return await pollSnapshotUntilReady(client, initialSnapshot, diff, warnings, emit, projectId);
 }
 
 async function pollSnapshotUntilReady(
   client: Client,
   initial: OperationSnapshot,
   diff: PlanResponse["diff"],
+  warnings: PlanResponse["warnings"],
   emit: (event: DeployEvent) => void,
   projectId: string | undefined,
 ): Promise<DeployResult> {
@@ -756,6 +762,7 @@ async function pollSnapshotUntilReady(
         operation_id: snapshot.operation_id,
         urls: snapshot.urls,
         diff,
+        warnings,
       };
     }
 
@@ -825,6 +832,8 @@ async function startInternal(
   emit({ type: "plan.started" });
   const { plan, byteReaders } = await planInternal(client, spec, opts.idempotencyKey);
   emit({ type: "plan.diff", diff: plan.diff });
+  emitPlanWarnings(plan, emit);
+  abortOnConfirmationWarnings(plan, opts);
   if (plan.payment_required) {
     emit({
       type: "payment.required",
@@ -839,7 +848,7 @@ async function startInternal(
     await uploadMissing(client, spec.project, plan.missing_content, byteReaders, emit);
     emit({ type: "commit.phase", phase: "validate", status: "started" });
     const commit = await commitInternal(client, plan.plan_id, opts.idempotencyKey);
-    return await pollUntilReady(client, commit, plan.diff, emit, spec.project);
+    return await pollUntilReady(client, commit, plan.diff, plan.warnings, emit, spec.project);
   })();
   // Avoid an unhandled-rejection at construction time. Consumers must call
   // .result() to actually observe the error.
@@ -993,6 +1002,111 @@ function validateSpec(spec: ReleaseSpec): void {
       },
     );
   }
+  validateSecretsSpec((spec as { secrets?: unknown }).secrets);
+}
+
+function normalizePlanResponse(plan: PlanResponse): PlanResponse {
+  const raw = plan as PlanResponse & { warnings?: unknown };
+  return {
+    ...plan,
+    warnings: Array.isArray(raw.warnings) ? raw.warnings : [],
+  };
+}
+
+function emitPlanWarnings(
+  plan: PlanResponse,
+  emit: (event: DeployEvent) => void,
+): void {
+  if (plan.warnings.length > 0) {
+    emit({ type: "plan.warnings", warnings: plan.warnings });
+  }
+}
+
+function abortOnConfirmationWarnings(plan: PlanResponse, opts: ApplyOptions): void {
+  if (opts.allowWarnings) return;
+  const blocking = plan.warnings.filter(
+    (w) => w.requires_confirmation || w.code === "MISSING_REQUIRED_SECRET",
+  );
+  if (blocking.length === 0) return;
+  const missing = blocking.find((w) => w.code === "MISSING_REQUIRED_SECRET");
+  const first = missing ?? blocking[0]!;
+  throw new Run402DeployError(
+    `Deploy plan returned warning ${first.code} that requires confirmation; resolve it or retry with allowWarnings after explicit review.`,
+    {
+      code: first.code || "DEPLOY_WARNING_REQUIRES_CONFIRMATION",
+      phase: "plan",
+      resource: "warnings",
+      retryable: false,
+      fix: { action: "review_warnings", path: "warnings" },
+      body: { warnings: blocking },
+      context: "planning deploy",
+    },
+  );
+}
+
+function validateSecretsSpec(secrets: unknown): void {
+  if (secrets === undefined) return;
+  if (!secrets || typeof secrets !== "object" || Array.isArray(secrets)) {
+    throw invalidSecretSpec("ReleaseSpec.secrets must be an object", "secrets");
+  }
+
+  const obj = secrets as Record<string, unknown>;
+  const allowed = new Set(["require", "delete"]);
+  for (const key of Object.keys(obj)) {
+    if (!allowed.has(key)) {
+      throw invalidSecretSpec(
+        key === "set" || key === "replace_all"
+          ? `ReleaseSpec.secrets.${key} is no longer supported; set values with the secrets API, then use secrets.require[] in the deploy spec.`
+          : `Unknown ReleaseSpec.secrets field: ${key}`,
+        `secrets.${key}`,
+      );
+    }
+  }
+
+  const required = validateSecretKeyArray(obj.require, "secrets.require");
+  const deleted = validateSecretKeyArray(obj.delete, "secrets.delete");
+  const deleteSet = new Set(deleted);
+  const conflict = required.find((key) => deleteSet.has(key));
+  if (conflict) {
+    throw invalidSecretSpec(
+      `Secret key ${conflict} cannot appear in both secrets.require and secrets.delete`,
+      "secrets",
+    );
+  }
+}
+
+function validateSecretKeyArray(value: unknown, resource: string): string[] {
+  if (value === undefined) return [];
+  if (!Array.isArray(value)) {
+    throw invalidSecretSpec(`${resource} must be an array of secret keys`, resource);
+  }
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const key of value) {
+    if (typeof key !== "string" || !SECRET_KEY_RE.test(key)) {
+      throw invalidSecretSpec(
+        `${resource} entries must match ${SECRET_KEY_RE.source}`,
+        resource,
+      );
+    }
+    if (seen.has(key)) {
+      throw invalidSecretSpec(`${resource} contains duplicate key ${key}`, resource);
+    }
+    seen.add(key);
+    out.push(key);
+  }
+  return out;
+}
+
+function invalidSecretSpec(message: string, resource: string): Run402DeployError {
+  return new Run402DeployError(message, {
+    code: "INVALID_SPEC",
+    phase: "validate",
+    resource,
+    retryable: false,
+    fix: { action: "set_field", path: resource },
+    context: "validating spec",
+  });
 }
 
 async function normalizeReleaseSpec(

@@ -26,11 +26,13 @@ export async function handleListSecrets(args: {
     const lines = [
       `## Secrets (${body.secrets.length})`,
       ``,
-      `| Key | Hash |`,
-      `|-----|------|`,
-      ...body.secrets.map((s) => `| \`${s.key}\` | ${s.value_hash ? `\`${s.value_hash}\`` : "—"} |`),
+      `| Key | Created | Updated |`,
+      `|-----|---------|---------|`,
+      ...body.secrets.map((s) =>
+        `| \`${s.key}\` | ${s.created_at ?? "—"} | ${s.updated_at ?? "—"} |`,
+      ),
       ``,
-      `_Hash is the first 8 hex chars of SHA-256 — use it to verify the correct value was set._`,
+      `_Values and value-derived hashes are write-only. Use \`set_secret\` to update a value, then deploy with \`secrets.require\` if the release depends on it._`,
     ];
 
     return { content: [{ type: "text", text: lines.join("\n") }] };

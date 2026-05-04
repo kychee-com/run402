@@ -14,14 +14,15 @@ Subcommands:
   delete <id> <key>            Delete a secret from a project
 
 Examples:
-  run402 secrets set prj_abc123 STRIPE_KEY sk-1234
+  run402 secrets set prj_abc123 STRIPE_KEY --file ./.secrets/stripe-key
   run402 secrets set prj_abc123 TLS_CERT --file cert.pem
   run402 secrets list prj_abc123
   run402 secrets delete prj_abc123 STRIPE_KEY
 
 Notes:
   - Secrets are injected as process.env in serverless functions
-  - Values are write-only — list returns keys with a value_hash (first 8 hex chars of SHA-256) for verifying the correct value was set
+  - Values are write-only — list returns keys and timestamps only
+  - Deploy manifests should declare existing keys with secrets.require; never put values in deploy specs
 `;
 
 const SUB_HELP = {
@@ -41,10 +42,11 @@ Options:
 
 Notes:
   - Secrets are injected as process.env in serverless functions
-  - Values are write-only; 'list' returns a value_hash for verification
+  - Values are write-only; 'list' cannot verify values by hash
+  - Prefer --file for real secrets so values do not land in shell history
 
 Examples:
-  run402 secrets set prj_abc123 STRIPE_KEY sk-1234
+  run402 secrets set prj_abc123 STRIPE_KEY --file ./.secrets/stripe-key
   run402 secrets set prj_abc123 TLS_CERT --file cert.pem
 `,
   list: `run402 secrets list — List all secrets for a project
@@ -56,8 +58,7 @@ Arguments:
   <id>                Project ID (from 'run402 projects list')
 
 Notes:
-  - Returns secret keys with a value_hash (first 8 hex chars of SHA-256)
-    for verifying the correct value was set; raw values are write-only
+  - Returns secret keys and timestamps only; raw values and value-derived hashes are never returned
 
 Examples:
   run402 secrets list prj_abc123
@@ -103,7 +104,14 @@ async function set(projectId, key, args = []) {
 async function list(projectId) {
   try {
     const data = await getSdk().secrets.list(projectId);
-    console.log(JSON.stringify(data, null, 2));
+    const sanitized = {
+      secrets: (data.secrets || []).map((s) => ({
+        key: s.key,
+        ...(s.created_at ? { created_at: s.created_at } : {}),
+        ...(s.updated_at ? { updated_at: s.updated_at } : {}),
+      })),
+    };
+    console.log(JSON.stringify(sanitized, null, 2));
   } catch (err) {
     reportSdkError(err);
   }

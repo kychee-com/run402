@@ -238,8 +238,8 @@ function mockFetch(input, init) {
   }
 
   // Secrets
-  if (path.match(/\/secrets$/) && method === "POST") {
-    return Promise.resolve(json({ status: "ok", key: body?.key || "TEST_KEY" }));
+  if (path.match(/\/secrets\/[^/]+$/) && method === "POST") {
+    return Promise.resolve(json({ status: "ok", key: decodeURIComponent(path.split("/").pop() || "TEST_KEY") }));
   }
   if (path.match(/\/secrets$/) && method === "GET") {
     return Promise.resolve(json({ secrets: [{ key: "TEST_KEY", value_hash: "a1b2c3d4", created_at: "2026-01-01", updated_at: "2026-01-01" }] }));
@@ -1661,6 +1661,19 @@ describe("CLI e2e happy path", () => {
     assert.equal(parsed.code, "MANIFEST_EMPTY");
   });
 
+  it("deploy rejects legacy manifest secret values before gateway calls", async () => {
+    const { threw, stderr, deployCalled } = await deployAndCapture(
+      { project_id: "prj_test123", secrets: [{ key: "OPENAI_API_KEY", value: "secret" }] },
+      "secret-values-legacy.json",
+    );
+    assert.ok(threw && /process\.exit\(1\)/.test(threw.message),
+      `should exit non-zero, got: ${threw && threw.message}`);
+    assert.equal(deployCalled, false, "must not POST to /deploy/v2/plans with secret values");
+    const parsed = parseStderrEnvelope(stderr);
+    assert.equal(parsed.code, "UNSAFE_SECRET_MANIFEST");
+    assert.equal(parsed.details.field, "secrets");
+  });
+
   it("deploy rejects v2 manifest with empty site.replace (GH-185)", async () => {
     const { threw, stderr, deployCalled } = await deployAndCapture(
       { project_id: "prj_test123", site: { replace: {} } }, "gh185-empty-site-replace.json");
@@ -1770,6 +1783,74 @@ describe("CLI e2e happy path", () => {
     assert.equal(deployCalled, false, "must not POST to /deploy/v2/plans on empty site.replace spec");
     const parsed = parseStderrEnvelope(stderr);
     assert.equal(parsed.code, "MANIFEST_EMPTY");
+  });
+
+  it("deploy apply rejects secrets.set before gateway calls", async () => {
+    const { threw, stderr, deployCalled } = await deployApplyAndCapture(
+      ["--spec", JSON.stringify({
+        project_id: "prj_test123",
+        secrets: { set: { OPENAI_API_KEY: { value: "secret" } } },
+      })],
+    );
+    assert.ok(threw && /process\.exit\(1\)/.test(threw.message),
+      `should exit non-zero, got: ${threw && threw.message}`);
+    assert.equal(deployCalled, false, "must not POST to /deploy/v2/plans with secrets.set");
+    const parsed = parseStderrEnvelope(stderr);
+    assert.equal(parsed.code, "UNSAFE_SECRET_MANIFEST");
+    assert.equal(parsed.details.field, "secrets.set");
+  });
+
+  it("deploy apply rejects secrets.replace_all before gateway calls", async () => {
+    const { threw, stderr, deployCalled } = await deployApplyAndCapture(
+      ["--spec", JSON.stringify({
+        project_id: "prj_test123",
+        secrets: { replace_all: { OPENAI_API_KEY: { value: "secret" } } },
+      })],
+    );
+    assert.ok(threw && /process\.exit\(1\)/.test(threw.message),
+      `should exit non-zero, got: ${threw && threw.message}`);
+    assert.equal(deployCalled, false, "must not POST to /deploy/v2/plans with secrets.replace_all");
+    const parsed = parseStderrEnvelope(stderr);
+    assert.equal(parsed.code, "UNSAFE_SECRET_MANIFEST");
+    assert.equal(parsed.details.field, "secrets.replace_all");
+  });
+
+  it("deploy apply rejects CI manifests that declare secrets", async () => {
+    const previous = {
+      GITHUB_ACTIONS: process.env.GITHUB_ACTIONS,
+      ACTIONS_ID_TOKEN_REQUEST_URL: process.env.ACTIONS_ID_TOKEN_REQUEST_URL,
+      ACTIONS_ID_TOKEN_REQUEST_TOKEN: process.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN,
+      RUN402_PROJECT_ID: process.env.RUN402_PROJECT_ID,
+    };
+    process.env.GITHUB_ACTIONS = "true";
+    process.env.ACTIONS_ID_TOKEN_REQUEST_URL = "https://actions.example.test/token";
+    process.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN = "github-token";
+    process.env.RUN402_PROJECT_ID = "prj_test123";
+    try {
+      const { threw, stderr, deployCalled } = await deployApplyAndCapture(
+        ["--spec", JSON.stringify({
+          site: { replace: { "index.html": { data: "ok" } } },
+          secrets: { require: ["OPENAI_API_KEY"] },
+        })],
+      );
+      assert.ok(threw && /process\.exit\(1\)/.test(threw.message),
+        `should exit non-zero, got: ${threw && threw.message}`);
+      assert.equal(deployCalled, false, "must reject CI secrets before /deploy/v2/plans");
+      const parsed = stderr.split("\n")
+        .map((line) => {
+          try { return JSON.parse(line); } catch { return null; }
+        })
+        .find((line) => line?.status === "error");
+      assert.ok(parsed, `should emit a JSON error envelope on stderr, got: ${stderr}`);
+      assert.equal(parsed.code, "forbidden_spec_field");
+      assert.equal(parsed.resource, "secrets");
+      assert.match(parsed.hint || "", /CI deploys/i);
+    } finally {
+      for (const [key, value] of Object.entries(previous)) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    }
   });
 
   it("deploy apply accepts --spec with non-empty site.replace (GH-232)", async () => {

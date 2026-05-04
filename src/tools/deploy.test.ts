@@ -32,6 +32,7 @@ let nextApplyImpl: () => Promise<unknown> = async () => ({
   operation_id: "op_001",
   urls: { deployment_id: "dpl_001", site_url: "https://dpl-001.sites.run402.com" },
   diff: { added: [], changed: [], removed: [] },
+  warnings: [],
 });
 
 mock.module("../sdk.js", {
@@ -74,6 +75,7 @@ beforeEach(() => {
     operation_id: "op_001",
     urls: { deployment_id: "dpl_001", site_url: "https://dpl-001.sites.run402.com" },
     diff: { added: [], changed: [], removed: [] },
+    warnings: [],
   });
 });
 
@@ -286,12 +288,54 @@ describe("handleDeploy deploy error formatting", () => {
     assert.ok(text.includes("**Operation:** `op_1`"));
     assert.ok(text.includes("**Plan:** `plan_1`"));
   });
+
+  it("renders plan warnings outside the raw event stream", async () => {
+    nextApplyImpl = async () => ({
+      release_id: "rel_001",
+      operation_id: "op_001",
+      urls: {},
+      diff: {},
+      warnings: [
+        {
+          code: "MISSING_REQUIRED_SECRET",
+          severity: "high",
+          requires_confirmation: true,
+          message: "OPENAI_API_KEY is missing",
+          affected: ["OPENAI_API_KEY"],
+        },
+      ],
+    });
+
+    const result = await handleDeploy({
+      project_id: "prj_xxx",
+      secrets: { require: ["OPENAI_API_KEY"] },
+    });
+
+    const text = result.content[0]!.text;
+    assert.equal(result.isError, undefined);
+    assert.ok(text.includes("### Plan warnings"));
+    assert.ok(text.includes("MISSING_REQUIRED_SECRET"));
+    assert.ok(text.includes("set_secret"));
+    assert.deepEqual((lastApplySpec as { secrets?: unknown }).secrets, {
+      require: ["OPENAI_API_KEY"],
+    });
+  });
+
+  it("passes allow_warnings through to the SDK option", async () => {
+    await handleDeploy({
+      project_id: "prj_xxx",
+      secrets: { delete: ["OLD_KEY"] },
+      allow_warnings: true,
+    });
+    assert.equal((lastApplyOpts as { allowWarnings?: boolean }).allowWarnings, true);
+  });
 });
 
 describe("deploySchema fileEntry parsing", () => {
   // Build an inline schema that mirrors the one MCP composes for the `site`
   // arg, so we can validate the union shape directly.
   const schema = z.object({ site: deploySchema.site });
+  const secretsSchema = z.object({ secrets: deploySchema.secrets });
 
   it("parses a bare string in site.replace", () => {
     const r = schema.safeParse({
@@ -324,5 +368,22 @@ describe("deploySchema fileEntry parsing", () => {
       site: { replace: { "p.html": 42 } },
     });
     assert.equal(r.success, false);
+  });
+
+  it("accepts value-free secrets.require/delete", () => {
+    const r = secretsSchema.safeParse({
+      secrets: { require: ["OPENAI_API_KEY"], delete: ["OLD_KEY"] },
+    });
+    assert.equal(r.success, true, r.success ? "" : JSON.stringify(r.error.issues));
+  });
+
+  it("rejects legacy secrets.set and replace_all", () => {
+    for (const secrets of [
+      { set: { OPENAI_API_KEY: { value: "sk" } } },
+      { replace_all: { OPENAI_API_KEY: { value: "sk" } } },
+    ]) {
+      const r = secretsSchema.safeParse({ secrets });
+      assert.equal(r.success, false);
+    }
   });
 });

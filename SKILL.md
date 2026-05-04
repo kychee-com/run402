@@ -177,7 +177,7 @@ The response's `content` array includes a fenced `json` block of buffered progre
 | `commit` | Just before commit | — |
 | `poll`   | Per server-side copy poll | `status`, `elapsed_ms` |
 
-For one-call full-stack deploys (database + migrations + manifest + secrets + functions + site + subdomain), use **`bundle_deploy`** with a manifest. Include `manifest.json` in `files[]` for auth-as-SDLC.
+For one-call full-stack deploys (database + migrations + manifest + secret dependencies + functions + site + subdomain), prefer **`deploy`**. Set secret values first with **`set_secret`**, then deploy with value-free `secrets.require[]`; never put secret values in deploy specs. **`bundle_deploy`** remains for legacy in-memory compatibility and writes secrets before deploy, but those writes are not atomic with the deploy commit.
 
 ### In-function helpers — `db(req)` vs `adminDb()`
 
@@ -245,7 +245,7 @@ For TypeScript autocomplete, `npm install @run402/functions` in your editor's pr
 - **`claim_subdomain`** — claim `<name>.run402.com` (idempotent; auto-reassigns to latest deployment on subsequent deploys, no re-claim needed).
 - **`list_subdomains`** / **`delete_subdomain`** — manage subdomains.
 - **`add_custom_domain`** / **`list_custom_domains`** / **`check_domain_status`** / **`remove_custom_domain`** — point your own domain at a Run402 subdomain.
-- **`bundle_deploy`** — one-call full-stack deploy with auth-as-SDLC manifest in `files[]`.
+- **`bundle_deploy`** — legacy one-call full-stack deploy with auth-as-SDLC manifest in `files[]`. Prefer `set_secret` + `deploy` for new code when secrets are involved.
 
 ### Functions & secrets
 
@@ -254,7 +254,7 @@ For TypeScript autocomplete, `npm install @run402/functions` in your editor's pr
 - **`get_function_logs`** — recent logs (CloudWatch). Use `since` for incremental polling.
 - **`update_function`** — change schedule / timeout / memory without redeploying code.
 - **`list_functions`** / **`delete_function`** — list / remove.
-- **`set_secret`** / **`list_secrets`** / **`delete_secret`** — `process.env` secrets injected into every function. `list_secrets` returns keys with a `value_hash` (8 hex chars of SHA-256) for verification.
+- **`set_secret`** / **`list_secrets`** / **`delete_secret`** — `process.env` secrets injected into every function. Values are write-only; `list_secrets` returns keys and timestamps only. Deploy specs use `secrets.require[]` as a dependency gate, not as a value carrier or per-function allowlist.
 
 Scheduled function limits per tier: prototype 1 / 15 min, hobby 3 / 5 min, team 10 / 1 min.
 

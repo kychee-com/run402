@@ -10,10 +10,16 @@ import type { SiteFile } from "./sites.js";
 import { Deploy } from "./deploy.js";
 import type {
   ContentSource,
+  DeployResult,
   ExposeManifest,
   FunctionSpec,
   ReleaseSpec,
+  WarningEntry,
 } from "./deploy.types.js";
+import { Secrets } from "./secrets.js";
+
+const SECRET_KEY_RE = /^[A-Z_][A-Z0-9_]{0,127}$/;
+const SECRET_VALUE_LIMIT_BYTES = 4 * 1024;
 
 export interface BundleRlsOptions {
   template: RlsTemplate;
@@ -51,6 +57,7 @@ export interface BundleDeployResult {
   deployment_id?: string;
   functions?: Array<{ name: string; url: string; schedule?: string | null }>;
   subdomain_url?: string;
+  warnings?: WarningEntry[];
 }
 
 export interface AppSummary {
@@ -134,10 +141,10 @@ export class Apps {
   constructor(private readonly client: Client) {}
 
   /**
-   * Deploy to an existing project: runs migrations, applies RLS, sets
-   * secrets, deploys functions, deploys a static site, and claims a
-   * subdomain. Payment flows through x402 when the project lease needs
-   * renewal.
+   * Deploy to an existing project: runs migrations, applies RLS, writes
+   * legacy in-memory secret values through the secrets API, deploys
+   * functions, deploys a static site, and claims a subdomain. Payment flows
+   * through x402 when the project lease needs renewal.
    *
    * **As of v1.34, this method is a thin compatibility shim over
    * {@link Deploy.apply}.** It translates the legacy bundle options into a
@@ -150,6 +157,11 @@ export class Apps {
    * the only behavior change vs. v1's blind re-execution and is safe for
    * idempotent migrations (the documented agent norm).
    *
+   * Legacy `opts.secrets` are not embedded in the release spec. They are
+   * pre-validated, written before deploy, then represented as
+   * `secrets.require` keys. Those writes are intentionally not atomic with
+   * the later deploy commit.
+   *
    * `inherit: true` is silently ignored;
    * patch semantics on `r.deploy.apply` replace it.
    */
@@ -161,6 +173,13 @@ export class Apps {
     if (!project) throw new ProjectNotFound(projectId, "deploying bundle");
 
     const spec = await translateBundleToReleaseSpec(projectId, opts);
+    if (opts.secrets !== undefined && opts.secrets.length > 0) {
+      validateBundleSecrets(opts.secrets);
+      const secrets = new Secrets(this.client);
+      for (const { key, value } of opts.secrets) {
+        await secrets.set(projectId, key, value);
+      }
+    }
     const deploy = new Deploy(this.client);
     const result = await deploy.apply(spec);
 
@@ -338,11 +357,10 @@ async function translateBundleToReleaseSpec(
     }
   }
 
-  // secrets — array → set object
+  // secrets — legacy in-memory values are pre-written by bundleDeploy();
+  // the value-free release spec only declares required keys.
   if (opts.secrets !== undefined && opts.secrets.length > 0) {
-    const set: Record<string, { value: string }> = {};
-    for (const { key, value } of opts.secrets) set[key] = { value };
-    spec.secrets = { set };
+    spec.secrets = { require: opts.secrets.map(({ key }) => key) };
   }
 
   // functions — array → replace map
@@ -441,10 +459,11 @@ function translateRlsToExpose(
 
 function reshapeAsBundleResult(
   projectId: string,
-  result: { release_id: string; operation_id: string; urls: Record<string, string> },
+  result: DeployResult,
 ): BundleDeployResult {
   const urls = result.urls ?? {};
   const out: BundleDeployResult = { project_id: projectId };
+  if (result.warnings.length > 0) out.warnings = result.warnings;
   if (urls.site) out.site_url = urls.site;
   if (urls.deployment_id) out.deployment_id = urls.deployment_id;
   if (urls.subdomain) out.subdomain_url = urls.subdomain;
@@ -457,6 +476,62 @@ function reshapeAsBundleResult(
     }
   }
   return out;
+}
+
+function validateBundleSecrets(secrets: Array<{ key: string; value: string }>): void {
+  const seen = new Set<string>();
+  for (const secret of secrets) {
+    const key = secret?.key;
+    const value = secret?.value;
+    if (typeof key !== "string" || !SECRET_KEY_RE.test(key)) {
+      throw new Run402DeployError(
+        `bundleDeploy secret keys must match ${SECRET_KEY_RE.source}`,
+        {
+          code: "INVALID_SPEC",
+          phase: "validate",
+          resource: "secrets",
+          retryable: false,
+          fix: { action: "set_field", path: "secrets" },
+          context: "validating bundle deploy secrets",
+        },
+      );
+    }
+    if (seen.has(key)) {
+      throw new Run402DeployError(`bundleDeploy secret ${key} is duplicated`, {
+        code: "INVALID_SPEC",
+        phase: "validate",
+        resource: "secrets",
+        retryable: false,
+        fix: { action: "set_field", path: "secrets" },
+        context: "validating bundle deploy secrets",
+      });
+    }
+    if (typeof value !== "string") {
+      throw new Run402DeployError(`bundleDeploy secret ${key} value must be a string`, {
+        code: "INVALID_SPEC",
+        phase: "validate",
+        resource: `secrets.${key}`,
+        retryable: false,
+        fix: { action: "set_field", path: `secrets.${key}` },
+        context: "validating bundle deploy secrets",
+      });
+    }
+    const bytes = new TextEncoder().encode(value).byteLength;
+    if (bytes > SECRET_VALUE_LIMIT_BYTES) {
+      throw new Run402DeployError(
+        `bundleDeploy secret ${key} is ${bytes} bytes; maximum is ${SECRET_VALUE_LIMIT_BYTES} UTF-8 bytes`,
+        {
+          code: "INVALID_SPEC",
+          phase: "validate",
+          resource: `secrets.${key}`,
+          retryable: false,
+          fix: { action: "set_field", path: `secrets.${key}` },
+          context: "validating bundle deploy secrets",
+        },
+      );
+    }
+    seen.add(key);
+  }
 }
 
 async function sha256Hex(bytes: Uint8Array): Promise<string> {
