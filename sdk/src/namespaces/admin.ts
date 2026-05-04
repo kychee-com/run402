@@ -106,7 +106,7 @@ export class Admin {
       );
     }
 
-    const headers: Record<string, string> = {};
+    const headers: Record<string, string> = { "X-Admin-Mode": "1" };
     if (opts.cookie) headers.Cookie = opts.cookie;
 
     return this.client.request<AdminProjectFinanceResult>(

@@ -1347,6 +1347,7 @@ describe("CLI e2e happy path", () => {
     delete process.env.RUN402_ADMIN_COOKIE;
     let seenUrl = null;
     let seenSiwx = null;
+    let seenAdminMode = null;
     let seenCookie = null;
     const prevFetch = globalThis.fetch;
     globalThis.fetch = (input, init) => {
@@ -1355,10 +1356,12 @@ describe("CLI e2e happy path", () => {
         seenUrl = url;
         if (input instanceof Request) {
           seenSiwx = input.headers.get("sign-in-with-x");
+          seenAdminMode = input.headers.get("x-admin-mode");
           seenCookie = input.headers.get("cookie");
         } else {
           const headers = init?.headers ?? {};
           seenSiwx = headers["SIGN-IN-WITH-X"] ?? headers["sign-in-with-x"] ?? null;
+          seenAdminMode = headers["X-Admin-Mode"] ?? headers["x-admin-mode"] ?? null;
           seenCookie = headers.Cookie ?? headers.cookie ?? null;
         }
       }
@@ -1376,6 +1379,7 @@ describe("CLI e2e happy path", () => {
     assert.ok(seenUrl && seenUrl.includes("/admin/api/finance/project/prj_test123?window=7d"),
       `costs should hit the active project finance URL; got: ${seenUrl}`);
     assert.equal(typeof seenSiwx, "string", "costs should send allowance SIWX auth when no admin cookie is set");
+    assert.equal(seenAdminMode, "1", "costs should explicitly request admin mode for admin-wallet auth");
     assert.equal(seenCookie, null);
     const parsed = JSON.parse(capturedStdout());
     assert.equal(parsed.project_id, "prj_test123");

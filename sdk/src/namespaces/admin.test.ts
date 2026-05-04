@@ -85,6 +85,7 @@ describe("admin.getProjectFinance", () => {
     );
     assert.equal(calls[0]!.method, "GET");
     assert.equal(calls[0]!.headers.Cookie, "run402_admin=session");
+    assert.equal(calls[0]!.headers["X-Admin-Mode"], "1");
     assert.equal(calls[0]!.headers["SIGN-IN-WITH-X"], "t");
     assert.equal(result.direct_cost_usd_micros, 1_650_000);
     assert.equal(result.direct_cost_breakdown[0]!.category, "KMS wallet rental");
@@ -116,6 +117,7 @@ describe("admin.getProjectFinance", () => {
       "https://api.test/admin/api/finance/project/prj_known?window=30d",
     );
     assert.equal(calls[0]!.headers.Cookie, undefined);
+    assert.equal(calls[0]!.headers["X-Admin-Mode"], "1");
     assert.equal(calls[0]!.headers["SIGN-IN-WITH-X"], "t");
   });
 
