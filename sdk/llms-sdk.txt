@@ -282,6 +282,65 @@ const result = await r.deploy.apply({
 - `r.apps.bundleDeploy(...)` — translates legacy options into a `ReleaseSpec` and routes through `deploy.apply`. The `inherit: true` flag is silently ignored (deprecation preserved in JSDoc only).
 - `r.sites.deployDir(...)` — Node-only thin wrapper that uses `fileSetFromDir(dir)` and synthesizes both unified `DeployEvent` shapes and the legacy `{ phase: ... }` shapes for v1.32-era event consumers.
 
+### GitHub Actions OIDC — CI credentials + the same deploy primitive
+
+CI/OIDC federation is deliberately credential-driven. Link a GitHub repository or environment once, then keep using `r.deploy.apply(...)`; the deploy namespace detects SDK-marked CI credentials internally. Do not invent an `r.ci.deployApply(...)` path and do not pass a public `ci` deploy flag.
+
+The setup side is `r.ci` plus the Node-only signing helper. Use the SDK builders exactly; the gateway validates the SIWX Statement and Resource URI against golden vectors.
+
+```ts
+import {
+  CI_GITHUB_ACTIONS_PROVIDER,
+  V1_CI_ALLOWED_ACTIONS,
+  V1_CI_ALLOWED_EVENTS_DEFAULT,
+  run402,
+  signCiDelegation,
+} from "@run402/sdk/node";
+
+const values = {
+  project_id: projectId,
+  subject_match: "repo:owner/name:ref:refs/heads/main",
+  allowed_actions: V1_CI_ALLOWED_ACTIONS,
+  allowed_events: V1_CI_ALLOWED_EVENTS_DEFAULT,
+  github_repository_id: "123456789",
+  expires_at: null,
+  nonce: "0123456789abcdef0123456789abcdef",
+};
+
+const r = run402({ disablePaidFetch: true });
+await r.ci.createBinding({
+  ...values,
+  provider: CI_GITHUB_ACTIONS_PROVIDER,
+  signed_delegation: signCiDelegation(values),
+});
+```
+
+Inside GitHub Actions, prefer `githubActionsCredentials({ projectId })`. It:
+- Requires `permissions: id-token: write`
+- Requests a GitHub OIDC token for `CI_AUDIENCE` (`https://api.run402.com`) unless overridden
+- Calls `/ci/v1/token-exchange` without local auth
+- Caches the Run402 session token until `expires_in - refreshBeforeSeconds` (default refresh cushion: 60 seconds)
+- Marks the credential provider so deploy uses CI Bearer auth and never local `apikey` headers
+
+```ts
+import { githubActionsCredentials, run402, type ReleaseSpec } from "@run402/sdk/node";
+
+const r = run402({
+  credentials: githubActionsCredentials({ projectId }),
+  disablePaidFetch: true,
+});
+
+const ciSpec: ReleaseSpec = {
+  project: projectId,
+  base: { release: "current" },
+  site: { patch: { put: { "index.html": "<h1>ship</h1>" } } },
+};
+
+await r.deploy.apply(ciSpec);
+```
+
+CI deploy restrictions are part of the client contract: allowed top-level fields are only `project`, `database`, `functions`, `site`, and absent/current `base`. `spec.secrets`, `spec.subdomains`, `spec.routes`, `spec.checks`, unknown future fields, non-current `base`, and oversized specs that would require `manifest_ref` are rejected before any upload or plan call. Non-CI deploy behavior is unchanged.
+
 ### Dark-by-default tables + the expose manifest
 
 Tables you create are unreachable via `/rest/v1/*` until your manifest declares them with `expose: true`. The manifest is convergent — applying it twice is a no-op; items removed between applies have their policies, grants, triggers, and views dropped.
@@ -337,7 +396,7 @@ The helper makes raw `fetch()` calls to the project's own gateway endpoints usin
 
 ## Namespaces — full surface
 
-The `Run402` class exposes 19 namespaces. Click into the SDK source for full method signatures.
+The `Run402` class exposes 20 namespaces. Click into the SDK source for full method signatures.
 
 > **Reference tables below use plain fences, not `ts` fences.** They document the
 > type surface in compact form — they are not runnable programs. Runnable example
@@ -397,6 +456,89 @@ For live event streaming during an in-flight deploy, use `r.deploy.start(spec)` 
 iterate `op.events()` (an `AsyncIterable<DeployEvent>`). The `r.deploy.events(operationId)`
 method returns the events the gateway has recorded so far for an operation —
 useful for inspecting a deploy after the fact, not for live streaming.
+
+### `r.ci`
+
+GitHub Actions OIDC federation over `/ci/v1/*`. V1 supports deploy-scoped bindings only.
+
+```
+createBinding(input: {
+  project_id: string,
+  provider: "github-actions",
+  subject_match: string,
+  allowed_actions: readonly ["deploy"],
+  allowed_events: readonly string[],
+  github_repository_id?: string | null,
+  expires_at?: string | null,
+  nonce: string,
+  signed_delegation: string,
+}): Promise<CiBindingRow>
+
+listBindings(input: { project: string }): Promise<{ bindings: CiBindingRow[] }>
+getBinding(bindingId: string): Promise<CiBindingRow>
+revokeBinding(bindingId: string): Promise<CiBindingRow>
+exchangeToken(input: { project_id: string, subject_token: string }): Promise<{
+  access_token: string,
+  token_type: "Bearer" | string,
+  expires_in: number,
+  scope: string,
+}>
+```
+
+`exchangeToken` fills the RFC 8693 grant constants internally:
+`grant_type = urn:ietf:params:oauth:grant-type:token-exchange` and
+`subject_token_type = urn:ietf:params:oauth:token-type:jwt`. It sends
+`withAuth: false`; credential-provider auth headers are intentionally omitted.
+
+`CiBindingRow` preserves gateway snake_case fields:
+
+```
+{
+  id, project_id, issuer, subject_match,
+  allowed_actions, allowed_events,
+  github_repository_id, created_by, nonce,
+  created_sig, created_at, expires_at, revoked_at,
+  last_used_at, use_count
+}
+```
+
+Canonical helper exports:
+
+```
+CI_GITHUB_ACTIONS_PROVIDER = "github-actions"
+CI_GITHUB_ACTIONS_ISSUER = "https://token.actions.githubusercontent.com"
+CI_AUDIENCE = "https://api.run402.com"
+DEFAULT_CI_DELEGATION_CHAIN_ID = "eip155:84532"
+V1_CI_ALLOWED_ACTIONS = ["deploy"]
+V1_CI_ALLOWED_EVENTS_DEFAULT = ["push", "workflow_dispatch"]
+
+normalizeCiDelegationValues(values): NormalizedCiDelegationValues
+buildCiDelegationStatement(values): string
+buildCiDelegationResourceUri(values): string
+validateCiSubjectMatch(subject): string
+validateCiNonce(nonce): string
+assertCiDeployableSpec(specOrPlanBody): void
+```
+
+Node-only CI exports from `@run402/sdk/node`:
+
+```
+signCiDelegation(values, opts?: {
+  apiBase?, allowancePath?, chainId?, issuedAt?, expirationTime?, nonce?
+}): string
+
+createCiSessionCredentials({
+  projectId, accessToken?, getAccessToken?
+}): CiMarkedCredentialsProvider
+
+githubActionsCredentials({
+  projectId, apiBase?, audience?, refreshBeforeSeconds?, fetch?
+}): CiMarkedCredentialsProvider
+
+isCiSessionCredentials(credentials): boolean
+```
+
+CI error-code unions include binding errors (`nonce_replay`, `delegation_statement_mismatch`, `signer_mismatch`, `duplicate`), token-exchange errors (`invalid_token`, `access_denied`, `event_not_allowed`, `repository_id_mismatch`, `ambiguous_binding`), and CI deploy errors (`payment_required`, `insufficient_scope`, `forbidden_spec_field`, `forbidden_plan`). Preserve unknown future strings as opaque gateway codes.
 
 ### `r.sites`
 
@@ -682,7 +824,7 @@ The SQL endpoint blocks: `CREATE EXTENSION`, `COPY ... PROGRAM`, `ALTER SYSTEM`,
 This package is `0.x` while the API surface stabilizes for `1.0`. Breaking changes may occur between minor versions. Pin an exact version in production dependencies:
 
 ```json
-{ "dependencies": { "@run402/sdk": "1.51.0" } }
+{ "dependencies": { "@run402/sdk": "1.54.4" } }
 ```
 
 The CLI (`run402`), MCP server (`run402-mcp`), `@run402/functions`, and the OpenClaw skill release in lockstep at the same version.

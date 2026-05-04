@@ -20,11 +20,11 @@ This monorepo ships every surface an agent can pick up:
 |---------|-----------|
 | [`@run402/sdk`](./sdk/) | Calling Run402 from TypeScript — typed kernel, isomorphic (Node 22 / Deno / Bun / V8 isolates) with a Node entry that auto-loads the local keystore + allowance + x402 fetch |
 | [`run402` CLI](./cli/) | Terminal, scripts, CI, agent-controlled shells — JSON in, JSON out, exit code on failure |
-| [`run402-mcp`](./src/) | Claude Desktop, Cursor, Cline, Claude Code — every CLI capability as an MCP tool |
+| [`run402-mcp`](./src/) | Claude Desktop, Cursor, Cline, Claude Code — core Run402 operations as MCP tools |
 | [OpenClaw skill](./openclaw/) | OpenClaw agents (no MCP server required) |
 | [`@run402/functions`](./functions/) | Imported _inside_ deployed functions (`db(req)`, `adminDb()`, `getUser()`, `email`, `ai`) and for TypeScript autocomplete in your editor |
 
-All four shipped surfaces release in lockstep at the same version and share a single typed kernel: `@run402/sdk`. MCP tools, CLI subcommands, and OpenClaw scripts are thin shims over SDK calls. Pick whichever interface fits your runtime.
+All five interfaces release in lockstep at the same version and share a single typed kernel where appropriate: `@run402/sdk`. MCP tools, CLI subcommands, and OpenClaw scripts are thin shims over SDK calls; `@run402/functions` is the in-function helper that runs inside deployed code. Pick whichever interface fits your runtime.
 
 ## 30-second start
 
@@ -127,6 +127,32 @@ CLI:
 run402 sites deploy-dir ./dist --project prj_… > result.json 2> events.log
 ```
 
+### GitHub Actions OIDC deploys — link once, deploy with the same CLI
+
+For repo-driven deploys, Run402 does not need service keys or allowance files in GitHub secrets. Run a local link command once:
+
+```bash
+run402 ci link github --project prj_... --manifest run402.deploy.json
+```
+
+That creates a deploy-scoped `/ci/v1/*` binding and writes a workflow that grants `id-token: write`, checks out the repo, and runs the existing deploy primitive:
+
+```yaml
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deploy to run402
+        run: npx --yes run402@1.54.4 deploy apply --manifest 'run402.deploy.json' --project 'prj_...'
+```
+
+CI deploys are intentionally narrow: `site`, `functions`, `database`, and absent/current `base` only. Keep secrets, domains, subdomains, routes, checks, and broader trust changes in a local allowance-backed deploy. Manage bindings with `run402 ci list` and `run402 ci revoke`.
+
 ### In-function helpers — caller-context vs BYPASSRLS
 
 Inside a deployed function, import from `@run402/functions`. Two distinct DB clients keep RLS clean:
@@ -201,7 +227,7 @@ const project = await r.projects.provision({ tier: "prototype" });
 await r.blobs.put(project.project_id, "hello.txt", { content: "hi" });
 ```
 
-19 namespaces: `projects`, `deploy`, `sites`, `blobs`, `functions`, `secrets`, `subdomains`, `domains`, `email` (+ `webhooks`), `senderDomain`, `auth`, `apps`, `tier`, `billing`, `contracts`, `ai`, `allowance`, `service`, `admin`. Every operation throws a typed `Run402Error` subclass on failure: `PaymentRequired`, `ProjectNotFound`, `Unauthorized`, `ApiError`, `NetworkError`, `LocalError`, `Run402DeployError`. See [`sdk/README.md`](./sdk/README.md).
+20 namespaces: `projects`, `deploy`, `ci`, `sites`, `blobs`, `functions`, `secrets`, `subdomains`, `domains`, `email` (+ `webhooks`), `senderDomain`, `auth`, `apps`, `tier`, `billing`, `contracts`, `ai`, `allowance`, `service`, `admin`. Every operation throws a typed `Run402Error` subclass on failure: `PaymentRequired`, `ProjectNotFound`, `Unauthorized`, `ApiError`, `NetworkError`, `LocalError`, `Run402DeployError`. See [`sdk/README.md`](./sdk/README.md).
 
 ## CLI — `run402`
 
@@ -219,6 +245,7 @@ run402 projects sql <id> "CREATE TABLE …"
 run402 projects apply-expose <id> --file manifest.json
 run402 sites deploy-dir ./dist
 run402 functions deploy <id> <name> --file fn.ts
+run402 ci link github --project <id>       # GitHub Actions OIDC deploy binding
 run402 blob put ./asset.png --immutable
 run402 blob diagnose <url>               # inspect live CDN state for a public URL
 run402 cdn wait-fresh <url> --sha <hex>  # poll until a mutable URL serves the new SHA

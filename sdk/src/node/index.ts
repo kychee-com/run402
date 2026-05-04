@@ -22,6 +22,7 @@
 
 import { getApiBase } from "../../core-dist/config.js";
 import { Run402, type Run402Options } from "../index.js";
+import type { CredentialsProvider } from "../credentials.js";
 import type { Client } from "../kernel.js";
 import { NodeCredentialsProvider } from "./credentials.js";
 import { createLazyPaidFetch } from "./paid-fetch.js";
@@ -34,6 +35,8 @@ export interface NodeRun402Options {
   keystorePath?: string;
   /** Override the allowance file path. Defaults to the standard location. */
   allowancePath?: string;
+  /** Override the credentials provider. Defaults to the local Node keystore + allowance provider. */
+  credentials?: CredentialsProvider;
   /**
    * Skip x402 payment wrapping and use `globalThis.fetch` directly. Useful in
    * tests or when the caller pre-wraps fetch with a custom scheme.
@@ -59,7 +62,7 @@ export type NodeRun402 = Omit<Run402, "sites"> & { sites: NodeSites };
 export function run402(opts: NodeRun402Options = {}): NodeRun402 {
   const runOpts: Run402Options = {
     apiBase: opts.apiBase ?? getApiBase(),
-    credentials: new NodeCredentialsProvider({
+    credentials: opts.credentials ?? new NodeCredentialsProvider({
       allowancePath: opts.allowancePath,
       keystorePath: opts.keystorePath,
     }),
@@ -83,6 +86,8 @@ export { NodeSites } from "./sites-node.js";
 export type { DeployDirOptions } from "./sites-node.js";
 export { fileSetFromDir, normalizeRelPath } from "./files.js";
 export type { FileSetFromDirOptions } from "./files.js";
+export { signCiDelegation } from "./ci.js";
+export type { SignCiDelegationOptions } from "./ci.js";
 export { NodeCredentialsProvider } from "./credentials.js";
 export { setupPaidFetch, createLazyPaidFetch } from "./paid-fetch.js";
 // Re-export the isomorphic surface so Node consumers don't need two imports.
@@ -96,8 +101,21 @@ export {
   NetworkError,
   LocalError,
   Run402DeployError,
+  Ci,
+  CI_SESSION_CREDENTIALS,
   Deploy,
   files,
+  CI_AUDIENCE,
+  CI_GITHUB_ACTIONS_ISSUER,
+  CI_GITHUB_ACTIONS_PROVIDER,
+  DEFAULT_CI_DELEGATION_CHAIN_ID,
+  V1_CI_ALLOWED_ACTIONS,
+  V1_CI_ALLOWED_EVENTS_DEFAULT,
+  assertCiDeployableSpec,
+  buildCiDelegationResourceUri,
+  buildCiDelegationStatement,
+  createCiSessionCredentials,
+  githubActionsCredentials,
   isRun402Error,
   isPaymentRequired,
   isProjectNotFound,
@@ -107,6 +125,10 @@ export {
   isLocalError,
   isDeployError,
   isRetryableRun402Error,
+  isCiSessionCredentials,
+  normalizeCiDelegationValues,
+  validateCiNonce,
+  validateCiSubjectMatch,
   withRetry,
 } from "../index.js";
 export type {
@@ -115,6 +137,26 @@ export type {
   ProjectKeys,
   RequestOptions,
   Client,
+  CiMarkedCredentialsProvider,
+  CreateCiSessionCredentialsOptions,
+  GithubActionsCredentialsOptions,
+  CiAllowedAction,
+  CiAllowedEvent,
+  CiBindingErrorCode,
+  CiBindingRow,
+  CiCreateBindingInput,
+  CiDelegationValues,
+  CiDeployErrorCode,
+  CiErrorCode,
+  CiListBindingsInput,
+  CiListBindingsResult,
+  CiProvider,
+  CiTokenExchangeErrorCode,
+  CiTokenExchangeInput,
+  CiTokenExchangeRequestBody,
+  CiTokenExchangeResponse,
+  NormalizedCiDelegationValues,
+  ParsedDelegation,
   Run402DeployErrorCode,
   Run402DeployErrorFix,
   Run402ErrorKind,

@@ -27,6 +27,7 @@ import { Email } from "./namespaces/email.js";
 import { Contracts } from "./namespaces/contracts.js";
 import { Admin } from "./namespaces/admin.js";
 import { Deploy } from "./namespaces/deploy.js";
+import { Ci } from "./namespaces/ci.js";
 import type { ContentSource, FileSet } from "./namespaces/deploy.types.js";
 import { ScopedRun402 } from "./scoped.js";
 import { LocalError } from "./errors.js";
@@ -65,6 +66,7 @@ export class Run402 {
   readonly contracts: Contracts;
   readonly admin: Admin;
   readonly deploy: Deploy;
+  readonly ci: Ci;
 
   readonly #client: Client;
 
@@ -126,6 +128,7 @@ export class Run402 {
     this.contracts = new Contracts(client);
     this.admin = new Admin(client);
     this.deploy = new Deploy(client);
+    this.ci = new Ci(client);
   }
 
   /**
@@ -241,8 +244,53 @@ export { withRetry } from "./retry.js";
 export type { RetryOptions } from "./retry.js";
 export type { CredentialsProvider, ProjectKeys } from "./credentials.js";
 export type { RequestOptions, Client } from "./kernel.js";
+export {
+  CI_SESSION_CREDENTIALS,
+  createCiSessionCredentials,
+  githubActionsCredentials,
+  isCiSessionCredentials,
+} from "./ci-credentials.js";
+export type {
+  CiMarkedCredentialsProvider,
+  CreateCiSessionCredentialsOptions,
+  GithubActionsCredentialsOptions,
+} from "./ci-credentials.js";
 export { Deploy } from "./namespaces/deploy.js";
+export {
+  Ci,
+  CI_AUDIENCE,
+  CI_GITHUB_ACTIONS_ISSUER,
+  CI_GITHUB_ACTIONS_PROVIDER,
+  DEFAULT_CI_DELEGATION_CHAIN_ID,
+  V1_CI_ALLOWED_ACTIONS,
+  V1_CI_ALLOWED_EVENTS_DEFAULT,
+  assertCiDeployableSpec,
+  buildCiDelegationResourceUri,
+  buildCiDelegationStatement,
+  normalizeCiDelegationValues,
+  validateCiNonce,
+  validateCiSubjectMatch,
+} from "./namespaces/ci.js";
 export { ScopedRun402 } from "./scoped.js";
+export type {
+  CiAllowedAction,
+  CiAllowedEvent,
+  CiBindingErrorCode,
+  CiBindingRow,
+  CiCreateBindingInput,
+  CiDelegationValues,
+  CiDeployErrorCode,
+  CiErrorCode,
+  CiListBindingsInput,
+  CiListBindingsResult,
+  CiProvider,
+  CiTokenExchangeErrorCode,
+  CiTokenExchangeInput,
+  CiTokenExchangeRequestBody,
+  CiTokenExchangeResponse,
+  NormalizedCiDelegationValues,
+  ParsedDelegation,
+} from "./namespaces/ci.types.js";
 export type {
   ApplyOptions,
   CommitResponse,

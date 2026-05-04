@@ -42,6 +42,7 @@ That's a real Postgres database + a deployed static site, paid for autonomously 
 | Run SQL on it | `run402 projects sql` |
 | Make a table reachable from the browser | `run402 projects apply-expose` |
 | Deploy a frontend from a directory | `run402 sites deploy-dir <path>` |
+| Link GitHub Actions deploys | `run402 ci link github` |
 | Stash a file with a paste-able CDN URL | `run402 blob put <file>` |
 | Run code on the server | `run402 functions deploy` |
 | Send email | `run402 email send` |
@@ -150,6 +151,31 @@ The manifest looks like this — note the `manifest.json` entry inside `files[]`
 The `manifest.json` entry is **auth-as-SDLC** — your authorization travels with your code. The gateway reads it, validates it against the migration SQL, applies it, and **strips it from `files[]` before the site deploys**, so it's never publicly reachable on your subdomain. The deploy response includes `manifest_applied: true` on success. If the manifest references a table the migration doesn't create, the deploy is rejected with HTTP 400 and a structured `errors` array listing every violation.
 
 Provision first (`run402 projects provision`) so you have the `anon_key` to embed in your HTML before deploying.
+
+### GitHub Actions OIDC deploys
+
+Link once locally, then let GitHub Actions run the same deploy command agents already use:
+
+```bash
+run402 ci link github --project prj_... --manifest run402.deploy.json
+git add .github/workflows/run402-deploy.yml run402.deploy.json
+git commit -m "Add run402 deploy workflow"
+```
+
+The generated workflow uses a pinned `run402@<current>` CLI via `npx`, includes `permissions: id-token: write` and `contents: read`, and runs:
+
+```bash
+run402 deploy apply --manifest run402.deploy.json --project prj_...
+```
+
+Useful follow-ups:
+
+```bash
+run402 ci list --project prj_...
+run402 ci revoke cib_...
+```
+
+V1 intentionally keeps the shape narrow: `push` and `workflow_dispatch` only, no PR deploy flags, no raw subject or wildcard flags, and no soft repository-id binding. Revocation stops future CI gateway requests but does not undo already-deployed code, stop in-flight deploy operations, rotate exfiltrated keys, or remove deployed functions.
 
 ## Authorization — the expose manifest
 

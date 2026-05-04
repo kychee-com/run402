@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { toChecksumAddress, formatSIWEMessage, getAllowanceAuthHeaders } from "./allowance-auth.js";
+import { toChecksumAddress, formatSIWEMessage, buildSIWxAuthHeaders, getAllowanceAuthHeaders } from "./allowance-auth.js";
 import { saveAllowance } from "./allowance.js";
 
 // Known test private key and derived address (do NOT use in production)
@@ -84,6 +84,48 @@ describe("formatSIWEMessage", () => {
     );
 
     assert.ok(msg.includes("Expiration Time: 2026-03-17T00:05:00.000Z"));
+  });
+
+  it("renders CAIP-2 chain ids and Resources in SIWE message format", () => {
+    const msg = formatSIWEMessage(
+      {
+        domain: "api.run402.com",
+        uri: "https://api.run402.com/ci/v1/bindings",
+        statement: "Authorize CI",
+        chainId: "eip155:84532",
+        nonce: "abc123def456abcd",
+        issuedAt: "2026-03-17T00:00:00.000Z",
+        expirationTime: "2026-03-17T00:05:00.000Z",
+        resources: ["run402-ci-delegation:v1?project_id=prj_abc"],
+      },
+      TEST_ADDRESS,
+    );
+
+    assert.ok(msg.includes("Chain ID: 84532"));
+    assert.ok(msg.includes("Resources:\n- run402-ci-delegation:v1?project_id=prj_abc"));
+  });
+});
+
+describe("buildSIWxAuthHeaders", () => {
+  it("signs a custom SIWX payload with Resources", () => {
+    const headers = buildSIWxAuthHeaders({
+      allowance: { address: TEST_ADDRESS, privateKey: TEST_PRIVATE_KEY },
+      domain: "api.run402.com",
+      uri: "https://api.run402.com/ci/v1/bindings",
+      statement: "Authorize CI",
+      chainId: "eip155:84532",
+      nonce: "abc123def456abcd",
+      issuedAt: "2026-03-17T00:00:00.000Z",
+      expirationTime: "2026-03-17T00:05:00.000Z",
+      resources: ["run402-ci-delegation:v1?project_id=prj_abc"],
+    });
+
+    const decoded = JSON.parse(Buffer.from(headers["SIGN-IN-WITH-X"], "base64").toString());
+    assert.equal(decoded.statement, "Authorize CI");
+    assert.equal(decoded.uri, "https://api.run402.com/ci/v1/bindings");
+    assert.equal(decoded.chainId, "eip155:84532");
+    assert.deepEqual(decoded.resources, ["run402-ci-delegation:v1?project_id=prj_abc"]);
+    assert.ok(decoded.signature.startsWith("0x"));
   });
 });
 

@@ -9,6 +9,7 @@ import { keccak_256 } from "@noble/hashes/sha3.js";
 import { bytesToHex } from "@noble/hashes/utils.js";
 import { readAllowance } from "./allowance.js";
 import { getApiBase } from "./config.js";
+import type { AllowanceData } from "./allowance.js";
 
 export interface SIWxAuthHeaders {
   "SIGN-IN-WITH-X": string;
@@ -73,11 +74,17 @@ interface SIWEMessageOpts {
   domain: string;
   uri: string;
   statement: string;
-  version: string;
-  chainId: number;
+  version?: string;
+  chainId: number | string;
   nonce: string;
   issuedAt: string;
   expirationTime?: string;
+  resources?: string[];
+}
+
+export interface SIWxAuthOptions extends SIWEMessageOpts {
+  allowance: Pick<AllowanceData, "address" | "privateKey">;
+  type?: "eip191";
 }
 
 /**
@@ -93,15 +100,45 @@ export function formatSIWEMessage(opts: SIWEMessageOpts, address: string): strin
     opts.statement,
     "",
     `URI: ${opts.uri}`,
-    `Version: ${opts.version}`,
-    `Chain ID: ${opts.chainId}`,
+    `Version: ${opts.version ?? "1"}`,
+    `Chain ID: ${messageChainId(opts.chainId)}`,
     `Nonce: ${opts.nonce}`,
     `Issued At: ${opts.issuedAt}`,
   ];
   if (opts.expirationTime) {
     lines.push(`Expiration Time: ${opts.expirationTime}`);
   }
+  if (opts.resources && opts.resources.length > 0) {
+    lines.push("Resources:");
+    for (const resource of opts.resources) lines.push(`- ${resource}`);
+  }
   return lines.join("\n");
+}
+
+export function buildSIWxAuthHeaders(opts: SIWxAuthOptions): SIWxAuthHeaders {
+  const message = formatSIWEMessage(opts, opts.allowance.address);
+  const signature = personalSign(opts.allowance.privateKey, opts.allowance.address, message);
+
+  const payload: Record<string, unknown> = {
+    domain: opts.domain,
+    address: toChecksumAddress(opts.allowance.address),
+    statement: opts.statement,
+    uri: opts.uri,
+    version: opts.version ?? "1",
+    chainId: payloadChainId(opts.chainId),
+    type: opts.type ?? "eip191",
+    nonce: opts.nonce,
+    issuedAt: opts.issuedAt,
+    expirationTime: opts.expirationTime,
+    signature,
+  };
+  if (opts.resources !== undefined) {
+    payload.resources = opts.resources;
+  }
+
+  return {
+    "SIGN-IN-WITH-X": Buffer.from(JSON.stringify(payload)).toString("base64"),
+  };
 }
 
 /**
@@ -128,37 +165,24 @@ export function getAllowanceAuthHeaders(path: string, allowancePath?: string): S
   const issuedAt = now.toISOString();
   const expirationTime = new Date(now.getTime() + 5 * 60 * 1000).toISOString();
 
-  const message = formatSIWEMessage(
-    {
-      domain,
-      uri,
-      statement: "Sign in to Run402",
-      version: "1",
-      chainId: 84532, // Base Sepolia
-      nonce,
-      issuedAt,
-      expirationTime,
-    },
-    allowance.address,
-  );
-
-  const signature = personalSign(allowance.privateKey, allowance.address, message);
-
-  const payload = {
+  return buildSIWxAuthHeaders({
+    allowance,
     domain,
-    address: toChecksumAddress(allowance.address),
-    statement: "Sign in to Run402",
     uri,
-    version: "1",
+    statement: "Sign in to Run402",
     chainId: "eip155:84532",
-    type: "eip191",
     nonce,
     issuedAt,
     expirationTime,
-    signature,
-  };
+  });
+}
 
-  return {
-    "SIGN-IN-WITH-X": Buffer.from(JSON.stringify(payload)).toString("base64"),
-  };
+function messageChainId(chainId: number | string): string {
+  if (typeof chainId === "number") return String(chainId);
+  const match = /^eip155:(\d+)$/.exec(chainId);
+  return match ? match[1]! : chainId;
+}
+
+function payloadChainId(chainId: number | string): string {
+  return typeof chainId === "number" ? `eip155:${chainId}` : chainId;
 }

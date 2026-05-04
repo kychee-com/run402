@@ -25,9 +25,10 @@
 
 import { readFileSync } from "node:fs";
 import { resolve, dirname, isAbsolute, join } from "node:path";
+import { githubActionsCredentials } from "#sdk/node";
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail } from "./sdk-errors.mjs";
-import { allowanceAuthHeaders, resolveProjectId } from "./config.mjs";
+import { API, allowanceAuthHeaders, getActiveProjectId, resolveProjectId } from "./config.mjs";
 
 const APPLY_HELP = `run402 deploy apply — Unified deploy primitive (v1.34+)
 
@@ -213,7 +214,10 @@ async function applyCmd(args) {
     });
   }
   if (opts.project) spec.project_id = opts.project;
-  if (!spec.project_id) spec.project_id = resolveProjectId(null);
+  const useGithubActionsOidc = hasGithubActionsOidcEnv();
+  if (!spec.project_id) {
+    spec.project_id = useGithubActionsOidc ? resolveCiProjectId() : resolveProjectId(null);
+  }
 
   // Translate { project_id, ... } envelope → ReleaseSpec ({ project, ... })
   // The SDK ReleaseSpec uses `project` rather than `project_id`; both shapes
@@ -222,18 +226,123 @@ async function applyCmd(args) {
   const releaseSpec = mapManifestToReleaseSpec(spec);
   const idempotencyKey = spec.idempotency_key;
 
-  // Preserve the aggressive early exit when no allowance is configured.
-  allowanceAuthHeaders("/deploy/v2/plans");
+  let sdkOpts;
+  if (useGithubActionsOidc) {
+    sdkOpts = {
+      credentials: githubActionsCredentials({ projectId: spec.project_id, apiBase: API }),
+      disablePaidFetch: true,
+    };
+  } else {
+    // Preserve the aggressive early exit when no allowance is configured.
+    allowanceAuthHeaders("/deploy/v2/plans");
+  }
 
   try {
-    const result = await getSdk().deploy.apply(releaseSpec, {
+    const result = await getSdk(sdkOpts).deploy.apply(releaseSpec, {
       onEvent: makeStderrEventWriter(opts.quiet),
       idempotencyKey,
     });
     console.log(JSON.stringify({ status: "ok", ...result }, null, 2));
   } catch (err) {
-    reportSdkError(err);
+    reportDeployApplyError(err, useGithubActionsOidc);
   }
+}
+
+function hasGithubActionsOidcEnv(env = process.env) {
+  return env.GITHUB_ACTIONS === "true" &&
+    Boolean(env.ACTIONS_ID_TOKEN_REQUEST_URL) &&
+    Boolean(env.ACTIONS_ID_TOKEN_REQUEST_TOKEN);
+}
+
+function resolveCiProjectId(env = process.env) {
+  const projectId = getActiveProjectId() || env.RUN402_PROJECT_ID;
+  if (!projectId) {
+    fail({
+      code: "CI_PROJECT_REQUIRED",
+      message: "GitHub Actions OIDC deploy requires a project id.",
+      hint: "Pass --project <prj_...> in the workflow command, include project_id in the manifest, or set RUN402_PROJECT_ID.",
+      details: { sources: ["--project", "manifest.project_id", "active_project", "RUN402_PROJECT_ID"] },
+    });
+  }
+  return projectId;
+}
+
+const CI_DEPLOY_ERROR_GUIDANCE = {
+  invalid_token: {
+    hint: "Ensure the workflow has permissions: id-token: write and is running in the repository/branch linked with run402 ci link github.",
+    next_actions: [
+      "Check the workflow permissions block includes id-token: write.",
+      "Re-run run402 ci link github if the repository, branch, or environment changed.",
+    ],
+  },
+  access_denied: {
+    hint: "The OIDC token was valid, but no active Run402 CI binding allowed this workflow.",
+    next_actions: [
+      "Run run402 ci list --project <prj_...> locally to inspect bindings.",
+      "Run run402 ci link github again for this repository/branch/environment.",
+    ],
+  },
+  event_not_allowed: {
+    hint: "This binding only allows push and workflow_dispatch events in v1.",
+    next_actions: [
+      "Trigger the workflow with push or workflow_dispatch.",
+      "Create a separate follow-up design before enabling PR deploy events.",
+    ],
+  },
+  repository_id_mismatch: {
+    hint: "The GitHub repository id in the OIDC token does not match the linked binding.",
+    next_actions: [
+      "Run run402 ci link github again from the current repository.",
+      "If automatic lookup fails, pass --repository-id with the numeric GitHub repository id.",
+    ],
+  },
+  forbidden_spec_field: {
+    hint: "CI deploys in v1 can deploy site/functions/database content only; link locally for secrets, routes, subdomains, checks, or oversized manifests.",
+    next_actions: [
+      "Remove forbidden fields such as secrets, routes, subdomains, or checks from the CI manifest.",
+      "Keep the normalized manifest small enough to avoid manifest_ref.",
+    ],
+  },
+  forbidden_plan: {
+    hint: "The gateway rejected this deploy plan for CI. Keep CI deploys to the v1 allowed resources and re-link if policy changed.",
+    next_actions: [
+      "Inspect the gateway error details for the rejected resource.",
+      "Run the deploy locally with run402 deploy apply for operations outside the CI allowlist.",
+    ],
+  },
+  payment_required: {
+    hint: "The project tier or payment state does not allow this CI deploy.",
+    next_actions: [
+      "Run run402 tier status --project <prj_...> locally.",
+      "Renew or upgrade the project tier, then re-run the workflow.",
+    ],
+  },
+};
+
+function reportDeployApplyError(err, useGithubActionsOidc) {
+  if (!useGithubActionsOidc) return reportSdkError(err);
+  return reportSdkError(enhanceCiDeployError(err));
+}
+
+function enhanceCiDeployError(err) {
+  const existingBody = err?.body && typeof err.body === "object" && !Array.isArray(err.body)
+    ? err.body
+    : {};
+  const code = existingBody.code || err?.code || (err?.status === 402 ? "payment_required" : null);
+  const guidance = code ? CI_DEPLOY_ERROR_GUIDANCE[code] : null;
+  if (!guidance) return err;
+
+  const enhanced = Object.assign(new Error(err?.message || existingBody.message || String(code)), err);
+  enhanced.body = {
+    ...existingBody,
+    code,
+    message: existingBody.message || err?.message || "GitHub Actions OIDC deploy failed.",
+    hint: existingBody.hint || guidance.hint,
+    next_actions: Array.isArray(existingBody.next_actions) && existingBody.next_actions.length > 0
+      ? existingBody.next_actions
+      : guidance.next_actions,
+  };
+  return enhanced;
 }
 
 async function resumeCmd(args) {

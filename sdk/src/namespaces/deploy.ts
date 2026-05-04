@@ -20,11 +20,15 @@
  */
 
 import type { Client } from "../kernel.js";
+import { isCiSessionCredentials } from "../ci-credentials.js";
+import { assertCiDeployableSpec } from "./ci.js";
 import {
   ApiError,
   LocalError,
   NetworkError,
+  PaymentRequired,
   Run402DeployError,
+  Unauthorized,
   type Run402DeployErrorCode,
   type Run402DeployErrorFix,
 } from "../errors.js";
@@ -318,6 +322,8 @@ async function planInternal(
   spec: ReleaseSpec,
   idempotencyKey?: string,
 ): Promise<{ plan: PlanResponse; byteReaders: Map<string, ByteReader> }> {
+  const ciCredentials = isCiClient(client);
+  if (ciCredentials) assertCiDeployableSpec(spec);
   validateSpec(spec);
 
   const { normalized, byteReaders } = await normalizeReleaseSpec(client, spec);
@@ -335,6 +341,18 @@ async function planInternal(
   if (inlineBytes <= PLAN_BODY_LIMIT_BYTES) {
     body = inlineBody;
   } else {
+    if (ciCredentials) {
+      throw new Run402DeployError(
+        "CI deploys must use inline specs under the gateway body cap; the normalized deploy plan would require manifest_ref.",
+        {
+          code: "forbidden_spec_field",
+          phase: "validate",
+          resource: "manifest_ref",
+          retryable: false,
+          context: "validating CI deploy spec",
+        },
+      );
+    }
     // Upload the normalized manifest itself as a CAS object so the gateway
     // can pick it up via `manifest_ref`. The body still carries a minimal
     // `spec` so the gateway has the project for auth + plan persistence.
@@ -411,6 +429,7 @@ async function uploadMissing(
   // refs, it issues an upload session per ref with presigned PUT URLs,
   // then we PUT the bytes and commit the content plan.
   const headers = await apikeyHeaders(client, projectId);
+  const ciCredentials = isCiClient(client);
 
   const contentRequest = needsUpload.map((p) => {
     const reader = byteReaders.get(p.sha256);
@@ -426,7 +445,9 @@ async function uploadMissing(
     {
       method: "POST",
       headers,
-      body: { content: contentRequest },
+      body: ciCredentials
+        ? { project_id: projectId, content: contentRequest }
+        : { content: contentRequest },
       context: "planning content upload",
     },
   );
@@ -450,29 +471,28 @@ async function uploadMissing(
     const bytes = await reader();
     await uploadOneWithRetry(client.fetch, session, bytes);
 
-    // Per-session completion — promotes the staged object to CAS via
-    // services/cas-promote.ts. The plan-level `/content/v1/plans/:id/commit`
-    // call below is the plan-level finalize; per-session promotion happens
-    // here through the existing /storage/v1/uploads/:id/complete handler,
-    // which knows how to handle `kind='cas'` sessions and write the
-    // internal.content_objects + internal.plan_claims rows the deploy
-    // commit's FK constraints rely on.
-    const completeBody: Record<string, unknown> = {};
-    if (session.mode === "multipart" && session.parts.length > 1) {
-      // Multipart completion needs per-part ETags. The SDK doesn't capture
-      // ETags during the PUT loop today (it would need a multi-PUT
-      // helper); for the common single-PUT case below this is empty.
-      // TODO: collect part ETags during uploadOne for true multipart.
+    if (!ciCredentials) {
+      // Per-session completion — legacy non-CI promotion path via
+      // /storage/v1/uploads/:id/complete. CI sessions skip this route because
+      // the gateway contract only allows /content/v1/plans*; under CI the
+      // plan-level content commit performs the CAS promotion.
+      const completeBody: Record<string, unknown> = {};
+      if (session.mode === "multipart" && session.parts.length > 1) {
+        // Multipart completion needs per-part ETags. The SDK doesn't capture
+        // ETags during the PUT loop today (it would need a multi-PUT
+        // helper); for the common single-PUT case below this is empty.
+        // TODO: collect part ETags during uploadOne for true multipart.
+      }
+      await client.request<unknown>(
+        `/storage/v1/uploads/${encodeURIComponent(session.upload_id)}/complete`,
+        {
+          method: "POST",
+          headers,
+          body: completeBody,
+          context: "completing content upload session",
+        },
+      );
     }
-    await client.request<unknown>(
-      `/storage/v1/uploads/${encodeURIComponent(session.upload_id)}/complete`,
-      {
-        method: "POST",
-        headers,
-        body: completeBody,
-        context: "completing content upload session",
-      },
-    );
 
     done += 1;
     emit({
@@ -1374,9 +1394,14 @@ async function apikeyHeaders(
   client: Client,
   projectId: string,
 ): Promise<Record<string, string>> {
+  if (isCiClient(client)) return {};
   const project = await client.getProject(projectId);
   if (!project) return {};
   return { apikey: project.anon_key };
+}
+
+function isCiClient(client: Client): boolean {
+  return isCiSessionCredentials(client.credentials);
 }
 
 function makeEmitter(
@@ -1553,6 +1578,9 @@ function translateDeployError(
   // Re-throw other Run402Error subclasses (PaymentRequired, Unauthorized, etc.)
   // as-is — the consumer handles them at a different layer than
   // deploy-state-machine errors.
+  if (err instanceof PaymentRequired || err instanceof Unauthorized) {
+    throw err;
+  }
   if (err instanceof Error) {
     return new Run402DeployError(err.message, {
       code: "INTERNAL_ERROR",

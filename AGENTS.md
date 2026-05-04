@@ -67,7 +67,7 @@ When adding a new tool/command, add it to the `SURFACE` array **and** `SDK_BY_CA
 ## Architecture
 
 ```
-@run402/sdk  (typed TypeScript kernel — 19 namespaces, ~100 methods)
+@run402/sdk  (typed TypeScript kernel — 20 namespaces, ~100 methods)
    │
    │   /index.ts    (isomorphic: Node + sandbox)
    │   /node        (Node-only: keystore + allowance + x402-wrapped fetch + fileSetFromDir)
@@ -92,7 +92,7 @@ The SDK is the canonical kernel — a single typed client with a `CredentialsPro
 - **`kernel.ts`** — Request function, `Client` interface. Only place that calls `globalThis.fetch`.
 - **`errors.ts`** — `Run402Error` hierarchy: `PaymentRequired`, `ProjectNotFound`, `Unauthorized`, `ApiError`, `NetworkError`, `Run402DeployError` (the v1.34+ structured envelope from the deploy state machine). Never calls `process.exit`.
 - **`credentials.ts`** — `CredentialsProvider` interface. Required: `getAuth`, `getProject`. Optional: `saveProject`, `updateProject`, `removeProject`, `setActiveProject`, `getActiveProject`, `readAllowance`, `saveAllowance`, `createAllowance`, `getAllowancePath`.
-- **`namespaces/*.ts`** — One class per resource group (projects, blobs, functions, email, …). Namespaces hold a `Client` and expose typed methods. The canonical deploy primitive lives at **`namespaces/deploy.ts`** (with shared types in `deploy.types.ts`) — see "Unified Deploy" below.
+- **`namespaces/*.ts`** — One class per resource group (projects, blobs, functions, email, CI/OIDC, …). Namespaces hold a `Client` and expose typed methods. The canonical deploy primitive lives at **`namespaces/deploy.ts`** (with shared types in `deploy.types.ts`) — see "Unified Deploy" below.
 - **`node/*.ts`** — Node-only entry point (`@run402/sdk/node`). Wraps `core/` keystore + allowance into `NodeCredentialsProvider`. Sets up x402-wrapped fetch via `createLazyPaidFetch()`. Adds `fileSetFromDir(path)` for filesystem byte sources to the deploy primitive.
 - **`scoped.ts`** — `ScopedRun402` sub-client. Returned by `r.project(id?)` and `r.useProject(id)`. Wraps every project-id-bearing namespace method with the id pre-bound, so `p.deploy.apply({ site })` (no `project`), `p.functions.list()`, `p.blobs.put(key, src)` all "just work" once the scope is set. Caller-supplied `project_id` / `project` still wins (override-friendly). The unwrapped namespaces (`r.deploy`, `r.functions`, …) keep their required-id signatures unchanged — scoped is sugar, not a replacement.
 
@@ -115,6 +115,14 @@ The SDK is the canonical kernel — a single typed client with a `CredentialsPro
 - **Server-authoritative manifest digest.** The gateway returns the canonical digest in the plan response. The SDK no longer requires byte-for-byte canonicalize agreement — `canonicalize.ts` is now a UX helper only.
 - **Backward-compat shims.** `apps.bundleDeploy` translates legacy options into a `ReleaseSpec` and delegates to `deploy.apply` (the `inherit: true` flag is silently ignored — deprecation is preserved in the JSDoc only, the runtime warning was removed in #162 because it misled callers when an unrelated error followed). `sites.deployDir` is a thin wrapper that uses `fileSetFromDir(dir)` and synthesizes both unified `DeployEvent` shapes and the legacy `{ phase: ... }` shapes for v1.32-era event consumers.
 - **MCP/CLI surface.** `deploy` and `deploy_resume` MCP tools (in `src/tools/deploy.ts` and `src/tools/deploy-resume.ts`) expose the new primitive directly. CLI subcommands `run402 deploy apply` and `run402 deploy resume` (in `cli/lib/deploy-v2.mjs`) mirror them. The legacy `bundle_deploy`/`deploy_site`/`deploy_site_dir` MCP tools and `run402 deploy --manifest` CLI continue to work and route through the same SDK shim.
+
+### CI/OIDC Federation (GitHub Actions)
+
+- **`namespaces/ci.ts`** — `/ci/v1/*` SDK surface: `createBinding`, `listBindings`, `getBinding`, `revokeBinding`, `exchangeToken`, plus canonical delegation builders (`buildCiDelegationStatement`, `buildCiDelegationResourceUri`) and validators.
+- **`ci-credentials.ts`** — isomorphic CI-session credential providers. `githubActionsCredentials({ projectId })` requests the GitHub OIDC subject token, exchanges it through `ci.exchangeToken`, caches the Run402 session until `expires_in - refreshBeforeSeconds`, and marks credentials with `CI_SESSION_CREDENTIALS`.
+- **`node/ci.ts`** — Node-only `signCiDelegation(values, opts?)`; reads the local allowance and signs the canonical SIWX delegation for `/ci/v1/bindings`. Default delegation chain id is `eip155:84532` unless overridden.
+- **Deploy integration is credential-driven.** `Deploy` detects the CI credential marker internally. Do not add public `ci` options, `r.ci.deployApply`, or broad MCP wrappers without a new design. CI deploys allow only `project`, `database`, `functions`, `site`, and absent/current `base`; secrets, subdomains, routes, checks, unknown top-level fields, non-current base, and `manifest_ref` are rejected before upload/plan.
+- **CLI DX.** `run402 ci link github` creates a deploy-scoped binding and generated workflow that calls `run402 deploy apply --manifest <manifest> --project <project>`. `run402 ci list` and `run402 ci revoke` manage bindings. V1 intentionally omits raw subject/wildcard/event/PR-deploy flags and requires GitHub repository-id binding.
 
 ### Shared Core (`core/src/`)
 
@@ -154,6 +162,7 @@ Core functions return `null` or throw — they never call `process.exit()`. Each
 - **`cli/lib/blob.mjs`** retains raw `fetch` for the `put` subcommand only — resumable uploads + per-part concurrency are CLI-specific UX not modeled in the SDK.
 - **`cli/lib/deploy.mjs`** delegates to `getSdk().apps.bundleDeploy(...)` (the v2 shim). The legacy custom undici dispatcher and retry-on-5xx logic was retired with the v1 route removal — v2 doesn't ship inline bytes, so the long-timeout rationale no longer applies.
 - **`cli/lib/deploy-v2.mjs`** — `run402 deploy apply` and `run402 deploy resume` subcommands. Thin wrapper over `r.deploy.apply` / `r.deploy.resume`.
+- **`cli/lib/ci.mjs`** — `run402 ci link github`, `run402 ci list`, and `run402 ci revoke`. Link signs the canonical delegation locally, verifies/inserts the GitHub repository id, and writes a workflow using GitHub OIDC (`permissions: id-token: write`) plus the existing `deploy apply` command.
 
 ### OpenClaw (`openclaw/`)
 

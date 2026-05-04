@@ -9,6 +9,6 @@
 
 import { run402 } from "#sdk/node";
 
-export function getSdk() {
-  return run402();
+export function getSdk(opts = {}) {
+  return run402(opts);
 }

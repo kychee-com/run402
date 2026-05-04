@@ -26,6 +26,7 @@ Commands:
   tier        Manage tier subscription (status, set)
   projects    Manage projects (provision, list, query, inspect, delete)
   deploy      Deploy a full-stack app or static site (requires active tier)
+  ci          Link GitHub Actions OIDC deploy bindings
   functions   Manage serverless functions (deploy, invoke, logs, list, delete)
   secrets     Manage project secrets (set, list, delete)
   blob        Direct-to-S3 blob storage (put, get, ls, rm, sign, diagnose) — up to 5 TiB
@@ -62,6 +63,7 @@ Getting started:
   run402 init mpp           Set up with MPP (Tempo Moderato)
   run402 tier set prototype  Subscribe to a tier
   run402 deploy --manifest app.json
+  run402 ci link github --project prj_... --manifest run402.deploy.json
 `;
 
 if (cmd === '--version' || cmd === '-v') {
@@ -120,6 +122,11 @@ switch (cmd) {
   case "deploy": {
     const { run } = await import("./lib/deploy.mjs");
     await run([sub, ...rest].filter(Boolean));
+    break;
+  }
+  case "ci": {
+    const { run } = await import("./lib/ci.mjs");
+    await run(sub, rest);
     break;
   }
   case "functions": {

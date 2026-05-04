@@ -171,6 +171,9 @@ describe("openclaw/SKILL.md (CLI-based)", () => {
       "run402 projects sql",
       "run402 projects apply-expose",
       "run402 sites deploy-dir",
+      "run402 ci link github",
+      "run402 ci list",
+      "run402 ci revoke",
       "run402 blob put",
       "run402 tier set",
     ];

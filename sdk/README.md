@@ -54,12 +54,13 @@ const r = new Run402({
 
 The `CredentialsProvider` interface has two required methods (`getAuth`, `getProject`) plus optional ones (`saveProject`, `removeProject`, `setActiveProject`, `readAllowance`, `saveAllowance`, …) for hosts that want full sticky-default behavior.
 
-## Namespaces (19)
+## Namespaces (20)
 
 | Namespace | Highlights |
 |---|---|
 | `projects` | `provision`, `delete`, `list`, `sql`, `rest`, `applyExpose`, `getExpose`, `getUsage`, `getSchema`, `info`, `keys`, `use`, `active`, `pin`, `getQuote` |
 | `deploy` | **The unified deploy primitive (v1.34+).** `apply` / `start` / `resume` / `status` / `list` / `events` / `getRelease` / `diff` / `plan` / `upload` / `commit` |
+| `ci` | GitHub Actions OIDC federation over `/ci/v1/*`: `createBinding`, `listBindings`, `getBinding`, `revokeBinding`, `exchangeToken`; plus canonical delegation helpers |
 | `sites` | `deployDir` — Node entry only (`@run402/sdk/node`); thin wrapper over `r.deploy.apply` |
 | `blobs` | `put` (returns `AssetRef` with `cdnUrl` / `sri` / `etag` / `cacheKind` and `scriptTag()`/`linkTag()`/`imgTag()` emitters), `get`, `ls`, `rm`, `sign`, `diagnoseUrl`, `waitFresh` |
 | `functions` | `deploy`, `invoke`, `logs`, `update`, `list`, `delete` |
@@ -158,6 +159,61 @@ const resumed = await r.deploy.resume(operationId);
     subdomains: { set: ["my-app"] },
   });
   ```
+
+### GitHub Actions OIDC — CI credentials drive deploy
+
+The v1 CI path keeps the deploy primitive simple: link a GitHub repository once, then call the existing `r.deploy.apply` with CI-marked credentials. There is no separate `r.ci.deployApply` method and no public `ci: true` deploy option.
+
+The CLI is the easiest setup path (`run402 ci link github`), but the SDK exposes the building blocks:
+
+```ts
+import {
+  CI_GITHUB_ACTIONS_PROVIDER,
+  V1_CI_ALLOWED_ACTIONS,
+  V1_CI_ALLOWED_EVENTS_DEFAULT,
+  run402,
+  signCiDelegation,
+} from "@run402/sdk/node";
+
+const values = {
+  project_id: projectId,
+  subject_match: "repo:owner/name:ref:refs/heads/main",
+  allowed_actions: V1_CI_ALLOWED_ACTIONS,
+  allowed_events: V1_CI_ALLOWED_EVENTS_DEFAULT,
+  github_repository_id: "123456789",
+  expires_at: null,
+  nonce: "0123456789abcdef0123456789abcdef",
+};
+
+const r = run402({ disablePaidFetch: true });
+const signed_delegation = signCiDelegation(values);
+await r.ci.createBinding({
+  ...values,
+  provider: CI_GITHUB_ACTIONS_PROVIDER,
+  signed_delegation,
+});
+```
+
+Inside GitHub Actions, use `githubActionsCredentials`. It reads GitHub's OIDC environment, exchanges the subject token through `r.ci.exchangeToken`, caches the Run402 session until `expires_in - refreshBeforeSeconds`, and marks the credentials so deploy uses CI Bearer auth:
+
+```ts
+import { githubActionsCredentials, run402, type ReleaseSpec } from "@run402/sdk/node";
+
+const r = run402({
+  credentials: githubActionsCredentials({ projectId }),
+  disablePaidFetch: true,
+});
+
+const ciSpec: ReleaseSpec = {
+  project: projectId,
+  base: { release: "current" },
+  site: { patch: { put: { "index.html": "<h1>ship</h1>" } } },
+};
+
+await r.deploy.apply(ciSpec);
+```
+
+CI deploys intentionally allow only `project`, `database`, `functions`, `site`, and absent/current `base`. They reject `secrets`, `subdomains`, `routes`, `checks`, unknown future top-level fields, and specs large enough to require `manifest_ref`. Use the canonical builders (`buildCiDelegationStatement`, `buildCiDelegationResourceUri`) instead of hand-rolling SIWX text; gateway tests pin those strings as golden vectors.
 
 ### Errors
 

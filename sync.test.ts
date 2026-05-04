@@ -59,7 +59,7 @@ function parseSubcommands(filePath: string): string[] {
 /** Parse CLI commands as "module:subcommand" pairs */
 function parseCliCommands(): string[] {
   const cmds: string[] = [];
-  for (const mod of ["allowance", "tier", "projects", "image", "storage", "blob", "cdn", "functions", "secrets", "sites", "subdomains", "domains", "apps", "email", "message", "agent", "ai", "auth", "sender-domain", "billing", "contracts", "webhooks", "service", "deploy"]) {
+  for (const mod of ["allowance", "tier", "projects", "image", "storage", "blob", "cdn", "functions", "secrets", "sites", "subdomains", "domains", "apps", "email", "message", "agent", "ai", "auth", "sender-domain", "billing", "contracts", "webhooks", "service", "deploy", "ci"]) {
     for (const sub of parseSubcommands(join(__dirname, "cli/lib", `${mod}.mjs`))) {
       cmds.push(`${mod}:${sub}`);
     }
@@ -73,7 +73,7 @@ function parseCliCommands(): string[] {
 /** Parse OpenClaw commands as "module:subcommand" pairs */
 function parseOpenClawCommands(): string[] {
   const cmds: string[] = [];
-  for (const mod of ["allowance", "tier", "projects", "image", "storage", "blob", "cdn", "functions", "secrets", "sites", "subdomains", "domains", "apps", "email", "message", "agent", "ai", "auth", "sender-domain", "billing", "contracts", "webhooks", "service", "deploy"]) {
+  for (const mod of ["allowance", "tier", "projects", "image", "storage", "blob", "cdn", "functions", "secrets", "sites", "subdomains", "domains", "apps", "email", "message", "agent", "ai", "auth", "sender-domain", "billing", "contracts", "webhooks", "service", "deploy", "ci"]) {
     for (const sub of parseSubcommands(join(__dirname, "openclaw/scripts", `${mod}.mjs`))) {
       cmds.push(`${mod}:${sub}`);
     }
@@ -200,6 +200,11 @@ const SURFACE: Capability[] = [
   { id: "deploy_resume",     endpoint: "POST /deploy/v2/operations/:id/resume",            mcp: "deploy_resume",     cli: "deploy:resume",     openclaw: "deploy:resume" },
   { id: "deploy_list",       endpoint: "GET /deploy/v2/operations",                        mcp: "deploy_list",       cli: "deploy:list",       openclaw: "deploy:list" },
   { id: "deploy_events",     endpoint: "GET /deploy/v2/operations/:id/events",             mcp: "deploy_events",     cli: "deploy:events",     openclaw: "deploy:events" },
+
+  // ── CI/OIDC federation (CLI v1; MCP intentionally deferred) ─────────────
+  { id: "ci_link_github",    endpoint: "POST /ci/v1/bindings",                              mcp: null,                cli: "ci:link",          openclaw: "ci:link" },
+  { id: "ci_list_bindings",  endpoint: "GET /ci/v1/bindings",                               mcp: null,                cli: "ci:list",          openclaw: "ci:list" },
+  { id: "ci_revoke_binding", endpoint: "POST /ci/v1/bindings/:id/revoke",                   mcp: null,                cli: "ci:revoke",        openclaw: "ci:revoke" },
 
   // ── Marketplace ──────────────────────────────────────────────────────────
   { id: "browse_apps",       endpoint: "GET /apps/v1",                              mcp: "browse_apps",   cli: "apps:browse",   openclaw: "apps:browse" },
@@ -375,6 +380,9 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   deploy_resume: "deploy.resume",
   deploy_list: "deploy.list",
   deploy_events: "deploy.events",
+  ci_link_github: "ci.createBinding",
+  ci_list_bindings: "ci.listBindings",
+  ci_revoke_binding: "ci.revokeBinding",
 
   // Bundle / marketplace
   bundle_deploy: "apps.bundleDeploy",
@@ -711,6 +719,10 @@ describe("SDK surface alignment", () => {
       "deploy.status",
       "deploy.getRelease",
       "deploy.diff",
+      // CI token exchange is intentionally credential-helper-only in v1.
+      // `getBinding` is SDK/debug surface; public CLI exposes list/revoke.
+      "ci.getBinding",
+      "ci.exchangeToken",
     ]);
 
     const sdkMethods = await listSdkMethods();

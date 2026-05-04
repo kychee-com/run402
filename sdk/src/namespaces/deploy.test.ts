@@ -16,7 +16,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { Deploy } from "./deploy.js";
+import { createCiSessionCredentials } from "../ci-credentials.js";
 import type { Client, RequestOptions } from "../kernel.js";
+import type { CredentialsProvider } from "../credentials.js";
 import type {
   CommitResponse,
   OperationSnapshot,
@@ -53,7 +55,14 @@ interface FakeWiring {
   setS3Handler(fn: (url: string, body: Uint8Array, checksum: string | null) => Response): void;
 }
 
-function makeWiring(): FakeWiring {
+function defaultCreds(): CredentialsProvider {
+  return {
+    getAuth: async () => null,
+    getProject: async () => ({ anon_key: "ak", service_key: "sk" }),
+  };
+}
+
+function makeWiring(credentials: CredentialsProvider = defaultCreds()): FakeWiring {
   const requests: RecordedRequest[] = [];
   const puts: RecordedPut[] = [];
   let handler: (req: RecordedRequest) => unknown = () => {
@@ -65,20 +74,19 @@ function makeWiring(): FakeWiring {
   const client: Client = {
     apiBase: "https://test.run402.test",
     request: async <T>(path: string, opts: RequestOptions): Promise<T> => {
+      const auth = opts.withAuth === false ? null : await credentials.getAuth(path);
+      const headers = { ...(auth ?? {}), ...(opts.headers as Record<string, string> | undefined) };
       const recorded: RecordedRequest = {
         path,
         method: opts.method,
         body: opts.body,
-        headers: opts.headers as Record<string, string> | undefined,
+        headers,
       };
       requests.push(recorded);
       return handler(recorded) as T;
     },
-    getProject: async () => ({ anon_key: "ak", service_key: "sk" }),
-    credentials: {
-      getAuth: async () => null,
-      getProject: async () => ({ anon_key: "ak", service_key: "sk" }),
-    },
+    getProject: (id: string) => credentials.getProject(id),
+    credentials,
     fetch: (async (url: string | URL | Request, init?: RequestInit) => {
       const u = typeof url === "string" ? url : url.toString();
       const body = init?.body as ArrayBuffer | Uint8Array;
@@ -179,7 +187,8 @@ describe("Deploy.apply (happy path)", () => {
     // Content plan request: no project_id (apikey identifies project).
     const contentReq = w.requests.find((r) => r.path === "/content/v1/plans");
     assert(contentReq, "content plan request was issued");
-    const contentBody = contentReq.body as { content: Array<{ sha256: string; size: number }> };
+    const contentBody = contentReq.body as { project_id?: string; content: Array<{ sha256: string; size: number }> };
+    assert.equal(contentBody.project_id, undefined);
     assert.equal(contentBody.content[0].sha256, indexSha);
     assert.equal(contentBody.content[0].size, html.length);
 
@@ -188,6 +197,175 @@ describe("Deploy.apply (happy path)", () => {
     assert.equal(w.puts[0].url, "https://s3.example/upload?part=1");
     assert.equal(w.puts[0].checksum, shaBase64Hex(indexSha));
     assert.equal(new TextDecoder().decode(w.puts[0].body), html);
+  });
+
+  it("uses CI Bearer auth, includes project_id for content planning, and avoids storage-complete route", async () => {
+    const w = makeWiring(createCiSessionCredentials({
+      projectId: "prj_test",
+      accessToken: "ci-session",
+    }));
+    const html = "<html><body>ci</body></html>";
+    const indexSha = shaHex(html);
+
+    const plan: PlanResponse = {
+      plan_id: "plan_ci",
+      operation_id: "op_ci",
+      base_release_id: null,
+      manifest_digest: "ci",
+      missing_content: [
+        { sha256: indexSha, size: html.length, present: false },
+      ],
+      diff: { resources: { site: { added: 1 } } },
+    };
+    const contentPlan = {
+      plan_id: "cplan_ci",
+      expires_at: new Date(Date.now() + 3600_000).toISOString(),
+      missing: [
+        {
+          sha256: indexSha,
+          mode: "single",
+          parts: [
+            {
+              part_number: 1,
+              url: "https://s3.example/ci-upload?part=1",
+              byte_start: 0,
+              byte_end: html.length - 1,
+            },
+          ],
+          part_size_bytes: html.length,
+          part_count: 1,
+          upload_id: "u_ci",
+          staging_key: "_staging/u_ci/" + indexSha,
+          expires_at: new Date(Date.now() + 3600_000).toISOString(),
+        },
+      ],
+      entries: [{ sha256: indexSha, missing: true }],
+    };
+    const commit: CommitResponse = {
+      operation_id: "op_ci",
+      status: "ready",
+      release_id: "rel_ci",
+      urls: { site: "https://ci.run402.test" },
+    };
+
+    w.setHandler((req) => {
+      assert.equal(req.headers?.Authorization, "Bearer ci-session");
+      assert.equal(req.headers?.apikey, undefined);
+      if (req.path === "/deploy/v2/plans") return plan;
+      if (req.path === "/content/v1/plans") return contentPlan;
+      if (req.path === "/content/v1/plans/cplan_ci/commit") return {};
+      if (req.path === "/deploy/v2/plans/plan_ci/commit") return commit;
+      if (req.path.startsWith("/storage/v1/uploads/")) {
+        throw new Error("CI deploy must not call storage upload completion");
+      }
+      throw new Error(`unexpected path ${req.path}`);
+    });
+
+    const deploy = new Deploy(w.client);
+    const result = await deploy.apply({
+      project: "prj_test",
+      site: { replace: { "index.html": html } },
+    });
+
+    assert.equal(result.release_id, "rel_ci");
+    const contentReq = w.requests.find((r) => r.path === "/content/v1/plans");
+    assert(contentReq, "content plan request was issued");
+    assert.deepEqual((contentReq.body as { project_id: string }).project_id, "prj_test");
+    assert.equal(
+      w.requests.some((r) => r.path.startsWith("/storage/v1/uploads/")),
+      false,
+    );
+  });
+
+  it("rejects CI-forbidden spec fields before hashing, uploading, or gateway calls", async () => {
+    const w = makeWiring(createCiSessionCredentials({
+      projectId: "prj_test",
+      accessToken: "ci-session",
+    }));
+    w.setHandler(() => {
+      throw new Error("network must not be called for forbidden CI specs");
+    });
+
+    const deploy = new Deploy(w.client);
+    await assert.rejects(
+      deploy.apply({
+        project: "prj_test",
+        secrets: {},
+        site: { replace: { "index.html": "<h1>nope</h1>" } },
+      }),
+      (err: unknown) =>
+        err instanceof Run402DeployError &&
+        err.code === "forbidden_spec_field" &&
+        err.resource === "secrets",
+    );
+    assert.equal(w.requests.length, 0);
+    assert.equal(w.puts.length, 0);
+  });
+
+  it("rejects CI specs that would require manifest_ref", async () => {
+    const w = makeWiring(createCiSessionCredentials({
+      projectId: "prj_test",
+      accessToken: "ci-session",
+    }));
+    w.setHandler(() => {
+      throw new Error("network must not be called for oversized CI specs");
+    });
+
+    const deploy = new Deploy(w.client);
+    await assert.rejects(
+      deploy.apply({
+        project: "prj_test",
+        database: { expose: { huge: "x".repeat(5 * 1024 * 1024) } },
+      }),
+      (err: unknown) =>
+        err instanceof Run402DeployError &&
+        err.code === "forbidden_spec_field" &&
+        err.resource === "manifest_ref",
+    );
+    assert.equal(w.requests.length, 0);
+    assert.equal(w.puts.length, 0);
+  });
+
+  it("does not apply CI restrictions to unmarked custom Bearer providers", async () => {
+    const w = makeWiring({
+      async getAuth() {
+        return { Authorization: "Bearer user-session" };
+      },
+      async getProject() {
+        return { anon_key: "ak", service_key: "sk" };
+      },
+    });
+    const plan: PlanResponse = {
+      plan_id: "plan_user",
+      operation_id: "op_user",
+      base_release_id: null,
+      manifest_digest: "user",
+      missing_content: [],
+      diff: {},
+    };
+    const commit: CommitResponse = {
+      operation_id: "op_user",
+      status: "ready",
+      release_id: "rel_user",
+      urls: { site: "https://user.run402.test" },
+    };
+    w.setHandler((req) => {
+      if (req.path === "/deploy/v2/plans") return plan;
+      if (req.path === "/deploy/v2/plans/plan_user/commit") return commit;
+      throw new Error(`unexpected path ${req.path}`);
+    });
+
+    const deploy = new Deploy(w.client);
+    const result = await deploy.apply({
+      project: "prj_test",
+      secrets: {},
+    });
+
+    assert.equal(result.release_id, "rel_user");
+    const planReq = w.requests.find((r) => r.path === "/deploy/v2/plans");
+    assert(planReq);
+    assert.equal(planReq.headers?.Authorization, "Bearer user-session");
+    assert.deepEqual((planReq.body as { spec: { secrets?: unknown } }).spec.secrets, {});
   });
 
   it("re-deploy of unchanged content makes no S3 PUTs", async () => {
@@ -766,6 +944,38 @@ describe("Deploy.resume (input validation + error wrapping)", () => {
         err instanceof Run402DeployError &&
         (err as Run402DeployError).code === "OPERATION_NOT_FOUND",
     );
+  });
+});
+
+describe("Deploy CI operation routes", () => {
+  it("uses CI Bearer auth without apikey for status, list, events, and resume", async () => {
+    const w = makeWiring(createCiSessionCredentials({
+      projectId: "prj_test",
+      accessToken: "ci-session",
+    }));
+    const ready: OperationSnapshot = {
+      operation_id: "op_ci",
+      plan_id: "plan_ci",
+      status: "ready",
+      phase: "ready",
+      release_id: "rel_ci",
+      urls: { site: "https://ci.run402.test" },
+    } as OperationSnapshot;
+    w.setHandler((req) => {
+      assert.equal(req.headers?.Authorization, "Bearer ci-session");
+      assert.equal(req.headers?.apikey, undefined);
+      if (req.path === "/deploy/v2/operations/op_ci") return ready;
+      if (req.path === "/deploy/v2/operations") return { operations: [ready], cursor: null };
+      if (req.path === "/deploy/v2/operations/op_ci/events") return { events: [] };
+      if (req.path === "/deploy/v2/operations/op_ci/resume") return ready;
+      throw new Error(`unexpected path ${req.path}`);
+    });
+
+    const deploy = new Deploy(w.client);
+    assert.deepEqual(await deploy.status("op_ci", { project: "prj_test" }), ready);
+    assert.equal((await deploy.list({ project: "prj_test" })).operations.length, 1);
+    assert.deepEqual(await deploy.events("op_ci", { project: "prj_test" }), { events: [] });
+    assert.equal((await deploy.resume("op_ci", { project: "prj_test" })).release_id, "rel_ci");
   });
 });
 

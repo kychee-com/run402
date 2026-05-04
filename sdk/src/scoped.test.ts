@@ -352,6 +352,7 @@ describe("ScopedRun402 drift protection", () => {
     "apps",
     "projects",
     "sites", // Sites class is empty — intentionally not exposed on ScopedRun402
+    "ci", // CI binding lifecycle is intentionally unscoped in v1.
   ]);
 
   it("every project-scoped method on Run402 has a ScopedRun402 wrapper", async () => {

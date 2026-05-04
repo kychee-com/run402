@@ -62,6 +62,34 @@ run402 subdomains claim my-app                # → my-app.run402.com (auto-reas
 
 `deploy-dir` hashes each file client-side and only uploads bytes the gateway doesn't already have. Re-deploying an unchanged tree returns immediately with `bytes_uploaded: 0`. Progress events stream to stderr.
 
+### GitHub Actions OIDC deploys
+
+Link once from a local shell that has your Run402 allowance, then commit the generated workflow and manifest:
+
+```bash
+run402 ci link github --project prj_... --manifest run402.deploy.json
+run402 ci list --project prj_...
+run402 ci revoke cib_...
+```
+
+`link github` infers `owner/repo` and the current branch, verifies the numeric GitHub repository id, creates a deploy-scoped CI binding, and writes `.github/workflows/run402-deploy.yml` unless you pass `--workflow`. The generated workflow is intentionally just the existing deploy command with OIDC enabled:
+
+```yaml
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deploy to run402
+        run: npx --yes run402@1.54.4 deploy apply --manifest 'run402.deploy.json' --project 'prj_...'
+```
+
+CI deploys can ship `site`, `functions`, and `database` changes. Keep secrets, domains, subdomains, routes, checks, and non-current base changes in a local `run402 deploy apply` where the full allowance-backed authority is present.
+
 ### Storage (paste-and-go CDN assets)
 
 ```bash

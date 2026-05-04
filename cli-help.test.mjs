@@ -62,6 +62,7 @@ const MATRIX = {
     specific: ["provision", "sql"],
   },
   deploy: { shared: [], specific: [] },
+  ci: { shared: [], specific: ["link", "list", "revoke"] },
   functions: {
     shared: [],
     specific: ["deploy", "invoke", "logs", "update", "list", "delete"],

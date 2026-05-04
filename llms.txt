@@ -36,6 +36,7 @@ Most platforms treat AI agents as second-class clients of human-shaped products.
 - **Dark-by-default safety.** A table you create is unreachable from PostgREST until you declare it in the manifest with `expose: true`. This eliminates the "agent created a table, forgot to set RLS, data leaked" footgun.
 - **Content-addressed storage.** `blob put` returns a URL bound to the bytes' SHA-256 — no cache-invalidation choreography, no dangling references after redeploy.
 - **One operation = one declarative spec.** `bundle_deploy` / `r.deploy.apply` takes a single `ReleaseSpec` and converges the project (database + manifest + secrets + functions + site + subdomain) toward it; surgical patches and full replaces are first-class.
+- **CI without shared secrets.** `run402 ci link github` binds a GitHub repo/branch or environment through OIDC, then the workflow calls the same `run402 deploy apply` primitive with `id-token: write` instead of storing Run402 service keys in GitHub secrets.
 - **Lifecycle that doesn't lose work.** Lease expiry triggers a ~104-day soft-delete state machine; the live data plane keeps serving end users throughout. Subdomains are reserved for the original owner so a missed renewal can't lose a brand to a squatter.
 - **Agent-operable errors.** Run402-originated JSON errors carry a canonical envelope with stable `code`, `retryable`, `safe_to_retry`, `mutation_state`, and `next_actions` so you can branch on machine-readable fields, not English message text.
 
@@ -46,7 +47,7 @@ Run402 ships **four wrappers around the same HTTP API**. Pick the one matching y
 | Surface | Use when… | Reference |
 |---------|-----------|-----------|
 | **`@run402/sdk`** ⭐ recommended | You're authoring TypeScript / JavaScript code (server, edge, sandbox, code-mode agent). Typed every method. The kernel everything else wraps. | <https://run402.com/llms-sdk.txt> |
-| **`run402` CLI** | You're a shell-based / scripted agent. JSON in, JSON out, exit code on failure. | <https://run402.com/llms-cli.txt> |
+| **`run402` CLI** | You're a shell-based / scripted agent. JSON in, JSON out, exit code on failure. Also the GitHub Actions OIDC setup path (`run402 ci link github`). | <https://run402.com/llms-cli.txt> |
 | **`run402-mcp`** | You're an MCP-host agent (Claude Desktop, Cursor, Cline, Claude Code) — the tools land in your context automatically. | <https://run402.com/llms-mcp.txt> |
 | **HTTP API (raw)** | You're in a language without an SDK or doing low-level work. | <https://run402.com/llms-full.txt> |
 
@@ -123,7 +124,7 @@ Free with active tier. The team reads every message. Or email `tal+402@kychee.co
 ## Where to go next
 
 - Building in TypeScript? → <https://run402.com/llms-sdk.txt>
-- Shell / CI / scripted agent? → <https://run402.com/llms-cli.txt>
+- Shell / CI / GitHub Actions / scripted agent? → <https://run402.com/llms-cli.txt>
 - Claude Desktop / Cursor / Cline / Claude Code? → <https://run402.com/llms-mcp.txt>
 - Direct HTTP? → <https://run402.com/llms-full.txt>
 - Latest changes? → <https://run402.com/updates.txt>
