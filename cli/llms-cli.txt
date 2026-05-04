@@ -653,7 +653,7 @@ Injected as `process.env` in functions. Values are write-only — `list` returns
 
 Direct-to-S3 blob storage. Works for any size from 1 byte up to 5 TiB. No bucket concept — blobs live in a flat key namespace per project.
 
-- `run402 blob put <file> [files...] [--project <id>] [--key <dest>] [--private] [--immutable] [--concurrency N] [--no-resume] [--json]`
+- `run402 blob put <file> [files...] [--project <id>] [--key <dest>] [--content-type <mime>] [--private] [--immutable] [--concurrency N] [--no-resume] [--json]`
 - `run402 blob get <key> --output <file> [--project <id>]`
 - `run402 blob ls [--project <id>] [--prefix <p>] [--limit <n>]`
 - `run402 blob rm <key> [--project <id>]`
@@ -666,6 +666,7 @@ Examples:
 ```
 run402 blob put ./artifact.tgz --project prj_abc123
 run402 blob put ./dist/**/*.png --project prj_abc123 --key assets/
+run402 blob put ./asset --project prj_abc123 --key assets/logo --content-type image/svg+xml
 run402 blob put huge.bin --project prj_abc123 --immutable
 run402 blob get images/logo.png --output /tmp/logo.png --project prj_abc123
 run402 blob ls --project prj_abc123 --prefix images/
@@ -699,6 +700,8 @@ Other AssetRef fields for advanced use:
 Resume: state is persisted to `~/.run402/uploads/<upload_id>.json`. Ctrl-C mid-upload and re-run the same `blob put` command — it picks up where it left off. Pass `--no-resume` to start fresh.
 
 Private blobs (`--private`): no CDN URL returned; read via authenticated gateway path `GET /storage/v1/blob/<key>` with apikey, or via `run402 blob sign` for time-boxed external sharing.
+
+Content-Type: `blob put` infers MIME from the destination key extension. Use `--content-type <mime>` for extensionless assets, uncommon file types, or deliberate overrides; the value applies to every file in the invocation.
 
 `diagnose` exit codes are shell-loop-friendly: `0` when the CDN serves the gateway's expected SHA, `1` otherwise. So `until run402 blob diagnose <url>; do sleep 1; done` blocks until the CDN catches up. Vantage: probes are single-region (us-east-1); the `# probed once from gateway-us-east-1; not a global view` line on stderr is the explicit caveat.
 

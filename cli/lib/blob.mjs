@@ -2,7 +2,7 @@
  * run402 blob — direct-to-S3 storage CLI.
  *
  * Usage:
- *   run402 blob put <file> [files...] [--project <id>] [--key <dest>] [--private] [--immutable] [--concurrency N] [--no-resume]
+ *   run402 blob put <file> [files...] [--project <id>] [--key <dest>] [--content-type <mime>] [--private] [--immutable] [--concurrency N] [--no-resume]
  *   run402 blob get <key> --output <file> [--project <id>]
  *   run402 blob ls [--project <id>] [--prefix <p>] [--limit <n>]
  *   run402 blob rm <key> [--project <id>]
@@ -52,6 +52,7 @@ Usage:
 Options:
   --project <id>      Project ID (defaults to active project from 'run402 projects use')
   --key <dest>        Destination key (put only; defaults to file basename)
+  --content-type <mime>  MIME override for blob put (defaults to extension inference)
   --private           Upload as private (not served by CDN; apikey required to read)
   --immutable         Adds a content-hash suffix to the URL so overwrites produce distinct URLs.
                       Requires computing SHA-256 over the file (CLI does this automatically).
@@ -84,6 +85,7 @@ Arguments:
 Options:
   --project <id>      Project ID (defaults to active project from 'run402 projects use')
   --key <dest>        Destination key; defaults to file basename. Use trailing '/' as prefix.
+  --content-type <mime>  MIME override; defaults to inferring from the destination key extension
   --private           Upload as private (not served by CDN; apikey required to read)
   --immutable         Append content-hash suffix so overwrites produce distinct URLs
   --concurrency N     Concurrent part PUTs for multipart uploads (default 4)
@@ -93,6 +95,7 @@ Options:
 Examples:
   run402 blob put ./artifact.tgz --project prj_abc123
   run402 blob put ./dist/**/*.png --project prj_abc123 --key assets/
+  run402 blob put ./asset --project prj_abc123 --key assets/logo --content-type image/svg+xml
   run402 blob put huge.bin --project prj_abc123 --immutable --concurrency 8
 `,
   get: `run402 blob get — Download a blob by key
@@ -202,10 +205,11 @@ function dieApiFailure(prefix, http, body) {
 
 function parseArgs(rawArgs) {
   const args = normalizeArgv(rawArgs);
-  const valueFlags = ["--project", "--key", "--concurrency", "--prefix", "--limit", "--output", "-o", "--ttl"];
+  const valueFlags = ["--project", "--key", "--content-type", "--concurrency", "--prefix", "--limit", "--output", "-o", "--ttl"];
   assertKnownFlags(args, [
     "--project",
     "--key",
+    "--content-type",
     "--private",
     "--immutable",
     "--concurrency",
@@ -221,11 +225,12 @@ function parseArgs(rawArgs) {
   ], valueFlags);
   const out = { positional: [], project: null, key: null, private: false, immutable: false,
                  concurrency: 4, resume: true, json: false, prefix: null, limit: null,
-                 output: null, ttl: null };
+                 output: null, ttl: null, contentType: null };
   for (let i = 0; i < args.length; i++) {
     const a = args[i];
     if (a === "--project") out.project = args[++i];
     else if (a === "--key") out.key = args[++i];
+    else if (a === "--content-type") out.contentType = parseContentTypeFlag("--content-type", args[++i]);
     else if (a === "--private") out.private = true;
     else if (a === "--immutable") out.immutable = true;
     else if (a === "--concurrency") out.concurrency = parseIntegerFlag("--concurrency", args[++i], { min: 1 });
@@ -238,6 +243,26 @@ function parseArgs(rawArgs) {
     else if (!a.startsWith("--")) out.positional.push(a);
   }
   return out;
+}
+
+function parseContentTypeFlag(name, value) {
+  if (value === undefined || value === null) {
+    fail({
+      code: "BAD_FLAG",
+      message: `${name} requires a MIME type value`,
+      details: { flag: name },
+    });
+  }
+  const raw = String(value).trim();
+  const base = raw.split(";", 1)[0].trim();
+  if (!/^[^\s/]+\/[^\s/]+$/.test(base)) {
+    fail({
+      code: "BAD_FLAG",
+      message: `${name} must be a non-empty type/subtype MIME value, got: ${String(value)}`,
+      details: { flag: name, value: String(value) },
+    });
+  }
+  return raw;
 }
 
 async function sha256File(filePath) {
@@ -311,7 +336,7 @@ async function putOne(project, filePath, opts) {
     const init = await apiFetch(`${API}/storage/v1/uploads`, "POST", project, {
       key: destKey,
       size_bytes: size,
-      content_type: guessContentType(destKey),
+      content_type: opts.contentType ?? guessContentType(destKey),
       visibility: opts.private ? "private" : "public",
       immutable: opts.immutable,
       sha256,

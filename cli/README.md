@@ -97,11 +97,13 @@ CI deploys can ship `site`, `functions`, and `database` changes. Keep secrets, d
 
 ```bash
 run402 blob put ./logo.png        # → AssetRef with cdn_url, sri, etag
+run402 blob put ./asset --key assets/logo --content-type image/svg+xml
 run402 blob get <key> --output /tmp/logo.png
 run402 blob diagnose <url>        # exit 0 if fresh, 1 if stale
 ```
 
 The returned `cdn_url` is content-addressed (`pr-<public_id>.run402.com/_blob/<key>-<8hex>.<ext>`) — paste it straight into HTML. SRI is bundled in `sri`.
+`blob put` infers MIME type from the destination key; use `--content-type <mime>` when the key has no useful extension or needs an explicit override.
 
 ### Functions
 
