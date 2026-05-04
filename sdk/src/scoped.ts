@@ -332,7 +332,7 @@ class ScopedDeploy {
   }
   plan(
     spec: Omit<ReleaseSpec, "project"> & { project?: string },
-    opts?: { idempotencyKey?: string },
+    opts?: { idempotencyKey?: string; dryRun?: boolean },
   ): Promise<{ plan: PlanResponse; byteReaders: Map<string, ByteReader> }> {
     return this.parent.deploy.plan(this.bindProject(spec), opts);
   }

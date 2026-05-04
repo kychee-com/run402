@@ -376,21 +376,21 @@ server.tool(
 
 server.tool(
   "deploy_release_get",
-  "Fetch a release inventory by id. Returns release metadata, effective/desired state kind, site path inventory, function inventory, secret keys, subdomains, and applied migrations. Use `site_limit` to cap large site inventories. If the gateway disables this observability surface, the canonical SDK error is preserved.",
+  "Fetch a release inventory by id. Returns release metadata, effective/desired state kind, site path inventory, function inventory, secret keys, subdomains, and applied migrations. Use `site_limit` to cap large site inventories. Canonical SDK errors are preserved.",
   deployReleaseGetSchema,
   async (args) => handleDeployReleaseGet(args),
 );
 
 server.tool(
   "deploy_release_active",
-  "Fetch the current-live release inventory for a project. Returns `release_id: null` with an empty current-live inventory when no release is active yet. Use this before deploy diffs to understand what is currently serving. If the gateway disables this observability surface, the canonical SDK error is preserved.",
+  "Fetch the current-live release inventory for a project. Returns `release_id: null` with an empty current-live inventory when no release is active yet. Use this before deploy diffs to understand what is currently serving. Canonical SDK errors are preserved.",
   deployReleaseActiveSchema,
   async (args) => handleDeployReleaseActive(args),
 );
 
 server.tool(
   "deploy_release_diff",
-  "Diff two release targets for a project. `from` may be `empty`, `active`, or a release id; `to` may be `active` or a release id. Returns release-to-release diff buckets and `migrations.applied_between_releases`. Semantic gateway errors such as invalid targets, same-release diffs, disabled feature flags, or no active release are preserved.",
+  "Diff two release targets for a project. `from` may be `empty`, `active`, or a release id; `to` may be `active` or a release id. Returns release-to-release diff buckets and `migrations.applied_between_releases`. Semantic gateway errors such as invalid targets, same-release diffs, or no active release are preserved.",
   deployReleaseDiffSchema,
   async (args) => handleDeployReleaseDiff(args),
 );

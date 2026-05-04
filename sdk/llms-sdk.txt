@@ -233,7 +233,14 @@ const resumed = await r.deploy.resume(operationId);
 // Lower-level steps for CLI debugging:
 const { plan: lowPlan, byteReaders } = await r.deploy.plan(spec);
 await r.deploy.upload(lowPlan, { project: projectId, byteReaders });
+if (!lowPlan.plan_id) throw new Error("Dry-run plans cannot be committed");
 const committed = await r.deploy.commit(lowPlan.plan_id, { project: projectId });
+
+// Server-authoritative dry-run: no bytes uploaded, no plan/operation rows.
+const { plan: preview } = await r.deploy.plan(spec, { dryRun: true });
+console.log(preview.plan_id);       // null
+console.log(preview.operation_id);  // null
+console.log(preview.diff.summary);  // SDK-normalized from the v2 flat plan envelope
 ```
 
 Release observability reads are also part of `r.deploy`:
@@ -270,6 +277,7 @@ The full type is exported as `ReleaseSpec` from `@run402/sdk` and `@run402/sdk/n
 
 - **Replace vs patch semantics per resource.** `site.replace` = "this is the whole site" (files absent are removed). `site.patch.put` / `patch.delete` = surgical updates. `functions` has the same replace/patch split. Secrets are declaration-only: use `r.secrets.set(project, key, value)` for values, then `secrets.require[]` to assert keys exist and `secrets.delete[]` to remove keys at activation. `subdomains` use `set` / `add` / `remove`. Top-level absence = leave untouched.
 - **Plan warnings are structured.** `PlanResponse.warnings` and `DeployResult.warnings` are `WarningEntry[]`; `deploy.apply()` emits `plan.warnings` and aborts before upload/commit when a warning requires confirmation unless `allowWarnings` is set. `MISSING_REQUIRED_SECRET` means set the affected keys with `r.secrets.set`, then retry.
+- **Plan envelopes are normalized.** New gateways return `kind: "plan_response"` with `is_noop`, `summary`, `warnings`, `expected_events`, and resource buckets at top level. The SDK preserves those fields and also folds them into `PlanResponse.diff` for compatibility. Dry-run plans return `plan_id: null` and `operation_id: null` and cannot be uploaded or committed.
 - **Modern plan/diff types are split.** Deploy plans may expose `PlanDiffEnvelope` with migration buckets `{ new, noop }`; release-to-release diffs expose `{ applied_between_releases }`. Migration checksum mismatch is a hard deploy error (`Run402DeployError`), not a normal successful diff bucket. Legacy flag-off plan arrays remain represented by `DeployDiff` for compatibility.
 
 `WarningEntry` is a compatibility union. Legacy plan warnings used low/medium/high severity; deploy-observability warnings use info/warn/high severity with heuristic confidence. Shared fields:

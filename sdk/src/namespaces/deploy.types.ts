@@ -180,18 +180,35 @@ export interface SmokeCheck {
 // ─── Plan + commit + operation ───────────────────────────────────────────────
 
 export interface PlanResponse {
-  plan_id: string;
-  operation_id: string;
+  /** Present on the v2 plan envelope. Older gateways omitted it; the SDK
+   *  preserves backward compatibility and still normalizes both shapes. */
+  kind?: "plan_response";
+  schema_version?: "agent-deploy-observability.v1";
+  /** Null only for `deploy.plan(..., { dryRun: true })`. */
+  plan_id: string | null;
+  /** Null only for `deploy.plan(..., { dryRun: true })`. */
+  operation_id: string | null;
   base_release_id: string | null;
   manifest_digest: string;
+  is_noop?: boolean;
+  summary?: string;
+  expected_events?: string[];
   /** Per-ref presence list. The gateway reports which content SHAs the
    *  project already has and which need to be uploaded. Items with
    *  `present: false` must be uploaded via `POST /content/v1/plans` before
    *  the deploy commit will succeed. */
   missing_content: PlanContentRef[];
+  /** SDK-normalized diff convenience. New gateways return these buckets at
+   *  top level; `normalizePlanResponse` folds them back into `diff` so older
+   *  callers and event consumers keep working. */
   diff: DeployDiff;
   warnings: WarningEntry[];
   payment_required?: PaymentRequiredHint | null;
+  migrations?: PlanMigrationDiff;
+  site?: SiteDiff;
+  functions?: FunctionsDiff;
+  secrets?: SecretsDiff;
+  subdomains?: SubdomainsDiff;
 }
 
 export type WarningEntry = LegacyWarningEntry | DeployObservabilityWarningEntry;
@@ -393,7 +410,7 @@ export interface SubdomainsDiff {
 export interface PlanDiffEnvelope {
   is_noop: boolean;
   summary: string;
-  warnings: DeployObservabilityWarningEntry[];
+  warnings: WarningEntry[];
   migrations: PlanMigrationDiff;
   site: SiteDiff;
   functions: FunctionsDiff;
@@ -408,7 +425,7 @@ export interface ReleaseToReleaseDiff {
   to_release_id: string | null;
   is_noop: boolean;
   summary: string;
-  warnings: DeployObservabilityWarningEntry[];
+  warnings: WarningEntry[];
   migrations: {
     applied_between_releases: string[];
   };
@@ -450,7 +467,7 @@ export interface DeployDiff {
   resources?: Record<string, unknown>;
   is_noop?: boolean;
   summary?: string;
-  warnings?: DeployObservabilityWarningEntry[];
+  warnings?: WarningEntry[];
   migrations?:
     | PlanMigrationDiff
     | Array<{

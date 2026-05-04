@@ -508,6 +508,65 @@ describe("Deploy.apply (happy path)", () => {
   });
 });
 
+describe("Deploy.plan", () => {
+  it("passes dry_run=true and normalizes the v2 flat plan envelope", async () => {
+    const w = makeWiring();
+    w.setHandler((req) => {
+      assert.equal(req.path, "/deploy/v2/plans?dry_run=true");
+      assert.equal(req.method, "POST");
+      assert.equal(
+        (req.body as { idempotency_key?: unknown }).idempotency_key,
+        undefined,
+        "dry-run requests must not send idempotency_key",
+      );
+      return {
+        kind: "plan_response",
+        schema_version: "agent-deploy-observability.v1",
+        plan_id: null,
+        operation_id: null,
+        base_release_id: "rel_base",
+        manifest_digest: "bead",
+        is_noop: false,
+        summary: "1 site path added",
+        warnings: [
+          {
+            code: "FIRST_DEPLOY",
+            severity: "info",
+            requires_confirmation: false,
+            message: "First deploy.",
+            affected: [],
+          },
+        ],
+        expected_events: ["plan.created"],
+        missing_content: [],
+        payment_required: null,
+        migrations: { new: [], noop: [] },
+        site: {
+          added: [{ path: "index.html", sha256: shaHex("hello"), content_type: "text/html" }],
+          removed: [],
+          changed: [],
+        },
+        functions: { added: [], removed: [], changed: [] },
+        secrets: { added: [], removed: [] },
+        subdomains: { added: [], removed: [] },
+      };
+    });
+
+    const deploy = new Deploy(w.client);
+    const { plan } = await deploy.plan(
+      { project: "prj_abc", site: { replace: { "index.html": "hello" } } },
+      { dryRun: true, idempotencyKey: "ignored-for-dry-run" },
+    );
+
+    assert.equal(plan.plan_id, null);
+    assert.equal(plan.operation_id, null);
+    assert.equal(plan.expected_events?.[0], "plan.created");
+    assert.equal(plan.diff.summary, "1 site path added");
+    assert.equal(plan.diff.site?.added[0]?.path, "index.html");
+    assert.equal(plan.warnings[0]?.code, "FIRST_DEPLOY");
+  });
+});
+
 describe("Deploy.apply (validation)", () => {
   it("rejects multi-element subdomains.set with SUBDOMAIN_MULTI_NOT_SUPPORTED", async () => {
     const w = makeWiring();

@@ -299,7 +299,7 @@ async function deployDir(args) {
       const { plan } = await getSdk().deploy.plan({
         project: projectId,
         site: { replace: fileSet },
-      });
+      }, { dryRun: true });
       console.log(JSON.stringify({
         status: "ok",
         dry_run: true,
@@ -308,6 +308,8 @@ async function deployDir(args) {
         operation_id: plan.operation_id,
         manifest_digest: plan.manifest_digest,
         diff: plan.diff,
+        warnings: plan.warnings,
+        expected_events: plan.expected_events ?? [],
         missing_content_count: plan.missing_content.filter((p) => !p.present).length,
       }, null, 2));
     } catch (err) {

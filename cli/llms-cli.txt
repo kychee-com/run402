@@ -736,13 +736,15 @@ const complete = await fetch(`https://api.run402.com/storage/v1/uploads/${init.u
 
 ### sites
 - `run402 sites deploy --manifest <file> [--project <id>] [--target <target>]`
-- `run402 sites deploy-dir <path> [--project <id>] [--target <target>] [--quiet]`
+- `run402 sites deploy-dir <path> [--project <id>] [--target <target>] [--quiet] [--dry-run] [--confirm-prune]`
 
 `--project` defaults to the active project. Manifest: `{"files":[{"file":"index.html","data":"..."},{"file":"style.css","data":"..."}]}`. Must include `index.html`. Free with active tier. If the project already has a subdomain, redeploying auto-reassigns it to the new deployment (response includes `subdomain_urls`).
 
 To inspect deploy status, use `run402 deploy events <operation_id>` or `run402 deploy list --project <id>` instead of polling a deployment artifact.
 
 **CAS-backed transport**: Both `sites deploy` and `sites deploy-dir` hash each file locally and only PUT bytes the gateway doesn't already have. Re-deploying an unchanged tree returns immediately with `bytes_uploaded: 0`. The previous `--inherit` flag is removed (passing it exits 1 with a deprecation message) — incremental upload now happens automatically.
+
+**Dry-run**: `run402 sites deploy-dir ./dist --project prj_... --dry-run` calls the gateway's `POST /deploy/v2/plans?dry_run=true`, prints `{status:"ok", dry_run:true, plan_id:null, operation_id:null, manifest_digest, diff, warnings, expected_events, missing_content_count}`, and exits without uploading bytes or committing a release. Use it to preview the server-authoritative plan/diff envelope.
 
 **Progress events**: `sites deploy` and `sites deploy-dir` stream JSON-line progress events to **stderr** by default; the final `{"status":"ok",...}` envelope still goes to stdout. Both the unified `DeployEvent` shapes (from the v2 deploy primitive) and legacy phase events (`{"phase":"plan","manifest_size":N}`, `{"phase":"upload",...}`, `{"phase":"commit"}`, `{"phase":"poll",...}`) are emitted. Pipe streams separately: `run402 sites deploy-dir ./dist --project p > result.json 2> events.log`. Pass `--quiet` to suppress events (stdout still gets the result envelope).
 

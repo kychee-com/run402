@@ -41,6 +41,7 @@ import type {
   ContentSource,
   DeployEvent,
   DeployEventsResponse,
+  DeployDiff,
   DeployListResponse,
   DeployOperation,
   DeployResult,
@@ -124,7 +125,8 @@ export class Deploy {
     await uploadMissing(this.client, spec.project, plan.missing_content, byteReaders, emit);
 
     emit({ type: "commit.phase", phase: "validate", status: "started" });
-    const commit = await commitInternal(this.client, plan.plan_id, opts.idempotencyKey);
+    const { planId } = requirePersistedPlan(plan, "applying deploy");
+    const commit = await commitInternal(this.client, planId, opts.idempotencyKey);
     return await pollUntilReady(this.client, commit, plan.diff, plan.warnings, emit, spec.project);
   }
 
@@ -143,9 +145,9 @@ export class Deploy {
    */
   async plan(
     spec: ReleaseSpec,
-    opts: { idempotencyKey?: string } = {},
+    opts: { idempotencyKey?: string; dryRun?: boolean } = {},
   ): Promise<{ plan: PlanResponse; byteReaders: Map<string, ByteReader> }> {
-    return planInternal(this.client, spec, opts.idempotencyKey);
+    return planInternal(this.client, spec, opts.idempotencyKey, opts.dryRun);
   }
 
   /**
@@ -426,6 +428,7 @@ async function planInternal(
   client: Client,
   spec: ReleaseSpec,
   idempotencyKey?: string,
+  dryRun = false,
 ): Promise<{ plan: PlanResponse; byteReaders: Map<string, ByteReader> }> {
   const ciCredentials = isCiClient(client);
   validateSpec(spec);
@@ -439,13 +442,25 @@ async function planInternal(
   // needs `spec` in the body (with at least the project), so we keep a
   // minimal stub there.
   const inlineBody: PlanRequest = { spec: normalized };
-  if (idempotencyKey) inlineBody.idempotency_key = idempotencyKey;
+  if (idempotencyKey && !dryRun) inlineBody.idempotency_key = idempotencyKey;
   const inlineBytes = new TextEncoder().encode(JSON.stringify(inlineBody)).byteLength;
 
   let body: PlanRequest;
   if (inlineBytes <= PLAN_BODY_LIMIT_BYTES) {
     body = inlineBody;
   } else {
+    if (dryRun) {
+      throw new Run402DeployError(
+        "Dry-run deploy planning requires an inline spec under the gateway body cap; the normalized deploy plan would require manifest_ref.",
+        {
+          code: "DRY_RUN_REQUIRES_INLINE_SPEC",
+          phase: "validate",
+          resource: "manifest_ref",
+          retryable: false,
+          context: "planning deploy",
+        },
+      );
+    }
     if (ciCredentials) {
       throw new Run402DeployError(
         "CI deploys must use inline specs under the gateway body cap; the normalized deploy plan would require manifest_ref.",
@@ -474,7 +489,7 @@ async function planInternal(
 
   let plan: PlanResponse;
   try {
-    plan = normalizePlanResponse(await client.request<PlanResponse>("/deploy/v2/plans", {
+    plan = normalizePlanResponse(await client.request<PlanResponse>(dryRun ? "/deploy/v2/plans?dry_run=true" : "/deploy/v2/plans", {
       method: "POST",
       body,
       context: "planning deploy",
@@ -949,7 +964,8 @@ async function startInternal(
   const resultPromise: Promise<DeployResult> = (async () => {
     await uploadMissing(client, spec.project, plan.missing_content, byteReaders, emit);
     emit({ type: "commit.phase", phase: "validate", status: "started" });
-    const commit = await commitInternal(client, plan.plan_id, opts.idempotencyKey);
+    const { planId } = requirePersistedPlan(plan, "starting deploy");
+    const commit = await commitInternal(client, planId, opts.idempotencyKey);
     return await pollUntilReady(client, commit, plan.diff, plan.warnings, emit, spec.project);
   })();
   // Avoid an unhandled-rejection at construction time. Consumers must call
@@ -957,18 +973,19 @@ async function startInternal(
   resultPromise.catch(() => {});
 
   let snapshot: OperationSnapshot | null = null;
+  const { operationId } = requirePersistedPlan(plan, "starting deploy");
   const startHeaders = await apikeyHeaders(client, spec.project);
   const fetchSnapshot = async (): Promise<OperationSnapshot> => {
     if (snapshot && TERMINAL_STATUSES.includes(snapshot.status)) return snapshot;
     snapshot = await client.request<OperationSnapshot>(
-      `/deploy/v2/operations/${encodeURIComponent(plan.operation_id)}`,
+      `/deploy/v2/operations/${encodeURIComponent(operationId)}`,
       { headers: startHeaders, context: "fetching deploy operation" },
     );
     return snapshot;
   };
 
   return {
-    id: plan.operation_id,
+    id: operationId,
     async snapshot() {
       return fetchSnapshot();
     },
@@ -1109,10 +1126,48 @@ function validateSpec(spec: ReleaseSpec): void {
 
 function normalizePlanResponse(plan: PlanResponse): PlanResponse {
   const raw = plan as PlanResponse & { warnings?: unknown };
+  const warnings = Array.isArray(raw.warnings) ? raw.warnings : [];
+  if (raw.kind === "plan_response") {
+    const diff: DeployDiff = {
+      is_noop: raw.is_noop,
+      summary: raw.summary,
+      warnings,
+      migrations: raw.migrations,
+      site: raw.site,
+      functions: raw.functions,
+      secrets: raw.secrets,
+      subdomains: raw.subdomains,
+    };
+    return {
+      ...plan,
+      warnings,
+      diff,
+      payment_required: raw.payment_required ?? null,
+    };
+  }
   return {
     ...plan,
-    warnings: Array.isArray(raw.warnings) ? raw.warnings : [],
+    warnings,
   };
+}
+
+function requirePersistedPlan(
+  plan: PlanResponse,
+  context: string,
+): { planId: string; operationId: string } {
+  if (plan.plan_id && plan.operation_id) {
+    return { planId: plan.plan_id, operationId: plan.operation_id };
+  }
+  throw new Run402DeployError(
+    "Dry-run plan responses cannot be uploaded or committed because they do not create plan or operation rows.",
+    {
+      code: "DRY_RUN_PLAN_NOT_COMMITTABLE",
+      phase: "plan",
+      resource: "plan_id",
+      retryable: false,
+      context,
+    },
+  );
 }
 
 function emitPlanWarnings(

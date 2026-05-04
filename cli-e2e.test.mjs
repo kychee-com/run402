@@ -272,7 +272,28 @@ function mockFetch(input, init) {
   // through r.deploy.apply against these endpoints.
   // The fake gateway reports every content ref as already-present (empty
   // missing_content) so the SDK skips S3 PUTs and goes straight to commit.
-  if (path === "/deploy/v2/plans" && method === "POST") {
+  if (pathNoQuery === "/deploy/v2/plans" && method === "POST") {
+    if (path.includes("dry_run=true")) {
+      return Promise.resolve(json({
+        kind: "plan_response",
+        schema_version: "agent-deploy-observability.v1",
+        plan_id: null,
+        operation_id: null,
+        base_release_id: null,
+        manifest_digest: "deadbeef".repeat(8),
+        is_noop: false,
+        summary: "dry-run plan",
+        warnings: [],
+        expected_events: ["plan.created"],
+        missing_content: [],
+        payment_required: null,
+        migrations: { new: [], noop: [] },
+        site: { added: [], removed: [], changed: [] },
+        functions: { added: [], removed: [], changed: [] },
+        secrets: { added: [], removed: [] },
+        subdomains: { added: [], removed: [] },
+      }));
+    }
     return Promise.resolve(json({
       plan_id: "plan_v2_test",
       operation_id: "op_v2_test",
