@@ -48,8 +48,20 @@ import type {
 } from "./namespaces/ai.js";
 import type {
   AuthSettings,
+  AuthSettingsResult,
+  AuthSessionResult,
+  AuthUserAdminResult,
+  CreateAuthUserOptions,
   MagicLinkOptions,
   MagicLinkVerifyResult,
+  PasskeyDeleteOptions,
+  PasskeyListOptions,
+  PasskeyLoginOptions,
+  PasskeyLoginVerifyOptions,
+  PasskeyOptionsResult,
+  PasskeyRecord,
+  PasskeyRegistrationOptions,
+  PasskeyRegistrationVerifyOptions,
   SetPasswordOptions,
 } from "./namespaces/auth.js";
 import type {
@@ -242,11 +254,35 @@ class ScopedAuth {
   verifyMagicLink(token: string): Promise<MagicLinkVerifyResult> {
     return this.parent.auth.verifyMagicLink(this.projectId, token);
   }
+  createUser(opts: CreateAuthUserOptions): Promise<AuthUserAdminResult> {
+    return this.parent.auth.createUser(this.projectId, opts);
+  }
+  inviteUser(opts: Omit<CreateAuthUserOptions, "sendInvite">): Promise<AuthUserAdminResult> {
+    return this.parent.auth.inviteUser(this.projectId, opts);
+  }
   setUserPassword(opts: SetPasswordOptions): Promise<void> {
     return this.parent.auth.setUserPassword(this.projectId, opts);
   }
-  settings(settings: AuthSettings): Promise<void> {
+  settings(settings: AuthSettings): Promise<AuthSettingsResult> {
     return this.parent.auth.settings(this.projectId, settings);
+  }
+  createPasskeyRegistrationOptions(opts: PasskeyRegistrationOptions): Promise<PasskeyOptionsResult> {
+    return this.parent.auth.createPasskeyRegistrationOptions(this.projectId, opts);
+  }
+  verifyPasskeyRegistration(opts: PasskeyRegistrationVerifyOptions): Promise<PasskeyRecord> {
+    return this.parent.auth.verifyPasskeyRegistration(this.projectId, opts);
+  }
+  createPasskeyLoginOptions(opts: PasskeyLoginOptions): Promise<PasskeyOptionsResult> {
+    return this.parent.auth.createPasskeyLoginOptions(this.projectId, opts);
+  }
+  verifyPasskeyLogin(opts: PasskeyLoginVerifyOptions): Promise<AuthSessionResult> {
+    return this.parent.auth.verifyPasskeyLogin(this.projectId, opts);
+  }
+  listPasskeys(opts: PasskeyListOptions): Promise<{ passkeys: PasskeyRecord[] }> {
+    return this.parent.auth.listPasskeys(this.projectId, opts);
+  }
+  deletePasskey(opts: PasskeyDeleteOptions): Promise<void> {
+    return this.parent.auth.deletePasskey(this.projectId, opts);
   }
   providers(): Promise<unknown> {
     return this.parent.auth.providers(this.projectId);

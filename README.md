@@ -371,8 +371,12 @@ The full MCP surface — every tool is a thin shim over an SDK call.
 |------|-------------|
 | `request_magic_link` | Send a passwordless login email. |
 | `verify_magic_link` | Exchange the magic link token for `access_token` + `refresh_token`. |
+| `create_auth_user` / `invite_auth_user` | Create/update auth users and send trusted service-key invites. |
 | `set_user_password` | Change, reset, or set a user's password. |
-| `auth_settings` | Toggle `allow_password_set` for passwordless users. |
+| `auth_settings` | Configure password set, preferred sign-in method, public signup policy, and project-admin passkey enforcement. |
+| `passkey_register_options` / `passkey_register_verify` | Create and verify WebAuthn passkey registration ceremonies. |
+| `passkey_login_options` / `passkey_login_verify` | Create and verify WebAuthn passkey login ceremonies. |
+| `list_passkeys` / `delete_passkey` | List or delete the authenticated user's passkeys. |
 | `create_mailbox` / `get_mailbox` / `delete_mailbox` | Per-project mailbox at `<slug>@mail.run402.com`. |
 | `send_email` | Template (`project_invite`, `magic_link`, `notification`) or raw HTML. Single recipient. |
 | `list_emails` / `get_email` / `get_email_raw` | Read messages. `get_email_raw` returns RFC-822 bytes for DKIM / zk-email verification. |

@@ -4,22 +4,38 @@ import { mapSdkError } from "../errors.js";
 
 export const authSettingsSchema = {
   project_id: z.string().describe("The project ID"),
-  allow_password_set: z.boolean().describe("Allow passwordless users (magic link / OAuth) to set a password. Default: false."),
+  allow_password_set: z.boolean().optional().describe("Allow passwordless users (magic link / OAuth) to set a password. Default: false."),
+  preferred_sign_in_method: z.enum(["password", "magic_link", "oauth_google", "passkey"]).nullable().optional().describe("Project UI hint for the preferred sign-in method."),
+  public_signup: z.enum(["open", "known_email", "invite_only"]).optional().describe("Public signup policy."),
+  require_passkey_for_project_admin: z.boolean().optional().describe("Require eligible passkey login for project_admin sessions."),
 };
 
 export async function handleAuthSettings(args: {
   project_id: string;
-  allow_password_set: boolean;
+  allow_password_set?: boolean;
+  preferred_sign_in_method?: "password" | "magic_link" | "oauth_google" | "passkey" | null;
+  public_signup?: "open" | "known_email" | "invite_only";
+  require_passkey_for_project_admin?: boolean;
 }): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
   try {
-    await getSdk().auth.settings(args.project_id, {
+    const updated = await getSdk().auth.settings(args.project_id, {
       allow_password_set: args.allow_password_set,
+      preferred_sign_in_method: args.preferred_sign_in_method,
+      public_signup: args.public_signup,
+      require_passkey_for_project_admin: args.require_passkey_for_project_admin,
     });
     return {
       content: [
         {
           type: "text",
-          text: `## Auth Settings Updated\n\n- **allow_password_set:** ${args.allow_password_set}\n\n${args.allow_password_set ? "Passwordless users can now set a password via PUT /auth/v1/user/password." : "Passwordless users cannot set a password. They must use magic link or OAuth to sign in."}`,
+          text: [
+            "## Auth Settings Updated",
+            "",
+            `- **allow_password_set:** ${updated.allow_password_set}`,
+            `- **preferred_sign_in_method:** ${updated.preferred_sign_in_method || ""}`,
+            `- **public_signup:** ${updated.public_signup}`,
+            `- **require_passkey_for_project_admin:** ${updated.require_passkey_for_project_admin}`,
+          ].join("\n"),
         },
       ],
     };

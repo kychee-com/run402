@@ -69,7 +69,7 @@ The `CredentialsProvider` interface has two required methods (`getAuth`, `getPro
 | `domains` | `add`, `list`, `status`, `remove` |
 | `email` | `createMailbox`, `getMailbox`, `deleteMailbox`, `send`, `list`, `get`, `getRaw`, `webhooks.*` |
 | `senderDomain` | `register`, `status`, `remove`, `enableInbound`, `disableInbound` |
-| `auth` | `requestMagicLink`, `verifyMagicLink`, `setUserPassword`, `settings`, `providers`, `promote`, `demote` |
+| `auth` | `requestMagicLink`, `verifyMagicLink`, `createUser`, `inviteUser`, `setUserPassword`, `settings`, passkey registration/login/list/delete helpers, `providers`, `promote`, `demote` |
 | `apps` | `browse`, `getApp`, `fork`, `publish`, `listVersions`, `updateVersion`, `deleteVersion`, `bundleDeploy` (legacy shim → routes through `deploy`) |
 | `tier` | `set`, `status` (tier pricing lives on `r.projects.getQuote()`) |
 | `billing` | `createEmailAccount`, `linkWallet`, `tierCheckout`, `buyEmailPack`, `setAutoRecharge`, `balance`, `history`, `createCheckout` |

@@ -264,9 +264,13 @@ Scheduled function limits per tier: prototype 1 / 15 min, hobby 3 / 5 min, team 
 
 ### Auth & email
 
-- **`request_magic_link`** / **`verify_magic_link`** — passwordless login. Tokens single-use, 15-min TTL, 5/email/hour rate limit.
+- **`request_magic_link`** / **`verify_magic_link`** — passwordless login and trusted invite links. Tokens single-use, 15-min TTL, rate limited.
+- **`create_auth_user`** / **`invite_auth_user`** — service-key user create/update and trusted invite bootstrap.
 - **`set_user_password`** — change, reset, or set a user's password.
-- **`auth_settings`** — toggle `allow_password_set` for passwordless users.
+- **`auth_settings`** — configure password set, preferred sign-in method, public signup policy, and project-admin passkey enforcement.
+- **`passkey_register_options`** / **`passkey_register_verify`** — create and verify WebAuthn passkey registration ceremonies.
+- **`passkey_login_options`** / **`passkey_login_verify`** — create and verify WebAuthn passkey login ceremonies.
+- **`list_passkeys`** / **`delete_passkey`** — list or delete the authenticated user's passkeys.
 - **`create_mailbox`** / **`get_mailbox`** / **`delete_mailbox`** — per-project mailbox at `<slug>@mail.run402.com`.
 - **`send_email`** — template (`project_invite`, `magic_link`, `notification`) or raw HTML. Single recipient.
 - **`list_emails`** / **`get_email`** / **`get_email_raw`** — read messages. `get_email_raw` returns RFC-822 bytes for DKIM / zk-email verification.

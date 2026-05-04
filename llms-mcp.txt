@@ -222,10 +222,14 @@ Scheduled function tier limits: prototype 1 / 15 min, hobby 3 / 5 min, team 10 /
 
 ### Auth & email
 
-- **`request_magic_link`** — passwordless login. Params: `project_id`, `email`, `redirect_url`. Token single-use, 15-min TTL, 5/email/hour rate limit.
-- **`verify_magic_link`** — exchange token for `access_token` + `refresh_token`. Params: `project_id`, `token`.
+- **`request_magic_link`** — passwordless login, trusted invite, claim, or recovery link. Params: `project_id`, `email`, `redirect_url`, `intent?`, `client_state?`. `intent=invite` requires service key state.
+- **`verify_magic_link`** — exchange token for `access_token` + `refresh_token`. Params: `project_id`, `token`. Magic-link metadata is included when present.
+- **`create_auth_user`** / **`invite_auth_user`** — service-key create/update auth users and optionally send trusted invite links. Params include `project_id`, `email`, `is_admin?`, `redirect_url?`, `client_state?`.
 - **`set_user_password`** — change / reset / set. Params: `project_id`, `access_token`, `new_password`, `current_password?`.
-- **`auth_settings`** — toggle `allow_password_set` for passwordless users. Params: `project_id`, `allow_password_set` (boolean).
+- **`auth_settings`** — update auth controls. Params: `project_id`, `allow_password_set?`, `preferred_sign_in_method?`, `public_signup?`, `require_passkey_for_project_admin?`.
+- **`passkey_register_options`** / **`passkey_register_verify`** — WebAuthn passkey registration. Params: `project_id`, `access_token`, `app_origin` then `challenge_id`, `response`, `label?`.
+- **`passkey_login_options`** / **`passkey_login_verify`** — WebAuthn passkey login. Params: `project_id`, `app_origin`, `email?` then `challenge_id`, `response`.
+- **`list_passkeys`** / **`delete_passkey`** — list or delete the authenticated user's passkeys. Params: `project_id`, `access_token`, `passkey_id?`.
 - **`create_mailbox`** / **`get_mailbox`** / **`delete_mailbox`** — per-project mailbox at `<slug>@mail.run402.com`. `delete_mailbox` requires `confirm: true`.
 - **`send_email`** — template (`project_invite`, `magic_link`, `notification`) or raw HTML. Single recipient. Params: `project_id`, `to`, `template?` + `variables?` OR `subject?` + `html?` + `text?`, `from_name?`, `in_reply_to?`.
 - **`list_emails`** / **`get_email`** — read messages.

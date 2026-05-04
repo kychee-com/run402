@@ -703,10 +703,23 @@ inboundDisable(projectId, domain): Promise<void>
 ### `r.auth`
 
 ```
-requestMagicLink(projectId, opts: { email, redirectUrl }): Promise<void>
+requestMagicLink(projectId, opts: { email, redirectUrl, intent?, clientState? }): Promise<void>
 verifyMagicLink(projectId, token): Promise<MagicLinkVerifyResult>      // { access_token, refresh_token, ... }
+createUser(projectId, opts: { email, isAdmin?, sendInvite?, redirectUrl?, clientState? }): Promise<AuthUserAdminResult>
+inviteUser(projectId, opts: { email, isAdmin?, redirectUrl, clientState? }): Promise<AuthUserAdminResult>
 setUserPassword(projectId, opts: { accessToken, newPassword, currentPassword? }): Promise<void>
-settings(projectId, opts: { allow_password_set: boolean }): Promise<void>
+settings(projectId, opts: {
+  allow_password_set?,
+  preferred_sign_in_method?,
+  public_signup?,
+  require_passkey_for_project_admin?
+}): Promise<AuthSettingsResult>
+createPasskeyRegistrationOptions(projectId, opts: { accessToken, appOrigin }): Promise<PasskeyOptionsResult>
+verifyPasskeyRegistration(projectId, opts: { accessToken, challengeId, response, label? }): Promise<PasskeyRecord>
+createPasskeyLoginOptions(projectId, opts: { appOrigin, email? }): Promise<PasskeyOptionsResult>
+verifyPasskeyLogin(projectId, opts: { challengeId, response }): Promise<AuthSessionResult>
+listPasskeys(projectId, opts: { accessToken }): Promise<{ passkeys: PasskeyRecord[] }>
+deletePasskey(projectId, opts: { accessToken, passkeyId }): Promise<void>
 providers(projectId): Promise<unknown>
 promote(projectId, email): Promise<void>
 demote(projectId, email): Promise<void>

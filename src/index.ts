@@ -105,6 +105,26 @@ import { requestMagicLinkSchema, handleRequestMagicLink } from "./tools/request-
 import { verifyMagicLinkSchema, handleVerifyMagicLink } from "./tools/verify-magic-link.js";
 import { setUserPasswordSchema, handleSetUserPassword } from "./tools/set-user-password.js";
 import { authSettingsSchema, handleAuthSettings } from "./tools/auth-settings.js";
+import {
+  createAuthUserSchema,
+  handleCreateAuthUser,
+  handleInviteAuthUser,
+  inviteAuthUserSchema,
+} from "./tools/auth-users.js";
+import {
+  deletePasskeySchema,
+  handleDeletePasskey,
+  handleListPasskeys,
+  handlePasskeyLoginOptions,
+  handlePasskeyLoginVerify,
+  handlePasskeyRegisterOptions,
+  handlePasskeyRegisterVerify,
+  listPasskeysSchema,
+  passkeyLoginOptionsSchema,
+  passkeyLoginVerifySchema,
+  passkeyRegisterOptionsSchema,
+  passkeyRegisterVerifySchema,
+} from "./tools/passkeys.js";
 
 // New tools — custom sender domains
 import { registerSenderDomainSchema, handleRegisterSenderDomain } from "./tools/register-sender-domain.js";
@@ -813,6 +833,20 @@ server.tool(
 );
 
 server.tool(
+  "create_auth_user",
+  "Create or update a project auth user with the service key. Can set project_admin and optionally send a trusted invite.",
+  createAuthUserSchema,
+  async (args) => handleCreateAuthUser(args),
+);
+
+server.tool(
+  "invite_auth_user",
+  "Create/update a project auth user and send a trusted invite magic link. Requires service_key and an allowed redirect_url.",
+  inviteAuthUserSchema,
+  async (args) => handleInviteAuthUser(args),
+);
+
+server.tool(
   "set_user_password",
   "Change, reset, or set a user's password. Change: provide current_password + new_password. Reset (via magic link login): just new_password. Set (passwordless user): requires allow_password_set=true on project.",
   setUserPasswordSchema,
@@ -821,9 +855,51 @@ server.tool(
 
 server.tool(
   "auth_settings",
-  "Update project auth settings. Currently supports allow_password_set (boolean) to control whether passwordless users can add a password. Requires service_key.",
+  "Update project auth settings: allow_password_set, preferred_sign_in_method, public_signup, and require_passkey_for_project_admin. Requires service_key.",
   authSettingsSchema,
   async (args) => handleAuthSettings(args),
+);
+
+server.tool(
+  "passkey_register_options",
+  "Create WebAuthn passkey registration options for the authenticated user.",
+  passkeyRegisterOptionsSchema,
+  async (args) => handlePasskeyRegisterOptions(args),
+);
+
+server.tool(
+  "passkey_register_verify",
+  "Verify a browser WebAuthn registration response and store the user's passkey.",
+  passkeyRegisterVerifySchema,
+  async (args) => handlePasskeyRegisterVerify(args),
+);
+
+server.tool(
+  "passkey_login_options",
+  "Create WebAuthn passkey login options for a project app origin.",
+  passkeyLoginOptionsSchema,
+  async (args) => handlePasskeyLoginOptions(args),
+);
+
+server.tool(
+  "passkey_login_verify",
+  "Verify a browser WebAuthn assertion and return a normal Run402 auth session.",
+  passkeyLoginVerifySchema,
+  async (args) => handlePasskeyLoginVerify(args),
+);
+
+server.tool(
+  "list_passkeys",
+  "List the authenticated user's active passkeys.",
+  listPasskeysSchema,
+  async (args) => handleListPasskeys(args),
+);
+
+server.tool(
+  "delete_passkey",
+  "Delete one authenticated-user passkey by id.",
+  deletePasskeySchema,
+  async (args) => handleDeletePasskey(args),
 );
 
 // --- Custom sender domains ---

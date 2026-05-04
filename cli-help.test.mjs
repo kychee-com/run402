@@ -88,7 +88,11 @@ const MATRIX = {
   message: { shared: [], specific: ["send"] },
   auth: {
     shared: [],
-    specific: ["magic-link", "verify", "set-password", "settings", "providers"],
+    specific: [
+      "magic-link", "verify", "create-user", "invite-user", "set-password", "settings",
+      "passkey-register-options", "passkey-register-verify", "passkey-login-options",
+      "passkey-login-verify", "passkeys", "delete-passkey", "providers",
+    ],
   },
   "sender-domain": {
     shared: [],

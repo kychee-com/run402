@@ -286,8 +286,16 @@ const SURFACE: Capability[] = [
   // ── Auth (project user) ────────────────────────────────────────────────
   { id: "request_magic_link", endpoint: "POST /auth/v1/magic-link",           mcp: "request_magic_link", cli: "auth:magic-link",    openclaw: "auth:magic-link" },
   { id: "verify_magic_link",  endpoint: "POST /auth/v1/token?grant_type=magic_link", mcp: "verify_magic_link", cli: "auth:verify", openclaw: "auth:verify" },
+  { id: "create_auth_user",   endpoint: "POST /auth/v1/admin/users",          mcp: "create_auth_user",   cli: "auth:create-user",  openclaw: "auth:create-user" },
+  { id: "invite_auth_user",   endpoint: "POST /auth/v1/admin/users",          mcp: "invite_auth_user",   cli: "auth:invite-user",  openclaw: "auth:invite-user" },
   { id: "set_user_password",  endpoint: "PUT /auth/v1/user/password",         mcp: "set_user_password",  cli: "auth:set-password",  openclaw: "auth:set-password" },
   { id: "auth_settings",      endpoint: "PATCH /auth/v1/settings",            mcp: "auth_settings",      cli: "auth:settings",      openclaw: "auth:settings" },
+  { id: "passkey_register_options", endpoint: "POST /auth/v1/passkeys/register/options", mcp: "passkey_register_options", cli: "auth:passkey-register-options", openclaw: "auth:passkey-register-options" },
+  { id: "passkey_register_verify",  endpoint: "POST /auth/v1/passkeys/register/verify",  mcp: "passkey_register_verify",  cli: "auth:passkey-register-verify",  openclaw: "auth:passkey-register-verify" },
+  { id: "passkey_login_options",    endpoint: "POST /auth/v1/passkeys/login/options",    mcp: "passkey_login_options",    cli: "auth:passkey-login-options",    openclaw: "auth:passkey-login-options" },
+  { id: "passkey_login_verify",     endpoint: "POST /auth/v1/passkeys/login/verify",     mcp: "passkey_login_verify",     cli: "auth:passkey-login-verify",     openclaw: "auth:passkey-login-verify" },
+  { id: "list_passkeys",            endpoint: "GET /auth/v1/passkeys",                   mcp: "list_passkeys",            cli: "auth:passkeys",                 openclaw: "auth:passkeys" },
+  { id: "delete_passkey",           endpoint: "DELETE /auth/v1/passkeys/:id",             mcp: "delete_passkey",           cli: "auth:delete-passkey",           openclaw: "auth:delete-passkey" },
   { id: "auth_providers",    endpoint: "GET /auth/v1/providers",              mcp: null,                 cli: "auth:providers",     openclaw: "auth:providers" },
 
   // ── Custom sender domains ─────────────────────────────────────────────
@@ -470,8 +478,16 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   // Auth
   request_magic_link: "auth.requestMagicLink",
   verify_magic_link: "auth.verifyMagicLink",
+  create_auth_user: "auth.createUser",
+  invite_auth_user: "auth.inviteUser",
   set_user_password: "auth.setUserPassword",
   auth_settings: "auth.settings",
+  passkey_register_options: "auth.createPasskeyRegistrationOptions",
+  passkey_register_verify: "auth.verifyPasskeyRegistration",
+  passkey_login_options: "auth.createPasskeyLoginOptions",
+  passkey_login_verify: "auth.verifyPasskeyLogin",
+  list_passkeys: "auth.listPasskeys",
+  delete_passkey: "auth.deletePasskey",
   auth_providers: "auth.providers",
 
   // Sender domains

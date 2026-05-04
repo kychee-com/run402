@@ -451,16 +451,19 @@ run402 sender-domain inbound-enable example.com   # → MX record (opt-in)
 
 ## User auth
 
-Two methods: passwords and Google OAuth. Google is on for all projects with **zero config** — `http://localhost:*` and any claimed subdomain are allowed redirect origins automatically.
+Auth supports passwords, magic links, Google OAuth, and WebAuthn passkeys. Google is on for all projects with **zero config**; passkeys require an exact allowed `app_origin` (claimed subdomain, project public-id host, active custom domain, or localhost when allowed).
 
 ```bash
 run402 auth magic-link --email user@example.com --redirect https://my-app.run402.com/cb
 run402 auth verify --token <token>                       # → access_token + refresh_token
+run402 auth invite-user --email admin@example.com --redirect https://my-app.run402.com/cb --admin true
 run402 auth set-password --token <bearer> --new <pwd>    # change | reset | set
+run402 auth passkey-login-options --app-origin https://my-app.run402.com
+run402 auth passkey-login-verify --challenge <id> --response '<json>'
 run402 auth providers
 ```
 
-Magic-link tokens are single-use, expire in 15 min, rate-limited 5/email/hour. The `access_token` works as `apikey` for user-scoped REST calls subject to RLS.
+Magic-link tokens are single-use, expire in 15 min, and are rate-limited. The `access_token` works as `apikey` for user-scoped REST calls subject to RLS. Use `run402 auth settings --preferred passkey --require-admin-passkey true` to require eligible passkey auth for `project_admin` sessions.
 
 For browser-side flows (PKCE, Google OAuth, refresh-token rotation), see <https://run402.com/llms-cli.txt>.
 

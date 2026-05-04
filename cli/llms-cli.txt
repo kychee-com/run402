@@ -836,12 +836,20 @@ await email.send({ to: "user@example.com", subject: "Welcome!", html: "<h1>Hi</h
 Discovers the mailbox automatically. Throws on errors (rate limit, suppression, no mailbox).
 
 ### auth
-Manage project user authentication. Passwordless email login via magic links, password management, and auth settings.
+Manage project user authentication: magic links, trusted invites, passwords, passkeys, and auth settings.
 
-- `run402 auth magic-link --email <addr> --redirect <url> [--project <id>]` — send a magic link email (auto-creates user on first verification)
+- `run402 auth magic-link --email <addr> --redirect <url> [--intent signin|invite|claim|recovery] [--state <value>] [--project <id>]` — send a magic link email
 - `run402 auth verify --token <token> [--project <id>]` — exchange a magic link token for access_token + refresh_token
+- `run402 auth create-user --email <addr> [--admin <true|false>] [--invite] [--redirect <url>] [--project <id>]` — service-key create/update auth user
+- `run402 auth invite-user --email <addr> --redirect <url> [--admin <true|false>] [--project <id>]` — create/update user and send trusted invite
 - `run402 auth set-password --token <bearer> --new <password> [--current <password>]` — change, reset, or set password
-- `run402 auth settings --allow-password-set <true|false> [--project <id>]` — toggle whether passwordless users can set a password (requires service_key)
+- `run402 auth settings [--allow-password-set <true|false>] [--preferred <method|null>] [--public-signup <policy>] [--require-admin-passkey <true|false>] [--project <id>]` — update auth settings (requires service_key)
+- `run402 auth passkey-register-options --token <bearer> --app-origin <origin> [--project <id>]` — create WebAuthn registration options
+- `run402 auth passkey-register-verify --token <bearer> --challenge <id> --response <json> [--label <text>] [--project <id>]` — verify and store passkey registration
+- `run402 auth passkey-login-options --app-origin <origin> [--email <addr>] [--project <id>]` — create WebAuthn login options
+- `run402 auth passkey-login-verify --challenge <id> --response <json> [--project <id>]` — verify passkey login and return session tokens
+- `run402 auth passkeys --token <bearer> [--project <id>]` — list authenticated user's passkeys
+- `run402 auth delete-passkey --token <bearer> --id <passkey_id> [--project <id>]` — delete one passkey
 - `run402 auth providers [--project <id>]` — list available auth providers
 
 Magic link flow: request → user clicks email link → frontend extracts token → verify → authenticated. Token expires in 15 minutes, single-use. Rate limited: 5 per email/hour, plus per-project limits by tier.
