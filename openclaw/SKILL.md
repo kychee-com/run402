@@ -294,6 +294,7 @@ run402 projects sql <id> "SELECT * FROM items WHERE id = \$1" --params '[42]'
 run402 projects rest <id> items "select=id,title&order=id.desc&limit=10"
 run402 projects schema <id>          # introspect tables, columns, RLS
 run402 projects usage  <id>          # API calls, storage, lease expiry
+RUN402_ADMIN_COOKIE='run402_admin=...' run402 projects costs <id> --window 30d  # operator-only finance
 ```
 
 ### Idempotent migrations

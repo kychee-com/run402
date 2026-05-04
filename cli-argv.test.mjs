@@ -136,6 +136,25 @@ describe("unknown flags", () => {
   });
 });
 
+describe("projects costs argv validation", () => {
+  it("rejects invalid --window before network", async () => {
+    const { run } = await import("./cli/lib/projects.mjs");
+    const previous = process.env.RUN402_ADMIN_COOKIE;
+    process.env.RUN402_ADMIN_COOKIE = "run402_admin=test";
+    let err;
+    try {
+      err = await expectExit1(() => run("costs", ["--window", "1y"]));
+    } finally {
+      if (previous === undefined) delete process.env.RUN402_ADMIN_COOKIE;
+      else process.env.RUN402_ADMIN_COOKIE = previous;
+    }
+
+    assert.equal(err.code, "BAD_FLAG");
+    assert.equal(err.details.flag, "--window");
+    assert.equal(calls.length, 0, "bad --window must not hit the network");
+  });
+});
+
 describe("--flag=value", () => {
   it("blob ls accepts equals-form flags (GH-189)", async () => {
     const { run } = await import("./cli/lib/blob.mjs");

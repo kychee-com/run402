@@ -2,7 +2,7 @@ import { readFileSync } from "fs";
 import { findProject, loadKeyStore, API, allowanceAuthHeaders, resolveProjectId, getActiveProjectId } from "./config.mjs";
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail, parseFlagJson } from "./sdk-errors.mjs";
-import { assertKnownFlags, failBadProjectId, hasHelp, normalizeArgv, positionalArgs, resolvePositionalProject, validateRegularFile } from "./argparse.mjs";
+import { assertKnownFlags, failBadProjectId, flagValue, hasHelp, normalizeArgv, positionalArgs, resolvePositionalProject, validateRegularFile } from "./argparse.mjs";
 
 const HELP = `run402 projects — Manage your deployed Run402 projects
 
@@ -19,6 +19,7 @@ Subcommands:
   sql   [id] "<query>" [--file <path>] [--params '<json>']  Run a SQL query (supports parameterized queries)
   rest  [id] <table> [params]             Query a table via the REST API (PostgREST)
   usage [id]                              Show compute/storage usage for a project
+  costs [id] [--window <w>]               Show admin-only per-project revenue/cost/margin
   schema [id]                             Inspect the database schema
   apply-expose [id] <manifest_json>       Apply a declarative authorization manifest
   apply-expose [id] --file <path>         Apply a manifest from a JSON file
@@ -40,6 +41,7 @@ Examples:
   run402 projects sql prj_abc123 --file setup.sql
   run402 projects rest prj_abc123 users "limit=10&select=id,name"
   run402 projects usage prj_abc123
+  RUN402_ADMIN_COOKIE='run402_admin=...' run402 projects costs prj_abc123 --window 30d
   run402 projects schema prj_abc123
   run402 projects apply-expose prj_abc123 --file manifest.json
   run402 projects get-expose prj_abc123
@@ -108,7 +110,33 @@ Examples:
   run402 projects sql prj_abc123 "SELECT * FROM users WHERE id = $1" --params '[42]'
   run402 projects sql prj_abc123 --file setup.sql
 `,
+  costs: `run402 projects costs — Show admin-only per-project finance
+
+Usage:
+  run402 projects costs [id] [--window <24h|7d|30d|90d>]
+
+Arguments:
+  [id]                Project ID (defaults to the active project if omitted)
+
+Options:
+  --window <w>        Finance window (default: 30d). One of: 24h, 7d, 30d, 90d
+
+Environment:
+  RUN402_ADMIN_COOKIE Admin OAuth cookie header, e.g. "run402_admin=..."
+
+Notes:
+  - Platform-admin only. Project service keys and normal allowance auth are
+    not enough for this endpoint.
+  - Output is the gateway's per-project finance JSON: revenue, direct cost,
+    direct margin, and direct_cost_breakdown rows.
+
+Examples:
+  RUN402_ADMIN_COOKIE='run402_admin=...' run402 projects costs prj_abc123
+  RUN402_ADMIN_COOKIE='run402_admin=...' run402 projects costs --window 7d
+`,
 };
+
+const FINANCE_WINDOWS = new Set(["24h", "7d", "30d", "90d"]);
 
 async function quote() {
   try {
@@ -314,6 +342,40 @@ async function usage(projectId) {
   }
 }
 
+function adminCookieFromEnv() {
+  const raw = process.env.RUN402_ADMIN_COOKIE?.trim();
+  if (!raw) {
+    fail({
+      code: "ADMIN_COOKIE_REQUIRED",
+      message: "run402 projects costs requires RUN402_ADMIN_COOKIE.",
+      hint: "Sign in to /admin, then set RUN402_ADMIN_COOKIE to the run402_admin cookie header.",
+      details: { env: "RUN402_ADMIN_COOKIE" },
+    });
+  }
+  return raw.includes("=") ? raw : `run402_admin=${raw}`;
+}
+
+async function costs(projectId, args = []) {
+  const window = flagValue(args, "--window") ?? "30d";
+  if (!FINANCE_WINDOWS.has(window)) {
+    fail({
+      code: "BAD_FLAG",
+      message: `--window must be one of 24h, 7d, 30d, 90d; got ${window}.`,
+      details: { flag: "--window", value: window, allowed: [...FINANCE_WINDOWS] },
+    });
+  }
+  const cookie = adminCookieFromEnv();
+  try {
+    const data = await getSdk().admin.getProjectFinance(projectId, {
+      window,
+      cookie,
+    });
+    console.log(JSON.stringify(data, null, 2));
+  } catch (err) {
+    reportSdkError(err);
+  }
+}
+
 async function schema(projectId) {
   try {
     const data = await getSdk().projects.getSchema(projectId);
@@ -415,6 +477,7 @@ async function deleteProject(projectId, args = []) {
 const FLAGS_BY_SUB = {
   provision: { known: ["--tier", "--name"], values: ["--tier", "--name"] },
   sql: { known: ["--file", "--params"], values: ["--file", "--params"] },
+  costs: { known: ["--window"], values: ["--window"] },
   "apply-expose": { known: ["--file"], values: ["--file"] },
   delete: { known: ["--confirm"], values: [] },
 };
@@ -445,6 +508,7 @@ export async function run(sub, args) {
     case "sql":       { const { projectId, rest } = resolvePositionalProject(args, { maxBarePositionals: 1, valueFlags: FLAGS_BY_SUB.sql.values, rejectBareFirstWhenFlagPresent: ["--file"] }); await sqlCmd(projectId, rest); break; }
     case "rest":      { const { projectId, rest: restArgs } = resolvePositionalProject(args); await rest(projectId, restArgs[0], restArgs[1]); break; }
     case "usage":     { const { projectId } = resolvePositionalProject(args, { rejectBareFirst: true }); await usage(projectId); break; }
+    case "costs":     { const { projectId, rest } = resolvePositionalProject(args, { rejectBareFirst: true, valueFlags: FLAGS_BY_SUB.costs.values }); await costs(projectId, rest); break; }
     case "schema":    { const { projectId } = resolvePositionalProject(args, { rejectBareFirst: true }); await schema(projectId); break; }
     case "apply-expose": { const { projectId, rest } = resolvePositionalProject(args, { maxBarePositionals: 1, valueFlags: FLAGS_BY_SUB["apply-expose"].values, rejectBareFirstWhenFlagPresent: ["--file"] }); await applyExpose(projectId, rest); break; }
     case "get-expose":   { const { projectId } = resolvePositionalProject(args, { rejectBareFirst: true }); await getExpose(projectId); break; }

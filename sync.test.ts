@@ -281,6 +281,7 @@ const SURFACE: Capability[] = [
   { id: "pin_project",     endpoint: "POST /projects/v1/admin/:id/pin",    mcp: "pin_project",      cli: "projects:pin",     openclaw: "projects:pin" },
   { id: "promote_user",    endpoint: "POST /projects/v1/admin/:id/promote-user", mcp: "promote_user", cli: "projects:promote-user", openclaw: "projects:promote-user" },
   { id: "demote_user",     endpoint: "POST /projects/v1/admin/:id/demote-user",  mcp: "demote_user",  cli: "projects:demote-user",  openclaw: "projects:demote-user" },
+  { id: "admin_project_finance", endpoint: "GET /admin/api/finance/project/:id", mcp: null, cli: "projects:costs", openclaw: "projects:costs" },
 
   // ── Auth (project user) ────────────────────────────────────────────────
   { id: "request_magic_link", endpoint: "POST /auth/v1/magic-link",           mcp: "request_magic_link", cli: "auth:magic-link",    openclaw: "auth:magic-link" },
@@ -464,6 +465,7 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   pin_project: "projects.pin",
   promote_user: "auth.promote",
   demote_user: "auth.demote",
+  admin_project_finance: "admin.getProjectFinance",
 
   // Auth
   request_magic_link: "auth.requestMagicLink",

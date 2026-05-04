@@ -1,13 +1,13 @@
 /**
- * `admin` namespace — account-level operations that don't belong to any
- * single resource: sending messages to the operators, registering agent
- * contact info.
+ * `admin` namespace — operator-adjacent operations that don't fit a public
+ * resource namespace cleanly: messages/contact plus internal finance reads.
  *
  * (The compound `init` and `status` flows live at the MCP/CLI edge because
  * they stitch together multiple SDK namespaces + local state.)
  */
 
 import type { Client } from "../kernel.js";
+import { LocalError } from "../errors.js";
 
 export interface AgentContact {
   name: string;
@@ -26,6 +26,39 @@ export interface AgentContactResult {
 export interface SendMessageResult {
   status: string;
 }
+
+export type AdminFinanceWindow = "24h" | "7d" | "30d" | "90d";
+
+export interface AdminProjectFinanceOptions {
+  /** Time window for the finance rollup. Defaults to "30d". */
+  window?: AdminFinanceWindow;
+  /**
+   * Optional admin session cookie header. Node operators can pass the value of
+   * RUN402_ADMIN_COOKIE; custom credential providers may instead inject auth
+   * headers through getAuth().
+   */
+  cookie?: string;
+}
+
+export interface AdminProjectFinanceResult {
+  project_id: string;
+  project_name: string;
+  window: AdminFinanceWindow;
+  revenue_usd_micros: number;
+  direct_cost_usd_micros: number;
+  direct_margin_usd_micros: number;
+  revenue_breakdown: {
+    tier_fees_usd_micros: number;
+    email_packs_usd_micros: number;
+    kms_rental_usd_micros: number;
+    kms_sign_fees_usd_micros: number;
+    per_call_sku_usd_micros: number;
+  };
+  direct_cost_breakdown: Array<{ category: string; cost_usd_micros: number }>;
+  notes: string;
+}
+
+const FINANCE_WINDOWS = new Set<AdminFinanceWindow>(["24h", "7d", "30d", "90d"]);
 
 export class Admin {
   constructor(private readonly client: Client) {}
@@ -50,5 +83,37 @@ export class Admin {
       body,
       context: "setting agent contact",
     });
+  }
+
+  /**
+   * Fetch per-project finance for platform operators.
+   *
+   * This is the same admin-only surface used by the Run402 Finance tab. It is
+   * gated by the gateway's admin OAuth session; project service keys are not
+   * sufficient. Pass `cookie` when using the Node SDK directly, or provide a
+   * credential provider whose `getAuth()` returns suitable admin headers.
+   */
+  async getProjectFinance(
+    projectId: string,
+    opts: AdminProjectFinanceOptions = {},
+  ): Promise<AdminProjectFinanceResult> {
+    const window = opts.window ?? "30d";
+    if (!FINANCE_WINDOWS.has(window)) {
+      throw new LocalError(
+        `Invalid finance window: ${String(window)}. Expected one of: 24h, 7d, 30d, 90d.`,
+        "fetching project finance",
+      );
+    }
+
+    const headers: Record<string, string> = {};
+    if (opts.cookie) headers.Cookie = opts.cookie;
+
+    return this.client.request<AdminProjectFinanceResult>(
+      `/admin/api/finance/project/${encodeURIComponent(projectId)}?window=${encodeURIComponent(window)}`,
+      {
+        headers,
+        context: "fetching project finance",
+      },
+    );
   }
 }

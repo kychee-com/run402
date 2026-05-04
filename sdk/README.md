@@ -77,7 +77,7 @@ The `CredentialsProvider` interface has two required methods (`getAuth`, `getPro
 | `ai` | `translate`, `moderate`, `usage`, `generateImage` |
 | `allowance` | `status`, `create`, `export`, `faucet` |
 | `service` | `status`, `health` (no auth, no setup — works on a fresh install) |
-| `admin` | Admin-only endpoints (pinning, lifecycle reactivation, dispute resolution) |
+| `admin` | Operator/admin endpoints: messages/contact, per-project finance (`getProjectFinance`) |
 
 CLI-style aliases are available for agent ergonomics: `r.image` aliases `r.ai`,
 and common command names such as `r.billing.balance`, `r.auth.magicLink`,

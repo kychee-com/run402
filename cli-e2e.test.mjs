@@ -180,6 +180,30 @@ function mockFetch(input, init) {
   if (path.match(/^\/projects\/v1\/[^/]+$/) && method === "DELETE") {
     return Promise.resolve(noContent());
   }
+  if (pathNoQuery.match(/^\/admin\/api\/finance\/project\/[^/]+$/) && method === "GET") {
+    const window = new URL(url, API).searchParams.get("window") || "30d";
+    const projectId = decodeURIComponent(pathNoQuery.split("/").pop());
+    return Promise.resolve(json({
+      project_id: projectId,
+      project_name: "Test Project",
+      window,
+      revenue_usd_micros: 6_650_000,
+      direct_cost_usd_micros: 1_650_000,
+      direct_margin_usd_micros: 5_000_000,
+      revenue_breakdown: {
+        tier_fees_usd_micros: 5_000_000,
+        email_packs_usd_micros: 0,
+        kms_rental_usd_micros: 1_200_000,
+        kms_sign_fees_usd_micros: 450_000,
+        per_call_sku_usd_micros: 0,
+      },
+      direct_cost_breakdown: [
+        { category: "KMS wallet rental", cost_usd_micros: 1_200_000 },
+        { category: "Chain gas passthrough", cost_usd_micros: 450_000 },
+      ],
+      notes: "Direct costs only.",
+    }));
+  }
 
   // SQL
   if (path.match(/\/sql$/) && method === "POST") {
@@ -1306,6 +1330,77 @@ describe("CLI e2e happy path", () => {
     assert.ok(seenUrl && seenUrl.includes("/projects/v1/admin/prj_test123/usage"),
       `usage should hit the active project URL; got: ${seenUrl}`);
     assert.ok(captured().includes("api_calls"), "should show usage for active project");
+  });
+
+  it("projects costs defaults to active project and uses admin cookie", async () => {
+    const { run } = await import("./cli/lib/projects.mjs");
+    const { setActiveProjectId } = await import("./cli/lib/config.mjs");
+    setActiveProjectId("prj_test123");
+    const prevCookie = process.env.RUN402_ADMIN_COOKIE;
+    process.env.RUN402_ADMIN_COOKIE = "run402_admin=test-session";
+    let seenUrl = null;
+    let seenCookie = null;
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = (input, init) => {
+      const url = typeof input === "string" ? input : (input instanceof Request ? input.url : String(input));
+      if (url.includes("/admin/api/finance/project/")) {
+        seenUrl = url;
+        if (input instanceof Request) {
+          seenCookie = input.headers.get("cookie");
+        } else {
+          const headers = init?.headers ?? {};
+          seenCookie = headers.Cookie ?? headers.cookie ?? null;
+        }
+      }
+      return prevFetch(input, init);
+    };
+    captureStart();
+    try {
+      await run("costs", ["--window", "7d"]);
+    } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+      if (prevCookie === undefined) delete process.env.RUN402_ADMIN_COOKIE;
+      else process.env.RUN402_ADMIN_COOKIE = prevCookie;
+    }
+    assert.ok(seenUrl && seenUrl.includes("/admin/api/finance/project/prj_test123?window=7d"),
+      `costs should hit the active project finance URL; got: ${seenUrl}`);
+    assert.equal(seenCookie, "run402_admin=test-session");
+    const parsed = JSON.parse(capturedStdout());
+    assert.equal(parsed.project_id, "prj_test123");
+    assert.equal(parsed.direct_cost_usd_micros, 1_650_000);
+  });
+
+  it("projects costs requires RUN402_ADMIN_COOKIE before network", async () => {
+    const { run } = await import("./cli/lib/projects.mjs");
+    const { setActiveProjectId } = await import("./cli/lib/config.mjs");
+    setActiveProjectId("prj_test123");
+    const prevCookie = process.env.RUN402_ADMIN_COOKIE;
+    delete process.env.RUN402_ADMIN_COOKIE;
+    let financeFetchCalled = false;
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = (input, init) => {
+      const url = typeof input === "string" ? input : (input instanceof Request ? input.url : String(input));
+      if (url.includes("/admin/api/finance/project/")) financeFetchCalled = true;
+      return prevFetch(input, init);
+    };
+    let threw = null;
+    captureStart();
+    try {
+      await run("costs", ["prj_test123"]);
+    } catch (e) {
+      threw = e;
+    } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+      if (prevCookie === undefined) delete process.env.RUN402_ADMIN_COOKIE;
+      else process.env.RUN402_ADMIN_COOKIE = prevCookie;
+    }
+    assert.equal(threw?.message, "process.exit(1)");
+    assert.equal(financeFetchCalled, false, "missing admin cookie must not hit finance endpoint");
+    const line = capturedStderr().split("\n").find((s) => s.trim().startsWith("{"));
+    assert.ok(line, `expected JSON stderr, got: ${capturedStderr()}`);
+    assert.equal(JSON.parse(line).code, "ADMIN_COOKIE_REQUIRED");
   });
 
   it("projects schema defaults to active project (GH-102)", async () => {

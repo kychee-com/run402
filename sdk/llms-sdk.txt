@@ -822,7 +822,20 @@ health(): Promise<ServiceHealth>      // per-dependency liveness — no auth, no
 
 ### `r.admin`
 
-Admin-only endpoints (pinning, lifecycle reactivation, dispute resolution). Most agents won't reach for these — they're for platform operators.
+Operator/admin endpoints. Most agents won't reach for these — they're for platform operators.
+
+```
+sendMessage(message: string): Promise<SendMessageResult>
+setAgentContact({ name, email?, webhook? }): Promise<AgentContactResult>
+getProjectFinance(id: string, opts?: {
+  window?: "24h" | "7d" | "30d" | "90d",
+  cookie?: string
+}): Promise<AdminProjectFinanceResult>
+```
+
+`getProjectFinance` reads the internal Finance-tab JSON for a project. It is
+admin OAuth-gated; a project `service_key` is not enough. In Node operator
+scripts, pass `cookie: process.env.RUN402_ADMIN_COOKIE`.
 
 ## Resource limits
 

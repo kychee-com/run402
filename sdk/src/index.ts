@@ -244,6 +244,14 @@ export { withRetry } from "./retry.js";
 export type { RetryOptions } from "./retry.js";
 export type { CredentialsProvider, ProjectKeys } from "./credentials.js";
 export type { RequestOptions, Client } from "./kernel.js";
+export type {
+  AdminFinanceWindow,
+  AdminProjectFinanceOptions,
+  AdminProjectFinanceResult,
+  AgentContact,
+  AgentContactResult,
+  SendMessageResult,
+} from "./namespaces/admin.js";
 export {
   CI_SESSION_CREDENTIALS,
   createCiSessionCredentials,
