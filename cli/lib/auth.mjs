@@ -433,13 +433,14 @@ async function settings(args) {
   }
 
   try {
-    const data = await getSdk().auth.settings(projectId, {
+    const patch = {
       allow_password_set: allow,
       preferred_sign_in_method: preferredRaw === "null" ? null : preferredRaw ?? undefined,
       public_signup: publicSignup ?? undefined,
       require_passkey_for_project_admin: requireAdminPasskey,
-    });
-    console.log(JSON.stringify({ status: "ok", ...data }));
+    };
+    const data = await getSdk().auth.settings(projectId, patch);
+    console.log(JSON.stringify({ status: "ok", ...patch, ...data }));
   } catch (err) {
     reportSdkError(err);
   }
