@@ -370,15 +370,22 @@ describe("projects.getSchema", () => {
 });
 
 describe("projects.pin", () => {
-  it("POSTs /projects/v1/admin/:id/pin", async () => {
+  it("POSTs /projects/v1/admin/:id/pin with admin-wallet auth, not service key auth", async () => {
     const { fetch, calls } = mockFetch(() =>
-      jsonResponse({ status: "pinned", project_id: "prj_known" }),
+      jsonResponse({ status: "pinned", project_id: "prj_external" }),
     );
-    const sdk = makeSdk(makeCreds(), fetch);
-    const result = await sdk.projects.pin("prj_known");
+    const sdk = makeSdk(makeCreds({
+      async getProject() {
+        return null;
+      },
+    }), fetch);
+    const result = await sdk.projects.pin("prj_external");
 
-    assert.equal(calls[0]!.url, "https://api.example.test/projects/v1/admin/prj_known/pin");
+    assert.equal(calls[0]!.url, "https://api.example.test/projects/v1/admin/prj_external/pin");
     assert.equal(calls[0]!.method, "POST");
+    assert.equal(calls[0]!.headers["SIGN-IN-WITH-X"], "test-siwx");
+    assert.equal(calls[0]!.headers.Authorization, undefined);
+    assert.equal(calls[0]!.headers["X-Admin-Mode"], "1");
     assert.equal(result.status, "pinned");
   });
 });

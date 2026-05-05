@@ -180,6 +180,10 @@ function mockFetch(input, init) {
   if (path.match(/^\/projects\/v1\/[^/]+$/) && method === "DELETE") {
     return Promise.resolve(noContent());
   }
+  if (path.match(/^\/projects\/v1\/admin\/[^/]+\/pin$/) && method === "POST") {
+    const projectId = path.split("/").at(-2);
+    return Promise.resolve(json({ status: "pinned", project_id: projectId }));
+  }
   if (pathNoQuery.match(/^\/admin\/api\/finance\/project\/[^/]+$/) && method === "GET") {
     const window = new URL(url, API).searchParams.get("window") || "30d";
     const projectId = decodeURIComponent(pathNoQuery.split("/").pop());
@@ -1420,6 +1424,55 @@ describe("CLI e2e happy path", () => {
     assert.ok(seenUrl && seenUrl.includes("/admin/api/finance/project/prj_test123?window=30d"),
       `costs should hit the project finance URL; got: ${seenUrl}`);
     assert.equal(seenCookie, "run402_admin=test-session");
+  });
+
+  it("projects pin uses allowance admin auth, not project service key auth", async () => {
+    const { run } = await import("./cli/lib/projects.mjs");
+    const { saveAllowance } = await import("./cli/lib/config.mjs");
+    saveAllowance({
+      address: "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+      privateKey: "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80",
+      created: "2026-01-01T00:00:00.000Z",
+      funded: true,
+      rail: "x402",
+    });
+    let seenUrl = null;
+    let seenSiwx = null;
+    let seenAdminMode = null;
+    let seenAuthorization = null;
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = (input, init) => {
+      const url = typeof input === "string" ? input : (input instanceof Request ? input.url : String(input));
+      if (url.includes("/projects/v1/admin/prj_external/pin")) {
+        seenUrl = url;
+        if (input instanceof Request) {
+          seenSiwx = input.headers.get("sign-in-with-x");
+          seenAdminMode = input.headers.get("x-admin-mode");
+          seenAuthorization = input.headers.get("authorization");
+        } else {
+          const headers = init?.headers ?? {};
+          seenSiwx = headers["SIGN-IN-WITH-X"] ?? headers["sign-in-with-x"] ?? null;
+          seenAdminMode = headers["X-Admin-Mode"] ?? headers["x-admin-mode"] ?? null;
+          seenAuthorization = headers.Authorization ?? headers.authorization ?? null;
+        }
+      }
+      return prevFetch(input, init);
+    };
+    captureStart();
+    try {
+      await run("pin", ["prj_external"]);
+    } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+    assert.ok(seenUrl && seenUrl.includes("/projects/v1/admin/prj_external/pin"),
+      `pin should hit the admin pin endpoint; got: ${seenUrl}`);
+    assert.equal(typeof seenSiwx, "string", "pin should send allowance SIWX admin-wallet auth");
+    assert.equal(seenAdminMode, "1", "pin should explicitly request admin mode");
+    assert.equal(seenAuthorization, null, "pin must not use the project's service_key as Bearer auth");
+    const parsed = JSON.parse(capturedStdout());
+    assert.equal(parsed.status, "pinned");
+    assert.equal(parsed.project_id, "prj_external");
   });
 
   it("projects schema defaults to active project (GH-102)", async () => {

@@ -439,7 +439,7 @@ The full MCP surface — every tool is a thin shim over an SDK call.
 | `request_faucet` | Request testnet USDC. |
 | `check_balance` | USDC balance for an allowance address. |
 | `list_projects` | Active projects for a wallet. |
-| `pin_project` | Pin a project (admin only — bypasses lifecycle state machine). |
+| `pin_project` | Pin a project (admin only — uses the configured admin allowance wallet). |
 | `project_info` / `project_keys` / `project_use` | Inspect / set the active project. |
 | `create_checkout` | Stripe checkout to add cash credit. |
 | `send_message` / `set_agent_contact` | Send feedback to the Run402 team; register agent contact info. |

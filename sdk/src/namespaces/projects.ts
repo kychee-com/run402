@@ -225,18 +225,17 @@ export class Projects {
    * Pin a project so it is not garbage-collected or expired.
    *
    * Admin only — the server-side `POST /projects/v1/admin/:id/pin`
-   * endpoint requires run402 platform admin auth. Project owners
-   * calling this with their `service_key` or SIWX session will receive
-   * `403 admin_required`; this is by design and not a bug in the SDK.
-   * The method is retained so operator tooling can share the same SDK.
+   * endpoint requires run402 platform admin auth. The Node SDK uses the
+   * configured allowance wallet's SIWX headers for this call; project
+   * service keys are intentionally not sent. Project owners calling with
+   * a non-admin wallet will receive `403 admin_required`; this is by
+   * design and not a bug in the SDK. The method is retained so operator
+   * tooling can share the same SDK.
    */
   async pin(id: string): Promise<PinResult> {
-    const keys = await this.client.getProject(id);
-    if (!keys) throw new ProjectNotFound(id, "pinning project");
-
     return this.client.request<PinResult>(`/projects/v1/admin/${id}/pin`, {
       method: "POST",
-      headers: { Authorization: `Bearer ${keys.service_key}` },
+      headers: { "X-Admin-Mode": "1" },
       context: "pinning project",
     });
   }

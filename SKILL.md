@@ -328,7 +328,7 @@ For agents that need to sign Ethereum transactions. Private keys never leave AWS
 - **`request_faucet`** — testnet USDC.
 - **`check_balance`** — USDC for an allowance address.
 - **`list_projects`** — active projects for a wallet.
-- **`pin_project`** — pin a project (admin only — bypasses lifecycle state machine).
+- **`pin_project`** — pin a project (admin only — uses the configured admin allowance wallet).
 - **`project_info`** / **`project_keys`** / **`project_use`** — inspect / set the active project.
 - **`send_message`** / **`set_agent_contact`** — send feedback to the Run402 team; register agent contact info.
 
@@ -448,7 +448,7 @@ Other allowance options:
 |---|---|
 | `402 payment_required` on `set_tier` | Allowance is empty. Call `request_faucet` (testnet) or fund with real USDC. |
 | `402` with `lifecycle_state: frozen` | Project past lease + 14 days. `set_tier` reactivates instantly. |
-| `403 admin_required` | Tool is admin-only (e.g., `pin_project`). Project owners can't pin their own projects. |
+| `403 admin_required` | Tool is admin-only (e.g., `pin_project`). Use a platform admin allowance wallet; project owners can't pin their own projects. |
 | Empty `[]` from `rest_query` for anon | Table not in manifest with `expose: true`. Call `apply_expose`. |
 | `403 forbidden_function` calling an RPC | Function not in the manifest's `rpcs[]`. Add `{ name, signature, grant_to: ["authenticated"] }` and re-apply. |
 | `409 reserved` from `claim_subdomain` | Original owner's grace period — subdomain held until +118 days from lease expiry. |

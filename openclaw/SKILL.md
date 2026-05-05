@@ -699,7 +699,7 @@ Other allowance options:
 |---|---|
 | `402 payment_required` on `tier set` | Allowance is empty. `run402 allowance fund` (testnet) or fund with real USDC. |
 | `402` with `lifecycle_state: frozen` | Project past lease + 14 days. `run402 tier set <tier>` reactivates instantly. |
-| `403 admin_required` | Tool is admin-only (e.g., `pin_project`). Project owners can't pin. |
+| `403 admin_required` | Tool is admin-only (e.g., `pin_project`). Use a platform admin allowance wallet; project owners can't pin. |
 | Empty `[]` from `/rest/v1/items` for anon | Table not in manifest with `expose: true`. Run `run402 projects apply-expose`. |
 | `403 forbidden_function` calling an RPC | Function's not in the manifest's `rpcs[]`. Add `{ name, signature, grant_to: ["authenticated"] }`. |
 | `409 reserved` on subdomain claim | Original owner's grace period — subdomain held until +118 days from lease expiry. |
