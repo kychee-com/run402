@@ -1,6 +1,6 @@
 {
   "name": "run402-mcp",
-  "version": "1.58.0",
+  "version": "1.58.1",
   "description": "MCP server for Run402 — AI-native Postgres databases with REST API, auth, storage, and row-level security. Pay with x402 USDC micropayments.",
   "type": "module",
   "main": "dist/index.js",
