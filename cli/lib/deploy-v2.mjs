@@ -24,8 +24,8 @@
  */
 
 import { readFileSync } from "node:fs";
-import { resolve, dirname, isAbsolute, join } from "node:path";
-import { githubActionsCredentials } from "#sdk/node";
+import { resolve, dirname, isAbsolute } from "node:path";
+import { githubActionsCredentials, normalizeDeployManifest } from "#sdk/node";
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail } from "./sdk-errors.mjs";
 import { API, allowanceAuthHeaders, getActiveProjectId, resolveProjectId } from "./config.mjs";
@@ -206,11 +206,12 @@ async function applyCmd(args) {
   }
 
   let raw;
+  let manifestPath = null;
   if (opts.spec) {
     raw = opts.spec;
   } else if (opts.manifest) {
     try {
-      const manifestPath = isAbsolute(opts.manifest) ? opts.manifest : resolve(process.cwd(), opts.manifest);
+      manifestPath = isAbsolute(opts.manifest) ? opts.manifest : resolve(process.cwd(), opts.manifest);
       raw = readFileSync(manifestPath, "utf-8");
     } catch (err) {
       fail({
@@ -235,7 +236,7 @@ async function applyCmd(args) {
   }
   rejectLegacySecretManifest(spec, {
     source: opts.manifest ? "manifest" : opts.spec ? "spec" : "stdin",
-    ...(opts.manifest ? { path: resolve(opts.manifest) } : {}),
+    ...(manifestPath ? { path: manifestPath } : {}),
   });
 
   // GH-232: Reject empty specs client-side. Without this guard,
@@ -269,38 +270,44 @@ async function applyCmd(args) {
       hint: "Did you mean to write a 'site.replace' or 'database.migrations' block? See https://run402.com/schemas/manifest.v1.json",
       details: {
         field: opts.manifest ? "manifest" : opts.spec ? "spec" : "stdin",
-        ...(opts.manifest ? { path: resolve(opts.manifest) } : {}),
+        ...(manifestPath ? { path: manifestPath } : {}),
         meaningful_keys: meaningful,
       },
     });
   }
 
-  if (opts.manifest) resolveFileDataPaths(spec, dirname(resolve(opts.manifest)));
-
-  if (opts.project && spec.project_id && spec.project_id !== opts.project) {
+  const manifestProject = spec.project ?? spec.project_id;
+  if (opts.project && manifestProject && manifestProject !== opts.project) {
     fail({
       code: "BAD_USAGE",
-      message: `project_id conflict: spec.project_id=${spec.project_id} but --project=${opts.project}`,
-      details: { spec_project_id: spec.project_id, flag_project_id: opts.project },
+      message: `project_id conflict: manifest project=${manifestProject} but --project=${opts.project}`,
+      details: { spec_project_id: manifestProject, flag_project_id: opts.project },
     });
   }
-  if (opts.project) spec.project_id = opts.project;
   const useGithubActionsOidc = hasGithubActionsOidcEnv();
-  if (!spec.project_id) {
-    spec.project_id = useGithubActionsOidc ? resolveCiProjectId() : resolveProjectId(null);
+  let defaultProject;
+  if (!opts.project && !manifestProject) {
+    defaultProject = useGithubActionsOidc ? resolveCiProjectId() : resolveProjectId(null);
   }
 
-  // Translate { project_id, ... } envelope → ReleaseSpec ({ project, ... })
-  // The SDK ReleaseSpec uses `project` rather than `project_id`; both shapes
-  // are accepted at the manifest layer (project_id is friendlier for agents
-  // sharing JSON manifests with the MCP tool).
-  const releaseSpec = mapManifestToReleaseSpec(spec);
-  const idempotencyKey = spec.idempotency_key;
+  let normalizedManifest;
+  try {
+    normalizedManifest = await normalizeDeployManifest(spec, {
+      baseDir: manifestPath ? dirname(manifestPath) : process.cwd(),
+      ...(opts.project ? { project: opts.project } : {}),
+      ...(defaultProject ? { defaultProject } : {}),
+    });
+  } catch (err) {
+    reportSdkError(err);
+  }
+
+  const releaseSpec = normalizedManifest.spec;
+  const idempotencyKey = normalizedManifest.idempotencyKey;
 
   let sdkOpts;
   if (useGithubActionsOidc) {
     sdkOpts = {
-      credentials: githubActionsCredentials({ projectId: spec.project_id, apiBase: API }),
+      credentials: githubActionsCredentials({ projectId: releaseSpec.project, apiBase: API }),
       disablePaidFetch: true,
     };
   } else {
@@ -667,175 +674,4 @@ function parsePositiveInt(value, flag) {
     });
   }
   return parsed;
-}
-
-// ─── Manifest → ReleaseSpec ──────────────────────────────────────────────────
-
-function mapManifestToReleaseSpec(spec) {
-  const out = { project: spec.project_id };
-  if (spec.base !== undefined) out.base = spec.base;
-  if (spec.subdomains !== undefined) out.subdomains = spec.subdomains;
-  if (spec.secrets !== undefined) out.secrets = spec.secrets;
-  if (spec.routes !== undefined) out.routes = spec.routes;
-  if (spec.checks !== undefined) out.checks = spec.checks;
-
-  if (spec.database) {
-    out.database = {};
-    if (spec.database.expose !== undefined) out.database.expose = spec.database.expose;
-    if (spec.database.zero_downtime !== undefined) out.database.zero_downtime = spec.database.zero_downtime;
-    if (spec.database.migrations) {
-      out.database.migrations = spec.database.migrations.map((m) => {
-        const mm = { id: m.id };
-        if (m.sql !== undefined) mm.sql = m.sql;
-        if (m.sql_ref !== undefined) mm.sql_ref = m.sql_ref;
-        if (m.checksum !== undefined) mm.checksum = m.checksum;
-        if (m.transaction !== undefined) mm.transaction = m.transaction;
-        return mm;
-      });
-    }
-  }
-
-  if (spec.functions) {
-    out.functions = {};
-    if (spec.functions.replace) out.functions.replace = mapFunctionMap(spec.functions.replace);
-    if (spec.functions.patch) {
-      out.functions.patch = {};
-      if (spec.functions.patch.set) out.functions.patch.set = mapFunctionMap(spec.functions.patch.set);
-      if (spec.functions.patch.delete) out.functions.patch.delete = spec.functions.patch.delete;
-    }
-  }
-
-  if (spec.site) {
-    if (spec.site.replace) {
-      out.site = { replace: mapFileMap(spec.site.replace) };
-    } else if (spec.site.patch) {
-      const patch = {};
-      if (spec.site.patch.put) patch.put = mapFileMap(spec.site.patch.put);
-      if (spec.site.patch.delete) patch.delete = spec.site.patch.delete;
-      out.site = { patch };
-    }
-  }
-
-  return out;
-}
-
-function mapFunctionMap(map) {
-  const out = {};
-  for (const [name, fn] of Object.entries(map)) {
-    const f = {};
-    if (fn.runtime) f.runtime = fn.runtime;
-    if (fn.source !== undefined) f.source = fileEntryToContentSource(fn.source);
-    if (fn.files) f.files = mapFileMap(fn.files);
-    if (fn.entrypoint !== undefined) f.entrypoint = fn.entrypoint;
-    if (fn.config !== undefined) f.config = fn.config;
-    if (fn.schedule !== undefined) f.schedule = fn.schedule;
-    out[name] = f;
-  }
-  return out;
-}
-
-function mapFileMap(map) {
-  const out = {};
-  for (const [path, entry] of Object.entries(map)) {
-    out[path] = fileEntryToContentSource(entry);
-  }
-  return out;
-}
-
-function fileEntryToContentSource(entry) {
-  if (entry === null || entry === undefined) return entry;
-  if (typeof entry === "string") return entry;
-  if (entry instanceof Uint8Array) return entry;
-  if (typeof entry === "object") {
-    if (entry.encoding === "base64" && typeof entry.data === "string") {
-      const bytes = Buffer.from(entry.data, "base64");
-      const u8 = new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-      return entry.contentType ? { data: u8, contentType: entry.contentType } : u8;
-    }
-    if (typeof entry.data === "string") {
-      return entry.contentType ? { data: entry.data, contentType: entry.contentType } : entry.data;
-    }
-    // Pre-resolved ContentRef shape — pass through.
-    if (typeof entry.sha256 === "string" && typeof entry.size === "number") {
-      return entry;
-    }
-  }
-  return entry;
-}
-
-/**
- * Resolve any `{ "path": "..." }` entries in the manifest to inline data.
- * Mirrors the legacy deploy.mjs behavior so `run402 deploy apply` accepts
- * the same files-with-paths shape that `run402 deploy` does today.
- */
-function resolveFileDataPaths(spec, baseDir) {
-  // Site files
-  if (spec.site?.replace) resolveMap(spec.site.replace, baseDir);
-  if (spec.site?.patch?.put) resolveMap(spec.site.patch.put, baseDir);
-  // Function files
-  const visitFns = (fnMap) => {
-    if (!fnMap) return;
-    for (const fn of Object.values(fnMap)) {
-      if (fn.source && typeof fn.source === "object" && fn.source.path) {
-        const resolved = readFileEntry(fn.source, baseDir);
-        if (resolved) fn.source = resolved;
-      }
-      if (fn.files) resolveMap(fn.files, baseDir);
-    }
-  };
-  visitFns(spec.functions?.replace);
-  visitFns(spec.functions?.patch?.set);
-  // Migration sql_path / sql_file
-  if (spec.database?.migrations) {
-    for (const m of spec.database.migrations) {
-      if (!m.sql && m.sql_path) {
-        try {
-          const p = isAbsolute(m.sql_path) ? m.sql_path : join(baseDir, m.sql_path);
-          m.sql = readFileSync(p, "utf-8");
-          delete m.sql_path;
-        } catch (err) {
-          fail({
-            code: "BAD_USAGE",
-            message: `Failed to read migration sql_path '${m.sql_path}': ${err.message}`,
-            details: { migration_id: m.id, sql_path: m.sql_path },
-          });
-        }
-      }
-    }
-  }
-}
-
-function resolveMap(map, baseDir) {
-  for (const [key, entry] of Object.entries(map)) {
-    if (entry && typeof entry === "object" && typeof entry.path === "string" && entry.data === undefined) {
-      const resolved = readFileEntry(entry, baseDir);
-      if (resolved) map[key] = resolved;
-    }
-  }
-}
-
-function readFileEntry(entry, baseDir) {
-  try {
-    const p = isAbsolute(entry.path) ? entry.path : join(baseDir, entry.path);
-    const buf = readFileSync(p);
-    const out = {};
-    // Detect text vs binary via simple UTF-8 round-trip; mirrors the bundle
-    // deploy behavior. Image/font types get base64; HTML/CSS/JS stay UTF-8.
-    const looksTextual = !entry.contentType?.match(/^(image|font|application\/(pdf|wasm|octet-stream|zip))/);
-    if (looksTextual) {
-      out.data = buf.toString("utf-8");
-      out.encoding = "utf-8";
-    } else {
-      out.data = buf.toString("base64");
-      out.encoding = "base64";
-    }
-    if (entry.contentType) out.contentType = entry.contentType;
-    return out;
-  } catch (err) {
-    fail({
-      code: "BAD_USAGE",
-      message: `Failed to read file '${entry.path}': ${err.message}`,
-      details: { path: entry.path },
-    });
-  }
 }

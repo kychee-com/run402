@@ -179,6 +179,8 @@ Manifest format mirrors a `ReleaseSpec`:
 }
 ```
 
+File entries accept a bare UTF-8 string, `{ "data": "...", "encoding": "utf-8" | "base64", "contentType": "..." }`, or `{ "path": "dist/index.html", "contentType": "text/html" }`. In `--manifest` files, relative paths resolve against the manifest file's directory; in `--spec` / stdin they resolve against the current working directory. Migration entries may use `"sql_path"` or `"sql_file"` instead of inline `"sql"`. The CLI and MCP adapters share the SDK's typed `normalizeDeployManifest` path, so the same JSON can become SDK-native `ReleaseSpec` code without reimplementing base64 or path handling.
+
 Apply it:
 
 ```bash

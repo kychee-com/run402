@@ -7,8 +7,8 @@ import {
   PaymentRequired,
   Run402DeployError,
 } from "../../sdk/dist/index.js";
+import { normalizeDeployManifest } from "../../sdk/dist/node/index.js";
 import type {
-  ContentSource,
   DeployEvent,
   ReleaseSpec,
   WarningEntry,
@@ -200,7 +200,6 @@ export const deploySchema = {
     ),
 };
 
-type FileEntryInput = z.infer<typeof fileEntry>;
 type FileMapInput = z.infer<typeof fileMap>;
 type FunctionSpecInput = z.infer<typeof functionSpec>;
 type DeployArgs = {
@@ -241,8 +240,11 @@ export async function handleDeploy(
   };
 
   let spec: ReleaseSpec;
+  let idempotencyKey: string | undefined;
   try {
-    spec = translateMcpToReleaseSpec(args);
+    const normalized = await normalizeDeployManifest(args);
+    spec = normalized.spec;
+    idempotencyKey = normalized.idempotencyKey;
   } catch (err) {
     return mapSdkError(err, "validating deploy spec");
   }
@@ -250,7 +252,7 @@ export async function handleDeploy(
   try {
     const result = await getSdk().deploy.apply(spec, {
       onEvent,
-      idempotencyKey: args.idempotency_key,
+      idempotencyKey,
       allowWarnings: args.allow_warnings === true,
     });
 
@@ -378,118 +380,4 @@ function renderEventsBlock(events: DeployEvent[]): string {
     JSON.stringify(events, null, 2),
     "```",
   ].join("\n");
-}
-
-// ─── MCP → ReleaseSpec translator ────────────────────────────────────────────
-
-function translateMcpToReleaseSpec(args: DeployArgs): ReleaseSpec {
-  const spec: ReleaseSpec = { project: args.project_id };
-  if (args.base) spec.base = args.base;
-  if (args.subdomains) spec.subdomains = args.subdomains;
-  if (args.secrets) spec.secrets = args.secrets;
-
-  if (args.database) {
-    spec.database = {};
-    if (args.database.expose) spec.database.expose = args.database.expose;
-    if (args.database.zero_downtime !== undefined) {
-      spec.database.zero_downtime = args.database.zero_downtime;
-    }
-    if (args.database.migrations && args.database.migrations.length > 0) {
-      spec.database.migrations = args.database.migrations.map((m) => ({
-        id: m.id,
-        ...(m.sql !== undefined ? { sql: m.sql } : {}),
-        ...(m.sql_ref ? { sql_ref: m.sql_ref } : {}),
-        ...(m.checksum ? { checksum: m.checksum } : {}),
-        ...(m.transaction ? { transaction: m.transaction } : {}),
-      }));
-    }
-  }
-
-  if (args.functions) {
-    spec.functions = {};
-    if (args.functions.replace) {
-      spec.functions.replace = mapFunctions(args.functions.replace);
-    }
-    if (args.functions.patch) {
-      spec.functions.patch = {};
-      if (args.functions.patch.set) {
-        spec.functions.patch.set = mapFunctions(args.functions.patch.set);
-      }
-      if (args.functions.patch.delete) {
-        spec.functions.patch.delete = args.functions.patch.delete;
-      }
-    }
-  }
-
-  if (args.site) {
-    if ("replace" in args.site) {
-      spec.site = { replace: mapFiles(args.site.replace) };
-    } else if ("patch" in args.site) {
-      const patch: { put?: Record<string, ContentSource>; delete?: string[] } = {};
-      if (args.site.patch.put) patch.put = mapFiles(args.site.patch.put);
-      if (args.site.patch.delete) patch.delete = args.site.patch.delete;
-      spec.site = { patch };
-    }
-  }
-
-  return spec;
-}
-
-function mapFunctions(
-  map: Record<string, FunctionSpecInput>,
-): Record<string, NonNullable<ReleaseSpec["functions"]>["replace"] extends Record<string, infer F> ? F : never> {
-  const out: Record<string, ReturnType<typeof mapFunction>> = {};
-  for (const [name, fn] of Object.entries(map)) {
-    out[name] = mapFunction(fn);
-  }
-  return out as never;
-}
-
-function mapFunction(fn: FunctionSpecInput): {
-  runtime?: "node22";
-  source?: ContentSource;
-  files?: Record<string, ContentSource>;
-  entrypoint?: string;
-  config?: { timeoutSeconds?: number; memoryMb?: number };
-  schedule?: string | null;
-} {
-  const out: ReturnType<typeof mapFunction> = {};
-  if (fn.runtime) out.runtime = fn.runtime;
-  if (fn.source) out.source = fileEntryToContentSource(fn.source);
-  if (fn.files) out.files = mapFiles(fn.files);
-  if (fn.entrypoint) out.entrypoint = fn.entrypoint;
-  if (fn.config) out.config = fn.config;
-  if (fn.schedule !== undefined) out.schedule = fn.schedule;
-  return out;
-}
-
-function mapFiles(map: FileMapInput): Record<string, ContentSource> {
-  const out: Record<string, ContentSource> = {};
-  for (const [path, entry] of Object.entries(map)) {
-    out[path] = fileEntryToContentSource(entry);
-  }
-  return out;
-}
-
-function fileEntryToContentSource(entry: FileEntryInput): ContentSource {
-  // Bare string — the natural shape. Forward as-is; the SDK's
-  // resolveContent accepts strings polymorphically.
-  if (typeof entry === "string") return entry;
-  if (entry.encoding === "base64") {
-    const bytes = base64ToBytes(entry.data);
-    return entry.contentType ? { data: bytes, contentType: entry.contentType } : bytes;
-  }
-  // utf-8 (default)
-  return entry.contentType ? { data: entry.data, contentType: entry.contentType } : entry.data;
-}
-
-function base64ToBytes(b64: string): Uint8Array {
-  if (typeof Buffer !== "undefined") {
-    const buf = Buffer.from(b64, "base64");
-    return new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength);
-  }
-  const bin = atob(b64);
-  const out = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
-  return out;
 }

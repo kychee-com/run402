@@ -90,6 +90,20 @@ export type {
 } from "./sites-node.js";
 export { fileSetFromDir, normalizeRelPath } from "./files.js";
 export type { FileSetFromDirOptions } from "./files.js";
+export { loadDeployManifest, normalizeDeployManifest } from "./deploy-manifest.js";
+export type {
+  DeployManifestDatabaseSpec,
+  DeployManifestFileEntry,
+  DeployManifestFileSet,
+  DeployManifestFunctionsSpec,
+  DeployManifestFunctionSpec,
+  DeployManifestInput,
+  DeployManifestMigrationSpec,
+  DeployManifestSiteSpec,
+  LoadDeployManifestOptions,
+  NormalizedDeployManifest,
+  NormalizeDeployManifestOptions,
+} from "./deploy-manifest.js";
 export { signCiDelegation } from "./ci.js";
 export type { SignCiDelegationOptions } from "./ci.js";
 export { NodeCredentialsProvider } from "./credentials.js";

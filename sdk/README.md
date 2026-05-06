@@ -10,7 +10,7 @@ npm install @run402/sdk
 
 | Import | Use when |
 |---|---|
-| `@run402/sdk/node` | Running in Node 22 with the local keystore + allowance. Auto-loads `~/.config/run402/projects.json` and signs x402 payments from `~/.config/run402/allowance.json`. Includes the `r.sites.deployDir(dir)` and `fileSetFromDir(dir)` helpers. |
+| `@run402/sdk/node` | Running in Node 22 with the local keystore + allowance. Auto-loads `~/.config/run402/projects.json` and signs x402 payments from `~/.config/run402/allowance.json`. Includes `r.sites.deployDir(dir)`, `fileSetFromDir(dir)`, `loadDeployManifest(path)`, and `normalizeDeployManifest(input)`. |
 | `@run402/sdk` | Isomorphic — works in Node, Deno, Bun, V8 isolates. No filesystem access. Bring your own `CredentialsProvider` (a session-token shim, a remote vault, anything that resolves project keys + auth headers). |
 
 ## Quick start (Node)
@@ -162,6 +162,22 @@ const resumed = await r.deploy.resume(operationId);
     subdomains: { set: ["my-app"] },
   });
   ```
+
+- The Node entry also has the typed manifest adapter shared by CLI/MCP:
+
+  ```ts
+  import { loadDeployManifest, run402 } from "@run402/sdk/node";
+
+  const r = run402();
+  const { spec, idempotencyKey } = await loadDeployManifest("./run402.deploy.json");
+  await r.deploy.apply(spec, { idempotencyKey });
+  ```
+
+  `loadDeployManifest(path)` parses JSON relative to the manifest file, maps
+  agent-friendly `project_id` into `ReleaseSpec.project`, decodes base64 file
+  entries, turns `{ path }` entries into lazy `FsFileSource` values, and reads
+  migration `sql_path` / `sql_file`. Use `normalizeDeployManifest(input)` when
+  the manifest object is already in memory.
 
 ### GitHub Actions OIDC — CI credentials drive deploy
 

@@ -32,6 +32,17 @@ test("@run402/sdk/node re-exports the isomorphic type surface and Node-only help
     "LegacyDeployDirEvent",
     "FileSetFromDirOptions",
     "SignCiDelegationOptions",
+    "DeployManifestDatabaseSpec",
+    "DeployManifestFileEntry",
+    "DeployManifestFileSet",
+    "DeployManifestFunctionsSpec",
+    "DeployManifestFunctionSpec",
+    "DeployManifestInput",
+    "DeployManifestMigrationSpec",
+    "DeployManifestSiteSpec",
+    "LoadDeployManifestOptions",
+    "NormalizedDeployManifest",
+    "NormalizeDeployManifestOptions",
   ]);
 
   assert.deepEqual(

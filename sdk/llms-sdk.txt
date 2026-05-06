@@ -19,7 +19,7 @@ Two entry points:
 
 | Import | Use when | Bundles |
 |---|---|---|
-| `@run402/sdk/node` | Running in Node 22 with the local keystore + allowance | Auto-loads `~/.config/run402/projects.json` and signs x402 payments from `~/.config/run402/allowance.json`. Includes `r.sites.deployDir(dir)` and `fileSetFromDir(dir)`. |
+| `@run402/sdk/node` | Running in Node 22 with the local keystore + allowance | Auto-loads `~/.config/run402/projects.json` and signs x402 payments from `~/.config/run402/allowance.json`. Includes `r.sites.deployDir(dir)`, `fileSetFromDir(dir)`, `loadDeployManifest(path)`, and `normalizeDeployManifest(input)`. |
 | `@run402/sdk` | Isomorphic — Node, Deno, Bun, V8 isolates. No filesystem. | Bring your own `CredentialsProvider`. |
 
 ## Quick start (Node)
@@ -310,6 +310,25 @@ const result = await r.deploy.apply({
 ```
 
 `fileSetFromDir` walks the directory and returns an `FsFileSource`-backed `FileSet`. The deploy normalizer hashes and uploads each file lazily during `deploy.apply`, so collection does not load the tree into memory. Skips `.git/`, `node_modules/`, `.DS_Store`. Symlinks throw.
+
+The Node entry also owns the typed manifest adapter used by CLI/MCP:
+
+```ts
+import { loadDeployManifest, normalizeDeployManifest, run402 } from "@run402/sdk/node";
+
+const r = run402();
+
+const loaded = await loadDeployManifest("./run402.deploy.json");
+await r.deploy.apply(loaded.spec, { idempotencyKey: loaded.idempotencyKey });
+
+const inMemory = await normalizeDeployManifest({
+  project_id: projectId,
+  site: { patch: { put: { "index.html": { data: "<h1>hi</h1>" } } } },
+});
+await r.deploy.apply(inMemory.spec, { idempotencyKey: inMemory.idempotencyKey });
+```
+
+`DeployManifestInput` is the agent-facing JSON shape: `project_id` becomes `project`, `idempotency_key` is returned separately for deploy options, `{ data, encoding: "base64", contentType? }` decodes to bytes, `{ path, contentType? }` becomes a lazy `FsFileSource`, and `database.migrations[].sql_path` / `sql_file` are read as UTF-8 SQL. `loadDeployManifest(path)` resolves relative paths against the manifest file's directory; `normalizeDeployManifest(input, { baseDir? })` defaults relative paths to `process.cwd()`.
 
 #### Backward-compat shims
 

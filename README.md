@@ -217,7 +217,7 @@ npm install @run402/sdk
 Two entry points:
 
 - **`@run402/sdk`** — isomorphic. Bring your own `CredentialsProvider` (a session-token shim, a remote vault, anything that resolves project keys + auth headers). Works in Node 22, Deno, Bun, V8 isolates.
-- **`@run402/sdk/node`** — Node-only convenience. Reads `~/.config/run402/projects.json`, signs x402 payments from the local allowance, exposes `sites.deployDir(...)`.
+- **`@run402/sdk/node`** — Node-only convenience. Reads `~/.config/run402/projects.json`, signs x402 payments from the local allowance, exposes `sites.deployDir(...)`, `fileSetFromDir(...)`, and typed deploy-manifest helpers (`loadDeployManifest`, `normalizeDeployManifest`).
 
 ```ts
 import { run402 } from "@run402/sdk/node";

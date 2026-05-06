@@ -2245,6 +2245,27 @@ describe("CLI e2e happy path", () => {
       "non-empty site.replace must reach /deploy/v2/plans");
   });
 
+  it("deploy apply accepts manifest path entries and migration sql_path via the SDK adapter", async () => {
+    const { writeFileSync: wf } = await import("node:fs");
+    const migrationPath = join(tempDir, "001_init.sql");
+    const indexPath = join(tempDir, "index.html");
+    const manifestPath = join(tempDir, "deploy-apply-paths.json");
+    wf(migrationPath, "select 1;");
+    wf(indexPath, "<h1>from path</h1>");
+    wf(manifestPath, JSON.stringify({
+      project_id: "prj_test123",
+      database: { migrations: [{ id: "001_init", sql_path: "001_init.sql" }] },
+      site: { replace: { "index.html": { path: "index.html", contentType: "text/html" } } },
+    }));
+
+    const { threw, deployCalled } = await deployApplyAndCapture(
+      ["--manifest", manifestPath, "--project", "prj_test123"]);
+
+    assert.equal(threw, null);
+    assert.equal(deployCalled, true,
+      "path-backed deploy apply manifest must reach /deploy/v2/plans");
+  });
+
   // ── Functions ───────────────────────────────────────────────────────────
 
   it("functions deploy", async () => {
