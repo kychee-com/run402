@@ -319,7 +319,7 @@ The SDK never calls `process.exit`. Each interface (MCP tools, CLI, your code) w
 
 ## Stability
 
-This package is `0.x` while the API surface stabilizes for `1.0`. Breaking changes may occur between minor versions. Pin an exact version in production dependencies.
+This package is on the `1.x` line. The CLI (`run402`), MCP server (`run402-mcp`), SDK (`@run402/sdk`), and `@run402/functions` release in lockstep at the same version. Pin an exact version in production dependencies.
 
 ## Other interfaces
 

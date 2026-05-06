@@ -285,7 +285,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Deploy to run402
-        run: npx --yes run402@1.54.4 deploy apply --manifest 'run402.deploy.json' --project 'prj_...'
+        run: npx --yes run402@1.60.0 deploy apply --manifest 'run402.deploy.json' --project 'prj_...'
 ```
 
 Output on success:
@@ -303,7 +303,7 @@ Output on success:
   "github_repository_id_status": "verified",
   "workflow_path": ".github/workflows/run402-deploy.yml",
   "manifest_path": "run402.deploy.json",
-  "run402_version": "1.54.4",
+  "run402_version": "1.60.0",
   "delegation_chain_id": "eip155:84532",
   "bootstrap_caveat": "Commit the generated workflow and manifest before expecting GitHub Actions deploys.",
   "consent_summary": ["..."],

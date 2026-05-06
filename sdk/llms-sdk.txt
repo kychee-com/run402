@@ -309,7 +309,7 @@ const result = await r.deploy.apply({
 });
 ```
 
-`fileSetFromDir` walks the directory, hashes each file, and returns `ContentRef` objects. Skips `.git/`, `node_modules/`, `.DS_Store`. Symlinks throw.
+`fileSetFromDir` walks the directory and returns an `FsFileSource`-backed `FileSet`. The deploy normalizer hashes and uploads each file lazily during `deploy.apply`, so collection does not load the tree into memory. Skips `.git/`, `node_modules/`, `.DS_Store`. Symlinks throw.
 
 #### Backward-compat shims
 
@@ -764,42 +764,43 @@ For tier pricing, call `r.projects.getQuote()` (the SDK does not expose a separa
 ### `r.billing`
 
 ```
-createEmailAccount(email): Promise<BillingAccount>
+createEmailAccount(email): Promise<EmailBillingAccount>
 linkWallet(billingAccountId, wallet): Promise<void>
-tierCheckout(opts): Promise<{ checkout_url }>
-buyEmailPack(opts): Promise<{ checkout_url }>
-setAutoRecharge(billingAccountId, opts: { enabled: boolean, threshold? }): Promise<void>
-balance(emailOrWallet): Promise<Balance>
-history(emailOrWallet, opts?: { limit? }): Promise<LedgerHistory>
-createCheckout(opts: { amount_micros }): Promise<{ checkout_url }>
+tierCheckout(tier, identifier: { email?: string, wallet?: string }): Promise<CreateCheckoutResult>
+buyEmailPack(identifier: { email?: string, wallet?: string }): Promise<CreateCheckoutResult>
+setAutoRecharge(opts: { billingAccountId: string, enabled: boolean, threshold? }): Promise<void>
+checkBalance(wallet): Promise<BillingBalance>
+balance(wallet): Promise<BillingBalance>       // alias of checkBalance
+history(wallet, limit?: number): Promise<BillingHistoryResult>
+createCheckout(wallet, amountUsdMicros: number): Promise<CreateCheckoutResult>
 
 // CLI-style aliases:
-createEmail(email): Promise<BillingAccount>
+createEmail(email): Promise<EmailBillingAccount>
 autoRecharge(opts): Promise<void>
 ```
 
 ### `r.contracts`
 
 ```
-provisionWallet(projectId, opts: { chain: "base-mainnet" | "base-sepolia", recoveryAddress? }): Promise<unknown>
-getWallet(projectId, walletId): Promise<unknown>
-listWallets(projectId): Promise<unknown>
+provisionWallet(projectId, opts: { chain: "base-mainnet" | "base-sepolia", recoveryAddress? }): Promise<ProvisionWalletResult>
+getWallet(projectId, walletId): Promise<ContractWalletSummary>
+listWallets(projectId): Promise<ListWalletsResult>
 setRecovery(projectId, walletId, recoveryAddress: string | null): Promise<void>
 setLowBalanceAlert(projectId, walletId, thresholdWei: string): Promise<void>
 
-call(projectId, opts: { walletId, chain, contractAddress, abiFragment, functionName, args, value?, idempotencyKey? }): Promise<unknown>
-read(opts: { chain, contractAddress, abiFragment, functionName, args }): Promise<unknown>
-callStatus(projectId, callId): Promise<unknown>
-drain(projectId, walletId, destinationAddress): Promise<unknown>
-deleteWallet(projectId, walletId): Promise<unknown>     // refused if balance ≥ dust
+call(projectId, opts: { walletId, chain, contractAddress?, to?, abiFragment?, abi?, functionName?, fn?, args, value?, idempotencyKey? }): Promise<ContractCallResult>
+read(opts: { chain, contractAddress?, to?, abiFragment?, abi?, functionName?, fn?, args }): Promise<ContractReadResult>
+callStatus(projectId, callId): Promise<ContractCallResult>
+drain(projectId, walletId, destinationAddress): Promise<DrainResult>
+deleteWallet(projectId, walletId): Promise<DeleteWalletResult>     // refused if balance ≥ dust
 
 // CLI-style aliases:
 setAlert(projectId, walletId, thresholdWei): Promise<void>
-status(projectId, callId): Promise<unknown>
-delete(projectId, walletId): Promise<unknown>
+status(projectId, callId): Promise<ContractCallResult>
+delete(projectId, walletId): Promise<DeleteWalletResult>
 ```
 
-Private keys never leave AWS KMS. **$0.04/day rental + $0.000005/call.** Wallet creation requires $1.20 cash credit. Non-custodial. The contracts surface is intentionally untyped (`Promise<unknown>`) — return shapes are versioned by the gateway and consumers must narrow at the call site.
+Private keys never leave AWS KMS. **$0.04/day rental + $0.000005/call.** Wallet creation requires $1.20 cash credit. Non-custodial. The SDK exports typed metadata and call-result envelopes (`ContractWalletSummary`, `ContractCallResult`, `ContractReadResult`, etc.); contract ABI results and receipts remain `unknown` inside those envelopes and should be narrowed at the call site.
 
 ### `r.ai`
 
@@ -891,13 +892,13 @@ The SQL endpoint blocks: `CREATE EXTENSION`, `COPY ... PROGRAM`, `ALTER SYSTEM`,
 
 ## Stability
 
-This package is `0.x` while the API surface stabilizes for `1.0`. Breaking changes may occur between minor versions. Pin an exact version in production dependencies:
+This package is on the `1.x` line. The CLI (`run402`), MCP server (`run402-mcp`), SDK (`@run402/sdk`), and `@run402/functions` release in lockstep at the same version. Pin an exact version in production dependencies:
 
 ```json
-{ "dependencies": { "@run402/sdk": "1.54.4" } }
+{ "dependencies": { "@run402/sdk": "1.60.0" } }
 ```
 
-The CLI (`run402`), MCP server (`run402-mcp`), `@run402/functions`, and the OpenClaw skill release in lockstep at the same version.
+OpenClaw skill packaging follows the same release train.
 
 ## Patterns & gotchas
 
@@ -905,7 +906,7 @@ The CLI (`run402`), MCP server (`run402-mcp`), `@run402/functions`, and the Open
 - **Use the manifest for access control**, never raw `GRANT/REVOKE`.
 - **`user_owns_rows` is the default for user-scoped data.** Reach for `public_read_write_UNRESTRICTED` only on intentionally-public tables.
 - **Use immutable `cdnUrl` from `r.blobs.put`.** It's correct from the moment of upload — no `waitFresh` needed.
-- **Don't bake unconditional `r.allowance.requestFaucet()` into deploy scripts** — the faucet rate-limits and breaks already-funded flows.
+- **Don't bake unconditional `r.allowance.faucet()` into deploy scripts** — the faucet rate-limits and breaks already-funded flows.
 - **Per-project rate limit is 100 req/sec.** On 429, back off using `retry_after`.
 - **`r.service.status()` works without auth.** Use it before evaluating Run402, or to distinguish platform issues from your own bugs.
 

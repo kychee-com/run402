@@ -148,7 +148,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Deploy to run402
-        run: npx --yes run402@1.54.4 deploy apply --manifest 'run402.deploy.json' --project 'prj_...'
+        run: npx --yes run402@1.60.0 deploy apply --manifest 'run402.deploy.json' --project 'prj_...'
 ```
 
 CI deploys are intentionally narrow: `site`, `functions`, `database`, and absent/current `base` only. Keep secrets, domains, subdomains, routes, checks, and broader trust changes in a local allowance-backed deploy. Manage bindings with `run402 ci list` and `run402 ci revoke`.
