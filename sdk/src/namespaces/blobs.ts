@@ -8,7 +8,7 @@
  */
 
 import type { Client } from "../kernel.js";
-import { ApiError, ProjectNotFound } from "../errors.js";
+import { ApiError, LocalError, ProjectNotFound } from "../errors.js";
 import type {
   BlobCacheKind,
   BlobCdnEnvelope,
@@ -173,9 +173,10 @@ function buildAssetRef(
   // true` to get content-hashed URLs that pair with SRI.
   function requireImmutable(name: string): { url: string; sri: string } {
     if (!cdnUrl || !sri) {
-      throw new Error(
+      throw new LocalError(
         `${name}() requires an immutable upload (pass { immutable: true } to blobs.put). ` +
           `Without immutable, there is no SHA to bind for SRI and the URL would change on re-upload.`,
+        "rendering blob tag",
       );
     }
     return { url: cdnUrl, sri };
@@ -289,7 +290,10 @@ export class Blobs {
 
     if ((normalized.content !== undefined && normalized.bytes !== undefined) ||
         (normalized.content === undefined && normalized.bytes === undefined)) {
-      throw new Error("Provide exactly one of `content` or `bytes` in BlobPutSource.");
+      throw new LocalError(
+        "Provide exactly one of `content` or `bytes` in BlobPutSource.",
+        "uploading blob",
+      );
     }
 
     const bytes: Uint8Array = normalized.bytes
@@ -298,7 +302,10 @@ export class Blobs {
     const sizeBytes = bytes.byteLength;
 
     if (normalized.content !== undefined && sizeBytes > 1_048_576) {
-      throw new Error("`content` is limited to 1 MB. Use `bytes` for larger uploads.");
+      throw new LocalError(
+        "`content` is limited to 1 MB. Use `bytes` for larger uploads.",
+        "uploading blob",
+      );
     }
 
     const contentType = opts.contentType ?? guessContentType(key);

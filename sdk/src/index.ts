@@ -241,28 +241,16 @@ export type {
   Run402ErrorKind,
 } from "./errors.js";
 export { withRetry } from "./retry.js";
-export type { RetryOptions } from "./retry.js";
-export type { CredentialsProvider, ProjectKeys } from "./credentials.js";
-export type { RequestOptions, Client } from "./kernel.js";
-export type {
-  AdminFinanceWindow,
-  AdminProjectFinanceOptions,
-  AdminProjectFinanceResult,
-  AgentContact,
-  AgentContactResult,
-  SendMessageResult,
-} from "./namespaces/admin.js";
+export type * from "./retry.js";
+export type * from "./credentials.js";
+export type * from "./kernel.js";
 export {
   CI_SESSION_CREDENTIALS,
   createCiSessionCredentials,
   githubActionsCredentials,
   isCiSessionCredentials,
 } from "./ci-credentials.js";
-export type {
-  CiMarkedCredentialsProvider,
-  CreateCiSessionCredentialsOptions,
-  GithubActionsCredentialsOptions,
-} from "./ci-credentials.js";
+export type * from "./ci-credentials.js";
 export { Deploy } from "./namespaces/deploy.js";
 export {
   Ci,
@@ -280,77 +268,24 @@ export {
   validateCiSubjectMatch,
 } from "./namespaces/ci.js";
 export { ScopedRun402 } from "./scoped.js";
-export type {
-  CiAllowedAction,
-  CiAllowedEvent,
-  CiBindingErrorCode,
-  CiBindingRow,
-  CiCreateBindingInput,
-  CiDelegationValues,
-  CiDeployErrorCode,
-  CiErrorCode,
-  CiListBindingsInput,
-  CiListBindingsResult,
-  CiProvider,
-  CiTokenExchangeErrorCode,
-  CiTokenExchangeInput,
-  CiTokenExchangeRequestBody,
-  CiTokenExchangeResponse,
-  NormalizedCiDelegationValues,
-  ParsedDelegation,
-} from "./namespaces/ci.types.js";
-export type {
-  ApplyOptions,
-  ActiveReleaseInventory,
-  CommitResponse,
-  CommitStatus,
-  ContentRef,
-  ContentSource,
-  DatabaseSpec,
-  DeployObservabilityWarningEntry,
-  DeployDiff,
-  DeployEvent,
-  DeployOperation,
-  DeployResult,
-  ExposeManifest,
-  FileSet,
-  FsFileSource,
-  FunctionSpec,
-  FunctionsDiff,
-  FunctionsSpec,
-  LegacyWarningEntry,
-  MigrationAppliedEntry,
-  MigrationSpec,
-  MissingContent,
-  OperationSnapshot,
-  OperationStatus,
-  PaymentRequiredHint,
-  PlanDiffEnvelope,
-  PlanMigrationDiff,
-  PlanRequest,
-  PlanResponse,
-  ReleaseDiffOptions,
-  ReleaseDiffTarget,
-  ReleaseDiffToTarget,
-  ReleaseFunctionEntry,
-  ReleaseInventory,
-  ReleaseInventoryBase,
-  ReleaseInventoryByIdOptions,
-  ReleaseInventoryOptions,
-  ReleaseInventoryStateKind,
-  ReleaseInventoryStatus,
-  ReleaseSnapshotInventory,
-  ReleaseSpec,
-  ReleaseToReleaseDiff,
-  RouteSpec,
-  SecretsSpec,
-  SecretsDiff,
-  SiteDiff,
-  SitePathEntry,
-  SiteSpec,
-  SmokeCheck,
-  StartOptions,
-  SubdomainsSpec,
-  SubdomainsDiff,
-  WarningEntry,
-} from "./namespaces/deploy.types.js";
+export type * from "./namespaces/admin.js";
+export type * from "./namespaces/ai.js";
+export type * from "./namespaces/allowance.js";
+export type * from "./namespaces/apps.js";
+export type * from "./namespaces/auth.js";
+export type * from "./namespaces/billing.js";
+export type * from "./namespaces/blobs.types.js";
+export type * from "./namespaces/ci.types.js";
+export type * from "./namespaces/contracts.js";
+export type * from "./namespaces/deploy.types.js";
+export type { ByteReader } from "./namespaces/deploy.js";
+export type * from "./namespaces/domains.js";
+export type * from "./namespaces/email.js";
+export type * from "./namespaces/functions.types.js";
+export type * from "./namespaces/projects.types.js";
+export type * from "./namespaces/secrets.js";
+export type * from "./namespaces/sender-domain.js";
+export type * from "./namespaces/service.js";
+export type * from "./namespaces/sites.js";
+export type * from "./namespaces/subdomains.js";
+export type * from "./namespaces/tier.js";

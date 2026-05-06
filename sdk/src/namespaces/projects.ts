@@ -286,7 +286,7 @@ export class Projects {
    *   await p.deploy.apply({ site: { ... } });
    *
    * @throws {ProjectNotFound} if the id is unknown to the provider.
-   * @throws {Error} if the provider does not support active-project state.
+   * @throws {LocalError} if the provider does not support active-project state.
    */
   async use(id: string): Promise<void> {
     const keys = await this.client.getProject(id);
@@ -294,8 +294,9 @@ export class Projects {
 
     const setter = this.client.credentials.setActiveProject;
     if (!setter) {
-      throw new Error(
+      throw new LocalError(
         "This credential provider does not support setActiveProject — `use` is only available with providers that track local active-project state.",
+        "setting active project",
       );
     }
     await setter.call(this.client.credentials, id);

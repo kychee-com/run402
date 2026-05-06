@@ -5,7 +5,7 @@
  */
 
 import type { Client } from "../kernel.js";
-import { ApiError, ProjectNotFound } from "../errors.js";
+import { ApiError, LocalError, ProjectNotFound } from "../errors.js";
 
 const SLUG_RE = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/;
 
@@ -151,7 +151,10 @@ export class Webhooks {
     opts: UpdateWebhookOptions,
   ): Promise<MailboxWebhookSummary> {
     if (!opts.url && !opts.events) {
-      throw new Error("Provide at least `url` or `events` to update a webhook.");
+      throw new LocalError(
+        "Provide at least `url` or `events` to update a webhook.",
+        "updating webhook",
+      );
     }
     const { id, serviceKey } = await this.resolveMailbox(projectId);
     const body: Record<string, unknown> = {};
@@ -244,13 +247,19 @@ export class Email {
     if (!project) throw new ProjectNotFound(projectId, "creating mailbox");
 
     if (slug.length < 3 || slug.length > 63) {
-      throw new Error("Slug must be 3-63 characters.");
+      throw new LocalError("Slug must be 3-63 characters.", "creating mailbox");
     }
     if (!SLUG_RE.test(slug)) {
-      throw new Error("Slug must be lowercase alphanumeric + hyphens, start/end with alphanumeric.");
+      throw new LocalError(
+        "Slug must be lowercase alphanumeric + hyphens, start/end with alphanumeric.",
+        "creating mailbox",
+      );
     }
     if (slug.includes("--")) {
-      throw new Error("Slug must not contain consecutive hyphens.");
+      throw new LocalError(
+        "Slug must not contain consecutive hyphens.",
+        "creating mailbox",
+      );
     }
 
     try {
@@ -302,14 +311,23 @@ export class Email {
     const isRaw = hasSubject || hasHtml;
     const isTemplate = !!opts.template;
     if (!isRaw && !isTemplate) {
-      throw new Error("Provide either `template` + `variables` or both `subject` + `html`.");
+      throw new LocalError(
+        "Provide either `template` + `variables` or both `subject` + `html`.",
+        "sending email",
+      );
     }
     if (isRaw && isTemplate) {
-      throw new Error("Provide `template` OR raw mode (`subject` + `html`), not both.");
+      throw new LocalError(
+        "Provide `template` OR raw mode (`subject` + `html`), not both.",
+        "sending email",
+      );
     }
     if (isRaw && !(hasSubject && hasHtml)) {
       const missing = hasSubject ? "html" : "subject";
-      throw new Error(`Raw mode requires both \`subject\` and \`html\` (missing \`${missing}\`).`);
+      throw new LocalError(
+        `Raw mode requires both \`subject\` and \`html\` (missing \`${missing}\`).`,
+        "sending email",
+      );
     }
 
     const { id, serviceKey } = await this.resolveMailbox(projectId);

@@ -5,6 +5,7 @@
  */
 
 import type { Client } from "../kernel.js";
+import { LocalError } from "../errors.js";
 import type { ProjectTier } from "./projects.types.js";
 
 export interface BillingBalance {
@@ -129,7 +130,12 @@ export class Billing {
     const body: Record<string, string> = {};
     if (identifier.wallet) body.wallet = identifier.wallet;
     else if (identifier.email) body.email = identifier.email;
-    else throw new Error("Provide either `email` or `wallet` in identifier.");
+    else {
+      throw new LocalError(
+        "Provide either `email` or `wallet` in identifier.",
+        "creating tier checkout",
+      );
+    }
 
     return this.client.request<CreateCheckoutResult>(`/billing/v1/tiers/${tier}/checkout`, {
       method: "POST",
@@ -144,7 +150,12 @@ export class Billing {
     const body: Record<string, string> = {};
     if (identifier.wallet) body.wallet = identifier.wallet;
     else if (identifier.email) body.email = identifier.email;
-    else throw new Error("Provide either `email` or `wallet` in identifier.");
+    else {
+      throw new LocalError(
+        "Provide either `email` or `wallet` in identifier.",
+        "creating email pack checkout",
+      );
+    }
 
     return this.client.request<CreateCheckoutResult>("/billing/v1/email-packs/checkout", {
       method: "POST",

@@ -10,6 +10,7 @@
 
 import type { Client } from "../kernel.js";
 import type { AllowanceData } from "../credentials.js";
+import { LocalError } from "../errors.js";
 
 export interface AllowanceStatusResult {
   address: string;
@@ -84,17 +85,19 @@ export class Allowance {
     const creator = this.client.credentials.createAllowance;
     const saver = this.client.credentials.saveAllowance;
     if (!creator || !saver) {
-      throw new Error(
+      throw new LocalError(
         "This credential provider does not support allowance creation. Use @run402/sdk/node for local allowance management.",
+        "creating allowance",
       );
     }
     if (reader) {
       const existing = await reader.call(this.client.credentials);
       if (existing) {
-        throw new Error(
+        throw new LocalError(
           `Allowance already exists at ${
             this.client.credentials.getAllowancePath?.call(this.client.credentials) ?? "(local path unknown)"
           }. Delete it manually to regenerate.`,
+          "creating allowance",
         );
       }
     }
@@ -111,11 +114,14 @@ export class Allowance {
   async export(): Promise<string> {
     const reader = this.client.credentials.readAllowance;
     if (!reader) {
-      throw new Error("This credential provider does not expose the local allowance.");
+      throw new LocalError(
+        "This credential provider does not expose the local allowance.",
+        "exporting allowance",
+      );
     }
     const data = await reader.call(this.client.credentials);
     if (!data) {
-      throw new Error("No agent allowance is configured.");
+      throw new LocalError("No agent allowance is configured.", "exporting allowance");
     }
     return data.address;
   }
@@ -131,11 +137,17 @@ export class Allowance {
     if (!resolvedAddress) {
       const reader = this.client.credentials.readAllowance;
       if (!reader) {
-        throw new Error("No address provided and no local allowance is available.");
+        throw new LocalError(
+          "No address provided and no local allowance is available.",
+          "requesting faucet funds",
+        );
       }
       const data = await reader.call(this.client.credentials);
       if (!data) {
-        throw new Error("No address provided and no agent allowance is configured.");
+        throw new LocalError(
+          "No address provided and no agent allowance is configured.",
+          "requesting faucet funds",
+        );
       }
       resolvedAddress = data.address;
     }

@@ -63,10 +63,9 @@ const DEFAULT_FILES = [
  * either declare X inside the snippet or add it here.
  *
  * Value imports come first (they double as types and as runtime values for
- * `instanceof` checks); type-only imports follow. Names absent from the
- * SDK's exports (e.g. `AssetRef`, which lives in `blobs.types.ts` but isn't
- * re-exported) MUST NOT appear here — surface them as snippet-local
- * `declare const x: ReturnType<typeof r.blobs.put>` instead.
+ * `instanceof` checks); type-only imports follow. If a doc snippet needs a
+ * public SDK result/input type, import it here instead of relying on local
+ * inference workarounds.
  */
 
 const NODE_PREAMBLE = `
@@ -87,6 +86,8 @@ import {
 } from "@run402/sdk/node";
 import type {
   ApplyOptions,
+  AssetRef,
+  BlobPutResult,
   Client,
   CommitResponse,
   ContentRef,
@@ -148,6 +149,8 @@ import {
 } from "@run402/sdk";
 import type {
   ApplyOptions,
+  AssetRef,
+  BlobPutResult,
   Client,
   CommitResponse,
   ContentRef,

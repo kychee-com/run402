@@ -17,8 +17,9 @@
   },
   "scripts": {
     "prepack": "mkdir -p core-dist && cp ../core/dist/*.js core-dist/ && cp ../core/dist/*.d.ts core-dist/",
+    "check:contracts": "node --test --import tsx src/public-type-exports.test.ts src/local-error-contract.test.ts",
     "check:docs": "tsx scripts/check-doc-snippets.ts",
-    "test": "npm run check:docs"
+    "test": "npm run check:contracts && npm run check:docs"
   },
   "files": [
     "dist",
