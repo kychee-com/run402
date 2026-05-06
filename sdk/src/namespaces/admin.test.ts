@@ -35,6 +35,25 @@ function json(b: unknown, s = 200): Response {
   return new Response(JSON.stringify(b), { status: s, headers: { "content-type": "application/json" } });
 }
 
+function contactEnvelope(overrides: Record<string, unknown> = {}) {
+  return {
+    wallet: "0xtest",
+    name: "test-agent",
+    email: "ops@example.com",
+    webhook: null,
+    email_verification_status: "pending",
+    passkey_binding_status: "none",
+    assurance_level: "email_pending",
+    email_verified_at: null,
+    email_verified_message_id: null,
+    email_challenge_sent_at: "2026-05-06T12:00:00Z",
+    passkey_bound_at: null,
+    active_operator_passkey_id: null,
+    updated_at: "2026-05-06T12:00:00Z",
+    ...overrides,
+  };
+}
+
 describe("admin.sendMessage", () => {
   it("POSTs /message/v1 with the message body", async () => {
     const { fetch, calls } = mockFetch(() => json({ status: "sent" }));
@@ -48,6 +67,65 @@ describe("admin.sendMessage", () => {
     const { fetch } = mockFetch(() => json({ status: "sent" }));
     const result = await sdk(fetch).admin.sendMessage("hi");
     assert.equal(result.status, "sent");
+  });
+});
+
+describe("admin agent contact assurance", () => {
+  it("sets contact info and returns assurance fields", async () => {
+    const { fetch, calls } = mockFetch(() => json(contactEnvelope()));
+
+    const result = await sdk(fetch).admin.setAgentContact({
+      name: "test-agent",
+      email: "ops@example.com",
+    });
+
+    assert.equal(calls[0]!.url, "https://api.test/agent/v1/contact");
+    assert.equal(calls[0]!.method, "POST");
+    assert.deepEqual(JSON.parse(calls[0]!.body as string), {
+      name: "test-agent",
+      email: "ops@example.com",
+    });
+    assert.equal(result.assurance_level, "email_pending");
+    assert.equal(result.email_verification_status, "pending");
+  });
+
+  it("gets contact status", async () => {
+    const { fetch, calls } = mockFetch(() => json(contactEnvelope({
+      email_verification_status: "verified",
+      assurance_level: "email_verified",
+    })));
+
+    const result = await sdk(fetch).admin.getAgentContactStatus();
+
+    assert.equal(calls[0]!.url, "https://api.test/agent/v1/contact/status");
+    assert.equal(calls[0]!.method, "GET");
+    assert.equal(result.assurance_level, "email_verified");
+  });
+
+  it("starts email verification", async () => {
+    const { fetch, calls } = mockFetch(() => json(contactEnvelope({
+      verification_retry_after_seconds: 60,
+    })));
+
+    const result = await sdk(fetch).admin.verifyAgentContactEmail();
+
+    assert.equal(calls[0]!.url, "https://api.test/agent/v1/contact/verify-email");
+    assert.equal(calls[0]!.method, "POST");
+    assert.equal(result.verification_retry_after_seconds, 60);
+  });
+
+  it("starts operator passkey enrollment", async () => {
+    const { fetch, calls } = mockFetch(() => json(contactEnvelope({
+      passkey_binding_status: "pending",
+      assurance_level: "passkey_pending",
+      enrollment_sent_to: "ops@example.com",
+    })));
+
+    const result = await sdk(fetch).admin.startOperatorPasskeyEnrollment();
+
+    assert.equal(calls[0]!.url, "https://api.test/agent/v1/contact/passkey/enroll");
+    assert.equal(calls[0]!.method, "POST");
+    assert.equal(result.enrollment_sent_to, "ops@example.com");
   });
 });
 

@@ -267,6 +267,9 @@ const SURFACE: Capability[] = [
   // ── Messaging & agent contact ──────────────────────────────────────────
   { id: "send_message",      endpoint: "POST /message/v1",                  mcp: "send_message",        cli: "message:send",     openclaw: "message:send" },
   { id: "set_agent_contact", endpoint: "POST /agent/v1/contact",            mcp: "set_agent_contact",   cli: "agent:contact",    openclaw: "agent:contact" },
+  { id: "get_agent_contact_status", endpoint: "GET /agent/v1/contact/status", mcp: "get_agent_contact_status", cli: "agent:status", openclaw: "agent:status" },
+  { id: "verify_agent_contact_email", endpoint: "POST /agent/v1/contact/verify-email", mcp: "verify_agent_contact_email", cli: "agent:verify-email", openclaw: "agent:verify-email" },
+  { id: "start_operator_passkey_enrollment", endpoint: "POST /agent/v1/contact/passkey/enroll", mcp: "start_operator_passkey_enrollment", cli: "agent:passkey", openclaw: "agent:passkey" },
 
   // ── Additional billing ─────────────────────────────────────────────────
   { id: "create_checkout",   endpoint: "POST /billing/v1/checkouts",        mcp: "create_checkout",     cli: "allowance:checkout",  openclaw: "allowance:checkout" },
@@ -468,6 +471,9 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   // Messaging & agent contact
   send_message: "admin.sendMessage",
   set_agent_contact: "admin.setAgentContact",
+  get_agent_contact_status: "admin.getAgentContactStatus",
+  verify_agent_contact_email: "admin.verifyAgentContactEmail",
+  start_operator_passkey_enrollment: "admin.startOperatorPasskeyEnrollment",
 
   // Admin
   pin_project: "projects.pin",

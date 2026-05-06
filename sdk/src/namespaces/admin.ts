@@ -15,12 +15,31 @@ export interface AgentContact {
   webhook?: string;
 }
 
+export type AgentEmailVerificationStatus = "none" | "pending" | "verified";
+export type AgentPasskeyBindingStatus = "none" | "pending" | "verified";
+export type AgentAssuranceLevel =
+  | "wallet_only"
+  | "email_pending"
+  | "email_verified"
+  | "passkey_pending"
+  | "operator_passkey";
+
 export interface AgentContactResult {
   wallet: string;
   name: string;
-  email?: string;
-  webhook?: string;
+  email: string | null;
+  webhook: string | null;
+  email_verification_status: AgentEmailVerificationStatus;
+  passkey_binding_status: AgentPasskeyBindingStatus;
+  assurance_level: AgentAssuranceLevel;
+  email_verified_at: string | null;
+  email_verified_message_id: string | null;
+  email_challenge_sent_at: string | null;
+  passkey_bound_at: string | null;
+  active_operator_passkey_id: string | null;
   updated_at: string;
+  verification_retry_after_seconds?: number;
+  enrollment_sent_to?: string;
 }
 
 export interface SendMessageResult {
@@ -72,7 +91,7 @@ export class Admin {
     });
   }
 
-  /** Register agent contact info (name, email, webhook). */
+  /** Register agent contact info and start email verification when needed. */
   async setAgentContact(contact: AgentContact): Promise<AgentContactResult> {
     const body: Record<string, string> = { name: contact.name };
     if (contact.email) body.email = contact.email;
@@ -82,6 +101,30 @@ export class Admin {
       method: "POST",
       body,
       context: "setting agent contact",
+    });
+  }
+
+  /** Read the current agent contact assurance state for the allowance wallet. */
+  async getAgentContactStatus(): Promise<AgentContactResult> {
+    return this.client.request<AgentContactResult>("/agent/v1/contact/status", {
+      method: "GET",
+      context: "fetching agent contact status",
+    });
+  }
+
+  /** Start or resend the operator email reply challenge. */
+  async verifyAgentContactEmail(): Promise<AgentContactResult> {
+    return this.client.request<AgentContactResult>("/agent/v1/contact/verify-email", {
+      method: "POST",
+      context: "starting agent contact email verification",
+    });
+  }
+
+  /** Email a passkey enrollment link to the verified operator email. */
+  async startOperatorPasskeyEnrollment(): Promise<AgentContactResult> {
+    return this.client.request<AgentContactResult>("/agent/v1/contact/passkey/enroll", {
+      method: "POST",
+      context: "starting operator passkey enrollment",
     });
   }
 

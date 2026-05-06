@@ -722,6 +722,8 @@ run402 email       | sender-domain | auth | apps       | image
 run402 deploy      | ai        | contracts | billing   | agent
 ```
 
+Agent operator binding commands: `run402 agent contact --name <name> [--email <email>] [--webhook <url>]`, `run402 agent status`, `run402 agent verify-email`, and `run402 agent passkey enroll`. The assurance labels are `wallet_only`, `email_pending`, `email_verified`, `passkey_pending`, and `operator_passkey`; they describe mailbox/passkey continuity, not a humanhood claim.
+
 Renewal: `run402 tier set <same-tier>` extends the lease in place and clears any grace-state timers. The CLI handles 402 negotiation automatically — call the same command again if a payment was just made.
 
 ## Links

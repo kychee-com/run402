@@ -442,7 +442,9 @@ The full MCP surface — every tool is a thin shim over an SDK call.
 | `pin_project` | Pin a project (admin only — uses the configured admin allowance wallet). |
 | `project_info` / `project_keys` / `project_use` | Inspect / set the active project. |
 | `create_checkout` | Stripe checkout to add cash credit. |
-| `send_message` / `set_agent_contact` | Send feedback to the Run402 team; register agent contact info. |
+| `send_message` | Send feedback to the Run402 team. |
+| `set_agent_contact` / `get_agent_contact_status` / `verify_agent_contact_email` | Register agent contact info, read assurance status, and start the operator email reply challenge. |
+| `start_operator_passkey_enrollment` | Email a Run402 operator passkey enrollment link to the verified contact email. |
 
 ### Service status (no auth)
 

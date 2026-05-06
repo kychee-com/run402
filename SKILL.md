@@ -330,7 +330,9 @@ For agents that need to sign Ethereum transactions. Private keys never leave AWS
 - **`list_projects`** — active projects for a wallet.
 - **`pin_project`** — pin a project (admin only — uses the configured admin allowance wallet).
 - **`project_info`** / **`project_keys`** / **`project_use`** — inspect / set the active project.
-- **`send_message`** / **`set_agent_contact`** — send feedback to the Run402 team; register agent contact info.
+- **`send_message`** — send feedback to the Run402 team.
+- **`set_agent_contact`** / **`get_agent_contact_status`** / **`verify_agent_contact_email`** — register agent contact info, read assurance status, and start the operator email reply challenge.
+- **`start_operator_passkey_enrollment`** — email a Run402 operator passkey enrollment link to the verified contact email.
 
 ### Service status (no auth, no setup)
 

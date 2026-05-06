@@ -148,6 +148,12 @@ import { aiUsageSchema, handleAiUsage } from "./tools/ai-usage.js";
 // New tools — messaging, agent contact, billing, deployments, versions
 import { sendMessageSchema, handleSendMessage } from "./tools/send-message.js";
 import { setAgentContactSchema, handleSetAgentContact } from "./tools/set-agent-contact.js";
+import { getAgentContactStatusSchema, handleGetAgentContactStatus } from "./tools/get-agent-contact-status.js";
+import { verifyAgentContactEmailSchema, handleVerifyAgentContactEmail } from "./tools/verify-agent-contact-email.js";
+import {
+  startOperatorPasskeyEnrollmentSchema,
+  handleStartOperatorPasskeyEnrollment,
+} from "./tools/start-operator-passkey-enrollment.js";
 import { createCheckoutSchema, handleCreateCheckout } from "./tools/create-checkout.js";
 import { billingHistorySchema, handleBillingHistory } from "./tools/billing-history.js";
 import { updateVersionSchema, handleUpdateVersion } from "./tools/update-version.js";
@@ -731,9 +737,30 @@ server.tool(
 
 server.tool(
   "set_agent_contact",
-  "Register agent contact info (name, email, webhook) so Run402 can reach you. Free with allowance auth.",
+  "Register agent contact info (name, email, webhook). New or changed emails start operator email reply verification. Free with allowance auth.",
   setAgentContactSchema,
   async (args) => handleSetAgentContact(args),
+);
+
+server.tool(
+  "get_agent_contact_status",
+  "Get the current agent contact assurance state: wallet_only, email_pending, email_verified, passkey_pending, or operator_passkey.",
+  getAgentContactStatusSchema,
+  async (args) => handleGetAgentContactStatus(args),
+);
+
+server.tool(
+  "verify_agent_contact_email",
+  "Start or resend the operator email reply challenge for the active agent contact email. Does not expose the challenge secret.",
+  verifyAgentContactEmailSchema,
+  async (args) => handleVerifyAgentContactEmail(args),
+);
+
+server.tool(
+  "start_operator_passkey_enrollment",
+  "Email a short-lived Run402 operator passkey enrollment link to the verified contact email. Requires email_verified.",
+  startOperatorPasskeyEnrollmentSchema,
+  async (args) => handleStartOperatorPasskeyEnrollment(args),
 );
 
 // ─── Billing tools ─────────────────────────────────────────────────────────

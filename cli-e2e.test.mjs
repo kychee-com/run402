@@ -526,6 +526,61 @@ function mockFetch(input, init) {
     return Promise.resolve(json({
       wallet: "0xtest", name: body?.name || "test-agent",
       email: body?.email || null, webhook: body?.webhook || null,
+      email_verification_status: body?.email ? "pending" : "none",
+      passkey_binding_status: "none",
+      assurance_level: body?.email ? "email_pending" : "wallet_only",
+      email_verified_at: null,
+      email_verified_message_id: null,
+      email_challenge_sent_at: body?.email ? "2026-03-15T12:00:00Z" : null,
+      passkey_bound_at: null,
+      active_operator_passkey_id: null,
+      updated_at: "2026-03-15T12:00:00Z",
+    }));
+  }
+  if (path === "/agent/v1/contact/status" && method === "GET") {
+    return Promise.resolve(json({
+      wallet: "0xtest", name: "test-agent",
+      email: "ops@example.com", webhook: null,
+      email_verification_status: "pending",
+      passkey_binding_status: "none",
+      assurance_level: "email_pending",
+      email_verified_at: null,
+      email_verified_message_id: null,
+      email_challenge_sent_at: "2026-03-15T12:00:00Z",
+      passkey_bound_at: null,
+      active_operator_passkey_id: null,
+      updated_at: "2026-03-15T12:00:00Z",
+    }));
+  }
+  if (path === "/agent/v1/contact/verify-email" && method === "POST") {
+    return Promise.resolve(json({
+      wallet: "0xtest", name: "test-agent",
+      email: "ops@example.com", webhook: null,
+      email_verification_status: "pending",
+      passkey_binding_status: "none",
+      assurance_level: "email_pending",
+      email_verified_at: null,
+      email_verified_message_id: null,
+      email_challenge_sent_at: "2026-03-15T12:00:00Z",
+      passkey_bound_at: null,
+      active_operator_passkey_id: null,
+      verification_retry_after_seconds: 60,
+      updated_at: "2026-03-15T12:00:00Z",
+    }));
+  }
+  if (path === "/agent/v1/contact/passkey/enroll" && method === "POST") {
+    return Promise.resolve(json({
+      wallet: "0xtest", name: "test-agent",
+      email: "ops@example.com", webhook: null,
+      email_verification_status: "verified",
+      passkey_binding_status: "pending",
+      assurance_level: "passkey_pending",
+      email_verified_at: "2026-03-15T12:00:00Z",
+      email_verified_message_id: "msg_reply",
+      email_challenge_sent_at: "2026-03-15T12:00:00Z",
+      passkey_bound_at: null,
+      active_operator_passkey_id: null,
+      enrollment_sent_to: "ops@example.com",
       updated_at: "2026-03-15T12:00:00Z",
     }));
   }
@@ -2670,6 +2725,32 @@ describe("CLI e2e happy path", () => {
     await run("contact", ["--name", "test-agent", "--email", "test@example.com"]);
     captureStop();
     assert.ok(captured().includes("test-agent"), "should set agent contact");
+    assert.ok(captured().includes("email_verification_status"), "should include verification status");
+  });
+
+  it("agent status", async () => {
+    const { run } = await import("./cli/lib/agent.mjs");
+    captureStart();
+    await run("status", []);
+    captureStop();
+    assert.ok(captured().includes("email_pending"), "should show assurance status");
+  });
+
+  it("agent verify-email", async () => {
+    const { run } = await import("./cli/lib/agent.mjs");
+    captureStart();
+    await run("verify-email", []);
+    captureStop();
+    assert.ok(captured().includes("verification_retry_after_seconds"), "should show retry timing");
+  });
+
+  it("agent passkey enroll", async () => {
+    const { run } = await import("./cli/lib/agent.mjs");
+    captureStart();
+    await run("passkey", ["enroll"]);
+    captureStop();
+    assert.ok(captured().includes("passkey_pending"), "should show passkey pending status");
+    assert.ok(captured().includes("ops@example.com"), "should show enrollment recipient");
   });
 
   // ── Auth (GH-90) ────────────────────────────────────────────────────────

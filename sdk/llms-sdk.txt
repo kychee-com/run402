@@ -840,11 +840,16 @@ Operator/admin endpoints. Most agents won't reach for these — they're for plat
 ```
 sendMessage(message: string): Promise<SendMessageResult>
 setAgentContact({ name, email?, webhook? }): Promise<AgentContactResult>
+getAgentContactStatus(): Promise<AgentContactResult>
+verifyAgentContactEmail(): Promise<AgentContactResult>
+startOperatorPasskeyEnrollment(): Promise<AgentContactResult>
 getProjectFinance(id: string, opts?: {
   window?: "24h" | "7d" | "30d" | "90d",
   cookie?: string
 }): Promise<AdminProjectFinanceResult>
 ```
+
+`AgentContactResult` includes `email_verification_status`, `passkey_binding_status`, `assurance_level`, proof timestamps, and cooldown fields. Assurance labels are `wallet_only`, `email_pending`, `email_verified`, `passkey_pending`, and `operator_passkey`; they describe mailbox/passkey continuity, not a humanhood or uniqueness claim. `startOperatorPasskeyEnrollment()` requires `email_verified` and emails the token to the verified contact email instead of returning it.
 
 `getProjectFinance` reads the internal Finance-tab JSON for a project. It is
 platform-admin gated; a project `service_key` is not enough. In Node operator

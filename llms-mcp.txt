@@ -293,7 +293,10 @@ For agents that sign Ethereum transactions. Private keys never leave AWS KMS. **
 - **`pin_project`** — pin a project (admin-only — uses the configured admin allowance wallet).
 - **`project_info`** / **`project_keys`** / **`project_use`** — inspect / set the active project.
 - **`send_message`** — feedback to the Run402 team. Free with active tier.
-- **`set_agent_contact`** — register agent contact info.
+- **`set_agent_contact`** — register agent contact info. New or changed emails start an operator reply challenge and return `assurance_level`.
+- **`get_agent_contact_status`** — current contact fields plus `email_verification_status`, `passkey_binding_status`, `assurance_level`, and proof timestamps.
+- **`verify_agent_contact_email`** — start or resend the operator email reply challenge. The challenge secret is never returned.
+- **`start_operator_passkey_enrollment`** — email a short-lived passkey enrollment link to the verified contact email. Requires `email_verified`.
 
 ### Service status (no auth, no setup)
 

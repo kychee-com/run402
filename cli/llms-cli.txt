@@ -898,6 +898,11 @@ KMS contract wallets — provision AWS KMS-backed Ethereum wallets per project f
 
 ### agent
 - `run402 agent contact --name <name> [--email <email>] [--webhook <url>]`
+- `run402 agent status`
+- `run402 agent verify-email`
+- `run402 agent passkey enroll`
+
+`contact` returns `email_verification_status`, `passkey_binding_status`, and `assurance_level`. New or changed emails start a reply challenge and stay `email_pending` until the mailbox owner replies. `passkey enroll` requires `email_verified` and emails the enrollment link to the verified contact email; the token is not printed.
 
 ### service
 Public service-level status. No allowance, no auth, no keystore required — works on a fresh install. Reports on the Run402 **service** (uptime, capabilities, operator); for your **account** state use `run402 status`.
