@@ -1087,6 +1087,44 @@ interface ResolvedContent {
   reader: ByteReader;
 }
 
+const RELEASE_SPEC_FIELDS = new Set([
+  "project",
+  "base",
+  "database",
+  "secrets",
+  "functions",
+  "site",
+  "subdomains",
+  "routes",
+  "checks",
+]);
+const DEPLOYABLE_SPEC_FIELDS = [
+  "database",
+  "site",
+  "functions",
+  "secrets",
+  "subdomains",
+  "routes",
+  "checks",
+] as const;
+const BASE_SPEC_FIELDS = new Set(["release", "release_id"]);
+const DATABASE_SPEC_FIELDS = new Set(["migrations", "expose", "zero_downtime"]);
+const MIGRATION_SPEC_FIELDS = new Set(["id", "checksum", "sql", "sql_ref", "transaction"]);
+const FUNCTIONS_SPEC_FIELDS = new Set(["replace", "patch"]);
+const FUNCTIONS_PATCH_FIELDS = new Set(["set", "delete"]);
+const FUNCTION_SPEC_FIELDS = new Set([
+  "runtime",
+  "source",
+  "files",
+  "entrypoint",
+  "config",
+  "schedule",
+]);
+const FUNCTION_CONFIG_FIELDS = new Set(["timeoutSeconds", "memoryMb"]);
+const SITE_SPEC_FIELDS = new Set(["replace", "patch"]);
+const SITE_PATCH_FIELDS = new Set(["put", "delete"]);
+const SUBDOMAINS_SPEC_FIELDS = new Set(["set", "add", "remove"]);
+
 function validateSpec(spec: ReleaseSpec): void {
   if (!spec || typeof spec !== "object") {
     throw new Run402DeployError("ReleaseSpec must be an object", {
@@ -1098,6 +1136,14 @@ function validateSpec(spec: ReleaseSpec): void {
       context: "validating spec",
     });
   }
+
+  const raw = spec as unknown as Record<string, unknown>;
+  validateKnownFields(raw, "spec", RELEASE_SPEC_FIELDS, {
+    project_id:
+      "Use `project` in ReleaseSpec, or call `loadDeployManifest()` / `normalizeDeployManifest()` for MCP/CLI-style manifests.",
+    subdomain: "Use `subdomains: { set: [name] }`.",
+  });
+
   if (!spec.project || typeof spec.project !== "string") {
     throw new Run402DeployError("ReleaseSpec.project is required", {
       code: "INVALID_SPEC",
@@ -1108,7 +1154,19 @@ function validateSpec(spec: ReleaseSpec): void {
       context: "validating spec",
     });
   }
-  if (spec.subdomains?.set && spec.subdomains.set.length > 1) {
+
+  validateBaseSpec(raw.base);
+  validateDatabaseSpec(raw.database);
+  validateFunctionsSpec(raw.functions);
+  validateSiteSpec(raw.site);
+  validateSubdomainsSpec(raw.subdomains);
+  validateRoutesSpec(raw.routes);
+  validateChecksSpec(raw.checks);
+  validateSecretsSpec(raw.secrets);
+
+  const subdomains = raw.subdomains as Record<string, unknown> | undefined;
+  const set = subdomains?.set as string[] | undefined;
+  if (set && set.length > 1) {
     throw new Run402DeployError(
       "subdomains.set accepts at most one subdomain per project; multi-subdomain support is not yet available",
       {
@@ -1121,7 +1179,222 @@ function validateSpec(spec: ReleaseSpec): void {
       },
     );
   }
-  validateSecretsSpec((spec as { secrets?: unknown }).secrets);
+
+  if (!hasDeployableContent(raw)) {
+    throw new Run402DeployError(
+      `ReleaseSpec contains no deployable sections. Expected at least one non-empty section: ${DEPLOYABLE_SPEC_FIELDS.join(", ")}`,
+      {
+        code: "MANIFEST_EMPTY",
+        phase: "validate",
+        resource: "spec",
+        retryable: false,
+        fix: { action: "set_field", path: "site.replace" },
+        body: { deployable_fields: DEPLOYABLE_SPEC_FIELDS },
+        context: "validating spec",
+      },
+    );
+  }
+}
+
+function validateBaseSpec(base: unknown): void {
+  if (base === undefined) return;
+  const obj = requireObject(base, "base");
+  validateKnownFields(obj, "base", BASE_SPEC_FIELDS);
+  if (hasOwn(obj, "release") && hasOwn(obj, "release_id")) {
+    throw invalidSpec("ReleaseSpec.base must use either release or release_id, not both", "base");
+  }
+}
+
+function validateDatabaseSpec(database: unknown): void {
+  if (database === undefined) return;
+  const obj = requireObject(database, "database");
+  validateKnownFields(obj, "database", DATABASE_SPEC_FIELDS);
+  if (obj.migrations !== undefined) {
+    if (!Array.isArray(obj.migrations)) {
+      throw invalidSpec("ReleaseSpec.database.migrations must be an array", "database.migrations");
+    }
+    for (const [index, migration] of obj.migrations.entries()) {
+      const m = requireObject(migration, `database.migrations.${index}`);
+      validateKnownFields(m, `database.migrations.${index}`, MIGRATION_SPEC_FIELDS);
+    }
+  }
+  if (obj.expose !== undefined) {
+    requireObject(obj.expose, "database.expose");
+  }
+}
+
+function validateFunctionsSpec(functions: unknown): void {
+  if (functions === undefined) return;
+  const obj = requireObject(functions, "functions");
+  validateKnownFields(obj, "functions", FUNCTIONS_SPEC_FIELDS);
+  if (obj.replace !== undefined) {
+    validateFunctionMap(obj.replace, "functions.replace");
+  }
+  if (obj.patch !== undefined) {
+    const patch = requireObject(obj.patch, "functions.patch");
+    validateKnownFields(patch, "functions.patch", FUNCTIONS_PATCH_FIELDS);
+    if (patch.set !== undefined) validateFunctionMap(patch.set, "functions.patch.set");
+    if (patch.delete !== undefined) validateStringArray(patch.delete, "functions.patch.delete");
+  }
+}
+
+function validateFunctionMap(value: unknown, resource: string): void {
+  const map = requireObject(value, resource);
+  for (const [name, fn] of Object.entries(map)) {
+    const entry = requireObject(fn, `${resource}.${name}`);
+    validateKnownFields(entry, `${resource}.${name}`, FUNCTION_SPEC_FIELDS);
+    if (entry.config !== undefined) {
+      const config = requireObject(entry.config, `${resource}.${name}.config`);
+      validateKnownFields(config, `${resource}.${name}.config`, FUNCTION_CONFIG_FIELDS);
+    }
+    if (entry.files !== undefined) {
+      requireObject(entry.files, `${resource}.${name}.files`);
+    }
+  }
+}
+
+function validateSiteSpec(site: unknown): void {
+  if (site === undefined) return;
+  const obj = requireObject(site, "site");
+  validateKnownFields(obj, "site", SITE_SPEC_FIELDS, {
+    file: "Use `site.replace` or `site.patch.put` with a path-keyed file map.",
+    files: "Use `site.replace` or `site.patch.put` with a path-keyed file map.",
+  });
+  if (hasOwn(obj, "replace") && hasOwn(obj, "patch")) {
+    throw invalidSpec("ReleaseSpec.site must use either replace or patch, not both", "site");
+  }
+  if (obj.replace !== undefined) {
+    requireObject(obj.replace, "site.replace");
+  }
+  if (obj.patch !== undefined) {
+    const patch = requireObject(obj.patch, "site.patch");
+    validateKnownFields(patch, "site.patch", SITE_PATCH_FIELDS);
+    if (patch.put !== undefined) requireObject(patch.put, "site.patch.put");
+    if (patch.delete !== undefined) validateStringArray(patch.delete, "site.patch.delete");
+  }
+}
+
+function validateSubdomainsSpec(subdomains: unknown): void {
+  if (subdomains === undefined) return;
+  const obj = requireObject(subdomains, "subdomains");
+  validateKnownFields(obj, "subdomains", SUBDOMAINS_SPEC_FIELDS);
+  if (obj.set !== undefined) validateStringArray(obj.set, "subdomains.set");
+  if (obj.add !== undefined) validateStringArray(obj.add, "subdomains.add");
+  if (obj.remove !== undefined) validateStringArray(obj.remove, "subdomains.remove");
+}
+
+function validateRoutesSpec(routes: unknown): void {
+  if (routes === undefined) return;
+  requireObject(routes, "routes");
+}
+
+function validateChecksSpec(checks: unknown): void {
+  if (checks === undefined) return;
+  if (!Array.isArray(checks)) {
+    throw invalidSpec("ReleaseSpec.checks must be an array", "checks");
+  }
+}
+
+function validateKnownFields(
+  obj: Record<string, unknown>,
+  resource: string,
+  allowed: Set<string>,
+  hints: Record<string, string> = {},
+): void {
+  for (const key of Object.keys(obj)) {
+    if (allowed.has(key)) continue;
+    const field = resource === "spec" ? `spec.${key}` : `${resource}.${key}`;
+    const hint = hints[key] ? ` ${hints[key]}` : "";
+    throw invalidSpec(`Unknown ReleaseSpec field: ${field}.${hint}`, field);
+  }
+}
+
+function requireObject(value: unknown, resource: string): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw invalidSpec(`ReleaseSpec.${resource} must be an object`, resource);
+  }
+  return value as Record<string, unknown>;
+}
+
+function validateStringArray(value: unknown, resource: string): void {
+  if (!Array.isArray(value)) {
+    throw invalidSpec(`ReleaseSpec.${resource} must be an array`, resource);
+  }
+  if (value.some((entry) => typeof entry !== "string")) {
+    throw invalidSpec(`ReleaseSpec.${resource} entries must be strings`, resource);
+  }
+}
+
+function hasDeployableContent(spec: Record<string, unknown>): boolean {
+  return (
+    hasDatabaseContent(spec.database) ||
+    hasSiteContent(spec.site) ||
+    hasFunctionsContent(spec.functions) ||
+    hasSecretsContent(spec.secrets) ||
+    hasSubdomainsContent(spec.subdomains) ||
+    hasRecordEntries(spec.routes) ||
+    hasArrayEntries(spec.checks)
+  );
+}
+
+function hasDatabaseContent(database: unknown): boolean {
+  if (!isRecord(database)) return false;
+  return hasArrayEntries(database.migrations) || hasRecordEntries(database.expose);
+}
+
+function hasSiteContent(site: unknown): boolean {
+  if (!isRecord(site)) return false;
+  if (hasRecordEntries(site.replace)) return true;
+  if (!isRecord(site.patch)) return false;
+  return hasRecordEntries(site.patch.put) || hasArrayEntries(site.patch.delete);
+}
+
+function hasFunctionsContent(functions: unknown): boolean {
+  if (!isRecord(functions)) return false;
+  if (hasRecordEntries(functions.replace)) return true;
+  if (!isRecord(functions.patch)) return false;
+  return hasRecordEntries(functions.patch.set) || hasArrayEntries(functions.patch.delete);
+}
+
+function hasSecretsContent(secrets: unknown): boolean {
+  if (!isRecord(secrets)) return false;
+  return hasArrayEntries(secrets.require) || hasArrayEntries(secrets.delete);
+}
+
+function hasSubdomainsContent(subdomains: unknown): boolean {
+  if (!isRecord(subdomains)) return false;
+  return (
+    hasArrayEntries(subdomains.set) ||
+    hasArrayEntries(subdomains.add) ||
+    hasArrayEntries(subdomains.remove)
+  );
+}
+
+function hasRecordEntries(value: unknown): boolean {
+  return isRecord(value) && Object.keys(value).length > 0;
+}
+
+function hasArrayEntries(value: unknown): boolean {
+  return Array.isArray(value) && value.length > 0;
+}
+
+function hasOwn(obj: Record<string, unknown>, key: string): boolean {
+  return Object.prototype.hasOwnProperty.call(obj, key);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === "object" && !Array.isArray(value);
+}
+
+function invalidSpec(message: string, resource: string): Run402DeployError {
+  return new Run402DeployError(message, {
+    code: "INVALID_SPEC",
+    phase: "validate",
+    resource,
+    retryable: false,
+    fix: { action: "set_field", path: resource.replace(/^spec\./, "") },
+    context: "validating spec",
+  });
 }
 
 function normalizePlanResponse(plan: PlanResponse): PlanResponse {

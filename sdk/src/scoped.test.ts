@@ -351,7 +351,9 @@ describe("ScopedRun402 wrapper routing", () => {
     const p = await sdk.project("prj_known");
     // We don't need to assert success — just confirm the plan POST body
     // carried project: "prj_known".
-    await p.deploy.apply({}).catch(() => undefined);
+    await p.deploy
+      .apply({ site: { patch: { delete: ["old.html"] } } })
+      .catch(() => undefined);
     const planCall = calls.find((c) => c.url.endsWith("/deploy/v2/plans"));
     assert.ok(planCall, "expected a plan POST");
     const body = JSON.parse(planCall!.body as string);
@@ -360,13 +362,13 @@ describe("ScopedRun402 wrapper routing", () => {
 });
 
 describe("ScopedRun402 type-level guarantees (validated when tsc runs over this file)", () => {
-  it("p.deploy.apply({}) type-checks; r.deploy.apply({}) does not", async () => {
+  it("p.deploy.apply can omit project; r.deploy.apply({}) does not", async () => {
     const { fetch } = mockFetch(() => jsonResponse({}));
     const sdk = makeSdk(makeCreds(), fetch);
     const p = await sdk.project("prj_known");
 
     // The wrapper drops the required `project` field — this should compile.
-    void (() => p.deploy.apply({}));
+    void (() => p.deploy.apply({ site: { patch: { delete: ["old.html"] } } }));
 
     // The unwrapped namespace requires `project: string`; calling it with `{}`
     // is a TS error. Use @ts-expect-error so a regression that loosened the

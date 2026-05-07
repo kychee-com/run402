@@ -147,6 +147,7 @@ const resumed = await r.deploy.resume(operationId);
 
 - **All bytes ride through CAS.** The plan request body never carries inline bytes — only `ContentRef` objects. When the spec exceeds 5 MB JSON, the SDK uploads the manifest itself as a CAS object (`manifest_ref` escape hatch).
 - **Per-resource semantics on the spec.** `site.replace` = "this is the whole site" (files absent are removed). `site.patch.put` / `patch.delete` are surgical updates. `functions.replace` / `functions.patch.set` / `functions.patch.delete` mirror that. Secrets are value-free: set values first with `r.secrets.set(project, key, value)`, then deploy with `secrets.require` and/or `secrets.delete`. `subdomains.set` / `subdomains.add` / `subdomains.remove` use their own shape. Top-level absence = leave untouched.
+- **Strict spec validation happens before network calls.** Raw `ReleaseSpec` objects reject unknown fields (for example `project_id` or `subdomain`) instead of silently dropping them during normalization, and project/base-only or empty nested specs fail with `Run402DeployError.code === "MANIFEST_EMPTY"`. Use the Node manifest helpers when starting from CLI/MCP-style JSON.
 - **Warnings are structured.** `DeployResult.warnings` contains `WarningEntry[]` (`code`, `severity`, `requires_confirmation`, `message`, optional `affected`/`details`/`confidence`); the type preserves legacy low/medium/high plan warnings and modern deploy-observability info/warn/high warnings. `apply()` emits `plan.warnings` and stops before upload/commit on confirmation-required warnings unless `allowWarnings` is set. For `MISSING_REQUIRED_SECRET`, set the affected keys with `r.secrets.set`, then retry.
 - **Planning supports dry-runs.** `r.deploy.plan(spec, { dryRun: true })` calls the server-authoritative dry-run route and returns the normalized v2 plan envelope without uploading bytes or creating plan/operation rows (`plan_id` and `operation_id` are `null`).
 - **Release observability is typed.** Use `r.deploy.getRelease({ project, releaseId, siteLimit? })`, `r.deploy.getActiveRelease({ project, siteLimit? })`, and `r.deploy.diff({ project, from, to, limit? })` to inspect release inventory and release-to-release diffs. `diff` returns `ReleaseToReleaseDiff` with `migrations.applied_between_releases`; secret diffs expose keys only.
@@ -176,8 +177,9 @@ const resumed = await r.deploy.resume(operationId);
   `loadDeployManifest(path)` parses JSON relative to the manifest file, maps
   agent-friendly `project_id` into `ReleaseSpec.project`, decodes base64 file
   entries, turns `{ path }` entries into lazy `FsFileSource` values, and reads
-  migration `sql_path` / `sql_file`. Use `normalizeDeployManifest(input)` when
-  the manifest object is already in memory.
+  migration `sql_path` / `sql_file`. It rejects unknown manifest fields before
+  they can become partial deploys. Use `normalizeDeployManifest(input)` when the
+  manifest object is already in memory.
 
 ### GitHub Actions OIDC — CI credentials drive deploy
 

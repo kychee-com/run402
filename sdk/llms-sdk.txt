@@ -156,7 +156,7 @@ try {
 }
 ```
 
-`Run402DeployError.code` is one of `MIGRATION_FAILED`, `MIGRATION_CHECKSUM_MISMATCH`, `BASE_RELEASE_CONFLICT`, `PAYMENT_REQUIRED`, `SCHEMA_SETTLE_TIMEOUT`, `ACTIVATION_FAILED`, `STORAGE_UNAVAILABLE`, `SITE_STAGE_FAILED`, `FUNCTION_BUILD_FAILED`, `CONTENT_UPLOAD_FAILED`, `INVALID_SPEC`, `OPERATION_NOT_FOUND`, `MIGRATE_GATE_ACTIVE`, `INTERNAL_ERROR`, `NETWORK_ERROR`, `PROJECT_NOT_FOUND` (or any other string the gateway emits — consumers SHALL treat unknown codes as opaque). Pair it with the structured `nextActions` advisory array carried in the error body.
+`Run402DeployError.code` is one of `MIGRATION_FAILED`, `MIGRATION_CHECKSUM_MISMATCH`, `BASE_RELEASE_CONFLICT`, `PAYMENT_REQUIRED`, `SCHEMA_SETTLE_TIMEOUT`, `ACTIVATION_FAILED`, `STORAGE_UNAVAILABLE`, `SITE_STAGE_FAILED`, `FUNCTION_BUILD_FAILED`, `CONTENT_UPLOAD_FAILED`, `INVALID_SPEC`, `MANIFEST_EMPTY`, `OPERATION_NOT_FOUND`, `MIGRATE_GATE_ACTIVE`, `INTERNAL_ERROR`, `NETWORK_ERROR`, `PROJECT_NOT_FOUND` (or any other string the gateway emits — consumers SHALL treat unknown codes as opaque). Pair it with the structured `nextActions` advisory array carried in the error body.
 
 ### Type guards and the canonical retry policy
 
@@ -276,6 +276,8 @@ The full type is exported as `ReleaseSpec` from `@run402/sdk` and `@run402/sdk/n
 ```
 
 - **Replace vs patch semantics per resource.** `site.replace` = "this is the whole site" (files absent are removed). `site.patch.put` / `patch.delete` = surgical updates. `functions` has the same replace/patch split. Secrets are declaration-only: use `r.secrets.set(project, key, value)` for values, then `secrets.require[]` to assert keys exist and `secrets.delete[]` to remove keys at activation. `subdomains` use `set` / `add` / `remove`. Top-level absence = leave untouched.
+- **Strict validation is SDK-owned.** `deploy.plan/start/apply` reject unknown raw `ReleaseSpec` fields before normalization can drop them; `project_id`, `subdomain`, `site.replcae`, and similar typos are `Run402DeployError.code === "INVALID_SPEC"` before any hash/upload/plan request. Use `loadDeployManifest` / `normalizeDeployManifest` for CLI/MCP JSON that legitimately uses `project_id`, `{ path }`, base64 file entries, or migration `sql_path`.
+- **No-op specs fail locally.** A spec with only `project` / `base`, or empty containers such as `site.replace: {}`, `functions.patch.delete: []`, `secrets.require: []`, or `subdomains.set: []`, throws `Run402DeployError.code === "MANIFEST_EMPTY"` before any network call. Delete-only patches with non-empty `delete` arrays still count as deployable.
 - **Plan warnings are structured.** `PlanResponse.warnings` and `DeployResult.warnings` are `WarningEntry[]`; `deploy.apply()` emits `plan.warnings` and aborts before upload/commit when a warning requires confirmation unless `allowWarnings` is set. `MISSING_REQUIRED_SECRET` means set the affected keys with `r.secrets.set`, then retry.
 - **Plan envelopes are normalized.** New gateways return `kind: "plan_response"` with `is_noop`, `summary`, `warnings`, `expected_events`, and resource buckets at top level. The SDK preserves those fields and also folds them into `PlanResponse.diff` for compatibility. Dry-run plans return `plan_id: null` and `operation_id: null` and cannot be uploaded or committed.
 - **Modern plan/diff types are split.** Deploy plans may expose `PlanDiffEnvelope` with migration buckets `{ new, noop }`; release-to-release diffs expose `{ applied_between_releases }`. Migration checksum mismatch is a hard deploy error (`Run402DeployError`), not a normal successful diff bucket. Legacy flag-off plan arrays remain represented by `DeployDiff` for compatibility.
@@ -328,7 +330,7 @@ const inMemory = await normalizeDeployManifest({
 await r.deploy.apply(inMemory.spec, { idempotencyKey: inMemory.idempotencyKey });
 ```
 
-`DeployManifestInput` is the agent-facing JSON shape: `project_id` becomes `project`, `idempotency_key` is returned separately for deploy options, `{ data, encoding: "base64", contentType? }` decodes to bytes, `{ path, contentType? }` becomes a lazy `FsFileSource`, and `database.migrations[].sql_path` / `sql_file` are read as UTF-8 SQL. `loadDeployManifest(path)` resolves relative paths against the manifest file's directory; `normalizeDeployManifest(input, { baseDir? })` defaults relative paths to `process.cwd()`.
+`DeployManifestInput` is the agent-facing JSON shape: `project_id` becomes `project`, `idempotency_key` is returned separately for deploy options, `{ data, encoding: "base64", contentType? }` decodes to bytes, `{ path, contentType? }` becomes a lazy `FsFileSource`, and `database.migrations[].sql_path` / `sql_file` are read as UTF-8 SQL. `loadDeployManifest(path)` resolves relative paths against the manifest file's directory; `normalizeDeployManifest(input, { baseDir? })` defaults relative paths to `process.cwd()`. Manifest normalization is strict too: unknown fields are rejected instead of dropped, so a valid site deploy plus typoed `subdomain` cannot become a partial site-only deploy.
 
 #### Backward-compat shims
 

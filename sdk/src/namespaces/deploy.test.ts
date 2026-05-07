@@ -594,6 +594,116 @@ describe("Deploy.apply (validation)", () => {
     );
   });
 
+  it("rejects unknown raw ReleaseSpec fields before normalization can drop them", async () => {
+    const w = makeWiring();
+    const deploy = new Deploy(w.client);
+    for (const [spec, resource, pattern] of [
+      [
+        {
+          project: "prj_test",
+          project_id: "prj_other",
+          site: { replace: { "index.html": "hi" } },
+        },
+        "spec.project_id",
+        /normalizeDeployManifest/,
+      ],
+      [
+        {
+          project: "prj_test",
+          subdomain: "my-app",
+          site: { replace: { "index.html": "hi" } },
+        },
+        "spec.subdomain",
+        /subdomains/,
+      ],
+      [
+        {
+          project: "prj_test",
+          site: { replcae: { "index.html": "hi" } },
+        },
+        "site.replcae",
+        /Unknown ReleaseSpec field/,
+      ],
+    ] as const) {
+      await assert.rejects(
+        () => deploy.apply(spec as never),
+        (err: unknown) => {
+          assert(err instanceof Run402DeployError);
+          assert.equal(err.code, "INVALID_SPEC");
+          assert.equal(err.phase, "validate");
+          assert.equal(err.resource, resource);
+          assert.match(err.message, pattern);
+          return true;
+        },
+      );
+    }
+    assert.equal(w.requests.length, 0);
+  });
+
+  it("rejects no-op ReleaseSpecs before issuing gateway calls", async () => {
+    const w = makeWiring();
+    const deploy = new Deploy(w.client);
+    const specs = [
+      { project: "prj_test" },
+      { project: "prj_test", base: { release: "empty" } },
+      { project: "prj_test", database: { zero_downtime: true } },
+      { project: "prj_test", database: { expose: {} } },
+      { project: "prj_test", site: { replace: {} } },
+      { project: "prj_test", site: { patch: { put: {}, delete: [] } } },
+      { project: "prj_test", functions: { replace: {} } },
+      { project: "prj_test", functions: { patch: { set: {}, delete: [] } } },
+      { project: "prj_test", secrets: { require: [], delete: [] } },
+      { project: "prj_test", subdomains: { set: [], add: [], remove: [] } },
+      { project: "prj_test", routes: {} },
+      { project: "prj_test", checks: [] },
+    ];
+
+    for (const spec of specs) {
+      await assert.rejects(
+        () => deploy.apply(spec as never),
+        (err: unknown) => {
+          assert(err instanceof Run402DeployError);
+          assert.equal(err.code, "MANIFEST_EMPTY");
+          assert.equal(err.phase, "validate");
+          assert.equal(err.resource, "spec");
+          assert.deepEqual(err.fix, { action: "set_field", path: "site.replace" });
+          return true;
+        },
+      );
+    }
+    assert.equal(w.requests.length, 0);
+  });
+
+  it("still accepts delete-only patch specs as deployable", async () => {
+    const w = makeWiring();
+    let plannedBody: unknown;
+    w.setHandler((req) => {
+      assert.equal(req.path, "/deploy/v2/plans?dry_run=true");
+      plannedBody = req.body;
+      return {
+        plan_id: null,
+        operation_id: null,
+        base_release_id: null,
+        manifest_digest: "delete-only",
+        missing_content: [],
+        diff: {},
+        warnings: [],
+      } satisfies PlanResponse;
+    });
+
+    const deploy = new Deploy(w.client);
+    await deploy.plan(
+      { project: "prj_test", site: { patch: { delete: ["old.html"] } } },
+      { dryRun: true },
+    );
+
+    assert.equal(w.requests.length, 1);
+    assert.deepEqual(
+      (plannedBody as { spec: { site: unknown } }).spec.site,
+      { patch: { delete: ["old.html"] } },
+    );
+  });
+
   it("rejects legacy value-bearing secrets.set and replace_all before gateway calls", async () => {
     const w = makeWiring();
     const deploy = new Deploy(w.client);

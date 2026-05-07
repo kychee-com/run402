@@ -16,6 +16,43 @@ import type {
 
 const CONTEXT = "normalizing deploy manifest";
 
+const MANIFEST_FIELDS = new Set([
+  "project",
+  "project_id",
+  "idempotency_key",
+  "idempotencyKey",
+  "base",
+  "database",
+  "secrets",
+  "functions",
+  "site",
+  "subdomains",
+  "routes",
+  "checks",
+]);
+const MANIFEST_DATABASE_FIELDS = new Set(["migrations", "expose", "zero_downtime"]);
+const MANIFEST_MIGRATION_FIELDS = new Set([
+  "id",
+  "checksum",
+  "sql",
+  "sql_ref",
+  "sql_path",
+  "sql_file",
+  "transaction",
+]);
+const MANIFEST_FUNCTIONS_FIELDS = new Set(["replace", "patch"]);
+const MANIFEST_FUNCTIONS_PATCH_FIELDS = new Set(["set", "delete"]);
+const MANIFEST_FUNCTION_FIELDS = new Set([
+  "runtime",
+  "source",
+  "files",
+  "entrypoint",
+  "config",
+  "schedule",
+]);
+const MANIFEST_SITE_FIELDS = new Set(["replace", "patch"]);
+const MANIFEST_SITE_PATCH_FIELDS = new Set(["put", "delete"]);
+
 export type DeployManifestFileEntry =
   | ContentSource
   | {
@@ -144,6 +181,9 @@ export async function normalizeDeployManifest(
   assertPlainRecord(input, "Deploy manifest");
 
   const manifest = input as DeployManifestInput;
+  assertKnownFields(manifest, "Deploy manifest", MANIFEST_FIELDS, {
+    subdomain: "Use `subdomains: { set: [name] }`.",
+  });
   const project = resolveProject(manifest, opts);
   const spec: ReleaseSpec = { project };
 
@@ -226,20 +266,23 @@ async function mapDatabase(
   database: DeployManifestDatabaseSpec,
   opts: NormalizeDeployManifestOptions,
 ): Promise<NonNullable<ReleaseSpec["database"]>> {
+  assertPlainRecord(database, "Deploy manifest database");
+  assertKnownFields(database, "Deploy manifest database", MANIFEST_DATABASE_FIELDS);
+  const raw = database as DeployManifestDatabaseSpec;
   const out: NonNullable<ReleaseSpec["database"]> = {};
-  if (database.expose !== undefined) out.expose = database.expose;
-  if (database.zero_downtime !== undefined) {
-    out.zero_downtime = database.zero_downtime;
+  if (raw.expose !== undefined) out.expose = raw.expose;
+  if (raw.zero_downtime !== undefined) {
+    out.zero_downtime = raw.zero_downtime;
   }
-  if (database.migrations !== undefined) {
-    if (!Array.isArray(database.migrations)) {
+  if (raw.migrations !== undefined) {
+    if (!Array.isArray(raw.migrations)) {
       throw new LocalError(
         "Deploy manifest database.migrations must be an array",
         CONTEXT,
       );
     }
     out.migrations = [];
-    for (const migration of database.migrations) {
+    for (const migration of raw.migrations) {
       out.migrations.push(await mapMigration(migration, opts));
     }
   }
@@ -251,6 +294,11 @@ async function mapMigration(
   opts: NormalizeDeployManifestOptions,
 ): Promise<NonNullable<NonNullable<ReleaseSpec["database"]>["migrations"]>[number]> {
   assertPlainRecord(migration, "Deploy manifest database.migrations[]");
+  assertKnownFields(
+    migration,
+    "Deploy manifest database.migrations[]",
+    MANIFEST_MIGRATION_FIELDS,
+  );
   const out: NonNullable<NonNullable<ReleaseSpec["database"]>["migrations"]>[number] = {
     id: migration.id,
   };
@@ -292,6 +340,7 @@ function mapFunctions(
   opts: NormalizeDeployManifestOptions,
 ): NonNullable<ReleaseSpec["functions"]> {
   assertPlainRecord(functions, "Deploy manifest functions");
+  assertKnownFields(functions, "Deploy manifest functions", MANIFEST_FUNCTIONS_FIELDS);
   const out: NonNullable<ReleaseSpec["functions"]> = {};
   const replace = functions.replace;
   if (replace !== undefined) {
@@ -304,6 +353,11 @@ function mapFunctions(
   const patch = functions.patch;
   if (patch !== undefined) {
     assertPlainRecord(patch, "Deploy manifest functions.patch");
+    assertKnownFields(
+      patch,
+      "Deploy manifest functions.patch",
+      MANIFEST_FUNCTIONS_PATCH_FIELDS,
+    );
     out.patch = {};
     if (patch.set !== undefined) {
       assertPlainRecord(patch.set, "Deploy manifest functions.patch.set");
@@ -341,6 +395,7 @@ function mapFunction(
   opts: NormalizeDeployManifestOptions,
 ): FunctionSpec {
   assertPlainRecord(fn, "Deploy manifest function entry");
+  assertKnownFields(fn, "Deploy manifest function entry", MANIFEST_FUNCTION_FIELDS);
   const raw = fn as DeployManifestFunctionSpec;
   const out: FunctionSpec = {};
   if (raw.runtime !== undefined) out.runtime = raw.runtime;
@@ -359,7 +414,20 @@ function mapSite(
   opts: NormalizeDeployManifestOptions,
 ): NonNullable<ReleaseSpec["site"]> {
   assertPlainRecord(site, "Deploy manifest site");
+  assertKnownFields(site, "Deploy manifest site", MANIFEST_SITE_FIELDS, {
+    file: "Use `site.replace` or `site.patch.put` with a path-keyed file map.",
+    files: "Use `site.replace` or `site.patch.put` with a path-keyed file map.",
+  });
   const raw = site as Record<string, unknown>;
+  if (
+    Object.prototype.hasOwnProperty.call(raw, "replace") &&
+    Object.prototype.hasOwnProperty.call(raw, "patch")
+  ) {
+    throw new LocalError(
+      "Deploy manifest site must use either replace or patch, not both",
+      CONTEXT,
+    );
+  }
   if (Object.prototype.hasOwnProperty.call(raw, "replace")) {
     if (raw.replace === undefined) {
       throw new LocalError("Deploy manifest site.replace is undefined", CONTEXT);
@@ -370,6 +438,7 @@ function mapSite(
   if (Object.prototype.hasOwnProperty.call(raw, "patch")) {
     assertPlainRecord(raw.patch, "Deploy manifest site.patch");
     const rawPatch = raw.patch as { put?: unknown; delete?: unknown };
+    assertKnownFields(rawPatch, "Deploy manifest site.patch", MANIFEST_SITE_PATCH_FIELDS);
     if (rawPatch.put !== undefined) {
       patch.put = mapFileSet(rawPatch.put as DeployManifestFileSet, opts);
     }
@@ -506,5 +575,18 @@ function assertPlainRecord(
 ): asserts value is Record<string, unknown> {
   if (!isRecord(value) || Array.isArray(value)) {
     throw new LocalError(`${label} must be a JSON object`, CONTEXT);
+  }
+}
+
+function assertKnownFields(
+  value: object,
+  label: string,
+  allowed: Set<string>,
+  hints: Record<string, string> = {},
+): void {
+  for (const key of Object.keys(value)) {
+    if (allowed.has(key)) continue;
+    const hint = hints[key] ? ` ${hints[key]}` : "";
+    throw new LocalError(`Unknown ${label} field: ${key}.${hint}`, CONTEXT);
   }
 }

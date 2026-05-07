@@ -102,6 +102,41 @@ describe("Node deploy manifest helpers", () => {
     }
   });
 
+  it("rejects unknown manifest fields instead of silently dropping them", async () => {
+    for (const input of [
+      {
+        project_id: "prj_manifest",
+        subdomain: "my-app",
+        site: { replace: { "index.html": "hi" } },
+      },
+      {
+        project_id: "prj_manifest",
+        database: { migratoins: [{ id: "001", sql: "select 1;" }] },
+      },
+      {
+        project_id: "prj_manifest",
+        database: { migrations: [{ id: "001", sqlPath: "001.sql" }] },
+      },
+      {
+        project_id: "prj_manifest",
+        functions: { patch: { remove: ["api"] } },
+      },
+      {
+        project_id: "prj_manifest",
+        site: { replace: { "index.html": "hi" }, patch: { delete: ["old.html"] } },
+      },
+    ]) {
+      await assert.rejects(
+        () => normalizeDeployManifest(input as never),
+        (err: unknown) => {
+          assert.ok(err instanceof LocalError);
+          assert.match((err as Error).message, /Unknown|either replace or patch/);
+          return true;
+        },
+      );
+    }
+  });
+
   it("detects project override conflicts before deploy.apply", async () => {
     await assert.rejects(
       () =>

@@ -242,7 +242,8 @@ export async function handleDeploy(
   let spec: ReleaseSpec;
   let idempotencyKey: string | undefined;
   try {
-    const normalized = await normalizeDeployManifest(args);
+    const { allow_warnings: _allowWarnings, ...manifestArgs } = args;
+    const normalized = await normalizeDeployManifest(manifestArgs);
     spec = normalized.spec;
     idempotencyKey = normalized.idempotencyKey;
   } catch (err) {

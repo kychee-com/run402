@@ -4,6 +4,7 @@ import { resolveProjectId } from "./config.mjs";
 import { resolveFilePathsInManifest, resolveMigrationsFile } from "./manifest.mjs";
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail } from "./sdk-errors.mjs";
+import { normalizeDeployManifest } from "#sdk/node";
 
 const HELP = `run402 deploy — Deploy to an existing project on Run402
 
@@ -347,10 +348,26 @@ export async function run(args) {
     manifest.project_id = resolveProjectId(null);
   }
 
-  // Strip fields that aren't part of the bundleDeploy contract.
   const projectId = manifest.project_id;
-  delete manifest.project_id;
   delete manifest.name;
+
+  if (isV2Manifest(manifest)) {
+    try {
+      const normalized = await normalizeDeployManifest(manifest, {
+        baseDir: opts.manifest ? dirname(resolve(opts.manifest)) : process.cwd(),
+      });
+      const result = await getSdk().deploy.apply(normalized.spec, {
+        idempotencyKey: normalized.idempotencyKey,
+      });
+      console.log(JSON.stringify({ project_id: projectId, ...result }, null, 2));
+    } catch (err) {
+      reportSdkError(err);
+    }
+    return;
+  }
+
+  // Strip fields that aren't part of the bundleDeploy contract.
+  delete manifest.project_id;
   delete manifest.migrations_file;
 
   try {
@@ -359,4 +376,20 @@ export async function run(args) {
   } catch (err) {
     reportSdkError(err);
   }
+}
+
+function isV2Manifest(manifest) {
+  if (!manifest || typeof manifest !== "object" || Array.isArray(manifest)) return false;
+  if (manifest.database !== undefined) return true;
+  if (manifest.site !== undefined) return true;
+  if (manifest.subdomains !== undefined) return true;
+  if (manifest.routes !== undefined) return true;
+  if (manifest.checks !== undefined) return true;
+  if (manifest.secrets && typeof manifest.secrets === "object" && !Array.isArray(manifest.secrets)) {
+    return true;
+  }
+  if (manifest.functions && typeof manifest.functions === "object" && !Array.isArray(manifest.functions)) {
+    return true;
+  }
+  return false;
 }
