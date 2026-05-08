@@ -549,6 +549,19 @@ describe("Deploy.plan", () => {
         functions: { added: [], removed: [], changed: [] },
         secrets: { added: [], removed: [] },
         subdomains: { added: [], removed: [] },
+        routes: {
+          added: [
+            {
+              pattern: "/api/*",
+              kind: "prefix",
+              prefix: "/api/",
+              methods: null,
+              target: { type: "function", name: "api" },
+            },
+          ],
+          removed: [],
+          changed: [],
+        },
       };
     });
 
@@ -563,6 +576,10 @@ describe("Deploy.plan", () => {
     assert.equal(plan.expected_events?.[0], "plan.created");
     assert.equal(plan.diff.summary, "1 site path added");
     assert.equal(plan.diff.site?.added[0]?.path, "index.html");
+    assert.equal(
+      (plan.diff.routes as { added: Array<{ pattern: string }> } | undefined)?.added[0]?.pattern,
+      "/api/*",
+    );
     assert.equal(plan.warnings[0]?.code, "FIRST_DEPLOY");
   });
 });
@@ -654,7 +671,7 @@ describe("Deploy.apply (validation)", () => {
       { project: "prj_test", functions: { patch: { set: {}, delete: [] } } },
       { project: "prj_test", secrets: { require: [], delete: [] } },
       { project: "prj_test", subdomains: { set: [], add: [], remove: [] } },
-      { project: "prj_test", routes: {} },
+      { project: "prj_test", routes: null },
       { project: "prj_test", checks: [] },
     ];
 
@@ -667,6 +684,185 @@ describe("Deploy.apply (validation)", () => {
           assert.equal(err.phase, "validate");
           assert.equal(err.resource, "spec");
           assert.deepEqual(err.fix, { action: "set_field", path: "site.replace" });
+          return true;
+        },
+      );
+    }
+    assert.equal(w.requests.length, 0);
+  });
+
+  it("preserves routes:null when another deployable section is present", async () => {
+    const w = makeWiring();
+    let plannedBody: unknown;
+    w.setHandler((req) => {
+      assert.equal(req.path, "/deploy/v2/plans?dry_run=true");
+      plannedBody = req.body;
+      return {
+        plan_id: null,
+        operation_id: null,
+        base_release_id: null,
+        manifest_digest: "routes-null",
+        missing_content: [],
+        diff: {},
+        warnings: [],
+      } satisfies PlanResponse;
+    });
+
+    const deploy = new Deploy(w.client);
+    await deploy.plan(
+      {
+        project: "prj_test",
+        routes: null,
+        site: { patch: { delete: ["old.html"] } },
+      },
+      { dryRun: true },
+    );
+
+    assert.equal((plannedBody as { spec: { routes?: unknown } }).spec.routes, null);
+  });
+
+  it("treats routes.replace=[] as deployable content and sends it", async () => {
+    const w = makeWiring();
+    let plannedBody: unknown;
+    w.setHandler((req) => {
+      assert.equal(req.path, "/deploy/v2/plans?dry_run=true");
+      plannedBody = req.body;
+      return {
+        plan_id: null,
+        operation_id: null,
+        base_release_id: null,
+        manifest_digest: "routes-clear",
+        missing_content: [],
+        diff: {},
+        warnings: [],
+      } satisfies PlanResponse;
+    });
+
+    const deploy = new Deploy(w.client);
+    await deploy.plan(
+      { project: "prj_test", routes: { replace: [] } },
+      { dryRun: true },
+    );
+
+    assert.deepEqual(
+      (plannedBody as { spec: { routes?: unknown } }).spec.routes,
+      { replace: [] },
+    );
+  });
+
+  it("accepts valid function routes and sends them to the gateway", async () => {
+    const w = makeWiring();
+    let plannedBody: unknown;
+    w.setHandler((req) => {
+      plannedBody = req.body;
+      return {
+        plan_id: null,
+        operation_id: null,
+        base_release_id: null,
+        manifest_digest: "routes",
+        missing_content: [],
+        diff: {},
+        warnings: [],
+      } satisfies PlanResponse;
+    });
+
+    const deploy = new Deploy(w.client);
+    await deploy.plan(
+      {
+        project: "prj_test",
+        routes: {
+          replace: [
+            {
+              pattern: "/api/*",
+              methods: ["GET", "POST"],
+              target: { type: "function", name: "api" },
+            },
+          ],
+        },
+      },
+      { dryRun: true },
+    );
+
+    assert.deepEqual(
+      (plannedBody as { spec: { routes?: unknown } }).spec.routes,
+      {
+        replace: [
+          {
+            pattern: "/api/*",
+            methods: ["GET", "POST"],
+            target: { type: "function", name: "api" },
+          },
+        ],
+      },
+    );
+  });
+
+  it("rejects the old path-keyed route map with an actionable example", async () => {
+    const w = makeWiring();
+    const deploy = new Deploy(w.client);
+
+    await assert.rejects(
+      () =>
+        deploy.apply({
+          project: "prj_test",
+          routes: { "/api/*": { function: "api" } },
+        } as never),
+      (err: unknown) => {
+        assert(err instanceof Run402DeployError);
+        assert.equal(err.code, "INVALID_SPEC");
+        assert.equal(err.resource, "routes./api/*");
+        assert.match(err.message, /routes\.replace/);
+        assert.match(JSON.stringify(err.fix), /"pattern":"\/api\/\*"/);
+        return true;
+      },
+    );
+    assert.equal(w.requests.length, 0);
+  });
+
+  it("rejects malformed route entries before planning", async () => {
+    const w = makeWiring();
+    const deploy = new Deploy(w.client);
+    const badSpecs: Array<[unknown, string, RegExp]> = [
+      [
+        { replace: [{ pattern: "/api/*", methods: [], target: { type: "function", name: "api" } }] },
+        "routes.replace.0.methods",
+        /omit methods/,
+      ],
+      [
+        { replace: [{ pattern: "/api/*", methods: ["TRACE"], target: { type: "function", name: "api" } }] },
+        "routes.replace.0.methods",
+        /Unsupported route method/,
+      ],
+      [
+        { replace: [{ pattern: "/api/*", target: { type: "service", name: "api" } }] },
+        "routes.replace.0.target.type",
+        /function/,
+      ],
+      [
+        { replace: [{ pattern: "/api/*", target: { type: "function" } }] },
+        "routes.replace.0.target.name",
+        /name is required/,
+      ],
+      [
+        { replace: [{ pattern: "/api/*", target: { function: "api" } }] },
+        "routes.replace.0.target",
+        /target shorthand/,
+      ],
+      [
+        { replace: [{ pattern: "/api/*", extra: true, target: { type: "function", name: "api" } }] },
+        "routes.replace.0.extra",
+        /Unknown ReleaseSpec field/,
+      ],
+    ];
+
+    for (const [routes, resource, pattern] of badSpecs) {
+      await assert.rejects(
+        () => deploy.apply({ project: "prj_test", routes } as never),
+        (err: unknown) => {
+          assert(err instanceof Run402DeployError);
+          assert.equal(err.code, "INVALID_SPEC");
+          assert.equal(err.resource, resource);
+          assert.match(err.message, pattern);
           return true;
         },
       );

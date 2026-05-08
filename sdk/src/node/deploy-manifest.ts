@@ -5,12 +5,14 @@ import {
   resolve as resolvePath,
 } from "node:path";
 import { LocalError } from "../errors.js";
+import { ROUTE_HTTP_METHODS } from "../namespaces/deploy.types.js";
 import type {
   ContentRef,
   ContentSource,
   DatabaseSpec,
   FileSet,
   FunctionSpec,
+  ReleaseRoutesSpec,
   ReleaseSpec,
 } from "../namespaces/deploy.types.js";
 
@@ -52,6 +54,10 @@ const MANIFEST_FUNCTION_FIELDS = new Set([
 ]);
 const MANIFEST_SITE_FIELDS = new Set(["replace", "patch"]);
 const MANIFEST_SITE_PATCH_FIELDS = new Set(["put", "delete"]);
+const MANIFEST_ROUTES_FIELDS = new Set(["replace"]);
+const MANIFEST_ROUTE_ENTRY_FIELDS = new Set(["pattern", "methods", "target"]);
+const MANIFEST_ROUTE_TARGET_FIELDS = new Set(["type", "name"]);
+const ROUTE_METHOD_SET = new Set<string>(ROUTE_HTTP_METHODS);
 
 export type DeployManifestFileEntry =
   | ContentSource
@@ -190,7 +196,7 @@ export async function normalizeDeployManifest(
   if (manifest.base !== undefined) spec.base = manifest.base;
   if (manifest.subdomains !== undefined) spec.subdomains = manifest.subdomains;
   if (manifest.secrets !== undefined) spec.secrets = manifest.secrets;
-  if (manifest.routes !== undefined) spec.routes = manifest.routes;
+  if (manifest.routes !== undefined) spec.routes = mapRoutes(manifest.routes);
   if (manifest.checks !== undefined) spec.checks = manifest.checks;
 
   if (manifest.database !== undefined) {
@@ -457,6 +463,80 @@ function mapSite(
     "Deploy manifest site must include replace or patch",
     CONTEXT,
   );
+}
+
+function mapRoutes(routes: unknown): ReleaseRoutesSpec {
+  if (routes === null) return null;
+  assertPlainRecord(routes, "Deploy manifest routes");
+  assertKnownFields(routes, "Deploy manifest routes", MANIFEST_ROUTES_FIELDS, routeShapeHints(routes));
+  if (!Object.prototype.hasOwnProperty.call(routes, "replace")) {
+    throw new LocalError(
+      "Deploy manifest routes must be null or { \"replace\": [{ \"pattern\": \"/api/*\", \"target\": { \"type\": \"function\", \"name\": \"api\" } }] }. Path-keyed route maps are not supported.",
+      CONTEXT,
+    );
+  }
+  const replace = routes.replace;
+  if (!Array.isArray(replace)) {
+    throw new LocalError("Deploy manifest routes.replace must be an array", CONTEXT);
+  }
+  replace.forEach((route, index) => validateManifestRouteEntry(route, index));
+  return routes as ReleaseRoutesSpec;
+}
+
+function routeShapeHints(obj: Record<string, unknown>): Record<string, string> {
+  const hints: Record<string, string> = {};
+  for (const key of Object.keys(obj)) {
+    if (key.startsWith("/")) {
+      hints[key] = "Use routes.replace[] entries like { pattern, target: { type: \"function\", name } } instead of a path-keyed route map.";
+    }
+  }
+  return hints;
+}
+
+function validateManifestRouteEntry(route: unknown, index: number): void {
+  const label = `Deploy manifest routes.replace[${index}]`;
+  assertPlainRecord(route, label);
+  assertKnownFields(route, label, MANIFEST_ROUTE_ENTRY_FIELDS);
+  if (typeof route.pattern !== "string" || route.pattern.length === 0) {
+    throw new LocalError(`${label}.pattern must be a non-empty string`, CONTEXT);
+  }
+  if (route.methods !== undefined) {
+    if (!Array.isArray(route.methods)) {
+      throw new LocalError(`${label}.methods must be an array of HTTP methods`, CONTEXT);
+    }
+    if (route.methods.length === 0) {
+      throw new LocalError(`${label}.methods must not be empty; omit methods to allow all supported methods`, CONTEXT);
+    }
+    for (const method of route.methods) {
+      if (typeof method !== "string" || !ROUTE_METHOD_SET.has(method)) {
+        throw new LocalError(
+          `${label}.methods contains unsupported method ${JSON.stringify(method)}. Supported methods: ${ROUTE_HTTP_METHODS.join(", ")}`,
+          CONTEXT,
+        );
+      }
+    }
+  }
+  validateManifestRouteTarget(route.target, `${label}.target`);
+}
+
+function validateManifestRouteTarget(target: unknown, label: string): void {
+  assertPlainRecord(target, label);
+  if (
+    Object.prototype.hasOwnProperty.call(target, "function") &&
+    !Object.prototype.hasOwnProperty.call(target, "type")
+  ) {
+    throw new LocalError(`${label} uses unsupported target shorthand. Use { "type": "function", "name": "api" }.`, CONTEXT);
+  }
+  assertKnownFields(target, label, MANIFEST_ROUTE_TARGET_FIELDS);
+  if (target.type === undefined) {
+    throw new LocalError(`${label}.type is required; use "function"`, CONTEXT);
+  }
+  if (target.type !== "function") {
+    throw new LocalError(`${label}.type must be "function"; Phase 1 routes do not support ${JSON.stringify(target.type)}`, CONTEXT);
+  }
+  if (typeof target.name !== "string" || target.name.length === 0) {
+    throw new LocalError(`${label}.name is required for function route targets`, CONTEXT);
+  }
 }
 
 function mapFileSet(

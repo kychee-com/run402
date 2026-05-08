@@ -329,6 +329,103 @@ describe("handleDeploy deploy error formatting", () => {
     });
     assert.equal((lastApplyOpts as { allowWarnings?: boolean }).allowWarnings, true);
   });
+
+  it("passes route manifests through and includes raw deploy result JSON", async () => {
+    nextApplyImpl = async () => ({
+      release_id: "rel_001",
+      operation_id: "op_001",
+      urls: {},
+      diff: {
+        routes: {
+          added: [
+            {
+              pattern: "/api/*",
+              kind: "prefix",
+              prefix: "/api/",
+              methods: null,
+              target: { type: "function", name: "api" },
+            },
+          ],
+          removed: [],
+          changed: [],
+        },
+      },
+      warnings: [],
+    });
+
+    const result = await handleDeploy({
+      project_id: "prj_xxx",
+      routes: {
+        replace: [
+          {
+            pattern: "/api/*",
+            target: { type: "function", name: "api" },
+          },
+        ],
+      },
+    });
+
+    assert.equal(result.isError, undefined);
+    assert.deepEqual((lastApplySpec as { routes?: unknown }).routes, {
+      replace: [
+        {
+          pattern: "/api/*",
+          target: { type: "function", name: "api" },
+        },
+      ],
+    });
+    assert.match(result.content[0]!.text, /Raw Deploy Result/);
+    assert.match(result.content[0]!.text, /"routes"/);
+  });
+
+  it("renders route-specific warning guidance", async () => {
+    nextApplyImpl = async () => ({
+      release_id: "rel_001",
+      operation_id: "op_001",
+      urls: {},
+      diff: {},
+      warnings: [
+        {
+          code: "PUBLIC_ROUTED_FUNCTION",
+          severity: "high",
+          requires_confirmation: true,
+          message: "api is public",
+          affected: ["functions.api"],
+        },
+      ],
+    });
+
+    const result = await handleDeploy({
+      project_id: "prj_xxx",
+      routes: { replace: [] },
+    });
+
+    assert.equal(result.isError, undefined);
+    assert.match(result.content[0]!.text, /Route warning guidance/);
+    assert.match(result.content[0]!.text, /CSRF/);
+    assert.match(result.content[0]!.text, /allow_warnings/);
+  });
+
+  it("renders route-specific deploy error guidance", async () => {
+    nextApplyImpl = async () => {
+      throw new Run402DeployError("Routes are not enabled.", {
+        code: "ROUTES_NOT_ENABLED",
+        phase: "plan",
+        resource: "routes",
+        retryable: false,
+      });
+    };
+
+    const result = await handleDeploy({
+      project_id: "prj_xxx",
+      routes: { replace: [] },
+    });
+
+    assert.equal(result.isError, true);
+    assert.match(result.content[0]!.text, /Route warning guidance/);
+    assert.match(result.content[0]!.text, /not enabled/);
+    assert.match(result.content[0]!.text, /browser-route substitute/);
+  });
 });
 
 describe("deploySchema fileEntry parsing", () => {
@@ -336,6 +433,7 @@ describe("deploySchema fileEntry parsing", () => {
   // arg, so we can validate the union shape directly.
   const schema = z.object({ site: deploySchema.site });
   const secretsSchema = z.object({ secrets: deploySchema.secrets });
+  const routesSchema = z.object({ routes: deploySchema.routes });
 
   it("parses a bare string in site.replace", () => {
     const r = schema.safeParse({
@@ -385,5 +483,30 @@ describe("deploySchema fileEntry parsing", () => {
       const r = secretsSchema.safeParse({ secrets });
       assert.equal(r.success, false);
     }
+  });
+
+  it("parses route replace manifests and rejects path-keyed maps", () => {
+    const valid = routesSchema.safeParse({
+      routes: {
+        replace: [
+          {
+            pattern: "/api/*",
+            methods: ["GET", "POST"],
+            target: { type: "function", name: "api" },
+          },
+        ],
+      },
+    });
+    assert.equal(valid.success, true, valid.success ? "" : JSON.stringify(valid.error.issues));
+
+    assert.equal(routesSchema.safeParse({ routes: { replace: [] } }).success, true);
+    assert.equal(routesSchema.safeParse({ routes: null }).success, true);
+    assert.equal(routesSchema.safeParse({ routes: { "/api/*": { function: "api" } } }).success, false);
+    assert.equal(
+      routesSchema.safeParse({
+        routes: { replace: [{ pattern: "/api/*", methods: [], target: { type: "function", name: "api" } }] },
+      }).success,
+      false,
+    );
   });
 });

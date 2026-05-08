@@ -179,7 +179,37 @@ The response's `content` array includes a fenced `json` block of buffered progre
 
 For one-call full-stack deploys (database + migrations + manifest + secret dependencies + functions + site + subdomain), prefer **`deploy`**. Set secret values first with **`set_secret`**, then deploy with value-free `secrets.require[]`; never put secret values in deploy specs. **`bundle_deploy`** remains for legacy in-memory compatibility and writes secrets before deploy, but those writes are not atomic with the deploy commit.
 
-After deploys, use read-only release observability instead of starting another mutation: **`deploy_release_active`** for the current-live inventory, **`deploy_release_get`** for a specific release id, and **`deploy_release_diff`** to compare `empty`, `active`, or release-id targets. Inventories expose site paths, functions, secret keys only, subdomains, and applied migrations; diffs use `migrations.applied_between_releases`.
+After deploys, use read-only release observability instead of starting another mutation: **`deploy_release_active`** for the current-live inventory, **`deploy_release_get`** for a specific release id, and **`deploy_release_diff`** to compare `empty`, `active`, or release-id targets. Inventories expose site paths, functions, secret keys only, subdomains, materialized routes, applied migrations, and warnings when returned; diffs use `migrations.applied_between_releases` and route `added` / `removed` / `changed` buckets.
+
+#### Same-origin web routes
+
+Use the unified **`deploy`** tool for public browser routes to functions. Routes activate atomically with the rest of the release:
+
+```json
+{
+  "project_id": "prj_...",
+  "site": { "replace": { "index.html": { "data": "<!doctype html><main id='app'></main><script>fetch('/api/hello')</script>" } } },
+  "functions": {
+    "replace": {
+      "api": {
+        "runtime": "node22",
+        "source": { "data": "import { routedHttp } from '@run402/functions'; export default async (event) => routedHttp.json({ ok: true, path: event.path });" }
+      }
+    }
+  },
+  "routes": {
+    "replace": [
+      { "pattern": "/api/*", "methods": ["GET", "POST"], "target": { "type": "function", "name": "api" } }
+    ]
+  }
+}
+```
+
+Omit `routes` or pass `routes: null` to carry forward base routes. Use `routes: { "replace": [] }` to clear dynamic routes. Do not use path-keyed maps. Direct `/functions/v1/:name` remains API-key protected; browser-routed paths are public same-origin ingress, so the function owns application auth, CSRF for cookie-authenticated unsafe methods, CORS/`OPTIONS`, cookies, redirects, and spoofed forwarding-header hygiene.
+
+Matching is exact or final `/*` prefix only. `/admin/*` does not match `/admin`; use both `/admin` and `/admin/*` for a dynamic area root. Query strings are ignored for matching and forwarded as `rawQuery`. Exact beats prefix, longest prefix wins, and method-compatible dynamic routes beat static assets. A `POST /login` route can coexist with static `GET /login` HTML. Unsafe method mismatch returns `405`; matched dynamic route failures fail closed.
+
+Known route warning recovery: `PUBLIC_ROUTED_FUNCTION` means review app auth, CSRF, CORS/`OPTIONS`, and cookies before retrying with `allow_warnings`. `ROUTE_SHADOWS_STATIC_PATH` and `WILDCARD_ROUTE_SHADOWS_STATIC_PATHS` mean inspect affected paths and active routes before confirming. `ROUTE_TARGET_CARRIED_FORWARD` means inspect carried-forward function targets. `METHOD_SPECIFIC_ROUTE_ALLOWS_GET_STATIC_FALLBACK` means confirm static fallback is intended. `ROUTE_TABLE_NEAR_LIMIT` means consolidate routes. `ROUTES_NOT_ENABLED` means deploy without `routes` or request enablement.
 
 ### In-function helpers — `db(req)` vs `adminDb()`
 
@@ -254,7 +284,7 @@ For TypeScript autocomplete, `npm install @run402/functions` in your editor's pr
 ### Functions & secrets
 
 - **`deploy_function`** — deploy a Node 22 serverless function. Cron-schedulable via `schedule`. Pass `deps` as npm specs (bare names → latest at deploy time, pinned `lodash@4.17.21` or ranges `date-fns@^3.0.0` honored verbatim, max 30 entries / 200 chars each, native binaries rejected). Response surfaces `runtime_version`, `deps_resolved`, `warnings`.
-- **`invoke_function`** — invoke for testing.
+- **`invoke_function`** — invoke for testing over the direct `/functions/v1/:name` API-key-protected path.
 - **`get_function_logs`** — recent logs (CloudWatch). Use `since` for incremental polling.
 - **`update_function`** — change schedule / timeout / memory without redeploying code.
 - **`list_functions`** / **`delete_function`** — list / remove.

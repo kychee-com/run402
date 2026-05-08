@@ -130,10 +130,13 @@ function formatInventory(title: string, release: {
   functions: unknown[];
   secrets: { keys: string[] };
   subdomains: { names: string[] };
+  routes?: { entries?: unknown[] };
   migrations_applied: unknown[];
+  warnings?: unknown[];
   events_url: string | null;
 }): string {
   const siteTotal = release.site.totals?.paths ?? release.site.paths.length;
+  const routeCount = Array.isArray(release.routes?.entries) ? release.routes.entries.length : 0;
   return [
     `## ${title}`,
     ``,
@@ -149,7 +152,9 @@ function formatInventory(title: string, release: {
     `| functions | ${release.functions.length} |`,
     `| secrets | ${release.secrets.keys.length} keys |`,
     `| subdomains | ${release.subdomains.names.length} |`,
+    `| routes | ${routeCount} |`,
     `| migrations_applied | ${release.migrations_applied.length} |`,
+    `| warnings | ${release.warnings?.length ?? 0} |`,
     `| events_url | ${release.events_url ? `\`${release.events_url}\`` : "none"} |`,
   ].join("\n");
 }
@@ -165,7 +170,9 @@ function formatDiff(diff: {
   functions: { added: unknown[]; removed: unknown[]; changed: unknown[] };
   secrets: { added: unknown[]; removed: unknown[] };
   subdomains: { added: unknown[]; removed: unknown[] };
+  routes?: { added: unknown[]; removed: unknown[]; changed: unknown[] };
 }): string {
+  const routeDiff = diff.routes ?? { added: [], removed: [], changed: [] };
   return [
     `## Release Diff`,
     ``,
@@ -181,6 +188,7 @@ function formatDiff(diff: {
     `| functions_added_removed_changed | ${diff.functions.added.length}/${diff.functions.removed.length}/${diff.functions.changed.length} |`,
     `| secrets_added_removed | ${diff.secrets.added.length}/${diff.secrets.removed.length} |`,
     `| subdomains_added_removed | ${diff.subdomains.added.length}/${diff.subdomains.removed.length} |`,
+    `| routes_added_removed_changed | ${routeDiff.added.length}/${routeDiff.removed.length}/${routeDiff.changed.length} |`,
   ].join("\n");
 }
 

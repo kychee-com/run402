@@ -237,4 +237,38 @@ describe("deploy apply GitHub Actions OIDC", () => {
     assert.ok(Array.isArray(parsedStderr.next_actions));
     assert.ok(parsedStderr.next_actions.length > 0);
   });
+
+  it("rejects routes in CI deploy manifests by property presence", async () => {
+    process.env.GITHUB_ACTIONS = "true";
+    process.env.ACTIONS_ID_TOKEN_REQUEST_URL = OIDC_URL;
+    process.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN = "github-request-token";
+    process.env.RUN402_PROJECT_ID = "prj_ci_env";
+
+    for (const routes of [null, { replace: [] }]) {
+      calls = [];
+      captureStart();
+      let threw = null;
+      try {
+        await runDeployV2("apply", [
+          "--spec",
+          JSON.stringify({
+            site: { replace: { "index.html": { data: "hello" } } },
+            routes,
+          }),
+          "--quiet",
+        ]);
+      } catch (err) {
+        threw = err;
+      } finally {
+        captureStop();
+      }
+
+      assert.equal(threw?.message, "process.exit(1)");
+      assert.equal(calls.some((c) => c.url === `${API}/deploy/v2/plans`), false);
+      const parsedStderr = JSON.parse(stderr.join("\n"));
+      assert.equal(parsedStderr.code, "forbidden_spec_field");
+      assert.equal(parsedStderr.resource, "routes");
+      assert.match(parsedStderr.message, /allowance-backed authority/);
+    }
+  });
 });

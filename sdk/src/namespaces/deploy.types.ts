@@ -75,7 +75,7 @@ export interface ReleaseSpec {
   functions?: FunctionsSpec;
   site?: SiteSpec;
   subdomains?: SubdomainsSpec;
-  routes?: RouteSpec;
+  routes?: ReleaseRoutesSpec;
   checks?: SmokeCheck[];
 }
 
@@ -166,11 +166,36 @@ export interface SubdomainsSpec {
   remove?: string[];
 }
 
-/** Forward-compat scaffold for same-origin function routes (e.g. `/api`). */
-export interface RouteSpec {
-  /** Path → resource mapping. Reserved for the route-table follow-up. */
-  [path: string]: { function: string } | { redirect: string } | unknown;
+export const ROUTE_HTTP_METHODS = [
+  "GET",
+  "HEAD",
+  "POST",
+  "PUT",
+  "PATCH",
+  "DELETE",
+  "OPTIONS",
+] as const;
+
+export type RouteHttpMethod = (typeof ROUTE_HTTP_METHODS)[number];
+
+export interface FunctionRouteTarget {
+  type: "function";
+  /** Materialized release function name, not a file name or handler export. */
+  name: string;
 }
+
+export type RouteTarget = FunctionRouteTarget;
+
+/** One deploy-v2 web route entry. */
+export interface RouteSpec {
+  pattern: string;
+  /** Omit to allow every supported method. Empty arrays are invalid. */
+  methods?: readonly RouteHttpMethod[];
+  target: RouteTarget;
+}
+
+/** Top-level release route resource. Omit or pass null to carry routes forward. */
+export type ReleaseRoutesSpec = null | { replace: RouteSpec[] };
 
 export interface SmokeCheck {
   name: string;
@@ -209,6 +234,7 @@ export interface PlanResponse {
   functions?: FunctionsDiff;
   secrets?: SecretsDiff;
   subdomains?: SubdomainsDiff;
+  routes?: RoutesDiff;
 }
 
 export type WarningEntry = LegacyWarningEntry | DeployObservabilityWarningEntry;
@@ -299,6 +325,36 @@ export interface MigrationAppliedEntry {
   applied_at: string;
 }
 
+export interface RouteEntry {
+  pattern: string;
+  kind: "exact" | "prefix";
+  prefix: string | null;
+  /** Null means all supported route HTTP methods. */
+  methods: RouteHttpMethod[] | null;
+  target: RouteTarget;
+}
+
+export interface MaterializedRoutes {
+  manifest_sha256: string | null;
+  entries: RouteEntry[];
+}
+
+export interface RouteChangeEntry {
+  pattern: string;
+  before: RouteEntry;
+  after: RouteEntry;
+  fields_changed: Array<"methods" | "target" | "kind" | "prefix">;
+}
+
+export interface RoutesDiff {
+  manifest_sha256_old?: string | null;
+  manifest_sha256_new?: string | null;
+  added: RouteEntry[];
+  removed: RouteEntry[];
+  changed: RouteChangeEntry[];
+  totals?: { added: number; removed: number; changed: number };
+}
+
 export interface ReleaseInventoryBase<
   StateKind extends ReleaseInventoryStateKind = ReleaseInventoryStateKind,
 > {
@@ -325,7 +381,9 @@ export interface ReleaseInventoryBase<
   functions: ReleaseFunctionEntry[];
   secrets: { keys: string[] };
   subdomains: { names: string[] };
+  routes: MaterializedRoutes;
   migrations_applied: MigrationAppliedEntry[];
+  warnings?: DeployObservabilityWarningEntry[];
 }
 
 /** Inventory built from the currently live project state. */
@@ -416,6 +474,7 @@ export interface PlanDiffEnvelope {
   functions: FunctionsDiff;
   secrets: SecretsDiff;
   subdomains: SubdomainsDiff;
+  routes: RoutesDiff;
 }
 
 export interface ReleaseToReleaseDiff {
@@ -433,6 +492,7 @@ export interface ReleaseToReleaseDiff {
   functions: FunctionsDiff;
   secrets: SecretsDiff;
   subdomains: SubdomainsDiff;
+  routes: RoutesDiff;
 }
 
 export type ReleaseDiffTarget = "empty" | "active" | (string & {});
@@ -477,7 +537,7 @@ export interface DeployDiff {
   site?: SiteDiff;
   functions?: FunctionsDiff;
   secrets?: SecretsDiff;
-  routes?: Array<{ kind: "added" | "removed"; path: string }>;
+  routes?: RoutesDiff | Array<{ kind: "added" | "removed"; path: string }>;
   subdomains?:
     | SubdomainsDiff
     | Array<{ kind: "added" | "removed"; subdomain: string }>;
@@ -603,7 +663,7 @@ export interface NormalizedReleaseSpec {
   functions?: NormalizedFunctionsSpec;
   site?: NormalizedSiteSpec;
   subdomains?: SubdomainsSpec;
-  routes?: RouteSpec;
+  routes?: ReleaseRoutesSpec;
   checks?: SmokeCheck[];
 }
 

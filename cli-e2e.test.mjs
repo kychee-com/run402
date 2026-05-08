@@ -320,6 +320,7 @@ function mockFetch(input, init) {
         functions: { added: [], removed: [], changed: [] },
         secrets: { added: [], removed: [] },
         subdomains: { added: [], removed: [] },
+        routes: { added: [], removed: [], changed: [] },
       }));
     }
     return Promise.resolve(json({
@@ -385,6 +386,26 @@ function mockFetch(input, init) {
       functions: [],
       secrets: { keys: [] },
       subdomains: { names: [] },
+      routes: {
+        manifest_sha256: "route-manifest",
+        entries: [
+          {
+            pattern: "/api/*",
+            kind: "prefix",
+            prefix: "/api/",
+            methods: null,
+            target: { type: "function", name: "api" },
+          },
+        ],
+      },
+      warnings: [
+        {
+          code: "ROUTE_SHADOWS_STATIC_PATH",
+          severity: "warn",
+          requires_confirmation: false,
+          message: "Route shadows static path.",
+        },
+      ],
       migrations_applied: [],
     }));
   }
@@ -402,6 +423,19 @@ function mockFetch(input, init) {
       functions: { added: [], removed: [], changed: [] },
       secrets: { added: [], removed: [] },
       subdomains: { added: [], removed: [] },
+      routes: {
+        added: [
+          {
+            pattern: "/api/*",
+            kind: "prefix",
+            prefix: "/api/",
+            methods: null,
+            target: { type: "function", name: "api" },
+          },
+        ],
+        removed: [],
+        changed: [],
+      },
     }));
   }
   if (pathNoQuery.match(/^\/deploy\/v2\/releases\/[^/]+$/) && method === "GET") {
@@ -426,6 +460,19 @@ function mockFetch(input, init) {
       functions: [],
       secrets: { keys: [] },
       subdomains: { names: [] },
+      routes: {
+        manifest_sha256: "route-manifest",
+        entries: [
+          {
+            pattern: "/api/*",
+            kind: "prefix",
+            prefix: "/api/",
+            methods: null,
+            target: { type: "function", name: "api" },
+          },
+        ],
+      },
+      warnings: [],
       migrations_applied: [],
     }));
   }
@@ -1632,6 +1679,7 @@ describe("CLI e2e happy path", () => {
     assert.equal(body.status, "ok");
     assert.equal(body.release.kind, "release_inventory");
     assert.equal(body.release.release_id, "rel_v2_test");
+    assert.equal(body.release.routes.entries[0].pattern, "/api/*");
   });
 
   it("deploy release active wraps the active inventory payload", async () => {
@@ -1642,6 +1690,8 @@ describe("CLI e2e happy path", () => {
     const body = JSON.parse(captured());
     assert.equal(body.status, "ok");
     assert.equal(body.release.state_kind, "current_live");
+    assert.equal(body.release.routes.entries.length, 1);
+    assert.equal(body.release.warnings[0].code, "ROUTE_SHADOWS_STATIC_PATH");
   });
 
   it("deploy release diff wraps the diff payload", async () => {
@@ -1664,6 +1714,7 @@ describe("CLI e2e happy path", () => {
     assert.equal(body.status, "ok");
     assert.equal(body.diff.kind, "release_diff");
     assert.deepEqual(body.diff.migrations.applied_between_releases, ["001_init"]);
+    assert.equal(body.diff.routes.added[0].pattern, "/api/*");
   });
 
   it("deploy release diff rejects missing selectors before network", async () => {
@@ -2097,6 +2148,14 @@ describe("CLI e2e happy path", () => {
   // the gateway. This block mirrors the GH-185 guard pattern for v2 keys.
   async function deployApplyAndCapture(args) {
     const { run } = await import("./cli/lib/deploy.mjs");
+    const { saveAllowance } = await import("./cli/lib/config.mjs");
+    saveAllowance({
+      address: "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+      privateKey: "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80",
+      created: "2026-03-15T00:00:00.000Z",
+      funded: true,
+      rail: "x402",
+    });
     let deployCalled = false;
     const prevFetch = globalThis.fetch;
     globalThis.fetch = (input, init) => {
@@ -2163,6 +2222,24 @@ describe("CLI e2e happy path", () => {
     assert.equal(deployCalled, false, "must not POST to /deploy/v2/plans on empty site.replace spec");
     const parsed = parseStderrEnvelope(stderr);
     assert.equal(parsed.code, "MANIFEST_EMPTY");
+  });
+
+  it("deploy apply accepts routes.replace=[] as deployable content", async () => {
+    const { threw, deployCalled } = await deployApplyAndCapture(
+      ["--spec", JSON.stringify({ routes: { replace: [] } }), "--project", "prj_test123"]);
+    assert.ok(!threw || !/MANIFEST_EMPTY/.test(threw.message),
+      `routes.replace=[] must pass the empty-manifest guard, got: ${threw && threw.message}`);
+    assert.equal(deployCalled, true, "routes.replace=[] must reach /deploy/v2/plans");
+  });
+
+  it("deploy apply rejects path-keyed route maps before gateway calls", async () => {
+    const { threw, stderr, deployCalled } = await deployApplyAndCapture(
+      ["--spec", JSON.stringify({ routes: { "/api/*": { function: "api" } } }), "--project", "prj_test123"]);
+    assert.ok(threw && /process\.exit\(1\)/.test(threw.message),
+      `should exit non-zero, got: ${threw && threw.message}`);
+    assert.equal(deployCalled, false, "must not POST to /deploy/v2/plans with path-keyed routes");
+    const parsed = parseStderrEnvelope(stderr);
+    assert.match(parsed.message, /routes\.replace|Path-keyed route maps/);
   });
 
   it("deploy apply rejects secrets.set before gateway calls", async () => {

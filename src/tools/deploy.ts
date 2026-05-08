@@ -5,12 +5,14 @@ import { requireAllowanceAuth } from "../allowance-auth.js";
 import { updateProject } from "../keystore.js";
 import {
   PaymentRequired,
+  ROUTE_HTTP_METHODS,
   Run402DeployError,
 } from "../../sdk/dist/index.js";
 import { normalizeDeployManifest } from "../../sdk/dist/node/index.js";
 import type {
   DeployEvent,
   ReleaseSpec,
+  RouteHttpMethod,
   WarningEntry,
 } from "../../sdk/dist/index.js";
 
@@ -103,6 +105,30 @@ const functionSpec = z
   .strict();
 
 const functionMap = z.record(functionSpec);
+const routeMethod = z.enum(
+  ROUTE_HTTP_METHODS as unknown as [RouteHttpMethod, ...RouteHttpMethod[]],
+);
+const routeTarget = z
+  .object({
+    type: z.literal("function"),
+    name: z
+      .string()
+      .describe("Materialized release function name, not a file name or handler export."),
+  })
+  .strict();
+const routeEntry = z
+  .object({
+    pattern: z
+      .string()
+      .describe("Route pattern such as /api, /api/*, or /login. Prefix wildcards only use a final /*."),
+    methods: z
+      .array(routeMethod)
+      .min(1)
+      .optional()
+      .describe("Optional method allowlist. Omit to allow all supported methods; do not pass an empty array."),
+    target: routeTarget,
+  })
+  .strict();
 
 export const deploySchema = {
   project_id: z
@@ -186,6 +212,15 @@ export const deploySchema = {
     .describe(
       "At most one subdomain per project — multi-element `set` is rejected with SUBDOMAIN_MULTI_NOT_SUPPORTED.",
     ),
+  routes: z
+    .union([
+      z.null(),
+      z.object({ replace: z.array(routeEntry) }).strict(),
+    ])
+    .optional()
+    .describe(
+      "Deploy-v2 web routes. Omit or pass null to carry forward base routes; pass { replace: [] } to clear routes; pass { replace: [{ pattern, methods?, target: { type: 'function', name } }] } to replace them.",
+    ),
   idempotency_key: z
     .string()
     .optional()
@@ -222,6 +257,7 @@ type DeployArgs = {
     | { replace: FileMapInput }
     | { patch: { put?: FileMapInput; delete?: string[] } };
   subdomains?: ReleaseSpec["subdomains"];
+  routes?: ReleaseSpec["routes"];
   idempotency_key?: string;
   allow_warnings?: boolean;
 };
@@ -276,6 +312,14 @@ export async function handleDeploy(
     if (result.warnings.length > 0) {
       lines.push(``, renderWarningsMarkdown(result.warnings));
     }
+    lines.push(
+      ``,
+      `### Raw Deploy Result`,
+      ``,
+      "```json",
+      JSON.stringify(result, null, 2),
+      "```",
+    );
 
     return {
       content: [
@@ -313,6 +357,9 @@ export async function handleDeploy(
       const warnings = warningsFromDeployError(err);
       if (warnings.length > 0) {
         lines.push(``, renderWarningsMarkdown(warnings));
+      } else {
+        const guidance = routeGuidanceMarkdownForCodes([err.code]);
+        if (guidance) lines.push(``, guidance);
       }
       lines.push(``, err.message);
       if (err.fix) {
@@ -370,7 +417,74 @@ function renderWarningsMarkdown(warnings: WarningEntry[]): string {
       `Review these warnings before retrying with \`allow_warnings: true\`.`,
     );
   }
+  const routeGuidance = routeWarningRows(warnings);
+  if (routeGuidance.length > 0) {
+    lines.push(``, routeGuidanceTable(routeGuidance));
+  }
   return lines.join("\n");
+}
+
+const ROUTE_WARNING_GUIDANCE: Record<string, { meaning: string; recovery: string }> = {
+  PUBLIC_ROUTED_FUNCTION: {
+    meaning: "A route makes the target function public same-origin browser ingress.",
+    recovery: "Review app auth, CSRF protection for cookie-authenticated unsafe methods, and CORS/OPTIONS behavior; direct /functions/v1/:name remains API-key protected. Retry with allow_warnings only after that review.",
+  },
+  ROUTE_TARGET_CARRIED_FORWARD: {
+    meaning: "A carried-forward route still points at a function from the base release.",
+    recovery: "Inspect the active release routes and deploy a replacement route table if the target should change.",
+  },
+  ROUTE_SHADOWS_STATIC_PATH: {
+    meaning: "A dynamic route takes precedence over a static path.",
+    recovery: "Inspect the affected warning details and active release routes; confirm only when intentional.",
+  },
+  WILDCARD_ROUTE_SHADOWS_STATIC_PATHS: {
+    meaning: "A prefix wildcard route shadows one or more static paths.",
+    recovery: "Review affected paths, split exact routes if needed, and confirm only when intentional.",
+  },
+  METHOD_SPECIFIC_ROUTE_ALLOWS_GET_STATIC_FALLBACK: {
+    meaning: "A method-specific route leaves GET/HEAD static fallback available.",
+    recovery: "Confirm that static fallback for unmatched methods is intended.",
+  },
+  ROUTE_TABLE_NEAR_LIMIT: {
+    meaning: "The route table is close to the project or gateway limit.",
+    recovery: "Consolidate route patterns or remove stale routes before adding more.",
+  },
+  ROUTES_NOT_ENABLED: {
+    meaning: "Deploy-v2 web routes are not enabled for this project or environment.",
+    recovery: "Deploy without routes or request enablement. Direct /functions/v1/:name remains protected and is not a browser-route substitute.",
+  },
+};
+
+function routeWarningRows(warnings: WarningEntry[]): string[] {
+  const seen = new Set<string>();
+  const rows: string[] = [];
+  for (const warning of warnings) {
+    const guidance = ROUTE_WARNING_GUIDANCE[warning.code];
+    if (!guidance || seen.has(warning.code)) continue;
+    seen.add(warning.code);
+    rows.push(`| \`${warning.code}\` | ${guidance.meaning} | ${guidance.recovery} |`);
+  }
+  return rows;
+}
+
+function routeGuidanceMarkdownForCodes(codes: string[]): string | null {
+  const rows: string[] = [];
+  for (const code of codes) {
+    const guidance = ROUTE_WARNING_GUIDANCE[code];
+    if (!guidance) continue;
+    rows.push(`| \`${code}\` | ${guidance.meaning} | ${guidance.recovery} |`);
+  }
+  return rows.length > 0 ? routeGuidanceTable(rows) : null;
+}
+
+function routeGuidanceTable(rows: string[]): string {
+  return [
+    `### Route warning guidance`,
+    ``,
+    `| Code | Meaning | Recovery |`,
+    `|------|---------|----------|`,
+    ...rows,
+  ].join("\n");
 }
 
 function renderEventsBlock(events: DeployEvent[]): string {

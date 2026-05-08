@@ -92,6 +92,46 @@ test("public type imports compile from package entrypoints", () => {
   }
 });
 
+test("route method constants are available from package entrypoints", () => {
+  const dir = mkdtempSync(join(tmpdir(), "run402-sdk-route-const-contract-"));
+  const contractPath = join(dir, "contract.ts");
+
+  try {
+    writeFileSync(
+      contractPath,
+      [
+        'import { ROUTE_HTTP_METHODS as ROOT_METHODS } from "@run402/sdk";',
+        'import { ROUTE_HTTP_METHODS as NODE_METHODS } from "@run402/sdk/node";',
+        'const rootGet: "GET" = ROOT_METHODS[0];',
+        'const nodePost: "POST" = NODE_METHODS[2];',
+        "void rootGet;",
+        "void nodePost;",
+        "export {};",
+      ].join("\n"),
+    );
+
+    const program = ts.createProgram([contractPath], {
+      baseUrl: REPO_DIR,
+      paths: {
+        "@run402/sdk": ["sdk/src/index.ts"],
+        "@run402/sdk/node": ["sdk/src/node/index.ts"],
+      },
+      lib: ["lib.es2022.d.ts", "lib.dom.d.ts"],
+      module: ts.ModuleKind.ESNext,
+      moduleResolution: ts.ModuleResolutionKind.Bundler,
+      noEmit: true,
+      skipLibCheck: true,
+      strict: true,
+      target: ts.ScriptTarget.ES2022,
+    });
+    const diagnostics = ts.getPreEmitDiagnostics(program);
+
+    assert.equal(formatDiagnostics(diagnostics), "");
+  } finally {
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
 function publicRootTypeFiles(): string[] {
   const namespaceDir = join(SRC_DIR, "namespaces");
   const namespaceFiles = readdirSync(namespaceDir)

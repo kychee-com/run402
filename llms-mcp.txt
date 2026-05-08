@@ -131,6 +131,43 @@ The response's `content` array includes a fenced `json` block of buffered progre
 
 For one-call full-stack deploys (database + migrations + manifest + value-free secret declarations + functions + site + subdomain), use the newer **`deploy`** / **`deploy_resume`** tools. Set secret values first with **`set_secret`**, then deploy with `secrets.require[]`; never put secret values in a deploy spec. **`bundle_deploy`** remains as a legacy compatibility tool and writes legacy in-memory secrets before deploy, but those writes are not atomic with the later commit.
 
+The `deploy` tool also accepts deploy-v2 web routes:
+
+```json
+{
+  "project_id": "prj_...",
+  "site": { "replace": { "index.html": { "data": "<!doctype html><main id='app'></main><script>fetch('/api/hello')</script>" } } },
+  "functions": {
+    "replace": {
+      "api": {
+        "runtime": "node22",
+        "source": { "data": "import { routedHttp } from '@run402/functions'; export default async (event) => routedHttp.json({ ok: true, path: event.path });" }
+      }
+    }
+  },
+  "routes": {
+    "replace": [
+      { "pattern": "/api/*", "methods": ["GET", "POST"], "target": { "type": "function", "name": "api" } }
+    ]
+  }
+}
+```
+
+Omit `routes` or pass `routes: null` to carry forward base routes. Use `routes: { "replace": [] }` to clear dynamic routes. Route activation is atomic with the release. Direct `/functions/v1/:name` invocation remains API-key protected; routed browser paths are public same-origin ingress, so function code owns application auth, CSRF for cookie-authenticated unsafe methods, CORS/`OPTIONS`, cookies, redirects, and spoofed forwarding-header hygiene.
+
+Matching is exact or final `/*` prefix only. `/admin/*` does not match `/admin`, `/admin/`, `/admin.css`, or `/administrator`; use both `/admin` and `/admin/*` for a dynamic section root. Query strings are ignored for matching and forwarded as `rawQuery`. Exact routes beat prefix routes, longest prefix wins, and method-compatible dynamic routes beat static assets. `POST /login` can route to a function while `GET /login` serves static HTML. Unsafe method mismatch returns `405`; matched dynamic route failures fail closed.
+
+Route warning recovery:
+
+| Code | Meaning | Recover |
+|------|---------|---------|
+| `PUBLIC_ROUTED_FUNCTION` | Function becomes public same-origin browser ingress. | Review app auth, CSRF, CORS/`OPTIONS`, and cookies; direct `/functions/v1/:name` remains protected. Use `allow_warnings: true` only after review. |
+| `ROUTE_TARGET_CARRIED_FORWARD` | Carried-forward route still targets a base-release function. | Inspect `deploy_release_active` and deploy a replacement route table if needed. |
+| `ROUTE_SHADOWS_STATIC_PATH` / `WILDCARD_ROUTE_SHADOWS_STATIC_PATHS` | Dynamic route shadows static content. | Inspect warning details and active routes; confirm only when intentional. |
+| `METHOD_SPECIFIC_ROUTE_ALLOWS_GET_STATIC_FALLBACK` | Unmatched methods can serve static content. | Confirm fallback is intended or add method coverage. |
+| `ROUTE_TABLE_NEAR_LIMIT` | Route table is near a limit. | Consolidate or remove routes. |
+| `ROUTES_NOT_ENABLED` | Routes are disabled for the project/environment. | Deploy without `routes` or request enablement; direct function invoke is not a browser-route substitute. |
+
 ### In-function helpers — `db(req)` vs `adminDb()`
 
 Inside a deployed function, import from `@run402/functions` (auto-bundled at deploy time):
@@ -200,14 +237,14 @@ For TypeScript autocomplete, `npm install @run402/functions` in your editor's pr
 - **`deploy_resume`** — resume a deploy operation by `operation_id`.
 - **`deploy_list`** — list recent deploy operations. Params: `project_id`, `limit?`.
 - **`deploy_events`** — fetch recorded events for a deploy operation. Params: `project_id`, `operation_id`.
-- **`deploy_release_get`** — fetch release inventory by id. Params: `project_id`, `release_id`, `site_limit?`. Returns release metadata, state kind, site paths, functions, secret keys, subdomains, and applied migrations.
+- **`deploy_release_get`** — fetch release inventory by id. Params: `project_id`, `release_id`, `site_limit?`. Returns release metadata, state kind, site paths, functions, secret keys, subdomains, materialized routes, applied migrations, and warnings when returned.
 - **`deploy_release_active`** — fetch the current-live release inventory. Params: `project_id`, `site_limit?`.
-- **`deploy_release_diff`** — diff release targets. Params: `project_id`, `from` (`empty` / `active` / release id), `to` (`active` / release id), `limit?`. Returns `migrations.applied_between_releases`; secret and subdomain diffs expose `added` / `removed` only.
+- **`deploy_release_diff`** — diff release targets. Params: `project_id`, `from` (`empty` / `active` / release id), `to` (`active` / release id), `limit?`. Returns `migrations.applied_between_releases`; secret and subdomain diffs expose `added` / `removed` only; route diffs expose `added` / `removed` / `changed`.
 
 ### Functions
 
 - **`deploy_function`** — deploy a Node 22 serverless function. Params: `project_id`, `name`, `code`, `config?` (`{ timeout?, memory? }`), `deps?` (npm specs: bare names → latest; pinned `lodash@4.17.21`; ranges `date-fns@^3.0.0`; max 30 entries / 200 chars; native binaries rejected; **don't list `@run402/functions`**), `schedule?` (5-field cron). Response surfaces `runtime_version`, `deps_resolved`, `warnings`.
-- **`invoke_function`** — invoke for testing. Params: `project_id`, `name`, `method?`, `body?`, `headers?`.
+- **`invoke_function`** — invoke for testing over the direct `/functions/v1/:name` API-key-protected path. Params: `project_id`, `name`, `method?`, `body?`, `headers?`.
 - **`get_function_logs`** — recent logs (CloudWatch). Params: `project_id`, `name`, `tail?` (default 50, max 200), `since?` (ISO 8601, for incremental polling).
 - **`update_function`** — change schedule / timeout / memory without redeploying code. Params: `project_id`, `name`, `schedule?` (`null` to remove), `timeout?`, `memory?`.
 - **`list_functions`** / **`delete_function`** — list / remove.

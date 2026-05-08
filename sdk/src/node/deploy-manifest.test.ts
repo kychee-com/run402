@@ -36,6 +36,15 @@ describe("Node deploy manifest helpers", () => {
           },
         },
       },
+      routes: {
+        replace: [
+          {
+            pattern: "/api/*",
+            methods: ["GET", "POST"],
+            target: { type: "function", name: "api" },
+          },
+        ],
+      },
     });
 
     assert.equal(normalized.spec.project, "prj_manifest");
@@ -58,6 +67,25 @@ describe("Node deploy manifest helpers", () => {
       normalized.spec.functions?.replace?.api.files?.["index.mjs"],
       "export default () => new Response('ok');",
     );
+    assert.deepEqual(normalized.spec.routes, {
+      replace: [
+        {
+          pattern: "/api/*",
+          methods: ["GET", "POST"],
+          target: { type: "function", name: "api" },
+        },
+      ],
+    });
+  });
+
+  it("preserves routes:null through manifest normalization", async () => {
+    const normalized = await normalizeDeployManifest({
+      project_id: "prj_manifest",
+      routes: null,
+      site: { patch: { delete: ["old.html"] } },
+    });
+
+    assert.equal(normalized.spec.routes, null);
   });
 
   it("loads manifest files relative to their directory", async () => {
@@ -152,5 +180,48 @@ describe("Node deploy manifest helpers", () => {
         return true;
       },
     );
+  });
+
+  it("rejects malformed route shapes with actionable messages", async () => {
+    for (const [input, pattern] of [
+      [
+        { project_id: "prj_manifest", routes: { "/api/*": { function: "api" } } },
+        /Path-keyed route maps|routes\.replace/,
+      ],
+      [
+        { project_id: "prj_manifest", routes: { replace: { pattern: "/api/*" } } },
+        /routes\.replace must be an array/,
+      ],
+      [
+        {
+          project_id: "prj_manifest",
+          routes: { replace: [{ pattern: "/api/*", methods: [], target: { type: "function", name: "api" } }] },
+        },
+        /omit methods/,
+      ],
+      [
+        {
+          project_id: "prj_manifest",
+          routes: { replace: [{ pattern: "/api/*", methods: ["TRACE"], target: { type: "function", name: "api" } }] },
+        },
+        /unsupported method/,
+      ],
+      [
+        {
+          project_id: "prj_manifest",
+          routes: { replace: [{ pattern: "/api/*", target: { function: "api" } }] },
+        },
+        /target shorthand/,
+      ],
+    ] as const) {
+      await assert.rejects(
+        () => normalizeDeployManifest(input as never),
+        (err: unknown) => {
+          assert.ok(err instanceof LocalError);
+          assert.match((err as Error).message, pattern);
+          return true;
+        },
+      );
+    }
   });
 });

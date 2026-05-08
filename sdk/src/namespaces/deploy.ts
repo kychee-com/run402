@@ -22,6 +22,7 @@
 import type { Client } from "../kernel.js";
 import { isCiSessionCredentials } from "../ci-credentials.js";
 import { assertCiDeployableSpec } from "./ci.js";
+import { ROUTE_HTTP_METHODS } from "./deploy.types.js";
 import {
   ApiError,
   LocalError,
@@ -1124,6 +1125,10 @@ const FUNCTION_CONFIG_FIELDS = new Set(["timeoutSeconds", "memoryMb"]);
 const SITE_SPEC_FIELDS = new Set(["replace", "patch"]);
 const SITE_PATCH_FIELDS = new Set(["put", "delete"]);
 const SUBDOMAINS_SPEC_FIELDS = new Set(["set", "add", "remove"]);
+const ROUTES_SPEC_FIELDS = new Set(["replace"]);
+const ROUTE_ENTRY_FIELDS = new Set(["pattern", "methods", "target"]);
+const ROUTE_TARGET_FIELDS = new Set(["type", "name"]);
+const ROUTE_METHOD_SET = new Set<string>(ROUTE_HTTP_METHODS);
 
 function validateSpec(spec: ReleaseSpec): void {
   if (!spec || typeof spec !== "object") {
@@ -1285,7 +1290,90 @@ function validateSubdomainsSpec(subdomains: unknown): void {
 
 function validateRoutesSpec(routes: unknown): void {
   if (routes === undefined) return;
-  requireObject(routes, "routes");
+  if (routes === null) return;
+  const obj = requireObject(routes, "routes");
+  for (const key of Object.keys(obj)) {
+    if (key.startsWith("/")) {
+      throw invalidRouteSpec(
+        `Unknown ReleaseSpec field: routes.${key}. ${routeShapeHints(obj)[key]}`,
+        `routes.${key}`,
+      );
+    }
+  }
+  validateKnownFields(obj, "routes", ROUTES_SPEC_FIELDS, routeShapeHints(obj));
+  if (!hasOwn(obj, "replace")) {
+    throw invalidRouteSpec(
+      "ReleaseSpec.routes must be null or { replace: [{ pattern, target: { type: \"function\", name } }] }. Path-keyed route maps are not supported.",
+      "routes",
+    );
+  }
+  if (!Array.isArray(obj.replace)) {
+    throw invalidRouteSpec("ReleaseSpec.routes.replace must be an array of route entries", "routes.replace");
+  }
+  for (const [index, route] of obj.replace.entries()) {
+    validateRouteEntry(route, `routes.replace.${index}`);
+  }
+}
+
+function routeShapeHints(obj: Record<string, unknown>): Record<string, string> {
+  const hints: Record<string, string> = {};
+  for (const key of Object.keys(obj)) {
+    if (key.startsWith("/")) {
+      hints[key] = "Use `routes.replace[]` entries like `{ pattern, target: { type: \"function\", name } }` instead of a path-keyed route map.";
+    }
+  }
+  return hints;
+}
+
+function validateRouteEntry(route: unknown, resource: string): void {
+  const entry = requireObject(route, resource);
+  validateKnownFields(entry, resource, ROUTE_ENTRY_FIELDS);
+  if (typeof entry.pattern !== "string" || entry.pattern.length === 0) {
+    throw invalidRouteSpec(`ReleaseSpec.${resource}.pattern must be a non-empty string`, `${resource}.pattern`);
+  }
+  if (entry.methods !== undefined) {
+    if (!Array.isArray(entry.methods)) {
+      throw invalidRouteSpec(`ReleaseSpec.${resource}.methods must be an array of HTTP methods`, `${resource}.methods`);
+    }
+    if (entry.methods.length === 0) {
+      throw invalidRouteSpec(
+        `ReleaseSpec.${resource}.methods must not be empty; omit methods to allow all supported methods`,
+        `${resource}.methods`,
+      );
+    }
+    for (const method of entry.methods) {
+      if (typeof method !== "string" || !ROUTE_METHOD_SET.has(method)) {
+        throw invalidRouteSpec(
+          `Unsupported route method ${JSON.stringify(method)} at ReleaseSpec.${resource}.methods. Supported methods: ${ROUTE_HTTP_METHODS.join(", ")}`,
+          `${resource}.methods`,
+        );
+      }
+    }
+  }
+  validateRouteTarget(entry.target, `${resource}.target`);
+}
+
+function validateRouteTarget(target: unknown, resource: string): void {
+  const obj = requireObject(target, resource);
+  if (hasOwn(obj, "function") && !hasOwn(obj, "type")) {
+    throw invalidRouteSpec(
+      `ReleaseSpec.${resource} uses an unsupported target shorthand. Use { type: "function", name: "api" }.`,
+      resource,
+    );
+  }
+  validateKnownFields(obj, resource, ROUTE_TARGET_FIELDS);
+  if (obj.type === undefined) {
+    throw invalidRouteSpec(`ReleaseSpec.${resource}.type is required; use "function"`, `${resource}.type`);
+  }
+  if (obj.type !== "function") {
+    throw invalidRouteSpec(
+      `Unsupported route target type ${JSON.stringify(obj.type)} at ReleaseSpec.${resource}.type; Phase 1 routes support only "function" targets`,
+      `${resource}.type`,
+    );
+  }
+  if (typeof obj.name !== "string" || obj.name.length === 0) {
+    throw invalidRouteSpec(`ReleaseSpec.${resource}.name is required for function route targets`, `${resource}.name`);
+  }
 }
 
 function validateChecksSpec(checks: unknown): void {
@@ -1397,6 +1485,30 @@ function invalidSpec(message: string, resource: string): Run402DeployError {
   });
 }
 
+function invalidRouteSpec(message: string, resource: string): Run402DeployError {
+  return new Run402DeployError(message, {
+    code: "INVALID_SPEC",
+    phase: "validate",
+    resource,
+    retryable: false,
+    fix: {
+      action: "set_field",
+      path: "routes.replace",
+      example: {
+        routes: {
+          replace: [
+            {
+              pattern: "/api/*",
+              target: { type: "function", name: "api" },
+            },
+          ],
+        },
+      },
+    },
+    context: "validating spec",
+  });
+}
+
 function normalizePlanResponse(plan: PlanResponse): PlanResponse {
   const raw = plan as PlanResponse & { warnings?: unknown };
   const warnings = Array.isArray(raw.warnings) ? raw.warnings : [];
@@ -1410,6 +1522,7 @@ function normalizePlanResponse(plan: PlanResponse): PlanResponse {
       functions: raw.functions,
       secrets: raw.secrets,
       subdomains: raw.subdomains,
+      routes: raw.routes,
     };
     return {
       ...plan,
@@ -1571,7 +1684,9 @@ async function normalizeReleaseSpec(
   const normalized: NormalizedReleaseSpec = { project: spec.project };
   if (spec.base) normalized.base = spec.base;
   if (spec.subdomains) normalized.subdomains = spec.subdomains;
-  if (spec.routes) normalized.routes = spec.routes;
+  if (hasOwn(spec as unknown as Record<string, unknown>, "routes")) {
+    normalized.routes = spec.routes;
+  }
   if (spec.checks) normalized.checks = spec.checks;
   if (spec.secrets) normalized.secrets = spec.secrets;
 

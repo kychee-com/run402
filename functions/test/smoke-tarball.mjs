@@ -72,9 +72,9 @@ try {
     run(`npm install --before=9999-12-31 "${tarball}" jsonwebtoken@^9`, { cwd: installDir });
   });
 
-  step("import resolves: @run402/functions exposes db, adminDb, QueryBuilder, getUser, email, ai", () => {
+  step("import resolves: @run402/functions exposes db, adminDb, QueryBuilder, getUser, email, ai, routed HTTP helpers", () => {
     const result = run(
-      `node --input-type=module -e "import * as m from '@run402/functions'; const need = ['db','adminDb','QueryBuilder','getUser','email','ai']; const missing = need.filter(n => !(n in m)); if (missing.length) { console.error('missing:', missing); process.exit(1); } console.log('exports OK');"`,
+      `node --input-type=module -e "import * as m from '@run402/functions'; const need = ['db','adminDb','QueryBuilder','getUser','email','ai','routedHttp','text','json','bytes','isRequest']; const missing = need.filter(n => !(n in m)); if (missing.length) { console.error('missing:', missing); process.exit(1); } console.log('exports OK');"`,
       { cwd: installDir },
     );
     if (!result.includes("exports OK")) throw new Error("export check produced unexpected output: " + result);

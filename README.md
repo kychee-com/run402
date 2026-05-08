@@ -127,6 +127,40 @@ CLI:
 run402 sites deploy-dir ./dist --project prj_… > result.json 2> events.log
 ```
 
+### Same-origin web routes — static site + function ingress
+
+Deploy-v2 routes are release resources: they activate atomically with the site, functions, migrations, secrets, and subdomains in the same `deploy apply`. The route resource shape is an ordered replace list, not a path-keyed map:
+
+```json
+{
+  "project_id": "prj_...",
+  "site": {
+    "replace": {
+      "index.html": { "data": "<!doctype html><main id='app'></main><script>fetch('/api/hello')</script>" }
+    }
+  },
+  "functions": {
+    "replace": {
+      "api": {
+        "runtime": "node22",
+        "source": {
+          "data": "import { routedHttp } from '@run402/functions'; export default async (event) => routedHttp.json({ ok: true, path: event.path });"
+        }
+      }
+    }
+  },
+  "routes": {
+    "replace": [
+      { "pattern": "/api/*", "methods": ["GET", "POST"], "target": { "type": "function", "name": "api" } }
+    ]
+  }
+}
+```
+
+Omit `routes` or pass `routes: null` to carry forward base routes. Use `routes: { "replace": [] }` to clear dynamic routes. Direct `/functions/v1/:name` calls remain API-key protected; browser-routed paths are public same-origin ingress, so the function owns app auth, CSRF for cookie-authenticated unsafe methods, and CORS/`OPTIONS`.
+
+Matching is exact or final-prefix-wildcard only. `/admin` and `/admin/` are exact trailing-slash equivalents; `/admin/*` matches children but not `/admin`, `/admin/`, `/admin.css`, or `/administrator`, so deploy both `/admin` and `/admin/*` for a routed section root. Query strings are ignored for matching and forwarded as `rawQuery`. Exact routes beat prefix routes; longest prefix wins; method-compatible dynamic routes beat static assets. A `POST /login` route can coexist with static `GET /login` HTML. Unsafe method mismatch returns `405`, and matched dynamic route failures fail closed instead of falling back to static files.
+
 ### GitHub Actions OIDC deploys — link once, deploy with the same CLI
 
 For repo-driven deploys, Run402 does not need service keys or allowance files in GitHub secrets. Run a local link command once:
@@ -359,7 +393,7 @@ The full MCP surface — every tool is a thin shim over an SDK call.
 | Tool | Description |
 |------|-------------|
 | `deploy_function` | Deploy a Node 22 serverless function. Cron-schedulable. |
-| `invoke_function` | Invoke a deployed function (test path). |
+| `invoke_function` | Invoke a deployed function over the direct API-key-protected test path. |
 | `get_function_logs` | Recent logs (CloudWatch). |
 | `update_function` | Update schedule / timeout / memory without redeploying code. |
 | `list_functions` / `delete_function` | List / remove functions. |

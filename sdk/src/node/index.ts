@@ -120,6 +120,7 @@ export {
   NetworkError,
   LocalError,
   Run402DeployError,
+  ROUTE_HTTP_METHODS,
   Ci,
   CI_SESSION_CREDENTIALS,
   Deploy,

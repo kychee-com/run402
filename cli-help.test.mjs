@@ -235,6 +235,16 @@ describe("CLI --help contract", () => {
     assertHelp(await runCli(["-h"]), "run402 -h");
   });
 
+  it("deploy apply help includes the route manifest shape", async () => {
+    const result = await runCli(["deploy", "apply", "--help"]);
+    assertHelp(result, "run402 deploy apply --help", {
+      expectHeadingStartsWith: "run402 deploy apply",
+    });
+    assert.match(result.stdout, /"routes"\s*:\s*\{\s*"replace"/);
+    assert.match(result.stdout, /\/api\/\*/);
+    assert.match(result.stdout, /\/functions\/v1\/:name remains API-key protected/);
+  });
+
   for (const [cmd, { shared, specific }] of Object.entries(MATRIX)) {
     describe(`run402 ${cmd}`, () => {
       it(`${cmd} --help prints usage without side effects`, async () => {

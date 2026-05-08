@@ -55,7 +55,10 @@ describe("deploy release observability MCP tools", () => {
 
     assert.equal(result.isError, undefined);
     assert.ok(result.content[0]!.text.includes("Release Inventory"));
+    assert.ok(result.content[0]!.text.includes("| routes | 2 |"));
+    assert.ok(result.content[0]!.text.includes("| warnings | 1 |"));
     assert.ok(result.content[1]!.text.includes('"kind": "release_inventory"'));
+    assert.ok(result.content[1]!.text.includes('"routes"'));
     assert.deepEqual(seen, [
       { path: "/deploy/v2/releases/rel_%2Fone?site_limit=2", apikey: "ak_test" },
     ]);
@@ -97,6 +100,38 @@ describe("deploy release observability MCP tools", () => {
         functions: { added: [], removed: [], changed: [] },
         secrets: { added: [], removed: [] },
         subdomains: { added: [], removed: [] },
+        routes: {
+          added: [
+            {
+              pattern: "/api/*",
+              kind: "prefix",
+              prefix: "/api/",
+              methods: null,
+              target: { type: "function", name: "api" },
+            },
+          ],
+          removed: [],
+          changed: [
+            {
+              pattern: "/login",
+              before: {
+                pattern: "/login",
+                kind: "exact",
+                prefix: null,
+                methods: ["POST"],
+                target: { type: "function", name: "old-login" },
+              },
+              after: {
+                pattern: "/login",
+                kind: "exact",
+                prefix: null,
+                methods: ["POST"],
+                target: { type: "function", name: "login" },
+              },
+              fields_changed: ["target"],
+            },
+          ],
+        },
       };
     });
 
@@ -109,7 +144,9 @@ describe("deploy release observability MCP tools", () => {
 
     assert.equal(result.isError, undefined);
     assert.ok(result.content[0]!.text.includes("Release Diff"));
+    assert.ok(result.content[0]!.text.includes("routes_added_removed_changed | 1/0/1"));
     assert.ok(result.content[1]!.text.includes("applied_between_releases"));
+    assert.ok(result.content[1]!.text.includes('"/api/*"'));
     assert.ok(result.content[1]!.text.includes("DIFF_TRUNCATED"));
   });
 
@@ -169,6 +206,33 @@ function inventory(opts: { release_id: string; state_kind: string }) {
     functions: [],
     secrets: { keys: [] },
     subdomains: { names: [] },
+    routes: {
+      manifest_sha256: "route-manifest",
+      entries: [
+        {
+          pattern: "/api/*",
+          kind: "prefix",
+          prefix: "/api/",
+          methods: null,
+          target: { type: "function", name: "api" },
+        },
+        {
+          pattern: "/admin",
+          kind: "exact",
+          prefix: null,
+          methods: ["GET"],
+          target: { type: "function", name: "admin" },
+        },
+      ],
+    },
     migrations_applied: [],
+    warnings: [
+      {
+        code: "ROUTE_SHADOWS_STATIC_PATH",
+        severity: "warn",
+        requires_confirmation: false,
+        message: "Route shadows a static file.",
+      },
+    ],
   };
 }

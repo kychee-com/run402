@@ -175,11 +175,42 @@ Manifest format mirrors a `ReleaseSpec`:
       "assets/logo.png": { "data": "iVBORw0KGgo...", "encoding": "base64" }
     }
   },
-  "subdomains": { "set": ["my-app"] }
+  "subdomains": { "set": ["my-app"] },
+  "routes": {
+    "replace": [
+      { "pattern": "/api/*", "methods": ["GET", "POST"], "target": { "type": "function", "name": "api" } }
+    ]
+  }
 }
 ```
 
 File entries accept a bare UTF-8 string, `{ "data": "...", "encoding": "utf-8" | "base64", "contentType": "..." }`, or `{ "path": "dist/index.html", "contentType": "text/html" }`. In `--manifest` files, relative paths resolve against the manifest file's directory; in `--spec` / stdin they resolve against the current working directory. Migration entries may use `"sql_path"` or `"sql_file"` instead of inline `"sql"`. The CLI and MCP adapters share the SDK's typed `normalizeDeployManifest` path, so the same JSON can become SDK-native `ReleaseSpec` code without reimplementing base64 or path handling. The adapter is strict: unknown fields and no-op specs are rejected before deploy planning, so typos like `"subdomain"` do not become partial deploys.
+
+Complete static site + function + route manifest:
+
+```json
+{
+  "project_id": "prj_...",
+  "site": { "replace": { "index.html": { "data": "<!doctype html><main id='app'></main><script>fetch('/api/hello')</script>" } } },
+  "functions": {
+    "replace": {
+      "api": {
+        "runtime": "node22",
+        "source": { "data": "import { routedHttp } from '@run402/functions'; export default async (event) => routedHttp.json({ ok: true, path: event.path });" }
+      }
+    }
+  },
+  "routes": { "replace": [{ "pattern": "/api/*", "target": { "type": "function", "name": "api" } }] }
+}
+```
+
+Route semantics:
+- Omit `routes` or pass `routes: null` to carry forward base routes. `routes: { "replace": [] }` clears dynamic routes. `routes: { "replace": [...] }` replaces the route table atomically with the release.
+- Route entries use `pattern`, optional non-empty `methods` (`GET`, `HEAD`, `POST`, `PUT`, `PATCH`, `DELETE`, `OPTIONS`), and `target: { "type": "function", "name": "<materialized function name>" }`. Path-keyed maps like `"routes": { "/api/*": { "function": "api" } }` are invalid.
+- Exact patterns look like `/admin`; prefix wildcard patterns use final `/*`, like `/admin/*`. `/admin/*` does not match `/admin`, `/admin/`, `/admin.css`, or `/administrator`, so deploy both `/admin` and `/admin/*` for a dynamic section root.
+- Query strings are ignored for matching and forwarded as `rawQuery`. Exact beats prefix, longest prefix wins, and method-compatible dynamic routes beat static assets.
+- A `POST /login` route can coexist with static `GET /login` HTML. Unsafe method mismatch returns `405`, not SPA HTML. Matched dynamic route failures fail closed and do not fall back to static files.
+- Routed browser ingress uses `run402.routed_http.v1` from `@run402/functions`; direct `/functions/v1/:name` remains API-key protected. The function owns app auth, CSRF, CORS/`OPTIONS`, cookies, redirects, and spoofed forwarding-header hygiene.
 
 Apply it:
 
@@ -224,9 +255,20 @@ run402 deploy release diff --from empty --to active --project prj_... --limit 10
 
 `list` returns `{ operations: [...], cursor }` (page through with `--cursor` against the gateway when the cursor is non-null). `events` returns the same `DeployEvent` shapes that `apply` emits inline.
 
-`release active` and `release get` return `{ "status": "ok", "release": ReleaseInventory }`. Inventories include release metadata, `state_kind` (`current_live`, `effective`, or `desired_manifest`), site paths (capped by `--site-limit`), functions, secret keys only, subdomains, and applied migrations.
+`release active` and `release get` return `{ "status": "ok", "release": ReleaseInventory }`. Inventories include release metadata, `state_kind` (`current_live`, `effective`, or `desired_manifest`), site paths (capped by `--site-limit`), functions, secret keys only, subdomains, materialized routes, applied migrations, and inventory warnings when returned.
 
-`release diff` returns `{ "status": "ok", "diff": ReleaseToReleaseDiff }`. `--from` accepts `empty`, `active`, or a release id. `--to` accepts `active` or a release id. Diff migrations use `migrations.applied_between_releases`; secrets and subdomains expose `added` / `removed` only.
+`release diff` returns `{ "status": "ok", "diff": ReleaseToReleaseDiff }`. `--from` accepts `empty`, `active`, or a release id. `--to` accepts `active` or a release id. Diff migrations use `migrations.applied_between_releases`; secrets and subdomains expose `added` / `removed` only; routes expose `added` / `removed` / `changed`.
+
+Route warning guidance:
+
+| Code | Meaning | Recover |
+|------|---------|---------|
+| `PUBLIC_ROUTED_FUNCTION` | Function becomes public same-origin browser ingress. | Review app auth, CSRF, CORS/`OPTIONS`, and cookies; direct `/functions/v1/:name` remains API-key protected. Use `--allow-warnings` only after review. |
+| `ROUTE_TARGET_CARRIED_FORWARD` | Carried-forward route still targets a base-release function. | Inspect `run402 deploy release active` and deploy a replacement route table if needed. |
+| `ROUTE_SHADOWS_STATIC_PATH` / `WILDCARD_ROUTE_SHADOWS_STATIC_PATHS` | Dynamic route shadows static content. | Inspect warning details and active routes; confirm only when intentional. |
+| `METHOD_SPECIFIC_ROUTE_ALLOWS_GET_STATIC_FALLBACK` | Unmatched methods can serve static content. | Confirm fallback is intended or add method coverage. |
+| `ROUTE_TABLE_NEAR_LIMIT` | Route table is near a limit. | Consolidate or remove routes. |
+| `ROUTES_NOT_ENABLED` | Routes are disabled for the project/environment. | Deploy without `routes` or request enablement; direct function invoke is not a browser-route substitute. |
 
 **Migration registry**: each migration is identified by `(id, checksum)`. Re-shipping the same `id` + same SQL is a registry noop; same `id` + different SQL is a hard error (`MIGRATION_CHECKSUM_MISMATCH`). Ship idempotent migrations (`CREATE TABLE IF NOT EXISTS`, `ADD COLUMN IF NOT EXISTS` in a `DO` block) and re-deploys are free.
 
@@ -600,7 +642,7 @@ const rows = result.rows;
 
 #### Calling functions from the browser
 
-Functions are accessible via HTTP at `https://api.run402.com/functions/v1/<name>`. Use the project's `anon_key` as the `apikey` header. For authenticated calls, also pass the user's `access_token`:
+Functions are accessible via HTTP at `https://api.run402.com/functions/v1/<name>`. This direct invoke path remains API-key protected even when deploy-v2 web routes expose browser paths to the same function. Use the project's `anon_key` as the `apikey` header. For authenticated calls, also pass the user's `access_token`:
 
 ```javascript
 const res = await fetch('https://api.run402.com/functions/v1/my-function', {

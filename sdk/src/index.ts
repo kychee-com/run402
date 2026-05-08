@@ -252,6 +252,7 @@ export {
 } from "./ci-credentials.js";
 export type * from "./ci-credentials.js";
 export { Deploy } from "./namespaces/deploy.js";
+export { ROUTE_HTTP_METHODS } from "./namespaces/deploy.types.js";
 export {
   Ci,
   CI_AUDIENCE,

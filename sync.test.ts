@@ -814,6 +814,54 @@ describe("SURFACE consistency", () => {
   });
 });
 
+describe("deploy route surface alignment", () => {
+  it("keeps route authoring documented across public agent surfaces", () => {
+    const requiredFiles = [
+      "README.md",
+      "SKILL.md",
+      "openclaw/SKILL.md",
+      "cli/llms-cli.txt",
+      "llms-mcp.txt",
+      "sdk/README.md",
+      "sdk/llms-sdk.txt",
+      "functions/README.md",
+    ];
+    for (const file of requiredFiles) {
+      const text = readFileSync(join(__dirname, file), "utf-8");
+      assert.match(text, /routes/gi, `${file} must mention deploy web routes`);
+      assert.match(text, /replace/gi, `${file} must document routes.replace`);
+      assert.match(text, /\/api\/\*/g, `${file} must include a /api/* route example`);
+      assert.match(text, /\/functions\/v1\/:name/, `${file} must say direct function invoke remains protected`);
+    }
+  });
+
+  it("keeps SDK route types and MCP route renderers in sync", () => {
+    const deployTypes = readFileSync(join(__dirname, "sdk/src/namespaces/deploy.types.ts"), "utf-8");
+    for (const name of [
+      "RouteHttpMethod",
+      "ROUTE_HTTP_METHODS",
+      "FunctionRouteTarget",
+      "RouteTarget",
+      "RouteSpec",
+      "ReleaseRoutesSpec",
+      "RouteEntry",
+      "MaterializedRoutes",
+      "RoutesDiff",
+      "RouteChangeEntry",
+    ]) {
+      assert.match(deployTypes, new RegExp(`export (?:interface|type|const) ${name}\\b`), `missing SDK route export ${name}`);
+    }
+
+    const mcpDeploy = readFileSync(join(__dirname, "src/tools/deploy.ts"), "utf-8");
+    assert.match(mcpDeploy, /ROUTE_HTTP_METHODS/, "MCP deploy schema must share route method constants");
+    assert.match(mcpDeploy, /Raw Deploy Result/, "MCP deploy success must include raw deploy result JSON");
+
+    const releaseTool = readFileSync(join(__dirname, "src/tools/deploy-release.ts"), "utf-8");
+    assert.match(releaseTool, /\| routes \|/, "MCP release inventory summary must include route count");
+    assert.match(releaseTool, /routes_added_removed_changed/, "MCP release diff summary must include route buckets");
+  });
+});
+
 // ─── llms.txt alignment (conditional — only if the main repo is available) ───
 
 const LLMS_TXT_PATH = join(homedir(), "Developer/run402-private/site/llms.txt");

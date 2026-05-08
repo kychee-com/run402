@@ -286,6 +286,12 @@ export function assertCiDeployableSpec(specOrPlanBody: ReleaseSpec | PlanRequest
           "CI deploy manifests must omit spec.secrets. Set secrets locally or admin-side before CI runs; CI credentials do not have secret-write authority or secret-existence authority.",
         );
       }
+      if (key === "routes") {
+        throwCiDeploySpecError(
+          "routes",
+          "CI deploy manifests must omit spec.routes. Phase 1 web routes are broader trust changes and require local allowance-backed authority.",
+        );
+      }
       throwCiDeploySpecError(
         key,
         `CI deploy cannot ship spec.${key}; only project, database, functions, site, and base:{release:"current"} are allowed.`,

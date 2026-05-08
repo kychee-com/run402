@@ -18,7 +18,7 @@
   ],
   "scripts": {
     "build": "tsc",
-    "test": "node --experimental-test-module-mocks --test --import tsx src/db.test.ts src/auth.test.ts"
+    "test": "node --experimental-test-module-mocks --test --import tsx src/db.test.ts src/auth.test.ts src/routed-http.test.ts"
   },
   "engines": {
     "node": ">=18"

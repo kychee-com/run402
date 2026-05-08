@@ -2,9 +2,12 @@ import type {
   ActiveReleaseInventory,
   DeployObservabilityWarningEntry,
   PlanDiffEnvelope,
+  ReleaseRoutesSpec,
   ReleaseSnapshotInventory,
   ReleaseSpec,
   ReleaseToReleaseDiff,
+  RoutesDiff,
+  RouteEntry,
 } from "./namespaces/deploy.types.js";
 import type { SecretSummary } from "./namespaces/secrets.js";
 
@@ -37,6 +40,11 @@ type _DeployObservabilityWarningSeverity = Assert<
 >;
 type _ReleaseDiffAppliedMigrations =
   ReleaseToReleaseDiff["migrations"]["applied_between_releases"];
+type _RouteSpecResource = Assert<
+  Equal<ReleaseSpec["routes"], ReleaseRoutesSpec | undefined>
+>;
+type _ReleaseDiffRoutes = Assert<Equal<ReleaseToReleaseDiff["routes"], RoutesDiff>>;
+type _RouteEntryMethods = RouteEntry["methods"];
 
 // @ts-expect-error release-to-release diffs do not expose plan migration buckets
 type _NoReleaseDiffMigrationNew = ReleaseToReleaseDiff["migrations"]["new"];
@@ -46,5 +54,7 @@ type _NoReleaseDiffMigrationMismatch = ReleaseToReleaseDiff["migrations"]["misma
 type _NoPlanDiffMigrationMismatch = PlanDiffEnvelope["migrations"]["mismatch"];
 // @ts-expect-error secrets diffs intentionally have no changed bucket
 type _NoSecretChangedBucket = ReleaseToReleaseDiff["secrets"]["changed"];
+// @ts-expect-error route resources are replace lists, not path-keyed maps
+type _NoPathKeyedRoutes = NonNullable<ReleaseRoutesSpec>["/api/*"];
 
 export {};

@@ -15,6 +15,7 @@
  *     "functions": { "replace": {...}, "patch": { "set": {...}, "delete": [...] } },
  *     "site":      { "replace": {...} } | { "patch": { "put": {...}, "delete": [...] } },
  *     "subdomains": { "set": ["..."], "add": [...], "remove": [...] },
+ *     "routes": { "replace": [{ "pattern": "/api/*", "methods": ["GET", "POST"], "target": { "type": "function", "name": "api" } }] },
  *     "idempotency_key": "..."
  *   }
  *
@@ -45,7 +46,27 @@ Manifest format mirrors the MCP \`deploy\` tool's ReleaseSpec:
     "secrets":   { "require": ["OPENAI_API_KEY"], "delete": ["OLD_KEY"] },
     "functions": { "replace": { "api": { "source": { "data": "export default ..." } } } },
     "site":      { "replace": { "index.html": { "data": "<html>..." } } },
-    "subdomains": { "set": ["my-app"] }
+    "subdomains": { "set": ["my-app"] },
+    "routes": {
+      "replace": [
+        { "pattern": "/api/*", "methods": ["GET", "POST"], "target": { "type": "function", "name": "api" } }
+      ]
+    }
+  }
+
+Complete static site + function + route manifest:
+  {
+    "project_id": "prj_...",
+    "site": { "replace": { "index.html": { "data": "<html><body><script src='/api/hello'></script></body></html>" } } },
+    "functions": {
+      "replace": {
+        "api": {
+          "runtime": "node22",
+          "source": { "data": "import { routedHttp } from '@run402/functions'; export default async (event) => routedHttp.json({ ok: true, path: event.path });" }
+        }
+      }
+    },
+    "routes": { "replace": [{ "pattern": "/api/*", "target": { "type": "function", "name": "api" } }] }
   }
 
 Options:
@@ -68,6 +89,11 @@ Secrets:
 Patch examples (only the listed file changes):
   { "project_id": "prj_...", "site": { "patch": { "put": { "index.html": { "data": "..." } } } } }
   { "project_id": "prj_...", "site": { "patch": { "delete": ["old.html"] } } }
+
+Routes:
+  Omit routes or pass "routes": null to carry forward base routes.
+  Use "routes": { "replace": [] } to clear dynamic routes.
+  Routes activate atomically with the release. Direct /functions/v1/:name remains API-key protected.
 `;
 
 const RESUME_HELP = `run402 deploy resume — Resume a stuck deploy operation
@@ -123,8 +149,8 @@ Subcommands:
   diff      Diff two release targets
 
 Output:
-  get/active: { "status": "ok", "release": {...} }
-  diff:       { "status": "ok", "diff": {...} }
+  get/active: { "status": "ok", "release": {...} }  # includes route inventory and inventory warnings when returned
+  diff:       { "status": "ok", "diff": {...} }     # includes route added/removed/changed diff buckets
 `;
 
 const RELEASE_GET_HELP = `run402 deploy release get — Fetch a release inventory by id
@@ -137,7 +163,7 @@ Options:
   --site-limit <n>        Maximum site path entries to include (gateway default: 5000)
 
 Output:
-  stdout: { "status": "ok", "release": {...} }
+  stdout: { "status": "ok", "release": {...} }  # preserves full routes inventory and warnings
 `;
 
 const RELEASE_ACTIVE_HELP = `run402 deploy release active — Fetch the active release inventory
@@ -150,7 +176,7 @@ Options:
   --site-limit <n>        Maximum site path entries to include (gateway default: 5000)
 
 Output:
-  stdout: { "status": "ok", "release": {...} }
+  stdout: { "status": "ok", "release": {...} }  # preserves full routes inventory and warnings
 `;
 
 const RELEASE_DIFF_HELP = `run402 deploy release diff — Diff two release targets
@@ -165,7 +191,7 @@ Options:
   --limit <n>             Maximum entries per site diff bucket (gateway default: 1000)
 
 Output:
-  stdout: { "status": "ok", "diff": {...} }
+  stdout: { "status": "ok", "diff": {...} }  # preserves routes.added/removed/changed
 `;
 
 export async function runDeployV2(sub, args) {
@@ -250,7 +276,7 @@ async function applyCmd(args) {
   // For object-typed sections the "container is non-empty" check isn't enough
   // — `site:{replace:{}}` has one key but ships nothing. We recurse one level
   // so any object whose own values are all empty containers is still empty.
-  const meaningful = ["database", "site", "functions", "secrets", "subdomains", "domains"];
+  const meaningful = ["database", "site", "functions", "secrets", "subdomains", "routes", "checks"];
   function hasContent(v) {
     if (v == null) return false;
     if (Array.isArray(v)) return v.length > 0;
@@ -262,7 +288,15 @@ async function applyCmd(args) {
     if (typeof v === "string") return v.length > 0;
     return true;
   }
-  const hasMeaningfulContent = spec && typeof spec === "object" && !Array.isArray(spec) && meaningful.some((key) => hasContent(spec[key]));
+  function hasDeployableSection(key, value) {
+    if (key === "routes" && value && typeof value === "object" && !Array.isArray(value) &&
+      Object.prototype.hasOwnProperty.call(value, "replace") && Array.isArray(value.replace)) {
+      return true;
+    }
+    return hasContent(value);
+  }
+  const hasMeaningfulContent = spec && typeof spec === "object" && !Array.isArray(spec) &&
+    meaningful.some((key) => hasDeployableSection(key, spec[key]));
   if (!hasMeaningfulContent) {
     fail({
       code: "MANIFEST_EMPTY",
@@ -410,32 +444,98 @@ function enhanceDeployWarningError(err) {
     : {};
   const warnings = Array.isArray(existingBody.warnings) ? existingBody.warnings : null;
   const code = existingBody.code || err?.code || null;
-  if (!warnings && code !== "MISSING_REQUIRED_SECRET") return err;
+  const routeGuidance = routeWarningGuidance(warnings, code);
+  if (!warnings && code !== "MISSING_REQUIRED_SECRET" && !routeGuidance) return err;
 
   const enhanced = Object.assign(new Error(err?.message || existingBody.message || String(code)), err);
   const affected = warnings
     ? warnings.flatMap((w) => Array.isArray(w?.affected) ? w.affected : [])
     : [];
+  const defaultNextActions = [
+    ...(affected.length > 0
+      ? [`Set or inspect affected secrets: ${Array.from(new Set(affected)).join(", ")}`]
+      : []),
+    "Retry `run402 deploy apply` after resolving warnings.",
+    "Use `--allow-warnings` only when the warning was explicitly reviewed.",
+  ];
   enhanced.body = {
     ...existingBody,
     code: code || "DEPLOY_WARNING_REQUIRES_CONFIRMATION",
     message: existingBody.message || err?.message || "Deploy plan returned warnings that require confirmation.",
     hint: existingBody.hint ||
+      routeGuidance?.hint ||
       (code === "MISSING_REQUIRED_SECRET"
         ? "Set the missing secret values with `run402 secrets set`, then retry deploy apply. Use --allow-warnings only after explicit review."
         : "Review the plan warnings, then retry with --allow-warnings if you intentionally accept them."),
     next_actions: Array.isArray(existingBody.next_actions) && existingBody.next_actions.length > 0
       ? existingBody.next_actions
-      : [
-          ...(affected.length > 0
-            ? [`Set or inspect affected secrets: ${Array.from(new Set(affected)).join(", ")}`]
-            : []),
-          "Retry `run402 deploy apply` after resolving warnings.",
-          "Use `--allow-warnings` only when the warning was explicitly reviewed.",
-        ],
+      : (routeGuidance?.next_actions ?? defaultNextActions),
     ...(warnings ? { warnings } : {}),
   };
   return enhanced;
+}
+
+const ROUTE_WARNING_GUIDANCE = {
+  PUBLIC_ROUTED_FUNCTION: {
+    hint: "A deploy route makes a function public same-origin browser ingress; direct /functions/v1/:name remains API-key protected.",
+    next_actions: [
+      "Review application auth and authorization in the routed function.",
+      "Add CSRF protection for cookie-authenticated POST/PUT/PATCH/DELETE routes.",
+      "Implement CORS and OPTIONS explicitly when cross-origin callers are intended.",
+      "Retry with --allow-warnings only after the public ingress review is intentional.",
+    ],
+  },
+  ROUTE_TARGET_CARRIED_FORWARD: {
+    hint: "A carried-forward route still points at a base-release function target.",
+    next_actions: [
+      "Inspect the active release with run402 deploy release active.",
+      "Deploy routes.replace if the target should change in this release.",
+    ],
+  },
+  ROUTE_SHADOWS_STATIC_PATH: {
+    hint: "A dynamic route shadows a static site path.",
+    next_actions: [
+      "Inspect the warning details for affected static paths.",
+      "Inspect live routes with run402 deploy release active.",
+      "Retry with --allow-warnings only when dynamic shadowing is intentional.",
+    ],
+  },
+  WILDCARD_ROUTE_SHADOWS_STATIC_PATHS: {
+    hint: "A prefix wildcard route shadows one or more static site paths.",
+    next_actions: [
+      "Review affected route/static path details.",
+      "Split exact routes or move static paths if the shadowing is accidental.",
+      "Retry with --allow-warnings only when the wildcard shadowing is intentional.",
+    ],
+  },
+  METHOD_SPECIFIC_ROUTE_ALLOWS_GET_STATIC_FALLBACK: {
+    hint: "A method-specific route allows static fallback for unmatched methods such as GET.",
+    next_actions: [
+      "Confirm that static fallback for GET/HEAD is intended.",
+      "Add method coverage or static files deliberately.",
+    ],
+  },
+  ROUTE_TABLE_NEAR_LIMIT: {
+    hint: "The route table is near the gateway/project limit.",
+    next_actions: [
+      "Consolidate prefix routes where possible.",
+      "Remove stale route entries before adding more.",
+    ],
+  },
+  ROUTES_NOT_ENABLED: {
+    hint: "Deploy-v2 web routes are not enabled for this project or environment; direct /functions/v1/:name remains protected and is not a browser-route substitute.",
+    next_actions: [
+      "Deploy without the routes resource, or request route enablement for this project/environment.",
+      "Keep direct function invocation API-key protected; do not substitute it for same-origin browser routes.",
+    ],
+  },
+};
+
+function routeWarningGuidance(warnings, code) {
+  const routeCode = warnings
+    ? warnings.map((w) => w?.code).find((warningCode) => ROUTE_WARNING_GUIDANCE[warningCode])
+    : code && ROUTE_WARNING_GUIDANCE[code] ? code : null;
+  return routeCode ? ROUTE_WARNING_GUIDANCE[routeCode] : null;
 }
 
 function enhanceCiDeployError(err) {

@@ -147,6 +147,7 @@ const resumed = await r.deploy.resume(operationId);
 
 - **All bytes ride through CAS.** The plan request body never carries inline bytes — only `ContentRef` objects. When the spec exceeds 5 MB JSON, the SDK uploads the manifest itself as a CAS object (`manifest_ref` escape hatch).
 - **Per-resource semantics on the spec.** `site.replace` = "this is the whole site" (files absent are removed). `site.patch.put` / `patch.delete` are surgical updates. `functions.replace` / `functions.patch.set` / `functions.patch.delete` mirror that. Secrets are value-free: set values first with `r.secrets.set(project, key, value)`, then deploy with `secrets.require` and/or `secrets.delete`. `subdomains.set` / `subdomains.add` / `subdomains.remove` use their own shape. Top-level absence = leave untouched.
+- **Same-origin web routes.** `routes` is `undefined | null | { replace: RouteSpec[] }`. Omit it or pass `null` to carry forward base routes, pass `{ replace: [] }` to clear routes, or pass route entries to replace the table. Each route has `pattern`, optional non-empty `methods`, and `target: { type: "function", name }`. Direct `/functions/v1/:name` invocation remains API-key protected; routed paths are public browser ingress.
 - **Strict spec validation happens before network calls.** Raw `ReleaseSpec` objects reject unknown fields (for example `project_id` or `subdomain`) instead of silently dropping them during normalization, and project/base-only or empty nested specs fail with `Run402DeployError.code === "MANIFEST_EMPTY"`. Use the Node manifest helpers when starting from CLI/MCP-style JSON.
 - **Warnings are structured.** `DeployResult.warnings` contains `WarningEntry[]` (`code`, `severity`, `requires_confirmation`, `message`, optional `affected`/`details`/`confidence`); the type preserves legacy low/medium/high plan warnings and modern deploy-observability info/warn/high warnings. `apply()` emits `plan.warnings` and stops before upload/commit on confirmation-required warnings unless `allowWarnings` is set. For `MISSING_REQUIRED_SECRET`, set the affected keys with `r.secrets.set`, then retry.
 - **Planning supports dry-runs.** `r.deploy.plan(spec, { dryRun: true })` calls the server-authoritative dry-run route and returns the normalized v2 plan envelope without uploading bytes or creating plan/operation rows (`plan_id` and `operation_id` are `null`).
@@ -163,6 +164,47 @@ const resumed = await r.deploy.resume(operationId);
     subdomains: { set: ["my-app"] },
   });
   ```
+
+- Route manifests are ordinary deploy specs:
+
+  ```ts
+  import { run402, type RouteSpec, type ReleaseSpec } from "@run402/sdk/node";
+
+  const r = run402();
+  const routes: RouteSpec[] = [
+    { pattern: "/api/*", methods: ["GET", "POST"], target: { type: "function", name: "api" } },
+    { pattern: "/admin", target: { type: "function", name: "admin" } },
+    { pattern: "/admin/*", target: { type: "function", name: "admin" } },
+    { pattern: "/login", methods: ["POST"], target: { type: "function", name: "auth" } },
+  ];
+  const spec: ReleaseSpec = {
+    project: projectId,
+    functions: {
+      replace: {
+        api: { source: "import { routedHttp } from '@run402/functions'; export default async (event) => routedHttp.json({ ok: true, path: event.path });" },
+        admin: { source: "export default async () => new Response('admin')" },
+        auth: { source: "export default async () => new Response('login')" },
+      },
+    },
+    site: { replace: { "index.html": "<!doctype html><main id='app'></main>" } },
+    routes: { replace: routes },
+  };
+
+  await r.deploy.apply(spec);
+  ```
+
+  Matching is exact or final `/*` prefix only. `/admin/*` does not match `/admin`; deploy both `/admin` and `/admin/*` when the section root is dynamic. Query strings are ignored for matching and forwarded to routed functions as `rawQuery`. Exact beats prefix, longest prefix wins, and method-compatible dynamic routes beat static files. A method-specific `POST /login` route lets static `GET /login` serve HTML. Unsafe method mismatch returns `405`; matched dynamic route failures do not fall back to static assets.
+
+  Route warning recovery:
+
+  | Code | Why it matters | Recovery |
+  |------|----------------|----------|
+  | `PUBLIC_ROUTED_FUNCTION` | Function becomes public same-origin browser ingress. | Review app auth, CSRF, CORS/`OPTIONS`, and cookies; direct `/functions/v1/:name` remains API-key protected. Retry with `allowWarnings` only after review. |
+  | `ROUTE_TARGET_CARRIED_FORWARD` | Carried-forward route still targets a base-release function. | Inspect active routes and deploy `routes.replace` if the target should change. |
+  | `ROUTE_SHADOWS_STATIC_PATH` / `WILDCARD_ROUTE_SHADOWS_STATIC_PATHS` | Dynamic route shadows static content. | Inspect warning details and active routes; confirm only when intentional. |
+  | `METHOD_SPECIFIC_ROUTE_ALLOWS_GET_STATIC_FALLBACK` | Unmatched methods can serve static content. | Confirm fallback is intended or add method coverage. |
+  | `ROUTE_TABLE_NEAR_LIMIT` | Route table is near a limit. | Consolidate or remove routes. |
+  | `ROUTES_NOT_ENABLED` | Routes are disabled for the project/environment. | Deploy without `routes` or request enablement; direct function invoke is not a browser-route substitute. |
 
 - The Node entry also has the typed manifest adapter shared by CLI/MCP:
 

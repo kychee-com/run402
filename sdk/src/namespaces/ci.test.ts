@@ -397,6 +397,16 @@ describe("assertCiDeployableSpec", () => {
           err.resource === field,
       );
     }
+    for (const routes of [null, { replace: [] }]) {
+      assert.throws(
+        () => assertCiDeployableSpec({ project: "prj_abc", routes }),
+        (err: unknown) =>
+          err instanceof Run402DeployError &&
+          err.code === "forbidden_spec_field" &&
+          err.resource === "routes" &&
+          /allowance-backed authority/.test(err.message),
+      );
+    }
   });
 
   it("rejects unknown future fields, non-current base, and non-null manifest_ref", () => {
