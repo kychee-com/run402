@@ -21,6 +21,16 @@ import {
   handleDeployReleaseDiff,
   handleDeployReleaseGet,
 } from "./tools/deploy-release.js";
+import {
+  ciCreateBindingSchema,
+  ciGetBindingSchema,
+  ciListBindingsSchema,
+  ciRevokeBindingSchema,
+  handleCiCreateBinding,
+  handleCiGetBinding,
+  handleCiListBindings,
+  handleCiRevokeBinding,
+} from "./tools/ci.js";
 import { claimSubdomainSchema, handleClaimSubdomain } from "./tools/subdomain.js";
 import { deleteSubdomainSchema, handleDeleteSubdomain } from "./tools/subdomain.js";
 import { deployFunctionSchema, handleDeployFunction } from "./tools/deploy-function.js";
@@ -419,6 +429,36 @@ server.tool(
   "Diff two release targets for a project. `from` may be `empty`, `active`, or a release id; `to` may be `active` or a release id. Returns release-to-release diff buckets and `migrations.applied_between_releases`. Semantic gateway errors such as invalid targets, same-release diffs, or no active release are preserved.",
   deployReleaseDiffSchema,
   async (args) => handleDeployReleaseDiff(args),
+);
+
+// ─── CI/OIDC binding tools ─────────────────────────────────────────────────
+
+server.tool(
+  "ci_create_binding",
+  "Create a GitHub Actions CI/OIDC deploy binding by sending a locally signed delegation to the SDK. This MCP wrapper does not sign or broaden authority; the signed delegation defines the repository/branch or environment, allowed events/actions, and optional route_scopes. Without route_scopes, CI cannot deploy route declarations.",
+  ciCreateBindingSchema,
+  async (args) => handleCiCreateBinding(args),
+);
+
+server.tool(
+  "ci_list_bindings",
+  "List CI/OIDC deploy bindings for a project, including route_scopes when delegated. Use this to inspect which GitHub Actions subjects can deploy before editing bindings.",
+  ciListBindingsSchema,
+  async (args) => handleCiListBindings(args),
+);
+
+server.tool(
+  "ci_get_binding",
+  "Get one CI/OIDC deploy binding by id, including its subject, allowed events/actions, repository id, revocation state, and route_scopes.",
+  ciGetBindingSchema,
+  async (args) => handleCiGetBinding(args),
+);
+
+server.tool(
+  "ci_revoke_binding",
+  "Revoke one CI/OIDC deploy binding. Revocation stops future CI gateway requests, but does not undo already deployed releases or rotate secrets.",
+  ciRevokeBindingSchema,
+  async (args) => handleCiRevokeBinding(args),
 );
 
 server.tool(

@@ -408,6 +408,9 @@ const values = {
   subject_match: "repo:owner/name:ref:refs/heads/main",
   allowed_actions: V1_CI_ALLOWED_ACTIONS,
   allowed_events: V1_CI_ALLOWED_EVENTS_DEFAULT,
+  // Optional: omit or [] for no CI route authority.
+  // Use exact paths and/or final wildcard prefixes for route declarations.
+  route_scopes: ["/admin", "/api/*"],
   github_repository_id: "123456789",
   expires_at: null,
   nonce: "0123456789abcdef0123456789abcdef",
@@ -445,7 +448,7 @@ const ciSpec: ReleaseSpec = {
 await r.deploy.apply(ciSpec);
 ```
 
-CI deploy restrictions are part of the client contract: allowed top-level fields are only `project`, `database`, `functions`, `site`, and absent/current `base`. `spec.secrets`, `spec.subdomains`, `spec.routes`, `spec.checks`, unknown future fields, non-current `base`, and oversized specs that would require `manifest_ref` are rejected before any upload or plan call. Non-CI deploy behavior is unchanged.
+CI deploy restrictions are part of the client contract: allowed top-level fields are only `project`, `database`, `functions`, `site`, absent/current `base`, and `routes` authorized by the binding's `route_scopes`. Omitted or empty `route_scopes` preserves the original no-routes CI posture. `spec.secrets`, `spec.subdomains`, `spec.checks`, unknown future fields, non-current `base`, and oversized specs that would require `manifest_ref` are rejected before any upload or plan call. Non-CI deploy behavior is unchanged. Gateway planning enforces route diffs and returns `CI_ROUTE_SCOPE_DENIED` when a route declaration falls outside the delegated exact paths or final wildcard prefixes.
 
 ### Dark-by-default tables + the expose manifest
 
@@ -576,6 +579,7 @@ createBinding(input: {
   subject_match: string,
   allowed_actions: readonly ["deploy"],
   allowed_events: readonly string[],
+  route_scopes?: readonly string[],
   github_repository_id?: string | null,
   expires_at?: string | null,
   nonce: string,
@@ -604,6 +608,7 @@ exchangeToken(input: { project_id: string, subject_token: string }): Promise<{
 {
   id, project_id, issuer, subject_match,
   allowed_actions, allowed_events,
+  route_scopes,
   github_repository_id, created_by, nonce,
   created_sig, created_at, expires_at, revoked_at,
   last_used_at, use_count
@@ -625,6 +630,8 @@ buildCiDelegationStatement(values): string
 buildCiDelegationResourceUri(values): string
 validateCiSubjectMatch(subject): string
 validateCiNonce(nonce): string
+normalizeCiRouteScopes(values): string[]
+validateCiRouteScope(value): string
 assertCiDeployableSpec(specOrPlanBody): void
 ```
 
@@ -646,7 +653,7 @@ githubActionsCredentials({
 isCiSessionCredentials(credentials): boolean
 ```
 
-CI error-code unions include binding errors (`nonce_replay`, `delegation_statement_mismatch`, `signer_mismatch`, `duplicate`), token-exchange errors (`invalid_token`, `access_denied`, `event_not_allowed`, `repository_id_mismatch`, `ambiguous_binding`), and CI deploy errors (`payment_required`, `insufficient_scope`, `forbidden_spec_field`, `forbidden_plan`). Preserve unknown future strings as opaque gateway codes.
+CI error-code unions include binding errors (`invalid_route_scopes`, `nonce_replay`, `delegation_statement_mismatch`, `signer_mismatch`, `duplicate`), token-exchange errors (`invalid_token`, `access_denied`, `event_not_allowed`, `repository_id_mismatch`, `ambiguous_binding`), and CI deploy errors (`payment_required`, `insufficient_scope`, `forbidden_spec_field`, `forbidden_plan`, `CI_ROUTE_SCOPE_DENIED`). Preserve unknown future strings as opaque gateway codes.
 
 ### `r.sites`
 

@@ -16,6 +16,7 @@ export type CiAllowedEvent =
 
 export type CiBindingErrorCode =
   | "nonce_replay"
+  | "invalid_route_scopes"
   | "delegation_statement_mismatch"
   | "delegation_resource_uri_mismatch"
   | "signer_mismatch"
@@ -37,6 +38,7 @@ export type CiDeployErrorCode =
   | "payment_required"
   | "insufficient_scope"
   | "forbidden_spec_field"
+  | "CI_ROUTE_SCOPE_DENIED"
   | "forbidden_plan";
 
 export type CiErrorCode =
@@ -59,6 +61,7 @@ export interface CiBindingRow {
   subject_match: string;
   allowed_actions: string[];
   allowed_events: string[];
+  route_scopes: string[];
   github_repository_id: string | null;
   created_by: string;
   nonce: string;
@@ -76,6 +79,7 @@ export interface CiCreateBindingInput {
   subject_match: string;
   allowed_actions: readonly CiAllowedAction[];
   allowed_events: readonly CiAllowedEvent[];
+  route_scopes?: readonly string[];
   github_repository_id?: string | null;
   expires_at?: string | null;
   nonce: string;
@@ -114,6 +118,7 @@ export interface CiDelegationValues {
   subject_match: string;
   allowed_actions: readonly string[];
   allowed_events: readonly string[];
+  route_scopes?: readonly string[];
   expires_at?: string | null;
   github_repository_id?: string | null;
   nonce: string;
@@ -126,6 +131,7 @@ export interface NormalizedCiDelegationValues {
   subject_match: string;
   allowed_actions: CiAllowedAction[];
   allowed_events: string[];
+  route_scopes: string[];
   expires_at: string | null;
   github_repository_id: string | null;
   nonce: string;

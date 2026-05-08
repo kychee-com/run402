@@ -146,8 +146,10 @@ export {
   isDeployError,
   isRetryableRun402Error,
   isCiSessionCredentials,
+  normalizeCiRouteScopes,
   normalizeCiDelegationValues,
   validateCiNonce,
+  validateCiRouteScope,
   validateCiSubjectMatch,
   withRetry,
 } from "../index.js";

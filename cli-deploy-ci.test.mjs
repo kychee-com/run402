@@ -238,7 +238,7 @@ describe("deploy apply GitHub Actions OIDC", () => {
     assert.ok(parsedStderr.next_actions.length > 0);
   });
 
-  it("rejects routes in CI deploy manifests by property presence", async () => {
+  it("passes route specs through CI deploy manifests for gateway scope authorization", async () => {
     process.env.GITHUB_ACTIONS = "true";
     process.env.ACTIONS_ID_TOKEN_REQUEST_URL = OIDC_URL;
     process.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN = "github-request-token";
@@ -247,28 +247,65 @@ describe("deploy apply GitHub Actions OIDC", () => {
     for (const routes of [null, { replace: [] }]) {
       calls = [];
       captureStart();
-      let threw = null;
-      try {
-        await runDeployV2("apply", [
-          "--spec",
-          JSON.stringify({
-            site: { replace: { "index.html": { data: "hello" } } },
-            routes,
-          }),
-          "--quiet",
-        ]);
-      } catch (err) {
-        threw = err;
-      } finally {
-        captureStop();
-      }
+      await runDeployV2("apply", [
+        "--spec",
+        JSON.stringify({
+          site: { replace: { "index.html": { data: "hello" } } },
+          routes,
+        }),
+        "--quiet",
+      ]);
+      captureStop();
 
-      assert.equal(threw?.message, "process.exit(1)");
-      assert.equal(calls.some((c) => c.url === `${API}/deploy/v2/plans`), false);
-      const parsedStderr = JSON.parse(stderr.join("\n"));
-      assert.equal(parsedStderr.code, "forbidden_spec_field");
-      assert.equal(parsedStderr.resource, "routes");
-      assert.match(parsedStderr.message, /allowance-backed authority/);
+      const plan = calls.find((c) => c.url === `${API}/deploy/v2/plans`);
+      assert.ok(plan, "should ask the gateway to authorize route scope");
+      assert.deepEqual(plan.body.spec.routes, routes);
+      const parsedStdout = JSON.parse(stdout.join("\n"));
+      assert.equal(parsedStdout.status, "ok");
     }
+  });
+
+  it("adds actionable guidance for CI route-scope denials", async () => {
+    process.env.GITHUB_ACTIONS = "true";
+    process.env.ACTIONS_ID_TOKEN_REQUEST_URL = OIDC_URL;
+    process.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN = "github-request-token";
+    process.env.RUN402_PROJECT_ID = "prj_ci_env";
+
+    const previousFetch = globalThis.fetch;
+    globalThis.fetch = (input, init) => {
+      const url = typeof input === "string" ? input : input instanceof Request ? input.url : String(input);
+      if (url === `${API}/deploy/v2/plans`) {
+        return Promise.resolve(json({
+          code: "CI_ROUTE_SCOPE_DENIED",
+          message: "route scope denied",
+          resource: "routes",
+        }, 403));
+      }
+      return mockFetch(input, init);
+    };
+
+    captureStart();
+    let threw = null;
+    try {
+      await runDeployV2("apply", [
+        "--spec",
+        JSON.stringify({
+          site: { replace: { "index.html": { data: "hello" } } },
+          routes: { replace: [{ pattern: "/admin", target: { type: "function", name: "admin" } }] },
+        }),
+        "--quiet",
+      ]);
+    } catch (err) {
+      threw = err;
+    } finally {
+      captureStop();
+      globalThis.fetch = previousFetch;
+    }
+
+    assert.equal(threw?.message, "process.exit(1)");
+    const parsedStderr = JSON.parse(stderr.join("\n"));
+    assert.equal(parsedStderr.code, "CI_ROUTE_SCOPE_DENIED");
+    assert.match(parsedStderr.hint, /route declarations/);
+    assert.ok(parsedStderr.next_actions.some((action) => /--route-scope/.test(action)));
   });
 });

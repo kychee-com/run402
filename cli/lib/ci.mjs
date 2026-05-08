@@ -20,7 +20,7 @@ const { version: RUN402_VERSION } = JSON.parse(
 const HELP = `run402 ci — Manage CI/OIDC deploy bindings
 
 Usage:
-  run402 ci link github [--project <id>] [--manifest <path>] [--repo <owner/repo>] [--branch <name> | --environment <name>] [--repository-id <id>] [--workflow <path>] [--expires-at <iso>] [--force]
+  run402 ci link github [--project <id>] [--manifest <path>] [--repo <owner/repo>] [--branch <name> | --environment <name>] [--repository-id <id>] [--workflow <path>] [--expires-at <iso>] [--route-scope <pattern> ...] [--force]
   run402 ci list [--project <id>]
   run402 ci revoke <binding_id>
 
@@ -34,7 +34,7 @@ const SUB_HELP = {
   link: `run402 ci link github — Link GitHub Actions OIDC for deploy apply
 
 Usage:
-  run402 ci link github [--project <id>] [--manifest <path>] [--repo <owner/repo>] [--branch <name> | --environment <name>] [--repository-id <id>] [--workflow <path>] [--expires-at <iso>] [--force]
+  run402 ci link github [--project <id>] [--manifest <path>] [--repo <owner/repo>] [--branch <name> | --environment <name>] [--repository-id <id>] [--workflow <path>] [--expires-at <iso>] [--route-scope <pattern> ...] [--force]
 
 Options:
   --project <id>          Project ID (defaults to the active project)
@@ -45,10 +45,13 @@ Options:
   --repository-id <id>    Numeric GitHub repository id when API lookup is unavailable
   --workflow <path>       Workflow path (default: .github/workflows/run402-deploy.yml)
   --expires-at <iso>      Optional binding expiration timestamp
+  --route-scope <pattern> Optional exact path or final wildcard route scope, repeatable (examples: /admin, /api/*)
   --force                 Overwrite an existing workflow file
 
 Notes:
   - v1 allows only push and workflow_dispatch events.
+  - Without --route-scope, CI cannot deploy route declarations.
+  - Route scopes delegate only matching public path changes; secrets, subdomains, checks, and non-current base remain local-only.
   - v1 does not expose raw subject, wildcard, or pull-request deploy flags.
 `,
   list: `run402 ci list — List CI bindings
@@ -63,7 +66,7 @@ Usage:
 `,
 };
 
-function parseFlags(args, allowed) {
+function parseFlags(args, allowed, { repeatable = new Set() } = {}) {
   const flags = {};
   const positional = [];
   for (let i = 0; i < args.length; i++) {
@@ -91,7 +94,14 @@ function parseFlags(args, allowed) {
         details: { flag: arg },
       });
     }
-    flags[arg.slice(2).replace(/-/g, "_")] = args[++i];
+    const key = arg.slice(2).replace(/-/g, "_");
+    const value = args[++i];
+    if (repeatable.has(arg)) {
+      flags[key] ??= [];
+      flags[key].push(value);
+      continue;
+    }
+    flags[key] = value;
   }
   return { flags, positional };
 }
@@ -224,8 +234,9 @@ async function linkGithub(args) {
     "--repository-id",
     "--workflow",
     "--expires-at",
+    "--route-scope",
     "--force",
-  ]));
+  ]), { repeatable: new Set(["--route-scope"]) });
   if (positional[0] !== "github" || positional.length > 1) {
     fail({
       code: "BAD_USAGE",
@@ -273,12 +284,14 @@ async function linkGithub(args) {
   }
 
   const manifest = flags.manifest || "run402.deploy.json";
+  const routeScopes = Array.isArray(flags.route_scope) ? flags.route_scope : [];
   const nonce = randomBytes(16).toString("hex");
   const values = {
     project_id: projectId,
     subject_match: subject,
     allowed_actions: V1_CI_ALLOWED_ACTIONS,
     allowed_events: V1_CI_ALLOWED_EVENTS_DEFAULT,
+    route_scopes: routeScopes,
     github_repository_id: repositoryId,
     expires_at: flags.expires_at || null,
     nonce,
@@ -308,6 +321,7 @@ async function linkGithub(args) {
       provider: CI_GITHUB_ACTIONS_PROVIDER,
       signed_delegation: signedDelegation,
     });
+    const outputRouteScopes = Array.isArray(binding.route_scopes) ? binding.route_scopes : [];
     mkdirSync(dirname(absWorkflowPath), { recursive: true });
     writeFileSync(absWorkflowPath, workflow, { encoding: "utf8", mode: 0o644 });
     console.log(JSON.stringify({
@@ -318,6 +332,7 @@ async function linkGithub(args) {
       subject_match: subject,
       allowed_events: [...V1_CI_ALLOWED_EVENTS_DEFAULT],
       allowed_actions: [...V1_CI_ALLOWED_ACTIONS],
+      route_scopes: outputRouteScopes,
       github_repository_id: repositoryId,
       github_repository_id_status: flags.repository_id ? "provided" : "verified",
       workflow_path: workflowPath,
@@ -327,6 +342,9 @@ async function linkGithub(args) {
       bootstrap_caveat: "Commit the generated workflow and manifest before expecting GitHub Actions deploys.",
       consent_summary: [
         "This binding lets matching GitHub Actions workflows deploy site, function, and database changes to the project.",
+        outputRouteScopes.length > 0
+          ? `It may deploy route declarations only within: ${outputRouteScopes.join(", ")}.`
+          : "It cannot deploy route declarations unless you re-link with --route-scope.",
         "It does not allow direct secrets, domains, subdomains, lifecycle, billing, contracts, or faucet API calls.",
       ],
       revocation_residuals: [

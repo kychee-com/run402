@@ -61,6 +61,23 @@ describe("signCiDelegation", () => {
     assert.equal(decoded.signature.startsWith("0x"), true);
   });
 
+  it("signs scoped route delegations with the scoped canonical bytes", () => {
+    saveAllowance({ address: TEST_ADDRESS, privateKey: TEST_PRIVATE_KEY }, allowancePath);
+    const values = { ...CANONICAL, route_scopes: ["/admin/*", "/admin"] };
+
+    const signed = signCiDelegation(values, {
+      allowancePath,
+      apiBase: "https://api.run402.com",
+      issuedAt: "2026-05-03T00:00:00.000Z",
+      expirationTime: "2026-05-03T00:05:00.000Z",
+    });
+    const decoded = JSON.parse(Buffer.from(signed, "base64").toString("utf-8"));
+
+    assert.equal(decoded.statement, buildCiDelegationStatement(values));
+    assert.deepEqual(decoded.resources, [buildCiDelegationResourceUri(values)]);
+    assert.match(decoded.statement, /^Route scopes: \/admin,\/admin\/\*$/m);
+  });
+
   it("fails actionably when no allowance exists", () => {
     assert.throws(
       () => signCiDelegation(CANONICAL, { allowancePath }),

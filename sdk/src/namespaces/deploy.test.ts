@@ -278,29 +278,95 @@ describe("Deploy.apply (happy path)", () => {
     );
   });
 
-  it("rejects CI-forbidden spec fields before hashing, uploading, or gateway calls", async () => {
-    const w = makeWiring(createCiSessionCredentials({
-      projectId: "prj_test",
-      accessToken: "ci-session",
-    }));
-    w.setHandler(() => {
-      throw new Error("network must not be called for forbidden CI specs");
-    });
+  it("allows CI route specs to reach deploy planning for gateway scope authorization", async () => {
+    for (const routes of [
+      null,
+      { replace: [{ pattern: "/admin", target: { type: "function", name: "admin" } }] },
+    ]) {
+      const w = makeWiring(createCiSessionCredentials({
+        projectId: "prj_test",
+        accessToken: "ci-session",
+      }));
+      const plan: PlanResponse = {
+        plan_id: "plan_ci_routes",
+        operation_id: "op_ci_routes",
+        base_release_id: null,
+        manifest_digest: "ci-routes",
+        missing_content: [],
+        diff: {},
+      };
+      const commit: CommitResponse = {
+        operation_id: "op_ci_routes",
+        status: "ready",
+        release_id: "rel_ci_routes",
+        urls: { site: "https://ci-routes.run402.test" },
+      };
 
-    const deploy = new Deploy(w.client);
-    await assert.rejects(
-      deploy.apply({
+      w.setHandler((req) => {
+        assert.equal(req.headers?.Authorization, "Bearer ci-session");
+        if (req.path === "/deploy/v2/plans") return plan;
+        if (req.path === "/deploy/v2/plans/plan_ci_routes/commit") return commit;
+        throw new Error(`unexpected path ${req.path}`);
+      });
+
+      const deploy = new Deploy(w.client);
+      await deploy.apply({
         project: "prj_test",
-        secrets: { require: ["API_KEY"] },
-        site: { replace: { "index.html": "<h1>nope</h1>" } },
-      }),
-      (err: unknown) =>
-        err instanceof Run402DeployError &&
-        err.code === "forbidden_spec_field" &&
-        err.resource === "secrets",
-    );
-    assert.equal(w.requests.length, 0);
-    assert.equal(w.puts.length, 0);
+        routes,
+        ...(routes === null ? { site: { patch: { delete: ["old.html"] } } } : {}),
+      });
+
+      const planReq = w.requests.find((r) => r.path === "/deploy/v2/plans");
+      assert(planReq, "plan request was issued");
+      assert.deepEqual((planReq.body as { spec: { routes?: unknown } }).spec.routes, routes);
+      assert.equal(w.puts.length, 0);
+    }
+  });
+
+  it("rejects CI-forbidden spec fields before hashing, uploading, or gateway calls", async () => {
+    const cases: Array<{ spec: Record<string, unknown>; resource: string }> = [
+      {
+        spec: {
+          project: "prj_test",
+          secrets: { require: ["API_KEY"] },
+          site: { patch: { delete: ["old.html"] } },
+        },
+        resource: "secrets",
+      },
+      {
+        spec: { project: "prj_test", subdomains: { set: [] }, site: { patch: { delete: ["old.html"] } } },
+        resource: "subdomains",
+      },
+      {
+        spec: { project: "prj_test", checks: [], site: { patch: { delete: ["old.html"] } } },
+        resource: "checks",
+      },
+      {
+        spec: { project: "prj_test", base: { release: "empty" }, site: { patch: { delete: ["old.html"] } } },
+        resource: "base",
+      },
+    ];
+
+    for (const { spec, resource } of cases) {
+      const w = makeWiring(createCiSessionCredentials({
+        projectId: "prj_test",
+        accessToken: "ci-session",
+      }));
+      w.setHandler(() => {
+        throw new Error("network must not be called for forbidden CI specs");
+      });
+
+      const deploy = new Deploy(w.client);
+      await assert.rejects(
+        deploy.apply(spec as never),
+        (err: unknown) =>
+          err instanceof Run402DeployError &&
+          err.code === "forbidden_spec_field" &&
+          err.resource === resource,
+      );
+      assert.equal(w.requests.length, 0);
+      assert.equal(w.puts.length, 0);
+    }
   });
 
   it("rejects CI specs that would require manifest_ref", async () => {

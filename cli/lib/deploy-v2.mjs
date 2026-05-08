@@ -410,14 +410,22 @@ const CI_DEPLOY_ERROR_GUIDANCE = {
     ],
   },
   forbidden_spec_field: {
-    hint: "CI deploys in v1 can deploy site/functions/database content only; link locally for secrets, routes, subdomains, checks, or oversized manifests.",
+    hint: "CI deploys can deploy site/functions/database content and route declarations only when the binding includes covering route scopes.",
     next_actions: [
-      "Remove forbidden fields such as secrets, routes, subdomains, or checks from the CI manifest.",
+      "Remove forbidden fields such as secrets, subdomains, or checks from the CI manifest.",
       "Keep the normalized manifest small enough to avoid manifest_ref.",
     ],
   },
+  CI_ROUTE_SCOPE_DENIED: {
+    hint: "This CI binding does not cover one or more route declarations in the deploy manifest.",
+    next_actions: [
+      "Re-run run402 ci link github with --route-scope for every exact or prefix path the workflow may deploy.",
+      "Use exact scopes such as --route-scope /admin or prefix scopes such as --route-scope /api/*.",
+      "Run the deploy locally with run402 deploy apply for route changes outside the CI delegation.",
+    ],
+  },
   forbidden_plan: {
-    hint: "The gateway rejected this deploy plan for CI. Keep CI deploys to the v1 allowed resources and re-link if policy changed.",
+    hint: "The gateway rejected this deploy plan for CI. Keep CI deploys to the allowed resources and re-link if policy changed.",
     next_actions: [
       "Inspect the gateway error details for the rejected resource.",
       "Run the deploy locally with run402 deploy apply for operations outside the CI allowlist.",

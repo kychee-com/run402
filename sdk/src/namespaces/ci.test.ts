@@ -6,8 +6,10 @@ import {
   assertCiDeployableSpec,
   buildCiDelegationResourceUri,
   buildCiDelegationStatement,
+  normalizeCiRouteScopes,
   normalizeCiDelegationValues,
   validateCiNonce,
+  validateCiRouteScope,
   validateCiSubjectMatch,
   CI_AUDIENCE,
   CI_GITHUB_ACTIONS_ISSUER,
@@ -112,10 +114,11 @@ function row(overrides: Partial<CiBindingRow> = {}): CiBindingRow {
     project_id: "prj_abc",
     issuer: CI_GITHUB_ACTIONS_ISSUER,
     subject_match: CANONICAL.subject_match,
-    allowed_actions: ["deploy"],
-    allowed_events: ["push", "workflow_dispatch"],
-    github_repository_id: "892341",
-    created_by: "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+  allowed_actions: ["deploy"],
+  allowed_events: ["push", "workflow_dispatch"],
+  github_repository_id: "892341",
+  route_scopes: [],
+  created_by: "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
     nonce: CANONICAL.nonce,
     created_at: "2026-05-03T00:00:00Z",
     expires_at: "2026-07-30T00:00:00Z",
@@ -128,7 +131,7 @@ function row(overrides: Partial<CiBindingRow> = {}): CiBindingRow {
 
 describe("ci namespace wire methods", () => {
   it("creates a binding with SIWX auth and normalized canonical arrays", async () => {
-    const expected = row();
+    const expected = row({ route_scopes: ["/admin", "/admin/*"] });
     const { fetch, calls } = mockFetch(() => jsonResponse(expected, 201));
     const sdk = makeSdk(makeCreds(), fetch);
 
@@ -138,6 +141,7 @@ describe("ci namespace wire methods", () => {
       subject_match: CANONICAL.subject_match,
       allowed_actions: ["deploy"],
       allowed_events: ["workflow_dispatch", "push", "push"],
+      route_scopes: ["/admin/*", "/admin"],
       github_repository_id: "892341",
       expires_at: "2026-07-30T00:00:00Z",
       nonce: CANONICAL.nonce,
@@ -154,11 +158,33 @@ describe("ci namespace wire methods", () => {
       subject_match: CANONICAL.subject_match,
       allowed_actions: ["deploy"],
       allowed_events: ["push", "workflow_dispatch"],
+      route_scopes: ["/admin", "/admin/*"],
       github_repository_id: "892341",
       expires_at: "2026-07-30T00:00:00Z",
       nonce: CANONICAL.nonce,
       signed_delegation: "signed",
     });
+  });
+
+  it("omits route_scopes from create body when no route authority is delegated", async () => {
+    const { fetch, calls } = mockFetch(() => jsonResponse(row(), 201));
+    const sdk = makeSdk(makeCreds(), fetch);
+
+    await sdk.ci.createBinding({
+      project_id: "prj_abc",
+      provider: CI_GITHUB_ACTIONS_PROVIDER,
+      subject_match: CANONICAL.subject_match,
+      allowed_actions: ["deploy"],
+      allowed_events: ["push", "workflow_dispatch"],
+      route_scopes: [],
+      nonce: CANONICAL.nonce,
+      signed_delegation: "signed",
+    });
+
+    assert.equal(
+      Object.prototype.hasOwnProperty.call(JSON.parse(calls[0]!.body as string), "route_scopes"),
+      false,
+    );
   });
 
   it("lists, gets, and revokes bindings", async () => {
@@ -249,6 +275,7 @@ describe("ci namespace wire methods", () => {
       { code: "event_not_allowed", status: 403, method: "exchange" },
       { code: "repository_id_mismatch", status: 403, method: "exchange" },
       { code: "forbidden_spec_field", status: 403, method: "create" },
+      { code: "CI_ROUTE_SCOPE_DENIED", status: 403, method: "create" },
       { code: "forbidden_plan", status: 403, method: "create" },
     ] as const;
 
@@ -286,6 +313,40 @@ describe("CI canonical delegation builders", () => {
     assert.equal(buildCiDelegationResourceUri(CANONICAL), RESOURCE_URI_GOLDEN);
   });
 
+  it("adds scoped route consent text only when route scopes are delegated", () => {
+    const statement = buildCiDelegationStatement({
+      ...CANONICAL,
+      route_scopes: ["/admin/*", "/admin"],
+    });
+
+    assert.match(
+      statement,
+      /deploy route declarations only within these public path scopes: \/admin,\/admin\/\*\./,
+    );
+    assert.match(statement, /^Route scopes: \/admin,\/admin\/\*$/m);
+    assert.match(statement, /route changes outside the delegated route scopes/);
+    assert.doesNotMatch(
+      statement,
+      /They cannot ship spec\.secrets, spec\.subdomains, spec\.routes/,
+    );
+    assert.equal(buildCiDelegationStatement(CANONICAL), STATEMENT_GOLDEN);
+  });
+
+  it("adds route_scopes to the Resource URI in gateway parameter order", () => {
+    const uri = buildCiDelegationResourceUri({
+      ...CANONICAL,
+      route_scopes: ["/admin/*", "/admin"],
+    });
+
+    assert.match(
+      uri,
+      /allowed_events=push,workflow_dispatch&route_scopes=%2Fadmin,%2Fadmin%2F\*&expires_at=/,
+    );
+    assert.ok(uri.indexOf("allowed_events=") < uri.indexOf("route_scopes="));
+    assert.ok(uri.indexOf("route_scopes=") < uri.indexOf("expires_at="));
+    assert.equal(buildCiDelegationResourceUri(CANONICAL), RESOURCE_URI_GOLDEN);
+  });
+
   it("uses Base Sepolia as the default delegation chain for current SDK/CLI tests", () => {
     assert.equal(DEFAULT_CI_DELEGATION_CHAIN_ID, "eip155:84532");
   });
@@ -314,6 +375,7 @@ describe("CI canonical delegation builders", () => {
     const normalized = normalizeCiDelegationValues(values);
     assert.deepEqual(normalized.allowed_actions, ["deploy"]);
     assert.deepEqual(normalized.allowed_events, ["push", "workflow_dispatch"]);
+    assert.deepEqual(normalized.route_scopes, []);
     assert.match(
       buildCiDelegationStatement(values),
       /^Allowed events: push,workflow_dispatch$/m,
@@ -366,6 +428,20 @@ describe("CI validation helpers", () => {
   it("keeps the default allowed events constant stable", () => {
     assert.deepEqual([...V1_CI_ALLOWED_EVENTS_DEFAULT], ["push", "workflow_dispatch"]);
   });
+
+  it("normalizes and validates CI route scopes", () => {
+    assert.equal(validateCiRouteScope("/admin/*"), "/admin/*");
+    assert.deepEqual(
+      normalizeCiRouteScopes(["/admin/*", "/admin"]),
+      ["/admin", "/admin/*"],
+    );
+    assert.throws(() => normalizeCiRouteScopes(["api/*"]), /must start with \//);
+    assert.throws(() => normalizeCiRouteScopes(["/*"]), /path segment/);
+    assert.throws(() => normalizeCiRouteScopes(["/api/*/bad"]), /final \/\*/);
+    assert.throws(() => normalizeCiRouteScopes(["/api?x=1"]), /query string/);
+    assert.throws(() => normalizeCiRouteScopes(["/%E0%A4%A"]), /invalid percent/);
+    assert.throws(() => normalizeCiRouteScopes(["/admin", "/admin/"]), /duplicate/);
+  });
 });
 
 describe("assertCiDeployableSpec", () => {
@@ -377,6 +453,7 @@ describe("assertCiDeployableSpec", () => {
         database: { migrations: [] },
         functions: { patch: { delete: ["old"] } },
         site: { patch: { delete: ["old.html"] } },
+        routes: { replace: [] },
       }),
     );
     assert.doesNotThrow(() =>
@@ -387,24 +464,24 @@ describe("assertCiDeployableSpec", () => {
     );
   });
 
+  it("accepts routes in CI preflight because the gateway enforces route scopes", () => {
+    assert.doesNotThrow(() => assertCiDeployableSpec({ project: "prj_abc", routes: null }));
+    assert.doesNotThrow(() =>
+      assertCiDeployableSpec({
+        project: "prj_abc",
+        routes: { replace: [{ pattern: "/admin", target: { type: "function", name: "admin" } }] },
+      }),
+    );
+  });
+
   it("rejects forbidden fields by property presence, including empty containers", () => {
-    for (const field of ["secrets", "subdomains", "routes", "checks"]) {
+    for (const field of ["secrets", "subdomains", "checks"]) {
       assert.throws(
         () => assertCiDeployableSpec({ project: "prj_abc", [field]: field === "checks" ? [] : {} }),
         (err: unknown) =>
           err instanceof Run402DeployError &&
           err.code === "forbidden_spec_field" &&
           err.resource === field,
-      );
-    }
-    for (const routes of [null, { replace: [] }]) {
-      assert.throws(
-        () => assertCiDeployableSpec({ project: "prj_abc", routes }),
-        (err: unknown) =>
-          err instanceof Run402DeployError &&
-          err.code === "forbidden_spec_field" &&
-          err.resource === "routes" &&
-          /allowance-backed authority/.test(err.message),
       );
     }
   });

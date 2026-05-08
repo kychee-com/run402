@@ -199,6 +199,8 @@ Link once locally, then let GitHub Actions run the same deploy command agents al
 
 ```bash
 run402 ci link github --project prj_... --manifest run402.deploy.json
+# Optional route authority for CI route declarations:
+run402 ci link github --project prj_... --manifest run402.deploy.json --route-scope /admin --route-scope /api/*
 git add .github/workflows/run402-deploy.yml run402.deploy.json
 git commit -m "Add run402 deploy workflow"
 ```
@@ -216,7 +218,7 @@ run402 ci list --project prj_...
 run402 ci revoke cib_...
 ```
 
-V1 intentionally keeps the shape narrow: `push` and `workflow_dispatch` only, no PR deploy flags, no raw subject or wildcard flags, and no soft repository-id binding. Revocation stops future CI gateway requests but does not undo already-deployed code, stop in-flight deploy operations, rotate exfiltrated keys, or remove deployed functions.
+V1 intentionally keeps the shape narrow: `push` and `workflow_dispatch` only, no PR deploy flags, no raw subject or wildcard flags, and no soft repository-id binding. Without `--route-scope`, CI cannot deploy `routes`; with repeatable route scopes, it may deploy only matching exact paths such as `/admin` or final-wildcard prefixes such as `/api/*`. If CI returns `CI_ROUTE_SCOPE_DENIED`, re-link with covering scopes or run the route-changing deploy locally. Revocation stops future CI gateway requests but does not undo already-deployed code, stop in-flight deploy operations, rotate exfiltrated keys, or remove deployed functions.
 
 ## Authorization — the expose manifest
 

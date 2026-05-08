@@ -221,10 +221,11 @@ const SURFACE: Capability[] = [
   { id: "deploy_release_active", endpoint: "GET /deploy/v2/releases/active",               mcp: "deploy_release_active", cli: "deploy:release:active", openclaw: "deploy:release:active" },
   { id: "deploy_release_diff",   endpoint: "GET /deploy/v2/releases/diff",                 mcp: "deploy_release_diff",   cli: "deploy:release:diff",   openclaw: "deploy:release:diff" },
 
-  // ── CI/OIDC federation (CLI v1; MCP intentionally deferred) ─────────────
-  { id: "ci_link_github",    endpoint: "POST /ci/v1/bindings",                              mcp: null,                cli: "ci:link",          openclaw: "ci:link" },
-  { id: "ci_list_bindings",  endpoint: "GET /ci/v1/bindings",                               mcp: null,                cli: "ci:list",          openclaw: "ci:list" },
-  { id: "ci_revoke_binding", endpoint: "POST /ci/v1/bindings/:id/revoke",                   mcp: null,                cli: "ci:revoke",        openclaw: "ci:revoke" },
+  // ── CI/OIDC federation ──────────────────────────────────────────────────
+  { id: "ci_link_github",    endpoint: "POST /ci/v1/bindings",                              mcp: "ci_create_binding", cli: "ci:link",          openclaw: "ci:link" },
+  { id: "ci_list_bindings",  endpoint: "GET /ci/v1/bindings",                               mcp: "ci_list_bindings",  cli: "ci:list",          openclaw: "ci:list" },
+  { id: "ci_get_binding",    endpoint: "GET /ci/v1/bindings/:id",                           mcp: "ci_get_binding",    cli: null,               openclaw: null },
+  { id: "ci_revoke_binding", endpoint: "POST /ci/v1/bindings/:id/revoke",                   mcp: "ci_revoke_binding", cli: "ci:revoke",        openclaw: "ci:revoke" },
 
   // ── Marketplace ──────────────────────────────────────────────────────────
   { id: "browse_apps",       endpoint: "GET /apps/v1",                              mcp: "browse_apps",   cli: "apps:browse",   openclaw: "apps:browse" },
@@ -417,6 +418,7 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   deploy_release_diff: "deploy.diff",
   ci_link_github: "ci.createBinding",
   ci_list_bindings: "ci.listBindings",
+  ci_get_binding: "ci.getBinding",
   ci_revoke_binding: "ci.revokeBinding",
 
   // Bundle / marketplace
@@ -765,8 +767,6 @@ describe("SDK surface alignment", () => {
       "deploy.commit",
       "deploy.status",
       // CI token exchange is intentionally credential-helper-only in v1.
-      // `getBinding` is SDK/debug surface; public CLI exposes list/revoke.
-      "ci.getBinding",
       "ci.exchangeToken",
     ]);
 
@@ -832,6 +832,27 @@ describe("deploy route surface alignment", () => {
       assert.match(text, /replace/gi, `${file} must document routes.replace`);
       assert.match(text, /\/api\/\*/g, `${file} must include a /api/* route example`);
       assert.match(text, /\/functions\/v1\/:name/, `${file} must say direct function invoke remains protected`);
+    }
+  });
+
+  it("keeps scoped CI route delegation documented across public agent surfaces", () => {
+    const requiredDocs: Array<{ file: string; patterns: RegExp[] }> = [
+      { file: "README.md", patterns: [/--route-scope/, /CI_ROUTE_SCOPE_DENIED/] },
+      { file: "cli/README.md", patterns: [/--route-scope/] },
+      { file: "cli/llms-cli.txt", patterns: [/--route-scope/, /CI_ROUTE_SCOPE_DENIED/] },
+      { file: "sdk/README.md", patterns: [/route_scopes/, /CI_ROUTE_SCOPE_DENIED/] },
+      { file: "sdk/llms-sdk.txt", patterns: [/route_scopes/, /CI_ROUTE_SCOPE_DENIED/] },
+      { file: "llms-mcp.txt", patterns: [/ci_create_binding/, /route_scopes/, /CI_ROUTE_SCOPE_DENIED/] },
+      { file: "SKILL.md", patterns: [/ci_create_binding/, /route_scopes/, /CI_ROUTE_SCOPE_DENIED/] },
+      { file: "openclaw/SKILL.md", patterns: [/--route-scope/, /CI_ROUTE_SCOPE_DENIED/] },
+      { file: "AGENTS.md", patterns: [/route_scopes/, /CI_ROUTE_SCOPE_DENIED/] },
+    ];
+
+    for (const { file, patterns } of requiredDocs) {
+      const text = readFileSync(join(__dirname, file), "utf-8");
+      for (const pattern of patterns) {
+        assert.match(text, pattern, `${file} must document scoped CI route delegation with ${pattern}`);
+      }
     }
   });
 

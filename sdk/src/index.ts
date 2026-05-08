@@ -264,8 +264,10 @@ export {
   assertCiDeployableSpec,
   buildCiDelegationResourceUri,
   buildCiDelegationStatement,
+  normalizeCiRouteScopes,
   normalizeCiDelegationValues,
   validateCiNonce,
+  validateCiRouteScope,
   validateCiSubjectMatch,
 } from "./namespaces/ci.js";
 export { ScopedRun402 } from "./scoped.js";

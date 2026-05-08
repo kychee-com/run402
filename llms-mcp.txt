@@ -43,7 +43,7 @@ Neither key expires. To inspect, call **`project_keys`**; to switch the active p
 Run402-originated JSON errors carry a canonical envelope. **Branch on `code`, not English `message`.**
 
 Important fields:
-- `code` — stable machine-readable reason: `PROJECT_FROZEN`, `PAYMENT_REQUIRED`, `MIGRATION_FAILED`, `MIGRATE_GATE_ACTIVE`, `RATE_LIMITED`, `INSUFFICIENT_FUNDS`
+- `code` — stable machine-readable reason: `PROJECT_FROZEN`, `PAYMENT_REQUIRED`, `MIGRATION_FAILED`, `MIGRATE_GATE_ACTIVE`, `RATE_LIMITED`, `INSUFFICIENT_FUNDS`, `CI_ROUTE_SCOPE_DENIED`
 - `retryable` — the same request may succeed later
 - `safe_to_retry` — repeating the same request will not duplicate or corrupt a mutation
 - `mutation_state` — `none` / `not_started` / `committed` / `rolled_back` / `partial` / `unknown`
@@ -240,6 +240,15 @@ For TypeScript autocomplete, `npm install @run402/functions` in your editor's pr
 - **`deploy_release_get`** — fetch release inventory by id. Params: `project_id`, `release_id`, `site_limit?`. Returns release metadata, state kind, site paths, functions, secret keys, subdomains, materialized routes, applied migrations, and warnings when returned.
 - **`deploy_release_active`** — fetch the current-live release inventory. Params: `project_id`, `site_limit?`.
 - **`deploy_release_diff`** — diff release targets. Params: `project_id`, `from` (`empty` / `active` / release id), `to` (`active` / release id), `limit?`. Returns `migrations.applied_between_releases`; secret and subdomain diffs expose `added` / `removed` only; route diffs expose `added` / `removed` / `changed`.
+
+### CI/OIDC bindings
+
+- **`ci_create_binding`** — create a GitHub Actions CI deploy binding by sending a locally signed delegation to the SDK. Params: `project_id`, `provider?` (`github-actions`), `subject_match`, `allowed_actions`, `allowed_events`, `route_scopes?`, `github_repository_id?`, `expires_at?`, `nonce`, `signed_delegation`. The MCP tool does not sign; the signed delegation is the authority boundary.
+- **`ci_list_bindings`** — list project CI bindings, including `route_scopes`. Params: `project_id`.
+- **`ci_get_binding`** — fetch one binding by id. Params: `binding_id`.
+- **`ci_revoke_binding`** — revoke one binding by id. Params: `binding_id`. Revocation stops future CI requests only.
+
+No `route_scopes` means no CI route-declaration authority. Route scopes are exact paths like `/admin` or final wildcard prefixes like `/api/*`. Gateway deploy planning returns `CI_ROUTE_SCOPE_DENIED` when CI tries to ship a route outside the delegated scopes; re-create the binding with covering scopes or run the route-changing deploy locally.
 
 ### Functions
 

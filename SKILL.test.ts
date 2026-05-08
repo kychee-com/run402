@@ -84,6 +84,8 @@ describe("SKILL.md (root, MCP-based)", () => {
       "deploy_site_dir",
       "deploy_release_active",
       "deploy_release_diff",
+      "ci_create_binding",
+      "ci_list_bindings",
       "blob_put",
       "deploy_function",
       "set_tier",

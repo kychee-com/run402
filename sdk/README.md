@@ -243,6 +243,9 @@ const values = {
   subject_match: "repo:owner/name:ref:refs/heads/main",
   allowed_actions: V1_CI_ALLOWED_ACTIONS,
   allowed_events: V1_CI_ALLOWED_EVENTS_DEFAULT,
+  // Optional: omit or [] for no CI route authority.
+  // Use exact paths and/or final wildcard prefixes for route declarations.
+  route_scopes: ["/admin", "/api/*"],
   github_repository_id: "123456789",
   expires_at: null,
   nonce: "0123456789abcdef0123456789abcdef",
@@ -276,7 +279,7 @@ const ciSpec: ReleaseSpec = {
 await r.deploy.apply(ciSpec);
 ```
 
-CI deploys intentionally allow only `project`, `database`, `functions`, `site`, and absent/current `base`. They reject `secrets`, `subdomains`, `routes`, `checks`, unknown future top-level fields, and specs large enough to require `manifest_ref`. Use the canonical builders (`buildCiDelegationStatement`, `buildCiDelegationResourceUri`) instead of hand-rolling SIWX text; gateway tests pin those strings as golden vectors.
+CI deploys intentionally allow only `project`, `database`, `functions`, `site`, absent/current `base`, and `routes` authorized by the binding's `route_scopes`. Omitted or empty `route_scopes` preserves the original no-routes CI posture. The SDK normalizes scopes, sends `route_scopes` only when non-empty, and still rejects `secrets`, `subdomains`, `checks`, unknown future top-level fields, non-current `base`, and specs large enough to require `manifest_ref` before upload/plan. Gateway planning enforces route diffs and can return `CI_ROUTE_SCOPE_DENIED`; re-link with covering exact scopes like `/admin` or final-wildcard scopes like `/api/*`, or deploy locally. Use the canonical builders (`buildCiDelegationStatement`, `buildCiDelegationResourceUri`) instead of hand-rolling SIWX text; gateway tests pin those strings as golden vectors.
 
 ### Errors
 

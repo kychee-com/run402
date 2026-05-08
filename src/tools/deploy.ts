@@ -453,6 +453,10 @@ const ROUTE_WARNING_GUIDANCE: Record<string, { meaning: string; recovery: string
     meaning: "Deploy-v2 web routes are not enabled for this project or environment.",
     recovery: "Deploy without routes or request enablement. Direct /functions/v1/:name remains protected and is not a browser-route substitute.",
   },
+  CI_ROUTE_SCOPE_DENIED: {
+    meaning: "The CI binding does not cover one or more route declarations in this deploy.",
+    recovery: "Re-link the GitHub Actions binding with exact scopes like /admin or prefix scopes like /api/*, or run the route-changing deploy locally.",
+  },
 };
 
 function routeWarningRows(warnings: WarningEntry[]): string[] {

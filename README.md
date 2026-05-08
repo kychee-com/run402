@@ -167,6 +167,8 @@ For repo-driven deploys, Run402 does not need service keys or allowance files in
 
 ```bash
 run402 ci link github --project prj_... --manifest run402.deploy.json
+# Optional route authority for CI route declarations:
+run402 ci link github --project prj_... --manifest run402.deploy.json --route-scope /admin --route-scope /api/*
 ```
 
 That creates a deploy-scoped `/ci/v1/*` binding and writes a workflow that grants `id-token: write`, checks out the repo, and runs the existing deploy primitive:
@@ -185,7 +187,7 @@ jobs:
         run: npx --yes run402@1.60.0 deploy apply --manifest 'run402.deploy.json' --project 'prj_...'
 ```
 
-CI deploys are intentionally narrow: `site`, `functions`, `database`, and absent/current `base` only. Keep secrets, domains, subdomains, routes, checks, and broader trust changes in a local allowance-backed deploy. Manage bindings with `run402 ci list` and `run402 ci revoke`.
+CI deploys are intentionally narrow: `site`, `functions`, `database`, absent/current `base`, and route declarations only when the binding has covering `--route-scope` patterns. Without route scopes, CI cannot ship `routes`. Keep secrets, domains, subdomains, checks, non-current base, and broader trust changes in a local allowance-backed deploy. If the gateway returns `CI_ROUTE_SCOPE_DENIED`, re-link with exact scopes like `/admin` or final-wildcard scopes like `/api/*`, or deploy locally. Manage bindings with `run402 ci list` and `run402 ci revoke`.
 
 ### In-function helpers — caller-context vs BYPASSRLS
 
@@ -280,7 +282,7 @@ run402 projects apply-expose <id> --file manifest.json
 run402 sites deploy-dir ./dist
 run402 deploy release active --project <id>  # inspect current-live release inventory
 run402 functions deploy <id> <name> --file fn.ts
-run402 ci link github --project <id>       # GitHub Actions OIDC deploy binding
+run402 ci link github --project <id>       # GitHub Actions OIDC deploy binding (--route-scope for CI routes)
 run402 blob put ./asset.png --immutable
 run402 blob diagnose <url>               # inspect live CDN state for a public URL
 run402 cdn wait-fresh <url> --sha <hex>  # poll until a mutable URL serves the new SHA
@@ -387,6 +389,13 @@ The full MCP surface — every tool is a thin shim over an SDK call.
 | `bundle_deploy` | Legacy one-call full-stack deploy: database + migrations + authorization manifest (`manifest.json` in `files[]` — gateway validates it, applies it, then strips it before serving the site) + optional legacy in-memory secrets + functions + site + subdomain. For new secret-bearing deploys, use `set_secret` first, then `deploy` with `secrets.require`. |
 | `deploy` / `deploy_resume` / `deploy_list` / `deploy_events` | Apply, resume, list, and inspect deploy operations. |
 | `deploy_release_get` / `deploy_release_active` / `deploy_release_diff` | Inspect release inventory and release-to-release diffs without starting a new deploy mutation. |
+
+### CI/OIDC bindings
+
+| Tool | Description |
+|------|-------------|
+| `ci_create_binding` | Create a GitHub Actions CI deploy binding from a locally signed delegation. Optional `route_scopes` delegate exact paths like `/admin` or final wildcards like `/api/*`; omitted means no CI route authority. |
+| `ci_list_bindings` / `ci_get_binding` / `ci_revoke_binding` | Inspect and revoke CI bindings, including returned `route_scopes`. |
 
 ### Functions & secrets
 

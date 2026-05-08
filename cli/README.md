@@ -71,6 +71,7 @@ Link once from a local shell that has your Run402 allowance, then commit the gen
 
 ```bash
 run402 ci link github --project prj_... --manifest run402.deploy.json
+run402 ci link github --project prj_... --manifest run402.deploy.json --route-scope /admin --route-scope /api/*
 run402 ci list --project prj_...
 run402 ci revoke cib_...
 ```
@@ -91,7 +92,7 @@ jobs:
         run: npx --yes run402@1.60.0 deploy apply --manifest 'run402.deploy.json' --project 'prj_...'
 ```
 
-CI deploys can ship `site`, `functions`, and `database` changes. Keep secrets, domains, subdomains, routes, checks, and non-current base changes in a local `run402 deploy apply` where the full allowance-backed authority is present.
+CI deploys can ship `site`, `functions`, `database`, and absent/current `base` changes. Route declarations are allowed only when the binding was linked with covering `--route-scope` patterns (`/admin` exact, `/api/*` final wildcard); no scopes means no CI route authority. Keep secrets, domains, subdomains, checks, non-current base changes, and out-of-scope routes in a local `run402 deploy apply` where the full allowance-backed authority is present.
 
 ### Storage (paste-and-go CDN assets)
 

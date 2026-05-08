@@ -39,6 +39,8 @@ const TOKEN_EXCHANGE_SUBJECT_TOKEN_TYPE =
 const MAX_SUBJECT_MATCH_CHARS = 256;
 const MAX_RESOURCE_URI_BYTES = 4096;
 const MAX_STATEMENT_BYTES = 8192;
+const CI_ROUTE_SCOPE_LIMIT = 100;
+const CI_ROUTE_SCOPE_BYTE_LIMIT = 256;
 const NONCE_RE = /^[0-9a-f]{16,64}$/;
 const CI_DEPLOY_SPEC_ALLOWED_KEYS = new Set([
   "project",
@@ -46,6 +48,7 @@ const CI_DEPLOY_SPEC_ALLOWED_KEYS = new Set([
   "functions",
   "site",
   "base",
+  "routes",
 ]);
 
 export class Ci {
@@ -65,19 +68,23 @@ export class Ci {
       );
     }
     const values = normalizeCiDelegationValues(input);
+    const body: Record<string, unknown> = {
+      project_id: values.project_id,
+      provider: input.provider,
+      subject_match: values.subject_match,
+      allowed_actions: values.allowed_actions,
+      allowed_events: values.allowed_events,
+      github_repository_id: values.github_repository_id,
+      expires_at: values.expires_at,
+      nonce: values.nonce,
+      signed_delegation: input.signed_delegation,
+    };
+    if (values.route_scopes.length > 0) {
+      body.route_scopes = values.route_scopes;
+    }
     return this.client.request<CiBindingRow>("/ci/v1/bindings", {
       method: "POST",
-      body: {
-        project_id: values.project_id,
-        provider: input.provider,
-        subject_match: values.subject_match,
-        allowed_actions: values.allowed_actions,
-        allowed_events: values.allowed_events,
-        github_repository_id: values.github_repository_id,
-        expires_at: values.expires_at,
-        nonce: values.nonce,
-        signed_delegation: input.signed_delegation,
-      },
+      body,
       context: "creating CI binding",
     });
   }
@@ -151,6 +158,7 @@ export function normalizeCiDelegationValues(
   const nonce = validateCiNonce(values.nonce);
   const allowed_actions = normalizeAllowedActions(values.allowed_actions);
   const allowed_events = normalizeAllowedList(values.allowed_events, "allowed_events");
+  const route_scopes = normalizeCiRouteScopes(values.route_scopes);
   if (allowed_events.length === 0) {
     throw new LocalError(
       "CI delegation allowed_events must contain at least one event",
@@ -164,6 +172,7 @@ export function normalizeCiDelegationValues(
     subject_match,
     allowed_actions,
     allowed_events,
+    route_scopes,
     expires_at: values.expires_at ?? null,
     github_repository_id: values.github_repository_id ?? null,
     nonce,
@@ -172,17 +181,30 @@ export function normalizeCiDelegationValues(
 
 export function buildCiDelegationStatement(values: CiDelegationValues): string {
   const v = normalizeCiDelegationValues(values);
+  const canLines = [
+    "  - deploy function code that runs with this project's runtime authority, including the project's service-role key, the adminDb() bypass-RLS surface, and configured runtime secrets read via process.env;",
+    "  - deploy database migrations, RLS/expose changes, and schema-altering SQL via spec.database.",
+  ];
+  if (v.route_scopes.length > 0) {
+    canLines.push(
+      `  - deploy route declarations only within these public path scopes: ${v.route_scopes.join(",")}.`,
+    );
+  }
+  const cannotLine =
+    v.route_scopes.length > 0
+      ? "The workflows cannot directly call secrets, domain, subdomain, lifecycle, billing, contracts, or faucet endpoints. They cannot ship spec.secrets, spec.subdomains, spec.checks, non-current spec.base, or route changes outside the delegated route scopes."
+      : "The workflows cannot directly call secrets, domain, subdomain, lifecycle, billing, contracts, or faucet endpoints. They cannot ship spec.secrets, spec.subdomains, spec.routes, spec.checks, or non-current spec.base.";
   const statement = [
     `Authorize GitHub Actions workflows whose OIDC subject matches ${v.subject_match} to deploy to run402 project ${v.project_id}.`,
     "",
     "The workflows can:",
-    "  - deploy function code that runs with this project's runtime authority, including the project's service-role key, the adminDb() bypass-RLS surface, and configured runtime secrets read via process.env;",
-    "  - deploy database migrations, RLS/expose changes, and schema-altering SQL via spec.database.",
+    ...canLines,
     "",
-    "The workflows cannot directly call secrets, domain, subdomain, lifecycle, billing, contracts, or faucet endpoints. They cannot ship spec.secrets, spec.subdomains, spec.routes, spec.checks, or non-current spec.base.",
+    cannotLine,
     "",
     `Audience: ${v.audience}`,
     `Allowed events: ${v.allowed_events.join(",")}`,
+    ...(v.route_scopes.length > 0 ? [`Route scopes: ${v.route_scopes.join(",")}`] : []),
     `Repository ID: ${v.github_repository_id ?? "none-soft-bound"}`,
     `Expires: ${v.expires_at ?? "never"}`,
     `Nonce: ${v.nonce}`,
@@ -209,6 +231,9 @@ export function buildCiDelegationResourceUri(values: CiDelegationValues): string
     `allowed_actions=${v.allowed_actions.map(encodeRfc3986).join(",")}`,
     `allowed_events=${v.allowed_events.map(encodeRfc3986).join(",")}`,
   ];
+  if (v.route_scopes.length > 0) {
+    parts.push(`route_scopes=${v.route_scopes.map(encodeCiResourceComponent).join(",")}`);
+  }
   if (v.expires_at !== null) parts.push(`expires_at=${encodeRfc3986(v.expires_at)}`);
   if (v.github_repository_id !== null) {
     parts.push(`github_repository_id=${encodeRfc3986(v.github_repository_id)}`);
@@ -265,6 +290,83 @@ export function validateCiNonce(nonce: string): string {
   return nonce;
 }
 
+export function normalizeCiRouteScopes(values: readonly string[] | undefined | null): string[] {
+  if (values === undefined || values === null) return [];
+  if (!Array.isArray(values)) {
+    throw new LocalError("CI delegation route_scopes must be an array", "validating CI route scopes");
+  }
+  if (values.length > CI_ROUTE_SCOPE_LIMIT) {
+    throw new LocalError(
+      `CI delegation route_scopes must contain ${CI_ROUTE_SCOPE_LIMIT} entries or fewer`,
+      "validating CI route scopes",
+    );
+  }
+  const seen = new Set<string>();
+  const out: string[] = [];
+  values.forEach((value, index) => {
+    const normalized = validateCiRouteScope(value, `route_scopes.${index}`);
+    const identity = routeScopeIdentity(normalized);
+    if (seen.has(identity)) {
+      throw new LocalError(
+        `CI delegation route_scopes contains duplicate route pattern after normalization: ${normalized}`,
+        "validating CI route scopes",
+      );
+    }
+    seen.add(identity);
+    out.push(normalized);
+  });
+  return out.sort(compareAscii);
+}
+
+export function validateCiRouteScope(value: string, resource = "route_scopes"): string {
+  if (typeof value !== "string" || value.length === 0) {
+    throw new LocalError(
+      `CI delegation ${resource} must be a non-empty string`,
+      "validating CI route scopes",
+    );
+  }
+  if (!value.startsWith("/")) {
+    throw new LocalError(
+      `CI delegation ${resource} must start with /; use route scopes such as /api or /api/*`,
+      "validating CI route scopes",
+    );
+  }
+  if (new TextEncoder().encode(value).byteLength > CI_ROUTE_SCOPE_BYTE_LIMIT) {
+    throw new LocalError(
+      `CI delegation ${resource} exceeds ${CI_ROUTE_SCOPE_BYTE_LIMIT} bytes`,
+      "validating CI route scopes",
+    );
+  }
+  if (value.includes("?")) {
+    throw new LocalError(
+      `CI delegation ${resource} must not include a query string`,
+      "validating CI route scopes",
+    );
+  }
+  try {
+    decodeURI(value);
+  } catch {
+    throw new LocalError(
+      `CI delegation ${resource} contains invalid percent encoding`,
+      "validating CI route scopes",
+    );
+  }
+  const wildcardIndex = value.indexOf("*");
+  if (wildcardIndex >= 0 && !value.endsWith("/*")) {
+    throw new LocalError(
+      `CI delegation ${resource} wildcards are only supported as final /*`,
+      "validating CI route scopes",
+    );
+  }
+  if (value === "*" || value === "/*") {
+    throw new LocalError(
+      `CI delegation ${resource} prefix wildcard must include a path segment before /*`,
+      "validating CI route scopes",
+    );
+  }
+  return value;
+}
+
 export function assertCiDeployableSpec(specOrPlanBody: ReleaseSpec | PlanRequest | unknown): void {
   const { spec, manifestRef } = unwrapSpecOrPlanBody(specOrPlanBody);
   if (manifestRef !== undefined && manifestRef !== null) {
@@ -286,15 +388,9 @@ export function assertCiDeployableSpec(specOrPlanBody: ReleaseSpec | PlanRequest
           "CI deploy manifests must omit spec.secrets. Set secrets locally or admin-side before CI runs; CI credentials do not have secret-write authority or secret-existence authority.",
         );
       }
-      if (key === "routes") {
-        throwCiDeploySpecError(
-          "routes",
-          "CI deploy manifests must omit spec.routes. Phase 1 web routes are broader trust changes and require local allowance-backed authority.",
-        );
-      }
       throwCiDeploySpecError(
         key,
-        `CI deploy cannot ship spec.${key}; only project, database, functions, site, and base:{release:"current"} are allowed.`,
+        `CI deploy cannot ship spec.${key}; only project, database, functions, site, routes, and base:{release:"current"} are allowed.`,
       );
     }
   }
@@ -338,6 +434,24 @@ function encodeRfc3986(value: string): string {
   return encodeURIComponent(value).replace(/[!'()*]/g, (char) =>
     `%${char.charCodeAt(0).toString(16).toUpperCase()}`,
   );
+}
+
+function encodeCiResourceComponent(value: string): string {
+  // The gateway canonical builder uses encodeURIComponent here; in particular,
+  // final-wildcard route scopes render `/admin/*` as `%2Fadmin%2F*`.
+  return encodeURIComponent(value);
+}
+
+function routeScopeIdentity(pattern: string): string {
+  return pattern.endsWith("/*") ? `prefix:${pattern}` : `exact:${normalizeExactRoute(pattern)}`;
+}
+
+function normalizeExactRoute(pattern: string): string {
+  return pattern.length > 1 && pattern.endsWith("/") ? pattern.slice(0, -1) : pattern;
+}
+
+function compareAscii(a: string, b: string): number {
+  return a < b ? -1 : a > b ? 1 : 0;
 }
 
 function unwrapSpecOrPlanBody(

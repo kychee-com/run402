@@ -189,6 +189,11 @@ function addCodeGuidance(lines: string[], code: string | undefined): boolean {
     case "OPERATION_NOT_FOUND":
       lines.push(`\nNext step: Check the deploy plan/operation id, or list recent deploy operations for the project.`);
       return true;
+    case "CI_ROUTE_SCOPE_DENIED":
+      lines.push(
+        `\nNext step: Re-link the GitHub Actions binding with covering \`--route-scope\` patterns, or run the route-changing deploy locally with allowance-backed authority.`,
+      );
+      return true;
     default:
       return false;
   }

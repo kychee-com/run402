@@ -71,6 +71,7 @@ function mockFetch(input, init) {
       subject_match: body.subject_match,
       allowed_actions: body.allowed_actions,
       allowed_events: body.allowed_events,
+      route_scopes: body.route_scopes || [],
       github_repository_id: body.github_repository_id,
       created_by: TEST_ADDRESS,
       nonce: body.nonce,
@@ -83,10 +84,17 @@ function mockFetch(input, init) {
     }, 201));
   }
   if (url === `${API}/ci/v1/bindings?project=prj_ci` && method === "GET") {
-    return Promise.resolve(json({ bindings: [{ id: "cib_123", project_id: "prj_ci" }] }));
+    return Promise.resolve(json({
+      bindings: [{ id: "cib_123", project_id: "prj_ci", route_scopes: ["/admin/*"] }],
+    }));
   }
   if (url === `${API}/ci/v1/bindings/cib_123/revoke` && method === "POST") {
-    return Promise.resolve(json({ id: "cib_123", project_id: "prj_ci", revoked_at: "2026-05-03T01:00:00Z" }));
+    return Promise.resolve(json({
+      id: "cib_123",
+      project_id: "prj_ci",
+      route_scopes: ["/admin/*"],
+      revoked_at: "2026-05-03T01:00:00Z",
+    }));
   }
   return Promise.resolve(new Response("Not Found", { status: 404 }));
 }
@@ -155,6 +163,7 @@ describe("run402 ci", () => {
     assert.equal(create.body.subject_match, "repo:tal/myapp:ref:refs/heads/main");
     assert.deepEqual(create.body.allowed_events, ["push", "workflow_dispatch"]);
     assert.deepEqual(create.body.allowed_actions, ["deploy"]);
+    assert.equal(create.body.route_scopes, undefined);
     assert.equal(create.body.github_repository_id, "892341");
     assert.match(create.body.nonce, /^[0-9a-f]{32}$/);
 
@@ -164,15 +173,59 @@ describe("run402 ci", () => {
     assert.match(workflow, /id-token: write/);
     assert.match(workflow, /contents: read/);
     assert.match(workflow, /branches: \["main"\]/);
-    assert.match(workflow, /npx --yes run402@1\.54\.4 deploy apply --manifest 'run402\.deploy\.json' --project 'prj_ci'/);
+    assert.match(workflow, /npx --yes run402@\d+\.\d+\.\d+ deploy apply --manifest 'run402\.deploy\.json' --project 'prj_ci'/);
 
     const output = JSON.parse(stdout.join("\n"));
     assert.equal(output.status, "ok");
     assert.equal(output.binding_id, "cib_123");
     assert.equal(output.github_repository_id_status, "verified");
     assert.equal(output.delegation_chain_id, "eip155:84532");
+    assert.deepEqual(output.route_scopes, []);
     assert.match(output.bootstrap_caveat, /Commit/);
+    assert.match(output.consent_summary.join("\n"), /cannot deploy route declarations/);
     assert.ok(output.revocation_residuals.length > 0);
+  });
+
+  it("passes repeatable route scopes through SDK signing and binding creation", async () => {
+    captureStart();
+    await run("link", [
+      "github",
+      "--project", "prj_ci",
+      "--repo", "tal/myapp",
+      "--repository-id", "892341",
+      "--route-scope", "/admin/*",
+      "--route-scope", "/admin",
+      "--force",
+    ]);
+    captureStop();
+
+    const create = calls.find((c) => c.url === `${API}/ci/v1/bindings`);
+    assert.deepEqual(create.body.route_scopes, ["/admin", "/admin/*"]);
+    const decoded = JSON.parse(Buffer.from(create.body.signed_delegation, "base64").toString("utf8"));
+    assert.match(decoded.statement, /Route scopes: \/admin,\/admin\/\*/);
+    assert.match(decoded.resources[0], /route_scopes=%2Fadmin,%2Fadmin%2F\*/);
+
+    const output = JSON.parse(stdout.join("\n"));
+    assert.deepEqual(output.route_scopes, ["/admin", "/admin/*"]);
+    assert.match(output.consent_summary.join("\n"), /within: \/admin, \/admin\/\*/);
+  });
+
+  it("documents route-scope linking in help", async () => {
+    captureStart();
+    let threw = null;
+    try {
+      await run("link", ["--help"]);
+    } catch (err) {
+      threw = err;
+    } finally {
+      captureStop();
+    }
+
+    assert.equal(threw?.message, "process.exit(0)");
+    const help = stdout.join("\n");
+    assert.match(help, /--route-scope <pattern>/);
+    assert.match(help, /\/admin/);
+    assert.match(help, /Without --route-scope, CI cannot deploy route declarations/);
   });
 
   it("uses environment subjects without exposing raw subject flags", async () => {
@@ -253,6 +306,7 @@ describe("run402 ci", () => {
     const listed = JSON.parse(stdout.join("\n"));
     assert.equal(listed.status, "ok");
     assert.equal(listed.bindings[0].id, "cib_123");
+    assert.deepEqual(listed.bindings[0].route_scopes, ["/admin/*"]);
 
     captureStart();
     await run("revoke", ["cib_123"]);
@@ -260,6 +314,7 @@ describe("run402 ci", () => {
     const revoked = JSON.parse(stdout.join("\n"));
     assert.equal(revoked.status, "ok");
     assert.equal(revoked.binding.id, "cib_123");
+    assert.deepEqual(revoked.binding.route_scopes, ["/admin/*"]);
     assert.ok(revoked.revocation_residuals.length > 0);
   });
 

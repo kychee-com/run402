@@ -281,6 +281,13 @@ For TypeScript autocomplete, `npm install @run402/functions` in your editor's pr
 - **`deploy`** / **`deploy_resume`** / **`deploy_list`** / **`deploy_events`** — apply, resume, list, and inspect deploy operations.
 - **`deploy_release_get`** / **`deploy_release_active`** / **`deploy_release_diff`** — inspect release inventory and release-to-release diffs.
 
+### CI/OIDC bindings
+
+- **`ci_create_binding`** — create a GitHub Actions CI deploy binding from a locally signed delegation. This MCP tool does not sign or broaden authority; the signed delegation defines the repository/branch or environment, allowed events/actions, and optional `route_scopes`.
+- **`ci_list_bindings`** / **`ci_get_binding`** / **`ci_revoke_binding`** — inspect and revoke CI bindings, preserving returned `route_scopes`.
+
+No `route_scopes` means no CI route-declaration authority. With route scopes, CI can deploy only matching exact public paths such as `/admin` or final-wildcard prefixes such as `/api/*`. If deploy returns `CI_ROUTE_SCOPE_DENIED`, re-create the binding with covering scopes or run the route-changing deploy locally.
+
 ### Functions & secrets
 
 - **`deploy_function`** — deploy a Node 22 serverless function. Cron-schedulable via `schedule`. Pass `deps` as npm specs (bare names → latest at deploy time, pinned `lodash@4.17.21` or ranges `date-fns@^3.0.0` honored verbatim, max 30 entries / 200 chars each, native binaries rejected). Response surfaces `runtime_version`, `deps_resolved`, `warnings`.
