@@ -5,12 +5,14 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { handleRunSql } from "./run-sql.js";
 import { saveProject } from "../keystore.js";
+import { _resetSdk } from "../sdk.js";
 
 const originalFetch = globalThis.fetch;
 let tempDir: string;
 let storePath: string;
 
 beforeEach(() => {
+  _resetSdk();
   tempDir = mkdtempSync(join(tmpdir(), "run402-sql-test-"));
   storePath = join(tempDir, "projects.json");
   process.env.RUN402_CONFIG_DIR = tempDir;
@@ -18,6 +20,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  _resetSdk();
   globalThis.fetch = originalFetch;
   rmSync(tempDir, { recursive: true, force: true });
   delete process.env.RUN402_CONFIG_DIR;

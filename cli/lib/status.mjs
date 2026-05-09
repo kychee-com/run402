@@ -1,5 +1,5 @@
-import { readAllowance, loadKeyStore, getActiveProjectId, API } from "./config.mjs";
-import { getAllowanceAuthHeaders } from "../core-dist/allowance-auth.js";
+import { readAllowance, loadKeyStore, getActiveProjectId } from "./config.mjs";
+import { getSdk } from "./sdk.mjs";
 import { assertKnownFlags, hasHelp, normalizeArgv } from "./argparse.mjs";
 
 const HELP = `run402 status — Show full account state in one shot
@@ -86,22 +86,15 @@ export async function run(args = []) {
   }
 
   const wallet = allowance.address.toLowerCase();
-  const authHeaders = getAllowanceAuthHeaders("/tiers/v1/status");
   const rail = allowance.rail || "x402";
 
   // Parallel API calls: tier + billing balance + server-side projects + on-chain wallet balance
-  const [tierRes, balanceRes, projectsRes, walletBalance] = await Promise.all([
-    authHeaders
-      ? fetch(`${API}/tiers/v1/status`, { headers: { ...authHeaders } }).catch(() => null)
-      : null,
-    fetch(`${API}/billing/v1/accounts/${wallet}`).catch(() => null),
-    fetch(`${API}/wallets/v1/${wallet}/projects`).catch(() => null),
+  const [tier, billing, remote, walletBalance] = await Promise.all([
+    getSdk().tier.status().catch(() => null),
+    getSdk().billing.checkBalance(wallet).catch(() => null),
+    getSdk().projects.list(wallet).catch(() => null),
     readWalletBalanceUsdMicros(rail, allowance.address),
   ]);
-
-  const tier = tierRes?.ok ? await tierRes.json() : null;
-  const billing = balanceRes?.ok ? await balanceRes.json() : null;
-  const remote = projectsRes?.ok ? await projectsRes.json() : null;
 
   // Local keystore
   const store = loadKeyStore();
@@ -125,8 +118,8 @@ export async function run(args = []) {
     // two unambiguous fields:
     //   - billing: credits held by Run402 (available + held), null if no account
     //   - wallet_balance_usd_micros: on-chain USDC/pathUSD, null if RPC fails
-    billing: billing && billing.exists
-      ? { available_usd_micros: billing.available_usd_micros, held_usd_micros: billing.held_usd_micros }
+    billing: billing && billing.exists !== false
+      ? { available_usd_micros: billing.available_usd_micros, held_usd_micros: billing.held_usd_micros ?? 0 }
       : null,
     wallet_balance_usd_micros: walletBalance,
     projects,

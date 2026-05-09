@@ -34,7 +34,7 @@ import { basename, dirname, join, resolve as resolvePath } from "node:path";
 import { homedir } from "node:os";
 import { pipeline } from "node:stream/promises";
 
-import { resolveProject, resolveProjectId, API } from "./config.mjs";
+import { resolveProjectId } from "./config.mjs";
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail } from "./sdk-errors.mjs";
 import { assertKnownFlags, hasHelp, normalizeArgv, parseIntegerFlag } from "./argparse.mjs";
@@ -190,19 +190,6 @@ function die(msg, exit_code = 1) {
   fail({ code: "BAD_USAGE", message: msg, exit_code });
 }
 
-function dieApiFailure(prefix, http, body) {
-  if (body && typeof body === "object" && !Array.isArray(body)) {
-    const envelope = { status: "error", http, ...body };
-    if (!envelope.message && envelope.error) envelope.message = envelope.error;
-    console.error(JSON.stringify(envelope));
-    process.exit(1);
-  }
-  fail({
-    message: `${prefix}: HTTP ${http}${typeof body === "string" && body ? `: ${body.slice(0, 500)}` : ""}`,
-    details: { http },
-  });
-}
-
 function parseArgs(rawArgs) {
   const args = normalizeArgv(rawArgs);
   const valueFlags = ["--project", "--key", "--content-type", "--concurrency", "--prefix", "--limit", "--output", "-o", "--ttl"];
@@ -305,7 +292,7 @@ function findResumableStateForFile(projectId, localPath, key) {
 // put
 // ---------------------------------------------------------------------------
 
-async function putOne(project, filePath, opts) {
+async function putOne(projectId, filePath, opts) {
   const stat = statSync(filePath);
   const size = stat.size;
   const destKey = computeDestKey(filePath, opts.key);
@@ -317,15 +304,21 @@ async function putOne(project, filePath, opts) {
 
   // Attempt to resume
   let state = opts.resume
-    ? findResumableStateForFile(project.id, absLocal, destKey)
+    ? findResumableStateForFile(projectId, absLocal, destKey)
     : null;
   let initRes;
   if (state) {
     // Re-poll the session; if it's still active, resume. Otherwise start fresh.
-    const poll = await apiFetch(`${API}/storage/v1/uploads/${state.upload_id}`, "GET", project, null);
-    if (poll.status === 200 && poll.body.status === "active") {
+    const poll = await getSdk().blobs.getUploadSession(projectId, state.upload_id);
+    if (poll.status === "active") {
       log(opts, { event: "resume", upload_id: state.upload_id, key: destKey });
-      initRes = { upload_id: state.upload_id, mode: state.mode, parts: state.parts, part_count: state.part_count, part_size_bytes: state.part_size_bytes };
+      initRes = {
+        upload_id: state.upload_id,
+        mode: poll.mode ?? state.mode,
+        parts: poll.parts ?? state.parts,
+        part_count: poll.part_count ?? state.part_count,
+        part_size_bytes: poll.part_size_bytes ?? state.part_size_bytes,
+      };
     } else {
       removeState(state.upload_id);
       state = null;
@@ -333,7 +326,7 @@ async function putOne(project, filePath, opts) {
   }
 
   if (!state) {
-    const init = await apiFetch(`${API}/storage/v1/uploads`, "POST", project, {
+    initRes = await getSdk().blobs.initUploadSession(projectId, {
       key: destKey,
       size_bytes: size,
       content_type: opts.contentType ?? guessContentType(destKey),
@@ -341,11 +334,9 @@ async function putOne(project, filePath, opts) {
       immutable: opts.immutable,
       sha256,
     });
-    if (init.status !== 201) dieApiFailure("Init failed", init.status, init.body);
-    initRes = init.body;
-    saveState({
+    state = {
       upload_id: initRes.upload_id,
-      project_id: project.id,
+      project_id: projectId,
       local_path: absLocal,
       key: destKey,
       mode: initRes.mode,
@@ -355,8 +346,8 @@ async function putOne(project, filePath, opts) {
       parts_done: {},
       sha256,
       started_at: new Date().toISOString(),
-    });
-    state = loadState(initRes.upload_id);
+    };
+    if (opts.resume) saveState(state);
   }
 
   // Upload parts with concurrency limit. For single-PUT mode part_count=1 and
@@ -378,7 +369,7 @@ async function putOne(project, filePath, opts) {
     const { etag } = await putPart(filePath, part);
     etags[part.part_number - 1] = { etag };
     state.parts_done[String(part.part_number)] = { etag };
-    saveState(state);
+    if (opts.resume) saveState(state);
     log(opts, { event: "part", upload_id: state.upload_id, part_number: part.part_number, etag });
   });
 
@@ -386,12 +377,13 @@ async function putOne(project, filePath, opts) {
   const body = initRes.mode === "multipart"
     ? { parts: etags.map((e, i) => ({ part_number: i + 1, etag: e.etag })) }
     : {};
-  const complete = await apiFetch(`${API}/storage/v1/uploads/${state.upload_id}/complete`, "POST", project, body);
-  if (complete.status !== 200) dieApiFailure("Complete failed", complete.status, complete.body);
+  const result = await getSdk().blobs.completeUploadSession(projectId, state.upload_id, body, {
+    contentType: opts.contentType ?? guessContentType(destKey),
+  });
 
   removeState(state.upload_id);
-  log(opts, { event: "done", ...complete.body });
-  return complete.body;
+  log(opts, { event: "done", ...result });
+  return result;
 }
 
 function computeDestKey(filePath, keyOpt) {
@@ -443,7 +435,7 @@ function isSettled(p) {
 async function put(projectId, argv) {
   const opts = parseArgs(argv);
   opts.project = opts.project || projectId;
-  const project = resolveProject(opts.project);
+  const resolvedId = resolveProjectId(opts.project);
 
   if (opts.positional.length === 0) die("At least one file path is required");
   if (opts.immutable && opts.positional.length > 1 && opts.key && !opts.key.endsWith("/")) {
@@ -453,8 +445,12 @@ async function put(projectId, argv) {
   const results = [];
   for (const filePath of opts.positional) {
     if (!existsSync(filePath)) die(`File not found: ${filePath}`);
-    const r = await putOne(project, filePath, opts);
-    results.push({ file: filePath, ...r });
+    try {
+      const r = await putOne(resolvedId, filePath, opts);
+      results.push({ file: filePath, ...r });
+    } catch (err) {
+      reportSdkError(err);
+    }
   }
   if (!opts.json) console.log(JSON.stringify(results, null, 2));
 }
@@ -576,11 +572,6 @@ async function sign(projectId, argv) {
 // Shared helpers
 // ---------------------------------------------------------------------------
 
-function encodeKey(key) {
-  // Encode each path segment; preserve `/` as separator.
-  return key.split("/").map(encodeURIComponent).join("/");
-}
-
 function guessContentType(key) {
   const ext = key.slice(key.lastIndexOf(".") + 1).toLowerCase();
   const map = {
@@ -592,21 +583,6 @@ function guessContentType(key) {
     zip: "application/zip", tgz: "application/gzip", gz: "application/gzip",
   };
   return map[ext] ?? "application/octet-stream";
-}
-
-async function apiFetch(url, method, project, body) {
-  const res = await fetch(url, {
-    method,
-    headers: {
-      "content-type": "application/json",
-      apikey: project.anon_key,
-      Authorization: `Bearer ${project.anon_key}`,
-    },
-    body: body === null ? undefined : JSON.stringify(body ?? {}),
-  });
-  const txt = await res.text();
-  let parsed; try { parsed = txt ? JSON.parse(txt) : null; } catch { parsed = txt; }
-  return { status: res.status, body: parsed };
 }
 
 function log(opts, event) {

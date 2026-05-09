@@ -758,36 +758,39 @@ Content-Type: `blob put` infers MIME from the destination key extension. Use `--
 
 `diagnose` exit codes are shell-loop-friendly: `0` when the CDN serves the gateway's expected SHA, `1` otherwise. So `until run402 blob diagnose <url>; do sleep 1; done` blocks until the CDN catches up. Vantage: probes are single-region (us-east-1); the `# probed once from gateway-us-east-1; not a global view` line on stderr is the explicit caveat.
 
-#### Uploading from edge functions
-
-From within a deployed function, use the HTTP API directly:
+#### Uploading from Node/agent code
 
 ```javascript
-// 1. Init
-const init = await fetch('https://api.run402.com/storage/v1/uploads', {
-  method: 'POST',
-  headers: {
-    apikey: process.env.RUN402_SERVICE_KEY,
-    'content-type': 'application/json',
-  },
-  body: JSON.stringify({ key: 'uploads/report.pdf', size_bytes: buf.length, content_type: 'application/pdf' }),
-}).then(r => r.json());
+import { run402 } from "@run402/sdk/node";
+
+const client = run402();
+
+// 1. Init through the SDK. The gateway returns presigned part URLs.
+const init = await client.blobs.initUploadSession(projectId, {
+  key: "uploads/report.pdf",
+  size_bytes: buf.length,
+  content_type: "application/pdf",
+});
 
 // 2. PUT the body to each part URL (bytes go direct to S3, NOT through the gateway)
 const etags = [];
 for (const part of init.parts) {
-  const res = await fetch(part.url, { method: 'PUT', body: buf.slice(part.byte_start, part.byte_end + 1) });
-  etags.push({ part_number: part.part_number, etag: res.headers.get('etag') });
+  const res = await fetch(part.url, {
+    method: "PUT",
+    body: buf.slice(part.byte_start, part.byte_end + 1),
+  });
+  etags.push({ part_number: part.part_number, etag: res.headers.get("etag") });
 }
 
-// 3. Complete
-const complete = await fetch(`https://api.run402.com/storage/v1/uploads/${init.upload_id}/complete`, {
-  method: 'POST',
-  headers: { apikey: process.env.RUN402_SERVICE_KEY, 'content-type': 'application/json' },
-  body: JSON.stringify({ parts: etags }),
-}).then(r => r.json());
+// 3. Complete through the SDK.
+const asset = await client.blobs.completeUploadSession(
+  projectId,
+  init.upload_id,
+  { parts: etags },
+  { contentType: "application/pdf" },
+);
 
-// complete.url is the CDN URL for the blob (public blobs only)
+// asset.cdnUrl is the preferred content-addressed URL for public blobs.
 ```
 
 ### sites

@@ -526,7 +526,8 @@ list(wallet?: string): Promise<ListProjectsResult>
 getUsage(id: string): Promise<UsageReport>
 getSchema(id: string): Promise<SchemaReport>
 sql(id: string, sql: string, params?: unknown[]): Promise<unknown>
-rest<T = unknown>(id: string, table: string, queryParams?: string): Promise<T>
+rest<T = unknown>(id: string, table: string, queryOrOptions?: string | ProjectRestOptions): Promise<T>
+restResponse<T = unknown>(id: string, table: string, queryOrOptions?: string | ProjectRestOptions): Promise<ProjectRestResponse<T>>
 applyExpose(id: string, manifest: ExposeManifest): Promise<unknown>
 getExpose(id: string): Promise<ExposeManifest>
 pin(id: string): Promise<PinResult>
@@ -680,6 +681,9 @@ rm(projectId, key): Promise<void>
 sign(projectId, key, opts?: { ttl_seconds? }): Promise<BlobSignResult>
 diagnoseUrl(projectId, url): Promise<BlobDiagnoseEnvelope>
 waitFresh(projectId, opts: { url, sha256, timeoutMs? }): Promise<BlobWaitFreshResult>
+initUploadSession(projectId, opts: BlobUploadInitOptions): Promise<BlobUploadInitResult>
+getUploadSession(projectId, uploadId): Promise<BlobUploadStatusResult>
+completeUploadSession(projectId, uploadId, opts?: BlobUploadCompleteOptions, extra?: { contentType? }): Promise<BlobPutResult>
 ```
 
 `source` is one of: a bare `string` (UTF-8 ≤ 1 MB), a bare `Uint8Array`,
@@ -692,6 +696,11 @@ helpers used by paste-and-go HTML emitters: `cdnUrl`, `cdnMutableUrl`,
 "mutable" | "private"`), `contentSha256`, `contentType`, plus `scriptTag()`,
 `linkTag()`, `imgTag()` methods. See `sdk/src/namespaces/blobs.types.ts` for
 the full shape.
+
+Use the low-level upload-session methods only when you need CLI-style resumable
+state or custom part concurrency. They keep gateway init/status/complete calls
+inside the SDK while callers still `fetch(part.url)` directly to presigned S3
+URLs for the actual bytes.
 
 ### `r.functions`
 
@@ -853,9 +862,11 @@ linkWallet(billingAccountId, wallet): Promise<void>
 tierCheckout(tier, identifier: { email?: string, wallet?: string }): Promise<CreateCheckoutResult>
 buyEmailPack(identifier: { email?: string, wallet?: string }): Promise<CreateCheckoutResult>
 setAutoRecharge(opts: { billingAccountId: string, enabled: boolean, threshold? }): Promise<void>
-checkBalance(wallet): Promise<BillingBalance>
-balance(wallet): Promise<BillingBalance>       // alias of checkBalance
-history(wallet, limit?: number): Promise<BillingHistoryResult>
+checkBalance(identifier): Promise<BillingBalance>
+getAccount(identifier): Promise<BillingBalance>
+balance(identifier): Promise<BillingBalance>       // alias of checkBalance
+history(identifier, limit?: number): Promise<BillingHistoryResult>
+getHistory(identifier, limit?: number): Promise<BillingHistoryResult>
 createCheckout(wallet, amountUsdMicros: number): Promise<CreateCheckoutResult>
 
 // CLI-style aliases:

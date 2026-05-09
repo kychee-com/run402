@@ -1,4 +1,3 @@
-import { API } from "./config.mjs";
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail } from "./sdk-errors.mjs";
 
@@ -224,7 +223,6 @@ async function autoRecharge(args) {
 }
 
 async function balance(args) {
-  // Accepts email OR wallet — SDK only models wallet, so keep direct fetch.
   const id = args[0];
   if (!id) {
     fail({
@@ -233,10 +231,12 @@ async function balance(args) {
       hint: "run402 billing balance <email-or-wallet>",
     });
   }
-  const res = await fetch(`${API}/billing/v1/accounts/${encodeURIComponent(id)}`);
-  const data = await res.json();
-  if (!res.ok) { console.error(JSON.stringify({ status: "error", http: res.status, ...data })); process.exit(1); }
-  console.log(JSON.stringify(data, null, 2));
+  try {
+    const data = await getSdk().billing.getAccount(id);
+    console.log(JSON.stringify(data, null, 2));
+  } catch (err) {
+    reportSdkError(err);
+  }
 }
 
 async function history(args) {
@@ -249,10 +249,12 @@ async function history(args) {
     });
   }
   const limit = parseFlag(args, "--limit") || "50";
-  const res = await fetch(`${API}/billing/v1/accounts/${encodeURIComponent(id)}/history?limit=${encodeURIComponent(limit)}`);
-  const data = await res.json();
-  if (!res.ok) { console.error(JSON.stringify({ status: "error", http: res.status, ...data })); process.exit(1); }
-  console.log(JSON.stringify(data, null, 2));
+  try {
+    const data = await getSdk().billing.getHistory(id, Number(limit));
+    console.log(JSON.stringify(data, null, 2));
+  } catch (err) {
+    reportSdkError(err);
+  }
 }
 
 export async function run(sub, args) {

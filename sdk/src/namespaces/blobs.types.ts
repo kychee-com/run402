@@ -49,6 +49,51 @@ export interface BlobPutOptions {
   immutable?: boolean;
 }
 
+/** One presigned upload part returned by the Run402 blob upload session API. */
+export interface BlobUploadPart {
+  part_number: number;
+  url: string;
+  byte_start: number;
+  byte_end: number;
+}
+
+/** Options for initializing a low-level resumable blob upload session. */
+export interface BlobUploadInitOptions {
+  key: string;
+  size_bytes: number;
+  content_type: string;
+  visibility?: BlobVisibility;
+  immutable?: boolean;
+  sha256?: string;
+}
+
+/** Active upload session returned by `blobs.initUploadSession(...)`. */
+export interface BlobUploadInitResult {
+  upload_id: string;
+  mode: "single" | "multipart";
+  parts: BlobUploadPart[];
+  part_count: number;
+  part_size_bytes?: number;
+}
+
+/** Upload-session status returned by `blobs.getUploadSession(...)`. */
+export interface BlobUploadStatusResult extends Partial<BlobUploadInitResult> {
+  upload_id: string;
+  status: "active" | "completed" | "aborted" | "expired" | (string & {});
+  key?: string;
+}
+
+/** Completed part metadata sent to the gateway when finishing a multipart upload. */
+export interface BlobUploadCompletedPart {
+  part_number: number;
+  etag: string;
+}
+
+/** Options for completing a low-level blob upload session. */
+export interface BlobUploadCompleteOptions {
+  parts?: BlobUploadCompletedPart[];
+}
+
 /**
  * Cache-kind hint for a blob URL. Mirrors the gateway's
  * `X-Run402-Blob-Cache-Kind` response header. Agents key on this when
@@ -213,6 +258,9 @@ export interface AssetRef {
  * legacy fields stay for back-compat.
  */
 export type BlobPutResult = AssetRef;
+
+/** Result of completing a low-level upload session. */
+export type BlobUploadCompleteResult = BlobPutResult;
 
 /** Response envelope from `client.blobs.diagnoseUrl(...)`. */
 export interface BlobDiagnoseEnvelope {

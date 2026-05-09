@@ -1,7 +1,6 @@
 import { z } from "zod";
-import { apiRequest } from "../client.js";
-import { getProject } from "../keystore.js";
-import { formatApiError, projectNotFound } from "../errors.js";
+import { getSdk } from "../sdk.js";
+import { mapSdkError } from "../errors.js";
 
 export const runSqlSchema = {
   project_id: z.string().describe("The project ID to run SQL against"),
@@ -27,25 +26,17 @@ export async function handleRunSql(args: {
   sql: string;
   params?: unknown[];
 }): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
-  const project = getProject(args.project_id);
-  if (!project) return projectNotFound(args.project_id);
-
-  const useParams = args.params && args.params.length > 0;
-  const res = await apiRequest(`/projects/v1/admin/${args.project_id}/sql`, {
-    method: "POST",
-    ...(useParams
-      ? { body: { sql: args.sql, params: args.params }, headers: { "Content-Type": "application/json", Authorization: `Bearer ${project.service_key}` } }
-      : { rawBody: args.sql, headers: { "Content-Type": "text/plain", Authorization: `Bearer ${project.service_key}` } }),
-  });
-
-  if (!res.ok) return formatApiError(res, "running SQL");
-
-  const body = res.body as {
+  let body: {
     status: string;
     schema: string;
     rows: Record<string, unknown>[];
     rowCount: number | null;
   };
+  try {
+    body = await getSdk().projects.sql(args.project_id, args.sql, args.params) as typeof body;
+  } catch (err) {
+    return mapSdkError(err, "running SQL");
+  }
 
   const table = formatMarkdownTable(body.rows);
   const lines = [

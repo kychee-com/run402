@@ -5,11 +5,13 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 
 import { handleApplyExpose } from "./apply-expose.js";
+import { _resetSdk } from "../sdk.js";
 
 const originalFetch = globalThis.fetch;
 let tempDir: string;
 
 beforeEach(() => {
+  _resetSdk();
   tempDir = mkdtempSync(join(tmpdir(), "run402-apply-expose-test-"));
   process.env.RUN402_CONFIG_DIR = tempDir;
   process.env.RUN402_API_BASE = "https://test-api.run402.com";
@@ -23,6 +25,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  _resetSdk();
   globalThis.fetch = originalFetch;
   rmSync(tempDir, { recursive: true, force: true });
   delete process.env.RUN402_CONFIG_DIR;

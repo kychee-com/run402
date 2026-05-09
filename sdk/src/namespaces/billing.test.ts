@@ -94,7 +94,7 @@ describe("billing.checkBalance", () => {
   });
 
   it("preserves null tier and lease_expires_at for unleased accounts", async () => {
-    const { fetch } = mockFetch(() =>
+    const { fetch, calls } = mockFetch(() =>
       jsonResponse({
         available_usd_micros: 1000000,
         email_credits_remaining: 0,
@@ -108,9 +108,28 @@ describe("billing.checkBalance", () => {
     const sdk = makeSdk(fetch);
     const result = await sdk.billing.checkBalance("user@example.com");
 
+    assert.equal(calls[0]!.url, "https://api.example.test/billing/v1/accounts/user%40example.com");
     assert.equal(result.tier, null);
     assert.equal(result.lease_expires_at, null);
     assert.equal(result.identifier_type, "email");
+  });
+
+  it("offers getAccount as a generic identifier alias", async () => {
+    const { fetch, calls } = mockFetch(() =>
+      jsonResponse({
+        available_usd_micros: 1000000,
+        email_credits_remaining: 0,
+        tier: null,
+        lease_expires_at: null,
+        auto_recharge_enabled: false,
+        auto_recharge_threshold: 0,
+        identifier_type: "email",
+      }),
+    );
+    const sdk = makeSdk(fetch);
+    await sdk.billing.getAccount("billing+team@example.com");
+
+    assert.equal(calls[0]!.url, "https://api.example.test/billing/v1/accounts/billing%2Bteam%40example.com");
   });
 });
 
@@ -168,6 +187,16 @@ describe("billing.history", () => {
     await sdk.billing.history("0xABC", 50);
 
     assert.equal(calls[0]!.url, "https://api.example.test/billing/v1/accounts/0xabc/history?limit=50");
+  });
+
+  it("offers getHistory as a generic identifier alias", async () => {
+    const { fetch, calls } = mockFetch(() =>
+      jsonResponse({ identifier: "user@example.com", identifier_type: "email", entries: [] }),
+    );
+    const sdk = makeSdk(fetch);
+    await sdk.billing.getHistory("user@example.com", 25);
+
+    assert.equal(calls[0]!.url, "https://api.example.test/billing/v1/accounts/user%40example.com/history?limit=25");
   });
 
   it("preserves null reference_type and reference_id for entries without references", async () => {

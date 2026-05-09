@@ -471,7 +471,26 @@ describe("projects admin helpers (SDK/CLI parity)", () => {
 
     assert.equal(calls[0]!.url, "https://api.example.test/rest/v1/todos?select=id&limit=1");
     assert.equal(calls[0]!.headers["apikey"], "anon_xxx");
+    assert.equal(calls[0]!.headers["Authorization"], "Bearer anon_xxx");
     assert.deepEqual(result, [{ id: 1 }]);
+  });
+
+  it("can return project REST status metadata for CLI/MCP shims", async () => {
+    const { fetch, calls } = mockFetch(() => jsonResponse({ ok: true }, 201));
+    const sdk = makeSdk(makeCreds(), fetch);
+    const result = await sdk.projects.restResponse("prj_known", "todos", {
+      method: "POST",
+      body: { name: "ship it" },
+      keyType: "service",
+    });
+
+    assert.equal(calls[0]!.url, "https://api.example.test/rest/v1/todos");
+    assert.equal(calls[0]!.method, "POST");
+    assert.equal(calls[0]!.headers["apikey"], "service_xxx");
+    assert.equal(calls[0]!.headers["Authorization"], "Bearer service_xxx");
+    assert.equal(calls[0]!.headers["Prefer"], "return=representation");
+    assert.deepEqual(JSON.parse(calls[0]!.body as string), { name: "ship it" });
+    assert.deepEqual(result, { status: 201, body: { ok: true } });
   });
 
   it("applies and fetches expose manifests (GH-181)", async () => {

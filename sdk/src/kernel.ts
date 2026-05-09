@@ -37,11 +37,17 @@ export interface RequestOptions {
   context: string;
 }
 
+export interface ResponseEnvelope<T = unknown> {
+  status: number;
+  body: T;
+}
+
 /** Internal client surface passed to each namespace. */
 export interface Client {
   /** API base URL, e.g. `https://api.run402.com`. Exposed for namespaces that need to compute derived URLs (e.g. REST endpoints). */
   readonly apiBase: string;
   request<T>(path: string, opts: RequestOptions): Promise<T>;
+  requestWithResponse<T>(path: string, opts: RequestOptions): Promise<ResponseEnvelope<T>>;
   getProject(id: string): Promise<ProjectKeys | null>;
   /** The underlying credentials provider. Namespaces use this to access optional methods (saveProject, setActiveProject, ...). */
   readonly credentials: CredentialsProvider;
@@ -58,6 +64,14 @@ export async function request<T>(
   path: string,
   opts: RequestOptions,
 ): Promise<T> {
+  return (await requestWithResponse<T>(kernel, path, opts)).body;
+}
+
+export async function requestWithResponse<T>(
+  kernel: KernelConfig,
+  path: string,
+  opts: RequestOptions,
+): Promise<ResponseEnvelope<T>> {
   const { apiBase, fetch, credentials } = kernel;
   const { method = "GET", headers = {}, body, rawBody, withAuth = true, context } = opts;
   const url = `${apiBase}${path}`;
@@ -106,7 +120,7 @@ export async function request<T>(
     resBody = await res.text();
   }
 
-  if (res.ok) return resBody as T;
+  if (res.ok) return { status: res.status, body: resBody as T };
 
   if (res.status === 402) {
     throw new PaymentRequired(
@@ -146,6 +160,8 @@ export function buildClient(kernel: KernelConfig): Client {
   return {
     apiBase: kernel.apiBase,
     request: <T>(path: string, opts: RequestOptions) => request<T>(kernel, path, opts),
+    requestWithResponse: <T>(path: string, opts: RequestOptions) =>
+      requestWithResponse<T>(kernel, path, opts),
     getProject: (id: string) => kernel.credentials.getProject(id),
     credentials: kernel.credentials,
     fetch: kernel.fetch,

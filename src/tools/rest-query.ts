@@ -1,7 +1,7 @@
 import { z } from "zod";
-import { apiRequest } from "../client.js";
-import { getProject } from "../keystore.js";
-import { formatApiError, projectNotFound } from "../errors.js";
+import { getSdk } from "../sdk.js";
+import { mapSdkError } from "../errors.js";
+import type { ProjectRestMethod } from "../../sdk/dist/index.js";
 
 export const restQuerySchema = {
   project_id: z.string().describe("The project ID"),
@@ -32,49 +32,32 @@ export async function handleRestQuery(args: {
   body?: unknown;
   key_type?: string;
 }): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
-  const project = getProject(args.project_id);
-  if (!project) return projectNotFound(args.project_id);
-
-  const method = args.method || "GET";
-  const keyType = args.key_type || "anon";
-  const key = keyType === "service" ? project.service_key : project.anon_key;
-
-  // Build query string from params
-  let queryStr = "";
-  if (args.params && Object.keys(args.params).length > 0) {
-    const sp = new URLSearchParams(args.params);
-    queryStr = `?${sp.toString()}`;
+  const method = (args.method || "GET") as ProjectRestMethod;
+  let status: number;
+  let body: unknown;
+  try {
+    const response = await getSdk().projects.restResponse(args.project_id, args.table, {
+      method,
+      query: args.params,
+      body: args.body,
+      keyType: args.key_type === "service" ? "service" : "anon",
+    });
+    status = response.status;
+    body = response.body;
+  } catch (err) {
+    return mapSdkError(err, "querying REST API");
   }
-
-  const path = `/rest/v1/${args.table}${queryStr}`;
-  const headers: Record<string, string> = {
-    apikey: key,
-    Authorization: `Bearer ${key}`,
-  };
-
-  // For mutating requests, ask PostgREST to return the result
-  if (method !== "GET") {
-    headers["Prefer"] = "return=representation";
-  }
-
-  const res = await apiRequest(path, {
-    method,
-    headers,
-    body: args.body,
-  });
-
-  if (!res.ok) return formatApiError(res, "querying REST API");
 
   const text =
-    typeof res.body === "string"
-      ? res.body
-      : JSON.stringify(res.body, null, 2);
+    typeof body === "string"
+      ? body
+      : JSON.stringify(body, null, 2);
 
   return {
     content: [
       {
         type: "text",
-        text: `**${method} /rest/v1/${args.table}** → ${res.status}\n\n\`\`\`json\n${text}\n\`\`\``,
+        text: `**${method} /rest/v1/${args.table}** → ${status}\n\n\`\`\`json\n${text}\n\`\`\``,
       },
     ],
   };

@@ -22,6 +22,8 @@ import type {
   ListProjectsResult,
   PinResult,
   ProjectInfo,
+  ProjectRestOptions,
+  ProjectRestResponse,
   QuoteResult,
   SchemaReport,
   UsageReport,
@@ -73,6 +75,11 @@ import type {
   BlobPutSource,
   BlobSignOptions,
   BlobSignResult,
+  BlobUploadCompleteOptions,
+  BlobUploadCompleteResult,
+  BlobUploadInitOptions,
+  BlobUploadInitResult,
+  BlobUploadStatusResult,
   BlobWaitFreshOptions,
   BlobWaitFreshResult,
 } from "./namespaces/blobs.types.js";
@@ -161,8 +168,14 @@ class ScopedProjects {
   sql(sql: string, params?: unknown[]): Promise<unknown> {
     return this.parent.projects.sql(this.projectId, sql, params);
   }
-  rest<T = unknown>(table: string, queryParams?: string): Promise<T> {
-    return this.parent.projects.rest<T>(this.projectId, table, queryParams);
+  rest<T = unknown>(table: string, queryOrOptions?: string | ProjectRestOptions): Promise<T> {
+    return this.parent.projects.rest<T>(this.projectId, table, queryOrOptions);
+  }
+  restResponse<T = unknown>(
+    table: string,
+    queryOrOptions?: string | ProjectRestOptions,
+  ): Promise<ProjectRestResponse<T>> {
+    return this.parent.projects.restResponse<T>(this.projectId, table, queryOrOptions);
   }
   applyExpose(manifest: ExposeManifest): Promise<unknown> {
     return this.parent.projects.applyExpose(this.projectId, manifest);
@@ -318,6 +331,19 @@ class ScopedBlobs {
   }
   sign(key: string, opts?: BlobSignOptions): Promise<BlobSignResult> {
     return this.parent.blobs.sign(this.projectId, key, opts);
+  }
+  initUploadSession(opts: BlobUploadInitOptions): Promise<BlobUploadInitResult> {
+    return this.parent.blobs.initUploadSession(this.projectId, opts);
+  }
+  getUploadSession(uploadId: string): Promise<BlobUploadStatusResult> {
+    return this.parent.blobs.getUploadSession(this.projectId, uploadId);
+  }
+  completeUploadSession(
+    uploadId: string,
+    opts?: BlobUploadCompleteOptions,
+    extra?: { contentType?: string },
+  ): Promise<BlobUploadCompleteResult> {
+    return this.parent.blobs.completeUploadSession(this.projectId, uploadId, opts, extra);
   }
 }
 

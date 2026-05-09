@@ -1,4 +1,4 @@
-import { readAllowance, saveAllowance, ALLOWANCE_FILE, API } from "./config.mjs";
+import { readAllowance, saveAllowance, ALLOWANCE_FILE } from "./config.mjs";
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail } from "./sdk-errors.mjs";
 
@@ -173,14 +173,11 @@ async function fund() {
   const client = createPublicClient({ chain: baseSepolia, transport: http() });
   const before = await readUsdcBalance(client, USDC_SEPOLIA, w.address).catch(() => 0);
 
-  const res = await fetch(`${API}/faucet/v1`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ address: w.address }) });
-  const data = await res.json();
-  if (!res.ok) {
-    fail({
-      code: data?.code || "FAUCET_FAILED",
-      message: data?.message || "Faucet request failed",
-      details: { http: res.status, ...data },
-    });
+  let data;
+  try {
+    data = await getSdk().allowance.faucet(w.address);
+  } catch (err) {
+    reportSdkError(err);
   }
 
   const MAX_WAIT = 30;
@@ -228,10 +225,8 @@ async function balance() {
     readUsdcBalance(mainnetClient, USDC_MAINNET, w.address).catch(() => null),
     readUsdcBalance(sepoliaClient, USDC_SEPOLIA, w.address).catch(() => null),
     readUsdcBalance(tempoClient, PATH_USD, w.address).catch(() => null),
-    fetch(`${API}/billing/v1/accounts/${w.address.toLowerCase()}`),
+    getSdk().billing.checkBalance(w.address).catch(() => null),
   ]);
-
-  const billing = billingRes.ok ? await billingRes.json() : null;
 
   console.log(JSON.stringify({
     address: w.address,
@@ -241,7 +236,7 @@ async function balance() {
       "base-sepolia_usd_micros": sepoliaUsdc,
       "tempo-moderato_pathusd_micros": tempoPathUsd,
     },
-    run402: billing ? { balance_usd_micros: billing.available_usd_micros } : "no billing account",
+    run402: billingRes ? { balance_usd_micros: billingRes.available_usd_micros } : "no billing account",
   }, null, 2));
 }
 
@@ -274,14 +269,12 @@ async function checkout(args) {
       hint: "e.g. --amount 5000000 for $5",
     });
   }
-  const res = await fetch(`${API}/billing/v1/checkouts`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ wallet: w.address.toLowerCase(), amount_usd_micros: amount }),
-  });
-  const data = await res.json();
-  if (!res.ok) { console.error(JSON.stringify({ status: "error", http: res.status, ...data })); process.exit(1); }
-  console.log(JSON.stringify(data, null, 2));
+  try {
+    const data = await getSdk().billing.createCheckout(w.address, amount);
+    console.log(JSON.stringify(data, null, 2));
+  } catch (err) {
+    reportSdkError(err);
+  }
 }
 
 async function history(args) {
@@ -297,10 +290,12 @@ async function history(args) {
   for (let i = 0; i < args.length; i++) {
     if (args[i] === "--limit" && args[i + 1]) limit = parseInt(args[++i], 10);
   }
-  const res = await fetch(`${API}/billing/v1/accounts/${w.address.toLowerCase()}/history?limit=${limit}`);
-  const data = await res.json();
-  if (!res.ok) { console.error(JSON.stringify({ status: "error", http: res.status, ...data })); process.exit(1); }
-  console.log(JSON.stringify(data, null, 2));
+  try {
+    const data = await getSdk().billing.history(w.address, limit);
+    console.log(JSON.stringify(data, null, 2));
+  } catch (err) {
+    reportSdkError(err);
+  }
 }
 
 export async function run(sub, args) {

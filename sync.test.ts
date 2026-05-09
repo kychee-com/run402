@@ -8,7 +8,7 @@
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, existsSync, readdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { homedir } from "node:os";
@@ -346,8 +346,7 @@ const SURFACE: Capability[] = [
 // ─── SDK namespace mapping ──────────────────────────────────────────────────
 // Each SURFACE capability that has an MCP/CLI implementation should map to
 // an SDK method path `"namespace.method"`. Capabilities that are intentionally
-// not on the SDK (legacy storage aliases, pure wire passthroughs like run_sql)
-// map to null.
+// not on the SDK map to null.
 //
 // When you add a new capability to SURFACE that ships an SDK method, also
 // add the id → path mapping here. The tests below enforce both sides.
@@ -444,8 +443,8 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   tier_checkout: "billing.tierCheckout",
   buy_email_pack: "billing.buyEmailPack",
   set_auto_recharge: "billing.setAutoRecharge",
-  billing_balance: null, // CLI-only; identifier can be email or wallet — SDK models wallet
-  billing_history_cli: null, // same reason
+  billing_balance: "billing.getAccount",
+  billing_history_cli: "billing.getHistory",
 
   // Image / AI
   generate_image: "ai.generateImage",
@@ -754,6 +753,10 @@ describe("SDK surface alignment", () => {
       "email.listMailboxes",   // private helper
       "email.resolveMailbox",  // private helper
       "projects.active",       // returns active project id from the provider
+      "projects.restResponse", // REST proxy with HTTP status for CLI/MCP formatters
+      "blobs.initUploadSession", // low-level resumable upload primitive for CLI UX
+      "blobs.getUploadSession", // low-level resumable upload primitive for CLI UX
+      "blobs.completeUploadSession", // low-level resumable upload primitive for CLI UX
       // ─── unified-deploy ────────────────────────────────────────────────
       // The deploy namespace is the canonical primitive. apply() and resume()
       // are exposed via the `deploy` and `deploy_resume` MCP tools (and CLI
@@ -784,6 +787,53 @@ describe("SDK surface alignment", () => {
     );
   });
 });
+
+describe("CLI/MCP SDK-boundary guard", () => {
+  it("keeps production interface code from bypassing the SDK for gateway calls", () => {
+    const allowlist = new Map<string, RegExp[]>([
+      ["cli/lib/blob.mjs", [/\bfetch\(part\.url\b/]], // presigned S3 PUT, not a Run402 gateway call
+      ["cli/lib/allowance.mjs", [/\bfetch\(TEMPO_RPC\b/]], // Tempo faucet/RPC
+      ["cli/lib/init.mjs", [/\bfetch\(TEMPO_RPC\b/]], // Tempo faucet/RPC
+      ["cli/lib/ci.mjs", [/\bfetch\(`https:\/\/api\.github\.com\/repos\//]], // GitHub repository lookup
+      ["src/tools/init.ts", [/\bfetch\(TEMPO_RPC\b/]], // Tempo faucet/RPC
+    ]);
+
+    const violations: string[] = [];
+    for (const file of productionInterfaceFiles()) {
+      const rel = file.slice(__dirname.length + 1);
+      const allowed = allowlist.get(rel) ?? [];
+      const lines = readFileSync(file, "utf8").split(/\r?\n/);
+      lines.forEach((line, index) => {
+        if (/\bapiRequest\s*\(/.test(line)) {
+          violations.push(`${rel}:${index + 1}: apiRequest()`);
+        }
+        if (/\bfetch\s*\(/.test(line) && !allowed.some((pattern) => pattern.test(line))) {
+          violations.push(`${rel}:${index + 1}: ${line.trim()}`);
+        }
+      });
+    }
+
+    assert.deepEqual(
+      violations,
+      [],
+      "Production CLI/MCP handlers must call Run402 through @run402/sdk. " +
+        "Only presigned storage PUTs and non-Run402 external RPC/API calls may be allowlisted.",
+    );
+  });
+});
+
+function productionInterfaceFiles(): string[] {
+  const cliLib = join(__dirname, "cli/lib");
+  const srcTools = join(__dirname, "src/tools");
+  return [
+    ...readdirSync(cliLib)
+      .filter((name) => name.endsWith(".mjs"))
+      .map((name) => join(cliLib, name)),
+    ...readdirSync(srcTools)
+      .filter((name) => name.endsWith(".ts") && !name.endsWith(".test.ts"))
+      .map((name) => join(srcTools, name)),
+  ].sort();
+}
 
 describe("SURFACE consistency", () => {
   it("has no duplicate capability IDs", () => {

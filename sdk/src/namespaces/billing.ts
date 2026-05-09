@@ -54,14 +54,23 @@ export interface AccountIdentifier {
   wallet?: string;
 }
 
+export type BillingAccountIdentifier = string;
+
 export interface AutoRechargeOptions {
   billingAccountId: string;
   enabled: boolean;
   threshold?: number;
 }
 
+function encodeBillingIdentifier(identifier: BillingAccountIdentifier): string {
+  const normalized = /^0x/i.test(identifier)
+    ? identifier.toLowerCase()
+    : identifier;
+  return encodeURIComponent(normalized);
+}
+
 export class Billing {
-  readonly balance: (wallet: string) => Promise<BillingBalance>;
+  readonly balance: (identifier: BillingAccountIdentifier) => Promise<BillingBalance>;
   readonly createEmail: (email: string) => Promise<EmailBillingAccount>;
   readonly autoRecharge: (opts: AutoRechargeOptions) => Promise<void>;
 
@@ -71,21 +80,31 @@ export class Billing {
     this.autoRecharge = this.setAutoRecharge.bind(this);
   }
 
-  /** Check a wallet's billing balance (available / held / status). Public, no auth. */
-  async checkBalance(wallet: string): Promise<BillingBalance> {
-    const w = wallet.toLowerCase();
-    return this.client.request<BillingBalance>(`/billing/v1/accounts/${w}`, {
+  /** Check a billing account by wallet or email identifier. Public, no auth. */
+  async checkBalance(identifier: BillingAccountIdentifier): Promise<BillingBalance> {
+    return this.getAccount(identifier);
+  }
+
+  /** Check a billing account by wallet or email identifier. Public, no auth. */
+  async getAccount(identifier: BillingAccountIdentifier): Promise<BillingBalance> {
+    const encoded = encodeBillingIdentifier(identifier);
+    return this.client.request<BillingBalance>(`/billing/v1/accounts/${encoded}`, {
       context: "checking balance",
       withAuth: false,
     });
   }
 
-  /** Fetch billing history for a wallet. */
-  async history(wallet: string, limit?: number): Promise<BillingHistoryResult> {
-    const w = wallet.toLowerCase();
+  /** Fetch billing history by wallet or email identifier. */
+  async history(identifier: BillingAccountIdentifier, limit?: number): Promise<BillingHistoryResult> {
+    return this.getHistory(identifier, limit);
+  }
+
+  /** Fetch billing history by wallet or email identifier. */
+  async getHistory(identifier: BillingAccountIdentifier, limit?: number): Promise<BillingHistoryResult> {
+    const encoded = encodeBillingIdentifier(identifier);
     const path = limit
-      ? `/billing/v1/accounts/${w}/history?limit=${limit}`
-      : `/billing/v1/accounts/${w}/history`;
+      ? `/billing/v1/accounts/${encoded}/history?limit=${encodeURIComponent(String(limit))}`
+      : `/billing/v1/accounts/${encoded}/history`;
     return this.client.request<BillingHistoryResult>(path, {
       context: "fetching billing history",
       withAuth: false,

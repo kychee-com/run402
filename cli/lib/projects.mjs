@@ -1,5 +1,5 @@
 import { readFileSync } from "fs";
-import { findProject, loadKeyStore, API, allowanceAuthHeaders, resolveProjectId, getActiveProjectId } from "./config.mjs";
+import { loadKeyStore, API, allowanceAuthHeaders, resolveProjectId, getActiveProjectId } from "./config.mjs";
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail, parseFlagJson } from "./sdk-errors.mjs";
 import { assertKnownFlags, failBadProjectId, flagValue, hasHelp, normalizeArgv, positionalArgs, resolvePositionalProject, validateRegularFile } from "./argparse.mjs";
@@ -212,7 +212,6 @@ async function applyExpose(projectId, args = []) {
     else if (!inline && !args[i].startsWith("--")) { inline = args[i]; }
   }
   if (file) validateRegularFile(file, "--file");
-  const p = findProject(projectId);
   const raw = file ? readFileSync(file, "utf-8") : inline;
   if (!raw) {
     fail({
@@ -230,24 +229,21 @@ async function applyExpose(projectId, args = []) {
       details: { parse_error: err.message },
     });
   }
-  const res = await fetch(`${API}/projects/v1/admin/${projectId}/expose`, {
-    method: "POST",
-    headers: { "Authorization": `Bearer ${p.service_key}`, "Content-Type": "application/json" },
-    body: JSON.stringify(manifest),
-  });
-  const data = await res.json();
-  if (!res.ok) { console.error(JSON.stringify({ status: "error", http: res.status, ...data })); process.exit(1); }
-  console.log(JSON.stringify(data, null, 2));
+  try {
+    const data = await getSdk().projects.applyExpose(projectId, manifest);
+    console.log(JSON.stringify(data, null, 2));
+  } catch (err) {
+    reportSdkError(err);
+  }
 }
 
 async function getExpose(projectId) {
-  const p = findProject(projectId);
-  const res = await fetch(`${API}/projects/v1/admin/${projectId}/expose`, {
-    headers: { "Authorization": `Bearer ${p.service_key}` },
-  });
-  const data = await res.json();
-  if (!res.ok) { console.error(JSON.stringify({ status: "error", http: res.status, ...data })); process.exit(1); }
-  console.log(JSON.stringify(data, null, 2));
+  try {
+    const data = await getSdk().projects.getExpose(projectId);
+    console.log(JSON.stringify(data, null, 2));
+  } catch (err) {
+    reportSdkError(err);
+  }
 }
 
 async function list() {
@@ -292,7 +288,6 @@ async function sqlCmd(projectId, args = []) {
     else if (!query && !args[i].startsWith("--")) { query = args[i]; }
   }
   if (file) validateRegularFile(file, "--file");
-  const p = findProject(projectId);
   const sql = file ? readFileSync(file, "utf-8") : query;
   if (!sql) {
     fail({
@@ -311,13 +306,12 @@ async function sqlCmd(projectId, args = []) {
       });
     }
   }
-  const useParams = params && params.length > 0;
-  const headers = { "Authorization": `Bearer ${p.service_key}`, "Content-Type": useParams ? "application/json" : "text/plain" };
-  const body = useParams ? JSON.stringify({ sql, params }) : sql;
-  const res = await fetch(`${API}/projects/v1/admin/${projectId}/sql`, { method: "POST", headers, body });
-  const data = await res.json();
-  if (!res.ok) { console.error(JSON.stringify({ status: "error", http: res.status, ...data })); process.exit(1); }
-  console.log(JSON.stringify(data, null, 2));
+  try {
+    const data = await getSdk().projects.sql(projectId, sql, params);
+    console.log(JSON.stringify(data, null, 2));
+  } catch (err) {
+    reportSdkError(err);
+  }
 }
 
 async function rest(projectId, table, queryParams) {
@@ -328,11 +322,12 @@ async function rest(projectId, table, queryParams) {
       hint: "Run 'run402 projects schema <id>' to list tables.",
     });
   }
-  const p = findProject(projectId);
-  const res = await fetch(`${API}/rest/v1/${table}${queryParams ? '?' + queryParams : ''}`, { headers: { "apikey": p.anon_key } });
-  const data = await res.json();
-  if (!res.ok) { console.error(JSON.stringify({ status: "error", http: res.status, ...data })); process.exit(1); }
-  console.log(JSON.stringify(data, null, 2));
+  try {
+    const data = await getSdk().projects.rest(projectId, table, queryParams);
+    console.log(JSON.stringify(data, null, 2));
+  } catch (err) {
+    reportSdkError(err);
+  }
 }
 
 async function usage(projectId) {
@@ -420,15 +415,12 @@ async function promoteUser(projectId, email) {
       hint: "run402 projects promote-user <project_id> <email>",
     });
   }
-  const p = findProject(projectId);
-  const res = await fetch(`${API}/projects/v1/admin/${projectId}/promote-user`, {
-    method: "POST",
-    headers: { "Authorization": `Bearer ${p.service_key}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ email }),
-  });
-  const data = await res.json();
-  if (!res.ok) { console.error(JSON.stringify({ status: "error", http: res.status, ...data })); process.exit(1); }
-  console.log(JSON.stringify(data, null, 2));
+  try {
+    await getSdk().projects.promoteUser(projectId, email);
+    console.log(JSON.stringify({ status: "ok", email }));
+  } catch (err) {
+    reportSdkError(err);
+  }
 }
 
 async function demoteUser(projectId, email) {
@@ -439,15 +431,12 @@ async function demoteUser(projectId, email) {
       hint: "run402 projects demote-user <project_id> <email>",
     });
   }
-  const p = findProject(projectId);
-  const res = await fetch(`${API}/projects/v1/admin/${projectId}/demote-user`, {
-    method: "POST",
-    headers: { "Authorization": `Bearer ${p.service_key}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ email }),
-  });
-  const data = await res.json();
-  if (!res.ok) { console.error(JSON.stringify({ status: "error", http: res.status, ...data })); process.exit(1); }
-  console.log(JSON.stringify(data, null, 2));
+  try {
+    await getSdk().projects.demoteUser(projectId, email);
+    console.log(JSON.stringify({ status: "ok", email }));
+  } catch (err) {
+    reportSdkError(err);
+  }
 }
 
 async function deleteProject(projectId, args = []) {

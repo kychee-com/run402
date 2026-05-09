@@ -5,12 +5,14 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { handleRestQuery } from "./rest-query.js";
 import { saveProject } from "../keystore.js";
+import { _resetSdk } from "../sdk.js";
 
 const originalFetch = globalThis.fetch;
 let tempDir: string;
 let storePath: string;
 
 beforeEach(() => {
+  _resetSdk();
   tempDir = mkdtempSync(join(tmpdir(), "run402-rest-test-"));
   storePath = join(tempDir, "projects.json");
   process.env.RUN402_CONFIG_DIR = tempDir;
@@ -18,6 +20,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  _resetSdk();
   globalThis.fetch = originalFetch;
   rmSync(tempDir, { recursive: true, force: true });
   delete process.env.RUN402_CONFIG_DIR;
@@ -133,6 +136,7 @@ describe("rest_query tool", () => {
     // Default = anon
     await handleRestQuery({ project_id: "proj-r4", table: "users" });
     assert.equal(capturedHeaders["apikey"], "ak-anon");
+    assert.equal(capturedHeaders["Authorization"], "Bearer ak-anon");
 
     // Explicit service
     await handleRestQuery({
@@ -141,6 +145,7 @@ describe("rest_query tool", () => {
       key_type: "service",
     });
     assert.equal(capturedHeaders["apikey"], "sk-svc");
+    assert.equal(capturedHeaders["Authorization"], "Bearer sk-svc");
   });
 
   it("returns isError when project not in keystore", async () => {

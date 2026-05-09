@@ -102,6 +102,27 @@ export interface SchemaReport {
   tables: TableSchema[];
 }
 
+// ─── REST / PostgREST ─────────────────────────────────────────────────
+
+export type ProjectRestMethod = "GET" | "POST" | "PATCH" | "DELETE";
+export type ProjectRestKeyType = "anon" | "service";
+
+export interface ProjectRestOptions {
+  /** HTTP method. Default: "GET". */
+  method?: ProjectRestMethod;
+  /** Query string without leading "?", or key/value query parameters. */
+  query?: string | Record<string, string>;
+  /** JSON body for POST/PATCH/DELETE requests. */
+  body?: unknown;
+  /** Key used for apikey + bearer auth. Default: "anon". */
+  keyType?: ProjectRestKeyType;
+}
+
+export interface ProjectRestResponse<T = unknown> {
+  status: number;
+  body: T;
+}
+
 // ─── RLS templates (used by apps.bundleDeploy expose translation) ─────
 
 export type RlsTemplate =

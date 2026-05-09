@@ -715,6 +715,109 @@ describe("blobs.put — AssetRef widening (v1.45)", () => {
   });
 });
 
+describe("blobs upload sessions", () => {
+  it("initializes upload sessions with project anon auth", async () => {
+    const { fetch, calls } = mockFetch(() =>
+      json({
+        upload_id: "up_1",
+        mode: "multipart",
+        part_count: 2,
+        part_size_bytes: 16_777_216,
+        parts: [
+          { part_number: 1, url: "https://s3.test/up_1/1", byte_start: 0, byte_end: 5 },
+          { part_number: 2, url: "https://s3.test/up_1/2", byte_start: 6, byte_end: 10 },
+        ],
+      }, 201),
+    );
+    const sdk = makeSdk(fetch);
+    const session = await sdk.blobs.initUploadSession("prj_known", {
+      key: "video.mp4",
+      size_bytes: 11,
+      content_type: "video/mp4",
+      visibility: "private",
+      immutable: true,
+      sha256: "abc123",
+    });
+
+    assert.equal(session.upload_id, "up_1");
+    assert.equal(session.part_count, 2);
+    assert.equal(calls[0]!.url, "https://api.example.test/storage/v1/uploads");
+    assert.equal(calls[0]!.method, "POST");
+    assert.equal(calls[0]!.headers.apikey, "anon_k");
+    assert.equal(calls[0]!.headers.Authorization, "Bearer anon_k");
+    const body = JSON.parse(calls[0]!.body as string);
+    assert.deepEqual(body, {
+      key: "video.mp4",
+      size_bytes: 11,
+      content_type: "video/mp4",
+      visibility: "private",
+      immutable: true,
+      sha256: "abc123",
+    });
+  });
+
+  it("fetches upload session status with encoded upload id", async () => {
+    const { fetch, calls } = mockFetch(() =>
+      json({
+        upload_id: "up/1",
+        status: "active",
+        mode: "single",
+        part_count: 1,
+        parts: [{ part_number: 1, url: "https://s3.test/up_1/1", byte_start: 0, byte_end: 9 }],
+      }),
+    );
+    const sdk = makeSdk(fetch);
+    const session = await sdk.blobs.getUploadSession("prj_known", "up/1");
+
+    assert.equal(session.status, "active");
+    assert.equal(calls[0]!.url, "https://api.example.test/storage/v1/uploads/up%2F1");
+    assert.equal(calls[0]!.headers.apikey, "anon_k");
+  });
+
+  it("completes upload sessions and returns AssetRef shape", async () => {
+    const { fetch, calls } = mockFetch(() =>
+      json({
+        key: "app.js",
+        size_bytes: 42,
+        sha256: "00".repeat(32),
+        visibility: "public",
+        content_type: "text/javascript",
+        immutable_suffix: "00000000",
+        url: "https://cdn.test/app.js",
+        immutable_url: "https://cdn.test/app-00000000.js",
+        cdn_url: "https://pr-abc.run402.com/_blob/app.js",
+        cdn_immutable_url: "https://pr-abc.run402.com/_blob/app-00000000.js",
+      }),
+    );
+    const sdk = makeSdk(fetch);
+    const result = await sdk.blobs.completeUploadSession("prj_known", "up 1", {
+      parts: [{ part_number: 1, etag: '"etag1"' }],
+    });
+
+    assert.equal(calls[0]!.url, "https://api.example.test/storage/v1/uploads/up%201/complete");
+    assert.equal(calls[0]!.method, "POST");
+    assert.deepEqual(JSON.parse(calls[0]!.body as string), {
+      parts: [{ part_number: 1, etag: '"etag1"' }],
+    });
+    assert.equal(result.key, "app.js");
+    assert.equal(result.contentType, "text/javascript");
+    assert.equal(result.cdnUrl, "https://pr-abc.run402.com/_blob/app-00000000.js");
+  });
+
+  it("throws ProjectNotFound for missing upload-session project", async () => {
+    const { fetch } = mockFetch(() => json({}));
+    const sdk = makeSdk(fetch);
+    await assert.rejects(
+      sdk.blobs.initUploadSession("prj_missing", {
+        key: "x",
+        size_bytes: 1,
+        content_type: "text/plain",
+      }),
+      ProjectNotFound,
+    );
+  });
+});
+
 describe("blobs.diagnoseUrl", () => {
   it("GETs /storage/v1/blobs/diagnose with the URL query-encoded", async () => {
     const { fetch, calls } = mockFetch(() =>

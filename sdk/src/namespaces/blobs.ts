@@ -20,6 +20,11 @@ import type {
   BlobPutSource,
   BlobSignOptions,
   BlobSignResult,
+  BlobUploadCompleteOptions,
+  BlobUploadCompleteResult,
+  BlobUploadInitOptions,
+  BlobUploadInitResult,
+  BlobUploadStatusResult,
   BlobWaitFreshOptions,
   BlobWaitFreshResult,
 } from "./blobs.types.js";
@@ -58,13 +63,6 @@ async function sha256Hex(bytes: Uint8Array): Promise<string> {
   return Array.from(new Uint8Array(hash))
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
-}
-
-interface UploadInitResponse {
-  upload_id: string;
-  mode: "single" | "multipart";
-  parts: Array<{ part_number: number; url: string; byte_start: number; byte_end: number }>;
-  part_count: number;
 }
 
 /**
@@ -272,9 +270,6 @@ export class Blobs {
     source: BlobPutSource,
     opts: BlobPutOptions = {},
   ): Promise<BlobPutResult> {
-    const project = await this.client.getProject(projectId);
-    if (!project) throw new ProjectNotFound(projectId, "uploading blob");
-
     // Normalize the polymorphic source shape (GH-126). Bare strings and
     // Uint8Arrays are accepted as a shorthand for `{ content }` / `{ bytes }`
     // so callers don't need to know about the wrapper object — every other
@@ -318,21 +313,13 @@ export class Blobs {
     const sha256 = immutable ? await sha256Hex(bytes) : undefined;
 
     // 1. Init upload — gateway returns presigned S3 URLs for each part.
-    const init = await this.client.request<UploadInitResponse>("/storage/v1/uploads", {
-      method: "POST",
-      headers: {
-        apikey: project.anon_key,
-        Authorization: `Bearer ${project.anon_key}`,
-      },
-      body: {
-        key,
-        size_bytes: sizeBytes,
-        content_type: contentType,
-        visibility: opts.visibility ?? "public",
-        immutable,
-        sha256,
-      },
-      context: "initializing upload",
+    const init = await this.initUploadSession(projectId, {
+      key,
+      size_bytes: sizeBytes,
+      content_type: contentType,
+      visibility: opts.visibility ?? "public",
+      immutable,
+      sha256,
     });
 
     // 2. PUT each part directly to S3 via the presigned URL.
@@ -361,24 +348,88 @@ export class Blobs {
     const completeBody = init.mode === "multipart"
       ? { parts: partEtags.map((e, i) => ({ part_number: i + 1, etag: `"${e.etag}"` })) }
       : {};
+    return this.completeUploadSession(projectId, init.upload_id, completeBody, {
+      contentType,
+    });
+  }
+
+  /**
+   * Initialize a low-level upload session. This is the gateway half of
+   * `blobs.put`, exposed for CLI-style resumable streaming uploaders that need
+   * to manage local files, part concurrency, and cached session state.
+   */
+  async initUploadSession(
+    projectId: string,
+    opts: BlobUploadInitOptions,
+  ): Promise<BlobUploadInitResult> {
+    const project = await this.client.getProject(projectId);
+    if (!project) throw new ProjectNotFound(projectId, "initializing upload");
+
+    return this.client.request<BlobUploadInitResult>("/storage/v1/uploads", {
+      method: "POST",
+      headers: {
+        apikey: project.anon_key,
+        Authorization: `Bearer ${project.anon_key}`,
+      },
+      body: {
+        key: opts.key,
+        size_bytes: opts.size_bytes,
+        content_type: opts.content_type,
+        visibility: opts.visibility ?? "public",
+        immutable: opts.immutable ?? false,
+        ...(opts.sha256 !== undefined ? { sha256: opts.sha256 } : {}),
+      },
+      context: "initializing upload",
+    });
+  }
+
+  /** Fetch a low-level upload session's current status for resumable uploads. */
+  async getUploadSession(
+    projectId: string,
+    uploadId: string,
+  ): Promise<BlobUploadStatusResult> {
+    const project = await this.client.getProject(projectId);
+    if (!project) throw new ProjectNotFound(projectId, "fetching upload session");
+
+    return this.client.request<BlobUploadStatusResult>(
+      `/storage/v1/uploads/${encodeURIComponent(uploadId)}`,
+      {
+        headers: {
+          apikey: project.anon_key,
+          Authorization: `Bearer ${project.anon_key}`,
+        },
+        context: "fetching upload session",
+      },
+    );
+  }
+
+  /**
+   * Complete a low-level upload session and return the same AssetRef shape as
+   * `blobs.put`. Single PUT sessions may omit `parts`.
+   */
+  async completeUploadSession(
+    projectId: string,
+    uploadId: string,
+    opts: BlobUploadCompleteOptions = {},
+    extra: { contentType?: string } = {},
+  ): Promise<BlobUploadCompleteResult> {
+    const project = await this.client.getProject(projectId);
+    if (!project) throw new ProjectNotFound(projectId, "completing upload");
+
     const completion = await this.client.request<UploadCompleteResponse>(
-      `/storage/v1/uploads/${init.upload_id}/complete`,
+      `/storage/v1/uploads/${encodeURIComponent(uploadId)}/complete`,
       {
         method: "POST",
         headers: {
           apikey: project.anon_key,
           Authorization: `Bearer ${project.anon_key}`,
         },
-        body: completeBody,
+        body: opts.parts ? { parts: opts.parts } : {},
         context: "completing upload",
       },
     );
 
-    // Widen the gateway response into the v1.45 AssetRef return type. Older
-    // gateway versions don't emit the `cdn` envelope; `buildAssetRef` fills
-    // safe defaults derived from the SHA + visibility so the SDK surface is
-    // stable across gateway versions.
-    return buildAssetRef(completion, contentType);
+    return buildAssetRef(completion, extra.contentType ?? completion.content_type ?? "application/octet-stream");
   }
 
   /**

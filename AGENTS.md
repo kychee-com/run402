@@ -84,7 +84,7 @@ functions/ ← @run402/functions in-function helper (db, adminDb, getUser, email
               also installable for local TypeScript autocomplete.
 ```
 
-The SDK is the canonical kernel — a single typed client with a `CredentialsProvider` interface for credential access and a pluggable `fetch` (for x402 wrapping in Node, session tokens in sandboxes). MCP handlers and CLI commands are thin shims: argv/schema parsing + SDK call + output formatting. When code-mode MCP ships, the same SDK runs inside a V8 isolate.
+The SDK is the canonical kernel — a single typed client with a `CredentialsProvider` interface for credential access and a pluggable `fetch` (for x402 wrapping in Node, session tokens in sandboxes). MCP handlers and CLI commands are thin shims: argv/schema parsing + SDK call + output formatting. They must not call Run402 gateway endpoints directly; add missing SDK methods first. The only direct `fetch()` calls allowed at those edges are non-Run402 external services (Tempo RPC, GitHub API) and presigned storage part URLs returned by the SDK. `sync.test.ts` enforces this boundary. When code-mode MCP ships, the same SDK runs inside a V8 isolate.
 
 ### SDK (`sdk/src/`)
 
@@ -138,7 +138,7 @@ The `core/` module contains shared logic imported by all interfaces:
 - **`allowance.ts`** — `readAllowance()`, `saveAllowance()` with atomic writes (temp-file + rename, mode 0600).
 - **`allowance-auth.ts`** — EIP-191 signing with `@noble/curves`. `getAllowanceAuthHeaders()` returns headers or null.
 - **`keystore.ts`** — Unified project credential store. Object schema: `{projects: {id: {anon_key, service_key, tier, lease_expires_at}}}`. Auto-migrates legacy array format and `expires_at` → `lease_expires_at`. Functions: `loadKeyStore()`, `saveKeyStore()`, `getProject()`, `saveProject()`, `removeProject()`.
-- **`client.ts`** — `apiRequest()` fetch wrapper. Handles JSON/text responses, 402 payment detection.
+- **`client.ts`** — legacy `apiRequest()` fetch wrapper. Handles JSON/text responses, 402 payment detection. Do not use it from CLI/MCP functionality; add or call an SDK method instead.
 
 Core functions return `null` or throw — they never call `process.exit()`. Each interface wraps with its own error behavior.
 
@@ -166,7 +166,7 @@ Core functions return `null` or throw — they never call `process.exit()`. Each
 - **`cli/lib/sdk-errors.mjs`** — `reportSdkError(err)` writes JSON envelope `{status: "error", http?, message?, body_preview?, ...body}` to stderr and calls `process.exit(1)`. Preserves `ProjectNotFound` plain-text format with the "Hint: project IDs start with prj_" guidance.
 - **`cli/lib/config.mjs`** — Imports from `../core-dist/`, adds CLI wrappers (`allowanceAuthHeaders()` with process.exit, `findProject()` with process.exit). Re-exports core keystore functions.
 - **`cli/lib/*.mjs`** — Each module exports `async run(sub, args)`. Subcommand bodies: argv parse + SDK call + JSON output + `reportSdkError` on failure.
-- **`cli/lib/blob.mjs`** retains raw `fetch` for the `put` subcommand only — resumable uploads + per-part concurrency are CLI-specific UX not modeled in the SDK.
+- **`cli/lib/blob.mjs`** uses SDK blob upload-session primitives for init/status/complete and retains raw `fetch` only for the presigned S3 part URLs returned by the SDK. Resumable state and per-part concurrency stay at the CLI edge.
 - **`cli/lib/deploy.mjs`** delegates to `getSdk().apps.bundleDeploy(...)` (the v2 shim). The legacy custom undici dispatcher and retry-on-5xx logic was retired with the v1 route removal — v2 doesn't ship inline bytes, so the long-timeout rationale no longer applies.
 - **`cli/lib/deploy-v2.mjs`** — `run402 deploy apply`, `resume`, `list`, `events`, and `release <get|active|diff>` subcommands. Thin wrappers over `r.deploy.*`.
 - **`cli/lib/ci.mjs`** — `run402 ci link github`, `run402 ci list`, and `run402 ci revoke`. Link signs the canonical delegation locally, verifies/inserts the GitHub repository id, optionally includes normalized `route_scopes`, and writes a workflow using GitHub OIDC (`permissions: id-token: write`) plus the existing `deploy apply` command.

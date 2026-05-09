@@ -1,4 +1,3 @@
-import { findProject, API } from "./config.mjs";
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail, parseFlagJson } from "./sdk-errors.mjs";
 
@@ -138,7 +137,6 @@ function hasFlag(args, flag) {
 }
 
 async function provisionWallet(projectId, args) {
-  const p = findProject(projectId);
   const chain = parseFlag(args, "--chain");
   if (!chain) {
     fail({
@@ -147,25 +145,19 @@ async function provisionWallet(projectId, args) {
     });
   }
   const recovery = parseFlag(args, "--recovery");
-  // Soft default of one wallet — confirm if project already has one. This
-  // pre-check stays on raw fetch because it's a discovery best-effort, not
-  // a primary API call.
+  // Soft default of one wallet — confirm if project already has one.
+  let activeWallets = null;
   try {
-    const listRes = await fetch(`${API}/contracts/v1/wallets`, {
-      headers: { Authorization: `Bearer ${p.service_key}` },
-    });
-    if (listRes.ok) {
-      const list = await listRes.json();
-      const active = (list.wallets || []).filter((w) => w.status === "active");
-      if (active.length >= 1 && !hasFlag(args, "--yes")) {
-        fail({
-          code: "CONFIRMATION_REQUIRED",
-          message: `This project already has ${active.length} active wallet(s). Adding another costs $0.04/day each ($1.20/month). Re-run with --yes to confirm.`,
-          details: { active_wallets: active.length },
-        });
-      }
-    }
+    const list = await getSdk().contracts.listWallets(projectId);
+    activeWallets = (list.wallets || []).filter((w) => w.status === "active").length;
   } catch { /* best-effort */ }
+  if (activeWallets !== null && activeWallets >= 1 && !hasFlag(args, "--yes")) {
+    fail({
+      code: "CONFIRMATION_REQUIRED",
+      message: `This project already has ${activeWallets} active wallet(s). Adding another costs $0.04/day each ($1.20/month). Re-run with --yes to confirm.`,
+      details: { active_wallets: activeWallets },
+    });
+  }
 
   try {
     const data = await getSdk().contracts.provisionWallet(projectId, {

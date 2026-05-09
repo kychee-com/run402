@@ -72,7 +72,7 @@ The `CredentialsProvider` interface has two required methods (`getAuth`, `getPro
 | `auth` | `requestMagicLink`, `verifyMagicLink`, `createUser`, `inviteUser`, `setUserPassword`, `settings`, passkey registration/login/list/delete helpers, `providers`, `promote`, `demote` |
 | `apps` | `browse`, `getApp`, `fork`, `publish`, `listVersions`, `updateVersion`, `deleteVersion`, `bundleDeploy` (legacy shim → routes through `deploy`) |
 | `tier` | `set`, `status` (tier pricing lives on `r.projects.getQuote()`) |
-| `billing` | `createEmailAccount`, `linkWallet`, `tierCheckout`, `buyEmailPack`, `setAutoRecharge`, `balance`, `history`, `createCheckout` |
+| `billing` | `createEmailAccount`, `linkWallet`, `tierCheckout`, `buyEmailPack`, `setAutoRecharge`, `checkBalance`, `getAccount`, `getHistory`, `balance`, `history`, `createCheckout` |
 | `contracts` | `provisionWallet`, `getWallet`, `listWallets`, `setRecovery`, `setLowBalanceAlert`, `call`, `read`, `callStatus`, `drain`, `deleteWallet` |
 | `ai` | `translate`, `moderate`, `usage`, `generateImage` |
 | `allowance` | `status`, `create`, `export`, `faucet` |
@@ -127,6 +127,11 @@ const logo = await r.blobs.put(projectId, "logo.png", { bytes });
 ```
 
 `immutable: true` is the default since v1.45 — pass `false` only when you specifically want to skip the SHA-256 pass on a very large upload.
+
+For custom resumable upload UX, use the low-level session primitives:
+`r.blobs.initUploadSession(...)`, `r.blobs.getUploadSession(...)`, and
+`r.blobs.completeUploadSession(...)`. Bytes still go directly to the presigned
+part URLs; the Run402 gateway sees only session metadata.
 
 ### Unified deploy (v1.34+) — `r.deploy.apply`
 

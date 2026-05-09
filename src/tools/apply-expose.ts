@@ -1,7 +1,6 @@
 import { z } from "zod";
-import { apiRequest } from "../client.js";
-import { getProject } from "../keystore.js";
-import { formatApiError, projectNotFound } from "../errors.js";
+import { getSdk } from "../sdk.js";
+import { mapSdkError } from "../errors.js";
 
 const MANIFEST_POLICIES = [
   "user_owns_rows",
@@ -65,25 +64,17 @@ export async function handleApplyExpose(args: {
     rpcs: Array<Record<string, unknown>>;
   };
 }): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
-  const project = getProject(args.project_id);
-  if (!project) return projectNotFound(args.project_id);
-
-  const res = await apiRequest(`/projects/v1/admin/${args.project_id}/expose`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${project.service_key}`,
-    },
-    body: args.manifest,
-  });
-
-  if (!res.ok) return formatApiError(res, "applying expose manifest");
-
-  const body = res.body as {
+  let body: {
     status: string;
     project_id: string;
     applied: { tables: string[]; views: string[]; rpcs: string[] };
     dropped: { tables: string[]; views: string[]; rpcs: string[] };
   };
+  try {
+    body = await getSdk().projects.applyExpose(args.project_id, args.manifest) as typeof body;
+  } catch (err) {
+    return mapSdkError(err, "applying expose manifest");
+  }
 
   const fmtList = (items: string[]) => (items.length === 0 ? "_(none)_" : items.map((n) => `\`${n}\``).join(", "));
 

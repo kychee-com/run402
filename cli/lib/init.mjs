@@ -1,5 +1,5 @@
-import { readAllowance, saveAllowance, loadKeyStore, CONFIG_DIR, ALLOWANCE_FILE, API } from "./config.mjs";
-import { getAllowanceAuthHeaders } from "../core-dist/allowance-auth.js";
+import { readAllowance, saveAllowance, loadKeyStore, CONFIG_DIR } from "./config.mjs";
+import { getSdk } from "./sdk.mjs";
 import { mkdirSync } from "fs";
 
 const USDC_ABI = [{ name: "balanceOf", type: "function", stateMutability: "view", inputs: [{ name: "account", type: "address" }], outputs: [{ name: "", type: "uint256" }] }];
@@ -38,6 +38,11 @@ Run this once to get started, or again to check your setup.
 `;
 
 function short(addr) { return addr.slice(0, 6) + "..." + addr.slice(-4); }
+
+function errorMessage(err) {
+  if (err?.body && typeof err.body === "object") return err.body.message || err.body.error || err.message;
+  return err?.message || String(err);
+}
 
 export async function run(args = []) {
   if (args.includes("--help") || args.includes("-h")) { console.log(HELP); process.exit(0); }
@@ -178,12 +183,8 @@ export async function run(args = []) {
 
     if (balance === 0) {
       line("Balance", "0 USDC — requesting faucet...");
-      const res = await fetch(`${API}/faucet/v1`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ address: allowance.address }),
-      });
-      if (res.ok) {
+      try {
+        await getSdk().allowance.faucet(allowance.address);
         // Poll for up to 30s
         for (let i = 0; i < 30; i++) {
           await new Promise(r => setTimeout(r, 1000));
@@ -200,10 +201,8 @@ export async function run(args = []) {
         } else {
           line("Balance", "faucet sent — not yet confirmed on-chain");
         }
-      } else {
-        const data = await res.json().catch(() => ({}));
-        const msg = data.error || data.message || `HTTP ${res.status}`;
-        line("Balance", `faucet failed: ${msg}`);
+      } catch (err) {
+        line("Balance", `faucet failed: ${errorMessage(err)}`);
       }
     } else {
       line("Balance", `${(balance / 1e6).toFixed(2)} USDC`);
@@ -222,13 +221,7 @@ export async function run(args = []) {
   const store = loadKeyStore();
   let tierInfo = null;
   try {
-    const authHeaders = getAllowanceAuthHeaders("/tiers/v1/status");
-    if (authHeaders) {
-      const res = await fetch(`${API}/tiers/v1/status`, {
-        headers: { ...authHeaders },
-      });
-      if (res.ok) tierInfo = await res.json();
-    }
+    tierInfo = await getSdk().tier.status();
   } catch {}
 
   if (tierInfo && tierInfo.tier && tierInfo.active) {

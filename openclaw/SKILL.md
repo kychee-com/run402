@@ -412,6 +412,10 @@ For TypeScript autocomplete in your editor: `npm install @run402/functions` in y
 
 ### Calling a function from the browser
 
+Agent-side calls should use `run402 functions invoke`; this direct `fetch()`
+shape is only for app/browser code that needs to call the deployed function
+from the user's session.
+
 ```js
 const res = await fetch("https://api.run402.com/functions/v1/my-fn", {
   method: "POST",

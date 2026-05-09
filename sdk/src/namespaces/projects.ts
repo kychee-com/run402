@@ -14,6 +14,8 @@ import type {
   ListProjectsResult,
   PinResult,
   ProjectInfo,
+  ProjectRestOptions,
+  ProjectRestResponse,
   ProvisionOptions,
   ProvisionResult,
   QuoteResult,
@@ -187,13 +189,41 @@ export class Projects {
     });
   }
 
-  /** Query a project table through PostgREST using the project's anon key. */
-  async rest<T = unknown>(id: string, table: string, queryParams?: string): Promise<T> {
+  /** Query or mutate a project table through PostgREST. */
+  async rest<T = unknown>(
+    id: string,
+    table: string,
+    queryOrOptions?: string | ProjectRestOptions,
+  ): Promise<T> {
+    return (await this.restResponse<T>(id, table, queryOrOptions)).body;
+  }
+
+  /** Query or mutate a project table through PostgREST and preserve HTTP status. */
+  async restResponse<T = unknown>(
+    id: string,
+    table: string,
+    queryOrOptions?: string | ProjectRestOptions,
+  ): Promise<ProjectRestResponse<T>> {
     const keys = await this.client.getProject(id);
     if (!keys) throw new ProjectNotFound(id, "querying REST");
-    const suffix = queryParams ? `?${queryParams}` : "";
-    return this.client.request<T>(`/rest/v1/${encodeURIComponent(table)}${suffix}`, {
-      headers: { apikey: keys.anon_key },
+
+    const opts: ProjectRestOptions =
+      typeof queryOrOptions === "string"
+        ? { query: queryOrOptions }
+        : queryOrOptions ?? {};
+    const method = opts.method ?? "GET";
+    const key = opts.keyType === "service" ? keys.service_key : keys.anon_key;
+    const query = formatRestQuery(opts.query);
+    const headers: Record<string, string> = {
+      apikey: key,
+      Authorization: `Bearer ${key}`,
+    };
+    if (method !== "GET") headers.Prefer = "return=representation";
+
+    return this.client.requestWithResponse<T>(`/rest/v1/${encodeURIComponent(table)}${query}`, {
+      method,
+      headers,
+      body: opts.body,
       context: "querying REST",
       withAuth: false,
     });
@@ -317,4 +347,12 @@ export class Projects {
     if (!getter) return null;
     return getter.call(this.client.credentials);
   }
+}
+
+function formatRestQuery(query: ProjectRestOptions["query"]): string {
+  if (query === undefined) return "";
+  if (typeof query === "string") return query ? `?${query}` : "";
+  const sp = new URLSearchParams(query);
+  const out = sp.toString();
+  return out ? `?${out}` : "";
 }

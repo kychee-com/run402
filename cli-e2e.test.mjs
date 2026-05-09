@@ -1614,12 +1614,12 @@ describe("CLI e2e happy path", () => {
     let seenUrl = null;
     let seenBody = null;
     const prevFetch = globalThis.fetch;
-    globalThis.fetch = (input, init) => {
+    globalThis.fetch = async (input, init) => {
       const url = typeof input === "string" ? input : (input instanceof Request ? input.url : String(input));
       const method = (init?.method || (input instanceof Request ? input.method : "GET") || "GET").toUpperCase();
       if (/\/sql$/.test(url) && method === "POST") {
         seenUrl = url;
-        const body = init?.body ?? null;
+        const body = init?.body ?? (input instanceof Request ? await input.clone().text() : null);
         seenBody = typeof body === "string" ? body : String(body);
       }
       return prevFetch(input, init);

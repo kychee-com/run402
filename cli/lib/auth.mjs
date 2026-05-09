@@ -1,4 +1,4 @@
-import { findProject, resolveProjectId, API } from "./config.mjs";
+import { resolveProjectId } from "./config.mjs";
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail } from "./sdk-errors.mjs";
 
@@ -546,22 +546,13 @@ async function deletePasskey(args) {
 }
 
 async function providers(args) {
-  // `providers` isn't in the pilot SDK surface — keep the direct fetch.
   const projectId = resolveProjectId(parseFlag(args, "--project"));
-  const p = findProject(projectId);
-
-  const res = await fetch(`${API}/auth/v1/providers`, {
-    headers: {
-      "apikey": p.anon_key,
-      "Authorization": `Bearer ${p.anon_key}`,
-    },
-  });
-  const data = await res.json();
-  if (!res.ok) {
-    console.error(JSON.stringify({ status: "error", http: res.status, ...data }));
-    process.exit(1);
+  try {
+    const data = await getSdk().auth.providers(projectId);
+    console.log(JSON.stringify(data, null, 2));
+  } catch (err) {
+    reportSdkError(err);
   }
-  console.log(JSON.stringify(data, null, 2));
 }
 
 export async function run(sub, args) {
