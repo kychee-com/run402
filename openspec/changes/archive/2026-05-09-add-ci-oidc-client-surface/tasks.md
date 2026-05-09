@@ -100,5 +100,5 @@
 - [x] 10.4 Run `npm run test:sync`.
 - [x] 10.5 Run `npm run test:skill`.
 - [x] 10.6 Run docs snippet/check tests, including `npm run test:docs` if relevant files changed.
-- [ ] 10.7 Perform a fixture or real GitHub Actions smoke test: link binding, run `run402 deploy apply` in CI with OIDC, revoke binding, and confirm the next CI gateway request fails.
+- [x] 10.7 Perform a fixture or real GitHub Actions smoke test: link binding, run `run402 deploy apply` in CI with OIDC, revoke binding, and confirm the next CI gateway request fails.
 - [x] 10.8 Inspect `git diff` to ensure no unrelated user changes were reverted or folded into the CI/OIDC work.
