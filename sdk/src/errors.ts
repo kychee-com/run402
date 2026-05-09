@@ -240,6 +240,9 @@ export class Run402DeployError extends Run402Error {
   readonly fix: Run402DeployErrorFix | null;
   readonly logs: string[] | null;
   readonly rolledBack: boolean;
+  readonly attempts?: number;
+  readonly maxRetries?: number;
+  readonly lastRetryCode?: Run402DeployErrorCode;
 
   constructor(
     message: string,
@@ -253,6 +256,9 @@ export class Run402DeployError extends Run402Error {
       fix?: Run402DeployErrorFix | null;
       logs?: string[] | null;
       rolledBack?: boolean;
+      attempts?: number;
+      maxRetries?: number;
+      lastRetryCode?: Run402DeployErrorCode;
       status?: number | null;
       body?: unknown;
       context: string;
@@ -268,6 +274,9 @@ export class Run402DeployError extends Run402Error {
     this.fix = init.fix ?? null;
     this.logs = init.logs ?? null;
     this.rolledBack = init.rolledBack ?? false;
+    if (init.attempts !== undefined) this.attempts = init.attempts;
+    if (init.maxRetries !== undefined) this.maxRetries = init.maxRetries;
+    if (init.lastRetryCode !== undefined) this.lastRetryCode = init.lastRetryCode;
   }
 
   override toJSON(): Record<string, unknown> {
@@ -281,6 +290,9 @@ export class Run402DeployError extends Run402Error {
       logs: this.logs,
       rolledBack: this.rolledBack,
       retryable: this.retryable,
+      attempts: this.attempts,
+      maxRetries: this.maxRetries,
+      lastRetryCode: this.lastRetryCode,
     };
   }
 }

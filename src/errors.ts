@@ -141,6 +141,9 @@ export function formatCanonicalErrorContext(
   const traceId = canonicalString(source, "trace_id", "traceId");
   const retryable = canonicalBoolean(source, "retryable", "retryable");
   const safeToRetry = canonicalBoolean(source, "safe_to_retry", "safeToRetry");
+  const attempts = canonicalNumber(source, "attempts", "attempts");
+  const maxRetries = canonicalNumber(source, "max_retries", "maxRetries");
+  const lastRetryCode = canonicalString(source, "last_retry_code", "lastRetryCode");
   const details = canonicalValue(source, "details", "details");
   const nextActions = canonicalValue(source, "next_actions", "nextActions");
 
@@ -148,6 +151,9 @@ export function formatCanonicalErrorContext(
   if (category) lines.push(`Category: ${category}`);
   if (retryable !== undefined) lines.push(`Retryable: ${retryable}`);
   if (safeToRetry !== undefined) lines.push(`Safe to retry: ${safeToRetry}`);
+  if (attempts !== undefined) lines.push(`Attempts: ${attempts}`);
+  if (maxRetries !== undefined) lines.push(`Max retries: ${maxRetries}`);
+  if (lastRetryCode) lines.push(`Last retry code: \`${lastRetryCode}\``);
   if (mutationState) lines.push(`Mutation state: ${mutationState}`);
   if (traceId) lines.push(`Trace: ${traceId}`);
   if (opts.includeDetails && isNonEmptyRecord(details)) {
@@ -232,6 +238,11 @@ function canonicalString(source: unknown, snake: string, camel = snake): string 
 function canonicalBoolean(source: unknown, snake: string, camel = snake): boolean | undefined {
   const value = canonicalValue(source, snake, camel);
   return typeof value === "boolean" ? value : undefined;
+}
+
+function canonicalNumber(source: unknown, snake: string, camel = snake): number | undefined {
+  const value = canonicalValue(source, snake, camel);
+  return typeof value === "number" ? value : undefined;
 }
 
 function canonicalValue(source: unknown, snake: string, camel = snake): unknown {

@@ -773,6 +773,9 @@ describe("CLI SDK error reporting", () => {
       fix: { action: "edit_request", path: "database.migrations.001_init" },
       logs: ["ERROR at offset 184"],
       rolledBack: true,
+      attempts: 3,
+      maxRetries: 2,
+      lastRetryCode: "BASE_RELEASE_CONFLICT",
     });
 
     assert.equal(parsed.status, "error");
@@ -791,6 +794,9 @@ describe("CLI SDK error reporting", () => {
     assert.deepEqual(parsed.fix, { action: "edit_request", path: "database.migrations.001_init" });
     assert.deepEqual(parsed.logs, ["ERROR at offset 184"]);
     assert.equal(parsed.rolled_back, true);
+    assert.equal(parsed.attempts, 3);
+    assert.equal(parsed.max_retries, 2);
+    assert.equal(parsed.last_retry_code, "BASE_RELEASE_CONFLICT");
   });
 
   it("keeps non-JSON body_preview behavior", async () => {

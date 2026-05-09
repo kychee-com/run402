@@ -150,6 +150,20 @@ describe("formatApiError", () => {
     assert.ok(text.includes('"migration_id": "001_init"'));
   });
 
+  it("formats deploy retry metadata", () => {
+    const lines = formatCanonicalErrorContext({
+      code: "BASE_RELEASE_CONFLICT",
+      attempts: 3,
+      max_retries: 2,
+      last_retry_code: "BASE_RELEASE_CONFLICT",
+    });
+    const text = lines.join("\n");
+
+    assert.ok(text.includes("Attempts: 3"));
+    assert.ok(text.includes("Max retries: 2"));
+    assert.ok(text.includes("Last retry code: `BASE_RELEASE_CONFLICT`"));
+  });
+
   it("handles string body gracefully", () => {
     const result = formatApiError(
       { status: 502, body: "Bad Gateway" },

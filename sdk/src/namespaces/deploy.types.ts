@@ -714,6 +714,19 @@ export type DeployEvent =
     }
   | { type: "payment.paid"; tx?: string }
   | {
+      type: "deploy.retry";
+      attempt: number;
+      nextAttempt: number;
+      maxAttempts: number;
+      delayMs: number;
+      code: string;
+      phase: string | null;
+      resource: string | null;
+      operationId: string | null;
+      planId: string | null;
+      message: string;
+    }
+  | {
       type: "content.upload.skipped";
       label: string;
       sha256: string;
@@ -771,9 +784,22 @@ export interface ApplyOptions {
    *  `apply()` aborts before upload/commit so agents can set missing secrets,
    *  inspect warnings, or use the low-level plan/upload/commit flow. */
   allowWarnings?: boolean;
+  /** Automatic safe-race retries after the initial `apply()` attempt.
+   *  Default: 2 retries (3 total attempts). Pass 0 to disable automatic
+   *  retry and surface the first safe deploy race to the caller. */
+  maxRetries?: number;
 }
 
-export interface StartOptions extends ApplyOptions {}
+export interface StartOptions {
+  idempotencyKey?: string;
+  /** Receives progress events for plan diff, content uploads, commit phases,
+   *  warnings, payment requirements, and final release activation. Callback
+   *  exceptions are swallowed so UI/logging hooks cannot fail the deploy. */
+  onEvent?: (event: DeployEvent) => void;
+  /** By default, warnings with `requires_confirmation` stop before
+   *  upload/commit. Set true only after inspecting the warnings. */
+  allowWarnings?: boolean;
+}
 
 export interface DeployOperation {
   /** The operation id (also exposed via the snapshot). */

@@ -27,7 +27,7 @@ mock.module("../allowance-auth.js", {
 
 let lastApplySpec: unknown = null;
 let lastApplyOpts: unknown = null;
-let nextApplyImpl: () => Promise<unknown> = async () => ({
+let nextApplyImpl: (spec?: unknown, opts?: unknown) => Promise<unknown> = async () => ({
   release_id: "rel_001",
   operation_id: "op_001",
   urls: { deployment_id: "dpl_001", site_url: "https://dpl-001.sites.run402.com" },
@@ -42,7 +42,7 @@ mock.module("../sdk.js", {
         apply: async (spec: unknown, opts: unknown) => {
           lastApplySpec = spec;
           lastApplyOpts = opts;
-          return nextApplyImpl();
+          return nextApplyImpl(spec, opts);
         },
       },
     }),
@@ -248,6 +248,9 @@ describe("handleDeploy deploy error formatting", () => {
           category: "deploy",
           retryable: false,
           safe_to_retry: true,
+          attempts: 3,
+          max_retries: 2,
+          last_retry_code: "BASE_RELEASE_CONFLICT",
           mutation_state: "rolled_back",
           trace_id: "trc_tool",
           details: {
@@ -277,6 +280,9 @@ describe("handleDeploy deploy error formatting", () => {
     assert.ok(text.includes("Category: deploy"));
     assert.ok(text.includes("Retryable: false"));
     assert.ok(text.includes("Safe to retry: true"));
+    assert.ok(text.includes("Attempts: 3"));
+    assert.ok(text.includes("Max retries: 2"));
+    assert.ok(text.includes("Last retry code: `BASE_RELEASE_CONFLICT`"));
     assert.ok(text.includes("Mutation state: rolled_back"));
     assert.ok(text.includes("Trace: trc_tool"));
     assert.ok(text.includes("Details:"));
@@ -319,6 +325,41 @@ describe("handleDeploy deploy error formatting", () => {
     assert.deepEqual((lastApplySpec as { secrets?: unknown }).secrets, {
       require: ["OPENAI_API_KEY"],
     });
+  });
+
+  it("preserves deploy.retry progress events", async () => {
+    nextApplyImpl = async (_spec, opts) => {
+      const onEvent = (opts as { onEvent?: (event: unknown) => void }).onEvent;
+      onEvent?.({
+        type: "deploy.retry",
+        attempt: 1,
+        nextAttempt: 2,
+        maxAttempts: 3,
+        delayMs: 250,
+        code: "BASE_RELEASE_CONFLICT",
+        phase: "apply",
+        resource: "release",
+        operationId: "op_1",
+        planId: "plan_1",
+        message: "Another deploy activated a release.",
+      });
+      return {
+        release_id: "rel_001",
+        operation_id: "op_001",
+        urls: {},
+        diff: {},
+        warnings: [],
+      };
+    };
+
+    const result = await handleDeploy({
+      project_id: "prj_xxx",
+      site: { replace: { "index.html": "hello" } as never } as never,
+    });
+
+    assert.equal(result.isError, undefined);
+    assert.ok(result.content[1]!.text.includes('"type": "deploy.retry"'));
+    assert.ok(result.content[1]!.text.includes('"code": "BASE_RELEASE_CONFLICT"'));
   });
 
   it("passes allow_warnings through to the SDK option", async () => {

@@ -112,6 +112,45 @@ function makeWiring(credentials: CredentialsProvider = defaultCreds()): FakeWiri
   };
 }
 
+function noContentPlan(planId: string, operationId: string): PlanResponse {
+  return {
+    plan_id: planId,
+    operation_id: operationId,
+    base_release_id: null,
+    manifest_digest: `${planId}-digest`,
+    missing_content: [],
+    diff: { resources: { site: { added: 1 } } },
+    warnings: [],
+  };
+}
+
+function readyCommit(operationId: string, releaseId: string): CommitResponse {
+  return {
+    operation_id: operationId,
+    status: "ready",
+    release_id: releaseId,
+    urls: { site: `https://${releaseId}.run402.test` },
+  };
+}
+
+function baseReleaseConflict(
+  overrides: Partial<NonNullable<CommitResponse["error"]>> = {},
+): NonNullable<CommitResponse["error"]> {
+  return {
+    code: "BASE_RELEASE_CONFLICT",
+    message: "Another deploy activated a release after this operation was planned.",
+    phase: "apply",
+    resource: "release",
+    retryable: true,
+    safe_to_retry: true,
+    ...overrides,
+  };
+}
+
+function countRequests(w: FakeWiring, path: string): number {
+  return w.requests.filter((req) => req.path === path).length;
+}
+
 describe("Deploy.apply (happy path)", () => {
   it("plans, uploads missing, commits, and returns the deploy result", async () => {
     const w = makeWiring();
@@ -1826,6 +1865,406 @@ describe("Deploy.apply (gateway error translation)", () => {
         return true;
       },
     );
+  });
+});
+
+describe("Deploy.apply (safe race retry)", () => {
+  it("replans after BASE_RELEASE_CONFLICT with safe_to_retry=true and succeeds", async () => {
+    const w = makeWiring();
+    const events: DeployEvent[] = [];
+    let planCalls = 0;
+
+    w.setHandler((req) => {
+      if (req.path === "/deploy/v2/plans") {
+        planCalls += 1;
+        return planCalls === 1
+          ? noContentPlan("plan_conflict", "op_conflict")
+          : noContentPlan("plan_retry", "op_retry");
+      }
+      if (req.path === "/deploy/v2/plans/plan_conflict/commit") {
+        return {
+          operation_id: "op_conflict",
+          status: "failed",
+          error: baseReleaseConflict({
+            operation_id: "op_conflict",
+            plan_id: "plan_conflict",
+          }),
+        } satisfies CommitResponse;
+      }
+      if (req.path === "/deploy/v2/plans/plan_retry/commit") {
+        return readyCommit("op_retry", "rel_retry");
+      }
+      throw new Error(`unexpected path ${req.path}`);
+    });
+
+    const deploy = new Deploy(w.client);
+    const result = await deploy.apply(
+      { project: "prj_test", site: { replace: { "index.html": "hello" } } },
+      { maxRetries: 1, onEvent: (event) => events.push(event) },
+    );
+
+    assert.equal(result.release_id, "rel_retry");
+    assert.equal(planCalls, 2, "retry issued a fresh plan request");
+    assert.equal(countRequests(w, "/deploy/v2/plans/plan_conflict/commit"), 1);
+    assert.equal(countRequests(w, "/deploy/v2/plans/plan_retry/commit"), 1);
+    const retry = events.find((event) => event.type === "deploy.retry");
+    assert.deepEqual(retry, {
+      type: "deploy.retry",
+      attempt: 1,
+      nextAttempt: 2,
+      maxAttempts: 2,
+      delayMs: retry && retry.type === "deploy.retry" ? retry.delayMs : -1,
+      code: "BASE_RELEASE_CONFLICT",
+      phase: "apply",
+      resource: "release",
+      operationId: "op_conflict",
+      planId: "plan_conflict",
+      message: "Another deploy activated a release after this operation was planned.",
+    });
+    assert.ok(
+      retry && retry.type === "deploy.retry" && retry.delayMs >= 250,
+      "retry event includes a bounded delay",
+    );
+  });
+
+  it("uses the default budget of two retries after the initial attempt", async () => {
+    const w = makeWiring();
+    let planCalls = 0;
+    const events: DeployEvent[] = [];
+
+    w.setHandler((req) => {
+      if (req.path === "/deploy/v2/plans") {
+        planCalls += 1;
+        return noContentPlan(`plan_${planCalls}`, `op_${planCalls}`);
+      }
+      if (req.path === "/deploy/v2/plans/plan_1/commit") {
+        return {
+          operation_id: "op_1",
+          status: "failed",
+          error: baseReleaseConflict({ operation_id: "op_1", plan_id: "plan_1" }),
+        } satisfies CommitResponse;
+      }
+      if (req.path === "/deploy/v2/plans/plan_2/commit") {
+        return {
+          operation_id: "op_2",
+          status: "failed",
+          error: baseReleaseConflict({ operation_id: "op_2", plan_id: "plan_2" }),
+        } satisfies CommitResponse;
+      }
+      if (req.path === "/deploy/v2/plans/plan_3/commit") {
+        return readyCommit("op_3", "rel_default_retry");
+      }
+      throw new Error(`unexpected path ${req.path}`);
+    });
+
+    const result = await new Deploy(w.client).apply(
+      { project: "prj_test", site: { replace: { "index.html": "hello" } } },
+      { onEvent: (event) => events.push(event) },
+    );
+
+    assert.equal(result.release_id, "rel_default_retry");
+    assert.equal(planCalls, 3);
+    assert.equal(events.filter((event) => event.type === "deploy.retry").length, 2);
+  });
+
+  it("does not retry without safe_to_retry=true, with only retryable=true, or for non-allowlisted codes", async () => {
+    const cases: Array<{
+      name: string;
+      error: NonNullable<CommitResponse["error"]>;
+    }> = [
+      {
+        name: "safe_false",
+        error: baseReleaseConflict({ safe_to_retry: false }),
+      },
+      {
+        name: "safe_absent",
+        error: (() => {
+          const err = baseReleaseConflict();
+          delete err.safe_to_retry;
+          return err;
+        })(),
+      },
+      {
+        name: "retryable_only",
+        error: baseReleaseConflict({ retryable: true, safe_to_retry: false }),
+      },
+      {
+        name: "non_allowlisted_safe_error",
+        error: {
+          code: "MIGRATE_GATE_ACTIVE",
+          message: "Migration gate active.",
+          phase: "migrate-gate",
+          retryable: true,
+          safe_to_retry: true,
+        },
+      },
+    ];
+
+    for (const { name, error } of cases) {
+      const w = makeWiring();
+      w.setHandler((req) => {
+        if (req.path === "/deploy/v2/plans") return noContentPlan(`plan_${name}`, `op_${name}`);
+        if (req.path === `/deploy/v2/plans/plan_${name}/commit`) {
+          return { operation_id: `op_${name}`, status: "failed", error } satisfies CommitResponse;
+        }
+        throw new Error(`unexpected path ${req.path}`);
+      });
+
+      await assert.rejects(
+        () =>
+          new Deploy(w.client).apply({
+            project: "prj_test",
+            site: { replace: { "index.html": "hello" } },
+          }),
+        (err: unknown) => err instanceof Run402DeployError,
+      );
+      assert.equal(countRequests(w, "/deploy/v2/plans"), 1, `${name}: no retry`);
+    }
+  });
+
+  it("retries omitted/current bases but not pinned release_id or empty bases", async () => {
+    const specs: Array<{
+      name: string;
+      spec: Parameters<Deploy["apply"]>[0];
+      expectedPlans: number;
+    }> = [
+      {
+        name: "omitted",
+        spec: { project: "prj_test", site: { replace: { "index.html": "hello" } } },
+        expectedPlans: 2,
+      },
+      {
+        name: "current",
+        spec: {
+          project: "prj_test",
+          base: { release: "current" },
+          site: { replace: { "index.html": "hello" } },
+        },
+        expectedPlans: 2,
+      },
+      {
+        name: "pinned",
+        spec: {
+          project: "prj_test",
+          base: { release_id: "rel_pinned" },
+          site: { replace: { "index.html": "hello" } },
+        },
+        expectedPlans: 1,
+      },
+      {
+        name: "empty",
+        spec: {
+          project: "prj_test",
+          base: { release: "empty" },
+          site: { replace: { "index.html": "hello" } },
+        },
+        expectedPlans: 1,
+      },
+    ];
+
+    for (const { name, spec, expectedPlans } of specs) {
+      const w = makeWiring();
+      let planCalls = 0;
+      w.setHandler((req) => {
+        if (req.path === "/deploy/v2/plans") {
+          planCalls += 1;
+          return noContentPlan(`plan_${name}_${planCalls}`, `op_${name}_${planCalls}`);
+        }
+        if (req.path === `/deploy/v2/plans/plan_${name}_1/commit`) {
+          return {
+            operation_id: `op_${name}_1`,
+            status: "failed",
+            error: baseReleaseConflict({
+              operation_id: `op_${name}_1`,
+              plan_id: `plan_${name}_1`,
+            }),
+          } satisfies CommitResponse;
+        }
+        if (req.path === `/deploy/v2/plans/plan_${name}_2/commit`) {
+          return readyCommit(`op_${name}_2`, `rel_${name}`);
+        }
+        throw new Error(`unexpected path ${req.path}`);
+      });
+
+      if (expectedPlans === 2) {
+        const result = await new Deploy(w.client).apply(spec, { maxRetries: 1 });
+        assert.equal(result.release_id, `rel_${name}`);
+      } else {
+        await assert.rejects(
+          () => new Deploy(w.client).apply(spec, { maxRetries: 1 }),
+          (err: unknown) => err instanceof Run402DeployError,
+        );
+      }
+      assert.equal(planCalls, expectedPlans, `${name}: expected plan count`);
+    }
+  });
+
+  it("honors maxRetries=0 and custom exhausted budgets", async () => {
+    const disabled = makeWiring();
+    disabled.setHandler((req) => {
+      if (req.path === "/deploy/v2/plans") return noContentPlan("plan_disabled", "op_disabled");
+      if (req.path === "/deploy/v2/plans/plan_disabled/commit") {
+        return {
+          operation_id: "op_disabled",
+          status: "failed",
+          error: baseReleaseConflict(),
+        } satisfies CommitResponse;
+      }
+      throw new Error(`unexpected path ${req.path}`);
+    });
+
+    await assert.rejects(
+      () =>
+        new Deploy(disabled.client).apply(
+          { project: "prj_test", site: { replace: { "index.html": "hello" } } },
+          { maxRetries: 0 },
+        ),
+      (err: unknown) => err instanceof Run402DeployError,
+    );
+    assert.equal(countRequests(disabled, "/deploy/v2/plans"), 1);
+
+    const exhausted = makeWiring();
+    let planCalls = 0;
+    exhausted.setHandler((req) => {
+      if (req.path === "/deploy/v2/plans") {
+        planCalls += 1;
+        return noContentPlan(`plan_exhausted_${planCalls}`, `op_exhausted_${planCalls}`);
+      }
+      if (req.path === `/deploy/v2/plans/plan_exhausted_${planCalls}/commit`) {
+        return {
+          operation_id: `op_exhausted_${planCalls}`,
+          status: "failed",
+          error: baseReleaseConflict({
+            operation_id: `op_exhausted_${planCalls}`,
+            plan_id: `plan_exhausted_${planCalls}`,
+          }),
+        } satisfies CommitResponse;
+      }
+      throw new Error(`unexpected path ${req.path}`);
+    });
+
+    await assert.rejects(
+      () =>
+        new Deploy(exhausted.client).apply(
+          { project: "prj_test", site: { replace: { "index.html": "hello" } } },
+          { maxRetries: 1 },
+        ),
+      (err: unknown) => {
+        assert.ok(err instanceof Run402DeployError);
+        assert.equal(err.code, "BASE_RELEASE_CONFLICT");
+        assert.equal(err.operationId, "op_exhausted_2");
+        assert.equal(err.planId, "plan_exhausted_2");
+        assert.equal(err.attempts, 2);
+        assert.equal(err.maxRetries, 1);
+        assert.equal(err.lastRetryCode, "BASE_RELEASE_CONFLICT");
+        const json = JSON.parse(JSON.stringify(err)) as Record<string, unknown>;
+        assert.equal(json["attempts"], 2);
+        assert.equal(json["maxRetries"], 1);
+        assert.equal(json["lastRetryCode"], "BASE_RELEASE_CONFLICT");
+        const body = err.body as Record<string, unknown>;
+        assert.equal(body["attempts"], 2);
+        assert.equal(body["max_retries"], 1);
+        assert.equal(body["last_retry_code"], "BASE_RELEASE_CONFLICT");
+        return true;
+      },
+    );
+    assert.equal(planCalls, 2);
+  });
+
+  it("rejects invalid maxRetries before planning", async () => {
+    for (const maxRetries of [-1, 1.5, Number.POSITIVE_INFINITY]) {
+      const w = makeWiring();
+      const deploy = new Deploy(w.client);
+      await assert.rejects(
+        () =>
+          deploy.apply(
+            { project: "prj_test", site: { replace: { "index.html": "hello" } } },
+            { maxRetries },
+          ),
+        (err: unknown) =>
+          err instanceof Run402DeployError &&
+          err.code === "INVALID_SPEC" &&
+          err.resource === "maxRetries",
+      );
+      assert.equal(w.requests.length, 0, `${maxRetries}: no request before validation`);
+    }
+  });
+
+  it("swallows retry event callback failures and still retries", async () => {
+    const w = makeWiring();
+    let planCalls = 0;
+    w.setHandler((req) => {
+      if (req.path === "/deploy/v2/plans") {
+        planCalls += 1;
+        return noContentPlan(`plan_cb_${planCalls}`, `op_cb_${planCalls}`);
+      }
+      if (req.path === "/deploy/v2/plans/plan_cb_1/commit") {
+        return {
+          operation_id: "op_cb_1",
+          status: "failed",
+          error: baseReleaseConflict(),
+        } satisfies CommitResponse;
+      }
+      if (req.path === "/deploy/v2/plans/plan_cb_2/commit") {
+        return readyCommit("op_cb_2", "rel_cb");
+      }
+      throw new Error(`unexpected path ${req.path}`);
+    });
+
+    const result = await new Deploy(w.client).apply(
+      { project: "prj_test", site: { replace: { "index.html": "hello" } } },
+      {
+        maxRetries: 1,
+        onEvent(event) {
+          if (event.type === "deploy.retry") throw new Error("buggy logger");
+        },
+      },
+    );
+    assert.equal(result.release_id, "rel_cb");
+    assert.equal(planCalls, 2);
+  });
+
+  it("keeps start() and low-level commit() out of the automatic apply retry loop", async () => {
+    const started = makeWiring();
+    started.setHandler((req) => {
+      if (req.path === "/deploy/v2/plans") return noContentPlan("plan_start", "op_start");
+      if (req.path === "/deploy/v2/plans/plan_start/commit") {
+        return {
+          operation_id: "op_start",
+          status: "failed",
+          error: baseReleaseConflict(),
+        } satisfies CommitResponse;
+      }
+      throw new Error(`unexpected path ${req.path}`);
+    });
+
+    const op = await new Deploy(started.client).start({
+      project: "prj_test",
+      site: { replace: { "index.html": "hello" } },
+    });
+    await assert.rejects(
+      () => op.result(),
+      (err: unknown) => err instanceof Run402DeployError,
+    );
+    assert.equal(countRequests(started, "/deploy/v2/plans"), 1);
+
+    const committed = makeWiring();
+    committed.setHandler((req) => {
+      if (req.path === "/deploy/v2/plans/plan_commit/commit") {
+        return {
+          operation_id: "op_commit",
+          status: "failed",
+          error: baseReleaseConflict(),
+        } satisfies CommitResponse;
+      }
+      throw new Error(`unexpected path ${req.path}`);
+    });
+
+    await assert.rejects(
+      () => new Deploy(committed.client).commit("plan_commit"),
+      (err: unknown) => err instanceof Run402DeployError,
+    );
+    assert.equal(countRequests(committed, "/deploy/v2/plans/plan_commit/commit"), 1);
   });
 });
 

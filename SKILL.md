@@ -49,6 +49,7 @@ Important fields:
 
 Safe retry policy:
 - If `retryable: true` and `safe_to_retry: true`, retry the same request, preferably with the same idempotency key for mutating operations.
+- The unified **`deploy`** tool already handles safe `BASE_RELEASE_CONFLICT` release races for omitted/current-base specs by re-planning through the SDK. A handled retry appears as a `deploy.retry` progress event; exhausted retries include `attempts`, `max_retries`, and `last_retry_code`. Do not hand-roll this specific deploy race loop.
 - If a mutating request returns a 5xx with `safe_to_retry: false`, or `mutation_state` is `committed`, `partial`, or `unknown`, inspect or poll state before retrying. For deploys, use deploy events/list/resume context before sending another mutation.
 - Lifecycle/payment errors usually want an action rather than a blind retry: `PROJECT_FROZEN`/`PROJECT_DORMANT`/`PROJECT_PAST_DUE` -> `get_usage` or `set_tier`; `PAYMENT_REQUIRED`/`INSUFFICIENT_FUNDS` -> submit/fund payment.
 

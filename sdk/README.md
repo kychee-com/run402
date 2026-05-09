@@ -150,6 +150,7 @@ const resumed = await r.deploy.resume(operationId);
 - **Same-origin web routes.** `routes` is `undefined | null | { replace: RouteSpec[] }`. Omit it or pass `null` to carry forward base routes, pass `{ replace: [] }` to clear routes, or pass route entries to replace the table. Each route has `pattern`, optional non-empty `methods`, and `target: { type: "function", name }`. Direct `/functions/v1/:name` invocation remains API-key protected; routed paths are public browser ingress.
 - **Strict spec validation happens before network calls.** Raw `ReleaseSpec` objects reject unknown fields (for example `project_id` or `subdomain`) instead of silently dropping them during normalization, and project/base-only or empty nested specs fail with `Run402DeployError.code === "MANIFEST_EMPTY"`. Use the Node manifest helpers when starting from CLI/MCP-style JSON.
 - **Warnings are structured.** `DeployResult.warnings` contains `WarningEntry[]` (`code`, `severity`, `requires_confirmation`, `message`, optional `affected`/`details`/`confidence`); the type preserves legacy low/medium/high plan warnings and modern deploy-observability info/warn/high warnings. `apply()` emits `plan.warnings` and stops before upload/commit on confirmation-required warnings unless `allowWarnings` is set. For `MISSING_REQUIRED_SECRET`, set the affected keys with `r.secrets.set`, then retry.
+- **Safe release-race retries are SDK-owned.** `deploy.apply()` automatically re-plans and retries omitted/current-base specs when the gateway returns `BASE_RELEASE_CONFLICT` with `safe_to_retry: true`. The default budget is two retries after the initial attempt; pass `{ maxRetries: 0 }` to opt out. Each retry emits `deploy.retry`; exhausted retries keep the last `Run402DeployError` and add `attempts`, `maxRetries`, and `lastRetryCode`.
 - **Planning supports dry-runs.** `r.deploy.plan(spec, { dryRun: true })` calls the server-authoritative dry-run route and returns the normalized v2 plan envelope without uploading bytes or creating plan/operation rows (`plan_id` and `operation_id` are `null`).
 - **Release observability is typed.** Use `r.deploy.getRelease({ project, releaseId, siteLimit? })`, `r.deploy.getActiveRelease({ project, siteLimit? })`, and `r.deploy.diff({ project, from, to, limit? })` to inspect release inventory and release-to-release diffs. `diff` returns `ReleaseToReleaseDiff` with `migrations.applied_between_releases`; secret diffs expose keys only.
 - **Server-authoritative manifest digest** — no byte-for-byte canonicalize requirement on the client.
@@ -321,8 +322,10 @@ try {
   if (isPaymentRequired(e)) {
     // e is narrowed to PaymentRequired
     // present payment requirements to the user — read e.body, e.context, etc.
-  } else if (isDeployError(e) && e.safeToRetry) {
-    // e is narrowed to Run402DeployError; it's safe to retry with the same idempotency key
+  } else if (isDeployError(e)) {
+    // e is narrowed to Run402DeployError.
+    // deploy.apply auto-retries safe BASE_RELEASE_CONFLICT races for current-base specs.
+    // Log the structured envelope for policy errors, exhausted retries, or caller-owned recovery.
   } else throw e;
 }
 ```
@@ -339,6 +342,12 @@ and any inter-process boundary where the error needs to survive serialization.
 425 / 429 / 5xx / `NetworkError` / gateway-flagged `retryable` or
 `safeToRetry`) by default. Pair it with the SDK method's own
 `idempotencyKey` so retried mutations dedup server-side:
+
+For `r.deploy.apply()`, safe `BASE_RELEASE_CONFLICT` release races are already
+handled by the deploy namespace with a fresh plan and visible `deploy.retry`
+events. Use `withRetry` for caller-owned retry policies around other operations,
+or pass `maxRetries: 0` to `deploy.apply` when you want to handle deploy races
+yourself.
 
 ```ts
 import {

@@ -80,6 +80,7 @@ Fields to use:
 
 Retry policy:
 - Retry directly only when `retryable: true` and `safe_to_retry: true`; reuse the same idempotency key for mutating operations.
+- `run402 deploy apply` already handles safe `BASE_RELEASE_CONFLICT` release races for omitted/current-base specs by re-planning through the SDK. A handled retry appears as a `deploy.retry` stderr event; exhausted retries include `attempts`, `max_retries`, and `last_retry_code`. Do not hand-roll this specific deploy race loop.
 - For mutating 5xx errors with `safe_to_retry: false`, or `mutation_state: "committed"`, `"partial"`, or `"unknown"`, inspect/poll/reconcile state before retrying. For deploys, inspect events or resume the existing operation instead of starting a duplicate deploy.
 - Lifecycle/payment codes usually require an action: `PROJECT_FROZEN`/`PROJECT_DORMANT`/`PROJECT_PAST_DUE` -> check usage or renew tier; `PAYMENT_REQUIRED`/`INSUFFICIENT_FUNDS` -> submit/fund payment.
 

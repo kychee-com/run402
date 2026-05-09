@@ -52,6 +52,7 @@ Canonical fields:
 
 Retry policy:
 - If `retryable: true` and `safe_to_retry: true`, retry the same request; for mutating commands reuse the same idempotency key when available.
+- `run402 deploy apply` already handles safe `BASE_RELEASE_CONFLICT` release races for omitted/current-base deploy specs: it re-plans, emits `deploy.retry` events on stderr, and stops after its bounded SDK retry budget. Exhausted deploy retries include `attempts`, `max_retries`, and `last_retry_code` in the error envelope. Do not hand-roll this specific retry loop around the CLI unless you intentionally disabled SDK retries upstream.
 - If a mutating command returns 5xx with `safe_to_retry: false`, or `mutation_state` is `committed`, `partial`, or `unknown`, inspect/poll/reconcile state before retrying. For deploys, prefer `run402 deploy events <operation_id>` or `run402 deploy resume <operation_id>` over starting a duplicate operation.
 - Lifecycle/payment errors usually need an action: `PROJECT_FROZEN`/`PROJECT_DORMANT`/`PROJECT_PAST_DUE` -> `run402 projects usage <id>` or `run402 tier set <tier>`; `PAYMENT_REQUIRED`/`INSUFFICIENT_FUNDS` -> submit payment or fund allowance.
 - Client-side `BAD_JSON_FLAG` errors include `details.flag` (the offending flag, e.g. `--abi`) and `details.value_preview` (truncated value) so callers know which flag value to fix.

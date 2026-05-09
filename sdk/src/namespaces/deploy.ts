@@ -76,8 +76,15 @@ const COMMIT_POLL_INITIAL_MS = 1_000;
 const COMMIT_POLL_MAX_MS = 30_000;
 const COMMIT_POLL_BACKOFF_AFTER_MS = 30_000;
 const COMMIT_POLL_TIMEOUT_MS = 10 * 60 * 1000;
+const APPLY_RETRY_DEFAULT_MAX_RETRIES = 2;
+const APPLY_RETRY_BASE_DELAY_MS = 250;
+const APPLY_RETRY_MAX_DELAY_MS = 2_000;
+const APPLY_RETRY_JITTER_MS = 100;
 const URL_REFRESH_AT_MS = 50 * 60 * 1000;
 const SECRET_KEY_RE = /^[A-Z_][A-Z0-9_]{0,127}$/;
+const APPLY_SAFE_RETRY_CODES = new Set<Run402DeployErrorCode>([
+  "BASE_RELEASE_CONFLICT",
+]);
 
 const MANIFEST_CONTENT_TYPE =
   "application/vnd.run402.deploy-manifest+json";
@@ -101,34 +108,47 @@ export class Deploy {
    * {@link Run402DeployError} on any state-machine failure.
    */
   async apply(spec: ReleaseSpec, opts: ApplyOptions = {}): Promise<DeployResult> {
+    const maxRetries = normalizeApplyMaxRetries(opts.maxRetries);
+    const maxAttempts = maxRetries + 1;
     const emit = makeEmitter(opts.onEvent);
 
-    emit({ type: "plan.started" });
-    const { plan, byteReaders } = await planInternal(this.client, spec, opts.idempotencyKey);
-    emit({ type: "plan.diff", diff: plan.diff });
-    emitPlanWarnings(plan, emit);
-    abortOnConfirmationWarnings(plan, opts);
-
-    if (plan.payment_required) {
-      emit({
-        type: "payment.required",
-        amount: plan.payment_required.amount,
-        asset: plan.payment_required.asset,
-        payTo: plan.payment_required.payTo,
-        reason: plan.payment_required.reason,
-      });
-      // The kernel's x402-wrapped fetch (Node) handles 402 transparently
-      // when the commit happens; we don't block here. Agents using a
-      // sandbox provider without payment auto-handling can intercept the
-      // event and resolve before we hit upload.
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        return await applyOnce(this.client, spec, opts, emit);
+      } catch (err) {
+        if (!(err instanceof Run402DeployError)) throw err;
+        const safeToRetry = isSafeDeployApplyRetry(err, spec);
+        if (!safeToRetry) throw err;
+        if (attempt === maxAttempts) {
+          if (maxRetries > 0) {
+            throw withDeployRetryMetadata(err, attempt, maxRetries, err.code);
+          }
+          throw err;
+        }
+        const delayMs = deployApplyRetryDelayMs(attempt);
+        emit({
+          type: "deploy.retry",
+          attempt,
+          nextAttempt: attempt + 1,
+          maxAttempts,
+          delayMs,
+          code: err.code,
+          phase: err.phase,
+          resource: err.resource,
+          operationId: err.operationId,
+          planId: err.planId,
+          message: err.message,
+        });
+        await sleep(delayMs);
+      }
     }
 
-    await uploadMissing(this.client, spec.project, plan.missing_content, byteReaders, emit);
-
-    emit({ type: "commit.phase", phase: "validate", status: "started" });
-    const { planId } = requirePersistedPlan(plan, "applying deploy");
-    const commit = await commitInternal(this.client, planId, opts.idempotencyKey);
-    return await pollUntilReady(this.client, commit, plan.diff, plan.warnings, emit, spec.project);
+    throw new Run402DeployError("Deploy retry loop ended without a result", {
+      code: "INTERNAL_ERROR",
+      phase: "apply",
+      retryable: false,
+      context: "applying deploy",
+    });
   }
 
   /**
@@ -424,6 +444,115 @@ function appendQuery(
 }
 
 // ─── Internal pipeline ───────────────────────────────────────────────────────
+
+async function applyOnce(
+  client: Client,
+  spec: ReleaseSpec,
+  opts: ApplyOptions,
+  emit: (event: DeployEvent) => void,
+): Promise<DeployResult> {
+  emit({ type: "plan.started" });
+  const { plan, byteReaders } = await planInternal(client, spec, opts.idempotencyKey);
+  emit({ type: "plan.diff", diff: plan.diff });
+  emitPlanWarnings(plan, emit);
+  abortOnConfirmationWarnings(plan, opts);
+
+  if (plan.payment_required) {
+    emit({
+      type: "payment.required",
+      amount: plan.payment_required.amount,
+      asset: plan.payment_required.asset,
+      payTo: plan.payment_required.payTo,
+      reason: plan.payment_required.reason,
+    });
+    // The kernel's x402-wrapped fetch (Node) handles 402 transparently
+    // when the commit happens; we don't block here. Agents using a
+    // sandbox provider without payment auto-handling can intercept the
+    // event and resolve before we hit upload.
+  }
+
+  await uploadMissing(client, spec.project, plan.missing_content, byteReaders, emit);
+
+  emit({ type: "commit.phase", phase: "validate", status: "started" });
+  const { planId } = requirePersistedPlan(plan, "applying deploy");
+  const commit = await commitInternal(client, planId, opts.idempotencyKey);
+  return await pollUntilReady(client, commit, plan.diff, plan.warnings, emit, spec.project);
+}
+
+function normalizeApplyMaxRetries(value: number | undefined): number {
+  if (value === undefined) return APPLY_RETRY_DEFAULT_MAX_RETRIES;
+  if (!Number.isInteger(value) || value < 0 || !Number.isFinite(value)) {
+    throw new Run402DeployError("ApplyOptions.maxRetries must be a non-negative integer", {
+      code: "INVALID_SPEC",
+      phase: "validate",
+      resource: "maxRetries",
+      retryable: false,
+      context: "validating deploy retry options",
+    });
+  }
+  return value;
+}
+
+function isSafeDeployApplyRetry(err: Run402DeployError, spec: ReleaseSpec): boolean {
+  return (
+    err.safeToRetry === true &&
+    APPLY_SAFE_RETRY_CODES.has(err.code) &&
+    isAutoRebasableSpec(spec)
+  );
+}
+
+function isAutoRebasableSpec(spec: ReleaseSpec): boolean {
+  if (spec.base === undefined) return true;
+  return "release" in spec.base && spec.base.release === "current";
+}
+
+function deployApplyRetryDelayMs(attempt: number): number {
+  const exponential = APPLY_RETRY_BASE_DELAY_MS * 2 ** (attempt - 1);
+  const capped = Math.min(exponential, APPLY_RETRY_MAX_DELAY_MS);
+  return capped + Math.floor(Math.random() * (APPLY_RETRY_JITTER_MS + 1));
+}
+
+function withDeployRetryMetadata(
+  err: Run402DeployError,
+  attempts: number,
+  maxRetries: number,
+  lastRetryCode: Run402DeployErrorCode,
+): Run402DeployError {
+  return new Run402DeployError(err.message, {
+    code: err.code,
+    phase: err.phase,
+    resource: err.resource,
+    retryable: err.retryable,
+    operationId: err.operationId,
+    planId: err.planId,
+    fix: err.fix,
+    logs: err.logs,
+    rolledBack: err.rolledBack,
+    attempts,
+    maxRetries,
+    lastRetryCode,
+    status: err.status,
+    body: enrichDeployRetryBody(err.body, attempts, maxRetries, lastRetryCode),
+    context: err.context,
+  });
+}
+
+function enrichDeployRetryBody(
+  body: unknown,
+  attempts: number,
+  maxRetries: number,
+  lastRetryCode: Run402DeployErrorCode,
+): unknown {
+  const retryFields = {
+    attempts,
+    max_retries: maxRetries,
+    last_retry_code: lastRetryCode,
+  };
+  if (body && typeof body === "object" && !Array.isArray(body)) {
+    return { ...(body as Record<string, unknown>), ...retryFields };
+  }
+  return retryFields;
+}
 
 async function planInternal(
   client: Client,

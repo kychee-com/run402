@@ -202,6 +202,26 @@ describe("withRetry custom retryIf", () => {
     assert.equal(calls, 2);
   });
 
+  it("default policy remains broader than deploy.apply safe-race retry allowlist", async () => {
+    let calls = 0;
+    const result = await withRetry(
+      async () => {
+        calls++;
+        if (calls === 1) {
+          throw new Run402DeployError("migration can be retried by generic helper", {
+            code: "MIGRATION_FAILED",
+            context: "testing retry helper",
+            body: { safe_to_retry: true },
+          });
+        }
+        return "retried";
+      },
+      { attempts: 2, baseDelayMs: 1, maxDelayMs: 1 },
+    );
+    assert.equal(result, "retried");
+    assert.equal(calls, 2);
+  });
+
   it("retryIf receives the 1-based attempt number", async () => {
     const seenAttempts: number[] = [];
     let calls = 0;
