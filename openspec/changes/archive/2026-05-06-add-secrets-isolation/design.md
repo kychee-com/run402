@@ -66,7 +66,7 @@ The canonical two-step workflow is:
 
 Confirm and implement the shipped gateway shape:
 
-- `POST /projects/v1/admin/{id}/secrets/{key}` with body `{ value: string }`.
+- `POST /projects/v1/admin/{id}/secrets` with body `{ key: string, value: string }`.
 - `GET /projects/v1/admin/{id}/secrets` returns `Array<{ key, created_at, updated_at }>`; the SDK should also tolerate the older `{ secrets: [...] }` envelope while sanitizing any `value_hash` field away.
 
 Client-side `secrets.set` should validate the public secret key regex and the 4 KiB UTF-8 value cap for faster feedback. Gateway validation remains authoritative.

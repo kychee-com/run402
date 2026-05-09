@@ -8,7 +8,7 @@ The public repo needs a KISS contract update: secret values are set out-of-band 
 
 - **BREAKING**: Update SDK `ReleaseSpec.secrets` from value-bearing `set` / `replace_all` to value-free `require?: string[]` and `delete?: string[]`.
 - **BREAKING**: Remove `SecretSummary.value_hash` from SDK types, MCP `list_secrets` output, CLI help/docs, skills, and agent docs.
-- Align the public `secrets.set` and `secrets.list` SDK contract with the shipped gateway: `POST /projects/v1/admin/{id}/secrets/{key}` with `{ value }`, and list responses as key/timestamp metadata only.
+- Align the public `secrets.set` and `secrets.list` SDK contract with the shipped gateway: `POST /projects/v1/admin/{id}/secrets` with `{ key, value }`, and list responses as key/timestamp metadata only.
 - Add the gateway-exact `WarningEntry` type and wire `warnings: WarningEntry[]` through plan, apply result, events, CLI/MCP output, and legacy bundle result/output where relevant.
 - Make `deploy.apply` emit plan warnings and abort before upload/commit when a warning requires confirmation, unless an explicit apply option allows continuing. Low-level `plan` / `upload` / `commit` stays available for callers that intentionally handle warnings.
 - Update SDK normalization, validation, tests, scoped-client wrappers, and CI deploy preflight rules for the new secret shape. CI credentials still reject every `spec.secrets` field, including value-free `require` and `delete`.

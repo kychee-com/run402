@@ -36,13 +36,13 @@ function json(b: unknown, s = 200): Response {
 }
 
 describe("secrets", () => {
-  it("set POSTs key/value with service bearer", async () => {
+  it("set POSTs key/value to the collection route with service bearer", async () => {
     const { fetch, calls } = mockFetch(() => json({}));
     await sdk(fetch).secrets.set("prj_k", "STRIPE_KEY", "sk_xxx");
-    assert.equal(calls[0]!.url, "https://api.test/projects/v1/admin/prj_k/secrets/STRIPE_KEY");
+    assert.equal(calls[0]!.url, "https://api.test/projects/v1/admin/prj_k/secrets");
     assert.equal(calls[0]!.method, "POST");
     assert.equal(calls[0]!.headers["Authorization"], "Bearer s");
-    assert.deepEqual(JSON.parse(calls[0]!.body as string), { value: "sk_xxx" });
+    assert.deepEqual(JSON.parse(calls[0]!.body as string), { key: "STRIPE_KEY", value: "sk_xxx" });
   });
 
   it("list GETs raw secrets endpoint and strips value_hash from legacy envelopes", async () => {

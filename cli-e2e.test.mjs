@@ -266,8 +266,9 @@ function mockFetch(input, init) {
   }
 
   // Secrets
-  if (path.match(/\/secrets\/[^/]+$/) && method === "POST") {
-    return Promise.resolve(json({ status: "ok", key: decodeURIComponent(path.split("/").pop() || "TEST_KEY") }));
+  if (path.match(/\/secrets$/) && method === "POST") {
+    const key = body && typeof body === "object" && "key" in body ? body.key : "TEST_KEY";
+    return Promise.resolve(json({ status: "ok", key }));
   }
   if (path.match(/\/secrets$/) && method === "GET") {
     return Promise.resolve(json({ secrets: [{ key: "TEST_KEY", value_hash: "a1b2c3d4", created_at: "2026-01-01", updated_at: "2026-01-01" }] }));

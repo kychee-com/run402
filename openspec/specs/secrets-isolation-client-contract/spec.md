@@ -44,7 +44,7 @@ The public client surfaces SHALL teach and support the workflow where secret val
 #### Scenario: SDK uses shipped set-secret route
 
 - **WHEN** `r.secrets.set(projectId, key, value)` is called
-- **THEN** the SDK SHALL send `POST /projects/v1/admin/{projectId}/secrets/{key}` with body `{ value }`
+- **THEN** the SDK SHALL send `POST /projects/v1/admin/{projectId}/secrets` with body `{ key, value }`
 
 #### Scenario: Compatibility shim receives legacy in-memory secret values
 

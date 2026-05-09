@@ -1,7 +1,7 @@
 ## 1. Contract Alignment
 
 - [x] 1.1 Re-read private commits `01929adf`, `59199795`, `9855a977`, `31b4848b`, and `b393d752` plus the public handoff to confirm the final gateway wire shape.
-- [x] 1.2 Confirm/update the SDK `secrets.set` endpoint path/body: `POST /projects/v1/admin/{id}/secrets/{key}` with `{ value }`.
+- [x] 1.2 Confirm/update the SDK `secrets.set` endpoint path/body: `POST /projects/v1/admin/{id}/secrets` with `{ key, value }`.
 - [x] 1.3 Review `documentation.md` and list every public doc/help/skill surface that mentions deploy secrets, secret listing, deploy warnings, CI deploy manifests, or legacy bundle deploy.
 - [x] 1.4 Record related issue context in the implementation notes: #151, #225, #10, and #198.
 

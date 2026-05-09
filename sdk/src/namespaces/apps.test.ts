@@ -189,7 +189,7 @@ describe("Apps.bundleDeploy (rls validation)", () => {
     };
 
     w.setHandler((req) => {
-      if (req.path === "/projects/v1/admin/prj_xxx/secrets/API_KEY") return {};
+      if (req.path === "/projects/v1/admin/prj_xxx/secrets") return {};
       if (req.path === "/deploy/v2/plans") return plan;
       if (req.path === "/deploy/v2/plans/plan_secret/commit") return commit;
       throw new Error(`unexpected path ${req.path}`);
@@ -201,10 +201,10 @@ describe("Apps.bundleDeploy (rls validation)", () => {
     });
 
     assert.deepEqual(result.warnings, plan.warnings);
-    const secretReq = w.requests.find((r) => r.path.includes("/secrets/API_KEY"));
+    const secretReq = w.requests.find((r) => r.path === "/projects/v1/admin/prj_xxx/secrets");
     assert(secretReq, "secret write was issued");
     assert.equal(secretReq.method, "POST");
-    assert.deepEqual(secretReq.body, { value: "sk_test" });
+    assert.deepEqual(secretReq.body, { key: "API_KEY", value: "sk_test" });
     const planReq = w.requests.find((r) => r.path === "/deploy/v2/plans");
     assert(planReq, "plan request was issued");
     assert.deepEqual((planReq.body as { spec: { secrets?: unknown } }).spec.secrets, {

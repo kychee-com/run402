@@ -35,11 +35,11 @@ export class Secrets {
     if (!project) throw new ProjectNotFound(projectId, "setting secret");
 
     await this.client.request<unknown>(
-      `/projects/v1/admin/${projectId}/secrets/${encodeURIComponent(key)}`,
+      `/projects/v1/admin/${projectId}/secrets`,
       {
         method: "POST",
         headers: { Authorization: `Bearer ${project.service_key}` },
-        body: { value },
+        body: { key, value },
         context: "setting secret",
       },
     );
