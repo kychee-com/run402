@@ -142,7 +142,7 @@ The `deploy` tool also accepts deploy-v2 web routes:
     "replace": {
       "api": {
         "runtime": "node22",
-        "source": { "data": "import { routedHttp } from '@run402/functions'; export default async (event) => routedHttp.json({ ok: true, path: event.path });" }
+        "source": { "data": "export default async function handler(req) { const url = new URL(req.url); return Response.json({ ok: true, path: url.pathname }); }" }
       }
     }
   },
@@ -156,7 +156,9 @@ The `deploy` tool also accepts deploy-v2 web routes:
 
 Omit `routes` or pass `routes: null` to carry forward base routes. Use `routes: { "replace": [] }` to clear dynamic routes. Route activation is atomic with the release. Direct `/functions/v1/:name` invocation remains API-key protected; routed browser paths are public same-origin ingress, so function code owns application auth, CSRF for cookie-authenticated unsafe methods, CORS/`OPTIONS`, cookies, redirects, and spoofed forwarding-header hygiene.
 
-Matching is exact or final `/*` prefix only. `/admin/*` does not match `/admin`, `/admin/`, `/admin.css`, or `/administrator`; use both `/admin` and `/admin/*` for a dynamic section root. Query strings are ignored for matching and forwarded as `rawQuery`. Exact routes beat prefix routes, longest prefix wins, and method-compatible dynamic routes beat static assets. `POST /login` can route to a function while `GET /login` serves static HTML. Unsafe method mismatch returns `405`; matched dynamic route failures fail closed.
+Matching is exact or final `/*` prefix only. `/admin/*` does not match `/admin`, `/admin/`, `/admin.css`, or `/administrator`; use both `/admin` and `/admin/*` for a dynamic section root. Query strings are ignored for matching and preserved in the handler's full public `req.url`. Exact routes beat prefix routes, longest prefix wins, and method-compatible dynamic routes beat static assets. `POST /login` can route to a function while `GET /login` serves static HTML. Unsafe method mismatch returns `405`; matched dynamic route failures fail closed.
+
+Routed functions use the Node 22 Fetch Request -> Response contract: `export default async function handler(req) { ... }`. `req.method` is the browser method, and `req.url` is the full public URL on managed subdomains, deployment hosts, and verified custom domains. Derive OAuth callbacks from it, for example `new URL("/admin/oauth/google/callback", new URL(req.url).origin)`. Append multiple cookies with `headers.append("Set-Cookie", value)`; redirects, cookies, and query strings are preserved. The raw `run402.routed_http.v1` envelope is internal; do not write route handlers against it.
 
 Route warning recovery:
 
@@ -168,6 +170,8 @@ Route warning recovery:
 | `METHOD_SPECIFIC_ROUTE_ALLOWS_GET_STATIC_FALLBACK` | Unmatched methods can serve static content. | Confirm fallback is intended or add method coverage. |
 | `ROUTE_TABLE_NEAR_LIMIT` | Route table is near a limit. | Consolidate or remove routes. |
 | `ROUTES_NOT_ENABLED` | Routes are disabled for the project/environment. | Deploy without `routes` or request enablement; direct function invoke is not a browser-route substitute. |
+
+Runtime route failure codes to branch on: `ROUTE_MANIFEST_LOAD_FAILED` (manifest/propagation), `ROUTED_INVOKE_WORKER_SECRET_MISSING` (custom-domain Worker secret), `ROUTED_INVOKE_AUTH_FAILED` (internal invoke signature), `ROUTED_ROUTE_STALE` (selected route failed release revalidation), `ROUTE_METHOD_NOT_ALLOWED` (method mismatch), and `ROUTED_RESPONSE_TOO_LARGE` (body over 6 MiB).
 
 ### In-function helpers — `db(req)` vs `adminDb()`
 

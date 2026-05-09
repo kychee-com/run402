@@ -818,20 +818,38 @@ describe("deploy route surface alignment", () => {
   it("keeps route authoring documented across public agent surfaces", () => {
     const requiredFiles = [
       "README.md",
+      "llms.txt",
       "SKILL.md",
       "openclaw/SKILL.md",
+      "cli/README.md",
       "cli/llms-cli.txt",
       "llms-mcp.txt",
       "sdk/README.md",
       "sdk/llms-sdk.txt",
       "functions/README.md",
     ];
+    const requiredPatterns = [
+      [/routes\.replace|routes"\s*:\s*\{\s*"replace"/, "routes.replace"],
+      [/\/admin\b/, "/admin exact route"],
+      [/\/admin\/\*/, "/admin/* prefix route"],
+      [/Fetch Request -> Response/, "Fetch Request -> Response handler"],
+      [/req\.url/, "public req.url preservation"],
+      [/verified custom domains|custom domains/, "custom-domain parity"],
+      [/\/functions\/v1\/:name/, "protected direct function invoke"],
+      [/ROUTE_MANIFEST_LOAD_FAILED/, "route manifest failure code"],
+      [/ROUTED_INVOKE_WORKER_SECRET_MISSING/, "custom-domain worker secret failure code"],
+      [/ROUTED_RESPONSE_TOO_LARGE/, "response-size failure code"],
+    ];
     for (const file of requiredFiles) {
       const text = readFileSync(join(__dirname, file), "utf-8");
-      assert.match(text, /routes/gi, `${file} must mention deploy web routes`);
-      assert.match(text, /replace/gi, `${file} must document routes.replace`);
-      assert.match(text, /\/api\/\*/g, `${file} must include a /api/* route example`);
-      assert.match(text, /\/functions\/v1\/:name/, `${file} must say direct function invoke remains protected`);
+      for (const [pattern, label] of requiredPatterns) {
+        assert.match(text, pattern, `${file} must document ${label}`);
+      }
+      assert.doesNotMatch(
+        text,
+        /routedHttp\.json\(\{ ok: true, path: event\.path \}\)/,
+        `${file} must not use the old raw-envelope routedHttp example as the public handler contract`,
+      );
     }
   });
 

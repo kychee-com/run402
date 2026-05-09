@@ -353,7 +353,7 @@ const specWithRoutes: ReleaseSpec = {
   site: { replace: { "index.html": "<!doctype html><main id='app'></main>" } },
   functions: {
     replace: {
-      api: { source: "import { routedHttp } from '@run402/functions'; export default async (event) => routedHttp.json({ ok: true, path: event.path });" },
+      api: { source: "export default async function handler(req) { const url = new URL(req.url); return Response.json({ ok: true, path: url.pathname }); }" },
       admin: { source: "export default async () => new Response('admin')" },
       auth: { source: "export default async () => new Response('login')" },
     },
@@ -366,11 +366,11 @@ await r.deploy.apply(specWithRoutes);
 Route matching and routed HTTP contract:
 - Exact patterns look like `/admin`; prefix wildcard patterns use a final `/*`, such as `/admin/*`.
 - `/admin/*` does not match `/admin`, `/admin/`, `/admin.css`, or `/administrator`; deploy both `/admin` and `/admin/*` for a dynamic section root. `/admin` and `/admin/` are trailing-slash equivalents for exact matching.
-- Query strings are ignored for matching and forwarded to routed functions as `rawQuery`.
+- Query strings are ignored for matching and preserved in the handler's full public `req.url`.
 - Exact routes beat prefix routes, longest prefix wins among prefixes, and method-compatible dynamic routes beat static assets.
 - A method-specific `POST /login` route can coexist with static `GET /login` HTML. Unsafe method mismatch returns `405`, not SPA HTML.
 - Matched dynamic routes fail closed: function/platform errors are returned and Run402 does not continue to static lookup.
-- Routed browser ingress uses `run402.routed_http.v1` from `@run402/functions`. Direct `/functions/v1/:name` remains API-key protected.
+- Routed browser ingress uses Node 22 Fetch Request -> Response. The handler receives `req.method` and full public `req.url` on managed subdomains, deployment hosts, and verified custom domains. The raw `run402.routed_http.v1` envelope is internal; do not write browser route handlers against it. Direct `/functions/v1/:name` remains API-key protected.
 - Request/response bodies are capped at 6 MiB. Run402 adds no wildcard CORS, does not store routed dynamic responses in a shared cache, and adds `Cache-Control: private, no-store` plus `x-run402-cache: dynamic-bypass` when the function sets no cache header.
 - The function owns application auth, CSRF for cookie-authenticated unsafe methods, CORS/`OPTIONS`, cookies, redirects, and not trusting spoofable forwarding headers.
 
@@ -385,6 +385,8 @@ Known route warning codes and recovery:
 | `METHOD_SPECIFIC_ROUTE_ALLOWS_GET_STATIC_FALLBACK` | Unmatched methods can fall back to static content. | Confirm static fallback is intended or add method coverage. |
 | `ROUTE_TABLE_NEAR_LIMIT` | The route table is near the gateway/project limit. | Consolidate or remove routes before adding more. |
 | `ROUTES_NOT_ENABLED` | Routes are not enabled for this project/environment. | Deploy without `routes` or request enablement; direct function invoke is not a browser-route substitute. |
+
+Runtime route failure codes to branch on: `ROUTE_MANIFEST_LOAD_FAILED` (manifest/propagation), `ROUTED_INVOKE_WORKER_SECRET_MISSING` (custom-domain Worker secret), `ROUTED_INVOKE_AUTH_FAILED` (internal invoke signature), `ROUTED_ROUTE_STALE` (selected route failed release revalidation), `ROUTE_METHOD_NOT_ALLOWED` (method mismatch), and `ROUTED_RESPONSE_TOO_LARGE` (body over 6 MiB).
 
 #### Backward-compat shims
 

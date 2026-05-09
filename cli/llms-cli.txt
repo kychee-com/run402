@@ -197,7 +197,7 @@ Complete static site + function + route manifest:
     "replace": {
       "api": {
         "runtime": "node22",
-        "source": { "data": "import { routedHttp } from '@run402/functions'; export default async (event) => routedHttp.json({ ok: true, path: event.path });" }
+        "source": { "data": "export default async function handler(req) { const url = new URL(req.url); return Response.json({ ok: true, path: url.pathname }); }" }
       }
     }
   },
@@ -209,9 +209,9 @@ Route semantics:
 - Omit `routes` or pass `routes: null` to carry forward base routes. `routes: { "replace": [] }` clears dynamic routes. `routes: { "replace": [...] }` replaces the route table atomically with the release.
 - Route entries use `pattern`, optional non-empty `methods` (`GET`, `HEAD`, `POST`, `PUT`, `PATCH`, `DELETE`, `OPTIONS`), and `target: { "type": "function", "name": "<materialized function name>" }`. Path-keyed maps like `"routes": { "/api/*": { "function": "api" } }` are invalid.
 - Exact patterns look like `/admin`; prefix wildcard patterns use final `/*`, like `/admin/*`. `/admin/*` does not match `/admin`, `/admin/`, `/admin.css`, or `/administrator`, so deploy both `/admin` and `/admin/*` for a dynamic section root.
-- Query strings are ignored for matching and forwarded as `rawQuery`. Exact beats prefix, longest prefix wins, and method-compatible dynamic routes beat static assets.
+- Query strings are ignored for matching and preserved in the handler's full public `req.url`. Exact beats prefix, longest prefix wins, and method-compatible dynamic routes beat static assets.
 - A `POST /login` route can coexist with static `GET /login` HTML. Unsafe method mismatch returns `405`, not SPA HTML. Matched dynamic route failures fail closed and do not fall back to static files.
-- Routed browser ingress uses `run402.routed_http.v1` from `@run402/functions`; direct `/functions/v1/:name` remains API-key protected. The function owns app auth, CSRF, CORS/`OPTIONS`, cookies, redirects, and spoofed forwarding-header hygiene.
+- Routed browser ingress uses Node 22 Fetch Request -> Response: `export default async function handler(req) { ... }`. `req.url` is the full public URL on managed subdomains, deployment hosts, and verified custom domains, so derive OAuth callbacks from `new URL(req.url).origin`. The raw `run402.routed_http.v1` envelope is internal; do not write route handlers against it. Direct `/functions/v1/:name` remains API-key protected. The function owns app auth, CSRF, CORS/`OPTIONS`, cookies, redirects, and spoofed forwarding-header hygiene.
 
 Apply it:
 
@@ -270,6 +270,8 @@ Route warning guidance:
 | `METHOD_SPECIFIC_ROUTE_ALLOWS_GET_STATIC_FALLBACK` | Unmatched methods can serve static content. | Confirm fallback is intended or add method coverage. |
 | `ROUTE_TABLE_NEAR_LIMIT` | Route table is near a limit. | Consolidate or remove routes. |
 | `ROUTES_NOT_ENABLED` | Routes are disabled for the project/environment. | Deploy without `routes` or request enablement; direct function invoke is not a browser-route substitute. |
+
+Runtime route failure codes to branch on: `ROUTE_MANIFEST_LOAD_FAILED` (manifest/propagation), `ROUTED_INVOKE_WORKER_SECRET_MISSING` (custom-domain Worker secret), `ROUTED_INVOKE_AUTH_FAILED` (internal invoke signature), `ROUTED_ROUTE_STALE` (selected route failed release revalidation), `ROUTE_METHOD_NOT_ALLOWED` (method mismatch), and `ROUTED_RESPONSE_TOO_LARGE` (body over 6 MiB).
 
 **Migration registry**: each migration is identified by `(id, checksum)`. Re-shipping the same `id` + same SQL is a registry noop; same `id` + different SQL is a hard error (`MIGRATION_CHECKSUM_MISMATCH`). Ship idempotent migrations (`CREATE TABLE IF NOT EXISTS`, `ADD COLUMN IF NOT EXISTS` in a `DO` block) and re-deploys are free.
 

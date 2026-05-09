@@ -151,7 +151,7 @@ Use `run402 deploy apply` for public browser routes to functions. Routes activat
     "replace": {
       "api": {
         "runtime": "node22",
-        "source": { "data": "import { routedHttp } from '@run402/functions'; export default async (event) => routedHttp.json({ ok: true, path: event.path });" }
+        "source": { "data": "export default async function handler(req) { const url = new URL(req.url); return Response.json({ ok: true, path: url.pathname }); }" }
       }
     }
   },
@@ -165,9 +165,11 @@ Use `run402 deploy apply` for public browser routes to functions. Routes activat
 
 Omit `routes` or pass `routes: null` to carry forward base routes. Use `routes: { "replace": [] }` to clear dynamic routes. Do not use path-keyed maps. Direct `/functions/v1/:name` remains API-key protected; browser-routed paths are public same-origin ingress, so the function owns application auth, CSRF for cookie-authenticated unsafe methods, CORS/`OPTIONS`, cookies, redirects, and spoofed forwarding-header hygiene.
 
-Matching is exact or final `/*` prefix only. `/admin/*` does not match `/admin`; use both `/admin` and `/admin/*` for a dynamic area root. Query strings are ignored for matching and forwarded as `rawQuery`. Exact beats prefix, longest prefix wins, and method-compatible dynamic routes beat static assets. A `POST /login` route can coexist with static `GET /login` HTML. Unsafe method mismatch returns `405`; matched dynamic route failures fail closed.
+Matching is exact or final `/*` prefix only. `/admin/*` does not match `/admin`; use both `/admin` and `/admin/*` for a dynamic area root. Query strings are ignored for matching and preserved in the handler's full public `req.url`. Exact beats prefix, longest prefix wins, and method-compatible dynamic routes beat static assets. A `POST /login` route can coexist with static `GET /login` HTML. Unsafe method mismatch returns `405`; matched dynamic route failures fail closed.
 
-Known route warning recovery: `PUBLIC_ROUTED_FUNCTION` means review app auth, CSRF, CORS/`OPTIONS`, and cookies before retrying with `--allow-warnings`. `ROUTE_SHADOWS_STATIC_PATH` and `WILDCARD_ROUTE_SHADOWS_STATIC_PATHS` mean inspect affected paths and active routes before confirming. `ROUTE_TARGET_CARRIED_FORWARD` means inspect carried-forward function targets. `METHOD_SPECIFIC_ROUTE_ALLOWS_GET_STATIC_FALLBACK` means confirm static fallback is intended. `ROUTE_TABLE_NEAR_LIMIT` means consolidate routes. `ROUTES_NOT_ENABLED` means deploy without `routes` or request enablement.
+Routed functions use the Node 22 Fetch Request -> Response contract: `export default async function handler(req) { ... }`. `req.method` is the browser method, and `req.url` is the full public URL on managed subdomains, deployment hosts, and verified custom domains. Derive OAuth callbacks from it, for example `new URL("/admin/oauth/google/callback", new URL(req.url).origin)`. Append multiple cookies with `headers.append("Set-Cookie", value)`; redirects, cookies, and query strings are preserved. The raw `run402.routed_http.v1` envelope is internal; do not write route handlers against it.
+
+Known route warning recovery: `PUBLIC_ROUTED_FUNCTION` means review app auth, CSRF, CORS/`OPTIONS`, and cookies before retrying with `--allow-warnings`. `ROUTE_SHADOWS_STATIC_PATH` and `WILDCARD_ROUTE_SHADOWS_STATIC_PATHS` mean inspect affected paths and active routes before confirming. `ROUTE_TARGET_CARRIED_FORWARD` means inspect carried-forward function targets. `METHOD_SPECIFIC_ROUTE_ALLOWS_GET_STATIC_FALLBACK` means confirm static fallback is intended. `ROUTE_TABLE_NEAR_LIMIT` means consolidate routes. `ROUTES_NOT_ENABLED` means deploy without `routes` or request enablement. Runtime route failure codes to branch on: `ROUTE_MANIFEST_LOAD_FAILED` (manifest/propagation), `ROUTED_INVOKE_WORKER_SECRET_MISSING` (custom-domain Worker secret), `ROUTED_INVOKE_AUTH_FAILED` (internal invoke signature), `ROUTED_ROUTE_STALE` (selected route failed release revalidation), `ROUTE_METHOD_NOT_ALLOWED` (method mismatch), and `ROUTED_RESPONSE_TOO_LARGE` (body over 6 MiB).
 
 The manifest looks like this — note the `manifest.json` entry inside `files[]`:
 

@@ -147,72 +147,55 @@ Use `adminDb()` (not `db(req)`) here — there's no incoming request to forward.
 
 ## Routed HTTP functions
 
-Deploy-v2 web routes can map public same-origin browser paths to functions, for example `routes: { "replace": [{ "pattern": "/api/*", "target": { "type": "function", "name": "api" } }] }`. A browser request to a routed path does **not** need a Run402 API key at the public edge. Direct `/functions/v1/:name` invocation is unchanged: it remains API-key protected and API-shaped.
+Deploy-v2 web routes can map public same-origin browser paths to functions, for example `routes.replace` / `"routes": { "replace": [{ "pattern": "/api/*", "target": { "type": "function", "name": "api" } }] }`. Use exact `/admin` plus final-wildcard `/admin/*` when a dynamic section root and its children should route to the same function. A browser request to a routed path does **not** need a Run402 API key at the public edge. Direct `/functions/v1/:name` invocation is unchanged: it remains API-key protected and API-shaped.
 
-Routed browser traffic invokes your function with the `run402.routed_http.v1` envelope. The gateway preserves the public URL, path, raw query, duplicate-safe lower-case headers, raw cookie header, optional base64 body, and route context. The matched prefix is not stripped from `path`.
-
-Request fields:
-- `version`, `method`, `url`, `path`, `rawPath`, `rawQuery`
-- `headers: Array<[string, string]>`
-- `cookies.raw`
-- `body: null | { encoding: "base64"; data; size }`
-- `context.source`, `projectId`, `releaseId`, `deploymentId`, `host`, `proto`, `routePattern`, `routeKind`, `routeTarget`, `requestId`, plus optional `clientIp` and `userAgent`
-
-Response fields:
-- `status` from 200 through 599
-- optional duplicate-safe `headers`
-- optional `cookies: string[]`, preserved as separate `Set-Cookie` headers
-- optional base64 `body`
-
-Helpers:
+Routed browser traffic invokes the same Node 22 Fetch Request -> Response handler used by direct functions:
 
 ```ts
-import {
-  routedHttp,
-  type RoutedHttpRequestV1,
-  type RoutedHttpResponseV1,
-} from "@run402/functions";
+export default async function handler(req: Request): Promise<Response> {
+  const url = new URL(req.url);
 
-export default async function handler(
-  event: RoutedHttpRequestV1,
-): Promise<RoutedHttpResponseV1> {
-  if (!routedHttp.isRequest(event)) {
-    return routedHttp.json({ error: "unsupported_event" }, { status: 400 });
-  }
-
-  if (event.method === "OPTIONS") {
-    return routedHttp.text("", {
+  if (req.method === "OPTIONS") {
+    return new Response(null, {
       status: 204,
-      headers: [
-        ["access-control-allow-origin", "https://app.example.com"],
-        ["access-control-allow-methods", "GET, POST, OPTIONS"],
-        ["access-control-allow-headers", "content-type, authorization"],
-      ],
+      headers: {
+        "access-control-allow-origin": "https://app.example.com",
+        "access-control-allow-methods": "GET, POST, OPTIONS",
+        "access-control-allow-headers": "content-type, authorization",
+      },
     });
   }
 
-  if (event.method === "POST" && !event.headers.some(([k]) => k === "x-csrf-token")) {
-    return routedHttp.json({ error: "csrf_required" }, { status: 403 });
+  if (req.method === "POST" && !req.headers.has("x-csrf-token")) {
+    return Response.json({ error: "csrf_required" }, { status: 403 });
   }
 
-  return routedHttp.json(
-    { ok: true, path: event.path, query: event.rawQuery },
-    {
-      headers: [["cache-control", "private, no-store"]],
-      cookies: [
-        "sid=abc; HttpOnly; Secure; SameSite=Lax; Path=/",
-        "theme=dark; Secure; SameSite=Lax; Path=/",
-      ],
-    },
-  );
+  const headers = new Headers({ "cache-control": "private, no-store" });
+  headers.append("Set-Cookie", "sid=abc; HttpOnly; Secure; SameSite=Lax; Path=/");
+  headers.append("Set-Cookie", "theme=dark; Secure; SameSite=Lax; Path=/");
+  return Response.json({ ok: true, path: url.pathname, query: url.search }, { headers });
 }
 ```
 
-`routedHttp.text`, `routedHttp.json`, and `routedHttp.bytes` return `RoutedHttpResponseV1`. Named `text`, `json`, `bytes`, and `isRequest` exports are also available. Redirects are ordinary 3xx responses with a `Location` header. `HEAD` responses send headers without body bytes. WebSockets, `101 Switching Protocols`, streaming, and SSE are not supported in Phase 1.
+Request fields:
+- `req.method` is the original browser method. `GET` routes also match `HEAD`; `HEAD` reaches the handler as `HEAD`.
+- `req.url` is the full public URL, including scheme, host, path, and query, on managed subdomains, deployment hosts, and verified custom domains. Derive OAuth callback URLs from `new URL(req.url).origin`.
+- `req.headers` is a Fetch `Headers` object. Cookie data is available through the `cookie` header.
+- `await req.text()`, `await req.json()`, and `await req.arrayBuffer()` read the buffered request body, capped at 6 MiB.
 
-Limits and defaults: request and response bodies are capped at 6 MiB. Run402 does not add wildcard CORS. Run402 does not store routed dynamic responses in a shared cache; if your function sets no `Cache-Control`, the gateway adds `Cache-Control: private, no-store` and `x-run402-cache: dynamic-bypass`.
+Response behavior:
+- Return a Web `Response` with status 200 through 599 except `101 Switching Protocols`.
+- Append each cookie with `headers.append("Set-Cookie", value)`; Run402 preserves multiple `Set-Cookie` values as separate browser headers.
+- Redirects are ordinary 3xx responses with a `Location` header. `HEAD` responses send headers without body bytes.
+- Request and response bodies are capped at 6 MiB. WebSockets, `101 Switching Protocols`, streaming, and SSE are not supported in Phase 1.
 
-Security notes: application auth, authorization, sessions, OAuth callbacks, CORS, and CSRF belong in your function code. For cookie-authenticated `POST`, `PUT`, `PATCH`, or `DELETE`, validate a CSRF token or an equivalent same-site defense. Do not trust spoofable forwarding headers for authorization; prefer the typed `event.context` metadata when it is present.
+Limits and defaults: Run402 does not add wildcard CORS. Run402 does not store routed dynamic responses in a shared cache; if your function sets no `Cache-Control`, the gateway adds `Cache-Control: private, no-store` and `x-run402-cache: dynamic-bypass`.
+
+Security notes: application auth, authorization, sessions, OAuth callbacks, CORS, and CSRF belong in your function code. For cookie-authenticated `POST`, `PUT`, `PATCH`, or `DELETE`, validate a CSRF token or an equivalent same-site defense. Do not trust spoofable forwarding headers for authorization.
+
+The raw `run402.routed_http.v1` envelope is an internal gateway transport. Low-level `routedHttp` helpers and `RoutedHttpRequestV1` / `RoutedHttpResponseV1` types remain exported for tests and gateway-adjacent utilities, but browser route handlers should use Fetch `Request` and `Response`.
+
+Runtime route failure codes to branch on: `ROUTE_MANIFEST_LOAD_FAILED` (manifest/propagation), `ROUTED_INVOKE_WORKER_SECRET_MISSING` (custom-domain Worker secret), `ROUTED_INVOKE_AUTH_FAILED` (internal invoke signature), `ROUTED_ROUTE_STALE` (selected route failed release revalidation), `ROUTE_METHOD_NOT_ALLOWED` (method mismatch), and `ROUTED_RESPONSE_TOO_LARGE` (body over 6 MiB).
 
 ## Imports auto-resolved
 

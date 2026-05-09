@@ -144,7 +144,7 @@ Deploy-v2 routes are release resources: they activate atomically with the site, 
       "api": {
         "runtime": "node22",
         "source": {
-          "data": "import { routedHttp } from '@run402/functions'; export default async (event) => routedHttp.json({ ok: true, path: event.path });"
+          "data": "export default async function handler(req) { const url = new URL(req.url); return Response.json({ ok: true, path: url.pathname }); }"
         }
       }
     }
@@ -159,7 +159,11 @@ Deploy-v2 routes are release resources: they activate atomically with the site, 
 
 Omit `routes` or pass `routes: null` to carry forward base routes. Use `routes: { "replace": [] }` to clear dynamic routes. Direct `/functions/v1/:name` calls remain API-key protected; browser-routed paths are public same-origin ingress, so the function owns app auth, CSRF for cookie-authenticated unsafe methods, and CORS/`OPTIONS`.
 
-Matching is exact or final-prefix-wildcard only. `/admin` and `/admin/` are exact trailing-slash equivalents; `/admin/*` matches children but not `/admin`, `/admin/`, `/admin.css`, or `/administrator`, so deploy both `/admin` and `/admin/*` for a routed section root. Query strings are ignored for matching and forwarded as `rawQuery`. Exact routes beat prefix routes; longest prefix wins; method-compatible dynamic routes beat static assets. A `POST /login` route can coexist with static `GET /login` HTML. Unsafe method mismatch returns `405`, and matched dynamic route failures fail closed instead of falling back to static files.
+Matching is exact or final-prefix-wildcard only. `/admin` and `/admin/` are exact trailing-slash equivalents; `/admin/*` matches children but not `/admin`, `/admin/`, `/admin.css`, or `/administrator`, so deploy both `/admin` and `/admin/*` for a routed section root. Query strings are ignored for matching and preserved in the handler's full public `req.url`. Exact routes beat prefix routes; longest prefix wins; method-compatible dynamic routes beat static assets. A `POST /login` route can coexist with static `GET /login` HTML. Unsafe method mismatch returns `405`, and matched dynamic route failures fail closed instead of falling back to static files.
+
+Routed functions use the Node 22 Fetch Request -> Response contract: `export default async function handler(req) { ... }`. `req.method` is the browser method, and `req.url` is the full public URL on managed subdomains, deployment hosts, and verified custom domains. Derive OAuth callbacks from it, for example `new URL("/admin/oauth/google/callback", new URL(req.url).origin)`. Append multiple cookies with `headers.append("Set-Cookie", value)`; redirects, cookies, and query strings are preserved. The raw `run402.routed_http.v1` envelope is internal; do not write route handlers against it.
+
+Runtime route failure codes to branch on: `ROUTE_MANIFEST_LOAD_FAILED` (manifest/propagation), `ROUTED_INVOKE_WORKER_SECRET_MISSING` (custom-domain Worker secret), `ROUTED_INVOKE_AUTH_FAILED` (internal invoke signature), `ROUTED_ROUTE_STALE` (selected route failed release revalidation), `ROUTE_METHOD_NOT_ALLOWED` (method mismatch), and `ROUTED_RESPONSE_TOO_LARGE` (body over 6 MiB).
 
 ### GitHub Actions OIDC deploys — link once, deploy with the same CLI
 

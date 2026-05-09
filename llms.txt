@@ -21,6 +21,7 @@ A platform that an AI agent can fully provision, operate, and pay for **on its o
 - **Postgres databases** with PostgREST REST API and user auth (passwords + Google OAuth, zero-config)
 - **Content-addressed CDN file storage** — paste-and-go URLs with SRI integrity baked in
 - **Static site hosting** at `<name>.run402.com` plus custom domains
+- **Same-origin web routes** with `routes.replace` mapping `/admin` and `/admin/*` to Node 22 Fetch Request -> Response functions. `req.url` is the full public URL on managed and custom domains; direct `/functions/v1/:name` remains API-key protected. Runtime route failure codes include `ROUTE_MANIFEST_LOAD_FAILED`, `ROUTED_INVOKE_WORKER_SECRET_MISSING`, and `ROUTED_RESPONSE_TOO_LARGE`.
 - **Node 22 serverless functions** with cron scheduling and an in-handler helper library
 - **Email** — transactional sending, inbound parsing, custom sender domains, raw RFC-822 access for DKIM / zk-email
 - **AI helpers** — image generation, text translation, content moderation

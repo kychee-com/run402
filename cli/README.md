@@ -125,6 +125,10 @@ import { db, adminDb, getUser, email, ai } from "@run402/functions";
 
 `db(req)` is the caller-context client (RLS applies); `adminDb()` bypasses RLS for platform-authored writes.
 
+### Same-origin web routes
+
+`run402 deploy apply` accepts `routes.replace` as an array of route entries, not a path-keyed map. Use exact `/admin` plus final-wildcard `/admin/*` for a routed section root, and target a function deployed in the same release. Routed functions use Node 22 Fetch Request -> Response; `req.url` is the full public URL on managed subdomains, deployment hosts, and verified custom domains, so OAuth redirect URIs can be derived from `new URL(req.url).origin`. Direct `/functions/v1/:name` remains API-key protected. Runtime route failure codes to branch on: `ROUTE_MANIFEST_LOAD_FAILED` (manifest/propagation), `ROUTED_INVOKE_WORKER_SECRET_MISSING` (custom-domain Worker secret), `ROUTED_INVOKE_AUTH_FAILED` (internal invoke signature), `ROUTED_ROUTE_STALE` (selected route failed release revalidation), `ROUTE_METHOD_NOT_ALLOWED` (method mismatch), and `ROUTED_RESPONSE_TOO_LARGE` (body over 6 MiB).
+
 ### Secrets
 
 ```bash

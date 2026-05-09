@@ -427,7 +427,7 @@ function renderWarningsMarkdown(warnings: WarningEntry[]): string {
 const ROUTE_WARNING_GUIDANCE: Record<string, { meaning: string; recovery: string }> = {
   PUBLIC_ROUTED_FUNCTION: {
     meaning: "A route makes the target function public same-origin browser ingress.",
-    recovery: "Review app auth, CSRF protection for cookie-authenticated unsafe methods, and CORS/OPTIONS behavior; direct /functions/v1/:name remains API-key protected. Retry with allow_warnings only after that review.",
+    recovery: "Review app auth, CSRF protection for cookie-authenticated unsafe methods, and CORS/OPTIONS behavior in the Node 22 Fetch Request -> Response handler; direct /functions/v1/:name remains API-key protected. Retry with allow_warnings only after that review.",
   },
   ROUTE_TARGET_CARRIED_FORWARD: {
     meaning: "A carried-forward route still points at a function from the base release.",

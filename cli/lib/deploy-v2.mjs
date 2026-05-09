@@ -62,7 +62,7 @@ Complete static site + function + route manifest:
       "replace": {
         "api": {
           "runtime": "node22",
-          "source": { "data": "import { routedHttp } from '@run402/functions'; export default async (event) => routedHttp.json({ ok: true, path: event.path });" }
+          "source": { "data": "export default async function handler(req) { const url = new URL(req.url); return Response.json({ ok: true, path: url.pathname }); }" }
         }
       }
     },
@@ -93,7 +93,10 @@ Patch examples (only the listed file changes):
 Routes:
   Omit routes or pass "routes": null to carry forward base routes.
   Use "routes": { "replace": [] } to clear dynamic routes.
+  Route entries are array-based, not path-keyed maps. Use exact /admin plus final-wildcard /admin/* for a routed section root.
+  Routed functions use Node 22 Fetch Request -> Response. req.url is the full public URL on managed domains, deployment hosts, and verified custom domains.
   Routes activate atomically with the release. Direct /functions/v1/:name remains API-key protected.
+  Runtime route failure codes: ROUTE_MANIFEST_LOAD_FAILED, ROUTED_INVOKE_WORKER_SECRET_MISSING, ROUTED_INVOKE_AUTH_FAILED, ROUTED_ROUTE_STALE, ROUTE_METHOD_NOT_ALLOWED, ROUTED_RESPONSE_TOO_LARGE.
 `;
 
 const RESUME_HELP = `run402 deploy resume — Resume a stuck deploy operation

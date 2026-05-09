@@ -242,7 +242,15 @@ describe("CLI --help contract", () => {
     });
     assert.match(result.stdout, /"routes"\s*:\s*\{\s*"replace"/);
     assert.match(result.stdout, /\/api\/\*/);
+    assert.match(result.stdout, /\/admin\b/);
+    assert.match(result.stdout, /\/admin\/\*/);
+    assert.match(result.stdout, /Fetch Request -> Response/);
+    assert.match(result.stdout, /req\.url is the full public URL/);
+    assert.match(result.stdout, /verified custom domains/);
     assert.match(result.stdout, /\/functions\/v1\/:name remains API-key protected/);
+    assert.match(result.stdout, /ROUTED_RESPONSE_TOO_LARGE/);
+    assert.doesNotMatch(result.stdout, /"routes"\s*:\s*\{\s*"\/api\/\*"/);
+    assert.doesNotMatch(result.stdout, /routedHttp\.json\(\{ ok: true, path: event\.path \}\)/);
   });
 
   for (const [cmd, { shared, specific }] of Object.entries(MATRIX)) {
