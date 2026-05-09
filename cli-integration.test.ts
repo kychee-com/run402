@@ -249,15 +249,18 @@ describe("CLI integration (live API, no mocks)", { timeout: 180_000 }, () => {
     assert.ok(captured().includes("ok") || captured().includes("INSERT"), "should insert rows");
   });
 
-  it("projects rls", async () => {
+  it("projects apply-expose", async () => {
     const { run } = await import("./cli/lib/projects.mjs");
+    const manifest = {
+      version: "1",
+      tables: [{ name: "items", expose: true, policy: "public_read_authenticated_write" }],
+      views: [],
+      rpcs: [],
+    };
     captureStart();
-    // 3-arg CLI form cannot send the UNRESTRICTED ACK, so use the
-    // collaborative template here. UNRESTRICTED is exercised via the
-    // deploy-manifest path elsewhere.
-    await run("rls", [projectId, "public_read_authenticated_write", '[{"table":"items"}]']);
+    await run("apply-expose", [projectId, JSON.stringify(manifest)]);
     captureStop();
-    assert.ok(captured().includes("ok") || captured().includes("updated"), "should apply RLS");
+    assert.ok(captured().includes("ok") || captured().includes("items"), "should apply expose manifest");
   });
 
   it("projects rest", async () => {
@@ -371,15 +374,14 @@ describe("CLI integration (live API, no mocks)", { timeout: 180_000 }, () => {
     assert.ok(deploymentId, `Expected deployment_id in: ${out}`);
   });
 
-  it("sites status", async () => {
-    const { run } = await import("./cli/lib/sites.mjs");
+  it("deploy release active", async () => {
+    const { runDeployV2 } = await import("./cli/lib/deploy-v2.mjs");
     captureStart();
-    await run("status", [deploymentId]);
+    await runDeployV2("release", ["active", "--project", projectId, "--site-limit", "10"]);
     captureStop();
-    assert.ok(
-      captured().includes("live") || captured().includes("ready") || captured().includes(deploymentId),
-      "should show deployment status",
-    );
+    const data = capturedJson();
+    assert.equal(data.status, "ok");
+    assert.ok(data.release, `Expected active release in: ${captured()}`);
   });
 
   // ── Subdomains ────────────────────────────────────────────────────────
@@ -579,7 +581,7 @@ describe("CLI integration (live API, no mocks)", { timeout: 180_000 }, () => {
   it("mpp: init — switch back to x402", async () => {
     const { run } = await import("./cli/lib/init.mjs");
     captureStart();
-    await run([]);
+    await run(["--switch-rail"]);
     captureStop();
     const out = captured();
     assert.ok(out.includes("x402"), `Expected 'x402' in: ${out}`);
