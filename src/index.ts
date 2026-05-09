@@ -40,6 +40,7 @@ import { setSecretSchema, handleSetSecret } from "./tools/set-secret.js";
 
 // New tools — database
 import { applyExposeSchema, handleApplyExpose } from "./tools/apply-expose.js";
+import { validateManifestSchema, handleValidateManifest } from "./tools/validate-manifest.js";
 import { getExposeSchema, handleGetExpose } from "./tools/get-expose.js";
 import { getSchemaSchema, handleGetSchema } from "./tools/get-schema.js";
 import { getUsageSchema, handleGetUsage } from "./tools/get-usage.js";
@@ -225,6 +226,13 @@ server.tool(
   "Apply a declarative authorization manifest to a project (POST /projects/v1/admin/:id/expose). The manifest describes the full authorization surface: tables (with policy, owner_column, force_owner_on_insert, i_understand_this_is_unrestricted, custom_sql), views (with base, select, filter), and rpcs (with signature, grant_to). Convergent: applying the same manifest twice is a no-op; items dropped between applies have their policies/grants/triggers/views revoked. Tables are dark by default — any table not declared with expose:true is unreachable via anon/authenticated.",
   applyExposeSchema,
   async (args) => handleApplyExpose(args),
+);
+
+server.tool(
+  "validate_manifest",
+  "Validate an auth/expose manifest without applying it. This checks the authorization manifest used by manifest.json, database.expose, and apply_expose; it is not deploy-manifest validation. Optional migration_sql is reference context only and is not executed. Use deploy planning/dry-run surfaces for deploy manifest questions.",
+  validateManifestSchema,
+  async (args) => handleValidateManifest(args),
 );
 
 server.tool(

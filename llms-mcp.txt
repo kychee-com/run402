@@ -24,7 +24,7 @@ Six tool calls take you from zero to a deployed static site backed by a real Pos
 2. **`set_tier`** with `tier: "prototype"` — free on testnet; verifies x402 setup end-to-end.
 3. **`provision_postgres_project`** with `name` — returns `project_id`, `anon_key`, `service_key`. Embed `anon_key` in your HTML before deploying.
 4. **`run_sql`** with `sql: "CREATE TABLE …"` — set up your schema. Make migrations idempotent.
-5. **`apply_expose`** with a manifest — declare which tables are reachable via PostgREST. Tables are dark by default.
+5. **`validate_manifest`**, then **`apply_expose`** with a manifest — check and declare which tables are reachable via PostgREST. Tables are dark by default.
 6. **`deploy_site_dir`** with `dir` — incremental upload, only PUTs bytes the gateway doesn't already have. Auto-claims the subdomain on subsequent deploys.
 
 Optional next: **`deploy_function`** for server logic, **`blob_put`** for paste-and-go CDN assets, **`create_mailbox`** + **`send_email`** for transactional mail.
@@ -101,6 +101,8 @@ JSON Schema: <https://run402.com/schemas/manifest.v1.json>. Set `$schema` on you
 ```
 
 If the manifest references a table the migration doesn't create, the deploy is rejected with HTTP 400 and a structured `errors` array listing every violation.
+
+**Non-mutating validation.** Use **`validate_manifest`** before applying to validate the auth/expose manifest used by `manifest.json`, `database.expose`, and `apply_expose`. It accepts a manifest object or JSON string, optional `migration_sql`, and optional `project_id`. The SQL is used only for reference checks; it is not executed as a PostgreSQL dry run. This is not deploy-manifest validation.
 
 **Imperative escape hatch.** For ad-hoc changes outside a deploy: **`apply_expose`** with `project_id` + `manifest`. **`get_expose`** returns the live state, with `source: "applied"` (came from a prior apply) or `"introspected"` (no manifest applied; reconstructed from DB state).
 
@@ -214,6 +216,7 @@ For TypeScript autocomplete, `npm install @run402/functions` in your editor's pr
 - **`run_sql`** — execute SQL (DDL or queries). Service-key-authenticated. Params: `project_id`, `sql`. Returns markdown table.
 - **`rest_query`** — query/mutate via PostgREST. Params: `project_id`, `table`, `method?` (`GET`/`POST`/`PATCH`/`DELETE`), `params?` (PostgREST query syntax: `select=…`, `eq.value`, `order=…`, `limit=…`), `body?`, `key_type?` (`"anon"` default — RLS applies; `"service"` — bypass).
 - **`apply_expose`** — apply the declarative authorization manifest. Params: `project_id`, `manifest` (`{ version: "1", tables: [...], views: [...], rpcs: [...] }`).
+- **`validate_manifest`** — validate the auth/expose manifest without applying it. Params: `manifest` (object or JSON string), `migration_sql?`, `project_id?`. Returns fenced JSON with `hasErrors`, `errors`, and `warnings`; validation findings are data, not MCP errors.
 - **`get_expose`** — return the current manifest. Params: `project_id`. Returns the manifest plus `source: "applied" | "introspected"`.
 - **`get_schema`** — introspect tables, columns, types, constraints, RLS policies. Params: `project_id`.
 - **`get_usage`** — per-project usage report (API calls, storage, lease expiry). Params: `project_id`.

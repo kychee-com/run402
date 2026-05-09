@@ -7,6 +7,7 @@
  */
 
 import type { ProjectKeys } from "../credentials.js";
+import type { ExposeManifest } from "./deploy.types.js";
 
 // ─── provision ──────────────────────────────────────────────────────────
 
@@ -121,6 +122,47 @@ export interface ProjectRestOptions {
 export interface ProjectRestResponse<T = unknown> {
   status: number;
   body: T;
+}
+
+// ─── expose manifest validation ───────────────────────────────────────
+
+export type ExposeManifestValidationInput = ExposeManifest | string;
+
+export interface ValidateExposeOptions {
+  /** Project id used for live-schema validation. Omit for projectless validation. */
+  project?: string;
+  /** Alias for `project`, accepted for callers that already use gateway/MCP naming. */
+  project_id?: string;
+  /** Migration SQL used as validation context only; it is not executed. */
+  migrationSql?: string;
+}
+
+export type ExposeManifestValidationIssueType =
+  | "missing-table"
+  | "missing-column"
+  | "missing-view-base"
+  | "missing-rpc"
+  | "ambiguous-rpc"
+  | "unrestricted-ack-required"
+  | "sensitive-column-public-write"
+  | "grant-to-role-unknown"
+  | "force-owner-without-owner-column"
+  | "validation-inconclusive"
+  | "schema-shape";
+
+export type ExposeManifestValidationSeverity = "error" | "warning";
+
+export interface ExposeManifestValidationIssue {
+  type: ExposeManifestValidationIssueType;
+  severity: ExposeManifestValidationSeverity;
+  detail: string;
+  fix?: string;
+}
+
+export interface ExposeManifestValidationResult {
+  hasErrors: boolean;
+  errors: ExposeManifestValidationIssue[];
+  warnings: ExposeManifestValidationIssue[];
 }
 
 // ─── RLS templates (used by apps.bundleDeploy expose translation) ─────

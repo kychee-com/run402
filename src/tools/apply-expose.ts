@@ -44,10 +44,11 @@ export const applyExposeSchema = {
   project_id: z.string().describe("The project ID"),
   manifest: z
     .object({
+      $schema: z.string().optional().describe("Optional editor/schema hint for the expose manifest JSON schema"),
       version: z.literal("1").describe("Manifest version — always \"1\""),
-      tables: z.array(tableSchema).describe("Tables to declare (include everything you want exposed AND anything to drop from a prior manifest)"),
-      views: z.array(viewSchema).describe("Views to declare (typed projections over tables)"),
-      rpcs: z.array(rpcSchema).describe("RPCs (PL/pgSQL functions) to expose with explicit grants"),
+      tables: z.array(tableSchema).optional().describe("Tables to declare (include everything you want exposed AND anything to drop from a prior manifest). Omitted means an empty section."),
+      views: z.array(viewSchema).optional().describe("Views to declare (typed projections over tables). Omitted means an empty section."),
+      rpcs: z.array(rpcSchema).optional().describe("RPCs (PL/pgSQL functions) to expose with explicit grants. Omitted means an empty section."),
     })
     .describe(
       "Full authorization manifest. Convergent: applying twice is a no-op; items removed between applies are dropped. " +
@@ -58,10 +59,11 @@ export const applyExposeSchema = {
 export async function handleApplyExpose(args: {
   project_id: string;
   manifest: {
+    $schema?: string;
     version: "1";
-    tables: Array<Record<string, unknown>>;
-    views: Array<Record<string, unknown>>;
-    rpcs: Array<Record<string, unknown>>;
+    tables?: Array<Record<string, unknown>>;
+    views?: Array<Record<string, unknown>>;
+    rpcs?: Array<Record<string, unknown>>;
   };
 }): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
   let body: {

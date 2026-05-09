@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
-import { handleApplyExpose } from "./apply-expose.js";
+import { applyExposeSchema, handleApplyExpose } from "./apply-expose.js";
 import { _resetSdk } from "../sdk.js";
 
 const originalFetch = globalThis.fetch;
@@ -125,5 +125,14 @@ describe("handleApplyExpose", () => {
 
     assert.match(res.content[0].text, /`old_table`/);
     assert.match(res.content[0].text, /`old_view`/);
+  });
+
+  it("accepts gateway-compatible metadata and omitted manifest sections", () => {
+    const parsed = applyExposeSchema.manifest.safeParse({
+      $schema: "https://run402.com/schemas/manifest.v1.json",
+      version: "1",
+    });
+
+    assert.equal(parsed.success, true);
   });
 });

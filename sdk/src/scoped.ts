@@ -19,6 +19,8 @@ import type { Client } from "./kernel.js";
 import type { Run402 } from "./index.js";
 import type { ProjectKeys } from "./credentials.js";
 import type {
+  ExposeManifestValidationInput,
+  ExposeManifestValidationResult,
   ListProjectsResult,
   PinResult,
   ProjectInfo,
@@ -27,6 +29,7 @@ import type {
   QuoteResult,
   SchemaReport,
   UsageReport,
+  ValidateExposeOptions,
 } from "./namespaces/projects.types.js";
 import type {
   AppDetails,
@@ -179,6 +182,15 @@ class ScopedProjects {
   }
   applyExpose(manifest: ExposeManifest): Promise<unknown> {
     return this.parent.projects.applyExpose(this.projectId, manifest);
+  }
+  validateExpose(
+    manifest: ExposeManifestValidationInput,
+    opts: ValidateExposeOptions = {},
+  ): Promise<ExposeManifestValidationResult> {
+    if (opts.project !== undefined || opts.project_id !== undefined) {
+      return this.parent.projects.validateExpose(manifest, opts);
+    }
+    return this.parent.projects.validateExpose(manifest, { ...opts, project: this.projectId });
   }
   getExpose(): Promise<ExposeManifest> {
     return this.parent.projects.getExpose(this.projectId);

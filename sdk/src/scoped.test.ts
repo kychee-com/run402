@@ -202,6 +202,20 @@ describe("ScopedRun402 wrapper routing", () => {
     assert.equal(calls[0]!.headers.Authorization, "Bearer service_xxx");
   });
 
+  it("scoped projects.validateExpose injects project context", async () => {
+    const { fetch, calls } = mockFetch(() =>
+      jsonResponse({ hasErrors: false, errors: [], warnings: [] }),
+    );
+    const sdk = makeSdk(makeCreds(), fetch);
+    const p = await sdk.project("prj_known");
+
+    await p.projects.validateExpose({ version: "1", tables: [] });
+
+    assert.equal(calls.length, 1);
+    assert.match(calls[0]!.url, /\/projects\/v1\/admin\/prj_known\/expose\/validate$/);
+    assert.equal(calls[0]!.headers.Authorization, "Bearer service_xxx");
+  });
+
   it("injects project for options-object methods (deploy.list)", async () => {
     const { fetch, calls } = mockFetch(() => jsonResponse({ operations: [] }));
     const sdk = makeSdk(makeCreds(), fetch);

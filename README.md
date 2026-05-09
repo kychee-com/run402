@@ -87,11 +87,14 @@ cat > manifest.json <<'EOF'
 }
 EOF
 
-run402 projects apply-expose <project_id> --file manifest.json
+run402 projects validate-expose <project_id> --file manifest.json
+run402 projects apply-expose    <project_id> --file manifest.json
 run402 projects get-expose   <project_id>
 ```
 
 Built-in policies: `user_owns_rows` (rows where `owner_column = auth.uid()`; with `force_owner_on_insert: true` a BEFORE INSERT trigger sets it), `public_read_authenticated_write` (anyone reads, any authenticated user writes), `public_read_write_UNRESTRICTED` (fully open; requires `i_understand_this_is_unrestricted: true`), and `custom` (escape hatch — your own `CREATE POLICY` SQL).
+
+Use `run402 projects validate-expose` or the MCP `validate_manifest` tool for a non-mutating feedback loop before applying. Optional migration SQL is used only to check manifest references; it is not executed as a PostgreSQL dry run, and this does not validate deploy manifests.
 
 **Auth-as-SDLC alternative:** drop the same JSON as `manifest.json` into your bundle's `files[]` and the gateway reads it, validates it against your migration SQL, applies it, and strips it before serving the site — so authorization travels with your code and never gets publicly served. The deploy returns `manifest_applied: true`; if a table referenced by the manifest isn't in the migration, the deploy is rejected with a structured `errors` array listing every violation.
 
@@ -282,6 +285,7 @@ run402 init                              # one-shot allowance + faucet + tier ch
 run402 status                            # account snapshot (allowance, balance, tier, projects)
 run402 projects provision --name my-app
 run402 projects sql <id> "CREATE TABLE …"
+run402 projects validate-expose <id> --file manifest.json
 run402 projects apply-expose <id> --file manifest.json
 run402 sites deploy-dir ./dist
 run402 deploy release active --project <id>  # inspect current-live release inventory
@@ -363,6 +367,7 @@ The full MCP surface — every tool is a thin shim over an SDK call.
 | `run_sql` | Execute SQL (DDL or queries). Returns a markdown table. |
 | `rest_query` | Query/mutate via PostgREST. |
 | `apply_expose` | Apply the declarative authorization manifest (tables, views, RPCs). Convergent — drops items removed between applies. |
+| `validate_manifest` | Validate the auth/expose manifest without applying it. Accepts manifest object/string, optional `migration_sql`, optional `project_id`. |
 | `get_expose` | Return the current manifest. `source` is either `applied` (from the tracking table) or `introspected` (regenerated from live DB state). |
 | `get_schema` | Introspect tables, columns, types, constraints, RLS policies. |
 | `get_usage` | Per-project usage report (API calls, storage, lease expiry). |

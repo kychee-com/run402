@@ -59,7 +59,7 @@ const MATRIX = {
       "quote", "use", "list", "info", "keys", "rest",
       "usage", "schema", "rls", "delete", "pin", "promote-user", "demote-user",
     ],
-    specific: ["provision", "sql", "costs"],
+    specific: ["provision", "sql", "costs", "validate-expose"],
   },
   deploy: { shared: [], specific: ["apply", "resume", "list", "events", "release"] },
   ci: { shared: [], specific: ["link", "list", "revoke"] },

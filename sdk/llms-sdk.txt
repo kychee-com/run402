@@ -483,6 +483,8 @@ Built-in policies: `user_owns_rows` (rows where `owner_column = auth.uid()`), `p
 
 **Preferred path: ship the manifest as `manifest.json` inside `bundle_deploy`'s `files[]`.** The gateway reads it, validates against migration SQL, applies it, and **strips it from `files[]` before serving the site** — auth-as-SDLC. Response includes `manifest_applied: true`.
 
+**Non-mutating validation:** `r.projects.validateExpose(manifestOrJsonString, { project?, project_id?, migrationSql? })` validates the auth/expose manifest used by `manifest.json`, `database.expose`, and `apply_expose`. With `project` / `project_id`, validation uses the live project schema through a server-authoritative endpoint; without it, validation is projectless. Invalid JSON strings return `{ hasErrors: true, errors, warnings }` instead of throwing. `migrationSql` is reference context only and is not executed as a PostgreSQL dry run. This is not deploy-manifest validation.
+
 **Imperative path:** `r.projects.applyExpose(projectId, manifest)` POSTs the same JSON shape to `/projects/v1/admin/:id/expose`; `r.projects.getExpose(projectId)` reads the currently-applied manifest. Prefer `r.deploy.apply` for production deploys so schema migrations and expose policy land together, but the direct methods are useful for round-tripping an existing manifest.
 
 ### In-function helpers — `@run402/functions`
@@ -528,6 +530,7 @@ getSchema(id: string): Promise<SchemaReport>
 sql(id: string, sql: string, params?: unknown[]): Promise<unknown>
 rest<T = unknown>(id: string, table: string, queryOrOptions?: string | ProjectRestOptions): Promise<T>
 restResponse<T = unknown>(id: string, table: string, queryOrOptions?: string | ProjectRestOptions): Promise<ProjectRestResponse<T>>
+validateExpose(manifest: ExposeManifest | string, opts?: { project?: string; project_id?: string; migrationSql?: string }): Promise<ExposeManifestValidationResult>
 applyExpose(id: string, manifest: ExposeManifest): Promise<unknown>
 getExpose(id: string): Promise<ExposeManifest>
 pin(id: string): Promise<PinResult>

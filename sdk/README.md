@@ -58,7 +58,7 @@ The `CredentialsProvider` interface has two required methods (`getAuth`, `getPro
 
 | Namespace | Highlights |
 |---|---|
-| `projects` | `provision`, `delete`, `list`, `sql`, `rest`, `applyExpose`, `getExpose`, `getUsage`, `getSchema`, `info`, `keys`, `use`, `active`, `pin`, `getQuote` |
+| `projects` | `provision`, `delete`, `list`, `sql`, `rest`, `validateExpose`, `applyExpose`, `getExpose`, `getUsage`, `getSchema`, `info`, `keys`, `use`, `active`, `pin`, `getQuote` |
 | `deploy` | **The unified deploy primitive (v1.34+).** `apply` / `start` / `resume` / `status` / `list` / `events` / `getRelease` / `getActiveRelease` / `diff` / `plan` / `upload` / `commit` |
 | `ci` | GitHub Actions OIDC federation over `/ci/v1/*`: `createBinding`, `listBindings`, `getBinding`, `revokeBinding`, `exchangeToken`; plus canonical delegation helpers |
 | `sites` | `deployDir` — Node entry only (`@run402/sdk/node`); thin wrapper over `r.deploy.apply` |
@@ -132,6 +132,22 @@ For custom resumable upload UX, use the low-level session primitives:
 `r.blobs.initUploadSession(...)`, `r.blobs.getUploadSession(...)`, and
 `r.blobs.completeUploadSession(...)`. Bytes still go directly to the presigned
 part URLs; the Run402 gateway sees only session metadata.
+
+### Expose manifest validation
+
+Validate the auth/expose manifest used by `manifest.json`, `database.expose`, and `apply_expose` before mutating a project:
+
+```ts
+const manifest = { version: "1" as const, tables: [] };
+const result = await r.projects.validateExpose(manifest, {
+  project: projectId,                  // optional live-schema context
+  migrationSql: "create table items (id bigint primary key);",
+});
+
+if (result.hasErrors) console.log(result.errors);
+```
+
+`migrationSql` is reference context only; it is not executed as a PostgreSQL dry run. This method validates authorization manifests, not deploy manifests.
 
 ### Unified deploy (v1.34+) — `r.deploy.apply`
 

@@ -29,7 +29,7 @@ Six tool calls, zero-to-deployed:
 2. **`set_tier`** with `tier: "prototype"` — free on testnet; verifies x402 setup end-to-end.
 3. **`provision_postgres_project`** with `name` — returns `project_id`, `anon_key`, `service_key`. Embed `anon_key` in your HTML before deploying.
 4. **`run_sql`** with `sql: "CREATE TABLE …"` — set up your schema. Make migrations idempotent.
-5. **`apply_expose`** with a manifest — declare which tables are reachable via PostgREST. Tables are dark by default.
+5. **`validate_manifest`**, then **`apply_expose`** with a manifest — check and declare which tables are reachable via PostgREST. Tables are dark by default.
 6. **`deploy_site_dir`** with `dir` (or `deploy_site` with inline files) — incremental upload, only PUTs bytes the gateway doesn't already have. Returns a live URL plus auto-claimed subdomain on subsequent deploys.
 
 Optional next: **`deploy_function`** for server logic, **`blob_put`** to host images/JS/CSS with paste-and-go URLs, **`create_mailbox` + `send_email`** for transactional mail.
@@ -147,6 +147,10 @@ Authorization travels with your code. When you call **`bundle_deploy`**, include
 
 If the manifest references a table the migration doesn't create, the deploy is rejected with HTTP 400 and a structured `errors` array listing every violation.
 
+#### Non-mutating validation: `validate_manifest`
+
+Before applying, call **`validate_manifest`** with `manifest` (object or JSON string), optional `migration_sql`, and optional `project_id`. It validates the auth/expose manifest used by `manifest.json`, `database.expose`, and `apply_expose`; it does not validate deploy manifests. Migration SQL is only reference context for manifest checks and is not executed as a PostgreSQL dry run. The result preserves `{ hasErrors, errors, warnings }` in fenced JSON, and `hasErrors: true` is data rather than a tool failure.
+
 #### Imperative: `apply_expose` and `get_expose`
 
 For ad-hoc changes outside a deploy — same JSON shape, no bundle:
@@ -257,7 +261,7 @@ For TypeScript autocomplete, `npm install @run402/functions` in your editor's pr
 - **`provision_postgres_project`** — provision a new database. Auto-handles x402 payment.
 - **`run_sql`** — execute SQL (DDL or queries). Service-key-authenticated.
 - **`rest_query`** — query/mutate via PostgREST. Pass `key_type: "anon"` (default) for RLS-applied access, `"service"` to bypass.
-- **`apply_expose`** / **`get_expose`** — declarative authorization manifest (see "expose manifest" above).
+- **`validate_manifest`** / **`apply_expose`** / **`get_expose`** — declarative authorization manifest (see "expose manifest" above).
 - **`get_schema`** — introspect tables, columns, types, constraints, RLS policies.
 - **`get_usage`** — per-project usage report (API calls, storage, lease expiry).
 - **`promote_user`** / **`demote_user`** — manage `project_admin` role on a project user.
@@ -435,9 +439,10 @@ Calling **`set_tier`** during grace reactivates the project and clears all timer
 2. set_tier(tier: "prototype")                             → free on testnet
 3. provision_postgres_project(name: "my-app")              → keys + project_id
 4. run_sql(project_id, sql: "CREATE TABLE …")              → schema
-5. apply_expose(project_id, manifest: {…})                 → declare reachability
-6. deploy_site_dir(project, dir: "./dist")                 → live URL
-7. claim_subdomain(project_id, name: "my-app")             → my-app.run402.com
+5. validate_manifest(manifest, project_id, migration_sql?) → check reachability manifest
+6. apply_expose(project_id, manifest: {…})                 → declare reachability
+7. deploy_site_dir(project, dir: "./dist")                 → live URL
+8. claim_subdomain(project_id, name: "my-app")             → my-app.run402.com
    (optional) deploy_function(project_id, name, code, …)
    (optional) blob_put(project_id, key, content/local_path) for assets
 ```

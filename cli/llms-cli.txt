@@ -457,6 +457,8 @@ JSON Schema: `https://run402.com/schemas/manifest.v1.json` — point your editor
 
 The preferred way to declare authorization is to ship a `manifest.json` file in the bundle's `files[]` (shown above). The platform reads it, validates it against the migration SQL, applies it, and **strips it from `files[]` before the site deploys** so it's never publicly reachable on your subdomain. The deploy response includes `manifest_applied: true` on success. If the manifest references a table your migration doesn't create, the deploy is rejected with HTTP 400 and a structured `errors` array listing **every** violation.
 
+For a non-mutating feedback loop before applying, run `run402 projects validate-expose [project_id] --file manifest.json [--migration-file setup.sql]`. It validates the auth/expose manifest used by `manifest.json`, `database.expose`, and `apply-expose`; it is not deploy-manifest validation. Migration SQL is used only for reference checks and is not executed as a PostgreSQL dry run. The command prints `{ "status": "ok", "hasErrors": boolean, "errors": [...], "warnings": [...] }` and exits successfully even when `hasErrors` is true.
+
 Built-in policies (one per table):
 
 - `user_owns_rows` — owner column matches `auth.uid()`. Requires `owner_column`. With `force_owner_on_insert: true`, a `BEFORE INSERT` trigger sets `owner_column := auth.uid()` automatically. Best for user-scoped data (todos, workouts, messages). `uuid` owner columns get index-friendly policies; other types fall back to a `::text` cast with a warning; a btree index is auto-created.
@@ -503,7 +505,8 @@ run402 projects sql <project_id> "INSERT INTO items (title) VALUES ('Buy groceri
 
 # 4. Declare authorization. Write manifest.json first:
 #    {"version":"1","tables":[{"name":"items","expose":true,"policy":"public_read_authenticated_write"}]}
-run402 projects apply-expose <project_id> --file manifest.json
+run402 projects validate-expose <project_id> --file manifest.json
+run402 projects apply-expose    <project_id> --file manifest.json
 
 # 5. Deploy a static site (uses active project automatically)
 run402 sites deploy --manifest site.json
@@ -546,6 +549,8 @@ run402 subdomains claim my-app
 - `run402 projects demote-user <id> <email>` — demote a user from project_admin role
 - `run402 projects <usage|schema> <id>`
 - `run402 projects delete <id> --confirm` — **cascade deletes** all project resources: Lambda functions, subdomains, S3 site files, deployments, secrets, and published app versions. The schema slot is dropped and recreated. This is irreversible. `--confirm` is required.
+- `run402 projects validate-expose [id] <manifest_json>` — validate an auth/expose manifest without applying it
+- `run402 projects validate-expose [id] --file manifest.json [--migration-file setup.sql]` — validate file input with optional migration-reference SQL
 - `run402 projects apply-expose <id> <manifest_json>` — apply a declarative authorization manifest
 - `run402 projects apply-expose <id> --file manifest.json` — apply from a JSON file
 - `run402 projects get-expose <id>` — print the current manifest (`source: applied | introspected`)

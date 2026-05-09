@@ -514,6 +514,84 @@ describe("projects admin helpers (SDK/CLI parity)", () => {
     assert.equal(seen[1]!.method, "GET");
   });
 
+  it("validates expose manifests without project context using wallet auth", async () => {
+    const validation = {
+      hasErrors: true,
+      errors: [
+        {
+          type: "missing-table",
+          severity: "error",
+          detail: "Table todos does not exist.",
+          fix: "Create the table or remove it from the manifest.",
+        },
+      ],
+      warnings: [],
+    };
+    const { fetch, calls } = mockFetch(() => jsonResponse(validation));
+    const sdk = makeSdk(makeCreds(), fetch);
+    const manifest = { version: "1", tables: [{ table: "todos" }] };
+
+    const result = await sdk.projects.validateExpose(manifest, {
+      migrationSql: "create table todos (id bigint primary key);",
+    });
+
+    assert.equal(calls[0]!.url, "https://api.example.test/projects/v1/expose/validate");
+    assert.equal(calls[0]!.method, "POST");
+    assert.equal(calls[0]!.headers["SIGN-IN-WITH-X"], "test-siwx");
+    assert.equal(calls[0]!.headers["Authorization"], undefined);
+    assert.deepEqual(JSON.parse(calls[0]!.body as string), {
+      manifest,
+      migration_sql: "create table todos (id bigint primary key);",
+    });
+    assert.deepEqual(result, validation);
+  });
+
+  it("validates expose manifests against a project with service-key auth", async () => {
+    const validation = { hasErrors: false, errors: [], warnings: [] };
+    const { fetch, calls } = mockFetch(() => jsonResponse(validation));
+    const sdk = makeSdk(makeCreds(), fetch);
+
+    const result = await sdk.projects.validateExpose('{"version":"1","tables":[]}', {
+      project: "prj_known",
+    });
+
+    assert.equal(
+      calls[0]!.url,
+      "https://api.example.test/projects/v1/admin/prj_known/expose/validate",
+    );
+    assert.equal(calls[0]!.method, "POST");
+    assert.equal(calls[0]!.headers["Authorization"], "Bearer service_xxx");
+    assert.equal(calls[0]!.headers["SIGN-IN-WITH-X"], undefined);
+    assert.deepEqual(JSON.parse(calls[0]!.body as string), {
+      manifest: { version: "1", tables: [] },
+    });
+    assert.deepEqual(result, validation);
+  });
+
+  it("returns a validation result for invalid JSON string manifests", async () => {
+    const { fetch, calls } = mockFetch(() => jsonResponse({}));
+    const sdk = makeSdk(makeCreds(), fetch);
+
+    const result = await sdk.projects.validateExpose("{ bad json");
+
+    assert.equal(calls.length, 0);
+    assert.equal(result.hasErrors, true);
+    assert.equal(result.warnings.length, 0);
+    assert.equal(result.errors[0]!.type, "schema-shape");
+    assert.match(result.errors[0]!.detail, /invalid/i);
+  });
+
+  it("uses structured error paths for project validation operational failures", async () => {
+    const { fetch, calls } = mockFetch(() => jsonResponse({}));
+    const sdk = makeSdk(makeCreds(), fetch);
+
+    await assert.rejects(
+      sdk.projects.validateExpose({ version: "1" }, { project_id: "prj_missing" }),
+      ProjectNotFound,
+    );
+    assert.equal(calls.length, 0);
+  });
+
   it("exposes project-admin role helpers under the projects namespace (GH-181)", async () => {
     const { fetch, calls } = mockFetch(() => jsonResponse({ status: "ok" }));
     const sdk = makeSdk(makeCreds(), fetch);

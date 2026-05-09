@@ -55,7 +55,7 @@ const TEMPO_RPC_URL = "https://rpc.moderato.tempo.xyz/";
 let rpcCallCount = 0;
 let tempoRpcCallCount = 0;
 
-function mockFetch(input, init) {
+async function mockFetch(input, init) {
   // Handle Request objects (x402 library may pass these)
   let url, method, rawBody;
   if (typeof input === "string") {
@@ -65,7 +65,7 @@ function mockFetch(input, init) {
   } else if (input instanceof Request) {
     url = input.url;
     method = (init?.method || input.method || "GET").toUpperCase();
-    rawBody = init?.body !== undefined ? init.body : undefined;
+    rawBody = init?.body !== undefined ? init.body : await input.clone().text().catch(() => undefined);
   } else {
     url = String(input);
     method = (init?.method || "GET").toUpperCase();
@@ -183,6 +183,35 @@ function mockFetch(input, init) {
   if (path.match(/^\/projects\/v1\/admin\/[^/]+\/pin$/) && method === "POST") {
     const projectId = path.split("/").at(-2);
     return Promise.resolve(json({ status: "pinned", project_id: projectId }));
+  }
+  if (
+    (path === "/projects/v1/expose/validate" ||
+      path.match(/^\/projects\/v1\/admin\/[^/]+\/expose\/validate$/)) &&
+    method === "POST"
+  ) {
+    const manifest = body?.manifest ?? {};
+    const tableNames = Array.isArray(manifest.tables)
+      ? manifest.tables.map((entry) => entry?.name ?? entry?.table)
+      : [];
+    const hasMissing = tableNames.includes("missing_items");
+    return Promise.resolve(json({
+      hasErrors: hasMissing,
+      errors: hasMissing
+        ? [{
+            type: "missing-table",
+            severity: "error",
+            detail: "Table missing_items does not exist.",
+            fix: "Create the table or remove it from the manifest.",
+          }]
+        : [],
+      warnings: body?.migration_sql
+        ? [{
+            type: "validation-inconclusive",
+            severity: "warning",
+            detail: "Migration SQL was parsed as validation context only.",
+          }]
+        : [],
+    }));
   }
   if (pathNoQuery.match(/^\/admin\/api\/finance\/project\/[^/]+$/) && method === "GET") {
     const window = new URL(url, API).searchParams.get("window") || "30d";
@@ -1106,6 +1135,44 @@ describe("CLI e2e happy path", () => {
     await run("sql", ["prj_test123", "--file", sqlPath]);
     captureStop();
     assert.ok(captured().includes("test"), "should return query results from file");
+  });
+
+  it("projects validate-expose reads manifest and migration files with project context", async () => {
+    const { run } = await import("./cli/lib/projects.mjs");
+    const { writeFileSync: wf } = await import("node:fs");
+    const manifestPath = join(tempDir, "manifest.validate.json");
+    const migrationPath = join(tempDir, "manifest.validate.sql");
+    wf(manifestPath, JSON.stringify({ version: "1", tables: [{ name: "items" }] }));
+    wf(migrationPath, "create table items (id bigint primary key);");
+
+    captureStart();
+    await run("validate-expose", [
+      "prj_test123",
+      "--file",
+      manifestPath,
+      "--migration-file",
+      migrationPath,
+    ]);
+    captureStop();
+
+    const parsed = JSON.parse(capturedStdout());
+    assert.equal(parsed.status, "ok");
+    assert.equal(parsed.hasErrors, false);
+    assert.equal(parsed.warnings[0]?.type, "validation-inconclusive");
+  });
+
+  it("projects validate-expose prints validation findings without exiting non-zero", async () => {
+    const { run } = await import("./cli/lib/projects.mjs");
+    const manifest = JSON.stringify({ version: "1", tables: [{ name: "missing_items" }] });
+
+    captureStart();
+    await run("validate-expose", [manifest]);
+    captureStop();
+
+    const parsed = JSON.parse(capturedStdout());
+    assert.equal(parsed.status, "ok");
+    assert.equal(parsed.hasErrors, true);
+    assert.equal(parsed.errors[0]?.type, "missing-table");
   });
 
   it("projects sql with missing --file path returns structured JSON error (GH-233)", async () => {

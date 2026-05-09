@@ -11,6 +11,8 @@ import type { ProjectKeys } from "../credentials.js";
 import { LocalError, ProjectNotFound } from "../errors.js";
 import type { ExposeManifest } from "./deploy.types.js";
 import type {
+  ExposeManifestValidationInput,
+  ExposeManifestValidationResult,
   ListProjectsResult,
   PinResult,
   ProjectInfo,
@@ -21,6 +23,7 @@ import type {
   QuoteResult,
   SchemaReport,
   UsageReport,
+  ValidateExposeOptions,
 } from "./projects.types.js";
 
 export class Projects {
@@ -241,6 +244,47 @@ export class Projects {
     });
   }
 
+  /**
+   * Validate an authorization/expose manifest without applying it.
+   *
+   * When `opts.project` / `opts.project_id` is supplied, the gateway validates
+   * against that project's live schema using its service key. Otherwise it
+   * performs projectless wallet-auth validation. `migrationSql` is validation
+   * context only and is never executed.
+   */
+  async validateExpose(
+    manifest: ExposeManifestValidationInput,
+    opts: ValidateExposeOptions = {},
+  ): Promise<ExposeManifestValidationResult> {
+    const project = normalizeValidationProject(opts);
+    const parsed = parseExposeManifestValidationInput(manifest);
+    if ("hasErrors" in parsed) return parsed;
+
+    const body: Record<string, unknown> = { manifest: parsed.manifest };
+    if (opts.migrationSql !== undefined) body.migration_sql = opts.migrationSql;
+
+    if (project) {
+      const keys = await this.client.getProject(project);
+      if (!keys) throw new ProjectNotFound(project, "validating expose manifest");
+      return this.client.request<ExposeManifestValidationResult>(
+        `/projects/v1/admin/${project}/expose/validate`,
+        {
+          method: "POST",
+          headers: { Authorization: `Bearer ${keys.service_key}` },
+          body,
+          context: "validating expose manifest",
+          withAuth: false,
+        },
+      );
+    }
+
+    return this.client.request<ExposeManifestValidationResult>("/projects/v1/expose/validate", {
+      method: "POST",
+      body,
+      context: "validating expose manifest",
+    });
+  }
+
   /** Fetch the project's current expose manifest. */
   async getExpose(id: string): Promise<ExposeManifest> {
     const keys = await this.client.getProject(id);
@@ -355,4 +399,41 @@ function formatRestQuery(query: ProjectRestOptions["query"]): string {
   const sp = new URLSearchParams(query);
   const out = sp.toString();
   return out ? `?${out}` : "";
+}
+
+function normalizeValidationProject(opts: ValidateExposeOptions): string | undefined {
+  if (
+    opts.project !== undefined &&
+    opts.project_id !== undefined &&
+    opts.project !== opts.project_id
+  ) {
+    throw new LocalError(
+      "Pass only one project context to projects.validateExpose(): `project` and `project_id` differ.",
+      "validating expose manifest",
+    );
+  }
+  return opts.project ?? opts.project_id;
+}
+
+function parseExposeManifestValidationInput(
+  manifest: ExposeManifestValidationInput,
+): { manifest: unknown } | ExposeManifestValidationResult {
+  if (typeof manifest !== "string") return { manifest };
+  try {
+    return { manifest: JSON.parse(manifest) };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return {
+      hasErrors: true,
+      errors: [
+        {
+          type: "schema-shape",
+          severity: "error",
+          detail: `Expose manifest JSON is invalid: ${message}`,
+          fix: "Pass a JSON object matching the expose manifest v1 schema before running semantic validation.",
+        },
+      ],
+      warnings: [],
+    };
+  }
 }

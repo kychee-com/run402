@@ -28,7 +28,7 @@ node scripts/deploy.mjs apply --project <id> --dir ./dist
 In practice, **prefer reading [`SKILL.md`](./SKILL.md)** — it teaches the modern surface end-to-end:
 
 - **Paste-and-go assets** — `run402 blob put` returns content-addressed CDN URLs with SRI baked in
-- **Dark-by-default tables + the expose manifest** — `run402 projects apply-expose` (preferred: ship `manifest.json` in the bundle's `files[]`)
+- **Dark-by-default tables + the expose manifest** — `run402 projects validate-expose` for non-mutating checks, then `run402 projects apply-expose` (preferred: ship `manifest.json` in the bundle's `files[]`)
 - **Slick deploys** — `run402 sites deploy-dir` with plan/commit transport, only uploads bytes the gateway doesn't already have
 - **In-function helpers** — `db(req)` (caller-context, RLS) vs `adminDb()` (bypass) inside deployed functions
 

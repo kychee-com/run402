@@ -23,6 +23,8 @@ Subcommands:
   schema [id]                             Inspect the database schema
   apply-expose [id] <manifest_json>       Apply a declarative authorization manifest
   apply-expose [id] --file <path>         Apply a manifest from a JSON file
+  validate-expose [id] <manifest_json>    Validate an authorization manifest without applying it
+  validate-expose [id] --file <path>      Validate a manifest file without mutating the project
   get-expose   [id]                       Get the current authorization manifest
   delete [id] --confirm                   Immediately and irreversibly delete a project (cascade purge) and remove from local state. Requires --confirm.
   pin   [id]                              Pin a project (admin only; uses admin allowance wallet)
@@ -43,6 +45,7 @@ Examples:
   run402 projects usage prj_abc123
   run402 projects costs prj_abc123 --window 30d
   run402 projects schema prj_abc123
+  run402 projects validate-expose prj_abc123 --file manifest.json
   run402 projects apply-expose prj_abc123 --file manifest.json
   run402 projects get-expose prj_abc123
   run402 projects keys prj_abc123
@@ -68,6 +71,9 @@ Notes:
     row), public_read_write_UNRESTRICTED (fully open; requires
     "i_understand_this_is_unrestricted": true on the entry), custom (provide
     custom_sql with CREATE POLICY statements).
+  - 'validate-expose' checks the same auth/expose manifest shape without
+    applying it. Optional migration SQL is used only for reference checks; it is
+    not executed as a PostgreSQL dry run.
 `;
 
 const SUB_HELP = {
@@ -135,6 +141,35 @@ Examples:
   run402 projects costs prj_abc123
   RUN402_ADMIN_COOKIE='run402_admin=...' run402 projects costs prj_abc123
   RUN402_ADMIN_COOKIE='run402_admin=...' run402 projects costs --window 7d
+`,
+  "validate-expose": `run402 projects validate-expose — Validate an authorization manifest without applying it
+
+Usage:
+  run402 projects validate-expose [id] <manifest_json> [options]
+  run402 projects validate-expose [id] --file <path> [options]
+  cat manifest.json | run402 projects validate-expose [id] [options]
+
+Arguments:
+  [id]                Optional project ID. When omitted, the active project is
+                      used if one is set; otherwise validation is projectless.
+  <manifest_json>     Inline auth/expose manifest JSON.
+
+Options:
+  --file <path>            Read the auth/expose manifest from a JSON file
+  --migration-file <path>  Read migration SQL for reference checks only
+  --migration-sql <sql>    Inline migration SQL for reference checks only
+
+Notes:
+  - This validates the auth/expose manifest used by manifest.json,
+    database.expose, and apply-expose. It does not validate deploy manifests.
+  - Migration SQL is parsed as context for references; it is not executed.
+  - Validation findings are returned in JSON with hasErrors and do not make the
+    command fail. Usage, file, auth, and network errors still exit non-zero.
+
+Examples:
+  run402 projects validate-expose --file manifest.json
+  run402 projects validate-expose prj_abc123 --file manifest.json --migration-file setup.sql
+  run402 projects validate-expose '{"version":"1","tables":[]}'
 `,
 };
 
@@ -232,6 +267,86 @@ async function applyExpose(projectId, args = []) {
   try {
     const data = await getSdk().projects.applyExpose(projectId, manifest);
     console.log(JSON.stringify(data, null, 2));
+  } catch (err) {
+    reportSdkError(err);
+  }
+}
+
+async function validateExpose(args = []) {
+  let projectId = null;
+  let file = null;
+  let inline = null;
+  let migrationFile = null;
+  let migrationSql = null;
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (arg === "--file") {
+      if (args[i + 1] === undefined) {
+        fail({ code: "BAD_FLAG", message: "--file requires a value", details: { flag: "--file" } });
+      }
+      file = args[++i];
+    }
+    else if (arg === "--migration-file") {
+      if (args[i + 1] === undefined) {
+        fail({ code: "BAD_FLAG", message: "--migration-file requires a value", details: { flag: "--migration-file" } });
+      }
+      migrationFile = args[++i];
+    }
+    else if (arg === "--migration-sql") {
+      if (args[i + 1] === undefined) {
+        fail({ code: "BAD_FLAG", message: "--migration-sql requires a value", details: { flag: "--migration-sql" } });
+      }
+      migrationSql = args[++i];
+    }
+    else if (!projectId && typeof arg === "string" && arg.startsWith("prj_")) { projectId = arg; }
+    else if (!inline && typeof arg === "string" && !arg.startsWith("--")) { inline = arg; }
+    else if (typeof arg === "string" && !arg.startsWith("--")) {
+      fail({
+        code: "BAD_USAGE",
+        message: `Unexpected extra argument: ${arg}`,
+        hint: "run402 projects validate-expose [id] <manifest_json>",
+      });
+    }
+  }
+  if (file && inline) {
+    fail({
+      code: "BAD_USAGE",
+      message: "Provide either inline manifest JSON or --file <path>, not both.",
+      hint: "run402 projects validate-expose [id] --file manifest.json",
+    });
+  }
+  if (migrationFile && migrationSql !== null) {
+    fail({
+      code: "BAD_USAGE",
+      message: "Provide either --migration-file or --migration-sql, not both.",
+    });
+  }
+  if (file) validateRegularFile(file, "--file");
+  if (migrationFile) validateRegularFile(migrationFile, "--migration-file");
+
+  let raw = file ? readFileSync(file, "utf-8") : inline;
+  if (!raw && process.stdin && process.stdin.isTTY === false) {
+    raw = readFileSync(0, "utf-8");
+  }
+  if (!raw) {
+    fail({
+      code: "BAD_USAGE",
+      message: "Missing manifest.",
+      hint: "Provide inline JSON, pipe JSON to stdin, or use --file <path>",
+    });
+  }
+
+  const activeProjectId = getActiveProjectId();
+  const project = projectId || activeProjectId || undefined;
+  if (!project) allowanceAuthHeaders("/projects/v1/expose/validate");
+  const migration = migrationFile ? readFileSync(migrationFile, "utf-8") : migrationSql;
+
+  try {
+    const data = await getSdk().projects.validateExpose(raw, {
+      ...(project ? { project } : {}),
+      ...(migration !== null && migration !== undefined ? { migrationSql: migration } : {}),
+    });
+    console.log(JSON.stringify({ status: "ok", ...data }, null, 2));
   } catch (err) {
     reportSdkError(err);
   }
@@ -463,6 +578,10 @@ const FLAGS_BY_SUB = {
   sql: { known: ["--file", "--params"], values: ["--file", "--params"] },
   costs: { known: ["--window"], values: ["--window"] },
   "apply-expose": { known: ["--file"], values: ["--file"] },
+  "validate-expose": {
+    known: ["--file", "--migration-file", "--migration-sql"],
+    values: ["--file", "--migration-file", "--migration-sql"],
+  },
   delete: { known: ["--confirm"], values: [] },
 };
 
@@ -495,6 +614,7 @@ export async function run(sub, args) {
     case "costs":     { const { projectId, rest } = resolvePositionalProject(args, { rejectBareFirst: true, valueFlags: FLAGS_BY_SUB.costs.values }); await costs(projectId, rest); break; }
     case "schema":    { const { projectId } = resolvePositionalProject(args, { rejectBareFirst: true }); await schema(projectId); break; }
     case "apply-expose": { const { projectId, rest } = resolvePositionalProject(args, { maxBarePositionals: 1, valueFlags: FLAGS_BY_SUB["apply-expose"].values, rejectBareFirstWhenFlagPresent: ["--file"] }); await applyExpose(projectId, rest); break; }
+    case "validate-expose": await validateExpose(args); break;
     case "get-expose":   { const { projectId } = resolvePositionalProject(args, { rejectBareFirst: true }); await getExpose(projectId); break; }
     case "delete":    { const { projectId, rest } = resolvePositionalProject(args, { rejectBareFirst: true }); await deleteProject(projectId, rest); break; }
     case "pin":       { const { projectId } = resolvePositionalProject(args, { rejectBareFirst: true }); await pin(projectId); break; }

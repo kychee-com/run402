@@ -40,6 +40,7 @@ That's a real Postgres database + a deployed static site, paid for autonomously 
 | Set up a wallet from scratch | `run402 init` |
 | Make a database | `run402 projects provision` |
 | Run SQL on it | `run402 projects sql` |
+| Check an auth manifest before applying | `run402 projects validate-expose` |
 | Make a table reachable from the browser | `run402 projects apply-expose` |
 | Deploy a frontend from a directory | `run402 sites deploy-dir <path>` |
 | Link GitHub Actions deploys | `run402 ci link github` |
@@ -253,6 +254,16 @@ Authorization travels with your code. Put a file named `manifest.json` in the bu
 
 If the manifest references a table the migration doesn't create, the deploy is rejected with HTTP 400 and a structured `errors` array listing **every** violation (not just the first).
 
+### Non-mutating validation: `validate-expose`
+
+Before applying, run:
+
+```bash
+run402 projects validate-expose [id] --file manifest.json --migration-file migrations.sql
+```
+
+This validates the auth/expose manifest used by `manifest.json`, `database.expose`, and `apply-expose`; it is not deploy-manifest validation. Migration SQL is used only for reference checks and is not executed as a PostgreSQL dry run. The command prints `{ "status": "ok", "hasErrors": boolean, "errors": [...], "warnings": [...] }` and exits successfully even when `hasErrors` is true.
+
 ### Imperative escape hatch: `apply-expose`
 
 For ad-hoc changes outside a deploy — same JSON shape, no bundle:
@@ -327,6 +338,7 @@ run402 projects sql <id> --file migrations.sql
 run402 projects sql <id> "SELECT * FROM items WHERE id = \$1" --params '[42]'
 
 run402 projects rest <id> items "select=id,title&order=id.desc&limit=10"
+run402 projects validate-expose <id> --file manifest.json --migration-file migrations.sql
 run402 projects schema <id>          # introspect tables, columns, RLS
 run402 projects usage  <id>          # API calls, storage, lease expiry
 run402 projects costs <id> --window 30d  # operator-only finance; admin wallet required
@@ -672,6 +684,7 @@ cat > manifest.json <<'EOF'
                "owner_column": "user_id", "force_owner_on_insert": true }],
   "views": [], "rpcs": [] }
 EOF
+run402 projects validate-expose $PROJECT --file manifest.json --migration-file setup.sql
 run402 projects apply-expose $PROJECT --file manifest.json
 
 # 5. Deploy site + claim subdomain

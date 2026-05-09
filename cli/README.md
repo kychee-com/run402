@@ -47,6 +47,7 @@ run402 allowance export    # print address (for funding)
 
 ```bash
 run402 projects sql <id> "CREATE TABLE items (id serial PRIMARY KEY, …)"
+run402 projects validate-expose <id> --file manifest.json # check auth manifest, no mutation
 run402 projects apply-expose <id> --file manifest.json   # declare what's reachable
 run402 projects rest <id> items "select=*&order=id.desc&limit=10"
 run402 projects schema <id>                              # introspect tables + RLS
