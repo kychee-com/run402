@@ -383,6 +383,7 @@ Known route warning codes and recovery:
 | `ROUTE_SHADOWS_STATIC_PATH` | A dynamic route shadows one static path. | Inspect warning details and active release routes; confirm only when intentional. |
 | `WILDCARD_ROUTE_SHADOWS_STATIC_PATHS` | A prefix route shadows static paths. | Review affected paths, split exact routes if needed, and confirm only when intentional. |
 | `METHOD_SPECIFIC_ROUTE_ALLOWS_GET_STATIC_FALLBACK` | Unmatched methods can fall back to static content. | Confirm static fallback is intended or add method coverage. |
+| `WILDCARD_ROUTE_EXCLUDES_MUTATION_METHODS` | A wildcard function route only allows `GET`/`HEAD`. | Add mutation methods such as `POST`, omit methods for an API prefix, or confirm it is read-only. |
 | `ROUTE_TABLE_NEAR_LIMIT` | The route table is near the gateway/project limit. | Consolidate or remove routes before adding more. |
 | `ROUTES_NOT_ENABLED` | Routes are not enabled for this project/environment. | Deploy without `routes` or request enablement; direct function invoke is not a browser-route substitute. |
 

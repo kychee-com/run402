@@ -526,6 +526,14 @@ const ROUTE_WARNING_GUIDANCE = {
       "Add method coverage or static files deliberately.",
     ],
   },
+  WILDCARD_ROUTE_EXCLUDES_MUTATION_METHODS: {
+    hint: "A wildcard function route only allows GET/HEAD, so POST/PUT/PATCH/DELETE paths under that prefix will be rejected before the function runs.",
+    next_actions: [
+      "Add the mutation methods the routed function supports, such as POST.",
+      "Omit methods to allow every supported method when the route is an API surface.",
+      "Use --allow-warnings only if the wildcard prefix is intentionally read-only.",
+    ],
+  },
   ROUTE_TABLE_NEAR_LIMIT: {
     hint: "The route table is near the gateway/project limit.",
     next_actions: [

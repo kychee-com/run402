@@ -445,6 +445,10 @@ const ROUTE_WARNING_GUIDANCE: Record<string, { meaning: string; recovery: string
     meaning: "A method-specific route leaves GET/HEAD static fallback available.",
     recovery: "Confirm that static fallback for unmatched methods is intended.",
   },
+  WILDCARD_ROUTE_EXCLUDES_MUTATION_METHODS: {
+    meaning: "A wildcard function route only allows GET/HEAD.",
+    recovery: "Add the mutation methods the function supports, omit methods for an API prefix that should accept all supported methods, or retry with allow_warnings only when the prefix is intentionally read-only.",
+  },
   ROUTE_TABLE_NEAR_LIMIT: {
     meaning: "The route table is close to the project or gateway limit.",
     recovery: "Consolidate route patterns or remove stale routes before adding more.",

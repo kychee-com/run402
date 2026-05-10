@@ -687,6 +687,51 @@ describe("Deploy.plan", () => {
     );
     assert.equal(plan.warnings[0]?.code, "FIRST_DEPLOY");
   });
+
+  it("adds a client warning for GET-only wildcard function routes", async () => {
+    const w = makeWiring();
+    w.setHandler((req) => {
+      if (req.path === "/deploy/v2/plans?dry_run=true") {
+        return {
+          plan_id: null,
+          operation_id: null,
+          base_release_id: "rel_base",
+          manifest_digest: "route-lint",
+          missing_content: [],
+          diff: {},
+          warnings: [],
+        } satisfies PlanResponse;
+      }
+      throw new Error(`unexpected ${req.path}`);
+    });
+
+    const deploy = new Deploy(w.client);
+    const { plan } = await deploy.plan(
+      {
+        project: "prj_test",
+        routes: {
+          replace: [
+            {
+              pattern: "/admin/*",
+              methods: ["GET", "HEAD"],
+              target: { type: "function", name: "admin" },
+            },
+            {
+              pattern: "/api/*",
+              methods: ["GET", "POST"],
+              target: { type: "function", name: "api" },
+            },
+          ],
+        },
+      },
+      { dryRun: true },
+    );
+
+    assert.equal(plan.warnings.length, 1);
+    assert.equal(plan.warnings[0]?.code, "WILDCARD_ROUTE_EXCLUDES_MUTATION_METHODS");
+    assert.equal(plan.warnings[0]?.requires_confirmation, true);
+    assert.deepEqual(plan.warnings[0]?.affected, ["/admin/*"]);
+  });
 });
 
 describe("Deploy.apply (validation)", () => {
@@ -1073,6 +1118,47 @@ describe("Deploy.apply (validation)", () => {
 });
 
 describe("Deploy.apply (plan warnings)", () => {
+  it("aborts before commit on client-detected wildcard route method warnings", async () => {
+    const w = makeWiring();
+    const events: DeployEvent[] = [];
+    w.setHandler((req) => {
+      if (req.path === "/deploy/v2/plans") return noContentPlan("plan_route_lint", "op_route_lint");
+      throw new Error(`unexpected ${req.path}`);
+    });
+
+    const deploy = new Deploy(w.client);
+    await assert.rejects(
+      () =>
+        deploy.apply(
+          {
+            project: "prj_test",
+            routes: {
+              replace: [
+                {
+                  pattern: "/admin/*",
+                  methods: ["GET"],
+                  target: { type: "function", name: "admin" },
+                },
+              ],
+            },
+          },
+          { onEvent: (event) => events.push(event) },
+        ),
+      (err: unknown) => {
+        assert(err instanceof Run402DeployError);
+        assert.equal(err.code, "WILDCARD_ROUTE_EXCLUDES_MUTATION_METHODS");
+        assert.equal(err.phase, "plan");
+        assert.deepEqual((err.body as { warnings: Array<{ affected?: string[] }> }).warnings[0]?.affected, ["/admin/*"]);
+        return true;
+      },
+    );
+
+    assert.deepEqual(w.requests.map((r) => r.path), ["/deploy/v2/plans"]);
+    const warningEvent = events.find((event) => event.type === "plan.warnings");
+    assert.ok(warningEvent && warningEvent.type === "plan.warnings");
+    assert.equal(warningEvent.warnings[0]?.code, "WILDCARD_ROUTE_EXCLUDES_MUTATION_METHODS");
+  });
+
   it("emits warnings and aborts before upload or commit by default", async () => {
     const w = makeWiring();
     const events: DeployEvent[] = [];

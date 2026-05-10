@@ -67,6 +67,7 @@ import type {
   ReleaseSpec,
   ReleaseToReleaseDiff,
   StartOptions,
+  WarningEntry,
 } from "./deploy.types.js";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -619,11 +620,11 @@ async function planInternal(
 
   let plan: PlanResponse;
   try {
-    plan = normalizePlanResponse(await client.request<PlanResponse>(dryRun ? "/deploy/v2/plans?dry_run=true" : "/deploy/v2/plans", {
+    plan = withClientPlanWarnings(normalized, normalizePlanResponse(await client.request<PlanResponse>(dryRun ? "/deploy/v2/plans?dry_run=true" : "/deploy/v2/plans", {
       method: "POST",
       body,
       context: "planning deploy",
-    }));
+    })));
   } catch (err) {
     throw translateDeployError(err, "plan", null, null);
   }
@@ -1692,6 +1693,67 @@ function emitPlanWarnings(
   if (plan.warnings.length > 0) {
     emit({ type: "plan.warnings", warnings: plan.warnings });
   }
+}
+
+function withClientPlanWarnings(
+  spec: NormalizedReleaseSpec,
+  plan: PlanResponse,
+): PlanResponse {
+  const warnings = clientRoutePlanWarnings(spec);
+  if (warnings.length === 0) return plan;
+
+  const seen = new Set(
+    plan.warnings.map((warning) => warningKey(warning)),
+  );
+  const nextWarnings = [...plan.warnings];
+  for (const warning of warnings) {
+    const key = warningKey(warning);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    nextWarnings.push(warning);
+  }
+
+  return { ...plan, warnings: nextWarnings };
+}
+
+function warningKey(warning: WarningEntry): string {
+  return `${warning.code}:${(warning.affected ?? []).join(",")}`;
+}
+
+function clientRoutePlanWarnings(spec: NormalizedReleaseSpec): WarningEntry[] {
+  const routes = spec.routes;
+  if (!routes || !("replace" in routes)) return [];
+
+  const affected = routes.replace
+    .filter((route) => {
+      if (route.target.type !== "function") return false;
+      if (!route.pattern.endsWith("/*")) return false;
+      if (!route.methods) return false;
+      const methods = new Set(route.methods);
+      return (
+        methods.size > 0 &&
+        [...methods].every((method) => method === "GET" || method === "HEAD")
+      );
+    })
+    .map((route) => route.pattern)
+    .sort();
+
+  if (affected.length === 0) return [];
+  return [
+    {
+      code: "WILDCARD_ROUTE_EXCLUDES_MUTATION_METHODS",
+      severity: "warn",
+      requires_confirmation: true,
+      message:
+        "A wildcard function route only allows GET/HEAD. Mutation endpoints under that prefix will be rejected by the gateway before the function runs.",
+      affected,
+      confidence: "heuristic",
+      details: {
+        missing_common_methods: ["POST", "PUT", "PATCH", "DELETE"],
+        fix: "Add the mutation methods your routed function supports, or omit methods to allow every supported method.",
+      },
+    },
+  ];
 }
 
 function abortOnConfirmationWarnings(plan: PlanResponse, opts: ApplyOptions): void {
