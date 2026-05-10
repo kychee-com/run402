@@ -113,7 +113,7 @@ Arguments:
   <name>              Function name
 
 Options:
-  --tail <n>          Number of most-recent entries (default 50)
+  --tail <n>          Number of most-recent entries (default 50, max 1000)
   --since <ts>        ISO timestamp or epoch ms; only entries after this
   --request-id <id>   Only entries correlated to this req_... request id
   --follow            Poll every 3s and stream new entries (Ctrl-C to stop)

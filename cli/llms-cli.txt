@@ -672,7 +672,7 @@ const res = await fetch('https://api.run402.com/functions/v1/my-function', {
 
 - `run402 functions deploy <id> <name> --file <file> [--deps "<spec,...>"] [--timeout <s>] [--memory <mb>] [--schedule "<cron>"]`
 - `run402 functions invoke <id> <name> [--body '<json>'] [--method <GET|POST|...>]`
-- `run402 functions logs <id> <name> [--tail <n>] [--since <iso-timestamp>] [--request-id <req_...>] [--follow]`
+- `run402 functions logs <id> <name> [--tail <n>] [--since <iso-timestamp>] [--request-id <req_...>] [--follow]` — `--tail` defaults to 50 and is capped at 1000.
 - `run402 functions update <id> <name> [--schedule "<cron>"] [--schedule-remove] [--timeout <s>] [--memory <mb>]`
 - `run402 functions <list|delete> <id> [<name>]`
 
