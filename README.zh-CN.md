@@ -24,7 +24,7 @@ npx run402-mcp
 | `deploy_site` | 部署静态 HTML/CSS/JS 站点 |
 | `deploy_function` | 部署 Node 22 Serverless 函数 |
 | `invoke_function` | 调用已部署的函数 |
-| `get_function_logs` | 获取函数日志 |
+| `get_function_logs` | 获取函数日志，可按 `since` 和 routed `request_id` 过滤 |
 | `set_secret` | 设置函数环境变量 |
 
 ## 定价

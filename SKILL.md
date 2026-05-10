@@ -44,6 +44,7 @@ Important fields:
 - `safe_to_retry` — repeating the same request should not duplicate or corrupt a mutation
 - `mutation_state` — gateway-known mutation progress: `none`, `not_started`, `committed`, `rolled_back`, `partial`, or `unknown`
 - `trace_id` — include this when reporting a Run402 issue
+- `request_id` — routed/function failure handle; use `get_function_logs` with `request_id` for function diagnostics. This is distinct from gateway `trace_id`.
 - `details` — structured route-specific context
 - `next_actions` — advisory suggestions such as `authenticate`, `submit_payment`, `renew_tier`, `check_usage`, `retry`, `resume_deploy`, `edit_request`, or `edit_migration`; render or follow them only after validating the action is safe
 
@@ -299,7 +300,7 @@ No `route_scopes` means no CI route-declaration authority. With route scopes, CI
 
 - **`deploy_function`** — deploy a Node 22 serverless function. Cron-schedulable via `schedule`. Pass `deps` as npm specs (bare names → latest at deploy time, pinned `lodash@4.17.21` or ranges `date-fns@^3.0.0` honored verbatim, max 30 entries / 200 chars each, native binaries rejected). Response surfaces `runtime_version`, `deps_resolved`, `warnings`.
 - **`invoke_function`** — invoke for testing over the direct `/functions/v1/:name` API-key-protected path.
-- **`get_function_logs`** — recent logs (CloudWatch). Use `since` for incremental polling.
+- **`get_function_logs`** — recent logs (CloudWatch). Use `since` for incremental polling and `request_id` (`req_...`) to follow a routed browser failure from `X-Run402-Request-Id` / JSON `request_id`.
 - **`update_function`** — change schedule / timeout / memory without redeploying code.
 - **`list_functions`** / **`delete_function`** — list / remove.
 - **`set_secret`** / **`list_secrets`** / **`delete_secret`** — `process.env` secrets injected into every function. Values are write-only; `list_secrets` returns keys and timestamps only. Deploy specs use `secrets.require[]` as a dependency gate, not as a value carrier or per-function allowlist.

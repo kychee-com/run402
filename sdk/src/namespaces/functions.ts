@@ -6,7 +6,7 @@
  */
 
 import type { Client } from "../kernel.js";
-import { ProjectNotFound } from "../errors.js";
+import { LocalError, ProjectNotFound } from "../errors.js";
 import type {
   DeleteFunctionResult,
   FunctionDeployOptions,
@@ -107,7 +107,8 @@ export class Functions {
 
   /**
    * Get recent logs for a function. Default tail 50; `since` accepts an ISO
-   * 8601 timestamp for incremental polling.
+   * 8601 timestamp or epoch milliseconds for incremental polling. Pass
+   * `requestId` to retrieve logs correlated to a routed request failure.
    */
   async logs(
     projectId: string,
@@ -118,11 +119,14 @@ export class Functions {
     if (!project) throw new ProjectNotFound(projectId, "fetching function logs");
 
     const tail = opts.tail ?? 50;
-    let path = `/projects/v1/admin/${projectId}/functions/${encodeURIComponent(name)}/logs?tail=${tail}`;
-    if (opts.since) {
-      const sinceMs = new Date(opts.since).getTime();
-      if (!Number.isNaN(sinceMs)) path += `&since=${sinceMs}`;
+    const search = new URLSearchParams({ tail: String(tail) });
+    if (opts.since !== undefined) {
+      search.set("since", String(parseLogSince(opts.since)));
     }
+    if (opts.requestId !== undefined) {
+      search.set("request_id", opts.requestId);
+    }
+    const path = `/projects/v1/admin/${projectId}/functions/${encodeURIComponent(name)}/logs?${search.toString()}`;
 
     return this.client.request<FunctionLogsResult>(path, {
       headers: { Authorization: `Bearer ${project.service_key}` },
@@ -191,4 +195,17 @@ export class Functions {
       },
     );
   }
+}
+
+function parseLogSince(since: string): number {
+  const raw = since.trim();
+  const numeric = raw === "" ? Number.NaN : Number(raw);
+  const ms = Number.isFinite(numeric) ? numeric : new Date(since).getTime();
+  if (!Number.isSafeInteger(ms) || ms < 0) {
+    throw new LocalError(
+      `Invalid functions.logs since timestamp: ${since}`,
+      "fetching function logs",
+    );
+  }
+  return ms;
 }

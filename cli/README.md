@@ -114,7 +114,7 @@ run402 functions deploy <id> my-fn --file fn.ts \
   --timeout 30 --memory 256 \
   --schedule "*/15 * * * *" \
   --deps "stripe,zod@^3"
-run402 functions logs <id> my-fn --tail 100 --follow
+run402 functions logs <id> my-fn --tail 100 --request-id req_abc123 --follow
 run402 functions invoke <id> my-fn --body '{"hello":"world"}'
 ```
 

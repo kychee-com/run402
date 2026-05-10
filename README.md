@@ -412,7 +412,7 @@ The full MCP surface — every tool is a thin shim over an SDK call.
 |------|-------------|
 | `deploy_function` | Deploy a Node 22 serverless function. Cron-schedulable. |
 | `invoke_function` | Invoke a deployed function over the direct API-key-protected test path. |
-| `get_function_logs` | Recent logs (CloudWatch). |
+| `get_function_logs` | Recent logs (CloudWatch), filterable by `since` and routed `request_id`. |
 | `update_function` | Update schedule / timeout / memory without redeploying code. |
 | `list_functions` / `delete_function` | List / remove functions. |
 | `set_secret` / `list_secrets` / `delete_secret` | Manage `process.env` secrets injected into all functions. Values are write-only; list returns keys and timestamps only. |

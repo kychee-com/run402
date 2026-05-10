@@ -8,7 +8,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
 import { Run402 } from "../index.js";
-import { ProjectNotFound } from "../errors.js";
+import { LocalError, ProjectNotFound } from "../errors.js";
 import type { CredentialsProvider } from "../credentials.js";
 
 function makeCreds(): CredentialsProvider {
@@ -169,24 +169,48 @@ describe("functions.invoke", () => {
 });
 
 describe("functions.logs", () => {
-  it("GETs logs path with tail and converts since to epoch ms", async () => {
-    const { fetch, calls } = mockFetch(() => json({ logs: [{ timestamp: "t", message: "m" }] }));
+  it("GETs logs path with tail, converts since to epoch ms, and passes requestId", async () => {
+    const { fetch, calls } = mockFetch(() =>
+      json({
+        logs: [
+          {
+            timestamp: "2026-04-01T00:00:00.000Z",
+            message: "m",
+            event_id: "evt-1",
+            log_stream_name: "2026/04/01/[$LATEST]abc",
+            ingestion_time: "2026-04-01T00:00:01.000Z",
+            request_id: "req_abc123",
+          },
+        ],
+      }),
+    );
     const sdk = makeSdk(fetch);
     const iso = "2026-04-01T00:00:00.000Z";
     const epoch = new Date(iso).getTime();
-    await sdk.functions.logs("prj_known", "hello", { tail: 25, since: iso });
+    const result = await sdk.functions.logs("prj_known", "hello", {
+      tail: 25,
+      since: iso,
+      requestId: "req_abc123",
+    });
     const u = new URL(calls[0]!.url);
     assert.equal(u.pathname, "/projects/v1/admin/prj_known/functions/hello/logs");
     assert.equal(u.searchParams.get("tail"), "25");
     assert.equal(u.searchParams.get("since"), String(epoch));
+    assert.equal(u.searchParams.get("request_id"), "req_abc123");
+    assert.equal(result.logs[0]!.event_id, "evt-1");
+    assert.equal(result.logs[0]!.log_stream_name, "2026/04/01/[$LATEST]abc");
+    assert.equal(result.logs[0]!.ingestion_time, "2026-04-01T00:00:01.000Z");
+    assert.equal(result.logs[0]!.request_id, "req_abc123");
   });
 
-  it("ignores invalid since dates", async () => {
+  it("throws LocalError for invalid since dates before fetching", async () => {
     const { fetch, calls } = mockFetch(() => json({ logs: [] }));
     const sdk = makeSdk(fetch);
-    await sdk.functions.logs("prj_known", "x", { since: "not-a-date" });
-    const u = new URL(calls[0]!.url);
-    assert.equal(u.searchParams.get("since"), null);
+    await assert.rejects(
+      sdk.functions.logs("prj_known", "x", { since: "not-a-date" }),
+      LocalError,
+    );
+    assert.equal(calls.length, 0);
   });
 
   it("URL-encodes function names with special characters", async () => {

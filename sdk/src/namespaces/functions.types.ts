@@ -93,13 +93,23 @@ export interface FunctionInvokeResult {
 export interface FunctionLogEntry {
   timestamp: string;
   message: string;
+  /** CloudWatch event id, when available. Useful for follow-mode dedupe. */
+  event_id?: string;
+  /** CloudWatch log stream name, when available. */
+  log_stream_name?: string;
+  /** CloudWatch ingestion timestamp as ISO 8601, when available. */
+  ingestion_time?: string;
+  /** Best-effort routed/function request id extracted from structured logs. */
+  request_id?: string;
 }
 
 export interface FunctionLogsOptions {
-  /** Number of log lines. Server clamps to 200. Default 50. */
+  /** Number of log lines. Server clamps to 1000. Default 50. */
   tail?: number;
-  /** Only return logs at or after this ISO 8601 timestamp. */
+  /** Only return logs at or after this ISO 8601 timestamp or epoch ms. */
   since?: string;
+  /** Only return logs correlated to this routed/function request id. */
+  requestId?: string;
 }
 
 export interface FunctionLogsResult {

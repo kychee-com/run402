@@ -4,6 +4,8 @@ import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail } from "./sdk-errors.mjs";
 import { assertKnownFlags, hasHelp, normalizeArgv, parseIntegerFlag, validateRegularFile } from "./argparse.mjs";
 
+const FUNCTION_LOG_REQUEST_ID_RE = /^req_[A-Za-z0-9_-]{4,128}$/;
+
 const HELP = `run402 functions — Manage serverless functions
 
 Usage:
@@ -14,7 +16,7 @@ Subcommands:
                                        Deploy a function to a project
   invoke <id> <name> [--method <M>] [--body <json>]
                                        Invoke a deployed function
-  logs   <id> <name> [--tail <n>] [--since <ts>] [--follow]
+  logs   <id> <name> [--tail <n>] [--since <ts>] [--request-id <req_...>] [--follow]
                                        Get function logs
   update <id> <name> [--schedule <cron>] [--schedule-remove] [--timeout <s>] [--memory <mb>]
                                        Update function schedule or config without re-deploying
@@ -28,6 +30,7 @@ Examples:
   run402 functions invoke prj_abc123 stripe-webhook --body '{"event":"test"}'
   run402 functions logs prj_abc123 stripe-webhook --tail 100
   run402 functions logs prj_abc123 stripe-webhook --since 2026-03-29T14:00:00Z
+  run402 functions logs prj_abc123 stripe-webhook --request-id req_abc123
   run402 functions logs prj_abc123 stripe-webhook --follow
   run402 functions update prj_abc123 send-reminders --schedule '0 */4 * * *'
   run402 functions update prj_abc123 send-reminders --schedule-remove
@@ -112,11 +115,13 @@ Arguments:
 Options:
   --tail <n>          Number of most-recent entries (default 50)
   --since <ts>        ISO timestamp or epoch ms; only entries after this
+  --request-id <id>   Only entries correlated to this req_... request id
   --follow            Poll every 3s and stream new entries (Ctrl-C to stop)
 
 Examples:
   run402 functions logs prj_abc123 stripe-webhook --tail 100
   run402 functions logs prj_abc123 stripe-webhook --since 2026-03-29T14:00:00Z
+  run402 functions logs prj_abc123 stripe-webhook --request-id req_abc123
   run402 functions logs prj_abc123 stripe-webhook --follow
 `,
   update: `run402 functions update — Update function config without re-deploying
@@ -227,14 +232,16 @@ async function invoke(projectId, name, args) {
 }
 
 async function logs(projectId, name, args) {
-  assertRequiredProjectAndName(projectId, name, "run402 functions logs <project_id> <name> [--tail <n>]");
-  assertKnownFlags(args, ["--tail", "--since", "--follow", "--help", "-h"], ["--tail", "--since"]);
+  assertRequiredProjectAndName(projectId, name, "run402 functions logs <project_id> <name> [--tail <n>] [--request-id <req_...>]");
+  assertKnownFlags(args, ["--tail", "--since", "--request-id", "--follow", "--help", "-h"], ["--tail", "--since", "--request-id"]);
   let tail = 50;
   let since = undefined;
+  let requestId = undefined;
   let follow = false;
   for (let i = 0; i < args.length; i++) {
     if (args[i] === "--tail") tail = parseIntegerFlag("--tail", args[++i], { min: 1 });
     if (args[i] === "--since" && args[i + 1]) since = args[++i];
+    if (args[i] === "--request-id" && args[i + 1]) requestId = args[++i];
     if (args[i] === "--follow") follow = true;
   }
 
@@ -254,12 +261,20 @@ async function logs(projectId, name, args) {
     }
     sinceIso = new Date(ms).toISOString();
   }
+  if (requestId !== undefined && !FUNCTION_LOG_REQUEST_ID_RE.test(requestId)) {
+    fail({
+      code: "BAD_USAGE",
+      message: `Invalid --request-id value: ${requestId}`,
+      details: { flag: "--request-id", value: requestId, expected: "req_<4-128 url-safe chars>" },
+    });
+  }
 
   const fetchLogs = async () => {
     try {
       const data = await getSdk().functions.logs(projectId, name, {
         tail,
         since: sinceIso,
+        requestId,
       });
       return data.logs || [];
     } catch (err) {
@@ -278,25 +293,58 @@ async function logs(projectId, name, args) {
   let running = true;
   process.on("SIGINT", () => { running = false; });
 
-  const initial = await fetchLogs();
-  for (const entry of initial) {
-    console.log(`[${entry.timestamp}] ${entry.message}`);
-  }
-  if (initial.length > 0) {
-    sinceIso = new Date(new Date(initial[initial.length - 1].timestamp).getTime() + 1).toISOString();
-  }
+  let highWaterMs = sinceIso === undefined ? Number.NEGATIVE_INFINITY : new Date(sinceIso).getTime();
+  let seenAtHighWater = new Set();
+
+  const printFreshEntries = (entries) => {
+    let nextHighWaterMs = highWaterMs;
+    const fresh = [];
+    for (const entry of entries) {
+      const entryMs = logTimestampMs(entry);
+      const identity = logEntryIdentity(entry);
+      if (entryMs < highWaterMs) continue;
+      if (entryMs === highWaterMs && seenAtHighWater.has(identity)) continue;
+      fresh.push({ entry, entryMs, identity });
+      if (entryMs > nextHighWaterMs) nextHighWaterMs = entryMs;
+    }
+
+    for (const { entry } of fresh) {
+      console.log(`[${entry.timestamp}] ${entry.message}`);
+    }
+    if (fresh.length === 0 || !Number.isFinite(nextHighWaterMs)) return;
+
+    const nextSeenAtHighWater = new Set();
+    for (const entry of entries) {
+      if (logTimestampMs(entry) === nextHighWaterMs) {
+        nextSeenAtHighWater.add(logEntryIdentity(entry));
+      }
+    }
+    for (const { entry, entryMs, identity } of fresh) {
+      if (entryMs === nextHighWaterMs) {
+        nextSeenAtHighWater.add(identity);
+      }
+    }
+    highWaterMs = nextHighWaterMs;
+    seenAtHighWater = nextSeenAtHighWater;
+    sinceIso = new Date(highWaterMs).toISOString();
+  };
+
+  printFreshEntries(await fetchLogs());
 
   while (running) {
     await new Promise(r => setTimeout(r, 3000));
     if (!running) break;
-    const entries = await fetchLogs();
-    for (const entry of entries) {
-      console.log(`[${entry.timestamp}] ${entry.message}`);
-    }
-    if (entries.length > 0) {
-      sinceIso = new Date(new Date(entries[entries.length - 1].timestamp).getTime() + 1).toISOString();
-    }
+    printFreshEntries(await fetchLogs());
   }
+}
+
+function logTimestampMs(entry) {
+  const ms = new Date(entry.timestamp).getTime();
+  return Number.isNaN(ms) ? 0 : ms;
+}
+
+function logEntryIdentity(entry) {
+  return entry.event_id || `${entry.log_stream_name || ""}:${entry.timestamp || ""}:${entry.message || ""}`;
 }
 
 async function update(projectId, name, args) {

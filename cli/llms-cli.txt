@@ -47,6 +47,7 @@ Canonical fields:
 - `safe_to_retry`: repeating the same request should not duplicate or corrupt a mutation
 - `mutation_state`: one of `none`, `not_started`, `committed`, `rolled_back`, `partial`, `unknown`
 - `trace_id`: include this when reporting the issue
+- `request_id`: routed/function failure handle; use `run402 functions logs <id> <name> --request-id <req_...>` for function diagnostics. This is distinct from gateway `trace_id`.
 - `details`: structured route-specific context
 - `next_actions`: advisory suggestions such as `authenticate`, `submit_payment`, `renew_tier`, `check_usage`, `retry`, `resume_deploy`, `edit_request`, `edit_migration`, or `deploy_site_first`; do not execute route-like suggestions without validating method/path/auth/safety
 
@@ -671,9 +672,11 @@ const res = await fetch('https://api.run402.com/functions/v1/my-function', {
 
 - `run402 functions deploy <id> <name> --file <file> [--deps "<spec,...>"] [--timeout <s>] [--memory <mb>] [--schedule "<cron>"]`
 - `run402 functions invoke <id> <name> [--body '<json>'] [--method <GET|POST|...>]`
-- `run402 functions logs <id> <name> [--tail <n>] [--since <iso-timestamp>] [--follow]`
+- `run402 functions logs <id> <name> [--tail <n>] [--since <iso-timestamp>] [--request-id <req_...>] [--follow]`
 - `run402 functions update <id> <name> [--schedule "<cron>"] [--schedule-remove] [--timeout <s>] [--memory <mb>]`
 - `run402 functions <list|delete> <id> [<name>]`
+
+For routed browser 500s, copy `X-Run402-Request-Id` or the JSON `request_id` from the response and run `run402 functions logs <project> <function> --request-id req_...`. `--since` is validated locally and should be supplied for incidents older than the default recent lookup window.
 
 #### --deps semantics, runtime_version, deps_resolved
 

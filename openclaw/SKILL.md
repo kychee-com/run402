@@ -76,6 +76,7 @@ Fields to use:
 - `safe_to_retry`: repeating the same request should not duplicate or corrupt a mutation
 - `mutation_state`: one of `none`, `not_started`, `committed`, `rolled_back`, `partial`, `unknown`
 - `trace_id`: include when reporting an issue
+- `request_id`: routed/function failure handle; use `run402 functions logs <id> <name> --request-id <req_...>` for diagnostics. Distinct from gateway `trace_id`.
 - `details`: structured route-specific context
 - `next_actions`: advisory actions such as `authenticate`, `submit_payment`, `renew_tier`, `check_usage`, `retry`, `resume_deploy`, `edit_request`, `edit_migration`; never treat them as blindly executable
 
@@ -373,7 +374,7 @@ run402 functions deploy <id> my-fn --file fn.ts \
   --deps "stripe,zod@^3,date-fns@3.6.0"
 
 run402 functions invoke <id> my-fn --body '{"hello":"world"}'
-run402 functions logs   <id> my-fn --tail 100 --follow
+run402 functions logs   <id> my-fn --tail 100 --request-id req_abc123 --follow
 run402 functions update <id> my-fn --schedule "0 */6 * * *"
 run402 functions list   <id>
 run402 functions delete <id> my-fn

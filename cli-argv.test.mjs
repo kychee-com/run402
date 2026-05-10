@@ -170,6 +170,97 @@ describe("--flag=value", () => {
     assert.ok(call, `expected logs request, got ${JSON.stringify(calls)}`);
     assert.match(call.url, /tail=10/);
   });
+
+  it("functions logs accepts equals-form request-id filters", async () => {
+    const { run } = await import("./cli/lib/functions.mjs");
+    captureStart();
+    await run("logs", ["prj_test123", "hello", "--request-id=req_abc123"]);
+    captureStop();
+
+    const call = calls.find((c) => /\/logs\?/.test(c.path));
+    assert.ok(call, `expected logs request, got ${JSON.stringify(calls)}`);
+    assert.equal(new URL(call.url).searchParams.get("request_id"), "req_abc123");
+  });
+});
+
+describe("function log filter validation", () => {
+  it("functions logs rejects invalid --since before network", async () => {
+    const { run } = await import("./cli/lib/functions.mjs");
+    const err = await expectExit1(() =>
+      run("logs", ["prj_test123", "hello", "--since", "not-a-date"]));
+
+    assert.equal(err.code, "BAD_USAGE");
+    assert.equal(err.details.flag, "--since");
+    assert.equal(calls.length, 0, "bad --since must not hit the network");
+  });
+
+  it("functions logs rejects invalid --request-id before network", async () => {
+    const { run } = await import("./cli/lib/functions.mjs");
+    const err = await expectExit1(() =>
+      run("logs", ["prj_test123", "hello", "--request-id", "trace_abc"]));
+
+    assert.equal(err.code, "BAD_USAGE");
+    assert.equal(err.details.flag, "--request-id");
+    assert.equal(calls.length, 0, "bad --request-id must not hit the network");
+  });
+
+  it("functions logs follow dedupes same-millisecond entries by event identity", async () => {
+    const { run } = await import("./cli/lib/functions.mjs");
+    const prevFetch = globalThis.fetch;
+    const prevSetTimeout = globalThis.setTimeout;
+    const timestamp = "2026-05-01T00:00:00.000Z";
+    let logFetches = 0;
+    let sleeps = 0;
+    globalThis.fetch = (input, init) => {
+      const info = requestInfo(input, init);
+      calls.push(info);
+      const pathNoQuery = info.path.split("?")[0];
+      if (/\/functions\/hello\/logs$/.test(pathNoQuery) && info.method === "GET") {
+        logFetches += 1;
+        const logs = logFetches === 1
+          ? [
+              { timestamp, message: "first", event_id: "evt-1", log_stream_name: "stream-a" },
+              { timestamp, message: "second", event_id: "evt-2", log_stream_name: "stream-a" },
+            ]
+          : [
+              { timestamp, message: "first", event_id: "evt-1", log_stream_name: "stream-a" },
+              { timestamp, message: "second", event_id: "evt-2", log_stream_name: "stream-a" },
+              { timestamp, message: "third", event_id: "evt-3", log_stream_name: "stream-a" },
+            ];
+        return Promise.resolve(json({ logs }));
+      }
+      return mockFetch(input, init);
+    };
+    globalThis.setTimeout = (fn, _ms, ...args) => {
+      sleeps += 1;
+      queueMicrotask(() => {
+        if (sleeps >= 2) process.emit("SIGINT");
+        fn(...args);
+      });
+      return 0;
+    };
+
+    try {
+      captureStart();
+      await run("logs", ["prj_test123", "hello", "--follow"]);
+      captureStop();
+    } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+      globalThis.setTimeout = prevSetTimeout;
+    }
+
+    const output = stdout.join("\n");
+    assert.equal((output.match(/first/g) || []).length, 1);
+    assert.equal((output.match(/second/g) || []).length, 1);
+    assert.equal((output.match(/third/g) || []).length, 1);
+    const logCalls = calls.filter((c) => /\/logs\?/.test(c.path));
+    assert.ok(logCalls.length >= 2, `expected at least two log polls, got ${JSON.stringify(logCalls)}`);
+    assert.equal(
+      new URL(logCalls[1].url).searchParams.get("since"),
+      String(new Date(timestamp).getTime()),
+    );
+  });
 });
 
 describe("numeric flag validation", () => {

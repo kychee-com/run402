@@ -48,6 +48,7 @@ Important fields:
 - `safe_to_retry` — repeating the same request will not duplicate or corrupt a mutation
 - `mutation_state` — `none` / `not_started` / `committed` / `rolled_back` / `partial` / `unknown`
 - `trace_id` — include this when reporting an issue
+- `request_id` — routed/function failure handle. Use `get_function_logs` with `request_id` for function diagnostics; it is distinct from gateway `trace_id`.
 - `details` — structured route-specific context
 - `next_actions` — `authenticate`, `submit_payment`, `renew_tier`, `check_usage`, `retry`, `resume_deploy`, `edit_request`, `edit_migration`
 
@@ -262,9 +263,11 @@ No `route_scopes` means no CI route-declaration authority. Route scopes are exac
 
 - **`deploy_function`** — deploy a Node 22 serverless function. Params: `project_id`, `name`, `code`, `config?` (`{ timeout?, memory? }`), `deps?` (npm specs: bare names → latest; pinned `lodash@4.17.21`; ranges `date-fns@^3.0.0`; max 30 entries / 200 chars; native binaries rejected; **don't list `@run402/functions`**), `schedule?` (5-field cron). Response surfaces `runtime_version`, `deps_resolved`, `warnings`.
 - **`invoke_function`** — invoke for testing over the direct `/functions/v1/:name` API-key-protected path. Params: `project_id`, `name`, `method?`, `body?`, `headers?`.
-- **`get_function_logs`** — recent logs (CloudWatch). Params: `project_id`, `name`, `tail?` (default 50, max 200), `since?` (ISO 8601, for incremental polling).
+- **`get_function_logs`** — recent logs (CloudWatch). Params: `project_id`, `name`, `tail?` (default 50, max 1000), `since?` (ISO 8601, locally validated), `request_id?` (`req_...`, for routed/function correlation). Returned lines include optional metadata such as `request_id`, `event_id`, log stream, and ingestion time.
 - **`update_function`** — change schedule / timeout / memory without redeploying code. Params: `project_id`, `name`, `schedule?` (`null` to remove), `timeout?`, `memory?`.
 - **`list_functions`** / **`delete_function`** — list / remove.
+
+For routed browser 500s, copy `X-Run402-Request-Id` or the JSON `request_id` from the response and call `get_function_logs` with that `request_id`. If the incident is older than the default recent lookup window, also pass `since`.
 
 Scheduled function tier limits: prototype 1 / 15 min, hobby 3 / 5 min, team 10 / 1 min. Deploying a scheduled function beyond the limit returns 403.
 

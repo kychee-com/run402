@@ -713,11 +713,13 @@ deploy(projectId, opts: {
   deps?: string[], schedule?: string | null,
 }): Promise<FunctionDeployResult>      // result: { name, url, status, runtime, runtime_version, deps_resolved, warnings, ... }
 invoke(projectId, name, opts?: { method?, body?, headers? }): Promise<FunctionInvokeResult>
-logs(projectId, name, opts?: { tail?, since? }): Promise<FunctionLogsResult>
+logs(projectId, name, opts?: { tail?, since?, requestId? }): Promise<FunctionLogsResult>
 update(projectId, name, opts: { schedule?, timeout?, memory? }): Promise<FunctionUpdateResult>
 list(projectId): Promise<FunctionListResult>
 delete(projectId, name): Promise<void>
 ```
+
+`FunctionLogEntry` includes `timestamp` and `message`, plus optional `event_id`, `log_stream_name`, `ingestion_time`, and `request_id` metadata when the gateway can provide it. Use `requestId` to follow a routed browser failure exposed as `X-Run402-Request-Id` / JSON `request_id`; SDK calls reject invalid `since` timestamps locally instead of silently dropping them.
 
 `deps` accepts npm specs: bare names → latest at deploy time, pinned (`lodash@4.17.21`) and ranges (`date-fns@^3.0.0`) honored verbatim. Max 30 entries / 200 chars each. **Native binary modules are rejected.** Don't list `@run402/functions` (auto-bundled).
 
