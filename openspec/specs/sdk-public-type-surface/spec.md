@@ -7,79 +7,85 @@ TBD - created by archiving change harden-sdk-public-contracts. Update Purpose af
 
 The SDK package root SHALL export every TypeScript type that appears in public SDK namespace method signatures, constructor options, return values, event payloads, or helper APIs.
 
-Route-related deploy types SHALL be included in this contract. At minimum, the root entrypoint SHALL export `RouteHttpMethod`, `ROUTE_HTTP_METHODS`, `RouteTarget`, `FunctionRouteTarget`, `RouteSpec`, `ReleaseRoutesSpec`, `RouteEntry`, `MaterializedRoutes`, `RoutesDiff`, and `RouteChangeEntry`.
+Route-related deploy types SHALL be included in this contract. At minimum, the root entrypoint SHALL export `RouteHttpMethod`, `ROUTE_HTTP_METHODS`, `RouteTarget`, `FunctionRouteTarget`, `StaticRouteTarget`, `RouteSpec`, `ReleaseRoutesSpec`, `RouteEntry`, `MaterializedRoutes`, `RoutesDiff`, and `RouteChangeEntry`.
 
-`ReleaseRoutesSpec` SHALL NOT be buried under deep deploy paths. If an `HttpMethod` compatibility alias is kept, it SHALL alias `RouteHttpMethod` rather than replace the route-specific name.
+Stable static asset identity deploy types SHALL be included in this contract. At minimum, the root entrypoint SHALL export `StaticCacheClass`, `KnownStaticCacheClass`, `StaticManifestMetadata`, `StaticAssetsDiff`, `DeployResolveOptions`, `ScopedDeployResolveOptions`, `DeployResolveResponse`, `DeployResolveRouteMatch`, `DeployResolveMethod`, `DeployResolveMatch`, `KnownDeployResolveMatch`, `DeployResolveFallbackState`, `KnownDeployResolveFallbackState`, `KnownDeployResolveResult`, `NormalizedDeployResolveRequest`, `DeployResolveSummary`, `DeployResolveWarning`, and `DeployResolveNextStep`.
+
+`ReleaseRoutesSpec`, `StaticRouteTarget`, `StaticManifestMetadata`, `StaticAssetsDiff`, and `DeployResolveResponse` SHALL NOT be buried under deep deploy paths. If compatibility aliases are kept, they SHALL alias the deploy-specific names rather than replace them. `StaticCacheClassSource` SHALL NOT be required as a public export unless the implementation needs an opaque alias for `cache_class_sources` keys; docs SHALL NOT require agents to interpret cache-class source keys as a closed vocabulary.
+
+The root entrypoint SHALL also export any public deploy resolve helper functions, including static-hit and route-hit type guards and the deterministic summary helper when added. If static manifest metadata remains nullable, the root entrypoint MAY export `EMPTY_STATIC_MANIFEST_METADATA` and `normalizeStaticManifestMetadata(...)`.
 
 Routed HTTP handler envelope types SHALL live in `@run402/functions`, not the SDK root, because those types are consumed inside deployed functions rather than by external deploy clients.
 
-#### Scenario: Agent imports namespace result and option types from root
+#### Scenario: Agent imports deploy resolve types from root
 
-- **WHEN** a TypeScript consumer imports public namespace types such as blob, email, billing, auth, contracts, function, project, deploy, and CI option/result types from `@run402/sdk`
-- **THEN** the import SHALL compile without using deep package paths
-
-#### Scenario: New namespace type is added
-
-- **WHEN** a public SDK method signature is changed to reference a new exported interface or type alias
-- **THEN** the package root export contract SHALL require that type to be importable from `@run402/sdk`
-
-#### Scenario: Route types are exported from root
-
-- **WHEN** a TypeScript consumer imports `RouteHttpMethod`, `ROUTE_HTTP_METHODS`, `FunctionRouteTarget`, `RouteTarget`, `RouteSpec`, `ReleaseRoutesSpec`, `RouteEntry`, `MaterializedRoutes`, `RoutesDiff`, or `RouteChangeEntry` from `@run402/sdk`
+- **WHEN** a TypeScript consumer imports `DeployResolveOptions`, `DeployResolveResponse`, `DeployResolveRouteMatch`, `DeployResolveSummary`, `DeployResolveWarning`, `DeployResolveNextStep`, `DeployResolveMatch`, `KnownDeployResolveMatch`, `DeployResolveFallbackState`, and `KnownDeployResolveResult` from `@run402/sdk`
 - **THEN** the imports SHALL compile without using deep package paths
+
+#### Scenario: Agent imports static asset types from root
+
+- **WHEN** a TypeScript consumer imports `StaticRouteTarget`, `StaticManifestMetadata`, and `StaticAssetsDiff` from `@run402/sdk`
+- **THEN** the imports SHALL compile without using deep package paths
+
+#### Scenario: Static route target is part of public route union
+
+- **WHEN** a TypeScript consumer narrows `RouteTarget` on `target.type === "static"`
+- **THEN** TypeScript SHALL expose `target.file`
+- **AND** the consumer SHALL NOT need a private deep import or local duplicate type
 
 ### Requirement: Node Entrypoint Type Parity
 
 The Node SDK entrypoint SHALL re-export the complete isomorphic public type surface and SHALL additionally export Node-only public helper types.
 
-Route-related deploy types exported from `@run402/sdk` SHALL also be exported from `@run402/sdk/node`.
+Route-related deploy types, stable static asset identity types, and deploy resolve helpers exported from `@run402/sdk` SHALL also be exported from `@run402/sdk/node`.
 
-#### Scenario: Agent uses only the Node entrypoint
+#### Scenario: Agent imports deploy resolve types from Node entrypoint
 
-- **WHEN** a TypeScript consumer imports isomorphic public SDK types plus `NodeRun402Options`, `NodeRun402`, `DeployDirOptions`, `FileSetFromDirOptions`, or `SignCiDelegationOptions` from `@run402/sdk/node`
+- **WHEN** a TypeScript consumer imports `DeployResolveOptions`, `ScopedDeployResolveOptions`, `DeployResolveResponse`, `DeployResolveRouteMatch`, `DeployResolveSummary`, `StaticManifestMetadata`, or `StaticAssetsDiff` from `@run402/sdk/node`
 - **THEN** the imports SHALL compile without also importing from `@run402/sdk`
 
-#### Scenario: Agent imports route types from Node entrypoint
+#### Scenario: Agent imports static route types from Node entrypoint
 
-- **WHEN** a TypeScript consumer imports `RouteHttpMethod`, `ROUTE_HTTP_METHODS`, `FunctionRouteTarget`, `RouteTarget`, `RouteSpec`, `ReleaseRoutesSpec`, `RouteEntry`, `MaterializedRoutes`, `RoutesDiff`, or `RouteChangeEntry` from `@run402/sdk/node`
+- **WHEN** a TypeScript consumer imports `StaticRouteTarget` and `RouteTarget` from `@run402/sdk/node`
 - **THEN** the imports SHALL compile without also importing from `@run402/sdk`
 
 ### Requirement: Type Export Drift Guard
 
 The SDK test suite SHALL include a mechanical contract that fails when public namespace method types are not exportable from package entrypoints.
 
-The drift guard SHALL include route-related deploy types when web routes are added to public method signatures or return types.
+The drift guard SHALL include route-related deploy types, public URL diagnostics types, deploy resolve helpers, static manifest metadata types, and static asset diff types.
 
 #### Scenario: Missing root export
 
-- **WHEN** a public namespace type is present in source declarations but omitted from `sdk/src/index.ts`
+- **WHEN** `Deploy.resolve` references `DeployResolveResponse` but `sdk/src/index.ts` omits it from root exports
 - **THEN** the type export contract test SHALL fail in CI
 
 #### Scenario: Missing Node re-export
 
-- **WHEN** a public isomorphic type is exported from `@run402/sdk` but omitted from `@run402/sdk/node`
+- **WHEN** an isomorphic deploy type is exported from `@run402/sdk` but omitted from `@run402/sdk/node`
 - **THEN** the type export contract test SHALL fail in CI
 
-#### Scenario: Missing route export
+#### Scenario: Missing static asset export
 
-- **WHEN** `ReleaseRoutesSpec`, `RouteSpec`, or route inventory/diff types are referenced by public deploy types but omitted from a package entrypoint
-- **THEN** the public type export test SHALL fail
+- **WHEN** `ReleaseInventory`, `PlanResponse`, or `ReleaseToReleaseDiff` reference `StaticManifestMetadata` or `StaticAssetsDiff`
+- **THEN** the public type export test SHALL require those types to be importable from package entrypoints
 
 ### Requirement: Agent References Stay Aligned
 
 Agent-facing SDK documentation examples SHALL continue to compile against the package entrypoints, and reference tables SHOULD be derived from or checked against the same public type surface when practical.
 
-Route examples in SDK documentation SHALL import only from package entrypoints and SHALL use the concrete `{ replace: RouteSpec[] }` shape.
+Route examples in SDK documentation SHALL import only from package entrypoints and SHALL use the concrete `{ replace: RouteSpec[] }` shape. Public URL diagnostic examples SHALL import only from package entrypoints and SHALL lead with the URL-first `r.deploy.resolve({ project, url, method? })` shape.
 
-#### Scenario: Documentation uses a public type
+#### Scenario: Documentation uses deploy resolve
 
-- **WHEN** a TypeScript fenced SDK documentation snippet imports or references a public SDK type
-- **THEN** the existing documentation snippet check SHALL compile it against the package entrypoints
-
-#### Scenario: Documentation uses route types
-
-- **WHEN** SDK documentation includes a TypeScript example for route manifests or route inventory
+- **WHEN** SDK documentation includes a TypeScript example for `r.deploy.resolve`
 - **THEN** the example SHALL compile using imports from `@run402/sdk` or `@run402/sdk/node`
+- **AND** it SHALL NOT import from deep source paths
+
+#### Scenario: Documentation uses static route aliases
+
+- **WHEN** SDK documentation includes a TypeScript example for static route aliases
+- **THEN** the example SHALL compile using `StaticRouteTarget`, `RouteSpec`, or `ReleaseRoutesSpec` from `@run402/sdk` or `@run402/sdk/node`
 - **AND** it SHALL NOT import from deep source paths
 
 ### Requirement: Interface-Parity SDK Types Are Exported
@@ -99,3 +105,4 @@ Any SDK method added or widened so CLI and MCP no longer need direct Run402 gate
 - **WHEN** CLI, MCP, docs, or tests refer to new SDK types
 - **THEN** they SHALL import from `@run402/sdk`, `@run402/sdk/node`, or existing local SDK build entrypoints
 - **AND** they SHALL NOT import from deep namespace source paths
+
