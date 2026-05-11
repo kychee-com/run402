@@ -401,11 +401,11 @@ The full MCP surface — every tool is a thin shim over an SDK call.
 | Tool | Description |
 |------|-------------|
 | `blob_put` | Upload a blob (any size, up to 5 TiB) via direct-to-S3 presigned URLs. Returns an `AssetRef` with `scriptTag()` / `linkTag()` / `imgTag()` emitters. |
-| `blob_get` | Download a blob to a local file. |
-| `blob_ls` | Keyset-paginated list with prefix filter. |
-| `blob_rm` | Delete a blob. |
-| `blob_sign` | Time-boxed presigned GET URL for a private blob. |
-| `diagnose_public_url` | Live CDN state for a public URL — expected vs observed SHA, cache headers, invalidation status. |
+| `blob_get` | Download a blob to a local file using privileged project auth. |
+| `blob_ls` | Keyset-paginated list with prefix filter using privileged project auth. |
+| `blob_rm` | Delete a blob using privileged project auth. |
+| `blob_sign` | Time-boxed presigned GET URL for a private blob using privileged project auth. |
+| `diagnose_public_url` | Live CDN state for a public URL using privileged project auth — expected vs observed SHA, cache headers, invalidation status. |
 | `wait_for_cdn_freshness` | Poll a mutable URL until it serves the expected SHA-256. |
 
 ### Sites & subdomains

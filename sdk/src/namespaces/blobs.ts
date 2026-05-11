@@ -9,6 +9,7 @@
 
 import type { Client } from "../kernel.js";
 import { ApiError, LocalError, ProjectNotFound } from "../errors.js";
+import type { ProjectKeys } from "../credentials.js";
 import type {
   BlobCacheKind,
   BlobCdnEnvelope,
@@ -31,6 +32,13 @@ import type {
 
 function encodeKey(key: string): string {
   return key.split("/").map(encodeURIComponent).join("/");
+}
+
+function privilegedBlobAuthHeaders(project: ProjectKeys): Record<string, string> {
+  return {
+    apikey: project.service_key,
+    Authorization: `Bearer ${project.service_key}`,
+  };
 }
 
 function guessContentType(key: string): string {
@@ -367,10 +375,7 @@ export class Blobs {
 
     return this.client.request<BlobUploadInitResult>("/storage/v1/uploads", {
       method: "POST",
-      headers: {
-        apikey: project.anon_key,
-        Authorization: `Bearer ${project.anon_key}`,
-      },
+      headers: privilegedBlobAuthHeaders(project),
       body: {
         key: opts.key,
         size_bytes: opts.size_bytes,
@@ -394,10 +399,7 @@ export class Blobs {
     return this.client.request<BlobUploadStatusResult>(
       `/storage/v1/uploads/${encodeURIComponent(uploadId)}`,
       {
-        headers: {
-          apikey: project.anon_key,
-          Authorization: `Bearer ${project.anon_key}`,
-        },
+        headers: privilegedBlobAuthHeaders(project),
         context: "fetching upload session",
       },
     );
@@ -420,10 +422,7 @@ export class Blobs {
       `/storage/v1/uploads/${encodeURIComponent(uploadId)}/complete`,
       {
         method: "POST",
-        headers: {
-          apikey: project.anon_key,
-          Authorization: `Bearer ${project.anon_key}`,
-        },
+        headers: privilegedBlobAuthHeaders(project),
         body: opts.parts ? { parts: opts.parts } : {},
         context: "completing upload",
       },
@@ -458,10 +457,7 @@ export class Blobs {
 
     const path = `/storage/v1/blobs/diagnose?url=${encodeURIComponent(url)}`;
     return this.client.request<BlobDiagnoseEnvelope>(path, {
-      headers: {
-        apikey: project.anon_key,
-        Authorization: `Bearer ${project.anon_key}`,
-      },
+      headers: privilegedBlobAuthHeaders(project),
       context: "diagnosing blob URL",
     });
   }
@@ -544,10 +540,7 @@ export class Blobs {
 
     const url = `${this.client.apiBase}/storage/v1/blob/${encodeKey(key)}`;
     const res = await this.client.fetch(url, {
-      headers: {
-        apikey: project.anon_key,
-        Authorization: `Bearer ${project.anon_key}`,
-      },
+      headers: privilegedBlobAuthHeaders(project),
     });
     if (!res.ok) {
       const errText = await res.text().catch(() => "");
@@ -574,10 +567,7 @@ export class Blobs {
     const path = `/storage/v1/blobs${query ? "?" + query : ""}`;
 
     return this.client.request<BlobLsResult>(path, {
-      headers: {
-        apikey: project.anon_key,
-        Authorization: `Bearer ${project.anon_key}`,
-      },
+      headers: privilegedBlobAuthHeaders(project),
       context: "listing blobs",
     });
   }
@@ -589,10 +579,7 @@ export class Blobs {
 
     await this.client.request<unknown>(`/storage/v1/blob/${encodeKey(key)}`, {
       method: "DELETE",
-      headers: {
-        apikey: project.anon_key,
-        Authorization: `Bearer ${project.anon_key}`,
-      },
+      headers: privilegedBlobAuthHeaders(project),
       context: "deleting blob",
     });
   }
@@ -609,10 +596,7 @@ export class Blobs {
       `/storage/v1/blob/${encodeKey(key)}/sign`,
       {
         method: "POST",
-        headers: {
-          apikey: project.anon_key,
-          Authorization: `Bearer ${project.anon_key}`,
-        },
+        headers: privilegedBlobAuthHeaders(project),
         body,
         context: "signing blob URL",
       },

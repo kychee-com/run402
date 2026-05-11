@@ -53,7 +53,7 @@ Options:
   --project <id>      Project ID (defaults to active project from 'run402 projects use')
   --key <dest>        Destination key (put only; defaults to file basename)
   --content-type <mime>  MIME override for blob put (defaults to extension inference)
-  --private           Upload as private (not served by CDN; apikey required to read)
+  --private           Upload as private (not served by CDN; privileged project auth required to read)
   --immutable         Adds a content-hash suffix to the URL so overwrites produce distinct URLs.
                       Requires computing SHA-256 over the file (CLI does this automatically).
   --concurrency N     Concurrent part PUTs (default 4)
@@ -86,7 +86,7 @@ Options:
   --project <id>      Project ID (defaults to active project from 'run402 projects use')
   --key <dest>        Destination key; defaults to file basename. Use trailing '/' as prefix.
   --content-type <mime>  MIME override; defaults to inferring from the destination key extension
-  --private           Upload as private (not served by CDN; apikey required to read)
+  --private           Upload as private (not served by CDN; privileged project auth required to read)
   --immutable         Append content-hash suffix so overwrites produce distinct URLs
   --concurrency N     Concurrent part PUTs for multipart uploads (default 4)
   --no-resume         Ignore any cached resumable-upload state and start fresh

@@ -282,11 +282,11 @@ For TypeScript autocomplete, `npm install @run402/functions` in your editor's pr
 ### Blob storage (content-addressed CDN)
 
 - **`blob_put`** — upload (any size, up to 5 TiB). Returns an `AssetRef` with `cdn_url`, `sri`, `etag`, `cache_kind`.
-- **`blob_get`** — download to a local file (no context-window bloat).
-- **`blob_ls`** — keyset-paginated list with prefix filter.
-- **`blob_rm`** — delete.
-- **`blob_sign`** — time-boxed presigned GET URL for a private blob.
-- **`diagnose_public_url`** — live CDN state for a public URL — expected vs observed SHA, cache headers, invalidation status.
+- **`blob_get`** — download to a local file using privileged project auth (no context-window bloat).
+- **`blob_ls`** — keyset-paginated list with prefix filter using privileged project auth.
+- **`blob_rm`** — delete using privileged project auth.
+- **`blob_sign`** — time-boxed presigned GET URL for a private blob using privileged project auth.
+- **`diagnose_public_url`** — live CDN state for a public URL using privileged project auth — expected vs observed SHA, cache headers, invalidation status.
 - **`wait_for_cdn_freshness`** — poll a mutable URL until it serves the expected SHA-256.
 
 ### Sites & subdomains

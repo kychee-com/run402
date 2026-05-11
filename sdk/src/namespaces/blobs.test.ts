@@ -53,6 +53,11 @@ function makeSdk(fetchImpl: typeof globalThis.fetch): Run402 {
   });
 }
 
+function assertPrivilegedBlobAuth(call: FetchCall): void {
+  assert.equal(call.headers["apikey"] ?? call.headers.apikey, "svc_k");
+  assert.equal(call.headers["Authorization"] ?? call.headers.Authorization, "Bearer svc_k");
+}
+
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -103,8 +108,7 @@ describe("blobs.put", () => {
 
     assert.equal(calls.length, 3);
     assert.equal(calls[0]!.url, "https://api.example.test/storage/v1/uploads");
-    assert.equal(calls[0]!.headers["apikey"], "anon_k");
-    assert.equal(calls[0]!.headers["Authorization"], "Bearer anon_k");
+    assertPrivilegedBlobAuth(calls[0]!);
     const initBody = JSON.parse(calls[0]!.body as string);
     assert.equal(initBody.key, "hello.txt");
     assert.equal(initBody.size_bytes, 12);
@@ -114,8 +118,11 @@ describe("blobs.put", () => {
     // S3 PUT — no SIWX, no gateway apiBase, uses presigned URL as-is.
     assert.equal(calls[1]!.url, "https://s3.test/u_42/p1");
     assert.equal(calls[1]!.method, "PUT");
+    assert.equal(calls[1]!.headers.apikey, undefined);
+    assert.equal(calls[1]!.headers.Authorization, undefined);
     // Complete
     assert.equal(calls[2]!.url, "https://api.example.test/storage/v1/uploads/u_42/complete");
+    assertPrivilegedBlobAuth(calls[2]!);
     assert.equal(result.key, "hello.txt");
     assert.equal(result.url, "https://cdn.test/hello.txt");
   });
@@ -363,7 +370,7 @@ describe("blobs.get", () => {
     const sdk = makeSdk(fetch);
     const res = await sdk.blobs.get("prj_known", "hello.txt");
     assert.equal(calls[0]!.url, "https://api.example.test/storage/v1/blob/hello.txt");
-    assert.equal(calls[0]!.headers["apikey"], "anon_k");
+    assertPrivilegedBlobAuth(calls[0]!);
     assert.equal(res.status, 200);
     assert.equal(await res.text(), "hello");
   });
@@ -395,6 +402,7 @@ describe("blobs.ls", () => {
     assert.equal(u.searchParams.get("prefix"), "images/");
     assert.equal(u.searchParams.get("limit"), "50");
     assert.equal(u.searchParams.get("cursor"), "c1");
+    assertPrivilegedBlobAuth(calls[0]!);
   });
 
   it("omits query string when no options", async () => {
@@ -412,6 +420,7 @@ describe("blobs.rm", () => {
     await sdk.blobs.rm("prj_known", "old.txt");
     assert.equal(calls[0]!.url, "https://api.example.test/storage/v1/blob/old.txt");
     assert.equal(calls[0]!.method, "DELETE");
+    assertPrivilegedBlobAuth(calls[0]!);
   });
 });
 
@@ -424,6 +433,7 @@ describe("blobs.sign", () => {
     const result = await sdk.blobs.sign("prj_known", "secret.bin", { ttl_seconds: 900 });
     assert.equal(calls[0]!.url, "https://api.example.test/storage/v1/blob/secret.bin/sign");
     assert.equal(calls[0]!.method, "POST");
+    assertPrivilegedBlobAuth(calls[0]!);
     assert.deepEqual(JSON.parse(calls[0]!.body as string), { ttl_seconds: 900 });
     assert.equal(result.expires_in, 3600);
   });
@@ -716,7 +726,7 @@ describe("blobs.put — AssetRef widening (v1.45)", () => {
 });
 
 describe("blobs upload sessions", () => {
-  it("initializes upload sessions with project anon auth", async () => {
+  it("initializes upload sessions with privileged project auth", async () => {
     const { fetch, calls } = mockFetch(() =>
       json({
         upload_id: "up_1",
@@ -743,8 +753,7 @@ describe("blobs upload sessions", () => {
     assert.equal(session.part_count, 2);
     assert.equal(calls[0]!.url, "https://api.example.test/storage/v1/uploads");
     assert.equal(calls[0]!.method, "POST");
-    assert.equal(calls[0]!.headers.apikey, "anon_k");
-    assert.equal(calls[0]!.headers.Authorization, "Bearer anon_k");
+    assertPrivilegedBlobAuth(calls[0]!);
     const body = JSON.parse(calls[0]!.body as string);
     assert.deepEqual(body, {
       key: "video.mp4",
@@ -771,7 +780,7 @@ describe("blobs upload sessions", () => {
 
     assert.equal(session.status, "active");
     assert.equal(calls[0]!.url, "https://api.example.test/storage/v1/uploads/up%2F1");
-    assert.equal(calls[0]!.headers.apikey, "anon_k");
+    assertPrivilegedBlobAuth(calls[0]!);
   });
 
   it("completes upload sessions and returns AssetRef shape", async () => {
@@ -796,6 +805,7 @@ describe("blobs upload sessions", () => {
 
     assert.equal(calls[0]!.url, "https://api.example.test/storage/v1/uploads/up%201/complete");
     assert.equal(calls[0]!.method, "POST");
+    assertPrivilegedBlobAuth(calls[0]!);
     assert.deepEqual(JSON.parse(calls[0]!.body as string), {
       parts: [{ part_number: 1, etag: '"etag1"' }],
     });
@@ -851,6 +861,7 @@ describe("blobs.diagnoseUrl", () => {
       calls[0]!.url,
       /\/storage\/v1\/blobs\/diagnose\?url=https%3A%2F%2Fapp\.run402\.com%2F_blob%2Favatar\.png/,
     );
+    assertPrivilegedBlobAuth(calls[0]!);
   });
 
   it("throws ProjectNotFound for unknown project", async () => {
