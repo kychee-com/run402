@@ -1,3 +1,8 @@
+---
+name: upgrade-run402
+description: Check private run402 changes and report what should flow into run402-public
+---
+
 Check what's changed in the private run402 repo since the last sync and determine if any changes need to flow into run402-public (CLI, MCP, or OpenClaw skill).
 
 ## Step 0: Update the private repo first
