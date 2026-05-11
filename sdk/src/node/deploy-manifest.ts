@@ -56,7 +56,8 @@ const MANIFEST_SITE_FIELDS = new Set(["replace", "patch"]);
 const MANIFEST_SITE_PATCH_FIELDS = new Set(["put", "delete"]);
 const MANIFEST_ROUTES_FIELDS = new Set(["replace"]);
 const MANIFEST_ROUTE_ENTRY_FIELDS = new Set(["pattern", "methods", "target"]);
-const MANIFEST_ROUTE_TARGET_FIELDS = new Set(["type", "name"]);
+const MANIFEST_FUNCTION_ROUTE_TARGET_FIELDS = new Set(["type", "name"]);
+const MANIFEST_STATIC_ROUTE_TARGET_FIELDS = new Set(["type", "file"]);
 const ROUTE_METHOD_SET = new Set<string>(ROUTE_HTTP_METHODS);
 
 export type DeployManifestFileEntry =
@@ -471,7 +472,7 @@ function mapRoutes(routes: unknown): ReleaseRoutesSpec {
   assertKnownFields(routes, "Deploy manifest routes", MANIFEST_ROUTES_FIELDS, routeShapeHints(routes));
   if (!Object.prototype.hasOwnProperty.call(routes, "replace")) {
     throw new LocalError(
-      "Deploy manifest routes must be null or { \"replace\": [{ \"pattern\": \"/api/*\", \"target\": { \"type\": \"function\", \"name\": \"api\" } }] }. Path-keyed route maps are not supported.",
+      "Deploy manifest routes must be null or { \"replace\": [{ \"pattern\": \"/api/*\", \"target\": { \"type\": \"function\", \"name\": \"api\" } }, { \"pattern\": \"/events\", \"methods\": [\"GET\"], \"target\": { \"type\": \"static\", \"file\": \"events.html\" } }] }. Path-keyed route maps are not supported.",
       CONTEXT,
     );
   }
@@ -487,7 +488,7 @@ function routeShapeHints(obj: Record<string, unknown>): Record<string, string> {
   const hints: Record<string, string> = {};
   for (const key of Object.keys(obj)) {
     if (key.startsWith("/")) {
-      hints[key] = "Use routes.replace[] entries like { pattern, target: { type: \"function\", name } } instead of a path-keyed route map.";
+      hints[key] = "Use routes.replace[] entries like { pattern, target: { type: \"function\", name } } or { pattern, methods: [\"GET\"], target: { type: \"static\", file } } instead of a path-keyed route map.";
     }
   }
   return hints;
@@ -515,27 +516,76 @@ function validateManifestRouteEntry(route: unknown, index: number): void {
         );
       }
     }
+    const seen = new Set<string>();
+    for (const method of route.methods) {
+      if (seen.has(method as string)) {
+        throw new LocalError(`${label}.methods contains duplicate method ${JSON.stringify(method)}`, CONTEXT);
+      }
+      seen.add(method as string);
+    }
   }
-  validateManifestRouteTarget(route.target, `${label}.target`);
+  const targetType = validateManifestRouteTarget(route.target, `${label}.target`);
+  if (targetType === "static") validateManifestStaticRouteEntry(route, label);
 }
 
-function validateManifestRouteTarget(target: unknown, label: string): void {
+function validateManifestRouteTarget(target: unknown, label: string): "function" | "static" {
   assertPlainRecord(target, label);
   if (
-    Object.prototype.hasOwnProperty.call(target, "function") &&
+    (Object.prototype.hasOwnProperty.call(target, "function") ||
+      Object.prototype.hasOwnProperty.call(target, "static")) &&
     !Object.prototype.hasOwnProperty.call(target, "type")
   ) {
-    throw new LocalError(`${label} uses unsupported target shorthand. Use { "type": "function", "name": "api" }.`, CONTEXT);
+    throw new LocalError(`${label} uses unsupported target shorthand. Use { "type": "function", "name": "api" } or { "type": "static", "file": "events.html" }.`, CONTEXT);
   }
-  assertKnownFields(target, label, MANIFEST_ROUTE_TARGET_FIELDS);
   if (target.type === undefined) {
-    throw new LocalError(`${label}.type is required; use "function"`, CONTEXT);
+    throw new LocalError(`${label}.type is required; use "function" or "static"`, CONTEXT);
   }
-  if (target.type !== "function") {
-    throw new LocalError(`${label}.type must be "function"; Phase 1 routes do not support ${JSON.stringify(target.type)}`, CONTEXT);
+  if (target.type === "function") {
+    assertKnownFields(target, label, MANIFEST_FUNCTION_ROUTE_TARGET_FIELDS);
+    if (typeof target.name !== "string" || target.name.length === 0) {
+      throw new LocalError(`${label}.name is required for function route targets`, CONTEXT);
+    }
+    return "function";
   }
-  if (typeof target.name !== "string" || target.name.length === 0) {
-    throw new LocalError(`${label}.name is required for function route targets`, CONTEXT);
+  if (target.type === "static") {
+    assertKnownFields(target, label, MANIFEST_STATIC_ROUTE_TARGET_FIELDS);
+    if (typeof target.file !== "string" || target.file.length === 0) {
+      throw new LocalError(`${label}.file is required for static route targets`, CONTEXT);
+    }
+    validateManifestStaticTargetFile(target.file, `${label}.file`);
+    return "static";
+  }
+  throw new LocalError(`${label}.type must be "function" or "static"; got ${JSON.stringify(target.type)}`, CONTEXT);
+}
+
+function validateManifestStaticRouteEntry(route: Record<string, unknown>, label: string): void {
+  const pattern = route.pattern as string;
+  if (pattern.includes("*")) {
+    throw new LocalError(`${label}.pattern uses a static route target, so it must be an exact path pattern; wildcard static route targets such as /docs/* are not supported`, CONTEXT);
+  }
+  if (route.methods === undefined) {
+    throw new LocalError(`${label}.methods is required for static route targets; use ["GET"] or ["GET", "HEAD"]`, CONTEXT);
+  }
+  const methods = route.methods as unknown[];
+  const methodSet = new Set(methods);
+  const valid =
+    methodSet.has("GET") &&
+    (methodSet.size === 1 || (methodSet.size === 2 && methodSet.has("HEAD")));
+  if (!valid) {
+    throw new LocalError(`${label}.methods for static route targets must be ["GET"] or ["GET", "HEAD"]; either form materializes effective GET plus HEAD`, CONTEXT);
+  }
+}
+
+function validateManifestStaticTargetFile(file: string, label: string): void {
+  const invalid =
+    file.startsWith("/") ||
+    file.includes("?") ||
+    file.includes("#") ||
+    file.includes("\\") ||
+    file.endsWith("/") ||
+    file.split("/").some((segment) => segment === "" || segment === "." || segment === "..");
+  if (invalid) {
+    throw new LocalError(`${label} must be a relative materialized static-site file path without leading slash, query, fragment, traversal, empty segments, backslashes, or directory shorthand`, CONTEXT);
   }
 }
 

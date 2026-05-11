@@ -253,7 +253,7 @@ const active = await r.deploy.getActiveRelease({ project: projectId });
 const diff = await r.deploy.diff({ project: projectId, from: "empty", to: "active", limit: 1000 });
 ```
 
-`getRelease` / `getActiveRelease` return `ReleaseInventory` (`kind: "release_inventory"`, `state_kind: "current_live" | "effective" | "desired_manifest"`, site paths, functions, secret keys, subdomains, materialized routes, applied migrations, and inventory warnings when returned). `diff` returns `ReleaseToReleaseDiff` (`kind: "release_diff"`) with `migrations.applied_between_releases`; secret and subdomain diffs have only `added` / `removed`, never `changed`, and route diffs expose `routes.added` / `removed` / `changed`.
+`getRelease` / `getActiveRelease` return `ReleaseInventory` (`kind: "release_inventory"`, `state_kind: "current_live" | "effective" | "desired_manifest"`, site paths, functions, secret keys, subdomains, materialized routes, applied migrations, `release_generation`, `static_manifest_sha256`, nullable `static_manifest_metadata`, and inventory warnings when returned). `static_manifest_metadata: null` means unavailable, not zero; when present it includes `file_count`, `total_bytes`, `cache_classes`, `cache_class_sources`, and `spa_fallback`. `diff` returns `ReleaseToReleaseDiff` (`kind: "release_diff"`) with `migrations.applied_between_releases`; secret and subdomain diffs have only `added` / `removed`, never `changed`; route diffs expose `routes.added` / `removed` / `changed`; `static_assets` exposes unchanged/changed/added/removed files, `newly_uploaded_cas_bytes`, `reused_cas_bytes`, `deployment_copy_bytes_eliminated`, `legacy_immutable_warnings`, `previous_immutable_failures`, and `cas_authorization_failures`.
 
 #### `ReleaseSpec` shape
 
@@ -278,7 +278,7 @@ The full type is exported as `ReleaseSpec` from `@run402/sdk` and `@run402/sdk/n
 ```
 
 - **Replace vs patch semantics per resource.** `site.replace` = "this is the whole site" (files absent are removed). `site.patch.put` / `patch.delete` = surgical updates. `functions` has the same replace/patch split. Secrets are declaration-only: use `r.secrets.set(project, key, value)` for values, then `secrets.require[]` to assert keys exist and `secrets.delete[]` to remove keys at activation. `subdomains` use `set` / `add` / `remove`. Top-level absence = leave untouched.
-- **Routes.** `ReleaseRoutesSpec` is `undefined | null | { replace: RouteSpec[] }`. Omitted and `null` carry forward base routes; `{ replace: [] }` clears dynamic routes; `{ replace: [...] }` replaces the route table. `RouteSpec` is one entry: `{ pattern: string, methods?: RouteHttpMethod[], target: { type: "function", name: string } }`. `methods` omitted means all supported methods; `methods: []` is invalid. Supported methods are exported as `ROUTE_HTTP_METHODS` and `RouteHttpMethod` (`GET`, `HEAD`, `POST`, `PUT`, `PATCH`, `DELETE`, `OPTIONS`). Target names are materialized release function names.
+- **Routes.** `ReleaseRoutesSpec` is `undefined | null | { replace: RouteSpec[] }`. Omitted and `null` carry forward base routes; `{ replace: [] }` clears dynamic routes; `{ replace: [...] }` replaces the route table. `RouteSpec` is one entry: `{ pattern: string, methods?: RouteHttpMethod[], target: RouteTarget }`. Function targets are `{ type: "function", name: string }`; static route targets are `{ type: "static", file: string }` for exact static file route targets, not rewrites or redirects. Static targets require exact patterns only, methods `["GET"]` or `["GET","HEAD"]`, and a relative deployed file path with no leading slash, wildcard, directory shorthand, query, or fragment. `methods` omitted means all supported methods for function routes; `methods: []` is invalid. Supported methods are exported as `ROUTE_HTTP_METHODS` and `RouteHttpMethod` (`GET`, `HEAD`, `POST`, `PUT`, `PATCH`, `DELETE`, `OPTIONS`). Function target names are materialized release function names.
 - **Strict validation is SDK-owned.** `deploy.plan/start/apply` reject unknown raw `ReleaseSpec` fields before normalization can drop them; `project_id`, `subdomain`, `site.replcae`, and similar typos are `Run402DeployError.code === "INVALID_SPEC"` before any hash/upload/plan request. Use `loadDeployManifest` / `normalizeDeployManifest` for CLI/MCP JSON that legitimately uses `project_id`, `{ path }`, base64 file entries, or migration `sql_path`.
 - **No-op specs fail locally.** A spec with only `project` / `base`, or empty containers such as `site.replace: {}`, `functions.patch.delete: []`, `secrets.require: []`, or `subdomains.set: []`, throws `Run402DeployError.code === "MANIFEST_EMPTY"` before any network call. Delete-only patches with non-empty `delete` arrays still count as deployable.
 - **Plan warnings are structured.** `PlanResponse.warnings` and `DeployResult.warnings` are `WarningEntry[]`; `deploy.apply()` emits `plan.warnings` and aborts before upload/commit when a warning requires confirmation unless `allowWarnings` is set. `MISSING_REQUIRED_SECRET` means set the affected keys with `r.secrets.set`, then retry.
@@ -343,14 +343,18 @@ import { run402, type ReleaseSpec, type RouteSpec } from "@run402/sdk/node";
 
 const r = run402();
 const routes: RouteSpec[] = [
-  { pattern: "/api/*", methods: ["GET", "POST"], target: { type: "function", name: "api" } },
+  { pattern: "/api/*", methods: ["GET", "POST", "OPTIONS"], target: { type: "function", name: "api" } },
   { pattern: "/admin", target: { type: "function", name: "admin" } },
   { pattern: "/admin/*", target: { type: "function", name: "admin" } },
   { pattern: "/login", methods: ["POST"], target: { type: "function", name: "auth" } },
+  { pattern: "/events", methods: ["GET", "HEAD"], target: { type: "static", file: "events.html" } },
 ];
 const specWithRoutes: ReleaseSpec = {
   project: projectId,
-  site: { replace: { "index.html": "<!doctype html><main id='app'></main>" } },
+  site: { replace: {
+    "index.html": "<!doctype html><main id='app'></main>",
+    "events.html": "<!doctype html><h1>Events</h1>",
+  } },
   functions: {
     replace: {
       api: { source: "export default async function handler(req) { const url = new URL(req.url); return Response.json({ ok: true, path: url.pathname }); }" },
@@ -366,6 +370,7 @@ await r.deploy.apply(specWithRoutes);
 Route matching and routed HTTP contract:
 - Exact patterns look like `/admin`; prefix wildcard patterns use a final `/*`, such as `/admin/*`.
 - `/admin/*` does not match `/admin`, `/admin/`, `/admin.css`, or `/administrator`; deploy both `/admin` and `/admin/*` for a dynamic section root. `/admin` and `/admin/` are trailing-slash equivalents for exact matching.
+- Static route targets are exact file targets, not rewrites or redirects; avoid routing ordinary static files, wildcard static targets, leading-slash files, directory shorthand, broad method lists by default, and one-static-route-target-per-page route-table exhaustion.
 - Query strings are ignored for matching and preserved in the handler's full public `req.url`.
 - Exact routes beat prefix routes, longest prefix wins among prefixes, and method-compatible dynamic routes beat static assets.
 - A method-specific `POST /login` route can coexist with static `GET /login` HTML. Unsafe method mismatch returns `405`, not SPA HTML.
@@ -373,6 +378,29 @@ Route matching and routed HTTP contract:
 - Routed browser ingress uses Node 22 Fetch Request -> Response. The handler receives `req.method` and full public `req.url` on managed subdomains, deployment hosts, and verified custom domains. The raw `run402.routed_http.v1` envelope is internal; do not write browser route handlers against it. Direct `/functions/v1/:name` remains API-key protected.
 - Request/response bodies are capped at 6 MiB. Run402 adds no wildcard CORS, does not store routed dynamic responses in a shared cache, and adds `Cache-Control: private, no-store` plus `x-run402-cache: dynamic-bypass` when the function sets no cache header.
 - The function owns application auth, CSRF for cookie-authenticated unsafe methods, CORS/`OPTIONS`, cookies, redirects, and not trusting spoofable forwarding headers.
+
+URL-first public diagnostics:
+
+```ts
+import {
+  buildDeployResolveSummary,
+  normalizeDeployResolveRequest,
+  run402,
+  type DeployResolveResponse,
+} from "@run402/sdk/node";
+
+const r = run402();
+const request = normalizeDeployResolveRequest({
+  project: projectId,
+  url: "https://example.com/events?utm=x#hero",
+  method: "GET",
+});
+const resolution: DeployResolveResponse = await r.deploy.resolve(request);
+const summary = buildDeployResolveSummary(resolution, request);
+console.log(summary.would_serve, summary.diagnostic_status, summary.match, request.ignored);
+```
+
+`r.deploy.resolve({ project, url, method })` and scoped `p.deploy.resolve({ url, method })` also accept lower-level `{ project, host, path?, method? }`. URL query strings/fragments are ignored for lookup and surfaced in `request.ignored`. Current known `match` literals are `host_missing`, `manifest_missing`, `path_error`, `none`, `static_exact`, `static_index`, `spa_fallback`, and `spa_fallback_missing`; preserve unknown future strings. Today resolve is authoritative for host/static/SPAfallback diagnostics, not complete route introspection unless future gateways return route context. `result` is diagnostic body status, not SDK HTTP transport status, so host misses can be successful calls with `would_serve: false`. Do not use resolve as a fetch, cache purge, or cache-policy oracle, and do not hard-code `cache_policy` strings; branch on `cache_class` and preserve unknown cache classes.
 
 Known route warning codes and recovery:
 
@@ -386,6 +414,9 @@ Known route warning codes and recovery:
 | `WILDCARD_ROUTE_EXCLUDES_MUTATION_METHODS` | A wildcard function route only allows `GET`/`HEAD`. | Add mutation methods such as `POST`, omit methods for an API prefix, or confirm it is read-only. |
 | `ROUTE_TABLE_NEAR_LIMIT` | The route table is near the gateway/project limit. | Consolidate or remove routes before adding more. |
 | `ROUTES_NOT_ENABLED` | Routes are not enabled for this project/environment. | Deploy without `routes` or request enablement; direct function invoke is not a browser-route substitute. |
+| `STATIC_ALIAS_SHADOWS_STATIC_PATH` / `STATIC_ALIAS_RELATIVE_ASSET_RISK` | Static route target conflicts with a real static path or has relative-asset risk. | Prefer canonical static files, fix relative asset paths, and confirm only when intentional. |
+| `STATIC_ALIAS_DUPLICATE_CANONICAL_URL` / `STATIC_ALIAS_EXTENSIONLESS_NON_HTML` | Static route target may duplicate canonical URLs or expose extensionless non-HTML. | Use one canonical URL per page and reserve exact static route targets for intentional HTML-like public paths. |
+| `STATIC_ALIAS_TABLE_NEAR_LIMIT` | Static route targets are near route-table limits. | Avoid one-static-route-target-per-page tables; consolidate. |
 
 Runtime route failure codes to branch on: `ROUTE_MANIFEST_LOAD_FAILED` (manifest/propagation), `ROUTED_INVOKE_WORKER_SECRET_MISSING` (custom-domain Worker secret), `ROUTED_INVOKE_AUTH_FAILED` (internal invoke signature), `ROUTED_ROUTE_STALE` (selected route failed release revalidation), `ROUTE_METHOD_NOT_ALLOWED` (method mismatch), and `ROUTED_RESPONSE_TOO_LARGE` (body over 6 MiB).
 
@@ -562,6 +593,7 @@ resume(operationId, opts?): Promise<DeployResult>
 status(operationId, opts?: { project? }): Promise<OperationSnapshot>
 list(opts: { project, limit? }): Promise<DeployListResponse>
 events(operationId, opts: { project }): Promise<DeployEventsResponse>   // recorded so far
+resolve(opts: DeployResolveOptions): Promise<DeployResolveResponse>     // URL-first or host/path public diagnostics
 getRelease(opts: { project, releaseId, siteLimit? }): Promise<ReleaseInventory>
 getRelease(releaseId, opts: { project, siteLimit? }): Promise<ReleaseInventory>
 getActiveRelease(opts: { project, siteLimit? }): Promise<ActiveReleaseInventory>

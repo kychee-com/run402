@@ -1,6 +1,10 @@
 import type {
   ActiveReleaseInventory,
+  DeployResolveResponse,
+  DeployResolveSummary,
+  DeployResolveWarning,
   DeployObservabilityWarningEntry,
+  KnownDeployResolveMatch,
   PlanDiffEnvelope,
   ReleaseRoutesSpec,
   ReleaseSnapshotInventory,
@@ -8,6 +12,10 @@ import type {
   ReleaseToReleaseDiff,
   RoutesDiff,
   RouteEntry,
+  RouteTarget,
+  StaticAssetsDiff,
+  StaticManifestMetadata,
+  StaticRouteTarget,
 } from "./namespaces/deploy.types.js";
 import type { SecretSummary } from "./namespaces/secrets.js";
 
@@ -45,6 +53,19 @@ type _RouteSpecResource = Assert<
 >;
 type _ReleaseDiffRoutes = Assert<Equal<ReleaseToReleaseDiff["routes"], RoutesDiff>>;
 type _RouteEntryMethods = RouteEntry["methods"];
+type _StaticRouteTarget = Extract<RouteTarget, { type: "static" }>;
+type _StaticRouteFile = Assert<Equal<_StaticRouteTarget, StaticRouteTarget>>;
+type _ResolveSparseHostMiss = Pick<
+  DeployResolveResponse,
+  "hostname" | "result" | "match" | "authorized" | "fallback_state"
+>;
+type _ResolveResultIsNumber = Assert<Equal<DeployResolveResponse["result"], number>>;
+type _ResolveWarnings = DeployResolveSummary["warnings"][number] & DeployResolveWarning;
+type _InventoryStaticMetadata = Assert<
+  Equal<ActiveReleaseInventory["static_manifest_metadata"], StaticManifestMetadata | null>
+>;
+type _PlanDiffStaticAssets = Assert<Equal<PlanDiffEnvelope["static_assets"], StaticAssetsDiff>>;
+type _ReleaseDiffStaticAssets = Assert<Equal<ReleaseToReleaseDiff["static_assets"], StaticAssetsDiff>>;
 
 // @ts-expect-error release-to-release diffs do not expose plan migration buckets
 type _NoReleaseDiffMigrationNew = ReleaseToReleaseDiff["migrations"]["new"];
@@ -56,5 +77,7 @@ type _NoPlanDiffMigrationMismatch = PlanDiffEnvelope["migrations"]["mismatch"];
 type _NoSecretChangedBucket = ReleaseToReleaseDiff["secrets"]["changed"];
 // @ts-expect-error route resources are replace lists, not path-keyed maps
 type _NoPathKeyedRoutes = NonNullable<ReleaseRoutesSpec>["/api/*"];
+// @ts-expect-error route-aware known literals are not part of the current private gateway contract
+const _NoKnownRouteResolveLiteral: KnownDeployResolveMatch = "route_function";
 
 export {};

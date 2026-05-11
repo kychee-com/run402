@@ -221,6 +221,8 @@ const SURFACE: Capability[] = [
   { id: "deploy_release_get",    endpoint: "GET /deploy/v2/releases/:id",                  mcp: "deploy_release_get",    cli: "deploy:release:get",    openclaw: "deploy:release:get" },
   { id: "deploy_release_active", endpoint: "GET /deploy/v2/releases/active",               mcp: "deploy_release_active", cli: "deploy:release:active", openclaw: "deploy:release:active" },
   { id: "deploy_release_diff",   endpoint: "GET /deploy/v2/releases/diff",                 mcp: "deploy_release_diff",   cli: "deploy:release:diff",   openclaw: "deploy:release:diff" },
+  { id: "deploy_diagnose_url",   endpoint: "GET /deploy/v2/resolve",                       mcp: "deploy_diagnose_url",   cli: "deploy:diagnose",       openclaw: "deploy:diagnose" },
+  { id: "deploy_resolve",        endpoint: "GET /deploy/v2/resolve",                       mcp: null,                    cli: "deploy:resolve",        openclaw: "deploy:resolve" },
 
   // ── CI/OIDC federation ──────────────────────────────────────────────────
   { id: "ci_link_github",    endpoint: "POST /ci/v1/bindings",                              mcp: "ci_create_binding", cli: "ci:link",          openclaw: "ci:link" },
@@ -417,6 +419,8 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   deploy_release_get: "deploy.getRelease",
   deploy_release_active: "deploy.getActiveRelease",
   deploy_release_diff: "deploy.diff",
+  deploy_diagnose_url: "deploy.resolve",
+  deploy_resolve: "deploy.resolve",
   ci_link_github: "ci.createBinding",
   ci_list_bindings: "ci.listBindings",
   ci_get_binding: "ci.getBinding",
@@ -926,12 +930,153 @@ describe("deploy route surface alignment", () => {
     }
   });
 
+  it("keeps stable static asset identity and URL diagnostics documented", () => {
+    const docs: Array<{ file: string; patterns: Array<[RegExp, string]> }> = [
+      {
+        file: "README.md",
+        patterns: [
+          [/deploy_diagnose_url/, "MCP diagnose tool"],
+          [/run402 deploy diagnose/, "CLI diagnose command"],
+          [/run402 deploy resolve/, "CLI resolve command"],
+          [/"target": \{ "type": "static", "file": "events\.html" \}/, "static route target JSON"],
+          [/static_assets/, "static asset diff counters"],
+          [/release_generation/, "release generation"],
+          [/static_manifest_sha256/, "static manifest digest"],
+          [/static_manifest_metadata/, "static manifest metadata"],
+          [/host_missing/, "host-miss resolve literal"],
+          [/spa_fallback_missing/, "SPA fallback-missing resolve literal"],
+          [/STATIC_ALIAS_RELATIVE_ASSET_RISK/, "static route target warning"],
+        ],
+      },
+      {
+        file: "SKILL.md",
+        patterns: [
+          [/deploy_diagnose_url/, "MCP diagnose tool"],
+          [/"target": \{ "type": "static", "file": "events\.html" \}/, "static route target JSON"],
+          [/static_assets/, "static asset diff counters"],
+          [/release_generation/, "release generation"],
+          [/host_missing/, "host-miss resolve literal"],
+          [/spa_fallback_missing/, "SPA fallback-missing resolve literal"],
+          [/STATIC_ALIAS_RELATIVE_ASSET_RISK/, "static route target warning"],
+        ],
+      },
+      {
+        file: "llms-mcp.txt",
+        patterns: [
+          [/deploy_diagnose_url/, "MCP diagnose tool"],
+          [/"target": \{ "type": "static", "file": "events\.html" \}/, "static route target JSON"],
+          [/request\.ignored/, "ignored query/fragment field"],
+          [/static_assets/, "static asset diff counters"],
+          [/static_manifest_metadata/, "static manifest metadata"],
+          [/host_missing/, "host-miss resolve literal"],
+          [/spa_fallback_missing/, "SPA fallback-missing resolve literal"],
+          [/STATIC_ALIAS_RELATIVE_ASSET_RISK/, "static route target warning"],
+        ],
+      },
+      {
+        file: "cli/README.md",
+        patterns: [
+          [/run402 deploy diagnose/, "CLI diagnose command"],
+          [/run402 deploy resolve/, "CLI resolve command"],
+          [/--url/, "resolve URL flag"],
+          [/"target": \{ "type": "static", "file": "events\.html" \}/, "static route target JSON"],
+          [/static_assets/, "static asset diff counters"],
+          [/release_generation/, "release generation"],
+          [/host_missing/, "host-miss resolve literal"],
+          [/spa_fallback_missing/, "SPA fallback-missing resolve literal"],
+          [/STATIC_ALIAS_RELATIVE_ASSET_RISK/, "static route target warning"],
+        ],
+      },
+      {
+        file: "cli/llms-cli.txt",
+        patterns: [
+          [/run402 deploy diagnose/, "CLI diagnose command"],
+          [/run402 deploy resolve/, "CLI resolve command"],
+          [/--url/, "resolve URL flag"],
+          [/"target": \{ "type": "static", "file": "events\.html" \}/, "static route target JSON"],
+          [/static_assets/, "static asset diff counters"],
+          [/static_manifest_metadata/, "static manifest metadata"],
+          [/host_missing/, "host-miss resolve literal"],
+          [/spa_fallback_missing/, "SPA fallback-missing resolve literal"],
+          [/STATIC_ALIAS_RELATIVE_ASSET_RISK/, "static route target warning"],
+        ],
+      },
+      {
+        file: "sdk/README.md",
+        patterns: [
+          [/r\.deploy\.resolve/, "SDK resolve method"],
+          [/DeployResolveResponse/, "SDK resolve response type"],
+          [/target: \{ type: "static", file: "events\.html" \}/, "static route target TS"],
+          [/static_assets/, "static asset diff counters"],
+          [/release_generation/, "release generation"],
+          [/static_manifest_metadata/, "static manifest metadata"],
+          [/host_missing/, "host-miss resolve literal"],
+          [/spa_fallback_missing/, "SPA fallback-missing resolve literal"],
+          [/STATIC_ALIAS_RELATIVE_ASSET_RISK/, "static route target warning"],
+        ],
+      },
+      {
+        file: "sdk/llms-sdk.txt",
+        patterns: [
+          [/r\.deploy\.resolve/, "SDK resolve method"],
+          [/DeployResolveOptions/, "SDK resolve options type"],
+          [/DeployResolveResponse/, "SDK resolve response type"],
+          [/target: \{ type: "static", file: "events\.html" \}/, "static route target TS"],
+          [/static_assets/, "static asset diff counters"],
+          [/static_manifest_sha256/, "static manifest digest"],
+          [/host_missing/, "host-miss resolve literal"],
+          [/spa_fallback_missing/, "SPA fallback-missing resolve literal"],
+          [/STATIC_ALIAS_RELATIVE_ASSET_RISK/, "static route target warning"],
+        ],
+      },
+      {
+        file: "openclaw/SKILL.md",
+        patterns: [
+          [/run402 deploy diagnose/, "CLI diagnose command"],
+          [/run402 deploy resolve/, "CLI resolve command"],
+          [/"target": \{ "type": "static", "file": "events\.html" \}/, "static route target JSON"],
+          [/static_assets/, "static asset diff counters"],
+          [/release_generation/, "release generation"],
+          [/host_missing/, "host-miss resolve literal"],
+          [/spa_fallback_missing/, "SPA fallback-missing resolve literal"],
+          [/STATIC_ALIAS_RELATIVE_ASSET_RISK/, "static route target warning"],
+        ],
+      },
+      {
+        file: "openclaw/README.md",
+        patterns: [
+          [/run402 deploy diagnose/, "CLI diagnose command"],
+          [/"type": "static", "file": "events\.html"/, "static route target JSON"],
+          [/static_assets/, "static asset diff counters"],
+          [/static_manifest_sha256/, "static manifest digest"],
+        ],
+      },
+      {
+        file: "documentation.md",
+        patterns: [
+          [/stable static asset identity \/ public URL diagnostics/, "documentation checklist row"],
+          [/deploy_diagnose_url/, "MCP diagnose tool"],
+          [/run402 deploy diagnose/, "CLI diagnose command"],
+          [/static route target/, "static route target wording"],
+        ],
+      },
+    ];
+
+    for (const { file, patterns } of docs) {
+      const text = readFileSync(join(__dirname, file), "utf-8");
+      for (const [pattern, label] of patterns) {
+        assert.match(text, pattern, `${file} must document ${label}`);
+      }
+    }
+  });
+
   it("keeps SDK route types and MCP route renderers in sync", () => {
     const deployTypes = readFileSync(join(__dirname, "sdk/src/namespaces/deploy.types.ts"), "utf-8");
     for (const name of [
       "RouteHttpMethod",
       "ROUTE_HTTP_METHODS",
       "FunctionRouteTarget",
+      "StaticRouteTarget",
       "RouteTarget",
       "RouteSpec",
       "ReleaseRoutesSpec",
@@ -939,6 +1084,11 @@ describe("deploy route surface alignment", () => {
       "MaterializedRoutes",
       "RoutesDiff",
       "RouteChangeEntry",
+      "StaticManifestMetadata",
+      "StaticAssetsDiff",
+      "DeployResolveOptions",
+      "DeployResolveResponse",
+      "DeployResolveSummary",
     ]) {
       assert.match(deployTypes, new RegExp(`export (?:interface|type|const) ${name}\\b`), `missing SDK route export ${name}`);
     }
@@ -950,6 +1100,8 @@ describe("deploy route surface alignment", () => {
     const releaseTool = readFileSync(join(__dirname, "src/tools/deploy-release.ts"), "utf-8");
     assert.match(releaseTool, /\| routes \|/, "MCP release inventory summary must include route count");
     assert.match(releaseTool, /routes_added_removed_changed/, "MCP release diff summary must include route buckets");
+    assert.match(releaseTool, /static_manifest_sha256/, "MCP release inventory summary must include static manifest digest");
+    assert.match(releaseTool, /static_assets_unchanged_changed_added_removed/, "MCP release diff summary must include static asset buckets");
   });
 });
 

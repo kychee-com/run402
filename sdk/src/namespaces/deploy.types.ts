@@ -184,7 +184,13 @@ export interface FunctionRouteTarget {
   name: string;
 }
 
-export type RouteTarget = FunctionRouteTarget;
+export interface StaticRouteTarget {
+  type: "static";
+  /** Materialized static-site file path, relative to the site root. */
+  file: string;
+}
+
+export type RouteTarget = FunctionRouteTarget | StaticRouteTarget;
 
 /** One deploy-v2 web route entry. */
 export interface RouteSpec {
@@ -200,6 +206,475 @@ export type ReleaseRoutesSpec = null | { replace: RouteSpec[] };
 export interface SmokeCheck {
   name: string;
   http?: { path: string; method?: string; expect?: { status?: number } };
+}
+
+// ─── Stable static assets + public URL diagnostics ──────────────────────────
+
+type LiteralUnion<T extends string> = T | (string & {});
+
+export type KnownStaticCacheClass =
+  | "html"
+  | "immutable_versioned"
+  | "revalidating_asset";
+
+export type StaticCacheClass = LiteralUnion<KnownStaticCacheClass>;
+
+export interface StaticManifestMetadata {
+  file_count: number;
+  total_bytes: number;
+  cache_classes: Record<string, number>;
+  cache_class_sources: Record<string, number>;
+  spa_fallback: string | null;
+}
+
+export const EMPTY_STATIC_MANIFEST_METADATA: StaticManifestMetadata = {
+  file_count: 0,
+  total_bytes: 0,
+  cache_classes: {},
+  cache_class_sources: {},
+  spa_fallback: null,
+};
+
+export function normalizeStaticManifestMetadata(
+  metadata: StaticManifestMetadata | null | undefined,
+): StaticManifestMetadata {
+  return metadata ?? EMPTY_STATIC_MANIFEST_METADATA;
+}
+
+export interface StaticAssetsDiff {
+  unchanged: number;
+  changed: number;
+  added: number;
+  removed: number;
+  newly_uploaded_cas_bytes: number;
+  reused_cas_bytes: number;
+  deployment_copy_bytes_eliminated: number;
+  legacy_immutable_warnings: Array<{
+    path: string;
+    sha256: string;
+    reason: string;
+  }>;
+  previous_immutable_failures: Array<{
+    path: string;
+    previous_sha256: string;
+    candidate_sha256: string;
+  }>;
+  cas_authorization_failures: string[];
+}
+
+export type DeployResolveMethod = RouteHttpMethod | (string & {});
+
+export type KnownDeployResolveMatch =
+  | "host_missing"
+  | "manifest_missing"
+  | "path_error"
+  | "none"
+  | "static_exact"
+  | "static_index"
+  | "spa_fallback"
+  | "spa_fallback_missing";
+
+export type DeployResolveMatch = LiteralUnion<KnownDeployResolveMatch>;
+
+export type KnownDeployResolveFallbackState =
+  | "unavailable"
+  | "path_error"
+  | "method_not_static"
+  | "not_used"
+  | "target_missing"
+  | "used"
+  | "not_configured"
+  | "not_eligible";
+
+export type DeployResolveFallbackState =
+  LiteralUnion<KnownDeployResolveFallbackState>;
+
+export type KnownDeployResolveResult = 200 | 400 | 404 | 503;
+
+export interface DeployResolveRouteMatch {
+  pattern: string;
+  methods: RouteHttpMethod[] | string[] | null;
+  target: RouteTarget;
+}
+
+export type DeployResolveOptions =
+  | {
+      project: string;
+      url: string | URL;
+      method?: DeployResolveMethod;
+      host?: never;
+      path?: never;
+    }
+  | {
+      project: string;
+      host: string;
+      path?: string;
+      method?: DeployResolveMethod;
+      url?: never;
+    };
+
+export type ScopedDeployResolveOptions =
+  | (Omit<Extract<DeployResolveOptions, { url: string | URL }>, "project"> & {
+      project?: string;
+    })
+  | (Omit<Extract<DeployResolveOptions, { host: string }>, "project"> & {
+      project?: string;
+    });
+
+export interface NormalizedDeployResolveRequest {
+  project: string;
+  project_scope: "credential_lookup_only";
+  project_sent_to_gateway: false;
+  original_url?: string;
+  host: string;
+  path: string;
+  method?: string;
+  ignored?: {
+    query?: string;
+    fragment?: string;
+  };
+}
+
+export interface DeployResolveResponse {
+  hostname: string;
+  host_binding_id?: string | null;
+  binding_status?: string | null;
+  project_id?: string | null;
+  channel?: string | null;
+  release_id?: string | null;
+  release_generation?: number | null;
+  route_manifest_sha256?: string | null;
+  static_manifest_sha256?: string | null;
+  static_manifest_metadata?: StaticManifestMetadata | null;
+  normalized_path?: string | null;
+  match: DeployResolveMatch;
+  route?: DeployResolveRouteMatch | null;
+  static_sha256?: string | null;
+  content_type?: string | null;
+  cache_class?: StaticCacheClass | null;
+  cache_policy?: string | null;
+  authorized: boolean;
+  fallback_state: DeployResolveFallbackState;
+  error_code?: string | null;
+  legacy_immutable_risk?: Array<Record<string, unknown>>;
+  emergency_fallback?: Record<string, unknown> | null;
+  /** Diagnostic body status. This is not necessarily the HTTP response status. */
+  result: number;
+  [key: string]: unknown;
+}
+
+export interface DeployResolveWarning {
+  code: string;
+  message: string;
+}
+
+export interface DeployResolveNextStep {
+  code: string;
+  message: string;
+}
+
+export interface DeployResolveSummary {
+  would_serve: boolean;
+  diagnostic_status: number;
+  match: DeployResolveMatch;
+  category: string;
+  summary: string;
+  warnings: DeployResolveWarning[];
+  next_steps: DeployResolveNextStep[];
+}
+
+export function normalizeDeployResolveRequest(
+  opts: DeployResolveOptions,
+): NormalizedDeployResolveRequest {
+  if (!opts || typeof opts !== "object") {
+    throw new TypeError("Deploy resolve options must be an object");
+  }
+  const hasUrl = "url" in opts && opts.url !== undefined;
+  const hasHost = "host" in opts && opts.host !== undefined;
+  if (hasUrl === hasHost) {
+    throw new TypeError(
+      "Deploy resolve requires exactly one input form: a full absolute url, or a clean host/path pair.",
+    );
+  }
+  if (!opts.project || typeof opts.project !== "string") {
+    throw new TypeError("Deploy resolve requires project");
+  }
+
+  const method = normalizeDeployResolveMethod(opts.method);
+  if (hasUrl) {
+    const original = String(opts.url);
+    let parsed: URL;
+    try {
+      parsed = opts.url instanceof URL ? opts.url : new URL(original);
+    } catch {
+      throw new TypeError(
+        "Deploy resolve url must be an absolute HTTP(S) public URL.",
+      );
+    }
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      throw new TypeError(
+        "Deploy resolve url must use http: or https:.",
+      );
+    }
+    if (parsed.username || parsed.password) {
+      throw new TypeError(
+        "Deploy resolve url must not include username or password credentials.",
+      );
+    }
+    const ignored: NormalizedDeployResolveRequest["ignored"] = {};
+    if (parsed.search) ignored.query = parsed.search;
+    if (parsed.hash) ignored.fragment = parsed.hash;
+    return {
+      project: opts.project,
+      project_scope: "credential_lookup_only",
+      project_sent_to_gateway: false,
+      original_url: original,
+      host: parsed.hostname,
+      path: parsed.pathname || "/",
+      ...(method ? { method } : {}),
+      ...(Object.keys(ignored).length > 0 ? { ignored } : {}),
+    };
+  }
+
+  const host = opts.host;
+  if (typeof host !== "string" || host.length === 0) {
+    throw new TypeError("Deploy resolve host must be a non-empty hostname.");
+  }
+  if (
+    /\s/.test(host) ||
+    host.includes("/") ||
+    host.includes("?") ||
+    host.includes("#") ||
+    /^[a-z][a-z0-9+.-]*:/i.test(host) ||
+    host.includes("@")
+  ) {
+    throw new TypeError(
+      "Deploy resolve host must be a clean hostname without scheme, credentials, path, query, or fragment.",
+    );
+  }
+  const path = opts.path;
+  if (path !== undefined) {
+    if (typeof path !== "string" || !path.startsWith("/")) {
+      throw new TypeError("Deploy resolve path must start with '/'.");
+    }
+    if (path.includes("?") || path.includes("#")) {
+      throw new TypeError(
+        "Deploy resolve host/path mode does not accept query strings or fragments in path.",
+      );
+    }
+  }
+  return {
+    project: opts.project,
+    project_scope: "credential_lookup_only",
+    project_sent_to_gateway: false,
+    host,
+    path: path ?? "/",
+    ...(method ? { method } : {}),
+  };
+}
+
+export function isDeployResolveStaticHit(
+  response: DeployResolveResponse,
+): response is DeployResolveResponse & {
+  match: "static_exact" | "static_index" | "spa_fallback";
+} {
+  return (
+    response.match === "static_exact" ||
+    response.match === "static_index" ||
+    response.match === "spa_fallback"
+  );
+}
+
+export function isDeployResolveRouteHit(
+  response: DeployResolveResponse,
+): response is DeployResolveResponse & { route: DeployResolveRouteMatch } {
+  return !!response.route && typeof response.route === "object";
+}
+
+export function buildDeployResolveSummary(
+  response: DeployResolveResponse,
+  request: NormalizedDeployResolveRequest,
+): DeployResolveSummary {
+  const warnings = deployResolveWarningsForRequest(request);
+  const next_steps = deployResolveNextSteps(response);
+  const would_serve =
+    response.authorized === true &&
+    response.result >= 200 &&
+    response.result < 400 &&
+    response.match !== "host_missing";
+  const method = request.method ?? "GET";
+  const url = `${method} ${request.original_url ? displayResolveUrl(request) : `https://${request.host}${request.path}`}`;
+  const category = deployResolveCategory(response);
+  const summary = deployResolveSummaryText(response, url);
+  return {
+    would_serve,
+    diagnostic_status: response.result,
+    match: response.match,
+    category,
+    summary,
+    warnings,
+    next_steps,
+  };
+}
+
+function normalizeDeployResolveMethod(
+  method: DeployResolveMethod | undefined,
+): string | undefined {
+  if (method === undefined) return undefined;
+  if (typeof method !== "string") {
+    throw new TypeError("Deploy resolve method must be a string.");
+  }
+  const normalized = method.trim().toUpperCase();
+  if (!/^[A-Z][A-Z0-9!#$%&'*+.^_`|~-]*$/.test(normalized)) {
+    throw new TypeError(
+      "Deploy resolve method must be a valid HTTP token such as GET, HEAD, POST, or OPTIONS.",
+    );
+  }
+  return normalized;
+}
+
+function displayResolveUrl(request: NormalizedDeployResolveRequest): string {
+  if (!request.original_url) return `https://${request.host}${request.path}`;
+  try {
+    const url = new URL(request.original_url);
+    return `${url.protocol}//${url.host}${url.pathname || "/"}`;
+  } catch {
+    return `${request.host}${request.path}`;
+  }
+}
+
+function deployResolveWarningsForRequest(
+  request: NormalizedDeployResolveRequest,
+): DeployResolveWarning[] {
+  const warnings: DeployResolveWarning[] = [];
+  if (request.ignored?.query) {
+    warnings.push({
+      code: "query_ignored",
+      message: "Query strings do not affect Run402 route resolution.",
+    });
+  }
+  if (request.ignored?.fragment) {
+    warnings.push({
+      code: "fragment_ignored",
+      message: "URL fragments are never sent to the server and do not affect resolution.",
+    });
+  }
+  return warnings;
+}
+
+function deployResolveCategory(response: DeployResolveResponse): string {
+  if (isDeployResolveRouteHit(response)) return "route";
+  if (isDeployResolveStaticHit(response)) return "static";
+  if (response.match === "host_missing") return "host";
+  if (response.match === "manifest_missing") return "manifest";
+  if (response.match === "path_error") return "path";
+  if (response.match === "spa_fallback_missing") return "fallback";
+  if (response.match === "none") return "miss";
+  return "unknown";
+}
+
+function deployResolveSummaryText(
+  response: DeployResolveResponse,
+  url: string,
+): string {
+  if (response.match === "host_missing") {
+    return `${url} did not resolve because the host is not bound to this account/project context.`;
+  }
+  if (response.match === "manifest_missing") {
+    return `${url} reached the host, but no active static manifest is available for diagnostics.`;
+  }
+  if (response.match === "path_error") {
+    return `${url} could not be evaluated because the path is not a valid Run402 public path.`;
+  }
+  if (response.match === "none") {
+    return `${url} did not match a materialized static file or SPA fallback.`;
+  }
+  if (response.match === "spa_fallback_missing") {
+    return `${url} was eligible for SPA fallback, but the configured fallback file is missing.`;
+  }
+  if (response.match === "spa_fallback") {
+    return `${url} would serve the configured SPA fallback.`;
+  }
+  if (response.match === "static_index") {
+    return `${url} would serve a static index file.`;
+  }
+  if (response.match === "static_exact") {
+    return `${url} would serve an exact static file.`;
+  }
+  if (isDeployResolveRouteHit(response)) {
+    return `${url} matched a deploy route.`;
+  }
+  if (response.result >= 200 && response.result < 400) {
+    return `${url} resolved with gateway match ${String(response.match)}.`;
+  }
+  return `${url} did not resolve to a servable public response; gateway match was ${String(response.match)}.`;
+}
+
+function deployResolveNextSteps(
+  response: DeployResolveResponse,
+): DeployResolveNextStep[] {
+  switch (response.match) {
+    case "host_missing":
+      return [
+        {
+          code: "check_domain_binding",
+          message: "Check that the host is configured as a Run402 custom domain or subdomain.",
+        },
+        {
+          code: "check_dns",
+          message: "Check DNS and domain binding status.",
+        },
+        {
+          code: "check_credentials",
+          message: "Check that the selected local project credentials can inspect this host.",
+        },
+      ];
+    case "manifest_missing":
+      return [
+        {
+          code: "check_active_release",
+          message: "Check that the project has an active deploy-v2 release.",
+        },
+        {
+          code: "redeploy_static_site",
+          message: "Deploy static site content again if the active release predates static manifest metadata.",
+        },
+      ];
+    case "path_error":
+      return [
+        {
+          code: "check_public_path",
+          message: "Use an absolute URL path that starts with '/' and does not contain invalid encoded segments.",
+        },
+      ];
+    case "none":
+      return [
+        {
+          code: "check_static_path",
+          message: "Check the active release site.paths inventory for the requested file.",
+        },
+        {
+          code: "check_spa_fallback",
+          message: "Check whether the release has a configured SPA fallback.",
+        },
+      ];
+    case "spa_fallback_missing":
+      return [
+        {
+          code: "restore_spa_fallback",
+          message: "Deploy the configured SPA fallback file or remove the fallback declaration.",
+        },
+      ];
+    default:
+      return response.result >= 200 && response.result < 400
+        ? []
+        : [
+            {
+              code: "inspect_resolution",
+              message: "Inspect the full resolution payload for gateway-specific fields.",
+            },
+          ];
+  }
 }
 
 // ─── Plan + commit + operation ───────────────────────────────────────────────
@@ -235,6 +710,7 @@ export interface PlanResponse {
   secrets?: SecretsDiff;
   subdomains?: SubdomainsDiff;
   routes?: RoutesDiff;
+  static_assets?: StaticAssetsDiff;
 }
 
 export type WarningEntry = LegacyWarningEntry | DeployObservabilityWarningEntry;
@@ -374,6 +850,9 @@ export interface ReleaseInventoryBase<
   events_url: string | null;
   effective: boolean;
   state_kind: StateKind;
+  release_generation: number | null;
+  static_manifest_sha256: string | null;
+  static_manifest_metadata: StaticManifestMetadata | null;
   site: {
     paths: SitePathEntry[];
     totals?: { paths: number };
@@ -475,6 +954,7 @@ export interface PlanDiffEnvelope {
   secrets: SecretsDiff;
   subdomains: SubdomainsDiff;
   routes: RoutesDiff;
+  static_assets: StaticAssetsDiff;
 }
 
 export interface ReleaseToReleaseDiff {
@@ -493,6 +973,7 @@ export interface ReleaseToReleaseDiff {
   secrets: SecretsDiff;
   subdomains: SubdomainsDiff;
   routes: RoutesDiff;
+  static_assets: StaticAssetsDiff;
 }
 
 export type ReleaseDiffTarget = "empty" | "active" | (string & {});
@@ -538,6 +1019,7 @@ export interface DeployDiff {
   functions?: FunctionsDiff;
   secrets?: SecretsDiff;
   routes?: RoutesDiff | Array<{ kind: "added" | "removed"; path: string }>;
+  static_assets?: StaticAssetsDiff;
   subdomains?:
     | SubdomainsDiff
     | Array<{ kind: "added" | "removed"; subdomain: string }>;

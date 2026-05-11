@@ -34,6 +34,16 @@ const TEST_PROJECT = {
   schema_slot: "p0001",
 };
 
+async function seedTestProject() {
+  const { saveProject, setActiveProjectId } = await import("./cli/lib/config.mjs");
+  saveProject(TEST_PROJECT.project_id, {
+    anon_key: TEST_PROJECT.anon_key,
+    service_key: TEST_PROJECT.service_key,
+    tier: "prototype",
+  });
+  setActiveProjectId(TEST_PROJECT.project_id);
+}
+
 // ─── Mock fetch router ──────────────────────────────────────────────────────
 
 function json(data, status = 200) {
@@ -392,6 +402,49 @@ async function mockFetch(input, init) {
       last_activate_attempt_at: null,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
+    }));
+  }
+  if (pathNoQuery === "/deploy/v2/resolve" && method === "GET") {
+    const params = new URL(url).searchParams;
+    const host = params.get("host");
+    const reqPath = params.get("path") || "/";
+    if (host === "missing.example") {
+      return Promise.resolve(json({
+        hostname: host,
+        result: 404,
+        match: "host_missing",
+        authorized: false,
+        fallback_state: "not_used",
+      }));
+    }
+    return Promise.resolve(json({
+      hostname: host,
+      host_binding_id: `custom:${host}`,
+      binding_status: "active",
+      project_id: TEST_PROJECT.project_id,
+      channel: "production",
+      release_id: "rel_v2_test",
+      release_generation: 7,
+      route_manifest_sha256: "route-manifest",
+      static_manifest_sha256: "static-manifest",
+      static_manifest_metadata: {
+        file_count: 1,
+        total_bytes: 12,
+        cache_classes: { html: 1 },
+        cache_class_sources: { inferred: 1 },
+        spa_fallback: "/index.html",
+      },
+      normalized_path: reqPath,
+      match: "static_exact",
+      static_sha256: "a".repeat(64),
+      content_type: "text/html",
+      cache_class: "html",
+      cache_policy: "public, max-age=0, must-revalidate",
+      authorized: true,
+      fallback_state: "not_used",
+      legacy_immutable_risk: [],
+      emergency_fallback: { enabled: false },
+      result: 200,
     }));
   }
   if (pathNoQuery === "/deploy/v2/releases/active" && method === "GET") {
@@ -1789,6 +1842,98 @@ describe("CLI e2e happy path", () => {
     assert.equal(body.diff.kind, "release_diff");
     assert.deepEqual(body.diff.migrations.applied_between_releases, ["001_init"]);
     assert.equal(body.diff.routes.added[0].pattern, "/api/*");
+  });
+
+  it("deploy diagnose prints a structured URL diagnostic envelope", async () => {
+    await seedTestProject();
+    const { run } = await import("./cli/lib/deploy.mjs");
+    captureStart();
+    await run([
+      "diagnose",
+      "--project",
+      "prj_test123",
+      "https://example.com/events?utm=x#hero",
+      "--method",
+      "GET",
+    ]);
+    captureStop();
+    const body = JSON.parse(captured());
+    assert.equal(body.status, "ok");
+    assert.equal(body.would_serve, true);
+    assert.equal(body.diagnostic_status, 200);
+    assert.equal(body.match, "static_exact");
+    assert.equal(body.request.ignored.query, "?utm=x");
+    assert.equal(body.request.ignored.fragment, "#hero");
+    assert.equal(body.resolution.static_manifest_metadata.file_count, 1);
+  });
+
+  it("deploy diagnose defaults to the active project", async () => {
+    await seedTestProject();
+
+    const { run } = await import("./cli/lib/deploy.mjs");
+    captureStart();
+    await run(["diagnose", "https://example.com/events"]);
+    captureStop();
+    const body = JSON.parse(captured());
+    assert.equal(body.status, "ok");
+    assert.equal(body.request.project, TEST_PROJECT.project_id);
+    assert.equal(body.match, "static_exact");
+  });
+
+  it("deploy resolve prints host-miss diagnostics with exit 0 semantics", async () => {
+    await seedTestProject();
+    const { run } = await import("./cli/lib/deploy.mjs");
+    captureStart();
+    await run([
+      "resolve",
+      "--project",
+      "prj_test123",
+      "--host",
+      "missing.example",
+      "--path",
+      "/",
+    ]);
+    captureStop();
+    const body = JSON.parse(captured());
+    assert.equal(body.status, "ok");
+    assert.equal(body.would_serve, false);
+    assert.equal(body.diagnostic_status, 404);
+    assert.equal(body.match, "host_missing");
+    assert.equal(body.next_steps[0].code, "check_domain_binding");
+  });
+
+  it("deploy resolve rejects URL and host/path conflicts before network", async () => {
+    const { run } = await import("./cli/lib/deploy.mjs");
+    const prevFetch = globalThis.fetch;
+    let resolveCalled = false;
+    globalThis.fetch = (input, init) => {
+      const url = typeof input === "string" ? input : (input instanceof Request ? input.url : String(input));
+      if (url.includes("/deploy/v2/resolve")) resolveCalled = true;
+      return prevFetch(input, init);
+    };
+
+    let threw = null;
+    captureStart();
+    try {
+      await run([
+        "resolve",
+        "--project",
+        "prj_test123",
+        "--url",
+        "https://example.com/",
+        "--host",
+        "example.com",
+      ]);
+    } catch (e) {
+      threw = e;
+    } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+
+    assert.equal(threw?.message, "process.exit(1)");
+    assert.equal(resolveCalled, false, "must not call /deploy/v2/resolve on input conflict");
+    assert.match(capturedStderr(), /Do not combine --url/);
   });
 
   it("deploy release diff rejects missing selectors before network", async () => {

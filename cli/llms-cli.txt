@@ -193,26 +193,38 @@ Complete static site + function + route manifest:
 ```json
 {
   "project_id": "prj_...",
-  "site": { "replace": { "index.html": { "data": "<!doctype html><main id='app'></main><script>fetch('/api/hello')</script>" } } },
+  "site": { "replace": {
+    "index.html": { "data": "<!doctype html><main id='app'></main><script>fetch('/api/hello')</script>" },
+    "events.html": { "data": "<!doctype html><h1>Events</h1>" }
+  } },
   "functions": {
     "replace": {
       "api": {
         "runtime": "node22",
         "source": { "data": "export default async function handler(req) { const url = new URL(req.url); return Response.json({ ok: true, path: url.pathname }); }" }
+      },
+      "login": {
+        "runtime": "node22",
+        "source": { "data": "export default async function handler(req) { return Response.json({ ok: true }); }" }
       }
     }
   },
-  "routes": { "replace": [{ "pattern": "/api/*", "target": { "type": "function", "name": "api" } }] }
+  "routes": { "replace": [
+    { "pattern": "/api/*", "methods": ["GET", "POST", "OPTIONS"], "target": { "type": "function", "name": "api" } },
+    { "pattern": "/login", "methods": ["POST"], "target": { "type": "function", "name": "login" } },
+    { "pattern": "/events", "methods": ["GET", "HEAD"], "target": { "type": "static", "file": "events.html" } }
+  ] }
 }
 ```
 
 Route semantics:
 - Omit `routes` or pass `routes: null` to carry forward base routes. `routes: { "replace": [] }` clears dynamic routes. `routes: { "replace": [...] }` replaces the route table atomically with the release.
-- Route entries use `pattern`, optional non-empty `methods` (`GET`, `HEAD`, `POST`, `PUT`, `PATCH`, `DELETE`, `OPTIONS`), and `target: { "type": "function", "name": "<materialized function name>" }`. Path-keyed maps like `"routes": { "/api/*": { "function": "api" } }` are invalid.
+- Route entries use `pattern`, optional non-empty `methods` (`GET`, `HEAD`, `POST`, `PUT`, `PATCH`, `DELETE`, `OPTIONS`), and a target. Function targets are `{ "type": "function", "name": "<materialized function name>" }`. Static route targets are `{ "type": "static", "file": "events.html" }` for exact static file route targets, not rewrites or redirects. Static targets require exact patterns only and methods `["GET"]` or `["GET","HEAD"]`; the file path is relative to deployed site content with no leading slash, wildcard, directory shorthand, query, or fragment. Path-keyed maps like `"routes": { "/api/*": { "function": "api" } }` are invalid.
 - Exact patterns look like `/admin`; prefix wildcard patterns use final `/*`, like `/admin/*`. `/admin/*` does not match `/admin`, `/admin/`, `/admin.css`, or `/administrator`, so deploy both `/admin` and `/admin/*` for a dynamic section root.
 - Query strings are ignored for matching and preserved in the handler's full public `req.url`. Exact beats prefix, longest prefix wins, and method-compatible dynamic routes beat static assets.
 - A `POST /login` route can coexist with static `GET /login` HTML. Unsafe method mismatch returns `405`, not SPA HTML. Matched dynamic route failures fail closed and do not fall back to static files.
 - Routed browser ingress uses Node 22 Fetch Request -> Response: `export default async function handler(req) { ... }`. `req.url` is the full public URL on managed subdomains, deployment hosts, and verified custom domains, so derive OAuth callbacks from `new URL(req.url).origin`. The raw `run402.routed_http.v1` envelope is internal; do not write route handlers against it. Direct `/functions/v1/:name` remains API-key protected. The function owns app auth, CSRF, CORS/`OPTIONS`, cookies, redirects, and spoofed forwarding-header hygiene.
+- Anti-patterns: routing every static file, broad method lists by default, wildcard static route targets, leading-slash static files, directory shorthand, one-static-route-target-per-page route-table exhaustion, wildcard function routes shadowing static assets, and confusing omitted/null `routes` with `routes: { "replace": [] }`.
 
 Apply it:
 
@@ -253,13 +265,20 @@ run402 deploy events <operation_id> --project prj_...
 run402 deploy release active --project prj_... --site-limit 5000
 run402 deploy release get rel_... --project prj_...
 run402 deploy release diff --from empty --to active --project prj_... --limit 1000
+run402 deploy diagnose --project prj_123 https://example.com/events --method GET
+run402 deploy resolve --project prj_123 --url https://example.com/events?utm=x#hero --method GET
+run402 deploy resolve --project prj_123 --host example.com --path /events --method GET
 ```
 
 `list` returns `{ operations: [...], cursor }` (page through with `--cursor` against the gateway when the cursor is non-null). `events` returns the same `DeployEvent` shapes that `apply` emits inline.
 
-`release active` and `release get` return `{ "status": "ok", "release": ReleaseInventory }`. Inventories include release metadata, `state_kind` (`current_live`, `effective`, or `desired_manifest`), site paths (capped by `--site-limit`), functions, secret keys only, subdomains, materialized routes, applied migrations, and inventory warnings when returned.
+`release active` and `release get` return `{ "status": "ok", "release": ReleaseInventory }`. Inventories include release metadata, `state_kind` (`current_live`, `effective`, or `desired_manifest`), site paths (capped by `--site-limit`), functions, secret keys only, subdomains, materialized routes, applied migrations, `release_generation`, `static_manifest_sha256`, nullable `static_manifest_metadata`, and inventory warnings when returned. `static_manifest_metadata: null` means unavailable, not zero; when present it includes `file_count`, `total_bytes`, `cache_classes`, `cache_class_sources`, and `spa_fallback`.
 
-`release diff` returns `{ "status": "ok", "diff": ReleaseToReleaseDiff }`. `--from` accepts `empty`, `active`, or a release id. `--to` accepts `active` or a release id. Diff migrations use `migrations.applied_between_releases`; secrets and subdomains expose `added` / `removed` only; routes expose `added` / `removed` / `changed`.
+`release diff` returns `{ "status": "ok", "diff": ReleaseToReleaseDiff }`. `--from` accepts `empty`, `active`, or a release id. `--to` accepts `active` or a release id. Diff migrations use `migrations.applied_between_releases`; secrets and subdomains expose `added` / `removed` only; routes expose `added` / `removed` / `changed`; `static_assets` exposes unchanged/changed/added/removed files, `newly_uploaded_cas_bytes`, `reused_cas_bytes`, `deployment_copy_bytes_eliminated`, `legacy_immutable_warnings`, `previous_immutable_failures`, and `cas_authorization_failures`.
+
+`deploy diagnose` is the URL-first public diagnostic: `run402 deploy diagnose --project prj_123 https://example.com/events --method GET`. `deploy resolve` is lower-level parity with the SDK/endpoint: pass `--url` or pass `--host` with optional `--path`; do not combine `--url` with `--host`/`--path`. Both commands print a structured JSON envelope with `status`, `would_serve`, `diagnostic_status`, `match`, `summary`, normalized `request`, `warnings`, full `resolution`, and structured `next_steps`. Query strings/fragments in URL mode are ignored for route/static lookup and reported under `request.ignored` and warnings. Diagnostic misses such as host misses exit 0 when the resolver call succeeds; branch on `would_serve: false`.
+
+Known current resolve `match` literals are `host_missing`, `manifest_missing`, `path_error`, `none`, `static_exact`, `static_index`, `spa_fallback`, and `spa_fallback_missing`; preserve unknown future strings. Today resolve is authoritative for host/static/SPAfallback diagnostics, not complete route introspection unless the gateway returns future route context. `result` is diagnostic body status, not HTTP transport status. Do not treat resolve/diagnose as a fetch, cache purge, or cache-policy oracle, and do not hard-code `cache_policy` strings; branch on `cache_class` when present and preserve unknown cache classes.
 
 Route warning guidance:
 
@@ -272,6 +291,9 @@ Route warning guidance:
 | `WILDCARD_ROUTE_EXCLUDES_MUTATION_METHODS` | Wildcard function route only allows `GET`/`HEAD`. | Add mutation methods such as `POST`, omit methods for an API prefix, or confirm it is read-only. |
 | `ROUTE_TABLE_NEAR_LIMIT` | Route table is near a limit. | Consolidate or remove routes. |
 | `ROUTES_NOT_ENABLED` | Routes are disabled for the project/environment. | Deploy without `routes` or request enablement; direct function invoke is not a browser-route substitute. |
+| `STATIC_ALIAS_SHADOWS_STATIC_PATH` / `STATIC_ALIAS_RELATIVE_ASSET_RISK` | Static route target conflicts with a real static path or has relative-asset risk. | Prefer canonical static files, fix relative asset paths, and confirm only when intentional. |
+| `STATIC_ALIAS_DUPLICATE_CANONICAL_URL` / `STATIC_ALIAS_EXTENSIONLESS_NON_HTML` | Static route target may duplicate canonical URLs or expose extensionless non-HTML. | Use one canonical URL per page and reserve exact static route targets for intentional HTML-like public paths. |
+| `STATIC_ALIAS_TABLE_NEAR_LIMIT` | Static route targets are near route-table limits. | Avoid one-static-route-target-per-page tables; consolidate. |
 
 Runtime route failure codes to branch on: `ROUTE_MANIFEST_LOAD_FAILED` (manifest/propagation), `ROUTED_INVOKE_WORKER_SECRET_MISSING` (custom-domain Worker secret), `ROUTED_INVOKE_AUTH_FAILED` (internal invoke signature), `ROUTED_ROUTE_STALE` (selected route failed release revalidation), `ROUTE_METHOD_NOT_ALLOWED` (method mismatch), and `ROUTED_RESPONSE_TOO_LARGE` (body over 6 MiB).
 
@@ -572,6 +594,8 @@ User auth: password + Google OAuth. See "User Auth" section below.
 - `run402 deploy release get <release_id> [--project <id>] [--site-limit <n>]` — fetch release inventory
 - `run402 deploy release active [--project <id>] [--site-limit <n>]` — fetch current-live release inventory
 - `run402 deploy release diff --from <empty|active|release_id> --to <active|release_id> [--project <id>] [--limit <n>]` — diff release targets
+- `run402 deploy diagnose [--project <id>] <url> [--method GET]` — URL-first public deploy diagnostics
+- `run402 deploy resolve [--project <id>] (--url <url> | --host <host> [--path /x]) [--method GET]` — lower-level resolver parity; `--url` cannot be combined with `--host`/`--path`
 
 Requires active tier and a provisioned project. Deploys to an existing project: runs migrations, applies the authorization manifest (from a `manifest.json` entry in `files[]`), deploys functions, deploys static site, and claims subdomain. Secret values are write-only: set them with `run402 secrets set <id> <KEY> --file <path>` before deploy, then use value-free `secrets.require` in `deploy apply` manifests. `deploy apply` stops before upload/commit on confirmation-required warnings unless `--allow-warnings` is passed. The manifest must include `project_id` (or use `--project` flag, or omit both to use the active project).
 

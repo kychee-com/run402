@@ -22,7 +22,10 @@
 import type { Client } from "../kernel.js";
 import { isCiSessionCredentials } from "../ci-credentials.js";
 import { assertCiDeployableSpec } from "./ci.js";
-import { ROUTE_HTTP_METHODS } from "./deploy.types.js";
+import {
+  ROUTE_HTTP_METHODS,
+  normalizeDeployResolveRequest,
+} from "./deploy.types.js";
 import {
   ApiError,
   LocalError,
@@ -46,6 +49,8 @@ import type {
   DeployListResponse,
   DeployOperation,
   DeployResult,
+  DeployResolveOptions,
+  DeployResolveResponse,
   FileSet,
   FsFileSource,
   GatewayDeployError,
@@ -428,6 +433,23 @@ export class Deploy {
     return this.client.request<ReleaseToReleaseDiff>(
       `/deploy/v2/releases/diff?${qs.toString()}`,
       { headers, context: "diffing releases" },
+    );
+  }
+
+  /**
+   * Diagnose how a stable public URL or host/path would resolve against the
+   * current live release. This is an authenticated read: `project` is used
+   * only for local apikey lookup and is not sent to the gateway.
+   */
+  async resolve(opts: DeployResolveOptions): Promise<DeployResolveResponse> {
+    const request = normalizeDeployResolveRequest(opts);
+    const headers = await apikeyHeaders(this.client, request.project);
+    const qs = new URLSearchParams({ host: request.host });
+    if ("url" in opts || opts.path !== undefined) qs.set("path", request.path);
+    if (request.method) qs.set("method", request.method);
+    return this.client.request<DeployResolveResponse>(
+      `/deploy/v2/resolve?${qs.toString()}`,
+      { headers, context: "resolving deploy public URL" },
     );
   }
 }
@@ -1257,7 +1279,8 @@ const SITE_PATCH_FIELDS = new Set(["put", "delete"]);
 const SUBDOMAINS_SPEC_FIELDS = new Set(["set", "add", "remove"]);
 const ROUTES_SPEC_FIELDS = new Set(["replace"]);
 const ROUTE_ENTRY_FIELDS = new Set(["pattern", "methods", "target"]);
-const ROUTE_TARGET_FIELDS = new Set(["type", "name"]);
+const FUNCTION_ROUTE_TARGET_FIELDS = new Set(["type", "name"]);
+const STATIC_ROUTE_TARGET_FIELDS = new Set(["type", "file"]);
 const ROUTE_METHOD_SET = new Set<string>(ROUTE_HTTP_METHODS);
 
 function validateSpec(spec: ReleaseSpec): void {
@@ -1433,7 +1456,7 @@ function validateRoutesSpec(routes: unknown): void {
   validateKnownFields(obj, "routes", ROUTES_SPEC_FIELDS, routeShapeHints(obj));
   if (!hasOwn(obj, "replace")) {
     throw invalidRouteSpec(
-      "ReleaseSpec.routes must be null or { replace: [{ pattern, target: { type: \"function\", name } }] }. Path-keyed route maps are not supported.",
+      "ReleaseSpec.routes must be null or { replace: [{ pattern, target: { type: \"function\", name } | { type: \"static\", file } }] }. Path-keyed route maps are not supported.",
       "routes",
     );
   }
@@ -1449,7 +1472,7 @@ function routeShapeHints(obj: Record<string, unknown>): Record<string, string> {
   const hints: Record<string, string> = {};
   for (const key of Object.keys(obj)) {
     if (key.startsWith("/")) {
-      hints[key] = "Use `routes.replace[]` entries like `{ pattern, target: { type: \"function\", name } }` instead of a path-keyed route map.";
+      hints[key] = "Use `routes.replace[]` entries like `{ pattern, target: { type: \"function\", name } }` or `{ pattern, methods: [\"GET\"], target: { type: \"static\", file } }` instead of a path-keyed route map.";
     }
   }
   return hints;
@@ -1479,30 +1502,96 @@ function validateRouteEntry(route: unknown, resource: string): void {
         );
       }
     }
+    const seen = new Set<string>();
+    for (const method of entry.methods) {
+      const methodString = method as string;
+      if (seen.has(methodString)) {
+        throw invalidRouteSpec(
+          `ReleaseSpec.${resource}.methods contains duplicate method ${JSON.stringify(method)}`,
+          `${resource}.methods`,
+        );
+      }
+      seen.add(methodString);
+    }
   }
-  validateRouteTarget(entry.target, `${resource}.target`);
+  const targetType = validateRouteTarget(entry.target, `${resource}.target`);
+  if (targetType === "static") {
+    validateStaticRouteEntry(entry, resource);
+  }
 }
 
-function validateRouteTarget(target: unknown, resource: string): void {
+function validateRouteTarget(target: unknown, resource: string): "function" | "static" {
   const obj = requireObject(target, resource);
-  if (hasOwn(obj, "function") && !hasOwn(obj, "type")) {
+  if ((hasOwn(obj, "function") || hasOwn(obj, "static")) && !hasOwn(obj, "type")) {
     throw invalidRouteSpec(
-      `ReleaseSpec.${resource} uses an unsupported target shorthand. Use { type: "function", name: "api" }.`,
+      `ReleaseSpec.${resource} uses an unsupported target shorthand. Use { type: "function", name: "api" } or { type: "static", file: "events.html" }.`,
       resource,
     );
   }
-  validateKnownFields(obj, resource, ROUTE_TARGET_FIELDS);
   if (obj.type === undefined) {
-    throw invalidRouteSpec(`ReleaseSpec.${resource}.type is required; use "function"`, `${resource}.type`);
+    throw invalidRouteSpec(`ReleaseSpec.${resource}.type is required; use "function" or "static"`, `${resource}.type`);
   }
-  if (obj.type !== "function") {
+  if (obj.type === "function") {
+    validateKnownFields(obj, resource, FUNCTION_ROUTE_TARGET_FIELDS);
+    if (typeof obj.name !== "string" || obj.name.length === 0) {
+      throw invalidRouteSpec(`ReleaseSpec.${resource}.name is required for function route targets`, `${resource}.name`);
+    }
+    return "function";
+  }
+  if (obj.type === "static") {
+    validateKnownFields(obj, resource, STATIC_ROUTE_TARGET_FIELDS);
+    if (typeof obj.file !== "string" || obj.file.length === 0) {
+      throw invalidRouteSpec(`ReleaseSpec.${resource}.file is required for static route targets`, `${resource}.file`);
+    }
+    validateStaticTargetFile(obj.file, `${resource}.file`);
+    return "static";
+  }
+  throw invalidRouteSpec(
+    `Unsupported route target type ${JSON.stringify(obj.type)} at ReleaseSpec.${resource}.type; route targets support "function" and "static"`,
+    `${resource}.type`,
+  );
+}
+
+function validateStaticRouteEntry(entry: Record<string, unknown>, resource: string): void {
+  const pattern = entry.pattern as string;
+  if (pattern.includes("*")) {
     throw invalidRouteSpec(
-      `Unsupported route target type ${JSON.stringify(obj.type)} at ReleaseSpec.${resource}.type; Phase 1 routes support only "function" targets`,
-      `${resource}.type`,
+      `ReleaseSpec.${resource}.pattern uses a static route target, so it must be an exact path pattern (wildcard patterns such as /docs/* are not supported for static targets)`,
+      `${resource}.pattern`,
     );
   }
-  if (typeof obj.name !== "string" || obj.name.length === 0) {
-    throw invalidRouteSpec(`ReleaseSpec.${resource}.name is required for function route targets`, `${resource}.name`);
+  if (entry.methods === undefined) {
+    throw invalidRouteSpec(
+      `ReleaseSpec.${resource}.methods is required for static route targets; use ["GET"] or ["GET", "HEAD"]`,
+      `${resource}.methods`,
+    );
+  }
+  const methods = entry.methods as unknown[];
+  const methodSet = new Set(methods);
+  const valid =
+    methodSet.has("GET") &&
+    (methodSet.size === 1 || (methodSet.size === 2 && methodSet.has("HEAD")));
+  if (!valid) {
+    throw invalidRouteSpec(
+      `ReleaseSpec.${resource}.methods for static route targets must be ["GET"] or ["GET", "HEAD"]; either form materializes effective GET plus HEAD`,
+      `${resource}.methods`,
+    );
+  }
+}
+
+function validateStaticTargetFile(file: string, resource: string): void {
+  const invalid =
+    file.startsWith("/") ||
+    file.includes("?") ||
+    file.includes("#") ||
+    file.includes("\\") ||
+    file.endsWith("/") ||
+    file.split("/").some((segment) => segment === "" || segment === "." || segment === "..");
+  if (invalid) {
+    throw invalidRouteSpec(
+      `ReleaseSpec.${resource} must be a relative materialized static-site file path without leading slash, query, fragment, traversal, empty segments, backslashes, or directory shorthand`,
+      resource,
+    );
   }
 }
 
@@ -1631,6 +1720,11 @@ function invalidRouteSpec(message: string, resource: string): Run402DeployError 
               pattern: "/api/*",
               target: { type: "function", name: "api" },
             },
+            {
+              pattern: "/events",
+              methods: ["GET", "HEAD"],
+              target: { type: "static", file: "events.html" },
+            },
           ],
         },
       },
@@ -1653,6 +1747,7 @@ function normalizePlanResponse(plan: PlanResponse): PlanResponse {
       secrets: raw.secrets,
       subdomains: raw.subdomains,
       routes: raw.routes,
+      static_assets: raw.static_assets,
     };
     return {
       ...plan,

@@ -134,6 +134,9 @@ function formatInventory(title: string, release: {
   migrations_applied: unknown[];
   warnings?: unknown[];
   events_url: string | null;
+  release_generation?: number | null;
+  static_manifest_sha256?: string | null;
+  static_manifest_metadata?: { file_count?: number; total_bytes?: number } | null;
 }): string {
   const siteTotal = release.site.totals?.paths ?? release.site.paths.length;
   const routeCount = Array.isArray(release.routes?.entries) ? release.routes.entries.length : 0;
@@ -147,6 +150,9 @@ function formatInventory(title: string, release: {
     `| status | ${release.status ?? "none"} |`,
     `| state_kind | ${release.state_kind} |`,
     `| effective | ${release.effective ? "true" : "false"} |`,
+    `| release_generation | ${release.release_generation ?? "none"} |`,
+    `| static_manifest_sha256 | ${release.static_manifest_sha256 ? `\`${release.static_manifest_sha256}\`` : "none"} |`,
+    `| static_manifest_files_bytes | ${release.static_manifest_metadata ? `${release.static_manifest_metadata.file_count ?? 0}/${release.static_manifest_metadata.total_bytes ?? 0}` : "metadata unavailable"} |`,
     `| site_paths_returned | ${release.site.paths.length} |`,
     `| site_paths_total | ${siteTotal} |`,
     `| functions | ${release.functions.length} |`,
@@ -171,8 +177,21 @@ function formatDiff(diff: {
   secrets: { added: unknown[]; removed: unknown[] };
   subdomains: { added: unknown[]; removed: unknown[] };
   routes?: { added: unknown[]; removed: unknown[]; changed: unknown[] };
+  static_assets?: {
+    unchanged?: number;
+    changed?: number;
+    added?: number;
+    removed?: number;
+    newly_uploaded_cas_bytes?: number;
+    reused_cas_bytes?: number;
+    deployment_copy_bytes_eliminated?: number;
+    legacy_immutable_warnings?: unknown[];
+    previous_immutable_failures?: unknown[];
+    cas_authorization_failures?: unknown[];
+  };
 }): string {
   const routeDiff = diff.routes ?? { added: [], removed: [], changed: [] };
+  const staticAssets = diff.static_assets;
   return [
     `## Release Diff`,
     ``,
@@ -189,6 +208,9 @@ function formatDiff(diff: {
     `| secrets_added_removed | ${diff.secrets.added.length}/${diff.secrets.removed.length} |`,
     `| subdomains_added_removed | ${diff.subdomains.added.length}/${diff.subdomains.removed.length} |`,
     `| routes_added_removed_changed | ${routeDiff.added.length}/${routeDiff.removed.length}/${routeDiff.changed.length} |`,
+    `| static_assets_unchanged_changed_added_removed | ${staticAssets ? `${staticAssets.unchanged ?? 0}/${staticAssets.changed ?? 0}/${staticAssets.added ?? 0}/${staticAssets.removed ?? 0}` : "not returned"} |`,
+    `| static_assets_cas_bytes_new_reused_eliminated | ${staticAssets ? `${staticAssets.newly_uploaded_cas_bytes ?? 0}/${staticAssets.reused_cas_bytes ?? 0}/${staticAssets.deployment_copy_bytes_eliminated ?? 0}` : "not returned"} |`,
+    `| static_assets_warning_counts | ${staticAssets ? `${staticAssets.legacy_immutable_warnings?.length ?? 0}/${staticAssets.previous_immutable_failures?.length ?? 0}/${staticAssets.cas_authorization_failures?.length ?? 0}` : "not returned"} |`,
   ].join("\n");
 }
 

@@ -320,6 +320,38 @@ describe("ScopedRun402 wrapper routing", () => {
     assert.equal(calls[0]!.headers.apikey, "anon_xxx");
   });
 
+  it("scoped deploy.resolve binds project and preserves explicit overrides", async () => {
+    const ledger: string[] = [];
+    const creds = makeCreds({
+      async getProject(id: string) {
+        ledger.push(`lookup:${id}`);
+        if (id === "prj_known") return { anon_key: "anon_known", service_key: "service_known" };
+        if (id === "prj_other") return { anon_key: "anon_other", service_key: "service_other" };
+        return null;
+      },
+    });
+    const { fetch, calls } = mockFetch(() =>
+      jsonResponse({
+        hostname: "example.com",
+        result: 200,
+        match: "static_exact",
+        authorized: true,
+        fallback_state: "not_used",
+      }),
+    );
+    const sdk = makeSdk(creds, fetch);
+    const p = await sdk.project("prj_known");
+
+    await p.deploy.resolve({ url: "https://example.com/" });
+    await p.deploy.resolve({ project: "prj_other", host: "other.example", path: "/x" });
+
+    assert.match(calls[0]!.url, /\/deploy\/v2\/resolve\?host=example\.com&path=%2F$/);
+    assert.equal(calls[0]!.headers.apikey, "anon_known");
+    assert.match(calls[1]!.url, /\/deploy\/v2\/resolve\?host=other\.example&path=%2Fx$/);
+    assert.equal(calls[1]!.headers.apikey, "anon_other");
+    assert.deepEqual(ledger, ["lookup:prj_known", "lookup:prj_other"]);
+  });
+
   it("non-id-bearing methods pass through unchanged (projects.list)", async () => {
     const { fetch, calls } = mockFetch(() => jsonResponse({ projects: [] }));
     const sdk = makeSdk(makeCreds(), fetch);

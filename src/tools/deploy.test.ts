@@ -540,6 +540,19 @@ describe("deploySchema fileEntry parsing", () => {
     });
     assert.equal(valid.success, true, valid.success ? "" : JSON.stringify(valid.error.issues));
 
+    const staticRoute = routesSchema.safeParse({
+      routes: {
+        replace: [
+          {
+            pattern: "/events",
+            methods: ["GET", "HEAD"],
+            target: { type: "static", file: "events.html" },
+          },
+        ],
+      },
+    });
+    assert.equal(staticRoute.success, true, staticRoute.success ? "" : JSON.stringify(staticRoute.error.issues));
+
     assert.equal(routesSchema.safeParse({ routes: { replace: [] } }).success, true);
     assert.equal(routesSchema.safeParse({ routes: null }).success, true);
     assert.equal(routesSchema.safeParse({ routes: { "/api/*": { function: "api" } } }).success, false);

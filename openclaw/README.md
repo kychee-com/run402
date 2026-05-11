@@ -29,7 +29,7 @@ In practice, **prefer reading [`SKILL.md`](./SKILL.md)** — it teaches the mode
 
 - **Paste-and-go assets** — `run402 blob put` returns content-addressed CDN URLs with SRI baked in
 - **Dark-by-default tables + the expose manifest** — `run402 projects validate-expose` for non-mutating checks, then `run402 projects apply-expose` (preferred: ship `manifest.json` in the bundle's `files[]`)
-- **Slick deploys** — `run402 sites deploy-dir` with plan/commit transport, only uploads bytes the gateway doesn't already have
+- **Slick deploys** — `run402 sites deploy-dir` and `run402 deploy apply` with plan/commit transport, static route targets such as `{ "target": { "type": "static", "file": "events.html" } }`, stable `static_assets` / `static_manifest_sha256` observability, and URL-first `run402 deploy diagnose --project prj_123 https://example.com/events --method GET`
 - **In-function helpers** — `db(req)` (caller-context, RLS) vs `adminDb()` (bypass) inside deployed functions
 
 ## Two skill files in this repo

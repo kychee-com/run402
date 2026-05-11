@@ -26,7 +26,12 @@
 
 import { readFileSync } from "node:fs";
 import { resolve, dirname, isAbsolute } from "node:path";
-import { githubActionsCredentials, normalizeDeployManifest } from "#sdk/node";
+import {
+  buildDeployResolveSummary,
+  githubActionsCredentials,
+  normalizeDeployManifest,
+  normalizeDeployResolveRequest,
+} from "#sdk/node";
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail } from "./sdk-errors.mjs";
 import { API, allowanceAuthHeaders, getActiveProjectId, resolveProjectId } from "./config.mjs";
@@ -197,12 +202,51 @@ Output:
   stdout: { "status": "ok", "diff": {...} }  # preserves routes.added/removed/changed
 `;
 
+const DIAGNOSE_HELP = `run402 deploy diagnose — Diagnose a Run402 public URL
+
+Usage:
+  run402 deploy diagnose --project <id> <url> [--method GET]
+  run402 deploy diagnose <url> [--method GET]       # uses active project
+
+Diagnoses how a project-owned Run402 subdomain or custom domain resolves
+against the current live release. This is not an HTTP fetch, cache purge, or
+CAS URL lookup. Query strings and fragments in URL input are ignored for route
+resolution and reported in structured warnings.
+
+Options:
+  --project <id>          Project ID for local apikey lookup (default: active project)
+  --method <method>       HTTP method to diagnose (default: GET)
+
+Output:
+  stdout: { "status": "ok", "would_serve": true|false, "diagnostic_status": 200|404|..., "match": "...", "summary": "...", "request": {...}, "warnings": [...], "resolution": {...}, "next_steps": [...] }
+`;
+
+const RESOLVE_HELP = `run402 deploy resolve — Low-level deploy URL diagnostics
+
+Usage:
+  run402 deploy resolve --project <id> --url <url> [--method GET]
+  run402 deploy resolve --project <id> --host <host> [--path /x] [--method GET]
+  run402 deploy resolve --url <url> [--method GET]       # uses active project
+
+Options:
+  --project <id>          Project ID for local apikey lookup (default: active project)
+  --url <url>             Absolute HTTP(S) public URL to diagnose
+  --host <host>           Clean hostname without scheme/path/query/fragment
+  --path </path>          Public URL path for host/path mode
+  --method <method>       HTTP method to diagnose (default: GET)
+
+Do not combine --url with --host or --path. Successful diagnostic misses still
+exit 0 with status: "ok"; inspect would_serve and diagnostic_status.
+`;
+
 export async function runDeployV2(sub, args) {
   if (sub === "apply") return await applyCmd(args);
   if (sub === "resume") return await resumeCmd(args);
   if (sub === "list") return await listCmd(args);
   if (sub === "events") return await eventsCmd(args);
   if (sub === "release") return await releaseCmd(args);
+  if (sub === "diagnose") return await diagnoseCmd(args);
+  if (sub === "resolve") return await resolveCmd(args);
   fail({
     code: "BAD_USAGE",
     message: `Unknown deploy subcommand: ${sub}`,
@@ -548,6 +592,41 @@ const ROUTE_WARNING_GUIDANCE = {
       "Keep direct function invocation API-key protected; do not substitute it for same-origin browser routes.",
     ],
   },
+  STATIC_ALIAS_SHADOWS_STATIC_PATH: {
+    hint: "A static route target shadows a direct static path at the same public URL.",
+    next_actions: [
+      "Inspect the route pattern, target.file, and direct static path.",
+      "Confirm only when the static route target is intentional.",
+    ],
+  },
+  STATIC_ALIAS_RELATIVE_ASSET_RISK: {
+    hint: "Relative asset URLs inside the target HTML may resolve differently at the static route target URL.",
+    next_actions: [
+      "Inspect the target HTML for relative asset references.",
+      "Use absolute asset URLs or confirm only when the alternate URL is intentional.",
+    ],
+  },
+  STATIC_ALIAS_DUPLICATE_CANONICAL_URL: {
+    hint: "Both the static route target URL and the target file URL may be publicly reachable.",
+    next_actions: [
+      "Decide which URL should be canonical.",
+      "Update links/canonical tags or accept the duplicate public URL intentionally.",
+    ],
+  },
+  STATIC_ALIAS_EXTENSIONLESS_NON_HTML: {
+    hint: "An extensionless static route target points at a non-HTML file.",
+    next_actions: [
+      "Check that the extensionless route is meant to serve that content type.",
+      "Prefer extensionless static route targets for HTML pages.",
+    ],
+  },
+  STATIC_ALIAS_TABLE_NEAR_LIMIT: {
+    hint: "Static route targets count toward the route table limit.",
+    next_actions: [
+      "Consolidate manual static route targets where possible.",
+      "Avoid one route entry per page for large sites until framework-scale Web Output support exists.",
+    ],
+  },
 };
 
 function routeWarningGuidance(warnings, code) {
@@ -781,6 +860,131 @@ async function releaseDiffCmd(args) {
   } catch (err) {
     reportSdkError(err);
   }
+}
+
+async function diagnoseCmd(args) {
+  const opts = { project: null, url: null, method: "GET" };
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (arg === "--help" || arg === "-h") { console.log(DIAGNOSE_HELP); process.exit(0); }
+    if (arg === "--project" && args[i + 1]) { opts.project = args[++i]; continue; }
+    if (arg === "--method" && args[i + 1]) { opts.method = args[++i]; continue; }
+    if (arg?.startsWith("--project=")) { opts.project = arg.slice("--project=".length); continue; }
+    if (arg?.startsWith("--method=")) { opts.method = arg.slice("--method=".length); continue; }
+    if (arg?.startsWith("-")) {
+      fail({ code: "BAD_USAGE", message: `Unknown flag for deploy diagnose: ${arg}`, details: { flag: arg } });
+    }
+    if (!opts.url) {
+      opts.url = arg;
+      continue;
+    }
+    fail({
+      code: "BAD_USAGE",
+      message: "deploy diagnose accepts exactly one URL argument.",
+      hint: "run402 deploy diagnose --project prj_... https://example.com/path --method GET",
+    });
+  }
+  if (!opts.url) {
+    fail({
+      code: "BAD_USAGE",
+      message: "Missing <url>.",
+      hint: "run402 deploy diagnose --project prj_... https://example.com/path --method GET",
+    });
+  }
+
+  const project = resolveProjectId(opts.project);
+  await printResolveEnvelope({ project, url: opts.url, method: opts.method });
+}
+
+async function resolveCmd(args) {
+  const opts = { project: null, url: null, host: null, path: null, method: "GET" };
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (arg === "--help" || arg === "-h") { console.log(RESOLVE_HELP); process.exit(0); }
+    if (arg === "--project" && args[i + 1]) { opts.project = args[++i]; continue; }
+    if (arg === "--url" && args[i + 1]) { opts.url = args[++i]; continue; }
+    if (arg === "--host" && args[i + 1]) { opts.host = args[++i]; continue; }
+    if (arg === "--path" && args[i + 1]) { opts.path = args[++i]; continue; }
+    if (arg === "--method" && args[i + 1]) { opts.method = args[++i]; continue; }
+    if (arg?.startsWith("--project=")) { opts.project = arg.slice("--project=".length); continue; }
+    if (arg?.startsWith("--url=")) { opts.url = arg.slice("--url=".length); continue; }
+    if (arg?.startsWith("--host=")) { opts.host = arg.slice("--host=".length); continue; }
+    if (arg?.startsWith("--path=")) { opts.path = arg.slice("--path=".length); continue; }
+    if (arg?.startsWith("--method=")) { opts.method = arg.slice("--method=".length); continue; }
+    fail({ code: "BAD_USAGE", message: `Unknown argument for deploy resolve: ${arg}`, details: { argument: arg } });
+  }
+
+  if (opts.url && (opts.host || opts.path)) {
+    fail({
+      code: "BAD_USAGE",
+      message: "Do not combine --url with --host or --path.",
+      details: { url: Boolean(opts.url), host: Boolean(opts.host), path: Boolean(opts.path) },
+    });
+  }
+  if (!opts.url && !opts.host) {
+    fail({
+      code: "BAD_USAGE",
+      message: "Missing resolve input. Pass --url <url> or --host <host> [--path /x].",
+      hint: "run402 deploy resolve --project prj_... --url https://example.com/",
+    });
+  }
+
+  const project = resolveProjectId(opts.project);
+  const input = opts.url
+    ? { project, url: opts.url, method: opts.method }
+    : {
+        project,
+        host: opts.host,
+        ...(opts.path !== null ? { path: opts.path } : {}),
+        method: opts.method,
+      };
+  await printResolveEnvelope(input);
+}
+
+async function printResolveEnvelope(input) {
+  let request;
+  try {
+    request = normalizeDeployResolveRequest(input);
+  } catch (err) {
+    fail({
+      code: "BAD_USAGE",
+      message: err?.message || String(err),
+      details: { input: redactResolveInput(input) },
+    });
+  }
+
+  try {
+    const resolution = await getSdk().deploy.resolve(input);
+    const summary = buildDeployResolveSummary(resolution, request);
+    console.log(JSON.stringify({
+      status: "ok",
+      would_serve: summary.would_serve,
+      diagnostic_status: summary.diagnostic_status,
+      match: summary.match,
+      summary: summary.summary,
+      request,
+      warnings: summary.warnings,
+      resolution,
+      next_steps: summary.next_steps,
+    }, null, 2));
+  } catch (err) {
+    reportSdkError(err);
+  }
+}
+
+function redactResolveInput(input) {
+  const copy = { ...input };
+  if (copy.url) {
+    try {
+      const url = new URL(copy.url);
+      url.username = "";
+      url.password = "";
+      copy.url = url.toString();
+    } catch {
+      copy.url = String(copy.url).replace(/\/\/[^/@]+@/, "//<redacted>@");
+    }
+  }
+  return copy;
 }
 
 function parsePositiveInt(value, flag) {

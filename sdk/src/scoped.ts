@@ -144,6 +144,7 @@ import type {
   ExposeManifest,
   DeployListResponse,
   DeployOperation,
+  DeployResolveResponse,
   DeployResult,
   OperationSnapshot,
   PlanResponse,
@@ -152,6 +153,7 @@ import type {
   ReleaseInventoryOptions,
   ReleaseSpec,
   ReleaseToReleaseDiff,
+  ScopedDeployResolveOptions,
   StartOptions,
 } from "./namespaces/deploy.types.js";
 import type { ByteReader } from "./namespaces/deploy.js";
@@ -489,6 +491,12 @@ class ScopedDeploy {
       ...opts,
       project: opts.project ?? this.projectId,
     });
+  }
+  resolve(opts: ScopedDeployResolveOptions): Promise<DeployResolveResponse> {
+    return this.parent.deploy.resolve({
+      ...opts,
+      project: opts.project ?? this.projectId,
+    } as Parameters<Run402["deploy"]["resolve"]>[0]);
   }
 
   private bindProject(spec: Omit<ReleaseSpec, "project"> & { project?: string }): ReleaseSpec {

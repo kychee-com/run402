@@ -22,6 +22,7 @@ import type { CredentialsProvider } from "../credentials.js";
 import type {
   CommitResponse,
   DeployEvent,
+  DeployResolveResponse,
   OperationSnapshot,
   PlanResponse,
 } from "./deploy.types.js";
@@ -947,6 +948,110 @@ describe("Deploy.apply (validation)", () => {
     );
   });
 
+  it("accepts exact static route targets and sends them to the gateway", async () => {
+    const w = makeWiring();
+    let plannedBody: unknown;
+    w.setHandler((req) => {
+      plannedBody = req.body;
+      return {
+        plan_id: null,
+        operation_id: null,
+        base_release_id: null,
+        manifest_digest: "static-route",
+        missing_content: [],
+        diff: {},
+        warnings: [],
+      } satisfies PlanResponse;
+    });
+
+    const deploy = new Deploy(w.client);
+    await deploy.plan(
+      {
+        project: "prj_test",
+        routes: {
+          replace: [
+            {
+              pattern: "/events",
+              methods: ["GET", "HEAD"],
+              target: { type: "static", file: "events.html" },
+            },
+          ],
+        },
+      },
+      { dryRun: true },
+    );
+
+    assert.deepEqual(
+      (plannedBody as { spec: { routes?: unknown } }).spec.routes,
+      {
+        replace: [
+          {
+            pattern: "/events",
+            methods: ["GET", "HEAD"],
+            target: { type: "static", file: "events.html" },
+          },
+        ],
+      },
+    );
+  });
+
+  it("preserves same-pattern mixed-method function and static route entries", async () => {
+    const w = makeWiring();
+    let plannedBody: unknown;
+    w.setHandler((req) => {
+      plannedBody = req.body;
+      return {
+        plan_id: null,
+        operation_id: null,
+        base_release_id: null,
+        manifest_digest: "mixed-method-routes",
+        missing_content: [],
+        diff: {},
+        warnings: [],
+      } satisfies PlanResponse;
+    });
+
+    const deploy = new Deploy(w.client);
+    await deploy.plan(
+      {
+        project: "prj_test",
+        routes: {
+          replace: [
+            {
+              pattern: "/login",
+              methods: ["GET"],
+              target: { type: "static", file: "login.html" },
+            },
+            {
+              pattern: "/login",
+              methods: ["POST"],
+              target: { type: "function", name: "login_submit" },
+            },
+          ],
+        },
+      },
+      { dryRun: true },
+    );
+
+    assert.deepEqual(
+      (plannedBody as { spec: { routes?: unknown } }).spec.routes,
+      {
+        replace: [
+          {
+            pattern: "/login",
+            methods: ["GET"],
+            target: { type: "static", file: "login.html" },
+          },
+          {
+            pattern: "/login",
+            methods: ["POST"],
+            target: { type: "function", name: "login_submit" },
+          },
+        ],
+      },
+    );
+  });
+
   it("rejects the old path-keyed route map with an actionable example", async () => {
     const w = makeWiring();
     const deploy = new Deploy(w.client);
@@ -999,9 +1104,69 @@ describe("Deploy.apply (validation)", () => {
         /target shorthand/,
       ],
       [
+        { replace: [{ pattern: "/api/*", target: { static: "events.html" } }] },
+        "routes.replace.0.target",
+        /target shorthand/,
+      ],
+      [
         { replace: [{ pattern: "/api/*", extra: true, target: { type: "function", name: "api" } }] },
         "routes.replace.0.extra",
         /Unknown ReleaseSpec field/,
+      ],
+      [
+        { replace: [{ pattern: "/api/*", methods: ["GET", "GET"], target: { type: "function", name: "api" } }] },
+        "routes.replace.0.methods",
+        /duplicate method/,
+      ],
+      [
+        { replace: [{ pattern: "/docs/*", methods: ["GET"], target: { type: "static", file: "docs/index.html" } }] },
+        "routes.replace.0.pattern",
+        /exact path pattern/,
+      ],
+      [
+        { replace: [{ pattern: "/events", target: { type: "static", file: "events.html" } }] },
+        "routes.replace.0.methods",
+        /methods is required/,
+      ],
+      [
+        { replace: [{ pattern: "/events", methods: ["POST"], target: { type: "static", file: "events.html" } }] },
+        "routes.replace.0.methods",
+        /static route targets must be/,
+      ],
+      [
+        { replace: [{ pattern: "/events", methods: ["HEAD"], target: { type: "static", file: "events.html" } }] },
+        "routes.replace.0.methods",
+        /static route targets must be/,
+      ],
+      [
+        { replace: [{ pattern: "/events", methods: ["GET"], target: { type: "static", file: "/events.html" } }] },
+        "routes.replace.0.target.file",
+        /relative materialized static-site file path/,
+      ],
+      [
+        { replace: [{ pattern: "/events", methods: ["GET"], target: { type: "static", file: "page.html?slug=events" } }] },
+        "routes.replace.0.target.file",
+        /relative materialized static-site file path/,
+      ],
+      [
+        { replace: [{ pattern: "/events", methods: ["GET"], target: { type: "static", file: "../events.html" } }] },
+        "routes.replace.0.target.file",
+        /relative materialized static-site file path/,
+      ],
+      [
+        { replace: [{ pattern: "/events", methods: ["GET"], target: { type: "static", file: "a//b.html" } }] },
+        "routes.replace.0.target.file",
+        /relative materialized static-site file path/,
+      ],
+      [
+        { replace: [{ pattern: "/events", methods: ["GET"], target: { type: "static", file: "a\\b.html" } }] },
+        "routes.replace.0.target.file",
+        /relative materialized static-site file path/,
+      ],
+      [
+        { replace: [{ pattern: "/events", methods: ["GET"], target: { type: "static", file: "events/" } }] },
+        "routes.replace.0.target.file",
+        /relative materialized static-site file path/,
       ],
     ];
 
@@ -1018,6 +1183,144 @@ describe("Deploy.apply (validation)", () => {
       );
     }
     assert.equal(w.requests.length, 0);
+  });
+
+  it("resolves URL inputs with apikey auth and ignores query/fragment client-side", async () => {
+    const w = makeWiring();
+    w.setHandler((req) => {
+      assert.equal(req.method, undefined);
+      assert.equal(req.headers?.apikey, "ak");
+      return {
+        hostname: "example.com",
+        result: 200,
+        match: "static_exact",
+        authorized: true,
+        fallback_state: "not_used",
+        static_sha256: "a".repeat(64),
+        cache_class: "immutable_versioned",
+        cache_policy: "public, max-age=31536000, immutable",
+      } satisfies DeployResolveResponse;
+    });
+
+    const deploy = new Deploy(w.client);
+    const result = await deploy.resolve({
+      project: "prj_test",
+      url: "https://Example.COM/assets/app.js?x=1#top",
+      method: "get",
+    });
+
+    assert.equal(result.match, "static_exact");
+    assert.equal(w.requests.length, 1);
+    assert.equal(
+      w.requests[0]!.path,
+      "/deploy/v2/resolve?host=example.com&path=%2Fassets%2Fapp.js&method=GET",
+    );
+  });
+
+  it("resolves host/path inputs with URLSearchParams encoding", async () => {
+    const w = makeWiring();
+    w.setHandler(() => ({
+      hostname: "Example.COM",
+      result: 404,
+      match: "host_missing",
+      authorized: false,
+      fallback_state: "not_used",
+    }) satisfies DeployResolveResponse);
+
+    const deploy = new Deploy(w.client);
+    const result = await deploy.resolve({
+      project: "prj_test",
+      host: "Example.COM",
+      path: "/assets/a b.js",
+      method: "HEAD",
+    });
+
+    assert.equal(result.match, "host_missing");
+    assert.equal(
+      w.requests[0]!.path,
+      "/deploy/v2/resolve?host=Example.COM&path=%2Fassets%2Fa+b.js&method=HEAD",
+    );
+  });
+
+  it("omits optional host/path path and method when callers omit them", async () => {
+    const w = makeWiring();
+    w.setHandler(() => ({
+      hostname: "example.com",
+      result: 404,
+      match: "none",
+      authorized: true,
+      fallback_state: "not_used",
+    }) satisfies DeployResolveResponse);
+
+    const deploy = new Deploy(w.client);
+    await deploy.resolve({ project: "prj_test", host: "example.com" });
+
+    assert.equal(w.requests[0]!.path, "/deploy/v2/resolve?host=example.com");
+  });
+
+  it("rejects invalid resolve inputs before network calls", async () => {
+    const w = makeWiring();
+    const deploy = new Deploy(w.client);
+    const badInputs: Array<[unknown, RegExp]> = [
+      [{ project: "prj_test", url: "https://example.com/", host: "example.com" }, /exactly one input form/],
+      [{ project: "prj_test", url: "/relative" }, /absolute HTTP\(S\)/],
+      [{ project: "prj_test", url: "ftp://example.com/" }, /http: or https:/],
+      [{ project: "prj_test", url: "https://user:pass@example.com/" }, /username or password/],
+      [{ project: "prj_test", host: "https://example.com" }, /clean hostname/],
+      [{ project: "prj_test", host: "example.com/path" }, /clean hostname/],
+      [{ project: "prj_test", host: "example.com", path: "assets/app.js" }, /start with/],
+      [{ project: "prj_test", host: "example.com", path: "/assets/app.js?x=1" }, /query strings or fragments/],
+      [{ project: "prj_test", host: "example.com", method: "bad method" }, /valid HTTP token/],
+    ];
+
+    for (const [input, pattern] of badInputs) {
+      await assert.rejects(
+        () => deploy.resolve(input as never),
+        (err: unknown) => {
+          assert.match((err as Error).message, pattern);
+          return true;
+        },
+      );
+    }
+    assert.equal(w.requests.length, 0);
+  });
+
+  it("preserves sparse host-miss and future route-aware fields", async () => {
+    const w = makeWiring();
+    w.setHandler((req) => {
+      if (req.path.includes("missing.example")) {
+        return {
+          hostname: "missing.example",
+          result: 404,
+          match: "host_missing",
+          authorized: false,
+          fallback_state: "not_used",
+        } satisfies DeployResolveResponse;
+      }
+      return {
+        hostname: "example.com",
+        result: 200,
+        match: "route_static_alias",
+        authorized: true,
+        fallback_state: "not_used",
+        route: {
+          pattern: "/events",
+          methods: ["GET", "HEAD"],
+          target: { type: "static", file: "events.html" },
+        },
+        cache_class: "future_cache_class",
+      } satisfies DeployResolveResponse;
+    });
+
+    const deploy = new Deploy(w.client);
+    const miss = await deploy.resolve({ project: "prj_test", host: "missing.example" });
+    const routed = await deploy.resolve({ project: "prj_test", host: "example.com", path: "/events" });
+
+    assert.equal(miss.match, "host_missing");
+    assert.equal(miss.release_id, undefined);
+    assert.equal(routed.match, "route_static_alias");
+    assert.deepEqual(routed.route?.target, { type: "static", file: "events.html" });
+    assert.equal(routed.cache_class, "future_cache_class");
   });
 
   it("still accepts delete-only patch specs as deployable", async () => {

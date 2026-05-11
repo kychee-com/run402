@@ -252,7 +252,15 @@ export {
 } from "./ci-credentials.js";
 export type * from "./ci-credentials.js";
 export { Deploy } from "./namespaces/deploy.js";
-export { ROUTE_HTTP_METHODS } from "./namespaces/deploy.types.js";
+export {
+  EMPTY_STATIC_MANIFEST_METADATA,
+  ROUTE_HTTP_METHODS,
+  buildDeployResolveSummary,
+  isDeployResolveRouteHit,
+  isDeployResolveStaticHit,
+  normalizeDeployResolveRequest,
+  normalizeStaticManifestMetadata,
+} from "./namespaces/deploy.types.js";
 export {
   Ci,
   CI_AUDIENCE,

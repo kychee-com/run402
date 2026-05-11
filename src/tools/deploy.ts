@@ -108,7 +108,7 @@ const functionMap = z.record(functionSpec);
 const routeMethod = z.enum(
   ROUTE_HTTP_METHODS as unknown as [RouteHttpMethod, ...RouteHttpMethod[]],
 );
-const routeTarget = z
+const functionRouteTarget = z
   .object({
     type: z.literal("function"),
     name: z
@@ -116,6 +116,15 @@ const routeTarget = z
       .describe("Materialized release function name, not a file name or handler export."),
   })
   .strict();
+const staticRouteTarget = z
+  .object({
+    type: z.literal("static"),
+    file: z
+      .string()
+      .describe("Materialized static-site file path, relative to the site root. No leading slash, query, fragment, traversal, or directory shorthand."),
+  })
+  .strict();
+const routeTarget = z.union([functionRouteTarget, staticRouteTarget]);
 const routeEntry = z
   .object({
     pattern: z
@@ -219,7 +228,7 @@ export const deploySchema = {
     ])
     .optional()
     .describe(
-      "Deploy-v2 web routes. Omit or pass null to carry forward base routes; pass { replace: [] } to clear routes; pass { replace: [{ pattern, methods?, target: { type: 'function', name } }] } to replace them.",
+      "Deploy-v2 web routes. Omit or pass null to carry forward base routes; pass { replace: [] } to clear routes; pass { replace: [{ pattern, methods?, target: { type: 'function', name } }] } for functions or exact GET/HEAD { target: { type: 'static', file } } entries for static route targets.",
     ),
   idempotency_key: z
     .string()
@@ -456,6 +465,26 @@ const ROUTE_WARNING_GUIDANCE: Record<string, { meaning: string; recovery: string
   ROUTES_NOT_ENABLED: {
     meaning: "Deploy-v2 web routes are not enabled for this project or environment.",
     recovery: "Deploy without routes or request enablement. Direct /functions/v1/:name remains protected and is not a browser-route substitute.",
+  },
+  STATIC_ALIAS_SHADOWS_STATIC_PATH: {
+    meaning: "A static route target shadows a direct static path at the same public URL.",
+    recovery: "Inspect the route pattern, target file, direct static path, and active release routes; confirm only when the static route target is intentional.",
+  },
+  STATIC_ALIAS_RELATIVE_ASSET_RISK: {
+    meaning: "Relative asset URLs inside the target HTML may resolve differently at the static route target URL.",
+    recovery: "Inspect the target HTML for relative assets and confirm only when the alternate public URL is intentional.",
+  },
+  STATIC_ALIAS_DUPLICATE_CANONICAL_URL: {
+    meaning: "Both the static route target URL and the target file URL may be reachable.",
+    recovery: "Decide which URL should be canonical, update links/canonical tags if needed, and confirm only when duplicate reachability is intended.",
+  },
+  STATIC_ALIAS_EXTENSIONLESS_NON_HTML: {
+    meaning: "An extensionless static route target points at a non-HTML file.",
+    recovery: "Check the target content type and prefer extensionless static route targets for HTML pages.",
+  },
+  STATIC_ALIAS_TABLE_NEAR_LIMIT: {
+    meaning: "Static route targets count toward the route table limit.",
+    recovery: "Consolidate manual static route targets and avoid one entry per page for large sites until framework-scale Web Output support exists.",
   },
   CI_ROUTE_SCOPE_DENIED: {
     meaning: "The CI binding does not cover one or more route declarations in this deploy.",

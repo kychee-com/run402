@@ -60,11 +60,13 @@ run402 sites deploy-dir ./dist                # incremental upload (plan/commit 
 run402 deploy --manifest app.json             # one-call full stack deploy
 run402 deploy release active                  # inspect current-live release inventory
 run402 deploy release diff --from empty --to active
+run402 deploy diagnose --project prj_123 https://example.com/events --method GET
+run402 deploy resolve --project prj_123 --url https://example.com/events?utm=x#hero --method GET
 run402 subdomains claim my-app                # → my-app.run402.com (auto-reassigns on next deploy)
 ```
 
 `deploy-dir` hashes each file client-side and only uploads bytes the gateway doesn't already have. Re-deploying an unchanged tree returns immediately with `bytes_uploaded: 0`. Progress events stream to stderr.
-Release inspection commands print `{ status: "ok", release: ... }` or `{ status: "ok", diff: ... }`; use them after deploys to compare release inventory without starting another mutation.
+Release inspection commands print `{ status: "ok", release: ... }` or `{ status: "ok", diff: ... }`; use them after deploys to compare release inventory without starting another mutation. Inventories include `release_generation`, `static_manifest_sha256`, and nullable `static_manifest_metadata`; diffs include `static_assets` counters such as unchanged/changed/added/removed and CAS byte reuse. `deploy diagnose` / `deploy resolve --url` print URL-first diagnostics with `would_serve`, `diagnostic_status`, `match`, warnings, and next steps; host misses are successful diagnostic calls with `would_serve: false`.
 
 ### GitHub Actions OIDC deploys
 
@@ -128,7 +130,7 @@ import { db, adminDb, getUser, email, ai } from "@run402/functions";
 
 ### Same-origin web routes
 
-`run402 deploy apply` accepts `routes.replace` as an array of route entries, not a path-keyed map. Use exact `/admin` plus final-wildcard `/admin/*` for a routed section root, and target a function deployed in the same release. Routed functions use Node 22 Fetch Request -> Response; `req.url` is the full public URL on managed subdomains, deployment hosts, and verified custom domains, so OAuth redirect URIs can be derived from `new URL(req.url).origin`. Direct `/functions/v1/:name` remains API-key protected. Runtime route failure codes to branch on: `ROUTE_MANIFEST_LOAD_FAILED` (manifest/propagation), `ROUTED_INVOKE_WORKER_SECRET_MISSING` (custom-domain Worker secret), `ROUTED_INVOKE_AUTH_FAILED` (internal invoke signature), `ROUTED_ROUTE_STALE` (selected route failed release revalidation), `ROUTE_METHOD_NOT_ALLOWED` (method mismatch), and `ROUTED_RESPONSE_TOO_LARGE` (body over 6 MiB).
+`run402 deploy apply` accepts `routes.replace` as an array of route entries, not a path-keyed map. Use exact `/admin` plus final-wildcard `/admin/*` for a routed section root, narrow `/api/*` methods such as `["GET","POST","OPTIONS"]`, POST-only `/login` function routes, and exact static route targets like `{ "pattern": "/events", "methods": ["GET","HEAD"], "target": { "type": "static", "file": "events.html" } }`. Static route targets are exact file targets, not rewrites or redirects; avoid routing ordinary static files, wildcard static targets, leading-slash files, directory shorthand, and one-route-per-page route-table exhaustion. Routed functions use Node 22 Fetch Request -> Response; `req.url` is the full public URL on managed subdomains, deployment hosts, and verified custom domains. Direct `/functions/v1/:name` remains API-key protected. Known resolve literals include `host_missing`, `manifest_missing`, `path_error`, `none`, `static_exact`, `static_index`, `spa_fallback`, and `spa_fallback_missing`; current resolve is authoritative for host/static/SPAfallback diagnostics, not complete route introspection. Static route target warnings include `STATIC_ALIAS_SHADOWS_STATIC_PATH`, `STATIC_ALIAS_RELATIVE_ASSET_RISK`, `STATIC_ALIAS_DUPLICATE_CANONICAL_URL`, `STATIC_ALIAS_EXTENSIONLESS_NON_HTML`, and `STATIC_ALIAS_TABLE_NEAR_LIMIT`. Runtime route failure codes to branch on: `ROUTE_MANIFEST_LOAD_FAILED`, `ROUTED_INVOKE_WORKER_SECRET_MISSING`, `ROUTED_INVOKE_AUTH_FAILED`, `ROUTED_ROUTE_STALE`, `ROUTE_METHOD_NOT_ALLOWED`, and `ROUTED_RESPONSE_TOO_LARGE`.
 
 ### Secrets
 

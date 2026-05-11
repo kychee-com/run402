@@ -185,39 +185,50 @@ The response's `content` array includes a fenced `json` block of buffered progre
 
 For one-call full-stack deploys (database + migrations + manifest + secret dependencies + functions + site + subdomain), prefer **`deploy`**. Set secret values first with **`set_secret`**, then deploy with value-free `secrets.require[]`; never put secret values in deploy specs. **`bundle_deploy`** remains for legacy in-memory compatibility and writes secrets before deploy, but those writes are not atomic with the deploy commit.
 
-After deploys, use read-only release observability instead of starting another mutation: **`deploy_release_active`** for the current-live inventory, **`deploy_release_get`** for a specific release id, and **`deploy_release_diff`** to compare `empty`, `active`, or release-id targets. Inventories expose site paths, functions, secret keys only, subdomains, materialized routes, applied migrations, and warnings when returned; diffs use `migrations.applied_between_releases` and route `added` / `removed` / `changed` buckets.
+After deploys, use read-only release observability instead of starting another mutation: **`deploy_release_active`** for the current-live inventory, **`deploy_release_get`** for a specific release id, and **`deploy_release_diff`** to compare `empty`, `active`, or release-id targets. Inventories expose site paths, functions, secret keys only, subdomains, materialized routes, applied migrations, `release_generation`, `static_manifest_sha256`, nullable `static_manifest_metadata`, and warnings when returned. Diffs use `migrations.applied_between_releases`, route `added` / `removed` / `changed` buckets, and `static_assets` counters for unchanged/changed/added/removed files, CAS byte reuse, eliminated deployment-copy bytes, and immutable/CAS warning counts.
 
 #### Same-origin web routes
 
-Use the unified **`deploy`** tool for public browser routes to functions. Routes activate atomically with the rest of the release:
+Use the unified **`deploy`** tool for public browser routes to functions and exact static files. Routes activate atomically with the rest of the release. Ordinary static files do not need route entries; start with narrow function routes plus the few static route targets that need a stable public identity:
 
 ```json
 {
   "project_id": "prj_...",
-  "site": { "replace": { "index.html": { "data": "<!doctype html><main id='app'></main><script>fetch('/api/hello')</script>" } } },
+  "site": { "replace": {
+    "index.html": { "data": "<!doctype html><main id='app'></main><script>fetch('/api/hello')</script>" },
+    "events.html": { "data": "<!doctype html><h1>Events</h1>" }
+  } },
   "functions": {
     "replace": {
       "api": {
         "runtime": "node22",
         "source": { "data": "export default async function handler(req) { const url = new URL(req.url); return Response.json({ ok: true, path: url.pathname }); }" }
+      },
+      "login": {
+        "runtime": "node22",
+        "source": { "data": "export default async function handler(req) { return Response.json({ ok: true }); }" }
       }
     }
   },
   "routes": {
     "replace": [
-      { "pattern": "/api/*", "methods": ["GET", "POST"], "target": { "type": "function", "name": "api" } }
+      { "pattern": "/api/*", "methods": ["GET", "POST", "OPTIONS"], "target": { "type": "function", "name": "api" } },
+      { "pattern": "/login", "methods": ["POST"], "target": { "type": "function", "name": "login" } },
+      { "pattern": "/events", "methods": ["GET", "HEAD"], "target": { "type": "static", "file": "events.html" } }
     ]
   }
 }
 ```
 
-Omit `routes` or pass `routes: null` to carry forward base routes. Use `routes: { "replace": [] }` to clear dynamic routes. Do not use path-keyed maps. Direct `/functions/v1/:name` remains API-key protected; browser-routed paths are public same-origin ingress, so the function owns application auth, CSRF for cookie-authenticated unsafe methods, CORS/`OPTIONS`, cookies, redirects, and spoofed forwarding-header hygiene.
+Omit `routes` or pass `routes: null` to carry forward base routes. Use `routes: { "replace": [] }` to clear the route table. Do not use path-keyed maps. Function targets use `{ "type": "function", "name": "<materialized function name>" }`. Static route targets use exact patterns only, methods `["GET"]` or `["GET","HEAD"]`, and `{ "type": "static", "file": "events.html" }` with a relative deployed file path: no leading slash, wildcard, directory shorthand, query, or fragment. Direct `/functions/v1/:name` remains API-key protected; browser-routed paths are public same-origin ingress, so the function owns application auth, CSRF for cookie-authenticated unsafe methods, CORS/`OPTIONS`, cookies, redirects, and spoofed forwarding-header hygiene.
 
 Matching is exact or final `/*` prefix only. `/admin/*` does not match `/admin`; use both `/admin` and `/admin/*` for a dynamic area root. Query strings are ignored for matching and preserved in the handler's full public `req.url`. Exact beats prefix, longest prefix wins, and method-compatible dynamic routes beat static assets. A `POST /login` route can coexist with static `GET /login` HTML. Unsafe method mismatch returns `405`; matched dynamic route failures fail closed.
 
 Routed functions use the Node 22 Fetch Request -> Response contract: `export default async function handler(req) { ... }`. `req.method` is the browser method, and `req.url` is the full public URL on managed subdomains, deployment hosts, and verified custom domains. Derive OAuth callbacks from it, for example `new URL("/admin/oauth/google/callback", new URL(req.url).origin)`. Append multiple cookies with `headers.append("Set-Cookie", value)`; redirects, cookies, and query strings are preserved. The raw `run402.routed_http.v1` envelope is internal; do not write route handlers against it.
 
-Known route warning recovery: `PUBLIC_ROUTED_FUNCTION` means review app auth, CSRF, CORS/`OPTIONS`, and cookies before retrying with `allow_warnings`. `ROUTE_SHADOWS_STATIC_PATH` and `WILDCARD_ROUTE_SHADOWS_STATIC_PATHS` mean inspect affected paths and active routes before confirming. `ROUTE_TARGET_CARRIED_FORWARD` means inspect carried-forward function targets. `METHOD_SPECIFIC_ROUTE_ALLOWS_GET_STATIC_FALLBACK` means confirm static fallback is intended. `WILDCARD_ROUTE_EXCLUDES_MUTATION_METHODS` means a wildcard API prefix only allows `GET`/`HEAD`; add mutation methods such as `POST` or confirm it is read-only. `ROUTE_TABLE_NEAR_LIMIT` means consolidate routes. `ROUTES_NOT_ENABLED` means deploy without `routes` or request enablement. Runtime route failure codes to branch on: `ROUTE_MANIFEST_LOAD_FAILED` (manifest/propagation), `ROUTED_INVOKE_WORKER_SECRET_MISSING` (custom-domain Worker secret), `ROUTED_INVOKE_AUTH_FAILED` (internal invoke signature), `ROUTED_ROUTE_STALE` (selected route failed release revalidation), `ROUTE_METHOD_NOT_ALLOWED` (method mismatch), and `ROUTED_RESPONSE_TOO_LARGE` (body over 6 MiB).
+Use **`deploy_diagnose_url`** before changing deploys when the question is "what would this public URL serve?" Pass `project_id`, either `url` or `host`/`path`, and optional `method`. It returns `would_serve`, `diagnostic_status`, `match`, normalized request data, warnings, structured next steps, and fenced JSON. Query strings/fragments in URL mode are reported under `request.ignored`. Today resolve is authoritative for host/static/SPAfallback diagnostics, not complete route introspection unless the gateway returns future route context. Known `match` literals are `host_missing`, `manifest_missing`, `path_error`, `none`, `static_exact`, `static_index`, `spa_fallback`, and `spa_fallback_missing`; preserve unknown future strings. `result` is diagnostic body status, not MCP transport status, so host misses can be successful calls with `would_serve: false`. Do not use diagnostics as a fetch, cache purge, or reason to parse prose instead of the fenced JSON.
+
+Known route warning recovery: `PUBLIC_ROUTED_FUNCTION` means review app auth, CSRF, CORS/`OPTIONS`, and cookies before retrying with `allow_warnings`. `ROUTE_SHADOWS_STATIC_PATH` and `WILDCARD_ROUTE_SHADOWS_STATIC_PATHS` mean inspect affected paths and active routes before confirming. `STATIC_ALIAS_SHADOWS_STATIC_PATH`, `STATIC_ALIAS_RELATIVE_ASSET_RISK`, `STATIC_ALIAS_DUPLICATE_CANONICAL_URL`, `STATIC_ALIAS_EXTENSIONLESS_NON_HTML`, and `STATIC_ALIAS_TABLE_NEAR_LIMIT` are static route target warnings; prefer fewer exact static targets, fix relative assets/canonical URLs, and avoid table-exhausting page-by-page routes. `ROUTE_TARGET_CARRIED_FORWARD` means inspect carried-forward function targets. `METHOD_SPECIFIC_ROUTE_ALLOWS_GET_STATIC_FALLBACK` means confirm static fallback is intended. `WILDCARD_ROUTE_EXCLUDES_MUTATION_METHODS` means a wildcard API prefix only allows `GET`/`HEAD`; add mutation methods such as `POST` or confirm it is read-only. `ROUTE_TABLE_NEAR_LIMIT` means consolidate routes. `ROUTES_NOT_ENABLED` means deploy without `routes` or request enablement. Runtime route failure codes to branch on: `ROUTE_MANIFEST_LOAD_FAILED` (manifest/propagation), `ROUTED_INVOKE_WORKER_SECRET_MISSING` (custom-domain Worker secret), `ROUTED_INVOKE_AUTH_FAILED` (internal invoke signature), `ROUTED_ROUTE_STALE` (selected route failed release revalidation), `ROUTE_METHOD_NOT_ALLOWED` (method mismatch), and `ROUTED_RESPONSE_TOO_LARGE` (body over 6 MiB).
 
 ### In-function helpers — `db(req)` vs `adminDb()`
 
@@ -288,6 +299,7 @@ For TypeScript autocomplete, `npm install @run402/functions` in your editor's pr
 - **`bundle_deploy`** — legacy one-call full-stack deploy with auth-as-SDLC manifest in `files[]`. Prefer `set_secret` + `deploy` for new code when secrets are involved.
 - **`deploy`** / **`deploy_resume`** / **`deploy_list`** / **`deploy_events`** — apply, resume, list, and inspect deploy operations.
 - **`deploy_release_get`** / **`deploy_release_active`** / **`deploy_release_diff`** — inspect release inventory and release-to-release diffs.
+- **`deploy_diagnose_url`** — URL-first public deploy resolver diagnostics. Params: `project_id`, either `url` or `host`/`path`, optional `method`.
 
 ### CI/OIDC bindings
 

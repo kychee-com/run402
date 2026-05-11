@@ -132,14 +132,15 @@ run402 sites deploy-dir ./dist --project prj_… > result.json 2> events.log
 
 ### Same-origin web routes — static site + function ingress
 
-Deploy-v2 routes are release resources: they activate atomically with the site, functions, migrations, secrets, and subdomains in the same `deploy apply`. The route resource shape is an ordered replace list, not a path-keyed map:
+Deploy-v2 routes are release resources: they activate atomically with the site, functions, migrations, secrets, and subdomains in the same `deploy apply`. Lead with a small route table: ordinary static files do not need routes, API prefixes should use narrow methods, and a static route target is for an exact public path to one deployed file.
 
 ```json
 {
   "project_id": "prj_...",
   "site": {
     "replace": {
-      "index.html": { "data": "<!doctype html><main id='app'></main><script>fetch('/api/hello')</script>" }
+      "index.html": { "data": "<!doctype html><main id='app'></main><script>fetch('/api/hello')</script>" },
+      "events.html": { "data": "<!doctype html><h1>Events</h1>" }
     }
   },
   "functions": {
@@ -149,22 +150,42 @@ Deploy-v2 routes are release resources: they activate atomically with the site, 
         "source": {
           "data": "export default async function handler(req) { const url = new URL(req.url); return Response.json({ ok: true, path: url.pathname }); }"
         }
+      },
+      "login": {
+        "runtime": "node22",
+        "source": { "data": "export default async function handler(req) { return Response.json({ ok: true }); }" }
       }
     }
   },
   "routes": {
     "replace": [
-      { "pattern": "/api/*", "methods": ["GET", "POST"], "target": { "type": "function", "name": "api" } }
+      { "pattern": "/api/*", "methods": ["GET", "POST", "OPTIONS"], "target": { "type": "function", "name": "api" } },
+      { "pattern": "/login", "methods": ["POST"], "target": { "type": "function", "name": "login" } },
+      { "pattern": "/events", "methods": ["GET", "HEAD"], "target": { "type": "static", "file": "events.html" } }
     ]
   }
 }
 ```
 
-Omit `routes` or pass `routes: null` to carry forward base routes. Use `routes: { "replace": [] }` to clear dynamic routes. Direct `/functions/v1/:name` calls remain API-key protected; browser-routed paths are public same-origin ingress, so the function owns app auth, CSRF for cookie-authenticated unsafe methods, and CORS/`OPTIONS`.
+Omit `routes` or pass `routes: null` to carry forward base routes. Use `routes: { "replace": [] }` to clear the route table. Route entries are an ordered `replace` list, not a path-keyed map. Function targets use `{ "type": "function", "name": "<materialized function name>" }`. Static route targets use exact patterns only, methods `["GET"]` or `["GET","HEAD"]`, and `{ "type": "static", "file": "events.html" }` with a relative deployed file path, no leading slash, wildcard, directory shorthand, query, or fragment. Direct `/functions/v1/:name` calls remain API-key protected; browser-routed paths are public same-origin ingress.
 
 Matching is exact or final-prefix-wildcard only. `/admin` and `/admin/` are exact trailing-slash equivalents; `/admin/*` matches children but not `/admin`, `/admin/`, `/admin.css`, or `/administrator`, so deploy both `/admin` and `/admin/*` for a routed section root. Query strings are ignored for matching and preserved in the handler's full public `req.url`. Exact routes beat prefix routes; longest prefix wins; method-compatible dynamic routes beat static assets. A `POST /login` route can coexist with static `GET /login` HTML. Unsafe method mismatch returns `405`, and matched dynamic route failures fail closed instead of falling back to static files.
 
 Routed functions use the Node 22 Fetch Request -> Response contract: `export default async function handler(req) { ... }`. `req.method` is the browser method, and `req.url` is the full public URL on managed subdomains, deployment hosts, and verified custom domains. Derive OAuth callbacks from it, for example `new URL("/admin/oauth/google/callback", new URL(req.url).origin)`. Append multiple cookies with `headers.append("Set-Cookie", value)`; redirects, cookies, and query strings are preserved. The raw `run402.routed_http.v1` envelope is internal; do not write route handlers against it.
+
+Avoid routing every static file, broad method lists by default, wildcard static route targets, leading-slash static files, directory shorthand, and one-static-route-target-per-page tables that exhaust route limits. Also watch wildcard function routes that shadow static assets. Warning codes to handle include `STATIC_ALIAS_SHADOWS_STATIC_PATH`, `STATIC_ALIAS_RELATIVE_ASSET_RISK`, `STATIC_ALIAS_DUPLICATE_CANONICAL_URL`, `STATIC_ALIAS_EXTENSIONLESS_NON_HTML`, and `STATIC_ALIAS_TABLE_NEAR_LIMIT`.
+
+Diagnose public URLs with the URL-first CLI or MCP/SDK equivalents:
+
+```bash
+run402 deploy diagnose --project prj_123 https://example.com/events --method GET
+run402 deploy resolve --project prj_123 --url https://example.com/events?utm=x#hero --method GET
+run402 deploy resolve --project prj_123 --host example.com --path /events --method GET
+```
+
+`deploy_diagnose_url` and `r.deploy.resolve({ project, url, method: "GET" })` return `would_serve`, `diagnostic_status`, `match`, normalized request data, warnings, full resolution JSON, and next steps. Today the public resolve contract is authoritative for host/static/SPAfallback diagnostics, not complete route introspection unless the gateway returns future route context. Known `match` literals are `host_missing`, `manifest_missing`, `path_error`, `none`, `static_exact`, `static_index`, `spa_fallback`, and `spa_fallback_missing`; preserve unknown future strings. `result` is the diagnostic body status, not the HTTP status of the SDK call, so host misses can still be successful CLI/MCP/SDK calls with `would_serve: false`. Do not treat resolve/diagnose as a fetch, cache purge, or cache-policy oracle; do not hard-code `cache_policy` strings. Branch on `cache_class` when present and preserve unknown cache classes.
+
+Release observability exposes stable asset identity. Inventories include `release_generation`, `static_manifest_sha256`, and nullable `static_manifest_metadata` (`file_count`, `total_bytes`, `cache_classes`, `cache_class_sources`, `spa_fallback`); `static_manifest_metadata: null` means unavailable, not zero. Plan and release diffs expose `static_assets` counters: unchanged/changed/added/removed, `newly_uploaded_cas_bytes`, `reused_cas_bytes`, `deployment_copy_bytes_eliminated`, `legacy_immutable_warnings`, `previous_immutable_failures`, and `cas_authorization_failures`.
 
 Runtime route failure codes to branch on: `ROUTE_MANIFEST_LOAD_FAILED` (manifest/propagation), `ROUTED_INVOKE_WORKER_SECRET_MISSING` (custom-domain Worker secret), `ROUTED_INVOKE_AUTH_FAILED` (internal invoke signature), `ROUTED_ROUTE_STALE` (selected route failed release revalidation), `ROUTE_METHOD_NOT_ALLOWED` (method mismatch), and `ROUTED_RESPONSE_TOO_LARGE` (body over 6 MiB).
 
@@ -289,6 +310,7 @@ run402 projects validate-expose <id> --file manifest.json
 run402 projects apply-expose <id> --file manifest.json
 run402 sites deploy-dir ./dist
 run402 deploy release active --project <id>  # inspect current-live release inventory
+run402 deploy diagnose --project <id> https://example.com/events --method GET
 run402 functions deploy <id> <name> --file fn.ts
 run402 ci link github --project <id>       # GitHub Actions OIDC deploy binding (--route-scope for CI routes)
 run402 blob put ./asset.png --immutable
@@ -398,6 +420,7 @@ The full MCP surface — every tool is a thin shim over an SDK call.
 | `bundle_deploy` | Legacy one-call full-stack deploy: database + migrations + authorization manifest (`manifest.json` in `files[]` — gateway validates it, applies it, then strips it before serving the site) + optional legacy in-memory secrets + functions + site + subdomain. For new secret-bearing deploys, use `set_secret` first, then `deploy` with `secrets.require`. |
 | `deploy` / `deploy_resume` / `deploy_list` / `deploy_events` | Apply, resume, list, and inspect deploy operations. |
 | `deploy_release_get` / `deploy_release_active` / `deploy_release_diff` | Inspect release inventory and release-to-release diffs without starting a new deploy mutation. |
+| `deploy_diagnose_url` | URL-first deploy resolver diagnostics. Params: `project_id`, either `url` or `host`/`path`, optional `method`; returns `would_serve`, `diagnostic_status`, `match`, warnings, next steps, and fenced JSON. |
 
 ### CI/OIDC bindings
 

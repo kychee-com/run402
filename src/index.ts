@@ -10,6 +10,7 @@ import { setTierSchema, handleSetTier } from "./tools/set-tier.js";
 import { deploySiteSchema, handleDeploySite } from "./tools/deploy-site.js";
 import { deploySiteDirSchema, handleDeploySiteDir } from "./tools/deploy-site-dir.js";
 import { deploySchema, handleDeploy } from "./tools/deploy.js";
+import { deployDiagnoseUrlSchema, handleDeployDiagnoseUrl } from "./tools/deploy-diagnose-url.js";
 import { deployResumeSchema, handleDeployResume } from "./tools/deploy-resume.js";
 import { deployListSchema, handleDeployList } from "./tools/deploy-list.js";
 import { deployEventsSchema, handleDeployEvents } from "./tools/deploy-events.js";
@@ -392,9 +393,16 @@ server.tool(
 
 server.tool(
   "deploy",
-  "Unified deploy primitive (v1.34+). Accepts a structured ReleaseSpec — database (migrations + expose), value-free secrets.require/delete declarations, functions, site, subdomains, and routes.replace web routes — with explicit replace vs patch semantics per resource. Route entries map exact/final-wildcard browser paths like /admin and /admin/* to Node 22 Fetch Request -> Response functions; direct /functions/v1/:name remains API-key protected. Secret values must be set first with set_secret, never placed in deploy specs. All bytes ride through CAS (no inline-body cap). Returns release_id, URLs, warnings, and a structured progress-event log. Stops before upload/commit on confirmation-required warnings unless allow_warnings is true.",
+  "Unified deploy primitive (v1.34+). Accepts a structured ReleaseSpec — database (migrations + expose), value-free secrets.require/delete declarations, functions, site, subdomains, and routes.replace web routes — with explicit replace vs patch semantics per resource. Route entries map exact/final-wildcard browser paths like /admin and /admin/* to Node 22 Fetch Request -> Response functions, or exact GET/HEAD static route targets such as /events to { type: 'static', file: 'events.html' }; direct /functions/v1/:name remains API-key protected. Secret values must be set first with set_secret, never placed in deploy specs. All bytes ride through CAS (no inline-body cap). Returns release_id, URLs, warnings, and a structured progress-event log. Stops before upload/commit on confirmation-required warnings unless allow_warnings is true.",
   deploySchema,
   async (args) => handleDeploy(args),
+);
+
+server.tool(
+  "deploy_diagnose_url",
+  "Read-only authenticated diagnostics for a Run402 public URL or host/path pair. Explains whether the current live release would serve the URL, including match, diagnostic body status, static manifest/cache metadata when returned, structured warnings for ignored query/fragment, and next steps. This does not fetch bytes, purge cache, mutate deploy state, or expose internal CAS URLs.",
+  deployDiagnoseUrlSchema,
+  async (args) => handleDeployDiagnoseUrl(args),
 );
 
 server.tool(

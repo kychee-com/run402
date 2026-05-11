@@ -88,6 +88,32 @@ describe("Node deploy manifest helpers", () => {
     assert.equal(normalized.spec.routes, null);
   });
 
+  it("preserves static route targets through manifest normalization", async () => {
+    const normalized = await normalizeDeployManifest({
+      project_id: "prj_manifest",
+      site: { replace: { "events.html": "<h1>events</h1>" } },
+      routes: {
+        replace: [
+          {
+            pattern: "/events",
+            methods: ["GET", "HEAD"],
+            target: { type: "static", file: "events.html" },
+          },
+        ],
+      },
+    });
+
+    assert.deepEqual(normalized.spec.routes, {
+      replace: [
+        {
+          pattern: "/events",
+          methods: ["GET", "HEAD"],
+          target: { type: "static", file: "events.html" },
+        },
+      ],
+    });
+  });
+
   it("loads manifest files relative to their directory", async () => {
     const root = mkdtempSync(join(tmpdir(), "run402-deploy-manifest-test-"));
     try {
@@ -212,6 +238,34 @@ describe("Node deploy manifest helpers", () => {
           routes: { replace: [{ pattern: "/api/*", target: { function: "api" } }] },
         },
         /target shorthand/,
+      ],
+      [
+        {
+          project_id: "prj_manifest",
+          routes: { replace: [{ pattern: "/events", methods: ["GET"], target: { type: "static", file: "/events.html" } }] },
+        },
+        /relative materialized static-site file path/,
+      ],
+      [
+        {
+          project_id: "prj_manifest",
+          routes: { replace: [{ pattern: "/events", methods: ["POST"], target: { type: "static", file: "events.html" } }] },
+        },
+        /static route targets must be/,
+      ],
+      [
+        {
+          project_id: "prj_manifest",
+          routes: { replace: [{ pattern: "/docs/*", methods: ["GET"], target: { type: "static", file: "docs/index.html" } }] },
+        },
+        /exact path pattern/,
+      ],
+      [
+        {
+          project_id: "prj_manifest",
+          routes: { replace: [{ pattern: "/api/*", methods: ["GET", "GET"], target: { type: "function", name: "api" } }] },
+        },
+        /duplicate method/,
       ],
     ] as const) {
       await assert.rejects(
