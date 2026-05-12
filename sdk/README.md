@@ -154,7 +154,13 @@ if (result.hasErrors) console.log(result.errors);
 The canonical primitive for any deploy (database + migrations + manifest + value-free secret declarations + functions + site + subdomain). Three layers:
 
 ```ts
-import { summarizeDeployResult } from "@run402/sdk";
+import { run402, summarizeDeployResult, type ReleaseSpec } from "@run402/sdk/node";
+
+const r = run402();
+const spec: ReleaseSpec = {
+  project: "prj_...",
+  site: { patch: { put: { "index.html": "<h1>Hello</h1>" } } },
+};
 
 // One-shot — most agents use this.
 const result = await r.deploy.apply(spec);
@@ -167,7 +173,7 @@ for await (const ev of op.events()) console.log(ev.type);
 const final = await op.result();
 
 // Resume a previously-started deploy by id.
-const resumed = await r.deploy.resume(operationId);
+const resumed = await r.deploy.resume("op_...");
 ```
 
 - **All bytes ride through CAS.** The plan request body never carries inline bytes — only `ContentRef` objects. When the spec exceeds 5 MB JSON, the SDK uploads the manifest itself as a CAS object (`manifest_ref` escape hatch).

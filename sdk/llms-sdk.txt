@@ -615,7 +615,13 @@ summarizeDeployResult(result: DeployResult): DeploySummary
 Example:
 
 ```ts
-import { summarizeDeployResult } from "@run402/sdk";
+import { run402, summarizeDeployResult, type ReleaseSpec } from "@run402/sdk/node";
+
+const r = run402();
+const spec: ReleaseSpec = {
+  project: "prj_...",
+  site: { patch: { put: { "index.html": "<h1>Hello</h1>" } } },
+};
 
 const result = await r.deploy.apply(spec);
 const summary = summarizeDeployResult(result);
