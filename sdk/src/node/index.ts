@@ -154,6 +154,7 @@ export {
   normalizeCiDelegationValues,
   normalizeDeployResolveRequest,
   normalizeStaticManifestMetadata,
+  summarizeDeployResult,
   validateCiNonce,
   validateCiRouteScope,
   validateCiSubjectMatch,

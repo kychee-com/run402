@@ -4,6 +4,7 @@ import type {
   DeployResolveSummary,
   DeployResolveWarning,
   DeployObservabilityWarningEntry,
+  DeploySummary,
   KnownDeployResolveMatch,
   PlanDiffEnvelope,
   ReleaseRoutesSpec,
@@ -75,6 +76,10 @@ type _NoReleaseDiffMigrationMismatch = ReleaseToReleaseDiff["migrations"]["misma
 type _NoPlanDiffMigrationMismatch = PlanDiffEnvelope["migrations"]["mismatch"];
 // @ts-expect-error secrets diffs intentionally have no changed bucket
 type _NoSecretChangedBucket = ReleaseToReleaseDiff["secrets"]["changed"];
+// @ts-expect-error deploy summaries intentionally omit phase timing estimates
+type _NoDeploySummaryTimings = DeploySummary["timings"];
+// @ts-expect-error deploy summaries intentionally omit function code hash deltas
+type _NoDeploySummaryCodeHashOld = DeploySummary["functions"]["changed"][number]["code_hash_old"];
 // @ts-expect-error route resources are replace lists, not path-keyed maps
 type _NoPathKeyedRoutes = NonNullable<ReleaseRoutesSpec>["/api/*"];
 // @ts-expect-error route-aware known literals are not part of the current private gateway contract

@@ -132,6 +132,48 @@ test("route method constants are available from package entrypoints", () => {
   }
 });
 
+test("deploy summary helper is available from package entrypoints", () => {
+  const dir = mkdtempSync(join(tmpdir(), "run402-sdk-deploy-summary-contract-"));
+  const contractPath = join(dir, "contract.ts");
+
+  try {
+    writeFileSync(
+      contractPath,
+      [
+        'import { summarizeDeployResult as rootSummary, type DeploySummary as RootSummary } from "@run402/sdk";',
+        'import { summarizeDeployResult as nodeSummary, type DeploySummary as NodeSummary } from "@run402/sdk/node";',
+        "declare const result: Parameters<typeof rootSummary>[0];",
+        "const root: RootSummary = rootSummary(result);",
+        "const node: NodeSummary = nodeSummary(result);",
+        'const version: "deploy-summary.v1" = root.schema_version;',
+        "void node;",
+        "void version;",
+        "export {};",
+      ].join("\n"),
+    );
+
+    const program = ts.createProgram([contractPath], {
+      baseUrl: REPO_DIR,
+      paths: {
+        "@run402/sdk": ["sdk/src/index.ts"],
+        "@run402/sdk/node": ["sdk/src/node/index.ts"],
+      },
+      lib: ["lib.es2022.d.ts", "lib.dom.d.ts"],
+      module: ts.ModuleKind.ESNext,
+      moduleResolution: ts.ModuleResolutionKind.Bundler,
+      noEmit: true,
+      skipLibCheck: true,
+      strict: true,
+      target: ts.ScriptTarget.ES2022,
+    });
+    const diagnostics = ts.getPreEmitDiagnostics(program);
+
+    assert.equal(formatDiagnostics(diagnostics), "");
+  } finally {
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
 function publicRootTypeFiles(): string[] {
   const namespaceDir = join(SRC_DIR, "namespaces");
   const namespaceFiles = readdirSync(namespaceDir)

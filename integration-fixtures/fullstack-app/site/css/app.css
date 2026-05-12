@@ -1,0 +1,23 @@
+:root {
+  color-scheme: light dark;
+  --fullstack-accent: #237a57;
+}
+
+body {
+  margin: 0;
+  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: #f8faf8;
+  color: #17211d;
+}
+
+main {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 48px 20px;
+}
+
+a {
+  color: var(--fullstack-accent);
+}
+
+/* RUN402_FULLSTACK_ASSET_MARKER */

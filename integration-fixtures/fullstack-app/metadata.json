@@ -1,0 +1,11 @@
+{
+  "name": "run402-fullstack-integration-fixture",
+  "description": "Product-neutral live fixture for Run402 full-stack integration coverage.",
+  "version": "1",
+  "markers": {
+    "index": "RUN402_FULLSTACK_INDEX_MARKER",
+    "docs": "RUN402_FULLSTACK_DOCS_MARKER",
+    "asset": "RUN402_FULLSTACK_ASSET_MARKER",
+    "discovery": "RUN402_FULLSTACK_DISCOVERY_MARKER"
+  }
+}

@@ -260,6 +260,7 @@ export {
   isDeployResolveStaticHit,
   normalizeDeployResolveRequest,
   normalizeStaticManifestMetadata,
+  summarizeDeployResult,
 } from "./namespaces/deploy.types.js";
 export {
   Ci,

@@ -368,8 +368,8 @@ export class Blobs {
     return this.client.request<BlobUploadInitResult>("/storage/v1/uploads", {
       method: "POST",
       headers: {
-        apikey: project.anon_key,
-        Authorization: `Bearer ${project.anon_key}`,
+        apikey: project.service_key,
+        Authorization: `Bearer ${project.service_key}`,
       },
       body: {
         key: opts.key,
@@ -395,8 +395,8 @@ export class Blobs {
       `/storage/v1/uploads/${encodeURIComponent(uploadId)}`,
       {
         headers: {
-          apikey: project.anon_key,
-          Authorization: `Bearer ${project.anon_key}`,
+          apikey: project.service_key,
+          Authorization: `Bearer ${project.service_key}`,
         },
         context: "fetching upload session",
       },
@@ -421,8 +421,8 @@ export class Blobs {
       {
         method: "POST",
         headers: {
-          apikey: project.anon_key,
-          Authorization: `Bearer ${project.anon_key}`,
+          apikey: project.service_key,
+          Authorization: `Bearer ${project.service_key}`,
         },
         body: opts.parts ? { parts: opts.parts } : {},
         context: "completing upload",
@@ -459,8 +459,8 @@ export class Blobs {
     const path = `/storage/v1/blobs/diagnose?url=${encodeURIComponent(url)}`;
     return this.client.request<BlobDiagnoseEnvelope>(path, {
       headers: {
-        apikey: project.anon_key,
-        Authorization: `Bearer ${project.anon_key}`,
+        apikey: project.service_key,
+        Authorization: `Bearer ${project.service_key}`,
       },
       context: "diagnosing blob URL",
     });
@@ -545,8 +545,8 @@ export class Blobs {
     const url = `${this.client.apiBase}/storage/v1/blob/${encodeKey(key)}`;
     const res = await this.client.fetch(url, {
       headers: {
-        apikey: project.anon_key,
-        Authorization: `Bearer ${project.anon_key}`,
+        apikey: project.service_key,
+        Authorization: `Bearer ${project.service_key}`,
       },
     });
     if (!res.ok) {
@@ -575,8 +575,8 @@ export class Blobs {
 
     return this.client.request<BlobLsResult>(path, {
       headers: {
-        apikey: project.anon_key,
-        Authorization: `Bearer ${project.anon_key}`,
+        apikey: project.service_key,
+        Authorization: `Bearer ${project.service_key}`,
       },
       context: "listing blobs",
     });
@@ -590,8 +590,8 @@ export class Blobs {
     await this.client.request<unknown>(`/storage/v1/blob/${encodeKey(key)}`, {
       method: "DELETE",
       headers: {
-        apikey: project.anon_key,
-        Authorization: `Bearer ${project.anon_key}`,
+        apikey: project.service_key,
+        Authorization: `Bearer ${project.service_key}`,
       },
       context: "deleting blob",
     });
@@ -610,8 +610,8 @@ export class Blobs {
       {
         method: "POST",
         headers: {
-          apikey: project.anon_key,
-          Authorization: `Bearer ${project.anon_key}`,
+          apikey: project.service_key,
+          Authorization: `Bearer ${project.service_key}`,
         },
         body,
         context: "signing blob URL",

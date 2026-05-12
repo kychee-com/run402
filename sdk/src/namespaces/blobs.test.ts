@@ -103,8 +103,8 @@ describe("blobs.put", () => {
 
     assert.equal(calls.length, 3);
     assert.equal(calls[0]!.url, "https://api.example.test/storage/v1/uploads");
-    assert.equal(calls[0]!.headers["apikey"], "anon_k");
-    assert.equal(calls[0]!.headers["Authorization"], "Bearer anon_k");
+    assert.equal(calls[0]!.headers["apikey"], "svc_k");
+    assert.equal(calls[0]!.headers["Authorization"], "Bearer svc_k");
     const initBody = JSON.parse(calls[0]!.body as string);
     assert.equal(initBody.key, "hello.txt");
     assert.equal(initBody.size_bytes, 12);
@@ -363,7 +363,7 @@ describe("blobs.get", () => {
     const sdk = makeSdk(fetch);
     const res = await sdk.blobs.get("prj_known", "hello.txt");
     assert.equal(calls[0]!.url, "https://api.example.test/storage/v1/blob/hello.txt");
-    assert.equal(calls[0]!.headers["apikey"], "anon_k");
+    assert.equal(calls[0]!.headers["apikey"], "svc_k");
     assert.equal(res.status, 200);
     assert.equal(await res.text(), "hello");
   });
@@ -716,7 +716,7 @@ describe("blobs.put — AssetRef widening (v1.45)", () => {
 });
 
 describe("blobs upload sessions", () => {
-  it("initializes upload sessions with project anon auth", async () => {
+  it("initializes upload sessions with project service auth", async () => {
     const { fetch, calls } = mockFetch(() =>
       json({
         upload_id: "up_1",
@@ -743,8 +743,8 @@ describe("blobs upload sessions", () => {
     assert.equal(session.part_count, 2);
     assert.equal(calls[0]!.url, "https://api.example.test/storage/v1/uploads");
     assert.equal(calls[0]!.method, "POST");
-    assert.equal(calls[0]!.headers.apikey, "anon_k");
-    assert.equal(calls[0]!.headers.Authorization, "Bearer anon_k");
+    assert.equal(calls[0]!.headers.apikey, "svc_k");
+    assert.equal(calls[0]!.headers.Authorization, "Bearer svc_k");
     const body = JSON.parse(calls[0]!.body as string);
     assert.deepEqual(body, {
       key: "video.mp4",
@@ -771,7 +771,7 @@ describe("blobs upload sessions", () => {
 
     assert.equal(session.status, "active");
     assert.equal(calls[0]!.url, "https://api.example.test/storage/v1/uploads/up%2F1");
-    assert.equal(calls[0]!.headers.apikey, "anon_k");
+    assert.equal(calls[0]!.headers.apikey, "svc_k");
   });
 
   it("completes upload sessions and returns AssetRef shape", async () => {

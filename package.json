@@ -34,7 +34,8 @@
     "test:help": "node --test cli-help.test.mjs",
     "test:integration": "node --test --import tsx core/src/siwx-integration.integ.ts",
     "test:integration:full": "node --test --import tsx cli-integration.test.ts",
-    "test:integration:mcp": "node --test --import tsx mcp-integration.test.ts"
+    "test:integration:mcp": "node --test --import tsx mcp-integration.test.ts",
+    "test:integration:fullstack": "npm run build && node --test --import tsx fullstack-integration.test.ts"
   },
   "keywords": [
     "mcp",

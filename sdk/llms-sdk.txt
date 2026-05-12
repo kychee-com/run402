@@ -282,6 +282,7 @@ The full type is exported as `ReleaseSpec` from `@run402/sdk` and `@run402/sdk/n
 - **Strict validation is SDK-owned.** `deploy.plan/start/apply` reject unknown raw `ReleaseSpec` fields before normalization can drop them; `project_id`, `subdomain`, `site.replcae`, and similar typos are `Run402DeployError.code === "INVALID_SPEC"` before any hash/upload/plan request. Use `loadDeployManifest` / `normalizeDeployManifest` for CLI/MCP JSON that legitimately uses `project_id`, `{ path }`, base64 file entries, or migration `sql_path`.
 - **No-op specs fail locally.** A spec with only `project` / `base`, or empty containers such as `site.replace: {}`, `functions.patch.delete: []`, `secrets.require: []`, or `subdomains.set: []`, throws `Run402DeployError.code === "MANIFEST_EMPTY"` before any network call. Delete-only patches with non-empty `delete` arrays still count as deployable.
 - **Plan warnings are structured.** `PlanResponse.warnings` and `DeployResult.warnings` are `WarningEntry[]`; `deploy.apply()` emits `plan.warnings` and aborts before upload/commit when a warning requires confirmation unless `allowWarnings` is set. `MISSING_REQUIRED_SECRET` means set the affected keys with `r.secrets.set`, then retry.
+- **Deploy summaries are derived SDK helpers.** `summarizeDeployResult(result: DeployResult): DeploySummary` is exported from `@run402/sdk` and `@run402/sdk/node`. It makes no gateway calls and summarizes only current reliable `DeployResult.diff` / `DeployResult.warnings` data: site path counts, CAS new/reused bytes, functions, migrations, routes, secrets, subdomains, and warning counts. Missing buckets are omitted, not zero-filled. It intentionally has no timings, client-side duration estimates, server phase estimates, or function old/new code hash fields.
 - **Safe release-race retries are automatic.** For omitted/current-base specs, `deploy.apply()` re-plans and retries `BASE_RELEASE_CONFLICT` only when the gateway marks the error `safe_to_retry: true`. Pinned `base.release_id` and `{ release: "empty" }` stay caller-owned. Pass `maxRetries: 0` to opt out.
 - **Plan envelopes are normalized.** New gateways return `kind: "plan_response"` with `is_noop`, `summary`, `warnings`, `expected_events`, and resource buckets at top level. The SDK preserves those fields and also folds them into `PlanResponse.diff` for compatibility. Dry-run plans return `plan_id: null` and `operation_id: null` and cannot be uploaded or committed.
 - **Modern plan/diff types are split.** Deploy plans may expose `PlanDiffEnvelope` with migration buckets `{ new, noop }`; release-to-release diffs expose `{ applied_between_releases }`. Migration checksum mismatch is a hard deploy error (`Run402DeployError`), not a normal successful diff bucket. Legacy flag-off plan arrays remain represented by `DeployDiff` for compatibility.
@@ -603,6 +604,22 @@ diff(opts: { project, from, to, limit? }): Promise<ReleaseToReleaseDiff>
 plan(spec, opts?: { idempotencyKey? }): Promise<{ plan, byteReaders }>
 upload(plan, opts: { project, byteReaders, onEvent? }): Promise<void>
 commit(planId, opts?: { project, idempotencyKey?, onEvent? }): Promise<DeployResult>
+```
+
+Top-level deploy summary helper:
+
+```
+summarizeDeployResult(result: DeployResult): DeploySummary
+```
+
+Example:
+
+```ts
+import { summarizeDeployResult } from "@run402/sdk";
+
+const result = await r.deploy.apply(spec);
+const summary = summarizeDeployResult(result);
+console.log(summary.headline, summary.site?.cas?.reused_bytes);
 ```
 
 For live event streaming during an in-flight deploy, use `r.deploy.start(spec)` and

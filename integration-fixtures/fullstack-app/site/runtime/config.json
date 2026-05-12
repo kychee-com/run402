@@ -1,0 +1,5 @@
+{
+  "fixture": "run402-fullstack",
+  "marker": "RUN402_FULLSTACK_RUNTIME_CONFIG_MARKER",
+  "mode": "headless-http"
+}

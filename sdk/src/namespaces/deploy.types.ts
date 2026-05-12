@@ -517,6 +517,233 @@ export function buildDeployResolveSummary(
   };
 }
 
+export function summarizeDeployResult(result: DeployResult): DeploySummary {
+  const diff = result.diff ?? {};
+  const summary: DeploySummary = {
+    schema_version: "deploy-summary.v1",
+    release_id: result.release_id,
+    operation_id: result.operation_id,
+    ...(typeof diff.is_noop === "boolean" ? { is_noop: diff.is_noop } : {}),
+    headline: "",
+    warnings: summarizeDeployWarnings(result.warnings),
+  };
+
+  const site = summarizeDeploySite(diff);
+  if (site) summary.site = site;
+
+  if (isModernFunctionsDiff(diff.functions)) {
+    summary.functions = {
+      added: [...diff.functions.added],
+      removed: [...diff.functions.removed],
+      changed: diff.functions.changed.map((entry) => ({
+        name: entry.name,
+        fields_changed: [...entry.fields_changed],
+      })),
+    };
+  }
+
+  if (isModernPlanMigrationDiff(diff.migrations)) {
+    summary.migrations = {
+      new: diff.migrations.new.map((entry) => entry.id),
+      noop: diff.migrations.noop.map((entry) => entry.id),
+    };
+  }
+
+  if (isModernRoutesDiff(diff.routes)) {
+    summary.routes = summarizeResourceCounts(diff.routes);
+  }
+
+  if (isModernSecretsDiff(diff.secrets)) {
+    summary.secrets = {
+      added: diff.secrets.added.length,
+      removed: diff.secrets.removed.length,
+    };
+  }
+
+  if (isModernSubdomainsDiff(diff.subdomains)) {
+    summary.subdomains = {
+      added: diff.subdomains.added.length,
+      removed: diff.subdomains.removed.length,
+    };
+  }
+
+  summary.headline = buildDeploySummaryHeadline(summary);
+  return summary;
+}
+
+function summarizeDeployWarnings(warnings: WarningEntry[]): DeploySummaryWarnings {
+  const codes = Array.from(new Set(warnings.map((warning) => warning.code))).sort();
+  return {
+    count: warnings.length,
+    blocking: warnings.filter(
+      (warning) =>
+        warning.requires_confirmation || warning.code === "MISSING_REQUIRED_SECRET",
+    ).length,
+    codes,
+  };
+}
+
+function summarizeDeploySite(diff: DeployDiff): DeploySummarySite | undefined {
+  const out: DeploySummarySite = {};
+  if (isStaticAssetsDiff(diff.static_assets)) {
+    out.paths = {
+      added: diff.static_assets.added,
+      changed: diff.static_assets.changed,
+      removed: diff.static_assets.removed,
+      unchanged: diff.static_assets.unchanged,
+      total_changed:
+        diff.static_assets.added +
+        diff.static_assets.changed +
+        diff.static_assets.removed,
+    };
+    out.cas = {
+      newly_uploaded_bytes: diff.static_assets.newly_uploaded_cas_bytes,
+      reused_bytes: diff.static_assets.reused_cas_bytes,
+      deployment_copy_bytes_eliminated:
+        diff.static_assets.deployment_copy_bytes_eliminated,
+    };
+  } else if (isModernSiteDiff(diff.site)) {
+    const added = diff.site.totals?.added ?? diff.site.added.length;
+    const changed = diff.site.totals?.changed ?? diff.site.changed.length;
+    const removed = diff.site.totals?.removed ?? diff.site.removed.length;
+    out.paths = {
+      added,
+      changed,
+      removed,
+      total_changed: added + changed + removed,
+    };
+  }
+
+  return out.paths || out.cas ? out : undefined;
+}
+
+function summarizeResourceCounts(diff: RoutesDiff | SiteDiff): DeploySummaryResourceCounts {
+  const added = diff.totals?.added ?? diff.added.length;
+  const changed = diff.totals?.changed ?? diff.changed.length;
+  const removed = diff.totals?.removed ?? diff.removed.length;
+  return { added, changed, removed };
+}
+
+function isStaticAssetsDiff(value: unknown): value is StaticAssetsDiff {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const obj = value as StaticAssetsDiff;
+  return (
+    typeof obj.unchanged === "number" &&
+    typeof obj.changed === "number" &&
+    typeof obj.added === "number" &&
+    typeof obj.removed === "number" &&
+    typeof obj.newly_uploaded_cas_bytes === "number" &&
+    typeof obj.reused_cas_bytes === "number" &&
+    typeof obj.deployment_copy_bytes_eliminated === "number"
+  );
+}
+
+function isModernSiteDiff(value: unknown): value is SiteDiff {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const obj = value as SiteDiff;
+  return (
+    Array.isArray(obj.added) &&
+    Array.isArray(obj.changed) &&
+    Array.isArray(obj.removed)
+  );
+}
+
+function isModernFunctionsDiff(value: unknown): value is FunctionsDiff {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const obj = value as FunctionsDiff;
+  return (
+    Array.isArray(obj.added) &&
+    Array.isArray(obj.removed) &&
+    Array.isArray(obj.changed)
+  );
+}
+
+function isModernPlanMigrationDiff(value: unknown): value is PlanMigrationDiff {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const obj = value as PlanMigrationDiff;
+  return Array.isArray(obj.new) && Array.isArray(obj.noop);
+}
+
+function isModernRoutesDiff(value: unknown): value is RoutesDiff {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const obj = value as RoutesDiff;
+  return Array.isArray(obj.added) && Array.isArray(obj.changed) && Array.isArray(obj.removed);
+}
+
+function isModernSecretsDiff(value: unknown): value is SecretsDiff {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const obj = value as SecretsDiff;
+  return Array.isArray(obj.added) && Array.isArray(obj.removed);
+}
+
+function isModernSubdomainsDiff(value: unknown): value is SubdomainsDiff {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const obj = value as SubdomainsDiff;
+  return Array.isArray(obj.added) && Array.isArray(obj.removed);
+}
+
+function buildDeploySummaryHeadline(summary: DeploySummary): string {
+  const parts: string[] = [];
+  const paths = summary.site?.paths;
+  if (paths) {
+    parts.push(
+      paths.total_changed === 0
+        ? "no static path changes"
+        : `${formatCount(paths.total_changed, "static path")} changed`,
+    );
+  }
+
+  const cas = summary.site?.cas;
+  if (cas) {
+    parts.push(
+      `${formatBytes(cas.newly_uploaded_bytes)} uploaded, ${formatBytes(cas.reused_bytes)} reused`,
+    );
+  }
+
+  const functions = summary.functions;
+  if (functions) {
+    const count =
+      functions.added.length + functions.removed.length + functions.changed.length;
+    parts.push(
+      count === 0
+        ? "no functions changed"
+        : `${formatCount(count, "function")} changed`,
+    );
+  }
+
+  const migrations = summary.migrations;
+  if (migrations && migrations.new.length > 0) {
+    parts.push(`${formatCount(migrations.new.length, "migration")} new`);
+  }
+
+  const routes = summary.routes;
+  if (routes) {
+    const count = routes.added + routes.changed + routes.removed;
+    if (count > 0) parts.push(`${formatCount(count, "route")} changed`);
+  }
+
+  if (parts.length > 0) return parts.join("; ");
+  if (summary.is_noop === true) return "no deploy changes reported";
+  return "deploy summary unavailable";
+}
+
+function formatCount(count: number, singular: string): string {
+  return `${count} ${singular}${count === 1 ? "" : "s"}`;
+}
+
+function formatBytes(bytes: number): string {
+  if (!Number.isFinite(bytes)) return `${bytes} B`;
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let value = bytes;
+  let unitIndex = 0;
+  while (Math.abs(value) >= 1000 && unitIndex < units.length - 1) {
+    value /= 1000;
+    unitIndex += 1;
+  }
+  if (unitIndex === 0) return `${bytes} B`;
+  return `${value.toFixed(1)} ${units[unitIndex]}`;
+}
+
 function normalizeDeployResolveMethod(
   method: DeployResolveMethod | undefined,
 ): string | undefined {
@@ -1024,6 +1251,71 @@ export interface DeployDiff {
     | SubdomainsDiff
     | Array<{ kind: "added" | "removed"; subdomain: string }>;
   [key: string]: unknown;
+}
+
+export interface DeploySummarySitePaths {
+  added: number;
+  changed: number;
+  removed: number;
+  unchanged?: number;
+  total_changed: number;
+}
+
+export interface DeploySummarySiteCas {
+  newly_uploaded_bytes: number;
+  reused_bytes: number;
+  deployment_copy_bytes_eliminated: number;
+}
+
+export interface DeploySummarySite {
+  paths?: DeploySummarySitePaths;
+  cas?: DeploySummarySiteCas;
+}
+
+export interface DeploySummaryFunctions {
+  added: string[];
+  removed: string[];
+  changed: Array<{
+    name: string;
+    fields_changed: Array<FunctionsDiff["changed"][number]["fields_changed"][number]>;
+  }>;
+}
+
+export interface DeploySummaryMigrations {
+  new: string[];
+  noop: string[];
+}
+
+export interface DeploySummaryResourceCounts {
+  added: number;
+  changed: number;
+  removed: number;
+}
+
+export interface DeploySummaryKeyCounts {
+  added: number;
+  removed: number;
+}
+
+export interface DeploySummaryWarnings {
+  count: number;
+  blocking: number;
+  codes: string[];
+}
+
+export interface DeploySummary {
+  schema_version: "deploy-summary.v1";
+  release_id: string;
+  operation_id: string;
+  is_noop?: boolean;
+  headline: string;
+  site?: DeploySummarySite;
+  functions?: DeploySummaryFunctions;
+  migrations?: DeploySummaryMigrations;
+  routes?: DeploySummaryResourceCounts;
+  secrets?: DeploySummaryKeyCounts;
+  subdomains?: DeploySummaryKeyCounts;
+  warnings: DeploySummaryWarnings;
 }
 
 /** All operation states the gateway exposes. The SDK polls until it reaches

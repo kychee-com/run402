@@ -37,6 +37,7 @@ npm run test:help          # CLI help-text snapshots only
 npm run test:integration         # SIWX integration (core/src/siwx-integration.integ.ts)
 npm run test:integration:full    # full CLI integration (cli-integration.test.ts)
 npm run test:integration:mcp     # MCP integration (mcp-integration.test.ts)
+npm run test:integration:fullstack # full-stack live platform integration (fullstack-integration.test.ts)
 ```
 
 Unit tests use Node's built-in `node:test` runner with `tsx` for TypeScript:
