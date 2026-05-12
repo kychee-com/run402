@@ -202,13 +202,13 @@ If a merge conflict occurs, stop and report which branches conflict. Let the use
 
 ### 7b. Publish (if the user chose to publish)
 
-Invoke the publish skill:
+Invoke the `publish-run402` skill:
 
 ```
-Use the Skill tool: Skill(skill: "publish")
+Use the Skill tool: Skill(skill: "publish-run402")
 ```
 
-The publish skill runs pre-publish checks (clean tree, `npm test`, `npm run build`), bumps versions in both `package.json` files, and publishes `run402-mcp` and `run402`. It will ask for the bump type (patch/minor/major) - recommend `patch` for pure bug fixes.
+The `publish-run402` skill runs pre-publish checks (clean tree, `npm test`, `npm run build`), bumps versions in both `package.json` files, and publishes `run402-mcp` and `run402`. It will ask for the bump type (patch/minor/major) - recommend `patch` for pure bug fixes.
 
 ### 7c. Close fixed bugs
 
