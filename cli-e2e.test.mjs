@@ -435,6 +435,9 @@ async function mockFetch(input, init) {
       },
       normalized_path: reqPath,
       match: "static_exact",
+      asset_path: "events.html",
+      reachability_authority: "explicit_public_path",
+      direct: true,
       static_sha256: "a".repeat(64),
       content_type: "text/html",
       cache_class: "html",
@@ -465,6 +468,16 @@ async function mockFetch(input, init) {
       effective: true,
       state_kind: "current_live",
       site: { paths: [] },
+      static_public_paths: [
+        {
+          public_path: "/events",
+          asset_path: "events.html",
+          reachability_authority: "explicit_public_path",
+          direct: true,
+          cache_class: "html",
+          content_type: "text/html",
+        },
+      ],
       functions: [],
       secrets: { keys: [] },
       subdomains: { names: [] },
@@ -539,6 +552,16 @@ async function mockFetch(input, init) {
       effective: true,
       state_kind: "effective",
       site: { paths: [] },
+      static_public_paths: [
+        {
+          public_path: "/events",
+          asset_path: "events.html",
+          reachability_authority: "explicit_public_path",
+          direct: true,
+          cache_class: "html",
+          content_type: "text/html",
+        },
+      ],
       functions: [],
       secrets: { keys: [] },
       subdomains: { names: [] },
@@ -1809,6 +1832,8 @@ describe("CLI e2e happy path", () => {
     assert.equal(body.release.kind, "release_inventory");
     assert.equal(body.release.release_id, "rel_v2_test");
     assert.equal(body.release.routes.entries[0].pattern, "/api/*");
+    assert.equal(body.release.static_public_paths[0].public_path, "/events");
+    assert.equal(body.release.static_public_paths[0].asset_path, "events.html");
   });
 
   it("deploy release active wraps the active inventory payload", async () => {
@@ -1820,6 +1845,7 @@ describe("CLI e2e happy path", () => {
     assert.equal(body.status, "ok");
     assert.equal(body.release.state_kind, "current_live");
     assert.equal(body.release.routes.entries.length, 1);
+    assert.equal(body.release.static_public_paths[0].reachability_authority, "explicit_public_path");
     assert.equal(body.release.warnings[0].code, "ROUTE_SHADOWS_STATIC_PATH");
   });
 
@@ -1866,6 +1892,9 @@ describe("CLI e2e happy path", () => {
     assert.equal(body.match, "static_exact");
     assert.equal(body.request.ignored.query, "?utm=x");
     assert.equal(body.request.ignored.fragment, "#hero");
+    assert.equal(body.resolution.asset_path, "events.html");
+    assert.equal(body.resolution.reachability_authority, "explicit_public_path");
+    assert.equal(body.resolution.direct, true);
     assert.equal(body.resolution.static_manifest_metadata.file_count, 1);
   });
 
@@ -1986,11 +2015,18 @@ describe("CLI e2e happy path", () => {
       rail: "x402",
     });
     let deployCalled = false;
+    const planBodies = [];
     const prevFetch = globalThis.fetch;
-    globalThis.fetch = (input, init) => {
+    globalThis.fetch = async (input, init) => {
       const url = typeof input === "string" ? input : (input instanceof Request ? input.url : String(input));
       const method = (init?.method || (input instanceof Request ? input.method : "GET") || "GET").toUpperCase();
-      if (url.endsWith("/deploy/v2/plans") && method === "POST") deployCalled = true;
+      if (url.endsWith("/deploy/v2/plans") && method === "POST") {
+        deployCalled = true;
+        const rawBody = init?.body ?? (input instanceof Request ? await input.clone().text() : null);
+        if (typeof rawBody === "string") {
+          try { planBodies.push(JSON.parse(rawBody)); } catch { planBodies.push(rawBody); }
+        }
+      }
       return prevFetch(input, init);
     };
     let threw = null;
@@ -2003,7 +2039,7 @@ describe("CLI e2e happy path", () => {
       captureStop();
       globalThis.fetch = prevFetch;
     }
-    return { threw, stderr: capturedStderr(), stdout: capturedStdout(), deployCalled };
+    return { threw, stderr: capturedStderr(), stdout: capturedStdout(), deployCalled, planBodies };
   }
 
   it("deploy apply rejects empty manifest file (GH-232)", async () => {
@@ -2059,6 +2095,31 @@ describe("CLI e2e happy path", () => {
     assert.ok(!threw || !/MANIFEST_EMPTY/.test(threw.message),
       `routes.replace=[] must pass the empty-manifest guard, got: ${threw && threw.message}`);
     assert.equal(deployCalled, true, "routes.replace=[] must reach /deploy/v2/plans");
+  });
+
+  it("deploy apply accepts public-path-only site specs and forwards public_paths", async () => {
+    const { threw, deployCalled, planBodies } = await deployApplyAndCapture(
+      ["--spec", JSON.stringify({
+        site: { public_paths: { mode: "explicit", replace: {} } },
+      }), "--project", "prj_test123"]);
+    assert.ok(!threw || !/MANIFEST_EMPTY/.test(threw.message),
+      `site.public_paths-only spec must pass the empty-manifest guard, got: ${threw && threw.message}`);
+    assert.equal(deployCalled, true, "site.public_paths-only spec must reach /deploy/v2/plans");
+    assert.deepEqual(planBodies[0]?.spec?.site, {
+      public_paths: { mode: "explicit", replace: {} },
+    });
+  });
+
+  it("deploy apply rejects malformed site.public_paths before gateway calls", async () => {
+    const { threw, stderr, deployCalled } = await deployApplyAndCapture(
+      ["--spec", JSON.stringify({
+        site: { public_paths: { mode: "implicit", replace: { "/events": { asset: "events.html" } } } },
+      }), "--project", "prj_test123"]);
+    assert.ok(threw && /process\.exit\(1\)/.test(threw.message),
+      `should exit non-zero, got: ${threw && threw.message}`);
+    assert.equal(deployCalled, false, "must not POST to /deploy/v2/plans with malformed public_paths");
+    const parsed = parseStderrEnvelope(stderr);
+    assert.match(parsed.message, /site\.public_paths\.replace|implicit mode/);
   });
 
   it("deploy apply rejects path-keyed route maps before gateway calls", async () => {

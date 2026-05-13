@@ -128,6 +128,7 @@ function formatInventory(title: string, release: {
   state_kind: string;
   effective: boolean;
   site: { paths: unknown[]; totals?: { paths?: number } };
+  static_public_paths?: unknown[];
   functions: unknown[];
   secrets: { keys: string[] };
   subdomains: { names: string[] };
@@ -141,6 +142,9 @@ function formatInventory(title: string, release: {
 }): string {
   const siteTotal = release.site.totals?.paths ?? release.site.paths.length;
   const routeCount = Array.isArray(release.routes?.entries) ? release.routes.entries.length : 0;
+  const staticPublicPathCount = Array.isArray(release.static_public_paths)
+    ? release.static_public_paths.length
+    : 0;
   return [
     `## ${title}`,
     ``,
@@ -156,6 +160,7 @@ function formatInventory(title: string, release: {
     `| static_manifest_files_bytes | ${release.static_manifest_metadata ? `${release.static_manifest_metadata.file_count ?? 0}/${release.static_manifest_metadata.total_bytes ?? 0}` : "metadata unavailable"} |`,
     `| site_paths_returned | ${release.site.paths.length} |`,
     `| site_paths_total | ${siteTotal} |`,
+    `| static_public_paths | ${staticPublicPathCount} |`,
     `| functions | ${release.functions.length} |`,
     `| secrets | ${release.secrets.keys.length} keys |`,
     `| subdomains | ${release.subdomains.names.length} |`,

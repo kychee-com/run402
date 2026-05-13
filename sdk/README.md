@@ -159,7 +159,18 @@ import { run402, summarizeDeployResult, type ReleaseSpec } from "@run402/sdk/nod
 const r = run402();
 const spec: ReleaseSpec = {
   project: "prj_...",
-  site: { patch: { put: { "index.html": "<h1>Hello</h1>" } } },
+  site: {
+    patch: {
+      put: {
+        "index.html": "<h1>Hello</h1>",
+        "events.html": "<h1>Events</h1>",
+      },
+    },
+    public_paths: {
+      mode: "explicit",
+      replace: { "/events": { asset: "events.html", cache_class: "html" } },
+    },
+  },
 };
 
 // One-shot — most agents use this.
@@ -177,14 +188,14 @@ const resumed = await r.deploy.resume("op_...");
 ```
 
 - **All bytes ride through CAS.** The plan request body never carries inline bytes — only `ContentRef` objects. When the spec exceeds 5 MB JSON, the SDK uploads the manifest itself as a CAS object (`manifest_ref` escape hatch).
-- **Per-resource semantics on the spec.** `site.replace` = "this is the whole site" (files absent are removed). `site.patch.put` / `patch.delete` are surgical updates. `functions.replace` / `functions.patch.set` / `functions.patch.delete` mirror that. Secrets are value-free: set values first with `r.secrets.set(project, key, value)`, then deploy with `secrets.require` and/or `secrets.delete`. `subdomains.set` / `subdomains.add` / `subdomains.remove` use their own shape. Top-level absence = leave untouched.
-- **Same-origin web routes.** `routes` is `undefined | null | { replace: RouteSpec[] }`. Omit it or pass `null` to carry forward base routes, pass `{ replace: [] }` to clear routes, or pass route entries to replace the table. Function targets use `{ type: "function", name }`; exact static route targets use `{ type: "static", file }` with methods `["GET"]` or `["GET","HEAD"]`, no wildcard pattern, and a relative deployed file path with no leading slash. Use exact `/admin` plus final-wildcard `/admin/*` for a dynamic section root; ordinary static files do not need route entries. Routed browser ingress invokes Node 22 Fetch Request -> Response handlers; `req.url` is the full public URL on managed subdomains, deployment hosts, and verified custom domains. Direct `/functions/v1/:name` invocation remains API-key protected. Runtime route failure codes include `ROUTE_MANIFEST_LOAD_FAILED`, `ROUTED_INVOKE_WORKER_SECRET_MISSING`, `ROUTED_INVOKE_AUTH_FAILED`, `ROUTED_ROUTE_STALE`, `ROUTE_METHOD_NOT_ALLOWED`, and `ROUTED_RESPONSE_TOO_LARGE`.
+- **Per-resource semantics on the spec.** `site.replace` = "this is the whole site" (files absent are removed). `site.patch.put` / `patch.delete` are surgical updates. `site.public_paths` controls browser-visible static paths separately from backing release asset paths: explicit mode uses a complete map such as `{ "/events": { asset: "events.html", cache_class: "html" } }`, so `/events` serves `events.html` while `/events.html` is not public unless separately declared. Implicit mode restores filename-derived reachability and can widen access. A public-path-only site spec is deployable. `functions.replace` / `functions.patch.set` / `functions.patch.delete` mirror that. Secrets are value-free: set values first with `r.secrets.set(project, key, value)`, then deploy with `secrets.require` and/or `secrets.delete`. `subdomains.set` / `subdomains.add` / `subdomains.remove` use their own shape. Top-level absence = leave untouched.
+- **Same-origin web routes.** `routes` is `undefined | null | { replace: RouteSpec[] }`. Omit it or pass `null` to carry forward base routes, pass `{ replace: [] }` to clear routes, or pass route entries to replace the table. Function targets use `{ type: "function", name }`; exact static route targets use `{ type: "static", file }` with methods `["GET"]` or `["GET","HEAD"]`, no wildcard pattern, and a relative deployed asset path with no leading slash. `file` is not a public path, URL, CAS hash, rewrite, or redirect. Prefer `site.public_paths` for ordinary clean static URLs like `/events -> events.html`; use static route targets for method-aware aliases such as static `GET /login` plus function `POST /login`. Routed browser ingress invokes Node 22 Fetch Request -> Response handlers; `req.url` is the full public URL on managed subdomains, deployment hosts, and verified custom domains. Direct `/functions/v1/:name` invocation remains API-key protected. Runtime route failure codes include `ROUTE_MANIFEST_LOAD_FAILED`, `ROUTED_INVOKE_WORKER_SECRET_MISSING`, `ROUTED_INVOKE_AUTH_FAILED`, `ROUTED_ROUTE_STALE`, `ROUTE_METHOD_NOT_ALLOWED`, and `ROUTED_RESPONSE_TOO_LARGE`.
 - **Strict spec validation happens before network calls.** Raw `ReleaseSpec` objects reject unknown fields (for example `project_id` or `subdomain`) instead of silently dropping them during normalization, and project/base-only or empty nested specs fail with `Run402DeployError.code === "MANIFEST_EMPTY"`. Use the Node manifest helpers when starting from CLI/MCP-style JSON.
 - **Warnings are structured.** `DeployResult.warnings` contains `WarningEntry[]` (`code`, `severity`, `requires_confirmation`, `message`, optional `affected`/`details`/`confidence`); the type preserves legacy low/medium/high plan warnings and modern deploy-observability info/warn/high warnings. `apply()` emits `plan.warnings` and stops before upload/commit on confirmation-required warnings unless `allowWarnings` is set. For `MISSING_REQUIRED_SECRET`, set the affected keys with `r.secrets.set`, then retry.
 - **Deploy summaries are SDK-owned convenience.** `summarizeDeployResult(result)` returns `DeploySummary` (`schema_version: "deploy-summary.v1"`) with a headline plus reliable current buckets for site path counts, CAS new/reused bytes, functions, migrations, routes, secrets, subdomains, and warning counts. It is derived from `DeployResult.diff` / `DeployResult.warnings`; it makes no extra gateway calls, omits sections the gateway did not return, and intentionally excludes timings, client-side duration estimates, and function old/new code hashes.
 - **Safe release-race retries are SDK-owned.** `deploy.apply()` automatically re-plans and retries omitted/current-base specs when the gateway returns `BASE_RELEASE_CONFLICT` with `safe_to_retry: true`. The default budget is two retries after the initial attempt; pass `{ maxRetries: 0 }` to opt out. Each retry emits `deploy.retry`; exhausted retries keep the last `Run402DeployError` and add `attempts`, `maxRetries`, and `lastRetryCode`.
 - **Planning supports dry-runs.** `r.deploy.plan(spec, { dryRun: true })` calls the server-authoritative dry-run route and returns the normalized v2 plan envelope without uploading bytes or creating plan/operation rows (`plan_id` and `operation_id` are `null`).
-- **Release observability is typed.** Use `r.deploy.getRelease({ project, releaseId, siteLimit? })`, `r.deploy.getActiveRelease({ project, siteLimit? })`, and `r.deploy.diff({ project, from, to, limit? })` to inspect release inventory and release-to-release diffs. Inventories include `release_generation`, `static_manifest_sha256`, and nullable `static_manifest_metadata` (`file_count`, `total_bytes`, `cache_classes`, `cache_class_sources`, `spa_fallback`); `null` means unavailable, not zero. `diff` returns `ReleaseToReleaseDiff` with `migrations.applied_between_releases`; secret diffs expose keys only; `static_assets` exposes unchanged/changed/added/removed files, CAS byte reuse, eliminated deployment-copy bytes, and immutable/CAS warning counts.
+- **Release observability is typed.** Use `r.deploy.getRelease({ project, releaseId, siteLimit? })`, `r.deploy.getActiveRelease({ project, siteLimit? })`, and `r.deploy.diff({ project, from, to, limit? })` to inspect release inventory and release-to-release diffs. Inventories include `release_generation`, `static_manifest_sha256`, nullable `static_manifest_metadata` (`file_count`, `total_bytes`, `cache_classes`, `cache_class_sources`, `spa_fallback`), and `static_public_paths[]` when returned. `site.paths` lists release static assets; `static_public_paths[]` lists browser reachability with `public_path`, `asset_path`, `reachability_authority`, `direct`, cache class, and content type. `diff` returns `ReleaseToReleaseDiff` with `migrations.applied_between_releases`; secret diffs expose keys only; `static_assets` exposes unchanged/changed/added/removed files, CAS byte reuse, eliminated deployment-copy bytes, and immutable/CAS warning counts.
 - **Server-authoritative manifest digest** — no byte-for-byte canonicalize requirement on the client.
 - The Node entry adds `fileSetFromDir(path)` for filesystem byte sources:
 
@@ -209,7 +220,6 @@ const resumed = await r.deploy.resume("op_...");
     { pattern: "/admin", target: { type: "function", name: "admin" } },
     { pattern: "/admin/*", target: { type: "function", name: "admin" } },
     { pattern: "/login", methods: ["POST"], target: { type: "function", name: "auth" } },
-    { pattern: "/events", methods: ["GET", "HEAD"], target: { type: "static", file: "events.html" } },
   ];
   const spec: ReleaseSpec = {
     project: projectId,
@@ -223,14 +233,14 @@ const resumed = await r.deploy.resume("op_...");
     site: { replace: {
       "index.html": "<!doctype html><main id='app'></main>",
       "events.html": "<!doctype html><h1>Events</h1>",
-    } },
+    }, public_paths: { mode: "explicit", replace: { "/events": { asset: "events.html", cache_class: "html" } } } },
     routes: { replace: routes },
   };
 
   await r.deploy.apply(spec);
   ```
 
-  Matching is exact or final `/*` prefix only. `/admin/*` does not match `/admin`; deploy both `/admin` and `/admin/*` when the section root is dynamic. Static route targets are exact file targets, not rewrites or redirects; avoid routing every static file, wildcard static targets, leading-slash files, directory shorthand, broad method lists by default, and one-static-route-target-per-page route-table exhaustion. Query strings are ignored for matching and preserved in the handler's full public `req.url`. Exact beats prefix, longest prefix wins, and method-compatible dynamic routes beat static files. A method-specific `POST /login` route lets static `GET /login` serve HTML. Unsafe method mismatch returns `405`; matched dynamic route failures do not fall back to static assets.
+  Matching is exact or final `/*` prefix only. `/admin/*` does not match `/admin`; deploy both `/admin` and `/admin/*` when the section root is dynamic. Release static asset paths and public browser paths are distinct. In the example, `events.html` is a release asset and `/events` is the public static URL declared by `site.public_paths`; `/events.html` is not public in explicit mode unless separately declared. A route-only static alias looks like `{ pattern: "/events", methods: ["GET", "HEAD"], target: { type: "static", file: "events.html" } }`; prefer `site.public_paths` for ordinary clean URLs and reserve static route targets for exact method-aware route-table behavior. Avoid routing every static file, wildcard static targets, leading-slash files, directory shorthand, broad method lists by default, and one-static-route-target-per-page route-table exhaustion. Query strings are ignored for matching and preserved in the handler's full public `req.url`. Exact beats prefix, longest prefix wins, and method-compatible dynamic routes beat static files. A method-specific `POST /login` route lets static `GET /login` serve HTML. Unsafe method mismatch returns `405`; matched dynamic route failures do not fall back to static assets.
 
   Routed functions use Node 22 Fetch Request -> Response. `req.url` is the full public URL on managed subdomains, deployment hosts, and verified custom domains. The raw `run402.routed_http.v1` envelope is internal; direct `/functions/v1/:name` remains API-key protected.
 
@@ -255,7 +265,7 @@ const resumed = await r.deploy.resume("op_...");
   console.log(summary.would_serve, summary.match, request.ignored);
   ```
 
-  `r.deploy.resolve({ project, url, method })` and scoped `p.deploy.resolve({ url, method })` also accept lower-level `{ project, host, path?, method? }`. URL query strings/fragments are ignored for lookup and surfaced in `request.ignored`. Current known `match` literals are `host_missing`, `manifest_missing`, `path_error`, `none`, `static_exact`, `static_index`, `spa_fallback`, and `spa_fallback_missing`; preserve unknown future strings. Today resolve is authoritative for host/static/SPAfallback diagnostics, not complete route introspection unless future gateways return route context. `result` is diagnostic body status, not SDK HTTP transport status, so host misses can be successful calls with `would_serve: false`. Do not use resolve as a fetch, cache purge, or cache-policy oracle, and do not hard-code `cache_policy` strings; branch on `cache_class` and preserve unknown cache classes.
+  `r.deploy.resolve({ project, url, method })` and scoped `p.deploy.resolve({ url, method })` also accept lower-level `{ project, host, path?, method? }`. URL query strings/fragments are ignored for lookup and surfaced in `request.ignored`. When returned, `asset_path`, `reachability_authority`, and `direct` explain which release asset backs the public URL and whether reachability came from implicit file-path mode, explicit `site.public_paths`, or a route-only static alias. Current known `match` literals are `host_missing`, `manifest_missing`, `path_error`, `none`, `static_exact`, `static_index`, `spa_fallback`, and `spa_fallback_missing`; preserve unknown future strings. Today resolve is authoritative for host/static/SPAfallback diagnostics, not complete route introspection unless future gateways return route context. `result` is diagnostic body status, not SDK HTTP transport status, so host misses can be successful calls with `would_serve: false`. Do not use resolve as a fetch, cache purge, or cache-policy oracle, and do not hard-code `cache_policy` strings; branch on `cache_class` and preserve unknown cache classes.
 
   Route warning recovery:
 
@@ -263,13 +273,13 @@ const resumed = await r.deploy.resume("op_...");
   |------|----------------|----------|
   | `PUBLIC_ROUTED_FUNCTION` | Function becomes public same-origin browser ingress. | Review app auth, CSRF, CORS/`OPTIONS`, and cookies; direct `/functions/v1/:name` remains API-key protected. Retry with `allowWarnings` only after review. |
   | `ROUTE_TARGET_CARRIED_FORWARD` | Carried-forward route still targets a base-release function. | Inspect active routes and deploy `routes.replace` if the target should change. |
-  | `ROUTE_SHADOWS_STATIC_PATH` / `WILDCARD_ROUTE_SHADOWS_STATIC_PATHS` | Dynamic route shadows static content. | Inspect warning details and active routes; confirm only when intentional. |
+  | `ROUTE_SHADOWS_STATIC_PATH` / `WILDCARD_ROUTE_SHADOWS_STATIC_PATHS` | Dynamic route shadows direct public static content. | Inspect warning details, active routes, `static_public_paths`, and resolve diagnostics; confirm only when intentional. |
   | `METHOD_SPECIFIC_ROUTE_ALLOWS_GET_STATIC_FALLBACK` | Unmatched methods can serve static content. | Confirm fallback is intended or add method coverage. |
   | `WILDCARD_ROUTE_EXCLUDES_MUTATION_METHODS` | Wildcard function route only allows `GET`/`HEAD`. | Add mutation methods such as `POST`, omit methods for an API prefix, or confirm it is read-only. |
   | `ROUTE_TABLE_NEAR_LIMIT` | Route table is near a limit. | Consolidate or remove routes. |
   | `ROUTES_NOT_ENABLED` | Routes are disabled for the project/environment. | Deploy without `routes` or request enablement; direct function invoke is not a browser-route substitute. |
-  | `STATIC_ALIAS_SHADOWS_STATIC_PATH` / `STATIC_ALIAS_RELATIVE_ASSET_RISK` | Static route target conflicts with a real static path or has relative-asset risk. | Prefer canonical static files, fix relative asset paths, and confirm only when intentional. |
-  | `STATIC_ALIAS_DUPLICATE_CANONICAL_URL` / `STATIC_ALIAS_EXTENSIONLESS_NON_HTML` | Static route target may duplicate canonical URLs or expose extensionless non-HTML. | Use one canonical URL per page and reserve exact static route targets for intentional HTML-like public paths. |
+  | `STATIC_ALIAS_SHADOWS_STATIC_PATH` / `STATIC_ALIAS_RELATIVE_ASSET_RISK` | Route-only static alias conflicts with a direct public static path or has relative-asset risk. | Inspect active routes, `static_public_paths`, and the backing `asset_path`; prefer `site.public_paths` for ordinary clean URLs and confirm only when intentional. |
+  | `STATIC_ALIAS_DUPLICATE_CANONICAL_URL` / `STATIC_ALIAS_EXTENSIONLESS_NON_HTML` | Route-only static alias may duplicate another direct public path or expose extensionless non-HTML. | Use one canonical public path per page and reserve exact static route targets for method-aware aliases. |
   | `STATIC_ALIAS_TABLE_NEAR_LIMIT` | Static route targets are near route-table limits. | Avoid one-static-route-target-per-page tables; consolidate. |
 
 - The Node entry also has the typed manifest adapter shared by CLI/MCP:

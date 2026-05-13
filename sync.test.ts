@@ -924,11 +924,15 @@ describe("deploy route surface alignment", () => {
     }
   });
 
-  it("keeps stable static asset identity and URL diagnostics documented", () => {
+  it("keeps stable static asset identity, public paths, and URL diagnostics documented", () => {
     const docs: Array<{ file: string; patterns: Array<[RegExp, string]> }> = [
       {
         file: "README.md",
         patterns: [
+          [/site\.public_paths/, "site public path authoring"],
+          [/\/events\.html.*not public|not public.*\/events\.html/, "explicit mode hides backing asset filename"],
+          [/static_public_paths/, "static public path inventory"],
+          [/reachability_authority/, "reachability authority field"],
           [/deploy_diagnose_url/, "MCP diagnose tool"],
           [/run402 deploy diagnose/, "CLI diagnose command"],
           [/run402 deploy resolve/, "CLI resolve command"],
@@ -945,6 +949,10 @@ describe("deploy route surface alignment", () => {
       {
         file: "SKILL.md",
         patterns: [
+          [/site\.public_paths/, "site public path authoring"],
+          [/\/events\.html.*not public|not public.*\/events\.html/, "explicit mode hides backing asset filename"],
+          [/static_public_paths/, "static public path inventory"],
+          [/reachability_authority/, "reachability authority field"],
           [/deploy_diagnose_url/, "MCP diagnose tool"],
           [/"target": \{ "type": "static", "file": "events\.html" \}/, "static route target JSON"],
           [/static_assets/, "static asset diff counters"],
@@ -957,6 +965,10 @@ describe("deploy route surface alignment", () => {
       {
         file: "llms-mcp.txt",
         patterns: [
+          [/site\.public_paths/, "site public path authoring"],
+          [/\/events\.html.*not public|not public.*\/events\.html/, "explicit mode hides backing asset filename"],
+          [/static_public_paths/, "static public path inventory"],
+          [/reachability_authority/, "reachability authority field"],
           [/deploy_diagnose_url/, "MCP diagnose tool"],
           [/"target": \{ "type": "static", "file": "events\.html" \}/, "static route target JSON"],
           [/request\.ignored/, "ignored query/fragment field"],
@@ -970,6 +982,10 @@ describe("deploy route surface alignment", () => {
       {
         file: "cli/README.md",
         patterns: [
+          [/site\.public_paths/, "site public path authoring"],
+          [/\/events\.html.*not public|not public.*\/events\.html/, "explicit mode hides backing asset filename"],
+          [/static_public_paths/, "static public path inventory"],
+          [/reachability_authority/, "reachability authority field"],
           [/run402 deploy diagnose/, "CLI diagnose command"],
           [/run402 deploy resolve/, "CLI resolve command"],
           [/--url/, "resolve URL flag"],
@@ -984,6 +1000,10 @@ describe("deploy route surface alignment", () => {
       {
         file: "cli/llms-cli.txt",
         patterns: [
+          [/site\.public_paths/, "site public path authoring"],
+          [/\/events\.html.*not public|not public.*\/events\.html/, "explicit mode hides backing asset filename"],
+          [/static_public_paths/, "static public path inventory"],
+          [/reachability_authority/, "reachability authority field"],
           [/run402 deploy diagnose/, "CLI diagnose command"],
           [/run402 deploy resolve/, "CLI resolve command"],
           [/--url/, "resolve URL flag"],
@@ -998,6 +1018,10 @@ describe("deploy route surface alignment", () => {
       {
         file: "sdk/README.md",
         patterns: [
+          [/site\.public_paths/, "site public path authoring"],
+          [/\/events\.html.*not public|not public.*\/events\.html/, "explicit mode hides backing asset filename"],
+          [/static_public_paths/, "static public path inventory"],
+          [/reachability_authority/, "reachability authority field"],
           [/r\.deploy\.resolve/, "SDK resolve method"],
           [/DeployResolveResponse/, "SDK resolve response type"],
           [/target: \{ type: "static", file: "events\.html" \}/, "static route target TS"],
@@ -1012,6 +1036,10 @@ describe("deploy route surface alignment", () => {
       {
         file: "sdk/llms-sdk.txt",
         patterns: [
+          [/site\.public_paths/, "site public path authoring"],
+          [/\/events\.html.*not public|not public.*\/events\.html/, "explicit mode hides backing asset filename"],
+          [/static_public_paths/, "static public path inventory"],
+          [/reachability_authority/, "reachability authority field"],
           [/r\.deploy\.resolve/, "SDK resolve method"],
           [/DeployResolveOptions/, "SDK resolve options type"],
           [/DeployResolveResponse/, "SDK resolve response type"],
@@ -1026,6 +1054,10 @@ describe("deploy route surface alignment", () => {
       {
         file: "openclaw/SKILL.md",
         patterns: [
+          [/site\.public_paths/, "site public path authoring"],
+          [/\/events\.html.*not public|not public.*\/events\.html/, "explicit mode hides backing asset filename"],
+          [/static_public_paths/, "static public path inventory"],
+          [/reachability_authority/, "reachability authority field"],
           [/run402 deploy diagnose/, "CLI diagnose command"],
           [/run402 deploy resolve/, "CLI resolve command"],
           [/"target": \{ "type": "static", "file": "events\.html" \}/, "static route target JSON"],
@@ -1039,6 +1071,9 @@ describe("deploy route surface alignment", () => {
       {
         file: "openclaw/README.md",
         patterns: [
+          [/site\.public_paths/, "site public path authoring"],
+          [/static_public_paths/, "static public path inventory"],
+          [/reachability_authority/, "reachability authority field"],
           [/run402 deploy diagnose/, "CLI diagnose command"],
           [/"type": "static", "file": "events\.html"/, "static route target JSON"],
           [/static_assets/, "static asset diff counters"],
@@ -1048,6 +1083,9 @@ describe("deploy route surface alignment", () => {
       {
         file: "documentation.md",
         patterns: [
+          [/site\.public_paths/, "site public path authoring"],
+          [/static_public_paths/, "static public path inventory"],
+          [/reachability_authority/, "reachability authority field"],
           [/stable static asset identity \/ public URL diagnostics/, "documentation checklist row"],
           [/deploy_diagnose_url/, "MCP diagnose tool"],
           [/run402 deploy diagnose/, "CLI diagnose command"],

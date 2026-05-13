@@ -150,9 +150,20 @@ export interface FunctionSpec {
   schedule?: string | null;
 }
 
+export interface PublicStaticPathSpec {
+  /** Release static asset path, e.g. "events.html". This is not a public URL. */
+  asset: string;
+  cache_class?: StaticCacheClass;
+}
+
+export type SitePublicPathsSpec =
+  | { mode: "implicit"; replace?: never }
+  | { mode: "explicit"; replace: Record<string, PublicStaticPathSpec> };
+
 export type SiteSpec =
-  | { replace: FileSet }
-  | { patch: { put?: FileSet; delete?: string[] } };
+  | { replace: FileSet; patch?: never; public_paths?: SitePublicPathsSpec }
+  | { patch: { put?: FileSet; delete?: string[] }; replace?: never; public_paths?: SitePublicPathsSpec }
+  | { public_paths: SitePublicPathsSpec; replace?: never; patch?: never };
 
 export interface SubdomainsSpec {
   /** The exact desired set. Currently limited to one element per project —
@@ -348,6 +359,9 @@ export interface DeployResolveResponse {
   normalized_path?: string | null;
   match: DeployResolveMatch;
   route?: DeployResolveRouteMatch | null;
+  asset_path?: string | null;
+  reachability_authority?: StaticReachabilityAuthority | null;
+  direct?: boolean | null;
   static_sha256?: string | null;
   content_type?: string | null;
   cache_class?: StaticCacheClass | null;
@@ -877,7 +891,7 @@ function deployResolveNextSteps(
       return [
         {
           code: "check_static_path",
-          message: "Check the active release site.paths inventory for the requested file.",
+          message: "Check active release static_public_paths for browser reachability and site.paths for backing release assets.",
         },
         {
           code: "check_spa_fallback",
@@ -1048,6 +1062,26 @@ export interface RouteChangeEntry {
   fields_changed: Array<"methods" | "target" | "kind" | "prefix">;
 }
 
+export type KnownStaticReachabilityAuthority =
+  | "implicit_file_path"
+  | "explicit_public_path"
+  | "route_static_alias";
+
+export type StaticReachabilityAuthority =
+  LiteralUnion<KnownStaticReachabilityAuthority>;
+
+export interface StaticPublicPathInventoryEntry {
+  public_path: string;
+  asset_path: string;
+  reachability_authority: StaticReachabilityAuthority;
+  direct: boolean;
+  cache_class: StaticCacheClass;
+  content_type: string;
+  route_id?: string | null;
+  methods?: RouteHttpMethod[] | string[] | null;
+  [key: string]: unknown;
+}
+
 export interface RoutesDiff {
   manifest_sha256_old?: string | null;
   manifest_sha256_new?: string | null;
@@ -1083,6 +1117,7 @@ export interface ReleaseInventoryBase<
     paths: SitePathEntry[];
     totals?: { paths: number };
   };
+  static_public_paths?: StaticPublicPathInventoryEntry[];
   functions: ReleaseFunctionEntry[];
   secrets: { keys: string[] };
   subdomains: { names: string[] };
@@ -1469,8 +1504,9 @@ export interface NormalizedFunctionSpec {
 }
 
 export type NormalizedSiteSpec =
-  | { replace: Record<string, ContentRef> }
-  | { patch: { put?: Record<string, ContentRef>; delete?: string[] } };
+  | { replace: Record<string, ContentRef>; patch?: never; public_paths?: SitePublicPathsSpec }
+  | { patch: { put?: Record<string, ContentRef>; delete?: string[] }; replace?: never; public_paths?: SitePublicPathsSpec }
+  | { public_paths: SitePublicPathsSpec; replace?: never; patch?: never };
 
 // ─── Events + result ─────────────────────────────────────────────────────────
 

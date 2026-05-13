@@ -9,7 +9,9 @@
  *     "database": { "migrations": [...], "expose": {...}, "zero_downtime": false },
  *     "secrets":   { "require": ["OPENAI_API_KEY"], "delete": ["OLD_KEY"] },
  *     "functions": { "replace": {...}, "patch": { "set": {...}, "delete": [...] } },
- *     "site":      { "replace": {...} } | { "patch": { "put": {...}, "delete": [...] } },
+ *     "site":      { "replace": {...}, "public_paths": { "mode": "explicit", "replace": { "/events": { "asset": "events.html" } } } }
+ *                  | { "patch": { "put": {...}, "delete": [...] }, "public_paths": { "mode": "implicit" } }
+ *                  | { "public_paths": { "mode": "explicit", "replace": {} } },
  *     "subdomains": { "set": ["..."], "add": [...], "remove": [...] },
  *     "routes": { "replace": [{ "pattern": "/api/*", "methods": ["GET", "POST"], "target": { "type": "function", "name": "api" } }] },
  *     "idempotency_key": "..."
@@ -45,7 +47,10 @@ Manifest format mirrors the MCP \`deploy\` tool's ReleaseSpec:
     "database": { "migrations": [{ "id": "001_init", "sql": "CREATE TABLE ..." }], "expose": {...} },
     "secrets":   { "require": ["OPENAI_API_KEY"], "delete": ["OLD_KEY"] },
     "functions": { "replace": { "api": { "source": { "data": "export default ..." } } } },
-    "site":      { "replace": { "index.html": { "data": "<html>..." } } },
+    "site": {
+      "replace": { "index.html": { "data": "<html>..." }, "events.html": { "data": "<h1>Events</h1>" } },
+      "public_paths": { "mode": "explicit", "replace": { "/events": { "asset": "events.html", "cache_class": "html" } } }
+    },
     "subdomains": { "set": ["my-app"] },
     "routes": {
       "replace": [
@@ -90,10 +95,16 @@ Patch examples (only the listed file changes):
   { "project_id": "prj_...", "site": { "patch": { "put": { "index.html": { "data": "..." } } } } }
   { "project_id": "prj_...", "site": { "patch": { "delete": ["old.html"] } } }
 
+Static public paths:
+  Release static asset paths and browser-visible public paths are distinct. Use "site.public_paths" for ordinary clean static URLs:
+    { "project_id": "prj_...", "site": { "replace": { "events.html": { "data": "<h1>Events</h1>" } }, "public_paths": { "mode": "explicit", "replace": { "/events": { "asset": "events.html", "cache_class": "html" } } } } }
+  In explicit mode, /events.html is not directly public unless declared. "mode": "implicit" restores filename-derived reachability and can widen access.
+
 Routes:
   Omit routes or pass "routes": null to carry forward base routes.
   Use "routes": { "replace": [] } to clear dynamic routes.
   Route entries are array-based, not path-keyed maps. Use exact /admin plus final-wildcard /admin/* for a routed section root.
+  Prefer site.public_paths for ordinary clean static URLs. Static route targets are for exact, method-aware route-table aliases such as GET /login static plus POST /login function.
   Routed functions use Node 22 Fetch Request -> Response. req.url is the full public URL on managed domains, deployment hosts, and verified custom domains.
   Routes activate atomically with the release. Direct /functions/v1/:name remains API-key protected.
   Runtime route failure codes: ROUTE_MANIFEST_LOAD_FAILED, ROUTED_INVOKE_WORKER_SECRET_MISSING, ROUTED_INVOKE_AUTH_FAILED, ROUTED_ROUTE_STALE, ROUTE_METHOD_NOT_ALLOWED, ROUTED_RESPONSE_TOO_LARGE.

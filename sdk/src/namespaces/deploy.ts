@@ -1241,8 +1241,10 @@ const FUNCTION_SPEC_FIELDS = new Set([
   "schedule",
 ]);
 const FUNCTION_CONFIG_FIELDS = new Set(["timeoutSeconds", "memoryMb"]);
-const SITE_SPEC_FIELDS = new Set(["replace", "patch"]);
+const SITE_SPEC_FIELDS = new Set(["replace", "patch", "public_paths"]);
 const SITE_PATCH_FIELDS = new Set(["put", "delete"]);
+const SITE_PUBLIC_PATHS_FIELDS = new Set(["mode", "replace"]);
+const PUBLIC_STATIC_PATH_FIELDS = new Set(["asset", "cache_class"]);
 const SUBDOMAINS_SPEC_FIELDS = new Set(["set", "add", "remove"]);
 const ROUTES_SPEC_FIELDS = new Set(["replace"]);
 const ROUTE_ENTRY_FIELDS = new Set(["pattern", "methods", "target"]);
@@ -1396,6 +1398,54 @@ function validateSiteSpec(site: unknown): void {
     validateKnownFields(patch, "site.patch", SITE_PATCH_FIELDS);
     if (patch.put !== undefined) requireObject(patch.put, "site.patch.put");
     if (patch.delete !== undefined) validateStringArray(patch.delete, "site.patch.delete");
+  }
+  if (obj.public_paths !== undefined) {
+    validateSitePublicPathsSpec(obj.public_paths, "site.public_paths");
+  }
+}
+
+function validateSitePublicPathsSpec(value: unknown, resource: string): void {
+  const obj = requireObject(value, resource);
+  validateKnownFields(obj, resource, SITE_PUBLIC_PATHS_FIELDS);
+  if (obj.mode !== "implicit" && obj.mode !== "explicit") {
+    throw invalidSpec(
+      `ReleaseSpec.${resource}.mode must be "implicit" or "explicit"`,
+      `${resource}.mode`,
+    );
+  }
+  if (obj.mode === "implicit") {
+    if (hasOwn(obj, "replace")) {
+      throw invalidSpec(
+        "ReleaseSpec.site.public_paths.replace is not allowed when mode is implicit",
+        `${resource}.replace`,
+      );
+    }
+    return;
+  }
+
+  if (!hasOwn(obj, "replace")) {
+    throw invalidSpec(
+      "ReleaseSpec.site.public_paths with mode explicit requires a complete public_paths.replace map",
+      `${resource}.replace`,
+    );
+  }
+  const replace = requireObject(obj.replace, `${resource}.replace`);
+  for (const [publicPath, entry] of Object.entries(replace)) {
+    const entryResource = `${resource}.replace.${publicPath}`;
+    const pathSpec = requireObject(entry, entryResource);
+    validateKnownFields(pathSpec, entryResource, PUBLIC_STATIC_PATH_FIELDS);
+    if (typeof pathSpec.asset !== "string" || pathSpec.asset.length === 0) {
+      throw invalidSpec(
+        `ReleaseSpec.${entryResource}.asset must be a non-empty release static asset path`,
+        `${entryResource}.asset`,
+      );
+    }
+    if (pathSpec.cache_class !== undefined && typeof pathSpec.cache_class !== "string") {
+      throw invalidSpec(
+        `ReleaseSpec.${entryResource}.cache_class must be a string`,
+        `${entryResource}.cache_class`,
+      );
+    }
   }
 }
 
@@ -1619,8 +1669,10 @@ function hasDatabaseContent(database: unknown): boolean {
 function hasSiteContent(site: unknown): boolean {
   if (!isRecord(site)) return false;
   if (hasRecordEntries(site.replace)) return true;
-  if (!isRecord(site.patch)) return false;
-  return hasRecordEntries(site.patch.put) || hasArrayEntries(site.patch.delete);
+  if (isRecord(site.patch)) {
+    return hasRecordEntries(site.patch.put) || hasArrayEntries(site.patch.delete);
+  }
+  return isRecord(site.public_paths);
 }
 
 function hasFunctionsContent(functions: unknown): boolean {
@@ -1975,16 +2027,26 @@ async function normalizeReleaseSpec(
   }
 
   if (spec.site) {
+    const publicPaths =
+      "public_paths" in spec.site ? spec.site.public_paths : undefined;
     if ("replace" in spec.site && spec.site.replace) {
       const map = await normalizeFileSet(spec.site.replace, remember);
-      normalized.site = { replace: map } as NormalizedSiteSpec;
+      normalized.site = {
+        replace: map,
+        ...(publicPaths ? { public_paths: publicPaths } : {}),
+      } as NormalizedSiteSpec;
     } else if ("patch" in spec.site && spec.site.patch) {
       const patch: { put?: Record<string, ContentRef>; delete?: string[] } = {};
       if (spec.site.patch.put) {
         patch.put = await normalizeFileSet(spec.site.patch.put, remember);
       }
       if (spec.site.patch.delete) patch.delete = spec.site.patch.delete;
-      normalized.site = { patch } as NormalizedSiteSpec;
+      normalized.site = {
+        patch,
+        ...(publicPaths ? { public_paths: publicPaths } : {}),
+      } as NormalizedSiteSpec;
+    } else if (publicPaths) {
+      normalized.site = { public_paths: publicPaths } as NormalizedSiteSpec;
     }
   }
 

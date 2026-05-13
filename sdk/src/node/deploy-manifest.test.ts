@@ -114,6 +114,47 @@ describe("Node deploy manifest helpers", () => {
     });
   });
 
+  it("normalizes explicit site public paths", async () => {
+    const normalized = await normalizeDeployManifest({
+      project_id: "prj_manifest",
+      site: {
+        replace: { "events.html": "<h1>events</h1>" },
+        public_paths: {
+          mode: "explicit",
+          replace: {
+            "/events": { asset: "events.html", cache_class: "html" },
+          },
+        },
+      },
+    });
+
+    assert.equal(normalized.spec.project, "prj_manifest");
+    assert.deepEqual(normalized.spec.site?.public_paths, {
+      mode: "explicit",
+      replace: {
+        "/events": { asset: "events.html", cache_class: "html" },
+      },
+    });
+  });
+
+  it("normalizes implicit and public-path-only site manifests", async () => {
+    const implicit = await normalizeDeployManifest({
+      project_id: "prj_manifest",
+      site: { public_paths: { mode: "implicit" } },
+    });
+    assert.deepEqual(implicit.spec.site, {
+      public_paths: { mode: "implicit" },
+    });
+
+    const noDirectPublicPaths = await normalizeDeployManifest({
+      project_id: "prj_manifest",
+      site: { public_paths: { mode: "explicit", replace: {} } },
+    });
+    assert.deepEqual(noDirectPublicPaths.spec.site, {
+      public_paths: { mode: "explicit", replace: {} },
+    });
+  });
+
   it("loads manifest files relative to their directory", async () => {
     const root = mkdtempSync(join(tmpdir(), "run402-deploy-manifest-test-"));
     try {
@@ -179,12 +220,24 @@ describe("Node deploy manifest helpers", () => {
         project_id: "prj_manifest",
         site: { replace: { "index.html": "hi" }, patch: { delete: ["old.html"] } },
       },
+      {
+        project_id: "prj_manifest",
+        site: { public_paths: { mode: "explicit", patch: {} } },
+      },
+      {
+        project_id: "prj_manifest",
+        site: { public_paths: { mode: "implicit", replace: { "/events": { asset: "events.html" } } } },
+      },
+      {
+        project_id: "prj_manifest",
+        site: { public_paths: { mode: "explicit", replace: { "/events": { headers: {} } } } },
+      },
     ]) {
       await assert.rejects(
         () => normalizeDeployManifest(input as never),
         (err: unknown) => {
           assert.ok(err instanceof LocalError);
-          assert.match((err as Error).message, /Unknown|either replace or patch/);
+          assert.match((err as Error).message, /Unknown|either replace or patch|implicit mode|asset/);
           return true;
         },
       );

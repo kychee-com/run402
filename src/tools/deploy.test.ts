@@ -419,6 +419,52 @@ describe("handleDeploy deploy error formatting", () => {
     assert.match(result.content[0]!.text, /"routes"/);
   });
 
+  it("passes site.public_paths through the SDK manifest adapter", async () => {
+    const result = await handleDeploy({
+      project_id: "prj_xxx",
+      site: {
+        replace: { "events.html": "<h1>events</h1>" },
+        public_paths: {
+          mode: "explicit",
+          replace: {
+            "/events": { asset: "events.html", cache_class: "html" },
+          },
+        },
+      },
+    });
+
+    assert.equal(result.isError, undefined, JSON.stringify(result));
+    const spec = lastApplySpec as {
+      site?: {
+        replace?: Record<string, unknown>;
+        public_paths?: unknown;
+      };
+    };
+    assert.equal(spec.site?.replace?.["events.html"], "<h1>events</h1>");
+    assert.deepEqual(spec.site?.public_paths, {
+      mode: "explicit",
+      replace: {
+        "/events": { asset: "events.html", cache_class: "html" },
+      },
+    });
+  });
+
+  it("surfaces SDK manifest adapter errors for malformed site.public_paths", async () => {
+    const result = await handleDeploy({
+      project_id: "prj_xxx",
+      site: {
+        public_paths: {
+          mode: "implicit",
+          replace: { "/events": { asset: "events.html" } },
+        } as never,
+      },
+    });
+
+    assert.equal(result.isError, true);
+    assert.equal(lastApplySpec, null);
+    assert.match(result.content[0]!.text, /site\.public_paths\.replace|implicit mode/);
+  });
+
   it("renders route-specific warning guidance", async () => {
     nextApplyImpl = async () => ({
       release_id: "rel_001",
@@ -500,6 +546,51 @@ describe("deploySchema fileEntry parsing", () => {
       },
     });
     assert.equal(r.success, true, r.success ? "" : JSON.stringify(r.error.issues));
+  });
+
+  it("parses explicit and implicit site.public_paths", () => {
+    const explicit = schema.safeParse({
+      site: {
+        replace: { "events.html": "<h1>events</h1>" },
+        public_paths: {
+          mode: "explicit",
+          replace: {
+            "/events": { asset: "events.html", cache_class: "html" },
+          },
+        },
+      },
+    });
+    assert.equal(explicit.success, true, explicit.success ? "" : JSON.stringify(explicit.error.issues));
+
+    const implicitOnly = schema.safeParse({
+      site: { public_paths: { mode: "implicit" } },
+    });
+    assert.equal(implicitOnly.success, true, implicitOnly.success ? "" : JSON.stringify(implicitOnly.error.issues));
+  });
+
+  it("rejects malformed site.public_paths at the schema edge", () => {
+    assert.equal(
+      schema.safeParse({
+        site: {
+          public_paths: {
+            mode: "implicit",
+            replace: { "/events": { asset: "events.html" } },
+          },
+        },
+      }).success,
+      false,
+    );
+    assert.equal(
+      schema.safeParse({
+        site: {
+          public_paths: {
+            mode: "explicit",
+            replace: { "/events": { asset: "events.html", headers: {} } },
+          },
+        },
+      }).success,
+      false,
+    );
   });
 
   it("rejects a non-string non-object value in site.replace", () => {

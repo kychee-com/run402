@@ -363,6 +363,102 @@ describe("Deploy.apply (happy path)", () => {
     }
   });
 
+  it("allows CI site.public_paths to reach deploy planning", async () => {
+    const w = makeWiring(createCiSessionCredentials({
+      projectId: "prj_test",
+      accessToken: "ci-session",
+    }));
+    const plan: PlanResponse = {
+      plan_id: "plan_ci_public_paths",
+      operation_id: "op_ci_public_paths",
+      base_release_id: null,
+      manifest_digest: "ci-public-paths",
+      missing_content: [],
+      diff: {},
+    };
+    const commit: CommitResponse = {
+      operation_id: "op_ci_public_paths",
+      status: "ready",
+      release_id: "rel_ci_public_paths",
+      urls: { site: "https://ci-public-paths.run402.test" },
+    };
+
+    w.setHandler((req) => {
+      assert.equal(req.headers?.Authorization, "Bearer ci-session");
+      if (req.path === "/deploy/v2/plans") return plan;
+      if (req.path === "/deploy/v2/plans/plan_ci_public_paths/commit") return commit;
+      throw new Error(`unexpected path ${req.path}`);
+    });
+
+    const deploy = new Deploy(w.client);
+    await deploy.apply({
+      project: "prj_test",
+      site: {
+        public_paths: {
+          mode: "explicit",
+          replace: {
+            "/events": { asset: "events.html", cache_class: "html" },
+          },
+        },
+      },
+    });
+
+    const planReq = w.requests.find((r) => r.path === "/deploy/v2/plans");
+    assert(planReq, "plan request was issued");
+    assert.deepEqual((planReq.body as { spec: { site?: unknown } }).spec.site, {
+      public_paths: {
+        mode: "explicit",
+        replace: {
+          "/events": { asset: "events.html", cache_class: "html" },
+        },
+      },
+    });
+  });
+
+  it("preserves gateway CI errors for nested site.public_paths", async () => {
+    const w = makeWiring(createCiSessionCredentials({
+      projectId: "prj_test",
+      accessToken: "ci-session",
+    }));
+    w.setHandler((req) => {
+      if (req.path === "/deploy/v2/plans") {
+        throw new ApiError(
+          "Gateway rejected CI public paths",
+          403,
+          {
+            code: "CI_ROUTE_SCOPE_DENIED",
+            message: "CI binding cannot declare this public path.",
+            resource: "site.public_paths.replace./admin",
+          },
+          "planning deploy",
+        );
+      }
+      throw new Error(`unexpected path ${req.path}`);
+    });
+
+    const deploy = new Deploy(w.client);
+    await assert.rejects(
+      () =>
+        deploy.apply({
+          project: "prj_test",
+          site: {
+            public_paths: {
+              mode: "explicit",
+              replace: { "/admin": { asset: "admin.html" } },
+            },
+          },
+        }),
+      (err: unknown) => {
+        assert(err instanceof Run402DeployError);
+        assert.equal(err.code, "CI_ROUTE_SCOPE_DENIED");
+        assert.equal(err.resource, "site.public_paths.replace./admin");
+        assert.match(err.message, /cannot declare this public path/);
+        return true;
+      },
+    );
+    assert.equal(w.requests.length, 1);
+  });
+
   it("rejects CI-forbidden spec fields before hashing, uploading, or gateway calls", async () => {
     const cases: Array<{ spec: Record<string, unknown>; resource: string }> = [
       {
@@ -733,6 +829,96 @@ describe("Deploy.plan", () => {
     assert.equal(plan.warnings[0]?.requires_confirmation, true);
     assert.deepEqual(plan.warnings[0]?.affected, ["/admin/*"]);
   });
+
+  it("normalizes site file bytes while preserving explicit public paths", async () => {
+    const w = makeWiring();
+    const html = "<h1>events</h1>";
+    const expected = shaHex(html);
+    let plannedBody: unknown;
+    w.setHandler((req) => {
+      assert.equal(req.path, "/deploy/v2/plans?dry_run=true");
+      plannedBody = req.body;
+      return {
+        plan_id: null,
+        operation_id: null,
+        base_release_id: null,
+        manifest_digest: "public-paths",
+        missing_content: [],
+        diff: {},
+        warnings: [],
+      } satisfies PlanResponse;
+    });
+
+    const deploy = new Deploy(w.client);
+    const { byteReaders } = await deploy.plan(
+      {
+        project: "prj_test",
+        site: {
+          replace: { "events.html": html },
+          public_paths: {
+            mode: "explicit",
+            replace: {
+              "/events": { asset: "events.html", cache_class: "html" },
+            },
+          },
+        },
+      },
+      { dryRun: true },
+    );
+
+    const site = (plannedBody as {
+      spec: {
+        site: {
+          replace: Record<string, { sha256: string; size: number }>;
+          public_paths: unknown;
+        };
+      };
+    }).spec.site;
+    assert.equal(site.replace["events.html"].sha256, expected);
+    assert.equal(JSON.stringify(plannedBody).includes(html), false);
+    assert.deepEqual(site.public_paths, {
+      mode: "explicit",
+      replace: {
+        "/events": { asset: "events.html", cache_class: "html" },
+      },
+    });
+    assert.equal(byteReaders.size, 1);
+  });
+
+  it("treats public-path-only site specs as deployable without creating byte readers", async () => {
+    const w = makeWiring();
+    let plannedBody: unknown;
+    w.setHandler((req) => {
+      assert.equal(req.path, "/deploy/v2/plans?dry_run=true");
+      plannedBody = req.body;
+      return {
+        plan_id: null,
+        operation_id: null,
+        base_release_id: null,
+        manifest_digest: "public-path-only",
+        missing_content: [],
+        diff: {},
+        warnings: [],
+      } satisfies PlanResponse;
+    });
+
+    const deploy = new Deploy(w.client);
+    const { byteReaders } = await deploy.plan(
+      {
+        project: "prj_test",
+        site: {
+          public_paths: { mode: "explicit", replace: {} },
+        },
+      },
+      { dryRun: true },
+    );
+
+    assert.deepEqual(
+      (plannedBody as { spec: { site?: unknown } }).spec.site,
+      { public_paths: { mode: "explicit", replace: {} } },
+    );
+    assert.equal(byteReaders.size, 0);
+  });
 });
 
 describe("Deploy.apply (validation)", () => {
@@ -840,6 +1026,96 @@ describe("Deploy.apply (validation)", () => {
       );
     }
     assert.equal(w.requests.length, 0);
+  });
+
+  it("rejects malformed site.public_paths shapes before issuing gateway calls", async () => {
+    const w = makeWiring();
+    const deploy = new Deploy(w.client);
+    const cases: Array<[unknown, string, RegExp]> = [
+      [
+        { mode: "explicit", patch: {} },
+        "site.public_paths.patch",
+        /Unknown ReleaseSpec field/,
+      ],
+      [
+        { mode: "explicit" },
+        "site.public_paths.replace",
+        /requires a complete public_paths\.replace map/,
+      ],
+      [
+        { mode: "implicit", replace: { "/events": { asset: "events.html" } } },
+        "site.public_paths.replace",
+        /not allowed when mode is implicit/,
+      ],
+      [
+        { mode: "explicit", replace: { "/events": "events.html" } },
+        "site.public_paths.replace./events",
+        /must be an object/,
+      ],
+      [
+        { mode: "explicit", replace: { "/events": { cache_class: "html" } } },
+        "site.public_paths.replace./events.asset",
+        /asset must be a non-empty/,
+      ],
+      [
+        { mode: "explicit", replace: { "/events": { asset: "events.html", headers: {} } } },
+        "site.public_paths.replace./events.headers",
+        /Unknown ReleaseSpec field/,
+      ],
+    ];
+
+    for (const [publicPaths, resource, pattern] of cases) {
+      await assert.rejects(
+        () =>
+          deploy.plan(
+            {
+              project: "prj_test",
+              site: { public_paths: publicPaths as never },
+            },
+            { dryRun: true },
+          ),
+        (err: unknown) => {
+          assert(err instanceof Run402DeployError);
+          assert.equal(err.code, "INVALID_SPEC");
+          assert.equal(err.resource, resource);
+          assert.match(err.message, pattern);
+          return true;
+        },
+      );
+    }
+    assert.equal(w.requests.length, 0);
+  });
+
+  it("accepts implicit site public paths as deployable content", async () => {
+    const w = makeWiring();
+    let plannedBody: unknown;
+    w.setHandler((req) => {
+      plannedBody = req.body;
+      return {
+        plan_id: null,
+        operation_id: null,
+        base_release_id: null,
+        manifest_digest: "implicit-public-paths",
+        missing_content: [],
+        diff: {},
+        warnings: [],
+      } satisfies PlanResponse;
+    });
+
+    const deploy = new Deploy(w.client);
+    await deploy.plan(
+      {
+        project: "prj_test",
+        site: { public_paths: { mode: "implicit" } },
+      },
+      { dryRun: true },
+    );
+
+    assert.deepEqual(
+      (plannedBody as { spec: { site?: unknown } }).spec.site,
+      { public_paths: { mode: "implicit" } },
+    );
+    assert.equal(w.requests.length, 1);
   });
 
   it("preserves routes:null when another deployable section is present", async () => {
@@ -1308,6 +1584,9 @@ describe("Deploy.apply (validation)", () => {
           methods: ["GET", "HEAD"],
           target: { type: "static", file: "events.html" },
         },
+        asset_path: "events.html",
+        reachability_authority: "route_static_alias",
+        direct: false,
         cache_class: "future_cache_class",
       } satisfies DeployResolveResponse;
     });
@@ -1320,6 +1599,9 @@ describe("Deploy.apply (validation)", () => {
     assert.equal(miss.release_id, undefined);
     assert.equal(routed.match, "route_static_alias");
     assert.deepEqual(routed.route?.target, { type: "static", file: "events.html" });
+    assert.equal(routed.asset_path, "events.html");
+    assert.equal(routed.reachability_authority, "route_static_alias");
+    assert.equal(routed.direct, false);
     assert.equal(routed.cache_class, "future_cache_class");
   });
 
@@ -3178,6 +3460,16 @@ describe("Deploy release observability", () => {
     effective: true,
     state_kind: "effective",
     site: { paths: [], totals: undefined },
+    static_public_paths: [
+      {
+        public_path: "/events",
+        asset_path: "events.html",
+        reachability_authority: "explicit_public_path",
+        direct: true,
+        cache_class: "html",
+        content_type: "text/html",
+      },
+    ],
     functions: [],
     secrets: { keys: [] },
     subdomains: { names: [] },
@@ -3199,6 +3491,9 @@ describe("Deploy release observability", () => {
     });
 
     assert.equal(result.release_id, "rel_1");
+    assert.equal(result.static_public_paths?.[0]?.public_path, "/events");
+    assert.equal(result.static_public_paths?.[0]?.asset_path, "events.html");
+    assert.equal(result.static_public_paths?.[0]?.direct, true);
     assert.equal(w.requests[0].headers?.apikey, "ak");
   });
 

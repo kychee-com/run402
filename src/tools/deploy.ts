@@ -13,6 +13,7 @@ import type {
   DeployEvent,
   ReleaseSpec,
   RouteHttpMethod,
+  SitePublicPathsSpec,
   WarningEntry,
 } from "../../sdk/dist/index.js";
 
@@ -46,6 +47,36 @@ const fileEntry = z.union([
 ]);
 
 const fileMap = z.record(fileEntry);
+const publicStaticPathSpec = z
+  .object({
+    asset: z
+      .string()
+      .describe("Release static asset path, such as events.html. This is not a public URL."),
+    cache_class: z
+      .string()
+      .optional()
+      .describe("Optional static cache class, for example html, immutable_versioned, or revalidating_asset."),
+  })
+  .strict();
+const sitePublicPaths = z.union([
+  z
+    .object({
+      mode: z
+        .literal("implicit")
+        .describe("Restore filename-derived public reachability for static assets."),
+    })
+    .strict(),
+  z
+    .object({
+      mode: z
+        .literal("explicit")
+        .describe("Use only the complete replace table as direct public static URLs."),
+      replace: z
+        .record(publicStaticPathSpec)
+        .describe("Complete map from public browser paths such as /events to release static asset paths such as events.html."),
+    })
+    .strict(),
+]);
 
 const migrationEntry = z
   .object({
@@ -196,7 +227,12 @@ export const deploySchema = {
     .optional(),
   site: z
     .union([
-      z.object({ replace: fileMap }).strict(),
+      z
+        .object({
+          replace: fileMap,
+          public_paths: sitePublicPaths.optional(),
+        })
+        .strict(),
       z
         .object({
           patch: z
@@ -205,8 +241,10 @@ export const deploySchema = {
               delete: z.array(z.string()).optional(),
             })
             .strict(),
+          public_paths: sitePublicPaths.optional(),
         })
         .strict(),
+      z.object({ public_paths: sitePublicPaths }).strict(),
     ])
     .optional(),
   subdomains: z
@@ -227,7 +265,7 @@ export const deploySchema = {
     ])
     .optional()
     .describe(
-      "Deploy-v2 web routes. Omit or pass null to carry forward base routes; pass { replace: [] } to clear routes; pass { replace: [{ pattern, methods?, target: { type: 'function', name } }] } for functions or exact GET/HEAD { target: { type: 'static', file } } entries for static route targets.",
+      "Deploy-v2 web routes. Omit or pass null to carry forward base routes; pass { replace: [] } to clear routes; pass { replace: [{ pattern, methods?, target: { type: 'function', name } }] } for functions or exact GET/HEAD { target: { type: 'static', file } } entries for method-aware static route aliases. Prefer site.public_paths for ordinary clean static URLs.",
     ),
   idempotency_key: z
     .string()
@@ -262,8 +300,9 @@ type DeployArgs = {
     };
   };
   site?:
-    | { replace: FileMapInput }
-    | { patch: { put?: FileMapInput; delete?: string[] } };
+    | { replace: FileMapInput; public_paths?: SitePublicPathsSpec }
+    | { patch: { put?: FileMapInput; delete?: string[] }; public_paths?: SitePublicPathsSpec }
+    | { public_paths: SitePublicPathsSpec };
   subdomains?: ReleaseSpec["subdomains"];
   routes?: ReleaseSpec["routes"];
   idempotency_key?: string;

@@ -7,6 +7,7 @@ import type {
   DeploySummary,
   KnownDeployResolveMatch,
   PlanDiffEnvelope,
+  PublicStaticPathSpec,
   ReleaseRoutesSpec,
   ReleaseSnapshotInventory,
   ReleaseSpec,
@@ -15,8 +16,11 @@ import type {
   RouteEntry,
   RouteTarget,
   StaticAssetsDiff,
+  StaticPublicPathInventoryEntry,
+  StaticReachabilityAuthority,
   StaticManifestMetadata,
   StaticRouteTarget,
+  SitePublicPathsSpec,
 } from "./namespaces/deploy.types.js";
 import type { SecretSummary } from "./namespaces/secrets.js";
 
@@ -67,6 +71,30 @@ type _InventoryStaticMetadata = Assert<
 >;
 type _PlanDiffStaticAssets = Assert<Equal<PlanDiffEnvelope["static_assets"], StaticAssetsDiff>>;
 type _ReleaseDiffStaticAssets = Assert<Equal<ReleaseToReleaseDiff["static_assets"], StaticAssetsDiff>>;
+type _ExplicitPublicPaths = Extract<SitePublicPathsSpec, { mode: "explicit" }>;
+type _ImplicitPublicPaths = Extract<SitePublicPathsSpec, { mode: "implicit" }>;
+type _PublicStaticCacheClass = PublicStaticPathSpec["cache_class"];
+type _SitePublicPathOnly = Extract<
+  NonNullable<ReleaseSpec["site"]>,
+  { public_paths: SitePublicPathsSpec }
+>;
+type _StaticPublicPathInventory = ActiveReleaseInventory["static_public_paths"];
+type _StaticReachabilityAuthority = StaticPublicPathInventoryEntry["reachability_authority"] & StaticReachabilityAuthority;
+
+const _ExplicitPublicPathTable: _ExplicitPublicPaths = {
+  mode: "explicit",
+  replace: { "/events": { asset: "events.html", cache_class: "html" } },
+};
+const _ImplicitPublicPathMode: _ImplicitPublicPaths = { mode: "implicit" };
+const _PublicPathOnlySpec: _SitePublicPathOnly = {
+  public_paths: { mode: "explicit", replace: {} },
+};
+void _ExplicitPublicPathTable;
+void _ImplicitPublicPathMode;
+void _PublicPathOnlySpec;
+void (null as unknown as _PublicStaticCacheClass);
+void (null as unknown as _StaticPublicPathInventory);
+void (null as unknown as _StaticReachabilityAuthority);
 
 // @ts-expect-error release-to-release diffs do not expose plan migration buckets
 type _NoReleaseDiffMigrationNew = ReleaseToReleaseDiff["migrations"]["new"];
@@ -84,5 +112,10 @@ type _NoDeploySummaryCodeHashOld = DeploySummary["functions"]["changed"][number]
 type _NoPathKeyedRoutes = NonNullable<ReleaseRoutesSpec>["/api/*"];
 // @ts-expect-error route-aware known literals are not part of the current private gateway contract
 const _NoKnownRouteResolveLiteral: KnownDeployResolveMatch = "route_function";
+// @ts-expect-error implicit mode cannot carry a replace map
+const _NoImplicitPublicPathReplace: SitePublicPathsSpec = {
+  mode: "implicit",
+  replace: { "/events": { asset: "events.html" } },
+};
 
 export {};

@@ -56,8 +56,13 @@ describe("deploy release observability MCP tools", () => {
     assert.equal(result.isError, undefined);
     assert.ok(result.content[0]!.text.includes("Release Inventory"));
     assert.ok(result.content[0]!.text.includes("| routes | 2 |"));
+    assert.ok(result.content[0]!.text.includes("| static_public_paths | 2 |"));
     assert.ok(result.content[0]!.text.includes("| warnings | 1 |"));
     assert.ok(result.content[1]!.text.includes('"kind": "release_inventory"'));
+    assert.ok(result.content[1]!.text.includes('"static_public_paths"'));
+    assert.ok(result.content[1]!.text.includes('"public_path": "/events"'));
+    assert.ok(result.content[1]!.text.includes('"asset_path": "events.html"'));
+    assert.ok(result.content[1]!.text.includes('"reachability_authority": "explicit_public_path"'));
     assert.ok(result.content[1]!.text.includes('"routes"'));
     assert.deepEqual(seen, [
       { path: "/deploy/v2/releases/rel_%2Fone?site_limit=2", apikey: "ak_test" },
@@ -203,6 +208,26 @@ function inventory(opts: { release_id: string; state_kind: string }) {
     effective: true,
     state_kind: opts.state_kind,
     site: { paths: [] },
+    static_public_paths: [
+      {
+        public_path: "/events",
+        asset_path: "events.html",
+        reachability_authority: "explicit_public_path",
+        direct: true,
+        cache_class: "html",
+        content_type: "text/html",
+      },
+      {
+        public_path: "/login",
+        asset_path: "login.html",
+        reachability_authority: "route_static_alias",
+        direct: false,
+        cache_class: "html",
+        content_type: "text/html",
+        route_id: "route_login_get",
+        methods: ["GET", "HEAD"],
+      },
+    ],
     functions: [],
     secrets: { keys: [] },
     subdomains: { names: [] },

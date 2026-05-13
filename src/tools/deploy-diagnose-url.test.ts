@@ -81,6 +81,9 @@ describe("deploy_diagnose_url", () => {
         methods: ["GET", "HEAD"],
         target: { type: "static", file: "events.html" },
       },
+      asset_path: "events.html",
+      reachability_authority: "route_static_alias",
+      direct: false,
       static_manifest_metadata: {
         file_count: 1,
         total_bytes: 12,
@@ -103,6 +106,8 @@ describe("deploy_diagnose_url", () => {
       path: "/events",
     });
     assert.match(result.content[1]!.text, /route_static_alias/);
+    assert.match(result.content[1]!.text, /"asset_path": "events.html"/);
+    assert.match(result.content[1]!.text, /"direct": false/);
     assert.match(result.content[1]!.text, /"file": "events.html"/);
     assert.match(result.content[1]!.text, /static_manifest_metadata/);
   });

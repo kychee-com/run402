@@ -14,6 +14,7 @@ import type {
   FunctionSpec,
   ReleaseRoutesSpec,
   ReleaseSpec,
+  SitePublicPathsSpec,
 } from "../namespaces/deploy.types.js";
 
 const CONTEXT = "normalizing deploy manifest";
@@ -52,8 +53,10 @@ const MANIFEST_FUNCTION_FIELDS = new Set([
   "config",
   "schedule",
 ]);
-const MANIFEST_SITE_FIELDS = new Set(["replace", "patch"]);
+const MANIFEST_SITE_FIELDS = new Set(["replace", "patch", "public_paths"]);
 const MANIFEST_SITE_PATCH_FIELDS = new Set(["put", "delete"]);
+const MANIFEST_SITE_PUBLIC_PATHS_FIELDS = new Set(["mode", "replace"]);
+const MANIFEST_PUBLIC_STATIC_PATH_FIELDS = new Set(["asset", "cache_class"]);
 const MANIFEST_ROUTES_FIELDS = new Set(["replace"]);
 const MANIFEST_ROUTE_ENTRY_FIELDS = new Set(["pattern", "methods", "target"]);
 const MANIFEST_FUNCTION_ROUTE_TARGET_FIELDS = new Set(["type", "name"]);
@@ -106,8 +109,9 @@ export interface DeployManifestFunctionsSpec {
 }
 
 export type DeployManifestSiteSpec =
-  | { replace: DeployManifestFileSet }
-  | { patch: { put?: DeployManifestFileSet; delete?: string[] } };
+  | { replace: DeployManifestFileSet; patch?: never; public_paths?: SitePublicPathsSpec }
+  | { patch: { put?: DeployManifestFileSet; delete?: string[] }; replace?: never; public_paths?: SitePublicPathsSpec }
+  | { public_paths: SitePublicPathsSpec; replace?: never; patch?: never };
 
 export interface DeployManifestInput
   extends Omit<ReleaseSpec, "project" | "database" | "functions" | "site"> {
@@ -435,14 +439,20 @@ function mapSite(
       CONTEXT,
     );
   }
+  const publicPaths = Object.prototype.hasOwnProperty.call(raw, "public_paths")
+    ? mapSitePublicPaths(raw.public_paths)
+    : undefined;
   if (Object.prototype.hasOwnProperty.call(raw, "replace")) {
     if (raw.replace === undefined) {
       throw new LocalError("Deploy manifest site.replace is undefined", CONTEXT);
     }
-    return { replace: mapFileSet(raw.replace as DeployManifestFileSet, opts) };
+    return {
+      replace: mapFileSet(raw.replace as DeployManifestFileSet, opts),
+      ...(publicPaths ? { public_paths: publicPaths } : {}),
+    };
   }
-  const patch: { put?: FileSet; delete?: string[] } = {};
   if (Object.prototype.hasOwnProperty.call(raw, "patch")) {
+    const patch: { put?: FileSet; delete?: string[] } = {};
     assertPlainRecord(raw.patch, "Deploy manifest site.patch");
     const rawPatch = raw.patch as { put?: unknown; delete?: unknown };
     assertKnownFields(rawPatch, "Deploy manifest site.patch", MANIFEST_SITE_PATCH_FIELDS);
@@ -458,12 +468,70 @@ function mapSite(
       }
       patch.delete = rawPatch.delete as string[];
     }
-    return { patch };
+    return {
+      patch,
+      ...(publicPaths ? { public_paths: publicPaths } : {}),
+    };
+  }
+  if (publicPaths) {
+    return { public_paths: publicPaths };
   }
   throw new LocalError(
-    "Deploy manifest site must include replace or patch",
+    "Deploy manifest site must include replace, patch, or public_paths",
     CONTEXT,
   );
+}
+
+function mapSitePublicPaths(value: unknown): SitePublicPathsSpec {
+  assertPlainRecord(value, "Deploy manifest site.public_paths");
+  assertKnownFields(
+    value,
+    "Deploy manifest site.public_paths",
+    MANIFEST_SITE_PUBLIC_PATHS_FIELDS,
+  );
+  if (value.mode !== "implicit" && value.mode !== "explicit") {
+    throw new LocalError(
+      'Deploy manifest site.public_paths.mode must be "implicit" or "explicit"',
+      CONTEXT,
+    );
+  }
+  if (value.mode === "implicit") {
+    if (Object.prototype.hasOwnProperty.call(value, "replace")) {
+      throw new LocalError(
+        "Deploy manifest site.public_paths.replace is invalid for implicit mode",
+        CONTEXT,
+      );
+    }
+    return { mode: "implicit" };
+  }
+
+  if (!Object.prototype.hasOwnProperty.call(value, "replace")) {
+    throw new LocalError(
+      "Deploy manifest site.public_paths with mode explicit requires a complete replace map",
+      CONTEXT,
+    );
+  }
+  assertPlainRecord(
+    value.replace,
+    "Deploy manifest site.public_paths.replace",
+  );
+  const replace: Record<string, { asset: string; cache_class?: string }> = {};
+  for (const [publicPath, entry] of Object.entries(value.replace)) {
+    const label = `Deploy manifest site.public_paths.replace[${JSON.stringify(publicPath)}]`;
+    assertPlainRecord(entry, label);
+    assertKnownFields(entry, label, MANIFEST_PUBLIC_STATIC_PATH_FIELDS);
+    if (typeof entry.asset !== "string" || entry.asset.length === 0) {
+      throw new LocalError(`${label}.asset must be a non-empty release static asset path`, CONTEXT);
+    }
+    if (entry.cache_class !== undefined && typeof entry.cache_class !== "string") {
+      throw new LocalError(`${label}.cache_class must be a string`, CONTEXT);
+    }
+    replace[publicPath] =
+      entry.cache_class === undefined
+        ? { asset: entry.asset }
+        : { asset: entry.asset, cache_class: entry.cache_class };
+  }
+  return { mode: "explicit", replace };
 }
 
 function mapRoutes(routes: unknown): ReleaseRoutesSpec {

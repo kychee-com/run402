@@ -240,10 +240,16 @@ describe("CLI --help contract", () => {
     assertHelp(result, "run402 deploy apply --help", {
       expectHeadingStartsWith: "run402 deploy apply",
     });
+    assert.match(result.stdout, /site\.public_paths/);
+    assert.match(result.stdout, /"public_paths"\s*:\s*\{\s*"mode"\s*:\s*"explicit"/);
+    assert.match(result.stdout, /"\/events"\s*:\s*\{\s*"asset"\s*:\s*"events\.html"/);
+    assert.match(result.stdout, /\/events\.html is not directly public/);
+    assert.match(result.stdout, /"mode": "implicit" restores filename-derived reachability/);
     assert.match(result.stdout, /"routes"\s*:\s*\{\s*"replace"/);
     assert.match(result.stdout, /\/api\/\*/);
     assert.match(result.stdout, /\/admin\b/);
     assert.match(result.stdout, /\/admin\/\*/);
+    assert.match(result.stdout, /Static route targets are for exact, method-aware route-table aliases/);
     assert.match(result.stdout, /Fetch Request -> Response/);
     assert.match(result.stdout, /req\.url is the full public URL/);
     assert.match(result.stdout, /verified custom domains/);

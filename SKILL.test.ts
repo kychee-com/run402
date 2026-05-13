@@ -140,6 +140,20 @@ describe("SKILL.md (root, MCP-based)", () => {
     }
   });
 
+  describe("body — deploy public path vocabulary", () => {
+    const required: Array<{ pattern: RegExp; label: string }> = [
+      { pattern: /site\.public_paths/, label: "site public path authoring" },
+      { pattern: /\/events\.html.*not public|not public.*\/events\.html/, label: "explicit mode hides backing asset filename" },
+      { pattern: /static_public_paths/, label: "static public path inventory" },
+      { pattern: /reachability_authority/, label: "reachability authority field" },
+    ];
+    for (const { pattern, label } of required) {
+      it(`documents ${label}`, () => {
+        assert.match(root.body, pattern);
+      });
+    }
+  });
+
   describe("markdown integrity", () => {
     it("has no unclosed fenced code blocks", () => {
       const fences = root.body.match(/^```/gm) || [];
@@ -212,6 +226,20 @@ describe("openclaw/SKILL.md (CLI-based)", () => {
     for (const { pattern, reason } of banned) {
       it(`does not contain: ${pattern.source}`, () => {
         assert.ok(!pattern.test(openclaw.body), reason);
+      });
+    }
+  });
+
+  describe("body — deploy public path vocabulary", () => {
+    const required: Array<{ pattern: RegExp; label: string }> = [
+      { pattern: /site\.public_paths/, label: "site public path authoring" },
+      { pattern: /\/events\.html.*not public|not public.*\/events\.html/, label: "explicit mode hides backing asset filename" },
+      { pattern: /static_public_paths/, label: "static public path inventory" },
+      { pattern: /reachability_authority/, label: "reachability authority field" },
+    ];
+    for (const { pattern, label } of required) {
+      it(`documents ${label}`, () => {
+        assert.match(openclaw.body, pattern);
       });
     }
   });
