@@ -86,7 +86,6 @@ export { NodeSites } from "./sites-node.js";
 export type {
   DeployDirOptions,
   DeployEvent as DeployDirEvent,
-  LegacyDeployEvent as LegacyDeployDirEvent,
 } from "./sites-node.js";
 export { fileSetFromDir, normalizeRelPath } from "./files.js";
 export type { FileSetFromDirOptions } from "./files.js";

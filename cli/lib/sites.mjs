@@ -135,9 +135,8 @@ Behavior:
 
 Progress events:
   By default, the CLI streams JSON-line events to stderr while the deploy
-  progresses. Each line is one JSON object terminated by \\n. Both the
-  unified DeployEvent shapes and legacy phase events ({"phase":...}) are
-  emitted for back-compat. Stdout receives only the final result envelope.
+  progresses. Each line is one unified DeployEvent JSON object terminated by
+  \\n. Stdout receives only the final result envelope.
   To consume both streams separately:
     \`run402 sites deploy-dir ./dist --project p > result.json 2> events.log\`
 

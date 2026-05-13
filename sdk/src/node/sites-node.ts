@@ -5,11 +5,8 @@
  * through the unified CAS substrate, the deploy flows through the v2 plan/
  * commit endpoints, and the agent-observable result remains a
  * {@link SiteDeployResult}. Existing callers keep their input shape
- * (`{ project, dir, target?, onEvent? }`) and their legacy event consumers
- * keep working: the wrapper synthesizes both the unified `DeployEvent`
- * shapes (from the SDK's `deploy` namespace) and the legacy phase events
- * (`{ phase: "plan"|"upload"|"commit"|"poll", ... }`) for the deprecation
- * window.
+ * (`{ project, dir, target?, onEvent? }`), and `onEvent` receives the unified
+ * `DeployEvent` shapes from the SDK's `deploy` namespace.
  *
  * Imports `node:fs/promises` via `fileSetFromDir`, so this module remains
  * Node-only — V8 isolates use `r.deploy.apply` with in-memory byte sources.
@@ -32,35 +29,13 @@ export interface DeployDirOptions {
   /** Deployment target label, e.g. `"production"`. */
   target?: string;
   /**
-   * Optional progress callback. The wrapper invokes it with **both** the
-   * legacy phase event shapes (for back-compat with v1.32-era consumers)
-   * and the new unified `DeployEvent` shapes from the v2 deploy namespace.
-   * Errors thrown synchronously are caught and dropped — a buggy consumer
-   * cannot abort the deploy.
+   * Optional progress callback. Errors thrown synchronously are caught and
+   * dropped — a buggy consumer cannot abort the deploy.
    */
   onEvent?: (event: DeployEvent) => void;
 }
 
-/**
- * Discriminated union of progress events. The legacy variants (`phase:`)
- * are kept for the v1.32-era event consumers; new code should switch on
- * `type:` and consume the {@link UnifiedDeployEvent} shapes from
- * `@run402/sdk`. The wrapper emits both for the deprecation window.
- */
-export type DeployEvent = LegacyDeployEvent | UnifiedDeployEvent;
-
-/** Legacy event shapes preserved for v1.32-era consumers. */
-export type LegacyDeployEvent =
-  | { phase: "plan"; manifest_size: number }
-  | {
-      phase: "upload";
-      file: string;
-      sha256: string;
-      done: number;
-      total: number;
-    }
-  | { phase: "commit" }
-  | { phase: "poll"; status: string; elapsed_ms: number };
+export type DeployEvent = UnifiedDeployEvent;
 
 /**
  * Sites namespace enriched with the Node-only `deployDir` convenience.
@@ -76,17 +51,13 @@ export class NodeSites extends Sites {
    */
   async deployDir(opts: DeployDirOptions): Promise<SiteDeployResult> {
     const fileSet = await fileSetFromDir(opts.dir);
-    const manifestSize = Object.keys(fileSet).length;
-
     const deploy = new Deploy(
       (this as unknown as { client: Client }).client,
     );
 
-    const synth = makeLegacyEventSynth(opts.onEvent, manifestSize);
-
     const result = await deploy.apply(
       { project: opts.project, site: { replace: fileSet } },
-      { onEvent: synth },
+      { onEvent: makeSafeEventForwarder(opts.onEvent) },
     );
 
     const out: SiteDeployResult = {
@@ -105,66 +76,15 @@ export class NodeSites extends Sites {
   }
 }
 
-// ─── Legacy event synthesis ──────────────────────────────────────────────────
-
-/**
- * Build a unified-event listener that mirrors the unified events to the
- * caller verbatim AND synthesizes the legacy phase events alongside.
- */
-function makeLegacyEventSynth(
+function makeSafeEventForwarder(
   consumer: ((event: DeployEvent) => void) | undefined,
-  manifestSize: number,
 ): (event: UnifiedDeployEvent) => void {
   if (!consumer) return () => {};
-
-  const safe = (e: DeployEvent): void => {
+  return (event) => {
     try {
-      consumer(e);
+      consumer(event);
     } catch {
       /* swallow — buggy consumer must not abort the deploy */
-    }
-  };
-
-  let pollStart: number | null = null;
-  let commitEmitted = false;
-
-  return (event) => {
-    safe(event);
-
-    switch (event.type) {
-      case "plan.diff":
-        safe({ phase: "plan", manifest_size: manifestSize });
-        break;
-      case "content.upload.progress":
-        safe({
-          phase: "upload",
-          file: event.label,
-          sha256: event.sha256,
-          done: event.done,
-          total: event.total,
-        });
-        break;
-      case "commit.phase":
-        if (!commitEmitted) {
-          commitEmitted = true;
-          safe({ phase: "commit" });
-        }
-        if (
-          (event.phase === "schema-settle" ||
-            event.phase === "activate" ||
-            event.phase === "ready") &&
-          event.status === "started"
-        ) {
-          if (pollStart === null) pollStart = Date.now();
-          safe({
-            phase: "poll",
-            status: event.phase,
-            elapsed_ms: Date.now() - pollStart,
-          });
-        }
-        break;
-      default:
-        break;
     }
   };
 }
@@ -179,8 +99,5 @@ function pickFromUrls(
   return urls[key];
 }
 
-// ─── Internal types preserved for compatibility ──────────────────────────────
-// Re-exported so existing tests / external consumers that import them
-// continue to compile during the deprecation window. New code should use the
-// `ContentRef` + `FileSet` types from `@run402/sdk`.
+// ─── Internal types ──────────────────────────────────────────────────────────
 export type { ContentRef };

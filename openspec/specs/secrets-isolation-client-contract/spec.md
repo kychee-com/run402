@@ -46,11 +46,6 @@ The public client surfaces SHALL teach and support the workflow where secret val
 - **WHEN** `r.secrets.set(projectId, key, value)` is called
 - **THEN** the SDK SHALL send `POST /projects/v1/admin/{projectId}/secrets` with body `{ key, value }`
 
-#### Scenario: Compatibility shim receives legacy in-memory secret values
-
-- **WHEN** `apps.bundleDeploy` receives legacy in-memory secret values
-- **THEN** it SHALL pre-set those values through the secrets API and pass only `secrets.require` keys to `deploy.apply`
-
 #### Scenario: CLI manifest contains secret values
 
 - **WHEN** a CLI file or inline manifest contains legacy secret values under deploy secrets

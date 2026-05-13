@@ -34,8 +34,6 @@ import type {
 import type {
   AppDetails,
   BrowseAppsResult,
-  BundleDeployOptions,
-  BundleDeployResult,
   ForkAppOptions,
   ForkAppResult,
   ListVersionsResult,
@@ -227,9 +225,6 @@ class ScopedProjects {
 class ScopedApps {
   constructor(private readonly parent: Run402, private readonly projectId: string) {}
 
-  bundleDeploy(opts?: BundleDeployOptions): Promise<BundleDeployResult> {
-    return this.parent.apps.bundleDeploy(this.projectId, opts);
-  }
   publish(opts?: PublishAppOptions): Promise<PublishedVersion> {
     return this.parent.apps.publish(this.projectId, opts);
   }
@@ -471,8 +466,9 @@ class ScopedDeploy {
     releaseId: string,
     opts: Partial<ReleaseInventoryOptions> = {},
   ): Promise<ReleaseInventory> {
-    return this.parent.deploy.getRelease(releaseId, {
+    return this.parent.deploy.getRelease({
       project: opts.project ?? this.projectId,
+      releaseId,
       siteLimit: opts.siteLimit,
     });
   }

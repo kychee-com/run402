@@ -9,7 +9,7 @@ Usage:
 
 Subcommands:
   add    <domain> <subdomain_name> [--project <id>]   Register a custom domain
-  list   [<id>] | list --project <id>                  List custom domains for a project
+  list   [--project <id>]                              List custom domains for a project
   status <domain> [--project <id>]                     Check domain DNS/SSL status
   delete <domain> --confirm [--project <id>]           Release a custom domain. Requires --confirm.
 
@@ -51,14 +51,14 @@ Examples:
   list: `run402 domains list — List custom domains for a project
 
 Usage:
-  run402 domains list [<id>]
+  run402 domains list [--project <id>]
 
 Arguments:
   <id>                Project ID (defaults to the active project)
 
 Examples:
   run402 domains list
-  run402 domains list prj_abc123
+  run402 domains list --project prj_abc123
 `,
   status: `run402 domains status — Check DNS/SSL status of a custom domain
 
@@ -127,11 +127,14 @@ async function add(args) {
 async function list(args) {
   const argList = Array.isArray(args) ? args : [];
   const { project, rest } = parseProjectFlag(argList);
-  // Either --project <id> or a positional id is accepted; --project wins
-  // when both are supplied. Falls back to the active project when neither
-  // is given. Keeps backward-compat with the legacy `domains list <id>`
-  // form (GH-209).
-  const projectId = resolveProjectId(project || rest[0]);
+  if (rest.length > 0) {
+    fail({
+      code: "BAD_USAGE",
+      message: `Unexpected argument for domains list: ${rest[0]}`,
+      hint: "Use `run402 domains list --project <id>`.",
+    });
+  }
+  const projectId = resolveProjectId(project);
   try {
     const data = await getSdk().domains.list(projectId);
     console.log(JSON.stringify(data, null, 2));

@@ -57,7 +57,7 @@ run402 projects schema <id>                              # introspect tables + R
 
 ```bash
 run402 sites deploy-dir ./dist                # incremental upload (plan/commit transport)
-run402 deploy --manifest app.json             # one-call full stack deploy
+run402 deploy apply --manifest app.json       # one-call full stack deploy
 run402 deploy release active                  # inspect current-live release inventory
 run402 deploy release diff --from empty --to active
 run402 deploy diagnose --project prj_123 https://example.com/events --method GET

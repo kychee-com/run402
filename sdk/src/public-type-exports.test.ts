@@ -29,7 +29,6 @@ test("@run402/sdk/node re-exports the isomorphic type surface and Node-only help
     "NodeRun402",
     "DeployDirOptions",
     "DeployDirEvent",
-    "LegacyDeployDirEvent",
     "FileSetFromDirOptions",
     "SignCiDelegationOptions",
     "DeployManifestDatabaseSpec",

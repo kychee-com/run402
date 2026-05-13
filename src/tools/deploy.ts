@@ -26,8 +26,7 @@ import type {
  * The SDK's `resolveContent` already accepts both polymorphically; this
  * schema mirrors that. Agents that want to ship a real app via patch
  * semantics, multi-resource atomicity, or the resumable operation model
- * use this tool; the legacy `bundle_deploy`/`deploy_site` tools continue
- * to work and route through the same SDK shim under the hood.
+ * use this tool.
  */
 
 const fileEntry = z.union([

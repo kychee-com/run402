@@ -243,11 +243,11 @@ export async function run(args = []) {
   write("");
   const nextStep = (!tierInfo || !tierInfo.tier || !tierInfo.active)
     ? "run402 tier set prototype"
-    : "run402 deploy --manifest app.json";
+    : "run402 deploy apply --manifest app.json";
   if (!tierInfo || !tierInfo.tier || !tierInfo.active) {
     write("  Next: run402 tier set prototype");
   } else {
-    write("  Ready to deploy. Run: run402 deploy --manifest app.json");
+    write("  Ready to deploy. Run: run402 deploy apply --manifest app.json");
   }
   write("");
   summary.next_step = nextStep;

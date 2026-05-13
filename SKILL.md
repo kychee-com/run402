@@ -124,9 +124,9 @@ When you need to verify a deployed asset is fresh (e.g. you suspect cache stalen
 
 JSON Schema: <https://run402.com/schemas/manifest.v1.json>. Set `$schema` on your manifest object and any editor gives autocomplete.
 
-#### Preferred: ship `manifest.json` in your bundle
+#### Preferred: declare `database.expose` in deploy
 
-Authorization travels with your code. When you call **`bundle_deploy`**, include a file named `manifest.json` in `files[]` and the gateway reads it, validates it against the migration SQL, applies it, and **strips it from `files[]` before the site deploys** — so it's never publicly reachable on your subdomain. The deploy response includes `manifest_applied: true` on success.
+Authorization travels with your release. When you call **`deploy`**, put the manifest object under `database.expose`; the gateway validates it against the migration SQL and applies it atomically with the rest of the release.
 
 ```json
 {
@@ -150,14 +150,14 @@ If the manifest references a table the migration doesn't create, the deploy is r
 
 #### Non-mutating validation: `validate_manifest`
 
-Before applying, call **`validate_manifest`** with `manifest` (object or JSON string), optional `migration_sql`, and optional `project_id`. It validates the auth/expose manifest used by `manifest.json`, `database.expose`, and `apply_expose`; it does not validate deploy manifests. Migration SQL is only reference context for manifest checks and is not executed as a PostgreSQL dry run. The result preserves `{ hasErrors, errors, warnings }` in fenced JSON, and `hasErrors: true` is data rather than a tool failure.
+Before applying, call **`validate_manifest`** with `manifest` (object or JSON string), optional `migration_sql`, and optional `project_id`. It validates the auth/expose manifest used by `database.expose` and `apply_expose`; it does not validate deploy manifests. Migration SQL is only reference context for manifest checks and is not executed as a PostgreSQL dry run. The result preserves `{ hasErrors, errors, warnings }` in fenced JSON, and `hasErrors: true` is data rather than a tool failure.
 
 #### Imperative: `apply_expose` and `get_expose`
 
 For ad-hoc changes outside a deploy — same JSON shape, no bundle:
 
 - **`apply_expose`** with `project_id` + `manifest` — applies the manifest. Convergent: applying the same manifest twice is a no-op; items removed between applies have their policies, grants, triggers, and views dropped.
-- **`get_expose`** with `project_id` — returns the live state. `source: "applied"` means it came from a prior apply (or a bundled `manifest.json`); `source: "introspected"` means no manifest has ever been applied and the response was reconstructed from live DB state.
+- **`get_expose`** with `project_id` — returns the live state. `source: "applied"` means it came from a prior apply or deploy; `source: "introspected"` means no manifest has ever been applied and the response was reconstructed from live DB state.
 
 #### Built-in policies
 
@@ -174,16 +174,9 @@ Views always run with `security_invoker=true` — they inherit the underlying ta
 
 Prefer **`deploy_site_dir`** over `deploy_site` whenever you have a directory path. It walks the directory, hashes each file client-side, asks the gateway _which_ bytes it doesn't already have, and only uploads those. Re-deploying an unchanged tree returns immediately with `bytes_uploaded: 0`.
 
-The response's `content` array includes a fenced `json` block of buffered progress events you can `JSON.parse`:
+The response's `content` array includes a fenced `json` block of buffered unified `DeployEvent` objects you can `JSON.parse`.
 
-| phase | When fired | Extra |
-|-------|------------|------|
-| `plan`   | After the planning request | `manifest_size` |
-| `upload` | After each missing file finishes PUTing | `file`, `sha256`, `done`, `total` |
-| `commit` | Just before commit | — |
-| `poll`   | Per server-side copy poll | `status`, `elapsed_ms` |
-
-For one-call full-stack deploys (database + migrations + manifest + secret dependencies + functions + site + subdomain), prefer **`deploy`**. Set secret values first with **`set_secret`**, then deploy with value-free `secrets.require[]`; never put secret values in deploy specs. **`bundle_deploy`** remains for legacy in-memory compatibility and writes secrets before deploy, but those writes are not atomic with the deploy commit.
+For full-stack deploys (database + migrations + manifest + secret dependencies + functions + site + subdomain), use **`deploy`**. Set secret values first with **`set_secret`**, then deploy with value-free `secrets.require[]`; never put secret values in deploy specs.
 
 After deploys, use read-only release observability instead of starting another mutation: **`deploy_release_active`** for the current-live inventory, **`deploy_release_get`** for a specific release id, and **`deploy_release_diff`** to compare `empty`, `active`, or release-id targets. Inventories expose site paths, functions, secret keys only, subdomains, materialized routes, applied migrations, `release_generation`, `static_manifest_sha256`, nullable `static_manifest_metadata`, and warnings when returned. Diffs use `migrations.applied_between_releases`, route `added` / `removed` / `changed` buckets, and `static_assets` counters for unchanged/changed/added/removed files, CAS byte reuse, eliminated deployment-copy bytes, and immutable/CAS warning counts.
 
@@ -296,7 +289,6 @@ For TypeScript autocomplete, `npm install @run402/functions` in your editor's pr
 - **`claim_subdomain`** — claim `<name>.run402.com` (idempotent; auto-reassigns to latest deployment on subsequent deploys, no re-claim needed).
 - **`list_subdomains`** / **`delete_subdomain`** — manage subdomains.
 - **`add_custom_domain`** / **`list_custom_domains`** / **`check_domain_status`** / **`remove_custom_domain`** — point your own domain at a Run402 subdomain.
-- **`bundle_deploy`** — legacy one-call full-stack deploy with auth-as-SDLC manifest in `files[]`. Prefer `set_secret` + `deploy` for new code when secrets are involved.
 - **`deploy`** / **`deploy_resume`** / **`deploy_list`** / **`deploy_events`** — apply, resume, list, and inspect deploy operations.
 - **`deploy_release_get`** / **`deploy_release_active`** / **`deploy_release_diff`** — inspect release inventory and release-to-release diffs.
 - **`deploy_diagnose_url`** — URL-first public deploy resolver diagnostics. Params: `project_id`, either `url` or `host`/`path`, optional `method`.
@@ -469,7 +461,7 @@ Two payment rails work with the same wallet key:
 - **x402** (default): USDC on Base. Prototype uses Base Sepolia testnet (free from faucet); hobby/team use Base mainnet.
 - **MPP**: pathUSD on Tempo Moderato (testnet) / Tempo (mainnet). Same wallet key, different chain.
 
-The MCP server handles all signing automatically. When a paid tool returns 402, the response includes payment details as **informational text** (not an error) — guide the user through funding, then retry the same tool call. **`provision_postgres_project`**, **`set_tier`**, **`bundle_deploy`**, and **`generate_image`** are the paid surfaces; everything else is free with an active tier.
+The MCP server handles all signing automatically. When a paid tool returns 402, the response includes payment details as **informational text** (not an error) — guide the user through funding, then retry the same tool call. **`provision_postgres_project`**, **`set_tier`**, **`deploy`**, and **`generate_image`** are the paid surfaces; everything else is free with an active tier.
 
 For real-money tiers, two paths to fund:
 

@@ -335,9 +335,8 @@ async function mockFetch(input, init) {
     return Promise.resolve(json({ blobs: [{ key: "defaults/file.txt", size: 13, last_modified: "2026-03-15T12:00:00Z" }] }));
   }
 
-  // Deploy v2 — unified plan/commit. All deploy paths (CLI `deploy`, `sites
-  // deploy`, `sites deploy-dir`, MCP `bundle_deploy`/`deploy_site*`) route
-  // through r.deploy.apply against these endpoints.
+  // Deploy v2 — unified plan/commit. CLI/MCP deploy paths route through
+  // r.deploy.apply against these endpoints.
   // The fake gateway reports every content ref as already-present (empty
   // missing_content) so the SDK skips S3 PUTs and goes straight to commit.
   if (pathNoQuery === "/deploy/v2/plans" && method === "POST") {
@@ -1783,18 +1782,21 @@ describe("CLI e2e happy path", () => {
 
   // ── Deploy ──────────────────────────────────────────────────────────────
 
-  it("deploy", async () => {
+  it("deploy apply", async () => {
     const { run } = await import("./cli/lib/deploy.mjs");
     // Write a manifest file
     const manifestPath = join(tempDir, "manifest.json");
     const { writeFileSync: wf } = await import("node:fs");
     wf(manifestPath, JSON.stringify({
-      files: [{ file: "index.html", data: "<h1>Hello</h1>" }],
+      site: { replace: { "index.html": "<h1>Hello</h1>" } },
     }));
     captureStart();
-    await run(["--manifest", manifestPath, "--project", "prj_test123"]);
+    await run(["apply", "--manifest", manifestPath, "--project", "prj_test123"]);
     captureStop();
-    assert.ok(captured().includes("prj_test123"), "should return project info");
+    const body = JSON.parse(capturedStdout());
+    assert.equal(body.status, "ok");
+    assert.equal(body.release_id, "rel_v2_test");
+    assert.equal(body.urls.deployment_id, "dpl_test456");
   });
 
   it("deploy release get wraps the inventory payload", async () => {
@@ -1964,407 +1966,15 @@ describe("CLI e2e happy path", () => {
     assert.match(parsed.message, /Missing --from or --to/);
   });
 
-  it("deploy with path fields in manifest", async () => {
-    const { run } = await import("./cli/lib/deploy.mjs");
-    const { writeFileSync: wf, mkdirSync } = await import("node:fs");
-    // Create a dist/ subdirectory with files
-    const distDir = join(tempDir, "dist");
-    mkdirSync(distDir, { recursive: true });
-    wf(join(distDir, "index.html"), "<h1>Built</h1>");
-    wf(join(distDir, "logo.png"), Buffer.from([0x89, 0x50, 0x4e, 0x47]));
-    // Manifest uses path fields resolved relative to manifest location
-    const manifestPath = join(tempDir, "path-manifest.json");
-    wf(manifestPath, JSON.stringify({
-      files: [
-        { file: "index.html", path: "dist/index.html" },
-        { file: "logo.png", path: "dist/logo.png" },
-      ],
-    }));
-    captureStart();
-    await run(["--manifest", manifestPath, "--project", "prj_test123"]);
-    captureStop();
-    assert.ok(captured().includes("prj_test123"), "should deploy with resolved paths");
-  });
-
-  it("deploy with missing files[].path returns structured JSON error (GH-44)", async () => {
-    const { run } = await import("./cli/lib/deploy.mjs");
-    const { writeFileSync: wf } = await import("node:fs");
-    const manifestPath = join(tempDir, "gh44-missing-file-manifest.json");
-    const missingName = "definitely-missing-file.html";
-    wf(manifestPath, JSON.stringify({
-      functions: [{
-        name: "partial-file-good-fn",
-        code: "export default async () => new Response('ok')",
-      }],
-      files: [
-        { file: "index.html", path: `./${missingName}` },
-      ],
-    }));
-    let threw = null;
-    captureStart();
-    try {
-      await run(["--manifest", manifestPath, "--project", "prj_test123"]);
-    } catch (e) {
-      threw = e;
-    } finally {
-      captureStop();
-    }
-    // Must exit non-zero.
-    assert.ok(threw && /process\.exit\(1\)/.test(threw.message),
-      `should exit non-zero, got: ${threw && threw.message}`);
-    // Must NOT leak a raw Node stack trace.
-    const stderr = capturedStderr();
-    assert.ok(!/node:fs:\d+/.test(stderr),
-      `must not leak raw node:fs stack, got: ${stderr}`);
-    assert.ok(!/\bat readFileSync\b/.test(stderr),
-      `must not leak raw readFileSync stack frame, got: ${stderr}`);
-    assert.ok(!/\bat resolveFilePathsInManifest\b/.test(stderr),
-      `must not leak internal resolve fn stack frame, got: ${stderr}`);
-    // Must emit a single JSON line on stderr with structured fields.
-    const line = stderr.split("\n").map(s => s.trim()).find(s => s.startsWith("{") && s.endsWith("}"));
-    assert.ok(line, `should emit a JSON error line on stderr, got: ${stderr}`);
-    const parsed = JSON.parse(line);
-    assert.equal(parsed.status, "error");
-    assert.ok(parsed.message && parsed.message.includes(missingName),
-      `message should mention missing filename, got: ${parsed.message}`);
-    assert.equal(parsed.details?.field, "files[0].path",
-      `details.field should identify the offending manifest field, got: ${parsed.details?.field}`);
-    assert.ok(parsed.details?.path && parsed.details.path.endsWith(missingName),
-      `details.path should be the absolute missing path, got: ${parsed.details?.path}`);
-    assert.ok(parsed.hint && /relative to the manifest/i.test(parsed.hint),
-      `hint should explain relative-path resolution, got: ${parsed.hint}`);
-    // No raw `stack` field should be leaked.
-    assert.equal(parsed.stack, undefined, "must not leak a stack field");
-    // stdout should stay empty (errors go to stderr, not stdout).
-    assert.equal(capturedStdout().trim(), "",
-      `stdout should stay empty on error, got: ${capturedStdout()}`);
-  });
-
-  it("deploy with missing migrations_file returns structured JSON error (GH-44)", async () => {
-    const { run } = await import("./cli/lib/deploy.mjs");
-    const { writeFileSync: wf } = await import("node:fs");
-    const manifestPath = join(tempDir, "gh44-missing-migrations-manifest.json");
-    const missingName = "does-not-exist.sql";
-    wf(manifestPath, JSON.stringify({
-      migrations_file: `./${missingName}`,
-    }));
-    let threw = null;
-    captureStart();
-    try {
-      await run(["--manifest", manifestPath, "--project", "prj_test123"]);
-    } catch (e) {
-      threw = e;
-    } finally {
-      captureStop();
-    }
-    assert.ok(threw && /process\.exit\(1\)/.test(threw.message),
-      `should exit non-zero, got: ${threw && threw.message}`);
-    const stderr = capturedStderr();
-    assert.ok(!/node:fs:\d+/.test(stderr),
-      `must not leak raw node:fs stack, got: ${stderr}`);
-    const line = stderr.split("\n").map(s => s.trim()).find(s => s.startsWith("{") && s.endsWith("}"));
-    assert.ok(line, `should emit a JSON error line on stderr, got: ${stderr}`);
-    const parsed = JSON.parse(line);
-    assert.equal(parsed.status, "error");
-    assert.ok(parsed.message && parsed.message.includes(missingName),
-      `message should mention missing SQL filename, got: ${parsed.message}`);
-    assert.equal(parsed.details?.field, "migrations_file",
-      `details.field should be migrations_file, got: ${parsed.details?.field}`);
-    assert.ok(parsed.details?.path && parsed.details.path.endsWith(missingName),
-      `details.path should be the absolute missing path, got: ${parsed.details?.path}`);
-    assert.ok(parsed.hint && /relative to the manifest/i.test(parsed.hint),
-      `hint should explain relative-path resolution, got: ${parsed.hint}`);
-  });
-
-  it("deploy with missing --manifest path returns structured JSON error (GH-44)", async () => {
-    const { run } = await import("./cli/lib/deploy.mjs");
-    const missingPath = join(tempDir, "definitely-not-a-real-manifest.json");
-    let threw = null;
-    captureStart();
-    try {
-      await run(["--manifest", missingPath, "--project", "prj_test123"]);
-    } catch (e) {
-      threw = e;
-    } finally {
-      captureStop();
-    }
-    assert.ok(threw && /process\.exit\(1\)/.test(threw.message),
-      `should exit non-zero, got: ${threw && threw.message}`);
-    const stderr = capturedStderr();
-    assert.ok(!/node:fs:\d+/.test(stderr),
-      `must not leak raw node:fs stack, got: ${stderr}`);
-    assert.ok(!/\bat readFileSync\b/.test(stderr),
-      `must not leak raw readFileSync stack frame, got: ${stderr}`);
-    const line = stderr.split("\n").map(s => s.trim()).find(s => s.startsWith("{") && s.endsWith("}"));
-    assert.ok(line, `should emit a JSON error line on stderr, got: ${stderr}`);
-    const parsed = JSON.parse(line);
-    assert.equal(parsed.status, "error");
-    assert.equal(parsed.details?.field, "manifest",
-      `details.field should be manifest, got: ${parsed.details?.field}`);
-    assert.ok(parsed.details?.path && parsed.details.path.endsWith("definitely-not-a-real-manifest.json"),
-      `details.path should be the absolute missing manifest path, got: ${parsed.details?.path}`);
-    assert.ok(parsed.hint, `hint should be present, got: ${parsed.hint}`);
-  });
-
-  it("deploy falls back to active project when manifest omits project_id (GH-41)", async () => {
-    const { run } = await import("./cli/lib/deploy.mjs");
-    const { setActiveProjectId } = await import("./cli/lib/config.mjs");
-    const { writeFileSync: wf } = await import("node:fs");
-
-    setActiveProjectId("prj_test123");
-
-    const manifestPath = join(tempDir, "no-project-id-manifest.json");
-    wf(manifestPath, JSON.stringify({
-      files: [{ file: "index.html", data: "<h1>Hello</h1>" }],
-    }));
-
-    // Capture the v2 plan request body so we can assert project_id was filled in.
-    let sentSpec = null;
-    const prevFetch = globalThis.fetch;
-    globalThis.fetch = async (input, init) => {
-      const url = typeof input === "string" ? input : (input instanceof Request ? input.url : String(input));
-      const method = (init?.method || (input instanceof Request ? input.method : "GET") || "GET").toUpperCase();
-      if (url.endsWith("/deploy/v2/plans") && method === "POST") {
-        let rawBody = init?.body;
-        if (rawBody === undefined && input instanceof Request) {
-          rawBody = await input.clone().text();
-        }
-        try { sentSpec = JSON.parse(rawBody)?.spec; } catch { sentSpec = null; }
-      }
-      return prevFetch(input, init);
-    };
-
-    captureStart();
-    try {
-      await run(["--manifest", manifestPath]);
-    } finally {
-      captureStop();
-      globalThis.fetch = prevFetch;
-    }
-    assert.ok(sentSpec, "deploy should have called /deploy/v2/plans");
-    assert.equal(sentSpec.project, "prj_test123", "spec.project should match active project");
-    assert.ok(captured().includes("prj_test123"), "should return project info");
-  });
-
-  it("deploy errors cleanly when no active project and no --project and no manifest.project_id (GH-41)", async () => {
-    const { run } = await import("./cli/lib/deploy.mjs");
-    const { loadKeyStore, saveKeyStore } = await import("./cli/lib/config.mjs");
-    const { writeFileSync: wf } = await import("node:fs");
-
-    // Clear the active project in the keystore
-    const store = loadKeyStore();
-    delete store.active_project_id;
-    saveKeyStore(store);
-
-    const manifestPath = join(tempDir, "no-active-no-project-manifest.json");
-    wf(manifestPath, JSON.stringify({
-      files: [{ file: "index.html", data: "<h1>Hello</h1>" }],
-    }));
-
-    let threw = null;
-    captureStart();
-    try {
-      await run(["--manifest", manifestPath]);
-    } catch (e) {
-      threw = e;
-    } finally {
-      captureStop();
-      // Restore the active project for any following tests that expect it set.
-      const { setActiveProjectId } = await import("./cli/lib/config.mjs");
-      setActiveProjectId("prj_test123");
-    }
-    const out = captured();
-    assert.ok(threw && /process\.exit\(1\)/.test(threw.message),
-      `should exit non-zero, got: ${threw && threw.message}`);
-    assert.ok(!/Project null not found/.test(out),
-      `must not leak 'Project null not found', got: ${out}`);
-    assert.ok(/no project specified|no active project/i.test(out),
-      `should surface a clear no-active-project error, got: ${out}`);
-  });
-
-  it("deploy errors when manifest.project_id conflicts with --project (GH-42)", async () => {
-    const { run } = await import("./cli/lib/deploy.mjs");
-    const { writeFileSync: wf } = await import("node:fs");
-    const manifestPath = join(tempDir, "conflict-manifest.json");
-    wf(manifestPath, JSON.stringify({
-      project_id: "prj_manifest",
-      files: [{ file: "index.html", data: "<h1>Hello</h1>" }],
-    }));
-    // Track whether the deploy plan endpoint was hit. The conflict check must
-    // fire BEFORE any HTTP — silently deploying to the wrong project would be
-    // exactly the bug this guards against.
-    let deployCalled = false;
-    const prevFetch = globalThis.fetch;
-    globalThis.fetch = (input, init) => {
-      const url = typeof input === "string" ? input : (input instanceof Request ? input.url : String(input));
-      const method = (init?.method || (input instanceof Request ? input.method : "GET") || "GET").toUpperCase();
-      if (url.endsWith("/deploy/v2/plans") && method === "POST") {
-        deployCalled = true;
-      }
-      return prevFetch(input, init);
-    };
-    let threw = null;
-    captureStart();
-    try {
-      await run(["--manifest", manifestPath, "--project", "prj_flag"]);
-    } catch (e) {
-      threw = e;
-    } finally {
-      captureStop();
-      globalThis.fetch = prevFetch;
-    }
-    assert.ok(threw && /process\.exit\(1\)/.test(threw.message), `should exit non-zero, got: ${threw && threw.message}`);
-    assert.equal(deployCalled, false, "must not POST to /deploy/v2/plans on project_id conflict");
-    const out = capturedStderr();
-    const line = out.split("\n").map(s => s.trim()).find(s => s.startsWith("{") && s.endsWith("}"));
-    assert.ok(line, `should emit a JSON error line on stderr, got: ${out}`);
-    const parsed = JSON.parse(line);
-    assert.equal(parsed.status, "error");
-    const blob = JSON.stringify(parsed);
-    assert.ok(blob.includes("prj_manifest"), `error payload must mention manifest project_id, got: ${blob}`);
-    assert.ok(blob.includes("prj_flag"), `error payload must mention --project flag value, got: ${blob}`);
-    assert.ok(typeof parsed.hint === "string" && parsed.hint.length > 0, `error must include a hint, got: ${blob}`);
-  });
-
-  it("deploy accepts --project matching manifest.project_id (GH-42)", async () => {
-    const { run } = await import("./cli/lib/deploy.mjs");
-    const { writeFileSync: wf } = await import("node:fs");
-    const manifestPath = join(tempDir, "match-manifest.json");
-    wf(manifestPath, JSON.stringify({
-      project_id: "prj_test123",
-      files: [{ file: "index.html", data: "<h1>Hello</h1>" }],
-    }));
-    captureStart();
-    await run(["--manifest", manifestPath, "--project", "prj_test123"]);
-    captureStop();
-    assert.ok(captured().includes("prj_test123"), "should deploy when manifest and flag agree");
-  });
-
-  // ── GH-185: deploy --manifest must reject empty manifests client-side ────
-  // The MCP `deploy` tool was hardened against empty specs in #133. The CLI
-  // `deploy --manifest` path was not. Without this guard, `echo '{}' |
-  // run402 deploy` would silently succeed, returning a `dpl_*` id while the
-  // live site survived (no signal that nothing was deployed). The check must
-  // fire BEFORE any HTTP — see assertions on `deployCalled` below.
-  async function deployAndCapture(manifestObj, manifestName) {
-    const { run } = await import("./cli/lib/deploy.mjs");
-    const { writeFileSync: wf } = await import("node:fs");
-    const manifestPath = join(tempDir, manifestName);
-    wf(manifestPath, JSON.stringify(manifestObj));
-    let deployCalled = false;
-    const prevFetch = globalThis.fetch;
-    globalThis.fetch = (input, init) => {
-      const url = typeof input === "string" ? input : (input instanceof Request ? input.url : String(input));
-      const method = (init?.method || (input instanceof Request ? input.method : "GET") || "GET").toUpperCase();
-      if (url.endsWith("/deploy/v2/plans") && method === "POST") deployCalled = true;
-      return prevFetch(input, init);
-    };
-    let threw = null;
-    captureStart();
-    try {
-      await run(["--manifest", manifestPath, "--project", "prj_test123"]);
-    } catch (e) {
-      threw = e;
-    } finally {
-      captureStop();
-      globalThis.fetch = prevFetch;
-    }
-    return { threw, stderr: capturedStderr(), stdout: capturedStdout(), deployCalled };
-  }
-
   function parseStderrEnvelope(stderr) {
     const line = stderr.split("\n").map(s => s.trim()).find(s => s.startsWith("{") && s.endsWith("}"));
     assert.ok(line, `should emit a JSON error line on stderr, got: ${stderr}`);
     return JSON.parse(line);
   }
 
-  it("deploy rejects empty manifest object (GH-185)", async () => {
-    const { threw, stderr, deployCalled } = await deployAndCapture({}, "gh185-empty-object.json");
-    assert.ok(threw && /process\.exit\(1\)/.test(threw.message),
-      `should exit non-zero, got: ${threw && threw.message}`);
-    assert.equal(deployCalled, false, "must not POST to /deploy/v2/plans on empty manifest");
-    const parsed = parseStderrEnvelope(stderr);
-    assert.equal(parsed.status, "error");
-    assert.equal(parsed.code, "MANIFEST_EMPTY");
-    assert.ok(parsed.message && /no deployable sections/i.test(parsed.message),
-      `message should explain no deployable sections, got: ${parsed.message}`);
-    assert.ok(parsed.hint, `hint should be present, got: ${JSON.stringify(parsed)}`);
-  });
-
-  it("deploy rejects manifest with only project_id (GH-185)", async () => {
-    const { threw, stderr, deployCalled } = await deployAndCapture(
-      { project_id: "prj_test123" }, "gh185-project-id-only.json");
-    assert.ok(threw && /process\.exit\(1\)/.test(threw.message),
-      `should exit non-zero, got: ${threw && threw.message}`);
-    assert.equal(deployCalled, false, "must not POST to /deploy/v2/plans on project-id-only manifest");
-    const parsed = parseStderrEnvelope(stderr);
-    assert.equal(parsed.code, "MANIFEST_EMPTY");
-  });
-
-  it("deploy rejects manifest with empty secrets array (GH-185)", async () => {
-    const { threw, stderr, deployCalled } = await deployAndCapture(
-      { project_id: "prj_test123", secrets: [] }, "gh185-empty-secrets.json");
-    assert.ok(threw && /process\.exit\(1\)/.test(threw.message),
-      `should exit non-zero, got: ${threw && threw.message}`);
-    assert.equal(deployCalled, false, "must not POST to /deploy/v2/plans on empty-secrets manifest");
-    const parsed = parseStderrEnvelope(stderr);
-    assert.equal(parsed.code, "MANIFEST_EMPTY");
-  });
-
-  it("deploy rejects legacy manifest secret values before gateway calls", async () => {
-    const { threw, stderr, deployCalled } = await deployAndCapture(
-      { project_id: "prj_test123", secrets: [{ key: "OPENAI_API_KEY", value: "secret" }] },
-      "secret-values-legacy.json",
-    );
-    assert.ok(threw && /process\.exit\(1\)/.test(threw.message),
-      `should exit non-zero, got: ${threw && threw.message}`);
-    assert.equal(deployCalled, false, "must not POST to /deploy/v2/plans with secret values");
-    const parsed = parseStderrEnvelope(stderr);
-    assert.equal(parsed.code, "UNSAFE_SECRET_MANIFEST");
-    assert.equal(parsed.details.field, "secrets");
-  });
-
-  it("deploy rejects v2 manifest with empty site.replace (GH-185)", async () => {
-    const { threw, stderr, deployCalled } = await deployAndCapture(
-      { project_id: "prj_test123", site: { replace: {} } }, "gh185-empty-site-replace.json");
-    assert.ok(threw && /process\.exit\(1\)/.test(threw.message),
-      `should exit non-zero, got: ${threw && threw.message}`);
-    assert.equal(deployCalled, false, "must not POST to /deploy/v2/plans on empty-site manifest");
-    const parsed = parseStderrEnvelope(stderr);
-    assert.equal(parsed.code, "MANIFEST_EMPTY");
-  });
-
-  it("deploy accepts manifest with subdomain claim alone (GH-185)", async () => {
-    const { run } = await import("./cli/lib/deploy.mjs");
-    const { writeFileSync: wf } = await import("node:fs");
-    const manifestPath = join(tempDir, "gh185-subdomain-only.json");
-    wf(manifestPath, JSON.stringify({ project_id: "prj_test123", subdomain: "my-app" }));
-    captureStart();
-    await run(["--manifest", manifestPath, "--project", "prj_test123"]);
-    captureStop();
-    assert.ok(captured().includes("prj_test123"),
-      `subdomain-only manifest should be accepted, got: ${capturedStderr()}`);
-  });
-
-  it("deploy accepts manifest with database.migrations (GH-185)", async () => {
-    const { run } = await import("./cli/lib/deploy.mjs");
-    const { writeFileSync: wf } = await import("node:fs");
-    const manifestPath = join(tempDir, "gh185-database-migrations.json");
-    wf(manifestPath, JSON.stringify({
-      project_id: "prj_test123",
-      database: { migrations: [{ id: "a", sql: "SELECT 1" }] },
-    }));
-    captureStart();
-    await run(["--manifest", manifestPath, "--project", "prj_test123"]);
-    captureStop();
-    assert.ok(captured().includes("prj_test123"),
-      `database.migrations manifest should be accepted, got: ${capturedStderr()}`);
-  });
-
   // ── GH-232: deploy apply (v2 unified primitive) must reject empty specs ──
-  // The legacy `deploy --manifest` path was hardened in GH-185, but the v2
-  // `deploy apply --manifest` / `--spec` path silently sent empty specs to
-  // the gateway. This block mirrors the GH-185 guard pattern for v2 keys.
+  // `deploy apply --manifest` / `--spec` must not silently send empty specs
+  // to the gateway.
   async function deployApplyAndCapture(args) {
     const { run } = await import("./cli/lib/deploy.mjs");
     const { saveAllowance } = await import("./cli/lib/config.mjs");
@@ -2829,7 +2439,7 @@ describe("CLI e2e happy path", () => {
     wf(join(siteDir, "style.css"), "body { color: blue; }");
     wf(join(siteDir, "script.js"), "console.log('hi')");
     captureStart();
-    await run("deploy-dir", [siteDir, "--project", "prj_test123"]);
+    await run("deploy-dir", [siteDir, "--project", "prj_test123", "--confirm-prune"]);
     captureStop();
     assert.ok(capturedStdout().includes("dpl_test456"), "should return deployment id from dir on stdout");
     assert.ok(capturedStdout().includes("\"status\": \"ok\""), "should emit JSON envelope with status ok on stdout");
@@ -2840,9 +2450,10 @@ describe("CLI e2e happy path", () => {
       try { JSON.parse(l); return true; } catch { return false; }
     });
     assert.ok(jsonLines.length > 0, `expected JSON event lines on stderr; got: ${stderr}`);
-    const phases = jsonLines.map((l) => JSON.parse(l).phase);
-    assert.ok(phases.includes("plan"), `expected a plan event; got phases: ${phases.join(",")}`);
-    assert.ok(phases.includes("commit"), `expected a commit event; got phases: ${phases.join(",")}`);
+    const events = jsonLines.map((l) => JSON.parse(l));
+    const types = events.map((e) => e.type);
+    assert.ok(types.includes("plan.started"), `expected a plan event; got types: ${types.join(",")}`);
+    assert.ok(types.includes("commit.phase"), `expected a commit event; got types: ${types.join(",")}`);
   });
 
   it("sites deploy-dir --quiet suppresses stderr events", async () => {
@@ -2950,7 +2561,7 @@ describe("CLI e2e happy path", () => {
   it("subdomains claim", async () => {
     const { run } = await import("./cli/lib/subdomains.mjs");
     captureStart();
-    await run("claim", ["dpl_test456", "my-app", "--project", "prj_test123"]);
+    await run("claim", ["my-app", "--deployment", "dpl_test456", "--project", "prj_test123"]);
     captureStop();
     assert.ok(captured().includes("my-app"), "should claim subdomain");
   });
@@ -2958,7 +2569,7 @@ describe("CLI e2e happy path", () => {
   it("subdomains list", async () => {
     const { run } = await import("./cli/lib/subdomains.mjs");
     captureStart();
-    await run("list", ["prj_test123"]);
+    await run("list", ["--project", "prj_test123"]);
     captureStop();
     assert.ok(captured().includes("my-app"), "should list subdomains");
   });
@@ -4676,16 +4287,9 @@ describe("CLI contracts JSON-flag parse errors (GH-177)", () => {
   });
 });
 
-// ── domains list flag/positional parity (GH-209) ────────────────────────────
-// `domains add`, `domains status`, `domains delete` all accept `--project <id>`,
-// but `domains list` historically only accepted a positional [<id>] arg. Running
-// `run402 domains list --project prj_xxx` would parse `--project` as the
-// positional id and emit 'Project --project not found' — confusing and
-// inconsistent with the rest of the namespace. The fix wires `--project` through
-// `domains list` while keeping the positional form working (option #1: pure
-// extension; legacy callers unaffected).
+// ── domains list project flag ────────────────────────────────────────────────
 
-describe("CLI domains list --project / positional parity (GH-209)", () => {
+describe("CLI domains list --project", () => {
   async function seedActiveProject() {
     const { saveProject, setActiveProjectId } = await import("./cli/lib/config.mjs");
     saveProject(TEST_PROJECT.project_id, {
@@ -4739,7 +4343,7 @@ describe("CLI domains list --project / positional parity (GH-209)", () => {
     assert.ok(get, `must issue GET /domains/v1, calls: ${JSON.stringify(calls)}`);
   });
 
-  it("domains list <id> (legacy positional) still works", async () => {
+  it("domains list positional project id is rejected", async () => {
     await seedActiveProject();
     const { run } = await import("./cli/lib/domains.mjs");
     const calls = [];
@@ -4753,10 +4357,10 @@ describe("CLI domains list --project / positional parity (GH-209)", () => {
       captureStop();
       globalThis.fetch = prevFetch;
     }
-    assert.equal(threw, null,
-      `legacy 'domains list <id>' must keep working, got: ${threw?.message || ""} / stderr: ${capturedStderr()}`);
+    assert.equal(threw?.message, "process.exit(1)");
+    assert.match(capturedStderr(), /Unexpected argument/);
     const get = calls.find(c => c.method === "GET" && c.path === "/domains/v1");
-    assert.ok(get, `legacy positional must still issue GET /domains/v1, calls: ${JSON.stringify(calls)}`);
+    assert.equal(get, undefined, `must not issue GET /domains/v1, calls: ${JSON.stringify(calls)}`);
   });
 
   it("domains list (no args) falls back to active project", async () => {
@@ -4780,17 +4384,9 @@ describe("CLI domains list --project / positional parity (GH-209)", () => {
   });
 });
 
-// ── subdomains list flag/positional parity (GH-231) ─────────────────────────
-// Same shape as GH-209 but for `subdomains list`. `subdomains claim` and
-// `subdomains delete` accept `--project <id>`, but `subdomains list`
-// previously only accepted a positional [<id>] arg. Running
-// `run402 subdomains list --project prj_xxx` parsed `--project` as the
-// positional id and emitted 'Project --project not found' — same misleading
-// PROJECT_NOT_FOUND that GH-209 fixed for `domains list`. The fix mirrors
-// GH-209 (option #1: pure extension) — the legacy positional form keeps
-// working, and `--project` now resolves correctly.
+// ── subdomains list project flag ─────────────────────────────────────────────
 
-describe("CLI subdomains list --project / positional parity (GH-231)", () => {
+describe("CLI subdomains list --project", () => {
   async function seedActiveProject() {
     const { saveProject, setActiveProjectId } = await import("./cli/lib/config.mjs");
     saveProject(TEST_PROJECT.project_id, {
@@ -4844,7 +4440,7 @@ describe("CLI subdomains list --project / positional parity (GH-231)", () => {
     assert.ok(get, `must issue GET /subdomains/v1, calls: ${JSON.stringify(calls)}`);
   });
 
-  it("subdomains list <id> (legacy positional) still works", async () => {
+  it("subdomains list positional project id is rejected", async () => {
     await seedActiveProject();
     const { run } = await import("./cli/lib/subdomains.mjs");
     const calls = [];
@@ -4858,10 +4454,10 @@ describe("CLI subdomains list --project / positional parity (GH-231)", () => {
       captureStop();
       globalThis.fetch = prevFetch;
     }
-    assert.equal(threw, null,
-      `legacy 'subdomains list <id>' must keep working, got: ${threw?.message || ""} / stderr: ${capturedStderr()}`);
+    assert.equal(threw?.message, "process.exit(1)");
+    assert.match(capturedStderr(), /Unexpected argument/);
     const get = calls.find(c => c.method === "GET" && c.path === "/subdomains/v1");
-    assert.ok(get, `legacy positional must still issue GET /subdomains/v1, calls: ${JSON.stringify(calls)}`);
+    assert.equal(get, undefined, `must not issue GET /subdomains/v1, calls: ${JSON.stringify(calls)}`);
   });
 
   it("subdomains list (no args) falls back to active project", async () => {

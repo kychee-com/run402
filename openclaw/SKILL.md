@@ -48,7 +48,7 @@ That's a real Postgres database + a deployed static site, paid for autonomously 
 | Run code on the server | `run402 functions deploy` |
 | Send email | `run402 email send` |
 | Sign on-chain | `run402 contracts call` |
-| One-call full-stack deploy | `run402 deploy --manifest app.json` |
+| One-call full-stack deploy | `run402 deploy apply --manifest app.json` |
 
 The active project is sticky — `run402 projects use <id>` makes it the default for every subsequent `<id>`-taking command. Most commands work without an explicit `<id>` once a project is active.
 
@@ -184,28 +184,43 @@ Use `run402 deploy diagnose --project prj_123 https://example.com/events --metho
 
 Known route warning recovery: `PUBLIC_ROUTED_FUNCTION` means review app auth, CSRF, CORS/`OPTIONS`, and cookies before retrying with `--allow-warnings`. `ROUTE_SHADOWS_STATIC_PATH` and `WILDCARD_ROUTE_SHADOWS_STATIC_PATHS` mean inspect affected paths and active routes before confirming. `STATIC_ALIAS_SHADOWS_STATIC_PATH`, `STATIC_ALIAS_RELATIVE_ASSET_RISK`, `STATIC_ALIAS_DUPLICATE_CANONICAL_URL`, `STATIC_ALIAS_EXTENSIONLESS_NON_HTML`, and `STATIC_ALIAS_TABLE_NEAR_LIMIT` are static route target warnings; prefer fewer exact static targets, fix relative assets/canonical URLs, and avoid table-exhausting page-by-page routes. `ROUTE_TARGET_CARRIED_FORWARD` means inspect carried-forward function targets. `METHOD_SPECIFIC_ROUTE_ALLOWS_GET_STATIC_FALLBACK` means confirm static fallback is intended. `WILDCARD_ROUTE_EXCLUDES_MUTATION_METHODS` means a wildcard API prefix only allows `GET`/`HEAD`; add mutation methods such as `POST` or confirm it is read-only. `ROUTE_TABLE_NEAR_LIMIT` means consolidate routes. `ROUTES_NOT_ENABLED` means deploy without `routes` or request enablement. Runtime route failure codes to branch on: `ROUTE_MANIFEST_LOAD_FAILED` (manifest/propagation), `ROUTED_INVOKE_WORKER_SECRET_MISSING` (custom-domain Worker secret), `ROUTED_INVOKE_AUTH_FAILED` (internal invoke signature), `ROUTED_ROUTE_STALE` (selected route failed release revalidation), `ROUTE_METHOD_NOT_ALLOWED` (method mismatch), and `ROUTED_RESPONSE_TOO_LARGE` (body over 6 MiB).
 
-The manifest looks like this — note the `manifest.json` entry inside `files[]`:
+The deploy manifest is a v2 `ReleaseSpec`; put the auth manifest under `database.expose`:
 
 ```json
 {
   "project_id": "prj_…",
-  "migrations_file": "setup.sql",
+  "database": {
+    "migrations": [{ "id": "001_init", "sql_path": "setup.sql" }],
+    "expose": {
+      "$schema": "https://run402.com/schemas/manifest.v1.json",
+      "version": "1",
+      "tables": [
+        { "name": "items", "expose": true, "policy": "user_owns_rows",
+          "owner_column": "user_id", "force_owner_on_insert": true }
+      ]
+    }
+  },
   "secrets": { "require": ["OPENAI_API_KEY"] },
-  "functions": [{
-    "name": "my-fn",
-    "code": "export default async (req) => new Response('ok')",
-    "config": { "timeout": 30, "memory": 256 }
-  }],
-  "files": [
-    { "file": "manifest.json", "data": "{\"$schema\":\"https://run402.com/schemas/manifest.v1.json\",\"version\":\"1\",\"tables\":[{\"name\":\"items\",\"expose\":true,\"policy\":\"user_owns_rows\",\"owner_column\":\"user_id\",\"force_owner_on_insert\":true}]}" },
-    { "file": "index.html", "data": "<!doctype html>…" },
-    { "file": "logo.png", "data": "iVBORw0…", "encoding": "base64" }
-  ],
-  "subdomain": "my-app"
+  "functions": {
+    "replace": {
+      "my-fn": {
+        "runtime": "node22",
+        "source": { "data": "export default async (req) => new Response('ok')" },
+        "config": { "timeoutSeconds": 30, "memoryMb": 256 }
+      }
+    }
+  },
+  "site": {
+    "replace": {
+      "index.html": { "data": "<!doctype html>…" },
+      "logo.png": { "data": "iVBORw0…", "encoding": "base64" }
+    }
+  },
+  "subdomains": { "set": ["my-app"] }
 }
 ```
 
-The `manifest.json` entry is **auth-as-SDLC** — your authorization travels with your code. The gateway reads it, validates it against the migration SQL, applies it, and **strips it from `files[]` before the site deploys**, so it's never publicly reachable on your subdomain. The deploy response includes `manifest_applied: true` on success. If the manifest references a table the migration doesn't create, the deploy is rejected with HTTP 400 and a structured `errors` array listing every violation.
+The `database.expose` entry is **auth-as-SDLC** — your authorization travels with the release. The gateway validates it against the migration SQL and applies it atomically. If the manifest references a table the migration doesn't create, the deploy is rejected with HTTP 400 and a structured `errors` array listing every violation.
 
 Provision first (`run402 projects provision`) so you have the `anon_key` to embed in your HTML before deploying.
 

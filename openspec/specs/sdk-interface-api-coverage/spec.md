@@ -10,7 +10,7 @@ CLI and MCP production code SHALL NOT call Run402 gateway endpoints directly. Ev
 #### Scenario: MCP SQL and REST tools use SDK
 - **WHEN** `run_sql`, `rest_query`, `apply_expose`, or `get_expose` handles a request
 - **THEN** the handler SHALL call the corresponding SDK project namespace method
-- **AND** it SHALL NOT import or call the legacy MCP `apiRequest` wrapper for that gateway request
+- **AND** it SHALL NOT introduce or call a direct MCP gateway request helper for that gateway request
 
 #### Scenario: CLI project direct calls use SDK
 - **WHEN** `run402 projects sql`, `rest`, `apply-expose`, `get-expose`, `promote-user`, or `demote-user` runs
@@ -67,8 +67,8 @@ The test suite SHALL include a mechanical guard that fails when production CLI o
 - **WHEN** production CLI or MCP code adds `fetch` usage against `API`, `getApiBase()`, `RUN402_API_BASE`, or a literal Run402 gateway URL
 - **THEN** the guard SHALL fail in CI with the offending file and line
 
-#### Scenario: MCP tool imports apiRequest
-- **WHEN** a production MCP tool imports or calls `apiRequest` for a Run402 gateway request
+#### Scenario: MCP tool bypasses the SDK
+- **WHEN** a production MCP tool imports or calls a direct gateway request helper for a Run402 gateway request
 - **THEN** the guard SHALL fail in CI
 
 #### Scenario: SDK internals are scanned separately

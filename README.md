@@ -96,7 +96,7 @@ Built-in policies: `user_owns_rows` (rows where `owner_column = auth.uid()`; wit
 
 Use `run402 projects validate-expose` or the MCP `validate_manifest` tool for a non-mutating feedback loop before applying. Optional migration SQL is used only to check manifest references; it is not executed as a PostgreSQL dry run, and this does not validate deploy manifests.
 
-**Auth-as-SDLC alternative:** drop the same JSON as `manifest.json` into your bundle's `files[]` and the gateway reads it, validates it against your migration SQL, applies it, and strips it before serving the site — so authorization travels with your code and never gets publicly served. The deploy returns `manifest_applied: true`; if a table referenced by the manifest isn't in the migration, the deploy is rejected with a structured `errors` array listing every violation.
+**Auth-as-SDLC:** put the same JSON under `database.expose` in your v2 `ReleaseSpec`. The gateway validates it against your migration SQL during deploy and rejects mismatches with a structured `errors` array listing every violation.
 
 ### Slick deploys — `deployDir` + plan/commit + progress
 
@@ -113,16 +113,8 @@ const { url, bytes_uploaded, bytes_total } = await r.sites.deployDir({
 });
 ```
 
-Progress events stream over `onEvent` (or stderr from the CLI). Both the
-unified `DeployEvent` shapes (from the v2 deploy primitive) and the legacy
-phase events below are emitted for back-compat:
-
-| phase | Fires | Extra |
-|-------|-------|-------|
-| `plan`   | After the plan response is parsed | `manifest_size` (file count) |
-| `upload` | After each missing file's bytes finish PUTing | `file`, `sha256`, `done`, `total` |
-| `commit` | Just before the commit POST | — |
-| `poll`   | Per server-side copy poll tick | `status`, `elapsed_ms` |
+Progress events stream over `onEvent` (or stderr from the CLI) as unified
+`DeployEvent` JSON objects from the v2 deploy primitive.
 
 CLI:
 
@@ -417,7 +409,6 @@ The full MCP surface — every tool is a thin shim over an SDK call.
 | `claim_subdomain` | Claim `<name>.run402.com` (idempotent; reassigns to latest deployment on subsequent deploys). |
 | `list_subdomains` / `delete_subdomain` | Manage subdomains. |
 | `add_custom_domain` / `list_custom_domains` / `check_domain_status` / `remove_custom_domain` | Point your own domain at a Run402 subdomain. |
-| `bundle_deploy` | Legacy one-call full-stack deploy: database + migrations + authorization manifest (`manifest.json` in `files[]` — gateway validates it, applies it, then strips it before serving the site) + optional legacy in-memory secrets + functions + site + subdomain. For new secret-bearing deploys, use `set_secret` first, then `deploy` with `secrets.require`. |
 | `deploy` / `deploy_resume` / `deploy_list` / `deploy_events` | Apply, resume, list, and inspect deploy operations. |
 | `deploy_release_get` / `deploy_release_active` / `deploy_release_diff` | Inspect release inventory and release-to-release diffs without starting a new deploy mutation. |
 | `deploy_diagnose_url` | URL-first deploy resolver diagnostics. Params: `project_id`, either `url` or `host`/`path`, optional `method`; returns `would_serve`, `diagnostic_status`, `match`, warnings, next steps, and fenced JSON. |

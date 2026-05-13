@@ -81,8 +81,7 @@ export interface ReleaseSpec {
 
 export interface DatabaseSpec {
   migrations?: MigrationSpec[];
-  /** Declarative authorization manifest — replaces the deprecated
-   *  template-based `rls` from the legacy bundle deploy. */
+  /** Declarative authorization manifest applied during deploy. */
   expose?: ExposeManifest;
   /** Opt-in: skip the migrate-gate phase. Only safe when migrations are
    *  declared backward-compatible (no breaking schema changes). */

@@ -154,7 +154,7 @@ export async function handleInit(args: { rail?: "x402" | "mpp" }): Promise<McpRe
   if (tierDisplay === "(none)") {
     lines.push(`**Next:** Use \`set_tier\` to subscribe to a tier (e.g. prototype).`);
   } else {
-    lines.push(`**Ready to deploy.** Use \`bundle_deploy\` or \`provision_postgres_project\` to get started.`);
+    lines.push(`**Ready to deploy.** Use \`provision_postgres_project\` to create a project, then \`deploy\` to ship a release.`);
   }
 
   return { content: [{ type: "text", text: lines.join("\n") }] };

@@ -165,20 +165,6 @@ export interface ExposeManifestValidationResult {
   warnings: ExposeManifestValidationIssue[];
 }
 
-// ─── RLS templates (used by apps.bundleDeploy expose translation) ─────
-
-export type RlsTemplate =
-  | "user_owns_rows"
-  | "public_read_authenticated_write"
-  | "public_read_write_UNRESTRICTED";
-
-export interface RlsTableSpec {
-  /** Table name (unqualified — the project's schema is implicit). */
-  table: string;
-  /** Column holding the owning user's id. Required when `template: "user_owns_rows"`. */
-  owner_column?: string;
-}
-
 // ─── pin ────────────────────────────────────────────────────────────────
 
 export interface PinResult {

@@ -14,7 +14,7 @@ If you're an MCP-host agent that already has the run402-mcp tools available, thi
 
 `run402-mcp` is a thin shim over [`@run402/sdk`](https://run402.com/llms-sdk.txt). Each MCP tool is an argv-parsing wrapper around an SDK method. The credential store at `~/.config/run402/projects.json` is shared with the CLI; provisioning a project from any surface makes its `anon_key` and `service_key` available to all of them.
 
-Tools that require **payment** (`provision_postgres_project`, `set_tier`, `bundle_deploy`, `generate_image`) return 402 payment details as **informational text** (not an error) — the LLM should reason about cost, guide the user through funding if needed, and retry the same tool call.
+Tools that require **payment** (`provision_postgres_project`, `set_tier`, `deploy`, `generate_image`) return 402 payment details as **informational text** (not an error) — the LLM should reason about cost, guide the user through funding if needed, and retry the same tool call.
 
 ## Quickstart
 
@@ -81,7 +81,7 @@ If you suspect cache staleness, **`diagnose_public_url`** returns expected vs ob
 
 JSON Schema: <https://run402.com/schemas/manifest.v1.json>. Set `$schema` on your manifest object and any editor gives autocomplete.
 
-**Preferred: ship `manifest.json` in the bundle.** When you call **`bundle_deploy`**, include a file named `manifest.json` in `files[]`. The gateway reads it, validates against the migration SQL, applies it, and **strips it from `files[]` before the site deploys** — so authorization travels with your code but never gets publicly served. Response includes `manifest_applied: true`.
+**Preferred: declare `database.expose` in deploy.** When you call **`deploy`**, put this manifest object under `database.expose`. The gateway validates it against migration SQL and applies it atomically with the rest of the release.
 
 ```json
 {
@@ -103,7 +103,7 @@ JSON Schema: <https://run402.com/schemas/manifest.v1.json>. Set `$schema` on you
 
 If the manifest references a table the migration doesn't create, the deploy is rejected with HTTP 400 and a structured `errors` array listing every violation.
 
-**Non-mutating validation.** Use **`validate_manifest`** before applying to validate the auth/expose manifest used by `manifest.json`, `database.expose`, and `apply_expose`. It accepts a manifest object or JSON string, optional `migration_sql`, and optional `project_id`. The SQL is used only for reference checks; it is not executed as a PostgreSQL dry run. This is not deploy-manifest validation.
+**Non-mutating validation.** Use **`validate_manifest`** before applying to validate the auth/expose manifest used by `database.expose` and `apply_expose`. It accepts a manifest object or JSON string, optional `migration_sql`, and optional `project_id`. The SQL is used only for reference checks; it is not executed as a PostgreSQL dry run. This is not deploy-manifest validation.
 
 **Imperative escape hatch.** For ad-hoc changes outside a deploy: **`apply_expose`** with `project_id` + `manifest`. **`get_expose`** returns the live state, with `source: "applied"` (came from a prior apply) or `"introspected"` (no manifest applied; reconstructed from DB state).
 
@@ -120,20 +120,13 @@ If the manifest references a table the migration doesn't create, the deploy is r
 
 Views always run with `security_invoker=true` — they inherit the underlying table's RLS. RPCs are not exposed unless listed in `rpcs[]` (a database event trigger revokes PUBLIC EXECUTE on every newly-created function).
 
-### Slick deploys — `deploy_site_dir` and `bundle_deploy`
+### Slick Deploys
 
 Prefer **`deploy_site_dir`** over `deploy_site` whenever you have a directory path. It walks the directory, hashes each file client-side, asks the gateway _which_ bytes it doesn't already have, and only uploads those. Re-deploying an unchanged tree returns immediately with `bytes_uploaded: 0`.
 
-The response's `content` array includes a fenced `json` block of buffered progress events you can `JSON.parse`:
+The response's `content` array includes a fenced `json` block of buffered unified `DeployEvent` objects you can `JSON.parse`.
 
-| phase | When fired | Extra |
-|-------|-----------|------|
-| `plan`   | After the planning request | `manifest_size` |
-| `upload` | After each missing file finishes PUTing | `file`, `sha256`, `done`, `total` |
-| `commit` | Just before commit | — |
-| `poll`   | Per server-side copy poll | `status`, `elapsed_ms` |
-
-For one-call full-stack deploys (database + migrations + manifest + value-free secret declarations + functions + site + subdomain), use the newer **`deploy`** / **`deploy_resume`** tools. Set secret values first with **`set_secret`**, then deploy with `secrets.require[]`; never put secret values in a deploy spec. **`bundle_deploy`** remains as a legacy compatibility tool and writes legacy in-memory secrets before deploy, but those writes are not atomic with the later commit.
+For full-stack deploys (database + migrations + manifest + value-free secret declarations + functions + site + subdomain), use **`deploy`** / **`deploy_resume`**. Set secret values first with **`set_secret`**, then deploy with `secrets.require[]`; never put secret values in a deploy spec.
 
 The `deploy` tool also accepts deploy-v2 web routes to functions and exact static files. Ordinary static files do not need route entries; start with narrow function routes plus the few static route targets that need a stable public identity:
 
@@ -256,7 +249,6 @@ For TypeScript autocomplete, `npm install @run402/functions` in your editor's pr
 - **`claim_subdomain`** — claim `<name>.run402.com`. Idempotent; auto-reassigns to latest deployment on subsequent deploys. Params: `project_id`, `name`, `deployment_id?`.
 - **`list_subdomains`** / **`delete_subdomain`** — manage subdomains.
 - **`add_custom_domain`** / **`list_custom_domains`** / **`check_domain_status`** / **`remove_custom_domain`** — point your own domain at a Run402 subdomain.
-- **`bundle_deploy`** — legacy one-call full-stack deploy: database + migrations + manifest (`manifest.json` in `files[]`) + optional legacy in-memory secrets + functions + site + subdomain. Secret writes happen before deploy and are not rolled back. For new code, prefer `set_secret` + unified `deploy`.
 - **`deploy`** — the unified deploy primitive (v1.34+). Pass a `ReleaseSpec` with replace-vs-patch semantics per resource and value-free `secrets.require` / `secrets.delete`. Returns the deploy operation and structured warnings; stops before upload/commit on confirmation-required warnings unless `allow_warnings` is true.
 - **`deploy_resume`** — resume a deploy operation by `operation_id`.
 - **`deploy_list`** — list recent deploy operations. Params: `project_id`, `limit?`.

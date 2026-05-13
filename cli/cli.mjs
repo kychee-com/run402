@@ -25,7 +25,7 @@ Commands:
   allowance   Manage your agent allowance (create, fund, balance, status)
   tier        Manage tier subscription (status, set)
   projects    Manage projects (provision, list, query, inspect, delete)
-  deploy      Deploy a full-stack app or static site (requires active tier)
+  deploy      Unified deploy operations (requires active tier)
   ci          Link GitHub Actions OIDC deploy bindings
   functions   Manage serverless functions (deploy, invoke, logs, list, delete)
   secrets     Manage project secrets (set, list, delete)
@@ -51,7 +51,7 @@ Run 'run402 <command> --help' for detailed usage of each command.
 Examples:
   run402 allowance create
   run402 allowance fund
-  run402 deploy --manifest app.json
+  run402 deploy apply --manifest app.json
   run402 projects list
   run402 projects sql <project_id> "SELECT * FROM users LIMIT 5"
   run402 functions deploy <project_id> my-fn --file handler.ts
@@ -62,7 +62,7 @@ Getting started:
   run402 init               Set up with x402 (Base Sepolia)
   run402 init mpp           Set up with MPP (Tempo Moderato)
   run402 tier set prototype  Subscribe to a tier
-  run402 deploy --manifest app.json
+  run402 deploy apply --manifest app.json
   run402 ci link github --project prj_... --manifest run402.deploy.json
 `;
 

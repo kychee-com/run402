@@ -10,10 +10,9 @@ Usage:
 Subcommands:
   claim  <name> [--project <id>] [--deployment <id>]   Claim a subdomain
   delete <name> --confirm [--project <id>]              Release a subdomain. Requires --confirm.
-  list   [<id>] | list --project <id>                   List subdomains for a project
+  list   [--project <id>]                               List subdomains for a project
 
 Options default to the active project and its last deployment when omitted.
-Legacy syntax 'claim <deployment_id> <name>' is still supported.
 
 Examples:
   run402 subdomains claim myapp
@@ -42,7 +41,6 @@ Options:
                       last deployment)
 
 Notes:
-  - Legacy syntax 'claim <deployment_id> <name>' is still supported
   - Deploy a site first (or pass --deployment) so there is a target to claim
 
 Examples:
@@ -52,14 +50,14 @@ Examples:
   list: `run402 subdomains list — List subdomains claimed by a project
 
 Usage:
-  run402 subdomains list [<id>]
+  run402 subdomains list [--project <id>]
 
-Arguments:
-  <id>                Project ID (defaults to the active project)
+Options:
+  --project <id>      Project ID (defaults to the active project)
 
 Examples:
   run402 subdomains list
-  run402 subdomains list prj_abc123
+  run402 subdomains list --project prj_abc123
 `,
   delete: `run402 subdomains delete — Release a claimed subdomain
 
@@ -87,10 +85,14 @@ async function claim(positionalArgs, flagArgs) {
     if (flagArgs[i] === "--deployment" && flagArgs[i + 1]) opts.deployment = flagArgs[++i];
   }
   let name, deploymentId;
-  if (positionalArgs.length >= 2) {
-    deploymentId = positionalArgs[0];
-    name = positionalArgs[1];
-  } else if (positionalArgs.length === 1) {
+  if (positionalArgs.length > 1) {
+    fail({
+      code: "BAD_USAGE",
+      message: `Unexpected argument for subdomains claim: ${positionalArgs[1]}`,
+      hint: "Use `run402 subdomains claim <name> --deployment <deployment_id>`.",
+    });
+  }
+  if (positionalArgs.length === 1) {
     name = positionalArgs[0];
   }
   if (!name) {
@@ -164,11 +166,14 @@ function parseProjectFlag(args) {
 async function list(args) {
   const argList = Array.isArray(args) ? args : [];
   const { project, rest } = parseProjectFlag(argList);
-  // Either --project <id> or a positional id is accepted; --project wins
-  // when both are supplied. Falls back to the active project when neither
-  // is given. Keeps backward-compat with the legacy `subdomains list <id>`
-  // form (GH-231; mirrors the GH-209 fix for `domains list`).
-  const projectId = resolveProjectId(project || rest[0]);
+  if (rest.length > 0) {
+    fail({
+      code: "BAD_USAGE",
+      message: `Unexpected argument for subdomains list: ${rest[0]}`,
+      hint: "Use `run402 subdomains list --project <id>`.",
+    });
+  }
+  const projectId = resolveProjectId(project);
   try {
     const data = await getSdk().subdomains.list(projectId);
     console.log(JSON.stringify(data, null, 2));

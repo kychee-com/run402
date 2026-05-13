@@ -47,7 +47,6 @@ import { getSchemaSchema, handleGetSchema } from "./tools/get-schema.js";
 import { getUsageSchema, handleGetUsage } from "./tools/get-usage.js";
 
 // New tools — bundle & marketplace
-import { bundleDeploySchema, handleBundleDeploy } from "./tools/bundle-deploy.js";
 import { browseAppsSchema, handleBrowseApps } from "./tools/browse-apps.js";
 import { forkAppSchema, handleForkApp } from "./tools/fork-app.js";
 import { getQuoteSchema, handleGetQuote } from "./tools/get-quote.js";
@@ -528,14 +527,7 @@ server.tool(
   async (args) => handleRemoveCustomDomain(args),
 );
 
-// ─── Bundle deploy & marketplace tools ──────────────────────────────────────
-
-server.tool(
-  "bundle_deploy",
-  "Legacy compatibility deploy. Runs migrations, applies the authorization manifest, optionally writes legacy in-memory secrets before deploy, deploys functions, deploys a static site, and claims a subdomain. Secret writes are not atomic with deploy; prefer set_secret first, then the deploy tool with secrets.require. Requires a provisioned project_id. Free with active tier. To declare authorization, include a `manifest.json` entry in `files[]`. Schema: https://run402.com/schemas/manifest.v1.json.",
-  bundleDeploySchema,
-  async (args) => handleBundleDeploy(args),
-);
+// ─── Marketplace tools ───────────────────────────────────────────────────────
 
 server.tool(
   "browse_apps",

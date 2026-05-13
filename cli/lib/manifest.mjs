@@ -7,35 +7,6 @@ const TEXT_EXTS = new Set([
 ]);
 
 /**
- * If the manifest has `migrations_file` instead of (or in addition to) `migrations`,
- * read the SQL from that file path and set `migrations` to its contents.
- * `migrations_file` is resolved relative to `baseDir`.
- *
- * On read failure, re-throws the underlying fs error with additional context
- * attached:
- *   err.field = "migrations_file"
- *   err.absPath = <absolute path that was attempted>
- * (the original Error.code / Error.message / Error.path are preserved).
- *
- * @param {object} manifest  Parsed manifest JSON (mutated in place)
- * @param {string} baseDir   Directory to resolve relative paths from
- * @returns {object}         The same manifest object
- */
-export function resolveMigrationsFile(manifest, baseDir) {
-  if (!manifest.migrations_file) return manifest;
-  const abs = resolve(baseDir, manifest.migrations_file);
-  try {
-    manifest.migrations = readFileSync(abs, "utf-8");
-  } catch (err) {
-    err.field = "migrations_file";
-    err.absPath = abs;
-    throw err;
-  }
-  delete manifest.migrations_file;
-  return manifest;
-}
-
-/**
  * Resolve `path` fields in a manifest's files array.
  *
  * For each entry that has `path` instead of `data`, reads the file from disk

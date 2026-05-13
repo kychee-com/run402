@@ -53,12 +53,10 @@ The root SDK SHALL expose:
 
 The scoped SDK SHALL expose:
 
-- `r.project(id).deploy.getRelease(releaseId, opts?): Promise<ReleaseSnapshotInventory>`
+- `r.project(id).deploy.getRelease(releaseId, opts?): Promise<ReleaseInventory>`
 - `r.project(id).deploy.getActiveRelease(opts?): Promise<ActiveReleaseInventory>`
 
 Implementations SHALL send `GET /deploy/v2/releases/{id}` and `GET /deploy/v2/releases/active` respectively, adding `?site_limit=N` only when a site limit is supplied. Release ids SHALL be path-encoded with `encodeURIComponent`. Project ids SHALL be used only for apikey resolution/auth; they SHALL NOT be sent as query parameters or body fields to these GET endpoints.
-
-For semver-minor compatibility with the existing early stubs, the SDK MAY keep deprecated overloads for `getRelease(releaseId, opts?)` and `diff(opts)` where `project` is optional in the type. At runtime, any call without a project id SHALL throw `LocalError` before making a gateway request.
 
 #### Scenario: Root get release sends apikey auth
 
@@ -66,12 +64,6 @@ For semver-minor compatibility with the existing early stubs, the SDK MAY keep d
 - **THEN** the SDK SHALL resolve apikey auth for `prj_123`
 - **AND** send `GET /deploy/v2/releases/rel_123`
 - **AND** return a typed `ReleaseInventory`
-
-#### Scenario: Root get release requires project context
-
-- **WHEN** legacy-style code calls `r.deploy.getRelease("rel_123")` without a project id
-- **THEN** the SDK SHALL fail locally with an actionable `LocalError`
-- **AND** SHALL NOT send an unauthenticated request to the gateway
 
 #### Scenario: Release id is path encoded
 

@@ -67,7 +67,6 @@ function parseCliCommands(): string[] {
   for (const action of parseDeployReleaseActions()) {
     cmds.push(`deploy:release:${action}`);
   }
-  if (existsSync(join(__dirname, "cli/lib/deploy.mjs"))) cmds.push("deploy");
   if (existsSync(join(__dirname, "cli/lib/init.mjs"))) cmds.push("init");
   if (existsSync(join(__dirname, "cli/lib/status.mjs"))) cmds.push("status");
   return cmds.sort();
@@ -84,7 +83,6 @@ function parseOpenClawCommands(): string[] {
   for (const action of parseDeployReleaseActions()) {
     cmds.push(`deploy:release:${action}`);
   }
-  if (existsSync(join(__dirname, "openclaw/scripts/deploy.mjs"))) cmds.push("deploy");
   if (existsSync(join(__dirname, "openclaw/scripts/init.mjs"))) cmds.push("init");
   if (existsSync(join(__dirname, "openclaw/scripts/status.mjs"))) cmds.push("status");
   return cmds.sort();
@@ -209,9 +207,6 @@ const SURFACE: Capability[] = [
   { id: "list_custom_domains",  endpoint: "GET /domains/v1",               mcp: "list_custom_domains",  cli: "domains:list",   openclaw: "domains:list" },
   { id: "check_domain_status",  endpoint: "GET /domains/v1/:domain",       mcp: "check_domain_status",  cli: "domains:status", openclaw: "domains:status" },
   { id: "remove_custom_domain", endpoint: "DELETE /domains/v1/:domain",    mcp: "remove_custom_domain", cli: "domains:delete", openclaw: "domains:delete" },
-
-  // ── Bundle deploy (legacy entry point — routes through v2 via SDK shim) ─
-  { id: "bundle_deploy",     endpoint: "POST /deploy/v2/plans",            mcp: "bundle_deploy",     cli: "deploy",           openclaw: "deploy" },
 
   // ── Unified deploy (v1.34+) ──────────────────────────────────────────────
   { id: "deploy",            endpoint: "POST /deploy/v2/plans",                            mcp: "deploy",            cli: "deploy:apply",      openclaw: "deploy:apply" },
@@ -426,8 +421,7 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   ci_get_binding: "ci.getBinding",
   ci_revoke_binding: "ci.revokeBinding",
 
-  // Bundle / marketplace
-  bundle_deploy: "apps.bundleDeploy",
+  // Marketplace
   browse_apps: "apps.browse",
   fork_app: "apps.fork",
   publish_app: "apps.publish",

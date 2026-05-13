@@ -19,7 +19,7 @@ npm install -g run402
 run402 init
 run402 tier set prototype
 run402 projects provision --name "my-app"    # → returns anon_key, service_key, project_id
-run402 deploy --manifest app.json            # use the anon_key in your frontend code
+run402 deploy apply --manifest app.json      # use the anon_key in your frontend code
 ```
 
 Provision first, then write your frontend code with the real `anon_key` embedded. The key has no expiry -- it's a permanent project identifier.
@@ -411,9 +411,9 @@ Common CI error codes:
 
 ---
 
-### Bundle Deploy (legacy compat — still works)
+### Unified Deploy
 
-The legacy `run402 deploy --manifest` command continues to work and routes through the v2 primitive under the hood. Prefer `run402 deploy apply` for new manifests; the legacy form is kept for the deprecation window so existing scripts and CI pipelines don't break.
+Use `run402 deploy apply --manifest app.json` for full-stack releases. The manifest is a v2 `ReleaseSpec` with explicit replace-vs-patch semantics per resource.
 
 ⚠️ You need the anon_key BEFORE writing your manifest.
 Run provision first, then write your HTML with the real key:
@@ -429,35 +429,46 @@ Create a manifest file `app.json` (use the `project_id` from provision):
 ```json
 {
   "project_id": "prj_1741340000_42",
-  "migrations": "CREATE TABLE items (id serial PRIMARY KEY, title text NOT NULL, done boolean DEFAULT false); INSERT INTO items (title) VALUES ('Buy groceries'), ('Read a book');",
-  "migrations_file": "setup.sql",
-  "functions": [{
-    "name": "my-fn",
-    "code": "export default async (req) => new Response('ok')",
-    "config": { "timeout": 30, "memory": 256 }
-  }],
-  "files": [
-    {
-      "file": "manifest.json",
-      "data": "{\"$schema\":\"https://run402.com/schemas/manifest.v1.json\",\"version\":\"1\",\"tables\":[{\"name\":\"items\",\"expose\":true,\"policy\":\"public_read_write_UNRESTRICTED\",\"i_understand_this_is_unrestricted\":true}]}"
-    },
-    { "file": "index.html", "data": "<!DOCTYPE html><html>...</html>" },
-    { "file": "style.css", "data": "body { margin: 0; }" },
-    { "file": "logo.png", "data": "iVBORw0KGgo...", "encoding": "base64" }
-  ],
-  "subdomain": "my-app"
+  "database": {
+    "migrations": [
+      {
+        "id": "001_init",
+        "sql": "CREATE TABLE items (id serial PRIMARY KEY, title text NOT NULL, done boolean DEFAULT false);"
+      }
+    ],
+    "expose": {
+      "$schema": "https://run402.com/schemas/manifest.v1.json",
+      "version": "1",
+      "tables": [
+        { "name": "items", "expose": true, "policy": "public_read_authenticated_write" }
+      ]
+    }
+  },
+  "functions": {
+    "replace": {
+      "my-fn": {
+        "runtime": "node22",
+        "source": { "data": "export default async (req) => new Response('ok')" },
+        "config": { "timeoutSeconds": 30, "memoryMb": 256 }
+      }
+    }
+  },
+  "site": {
+    "replace": {
+      "index.html": { "data": "<!DOCTYPE html><html>...</html>" },
+      "style.css": { "data": "body { margin: 0; }" },
+      "logo.png": { "data": "iVBORw0KGgo...", "encoding": "base64" }
+    }
+  },
+  "subdomains": { "set": ["my-app"] }
 }
 ```
 
-`project_id` is required (from `run402 projects provision`). All other fields are optional.
+`project_id` is required (from `run402 projects provision`). All other fields are optional; omitted top-level sections are carried forward from the current release.
 
 **Binary files (images, fonts, PDFs)**: Set `"encoding": "base64"` and provide base64-encoded data. MIME types are auto-detected from the file extension (`.png` → `image/png`, `.woff2` → `font/woff2`, etc.). Text files use `"encoding": "utf-8"` (the default — can be omitted).
 
-**Migrations** can be inline or read from a file:
-- `"migrations": "CREATE TABLE ..."` — inline SQL string
-- `"migrations_file": "setup.sql"` — read SQL from a file on disk (path relative to manifest)
-
-Use `migrations_file` when your SQL contains JSONB literals or other characters that are painful to escape inside a JSON string. If both are present, `migrations_file` wins.
+**Migrations** can be inline (`sql`) or read from a file with `sql_path` / `sql_file` on each migration entry.
 
 **Make migrations idempotent**: Use `CREATE TABLE IF NOT EXISTS` and `CREATE INDEX IF NOT EXISTS`. If you redeploy to the same project, non-idempotent migrations will fail with a 422 error (e.g., `relation "items" already exists`).
 
@@ -503,15 +514,13 @@ Built-in policies (one per table):
 
 The manifest is **convergent**: applying the same manifest twice is a no-op; items removed between applies have their policies revoked, grants revoked, triggers dropped, views dropped. Include everything you want exposed in every apply.
 
-**Conflicting sources:** bundles that include both inline `expose` and a `manifest.json` file (or legacy `rls` + `manifest.json`) are rejected with 400 — the platform refuses to silently pick one source over another.
-
 Deploy:
 
 ```bash
-run402 deploy --manifest app.json
+run402 deploy apply --manifest app.json
 ```
 
-This deploys to an existing project: runs migrations, applies the authorization manifest (from `manifest.json` in `files[]`), deploys functions, deploys the site, and claims the subdomain. Secret values must be set before deploy with `run402 secrets set`; deploy manifests may only declare `secrets.require` / `secrets.delete`. Provision the project first with `run402 projects provision`.
+This deploys to an existing project: runs migrations, applies the authorization manifest from `database.expose`, deploys functions, deploys the site, and claims the subdomain. Secret values must be set before deploy with `run402 secrets set`; deploy manifests may only declare `secrets.require` / `secrets.delete`. Provision the project first with `run402 projects provision`.
 
 ### Step-by-Step Deploy
 
@@ -586,7 +595,6 @@ SQL supports DDL + queries, returns JSON. REST uses PostgREST syntax (`select=`,
 User auth: password + Google OAuth. See "User Auth" section below.
 
 ### deploy
-- `run402 deploy --manifest app.json [--project <id>]` — legacy bundle deploy, routes through the v2 primitive
 - `run402 deploy apply --manifest app.json [--project <id>] [--quiet] [--allow-warnings]` — unified deploy primitive (v1.34+)
 - `run402 deploy resume <operation_id> [--quiet]` — re-run a stuck operation forward
 - `run402 deploy list [--project <id>] [--limit <n>]` — list recent deploy operations
@@ -677,7 +685,7 @@ const result = await adminDb().sql('SELECT * FROM users WHERE active = true');
 const rows = result.rows;
 ```
 
-**Legacy `db.from(...)` / `db.sql(...)`** (without the `(req)` call) remains as a deprecation shim that routes through `adminDb()` and emits a one-time console warning on first use. Will be removed in the next release — port to `db(req)` or `adminDb()`.
+`db` is a request-scoped function. Use `db(req).from(...)` for caller-context RLS or `adminDb().from(...)` / `adminDb().sql(...)` for service-key work.
 
 #### Calling functions from the browser
 
@@ -834,15 +842,15 @@ const asset = await client.blobs.completeUploadSession(
 
 To inspect deploy status, use `run402 deploy events <operation_id>` or `run402 deploy list --project <id>` instead of polling a deployment artifact.
 
-**CAS-backed transport**: Both `sites deploy` and `sites deploy-dir` hash each file locally and only PUT bytes the gateway doesn't already have. Re-deploying an unchanged tree returns immediately with `bytes_uploaded: 0`. The previous `--inherit` flag is removed (passing it exits 1 with a deprecation message) — incremental upload now happens automatically.
+**CAS-backed transport**: Both `sites deploy` and `sites deploy-dir` hash each file locally and only PUT bytes the gateway doesn't already have. Re-deploying an unchanged tree returns immediately with `bytes_uploaded: 0`.
 
 **Dry-run**: `run402 sites deploy-dir ./dist --project prj_... --dry-run` calls the gateway's `POST /deploy/v2/plans?dry_run=true`, prints `{status:"ok", dry_run:true, plan_id:null, operation_id:null, manifest_digest, diff, warnings, expected_events, missing_content_count}`, and exits without uploading bytes or committing a release. Use it to preview the server-authoritative plan/diff envelope.
 
-**Progress events**: `sites deploy` and `sites deploy-dir` stream JSON-line progress events to **stderr** by default; the final `{"status":"ok",...}` envelope still goes to stdout. Both the unified `DeployEvent` shapes (from the v2 deploy primitive) and legacy phase events (`{"phase":"plan","manifest_size":N}`, `{"phase":"upload",...}`, `{"phase":"commit"}`, `{"phase":"poll",...}`) are emitted. Pipe streams separately: `run402 sites deploy-dir ./dist --project p > result.json 2> events.log`. Pass `--quiet` to suppress events (stdout still gets the result envelope).
+**Progress events**: `sites deploy` and `sites deploy-dir` stream unified `DeployEvent` JSON lines to **stderr** by default; the final `{"status":"ok",...}` envelope still goes to stdout. Pipe streams separately: `run402 sites deploy-dir ./dist --project p > result.json 2> events.log`. Pass `--quiet` to suppress events (stdout still gets the result envelope).
 
 ### subdomains
 - `run402 subdomains claim <name> [--deployment <id>] [--project <id>]`
-- `run402 subdomains list [<id>]`
+- `run402 subdomains list [--project <id>]`
 - `run402 subdomains delete <name> --confirm [--project <id>]` — `--confirm` required (irreversible release).
 
 All options default to the active project. `claim` also defaults to the project's last deployment. Names: 3-63 chars, lowercase alphanumeric + hyphens. Creates `<name>.run402.com`.
@@ -851,7 +859,7 @@ All options default to the active project. `claim` also defaults to the project'
 
 ### domains
 - `run402 domains add <domain> <subdomain_name> [--project <id>]`
-- `run402 domains list [<id>]`
+- `run402 domains list [--project <id>]`
 - `run402 domains status <domain> [--project <id>]`
 - `run402 domains delete <domain> --confirm [--project <id>]` — `--confirm` required (irreversible release).
 

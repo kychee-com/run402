@@ -11,7 +11,7 @@
  *   - deploy_function (service_key auth + function deploy)
  *   - invoke_function (service_key auth + function invocation)
  *   - generate_image (x402 payment for image generation)
- *   - bundle_deploy (SIWX auth + full-stack deploy)
+ *   - deploy (SIWX auth + full-stack deploy)
  *   - Cleanup: delete function, delete project
  *
  * Prerequisites:
@@ -220,26 +220,30 @@ describe("MCP integration (live API, no mocks)", { timeout: 180_000 }, () => {
     assert.fail("generate_image failed after retries (transient server errors)");
   });
 
-  // ── Bundle deploy (SIWX auth, full-stack) ──────────────────────────
+  // ── Unified deploy (SIWX auth, full-stack) ─────────────────────────
 
-  it("bundle_deploy — deploy site + function in one call", async () => {
-    const { handleBundleDeploy } = await import("./src/tools/bundle-deploy.js");
-    const result = await handleBundleDeploy({
+  it("deploy — deploy site + function in one call", async () => {
+    const { handleDeploy } = await import("./src/tools/deploy.js");
+    const result = await handleDeploy({
       project_id: projectId,
-      files: [
-        { file: "index.html", data: "<!DOCTYPE html><html><body><h1>MCP Integration Test</h1></body></html>" },
-      ],
-      functions: [
-        {
-          name: "mcp-bundle-fn",
-          code: `export default async (req) => new Response("bundle ok")`,
+      site: {
+        replace: {
+          "index.html": "<!DOCTYPE html><html><body><h1>MCP Integration Test</h1></body></html>",
         },
-      ],
+      },
+      functions: {
+        replace: {
+          "mcp-deploy-fn": {
+            runtime: "node22",
+            source: `export default async (req) => new Response("deploy ok")`,
+          },
+        },
+      },
     });
     const out = text(result);
 
     assert.equal(result.isError, undefined, `Expected no error, got: ${out}`);
-    assert.ok(out.includes("Bundle Deployed"), `Expected 'Bundle Deployed' in: ${out}`);
+    assert.ok(out.includes("Release Activated"), `Expected 'Release Activated' in: ${out}`);
     assert.ok(out.includes(projectId), `Expected project_id in: ${out}`);
   });
 
@@ -248,10 +252,9 @@ describe("MCP integration (live API, no mocks)", { timeout: 180_000 }, () => {
   it("cleanup — delete functions", async () => {
     const { handleDeleteFunction } = await import("./src/tools/delete-function.js");
 
-    // mcp-hello is already deleted by bundle_deploy's stale function cleanup
-    // (bundle deploy removes functions not in the manifest), so skip it here.
-    const r2 = await handleDeleteFunction({ project_id: projectId, name: "mcp-bundle-fn" });
-    assert.equal(r2.isError, undefined, `Expected no error deleting mcp-bundle-fn: ${text(r2)}`);
+    // mcp-hello is already deleted by deploy's function replacement, so skip it here.
+    const r2 = await handleDeleteFunction({ project_id: projectId, name: "mcp-deploy-fn" });
+    assert.equal(r2.isError, undefined, `Expected no error deleting mcp-deploy-fn: ${text(r2)}`);
   });
 
   it("cleanup — delete project", async () => {

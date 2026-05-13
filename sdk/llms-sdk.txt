@@ -421,10 +421,9 @@ Known route warning codes and recovery:
 
 Runtime route failure codes to branch on: `ROUTE_MANIFEST_LOAD_FAILED` (manifest/propagation), `ROUTED_INVOKE_WORKER_SECRET_MISSING` (custom-domain Worker secret), `ROUTED_INVOKE_AUTH_FAILED` (internal invoke signature), `ROUTED_ROUTE_STALE` (selected route failed release revalidation), `ROUTE_METHOD_NOT_ALLOWED` (method mismatch), and `ROUTED_RESPONSE_TOO_LARGE` (body over 6 MiB).
 
-#### Backward-compat shims
+#### Node deploy convenience
 
-- `r.apps.bundleDeploy(...)` — translates legacy options into a `ReleaseSpec` and routes through `deploy.apply`. The `inherit: true` flag is silently ignored (deprecation preserved in JSDoc only).
-- `r.sites.deployDir(...)` — Node-only thin wrapper that uses `fileSetFromDir(dir)` and synthesizes both unified `DeployEvent` shapes and the legacy `{ phase: ... }` shapes for v1.32-era event consumers.
+- `r.sites.deployDir(...)` — Node-only thin wrapper that uses `fileSetFromDir(dir)`, delegates to `deploy.apply`, and emits unified `DeployEvent` shapes.
 
 ### GitHub Actions OIDC — CI credentials + the same deploy primitive
 
@@ -514,9 +513,9 @@ The manifest itself is a JSON object:
 
 Built-in policies: `user_owns_rows` (rows where `owner_column = auth.uid()`), `public_read_authenticated_write` (anyone reads, any auth user writes), `public_read_write_UNRESTRICTED` (fully open; requires `i_understand_this_is_unrestricted: true`), `custom` (provide `custom_sql`).
 
-**Preferred path: ship the manifest as `manifest.json` inside `bundle_deploy`'s `files[]`.** The gateway reads it, validates against migration SQL, applies it, and **strips it from `files[]` before serving the site** — auth-as-SDLC. Response includes `manifest_applied: true`.
+**Preferred path: put the manifest object under `database.expose` in a v2 `ReleaseSpec`.** The gateway validates it against migration SQL and applies it atomically with the rest of the release.
 
-**Non-mutating validation:** `r.projects.validateExpose(manifestOrJsonString, { project?, project_id?, migrationSql? })` validates the auth/expose manifest used by `manifest.json`, `database.expose`, and `apply_expose`. With `project` / `project_id`, validation uses the live project schema through a server-authoritative endpoint; without it, validation is projectless. Invalid JSON strings return `{ hasErrors: true, errors, warnings }` instead of throwing. `migrationSql` is reference context only and is not executed as a PostgreSQL dry run. This is not deploy-manifest validation.
+**Non-mutating validation:** `r.projects.validateExpose(manifestOrJsonString, { project?, project_id?, migrationSql? })` validates the auth/expose manifest used by `database.expose` and `apply_expose`. With `project` / `project_id`, validation uses the live project schema through a server-authoritative endpoint; without it, validation is projectless. Invalid JSON strings return `{ hasErrors: true, errors, warnings }` instead of throwing. `migrationSql` is reference context only and is not executed as a PostgreSQL dry run. This is not deploy-manifest validation.
 
 **Imperative path:** `r.projects.applyExpose(projectId, manifest)` POSTs the same JSON shape to `/projects/v1/admin/:id/expose`; `r.projects.getExpose(projectId)` reads the currently-applied manifest. Prefer `r.deploy.apply` for production deploys so schema migrations and expose policy land together, but the direct methods are useful for round-tripping an existing manifest.
 
@@ -898,8 +897,6 @@ publish(projectId, opts?: { description?, tags?, visibility?, fork_allowed? }): 
 listVersions(projectId): Promise<ListVersionsResult>
 updateVersion(projectId, versionId, opts: { description?, tags?, visibility?, fork_allowed? }): Promise<void>
 deleteVersion(projectId, versionId): Promise<void>
-
-bundleDeploy(projectId, opts?: BundleDeployOptions): Promise<BundleDeployResult>   // legacy shim → routes through r.deploy.apply
 ```
 
 Forking clones schema + site + functions into a new project. If the source has a `bootstrap` function, it runs automatically with the variables you pass; result includes `bootstrap_result` or `bootstrap_error`.

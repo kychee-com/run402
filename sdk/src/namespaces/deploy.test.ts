@@ -3202,30 +3202,6 @@ describe("Deploy release observability", () => {
     assert.equal(w.requests[0].headers?.apikey, "ak");
   });
 
-  it("supports the string release id overload when a project is supplied", async () => {
-    const w = makeWiring();
-    w.setHandler((req) => {
-      if (req.path === "/deploy/v2/releases/rel_1") return inventory;
-      throw new Error(`unexpected ${req.path}`);
-    });
-
-    const deploy = new Deploy(w.client);
-    await deploy.getRelease("rel_1", { project: "prj_test" });
-
-    assert.equal(w.requests[0].headers?.apikey, "ak");
-  });
-
-  it("rejects legacy getRelease(releaseId) without issuing a request", async () => {
-    const w = makeWiring();
-    const deploy = new Deploy(w.client);
-    await assert.rejects(
-      () => deploy.getRelease("rel_1"),
-      (err: unknown) =>
-        err instanceof LocalError && /project id/i.test((err as LocalError).message),
-    );
-    assert.equal(w.requests.length, 0);
-  });
-
   it("fetches the active release inventory with site_limit", async () => {
     const w = makeWiring();
     const activeInventory = { ...inventory, release_id: "rel_active", state_kind: "current_live" };
@@ -3277,14 +3253,4 @@ describe("Deploy release observability", () => {
     assert.equal(w.requests[0].headers?.apikey, "ak");
   });
 
-  it("rejects legacy diff({ from, to }) without issuing a request", async () => {
-    const w = makeWiring();
-    const deploy = new Deploy(w.client);
-    await assert.rejects(
-      () => deploy.diff({ from: "empty", to: "active" }),
-      (err: unknown) =>
-        err instanceof LocalError && /project id/i.test((err as LocalError).message),
-    );
-    assert.equal(w.requests.length, 0);
-  });
 });

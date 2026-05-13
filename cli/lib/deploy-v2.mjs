@@ -2,10 +2,6 @@
  * `run402 deploy apply` and `run402 deploy resume` — CLI wrappers over the
  * unified deploy primitive (`r.deploy.apply` / `r.deploy.resume`).
  *
- * The legacy `run402 deploy --manifest …` command is preserved in
- * `cli/lib/deploy.mjs` and continues to work; this file adds the new
- * subcommand surface.
- *
  * Manifest format mirrors the MCP `deploy` tool's input schema:
  *   {
  *     "project_id": "...",
@@ -19,9 +15,8 @@
  *     "idempotency_key": "..."
  *   }
  *
- * File entries: `{ "data": "...", "encoding": "utf-8" | "base64", "contentType": "..." }`
- * — same shape used by `bundle_deploy`. UTF-8 is the default; binary files
- * pass `"encoding": "base64"`.
+ * File entries: `{ "data": "...", "encoding": "utf-8" | "base64", "contentType": "..." }`.
+ * UTF-8 is the default; binary files pass `"encoding": "base64"`.
  */
 
 import { readFileSync } from "node:fs";
@@ -315,8 +310,7 @@ async function applyCmd(args) {
   // GH-232: Reject empty specs client-side. Without this guard,
   // `run402 deploy apply --spec '{}'` (and `--manifest <empty>`) would silently
   // send an empty ReleaseSpec to /deploy/v2/plans with no signal that nothing
-  // was deployed. This mirrors the GH-185 guard already in place for the
-  // legacy `run402 deploy --manifest` path.
+  // was deployed.
   //
   // `deploy apply` is v2-only — only meaningful keys are the v2 ReleaseSpec
   // shape (database, site, functions, secrets, subdomains, domains).
@@ -797,9 +791,9 @@ async function releaseGetCmd(args) {
   const project = resolveProjectId(opts.project);
 
   try {
-    const sdkOpts = { project };
+    const sdkOpts = { project, releaseId: opts.releaseId };
     if (opts.siteLimit !== null) sdkOpts.siteLimit = opts.siteLimit;
-    const release = await getSdk().deploy.getRelease(opts.releaseId, sdkOpts);
+    const release = await getSdk().deploy.getRelease(sdkOpts);
     console.log(JSON.stringify({ status: "ok", release }, null, 2));
   } catch (err) {
     reportSdkError(err);

@@ -337,30 +337,8 @@ export class Deploy {
    * pass the owning project id. `siteLimit` controls how many site paths the
    * gateway includes before reporting `site.totals.paths`.
    */
-  async getRelease(opts: ReleaseInventoryByIdOptions): Promise<ReleaseInventory>;
-  async getRelease(
-    releaseId: string,
-    opts: ReleaseInventoryOptions,
-  ): Promise<ReleaseInventory>;
-  /**
-   * @deprecated Pass `{ project, releaseId }` or
-   * `getRelease(releaseId, { project })`. This legacy shape throws a
-   * `LocalError` before any request because the gateway now requires apikey
-   * auth scoped to a project.
-   */
-  async getRelease(
-    releaseId: string,
-    opts?: Partial<ReleaseInventoryOptions>,
-  ): Promise<ReleaseInventory>;
-  async getRelease(
-    releaseIdOrOpts: string | ReleaseInventoryByIdOptions,
-    maybeOpts: Partial<ReleaseInventoryOptions> = {},
-  ): Promise<ReleaseInventory> {
-    const opts =
-      typeof releaseIdOrOpts === "string"
-        ? { ...maybeOpts, releaseId: releaseIdOrOpts }
-        : releaseIdOrOpts;
-    if (!opts.project) {
+  async getRelease(opts: ReleaseInventoryByIdOptions): Promise<ReleaseInventory> {
+    if (!opts?.project) {
       throw new LocalError(
         "r.deploy.getRelease requires a project id ({ project: 'prj_...', releaseId: 'rel_...' })",
         "fetching release inventory",
@@ -409,18 +387,7 @@ export class Deploy {
    * `"empty"`, `"active"`, or a release id. `to` may be `"active"` or a
    * release id; the gateway treats `"active"` as the current-live target.
    */
-  async diff(opts: ReleaseDiffOptions): Promise<ReleaseToReleaseDiff>;
-  /**
-   * @deprecated Pass `project` with the diff selectors. This legacy shape
-   * throws a `LocalError` before any request because the gateway now requires
-   * apikey auth scoped to a project.
-   */
-  async diff(
-    opts: Omit<ReleaseDiffOptions, "project"> & { project?: string },
-  ): Promise<ReleaseToReleaseDiff>;
-  async diff(
-    opts: ReleaseDiffOptions | (Omit<ReleaseDiffOptions, "project"> & { project?: string }),
-  ): Promise<ReleaseToReleaseDiff> {
+  async diff(opts: ReleaseDiffOptions): Promise<ReleaseToReleaseDiff> {
     if (!opts?.project) {
       throw new LocalError(
         "r.deploy.diff requires a project id ({ project: 'prj_...', from, to })",

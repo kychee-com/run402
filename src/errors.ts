@@ -20,7 +20,7 @@ export interface ToolResult {
  * and lifecycle signals (lifecycle_state, entered_state_at, next_transition_at,
  * scheduled_purge_at) when the gateway returns them on grace-state 402s.
  *
- * @param res  The response from apiRequest() — needs `status` and `body`.
+ * @param res  A response-like object with `status` and `body`.
  * @param context  Short verb phrase: "running SQL", "deploying function", etc.
  */
 export function formatApiError(

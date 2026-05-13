@@ -61,8 +61,9 @@ export async function handleDeployReleaseGet(args: {
   site_limit?: number;
 }): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
   try {
-    const release = await getSdk().deploy.getRelease(args.release_id, {
+    const release = await getSdk().deploy.getRelease({
       project: args.project_id,
+      releaseId: args.release_id,
       siteLimit: args.site_limit,
     });
     return {

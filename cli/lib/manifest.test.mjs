@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { resolveFilePathsInManifest, resolveMigrationsFile } from "./manifest.mjs";
+import { resolveFilePathsInManifest } from "./manifest.mjs";
 
 let tempDir;
 
@@ -13,7 +13,6 @@ before(() => {
   writeFileSync(join(tempDir, "index.html"), "<!DOCTYPE html><html><body>Hello</body></html>");
   writeFileSync(join(tempDir, "style.css"), "body { margin: 0; }");
   writeFileSync(join(tempDir, "logo.png"), Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])); // PNG header
-  writeFileSync(join(tempDir, "setup.sql"), "CREATE TABLE items (id serial PRIMARY KEY, data jsonb);\nINSERT INTO items (data) VALUES ('[{\"x\":0.5}]');");
 });
 
 after(() => {
@@ -85,43 +84,6 @@ describe("resolveFilePathsInManifest", () => {
     };
     assert.throws(
       () => resolveFilePathsInManifest(manifest, tempDir),
-      /ENOENT/,
-    );
-  });
-});
-
-describe("resolveMigrationsFile", () => {
-  it("reads SQL from migrations_file and sets migrations", () => {
-    const manifest = { migrations_file: "setup.sql" };
-    resolveMigrationsFile(manifest, tempDir);
-    assert.ok(manifest.migrations.includes("CREATE TABLE items"));
-    assert.ok(manifest.migrations.includes('[{"x":0.5}]'), "should preserve JSON literals without escaping issues");
-    assert.equal(manifest.migrations_file, undefined, "migrations_file should be removed");
-  });
-
-  it("overwrites inline migrations when migrations_file is present", () => {
-    const manifest = { migrations: "SELECT 1", migrations_file: "setup.sql" };
-    resolveMigrationsFile(manifest, tempDir);
-    assert.ok(manifest.migrations.includes("CREATE TABLE items"));
-    assert.equal(manifest.migrations_file, undefined);
-  });
-
-  it("leaves manifest untouched when no migrations_file", () => {
-    const manifest = { migrations: "SELECT 1" };
-    resolveMigrationsFile(manifest, tempDir);
-    assert.equal(manifest.migrations, "SELECT 1");
-  });
-
-  it("handles manifest with neither migrations nor migrations_file", () => {
-    const manifest = { files: [] };
-    resolveMigrationsFile(manifest, tempDir);
-    assert.equal(manifest.migrations, undefined);
-  });
-
-  it("throws on missing migrations file", () => {
-    const manifest = { migrations_file: "does-not-exist.sql" };
-    assert.throws(
-      () => resolveMigrationsFile(manifest, tempDir),
       /ENOENT/,
     );
   });
