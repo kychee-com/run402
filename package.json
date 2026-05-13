@@ -21,10 +21,10 @@
     "functions"
   ],
   "scripts": {
-    "build:core": "tsc -p core/tsconfig.json",
-    "build:sdk": "mkdir -p sdk/core-dist && cp core/dist/*.js sdk/core-dist/ && cp core/dist/*.d.ts sdk/core-dist/ && tsc -p sdk/tsconfig.json",
-    "build:functions": "tsc -p functions/tsconfig.json",
-    "build": "npm run build:core && npm run build:sdk && npm run build:functions && tsc && mkdir -p cli/core-dist cli/sdk/dist cli/sdk/core-dist && cp core/dist/*.js cli/core-dist/ && cp -R sdk/dist/. cli/sdk/dist/ && cp sdk/core-dist/*.js cli/sdk/core-dist/",
+    "build:core": "rm -rf core/dist && tsc -p core/tsconfig.json",
+    "build:sdk": "rm -rf sdk/dist sdk/core-dist && mkdir -p sdk/core-dist && cp core/dist/*.js sdk/core-dist/ && cp core/dist/*.d.ts sdk/core-dist/ && tsc -p sdk/tsconfig.json",
+    "build:functions": "rm -rf functions/dist && tsc -p functions/tsconfig.json",
+    "build": "rm -rf dist cli/core-dist cli/sdk/dist cli/sdk/core-dist && npm run build:core && npm run build:sdk && npm run build:functions && tsc && mkdir -p cli/core-dist cli/sdk/dist cli/sdk/core-dist && cp core/dist/*.js cli/core-dist/ && cp -R sdk/dist/. cli/sdk/dist/ && cp sdk/core-dist/*.js cli/sdk/core-dist/",
     "start": "node dist/index.js",
     "test:skill": "node --test --import tsx SKILL.test.ts",
     "test:sync": "node --test --import tsx sync.test.ts",
