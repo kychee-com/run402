@@ -49,6 +49,7 @@ before(async () => {
     const { dirname } = await import("node:path");
     const thisDir = dirname(fileURLToPath(import.meta.url));
     const searchPaths = [
+      join(thisDir, "..", "run402-private", ".env"),
       join(thisDir, "..", "run402", ".env"),
       join(thisDir, "..", "..", "dev", "run402", ".env"),
     ];
@@ -61,7 +62,7 @@ before(async () => {
     }
   }
   if (!buyerKey) {
-    throw new Error("BUYER_PRIVATE_KEY not found. Set env var or ensure ../run402/.env exists.");
+    throw new Error("BUYER_PRIVATE_KEY not found. Set env var or ensure ../run402-private/.env exists.");
   }
 
   tempDir = mkdtempSync(join(tmpdir(), "run402-mcp-integ-"));
@@ -92,7 +93,7 @@ before(async () => {
 after(() => {
   delete process.env.RUN402_CONFIG_DIR;
   delete process.env.RUN402_API_BASE;
-  rmSync(tempDir, { recursive: true, force: true });
+  if (tempDir) rmSync(tempDir, { recursive: true, force: true });
 });
 
 // ─── Helper ──────────────────────────────────────────────────────────────────

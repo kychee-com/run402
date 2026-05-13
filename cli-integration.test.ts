@@ -118,7 +118,7 @@ after(async () => {
   (process as { exit: (code?: number) => never }).exit = originalExit;
   delete process.env.RUN402_CONFIG_DIR;
   delete process.env.RUN402_API_BASE;
-  rmSync(tempDir, { recursive: true, force: true });
+  if (tempDir) rmSync(tempDir, { recursive: true, force: true });
 });
 
 beforeEach(() => {
@@ -399,7 +399,7 @@ describe("CLI integration (live API, no mocks)", { timeout: 180_000 }, () => {
   it("subdomains list", async () => {
     const { run } = await import("./cli/lib/subdomains.mjs");
     captureStart();
-    await run("list", [projectId]);
+    await run("list", ["--project", projectId]);
     captureStop();
     assert.ok(captured().includes(subdomainName), "should list the subdomain");
   });
@@ -554,19 +554,25 @@ describe("CLI integration (live API, no mocks)", { timeout: 180_000 }, () => {
   });
 
   it("mpp: deploy site", async () => {
-    const { run } = await import("./cli/lib/deploy.mjs");
+    const { runDeployV2 } = await import("./cli/lib/deploy-v2.mjs");
     const manifestPath = join(tempDir, "mpp-manifest.json");
     writeFileSync(
       manifestPath,
       JSON.stringify({
-        files: [{ file: "index.html", data: "<!DOCTYPE html><html><body><h1>MPP Test App</h1></body></html>" }],
+        site: {
+          replace: {
+            "index.html": "<!DOCTYPE html><html><body><h1>MPP Test App</h1></body></html>",
+          },
+        },
       }),
     );
     captureStart();
-    await run(["--manifest", manifestPath, "--project", mppProjectId]);
+    await runDeployV2("apply", ["--manifest", manifestPath, "--project", mppProjectId, "--quiet"]);
     captureStop();
     const out = captured();
-    assert.ok(out.includes(mppProjectId) || out.includes("sites.run402.com"), `Expected deploy result in: ${out}`);
+    const data = capturedJson();
+    assert.equal(data.status, "ok");
+    assert.ok(data.release_id || out.includes("sites.run402.com"), `Expected deploy result in: ${out}`);
   });
 
   it("mpp: projects delete", async () => {
