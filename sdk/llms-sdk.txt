@@ -388,7 +388,10 @@ import {
   buildDeployResolveSummary,
   normalizeDeployResolveRequest,
   run402,
+  type DeployResolveAuthorizationResult,
+  type DeployResolveCasObject,
   type DeployResolveResponse,
+  type DeployResolveResponseVariant,
 } from "@run402/sdk/node";
 
 const r = run402();
@@ -399,10 +402,14 @@ const request = normalizeDeployResolveRequest({
 });
 const resolution: DeployResolveResponse = await r.deploy.resolve(request);
 const summary = buildDeployResolveSummary(resolution, request);
+const auth: DeployResolveAuthorizationResult | undefined = resolution.authorization_result ?? undefined;
+const cas: DeployResolveCasObject | undefined = resolution.cas_object ?? undefined;
+const variant: DeployResolveResponseVariant | undefined = resolution.response_variant ?? undefined;
 console.log(summary.would_serve, summary.diagnostic_status, summary.match, request.ignored);
+void auth; void cas; void variant;
 ```
 
-`r.deploy.resolve({ project, url, method })` and scoped `p.deploy.resolve({ url, method })` also accept lower-level `{ project, host, path?, method? }`. URL query strings/fragments are ignored for lookup and surfaced in `request.ignored`. When returned, `asset_path`, `reachability_authority`, and `direct` explain which release asset backs the public URL and whether reachability came from implicit file-path mode, explicit `site.public_paths`, or a route-only static alias. Current known `match` literals are `host_missing`, `manifest_missing`, `path_error`, `none`, `static_exact`, `static_index`, `spa_fallback`, and `spa_fallback_missing`; preserve unknown future strings. Today resolve is authoritative for host/static/SPAfallback diagnostics, not complete route introspection unless future gateways return route context. `result` is diagnostic body status, not SDK HTTP transport status, so host misses can be successful calls with `would_serve: false`. Do not use resolve as a fetch, cache purge, or cache-policy oracle, and do not hard-code `cache_policy` strings; branch on `cache_class` and preserve unknown cache classes.
+`r.deploy.resolve({ project, url, method })` and scoped `p.deploy.resolve({ url, method })` also accept lower-level `{ project, host, path?, method? }`. URL query strings/fragments are ignored for lookup and surfaced in `request.ignored`. When returned, `asset_path`, `reachability_authority`, and `direct` explain which release asset backs the public URL and whether reachability came from implicit file-path mode, explicit `site.public_paths`, or a route-only static alias. Stable-host diagnostics may also include `authorization_result`, `cas_object` (`sha256`, `exists`, `expected_size`, `actual_size`), hostname-specific `response_variant`, and route/static fields such as `allow`, `route_pattern`, `target_type`, `target_name`, and `target_file`. Current known `match` literals are `host_missing`, `manifest_missing`, `active_release_missing`, `path_error`, `none`, `static_exact`, `static_index`, `spa_fallback`, `spa_fallback_missing`, `route_function`, `route_static_alias`, and `route_method_miss`; preserve unknown future strings. Known `authorization_result` values include `authorized`, `not_public`, `not_applicable`, `manifest_missing`, `target_missing`, `active_release_missing`, `path_error`, `missing_cas_object`, `unfinalized_or_deleting_cas_object`, `size_mismatch`, and `unauthorized_cas_object`. `result` is diagnostic body status, not SDK HTTP transport status, so host misses can be successful calls with `would_serve: false`. Do not use resolve as a fetch, cache purge, or cache-policy oracle; branch on structured fields such as `cache_class`, `allow`, and `cas_object`, and preserve unknown cache classes.
 
 Known route warning codes and recovery:
 

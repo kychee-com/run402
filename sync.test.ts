@@ -1102,6 +1102,38 @@ describe("deploy route surface alignment", () => {
     }
   });
 
+  it("keeps stable-host resolve diagnostic fields documented across public surfaces", () => {
+    const docs = [
+      "README.md",
+      "SKILL.md",
+      "llms-mcp.txt",
+      "cli/README.md",
+      "cli/llms-cli.txt",
+      "sdk/README.md",
+      "sdk/llms-sdk.txt",
+      "openclaw/SKILL.md",
+      "openclaw/README.md",
+      "documentation.md",
+      "AGENTS.md",
+    ];
+    const required: Array<[RegExp, string]> = [
+      [/authorization_result/, "authorization result field"],
+      [/cas_object/, "CAS object diagnostics"],
+      [/response_variant/, "response variant diagnostics"],
+      [/active_release_missing/, "active release missing resolve literal"],
+      [/route_function/, "function route resolve literal"],
+      [/route_static_alias/, "static route alias resolve literal"],
+      [/route_method_miss/, "route method miss resolve literal"],
+    ];
+
+    for (const file of docs) {
+      const text = readFileSync(join(__dirname, file), "utf-8");
+      for (const [pattern, label] of required) {
+        assert.match(text, pattern, `${file} must document ${label}`);
+      }
+    }
+  });
+
   it("keeps SDK route types and MCP route renderers in sync", () => {
     const deployTypes = readFileSync(join(__dirname, "sdk/src/namespaces/deploy.types.ts"), "utf-8");
     for (const name of [
@@ -1119,7 +1151,11 @@ describe("deploy route surface alignment", () => {
       "StaticManifestMetadata",
       "StaticAssetsDiff",
       "DeployResolveOptions",
+      "DeployResolveAuthorizationResult",
+      "KnownDeployResolveAuthorizationResult",
+      "DeployResolveCasObject",
       "DeployResolveResponse",
+      "DeployResolveResponseVariant",
       "DeployResolveSummary",
     ]) {
       assert.match(deployTypes, new RegExp(`export (?:interface|type|const) ${name}\\b`), `missing SDK route export ${name}`);

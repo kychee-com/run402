@@ -416,6 +416,46 @@ async function mockFetch(input, init) {
         fallback_state: "not_used",
       }));
     }
+    if (reqPath === "/missing-cas") {
+      return Promise.resolve(json({
+        hostname: host,
+        project_id: TEST_PROJECT.project_id,
+        release_id: "rel_v2_test",
+        release_generation: 7,
+        normalized_path: reqPath,
+        result: 200,
+        match: "static_exact",
+        authorized: true,
+        authorization_result: "missing_cas_object",
+        fallback_state: "not_used",
+        asset_path: "missing.js",
+        static_sha256: "d".repeat(64),
+        cas_object: {
+          sha256: "d".repeat(64),
+          exists: false,
+          expected_size: 1234,
+          actual_size: null,
+        },
+      }));
+    }
+    if (reqPath === "/events" && params.get("method") === "POST") {
+      return Promise.resolve(json({
+        hostname: host,
+        project_id: TEST_PROJECT.project_id,
+        release_id: "rel_v2_test",
+        release_generation: 7,
+        normalized_path: reqPath,
+        result: 405,
+        match: "route_method_miss",
+        authorized: true,
+        authorization_result: "not_applicable",
+        fallback_state: "method_not_static",
+        allow: ["GET", "HEAD"],
+        route_pattern: "/events",
+        target_type: "static",
+        target_file: "events.html",
+      }));
+    }
     return Promise.resolve(json({
       hostname: host,
       host_binding_id: `custom:${host}`,
@@ -1931,6 +1971,53 @@ describe("CLI e2e happy path", () => {
     assert.equal(body.diagnostic_status, 404);
     assert.equal(body.match, "host_missing");
     assert.equal(body.next_steps[0].code, "check_domain_binding");
+  });
+
+  it("deploy resolve preserves CAS failures and marks them non-serving", async () => {
+    await seedTestProject();
+    const { run } = await import("./cli/lib/deploy.mjs");
+    captureStart();
+    await run([
+      "resolve",
+      "--project",
+      "prj_test123",
+      "--host",
+      "example.com",
+      "--path",
+      "/missing-cas",
+    ]);
+    captureStop();
+    const body = JSON.parse(captured());
+    assert.equal(body.status, "ok");
+    assert.equal(body.would_serve, false);
+    assert.equal(body.match, "static_exact");
+    assert.equal(body.resolution.authorization_result, "missing_cas_object");
+    assert.equal(body.resolution.cas_object.exists, false);
+    assert.equal(body.next_steps[0].code, "redeploy_static_asset");
+  });
+
+  it("deploy diagnose summarizes route method misses with allowed methods", async () => {
+    await seedTestProject();
+    const { run } = await import("./cli/lib/deploy.mjs");
+    captureStart();
+    await run([
+      "diagnose",
+      "--project",
+      "prj_test123",
+      "https://example.com/events",
+      "--method",
+      "POST",
+    ]);
+    captureStop();
+    const body = JSON.parse(captured());
+    assert.equal(body.status, "ok");
+    assert.equal(body.would_serve, false);
+    assert.equal(body.diagnostic_status, 405);
+    assert.equal(body.match, "route_method_miss");
+    assert.deepEqual(body.resolution.allow, ["GET", "HEAD"]);
+    assert.equal(body.resolution.route_pattern, "/events");
+    assert.match(body.summary, /Allowed methods: GET, HEAD/);
+    assert.equal(body.next_steps[0].code, "check_route_methods");
   });
 
   it("deploy resolve rejects URL and host/path conflicts before network", async () => {

@@ -131,6 +131,53 @@ test("route method constants are available from package entrypoints", () => {
   }
 });
 
+test("stable-host deploy resolve diagnostic types are available from package entrypoints", () => {
+  const dir = mkdtempSync(join(tmpdir(), "run402-sdk-resolve-diagnostics-contract-"));
+  const contractPath = join(dir, "contract.ts");
+
+  try {
+    writeFileSync(
+      contractPath,
+      [
+        'import type { DeployResolveAuthorizationResult as RootAuth, KnownDeployResolveAuthorizationResult as RootKnownAuth, DeployResolveCasObject as RootCas, DeployResolveResponseVariant as RootVariant } from "@run402/sdk";',
+        'import type { DeployResolveAuthorizationResult as NodeAuth, DeployResolveCasObject as NodeCas, DeployResolveResponseVariant as NodeVariant } from "@run402/sdk/node";',
+        'const rootAuth: RootAuth = "future_authorization_result";',
+        'const rootKnownAuth: RootKnownAuth = "missing_cas_object";',
+        'const rootCas: RootCas = { sha256: "a".repeat(64), exists: false, expected_size: 100, actual_size: null };',
+        'const rootVariant: RootVariant = { kind: "html", varies_by: "hostname", hostname: "example.com", release_id: "rel_123", release_generation: 7, path: "/index.html", raw_static_sha256: "b".repeat(64), variant_inputs_hash: "c".repeat(64) };',
+        "const nodeAuth: NodeAuth = rootAuth;",
+        "const nodeCas: NodeCas = rootCas;",
+        "const nodeVariant: NodeVariant = rootVariant;",
+        "void rootKnownAuth;",
+        "void nodeAuth;",
+        "void nodeCas;",
+        "void nodeVariant;",
+        "export {};",
+      ].join("\n"),
+    );
+
+    const program = ts.createProgram([contractPath], {
+      baseUrl: REPO_DIR,
+      paths: {
+        "@run402/sdk": ["sdk/src/index.ts"],
+        "@run402/sdk/node": ["sdk/src/node/index.ts"],
+      },
+      lib: ["lib.es2022.d.ts", "lib.dom.d.ts"],
+      module: ts.ModuleKind.ESNext,
+      moduleResolution: ts.ModuleResolutionKind.Bundler,
+      noEmit: true,
+      skipLibCheck: true,
+      strict: true,
+      target: ts.ScriptTarget.ES2022,
+    });
+    const diagnostics = ts.getPreEmitDiagnostics(program);
+
+    assert.equal(formatDiagnostics(diagnostics), "");
+  } finally {
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
 test("deploy summary helper is available from package entrypoints", () => {
   const dir = mkdtempSync(join(tmpdir(), "run402-sdk-deploy-summary-contract-"));
   const contractPath = join(dir, "contract.ts");

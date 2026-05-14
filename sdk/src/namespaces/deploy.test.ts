@@ -19,6 +19,10 @@ import { Deploy } from "./deploy.js";
 import { createCiSessionCredentials } from "../ci-credentials.js";
 import type { Client, RequestOptions } from "../kernel.js";
 import type { CredentialsProvider } from "../credentials.js";
+import {
+  buildDeployResolveSummary,
+  normalizeDeployResolveRequest,
+} from "./deploy.types.js";
 import type {
   CommitResponse,
   DeployEvent,
@@ -1603,6 +1607,148 @@ describe("Deploy.apply (validation)", () => {
     assert.equal(routed.reachability_authority, "route_static_alias");
     assert.equal(routed.direct, false);
     assert.equal(routed.cache_class, "future_cache_class");
+  });
+
+  it("preserves static CAS failures and summarizes them as non-serving", async () => {
+    const w = makeWiring();
+    w.setHandler(() => ({
+      hostname: "example.com",
+      project_id: "prj_test",
+      release_id: "rel_123",
+      release_generation: 7,
+      result: 200,
+      match: "static_exact",
+      authorized: true,
+      authorization_result: "missing_cas_object",
+      fallback_state: "not_used",
+      asset_path: "assets/app.js",
+      static_sha256: "a".repeat(64),
+      cas_object: {
+        sha256: "a".repeat(64),
+        exists: false,
+        expected_size: 1234,
+        actual_size: null,
+      },
+    }) satisfies DeployResolveResponse);
+
+    const deploy = new Deploy(w.client);
+    const input = { project: "prj_test", host: "example.com", path: "/assets/app.js" } as const;
+    const result = await deploy.resolve(input);
+    const summary = buildDeployResolveSummary(
+      result,
+      normalizeDeployResolveRequest(input),
+    );
+
+    assert.equal(result.authorization_result, "missing_cas_object");
+    assert.deepEqual(result.cas_object, {
+      sha256: "a".repeat(64),
+      exists: false,
+      expected_size: 1234,
+      actual_size: null,
+    });
+    assert.equal(summary.would_serve, false);
+    assert.equal(summary.category, "cas");
+    assert.match(summary.summary, /backing CAS object is missing/);
+    assert.equal(summary.next_steps[0]?.code, "redeploy_static_asset");
+  });
+
+  it("preserves hostname-specific HTML response variant diagnostics", async () => {
+    const w = makeWiring();
+    w.setHandler(() => ({
+      hostname: "www.example.com",
+      project_id: "prj_test",
+      release_id: "rel_123",
+      release_generation: 3,
+      result: 200,
+      match: "static_exact",
+      authorized: true,
+      authorization_result: "authorized",
+      fallback_state: "not_used",
+      asset_path: "index.html",
+      static_sha256: "b".repeat(64),
+      content_type: "text/html; charset=utf-8",
+      cache_class: "html",
+      response_variant: {
+        kind: "html",
+        varies_by: "hostname",
+        hostname: "www.example.com",
+        release_id: "rel_123",
+        release_generation: 3,
+        path: "/index.html",
+        raw_static_sha256: "b".repeat(64),
+        variant_inputs_hash: "c".repeat(64),
+      },
+    }) satisfies DeployResolveResponse);
+
+    const deploy = new Deploy(w.client);
+    const result = await deploy.resolve({
+      project: "prj_test",
+      host: "www.example.com",
+      path: "/",
+    });
+
+    assert.equal(result.response_variant?.kind, "html");
+    assert.equal(result.response_variant?.varies_by, "hostname");
+    assert.equal(result.response_variant?.hostname, "www.example.com");
+    assert.equal(result.response_variant?.release_generation, 3);
+    assert.equal(result.response_variant?.variant_inputs_hash, "c".repeat(64));
+  });
+
+  it("preserves flattened route diagnostics and summarizes method misses", async () => {
+    const w = makeWiring();
+    w.setHandler(() => ({
+      hostname: "example.com",
+      result: 405,
+      match: "route_method_miss",
+      authorized: true,
+      authorization_result: "not_applicable",
+      fallback_state: "method_not_static",
+      allow: ["GET", "HEAD"],
+      route_pattern: "/events",
+      target_type: "static",
+      target_file: "events.html",
+    }) satisfies DeployResolveResponse);
+
+    const deploy = new Deploy(w.client);
+    const input = {
+      project: "prj_test",
+      host: "example.com",
+      path: "/events",
+      method: "POST",
+    } as const;
+    const result = await deploy.resolve(input);
+    const summary = buildDeployResolveSummary(
+      result,
+      normalizeDeployResolveRequest(input),
+    );
+
+    assert.equal(result.match, "route_method_miss");
+    assert.deepEqual(result.allow, ["GET", "HEAD"]);
+    assert.equal(result.route_pattern, "/events");
+    assert.equal(result.target_type, "static");
+    assert.equal(result.target_file, "events.html");
+    assert.equal(summary.would_serve, false);
+    assert.equal(summary.category, "route_method");
+    assert.match(summary.summary, /Allowed methods: GET, HEAD/);
+    assert.equal(summary.next_steps[0]?.code, "check_route_methods");
+  });
+
+  it("keeps unknown resolve matches on generic inspect guidance", () => {
+    const response = {
+      hostname: "example.com",
+      result: 599,
+      match: "future_gateway_match",
+      authorized: true,
+      fallback_state: "future_fallback",
+    } satisfies DeployResolveResponse;
+    const summary = buildDeployResolveSummary(
+      response,
+      normalizeDeployResolveRequest({ project: "prj_test", host: "example.com" }),
+    );
+
+    assert.equal(summary.would_serve, false);
+    assert.equal(summary.category, "unknown");
+    assert.equal(summary.next_steps[0]?.code, "inspect_resolution");
   });
 
   it("still accepts delete-only patch specs as deployable", async () => {

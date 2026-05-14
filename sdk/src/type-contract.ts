@@ -1,9 +1,14 @@
 import type {
   ActiveReleaseInventory,
+  DeployResolveAuthorizationResult,
+  DeployResolveCasObject,
+  DeployResolveMatch,
   DeployResolveResponse,
+  DeployResolveResponseVariant,
   DeployResolveSummary,
   DeployResolveWarning,
   DeployObservabilityWarningEntry,
+  KnownDeployResolveAuthorizationResult,
   DeploySummary,
   KnownDeployResolveMatch,
   PlanDiffEnvelope,
@@ -65,6 +70,34 @@ type _ResolveSparseHostMiss = Pick<
   "hostname" | "result" | "match" | "authorized" | "fallback_state"
 >;
 type _ResolveResultIsNumber = Assert<Equal<DeployResolveResponse["result"], number>>;
+type _ResolveAuthorizationResult = Assert<
+  Equal<
+    DeployResolveResponse["authorization_result"],
+    DeployResolveAuthorizationResult | null | undefined
+  >
+>;
+type _ResolveCasObject = Assert<
+  Equal<NonNullable<DeployResolveResponse["cas_object"]>, DeployResolveCasObject>
+>;
+type _ResolveCasActualSize = Assert<
+  Equal<DeployResolveCasObject["actual_size"], number | null | undefined>
+>;
+type _ResolveResponseVariant = Assert<
+  Equal<
+    NonNullable<DeployResolveResponse["response_variant"]>,
+    DeployResolveResponseVariant
+  >
+>;
+type _ResolveRoutePattern = Assert<
+  Equal<DeployResolveResponse["route_pattern"], string | null | undefined>
+>;
+type _ResolveTargetType = DeployResolveResponse["target_type"];
+type _ResolveTargetName = Assert<
+  Equal<DeployResolveResponse["target_name"], string | null | undefined>
+>;
+type _ResolveTargetFile = Assert<
+  Equal<DeployResolveResponse["target_file"], string | null | undefined>
+>;
 type _ResolveWarnings = DeployResolveSummary["warnings"][number] & DeployResolveWarning;
 type _InventoryStaticMetadata = Assert<
   Equal<ActiveReleaseInventory["static_manifest_metadata"], StaticManifestMetadata | null>
@@ -110,12 +143,29 @@ type _NoDeploySummaryTimings = DeploySummary["timings"];
 type _NoDeploySummaryCodeHashOld = DeploySummary["functions"]["changed"][number]["code_hash_old"];
 // @ts-expect-error route resources are replace lists, not path-keyed maps
 type _NoPathKeyedRoutes = NonNullable<ReleaseRoutesSpec>["/api/*"];
-// @ts-expect-error route-aware known literals are not part of the current private gateway contract
-const _NoKnownRouteResolveLiteral: KnownDeployResolveMatch = "route_function";
+const _KnownRouteResolveLiteral: KnownDeployResolveMatch = "route_function";
+const _KnownRouteStaticAliasResolveLiteral: KnownDeployResolveMatch = "route_static_alias";
+const _KnownRouteMethodMissResolveLiteral: KnownDeployResolveMatch = "route_method_miss";
+const _KnownActiveReleaseMissingResolveLiteral: KnownDeployResolveMatch = "active_release_missing";
+const _FutureResolveMatch: DeployResolveMatch = "future_gateway_match";
+const _KnownResolveAuthorizationResult: KnownDeployResolveAuthorizationResult = "missing_cas_object";
+const _FutureResolveAuthorizationResult: DeployResolveAuthorizationResult = "future_authorization_result";
+// @ts-expect-error unknown literals are not part of the known authorization-result union
+const _NoUnknownKnownResolveAuthorizationResult: KnownDeployResolveAuthorizationResult = "future_authorization_result";
 // @ts-expect-error implicit mode cannot carry a replace map
 const _NoImplicitPublicPathReplace: SitePublicPathsSpec = {
   mode: "implicit",
   replace: { "/events": { asset: "events.html" } },
 };
+
+void (null as unknown as _ResolveSparseHostMiss);
+void (null as unknown as _ResolveTargetType);
+void _KnownRouteResolveLiteral;
+void _KnownRouteStaticAliasResolveLiteral;
+void _KnownRouteMethodMissResolveLiteral;
+void _KnownActiveReleaseMissingResolveLiteral;
+void _FutureResolveMatch;
+void _KnownResolveAuthorizationResult;
+void _FutureResolveAuthorizationResult;
 
 export {};

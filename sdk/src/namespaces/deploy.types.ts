@@ -277,14 +277,34 @@ export type DeployResolveMethod = RouteHttpMethod | (string & {});
 export type KnownDeployResolveMatch =
   | "host_missing"
   | "manifest_missing"
+  | "active_release_missing"
   | "path_error"
   | "none"
   | "static_exact"
   | "static_index"
   | "spa_fallback"
-  | "spa_fallback_missing";
+  | "spa_fallback_missing"
+  | "route_function"
+  | "route_static_alias"
+  | "route_method_miss";
 
 export type DeployResolveMatch = LiteralUnion<KnownDeployResolveMatch>;
+
+export type KnownDeployResolveAuthorizationResult =
+  | "authorized"
+  | "not_public"
+  | "not_applicable"
+  | "manifest_missing"
+  | "target_missing"
+  | "active_release_missing"
+  | "path_error"
+  | "missing_cas_object"
+  | "unfinalized_or_deleting_cas_object"
+  | "size_mismatch"
+  | "unauthorized_cas_object";
+
+export type DeployResolveAuthorizationResult =
+  LiteralUnion<KnownDeployResolveAuthorizationResult>;
 
 export type KnownDeployResolveFallbackState =
   | "unavailable"
@@ -299,12 +319,32 @@ export type KnownDeployResolveFallbackState =
 export type DeployResolveFallbackState =
   LiteralUnion<KnownDeployResolveFallbackState>;
 
-export type KnownDeployResolveResult = 200 | 400 | 404 | 503;
+export type KnownDeployResolveResult = 200 | 400 | 404 | 405 | 503;
 
 export interface DeployResolveRouteMatch {
   pattern: string;
   methods: RouteHttpMethod[] | string[] | null;
   target: RouteTarget;
+}
+
+export interface DeployResolveCasObject {
+  sha256: string;
+  exists: boolean;
+  expected_size: number;
+  actual_size?: number | null;
+  [key: string]: unknown;
+}
+
+export interface DeployResolveResponseVariant {
+  kind: string;
+  varies_by: string | string[];
+  hostname: string;
+  release_id: string | null;
+  release_generation: number | null;
+  path: string;
+  raw_static_sha256: string;
+  variant_inputs_hash: string;
+  [key: string]: unknown;
 }
 
 export type DeployResolveOptions =
@@ -366,6 +406,14 @@ export interface DeployResolveResponse {
   content_type?: string | null;
   cache_class?: StaticCacheClass | null;
   cache_policy?: string | null;
+  authorization_result?: DeployResolveAuthorizationResult | null;
+  cas_object?: DeployResolveCasObject | null;
+  response_variant?: DeployResolveResponseVariant | null;
+  allow?: RouteHttpMethod[] | string[] | null;
+  route_pattern?: string | null;
+  target_type?: LiteralUnion<"function" | "static"> | null;
+  target_name?: string | null;
+  target_file?: string | null;
   authorized: boolean;
   fallback_state: DeployResolveFallbackState;
   error_code?: string | null;
@@ -512,9 +560,12 @@ export function buildDeployResolveSummary(
   const next_steps = deployResolveNextSteps(response);
   const would_serve =
     response.authorized === true &&
+    isDeployResolveAuthorizationPassing(response) &&
     response.result >= 200 &&
     response.result < 400 &&
-    response.match !== "host_missing";
+    response.match !== "host_missing" &&
+    response.match !== "route_method_miss" &&
+    !isDeployResolveCasFailure(response);
   const method = request.method ?? "GET";
   const url = `${method} ${request.original_url ? displayResolveUrl(request) : `https://${request.host}${request.path}`}`;
   const category = deployResolveCategory(response);
@@ -803,7 +854,13 @@ function deployResolveWarningsForRequest(
 }
 
 function deployResolveCategory(response: DeployResolveResponse): string {
+  if (isDeployResolveCasFailure(response)) return "cas";
+  if (response.match === "route_method_miss") return "route_method";
+  if (response.match === "active_release_missing") return "release";
   if (isDeployResolveRouteHit(response)) return "route";
+  if (response.match === "route_function" || response.match === "route_static_alias") {
+    return "route";
+  }
   if (isDeployResolveStaticHit(response)) return "static";
   if (response.match === "host_missing") return "host";
   if (response.match === "manifest_missing") return "manifest";
@@ -817,14 +874,39 @@ function deployResolveSummaryText(
   response: DeployResolveResponse,
   url: string,
 ): string {
+  if (isDeployResolveCasFailure(response)) {
+    const sha = response.cas_object?.sha256;
+    const suffix = sha ? ` for CAS object ${sha}` : "";
+    switch (response.authorization_result) {
+      case "missing_cas_object":
+        return `${url} matched static content, but the backing CAS object is missing${suffix}.`;
+      case "unfinalized_or_deleting_cas_object":
+        return `${url} matched static content, but the backing CAS object is not finalized or is being deleted${suffix}.`;
+      case "size_mismatch":
+        return `${url} matched static content, but the backing CAS object size does not match the release manifest${suffix}.`;
+      case "unauthorized_cas_object":
+        return `${url} matched static content, but the selected credentials are not authorized to inspect the backing CAS object${suffix}.`;
+      default:
+        return `${url} matched static content, but CAS object health prevented a servable diagnostic${suffix}.`;
+    }
+  }
   if (response.match === "host_missing") {
     return `${url} did not resolve because the host is not bound to this account/project context.`;
   }
   if (response.match === "manifest_missing") {
     return `${url} reached the host, but no active static manifest is available for diagnostics.`;
   }
+  if (response.match === "active_release_missing") {
+    return `${url} reached the host, but no active release is available for diagnostics.`;
+  }
   if (response.match === "path_error") {
     return `${url} could not be evaluated because the path is not a valid Run402 public path.`;
+  }
+  if (response.match === "route_method_miss") {
+    const allowed = formatAllowedMethods(response.allow);
+    return allowed
+      ? `${url} matched a deploy route pattern, but the method is not allowed. Allowed methods: ${allowed}.`
+      : `${url} matched a deploy route pattern, but the method is not allowed.`;
   }
   if (response.match === "none") {
     return `${url} did not match a materialized static file or SPA fallback.`;
@@ -841,6 +923,12 @@ function deployResolveSummaryText(
   if (response.match === "static_exact") {
     return `${url} would serve an exact static file.`;
   }
+  if (response.match === "route_function") {
+    return `${url} matched a deploy function route.`;
+  }
+  if (response.match === "route_static_alias") {
+    return `${url} matched a deploy static route alias.`;
+  }
   if (isDeployResolveRouteHit(response)) {
     return `${url} matched a deploy route.`;
   }
@@ -853,6 +941,66 @@ function deployResolveSummaryText(
 function deployResolveNextSteps(
   response: DeployResolveResponse,
 ): DeployResolveNextStep[] {
+  if (isDeployResolveCasFailure(response)) {
+    switch (response.authorization_result) {
+      case "unauthorized_cas_object":
+        return [
+          {
+            code: "check_credentials",
+            message: "Check that the selected project credentials can inspect the backing static asset CAS object.",
+          },
+          {
+            code: "inspect_release_asset",
+            message: "Inspect the active release asset path and redeploy the affected static asset if the CAS authorization is unexpected.",
+          },
+        ];
+      case "missing_cas_object":
+        return [
+          {
+            code: "redeploy_static_asset",
+            message: "Redeploy the affected static asset so the backing CAS object is uploaded and finalized.",
+          },
+          {
+            code: "inspect_release_asset",
+            message: "Inspect the active release asset path and CAS SHA in the full resolution payload.",
+          },
+        ];
+      case "unfinalized_or_deleting_cas_object":
+        return [
+          {
+            code: "retry_after_cas_finalization",
+            message: "Retry diagnostics after the backing CAS object has finalized, or redeploy the affected static asset.",
+          },
+          {
+            code: "inspect_release_asset",
+            message: "Inspect the active release asset path and CAS SHA in the full resolution payload.",
+          },
+        ];
+      case "size_mismatch":
+        return [
+          {
+            code: "redeploy_static_asset",
+            message: "Redeploy the affected static asset so release metadata and CAS object size agree.",
+          },
+          {
+            code: "inspect_cas_object",
+            message: "Compare cas_object.expected_size and cas_object.actual_size in the full resolution payload.",
+          },
+        ];
+      default:
+        return [
+          {
+            code: "inspect_cas_object",
+            message: "Inspect authorization_result and cas_object in the full resolution payload.",
+          },
+          {
+            code: "redeploy_static_asset",
+            message: "Redeploy the affected static asset if the CAS health failure persists.",
+          },
+        ];
+    }
+  }
+
   switch (response.match) {
     case "host_missing":
       return [
@@ -880,6 +1028,17 @@ function deployResolveNextSteps(
           message: "Deploy static site content again if the active release predates static manifest metadata.",
         },
       ];
+    case "active_release_missing":
+      return [
+        {
+          code: "check_active_release",
+          message: "Check that the project has an active deploy-v2 release.",
+        },
+        {
+          code: "deploy_release",
+          message: "Deploy site content or routes before diagnosing this public URL.",
+        },
+      ];
     case "path_error":
       return [
         {
@@ -905,6 +1064,21 @@ function deployResolveNextSteps(
           message: "Deploy the configured SPA fallback file or remove the fallback declaration.",
         },
       ];
+    case "route_method_miss": {
+      const allowed = formatAllowedMethods(response.allow);
+      return [
+        {
+          code: "check_route_methods",
+          message: allowed
+            ? `Retry with one of the allowed methods (${allowed}) or update the route method list.`
+            : "Inspect the route method list and retry with an allowed method or update the route.",
+        },
+        {
+          code: "inspect_route",
+          message: "Inspect route_pattern, target_type, target_name, and target_file in the full resolution payload.",
+        },
+      ];
+    }
     default:
       return response.result >= 200 && response.result < 400
         ? []
@@ -915,6 +1089,32 @@ function deployResolveNextSteps(
             },
           ];
   }
+}
+
+function isDeployResolveAuthorizationPassing(
+  response: DeployResolveResponse,
+): boolean {
+  const result = response.authorization_result;
+  return result === undefined || result === null || result === "authorized" || result === "not_applicable";
+}
+
+function isDeployResolveCasFailure(response: DeployResolveResponse): boolean {
+  switch (response.authorization_result) {
+    case "missing_cas_object":
+    case "unfinalized_or_deleting_cas_object":
+    case "size_mismatch":
+    case "unauthorized_cas_object":
+      return true;
+  }
+  const cas = response.cas_object;
+  if (!cas) return false;
+  if (cas.exists === false) return true;
+  return typeof cas.actual_size === "number" && cas.actual_size !== cas.expected_size;
+}
+
+function formatAllowedMethods(methods: RouteHttpMethod[] | string[] | null | undefined): string {
+  if (!methods || methods.length === 0) return "";
+  return methods.join(", ");
 }
 
 // ─── Plan + commit + operation ───────────────────────────────────────────────

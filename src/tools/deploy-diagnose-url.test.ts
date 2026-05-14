@@ -112,6 +112,65 @@ describe("deploy_diagnose_url", () => {
     assert.match(result.content[1]!.text, /static_manifest_metadata/);
   });
 
+  it("preserves CAS failures and renders CAS-specific next steps", async () => {
+    nextResolveImpl = async () => ({
+      hostname: "example.com",
+      result: 200,
+      match: "static_exact",
+      authorized: true,
+      authorization_result: "missing_cas_object",
+      fallback_state: "not_used",
+      asset_path: "assets/app.js",
+      cas_object: {
+        sha256: "a".repeat(64),
+        exists: false,
+        expected_size: 1234,
+        actual_size: null,
+      },
+    });
+
+    const result = await handleDeployDiagnoseUrl({
+      project_id: "prj_test",
+      host: "example.com",
+      path: "/assets/app.js",
+    });
+
+    assert.equal(result.isError, undefined);
+    assert.match(result.content[0]!.text, /would_serve \| false/);
+    assert.match(result.content[0]!.text, /redeploy_static_asset/);
+    assert.match(result.content[1]!.text, /"authorization_result": "missing_cas_object"/);
+    assert.match(result.content[1]!.text, /"cas_object"/);
+    assert.match(result.content[1]!.text, /"exists": false/);
+  });
+
+  it("summarizes route method misses with allowed methods", async () => {
+    nextResolveImpl = async () => ({
+      hostname: "example.com",
+      result: 405,
+      match: "route_method_miss",
+      authorized: true,
+      authorization_result: "not_applicable",
+      fallback_state: "method_not_static",
+      allow: ["GET", "HEAD"],
+      route_pattern: "/events",
+      target_type: "static",
+      target_file: "events.html",
+    });
+
+    const result = await handleDeployDiagnoseUrl({
+      project_id: "prj_test",
+      url: "https://example.com/events",
+      method: "POST",
+    });
+
+    assert.equal(result.isError, undefined);
+    assert.match(result.content[0]!.text, /route_method_miss/);
+    assert.match(result.content[0]!.text, /Allowed methods: GET, HEAD/);
+    assert.match(result.content[0]!.text, /check_route_methods/);
+    assert.match(result.content[1]!.text, /"allow": \[\n      "GET",\n      "HEAD"\n    \]/);
+    assert.match(result.content[1]!.text, /"route_pattern": "\/events"/);
+  });
+
   it("rejects URL and host/path conflicts before SDK calls", async () => {
     const result = await handleDeployDiagnoseUrl({
       project_id: "prj_test",
