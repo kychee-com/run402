@@ -1862,6 +1862,92 @@ describe("CLI e2e happy path", () => {
     assert.equal(body.urls.deployment_id, "dpl_test456");
   });
 
+  async function runDeployListLimit(limitValue) {
+    const { run } = await import("./cli/lib/deploy.mjs");
+    const { saveAllowance } = await import("./cli/lib/config.mjs");
+    await seedTestProject();
+    saveAllowance({
+      address: "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+      privateKey: "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80",
+      created: "2026-03-15T00:00:00.000Z",
+      funded: true,
+      rail: "x402",
+    });
+
+    const prevFetch = globalThis.fetch;
+    let deployListCalled = false;
+    let seenLimit = null;
+    globalThis.fetch = (input, init) => {
+      const url = typeof input === "string" ? input : (input instanceof Request ? input.url : String(input));
+      if (url.includes("/deploy/v2/operations") && !url.includes("/deploy/v2/operations/")) {
+        deployListCalled = true;
+        seenLimit = new URL(url).searchParams.get("limit");
+        return Promise.resolve(json({
+          operations: [{
+            operation_id: "op_list_test",
+            project_id: TEST_PROJECT.project_id,
+            status: "ready",
+            created_at: "2026-03-15T12:00:00Z",
+            updated_at: "2026-03-15T12:00:00Z",
+          }],
+          cursor: null,
+        }));
+      }
+      return prevFetch(input, init);
+    };
+
+    const args = ["list", "--project", TEST_PROJECT.project_id, "--limit"];
+    if (limitValue !== undefined) args.push(limitValue);
+    let threw = null;
+    captureStart();
+    try {
+      await run(args);
+    } catch (e) {
+      threw = e;
+    } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+    return {
+      threw,
+      deployListCalled,
+      seenLimit,
+      stdout: capturedStdout(),
+      stderr: capturedStderr(),
+    };
+  }
+
+  for (const badLimit of ["abc", "0", "-1", "1.5"]) {
+    it(`deploy list rejects --limit ${badLimit} before network (GH-265)`, async () => {
+      const result = await runDeployListLimit(badLimit);
+      assert.equal(result.threw?.message, "process.exit(1)");
+      assert.equal(result.deployListCalled, false, "must not call deploy list with invalid --limit");
+      const parsed = JSON.parse(result.stderr);
+      assert.equal(parsed.code, "BAD_USAGE");
+      assert.match(parsed.message, /--limit must be a positive integer/);
+      assert.deepEqual(parsed.details, { flag: "--limit", value: badLimit });
+    });
+  }
+
+  it("deploy list rejects missing --limit value before network (GH-265)", async () => {
+    const result = await runDeployListLimit(undefined);
+    assert.equal(result.threw?.message, "process.exit(1)");
+    assert.equal(result.deployListCalled, false, "must not call deploy list when --limit has no value");
+    const parsed = JSON.parse(result.stderr);
+    assert.equal(parsed.code, "BAD_USAGE");
+    assert.match(parsed.message, /--limit must be a positive integer/);
+  });
+
+  it("deploy list forwards a valid positive integer limit", async () => {
+    const result = await runDeployListLimit("7");
+    assert.equal(result.threw, null, `deploy list should succeed, got: ${result.stderr}`);
+    assert.equal(result.deployListCalled, true);
+    assert.equal(result.seenLimit, "7");
+    const body = JSON.parse(result.stdout);
+    assert.equal(body.status, "ok");
+    assert.equal(body.operations[0].operation_id, "op_list_test");
+  });
+
   it("deploy release get wraps the inventory payload", async () => {
     const { run } = await import("./cli/lib/deploy.mjs");
     captureStart();
