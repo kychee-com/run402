@@ -70,6 +70,34 @@ function encodeBillingIdentifier(identifier: BillingAccountIdentifier): string {
   return encodeURIComponent(normalized);
 }
 
+function assertNonNegativeSafeInteger(
+  value: number,
+  name: string,
+  context: string,
+): void {
+  if (!Number.isSafeInteger(value) || value < 0) {
+    throw new LocalError(`${name} must be a non-negative safe integer.`, context);
+  }
+}
+
+function checkoutIdentifierBody(
+  identifier: AccountIdentifier,
+  context: string,
+): Record<string, string> {
+  if (identifier.email && identifier.wallet) {
+    throw new LocalError(
+      "Provide either `email` or `wallet` in identifier, not both.",
+      context,
+    );
+  }
+  if (identifier.wallet) return { wallet: identifier.wallet };
+  if (identifier.email) return { email: identifier.email };
+  throw new LocalError(
+    "Provide either `email` or `wallet` in identifier.",
+    context,
+  );
+}
+
 export class Billing {
   readonly balance: (identifier: BillingAccountIdentifier) => Promise<BillingBalance>;
   readonly createEmail: (email: string) => Promise<EmailBillingAccount>;
@@ -150,15 +178,7 @@ export class Billing {
 
   /** Create a Stripe checkout for a tier subscription/renewal/upgrade. */
   async tierCheckout(tier: string, identifier: AccountIdentifier): Promise<CreateCheckoutResult> {
-    const body: Record<string, string> = {};
-    if (identifier.wallet) body.wallet = identifier.wallet;
-    else if (identifier.email) body.email = identifier.email;
-    else {
-      throw new LocalError(
-        "Provide either `email` or `wallet` in identifier.",
-        "creating tier checkout",
-      );
-    }
+    const body = checkoutIdentifierBody(identifier, "creating tier checkout");
 
     return this.client.request<CreateCheckoutResult>(`/billing/v1/tiers/${tier}/checkout`, {
       method: "POST",
@@ -170,15 +190,7 @@ export class Billing {
 
   /** Buy a $5 email pack (10,000 emails). */
   async buyEmailPack(identifier: AccountIdentifier): Promise<CreateCheckoutResult> {
-    const body: Record<string, string> = {};
-    if (identifier.wallet) body.wallet = identifier.wallet;
-    else if (identifier.email) body.email = identifier.email;
-    else {
-      throw new LocalError(
-        "Provide either `email` or `wallet` in identifier.",
-        "creating email pack checkout",
-      );
-    }
+    const body = checkoutIdentifierBody(identifier, "creating email pack checkout");
 
     return this.client.request<CreateCheckoutResult>("/billing/v1/email-packs/checkout", {
       method: "POST",
@@ -194,7 +206,10 @@ export class Billing {
       billing_account_id: opts.billingAccountId,
       enabled: opts.enabled,
     };
-    if (opts.threshold !== undefined) body.threshold = opts.threshold;
+    if (opts.threshold !== undefined) {
+      assertNonNegativeSafeInteger(opts.threshold, "threshold", "setting auto-recharge");
+      body.threshold = opts.threshold;
+    }
 
     await this.client.request<unknown>("/billing/v1/email-packs/auto-recharge", {
       method: "POST",

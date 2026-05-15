@@ -261,3 +261,99 @@ describe("billing.history", () => {
     assert.deepEqual(entry.metadata, {});
   });
 });
+
+describe("billing tier checkout identifiers", () => {
+  it("rejects both email and wallet before requesting", async () => {
+    const { fetch, calls } = mockFetch(() => {
+      throw new Error("unexpected fetch for ambiguous tier checkout identifier");
+    });
+    const sdk = makeSdk(fetch);
+
+    await assert.rejects(
+      sdk.billing.tierCheckout("hobby", {
+        email: "user@example.com",
+        wallet: "0xabc",
+      }),
+      (err: unknown) =>
+        err instanceof LocalError &&
+        err.context === "creating tier checkout" &&
+        /either `email` or `wallet`/i.test(err.message),
+    );
+    assert.equal(calls.length, 0);
+  });
+});
+
+describe("billing email pack checkout identifiers", () => {
+  it("rejects both email and wallet before requesting", async () => {
+    const { fetch, calls } = mockFetch(() => {
+      throw new Error("unexpected fetch for ambiguous email pack identifier");
+    });
+    const sdk = makeSdk(fetch);
+
+    await assert.rejects(
+      sdk.billing.buyEmailPack({
+        email: "user@example.com",
+        wallet: "0xabc",
+      }),
+      (err: unknown) =>
+        err instanceof LocalError &&
+        err.context === "creating email pack checkout" &&
+        /either `email` or `wallet`/i.test(err.message),
+    );
+    assert.equal(calls.length, 0);
+  });
+});
+
+describe("billing.setAutoRecharge", () => {
+  it("rejects invalid thresholds before requesting", async () => {
+    const invalidThresholds = [Number.NaN, 1.5, -1, Number.POSITIVE_INFINITY];
+
+    for (const threshold of invalidThresholds) {
+      const { fetch, calls } = mockFetch(() => {
+        throw new Error(`unexpected fetch for threshold ${String(threshold)}`);
+      });
+      const sdk = makeSdk(fetch);
+
+      await assert.rejects(
+        sdk.billing.setAutoRecharge({
+          billingAccountId: "acct_123",
+          enabled: true,
+          threshold,
+        }),
+        (err: unknown) =>
+          err instanceof LocalError &&
+          err.context === "setting auto-recharge" &&
+          /threshold.*non-negative safe integer/i.test(err.message),
+      );
+      assert.equal(calls.length, 0, `threshold ${String(threshold)} should not request`);
+    }
+  });
+
+  it("allows zero and positive safe integer thresholds", async () => {
+    const { fetch, calls } = mockFetch(() => jsonResponse({ status: "ok" }));
+    const sdk = makeSdk(fetch);
+
+    await sdk.billing.setAutoRecharge({
+      billingAccountId: "acct_zero",
+      enabled: true,
+      threshold: 0,
+    });
+    await sdk.billing.setAutoRecharge({
+      billingAccountId: "acct_positive",
+      enabled: true,
+      threshold: 2000,
+    });
+
+    assert.equal(calls.length, 2);
+    assert.deepEqual(JSON.parse(calls[0]!.body as string), {
+      billing_account_id: "acct_zero",
+      enabled: true,
+      threshold: 0,
+    });
+    assert.deepEqual(JSON.parse(calls[1]!.body as string), {
+      billing_account_id: "acct_positive",
+      enabled: true,
+      threshold: 2000,
+    });
+  });
+});

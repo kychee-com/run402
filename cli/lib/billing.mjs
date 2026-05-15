@@ -1,5 +1,6 @@
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail } from "./sdk-errors.mjs";
+import { parseIntegerFlag } from "./argparse.mjs";
 
 const HELP = `run402 billing — Email billing accounts, Stripe tier checkout, email packs
 
@@ -128,6 +129,23 @@ function parseFlag(args, flag) {
   return null;
 }
 
+function requireSingleBillingIdentifier(email, wallet) {
+  if (email && wallet) {
+    fail({
+      code: "BAD_USAGE",
+      message: "Provide either --email or --wallet, not both.",
+      hint: "[--email <e> | --wallet <w>]",
+    });
+  }
+  if (!email && !wallet) {
+    fail({
+      code: "BAD_USAGE",
+      message: "Must provide --email or --wallet",
+      hint: "[--email <e> | --wallet <w>]",
+    });
+  }
+}
+
 async function createEmail(args) {
   const email = args[0];
   if (!email) {
@@ -174,9 +192,7 @@ async function tierCheckout(args) {
   }
   const email = parseFlag(args, "--email");
   const wallet = parseFlag(args, "--wallet");
-  if (!email && !wallet) {
-    fail({ code: "BAD_USAGE", message: "Must provide --email or --wallet" });
-  }
+  requireSingleBillingIdentifier(email, wallet);
   try {
     const data = await getSdk().billing.tierCheckout(tier, { email: email ?? undefined, wallet: wallet ?? undefined });
     console.log(JSON.stringify(data, null, 2));
@@ -188,9 +204,7 @@ async function tierCheckout(args) {
 async function buyPack(args) {
   const email = parseFlag(args, "--email");
   const wallet = parseFlag(args, "--wallet");
-  if (!email && !wallet) {
-    fail({ code: "BAD_USAGE", message: "Must provide --email or --wallet" });
-  }
+  requireSingleBillingIdentifier(email, wallet);
   try {
     const data = await getSdk().billing.buyEmailPack({ email: email ?? undefined, wallet: wallet ?? undefined });
     console.log(JSON.stringify(data, null, 2));
@@ -210,11 +224,14 @@ async function autoRecharge(args) {
     });
   }
   const thresholdStr = parseFlag(args, "--threshold");
+  const threshold = args.includes("--threshold")
+    ? parseIntegerFlag("--threshold", thresholdStr, { min: 0 })
+    : undefined;
   try {
     await getSdk().billing.setAutoRecharge({
       billingAccountId: accountId,
       enabled: state === "on",
-      threshold: thresholdStr ? Number(thresholdStr) : undefined,
+      threshold,
     });
     console.log(JSON.stringify({ status: "ok", billing_account_id: accountId, enabled: state === "on" }));
   } catch (err) {
