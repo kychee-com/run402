@@ -16,7 +16,7 @@ This monorepo ships **five interfaces**:
 - **Functions library** (`functions/`) — in-function helper imported _inside_ deployed serverless functions. Exposes `db(req)`, `adminDb()`, `getUser()`, `email`, `ai`. Published as `@run402/functions` on npm. Distinct from the SDK: this is the request-scoped, in-function shape; the SDK is the typed external client. The two are complementary, not redundant.
 - **OpenClaw skill** (`openclaw/`) — script-based skill for OpenClaw agents, re-exports from CLI modules.
 
-Workspace layout: `package.json` declares `cli`, `sdk`, and `functions` as npm workspaces. `core/` is shared internal code, not an npm package.
+Workspace layout: `package.json` declares `cli`, `sdk`, and `functions` as npm workspaces, and `pnpm-workspace.yaml` mirrors that set for pnpm-based hosts. `core/` is shared internal code, not an npm package.
 
 The first four packages release in lockstep via the `/publish` skill at the same version (the skill also supports per-package selection for off-cycle patches). MCP, CLI, OpenClaw, and the Node SDK all share the request kernel via `@run402/sdk`. `@run402/functions` is the exception — it makes raw `fetch()` calls against the project's own endpoints using ambient request context. `core/` holds filesystem primitives (keystore, allowance, SIWE signing) that the Node SDK provider wraps.
 
