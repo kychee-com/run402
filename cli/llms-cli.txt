@@ -280,7 +280,7 @@ run402 deploy resolve --project prj_123 --url https://example.com/events?utm=x#h
 run402 deploy resolve --project prj_123 --host example.com --path /events --method GET
 ```
 
-`list` returns `{ operations: [...], cursor }` (page through with `--cursor` against the gateway when the cursor is non-null). `events` returns the same `DeployEvent` shapes that `apply` emits inline.
+`list` returns `{ operations: [...], cursor }`; the SDK and MCP `deploy_list` surface accept that cursor for pagination when it is non-null. `events` returns the same `DeployEvent` shapes that `apply` emits inline.
 
 `release active` and `release get` return `{ "status": "ok", "release": ReleaseInventory }`. Inventories include release metadata, `state_kind` (`current_live`, `effective`, or `desired_manifest`), site paths (capped by `--site-limit`), `static_public_paths` when returned, functions, secret keys only, subdomains, materialized routes, applied migrations, `release_generation`, `static_manifest_sha256`, nullable `static_manifest_metadata`, and inventory warnings when returned. `site.paths` is the release static asset inventory; `static_public_paths[]` is the browser reachability inventory with `public_path`, `asset_path`, `reachability_authority`, `direct`, cache class, and content type. `static_manifest_metadata: null` means unavailable, not zero; when present it includes `file_count`, `total_bytes`, `cache_classes`, `cache_class_sources`, and `spa_fallback`.
 

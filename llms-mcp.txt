@@ -257,7 +257,7 @@ For TypeScript autocomplete, `npm install @run402/functions` in your editor's pr
 - **`add_custom_domain`** / **`list_custom_domains`** / **`check_domain_status`** / **`remove_custom_domain`** — point your own domain at a Run402 subdomain.
 - **`deploy`** — the unified deploy primitive (v1.34+). Pass a `ReleaseSpec` with replace-vs-patch semantics per resource and value-free `secrets.require` / `secrets.delete`. Returns the deploy operation and structured warnings; stops before upload/commit on confirmation-required warnings unless `allow_warnings` is true.
 - **`deploy_resume`** — resume a deploy operation by `operation_id`.
-- **`deploy_list`** — list recent deploy operations. Params: `project_id`, `limit?`.
+- **`deploy_list`** — list recent deploy operations. Params: `project_id`, `limit?`, `cursor?`.
 - **`deploy_events`** — fetch recorded events for a deploy operation. Params: `project_id`, `operation_id`.
 - **`deploy_release_get`** — fetch release inventory by id. Params: `project_id`, `release_id`, `site_limit?`. Returns release metadata, state kind, site paths, `static_public_paths` browser reachability entries, functions, secret keys, subdomains, materialized routes, applied migrations, `release_generation`, `static_manifest_sha256`, nullable `static_manifest_metadata` (`file_count`, `total_bytes`, `cache_classes`, `cache_class_sources`, `spa_fallback`), and warnings when returned. `site.paths` is release static assets; `static_public_paths[]` carries `public_path`, `asset_path`, `reachability_authority`, and `direct`.
 - **`deploy_release_active`** — fetch the current-live release inventory. Params: `project_id`, `site_limit?`.
