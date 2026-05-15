@@ -6,6 +6,7 @@
 
 import type { Client } from "../kernel.js";
 import { LocalError } from "../errors.js";
+import { assertPositiveSafeInteger } from "../validation.js";
 import type { ProjectTier } from "./projects.types.js";
 
 export interface BillingBalance {
@@ -102,7 +103,10 @@ export class Billing {
   /** Fetch billing history by wallet or email identifier. */
   async getHistory(identifier: BillingAccountIdentifier, limit?: number): Promise<BillingHistoryResult> {
     const encoded = encodeBillingIdentifier(identifier);
-    const path = limit
+    if (limit !== undefined) {
+      assertPositiveSafeInteger(limit, "limit", "fetching billing history");
+    }
+    const path = limit !== undefined
       ? `/billing/v1/accounts/${encoded}/history?limit=${encodeURIComponent(String(limit))}`
       : `/billing/v1/accounts/${encoded}/history`;
     return this.client.request<BillingHistoryResult>(path, {

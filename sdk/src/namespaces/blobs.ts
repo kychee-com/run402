@@ -9,6 +9,7 @@
 
 import type { Client } from "../kernel.js";
 import { ApiError, LocalError, ProjectNotFound } from "../errors.js";
+import { assertPositiveSafeInteger } from "../validation.js";
 import type {
   BlobCacheKind,
   BlobCdnEnvelope,
@@ -488,11 +489,13 @@ export class Blobs {
     projectId: string,
     opts: BlobWaitFreshOptions,
   ): Promise<BlobWaitFreshResult> {
+    const timeoutMs = opts.timeoutMs ?? 60_000;
+    assertPositiveSafeInteger(timeoutMs, "timeoutMs", "waiting for CDN freshness");
+
     const project = await this.client.getProject(projectId);
     if (!project) throw new ProjectNotFound(projectId, "waiting for CDN freshness");
 
     const expected = opts.sha256.toLowerCase();
-    const timeoutMs = opts.timeoutMs ?? 60_000;
     const start = Date.now();
 
     let attempts = 0;
@@ -563,6 +566,10 @@ export class Blobs {
 
   /** List blobs with optional prefix + pagination. */
   async ls(projectId: string, opts: BlobLsOptions = {}): Promise<BlobLsResult> {
+    if (opts.limit !== undefined) {
+      assertPositiveSafeInteger(opts.limit, "limit", "listing blobs");
+    }
+
     const project = await this.client.getProject(projectId);
     if (!project) throw new ProjectNotFound(projectId, "listing blobs");
 

@@ -6,6 +6,7 @@
 
 import type { Client } from "../kernel.js";
 import { ApiError, LocalError, ProjectNotFound } from "../errors.js";
+import { assertPositiveSafeInteger } from "../validation.js";
 
 const SLUG_RE = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/;
 
@@ -353,6 +354,10 @@ export class Email {
 
   /** List messages in the project's mailbox. */
   async list(projectId: string, opts: ListEmailsOptions = {}): Promise<EmailSummary[]> {
+    if (opts.limit !== undefined) {
+      assertPositiveSafeInteger(opts.limit, "limit", "listing emails");
+    }
+
     const { id, serviceKey } = await this.resolveMailbox(projectId);
     const qs = new URLSearchParams();
     if (opts.limit !== undefined) qs.set("limit", String(opts.limit));
