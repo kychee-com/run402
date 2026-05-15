@@ -601,6 +601,16 @@ describe("function log filter validation", () => {
     assert.equal(calls.length, 0, "bad --request-id must not hit the network");
   });
 
+  it("functions logs rejects --tail above the gateway bound before network", async () => {
+    const { run } = await import("./cli/lib/functions.mjs");
+    const err = await expectExit1(() =>
+      run("logs", ["prj_test123", "hello", "--tail", "1001"]));
+
+    assert.equal(err.code, "BAD_FLAG");
+    assert.equal(err.details.flag, "--tail");
+    assert.equal(calls.length, 0, "bad --tail must not hit the network");
+  });
+
   it("functions logs follow dedupes same-millisecond entries by event identity", async () => {
     const { run } = await import("./cli/lib/functions.mjs");
     const prevFetch = globalThis.fetch;
@@ -657,6 +667,66 @@ describe("function log filter validation", () => {
       new URL(logCalls[1].url).searchParams.get("since"),
       String(new Date(timestamp).getTime()),
     );
+  });
+});
+
+describe("function deploy argv validation", () => {
+  it("functions deploy rejects empty dependency entries before network", async () => {
+    const { run } = await import("./cli/lib/functions.mjs");
+    const codePath = join(tempDir, "handler-deps.mjs");
+    writeFileSync(codePath, "export default async () => new Response('ok')");
+
+    for (const deps of ["axios,", "axios,,date-fns", "axios,   "]) {
+      calls = [];
+      const err = await expectExit1(() =>
+        run("deploy", ["prj_test123", "hello", "--file", codePath, "--deps", deps]));
+
+      assert.equal(err.code, "BAD_USAGE");
+      assert.equal(err.details.flag, "--deps");
+      assert.equal(calls.length, 0, `bad --deps ${JSON.stringify(deps)} must not hit the network`);
+    }
+  });
+});
+
+describe("function update argv validation", () => {
+  it("functions update rejects --schedule with --schedule-remove before network", async () => {
+    const { run } = await import("./cli/lib/functions.mjs");
+    const err = await expectExit1(() =>
+      run("update", ["prj_test123", "hello", "--schedule", "0 * * * *", "--schedule-remove"]));
+
+    assert.equal(err.code, "BAD_USAGE");
+    assert.match(err.message, /mutually exclusive/);
+    assert.equal(calls.length, 0, "conflicting schedule flags must not hit the network");
+  });
+});
+
+describe("function list/delete argv validation", () => {
+  it("functions list rejects extra args and flags before network", async () => {
+    const { run } = await import("./cli/lib/functions.mjs");
+
+    let err = await expectExit1(() => run("list", ["prj_test123", "extra"]));
+    assert.equal(err.code, "BAD_USAGE");
+    assert.equal(calls.length, 0, "extra list arg must not hit the network");
+
+    calls = [];
+    err = await expectExit1(() => run("list", ["prj_test123", "--json"]));
+    assert.equal(err.code, "UNKNOWN_FLAG");
+    assert.equal(err.details.flag, "--json");
+    assert.equal(calls.length, 0, "unknown list flag must not hit the network");
+  });
+
+  it("functions delete rejects extra args and flags before network", async () => {
+    const { run } = await import("./cli/lib/functions.mjs");
+
+    let err = await expectExit1(() => run("delete", ["prj_test123", "hello", "extra"]));
+    assert.equal(err.code, "BAD_USAGE");
+    assert.equal(calls.length, 0, "extra delete arg must not hit the network");
+
+    calls = [];
+    err = await expectExit1(() => run("delete", ["prj_test123", "hello", "--force"]));
+    assert.equal(err.code, "UNKNOWN_FLAG");
+    assert.equal(err.details.flag, "--force");
+    assert.equal(calls.length, 0, "unknown delete flag must not hit the network");
   });
 });
 

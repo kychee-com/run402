@@ -20,6 +20,19 @@ import type {
   FunctionUpdateResult,
 } from "./functions.types.js";
 
+const FUNCTION_NAME_RE = /^[a-z0-9][a-z0-9_-]{0,127}$/;
+const FUNCTION_LOG_REQUEST_ID_RE = /^req_[A-Za-z0-9_-]{4,128}$/;
+const FUNCTION_LOG_TAIL_MAX = 1000;
+const FUNCTION_DEP_MAX = 30;
+const FUNCTION_DEP_SPEC_MAX = 200;
+const DISALLOWED_FUNCTION_DEPS = new Set([
+  "@run402/functions",
+  "run402-functions",
+  "sharp",
+  "canvas",
+  "bcrypt",
+]);
+
 export class Functions {
   constructor(private readonly client: Client) {}
 
@@ -42,7 +55,11 @@ export class Functions {
    * @throws {PaymentRequired} when the project lease has expired.
    */
   async deploy(projectId: string, opts: FunctionDeployOptions): Promise<FunctionDeployResult> {
+    validateFunctionName(opts.name, "name", "deploying function");
+    validateFunctionCode(opts.code, "code", "deploying function");
     validateFunctionConfig(opts.config, "config", "deploying function");
+    validateFunctionDeps(opts.deps, "deps", "deploying function");
+    validateFunctionSchedule(opts.schedule, "schedule", "deploying function");
 
     const project = await this.client.getProject(projectId);
     if (!project) throw new ProjectNotFound(projectId, "deploying function");
@@ -121,11 +138,13 @@ export class Functions {
     if (!project) throw new ProjectNotFound(projectId, "fetching function logs");
 
     const tail = opts.tail ?? 50;
+    validatePositiveJsonInteger(tail, "tail", "fetching function logs", { max: FUNCTION_LOG_TAIL_MAX });
     const search = new URLSearchParams({ tail: String(tail) });
     if (opts.since !== undefined) {
       search.set("since", String(parseLogSince(opts.since)));
     }
     if (opts.requestId !== undefined) {
+      validateFunctionLogRequestId(opts.requestId, "requestId", "fetching function logs");
       search.set("request_id", opts.requestId);
     }
     const path = `/projects/v1/admin/${projectId}/functions/${encodeURIComponent(name)}/logs?${search.toString()}`;
@@ -177,6 +196,14 @@ export class Functions {
   ): Promise<FunctionUpdateResult> {
     validatePositiveJsonInteger(opts.timeout, "timeout", "updating function");
     validatePositiveJsonInteger(opts.memory, "memory", "updating function");
+    validateFunctionSchedule(opts.schedule, "schedule", "updating function");
+
+    if (opts.schedule === undefined && opts.timeout === undefined && opts.memory === undefined) {
+      throw new LocalError(
+        "Provide at least one supported update field: schedule, timeout, or memory",
+        "updating function",
+      );
+    }
 
     const project = await this.client.getProject(projectId);
     if (!project) throw new ProjectNotFound(projectId, "updating function");
@@ -225,13 +252,89 @@ function validateFunctionConfig(config: unknown, resource: string, context: stri
   validatePositiveJsonInteger(record.memory, `${resource}.memory`, context);
 }
 
+function validateFunctionName(value: unknown, resource: string, context: string): void {
+  if (typeof value !== "string" || !FUNCTION_NAME_RE.test(value)) {
+    throw new LocalError(
+      `${resource} must be a lowercase URL-safe function name (1-128 chars, starts with a letter or digit)`,
+      context,
+    );
+  }
+}
+
+function validateFunctionCode(value: unknown, resource: string, context: string): void {
+  if (typeof value !== "string" || value.trim() === "") {
+    throw new LocalError(`${resource} must be a non-empty source string`, context);
+  }
+}
+
+function validateFunctionDeps(value: unknown, resource: string, context: string): void {
+  if (value === undefined) return;
+  if (!Array.isArray(value)) {
+    throw new LocalError(`${resource} must be an array of npm package specs`, context);
+  }
+  if (value.length > FUNCTION_DEP_MAX) {
+    throw new LocalError(`${resource} must contain at most ${FUNCTION_DEP_MAX} entries`, context);
+  }
+  for (const [index, dep] of value.entries()) {
+    const entry = `${resource}[${index}]`;
+    if (typeof dep !== "string" || dep.trim() === "") {
+      throw new LocalError(`${entry} must be a non-empty npm package spec`, context);
+    }
+    if (dep !== dep.trim()) {
+      throw new LocalError(`${entry} must not contain leading or trailing whitespace`, context);
+    }
+    if (dep.length > FUNCTION_DEP_SPEC_MAX) {
+      throw new LocalError(`${entry} must be ${FUNCTION_DEP_SPEC_MAX} characters or fewer`, context);
+    }
+    if (/\s/.test(dep)) {
+      throw new LocalError(`${entry} must not contain whitespace`, context);
+    }
+    const packageName = depPackageName(dep);
+    if (DISALLOWED_FUNCTION_DEPS.has(packageName)) {
+      throw new LocalError(`${entry} references unsupported dependency ${packageName}`, context);
+    }
+  }
+}
+
+function depPackageName(spec: string): string {
+  if (spec.startsWith("@")) {
+    const slash = spec.indexOf("/");
+    if (slash === -1) return spec;
+    const versionAt = spec.indexOf("@", slash);
+    return versionAt === -1 ? spec : spec.slice(0, versionAt);
+  }
+  const versionAt = spec.indexOf("@");
+  return versionAt === -1 ? spec : spec.slice(0, versionAt);
+}
+
+function validateFunctionSchedule(value: unknown, resource: string, context: string): void {
+  if (value === undefined || value === null) return;
+  if (typeof value !== "string") {
+    throw new LocalError(`${resource} must be a 5-field cron string, null, or undefined`, context);
+  }
+  const parts = value.trim().split(/\s+/);
+  if (value.trim() === "" || parts.length !== 5 || parts.some((part) => part === "")) {
+    throw new LocalError(`${resource} must be a 5-field cron string`, context);
+  }
+}
+
+function validateFunctionLogRequestId(value: unknown, resource: string, context: string): void {
+  if (typeof value !== "string" || !FUNCTION_LOG_REQUEST_ID_RE.test(value)) {
+    throw new LocalError(`${resource} must match req_<4-128 url-safe chars>`, context);
+  }
+}
+
 function validatePositiveJsonInteger(
   value: unknown,
   resource: string,
   context: string,
+  opts: { max?: number } = {},
 ): void {
   if (value === undefined) return;
   if (!Number.isSafeInteger(value) || (value as number) < 1) {
     throw new LocalError(`${resource} must be a positive safe JSON integer`, context);
+  }
+  if (opts.max !== undefined && (value as number) > opts.max) {
+    throw new LocalError(`${resource} must be <= ${opts.max}`, context);
   }
 }

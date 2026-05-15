@@ -5,6 +5,7 @@ import { reportSdkError, fail } from "./sdk-errors.mjs";
 import { assertKnownFlags, hasHelp, normalizeArgv, parseIntegerFlag, validateRegularFile } from "./argparse.mjs";
 
 const FUNCTION_LOG_REQUEST_ID_RE = /^req_[A-Za-z0-9_-]{4,128}$/;
+const FUNCTION_LOG_TAIL_MAX = 1000;
 
 const HELP = `run402 functions — Manage serverless functions
 
@@ -180,7 +181,7 @@ async function deploy(projectId, name, args) {
     if (args[i] === "--file" && args[i + 1]) opts.file = args[++i];
     if (args[i] === "--timeout") opts.timeout = parseIntegerFlag("--timeout", args[++i], { min: 1 });
     if (args[i] === "--memory") opts.memory = parseIntegerFlag("--memory", args[++i], { min: 1 });
-    if (args[i] === "--deps" && args[i + 1]) opts.deps = args[++i].split(",");
+    if (args[i] === "--deps" && args[i + 1]) opts.deps = parseDepsFlag(args[++i]);
     if (args[i] === "--schedule" && i + 1 < args.length) opts.schedule = args[++i];
   }
   if (!opts.file) {
@@ -239,7 +240,7 @@ async function logs(projectId, name, args) {
   let requestId = undefined;
   let follow = false;
   for (let i = 0; i < args.length; i++) {
-    if (args[i] === "--tail") tail = parseIntegerFlag("--tail", args[++i], { min: 1 });
+    if (args[i] === "--tail") tail = parseIntegerFlag("--tail", args[++i], { min: 1, max: FUNCTION_LOG_TAIL_MAX });
     if (args[i] === "--since" && args[i + 1]) since = args[++i];
     if (args[i] === "--request-id" && args[i + 1]) requestId = args[++i];
     if (args[i] === "--follow") follow = true;
@@ -360,6 +361,13 @@ async function update(projectId, name, args) {
     if (args[i] === "--timeout") timeout = parseIntegerFlag("--timeout", args[++i], { min: 1 });
     if (args[i] === "--memory") memory = parseIntegerFlag("--memory", args[++i], { min: 1 });
   }
+  if (scheduleRemove && schedule !== undefined) {
+    fail({
+      code: "BAD_USAGE",
+      message: "--schedule and --schedule-remove are mutually exclusive",
+      details: { flags: ["--schedule", "--schedule-remove"] },
+    });
+  }
 
   const updateOpts = {};
   if (scheduleRemove || schedule === "") {
@@ -385,8 +393,10 @@ async function update(projectId, name, args) {
   }
 }
 
-async function list(projectId) {
+async function list(projectId, args = []) {
   assertRequiredProject(projectId, "run402 functions list <project_id>");
+  assertKnownFlags(args, ["--help", "-h"]);
+  assertNoExtraPositionals(args, "run402 functions list <project_id>");
   try {
     const data = await getSdk().functions.list(projectId);
     console.log(JSON.stringify(data, null, 2));
@@ -395,8 +405,10 @@ async function list(projectId) {
   }
 }
 
-async function deleteFunction(projectId, name) {
+async function deleteFunction(projectId, name, args = []) {
   assertRequiredProjectAndName(projectId, name, "run402 functions delete <project_id> <name>");
+  assertKnownFlags(args, ["--help", "-h"]);
+  assertNoExtraPositionals(args, "run402 functions delete <project_id> <name>");
   try {
     await getSdk().functions.delete(projectId, name);
     console.log(JSON.stringify({ status: "ok", message: `Function '${name}' deleted.` }));
@@ -417,12 +429,36 @@ export async function run(sub, args) {
     case "invoke": await invoke(args[0], args[1], args.slice(2)); break;
     case "logs":   await logs(args[0], args[1], args.slice(2)); break;
     case "update": await update(args[0], args[1], args.slice(2)); break;
-    case "list":   await list(args[0]); break;
-    case "delete": await deleteFunction(args[0], args[1]); break;
+    case "list":   await list(args[0], args.slice(1)); break;
+    case "delete": await deleteFunction(args[0], args[1], args.slice(2)); break;
     default:
       console.error(`Unknown subcommand: ${sub}\n`);
       console.log(HELP);
       process.exit(1);
+  }
+}
+
+function parseDepsFlag(value) {
+  const raw = String(value);
+  const deps = raw.split(",").map((entry) => entry.trim());
+  if (deps.some((entry) => entry === "")) {
+    fail({
+      code: "BAD_USAGE",
+      message: "--deps must be a comma-separated list of non-empty package specs",
+      details: { flag: "--deps", value: raw },
+    });
+  }
+  return deps;
+}
+
+function assertNoExtraPositionals(args, usage) {
+  if (args.length > 0) {
+    fail({
+      code: "BAD_USAGE",
+      message: `Unexpected argument: ${args[0]}`,
+      hint: usage,
+      details: { argument: args[0] },
+    });
   }
 }
 

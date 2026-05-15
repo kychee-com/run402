@@ -135,6 +135,73 @@ describe("functions.deploy", () => {
     }
   });
 
+  it("rejects invalid name values before calling the gateway", async () => {
+    const invalidValues = ["", "  ", "-bad", "bad/name", "bad name", "Bad"];
+    for (const value of invalidValues) {
+      const { fetch, calls } = mockFetch(() => {
+        throw new Error(`unexpected fetch for ${JSON.stringify(value)}`);
+      });
+      const sdk = makeSdk(fetch);
+      await assert.rejects(
+        sdk.functions.deploy("prj_known", { name: value, code: "..." }),
+        (err: unknown) => err instanceof LocalError && /name/.test(err.message),
+      );
+      assert.equal(calls.length, 0);
+    }
+  });
+
+  it("rejects invalid code values before calling the gateway", async () => {
+    const invalidValues = ["", "  ", 42];
+    for (const value of invalidValues) {
+      const { fetch, calls } = mockFetch(() => {
+        throw new Error(`unexpected fetch for ${JSON.stringify(value)}`);
+      });
+      const sdk = makeSdk(fetch);
+      await assert.rejects(
+        sdk.functions.deploy("prj_known", { name: "x", code: value as never }),
+        (err: unknown) => err instanceof LocalError && /code/.test(err.message),
+      );
+      assert.equal(calls.length, 0);
+    }
+  });
+
+  it("rejects invalid deps before calling the gateway", async () => {
+    const invalidValues = [
+      [""],
+      ["  "],
+      ["@run402/functions"],
+      ["run402-functions"],
+      ["sharp"],
+      [42],
+    ];
+    for (const value of invalidValues) {
+      const { fetch, calls } = mockFetch(() => {
+        throw new Error(`unexpected fetch for ${JSON.stringify(value)}`);
+      });
+      const sdk = makeSdk(fetch);
+      await assert.rejects(
+        sdk.functions.deploy("prj_known", { name: "x", code: "...", deps: value as never }),
+        (err: unknown) => err instanceof LocalError && /deps/.test(err.message),
+      );
+      assert.equal(calls.length, 0);
+    }
+  });
+
+  it("rejects invalid schedule values before calling the gateway", async () => {
+    const invalidValues = ["", "  ", "* * * *", "* * * * * *", 42];
+    for (const value of invalidValues) {
+      const { fetch, calls } = mockFetch(() => {
+        throw new Error(`unexpected fetch for ${JSON.stringify(value)}`);
+      });
+      const sdk = makeSdk(fetch);
+      await assert.rejects(
+        sdk.functions.deploy("prj_known", { name: "x", code: "...", schedule: value as never }),
+        (err: unknown) => err instanceof LocalError && /schedule/.test(err.message),
+      );
+      assert.equal(calls.length, 0);
+    }
+  });
+
   it("throws ProjectNotFound without any fetch", async () => {
     const { fetch, calls } = mockFetch(() => json({}));
     const sdk = makeSdk(fetch);
@@ -232,6 +299,40 @@ describe("functions.logs", () => {
     assert.equal(calls.length, 0);
   });
 
+  it("throws LocalError for invalid tail values before fetching", async () => {
+    const invalidValues = [0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY, 1001, "10"];
+    for (const value of invalidValues) {
+      const { fetch, calls } = mockFetch(() => json({ logs: [] }));
+      const sdk = makeSdk(fetch);
+      await assert.rejects(
+        sdk.functions.logs("prj_known", "x", { tail: value as never }),
+        (err: unknown) => err instanceof LocalError && /tail/.test(err.message),
+      );
+      assert.equal(calls.length, 0);
+    }
+  });
+
+  it("throws LocalError for invalid request ids before fetching", async () => {
+    const invalidValues = ["", "req_", "trace_abc123", "req_bad space", 42];
+    for (const value of invalidValues) {
+      const { fetch, calls } = mockFetch(() => json({ logs: [] }));
+      const sdk = makeSdk(fetch);
+      await assert.rejects(
+        sdk.functions.logs("prj_known", "x", { requestId: value as never }),
+        (err: unknown) => err instanceof LocalError && /requestId/.test(err.message),
+      );
+      assert.equal(calls.length, 0);
+    }
+  });
+
+  it("allows the maximum tail value", async () => {
+    const { fetch, calls } = mockFetch(() => json({ logs: [] }));
+    const sdk = makeSdk(fetch);
+    await sdk.functions.logs("prj_known", "x", { tail: 1000 });
+    const u = new URL(calls[0]!.url);
+    assert.equal(u.searchParams.get("tail"), "1000");
+  });
+
   it("URL-encodes function names with special characters", async () => {
     const { fetch, calls } = mockFetch(() => json({ logs: [] }));
     const sdk = makeSdk(fetch);
@@ -319,6 +420,33 @@ describe("functions.update", () => {
       await assert.rejects(
         sdk.functions.update("prj_known", "x", { memory: value as never }),
         (err: unknown) => err instanceof LocalError && /memory/.test(err.message),
+      );
+      assert.equal(calls.length, 0);
+    }
+  });
+
+  it("rejects empty updates before calling the gateway", async () => {
+    const { fetch, calls } = mockFetch(() => {
+      throw new Error("unexpected fetch for empty update");
+    });
+    const sdk = makeSdk(fetch);
+    await assert.rejects(
+      sdk.functions.update("prj_known", "x", {}),
+      (err: unknown) => err instanceof LocalError && /at least one/.test(err.message),
+    );
+    assert.equal(calls.length, 0);
+  });
+
+  it("rejects invalid schedule updates before calling the gateway", async () => {
+    const invalidValues = ["", "  ", "* * * *", "* * * * * *", 42];
+    for (const value of invalidValues) {
+      const { fetch, calls } = mockFetch(() => {
+        throw new Error(`unexpected fetch for ${JSON.stringify(value)}`);
+      });
+      const sdk = makeSdk(fetch);
+      await assert.rejects(
+        sdk.functions.update("prj_known", "x", { schedule: value as never }),
+        (err: unknown) => err instanceof LocalError && /schedule/.test(err.message),
       );
       assert.equal(calls.length, 0);
     }
