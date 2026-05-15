@@ -1,7 +1,8 @@
 /**
  * `withRetry(fn, opts?)` — exponential-backoff retry helper for SDK
  * operations. Defaults to the canonical {@link isRetryableRun402Error}
- * policy so agents don't have to enumerate "should I retry this?" themselves.
+ * policy. `safeToRetry` alone does not trigger a retry; it only says a
+ * repeated mutation should not duplicate/corrupt state.
  *
  * Caller-controlled by design: the helper is policy-only. It does NOT own
  * idempotency keys. Pair with the SDK method's own `idempotencyKey`

@@ -13,8 +13,8 @@ export const deployFunctionSchema = {
     .describe("TypeScript or JavaScript source code. Must export a default async function: export default async (req: Request) => Response"),
   config: z
     .object({
-      timeout: z.number().optional().describe("Timeout in seconds (default: tier max)"),
-      memory: z.number().optional().describe("Memory in MB (default: tier max)"),
+      timeout: z.number().int().positive().safe().optional().describe("Timeout in seconds (default: tier max)"),
+      memory: z.number().int().positive().safe().optional().describe("Memory in MB (default: tier max)"),
     })
     .optional()
     .describe("Optional function configuration"),

@@ -1452,6 +1452,14 @@ function validateFunctionMap(value: unknown, resource: string): void {
     if (entry.config !== undefined) {
       const config = requireObject(entry.config, `${resource}.${name}.config`);
       validateKnownFields(config, `${resource}.${name}.config`, FUNCTION_CONFIG_FIELDS);
+      validateFunctionConfigInteger(
+        config.timeoutSeconds,
+        `${resource}.${name}.config.timeoutSeconds`,
+      );
+      validateFunctionConfigInteger(
+        config.memoryMb,
+        `${resource}.${name}.config.memoryMb`,
+      );
     }
     if (entry.files !== undefined) {
       requireObject(entry.files, `${resource}.${name}.files`);
@@ -1725,6 +1733,13 @@ function validateStringArray(value: unknown, resource: string): void {
   }
   if (value.some((entry) => typeof entry !== "string")) {
     throw invalidSpec(`ReleaseSpec.${resource} entries must be strings`, resource);
+  }
+}
+
+function validateFunctionConfigInteger(value: unknown, resource: string): void {
+  if (value === undefined) return;
+  if (!Number.isSafeInteger(value) || (value as number) < 1) {
+    throw invalidSpec(`ReleaseSpec.${resource} must be a positive safe JSON integer`, resource);
   }
 }
 

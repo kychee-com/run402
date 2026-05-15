@@ -54,6 +54,7 @@ Important fields:
 
 Safe retry policy:
 - `retryable: true` + `safe_to_retry: true` → retry, ideally with the same idempotency key for mutations
+- `safe_to_retry: true` alone is not a retry signal; it means duplicate-safe, not likely-to-succeed. Lifecycle-gated writes, auth token exchanges, and passkey verifies need the indicated action before retrying.
 - The `deploy` tool uses SDK `deploy.apply`, which already re-plans and retries safe `BASE_RELEASE_CONFLICT` races for omitted/current-base specs. A handled retry appears as a `deploy.retry` progress event; exhausted retries include `attempts`, `max_retries`, and `last_retry_code`. Do not hand-roll this specific deploy race loop around MCP calls.
 - 5xx with `safe_to_retry: false`, or `mutation_state` is `committed` / `partial` / `unknown` → inspect or poll state before retrying. For deploys, use `deploy_resume` / event polling.
 - Lifecycle / payment errors → take the action, don't blind-retry. `PROJECT_FROZEN` → `set_tier`; `PAYMENT_REQUIRED` → submit payment, then retry.

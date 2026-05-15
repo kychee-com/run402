@@ -353,11 +353,14 @@ export function isDeployError(e: unknown): e is Run402DeployError {
  * Canonical "should I retry this?" policy. Returns true when `e` is a
  * {@link Run402Error} AND any of:
  *   - `e.retryable === true` (gateway flagged it)
- *   - `e.safeToRetry === true` (gateway flagged it)
  *   - `e.kind === "network_error"` (fetch never produced a response)
  *   - `e.status` is 408 (Request Timeout), 425 (Too Early), or 429 (Too Many
  *     Requests)
  *   - `e.status` is a 5xx server error
+ *
+ * `safeToRetry` is deliberately NOT sufficient by itself: it means a repeated
+ * mutation should not duplicate/corrupt state, not that the request can succeed
+ * without a lifecycle/payment/auth action first.
  *
  * Returns false for non-Run402 errors so it can be safely called with
  * `unknown` from a catch block. Used as the default `retryIf` in
@@ -365,10 +368,22 @@ export function isDeployError(e: unknown): e is Run402DeployError {
  */
 export function isRetryableRun402Error(e: unknown): boolean {
   if (!isRun402Error(e)) return false;
-  if (e.retryable === true || e.safeToRetry === true) return true;
+  if (e.retryable === true) return true;
+  if (e.kind === "deploy_error" && e.retryable === false) return false;
+  if (hasExplicitRetryableFalse(e.body)) return false;
   if (e.kind === "network_error") return true;
   const s = e.status;
   if (s === 408 || s === 425 || s === 429) return true;
   if (typeof s === "number" && s >= 500) return true;
   return false;
+}
+
+function hasExplicitRetryableFalse(body: unknown): boolean {
+  return Boolean(
+    body &&
+      typeof body === "object" &&
+      !Array.isArray(body) &&
+      Object.prototype.hasOwnProperty.call(body, "retryable") &&
+      (body as Record<string, unknown>).retryable === false,
+  );
 }

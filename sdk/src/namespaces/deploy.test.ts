@@ -1084,6 +1084,62 @@ describe("Deploy.apply (validation)", () => {
     assert.equal(w.requests.length, 0);
   });
 
+  it("rejects invalid function config integers before issuing gateway calls", async () => {
+    const w = makeWiring();
+    const deploy = new Deploy(w.client);
+    const specs = [
+      {
+        project: "prj_test",
+        functions: {
+          replace: {
+            hello: {
+              source: "export default async () => new Response('ok')",
+              config: { timeoutSeconds: 1.5 },
+            },
+          },
+        },
+      },
+      {
+        project: "prj_test",
+        functions: {
+          patch: {
+            set: {
+              hello: {
+                source: "export default async () => new Response('ok')",
+                config: { memoryMb: "256" },
+              },
+            },
+          },
+        },
+      },
+      {
+        project: "prj_test",
+        functions: {
+          replace: {
+            hello: {
+              source: "export default async () => new Response('ok')",
+              config: { timeoutSeconds: Number.POSITIVE_INFINITY },
+            },
+          },
+        },
+      },
+    ];
+
+    for (const spec of specs) {
+      await assert.rejects(
+        () => deploy.apply(spec as never),
+        (err: unknown) => {
+          assert(err instanceof Run402DeployError);
+          assert.equal(err.code, "INVALID_SPEC");
+          assert.equal(err.phase, "validate");
+          assert.match(err.message, /positive safe JSON integer/);
+          return true;
+        },
+      );
+    }
+    assert.equal(w.requests.length, 0);
+  });
+
   it("rejects no-op ReleaseSpecs before issuing gateway calls", async () => {
     const w = makeWiring();
     const deploy = new Deploy(w.client);

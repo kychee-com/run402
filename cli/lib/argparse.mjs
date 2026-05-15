@@ -75,6 +75,13 @@ export function parseIntegerFlag(name, value, { min = 1, max = Number.POSITIVE_I
     });
   }
   const n = Number.parseInt(raw, 10);
+  if (!Number.isSafeInteger(n)) {
+    fail({
+      code: "BAD_FLAG",
+      message: `${name} must be a safe integer, got: ${raw}`,
+      details: { flag: name, value: raw },
+    });
+  }
   if (n < min) {
     fail({
       code: "BAD_FLAG",

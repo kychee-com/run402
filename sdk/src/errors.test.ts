@@ -200,11 +200,17 @@ describe("isRetryableRun402Error", () => {
     assert.equal(isRetryableRun402Error(e), true);
   });
 
-  it("respects gateway `safe_to_retry: true` envelope", () => {
-    // Even a 400 becomes retryable if the gateway flagged it safe to retry.
+  it("does not treat gateway `safe_to_retry: true` as retryable by itself", () => {
     const e = new ApiError("a", 400, { safe_to_retry: true }, "c");
     assert.equal(e.safeToRetry, true);
-    assert.equal(isRetryableRun402Error(e), true);
+    assert.equal(isRetryableRun402Error(e), false);
+  });
+
+  it("respects gateway `retryable: false` over transient HTTP status defaults", () => {
+    const e = new ApiError("rate limited", 429, { retryable: false, safe_to_retry: true }, "c");
+    assert.equal(e.retryable, false);
+    assert.equal(e.safeToRetry, true);
+    assert.equal(isRetryableRun402Error(e), false);
   });
 });
 

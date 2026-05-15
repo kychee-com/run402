@@ -421,8 +421,10 @@ and any inter-process boundary where the error needs to survive serialization.
 
 `withRetry(fn, opts?)` wraps any async call with exponential backoff. It uses
 `isRetryableRun402Error` (the canonical "should I retry this?" policy: 408 /
-425 / 429 / 5xx / `NetworkError` / gateway-flagged `retryable` or
-`safeToRetry`) by default. Pair it with the SDK method's own
+425 / 429 / 5xx / `NetworkError` / gateway-flagged `retryable`) by default.
+`safeToRetry` by itself is not a retry signal; it means the repeated mutation
+should not duplicate or corrupt state, not that lifecycle/payment/auth gates
+will become allowed without an action. Pair retries with the SDK method's own
 `idempotencyKey` so retried mutations dedup server-side:
 
 For `r.deploy.apply()`, safe `BASE_RELEASE_CONFLICT` release races are already

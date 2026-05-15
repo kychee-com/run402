@@ -116,6 +116,25 @@ describe("functions.deploy", () => {
     assert.equal(body.schedule, null);
   });
 
+  it("rejects invalid config values before calling the gateway", async () => {
+    const invalidValues = [0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY, "30"];
+    for (const value of invalidValues) {
+      const { fetch, calls } = mockFetch(() => {
+        throw new Error(`unexpected fetch for ${String(value)}`);
+      });
+      const sdk = makeSdk(fetch);
+      await assert.rejects(
+        sdk.functions.deploy("prj_known", {
+          name: "x",
+          code: "...",
+          config: { timeout: value as never },
+        }),
+        (err: unknown) => err instanceof LocalError && /config\.timeout/.test(err.message),
+      );
+      assert.equal(calls.length, 0);
+    }
+  });
+
   it("throws ProjectNotFound without any fetch", async () => {
     const { fetch, calls } = mockFetch(() => json({}));
     const sdk = makeSdk(fetch);
@@ -288,5 +307,20 @@ describe("functions.update", () => {
     await sdk.functions.update("prj_known", "x", { schedule: "0 0 * * *" });
     const body = JSON.parse(calls[0]!.body as string);
     assert.equal(body.config, undefined);
+  });
+
+  it("rejects invalid config updates before calling the gateway", async () => {
+    const invalidValues = [0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY, "256"];
+    for (const value of invalidValues) {
+      const { fetch, calls } = mockFetch(() => {
+        throw new Error(`unexpected fetch for ${String(value)}`);
+      });
+      const sdk = makeSdk(fetch);
+      await assert.rejects(
+        sdk.functions.update("prj_known", "x", { memory: value as never }),
+        (err: unknown) => err instanceof LocalError && /memory/.test(err.message),
+      );
+      assert.equal(calls.length, 0);
+    }
   });
 });

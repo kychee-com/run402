@@ -14,10 +14,16 @@ export const updateFunctionSchema = {
     ),
   timeout: z
     .number()
+    .int()
+    .positive()
+    .safe()
     .optional()
     .describe("Timeout in seconds (tier limits apply)"),
   memory: z
     .number()
+    .int()
+    .positive()
+    .safe()
     .optional()
     .describe("Memory in MB (tier limits apply)"),
 };

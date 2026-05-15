@@ -42,6 +42,8 @@ export class Functions {
    * @throws {PaymentRequired} when the project lease has expired.
    */
   async deploy(projectId: string, opts: FunctionDeployOptions): Promise<FunctionDeployResult> {
+    validateFunctionConfig(opts.config, "config", "deploying function");
+
     const project = await this.client.getProject(projectId);
     if (!project) throw new ProjectNotFound(projectId, "deploying function");
 
@@ -173,6 +175,9 @@ export class Functions {
     name: string,
     opts: FunctionUpdateOptions,
   ): Promise<FunctionUpdateResult> {
+    validatePositiveJsonInteger(opts.timeout, "timeout", "updating function");
+    validatePositiveJsonInteger(opts.memory, "memory", "updating function");
+
     const project = await this.client.getProject(projectId);
     if (!project) throw new ProjectNotFound(projectId, "updating function");
 
@@ -208,4 +213,25 @@ function parseLogSince(since: string): number {
     );
   }
   return ms;
+}
+
+function validateFunctionConfig(config: unknown, resource: string, context: string): void {
+  if (config === undefined) return;
+  if (!config || typeof config !== "object" || Array.isArray(config)) {
+    throw new LocalError(`${resource} must be an object`, context);
+  }
+  const record = config as Record<string, unknown>;
+  validatePositiveJsonInteger(record.timeout, `${resource}.timeout`, context);
+  validatePositiveJsonInteger(record.memory, `${resource}.memory`, context);
+}
+
+function validatePositiveJsonInteger(
+  value: unknown,
+  resource: string,
+  context: string,
+): void {
+  if (value === undefined) return;
+  if (!Number.isSafeInteger(value) || (value as number) < 1) {
+    throw new LocalError(`${resource} must be a positive safe JSON integer`, context);
+  }
 }

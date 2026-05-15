@@ -202,7 +202,7 @@ describe("withRetry custom retryIf", () => {
     assert.equal(calls, 2);
   });
 
-  it("default policy remains broader than deploy.apply safe-race retry allowlist", async () => {
+  it("default policy retries gateway retryable errors outside deploy.apply", async () => {
     let calls = 0;
     const result = await withRetry(
       async () => {
@@ -211,7 +211,8 @@ describe("withRetry custom retryIf", () => {
           throw new Run402DeployError("migration can be retried by generic helper", {
             code: "MIGRATION_FAILED",
             context: "testing retry helper",
-            body: { safe_to_retry: true },
+            retryable: true,
+            body: { retryable: true, safe_to_retry: true },
           });
         }
         return "retried";
@@ -220,6 +221,26 @@ describe("withRetry custom retryIf", () => {
     );
     assert.equal(result, "retried");
     assert.equal(calls, 2);
+  });
+
+  it("default policy does not retry safe-to-repeat lifecycle errors without retryable", async () => {
+    let calls = 0;
+    await assert.rejects(
+      () =>
+        withRetry(
+          async () => {
+            calls++;
+            throw new Run402DeployError("project is frozen", {
+              code: "PROJECT_FROZEN",
+              context: "testing retry helper",
+              body: { retryable: false, safe_to_retry: true },
+            });
+          },
+          { attempts: 3, baseDelayMs: 1, maxDelayMs: 1 },
+        ),
+      (err: unknown) => err instanceof Run402DeployError,
+    );
+    assert.equal(calls, 1);
   });
 
   it("retryIf receives the 1-based attempt number", async () => {
