@@ -1,7 +1,7 @@
 import { resolveProjectId } from "./config.mjs";
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail } from "./sdk-errors.mjs";
-import { validateWebhookUrl } from "./argparse.mjs";
+import { assertKnownFlags, flagValue, normalizeArgv, positionalArgs, validateWebhookUrl } from "./argparse.mjs";
 
 const HELP = `run402 email webhooks — Manage mailbox webhooks
 
@@ -37,15 +37,38 @@ Usage:
 `,
 };
 
-function parseFlag(args, flag) {
-  for (let i = 0; i < args.length; i++) {
-    if (args[i] === flag && args[i + 1]) return args[i + 1];
+function strictFlagValue(args, flag) {
+  const value = flagValue(args, flag);
+  if (typeof value === "string" && value.startsWith("--")) {
+    fail({
+      code: "BAD_FLAG",
+      message: `${flag} requires a value`,
+      details: { flag },
+    });
   }
-  return null;
+  return value;
+}
+
+function validateArgs(args, knownFlags, flagsWithValues = knownFlags) {
+  assertKnownFlags(args, knownFlags, flagsWithValues);
+  const valueFlags = new Set(flagsWithValues);
+  for (let i = 0; i < args.length; i++) {
+    const flag = args[i];
+    if (!valueFlags.has(flag)) continue;
+    if (i + 1 >= args.length || (typeof args[i + 1] === "string" && args[i + 1].startsWith("--"))) {
+      fail({
+        code: "BAD_FLAG",
+        message: `${flag} requires a value`,
+        details: { flag },
+      });
+    }
+    i += 1;
+  }
 }
 
 async function list(args) {
-  const projectId = resolveProjectId(parseFlag(args, "--project"));
+  validateArgs(args, ["--project"]);
+  const projectId = resolveProjectId(strictFlagValue(args, "--project"));
   try {
     const data = await getSdk().email.webhooks.list(projectId);
     console.log(JSON.stringify(data, null, 2));
@@ -55,13 +78,9 @@ async function list(args) {
 }
 
 async function get(args) {
-  let webhookId = null;
-  let projectOpt = null;
-  for (let i = 0; i < args.length; i++) {
-    if (args[i] === "--project" && args[i + 1]) { projectOpt = args[++i]; }
-    else if (!args[i].startsWith("--") && !webhookId) { webhookId = args[i]; }
-  }
-  const projectId = resolveProjectId(projectOpt);
+  validateArgs(args, ["--project"]);
+  const webhookId = positionalArgs(args, ["--project"])[0] ?? null;
+  const projectId = resolveProjectId(strictFlagValue(args, "--project"));
   if (!webhookId) {
     fail({
       code: "BAD_USAGE",
@@ -78,13 +97,9 @@ async function get(args) {
 }
 
 async function del(args) {
-  let webhookId = null;
-  let projectOpt = null;
-  for (let i = 0; i < args.length; i++) {
-    if (args[i] === "--project" && args[i + 1]) { projectOpt = args[++i]; }
-    else if (!args[i].startsWith("--") && !webhookId) { webhookId = args[i]; }
-  }
-  const projectId = resolveProjectId(projectOpt);
+  validateArgs(args, ["--project"]);
+  const webhookId = positionalArgs(args, ["--project"])[0] ?? null;
+  const projectId = resolveProjectId(strictFlagValue(args, "--project"));
   if (!webhookId) {
     fail({
       code: "BAD_USAGE",
@@ -101,17 +116,12 @@ async function del(args) {
 }
 
 async function update(args) {
-  let webhookId = null;
-  let projectOpt = null;
-  const url = parseFlag(args, "--url");
-  const eventsRaw = parseFlag(args, "--events");
-
-  for (let i = 0; i < args.length; i++) {
-    if (args[i] === "--project" && args[i + 1]) { projectOpt = args[++i]; }
-    else if (args[i] === "--url" || args[i] === "--events") { i++; }
-    else if (!args[i].startsWith("--") && !webhookId) { webhookId = args[i]; }
-  }
-  const projectId = resolveProjectId(projectOpt);
+  const valueFlags = ["--project", "--url", "--events"];
+  validateArgs(args, valueFlags);
+  const webhookId = positionalArgs(args, valueFlags)[0] ?? null;
+  const url = strictFlagValue(args, "--url");
+  const eventsRaw = strictFlagValue(args, "--events");
+  const projectId = resolveProjectId(strictFlagValue(args, "--project"));
   if (!webhookId) {
     fail({
       code: "BAD_USAGE",
@@ -140,9 +150,11 @@ async function update(args) {
 }
 
 async function register(args) {
-  const url = parseFlag(args, "--url");
-  const eventsRaw = parseFlag(args, "--events");
-  const projectOpt = parseFlag(args, "--project");
+  const valueFlags = ["--project", "--url", "--events"];
+  validateArgs(args, valueFlags);
+  const url = strictFlagValue(args, "--url");
+  const eventsRaw = strictFlagValue(args, "--events");
+  const projectOpt = strictFlagValue(args, "--project");
   const projectId = resolveProjectId(projectOpt);
 
   if (!url) {
@@ -174,6 +186,7 @@ async function register(args) {
 }
 
 export async function run(sub, args) {
+  args = normalizeArgv(args);
   if (!sub || sub === '--help' || sub === '-h') { console.log(HELP); process.exit(0); }
   if (Array.isArray(args) && (args.includes("--help") || args.includes("-h"))) { console.log(SUB_HELP[sub] || HELP); process.exit(0); }
   switch (sub) {
