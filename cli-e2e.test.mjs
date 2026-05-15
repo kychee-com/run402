@@ -3136,6 +3136,123 @@ describe("CLI e2e happy path", () => {
     );
   });
 
+  // ── auth unknown flag validation (GH-276) ───────────────────────────────
+  //
+  // Auth subcommands parse security-sensitive inputs manually. Typos must fail
+  // before any SDK call instead of being silently ignored.
+
+  it("auth magic-link rejects unknown flags with closest hint (GH-276)", async () => {
+    const { run } = await import("./cli/lib/auth.mjs");
+    let fetchCount = 0;
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = async (input, init) => {
+      fetchCount++;
+      return prevFetch(input, init);
+    };
+    let threw = null;
+    captureStart();
+    try {
+      await run("magic-link", ["--emial", "a@example.com", "--redirect", "https://x"]);
+    } catch (e) {
+      threw = e;
+    } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+    assert.equal(threw?.message, "process.exit(1)", "must exit non-zero on unknown flag");
+    assert.equal(fetchCount, 0, "must reject before any SDK call");
+    const env = JSON.parse(capturedStderr());
+    assert.equal(env.code, "UNKNOWN_FLAG");
+    assert.match(env.message ?? "", /Unknown flag: --emial/);
+    assert.match(env.message ?? "", /Did you mean --email/);
+    assert.deepEqual(env.details?.closest, ["--email"]);
+  });
+
+  it("auth verify missing --token value fails before SDK (GH-276)", async () => {
+    const { run } = await import("./cli/lib/auth.mjs");
+    let fetchCount = 0;
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = async (input, init) => {
+      fetchCount++;
+      return prevFetch(input, init);
+    };
+    let threw = null;
+    captureStart();
+    try {
+      await run("verify", ["--project", "prj_test123", "--token"]);
+    } catch (e) {
+      threw = e;
+    } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+    assert.equal(threw?.message, "process.exit(1)", "must exit non-zero on missing token value");
+    assert.equal(fetchCount, 0, "must reject before any SDK call");
+    const env = JSON.parse(capturedStderr());
+    assert.ok(["BAD_FLAG", "BAD_USAGE"].includes(env.code), `expected BAD_FLAG/BAD_USAGE, got ${env.code}`);
+    assert.match(env.message ?? "", /--token/);
+  });
+
+  it("auth settings rejects unknown flags before applying patch (GH-276)", async () => {
+    const { run } = await import("./cli/lib/auth.mjs");
+    let settingsFetchCount = 0;
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = async (input, init) => {
+      const url = typeof input === "string" ? input : input.url;
+      if (url.endsWith("/auth/v1/settings")) {
+        settingsFetchCount++;
+      }
+      return prevFetch(input, init);
+    };
+    let threw = null;
+    captureStart();
+    try {
+      await run("settings", ["--preferred", "password", "--projct", "prj_x"]);
+    } catch (e) {
+      threw = e;
+    } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+    assert.equal(threw?.message, "process.exit(1)", "must exit non-zero on unknown flag");
+    assert.equal(settingsFetchCount, 0, "must NOT call /auth/v1/settings on unknown flag");
+    const env = JSON.parse(capturedStderr());
+    assert.equal(env.code, "UNKNOWN_FLAG");
+    assert.match(env.message ?? "", /Unknown flag: --projct/);
+    assert.match(env.message ?? "", /Did you mean --project/);
+    assert.deepEqual(env.details?.closest, ["--project"]);
+  });
+
+  it("auth passkey-register-verify missing --response value fails before SDK (GH-276)", async () => {
+    const { run } = await import("./cli/lib/auth.mjs");
+    let fetchCount = 0;
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = async (input, init) => {
+      fetchCount++;
+      return prevFetch(input, init);
+    };
+    let threw = null;
+    captureStart();
+    try {
+      await run("passkey-register-verify", [
+        "--project", "prj_test123",
+        "--token", "user-jwt-access-token",
+        "--challenge", "chal_123",
+        "--response",
+      ]);
+    } catch (e) {
+      threw = e;
+    } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+    assert.equal(threw?.message, "process.exit(1)", "must exit non-zero on missing response value");
+    assert.equal(fetchCount, 0, "must reject before any SDK call");
+    const env = JSON.parse(capturedStderr());
+    assert.ok(["BAD_FLAG", "BAD_USAGE"].includes(env.code), `expected BAD_FLAG/BAD_USAGE, got ${env.code}`);
+    assert.match(env.message ?? "", /--response/);
+  });
+
   it("auth settings --allow-password-set true succeeds (GH-204 regression guard)", async () => {
     const { run } = await import("./cli/lib/auth.mjs");
     let capturedBody = null;
