@@ -7,6 +7,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
 import { Run402 } from "../index.js";
+import { LocalError } from "../errors.js";
 import type { CredentialsProvider } from "../credentials.js";
 
 interface FetchCall {
@@ -179,5 +180,38 @@ describe("email.send", () => {
     assert.equal(result.template, null);
     assert.equal(result.subject, "test");
     assert.equal(result.sent_at, "2026-05-01T18:30:14.904Z");
+  });
+});
+
+describe("email.list", () => {
+  it("GETs mailbox messages with limit and after query params", async () => {
+    const { fetch, calls } = mockFetch(() => jsonResponse([]));
+    const sdk = makeSdk(makeCreds(), fetch);
+    await sdk.email.list("prj_known", { limit: 1, after: "msg_prev" });
+
+    const url = new URL(calls[0]!.url);
+    assert.equal(url.pathname, "/mailboxes/v1/mbx_known/messages");
+    assert.equal(url.searchParams.get("limit"), "1");
+    assert.equal(url.searchParams.get("after"), "msg_prev");
+  });
+
+  it("throws LocalError and does not request for invalid limits", async () => {
+    const invalidLimits = [0, -1, 1.5, Number.NaN, Number.MAX_SAFE_INTEGER + 1];
+
+    for (const limit of invalidLimits) {
+      const { fetch, calls } = mockFetch(() => {
+        throw new Error(`unexpected fetch for limit ${String(limit)}`);
+      });
+      const sdk = makeSdk(makeCreds(), fetch);
+
+      await assert.rejects(
+        sdk.email.list("prj_known", { limit }),
+        (err: unknown) =>
+          err instanceof LocalError &&
+          err.context === "listing emails" &&
+          /limit.*positive safe integer/i.test(err.message),
+      );
+      assert.equal(calls.length, 0, `limit ${String(limit)} should not request`);
+    }
   });
 });

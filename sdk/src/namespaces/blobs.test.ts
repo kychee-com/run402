@@ -8,7 +8,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
 import { Run402 } from "../index.js";
-import { ProjectNotFound, ApiError } from "../errors.js";
+import { ProjectNotFound, ApiError, LocalError } from "../errors.js";
 import type { CredentialsProvider } from "../credentials.js";
 
 interface FetchCall {
@@ -402,6 +402,26 @@ describe("blobs.ls", () => {
     const sdk = makeSdk(fetch);
     await sdk.blobs.ls("prj_known");
     assert.equal(calls[0]!.url, "https://api.example.test/storage/v1/blobs");
+  });
+
+  it("throws LocalError and does not request for invalid limits", async () => {
+    const invalidLimits = [0, -1, 1.5, Number.NaN, Number.MAX_SAFE_INTEGER + 1];
+
+    for (const limit of invalidLimits) {
+      const { fetch, calls } = mockFetch(() => {
+        throw new Error(`unexpected fetch for limit ${String(limit)}`);
+      });
+      const sdk = makeSdk(fetch);
+
+      await assert.rejects(
+        sdk.blobs.ls("prj_known", { limit }),
+        (err: unknown) =>
+          err instanceof LocalError &&
+          err.context === "listing blobs" &&
+          /limit.*positive safe integer/i.test(err.message),
+      );
+      assert.equal(calls.length, 0, `limit ${String(limit)} should not request`);
+    }
   });
 });
 
@@ -922,5 +942,29 @@ describe("blobs.waitFresh", () => {
       sdk.blobs.waitFresh("prj_missing", { url: "https://app.run402.com/_blob/k", sha256: "ff" }),
       ProjectNotFound,
     );
+  });
+
+  it("throws LocalError and does not diagnose for invalid timeoutMs", async () => {
+    const invalidTimeouts = [0, -1, 1.5, Number.NaN, Number.MAX_SAFE_INTEGER + 1];
+
+    for (const timeoutMs of invalidTimeouts) {
+      const { fetch, calls } = mockFetch(() => {
+        throw new Error(`unexpected fetch for timeoutMs ${String(timeoutMs)}`);
+      });
+      const sdk = makeSdk(fetch);
+
+      await assert.rejects(
+        sdk.blobs.waitFresh("prj_known", {
+          url: "https://app.run402.com/_blob/k",
+          sha256: "ff",
+          timeoutMs,
+        }),
+        (err: unknown) =>
+          err instanceof LocalError &&
+          err.context === "waiting for CDN freshness" &&
+          /timeoutMs.*positive safe integer/i.test(err.message),
+      );
+      assert.equal(calls.length, 0, `timeoutMs ${String(timeoutMs)} should not request`);
+    }
   });
 });

@@ -8,6 +8,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
 import { Run402 } from "../index.js";
+import { LocalError } from "../errors.js";
 import type { CredentialsProvider } from "../credentials.js";
 
 interface FetchCall {
@@ -187,6 +188,36 @@ describe("billing.history", () => {
     await sdk.billing.history("0xABC", 50);
 
     assert.equal(calls[0]!.url, "https://api.example.test/billing/v1/accounts/0xabc/history?limit=50");
+  });
+
+  it("appends ?limit=1 when the minimum valid limit is provided", async () => {
+    const { fetch, calls } = mockFetch(() =>
+      jsonResponse({ identifier: "0xabc", identifier_type: "wallet", entries: [] }),
+    );
+    const sdk = makeSdk(fetch);
+    await sdk.billing.history("0xABC", 1);
+
+    assert.equal(calls[0]!.url, "https://api.example.test/billing/v1/accounts/0xabc/history?limit=1");
+  });
+
+  it("throws LocalError and does not request for invalid limits", async () => {
+    const invalidLimits = [0, -1, 1.5, Number.NaN, Number.MAX_SAFE_INTEGER + 1];
+
+    for (const limit of invalidLimits) {
+      const { fetch, calls } = mockFetch(() => {
+        throw new Error(`unexpected fetch for limit ${String(limit)}`);
+      });
+      const sdk = makeSdk(fetch);
+
+      await assert.rejects(
+        sdk.billing.history("0xABC", limit),
+        (err: unknown) =>
+          err instanceof LocalError &&
+          err.context === "fetching billing history" &&
+          /limit.*positive safe integer/i.test(err.message),
+      );
+      assert.equal(calls.length, 0, `limit ${String(limit)} should not request`);
+    }
   });
 
   it("offers getHistory as a generic identifier alias", async () => {
