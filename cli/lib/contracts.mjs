@@ -135,6 +135,15 @@ function parseFlag(args, flag) {
 function hasFlag(args, flag) {
   return args.includes(flag);
 }
+function validateWeiFlag(flag, value) {
+  if (!/^\d+$/.test(String(value))) {
+    fail({
+      code: "BAD_FLAG",
+      message: `${flag} must be a decimal non-negative integer string in wei`,
+      details: { flag, value: String(value) },
+    });
+  }
+}
 
 async function provisionWallet(projectId, args) {
   const chain = parseFlag(args, "--chain");
@@ -210,6 +219,7 @@ async function setAlert(projectId, walletId, args) {
   if (!threshold) {
     fail({ code: "BAD_USAGE", message: "Missing --threshold-wei <n>" });
   }
+  validateWeiFlag("--threshold-wei", threshold);
   try {
     await getSdk().contracts.setLowBalanceAlert(projectId, walletId, threshold);
     console.log(JSON.stringify({ status: "ok", wallet_id: walletId, threshold_wei: threshold }));
@@ -233,6 +243,7 @@ async function call(projectId, walletId, args) {
       hint: "Cost: chain gas + $0.000005 KMS sign fee.",
     });
   }
+  if (value !== null) validateWeiFlag("--value-wei", value);
   const abiFragment = parseFlagJson("--abi", abi);
   const callArgs = parseFlagJson("--args", argsJson);
   try {

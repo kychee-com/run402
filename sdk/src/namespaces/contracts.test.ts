@@ -165,6 +165,33 @@ describe("contracts.provisionWallet", () => {
   });
 });
 
+describe("contracts.setLowBalanceAlert", () => {
+  for (const thresholdWei of ["abc", "1.5", "-1", "1e18"]) {
+    it(`rejects malformed thresholdWei ${JSON.stringify(thresholdWei)} before fetch`, async () => {
+      const { fetch, calls } = mockFetch(() => jsonResponse({}));
+      const sdk = makeSdk(fetch);
+
+      await assert.rejects(
+        sdk.contracts.setLowBalanceAlert("prj_known", "cwlt_abc", thresholdWei),
+        LocalError,
+      );
+      assert.equal(calls.length, 0);
+    });
+  }
+
+  for (const thresholdWei of ["0", "1000000000000000000"]) {
+    it(`accepts decimal non-negative integer thresholdWei ${thresholdWei}`, async () => {
+      const { fetch, calls } = mockFetch(() => jsonResponse({}));
+      const sdk = makeSdk(fetch);
+
+      await sdk.contracts.setLowBalanceAlert("prj_known", "cwlt_abc", thresholdWei);
+
+      assert.equal(calls[0]!.url, "https://api.example.test/contracts/v1/wallets/cwlt_abc/alert");
+      assert.deepEqual(JSON.parse(calls[0]!.body as string), { threshold_wei: thresholdWei });
+    });
+  }
+});
+
 describe("contracts.call", () => {
   it("returns a typed result with call_id, status, tx_hash", async () => {
     const callRes = {
@@ -206,6 +233,48 @@ describe("contracts.call", () => {
     });
     assert.equal(calls[0]!.headers["Idempotency-Key"], "key-1");
   });
+
+  for (const value of ["abc", "1.5", "-1", "1e18"]) {
+    it(`rejects malformed value ${JSON.stringify(value)} before fetch`, async () => {
+      const { fetch, calls } = mockFetch(() => jsonResponse({}));
+      const sdk = makeSdk(fetch);
+
+      await assert.rejects(
+        sdk.contracts.call("prj_known", {
+          walletId: "cwlt_abc",
+          chain: "base-mainnet",
+          contractAddress: "0x4444444444444444444444444444444444444444",
+          abiFragment: [],
+          functionName: "noop",
+          args: [],
+          value,
+        }),
+        LocalError,
+      );
+      assert.equal(calls.length, 0);
+    });
+  }
+
+  for (const value of ["0", "1000000000000000000"]) {
+    it(`accepts decimal non-negative integer value ${value}`, async () => {
+      const { fetch, calls } = mockFetch(() =>
+        jsonResponse({ call_id: "c", status: "submitted", tx_hash: null }),
+      );
+      const sdk = makeSdk(fetch);
+
+      await sdk.contracts.call("prj_known", {
+        walletId: "cwlt_abc",
+        chain: "base-mainnet",
+        contractAddress: "0x4444444444444444444444444444444444444444",
+        abiFragment: [],
+        functionName: "noop",
+        args: [],
+        value,
+      });
+
+      assert.equal(JSON.parse(calls[0]!.body as string).value, value);
+    });
+  }
 
   it("accepts CLI-style aliases (to/abi/fn) and resolves to the same wire request", async () => {
     const { fetch, calls } = mockFetch(() =>
