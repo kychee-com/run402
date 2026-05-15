@@ -42,7 +42,7 @@ CLI errors are JSON on stderr with an outer `"status": "error"` sentinel. Run402
 Exit codes follow the rule `status === "ok" ? 0 : 1` -- any payload whose `status` is not `"ok"` exits non-zero, including the `no_allowance` / `no_wallet` informational sentinels emitted by `run402 status` and `run402 allowance status` when no agent allowance is configured. Shell-driven workflows can therefore branch on `$?` without parsing JSON.
 
 Canonical fields:
-- `code`: stable machine-readable reason, e.g. `PROJECT_FROZEN`, `PAYMENT_REQUIRED`, `MIGRATION_FAILED`, `MIGRATE_GATE_ACTIVE`. Client-side validation failures (missing flag, malformed JSON, unknown local project) default to `BAD_USAGE`; specific client-side cases use richer codes such as `PROJECT_NOT_FOUND` (with `details.source: "local_registry"`), `NO_DEPLOYMENT`, `NO_ALLOWANCE`, `BAD_JSON_FLAG`, `CONFIRMATION_REQUIRED`.
+- `code`: stable machine-readable reason, e.g. `PROJECT_FROZEN`, `PAYMENT_REQUIRED`, `MIGRATION_FAILED`, `MIGRATE_GATE_ACTIVE`. Client-side validation failures (missing flag, malformed JSON, unknown local project) default to `BAD_USAGE`; specific client-side cases use richer codes such as `UNKNOWN_FLAG`, `BAD_FLAG`, `PROJECT_NOT_FOUND` (with `details.source: "local_registry"`), `NO_DEPLOYMENT`, `NO_ALLOWANCE`, `BAD_JSON_FLAG`, `CONFIRMATION_REQUIRED`.
 - `retryable`: the same request may succeed later
 - `safe_to_retry`: repeating the same request should not duplicate or corrupt a mutation
 - `mutation_state`: one of `none`, `not_started`, `committed`, `rolled_back`, `partial`, `unknown`
@@ -58,6 +58,7 @@ Retry policy:
 - If a mutating command returns 5xx with `safe_to_retry: false`, or `mutation_state` is `committed`, `partial`, or `unknown`, inspect/poll/reconcile state before retrying. For deploys, prefer `run402 deploy events <operation_id>` or `run402 deploy resume <operation_id>` over starting a duplicate operation.
 - Lifecycle/payment errors usually need an action: `PROJECT_FROZEN`/`PROJECT_DORMANT`/`PROJECT_PAST_DUE` -> `run402 projects usage <id>` or `run402 tier set <tier>`; `PAYMENT_REQUIRED`/`INSUFFICIENT_FUNDS` -> submit payment or fund allowance.
 - Client-side `BAD_JSON_FLAG` errors include `details.flag` (the offending flag, e.g. `--abi`) and `details.value_preview` (truncated value) so callers know which flag value to fix.
+- CLI commands reject unknown flags and missing flag values locally with `UNKNOWN_FLAG` or `BAD_FLAG` before network work. Numeric and wei-like flags are strict decimal integers: malformed, fractional, negative, and scientific-notation values fail locally instead of being forwarded to the API.
 
 Examples:
 ```json
