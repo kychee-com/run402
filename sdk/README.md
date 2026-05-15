@@ -126,12 +126,13 @@ const logo = await r.blobs.put(projectId, "logo.png", { bytes });
 //   logo.cacheKind  → "immutable" | "mutable" | "private"
 ```
 
-`immutable: true` is the default since v1.45 — pass `false` only when you specifically want to skip the SHA-256 pass on a very large upload.
+`immutable: true` is the default since v1.45. The SDK always computes and sends the object SHA-256 because upload sessions require it; pass `false` only when you specifically need mutable URL/cache semantics.
 
 For custom resumable upload UX, use the low-level session primitives:
 `r.blobs.initUploadSession(...)`, `r.blobs.getUploadSession(...)`, and
 `r.blobs.completeUploadSession(...)`. Bytes still go directly to the presigned
 part URLs; the Run402 gateway sees only session metadata.
+Low-level callers must provide the whole-object `sha256`, send per-part checksums to S3 when the presigned URL requires them, and include each part's `sha256` at completion.
 
 ### Expose manifest validation
 

@@ -59,6 +59,7 @@ Retry policy:
 - Lifecycle/payment errors usually need an action: `PROJECT_FROZEN`/`PROJECT_DORMANT`/`PROJECT_PAST_DUE` -> `run402 projects usage <id>` or `run402 tier set <tier>`; `PAYMENT_REQUIRED`/`INSUFFICIENT_FUNDS` -> submit payment or fund allowance.
 - Client-side `BAD_JSON_FLAG` errors include `details.flag` (the offending flag, e.g. `--abi`) and `details.value_preview` (truncated value) so callers know which flag value to fix.
 - CLI commands reject unknown flags and missing flag values locally with `UNKNOWN_FLAG` or `BAD_FLAG` before network work. Numeric and wei-like flags are strict decimal integers: malformed, fractional, negative, and scientific-notation values fail locally instead of being forwarded to the API.
+- Commands with fixed positional shapes also reject extra positional arguments locally. This includes deploy resume/list/events/release subcommands, functions list/delete, and blob get/rm/sign/diagnose.
 
 Examples:
 ```json
@@ -722,12 +723,14 @@ const res = await fetch('https://api.run402.com/functions/v1/my-function', {
 - `run402 functions <list|delete> <id> [<name>]`
 
 For routed browser 500s, copy `X-Run402-Request-Id` or the JSON `request_id` from the response and run `run402 functions logs <project> <function> --request-id req_...`. `--since` is validated locally and should be supplied for incidents older than the default recent lookup window.
+`--tail` must be a positive safe integer no larger than 1000, and `--request-id` must match the routed request id shape (`req_...`). For updates, `--schedule` and `--schedule-remove` are mutually exclusive.
 
 #### --deps semantics, runtime_version, deps_resolved
 
 `--deps` is a comma-separated list of npm specs that the gateway installs and bundles into the function zip alongside the user code:
 - Bare names (`lodash`) resolve to the latest published version at deploy time.
 - Pinned (`lodash@4.17.21`) and range (`date-fns@^3.6.0`) specs are honored verbatim.
+- Entries are trimmed; empty entries such as `--deps "lodash,,date-fns"` are rejected locally.
 - `@run402/functions` (auto-bundled) and the legacy `run402-functions` name are rejected.
 - Limits: max 30 entries, max 200 chars per spec.
 - Native binary modules (sharp, canvas, native bcrypt, etc.) are rejected.
@@ -763,7 +766,7 @@ Direct-to-S3 blob storage. Works for any size from 1 byte up to 5 TiB. No bucket
 - `run402 blob get <key> --output <file> [--project <id>]`
 - `run402 blob ls [--project <id>] [--prefix <p>] [--limit <n>]`
 - `run402 blob rm <key> [--project <id>]`
-- `run402 blob sign <key> [--project <id>] [--ttl <seconds>]`
+- `run402 blob sign <key> [--project <id>] [--ttl <seconds>]` — signed URL TTL must be an integer from 60 to 604800 seconds.
 - `run402 blob diagnose <url> [--project <id>]` — inspect live CDN state for a public URL
 - `run402 cdn wait-fresh <url> --sha <hex> [--timeout <secs>] [--project <id>]` — poll a mutable URL until it serves the expected SHA-256
 
@@ -789,7 +792,7 @@ html += asset.linkTag();               // <link rel="stylesheet" href=... integr
 html += asset.imgTag("Company logo");  // <img src=... alt="Company logo" loading="lazy" decoding="async">
 ```
 
-`immutable: true` is the default since v1.45 — the SDK computes the SHA-256 client-side and the gateway returns a content-addressed URL paired with SRI. The resulting URL never needs cache invalidation, never breaks on re-deploys, never needs `cdn wait-fresh` follow-up. Pass `{ immutable: false }` explicitly only when you want to skip the SHA pass on a very large upload (in that case the tag emitters throw because there's no SHA to bind for SRI). The tag emitters also bake in modern best-practice attributes — `defer` on `<script>`, `loading="lazy"` + `decoding="async"` on `<img>` — so the agent doesn't have to remember.
+`immutable: true` is the default since v1.45 — the SDK computes the SHA-256 client-side and the gateway returns a content-addressed URL paired with SRI. The resulting URL never needs cache invalidation, never breaks on re-deploys, never needs `cdn wait-fresh` follow-up. The SDK and CLI always compute and send the object SHA-256 because upload sessions require it; pass `{ immutable: false }` only when you need mutable URL/cache semantics. In that case the tag emitters throw because there's no immutable URL/SRI to bind. The tag emitters also bake in modern best-practice attributes — `defer` on `<script>`, `loading="lazy"` + `decoding="async"` on `<img>` — so the agent doesn't have to remember.
 
 Other AssetRef fields for advanced use:
 - `cdnUrl` — the content-addressed URL the emitters use directly. `https://pr-<public_id>.run402.com/_blob/<key-without-ext>-<8hex>.<ext>`. Served via the v1.33 CDN; guaranteed-reachable.
@@ -803,7 +806,7 @@ Other AssetRef fields for advanced use:
 
 **Agent loop pattern (mutable URL only):** if you must use a stable mutable URL across re-uploads, `run402 cdn wait-fresh <mutable-url> --sha <new-sha>` blocks until the CDN serves the new SHA. **Don't call wait-fresh on immutable URLs** — they're correct from the moment of upload.
 
-Resume: state is persisted to `~/.run402/uploads/<upload_id>.json`. Ctrl-C mid-upload and re-run the same `blob put` command — it picks up where it left off. Pass `--no-resume` to start fresh.
+Resume: state is persisted to `~/.run402/uploads/<upload_id>.json` with restrictive permissions (directory 0700, files 0600). The state is bound to project, local path, destination key, size, and mtime, and it does not persist presigned part URLs. Ctrl-C mid-upload and re-run the same `blob put` command — it picks up where it left off when the local file still matches. Pass `--no-resume` to start fresh.
 
 Private blobs (`--private`): no CDN URL returned; read via authenticated gateway path `GET /storage/v1/blob/<key>` with apikey, or via `run402 blob sign` for time-boxed external sharing.
 
@@ -823,16 +826,25 @@ const init = await client.blobs.initUploadSession(projectId, {
   key: "uploads/report.pdf",
   size_bytes: buf.length,
   content_type: "application/pdf",
+  sha256: objectSha256Hex,
 });
 
-// 2. PUT the body to each part URL (bytes go direct to S3, NOT through the gateway)
+// 2. PUT each part URL (bytes go direct to S3, NOT through the gateway).
+//    Send x-amz-checksum-sha256 unless the presigned URL already encodes it.
 const etags = [];
 for (const part of init.parts) {
+  const body = buf.slice(part.byte_start, part.byte_end + 1);
+  const partSha256Hex = sha256Hex(body);
+  const partChecksumBase64 = sha256Base64(body);
+  const headers = new URL(part.url).searchParams.has("x-amz-checksum-sha256")
+    ? {}
+    : { "x-amz-checksum-sha256": partChecksumBase64 };
   const res = await fetch(part.url, {
     method: "PUT",
-    body: buf.slice(part.byte_start, part.byte_end + 1),
+    headers,
+    body,
   });
-  etags.push({ part_number: part.part_number, etag: res.headers.get("etag") });
+  etags.push({ part_number: part.part_number, etag: res.headers.get("etag"), sha256: partSha256Hex });
 }
 
 // 3. Complete through the SDK.

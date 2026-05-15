@@ -197,7 +197,7 @@ logo.cacheKind     // → "immutable" | "mutable" | "private"
 
 The URL is content-addressed and served through CloudFront. **No cache-invalidation choreography needed.** The browser refuses execution on byte mismatch via SRI.
 
-`immutable: true` is the default. Pass `false` only when you specifically want to skip the SHA-256 pass on a very large upload (the returned `cdnUrl` and `sri` are then `null`).
+`immutable: true` is the default. The SDK always computes and sends the object SHA-256 because upload sessions require it; pass `false` only when you specifically need mutable URL/cache semantics (the returned `cdnUrl` and `sri` are then `null`).
 
 If you suspect cache staleness on a *mutable* URL, the SDK has helpers:
 
@@ -769,6 +769,11 @@ Use the low-level upload-session methods only when you need CLI-style resumable
 state or custom part concurrency. They keep gateway init/status/complete calls
 inside the SDK while callers still `fetch(part.url)` directly to presigned S3
 URLs for the actual bytes.
+Upload-session contracts are strict: `BlobUploadInitOptions.sha256` is required,
+`sign(..., { ttl_seconds })` accepts only safe integers from 60 to 604800, and
+multipart completion parts include `{ part_number, etag, sha256 }`. Direct S3
+PUT callers must send `x-amz-checksum-sha256` with the base64 SHA-256 of each
+part unless the presigned URL already includes that checksum query parameter.
 
 ### `r.functions`
 
@@ -784,9 +789,9 @@ list(projectId): Promise<FunctionListResult>
 delete(projectId, name): Promise<void>
 ```
 
-`FunctionLogEntry` includes `timestamp` and `message`, plus optional `event_id`, `log_stream_name`, `ingestion_time`, and `request_id` metadata when the gateway can provide it. Use `requestId` to follow a routed browser failure exposed as `X-Run402-Request-Id` / JSON `request_id`; SDK calls reject invalid `since` timestamps locally instead of silently dropping them.
+`FunctionLogEntry` includes `timestamp` and `message`, plus optional `event_id`, `log_stream_name`, `ingestion_time`, and `request_id` metadata when the gateway can provide it. Use `requestId` to follow a routed browser failure exposed as `X-Run402-Request-Id` / JSON `request_id`; SDK calls reject invalid `since` timestamps, invalid request ids, and `tail` values outside 1..1000 locally instead of forwarding them.
 
-`deps` accepts npm specs: bare names → latest at deploy time, pinned (`lodash@4.17.21`) and ranges (`date-fns@^3.0.0`) honored verbatim. Max 30 entries / 200 chars each. **Native binary modules are rejected.** Don't list `@run402/functions` (auto-bundled).
+`deps` accepts npm specs: bare names → latest at deploy time, pinned (`lodash@4.17.21`) and ranges (`date-fns@^3.0.0`) honored verbatim. Max 30 entries / 200 chars each; empty or whitespace-only entries are rejected. **Native binary modules are rejected.** Don't list `@run402/functions` (auto-bundled).
 
 ### `r.secrets`
 
