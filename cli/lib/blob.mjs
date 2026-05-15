@@ -24,6 +24,7 @@ import {
   readFileSync,
   writeFileSync,
   mkdirSync,
+  chmodSync,
   existsSync,
   unlinkSync,
   readdirSync,
@@ -61,7 +62,7 @@ Options:
   --json              NDJSON progress events (for agent consumption)
   --prefix <p>        Prefix filter (ls only)
   --limit <n>         Max results (ls only; default 100, max 1000)
-  --ttl <seconds>     Signed-URL TTL (sign only; default 3600, max 604800)
+  --ttl <seconds>     Signed-URL TTL (sign only; default 3600, min 60, max 604800)
 
 Examples:
   run402 blob put ./artifact.tgz --project prj_abc123
@@ -151,7 +152,7 @@ Arguments:
 
 Options:
   --project <id>      Project ID (defaults to active project)
-  --ttl <seconds>     Signed-URL TTL (default 3600, max 604800)
+  --ttl <seconds>     Signed-URL TTL (default 3600, min 60, max 604800)
 
 Examples:
   run402 blob sign reports/2025-q4.pdf --project prj_abc123 --ttl 600
@@ -184,7 +185,9 @@ Examples:
 `,
 };
 
-const UPLOAD_STATE_DIR = join(homedir(), ".run402", "uploads");
+function uploadStateDir() {
+  return join(homedir(), ".run402", "uploads");
+}
 
 function die(msg, exit_code = 1) {
   fail({ code: "BAD_USAGE", message: msg, exit_code });
@@ -226,7 +229,7 @@ function parseArgs(rawArgs) {
     else if (a === "--prefix") out.prefix = args[++i];
     else if (a === "--limit") out.limit = parseIntegerFlag("--limit", args[++i], { min: 1, max: 1000 });
     else if (a === "--output" || a === "-o") out.output = args[++i];
-    else if (a === "--ttl") out.ttl = parseIntegerFlag("--ttl", args[++i], { min: 1, max: 604800 });
+    else if (a === "--ttl") out.ttl = parseIntegerFlag("--ttl", args[++i], { min: 60, max: 604800 });
     else if (!a.startsWith("--")) out.positional.push(a);
   }
   return out;
@@ -259,30 +262,71 @@ async function sha256File(filePath) {
   return h.digest("hex");
 }
 
+function sha256BufferHexAndBase64(body) {
+  const digest = createHash("sha256").update(body).digest();
+  return {
+    hex: digest.toString("hex"),
+    base64: digest.toString("base64"),
+  };
+}
+
+function checksumHeadersForPresignedUrl(url, checksumBase64) {
+  let urlHasChecksum = false;
+  try {
+    urlHasChecksum = new URL(url).searchParams.has("x-amz-checksum-sha256");
+  } catch {
+    urlHasChecksum = false;
+  }
+  return urlHasChecksum ? {} : { "x-amz-checksum-sha256": checksumBase64 };
+}
+
 function loadState(uploadId) {
-  const path = join(UPLOAD_STATE_DIR, `${uploadId}.json`);
+  const path = join(uploadStateDir(), `${uploadId}.json`);
   if (!existsSync(path)) return null;
   try { return JSON.parse(readFileSync(path, "utf8")); }
   catch { return null; }
 }
 
 function saveState(state) {
-  mkdirSync(UPLOAD_STATE_DIR, { recursive: true });
-  writeFileSync(join(UPLOAD_STATE_DIR, `${state.upload_id}.json`), JSON.stringify(state, null, 2));
+  const dir = uploadStateDir();
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  chmodSync(dir, 0o700);
+  const diskState = { ...state };
+  delete diskState.parts;
+  const path = join(dir, `${state.upload_id}.json`);
+  writeFileSync(path, JSON.stringify(diskState, null, 2), { mode: 0o600 });
+  chmodSync(path, 0o600);
 }
 
 function removeState(uploadId) {
-  const path = join(UPLOAD_STATE_DIR, `${uploadId}.json`);
+  const path = join(uploadStateDir(), `${uploadId}.json`);
   if (existsSync(path)) unlinkSync(path);
 }
 
-function findResumableStateForFile(projectId, localPath, key) {
-  if (!existsSync(UPLOAD_STATE_DIR)) return null;
-  for (const f of readdirSync(UPLOAD_STATE_DIR)) {
+function fileFingerprint(stat) {
+  return {
+    file_size: stat.size,
+    file_mtime_ms: stat.mtimeMs,
+  };
+}
+
+function stateMatchesFile(state, fingerprint) {
+  return state.file_size === fingerprint.file_size &&
+    typeof state.file_mtime_ms === "number" &&
+    state.file_mtime_ms === fingerprint.file_mtime_ms;
+}
+
+function findResumableStateForFile(projectId, localPath, key, fingerprint) {
+  const dir = uploadStateDir();
+  if (!existsSync(dir)) return null;
+  for (const f of readdirSync(dir)) {
     if (!f.endsWith(".json")) continue;
     try {
-      const s = JSON.parse(readFileSync(join(UPLOAD_STATE_DIR, f), "utf8"));
-      if (s.project_id === projectId && s.local_path === localPath && s.key === key) return s;
+      const s = JSON.parse(readFileSync(join(dir, f), "utf8"));
+      if (s.project_id === projectId && s.local_path === localPath && s.key === key) {
+        if (stateMatchesFile(s, fingerprint)) return s;
+        removeState(s.upload_id);
+      }
     } catch { /* ignore */ }
   }
   return null;
@@ -295,16 +339,15 @@ function findResumableStateForFile(projectId, localPath, key) {
 async function putOne(projectId, filePath, opts) {
   const stat = statSync(filePath);
   const size = stat.size;
+  const fingerprint = fileFingerprint(stat);
   const destKey = computeDestKey(filePath, opts.key);
   const absLocal = resolvePath(filePath);
 
-  // Compute sha256 for immutable uploads up front; otherwise lazy.
-  const needSha = opts.immutable;
-  const sha256 = needSha ? await sha256File(filePath) : undefined;
+  const sha256 = await sha256File(filePath);
 
   // Attempt to resume
   let state = opts.resume
-    ? findResumableStateForFile(projectId, absLocal, destKey)
+    ? findResumableStateForFile(projectId, absLocal, destKey, fingerprint)
     : null;
   let initRes;
   if (state) {
@@ -315,7 +358,7 @@ async function putOne(projectId, filePath, opts) {
       initRes = {
         upload_id: state.upload_id,
         mode: poll.mode ?? state.mode,
-        parts: poll.parts ?? state.parts,
+        parts: poll.parts ?? state.parts ?? [],
         part_count: poll.part_count ?? state.part_count,
         part_size_bytes: poll.part_size_bytes ?? state.part_size_bytes,
       };
@@ -345,6 +388,7 @@ async function putOne(projectId, filePath, opts) {
       parts: initRes.parts,
       parts_done: {},
       sha256,
+      ...fingerprint,
       started_at: new Date().toISOString(),
     };
     if (opts.resume) saveState(state);
@@ -360,22 +404,18 @@ async function putOne(projectId, filePath, opts) {
     etags[parseInt(pn, 10) - 1] = typeof pd === "string" ? { etag: pd, sha256: undefined } : pd;
   }
 
-  // Presigned URLs are signed WITHOUT ChecksumAlgorithm (see gateway
-  // s3-presign.ts). The client-asserted sha256 declared at init is the
-  // integrity attestation — no x-amz-checksum-sha256 header on PUTs, and
-  // the gateway trusts the declared value at complete when S3 has none.
   const todo = initRes.parts.filter((p) => !(state.parts_done || {})[String(p.part_number)]);
   await withConcurrency(todo, opts.concurrency, async (part) => {
-    const { etag } = await putPart(filePath, part);
-    etags[part.part_number - 1] = { etag };
-    state.parts_done[String(part.part_number)] = { etag };
+    const { etag, sha256: partSha256 } = await putPart(filePath, part);
+    etags[part.part_number - 1] = { etag, sha256: partSha256 };
+    state.parts_done[String(part.part_number)] = { etag, sha256: partSha256 };
     if (opts.resume) saveState(state);
-    log(opts, { event: "part", upload_id: state.upload_id, part_number: part.part_number, etag });
+    log(opts, { event: "part", upload_id: state.upload_id, part_number: part.part_number, etag, sha256: partSha256 });
   });
 
   // Complete
   const body = initRes.mode === "multipart"
-    ? { parts: etags.map((e, i) => ({ part_number: i + 1, etag: e.etag })) }
+    ? { parts: etags.map((e, i) => ({ part_number: i + 1, etag: e.etag, sha256: e.sha256 })) }
     : {};
   const result = await getSdk().blobs.completeUploadSession(projectId, state.upload_id, body, {
     contentType: opts.contentType ?? guessContentType(destKey),
@@ -399,37 +439,31 @@ async function putPart(filePath, part) {
   const chunks = [];
   for await (const c of stream) chunks.push(c);
   const body = Buffer.concat(chunks);
+  const checksum = sha256BufferHexAndBase64(body);
 
-  const res = await fetch(part.url, { method: "PUT", body });
+  const res = await fetch(part.url, {
+    method: "PUT",
+    headers: checksumHeadersForPresignedUrl(part.url, checksum.base64),
+    body,
+  });
   if (!res.ok) {
     const errBody = await res.text().catch(() => "");
     throw new Error(`Part ${part.part_number} PUT failed: ${res.status} ${res.statusText}${errBody ? " — " + errBody.slice(0, 200) : ""}`);
   }
   const etag = res.headers.get("etag") ?? "";
-  return { etag };
+  return { etag, sha256: checksum.hex };
 }
 
 async function withConcurrency(items, limit, worker) {
-  const running = [];
-  for (const item of items) {
-    const p = Promise.resolve().then(() => worker(item));
-    running.push(p);
-    if (running.length >= limit) {
-      await Promise.race(running.map((r) => r.catch(() => {})));
-      for (let i = running.length - 1; i >= 0; i--) {
-        if (isSettled(running[i])) running.splice(i, 1);
-      }
+  let index = 0;
+  const workerCount = Math.min(limit, items.length);
+  async function runWorker() {
+    while (index < items.length) {
+      const item = items[index++];
+      await worker(item);
     }
   }
-  await Promise.all(running);
-}
-
-function isSettled(p) {
-  const marker = {};
-  return Promise.race([p, marker]).then(
-    (v) => v !== marker,
-    () => true,
-  );
+  await Promise.all(Array.from({ length: workerCount }, runWorker));
 }
 
 async function put(projectId, argv) {
@@ -464,6 +498,7 @@ async function get(projectId, argv) {
   opts.project = opts.project || projectId;
   const resolvedId = resolveProjectId(opts.project);
   if (opts.positional.length === 0) die("Key required");
+  if (opts.positional.length > 1) die("blob get expects exactly one key");
   if (!opts.output) die("--output <file> required");
   const key = opts.positional[0];
 
@@ -510,6 +545,7 @@ async function rm(projectId, argv) {
   opts.project = opts.project || projectId;
   const resolvedId = resolveProjectId(opts.project);
   if (opts.positional.length === 0) die("Key required");
+  if (opts.positional.length > 1) die("blob rm expects exactly one key");
   const key = opts.positional[0];
 
   try {
@@ -529,6 +565,7 @@ async function diagnose(projectId, argv) {
   opts.project = opts.project || projectId;
   const resolvedId = resolveProjectId(opts.project);
   if (opts.positional.length === 0) die("URL required");
+  if (opts.positional.length > 1) die("blob diagnose expects exactly one URL");
   const url = opts.positional[0];
 
   try {
@@ -556,6 +593,7 @@ async function sign(projectId, argv) {
   opts.project = opts.project || projectId;
   const resolvedId = resolveProjectId(opts.project);
   if (opts.positional.length === 0) die("Key required");
+  if (opts.positional.length > 1) die("blob sign expects exactly one key");
   const key = opts.positional[0];
 
   try {

@@ -7,9 +7,10 @@
 
 import { describe, it, before, after, beforeEach } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { createHash } from "node:crypto";
 
 const tempDir = mkdtempSync(join(tmpdir(), "run402-argv-"));
 const API = "https://test-api.run402.com";
@@ -325,6 +326,41 @@ describe("contracts wei argv validation", () => {
 
 describe("2026-05 CLI bug backlog argv validation", () => {
   const invalidCases = [
+    {
+      issue: "GH-319",
+      name: "blob sign rejects TTL below signed URL minimum",
+      module: "./cli/lib/blob.mjs",
+      call: (run) => run("sign", ["reports/a.pdf", "--project", "prj_test123", "--ttl", "59"]),
+      code: "BAD_FLAG",
+    },
+    {
+      issue: "GH-318",
+      name: "blob get rejects extra positional keys",
+      module: "./cli/lib/blob.mjs",
+      call: (run) => run("get", ["a.txt", "b.txt", "--output", join(tempDir, "blob-extra.txt"), "--project", "prj_test123"]),
+      code: "BAD_USAGE",
+    },
+    {
+      issue: "GH-318",
+      name: "blob rm rejects extra positional keys",
+      module: "./cli/lib/blob.mjs",
+      call: (run) => run("rm", ["a.txt", "b.txt", "--project", "prj_test123"]),
+      code: "BAD_USAGE",
+    },
+    {
+      issue: "GH-318",
+      name: "blob sign rejects extra positional keys",
+      module: "./cli/lib/blob.mjs",
+      call: (run) => run("sign", ["a.txt", "b.txt", "--project", "prj_test123"]),
+      code: "BAD_USAGE",
+    },
+    {
+      issue: "GH-318",
+      name: "blob diagnose rejects extra positional URLs",
+      module: "./cli/lib/blob.mjs",
+      call: (run) => run("diagnose", ["https://app.run402.com/_blob/a.txt", "https://app.run402.com/_blob/b.txt", "--project", "prj_test123"]),
+      code: "BAD_USAGE",
+    },
     {
       issue: "GH-306",
       name: "blob put rejects multi-file uploads with a fixed --key",
@@ -831,6 +867,250 @@ describe("numeric flag validation", () => {
 
     assert.equal(initBody?.content_type, "image/svg+xml");
     assert.equal(initBody?.key, "assets/logo");
+  });
+
+  it("blob put sends required object and part checksums by default (GH-308, GH-312, GH-314)", async () => {
+    const { run } = await import("./cli/lib/blob.mjs");
+    const file = join(tempDir, "checksum-upload.txt");
+    writeFileSync(file, "hello world");
+    let initBody = null;
+    let completeBody = null;
+    let putHeaders = null;
+    const expectedSha = createHash("sha256").update("hello world").digest("hex");
+    const expectedPartChecksum = createHash("sha256").update("hello world").digest("base64");
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = (input, init) => {
+      const info = requestInfo(input, init);
+      calls.push(info);
+      if (info.path === "/storage/v1/uploads" && info.method === "POST") {
+        initBody = JSON.parse(String(info.init.body));
+        return Promise.resolve(json({
+          upload_id: "upload_checksum",
+          mode: "multipart",
+          part_count: 1,
+          parts: [{ part_number: 1, url: "https://s3.example.test/upload_checksum/p1", byte_start: 0, byte_end: 10 }],
+        }, 201));
+      }
+      if (info.url === "https://s3.example.test/upload_checksum/p1" && info.method === "PUT") {
+        putHeaders = info.init.headers ?? {};
+        return Promise.resolve(new Response("", { status: 200, headers: { etag: "\"etag-1\"" } }));
+      }
+      if (info.path === "/storage/v1/uploads/upload_checksum/complete" && info.method === "POST") {
+        completeBody = JSON.parse(String(info.init.body));
+        return Promise.resolve(json({
+          key: "checksum-upload.txt",
+          size_bytes: 11,
+          sha256: expectedSha,
+          visibility: "public",
+          content_type: "text/plain",
+          url: "https://pr-test.run402.com/_blob/checksum-upload.txt",
+          immutable_url: null,
+        }));
+      }
+      return mockFetch(input, init);
+    };
+    captureStart();
+    try {
+      await run("put", [file, "--project", "prj_test123", "--no-resume"]);
+    } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+
+    assert.equal(initBody?.sha256, expectedSha);
+    assert.equal(initBody?.immutable, false);
+    assert.equal(putHeaders?.["x-amz-checksum-sha256"], expectedPartChecksum);
+    assert.deepEqual(completeBody?.parts, [
+      { part_number: 1, etag: "\"etag-1\"", sha256: expectedSha },
+    ]);
+  });
+
+  it("blob put does not complete multipart uploads until every in-flight part settles (GH-315)", async () => {
+    const { run } = await import("./cli/lib/blob.mjs");
+    const file = join(tempDir, "concurrency-upload.txt");
+    writeFileSync(file, "abcdefghi");
+    let part2Resolved = false;
+    let completeBeforePart2 = false;
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = (input, init) => {
+      const info = requestInfo(input, init);
+      calls.push(info);
+      if (info.path === "/storage/v1/uploads" && info.method === "POST") {
+        return Promise.resolve(json({
+          upload_id: "upload_concurrency",
+          mode: "multipart",
+          part_count: 3,
+          parts: [
+            { part_number: 1, url: "https://s3.example.test/upload_concurrency/p1", byte_start: 0, byte_end: 2 },
+            { part_number: 2, url: "https://s3.example.test/upload_concurrency/p2", byte_start: 3, byte_end: 5 },
+            { part_number: 3, url: "https://s3.example.test/upload_concurrency/p3", byte_start: 6, byte_end: 8 },
+          ],
+        }, 201));
+      }
+      if (info.url === "https://s3.example.test/upload_concurrency/p2" && info.method === "PUT") {
+        return new Promise((resolve) => {
+          setTimeout(() => {
+            part2Resolved = true;
+            resolve(new Response("", { status: 200, headers: { etag: "\"etag-2\"" } }));
+          }, 100);
+        });
+      }
+      if (info.url.startsWith("https://s3.example.test/upload_concurrency/p") && info.method === "PUT") {
+        const partNumber = info.url.endsWith("/p1") ? "1" : "3";
+        return Promise.resolve(new Response("", { status: 200, headers: { etag: `"etag-${partNumber}"` } }));
+      }
+      if (info.path === "/storage/v1/uploads/upload_concurrency/complete" && info.method === "POST") {
+        completeBeforePart2 = !part2Resolved;
+        return Promise.resolve(json({
+          key: "concurrency-upload.txt",
+          size_bytes: 9,
+          sha256: createHash("sha256").update("abcdefghi").digest("hex"),
+          visibility: "public",
+          content_type: "text/plain",
+          url: "https://pr-test.run402.com/_blob/concurrency-upload.txt",
+          immutable_url: null,
+        }));
+      }
+      return mockFetch(input, init);
+    };
+    captureStart();
+    try {
+      await run("put", [file, "--project", "prj_test123", "--concurrency", "2", "--no-resume"]);
+    } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+
+    assert.equal(completeBeforePart2, false, "complete must wait for all in-flight parts");
+  });
+
+  it("blob resumable state is private, checksum-bearing, and does not persist presigned URLs (GH-316, GH-317)", async () => {
+    const stateHome = mkdtempSync(join(tmpdir(), "run402-blob-home-"));
+    const prevHome = process.env.HOME;
+    process.env.HOME = stateHome;
+    const { run } = await import("./cli/lib/blob.mjs?state-private");
+    const file = join(tempDir, "state-upload.txt");
+    writeFileSync(file, "hello state");
+    const expectedSha = createHash("sha256").update("hello state").digest("hex");
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = (input, init) => {
+      const info = requestInfo(input, init);
+      calls.push(info);
+      if (info.path === "/storage/v1/uploads" && info.method === "POST") {
+        return Promise.resolve(json({
+          upload_id: "upload_state",
+          mode: "multipart",
+          part_count: 1,
+          parts: [{ part_number: 1, url: "https://s3.example.test/upload_state/p1", byte_start: 0, byte_end: 10 }],
+        }, 201));
+      }
+      if (info.url === "https://s3.example.test/upload_state/p1" && info.method === "PUT") {
+        return Promise.resolve(new Response("denied", { status: 403, statusText: "Forbidden" }));
+      }
+      return mockFetch(input, init);
+    };
+
+    try {
+      const err = await expectExit1(() => run("put", [file, "--project", "prj_test123"]));
+      assert.match(err.message, /Part 1 PUT failed/);
+
+      const stateDir = join(stateHome, ".run402", "uploads");
+      const files = readdirSync(stateDir).filter((name) => name.endsWith(".json"));
+      assert.deepEqual(files, ["upload_state.json"]);
+      assert.equal(statSync(stateDir).mode & 0o777, 0o700);
+      const statePath = join(stateDir, "upload_state.json");
+      assert.equal(statSync(statePath).mode & 0o777, 0o600);
+      const raw = readFileSync(statePath, "utf8");
+      assert.equal(raw.includes("https://s3.example.test"), false, "state must not persist presigned URLs");
+      const state = JSON.parse(raw);
+      assert.equal(state.sha256, expectedSha);
+      assert.equal(state.file_size, 11);
+      assert.equal(typeof state.file_mtime_ms, "number");
+    } finally {
+      globalThis.fetch = prevFetch;
+      if (prevHome === undefined) delete process.env.HOME;
+      else process.env.HOME = prevHome;
+      rmSync(stateHome, { recursive: true, force: true });
+    }
+  });
+
+  it("blob put discards cached upload sessions when the local file changed (GH-316)", async () => {
+    const stateHome = mkdtempSync(join(tmpdir(), "run402-blob-home-"));
+    const prevHome = process.env.HOME;
+    process.env.HOME = stateHome;
+    const { run } = await import("./cli/lib/blob.mjs?state-fingerprint");
+    const stateDir = join(stateHome, ".run402", "uploads");
+    const file = join(tempDir, "state-changed.txt");
+    writeFileSync(file, "new file");
+    const absFile = join(tempDir, "state-changed.txt");
+    const staleState = {
+      upload_id: "upload_stale",
+      project_id: "prj_test123",
+      local_path: absFile,
+      key: "state-changed.txt",
+      mode: "multipart",
+      part_size_bytes: 3,
+      part_count: 1,
+      file_size: 999,
+      file_mtime_ms: 1,
+      parts_done: {},
+      sha256: "0".repeat(64),
+    };
+    rmSync(stateDir, { recursive: true, force: true });
+    writeFileSync(file, "new file");
+    const prevFetch = globalThis.fetch;
+    let fetchedStale = false;
+    let initUploadId = null;
+    globalThis.fetch = (input, init) => {
+      const info = requestInfo(input, init);
+      calls.push(info);
+      if (info.path === "/storage/v1/uploads/upload_stale" && info.method === "GET") {
+        fetchedStale = true;
+        return Promise.resolve(json({ upload_id: "upload_stale", status: "active" }));
+      }
+      if (info.path === "/storage/v1/uploads" && info.method === "POST") {
+        initUploadId = "upload_fresh";
+        return Promise.resolve(json({
+          upload_id: "upload_fresh",
+          mode: "single",
+          part_count: 1,
+          parts: [{ part_number: 1, url: "https://s3.example.test/upload_fresh/p1", byte_start: 0, byte_end: 7 }],
+        }, 201));
+      }
+      if (info.url === "https://s3.example.test/upload_fresh/p1" && info.method === "PUT") {
+        return Promise.resolve(new Response("", { status: 200, headers: { etag: "\"etag-fresh\"" } }));
+      }
+      if (info.path === "/storage/v1/uploads/upload_fresh/complete" && info.method === "POST") {
+        return Promise.resolve(json({
+          key: "state-changed.txt",
+          size_bytes: 8,
+          sha256: createHash("sha256").update("new file").digest("hex"),
+          visibility: "public",
+          content_type: "text/plain",
+          url: "https://pr-test.run402.com/_blob/state-changed.txt",
+          immutable_url: null,
+        }));
+      }
+      return mockFetch(input, init);
+    };
+
+    try {
+      rmSync(stateDir, { recursive: true, force: true });
+      mkdirSync(stateDir, { recursive: true, mode: 0o700 });
+      writeFileSync(join(stateDir, "upload_stale.json"), JSON.stringify(staleState, null, 2), { mode: 0o600 });
+      captureStart();
+      await run("put", [file, "--project", "prj_test123"]);
+      captureStop();
+      assert.equal(fetchedStale, false, "changed-file state should be discarded before polling stale session");
+      assert.equal(initUploadId, "upload_fresh");
+      assert.equal(existsSync(join(stateDir, "upload_stale.json")), false);
+    } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+      if (prevHome === undefined) delete process.env.HOME;
+      else process.env.HOME = prevHome;
+      rmSync(stateHome, { recursive: true, force: true });
+    }
   });
 
   it("blob put surfaces upload-init gateway errors as structured JSON (GH-186)", async () => {
