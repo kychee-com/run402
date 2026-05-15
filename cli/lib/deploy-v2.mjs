@@ -725,7 +725,7 @@ async function listCmd(args) {
   for (let i = 0; i < args.length; i++) {
     if (args[i] === "--help" || args[i] === "-h") { console.log(LIST_HELP); process.exit(0); }
     if (args[i] === "--project" && args[i + 1]) { opts.project = args[++i]; continue; }
-    if (args[i] === "--limit" && args[i + 1]) { opts.limit = Number(args[++i]); continue; }
+    if (args[i] === "--limit") { opts.limit = parsePositiveInt(args[++i], "--limit"); continue; }
   }
 
   const project = resolveProjectId(opts.project);
@@ -733,7 +733,7 @@ async function listCmd(args) {
 
   try {
     const sdkOpts = { project };
-    if (opts.limit !== null && Number.isFinite(opts.limit)) sdkOpts.limit = opts.limit;
+    if (opts.limit !== null) sdkOpts.limit = opts.limit;
     const result = await getSdk().deploy.list(sdkOpts);
     console.log(JSON.stringify({ status: "ok", ...result }, null, 2));
   } catch (err) {
