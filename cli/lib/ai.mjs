@@ -1,7 +1,7 @@
 import { resolveProjectId } from "./config.mjs";
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail } from "./sdk-errors.mjs";
-import { resolvePositionalProject } from "./argparse.mjs";
+import { assertKnownFlags, flagValue, normalizeArgv, resolvePositionalProject } from "./argparse.mjs";
 
 const HELP = `run402 ai — AI translation and moderation tools
 
@@ -103,20 +103,19 @@ Examples:
 `,
 };
 
-function parseFlag(args, flag) {
-  for (let i = 0; i < args.length; i++) {
-    if (args[i] === flag && args[i + 1]) return args[i + 1];
-  }
-  return null;
-}
-
 // translate has value-bearing flags (--to, --from, --context, --project) that
 // must not be mistaken for positional bare args when prefix-matching.
 const TRANSLATE_VALUE_FLAGS = ["--to", "--from", "--context", "--project"];
 
 async function translate(args) {
+  args = normalizeArgv(args);
+  assertKnownFlags(args, TRANSLATE_VALUE_FLAGS, TRANSLATE_VALUE_FLAGS);
+
   // --project <id> wins over positional, mirroring previous behavior.
-  const projectOpt = parseFlag(args, "--project");
+  const projectOpt = flagValue(args, "--project");
+  const to = flagValue(args, "--to");
+  const from = flagValue(args, "--from");
+  const context = flagValue(args, "--context");
   let projectId;
   let rest;
   if (projectOpt) {
@@ -138,10 +137,6 @@ async function translate(args) {
     text = arg;
     break;
   }
-
-  const to = parseFlag(args, "--to");
-  const from = parseFlag(args, "--from");
-  const context = parseFlag(args, "--context");
 
   if (!text) {
     fail({
@@ -165,7 +160,10 @@ async function translate(args) {
 const MODERATE_VALUE_FLAGS = ["--project"];
 
 async function moderate(args) {
-  const projectOpt = parseFlag(args, "--project");
+  args = normalizeArgv(args);
+  assertKnownFlags(args, MODERATE_VALUE_FLAGS, MODERATE_VALUE_FLAGS);
+
+  const projectOpt = flagValue(args, "--project");
   let projectId;
   let rest;
   if (projectOpt) {
@@ -203,7 +201,10 @@ async function moderate(args) {
 }
 
 async function usage(args) {
-  const projectOpt = parseFlag(args, "--project");
+  args = normalizeArgv(args);
+  assertKnownFlags(args, MODERATE_VALUE_FLAGS, MODERATE_VALUE_FLAGS);
+
+  const projectOpt = flagValue(args, "--project");
   let projectId;
   if (projectOpt) {
     projectId = resolveProjectId(projectOpt);
