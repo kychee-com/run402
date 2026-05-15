@@ -21,7 +21,7 @@
  * UTF-8 is the default; binary files pass `"encoding": "base64"`.
  */
 
-import { readFileSync } from "node:fs";
+import { fstatSync, readFileSync } from "node:fs";
 import { resolve, dirname, isAbsolute } from "node:path";
 import {
   buildDeployResolveSummary,
@@ -266,6 +266,15 @@ async function readStdin() {
   return Buffer.concat(chunks).toString("utf-8");
 }
 
+function hasStdinSource() {
+  try {
+    const stats = fstatSync(0);
+    return stats.isFIFO() || stats.isFile();
+  } catch {
+    return false;
+  }
+}
+
 function makeStderrEventWriter(quiet) {
   if (quiet) return undefined;
   return (event) => {
@@ -273,22 +282,97 @@ function makeStderrEventWriter(quiet) {
   };
 }
 
-async function applyCmd(args) {
+function parseApplyArgs(args) {
   const opts = { manifest: null, spec: null, project: null, quiet: false, allowWarnings: false };
+  const allowedFlags = ["--manifest", "--spec", "--project", "--quiet", "--allow-warnings", "--help", "-h"];
+
   for (let i = 0; i < args.length; i++) {
-    if (args[i] === "--help" || args[i] === "-h") { console.log(APPLY_HELP); process.exit(0); }
-    if (args[i] === "--manifest" && args[i + 1]) { opts.manifest = args[++i]; continue; }
-    if (args[i] === "--spec" && args[i + 1]) { opts.spec = args[++i]; continue; }
-    if (args[i] === "--project" && args[i + 1]) { opts.project = args[++i]; continue; }
-    if (args[i] === "--quiet") { opts.quiet = true; continue; }
-    if (args[i] === "--allow-warnings") { opts.allowWarnings = true; continue; }
+    const arg = args[i];
+    if (arg === "--help" || arg === "-h") {
+      console.log(APPLY_HELP);
+      process.exit(0);
+    }
+    if (arg === "--manifest" || arg === "--spec" || arg === "--project") {
+      const value = args[i + 1];
+      if (value === undefined || (typeof value === "string" && value.startsWith("--"))) {
+        fail({
+          code: "BAD_USAGE",
+          message: `${arg} requires a value`,
+          details: { flag: arg },
+        });
+      }
+      if (arg === "--manifest") {
+        if (opts.manifest !== null) {
+          fail({
+            code: "BAD_USAGE",
+            message: "--manifest may only be provided once",
+            details: { flag: "--manifest" },
+          });
+        }
+        opts.manifest = value;
+      } else if (arg === "--spec") {
+        if (opts.spec !== null) {
+          fail({
+            code: "BAD_USAGE",
+            message: "--spec may only be provided once",
+            details: { flag: "--spec" },
+          });
+        }
+        opts.spec = value;
+      } else {
+        opts.project = value;
+      }
+      i += 1;
+      continue;
+    }
+    if (arg === "--quiet") { opts.quiet = true; continue; }
+    if (arg === "--allow-warnings") { opts.allowWarnings = true; continue; }
+    if (typeof arg === "string" && arg.startsWith("-")) {
+      fail({
+        code: "BAD_USAGE",
+        message: `Unknown flag for deploy apply: ${arg}`,
+        details: { flag: arg, allowed_flags: allowedFlags },
+      });
+    }
+    fail({
+      code: "BAD_USAGE",
+      message: `Unexpected argument for deploy apply: ${arg}`,
+      details: { argument: arg },
+    });
   }
+
+  return opts;
+}
+
+function applySourceField(opts) {
+  if (opts.manifest !== null) return "manifest";
+  if (opts.spec !== null) return "spec";
+  return "stdin";
+}
+
+function validateApplySources(opts) {
+  const sources = [];
+  if (opts.manifest !== null) sources.push("--manifest");
+  if (opts.spec !== null) sources.push("--spec");
+  if (hasStdinSource()) sources.push("stdin");
+  if (sources.length > 1) {
+    fail({
+      code: "BAD_USAGE",
+      message: "Only one deploy manifest source may be provided: --spec, --manifest, or stdin.",
+      details: { sources },
+    });
+  }
+}
+
+async function applyCmd(args) {
+  const opts = parseApplyArgs(args);
+  validateApplySources(opts);
 
   let raw;
   let manifestPath = null;
-  if (opts.spec) {
+  if (opts.spec !== null) {
     raw = opts.spec;
-  } else if (opts.manifest) {
+  } else if (opts.manifest !== null) {
     try {
       manifestPath = isAbsolute(opts.manifest) ? opts.manifest : resolve(process.cwd(), opts.manifest);
       raw = readFileSync(manifestPath, "utf-8");
@@ -310,11 +394,11 @@ async function applyCmd(args) {
     fail({
       code: "BAD_USAGE",
       message: `Manifest is not valid JSON: ${err.message}`,
-      details: { source: opts.manifest ? "manifest" : opts.spec ? "spec" : "stdin", parse_error: err.message },
+      details: { source: applySourceField(opts), parse_error: err.message },
     });
   }
   rejectLegacySecretManifest(spec, {
-    source: opts.manifest ? "manifest" : opts.spec ? "spec" : "stdin",
+    source: applySourceField(opts),
     ...(manifestPath ? { path: manifestPath } : {}),
   });
 
@@ -355,7 +439,7 @@ async function applyCmd(args) {
       message: `Manifest contains no deployable sections. Expected at least one of: ${meaningful.join(", ")}`,
       hint: "Did you mean to write a 'site.replace' or 'database.migrations' block? See https://run402.com/schemas/manifest.v1.json",
       details: {
-        field: opts.manifest ? "manifest" : opts.spec ? "spec" : "stdin",
+        field: applySourceField(opts),
         ...(manifestPath ? { path: manifestPath } : {}),
         meaningful_keys: meaningful,
       },

@@ -2215,6 +2215,98 @@ describe("CLI e2e happy path", () => {
     return { threw, stderr: capturedStderr(), stdout: capturedStdout(), deployCalled, planBodies };
   }
 
+  function nonEmptyDeploySpec() {
+    return JSON.stringify({ site: { replace: { "index.html": { data: "ok" } } } });
+  }
+
+  async function writeDeployManifest(name, spec = JSON.parse(nonEmptyDeploySpec())) {
+    const { writeFileSync: wf } = await import("node:fs");
+    const manifestPath = join(tempDir, name);
+    wf(manifestPath, JSON.stringify(spec));
+    return manifestPath;
+  }
+
+  async function assertDeployApplyBadUsage(args, messagePattern) {
+    const { threw, stderr, deployCalled } = await deployApplyAndCapture(args);
+    assert.ok(threw && /process\.exit\(1\)/.test(threw.message),
+      `should exit non-zero, got: ${threw && threw.message}`);
+    assert.equal(deployCalled, false, "must not POST to /deploy/v2/plans on bad deploy apply usage");
+    const parsed = parseStderrEnvelope(stderr);
+    assert.equal(parsed.code, "BAD_USAGE");
+    assert.match(parsed.message, messagePattern);
+  }
+
+  // ── GH-266/GH-268: deploy apply argument/source validation ──
+  it("deploy apply rejects unknown flags (GH-266)", async () => {
+    await assertDeployApplyBadUsage(
+      ["--spec", nonEmptyDeploySpec(), "--project", "prj_test123", "--allow-warning"],
+      /Unknown flag.*--allow-warning/,
+    );
+  });
+
+  it("deploy apply rejects extra positional arguments (GH-266)", async () => {
+    const manifestPath = await writeDeployManifest("gh266-positional.json");
+    await assertDeployApplyBadUsage(
+      ["--manifest", manifestPath, "unexpected.json", "--project", "prj_test123"],
+      /Unexpected argument.*unexpected\.json/,
+    );
+  });
+
+  it("deploy apply rejects --manifest combined with --spec (GH-268)", async () => {
+    const manifestPath = await writeDeployManifest("gh268-manifest-and-spec.json");
+    await assertDeployApplyBadUsage(
+      ["--manifest", manifestPath, "--spec", nonEmptyDeploySpec(), "--project", "prj_test123"],
+      /Only one deploy manifest source/,
+    );
+  });
+
+  it("deploy apply rejects repeated --manifest flags (GH-266)", async () => {
+    const firstManifestPath = await writeDeployManifest("gh266-repeated-manifest-1.json");
+    const secondManifestPath = await writeDeployManifest("gh266-repeated-manifest-2.json");
+    await assertDeployApplyBadUsage(
+      ["--manifest", firstManifestPath, "--manifest", secondManifestPath, "--project", "prj_test123"],
+      /--manifest.*only be provided once/,
+    );
+  });
+
+  it("deploy apply rejects repeated --spec flags (GH-266)", async () => {
+    await assertDeployApplyBadUsage(
+      ["--spec", nonEmptyDeploySpec(), "--spec", nonEmptyDeploySpec(), "--project", "prj_test123"],
+      /--spec.*only be provided once/,
+    );
+  });
+
+  it("deploy apply rejects redirected stdin combined with an explicit source (GH-268)", async () => {
+    const { closeSync, openSync, writeFileSync: wf } = await import("node:fs");
+    const { spawnSync } = await import("node:child_process");
+    const stdinPath = join(tempDir, "gh268-stdin.json");
+    wf(stdinPath, nonEmptyDeploySpec());
+    const stdinFd = openSync(stdinPath, "r");
+    let result;
+    try {
+      result = spawnSync(process.execPath, [
+        "cli/cli.mjs",
+        "deploy",
+        "apply",
+        "--spec",
+        "{}",
+        "--project",
+        "prj_test123",
+      ], {
+        cwd: process.cwd(),
+        env: { ...process.env, RUN402_CONFIG_DIR: tempDir, RUN402_API_BASE: API },
+        stdio: [stdinFd, "pipe", "pipe"],
+        encoding: "utf-8",
+      });
+    } finally {
+      closeSync(stdinFd);
+    }
+    assert.notEqual(result.status, 0, `should exit non-zero, stdout: ${result.stdout}, stderr: ${result.stderr}`);
+    const parsed = parseStderrEnvelope(result.stderr);
+    assert.equal(parsed.code, "BAD_USAGE");
+    assert.match(parsed.message, /Only one deploy manifest source/);
+  });
+
   it("deploy apply rejects empty manifest file (GH-232)", async () => {
     const { writeFileSync: wf } = await import("node:fs");
     const manifestPath = join(tempDir, "gh232-empty-manifest.json");
