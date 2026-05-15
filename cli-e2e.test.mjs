@@ -958,6 +958,65 @@ describe("CLI SDK error reporting", () => {
   });
 });
 
+describe("CLI billing validation regressions", () => {
+  async function runBillingExpectingValidationError(sub, args) {
+    const { run } = await import("./cli/lib/billing.mjs");
+    let threw = null;
+    captureStart();
+    try {
+      await run(sub, args);
+    } catch (err) {
+      threw = err;
+    } finally {
+      captureStop();
+    }
+
+    assert.equal(threw?.message, "process.exit(1)");
+    const line = capturedStderr().split("\n").map(s => s.trim()).find(s => s.startsWith("{") && s.endsWith("}"));
+    assert.ok(line, `should emit a JSON error line on stderr, got: ${capturedStderr()}`);
+    return JSON.parse(line);
+  }
+
+  it("billing tier-checkout rejects both --email and --wallet locally (GH-275)", async () => {
+    const parsed = await runBillingExpectingValidationError("tier-checkout", [
+      "hobby",
+      "--email",
+      "a@example.com",
+      "--wallet",
+      "0xabc",
+    ]);
+
+    assert.equal(parsed.code, "BAD_USAGE");
+    assert.match(parsed.message, /either --email or --wallet/i);
+  });
+
+  it("billing buy-email-pack rejects both --email and --wallet locally (GH-275)", async () => {
+    const parsed = await runBillingExpectingValidationError("buy-email-pack", [
+      "--email",
+      "a@example.com",
+      "--wallet",
+      "0xabc",
+    ]);
+
+    assert.equal(parsed.code, "BAD_USAGE");
+    assert.match(parsed.message, /either --email or --wallet/i);
+  });
+
+  for (const threshold of ["abc", "1.5", "-1"]) {
+    it(`billing auto-recharge rejects malformed threshold ${threshold} locally (GH-274)`, async () => {
+      const parsed = await runBillingExpectingValidationError("auto-recharge", [
+        "acct_abc",
+        "on",
+        "--threshold",
+        threshold,
+      ]);
+
+      assert.equal(parsed.code, "BAD_FLAG");
+      assert.equal(parsed.details?.flag, "--threshold");
+    });
+  }
+});
+
 describe("CLI e2e happy path", () => {
 
   // ── Allowance ───────────────────────────────────────────────────────────
