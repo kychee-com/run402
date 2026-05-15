@@ -17,6 +17,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { NodeSites } from "./sites-node.js";
+import { LocalError } from "../errors.js";
 import type { Client, RequestOptions } from "../kernel.js";
 import type { CommitResponse, PlanResponse } from "../namespaces/deploy.types.js";
 
@@ -145,6 +146,89 @@ describe("NodeSites.deployDir result.url (GH-130)", () => {
       });
 
       assert.equal(result.url, siteUrl);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("NodeSites.deployDir metadata and option validation", () => {
+  it("populates legacy byte counters from static asset CAS accounting (GH-260)", async () => {
+    const root = mkdtempSync(join(tmpdir(), "run402-sites-node-test-"));
+    try {
+      writeFileSync(join(root, "index.html"), "<h1>hi</h1>");
+
+      const w = makeWiring();
+      const plan: PlanResponse = {
+        plan_id: "plan_bytes",
+        operation_id: "op_bytes",
+        base_release_id: null,
+        manifest_digest: "abcd",
+        missing_content: [],
+        diff: {
+          static_assets: {
+            added: 1,
+            changed: 1,
+            removed: 0,
+            unchanged: 2,
+            newly_uploaded_cas_bytes: 331,
+            reused_cas_bytes: 1000,
+            deployment_copy_bytes_eliminated: 0,
+            legacy_immutable_warnings: [],
+            previous_immutable_failures: [],
+            cas_authorization_failures: [],
+          },
+        },
+      };
+      const commit: CommitResponse = {
+        operation_id: "op_bytes",
+        status: "ready",
+        release_id: "rel_bytes",
+        urls: { project: "https://prj_xxx.run402.com" },
+      };
+      w.setHandler((req) => {
+        if (req.path === "/deploy/v2/plans") return plan;
+        if (req.path === "/deploy/v2/plans/plan_bytes/commit") return commit;
+        throw new Error(`unexpected path ${req.path}`);
+      });
+
+      const sites = new NodeSites(w.client);
+      const result = await sites.deployDir({
+        project: "prj_xxx",
+        dir: root,
+      });
+
+      assert.equal(result.bytes_uploaded, 331);
+      assert.equal(result.bytes_total, 1331);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects unsupported target before planning (GH-259)", async () => {
+    const root = mkdtempSync(join(tmpdir(), "run402-sites-node-test-"));
+    try {
+      writeFileSync(join(root, "index.html"), "<h1>hi</h1>");
+
+      const w = makeWiring();
+      const sites = new NodeSites(w.client);
+
+      await assert.rejects(
+        sites.deployDir({
+          project: "prj_xxx",
+          dir: root,
+          target: "production",
+        }),
+        (err: unknown) =>
+          err instanceof LocalError &&
+          /target/i.test(err.message) &&
+          /unsupported/i.test(err.message),
+      );
+      assert.equal(
+        w.requests.filter((req) => req.path === "/deploy/v2/plans").length,
+        0,
+        "target validation should stop before a deploy plan request",
+      );
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

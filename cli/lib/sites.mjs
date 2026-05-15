@@ -12,8 +12,8 @@ const SMALL_DIR_THRESHOLD = 5;
 const HELP = `run402 sites - Deploy and manage static sites
 
 Usage:
-  run402 sites deploy --manifest <file> [--project <id>] [--target <target>]
-  run402 sites deploy-dir <path> --project <id> [--target <target>]
+  run402 sites deploy --manifest <file> [--project <id>]
+  run402 sites deploy-dir <path> --project <id>
   cat manifest.json | run402 sites deploy
 
 Subcommands:
@@ -23,13 +23,11 @@ Subcommands:
 Options (deploy):
   --manifest <file>     Path to manifest JSON file (or read from stdin)
   --project <id>        Project ID (defaults to active project)
-  --target <target>     Deployment target (e.g. 'production')
   --help, -h            Show this help message
 
 Options (deploy-dir):
   <path>                Positional: local directory to deploy
   --project <id>        Project ID (defaults to active project)
-  --target <target>     Deployment target (e.g. 'production')
   --quiet               Suppress progress events on stderr
   --dry-run             Plan-only: print the diff envelope and exit
   --confirm-prune       Required when <path> has fewer files than the
@@ -72,13 +70,12 @@ const SUB_HELP = {
   deploy: `run402 sites deploy - Deploy a static site from a manifest
 
 Usage:
-  run402 sites deploy --manifest <file> [--project <id>] [--target <target>]
-  cat manifest.json | run402 sites deploy [--project <id>] [--target <target>]
+  run402 sites deploy --manifest <file> [--project <id>]
+  cat manifest.json | run402 sites deploy [--project <id>]
 
 Options:
   --manifest <file>   Path to manifest JSON file (or read from stdin)
   --project <id>      Project ID (defaults to the active project)
-  --target <target>   Deployment target (e.g. 'production')
 
 Manifest format (JSON):
   {
@@ -96,13 +93,12 @@ Notes:
 
 Examples:
   run402 sites deploy --manifest site.json
-  run402 sites deploy --manifest site.json --target production
   cat site.json | run402 sites deploy
 `,
   "deploy-dir": `run402 sites deploy-dir - Deploy a static site from a local directory
 
 Usage:
-  run402 sites deploy-dir <path> [--project <id>] [--target <target>] [--quiet]
+  run402 sites deploy-dir <path> [--project <id>] [--quiet]
                                   [--dry-run] [--confirm-prune]
 
 Arguments:
@@ -110,7 +106,6 @@ Arguments:
 
 Options:
   --project <id>      Project ID (defaults to the active project)
-  --target <target>   Deployment target (e.g. 'production')
   --quiet             Suppress progress events on stderr (events are on by
                       default — see Progress events below)
   --dry-run           Plan the deploy and print a JSON envelope describing
@@ -147,7 +142,6 @@ Notes:
 
 Examples:
   run402 sites deploy-dir ./dist --project prj_abc
-  run402 sites deploy-dir ./my-site --project prj_abc --target production
   run402 sites deploy-dir ./dist --project prj_abc --quiet
   run402 sites deploy-dir ./tiny-site --project prj_abc --confirm-prune
   run402 sites deploy-dir ./dist --project prj_abc --dry-run
@@ -183,6 +177,15 @@ function makeStderrEventWriter(quiet) {
   };
 }
 
+function failUnsupportedTarget() {
+  fail({
+    code: "UNSUPPORTED_OPTION",
+    message:
+      "--target is unsupported by unified deploy v2 and would otherwise be ignored.",
+    field: "target",
+  });
+}
+
 async function deploy(args) {
   const opts = { manifest: null, project: undefined, target: undefined, quiet: false };
   for (let i = 0; i < args.length; i++) {
@@ -199,6 +202,7 @@ async function deploy(args) {
       process.exit(1);
     }
   }
+  if (opts.target !== undefined) failUnsupportedTarget();
   const projectId = resolveProjectId(opts.project);
   const raw = opts.manifest ? readFileSync(opts.manifest, "utf-8") : await readStdin();
   const manifest = JSON.parse(raw);
@@ -258,6 +262,7 @@ async function deployDir(args) {
     });
   }
   const projectId = resolveProjectId(opts.project);
+  if (opts.target !== undefined) failUnsupportedTarget();
 
   // Preserve the aggressive early exit when no allowance is configured.
   allowanceAuthHeaders("/deploy/v2/plans");

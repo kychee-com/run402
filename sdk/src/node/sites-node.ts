@@ -5,8 +5,10 @@
  * through the unified CAS substrate, the deploy flows through the v2 plan/
  * commit endpoints, and the agent-observable result remains a
  * {@link SiteDeployResult}. Existing callers keep their input shape
- * (`{ project, dir, target?, onEvent? }`), and `onEvent` receives the unified
- * `DeployEvent` shapes from the SDK's `deploy` namespace.
+ * (`{ project, dir, onEvent? }`), and `onEvent` receives the unified
+ * `DeployEvent` shapes from the SDK's `deploy` namespace. The old `target`
+ * option is still typed for compatibility, but unified deploy v2 does not
+ * support target labels and passing one throws a `LocalError`.
  *
  * Imports `node:fs/promises` via `fileSetFromDir`, so this module remains
  * Node-only — V8 isolates use `r.deploy.apply` with in-memory byte sources.
@@ -14,11 +16,13 @@
 
 import { Sites, type SiteDeployResult } from "../namespaces/sites.js";
 import { Deploy } from "../namespaces/deploy.js";
+import { LocalError } from "../errors.js";
 import type { Client } from "../kernel.js";
 import type {
   ContentRef,
   DeployEvent as UnifiedDeployEvent,
 } from "../namespaces/deploy.types.js";
+import { summarizeDeployResult } from "../namespaces/deploy.types.js";
 import { fileSetFromDir } from "./files.js";
 
 export interface DeployDirOptions {
@@ -26,7 +30,10 @@ export interface DeployDirOptions {
   project: string;
   /** Local directory to walk. Paths in the manifest are relative to this root. */
   dir: string;
-  /** Deployment target label, e.g. `"production"`. */
+  /**
+   * @deprecated Unsupported by unified deploy v2. Passing this option throws
+   * a `LocalError` so it is not silently ignored.
+   */
   target?: string;
   /**
    * Optional progress callback. Errors thrown synchronously are caught and
@@ -50,6 +57,13 @@ export class NodeSites extends Sites {
    * the new release atomically, and polls the operation until terminal.
    */
   async deployDir(opts: DeployDirOptions): Promise<SiteDeployResult> {
+    if (opts.target !== undefined) {
+      throw new LocalError(
+        "`sites.deployDir({ target })` is unsupported by unified deploy v2 and would otherwise be ignored.",
+        "deploying site directory",
+      );
+    }
+
     const fileSet = await fileSetFromDir(opts.dir);
     const deploy = new Deploy(
       (this as unknown as { client: Client }).client,
@@ -72,6 +86,15 @@ export class NodeSites extends Sites {
         pickFromUrls(result.urls, "site") ??
         "",
     };
+    const summary = summarizeDeployResult(result);
+    const cas = summary.site?.cas;
+    if (
+      typeof cas?.newly_uploaded_bytes === "number" &&
+      typeof cas.reused_bytes === "number"
+    ) {
+      out.bytes_uploaded = cas.newly_uploaded_bytes;
+      out.bytes_total = cas.newly_uploaded_bytes + cas.reused_bytes;
+    }
     return out;
   }
 }

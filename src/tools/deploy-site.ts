@@ -2,6 +2,7 @@ import { mkdtempSync, writeFileSync, mkdirSync, rmSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import { z } from "zod";
+import { LocalError } from "../../sdk/dist/index.js";
 import { getSdk } from "../sdk.js";
 import { mapSdkError } from "../errors.js";
 import { requireAllowanceAuth } from "../allowance-auth.js";
@@ -14,7 +15,7 @@ export const deploySiteSchema = {
   target: z
     .string()
     .optional()
-    .describe("Deployment target (e.g. 'production'). Tracked in DB for future alias support."),
+    .describe("Deprecated/unsupported: unified deploy v2 does not support deployment target labels. Passing this field returns an error."),
   files: z
     .array(
       z.object({
@@ -34,6 +35,16 @@ export async function handleDeploySite(args: {
   target?: string;
   files: Array<{ file: string; data: string; encoding?: string }>;
 }): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
+  if (args.target !== undefined) {
+    return mapSdkError(
+      new LocalError(
+        "`target` is unsupported by unified deploy v2 and would otherwise be ignored.",
+        "deploying site",
+      ),
+      "deploying site",
+    );
+  }
+
   const auth = requireAllowanceAuth("/deploy/v2/plans");
   if ("error" in auth) return auth.error;
 

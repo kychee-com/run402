@@ -845,8 +845,8 @@ const asset = await client.blobs.completeUploadSession(
 ```
 
 ### sites
-- `run402 sites deploy --manifest <file> [--project <id>] [--target <target>]`
-- `run402 sites deploy-dir <path> [--project <id>] [--target <target>] [--quiet] [--dry-run] [--confirm-prune]`
+- `run402 sites deploy --manifest <file> [--project <id>]`
+- `run402 sites deploy-dir <path> [--project <id>] [--quiet] [--dry-run] [--confirm-prune]`
 
 `--project` defaults to the active project. Manifest: `{"files":[{"file":"index.html","data":"..."},{"file":"style.css","data":"..."}]}`. Must include `index.html`. Free with active tier. If the project already has a subdomain, redeploying auto-reassigns it to the new deployment (response includes `subdomain_urls`).
 
