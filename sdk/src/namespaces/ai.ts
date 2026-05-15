@@ -4,7 +4,7 @@
  */
 
 import type { Client } from "../kernel.js";
-import { ProjectNotFound } from "../errors.js";
+import { LocalError, ProjectNotFound } from "../errors.js";
 
 export interface TranslateOptions {
   text: string;
@@ -36,6 +36,7 @@ export interface AiUsageResult {
 }
 
 export type ImageAspect = "square" | "landscape" | "portrait";
+const IMAGE_ASPECTS: readonly ImageAspect[] = ["square", "landscape", "portrait"];
 
 export interface GenerateImageOptions {
   prompt: string;
@@ -98,9 +99,16 @@ export class Ai {
    * No project scope — payment flows through the allowance-based fetch.
    */
   async generateImage(opts: GenerateImageOptions): Promise<GenerateImageResult> {
+    const aspect = opts.aspect ?? "square";
+    if (!IMAGE_ASPECTS.includes(aspect)) {
+      throw new LocalError(
+        `aspect must be one of: ${IMAGE_ASPECTS.join(", ")}`,
+        "generating image",
+      );
+    }
     return this.client.request<GenerateImageResult>("/generate-image/v1", {
       method: "POST",
-      body: { prompt: opts.prompt, aspect: opts.aspect ?? "square" },
+      body: { prompt: opts.prompt, aspect },
       context: "generating image",
     });
   }

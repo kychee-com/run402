@@ -1,6 +1,7 @@
 import { writeFileSync } from "fs";
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail } from "./sdk-errors.mjs";
+import { assertAllowedValue, assertKnownFlags, flagValue, normalizeArgv, positionalArgs } from "./argparse.mjs";
 
 const HELP = `run402 image — Generate AI images via x402 micropayments
 
@@ -71,15 +72,22 @@ export async function run(sub, args) {
     process.exit(1);
   }
 
-  const opts = { prompt: null, aspect: "square", output: null };
-  let i = 0;
-  if (i < args.length && !args[i].startsWith("--")) opts.prompt = args[i++];
-  while (i < args.length) {
-    if (args[i] === "--help" || args[i] === "-h") { console.log(SUB_HELP[sub] || HELP); process.exit(0); }
-    else if (args[i] === "--aspect" && args[i + 1]) { opts.aspect = args[++i]; }
-    else if (args[i] === "--output" && args[i + 1]) { opts.output = args[++i]; }
-    i++;
+  const parsedArgs = normalizeArgv(args);
+  const valueFlags = ["--aspect", "--output"];
+  assertKnownFlags(parsedArgs, [...valueFlags, "--help", "-h"], valueFlags);
+  const positionals = positionalArgs(parsedArgs, valueFlags);
+  if (positionals.length > 1) {
+    fail({
+      code: "BAD_USAGE",
+      message: `Unexpected argument for image generate: ${positionals[1]}`,
+      hint: 'Quote multi-word prompts, e.g. run402 image generate "your prompt".',
+    });
   }
+  const opts = {
+    prompt: positionals[0] ?? null,
+    aspect: flagValue(parsedArgs, "--aspect") ?? "square",
+    output: flagValue(parsedArgs, "--output"),
+  };
 
   if (!opts.prompt) {
     fail({
@@ -88,6 +96,7 @@ export async function run(sub, args) {
       hint: 'run402 image generate "your prompt"',
     });
   }
+  assertAllowedValue(opts.aspect, ["square", "landscape", "portrait"], "--aspect");
 
   try {
     const data = await getSdk().ai.generateImage({ prompt: opts.prompt, aspect: opts.aspect });

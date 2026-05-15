@@ -1,6 +1,6 @@
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail } from "./sdk-errors.mjs";
-import { parseIntegerFlag } from "./argparse.mjs";
+import { assertKnownFlags, flagValue, normalizeArgv, parseIntegerFlag, positionalArgs } from "./argparse.mjs";
 
 const HELP = `run402 billing — Email billing accounts, Stripe tier checkout, email packs
 
@@ -122,13 +122,6 @@ Examples:
 `,
 };
 
-function parseFlag(args, flag) {
-  for (let i = 0; i < args.length; i++) {
-    if (args[i] === flag && args[i + 1]) return args[i + 1];
-  }
-  return null;
-}
-
 function requireSingleBillingIdentifier(email, wallet) {
   if (email && wallet) {
     fail({
@@ -147,7 +140,13 @@ function requireSingleBillingIdentifier(email, wallet) {
 }
 
 async function createEmail(args) {
-  const email = args[0];
+  const parsedArgs = normalizeArgv(args);
+  assertKnownFlags(parsedArgs, ["--help", "-h"]);
+  const positionals = positionalArgs(parsedArgs);
+  const email = positionals[0];
+  if (positionals.length > 1) {
+    fail({ code: "BAD_USAGE", message: `Unexpected argument for billing create-email: ${positionals[1]}` });
+  }
   if (!email) {
     fail({
       code: "BAD_USAGE",
@@ -164,8 +163,14 @@ async function createEmail(args) {
 }
 
 async function linkWallet(args) {
-  const accountId = args[0];
-  const wallet = args[1];
+  const parsedArgs = normalizeArgv(args);
+  assertKnownFlags(parsedArgs, ["--help", "-h"]);
+  const positionals = positionalArgs(parsedArgs);
+  const accountId = positionals[0];
+  const wallet = positionals[1];
+  if (positionals.length > 2) {
+    fail({ code: "BAD_USAGE", message: `Unexpected argument for billing link-wallet: ${positionals[2]}` });
+  }
   if (!accountId || !wallet) {
     fail({
       code: "BAD_USAGE",
@@ -182,7 +187,14 @@ async function linkWallet(args) {
 }
 
 async function tierCheckout(args) {
-  const tier = args[0];
+  const parsedArgs = normalizeArgv(args);
+  const valueFlags = ["--email", "--wallet"];
+  assertKnownFlags(parsedArgs, [...valueFlags, "--help", "-h"], valueFlags);
+  const positionals = positionalArgs(parsedArgs, valueFlags);
+  const tier = positionals[0];
+  if (positionals.length > 1) {
+    fail({ code: "BAD_USAGE", message: `Unexpected argument for billing tier-checkout: ${positionals[1]}` });
+  }
   if (!tier) {
     fail({
       code: "BAD_USAGE",
@@ -190,8 +202,8 @@ async function tierCheckout(args) {
       hint: "run402 billing tier-checkout <tier> [--email <e> | --wallet <w>]",
     });
   }
-  const email = parseFlag(args, "--email");
-  const wallet = parseFlag(args, "--wallet");
+  const email = flagValue(parsedArgs, "--email");
+  const wallet = flagValue(parsedArgs, "--wallet");
   requireSingleBillingIdentifier(email, wallet);
   try {
     const data = await getSdk().billing.tierCheckout(tier, { email: email ?? undefined, wallet: wallet ?? undefined });
@@ -202,8 +214,15 @@ async function tierCheckout(args) {
 }
 
 async function buyPack(args) {
-  const email = parseFlag(args, "--email");
-  const wallet = parseFlag(args, "--wallet");
+  const parsedArgs = normalizeArgv(args);
+  const valueFlags = ["--email", "--wallet"];
+  assertKnownFlags(parsedArgs, [...valueFlags, "--help", "-h"], valueFlags);
+  const extra = positionalArgs(parsedArgs, valueFlags);
+  if (extra.length > 0) {
+    fail({ code: "BAD_USAGE", message: `Unexpected argument for billing buy-email-pack: ${extra[0]}` });
+  }
+  const email = flagValue(parsedArgs, "--email");
+  const wallet = flagValue(parsedArgs, "--wallet");
   requireSingleBillingIdentifier(email, wallet);
   try {
     const data = await getSdk().billing.buyEmailPack({ email: email ?? undefined, wallet: wallet ?? undefined });
@@ -214,8 +233,15 @@ async function buyPack(args) {
 }
 
 async function autoRecharge(args) {
-  const accountId = args[0];
-  const state = args[1];
+  const parsedArgs = normalizeArgv(args);
+  const valueFlags = ["--threshold"];
+  assertKnownFlags(parsedArgs, [...valueFlags, "--help", "-h"], valueFlags);
+  const positionals = positionalArgs(parsedArgs, valueFlags);
+  const accountId = positionals[0];
+  const state = positionals[1];
+  if (positionals.length > 2) {
+    fail({ code: "BAD_USAGE", message: `Unexpected argument for billing auto-recharge: ${positionals[2]}` });
+  }
   if (!accountId || !state || !["on", "off"].includes(state)) {
     fail({
       code: "BAD_USAGE",
@@ -223,8 +249,8 @@ async function autoRecharge(args) {
       hint: "run402 billing auto-recharge <account_id> <on|off> [--threshold <n>]",
     });
   }
-  const thresholdStr = parseFlag(args, "--threshold");
-  const threshold = args.includes("--threshold")
+  const thresholdStr = flagValue(parsedArgs, "--threshold");
+  const threshold = parsedArgs.includes("--threshold")
     ? parseIntegerFlag("--threshold", thresholdStr, { min: 0 })
     : undefined;
   try {
@@ -240,7 +266,13 @@ async function autoRecharge(args) {
 }
 
 async function balance(args) {
-  const id = args[0];
+  const parsedArgs = normalizeArgv(args);
+  assertKnownFlags(parsedArgs, ["--help", "-h"]);
+  const positionals = positionalArgs(parsedArgs);
+  const id = positionals[0];
+  if (positionals.length > 1) {
+    fail({ code: "BAD_USAGE", message: `Unexpected argument for billing balance: ${positionals[1]}` });
+  }
   if (!id) {
     fail({
       code: "BAD_USAGE",
@@ -257,7 +289,14 @@ async function balance(args) {
 }
 
 async function history(args) {
-  const id = args[0];
+  const parsedArgs = normalizeArgv(args);
+  const valueFlags = ["--limit"];
+  assertKnownFlags(parsedArgs, [...valueFlags, "--help", "-h"], valueFlags);
+  const positionals = positionalArgs(parsedArgs, valueFlags);
+  const id = positionals[0];
+  if (positionals.length > 1) {
+    fail({ code: "BAD_USAGE", message: `Unexpected argument for billing history: ${positionals[1]}` });
+  }
   if (!id) {
     fail({
       code: "BAD_USAGE",
@@ -265,9 +304,11 @@ async function history(args) {
       hint: "run402 billing history <email-or-wallet> [--limit <n>]",
     });
   }
-  const limit = parseFlag(args, "--limit") || "50";
+  const limit = parsedArgs.includes("--limit")
+    ? parseIntegerFlag("--limit", flagValue(parsedArgs, "--limit"), { min: 1 })
+    : 50;
   try {
-    const data = await getSdk().billing.getHistory(id, Number(limit));
+    const data = await getSdk().billing.getHistory(id, limit);
     console.log(JSON.stringify(data, null, 2));
   } catch (err) {
     reportSdkError(err);

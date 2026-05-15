@@ -1,7 +1,7 @@
 import { allowanceAuthHeaders } from "./config.mjs";
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail } from "./sdk-errors.mjs";
-import { validateWebhookUrl } from "./argparse.mjs";
+import { assertKnownFlags, flagValue, normalizeArgv, positionalArgs, validateWebhookUrl } from "./argparse.mjs";
 
 const HELP = `run402 agent — Manage agent identity
 
@@ -76,12 +76,20 @@ contact email. Requires assurance_level=email_verified first.
 };
 
 async function contact(args) {
-  let name = null, email = null, webhook = null;
-  for (let i = 0; i < args.length; i++) {
-    if (args[i] === "--name" && args[i + 1]) name = args[++i];
-    if (args[i] === "--email" && args[i + 1]) email = args[++i];
-    if (args[i] === "--webhook" && args[i + 1]) webhook = args[++i];
+  const parsedArgs = normalizeArgv(args);
+  const valueFlags = ["--name", "--email", "--webhook"];
+  assertKnownFlags(parsedArgs, [...valueFlags, "--help", "-h"], valueFlags);
+  const extra = positionalArgs(parsedArgs, valueFlags);
+  if (extra.length > 0) {
+    fail({
+      code: "BAD_USAGE",
+      message: `Unexpected argument for agent contact: ${extra[0]}`,
+      hint: "Use `run402 agent contact --name <name> [--email <email>] [--webhook <url>]`.",
+    });
   }
+  const name = flagValue(parsedArgs, "--name");
+  const email = flagValue(parsedArgs, "--email");
+  const webhook = flagValue(parsedArgs, "--webhook");
   if (!name) {
     fail({ code: "BAD_USAGE", message: "Missing --name <name>" });
   }
@@ -104,7 +112,13 @@ async function contact(args) {
   }
 }
 
-async function status() {
+async function status(args = []) {
+  const parsedArgs = normalizeArgv(args);
+  assertKnownFlags(parsedArgs, ["--help", "-h"]);
+  const extra = positionalArgs(parsedArgs);
+  if (extra.length > 0) {
+    fail({ code: "BAD_USAGE", message: `Unexpected argument for agent status: ${extra[0]}` });
+  }
   allowanceAuthHeaders("/agent/v1/contact/status");
 
   try {
@@ -115,7 +129,13 @@ async function status() {
   }
 }
 
-async function verifyEmail() {
+async function verifyEmail(args = []) {
+  const parsedArgs = normalizeArgv(args);
+  assertKnownFlags(parsedArgs, ["--help", "-h"]);
+  const extra = positionalArgs(parsedArgs);
+  if (extra.length > 0) {
+    fail({ code: "BAD_USAGE", message: `Unexpected argument for agent verify-email: ${extra[0]}` });
+  }
   allowanceAuthHeaders("/agent/v1/contact/verify-email");
 
   try {
@@ -127,7 +147,13 @@ async function verifyEmail() {
 }
 
 async function passkey(args) {
-  const action = args[0];
+  const parsedArgs = normalizeArgv(args);
+  assertKnownFlags(parsedArgs, ["--help", "-h"]);
+  const positionals = positionalArgs(parsedArgs);
+  const action = positionals[0];
+  if (positionals.length > 1) {
+    fail({ code: "BAD_USAGE", message: `Unexpected argument for agent passkey: ${positionals[1]}` });
+  }
   if (action !== "enroll") {
     fail({ code: "BAD_USAGE", message: "Usage: run402 agent passkey enroll" });
   }
@@ -152,10 +178,10 @@ export async function run(sub, args) {
       await contact(args);
       return;
     case "status":
-      await status();
+      await status(args);
       return;
     case "verify-email":
-      await verifyEmail();
+      await verifyEmail(args);
       return;
     case "passkey":
       await passkey(args);

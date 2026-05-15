@@ -323,6 +323,227 @@ describe("contracts wei argv validation", () => {
   }
 });
 
+describe("2026-05 CLI bug backlog argv validation", () => {
+  const invalidCases = [
+    {
+      issue: "GH-306",
+      name: "blob put rejects multi-file uploads with a fixed --key",
+      module: "./cli/lib/blob.mjs",
+      call: (run) => run("put", ["./a.txt", "./b.txt", "--key", "release/current.txt"]),
+      code: "BAD_USAGE",
+    },
+    {
+      issue: "GH-305",
+      name: "cdn wait-fresh rejects invalid SHA values",
+      module: "./cli/lib/cdn.mjs",
+      call: (run) => run("wait-fresh", ["https://example.com/a.png", "--sha", "not-a-sha"]),
+      code: "BAD_FLAG",
+    },
+    {
+      issue: "GH-305",
+      name: "cdn wait-fresh rejects non-integer timeout values",
+      module: "./cli/lib/cdn.mjs",
+      call: (run) => run("wait-fresh", ["https://example.com/a.png", "--sha", "a".repeat(64), "--timeout", "NaN"]),
+      code: "BAD_FLAG",
+    },
+    {
+      issue: "GH-304",
+      name: "sites deploy rejects unknown flags",
+      module: "./cli/lib/sites.mjs",
+      call: (run) => run("deploy", ["--manifest", "site.json", "--manfiest", "typo.json"]),
+      code: "UNKNOWN_FLAG",
+    },
+    {
+      issue: "GH-304",
+      name: "sites deploy-dir rejects extra paths",
+      module: "./cli/lib/sites.mjs",
+      call: (run) => run("deploy-dir", ["dist", "dist-copy", "--project", "prj_test123"]),
+      code: "BAD_USAGE",
+    },
+    {
+      issue: "GH-303",
+      name: "tier set rejects extra positional arguments",
+      module: "./cli/lib/tier.mjs",
+      call: (run) => run("set", ["prototype", "team"]),
+      code: "BAD_USAGE",
+    },
+    {
+      issue: "GH-302",
+      name: "message send rejects option-looking tokens",
+      module: "./cli/lib/message.mjs",
+      call: (run) => run("send", ["--file", "./message.txt"]),
+      code: "UNKNOWN_FLAG",
+    },
+    {
+      issue: "GH-301",
+      name: "agent contact rejects unknown flags",
+      module: "./cli/lib/agent.mjs",
+      call: (run) => run("contact", ["--name", "agent", "--emali", "a@example.com"]),
+      code: "UNKNOWN_FLAG",
+    },
+    {
+      issue: "GH-300",
+      name: "apps publish rejects missing flag values",
+      module: "./cli/lib/apps.mjs",
+      call: (run) => run("publish", ["prj_test123", "--description"]),
+      code: "BAD_FLAG",
+    },
+    {
+      issue: "GH-299",
+      name: "apps update rejects conflicting fork policy flags",
+      module: "./cli/lib/apps.mjs",
+      call: (run) => run("update", ["prj_test123", "ver_1", "--fork-allowed", "--no-fork"]),
+      code: "BAD_USAGE",
+    },
+    {
+      issue: "GH-298",
+      name: "apps fork rejects unsupported --tier",
+      module: "./cli/lib/apps.mjs",
+      call: (run) => run("fork", ["ver_1", "copy", "--tier", "hobby"]),
+      code: "UNKNOWN_FLAG",
+    },
+    {
+      issue: "GH-297",
+      name: "secrets delete rejects extra arguments",
+      module: "./cli/lib/secrets.mjs",
+      call: (run) => run("delete", ["prj_test123", "API_KEY", "OTHER_KEY"]),
+      code: "BAD_USAGE",
+    },
+    {
+      issue: "GH-295",
+      name: "secrets set rejects inline value plus --file",
+      module: "./cli/lib/secrets.mjs",
+      call: (run) => run("set", ["prj_test123", "API_KEY", "inline", "--file", "./prod-secret.txt"]),
+      code: "BAD_USAGE",
+    },
+    {
+      issue: "GH-294",
+      name: "image generate rejects invalid aspect values",
+      module: "./cli/lib/image.mjs",
+      call: (run) => run("generate", ["prompt", "--aspect", "panorama"]),
+      code: "BAD_FLAG",
+    },
+    {
+      issue: "GH-293",
+      name: "image generate rejects extra prompt words",
+      module: "./cli/lib/image.mjs",
+      call: (run) => run("generate", ["a", "cyberpunk", "eagle"]),
+      code: "BAD_USAGE",
+    },
+    {
+      issue: "GH-292",
+      name: "domains delete rejects extra positional domains",
+      module: "./cli/lib/domains.mjs",
+      call: (run) => run("delete", ["example.com", "extra.com", "--confirm"]),
+      code: "BAD_USAGE",
+    },
+    {
+      issue: "GH-291",
+      name: "subdomains delete rejects extra positional names",
+      module: "./cli/lib/subdomains.mjs",
+      call: (run) => run("delete", ["site-a", "site-b", "--confirm"]),
+      code: "BAD_USAGE",
+    },
+    {
+      issue: "GH-290",
+      name: "subdomains claim rejects missing flag values",
+      module: "./cli/lib/subdomains.mjs",
+      call: (run) => run("claim", ["site-a", "--deployment"]),
+      code: "BAD_FLAG",
+    },
+    {
+      issue: "GH-289",
+      name: "sender-domain register rejects extra domains",
+      module: "./cli/lib/sender-domain.mjs",
+      call: (run) => run("register", ["example.com", "typo.com", "--project", "prj_test123"]),
+      code: "BAD_USAGE",
+    },
+    {
+      issue: "GH-288",
+      name: "sender-domain status rejects missing --project values",
+      module: "./cli/lib/sender-domain.mjs",
+      call: (run) => run("status", ["--project"]),
+      code: "BAD_FLAG",
+    },
+    {
+      issue: "GH-287",
+      name: "contracts drain rejects malformed destination addresses",
+      module: "./cli/lib/contracts.mjs",
+      call: (run) => run("drain", ["prj_test123", "cwlt_1", "--to", "0xabc", "--confirm"]),
+      code: "BAD_FLAG",
+    },
+    {
+      issue: "GH-286",
+      name: "contracts provision-wallet rejects unsupported chains",
+      module: "./cli/lib/contracts.mjs",
+      call: (run) => run("provision-wallet", ["prj_test123", "--chain", "polygon"]),
+      code: "BAD_FLAG",
+    },
+    {
+      issue: "GH-285",
+      name: "contracts set-recovery rejects --clear and --address together",
+      module: "./cli/lib/contracts.mjs",
+      call: (run) => run("set-recovery", ["prj_test123", "cwlt_1", "--clear", "--address", "0x1111111111111111111111111111111111111111"]),
+      code: "BAD_USAGE",
+    },
+    {
+      issue: "GH-284",
+      name: "contracts call rejects unknown flags",
+      module: "./cli/lib/contracts.mjs",
+      call: (run) => run("call", [
+        "prj_test123",
+        "cwlt_1",
+        "--to",
+        "0x4444444444444444444444444444444444444444",
+        "--abi",
+        "[]",
+        "--fn",
+        "noop",
+        "--args",
+        "[]",
+        "--chaim",
+        "base-sepolia",
+      ]),
+      code: "UNKNOWN_FLAG",
+    },
+    {
+      issue: "GH-283",
+      name: "billing history rejects fractional limits",
+      module: "./cli/lib/billing.mjs",
+      call: (run) => run("history", ["user@example.com", "--limit", "1.5"]),
+      code: "BAD_FLAG",
+    },
+    {
+      issue: "GH-282",
+      name: "billing tier-checkout rejects missing flag values",
+      module: "./cli/lib/billing.mjs",
+      call: (run) => run("tier-checkout", ["prototype", "--email"]),
+      code: "BAD_FLAG",
+    },
+  ];
+
+  for (const testCase of invalidCases) {
+    it(`${testCase.issue}: ${testCase.name}`, async () => {
+      const { run } = await import(testCase.module);
+      const err = await expectExit1(() => testCase.call(run));
+
+      assert.equal(err.code, testCase.code);
+      assert.equal(calls.length, 0, "invalid argv must not hit the network");
+    });
+  }
+
+  it("GH-296: secrets set allows an intentional empty-string value", async () => {
+    const { run } = await import("./cli/lib/secrets.mjs");
+    captureStart();
+    await run("set", ["prj_test123", "EMPTY_SECRET", ""]);
+    captureStop();
+
+    const call = calls.find((c) => c.path === "/projects/v1/admin/prj_test123/secrets");
+    assert.ok(call, `expected secrets set request, got ${JSON.stringify(calls)}`);
+    assert.equal(JSON.parse(call.init.body).value, "");
+  });
+});
+
 describe("--flag=value", () => {
   it("blob ls accepts equals-form flags (GH-189)", async () => {
     const { run } = await import("./cli/lib/blob.mjs");

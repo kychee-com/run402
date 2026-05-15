@@ -25,6 +25,13 @@ export function assertKnownFlags(args = [], knownFlags = [], flagsWithValues = [
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
     if (valueFlags.has(arg)) {
+      if (i + 1 >= args.length || (typeof args[i + 1] === "string" && args[i + 1].startsWith("--"))) {
+        fail({
+          code: "BAD_FLAG",
+          message: `${arg} requires a value`,
+          details: { flag: arg },
+        });
+      }
       i += 1;
       continue;
     }
@@ -47,7 +54,7 @@ export function failUnknownFlag(flag, knownFlags = []) {
 export function flagValue(args, flag) {
   const idx = args.indexOf(flag);
   if (idx === -1) return null;
-  if (idx + 1 >= args.length) {
+  if (idx + 1 >= args.length || (typeof args[idx + 1] === "string" && args[idx + 1].startsWith("--"))) {
     fail({
       code: "BAD_FLAG",
       message: `${flag} requires a value`,
@@ -97,6 +104,26 @@ export function parseIntegerFlag(name, value, { min = 1, max = Number.POSITIVE_I
     });
   }
   return n;
+}
+
+export function assertAllowedValue(value, allowed, fieldName) {
+  if (!allowed.includes(value)) {
+    fail({
+      code: "BAD_FLAG",
+      message: `${fieldName} must be one of: ${allowed.join(", ")}`,
+      details: { field: fieldName, value, allowed },
+    });
+  }
+}
+
+export function validateEvmAddress(value, fieldName = "address") {
+  if (typeof value !== "string" || !/^0x[a-fA-F0-9]{40}$/.test(value)) {
+    fail({
+      code: "BAD_FLAG",
+      message: `${fieldName} must be a 0x-prefixed 20-byte EVM address`,
+      details: { field: fieldName, value },
+    });
+  }
 }
 
 export function failBadProjectId(value) {
@@ -204,6 +231,31 @@ export function positionalArgs(args = [], flagsWithValues = []) {
     out.push(arg);
   }
   return out;
+}
+
+export function requirePositionalCount(args = [], flagsWithValues = [], opts = {}) {
+  const {
+    min = 0,
+    max = min,
+    command = "command",
+    missing = "Missing required argument.",
+  } = opts;
+  const pos = positionalArgs(args, flagsWithValues);
+  if (pos.length < min) {
+    fail({
+      code: "BAD_USAGE",
+      message: missing,
+      hint: command,
+    });
+  }
+  if (pos.length > max) {
+    fail({
+      code: "BAD_USAGE",
+      message: `Unexpected argument for ${command}: ${pos[max]}`,
+      hint: `Use \`${command}\`.`,
+    });
+  }
+  return pos;
 }
 
 // Resolve a positional project_id argument with active-project fallback (GH-102, GH-187).

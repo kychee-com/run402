@@ -1,6 +1,7 @@
 import { resolveProjectId } from "./config.mjs";
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail } from "./sdk-errors.mjs";
+import { assertKnownFlags, flagValue, normalizeArgv, positionalArgs } from "./argparse.mjs";
 
 const HELP = `run402 sender-domain — Manage custom email sender domain
 
@@ -100,18 +101,18 @@ Examples:
 };
 
 function parseFlag(args, flag) {
-  for (let i = 0; i < args.length; i++) {
-    if (args[i] === flag && args[i + 1]) return args[i + 1];
-  }
-  return null;
+  return flagValue(normalizeArgv(args), flag);
 }
 
 async function register(args) {
-  let domain = null;
-  let projectOpt = null;
-  for (let i = 0; i < args.length; i++) {
-    if (args[i] === "--project" && args[i + 1]) { projectOpt = args[++i]; }
-    else if (!args[i].startsWith("--") && !domain) { domain = args[i]; }
+  const parsedArgs = normalizeArgv(args);
+  const valueFlags = ["--project"];
+  assertKnownFlags(parsedArgs, [...valueFlags, "--help", "-h"], valueFlags);
+  const positionals = positionalArgs(parsedArgs, valueFlags);
+  let domain = positionals[0] ?? null;
+  let projectOpt = flagValue(parsedArgs, "--project");
+  if (positionals.length > 1) {
+    fail({ code: "BAD_USAGE", message: `Unexpected argument for sender-domain register: ${positionals[1]}` });
   }
   const projectId = resolveProjectId(projectOpt);
 
@@ -132,6 +133,13 @@ async function register(args) {
 }
 
 async function status(args) {
+  const parsedArgs = normalizeArgv(args);
+  const valueFlags = ["--project"];
+  assertKnownFlags(parsedArgs, [...valueFlags, "--help", "-h"], valueFlags);
+  const extra = positionalArgs(parsedArgs, valueFlags);
+  if (extra.length > 0) {
+    fail({ code: "BAD_USAGE", message: `Unexpected argument for sender-domain status: ${extra[0]}` });
+  }
   const projectId = resolveProjectId(parseFlag(args, "--project"));
   try {
     const data = await getSdk().senderDomain.status(projectId);
@@ -142,6 +150,13 @@ async function status(args) {
 }
 
 async function remove(args) {
+  const parsedArgs = normalizeArgv(args);
+  const valueFlags = ["--project"];
+  assertKnownFlags(parsedArgs, [...valueFlags, "--help", "-h"], valueFlags);
+  const extra = positionalArgs(parsedArgs, valueFlags);
+  if (extra.length > 0) {
+    fail({ code: "BAD_USAGE", message: `Unexpected argument for sender-domain remove: ${extra[0]}` });
+  }
   const projectId = resolveProjectId(parseFlag(args, "--project"));
   try {
     await getSdk().senderDomain.remove(projectId);
@@ -152,11 +167,14 @@ async function remove(args) {
 }
 
 async function inboundToggle(action, args) {
-  let domain = null;
-  let projectOpt = null;
-  for (let i = 0; i < args.length; i++) {
-    if (args[i] === "--project" && args[i + 1]) { projectOpt = args[++i]; }
-    else if (!args[i].startsWith("--") && !domain) { domain = args[i]; }
+  const parsedArgs = normalizeArgv(args);
+  const valueFlags = ["--project"];
+  assertKnownFlags(parsedArgs, [...valueFlags, "--help", "-h"], valueFlags);
+  const positionals = positionalArgs(parsedArgs, valueFlags);
+  let domain = positionals[0] ?? null;
+  let projectOpt = flagValue(parsedArgs, "--project");
+  if (positionals.length > 1) {
+    fail({ code: "BAD_USAGE", message: `Unexpected argument for sender-domain inbound-${action}: ${positionals[1]}` });
   }
   const projectId = resolveProjectId(projectOpt);
 

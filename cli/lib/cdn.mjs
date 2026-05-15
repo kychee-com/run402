@@ -16,6 +16,7 @@
 import { resolveProjectId } from "./config.mjs";
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail } from "./sdk-errors.mjs";
+import { assertKnownFlags, flagValue, normalizeArgv, parseIntegerFlag, positionalArgs } from "./argparse.mjs";
 
 const HELP = `run402 cdn — CloudFront CDN diagnostics for public blob URLs
 
@@ -73,14 +74,19 @@ function die(msg, exit_code = 1) {
 }
 
 function parseArgs(args) {
-  const opts = { positional: [] };
-  for (let i = 0; i < args.length; i++) {
-    const a = args[i];
-    if (a === "--sha") opts.sha = args[++i];
-    else if (a === "--timeout") opts.timeout = Number(args[++i]);
-    else if (a === "--project") opts.project = args[++i];
-    else if (a.startsWith("--")) die(`Unknown option: ${a}`);
-    else opts.positional.push(a);
+  const normalized = normalizeArgv(args);
+  const valueFlags = ["--sha", "--timeout", "--project"];
+  assertKnownFlags(normalized, [...valueFlags, "--help", "-h"], valueFlags);
+  const opts = {
+    positional: positionalArgs(normalized, valueFlags),
+    sha: flagValue(normalized, "--sha"),
+    timeout: normalized.includes("--timeout")
+      ? parseIntegerFlag("--timeout", flagValue(normalized, "--timeout"), { min: 1 })
+      : undefined,
+    project: flagValue(normalized, "--project"),
+  };
+  if (opts.positional.length > 1) {
+    die(`Unexpected argument for cdn wait-fresh: ${opts.positional[1]}`);
   }
   return opts;
 }
@@ -92,6 +98,13 @@ async function waitFresh(projectId, argv) {
   if (opts.positional.length === 0) die("URL required");
   const url = opts.positional[0];
   if (!opts.sha) die("--sha is required");
+  if (!/^[a-fA-F0-9]{64}$/.test(opts.sha)) {
+    fail({
+      code: "BAD_FLAG",
+      message: "--sha must be a 64-character hex SHA-256 digest",
+      details: { flag: "--sha", value: opts.sha },
+    });
+  }
 
   const timeoutMs = (opts.timeout ?? 60) * 1000;
   try {

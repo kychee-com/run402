@@ -438,8 +438,8 @@ async function put(projectId, argv) {
   const resolvedId = resolveProjectId(opts.project);
 
   if (opts.positional.length === 0) die("At least one file path is required");
-  if (opts.immutable && opts.positional.length > 1 && opts.key && !opts.key.endsWith("/")) {
-    die("--key with --immutable across multiple files requires a directory prefix (ending with /)");
+  if (opts.positional.length > 1 && opts.key && !opts.key.endsWith("/")) {
+    die("--key across multiple files requires a directory prefix (ending with /)");
   }
 
   const results = [];

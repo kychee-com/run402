@@ -1,5 +1,6 @@
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail } from "./sdk-errors.mjs";
+import { assertKnownFlags, normalizeArgv, positionalArgs } from "./argparse.mjs";
 
 const HELP = `run402 tier — Manage your Run402 tier subscription
 
@@ -64,7 +65,17 @@ Examples:
 `,
 };
 
-async function status() {
+async function status(args = []) {
+  const parsedArgs = normalizeArgv(args);
+  assertKnownFlags(parsedArgs, ["--help", "-h"]);
+  const extra = positionalArgs(parsedArgs);
+  if (extra.length > 0) {
+    fail({
+      code: "BAD_USAGE",
+      message: `Unexpected argument for tier status: ${extra[0]}`,
+      hint: "Use `run402 tier status`.",
+    });
+  }
   try {
     const data = await getSdk().tier.status();
     console.log(JSON.stringify(data, null, 2));
@@ -73,7 +84,18 @@ async function status() {
   }
 }
 
-async function set(tierName) {
+async function set(args = []) {
+  const parsedArgs = normalizeArgv(args);
+  assertKnownFlags(parsedArgs, ["--help", "-h"]);
+  const positionals = positionalArgs(parsedArgs);
+  if (positionals.length > 1) {
+    fail({
+      code: "BAD_USAGE",
+      message: `Unexpected argument for tier set: ${positionals[1]}`,
+      hint: "Use `run402 tier set <prototype|hobby|team>`.",
+    });
+  }
+  const tierName = positionals[0];
   if (!tierName) {
     fail({
       code: "BAD_USAGE",
@@ -99,8 +121,8 @@ export async function run(sub, args) {
     process.exit(0);
   }
   switch (sub) {
-    case "status": await status(); break;
-    case "set":    await set(args[0]); break;
+    case "status": await status(args); break;
+    case "set":    await set(args); break;
     default:
       console.error(`Unknown subcommand: ${sub}\n`);
       console.log(HELP);

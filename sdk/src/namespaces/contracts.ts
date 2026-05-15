@@ -11,9 +11,10 @@
 
 import type { Client } from "../kernel.js";
 import { LocalError, ProjectNotFound } from "../errors.js";
-import { assertWeiString } from "../validation.js";
+import { assertEvmAddress, assertStringInSet, assertWeiString } from "../validation.js";
 
 export type EvmChain = "base-mainnet" | "base-sepolia";
+const EVM_CHAINS: readonly EvmChain[] = ["base-mainnet", "base-sepolia"];
 
 export type ContractWalletStatus = "active" | "suspended" | "deleted";
 
@@ -113,6 +114,10 @@ export class Contracts {
 
   /** Provision a new KMS-backed contract wallet. */
   async provisionWallet(projectId: string, opts: ProvisionWalletOptions): Promise<ProvisionWalletResult> {
+    assertStringInSet(opts.chain, EVM_CHAINS, "chain", "provisioning KMS contract wallet");
+    if (opts.recoveryAddress) {
+      assertEvmAddress(opts.recoveryAddress, "recoveryAddress", "provisioning KMS contract wallet");
+    }
     const project = await this.client.getProject(projectId);
     if (!project) throw new ProjectNotFound(projectId, "provisioning KMS contract wallet");
     const body: Record<string, unknown> = { chain: opts.chain };
@@ -150,6 +155,9 @@ export class Contracts {
 
   /** Set or clear the recovery address used for auto-drain on day-90 deletion. */
   async setRecovery(projectId: string, walletId: string, recoveryAddress: string | null): Promise<void> {
+    if (recoveryAddress !== null) {
+      assertEvmAddress(recoveryAddress, "recoveryAddress", "setting recovery address");
+    }
     const project = await this.client.getProject(projectId);
     if (!project) throw new ProjectNotFound(projectId, "setting recovery address");
     await this.client.request<unknown>(
@@ -181,9 +189,6 @@ export class Contracts {
 
   /** Submit a smart-contract write call. Idempotent on `idempotencyKey`. */
   async call(projectId: string, opts: ContractCallOptions): Promise<ContractCallResult> {
-    const project = await this.client.getProject(projectId);
-    if (!project) throw new ProjectNotFound(projectId, "submitting contract call");
-
     const contractAddress = opts.contractAddress ?? opts.to;
     const abiFragment = opts.abiFragment ?? opts.abi;
     const functionName = opts.functionName ?? opts.fn;
@@ -196,6 +201,11 @@ export class Contracts {
     if (!functionName) {
       throw new LocalError("contracts.call requires functionName (or 'fn')", "submitting contract call");
     }
+    assertStringInSet(opts.chain, EVM_CHAINS, "chain", "submitting contract call");
+    assertEvmAddress(contractAddress, "contractAddress", "submitting contract call");
+
+    const project = await this.client.getProject(projectId);
+    if (!project) throw new ProjectNotFound(projectId, "submitting contract call");
 
     const headers: Record<string, string> = { Authorization: `Bearer ${project.service_key}` };
     if (opts.idempotencyKey) headers["Idempotency-Key"] = opts.idempotencyKey;
@@ -235,6 +245,8 @@ export class Contracts {
     if (!functionName) {
       throw new LocalError("contracts.read requires functionName (or 'fn')", "reading contract");
     }
+    assertStringInSet(opts.chain, EVM_CHAINS, "chain", "reading contract");
+    assertEvmAddress(contractAddress, "contractAddress", "reading contract");
 
     return this.client.request<ContractReadResult>("/contracts/v1/read", {
       method: "POST",
@@ -269,6 +281,7 @@ export class Contracts {
    * confirmation header (sent automatically by the SDK).
    */
   async drain(projectId: string, walletId: string, destinationAddress: string): Promise<DrainResult> {
+    assertEvmAddress(destinationAddress, "destinationAddress", "draining wallet");
     const project = await this.client.getProject(projectId);
     if (!project) throw new ProjectNotFound(projectId, "draining wallet");
     return this.client.request<DrainResult>(

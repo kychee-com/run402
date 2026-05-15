@@ -1,7 +1,7 @@
 import { readFileSync } from "fs";
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail } from "./sdk-errors.mjs";
-import { validateRegularFile } from "./argparse.mjs";
+import { assertKnownFlags, flagValue, normalizeArgv, positionalArgs, validateRegularFile } from "./argparse.mjs";
 
 const HELP = `run402 secrets — Manage project secrets
 
@@ -78,15 +78,20 @@ Examples:
 };
 
 async function set(projectId, key, args = []) {
-  let file = null;
-  let value = null;
-  for (let i = 0; i < args.length; i++) {
-    if (args[i] === "--file" && args[i + 1]) { file = args[++i]; }
-    else if (!value && !args[i].startsWith("--")) { value = args[i]; }
+  const parsedArgs = normalizeArgv(args);
+  const valueFlags = ["--file"];
+  assertKnownFlags(parsedArgs, [...valueFlags, "--help", "-h"], valueFlags);
+  const values = positionalArgs(parsedArgs, valueFlags);
+  if (values.length > 1) {
+    fail({ code: "BAD_USAGE", message: `Unexpected argument for secrets set: ${values[1]}` });
+  }
+  const file = flagValue(parsedArgs, "--file");
+  if (file && values.length > 0) {
+    fail({ code: "BAD_USAGE", message: "Provide either an inline value or --file, not both." });
   }
   if (file) validateRegularFile(file, "--file");
-  const val = file ? readFileSync(file, "utf-8") : value;
-  if (!val) {
+  const val = file ? readFileSync(file, "utf-8") : values.length === 1 ? values[0] : undefined;
+  if (val === undefined) {
     fail({
       code: "BAD_USAGE",
       message: "Missing secret value.",
@@ -101,7 +106,13 @@ async function set(projectId, key, args = []) {
   }
 }
 
-async function list(projectId) {
+async function list(projectId, args = []) {
+  const parsedArgs = normalizeArgv(args);
+  assertKnownFlags(parsedArgs, ["--help", "-h"]);
+  const extra = positionalArgs(parsedArgs);
+  if (extra.length > 0) {
+    fail({ code: "BAD_USAGE", message: `Unexpected argument for secrets list: ${extra[0]}` });
+  }
   try {
     const data = await getSdk().secrets.list(projectId);
     const sanitized = {
@@ -117,7 +128,13 @@ async function list(projectId) {
   }
 }
 
-async function deleteSecret(projectId, key) {
+async function deleteSecret(projectId, key, args = []) {
+  const parsedArgs = normalizeArgv(args);
+  assertKnownFlags(parsedArgs, ["--help", "-h"]);
+  const extra = positionalArgs(parsedArgs);
+  if (extra.length > 0) {
+    fail({ code: "BAD_USAGE", message: `Unexpected argument for secrets delete: ${extra[0]}` });
+  }
   try {
     await getSdk().secrets.delete(projectId, key);
     console.log(JSON.stringify({ status: "ok", message: `Secret '${key}' deleted.` }));
@@ -134,8 +151,8 @@ export async function run(sub, args) {
   }
   switch (sub) {
     case "set":    await set(args[0], args[1], args.slice(2)); break;
-    case "list":   await list(args[0]); break;
-    case "delete": await deleteSecret(args[0], args[1]); break;
+    case "list":   await list(args[0], args.slice(1)); break;
+    case "delete": await deleteSecret(args[0], args[1], args.slice(2)); break;
     default:
       console.error(`Unknown subcommand: ${sub}\n`);
       console.log(HELP);

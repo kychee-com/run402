@@ -1,5 +1,13 @@
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail, parseFlagJson } from "./sdk-errors.mjs";
+import {
+  assertAllowedValue,
+  assertKnownFlags,
+  flagValue,
+  normalizeArgv,
+  positionalArgs,
+  validateEvmAddress,
+} from "./argparse.mjs";
 
 const HELP = `run402 contracts — KMS-backed Ethereum wallets for smart-contract calls
 
@@ -126,12 +134,6 @@ Examples:
 `,
 };
 
-function parseFlag(args, flag) {
-  for (let i = 0; i < args.length; i++) {
-    if (args[i] === flag && args[i + 1]) return args[i + 1];
-  }
-  return null;
-}
 function hasFlag(args, flag) {
   return args.includes(flag);
 }
@@ -146,21 +148,30 @@ function validateWeiFlag(flag, value) {
 }
 
 async function provisionWallet(projectId, args) {
-  const chain = parseFlag(args, "--chain");
+  const parsedArgs = normalizeArgv(args);
+  const valueFlags = ["--chain", "--recovery"];
+  assertKnownFlags(parsedArgs, [...valueFlags, "--yes", "--help", "-h"], valueFlags);
+  const extra = positionalArgs(parsedArgs, valueFlags);
+  if (extra.length > 0) {
+    fail({ code: "BAD_USAGE", message: `Unexpected argument for contracts provision-wallet: ${extra[0]}` });
+  }
+  const chain = flagValue(parsedArgs, "--chain");
   if (!chain) {
     fail({
       code: "BAD_USAGE",
       message: "Missing --chain (base-mainnet or base-sepolia)",
     });
   }
-  const recovery = parseFlag(args, "--recovery");
+  assertAllowedValue(chain, ["base-mainnet", "base-sepolia"], "--chain");
+  const recovery = flagValue(parsedArgs, "--recovery");
+  if (recovery) validateEvmAddress(recovery, "--recovery");
   // Soft default of one wallet — confirm if project already has one.
   let activeWallets = null;
   try {
     const list = await getSdk().contracts.listWallets(projectId);
     activeWallets = (list.wallets || []).filter((w) => w.status === "active").length;
   } catch { /* best-effort */ }
-  if (activeWallets !== null && activeWallets >= 1 && !hasFlag(args, "--yes")) {
+  if (activeWallets !== null && activeWallets >= 1 && !hasFlag(parsedArgs, "--yes")) {
     fail({
       code: "CONFIRMATION_REQUIRED",
       message: `This project already has ${activeWallets} active wallet(s). Adding another costs $0.04/day each ($1.20/month). Re-run with --yes to confirm.`,
@@ -179,7 +190,13 @@ async function provisionWallet(projectId, args) {
   }
 }
 
-async function getWallet(projectId, walletId) {
+async function getWallet(projectId, walletId, args = []) {
+  const parsedArgs = normalizeArgv(args);
+  assertKnownFlags(parsedArgs, ["--help", "-h"]);
+  const extra = positionalArgs(parsedArgs);
+  if (extra.length > 0) {
+    fail({ code: "BAD_USAGE", message: `Unexpected argument for contracts get-wallet: ${extra[0]}` });
+  }
   try {
     const data = await getSdk().contracts.getWallet(projectId, walletId);
     console.log(JSON.stringify(data, null, 2));
@@ -188,7 +205,13 @@ async function getWallet(projectId, walletId) {
   }
 }
 
-async function listWallets(projectId) {
+async function listWallets(projectId, args = []) {
+  const parsedArgs = normalizeArgv(args);
+  assertKnownFlags(parsedArgs, ["--help", "-h"]);
+  const extra = positionalArgs(parsedArgs);
+  if (extra.length > 0) {
+    fail({ code: "BAD_USAGE", message: `Unexpected argument for contracts list-wallets: ${extra[0]}` });
+  }
   try {
     const data = await getSdk().contracts.listWallets(projectId);
     console.log(JSON.stringify(data, null, 2));
@@ -198,14 +221,25 @@ async function listWallets(projectId) {
 }
 
 async function setRecovery(projectId, walletId, args) {
-  const clear = hasFlag(args, "--clear");
-  const address = parseFlag(args, "--address");
+  const parsedArgs = normalizeArgv(args);
+  const valueFlags = ["--address"];
+  assertKnownFlags(parsedArgs, [...valueFlags, "--clear", "--help", "-h"], valueFlags);
+  const extra = positionalArgs(parsedArgs, valueFlags);
+  if (extra.length > 0) {
+    fail({ code: "BAD_USAGE", message: `Unexpected argument for contracts set-recovery: ${extra[0]}` });
+  }
+  const clear = hasFlag(parsedArgs, "--clear");
+  const address = flagValue(parsedArgs, "--address");
+  if (clear && address) {
+    fail({ code: "BAD_USAGE", message: "Provide either --address or --clear, not both." });
+  }
   if (!clear && !address) {
     fail({
       code: "BAD_USAGE",
       message: "Provide --address 0x... or --clear",
     });
   }
+  if (address) validateEvmAddress(address, "--address");
   try {
     await getSdk().contracts.setRecovery(projectId, walletId, clear ? null : address);
     console.log(JSON.stringify({ status: "ok", wallet_id: walletId, recovery_address: clear ? null : address }));
@@ -215,7 +249,14 @@ async function setRecovery(projectId, walletId, args) {
 }
 
 async function setAlert(projectId, walletId, args) {
-  const threshold = parseFlag(args, "--threshold-wei");
+  const parsedArgs = normalizeArgv(args);
+  const valueFlags = ["--threshold-wei"];
+  assertKnownFlags(parsedArgs, [...valueFlags, "--help", "-h"], valueFlags);
+  const extra = positionalArgs(parsedArgs, valueFlags);
+  if (extra.length > 0) {
+    fail({ code: "BAD_USAGE", message: `Unexpected argument for contracts set-alert: ${extra[0]}` });
+  }
+  const threshold = flagValue(parsedArgs, "--threshold-wei");
   if (!threshold) {
     fail({ code: "BAD_USAGE", message: "Missing --threshold-wei <n>" });
   }
@@ -229,13 +270,20 @@ async function setAlert(projectId, walletId, args) {
 }
 
 async function call(projectId, walletId, args) {
-  const to = parseFlag(args, "--to");
-  const abi = parseFlag(args, "--abi");
-  const fn = parseFlag(args, "--fn");
-  const argsJson = parseFlag(args, "--args");
-  const value = parseFlag(args, "--value-wei");
-  const chain = parseFlag(args, "--chain") || "base-mainnet";
-  const idempotency = parseFlag(args, "--idempotency-key");
+  const parsedArgs = normalizeArgv(args);
+  const valueFlags = ["--to", "--abi", "--fn", "--args", "--value-wei", "--chain", "--idempotency-key"];
+  assertKnownFlags(parsedArgs, [...valueFlags, "--help", "-h"], valueFlags);
+  const extra = positionalArgs(parsedArgs, valueFlags);
+  if (extra.length > 0) {
+    fail({ code: "BAD_USAGE", message: `Unexpected argument for contracts call: ${extra[0]}` });
+  }
+  const to = flagValue(parsedArgs, "--to");
+  const abi = flagValue(parsedArgs, "--abi");
+  const fn = flagValue(parsedArgs, "--fn");
+  const argsJson = flagValue(parsedArgs, "--args");
+  const value = flagValue(parsedArgs, "--value-wei");
+  const chain = flagValue(parsedArgs, "--chain") || "base-mainnet";
+  const idempotency = flagValue(parsedArgs, "--idempotency-key");
   if (!to || !abi || !fn || !argsJson) {
     fail({
       code: "BAD_USAGE",
@@ -243,9 +291,11 @@ async function call(projectId, walletId, args) {
       hint: "Cost: chain gas + $0.000005 KMS sign fee.",
     });
   }
+  assertAllowedValue(chain, ["base-mainnet", "base-sepolia"], "--chain");
   if (value !== null) validateWeiFlag("--value-wei", value);
   const abiFragment = parseFlagJson("--abi", abi);
   const callArgs = parseFlagJson("--args", argsJson);
+  validateEvmAddress(to, "--to");
   try {
     const data = await getSdk().contracts.call(projectId, {
       walletId,
@@ -264,19 +314,28 @@ async function call(projectId, walletId, args) {
 }
 
 async function read(args) {
-  const chain = parseFlag(args, "--chain");
-  const to = parseFlag(args, "--to");
-  const abi = parseFlag(args, "--abi");
-  const fn = parseFlag(args, "--fn");
-  const argsJson = parseFlag(args, "--args");
+  const parsedArgs = normalizeArgv(args);
+  const valueFlags = ["--chain", "--to", "--abi", "--fn", "--args"];
+  assertKnownFlags(parsedArgs, [...valueFlags, "--help", "-h"], valueFlags);
+  const extra = positionalArgs(parsedArgs, valueFlags);
+  if (extra.length > 0) {
+    fail({ code: "BAD_USAGE", message: `Unexpected argument for contracts read: ${extra[0]}` });
+  }
+  const chain = flagValue(parsedArgs, "--chain");
+  const to = flagValue(parsedArgs, "--to");
+  const abi = flagValue(parsedArgs, "--abi");
+  const fn = flagValue(parsedArgs, "--fn");
+  const argsJson = flagValue(parsedArgs, "--args");
   if (!chain || !to || !abi || !fn || !argsJson) {
     fail({
       code: "BAD_USAGE",
       message: "Required flags: --chain, --to, --abi, --fn, --args",
     });
   }
+  assertAllowedValue(chain, ["base-mainnet", "base-sepolia"], "--chain");
   const abiFragment = parseFlagJson("--abi", abi);
   const callArgs = parseFlagJson("--args", argsJson);
+  validateEvmAddress(to, "--to");
   try {
     const data = await getSdk().contracts.read({
       chain,
@@ -291,7 +350,13 @@ async function read(args) {
   }
 }
 
-async function status(projectId, callId) {
+async function status(projectId, callId, args = []) {
+  const parsedArgs = normalizeArgv(args);
+  assertKnownFlags(parsedArgs, ["--help", "-h"]);
+  const extra = positionalArgs(parsedArgs);
+  if (extra.length > 0) {
+    fail({ code: "BAD_USAGE", message: `Unexpected argument for contracts status: ${extra[0]}` });
+  }
   try {
     const data = await getSdk().contracts.callStatus(projectId, callId);
     console.log(JSON.stringify(data, null, 2));
@@ -301,14 +366,22 @@ async function status(projectId, callId) {
 }
 
 async function drain(projectId, walletId, args) {
-  const to = parseFlag(args, "--to");
-  if (!to || !hasFlag(args, "--confirm")) {
+  const parsedArgs = normalizeArgv(args);
+  const valueFlags = ["--to"];
+  assertKnownFlags(parsedArgs, [...valueFlags, "--confirm", "--help", "-h"], valueFlags);
+  const extra = positionalArgs(parsedArgs, valueFlags);
+  if (extra.length > 0) {
+    fail({ code: "BAD_USAGE", message: `Unexpected argument for contracts drain: ${extra[0]}` });
+  }
+  const to = flagValue(parsedArgs, "--to");
+  if (!to || !hasFlag(parsedArgs, "--confirm")) {
     fail({
       code: "BAD_USAGE",
       message: "Required: --to 0x... and --confirm.",
       hint: "Cost: chain gas + $0.000005 KMS sign fee.",
     });
   }
+  validateEvmAddress(to, "--to");
   try {
     const data = await getSdk().contracts.drain(projectId, walletId, to);
     console.log(JSON.stringify(data, null, 2));
@@ -318,7 +391,13 @@ async function drain(projectId, walletId, args) {
 }
 
 async function deleteWallet(projectId, walletId, args) {
-  if (!hasFlag(args, "--confirm")) {
+  const parsedArgs = normalizeArgv(args);
+  assertKnownFlags(parsedArgs, ["--confirm", "--help", "-h"]);
+  const extra = positionalArgs(parsedArgs);
+  if (extra.length > 0) {
+    fail({ code: "BAD_USAGE", message: `Unexpected argument for contracts delete: ${extra[0]}` });
+  }
+  if (!hasFlag(parsedArgs, "--confirm")) {
     fail({ code: "BAD_USAGE", message: "Required: --confirm" });
   }
   try {
@@ -334,13 +413,13 @@ export async function run(sub, args) {
   if (Array.isArray(args) && (args.includes("--help") || args.includes("-h"))) { console.log(SUB_HELP[sub] || HELP); process.exit(0); }
   switch (sub) {
     case "provision-wallet": await provisionWallet(args[0], args.slice(1)); break;
-    case "get-wallet":       await getWallet(args[0], args[1]); break;
-    case "list-wallets":     await listWallets(args[0]); break;
+    case "get-wallet":       await getWallet(args[0], args[1], args.slice(2)); break;
+    case "list-wallets":     await listWallets(args[0], args.slice(1)); break;
     case "set-recovery":     await setRecovery(args[0], args[1], args.slice(2)); break;
     case "set-alert":        await setAlert(args[0], args[1], args.slice(2)); break;
     case "call":             await call(args[0], args[1], args.slice(2)); break;
     case "read":             await read(args); break;
-    case "status":           await status(args[0], args[1]); break;
+    case "status":           await status(args[0], args[1], args.slice(2)); break;
     case "drain":            await drain(args[0], args[1], args.slice(2)); break;
     case "delete":           await deleteWallet(args[0], args[1], args.slice(2)); break;
     default:

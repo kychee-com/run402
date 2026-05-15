@@ -6,6 +6,7 @@ import { allowanceAuthHeaders, resolveProjectId, updateProject } from "./config.
 import { resolveFilePathsInManifest } from "./manifest.mjs";
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail } from "./sdk-errors.mjs";
+import { assertKnownFlags, flagValue, normalizeArgv, positionalArgs } from "./argparse.mjs";
 
 const SMALL_DIR_THRESHOLD = 5;
 
@@ -187,14 +188,25 @@ function failUnsupportedTarget() {
 }
 
 async function deploy(args) {
+  const parsedArgs = normalizeArgv(args);
+  const valueFlags = ["--manifest", "--project", "--target"];
+  assertKnownFlags(parsedArgs, [...valueFlags, "--quiet", "--inherit", "--help", "-h"], valueFlags);
+  const extra = positionalArgs(parsedArgs, valueFlags);
+  if (extra.length > 0) {
+    fail({
+      code: "BAD_USAGE",
+      message: `Unexpected argument for sites deploy: ${extra[0]}`,
+      hint: "Use `run402 sites deploy --manifest <file> [--project <id>]`.",
+    });
+  }
   const opts = { manifest: null, project: undefined, target: undefined, quiet: false };
-  for (let i = 0; i < args.length; i++) {
-    if (args[i] === "--help" || args[i] === "-h") { console.log(HELP); process.exit(0); }
-    if (args[i] === "--manifest" && args[i + 1]) opts.manifest = args[++i];
-    if (args[i] === "--project" && args[i + 1]) opts.project = args[++i];
-    if (args[i] === "--target" && args[i + 1]) opts.target = args[++i];
-    if (args[i] === "--quiet") opts.quiet = true;
-    if (args[i] === "--inherit") {
+  opts.manifest = flagValue(parsedArgs, "--manifest");
+  opts.project = flagValue(parsedArgs, "--project") ?? undefined;
+  opts.target = flagValue(parsedArgs, "--target") ?? undefined;
+  opts.quiet = parsedArgs.includes("--quiet");
+  for (let i = 0; i < parsedArgs.length; i++) {
+    if (parsedArgs[i] === "--help" || parsedArgs[i] === "-h") { console.log(HELP); process.exit(0); }
+    if (parsedArgs[i] === "--inherit") {
       console.error(JSON.stringify({
         status: "error",
         message: "--inherit is removed; the SDK now uploads only changed files automatically.",
@@ -231,6 +243,17 @@ async function deploy(args) {
 }
 
 async function deployDir(args) {
+  const parsedArgs = normalizeArgv(args);
+  const valueFlags = ["--project", "--target"];
+  assertKnownFlags(parsedArgs, [...valueFlags, "--quiet", "--dry-run", "--confirm-prune", "--inherit", "--help", "-h"], valueFlags);
+  const positionals = positionalArgs(parsedArgs, valueFlags);
+  if (positionals.length > 1) {
+    fail({
+      code: "BAD_USAGE",
+      message: `Unexpected argument for sites deploy-dir: ${positionals[1]}`,
+      hint: "Use `run402 sites deploy-dir <path> --project <id>`.",
+    });
+  }
   const opts = {
     dir: null,
     project: undefined,
@@ -239,20 +262,20 @@ async function deployDir(args) {
     dryRun: false,
     confirmPrune: false,
   };
-  for (let i = 0; i < args.length; i++) {
-    if (args[i] === "--help" || args[i] === "-h") { console.log(SUB_HELP["deploy-dir"]); process.exit(0); }
-    if (args[i] === "--project" && args[i + 1]) { opts.project = args[++i]; continue; }
-    if (args[i] === "--target" && args[i + 1]) { opts.target = args[++i]; continue; }
-    if (args[i] === "--quiet") { opts.quiet = true; continue; }
-    if (args[i] === "--dry-run") { opts.dryRun = true; continue; }
-    if (args[i] === "--confirm-prune") { opts.confirmPrune = true; continue; }
-    if (args[i] === "--inherit") {
+  opts.dir = positionals[0] ?? null;
+  opts.project = flagValue(parsedArgs, "--project") ?? undefined;
+  opts.target = flagValue(parsedArgs, "--target") ?? undefined;
+  opts.quiet = parsedArgs.includes("--quiet");
+  opts.dryRun = parsedArgs.includes("--dry-run");
+  opts.confirmPrune = parsedArgs.includes("--confirm-prune");
+  for (let i = 0; i < parsedArgs.length; i++) {
+    if (parsedArgs[i] === "--help" || parsedArgs[i] === "-h") { console.log(SUB_HELP["deploy-dir"]); process.exit(0); }
+    if (parsedArgs[i] === "--inherit") {
       fail({
         code: "BAD_USAGE",
         message: "--inherit is removed; the SDK now uploads only changed files automatically.",
       });
     }
-    if (!args[i].startsWith("-") && opts.dir === null) { opts.dir = args[i]; continue; }
   }
   if (!opts.dir) {
     fail({

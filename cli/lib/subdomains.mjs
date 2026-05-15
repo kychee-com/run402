@@ -1,6 +1,7 @@
 import { resolveProject, resolveProjectId } from "./config.mjs";
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail } from "./sdk-errors.mjs";
+import { assertKnownFlags, flagValue, normalizeArgv, positionalArgs } from "./argparse.mjs";
 
 const HELP = `run402 subdomains — Manage custom subdomains
 
@@ -78,22 +79,25 @@ Examples:
 `,
 };
 
-async function claim(positionalArgs, flagArgs) {
-  const opts = { project: null, deployment: null };
-  for (let i = 0; i < flagArgs.length; i++) {
-    if (flagArgs[i] === "--project" && flagArgs[i + 1]) opts.project = flagArgs[++i];
-    if (flagArgs[i] === "--deployment" && flagArgs[i + 1]) opts.deployment = flagArgs[++i];
-  }
+async function claim(args) {
+  const parsedArgs = normalizeArgv(args);
+  const valueFlags = ["--project", "--deployment"];
+  assertKnownFlags(parsedArgs, [...valueFlags, "--help", "-h"], valueFlags);
+  const opts = {
+    project: flagValue(parsedArgs, "--project"),
+    deployment: flagValue(parsedArgs, "--deployment"),
+  };
   let name, deploymentId;
-  if (positionalArgs.length > 1) {
+  const positionals = positionalArgs(parsedArgs, valueFlags);
+  if (positionals.length > 1) {
     fail({
       code: "BAD_USAGE",
-      message: `Unexpected argument for subdomains claim: ${positionalArgs[1]}`,
+      message: `Unexpected argument for subdomains claim: ${positionals[1]}`,
       hint: "Use `run402 subdomains claim <name> --deployment <deployment_id>`.",
     });
   }
-  if (positionalArgs.length === 1) {
-    name = positionalArgs[0];
+  if (positionals.length === 1) {
+    name = positionals[0];
   }
   if (!name) {
     fail({
@@ -123,19 +127,21 @@ async function claim(positionalArgs, flagArgs) {
 }
 
 async function deleteSubdomain(allArgs) {
-  const argList = Array.isArray(allArgs) ? allArgs : [];
-  let opts = { project: null };
-  let name = null;
-  for (let i = 0; i < argList.length; i++) {
-    if (argList[i] === "--project" && argList[i + 1]) { opts.project = argList[++i]; }
-    else if (!argList[i].startsWith("--") && !name) { name = argList[i]; }
-  }
+  const argList = normalizeArgv(Array.isArray(allArgs) ? allArgs : []);
+  const valueFlags = ["--project"];
+  assertKnownFlags(argList, [...valueFlags, "--confirm", "--help", "-h"], valueFlags);
+  const opts = { project: flagValue(argList, "--project") };
+  const positionals = positionalArgs(argList, valueFlags);
+  let name = positionals[0] ?? null;
   if (!name) {
     fail({
       code: "BAD_USAGE",
       message: "Missing <name>.",
       hint: "run402 subdomains delete <name> --confirm [--project <id>]",
     });
+  }
+  if (positionals.length > 1) {
+    fail({ code: "BAD_USAGE", message: `Unexpected argument for subdomains delete: ${positionals[1]}` });
   }
   if (!argList.includes("--confirm")) {
     fail({
@@ -154,13 +160,13 @@ async function deleteSubdomain(allArgs) {
 }
 
 function parseProjectFlag(args) {
-  let project = null;
-  const rest = [];
-  for (let i = 0; i < args.length; i++) {
-    if (args[i] === "--project" && args[i + 1]) { project = args[++i]; }
-    else { rest.push(args[i]); }
-  }
-  return { project, rest };
+  const parsedArgs = normalizeArgv(args);
+  const valueFlags = ["--project"];
+  assertKnownFlags(parsedArgs, [...valueFlags, "--help", "-h"], valueFlags);
+  return {
+    project: flagValue(parsedArgs, "--project"),
+    rest: positionalArgs(parsedArgs, valueFlags),
+  };
 }
 
 async function list(args) {
@@ -186,17 +192,7 @@ export async function run(sub, args) {
   if (!sub || sub === '--help' || sub === '-h') { console.log(HELP); process.exit(0); }
   if (Array.isArray(args) && (args.includes("--help") || args.includes("-h"))) { console.log(SUB_HELP[sub] || HELP); process.exit(0); }
   switch (sub) {
-    case "claim": {
-      const positional = [];
-      const flags = [];
-      let i = 0;
-      while (i < args.length) {
-        if (args[i].startsWith("--")) { flags.push(args[i], args[i + 1]); i += 2; }
-        else { positional.push(args[i]); i++; }
-      }
-      await claim(positional, flags);
-      break;
-    }
+    case "claim": await claim(args); break;
     case "delete": await deleteSubdomain(args); break;
     case "list":   await list(args); break;
     default:

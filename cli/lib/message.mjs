@@ -1,6 +1,7 @@
 import { allowanceAuthHeaders } from "./config.mjs";
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail } from "./sdk-errors.mjs";
+import { assertKnownFlags, normalizeArgv } from "./argparse.mjs";
 
 const HELP = `run402 message — Send messages to Run402 developers
 
@@ -88,5 +89,7 @@ export async function run(sub, args) {
     console.log(HELP);
     process.exit(1);
   }
-  await send(args.join(" "));
+  const parsedArgs = normalizeArgv(args);
+  assertKnownFlags(parsedArgs, ["--help", "-h"]);
+  await send(parsedArgs.join(" "));
 }

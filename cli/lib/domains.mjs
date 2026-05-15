@@ -1,6 +1,7 @@
 import { resolveProjectId } from "./config.mjs";
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail } from "./sdk-errors.mjs";
+import { assertKnownFlags, flagValue, normalizeArgv, positionalArgs } from "./argparse.mjs";
 
 const HELP = `run402 domains — Manage custom domains
 
@@ -94,14 +95,15 @@ Examples:
 `,
 };
 
-function parseProjectFlag(args) {
-  let project = null;
-  const rest = [];
-  for (let i = 0; i < args.length; i++) {
-    if (args[i] === "--project" && args[i + 1]) { project = args[++i]; }
-    else { rest.push(args[i]); }
-  }
-  return { project, rest };
+function parseProjectFlag(args, extraKnown = []) {
+  const parsedArgs = normalizeArgv(args);
+  const valueFlags = ["--project"];
+  assertKnownFlags(parsedArgs, [...valueFlags, ...extraKnown, "--help", "-h"], valueFlags);
+  return {
+    project: flagValue(parsedArgs, "--project"),
+    rest: positionalArgs(parsedArgs, valueFlags),
+    args: parsedArgs,
+  };
 }
 
 async function add(args) {
@@ -114,6 +116,9 @@ async function add(args) {
       message: "Missing <domain> and/or <subdomain_name>.",
       hint: "run402 domains add <domain> <subdomain_name> [--project <id>]",
     });
+  }
+  if (rest.length > 2) {
+    fail({ code: "BAD_USAGE", message: `Unexpected argument for domains add: ${rest[2]}` });
   }
   const projectId = resolveProjectId(project);
   try {
@@ -153,6 +158,9 @@ async function status(args) {
       hint: "run402 domains status <domain> [--project <id>]",
     });
   }
+  if (rest.length > 1) {
+    fail({ code: "BAD_USAGE", message: `Unexpected argument for domains status: ${rest[1]}` });
+  }
   const projectId = resolveProjectId(project);
   try {
     const data = await getSdk().domains.status(projectId, domain);
@@ -163,8 +171,8 @@ async function status(args) {
 }
 
 async function deleteDomain(args) {
-  const { project, rest } = parseProjectFlag(args);
-  const domain = rest.find((a) => !a.startsWith("--"));
+  const { project, rest, args: parsedArgs } = parseProjectFlag(args, ["--confirm"]);
+  const domain = rest[0];
   if (!domain) {
     fail({
       code: "BAD_USAGE",
@@ -172,7 +180,10 @@ async function deleteDomain(args) {
       hint: "run402 domains delete <domain> --confirm [--project <id>]",
     });
   }
-  if (!Array.isArray(args) || !args.includes("--confirm")) {
+  if (rest.length > 1) {
+    fail({ code: "BAD_USAGE", message: `Unexpected argument for domains delete: ${rest[1]}` });
+  }
+  if (!parsedArgs.includes("--confirm")) {
     fail({
       code: "CONFIRMATION_REQUIRED",
       message: `Destructive: releasing custom domain '${domain}' detaches it from this project and clears its DNS/SSL configuration. This is irreversible. Re-run with --confirm to proceed.`,

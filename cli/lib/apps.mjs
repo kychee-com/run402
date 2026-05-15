@@ -1,6 +1,7 @@
 import { allowanceAuthHeaders, saveProject } from "./config.mjs";
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail } from "./sdk-errors.mjs";
+import { assertAllowedValue, assertKnownFlags, flagValue, normalizeArgv, positionalArgs } from "./argparse.mjs";
 
 const HELP = `run402 apps — Browse and manage the app marketplace
 
@@ -9,7 +10,7 @@ Usage:
 
 Subcommands:
   browse  [--tag <tag>]                   Browse public apps
-  fork    <version_id> <name> [--tier <tier>] [--subdomain <name>]
+  fork    <version_id> <name> [--subdomain <name>]
                                            Fork a published app into your own project
   publish <id> [--description <desc>] [--tags <t1,t2>] [--visibility <v>] [--fork-allowed]
                                            Publish a project as an app
@@ -22,7 +23,7 @@ Subcommands:
 Examples:
   run402 apps browse
   run402 apps browse --tag auth
-  run402 apps fork ver_abc123 my-todo --tier prototype
+  run402 apps fork ver_abc123 my-todo
   run402 apps publish prj_abc123 --description "Todo app" --tags todo,auth --visibility public --fork-allowed
   run402 apps versions prj_abc123
   run402 apps inspect ver_abc123
@@ -54,12 +55,11 @@ Arguments:
   <name>              Name for the forked project
 
 Options:
-  --tier <tier>       Tier for the new project (default: prototype)
   --subdomain <name>  Claim a subdomain for the forked project
 
 Examples:
   run402 apps fork ver_abc123 my-todo
-  run402 apps fork ver_abc123 my-todo --tier hobby --subdomain todo-v2
+  run402 apps fork ver_abc123 my-todo --subdomain todo-v2
 `,
   publish: `run402 apps publish — Publish a project as an app
 
@@ -137,9 +137,16 @@ Examples:
 };
 
 async function browse(args) {
+  const parsedArgs = normalizeArgv(args);
+  const valueFlags = ["--tag"];
+  assertKnownFlags(parsedArgs, [...valueFlags, "--help", "-h"], valueFlags);
+  const extra = positionalArgs(parsedArgs, valueFlags);
+  if (extra.length > 0) {
+    fail({ code: "BAD_USAGE", message: `Unexpected argument for apps browse: ${extra[0]}` });
+  }
   const tags = [];
-  for (let i = 0; i < args.length; i++) {
-    if (args[i] === "--tag" && args[i + 1]) tags.push(args[++i]);
+  for (let i = 0; i < parsedArgs.length; i++) {
+    if (parsedArgs[i] === "--tag") tags.push(parsedArgs[++i]);
   }
   try {
     const data = await getSdk().apps.browse(tags.length > 0 ? tags : undefined);
@@ -150,18 +157,24 @@ async function browse(args) {
 }
 
 async function fork(versionId, name, args) {
-  const opts = { tier: "prototype", subdomain: undefined };
-  for (let i = 0; i < args.length; i++) {
-    if (args[i] === "--tier" && args[i + 1]) opts.tier = args[++i];
-    if (args[i] === "--subdomain" && args[i + 1]) opts.subdomain = args[++i];
+  const parsedArgs = normalizeArgv([versionId, name, ...args].filter((arg) => arg !== undefined));
+  const valueFlags = ["--subdomain"];
+  assertKnownFlags(parsedArgs, [...valueFlags, "--help", "-h"], valueFlags);
+  const positionals = positionalArgs(parsedArgs, valueFlags);
+  if (positionals.length < 2) {
+    fail({ code: "BAD_USAGE", message: "Missing <version_id> and/or <name>." });
   }
+  if (positionals.length > 2) {
+    fail({ code: "BAD_USAGE", message: `Unexpected argument for apps fork: ${positionals[2]}` });
+  }
+  const opts = { subdomain: flagValue(parsedArgs, "--subdomain") ?? undefined };
   // Preserve the aggressive early exit when no allowance is configured.
   allowanceAuthHeaders("/fork/v1");
 
   try {
     const data = await getSdk().apps.fork({
-      versionId,
-      name,
+      versionId: positionals[0],
+      name: positionals[1],
       subdomain: opts.subdomain,
     });
 
@@ -181,15 +194,24 @@ async function fork(versionId, name, args) {
 }
 
 async function publish(projectId, args) {
-  const opts = { description: undefined, tags: undefined, visibility: undefined, forkAllowed: undefined };
-  for (let i = 0; i < args.length; i++) {
-    if (args[i] === "--description" && args[i + 1]) opts.description = args[++i];
-    if (args[i] === "--tags" && args[i + 1]) opts.tags = args[++i].split(",");
-    if (args[i] === "--visibility" && args[i + 1]) opts.visibility = args[++i];
-    if (args[i] === "--fork-allowed") opts.forkAllowed = true;
+  const parsedArgs = normalizeArgv([projectId, ...args].filter((arg) => arg !== undefined));
+  const valueFlags = ["--description", "--tags", "--visibility"];
+  assertKnownFlags(parsedArgs, [...valueFlags, "--fork-allowed", "--help", "-h"], valueFlags);
+  const positionals = positionalArgs(parsedArgs, valueFlags);
+  if (positionals.length < 1) {
+    fail({ code: "BAD_USAGE", message: "Missing <id>." });
   }
+  if (positionals.length > 1) {
+    fail({ code: "BAD_USAGE", message: `Unexpected argument for apps publish: ${positionals[1]}` });
+  }
+  const opts = { description: undefined, tags: undefined, visibility: undefined, forkAllowed: undefined };
+  opts.description = flagValue(parsedArgs, "--description") ?? undefined;
+  opts.tags = flagValue(parsedArgs, "--tags")?.split(",");
+  opts.visibility = flagValue(parsedArgs, "--visibility") ?? undefined;
+  if (opts.visibility) assertAllowedValue(opts.visibility, ["public", "unlisted", "private"], "--visibility");
+  if (parsedArgs.includes("--fork-allowed")) opts.forkAllowed = true;
   try {
-    const data = await getSdk().apps.publish(projectId, {
+    const data = await getSdk().apps.publish(positionals[0], {
       description: opts.description,
       tags: opts.tags,
       visibility: opts.visibility,
@@ -201,21 +223,30 @@ async function publish(projectId, args) {
   }
 }
 
-async function versions(projectId) {
+async function versions(projectId, args = []) {
+  const parsedArgs = normalizeArgv([projectId, ...args].filter((arg) => arg !== undefined));
+  assertKnownFlags(parsedArgs, ["--help", "-h"]);
+  const positionals = positionalArgs(parsedArgs);
+  if (positionals.length !== 1) {
+    fail({ code: "BAD_USAGE", message: positionals.length === 0 ? "Missing <id>." : `Unexpected argument for apps versions: ${positionals[1]}` });
+  }
   try {
-    const data = await getSdk().apps.listVersions(projectId);
+    const data = await getSdk().apps.listVersions(positionals[0]);
     console.log(JSON.stringify(data, null, 2));
   } catch (err) {
     reportSdkError(err);
   }
 }
 
-async function inspect(versionId) {
-  if (!versionId) {
-    fail({ code: "BAD_USAGE", message: "Missing version ID" });
+async function inspect(versionId, args = []) {
+  const parsedArgs = normalizeArgv([versionId, ...args].filter((arg) => arg !== undefined));
+  assertKnownFlags(parsedArgs, ["--help", "-h"]);
+  const positionals = positionalArgs(parsedArgs);
+  if (positionals.length !== 1) {
+    fail({ code: "BAD_USAGE", message: positionals.length === 0 ? "Missing version ID" : `Unexpected argument for apps inspect: ${positionals[1]}` });
   }
   try {
-    const data = await getSdk().apps.getApp(versionId);
+    const data = await getSdk().apps.getApp(positionals[0]);
     console.log(JSON.stringify(data, null, 2));
   } catch (err) {
     reportSdkError(err);
@@ -223,26 +254,47 @@ async function inspect(versionId) {
 }
 
 async function update(projectId, versionId, args) {
-  const opts = {};
-  for (let i = 0; i < args.length; i++) {
-    if (args[i] === "--description" && args[i + 1]) opts.description = args[++i];
-    if (args[i] === "--tags" && args[i + 1]) opts.tags = args[++i].split(",");
-    if (args[i] === "--visibility" && args[i + 1]) opts.visibility = args[++i];
-    if (args[i] === "--fork-allowed") opts.fork_allowed = true;
-    if (args[i] === "--no-fork") opts.fork_allowed = false;
+  const parsedArgs = normalizeArgv([projectId, versionId, ...args].filter((arg) => arg !== undefined));
+  const valueFlags = ["--description", "--tags", "--visibility"];
+  assertKnownFlags(parsedArgs, [...valueFlags, "--fork-allowed", "--no-fork", "--help", "-h"], valueFlags);
+  const positionals = positionalArgs(parsedArgs, valueFlags);
+  if (positionals.length < 2) {
+    fail({ code: "BAD_USAGE", message: "Missing <project_id> and/or <version_id>." });
   }
+  if (positionals.length > 2) {
+    fail({ code: "BAD_USAGE", message: `Unexpected argument for apps update: ${positionals[2]}` });
+  }
+  if (parsedArgs.includes("--fork-allowed") && parsedArgs.includes("--no-fork")) {
+    fail({ code: "BAD_USAGE", message: "Provide either --fork-allowed or --no-fork, not both." });
+  }
+  const opts = {};
+  opts.description = flagValue(parsedArgs, "--description") ?? undefined;
+  opts.tags = flagValue(parsedArgs, "--tags")?.split(",");
+  opts.visibility = flagValue(parsedArgs, "--visibility") ?? undefined;
+  if (opts.visibility) assertAllowedValue(opts.visibility, ["public", "unlisted", "private"], "--visibility");
+  if (parsedArgs.includes("--fork-allowed")) opts.fork_allowed = true;
+  if (parsedArgs.includes("--no-fork")) opts.fork_allowed = false;
   try {
-    await getSdk().apps.updateVersion(projectId, versionId, opts);
-    console.log(JSON.stringify({ status: "ok", project_id: projectId, version_id: versionId }));
+    await getSdk().apps.updateVersion(positionals[0], positionals[1], opts);
+    console.log(JSON.stringify({ status: "ok", project_id: positionals[0], version_id: positionals[1] }));
   } catch (err) {
     reportSdkError(err);
   }
 }
 
-async function deleteVersion(projectId, versionId) {
+async function deleteVersion(projectId, versionId, args = []) {
+  const parsedArgs = normalizeArgv([projectId, versionId, ...args].filter((arg) => arg !== undefined));
+  assertKnownFlags(parsedArgs, ["--help", "-h"]);
+  const positionals = positionalArgs(parsedArgs);
+  if (positionals.length < 2) {
+    fail({ code: "BAD_USAGE", message: "Missing <project_id> and/or <version_id>." });
+  }
+  if (positionals.length > 2) {
+    fail({ code: "BAD_USAGE", message: `Unexpected argument for apps delete: ${positionals[2]}` });
+  }
   try {
-    await getSdk().apps.deleteVersion(projectId, versionId);
-    console.log(JSON.stringify({ status: "ok", message: `Version ${versionId} deleted.` }));
+    await getSdk().apps.deleteVersion(positionals[0], positionals[1]);
+    console.log(JSON.stringify({ status: "ok", message: `Version ${positionals[1]} deleted.` }));
   } catch (err) {
     reportSdkError(err);
   }
@@ -255,10 +307,10 @@ export async function run(sub, args) {
     case "browse":   await browse(args); break;
     case "fork":     await fork(args[0], args[1], args.slice(2)); break;
     case "publish":  await publish(args[0], args.slice(1)); break;
-    case "versions": await versions(args[0]); break;
-    case "inspect":  await inspect(args[0]); break;
+    case "versions": await versions(args[0], args.slice(1)); break;
+    case "inspect":  await inspect(args[0], args.slice(1)); break;
     case "update":   await update(args[0], args[1], args.slice(2)); break;
-    case "delete":   await deleteVersion(args[0], args[1]); break;
+    case "delete":   await deleteVersion(args[0], args[1], args.slice(2)); break;
     default:
       console.error(`Unknown subcommand: ${sub}\n`);
       console.log(HELP);

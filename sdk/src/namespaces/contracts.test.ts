@@ -163,6 +163,44 @@ describe("contracts.provisionWallet", () => {
       recovery_address: "0x3333333333333333333333333333333333333333",
     });
   });
+
+  it("rejects unsupported chains before fetch", async () => {
+    const { fetch, calls } = mockFetch(() => jsonResponse({}));
+    const sdk = makeSdk(fetch);
+
+    await assert.rejects(
+      sdk.contracts.provisionWallet("prj_known", { chain: "polygon" as any }),
+      LocalError,
+    );
+    assert.equal(calls.length, 0);
+  });
+
+  it("rejects malformed recovery addresses before fetch", async () => {
+    const { fetch, calls } = mockFetch(() => jsonResponse({}));
+    const sdk = makeSdk(fetch);
+
+    await assert.rejects(
+      sdk.contracts.provisionWallet("prj_known", {
+        chain: "base-mainnet",
+        recoveryAddress: "0xabc",
+      }),
+      LocalError,
+    );
+    assert.equal(calls.length, 0);
+  });
+});
+
+describe("contracts.setRecovery", () => {
+  it("rejects malformed recovery addresses before fetch", async () => {
+    const { fetch, calls } = mockFetch(() => jsonResponse({}));
+    const sdk = makeSdk(fetch);
+
+    await assert.rejects(
+      sdk.contracts.setRecovery("prj_known", "cwlt_abc", "0xabc"),
+      LocalError,
+    );
+    assert.equal(calls.length, 0);
+  });
 });
 
 describe("contracts.setLowBalanceAlert", () => {
@@ -314,6 +352,24 @@ describe("contracts.call", () => {
     );
     assert.equal(calls.length, 0);
   });
+
+  it("rejects malformed contract addresses before fetch", async () => {
+    const { fetch, calls } = mockFetch(() => jsonResponse({}));
+    const sdk = makeSdk(fetch);
+
+    await assert.rejects(
+      sdk.contracts.call("prj_known", {
+        walletId: "cwlt_abc",
+        chain: "base-mainnet",
+        contractAddress: "0xabc",
+        abiFragment: [],
+        functionName: "ping",
+        args: [],
+      }),
+      LocalError,
+    );
+    assert.equal(calls.length, 0);
+  });
 });
 
 describe("contracts.read", () => {
@@ -424,6 +480,23 @@ describe("contracts.read", () => {
     );
     assert.equal(calls.length, 0);
   });
+
+  it("rejects malformed contract addresses before fetch", async () => {
+    const { fetch, calls } = mockFetch(() => jsonResponse({}));
+    const sdk = makeSdk(fetch);
+
+    await assert.rejects(
+      sdk.contracts.read({
+        chain: "base-mainnet",
+        contractAddress: "0xabc",
+        abiFragment: [],
+        functionName: "ping",
+        args: [],
+      }),
+      LocalError,
+    );
+    assert.equal(calls.length, 0);
+  });
 });
 
 describe("contracts.callStatus", () => {
@@ -465,6 +538,17 @@ describe("contracts.drain", () => {
       destination_address: "0x5555555555555555555555555555555555555555",
     });
     assert.equal(result.call_id, "call_drain");
+  });
+
+  it("rejects malformed destination addresses before fetch", async () => {
+    const { fetch, calls } = mockFetch(() => jsonResponse({}));
+    const sdk = makeSdk(fetch);
+
+    await assert.rejects(
+      sdk.contracts.drain("prj_known", "cwlt_abc", "0xabc"),
+      LocalError,
+    );
+    assert.equal(calls.length, 0);
   });
 });
 
