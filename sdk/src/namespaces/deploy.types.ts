@@ -1630,6 +1630,12 @@ export interface OperationSnapshot {
 /** Response from `GET /deploy/v2/operations`. The gateway may return a
  *  pagination cursor when there are more operations than the requested
  *  page size; clients pass it back as `?cursor=` to fetch the next page. */
+export interface DeployListOptions {
+  project: string;
+  limit?: number;
+  cursor?: string;
+}
+
 export interface DeployListResponse {
   operations: OperationSnapshot[];
   cursor?: string | null;

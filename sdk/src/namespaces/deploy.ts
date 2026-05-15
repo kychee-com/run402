@@ -46,6 +46,7 @@ import type {
   DeployEvent,
   DeployEventsResponse,
   DeployDiff,
+  DeployListOptions,
   DeployListResponse,
   DeployOperation,
   DeployResult,
@@ -274,14 +275,15 @@ export class Deploy {
    * List recent deploy operations for a project. The endpoint requires
    * `apikey` auth, so a project id is required — accepted as a bare string
    * (matches `r.functions.list(projectId)` and friends) or as `{ project,
-   * limit? }`. `limit` is forwarded to the gateway as a query string when
-   * set; the gateway picks a default otherwise.
+   * limit?, cursor? }`. `limit` and `cursor` are forwarded to the gateway
+   * as query strings when set; the gateway picks a default page otherwise.
    */
   async list(
-    opts: string | { project: string; limit?: number },
+    opts: string | DeployListOptions,
   ): Promise<DeployListResponse> {
     const project = typeof opts === "string" ? opts : opts?.project;
     const limit = typeof opts === "string" ? undefined : opts?.limit;
+    const cursor = typeof opts === "string" ? undefined : opts?.cursor;
     if (!project) {
       throw new LocalError(
         "r.deploy.list requires a project id (as a string or { project: 'prj_...' })",
@@ -291,6 +293,7 @@ export class Deploy {
     const headers = await apikeyHeaders(this.client, project);
     const qs = new URLSearchParams();
     if (limit !== undefined) qs.set("limit", String(limit));
+    if (cursor !== undefined) qs.set("cursor", cursor);
     const path =
       qs.toString().length > 0
         ? `/deploy/v2/operations?${qs.toString()}`

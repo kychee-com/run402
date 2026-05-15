@@ -23,11 +23,18 @@ export const deployListSchema = {
     .describe(
       "Maximum number of operations to return. Forwarded to the gateway as `?limit=`; the gateway picks a default when omitted.",
     ),
+  cursor: z
+    .string()
+    .optional()
+    .describe(
+      "Pagination cursor returned by a previous deploy_list response. Forwarded to the gateway as `?cursor=`.",
+    ),
 };
 
 export async function handleDeployList(args: {
   project_id: string;
   limit?: number;
+  cursor?: string;
 }): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
   const auth = requireAllowanceAuth("/deploy/v2/operations");
   if ("error" in auth) return auth.error;
@@ -36,6 +43,7 @@ export async function handleDeployList(args: {
     const result = await getSdk().deploy.list({
       project: args.project_id,
       limit: args.limit,
+      cursor: args.cursor,
     });
 
     const lines: string[] = [

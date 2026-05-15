@@ -3555,6 +3555,22 @@ describe("Deploy.list", () => {
     assert.equal(w.requests[0].path, "/deploy/v2/operations?limit=5");
   });
 
+  it("forwards cursor as a query string", async () => {
+    const w = makeWiring();
+    w.setHandler(() => ({ operations: [], cursor: null }));
+    const deploy = new Deploy(w.client);
+    await deploy.list({ project: "prj_test", cursor: "op_cursor" });
+    assert.equal(w.requests[0].path, "/deploy/v2/operations?cursor=op_cursor");
+  });
+
+  it("forwards limit and cursor as query strings", async () => {
+    const w = makeWiring();
+    w.setHandler(() => ({ operations: [], cursor: null }));
+    const deploy = new Deploy(w.client);
+    await deploy.list({ project: "prj_test", limit: 5, cursor: "op_cursor" });
+    assert.equal(w.requests[0].path, "/deploy/v2/operations?limit=5&cursor=op_cursor");
+  });
+
   it("accepts a bare projectId string and issues the same request as the options form", async () => {
     const projectLookups: string[] = [];
     const wiringFor = (): FakeWiring => {
