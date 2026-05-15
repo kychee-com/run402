@@ -13,12 +13,30 @@ import { LocalError } from "../errors.js";
 import type { FileSet, FsFileSource } from "../namespaces/deploy.types.js";
 
 const DEFAULT_IGNORE = new Set([".git", "node_modules", ".DS_Store"]);
+const DEFAULT_SENSITIVE_IGNORE_NAMES = new Set([
+  ".env",
+  ".envrc",
+  ".npmrc",
+  ".pnpmrc",
+  ".yarnrc",
+  ".netrc",
+  ".pypirc",
+  "id_dsa",
+  "id_ecdsa",
+  "id_ed25519",
+  "id_rsa",
+]);
+const DEFAULT_SENSITIVE_IGNORE_SUFFIXES = [".key", ".pem", ".p12", ".pfx"];
 const CONTEXT = "collecting files for deploy";
 
 export interface FileSetFromDirOptions {
   /** Additional names to skip at any depth. Merged with the default ignore
-   *  list (`.git`, `node_modules`, `.DS_Store`). */
+   *  list (`.git`, `node_modules`, `.DS_Store`) and, unless
+   *  `includeSensitive` is true, common secret-bearing filenames. */
   ignore?: Iterable<string>;
+  /** Include dotenv, npmrc, and private-key-like files that are skipped by
+   *  default. Use only when these files are intentional deploy artifacts. */
+  includeSensitive?: boolean;
 }
 
 /**
@@ -27,10 +45,12 @@ export interface FileSetFromDirOptions {
  * content-type; the deploy normalizer hashes and uploads each file from
  * disk on demand.
  *
- * Skips `.git`, `node_modules`, `.DS_Store` (plus any names in
- * `opts.ignore`) at every depth. Rejects symlinks. Throws `LocalError` if
- * the directory does not exist, is not a directory, or contains no
- * deployable files after the ignore list is applied.
+ * Skips `.git`, `node_modules`, `.DS_Store`, common secret-bearing filenames
+ * like `.env`, `.npmrc`, and private-key material (plus any names in
+ * `opts.ignore`) at every depth. Pass `{ includeSensitive: true }` to opt in
+ * to collecting those sensitive filenames deliberately. Rejects symlinks.
+ * Throws `LocalError` if the directory does not exist, is not a directory, or
+ * contains no deployable files after the ignore list is applied.
  *
  * @example
  *   import { run402 } from "@run402/sdk/node";
@@ -69,7 +89,7 @@ export async function fileSetFromDir(
   }
 
   const out: Record<string, FsFileSource> = {};
-  await walkInto(root, root, ignore, out);
+  await walkInto(root, root, ignore, opts.includeSensitive === true, out);
 
   if (Object.keys(out).length === 0) {
     throw new LocalError(
@@ -84,6 +104,7 @@ async function walkInto(
   root: string,
   current: string,
   ignore: Set<string>,
+  includeSensitive: boolean,
   out: Record<string, FsFileSource>,
 ): Promise<void> {
   let entries;
@@ -98,6 +119,7 @@ async function walkInto(
   }
   for (const entry of entries) {
     if (ignore.has(entry.name)) continue;
+    if (!includeSensitive && isSensitiveIgnoredName(entry.name)) continue;
     const fullPath = join(current, entry.name);
     if (entry.isSymbolicLink()) {
       throw new LocalError(
@@ -106,7 +128,7 @@ async function walkInto(
       );
     }
     if (entry.isDirectory()) {
-      await walkInto(root, fullPath, ignore, out);
+      await walkInto(root, fullPath, ignore, includeSensitive, out);
       continue;
     }
     if (entry.isFile()) {
@@ -114,6 +136,15 @@ async function walkInto(
       out[rel] = { __source: "fs-file", path: fullPath };
     }
   }
+}
+
+function isSensitiveIgnoredName(name: string): boolean {
+  const lower = name.toLowerCase();
+  return (
+    lower.startsWith(".env.") ||
+    DEFAULT_SENSITIVE_IGNORE_NAMES.has(lower) ||
+    DEFAULT_SENSITIVE_IGNORE_SUFFIXES.some((suffix) => lower.endsWith(suffix))
+  );
 }
 
 /** Normalize a relative path to POSIX forward slashes. Exposed for tests. */

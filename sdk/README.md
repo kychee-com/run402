@@ -209,6 +209,8 @@ const resumed = await r.deploy.resume("op_...");
   });
   ```
 
+  `fileSetFromDir` skips `.git/`, `node_modules/`, `.DS_Store`, dotenv/npmrc files, and private-key-like filenames by default; pass `{ includeSensitive: true }` only when those files are intentional deploy artifacts.
+
 - Route manifests are ordinary deploy specs:
 
   ```ts

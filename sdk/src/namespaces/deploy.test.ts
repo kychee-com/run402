@@ -2588,6 +2588,73 @@ describe("Deploy CI operation routes", () => {
   });
 });
 
+describe("Deploy.status", () => {
+  it("throws Run402DeployError without issuing any request when operationId is empty", async () => {
+    const w = makeWiring();
+    const deploy = new Deploy(w.client);
+    await assert.rejects(
+      () => deploy.status("", { project: "prj_test" }),
+      (err: unknown) =>
+        err instanceof Run402DeployError &&
+        (err as Run402DeployError).code === "OPERATION_NOT_FOUND" &&
+        (err as Run402DeployError).retryable === false,
+    );
+    assert.equal(w.requests.length, 0, "no HTTP request issued for empty operationId");
+  });
+
+  it("throws Run402DeployError without issuing any request when operationId is not prefixed with op_", async () => {
+    const w = makeWiring();
+    const deploy = new Deploy(w.client);
+    await assert.rejects(
+      () => deploy.status("notop_xx", { project: "prj_test" }),
+      (err: unknown) =>
+        err instanceof Run402DeployError &&
+        (err as Run402DeployError).code === "OPERATION_NOT_FOUND" &&
+        (err as Run402DeployError).retryable === false,
+    );
+    assert.equal(w.requests.length, 0, "no HTTP request issued for invalid prefix");
+  });
+
+  it("encodes operation id path component", async () => {
+    const w = makeWiring();
+    const ready: OperationSnapshot = {
+      operation_id: "op_slash/test",
+      plan_id: "plan_1",
+      status: "ready",
+      phase: "ready",
+    } as OperationSnapshot;
+    w.setHandler((req) => {
+      if (req.path === "/deploy/v2/operations/op_slash%2Ftest") return ready;
+      throw new Error(`unexpected ${req.path}`);
+    });
+
+    const deploy = new Deploy(w.client);
+    assert.deepEqual(await deploy.status("op_slash/test", { project: "prj_test" }), ready);
+  });
+
+  it("translates a gateway 404 with {code:'operation_not_found'} into a Run402DeployError", async () => {
+    const w = makeWiring();
+    w.setHandler((req) => {
+      if (req.path === "/deploy/v2/operations/op_does_not_exist") {
+        throw new ApiError(
+          "API error while fetching deploy operation (HTTP 404)",
+          404,
+          { code: "operation_not_found", message: "operation not found" },
+          "fetching deploy operation",
+        );
+      }
+      throw new Error(`unexpected ${req.path}`);
+    });
+    const deploy = new Deploy(w.client);
+    await assert.rejects(
+      () => deploy.status("op_does_not_exist", { project: "prj_test" }),
+      (err: unknown) =>
+        err instanceof Run402DeployError &&
+        (err as Run402DeployError).code === "OPERATION_NOT_FOUND",
+    );
+  });
+});
+
 describe("Deploy.apply (gateway error translation)", () => {
   it("preserves operation_id and plan_id from the gateway error body (#127)", async () => {
     // Regression for GH-127: when the gateway returns a structured deploy

@@ -264,11 +264,22 @@ export class Deploy {
     operationId: string,
     opts: { project?: string } = {},
   ): Promise<OperationSnapshot> {
+    if (!operationId || !operationId.startsWith("op_")) {
+      throw new Run402DeployError(`Invalid operation id: "${operationId}"`, {
+        code: "OPERATION_NOT_FOUND",
+        retryable: false,
+        context: "fetching deploy operation",
+      });
+    }
     const headers = opts.project ? await apikeyHeaders(this.client, opts.project) : {};
-    return this.client.request<OperationSnapshot>(
-      `/deploy/v2/operations/${operationId}`,
-      { headers, context: "fetching deploy operation" },
-    );
+    try {
+      return await this.client.request<OperationSnapshot>(
+        `/deploy/v2/operations/${encodeURIComponent(operationId)}`,
+        { headers, context: "fetching deploy operation" },
+      );
+    } catch (err) {
+      throw translateDeployError(err, "status", null, operationId);
+    }
   }
 
   /**

@@ -318,7 +318,7 @@ const result = await r.deploy.apply({
 });
 ```
 
-`fileSetFromDir` walks the directory and returns an `FsFileSource`-backed `FileSet`. The deploy normalizer hashes and uploads each file lazily during `deploy.apply`, so collection does not load the tree into memory. Skips `.git/`, `node_modules/`, `.DS_Store`. Symlinks throw.
+`fileSetFromDir` walks the directory and returns an `FsFileSource`-backed `FileSet`. The deploy normalizer hashes and uploads each file lazily during `deploy.apply`, so collection does not load the tree into memory. Skips `.git/`, `node_modules/`, `.DS_Store`, dotenv/npmrc files, and private-key-like filenames by default. Pass `{ includeSensitive: true }` only when those files are intentional deploy artifacts. Symlinks throw.
 
 The Node entry also owns the typed manifest adapter used by CLI/MCP:
 

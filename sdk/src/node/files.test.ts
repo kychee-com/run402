@@ -61,6 +61,38 @@ describe("fileSetFromDir", () => {
     }
   });
 
+  it("skips common secret-bearing files by default", async () => {
+    const root = fresh();
+    try {
+      writeFileSync(join(root, "index.html"), "<h1>hi</h1>");
+      writeFileSync(join(root, ".env"), "DATABASE_URL=postgres://secret");
+      writeFileSync(join(root, ".env.production"), "API_KEY=secret");
+      writeFileSync(join(root, ".npmrc"), "//registry.npmjs.org/:_authToken=secret");
+      writeFileSync(join(root, "server.key"), "private key");
+      mkdirSync(join(root, "nested"));
+      writeFileSync(join(root, "nested", "id_ed25519"), "private key");
+      writeFileSync(join(root, "nested", "cert.pem"), "private key");
+
+      const set = await fileSetFromDir(root);
+      assert.deepEqual(Object.keys(set), ["index.html"]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("can explicitly include secret-bearing files", async () => {
+    const root = fresh();
+    try {
+      writeFileSync(join(root, "index.html"), "<h1>hi</h1>");
+      writeFileSync(join(root, ".env"), "DATABASE_URL=postgres://secret");
+
+      const set = await fileSetFromDir(root, { includeSensitive: true });
+      assert.deepEqual(Object.keys(set).sort(), [".env", "index.html"]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it("respects custom ignore list (merged with defaults)", async () => {
     const root = fresh();
     try {
