@@ -1121,6 +1121,8 @@ describe("deploy route surface alignment", () => {
       [/cas_object/, "CAS object diagnostics"],
       [/response_variant/, "response variant diagnostics"],
       [/active_release_missing/, "active release missing resolve literal"],
+      [/unsupported_manifest_version/, "unsupported manifest version resolve literal"],
+      [/negative_cache_hit/, "negative cache hit fallback literal"],
       [/route_function/, "function route resolve literal"],
       [/route_static_alias/, "static route alias resolve literal"],
       [/route_method_miss/, "route method miss resolve literal"],

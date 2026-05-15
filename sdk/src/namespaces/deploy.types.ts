@@ -278,6 +278,7 @@ export type KnownDeployResolveMatch =
   | "host_missing"
   | "manifest_missing"
   | "active_release_missing"
+  | "unsupported_manifest_version"
   | "path_error"
   | "none"
   | "static_exact"
@@ -297,6 +298,7 @@ export type KnownDeployResolveAuthorizationResult =
   | "manifest_missing"
   | "target_missing"
   | "active_release_missing"
+  | "unsupported_manifest_version"
   | "path_error"
   | "missing_cas_object"
   | "unfinalized_or_deleting_cas_object"
@@ -308,6 +310,9 @@ export type DeployResolveAuthorizationResult =
 
 export type KnownDeployResolveFallbackState =
   | "unavailable"
+  | "active_release_missing"
+  | "unsupported_manifest_version"
+  | "negative_cache_hit"
   | "path_error"
   | "method_not_static"
   | "not_used"
@@ -857,6 +862,7 @@ function deployResolveCategory(response: DeployResolveResponse): string {
   if (isDeployResolveCasFailure(response)) return "cas";
   if (response.match === "route_method_miss") return "route_method";
   if (response.match === "active_release_missing") return "release";
+  if (response.match === "unsupported_manifest_version") return "manifest";
   if (isDeployResolveRouteHit(response)) return "route";
   if (response.match === "route_function" || response.match === "route_static_alias") {
     return "route";
@@ -898,6 +904,12 @@ function deployResolveSummaryText(
   }
   if (response.match === "active_release_missing") {
     return `${url} reached the host, but no active release is available for diagnostics.`;
+  }
+  if (
+    response.match === "unsupported_manifest_version" ||
+    response.authorization_result === "unsupported_manifest_version"
+  ) {
+    return `${url} reached the host, but the active static manifest version is not supported by the gateway.`;
   }
   if (response.match === "path_error") {
     return `${url} could not be evaluated because the path is not a valid Run402 public path.`;
@@ -1037,6 +1049,17 @@ function deployResolveNextSteps(
         {
           code: "deploy_release",
           message: "Deploy site content or routes before diagnosing this public URL.",
+        },
+      ];
+    case "unsupported_manifest_version":
+      return [
+        {
+          code: "redeploy_static_site",
+          message: "Redeploy static site content so the active release has a current static manifest.",
+        },
+        {
+          code: "inspect_release",
+          message: "Inspect the active release static_manifest_sha256 and retry diagnostics after redeploy.",
         },
       ];
     case "path_error":

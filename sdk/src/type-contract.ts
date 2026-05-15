@@ -2,6 +2,7 @@ import type {
   ActiveReleaseInventory,
   DeployResolveAuthorizationResult,
   DeployResolveCasObject,
+  DeployResolveFallbackState,
   DeployResolveMatch,
   DeployResolveResponse,
   DeployResolveResponseVariant,
@@ -9,6 +10,7 @@ import type {
   DeployResolveWarning,
   DeployObservabilityWarningEntry,
   KnownDeployResolveAuthorizationResult,
+  KnownDeployResolveFallbackState,
   DeploySummary,
   KnownDeployResolveMatch,
   PlanDiffEnvelope,
@@ -147,11 +149,19 @@ const _KnownRouteResolveLiteral: KnownDeployResolveMatch = "route_function";
 const _KnownRouteStaticAliasResolveLiteral: KnownDeployResolveMatch = "route_static_alias";
 const _KnownRouteMethodMissResolveLiteral: KnownDeployResolveMatch = "route_method_miss";
 const _KnownActiveReleaseMissingResolveLiteral: KnownDeployResolveMatch = "active_release_missing";
+const _KnownUnsupportedManifestResolveLiteral: KnownDeployResolveMatch = "unsupported_manifest_version";
 const _FutureResolveMatch: DeployResolveMatch = "future_gateway_match";
 const _KnownResolveAuthorizationResult: KnownDeployResolveAuthorizationResult = "missing_cas_object";
+const _KnownUnsupportedManifestAuthorizationResult: KnownDeployResolveAuthorizationResult = "unsupported_manifest_version";
 const _FutureResolveAuthorizationResult: DeployResolveAuthorizationResult = "future_authorization_result";
+const _KnownActiveReleaseMissingFallbackState: KnownDeployResolveFallbackState = "active_release_missing";
+const _KnownUnsupportedManifestFallbackState: KnownDeployResolveFallbackState = "unsupported_manifest_version";
+const _KnownNegativeCacheHitFallbackState: KnownDeployResolveFallbackState = "negative_cache_hit";
+const _FutureResolveFallbackState: DeployResolveFallbackState = "future_fallback_state";
 // @ts-expect-error unknown literals are not part of the known authorization-result union
 const _NoUnknownKnownResolveAuthorizationResult: KnownDeployResolveAuthorizationResult = "future_authorization_result";
+// @ts-expect-error unknown literals are not part of the known fallback-state union
+const _NoUnknownKnownResolveFallbackState: KnownDeployResolveFallbackState = "future_fallback_state";
 // @ts-expect-error implicit mode cannot carry a replace map
 const _NoImplicitPublicPathReplace: SitePublicPathsSpec = {
   mode: "implicit",
@@ -164,8 +174,14 @@ void _KnownRouteResolveLiteral;
 void _KnownRouteStaticAliasResolveLiteral;
 void _KnownRouteMethodMissResolveLiteral;
 void _KnownActiveReleaseMissingResolveLiteral;
+void _KnownUnsupportedManifestResolveLiteral;
 void _FutureResolveMatch;
 void _KnownResolveAuthorizationResult;
+void _KnownUnsupportedManifestAuthorizationResult;
 void _FutureResolveAuthorizationResult;
+void _KnownActiveReleaseMissingFallbackState;
+void _KnownUnsupportedManifestFallbackState;
+void _KnownNegativeCacheHitFallbackState;
+void _FutureResolveFallbackState;
 
 export {};

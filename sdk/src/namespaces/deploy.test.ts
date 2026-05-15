@@ -1819,6 +1819,36 @@ describe("Deploy.apply (validation)", () => {
     assert.equal(summary.next_steps[0]?.code, "check_route_methods");
   });
 
+  it("treats unsupported static manifests as known non-serving diagnostics", async () => {
+    const response = {
+      hostname: "example.com",
+      result: 503,
+      match: "unsupported_manifest_version",
+      authorized: false,
+      authorization_result: "unsupported_manifest_version",
+      fallback_state: "unsupported_manifest_version",
+      static_manifest_sha256: "d".repeat(64),
+    } satisfies DeployResolveResponse;
+    const summary = buildDeployResolveSummary(
+      response,
+      normalizeDeployResolveRequest({ project: "prj_test", host: "example.com" }),
+    );
+
+    assert.equal(summary.would_serve, false);
+    assert.equal(summary.category, "manifest");
+    assert.match(summary.summary, /static manifest version is not supported/);
+    assert.equal(summary.next_steps[0]?.code, "redeploy_static_site");
+
+    const cachedMiss = {
+      hostname: "example.com",
+      result: 404,
+      match: "none",
+      authorized: false,
+      fallback_state: "negative_cache_hit",
+    } satisfies DeployResolveResponse;
+    assert.equal(cachedMiss.fallback_state, "negative_cache_hit");
+  });
+
   it("keeps unknown resolve matches on generic inspect guidance", () => {
     const response = {
       hostname: "example.com",
