@@ -1020,6 +1020,42 @@ describe("CLI e2e happy path", () => {
     assert.ok(captured().includes("transactions"), "should show transactions");
   });
 
+  async function expectAllowanceCliError(sub, args, code) {
+    const { run } = await import("./cli/lib/allowance.mjs");
+    let threw = null;
+    captureStart();
+    try {
+      await run(sub, args);
+    } catch (e) {
+      threw = e;
+    } finally {
+      captureStop();
+    }
+    assert.equal(threw?.message, "process.exit(1)", `${sub} ${args.join(" ")} must exit non-zero`);
+    const errLine = capturedStderr().split("\n").find((s) => s.trim().startsWith("{"));
+    assert.ok(errLine, `expected JSON error on stderr, got: ${capturedStderr()}`);
+    const env = JSON.parse(errLine);
+    assert.equal(env.status, "error");
+    assert.equal(env.code, code);
+    return env;
+  }
+
+  it("allowance checkout rejects malformed amount flags (GH-272)", async () => {
+    await expectAllowanceCliError("checkout", ["--amount", "1abc"], "BAD_FLAG");
+    await expectAllowanceCliError("checkout", ["--amount", "-5000000"], "BAD_FLAG");
+    await expectAllowanceCliError("checkout", ["--amount", "0"], "BAD_FLAG");
+    await expectAllowanceCliError("checkout", ["--amunt", "5000000"], "UNKNOWN_FLAG");
+    await expectAllowanceCliError("checkout", ["--amount"], "BAD_FLAG");
+  });
+
+  it("allowance history rejects malformed limit flags (GH-273)", async () => {
+    await expectAllowanceCliError("history", ["--limit", "10abc"], "BAD_FLAG");
+    await expectAllowanceCliError("history", ["--limit", "0"], "BAD_FLAG");
+    await expectAllowanceCliError("history", ["--limit", "-1"], "BAD_FLAG");
+    await expectAllowanceCliError("history", ["--limt", "10"], "UNKNOWN_FLAG");
+    await expectAllowanceCliError("history", ["--limit"], "BAD_FLAG");
+  });
+
   // ── Tier ────────────────────────────────────────────────────────────────
 
   it("tier status", async () => {

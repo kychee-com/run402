@@ -1,6 +1,7 @@
 import { readAllowance, saveAllowance, ALLOWANCE_FILE } from "./config.mjs";
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail } from "./sdk-errors.mjs";
+import { assertKnownFlags, flagValue, normalizeArgv, parseIntegerFlag, positionalArgs } from "./argparse.mjs";
 
 const HELP = `run402 allowance — Manage your agent allowance
 
@@ -258,17 +259,25 @@ async function checkout(args) {
       hint: "Run: run402 allowance create",
     });
   }
-  let amount = null;
-  for (let i = 0; i < args.length; i++) {
-    if (args[i] === "--amount" && args[i + 1]) amount = parseInt(args[++i], 10);
+  const parsedArgs = normalizeArgv(args);
+  assertKnownFlags(parsedArgs, ["--amount", "--help", "-h"], ["--amount"]);
+  const bare = positionalArgs(parsedArgs, ["--amount"]);
+  if (bare.length > 0) {
+    fail({
+      code: "BAD_USAGE",
+      message: `Unexpected argument for allowance checkout: ${bare[0]}`,
+      details: { argument: bare[0] },
+    });
   }
-  if (!amount) {
+  const amountRaw = flagValue(parsedArgs, "--amount");
+  if (amountRaw === null) {
     fail({
       code: "BAD_USAGE",
       message: "Missing --amount <usd_micros>",
       hint: "e.g. --amount 5000000 for $5",
     });
   }
+  const amount = parseIntegerFlag("--amount", amountRaw, { min: 1 });
   try {
     const data = await getSdk().billing.createCheckout(w.address, amount);
     console.log(JSON.stringify(data, null, 2));
@@ -286,10 +295,17 @@ async function history(args) {
       hint: "Run: run402 allowance create",
     });
   }
-  let limit = 20;
-  for (let i = 0; i < args.length; i++) {
-    if (args[i] === "--limit" && args[i + 1]) limit = parseInt(args[++i], 10);
+  const parsedArgs = normalizeArgv(args);
+  assertKnownFlags(parsedArgs, ["--limit", "--help", "-h"], ["--limit"]);
+  const bare = positionalArgs(parsedArgs, ["--limit"]);
+  if (bare.length > 0) {
+    fail({
+      code: "BAD_USAGE",
+      message: `Unexpected argument for allowance history: ${bare[0]}`,
+      details: { argument: bare[0] },
+    });
   }
+  const limit = parseIntegerFlag("--limit", flagValue(parsedArgs, "--limit"), { min: 1, def: 20 });
   try {
     const data = await getSdk().billing.history(w.address, limit);
     console.log(JSON.stringify(data, null, 2));
