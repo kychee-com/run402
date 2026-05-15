@@ -1,6 +1,7 @@
 import { resolveProjectId } from "./config.mjs";
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail } from "./sdk-errors.mjs";
+import { assertKnownFlags, hasHelp, normalizeArgv } from "./argparse.mjs";
 
 const HELP = `run402 auth — Manage project user authentication
 
@@ -228,6 +229,61 @@ Examples:
   run402 auth providers
   run402 auth providers --project prj_abc123
 `,
+};
+
+const AUTH_FLAGS = {
+  "magic-link": {
+    known: ["--email", "--redirect", "--intent", "--state", "--project", "--help", "-h"],
+    values: ["--email", "--redirect", "--intent", "--state", "--project"],
+  },
+  "create-user": {
+    known: ["--email", "--admin", "--invite", "--redirect", "--state", "--project", "--help", "-h"],
+    values: ["--email", "--admin", "--redirect", "--state", "--project"],
+  },
+  "invite-user": {
+    known: ["--email", "--redirect", "--admin", "--state", "--project", "--help", "-h"],
+    values: ["--email", "--redirect", "--admin", "--state", "--project"],
+  },
+  verify: {
+    known: ["--token", "--project", "--help", "-h"],
+    values: ["--token", "--project"],
+  },
+  "set-password": {
+    known: ["--token", "--new", "--current", "--project", "--help", "-h"],
+    values: ["--token", "--new", "--current", "--project"],
+  },
+  settings: {
+    known: ["--allow-password-set", "--preferred", "--public-signup", "--require-admin-passkey", "--project", "--help", "-h"],
+    values: ["--allow-password-set", "--preferred", "--public-signup", "--require-admin-passkey", "--project"],
+  },
+  "passkey-register-options": {
+    known: ["--token", "--app-origin", "--project", "--help", "-h"],
+    values: ["--token", "--app-origin", "--project"],
+  },
+  "passkey-register-verify": {
+    known: ["--token", "--challenge", "--response", "--label", "--project", "--help", "-h"],
+    values: ["--token", "--challenge", "--response", "--label", "--project"],
+  },
+  "passkey-login-options": {
+    known: ["--app-origin", "--email", "--project", "--help", "-h"],
+    values: ["--app-origin", "--email", "--project"],
+  },
+  "passkey-login-verify": {
+    known: ["--challenge", "--response", "--project", "--help", "-h"],
+    values: ["--challenge", "--response", "--project"],
+  },
+  passkeys: {
+    known: ["--token", "--project", "--help", "-h"],
+    values: ["--token", "--project"],
+  },
+  "delete-passkey": {
+    known: ["--token", "--id", "--project", "--help", "-h"],
+    values: ["--token", "--id", "--project"],
+  },
+  providers: {
+    known: ["--project", "--help", "-h"],
+    values: ["--project"],
+  },
 };
 
 function parseFlag(args, flag) {
@@ -557,9 +613,14 @@ async function providers(args) {
 
 export async function run(sub, args) {
   if (!sub || sub === "--help" || sub === "-h") { console.log(HELP); process.exit(0); }
-  if (Array.isArray(args) && (args.includes("--help") || args.includes("-h"))) {
+  args = normalizeArgv(args);
+  if (Array.isArray(args) && hasHelp(args)) {
     console.log(SUB_HELP[sub] || HELP);
     process.exit(0);
+  }
+  const flagSpec = AUTH_FLAGS[sub];
+  if (flagSpec) {
+    assertKnownFlags(args, flagSpec.known, flagSpec.values);
   }
   switch (sub) {
     case "magic-link": await magicLink(args); break;
