@@ -244,6 +244,92 @@ describe("Deploy.apply (happy path)", () => {
     assert.equal(new TextDecoder().decode(w.puts[0].body), html);
   });
 
+  it("completes non-CI multipart content uploads with part ETags", async () => {
+    const w = makeWiring();
+    const html = "<html><body>multipart-content</body></html>";
+    const indexSha = shaHex(html);
+    const splitAt = 18;
+
+    const plan: PlanResponse = {
+      plan_id: "plan_multipart",
+      operation_id: "op_multipart",
+      base_release_id: null,
+      manifest_digest: "multipart",
+      missing_content: [
+        { sha256: indexSha, size: html.length, present: false },
+      ],
+      diff: { resources: { site: { added: 1 } } },
+      warnings: [],
+    };
+    const contentPlan = {
+      plan_id: "cplan_multipart",
+      expires_at: new Date(Date.now() + 3600_000).toISOString(),
+      missing: [
+        {
+          sha256: indexSha,
+          mode: "multipart",
+          parts: [
+            {
+              part_number: 1,
+              url: "https://s3.example/multipart?part=1",
+              byte_start: 0,
+              byte_end: splitAt - 1,
+            },
+            {
+              part_number: 2,
+              url: "https://s3.example/multipart?part=2",
+              byte_start: splitAt,
+              byte_end: html.length - 1,
+            },
+          ],
+          part_size_bytes: splitAt,
+          part_count: 2,
+          upload_id: "u_multipart",
+          staging_key: "_staging/u_multipart/" + indexSha,
+          expires_at: new Date(Date.now() + 3600_000).toISOString(),
+        },
+      ],
+      entries: [{ sha256: indexSha, missing: true }],
+    };
+    const commit: CommitResponse = {
+      operation_id: "op_multipart",
+      status: "ready",
+      release_id: "rel_multipart",
+      urls: { site: "https://prj.run402.test" },
+    };
+
+    w.setHandler((req) => {
+      if (req.path === "/deploy/v2/plans") return plan;
+      if (req.path === "/content/v1/plans") return contentPlan;
+      if (req.path === "/storage/v1/uploads/u_multipart/complete") return { status: "ok" };
+      if (req.path === "/content/v1/plans/cplan_multipart/commit") return {};
+      if (req.path === "/deploy/v2/plans/plan_multipart/commit") return commit;
+      throw new Error(`unexpected path ${req.path}`);
+    });
+    w.setS3Handler((url) => {
+      const etag = url.endsWith("part=1") ? "\"etag-part-1\"" : "\"etag-part-2\"";
+      return new Response("", { status: 200, headers: { etag } });
+    });
+
+    const deploy = new Deploy(w.client);
+    await deploy.apply({
+      project: "prj_test",
+      site: { replace: { "index.html": html } },
+    });
+
+    assert.equal(w.puts.length, 2, "one PUT per multipart part");
+    const completeReq = w.requests.find(
+      (r) => r.path === "/storage/v1/uploads/u_multipart/complete",
+    );
+    assert(completeReq, "multipart upload completion request was issued");
+    assert.deepEqual(completeReq.body, {
+      parts: [
+        { part_number: 1, etag: "\"etag-part-1\"" },
+        { part_number: 2, etag: "\"etag-part-2\"" },
+      ],
+    });
+  });
+
   it("uses CI Bearer auth, includes project_id for content planning, and avoids storage-complete route", async () => {
     const w = makeWiring(createCiSessionCredentials({
       projectId: "prj_test",

@@ -709,20 +709,14 @@ async function uploadMissing(
       );
     }
     const bytes = await reader();
-    await uploadOneWithRetry(client.fetch, session, bytes);
+    const uploadedParts = await uploadOneWithRetry(client.fetch, session, bytes);
 
     if (!ciCredentials) {
       // Per-session completion — legacy non-CI promotion path via
       // /storage/v1/uploads/:id/complete. CI sessions skip this route because
       // the gateway contract only allows /content/v1/plans*; under CI the
       // plan-level content commit performs the CAS promotion.
-      const completeBody: Record<string, unknown> = {};
-      if (session.mode === "multipart" && session.parts.length > 1) {
-        // Multipart completion needs per-part ETags. The SDK doesn't capture
-        // ETags during the PUT loop today (it would need a multi-PUT
-        // helper); for the common single-PUT case below this is empty.
-        // TODO: collect part ETags during uploadOne for true multipart.
-      }
+      const completeBody = uploadCompleteBody(session, uploadedParts);
       await client.request<unknown>(
         `/storage/v1/uploads/${encodeURIComponent(session.upload_id)}/complete`,
         {
@@ -759,16 +753,20 @@ async function uploadMissing(
 // deploy. Cap at 3 attempts (1 initial + 2 retries) with delays 1s, 2s.
 // Non-retryable errors (4xx other than 403, internal SDK invariants) bubble
 // up on the first attempt. See GH-140.
+interface UploadedPart {
+  part_number: number;
+  etag: string;
+}
+
 async function uploadOneWithRetry(
   fetchFn: typeof globalThis.fetch,
   session: MissingContent,
   bytes: Uint8Array,
-): Promise<void> {
+): Promise<UploadedPart[]> {
   const MAX_ATTEMPTS = 3;
   for (let attempt = 1; ; attempt++) {
     try {
-      await uploadOne(fetchFn, session, bytes);
-      return;
+      return await uploadOne(fetchFn, session, bytes);
     } catch (err) {
       const retryable = err instanceof Run402DeployError && err.retryable;
       if (!retryable || attempt >= MAX_ATTEMPTS) throw err;
@@ -781,7 +779,7 @@ async function uploadOne(
   fetchFn: typeof globalThis.fetch,
   entry: MissingContent,
   bytes: Uint8Array,
-): Promise<void> {
+): Promise<UploadedPart[]> {
   if (entry.mode === "single") {
     if (entry.parts.length !== 1) {
       throw new Run402DeployError(
@@ -798,13 +796,37 @@ async function uploadOne(
     const slice = bytes.subarray(part.byte_start, part.byte_end + 1);
     const checksum = base64FromHex(entry.sha256);
     await putToS3(fetchFn, part.url, slice, checksum, part.part_number);
-    return;
+    return [];
   }
+  const uploadedParts: UploadedPart[] = [];
   for (const part of entry.parts) {
     const slice = bytes.subarray(part.byte_start, part.byte_end + 1);
     const checksum = await sha256Base64(slice);
-    await putToS3(fetchFn, part.url, slice, checksum, part.part_number);
+    const etag = await putToS3(fetchFn, part.url, slice, checksum, part.part_number);
+    if (!etag) {
+      throw new Run402DeployError(
+        `S3 PUT succeeded for multipart part ${part.part_number} but did not return an ETag`,
+        {
+          code: "CONTENT_UPLOAD_FAILED",
+          phase: "upload",
+          retryable: false,
+          context: "uploading deploy bytes",
+        },
+      );
+    }
+    uploadedParts.push({ part_number: part.part_number, etag });
   }
+  return uploadedParts;
+}
+
+function uploadCompleteBody(
+  session: MissingContent,
+  uploadedParts: UploadedPart[],
+): Record<string, unknown> {
+  if (session.mode === "multipart") {
+    return { parts: uploadedParts };
+  }
+  return {};
 }
 
 async function putToS3(
@@ -813,7 +835,7 @@ async function putToS3(
   body: Uint8Array,
   checksumBase64: string,
   partNumber: number,
-): Promise<void> {
+): Promise<string | null> {
   // The gateway issues SigV4 presigned URLs with `ChecksumSHA256` set on
   // PutObjectCommand / UploadPartCommand. The AWS SDK (v3) encodes that
   // value as the `x-amz-checksum-sha256` query parameter and only signs
@@ -871,6 +893,7 @@ async function putToS3(
       },
     );
   }
+  return res.headers.get("etag");
 }
 
 async function pollUntilReady(
@@ -2331,14 +2354,14 @@ async function uploadInlineCas(
   });
   if (planRes.missing.length > 0) {
     const session = planRes.missing[0];
-    await uploadOne(client.fetch, session, bytes);
+    const uploadedParts = await uploadOne(client.fetch, session, bytes);
     // Per-session promotion to CAS (see uploadMissing for the rationale).
     await client.request<unknown>(
       `/storage/v1/uploads/${encodeURIComponent(session.upload_id)}/complete`,
       {
         method: "POST",
         headers,
-        body: {},
+        body: uploadCompleteBody(session, uploadedParts),
         context: "completing content upload session",
       },
     );
