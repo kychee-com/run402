@@ -2012,11 +2012,62 @@ describe("CLI e2e happy path", () => {
     };
   }
 
+  async function runBadDeployArgv(args, endpointPattern) {
+    const { run } = await import("./cli/lib/deploy.mjs");
+    const { saveAllowance } = await import("./cli/lib/config.mjs");
+    await seedTestProject();
+    saveAllowance({
+      address: "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+      privateKey: "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80",
+      created: "2026-03-15T00:00:00.000Z",
+      funded: true,
+      rail: "x402",
+    });
+
+    const prevFetch = globalThis.fetch;
+    let endpointCalled = false;
+    globalThis.fetch = (input, init) => {
+      const url = typeof input === "string" ? input : (input instanceof Request ? input.url : String(input));
+      if (endpointPattern.test(url)) endpointCalled = true;
+      return prevFetch(input, init);
+    };
+
+    let threw = null;
+    captureStart();
+    try {
+      await run(args);
+    } catch (e) {
+      threw = e;
+    } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+
+    return {
+      threw,
+      endpointCalled,
+      stdout: capturedStdout(),
+      stderr: capturedStderr(),
+    };
+  }
+
   for (const badLimit of ["abc", "0", "-1", "1.5"]) {
     it(`deploy list rejects --limit ${badLimit} before network (GH-265)`, async () => {
       const result = await runDeployListLimit(badLimit);
       assert.equal(result.threw?.message, "process.exit(1)");
       assert.equal(result.deployListCalled, false, "must not call deploy list with invalid --limit");
+      const parsed = JSON.parse(result.stderr);
+      assert.equal(parsed.code, "BAD_USAGE");
+      assert.match(parsed.message, /--limit must be a positive integer/);
+      assert.deepEqual(parsed.details, { flag: "--limit", value: badLimit });
+    });
+  }
+
+  for (const badLimit of ["1e3", "9007199254740992"]) {
+    it(`deploy list rejects unsafe --limit ${badLimit} before network (GH-330)`, async () => {
+      const result = await runDeployListLimit(badLimit);
+      assert.equal(result.threw?.message, "process.exit(1)");
+      assert.equal(result.deployListCalled, false, "must not call deploy list with malformed --limit");
       const parsed = JSON.parse(result.stderr);
       assert.equal(parsed.code, "BAD_USAGE");
       assert.match(parsed.message, /--limit must be a positive integer/);
@@ -2041,6 +2092,78 @@ describe("CLI e2e happy path", () => {
     const body = JSON.parse(result.stdout);
     assert.equal(body.status, "ok");
     assert.equal(body.operations[0].operation_id, "op_list_test");
+  });
+
+  it("deploy resume rejects unknown flags before network (GH-327)", async () => {
+    const result = await runBadDeployArgv(["resume", "op_resume_test", "--wat"], /\/deploy\/v2\/operations\/op_resume_test\/resume/);
+    assert.equal(result.threw?.message, "process.exit(1)");
+    assert.equal(result.endpointCalled, false, "must not call deploy resume with an unknown flag");
+    const parsed = JSON.parse(result.stderr);
+    assert.equal(parsed.code, "BAD_USAGE");
+    assert.match(parsed.message, /Unknown flag.*--wat/);
+  });
+
+  it("deploy resume rejects extra operation ids before network (GH-327)", async () => {
+    const result = await runBadDeployArgv(["resume", "op_resume_test", "op_extra"], /\/deploy\/v2\/operations\/op_resume_test\/resume/);
+    assert.equal(result.threw?.message, "process.exit(1)");
+    assert.equal(result.endpointCalled, false, "must not call deploy resume with extra operation ids");
+    const parsed = JSON.parse(result.stderr);
+    assert.equal(parsed.code, "BAD_USAGE");
+    assert.match(parsed.message, /Unexpected argument/);
+  });
+
+  it("deploy list rejects unknown flags before network (GH-328)", async () => {
+    const result = await runBadDeployArgv(["list", "--project", TEST_PROJECT.project_id, "--wat"], /\/deploy\/v2\/operations(?:\?|$)/);
+    assert.equal(result.threw?.message, "process.exit(1)");
+    assert.equal(result.endpointCalled, false, "must not call deploy list with an unknown flag");
+    const parsed = JSON.parse(result.stderr);
+    assert.equal(parsed.code, "BAD_USAGE");
+    assert.match(parsed.message, /Unknown flag.*--wat/);
+  });
+
+  it("deploy list rejects missing --project value before network (GH-328)", async () => {
+    const result = await runBadDeployArgv(["list", "--project"], /\/deploy\/v2\/operations(?:\?|$)/);
+    assert.equal(result.threw?.message, "process.exit(1)");
+    assert.equal(result.endpointCalled, false, "must not call deploy list when --project has no value");
+    const parsed = JSON.parse(result.stderr);
+    assert.equal(parsed.code, "BAD_USAGE");
+    assert.match(parsed.message, /--project requires a value/);
+  });
+
+  it("deploy list rejects extra positionals before network (GH-328)", async () => {
+    const result = await runBadDeployArgv(["list", "op_extra", "--project", TEST_PROJECT.project_id], /\/deploy\/v2\/operations(?:\?|$)/);
+    assert.equal(result.threw?.message, "process.exit(1)");
+    assert.equal(result.endpointCalled, false, "must not call deploy list with extra positionals");
+    const parsed = JSON.parse(result.stderr);
+    assert.equal(parsed.code, "BAD_USAGE");
+    assert.match(parsed.message, /Unexpected argument/);
+  });
+
+  it("deploy events rejects unknown flags before network (GH-328)", async () => {
+    const result = await runBadDeployArgv(["events", "op_events_test", "--project", TEST_PROJECT.project_id, "--wat"], /\/deploy\/v2\/operations\/op_events_test\/events/);
+    assert.equal(result.threw?.message, "process.exit(1)");
+    assert.equal(result.endpointCalled, false, "must not call deploy events with an unknown flag");
+    const parsed = JSON.parse(result.stderr);
+    assert.equal(parsed.code, "BAD_USAGE");
+    assert.match(parsed.message, /Unknown flag.*--wat/);
+  });
+
+  it("deploy events rejects extra operation ids before network (GH-328)", async () => {
+    const result = await runBadDeployArgv(["events", "op_events_test", "op_extra", "--project", TEST_PROJECT.project_id], /\/deploy\/v2\/operations\/op_events_test\/events/);
+    assert.equal(result.threw?.message, "process.exit(1)");
+    assert.equal(result.endpointCalled, false, "must not call deploy events with extra operation ids");
+    const parsed = JSON.parse(result.stderr);
+    assert.equal(parsed.code, "BAD_USAGE");
+    assert.match(parsed.message, /Unexpected argument/);
+  });
+
+  it("deploy events rejects missing --project value before network (GH-328)", async () => {
+    const result = await runBadDeployArgv(["events", "op_events_test", "--project"], /\/deploy\/v2\/operations\/op_events_test\/events/);
+    assert.equal(result.threw?.message, "process.exit(1)");
+    assert.equal(result.endpointCalled, false, "must not call deploy events when --project has no value");
+    const parsed = JSON.parse(result.stderr);
+    assert.equal(parsed.code, "BAD_USAGE");
+    assert.match(parsed.message, /--project requires a value/);
   });
 
   it("deploy release get wraps the inventory payload", async () => {
@@ -2091,6 +2214,60 @@ describe("CLI e2e happy path", () => {
     assert.equal(body.diff.kind, "release_diff");
     assert.deepEqual(body.diff.migrations.applied_between_releases, ["001_init"]);
     assert.equal(body.diff.routes.added[0].pattern, "/api/*");
+  });
+
+  it("deploy release get rejects unknown flags before network (GH-329)", async () => {
+    const result = await runBadDeployArgv(["release", "get", "rel_v2_test", "--project", TEST_PROJECT.project_id, "--wat"], /\/deploy\/v2\/releases\/rel_v2_test(?:\?|$)/);
+    assert.equal(result.threw?.message, "process.exit(1)");
+    assert.equal(result.endpointCalled, false, "must not call release get with an unknown flag");
+    const parsed = JSON.parse(result.stderr);
+    assert.equal(parsed.code, "BAD_USAGE");
+    assert.match(parsed.message, /Unknown flag.*--wat/);
+  });
+
+  it("deploy release get rejects extra release ids before network (GH-329)", async () => {
+    const result = await runBadDeployArgv(["release", "get", "rel_v2_test", "rel_extra", "--project", TEST_PROJECT.project_id], /\/deploy\/v2\/releases\/rel_v2_test(?:\?|$)/);
+    assert.equal(result.threw?.message, "process.exit(1)");
+    assert.equal(result.endpointCalled, false, "must not call release get with extra release ids");
+    const parsed = JSON.parse(result.stderr);
+    assert.equal(parsed.code, "BAD_USAGE");
+    assert.match(parsed.message, /Unexpected argument/);
+  });
+
+  it("deploy release active rejects extra args before network (GH-329)", async () => {
+    const result = await runBadDeployArgv(["release", "active", "rel_extra", "--project", TEST_PROJECT.project_id], /\/deploy\/v2\/releases\/active(?:\?|$)/);
+    assert.equal(result.threw?.message, "process.exit(1)");
+    assert.equal(result.endpointCalled, false, "must not call release active with extra args");
+    const parsed = JSON.parse(result.stderr);
+    assert.equal(parsed.code, "BAD_USAGE");
+    assert.match(parsed.message, /Unexpected argument/);
+  });
+
+  it("deploy release active rejects missing --site-limit value before network (GH-329)", async () => {
+    const result = await runBadDeployArgv(["release", "active", "--project", TEST_PROJECT.project_id, "--site-limit"], /\/deploy\/v2\/releases\/active(?:\?|$)/);
+    assert.equal(result.threw?.message, "process.exit(1)");
+    assert.equal(result.endpointCalled, false, "must not call release active when --site-limit has no value");
+    const parsed = JSON.parse(result.stderr);
+    assert.equal(parsed.code, "BAD_USAGE");
+    assert.match(parsed.message, /--site-limit requires a value|--site-limit must be a positive integer/);
+  });
+
+  it("deploy release diff rejects unknown flags before network (GH-329)", async () => {
+    const result = await runBadDeployArgv(["release", "diff", "--from", "empty", "--to", "active", "--project", TEST_PROJECT.project_id, "--wat"], /\/deploy\/v2\/releases\/diff(?:\?|$)/);
+    assert.equal(result.threw?.message, "process.exit(1)");
+    assert.equal(result.endpointCalled, false, "must not call release diff with an unknown flag");
+    const parsed = JSON.parse(result.stderr);
+    assert.equal(parsed.code, "BAD_USAGE");
+    assert.match(parsed.message, /Unknown flag.*--wat/);
+  });
+
+  it("deploy release diff rejects extra args before network (GH-329)", async () => {
+    const result = await runBadDeployArgv(["release", "diff", "--from", "empty", "--to", "active", "extra", "--project", TEST_PROJECT.project_id], /\/deploy\/v2\/releases\/diff(?:\?|$)/);
+    assert.equal(result.threw?.message, "process.exit(1)");
+    assert.equal(result.endpointCalled, false, "must not call release diff with extra args");
+    const parsed = JSON.parse(result.stderr);
+    assert.equal(parsed.code, "BAD_USAGE");
+    assert.match(parsed.message, /Unexpected argument/);
   });
 
   it("deploy diagnose prints a structured URL diagnostic envelope", async () => {

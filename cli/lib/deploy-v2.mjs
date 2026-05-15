@@ -32,6 +32,7 @@ import {
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail } from "./sdk-errors.mjs";
 import { API, allowanceAuthHeaders, getActiveProjectId, resolveProjectId } from "./config.mjs";
+import { normalizeArgv } from "./argparse.mjs";
 
 const APPLY_HELP = `run402 deploy apply — Unified deploy primitive (v1.34+)
 
@@ -778,19 +779,18 @@ function rejectLegacySecretManifest(spec, details) {
 }
 
 async function resumeCmd(args) {
-  const opts = { operationId: null, quiet: false };
-  for (let i = 0; i < args.length; i++) {
-    if (args[i] === "--help" || args[i] === "-h") { console.log(RESUME_HELP); process.exit(0); }
-    if (args[i] === "--quiet") { opts.quiet = true; continue; }
-    if (!args[i].startsWith("-") && !opts.operationId) opts.operationId = args[i];
-  }
-  if (!opts.operationId) {
-    fail({
-      code: "BAD_USAGE",
-      message: "Missing <operation_id>.",
-      hint: "run402 deploy resume <operation_id>",
-    });
-  }
+  const parsed = parseDeploySubcommandArgs(args, {
+    command: "deploy resume",
+    help: RESUME_HELP,
+    booleanFlags: ["--quiet"],
+  });
+  const [operationId] = expectPositionals(parsed.positionals, {
+    command: "run402 deploy resume <operation_id>",
+    min: 1,
+    max: 1,
+    missing: "Missing <operation_id>.",
+  });
+  const opts = { operationId, quiet: Boolean(parsed.flags["--quiet"]) };
 
   allowanceAuthHeaders("/deploy/v2/operations");
 
@@ -805,12 +805,19 @@ async function resumeCmd(args) {
 }
 
 async function listCmd(args) {
-  const opts = { project: null, limit: null };
-  for (let i = 0; i < args.length; i++) {
-    if (args[i] === "--help" || args[i] === "-h") { console.log(LIST_HELP); process.exit(0); }
-    if (args[i] === "--project" && args[i + 1]) { opts.project = args[++i]; continue; }
-    if (args[i] === "--limit") { opts.limit = parsePositiveInt(args[++i], "--limit"); continue; }
-  }
+  const parsed = parseDeploySubcommandArgs(args, {
+    command: "deploy list",
+    help: LIST_HELP,
+    valueFlags: ["--project", "--limit"],
+  });
+  expectPositionals(parsed.positionals, {
+    command: "run402 deploy list [--project <id>] [--limit <n>]",
+    max: 0,
+  });
+  const opts = {
+    project: parsed.flags["--project"] ?? null,
+    limit: parsed.flags["--limit"] === undefined ? null : parsePositiveInt(parsed.flags["--limit"], "--limit"),
+  };
 
   const project = resolveProjectId(opts.project);
   allowanceAuthHeaders("/deploy/v2/operations");
@@ -826,19 +833,18 @@ async function listCmd(args) {
 }
 
 async function eventsCmd(args) {
-  const opts = { operationId: null, project: null };
-  for (let i = 0; i < args.length; i++) {
-    if (args[i] === "--help" || args[i] === "-h") { console.log(EVENTS_HELP); process.exit(0); }
-    if (args[i] === "--project" && args[i + 1]) { opts.project = args[++i]; continue; }
-    if (!args[i].startsWith("-") && !opts.operationId) opts.operationId = args[i];
-  }
-  if (!opts.operationId) {
-    fail({
-      code: "BAD_USAGE",
-      message: "Missing <operation_id>.",
-      hint: "run402 deploy events <operation_id>",
-    });
-  }
+  const parsed = parseDeploySubcommandArgs(args, {
+    command: "deploy events",
+    help: EVENTS_HELP,
+    valueFlags: ["--project"],
+  });
+  const [operationId] = expectPositionals(parsed.positionals, {
+    command: "run402 deploy events <operation_id>",
+    min: 1,
+    max: 1,
+    missing: "Missing <operation_id>.",
+  });
+  const opts = { operationId, project: parsed.flags["--project"] ?? null };
 
   const project = resolveProjectId(opts.project);
   allowanceAuthHeaders("/deploy/v2/operations");
@@ -868,20 +874,24 @@ async function releaseCmd(args) {
 }
 
 async function releaseGetCmd(args) {
-  const opts = { releaseId: null, project: null, siteLimit: null };
-  for (let i = 0; i < args.length; i++) {
-    if (args[i] === "--help" || args[i] === "-h") { console.log(RELEASE_GET_HELP); process.exit(0); }
-    if (args[i] === "--project" && args[i + 1]) { opts.project = args[++i]; continue; }
-    if (args[i] === "--site-limit" && args[i + 1]) { opts.siteLimit = parsePositiveInt(args[++i], "--site-limit"); continue; }
-    if (!args[i].startsWith("-") && !opts.releaseId) opts.releaseId = args[i];
-  }
-  if (!opts.releaseId) {
-    fail({
-      code: "BAD_USAGE",
-      message: "Missing <release_id>.",
-      hint: "run402 deploy release get <release_id>",
-    });
-  }
+  const parsed = parseDeploySubcommandArgs(args, {
+    command: "deploy release get",
+    help: RELEASE_GET_HELP,
+    valueFlags: ["--project", "--site-limit"],
+  });
+  const [releaseId] = expectPositionals(parsed.positionals, {
+    command: "run402 deploy release get <release_id>",
+    min: 1,
+    max: 1,
+    missing: "Missing <release_id>.",
+  });
+  const opts = {
+    releaseId,
+    project: parsed.flags["--project"] ?? null,
+    siteLimit: parsed.flags["--site-limit"] === undefined
+      ? null
+      : parsePositiveInt(parsed.flags["--site-limit"], "--site-limit"),
+  };
 
   const project = resolveProjectId(opts.project);
 
@@ -896,12 +906,21 @@ async function releaseGetCmd(args) {
 }
 
 async function releaseActiveCmd(args) {
-  const opts = { project: null, siteLimit: null };
-  for (let i = 0; i < args.length; i++) {
-    if (args[i] === "--help" || args[i] === "-h") { console.log(RELEASE_ACTIVE_HELP); process.exit(0); }
-    if (args[i] === "--project" && args[i + 1]) { opts.project = args[++i]; continue; }
-    if (args[i] === "--site-limit" && args[i + 1]) { opts.siteLimit = parsePositiveInt(args[++i], "--site-limit"); continue; }
-  }
+  const parsed = parseDeploySubcommandArgs(args, {
+    command: "deploy release active",
+    help: RELEASE_ACTIVE_HELP,
+    valueFlags: ["--project", "--site-limit"],
+  });
+  expectPositionals(parsed.positionals, {
+    command: "run402 deploy release active [--project <id>] [--site-limit <n>]",
+    max: 0,
+  });
+  const opts = {
+    project: parsed.flags["--project"] ?? null,
+    siteLimit: parsed.flags["--site-limit"] === undefined
+      ? null
+      : parsePositiveInt(parsed.flags["--site-limit"], "--site-limit"),
+  };
 
   const project = resolveProjectId(opts.project);
 
@@ -916,14 +935,21 @@ async function releaseActiveCmd(args) {
 }
 
 async function releaseDiffCmd(args) {
-  const opts = { project: null, from: null, to: null, limit: null };
-  for (let i = 0; i < args.length; i++) {
-    if (args[i] === "--help" || args[i] === "-h") { console.log(RELEASE_DIFF_HELP); process.exit(0); }
-    if (args[i] === "--project" && args[i + 1]) { opts.project = args[++i]; continue; }
-    if (args[i] === "--from" && args[i + 1]) { opts.from = args[++i]; continue; }
-    if (args[i] === "--to" && args[i + 1]) { opts.to = args[++i]; continue; }
-    if (args[i] === "--limit" && args[i + 1]) { opts.limit = parsePositiveInt(args[++i], "--limit"); continue; }
-  }
+  const parsed = parseDeploySubcommandArgs(args, {
+    command: "deploy release diff",
+    help: RELEASE_DIFF_HELP,
+    valueFlags: ["--project", "--from", "--to", "--limit"],
+  });
+  expectPositionals(parsed.positionals, {
+    command: "run402 deploy release diff --from <target> --to <target>",
+    max: 0,
+  });
+  const opts = {
+    project: parsed.flags["--project"] ?? null,
+    from: parsed.flags["--from"] ?? null,
+    to: parsed.flags["--to"] ?? null,
+    limit: parsed.flags["--limit"] === undefined ? null : parsePositiveInt(parsed.flags["--limit"], "--limit"),
+  };
   if (!opts.from || !opts.to) {
     fail({
       code: "BAD_USAGE",
@@ -1076,9 +1102,80 @@ function redactResolveInput(input) {
   return copy;
 }
 
+function parseDeploySubcommandArgs(rawArgs, { command, help, valueFlags = [], booleanFlags = [] }) {
+  const args = normalizeArgv(rawArgs);
+  const valueFlagSet = new Set(valueFlags);
+  const booleanFlagSet = new Set(booleanFlags);
+  const numericFlagSet = new Set(["--limit", "--site-limit"]);
+  const allowedFlags = new Set([...valueFlags, ...booleanFlags, "--help", "-h"]);
+  const flags = {};
+  const positionals = [];
+
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (arg === "--help" || arg === "-h") {
+      console.log(help);
+      process.exit(0);
+    }
+    if (valueFlagSet.has(arg)) {
+      const value = args[i + 1];
+      if (value === undefined || (typeof value === "string" && value.startsWith("--"))) {
+        if (numericFlagSet.has(arg)) parsePositiveInt(value, arg);
+        fail({
+          code: "BAD_USAGE",
+          message: `${arg} requires a value`,
+          details: { flag: arg },
+        });
+      }
+      flags[arg] = value;
+      i += 1;
+      continue;
+    }
+    if (booleanFlagSet.has(arg)) {
+      flags[arg] = true;
+      continue;
+    }
+    if (typeof arg === "string" && arg.startsWith("-")) {
+      fail({
+        code: "BAD_USAGE",
+        message: `Unknown flag for ${command}: ${arg}`,
+        details: { flag: arg, allowed_flags: [...allowedFlags] },
+      });
+    }
+    positionals.push(arg);
+  }
+
+  return { flags, positionals };
+}
+
+function expectPositionals(positionals, { command, min = 0, max = min, missing = "Missing required argument." }) {
+  if (positionals.length < min) {
+    fail({
+      code: "BAD_USAGE",
+      message: missing,
+      hint: command,
+    });
+  }
+  if (positionals.length > max) {
+    fail({
+      code: "BAD_USAGE",
+      message: `Unexpected argument for ${command}: ${positionals[max]}`,
+      hint: `Use \`${command}\`.`,
+    });
+  }
+  return positionals;
+}
+
 function parsePositiveInt(value, flag) {
-  const parsed = Number(value);
-  if (!Number.isInteger(parsed) || parsed < 1) {
+  if (typeof value !== "string" || !/^\d+$/.test(value)) {
+    fail({
+      code: "BAD_USAGE",
+      message: `${flag} must be a positive integer.`,
+      details: { flag, value },
+    });
+  }
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isSafeInteger(parsed) || parsed < 1) {
     fail({
       code: "BAD_USAGE",
       message: `${flag} must be a positive integer.`,
