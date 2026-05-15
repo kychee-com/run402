@@ -136,6 +136,48 @@ describe("unknown flags", () => {
   });
 });
 
+describe("ai argv validation (GH-280)", () => {
+  it("ai translate rejects typoed flags before SDK/network", async () => {
+    const { run } = await import("./cli/lib/ai.mjs");
+    const err = await expectExit1(() =>
+      run("translate", ["text", "--too", "fr"]));
+
+    assert.equal(err.code, "UNKNOWN_FLAG");
+    assert.equal(err.details.flag, "--too");
+    assert.equal(calls.length, 0, "invalid argv must not hit the network");
+  });
+
+  it("ai translate rejects missing --to value before SDK/network", async () => {
+    const { run } = await import("./cli/lib/ai.mjs");
+    const err = await expectExit1(() =>
+      run("translate", ["text", "--to"]));
+
+    assert.equal(err.code, "BAD_FLAG");
+    assert.equal(err.details.flag, "--to");
+    assert.equal(calls.length, 0, "invalid argv must not hit the network");
+  });
+
+  it("ai moderate rejects typoed flags before SDK/network", async () => {
+    const { run } = await import("./cli/lib/ai.mjs");
+    const err = await expectExit1(() =>
+      run("moderate", ["text", "--projct", "prj_x"]));
+
+    assert.equal(err.code, "UNKNOWN_FLAG");
+    assert.equal(err.details.flag, "--projct");
+    assert.equal(calls.length, 0, "invalid argv must not hit the network");
+  });
+
+  it("ai usage rejects typoed flags before SDK/network", async () => {
+    const { run } = await import("./cli/lib/ai.mjs");
+    const err = await expectExit1(() =>
+      run("usage", ["--projct", "prj_x"]));
+
+    assert.equal(err.code, "UNKNOWN_FLAG");
+    assert.equal(err.details.flag, "--projct");
+    assert.equal(calls.length, 0, "invalid argv must not hit the network");
+  });
+});
+
 describe("projects costs argv validation", () => {
   it("rejects invalid --window before network", async () => {
     const { run } = await import("./cli/lib/projects.mjs");
