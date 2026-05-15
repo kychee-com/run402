@@ -136,6 +136,101 @@ describe("unknown flags", () => {
   });
 });
 
+describe("email argv validation", () => {
+  it("email list rejects unknown --projct before network (GH-277)", async () => {
+    const { run } = await import("./cli/lib/email.mjs");
+    const err = await expectExit1(() => run("list", ["--projct", "prj_test123"]));
+
+    assert.equal(err.code, "UNKNOWN_FLAG");
+    assert.equal(err.details.flag, "--projct");
+    assert.equal(calls.length, 0, "invalid argv must not hit the network");
+  });
+
+  it("email get rejects missing --project value before network (GH-277)", async () => {
+    const { run } = await import("./cli/lib/email.mjs");
+    const err = await expectExit1(() => run("get", ["msg_1", "--project"]));
+
+    assert.equal(err.code, "BAD_FLAG");
+    assert.equal(err.details.flag, "--project");
+    assert.equal(calls.length, 0, "invalid argv must not hit the network");
+  });
+
+  it("email get-raw rejects missing --output value before network (GH-277)", async () => {
+    const { run } = await import("./cli/lib/email.mjs");
+    const err = await expectExit1(() => run("get-raw", ["msg_1", "--output"]));
+
+    assert.equal(err.code, "BAD_FLAG");
+    assert.equal(err.details.flag, "--output");
+    assert.equal(calls.length, 0, "invalid argv must not hit the network");
+  });
+
+  it("email reply rejects missing --html value before network (GH-277)", async () => {
+    const { run } = await import("./cli/lib/email.mjs");
+    const err = await expectExit1(() => run("reply", ["msg_1", "--html"]));
+
+    assert.equal(err.code, "BAD_FLAG");
+    assert.equal(err.details.flag, "--html");
+    assert.equal(calls.length, 0, "invalid argv must not hit the network");
+  });
+
+  it("email delete rejects missing --project value before network (GH-277)", async () => {
+    const { run } = await import("./cli/lib/email.mjs");
+    const err = await expectExit1(() => run("delete", ["--confirm", "--project"]));
+
+    assert.equal(err.code, "BAD_FLAG");
+    assert.equal(err.details.flag, "--project");
+    assert.equal(calls.length, 0, "invalid argv must not hit the network");
+  });
+});
+
+describe("email webhooks argv validation", () => {
+  it("webhooks list rejects unknown --projct before network (GH-278)", async () => {
+    const { run } = await import("./cli/lib/webhooks.mjs");
+    const err = await expectExit1(() => run("list", ["--projct", "prj_test123"]));
+
+    assert.equal(err.code, "UNKNOWN_FLAG");
+    assert.equal(err.details.flag, "--projct");
+    assert.equal(calls.length, 0, "invalid argv must not hit the network");
+  });
+
+  it("webhooks register rejects missing --url value before network (GH-278)", async () => {
+    const { run } = await import("./cli/lib/webhooks.mjs");
+    const err = await expectExit1(() => run("register", ["--url"]));
+
+    assert.equal(err.code, "BAD_FLAG");
+    assert.equal(err.details.flag, "--url");
+    assert.equal(calls.length, 0, "invalid argv must not hit the network");
+  });
+
+  it("webhooks register rejects missing --events value before network (GH-278)", async () => {
+    const { run } = await import("./cli/lib/webhooks.mjs");
+    const err = await expectExit1(() =>
+      run("register", ["--url", "https://example.com/hook", "--events"]));
+
+    assert.equal(err.code, "BAD_FLAG");
+    assert.equal(err.details.flag, "--events");
+    assert.equal(calls.length, 0, "invalid argv must not hit the network");
+  });
+
+  it("webhooks update rejects missing --events value before network (GH-278)", async () => {
+    const { run } = await import("./cli/lib/webhooks.mjs");
+    const err = await expectExit1(() => run("update", ["whk_1", "--events"]));
+
+    assert.equal(err.code, "BAD_FLAG");
+    assert.equal(err.details.flag, "--events");
+    assert.equal(calls.length, 0, "invalid argv must not hit the network");
+  });
+
+  it("webhooks update rejects missing --url value before network (GH-278)", async () => {
+    const { run } = await import("./cli/lib/webhooks.mjs");
+    const err = await expectExit1(() => run("update", ["whk_1", "--url"]));
+
+    assert.equal(err.code, "BAD_FLAG");
+    assert.equal(err.details.flag, "--url");
+    assert.equal(calls.length, 0, "invalid argv must not hit the network");
+  });
+});
+
 describe("projects costs argv validation", () => {
   it("rejects invalid --window before network", async () => {
     const { run } = await import("./cli/lib/projects.mjs");

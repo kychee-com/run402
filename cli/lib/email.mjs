@@ -1,6 +1,7 @@
 import { resolveProjectId } from "./config.mjs";
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail, parseFlagJson } from "./sdk-errors.mjs";
+import { assertKnownFlags, flagValue, normalizeArgv, parseIntegerFlag, positionalArgs } from "./argparse.mjs";
 
 const HELP = `run402 email — Send emails from your project
 
@@ -152,17 +153,39 @@ Examples:
 `,
 };
 
-function parseFlag(args, flag) {
-  for (let i = 0; i < args.length; i++) {
-    if (args[i] === flag && args[i + 1]) return args[i + 1];
+function strictFlagValue(args, flag) {
+  const value = flagValue(args, flag);
+  if (typeof value === "string" && value.startsWith("--")) {
+    fail({
+      code: "BAD_FLAG",
+      message: `${flag} requires a value`,
+      details: { flag },
+    });
   }
-  return null;
+  return value;
+}
+
+function validateArgs(args, knownFlags, flagsWithValues = knownFlags) {
+  assertKnownFlags(args, knownFlags, flagsWithValues);
+  const valueFlags = new Set(flagsWithValues);
+  for (let i = 0; i < args.length; i++) {
+    const flag = args[i];
+    if (!valueFlags.has(flag)) continue;
+    if (i + 1 >= args.length || (typeof args[i + 1] === "string" && args[i + 1].startsWith("--"))) {
+      fail({
+        code: "BAD_FLAG",
+        message: `${flag} requires a value`,
+        details: { flag },
+      });
+    }
+    i += 1;
+  }
 }
 
 function parseVars(args) {
   const vars = {};
   for (let i = 0; i < args.length; i++) {
-    if (args[i] === "--vars" && args[i + 1]) {
+    if (args[i] === "--vars") {
       const raw = args[++i];
       const parsed = parseFlagJson("--vars", raw);
       if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
@@ -175,7 +198,7 @@ function parseVars(args) {
     }
   }
   for (let i = 0; i < args.length; i++) {
-    if (args[i] === "--var" && args[i + 1]) {
+    if (args[i] === "--var") {
       const raw = args[++i];
       const eq = raw.indexOf("=");
       if (eq > 0) vars[raw.slice(0, eq)] = raw.slice(eq + 1);
@@ -185,12 +208,9 @@ function parseVars(args) {
 }
 
 async function create(args) {
-  let slug = null;
-  let projectOpt = null;
-  for (let i = 0; i < args.length; i++) {
-    if (args[i] === "--project" && args[i + 1]) { projectOpt = args[++i]; }
-    else if (!args[i].startsWith("--") && !slug) { slug = args[i]; }
-  }
+  validateArgs(args, ["--project"]);
+  const slug = positionalArgs(args, ["--project"])[0] ?? null;
+  const projectOpt = strictFlagValue(args, "--project");
   const projectId = resolveProjectId(projectOpt);
   if (!slug) {
     fail({
@@ -209,13 +229,15 @@ async function create(args) {
 }
 
 async function send(args) {
-  const template = parseFlag(args, "--template");
-  const to = parseFlag(args, "--to");
-  const subject = parseFlag(args, "--subject");
-  const html = parseFlag(args, "--html");
-  const text = parseFlag(args, "--text");
-  const fromName = parseFlag(args, "--from-name");
-  const projectId = resolveProjectId(parseFlag(args, "--project"));
+  const valueFlags = ["--template", "--to", "--subject", "--html", "--text", "--from-name", "--project", "--vars", "--var"];
+  validateArgs(args, valueFlags);
+  const template = strictFlagValue(args, "--template");
+  const to = strictFlagValue(args, "--to");
+  const subject = strictFlagValue(args, "--subject");
+  const html = strictFlagValue(args, "--html");
+  const text = strictFlagValue(args, "--text");
+  const fromName = strictFlagValue(args, "--from-name");
+  const projectId = resolveProjectId(strictFlagValue(args, "--project"));
   const variables = parseVars(args);
 
   if (!to) {
@@ -239,12 +261,14 @@ async function send(args) {
 }
 
 async function list(args) {
-  const projectId = resolveProjectId(parseFlag(args, "--project"));
-  const limit = parseFlag(args, "--limit");
-  const after = parseFlag(args, "--after");
+  const valueFlags = ["--project", "--limit", "--after"];
+  validateArgs(args, valueFlags);
+  const projectId = resolveProjectId(strictFlagValue(args, "--project"));
+  const limit = strictFlagValue(args, "--limit");
+  const after = strictFlagValue(args, "--after");
   try {
     const data = await getSdk().email.list(projectId, {
-      limit: limit ? Number(limit) : undefined,
+      limit: limit ? parseIntegerFlag("--limit", limit) : undefined,
       after: after ?? undefined,
     });
     console.log(JSON.stringify(data, null, 2));
@@ -254,13 +278,9 @@ async function list(args) {
 }
 
 async function get(args) {
-  let messageId = null;
-  let projectOpt = null;
-  for (let i = 0; i < args.length; i++) {
-    if (args[i] === "--project" && args[i + 1]) { projectOpt = args[++i]; }
-    else if (!args[i].startsWith("--") && !messageId) { messageId = args[i]; }
-  }
-  const projectId = resolveProjectId(projectOpt);
+  validateArgs(args, ["--project"]);
+  const messageId = positionalArgs(args, ["--project"])[0] ?? null;
+  const projectId = resolveProjectId(strictFlagValue(args, "--project"));
   if (!messageId) {
     fail({
       code: "BAD_USAGE",
@@ -277,15 +297,11 @@ async function get(args) {
 }
 
 async function getRaw(args) {
-  let messageId = null;
-  let projectOpt = null;
-  let outputFile = null;
-  for (let i = 0; i < args.length; i++) {
-    if (args[i] === "--project" && args[i + 1]) { projectOpt = args[++i]; }
-    else if (args[i] === "--output" && args[i + 1]) { outputFile = args[++i]; }
-    else if (!args[i].startsWith("--") && !messageId) { messageId = args[i]; }
-  }
-  const projectId = resolveProjectId(projectOpt);
+  const valueFlags = ["--project", "--output"];
+  validateArgs(args, valueFlags);
+  const messageId = positionalArgs(args, valueFlags)[0] ?? null;
+  const outputFile = strictFlagValue(args, "--output");
+  const projectId = resolveProjectId(strictFlagValue(args, "--project"));
   if (!messageId) {
     fail({
       code: "BAD_USAGE",
@@ -311,19 +327,14 @@ async function getRaw(args) {
 }
 
 async function reply(args) {
-  let messageId = null;
-  let projectOpt = null;
-  for (let i = 0; i < args.length; i++) {
-    const a = args[i];
-    if (a === "--project" && args[i + 1]) { projectOpt = args[++i]; }
-    else if (a === "--html" || a === "--text" || a === "--subject" || a === "--from-name") { i++; }
-    else if (!a.startsWith("--") && !messageId) { messageId = a; }
-  }
-  const html = parseFlag(args, "--html");
-  const text = parseFlag(args, "--text");
-  const subjectOverride = parseFlag(args, "--subject");
-  const fromName = parseFlag(args, "--from-name");
-  const projectId = resolveProjectId(projectOpt);
+  const valueFlags = ["--project", "--html", "--text", "--subject", "--from-name"];
+  validateArgs(args, valueFlags);
+  const messageId = positionalArgs(args, valueFlags)[0] ?? null;
+  const html = strictFlagValue(args, "--html");
+  const text = strictFlagValue(args, "--text");
+  const subjectOverride = strictFlagValue(args, "--subject");
+  const fromName = strictFlagValue(args, "--from-name");
+  const projectId = resolveProjectId(strictFlagValue(args, "--project"));
 
   if (!messageId) {
     fail({
@@ -371,15 +382,9 @@ async function reply(args) {
 }
 
 async function deleteMailbox(args) {
-  let positional = null;
-  let projectOpt = null;
-  for (let i = 0; i < args.length; i++) {
-    const a = args[i];
-    if (a === "--project" && args[i + 1]) { projectOpt = args[++i]; }
-    else if (a === "--confirm") { /* flag */ }
-    else if (!a.startsWith("--") && !positional) { positional = a; }
-  }
-  const projectId = resolveProjectId(projectOpt);
+  validateArgs(args, ["--project", "--confirm"], ["--project"]);
+  const positional = positionalArgs(args, ["--project"])[0] ?? null;
+  const projectId = resolveProjectId(strictFlagValue(args, "--project"));
   const confirmed = args.includes("--confirm");
 
   if (!confirmed) {
@@ -398,7 +403,8 @@ async function deleteMailbox(args) {
 }
 
 async function status(args) {
-  const projectId = resolveProjectId(parseFlag(args, "--project"));
+  validateArgs(args, ["--project"]);
+  const projectId = resolveProjectId(strictFlagValue(args, "--project"));
   try {
     const mb = await getSdk().email.getMailbox(projectId);
     console.log(JSON.stringify({ status: "ok", mailbox_id: mb.mailbox_id, address: mb.address, slug: mb.slug }));
@@ -408,6 +414,7 @@ async function status(args) {
 }
 
 export async function run(sub, args) {
+  args = normalizeArgv(args);
   if (!sub || sub === '--help' || sub === '-h') { console.log(HELP); process.exit(0); }
   if (Array.isArray(args) && (args.includes("--help") || args.includes("-h")) && sub !== "webhooks") { console.log(SUB_HELP[sub] || HELP); process.exit(0); }
   switch (sub) {
