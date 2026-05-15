@@ -92,8 +92,8 @@ describe("blobs.put", () => {
 
     const sdk = makeSdk(fetch);
     // Pass `immutable: false` explicitly: this test verifies the basic flow
-    // shape (init → PUT → complete) and the legacy non-immutable behavior
-    // (no SHA pre-computation, immutable: false propagated to the gateway).
+    // shape (init → PUT → complete) and non-immutable URL semantics while
+    // still sending the required digest to the upload API.
     // The v1.45 default is `immutable: true`; the dedicated default-and-
     // tag-emitter tests below cover that path.
     const result = await sdk.blobs.put(
@@ -110,10 +110,11 @@ describe("blobs.put", () => {
     assert.equal(initBody.size_bytes, 12);
     assert.equal(initBody.visibility, "public");
     assert.equal(initBody.immutable, false);
-    assert.equal(initBody.sha256, undefined);
+    assert.equal(initBody.sha256, "a948904f2f0f479b8f8197694b30184b0d2ed1c1cd2a1ec0fb85d299a192a447");
     // S3 PUT — no SIWX, no gateway apiBase, uses presigned URL as-is.
     assert.equal(calls[1]!.url, "https://s3.test/u_42/p1");
     assert.equal(calls[1]!.method, "PUT");
+    assert.equal(calls[1]!.headers["x-amz-checksum-sha256"], "qUiQTy8PR5uPgZdpSzAYSw0u0cHNKh7A+4XSmaGSpEc=");
     // Complete
     assert.equal(calls[2]!.url, "https://api.example.test/storage/v1/uploads/u_42/complete");
     assert.equal(result.key, "hello.txt");
@@ -166,7 +167,7 @@ describe("blobs.put", () => {
     assert.match(tag, /integrity="sha256-/);
   });
 
-  it("attaches parts with etags in multipart mode", async () => {
+  it("attaches parts with etags and sha256 in multipart mode", async () => {
     const { fetch, calls } = mockFetch((call) => {
       if (call.url.endsWith("/storage/v1/uploads") && call.method === "POST") {
         return json({
@@ -199,9 +200,40 @@ describe("blobs.put", () => {
     );
     const completeBody = JSON.parse(calls[3]!.body as string);
     assert.deepEqual(completeBody.parts, [
-      { part_number: 1, etag: '"e1"' },
-      { part_number: 2, etag: '"e2"' },
+      { part_number: 1, etag: '"e1"', sha256: "b0f66adc83641586656866813fd9dd0b8ebb63796075661ba45d1aa8089e1d44" },
+      { part_number: 2, etag: '"e2"', sha256: "b0f66adc83641586656866813fd9dd0b8ebb63796075661ba45d1aa8089e1d44" },
     ]);
+  });
+
+  it("does not duplicate checksum header when the presigned URL carries the checksum", async () => {
+    const { fetch, calls } = mockFetch((call) => {
+      if (call.url.endsWith("/storage/v1/uploads")) {
+        return json({
+          upload_id: "u_q",
+          mode: "single",
+          part_count: 1,
+          parts: [{
+            part_number: 1,
+            url: "https://s3.test/u_q/p1?x-amz-checksum-sha256=encoded",
+            byte_start: 0,
+            byte_end: 2,
+          }],
+        });
+      }
+      if (call.url.startsWith("https://s3.test/")) {
+        return new Response("", { status: 200, headers: { etag: '"e"' } });
+      }
+      if (call.url.endsWith("/complete")) {
+        return json({
+          key: "x.txt", size_bytes: 3, sha256: null, visibility: "public",
+          url: null, immutable_url: null,
+        });
+      }
+      throw new Error("unexpected");
+    });
+    const sdk = makeSdk(fetch);
+    await sdk.blobs.put("prj_known", "x.txt", { content: "abc" }, { immutable: false });
+    assert.equal(calls[1]!.headers["x-amz-checksum-sha256"], undefined);
   });
 
   it("computes sha256 when immutable is true", async () => {
@@ -447,6 +479,26 @@ describe("blobs.sign", () => {
     assert.deepEqual(JSON.parse(calls[0]!.body as string), { ttl_seconds: 900 });
     assert.equal(result.expires_in, 3600);
   });
+
+  it("rejects invalid ttl_seconds locally before request", async () => {
+    const invalidTtls = [59, 604801, 1.5, Number.NaN, Number.MAX_SAFE_INTEGER + 1];
+
+    for (const ttl of invalidTtls) {
+      const { fetch, calls } = mockFetch(() => {
+        throw new Error(`unexpected fetch for ttl ${String(ttl)}`);
+      });
+      const sdk = makeSdk(fetch);
+
+      await assert.rejects(
+        sdk.blobs.sign("prj_known", "secret.bin", { ttl_seconds: ttl }),
+        (err: unknown) =>
+          err instanceof LocalError &&
+          err.context === "signing blob URL" &&
+          /ttl_seconds/i.test(err.message),
+      );
+      assert.equal(calls.length, 0, `ttl ${String(ttl)} should not request`);
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -656,7 +708,7 @@ describe("blobs.put — AssetRef widening (v1.45)", () => {
     assert.throws(() => asset.imgTag(), /immutable: true/);
   });
 
-  it("leaves integrity fields null on non-immutable upload (sha256 not computed)", async () => {
+  it("leaves integrity fields null when completion omits immutable URL/SHA", async () => {
     const { fetch } = mockFetch((call) => {
       if (call.url.endsWith("/storage/v1/uploads")) {
         return json({
@@ -756,7 +808,7 @@ describe("blobs upload sessions", () => {
       content_type: "video/mp4",
       visibility: "private",
       immutable: true,
-      sha256: "abc123",
+      sha256: "00".repeat(32),
     });
 
     assert.equal(session.upload_id, "up_1");
@@ -772,8 +824,28 @@ describe("blobs upload sessions", () => {
       content_type: "video/mp4",
       visibility: "private",
       immutable: true,
-      sha256: "abc123",
+      sha256: "00".repeat(32),
     });
+  });
+
+  it("rejects upload session init without a sha256 digest before request", async () => {
+    const { fetch, calls } = mockFetch(() => {
+      throw new Error("unexpected fetch");
+    });
+    const sdk = makeSdk(fetch);
+
+    await assert.rejects(
+      sdk.blobs.initUploadSession("prj_known", {
+        key: "x",
+        size_bytes: 1,
+        content_type: "text/plain",
+      } as any),
+      (err: unknown) =>
+        err instanceof LocalError &&
+        err.context === "initializing upload" &&
+        /sha256/i.test(err.message),
+    );
+    assert.equal(calls.length, 0);
   });
 
   it("fetches upload session status with encoded upload id", async () => {
@@ -811,13 +883,13 @@ describe("blobs upload sessions", () => {
     );
     const sdk = makeSdk(fetch);
     const result = await sdk.blobs.completeUploadSession("prj_known", "up 1", {
-      parts: [{ part_number: 1, etag: '"etag1"' }],
+      parts: [{ part_number: 1, etag: '"etag1"', sha256: "00".repeat(32) }],
     });
 
     assert.equal(calls[0]!.url, "https://api.example.test/storage/v1/uploads/up%201/complete");
     assert.equal(calls[0]!.method, "POST");
     assert.deepEqual(JSON.parse(calls[0]!.body as string), {
-      parts: [{ part_number: 1, etag: '"etag1"' }],
+      parts: [{ part_number: 1, etag: '"etag1"', sha256: "00".repeat(32) }],
     });
     assert.equal(result.key, "app.js");
     assert.equal(result.contentType, "text/javascript");
@@ -832,6 +904,7 @@ describe("blobs upload sessions", () => {
         key: "x",
         size_bytes: 1,
         content_type: "text/plain",
+        sha256: "00".repeat(32),
       }),
       ProjectNotFound,
     );

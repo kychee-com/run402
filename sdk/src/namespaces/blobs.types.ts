@@ -37,11 +37,9 @@ export interface BlobPutOptions {
    * and the `scriptTag()` / `linkTag()` / `imgTag()` emitters working —
    * this is the agent-DX flow (paste-and-go HTML with SRI baked in).
    *
-   * Cost: one SHA-256 pass over the bytes on the client side. For small
-   * assets (the typical case — images, JS, CSS, fonts, JSON < 1 MB) it's
-   * a few ms dominated by network. Pass `false` to skip the SHA pass for
-   * very large uploads where you specifically don't need a content-hashed
-   * URL or SRI.
+   * Cost: `immutable` no longer controls hashing; the upload API requires
+   * a SHA-256 digest for every blob. Pass `false` only when you specifically
+   * don't need a content-hashed URL or SRI.
    *
    * When `false`, the returned `AssetRef` has `cdnUrl: null`, `sri: null`,
    * and the tag emitters throw with an "immutable: true required" hint.
@@ -64,7 +62,7 @@ export interface BlobUploadInitOptions {
   content_type: string;
   visibility?: BlobVisibility;
   immutable?: boolean;
-  sha256?: string;
+  sha256: string;
 }
 
 /** Active upload session returned by `blobs.initUploadSession(...)`. */
@@ -87,6 +85,7 @@ export interface BlobUploadStatusResult extends Partial<BlobUploadInitResult> {
 export interface BlobUploadCompletedPart {
   part_number: number;
   etag: string;
+  sha256: string;
 }
 
 /** Options for completing a low-level blob upload session. */

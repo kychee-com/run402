@@ -66,6 +66,39 @@ async function sha256Hex(bytes: Uint8Array): Promise<string> {
     .join("");
 }
 
+async function sha256HexAndBase64(bytes: Uint8Array): Promise<{ hex: string; base64: string }> {
+  const hex = await sha256Hex(bytes);
+  return { hex, base64: hexToBase64(hex) };
+}
+
+function validateSha256Hex(value: unknown, name: string, context: string): asserts value is string {
+  if (typeof value !== "string" || !/^[a-fA-F0-9]{64}$/.test(value)) {
+    throw new LocalError(`${name} must be a 64-character hex SHA-256 digest.`, context);
+  }
+}
+
+function assertIntegerInRange(
+  value: number,
+  name: string,
+  min: number,
+  max: number,
+  context: string,
+): void {
+  if (!Number.isSafeInteger(value) || value < min || value > max) {
+    throw new LocalError(`${name} must be a safe integer between ${min} and ${max}.`, context);
+  }
+}
+
+function checksumHeadersForPresignedUrl(url: string, checksumBase64: string): Record<string, string> {
+  let urlHasChecksum = false;
+  try {
+    urlHasChecksum = new URL(url).searchParams.has("x-amz-checksum-sha256");
+  } catch {
+    urlHasChecksum = false;
+  }
+  return urlHasChecksum ? {} : { "x-amz-checksum-sha256": checksumBase64 };
+}
+
 /**
  * Gateway upload-completion response shape (legacy snake_case fields plus
  * any new agent-DX fields the gateway emits). Used internally by `put` to
@@ -174,7 +207,7 @@ function buildAssetRef(
     if (!cdnUrl || !sri) {
       throw new LocalError(
         `${name}() requires an immutable upload (pass { immutable: true } to blobs.put). ` +
-          `Without immutable, there is no SHA to bind for SRI and the URL would change on re-upload.`,
+          `Without immutable, there is no content-addressed CDN URL to bind for SRI and the URL would change on re-upload.`,
         "rendering blob tag",
       );
     }
@@ -260,8 +293,9 @@ export class Blobs {
    * presigned S3 URLs — they do NOT pass through the gateway, so uploads
    * are not double-billed as API calls and large files stream efficiently.
    *
-   * Pass `immutable: true` to produce a content-addressed URL (the server
-   * computes no hash — the SDK does it locally and attests via `sha256`).
+   * Pass `immutable: true` to produce a content-addressed URL. The SDK always
+   * computes the SHA-256 digest required by the upload API; `immutable` only
+   * controls URL/cache semantics.
    *
    * @throws {ProjectNotFound} if `projectId` is not in the provider.
    */
@@ -309,9 +343,8 @@ export class Blobs {
     // scriptTag/linkTag/imgTag) only works for content-addressed uploads,
     // so the default reaches for the best path. Pass `{ immutable: false }`
     // explicitly when you specifically want a non-content-hashed URL
-    // (e.g. very large file where you want to skip the SHA pass).
     const immutable = opts.immutable ?? true;
-    const sha256 = immutable ? await sha256Hex(bytes) : undefined;
+    const sha256 = await sha256Hex(bytes);
 
     // 1. Init upload — gateway returns presigned S3 URLs for each part.
     const init = await this.initUploadSession(projectId, {
@@ -324,11 +357,13 @@ export class Blobs {
     });
 
     // 2. PUT each part directly to S3 via the presigned URL.
-    const partEtags: Array<{ etag: string }> = new Array(init.part_count);
+    const partEtags: Array<{ etag: string; sha256: string }> = new Array(init.part_count);
     for (const part of init.parts) {
       const partBytes = bytes.subarray(part.byte_start, part.byte_end + 1);
+      const checksum = await sha256HexAndBase64(partBytes);
       const putRes = await this.client.fetch(part.url, {
         method: "PUT",
+        headers: checksumHeadersForPresignedUrl(part.url, checksum.base64),
         body: partBytes as BodyInit,
       });
       if (!putRes.ok) {
@@ -342,12 +377,13 @@ export class Blobs {
       }
       partEtags[part.part_number - 1] = {
         etag: (putRes.headers.get("etag") ?? "").replace(/^"|"$/g, ""),
+        sha256: checksum.hex,
       };
     }
 
     // 3. Complete upload — gateway finalizes (commits multipart, writes DB row).
     const completeBody = init.mode === "multipart"
-      ? { parts: partEtags.map((e, i) => ({ part_number: i + 1, etag: `"${e.etag}"` })) }
+      ? { parts: partEtags.map((e, i) => ({ part_number: i + 1, etag: `"${e.etag}"`, sha256: e.sha256 })) }
       : {};
     return this.completeUploadSession(projectId, init.upload_id, completeBody, {
       contentType,
@@ -363,6 +399,8 @@ export class Blobs {
     projectId: string,
     opts: BlobUploadInitOptions,
   ): Promise<BlobUploadInitResult> {
+    validateSha256Hex(opts.sha256, "sha256", "initializing upload");
+
     const project = await this.client.getProject(projectId);
     if (!project) throw new ProjectNotFound(projectId, "initializing upload");
 
@@ -378,7 +416,7 @@ export class Blobs {
         content_type: opts.content_type,
         visibility: opts.visibility ?? "public",
         immutable: opts.immutable ?? false,
-        ...(opts.sha256 !== undefined ? { sha256: opts.sha256 } : {}),
+        sha256: opts.sha256,
       },
       context: "initializing upload",
     });
@@ -606,6 +644,10 @@ export class Blobs {
 
   /** Generate a time-boxed S3 presigned GET URL for a blob. Default TTL 1 hour, max 7 days. */
   async sign(projectId: string, key: string, opts: BlobSignOptions = {}): Promise<BlobSignResult> {
+    if (opts.ttl_seconds !== undefined) {
+      assertIntegerInRange(opts.ttl_seconds, "ttl_seconds", 60, 604800, "signing blob URL");
+    }
+
     const project = await this.client.getProject(projectId);
     if (!project) throw new ProjectNotFound(projectId, "signing blob URL");
 
