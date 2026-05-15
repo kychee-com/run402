@@ -11,6 +11,7 @@
 
 import type { Client } from "../kernel.js";
 import { LocalError, ProjectNotFound } from "../errors.js";
+import { assertWeiString } from "../validation.js";
 
 export type EvmChain = "base-mainnet" | "base-sepolia";
 
@@ -164,6 +165,7 @@ export class Contracts {
 
   /** Set the low-balance threshold (in wei) for email alerts. */
   async setLowBalanceAlert(projectId: string, walletId: string, thresholdWei: string): Promise<void> {
+    assertWeiString(thresholdWei, "thresholdWei", "setting low-balance threshold");
     const project = await this.client.getProject(projectId);
     if (!project) throw new ProjectNotFound(projectId, "setting low-balance threshold");
     await this.client.request<unknown>(
@@ -206,7 +208,10 @@ export class Contracts {
       function_name: functionName,
       args: opts.args,
     };
-    if (opts.value) body.value = opts.value;
+    if (opts.value !== undefined) {
+      assertWeiString(opts.value, "value", "submitting contract call");
+      body.value = opts.value;
+    }
 
     return this.client.request<ContractCallResult>("/contracts/v1/call", {
       method: "POST",

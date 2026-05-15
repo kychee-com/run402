@@ -147,6 +147,45 @@ describe("projects costs argv validation", () => {
   });
 });
 
+describe("contracts wei argv validation", () => {
+  for (const thresholdWei of ["abc", "1.5", "-1", "1e18"]) {
+    it(`set-alert rejects malformed --threshold-wei ${JSON.stringify(thresholdWei)} before network`, async () => {
+      const { run } = await import("./cli/lib/contracts.mjs");
+      const err = await expectExit1(() =>
+        run("set-alert", ["prj_test123", "cwlt_test", "--threshold-wei", thresholdWei]));
+
+      assert.equal(err.code, "BAD_FLAG");
+      assert.equal(err.details.flag, "--threshold-wei");
+      assert.equal(calls.length, 0, "bad --threshold-wei must not hit the network");
+    });
+  }
+
+  for (const valueWei of ["abc", "1.5", "-1", "1e18"]) {
+    it(`call rejects malformed --value-wei ${JSON.stringify(valueWei)} before network`, async () => {
+      const { run } = await import("./cli/lib/contracts.mjs");
+      const err = await expectExit1(() =>
+        run("call", [
+          "prj_test123",
+          "cwlt_test",
+          "--to",
+          "0x4444444444444444444444444444444444444444",
+          "--abi",
+          "[]",
+          "--fn",
+          "noop",
+          "--args",
+          "[]",
+          "--value-wei",
+          valueWei,
+        ]));
+
+      assert.equal(err.code, "BAD_FLAG");
+      assert.equal(err.details.flag, "--value-wei");
+      assert.equal(calls.length, 0, "bad --value-wei must not hit the network");
+    });
+  }
+});
+
 describe("--flag=value", () => {
   it("blob ls accepts equals-form flags (GH-189)", async () => {
     const { run } = await import("./cli/lib/blob.mjs");
