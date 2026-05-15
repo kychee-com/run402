@@ -3571,6 +3571,29 @@ describe("Deploy.list", () => {
     assert.equal(w.requests[0].path, "/deploy/v2/operations?limit=5&cursor=op_cursor");
   });
 
+  it("rejects invalid limit values with a LocalError before issuing a request", async () => {
+    const invalidLimits = [
+      { label: "NaN", value: Number.NaN },
+      { label: "zero", value: 0 },
+      { label: "negative", value: -1 },
+      { label: "fractional", value: 1.5 },
+      { label: "infinite", value: Number.POSITIVE_INFINITY },
+      { label: "unsafe", value: Number.MAX_SAFE_INTEGER + 1 },
+    ];
+
+    for (const { label, value } of invalidLimits) {
+      const w = makeWiring();
+      const deploy = new Deploy(w.client);
+      await assert.rejects(
+        () => deploy.list({ project: "prj_test", limit: value }),
+        (err: unknown) =>
+          err instanceof LocalError && /limit/i.test((err as LocalError).message),
+        `${label} limit should be rejected locally`,
+      );
+      assert.equal(w.requests.length, 0, `${label}: no gateway request`);
+    }
+  });
+
   it("accepts a bare projectId string and issues the same request as the options form", async () => {
     const projectLookups: string[] = [];
     const wiringFor = (): FakeWiring => {
@@ -3775,6 +3798,34 @@ describe("Deploy release observability", () => {
     assert.equal(w.requests[0].headers?.apikey, "ak");
   });
 
+  it("rejects invalid getRelease siteLimit values before issuing a request", async () => {
+    const invalidLimits = [
+      { label: "NaN", value: Number.NaN },
+      { label: "zero", value: 0 },
+      { label: "negative", value: -1 },
+      { label: "fractional", value: 1.5 },
+      { label: "infinite", value: Number.POSITIVE_INFINITY },
+      { label: "unsafe", value: Number.MAX_SAFE_INTEGER + 1 },
+    ];
+
+    for (const { label, value } of invalidLimits) {
+      const w = makeWiring();
+      const deploy = new Deploy(w.client);
+      await assert.rejects(
+        () =>
+          deploy.getRelease({
+            project: "prj_test",
+            releaseId: "rel_1",
+            siteLimit: value,
+          }),
+        (err: unknown) =>
+          err instanceof LocalError && /siteLimit/i.test((err as LocalError).message),
+        `${label} siteLimit should be rejected locally`,
+      );
+      assert.equal(w.requests.length, 0, `${label}: no gateway request`);
+    }
+  });
+
   it("fetches the active release inventory with site_limit", async () => {
     const w = makeWiring();
     const activeInventory = { ...inventory, release_id: "rel_active", state_kind: "current_live" };
@@ -3789,6 +3840,29 @@ describe("Deploy release observability", () => {
     assert.equal(result.release_id, "rel_active");
     assert.equal(result.state_kind, "current_live");
     assert.equal(w.requests[0].headers?.apikey, "ak");
+  });
+
+  it("rejects invalid getActiveRelease siteLimit values before issuing a request", async () => {
+    const invalidLimits = [
+      { label: "NaN", value: Number.NaN },
+      { label: "zero", value: 0 },
+      { label: "negative", value: -1 },
+      { label: "fractional", value: 1.5 },
+      { label: "infinite", value: Number.POSITIVE_INFINITY },
+      { label: "unsafe", value: Number.MAX_SAFE_INTEGER + 1 },
+    ];
+
+    for (const { label, value } of invalidLimits) {
+      const w = makeWiring();
+      const deploy = new Deploy(w.client);
+      await assert.rejects(
+        () => deploy.getActiveRelease({ project: "prj_test", siteLimit: value }),
+        (err: unknown) =>
+          err instanceof LocalError && /siteLimit/i.test((err as LocalError).message),
+        `${label} siteLimit should be rejected locally`,
+      );
+      assert.equal(w.requests.length, 0, `${label}: no gateway request`);
+    }
   });
 
   it("diffs release targets with encoded selectors, limit, and project apikey auth", async () => {
@@ -3824,6 +3898,80 @@ describe("Deploy release observability", () => {
 
     assert.equal(result.migrations.applied_between_releases[0], "001_init");
     assert.equal(w.requests[0].headers?.apikey, "ak");
+  });
+
+  it("rejects invalid diff limit values before issuing a request", async () => {
+    const invalidLimits = [
+      { label: "NaN", value: Number.NaN },
+      { label: "zero", value: 0 },
+      { label: "negative", value: -1 },
+      { label: "fractional", value: 1.5 },
+      { label: "infinite", value: Number.POSITIVE_INFINITY },
+      { label: "unsafe", value: Number.MAX_SAFE_INTEGER + 1 },
+    ];
+
+    for (const { label, value } of invalidLimits) {
+      const w = makeWiring();
+      const deploy = new Deploy(w.client);
+      await assert.rejects(
+        () =>
+          deploy.diff({
+            project: "prj_test",
+            from: "empty",
+            to: "rel_2",
+            limit: value,
+          }),
+        (err: unknown) =>
+          err instanceof LocalError && /limit/i.test((err as LocalError).message),
+        `${label} limit should be rejected locally`,
+      );
+      assert.equal(w.requests.length, 0, `${label}: no gateway request`);
+    }
+  });
+
+  it("rejects missing or empty diff selectors before issuing a request", async () => {
+    const cases: Array<{
+      label: string;
+      opts: Parameters<Deploy["diff"]>[0];
+      expectedMessage: RegExp;
+    }> = [
+      {
+        label: "missing from",
+        opts: { project: "prj_test", to: "rel_2" } as unknown as Parameters<
+          Deploy["diff"]
+        >[0],
+        expectedMessage: /from/i,
+      },
+      {
+        label: "missing to",
+        opts: { project: "prj_test", from: "rel_1" } as unknown as Parameters<
+          Deploy["diff"]
+        >[0],
+        expectedMessage: /to/i,
+      },
+      {
+        label: "empty from",
+        opts: { project: "prj_test", from: "", to: "rel_2" },
+        expectedMessage: /from/i,
+      },
+      {
+        label: "empty to",
+        opts: { project: "prj_test", from: "rel_1", to: "" },
+        expectedMessage: /to/i,
+      },
+    ];
+
+    for (const { label, opts, expectedMessage } of cases) {
+      const w = makeWiring();
+      const deploy = new Deploy(w.client);
+      await assert.rejects(
+        () => deploy.diff(opts),
+        (err: unknown) =>
+          err instanceof LocalError && expectedMessage.test((err as LocalError).message),
+        `${label} should be rejected locally`,
+      );
+      assert.equal(w.requests.length, 0, `${label}: no gateway request`);
+    }
   });
 
 });

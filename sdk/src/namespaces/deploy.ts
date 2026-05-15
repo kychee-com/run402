@@ -290,9 +290,14 @@ export class Deploy {
         "listing deploy operations",
       );
     }
+    const normalizedLimit = normalizePositiveSafeIntegerQueryOption(
+      limit,
+      "r.deploy.list limit",
+      "listing deploy operations",
+    );
     const headers = await apikeyHeaders(this.client, project);
     const qs = new URLSearchParams();
-    if (limit !== undefined) qs.set("limit", String(limit));
+    if (normalizedLimit !== undefined) qs.set("limit", String(normalizedLimit));
     if (cursor !== undefined) qs.set("cursor", cursor);
     const path =
       qs.toString().length > 0
@@ -353,10 +358,15 @@ export class Deploy {
         "fetching release inventory",
       );
     }
+    const siteLimit = normalizePositiveSafeIntegerQueryOption(
+      opts.siteLimit,
+      "r.deploy.getRelease siteLimit",
+      "fetching release inventory",
+    );
     const headers = await apikeyHeaders(this.client, opts.project);
     return this.client.request<ReleaseInventory>(
       appendQuery(`/deploy/v2/releases/${encodeURIComponent(opts.releaseId)}`, {
-        site_limit: opts.siteLimit,
+        site_limit: siteLimit,
       }),
       { headers, context: "fetching release inventory" },
     );
@@ -376,10 +386,15 @@ export class Deploy {
         "fetching active release inventory",
       );
     }
+    const siteLimit = normalizePositiveSafeIntegerQueryOption(
+      opts.siteLimit,
+      "r.deploy.getActiveRelease siteLimit",
+      "fetching active release inventory",
+    );
     const headers = await apikeyHeaders(this.client, opts.project);
     return this.client.request<ActiveReleaseInventory>(
       appendQuery("/deploy/v2/releases/active", {
-        site_limit: opts.siteLimit,
+        site_limit: siteLimit,
       }),
       { headers, context: "fetching active release inventory" },
     );
@@ -397,9 +412,24 @@ export class Deploy {
         "diffing releases",
       );
     }
+    const from = requireNonEmptyStringQueryOption(
+      opts.from,
+      "r.deploy.diff from",
+      "diffing releases",
+    );
+    const to = requireNonEmptyStringQueryOption(
+      opts.to,
+      "r.deploy.diff to",
+      "diffing releases",
+    );
+    const limit = normalizePositiveSafeIntegerQueryOption(
+      opts.limit,
+      "r.deploy.diff limit",
+      "diffing releases",
+    );
     const headers = await apikeyHeaders(this.client, opts.project);
-    const qs = new URLSearchParams({ from: opts.from, to: opts.to });
-    if (opts.limit !== undefined) qs.set("limit", String(opts.limit));
+    const qs = new URLSearchParams({ from, to });
+    if (limit !== undefined) qs.set("limit", String(limit));
     return this.client.request<ReleaseToReleaseDiff>(
       `/deploy/v2/releases/diff?${qs.toString()}`,
       { headers, context: "diffing releases" },
@@ -434,6 +464,29 @@ function appendQuery(
   }
   const query = qs.toString();
   return query.length > 0 ? `${path}?${query}` : path;
+}
+
+function normalizePositiveSafeIntegerQueryOption(
+  value: number | undefined,
+  label: string,
+  context: string,
+): number | undefined {
+  if (value === undefined) return undefined;
+  if (!Number.isSafeInteger(value) || value <= 0) {
+    throw new LocalError(`${label} must be a positive safe integer`, context);
+  }
+  return value;
+}
+
+function requireNonEmptyStringQueryOption(
+  value: unknown,
+  label: string,
+  context: string,
+): string {
+  if (typeof value !== "string" || value.length === 0) {
+    throw new LocalError(`${label} must be a non-empty string`, context);
+  }
+  return value;
 }
 
 // ─── Internal pipeline ───────────────────────────────────────────────────────
