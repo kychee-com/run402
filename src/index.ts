@@ -392,7 +392,7 @@ server.tool(
 
 server.tool(
   "deploy",
-  "Unified deploy primitive (v1.34+). Accepts a structured ReleaseSpec — database (migrations + expose), value-free secrets.require/delete declarations, functions, site, site.public_paths, subdomains, and routes.replace web routes — with explicit replace vs patch semantics per resource. Use site.public_paths for clean static URLs such as /events backed by release asset events.html; explicit mode does not expose /events.html unless separately declared, while mode: 'implicit' restores filename-derived reachability and can widen access. Route entries map exact/final-wildcard browser paths like /admin and /admin/* to Node 22 Fetch Request -> Response functions, or exact GET/HEAD method-aware static aliases such as /events to { type: 'static', file: 'events.html' }; direct /functions/v1/:name remains API-key protected. Secret values must be set first with set_secret, never placed in deploy specs. All bytes ride through CAS (no inline-body cap). Returns release_id, URLs, warnings, and a structured progress-event log. Stops before upload/commit on confirmation-required warnings unless allow_warnings is true.",
+  "Unified deploy primitive (v1.34+). Accepts a structured ReleaseSpec — database (migrations + expose), value-free secrets.require/delete declarations, functions, site, site.public_paths, subdomains, and routes.replace web routes — with explicit replace vs patch semantics per resource. Use site.public_paths for clean static URLs such as /events backed by release asset events.html; explicit mode does not expose /events.html unless separately declared, while mode: 'implicit' restores filename-derived reachability and can widen access. Route entries map exact/final-wildcard browser paths like /admin and /admin/* to Node 22 Fetch Request -> Response functions, or exact GET/HEAD method-aware static aliases such as /events to { type: 'static', file: 'events.html' }; intentional read-only GET/HEAD wildcard function routes may set acknowledge_readonly: true. Direct /functions/v1/:name remains API-key protected. Secret values must be set first with set_secret, never placed in deploy specs. All bytes ride through CAS (no inline-body cap). Returns release_id, URLs, warnings, and a structured progress-event log. Stops before upload/commit on confirmation-required warnings unless reviewed codes are passed with allow_warning_codes or allow_warnings is true.",
   deploySchema,
   async (args) => handleDeploy(args),
 );
@@ -568,7 +568,7 @@ server.tool(
 
 server.tool(
   "tier_status",
-  "Check current tier subscription — tier name, status, and expiry. Requires allowance auth.",
+  "Check current tier subscription — tier name, status, expiry, usage, and function authoring caps when returned (max timeout, memory, scheduled functions, min cron interval). Requires allowance auth.",
   tierStatusSchema,
   async (args) => handleTierStatus(args),
 );

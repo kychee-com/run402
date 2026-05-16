@@ -800,6 +800,73 @@ describe("Deploy.apply (happy path)", () => {
   });
 });
 
+describe("Deploy.apply (tier function preflight)", () => {
+  it("rejects timeout caps before deploy planning with structured BAD_FIELD details", async () => {
+    const w = makeWiring();
+    w.setHandler((req) => {
+      if (req.path === "/tiers/v1/status") {
+        return {
+          wallet: "0xtest",
+          tier: "prototype",
+          lease_started_at: "2026-05-01T00:00:00.000Z",
+          lease_expires_at: "2026-05-08T00:00:00.000Z",
+          active: true,
+          pool_usage: {
+            projects: 1,
+            total_api_calls: 0,
+            total_storage_bytes: 0,
+            api_calls_limit: 500_000,
+            storage_bytes_limit: 1_073_741_824,
+          },
+          function_limits: {
+            max_function_timeout_seconds: 10,
+            max_function_memory_mb: 128,
+            max_scheduled_functions: 1,
+            min_cron_interval_minutes: 15,
+          },
+        };
+      }
+      throw new Error(`unexpected ${req.path}`);
+    });
+
+    const deploy = new Deploy(w.client);
+    await assert.rejects(
+      () =>
+        deploy.apply({
+          project: "prj_test",
+          functions: {
+            replace: {
+              api: {
+                source: "export default { fetch() { return new Response('ok') } };",
+                config: { timeoutSeconds: 20 },
+              },
+            },
+          },
+        }),
+      (err: unknown) => {
+        assert(err instanceof Run402DeployError);
+        assert.equal(err.code, "BAD_FIELD");
+        assert.equal(err.status, null);
+        assert.equal(err.phase, "validate");
+        assert.equal(err.resource, "functions.api.config.timeoutSeconds");
+        assert.deepEqual(err.details, {
+          field: "functions.api.config.timeoutSeconds",
+          value: 20,
+          tier: "prototype",
+          limit_source: "tier_status",
+          tier_max: 10,
+          max_function_timeout_seconds: 10,
+        });
+        return true;
+      },
+    );
+
+    assert.equal(countRequests(w, "/tiers/v1/status"), 1);
+    assert.equal(countRequests(w, "/deploy/v2/plans"), 0);
+    assert.equal(w.puts.length, 0);
+  });
+});
+
 describe("Deploy.plan", () => {
   it("passes dry_run=true and normalizes the v2 flat plan envelope", async () => {
     const w = makeWiring();
@@ -917,6 +984,51 @@ describe("Deploy.plan", () => {
     assert.equal(plan.warnings.length, 1);
     assert.equal(plan.warnings[0]?.code, "WILDCARD_ROUTE_EXCLUDES_MUTATION_METHODS");
     assert.equal(plan.warnings[0]?.requires_confirmation, true);
+    assert.deepEqual(plan.warnings[0]?.affected, ["/admin/*"]);
+  });
+
+  it("suppresses only acknowledged read-only wildcard route warnings", async () => {
+    const w = makeWiring();
+    w.setHandler((req) => {
+      if (req.path === "/deploy/v2/plans?dry_run=true") {
+        return {
+          plan_id: null,
+          operation_id: null,
+          base_release_id: "rel_base",
+          manifest_digest: "route-lint-ack",
+          missing_content: [],
+          diff: {},
+          warnings: [],
+        } satisfies PlanResponse;
+      }
+      throw new Error(`unexpected ${req.path}`);
+    });
+
+    const deploy = new Deploy(w.client);
+    const { plan } = await deploy.plan(
+      {
+        project: "prj_test",
+        routes: {
+          replace: [
+            {
+              pattern: "/share/*",
+              methods: ["GET"],
+              target: { type: "function", name: "share" },
+              acknowledge_readonly: true,
+            },
+            {
+              pattern: "/admin/*",
+              methods: ["GET", "HEAD"],
+              target: { type: "function", name: "admin" },
+            },
+          ],
+        },
+      },
+      { dryRun: true },
+    );
+
+    assert.equal(plan.warnings.length, 1);
+    assert.equal(plan.warnings[0]?.code, "WILDCARD_ROUTE_EXCLUDES_MUTATION_METHODS");
     assert.deepEqual(plan.warnings[0]?.affected, ["/admin/*"]);
   });
 
@@ -1082,6 +1194,36 @@ describe("Deploy.apply (validation)", () => {
       );
     }
     assert.equal(w.requests.length, 0);
+  });
+
+  it("allows top-level $schema metadata without sending it to deploy planning", async () => {
+    const w = makeWiring();
+    let plannedBody: unknown;
+    w.setHandler((req) => {
+      assert.equal(req.path, "/deploy/v2/plans?dry_run=true");
+      plannedBody = req.body;
+      return {
+        plan_id: null,
+        operation_id: null,
+        base_release_id: null,
+        manifest_digest: "schema-metadata",
+        missing_content: [],
+        diff: {},
+        warnings: [],
+      } satisfies PlanResponse;
+    });
+
+    const deploy = new Deploy(w.client);
+    await deploy.plan(
+      {
+        $schema: "https://run402.com/schemas/release-spec.v1.json",
+        project: "prj_test",
+        site: { replace: { "index.html": "hi" } },
+      },
+      { dryRun: true },
+    );
+
+    assert.equal(JSON.stringify(plannedBody).includes("$schema"), false);
   });
 
   it("rejects invalid function config integers before issuing gateway calls", async () => {
@@ -1539,6 +1681,26 @@ describe("Deploy.apply (validation)", () => {
         { replace: [{ pattern: "/api/*", methods: ["GET", "GET"], target: { type: "function", name: "api" } }] },
         "routes.replace.0.methods",
         /duplicate method/,
+      ],
+      [
+        { replace: [{ pattern: "/share", methods: ["GET"], target: { type: "function", name: "share" }, acknowledge_readonly: true }] },
+        "routes.replace.0.acknowledge_readonly",
+        /GET\/HEAD final-wildcard function routes/,
+      ],
+      [
+        { replace: [{ pattern: "/share/*", methods: ["GET"], target: { type: "static", file: "share.html" }, acknowledge_readonly: true }] },
+        "routes.replace.0.acknowledge_readonly",
+        /GET\/HEAD final-wildcard function routes/,
+      ],
+      [
+        { replace: [{ pattern: "/share/*", methods: ["GET", "POST"], target: { type: "function", name: "share" }, acknowledge_readonly: true }] },
+        "routes.replace.0.acknowledge_readonly",
+        /GET\/HEAD final-wildcard function routes/,
+      ],
+      [
+        { replace: [{ pattern: "/share/*", methods: ["GET"], target: { type: "function", name: "share" }, acknowledge_readonly: false }] },
+        "routes.replace.0.acknowledge_readonly",
+        /must be true/,
       ],
       [
         { replace: [{ pattern: "/docs/*", methods: ["GET"], target: { type: "static", file: "docs/index.html" } }] },
@@ -2101,12 +2263,123 @@ describe("Deploy.apply (plan warnings)", () => {
         assert(err instanceof Run402DeployError);
         assert.equal(err.code, "MISSING_REQUIRED_SECRET");
         assert.equal(err.phase, "plan");
-        assert.deepEqual(err.body, { warnings: plan.warnings });
+        assert.deepEqual(err.body, {
+          warnings: plan.warnings,
+          unacknowledged_warnings: plan.warnings,
+          unacknowledged_warning_codes: ["MISSING_REQUIRED_SECRET"],
+          allowed_warning_codes: [],
+        });
         return true;
       },
     );
     assert.deepEqual(w.requests.map((r) => r.path), ["/deploy/v2/plans"]);
     assert.equal(events.some((event) => event.type === "plan.warnings"), true);
+  });
+
+  it("continues when every blocking warning code is explicitly allowed", async () => {
+    const w = makeWiring();
+    const warnings = [
+      {
+        code: "WILDCARD_ROUTE_EXCLUDES_MUTATION_METHODS",
+        severity: "medium" as const,
+        requires_confirmation: true,
+        message: "Read-only wildcard",
+        affected: ["/share/*"],
+      },
+    ];
+    w.setHandler((req) => {
+      if (req.path === "/deploy/v2/plans") {
+        return {
+          plan_id: "plan_warning_code_ok",
+          operation_id: "op_warning_code_ok",
+          base_release_id: null,
+          manifest_digest: "warning-code-ok",
+          missing_content: [],
+          diff: {},
+          warnings,
+        } satisfies PlanResponse;
+      }
+      if (req.path === "/deploy/v2/plans/plan_warning_code_ok/commit") {
+        return {
+          operation_id: "op_warning_code_ok",
+          status: "ready",
+          release_id: "rel_warning_code_ok",
+          urls: {},
+        } satisfies CommitResponse;
+      }
+      throw new Error(`unexpected ${req.path}`);
+    });
+
+    const deploy = new Deploy(w.client);
+    const result = await deploy.apply(
+      {
+        project: "prj_test",
+        routes: { replace: [] },
+      },
+      { allowWarningCodes: ["WILDCARD_ROUTE_EXCLUDES_MUTATION_METHODS"] },
+    );
+
+    assert.equal(result.release_id, "rel_warning_code_ok");
+    assert.deepEqual(result.warnings, warnings);
+  });
+
+  it("blocks warning codes that were not explicitly allowed", async () => {
+    const w = makeWiring();
+    const warnings = [
+      {
+        code: "WILDCARD_ROUTE_EXCLUDES_MUTATION_METHODS",
+        severity: "medium" as const,
+        requires_confirmation: true,
+        message: "Read-only wildcard",
+        affected: ["/share/*"],
+      },
+      {
+        code: "MISSING_REQUIRED_SECRET",
+        severity: "high" as const,
+        requires_confirmation: true,
+        message: "OPENAI_API_KEY is missing",
+        affected: ["OPENAI_API_KEY"],
+      },
+    ];
+    w.setHandler((req) => {
+      if (req.path === "/deploy/v2/plans") {
+        return {
+          plan_id: "plan_warning_code_block",
+          operation_id: "op_warning_code_block",
+          base_release_id: null,
+          manifest_digest: "warning-code-block",
+          missing_content: [],
+          diff: {},
+          warnings,
+        } satisfies PlanResponse;
+      }
+      throw new Error(`unexpected ${req.path}`);
+    });
+
+    const deploy = new Deploy(w.client);
+    await assert.rejects(
+      () =>
+        deploy.apply(
+          {
+            project: "prj_test",
+            secrets: { require: ["OPENAI_API_KEY"] },
+          },
+          { allowWarningCodes: ["WILDCARD_ROUTE_EXCLUDES_MUTATION_METHODS"] },
+        ),
+      (err: unknown) => {
+        assert(err instanceof Run402DeployError);
+        assert.equal(err.code, "MISSING_REQUIRED_SECRET");
+        assert.deepEqual((err.body as { unacknowledged_warning_codes?: string[] }).unacknowledged_warning_codes, [
+          "MISSING_REQUIRED_SECRET",
+        ]);
+        assert.deepEqual((err.body as { allowed_warning_codes?: string[] }).allowed_warning_codes, [
+          "WILDCARD_ROUTE_EXCLUDES_MUTATION_METHODS",
+        ]);
+        return true;
+      },
+    );
+
+    assert.deepEqual(w.requests.map((r) => r.path), ["/deploy/v2/plans"]);
   });
 
   it("continues with allowWarnings and preserves warnings on the result", async () => {
@@ -2924,7 +3197,190 @@ describe("Deploy.apply (gateway error translation)", () => {
   });
 });
 
+describe("Deploy.apply (activation_pending classification)", () => {
+  it("throws immediately for static activation failures and preserves gateway metadata", async () => {
+    const w = makeWiring();
+    let operationPolls = 0;
+    w.setHandler((req) => {
+      if (req.path === "/deploy/v2/plans") {
+        return noContentPlan("plan_static", "op_static");
+      }
+      if (req.path === "/deploy/v2/plans/plan_static/commit") {
+        return {
+          operation_id: "op_static",
+          status: "activation_pending",
+        } satisfies CommitResponse;
+      }
+      if (req.path === "/deploy/v2/operations/op_static") {
+        operationPolls += 1;
+        return {
+          operation_id: "op_static",
+          project_id: "prj_test",
+          plan_id: "plan_static",
+          status: "activation_pending",
+          base_release_id: null,
+          target_release_id: "rel_static",
+          release_id: null,
+          urls: null,
+          payment_required: null,
+          error: {
+            code: "FUNCTION_ACTIVATE_FAILED",
+            phase: "activate",
+            resource: "functions.api",
+            message: "Function config is not eligible for this tier.",
+            retryable: true,
+            safe_to_retry: false,
+            operation_id: "op_static",
+            plan_id: "plan_static",
+            details: {
+              field: "functions.api.config.timeoutSeconds",
+              tier: "prototype",
+              tier_max: 10,
+            },
+          },
+          activate_attempts: 1,
+          last_activate_attempt_at: "2026-05-16T12:00:00.000Z",
+          created_at: "2026-05-16T12:00:00.000Z",
+          updated_at: "2026-05-16T12:00:01.000Z",
+        } satisfies OperationSnapshot;
+      }
+      throw new Error(`unexpected ${req.path}`);
+    });
+
+    const deploy = new Deploy(w.client);
+    await assert.rejects(
+      () =>
+        deploy.apply({
+          project: "prj_test",
+          site: { replace: { "index.html": "ok" } },
+        }),
+      (err: unknown) => {
+        assert.ok(err instanceof Run402DeployError);
+        const e = err as Run402DeployError;
+        assert.equal(e.code, "FUNCTION_ACTIVATE_FAILED");
+        assert.equal(e.phase, "activate");
+        assert.equal(e.resource, "functions.api");
+        assert.equal(e.retryable, true);
+        assert.equal(e.safeToRetry, false);
+        assert.equal(e.operationId, "op_static");
+        assert.equal(e.planId, "plan_static");
+        assert.deepEqual(e.details, {
+          field: "functions.api.config.timeoutSeconds",
+          tier: "prototype",
+          tier_max: 10,
+        });
+        return true;
+      },
+    );
+
+    assert.equal(operationPolls, 1, "static activation failures should not wait for another poll");
+  });
+
+  it("continues polling activation_pending snapshots without terminal error metadata", async () => {
+    const w = makeWiring();
+    let operationPolls = 0;
+    w.setHandler((req) => {
+      if (req.path === "/deploy/v2/plans") {
+        return noContentPlan("plan_recoverable", "op_recoverable");
+      }
+      if (req.path === "/deploy/v2/plans/plan_recoverable/commit") {
+        return {
+          operation_id: "op_recoverable",
+          status: "activation_pending",
+        } satisfies CommitResponse;
+      }
+      if (req.path === "/deploy/v2/operations/op_recoverable") {
+        operationPolls += 1;
+        return {
+          operation_id: "op_recoverable",
+          project_id: "prj_test",
+          plan_id: "plan_recoverable",
+          status: operationPolls === 1 ? "activation_pending" : "ready",
+          base_release_id: null,
+          target_release_id: "rel_recoverable",
+          release_id: operationPolls === 1 ? null : "rel_recoverable",
+          urls: operationPolls === 1 ? null : { site: "https://rel.run402.test" },
+          payment_required: null,
+          error: null,
+          activate_attempts: operationPolls,
+          last_activate_attempt_at: "2026-05-16T12:00:00.000Z",
+          created_at: "2026-05-16T12:00:00.000Z",
+          updated_at: "2026-05-16T12:00:01.000Z",
+        } satisfies OperationSnapshot;
+      }
+      throw new Error(`unexpected ${req.path}`);
+    });
+
+    const deploy = new Deploy(w.client);
+    const result = await deploy.apply({
+      project: "prj_test",
+      site: { replace: { "index.html": "ok" } },
+    });
+
+    assert.equal(result.release_id, "rel_recoverable");
+    assert.equal(operationPolls, 2, "recoverable activation_pending should keep polling");
+  });
+});
+
 describe("Deploy.apply (safe race retry)", () => {
+  it("does not safe-race retry static activation failures", async () => {
+    const w = makeWiring();
+    const events: DeployEvent[] = [];
+    let planCalls = 0;
+    w.setHandler((req) => {
+      if (req.path === "/deploy/v2/plans") {
+        planCalls += 1;
+        return noContentPlan("plan_static_no_retry", "op_static_no_retry");
+      }
+      if (req.path === "/deploy/v2/plans/plan_static_no_retry/commit") {
+        return {
+          operation_id: "op_static_no_retry",
+          status: "activation_pending",
+        } satisfies CommitResponse;
+      }
+      if (req.path === "/deploy/v2/operations/op_static_no_retry") {
+        return {
+          operation_id: "op_static_no_retry",
+          project_id: "prj_test",
+          plan_id: "plan_static_no_retry",
+          status: "activation_pending",
+          base_release_id: null,
+          target_release_id: "rel_static_no_retry",
+          release_id: null,
+          urls: null,
+          payment_required: null,
+          error: {
+            code: "FUNCTION_ACTIVATE_FAILED",
+            message: "Function config is not eligible for this tier.",
+            phase: "activate",
+            resource: "functions.worker",
+            retryable: true,
+            safe_to_retry: false,
+          },
+          activate_attempts: 1,
+          last_activate_attempt_at: "2026-05-16T12:00:00.000Z",
+          created_at: "2026-05-16T12:00:00.000Z",
+          updated_at: "2026-05-16T12:00:01.000Z",
+        } satisfies OperationSnapshot;
+      }
+      throw new Error(`unexpected path ${req.path}`);
+    });
+
+    const deploy = new Deploy(w.client);
+    await assert.rejects(
+      () =>
+        deploy.apply(
+          { project: "prj_test", site: { replace: { "index.html": "ok" } } },
+          { onEvent: (event) => events.push(event) },
+        ),
+      (err: unknown) => err instanceof Run402DeployError &&
+        (err as Run402DeployError).code === "FUNCTION_ACTIVATE_FAILED",
+    );
+
+    assert.equal(planCalls, 1);
+    assert.equal(events.some((event) => event.type === "deploy.retry"), false);
+  });
+
   it("replans after BASE_RELEASE_CONFLICT with safe_to_retry=true and succeeds", async () => {
     const w = makeWiring();
     const events: DeployEvent[] = [];

@@ -37,8 +37,8 @@ import { normalizeArgv } from "./argparse.mjs";
 const APPLY_HELP = `run402 deploy apply — Unified deploy primitive (v1.34+)
 
 Usage:
-  run402 deploy apply --manifest <path> [--project <id>] [--quiet] [--allow-warnings]
-  run402 deploy apply --spec '<json>' [--project <id>] [--quiet] [--allow-warnings]
+  run402 deploy apply --manifest <path> [--project <id>] [--quiet|--final-only] [--allow-warning <code>] [--allow-warnings]
+  run402 deploy apply --spec '<json>' [--project <id>] [--quiet|--final-only] [--allow-warning <code>] [--allow-warnings]
   cat spec.json | run402 deploy apply [--project <id>]
 
 Manifest format mirrors the MCP \`deploy\` tool's ReleaseSpec:
@@ -80,14 +80,17 @@ Options:
   --spec '<json>'         Inline JSON spec (single-quote in shell)
   --project <id>          Override project_id from the manifest
   --quiet                 Suppress per-event JSON-line stderr (final result still on stdout)
+  --final-only            Alias for --quiet; final success/error envelope is still preserved
+  --allow-warning <code>  Continue past this reviewed warning code (repeatable)
   --allow-warnings        Continue past plan warnings that require confirmation
 
 Output:
   stdout: { "status": "ok", "release_id": "rel_...", "operation_id": "op_...", "urls": {...}, "warnings": [...] }
-  stderr: one JSON event per line (suppressed with --quiet)
+  stderr: one JSON event per line (suppressed with --quiet or --final-only)
 
 Secrets:
   Secret values do not belong in deploy manifests. Set them first:
+    printf %s "$OPENAI_API_KEY" | run402 secrets set prj_... OPENAI_API_KEY --stdin
     run402 secrets set prj_... OPENAI_API_KEY --file ./.secrets/openai-key
   Then deploy a value-free declaration:
     { "project_id": "prj_...", "secrets": { "require": ["OPENAI_API_KEY"] } }
@@ -284,8 +287,8 @@ function makeStderrEventWriter(quiet) {
 }
 
 function parseApplyArgs(args) {
-  const opts = { manifest: null, spec: null, project: null, quiet: false, allowWarnings: false };
-  const allowedFlags = ["--manifest", "--spec", "--project", "--quiet", "--allow-warnings", "--help", "-h"];
+  const opts = { manifest: null, spec: null, project: null, quiet: false, allowWarnings: false, allowWarningCodes: [] };
+  const allowedFlags = ["--manifest", "--spec", "--project", "--quiet", "--final-only", "--allow-warning", "--allow-warnings", "--help", "-h"];
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
@@ -293,7 +296,7 @@ function parseApplyArgs(args) {
       console.log(APPLY_HELP);
       process.exit(0);
     }
-    if (arg === "--manifest" || arg === "--spec" || arg === "--project") {
+    if (arg === "--manifest" || arg === "--spec" || arg === "--project" || arg === "--allow-warning") {
       const value = args[i + 1];
       if (value === undefined || (typeof value === "string" && value.startsWith("--"))) {
         fail({
@@ -320,13 +323,15 @@ function parseApplyArgs(args) {
           });
         }
         opts.spec = value;
-      } else {
+      } else if (arg === "--project") {
         opts.project = value;
+      } else {
+        opts.allowWarningCodes.push(value);
       }
       i += 1;
       continue;
     }
-    if (arg === "--quiet") { opts.quiet = true; continue; }
+    if (arg === "--quiet" || arg === "--final-only") { opts.quiet = true; continue; }
     if (arg === "--allow-warnings") { opts.allowWarnings = true; continue; }
     if (typeof arg === "string" && arg.startsWith("-")) {
       fail({
@@ -491,6 +496,7 @@ async function applyCmd(args) {
       onEvent: makeStderrEventWriter(opts.quiet),
       idempotencyKey,
       allowWarnings: opts.allowWarnings,
+      allowWarningCodes: opts.allowWarningCodes,
     });
     console.log(JSON.stringify({ status: "ok", ...result }, null, 2));
   } catch (err) {
@@ -596,12 +602,28 @@ function enhanceDeployWarningError(err) {
   const affected = warnings
     ? warnings.flatMap((w) => Array.isArray(w?.affected) ? w.affected : [])
     : [];
+  const unacknowledgedCodes = Array.isArray(existingBody.unacknowledged_warning_codes)
+    ? existingBody.unacknowledged_warning_codes
+    : warnings
+      ? Array.from(new Set(warnings
+        .filter((w) => w?.requires_confirmation || w?.code === "MISSING_REQUIRED_SECRET")
+        .map((w) => w?.code)
+        .filter(Boolean)))
+      : code
+        ? [code]
+        : [];
+  const allowWarningAction = unacknowledgedCodes.length === 1
+    ? `Retry with \`--allow-warning ${unacknowledgedCodes[0]}\` only after reviewing that warning.`
+    : unacknowledgedCodes.length > 1
+      ? `Retry with one \`--allow-warning <code>\` per reviewed warning code: ${unacknowledgedCodes.join(", ")}.`
+      : "Retry with `--allow-warning <code>` only after reviewing the warning.";
   const defaultNextActions = [
     ...(affected.length > 0
       ? [`Set or inspect affected secrets: ${Array.from(new Set(affected)).join(", ")}`]
       : []),
     "Retry `run402 deploy apply` after resolving warnings.",
-    "Use `--allow-warnings` only when the warning was explicitly reviewed.",
+    allowWarningAction,
+    "Use `--allow-warnings` only when every warning was explicitly reviewed.",
   ];
   enhanced.body = {
     ...existingBody,
@@ -610,8 +632,8 @@ function enhanceDeployWarningError(err) {
     hint: existingBody.hint ||
       routeGuidance?.hint ||
       (code === "MISSING_REQUIRED_SECRET"
-        ? "Set the missing secret values with `run402 secrets set`, then retry deploy apply. Use --allow-warnings only after explicit review."
-        : "Review the plan warnings, then retry with --allow-warnings if you intentionally accept them."),
+        ? "Set the missing secret values with `run402 secrets set <project> <KEY> --stdin` or `--file <path>`, then retry deploy apply."
+        : "Review the plan warnings, then retry with --allow-warning <code> for reviewed warnings if you intentionally accept them."),
     next_actions: Array.isArray(existingBody.next_actions) && existingBody.next_actions.length > 0
       ? existingBody.next_actions
       : (routeGuidance?.next_actions ?? defaultNextActions),
@@ -665,7 +687,8 @@ const ROUTE_WARNING_GUIDANCE = {
     next_actions: [
       "Add the mutation methods the routed function supports, such as POST.",
       "Omit methods to allow every supported method when the route is an API surface.",
-      "Use --allow-warnings only if the wildcard prefix is intentionally read-only.",
+      "Set acknowledge_readonly: true on an intentionally read-only GET/HEAD wildcard function route.",
+      "Use --allow-warning WILDCARD_ROUTE_EXCLUDES_MUTATION_METHODS only as a reviewed CLI escape hatch.",
     ],
   },
   ROUTE_TABLE_NEAR_LIMIT: {

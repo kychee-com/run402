@@ -8,7 +8,7 @@ Usage:
   run402 tier <subcommand> [args...]
 
 Subcommands:
-  status                Show current tier (tier name, status, expiry)
+  status                Show current tier, expiry, usage, and function caps when returned
   set <tier>            Subscribe, renew, or upgrade (pays via x402)
 
 Tiers: prototype ($0.10/7d, free with testnet faucet), hobby ($5/30d), team ($20/30d)
@@ -32,7 +32,10 @@ Usage:
   run402 tier status
 
 Notes:
-  - Returns the current tier name, status, and expiry
+  - Returns the current tier name, status, expiry, and usage
+  - Newer gateways include function authoring caps such as max timeout,
+    max memory, max scheduled functions, minimum cron interval, and current
+    scheduled-function usage
   - Use 'run402 tier set <tier>' to subscribe, renew, or upgrade
 
 Examples:

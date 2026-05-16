@@ -63,6 +63,8 @@ export type FileSet = Record<string, ContentSource>;
 
 /** Caller-facing spec passed to `r.deploy.apply(spec)`. */
 export interface ReleaseSpec {
+  /** JSON Schema metadata for editor-authored specs. Stripped before plan requests. */
+  $schema?: string;
   /** Project id the release belongs to. */
   project: string;
   /** Diff base for the new release. Default: `{ release: "current" }`. Pass
@@ -208,6 +210,10 @@ export interface RouteSpec {
   /** Omit to allow every supported method. Empty arrays are invalid. */
   methods?: readonly RouteHttpMethod[];
   target: RouteTarget;
+  /** Durable acknowledgement for intentional read-only wildcard function routes.
+   *  Valid only with final-wildcard function routes whose methods are limited
+   *  to GET/HEAD. */
+  acknowledge_readonly?: true;
 }
 
 /** Top-level release route resource. Omit or pass null to carry routes forward. */
@@ -1822,6 +1828,9 @@ export interface ApplyOptions {
    *  `apply()` aborts before upload/commit so agents can set missing secrets,
    *  inspect warnings, or use the low-level plan/upload/commit flow. */
   allowWarnings?: boolean;
+  /** Continue past specific confirmation-required warning codes. Every
+   *  blocking warning must be covered by this list or by `allowWarnings`. */
+  allowWarningCodes?: string[];
   /** Automatic safe-race retries after the initial `apply()` attempt.
    *  Default: 2 retries (3 total attempts). Pass 0 to disable automatic
    *  retry and surface the first safe deploy race to the caller. */
@@ -1837,6 +1846,8 @@ export interface StartOptions {
   /** By default, warnings with `requires_confirmation` stop before
    *  upload/commit. Set true only after inspecting the warnings. */
   allowWarnings?: boolean;
+  /** Continue past specific confirmation-required warning codes. */
+  allowWarningCodes?: string[];
 }
 
 export interface DeployOperation {

@@ -81,6 +81,13 @@ describe("tier.status", () => {
         api_calls_limit: 500000,
         storage_bytes_limit: 10737418240,
       },
+      function_limits: {
+        max_function_timeout_seconds: 10,
+        max_function_memory_mb: 128,
+        max_scheduled_functions: 1,
+        min_cron_interval_minutes: 15,
+        current_scheduled_functions: 1,
+      },
     };
     const { fetch, calls } = mockFetch(() => jsonResponse(runtimeBody));
     const sdk = makeSdk(makeCreds(), fetch);
@@ -102,6 +109,11 @@ describe("tier.status", () => {
     assert.equal(result.pool_usage.total_storage_bytes, 298792511);
     assert.equal(result.pool_usage.api_calls_limit, 500000);
     assert.equal(result.pool_usage.storage_bytes_limit, 10737418240);
+    assert.equal(result.function_limits?.max_function_timeout_seconds, 10);
+    assert.equal(result.function_limits?.max_function_memory_mb, 128);
+    assert.equal(result.function_limits?.max_scheduled_functions, 1);
+    assert.equal(result.function_limits?.min_cron_interval_minutes, 15);
+    assert.equal(result.function_limits?.current_scheduled_functions, 1);
 
     assert.equal(
       (result as unknown as { status?: unknown }).status,

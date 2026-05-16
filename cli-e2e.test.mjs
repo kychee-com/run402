@@ -2441,9 +2441,14 @@ describe("CLI e2e happy path", () => {
   });
 
   function parseStderrEnvelope(stderr) {
-    const line = stderr.split("\n").map(s => s.trim()).find(s => s.startsWith("{") && s.endsWith("}"));
-    assert.ok(line, `should emit a JSON error line on stderr, got: ${stderr}`);
-    return JSON.parse(line);
+    const envelopes = stderr
+      .split("\n")
+      .map(s => s.trim())
+      .filter(s => s.startsWith("{") && s.endsWith("}"))
+      .map(s => JSON.parse(s));
+    const envelope = envelopes.find(e => e?.status === "error" || e?.code) ?? envelopes[0];
+    assert.ok(envelope, `should emit a JSON error line on stderr, got: ${stderr}`);
+    return envelope;
   }
 
   // ── GH-232: deploy apply (v2 unified primitive) must reject empty specs ──
@@ -2511,8 +2516,15 @@ describe("CLI e2e happy path", () => {
   // ── GH-266/GH-268: deploy apply argument/source validation ──
   it("deploy apply rejects unknown flags (GH-266)", async () => {
     await assertDeployApplyBadUsage(
+      ["--spec", nonEmptyDeploySpec(), "--project", "prj_test123", "--alllow-warning", "CODE"],
+      /Unknown flag.*--alllow-warning/,
+    );
+  });
+
+  it("deploy apply rejects missing --allow-warning values", async () => {
+    await assertDeployApplyBadUsage(
       ["--spec", nonEmptyDeploySpec(), "--project", "prj_test123", "--allow-warning"],
-      /Unknown flag.*--allow-warning/,
+      /--allow-warning requires a value/,
     );
   });
 
@@ -2645,6 +2657,144 @@ describe("CLI e2e happy path", () => {
     assert.deepEqual(planBodies[0]?.spec?.site, {
       public_paths: { mode: "explicit", replace: {} },
     });
+  });
+
+  it("deploy apply rejects function timeout tier violations before planning", async () => {
+    const { threw, stderr, deployCalled } = await deployApplyAndCapture(
+      ["--spec", JSON.stringify({
+        functions: {
+          replace: {
+            api: {
+              source: { data: "export default { fetch() { return new Response('ok') } };" },
+              config: { timeoutSeconds: 20 },
+            },
+          },
+        },
+      }), "--project", "prj_test123"],
+    );
+
+    assert.ok(threw && /process\.exit\(1\)/.test(threw.message));
+    assert.equal(deployCalled, false, "timeout cap must fail before /deploy/v2/plans");
+    const parsed = parseStderrEnvelope(stderr);
+    assert.equal(parsed.code, "BAD_FIELD");
+    assert.equal(parsed.details.field, "functions.api.config.timeoutSeconds");
+    assert.equal(parsed.details.value, 20);
+    assert.equal(parsed.details.tier, "prototype");
+    assert.equal(parsed.details.tier_max, 10);
+    assert.equal(parsed.details.limit_source, "local_static_fallback");
+  });
+
+  it("deploy apply rejects function memory tier violations before planning", async () => {
+    const { threw, stderr, deployCalled } = await deployApplyAndCapture(
+      ["--spec", JSON.stringify({
+        functions: {
+          replace: {
+            api: {
+              source: { data: "export default { fetch() { return new Response('ok') } };" },
+              config: { memoryMb: 256 },
+            },
+          },
+        },
+      }), "--project", "prj_test123"],
+    );
+
+    assert.ok(threw && /process\.exit\(1\)/.test(threw.message));
+    assert.equal(deployCalled, false, "memory cap must fail before /deploy/v2/plans");
+    const parsed = parseStderrEnvelope(stderr);
+    assert.equal(parsed.code, "BAD_FIELD");
+    assert.equal(parsed.details.field, "functions.api.config.memoryMb");
+    assert.equal(parsed.details.value, 256);
+    assert.equal(parsed.details.tier_max, 128);
+    assert.equal(parsed.details.limit_source, "local_static_fallback");
+  });
+
+  it("deploy apply rejects too-frequent scheduled functions before planning", async () => {
+    const { threw, stderr, deployCalled } = await deployApplyAndCapture(
+      ["--spec", JSON.stringify({
+        functions: {
+          replace: {
+            digest: {
+              source: { data: "export default { scheduled() {} };" },
+              schedule: "*/5 * * * *",
+            },
+          },
+        },
+      }), "--project", "prj_test123"],
+    );
+
+    assert.ok(threw && /process\.exit\(1\)/.test(threw.message));
+    assert.equal(deployCalled, false, "schedule interval cap must fail before /deploy/v2/plans");
+    const parsed = parseStderrEnvelope(stderr);
+    assert.equal(parsed.code, "BAD_FIELD");
+    assert.equal(parsed.details.field, "functions.digest.schedule");
+    assert.equal(parsed.details.value, "*/5 * * * *");
+    assert.equal(parsed.details.interval_minutes, 5);
+    assert.equal(parsed.details.min_interval_minutes, 15);
+    assert.equal(parsed.details.limit_source, "local_static_fallback");
+  });
+
+  it("deploy apply rejects scheduled function count tier violations before planning", async () => {
+    const { threw, stderr, deployCalled } = await deployApplyAndCapture(
+      ["--spec", JSON.stringify({
+        functions: {
+          replace: {
+            first: {
+              source: { data: "export default { scheduled() {} };" },
+              schedule: "0 * * * *",
+            },
+            second: {
+              source: { data: "export default { scheduled() {} };" },
+              schedule: "30 * * * *",
+            },
+          },
+        },
+      }), "--project", "prj_test123"],
+    );
+
+    assert.ok(threw && /process\.exit\(1\)/.test(threw.message));
+    assert.equal(deployCalled, false, "scheduled count cap must fail before /deploy/v2/plans");
+    const parsed = parseStderrEnvelope(stderr);
+    assert.equal(parsed.code, "BAD_FIELD");
+    assert.equal(parsed.details.field, "functions.scheduled_count");
+    assert.equal(parsed.details.value, 2);
+    assert.equal(parsed.details.tier_max, 1);
+    assert.equal(parsed.details.max_scheduled_functions, 1);
+    assert.equal(parsed.details.count_source, "manifest");
+    assert.equal(parsed.details.limit_source, "local_static_fallback");
+  });
+
+  it("deploy apply --allow-warning acknowledges a specific client route warning", async () => {
+    const { threw, stdout, stderr, deployCalled } = await deployApplyAndCapture(
+      ["--spec", JSON.stringify({
+        routes: {
+          replace: [
+            {
+              pattern: "/share/*",
+              methods: ["GET"],
+              target: { type: "function", name: "share" },
+            },
+          ],
+        },
+      }), "--project", "prj_test123", "--allow-warning", "WILDCARD_ROUTE_EXCLUDES_MUTATION_METHODS"],
+    );
+
+    assert.equal(threw, null, stderr);
+    assert.equal(deployCalled, true, "allowed warning deploy must reach /deploy/v2/plans");
+    const body = JSON.parse(stdout);
+    assert.equal(body.status, "ok");
+    assert.equal(body.warnings[0]?.code, "WILDCARD_ROUTE_EXCLUDES_MUTATION_METHODS");
+  });
+
+  it("deploy apply --final-only suppresses progress events but keeps the result envelope", async () => {
+    const { threw, stdout, stderr } = await deployApplyAndCapture(
+      ["--spec", nonEmptyDeploySpec(), "--project", "prj_test123", "--final-only"],
+    );
+
+    assert.equal(threw, null);
+    assert.equal(stderr.trim(), "", `--final-only should suppress event stderr, got: ${stderr}`);
+    const body = JSON.parse(stdout);
+    assert.equal(body.status, "ok");
+    assert.equal(body.release_id, "rel_v2_test");
   });
 
   it("deploy apply rejects malformed site.public_paths before gateway calls", async () => {

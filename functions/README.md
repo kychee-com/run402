@@ -121,7 +121,7 @@ await email.send({
 
 Templates: `project_invite` (`project_name`, `invite_url`), `magic_link` (`project_name`, `link_url`, `expires_in`), `notification` (`project_name`, `message` ≤ 500 chars). Throws on rate limit, suppression, or no-mailbox.
 
-## `ai.translate` / `ai.moderate`
+## `ai.translate` / `ai.moderate` / `ai.generateImage`
 
 ```ts
 const { text, from } = await ai.translate("Hello world", {
@@ -130,9 +130,51 @@ const { text, from } = await ai.translate("Hello world", {
 });
 
 const { flagged, categories } = await ai.moderate("Some user-generated text");
+
+const image = await ai.generateImage({
+  prompt: "a moonlit dream journal illustration",
+  aspect: "landscape",
+});
+// { image: "<base64 PNG>", content_type: "image/png", aspect: "landscape" }
 ```
 
+`ai.generateImage` supports `aspect: "square" | "landscape" | "portrait"` and returns base64 image bytes plus `content_type` and `aspect`. It uses the function's `RUN402_SERVICE_KEY` against the project runtime image endpoint; it does **not** need allowance wallets, x402 wrapping, or local signing inside the function. Runtime image generation is billed and rate-limited against the project's billing account. Quota, rate-limit, and spend-cap failures are ordinary thrown errors such as `Image generation failed (403): QUOTA_EXCEEDED: ...`; handle them in your app response instead of forwarding raw details to the browser.
+
 Translation requires the AI Translation add-on on the project; moderation is free for all projects.
+
+### Routed image generation example
+
+Use a routed function when the browser should request an image at app runtime. Keep app-level auth/rate limits in your handler before calling `ai.generateImage`, especially for public routes.
+
+```ts
+import { ai, getUser } from "@run402/functions";
+
+export default async function handler(req: Request): Promise<Response> {
+  if (req.method !== "POST") {
+    return new Response("method not allowed", { status: 405 });
+  }
+
+  const user = await getUser(req);
+  if (!user) return new Response("unauthorized", { status: 401 });
+
+  const { prompt } = await req.json() as { prompt?: string };
+  if (!prompt || prompt.length > 500) {
+    return Response.json({ error: "prompt_required" }, { status: 400 });
+  }
+
+  try {
+    const result = await ai.generateImage({ prompt, aspect: "landscape" });
+    return Response.json(result, {
+      headers: { "cache-control": "private, no-store" },
+    });
+  } catch (err) {
+    return Response.json(
+      { error: "image_generation_unavailable", detail: (err as Error).message },
+      { status: 503 },
+    );
+  }
+}
+```
 
 ## Static-site generation (build-time use)
 

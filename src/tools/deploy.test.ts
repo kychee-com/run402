@@ -371,6 +371,17 @@ describe("handleDeploy deploy error formatting", () => {
     assert.equal((lastApplyOpts as { allowWarnings?: boolean }).allowWarnings, true);
   });
 
+  it("passes allow_warning_codes through to the SDK option", async () => {
+    await handleDeploy({
+      project_id: "prj_xxx",
+      secrets: { delete: ["OLD_KEY"] },
+      allow_warning_codes: ["WILDCARD_ROUTE_EXCLUDES_MUTATION_METHODS"],
+    });
+    assert.deepEqual((lastApplyOpts as { allowWarningCodes?: string[] }).allowWarningCodes, [
+      "WILDCARD_ROUTE_EXCLUDES_MUTATION_METHODS",
+    ]);
+  });
+
   it("passes route manifests through and includes raw deploy result JSON", async () => {
     nextApplyImpl = async () => ({
       release_id: "rel_001",
@@ -513,6 +524,39 @@ describe("handleDeploy deploy error formatting", () => {
     assert.match(result.content[0]!.text, /not enabled/);
     assert.match(result.content[0]!.text, /browser-route substitute/);
   });
+
+  it("renders unacknowledged warning codes for deploy warning errors", async () => {
+    nextApplyImpl = async () => {
+      throw new Run402DeployError("Warnings require confirmation.", {
+        code: "MISSING_REQUIRED_SECRET",
+        phase: "plan",
+        resource: "warnings",
+        retryable: false,
+        body: {
+          warnings: [
+            {
+              code: "MISSING_REQUIRED_SECRET",
+              severity: "high",
+              requires_confirmation: true,
+              message: "OPENAI_API_KEY is missing",
+              affected: ["OPENAI_API_KEY"],
+            },
+          ],
+          unacknowledged_warning_codes: ["MISSING_REQUIRED_SECRET"],
+        },
+      });
+    };
+
+    const result = await handleDeploy({
+      project_id: "prj_xxx",
+      secrets: { require: ["OPENAI_API_KEY"] },
+    });
+
+    assert.equal(result.isError, true);
+    assert.match(result.content[0]!.text, /Unacknowledged warning code/);
+    assert.match(result.content[0]!.text, /MISSING_REQUIRED_SECRET/);
+    assert.match(result.content[0]!.text, /set_secret/);
+  });
 });
 
 describe("deploySchema fileEntry parsing", () => {
@@ -625,6 +669,12 @@ describe("deploySchema fileEntry parsing", () => {
             pattern: "/api/*",
             methods: ["GET", "POST"],
             target: { type: "function", name: "api" },
+          },
+          {
+            pattern: "/share/*",
+            methods: ["GET"],
+            target: { type: "function", name: "share" },
+            acknowledge_readonly: true,
           },
         ],
       },

@@ -75,6 +75,7 @@ import type {
   StartOptions,
   WarningEntry,
 } from "./deploy.types.js";
+import type { TierStatusResult } from "./tier.js";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -92,6 +93,38 @@ const SECRET_KEY_RE = /^[A-Z_][A-Z0-9_]{0,127}$/;
 const APPLY_SAFE_RETRY_CODES = new Set<Run402DeployErrorCode>([
   "BASE_RELEASE_CONFLICT",
 ]);
+const STATIC_ACTIVATION_FAILURE_CODES = new Set<string>([
+  "BAD_FIELD",
+  "INVALID_SPEC",
+  "FUNCTION_ACTIVATE_FAILED",
+  "FUNCTION_CONFIG_INVALID",
+  "FUNCTION_TIMEOUT_EXCEEDS_TIER",
+  "FUNCTION_MEMORY_EXCEEDS_TIER",
+  "FUNCTION_SCHEDULE_EXCEEDS_TIER",
+  "FUNCTION_SCHEDULE_INTERVAL_TOO_SHORT",
+  "FUNCTION_SCHEDULE_LIMIT_EXCEEDED",
+  "TIER_LIMIT_EXCEEDED",
+]);
+const STATIC_FUNCTION_LIMITS_BY_TIER: Record<string, StaticTierFunctionLimits> = {
+  prototype: {
+    maxTimeoutSeconds: 10,
+    maxMemoryMb: 128,
+    maxScheduledFunctions: 1,
+    minCronIntervalMinutes: 15,
+  },
+  hobby: {
+    maxTimeoutSeconds: 30,
+    maxMemoryMb: 256,
+    maxScheduledFunctions: 3,
+    minCronIntervalMinutes: 5,
+  },
+  team: {
+    maxTimeoutSeconds: 60,
+    maxMemoryMb: 512,
+    maxScheduledFunctions: 10,
+    minCronIntervalMinutes: 1,
+  },
+};
 
 const MANIFEST_CONTENT_TYPE =
   "application/vnd.run402.deploy-manifest+json";
@@ -508,11 +541,12 @@ async function applyOnce(
   opts: ApplyOptions,
   emit: (event: DeployEvent) => void,
 ): Promise<DeployResult> {
+  const allowWarningCodes = normalizeAllowWarningCodes(opts.allowWarningCodes);
   emit({ type: "plan.started" });
   const { plan, byteReaders } = await planInternal(client, spec, opts.idempotencyKey);
   emit({ type: "plan.diff", diff: plan.diff });
   emitPlanWarnings(plan, emit);
-  abortOnConfirmationWarnings(plan, opts);
+  abortOnConfirmationWarnings(plan, opts, allowWarningCodes);
 
   if (plan.payment_required) {
     emit({
@@ -622,6 +656,7 @@ async function planInternal(
   if (ciCredentials) assertCiDeployableSpec(spec);
 
   const { normalized, byteReaders } = await normalizeReleaseSpec(client, spec);
+  await preflightTierFunctionLimits(client, normalized, ciCredentials);
 
   // The gateway expects { spec, manifest_ref?, idempotency_key? } with
   // ReleaseSpec.project (singular). For oversized specs the SDK uploads
@@ -685,6 +720,485 @@ async function planInternal(
     throw translateDeployError(err, "plan", null, null);
   }
   return { plan, byteReaders };
+}
+
+type TierLimitSource = "tier_status" | "local_static_fallback";
+
+interface StaticTierFunctionLimits {
+  maxTimeoutSeconds: number;
+  maxMemoryMb: number;
+  maxScheduledFunctions: number;
+  minCronIntervalMinutes: number;
+}
+
+interface TierLimitNumber {
+  value: number;
+  source: TierLimitSource;
+}
+
+interface TierFunctionLimitSnapshot {
+  tier: string;
+  maxTimeoutSeconds?: TierLimitNumber;
+  maxMemoryMb?: TierLimitNumber;
+  maxScheduledFunctions?: TierLimitNumber;
+  minCronIntervalMinutes?: TierLimitNumber;
+  currentScheduledFunctions?: TierLimitNumber;
+}
+
+interface FunctionTierPreflightEntry {
+  name: string;
+  fn: NormalizedFunctionSpec;
+  fieldPrefix: string;
+}
+
+async function preflightTierFunctionLimits(
+  client: Client,
+  spec: NormalizedReleaseSpec,
+  ciCredentials: boolean,
+): Promise<void> {
+  if (ciCredentials) return;
+  if (!hasFunctionTierPreflightInputs(spec.functions)) return;
+
+  const limits = await readTierFunctionLimits(client);
+  if (!limits) return;
+
+  const entries = collectFunctionPreflightEntries(spec.functions);
+  for (const entry of entries) {
+    const timeout = entry.fn.config?.timeoutSeconds;
+    if (
+      timeout !== undefined &&
+      limits.maxTimeoutSeconds &&
+      timeout > limits.maxTimeoutSeconds.value
+    ) {
+      throw tierLimitError(
+        `Function ${entry.name} timeoutSeconds ${timeout} exceeds the ${limits.tier} tier maximum of ${limits.maxTimeoutSeconds.value}.`,
+        `${entry.fieldPrefix}.config.timeoutSeconds`,
+        timeout,
+        limits,
+        limits.maxTimeoutSeconds,
+        {
+          tier_max: limits.maxTimeoutSeconds.value,
+          max_function_timeout_seconds: limits.maxTimeoutSeconds.value,
+        },
+      );
+    }
+
+    const memory = entry.fn.config?.memoryMb;
+    if (
+      memory !== undefined &&
+      limits.maxMemoryMb &&
+      memory > limits.maxMemoryMb.value
+    ) {
+      throw tierLimitError(
+        `Function ${entry.name} memoryMb ${memory} exceeds the ${limits.tier} tier maximum of ${limits.maxMemoryMb.value}.`,
+        `${entry.fieldPrefix}.config.memoryMb`,
+        memory,
+        limits,
+        limits.maxMemoryMb,
+        {
+          tier_max: limits.maxMemoryMb.value,
+          max_function_memory_mb: limits.maxMemoryMb.value,
+        },
+      );
+    }
+
+    if (isScheduledCron(entry.fn.schedule) && limits.minCronIntervalMinutes) {
+      const intervalMinutes = estimateCronMinimumIntervalMinutes(entry.fn.schedule);
+      if (
+        intervalMinutes !== null &&
+        intervalMinutes < limits.minCronIntervalMinutes.value
+      ) {
+        throw tierLimitError(
+          `Function ${entry.name} schedule runs every ${intervalMinutes} minute(s), below the ${limits.tier} tier minimum interval of ${limits.minCronIntervalMinutes.value} minutes.`,
+          `${entry.fieldPrefix}.schedule`,
+          entry.fn.schedule,
+          limits,
+          limits.minCronIntervalMinutes,
+          {
+            interval_minutes: intervalMinutes,
+            min_interval_minutes: limits.minCronIntervalMinutes.value,
+            min_cron_interval_minutes: limits.minCronIntervalMinutes.value,
+          },
+        );
+      }
+    }
+  }
+
+  if (limits.maxScheduledFunctions) {
+    const lowerBound = countScheduledFunctionsInSetEntries(spec.functions);
+    if (lowerBound > limits.maxScheduledFunctions.value) {
+      throw scheduledCountTierLimitError(lowerBound, limits, limits.maxScheduledFunctions, "manifest");
+    }
+
+    const desired = await computeDesiredScheduledFunctionCount(client, spec);
+    if (desired && desired.count > limits.maxScheduledFunctions.value) {
+      throw scheduledCountTierLimitError(
+        desired.count,
+        limits,
+        limits.maxScheduledFunctions,
+        desired.source,
+      );
+    }
+  }
+}
+
+function hasFunctionTierPreflightInputs(functions: NormalizedFunctionsSpec | undefined): boolean {
+  if (!functions) return false;
+  return collectFunctionPreflightEntries(functions).some((entry) => (
+    entry.fn.config?.timeoutSeconds !== undefined ||
+    entry.fn.config?.memoryMb !== undefined ||
+    isScheduledCron(entry.fn.schedule)
+  ));
+}
+
+function collectFunctionPreflightEntries(
+  functions: NormalizedFunctionsSpec | undefined,
+): FunctionTierPreflightEntry[] {
+  if (!functions) return [];
+  const entries: FunctionTierPreflightEntry[] = [];
+  for (const [name, fn] of Object.entries(functions.replace ?? {})) {
+    entries.push({ name, fn, fieldPrefix: `functions.${name}` });
+  }
+  for (const [name, fn] of Object.entries(functions.patch?.set ?? {})) {
+    entries.push({ name, fn, fieldPrefix: `functions.${name}` });
+  }
+  return entries;
+}
+
+async function readTierFunctionLimits(
+  client: Client,
+): Promise<TierFunctionLimitSnapshot | null> {
+  let status: TierStatusResult;
+  try {
+    status = await client.request<TierStatusResult>("/tiers/v1/status", {
+      context: "checking tier status for deploy preflight",
+    });
+  } catch {
+    return null;
+  }
+
+  if (typeof status.tier !== "string" || status.tier.length === 0) {
+    return null;
+  }
+
+  const tierKey = status.tier.toLowerCase();
+  const fallback = STATIC_FUNCTION_LIMITS_BY_TIER[tierKey];
+  const limits: TierFunctionLimitSnapshot = { tier: status.tier };
+
+  limits.maxTimeoutSeconds = tierStatusLimitOrFallback(
+    status,
+    [
+      "max_function_timeout_seconds",
+      "max_timeout_seconds",
+      "timeout_seconds_max",
+      "function_timeout_seconds_max",
+    ],
+    fallback?.maxTimeoutSeconds,
+  );
+  limits.maxMemoryMb = tierStatusLimitOrFallback(
+    status,
+    [
+      "max_function_memory_mb",
+      "max_memory_mb",
+      "memory_mb_max",
+      "function_memory_mb_max",
+    ],
+    fallback?.maxMemoryMb,
+  );
+  limits.maxScheduledFunctions = tierStatusLimitOrFallback(
+    status,
+    [
+      "max_scheduled_functions",
+      "scheduled_functions_limit",
+      "scheduled_function_limit",
+      "max_function_schedules",
+    ],
+    fallback?.maxScheduledFunctions,
+  );
+  limits.minCronIntervalMinutes = tierStatusLimitOrFallback(
+    status,
+    [
+      "min_cron_interval_minutes",
+      "minimum_cron_interval_minutes",
+      "min_schedule_interval_minutes",
+      "min_scheduled_function_interval_minutes",
+    ],
+    fallback?.minCronIntervalMinutes,
+  );
+  limits.currentScheduledFunctions = tierStatusLimit(
+    status,
+    [
+      "current_scheduled_functions",
+      "current_scheduled_function_count",
+      "scheduled_function_count",
+      "scheduled_functions",
+    ],
+  );
+
+  return hasAnyTierFunctionLimit(limits) ? limits : null;
+}
+
+function tierStatusLimitOrFallback(
+  status: TierStatusResult,
+  keys: string[],
+  fallback: number | undefined,
+): TierLimitNumber | undefined {
+  return tierStatusLimit(status, keys) ?? (
+    fallback === undefined
+      ? undefined
+      : { value: fallback, source: "local_static_fallback" }
+  );
+}
+
+function tierStatusLimit(
+  status: TierStatusResult,
+  keys: string[],
+): TierLimitNumber | undefined {
+  const limits = objectField(status, "limits");
+  const containers: unknown[] = [
+    objectField(status, "function_limits"),
+    objectField(limits, "functions"),
+    objectField(limits, "function_limits"),
+    objectField(status, "pool_usage"),
+    status,
+  ];
+
+  for (const container of containers) {
+    if (!container || typeof container !== "object" || Array.isArray(container)) continue;
+    const obj = container as Record<string, unknown>;
+    for (const key of keys) {
+      const value = obj[key];
+      if (typeof value === "number" && Number.isFinite(value) && value >= 0) {
+        return { value, source: "tier_status" };
+      }
+    }
+  }
+  return undefined;
+}
+
+function hasAnyTierFunctionLimit(limits: TierFunctionLimitSnapshot): boolean {
+  return Boolean(
+    limits.maxTimeoutSeconds ||
+    limits.maxMemoryMb ||
+    limits.maxScheduledFunctions ||
+    limits.minCronIntervalMinutes ||
+    limits.currentScheduledFunctions
+  );
+}
+
+async function computeDesiredScheduledFunctionCount(
+  client: Client,
+  spec: NormalizedReleaseSpec,
+): Promise<{ count: number; source: "manifest" | "active_release_inventory" } | null> {
+  const functions = spec.functions;
+  if (!functions) return null;
+
+  const replaceScheduled = scheduledFunctionNames(functions.replace);
+  if (replaceScheduled) {
+    applyScheduledFunctionPatch(replaceScheduled, functions.patch);
+    return { count: replaceScheduled.size, source: "manifest" };
+  }
+
+  if (!functions.patch) return null;
+  const activeScheduled = await readActiveScheduledFunctionNames(client, spec.project);
+  if (!activeScheduled) return null;
+  applyScheduledFunctionPatch(activeScheduled, functions.patch);
+  return { count: activeScheduled.size, source: "active_release_inventory" };
+}
+
+function countScheduledFunctionsInSetEntries(functions: NormalizedFunctionsSpec | undefined): number {
+  if (!functions) return 0;
+  const names = new Set<string>();
+  for (const [name, fn] of Object.entries(functions.replace ?? {})) {
+    if (isScheduledCron(fn.schedule)) names.add(name);
+  }
+  for (const [name, fn] of Object.entries(functions.patch?.set ?? {})) {
+    if (isScheduledCron(fn.schedule)) names.add(name);
+  }
+  return names.size;
+}
+
+function scheduledFunctionNames(
+  functions: Record<string, NormalizedFunctionSpec> | undefined,
+): Set<string> | null {
+  if (!functions) return null;
+  const scheduled = new Set<string>();
+  for (const [name, fn] of Object.entries(functions)) {
+    if (isScheduledCron(fn.schedule)) scheduled.add(name);
+  }
+  return scheduled;
+}
+
+function applyScheduledFunctionPatch(
+  scheduled: Set<string>,
+  patch: NormalizedFunctionsSpec["patch"] | undefined,
+): void {
+  for (const name of patch?.delete ?? []) {
+    scheduled.delete(name);
+  }
+  for (const [name, fn] of Object.entries(patch?.set ?? {})) {
+    if (fn.schedule === null) scheduled.delete(name);
+    else if (isScheduledCron(fn.schedule)) scheduled.add(name);
+  }
+}
+
+async function readActiveScheduledFunctionNames(
+  client: Client,
+  projectId: string,
+): Promise<Set<string> | null> {
+  let inventory: ActiveReleaseInventory;
+  try {
+    inventory = await client.request<ActiveReleaseInventory>(
+      appendQuery("/deploy/v2/releases/active", { site_limit: 1 }),
+      {
+        headers: await apikeyHeaders(client, projectId),
+        context: "fetching active release inventory for deploy preflight",
+      },
+    );
+  } catch {
+    return null;
+  }
+
+  const scheduled = new Set<string>();
+  for (const fn of inventory.functions ?? []) {
+    if (isScheduledCron(fn.schedule)) scheduled.add(fn.name);
+  }
+  return scheduled;
+}
+
+function scheduledCountTierLimitError(
+  count: number,
+  limits: TierFunctionLimitSnapshot,
+  limit: TierLimitNumber,
+  countSource: "manifest" | "active_release_inventory",
+): Run402DeployError {
+  return tierLimitError(
+    `Deploy would have ${count} scheduled function(s), exceeding the ${limits.tier} tier maximum of ${limit.value}.`,
+    "functions.scheduled_count",
+    count,
+    limits,
+    limit,
+    {
+      tier_max: limit.value,
+      max_scheduled_functions: limit.value,
+      count_source: countSource,
+    },
+  );
+}
+
+function tierLimitError(
+  message: string,
+  field: string,
+  value: unknown,
+  limits: TierFunctionLimitSnapshot,
+  limit: TierLimitNumber,
+  extraDetails: Record<string, unknown>,
+): Run402DeployError {
+  const hint = limit.source === "local_static_fallback"
+    ? "Tier limits came from the SDK's static fallback because /tiers/v1/status did not expose function caps. Run `run402 tier status` to refresh, lower the function setting, upgrade the tier, or retry and let gateway validation decide if this seems stale."
+    : "Lower the function setting or upgrade the tier before deploying.";
+  const details = {
+    field,
+    value,
+    tier: limits.tier,
+    limit_source: limit.source,
+    ...extraDetails,
+  };
+  const body = {
+    code: "BAD_FIELD",
+    category: "deploy",
+    message,
+    retryable: false,
+    details,
+    hint,
+  };
+  return new Run402DeployError(message, {
+    code: "BAD_FIELD",
+    phase: "validate",
+    resource: field,
+    retryable: false,
+    body,
+    context: "validating deploy tier limits",
+  });
+}
+
+function isScheduledCron(value: unknown): value is string {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+function estimateCronMinimumIntervalMinutes(expression: string): number | null {
+  const parts = expression.trim().split(/\s+/);
+  if (parts.length !== 5) return null;
+  const minutes = expandCronNumberField(parts[0]!, 0, 59);
+  const hours = expandCronNumberField(parts[1]!, 0, 23);
+  if (!minutes || !hours || minutes.length === 0 || hours.length === 0) return null;
+
+  const occurrences: number[] = [];
+  for (const hour of hours) {
+    for (const minute of minutes) {
+      occurrences.push(hour * 60 + minute);
+    }
+  }
+  occurrences.sort((a, b) => a - b);
+  if (occurrences.length <= 1) return 24 * 60;
+
+  let minGap = Number.POSITIVE_INFINITY;
+  for (let i = 1; i < occurrences.length; i += 1) {
+    minGap = Math.min(minGap, occurrences[i]! - occurrences[i - 1]!);
+  }
+  minGap = Math.min(
+    minGap,
+    24 * 60 - occurrences[occurrences.length - 1]! + occurrences[0]!,
+  );
+  return Number.isFinite(minGap) ? minGap : null;
+}
+
+function expandCronNumberField(field: string, min: number, max: number): number[] | null {
+  const values = new Set<number>();
+  for (const part of field.split(",")) {
+    const expanded = expandCronNumberPart(part.trim(), min, max);
+    if (!expanded) return null;
+    for (const value of expanded) values.add(value);
+  }
+  return [...values].sort((a, b) => a - b);
+}
+
+function expandCronNumberPart(part: string, min: number, max: number): number[] | null {
+  if (!part) return null;
+  const [rangePart, stepPart] = part.split("/");
+  if (part.split("/").length > 2) return null;
+  const step = stepPart === undefined ? 1 : Number(stepPart);
+  if (!Number.isSafeInteger(step) || step < 1) return null;
+
+  let start: number;
+  let end: number;
+  if (rangePart === "*") {
+    start = min;
+    end = max;
+  } else if (rangePart?.includes("-")) {
+    const [rawStart, rawEnd] = rangePart.split("-");
+    start = Number(rawStart);
+    end = Number(rawEnd);
+  } else {
+    start = Number(rangePart);
+    end = stepPart === undefined ? start : max;
+  }
+
+  if (
+    !Number.isSafeInteger(start) ||
+    !Number.isSafeInteger(end) ||
+    start < min ||
+    end > max ||
+    start > end
+  ) {
+    return null;
+  }
+
+  const values: number[] = [];
+  for (let value = start; value <= end; value += step) {
+    values.push(value);
+  }
+  return values;
 }
 
 async function commitInternal(
@@ -1103,6 +1617,19 @@ async function pollSnapshotUntilReady(
       );
     }
 
+    if (
+      snapshot.status === "activation_pending" &&
+      isTerminalStaticActivationError(snapshot.error)
+    ) {
+      closePreviousPhase(undefined, "failed");
+      throw translateGatewayError(
+        snapshot.error,
+        "activate",
+        snapshot.plan_id,
+        snapshot.operation_id,
+      );
+    }
+
     if (Date.now() - start > COMMIT_POLL_TIMEOUT_MS) {
       throw new Run402DeployError(
         `Timed out waiting for operation ${snapshot.operation_id} to reach ready`,
@@ -1129,6 +1656,15 @@ async function pollSnapshotUntilReady(
   }
 }
 
+function isTerminalStaticActivationError(
+  error: GatewayDeployError | null | undefined,
+): boolean {
+  if (!error?.code) return false;
+  if (error.retryable === false) return true;
+  if (error.safe_to_retry === false) return true;
+  return STATIC_ACTIVATION_FAILURE_CODES.has(error.code.toUpperCase());
+}
+
 // ─── start() implementation ──────────────────────────────────────────────────
 
 async function startInternal(
@@ -1136,6 +1672,7 @@ async function startInternal(
   spec: ReleaseSpec,
   opts: StartOptions,
 ): Promise<DeployOperation> {
+  const allowWarningCodes = normalizeAllowWarningCodes(opts.allowWarningCodes);
   const buffered: DeployEvent[] = [];
   const subscribers: Array<(ev: DeployEvent) => void> = [];
   const emit = (event: DeployEvent): void => {
@@ -1160,7 +1697,7 @@ async function startInternal(
   const { plan, byteReaders } = await planInternal(client, spec, opts.idempotencyKey);
   emit({ type: "plan.diff", diff: plan.diff });
   emitPlanWarnings(plan, emit);
-  abortOnConfirmationWarnings(plan, opts);
+  abortOnConfirmationWarnings(plan, opts, allowWarningCodes);
   if (plan.payment_required) {
     emit({
       type: "payment.required",
@@ -1298,6 +1835,7 @@ interface ResolvedContent {
 }
 
 const RELEASE_SPEC_FIELDS = new Set([
+  "$schema",
   "project",
   "base",
   "database",
@@ -1337,7 +1875,7 @@ const SITE_PUBLIC_PATHS_FIELDS = new Set(["mode", "replace"]);
 const PUBLIC_STATIC_PATH_FIELDS = new Set(["asset", "cache_class"]);
 const SUBDOMAINS_SPEC_FIELDS = new Set(["set", "add", "remove"]);
 const ROUTES_SPEC_FIELDS = new Set(["replace"]);
-const ROUTE_ENTRY_FIELDS = new Set(["pattern", "methods", "target"]);
+const ROUTE_ENTRY_FIELDS = new Set(["pattern", "methods", "target", "acknowledge_readonly"]);
 const FUNCTION_ROUTE_TARGET_FIELDS = new Set(["type", "name"]);
 const STATIC_ROUTE_TARGET_FIELDS = new Set(["type", "file"]);
 const ROUTE_METHOD_SET = new Set<string>(ROUTE_HTTP_METHODS);
@@ -1630,8 +2168,34 @@ function validateRouteEntry(route: unknown, resource: string): void {
     }
   }
   const targetType = validateRouteTarget(entry.target, `${resource}.target`);
+  validateRouteReadOnlyAcknowledgement(entry, targetType, resource);
   if (targetType === "static") {
     validateStaticRouteEntry(entry, resource);
+  }
+}
+
+function validateRouteReadOnlyAcknowledgement(
+  entry: Record<string, unknown>,
+  targetType: "function" | "static",
+  resource: string,
+): void {
+  if (entry.acknowledge_readonly === undefined) return;
+  if (entry.acknowledge_readonly !== true) {
+    throw invalidRouteSpec(
+      `ReleaseSpec.${resource}.acknowledge_readonly must be true when present`,
+      `${resource}.acknowledge_readonly`,
+    );
+  }
+  if (
+    targetType !== "function" ||
+    typeof entry.pattern !== "string" ||
+    !isFinalWildcardRoutePattern(entry.pattern) ||
+    !isReadOnlyRouteMethods(entry.methods)
+  ) {
+    throw invalidRouteSpec(
+      `ReleaseSpec.${resource}.acknowledge_readonly applies only to GET/HEAD final-wildcard function routes`,
+      `${resource}.acknowledge_readonly`,
+    );
   }
 }
 
@@ -1946,13 +2510,10 @@ function clientRoutePlanWarnings(spec: NormalizedReleaseSpec): WarningEntry[] {
   const affected = routes.replace
     .filter((route) => {
       if (route.target.type !== "function") return false;
-      if (!route.pattern.endsWith("/*")) return false;
+      if (!isFinalWildcardRoutePattern(route.pattern)) return false;
       if (!route.methods) return false;
-      const methods = new Set(route.methods);
-      return (
-        methods.size > 0 &&
-        [...methods].every((method) => method === "GET" || method === "HEAD")
-      );
+      if (route.acknowledge_readonly === true) return false;
+      return isReadOnlyRouteMethods(route.methods);
     })
     .map((route) => route.pattern)
     .sort();
@@ -1975,23 +2536,71 @@ function clientRoutePlanWarnings(spec: NormalizedReleaseSpec): WarningEntry[] {
   ];
 }
 
-function abortOnConfirmationWarnings(plan: PlanResponse, opts: ApplyOptions): void {
+function isFinalWildcardRoutePattern(pattern: string): boolean {
+  return pattern.endsWith("/*");
+}
+
+function isReadOnlyRouteMethods(methods: unknown): boolean {
+  if (!Array.isArray(methods) || methods.length === 0) return false;
+  return methods.every((method) => method === "GET" || method === "HEAD");
+}
+
+function normalizeAllowWarningCodes(value: unknown): Set<string> {
+  if (value === undefined) return new Set();
+  if (!Array.isArray(value)) {
+    throw new Run402DeployError("ApplyOptions.allowWarningCodes must be an array of warning-code strings", {
+      code: "INVALID_SPEC",
+      phase: "validate",
+      resource: "allowWarningCodes",
+      retryable: false,
+      context: "validating deploy warning options",
+    });
+  }
+  const codes = new Set<string>();
+  for (const code of value) {
+    if (typeof code !== "string" || code.length === 0) {
+      throw new Run402DeployError("ApplyOptions.allowWarningCodes entries must be non-empty strings", {
+        code: "INVALID_SPEC",
+        phase: "validate",
+        resource: "allowWarningCodes",
+        retryable: false,
+        context: "validating deploy warning options",
+      });
+    }
+    codes.add(code);
+  }
+  return codes;
+}
+
+function abortOnConfirmationWarnings(
+  plan: PlanResponse,
+  opts: Pick<ApplyOptions, "allowWarnings">,
+  allowWarningCodes: Set<string>,
+): void {
   if (opts.allowWarnings) return;
   const blocking = plan.warnings.filter(
     (w) => w.requires_confirmation || w.code === "MISSING_REQUIRED_SECRET",
   );
   if (blocking.length === 0) return;
-  const missing = blocking.find((w) => w.code === "MISSING_REQUIRED_SECRET");
-  const first = missing ?? blocking[0]!;
+  const unacknowledged = blocking.filter((w) => !allowWarningCodes.has(w.code));
+  if (unacknowledged.length === 0) return;
+  const missing = unacknowledged.find((w) => w.code === "MISSING_REQUIRED_SECRET");
+  const first = missing ?? unacknowledged[0]!;
+  const unacknowledgedCodes = Array.from(new Set(unacknowledged.map((w) => w.code))).sort();
   throw new Run402DeployError(
-    `Deploy plan returned warning ${first.code} that requires confirmation; resolve it or retry with allowWarnings after explicit review.`,
+    `Deploy plan returned unacknowledged warning ${first.code}; resolve it, retry with allowWarningCodes for reviewed warning codes, or retry with allowWarnings after explicit review.`,
     {
       code: first.code || "DEPLOY_WARNING_REQUIRES_CONFIRMATION",
       phase: "plan",
       resource: "warnings",
       retryable: false,
       fix: { action: "review_warnings", path: "warnings" },
-      body: { warnings: blocking },
+      body: {
+        warnings: blocking,
+        unacknowledged_warnings: unacknowledged,
+        unacknowledged_warning_codes: unacknowledgedCodes,
+        allowed_warning_codes: Array.from(allowWarningCodes).sort(),
+      },
       context: "planning deploy",
     },
   );

@@ -11,6 +11,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, 
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { createHash } from "node:crypto";
+import { Readable } from "node:stream";
 
 const tempDir = mkdtempSync(join(tmpdir(), "run402-argv-"));
 const API = "https://test-api.run402.com";
@@ -21,6 +22,7 @@ const originalFetch = globalThis.fetch;
 const originalLog = console.log;
 const originalError = console.error;
 const originalExit = process.exit;
+const originalStdin = process.stdin;
 let stdout = [];
 let stderr = [];
 let calls = [];
@@ -90,6 +92,17 @@ async function expectExit1(fn) {
   return stderrJson();
 }
 
+async function withMockStdin(chunks, fn, { isTTY = false } = {}) {
+  const stream = Readable.from(chunks);
+  stream.isTTY = isTTY;
+  Object.defineProperty(process, "stdin", { value: stream, configurable: true });
+  try {
+    return await fn();
+  } finally {
+    Object.defineProperty(process, "stdin", { value: originalStdin, configurable: true });
+  }
+}
+
 before(async () => {
   globalThis.fetch = mockFetch;
   process.exit = (code) => { throw new Error(`process.exit(${code})`); };
@@ -106,6 +119,7 @@ after(() => {
   console.log = originalLog;
   console.error = originalError;
   process.exit = originalExit;
+  Object.defineProperty(process, "stdin", { value: originalStdin, configurable: true });
   delete process.env.RUN402_CONFIG_DIR;
   delete process.env.RUN402_API_BASE;
   rmSync(tempDir, { recursive: true, force: true });
@@ -577,6 +591,68 @@ describe("2026-05 CLI bug backlog argv validation", () => {
     const call = calls.find((c) => c.path === "/projects/v1/admin/prj_test123/secrets");
     assert.ok(call, `expected secrets set request, got ${JSON.stringify(calls)}`);
     assert.equal(JSON.parse(call.init.body).value, "");
+  });
+
+  it("secrets set --stdin reads piped values without echoing them", async () => {
+    const { run } = await import("./cli/lib/secrets.mjs");
+    await withMockStdin(["stdin-secret-value"], async () => {
+      captureStart();
+      await run("set", ["prj_test123", "STDIN_SECRET", "--stdin"]);
+      captureStop();
+    });
+
+    const call = calls.find((c) => c.path === "/projects/v1/admin/prj_test123/secrets");
+    assert.ok(call, `expected secrets set request, got ${JSON.stringify(calls)}`);
+    assert.equal(JSON.parse(call.init.body).value, "stdin-secret-value");
+    assert.doesNotMatch(stdout.join("\n"), /stdin-secret-value/);
+    assert.doesNotMatch(stderr.join("\n"), /stdin-secret-value/);
+  });
+
+  it("secrets set --file - reads stdin as a POSIX alias", async () => {
+    const { run } = await import("./cli/lib/secrets.mjs");
+    await withMockStdin(["dash-stdin-secret"], async () => {
+      captureStart();
+      await run("set", ["prj_test123", "DASH_SECRET", "--file", "-"]);
+      captureStop();
+    });
+
+    const call = calls.find((c) => c.path === "/projects/v1/admin/prj_test123/secrets");
+    assert.ok(call, `expected secrets set request, got ${JSON.stringify(calls)}`);
+    assert.equal(JSON.parse(call.init.body).value, "dash-stdin-secret");
+  });
+
+  it("secrets set --file /dev/stdin reads stdin without regular-file validation", async () => {
+    const { run } = await import("./cli/lib/secrets.mjs");
+    await withMockStdin(["dev-stdin-secret"], async () => {
+      captureStart();
+      await run("set", ["prj_test123", "DEV_STDIN_SECRET", "--file", "/dev/stdin"]);
+      captureStop();
+    });
+
+    const call = calls.find((c) => c.path === "/projects/v1/admin/prj_test123/secrets");
+    assert.ok(call, `expected secrets set request, got ${JSON.stringify(calls)}`);
+    assert.equal(JSON.parse(call.init.body).value, "dev-stdin-secret");
+  });
+
+  it("secrets set rejects inline value plus --stdin without leaking the value", async () => {
+    const { run } = await import("./cli/lib/secrets.mjs");
+    const err = await expectExit1(() =>
+      run("set", ["prj_test123", "API_KEY", "super-secret-inline", "--stdin"]));
+
+    assert.equal(err.code, "BAD_USAGE");
+    assert.deepEqual(err.details.sources, ["inline", "--stdin"]);
+    assert.equal(calls.length, 0, "conflicting sources must not hit the network");
+    assert.doesNotMatch(JSON.stringify(err), /super-secret-inline/);
+  });
+
+  it("secrets set --stdin rejects empty stdin before network", async () => {
+    const { run } = await import("./cli/lib/secrets.mjs");
+    const err = await withMockStdin([], () =>
+      expectExit1(() => run("set", ["prj_test123", "EMPTY_STDIN_SECRET", "--stdin"])));
+
+    assert.equal(err.code, "BAD_USAGE");
+    assert.match(err.message, /stdin/i);
+    assert.equal(calls.length, 0, "empty stdin must not hit the network");
   });
 });
 

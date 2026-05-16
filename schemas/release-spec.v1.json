@@ -1,0 +1,394 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://run402.com/schemas/release-spec.v1.json",
+  "title": "Run402 ReleaseSpec v1",
+  "description": "Authoring schema for Run402 unified deploy manifests accepted by run402 deploy apply, MCP deploy, and @run402/sdk/node manifest helpers. The SDK-native ReleaseSpec uses project; CLI/MCP manifests may use project_id.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "Editor metadata only. Manifest adapters strip this before deploy planning."
+    },
+    "project": {
+      "type": "string",
+      "description": "SDK-native project id."
+    },
+    "project_id": {
+      "type": "string",
+      "description": "CLI/MCP-friendly project id, normalized to ReleaseSpec.project."
+    },
+    "idempotency_key": {
+      "type": "string"
+    },
+    "idempotencyKey": {
+      "type": "string"
+    },
+    "base": {
+      "$ref": "#/$defs/base"
+    },
+    "database": {
+      "$ref": "#/$defs/database"
+    },
+    "secrets": {
+      "$ref": "#/$defs/secrets"
+    },
+    "functions": {
+      "$ref": "#/$defs/functions"
+    },
+    "site": {
+      "$ref": "#/$defs/site"
+    },
+    "subdomains": {
+      "$ref": "#/$defs/subdomains"
+    },
+    "routes": {
+      "oneOf": [
+        { "type": "null" },
+        { "$ref": "#/$defs/routes" }
+      ]
+    },
+    "checks": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/smokeCheck" }
+    }
+  },
+  "anyOf": [
+    { "required": ["project"] },
+    { "required": ["project_id"] }
+  ],
+  "$defs": {
+    "base": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["release"],
+          "properties": {
+            "release": {
+              "enum": ["current", "empty"]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["release_id"],
+          "properties": {
+            "release_id": { "type": "string" }
+          }
+        }
+      ]
+    },
+    "database": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "migrations": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/migration" }
+        },
+        "expose": {
+          "type": "object",
+          "description": "Authorization/expose manifest. See https://run402.com/schemas/manifest.v1.json for its schema."
+        },
+        "zero_downtime": {
+          "type": "boolean"
+        }
+      }
+    },
+    "migration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id"],
+      "properties": {
+        "id": { "type": "string" },
+        "checksum": { "type": "string" },
+        "sql": { "type": "string" },
+        "sql_ref": { "$ref": "#/$defs/contentRef" },
+        "sql_path": { "type": "string" },
+        "sql_file": { "type": "string" },
+        "transaction": { "enum": ["required", "none"] }
+      }
+    },
+    "secrets": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "require": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "delete": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "functions": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "replace": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/functionSpec" }
+        },
+        "patch": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "set": {
+              "type": "object",
+              "additionalProperties": { "$ref": "#/$defs/functionSpec" }
+            },
+            "delete": {
+              "type": "array",
+              "items": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "functionSpec": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "FunctionSpec. schedule is a sibling of runtime/source/files/config, not config.schedule. Unified deploy manifests do not accept deps in this version; bundle dependencies into source or use run402 functions deploy.",
+      "properties": {
+        "runtime": { "enum": ["node22"] },
+        "source": { "$ref": "#/$defs/fileEntry" },
+        "files": { "$ref": "#/$defs/fileSet" },
+        "entrypoint": { "type": "string" },
+        "config": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "timeoutSeconds": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "memoryMb": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        },
+        "schedule": {
+          "oneOf": [
+            { "type": "string", "description": "5-field cron expression." },
+            { "type": "null", "description": "Remove an existing schedule in patch mode." }
+          ]
+        }
+      }
+    },
+    "site": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["replace"],
+          "properties": {
+            "replace": { "$ref": "#/$defs/fileSet" },
+            "public_paths": { "$ref": "#/$defs/sitePublicPaths" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["patch"],
+          "properties": {
+            "patch": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "put": { "$ref": "#/$defs/fileSet" },
+                "delete": {
+                  "type": "array",
+                  "items": { "type": "string" }
+                }
+              }
+            },
+            "public_paths": { "$ref": "#/$defs/sitePublicPaths" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["public_paths"],
+          "properties": {
+            "public_paths": { "$ref": "#/$defs/sitePublicPaths" }
+          }
+        }
+      ]
+    },
+    "sitePublicPaths": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["mode"],
+          "properties": {
+            "mode": { "const": "implicit" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["mode", "replace"],
+          "properties": {
+            "mode": { "const": "explicit" },
+            "replace": {
+              "type": "object",
+              "additionalProperties": { "$ref": "#/$defs/publicStaticPath" }
+            }
+          }
+        }
+      ]
+    },
+    "publicStaticPath": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["asset"],
+      "properties": {
+        "asset": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Release static asset path, not a public URL."
+        },
+        "cache_class": {
+          "$ref": "#/$defs/staticCacheClass"
+        }
+      }
+    },
+    "staticCacheClass": {
+      "type": "string",
+      "description": "Known values: html, immutable_versioned, revalidating_asset. Unknown future strings may be returned by observability APIs and should be preserved."
+    },
+    "subdomains": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "set": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "add": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "remove": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "routes": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["replace"],
+      "properties": {
+        "replace": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/route" }
+        }
+      }
+    },
+    "route": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["pattern", "target"],
+      "properties": {
+        "pattern": { "type": "string" },
+        "methods": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "enum": ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
+          }
+        },
+        "target": {
+          "oneOf": [
+            { "$ref": "#/$defs/functionRouteTarget" },
+            { "$ref": "#/$defs/staticRouteTarget" }
+          ]
+        },
+        "acknowledge_readonly": {
+          "const": true,
+          "description": "Durable acknowledgement for intentional read-only final-wildcard function routes. Valid only when target.type is function, pattern ends in /*, and methods are limited to GET/HEAD."
+        }
+      }
+    },
+    "functionRouteTarget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "name"],
+      "properties": {
+        "type": { "const": "function" },
+        "name": { "type": "string" }
+      }
+    },
+    "staticRouteTarget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "file"],
+      "properties": {
+        "type": { "const": "static" },
+        "file": {
+          "type": "string",
+          "description": "Relative materialized release static asset path, not a public path."
+        }
+      }
+    },
+    "smokeCheck": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "fileSet": {
+      "type": "object",
+      "additionalProperties": { "$ref": "#/$defs/fileEntry" }
+    },
+    "fileEntry": {
+      "oneOf": [
+        { "type": "string" },
+        { "$ref": "#/$defs/contentRef" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["path"],
+          "properties": {
+            "path": { "type": "string" },
+            "contentType": { "type": "string" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["data"],
+          "properties": {
+            "data": {
+              "oneOf": [
+                { "type": "string" },
+                { "$ref": "#/$defs/contentRef" }
+              ]
+            },
+            "encoding": { "enum": ["utf-8", "base64"] },
+            "contentType": { "type": "string" }
+          }
+        }
+      ]
+    },
+    "contentRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sha256", "size"],
+      "properties": {
+        "sha256": { "type": "string" },
+        "size": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "contentType": { "type": "string" },
+        "integrity": { "type": "string" }
+      }
+    }
+  }
+}

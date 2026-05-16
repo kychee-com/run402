@@ -255,8 +255,34 @@ describe("CLI --help contract", () => {
     assert.match(result.stdout, /verified custom domains/);
     assert.match(result.stdout, /\/functions\/v1\/:name remains API-key protected/);
     assert.match(result.stdout, /ROUTED_RESPONSE_TOO_LARGE/);
+    assert.match(result.stdout, /--final-only/);
+    assert.match(result.stdout, /--allow-warning <code>/);
+    assert.match(result.stdout, /--stdin/);
     assert.doesNotMatch(result.stdout, /"routes"\s*:\s*\{\s*"\/api\/\*"/);
     assert.doesNotMatch(result.stdout, /routedHttp\.json\(\{ ok: true, path: event\.path \}\)/);
+  });
+
+  it("secrets set help includes stdin-safe input", async () => {
+    const result = await runCli(["secrets", "set", "--help"]);
+    assertHelp(result, "run402 secrets set --help", {
+      expectHeadingStartsWith: "run402 secrets set",
+    });
+    assert.match(result.stdout, /--stdin/);
+    assert.match(result.stdout, /--file -/);
+    assert.match(result.stdout, /\/dev\/stdin/);
+    assert.match(result.stdout, /shell history/);
+  });
+
+  it("tier status help mentions function authoring caps", async () => {
+    const result = await runCli(["tier", "status", "--help"]);
+    assertHelp(result, "run402 tier status --help", {
+      expectHeadingStartsWith: "run402 tier status",
+    });
+    assert.match(result.stdout, /max timeout/);
+    assert.match(result.stdout, /max memory/);
+    assert.match(result.stdout, /max scheduled functions/);
+    assert.match(result.stdout, /minimum cron interval/);
+    assert.match(result.stdout, /scheduled-function usage/);
   });
 
   for (const [cmd, { shared, specific }] of Object.entries(MATRIX)) {

@@ -13,6 +13,7 @@
     "core/dist",
     "sdk/dist",
     "sdk/core-dist",
+    "schemas",
     "README.md"
   ],
   "workspaces": [

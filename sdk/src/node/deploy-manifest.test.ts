@@ -13,6 +13,7 @@ import {
 describe("Node deploy manifest helpers", () => {
   it("normalizes MCP/CLI manifest fields into an SDK ReleaseSpec", async () => {
     const normalized = await normalizeDeployManifest({
+      $schema: "https://run402.com/schemas/release-spec.v1.json",
       project_id: "prj_manifest",
       idempotency_key: "idem_1",
       site: {
@@ -48,6 +49,8 @@ describe("Node deploy manifest helpers", () => {
     });
 
     assert.equal(normalized.spec.project, "prj_manifest");
+    assert.equal("$schema" in normalized.spec, false);
+    assert.equal(normalized.manifest.$schema, "https://run402.com/schemas/release-spec.v1.json");
     assert.equal(normalized.idempotencyKey, "idem_1");
     assert.equal(
       normalized.spec.site &&
@@ -109,6 +112,33 @@ describe("Node deploy manifest helpers", () => {
           pattern: "/events",
           methods: ["GET", "HEAD"],
           target: { type: "static", file: "events.html" },
+        },
+      ],
+    });
+  });
+
+  it("preserves read-only wildcard route acknowledgement through manifest normalization", async () => {
+    const normalized = await normalizeDeployManifest({
+      project_id: "prj_manifest",
+      routes: {
+        replace: [
+          {
+            pattern: "/share/*",
+            methods: ["GET", "HEAD"],
+            target: { type: "function", name: "share" },
+            acknowledge_readonly: true,
+          },
+        ],
+      },
+    });
+
+    assert.deepEqual(normalized.spec.routes, {
+      replace: [
+        {
+          pattern: "/share/*",
+          methods: ["GET", "HEAD"],
+          target: { type: "function", name: "share" },
+          acknowledge_readonly: true,
         },
       ],
     });
@@ -229,6 +259,7 @@ describe("Node deploy manifest helpers", () => {
         site: { public_paths: { mode: "implicit", replace: { "/events": { asset: "events.html" } } } },
       },
       {
+        "$schema": "https://run402.com/schemas/release-spec.v1.json",
         project_id: "prj_manifest",
         site: { public_paths: { mode: "explicit", replace: { "/events": { headers: {} } } } },
       },
@@ -319,6 +350,27 @@ describe("Node deploy manifest helpers", () => {
           routes: { replace: [{ pattern: "/api/*", methods: ["GET", "GET"], target: { type: "function", name: "api" } }] },
         },
         /duplicate method/,
+      ],
+      [
+        {
+          project_id: "prj_manifest",
+          routes: { replace: [{ pattern: "/share", methods: ["GET"], target: { type: "function", name: "share" }, acknowledge_readonly: true }] },
+        },
+        /GET\/HEAD final-wildcard function routes/,
+      ],
+      [
+        {
+          project_id: "prj_manifest",
+          routes: { replace: [{ pattern: "/share/*", methods: ["GET", "POST"], target: { type: "function", name: "share" }, acknowledge_readonly: true }] },
+        },
+        /GET\/HEAD final-wildcard function routes/,
+      ],
+      [
+        {
+          project_id: "prj_manifest",
+          routes: { replace: [{ pattern: "/share/*", methods: ["GET"], target: { type: "function", name: "share" }, acknowledge_readonly: false }] },
+        },
+        /must be true/,
       ],
     ] as const) {
       await assert.rejects(

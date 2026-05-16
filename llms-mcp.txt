@@ -55,7 +55,7 @@ Important fields:
 Safe retry policy:
 - `retryable: true` + `safe_to_retry: true` → retry, ideally with the same idempotency key for mutations
 - `safe_to_retry: true` alone is not a retry signal; it means duplicate-safe, not likely-to-succeed. Lifecycle-gated writes, auth token exchanges, and passkey verifies need the indicated action before retrying.
-- The `deploy` tool uses SDK `deploy.apply`, which already re-plans and retries safe `BASE_RELEASE_CONFLICT` races for omitted/current-base specs. A handled retry appears as a `deploy.retry` progress event; exhausted retries include `attempts`, `max_retries`, and `last_retry_code`. Do not hand-roll this specific deploy race loop around MCP calls.
+- The `deploy` tool uses SDK `deploy.apply`, which already re-plans and retries safe `BASE_RELEASE_CONFLICT` races for omitted/current-base specs. A handled retry appears as a `deploy.retry` progress event; exhausted retries include `attempts`, `max_retries`, and `last_retry_code`. Static activation/config failures reported from `activation_pending` throw promptly with gateway metadata instead of polling until timeout. Do not hand-roll this specific deploy race loop around MCP calls.
 - 5xx with `safe_to_retry: false`, or `mutation_state` is `committed` / `partial` / `unknown` → inspect or poll state before retrying. For deploys, use `deploy_resume` / event polling.
 - Lifecycle / payment errors → take the action, don't blind-retry. `PROJECT_FROZEN` → `set_tier`; `PAYMENT_REQUIRED` → submit payment, then retry.
 
@@ -178,11 +178,11 @@ Route warning recovery:
 
 | Code | Meaning | Recover |
 |------|---------|---------|
-| `PUBLIC_ROUTED_FUNCTION` | Function becomes public same-origin browser ingress. | Review app auth, CSRF, CORS/`OPTIONS`, and cookies; direct `/functions/v1/:name` remains protected. Use `allow_warnings: true` only after review. |
+| `PUBLIC_ROUTED_FUNCTION` | Function becomes public same-origin browser ingress. | Review app auth, CSRF, CORS/`OPTIONS`, and cookies; direct `/functions/v1/:name` remains protected. Prefer `allow_warning_codes: ["PUBLIC_ROUTED_FUNCTION"]` after review; broad `allow_warnings: true` only after every warning was reviewed. |
 | `ROUTE_TARGET_CARRIED_FORWARD` | Carried-forward route still targets a base-release function. | Inspect `deploy_release_active` and deploy a replacement route table if needed. |
 | `ROUTE_SHADOWS_STATIC_PATH` / `WILDCARD_ROUTE_SHADOWS_STATIC_PATHS` | Dynamic route shadows direct public static content. | Inspect warning details, active routes, `static_public_paths`, and resolve diagnostics; confirm only when intentional. |
 | `METHOD_SPECIFIC_ROUTE_ALLOWS_GET_STATIC_FALLBACK` | Unmatched methods can serve static content. | Confirm fallback is intended or add method coverage. |
-| `WILDCARD_ROUTE_EXCLUDES_MUTATION_METHODS` | Wildcard function route only allows `GET`/`HEAD`. | Add mutation methods such as `POST`, omit methods for an API prefix, or confirm it is read-only. |
+| `WILDCARD_ROUTE_EXCLUDES_MUTATION_METHODS` | Wildcard function route only allows `GET`/`HEAD`. | Add mutation methods such as `POST`, omit methods for an API prefix, or set `acknowledge_readonly: true` on an intentionally read-only GET/HEAD final-wildcard function route. Use `allow_warning_codes` as a reviewed escape hatch; broad `allow_warnings` is last resort. |
 | `ROUTE_TABLE_NEAR_LIMIT` | Route table is near a limit. | Consolidate or remove routes. |
 | `ROUTES_NOT_ENABLED` | Routes are disabled for the project/environment. | Deploy without `routes` or request enablement; direct function invoke is not a browser-route substitute. |
 | `STATIC_ALIAS_SHADOWS_STATIC_PATH` / `STATIC_ALIAS_RELATIVE_ASSET_RISK` | Route-only static alias conflicts with a direct public static path or has relative-asset risk. | Inspect active routes, `static_public_paths`, and the backing `asset_path`; prefer `site.public_paths` for ordinary clean URLs and confirm only when intentional. |
@@ -219,6 +219,7 @@ export default async (req: Request) => {
 - **`db(req)`** — caller-context. Default choice.
 - **`adminDb()`** — bypass RLS. Use only for audit logs, cron cleanup, webhook handlers, platform-authored writes.
 - **`adminDb().sql(query, params?)`** — raw parameterized SQL, always bypass RLS.
+- **`ai.generateImage({ prompt, aspect? })`** — live image generation from deployed functions, billed/rate-limited against the project billing account through `RUN402_SERVICE_KEY`. Aspects: `square`, `landscape`, `portrait`; result: `{ image, content_type, aspect }`. For public routed functions, authenticate/rate-limit app users before calling it.
 
 Fluent surface on both: `.select() / .eq() / .neq() / .gt() / .lt() / .gte() / .lte() / .like() / .ilike() / .in() / .order() / .limit() / .offset()` for reads; `.insert(obj | obj[]) / .update(obj) / .delete()` for writes (chain with `.eq()` to scope; return arrays of affected rows).
 
@@ -256,7 +257,7 @@ For TypeScript autocomplete, `npm install @run402/functions` in your editor's pr
 - **`claim_subdomain`** — claim `<name>.run402.com`. Idempotent; auto-reassigns to latest deployment on subsequent deploys. Params: `project_id`, `name`, `deployment_id?`.
 - **`list_subdomains`** / **`delete_subdomain`** — manage subdomains.
 - **`add_custom_domain`** / **`list_custom_domains`** / **`check_domain_status`** / **`remove_custom_domain`** — point your own domain at a Run402 subdomain.
-- **`deploy`** — the unified deploy primitive (v1.34+). Pass a `ReleaseSpec` with replace-vs-patch semantics per resource and value-free `secrets.require` / `secrets.delete`. Returns the deploy operation and structured warnings; stops before upload/commit on confirmation-required warnings unless `allow_warnings` is true.
+- **`deploy`** — the unified deploy primitive (v1.34+). Pass a `ReleaseSpec` with replace-vs-patch semantics per resource and value-free `secrets.require` / `secrets.delete`. Returns the deploy operation and structured warnings; stops before upload/commit on confirmation-required warnings unless every blocking code is covered by `allow_warning_codes` or broad `allow_warnings`.
 - **`deploy_resume`** — resume a deploy operation by `operation_id`.
 - **`deploy_list`** — list recent deploy operations. Params: `project_id`, `limit?`, `cursor?`.
 - **`deploy_events`** — fetch recorded events for a deploy operation. Params: `project_id`, `operation_id`.
@@ -330,7 +331,7 @@ Tier rate limits: prototype 10/day, hobby 50/day, team 500/day. Unique recipient
 ### Tier & billing
 
 - **`set_tier`** — subscribe / renew / upgrade. Auto-detects action. x402 payment. Params: `tier` (`prototype` / `hobby` / `team`).
-- **`tier_status`** — current tier and lease expiry.
+- **`tier_status`** — current tier, lease, usage, and function authoring caps when returned.
 - **`get_quote`** — pricing (free, no auth).
 - **`tier_checkout`** — Stripe checkout (alternative to x402). Params: `tier`, `email?` OR `wallet?`.
 - **`create_email_billing_account`** — Stripe-only billing account by email (no wallet). Params: `email`. Idempotent.
@@ -389,6 +390,8 @@ These work before `init` — useful for evaluating Run402 or distinguishing plat
 | Function memory | 128 MB | 256 MB | 512 MB |
 | Secrets | 10 | 50 | 200 |
 | Scheduled fns | 1 / 15min | 3 / 5min | 10 / 1min |
+
+Deploy preflights literal unified-deploy timeout, memory, cron interval, and scheduled-count values before plan/upload when caps are known; failures are structured `BAD_FIELD` errors with field/value/tier/limit details.
 
 Project rate limit: **100 req/sec**. Exceeding returns 429 with `retry_after`. Each project runs in its own Postgres schema; cross-schema access is blocked.
 

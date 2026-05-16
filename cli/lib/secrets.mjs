@@ -9,11 +9,12 @@ Usage:
   run402 secrets <subcommand> [args...]
 
 Subcommands:
-  set    <id> <key> <value> [--file <path>]  Set a secret on a project
+  set    <id> <key> <value> [--file <path>|--stdin]  Set a secret on a project
   list   <id>                  List all secrets for a project
   delete <id> <key>            Delete a secret from a project
 
 Examples:
+  printf %s "$STRIPE_KEY" | run402 secrets set prj_abc123 STRIPE_KEY --stdin
   run402 secrets set prj_abc123 STRIPE_KEY --file ./.secrets/stripe-key
   run402 secrets set prj_abc123 TLS_CERT --file cert.pem
   run402 secrets list prj_abc123
@@ -29,23 +30,28 @@ const SUB_HELP = {
   set: `run402 secrets set — Set a secret on a project
 
 Usage:
-  run402 secrets set <id> <key> <value> [--file <path>]
+  run402 secrets set <id> <key> <value>
   run402 secrets set <id> <key> --file <path>
+  run402 secrets set <id> <key> --stdin
 
 Arguments:
   <id>                Project ID (from 'run402 projects list')
   <key>               Secret key name (exposed as process.env.<key>)
-  <value>             Inline secret value (omit if using --file)
+  <value>             Inline secret value (omit if using --file or --stdin)
 
 Options:
   --file <path>       Read the secret value from a file instead of inline
+                      Use --file - or --file /dev/stdin to read from stdin
+  --stdin             Read the secret value from stdin until EOF
 
 Notes:
   - Secrets are injected as process.env in serverless functions
   - Values are write-only; 'list' cannot verify values by hash
-  - Prefer --file for real secrets so values do not land in shell history
+  - Prefer --stdin or --file for real secrets so values do not land in shell history
 
 Examples:
+  printf %s "$STRIPE_KEY" | run402 secrets set prj_abc123 STRIPE_KEY --stdin
+  cat ./.secrets/stripe-key | run402 secrets set prj_abc123 STRIPE_KEY --file -
   run402 secrets set prj_abc123 STRIPE_KEY --file ./.secrets/stripe-key
   run402 secrets set prj_abc123 TLS_CERT --file cert.pem
 `,
@@ -80,22 +86,39 @@ Examples:
 async function set(projectId, key, args = []) {
   const parsedArgs = normalizeArgv(args);
   const valueFlags = ["--file"];
-  assertKnownFlags(parsedArgs, [...valueFlags, "--help", "-h"], valueFlags);
+  assertKnownFlags(parsedArgs, [...valueFlags, "--stdin", "--help", "-h"], valueFlags);
   const values = positionalArgs(parsedArgs, valueFlags);
   if (values.length > 1) {
     fail({ code: "BAD_USAGE", message: `Unexpected argument for secrets set: ${values[1]}` });
   }
   const file = flagValue(parsedArgs, "--file");
-  if (file && values.length > 0) {
-    fail({ code: "BAD_USAGE", message: "Provide either an inline value or --file, not both." });
+  const useStdinFlag = parsedArgs.includes("--stdin");
+  const fileIsStdin = isStdinAlias(file);
+  const sources = [];
+  if (values.length === 1) sources.push("inline");
+  if (file) sources.push(fileIsStdin ? "--file stdin" : "--file");
+  if (useStdinFlag) sources.push("--stdin");
+  if (sources.length > 1) {
+    fail({
+      code: "BAD_USAGE",
+      message: "Provide exactly one secret value source.",
+      details: { sources },
+      hint: "Use one of: inline value, --file <path>, or --stdin.",
+    });
   }
-  if (file) validateRegularFile(file, "--file");
-  const val = file ? readFileSync(file, "utf-8") : values.length === 1 ? values[0] : undefined;
+  if (file && !fileIsStdin) validateRegularFile(file, "--file");
+  const val = useStdinFlag || fileIsStdin
+    ? await readStdinSecret()
+    : file
+      ? readFileSync(file, "utf-8")
+      : values.length === 1
+        ? values[0]
+        : undefined;
   if (val === undefined) {
     fail({
       code: "BAD_USAGE",
       message: "Missing secret value.",
-      hint: "Provide inline or use --file <path>",
+      hint: "Pipe a value to --stdin, use --file <path>, or provide an inline value only when shell history exposure is acceptable.",
     });
   }
   try {
@@ -104,6 +127,40 @@ async function set(projectId, key, args = []) {
   } catch (err) {
     reportSdkError(err);
   }
+}
+
+function isStdinAlias(file) {
+  return file === "-" || file === "/dev/stdin";
+}
+
+async function readStdinSecret() {
+  if (process.stdin?.isTTY) {
+    failMissingStdin();
+  }
+  const chunks = [];
+  for await (const chunk of process.stdin) {
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk)));
+  }
+  if (chunks.length === 0) {
+    failMissingStdin();
+  }
+  const value = Buffer.concat(chunks).toString("utf-8");
+  if (value.length === 0) {
+    failMissingStdin();
+  }
+  return value;
+}
+
+function failMissingStdin() {
+  fail({
+    code: "BAD_USAGE",
+    message: "Missing secret value on stdin.",
+    hint: "Pipe a value, use --file <path>, or provide an inline value only when shell history exposure is acceptable.",
+    next_actions: [
+      "printf %s \"$VALUE\" | run402 secrets set <project> <KEY> --stdin",
+      "run402 secrets set <project> <KEY> --file <path>",
+    ],
+  });
 }
 
 async function list(projectId, args = []) {

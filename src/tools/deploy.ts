@@ -166,6 +166,10 @@ const routeEntry = z
       .optional()
       .describe("Optional method allowlist. Omit to allow all supported methods; do not pass an empty array."),
     target: routeTarget,
+    acknowledge_readonly: z
+      .literal(true)
+      .optional()
+      .describe("Durable acknowledgement for intentional GET/HEAD final-wildcard function routes such as /share/*."),
   })
   .strict();
 
@@ -279,6 +283,12 @@ export const deploySchema = {
     .describe(
       "Continue past plan warnings that require confirmation. Default false: the tool stops before upload/commit so an agent can set missing secrets or inspect warnings.",
     ),
+  allow_warning_codes: z
+    .array(z.string())
+    .optional()
+    .describe(
+      "Continue past specific reviewed plan warning codes. Prefer this to allow_warnings when only one known warning class is intentional.",
+    ),
 };
 
 type FileMapInput = z.infer<typeof fileMap>;
@@ -307,6 +317,7 @@ type DeployArgs = {
   routes?: ReleaseSpec["routes"];
   idempotency_key?: string;
   allow_warnings?: boolean;
+  allow_warning_codes?: string[];
 };
 
 export async function handleDeploy(
@@ -325,7 +336,7 @@ export async function handleDeploy(
   let spec: ReleaseSpec;
   let idempotencyKey: string | undefined;
   try {
-    const { allow_warnings: _allowWarnings, ...manifestArgs } = args;
+    const { allow_warnings: _allowWarnings, allow_warning_codes: _allowWarningCodes, ...manifestArgs } = args;
     const normalized = await normalizeDeployManifest(manifestArgs);
     spec = normalized.spec;
     idempotencyKey = normalized.idempotencyKey;
@@ -338,6 +349,7 @@ export async function handleDeploy(
       onEvent,
       idempotencyKey,
       allowWarnings: args.allow_warnings === true,
+      allowWarningCodes: args.allow_warning_codes,
     });
 
     if (result.urls.deployment_id) {
@@ -404,6 +416,13 @@ export async function handleDeploy(
       const warnings = warningsFromDeployError(err);
       if (warnings.length > 0) {
         lines.push(``, renderWarningsMarkdown(warnings));
+        const unacknowledgedCodes = unacknowledgedWarningCodes(err);
+        if (unacknowledgedCodes.length > 0) {
+          lines.push(
+            ``,
+            `Unacknowledged warning code${unacknowledgedCodes.length === 1 ? "" : "s"}: ${unacknowledgedCodes.map((code) => `\`${code}\``).join(", ")}`,
+          );
+        }
       } else {
         const guidance = routeGuidanceMarkdownForCodes([err.code]);
         if (guidance) lines.push(``, guidance);
@@ -441,6 +460,13 @@ function warningsFromDeployError(err: Run402DeployError): WarningEntry[] {
   return Array.isArray(warnings) ? warnings as WarningEntry[] : [];
 }
 
+function unacknowledgedWarningCodes(err: Run402DeployError): string[] {
+  const body = err.body;
+  if (!body || typeof body !== "object" || Array.isArray(body)) return [];
+  const codes = (body as { unacknowledged_warning_codes?: unknown }).unacknowledged_warning_codes;
+  return Array.isArray(codes) ? codes.filter((code): code is string => typeof code === "string") : [];
+}
+
 function renderWarningsMarkdown(warnings: WarningEntry[]): string {
   const lines = [`### Plan warnings`];
   for (const warning of warnings) {
@@ -459,9 +485,15 @@ function renderWarningsMarkdown(warnings: WarningEntry[]): string {
       `Set the missing secret value${keys.length === 1 ? "" : "s"}${suffix} with \`set_secret\`, then retry \`deploy\` with \`secrets.require\`.`,
     );
   } else if (warnings.some((w) => w.requires_confirmation)) {
+    const codes = Array.from(new Set(warnings
+      .filter((w) => w.requires_confirmation)
+      .map((w) => w.code)
+      .filter(Boolean)));
     lines.push(
       ``,
-      `Review these warnings before retrying with \`allow_warnings: true\`.`,
+      codes.length > 0
+        ? `Review these warnings before retrying with \`allow_warning_codes: ${JSON.stringify(codes)}\`; use \`allow_warnings: true\` only after reviewing every warning.`
+        : `Review these warnings before retrying with \`allow_warnings: true\`.`,
     );
   }
   const routeGuidance = routeWarningRows(warnings);
@@ -494,7 +526,7 @@ const ROUTE_WARNING_GUIDANCE: Record<string, { meaning: string; recovery: string
   },
   WILDCARD_ROUTE_EXCLUDES_MUTATION_METHODS: {
     meaning: "A wildcard function route only allows GET/HEAD.",
-    recovery: "Add the mutation methods the function supports, omit methods for an API prefix that should accept all supported methods, or retry with allow_warnings only when the prefix is intentionally read-only.",
+    recovery: "Add the mutation methods the function supports, omit methods for an API prefix that should accept all supported methods, set acknowledge_readonly: true when the prefix is intentionally read-only, or use allow_warning_codes as a reviewed escape hatch.",
   },
   ROUTE_TABLE_NEAR_LIMIT: {
     meaning: "The route table is close to the project or gateway limit.",

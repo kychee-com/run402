@@ -14,6 +14,8 @@ import { fileURLToPath } from "node:url";
 import { homedir } from "node:os";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+const RELEASE_SPEC_SCHEMA_URL = "https://run402.com/schemas/release-spec.v1.json";
+const RELEASE_SPEC_SCHEMA_PATH = join(__dirname, "schemas/release-spec.v1.json");
 
 // ─── Source-file parsers ─────────────────────────────────────────────────────
 
@@ -1324,6 +1326,155 @@ describe("llms.txt alignment", { skip: !llmsTxtAvailable && "~/Developer/run402-
       [],
       `API endpoints in SURFACE not documented in llms.txt`,
     );
+  });
+});
+
+// ─── ReleaseSpec schema hosting contract ────────────────────────────────────
+
+const PRIVATE_SITE_SCHEMA_DIR = join(homedir(), "Developer/run402-private/site/schemas");
+const PRIVATE_SITE_RELEASE_SPEC_SCHEMA_PATH = join(PRIVATE_SITE_SCHEMA_DIR, "release-spec.v1.json");
+const privateSiteSchemasAvailable = existsSync(PRIVATE_SITE_SCHEMA_DIR);
+
+describe("ReleaseSpec schema hosting contract", () => {
+  const schemaText = readFileSync(RELEASE_SPEC_SCHEMA_PATH, "utf-8");
+  const schema = JSON.parse(schemaText) as {
+    $id?: string;
+    properties?: Record<string, unknown>;
+    $defs?: Record<string, unknown>;
+  };
+
+  it("checked-in schema is anchored at the hosted URL", () => {
+    assert.equal(schema.$id, RELEASE_SPEC_SCHEMA_URL);
+    assert.ok(schema.properties?.$schema, "schema must allow top-level $schema metadata");
+    assert.ok(schema.$defs?.functionSpec, "schema must define FunctionSpec");
+  });
+
+  it("agent docs point at the hosted schema URL", () => {
+    const docs = [
+      readFileSync(join(__dirname, "sdk/llms-sdk.txt"), "utf-8"),
+      readFileSync(join(__dirname, "cli/llms-cli.txt"), "utf-8"),
+    ].join("\n");
+    assert.ok(docs.includes(RELEASE_SPEC_SCHEMA_URL), "llms SDK/CLI docs must mention the ReleaseSpec schema URL");
+  });
+
+  it(
+    "private-site hosted copy matches the checked-in schema",
+    { skip: !privateSiteSchemasAvailable && "~/Developer/run402-private/site/schemas not found" },
+    () => {
+      assert.ok(
+        existsSync(PRIVATE_SITE_RELEASE_SPEC_SCHEMA_PATH),
+        `missing hosted schema copy at ${PRIVATE_SITE_RELEASE_SPEC_SCHEMA_PATH}`,
+      );
+      assert.deepEqual(
+        JSON.parse(readFileSync(PRIVATE_SITE_RELEASE_SPEC_SCHEMA_PATH, "utf-8")),
+        schema,
+        "copy schemas/release-spec.v1.json to run402-private/site/schemas/release-spec.v1.json",
+      );
+    },
+  );
+});
+
+// ─── Agent deploy-friction docs drift guards ────────────────────────────────
+
+describe("agent deploy-friction docs stay visible", () => {
+  const publicDocs: Array<{ file: string; patterns: Array<[RegExp, string]> }> = [
+    {
+      file: "cli/llms-cli.txt",
+      patterns: [
+        [/release-spec\.v1\.json/, "ReleaseSpec schema URL"],
+        [/--stdin/, "secret stdin guidance"],
+        [/--allow-warning <code>/, "warning-code acknowledgement flag"],
+        [/--final-only/, "final-only deploy output"],
+        [/Function authoring limits by tier/, "tier function caps"],
+        [/BAD_FIELD/, "structured tier preflight errors"],
+        [/ai\.generateImage/, "runtime image helper"],
+      ],
+    },
+    {
+      file: "sdk/llms-sdk.txt",
+      patterns: [
+        [/FunctionSpec/, "FunctionSpec docs"],
+        [/schedule.*sibling of `config`/s, "schedule placement"],
+        [/allowWarningCodes/, "SDK warning-code acknowledgement"],
+        [/acknowledge_readonly/, "route-level readonly acknowledgement"],
+        [/function_limits/, "tier status function caps"],
+        [/BAD_FIELD/, "structured tier preflight errors"],
+        [/ai\.generateImage/, "runtime image helper"],
+      ],
+    },
+    {
+      file: "llms-mcp.txt",
+      patterns: [
+        [/allow_warning_codes/, "MCP warning-code acknowledgement"],
+        [/acknowledge_readonly/, "MCP readonly route acknowledgement"],
+        [/function authoring caps|Function timeout/s, "tier caps"],
+        [/ai\.generateImage/, "runtime image helper"],
+      ],
+    },
+    {
+      file: "SKILL.md",
+      patterns: [
+        [/allow_warning_codes/, "MCP skill warning-code acknowledgement"],
+        [/acknowledge_readonly/, "MCP skill readonly route acknowledgement"],
+        [/Function authoring limits/, "tier caps"],
+        [/ai\.generateImage/, "runtime image helper"],
+      ],
+    },
+    {
+      file: "openclaw/SKILL.md",
+      patterns: [
+        [/--allow-warning/, "OpenClaw warning-code acknowledgement"],
+        [/--final-only/, "OpenClaw final-only output"],
+        [/acknowledge_readonly/, "OpenClaw readonly route acknowledgement"],
+        [/BAD_FIELD/, "tier preflight structured error"],
+        [/ai\.generateImage/, "runtime image helper"],
+      ],
+    },
+    {
+      file: "sdk/README.md",
+      patterns: [
+        [/allowWarningCodes/, "SDK README warning-code acknowledgement"],
+        [/BAD_FIELD/, "SDK README tier preflight error"],
+        [/activation_pending/, "SDK README activation failure classifier"],
+      ],
+    },
+    {
+      file: "functions/README.md",
+      patterns: [
+        [/ai\.generateImage/, "functions runtime image helper"],
+        [/project runtime image endpoint/, "project-billed runtime image endpoint"],
+      ],
+    },
+  ];
+
+  for (const { file, patterns } of publicDocs) {
+    it(`${file} documents agent deploy-friction surfaces`, () => {
+      const text = readFileSync(join(__dirname, file), "utf-8");
+      for (const [pattern, label] of patterns) {
+        assert.match(text, pattern, `${file} must document ${label}`);
+      }
+    });
+  }
+
+  it("ReleaseSpec schema and SDK types expose acknowledgement/tier surfaces", () => {
+    const schemaText = readFileSync(RELEASE_SPEC_SCHEMA_PATH, "utf-8");
+    assert.match(schemaText, /acknowledge_readonly/, "schema must document readonly route acknowledgement");
+    assert.match(schemaText, /schedule/, "schema must document function schedules");
+
+    const deployTypes = readFileSync(join(__dirname, "sdk/src/namespaces/deploy.types.ts"), "utf-8");
+    assert.match(deployTypes, /allowWarningCodes/, "ApplyOptions must expose allowWarningCodes");
+    assert.match(deployTypes, /acknowledge_readonly/, "RouteSpec must expose acknowledge_readonly");
+
+    const tierTypes = readFileSync(join(__dirname, "sdk/src/namespaces/tier.ts"), "utf-8");
+    for (const field of [
+      "max_function_timeout_seconds",
+      "max_function_memory_mb",
+      "max_scheduled_functions",
+      "min_cron_interval_minutes",
+      "current_scheduled_functions",
+    ]) {
+      assert.match(tierTypes, new RegExp(field), `tier status type must expose ${field}`);
+    }
   });
 });
 

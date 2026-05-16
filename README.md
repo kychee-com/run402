@@ -262,6 +262,8 @@ export default async (req: Request) => {
 
 `@run402/functions` is auto-bundled into deployed code; install it in your editor for full TypeScript autocomplete (also works at build time for static-site generation with `RUN402_SERVICE_KEY` + `RUN402_PROJECT_ID` set).
 
+`ai.generateImage({ prompt, aspect? })` is available inside deployed functions for live app flows such as generated avatars or OG images. It calls the project runtime image endpoint with `RUN402_SERVICE_KEY`, so deployed functions do not need allowance wallets or x402 signing code. Aspects are `square`, `landscape`, and `portrait`; the result is `{ image, content_type, aspect }` with base64 image bytes. Runtime image generation is billed, rate-limited, and spend-capped against the project billing account; public routed functions should authenticate/rate-limit their users before calling it.
+
 **Calling from outside a function entirely** (raw `curl`/`fetch` from CI scripts, bash bootstrappers, non-TS runtimes) — service-key writes go to `/admin/v1/rest/<table>`, not `/rest/v1/*`. The gateway 403s service-role tokens on `/rest/v1/*` so a leaked key can't silently bypass RLS, which means `curl ... > /dev/null` against the wrong path looks like success but writes nothing. SQL-shaped admin work uses `POST /projects/v1/admin/:id/sql` (or `run402 projects sql`).
 
 ```bash
@@ -481,7 +483,7 @@ The full MCP surface — every tool is a thin shim over an SDK call.
 | Tool | Description |
 |------|-------------|
 | `set_tier` | Subscribe / renew / upgrade a tier (auto-detects action). x402 payment. |
-| `tier_status` | Current tier and lease expiry. |
+| `tier_status` | Current tier, lease expiry, usage, and function authoring caps when returned. |
 | `get_quote` | Tier pricing (free, no auth). |
 | `tier_checkout` | Stripe checkout for a tier (alternative to x402). |
 | `create_email_billing_account` / `link_wallet_to_account` | Email-based billing accounts; hybrid Stripe + x402. |

@@ -58,6 +58,13 @@ describe("tier_status tool", () => {
             api_calls_limit: 500_000,
             storage_bytes_limit: 250_000_000,
           },
+          function_limits: {
+            max_function_timeout_seconds: 10,
+            max_function_memory_mb: 128,
+            max_scheduled_functions: 1,
+            min_cron_interval_minutes: 15,
+            current_scheduled_functions: 1,
+          },
         }),
         { status: 200, headers: { "Content-Type": "application/json" } },
       )) as typeof fetch;
@@ -67,6 +74,10 @@ describe("tier_status tool", () => {
     assert.ok(text.includes("prototype"));
     assert.ok(text.includes("yes"));
     assert.ok(text.includes("2026-03-21"));
+    assert.ok(text.includes("max function timeout"));
+    assert.ok(text.includes("10s"));
+    assert.ok(text.includes("128 MB"));
+    assert.ok(text.includes("15 min"));
     assert.equal(result.isError, undefined);
   });
 
