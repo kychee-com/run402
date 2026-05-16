@@ -27,7 +27,8 @@ Subcommands:
   validate-expose [id] --file <path>      Validate a manifest file without mutating the project
   get-expose   [id]                       Get the current authorization manifest
   delete [id] --confirm                   Immediately and irreversibly delete a project (cascade purge) and remove from local state. Requires --confirm.
-  pin   [id]                              Pin a project (admin only; uses admin allowance wallet)
+  pin   [id]                              Pin a project (owner/admin; idempotent)
+  unpin [id]                              Unpin a project (owner/admin; idempotent)
   promote-user [id] <email>               Promote a user to project_admin role
   demote-user  [id] <email>               Demote a user from project_admin role
 
@@ -522,6 +523,22 @@ async function pin(projectId) {
   }
 }
 
+async function unpin(projectId) {
+  if (!projectId) {
+    fail({
+      code: "BAD_USAGE",
+      message: "Missing <project_id>.",
+      hint: "run402 projects unpin <project_id>",
+    });
+  }
+  try {
+    const data = await getSdk().projects.unpin(projectId);
+    console.log(JSON.stringify(data, null, 2));
+  } catch (err) {
+    reportSdkError(err);
+  }
+}
+
 async function promoteUser(projectId, email) {
   if (!email) {
     fail({
@@ -618,6 +635,7 @@ export async function run(sub, args) {
     case "get-expose":   { const { projectId } = resolvePositionalProject(args, { rejectBareFirst: true }); await getExpose(projectId); break; }
     case "delete":    { const { projectId, rest } = resolvePositionalProject(args, { rejectBareFirst: true }); await deleteProject(projectId, rest); break; }
     case "pin":       { const { projectId } = resolvePositionalProject(args, { rejectBareFirst: true }); await pin(projectId); break; }
+    case "unpin":     { const { projectId } = resolvePositionalProject(args, { rejectBareFirst: true }); await unpin(projectId); break; }
     case "promote-user": { const { projectId, rest } = resolvePositionalProject(args); await promoteUser(projectId, rest[0]); break; }
     case "demote-user":  { const { projectId, rest } = resolvePositionalProject(args); await demoteUser(projectId, rest[0]); break; }
     default:

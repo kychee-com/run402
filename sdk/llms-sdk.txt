@@ -601,6 +601,7 @@ validateExpose(manifest: ExposeManifest | string, opts?: { project?: string; pro
 applyExpose(id: string, manifest: ExposeManifest): Promise<unknown>
 getExpose(id: string): Promise<ExposeManifest>
 pin(id: string): Promise<PinResult>
+unpin(id: string): Promise<PinResult>
 getQuote(): Promise<QuoteResult>
 info(id: string): Promise<ProjectInfo>
 keys(id: string): Promise<ProjectKeys>
@@ -626,7 +627,7 @@ apply(spec, opts?): Promise<DeployResult>
 start(spec, opts?): Promise<DeployOperation>
 resume(operationId, opts?): Promise<DeployResult>
 status(operationId, opts?: { project? }): Promise<OperationSnapshot>
-list(opts: { project, limit?, cursor? }): Promise<DeployListResponse>
+list(opts: { project, limit?, before?, cursor?, status?, since?, project_id?, includeTotal? }): Promise<DeployListResponse>
 events(operationId, opts: { project }): Promise<DeployEventsResponse>   // recorded so far
 resolve(opts: DeployResolveOptions): Promise<DeployResolveResponse>     // URL-first or host/path public diagnostics
 getRelease(opts: { project, releaseId, siteLimit? }): Promise<ReleaseInventory>

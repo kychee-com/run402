@@ -6,7 +6,7 @@ export const pinProjectSchema = {
   project_id: z
     .string()
     .describe(
-      "The project ID to pin. Admin only — uses the configured allowance wallet for run402 platform admin auth; project owners authenticating with service_key or a non-admin SIWX wallet will receive 403 admin_required.",
+      "The project ID to pin. If the project exists in local credentials, the SDK uses its service key; otherwise it uses the configured allowance wallet for run402 platform admin auth.",
     ),
 };
 
@@ -19,7 +19,12 @@ export async function handlePinProject(
       content: [
         {
           type: "text",
-          text: `Project \`${args.project_id}\` pinned successfully.${body.message ? ` ${body.message}` : ""}`,
+          text: [
+            `Project \`${args.project_id}\` pinned successfully.`,
+            typeof body.pinned === "boolean" ? `pinned=${body.pinned}` : null,
+            typeof body.was_pinned === "boolean" ? `was_pinned=${body.was_pinned}` : null,
+            body.message ?? null,
+          ].filter(Boolean).join(" "),
         },
       ],
     };

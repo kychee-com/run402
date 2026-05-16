@@ -132,14 +132,19 @@ Output:
 const LIST_HELP = `run402 deploy list — List recent deploy operations for a project
 
 Usage:
-  run402 deploy list [--project <id>] [--limit <n>]
+  run402 deploy list [--project <id>] [--limit <n>] [--before <cursor>] [--status <s>] [--since <iso>] [--project-id <id>] [--include-total]
 
 Options:
-  --project <id>          Project ID to list operations for (default: active project)
+  --project <id>          Project ID used for apikey auth (default: active project)
   --limit <n>             Maximum number of operations to return
+  --before <cursor>       Pagination cursor from next_cursor
+  --status <s>            Filter operations by status
+  --since <iso>           Filter operations updated/created since an ISO timestamp
+  --project-id <id>       Filter operations by project_id when the gateway supports it
+  --include-total         Ask the gateway to include a total count
 
 Output:
-  stdout: { "status": "ok", "operations": [...], "cursor": "..." | null }
+  stdout: { "status": "ok", "operations": [...], "has_more": true|false, "next_cursor": "..." | null, "total"?: n }
 `;
 
 const EVENTS_HELP = `run402 deploy events — Fetch the recorded event stream for a deploy operation
@@ -831,15 +836,21 @@ async function listCmd(args) {
   const parsed = parseDeploySubcommandArgs(args, {
     command: "deploy list",
     help: LIST_HELP,
-    valueFlags: ["--project", "--limit"],
+    valueFlags: ["--project", "--limit", "--before", "--status", "--since", "--project-id"],
+    booleanFlags: ["--include-total"],
   });
   expectPositionals(parsed.positionals, {
-    command: "run402 deploy list [--project <id>] [--limit <n>]",
+    command: "run402 deploy list [--project <id>] [--limit <n>] [--before <cursor>]",
     max: 0,
   });
   const opts = {
     project: parsed.flags["--project"] ?? null,
     limit: parsed.flags["--limit"] === undefined ? null : parsePositiveInt(parsed.flags["--limit"], "--limit"),
+    before: parsed.flags["--before"] ?? null,
+    status: parsed.flags["--status"] ?? null,
+    since: parsed.flags["--since"] ?? null,
+    projectId: parsed.flags["--project-id"] ?? null,
+    includeTotal: Boolean(parsed.flags["--include-total"]),
   };
 
   const project = resolveProjectId(opts.project);
@@ -848,6 +859,11 @@ async function listCmd(args) {
   try {
     const sdkOpts = { project };
     if (opts.limit !== null) sdkOpts.limit = opts.limit;
+    if (opts.before !== null) sdkOpts.before = opts.before;
+    if (opts.status !== null) sdkOpts.status = opts.status;
+    if (opts.since !== null) sdkOpts.since = opts.since;
+    if (opts.projectId !== null) sdkOpts.project_id = opts.projectId;
+    if (opts.includeTotal) sdkOpts.includeTotal = true;
     const result = await getSdk().deploy.list(sdkOpts);
     console.log(JSON.stringify({ status: "ok", ...result }, null, 2));
   } catch (err) {

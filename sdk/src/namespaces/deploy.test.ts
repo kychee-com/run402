@@ -4109,6 +4109,8 @@ describe("Deploy.list", () => {
           updated_at: "2026-04-29T00:00:01Z",
         },
       ],
+      has_more: false,
+      next_cursor: null,
       cursor: null,
     };
     w.setHandler((req) => {
@@ -4121,7 +4123,7 @@ describe("Deploy.list", () => {
 
     assert.equal(result.operations.length, 1);
     assert.equal(result.operations[0].operation_id, "op_1");
-    assert.equal(result.cursor, null);
+    assert.equal(result.next_cursor, null);
     assert.equal(w.requests.length, 1);
     assert.equal(w.requests[0].path, "/deploy/v2/operations");
   });
@@ -4134,20 +4136,37 @@ describe("Deploy.list", () => {
     assert.equal(w.requests[0].path, "/deploy/v2/operations?limit=5");
   });
 
-  it("forwards cursor as a query string", async () => {
+  it("forwards cursor as before for pagination back-compat", async () => {
     const w = makeWiring();
     w.setHandler(() => ({ operations: [], cursor: null }));
     const deploy = new Deploy(w.client);
     await deploy.list({ project: "prj_test", cursor: "op_cursor" });
-    assert.equal(w.requests[0].path, "/deploy/v2/operations?cursor=op_cursor");
+    assert.equal(w.requests[0].path, "/deploy/v2/operations?before=op_cursor");
   });
 
-  it("forwards limit and cursor as query strings", async () => {
+  it("forwards limit and before as query strings", async () => {
     const w = makeWiring();
-    w.setHandler(() => ({ operations: [], cursor: null }));
+    w.setHandler(() => ({ operations: [], next_cursor: null }));
     const deploy = new Deploy(w.client);
-    await deploy.list({ project: "prj_test", limit: 5, cursor: "op_cursor" });
-    assert.equal(w.requests[0].path, "/deploy/v2/operations?limit=5&cursor=op_cursor");
+    await deploy.list({ project: "prj_test", limit: 5, before: "op_cursor" });
+    assert.equal(w.requests[0].path, "/deploy/v2/operations?limit=5&before=op_cursor");
+  });
+
+  it("forwards operation filters and include_total", async () => {
+    const w = makeWiring();
+    w.setHandler(() => ({ operations: [], has_more: false, next_cursor: null, total: 0 }));
+    const deploy = new Deploy(w.client);
+    await deploy.list({
+      project: "prj_test",
+      status: "ready",
+      since: "2026-05-16T00:00:00Z",
+      project_id: "prj_filter",
+      includeTotal: true,
+    });
+    assert.equal(
+      w.requests[0].path,
+      "/deploy/v2/operations?status=ready&since=2026-05-16T00%3A00%3A00Z&project_id=prj_filter&include_total=true",
+    );
   });
 
   it("rejects invalid limit values with a LocalError before issuing a request", async () => {

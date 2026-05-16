@@ -30,6 +30,14 @@ export interface TierStatusResult {
     api_calls_limit: number;
     storage_bytes_limit: number;
   };
+  projects?: Array<{
+    id: string;
+    name: string;
+    tier: string;
+    status: string;
+    pinned: boolean;
+    created_at: string;
+  }>;
   /** Function authoring caps returned by newer gateways. Unknown future
    *  limit fields are preserved so callers can display or branch on them. */
   function_limits?: TierFunctionLimits;

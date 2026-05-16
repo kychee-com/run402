@@ -413,9 +413,26 @@ describe("projects.getSchema", () => {
 });
 
 describe("projects.pin", () => {
-  it("POSTs /projects/v1/admin/:id/pin with admin-wallet auth, not service key auth", async () => {
+  it("POSTs /projects/v1/admin/:id/pin with service-key auth when the project is local", async () => {
     const { fetch, calls } = mockFetch(() =>
-      jsonResponse({ status: "pinned", project_id: "prj_external" }),
+      jsonResponse({ status: "pinned", project_id: "prj_known", pinned: true, was_pinned: false }),
+    );
+    const sdk = makeSdk(makeCreds(), fetch);
+    const result = await sdk.projects.pin("prj_known");
+
+    assert.equal(calls[0]!.url, "https://api.example.test/projects/v1/admin/prj_known/pin");
+    assert.equal(calls[0]!.method, "POST");
+    assert.equal(calls[0]!.headers.Authorization, "Bearer service_xxx");
+    assert.equal(calls[0]!.headers["SIGN-IN-WITH-X"], undefined);
+    assert.equal(calls[0]!.headers["X-Admin-Mode"], undefined);
+    assert.equal(result.status, "pinned");
+    assert.equal(result.pinned, true);
+    assert.equal(result.was_pinned, false);
+  });
+
+  it("falls back to admin-wallet auth for external project pinning", async () => {
+    const { fetch, calls } = mockFetch(() =>
+      jsonResponse({ status: "pinned", project_id: "prj_external", pinned: true, was_pinned: false }),
     );
     const sdk = makeSdk(makeCreds({
       async getProject() {
@@ -430,6 +447,44 @@ describe("projects.pin", () => {
     assert.equal(calls[0]!.headers.Authorization, undefined);
     assert.equal(calls[0]!.headers["X-Admin-Mode"], "1");
     assert.equal(result.status, "pinned");
+    assert.equal(result.pinned, true);
+    assert.equal(result.was_pinned, false);
+  });
+
+  it("POSTs /projects/v1/admin/:id/unpin with service-key auth when the project is local", async () => {
+    const { fetch, calls } = mockFetch(() =>
+      jsonResponse({ status: "unpinned", project_id: "prj_known", pinned: false, was_pinned: true }),
+    );
+    const sdk = makeSdk(makeCreds(), fetch);
+    const result = await sdk.projects.unpin("prj_known");
+
+    assert.equal(calls[0]!.url, "https://api.example.test/projects/v1/admin/prj_known/unpin");
+    assert.equal(calls[0]!.method, "POST");
+    assert.equal(calls[0]!.headers.Authorization, "Bearer service_xxx");
+    assert.equal(calls[0]!.headers["SIGN-IN-WITH-X"], undefined);
+    assert.equal(calls[0]!.headers["X-Admin-Mode"], undefined);
+    assert.equal(result.pinned, false);
+    assert.equal(result.was_pinned, true);
+  });
+
+  it("falls back to admin-wallet auth for external project unpinning", async () => {
+    const { fetch, calls } = mockFetch(() =>
+      jsonResponse({ status: "unpinned", project_id: "prj_external", pinned: false, was_pinned: true }),
+    );
+    const sdk = makeSdk(makeCreds({
+      async getProject() {
+        return null;
+      },
+    }), fetch);
+    const result = await sdk.projects.unpin("prj_external");
+
+    assert.equal(calls[0]!.url, "https://api.example.test/projects/v1/admin/prj_external/unpin");
+    assert.equal(calls[0]!.method, "POST");
+    assert.equal(calls[0]!.headers["SIGN-IN-WITH-X"], "test-siwx");
+    assert.equal(calls[0]!.headers.Authorization, undefined);
+    assert.equal(calls[0]!.headers["X-Admin-Mode"], "1");
+    assert.equal(result.pinned, false);
+    assert.equal(result.was_pinned, true);
   });
 });
 

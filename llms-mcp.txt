@@ -259,7 +259,7 @@ For TypeScript autocomplete, `npm install @run402/functions` in your editor's pr
 - **`add_custom_domain`** / **`list_custom_domains`** / **`check_domain_status`** / **`remove_custom_domain`** — point your own domain at a Run402 subdomain.
 - **`deploy`** — the unified deploy primitive (v1.34+). Pass a `ReleaseSpec` with replace-vs-patch semantics per resource and value-free `secrets.require` / `secrets.delete`. Returns the deploy operation and structured warnings; stops before upload/commit on confirmation-required warnings unless every blocking code is covered by `allow_warning_codes` or broad `allow_warnings`.
 - **`deploy_resume`** — resume a deploy operation by `operation_id`.
-- **`deploy_list`** — list recent deploy operations. Params: `project_id`, `limit?`, `cursor?`.
+- **`deploy_list`** — list recent deploy operations. Params: `project_id`, `limit?`, `before?`, `cursor?`, `status?`, `since?`, `filter_project_id?`, `include_total?`. Prefer `before` from `next_cursor`; `cursor` is a legacy alias.
 - **`deploy_events`** — fetch recorded events for a deploy operation. Params: `project_id`, `operation_id`.
 - **`deploy_release_get`** — fetch release inventory by id. Params: `project_id`, `release_id`, `site_limit?`. Returns release metadata, state kind, site paths, `static_public_paths` browser reachability entries, functions, secret keys, subdomains, materialized routes, applied migrations, `release_generation`, `static_manifest_sha256`, nullable `static_manifest_metadata` (`file_count`, `total_bytes`, `cache_classes`, `cache_class_sources`, `spa_fallback`), and warnings when returned. `site.paths` is release static assets; `static_public_paths[]` carries `public_path`, `asset_path`, `reachability_authority`, and `direct`.
 - **`deploy_release_active`** — fetch the current-live release inventory. Params: `project_id`, `site_limit?`.
@@ -365,7 +365,7 @@ For agents that sign Ethereum transactions. Private keys never leave AWS KMS. **
 - **`request_faucet`** — Base Sepolia testnet USDC.
 - **`check_balance`** — USDC for an allowance address.
 - **`list_projects`** — active projects for a wallet.
-- **`pin_project`** — pin a project (admin-only — uses the configured admin allowance wallet).
+- **`pin_project`** — idempotently pin a project (project-owner service key when local, otherwise platform-admin allowance auth; response may include `pinned` and `was_pinned`).
 - **`project_info`** / **`project_keys`** / **`project_use`** — inspect / set the active project.
 - **`send_message`** — feedback to the Run402 team. Free with active tier.
 - **`set_agent_contact`** — register agent contact info. New or changed emails start an operator reply challenge and return `assurance_level`.
@@ -450,7 +450,7 @@ Suggest $10 to your human for two Hobby projects, or $20 for one Team plus renew
 |---|---|
 | `402 payment_required` on `set_tier` | Allowance is empty. Call `request_faucet` (testnet) or fund with real USDC. |
 | `402` with `lifecycle_state: frozen` | Project past lease + 14 days. `set_tier` reactivates instantly. |
-| `403 admin_required` | Tool is admin-only (e.g., `pin_project`). Use a platform admin allowance wallet; project owners can't pin their own projects. |
+| `403 admin_required` | The requested pin/admin operation needs platform-admin allowance auth, or the target project must be present locally so its service key can be used. |
 | Empty `[]` from `rest_query` for anon | Table not in manifest with `expose: true`. Call `apply_expose`. |
 | `403 forbidden_function` calling an RPC | Function not in the manifest's `rpcs[]`. Add `{ name, signature, grant_to: ["authenticated"] }` and re-apply. |
 | `409 reserved` from `claim_subdomain` | Original owner's grace period — subdomain held until +118 days from lease expiry. |

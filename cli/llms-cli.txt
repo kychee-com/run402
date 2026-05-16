@@ -288,7 +288,7 @@ The gateway re-runs only the failed phase forward — SQL is never replayed.
 **Inspect deploy history**: list recent operations for a project, or pull the recorded phase-event stream for a specific operation (after the fact — for live progress events during an in-flight deploy, the `apply` command already streams them on stderr):
 
 ```bash
-run402 deploy list --project prj_... --limit 10
+run402 deploy list --project prj_... --limit 10 --before op_... --status ready --include-total
 run402 deploy events <operation_id> --project prj_...
 run402 deploy release active --project prj_... --site-limit 5000
 run402 deploy release get rel_... --project prj_...
@@ -298,7 +298,7 @@ run402 deploy resolve --project prj_123 --url https://example.com/events?utm=x#h
 run402 deploy resolve --project prj_123 --host example.com --path /events --method GET
 ```
 
-`list` returns `{ operations: [...], cursor }`; the SDK and MCP `deploy_list` surface accept that cursor for pagination when it is non-null. `events` returns the same `DeployEvent` shapes that `apply` emits inline.
+`list` returns `{ operations: [...], has_more, next_cursor, total? }`; pass `--before <next_cursor>` for the next page. The SDK and MCP `deploy_list` surface also accept the older `cursor` name as an alias. `events` returns the same `DeployEvent` shapes that `apply` emits inline.
 
 `release active` and `release get` return `{ "status": "ok", "release": ReleaseInventory }`. Inventories include release metadata, `state_kind` (`current_live`, `effective`, or `desired_manifest`), site paths (capped by `--site-limit`), `static_public_paths` when returned, functions, secret keys only, subdomains, materialized routes, applied migrations, `release_generation`, `static_manifest_sha256`, nullable `static_manifest_metadata`, and inventory warnings when returned. `site.paths` is the release static asset inventory; `static_public_paths[]` is the browser reachability inventory with `public_path`, `asset_path`, `reachability_authority`, `direct`, cache class, and content type. `static_manifest_metadata: null` means unavailable, not zero; when present it includes `file_count`, `total_bytes`, `cache_classes`, `cache_class_sources`, and `spa_fallback`.
 
@@ -611,7 +611,7 @@ Tier and quotas are per **billing account** (not per project) — `set` is accou
 - `run402 projects rest <id> <table> "<query>"`
 - `run402 projects keys <id>` — print anon_key + service_key as JSON
 - `run402 projects costs <id> [--window <24h|7d|30d|90d>]` — admin-only per-project finance: revenue, direct cost, margin, and cost breakdown. Uses the configured allowance wallet for admin auth; `RUN402_ADMIN_COOKIE='run402_admin=...'` is an optional browser-session override.
-- `run402 projects pin <id>` — pin a project (admin only; uses the configured allowance wallet for admin auth; project owners get 403 admin_required)
+- `run402 projects pin <id>` / `run402 projects unpin <id>` — idempotently pin or unpin a project. Local projects use the project service key; external projects fall back to the configured allowance wallet for platform-admin auth. Responses may include `pinned` and `was_pinned`.
 - `run402 projects promote-user <id> <email>` — promote a user to project_admin role
 - `run402 projects demote-user <id> <email>` — demote a user from project_admin role
 - `run402 projects <usage|schema> <id>`
@@ -631,7 +631,7 @@ User auth: password + Google OAuth. See "User Auth" section below.
 ### deploy
 - `run402 deploy apply --manifest app.json [--project <id>] [--quiet|--final-only] [--allow-warning <code> ...] [--allow-warnings]` — unified deploy primitive (v1.34+)
 - `run402 deploy resume <operation_id> [--quiet]` — re-run a stuck operation forward
-- `run402 deploy list [--project <id>] [--limit <n>]` — list recent deploy operations
+- `run402 deploy list [--project <id>] [--limit <n>] [--before <cursor>] [--status <s>] [--since <iso>] [--project-id <id>] [--include-total]` — list recent deploy operations with optional pagination/filtering
 - `run402 deploy events <operation_id> [--project <id>]` — fetch the recorded event stream for an operation
 - `run402 deploy release get <release_id> [--project <id>] [--site-limit <n>]` — fetch release inventory
 - `run402 deploy release active [--project <id>] [--site-limit <n>]` — fetch current-live release inventory

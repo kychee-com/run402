@@ -283,6 +283,7 @@ const SURFACE: Capability[] = [
 
   // ── Admin ──────────────────────────────────────────────────────────────
   { id: "pin_project",     endpoint: "POST /projects/v1/admin/:id/pin",    mcp: "pin_project",      cli: "projects:pin",     openclaw: "projects:pin" },
+  { id: "unpin_project",   endpoint: "POST /projects/v1/admin/:id/unpin",  mcp: null,               cli: "projects:unpin",   openclaw: "projects:unpin" },
   { id: "promote_user",    endpoint: "POST /projects/v1/admin/:id/promote-user", mcp: "promote_user", cli: "projects:promote-user", openclaw: "projects:promote-user" },
   { id: "demote_user",     endpoint: "POST /projects/v1/admin/:id/demote-user",  mcp: "demote_user",  cli: "projects:demote-user",  openclaw: "projects:demote-user" },
   { id: "admin_project_finance", endpoint: "GET /admin/api/finance/project/:id", mcp: null, cli: "projects:costs", openclaw: "projects:costs" },
@@ -480,6 +481,7 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
 
   // Admin
   pin_project: "projects.pin",
+  unpin_project: "projects.unpin",
   promote_user: "auth.promote",
   demote_user: "auth.demote",
   admin_project_finance: "admin.getProjectFinance",

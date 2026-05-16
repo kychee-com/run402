@@ -319,15 +319,21 @@ export class Deploy {
    * List recent deploy operations for a project. The endpoint requires
    * `apikey` auth, so a project id is required — accepted as a bare string
    * (matches `r.functions.list(projectId)` and friends) or as `{ project,
-   * limit?, cursor? }`. `limit` and `cursor` are forwarded to the gateway
-   * as query strings when set; the gateway picks a default page otherwise.
+   * limit?, before?, status?, since?, project_id?, includeTotal? }`.
+   * `cursor` remains accepted as an alias for `before` for callers still
+   * using the previous pagination name.
    */
   async list(
     opts: string | DeployListOptions,
   ): Promise<DeployListResponse> {
     const project = typeof opts === "string" ? opts : opts?.project;
     const limit = typeof opts === "string" ? undefined : opts?.limit;
-    const cursor = typeof opts === "string" ? undefined : opts?.cursor;
+    const before = typeof opts === "string" ? undefined : opts?.before ?? opts?.cursor;
+    const status = typeof opts === "string" ? undefined : opts?.status;
+    const since = typeof opts === "string" ? undefined : opts?.since;
+    const projectIdFilter = typeof opts === "string" ? undefined : opts?.project_id;
+    const includeTotal =
+      typeof opts === "string" ? undefined : opts?.includeTotal ?? opts?.include_total;
     if (!project) {
       throw new LocalError(
         "r.deploy.list requires a project id (as a string or { project: 'prj_...' })",
@@ -342,7 +348,11 @@ export class Deploy {
     const headers = await apikeyHeaders(this.client, project);
     const qs = new URLSearchParams();
     if (normalizedLimit !== undefined) qs.set("limit", String(normalizedLimit));
-    if (cursor !== undefined) qs.set("cursor", cursor);
+    if (before !== undefined) qs.set("before", before);
+    if (status !== undefined) qs.set("status", status);
+    if (since !== undefined) qs.set("since", since);
+    if (projectIdFilter !== undefined) qs.set("project_id", projectIdFilter);
+    if (includeTotal !== undefined) qs.set("include_total", includeTotal ? "true" : "false");
     const path =
       qs.toString().length > 0
         ? `/deploy/v2/operations?${qs.toString()}`
