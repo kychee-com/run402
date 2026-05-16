@@ -1,17 +1,34 @@
 import { describe, it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
+import { mkdtempSync, rmSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import { handleCheckBalance } from "./check-balance.js";
+import { _resetSdk } from "../sdk.js";
 
 const originalFetch = globalThis.fetch;
 const WALLET_UPPER = "0xABCDEF0123456789ABCDEF0123456789ABCDEF01";
 const WALLET_LOWER = "0xabcdef0123456789abcdef0123456789abcdef01";
 
+let tempDir: string;
+
 beforeEach(() => {
+  // Isolate from the developer's real ~/.config/run402/allowance.json so
+  // the Node SDK's createLazyPaidFetch() resolves to the no-allowance
+  // fallback path. Without this, `setupPaidFetch()` builds an x402-wrapped
+  // fetch around the FIRST mocked globalThis.fetch and caches it on the
+  // SDK singleton — subsequent tests' mocks never get called.
+  tempDir = mkdtempSync(join(tmpdir(), "run402-check-balance-test-"));
+  process.env.RUN402_CONFIG_DIR = tempDir;
   process.env.RUN402_API_BASE = "https://test-api.run402.com";
+  _resetSdk();
 });
 
 afterEach(() => {
+  _resetSdk();
   globalThis.fetch = originalFetch;
+  rmSync(tempDir, { recursive: true, force: true });
+  delete process.env.RUN402_CONFIG_DIR;
   delete process.env.RUN402_API_BASE;
 });
 

@@ -116,6 +116,10 @@ run402 tier set hobby        # $5 for 30 days (real money)
 run402 tier set team         # $20 for 30 days (real money)
 ```
 
+Tier is per **billing account**, not per project. One subscribe / renew / upgrade applies immediately to every project on the account, and `api_calls` / `storage_bytes` quotas are enforced against the pooled total across every project on the account. Multi-wallet accounts (via `run402 billing link-wallet`) share that same pool. Quota-denial error envelopes include `details.scope: "account" | "project"` -- `"account"` for the pooled path, `"project"` for the orphan fallback (project whose billing account row was purged but cascade has not yet run).
+
+`run402 tier set` refetches `/tiers/v1/status` after the call and includes the refreshed account-pool snapshot as `status_after` in the JSON output so you can see the new pooled `api_calls` / `storage_bytes` totals in one step.
+
 The server auto-detects the action based on your allowance state:
 - No tier or expired -> subscribe
 - Same tier, active -> renew (extends from current expiry)
@@ -128,7 +132,9 @@ Check your tier status:
 run402 tier status
 ```
 
-**After subscribing**, you can create unlimited projects, deploy unlimited sites, and fork apps -- all free with your allowance signature. Only image generation ($0.03/image) has a per-call cost.
+`tier status` `pool_usage` sums `api_calls` and `storage_bytes` across every project on the billing account (across every linked wallet), not just the requesting wallet's projects.
+
+**After subscribing**, you can create unlimited projects, deploy unlimited sites, and fork apps -- all free with your allowance signature, subject to the account-pooled api_calls and storage_bytes caps for your tier. Only image generation ($0.03/image) has a per-call cost.
 
 ---
 
@@ -591,6 +597,8 @@ run402 subdomains claim my-app
 - `run402 allowance history [--limit <n>]`
 
 ### tier
+Tier and quotas are per **billing account** (not per project) — `set` is account-wide, `status.pool_usage` is the pooled total across every project on the account. `set` refetches status after the call and includes it as `status_after`.
+
 - `run402 tier status`
 - `run402 tier set <prototype|hobby|team>`
 
@@ -1006,7 +1014,7 @@ Inbound (opt-in): inbound-enable → add MX record to DNS → replies to `<slug>
 Email-based billing accounts, Stripe tier checkout, and email packs. Pay run402 with credit cards instead of crypto, or scale email sending beyond tier caps.
 
 - `run402 billing create-email <email>` — create an email-based billing account (Stripe-only, no wallet). Sends a verification email. Idempotent.
-- `run402 billing link-wallet <account_id> <wallet>` — link a wallet to an email account for hybrid Stripe + x402 access
+- `run402 billing link-wallet <account_id> <wallet>` — link a wallet to an email account for hybrid Stripe + x402 access. Response includes a `pool_implications` block (account `tier`, `projects_in_pool_count`, `account_api_calls_current`, `account_storage_bytes_current`, `tier_limits`, `over_limit`) — inspect `over_limit` before linking a wallet whose usage might push the merged pool past the tier cap.
 - `run402 billing tier-checkout <tier> [--email <e> | --wallet <w>]` — subscribe/renew/upgrade a tier (prototype $0.10 / hobby $5 / team $20) via Stripe. Returns a checkout URL.
 - `run402 billing buy-email-pack [--email <e> | --wallet <w>]` — buy a $5 email pack (10,000 emails, never expire). Returns a Stripe checkout URL.
 - `run402 billing auto-recharge <account_id> <on|off> [--threshold <n>]` — auto-repurchase $5 packs when credits drop below threshold. Requires saved Stripe payment method.

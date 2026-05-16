@@ -388,6 +388,47 @@ describe("billing.linkWallet", () => {
     );
     assert.equal(calls.length, 0);
   });
+
+  it("returns the v1.46 pool_implications block when the gateway includes it", async () => {
+    const { fetch } = mockFetch(() =>
+      jsonResponse({
+        status: "linked",
+        billing_account_id: "ba_test",
+        wallet: WALLET_LOWER,
+        pool_implications: {
+          tier: "hobby",
+          projects_in_pool_count: 3,
+          account_api_calls_current: 12345,
+          account_storage_bytes_current: 314572800,
+          tier_limits: { api_calls: 5000000, storage_bytes: 5368709120 },
+          over_limit: false,
+        },
+      }),
+    );
+    const sdk = makeSdk(fetch);
+
+    const result = await sdk.billing.linkWallet("ba_test", WALLET_LOWER);
+
+    assert.equal(result.status, "linked");
+    assert.equal(result.billing_account_id, "ba_test");
+    assert.equal(result.wallet, WALLET_LOWER);
+    assert.equal(result.pool_implications?.tier, "hobby");
+    assert.equal(result.pool_implications?.projects_in_pool_count, 3);
+    assert.equal(result.pool_implications?.account_api_calls_current, 12345);
+    assert.equal(result.pool_implications?.over_limit, false);
+    assert.equal(result.pool_implications?.tier_limits.api_calls, 5000000);
+    assert.equal(result.pool_implications?.tier_limits.storage_bytes, 5368709120);
+  });
+
+  it("returns the pre-v1.46 envelope unchanged when pool_implications is absent", async () => {
+    const { fetch } = mockFetch(() => jsonResponse({ status: "ok" }));
+    const sdk = makeSdk(fetch);
+
+    const result = await sdk.billing.linkWallet("ba_test", WALLET_LOWER);
+
+    assert.equal(result.status, "ok");
+    assert.equal(result.pool_implications, undefined);
+  });
 });
 
 describe("billing tier checkout identifiers", () => {

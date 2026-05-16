@@ -236,7 +236,7 @@ For TypeScript autocomplete, `npm install @run402/functions` in your editor's pr
 - **`validate_manifest`** — validate the auth/expose manifest without applying it. Params: `manifest` (object or JSON string), `migration_sql?`, `project_id?`. Returns fenced JSON with `hasErrors`, `errors`, and `warnings`; validation findings are data, not MCP errors.
 - **`get_expose`** — return the current manifest. Params: `project_id`. Returns the manifest plus `source: "applied" | "introspected"`.
 - **`get_schema`** — introspect tables, columns, types, constraints, RLS policies. Params: `project_id`.
-- **`get_usage`** — per-project usage report (API calls, storage, lease expiry). Params: `project_id`.
+- **`get_usage`** — per-project usage counters (API calls, storage, lease expiry). Params: `project_id`. The reported tier and capacity limits are **account-level** (pooled across every project on the same billing account); use `tier_status` for the pooled total.
 - **`promote_user`** / **`demote_user`** — manage `project_admin` role on a project user. Params: `project_id`, `email`.
 - **`delete_project`** — cascade purge. Params: `project_id`. Irreversible.
 
@@ -330,12 +330,14 @@ Tier rate limits: prototype 10/day, hobby 50/day, team 500/day. Unique recipient
 
 ### Tier & billing
 
-- **`set_tier`** — subscribe / renew / upgrade. Auto-detects action. x402 payment. Params: `tier` (`prototype` / `hobby` / `team`).
-- **`tier_status`** — current tier, lease, usage, and function authoring caps when returned.
+Tier is per **billing account**, not per project. `set_tier` applies immediately to every project on the account. `api_calls` / `storage_bytes` / `emailsPerDay` / `maxFunctions` / `maxScheduledFunctions` / `maxSecrets` are pooled across every non-terminal project on the account; per-function caps (`functionTimeoutSec`, `functionMemoryMb`, `minScheduleIntervalMinutes`) stay per-instance. Multi-wallet accounts (via `link_wallet_to_account`) share the same pool. Quota-denial error envelopes include `details.scope: "account" | "project"` — `"account"` for the pooled path, `"project"` for the orphan fallback (project whose billing account row was purged but cascade has not yet run).
+
+- **`set_tier`** — subscribe / renew / upgrade. Auto-detects action. x402 payment. Params: `tier` (`prototype` / `hobby` / `team`). Account-wide effect.
+- **`tier_status`** — current account tier, lease, and `pool_usage` pooled across every project on the account; function authoring caps when returned.
 - **`get_quote`** — pricing (free, no auth).
 - **`tier_checkout`** — Stripe checkout (alternative to x402). Params: `tier`, `email?` OR `wallet?`.
 - **`create_email_billing_account`** — Stripe-only billing account by email (no wallet). Params: `email`. Idempotent.
-- **`link_wallet_to_account`** — link a wallet to an email account for hybrid Stripe + x402.
+- **`link_wallet_to_account`** — link a wallet to an email account for hybrid Stripe + x402. Response surfaces a `pool_implications` block (account `tier`, `projects_in_pool_count`, `account_api_calls_current`, `account_storage_bytes_current`, `tier_limits`, `over_limit`) so an agent can warn before merging a wallet whose existing usage would push the pool past the cap.
 - **`billing_history`** — ledger.
 - **`buy_email_pack`** — $5 / 10,000 emails (never expire). Activates only when the tier daily limit is exhausted AND a verified custom sender domain exists.
 - **`set_auto_recharge`** — auto-buy email packs when credits run low.

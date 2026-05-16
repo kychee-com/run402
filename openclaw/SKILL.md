@@ -594,14 +594,17 @@ run402 contracts delete <wallet_id> --confirm              # 7-day KMS deletion 
 
 ## Tier and billing
 
+Tier is per **billing account**, not per project. `run402 tier set` is account-wide — one subscribe / renew / upgrade applies to every project on the account. `api_calls` and `storage_bytes` are pooled across every project on the account, and across every wallet linked to it via `run402 billing link-wallet`. Quota-denial error envelopes include `details.scope: "account" | "project"` — `"account"` for the pooled path, `"project"` for the orphan fallback (project whose billing account row was purged but cascade has not yet run).
+
 ```bash
 run402 tier set prototype     # FREE on testnet (verifies x402 setup)
 run402 tier set hobby         # $5 / 30 days
 run402 tier set team          # $20 / 30 days
-run402 tier status
+run402 tier status            # pool_usage sums across the whole account
 
 # Pay with Stripe instead of x402
 run402 billing create-email user@example.com
+run402 billing link-wallet <account_id> <wallet>   # response includes pool_implications (over_limit warning)
 run402 billing tier-checkout hobby --email user@example.com
 run402 billing buy-email-pack       --email user@example.com   # $5 / 10k emails (never expire)
 run402 billing auto-recharge <account_id> on --threshold 2000
@@ -609,7 +612,9 @@ run402 billing balance <email-or-wallet>
 run402 billing history <email-or-wallet>
 ```
 
-After subscribing you can create unlimited projects, deploy unlimited sites, fork apps — all free with your active tier. Only image generation ($0.03/image) is per-call.
+`run402 tier set` refetches `/tiers/v1/status` after the call and includes the refreshed account-pool snapshot as `status_after` in the JSON output, so the new pooled `api_calls` / `storage_bytes` totals come back in one step.
+
+After subscribing you can create unlimited projects, deploy unlimited sites, fork apps — all free with your active tier, subject to the account-pooled api_calls and storage_bytes caps. Only image generation ($0.03/image) is per-call.
 
 The server auto-detects the action: no tier or expired → subscribe; same tier active → renew; higher tier → upgrade (prorated refund); lower tier → downgrade (prorated refund if usage fits).
 

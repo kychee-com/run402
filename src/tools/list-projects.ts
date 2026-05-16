@@ -30,8 +30,12 @@ export async function handleListProjects(args: {
     const lines = [
       `## Projects for ${wallet} (${body.projects.length})`,
       ``,
-      `| ID | Name | Tier | Status | Expires |`,
-      `|----|------|------|--------|---------|`,
+      `Tier is per billing account, not per project — every row below shares`,
+      `the same account-level tier and quota pool. Use \`tier_status\` to see`,
+      `the pooled api_calls / storage_bytes across all of these projects.`,
+      ``,
+      `| ID | Name | Account tier | Status | Expires |`,
+      `|----|------|--------------|--------|---------|`,
     ];
 
     for (const p of body.projects) {

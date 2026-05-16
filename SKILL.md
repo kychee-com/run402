@@ -276,7 +276,7 @@ For TypeScript autocomplete, `npm install @run402/functions` in your editor's pr
 - **`rest_query`** — query/mutate via PostgREST. Pass `key_type: "anon"` (default) for RLS-applied access, `"service"` to bypass.
 - **`validate_manifest`** / **`apply_expose`** / **`get_expose`** — declarative authorization manifest (see "expose manifest" above).
 - **`get_schema`** — introspect tables, columns, types, constraints, RLS policies.
-- **`get_usage`** — per-project usage report (API calls, storage, lease expiry).
+- **`get_usage`** — per-project usage counters (API calls, storage, lease expiry). The reported tier and capacity limits are **account-level** — pooled across every project on the same billing account. Use `tier_status` for the authoritative pooled total.
 - **`promote_user`** / **`demote_user`** — manage `project_admin` role on a project user.
 - **`delete_project`** — cascade purge. Irreversible.
 
@@ -354,11 +354,13 @@ Tier rate limits: prototype 10/day, hobby 50/day, team 500/day. Unique recipient
 
 ### Tier & billing
 
-- **`set_tier`** — subscribe / renew / upgrade. Auto-detects action. x402 payment.
-- **`tier_status`** — current tier, lease, usage, and function caps when returned.
+Tier is per **billing account**, not per project. One subscribe / renew / upgrade applies immediately to every project on the account, and `api_calls` / `storage_bytes` quotas are enforced against the pooled sum across every non-terminal project on the account. Multi-wallet accounts (via `link_wallet_to_account`) share that same pool. Quota-denial errors carry `details.scope: "account" | "project"` — `"account"` for the pooled path, `"project"` for the orphan fallback when a project's billing account row has been purged but cascade has not yet run.
+
+- **`set_tier`** — subscribe / renew / upgrade. Auto-detects action. x402 payment. Effect is account-wide.
+- **`tier_status`** — current account tier, lease, **pool_usage across every project on the account**, and function caps when returned.
 - **`get_quote`** — pricing (free, no auth).
 - **`tier_checkout`** — Stripe checkout (alternative to x402).
-- **`create_email_billing_account`** / **`link_wallet_to_account`** — email-based accounts; hybrid Stripe + x402.
+- **`create_email_billing_account`** / **`link_wallet_to_account`** — email-based accounts; hybrid Stripe + x402. `link_wallet_to_account` returns a `pool_implications` block (account tier, current pooled api_calls/storage, tier_limits, `over_limit`) so agents can warn before merging a wallet into a pool that would exceed the cap.
 - **`billing_history`** — ledger.
 - **`buy_email_pack`** — $5 / 10,000 emails (never expire).
 - **`set_auto_recharge`** — auto-buy email packs when credits run low.

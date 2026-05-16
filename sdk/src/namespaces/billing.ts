@@ -56,6 +56,31 @@ export interface EmailBillingAccount {
   verification_sent: boolean;
 }
 
+/**
+ * Pool impact of a wallet-link operation (v1.46+). Returned in the
+ * `link-wallet` response so the caller knows the freshly-shared pool's
+ * tier, current usage, and configured limits at the moment of linking.
+ */
+export interface LinkWalletPoolImplications {
+  tier: ProjectTier | null;
+  projects_in_pool_count: number;
+  account_api_calls_current: number;
+  account_storage_bytes_current: number;
+  tier_limits: {
+    api_calls: number;
+    storage_bytes: number;
+  };
+  over_limit: boolean;
+}
+
+export interface LinkWalletResult {
+  status: string;
+  billing_account_id: string;
+  wallet: string;
+  /** Present on v1.46+ gateways; undefined when the gateway predates the field. */
+  pool_implications?: LinkWalletPoolImplications;
+}
+
 export interface AccountIdentifier {
   email?: string;
   wallet?: string;
@@ -215,11 +240,20 @@ export class Billing {
     });
   }
 
-  /** Link a wallet to an existing email billing account to enable hybrid Stripe + x402. */
-  async linkWallet(billingAccountId: string, wallet: string): Promise<void> {
+  /**
+   * Link a wallet to an existing email billing account to enable hybrid
+   * Stripe + x402 payments. Returns the gateway response; v1.46+ gateways
+   * include a {@link LinkWalletPoolImplications} block describing the
+   * freshly-shared pool's tier, current usage, and limits so callers can
+   * warn before the merge pushes usage `over_limit`.
+   */
+  async linkWallet(
+    billingAccountId: string,
+    wallet: string,
+  ): Promise<LinkWalletResult> {
     assertNonEmptyString(billingAccountId, "billingAccountId", "linking wallet");
     assertEvmAddress(wallet, "wallet", "linking wallet");
-    await this.client.request<unknown>(
+    return this.client.request<LinkWalletResult>(
       `/billing/v1/accounts/${encodeURIComponent(billingAccountId)}/link-wallet`,
       {
         method: "POST",

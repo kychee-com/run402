@@ -25,6 +25,15 @@ export type Run402ErrorKind =
   | "local_error"
   | "deploy_error";
 
+/**
+ * Quota-denial scope discriminator (v1.46+). Indicates whether a quota-related
+ * denial was enforced against the pooled billing-account total (`"account"`)
+ * or against an orphan project whose billing account row has been purged but
+ * cascade has not yet run (`"project"`). Lifted from `details.scope` on the
+ * gateway envelope; absent for errors unrelated to quota.
+ */
+export type Run402QuotaScope = "account" | "project";
+
 export abstract class Run402Error extends Error {
   /**
    * Structural brand. Always `true` on any {@link Run402Error} subclass
@@ -61,6 +70,14 @@ export abstract class Run402Error extends Error {
   readonly details?: unknown;
   /** Advisory next actions from the gateway. Rendering them must not execute them. */
   readonly nextActions?: unknown[];
+  /**
+   * Quota-denial scope (v1.46+). `"account"` for pooled billing-account
+   * denials; `"project"` for the orphan fallback (project whose billing
+   * account row was purged but cascade has not yet run). Lifted from
+   * `details.scope` when the gateway returned it. Undefined for errors
+   * that are not quota-related.
+   */
+  readonly quotaScope?: Run402QuotaScope;
 
   constructor(message: string, status: number | null, body: unknown, context: string) {
     super(message);
@@ -90,6 +107,8 @@ export abstract class Run402Error extends Error {
       this.details = envelope.details;
     }
     if (Array.isArray(envelope?.next_actions)) this.nextActions = envelope.next_actions;
+    const scope = extractQuotaScope(envelope);
+    if (scope !== undefined) this.quotaScope = scope;
   }
 
   /**
@@ -114,6 +133,7 @@ export abstract class Run402Error extends Error {
       context: this.context,
       details: this.details,
       nextActions: this.nextActions,
+      quotaScope: this.quotaScope,
       body: this.body,
     };
   }
@@ -123,6 +143,16 @@ function canonicalEnvelope(body: unknown): Record<string, unknown> | null {
   return body && typeof body === "object" && !Array.isArray(body)
     ? (body as Record<string, unknown>)
     : null;
+}
+
+function extractQuotaScope(
+  envelope: Record<string, unknown> | null,
+): Run402QuotaScope | undefined {
+  if (!envelope) return undefined;
+  const details = envelope.details;
+  if (!details || typeof details !== "object" || Array.isArray(details)) return undefined;
+  const scope = (details as Record<string, unknown>).scope;
+  return scope === "account" || scope === "project" ? scope : undefined;
 }
 
 /** HTTP 402 — the gateway requires payment (lease expired, insufficient balance, or x402 quote). */
@@ -347,6 +377,16 @@ export function isLocalError(e: unknown): e is LocalError {
 /** True if `e` is a {@link Run402DeployError}. */
 export function isDeployError(e: unknown): e is Run402DeployError {
   return isRun402Error(e) && e.kind === "deploy_error";
+}
+
+/**
+ * Extract the v1.46+ quota-denial scope from an error. Returns `"account"`
+ * for pooled denials, `"project"` for the orphan fallback, or `undefined`
+ * when the error is not quota-related (or originated from a pre-v1.46
+ * gateway that did not set `details.scope`). Safe to call with `unknown`.
+ */
+export function getQuotaScope(e: unknown): Run402QuotaScope | undefined {
+  return isRun402Error(e) ? e.quotaScope : undefined;
 }
 
 /**

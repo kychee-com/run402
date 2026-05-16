@@ -117,6 +117,16 @@ Arguments:
   <account_id>        Billing account ID (e.g. acct_abc123)
   <wallet>            Wallet address (0x...) to link
 
+Notes:
+  - Tier and quotas are per-billing-account. Linking a wallet merges its
+    spend into the account-wide pool that already includes every project
+    on this billing account.
+  - The response includes a 'pool_implications' block on v1.46+ gateways:
+    tier, projects_in_pool_count, account_api_calls_current,
+    account_storage_bytes_current, tier_limits, over_limit. Inspect
+    'over_limit' before linking a wallet whose existing usage might push
+    the merged pool past the tier cap.
+
 Examples:
   run402 billing link-wallet acct_abc123 0x1234abcd...
 `,
@@ -179,8 +189,14 @@ async function linkWallet(args) {
     });
   }
   try {
-    await getSdk().billing.linkWallet(accountId, wallet);
-    console.log(JSON.stringify({ status: "ok", billing_account_id: accountId, wallet }));
+    const data = await getSdk().billing.linkWallet(accountId, wallet);
+    const output = {
+      status: data?.status ?? "ok",
+      billing_account_id: data?.billing_account_id ?? accountId,
+      wallet: data?.wallet ?? wallet.toLowerCase(),
+      ...(data?.pool_implications ? { pool_implications: data.pool_implications } : {}),
+    };
+    console.log(JSON.stringify(output, null, 2));
   } catch (err) {
     reportSdkError(err);
   }

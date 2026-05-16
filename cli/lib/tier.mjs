@@ -8,10 +8,13 @@ Usage:
   run402 tier <subcommand> [args...]
 
 Subcommands:
-  status                Show current tier, expiry, usage, and function caps when returned
+  status                Show current tier, expiry, pool usage, and function caps when returned
   set <tier>            Subscribe, renew, or upgrade (pays via x402)
 
 Tiers: prototype ($0.10/7d, free with testnet faucet), hobby ($5/30d), team ($20/30d)
+
+Tier is per billing account. A single subscription covers every project on
+the account; api_calls and storage_bytes are pooled across all of them.
 
 The server auto-detects the action based on your allowance state:
   - No tier or expired  → subscribe
@@ -32,7 +35,10 @@ Usage:
   run402 tier status
 
 Notes:
-  - Returns the current tier name, status, expiry, and usage
+  - Tier and quotas are per billing account. The 'pool_usage' block sums
+    api_calls and storage_bytes across every project on this account
+    (across every wallet linked to it), not just the requesting wallet.
+  - Returns the current tier name, status, expiry, and pool usage
   - Newer gateways include function authoring caps such as max timeout,
     max memory, max scheduled functions, minimum cron interval, and current
     scheduled-function usage
@@ -55,12 +61,18 @@ Tiers:
   team                $20/30d
 
 Notes:
+  Tier is per billing account, not per project. A successful subscribe,
+  renew, or upgrade applies immediately to every project on the account.
+
   Server auto-detects action based on current allowance state:
     - No tier or expired -> subscribe
     - Same tier, active  -> renew (extends from expiry)
     - Higher tier        -> upgrade (prorated refund to allowance)
     - Lower tier, active -> rejected (wait for expiry)
   Pays via x402 micropayments.
+
+  After the call, the CLI refetches /tiers/v1/status and includes the
+  refreshed account-pooled usage as 'status_after' in the JSON output.
 
 Examples:
   run402 tier set prototype
@@ -107,8 +119,18 @@ async function set(args = []) {
     });
   }
   try {
-    const data = await getSdk().tier.set(tierName);
-    console.log(JSON.stringify(data, null, 2));
+    const sdk = getSdk();
+    const data = await sdk.tier.set(tierName);
+    let statusAfter = null;
+    try {
+      statusAfter = await sdk.tier.status();
+    } catch {
+      // Refetch failure is non-fatal; the set call already succeeded and
+      // the caller has the canonical lease/payment receipt in `data`.
+      statusAfter = null;
+    }
+    const output = statusAfter ? { ...data, status_after: statusAfter } : data;
+    console.log(JSON.stringify(output, null, 2));
   } catch (err) {
     reportSdkError(err);
   }

@@ -19,6 +19,7 @@ import {
   Run402DeployError,
   Run402Error,
   Unauthorized,
+  getQuotaScope,
   isApiError,
   isDeployError,
   isLocalError,
@@ -264,6 +265,72 @@ describe("Run402Error.toJSON", () => {
     assert.deepEqual(json["logs"], ["ERROR:  syntax error"]);
     assert.equal(json["rolledBack"], true);
     assert.equal(json["retryable"], false);
+  });
+});
+
+// ─── quotaScope (v1.46 account-pool denial discriminator) ───────────────────
+
+describe("Run402Error.quotaScope", () => {
+  it("lifts details.scope='account' for pooled denials", () => {
+    const e = new PaymentRequired(
+      "quota exceeded",
+      402,
+      {
+        code: "QUOTA_EXCEEDED",
+        details: { scope: "account", billing_account_id: "ba_123" },
+      },
+      "running sql",
+    );
+    assert.equal(e.quotaScope, "account");
+    assert.equal(getQuotaScope(e), "account");
+  });
+
+  it("lifts details.scope='project' for orphan-fallback denials", () => {
+    const e = new ApiError(
+      "quota exceeded",
+      429,
+      {
+        code: "QUOTA_EXCEEDED",
+        details: { scope: "project" },
+      },
+      "running sql",
+    );
+    assert.equal(e.quotaScope, "project");
+    assert.equal(getQuotaScope(e), "project");
+  });
+
+  it("is undefined when details.scope is absent (pre-v1.46 gateways)", () => {
+    const e = new ApiError("nope", 500, { code: "INTERNAL_ERROR" }, "ctx");
+    assert.equal(e.quotaScope, undefined);
+    assert.equal(getQuotaScope(e), undefined);
+  });
+
+  it("ignores unknown scope values", () => {
+    const e = new ApiError(
+      "nope",
+      429,
+      { details: { scope: "galaxy" } },
+      "ctx",
+    );
+    assert.equal(e.quotaScope, undefined);
+    assert.equal(getQuotaScope(e), undefined);
+  });
+
+  it("is exposed in toJSON()", () => {
+    const e = new PaymentRequired(
+      "nope",
+      402,
+      { details: { scope: "account" } },
+      "ctx",
+    );
+    const json = JSON.parse(JSON.stringify(e)) as Record<string, unknown>;
+    assert.equal(json["quotaScope"], "account");
+  });
+
+  it("getQuotaScope returns undefined for non-Run402 errors", () => {
+    assert.equal(getQuotaScope(new Error("plain")), undefined);
+    assert.equal(getQuotaScope(null), undefined);
+    assert.equal(getQuotaScope(undefined), undefined);
   });
 });
 

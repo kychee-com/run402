@@ -165,8 +165,9 @@ The SDK exports identity-free guards plus a single canonical "should I retry thi
 - `isRun402Error(e)` — true for any `Run402Error` subclass instance, regardless of which SDK copy created it.
 - `isPaymentRequired(e)`, `isProjectNotFound(e)`, `isUnauthorized(e)`, `isApiError(e)`, `isNetworkError(e)`, `isLocalError(e)`, `isDeployError(e)` — narrow `unknown` to the named subclass.
 - `isRetryableRun402Error(e)` — encapsulates the retry policy: `e.retryable || kind === "network_error" || status in {408, 425, 429} || status >= 500`, unless the gateway explicitly sets `retryable: false`. `safeToRetry` alone is not a retry signal; it means a repeated mutation should not duplicate/corrupt state, not that lifecycle/payment/auth gates will become allowed without an action. Returns `false` for non-Run402 inputs so it's safe to call from any `catch` block.
+- `getQuotaScope(e)` — returns `"account"` for pooled billing-account quota denials, `"project"` for the orphan-project fallback when a billing-account row has been purged but cascade has not yet run, and `undefined` for non-quota errors or pre-v1.46 gateways. Safe to call with any `unknown`; reads `Run402Error.quotaScope`, which is lifted from `details.scope` on the gateway envelope.
 
-`Run402Error.toJSON()` returns a canonical envelope (`name`, `kind`, `message`, `status`, `code`, `category`, `retryable`, `safeToRetry`, `mutationState`, `traceId`, `context`, `details`, `nextActions`, `body`). `Run402DeployError.toJSON()` extends it with `phase`, `resource`, `operationId`, `planId`, `fix`, `logs`, `rolledBack`, and, when automatic deploy retries are exhausted, `attempts`, `maxRetries`, `lastRetryCode`. `JSON.stringify(error)` produces a populated structured object — never the empty `"{}"` plain `Error` produces.
+`Run402Error.toJSON()` returns a canonical envelope (`name`, `kind`, `message`, `status`, `code`, `category`, `retryable`, `safeToRetry`, `mutationState`, `traceId`, `context`, `details`, `nextActions`, `quotaScope`, `body`). `Run402DeployError.toJSON()` extends it with `phase`, `resource`, `operationId`, `planId`, `fix`, `logs`, `rolledBack`, and, when automatic deploy retries are exhausted, `attempts`, `maxRetries`, `lastRetryCode`. `JSON.stringify(error)` produces a populated structured object — never the empty `"{}"` plain `Error` produces.
 
 ### `withRetry(fn, opts?)`
 
@@ -947,15 +948,32 @@ set(tier: "prototype" | "hobby" | "team"): Promise<TierSetResult>
 status(): Promise<TierStatusResult>
 ```
 
+Tier is per **billing account**, not per project. `set` applies to every project on the
+account; `status.pool_usage` (`projects`, `total_api_calls`, `total_storage_bytes`,
+`api_calls_limit`, `storage_bytes_limit`) sums across every non-terminal project on the
+billing account — including every wallet linked to it via `billing.linkWallet` — not
+just the requesting wallet. Use the returned `pool_usage` as the authoritative quota-
+enforcement view; per-project `r.projects.getUsage(id)` reports the same account-level
+caps alongside that project's slice of the pool.
+
 `set` auto-detects subscribe / renew / upgrade / downgrade based on current state.
 For tier pricing, call `r.projects.getQuote()` (the SDK does not expose a separate
 `tier.quote()` method).
+
+#### Quota-denial `scope` discriminator (v1.46+)
+
+Quota-related error envelopes carry `details.scope: "account" | "project"` so consumers
+can distinguish account-pooled denials from the orphan fallback (project whose billing
+account row was purged but cascade has not yet run). The SDK lifts this onto every
+`Run402Error` subclass as `e.quotaScope`, and exports a `getQuotaScope(e)` helper for
+non-`Run402Error` `unknown` inputs. Absent for non-quota errors and for pre-v1.46
+gateways.
 
 ### `r.billing`
 
 ```
 createEmailAccount(email): Promise<EmailBillingAccount>
-linkWallet(billingAccountId, wallet): Promise<void>
+linkWallet(billingAccountId, wallet): Promise<LinkWalletResult>
 tierCheckout(tier, identifier: { email?: string, wallet?: string }): Promise<CreateCheckoutResult>
 buyEmailPack(identifier: { email?: string, wallet?: string }): Promise<CreateCheckoutResult>
 setAutoRecharge(opts: { billingAccountId: string, enabled: boolean, threshold? }): Promise<void>
@@ -970,6 +988,12 @@ createCheckout(wallet, amountUsdMicros: number): Promise<CreateCheckoutResult>
 createEmail(email): Promise<EmailBillingAccount>
 autoRecharge(opts): Promise<void>
 ```
+
+`linkWallet` merges a wallet into an existing billing account's pool. On v1.46+
+gateways the response includes a `pool_implications` block (`tier`,
+`projects_in_pool_count`, `account_api_calls_current`, `account_storage_bytes_current`,
+`tier_limits.{api_calls,storage_bytes}`, `over_limit`) so callers can warn before
+linking a wallet whose existing usage would push the merged pool past the tier cap.
 
 ### `r.contracts`
 

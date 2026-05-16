@@ -27,16 +27,20 @@ export async function handleTierStatus(
     const lines = [
       `## Tier Status`,
       ``,
+      `Tier is per billing account. The \`pool_usage\` totals below sum`,
+      `\`api_calls\` and \`storage_bytes\` across every project on the account,`,
+      `across every wallet linked to it.`,
+      ``,
       `| Field | Value |`,
       `|-------|-------|`,
       `| wallet | \`${body.wallet}\` |`,
-      `| tier | ${body.tier} |`,
+      `| account tier | ${body.tier} |`,
       `| active | ${body.active ? "yes" : "no"} |`,
       `| started | ${body.lease_started_at ?? "(none)"} |`,
       `| expires | ${body.lease_expires_at ?? "(none)"} |`,
-      `| projects | ${body.pool_usage.projects} |`,
-      `| api calls | ${body.pool_usage.total_api_calls.toLocaleString()} / ${body.pool_usage.api_calls_limit.toLocaleString()} |`,
-      `| storage | ${(body.pool_usage.total_storage_bytes / 1_048_576).toFixed(1)} MB / ${(body.pool_usage.storage_bytes_limit / 1_048_576).toFixed(0)} MB |`,
+      `| projects in pool | ${body.pool_usage.projects} |`,
+      `| pooled api calls | ${body.pool_usage.total_api_calls.toLocaleString()} / ${body.pool_usage.api_calls_limit.toLocaleString()} |`,
+      `| pooled storage | ${(body.pool_usage.total_storage_bytes / 1_048_576).toFixed(1)} MB / ${(body.pool_usage.storage_bytes_limit / 1_048_576).toFixed(0)} MB |`,
     ];
     const functionLimits = functionLimitsFromTierStatus(body);
     if (functionLimits) {

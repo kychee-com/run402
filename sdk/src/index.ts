@@ -234,11 +234,13 @@ export {
   isLocalError,
   isDeployError,
   isRetryableRun402Error,
+  getQuotaScope,
 } from "./errors.js";
 export type {
   Run402DeployErrorCode,
   Run402DeployErrorFix,
   Run402ErrorKind,
+  Run402QuotaScope,
 } from "./errors.js";
 export { withRetry } from "./retry.js";
 export type * from "./retry.js";
