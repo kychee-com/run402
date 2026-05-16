@@ -52,13 +52,20 @@ describe("deploy_list", () => {
     const parsed = z.object(deployListSchema).parse({
       project_id: "prj_test",
       limit: 5,
-      cursor: "op_cursor",
+      before: "op_cursor",
+      status: "ready",
+      since: "2026-05-16T00:00:00Z",
+      filter_project_id: "prj_filter",
+      include_total: true,
     });
 
-    assert.equal(parsed.cursor, "op_cursor");
+    assert.equal(parsed.before, "op_cursor");
+    assert.equal(parsed.status, "ready");
+    assert.equal(parsed.filter_project_id, "prj_filter");
+    assert.equal(parsed.include_total, true);
   });
 
-  it("forwards cursor to SDK deploy.list and still renders the next cursor", async () => {
+  it("forwards list filters to SDK deploy.list and renders new pagination fields", async () => {
     nextListImpl = async () => ({
       operations: [
         {
@@ -68,19 +75,35 @@ describe("deploy_list", () => {
           updated_at: "2026-05-15T00:00:00Z",
         },
       ],
-      cursor: "op_next",
+      has_more: true,
+      next_cursor: "op_next",
+      total: 42,
     });
 
     const result = await handleDeployList({
       project_id: "prj_test",
       limit: 5,
-      cursor: "op_cursor",
+      before: "op_cursor",
+      status: "ready",
+      since: "2026-05-16T00:00:00Z",
+      filter_project_id: "prj_filter",
+      include_total: true,
     });
 
     assert.equal(result.isError, undefined);
     assert.deepEqual(calls, [
-      { project: "prj_test", limit: 5, cursor: "op_cursor" },
+      {
+        project: "prj_test",
+        limit: 5,
+        before: "op_cursor",
+        status: "ready",
+        since: "2026-05-16T00:00:00Z",
+        project_id: "prj_filter",
+        includeTotal: true,
+      },
     ]);
     assert.match(result.content[0]!.text, /Next cursor: `op_next`/);
+    assert.match(result.content[0]!.text, /Has more: yes/);
+    assert.match(result.content[0]!.text, /Total: 42/);
   });
 });

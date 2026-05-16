@@ -300,19 +300,48 @@ export class Projects {
   /**
    * Pin a project so it is not garbage-collected or expired.
    *
-   * Admin only — the server-side `POST /projects/v1/admin/:id/pin`
-   * endpoint requires run402 platform admin auth. The Node SDK uses the
-   * configured allowance wallet's SIWX headers for this call; project
-   * service keys are intentionally not sent. Project owners calling with
-   * a non-admin wallet will receive `403 admin_required`; this is by
-   * design and not a bug in the SDK. The method is retained so operator
-   * tooling can share the same SDK.
+   * When the project is present in local credentials, the SDK authenticates
+   * with that project's service key. Otherwise it falls back to the configured
+   * allowance wallet's admin SIWX headers so platform operators can pin
+   * projects outside their local keystore.
    */
   async pin(id: string): Promise<PinResult> {
+    const keys = await this.client.getProject(id);
+    if (keys) {
+      return this.client.request<PinResult>(`/projects/v1/admin/${id}/pin`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${keys.service_key}` },
+        withAuth: false,
+        context: "pinning project",
+      });
+    }
     return this.client.request<PinResult>(`/projects/v1/admin/${id}/pin`, {
       method: "POST",
       headers: { "X-Admin-Mode": "1" },
       context: "pinning project",
+    });
+  }
+
+  /**
+   * Unpin a project so normal lifecycle/expiry rules apply again.
+   *
+   * Auth semantics match {@link pin}: a local project uses its service key;
+   * otherwise the call falls back to platform-admin allowance auth.
+   */
+  async unpin(id: string): Promise<PinResult> {
+    const keys = await this.client.getProject(id);
+    if (keys) {
+      return this.client.request<PinResult>(`/projects/v1/admin/${id}/unpin`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${keys.service_key}` },
+        withAuth: false,
+        context: "unpinning project",
+      });
+    }
+    return this.client.request<PinResult>(`/projects/v1/admin/${id}/unpin`, {
+      method: "POST",
+      headers: { "X-Admin-Mode": "1" },
+      context: "unpinning project",
     });
   }
 

@@ -204,6 +204,9 @@ class ScopedProjects {
   pin(): Promise<PinResult> {
     return this.parent.projects.pin(this.projectId);
   }
+  unpin(): Promise<PinResult> {
+    return this.parent.projects.unpin(this.projectId);
+  }
   info(): Promise<ProjectInfo> {
     return this.parent.projects.info(this.projectId);
   }

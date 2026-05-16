@@ -34,6 +34,8 @@ export interface ProjectSummary {
   name: string;
   tier: string;
   status: string;
+  /** True when the project is pinned against expiry/garbage collection. */
+  pinned?: boolean;
   api_calls: number;
   storage_bytes: number;
   /**
@@ -170,6 +172,8 @@ export interface ExposeManifestValidationResult {
 export interface PinResult {
   status: string;
   project_id: string;
+  pinned?: boolean;
+  was_pinned?: boolean;
   message?: string;
 }
 

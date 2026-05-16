@@ -52,6 +52,20 @@ export async function handleTierStatus(
         `| current scheduled functions | ${formatLimit(functionLimits.current_scheduled_functions)} |`,
       );
     }
+    if (Array.isArray(body.projects) && body.projects.length > 0) {
+      lines.push(
+        ``,
+        `## Projects`,
+        ``,
+        `| Project | Tier | Status | Pinned | Created |`,
+        `|---------|------|--------|--------|---------|`,
+      );
+      for (const project of body.projects) {
+        lines.push(
+          `| \`${project.id}\` ${project.name ? `(${project.name})` : ""} | ${project.tier} | ${project.status} | ${project.pinned ? "yes" : "no"} | ${project.created_at} |`,
+        );
+      }
+    }
 
     return { content: [{ type: "text", text: lines.join("\n") }] };
   } catch (err) {

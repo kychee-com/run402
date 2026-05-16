@@ -65,6 +65,16 @@ describe("tier_status tool", () => {
             min_cron_interval_minutes: 15,
             current_scheduled_functions: 1,
           },
+          projects: [
+            {
+              id: "prj_pinned",
+              name: "Pinned App",
+              tier: "prototype",
+              status: "active",
+              pinned: true,
+              created_at: "2026-05-16T00:00:00.000Z",
+            },
+          ],
         }),
         { status: 200, headers: { "Content-Type": "application/json" } },
       )) as typeof fetch;
@@ -78,6 +88,8 @@ describe("tier_status tool", () => {
     assert.ok(text.includes("10s"));
     assert.ok(text.includes("128 MB"));
     assert.ok(text.includes("15 min"));
+    assert.ok(text.includes("prj_pinned"));
+    assert.ok(text.includes("Pinned App"));
     assert.equal(result.isError, undefined);
   });
 

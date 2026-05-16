@@ -88,6 +88,16 @@ describe("tier.status", () => {
         min_cron_interval_minutes: 15,
         current_scheduled_functions: 1,
       },
+      projects: [
+        {
+          id: "prj_pinned",
+          name: "Pinned App",
+          tier: "prototype",
+          status: "active",
+          pinned: true,
+          created_at: "2026-05-16T00:00:00.000Z",
+        },
+      ],
     };
     const { fetch, calls } = mockFetch(() => jsonResponse(runtimeBody));
     const sdk = makeSdk(makeCreds(), fetch);
@@ -114,6 +124,8 @@ describe("tier.status", () => {
     assert.equal(result.function_limits?.max_scheduled_functions, 1);
     assert.equal(result.function_limits?.min_cron_interval_minutes, 15);
     assert.equal(result.function_limits?.current_scheduled_functions, 1);
+    assert.equal(result.projects?.[0]?.id, "prj_pinned");
+    assert.equal(result.projects?.[0]?.pinned, true);
 
     assert.equal(
       (result as unknown as { status?: unknown }).status,

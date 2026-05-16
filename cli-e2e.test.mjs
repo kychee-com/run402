@@ -1812,7 +1812,49 @@ describe("CLI e2e happy path", () => {
     assert.equal(seenCookie, "run402_admin=test-session");
   });
 
-  it("projects pin uses allowance admin auth, not project service key auth", async () => {
+  it("projects pin uses project service key when the project is local", async () => {
+    const { run } = await import("./cli/lib/projects.mjs");
+    await seedTestProject();
+    let seenUrl = null;
+    let seenSiwx = null;
+    let seenAdminMode = null;
+    let seenAuthorization = null;
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = (input, init) => {
+      const url = typeof input === "string" ? input : (input instanceof Request ? input.url : String(input));
+      if (url.includes("/projects/v1/admin/prj_test123/pin")) {
+        seenUrl = url;
+        if (input instanceof Request) {
+          seenSiwx = input.headers.get("sign-in-with-x");
+          seenAdminMode = input.headers.get("x-admin-mode");
+          seenAuthorization = input.headers.get("authorization");
+        } else {
+          const headers = init?.headers ?? {};
+          seenSiwx = headers["SIGN-IN-WITH-X"] ?? headers["sign-in-with-x"] ?? null;
+          seenAdminMode = headers["X-Admin-Mode"] ?? headers["x-admin-mode"] ?? null;
+          seenAuthorization = headers.Authorization ?? headers.authorization ?? null;
+        }
+      }
+      return prevFetch(input, init);
+    };
+    captureStart();
+    try {
+      await run("pin", ["prj_test123"]);
+    } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+    assert.ok(seenUrl && seenUrl.includes("/projects/v1/admin/prj_test123/pin"),
+      `pin should hit the pin endpoint; got: ${seenUrl}`);
+    assert.equal(seenAuthorization, "Bearer svc_test_key", "local project pin should use the service key");
+    assert.equal(seenSiwx, null, "local project pin should not need allowance SIWX auth");
+    assert.equal(seenAdminMode, null, "local project pin should not request admin mode");
+    const parsed = JSON.parse(capturedStdout());
+    assert.equal(parsed.status, "pinned");
+    assert.equal(parsed.project_id, "prj_test123");
+  });
+
+  it("projects pin falls back to allowance admin auth for external projects", async () => {
     const { run } = await import("./cli/lib/projects.mjs");
     const { saveAllowance } = await import("./cli/lib/config.mjs");
     saveAllowance({
@@ -1853,9 +1895,9 @@ describe("CLI e2e happy path", () => {
     }
     assert.ok(seenUrl && seenUrl.includes("/projects/v1/admin/prj_external/pin"),
       `pin should hit the admin pin endpoint; got: ${seenUrl}`);
-    assert.equal(typeof seenSiwx, "string", "pin should send allowance SIWX admin-wallet auth");
-    assert.equal(seenAdminMode, "1", "pin should explicitly request admin mode");
-    assert.equal(seenAuthorization, null, "pin must not use the project's service_key as Bearer auth");
+    assert.equal(typeof seenSiwx, "string", "external project pin should send allowance SIWX admin-wallet auth");
+    assert.equal(seenAdminMode, "1", "external project pin should explicitly request admin mode");
+    assert.equal(seenAuthorization, null, "external project pin should not send service-key Bearer auth");
     const parsed = JSON.parse(capturedStdout());
     assert.equal(parsed.status, "pinned");
     assert.equal(parsed.project_id, "prj_external");
@@ -2092,6 +2134,66 @@ describe("CLI e2e happy path", () => {
     const body = JSON.parse(result.stdout);
     assert.equal(body.status, "ok");
     assert.equal(body.operations[0].operation_id, "op_list_test");
+  });
+
+  it("deploy list forwards pagination and filter flags", async () => {
+    const { run } = await import("./cli/lib/deploy.mjs");
+    const { saveAllowance } = await import("./cli/lib/config.mjs");
+    await seedTestProject();
+    saveAllowance({
+      address: "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+      privateKey: "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80",
+      created: "2026-03-15T00:00:00.000Z",
+      funded: true,
+      rail: "x402",
+    });
+
+    const prevFetch = globalThis.fetch;
+    let seenParams = null;
+    globalThis.fetch = (input, init) => {
+      const url = typeof input === "string" ? input : (input instanceof Request ? input.url : String(input));
+      if (url.includes("/deploy/v2/operations") && !url.includes("/deploy/v2/operations/")) {
+        seenParams = Object.fromEntries(new URL(url).searchParams.entries());
+        return Promise.resolve(json({
+          operations: [],
+          has_more: true,
+          next_cursor: "op_next",
+          total: 12,
+        }));
+      }
+      return prevFetch(input, init);
+    };
+    captureStart();
+    try {
+      await run([
+        "list",
+        "--project",
+        TEST_PROJECT.project_id,
+        "--before",
+        "op_cursor",
+        "--status",
+        "ready",
+        "--since",
+        "2026-05-16T00:00:00Z",
+        "--project-id",
+        "prj_filter",
+        "--include-total",
+      ]);
+    } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+
+    assert.deepEqual(seenParams, {
+      before: "op_cursor",
+      status: "ready",
+      since: "2026-05-16T00:00:00Z",
+      project_id: "prj_filter",
+      include_total: "true",
+    });
+    const body = JSON.parse(capturedStdout());
+    assert.equal(body.next_cursor, "op_next");
+    assert.equal(body.total, 12);
   });
 
   it("deploy resume rejects unknown flags before network (GH-327)", async () => {
@@ -4254,11 +4356,7 @@ describe("CLI e2e happy path", () => {
     bannerRegex: /^run402 projects/,
   });
 
-  // GH-103: `projects pin` must be clearly marked as admin-only in help text.
-  // The server-side /projects/v1/admin/:id/pin endpoint rejects project-owner
-  // auth (service_key / SIWX) with 403 admin_required. Help text that omits
-  // the admin caveat leads owners into an error they cannot resolve.
-  it("projects pin --help marks pin as admin-only (GH-103)", async () => {
+  it("projects pin --help marks pin as owner/admin", async () => {
     const { run } = await import("./cli/lib/projects.mjs");
     let fetchCalled = false;
     const prevFetch = globalThis.fetch;
@@ -4276,12 +4374,12 @@ describe("CLI e2e happy path", () => {
     assert.equal(threw?.message, "process.exit(0)", "pin --help should exit 0");
     assert.equal(fetchCalled, false, "pin --help must not make any fetch/API call");
     const stdout = capturedStdout();
-    // Find the pin line in the subcommand list and assert it mentions admin.
+    // Find the pin line in the subcommand list and assert it mentions owner/admin auth.
     const pinLine = stdout.split("\n").find(l => /^\s*pin\s/.test(l)) ?? "";
     assert.match(
       pinLine,
-      /admin/i,
-      `pin subcommand line should mention admin-only; got: ${pinLine}`,
+      /owner\/admin/i,
+      `pin subcommand line should mention owner/admin auth; got: ${pinLine}`,
     );
   });
 

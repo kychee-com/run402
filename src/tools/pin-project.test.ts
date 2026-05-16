@@ -34,7 +34,33 @@ afterEach(() => {
 });
 
 describe("pin_project tool", () => {
-  it("sends allowance admin auth without service_key bearer auth", async () => {
+  it("uses service_key bearer auth when the project is local", async () => {
+    let capturedHeaders: Record<string, string> = {};
+    let capturedUrl = "";
+    globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
+      capturedUrl = url instanceof Request ? url.url : String(url);
+      if (url instanceof Request) {
+        capturedHeaders = Object.fromEntries(url.headers.entries());
+      } else {
+        capturedHeaders = init?.headers as Record<string, string>;
+      }
+      return new Response(
+        JSON.stringify({ status: "ok", project_id: "proj-001", pinned: true, was_pinned: false }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    }) as typeof fetch;
+
+    const result = await handlePinProject({ project_id: "proj-001" });
+    assert.equal(capturedHeaders["Authorization"] ?? capturedHeaders.authorization, "Bearer sk-the-key");
+    assert.equal(capturedHeaders["SIGN-IN-WITH-X"] ?? capturedHeaders["sign-in-with-x"], undefined);
+    assert.equal(capturedHeaders["X-Admin-Mode"] ?? capturedHeaders["x-admin-mode"], undefined);
+    assert.ok(capturedUrl.endsWith("/projects/v1/admin/proj-001/pin"));
+    assert.equal(result.isError, undefined);
+    assert.ok(result.content[0]!.text.includes("pinned=true"));
+    assert.ok(result.content[0]!.text.includes("was_pinned=false"));
+  });
+
+  it("falls back to allowance admin auth when the project is not local", async () => {
     writeFileSync(join(tempDir, "allowance.json"), JSON.stringify({
       address: "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
       privateKey: "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80",
@@ -52,7 +78,7 @@ describe("pin_project tool", () => {
         capturedHeaders = init?.headers as Record<string, string>;
       }
       return new Response(
-        JSON.stringify({ status: "ok", project_id: "proj-001" }),
+        JSON.stringify({ status: "ok", project_id: "proj-001", pinned: true, was_pinned: false }),
         { status: 200, headers: { "Content-Type": "application/json" } },
       );
     }) as typeof fetch;
@@ -67,6 +93,8 @@ describe("pin_project tool", () => {
     assert.ok(capturedUrl.endsWith("/projects/v1/admin/prj_external/pin"));
     assert.equal(result.isError, undefined);
     assert.ok(result.content[0]!.text.includes("pinned successfully"));
+    assert.ok(result.content[0]!.text.includes("pinned=true"));
+    assert.ok(result.content[0]!.text.includes("was_pinned=false"));
   });
 
   it("returns isError on API error", async () => {
@@ -81,17 +109,18 @@ describe("pin_project tool", () => {
     assert.ok(result.content[0]!.text.includes("500"));
   });
 
-  // GH-103: The server-side /projects/v1/admin/:id/pin endpoint is admin-only
-  // and rejects project-owner service_key / non-admin SIWX auth with 403 admin_required.
-  // The Zod project_id description must surface this constraint so the LLM
-  // does not misadvertise the tool to project owners.
-  it("schema describes pin as admin-only (GH-103)", () => {
+  it("schema describes owner service-key and admin fallback auth", () => {
     const descr = (pinProjectSchema.project_id as { description?: string })
       .description ?? "";
     assert.match(
       descr,
+      /service key/i,
+      `pinProjectSchema.project_id description should mention local service-key auth; got: ${descr}`,
+    );
+    assert.match(
+      descr,
       /admin/i,
-      `pinProjectSchema.project_id description should note admin-only; got: ${descr}`,
+      `pinProjectSchema.project_id description should mention admin fallback auth; got: ${descr}`,
     );
   });
 });

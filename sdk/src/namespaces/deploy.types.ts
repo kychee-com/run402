@@ -1633,17 +1633,30 @@ export interface OperationSnapshot {
   updated_at: string;
 }
 
-/** Response from `GET /deploy/v2/operations`. The gateway may return a
- *  pagination cursor when there are more operations than the requested
- *  page size; clients pass it back as `?cursor=` to fetch the next page. */
+/** Response from `GET /deploy/v2/operations`. Newer gateways expose
+ *  `before`/`next_cursor` pagination plus filters; `cursor` remains accepted
+ *  as a client-side alias for older callers. */
 export interface DeployListOptions {
+  /** Project id used for apikey authentication. */
   project: string;
   limit?: number;
+  /** Back-compat alias for `before`; forwarded as `before` by the SDK. */
   cursor?: string;
+  before?: string;
+  status?: OperationStatus | string;
+  since?: string;
+  /** Optional server-side filter for operation project_id when supported. */
+  project_id?: string;
+  includeTotal?: boolean;
+  include_total?: boolean;
 }
 
 export interface DeployListResponse {
   operations: OperationSnapshot[];
+  has_more?: boolean;
+  next_cursor?: string | null;
+  total?: number;
+  /** Older gateway/client pagination field. Prefer `next_cursor`. */
   cursor?: string | null;
 }
 
