@@ -181,6 +181,136 @@ describe("email.send", () => {
     assert.equal(result.subject, "test");
     assert.equal(result.sent_at, "2026-05-01T18:30:14.904Z");
   });
+
+  it("preserves explicit empty optional fields in the send body", async () => {
+    const { fetch, calls } = mockFetch(() =>
+      jsonResponse({
+        message_id: "msg_1",
+        to: "user@example.invalid",
+        template: null,
+        subject: "test",
+        status: "sent",
+        sent_at: "2026-05-01T18:30:14.904Z",
+      }),
+    );
+    const sdk = makeSdk(makeCreds(), fetch);
+
+    await sdk.email.send("prj_known", {
+      to: "user@example.invalid",
+      subject: "test",
+      html: "<p>hi</p>",
+      text: "",
+      from_name: "",
+      in_reply_to: "",
+    });
+
+    assert.deepEqual(JSON.parse(calls[0]!.body as string), {
+      to: "user@example.invalid",
+      subject: "test",
+      html: "<p>hi</p>",
+      text: "",
+      from_name: "",
+      in_reply_to: "",
+    });
+  });
+
+  it("rejects malformed recipients before requesting", async () => {
+    const { fetch, calls } = mockFetch(() => {
+      throw new Error("unexpected fetch for malformed recipient");
+    });
+    const sdk = makeSdk(makeCreds(), fetch);
+
+    await assert.rejects(
+      sdk.email.send("prj_known", {
+        to: "not an email",
+        subject: "test",
+        html: "<p>hi</p>",
+      }),
+      (err: unknown) =>
+        err instanceof LocalError &&
+        err.context === "sending email" &&
+        /email/.test(err.message),
+    );
+    assert.equal(calls.length, 0);
+  });
+});
+
+describe("email message ids", () => {
+  it("URL-encodes message ids for detail and raw reads", async () => {
+    const { fetch, calls } = mockFetch((call) => {
+      if (call.url.endsWith("/raw")) {
+        return new Response("raw", { status: 200, headers: { "content-type": "message/rfc822" } });
+      }
+      return jsonResponse({ id: "msg", template: "notification", to: "user@example.com", status: "sent", variables: {}, created_at: "now" });
+    });
+    const sdk = makeSdk(makeCreds(), fetch);
+
+    await sdk.email.get("prj_known", "msg_1/../../webhooks");
+    await sdk.email.getRaw("prj_known", "msg_1/../../webhooks");
+
+    assert.equal(
+      calls[0]!.url,
+      "https://api.example.test/mailboxes/v1/mbx_known/messages/msg_1%2F..%2F..%2Fwebhooks",
+    );
+    assert.equal(
+      calls[1]!.url,
+      "https://api.example.test/mailboxes/v1/mbx_known/messages/msg_1%2F..%2F..%2Fwebhooks/raw",
+    );
+  });
+});
+
+describe("email.webhooks", () => {
+  it("URL-encodes webhook ids in path-based operations", async () => {
+    const { fetch, calls } = mockFetch(() =>
+      jsonResponse({
+        webhook_id: "whk_1",
+        url: "https://hooks.example.com/run402",
+        events: ["delivery"],
+        created_at: "2026-05-01T00:00:00.000Z",
+      }),
+    );
+    const sdk = makeSdk(makeCreds(), fetch);
+
+    await sdk.email.webhooks.get("prj_known", "whk_1/../../messages");
+    await sdk.email.webhooks.update("prj_known", "whk_1/../../messages", {
+      events: ["delivery"],
+    });
+    await sdk.email.webhooks.delete("prj_known", "whk_1/../../messages");
+
+    assert.equal(
+      calls[0]!.url,
+      "https://api.example.test/mailboxes/v1/mbx_known/webhooks/whk_1%2F..%2F..%2Fmessages",
+    );
+    assert.equal(
+      calls[1]!.url,
+      "https://api.example.test/mailboxes/v1/mbx_known/webhooks/whk_1%2F..%2F..%2Fmessages",
+    );
+    assert.equal(
+      calls[2]!.url,
+      "https://api.example.test/mailboxes/v1/mbx_known/webhooks/whk_1%2F..%2F..%2Fmessages",
+    );
+  });
+
+  it("validates webhook URLs and events before requesting", async () => {
+    const { fetch, calls } = mockFetch(() => {
+      throw new Error("unexpected fetch for invalid webhook input");
+    });
+    const sdk = makeSdk(makeCreds(), fetch);
+    const invalid = [
+      () => sdk.email.webhooks.register("prj_known", { url: "javascript:alert(1)", events: ["delivery"] }),
+      () => sdk.email.webhooks.register("prj_known", { url: "https://hooks.example.com/run402", events: ["bogus" as any] }),
+      () => sdk.email.webhooks.update("prj_known", "whk_1", { url: "" }),
+      () => sdk.email.webhooks.update("prj_known", "whk_1", { events: [] }),
+    ];
+
+    for (const runInvalid of invalid) {
+      await assert.rejects(
+        runInvalid(),
+        (err: unknown) => err instanceof LocalError,
+      );
+    }
+    assert.equal(calls.length, 0);
+  });
 });
 
 describe("email.list", () => {

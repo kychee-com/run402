@@ -356,9 +356,9 @@ describe("ScopedRun402 wrapper routing", () => {
     const { fetch, calls } = mockFetch(() => jsonResponse({ projects: [] }));
     const sdk = makeSdk(makeCreds(), fetch);
     const p = await sdk.project("prj_known");
-    await p.projects.list("0xWALLETADDRESS");
+    await p.projects.list("0xAABBCCDDEEFF00112233445566778899AABBCCDD");
     assert.equal(calls.length, 1);
-    assert.match(calls[0]!.url, /\/wallets\/v1\/0xwalletaddress\/projects$/);
+    assert.match(calls[0]!.url, /\/wallets\/v1\/0xaabbccddeeff00112233445566778899aabbccdd\/projects$/);
   });
 
   it("ProjectNotFound surfaces unchanged from the scoped client", async () => {

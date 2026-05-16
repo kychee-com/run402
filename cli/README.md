@@ -136,6 +136,7 @@ import { db, adminDb, getUser, email, ai } from "@run402/functions";
 
 ```bash
 run402 secrets set <id> OPENAI_API_KEY --file ./.secrets/openai-key
+printf %s "$OPENAI_API_KEY" | run402 secrets set <id> OPENAI_API_KEY --stdin
 run402 secrets list <id>
 run402 deploy apply --manifest run402.deploy.json   # manifest uses secrets.require, not values
 ```

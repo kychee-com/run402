@@ -6,9 +6,16 @@
 
 import type { Client } from "../kernel.js";
 import { ApiError, LocalError, ProjectNotFound } from "../errors.js";
-import { assertPositiveSafeInteger } from "../validation.js";
+import {
+  assertEmailAddress,
+  assertHttpUrl,
+  assertNonEmptyString,
+  assertPositiveSafeInteger,
+  assertStringInSet,
+} from "../validation.js";
 
 const SLUG_RE = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/;
+const WEBHOOK_EVENTS = ["delivery", "bounced", "complained", "reply_received"] as const;
 
 export interface MailboxRecord {
   mailbox_id: string;
@@ -118,6 +125,7 @@ export class Webhooks {
   ) {}
 
   async register(projectId: string, opts: RegisterWebhookOptions): Promise<MailboxWebhookSummary> {
+    validateRegisterWebhookOptions(opts);
     const { id, serviceKey } = await this.resolveMailbox(projectId);
     return this.client.request<MailboxWebhookSummary>(`/mailboxes/v1/${id}/webhooks`, {
       method: "POST",
@@ -137,8 +145,9 @@ export class Webhooks {
 
   async get(projectId: string, webhookId: string): Promise<MailboxWebhookSummary> {
     const { id, serviceKey } = await this.resolveMailbox(projectId);
+    const encodedWebhookId = encodePathSegment(webhookId, "webhookId", "getting webhook");
     return this.client.request<MailboxWebhookSummary>(
-      `/mailboxes/v1/${id}/webhooks/${webhookId}`,
+      `/mailboxes/v1/${id}/webhooks/${encodedWebhookId}`,
       {
         headers: { Authorization: `Bearer ${serviceKey}` },
         context: "getting webhook",
@@ -151,18 +160,20 @@ export class Webhooks {
     webhookId: string,
     opts: UpdateWebhookOptions,
   ): Promise<MailboxWebhookSummary> {
-    if (!opts.url && !opts.events) {
+    const patch = validateUpdateWebhookOptions(opts);
+    if (!patch.hasUrl && !patch.hasEvents) {
       throw new LocalError(
         "Provide at least `url` or `events` to update a webhook.",
         "updating webhook",
       );
     }
     const { id, serviceKey } = await this.resolveMailbox(projectId);
+    const encodedWebhookId = encodePathSegment(webhookId, "webhookId", "updating webhook");
     const body: Record<string, unknown> = {};
-    if (opts.url) body.url = opts.url;
-    if (opts.events) body.events = opts.events;
+    if (patch.hasUrl) body.url = opts.url;
+    if (patch.hasEvents) body.events = opts.events;
     return this.client.request<MailboxWebhookSummary>(
-      `/mailboxes/v1/${id}/webhooks/${webhookId}`,
+      `/mailboxes/v1/${id}/webhooks/${encodedWebhookId}`,
       {
         method: "PATCH",
         headers: { Authorization: `Bearer ${serviceKey}` },
@@ -174,7 +185,8 @@ export class Webhooks {
 
   async delete(projectId: string, webhookId: string): Promise<void> {
     const { id, serviceKey } = await this.resolveMailbox(projectId);
-    await this.client.request<unknown>(`/mailboxes/v1/${id}/webhooks/${webhookId}`, {
+    const encodedWebhookId = encodePathSegment(webhookId, "webhookId", "deleting webhook");
+    await this.client.request<unknown>(`/mailboxes/v1/${id}/webhooks/${encodedWebhookId}`, {
       method: "DELETE",
       headers: { Authorization: `Bearer ${serviceKey}` },
       context: "deleting webhook",
@@ -307,6 +319,13 @@ export class Email {
 
   /** Send an email via template or raw (subject + html) mode. */
   async send(projectId: string, opts: SendEmailOptions): Promise<SendEmailResult> {
+    if (!opts || typeof opts !== "object" || Array.isArray(opts)) {
+      throw new LocalError(
+        "r.email.send(projectId, opts) requires an opts object as the 2nd argument.",
+        "sending email",
+      );
+    }
+    assertEmailAddress(opts.to, "to", "sending email");
     const hasSubject = !!opts.subject;
     const hasHtml = !!opts.html;
     const isRaw = hasSubject || hasHtml;
@@ -339,10 +358,10 @@ export class Email {
     } else {
       body.subject = opts.subject;
       body.html = opts.html;
-      if (opts.text) body.text = opts.text;
+      if (opts.text !== undefined) body.text = opts.text;
     }
-    if (opts.from_name) body.from_name = opts.from_name;
-    if (opts.in_reply_to) body.in_reply_to = opts.in_reply_to;
+    if (opts.from_name !== undefined) body.from_name = opts.from_name;
+    if (opts.in_reply_to !== undefined) body.in_reply_to = opts.in_reply_to;
 
     return this.client.request<SendEmailResult>(`/mailboxes/v1/${id}/messages`, {
       method: "POST",
@@ -372,7 +391,8 @@ export class Email {
   /** Get a single message by id, including any replies. */
   async get(projectId: string, messageId: string): Promise<EmailDetail> {
     const { id, serviceKey } = await this.resolveMailbox(projectId);
-    return this.client.request<EmailDetail>(`/mailboxes/v1/${id}/messages/${messageId}`, {
+    const encodedMessageId = encodePathSegment(messageId, "messageId", "getting email");
+    return this.client.request<EmailDetail>(`/mailboxes/v1/${id}/messages/${encodedMessageId}`, {
       headers: { Authorization: `Bearer ${serviceKey}` },
       context: "getting email",
     });
@@ -384,7 +404,8 @@ export class Email {
    */
   async getRaw(projectId: string, messageId: string): Promise<RawEmailResult> {
     const { id, serviceKey } = await this.resolveMailbox(projectId);
-    const url = `${this.client.apiBase}/mailboxes/v1/${id}/messages/${messageId}/raw`;
+    const encodedMessageId = encodePathSegment(messageId, "messageId", "fetching raw MIME");
+    const url = `${this.client.apiBase}/mailboxes/v1/${id}/messages/${encodedMessageId}/raw`;
     const res = await this.client.fetch(url, {
       headers: { Authorization: `Bearer ${serviceKey}` },
     });
@@ -480,5 +501,50 @@ export class Email {
     }
 
     return result;
+  }
+}
+
+function encodePathSegment(value: unknown, name: string, context: string): string {
+  assertNonEmptyString(value, name, context);
+  return encodeURIComponent(value);
+}
+
+function validateRegisterWebhookOptions(opts: RegisterWebhookOptions): void {
+  if (!opts || typeof opts !== "object" || Array.isArray(opts)) {
+    throw new LocalError(
+      "r.email.webhooks.register(projectId, opts) requires an opts object with url and events.",
+      "registering webhook",
+    );
+  }
+  assertHttpUrl(opts.url, "url", "registering webhook");
+  validateWebhookEvents(opts.events, "events", "registering webhook");
+}
+
+function validateUpdateWebhookOptions(
+  opts: UpdateWebhookOptions,
+): { hasUrl: boolean; hasEvents: boolean } {
+  if (!opts || typeof opts !== "object" || Array.isArray(opts)) {
+    throw new LocalError(
+      "r.email.webhooks.update(projectId, webhookId, opts) requires an opts object.",
+      "updating webhook",
+    );
+  }
+  const hasUrl = opts.url !== undefined;
+  const hasEvents = opts.events !== undefined;
+  if (hasUrl) assertHttpUrl(opts.url, "url", "updating webhook");
+  if (hasEvents) validateWebhookEvents(opts.events, "events", "updating webhook");
+  return { hasUrl, hasEvents };
+}
+
+function validateWebhookEvents(
+  value: unknown,
+  name: string,
+  context: string,
+): asserts value is Array<(typeof WEBHOOK_EVENTS)[number]> {
+  if (!Array.isArray(value) || value.length === 0) {
+    throw new LocalError(`${name} must be a non-empty array of email webhook events.`, context);
+  }
+  for (const event of value) {
+    assertStringInSet(event, WEBHOOK_EVENTS, name, context);
   }
 }

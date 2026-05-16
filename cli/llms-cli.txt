@@ -753,9 +753,9 @@ Deploying a scheduled function beyond your tier's limit returns a 403 error. Upg
 Secrets available as `process.env` (see secrets below).
 
 ### secrets
-Injected as `process.env` in functions. Values are write-only — `list` returns keys and timestamps only, never values or value-derived hashes. Prefer `--file` for real values so they do not land in shell history.
+Injected as `process.env` in functions. Values are write-only — `list` returns keys and timestamps only, never values or value-derived hashes. Prefer `--file` or `--stdin` for real values so they do not land in shell history. `--file -` and `--file /dev/stdin` read stdin too.
 
-- `run402 secrets set <id> <KEY> [<VALUE>] [--file <path>]`
+- `run402 secrets set <id> <KEY> [<VALUE>] [--file <path>|--stdin]`
 - `run402 secrets <list|delete> <id> [<KEY>]`
 
 ### blob (primary storage API)

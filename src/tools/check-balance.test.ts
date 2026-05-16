@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import { handleCheckBalance } from "./check-balance.js";
 
 const originalFetch = globalThis.fetch;
+const WALLET_UPPER = "0xABCDEF0123456789ABCDEF0123456789ABCDEF01";
+const WALLET_LOWER = "0xabcdef0123456789abcdef0123456789abcdef01";
 
 beforeEach(() => {
   process.env.RUN402_API_BASE = "https://test-api.run402.com";
@@ -29,7 +31,7 @@ describe("check_balance tool", () => {
         { status: 200, headers: { "Content-Type": "application/json" } },
       )) as typeof fetch;
 
-    const result = await handleCheckBalance({ wallet: "0xABC" });
+    const result = await handleCheckBalance({ wallet: WALLET_UPPER });
     const text = result.content[0]!.text;
     assert.ok(text.includes("$2.50"));
     assert.ok(text.includes("prototype"));
@@ -55,8 +57,8 @@ describe("check_balance tool", () => {
       );
     }) as typeof fetch;
 
-    await handleCheckBalance({ wallet: "0xABCDEF" });
-    assert.ok(capturedUrl.includes("0xabcdef"));
+    await handleCheckBalance({ wallet: WALLET_UPPER });
+    assert.ok(capturedUrl.includes(WALLET_LOWER));
   });
 
   it("renders (none) when tier and lease are null", async () => {
@@ -74,7 +76,7 @@ describe("check_balance tool", () => {
         { status: 200, headers: { "Content-Type": "application/json" } },
       )) as typeof fetch;
 
-    const result = await handleCheckBalance({ wallet: "0xABC" });
+    const result = await handleCheckBalance({ wallet: WALLET_UPPER });
     const text = result.content[0]!.text;
     assert.ok(text.includes("(none)"));
     assert.equal(result.isError, undefined);
@@ -87,7 +89,7 @@ describe("check_balance tool", () => {
         { status: 500, headers: { "Content-Type": "application/json" } },
       )) as typeof fetch;
 
-    const result = await handleCheckBalance({ wallet: "0xABC" });
+    const result = await handleCheckBalance({ wallet: WALLET_UPPER });
     assert.equal(result.isError, true);
   });
 });

@@ -796,6 +796,7 @@ describe("CLI/MCP SDK-boundary guard", () => {
       ["cli/lib/init.mjs", [/\bfetch\(TEMPO_RPC\b/]], // Tempo faucet/RPC
       ["cli/lib/ci.mjs", [/\bfetch\(`https:\/\/api\.github\.com\/repos\//]], // GitHub repository lookup
       ["src/tools/init.ts", [/\bfetch\(TEMPO_RPC\b/]], // Tempo faucet/RPC
+      ["src/tools/blob-put.ts", [/\bfetch\(part\.url\b/]], // presigned S3 PUT, not a Run402 gateway call
     ]);
 
     const violations: string[] = [];
