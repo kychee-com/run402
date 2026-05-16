@@ -282,6 +282,7 @@ export {
 export { ScopedRun402 } from "./scoped.js";
 export type * from "./namespaces/admin.js";
 export type * from "./namespaces/ai.js";
+export type { ImageAspect } from "./namespaces/ai.js";
 export type * from "./namespaces/allowance.js";
 export type * from "./namespaces/apps.js";
 export type * from "./namespaces/auth.js";

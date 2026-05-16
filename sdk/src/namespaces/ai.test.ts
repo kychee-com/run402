@@ -1,9 +1,10 @@
-import { describe, it } from "node:test";
+import { describe, it, test } from "node:test";
 import assert from "node:assert/strict";
 
 import { Run402 } from "../index.js";
 import { LocalError } from "../errors.js";
 import type { CredentialsProvider } from "../credentials.js";
+import type { ImageAspect } from "../index.js";
 
 function makeSdk(fetchImpl: typeof globalThis.fetch): Run402 {
   const credentials: CredentialsProvider = {
@@ -55,4 +56,14 @@ describe("ai.generateImage", () => {
       aspect: "square",
     });
   });
+});
+
+test("ImageAspect is exported and narrows correctly", () => {
+  const ok: ImageAspect = "square";
+  // @ts-expect-error invalid aspect typo
+  const bad: ImageAspect = "portrate";
+  // touch both so eslint doesn't complain
+  if (ok && bad) {
+    /* noop */
+  }
 });
