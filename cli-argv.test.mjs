@@ -593,6 +593,65 @@ describe("2026-05 CLI bug backlog argv validation", () => {
     assert.equal(JSON.parse(call.init.body).value, "");
   });
 
+  it("GH-336: secrets set --stdin reads the secret from stdin", async () => {
+    const { readSecretValueForSet } = await import("./cli/lib/secrets.mjs");
+    const value = readSecretValueForSet(["--stdin"], [], {
+      readStdin: () => "pipe_secret",
+    });
+
+    assert.equal(value, "pipe_secret");
+    assert.equal(calls.length, 0, "stdin value resolution must not hit the network");
+  });
+
+  it("GH-336: secrets set --file stdin aliases read stdin", async () => {
+    const { readSecretValueForSet } = await import("./cli/lib/secrets.mjs");
+    const seen = [];
+    const readers = {
+      readStdin: () => "pipe_secret",
+      readFile: (path) => {
+        seen.push(["readFile", path]);
+        return "file_secret";
+      },
+      validateFile: (path) => {
+        seen.push(["validateFile", path]);
+      },
+    };
+
+    assert.equal(readSecretValueForSet(["--file", "/dev/stdin"], [], readers), "pipe_secret");
+    assert.equal(readSecretValueForSet(["--file", "-"], [], readers), "pipe_secret");
+    assert.deepEqual(seen, []);
+    assert.equal(calls.length, 0, "stdin value resolution must not hit the network");
+  });
+
+  it("GH-336: secrets set normal --file still validates and reads the file", async () => {
+    const { readSecretValueForSet } = await import("./cli/lib/secrets.mjs");
+    const seen = [];
+    const value = readSecretValueForSet(["--file", "./secret.txt"], [], {
+      validateFile: (path, flag) => seen.push(["validateFile", path, flag]),
+      readFile: (path) => {
+        seen.push(["readFile", path]);
+        return "file_secret";
+      },
+    });
+
+    assert.equal(value, "file_secret");
+    assert.deepEqual(seen, [
+      ["validateFile", "./secret.txt", "--file"],
+      ["readFile", "./secret.txt"],
+    ]);
+    assert.equal(calls.length, 0, "file value resolution must not hit the network");
+  });
+
+  it("GH-336: secrets set rejects inline values combined with --stdin", async () => {
+    const { readSecretValueForSet } = await import("./cli/lib/secrets.mjs");
+    const err = await expectExit1(() =>
+      readSecretValueForSet(["--stdin"], ["inline"], { readStdin: () => "pipe_secret" }));
+
+    assert.equal(err.code, "BAD_USAGE");
+    assert.match(err.message, /exactly one secret value source/);
+    assert.equal(calls.length, 0, "invalid value source selection must not hit the network");
+  });
+
   it("secrets set --stdin reads piped values without echoing them", async () => {
     const { run } = await import("./cli/lib/secrets.mjs");
     await withMockStdin(["stdin-secret-value"], async () => {

@@ -8,6 +8,12 @@
 
 import type { Client } from "../kernel.js";
 import { LocalError, ProjectNotFound } from "../errors.js";
+import {
+  assertEmailAddress,
+  assertHttpUrl,
+  assertNonEmptyString,
+  assertStringInSet,
+} from "../validation.js";
 
 export interface MagicLinkOptions {
   email: string;
@@ -80,6 +86,56 @@ export interface AuthSessionResult extends MagicLinkVerifyResult {
   intended_role?: "project_admin";
 }
 
+const MAGIC_LINK_INTENTS = ["signin", "invite", "claim", "recovery"] as const;
+const AUTH_SETTINGS_FIELDS = [
+  "allow_password_set",
+  "preferred_sign_in_method",
+  "public_signup",
+  "require_passkey_for_project_admin",
+] as const;
+const SIGN_IN_METHODS = ["password", "magic_link", "oauth_google", "passkey"] as const;
+const PUBLIC_SIGNUP_POLICIES = ["open", "known_email", "invite_only"] as const;
+
+function validateAuthSettings(settings: AuthSettings): void {
+  const raw = settings as Record<string, unknown>;
+  for (const key of Object.keys(raw)) {
+    if (!(AUTH_SETTINGS_FIELDS as readonly string[]).includes(key)) {
+      throw new LocalError(`Unknown auth settings field: ${key}`, "updating auth settings");
+    }
+  }
+  if (
+    raw.allow_password_set !== undefined &&
+    typeof raw.allow_password_set !== "boolean"
+  ) {
+    throw new LocalError("allow_password_set must be a boolean.", "updating auth settings");
+  }
+  if (
+    raw.require_passkey_for_project_admin !== undefined &&
+    typeof raw.require_passkey_for_project_admin !== "boolean"
+  ) {
+    throw new LocalError(
+      "require_passkey_for_project_admin must be a boolean.",
+      "updating auth settings",
+    );
+  }
+  if (raw.preferred_sign_in_method !== undefined && raw.preferred_sign_in_method !== null) {
+    assertStringInSet(
+      raw.preferred_sign_in_method,
+      SIGN_IN_METHODS,
+      "preferred_sign_in_method",
+      "updating auth settings",
+    );
+  }
+  if (raw.public_signup !== undefined) {
+    assertStringInSet(
+      raw.public_signup,
+      PUBLIC_SIGNUP_POLICIES,
+      "public_signup",
+      "updating auth settings",
+    );
+  }
+}
+
 export interface PasskeyOptionsResult {
   challenge_id: string;
   options: unknown;
@@ -146,11 +202,16 @@ export class Auth {
 
   /** Send a passwordless login email (magic link). 15-minute token. */
   async requestMagicLink(projectId: string, opts: MagicLinkOptions): Promise<void> {
-    if (!opts || typeof opts !== "object") {
+    if (!opts || typeof opts !== "object" || Array.isArray(opts)) {
       throw new LocalError(
         "r.auth.requestMagicLink(projectId, opts) requires an opts object as the 2nd argument (e.g., { email, redirectUrl })",
         "requesting magic link",
       );
+    }
+    assertEmailAddress(opts.email, "email", "requesting magic link");
+    assertHttpUrl(opts.redirectUrl, "redirectUrl", "requesting magic link");
+    if (opts.intent !== undefined) {
+      assertStringInSet(opts.intent, MAGIC_LINK_INTENTS, "intent", "requesting magic link");
     }
     const project = await this.client.getProject(projectId);
     if (!project) throw new ProjectNotFound(projectId, "requesting magic link");
@@ -175,6 +236,7 @@ export class Auth {
 
   /** Exchange a magic-link token for access + refresh tokens. */
   async verifyMagicLink(projectId: string, token: string): Promise<MagicLinkVerifyResult> {
+    assertNonEmptyString(token, "token", "verifying magic link");
     const project = await this.client.getProject(projectId);
     if (!project) throw new ProjectNotFound(projectId, "verifying magic link");
 
@@ -198,17 +260,22 @@ export class Auth {
    * Bearer credential.
    */
   async setUserPassword(projectId: string, opts: SetPasswordOptions): Promise<void> {
-    if (!opts || typeof opts !== "object") {
+    if (!opts || typeof opts !== "object" || Array.isArray(opts)) {
       throw new LocalError(
         "r.auth.setUserPassword(projectId, opts) requires an opts object as the 2nd argument (e.g., { accessToken, newPassword })",
         "setting user password",
       );
     }
+    assertNonEmptyString(opts.accessToken, "accessToken", "setting user password");
+    assertNonEmptyString(opts.newPassword, "newPassword", "setting user password");
+    if (opts.currentPassword !== undefined) {
+      assertNonEmptyString(opts.currentPassword, "currentPassword", "setting user password");
+    }
     const project = await this.client.getProject(projectId);
     if (!project) throw new ProjectNotFound(projectId, "setting user password");
 
     const body: Record<string, string> = { new_password: opts.newPassword };
-    if (opts.currentPassword) body.current_password = opts.currentPassword;
+    if (opts.currentPassword !== undefined) body.current_password = opts.currentPassword;
 
     await this.client.request<unknown>("/auth/v1/user/password", {
       method: "PUT",
@@ -223,12 +290,13 @@ export class Auth {
 
   /** Update project-level auth settings. Requires service key. */
   async settings(projectId: string, settings: AuthSettings): Promise<AuthSettingsResult> {
-    if (!settings || typeof settings !== "object") {
+    if (!settings || typeof settings !== "object" || Array.isArray(settings)) {
       throw new LocalError(
         "r.auth.settings(projectId, settings) requires a settings object as the 2nd argument (e.g., { allow_password_set: true })",
         "updating auth settings",
       );
     }
+    validateAuthSettings(settings);
     const project = await this.client.getProject(projectId);
     if (!project) throw new ProjectNotFound(projectId, "updating auth settings");
 
@@ -245,11 +313,21 @@ export class Auth {
 
   /** Create or update an auth user. Requires service key. */
   async createUser(projectId: string, opts: CreateAuthUserOptions): Promise<AuthUserAdminResult> {
-    if (!opts || typeof opts !== "object") {
+    if (!opts || typeof opts !== "object" || Array.isArray(opts)) {
       throw new LocalError(
         "r.auth.createUser(projectId, opts) requires an opts object as the 2nd argument (e.g., { email, isAdmin })",
         "creating auth user",
       );
+    }
+    assertEmailAddress(opts.email, "email", "creating auth user");
+    if (opts.redirectUrl !== undefined) {
+      assertHttpUrl(opts.redirectUrl, "redirectUrl", "creating auth user");
+    }
+    if (opts.isAdmin !== undefined && typeof opts.isAdmin !== "boolean") {
+      throw new LocalError("isAdmin must be a boolean when provided.", "creating auth user");
+    }
+    if (opts.sendInvite !== undefined && typeof opts.sendInvite !== "boolean") {
+      throw new LocalError("sendInvite must be a boolean when provided.", "creating auth user");
     }
     const project = await this.client.getProject(projectId);
     if (!project) throw new ProjectNotFound(projectId, "creating auth user");
@@ -257,7 +335,7 @@ export class Auth {
     const body: Record<string, unknown> = { email: opts.email };
     if (typeof opts.isAdmin === "boolean") body.is_admin = opts.isAdmin;
     if (typeof opts.sendInvite === "boolean") body.send_invite = opts.sendInvite;
-    if (opts.redirectUrl) body.redirect_url = opts.redirectUrl;
+    if (opts.redirectUrl !== undefined) body.redirect_url = opts.redirectUrl;
     if (opts.clientState !== undefined) body.client_state = opts.clientState;
 
     return this.client.request<AuthUserAdminResult>("/auth/v1/admin/users", {

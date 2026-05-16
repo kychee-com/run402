@@ -8,7 +8,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
 import { Run402 } from "../index.js";
-import { ProjectNotFound, PaymentRequired, Run402Error } from "../errors.js";
+import { LocalError, ProjectNotFound, PaymentRequired, Run402Error } from "../errors.js";
 import type { CredentialsProvider } from "../credentials.js";
 
 interface FetchCall {
@@ -69,6 +69,13 @@ function jsonResponse(body: unknown, status = 200): Response {
     headers: { "content-type": "application/json" },
   });
 }
+
+const WALLET_UPPER = "0xABCDEF0123456789ABCDEF0123456789ABCDEF01";
+const WALLET_LOWER = "0xabcdef0123456789abcdef0123456789abcdef01";
+const FEED_WALLET_UPPER = "0xFEED000000000000000000000000000000000000";
+const FEED_WALLET_LOWER = "0xfeed000000000000000000000000000000000000";
+const OTHER_WALLET_UPPER = "0xABC0000000000000000000000000000000000000";
+const OTHER_WALLET_LOWER = "0xabc0000000000000000000000000000000000000";
 
 describe("projects.provision", () => {
   it("POSTs /projects/v1 with the requested tier and name", async () => {
@@ -188,37 +195,73 @@ describe("projects.list", () => {
   it("GETs /wallets/v1/:wallet/projects without auth when wallet is explicit", async () => {
     const { fetch, calls } = mockFetch(() =>
       jsonResponse({
-        wallet: "0xabc",
+        wallet: WALLET_LOWER,
         projects: [],
       }),
     );
     const creds = makeCreds();
     const sdk = makeSdk(creds, fetch);
-    const result = await sdk.projects.list("0xABC");
+    const result = await sdk.projects.list(WALLET_UPPER);
 
-    assert.equal(calls[0]!.url, "https://api.example.test/wallets/v1/0xabc/projects");
+    assert.equal(calls[0]!.url, `https://api.example.test/wallets/v1/${WALLET_LOWER}/projects`);
     assert.equal(calls[0]!.method, "GET");
     // Public endpoint — no SIWX header injected.
     assert.equal(calls[0]!.headers["SIGN-IN-WITH-X"], undefined);
-    assert.deepEqual(result, { wallet: "0xabc", projects: [] });
+    assert.deepEqual(result, { wallet: WALLET_LOWER, projects: [] });
   });
 
   it("falls back to readAllowance().address when wallet is omitted", async () => {
     const { fetch, calls } = mockFetch(() =>
-      jsonResponse({ wallet: "0xfeed", projects: [] }),
+      jsonResponse({ wallet: FEED_WALLET_LOWER, projects: [] }),
     );
     const creds = makeCreds({
       async readAllowance() {
-        return { address: "0xFeeD", privateKey: "0xpriv" };
+        return { address: FEED_WALLET_UPPER, privateKey: "0xpriv" };
       },
     });
     const sdk = makeSdk(creds, fetch);
     const result = await sdk.projects.list();
 
     assert.equal(calls.length, 1);
-    assert.equal(calls[0]!.url, "https://api.example.test/wallets/v1/0xfeed/projects");
+    assert.equal(calls[0]!.url, `https://api.example.test/wallets/v1/${FEED_WALLET_LOWER}/projects`);
     assert.equal(calls[0]!.headers["SIGN-IN-WITH-X"], undefined);
-    assert.deepEqual(result, { wallet: "0xfeed", projects: [] });
+    assert.deepEqual(result, { wallet: FEED_WALLET_LOWER, projects: [] });
+  });
+
+  it("rejects malformed explicit wallets before requesting", async () => {
+    const { fetch, calls } = mockFetch(() => {
+      throw new Error("unexpected fetch for malformed wallet");
+    });
+    const sdk = makeSdk(makeCreds(), fetch);
+
+    await assert.rejects(
+      sdk.projects.list("not-a-wallet" as any),
+      (err: unknown) =>
+        err instanceof LocalError &&
+        err.context === "listing projects" &&
+        /EVM address/.test(err.message),
+    );
+    assert.equal(calls.length, 0);
+  });
+
+  it("rejects malformed allowance wallets before requesting", async () => {
+    const { fetch, calls } = mockFetch(() => {
+      throw new Error("unexpected fetch for malformed allowance wallet");
+    });
+    const sdk = makeSdk(makeCreds({
+      async readAllowance() {
+        return { address: "not-a-wallet", privateKey: "0xpriv" };
+      },
+    }), fetch);
+
+    await assert.rejects(
+      sdk.projects.list(),
+      (err: unknown) =>
+        err instanceof LocalError &&
+        err.context === "listing projects" &&
+        /EVM address/.test(err.message),
+    );
+    assert.equal(calls.length, 0);
   });
 
   it("throws Run402Error when wallet omitted and provider lacks readAllowance", async () => {
@@ -259,29 +302,29 @@ describe("projects.list", () => {
 
   it("uses the explicit wallet when provided, even if local allowance differs", async () => {
     const { fetch, calls } = mockFetch(() =>
-      jsonResponse({ wallet: "0xother", projects: [] }),
+      jsonResponse({ wallet: OTHER_WALLET_LOWER, projects: [] }),
     );
     let readAllowanceCalls = 0;
     const creds = makeCreds({
       async readAllowance() {
         readAllowanceCalls++;
-        return { address: "0xLocal", privateKey: "0xpriv" };
+        return { address: FEED_WALLET_UPPER, privateKey: "0xpriv" };
       },
     });
     const sdk = makeSdk(creds, fetch);
-    const result = await sdk.projects.list("0xOther");
+    const result = await sdk.projects.list(OTHER_WALLET_UPPER);
 
     assert.equal(calls.length, 1);
-    assert.equal(calls[0]!.url, "https://api.example.test/wallets/v1/0xother/projects");
+    assert.equal(calls[0]!.url, `https://api.example.test/wallets/v1/${OTHER_WALLET_LOWER}/projects`);
     assert.equal(readAllowanceCalls, 0);
-    assert.deepEqual(result, { wallet: "0xother", projects: [] });
+    assert.deepEqual(result, { wallet: OTHER_WALLET_LOWER, projects: [] });
   });
 
   it("accepts items where lease_expires_at is missing (gateway omits it; type is optional)", async () => {
     // Mirrors the live gateway shape — list items don't include lease_expires_at.
     const { fetch } = mockFetch(() =>
       jsonResponse({
-        wallet: "0xabc",
+        wallet: WALLET_LOWER,
         projects: [
           {
             id: "prj_1777563179844_1095",
@@ -296,7 +339,7 @@ describe("projects.list", () => {
       }),
     );
     const sdk = makeSdk(makeCreds(), fetch);
-    const result = await sdk.projects.list("0xabc");
+    const result = await sdk.projects.list(WALLET_LOWER);
 
     assert.equal(result.projects.length, 1);
     const item = result.projects[0]!;
@@ -473,6 +516,15 @@ describe("projects admin helpers (SDK/CLI parity)", () => {
     assert.equal(calls[0]!.headers["apikey"], "anon_xxx");
     assert.equal(calls[0]!.headers["Authorization"], "Bearer anon_xxx");
     assert.deepEqual(result, [{ id: 1 }]);
+  });
+
+  it("does not double-prefix REST query strings that already include ?", async () => {
+    const { fetch, calls } = mockFetch(() => jsonResponse([{ id: 1 }]));
+    const sdk = makeSdk(makeCreds(), fetch);
+
+    await sdk.projects.restResponse("prj_known", "todos", "?select=*");
+
+    assert.equal(calls[0]!.url, "https://api.example.test/rest/v1/todos?select=*");
   });
 
   it("can return project REST status metadata for CLI/MCP shims", async () => {

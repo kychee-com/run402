@@ -493,6 +493,7 @@ Injected as `process.env.<KEY>` inside every function. Values are write-only —
 
 ```bash
 run402 secrets set    <id> STRIPE_KEY --file ./.secrets/stripe-key
+printf %s "$STRIPE_KEY" | run402 secrets set <id> STRIPE_KEY --stdin
 run402 secrets set    <id> JWT_PRIVATE --file ./private.pem
 run402 secrets list   <id>
 run402 secrets delete <id> STALE_KEY

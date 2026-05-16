@@ -9,6 +9,7 @@
 import type { Client } from "../kernel.js";
 import type { ProjectKeys } from "../credentials.js";
 import { LocalError, ProjectNotFound } from "../errors.js";
+import { assertEvmAddress } from "../validation.js";
 import type { ExposeManifest } from "./deploy.types.js";
 import type {
   ExposeManifestValidationInput,
@@ -139,6 +140,7 @@ export class Projects {
       }
       resolvedWallet = data.address;
     }
+    assertEvmAddress(resolvedWallet, "wallet", "listing projects");
     const w = resolvedWallet.toLowerCase();
     return this.client.request<ListProjectsResult>(`/wallets/v1/${w}/projects`, {
       context: "listing projects",
@@ -395,7 +397,10 @@ export class Projects {
 
 function formatRestQuery(query: ProjectRestOptions["query"]): string {
   if (query === undefined) return "";
-  if (typeof query === "string") return query ? `?${query}` : "";
+  if (typeof query === "string") {
+    if (!query) return "";
+    return query.startsWith("?") ? query : `?${query}`;
+  }
   const sp = new URLSearchParams(query);
   const out = sp.toString();
   return out ? `?${out}` : "";

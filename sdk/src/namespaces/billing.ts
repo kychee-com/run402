@@ -6,7 +6,13 @@
 
 import type { Client } from "../kernel.js";
 import { LocalError } from "../errors.js";
-import { assertPositiveSafeInteger } from "../validation.js";
+import {
+  assertEmailAddress,
+  assertEvmAddress,
+  assertNonEmptyString,
+  assertPositiveSafeInteger,
+  assertStringInSet,
+} from "../validation.js";
 import type { ProjectTier } from "./projects.types.js";
 
 export interface BillingBalance {
@@ -63,11 +69,27 @@ export interface AutoRechargeOptions {
   threshold?: number;
 }
 
-function encodeBillingIdentifier(identifier: BillingAccountIdentifier): string {
-  const normalized = /^0x/i.test(identifier)
-    ? identifier.toLowerCase()
-    : identifier;
+const BILLING_TIERS = ["prototype", "hobby", "team"] as const;
+
+function encodeBillingIdentifier(
+  identifier: BillingAccountIdentifier,
+  context: string,
+): string {
+  const normalized = normalizeBillingIdentifier(identifier, context);
   return encodeURIComponent(normalized);
+}
+
+function normalizeBillingIdentifier(
+  identifier: unknown,
+  context: string,
+): string {
+  assertNonEmptyString(identifier, "identifier", context);
+  if (/^0x/i.test(identifier)) {
+    assertEvmAddress(identifier, "identifier", context);
+    return identifier.toLowerCase();
+  }
+  assertEmailAddress(identifier, "identifier", context);
+  return identifier;
 }
 
 function assertNonNegativeSafeInteger(
@@ -80,18 +102,45 @@ function assertNonNegativeSafeInteger(
   }
 }
 
+function assertUsdMicrosAmount(
+  value: number,
+  name: string,
+  context: string,
+): void {
+  if (!Number.isSafeInteger(value) || value < 500_000 || value % 10_000 !== 0) {
+    throw new LocalError(
+      `${name} must be a safe integer USD-micros amount of at least 500000 and whole-cent aligned.`,
+      context,
+    );
+  }
+}
+
 function checkoutIdentifierBody(
   identifier: AccountIdentifier,
   context: string,
 ): Record<string, string> {
-  if (identifier.email && identifier.wallet) {
+  if (!identifier || typeof identifier !== "object" || Array.isArray(identifier)) {
+    throw new LocalError(
+      "identifier must be an object with either `email` or `wallet`.",
+      context,
+    );
+  }
+  const hasEmail = identifier.email !== undefined;
+  const hasWallet = identifier.wallet !== undefined;
+  if (hasEmail && hasWallet) {
     throw new LocalError(
       "Provide either `email` or `wallet` in identifier, not both.",
       context,
     );
   }
-  if (identifier.wallet) return { wallet: identifier.wallet };
-  if (identifier.email) return { email: identifier.email };
+  if (hasWallet) {
+    assertEvmAddress(identifier.wallet, "identifier.wallet", context);
+    return { wallet: identifier.wallet.toLowerCase() };
+  }
+  if (hasEmail) {
+    assertEmailAddress(identifier.email, "identifier.email", context);
+    return { email: identifier.email };
+  }
   throw new LocalError(
     "Provide either `email` or `wallet` in identifier.",
     context,
@@ -116,7 +165,7 @@ export class Billing {
 
   /** Check a billing account by wallet or email identifier. Public, no auth. */
   async getAccount(identifier: BillingAccountIdentifier): Promise<BillingBalance> {
-    const encoded = encodeBillingIdentifier(identifier);
+    const encoded = encodeBillingIdentifier(identifier, "checking balance");
     return this.client.request<BillingBalance>(`/billing/v1/accounts/${encoded}`, {
       context: "checking balance",
       withAuth: false,
@@ -130,7 +179,7 @@ export class Billing {
 
   /** Fetch billing history by wallet or email identifier. */
   async getHistory(identifier: BillingAccountIdentifier, limit?: number): Promise<BillingHistoryResult> {
-    const encoded = encodeBillingIdentifier(identifier);
+    const encoded = encodeBillingIdentifier(identifier, "fetching billing history");
     if (limit !== undefined) {
       assertPositiveSafeInteger(limit, "limit", "fetching billing history");
     }
@@ -145,6 +194,8 @@ export class Billing {
 
   /** Create a Stripe checkout URL to fund a wallet's billing balance. */
   async createCheckout(wallet: string, amountUsdMicros: number): Promise<CreateCheckoutResult> {
+    assertEvmAddress(wallet, "wallet", "creating checkout");
+    assertUsdMicrosAmount(amountUsdMicros, "amountUsdMicros", "creating checkout");
     return this.client.request<CreateCheckoutResult>("/billing/v1/checkouts", {
       method: "POST",
       body: { wallet: wallet.toLowerCase(), amount_usd_micros: amountUsdMicros },
@@ -155,6 +206,7 @@ export class Billing {
 
   /** Create an email-only (no-wallet) billing account. Sends a verification email. */
   async createEmailAccount(email: string): Promise<EmailBillingAccount> {
+    assertEmailAddress(email, "email", "creating email billing account");
     return this.client.request<EmailBillingAccount>("/billing/v1/accounts", {
       method: "POST",
       body: { email },
@@ -165,11 +217,13 @@ export class Billing {
 
   /** Link a wallet to an existing email billing account to enable hybrid Stripe + x402. */
   async linkWallet(billingAccountId: string, wallet: string): Promise<void> {
+    assertNonEmptyString(billingAccountId, "billingAccountId", "linking wallet");
+    assertEvmAddress(wallet, "wallet", "linking wallet");
     await this.client.request<unknown>(
-      `/billing/v1/accounts/${billingAccountId}/link-wallet`,
+      `/billing/v1/accounts/${encodeURIComponent(billingAccountId)}/link-wallet`,
       {
         method: "POST",
-        body: { wallet },
+        body: { wallet: wallet.toLowerCase() },
         context: "linking wallet",
         withAuth: false,
       },
@@ -178,9 +232,10 @@ export class Billing {
 
   /** Create a Stripe checkout for a tier subscription/renewal/upgrade. */
   async tierCheckout(tier: string, identifier: AccountIdentifier): Promise<CreateCheckoutResult> {
+    assertStringInSet(tier, BILLING_TIERS, "tier", "creating tier checkout");
     const body = checkoutIdentifierBody(identifier, "creating tier checkout");
 
-    return this.client.request<CreateCheckoutResult>(`/billing/v1/tiers/${tier}/checkout`, {
+    return this.client.request<CreateCheckoutResult>(`/billing/v1/tiers/${encodeURIComponent(tier)}/checkout`, {
       method: "POST",
       body,
       context: "creating tier checkout",

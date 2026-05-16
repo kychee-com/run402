@@ -83,21 +83,18 @@ Examples:
 `,
 };
 
-async function set(projectId, key, args = []) {
-  const parsedArgs = normalizeArgv(args);
-  const valueFlags = ["--file"];
-  assertKnownFlags(parsedArgs, [...valueFlags, "--stdin", "--help", "-h"], valueFlags);
-  const values = positionalArgs(parsedArgs, valueFlags);
-  if (values.length > 1) {
-    fail({ code: "BAD_USAGE", message: `Unexpected argument for secrets set: ${values[1]}` });
-  }
+export function readSecretValueForSet(parsedArgs, values, readers = {}) {
+  const readStdin = readers.readStdin ?? (() => readFileSync(0, "utf-8"));
+  const readFile = readers.readFile ?? ((path) => readFileSync(path, "utf-8"));
+  const validateFile = readers.validateFile ?? validateRegularFile;
   const file = flagValue(parsedArgs, "--file");
-  const useStdinFlag = parsedArgs.includes("--stdin");
-  const fileIsStdin = isStdinAlias(file);
+  const stdinRequested = parsedArgs.includes("--stdin");
+  const stdinFile = isStdinAlias(file);
   const sources = [];
   if (values.length === 1) sources.push("inline");
-  if (file) sources.push(fileIsStdin ? "--file stdin" : "--file");
-  if (useStdinFlag) sources.push("--stdin");
+  if (file) sources.push(stdinFile ? "--file stdin" : "--file");
+  if (stdinRequested) sources.push("--stdin");
+
   if (sources.length > 1) {
     fail({
       code: "BAD_USAGE",
@@ -106,14 +103,23 @@ async function set(projectId, key, args = []) {
       hint: "Use one of: inline value, --file <path>, or --stdin.",
     });
   }
-  if (file && !fileIsStdin) validateRegularFile(file, "--file");
-  const val = useStdinFlag || fileIsStdin
-    ? await readStdinSecret()
-    : file
-      ? readFileSync(file, "utf-8")
-      : values.length === 1
-        ? values[0]
-        : undefined;
+  if (file && !stdinFile) validateFile(file, "--file");
+
+  if (stdinRequested || stdinFile) return readStdin();
+  if (file) return readFile(file);
+  if (values.length === 1) return values[0];
+  return undefined;
+}
+
+async function set(projectId, key, args = []) {
+  const parsedArgs = normalizeArgv(args);
+  const valueFlags = ["--file"];
+  assertKnownFlags(parsedArgs, [...valueFlags, "--stdin", "--help", "-h"], valueFlags);
+  const values = positionalArgs(parsedArgs, valueFlags);
+  if (values.length > 1) {
+    fail({ code: "BAD_USAGE", message: `Unexpected argument for secrets set: ${values[1]}` });
+  }
+  const val = await readSecretValueForSet(parsedArgs, values, { readStdin: readStdinSecret });
   if (val === undefined) {
     fail({
       code: "BAD_USAGE",

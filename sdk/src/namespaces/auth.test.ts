@@ -11,6 +11,11 @@ import assert from "node:assert/strict";
 import { Run402 } from "../index.js";
 import { LocalError, ProjectNotFound } from "../errors.js";
 import type { CredentialsProvider } from "../credentials.js";
+import type {
+  CreateAuthUserOptions,
+  MagicLinkOptions,
+  SetPasswordOptions,
+} from "./auth.js";
 
 interface FetchCall {
   url: string;
@@ -129,6 +134,22 @@ describe("auth.settings", () => {
     assert.equal(calls.length, 0);
   });
 
+  it("rejects unknown settings keys before requesting", async () => {
+    const { fetch, calls } = mockFetch(() => {
+      throw new Error("unexpected fetch for unknown auth setting");
+    });
+    const sdk = makeSdk(makeCreds(), fetch);
+
+    await assert.rejects(
+      sdk.auth.settings("prj_known", { allow_passwrod_login: true } as any),
+      (err: unknown) =>
+        err instanceof LocalError &&
+        err.context === "updating auth settings" &&
+        /Unknown auth settings field: allow_passwrod_login/.test(err.message),
+    );
+    assert.equal(calls.length, 0);
+  });
+
   it("throws ProjectNotFound for unknown ids before hitting the network", async () => {
     const { fetch, calls } = mockFetch(() => jsonResponse({}));
     const sdk = makeSdk(makeCreds(), fetch);
@@ -211,6 +232,28 @@ describe("auth.requestMagicLink", () => {
     );
     assert.equal(calls.length, 0);
   });
+
+  it("rejects malformed email, redirect URL, and intent before requesting", async () => {
+    const invalid: MagicLinkOptions[] = [
+      { email: "not an email", redirectUrl: "https://app.example.com/callback" },
+      { email: "user@example.com", redirectUrl: "javascript:alert(1)" },
+      { email: "user@example.com", redirectUrl: "https://app.example.com/callback", intent: "bogus" as any },
+    ];
+
+    for (const opts of invalid) {
+      const { fetch, calls } = mockFetch(() => {
+        throw new Error("unexpected fetch for invalid magic-link options");
+      });
+      const sdk = makeSdk(makeCreds(), fetch);
+      await assert.rejects(
+        sdk.auth.requestMagicLink("prj_known", opts),
+        (err: unknown) =>
+          err instanceof LocalError &&
+          err.context === "requesting magic link",
+      );
+      assert.equal(calls.length, 0);
+    }
+  });
 });
 
 describe("auth.createUser", () => {
@@ -244,6 +287,43 @@ describe("auth.createUser", () => {
       redirect_url: "https://app.example.com/cb",
       client_state: "state-1",
     });
+  });
+
+  it("rejects malformed email and redirect URL before requesting", async () => {
+    const invalid: CreateAuthUserOptions[] = [
+      { email: "not an email" },
+      { email: "admin@example.com", redirectUrl: "javascript:alert(1)" },
+    ];
+
+    for (const opts of invalid) {
+      const { fetch, calls } = mockFetch(() => {
+        throw new Error("unexpected fetch for invalid admin user options");
+      });
+      const sdk = makeSdk(makeCreds(), fetch);
+      await assert.rejects(
+        sdk.auth.createUser("prj_known", opts),
+        (err: unknown) =>
+          err instanceof LocalError &&
+          err.context === "creating auth user",
+      );
+      assert.equal(calls.length, 0);
+    }
+  });
+
+  it("inviteUser reuses createUser validation", async () => {
+    const { fetch, calls } = mockFetch(() => {
+      throw new Error("unexpected fetch for invalid invite user options");
+    });
+    const sdk = makeSdk(makeCreds(), fetch);
+
+    await assert.rejects(
+      sdk.auth.inviteUser("prj_known", {
+        email: "bad",
+        redirectUrl: "javascript:alert(1)",
+      }),
+      LocalError,
+    );
+    assert.equal(calls.length, 0);
   });
 });
 
@@ -374,5 +454,47 @@ describe("auth.setUserPassword", () => {
         /opts|password/.test(err.message),
     );
     assert.equal(calls.length, 0);
+  });
+
+  it("rejects empty access token, new password, and current password before requesting", async () => {
+    const invalid: SetPasswordOptions[] = [
+      { accessToken: "", newPassword: "new-password" },
+      { accessToken: "user_jwt", newPassword: "" },
+      { accessToken: "user_jwt", newPassword: "new-password", currentPassword: "" },
+    ];
+
+    for (const opts of invalid) {
+      const { fetch, calls } = mockFetch(() => {
+        throw new Error("unexpected fetch for invalid password options");
+      });
+      const sdk = makeSdk(makeCreds(), fetch);
+      await assert.rejects(
+        sdk.auth.setUserPassword("prj_known", opts),
+        (err: unknown) =>
+          err instanceof LocalError &&
+          err.context === "setting user password",
+      );
+      assert.equal(calls.length, 0);
+    }
+  });
+});
+
+describe("auth.verifyMagicLink", () => {
+  it("rejects empty or non-string tokens before requesting", async () => {
+    const invalid = ["", null, 42];
+
+    for (const token of invalid) {
+      const { fetch, calls } = mockFetch(() => {
+        throw new Error("unexpected fetch for invalid magic-link token");
+      });
+      const sdk = makeSdk(makeCreds(), fetch);
+      await assert.rejects(
+        sdk.auth.verifyMagicLink("prj_known", token as any),
+        (err: unknown) =>
+          err instanceof LocalError &&
+          err.context === "verifying magic link",
+      );
+      assert.equal(calls.length, 0);
+    }
   });
 });

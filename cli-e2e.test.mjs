@@ -3026,6 +3026,7 @@ describe("CLI e2e happy path", () => {
 
   it("secrets set", async () => {
     const { run } = await import("./cli/lib/secrets.mjs");
+    await seedTestProject();
     captureStart();
     await run("set", ["prj_test123", "TEST_KEY", "secret_value"]);
     captureStop();
@@ -3035,6 +3036,7 @@ describe("CLI e2e happy path", () => {
   it("secrets set --file", async () => {
     const { run } = await import("./cli/lib/secrets.mjs");
     const { writeFileSync: wf } = await import("node:fs");
+    await seedTestProject();
     const valPath = join(tempDir, "secret.txt");
     wf(valPath, "file_secret_value");
     captureStart();

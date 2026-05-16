@@ -27,12 +27,16 @@ export async function handleBlobGet(args: Args): Promise<{ content: Array<{ type
   }
 
   const outPath = resolve(args.output_path);
-  mkdirSync(dirname(outPath), { recursive: true });
   const contentLength = Number(res.headers.get("content-length") ?? 0);
   const sha256 = res.headers.get("x-run402-sha256");
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  await pipeline(Readable.fromWeb(res.body as any), createWriteStream(outPath));
+  try {
+    mkdirSync(dirname(outPath), { recursive: true });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await pipeline(Readable.fromWeb(res.body as any), createWriteStream(outPath));
+  } catch (err) {
+    return mapSdkError(err, "writing blob to local file");
+  }
 
   const lines: string[] = [
     `Downloaded **${args.key}** → ${outPath}`,
