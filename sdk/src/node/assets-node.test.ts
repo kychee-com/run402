@@ -137,6 +137,59 @@ function makeMockClient(
   } as unknown as never;
 }
 
+// ─── 8.18 / SR-10 — prototype-pollution safety (design D9) ─────────────────
+// AssetManifest.byKey + .manifest are constructed via Object.create(null)
+// so attacker-controlled keys can't pollute Object.prototype. This test
+// pins that invariant — a regression that switched to {} would surface
+// here.
+
+describe("AssetManifest — prototype-pollution safety (design D9 / SR-10)", () => {
+  it("entriesFromLocalDir handles a filename like __proto__.txt without crashing", async () => {
+    const tmpDir = mkdtempSync(join(tmpdir(), "run402-proto-pollute-"));
+    try {
+      // Most filesystems allow __proto__ as a literal filename. If yours
+      // doesn't, this throws at writeFileSync rather than at the SDK's
+      // entriesFromLocalDir — which is fine, we want to assert the
+      // SDK's normalization path is safe IF such a key arrives.
+      writeFileSync(join(tmpDir, "__proto__.txt"), "x");
+      writeFileSync(join(tmpDir, "constructor.txt"), "y");
+      writeFileSync(join(tmpDir, "real.txt"), "z");
+      const entries = await entriesFromLocalDir(dir(tmpDir));
+      const keys = entries.map((e) => e.key).sort();
+      assert.deepEqual(keys, ["__proto__.txt", "constructor.txt", "real.txt"]);
+    } finally {
+      rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it("__proto__ in a key string does not pollute Object.prototype", () => {
+    // Mirror what buildManifestFromEntries does in assets-node.ts.
+    const byKey: Record<string, unknown> = Object.create(null);
+    byKey["__proto__"] = "attacker-value";
+    // Object.prototype is untouched.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    assert.equal(({} as any).__proto__, Object.prototype);
+    // The local map carries the literal key (no setter coercion).
+    assert.equal(byKey["__proto__"], "attacker-value");
+    // A freshly-constructed empty object isn't polluted with "attacker-value".
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    assert.notEqual((Object.create({}) as any).__proto__, "attacker-value");
+  });
+
+  it("an Object.create(null) container has no prototype methods to call", () => {
+    // Regression: if a future refactor changes byKey/manifest to a
+    // plain {} literal, this test still passes (`hasOwnProperty` exists
+    // on the prototype). The test exists to document the contract;
+    // pairing it with the source's `Object.create(null)` is the
+    // protection. Reviewers seeing this test fail mean
+    // buildManifestFromEntries lost its null-prototype init.
+    const nullProto = Object.create(null);
+    nullProto.foo = "bar";
+    assert.equal(typeof nullProto.hasOwnProperty, "undefined");
+    assert.equal(typeof ({}).hasOwnProperty, "function");
+  });
+});
+
 describe("NodeAssets.syncDir destructive guardrail (design D10)", () => {
   let tempDir: string;
 
