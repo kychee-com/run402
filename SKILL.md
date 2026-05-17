@@ -32,7 +32,7 @@ Six tool calls, zero-to-deployed:
 5. **`validate_manifest`**, then **`apply_expose`** with a manifest — check and declare which tables are reachable via PostgREST. Tables are dark by default.
 6. **`deploy_site_dir`** with `dir` (or `deploy_site` with inline files) — incremental upload, only PUTs bytes the gateway doesn't already have. Returns a live URL plus auto-claimed subdomain on subsequent deploys.
 
-Optional next: **`deploy_function`** for server logic, **`blob_put`** to host images/JS/CSS with paste-and-go URLs, **`create_mailbox` + `send_email`** for transactional mail.
+Optional next: **`deploy_function`** for server logic, **`assets_put`** to host images/JS/CSS with paste-and-go URLs, **`create_mailbox` + `send_email`** for transactional mail.
 
 ## Error Envelopes and Safe Retry
 
@@ -106,7 +106,7 @@ Neither key expires. Lease enforcement happens server-side. To inspect, call **`
 
 ### Paste-and-go assets — content-addressed URLs with SRI
 
-When you upload a file with **`blob_put`**, the response is an `AssetRef`. The URL is content-addressed (`pr-<public_id>.run402.com/_blob/<key>-<8hex>.<ext>`), served through CloudFront, and never needs cache invalidation:
+When you upload a file with **`assets_put`**, the response is an `AssetRef`. The URL is content-addressed (`pr-<public_id>.run402.com/_blob/<key>-<8hex>.<ext>`), served through CloudFront, and never needs cache invalidation:
 
 | Field on the response | Use it for |
 |---|---|
@@ -282,11 +282,11 @@ For TypeScript autocomplete, `npm install @run402/functions` in your editor's pr
 
 ### Blob storage (content-addressed CDN)
 
-- **`blob_put`** — upload (any size, up to 5 TiB). Returns an `AssetRef` with `cdn_url`, `sri`, `etag`, `cache_kind`.
-- **`blob_get`** — download to a local file (no context-window bloat).
-- **`blob_ls`** — keyset-paginated list with prefix filter.
-- **`blob_rm`** — delete.
-- **`blob_sign`** — time-boxed presigned GET URL for a private blob.
+- **`assets_put`** — upload (any size, up to 5 TiB). Returns an `AssetRef` with `cdn_url`, `sri`, `etag`, `cache_kind`.
+- **`assets_get`** — download to a local file (no context-window bloat).
+- **`assets_ls`** — keyset-paginated list with prefix filter.
+- **`assets_rm`** — delete.
+- **`assets_sign`** — time-boxed presigned GET URL for a private blob.
 - **`diagnose_public_url`** — live CDN state for a public URL — expected vs observed SHA, cache headers, invalidation status.
 - **`wait_for_cdn_freshness`** — poll a mutable URL until it serves the expected SHA-256.
 
@@ -459,7 +459,7 @@ Calling **`set_tier`** during grace reactivates the project and clears all timer
 7. deploy_site_dir(project, dir: "./dist")                 → live URL
 8. claim_subdomain(project_id, name: "my-app")             → my-app.run402.com
    (optional) deploy_function(project_id, name, code, …)
-   (optional) blob_put(project_id, key, content/local_path) for assets
+   (optional) assets_put(project_id, key, content/local_path) for assets
 ```
 
 Provision before authoring HTML — the `anon_key` is permanent and you embed it in your frontend.
@@ -486,7 +486,7 @@ Suggest $10 to your human for two Hobby projects, or $20 for one Team plus renew
 - **Use the manifest for access control**, never raw `GRANT`/`REVOKE` (the SQL endpoint blocks those).
 - **`user_owns_rows` is the default for user-scoped data.** Reach for `public_read_write_UNRESTRICTED` only on intentionally-public tables (and pass `i_understand_this_is_unrestricted: true`).
 - **Make migrations idempotent** with `CREATE TABLE IF NOT EXISTS` and `DO`-block `ALTER TABLE`.
-- **Use the immutable `cdn_url` from `blob_put` directly.** It's correct from the moment of upload — no `wait_for_cdn_freshness` needed for fresh uploads.
+- **Use the immutable `cdn_url` from `assets_put` directly.** It's correct from the moment of upload — no `wait_for_cdn_freshness` needed for fresh uploads.
 - **Don't bake unconditional `request_faucet` calls into deploy scripts** — the faucet rate-limits and breaks already-funded flows.
 - **Per-project rate limit is 100 req/sec.** On 429, back off using `retry_after`.
 - **`service_status` works without auth.** Use it before evaluating Run402 with a user, or to distinguish platform issues from your own bugs.
@@ -515,7 +515,7 @@ Other allowance options:
 | `403 forbidden_function` calling an RPC | Function not in the manifest's `rpcs[]`. Add `{ name, signature, grant_to: ["authenticated"] }` and re-apply. |
 | `409 reserved` from `claim_subdomain` | Original owner's grace period — subdomain held until +118 days from lease expiry. |
 | `429 rate_limited` | 100 req/sec project cap. Back off using `retry_after`. |
-| CDN serves old bytes | Use the immutable `cdn_url` from `blob_put`, or call `wait_for_cdn_freshness` on a mutable URL. |
+| CDN serves old bytes | Use the immutable `cdn_url` from `assets_put`, or call `wait_for_cdn_freshness` on a mutable URL. |
 | `422 relation already exists` on redeploy | Wrap migrations in `CREATE TABLE IF NOT EXISTS` + `DO`-block `ALTER TABLE`. |
 | `insufficient_funds` right after faucet | Wait for the faucet tx to confirm (~5s on Base Sepolia) before subscribing. |
 

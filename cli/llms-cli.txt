@@ -142,7 +142,7 @@ run402 tier status
 
 ### Unified Deploy (v1.34+, recommended)
 
-The canonical deploy primitive. All bytes ride through CAS (no inline-body cap), supports both `replace` and `patch` semantics per resource, atomic multi-resource activation, and resumable recovery from partial failures. This is the path the SDK exposes as `r.deploy.apply(...)`.
+The canonical deploy primitive. All bytes ride through CAS (no inline-body cap), supports both `replace` and `patch` semantics per resource, atomic multi-resource activation, and resumable recovery from partial failures. This is the path the SDK exposes as `r.project(id).apply(...)`.
 
 ⚠️ You still need the `anon_key` BEFORE writing your manifest -- provision first, then embed the real key in your HTML.
 
@@ -786,31 +786,31 @@ Injected as `process.env` in functions. Values are write-only — `list` returns
 
 Direct-to-S3 blob storage. Works for any size from 1 byte up to 5 TiB. No bucket concept — blobs live in a flat key namespace per project.
 
-- `run402 blob put <file> [files...] [--project <id>] [--key <dest>] [--content-type <mime>] [--private] [--immutable] [--concurrency N] [--no-resume] [--json]`
-- `run402 blob get <key> --output <file> [--project <id>]`
-- `run402 blob ls [--project <id>] [--prefix <p>] [--limit <n>]`
-- `run402 blob rm <key> [--project <id>]`
-- `run402 blob sign <key> [--project <id>] [--ttl <seconds>]` — signed URL TTL must be an integer from 60 to 604800 seconds.
-- `run402 blob diagnose <url> [--project <id>]` — inspect live CDN state for a public URL
+- `run402 assets put <file> [files...] [--project <id>] [--key <dest>] [--content-type <mime>] [--private] [--immutable] [--concurrency N] [--no-resume] [--json]`
+- `run402 assets get <key> --output <file> [--project <id>]`
+- `run402 assets ls [--project <id>] [--prefix <p>] [--limit <n>]`
+- `run402 assets rm <key> [--project <id>]`
+- `run402 assets sign <key> [--project <id>] [--ttl <seconds>]` — signed URL TTL must be an integer from 60 to 604800 seconds.
+- `run402 assets diagnose <url> [--project <id>]` — inspect live CDN state for a public URL
 - `run402 cdn wait-fresh <url> --sha <hex> [--timeout <secs>] [--project <id>]` — poll a mutable URL until it serves the expected SHA-256
 
 Examples:
 
 ```
-run402 blob put ./artifact.tgz --project prj_abc123
-run402 blob put ./dist/**/*.png --project prj_abc123 --key assets/
-run402 blob put ./asset --project prj_abc123 --key assets/logo --content-type image/svg+xml
-run402 blob put huge.bin --project prj_abc123 --immutable
-run402 blob get images/logo.png --output /tmp/logo.png --project prj_abc123
-run402 blob ls --project prj_abc123 --prefix images/
-run402 blob diagnose https://app.run402.com/_blob/avatar.png --project prj_abc123
+run402 assets put ./artifact.tgz --project prj_abc123
+run402 assets put ./dist/**/*.png --project prj_abc123 --key assets/
+run402 assets put ./asset --project prj_abc123 --key assets/logo --content-type image/svg+xml
+run402 assets put huge.bin --project prj_abc123 --immutable
+run402 assets get images/logo.png --output /tmp/logo.png --project prj_abc123
+run402 assets ls --project prj_abc123 --prefix images/
+run402 assets diagnose https://app.run402.com/_blob/avatar.png --project prj_abc123
 run402 cdn wait-fresh https://app.run402.com/_blob/avatar.png --sha ba78... --timeout 120
 ```
 
 `put` response (an `AssetRef`) — the agent-DX way:
 
 ```js
-const asset = await client.blobs.put(projectId, key, { bytes });  // v1.45 defaults to immutable: true
+const asset = await client.assets.put(projectId, key, { bytes });  // v1.45 defaults to immutable: true
 html += asset.scriptTag();             // <script src=... defer integrity=... crossorigin></script>
 html += asset.linkTag();               // <link rel="stylesheet" href=... integrity=... crossorigin>
 html += asset.imgTag("Company logo");  // <img src=... alt="Company logo" loading="lazy" decoding="async">
@@ -821,7 +821,7 @@ html += asset.imgTag("Company logo");  // <img src=... alt="Company logo" loadin
 Other AssetRef fields for advanced use:
 - `cdnUrl` — the content-addressed URL the emitters use directly. `https://pr-<public_id>.run402.com/_blob/<key-without-ext>-<8hex>.<ext>`. Served via the v1.33 CDN; guaranteed-reachable.
 - `cdnMutableUrl` — mutable URL on the auto-subdomain. Eventual-consistency caveats; prefer `cdnUrl` in code.
-- `url` / `immutableUrl` (preferred-host forms) — URL on the project's pretty host (claimed subdomain / custom domain when configured). Currently NOT served through the CDN — keep using for direct-API consumers (e.g. `run402 blob get`), not in `<script>`/`<img>` embeds.
+- `url` / `immutableUrl` (preferred-host forms) — URL on the project's pretty host (claimed subdomain / custom domain when configured). Currently NOT served through the CDN — keep using for direct-API consumers (e.g. `run402 assets get`), not in `<script>`/`<img>` embeds.
 - `etag` — strong `"sha256-<hex>"` ETag (when `immutable`).
 - `sri` — `sha256-<base64>` for `<script integrity={sri}>` if you must construct tags by hand.
 - `contentDigest` — RFC 9530 `sha-256=:<base64>:` for HTTP integrity.
@@ -832,11 +832,11 @@ Other AssetRef fields for advanced use:
 
 Resume: state is persisted to `~/.run402/uploads/<upload_id>.json` with restrictive permissions (directory 0700, files 0600). The state is bound to project, local path, destination key, size, and mtime, and it does not persist presigned part URLs. Ctrl-C mid-upload and re-run the same `blob put` command — it picks up where it left off when the local file still matches. Pass `--no-resume` to start fresh.
 
-Private blobs (`--private`): no CDN URL returned; read via authenticated gateway path `GET /storage/v1/blob/<key>` with apikey, or via `run402 blob sign` for time-boxed external sharing.
+Private blobs (`--private`): no CDN URL returned; read via authenticated gateway path `GET /storage/v1/blob/<key>` with apikey, or via `run402 assets sign` for time-boxed external sharing.
 
 Content-Type: `blob put` infers MIME from the destination key extension. Use `--content-type <mime>` for extensionless assets, uncommon file types, or deliberate overrides; the value applies to every file in the invocation.
 
-`diagnose` exit codes are shell-loop-friendly: `0` when the CDN serves the gateway's expected SHA, `1` otherwise. So `until run402 blob diagnose <url>; do sleep 1; done` blocks until the CDN catches up. Vantage: probes are single-region (us-east-1); the `# probed once from gateway-us-east-1; not a global view` line on stderr is the explicit caveat.
+`diagnose` exit codes are shell-loop-friendly: `0` when the CDN serves the gateway's expected SHA, `1` otherwise. So `until run402 assets diagnose <url>; do sleep 1; done` blocks until the CDN catches up. Vantage: probes are single-region (us-east-1); the `# probed once from gateway-us-east-1; not a global view` line on stderr is the explicit caveat.
 
 #### Uploading from Node/agent code
 
@@ -846,7 +846,7 @@ import { run402 } from "@run402/sdk/node";
 const client = run402();
 
 // 1. Init through the SDK. The gateway returns presigned part URLs.
-const init = await client.blobs.initUploadSession(projectId, {
+const init = await client.assets.initUploadSession(projectId, {
   key: "uploads/report.pdf",
   size_bytes: buf.length,
   content_type: "application/pdf",
@@ -872,7 +872,7 @@ for (const part of init.parts) {
 }
 
 // 3. Complete through the SDK.
-const asset = await client.blobs.completeUploadSession(
+const asset = await client.assets.completeUploadSession(
   projectId,
   init.upload_id,
   { parts: etags },

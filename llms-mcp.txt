@@ -27,7 +27,7 @@ Six tool calls take you from zero to a deployed static site backed by a real Pos
 5. **`validate_manifest`**, then **`apply_expose`** with a manifest — check and declare which tables are reachable via PostgREST. Tables are dark by default.
 6. **`deploy_site_dir`** with `dir` — incremental upload, only PUTs bytes the gateway doesn't already have. Auto-claims the subdomain on subsequent deploys.
 
-Optional next: **`deploy_function`** for server logic, **`blob_put`** for paste-and-go CDN assets, **`create_mailbox`** + **`send_email`** for transactional mail.
+Optional next: **`deploy_function`** for server logic, **`assets_put`** for paste-and-go CDN assets, **`create_mailbox`** + **`send_email`** for transactional mail.
 
 ## Project credentials
 
@@ -63,7 +63,7 @@ Safe retry policy:
 
 ### Paste-and-go assets — content-addressed URLs with SRI
 
-When you upload a file with **`blob_put`**, the response is an `AssetRef` with these fields:
+When you upload a file with **`assets_put`**, the response is an `AssetRef` with these fields:
 
 | Field | Use it for |
 |---|---|
@@ -242,11 +242,11 @@ For TypeScript autocomplete, `npm install @run402/functions` in your editor's pr
 
 ### Blob storage (content-addressed CDN)
 
-- **`blob_put`** — upload (any size up to 5 TiB) via direct-to-S3. Params: `project_id`, `key`, `local_path?` OR `content?` (≤ 1 MB inline), `content_type?`, `visibility?` (`"public"` / `"private"`), `immutable?` (default `true`), `sha256?` (auto-computed when `immutable: true`). Returns `AssetRef`.
-- **`blob_get`** — download to a local file. Params: `project_id`, `key`, `local_path`.
-- **`blob_ls`** — keyset-paginated list. Params: `project_id`, `prefix?`, `limit?` (default 100, max 1000), `cursor?`.
-- **`blob_rm`** — delete and decrement project storage usage. Params: `project_id`, `key`.
-- **`blob_sign`** — time-boxed presigned GET URL. Params: `project_id`, `key`, `ttl_seconds?` (default 3600, max 604800).
+- **`assets_put`** — upload (any size up to 5 TiB) via direct-to-S3. Params: `project_id`, `key`, `local_path?` OR `content?` (≤ 1 MB inline), `content_type?`, `visibility?` (`"public"` / `"private"`), `immutable?` (default `true`), `sha256?` (auto-computed when `immutable: true`). Returns `AssetRef`.
+- **`assets_get`** — download to a local file. Params: `project_id`, `key`, `local_path`.
+- **`assets_ls`** — keyset-paginated list. Params: `project_id`, `prefix?`, `limit?` (default 100, max 1000), `cursor?`.
+- **`assets_rm`** — delete and decrement project storage usage. Params: `project_id`, `key`.
+- **`assets_sign`** — time-boxed presigned GET URL. Params: `project_id`, `key`, `ttl_seconds?` (default 3600, max 604800).
 - **`diagnose_public_url`** — live CDN state. Params: `project_id`, `url`. Returns `expectedSha256`, `observedSha256`, `cache.{xCache,ageSeconds,cacheKind}`, `invalidation.{id,status}`, `vantage`, `hint`. Vantage is single-region (us-east-1).
 - **`wait_for_cdn_freshness`** — poll a mutable URL until it serves the expected SHA. Params: `project_id`, `url`, `sha256`, `timeout_ms?` (default 60_000, max 600_000). `isError: true` on timeout.
 
@@ -455,7 +455,7 @@ Suggest $10 to your human for two Hobby projects, or $20 for one Team plus renew
 | `403 forbidden_function` calling an RPC | Function not in the manifest's `rpcs[]`. Add `{ name, signature, grant_to: ["authenticated"] }` and re-apply. |
 | `409 reserved` from `claim_subdomain` | Original owner's grace period — subdomain held until +118 days from lease expiry. |
 | `429 rate_limited` | 100 req/sec project cap. Back off using `retry_after`. |
-| CDN serves old bytes | Use the immutable `cdn_url` from `blob_put`, or call `wait_for_cdn_freshness` on a mutable URL. |
+| CDN serves old bytes | Use the immutable `cdn_url` from `assets_put`, or call `wait_for_cdn_freshness` on a mutable URL. |
 | `422 relation already exists` on redeploy | Wrap migrations in `CREATE TABLE IF NOT EXISTS` + `DO`-block `ALTER TABLE`. |
 | `insufficient_funds` right after faucet | Wait for the faucet tx to confirm (~5s on Base Sepolia) before subscribing. |
 

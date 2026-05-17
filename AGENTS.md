@@ -95,7 +95,7 @@ The SDK is the canonical kernel — a single typed client with a `CredentialsPro
 - **`credentials.ts`** — `CredentialsProvider` interface. Required: `getAuth`, `getProject`. Optional: `saveProject`, `updateProject`, `removeProject`, `setActiveProject`, `getActiveProject`, `readAllowance`, `saveAllowance`, `createAllowance`, `getAllowancePath`.
 - **`namespaces/*.ts`** — One class per resource group (projects, blobs, functions, email, CI/OIDC, …). Namespaces hold a `Client` and expose typed methods. The canonical deploy primitive lives at **`namespaces/deploy.ts`** (with shared types in `deploy.types.ts`) — see "Unified Deploy" below.
 - **`node/*.ts`** — Node-only entry point (`@run402/sdk/node`). Wraps `core/` keystore + allowance into `NodeCredentialsProvider`. Sets up x402-wrapped fetch via `createLazyPaidFetch()`. Adds `fileSetFromDir(path)` for filesystem byte sources and the deploy manifest adapter (`loadDeployManifest(path)`, `normalizeDeployManifest(input)`) for CLI/MCP-compatible JSON.
-- **`scoped.ts`** — `ScopedRun402` sub-client. Returned by `r.project(id?)` and `r.useProject(id)`. Wraps every project-id-bearing namespace method with the id pre-bound, so `p.deploy.apply({ site })` (no `project`), `p.functions.list()`, `p.blobs.put(key, src)` all "just work" once the scope is set. Caller-supplied `project_id` / `project` still wins (override-friendly). The unwrapped namespaces (`r.deploy`, `r.functions`, …) keep their required-id signatures unchanged — scoped is sugar, not a replacement.
+- **`scoped.ts`** — `ScopedRun402` sub-client. Returned by `r.project(id?)` and `r.useProject(id)`. Wraps every project-id-bearing namespace method with the id pre-bound, so `p.apply({ site })` (no `project`), `p.functions.list()`, `p.assets.put(key, src)` all "just work" once the scope is set. Caller-supplied `project_id` / `project` still wins (override-friendly). The unwrapped namespaces (`r.deploy`, `r.functions`, …) keep their required-id signatures unchanged — scoped is sugar, not a replacement.
 
 ### Project-scoped sub-client (`r.project(id?)`)
 
@@ -107,7 +107,7 @@ The SDK is the canonical kernel — a single typed client with a `CredentialsPro
 ### Unified Deploy (v1.34+)
 
 - **`namespaces/deploy.ts`** — `Deploy` class exposing the canonical primitive. Three layers:
-  - `r.deploy.apply(spec, opts?)` — one-shot, awaits to terminal (most agents use this).
+  - `r.project(id).apply(spec, opts?)` — one-shot, awaits to terminal (most agents use this).
   - `r.deploy.start(spec, opts?)` — returns a `DeployOperation` with `events()` async iterator + `result()` promise.
   - `r.deploy.plan` / `upload` / `commit` — low-level steps for CLI debugging.
   - Plus `r.deploy.resume(operationId)`, `status`, `getRelease`, `getActiveRelease`, `diff`.
@@ -212,7 +212,7 @@ Tests mock `globalThis.fetch` and use temp directories for keystore isolation. E
 
 Two skill files coexist, serving different runtimes:
 
-- **`SKILL.md`** (root) — MCP-host skill. Frontmatter `install: run402-mcp`. Body teaches the platform via MCP tool names (`provision_postgres_project`, `apply_expose`, `deploy_site_dir`, `blob_put`, …) in natural-language framings — no JSON tool-call blobs. Read by Claude Desktop / Cursor / Cline / Claude Code agents that already have the run402-mcp tools loaded.
+- **`SKILL.md`** (root) — MCP-host skill. Frontmatter `install: run402-mcp`. Body teaches the platform via MCP tool names (`provision_postgres_project`, `apply_expose`, `deploy_site_dir`, `assets_put`, …) in natural-language framings — no JSON tool-call blobs. Read by Claude Desktop / Cursor / Cline / Claude Code agents that already have the run402-mcp tools loaded.
 - **`openclaw/SKILL.md`** — OpenClaw script-based skill. Frontmatter `install: run402` (the CLI). Body teaches the platform exclusively via `run402 <verb>` commands. Read by OpenClaw's script runner, where `openclaw/scripts/*.mjs` re-export from the CLI's lib.
 
 `SKILL.test.ts` validates both files with shape-appropriate guards (root requires the run402-mcp install + 9 MCP tool names; openclaw requires the run402 CLI install + 7 CLI verbs). Both ban `setup_rls` / `get_deployment` / `projects rls` / `sites status` / `inherit:true` regressions. Run with `npm run test:skill`.

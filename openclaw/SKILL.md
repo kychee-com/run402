@@ -44,7 +44,7 @@ That's a real Postgres database + a deployed static site, paid for autonomously 
 | Make a table reachable from the browser | `run402 projects apply-expose` |
 | Deploy a frontend from a directory | `run402 sites deploy-dir <path>` |
 | Link GitHub Actions deploys | `run402 ci link github` |
-| Stash a file with a paste-able CDN URL | `run402 blob put <file>` |
+| Stash a file with a paste-able CDN URL | `run402 assets put <file>` |
 | Run code on the server | `run402 functions deploy` |
 | Send email | `run402 email send` |
 | Sign on-chain | `run402 contracts call` |
@@ -326,13 +326,13 @@ Views always run with `security_invoker=true` — they inherit the underlying ta
 
 ## Storage — paste-and-go assets
 
-`run402 blob put` returns an `AssetRef`. The URL is content-addressed (`pr-<public_id>.run402.com/_blob/<key>-<8hex>.<ext>`), served through CloudFront, and never needs cache invalidation:
+`run402 assets put` returns an `AssetRef`. The URL is content-addressed (`pr-<public_id>.run402.com/_blob/<key>-<8hex>.<ext>`), served through CloudFront, and never needs cache invalidation:
 
 ```bash
-run402 blob put ./logo.png    --json
-run402 blob put ./app.js      --json
-run402 blob put ./styles.css  --json
-run402 blob put ./asset       --key assets/logo --content-type image/svg+xml --json
+run402 assets put ./logo.png    --json
+run402 assets put ./app.js      --json
+run402 assets put ./styles.css  --json
+run402 assets put ./asset       --key assets/logo --content-type image/svg+xml --json
 ```
 
 Each response includes:
@@ -351,20 +351,20 @@ Immutable upload is the default since v1.45 — the SDK computes the SHA-256 cli
 ### List, fetch, remove, sign
 
 ```bash
-run402 blob ls --prefix images/
-run402 blob get images/logo.png --output /tmp/logo.png
-run402 blob rm images/old.png
-run402 blob sign secrets/report.pdf --ttl 3600    # presigned URL for private blobs
+run402 assets ls --prefix images/
+run402 assets get images/logo.png --output /tmp/logo.png
+run402 assets rm images/old.png
+run402 assets sign secrets/report.pdf --ttl 3600    # presigned URL for private blobs
 ```
 
 ### Diagnose a stale CDN
 
 ```bash
-run402 blob diagnose <url>                                  # exit 0 if fresh, 1 if stale
+run402 assets diagnose <url>                                  # exit 0 if fresh, 1 if stale
 run402 cdn wait-fresh <url> --sha <hex> --timeout 120       # poll until fresh
 ```
 
-`diagnose` is shell-loop friendly: `until run402 blob diagnose <url>; do sleep 1; done` blocks until the CDN catches up. Vantage is single-region (us-east-1) — other PoPs may differ. **Don't call `wait-fresh` on immutable URLs** — they're correct from the moment of upload.
+`diagnose` is shell-loop friendly: `until run402 assets diagnose <url>; do sleep 1; done` blocks until the CDN catches up. Vantage is single-region (us-east-1) — other PoPs may differ. **Don't call `wait-fresh` on immutable URLs** — they're correct from the moment of upload.
 
 ## Database
 
