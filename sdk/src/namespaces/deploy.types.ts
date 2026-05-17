@@ -79,6 +79,65 @@ export interface ReleaseSpec {
   subdomains?: SubdomainsSpec;
   routes?: ReleaseRoutesSpec;
   checks?: SmokeCheck[];
+  /** v1.48 unified-apply: optional asset slice. When present, the apply
+   *  promotes per-key blob writes inside the same activation transaction
+   *  that flips live_release_id, so asset visibility flips at the exact
+   *  moment release visibility flips. */
+  assets?: AssetSpec;
+}
+
+/**
+ * Asset slice (v1.48 unified-apply). The SDK accepts the ergonomic forms
+ * (LocalDirRef from `dir(path)`, `FileSet`, `ContentSource` in `put`) and
+ * normalizes to wire-shaped AssetPutEntry[] before submitting. The gateway
+ * sees only AssetPutEntry[].
+ *
+ * - Without `prune`, `sync` is additive (semantically equivalent to
+ *   `r.project(id).assets.uploadDir`).
+ * - With `prune: true`, the apply is destructive — the SDK runs a plan
+ *   first and returns a `PRUNE_CONFIRMATION_REQUIRED` error carrying the
+ *   confirm token shape; the caller acknowledges by retrying with
+ *   `sync.confirm` populated. The activation transaction's drift check
+ *   (HTTP 409 ASSET_SYNC_DRIFT) catches the narrower race where
+ *   inventory mutates between commit and activation.
+ */
+export interface AssetSpec {
+  put?: AssetPutEntry[];
+  delete?: string[];
+  sync?: {
+    prefix: string;
+    prune: true;
+    confirm?: AssetSyncPruneConfirm;
+  };
+}
+
+export interface AssetPutEntry {
+  /** Logical key, e.g. `"static/app.css"`. Same validation rules as
+   *  release-file paths (no leading `/`, no `..`, no NUL/control chars,
+   *  no `_cas/` or `_staging/` reserved prefixes, ≤1024 bytes total). */
+  key: string;
+  /** 64 lowercase hex SHA-256 of the bytes. */
+  sha256: string;
+  /** Size in bytes — must agree with the bytes when the SDK uploads. */
+  size_bytes: number;
+  /** Defaults to `application/octet-stream`. */
+  content_type?: string;
+  /** Defaults to `"public"`. Private assets return null for all public URL
+   *  fields; obtain a signed URL via `r.project(id).assets.sign(key)`. */
+  visibility?: "public" | "private";
+  /** Defaults to `true`. Immutable puts populate `internal.asset_versions`
+   *  so older content-hashed URLs survive future key mutation/delete (per
+   *  the visibility-aware URL matrix). */
+  immutable?: boolean;
+}
+
+export interface AssetSyncPruneConfirm {
+  /** SHA-256 hex returned by a prior `r.project(id).apply.plan` call. */
+  base_revision: string;
+  /** SHA-256 hex of the canonical-form sorted planned delete-key list. */
+  delete_set_digest: string;
+  /** Expected count of keys to delete. */
+  expected_delete_count: number;
 }
 
 export interface DatabaseSpec {
