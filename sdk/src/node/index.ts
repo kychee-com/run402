@@ -27,6 +27,7 @@ import type { Client } from "../kernel.js";
 import { NodeCredentialsProvider } from "./credentials.js";
 import { createLazyPaidFetch } from "./paid-fetch.js";
 import { NodeSites } from "./sites-node.js";
+import { NodeAssets } from "./assets-node.js";
 
 export interface NodeRun402Options {
   /** Override the API base URL. Defaults to `getApiBase()` (env var or production URL). */
@@ -46,8 +47,14 @@ export interface NodeRun402Options {
   fetch?: typeof globalThis.fetch;
 }
 
-/** Run402 instance with the Node-only `sites.deployDir` helper wired in. */
-export type NodeRun402 = Omit<Run402, "sites"> & { sites: NodeSites };
+/** Run402 instance with Node-only helpers wired in: `sites.deployDir`
+ *  (v1.34 unified-deploy convenience) and `assets.uploadDir` /
+ *  `assets.syncDir` / `assets.prepareDir` / `assets.putMany`
+ *  (v1.48 unified-apply ergonomics). */
+export type NodeRun402 = Omit<Run402, "sites" | "assets"> & {
+  sites: NodeSites;
+  assets: NodeAssets;
+};
 
 /**
  * Construct a Run402 client wired with Node defaults.
@@ -78,6 +85,9 @@ export function run402(opts: NodeRun402Options = {}): NodeRun402 {
   // the field; this keeps a single Client per instance (no divergent state).
   const client = (base.sites as unknown as { client: Client }).client;
   (base as unknown as { sites: NodeSites }).sites = new NodeSites(client);
+  // v1.48 unified-apply: upgrade `assets` to the Node-aware variant.
+  // Same single-Client pattern as the sites upgrade above.
+  (base as unknown as { assets: NodeAssets }).assets = new NodeAssets(client);
 
   return base as unknown as NodeRun402;
 }
@@ -89,6 +99,22 @@ export type {
 } from "./sites-node.js";
 export { fileSetFromDir, normalizeRelPath } from "./files.js";
 export type { FileSetFromDirOptions } from "./files.js";
+// v1.48 unified-apply: Node-only `assets.{uploadDir,syncDir,prepareDir,
+// putMany}` ergonomics + `dir(path)` LocalDirRef helper. The
+// `dir(path)` call is synchronous (per design D12); the filesystem
+// walk happens at apply() submission time.
+export { NodeAssets, dir, PruneConfirmationRequired } from "./assets-node.js";
+export type {
+  AssetManifest,
+  AssetManifestEntry,
+  AssetManifestTotals,
+  DirOptions,
+  LocalDirRef,
+  PutManyItem,
+  UploadDirOptions,
+  SyncDirOptions,
+  PrepareDirOptions,
+} from "./assets-node.js";
 export { loadDeployManifest, normalizeDeployManifest } from "./deploy-manifest.js";
 export type {
   DeployManifestDatabaseSpec,
