@@ -457,16 +457,36 @@ export class NodeAssets extends Assets {
       );
     }
     if (!opts.confirm) {
-      // Plan-only: surface confirmation values. The hero apply call
-      // returns the destructive_confirmation_required issue in the plan
-      // response; the SDK doesn't yet parse that into a typed error
-      // (follow-up). For now, we proxy via the engine's plan() method
-      // and surface a placeholder.
+      // Run a plan to obtain the gateway-computed base_revision +
+      // delete_set_digest + sample of planned-delete keys (design D10).
+      // The plan response carries an `asset_sync` block when the spec
+      // declares destructive sync; we surface its values via the typed
+      // PruneConfirmationRequired error so the caller can present them
+      // to a user, then retry with `confirm: {...}` populated.
+      const { plan } = await this.applyEngine().plan(
+        {
+          project: opts.project,
+          assets: {
+            put: entries,
+            sync: { prefix: opts.prefix, prune: true },
+          },
+        } as ReleaseSpec,
+        { dryRun: true },
+      );
+      const block = (plan as { asset_sync?: {
+        prefix: string;
+        prune: true;
+        base_revision: string;
+        delete_set_digest: string;
+        expected_delete_count: number;
+        sample_keys: string[];
+        over_inline_threshold: boolean;
+      } }).asset_sync;
       throw new PruneConfirmationRequired({
-        base_revision: "",
-        delete_set_digest: "",
-        expected_delete_count: 0,
-        sample_keys: [],
+        base_revision: block?.base_revision ?? "",
+        delete_set_digest: block?.delete_set_digest ?? "",
+        expected_delete_count: block?.expected_delete_count ?? 0,
+        sample_keys: block?.sample_keys ?? [],
       });
     }
     const result = await this.applyEngine().apply(

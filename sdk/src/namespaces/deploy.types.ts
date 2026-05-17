@@ -1239,6 +1239,74 @@ export interface PlanResponse {
   subdomains?: SubdomainsDiff;
   routes?: RoutesDiff;
   static_assets?: StaticAssetsDiff;
+  /** v1.48 unified-apply: one entry per `assets.put` item, with the
+   *  AssetRef envelope resolved at plan time (URLs are deterministic
+   *  from `(project_public_id, key, content_sha256)` so they're
+   *  computable BEFORE commit per design D8). Agents that need URLs
+   *  pre-commit (for HTML injection between plan and commit) read
+   *  these directly. */
+  asset_entries?: AssetEntryPlanResult[];
+  /** v1.48 unified-apply: echo of `assets.delete`. */
+  asset_deletes?: string[];
+  /** v1.48 unified-apply: destructive confirmation block when the spec
+   *  declared `assets.sync.prune: true`. Carries the values the caller
+   *  must echo back in commit's `assets.sync.confirm` to authorize the
+   *  destructive operation. `sample_keys` is capped at 50 inline;
+   *  larger sets set `over_inline_threshold: true`. Design D10. */
+  asset_sync?: AssetSyncPlanBlock;
+  /** v1.48 unified-apply: structured cost preview. Design D18. */
+  cost?: PlanCostPreview;
+}
+
+/** Resolved AssetRef envelope per `assets.put` entry at plan time. */
+export interface AssetEntryPlanResult {
+  key: string;
+  sha256: string;
+  size_bytes: number;
+  content_type: string;
+  visibility: "public" | "private";
+  immutable: boolean;
+  status: "present" | "satisfied_by_plan" | "upload_pending";
+  asset_ref: ResolvedAssetRef;
+}
+
+export interface ResolvedAssetRef {
+  key: string;
+  sha256: string;
+  size_bytes: number;
+  content_type: string;
+  visibility: "public" | "private";
+  immutable: boolean;
+  url: string | null;
+  immutable_url: string | null;
+  cdn_url: string | null;
+  cdn_immutable_url: string | null;
+  sri: string | null;
+  etag: string;
+  content_digest: string;
+}
+
+export interface AssetSyncPlanBlock {
+  prefix: string;
+  prune: true;
+  base_revision: string;
+  delete_set_digest: string;
+  expected_delete_count: number;
+  sample_keys: string[];
+  over_inline_threshold: boolean;
+}
+
+export interface PlanCostPreview {
+  storage_bytes_added: number;
+  storage_bytes_freed: number;
+  storage_bytes_net: number;
+  asset_keys_added: number;
+  asset_keys_removed: number;
+  asset_keys_after_commit: number;
+  billable_delta_usd_micros: number;
+  payment_required: boolean;
+  quota_before: { storage_bytes: number; asset_keys: number };
+  quota_after: { storage_bytes: number; asset_keys: number };
 }
 
 export type WarningEntry = LegacyWarningEntry | DeployObservabilityWarningEntry;
