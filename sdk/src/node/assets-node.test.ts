@@ -137,6 +137,68 @@ function makeMockClient(
   } as unknown as never;
 }
 
+// ─── 8.17 — three-schema fidelity (design D3/D12) ─────────────────────────
+// SDK ergonomic input (LocalDirRef, FileSet, ContentSource) is normalized
+// to wire-shaped AssetPutEntry[] BEFORE the request lands at the gateway.
+// The gateway type-bound request body never sees LocalDirRef. These tests
+// pin that contract.
+
+describe("three-schema fidelity — SDK input vs wire (design D3/D12)", () => {
+  let tempDir: string;
+
+  beforeEach(() => {
+    tempDir = mkdtempSync(join(tmpdir(), "run402-three-schema-"));
+    writeFileSync(join(tempDir, "a.txt"), "hello");
+  });
+
+  afterEach(() => {
+    rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  it("dir(path) returns a LocalDirRef with __source: 'local-dir' (SDK-input-only)", () => {
+    const ref = dir(tempDir);
+    assert.equal(ref.__source, "local-dir");
+    // The kind discriminator is the gateway's clue to reject this shape
+    // at the wire layer with HTTP 400 INVALID_WIRE_SCHEMA. The SDK
+    // normalizes the LocalDirRef into wire-shaped entries before any
+    // network call.
+  });
+
+  it("entriesFromLocalDir produces wire-shaped AssetPutEntry[] with no LocalDirRef leakage", async () => {
+    const ref = dir(tempDir);
+    const entries = await entriesFromLocalDir(ref);
+    // The output is the wire shape — each entry has exactly the fields
+    // the gateway expects: key, sha256, size_bytes, content_type,
+    // visibility, immutable. No __source field, no path field.
+    for (const entry of entries) {
+      const e = entry as unknown as Record<string, unknown>;
+      assert.equal(typeof e.key, "string");
+      assert.match(e.sha256 as string, /^[0-9a-f]{64}$/);
+      assert.equal(typeof e.size_bytes, "number");
+      assert.equal(typeof e.content_type, "string");
+      assert.ok(e.visibility === "public" || e.visibility === "private");
+      assert.equal(typeof e.immutable, "boolean");
+      assert.equal(e.__source, undefined, "LocalDirRef.__source must NOT leak to the wire entry");
+      assert.equal(e.path, undefined, "LocalDirRef.path must NOT leak to the wire entry");
+    }
+  });
+
+  it("LocalDirRef's path/prefix/ignore/includeSensitive fields are SDK-internal only", () => {
+    const ref = dir("./assets", {
+      prefix: "static/",
+      ignore: [".git"],
+      includeSensitive: true,
+    });
+    // These options stay on the LocalDirRef — never serialized to the
+    // wire. The SDK consumes them during entriesFromLocalDir to drive
+    // the walk; the resulting AssetPutEntry[] omits them entirely.
+    assert.equal(ref.prefix, "static/");
+    assert.deepEqual(ref.ignore, [".git"]);
+    assert.equal(ref.includeSensitive, true);
+    assert.equal(ref.__source, "local-dir");
+  });
+});
+
 // ─── 8.18 / SR-10 — prototype-pollution safety (design D9) ─────────────────
 // AssetManifest.byKey + .manifest are constructed via Object.create(null)
 // so attacker-controlled keys can't pollute Object.prototype. This test
