@@ -83,7 +83,7 @@ import type {
   BlobUploadStatusResult,
   BlobWaitFreshOptions,
   BlobWaitFreshResult,
-} from "./namespaces/blobs.types.js";
+} from "./namespaces/assets.types.js";
 import type {
   ContractCallOptions,
   ContractReadOptions,
@@ -317,42 +317,42 @@ class ScopedAuth {
   }
 }
 
-class ScopedBlobs {
+class ScopedAssets {
   constructor(private readonly parent: Run402, private readonly projectId: string) {}
 
   put(key: string, source: BlobPutSource, opts?: BlobPutOptions): Promise<BlobPutResult> {
-    return this.parent.blobs.put(this.projectId, key, source, opts);
+    return this.parent.assets.put(this.projectId, key, source, opts);
   }
   diagnoseUrl(url: string): Promise<BlobDiagnoseEnvelope> {
-    return this.parent.blobs.diagnoseUrl(this.projectId, url);
+    return this.parent.assets.diagnoseUrl(this.projectId, url);
   }
   waitFresh(opts: BlobWaitFreshOptions): Promise<BlobWaitFreshResult> {
-    return this.parent.blobs.waitFresh(this.projectId, opts);
+    return this.parent.assets.waitFresh(this.projectId, opts);
   }
   get(key: string): Promise<Response> {
-    return this.parent.blobs.get(this.projectId, key);
+    return this.parent.assets.get(this.projectId, key);
   }
   ls(opts?: BlobLsOptions): Promise<BlobLsResult> {
-    return this.parent.blobs.ls(this.projectId, opts);
+    return this.parent.assets.ls(this.projectId, opts);
   }
   rm(key: string): Promise<void> {
-    return this.parent.blobs.rm(this.projectId, key);
+    return this.parent.assets.rm(this.projectId, key);
   }
   sign(key: string, opts?: BlobSignOptions): Promise<BlobSignResult> {
-    return this.parent.blobs.sign(this.projectId, key, opts);
+    return this.parent.assets.sign(this.projectId, key, opts);
   }
   initUploadSession(opts: BlobUploadInitOptions): Promise<BlobUploadInitResult> {
-    return this.parent.blobs.initUploadSession(this.projectId, opts);
+    return this.parent.assets.initUploadSession(this.projectId, opts);
   }
   getUploadSession(uploadId: string): Promise<BlobUploadStatusResult> {
-    return this.parent.blobs.getUploadSession(this.projectId, uploadId);
+    return this.parent.assets.getUploadSession(this.projectId, uploadId);
   }
   completeUploadSession(
     uploadId: string,
     opts?: BlobUploadCompleteOptions,
     extra?: { contentType?: string },
   ): Promise<BlobUploadCompleteResult> {
-    return this.parent.blobs.completeUploadSession(this.projectId, uploadId, opts, extra);
+    return this.parent.assets.completeUploadSession(this.projectId, uploadId, opts, extra);
   }
 }
 
@@ -396,16 +396,16 @@ class ScopedDeploy {
   constructor(private readonly parent: Run402, private readonly projectId: string) {}
 
   apply(spec: Omit<ReleaseSpec, "project"> & { project?: string }, opts?: ApplyOptions): Promise<DeployResult> {
-    return this.parent.deploy.apply(this.bindProject(spec), opts);
+    return this.parent._applyEngine.apply(this.bindProject(spec), opts);
   }
   start(spec: Omit<ReleaseSpec, "project"> & { project?: string }, opts?: StartOptions): Promise<DeployOperation> {
-    return this.parent.deploy.start(this.bindProject(spec), opts);
+    return this.parent._applyEngine.start(this.bindProject(spec), opts);
   }
   plan(
     spec: Omit<ReleaseSpec, "project"> & { project?: string },
     opts?: { idempotencyKey?: string; dryRun?: boolean },
   ): Promise<{ plan: PlanResponse; byteReaders: Map<string, ByteReader> }> {
-    return this.parent.deploy.plan(this.bindProject(spec), opts);
+    return this.parent._applyEngine.plan(this.bindProject(spec), opts);
   }
   upload(
     plan: PlanResponse,
@@ -415,7 +415,7 @@ class ScopedDeploy {
       onEvent?: (event: DeployEvent) => void;
     },
   ): Promise<void> {
-    return this.parent.deploy.upload(plan, {
+    return this.parent._applyEngine.upload(plan, {
       ...opts,
       project: opts.project ?? this.projectId,
     });
@@ -428,7 +428,7 @@ class ScopedDeploy {
       project?: string;
     } = {},
   ): Promise<DeployResult> {
-    return this.parent.deploy.commit(planId, {
+    return this.parent._applyEngine.commit(planId, {
       ...opts,
       project: opts.project ?? this.projectId,
     });
@@ -437,7 +437,7 @@ class ScopedDeploy {
     operationId: string,
     opts: { onEvent?: (event: DeployEvent) => void; project?: string } = {},
   ): Promise<DeployResult> {
-    return this.parent.deploy.resume(operationId, {
+    return this.parent._applyEngine.resume(operationId, {
       ...opts,
       project: opts.project ?? this.projectId,
     });
@@ -446,19 +446,19 @@ class ScopedDeploy {
     operationId: string,
     opts: { project?: string } = {},
   ): Promise<OperationSnapshot> {
-    return this.parent.deploy.status(operationId, {
+    return this.parent._applyEngine.status(operationId, {
       ...opts,
       project: opts.project ?? this.projectId,
     });
   }
   list(opts: { project?: string; limit?: number } = {}): Promise<DeployListResponse> {
-    return this.parent.deploy.list({
+    return this.parent._applyEngine.list({
       project: opts.project ?? this.projectId,
       limit: opts.limit,
     });
   }
   events(operationId: string, opts: { project?: string } = {}) {
-    return this.parent.deploy.events(operationId, {
+    return this.parent._applyEngine.events(operationId, {
       project: opts.project ?? this.projectId,
     });
   }
@@ -466,7 +466,7 @@ class ScopedDeploy {
     releaseId: string,
     opts: Partial<ReleaseInventoryOptions> = {},
   ): Promise<ReleaseInventory> {
-    return this.parent.deploy.getRelease({
+    return this.parent._applyEngine.getRelease({
       project: opts.project ?? this.projectId,
       releaseId,
       siteLimit: opts.siteLimit,
@@ -475,7 +475,7 @@ class ScopedDeploy {
   getActiveRelease(
     opts: Partial<ReleaseInventoryOptions> = {},
   ): Promise<ActiveReleaseInventory> {
-    return this.parent.deploy.getActiveRelease({
+    return this.parent._applyEngine.getActiveRelease({
       project: opts.project ?? this.projectId,
       siteLimit: opts.siteLimit,
     });
@@ -483,16 +483,16 @@ class ScopedDeploy {
   diff(
     opts: Omit<ReleaseDiffOptions, "project"> & { project?: string },
   ): Promise<ReleaseToReleaseDiff> {
-    return this.parent.deploy.diff({
+    return this.parent._applyEngine.diff({
       ...opts,
       project: opts.project ?? this.projectId,
     });
   }
   resolve(opts: ScopedDeployResolveOptions): Promise<DeployResolveResponse> {
-    return this.parent.deploy.resolve({
+    return this.parent._applyEngine.resolve({
       ...opts,
       project: opts.project ?? this.projectId,
-    } as Parameters<Run402["deploy"]["resolve"]>[0]);
+    } as Parameters<Run402["_applyEngine"]["resolve"]>[0]);
   }
 
   private bindProject(spec: Omit<ReleaseSpec, "project"> & { project?: string }): ReleaseSpec {
@@ -652,7 +652,7 @@ export class ScopedRun402 {
   readonly apps: ScopedApps;
   readonly ai: ScopedAi;
   readonly auth: ScopedAuth;
-  readonly blobs: ScopedBlobs;
+  readonly assets: ScopedAssets;
   readonly contracts: ScopedContracts;
   readonly deploy: ScopedDeploy;
   readonly domains: ScopedDomains;
@@ -668,7 +668,7 @@ export class ScopedRun402 {
     this.apps = new ScopedApps(parent, projectId);
     this.ai = new ScopedAi(parent, projectId);
     this.auth = new ScopedAuth(parent, projectId);
-    this.blobs = new ScopedBlobs(parent, projectId);
+    this.assets = new ScopedAssets(parent, projectId);
     this.contracts = new ScopedContracts(parent, projectId);
     this.deploy = new ScopedDeploy(parent, projectId);
     this.domains = new ScopedDomains(parent, projectId);

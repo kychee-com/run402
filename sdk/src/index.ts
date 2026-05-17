@@ -9,7 +9,7 @@
 import { buildClient, type Client, type KernelConfig } from "./kernel.js";
 import type { CredentialsProvider } from "./credentials.js";
 import { Projects } from "./namespaces/projects.js";
-import { Blobs } from "./namespaces/blobs.js";
+import { Assets } from "./namespaces/assets.js";
 import { Functions } from "./namespaces/functions.js";
 import { Secrets } from "./namespaces/secrets.js";
 import { Subdomains } from "./namespaces/subdomains.js";
@@ -47,7 +47,7 @@ export interface Run402Options {
 
 export class Run402 {
   readonly projects: Projects;
-  readonly blobs: Blobs;
+  readonly assets: Assets;
   readonly functions: Functions;
   readonly secrets: Secrets;
   readonly subdomains: Subdomains;
@@ -65,7 +65,14 @@ export class Run402 {
   readonly email: Email;
   readonly contracts: Contracts;
   readonly admin: Admin;
-  readonly deploy: Deploy;
+  /**
+   * Internal engine. v1.48 unified-apply removed `r.deploy.apply` and
+   * `r.apply` as public surfaces — the sole hero is `r.project(id).apply`.
+   * This property exists only so the scoped sub-client can delegate to the
+   * engine implementation; do not call directly from user code.
+   * @internal
+   */
+  readonly _applyEngine: Deploy;
   readonly ci: Ci;
 
   readonly #client: Client;
@@ -106,7 +113,7 @@ export class Run402 {
     const client: Client = buildClient(kernel);
     this.#client = client;
     this.projects = new Projects(client);
-    this.blobs = new Blobs(client);
+    this.assets = new Assets(client);
     this.functions = new Functions(client);
     this.secrets = new Secrets(client);
     this.subdomains = new Subdomains(client);
@@ -127,7 +134,7 @@ export class Run402 {
     this.email = new Email(client);
     this.contracts = new Contracts(client);
     this.admin = new Admin(client);
-    this.deploy = new Deploy(client);
+    this._applyEngine = new Deploy(client);
     this.ci = new Ci(client);
   }
 
@@ -288,7 +295,7 @@ export type * from "./namespaces/allowance.js";
 export type * from "./namespaces/apps.js";
 export type * from "./namespaces/auth.js";
 export type * from "./namespaces/billing.js";
-export type * from "./namespaces/blobs.types.js";
+export type * from "./namespaces/assets.types.js";
 export type * from "./namespaces/ci.types.js";
 export type * from "./namespaces/contracts.js";
 export type * from "./namespaces/deploy.types.js";

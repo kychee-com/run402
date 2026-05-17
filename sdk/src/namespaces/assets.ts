@@ -28,7 +28,7 @@ import type {
   BlobUploadStatusResult,
   BlobWaitFreshOptions,
   BlobWaitFreshResult,
-} from "./blobs.types.js";
+} from "./assets.types.js";
 
 function encodeKey(key: string): string {
   return key.split("/").map(encodeURIComponent).join("/");
@@ -285,7 +285,7 @@ function buildAssetRef(
   };
 }
 
-export class Blobs {
+export class Assets {
   constructor(private readonly client: Client) {}
 
   /**
