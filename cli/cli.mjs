@@ -29,9 +29,9 @@ Commands:
   ci          Link GitHub Actions OIDC deploy bindings
   functions   Manage serverless functions (deploy, invoke, logs, list, delete)
   secrets     Manage project secrets (set, list, delete)
-  blob        Direct-to-S3 blob storage (put, get, ls, rm, sign, diagnose) — up to 5 TiB
+  assets      Direct-to-S3 asset storage (put, get, ls, rm, sign, diagnose) — up to 5 TiB
   sites       Deploy static sites
-  cdn         CloudFront CDN diagnostics (wait-fresh) for public blob URLs
+  cdn         CloudFront CDN diagnostics (wait-fresh) for public asset URLs
   subdomains  Manage custom subdomains (claim, list, delete)
   domains     Manage custom domains (add, list, status, delete)
   apps        Browse and manage the app marketplace
@@ -139,8 +139,8 @@ switch (cmd) {
     await run(sub, rest);
     break;
   }
-  case "blob": {
-    const { run } = await import("./lib/blob.mjs");
+  case "assets": {
+    const { run } = await import("./lib/assets.mjs");
     await run(sub, rest);
     break;
   }

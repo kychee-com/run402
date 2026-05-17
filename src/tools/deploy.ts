@@ -325,7 +325,7 @@ export async function handleDeploy(
 ): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
   if (!args.project_id) return projectNotFound("(none — project_id is required)");
 
-  const auth = requireAllowanceAuth("/deploy/v2/plans");
+  const auth = requireAllowanceAuth("/apply/v1/plans");
   if ("error" in auth) return auth.error;
 
   const events: DeployEvent[] = [];
@@ -345,7 +345,7 @@ export async function handleDeploy(
   }
 
   try {
-    const result = await getSdk().deploy.apply(spec, {
+    const result = await getSdk()._applyEngine.apply(spec, {
       onEvent,
       idempotencyKey,
       allowWarnings: args.allow_warnings === true,

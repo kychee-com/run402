@@ -25,7 +25,7 @@ export const deployResumeSchema = {
 export async function handleDeployResume(args: {
   operation_id: string;
 }): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
-  const auth = requireAllowanceAuth("/deploy/v2/operations");
+  const auth = requireAllowanceAuth("/apply/v1/operations");
   if ("error" in auth) return auth.error;
 
   const events: DeployEvent[] = [];
@@ -34,7 +34,7 @@ export async function handleDeployResume(args: {
   };
 
   try {
-    const result = await getSdk().deploy.resume(args.operation_id, { onEvent });
+    const result = await getSdk()._applyEngine.resume(args.operation_id, { onEvent });
     const lines = [
       `## Deploy Resumed`,
       ``,

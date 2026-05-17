@@ -21,7 +21,7 @@ The scripts in `scripts/` are thin shims that re-export from the [`run402`](http
 
 ```bash
 node scripts/projects.mjs sql <project_id> "SELECT * FROM items"
-node scripts/blob.mjs put ./logo.png
+node scripts/assets.mjs put ./logo.png
 node scripts/deploy.mjs apply --project <id> --dir ./dist
 ```
 

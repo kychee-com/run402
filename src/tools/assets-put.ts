@@ -39,7 +39,7 @@ export async function handleBlobPut(args: Args): Promise<{ content: Array<{ type
     let result: BlobPutResult;
     if (args.content !== undefined) {
       const source: BlobPutSource = { content: args.content };
-      result = await sdk.blobs.put(args.project_id, args.key, source, {
+      result = await sdk.assets.put(args.project_id, args.key, source, {
         contentType: args.content_type,
         visibility: args.visibility,
         immutable: args.immutable,
@@ -73,7 +73,7 @@ async function uploadLocalPath(args: Args): Promise<BlobPutResult> {
   const sdk = getSdk();
   const contentType = args.content_type ?? guessContentType(args.key);
   const sha256 = await sha256File(path);
-  const init = await sdk.blobs.initUploadSession(args.project_id, {
+  const init = await sdk.assets.initUploadSession(args.project_id, {
     key: args.key,
     size_bytes: stat.size,
     content_type: contentType,
@@ -90,7 +90,7 @@ async function uploadLocalPath(args: Args): Promise<BlobPutResult> {
   const completeBody = init.mode === "multipart"
     ? { parts: parts.map((part, index) => ({ part_number: index + 1, etag: part.etag, sha256: part.sha256 })) }
     : {};
-  return sdk.blobs.completeUploadSession(args.project_id, init.upload_id, completeBody, {
+  return sdk.assets.completeUploadSession(args.project_id, init.upload_id, completeBody, {
     contentType,
   });
 }

@@ -7,7 +7,7 @@ import { mapSdkError } from "../errors.js";
  *
  * Polls the gateway's diagnose endpoint until the URL serves the expected
  * SHA-256, or the timeout elapses. **Mutable URLs only** — for immutable
- * URLs (the `immutableUrl` field returned by `blob_put`) no waiting is
+ * URLs (the `immutableUrl` field returned by `assets_put`) no waiting is
  * needed; they're bound to a SHA at upload time and never previously cached.
  */
 export const blobWaitFreshSchema = {
@@ -34,7 +34,7 @@ export async function handleBlobWaitFresh(
   args: Args,
 ): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
   try {
-    const result = await getSdk().blobs.waitFresh(args.project_id, {
+    const result = await getSdk().assets.waitFresh(args.project_id, {
       url: args.url,
       sha256: args.sha256,
       timeoutMs: args.timeout_ms ?? 60_000,

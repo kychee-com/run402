@@ -13,18 +13,18 @@ type Args = { project_id: string; prefix?: string; limit?: number; cursor?: stri
 
 export async function handleBlobLs(args: Args): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
   try {
-    const body = await getSdk().blobs.ls(args.project_id, {
+    const body = await getSdk().assets.ls(args.project_id, {
       prefix: args.prefix,
       limit: args.limit,
       cursor: args.cursor,
     });
 
-    if (body.blobs.length === 0) {
+    if (body.assets.length === 0) {
       return { content: [{ type: "text", text: args.prefix ? `No blobs matching prefix \`${args.prefix}\`` : "No blobs in project." }] };
     }
 
     const header = "| Key | Size | Visibility | Content-Type | Created |\n|---|---|---|---|---|";
-    const rows = body.blobs.map((b) =>
+    const rows = body.assets.map((b) =>
       `| \`${b.key}\` | ${b.size_bytes.toLocaleString()} | ${b.visibility} | ${b.content_type ?? "—"} | ${b.created_at} |`,
     ).join("\n");
     const more = body.next_cursor ? `\n\nMore results available — pass \`cursor: "${body.next_cursor}"\` to the next call.` : "";

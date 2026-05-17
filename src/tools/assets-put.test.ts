@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { handleBlobPut } from "./blob-put.js";
+import { handleBlobPut } from "./assets-put.js";
 import { saveProject } from "../keystore.js";
 import { _resetSdk } from "../sdk.js";
 
@@ -26,7 +26,7 @@ afterEach(() => {
   delete process.env.RUN402_API_BASE;
 });
 
-describe("blob_put tool", () => {
+describe("assets_put tool", () => {
   it("streams local files through upload sessions instead of SDK bytes source", async () => {
     const localPath = join(tempDir, "hello.txt");
     writeFileSync(localPath, "hello");

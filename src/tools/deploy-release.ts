@@ -61,7 +61,7 @@ export async function handleDeployReleaseGet(args: {
   site_limit?: number;
 }): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
   try {
-    const release = await getSdk().deploy.getRelease({
+    const release = await getSdk()._applyEngine.getRelease({
       project: args.project_id,
       releaseId: args.release_id,
       siteLimit: args.site_limit,
@@ -82,7 +82,7 @@ export async function handleDeployReleaseActive(args: {
   site_limit?: number;
 }): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
   try {
-    const release = await getSdk().deploy.getActiveRelease({
+    const release = await getSdk()._applyEngine.getActiveRelease({
       project: args.project_id,
       siteLimit: args.site_limit,
     });
@@ -104,7 +104,7 @@ export async function handleDeployReleaseDiff(args: {
   limit?: number;
 }): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
   try {
-    const diff = await getSdk().deploy.diff({
+    const diff = await getSdk()._applyEngine.diff({
       project: args.project_id,
       from: args.from,
       to: args.to,

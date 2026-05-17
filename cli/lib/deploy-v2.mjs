@@ -410,7 +410,7 @@ async function applyCmd(args) {
 
   // GH-232: Reject empty specs client-side. Without this guard,
   // `run402 deploy apply --spec '{}'` (and `--manifest <empty>`) would silently
-  // send an empty ReleaseSpec to /deploy/v2/plans with no signal that nothing
+  // send an empty ReleaseSpec to /apply/v1/plans with no signal that nothing
   // was deployed.
   //
   // `deploy apply` is v2-only — only meaningful keys are the v2 ReleaseSpec
@@ -488,7 +488,7 @@ async function applyCmd(args) {
     };
   } else {
     // Preserve the aggressive early exit when no allowance is configured.
-    allowanceAuthHeaders("/deploy/v2/plans");
+    allowanceAuthHeaders("/apply/v1/plans");
   }
 
   try {
@@ -815,7 +815,7 @@ async function resumeCmd(args) {
   });
   const opts = { operationId, quiet: Boolean(parsed.flags["--quiet"]) };
 
-  allowanceAuthHeaders("/deploy/v2/operations");
+  allowanceAuthHeaders("/apply/v1/operations");
 
   try {
     const result = await getSdk().deploy.resume(opts.operationId, {
@@ -843,7 +843,7 @@ async function listCmd(args) {
   };
 
   const project = resolveProjectId(opts.project);
-  allowanceAuthHeaders("/deploy/v2/operations");
+  allowanceAuthHeaders("/apply/v1/operations");
 
   try {
     const sdkOpts = { project };
@@ -870,7 +870,7 @@ async function eventsCmd(args) {
   const opts = { operationId, project: parsed.flags["--project"] ?? null };
 
   const project = resolveProjectId(opts.project);
-  allowanceAuthHeaders("/deploy/v2/operations");
+  allowanceAuthHeaders("/apply/v1/operations");
 
   try {
     const result = await getSdk().deploy.events(opts.operationId, { project });

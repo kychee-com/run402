@@ -2,7 +2,7 @@
  * RFC 8785 (JCS) canonical JSON utility — kept as a UX / diagnostic helper.
  *
  * **As of v1.34, the gateway is authoritative for the deploy manifest
- * digest.** `POST /deploy/v2/plans` returns the gateway-computed digest in
+ * digest.** `POST /apply/v1/plans` returns the gateway-computed digest in
  * the response, and operation idempotency keys on it (combined with
  * `project_id`, `base_release_id`, and an optional client idempotency key).
  * A drift between this implementation and the gateway's canonicalize

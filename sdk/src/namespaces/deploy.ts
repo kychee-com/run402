@@ -7,7 +7,7 @@
  *   - `plan` / `upload` / `commit` — low-level steps for CLI and tests.
  *
  * All bytes ride through the CAS content service via presigned PUTs to S3.
- * The wire body to `POST /deploy/v2/plans` carries `ContentRef` objects only —
+ * The wire body to `POST /apply/v1/plans` carries `ContentRef` objects only —
  * never inline file bytes. When the normalized spec exceeds 5 MB JSON, the
  * SDK uploads the manifest itself as a CAS object and references it.
  *
@@ -201,7 +201,7 @@ export class Deploy {
 
   /**
    * Low-level plan: normalize the spec, upload the manifest as CAS if over
-   * the inline limit, and call `POST /deploy/v2/plans`. Returns the plan
+   * the inline limit, and call `POST /apply/v1/plans`. Returns the plan
    * response and a byte-reader map keyed by sha256 (used by `upload`).
    */
   async plan(
@@ -236,7 +236,7 @@ export class Deploy {
   }
 
   /**
-   * Low-level commit: `POST /deploy/v2/plans/:id/commit`, then poll
+   * Low-level commit: `POST /apply/v1/plans/:id/commit`, then poll
    * `/operations/:id` until terminal. Pass the project id whose anon_key
    * should authenticate the polling — the operations endpoint requires
    * apikey auth even though the plan/commit endpoints accept SIWX.
@@ -279,7 +279,7 @@ export class Deploy {
     let snapshot: OperationSnapshot;
     try {
       snapshot = await this.client.request<OperationSnapshot>(
-        `/deploy/v2/operations/${encodeURIComponent(operationId)}/resume`,
+        `/apply/v1/operations/${encodeURIComponent(operationId)}/resume`,
         { method: "POST", context: "resuming deploy operation" },
       );
     } catch (err) {
@@ -307,7 +307,7 @@ export class Deploy {
     const headers = opts.project ? await apikeyHeaders(this.client, opts.project) : {};
     try {
       return await this.client.request<OperationSnapshot>(
-        `/deploy/v2/operations/${encodeURIComponent(operationId)}`,
+        `/apply/v1/operations/${encodeURIComponent(operationId)}`,
         { headers, context: "fetching deploy operation" },
       );
     } catch (err) {
@@ -345,8 +345,8 @@ export class Deploy {
     if (cursor !== undefined) qs.set("cursor", cursor);
     const path =
       qs.toString().length > 0
-        ? `/deploy/v2/operations?${qs.toString()}`
-        : `/deploy/v2/operations`;
+        ? `/apply/v1/operations?${qs.toString()}`
+        : `/apply/v1/operations`;
     return this.client.request<DeployListResponse>(path, {
       headers,
       context: "listing deploy operations",
@@ -376,7 +376,7 @@ export class Deploy {
     const headers = await apikeyHeaders(this.client, opts.project);
     try {
       return await this.client.request<DeployEventsResponse>(
-        `/deploy/v2/operations/${encodeURIComponent(operationId)}/events`,
+        `/apply/v1/operations/${encodeURIComponent(operationId)}/events`,
         { headers, context: "fetching deploy events" },
       );
     } catch (err) {
@@ -409,7 +409,7 @@ export class Deploy {
     );
     const headers = await apikeyHeaders(this.client, opts.project);
     return this.client.request<ReleaseInventory>(
-      appendQuery(`/deploy/v2/releases/${encodeURIComponent(opts.releaseId)}`, {
+      appendQuery(`/apply/v1/releases/${encodeURIComponent(opts.releaseId)}`, {
         site_limit: siteLimit,
       }),
       { headers, context: "fetching release inventory" },
@@ -437,7 +437,7 @@ export class Deploy {
     );
     const headers = await apikeyHeaders(this.client, opts.project);
     return this.client.request<ActiveReleaseInventory>(
-      appendQuery("/deploy/v2/releases/active", {
+      appendQuery("/apply/v1/releases/active", {
         site_limit: siteLimit,
       }),
       { headers, context: "fetching active release inventory" },
@@ -475,7 +475,7 @@ export class Deploy {
     const qs = new URLSearchParams({ from, to });
     if (limit !== undefined) qs.set("limit", String(limit));
     return this.client.request<ReleaseToReleaseDiff>(
-      `/deploy/v2/releases/diff?${qs.toString()}`,
+      `/apply/v1/releases/diff?${qs.toString()}`,
       { headers, context: "diffing releases" },
     );
   }
@@ -492,7 +492,7 @@ export class Deploy {
     if ("url" in opts || opts.path !== undefined) qs.set("path", request.path);
     if (request.method) qs.set("method", request.method);
     return this.client.request<DeployResolveResponse>(
-      `/deploy/v2/resolve?${qs.toString()}`,
+      `/apply/v1/resolve?${qs.toString()}`,
       { headers, context: "resolving deploy public URL" },
     );
   }
@@ -711,7 +711,7 @@ async function planInternal(
 
   let plan: PlanResponse;
   try {
-    plan = withClientPlanWarnings(normalized, normalizePlanResponse(await client.request<PlanResponse>(dryRun ? "/deploy/v2/plans?dry_run=true" : "/deploy/v2/plans", {
+    plan = withClientPlanWarnings(normalized, normalizePlanResponse(await client.request<PlanResponse>(dryRun ? "/apply/v1/plans?dry_run=true" : "/apply/v1/plans", {
       method: "POST",
       body,
       context: "planning deploy",
@@ -1049,7 +1049,7 @@ async function readActiveScheduledFunctionNames(
   let inventory: ActiveReleaseInventory;
   try {
     inventory = await client.request<ActiveReleaseInventory>(
-      appendQuery("/deploy/v2/releases/active", { site_limit: 1 }),
+      appendQuery("/apply/v1/releases/active", { site_limit: 1 }),
       {
         headers: await apikeyHeaders(client, projectId),
         context: "fetching active release inventory for deploy preflight",
@@ -1208,7 +1208,7 @@ async function commitInternal(
 ): Promise<CommitResponse> {
   try {
     return await client.request<CommitResponse>(
-      `/deploy/v2/plans/${encodeURIComponent(planId)}/commit`,
+      `/apply/v1/plans/${encodeURIComponent(planId)}/commit`,
       {
         method: "POST",
         body: idempotencyKey ? { idempotency_key: idempotencyKey } : {},
@@ -1513,7 +1513,7 @@ async function pollUntilReady(
 
   const opHeaders = projectId ? await apikeyHeaders(client, projectId) : {};
   const initialSnapshot: OperationSnapshot = await client.request<OperationSnapshot>(
-    `/deploy/v2/operations/${encodeURIComponent(commit.operation_id)}`,
+    `/apply/v1/operations/${encodeURIComponent(commit.operation_id)}`,
     { headers: opHeaders, context: "fetching deploy operation" },
   );
   return await pollSnapshotUntilReady(client, initialSnapshot, diff, warnings, emit, projectId);
@@ -1650,7 +1650,7 @@ async function pollSnapshotUntilReady(
     }
 
     snapshot = await client.request<OperationSnapshot>(
-      `/deploy/v2/operations/${encodeURIComponent(snapshot.operation_id)}`,
+      `/apply/v1/operations/${encodeURIComponent(snapshot.operation_id)}`,
       { headers: opHeaders, context: "polling deploy operation" },
     );
   }
@@ -1725,7 +1725,7 @@ async function startInternal(
   const fetchSnapshot = async (): Promise<OperationSnapshot> => {
     if (snapshot && TERMINAL_STATUSES.includes(snapshot.status)) return snapshot;
     snapshot = await client.request<OperationSnapshot>(
-      `/deploy/v2/operations/${encodeURIComponent(operationId)}`,
+      `/apply/v1/operations/${encodeURIComponent(operationId)}`,
       { headers: startHeaders, context: "fetching deploy operation" },
     );
     return snapshot;
@@ -3068,9 +3068,9 @@ async function uploadInlineCas(
 
 /**
  * Build the apikey header set for a project. The v1.34 gateway's
- * `/deploy/v2/operations/:id*` and `/content/v1/plans*` routes require
+ * `/apply/v1/operations/:id*` and `/content/v1/plans*` routes require
  * `apikey: <project.anon_key>` (apikeyAuth middleware). Plan + commit on
- * `/deploy/v2/plans*` use SIWX, which the kernel's getAuth provides
+ * `/apply/v1/plans*` use SIWX, which the kernel's getAuth provides
  * automatically — only the apikey-gated paths need this helper.
  *
  * Returns an empty object when the credentials provider doesn't know the

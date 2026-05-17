@@ -1,12 +1,12 @@
 /**
- * run402 blob — direct-to-S3 storage CLI.
+ * run402 assets — direct-to-S3 storage CLI.
  *
  * Usage:
- *   run402 blob put <file> [files...] [--project <id>] [--key <dest>] [--content-type <mime>] [--private] [--immutable] [--concurrency N] [--no-resume]
- *   run402 blob get <key> --output <file> [--project <id>]
- *   run402 blob ls [--project <id>] [--prefix <p>] [--limit <n>]
- *   run402 blob rm <key> [--project <id>]
- *   run402 blob sign <key> [--project <id>] [--ttl <seconds>]
+ *   run402 assets put <file> [files...] [--project <id>] [--key <dest>] [--content-type <mime>] [--private] [--immutable] [--concurrency N] [--no-resume]
+ *   run402 assets get <key> --output <file> [--project <id>]
+ *   run402 assets ls [--project <id>] [--prefix <p>] [--limit <n>]
+ *   run402 assets rm <key> [--project <id>]
+ *   run402 assets sign <key> [--project <id>] [--ttl <seconds>]
  *
  * For any file ≤ 5 GiB a single presigned PUT is used. Larger files use S3
  * multipart uploads with 16 MiB parts (640 parts at 10 GiB; up to 10 000
@@ -43,12 +43,12 @@ import { assertKnownFlags, hasHelp, normalizeArgv, parseIntegerFlag } from "./ar
 const HELP = `run402 blob — Direct-to-S3 blob storage
 
 Usage:
-  run402 blob put <file> [files...] [options]
-  run402 blob get <key> --output <file> [options]
-  run402 blob ls [options]
-  run402 blob rm <key> [options]
-  run402 blob sign <key> [options]
-  run402 blob diagnose <url> [options]
+  run402 assets put <file> [files...] [options]
+  run402 assets get <key> --output <file> [options]
+  run402 assets ls [options]
+  run402 assets rm <key> [options]
+  run402 assets sign <key> [options]
+  run402 assets diagnose <url> [options]
 
 Options:
   --project <id>      Project ID (defaults to active project from 'run402 projects use')
@@ -65,20 +65,20 @@ Options:
   --ttl <seconds>     Signed-URL TTL (sign only; default 3600, min 60, max 604800)
 
 Examples:
-  run402 blob put ./artifact.tgz --project prj_abc123
-  run402 blob put ./dist/**/*.png --project prj_abc123 --key assets/
-  run402 blob put huge.bin --project prj_abc123 --immutable
-  run402 blob get images/logo.png --output /tmp/logo.png --project prj_abc123
-  run402 blob ls --project prj_abc123 --prefix images/
-  run402 blob rm images/logo.png --project prj_abc123
-  run402 blob sign images/logo.png --project prj_abc123 --ttl 600
+  run402 assets put ./artifact.tgz --project prj_abc123
+  run402 assets put ./dist/**/*.png --project prj_abc123 --key assets/
+  run402 assets put huge.bin --project prj_abc123 --immutable
+  run402 assets get images/logo.png --output /tmp/logo.png --project prj_abc123
+  run402 assets ls --project prj_abc123 --prefix images/
+  run402 assets rm images/logo.png --project prj_abc123
+  run402 assets sign images/logo.png --project prj_abc123 --ttl 600
 `;
 
 const SUB_HELP = {
-  put: `run402 blob put — Upload one or more files to blob storage
+  put: `run402 assets put — Upload one or more files to blob storage
 
 Usage:
-  run402 blob put <file> [files...] [options]
+  run402 assets put <file> [files...] [options]
 
 Arguments:
   <file>              Path to a file (or glob); pass multiple files to batch-upload
@@ -94,15 +94,15 @@ Options:
   --json              Emit NDJSON progress events on stdout (for agent consumption)
 
 Examples:
-  run402 blob put ./artifact.tgz --project prj_abc123
-  run402 blob put ./dist/**/*.png --project prj_abc123 --key assets/
-  run402 blob put ./asset --project prj_abc123 --key assets/logo --content-type image/svg+xml
-  run402 blob put huge.bin --project prj_abc123 --immutable --concurrency 8
+  run402 assets put ./artifact.tgz --project prj_abc123
+  run402 assets put ./dist/**/*.png --project prj_abc123 --key assets/
+  run402 assets put ./asset --project prj_abc123 --key assets/logo --content-type image/svg+xml
+  run402 assets put huge.bin --project prj_abc123 --immutable --concurrency 8
 `,
-  get: `run402 blob get — Download a blob by key
+  get: `run402 assets get — Download a blob by key
 
 Usage:
-  run402 blob get <key> --output <file> [options]
+  run402 assets get <key> --output <file> [options]
 
 Arguments:
   <key>               Blob key to download
@@ -112,12 +112,12 @@ Options:
   --project <id>      Project ID (defaults to active project)
 
 Examples:
-  run402 blob get images/logo.png --output /tmp/logo.png --project prj_abc123
+  run402 assets get images/logo.png --output /tmp/logo.png --project prj_abc123
 `,
-  ls: `run402 blob ls — List blob keys in a project
+  ls: `run402 assets ls — List blob keys in a project
 
 Usage:
-  run402 blob ls [options]
+  run402 assets ls [options]
 
 Options:
   --project <id>      Project ID (defaults to active project)
@@ -125,13 +125,13 @@ Options:
   --limit <n>         Max results (default 100, max 1000)
 
 Examples:
-  run402 blob ls --project prj_abc123
-  run402 blob ls --project prj_abc123 --prefix images/ --limit 500
+  run402 assets ls --project prj_abc123
+  run402 assets ls --project prj_abc123 --prefix images/ --limit 500
 `,
-  rm: `run402 blob rm — Delete a blob
+  rm: `run402 assets rm — Delete a blob
 
 Usage:
-  run402 blob rm <key> [options]
+  run402 assets rm <key> [options]
 
 Arguments:
   <key>               Blob key to delete
@@ -140,12 +140,12 @@ Options:
   --project <id>      Project ID (defaults to active project)
 
 Examples:
-  run402 blob rm images/logo.png --project prj_abc123
+  run402 assets rm images/logo.png --project prj_abc123
 `,
-  sign: `run402 blob sign — Create a presigned download URL for a blob
+  sign: `run402 assets sign — Create a presigned download URL for a blob
 
 Usage:
-  run402 blob sign <key> [options]
+  run402 assets sign <key> [options]
 
 Arguments:
   <key>               Blob key to sign
@@ -155,12 +155,12 @@ Options:
   --ttl <seconds>     Signed-URL TTL (default 3600, min 60, max 604800)
 
 Examples:
-  run402 blob sign reports/2025-q4.pdf --project prj_abc123 --ttl 600
+  run402 assets sign reports/2025-q4.pdf --project prj_abc123 --ttl 600
 `,
-  diagnose: `run402 blob diagnose — Inspect the live CDN state for a public blob URL
+  diagnose: `run402 assets diagnose — Inspect the live CDN state for a public blob URL
 
 Usage:
-  run402 blob diagnose <url> [options]
+  run402 assets diagnose <url> [options]
 
 Arguments:
   <url>               Full blob URL (e.g. https://app.run402.com/_blob/avatar.png)
@@ -178,10 +178,10 @@ Exit codes:
   1   observed SHA does not match (or probe returned no SHA)
 
 Agent loop pattern:
-  until run402 blob diagnose <url>; do sleep 1; done
+  until run402 assets diagnose <url>; do sleep 1; done
 
 Examples:
-  run402 blob diagnose https://app.run402.com/_blob/avatar.png
+  run402 assets diagnose https://app.run402.com/_blob/avatar.png
 `,
 };
 
@@ -578,7 +578,7 @@ async function diagnose(projectId, argv) {
       `\n# probed once from ${env.vantage}; not a global view\n`,
     );
     // Exit code: 0 if observed === expected, 1 otherwise. Lets agents
-    // shell-script `until run402 blob diagnose <url>; do sleep 1; done`.
+    // shell-script `until run402 assets diagnose <url>; do sleep 1; done`.
     if (env.observedSha256 && env.observedSha256 === env.expectedSha256) {
       process.exit(0);
     }

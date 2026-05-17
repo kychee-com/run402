@@ -88,7 +88,7 @@ describe("SKILL.md (root, MCP-based)", () => {
       "deploy_release_diff",
       "ci_create_binding",
       "ci_list_bindings",
-      "blob_put",
+      "assets_put",
       "deploy_function",
       "set_tier",
     ];
@@ -202,7 +202,7 @@ describe("openclaw/SKILL.md (CLI-based)", () => {
       "run402 ci link github",
       "run402 ci list",
       "run402 ci revoke",
-      "run402 blob put",
+      "run402 assets put",
       "run402 tier set",
     ];
     for (const verb of verbs) {

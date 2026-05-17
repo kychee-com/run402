@@ -61,7 +61,7 @@ function parseSubcommands(filePath: string): string[] {
 /** Parse CLI commands as "module:subcommand" pairs */
 function parseCliCommands(): string[] {
   const cmds: string[] = [];
-  for (const mod of ["allowance", "tier", "projects", "image", "storage", "blob", "cdn", "functions", "secrets", "sites", "subdomains", "domains", "apps", "email", "message", "agent", "ai", "auth", "sender-domain", "billing", "contracts", "webhooks", "service", "deploy", "ci"]) {
+  for (const mod of ["allowance", "tier", "projects", "image", "storage", "assets", "cdn", "functions", "secrets", "sites", "subdomains", "domains", "apps", "email", "message", "agent", "ai", "auth", "sender-domain", "billing", "contracts", "webhooks", "service", "deploy", "ci"]) {
     for (const sub of parseSubcommands(join(__dirname, "cli/lib", `${mod}.mjs`))) {
       cmds.push(`${mod}:${sub}`);
     }
@@ -77,7 +77,7 @@ function parseCliCommands(): string[] {
 /** Parse OpenClaw commands as "module:subcommand" pairs */
 function parseOpenClawCommands(): string[] {
   const cmds: string[] = [];
-  for (const mod of ["allowance", "tier", "projects", "image", "storage", "blob", "cdn", "functions", "secrets", "sites", "subdomains", "domains", "apps", "email", "message", "agent", "ai", "auth", "sender-domain", "billing", "contracts", "webhooks", "service", "deploy", "ci"]) {
+  for (const mod of ["allowance", "tier", "projects", "image", "storage", "assets", "cdn", "functions", "secrets", "sites", "subdomains", "domains", "apps", "email", "message", "agent", "ai", "auth", "sender-domain", "billing", "contracts", "webhooks", "service", "deploy", "ci"]) {
     for (const sub of parseSubcommands(join(__dirname, "openclaw/scripts", `${mod}.mjs`))) {
       cmds.push(`${mod}:${sub}`);
     }
@@ -174,14 +174,14 @@ const SURFACE: Capability[] = [
   { id: "get_schema",        endpoint: "GET /projects/v1/admin/:id/schema",      mcp: "get_schema",                    cli: "projects:schema",     openclaw: "projects:schema" },
   { id: "get_usage",         endpoint: "GET /projects/v1/admin/:id/usage",       mcp: "get_usage",                     cli: "projects:usage",      openclaw: "projects:usage" },
 
-  // ── Blob (direct-to-S3 storage) ──────────────────────────────────────────
-  { id: "blob_put",          endpoint: "POST /storage/v1/uploads",               mcp: "blob_put",       cli: "blob:put",         openclaw: "blob:put" },
-  { id: "blob_get",          endpoint: "GET /storage/v1/blob/{key}",             mcp: "blob_get",       cli: "blob:get",         openclaw: "blob:get" },
-  { id: "blob_ls",           endpoint: "GET /storage/v1/blobs",                  mcp: "blob_ls",        cli: "blob:ls",          openclaw: "blob:ls" },
-  { id: "blob_rm",           endpoint: "DELETE /storage/v1/blob/{key}",          mcp: "blob_rm",        cli: "blob:rm",          openclaw: "blob:rm" },
-  { id: "blob_sign",         endpoint: "POST /storage/v1/blob/{key}/sign",       mcp: "blob_sign",      cli: "blob:sign",        openclaw: "blob:sign" },
-  // v1.45: agent-DX blob CDN diagnostics (CLI: blob diagnose / cdn wait-fresh).
-  { id: "diagnose_public_url",   endpoint: "GET /storage/v1/blobs/diagnose",       mcp: "diagnose_public_url",     cli: "blob:diagnose",     openclaw: "blob:diagnose" },
+  // ── Assets (direct-to-S3 storage, v1.48 unified-apply rename of blobs) ──
+  { id: "assets_put",        endpoint: "POST /apply/v1/plans",                   mcp: "assets_put",     cli: "assets:put",       openclaw: "assets:put" },
+  { id: "assets_get",        endpoint: "GET /storage/v1/blob/{key}",             mcp: "assets_get",     cli: "assets:get",       openclaw: "assets:get" },
+  { id: "assets_ls",         endpoint: "GET /storage/v1/blobs",                  mcp: "assets_ls",      cli: "assets:ls",        openclaw: "assets:ls" },
+  { id: "assets_rm",         endpoint: "DELETE /storage/v1/blob/{key}",          mcp: "assets_rm",      cli: "assets:rm",        openclaw: "assets:rm" },
+  { id: "assets_sign",       endpoint: "POST /storage/v1/blob/{key}/sign",       mcp: "assets_sign",    cli: "assets:sign",      openclaw: "assets:sign" },
+  // v1.45: agent-DX CDN diagnostics for asset URLs (CLI: assets diagnose / cdn wait-fresh).
+  { id: "diagnose_public_url",   endpoint: "GET /storage/v1/blobs/diagnose",       mcp: "diagnose_public_url",     cli: "assets:diagnose",   openclaw: "assets:diagnose" },
   { id: "wait_for_cdn_freshness", endpoint: "GET /storage/v1/blobs/diagnose (poll)", mcp: "wait_for_cdn_freshness",  cli: "cdn:wait-fresh",    openclaw: "cdn:wait-fresh" },
 
   // ── Functions ────────────────────────────────────────────────────────────
@@ -372,15 +372,15 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   get_schema: "projects.getSchema",
   get_usage: "projects.getUsage",
 
-  // Blob (direct-to-S3)
-  blob_put: "blobs.put",
-  blob_get: "blobs.get",
-  blob_ls: "blobs.ls",
-  blob_rm: "blobs.rm",
-  blob_sign: "blobs.sign",
-  // v1.45: agent-DX blob CDN diagnostics
-  diagnose_public_url: "blobs.diagnoseUrl",
-  wait_for_cdn_freshness: "blobs.waitFresh",
+  // Assets (direct-to-S3, v1.48 unified-apply rename of blobs)
+  assets_put: "assets.put",
+  assets_get: "assets.get",
+  assets_ls: "assets.ls",
+  assets_rm: "assets.rm",
+  assets_sign: "assets.sign",
+  // v1.45: agent-DX CDN diagnostics for asset URLs
+  diagnose_public_url: "assets.diagnoseUrl",
+  wait_for_cdn_freshness: "assets.waitFresh",
 
   // Functions
   deploy_function: "functions.deploy",
@@ -408,16 +408,18 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   check_domain_status: "domains.status",
   remove_custom_domain: "domains.remove",
 
-  // Unified deploy (v1.34+)
-  deploy: "deploy.apply",
-  deploy_resume: "deploy.resume",
-  deploy_list: "deploy.list",
-  deploy_events: "deploy.events",
-  deploy_release_get: "deploy.getRelease",
-  deploy_release_active: "deploy.getActiveRelease",
-  deploy_release_diff: "deploy.diff",
-  deploy_diagnose_url: "deploy.resolve",
-  deploy_resolve: "deploy.resolve",
+  // Unified apply (v1.48+ collapsed deploy → apply hero). The engine lives
+  // at r._applyEngine internally; the public hero is r.project(id).apply.
+  // SDK_BY_CAPABILITY targets the engine instance for resolution checks.
+  deploy: "_applyEngine.apply",
+  deploy_resume: "_applyEngine.resume",
+  deploy_list: "_applyEngine.list",
+  deploy_events: "_applyEngine.events",
+  deploy_release_get: "_applyEngine.getRelease",
+  deploy_release_active: "_applyEngine.getActiveRelease",
+  deploy_release_diff: "_applyEngine.diff",
+  deploy_diagnose_url: "_applyEngine.resolve",
+  deploy_resolve: "_applyEngine.resolve",
   ci_link_github: "ci.createBinding",
   ci_list_bindings: "ci.listBindings",
   ci_get_binding: "ci.getBinding",
@@ -756,21 +758,19 @@ describe("SDK surface alignment", () => {
       "email.resolveMailbox",  // private helper
       "projects.active",       // returns active project id from the provider
       "projects.restResponse", // REST proxy with HTTP status for CLI/MCP formatters
-      "blobs.initUploadSession", // low-level resumable upload primitive for CLI UX
-      "blobs.getUploadSession", // low-level resumable upload primitive for CLI UX
-      "blobs.completeUploadSession", // low-level resumable upload primitive for CLI UX
-      // ─── unified-deploy ────────────────────────────────────────────────
-      // The deploy namespace is the canonical primitive. apply() and resume()
-      // are exposed via the `deploy` and `deploy_resume` MCP tools (and CLI
-      // `run402 deploy` / `run402 deploy resume`). The other methods are
-      // low-level debugging / composition surface used by the high-level
-      // entry points and by tests; they don't have their own MCP/CLI
-      // commands.
-      "deploy.start",
-      "deploy.plan",
-      "deploy.upload",
-      "deploy.commit",
-      "deploy.status",
+      "assets.initUploadSession", // low-level resumable upload primitive for CLI UX
+      "assets.getUploadSession", // low-level resumable upload primitive for CLI UX
+      "assets.completeUploadSession", // low-level resumable upload primitive for CLI UX
+      // ─── unified-apply (v1.48) ──────────────────────────────────────────
+      // The hero is r.project(id).apply(spec). The engine lives at
+      // r._applyEngine; the methods below are advanced primitives used by
+      // the hero implementation (and by tests). The deploy/deploy_resume
+      // MCP tools wrap r._applyEngine.apply / r._applyEngine.resume.
+      "_applyEngine.start",
+      "_applyEngine.plan",
+      "_applyEngine.upload",
+      "_applyEngine.commit",
+      "_applyEngine.status",
       // CI token exchange is intentionally credential-helper-only in v1.
       "ci.exchangeToken",
     ]);
@@ -793,12 +793,12 @@ describe("SDK surface alignment", () => {
 describe("CLI/MCP SDK-boundary guard", () => {
   it("keeps production interface code from bypassing the SDK for gateway calls", () => {
     const allowlist = new Map<string, RegExp[]>([
-      ["cli/lib/blob.mjs", [/\bfetch\(part\.url\b/]], // presigned S3 PUT, not a Run402 gateway call
+      ["cli/lib/assets.mjs", [/\bfetch\(part\.url\b/]], // presigned S3 PUT, not a Run402 gateway call
       ["cli/lib/allowance.mjs", [/\bfetch\(TEMPO_RPC\b/]], // Tempo faucet/RPC
       ["cli/lib/init.mjs", [/\bfetch\(TEMPO_RPC\b/]], // Tempo faucet/RPC
       ["cli/lib/ci.mjs", [/\bfetch\(`https:\/\/api\.github\.com\/repos\//]], // GitHub repository lookup
       ["src/tools/init.ts", [/\bfetch\(TEMPO_RPC\b/]], // Tempo faucet/RPC
-      ["src/tools/blob-put.ts", [/\bfetch\(part\.url\b/]], // presigned S3 PUT, not a Run402 gateway call
+      ["src/tools/assets-put.ts", [/\bfetch\(part\.url\b/]], // presigned S3 PUT, not a Run402 gateway call
     ]);
 
     const violations: string[] = [];

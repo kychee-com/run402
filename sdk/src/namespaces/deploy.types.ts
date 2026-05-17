@@ -1,6 +1,6 @@
 /**
  * Type definitions for the unified `deploy.apply` primitive (`unified-deploy`
- * capability, gateway routes `POST /deploy/v2/plans` + commit + operations).
+ * capability, gateway routes `POST /apply/v1/plans` + commit + operations).
  *
  * The user-facing inputs accept polymorphic byte sources (strings, Uint8Array,
  * Blob, web streams, plus the Node-only `fileSetFromDir`). The wire shapes
@@ -1692,7 +1692,7 @@ export interface OperationSnapshot {
   updated_at: string;
 }
 
-/** Response from `GET /deploy/v2/operations`. The gateway may return a
+/** Response from `GET /apply/v1/operations`. The gateway may return a
  *  pagination cursor when there are more operations than the requested
  *  page size; clients pass it back as `?cursor=` to fetch the next page. */
 export interface DeployListOptions {
@@ -1706,7 +1706,7 @@ export interface DeployListResponse {
   cursor?: string | null;
 }
 
-/** Response from `GET /deploy/v2/operations/:id/events`. Returns the
+/** Response from `GET /apply/v1/operations/:id/events`. Returns the
  *  synthesized phase event stream the gateway has recorded so far for the
  *  operation. Same shape as the events emitted by `r.deploy.start().events()`
  *  during an in-flight deploy. */
@@ -1746,7 +1746,7 @@ export interface GatewayDeployError {
 
 // ─── Wire-level plan request shape (post-normalization) ──────────────────────
 
-/** What the SDK actually POSTs to `/deploy/v2/plans`. Bytes are content
+/** What the SDK actually POSTs to `/apply/v1/plans`. Bytes are content
  *  refs, not inline. The gateway's wire envelope is `{ spec, manifest_ref?,
  *  idempotency_key? }`. Most callers never construct this directly; it's
  *  produced by the SDK's normalizer and exposed for the low-level

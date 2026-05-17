@@ -221,7 +221,7 @@ async function deploy(args) {
   if (opts.manifest) resolveFilePathsInManifest(manifest, dirname(resolve(opts.manifest)));
 
   // Preserve the aggressive early exit when no allowance is configured.
-  allowanceAuthHeaders("/deploy/v2/plans");
+  allowanceAuthHeaders("/apply/v1/plans");
 
   const stage = stageFilesToTempDir(manifest.files || []);
   try {
@@ -288,7 +288,7 @@ async function deployDir(args) {
   if (opts.target !== undefined) failUnsupportedTarget();
 
   // Preserve the aggressive early exit when no allowance is configured.
-  allowanceAuthHeaders("/deploy/v2/plans");
+  allowanceAuthHeaders("/apply/v1/plans");
 
   let fileSet;
   try {

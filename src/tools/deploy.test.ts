@@ -38,7 +38,7 @@ let nextApplyImpl: (spec?: unknown, opts?: unknown) => Promise<unknown> = async 
 mock.module("../sdk.js", {
   namedExports: {
     getSdk: () => ({
-      deploy: {
+      _applyEngine: {
         apply: async (spec: unknown, opts: unknown) => {
           lastApplySpec = spec;
           lastApplyOpts = opts;

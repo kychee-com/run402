@@ -51,7 +51,7 @@ export async function handleDeploySiteDir(args: {
     );
   }
 
-  const auth = requireAllowanceAuth("/deploy/v2/plans");
+  const auth = requireAllowanceAuth("/apply/v1/plans");
   if ("error" in auth) return auth.error;
 
   const events: DeployEvent[] = [];

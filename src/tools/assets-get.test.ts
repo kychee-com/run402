@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { handleBlobGet } from "./blob-get.js";
+import { handleBlobGet } from "./assets-get.js";
 import { saveProject } from "../keystore.js";
 import { _resetSdk } from "../sdk.js";
 
@@ -26,7 +26,7 @@ afterEach(() => {
   delete process.env.RUN402_API_BASE;
 });
 
-describe("blob_get tool", () => {
+describe("assets_get tool", () => {
   it("returns structured errors when local output writing fails", async () => {
     globalThis.fetch = (async () =>
       new Response("hello", {

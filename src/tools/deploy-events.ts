@@ -8,7 +8,7 @@ import { Run402DeployError } from "../../sdk/dist/index.js";
  * MCP `deploy_events` tool — fetch the recorded phase event stream for a
  * deploy operation.
  *
- * Wraps `r.deploy.events()` over `GET /deploy/v2/operations/:id/events`.
+ * Wraps `r.deploy.events()` over `GET /apply/v1/operations/:id/events`.
  * Useful for inspecting a deploy after the fact (no live subscription) —
  * for live progress events during an in-flight deploy, the `deploy` tool
  * already returns them inline in its response.
@@ -31,7 +31,7 @@ export async function handleDeployEvents(args: {
   operation_id: string;
   project_id: string;
 }): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
-  const auth = requireAllowanceAuth("/deploy/v2/operations");
+  const auth = requireAllowanceAuth("/apply/v1/operations");
   if ("error" in auth) return auth.error;
 
   try {

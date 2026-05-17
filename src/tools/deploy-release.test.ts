@@ -43,7 +43,7 @@ afterEach(() => {
 describe("deploy release observability MCP tools", () => {
   it("returns release inventory without requiring allowance auth", async () => {
     globalThis.fetch = makeFetch((path) => {
-      assert.equal(path, "/deploy/v2/releases/rel_%2Fone?site_limit=2");
+      assert.equal(path, "/apply/v1/releases/rel_%2Fone?site_limit=2");
       return inventory({ release_id: "rel_/one", state_kind: "effective" });
     });
 
@@ -65,13 +65,13 @@ describe("deploy release observability MCP tools", () => {
     assert.ok(result.content[1]!.text.includes('"reachability_authority": "explicit_public_path"'));
     assert.ok(result.content[1]!.text.includes('"routes"'));
     assert.deepEqual(seen, [
-      { path: "/deploy/v2/releases/rel_%2Fone?site_limit=2", apikey: "ak_test" },
+      { path: "/apply/v1/releases/rel_%2Fone?site_limit=2", apikey: "ak_test" },
     ]);
   });
 
   it("returns active release inventory", async () => {
     globalThis.fetch = makeFetch((path) => {
-      assert.equal(path, "/deploy/v2/releases/active");
+      assert.equal(path, "/apply/v1/releases/active");
       return inventory({ release_id: "rel_active", state_kind: "current_live" });
     });
 
@@ -84,7 +84,7 @@ describe("deploy release observability MCP tools", () => {
 
   it("returns release diffs with applied_between_releases", async () => {
     globalThis.fetch = makeFetch((path) => {
-      assert.equal(path, "/deploy/v2/releases/diff?from=empty&to=active&limit=4");
+      assert.equal(path, "/apply/v1/releases/diff?from=empty&to=active&limit=4");
       return {
         kind: "release_diff",
         schema_version: "agent-deploy-observability.v1",
@@ -171,7 +171,7 @@ describe("deploy release observability MCP tools", () => {
     assert.equal(result.isError, true);
     assert.ok(result.content[0]!.text.includes("NO_ACTIVE_RELEASE"));
     assert.deepEqual(seen, [
-      { path: "/deploy/v2/releases/active", apikey: "ak_test" },
+      { path: "/apply/v1/releases/active", apikey: "ak_test" },
     ]);
   });
 });

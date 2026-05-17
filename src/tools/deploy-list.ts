@@ -6,7 +6,7 @@ import { requireAllowanceAuth } from "../allowance-auth.js";
 /**
  * MCP `deploy_list` tool — list recent deploy operations for a project.
  *
- * Wraps `r.deploy.list()` over `GET /deploy/v2/operations`. Returns a
+ * Wraps `r.deploy.list()` over `GET /apply/v1/operations`. Returns a
  * markdown summary table and the structured operation snapshots for the
  * agent to reason over (status, release_id, timestamps).
  */
@@ -36,7 +36,7 @@ export async function handleDeployList(args: {
   limit?: number;
   cursor?: string;
 }): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
-  const auth = requireAllowanceAuth("/deploy/v2/operations");
+  const auth = requireAllowanceAuth("/apply/v1/operations");
   if ("error" in auth) return auth.error;
 
   try {

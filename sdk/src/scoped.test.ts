@@ -287,9 +287,9 @@ describe("ScopedRun402 wrapper routing", () => {
     await p.deploy.getRelease("rel_1");
     await p.deploy.getActiveRelease({ project: "prj_other", siteLimit: 3 });
 
-    assert.match(calls[0]!.url, /\/deploy\/v2\/releases\/rel_1$/);
+    assert.match(calls[0]!.url, /\/apply\/v1\/releases\/rel_1$/);
     assert.equal(calls[0]!.headers.apikey, "anon_known");
-    assert.match(calls[1]!.url, /\/deploy\/v2\/releases\/active\?site_limit=3$/);
+    assert.match(calls[1]!.url, /\/apply\/v1\/releases\/active\?site_limit=3$/);
     assert.equal(calls[1]!.headers.apikey, "anon_other");
     assert.deepEqual(ledger, ["lookup:prj_known", "lookup:prj_other"]);
   });
@@ -316,7 +316,7 @@ describe("ScopedRun402 wrapper routing", () => {
 
     await p.deploy.diff({ from: "empty", to: "active", limit: 10 });
 
-    assert.match(calls[0]!.url, /\/deploy\/v2\/releases\/diff\?from=empty&to=active&limit=10$/);
+    assert.match(calls[0]!.url, /\/apply\/v1\/releases\/diff\?from=empty&to=active&limit=10$/);
     assert.equal(calls[0]!.headers.apikey, "anon_xxx");
   });
 
@@ -345,9 +345,9 @@ describe("ScopedRun402 wrapper routing", () => {
     await p.deploy.resolve({ url: "https://example.com/" });
     await p.deploy.resolve({ project: "prj_other", host: "other.example", path: "/x" });
 
-    assert.match(calls[0]!.url, /\/deploy\/v2\/resolve\?host=example\.com&path=%2F$/);
+    assert.match(calls[0]!.url, /\/apply\/v1\/resolve\?host=example\.com&path=%2F$/);
     assert.equal(calls[0]!.headers.apikey, "anon_known");
-    assert.match(calls[1]!.url, /\/deploy\/v2\/resolve\?host=other\.example&path=%2Fx$/);
+    assert.match(calls[1]!.url, /\/apply\/v1\/resolve\?host=other\.example&path=%2Fx$/);
     assert.equal(calls[1]!.headers.apikey, "anon_other");
     assert.deepEqual(ledger, ["lookup:prj_known", "lookup:prj_other"]);
   });
@@ -373,7 +373,7 @@ describe("ScopedRun402 wrapper routing", () => {
 
   it("scoped apply injects spec.project", async () => {
     const { fetch, calls } = mockFetch((call) => {
-      if (call.url.endsWith("/deploy/v2/plans") && call.method === "POST") {
+      if (call.url.endsWith("/apply/v1/plans") && call.method === "POST") {
         return jsonResponse({
           plan_id: "pl_x",
           manifest_digest: "sha256:zero",
@@ -400,7 +400,7 @@ describe("ScopedRun402 wrapper routing", () => {
     await p
       .apply({ site: { patch: { delete: ["old.html"] } } })
       .catch(() => undefined);
-    const planCall = calls.find((c) => c.url.endsWith("/deploy/v2/plans"));
+    const planCall = calls.find((c) => c.url.endsWith("/apply/v1/plans"));
     assert.ok(planCall, "expected a plan POST");
     const body = JSON.parse(planCall!.body as string);
     assert.equal(body.spec.project, "prj_known");

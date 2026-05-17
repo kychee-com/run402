@@ -12,7 +12,7 @@ type Args = { project_id: string; key: string; ttl_seconds?: number };
 
 export async function handleBlobSign(args: Args): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
   try {
-    const body = await getSdk().blobs.sign(args.project_id, args.key, {
+    const body = await getSdk().assets.sign(args.project_id, args.key, {
       ttl_seconds: args.ttl_seconds,
     });
     return {

@@ -27,7 +27,7 @@ describe("createCiSessionCredentials", () => {
 
     assert.equal(isCiSessionCredentials(creds), true);
     assert.equal(Object.getOwnPropertySymbols(creds).length, 1);
-    assert.deepEqual(await creds.getAuth("/deploy/v2/plans"), {
+    assert.deepEqual(await creds.getAuth("/apply/v1/plans"), {
       Authorization: "Bearer ci-session",
     });
     assert.deepEqual(await creds.getProject("prj_abc"), { anon_key: "", service_key: "" });
@@ -80,10 +80,10 @@ describe("githubActionsCredentials", () => {
     });
 
     assert.equal(isCiSessionCredentials(creds), true);
-    assert.deepEqual(await creds.getAuth("/deploy/v2/plans"), {
+    assert.deepEqual(await creds.getAuth("/apply/v1/plans"), {
       Authorization: "Bearer run402-ci-session",
     });
-    assert.deepEqual(await creds.getAuth("/deploy/v2/plans/plan_abc/commit"), {
+    assert.deepEqual(await creds.getAuth("/apply/v1/plans/plan_abc/commit"), {
       Authorization: "Bearer run402-ci-session",
     });
     assert.equal(calls.length, 2, "second auth call should use cached session");
@@ -135,10 +135,10 @@ describe("githubActionsCredentials", () => {
       fetch: fetchImpl,
     });
 
-    assert.deepEqual(await creds.getAuth("/deploy/v2/plans"), {
+    assert.deepEqual(await creds.getAuth("/apply/v1/plans"), {
       Authorization: "Bearer run402-ci-session-1",
     });
-    assert.deepEqual(await creds.getAuth("/deploy/v2/plans"), {
+    assert.deepEqual(await creds.getAuth("/apply/v1/plans"), {
       Authorization: "Bearer run402-ci-session-2",
     });
   });

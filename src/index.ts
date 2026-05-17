@@ -54,13 +54,13 @@ import { publishAppSchema, handlePublishApp } from "./tools/publish-app.js";
 import { listVersionsSchema, handleListVersions } from "./tools/list-versions.js";
 
 // Direct-to-S3 blob storage
-import { blobPutSchema, handleBlobPut } from "./tools/blob-put.js";
-import { blobGetSchema, handleBlobGet } from "./tools/blob-get.js";
-import { blobLsSchema, handleBlobLs } from "./tools/blob-ls.js";
-import { blobRmSchema, handleBlobRm } from "./tools/blob-rm.js";
-import { blobSignSchema, handleBlobSign } from "./tools/blob-sign.js";
-import { blobDiagnoseSchema, handleBlobDiagnose } from "./tools/blob-diagnose.js";
-import { blobWaitFreshSchema, handleBlobWaitFresh } from "./tools/blob-wait-fresh.js";
+import { blobPutSchema, handleBlobPut } from "./tools/assets-put.js";
+import { blobGetSchema, handleBlobGet } from "./tools/assets-get.js";
+import { blobLsSchema, handleBlobLs } from "./tools/assets-ls.js";
+import { blobRmSchema, handleBlobRm } from "./tools/assets-rm.js";
+import { blobSignSchema, handleBlobSign } from "./tools/assets-sign.js";
+import { blobDiagnoseSchema, handleBlobDiagnose } from "./tools/assets-diagnose.js";
+import { blobWaitFreshSchema, handleBlobWaitFresh } from "./tools/assets-wait-fresh.js";
 
 // New tools — functions & secrets CRUD
 import { listFunctionsSchema, handleListFunctions } from "./tools/list-functions.js";
@@ -259,35 +259,35 @@ server.tool(
 // ─── Storage tools ──────────────────────────────────────────────────────────
 
 server.tool(
-  "blob_put",
+  "assets_put",
   "Upload a blob (file or inline content) to project storage via direct-to-S3. Accepts local_path (any size up to 5 TiB) or content (≤ 1 MB inline). Public blobs get a CDN URL; private blobs require authenticated reads. Use `immutable: true` to produce a content-addressed URL that never needs cache invalidation.",
   blobPutSchema,
   async (args) => handleBlobPut(args),
 );
 
 server.tool(
-  "blob_get",
+  "assets_get",
   "Download a blob to a local file path. Writes bytes directly to disk (no context-window bloat). Returns size + SHA-256 header (if the blob has one stored).",
   blobGetSchema,
   async (args) => handleBlobGet(args),
 );
 
 server.tool(
-  "blob_ls",
+  "assets_ls",
   "List blobs in a project with optional prefix filter over a flat key namespace. Supports pagination via cursor.",
   blobLsSchema,
   async (args) => handleBlobLs(args),
 );
 
 server.tool(
-  "blob_rm",
+  "assets_rm",
   "Delete a blob from project storage and decrement the project's storage_bytes.",
   blobRmSchema,
   async (args) => handleBlobRm(args),
 );
 
 server.tool(
-  "blob_sign",
+  "assets_sign",
   "Generate a time-boxed S3 presigned GET URL for a blob. Use this to share a private blob externally without exposing your apikey. Default TTL 1 hour, max 7 days.",
   blobSignSchema,
   async (args) => handleBlobSign(args),
@@ -302,7 +302,7 @@ server.tool(
 
 server.tool(
   "wait_for_cdn_freshness",
-  "Polls the CDN until a MUTABLE blob URL serves the expected SHA-256, or the timeout elapses. **For mutable URLs only** — for immutable URLs (the `immutableUrl` returned by `blob_put`), no waiting is needed; they're bound to a SHA at upload time and never previously cached. Use this after a re-upload to an existing public mutable key when an end-user-visible URL must reflect the new content before continuing. The probe is single-vantage (us-east-1). On timeout, the tool returns isError=true so an agent can branch into a fallback — typically: switch to the immutableUrl.",
+  "Polls the CDN until a MUTABLE blob URL serves the expected SHA-256, or the timeout elapses. **For mutable URLs only** — for immutable URLs (the `immutableUrl` returned by `assets_put`), no waiting is needed; they're bound to a SHA at upload time and never previously cached. Use this after a re-upload to an existing public mutable key when an end-user-visible URL must reflect the new content before continuing. The probe is single-vantage (us-east-1). On timeout, the tool returns isError=true so an agent can branch into a fallback — typically: switch to the immutableUrl.",
   blobWaitFreshSchema,
   async (args) => handleBlobWaitFresh(args),
 );

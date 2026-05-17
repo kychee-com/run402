@@ -90,8 +90,8 @@ describe("NodeSites.deployDir result.url (GH-130)", () => {
         urls: { project: projectUrl, release: "https://rel_legacy.run402.com" },
       };
       w.setHandler((req) => {
-        if (req.path === "/deploy/v2/plans") return plan;
-        if (req.path === "/deploy/v2/plans/plan_legacy/commit") return commit;
+        if (req.path === "/apply/v1/plans") return plan;
+        if (req.path === "/apply/v1/plans/plan_legacy/commit") return commit;
         throw new Error(`unexpected path ${req.path}`);
       });
 
@@ -134,8 +134,8 @@ describe("NodeSites.deployDir result.url (GH-130)", () => {
         urls: { site: siteUrl },
       };
       w.setHandler((req) => {
-        if (req.path === "/deploy/v2/plans") return plan;
-        if (req.path === "/deploy/v2/plans/plan_site_only/commit") return commit;
+        if (req.path === "/apply/v1/plans") return plan;
+        if (req.path === "/apply/v1/plans/plan_site_only/commit") return commit;
         throw new Error(`unexpected path ${req.path}`);
       });
 
@@ -187,8 +187,8 @@ describe("NodeSites.deployDir metadata and option validation", () => {
         urls: { project: "https://prj_xxx.run402.com" },
       };
       w.setHandler((req) => {
-        if (req.path === "/deploy/v2/plans") return plan;
-        if (req.path === "/deploy/v2/plans/plan_bytes/commit") return commit;
+        if (req.path === "/apply/v1/plans") return plan;
+        if (req.path === "/apply/v1/plans/plan_bytes/commit") return commit;
         throw new Error(`unexpected path ${req.path}`);
       });
 
@@ -225,7 +225,7 @@ describe("NodeSites.deployDir metadata and option validation", () => {
           /unsupported/i.test(err.message),
       );
       assert.equal(
-        w.requests.filter((req) => req.path === "/deploy/v2/plans").length,
+        w.requests.filter((req) => req.path === "/apply/v1/plans").length,
         0,
         "target validation should stop before a deploy plan request",
       );

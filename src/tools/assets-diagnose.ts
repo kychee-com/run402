@@ -25,7 +25,7 @@ export async function handleBlobDiagnose(
   args: Args,
 ): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
   try {
-    const env = await getSdk().blobs.diagnoseUrl(args.project_id, args.url);
+    const env = await getSdk().assets.diagnoseUrl(args.project_id, args.url);
     const matched =
       env.observedSha256 != null && env.observedSha256 === env.expectedSha256;
     const summary = matched

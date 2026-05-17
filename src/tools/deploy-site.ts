@@ -45,7 +45,7 @@ export async function handleDeploySite(args: {
     );
   }
 
-  const auth = requireAllowanceAuth("/deploy/v2/plans");
+  const auth = requireAllowanceAuth("/apply/v1/plans");
   if ("error" in auth) return auth.error;
 
   // The SDK's inline-bytes overload is removed in v1.32 — every deploy goes

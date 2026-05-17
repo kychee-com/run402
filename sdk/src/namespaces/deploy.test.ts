@@ -4,7 +4,7 @@
  * Drives `r.deploy.apply` against a fake `Client` that records each
  * `request(path, opts)` and a fake `fetch` that records each S3 PUT.
  * Together they assert the full v2 wire sequence:
- *   POST /deploy/v2/plans  →  presigned PUT  →  POST /deploy/v2/plans/:id/commit
+ *   POST /apply/v1/plans  →  presigned PUT  →  POST /apply/v1/plans/:id/commit
  * plus the validation paths (subdomain multi rejection, invalid spec).
  */
 
@@ -204,11 +204,11 @@ describe("Deploy.apply (happy path)", () => {
     };
 
     w.setHandler((req) => {
-      if (req.path === "/deploy/v2/plans") return plan;
+      if (req.path === "/apply/v1/plans") return plan;
       if (req.path === "/content/v1/plans") return contentPlan;
       if (req.path === "/storage/v1/uploads/u_abc/complete") return { status: "ok" };
       if (req.path === "/content/v1/plans/cplan_abc/commit") return {};
-      if (req.path === "/deploy/v2/plans/plan_abc/commit") return commit;
+      if (req.path === "/apply/v1/plans/plan_abc/commit") return commit;
       throw new Error(`unexpected path ${req.path}`);
     });
 
@@ -223,7 +223,7 @@ describe("Deploy.apply (happy path)", () => {
     assert.equal(result.urls.site, "https://prj.run402.test");
 
     // Plan body never carries inline bytes — only ContentRefs, wrapped in {spec}.
-    const planReq = w.requests.find((r) => r.path === "/deploy/v2/plans");
+    const planReq = w.requests.find((r) => r.path === "/apply/v1/plans");
     assert(planReq, "plan request was issued");
     const planBody = planReq.body as { spec: { project: string; site?: unknown } };
     assert.equal(planBody.spec.project, "prj_test");
@@ -299,11 +299,11 @@ describe("Deploy.apply (happy path)", () => {
     };
 
     w.setHandler((req) => {
-      if (req.path === "/deploy/v2/plans") return plan;
+      if (req.path === "/apply/v1/plans") return plan;
       if (req.path === "/content/v1/plans") return contentPlan;
       if (req.path === "/storage/v1/uploads/u_multipart/complete") return { status: "ok" };
       if (req.path === "/content/v1/plans/cplan_multipart/commit") return {};
-      if (req.path === "/deploy/v2/plans/plan_multipart/commit") return commit;
+      if (req.path === "/apply/v1/plans/plan_multipart/commit") return commit;
       throw new Error(`unexpected path ${req.path}`);
     });
     w.setS3Handler((url) => {
@@ -382,10 +382,10 @@ describe("Deploy.apply (happy path)", () => {
     w.setHandler((req) => {
       assert.equal(req.headers?.Authorization, "Bearer ci-session");
       assert.equal(req.headers?.apikey, undefined);
-      if (req.path === "/deploy/v2/plans") return plan;
+      if (req.path === "/apply/v1/plans") return plan;
       if (req.path === "/content/v1/plans") return contentPlan;
       if (req.path === "/content/v1/plans/cplan_ci/commit") return {};
-      if (req.path === "/deploy/v2/plans/plan_ci/commit") return commit;
+      if (req.path === "/apply/v1/plans/plan_ci/commit") return commit;
       if (req.path.startsWith("/storage/v1/uploads/")) {
         throw new Error("CI deploy must not call storage upload completion");
       }
@@ -434,8 +434,8 @@ describe("Deploy.apply (happy path)", () => {
 
       w.setHandler((req) => {
         assert.equal(req.headers?.Authorization, "Bearer ci-session");
-        if (req.path === "/deploy/v2/plans") return plan;
-        if (req.path === "/deploy/v2/plans/plan_ci_routes/commit") return commit;
+        if (req.path === "/apply/v1/plans") return plan;
+        if (req.path === "/apply/v1/plans/plan_ci_routes/commit") return commit;
         throw new Error(`unexpected path ${req.path}`);
       });
 
@@ -446,7 +446,7 @@ describe("Deploy.apply (happy path)", () => {
         ...(routes === null ? { site: { patch: { delete: ["old.html"] } } } : {}),
       });
 
-      const planReq = w.requests.find((r) => r.path === "/deploy/v2/plans");
+      const planReq = w.requests.find((r) => r.path === "/apply/v1/plans");
       assert(planReq, "plan request was issued");
       assert.deepEqual((planReq.body as { spec: { routes?: unknown } }).spec.routes, routes);
       assert.equal(w.puts.length, 0);
@@ -475,8 +475,8 @@ describe("Deploy.apply (happy path)", () => {
 
     w.setHandler((req) => {
       assert.equal(req.headers?.Authorization, "Bearer ci-session");
-      if (req.path === "/deploy/v2/plans") return plan;
-      if (req.path === "/deploy/v2/plans/plan_ci_public_paths/commit") return commit;
+      if (req.path === "/apply/v1/plans") return plan;
+      if (req.path === "/apply/v1/plans/plan_ci_public_paths/commit") return commit;
       throw new Error(`unexpected path ${req.path}`);
     });
 
@@ -493,7 +493,7 @@ describe("Deploy.apply (happy path)", () => {
       },
     });
 
-    const planReq = w.requests.find((r) => r.path === "/deploy/v2/plans");
+    const planReq = w.requests.find((r) => r.path === "/apply/v1/plans");
     assert(planReq, "plan request was issued");
     assert.deepEqual((planReq.body as { spec: { site?: unknown } }).spec.site, {
       public_paths: {
@@ -511,7 +511,7 @@ describe("Deploy.apply (happy path)", () => {
       accessToken: "ci-session",
     }));
     w.setHandler((req) => {
-      if (req.path === "/deploy/v2/plans") {
+      if (req.path === "/apply/v1/plans") {
         throw new ApiError(
           "Gateway rejected CI public paths",
           403,
@@ -643,8 +643,8 @@ describe("Deploy.apply (happy path)", () => {
       urls: { site: "https://user.run402.test" },
     };
     w.setHandler((req) => {
-      if (req.path === "/deploy/v2/plans") return plan;
-      if (req.path === "/deploy/v2/plans/plan_user/commit") return commit;
+      if (req.path === "/apply/v1/plans") return plan;
+      if (req.path === "/apply/v1/plans/plan_user/commit") return commit;
       throw new Error(`unexpected path ${req.path}`);
     });
 
@@ -655,7 +655,7 @@ describe("Deploy.apply (happy path)", () => {
     });
 
     assert.equal(result.release_id, "rel_user");
-    const planReq = w.requests.find((r) => r.path === "/deploy/v2/plans");
+    const planReq = w.requests.find((r) => r.path === "/apply/v1/plans");
     assert(planReq);
     assert.equal(planReq.headers?.Authorization, "Bearer user-session");
     assert.deepEqual((planReq.body as { spec: { secrets?: unknown } }).spec.secrets, {
@@ -681,8 +681,8 @@ describe("Deploy.apply (happy path)", () => {
       urls: { site: "https://prj.run402.test" },
     };
     w.setHandler((req) => {
-      if (req.path === "/deploy/v2/plans") return plan;
-      if (req.path === "/deploy/v2/plans/plan_2/commit") return commit;
+      if (req.path === "/apply/v1/plans") return plan;
+      if (req.path === "/apply/v1/plans/plan_2/commit") return commit;
       throw new Error(`unexpected ${req.path}`);
     });
 
@@ -717,8 +717,8 @@ describe("Deploy.apply (happy path)", () => {
       urls: { site: "https://prj.run402.test" },
     };
     w.setHandler((req) => {
-      if (req.path === "/deploy/v2/plans") return plan;
-      if (req.path === "/deploy/v2/plans/plan_skip/commit") return commit;
+      if (req.path === "/apply/v1/plans") return plan;
+      if (req.path === "/apply/v1/plans/plan_skip/commit") return commit;
       throw new Error(`unexpected ${req.path}`);
     });
 
@@ -760,14 +760,14 @@ describe("Deploy.apply (happy path)", () => {
     };
     let pollCount = 0;
     w.setHandler((req) => {
-      if (req.path === "/deploy/v2/plans") return plan;
-      if (req.path === "/deploy/v2/plans/plan_3/commit") {
+      if (req.path === "/apply/v1/plans") return plan;
+      if (req.path === "/apply/v1/plans/plan_3/commit") {
         return {
           operation_id: "op_3",
           status: "running",
         } satisfies CommitResponse;
       }
-      if (req.path === "/deploy/v2/operations/op_3") {
+      if (req.path === "/apply/v1/operations/op_3") {
         pollCount += 1;
         const snap: OperationSnapshot = {
           operation_id: "op_3",
@@ -862,7 +862,7 @@ describe("Deploy.apply (tier function preflight)", () => {
     );
 
     assert.equal(countRequests(w, "/tiers/v1/status"), 1);
-    assert.equal(countRequests(w, "/deploy/v2/plans"), 0);
+    assert.equal(countRequests(w, "/apply/v1/plans"), 0);
     assert.equal(w.puts.length, 0);
   });
 });
@@ -871,7 +871,7 @@ describe("Deploy.plan", () => {
   it("passes dry_run=true and normalizes the v2 flat plan envelope", async () => {
     const w = makeWiring();
     w.setHandler((req) => {
-      assert.equal(req.path, "/deploy/v2/plans?dry_run=true");
+      assert.equal(req.path, "/apply/v1/plans?dry_run=true");
       assert.equal(req.method, "POST");
       assert.equal(
         (req.body as { idempotency_key?: unknown }).idempotency_key,
@@ -945,7 +945,7 @@ describe("Deploy.plan", () => {
   it("adds a client warning for GET-only wildcard function routes", async () => {
     const w = makeWiring();
     w.setHandler((req) => {
-      if (req.path === "/deploy/v2/plans?dry_run=true") {
+      if (req.path === "/apply/v1/plans?dry_run=true") {
         return {
           plan_id: null,
           operation_id: null,
@@ -990,7 +990,7 @@ describe("Deploy.plan", () => {
   it("suppresses only acknowledged read-only wildcard route warnings", async () => {
     const w = makeWiring();
     w.setHandler((req) => {
-      if (req.path === "/deploy/v2/plans?dry_run=true") {
+      if (req.path === "/apply/v1/plans?dry_run=true") {
         return {
           plan_id: null,
           operation_id: null,
@@ -1038,7 +1038,7 @@ describe("Deploy.plan", () => {
     const expected = shaHex(html);
     let plannedBody: unknown;
     w.setHandler((req) => {
-      assert.equal(req.path, "/deploy/v2/plans?dry_run=true");
+      assert.equal(req.path, "/apply/v1/plans?dry_run=true");
       plannedBody = req.body;
       return {
         plan_id: null,
@@ -1091,7 +1091,7 @@ describe("Deploy.plan", () => {
     const w = makeWiring();
     let plannedBody: unknown;
     w.setHandler((req) => {
-      assert.equal(req.path, "/deploy/v2/plans?dry_run=true");
+      assert.equal(req.path, "/apply/v1/plans?dry_run=true");
       plannedBody = req.body;
       return {
         plan_id: null,
@@ -1200,7 +1200,7 @@ describe("Deploy.apply (validation)", () => {
     const w = makeWiring();
     let plannedBody: unknown;
     w.setHandler((req) => {
-      assert.equal(req.path, "/deploy/v2/plans?dry_run=true");
+      assert.equal(req.path, "/apply/v1/plans?dry_run=true");
       plannedBody = req.body;
       return {
         plan_id: null,
@@ -1410,7 +1410,7 @@ describe("Deploy.apply (validation)", () => {
     const w = makeWiring();
     let plannedBody: unknown;
     w.setHandler((req) => {
-      assert.equal(req.path, "/deploy/v2/plans?dry_run=true");
+      assert.equal(req.path, "/apply/v1/plans?dry_run=true");
       plannedBody = req.body;
       return {
         plan_id: null,
@@ -1440,7 +1440,7 @@ describe("Deploy.apply (validation)", () => {
     const w = makeWiring();
     let plannedBody: unknown;
     w.setHandler((req) => {
-      assert.equal(req.path, "/deploy/v2/plans?dry_run=true");
+      assert.equal(req.path, "/apply/v1/plans?dry_run=true");
       plannedBody = req.body;
       return {
         plan_id: null,
@@ -1797,7 +1797,7 @@ describe("Deploy.apply (validation)", () => {
     assert.equal(w.requests.length, 1);
     assert.equal(
       w.requests[0]!.path,
-      "/deploy/v2/resolve?host=example.com&path=%2Fassets%2Fapp.js&method=GET",
+      "/apply/v1/resolve?host=example.com&path=%2Fassets%2Fapp.js&method=GET",
     );
   });
 
@@ -1822,7 +1822,7 @@ describe("Deploy.apply (validation)", () => {
     assert.equal(result.match, "host_missing");
     assert.equal(
       w.requests[0]!.path,
-      "/deploy/v2/resolve?host=Example.COM&path=%2Fassets%2Fa+b.js&method=HEAD",
+      "/apply/v1/resolve?host=Example.COM&path=%2Fassets%2Fa+b.js&method=HEAD",
     );
   });
 
@@ -1839,7 +1839,7 @@ describe("Deploy.apply (validation)", () => {
     const deploy = new Deploy(w.client);
     await deploy.resolve({ project: "prj_test", host: "example.com" });
 
-    assert.equal(w.requests[0]!.path, "/deploy/v2/resolve?host=example.com");
+    assert.equal(w.requests[0]!.path, "/apply/v1/resolve?host=example.com");
   });
 
   it("rejects invalid resolve inputs before network calls", async () => {
@@ -2089,7 +2089,7 @@ describe("Deploy.apply (validation)", () => {
     const w = makeWiring();
     let plannedBody: unknown;
     w.setHandler((req) => {
-      assert.equal(req.path, "/deploy/v2/plans?dry_run=true");
+      assert.equal(req.path, "/apply/v1/plans?dry_run=true");
       plannedBody = req.body;
       return {
         plan_id: null,
@@ -2187,7 +2187,7 @@ describe("Deploy.apply (plan warnings)", () => {
     const w = makeWiring();
     const events: DeployEvent[] = [];
     w.setHandler((req) => {
-      if (req.path === "/deploy/v2/plans") return noContentPlan("plan_route_lint", "op_route_lint");
+      if (req.path === "/apply/v1/plans") return noContentPlan("plan_route_lint", "op_route_lint");
       throw new Error(`unexpected ${req.path}`);
     });
 
@@ -2218,7 +2218,7 @@ describe("Deploy.apply (plan warnings)", () => {
       },
     );
 
-    assert.deepEqual(w.requests.map((r) => r.path), ["/deploy/v2/plans"]);
+    assert.deepEqual(w.requests.map((r) => r.path), ["/apply/v1/plans"]);
     const warningEvent = events.find((event) => event.type === "plan.warnings");
     assert.ok(warningEvent && warningEvent.type === "plan.warnings");
     assert.equal(warningEvent.warnings[0]?.code, "WILDCARD_ROUTE_EXCLUDES_MUTATION_METHODS");
@@ -2245,7 +2245,7 @@ describe("Deploy.apply (plan warnings)", () => {
       ],
     };
     w.setHandler((req) => {
-      if (req.path === "/deploy/v2/plans") return plan;
+      if (req.path === "/apply/v1/plans") return plan;
       throw new Error(`unexpected ${req.path}`);
     });
 
@@ -2272,7 +2272,7 @@ describe("Deploy.apply (plan warnings)", () => {
         return true;
       },
     );
-    assert.deepEqual(w.requests.map((r) => r.path), ["/deploy/v2/plans"]);
+    assert.deepEqual(w.requests.map((r) => r.path), ["/apply/v1/plans"]);
     assert.equal(events.some((event) => event.type === "plan.warnings"), true);
   });
 
@@ -2288,7 +2288,7 @@ describe("Deploy.apply (plan warnings)", () => {
       },
     ];
     w.setHandler((req) => {
-      if (req.path === "/deploy/v2/plans") {
+      if (req.path === "/apply/v1/plans") {
         return {
           plan_id: "plan_warning_code_ok",
           operation_id: "op_warning_code_ok",
@@ -2299,7 +2299,7 @@ describe("Deploy.apply (plan warnings)", () => {
           warnings,
         } satisfies PlanResponse;
       }
-      if (req.path === "/deploy/v2/plans/plan_warning_code_ok/commit") {
+      if (req.path === "/apply/v1/plans/plan_warning_code_ok/commit") {
         return {
           operation_id: "op_warning_code_ok",
           status: "ready",
@@ -2342,7 +2342,7 @@ describe("Deploy.apply (plan warnings)", () => {
       },
     ];
     w.setHandler((req) => {
-      if (req.path === "/deploy/v2/plans") {
+      if (req.path === "/apply/v1/plans") {
         return {
           plan_id: "plan_warning_code_block",
           operation_id: "op_warning_code_block",
@@ -2379,7 +2379,7 @@ describe("Deploy.apply (plan warnings)", () => {
       },
     );
 
-    assert.deepEqual(w.requests.map((r) => r.path), ["/deploy/v2/plans"]);
+    assert.deepEqual(w.requests.map((r) => r.path), ["/apply/v1/plans"]);
   });
 
   it("continues with allowWarnings and preserves warnings on the result", async () => {
@@ -2394,7 +2394,7 @@ describe("Deploy.apply (plan warnings)", () => {
       },
     ];
     w.setHandler((req) => {
-      if (req.path === "/deploy/v2/plans") {
+      if (req.path === "/apply/v1/plans") {
         return {
           plan_id: "plan_warn_ok",
           operation_id: "op_warn_ok",
@@ -2405,7 +2405,7 @@ describe("Deploy.apply (plan warnings)", () => {
           warnings,
         } satisfies PlanResponse;
       }
-      if (req.path === "/deploy/v2/plans/plan_warn_ok/commit") {
+      if (req.path === "/apply/v1/plans/plan_warn_ok/commit") {
         return {
           operation_id: "op_warn_ok",
           status: "ready",
@@ -2433,7 +2433,7 @@ describe("Deploy.apply (network errors)", () => {
   it("translates NetworkError thrown during plan into Run402DeployError NETWORK_ERROR retryable", async () => {
     const w = makeWiring();
     w.setHandler((req) => {
-      if (req.path === "/deploy/v2/plans") {
+      if (req.path === "/apply/v1/plans") {
         throw new NetworkError(
           "simulated DNS failure",
           new Error("ENOTFOUND"),
@@ -2573,7 +2573,7 @@ describe("Deploy.apply (byte source normalization)", () => {
 
     let plannedSpec: unknown;
     w.setHandler((req) => {
-      if (req.path === "/deploy/v2/plans") {
+      if (req.path === "/apply/v1/plans") {
         plannedSpec = req.body;
         return {
           plan_id: "p",
@@ -2584,7 +2584,7 @@ describe("Deploy.apply (byte source normalization)", () => {
           diff: {},
         } satisfies PlanResponse;
       }
-      if (req.path === "/deploy/v2/plans/p/commit") {
+      if (req.path === "/apply/v1/plans/p/commit") {
         return {
           operation_id: "o",
           status: "ready",
@@ -2612,7 +2612,7 @@ describe("Deploy.apply (byte source normalization)", () => {
 
     let plannedSpec: unknown;
     w.setHandler((req) => {
-      if (req.path === "/deploy/v2/plans") {
+      if (req.path === "/apply/v1/plans") {
         plannedSpec = req.body;
         return {
           plan_id: "p",
@@ -2652,7 +2652,7 @@ describe("Deploy.apply (byte source normalization)", () => {
 
       let plannedSpec: unknown;
       w.setHandler((req) => {
-        if (req.path === "/deploy/v2/plans") {
+        if (req.path === "/apply/v1/plans") {
           plannedSpec = req.body;
           return {
             plan_id: "p",
@@ -2741,7 +2741,7 @@ describe("Deploy.apply (manifest-ref escape hatch)", () => {
         casCommitCalled = true;
         return {};
       }
-      if (req.path === "/deploy/v2/plans") {
+      if (req.path === "/apply/v1/plans") {
         const body = req.body as { manifest_ref?: unknown; site?: unknown };
         planRefSeen = "manifest_ref" in body;
         return {
@@ -2753,7 +2753,7 @@ describe("Deploy.apply (manifest-ref escape hatch)", () => {
           diff: {},
         } satisfies PlanResponse;
       }
-      if (req.path === "/deploy/v2/plans/p/commit") {
+      if (req.path === "/apply/v1/plans/p/commit") {
         return {
           operation_id: "o",
           status: "ready",
@@ -2809,7 +2809,7 @@ describe("Deploy.resume (input validation + error wrapping)", () => {
   it("translates a gateway 404 with {code:'operation_not_found'} into a Run402DeployError", async () => {
     const w = makeWiring();
     w.setHandler((req) => {
-      if (req.path === "/deploy/v2/operations/op_does_not_exist/resume") {
+      if (req.path === "/apply/v1/operations/op_does_not_exist/resume") {
         throw new ApiError(
           "API error while resuming deploy operation (HTTP 404)",
           404,
@@ -2846,10 +2846,10 @@ describe("Deploy CI operation routes", () => {
     w.setHandler((req) => {
       assert.equal(req.headers?.Authorization, "Bearer ci-session");
       assert.equal(req.headers?.apikey, undefined);
-      if (req.path === "/deploy/v2/operations/op_ci") return ready;
-      if (req.path === "/deploy/v2/operations") return { operations: [ready], cursor: null };
-      if (req.path === "/deploy/v2/operations/op_ci/events") return { events: [] };
-      if (req.path === "/deploy/v2/operations/op_ci/resume") return ready;
+      if (req.path === "/apply/v1/operations/op_ci") return ready;
+      if (req.path === "/apply/v1/operations") return { operations: [ready], cursor: null };
+      if (req.path === "/apply/v1/operations/op_ci/events") return { events: [] };
+      if (req.path === "/apply/v1/operations/op_ci/resume") return ready;
       throw new Error(`unexpected path ${req.path}`);
     });
 
@@ -2897,7 +2897,7 @@ describe("Deploy.status", () => {
       phase: "ready",
     } as OperationSnapshot;
     w.setHandler((req) => {
-      if (req.path === "/deploy/v2/operations/op_slash%2Ftest") return ready;
+      if (req.path === "/apply/v1/operations/op_slash%2Ftest") return ready;
       throw new Error(`unexpected ${req.path}`);
     });
 
@@ -2908,7 +2908,7 @@ describe("Deploy.status", () => {
   it("translates a gateway 404 with {code:'operation_not_found'} into a Run402DeployError", async () => {
     const w = makeWiring();
     w.setHandler((req) => {
-      if (req.path === "/deploy/v2/operations/op_does_not_exist") {
+      if (req.path === "/apply/v1/operations/op_does_not_exist") {
         throw new ApiError(
           "API error while fetching deploy operation (HTTP 404)",
           404,
@@ -2937,7 +2937,7 @@ describe("Deploy.apply (gateway error translation)", () => {
     // null for both ids (it has no other source of truth at that moment).
     const w = makeWiring();
     w.setHandler((req) => {
-      if (req.path === "/deploy/v2/plans") {
+      if (req.path === "/apply/v1/plans") {
         throw new ApiError(
           "Migration checksum mismatch",
           409,
@@ -2992,7 +2992,7 @@ describe("Deploy.apply (gateway error translation)", () => {
       next_actions: [{ action: "edit_migration", path: "database.migrations.001_init" }],
     };
     w.setHandler((req) => {
-      if (req.path === "/deploy/v2/plans/plan_1/commit") {
+      if (req.path === "/apply/v1/plans/plan_1/commit") {
         return {
           operation_id: "op_1",
           status: "failed",
@@ -3028,7 +3028,7 @@ describe("Deploy.apply (gateway error translation)", () => {
   it("lets legacy top-level deploy fields win while canonical details fill gaps", async () => {
     const w = makeWiring();
     w.setHandler((req) => {
-      if (req.path === "/deploy/v2/plans") {
+      if (req.path === "/apply/v1/plans") {
         throw new ApiError(
           "Gateway rejected migration",
           409,
@@ -3082,7 +3082,7 @@ describe("Deploy.apply (gateway error translation)", () => {
   it("projects canonical fields from nested gateway error wrappers", async () => {
     const w = makeWiring();
     w.setHandler((req) => {
-      if (req.path === "/deploy/v2/plans") {
+      if (req.path === "/apply/v1/plans") {
         throw new ApiError(
           "Gateway rejected deploy",
           503,
@@ -3133,7 +3133,7 @@ describe("Deploy.apply (gateway error translation)", () => {
   it("branches on terse deploy codes without parsing English messages", async () => {
     const w = makeWiring();
     w.setHandler((req) => {
-      if (req.path === "/deploy/v2/plans/plan_missing/commit") {
+      if (req.path === "/apply/v1/plans/plan_missing/commit") {
         throw new ApiError(
           "HTTP 404",
           404,
@@ -3161,7 +3161,7 @@ describe("Deploy.apply (gateway error translation)", () => {
   it("recognizes canonical migrate-gate active codes from HTTP errors", async () => {
     const w = makeWiring();
     w.setHandler((req) => {
-      if (req.path === "/deploy/v2/plans/plan_gate/commit") {
+      if (req.path === "/apply/v1/plans/plan_gate/commit") {
         throw new ApiError(
           "HTTP 503",
           503,
@@ -3202,16 +3202,16 @@ describe("Deploy.apply (activation_pending classification)", () => {
     const w = makeWiring();
     let operationPolls = 0;
     w.setHandler((req) => {
-      if (req.path === "/deploy/v2/plans") {
+      if (req.path === "/apply/v1/plans") {
         return noContentPlan("plan_static", "op_static");
       }
-      if (req.path === "/deploy/v2/plans/plan_static/commit") {
+      if (req.path === "/apply/v1/plans/plan_static/commit") {
         return {
           operation_id: "op_static",
           status: "activation_pending",
         } satisfies CommitResponse;
       }
-      if (req.path === "/deploy/v2/operations/op_static") {
+      if (req.path === "/apply/v1/operations/op_static") {
         operationPolls += 1;
         return {
           operation_id: "op_static",
@@ -3280,16 +3280,16 @@ describe("Deploy.apply (activation_pending classification)", () => {
     const w = makeWiring();
     let operationPolls = 0;
     w.setHandler((req) => {
-      if (req.path === "/deploy/v2/plans") {
+      if (req.path === "/apply/v1/plans") {
         return noContentPlan("plan_recoverable", "op_recoverable");
       }
-      if (req.path === "/deploy/v2/plans/plan_recoverable/commit") {
+      if (req.path === "/apply/v1/plans/plan_recoverable/commit") {
         return {
           operation_id: "op_recoverable",
           status: "activation_pending",
         } satisfies CommitResponse;
       }
-      if (req.path === "/deploy/v2/operations/op_recoverable") {
+      if (req.path === "/apply/v1/operations/op_recoverable") {
         operationPolls += 1;
         return {
           operation_id: "op_recoverable",
@@ -3328,17 +3328,17 @@ describe("Deploy.apply (safe race retry)", () => {
     const events: DeployEvent[] = [];
     let planCalls = 0;
     w.setHandler((req) => {
-      if (req.path === "/deploy/v2/plans") {
+      if (req.path === "/apply/v1/plans") {
         planCalls += 1;
         return noContentPlan("plan_static_no_retry", "op_static_no_retry");
       }
-      if (req.path === "/deploy/v2/plans/plan_static_no_retry/commit") {
+      if (req.path === "/apply/v1/plans/plan_static_no_retry/commit") {
         return {
           operation_id: "op_static_no_retry",
           status: "activation_pending",
         } satisfies CommitResponse;
       }
-      if (req.path === "/deploy/v2/operations/op_static_no_retry") {
+      if (req.path === "/apply/v1/operations/op_static_no_retry") {
         return {
           operation_id: "op_static_no_retry",
           project_id: "prj_test",
@@ -3387,13 +3387,13 @@ describe("Deploy.apply (safe race retry)", () => {
     let planCalls = 0;
 
     w.setHandler((req) => {
-      if (req.path === "/deploy/v2/plans") {
+      if (req.path === "/apply/v1/plans") {
         planCalls += 1;
         return planCalls === 1
           ? noContentPlan("plan_conflict", "op_conflict")
           : noContentPlan("plan_retry", "op_retry");
       }
-      if (req.path === "/deploy/v2/plans/plan_conflict/commit") {
+      if (req.path === "/apply/v1/plans/plan_conflict/commit") {
         return {
           operation_id: "op_conflict",
           status: "failed",
@@ -3403,7 +3403,7 @@ describe("Deploy.apply (safe race retry)", () => {
           }),
         } satisfies CommitResponse;
       }
-      if (req.path === "/deploy/v2/plans/plan_retry/commit") {
+      if (req.path === "/apply/v1/plans/plan_retry/commit") {
         return readyCommit("op_retry", "rel_retry");
       }
       throw new Error(`unexpected path ${req.path}`);
@@ -3417,8 +3417,8 @@ describe("Deploy.apply (safe race retry)", () => {
 
     assert.equal(result.release_id, "rel_retry");
     assert.equal(planCalls, 2, "retry issued a fresh plan request");
-    assert.equal(countRequests(w, "/deploy/v2/plans/plan_conflict/commit"), 1);
-    assert.equal(countRequests(w, "/deploy/v2/plans/plan_retry/commit"), 1);
+    assert.equal(countRequests(w, "/apply/v1/plans/plan_conflict/commit"), 1);
+    assert.equal(countRequests(w, "/apply/v1/plans/plan_retry/commit"), 1);
     const retry = events.find((event) => event.type === "deploy.retry");
     assert.deepEqual(retry, {
       type: "deploy.retry",
@@ -3445,25 +3445,25 @@ describe("Deploy.apply (safe race retry)", () => {
     const events: DeployEvent[] = [];
 
     w.setHandler((req) => {
-      if (req.path === "/deploy/v2/plans") {
+      if (req.path === "/apply/v1/plans") {
         planCalls += 1;
         return noContentPlan(`plan_${planCalls}`, `op_${planCalls}`);
       }
-      if (req.path === "/deploy/v2/plans/plan_1/commit") {
+      if (req.path === "/apply/v1/plans/plan_1/commit") {
         return {
           operation_id: "op_1",
           status: "failed",
           error: baseReleaseConflict({ operation_id: "op_1", plan_id: "plan_1" }),
         } satisfies CommitResponse;
       }
-      if (req.path === "/deploy/v2/plans/plan_2/commit") {
+      if (req.path === "/apply/v1/plans/plan_2/commit") {
         return {
           operation_id: "op_2",
           status: "failed",
           error: baseReleaseConflict({ operation_id: "op_2", plan_id: "plan_2" }),
         } satisfies CommitResponse;
       }
-      if (req.path === "/deploy/v2/plans/plan_3/commit") {
+      if (req.path === "/apply/v1/plans/plan_3/commit") {
         return readyCommit("op_3", "rel_default_retry");
       }
       throw new Error(`unexpected path ${req.path}`);
@@ -3515,8 +3515,8 @@ describe("Deploy.apply (safe race retry)", () => {
     for (const { name, error } of cases) {
       const w = makeWiring();
       w.setHandler((req) => {
-        if (req.path === "/deploy/v2/plans") return noContentPlan(`plan_${name}`, `op_${name}`);
-        if (req.path === `/deploy/v2/plans/plan_${name}/commit`) {
+        if (req.path === "/apply/v1/plans") return noContentPlan(`plan_${name}`, `op_${name}`);
+        if (req.path === `/apply/v1/plans/plan_${name}/commit`) {
           return { operation_id: `op_${name}`, status: "failed", error } satisfies CommitResponse;
         }
         throw new Error(`unexpected path ${req.path}`);
@@ -3530,7 +3530,7 @@ describe("Deploy.apply (safe race retry)", () => {
           }),
         (err: unknown) => err instanceof Run402DeployError,
       );
-      assert.equal(countRequests(w, "/deploy/v2/plans"), 1, `${name}: no retry`);
+      assert.equal(countRequests(w, "/apply/v1/plans"), 1, `${name}: no retry`);
     }
   });
 
@@ -3578,11 +3578,11 @@ describe("Deploy.apply (safe race retry)", () => {
       const w = makeWiring();
       let planCalls = 0;
       w.setHandler((req) => {
-        if (req.path === "/deploy/v2/plans") {
+        if (req.path === "/apply/v1/plans") {
           planCalls += 1;
           return noContentPlan(`plan_${name}_${planCalls}`, `op_${name}_${planCalls}`);
         }
-        if (req.path === `/deploy/v2/plans/plan_${name}_1/commit`) {
+        if (req.path === `/apply/v1/plans/plan_${name}_1/commit`) {
           return {
             operation_id: `op_${name}_1`,
             status: "failed",
@@ -3592,7 +3592,7 @@ describe("Deploy.apply (safe race retry)", () => {
             }),
           } satisfies CommitResponse;
         }
-        if (req.path === `/deploy/v2/plans/plan_${name}_2/commit`) {
+        if (req.path === `/apply/v1/plans/plan_${name}_2/commit`) {
           return readyCommit(`op_${name}_2`, `rel_${name}`);
         }
         throw new Error(`unexpected path ${req.path}`);
@@ -3614,8 +3614,8 @@ describe("Deploy.apply (safe race retry)", () => {
   it("honors maxRetries=0 and custom exhausted budgets", async () => {
     const disabled = makeWiring();
     disabled.setHandler((req) => {
-      if (req.path === "/deploy/v2/plans") return noContentPlan("plan_disabled", "op_disabled");
-      if (req.path === "/deploy/v2/plans/plan_disabled/commit") {
+      if (req.path === "/apply/v1/plans") return noContentPlan("plan_disabled", "op_disabled");
+      if (req.path === "/apply/v1/plans/plan_disabled/commit") {
         return {
           operation_id: "op_disabled",
           status: "failed",
@@ -3633,16 +3633,16 @@ describe("Deploy.apply (safe race retry)", () => {
         ),
       (err: unknown) => err instanceof Run402DeployError,
     );
-    assert.equal(countRequests(disabled, "/deploy/v2/plans"), 1);
+    assert.equal(countRequests(disabled, "/apply/v1/plans"), 1);
 
     const exhausted = makeWiring();
     let planCalls = 0;
     exhausted.setHandler((req) => {
-      if (req.path === "/deploy/v2/plans") {
+      if (req.path === "/apply/v1/plans") {
         planCalls += 1;
         return noContentPlan(`plan_exhausted_${planCalls}`, `op_exhausted_${planCalls}`);
       }
-      if (req.path === `/deploy/v2/plans/plan_exhausted_${planCalls}/commit`) {
+      if (req.path === `/apply/v1/plans/plan_exhausted_${planCalls}/commit`) {
         return {
           operation_id: `op_exhausted_${planCalls}`,
           status: "failed",
@@ -3706,18 +3706,18 @@ describe("Deploy.apply (safe race retry)", () => {
     const w = makeWiring();
     let planCalls = 0;
     w.setHandler((req) => {
-      if (req.path === "/deploy/v2/plans") {
+      if (req.path === "/apply/v1/plans") {
         planCalls += 1;
         return noContentPlan(`plan_cb_${planCalls}`, `op_cb_${planCalls}`);
       }
-      if (req.path === "/deploy/v2/plans/plan_cb_1/commit") {
+      if (req.path === "/apply/v1/plans/plan_cb_1/commit") {
         return {
           operation_id: "op_cb_1",
           status: "failed",
           error: baseReleaseConflict(),
         } satisfies CommitResponse;
       }
-      if (req.path === "/deploy/v2/plans/plan_cb_2/commit") {
+      if (req.path === "/apply/v1/plans/plan_cb_2/commit") {
         return readyCommit("op_cb_2", "rel_cb");
       }
       throw new Error(`unexpected path ${req.path}`);
@@ -3739,8 +3739,8 @@ describe("Deploy.apply (safe race retry)", () => {
   it("keeps start() and low-level commit() out of the automatic apply retry loop", async () => {
     const started = makeWiring();
     started.setHandler((req) => {
-      if (req.path === "/deploy/v2/plans") return noContentPlan("plan_start", "op_start");
-      if (req.path === "/deploy/v2/plans/plan_start/commit") {
+      if (req.path === "/apply/v1/plans") return noContentPlan("plan_start", "op_start");
+      if (req.path === "/apply/v1/plans/plan_start/commit") {
         return {
           operation_id: "op_start",
           status: "failed",
@@ -3758,11 +3758,11 @@ describe("Deploy.apply (safe race retry)", () => {
       () => op.result(),
       (err: unknown) => err instanceof Run402DeployError,
     );
-    assert.equal(countRequests(started, "/deploy/v2/plans"), 1);
+    assert.equal(countRequests(started, "/apply/v1/plans"), 1);
 
     const committed = makeWiring();
     committed.setHandler((req) => {
-      if (req.path === "/deploy/v2/plans/plan_commit/commit") {
+      if (req.path === "/apply/v1/plans/plan_commit/commit") {
         return {
           operation_id: "op_commit",
           status: "failed",
@@ -3776,7 +3776,7 @@ describe("Deploy.apply (safe race retry)", () => {
       () => new Deploy(committed.client).commit("plan_commit"),
       (err: unknown) => err instanceof Run402DeployError,
     );
-    assert.equal(countRequests(committed, "/deploy/v2/plans/plan_commit/commit"), 1);
+    assert.equal(countRequests(committed, "/apply/v1/plans/plan_commit/commit"), 1);
   });
 });
 
@@ -3835,11 +3835,11 @@ describe("Deploy.apply (retry on retryable CONTENT_UPLOAD_FAILED)", () => {
       urls: { site: "https://prj.run402.test", deployment_id: "dpl_retry" },
     };
     w.setHandler((req) => {
-      if (req.path === "/deploy/v2/plans") return plan;
+      if (req.path === "/apply/v1/plans") return plan;
       if (req.path === "/content/v1/plans") return contentPlan;
       if (req.path === "/storage/v1/uploads/u_retry/complete") return { status: "ok" };
       if (req.path === "/content/v1/plans/cplan_retry/commit") return {};
-      if (req.path === "/deploy/v2/plans/plan_retry/commit") return commit;
+      if (req.path === "/apply/v1/plans/plan_retry/commit") return commit;
       throw new Error(`unexpected path ${req.path}`);
     });
     return { indexSha, htmlBytes: html };
@@ -3926,8 +3926,8 @@ describe("Deploy.apply (commit.phase done events between transitions)", () => {
     ];
     let snapshotIndex = 0;
     w.setHandler((req) => {
-      if (req.path === "/deploy/v2/plans") return plan;
-      if (req.path === "/deploy/v2/plans/plan_phase/commit") {
+      if (req.path === "/apply/v1/plans") return plan;
+      if (req.path === "/apply/v1/plans/plan_phase/commit") {
         return {
           operation_id: "op_phase",
           status: "staging",
@@ -3935,7 +3935,7 @@ describe("Deploy.apply (commit.phase done events between transitions)", () => {
           urls: null,
         } as unknown as CommitResponse;
       }
-      if (req.path.startsWith("/deploy/v2/operations/op_phase")) {
+      if (req.path.startsWith("/apply/v1/operations/op_phase")) {
         const snap = sequence[Math.min(snapshotIndex, sequence.length - 1)];
         snapshotIndex += 1;
         return snap;
@@ -3995,8 +3995,8 @@ describe("Deploy.start (events iterator lifecycle)", () => {
       urls: { site: "https://prj.run402.test" },
     };
     w.setHandler((req) => {
-      if (req.path === "/deploy/v2/plans") return plan;
-      if (req.path === "/deploy/v2/plans/plan_late/commit") return commit;
+      if (req.path === "/apply/v1/plans") return plan;
+      if (req.path === "/apply/v1/plans/plan_late/commit") return commit;
       throw new Error(`unexpected ${req.path}`);
     });
 
@@ -4051,8 +4051,8 @@ describe("Deploy.start (events iterator lifecycle)", () => {
       diff: {},
     };
     w.setHandler((req) => {
-      if (req.path === "/deploy/v2/plans") return plan;
-      if (req.path === "/deploy/v2/plans/plan_fail/commit") {
+      if (req.path === "/apply/v1/plans") return plan;
+      if (req.path === "/apply/v1/plans/plan_fail/commit") {
         return {
           operation_id: "op_fail",
           status: "failed",
@@ -4088,7 +4088,7 @@ describe("Deploy.start (events iterator lifecycle)", () => {
 });
 
 describe("Deploy.list", () => {
-  it("GETs /deploy/v2/operations with the project's apikey", async () => {
+  it("GETs /apply/v1/operations with the project's apikey", async () => {
     const w = makeWiring();
     const sample = {
       operations: [
@@ -4112,7 +4112,7 @@ describe("Deploy.list", () => {
       cursor: null,
     };
     w.setHandler((req) => {
-      if (req.path === "/deploy/v2/operations") return sample;
+      if (req.path === "/apply/v1/operations") return sample;
       throw new Error(`unexpected ${req.path}`);
     });
 
@@ -4123,7 +4123,7 @@ describe("Deploy.list", () => {
     assert.equal(result.operations[0].operation_id, "op_1");
     assert.equal(result.cursor, null);
     assert.equal(w.requests.length, 1);
-    assert.equal(w.requests[0].path, "/deploy/v2/operations");
+    assert.equal(w.requests[0].path, "/apply/v1/operations");
   });
 
   it("forwards limit as a query string", async () => {
@@ -4131,7 +4131,7 @@ describe("Deploy.list", () => {
     w.setHandler(() => ({ operations: [], cursor: null }));
     const deploy = new Deploy(w.client);
     await deploy.list({ project: "prj_test", limit: 5 });
-    assert.equal(w.requests[0].path, "/deploy/v2/operations?limit=5");
+    assert.equal(w.requests[0].path, "/apply/v1/operations?limit=5");
   });
 
   it("forwards cursor as a query string", async () => {
@@ -4139,7 +4139,7 @@ describe("Deploy.list", () => {
     w.setHandler(() => ({ operations: [], cursor: null }));
     const deploy = new Deploy(w.client);
     await deploy.list({ project: "prj_test", cursor: "op_cursor" });
-    assert.equal(w.requests[0].path, "/deploy/v2/operations?cursor=op_cursor");
+    assert.equal(w.requests[0].path, "/apply/v1/operations?cursor=op_cursor");
   });
 
   it("forwards limit and cursor as query strings", async () => {
@@ -4147,7 +4147,7 @@ describe("Deploy.list", () => {
     w.setHandler(() => ({ operations: [], cursor: null }));
     const deploy = new Deploy(w.client);
     await deploy.list({ project: "prj_test", limit: 5, cursor: "op_cursor" });
-    assert.equal(w.requests[0].path, "/deploy/v2/operations?limit=5&cursor=op_cursor");
+    assert.equal(w.requests[0].path, "/apply/v1/operations?limit=5&cursor=op_cursor");
   });
 
   it("rejects invalid limit values with a LocalError before issuing a request", async () => {
@@ -4192,7 +4192,7 @@ describe("Deploy.list", () => {
     const deploy = new Deploy(w.client);
     await deploy.list("prj_test");
     assert.equal(w.requests.length, 1);
-    assert.equal(w.requests[0].path, "/deploy/v2/operations");
+    assert.equal(w.requests[0].path, "/apply/v1/operations");
     assert.equal(w.requests[0].headers?.apikey, "ak");
 
     const w2 = wiringFor();
@@ -4213,7 +4213,7 @@ describe("Deploy.list", () => {
     w.setHandler(() => ({ operations: [], cursor: null }));
     const deploy = new Deploy(w.client);
     await deploy.list({ project: "prj_test", limit: 5 });
-    assert.equal(w.requests[0].path, "/deploy/v2/operations?limit=5");
+    assert.equal(w.requests[0].path, "/apply/v1/operations?limit=5");
     assert.equal(w.requests[0].headers?.apikey, "ak");
   });
 
@@ -4252,7 +4252,7 @@ describe("Deploy.list", () => {
 });
 
 describe("Deploy.events", () => {
-  it("GETs /deploy/v2/operations/:id/events and returns the event list", async () => {
+  it("GETs /apply/v1/operations/:id/events and returns the event list", async () => {
     const w = makeWiring();
     const sample = {
       events: [
@@ -4261,7 +4261,7 @@ describe("Deploy.events", () => {
       ],
     };
     w.setHandler((req) => {
-      if (req.path === "/deploy/v2/operations/op_42/events") return sample;
+      if (req.path === "/apply/v1/operations/op_42/events") return sample;
       throw new Error(`unexpected ${req.path}`);
     });
 
@@ -4301,7 +4301,7 @@ describe("Deploy.events", () => {
   it("translates a gateway 404 into a structured Run402DeployError", async () => {
     const w = makeWiring();
     w.setHandler((req) => {
-      if (req.path === "/deploy/v2/operations/op_missing/events") {
+      if (req.path === "/apply/v1/operations/op_missing/events") {
         throw new ApiError(
           "API error while fetching deploy events (HTTP 404)",
           404,
@@ -4359,7 +4359,7 @@ describe("Deploy release observability", () => {
   it("fetches a release inventory with project apikey auth and encoded query values", async () => {
     const w = makeWiring();
     w.setHandler((req) => {
-      if (req.path === "/deploy/v2/releases/rel_%2Fweird?site_limit=123") return inventory;
+      if (req.path === "/apply/v1/releases/rel_%2Fweird?site_limit=123") return inventory;
       throw new Error(`unexpected ${req.path}`);
     });
 
@@ -4409,7 +4409,7 @@ describe("Deploy release observability", () => {
     const w = makeWiring();
     const activeInventory = { ...inventory, release_id: "rel_active", state_kind: "current_live" };
     w.setHandler((req) => {
-      if (req.path === "/deploy/v2/releases/active?site_limit=7") return activeInventory;
+      if (req.path === "/apply/v1/releases/active?site_limit=7") return activeInventory;
       throw new Error(`unexpected ${req.path}`);
     });
 
@@ -4461,7 +4461,7 @@ describe("Deploy release observability", () => {
       subdomains: { added: [], removed: [] },
     };
     w.setHandler((req) => {
-      if (req.path === "/deploy/v2/releases/diff?from=empty&to=rel_%2Ftwo&limit=9") {
+      if (req.path === "/apply/v1/releases/diff?from=empty&to=rel_%2Ftwo&limit=9") {
         return diff;
       }
       throw new Error(`unexpected ${req.path}`);

@@ -17,7 +17,7 @@ type Args = { project_id: string; key: string; output_path: string };
 export async function handleBlobGet(args: Args): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
   let res: Response;
   try {
-    res = await getSdk().blobs.get(args.project_id, args.key);
+    res = await getSdk().assets.get(args.project_id, args.key);
   } catch (err) {
     return mapSdkError(err, "downloading blob");
   }
