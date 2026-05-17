@@ -71,7 +71,7 @@ function mockFetch(input, init) {
       expires_in: 300,
     }));
   }
-  if (url === `${API}/deploy/v2/plans` && method === "POST") {
+  if (url === `${API}/apply/v1/plans` && method === "POST") {
     return Promise.resolve(json({
       plan_id: "plan_ci_test",
       operation_id: "op_ci_test",
@@ -81,7 +81,7 @@ function mockFetch(input, init) {
       diff: { resources: { site: { changed: true } } },
     }));
   }
-  if (url === `${API}/deploy/v2/plans/plan_ci_test/commit` && method === "POST") {
+  if (url === `${API}/apply/v1/plans/plan_ci_test/commit` && method === "POST") {
     return Promise.resolve(json({
       operation_id: "op_ci_test",
       status: "ready",
@@ -159,7 +159,7 @@ describe("deploy apply GitHub Actions OIDC", () => {
     assert.equal(exchange.body.project_id, "prj_ci_env");
     assert.equal(exchange.body.subject_token, "github-oidc-jwt");
 
-    const plan = calls.find((c) => c.url === `${API}/deploy/v2/plans`);
+    const plan = calls.find((c) => c.url === `${API}/apply/v1/plans`);
     assert.ok(plan, "should plan the deploy");
     assert.equal(plan.headers.authorization, "Bearer run402-ci-session");
     assert.equal(plan.headers.apikey, undefined);
@@ -192,7 +192,7 @@ describe("deploy apply GitHub Actions OIDC", () => {
     const parsedStderr = JSON.parse(stderr.join("\n"));
     assert.equal(parsedStderr.code, "NO_ALLOWANCE");
     assert.equal(calls.some((c) => c.url === `${API}/ci/v1/token-exchange`), false);
-    assert.equal(calls.some((c) => c.url === `${API}/deploy/v2/plans`), false);
+    assert.equal(calls.some((c) => c.url === `${API}/apply/v1/plans`), false);
   });
 
   it("adds actionable guidance for common CI deploy errors", async () => {
@@ -203,7 +203,7 @@ describe("deploy apply GitHub Actions OIDC", () => {
     const previousFetch = globalThis.fetch;
     globalThis.fetch = (input, init) => {
       const url = typeof input === "string" ? input : input instanceof Request ? input.url : String(input);
-      if (url === `${API}/deploy/v2/plans`) {
+      if (url === `${API}/apply/v1/plans`) {
         return Promise.resolve(json({
           code: "repository_id_mismatch",
           message: "repository id mismatch",
@@ -257,7 +257,7 @@ describe("deploy apply GitHub Actions OIDC", () => {
       ]);
       captureStop();
 
-      const plan = calls.find((c) => c.url === `${API}/deploy/v2/plans`);
+      const plan = calls.find((c) => c.url === `${API}/apply/v1/plans`);
       assert.ok(plan, "should ask the gateway to authorize route scope");
       assert.deepEqual(plan.body.spec.routes, routes);
       const parsedStdout = JSON.parse(stdout.join("\n"));
@@ -274,7 +274,7 @@ describe("deploy apply GitHub Actions OIDC", () => {
     const previousFetch = globalThis.fetch;
     globalThis.fetch = (input, init) => {
       const url = typeof input === "string" ? input : input instanceof Request ? input.url : String(input);
-      if (url === `${API}/deploy/v2/plans`) {
+      if (url === `${API}/apply/v1/plans`) {
         return Promise.resolve(json({
           code: "CI_ROUTE_SCOPE_DENIED",
           message: "route scope denied",

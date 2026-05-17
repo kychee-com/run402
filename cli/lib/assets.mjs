@@ -352,7 +352,7 @@ async function putOne(projectId, filePath, opts) {
   let initRes;
   if (state) {
     // Re-poll the session; if it's still active, resume. Otherwise start fresh.
-    const poll = await getSdk().blobs.getUploadSession(projectId, state.upload_id);
+    const poll = await getSdk().assets.getUploadSession(projectId, state.upload_id);
     if (poll.status === "active") {
       log(opts, { event: "resume", upload_id: state.upload_id, key: destKey });
       initRes = {
@@ -369,7 +369,7 @@ async function putOne(projectId, filePath, opts) {
   }
 
   if (!state) {
-    initRes = await getSdk().blobs.initUploadSession(projectId, {
+    initRes = await getSdk().assets.initUploadSession(projectId, {
       key: destKey,
       size_bytes: size,
       content_type: opts.contentType ?? guessContentType(destKey),
@@ -417,7 +417,7 @@ async function putOne(projectId, filePath, opts) {
   const body = initRes.mode === "multipart"
     ? { parts: etags.map((e, i) => ({ part_number: i + 1, etag: e.etag, sha256: e.sha256 })) }
     : {};
-  const result = await getSdk().blobs.completeUploadSession(projectId, state.upload_id, body, {
+  const result = await getSdk().assets.completeUploadSession(projectId, state.upload_id, body, {
     contentType: opts.contentType ?? guessContentType(destKey),
   });
 
@@ -504,7 +504,7 @@ async function get(projectId, argv) {
 
   let res;
   try {
-    res = await getSdk().blobs.get(resolvedId, key);
+    res = await getSdk().assets.get(resolvedId, key);
   } catch (err) {
     reportSdkError(err);
     return;
@@ -526,7 +526,7 @@ async function ls(projectId, argv) {
   const resolvedId = resolveProjectId(opts.project);
 
   try {
-    const data = await getSdk().blobs.ls(resolvedId, {
+    const data = await getSdk().assets.ls(resolvedId, {
       prefix: opts.prefix ?? undefined,
       limit: opts.limit ?? undefined,
     });
@@ -549,7 +549,7 @@ async function rm(projectId, argv) {
   const key = opts.positional[0];
 
   try {
-    await getSdk().blobs.rm(resolvedId, key);
+    await getSdk().assets.rm(resolvedId, key);
     console.log(JSON.stringify({ status: "ok", key }));
   } catch (err) {
     reportSdkError(err);
@@ -569,7 +569,7 @@ async function diagnose(projectId, argv) {
   const url = opts.positional[0];
 
   try {
-    const env = await getSdk().blobs.diagnoseUrl(resolvedId, url);
+    const env = await getSdk().assets.diagnoseUrl(resolvedId, url);
     // Always print the JSON envelope for agent consumption (parseable).
     console.log(JSON.stringify(env, null, 2));
     // Vantage caveat to stderr so a TTY operator sees it; agent shell loops
@@ -597,7 +597,7 @@ async function sign(projectId, argv) {
   const key = opts.positional[0];
 
   try {
-    const data = await getSdk().blobs.sign(resolvedId, key, {
+    const data = await getSdk().assets.sign(resolvedId, key, {
       ttl_seconds: opts.ttl ?? undefined,
     });
     console.log(JSON.stringify(data, null, 2));

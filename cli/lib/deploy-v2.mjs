@@ -492,7 +492,7 @@ async function applyCmd(args) {
   }
 
   try {
-    const result = await getSdk(sdkOpts).deploy.apply(releaseSpec, {
+    const result = await getSdk(sdkOpts)._applyEngine.apply(releaseSpec, {
       onEvent: makeStderrEventWriter(opts.quiet),
       idempotencyKey,
       allowWarnings: opts.allowWarnings,
@@ -818,7 +818,7 @@ async function resumeCmd(args) {
   allowanceAuthHeaders("/apply/v1/operations");
 
   try {
-    const result = await getSdk().deploy.resume(opts.operationId, {
+    const result = await getSdk()._applyEngine.resume(opts.operationId, {
       onEvent: makeStderrEventWriter(opts.quiet),
     });
     console.log(JSON.stringify({ status: "ok", ...result }, null, 2));
@@ -848,7 +848,7 @@ async function listCmd(args) {
   try {
     const sdkOpts = { project };
     if (opts.limit !== null) sdkOpts.limit = opts.limit;
-    const result = await getSdk().deploy.list(sdkOpts);
+    const result = await getSdk()._applyEngine.list(sdkOpts);
     console.log(JSON.stringify({ status: "ok", ...result }, null, 2));
   } catch (err) {
     reportSdkError(err);
@@ -873,7 +873,7 @@ async function eventsCmd(args) {
   allowanceAuthHeaders("/apply/v1/operations");
 
   try {
-    const result = await getSdk().deploy.events(opts.operationId, { project });
+    const result = await getSdk()._applyEngine.events(opts.operationId, { project });
     console.log(JSON.stringify({ status: "ok", ...result }, null, 2));
   } catch (err) {
     reportSdkError(err);
@@ -921,7 +921,7 @@ async function releaseGetCmd(args) {
   try {
     const sdkOpts = { project, releaseId: opts.releaseId };
     if (opts.siteLimit !== null) sdkOpts.siteLimit = opts.siteLimit;
-    const release = await getSdk().deploy.getRelease(sdkOpts);
+    const release = await getSdk()._applyEngine.getRelease(sdkOpts);
     console.log(JSON.stringify({ status: "ok", release }, null, 2));
   } catch (err) {
     reportSdkError(err);
@@ -950,7 +950,7 @@ async function releaseActiveCmd(args) {
   try {
     const sdkOpts = { project };
     if (opts.siteLimit !== null) sdkOpts.siteLimit = opts.siteLimit;
-    const release = await getSdk().deploy.getActiveRelease(sdkOpts);
+    const release = await getSdk()._applyEngine.getActiveRelease(sdkOpts);
     console.log(JSON.stringify({ status: "ok", release }, null, 2));
   } catch (err) {
     reportSdkError(err);
@@ -993,7 +993,7 @@ async function releaseDiffCmd(args) {
   try {
     const sdkOpts = { project, from: opts.from, to: opts.to };
     if (opts.limit !== null) sdkOpts.limit = opts.limit;
-    const diff = await getSdk().deploy.diff(sdkOpts);
+    const diff = await getSdk()._applyEngine.diff(sdkOpts);
     console.log(JSON.stringify({ status: "ok", diff }, null, 2));
   } catch (err) {
     reportSdkError(err);
@@ -1092,7 +1092,7 @@ async function printResolveEnvelope(input) {
   }
 
   try {
-    const resolution = await getSdk().deploy.resolve(input);
+    const resolution = await getSdk()._applyEngine.resolve(input);
     const summary = buildDeployResolveSummary(resolution, request);
     console.log(JSON.stringify({
       status: "ok",

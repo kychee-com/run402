@@ -343,42 +343,42 @@ describe("2026-05 CLI bug backlog argv validation", () => {
     {
       issue: "GH-319",
       name: "blob sign rejects TTL below signed URL minimum",
-      module: "./cli/lib/blob.mjs",
+      module: "./cli/lib/assets.mjs",
       call: (run) => run("sign", ["reports/a.pdf", "--project", "prj_test123", "--ttl", "59"]),
       code: "BAD_FLAG",
     },
     {
       issue: "GH-318",
       name: "blob get rejects extra positional keys",
-      module: "./cli/lib/blob.mjs",
+      module: "./cli/lib/assets.mjs",
       call: (run) => run("get", ["a.txt", "b.txt", "--output", join(tempDir, "blob-extra.txt"), "--project", "prj_test123"]),
       code: "BAD_USAGE",
     },
     {
       issue: "GH-318",
       name: "blob rm rejects extra positional keys",
-      module: "./cli/lib/blob.mjs",
+      module: "./cli/lib/assets.mjs",
       call: (run) => run("rm", ["a.txt", "b.txt", "--project", "prj_test123"]),
       code: "BAD_USAGE",
     },
     {
       issue: "GH-318",
       name: "blob sign rejects extra positional keys",
-      module: "./cli/lib/blob.mjs",
+      module: "./cli/lib/assets.mjs",
       call: (run) => run("sign", ["a.txt", "b.txt", "--project", "prj_test123"]),
       code: "BAD_USAGE",
     },
     {
       issue: "GH-318",
       name: "blob diagnose rejects extra positional URLs",
-      module: "./cli/lib/blob.mjs",
+      module: "./cli/lib/assets.mjs",
       call: (run) => run("diagnose", ["https://app.run402.com/_blob/a.txt", "https://app.run402.com/_blob/b.txt", "--project", "prj_test123"]),
       code: "BAD_USAGE",
     },
     {
       issue: "GH-306",
       name: "blob put rejects multi-file uploads with a fixed --key",
-      module: "./cli/lib/blob.mjs",
+      module: "./cli/lib/assets.mjs",
       call: (run) => run("put", ["./a.txt", "./b.txt", "--key", "release/current.txt"]),
       code: "BAD_USAGE",
     },
@@ -717,7 +717,7 @@ describe("2026-05 CLI bug backlog argv validation", () => {
 
 describe("--flag=value", () => {
   it("blob ls accepts equals-form flags (GH-189)", async () => {
-    const { run } = await import("./cli/lib/blob.mjs");
+    const { run } = await import("./cli/lib/assets.mjs");
     captureStart();
     await run("ls", ["--project=prj_test123", "--limit=500"]);
     captureStop();
@@ -903,7 +903,7 @@ describe("function list/delete argv validation", () => {
 
 describe("numeric flag validation", () => {
   it("blob ls validates --limit before network (GH-186)", async () => {
-    const { run } = await import("./cli/lib/blob.mjs");
+    const { run } = await import("./cli/lib/assets.mjs");
     for (const value of ["notanumber", "0", "999999"]) {
       calls = [];
       const err = await expectExit1(() => run("ls", ["--project", "prj_test123", "--limit", value]));
@@ -914,7 +914,7 @@ describe("numeric flag validation", () => {
   });
 
   it("blob sign validates --ttl before network (GH-186)", async () => {
-    const { run } = await import("./cli/lib/blob.mjs");
+    const { run } = await import("./cli/lib/assets.mjs");
     for (const value of ["abc", "-1", "99999999"]) {
       calls = [];
       const err = await expectExit1(() => run("sign", ["reports/a.pdf", "--project", "prj_test123", "--ttl", value]));
@@ -925,7 +925,7 @@ describe("numeric flag validation", () => {
   });
 
   it("blob put validates --concurrency before upload init (GH-186)", async () => {
-    const { run } = await import("./cli/lib/blob.mjs");
+    const { run } = await import("./cli/lib/assets.mjs");
     const file = join(tempDir, "upload.txt");
     writeFileSync(file, "hello");
     const err = await expectExit1(() =>
@@ -937,7 +937,7 @@ describe("numeric flag validation", () => {
   });
 
   it("blob put validates --content-type before upload init (GH-237)", async () => {
-    const { run } = await import("./cli/lib/blob.mjs");
+    const { run } = await import("./cli/lib/assets.mjs");
     const file = join(tempDir, "bad-mime.txt");
     writeFileSync(file, "hello");
     for (const value of ["", "image", "/svg", "image/"]) {
@@ -953,7 +953,7 @@ describe("numeric flag validation", () => {
   });
 
   it("blob put sends explicit --content-type to upload init (GH-237)", async () => {
-    const { run } = await import("./cli/lib/blob.mjs");
+    const { run } = await import("./cli/lib/assets.mjs");
     const file = join(tempDir, "extensionless-asset");
     writeFileSync(file, "<svg></svg>");
     let initBody = null;
@@ -1005,7 +1005,7 @@ describe("numeric flag validation", () => {
   });
 
   it("blob put sends required object and part checksums by default (GH-308, GH-312, GH-314)", async () => {
-    const { run } = await import("./cli/lib/blob.mjs");
+    const { run } = await import("./cli/lib/assets.mjs");
     const file = join(tempDir, "checksum-upload.txt");
     writeFileSync(file, "hello world");
     let initBody = null;
@@ -1061,7 +1061,7 @@ describe("numeric flag validation", () => {
   });
 
   it("blob put does not complete multipart uploads until every in-flight part settles (GH-315)", async () => {
-    const { run } = await import("./cli/lib/blob.mjs");
+    const { run } = await import("./cli/lib/assets.mjs");
     const file = join(tempDir, "concurrency-upload.txt");
     writeFileSync(file, "abcdefghi");
     let part2Resolved = false;
@@ -1123,7 +1123,7 @@ describe("numeric flag validation", () => {
     const stateHome = mkdtempSync(join(tmpdir(), "run402-blob-home-"));
     const prevHome = process.env.HOME;
     process.env.HOME = stateHome;
-    const { run } = await import("./cli/lib/blob.mjs?state-private");
+    const { run } = await import("./cli/lib/assets.mjs?state-private");
     const file = join(tempDir, "state-upload.txt");
     writeFileSync(file, "hello state");
     const expectedSha = createHash("sha256").update("hello state").digest("hex");
@@ -1173,7 +1173,7 @@ describe("numeric flag validation", () => {
     const stateHome = mkdtempSync(join(tmpdir(), "run402-blob-home-"));
     const prevHome = process.env.HOME;
     process.env.HOME = stateHome;
-    const { run } = await import("./cli/lib/blob.mjs?state-fingerprint");
+    const { run } = await import("./cli/lib/assets.mjs?state-fingerprint");
     const stateDir = join(stateHome, ".run402", "uploads");
     const file = join(tempDir, "state-changed.txt");
     writeFileSync(file, "new file");
@@ -1249,7 +1249,7 @@ describe("numeric flag validation", () => {
   });
 
   it("blob put surfaces upload-init gateway errors as structured JSON (GH-186)", async () => {
-    const { run } = await import("./cli/lib/blob.mjs");
+    const { run } = await import("./cli/lib/assets.mjs");
     const file = join(tempDir, "upload-init-fails.txt");
     writeFileSync(file, "hello");
     const prevFetch = globalThis.fetch;

@@ -339,7 +339,7 @@ async function mockFetch(input, init) {
   // r.deploy.apply against these endpoints.
   // The fake gateway reports every content ref as already-present (empty
   // missing_content) so the SDK skips S3 PUTs and goes straight to commit.
-  if (pathNoQuery === "/deploy/v2/plans" && method === "POST") {
+  if (pathNoQuery === "/apply/v1/plans" && method === "POST") {
     if (path.includes("dry_run=true")) {
       return Promise.resolve(json({
         kind: "plan_response",
@@ -371,7 +371,7 @@ async function mockFetch(input, init) {
       diff: { resources: { site: { unchanged: true } } },
     }));
   }
-  if (path.match(/^\/deploy\/v2\/plans\/[^/]+\/commit$/) && method === "POST") {
+  if (path.match(/^\/apply\/v1\/plans\/[^/]+\/commit$/) && method === "POST") {
     return Promise.resolve(json({
       operation_id: "op_v2_test",
       status: "ready",
@@ -382,7 +382,7 @@ async function mockFetch(input, init) {
       },
     }));
   }
-  if (path.match(/^\/deploy\/v2\/operations\/[^/]+$/) && method === "GET") {
+  if (path.match(/^\/apply\/v1\/operations\/[^/]+$/) && method === "GET") {
     return Promise.resolve(json({
       operation_id: "op_v2_test",
       project_id: TEST_PROJECT.project_id,
@@ -403,7 +403,7 @@ async function mockFetch(input, init) {
       updated_at: new Date().toISOString(),
     }));
   }
-  if (pathNoQuery === "/deploy/v2/resolve" && method === "GET") {
+  if (pathNoQuery === "/apply/v1/resolve" && method === "GET") {
     const params = new URL(url).searchParams;
     const host = params.get("host");
     const reqPath = params.get("path") || "/";
@@ -489,7 +489,7 @@ async function mockFetch(input, init) {
       result: 200,
     }));
   }
-  if (pathNoQuery === "/deploy/v2/releases/active" && method === "GET") {
+  if (pathNoQuery === "/apply/v1/releases/active" && method === "GET") {
     return Promise.resolve(json({
       kind: "release_inventory",
       schema_version: "agent-deploy-observability.v1",
@@ -544,7 +544,7 @@ async function mockFetch(input, init) {
       migrations_applied: [],
     }));
   }
-  if (pathNoQuery === "/deploy/v2/releases/diff" && method === "GET") {
+  if (pathNoQuery === "/apply/v1/releases/diff" && method === "GET") {
     return Promise.resolve(json({
       kind: "release_diff",
       schema_version: "agent-deploy-observability.v1",
@@ -573,7 +573,7 @@ async function mockFetch(input, init) {
       },
     }));
   }
-  if (pathNoQuery.match(/^\/deploy\/v2\/releases\/[^/]+$/) && method === "GET") {
+  if (pathNoQuery.match(/^\/apply\/v1\/releases\/[^/]+$/) && method === "GET") {
     return Promise.resolve(json({
       kind: "release_inventory",
       schema_version: "agent-deploy-observability.v1",
@@ -1974,7 +1974,7 @@ describe("CLI e2e happy path", () => {
     let seenLimit = null;
     globalThis.fetch = (input, init) => {
       const url = typeof input === "string" ? input : (input instanceof Request ? input.url : String(input));
-      if (url.includes("/deploy/v2/operations") && !url.includes("/deploy/v2/operations/")) {
+      if (url.includes("/apply/v1/operations") && !url.includes("/apply/v1/operations/")) {
         deployListCalled = true;
         seenLimit = new URL(url).searchParams.get("limit");
         return Promise.resolve(json({
@@ -2095,7 +2095,7 @@ describe("CLI e2e happy path", () => {
   });
 
   it("deploy resume rejects unknown flags before network (GH-327)", async () => {
-    const result = await runBadDeployArgv(["resume", "op_resume_test", "--wat"], /\/deploy\/v2\/operations\/op_resume_test\/resume/);
+    const result = await runBadDeployArgv(["resume", "op_resume_test", "--wat"], /\/apply\/v1\/operations\/op_resume_test\/resume/);
     assert.equal(result.threw?.message, "process.exit(1)");
     assert.equal(result.endpointCalled, false, "must not call deploy resume with an unknown flag");
     const parsed = JSON.parse(result.stderr);
@@ -2104,7 +2104,7 @@ describe("CLI e2e happy path", () => {
   });
 
   it("deploy resume rejects extra operation ids before network (GH-327)", async () => {
-    const result = await runBadDeployArgv(["resume", "op_resume_test", "op_extra"], /\/deploy\/v2\/operations\/op_resume_test\/resume/);
+    const result = await runBadDeployArgv(["resume", "op_resume_test", "op_extra"], /\/apply\/v1\/operations\/op_resume_test\/resume/);
     assert.equal(result.threw?.message, "process.exit(1)");
     assert.equal(result.endpointCalled, false, "must not call deploy resume with extra operation ids");
     const parsed = JSON.parse(result.stderr);
@@ -2113,7 +2113,7 @@ describe("CLI e2e happy path", () => {
   });
 
   it("deploy list rejects unknown flags before network (GH-328)", async () => {
-    const result = await runBadDeployArgv(["list", "--project", TEST_PROJECT.project_id, "--wat"], /\/deploy\/v2\/operations(?:\?|$)/);
+    const result = await runBadDeployArgv(["list", "--project", TEST_PROJECT.project_id, "--wat"], /\/apply\/v1\/operations(?:\?|$)/);
     assert.equal(result.threw?.message, "process.exit(1)");
     assert.equal(result.endpointCalled, false, "must not call deploy list with an unknown flag");
     const parsed = JSON.parse(result.stderr);
@@ -2122,7 +2122,7 @@ describe("CLI e2e happy path", () => {
   });
 
   it("deploy list rejects missing --project value before network (GH-328)", async () => {
-    const result = await runBadDeployArgv(["list", "--project"], /\/deploy\/v2\/operations(?:\?|$)/);
+    const result = await runBadDeployArgv(["list", "--project"], /\/apply\/v1\/operations(?:\?|$)/);
     assert.equal(result.threw?.message, "process.exit(1)");
     assert.equal(result.endpointCalled, false, "must not call deploy list when --project has no value");
     const parsed = JSON.parse(result.stderr);
@@ -2131,7 +2131,7 @@ describe("CLI e2e happy path", () => {
   });
 
   it("deploy list rejects extra positionals before network (GH-328)", async () => {
-    const result = await runBadDeployArgv(["list", "op_extra", "--project", TEST_PROJECT.project_id], /\/deploy\/v2\/operations(?:\?|$)/);
+    const result = await runBadDeployArgv(["list", "op_extra", "--project", TEST_PROJECT.project_id], /\/apply\/v1\/operations(?:\?|$)/);
     assert.equal(result.threw?.message, "process.exit(1)");
     assert.equal(result.endpointCalled, false, "must not call deploy list with extra positionals");
     const parsed = JSON.parse(result.stderr);
@@ -2140,7 +2140,7 @@ describe("CLI e2e happy path", () => {
   });
 
   it("deploy events rejects unknown flags before network (GH-328)", async () => {
-    const result = await runBadDeployArgv(["events", "op_events_test", "--project", TEST_PROJECT.project_id, "--wat"], /\/deploy\/v2\/operations\/op_events_test\/events/);
+    const result = await runBadDeployArgv(["events", "op_events_test", "--project", TEST_PROJECT.project_id, "--wat"], /\/apply\/v1\/operations\/op_events_test\/events/);
     assert.equal(result.threw?.message, "process.exit(1)");
     assert.equal(result.endpointCalled, false, "must not call deploy events with an unknown flag");
     const parsed = JSON.parse(result.stderr);
@@ -2149,7 +2149,7 @@ describe("CLI e2e happy path", () => {
   });
 
   it("deploy events rejects extra operation ids before network (GH-328)", async () => {
-    const result = await runBadDeployArgv(["events", "op_events_test", "op_extra", "--project", TEST_PROJECT.project_id], /\/deploy\/v2\/operations\/op_events_test\/events/);
+    const result = await runBadDeployArgv(["events", "op_events_test", "op_extra", "--project", TEST_PROJECT.project_id], /\/apply\/v1\/operations\/op_events_test\/events/);
     assert.equal(result.threw?.message, "process.exit(1)");
     assert.equal(result.endpointCalled, false, "must not call deploy events with extra operation ids");
     const parsed = JSON.parse(result.stderr);
@@ -2158,7 +2158,7 @@ describe("CLI e2e happy path", () => {
   });
 
   it("deploy events rejects missing --project value before network (GH-328)", async () => {
-    const result = await runBadDeployArgv(["events", "op_events_test", "--project"], /\/deploy\/v2\/operations\/op_events_test\/events/);
+    const result = await runBadDeployArgv(["events", "op_events_test", "--project"], /\/apply\/v1\/operations\/op_events_test\/events/);
     assert.equal(result.threw?.message, "process.exit(1)");
     assert.equal(result.endpointCalled, false, "must not call deploy events when --project has no value");
     const parsed = JSON.parse(result.stderr);
@@ -2217,7 +2217,7 @@ describe("CLI e2e happy path", () => {
   });
 
   it("deploy release get rejects unknown flags before network (GH-329)", async () => {
-    const result = await runBadDeployArgv(["release", "get", "rel_v2_test", "--project", TEST_PROJECT.project_id, "--wat"], /\/deploy\/v2\/releases\/rel_v2_test(?:\?|$)/);
+    const result = await runBadDeployArgv(["release", "get", "rel_v2_test", "--project", TEST_PROJECT.project_id, "--wat"], /\/apply\/v1\/releases\/rel_v2_test(?:\?|$)/);
     assert.equal(result.threw?.message, "process.exit(1)");
     assert.equal(result.endpointCalled, false, "must not call release get with an unknown flag");
     const parsed = JSON.parse(result.stderr);
@@ -2226,7 +2226,7 @@ describe("CLI e2e happy path", () => {
   });
 
   it("deploy release get rejects extra release ids before network (GH-329)", async () => {
-    const result = await runBadDeployArgv(["release", "get", "rel_v2_test", "rel_extra", "--project", TEST_PROJECT.project_id], /\/deploy\/v2\/releases\/rel_v2_test(?:\?|$)/);
+    const result = await runBadDeployArgv(["release", "get", "rel_v2_test", "rel_extra", "--project", TEST_PROJECT.project_id], /\/apply\/v1\/releases\/rel_v2_test(?:\?|$)/);
     assert.equal(result.threw?.message, "process.exit(1)");
     assert.equal(result.endpointCalled, false, "must not call release get with extra release ids");
     const parsed = JSON.parse(result.stderr);
@@ -2235,7 +2235,7 @@ describe("CLI e2e happy path", () => {
   });
 
   it("deploy release active rejects extra args before network (GH-329)", async () => {
-    const result = await runBadDeployArgv(["release", "active", "rel_extra", "--project", TEST_PROJECT.project_id], /\/deploy\/v2\/releases\/active(?:\?|$)/);
+    const result = await runBadDeployArgv(["release", "active", "rel_extra", "--project", TEST_PROJECT.project_id], /\/apply\/v1\/releases\/active(?:\?|$)/);
     assert.equal(result.threw?.message, "process.exit(1)");
     assert.equal(result.endpointCalled, false, "must not call release active with extra args");
     const parsed = JSON.parse(result.stderr);
@@ -2244,7 +2244,7 @@ describe("CLI e2e happy path", () => {
   });
 
   it("deploy release active rejects missing --site-limit value before network (GH-329)", async () => {
-    const result = await runBadDeployArgv(["release", "active", "--project", TEST_PROJECT.project_id, "--site-limit"], /\/deploy\/v2\/releases\/active(?:\?|$)/);
+    const result = await runBadDeployArgv(["release", "active", "--project", TEST_PROJECT.project_id, "--site-limit"], /\/apply\/v1\/releases\/active(?:\?|$)/);
     assert.equal(result.threw?.message, "process.exit(1)");
     assert.equal(result.endpointCalled, false, "must not call release active when --site-limit has no value");
     const parsed = JSON.parse(result.stderr);
@@ -2253,7 +2253,7 @@ describe("CLI e2e happy path", () => {
   });
 
   it("deploy release diff rejects unknown flags before network (GH-329)", async () => {
-    const result = await runBadDeployArgv(["release", "diff", "--from", "empty", "--to", "active", "--project", TEST_PROJECT.project_id, "--wat"], /\/deploy\/v2\/releases\/diff(?:\?|$)/);
+    const result = await runBadDeployArgv(["release", "diff", "--from", "empty", "--to", "active", "--project", TEST_PROJECT.project_id, "--wat"], /\/apply\/v1\/releases\/diff(?:\?|$)/);
     assert.equal(result.threw?.message, "process.exit(1)");
     assert.equal(result.endpointCalled, false, "must not call release diff with an unknown flag");
     const parsed = JSON.parse(result.stderr);
@@ -2262,7 +2262,7 @@ describe("CLI e2e happy path", () => {
   });
 
   it("deploy release diff rejects extra args before network (GH-329)", async () => {
-    const result = await runBadDeployArgv(["release", "diff", "--from", "empty", "--to", "active", "extra", "--project", TEST_PROJECT.project_id], /\/deploy\/v2\/releases\/diff(?:\?|$)/);
+    const result = await runBadDeployArgv(["release", "diff", "--from", "empty", "--to", "active", "extra", "--project", TEST_PROJECT.project_id], /\/apply\/v1\/releases\/diff(?:\?|$)/);
     assert.equal(result.threw?.message, "process.exit(1)");
     assert.equal(result.endpointCalled, false, "must not call release diff with extra args");
     const parsed = JSON.parse(result.stderr);
@@ -2384,7 +2384,7 @@ describe("CLI e2e happy path", () => {
     let resolveCalled = false;
     globalThis.fetch = (input, init) => {
       const url = typeof input === "string" ? input : (input instanceof Request ? input.url : String(input));
-      if (url.includes("/deploy/v2/resolve")) resolveCalled = true;
+      if (url.includes("/apply/v1/resolve")) resolveCalled = true;
       return prevFetch(input, init);
     };
 
@@ -2408,7 +2408,7 @@ describe("CLI e2e happy path", () => {
     }
 
     assert.equal(threw?.message, "process.exit(1)");
-    assert.equal(resolveCalled, false, "must not call /deploy/v2/resolve on input conflict");
+    assert.equal(resolveCalled, false, "must not call /apply/v1/resolve on input conflict");
     assert.match(capturedStderr(), /Do not combine --url/);
   });
 
@@ -2418,7 +2418,7 @@ describe("CLI e2e happy path", () => {
     let releaseDiffCalled = false;
     globalThis.fetch = (input, init) => {
       const url = typeof input === "string" ? input : (input instanceof Request ? input.url : String(input));
-      if (url.includes("/deploy/v2/releases/diff")) releaseDiffCalled = true;
+      if (url.includes("/apply/v1/releases/diff")) releaseDiffCalled = true;
       return prevFetch(input, init);
     };
 
@@ -2470,7 +2470,7 @@ describe("CLI e2e happy path", () => {
     globalThis.fetch = async (input, init) => {
       const url = typeof input === "string" ? input : (input instanceof Request ? input.url : String(input));
       const method = (init?.method || (input instanceof Request ? input.method : "GET") || "GET").toUpperCase();
-      if (url.endsWith("/deploy/v2/plans") && method === "POST") {
+      if (url.endsWith("/apply/v1/plans") && method === "POST") {
         deployCalled = true;
         const rawBody = init?.body ?? (input instanceof Request ? await input.clone().text() : null);
         if (typeof rawBody === "string") {
@@ -2507,7 +2507,7 @@ describe("CLI e2e happy path", () => {
     const { threw, stderr, deployCalled } = await deployApplyAndCapture(args);
     assert.ok(threw && /process\.exit\(1\)/.test(threw.message),
       `should exit non-zero, got: ${threw && threw.message}`);
-    assert.equal(deployCalled, false, "must not POST to /deploy/v2/plans on bad deploy apply usage");
+    assert.equal(deployCalled, false, "must not POST to /apply/v1/plans on bad deploy apply usage");
     const parsed = parseStderrEnvelope(stderr);
     assert.equal(parsed.code, "BAD_USAGE");
     assert.match(parsed.message, messagePattern);
@@ -2599,7 +2599,7 @@ describe("CLI e2e happy path", () => {
       ["--manifest", manifestPath, "--project", "prj_test123"]);
     assert.ok(threw && /process\.exit\(1\)/.test(threw.message),
       `should exit non-zero, got: ${threw && threw.message}`);
-    assert.equal(deployCalled, false, "must not POST to /deploy/v2/plans on empty manifest");
+    assert.equal(deployCalled, false, "must not POST to /apply/v1/plans on empty manifest");
     const parsed = parseStderrEnvelope(stderr);
     assert.equal(parsed.status, "error");
     assert.equal(parsed.code, "MANIFEST_EMPTY");
@@ -2613,7 +2613,7 @@ describe("CLI e2e happy path", () => {
       ["--spec", "{}", "--project", "prj_test123"]);
     assert.ok(threw && /process\.exit\(1\)/.test(threw.message),
       `should exit non-zero, got: ${threw && threw.message}`);
-    assert.equal(deployCalled, false, "must not POST to /deploy/v2/plans on empty --spec");
+    assert.equal(deployCalled, false, "must not POST to /apply/v1/plans on empty --spec");
     const parsed = parseStderrEnvelope(stderr);
     assert.equal(parsed.code, "MANIFEST_EMPTY");
   });
@@ -2623,7 +2623,7 @@ describe("CLI e2e happy path", () => {
       ["--spec", JSON.stringify({ project_id: "prj_test123" })]);
     assert.ok(threw && /process\.exit\(1\)/.test(threw.message),
       `should exit non-zero, got: ${threw && threw.message}`);
-    assert.equal(deployCalled, false, "must not POST to /deploy/v2/plans on project-id-only spec");
+    assert.equal(deployCalled, false, "must not POST to /apply/v1/plans on project-id-only spec");
     const parsed = parseStderrEnvelope(stderr);
     assert.equal(parsed.code, "MANIFEST_EMPTY");
   });
@@ -2633,7 +2633,7 @@ describe("CLI e2e happy path", () => {
       ["--spec", JSON.stringify({ site: { replace: {} } }), "--project", "prj_test123"]);
     assert.ok(threw && /process\.exit\(1\)/.test(threw.message),
       `should exit non-zero, got: ${threw && threw.message}`);
-    assert.equal(deployCalled, false, "must not POST to /deploy/v2/plans on empty site.replace spec");
+    assert.equal(deployCalled, false, "must not POST to /apply/v1/plans on empty site.replace spec");
     const parsed = parseStderrEnvelope(stderr);
     assert.equal(parsed.code, "MANIFEST_EMPTY");
   });
@@ -2643,7 +2643,7 @@ describe("CLI e2e happy path", () => {
       ["--spec", JSON.stringify({ routes: { replace: [] } }), "--project", "prj_test123"]);
     assert.ok(!threw || !/MANIFEST_EMPTY/.test(threw.message),
       `routes.replace=[] must pass the empty-manifest guard, got: ${threw && threw.message}`);
-    assert.equal(deployCalled, true, "routes.replace=[] must reach /deploy/v2/plans");
+    assert.equal(deployCalled, true, "routes.replace=[] must reach /apply/v1/plans");
   });
 
   it("deploy apply accepts public-path-only site specs and forwards public_paths", async () => {
@@ -2653,7 +2653,7 @@ describe("CLI e2e happy path", () => {
       }), "--project", "prj_test123"]);
     assert.ok(!threw || !/MANIFEST_EMPTY/.test(threw.message),
       `site.public_paths-only spec must pass the empty-manifest guard, got: ${threw && threw.message}`);
-    assert.equal(deployCalled, true, "site.public_paths-only spec must reach /deploy/v2/plans");
+    assert.equal(deployCalled, true, "site.public_paths-only spec must reach /apply/v1/plans");
     assert.deepEqual(planBodies[0]?.spec?.site, {
       public_paths: { mode: "explicit", replace: {} },
     });
@@ -2674,7 +2674,7 @@ describe("CLI e2e happy path", () => {
     );
 
     assert.ok(threw && /process\.exit\(1\)/.test(threw.message));
-    assert.equal(deployCalled, false, "timeout cap must fail before /deploy/v2/plans");
+    assert.equal(deployCalled, false, "timeout cap must fail before /apply/v1/plans");
     const parsed = parseStderrEnvelope(stderr);
     assert.equal(parsed.code, "BAD_FIELD");
     assert.equal(parsed.details.field, "functions.api.config.timeoutSeconds");
@@ -2699,7 +2699,7 @@ describe("CLI e2e happy path", () => {
     );
 
     assert.ok(threw && /process\.exit\(1\)/.test(threw.message));
-    assert.equal(deployCalled, false, "memory cap must fail before /deploy/v2/plans");
+    assert.equal(deployCalled, false, "memory cap must fail before /apply/v1/plans");
     const parsed = parseStderrEnvelope(stderr);
     assert.equal(parsed.code, "BAD_FIELD");
     assert.equal(parsed.details.field, "functions.api.config.memoryMb");
@@ -2723,7 +2723,7 @@ describe("CLI e2e happy path", () => {
     );
 
     assert.ok(threw && /process\.exit\(1\)/.test(threw.message));
-    assert.equal(deployCalled, false, "schedule interval cap must fail before /deploy/v2/plans");
+    assert.equal(deployCalled, false, "schedule interval cap must fail before /apply/v1/plans");
     const parsed = parseStderrEnvelope(stderr);
     assert.equal(parsed.code, "BAD_FIELD");
     assert.equal(parsed.details.field, "functions.digest.schedule");
@@ -2752,7 +2752,7 @@ describe("CLI e2e happy path", () => {
     );
 
     assert.ok(threw && /process\.exit\(1\)/.test(threw.message));
-    assert.equal(deployCalled, false, "scheduled count cap must fail before /deploy/v2/plans");
+    assert.equal(deployCalled, false, "scheduled count cap must fail before /apply/v1/plans");
     const parsed = parseStderrEnvelope(stderr);
     assert.equal(parsed.code, "BAD_FIELD");
     assert.equal(parsed.details.field, "functions.scheduled_count");
@@ -2779,7 +2779,7 @@ describe("CLI e2e happy path", () => {
     );
 
     assert.equal(threw, null, stderr);
-    assert.equal(deployCalled, true, "allowed warning deploy must reach /deploy/v2/plans");
+    assert.equal(deployCalled, true, "allowed warning deploy must reach /apply/v1/plans");
     const body = JSON.parse(stdout);
     assert.equal(body.status, "ok");
     assert.equal(body.warnings[0]?.code, "WILDCARD_ROUTE_EXCLUDES_MUTATION_METHODS");
@@ -2804,7 +2804,7 @@ describe("CLI e2e happy path", () => {
       }), "--project", "prj_test123"]);
     assert.ok(threw && /process\.exit\(1\)/.test(threw.message),
       `should exit non-zero, got: ${threw && threw.message}`);
-    assert.equal(deployCalled, false, "must not POST to /deploy/v2/plans with malformed public_paths");
+    assert.equal(deployCalled, false, "must not POST to /apply/v1/plans with malformed public_paths");
     const parsed = parseStderrEnvelope(stderr);
     assert.match(parsed.message, /site\.public_paths\.replace|implicit mode/);
   });
@@ -2814,7 +2814,7 @@ describe("CLI e2e happy path", () => {
       ["--spec", JSON.stringify({ routes: { "/api/*": { function: "api" } } }), "--project", "prj_test123"]);
     assert.ok(threw && /process\.exit\(1\)/.test(threw.message),
       `should exit non-zero, got: ${threw && threw.message}`);
-    assert.equal(deployCalled, false, "must not POST to /deploy/v2/plans with path-keyed routes");
+    assert.equal(deployCalled, false, "must not POST to /apply/v1/plans with path-keyed routes");
     const parsed = parseStderrEnvelope(stderr);
     assert.match(parsed.message, /routes\.replace|Path-keyed route maps/);
   });
@@ -2828,7 +2828,7 @@ describe("CLI e2e happy path", () => {
     );
     assert.ok(threw && /process\.exit\(1\)/.test(threw.message),
       `should exit non-zero, got: ${threw && threw.message}`);
-    assert.equal(deployCalled, false, "must not POST to /deploy/v2/plans with secrets.set");
+    assert.equal(deployCalled, false, "must not POST to /apply/v1/plans with secrets.set");
     const parsed = parseStderrEnvelope(stderr);
     assert.equal(parsed.code, "UNSAFE_SECRET_MANIFEST");
     assert.equal(parsed.details.field, "secrets.set");
@@ -2843,7 +2843,7 @@ describe("CLI e2e happy path", () => {
     );
     assert.ok(threw && /process\.exit\(1\)/.test(threw.message),
       `should exit non-zero, got: ${threw && threw.message}`);
-    assert.equal(deployCalled, false, "must not POST to /deploy/v2/plans with secrets.replace_all");
+    assert.equal(deployCalled, false, "must not POST to /apply/v1/plans with secrets.replace_all");
     const parsed = parseStderrEnvelope(stderr);
     assert.equal(parsed.code, "UNSAFE_SECRET_MANIFEST");
     assert.equal(parsed.details.field, "secrets.replace_all");
@@ -2869,7 +2869,7 @@ describe("CLI e2e happy path", () => {
       );
       assert.ok(threw && /process\.exit\(1\)/.test(threw.message),
         `should exit non-zero, got: ${threw && threw.message}`);
-      assert.equal(deployCalled, false, "must reject CI secrets before /deploy/v2/plans");
+      assert.equal(deployCalled, false, "must reject CI secrets before /apply/v1/plans");
       const parsed = stderr.split("\n")
         .map((line) => {
           try { return JSON.parse(line); } catch { return null; }
@@ -2892,11 +2892,11 @@ describe("CLI e2e happy path", () => {
       ["--spec", JSON.stringify({ site: { replace: { "index.html": { data: "x" } } } }),
         "--project", "prj_test123"]);
     // The validator must NOT block this spec; the SDK call may proceed
-    // (and against the mock /deploy/v2/plans + commit endpoints, succeed).
+    // (and against the mock /apply/v1/plans + commit endpoints, succeed).
     assert.ok(!threw || !/MANIFEST_EMPTY/.test(threw.message),
       `non-empty site.replace must pass the empty-manifest guard, got: ${threw && threw.message}`);
     assert.equal(deployCalled, true,
-      "non-empty site.replace must reach /deploy/v2/plans");
+      "non-empty site.replace must reach /apply/v1/plans");
   });
 
   it("deploy apply accepts manifest path entries and migration sql_path via the SDK adapter", async () => {
@@ -2917,7 +2917,7 @@ describe("CLI e2e happy path", () => {
 
     assert.equal(threw, null);
     assert.equal(deployCalled, true,
-      "path-backed deploy apply manifest must reach /deploy/v2/plans");
+      "path-backed deploy apply manifest must reach /apply/v1/plans");
   });
 
   // ── Functions ───────────────────────────────────────────────────────────
@@ -3113,7 +3113,7 @@ describe("CLI e2e happy path", () => {
   // ── Blob (GH-40: fall back to active project from 'projects use') ───────
 
   it("blob ls falls back to active project (GH-40)", async () => {
-    const { run } = await import("./cli/lib/blob.mjs");
+    const { run } = await import("./cli/lib/assets.mjs");
     const { setActiveProjectId } = await import("./cli/core-dist/keystore.js");
     // Prerequisite: the "projects provision" test above has saved prj_test123
     // to the keystore. Make it the active project.
@@ -3137,7 +3137,7 @@ describe("CLI e2e happy path", () => {
   });
 
   it("blob ls errors cleanly when no project and no active project (GH-40)", async () => {
-    const { run } = await import("./cli/lib/blob.mjs");
+    const { run } = await import("./cli/lib/assets.mjs");
     const { setActiveProjectId, loadKeyStore, saveKeyStore } = await import("./cli/core-dist/keystore.js");
     // Clear active project + RUN402_PROJECT env var.
     const store = loadKeyStore();
@@ -4163,17 +4163,17 @@ describe("CLI e2e happy path", () => {
   // #53 — executes live list
   makeHelpTest({
     label: "blob ls --help prints help (GH-53)",
-    module: "./cli/lib/blob.mjs",
+    module: "./cli/lib/assets.mjs",
     sub: "ls",
-    bannerRegex: /^run402 blob/,
+    bannerRegex: /^run402 assets/,
   });
 
   // #64 — blob put: "no project specified"
   makeHelpTest({
     label: "blob put --help prints help (GH-64)",
-    module: "./cli/lib/blob.mjs",
+    module: "./cli/lib/assets.mjs",
     sub: "put",
-    bannerRegex: /^run402 blob/,
+    bannerRegex: /^run402 assets/,
   });
 
   // #54 — CRITICAL: sends a real message if --help isn't short-circuited
@@ -4917,7 +4917,7 @@ describe("CLI canonical error envelope (GH-215, GH-174)", () => {
   });
 
   it("blob put with unknown local project emits PROJECT_NOT_FOUND with details.source: local_registry", async () => {
-    const { run } = await import("./cli/lib/blob.mjs");
+    const { run } = await import("./cli/lib/assets.mjs");
     const tmpFile = join(tempDir, "blob-put-canary.bin");
     const { writeFileSync: wf } = await import("node:fs");
     wf(tmpFile, "x");
