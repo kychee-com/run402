@@ -371,7 +371,7 @@ describe("ScopedRun402 wrapper routing", () => {
     );
   });
 
-  it("scoped deploy.apply injects spec.project", async () => {
+  it("scoped apply injects spec.project", async () => {
     const { fetch, calls } = mockFetch((call) => {
       if (call.url.endsWith("/deploy/v2/plans") && call.method === "POST") {
         return jsonResponse({
@@ -397,7 +397,7 @@ describe("ScopedRun402 wrapper routing", () => {
     const p = await sdk.project("prj_known");
     // We don't need to assert success — just confirm the plan POST body
     // carried project: "prj_known".
-    await p.deploy
+    await p
       .apply({ site: { patch: { delete: ["old.html"] } } })
       .catch(() => undefined);
     const planCall = calls.find((c) => c.url.endsWith("/deploy/v2/plans"));
@@ -408,23 +408,23 @@ describe("ScopedRun402 wrapper routing", () => {
 });
 
 describe("ScopedRun402 type-level guarantees (validated when tsc runs over this file)", () => {
-  it("p.deploy.apply can omit project; r.deploy.apply({}) does not", async () => {
+  it("p.apply can omit project; (no public r.deploy.apply or r.apply exists)", async () => {
     const { fetch } = mockFetch(() => jsonResponse({}));
     const sdk = makeSdk(makeCreds(), fetch);
     const p = await sdk.project("prj_known");
 
-    // The wrapper drops the required `project` field — this should compile.
-    void (() => p.deploy.apply({ site: { patch: { delete: ["old.html"] } } }));
+    // The hero callable drops the required `project` field — should compile.
+    void (() => p.apply({ site: { patch: { delete: ["old.html"] } } }));
 
-    // The unwrapped namespace requires `project: string`; calling it with `{}`
-    // is a TS error. Use @ts-expect-error so a regression that loosened the
-    // unwrapped signature would fail tsc here.
-    void (() =>
-      // @ts-expect-error project is required on the unwrapped namespace
-      sdk.deploy.apply({}));
+    // Per design D5, neither bare `r.apply` nor `r.deploy.apply` is public.
+    // The engine is reachable only via _applyEngine (marked @internal).
+    // @ts-expect-error r.apply is not a public surface
+    void (() => sdk.apply({ project: "prj_x" }));
+    // @ts-expect-error r.deploy is not a public surface
+    void (() => sdk.deploy.apply({ project: "prj_x" }));
 
-    // Caller-supplied project on the scoped client is fine and overrides.
-    void (() => p.deploy.apply({ project: "prj_other" }));
+    // Caller-supplied project on the scoped hero is fine and overrides.
+    void (() => p.apply({ project: "prj_other" }));
   });
 });
 
@@ -437,11 +437,10 @@ describe("ScopedRun402 drift protection", () => {
     projects: new Set(["provision", "list", "getQuote", "use", "active"]),
     apps: new Set(["browse", "fork", "getApp"]),
     ai: new Set(["generateImage"]),
-    deploy: new Set(),
     contracts: new Set(["read"]),
     // The following namespaces are project-scoped end-to-end:
     auth: new Set(),
-    blobs: new Set(),
+    assets: new Set(),
     domains: new Set(),
     // resolveMailbox and listMailboxes are TS-private helpers — JS runtime sees
     // them on the prototype, so list them here so the drift test ignores them.
@@ -461,14 +460,17 @@ describe("ScopedRun402 drift protection", () => {
     "billing",
     "admin",
     "senderDomain",
-    "blobs",
+    "assets",
     "ai",
     "subdomains",
     "domains",
     "secrets",
     "auth",
     "contracts",
-    "deploy",
+    // `_applyEngine` is the internal apply engine (renamed from `deploy`
+    // in v1.48). Surface is reachable via `r.project(id).apply` callable
+    // hero; the engine itself isn't a user-facing namespace.
+    "_applyEngine",
     "email",
     "functions",
     "apps",
@@ -487,9 +489,8 @@ describe("ScopedRun402 drift protection", () => {
       "apps",
       "ai",
       "auth",
-      "blobs",
+      "assets",
       "contracts",
-      "deploy",
       "domains",
       "email",
       "functions",

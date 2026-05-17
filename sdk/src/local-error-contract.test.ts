@@ -46,7 +46,7 @@ test("local SDK validation failures throw structured LocalError", async () => {
     "Provide either `template` + `variables` or both `subject` + `html`.",
   );
   await assertLocalError(
-    r.blobs.put("prj_test", "bundle.js", {
+    r.assets.put("prj_test", "bundle.js", {
       content: "console.log('hi')",
       bytes: new Uint8Array([1]),
     }),

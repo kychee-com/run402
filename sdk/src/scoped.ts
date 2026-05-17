@@ -392,21 +392,54 @@ class ScopedContracts {
   }
 }
 
-class ScopedDeploy {
-  constructor(private readonly parent: Run402, private readonly projectId: string) {}
-
-  apply(spec: Omit<ReleaseSpec, "project"> & { project?: string }, opts?: ApplyOptions): Promise<DeployResult> {
-    return this.parent._applyEngine.apply(this.bindProject(spec), opts);
-  }
-  start(spec: Omit<ReleaseSpec, "project"> & { project?: string }, opts?: StartOptions): Promise<DeployOperation> {
-    return this.parent._applyEngine.start(this.bindProject(spec), opts);
-  }
+/**
+ * Callable hero shape for `r.project(id).apply`. The function form is the
+ * documented happy path; the attached `plan`/`start`/`resume` sub-methods
+ * are advanced primitives for callers building their own plan/upload/commit
+ * pipelines. Per design D5 the hero is the only public apply surface — no
+ * bare `r.apply`, no `r.deploy.apply`, no `r.assets.apply`.
+ */
+export interface ScopedApplyHero {
+  (
+    spec: Omit<ReleaseSpec, "project"> & { project?: string },
+    opts?: ApplyOptions,
+  ): Promise<DeployResult>;
   plan(
     spec: Omit<ReleaseSpec, "project"> & { project?: string },
     opts?: { idempotencyKey?: string; dryRun?: boolean },
-  ): Promise<{ plan: PlanResponse; byteReaders: Map<string, ByteReader> }> {
-    return this.parent._applyEngine.plan(this.bindProject(spec), opts);
-  }
+  ): Promise<{ plan: PlanResponse; byteReaders: Map<string, ByteReader> }>;
+  start(
+    spec: Omit<ReleaseSpec, "project"> & { project?: string },
+    opts?: StartOptions,
+  ): Promise<DeployOperation>;
+  resume(
+    operationId: string,
+    opts?: { onEvent?: (event: DeployEvent) => void; project?: string },
+  ): Promise<DeployResult>;
+}
+
+function createScopedApplyHero(parent: Run402, projectId: string): ScopedApplyHero {
+  const bindProject = (
+    spec: Omit<ReleaseSpec, "project"> & { project?: string },
+  ): ReleaseSpec => ({ ...spec, project: spec.project ?? projectId } as ReleaseSpec);
+  const hero = ((spec, opts) =>
+    parent._applyEngine.apply(bindProject(spec), opts)) as ScopedApplyHero;
+  hero.plan = (spec, opts) => parent._applyEngine.plan(bindProject(spec), opts);
+  hero.start = (spec, opts) => parent._applyEngine.start(bindProject(spec), opts);
+  hero.resume = (operationId, opts = {}) =>
+    parent._applyEngine.resume(operationId, {
+      ...opts,
+      project: opts.project ?? projectId,
+    });
+  return hero;
+}
+
+class ScopedDeploy {
+  constructor(private readonly parent: Run402, private readonly projectId: string) {}
+
+  // apply / start / plan moved to r.project(id).apply (callable hero) in
+  // v1.48 unified-apply per design D5. The hero proxies to the same
+  // engine; this class is now a read/event/operation surface only.
   upload(
     plan: PlanResponse,
     opts: {
@@ -495,9 +528,6 @@ class ScopedDeploy {
     } as Parameters<Run402["_applyEngine"]["resolve"]>[0]);
   }
 
-  private bindProject(spec: Omit<ReleaseSpec, "project"> & { project?: string }): ReleaseSpec {
-    return { ...spec, project: spec.project ?? this.projectId } as ReleaseSpec;
-  }
 }
 
 class ScopedDomains {
@@ -654,6 +684,20 @@ export class ScopedRun402 {
   readonly auth: ScopedAuth;
   readonly assets: ScopedAssets;
   readonly contracts: ScopedContracts;
+  /**
+   * Hero apply surface. Per design D5 / unified-apply: `r.project(id).apply(spec)`
+   * is the documented happy path for both release-only and mixed apply.
+   * Callable directly, with `.plan(spec)` / `.start(spec)` / `.resume(opId)`
+   * sub-methods for advanced plan-upload-commit pipelines.
+   */
+  readonly apply: ScopedApplyHero;
+  /**
+   * Release/operation read primitives — events streams, status reads,
+   * release inventory + diff, operation list, resolve. Distinct from the
+   * hero `apply` which is for writes. The legacy `.deploy.apply` /
+   * `.deploy.start` / `.deploy.plan` aliases were removed in v1.48
+   * (use `r.project(id).apply` directly).
+   */
   readonly deploy: ScopedDeploy;
   readonly domains: ScopedDomains;
   readonly email: ScopedEmail;
@@ -670,6 +714,7 @@ export class ScopedRun402 {
     this.auth = new ScopedAuth(parent, projectId);
     this.assets = new ScopedAssets(parent, projectId);
     this.contracts = new ScopedContracts(parent, projectId);
+    this.apply = createScopedApplyHero(parent, projectId);
     this.deploy = new ScopedDeploy(parent, projectId);
     this.domains = new ScopedDomains(parent, projectId);
     this.email = new ScopedEmail(parent, projectId);

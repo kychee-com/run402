@@ -96,7 +96,7 @@ describe("blobs.put", () => {
     // still sending the required digest to the upload API.
     // The v1.45 default is `immutable: true`; the dedicated default-and-
     // tag-emitter tests below cover that path.
-    const result = await sdk.blobs.put(
+    const result = await sdk.assets.put(
       "prj_known", "hello.txt", { content: "hello world\n" },
       { immutable: false },
     );
@@ -154,7 +154,7 @@ describe("blobs.put", () => {
     });
     const sdk = makeSdk(fetch);
     // No opts — relying on v1.45 defaults.
-    const asset = await sdk.blobs.put("prj_known", "hello.txt", { content: "abc" });
+    const asset = await sdk.assets.put("prj_known", "hello.txt", { content: "abc" });
     assert.equal(initBody!.immutable, true);
     assert.equal(
       initBody!.sha256,
@@ -194,7 +194,7 @@ describe("blobs.put", () => {
     const sdk = makeSdk(fetch);
     // Pin immutable: false — this test asserts on the multipart-complete
     // shape, not on the sha-computation path.
-    await sdk.blobs.put(
+    await sdk.assets.put(
       "prj_known", "multi.bin", { bytes: new Uint8Array(12) },
       { immutable: false },
     );
@@ -232,7 +232,7 @@ describe("blobs.put", () => {
       throw new Error("unexpected");
     });
     const sdk = makeSdk(fetch);
-    await sdk.blobs.put("prj_known", "x.txt", { content: "abc" }, { immutable: false });
+    await sdk.assets.put("prj_known", "x.txt", { content: "abc" }, { immutable: false });
     assert.equal(calls[1]!.headers["x-amz-checksum-sha256"], undefined);
   });
 
@@ -258,7 +258,7 @@ describe("blobs.put", () => {
       throw new Error("unexpected");
     });
     const sdk = makeSdk(fetch);
-    await sdk.blobs.put("prj_known", "x.txt", { content: "abc" }, { immutable: true });
+    await sdk.assets.put("prj_known", "x.txt", { content: "abc" }, { immutable: true });
     const initBody = JSON.parse(calls[0]!.body as string);
     assert.equal(initBody.immutable, true);
     assert.ok(typeof initBody.sha256 === "string" && initBody.sha256.length === 64);
@@ -295,7 +295,7 @@ describe("blobs.put", () => {
     });
     const sdk = makeSdk(fetch);
     // The natural "just give me a string" call shape — no { content: ... } wrapper.
-    const result = await sdk.blobs.put(
+    const result = await sdk.assets.put(
       "prj_known", "blob.txt", "hello blob",
       { immutable: false },
     );
@@ -331,7 +331,7 @@ describe("blobs.put", () => {
       throw new Error("unexpected: " + call.url);
     });
     const sdk = makeSdk(fetch);
-    const result = await sdk.blobs.put(
+    const result = await sdk.assets.put(
       "prj_known", "raw.bin", new TextEncoder().encode("bytes"),
       { immutable: false },
     );
@@ -343,7 +343,7 @@ describe("blobs.put", () => {
     const { fetch } = mockFetch(() => json({}));
     const sdk = makeSdk(fetch);
     await assert.rejects(
-      sdk.blobs.put("prj_known", "x", { content: "a", bytes: new Uint8Array(1) }),
+      sdk.assets.put("prj_known", "x", { content: "a", bytes: new Uint8Array(1) }),
       (err: unknown) => err instanceof Error && /exactly one/.test((err as Error).message),
     );
   });
@@ -352,7 +352,7 @@ describe("blobs.put", () => {
     const { fetch } = mockFetch(() => json({}));
     const sdk = makeSdk(fetch);
     await assert.rejects(
-      sdk.blobs.put("prj_known", "x", {}),
+      sdk.assets.put("prj_known", "x", {}),
       (err: unknown) => err instanceof Error && /exactly one/.test((err as Error).message),
     );
   });
@@ -361,7 +361,7 @@ describe("blobs.put", () => {
     const { fetch, calls } = mockFetch(() => json({}));
     const sdk = makeSdk(fetch);
     await assert.rejects(
-      sdk.blobs.put("prj_missing", "x.txt", { content: "hi" }),
+      sdk.assets.put("prj_missing", "x.txt", { content: "hi" }),
       ProjectNotFound,
     );
     assert.equal(calls.length, 0);
@@ -381,7 +381,7 @@ describe("blobs.put", () => {
     });
     const sdk = makeSdk(fetch);
     await assert.rejects(
-      sdk.blobs.put("prj_known", "x", { content: "abc" }),
+      sdk.assets.put("prj_known", "x", { content: "abc" }),
       (err: unknown) => err instanceof ApiError && (err as ApiError).status === 403,
     );
   });
@@ -393,7 +393,7 @@ describe("blobs.get", () => {
       new Response("hello", { status: 200, headers: { "content-type": "text/plain" } })
     );
     const sdk = makeSdk(fetch);
-    const res = await sdk.blobs.get("prj_known", "hello.txt");
+    const res = await sdk.assets.get("prj_known", "hello.txt");
     assert.equal(calls[0]!.url, "https://api.example.test/storage/v1/blob/hello.txt");
     assert.equal(calls[0]!.headers["apikey"], "svc_k");
     assert.equal(res.status, 200);
@@ -403,7 +403,7 @@ describe("blobs.get", () => {
   it("encodes key segments", async () => {
     const { fetch, calls } = mockFetch(() => new Response("x", { status: 200 }));
     const sdk = makeSdk(fetch);
-    await sdk.blobs.get("prj_known", "foo/a b.png");
+    await sdk.assets.get("prj_known", "foo/a b.png");
     assert.equal(calls[0]!.url, "https://api.example.test/storage/v1/blob/foo/a%20b.png");
   });
 
@@ -411,7 +411,7 @@ describe("blobs.get", () => {
     const { fetch } = mockFetch(() => new Response("not found", { status: 404 }));
     const sdk = makeSdk(fetch);
     await assert.rejects(
-      sdk.blobs.get("prj_known", "missing.txt"),
+      sdk.assets.get("prj_known", "missing.txt"),
       (err: unknown) => err instanceof ApiError && (err as ApiError).status === 404,
     );
   });
@@ -421,7 +421,7 @@ describe("blobs.ls", () => {
   it("GETs /storage/v1/blobs with prefix/limit/cursor", async () => {
     const { fetch, calls } = mockFetch(() => json({ blobs: [], next_cursor: null }));
     const sdk = makeSdk(fetch);
-    await sdk.blobs.ls("prj_known", { prefix: "images/", limit: 50, cursor: "c1" });
+    await sdk.assets.ls("prj_known", { prefix: "images/", limit: 50, cursor: "c1" });
     const u = new URL(calls[0]!.url);
     assert.equal(u.pathname, "/storage/v1/blobs");
     assert.equal(u.searchParams.get("prefix"), "images/");
@@ -432,7 +432,7 @@ describe("blobs.ls", () => {
   it("omits query string when no options", async () => {
     const { fetch, calls } = mockFetch(() => json({ blobs: [], next_cursor: null }));
     const sdk = makeSdk(fetch);
-    await sdk.blobs.ls("prj_known");
+    await sdk.assets.ls("prj_known");
     assert.equal(calls[0]!.url, "https://api.example.test/storage/v1/blobs");
   });
 
@@ -446,7 +446,7 @@ describe("blobs.ls", () => {
       const sdk = makeSdk(fetch);
 
       await assert.rejects(
-        sdk.blobs.ls("prj_known", { limit }),
+        sdk.assets.ls("prj_known", { limit }),
         (err: unknown) =>
           err instanceof LocalError &&
           err.context === "listing blobs" &&
@@ -461,7 +461,7 @@ describe("blobs.rm", () => {
   it("DELETEs /storage/v1/blob/:key", async () => {
     const { fetch, calls } = mockFetch(() => json({ status: "ok" }));
     const sdk = makeSdk(fetch);
-    await sdk.blobs.rm("prj_known", "old.txt");
+    await sdk.assets.rm("prj_known", "old.txt");
     assert.equal(calls[0]!.url, "https://api.example.test/storage/v1/blob/old.txt");
     assert.equal(calls[0]!.method, "DELETE");
   });
@@ -473,7 +473,7 @@ describe("blobs.sign", () => {
       json({ signed_url: "https://s3.test/signed", expires_at: "2026-04-24T00:00:00Z", expires_in: 3600 }),
     );
     const sdk = makeSdk(fetch);
-    const result = await sdk.blobs.sign("prj_known", "secret.bin", { ttl_seconds: 900 });
+    const result = await sdk.assets.sign("prj_known", "secret.bin", { ttl_seconds: 900 });
     assert.equal(calls[0]!.url, "https://api.example.test/storage/v1/blob/secret.bin/sign");
     assert.equal(calls[0]!.method, "POST");
     assert.deepEqual(JSON.parse(calls[0]!.body as string), { ttl_seconds: 900 });
@@ -490,7 +490,7 @@ describe("blobs.sign", () => {
       const sdk = makeSdk(fetch);
 
       await assert.rejects(
-        sdk.blobs.sign("prj_known", "secret.bin", { ttl_seconds: ttl }),
+        sdk.assets.sign("prj_known", "secret.bin", { ttl_seconds: ttl }),
         (err: unknown) =>
           err instanceof LocalError &&
           err.context === "signing blob URL" &&
@@ -538,7 +538,7 @@ describe("blobs.put — AssetRef widening (v1.45)", () => {
       throw new Error("unexpected: " + call.url);
     });
     const sdk = makeSdk(fetch);
-    const result = await sdk.blobs.put("prj_known", "x.txt", { content: "abc" }, { immutable: true });
+    const result = await sdk.assets.put("prj_known", "x.txt", { content: "abc" }, { immutable: true });
 
     // Legacy snake_case fields stay populated for back-compat.
     assert.equal(result.size_bytes, 3);
@@ -595,7 +595,7 @@ describe("blobs.put — AssetRef widening (v1.45)", () => {
       throw new Error("unexpected: " + call.url);
     });
     const sdk = makeSdk(fetch);
-    const asset = await sdk.blobs.put("prj_known", "app.js", { content: "abc" }, { immutable: true });
+    const asset = await sdk.assets.put("prj_known", "app.js", { content: "abc" }, { immutable: true });
 
     // Default scriptTag — emits `defer` by default (modern best practice).
     const tag = asset.scriptTag();
@@ -674,7 +674,7 @@ describe("blobs.put — AssetRef widening (v1.45)", () => {
       throw new Error("unexpected: " + call.url);
     });
     const sdk = makeSdk(fetch);
-    const asset = await sdk.blobs.put("prj_known", 'a&b"c<d>.png', { content: "abc" }, { immutable: true });
+    const asset = await sdk.assets.put("prj_known", 'a&b"c<d>.png', { content: "abc" }, { immutable: true });
     const img = asset.imgTag('Bad <alt> "quoted"');
     assert.match(img, /alt="Bad &lt;alt&gt; &quot;quoted&quot;"/);
     assert.match(img, /a&amp;b&quot;c&lt;d&gt;\.png/);
@@ -702,7 +702,7 @@ describe("blobs.put — AssetRef widening (v1.45)", () => {
       throw new Error("unexpected: " + call.url);
     });
     const sdk = makeSdk(fetch);
-    const asset = await sdk.blobs.put("prj_known", "x.png", { content: "abc" });
+    const asset = await sdk.assets.put("prj_known", "x.png", { content: "abc" });
     assert.throws(() => asset.scriptTag(), /immutable: true/);
     assert.throws(() => asset.linkTag(), /immutable: true/);
     assert.throws(() => asset.imgTag(), /immutable: true/);
@@ -736,7 +736,7 @@ describe("blobs.put — AssetRef widening (v1.45)", () => {
       throw new Error("unexpected: " + call.url);
     });
     const sdk = makeSdk(fetch);
-    const result = await sdk.blobs.put("prj_known", "y.txt", { content: "abc" });
+    const result = await sdk.assets.put("prj_known", "y.txt", { content: "abc" });
     assert.equal(result.contentSha256, null);
     assert.equal(result.etag, null);
     assert.equal(result.sri, null);
@@ -780,7 +780,7 @@ describe("blobs.put — AssetRef widening (v1.45)", () => {
       throw new Error("unexpected: " + call.url);
     });
     const sdk = makeSdk(fetch);
-    const result = await sdk.blobs.put("prj_known", "z.txt", { content: "abc" });
+    const result = await sdk.assets.put("prj_known", "z.txt", { content: "abc" });
     assert.equal(result.cdn.invalidationId, "I-1234");
     assert.equal(result.cdn.invalidationStatus, "InProgress");
     assert.match(result.cdn.hint ?? "", /asynchronous/);
@@ -802,7 +802,7 @@ describe("blobs upload sessions", () => {
       }, 201),
     );
     const sdk = makeSdk(fetch);
-    const session = await sdk.blobs.initUploadSession("prj_known", {
+    const session = await sdk.assets.initUploadSession("prj_known", {
       key: "video.mp4",
       size_bytes: 11,
       content_type: "video/mp4",
@@ -835,7 +835,7 @@ describe("blobs upload sessions", () => {
     const sdk = makeSdk(fetch);
 
     await assert.rejects(
-      sdk.blobs.initUploadSession("prj_known", {
+      sdk.assets.initUploadSession("prj_known", {
         key: "x",
         size_bytes: 1,
         content_type: "text/plain",
@@ -859,7 +859,7 @@ describe("blobs upload sessions", () => {
       }),
     );
     const sdk = makeSdk(fetch);
-    const session = await sdk.blobs.getUploadSession("prj_known", "up/1");
+    const session = await sdk.assets.getUploadSession("prj_known", "up/1");
 
     assert.equal(session.status, "active");
     assert.equal(calls[0]!.url, "https://api.example.test/storage/v1/uploads/up%2F1");
@@ -882,7 +882,7 @@ describe("blobs upload sessions", () => {
       }),
     );
     const sdk = makeSdk(fetch);
-    const result = await sdk.blobs.completeUploadSession("prj_known", "up 1", {
+    const result = await sdk.assets.completeUploadSession("prj_known", "up 1", {
       parts: [{ part_number: 1, etag: '"etag1"', sha256: "00".repeat(32) }],
     });
 
@@ -900,7 +900,7 @@ describe("blobs upload sessions", () => {
     const { fetch } = mockFetch(() => json({}));
     const sdk = makeSdk(fetch);
     await assert.rejects(
-      sdk.blobs.initUploadSession("prj_missing", {
+      sdk.assets.initUploadSession("prj_missing", {
         key: "x",
         size_bytes: 1,
         content_type: "text/plain",
@@ -932,7 +932,7 @@ describe("blobs.diagnoseUrl", () => {
       }),
     );
     const sdk = makeSdk(fetch);
-    const env = await sdk.blobs.diagnoseUrl(
+    const env = await sdk.assets.diagnoseUrl(
       "prj_known",
       "https://app.run402.com/_blob/avatar.png",
     );
@@ -950,7 +950,7 @@ describe("blobs.diagnoseUrl", () => {
     const { fetch } = mockFetch(() => json({}));
     const sdk = makeSdk(fetch);
     await assert.rejects(
-      sdk.blobs.diagnoseUrl("prj_missing", "https://app.run402.com/_blob/x"),
+      sdk.assets.diagnoseUrl("prj_missing", "https://app.run402.com/_blob/x"),
       ProjectNotFound,
     );
   });
@@ -984,7 +984,7 @@ describe("blobs.waitFresh", () => {
       return json(envelope(calls < 3 ? "00".repeat(32) : "ff"));
     });
     const sdk = makeSdk(fetch);
-    const result = await sdk.blobs.waitFresh("prj_known", {
+    const result = await sdk.assets.waitFresh("prj_known", {
       url: "https://app.run402.com/_blob/k",
       sha256: "ff",
       timeoutMs: 5_000,
@@ -998,7 +998,7 @@ describe("blobs.waitFresh", () => {
   it("returns fresh: false on timeout (no exception thrown)", async () => {
     const { fetch } = mockFetch(() => json(envelope("00".repeat(32))));
     const sdk = makeSdk(fetch);
-    const result = await sdk.blobs.waitFresh("prj_known", {
+    const result = await sdk.assets.waitFresh("prj_known", {
       url: "https://app.run402.com/_blob/k",
       sha256: "ff",
       timeoutMs: 250,
@@ -1012,7 +1012,7 @@ describe("blobs.waitFresh", () => {
     const { fetch } = mockFetch(() => json({}));
     const sdk = makeSdk(fetch);
     await assert.rejects(
-      sdk.blobs.waitFresh("prj_missing", { url: "https://app.run402.com/_blob/k", sha256: "ff" }),
+      sdk.assets.waitFresh("prj_missing", { url: "https://app.run402.com/_blob/k", sha256: "ff" }),
       ProjectNotFound,
     );
   });
@@ -1027,7 +1027,7 @@ describe("blobs.waitFresh", () => {
       const sdk = makeSdk(fetch);
 
       await assert.rejects(
-        sdk.blobs.waitFresh("prj_known", {
+        sdk.assets.waitFresh("prj_known", {
           url: "https://app.run402.com/_blob/k",
           sha256: "ff",
           timeoutMs,
