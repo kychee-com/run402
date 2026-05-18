@@ -140,7 +140,7 @@ run402 tier status
 
 ## Deploying Apps
 
-### Unified Deploy (v1.34+, recommended)
+### Unified Deploy (v1.34 → v2.0 unified apply, recommended)
 
 The canonical deploy primitive. All bytes ride through CAS (no inline-body cap), supports both `replace` and `patch` semantics per resource, atomic multi-resource activation, and resumable recovery from partial failures. This is the path the SDK exposes as `r.project(id).apply(...)`.
 
@@ -500,6 +500,33 @@ Function specs accept `runtime: "node22"`, exactly one code source (`source`, or
 
 **Binary files (images, fonts, PDFs)**: Set `"encoding": "base64"` and provide base64-encoded data. MIME types are auto-detected from the file extension (`.png` → `image/png`, `.woff2` → `font/woff2`, etc.). Text files use `"encoding": "utf-8"` (the default — can be omitted).
 
+**Assets slice (v2.0+, bulk content-addressed storage in the apply transaction).** `assets` is a top-level `ReleaseSpec` slice — the same atomic transaction promotes site bytes, function code, secrets, *and* asset entries. Two shapes:
+
+```json
+"assets": {
+  "put": [
+    { "key": "static/app.css", "sha256": "<64-hex>", "size_bytes": 1234, "content_type": "text/css", "visibility": "public", "immutable": true }
+  ]
+}
+```
+
+Additive batch. Each entry carries the locally-computed `sha256` so the gateway can deduplicate against the CAS substrate — only new shas trigger an upload via the same direct-to-S3 presigned URL flow as `run402 assets put`. Defaults: `visibility: "public"`, `immutable: true`. Existing keys outside the batch are left untouched.
+
+```json
+"assets": {
+  "put": [...],
+  "sync": {
+    "prefix": "static/",
+    "prune": true,
+    "confirm": { "base_revision": "<hex>", "delete_set_digest": "<hex>", "expected_delete_count": 42 }
+  }
+}
+```
+
+Declarative sync. `prune: true` deletes keys under `prefix` that aren't in the new `put` batch. **Requires an explicit `prefix` — no implicit project-root prune.** First apply without `confirm` returns the `asset_sync` block in the plan response (`base_revision`, `delete_set_digest`, `expected_delete_count`, `sample_keys`); surface those to the user, then re-run with `confirm` populated. Gateway activation re-checks via `ASSET_SYNC_DRIFT` if inventory mutates between commit and activation.
+
+Why this exists: the SDK's Node helpers (`r.assets.uploadDir(path, { project })`, `syncDir`, `prepareDir`, `putMany`) walk a local directory, compute SHA-256s in streaming chunks, and submit through this same apply slice. The CLI doesn't ship a `run402 assets sync` subcommand — write the manifest and use `deploy apply`, or call the Node SDK directly from a script.
+
 **Migrations** can be inline (`sql`) or read from a file with `sql_path` / `sql_file` on each migration entry.
 
 **Make migrations idempotent**: Use `CREATE TABLE IF NOT EXISTS` and `CREATE INDEX IF NOT EXISTS`. If you redeploy to the same project, non-idempotent migrations will fail with a 422 error (e.g., `relation "items" already exists`).
@@ -629,7 +656,7 @@ SQL supports DDL + queries, returns JSON. REST uses PostgREST syntax (`select=`,
 User auth: password + Google OAuth. See "User Auth" section below.
 
 ### deploy
-- `run402 deploy apply --manifest app.json [--project <id>] [--quiet|--final-only] [--allow-warning <code> ...] [--allow-warnings]` — unified deploy primitive (v1.34+)
+- `run402 deploy apply --manifest app.json [--project <id>] [--quiet|--final-only] [--allow-warning <code> ...] [--allow-warnings]` — unified apply primitive (v1.34 unified deploy → v2.0 unified apply with `assets` slice support)
 - `run402 deploy resume <operation_id> [--quiet]` — re-run a stuck operation forward
 - `run402 deploy list [--project <id>] [--limit <n>]` — list recent deploy operations
 - `run402 deploy events <operation_id> [--project <id>]` — fetch the recorded event stream for an operation
@@ -782,9 +809,11 @@ Injected as `process.env` in functions. Values are write-only — `list` returns
 - `run402 secrets set <id> <KEY> [<VALUE>] [--file <path>|--stdin]`
 - `run402 secrets <list|delete> <id> [<KEY>]`
 
-### blob (primary storage API)
+### assets (primary storage API)
 
-Direct-to-S3 blob storage. Works for any size from 1 byte up to 5 TiB. No bucket concept — blobs live in a flat key namespace per project.
+Direct-to-S3 asset storage. Works for any size from 1 byte up to 5 TiB. No bucket concept — assets live in a flat key namespace per project. Renamed from `blob` in v2.0 alongside the unified-apply rename.
+
+For bulk directory work, use `run402 deploy apply` with an `assets` slice in the manifest (see [Unified Deploy](#unified-deploy)) — additive batches via `assets: { put: [...] }`, declarative sync with confirm-token semantics via `assets: { put: [...], sync: { prefix, prune: true, confirm? } }`. There is no `run402 assets sync` subcommand — the apply path is the canonical bulk surface so a single transaction can stage HTML + new asset URLs together.
 
 - `run402 assets put <file> [files...] [--project <id>] [--key <dest>] [--content-type <mime>] [--private] [--immutable] [--concurrency N] [--no-resume] [--json]`
 - `run402 assets get <key> --output <file> [--project <id>]`

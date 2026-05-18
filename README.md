@@ -183,7 +183,7 @@ run402 deploy resolve --project prj_123 --url https://example.com/events?utm=x#h
 run402 deploy resolve --project prj_123 --host example.com --path /events --method GET
 ```
 
-`deploy_diagnose_url` and `r.deploy.resolve({ project, url, method: "GET" })` return `would_serve`, `diagnostic_status`, `match`, normalized request data, warnings, full resolution JSON, and next steps. When returned, `asset_path`, `reachability_authority`, and `direct` explain which release asset backs the public URL and whether reachability came from implicit file-path mode, explicit `site.public_paths`, or a route-only static alias. Stable-host diagnostics may also include `authorization_result`, `cas_object` (`sha256`, `exists`, `expected_size`, `actual_size`), hostname-specific `response_variant`, and route/static fields such as `allow`, `route_pattern`, `target_type`, `target_name`, and `target_file`. Known `match` literals are `host_missing`, `manifest_missing`, `active_release_missing`, `unsupported_manifest_version`, `path_error`, `none`, `static_exact`, `static_index`, `spa_fallback`, `spa_fallback_missing`, `route_function`, `route_static_alias`, and `route_method_miss`; preserve unknown future strings. Known `authorization_result` values include `authorized`, `not_public`, `not_applicable`, `manifest_missing`, `target_missing`, `active_release_missing`, `unsupported_manifest_version`, `path_error`, `missing_cas_object`, `unfinalized_or_deleting_cas_object`, `size_mismatch`, and `unauthorized_cas_object`. Known `fallback_state` values include `active_release_missing`, `unsupported_manifest_version`, and `negative_cache_hit`; preserve unknown future strings. `result` is the diagnostic body status, not the HTTP status of the SDK call, so host misses can still be successful CLI/MCP/SDK calls with `would_serve: false`. Do not treat resolve/diagnose as a fetch, cache purge, or cache-policy oracle; route method misses should inspect `allow`, and CAS authorization/health failures should inspect or redeploy the affected static asset. Branch on structured JSON fields such as `cache_class` and preserve unknown cache classes.
+`deploy_diagnose_url` and `r.project(id).deploy.resolve({ url, method: "GET" })` return `would_serve`, `diagnostic_status`, `match`, normalized request data, warnings, full resolution JSON, and next steps. When returned, `asset_path`, `reachability_authority`, and `direct` explain which release asset backs the public URL and whether reachability came from implicit file-path mode, explicit `site.public_paths`, or a route-only static alias. Stable-host diagnostics may also include `authorization_result`, `cas_object` (`sha256`, `exists`, `expected_size`, `actual_size`), hostname-specific `response_variant`, and route/static fields such as `allow`, `route_pattern`, `target_type`, `target_name`, and `target_file`. Known `match` literals are `host_missing`, `manifest_missing`, `active_release_missing`, `unsupported_manifest_version`, `path_error`, `none`, `static_exact`, `static_index`, `spa_fallback`, `spa_fallback_missing`, `route_function`, `route_static_alias`, and `route_method_miss`; preserve unknown future strings. Known `authorization_result` values include `authorized`, `not_public`, `not_applicable`, `manifest_missing`, `target_missing`, `active_release_missing`, `unsupported_manifest_version`, `path_error`, `missing_cas_object`, `unfinalized_or_deleting_cas_object`, `size_mismatch`, and `unauthorized_cas_object`. Known `fallback_state` values include `active_release_missing`, `unsupported_manifest_version`, and `negative_cache_hit`; preserve unknown future strings. `result` is the diagnostic body status, not the HTTP status of the SDK call, so host misses can still be successful CLI/MCP/SDK calls with `would_serve: false`. Do not treat resolve/diagnose as a fetch, cache purge, or cache-policy oracle; route method misses should inspect `allow`, and CAS authorization/health failures should inspect or redeploy the affected static asset. Branch on structured JSON fields such as `cache_class` and preserve unknown cache classes.
 
 Release observability exposes stable asset identity and public reachability. Inventories include `release_generation`, `static_manifest_sha256`, nullable `static_manifest_metadata` (`file_count`, `total_bytes`, `cache_classes`, `cache_class_sources`, `spa_fallback`), and `static_public_paths[]` when returned. `site.paths` lists release static assets; `static_public_paths[]` lists browser-visible public paths with `public_path`, `asset_path`, `reachability_authority`, `direct`, cache class, and content type. Plan and release diffs expose `static_assets` counters: unchanged/changed/added/removed, `newly_uploaded_cas_bytes`, `reused_cas_bytes`, `deployment_copy_bytes_eliminated`, `legacy_immutable_warnings`, `previous_immutable_failures`, and `cas_authorization_failures`.
 
@@ -316,8 +316,8 @@ run402 deploy release active --project <id>  # inspect current-live release inve
 run402 deploy diagnose --project <id> https://example.com/events --method GET
 run402 functions deploy <id> <name> --file fn.ts
 run402 ci link github --project <id>       # GitHub Actions OIDC deploy binding (--route-scope for CI routes)
-run402 blob put ./asset.png --immutable
-run402 blob diagnose <url>               # inspect live CDN state for a public URL
+run402 assets put ./asset.png --immutable
+run402 assets diagnose <url>             # inspect live CDN state for a public URL
 run402 cdn wait-fresh <url> --sha <hex>  # poll until a mutable URL serves the new SHA
 ```
 
@@ -399,15 +399,15 @@ The full MCP surface — every tool is a thin shim over an SDK call.
 | `promote_user` / `demote_user` | Manage `project_admin` role on a project user. |
 | `delete_project` | Cascade purge — schema, Lambdas, S3 site files, deployments, secrets, published versions. Irreversible. |
 
-### Blob storage (content-addressed CDN)
+### Asset storage (content-addressed CDN)
 
 | Tool | Description |
 |------|-------------|
-| `blob_put` | Upload a blob (any size, up to 5 TiB) via direct-to-S3 presigned URLs. Returns an `AssetRef` with `scriptTag()` / `linkTag()` / `imgTag()` emitters. |
-| `blob_get` | Download a blob to a local file. |
-| `blob_ls` | Keyset-paginated list with prefix filter. |
-| `blob_rm` | Delete a blob. |
-| `blob_sign` | Time-boxed presigned GET URL for a private blob. |
+| `assets_put` | Upload an asset (any size, up to 5 TiB) via direct-to-S3 presigned URLs. Returns an `AssetRef` with `scriptTag()` / `linkTag()` / `imgTag()` emitters. |
+| `assets_get` | Download an asset to a local file. |
+| `assets_ls` | Keyset-paginated list with prefix filter. |
+| `assets_rm` | Delete an asset. |
+| `assets_sign` | Time-boxed presigned GET URL for a private asset. |
 | `diagnose_public_url` | Live CDN state for a public URL — expected vs observed SHA, cache headers, invalidation status. |
 | `wait_for_cdn_freshness` | Poll a mutable URL until it serves the expected SHA-256. |
 

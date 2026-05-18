@@ -58,7 +58,7 @@ The `CredentialsProvider` interface has two **required** methods (`getAuth`, `ge
 
 ## Mental model
 
-The SDK is the canonical kernel. **A single typed `Run402` class** with one namespace per resource group (`r.projects`, `r.deploy`, `r.blobs`, …). Every method:
+The SDK is the canonical kernel. **A single typed `Run402` class** with one namespace per resource group (`r.projects`, `r.assets`, …). The hero apply primitive is `r.project(id).apply(spec)` — the public `r.deploy` surface was retired in v2.0; an internal `_applyEngine` powers it. Every method:
 - Takes typed parameters (TS interfaces in `*.types.ts`)
 - Returns a typed `Promise<T>`
 - Throws a typed subclass of `Run402Error` on failure
@@ -217,7 +217,7 @@ const fresh = await (await r.project(projectId)).assets.waitFresh( {
 
 **Don't call `waitFresh` on immutable URLs** — they're correct from upload time.
 
-### Unified deploy — `r.project(id).apply` (v1.34+)
+### Unified apply — `r.project(id).apply` (v1.34 unified deploy → v2.0 unified apply)
 
 The canonical primitive for any deploy (database + migrations + manifest + value-free secret declarations + functions + site + subdomain). Three layers:
 
@@ -418,7 +418,7 @@ console.log(summary.would_serve, summary.diagnostic_status, summary.match, reque
 void auth; void cas; void variant;
 ```
 
-`r.deploy.resolve({ project, url, method })` and scoped `p.deploy.resolve({ url, method })` also accept lower-level `{ project, host, path?, method? }`. URL query strings/fragments are ignored for lookup and surfaced in `request.ignored`. When returned, `asset_path`, `reachability_authority`, and `direct` explain which release asset backs the public URL and whether reachability came from implicit file-path mode, explicit `site.public_paths`, or a route-only static alias. Stable-host diagnostics may also include `authorization_result`, `cas_object` (`sha256`, `exists`, `expected_size`, `actual_size`), hostname-specific `response_variant`, and route/static fields such as `allow`, `route_pattern`, `target_type`, `target_name`, and `target_file`. Current known `match` literals are `host_missing`, `manifest_missing`, `active_release_missing`, `unsupported_manifest_version`, `path_error`, `none`, `static_exact`, `static_index`, `spa_fallback`, `spa_fallback_missing`, `route_function`, `route_static_alias`, and `route_method_miss`; preserve unknown future strings. Known `authorization_result` values include `authorized`, `not_public`, `not_applicable`, `manifest_missing`, `target_missing`, `active_release_missing`, `unsupported_manifest_version`, `path_error`, `missing_cas_object`, `unfinalized_or_deleting_cas_object`, `size_mismatch`, and `unauthorized_cas_object`. Known `fallback_state` values include `active_release_missing`, `unsupported_manifest_version`, and `negative_cache_hit`; preserve unknown future strings. `result` is diagnostic body status, not SDK HTTP transport status, so host misses can be successful calls with `would_serve: false`. Do not use resolve as a fetch, cache purge, or cache-policy oracle; branch on structured fields such as `cache_class`, `allow`, and `cas_object`, and preserve unknown cache classes.
+`r.project(id).deploy.resolve({ url, method })` (the public scoped form; the bare `r.deploy.resolve` was retired in v2.0) also accepts lower-level `{ host, path?, method? }`. URL query strings/fragments are ignored for lookup and surfaced in `request.ignored`. When returned, `asset_path`, `reachability_authority`, and `direct` explain which release asset backs the public URL and whether reachability came from implicit file-path mode, explicit `site.public_paths`, or a route-only static alias. Stable-host diagnostics may also include `authorization_result`, `cas_object` (`sha256`, `exists`, `expected_size`, `actual_size`), hostname-specific `response_variant`, and route/static fields such as `allow`, `route_pattern`, `target_type`, `target_name`, and `target_file`. Current known `match` literals are `host_missing`, `manifest_missing`, `active_release_missing`, `unsupported_manifest_version`, `path_error`, `none`, `static_exact`, `static_index`, `spa_fallback`, `spa_fallback_missing`, `route_function`, `route_static_alias`, and `route_method_miss`; preserve unknown future strings. Known `authorization_result` values include `authorized`, `not_public`, `not_applicable`, `manifest_missing`, `target_missing`, `active_release_missing`, `unsupported_manifest_version`, `path_error`, `missing_cas_object`, `unfinalized_or_deleting_cas_object`, `size_mismatch`, and `unauthorized_cas_object`. Known `fallback_state` values include `active_release_missing`, `unsupported_manifest_version`, and `negative_cache_hit`; preserve unknown future strings. `result` is diagnostic body status, not SDK HTTP transport status, so host misses can be successful calls with `would_serve: false`. Do not use resolve as a fetch, cache purge, or cache-policy oracle; branch on structured fields such as `cache_class`, `allow`, and `cas_object`, and preserve unknown cache classes.
 
 Known route warning codes and recovery:
 
@@ -618,29 +618,37 @@ promoteUser(id, email): Promise<void>       // project-admin role helper
 demoteUser(id, email): Promise<void>
 ```
 
-### `r.deploy`
+### `r.project(id).apply` (mutations) + `r.project(id).deploy` (observability)
 
-The unified deploy primitive. See "Unified deploy" above. Most agents call only
-`apply` (one-shot) or `start` (progress events). The lower-level
-`plan` / `upload` / `commit` layer exists for CLI debugging.
+The unified apply primitive. **Public `r.deploy` was retired in v2.0** — the
+scoped client (`r.project(id)`) is the only path. Mutations live on the
+callable hero `r.project(id).apply(spec)` with `.plan/.start/.resume`
+sub-methods. Observability reads (release inventory, diff, resolve, event
+replay) live on `r.project(id).deploy`. The internal engine driving both is
+`r._applyEngine` and is not part of the public surface.
 
 ```
-apply(spec, opts?): Promise<DeployResult>
-start(spec, opts?): Promise<DeployOperation>
-resume(operationId, opts?): Promise<DeployResult>
-status(operationId, opts?: { project? }): Promise<OperationSnapshot>
-list(opts: { project, limit?, cursor? }): Promise<DeployListResponse>
-events(operationId, opts: { project }): Promise<DeployEventsResponse>   // recorded so far
-resolve(opts: DeployResolveOptions): Promise<DeployResolveResponse>     // URL-first or host/path public diagnostics
-getRelease(opts: { project, releaseId, siteLimit? }): Promise<ReleaseInventory>
-getRelease(releaseId, opts: { project, siteLimit? }): Promise<ReleaseInventory>
-getActiveRelease(opts: { project, siteLimit? }): Promise<ActiveReleaseInventory>
-diff(opts: { project, from, to, limit? }): Promise<ReleaseToReleaseDiff>
+// MUTATIONS — r.project(id).apply (callable hero):
+r.project(id).apply(spec, opts?): Promise<DeployResult>
+r.project(id).apply.plan(spec, opts?: { idempotencyKey?, dryRun? }): Promise<{ plan, byteReaders }>
+r.project(id).apply.start(spec, opts?): Promise<DeployOperation>
+r.project(id).apply.resume(operationId, opts?): Promise<DeployResult>
 
-// Low-level (CLI debugging — most agents use apply / start):
-plan(spec, opts?: { idempotencyKey? }): Promise<{ plan, byteReaders }>
-upload(plan, opts: { project, byteReaders, onEvent? }): Promise<void>
-commit(planId, opts?: { project, idempotencyKey?, onEvent? }): Promise<DeployResult>
+// OBSERVABILITY — r.project(id).deploy (read/event surface):
+r.project(id).deploy.status(operationId, opts?): Promise<OperationSnapshot>
+r.project(id).deploy.list(opts?: { limit? }): Promise<DeployListResponse>
+r.project(id).deploy.events(operationId, opts?): Promise<DeployEventsResponse>
+r.project(id).deploy.resolve(opts: ScopedDeployResolveOptions): Promise<DeployResolveResponse>
+   // ScopedDeployResolveOptions is { url, method? } OR { host, path?, method? };
+   // the bare-r form r._applyEngine.resolve takes a top-level project plus DeployResolveOptions.
+r.project(id).deploy.getRelease(releaseId, opts?: { siteLimit? }): Promise<ReleaseInventory>
+r.project(id).deploy.getActiveRelease(opts?: { siteLimit? }): Promise<ActiveReleaseInventory>
+r.project(id).deploy.diff(opts: { from, to, limit? }): Promise<ReleaseToReleaseDiff>
+
+// Low-level upload/commit (CLI debugging — most agents call apply()):
+r.project(id).deploy.upload(plan, opts: { byteReaders, onEvent? }): Promise<void>
+r.project(id).deploy.commit(planId, opts?: { idempotencyKey?, onEvent? }): Promise<DeployResult>
+r.project(id).deploy.resume(operationId, opts?): Promise<DeployResult>
 ```
 
 Top-level deploy summary helper:
@@ -665,10 +673,10 @@ const summary = summarizeDeployResult(result);
 console.log(summary.headline, summary.site?.cas?.reused_bytes);
 ```
 
-For live event streaming during an in-flight deploy, use `(await r.project(spec.project)).apply.start(spec)` and
-iterate `op.events()` (an `AsyncIterable<DeployEvent>`). The `r.deploy.events(operationId)`
+For live event streaming during an in-flight apply, use `(await r.project(spec.project)).apply.start(spec)` and
+iterate `op.events()` (an `AsyncIterable<DeployEvent>`). The `r.project(id).deploy.events(operationId)`
 method returns the events the gateway has recorded so far for an operation —
-useful for inspecting a deploy after the fact, not for live streaming.
+useful for inspecting an apply after the fact, not for live streaming.
 
 ### `r.ci`
 
@@ -767,10 +775,16 @@ isomorphic entry's `r.sites` namespace is empty.
 deployDir(opts: { project, dir, target?, onEvent? }): Promise<SiteDeployResult>
 ```
 
-### `r.blobs`
+### `r.assets`
+
+The unified asset namespace (renamed from `r.blobs` in v2.0). Isomorphic
+single-asset methods on every runtime; the Node entry point
+(`@run402/sdk/node`) upgrades `r.assets` to `NodeAssets`, adding the bulk
+directory helpers.
 
 ```
-put(projectId, key, source, opts?: BlobPutOptions): Promise<BlobPutResult>
+// Isomorphic — single asset:
+put(projectId, key, source, opts?: BlobPutOptions): Promise<AssetRef>
 get(projectId, key): Promise<Response>
 ls(projectId, opts?: { prefix?, limit?, cursor? }): Promise<BlobLsResult>
 rm(projectId, key): Promise<void>
@@ -779,29 +793,109 @@ diagnoseUrl(projectId, url): Promise<BlobDiagnoseEnvelope>
 waitFresh(projectId, opts: { url, sha256, timeoutMs? }): Promise<BlobWaitFreshResult>
 initUploadSession(projectId, opts: BlobUploadInitOptions): Promise<BlobUploadInitResult>
 getUploadSession(projectId, uploadId): Promise<BlobUploadStatusResult>
-completeUploadSession(projectId, uploadId, opts?: BlobUploadCompleteOptions, extra?: { contentType? }): Promise<BlobPutResult>
+completeUploadSession(projectId, uploadId, opts?: BlobUploadCompleteOptions, extra?: { contentType? }): Promise<AssetRef>
+
+// Node-only — @run402/sdk/node — bulk directory + batch:
+uploadDir(path, opts: { project, prefix?, ignore?, includeSensitive?, onEvent? }): Promise<AssetManifest>
+syncDir(path, opts: { project, prefix?, prune?, confirm?, ignore?, includeSensitive?, onEvent? }): Promise<AssetManifest>
+prepareDir(path, opts: { project, prefix?, ignore?, includeSensitive? }): Promise<{ manifest: AssetManifest, applySlice: AssetSpec }>
+putMany(items: PutManyItem[], opts: { project, onEvent? }): Promise<AssetManifest>
+
+// Node-only — input helper (synchronous; walk happens at apply submission):
+dir(path, opts?: { prefix?, ignore?, includeSensitive? }): LocalDirRef
 ```
 
 `source` is one of: a bare `string` (UTF-8 ≤ 1 MB), a bare `Uint8Array`,
 `{ content: string }`, or `{ bytes: Uint8Array }`.
 
-`BlobPutResult` extends the legacy snake_case fields (`key`, `size_bytes`,
-`sha256`, `visibility`, `url`, `immutable_url`) with the v1.45+ camelCase
-helpers used by paste-and-go HTML emitters: `cdnUrl`, `cdnMutableUrl`,
+`AssetRef` (return type of single-asset `put`; legacy alias `BlobPutResult`
+still exported) extends snake_case fields (`key`, `size_bytes`, `sha256`,
+`visibility`, `url`, `immutable_url`) with the v1.45+ camelCase helpers
+used by paste-and-go HTML emitters: `cdnUrl`, `cdnMutableUrl`,
 `immutableUrl`, `etag`, `sri`, `contentDigest`, `cacheKind` (`"immutable" |
 "mutable" | "private"`), `contentSha256`, `contentType`, plus `scriptTag()`,
-`linkTag()`, `imgTag()` methods. See `sdk/src/namespaces/blobs.types.ts` for
-the full shape.
+`linkTag()`, `imgTag()` methods. See `sdk/src/namespaces/assets.types.ts`
+for the full shape.
 
-Use the low-level upload-session methods only when you need CLI-style resumable
-state or custom part concurrency. They keep gateway init/status/complete calls
-inside the SDK while callers still `fetch(part.url)` directly to presigned S3
-URLs for the actual bytes.
-Upload-session contracts are strict: `BlobUploadInitOptions.sha256` is required,
-`sign(..., { ttl_seconds })` accepts only safe integers from 60 to 604800, and
-multipart completion parts include `{ part_number, etag, sha256 }`. Direct S3
-PUT callers must send `x-amz-checksum-sha256` with the base64 SHA-256 of each
-part unless the presigned URL already includes that checksum query parameter.
+#### Bulk directory helpers (Node-only)
+
+`uploadDir` is **additive**: walks the directory, hashes every file with
+streaming SHA-256, and submits one apply transaction (`r.project(id).apply
+({ assets: { put: [...] } })`). Existing keys not present in the directory
+are left untouched.
+
+`syncDir` is **declarative**. Without `prune: true` it behaves identically
+to `uploadDir`. With `prune: true` it deletes keys under the supplied
+prefix that aren't in the new directory; the first call runs a plan and
+throws `PruneConfirmationRequired` (a `LocalError` subclass) carrying
+`base_revision`, `delete_set_digest`, `expected_delete_count`, and
+`sample_keys`. Echo those back as `confirm: {...}` to commit. `prune: true`
+**requires an explicit `prefix`** — no implicit project-root prune. The
+gateway's `ASSET_SYNC_DRIFT` activation check catches the narrower race
+where inventory mutates between commit and activation.
+
+`prepareDir` runs plan-only and returns `{ manifest, applySlice }`. Use it
+when you need resolved CDN URLs before commit (e.g. inject content-hashed
+asset URLs into HTML, then commit both the HTML and the assets in one
+apply call by passing `applySlice` to a follow-up `r.project(id).apply
+.start(...)`).
+
+`putMany` is the in-memory batch shape: each item carries a `key` plus an
+in-memory `ContentSource` (string, Uint8Array, ArrayBuffer, Blob). Useful
+in V8 isolates and tests where no filesystem is available.
+
+#### The three-schema fidelity contract
+
+The SDK accepts three input shapes for the assets slice but the gateway
+sees only one wire shape:
+
+1. `LocalDirRef` — returned by `dir(path)`. Synchronous, lazy: the
+   filesystem walk happens at apply submission, not at construction. The
+   discriminator `__source: "local-dir"` is stable for type-narrowing.
+   **The gateway never sees a `LocalDirRef`** — submitting one in a JSON
+   body is rejected with HTTP 400 `INVALID_WIRE_SCHEMA`. The SDK
+   normalizes via `entriesFromLocalDir(ref)` before any plan request.
+2. `AssetPutEntry[]` — wire-shaped (`{ key, sha256, size_bytes,
+   content_type, visibility, immutable }`). What the gateway sees.
+3. In-memory `ContentSource` — accepted by `putMany`; hashed locally and
+   converted to `AssetPutEntry` before submission.
+
+This is enforced by the wire-schema validator and verified by
+`three-schema fidelity` tests under `sdk/src/`.
+
+#### `AssetManifest` — batch result envelope
+
+```
+interface AssetManifest {
+  list: AssetManifestEntry[]
+  byKey: Record<string, AssetManifestEntry>     // null-prototype
+  manifest: Record<string, AssetManifestEntry>  // null-prototype, plain-data copy
+  totals: { files, bytes_uploaded, bytes_reused, duration_ms }
+  pruned?: string[]                              // present when syncDir prune ran
+}
+
+interface AssetManifestEntry {
+  key, sha256, size_bytes, content_type, visibility,
+  url, immutable_url, cdn_url, cdn_immutable_url,
+  sri, etag, content_digest
+}
+```
+
+`byKey` and `manifest` are constructed with `Object.create(null)` so
+attacker-controlled keys like `__proto__` can't collide with
+`Object.prototype` — a hard invariant covered by the prototype-pollution
+safety tests in `sdk/src/`.
+
+Use the low-level upload-session methods only when you need CLI-style
+resumable state or custom part concurrency. They keep gateway init/status/
+complete calls inside the SDK while callers still `fetch(part.url)`
+directly to presigned S3 URLs for the actual bytes.
+Upload-session contracts are strict: `BlobUploadInitOptions.sha256` is
+required, `sign(..., { ttl_seconds })` accepts only safe integers from
+60 to 604800, and multipart completion parts include `{ part_number, etag,
+sha256 }`. Direct S3 PUT callers must send `x-amz-checksum-sha256` with the
+base64 SHA-256 of each part unless the presigned URL already includes that
+checksum query parameter.
 
 ### `r.functions`
 

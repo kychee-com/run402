@@ -240,7 +240,13 @@ For TypeScript autocomplete, `npm install @run402/functions` in your editor's pr
 - **`promote_user`** / **`demote_user`** — manage `project_admin` role on a project user. Params: `project_id`, `email`.
 - **`delete_project`** — cascade purge. Params: `project_id`. Irreversible.
 
-### Blob storage (content-addressed CDN)
+### Asset storage (content-addressed CDN)
+
+Single-asset MCP tools below. For bulk directory work, the **`deploy`** tool
+accepts an `assets` slice (`assets: { put: [...] }` for additive batch and
+`assets: { put: [...], sync: { prefix, prune, confirm? } }` for declarative
+sync with a prune confirmation token — see [Slick Deploys](#slick-deploys)
+and "Bulk asset directories" below).
 
 - **`assets_put`** — upload (any size up to 5 TiB) via direct-to-S3. Params: `project_id`, `key`, `local_path?` OR `content?` (≤ 1 MB inline), `content_type?`, `visibility?` (`"public"` / `"private"`), `immutable?` (default `true`), `sha256?` (auto-computed when `immutable: true`). Returns `AssetRef`.
 - **`assets_get`** — download to a local file. Params: `project_id`, `key`, `local_path`.
@@ -250,6 +256,15 @@ For TypeScript autocomplete, `npm install @run402/functions` in your editor's pr
 - **`diagnose_public_url`** — live CDN state. Params: `project_id`, `url`. Returns `expectedSha256`, `observedSha256`, `cache.{xCache,ageSeconds,cacheKind}`, `invalidation.{id,status}`, `vantage`, `hint`. Vantage is single-region (us-east-1).
 - **`wait_for_cdn_freshness`** — poll a mutable URL until it serves the expected SHA. Params: `project_id`, `url`, `sha256`, `timeout_ms?` (default 60_000, max 600_000). `isError: true` on timeout.
 
+#### Bulk asset directories — via the `deploy` tool's `assets` slice
+
+`assets` is a top-level `ReleaseSpec` slice the gateway treats with the same atomic guarantees as `site` / `functions` / `database`. Two shapes:
+
+- **Additive batch**: `assets: { put: [{ key, sha256, size_bytes, content_type, visibility, immutable }, ...] }`. Existing keys outside the batch are left untouched. Use this for incremental adds.
+- **Declarative sync**: `assets: { put: [...], sync: { prefix, prune: true, confirm?: { base_revision, delete_set_digest, expected_delete_count } } }`. Without `confirm`, the gateway returns the sync `asset_sync` block in the plan response — surface the delete count and sample keys to the user, then re-call with `confirm` populated. `prune: true` **requires an explicit `prefix`** — there's no implicit project-root prune.
+
+Each `AssetPutEntry` carries the locally-computed `sha256` so the gateway can deduplicate against the CAS substrate; bytes for new shas are uploaded via the same direct-to-S3 presigned URL flow as `assets_put`.
+
 ### Sites & subdomains
 
 - **`deploy_site`** — deploy from inline file bytes. Params: `project`, `target?`, `files: [{ file, data, encoding? }]`. Free with active tier.
@@ -257,7 +272,7 @@ For TypeScript autocomplete, `npm install @run402/functions` in your editor's pr
 - **`claim_subdomain`** — claim `<name>.run402.com`. Idempotent; auto-reassigns to latest deployment on subsequent deploys. Params: `project_id`, `name`, `deployment_id?`.
 - **`list_subdomains`** / **`delete_subdomain`** — manage subdomains.
 - **`add_custom_domain`** / **`list_custom_domains`** / **`check_domain_status`** / **`remove_custom_domain`** — point your own domain at a Run402 subdomain.
-- **`deploy`** — the unified deploy primitive (v1.34+). Pass a `ReleaseSpec` with replace-vs-patch semantics per resource and value-free `secrets.require` / `secrets.delete`. Returns the deploy operation and structured warnings; stops before upload/commit on confirmation-required warnings unless every blocking code is covered by `allow_warning_codes` or broad `allow_warnings`.
+- **`deploy`** — the unified apply primitive (v1.34 unified deploy → v2.0 unified apply with first-class assets slice). Pass a `ReleaseSpec` with replace-vs-patch semantics per resource, value-free `secrets.require` / `secrets.delete`, and optional `assets: { put: [...], sync?: { prefix, prune, confirm? } }` for batch/declarative-sync asset directories. Returns the apply operation and structured warnings; stops before upload/commit on confirmation-required warnings unless every blocking code is covered by `allow_warning_codes` or broad `allow_warnings`.
 - **`deploy_resume`** — resume a deploy operation by `operation_id`.
 - **`deploy_list`** — list recent deploy operations. Params: `project_id`, `limit?`, `cursor?`.
 - **`deploy_events`** — fetch recorded events for a deploy operation. Params: `project_id`, `operation_id`.
