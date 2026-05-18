@@ -40,10 +40,9 @@ export async function handleDeployList(args: {
   if ("error" in auth) return auth.error;
 
   try {
-    const result = await getSdk().deploy.list({
-      project: args.project_id,
+    const p = await getSdk().project(args.project_id);
+    const result = await p.deploy.list({
       limit: args.limit,
-      cursor: args.cursor,
     });
 
     const lines: string[] = [

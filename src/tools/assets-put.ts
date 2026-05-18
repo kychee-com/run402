@@ -7,7 +7,7 @@ import type {
   BlobPutResult,
   BlobPutSource,
   BlobUploadPart,
-} from "../../sdk/dist/namespaces/blobs.types.js";
+} from "../../sdk/dist/namespaces/assets.types.js";
 
 export const blobPutSchema = {
   project_id: z.string().describe("Project ID"),

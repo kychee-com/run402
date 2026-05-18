@@ -35,9 +35,8 @@ export async function handleDeployEvents(args: {
   if ("error" in auth) return auth.error;
 
   try {
-    const result = await getSdk().deploy.events(args.operation_id, {
-      project: args.project_id,
-    });
+    const p = await getSdk().project(args.project_id);
+    const result = await p.deploy.events(args.operation_id);
 
     const lines: string[] = [
       `## Deploy Events`,

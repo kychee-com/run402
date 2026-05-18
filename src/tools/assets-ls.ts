@@ -19,12 +19,12 @@ export async function handleBlobLs(args: Args): Promise<{ content: Array<{ type:
       cursor: args.cursor,
     });
 
-    if (body.assets.length === 0) {
-      return { content: [{ type: "text", text: args.prefix ? `No blobs matching prefix \`${args.prefix}\`` : "No blobs in project." }] };
+    if (body.blobs.length === 0) {
+      return { content: [{ type: "text", text: args.prefix ? `No assets matching prefix \`${args.prefix}\`` : "No assets in project." }] };
     }
 
     const header = "| Key | Size | Visibility | Content-Type | Created |\n|---|---|---|---|---|";
-    const rows = body.assets.map((b) =>
+    const rows = body.blobs.map((b) =>
       `| \`${b.key}\` | ${b.size_bytes.toLocaleString()} | ${b.visibility} | ${b.content_type ?? "—"} | ${b.created_at} |`,
     ).join("\n");
     const more = body.next_cursor ? `\n\nMore results available — pass \`cursor: "${body.next_cursor}"\` to the next call.` : "";

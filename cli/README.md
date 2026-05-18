@@ -100,10 +100,10 @@ CI deploys can ship `site`, `functions`, `database`, and absent/current `base` c
 ### Storage (paste-and-go CDN assets)
 
 ```bash
-run402 blob put ./logo.png        # → AssetRef with cdn_url, sri, etag
-run402 blob put ./asset --key assets/logo --content-type image/svg+xml
-run402 blob get <key> --output /tmp/logo.png
-run402 blob diagnose <url>        # exit 0 if fresh, 1 if stale
+run402 assets put ./logo.png        # → AssetRef with cdn_url, sri, etag
+run402 assets put ./asset --key assets/logo --content-type image/svg+xml
+run402 assets get <key> --output /tmp/logo.png
+run402 assets diagnose <url>        # exit 0 if fresh, 1 if stale
 ```
 
 The returned `cdn_url` is content-addressed (`pr-<public_id>.run402.com/_blob/<key>-<8hex>.<ext>`) — paste it straight into HTML. SRI is bundled in `sri`.
@@ -199,7 +199,7 @@ Every command supports `--help` / `-h`:
 run402 --help
 run402 projects --help
 run402 sites --help
-run402 blob --help
+run402 assets --help
 run402 functions --help
 ```
 

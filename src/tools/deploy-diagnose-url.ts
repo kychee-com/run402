@@ -72,7 +72,8 @@ export async function handleDeployDiagnoseUrl(args: {
   }
 
   try {
-    const resolution = await getSdk().deploy.resolve(input as never);
+    const p = await getSdk().project(args.project_id);
+    const resolution = await p.deploy.resolve(input as never);
     const summary = buildDeployResolveSummary(resolution, request);
     const envelope = {
       status: "ok",

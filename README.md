@@ -43,15 +43,16 @@ That's a real Postgres database + a deployed static site, paid for autonomously 
 
 ### Paste-and-go assets — content-addressed URLs with SRI
 
-`blobs.put()` returns an `AssetRef` whose `scriptTag()` / `linkTag()` / `imgTag()` emitters produce HTML with the URL, the SRI integrity hash, and modern best-practice attributes (`defer`, `loading="lazy"`, `decoding="async"`, `crossorigin`) already wired. The URL is content-addressed (`pr-<public_id>.run402.com/_blob/<key>-<8hex>.<ext>`), served through the v1.33 CDN, and never needs invalidation:
+`assets.put()` returns an `AssetRef` whose `scriptTag()` / `linkTag()` / `imgTag()` emitters produce HTML with the URL, the SRI integrity hash, and modern best-practice attributes (`defer`, `loading="lazy"`, `decoding="async"`, `crossorigin`) already wired. The URL is content-addressed (`pr-<public_id>.run402.com/_blob/<key>-<8hex>.<ext>`), served through the v1.33 CDN, and never needs invalidation:
 
 ```ts
 import { run402 } from "@run402/sdk/node";
 const r = run402();
+const p = await r.project(projectId);
 
-const logo  = await r.blobs.put(projectId, "logo.png", { bytes: pngBytes });
-const app   = await r.blobs.put(projectId, "app.js",   { content: jsSource });
-const style = await r.blobs.put(projectId, "app.css",  { content: css });
+const logo  = await p.assets.put("logo.png", { bytes: pngBytes });
+const app   = await p.assets.put("app.js",   { content: jsSource });
+const style = await p.assets.put("app.css",  { content: css });
 
 const html = `
 <!doctype html>
@@ -289,10 +290,11 @@ import { run402 } from "@run402/sdk/node";
 
 const r = run402();
 const project = await r.projects.provision({ tier: "prototype" });
-await r.blobs.put(project.project_id, "hello.txt", { content: "hi" });
+const p = await r.project(project.project_id);
+await p.assets.put("hello.txt", { content: "hi" });
 ```
 
-20 namespaces: `projects`, `deploy`, `ci`, `sites`, `blobs`, `functions`, `secrets`, `subdomains`, `domains`, `email` (+ `webhooks`), `senderDomain`, `auth`, `apps`, `tier`, `billing`, `contracts`, `ai`, `allowance`, `service`, `admin`. Every operation throws a typed `Run402Error` subclass on failure: `PaymentRequired`, `ProjectNotFound`, `Unauthorized`, `ApiError`, `NetworkError`, `LocalError`, `Run402DeployError`. `deploy.apply()` automatically re-plans safe current-base `BASE_RELEASE_CONFLICT` races and emits `deploy.retry` progress events. See [`sdk/README.md`](./sdk/README.md).
+The SDK is organised as 20 namespaces: `projects`, `assets`, `ci`, `sites`, `functions`, `secrets`, `subdomains`, `domains`, `email` (+ `webhooks`), `senderDomain`, `auth`, `apps`, `tier`, `billing`, `contracts`, `ai`, `allowance`, `service`, `admin`, plus the `r.project(id).apply` hero for atomic mixed writes (release slices + assets slice via `/apply/v1/*`). Every operation throws a typed `Run402Error` subclass on failure: `PaymentRequired`, `ProjectNotFound`, `Unauthorized`, `ApiError`, `NetworkError`, `LocalError`, `Run402DeployError`. `apply()` automatically re-plans safe current-base `BASE_RELEASE_CONFLICT` races and emits `apply.retry` progress events. See [`sdk/README.md`](./sdk/README.md).
 
 ## CLI — `run402`
 

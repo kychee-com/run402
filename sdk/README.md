@@ -1,6 +1,6 @@
 # @run402/sdk
 
-Typed TypeScript client for the [Run402](https://run402.com) API. The kernel shared by `run402-mcp`, the `run402` CLI, and (eventually) user-deployed functions. Every operation is a method on a resource namespace — `r.projects.provision()`, `r.blobs.put()`, `r.deploy.apply()`, `r.functions.deploy()`, …
+Typed TypeScript client for the [Run402](https://run402.com) API. The kernel shared by `run402-mcp`, the `run402` CLI, and (eventually) user-deployed functions. Most operations are project-scoped — bind once with `r.project(id)` and call `.apply()` for atomic mixed writes, `.assets.put()` for blob uploads, `.functions.deploy()`, etc.
 
 ```bash
 npm install @run402/sdk
@@ -20,20 +20,20 @@ import { run402 } from "@run402/sdk/node";
 
 const r = run402();
 const project = await r.projects.provision({ tier: "prototype" });
-await r.blobs.put(project.project_id, "hello.txt", { content: "hi" });
+await (await r.project(project.project_id)).assets.put("hello.txt", { content: "hi" });
 ```
 
 That's it — credentials are read, x402 payments are signed, results are typed.
 
 ### Project-scoped sub-client
 
-If you're working on a single project for the duration of a script, bind it once and skip the id arg on every call:
+Most operations are project-scoped. Bind once and skip the id arg on every call:
 
 ```ts
 const p = await r.useProject(projectId);                                  // persists active project + returns scoped handle
-await p.blobs.put("hello.txt", { content: "hi" });                        // no projectId arg
+await p.assets.put("hello.txt", { content: "hi" });                       // no projectId arg
 await p.functions.list();
-await p.deploy.apply({ site: { replace: files({ "index.html": "<h1>hi</h1>" }) } });
+await p.apply({ site: { replace: files({ "index.html": "<h1>hi</h1>" }) } });
 ```
 
 `r.useProject(id)` writes the active project to the keystore (shared with concurrent CLI runs). For transient in-script scoping that does NOT mutate that state, use `r.project(id)` (or `r.project()` with no arg to resolve from whatever the keystore currently considers active).
@@ -59,13 +59,14 @@ The `CredentialsProvider` interface has two required methods (`getAuth`, `getPro
 | Namespace | Highlights |
 |---|---|
 | `projects` | `provision`, `delete`, `list`, `sql`, `rest`, `validateExpose`, `applyExpose`, `getExpose`, `getUsage`, `getSchema`, `info`, `keys`, `use`, `active`, `pin`, `getQuote` |
-| `deploy` | **The unified deploy primitive (v1.34+).** `apply` / `start` / `resume` / `status` / `list` / `events` / `resolve` / `getRelease` / `getActiveRelease` / `diff` / `plan` / `upload` / `commit` |
-| `ci` | GitHub Actions OIDC federation over `/ci/v1/*`: `createBinding`, `listBindings`, `getBinding`, `revokeBinding`, `exchangeToken`; plus canonical delegation helpers |
-| `sites` | `deployDir` — Node entry only (`@run402/sdk/node`); thin wrapper over `r.deploy.apply` |
-| `blobs` | `put` (returns `AssetRef` with `cdnUrl` / `sri` / `etag` / `cacheKind` and `scriptTag()`/`linkTag()`/`imgTag()` emitters), `get`, `ls`, `rm`, `sign`, `diagnoseUrl`, `waitFresh` |
+| `r.project(id).apply` | **The unified-apply primitive (v1.48+).** Callable hero — `r.project(id).apply(spec)` for atomic mixed writes (release slices + assets slice). Sub-methods: `.plan(spec)`, `.start(spec)`, `.resume(operation_id)`. Underlying engine routes to `/apply/v1/*`. |
+| `r.project(id).deploy` | Read-only namespace for deploy status: `status` / `list` / `events` / `diagnoseUrl` / `getRelease` / `getActiveRelease` / `diff`. The legacy write aliases `.deploy.apply/.start/.plan` are gone — use `r.project(id).apply` directly. |
+| `ci` | GitHub Actions OIDC federation over `/ci/v1/*`: `createBinding`, `listBindings`, `getBinding`, `revokeBinding`, `exchangeToken`; plus canonical delegation helpers. `createBinding` accepts `asset_key_scopes` for per-key CI write authorization. |
+| `r.project(id).sites` | `deployDir` — Node entry only (`@run402/sdk/node`); thin wrapper over `r.project(id).apply({ site: dir(...) })` |
+| `r.project(id).assets` | `put` (single asset), `putMany`, `uploadDir` (Node, additive), `syncDir` (Node, destructive only with `prune: true` + confirm token), `prepareDir` (returns `{ manifest, applySlice }` for pre-commit URL injection), `get`, `ls`, `rm`, `sign`, `diagnoseUrl`, `waitFresh`, `diff`. Returns `AssetRef` (single) or `AssetManifest` (batch). |
 | `functions` | `deploy`, `invoke`, `logs`, `update`, `list`, `delete` |
 | `secrets` | `set`, `list`, `delete` |
-| `subdomains` | `claim`, `list`, `delete` (most agents declare subdomains in `r.deploy.apply({ subdomains: { set: [...] } })` instead) |
+| `subdomains` | `claim`, `list`, `delete` (most agents declare subdomains in `r.project(id).apply({ subdomains: { set: [...] } })` instead) |
 | `domains` | `add`, `list`, `status`, `remove` |
 | `email` | `createMailbox`, `getMailbox`, `deleteMailbox`, `send`, `list`, `get`, `getRaw`, `webhooks.*` |
 | `senderDomain` | `register`, `status`, `remove`, `enableInbound`, `disableInbound` |
@@ -116,23 +117,34 @@ field that does not exist on the actual type.
 
 ### Paste-and-go assets — content-addressed URLs with SRI
 
-`r.blobs.put` returns an `AssetRef`. The `cdnUrl` is content-addressed (`pr-<public_id>.run402.com/_blob/<key>-<8hex>.<ext>`), served through CloudFront, and never needs cache invalidation. The browser refuses execution on byte mismatch via SRI:
+`(await r.project(id)).assets.put` returns an `AssetRef`. The `cdnUrl` is content-addressed (`pr-<public_id>.run402.com/_blob/<key>-<8hex>.<ext>`), served through CloudFront, and never needs cache invalidation. The browser refuses execution on byte mismatch via SRI:
 
 ```ts
-const logo = await r.blobs.put(projectId, "logo.png", { bytes });
+const logo = await (await r.project(projectId)).assets.put("logo.png", { bytes });
 //   logo.cdnUrl     → drop into <img src="…">
 //   logo.sri        → "sha256-…" for <script integrity="…">
 //   logo.etag       → strong "sha256-<hex>"
 //   logo.cacheKind  → "immutable" | "mutable" | "private"
 ```
 
-`immutable: true` is the default since v1.45. The SDK always computes and sends the object SHA-256 because upload sessions require it; pass `false` only when you specifically need mutable URL/cache semantics.
+`immutable: true` is the default since v1.45. The SDK always computes and sends the object SHA-256; pass `false` only when you specifically need mutable URL/cache semantics.
 
-For custom resumable upload UX, use the low-level session primitives:
-`r.blobs.initUploadSession(...)`, `r.blobs.getUploadSession(...)`, and
-`r.blobs.completeUploadSession(...)`. Bytes still go directly to the presigned
-part URLs; the Run402 gateway sees only session metadata.
-Low-level callers must provide the whole-object `sha256`, send per-part checksums to S3 when the presigned URL requires them, and include each part's `sha256` at completion.
+For bulk asset uploads, use the Node-only helpers `uploadDir` (additive), `syncDir` (destructive with explicit `prune: true` + confirmation token), and `prepareDir` (returns `{ manifest, applySlice }` so the agent can render HTML against resolved URLs before committing in one apply transaction):
+
+```ts
+import { run402, type AssetManifest, type FileSet } from "@run402/sdk/node";
+const r = run402();
+const p = await r.project(projectId);
+const renderHtml = (_m: AssetManifest) => "<h1>hi</h1>";
+const siteFiles: FileSet = {};
+
+const { manifest, applySlice } = await r.assets.prepareDir("./assets", { project: projectId, prefix: "static/" });
+const html = renderHtml(manifest);                          // urls already populated
+await p.apply({
+  site: { replace: { ...siteFiles, "index.html": html } },  // atomic with assets
+  assets: applySlice,
+});
+```
 
 ### Expose manifest validation
 
@@ -150,7 +162,7 @@ if (result.hasErrors) console.log(result.errors);
 
 `migrationSql` is reference context only; it is not executed as a PostgreSQL dry run. This method validates authorization manifests, not deploy manifests.
 
-### Unified deploy (v1.34+) — `r.deploy.apply`
+### Unified deploy (v1.34+) — `r.project(spec.project).apply`
 
 The canonical primitive for any deploy (database + migrations + manifest + value-free secret declarations + functions + site + subdomain). Three layers:
 
@@ -175,28 +187,28 @@ const spec: ReleaseSpec = {
 };
 
 // One-shot — most agents use this.
-const result = await r.deploy.apply(spec);
+const result = await (await r.project(spec.project)).apply(spec);
 const summary = summarizeDeployResult(result);
 console.log(summary.headline);
 
 // Long-running with progress events. Events are a discriminated union on `type`.
-const op = await r.deploy.start(spec);
+const op = await (await r.project(spec.project)).apply.start(spec);
 for await (const ev of op.events()) console.log(ev.type);
 const final = await op.result();
 
 // Resume a previously-started deploy by id.
-const resumed = await r.deploy.resume("op_...");
+const resumed = await (await r.project(projectId)).apply.resume("op_...");
 ```
 
 - **All bytes ride through CAS.** The plan request body never carries inline bytes — only `ContentRef` objects. When the spec exceeds 5 MB JSON, the SDK uploads the manifest itself as a CAS object (`manifest_ref` escape hatch).
 - **Per-resource semantics on the spec.** `site.replace` = "this is the whole site" (files absent are removed). `site.patch.put` / `patch.delete` are surgical updates. `site.public_paths` controls browser-visible static paths separately from backing release asset paths: explicit mode uses a complete map such as `{ "/events": { asset: "events.html", cache_class: "html" } }`, so `/events` serves `events.html` while `/events.html` is not public unless separately declared. Implicit mode restores filename-derived reachability and can widen access. A public-path-only site spec is deployable. `functions.replace` / `functions.patch.set` / `functions.patch.delete` mirror that. Secrets are value-free: set values first with `r.secrets.set(project, key, value)`, then deploy with `secrets.require` and/or `secrets.delete`. `subdomains.set` / `subdomains.add` / `subdomains.remove` use their own shape. Top-level absence = leave untouched.
 - **Same-origin web routes.** `routes` is `undefined | null | { replace: RouteSpec[] }`. Omit it or pass `null` to carry forward base routes, pass `{ replace: [] }` to clear routes, or pass route entries to replace the table. Function targets use `{ type: "function", name }`; exact static route targets use `{ type: "static", file }` with methods `["GET"]` or `["GET","HEAD"]`, no wildcard pattern, and a relative deployed asset path with no leading slash. `file` is not a public path, URL, CAS hash, rewrite, or redirect. Prefer `site.public_paths` for ordinary clean static URLs like `/events -> events.html`; use static route targets for method-aware aliases such as static `GET /login` plus function `POST /login`. Routed browser ingress invokes Node 22 Fetch Request -> Response handlers; `req.url` is the full public URL on managed subdomains, deployment hosts, and verified custom domains. Direct `/functions/v1/:name` invocation remains API-key protected. Runtime route failure codes include `ROUTE_MANIFEST_LOAD_FAILED`, `ROUTED_INVOKE_WORKER_SECRET_MISSING`, `ROUTED_INVOKE_AUTH_FAILED`, `ROUTED_ROUTE_STALE`, `ROUTE_METHOD_NOT_ALLOWED`, and `ROUTED_RESPONSE_TOO_LARGE`.
 - **Strict spec validation happens before network calls.** Raw `ReleaseSpec` objects reject unknown fields (for example `project_id` or `subdomain`) instead of silently dropping them during normalization, and project/base-only or empty nested specs fail with `Run402DeployError.code === "MANIFEST_EMPTY"`. Use the Node manifest helpers when starting from CLI/MCP-style JSON.
-- **Tier preflight happens before deploy side effects.** After normalization and before manifest CAS upload or `/deploy/v2/plans`, deploy checks literal function timeout, memory, cron minimum interval, and scheduled-function count when known. Violations throw `Run402DeployError.code === "BAD_FIELD"` with `details.field`, `details.value`, `details.tier`, the relevant cap, and `details.limit_source`; gateway validation remains authoritative.
+- **Tier preflight happens before deploy side effects.** After normalization and before manifest CAS upload or `/apply/v1/plans`, deploy checks literal function timeout, memory, cron minimum interval, and scheduled-function count when known. Violations throw `Run402DeployError.code === "BAD_FIELD"` with `details.field`, `details.value`, `details.tier`, the relevant cap, and `details.limit_source`; gateway validation remains authoritative.
 - **Warnings are structured.** `DeployResult.warnings` contains `WarningEntry[]` (`code`, `severity`, `requires_confirmation`, `message`, optional `affected`/`details`/`confidence`); the type preserves legacy low/medium/high plan warnings and modern deploy-observability info/warn/high warnings. `apply()` emits `plan.warnings` and stops before upload/commit on confirmation-required warnings unless broad `allowWarnings` is set or every blocking code is listed in `allowWarningCodes`. For `MISSING_REQUIRED_SECRET`, set the affected keys with `r.secrets.set`, then retry.
 - **Deploy summaries are SDK-owned convenience.** `summarizeDeployResult(result)` returns `DeploySummary` (`schema_version: "deploy-summary.v1"`) with a headline plus reliable current buckets for site path counts, CAS new/reused bytes, functions, migrations, routes, secrets, subdomains, and warning counts. It is derived from `DeployResult.diff` / `DeployResult.warnings`; it makes no extra gateway calls, omits sections the gateway did not return, and intentionally excludes timings, client-side duration estimates, and function old/new code hashes.
 - **Safe release-race retries are SDK-owned.** `deploy.apply()` automatically re-plans and retries omitted/current-base specs when the gateway returns `BASE_RELEASE_CONFLICT` with `safe_to_retry: true`. Static activation/config failures reported from `activation_pending` throw immediately with gateway metadata preserved. The default retry budget is two retries after the initial attempt; pass `{ maxRetries: 0 }` to opt out.
-- **Planning supports dry-runs.** `r.deploy.plan(spec, { dryRun: true })` calls the server-authoritative dry-run route and returns the normalized v2 plan envelope without uploading bytes or creating plan/operation rows (`plan_id` and `operation_id` are `null`).
+- **Planning supports dry-runs.** `(await r.project(spec.project)).apply.plan(spec, { dryRun: true })` calls the server-authoritative dry-run route and returns the normalized v2 plan envelope without uploading bytes or creating plan/operation rows (`plan_id` and `operation_id` are `null`).
 - **Release observability is typed.** Use `r.deploy.getRelease({ project, releaseId, siteLimit? })`, `r.deploy.getActiveRelease({ project, siteLimit? })`, and `r.deploy.diff({ project, from, to, limit? })` to inspect release inventory and release-to-release diffs. Inventories include `release_generation`, `static_manifest_sha256`, nullable `static_manifest_metadata` (`file_count`, `total_bytes`, `cache_classes`, `cache_class_sources`, `spa_fallback`), and `static_public_paths[]` when returned. `site.paths` lists release static assets; `static_public_paths[]` lists browser reachability with `public_path`, `asset_path`, `reachability_authority`, `direct`, cache class, and content type. `diff` returns `ReleaseToReleaseDiff` with `migrations.applied_between_releases`; secret diffs expose keys only; `static_assets` exposes unchanged/changed/added/removed files, CAS byte reuse, eliminated deployment-copy bytes, and immutable/CAS warning counts.
 - **Server-authoritative manifest digest** — no byte-for-byte canonicalize requirement on the client.
 - The Node entry adds `fileSetFromDir(path)` for filesystem byte sources:
@@ -204,8 +216,8 @@ const resumed = await r.deploy.resume("op_...");
   ```ts
   import { run402, fileSetFromDir } from "@run402/sdk/node";
   const r = run402();
-  await r.deploy.apply({
-    project: projectId,
+  const p = await r.project(projectId);
+  await p.apply({
     site: { replace: await fileSetFromDir("./dist") },
     subdomains: { set: ["my-app"] },
   });
@@ -241,7 +253,7 @@ const resumed = await r.deploy.resume("op_...");
     routes: { replace: routes },
   };
 
-  await r.deploy.apply(spec);
+  await (await r.project(spec.project)).apply(spec);
   ```
 
   Matching is exact or final `/*` prefix only. `/admin/*` does not match `/admin`; deploy both `/admin` and `/admin/*` when the section root is dynamic. Release static asset paths and public browser paths are distinct. In the example, `events.html` is a release asset and `/events` is the public static URL declared by `site.public_paths`; `/events.html` is not public in explicit mode unless separately declared. A route-only static alias looks like `{ pattern: "/events", methods: ["GET", "HEAD"], target: { type: "static", file: "events.html" } }`; prefer `site.public_paths` for ordinary clean URLs and reserve static route targets for exact method-aware route-table behavior. Avoid routing every static file, wildcard static targets, leading-slash files, directory shorthand, broad method lists by default, and one-static-route-target-per-page route-table exhaustion. Query strings are ignored for matching and preserved in the handler's full public `req.url`. Exact beats prefix, longest prefix wins, and method-compatible dynamic routes beat static files. A method-specific `POST /login` route lets static `GET /login` serve HTML. Unsafe method mismatch returns `405`; matched dynamic route failures do not fall back to static assets.
@@ -267,7 +279,8 @@ const resumed = await r.deploy.resume("op_...");
     url: "https://example.com/events?utm=x#hero",
     method: "GET",
   });
-  const resolution: DeployResolveResponse = await r.deploy.resolve(request);
+  const p = await r.project(projectId);
+  const resolution: DeployResolveResponse = await p.deploy.resolve(request);
   const summary = buildDeployResolveSummary(resolution, request);
   const auth: DeployResolveAuthorizationResult | undefined = resolution.authorization_result ?? undefined;
   const cas: DeployResolveCasObject | undefined = resolution.cas_object ?? undefined;
@@ -300,7 +313,7 @@ const resumed = await r.deploy.resume("op_...");
 
   const r = run402();
   const { spec, idempotencyKey } = await loadDeployManifest("./run402.deploy.json");
-  await r.deploy.apply(spec, { idempotencyKey });
+  await (await r.project(spec.project)).apply(spec, { idempotencyKey });
   ```
 
   `loadDeployManifest(path)` parses JSON relative to the manifest file, maps
@@ -312,7 +325,7 @@ const resumed = await r.deploy.resume("op_...");
 
 ### GitHub Actions OIDC — CI credentials drive deploy
 
-The v1 CI path keeps the deploy primitive simple: link a GitHub repository once, then call the existing `r.deploy.apply` with CI-marked credentials. There is no separate `r.ci.deployApply` method and no public `ci: true` deploy option.
+The v1 CI path keeps the deploy primitive simple: link a GitHub repository once, then call the existing `r.project(spec.project).apply` with CI-marked credentials. There is no separate `r.ci.deployApply` method and no public `ci: true` deploy option.
 
 The CLI is the easiest setup path (`run402 ci link github`), but the SDK exposes the building blocks:
 
@@ -363,7 +376,7 @@ const ciSpec: ReleaseSpec = {
   site: { patch: { put: { "index.html": "<h1>ship</h1>" } } },
 };
 
-await r.deploy.apply(ciSpec);
+await (await r.project(ciSpec.project)).apply(ciSpec);
 ```
 
 CI deploys intentionally allow only `project`, `database`, `functions`, `site`, absent/current `base`, and `routes` authorized by the binding's `route_scopes`. Omitted or empty `route_scopes` preserves the original no-routes CI posture. The SDK normalizes scopes, sends `route_scopes` only when non-empty, and still rejects `secrets`, `subdomains`, `checks`, unknown future top-level fields, non-current `base`, and specs large enough to require `manifest_ref` before upload/plan. Gateway planning enforces route diffs and can return `CI_ROUTE_SCOPE_DENIED`; re-link with covering exact scopes like `/admin` or final-wildcard scopes like `/api/*`, or deploy locally. Use the canonical builders (`buildCiDelegationStatement`, `buildCiDelegationResourceUri`) instead of hand-rolling SIWX text; gateway tests pin those strings as golden vectors.
@@ -403,7 +416,7 @@ declare const spec: ReleaseSpec;
 const r = run402();
 
 try {
-  await r.deploy.apply(spec);
+  await (await r.project(spec.project)).apply(spec);
 } catch (e) {
   if (isPaymentRequired(e)) {
     // e is narrowed to PaymentRequired
@@ -431,7 +444,7 @@ should not duplicate or corrupt state, not that lifecycle/payment/auth gates
 will become allowed without an action. Pair retries with the SDK method's own
 `idempotencyKey` so retried mutations dedup server-side:
 
-For `r.deploy.apply()`, safe `BASE_RELEASE_CONFLICT` release races are already
+For `r.project(spec.project).apply()`, safe `BASE_RELEASE_CONFLICT` release races are already
 handled by the deploy namespace with a fresh plan and visible `deploy.retry`
 events. Use `withRetry` for caller-owned retry policies around other operations,
 or pass `maxRetries: 0` to `deploy.apply` when you want to handle deploy races
@@ -451,7 +464,7 @@ const r = run402();
 
 try {
   const release = await withRetry(
-    () => r.deploy.apply(spec, { idempotencyKey: "deploy-2026-05-01" }),
+    async () => (await r.project(spec.project)).apply(spec, { idempotencyKey: "deploy-2026-05-01" }),
     {
       attempts: 3,
       onRetry: (e, attempt, delayMs) =>

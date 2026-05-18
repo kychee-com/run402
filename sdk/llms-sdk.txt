@@ -29,7 +29,7 @@ import { run402 } from "@run402/sdk/node";
 
 const r = run402();
 const project = await r.projects.provision({ tier: "prototype" });
-await r.blobs.put(project.project_id, "hello.txt", { content: "hi" });
+await (await r.project(project.project_id)).assets.put("hello.txt", { content: "hi" });
 ```
 
 That's it — credentials are read, x402 payments are signed, results are typed.
@@ -138,7 +138,7 @@ const r = run402();
 
 try {
   const release = await withRetry(
-    () => r.deploy.apply(spec, { idempotencyKey: "deploy-2026-05-01" }),
+    async () => (await r.project(spec.project)).apply(spec, { idempotencyKey: "deploy-2026-05-01" }),
     {
       attempts: 3,
       onRetry: (_e, attempt, delayMs) =>
@@ -175,7 +175,7 @@ The SDK exports identity-free guards plus a single canonical "should I retry thi
 
 Do not wrap lifecycle-gated writes, auth token exchanges, or passkey verification in blind retry loops just because an error says `safeToRetry: true`. Use a custom `retryIf` when a caller-specific recovery action makes a retry meaningful.
 
-For `r.deploy.apply()`, do not hand-roll the `BASE_RELEASE_CONFLICT` loop: the deploy namespace already re-plans and retries omitted/current-base specs when the gateway returns `safe_to_retry: true`. Default deploy budget is 2 retries after the initial attempt, `maxRetries: 0` opts out, each retry emits `deploy.retry`, and exhausted retries surface `attempts` / `maxRetries` / `lastRetryCode` on `Run402DeployError`.
+For `r.project(id).apply()`, do not hand-roll the `BASE_RELEASE_CONFLICT` loop: the deploy namespace already re-plans and retries omitted/current-base specs when the gateway returns `safe_to_retry: true`. Default deploy budget is 2 retries after the initial attempt, `maxRetries: 0` opts out, each retry emits `deploy.retry`, and exhausted retries surface `attempts` / `maxRetries` / `lastRetryCode` on `Run402DeployError`.
 
 `RetryOptions`: `attempts?: number`, `baseDelayMs?: number`, `maxDelayMs?: number`, `retryIf?: (error, attempt) => boolean`, `onRetry?: (error, attempt, delayMs) => void`.
 
@@ -185,10 +185,10 @@ After exhausting attempts, `withRetry` throws the LAST observed error — your c
 
 ### Paste-and-go assets — content-addressed URLs with SRI
 
-`r.blobs.put` returns an `AssetRef`:
+`r.assets.put` returns an `AssetRef`:
 
 ```ts
-const logo = await r.blobs.put(projectId, "logo.png", { bytes });
+const logo = await (await r.project(projectId)).assets.put("logo.png", { bytes });
 
 logo.cdnUrl        // → "https://pr-<public_id>.run402.com/_blob/logo-3a7fc02e.png"
 logo.sri           // → "sha256-…" for <script integrity="…">
@@ -204,10 +204,10 @@ If you suspect cache staleness on a *mutable* URL, the SDK has helpers:
 
 ```ts
 const blobUrl = "https://pr-….run402.com/_blob/avatar.png";
-const diag = await r.blobs.diagnoseUrl(projectId, blobUrl);
+const diag = await (await r.project(projectId)).assets.diagnoseUrl( blobUrl);
 //   diag.expectedSha256 / observedSha256 / cache.* / invalidation.* / hint
 
-const fresh = await r.blobs.waitFresh(projectId, {
+const fresh = await (await r.project(projectId)).assets.waitFresh( {
   url: blobUrl,
   sha256: expectedSha,
   timeoutMs: 60_000,
@@ -217,43 +217,45 @@ const fresh = await r.blobs.waitFresh(projectId, {
 
 **Don't call `waitFresh` on immutable URLs** — they're correct from upload time.
 
-### Unified deploy — `r.deploy.apply` (v1.34+)
+### Unified deploy — `r.project(id).apply` (v1.34+)
 
 The canonical primitive for any deploy (database + migrations + manifest + value-free secret declarations + functions + site + subdomain). Three layers:
 
 ```ts
 // One-shot — most agents use this. Awaits to a terminal state.
-const result = await r.deploy.apply(spec);
+const result = await (await r.project(spec.project)).apply(spec);
 
 // Long-running with progress events. Events are a discriminated union on `type`.
-const op = await r.deploy.start(spec);
+const op = await (await r.project(spec.project)).apply.start(spec);
 for await (const ev of op.events()) {
   console.log(ev.type, ev);
 }
 const final = await op.result();
 
 // Resume by id (e.g. after an interrupted process or a 5xx).
-const resumed = await r.deploy.resume(operationId);
+const resumed = await (await r.project(projectId)).apply.resume(operationId);
 
 // Lower-level steps for CLI debugging:
-const { plan: lowPlan, byteReaders } = await r.deploy.plan(spec);
-await r.deploy.upload(lowPlan, { project: projectId, byteReaders });
+const pScoped = await r.project(spec.project);
+const { plan: lowPlan, byteReaders } = await pScoped.apply.plan(spec);
+await pScoped.deploy.upload(lowPlan, { byteReaders });
 if (!lowPlan.plan_id) throw new Error("Dry-run plans cannot be committed");
-const committed = await r.deploy.commit(lowPlan.plan_id, { project: projectId });
+const committed = await pScoped.deploy.commit(lowPlan.plan_id);
 
 // Server-authoritative dry-run: no bytes uploaded, no plan/operation rows.
-const { plan: preview } = await r.deploy.plan(spec, { dryRun: true });
+const { plan: preview } = await pScoped.apply.plan(spec, { dryRun: true });
 console.log(preview.plan_id);       // null
 console.log(preview.operation_id);  // null
 console.log(preview.diff.summary);  // SDK-normalized from the v2 flat plan envelope
 ```
 
-Release observability reads are also part of `r.deploy`:
+Release observability reads live on the scoped `deploy` namespace:
 
 ```ts
-const release = await r.deploy.getRelease({ project: projectId, releaseId: "rel_...", siteLimit: 5000 });
-const active = await r.deploy.getActiveRelease({ project: projectId });
-const diff = await r.deploy.diff({ project: projectId, from: "empty", to: "active", limit: 1000 });
+const p = await r.project(projectId);
+const release = await p.deploy.getRelease("rel_...", { siteLimit: 5000 });
+const active = await p.deploy.getActiveRelease();
+const diff = await p.deploy.diff({ from: "empty", to: "active", limit: 1000 });
 ```
 
 `getRelease` / `getActiveRelease` return `ReleaseInventory` (`kind: "release_inventory"`, `state_kind: "current_live" | "effective" | "desired_manifest"`, site paths, `static_public_paths`, functions, secret keys, subdomains, materialized routes, applied migrations, `release_generation`, `static_manifest_sha256`, nullable `static_manifest_metadata`, and inventory warnings when returned). `site.paths` is the release static asset inventory; `static_public_paths[]` is the browser reachability inventory with `public_path`, `asset_path`, `reachability_authority`, `direct`, `cache_class`, `content_type`, and optional route metadata. `reachability_authority` explains whether reachability came from implicit file-path mode, explicit `site.public_paths`, or a route-only static alias. `static_manifest_metadata: null` means unavailable, not zero; when present it includes `file_count`, `total_bytes`, `cache_classes`, `cache_class_sources`, and `spa_fallback`. `diff` returns `ReleaseToReleaseDiff` (`kind: "release_diff"`) with `migrations.applied_between_releases`; secret and subdomain diffs have only `added` / `removed`, never `changed`; route diffs expose `routes.added` / `removed` / `changed`; `static_assets` exposes unchanged/changed/added/removed files, `newly_uploaded_cas_bytes`, `reused_cas_bytes`, `deployment_copy_bytes_eliminated`, `legacy_immutable_warnings`, `previous_immutable_failures`, and `cas_authorization_failures`.
@@ -286,7 +288,7 @@ The full type is exported as `ReleaseSpec` from `@run402/sdk` and `@run402/sdk/n
 - **Routes.** `ReleaseRoutesSpec` is `undefined | null | { replace: RouteSpec[] }`. Omitted and `null` carry forward base routes; `{ replace: [] }` clears dynamic routes; `{ replace: [...] }` replaces the route table. `RouteSpec` is one entry: `{ pattern: string, methods?: RouteHttpMethod[], target: RouteTarget }`. Function targets are `{ type: "function", name: string }`; static route targets are `{ type: "static", file: string }` for exact method-aware static aliases, not ordinary clean URLs, rewrites, or redirects. Prefer `site.public_paths` for clean static URLs such as `/events -> events.html`; use static routes for cases like static `GET /login` plus function `POST /login`. Static targets require exact patterns only, methods `["GET"]` or `["GET","HEAD"]`, and a relative deployed asset path with no leading slash, wildcard, directory shorthand, query, or fragment. `methods` omitted means all supported methods for function routes; `methods: []` is invalid. Supported methods are exported as `ROUTE_HTTP_METHODS` and `RouteHttpMethod` (`GET`, `HEAD`, `POST`, `PUT`, `PATCH`, `DELETE`, `OPTIONS`). Function target names are materialized release function names.
 - **Strict validation is SDK-owned.** `deploy.plan/start/apply` reject unknown raw `ReleaseSpec` fields before normalization can drop them; only top-level `$schema` metadata is tolerated and stripped before the plan request. `project_id`, `subdomain`, `site.replcae`, `functions.replace.api.deps`, `functions.replace.api.config.schedule`, and similar typos are `Run402DeployError.code === "INVALID_SPEC"` before any hash/upload/plan request. Use `loadDeployManifest` / `normalizeDeployManifest` for CLI/MCP JSON that legitimately uses `project_id`, `{ path }`, base64 file entries, or migration `sql_path`.
 - **No-op specs fail locally.** A spec with only `project` / `base`, or empty containers such as `site.replace: {}`, `functions.patch.delete: []`, `secrets.require: []`, or `subdomains.set: []`, throws `Run402DeployError.code === "MANIFEST_EMPTY"` before any network call. Delete-only patches with non-empty `delete` arrays still count as deployable.
-- **Tier preflight is local but gateway remains authoritative.** After normalization and before manifest CAS upload or `/deploy/v2/plans`, `deploy.plan/start/apply` check literal function `config.timeoutSeconds`, `config.memoryMb`, cron minimum interval, and scheduled-function count when computable. Failures are `Run402DeployError.code === "BAD_FIELD"` with `details.field`, `details.value`, `details.tier`, `tier_max` or `min_interval_minutes`, and `details.limit_source` (`tier_status` or `local_static_fallback`). Current caps: prototype 10s / 128 MB / 1 scheduled fn / 15 min, hobby 30s / 256 MB / 3 / 5 min, team 60s / 512 MB / 10 / 1 min. `tier.status()` exposes `function_limits` / `limits.functions` when returned, including current scheduled usage.
+- **Tier preflight is local but gateway remains authoritative.** After normalization and before manifest CAS upload or `/apply/v1/plans`, `deploy.plan/start/apply` check literal function `config.timeoutSeconds`, `config.memoryMb`, cron minimum interval, and scheduled-function count when computable. Failures are `Run402DeployError.code === "BAD_FIELD"` with `details.field`, `details.value`, `details.tier`, `tier_max` or `min_interval_minutes`, and `details.limit_source` (`tier_status` or `local_static_fallback`). Current caps: prototype 10s / 128 MB / 1 scheduled fn / 15 min, hobby 30s / 256 MB / 3 / 5 min, team 60s / 512 MB / 10 / 1 min. `tier.status()` exposes `function_limits` / `limits.functions` when returned, including current scheduled usage.
 - **Plan warnings are structured.** `PlanResponse.warnings` and `DeployResult.warnings` are `WarningEntry[]`; `deploy.apply()` emits `plan.warnings` and aborts before upload/commit when a warning requires confirmation unless broad `allowWarnings` is set or every blocking warning code is listed in `allowWarningCodes`. `MISSING_REQUIRED_SECRET` means set the affected keys with `r.secrets.set`, then retry. For `WILDCARD_ROUTE_EXCLUDES_MUTATION_METHODS`, prefer route-level `acknowledge_readonly: true` on intentionally read-only GET/HEAD final-wildcard function routes; use code-level allowance only after inspecting all affected entries.
 - **Deploy summaries are derived SDK helpers.** `summarizeDeployResult(result: DeployResult): DeploySummary` is exported from `@run402/sdk` and `@run402/sdk/node`. It makes no gateway calls and summarizes only current reliable `DeployResult.diff` / `DeployResult.warnings` data: site path counts, CAS new/reused bytes, functions, migrations, routes, secrets, subdomains, and warning counts. Missing buckets are omitted, not zero-filled. It intentionally has no timings, client-side duration estimates, server phase estimates, or function old/new code hash fields.
 - **Safe release-race retries are automatic.** For omitted/current-base specs, `deploy.apply()` re-plans and retries `BASE_RELEASE_CONFLICT` only when the gateway marks the error `safe_to_retry: true`. Pinned `base.release_id` and `{ release: "empty" }` stay caller-owned. Static activation/spec failures inside `activation_pending` throw immediately with gateway metadata preserved instead of polling until timeout. Pass `maxRetries: 0` to opt out.
@@ -315,8 +317,8 @@ The Node entry adds `fileSetFromDir(path)` for filesystem byte sources:
 import { run402, fileSetFromDir } from "@run402/sdk/node";
 
 const r = run402();
-const result = await r.deploy.apply({
-  project: projectId,
+const p = await r.project(projectId);
+const result = await p.apply({
   site: { replace: await fileSetFromDir("./dist") },
   subdomains: { set: ["my-app"] },
 });
@@ -332,13 +334,13 @@ import { loadDeployManifest, normalizeDeployManifest, run402 } from "@run402/sdk
 const r = run402();
 
 const loaded = await loadDeployManifest("./run402.deploy.json");
-await r.deploy.apply(loaded.spec, { idempotencyKey: loaded.idempotencyKey });
+await (await r.project(loaded.spec.project)).apply(loaded.spec, { idempotencyKey: loaded.idempotencyKey });
 
 const inMemory = await normalizeDeployManifest({
   project_id: projectId,
   site: { patch: { put: { "index.html": { data: "<h1>hi</h1>" } } } },
 });
-await r.deploy.apply(inMemory.spec, { idempotencyKey: inMemory.idempotencyKey });
+await (await r.project(inMemory.spec.project)).apply(inMemory.spec, { idempotencyKey: inMemory.idempotencyKey });
 ```
 
 `DeployManifestInput` is the agent-facing JSON shape: `project_id` becomes `project`, `idempotency_key` is returned separately for deploy options, `{ data, encoding: "base64", contentType? }` decodes to bytes, `{ path, contentType? }` becomes a lazy `FsFileSource`, and `database.migrations[].sql_path` / `sql_file` are read as UTF-8 SQL. `loadDeployManifest(path)` resolves relative paths against the manifest file's directory; `normalizeDeployManifest(input, { baseDir? })` defaults relative paths to `process.cwd()`. Manifest normalization is strict too: unknown fields are rejected instead of dropped, so a valid site deploy plus typoed `subdomain` cannot become a partial site-only deploy.
@@ -370,7 +372,7 @@ const specWithRoutes: ReleaseSpec = {
   },
   routes: { replace: routes },
 };
-await r.deploy.apply(specWithRoutes);
+await (await r.project(specWithRoutes.project)).apply(specWithRoutes);
 ```
 
 Route matching and routed HTTP contract:
@@ -406,7 +408,8 @@ const request = normalizeDeployResolveRequest({
   url: "https://example.com/events?utm=x#hero",
   method: "GET",
 });
-const resolution: DeployResolveResponse = await r.deploy.resolve(request);
+const p = await r.project(projectId);
+const resolution: DeployResolveResponse = await p.deploy.resolve(request);
 const summary = buildDeployResolveSummary(resolution, request);
 const auth: DeployResolveAuthorizationResult | undefined = resolution.authorization_result ?? undefined;
 const cas: DeployResolveCasObject | undefined = resolution.cas_object ?? undefined;
@@ -441,7 +444,7 @@ Runtime route failure codes to branch on: `ROUTE_MANIFEST_LOAD_FAILED` (manifest
 
 ### GitHub Actions OIDC — CI credentials + the same deploy primitive
 
-CI/OIDC federation is deliberately credential-driven. Link a GitHub repository or environment once, then keep using `r.deploy.apply(...)`; the deploy namespace detects SDK-marked CI credentials internally. Do not invent an `r.ci.deployApply(...)` path and do not pass a public `ci` deploy flag.
+CI/OIDC federation is deliberately credential-driven. Link a GitHub repository or environment once, then keep using `r.project(id).apply(...)`; the deploy namespace detects SDK-marked CI credentials internally. Do not invent an `r.ci.deployApply(...)` path and do not pass a public `ci` deploy flag.
 
 The setup side is `r.ci` plus the Node-only signing helper. Use the SDK builders exactly; the gateway validates the SIWX Statement and Resource URI against golden vectors.
 
@@ -496,7 +499,7 @@ const ciSpec: ReleaseSpec = {
   site: { patch: { put: { "index.html": "<h1>ship</h1>" } } },
 };
 
-await r.deploy.apply(ciSpec);
+await (await r.project(ciSpec.project)).apply(ciSpec);
 ```
 
 CI deploy restrictions are part of the client contract: allowed top-level fields are only `project`, `database`, `functions`, `site`, absent/current `base`, and `routes` authorized by the binding's `route_scopes`. Omitted or empty `route_scopes` preserves the original no-routes CI posture. `spec.secrets`, `spec.subdomains`, `spec.checks`, unknown future fields, non-current `base`, and oversized specs that would require `manifest_ref` are rejected before any upload or plan call. Non-CI deploy behavior is unchanged. Gateway planning enforces route diffs and returns `CI_ROUTE_SCOPE_DENIED` when a route declaration falls outside the delegated exact paths or final wildcard prefixes.
@@ -551,7 +554,7 @@ The trigger only fills omitted or explicit `null` owner values; it does not over
 
 **Non-mutating validation:** `r.projects.validateExpose(manifestOrJsonString, { project?, project_id?, migrationSql? })` validates the auth/expose manifest used by `database.expose` and `apply_expose`. With `project` / `project_id`, validation uses the live project schema through a server-authoritative endpoint; without it, validation is projectless. Invalid JSON strings return `{ hasErrors: true, errors, warnings }` instead of throwing. `migrationSql` is reference context only and is not executed as a PostgreSQL dry run. This is not deploy-manifest validation.
 
-**Imperative path:** `r.projects.applyExpose(projectId, manifest)` POSTs the same JSON shape to `/projects/v1/admin/:id/expose`; `r.projects.getExpose(projectId)` reads the currently-applied manifest. Prefer `r.deploy.apply` for production deploys so schema migrations and expose policy land together, but the direct methods are useful for round-tripping an existing manifest.
+**Imperative path:** `r.projects.applyExpose(projectId, manifest)` POSTs the same JSON shape to `/projects/v1/admin/:id/expose`; `r.projects.getExpose(projectId)` reads the currently-applied manifest. Prefer `r.project(id).apply` for production deploys so schema migrations and expose policy land together, but the direct methods are useful for round-tripping an existing manifest.
 
 ### In-function helpers — `@run402/functions`
 
@@ -657,12 +660,12 @@ const spec: ReleaseSpec = {
   site: { patch: { put: { "index.html": "<h1>Hello</h1>" } } },
 };
 
-const result = await r.deploy.apply(spec);
+const result = await (await r.project(spec.project)).apply(spec);
 const summary = summarizeDeployResult(result);
 console.log(summary.headline, summary.site?.cas?.reused_bytes);
 ```
 
-For live event streaming during an in-flight deploy, use `r.deploy.start(spec)` and
+For live event streaming during an in-flight deploy, use `(await r.project(spec.project)).apply.start(spec)` and
 iterate `op.events()` (an `AsyncIterable<DeployEvent>`). The `r.deploy.events(operationId)`
 method returns the events the gateway has recorded so far for an operation —
 useful for inspecting a deploy after the fact, not for live streaming.
@@ -837,7 +840,7 @@ list(projectId): Promise<SubdomainSummary[]>
 ```
 
 Most agents do not call `claim` directly — declare subdomains in
-`r.deploy.apply({ subdomains: { set: ["my-app"] } })` and the deploy primitive
+`r.project(id).apply({ subdomains: { set: ["my-app"] } })` and the deploy primitive
 claims them as part of the release.
 
 Subdomain auto-reassignment: claim once. Every subsequent deploy to the same project automatically points the subdomain at the new deployment.
@@ -1121,7 +1124,7 @@ OpenClaw skill packaging follows the same release train.
 - **Provision before authoring HTML.** The `anon_key` is permanent and must be embedded in your frontend; provision first, then write the HTML.
 - **Use the manifest for access control**, never raw `GRANT/REVOKE`.
 - **`user_owns_rows` is the default for user-scoped data.** Reach for `public_read_write_UNRESTRICTED` only on intentionally-public tables.
-- **Use immutable `cdnUrl` from `r.blobs.put`.** It's correct from the moment of upload — no `waitFresh` needed.
+- **Use immutable `cdnUrl` from `r.assets.put`.** It's correct from the moment of upload — no `waitFresh` needed.
 - **Don't bake unconditional `r.allowance.faucet()` into deploy scripts** — the faucet rate-limits and breaks already-funded flows.
 - **Per-project rate limit is 100 req/sec.** On 429, back off using `retry_after`.
 - **`r.service.status()` works without auth.** Use it before evaluating Run402, or to distinguish platform issues from your own bugs.
