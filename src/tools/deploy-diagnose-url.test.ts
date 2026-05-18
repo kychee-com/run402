@@ -13,12 +13,14 @@ let nextResolveImpl: (opts: unknown) => Promise<unknown> = async () => ({
 mock.module("../sdk.js", {
   namedExports: {
     getSdk: () => ({
-      deploy: {
-        resolve: async (opts: unknown) => {
-          lastResolveInput = opts;
-          return nextResolveImpl(opts);
+      project: async (_id: string) => ({
+        deploy: {
+          resolve: async (opts: unknown) => {
+            lastResolveInput = opts;
+            return nextResolveImpl(opts);
+          },
         },
-      },
+      }),
     }),
     _resetSdk: () => {},
   },

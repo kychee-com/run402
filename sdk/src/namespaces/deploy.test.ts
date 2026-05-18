@@ -318,16 +318,17 @@ describe("Deploy.apply (happy path)", () => {
     });
 
     assert.equal(w.puts.length, 2, "one PUT per multipart part");
+    // v1.48: per-session /storage/v1/uploads/:id/complete was removed. The
+    // plan-level POST /content/v1/plans/:id/commit now promotes every staged
+    // multipart session in one shot.
     const completeReq = w.requests.find(
       (r) => r.path === "/storage/v1/uploads/u_multipart/complete",
     );
-    assert(completeReq, "multipart upload completion request was issued");
-    assert.deepEqual(completeReq.body, {
-      parts: [
-        { part_number: 1, etag: "\"etag-part-1\"" },
-        { part_number: 2, etag: "\"etag-part-2\"" },
-      ],
-    });
+    assert(!completeReq, "per-session /storage/v1/uploads/:id/complete is no longer called");
+    const planCommitReq = w.requests.find(
+      (r) => r.method === "POST" && r.path.endsWith("/commit") && r.path.startsWith("/content/v1/plans/"),
+    );
+    assert(planCommitReq, "plan-level /content/v1/plans/:id/commit promotes the multipart session");
   });
 
   it("uses CI Bearer auth, includes project_id for content planning, and avoids storage-complete route", async () => {

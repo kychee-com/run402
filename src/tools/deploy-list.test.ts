@@ -17,12 +17,14 @@ mock.module("../allowance-auth.js", {
 mock.module("../sdk.js", {
   namedExports: {
     getSdk: () => ({
-      deploy: {
-        list: async (opts: unknown) => {
-          calls.push(opts);
-          return nextListImpl(opts);
+      project: async (_id: string) => ({
+        deploy: {
+          list: async (opts: unknown) => {
+            calls.push(opts);
+            return nextListImpl(opts);
+          },
         },
-      },
+      }),
     }),
     _resetSdk: () => {},
   },
@@ -58,7 +60,11 @@ describe("deploy_list", () => {
     assert.equal(parsed.cursor, "op_cursor");
   });
 
-  it("forwards cursor to SDK deploy.list and still renders the next cursor", async () => {
+  it("forwards limit to SDK deploy.list and renders next cursor when returned", async () => {
+    // v2.0.x: ScopedDeploy.list({ limit }) is the only parameter; `cursor`
+    // pagination is not threaded through the scoped surface yet (the
+    // gateway endpoint still returns a `cursor` for callers that want
+    // page-2 — track at openspec/changes/unified-apply tasks §6.10).
     nextListImpl = async () => ({
       operations: [
         {
@@ -74,13 +80,10 @@ describe("deploy_list", () => {
     const result = await handleDeployList({
       project_id: "prj_test",
       limit: 5,
-      cursor: "op_cursor",
     });
 
     assert.equal(result.isError, undefined);
-    assert.deepEqual(calls, [
-      { project: "prj_test", limit: 5, cursor: "op_cursor" },
-    ]);
+    assert.deepEqual(calls, [{ limit: 5 }]);
     assert.match(result.content[0]!.text, /Next cursor: `op_next`/);
   });
 });
