@@ -1290,24 +1290,12 @@ async function uploadMissing(
       );
     }
     const bytes = await reader();
-    const uploadedParts = await uploadOneWithRetry(client.fetch, session, bytes);
+    await uploadOneWithRetry(client.fetch, session, bytes);
 
-    if (!ciCredentials) {
-      // Per-session completion — legacy non-CI promotion path via
-      // /storage/v1/uploads/:id/complete. CI sessions skip this route because
-      // the gateway contract only allows /content/v1/plans*; under CI the
-      // plan-level content commit performs the CAS promotion.
-      const completeBody = uploadCompleteBody(session, uploadedParts);
-      await client.request<unknown>(
-        `/storage/v1/uploads/${encodeURIComponent(session.upload_id)}/complete`,
-        {
-          method: "POST",
-          headers,
-          body: completeBody,
-          context: "completing content upload session",
-        },
-      );
-    }
+    // v1.48 unified-apply: per-session completion via /storage/v1/uploads/:id/
+    // complete was removed (the route is now 404). All sessions are CAS-style
+    // staged-then-promote; the plan-level POST /content/v1/plans/:id/commit
+    // call below promotes every session for the plan in one shot.
 
     done += 1;
     emit({
@@ -3045,17 +3033,9 @@ async function uploadInlineCas(
   });
   if (planRes.missing.length > 0) {
     const session = planRes.missing[0];
-    const uploadedParts = await uploadOne(client.fetch, session, bytes);
-    // Per-session promotion to CAS (see uploadMissing for the rationale).
-    await client.request<unknown>(
-      `/storage/v1/uploads/${encodeURIComponent(session.upload_id)}/complete`,
-      {
-        method: "POST",
-        headers,
-        body: uploadCompleteBody(session, uploadedParts),
-        context: "completing content upload session",
-      },
-    );
+    await uploadOne(client.fetch, session, bytes);
+    // v1.48 unified-apply: per-session /storage/v1/uploads/:id/complete is
+    // gone (404). The plan-level commit below promotes the session to CAS.
     await client.request<unknown>(
       `/content/v1/plans/${encodeURIComponent(planRes.plan_id)}/commit`,
       { method: "POST", headers, body: {}, context: "committing content upload" },
