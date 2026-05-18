@@ -22,7 +22,7 @@ This monorepo ships every surface an agent can pick up:
 | [`run402` CLI](./cli/) | Terminal, scripts, CI, agent-controlled shells — JSON in, JSON out, exit code on failure |
 | [`run402-mcp`](./src/) | Claude Desktop, Cursor, Cline, Claude Code — core Run402 operations as MCP tools |
 | [OpenClaw skill](./openclaw/) | OpenClaw agents (no MCP server required) |
-| [`@run402/functions`](./functions/) | Imported _inside_ deployed functions (`db(req)`, `adminDb()`, `getUser()`, `email`, `ai`) and for TypeScript autocomplete in your editor |
+| [`@run402/functions`](./functions/) | Imported _inside_ deployed functions (`db(req)`, `adminDb()`, `getUser()`, `email`, `ai`, `assets`) and for TypeScript autocomplete in your editor |
 
 All five interfaces release in lockstep at the same version and share a single typed kernel where appropriate: `@run402/sdk`. MCP tools, CLI subcommands, and OpenClaw scripts are thin shims over SDK calls; `@run402/functions` is the in-function helper that runs inside deployed code. Pick whichever interface fits your runtime.
 
@@ -264,6 +264,8 @@ export default async (req: Request) => {
 `@run402/functions` is auto-bundled into deployed code; install it in your editor for full TypeScript autocomplete (also works at build time for static-site generation with `RUN402_SERVICE_KEY` + `RUN402_PROJECT_ID` set).
 
 `ai.generateImage({ prompt, aspect? })` is available inside deployed functions for live app flows such as generated avatars or OG images. It calls the project runtime image endpoint with `RUN402_SERVICE_KEY`, so deployed functions do not need allowance wallets or x402 signing code. Aspects are `square`, `landscape`, and `portrait`; the result is `{ image, content_type, aspect }` with base64 image bytes. Runtime image generation is billed, rate-limited, and spend-capped against the project billing account; public routed functions should authenticate/rate-limit their users before calling it.
+
+`assets.put(key, source, opts?)` uploads bytes from inside a deployed function through the same CAS-backed apply substrate as deploy-time assets. It uses `RUN402_SERVICE_KEY`, accepts a string, `Uint8Array`, or `{ content | bytes }`, and returns an SDK-compatible `AssetRef` with mutable and immutable URLs.
 
 **Calling from outside a function entirely** (raw `curl`/`fetch` from CI scripts, bash bootstrappers, non-TS runtimes) — service-key writes go to `/admin/v1/rest/<table>`, not `/rest/v1/*`. The gateway 403s service-role tokens on `/rest/v1/*` so a leaked key can't silently bypass RLS, which means `curl ... > /dev/null` against the wrong path looks like success but writes nothing. SQL-shaped admin work uses `POST /projects/v1/admin/:id/sql` (or `run402 projects sql`).
 

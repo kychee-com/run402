@@ -1,4 +1,17 @@
 import { adminDb, db, getUser, email, ai } from "@run402/functions";
+// `assets` is a 2.1.1+ addition; older deployments of @run402/functions
+// don't have it. Detect at module load so the bundler doesn't fail on
+// older gateway-bundled images. Once 2.1.1 is the deployed runtime, this
+// reduces to a static import.
+let assets = null;
+try {
+  const mod = await import("@run402/functions");
+  if (mod && typeof mod.assets === "object" && typeof mod.assets.put === "function") {
+    assets = mod.assets;
+  }
+} catch {
+  assets = null;
+}
 
 const JSON_HEADERS = { "content-type": "application/json; charset=utf-8" };
 
@@ -43,63 +56,26 @@ function transientMessage(err) {
     : null;
 }
 
-async function sha256Hex(bytes) {
-  const digest = await crypto.subtle.digest("SHA-256", bytes);
-  return Array.from(new Uint8Array(digest))
-    .map((byte) => byte.toString(16).padStart(2, "0"))
-    .join("");
-}
-
 async function uploadFromFunction() {
-  const text = `run402 function upload ${new Date().toISOString()}`;
-  const bytes = new TextEncoder().encode(text);
-  const sha256 = await sha256Hex(bytes);
-  const key = `fullstack/function-${Date.now()}.txt`;
-  const authHeaders = {
-    apikey: process.env.RUN402_SERVICE_KEY,
-    authorization: `Bearer ${process.env.RUN402_SERVICE_KEY}`,
-    "content-type": "application/json",
-  };
-
-  const init = await fetch(`${process.env.RUN402_API_BASE || "https://api.run402.com"}/storage/v1/uploads`, {
-    method: "POST",
-    headers: authHeaders,
-    body: JSON.stringify({
-      key,
-      size_bytes: bytes.byteLength,
-      content_type: "text/plain; charset=utf-8",
-      visibility: "public",
-      immutable: true,
-      sha256,
-    }),
-  });
-  if (!init.ok) throw new Error(`Function storage init failed (${init.status}): ${await init.text()}`);
-  const session = await init.json();
-
-  const parts = [];
-  for (const part of session.parts ?? []) {
-    const partBytes = bytes.subarray(part.byte_start, part.byte_end + 1);
-    const put = await fetch(part.url, { method: "PUT", body: partBytes });
-    if (!put.ok) throw new Error(`Function storage part failed (${put.status}): ${await put.text()}`);
-    parts.push({ part_number: part.part_number, etag: put.headers.get("etag") ?? "" });
+  if (!assets || typeof assets.put !== "function") {
+    return {
+      status: "skipped",
+      reason: "@run402/functions runtime does not yet export `assets` (pre-2.1.1)",
+    };
   }
-
-  const complete = await fetch(
-    `${process.env.RUN402_API_BASE || "https://api.run402.com"}/storage/v1/uploads/${session.upload_id}/complete`,
-    {
-      method: "POST",
-      headers: authHeaders,
-      body: JSON.stringify(session.mode === "multipart" ? { parts } : {}),
-    },
-  );
-  if (!complete.ok) throw new Error(`Function storage complete failed (${complete.status}): ${await complete.text()}`);
-  const asset = await complete.json();
+  const stamp = Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 8);
+  const key = `fullstack/fn-${stamp}.txt`;
+  const body = `run402 function upload ${stamp}`;
+  const asset = await assets.put(key, body, {
+    contentType: "text/plain; charset=utf-8",
+  });
   return {
-    key,
-    text,
-    sha256,
-    url: asset.cdn_immutable_url ?? asset.immutable_url ?? asset.url,
-    visibility: asset.visibility,
+    status: "ok",
+    key: asset.key,
+    url: asset.url,
+    immutableUrl: asset.immutableUrl,
+    cdnUrl: asset.cdnUrl,
+    sha256: asset.sha256,
   };
 }
 
@@ -200,8 +176,10 @@ export default async function handler(req) {
       return handleEmail();
     case "ai":
       return handleAi();
-    case "storage":
-      return json({ ok: true, status: "ok", asset: await uploadFromFunction() });
+    case "storage": {
+      const result = await uploadFromFunction();
+      return json({ ok: true, status: result.status, asset: result, reason: result.reason });
+    }
     default:
       return json({ ok: false, error: "unknown action" }, { status: 400 });
   }

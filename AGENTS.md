@@ -13,7 +13,7 @@ This monorepo ships **five interfaces**:
 - **SDK** (`sdk/`) — typed TypeScript client for the run402 API. Used by external integrators, MCP/CLI/OpenClaw, and (eventually) inside deployed functions. Published as `@run402/sdk` on npm. Two entry points: root (isomorphic — works in Node 22, Deno, Bun, V8 isolates) and `/node` (zero-config Node defaults — keystore + allowance + x402).
 - **MCP server** (root `src/`) — published as `run402-mcp` on npm. Each tool is a thin shim over an SDK call. Read by Claude Desktop / Cursor / Cline / Claude Code.
 - **CLI** (`cli/`) — standalone CLI published as `run402` on npm. Each subcommand is a thin shim over an SDK call; argv parsing and JSON output stay at the CLI edge.
-- **Functions library** (`functions/`) — in-function helper imported _inside_ deployed serverless functions. Exposes `db(req)`, `adminDb()`, `getUser()`, `email`, `ai`. Published as `@run402/functions` on npm. Distinct from the SDK: this is the request-scoped, in-function shape; the SDK is the typed external client. The two are complementary, not redundant.
+- **Functions library** (`functions/`) — in-function helper imported _inside_ deployed serverless functions. Exposes `db(req)`, `adminDb()`, `getUser()`, `email`, `ai`, and `assets`. Published as `@run402/functions` on npm. Distinct from the SDK: this is the request-scoped, in-function shape; the SDK is the typed external client. The two are complementary, not redundant.
 - **OpenClaw skill** (`openclaw/`) — script-based skill for OpenClaw agents, re-exports from CLI modules.
 
 Workspace layout: `package.json` declares `cli`, `sdk`, and `functions` as npm workspaces, and `pnpm-workspace.yaml` mirrors that set for pnpm-based hosts. `core/` is shared internal code, not an npm package.
@@ -80,7 +80,7 @@ When adding a new tool/command, add it to the `SURFACE` array **and** `SDK_BY_CA
 core/      ← Node-only primitives (keystore, allowance, SIWE signing, config paths)
               Imported by sdk/src/node via ../../../core/dist/; not an npm package.
 
-functions/ ← @run402/functions in-function helper (db, adminDb, getUser, email, ai).
+functions/ ← @run402/functions in-function helper (db, adminDb, getUser, email, ai, assets).
               Auto-bundled into deployed function zips at deploy time;
               also installable for local TypeScript autocomplete.
 ```
@@ -146,11 +146,12 @@ Core functions return `null` or throw — they never call `process.exit()`. Each
 
 ### Functions library (`functions/`)
 
-- **`functions/src/index.ts`** — Public exports: `db`, `adminDb`, `getUser`, `email`, `ai`, `routedHttp`, and routed HTTP envelope types/helpers (`text`, `json`, `bytes`, `isRequest`). Each helper makes raw `fetch()` calls against the project's own gateway endpoints using ambient request context (the function's `RUN402_PROJECT_ID` / `RUN402_SERVICE_KEY` env vars baked at deploy time), except routed HTTP helpers which encode/decode the public browser ingress envelope.
+- **`functions/src/index.ts`** — Public exports: `db`, `adminDb`, `getUser`, `email`, `ai`, `assets`, `routedHttp`, and routed HTTP envelope types/helpers (`text`, `json`, `bytes`, `isRequest`). Each helper makes raw `fetch()` calls against the project's own gateway endpoints using ambient request context (the function's `RUN402_PROJECT_ID` / `RUN402_SERVICE_KEY` env vars baked at deploy time), except routed HTTP helpers which encode/decode the public browser ingress envelope.
 - **`db(req)`** — caller-context PostgREST client. Forwards the incoming `Authorization` header; RLS evaluates against the caller's role.
 - **`adminDb()`** — service-key client. Routes to `/admin/v1/rest/*` (the gateway rejects `role=service_role` on `/rest/v1/*`, so bypass traffic lives on its own surface). Use only when the function acts on behalf of the platform.
 - **`adminDb().sql(query, params?)`** — raw parameterized SQL, always BYPASSRLS.
 - **`ai.generateImage({ prompt, aspect? })`** — project-billed runtime image generation from deployed functions. Uses the project service key and `/ai/v1/generate-image`, not the wallet/x402 `/generate-image/v1` endpoint. Supported aspects are `square`, `landscape`, and `portrait`; result shape is `{ image, content_type, aspect }`. Gateway rate limits and spend caps apply to the project billing account; routed public functions still own app auth and abuse limits.
+- **`assets.put(key, source, opts?)`** — in-function asset upload through the service-key `/apply/v1/service-asset-put` path. Uses the same CAS/activation substrate as deploy-time assets and returns SDK-compatible `AssetRef` snake_case + camelCase fields.
 - **`routedHttp`** — non-framework helpers for the `run402.routed_http.v1` same-origin browser ingress contract. Direct `/functions/v1/:name` remains API-key protected; routed function code owns app auth, CSRF, CORS/`OPTIONS`, cookies, redirects, cache headers, and spoofed forwarding-header hygiene.
 - This library is auto-bundled into deployed function zips alongside any user-declared `--deps` (npm-installed and esbuild-bundled at deploy time, native binaries rejected). Also installable in your editor for full TypeScript autocomplete.
 

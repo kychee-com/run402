@@ -1,9 +1,9 @@
 # @run402/functions
 
-In-function helper library for [Run402](https://run402.com) serverless functions. Imported _inside_ a deployed function — gives you typed access to the caller's database (RLS-respecting) and the project's admin database, the caller's auth, the project's mailbox, and AI helpers.
+In-function helper library for [Run402](https://run402.com) serverless functions. Imported _inside_ a deployed function — gives you typed access to the caller's database (RLS-respecting) and the project's admin database, the caller's auth, the project's mailbox, AI helpers, and runtime asset uploads.
 
 ```ts
-import { db, adminDb, getUser, email, ai } from "@run402/functions";
+import { db, adminDb, getUser, email, ai, assets } from "@run402/functions";
 
 export default async (req: Request) => {
   const user = await getUser(req);
@@ -141,6 +141,24 @@ const image = await ai.generateImage({
 `ai.generateImage` supports `aspect: "square" | "landscape" | "portrait"` and returns base64 image bytes plus `content_type` and `aspect`. It uses the function's `RUN402_SERVICE_KEY` against the project runtime image endpoint; it does **not** need allowance wallets, x402 wrapping, or local signing inside the function. Runtime image generation is billed and rate-limited against the project's billing account. Quota, rate-limit, and spend-cap failures are ordinary thrown errors such as `Image generation failed (403): QUOTA_EXCEEDED: ...`; handle them in your app response instead of forwarding raw details to the browser.
 
 Translation requires the AI Translation add-on on the project; moderation is free for all projects.
+
+## `assets.put(...)` — upload runtime assets
+
+Upload bytes from inside a deployed function using the project's service key. This routes through the same CAS-backed apply substrate as deploy-time assets, so public/private visibility, immutable URLs, retention, quota checks, and storage billing match `r.project(id).apply({ assets: { put: [...] } })`.
+
+```ts
+import { assets } from "@run402/functions";
+
+const asset = await assets.put("generated/avatar.png", pngBytes, {
+  contentType: "image/png",
+  visibility: "public",
+  immutable: true,
+});
+
+return Response.json({ url: asset.immutableUrl ?? asset.url });
+```
+
+`source` can be a string, `Uint8Array`, `{ content: string }`, or `{ bytes: Uint8Array }`. The returned `AssetRef` includes both snake_case wire fields (`immutable_url`, `size_bytes`, `content_type`) and SDK-style camelCase aliases (`immutableUrl`, `size`, `contentType`).
 
 ### Routed image generation example
 

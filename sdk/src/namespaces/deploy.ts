@@ -2848,10 +2848,11 @@ async function normalizeFileSet(
  * attacker-controlled or filesystem-derived keys (`__proto__`,
  * `constructor`, `toString`) don't collide with prototype properties.
  *
- * Totals are placeholders here (`bytes_uploaded: 0`, `bytes_reused: 0`,
- * `duration_ms: 0`); upstream callers that need realised values back-fill
- * them from the realised `content.upload.*` event stream. The shape stays
- * stable so consumers can rely on the keys being present.
+ * Totals are derived from the plan response's per-entry `status`:
+ *   - `"upload_pending"` → bytes_uploaded (the SDK is about to PUT these to S3)
+ *   - `"present"` or `"satisfied_by_plan"` → bytes_reused (already in CAS,
+ *     dedup hit either project-locally or via a same-spec sibling)
+ * `duration_ms` is filled in by `manifestFromResult` at the NodeAssets layer.
  */
 function buildAssetManifestFromPlanEntries(
   entries: NonNullable<PlanResponse["asset_entries"]>,
@@ -2859,6 +2860,8 @@ function buildAssetManifestFromPlanEntries(
   const list: NonNullable<DeployResult["assets"]>["list"] = [];
   const byKey: NonNullable<DeployResult["assets"]>["byKey"] = Object.create(null);
   const manifest: NonNullable<DeployResult["assets"]>["manifest"] = Object.create(null);
+  let bytesUploaded = 0;
+  let bytesReused = 0;
   for (const entry of entries) {
     const e: NonNullable<DeployResult["assets"]>["list"][number] = {
       key: entry.key,
@@ -2877,12 +2880,23 @@ function buildAssetManifestFromPlanEntries(
     list.push(e);
     byKey[entry.key] = e;
     manifest[entry.key] = e;
+    if (entry.status === "upload_pending") {
+      bytesUploaded += entry.size_bytes;
+    } else {
+      // "present" or "satisfied_by_plan" — already in CAS or covered by a sibling.
+      bytesReused += entry.size_bytes;
+    }
   }
   return {
     list,
     byKey,
     manifest,
-    totals: { files: entries.length, bytes_uploaded: 0, bytes_reused: 0, duration_ms: 0 },
+    totals: {
+      files: entries.length,
+      bytes_uploaded: bytesUploaded,
+      bytes_reused: bytesReused,
+      duration_ms: 0,
+    },
   };
 }
 

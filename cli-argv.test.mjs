@@ -130,6 +130,43 @@ beforeEach(() => {
   captureStop();
 });
 
+// v2.1.0 unified-apply mock: handles /apply/v1/plans + /apply/v1/plans/:id/commit.
+// Returns a minimal happy-path plan response derived from the request body so tests
+// don't have to precompute SHAs. Accepts an optional onPlanBody callback for assertions.
+function applyMockFetch({ onPlanBody } = {}) {
+  return (input, init) => {
+    const info = requestInfo(input, init);
+    calls.push(info);
+    if (info.path === "/apply/v1/plans" && info.method === "POST") {
+      const body = JSON.parse(String(info.init.body));
+      if (onPlanBody) onPlanBody(body);
+      const e = body.spec?.assets?.put?.[0] ?? {};
+      const sha = e.sha256 ?? "a".repeat(64);
+      const key = e.key ?? "file.bin";
+      const size = e.size_bytes ?? 5;
+      const ct = e.content_type ?? "application/octet-stream";
+      const vis = e.visibility ?? "public";
+      const url = vis === "public" ? `https://pr-test.run402.com/_blob/${key}` : null;
+      const ref = { key, sha256: sha, size_bytes: size, content_type: ct, visibility: vis,
+        immutable: e.immutable ?? true, url, immutable_url: url, cdn_url: url,
+        cdn_immutable_url: url, sri: null, etag: `"${sha.slice(0, 8)}"`,
+        content_digest: `sha-256=:${sha.slice(0, 8)}:` };
+      return Promise.resolve(json({
+        plan_id: "plan_x", operation_id: "op_x", base_release_id: null,
+        manifest_digest: "digest_x", missing_content: [], diff: { resources: {} },
+        warnings: [], asset_entries: [{ ...ref, status: "present", asset_ref: ref }],
+      }));
+    }
+    if (/\/apply\/v1\/plans\/[^/]+\/commit$/.test(info.path) && info.method === "POST") {
+      return Promise.resolve(json({
+        operation_id: "op_x", status: "ready", release_id: "rel_x",
+        urls: { project: "https://prj.run402.test", project_public_id: "abc" },
+      }));
+    }
+    return mockFetch(input, init);
+  };
+}
+
 describe("unknown flags", () => {
   it("status rejects unknown flags before doing any work (GH-190)", async () => {
     const { run } = await import("./cli/lib/status.mjs");
@@ -952,98 +989,91 @@ describe("numeric flag validation", () => {
     }
   });
 
-  it("blob put sends explicit --content-type to upload init (GH-237)", async () => {
+  it("blob put sends explicit --content-type to apply plan (GH-237)", async () => {
     const { run } = await import("./cli/lib/assets.mjs");
     const file = join(tempDir, "extensionless-asset");
     writeFileSync(file, "<svg></svg>");
-    let initBody = null;
+    let planBody = null;
     const prevFetch = globalThis.fetch;
-    globalThis.fetch = (input, init) => {
-      const info = requestInfo(input, init);
-      calls.push(info);
-      if (info.path === "/storage/v1/uploads" && info.method === "POST") {
-        initBody = JSON.parse(String(info.init.body));
-        return Promise.resolve(json({
-          upload_id: "upload_mime",
-          mode: "single",
-          part_count: 1,
-          parts: [{ part_number: 1, url: "https://s3.example.test/upload_mime/p1", byte_start: 0, byte_end: 10 }],
-        }, 201));
-      }
-      if (info.url === "https://s3.example.test/upload_mime/p1" && info.method === "PUT") {
-        return Promise.resolve(new Response("", { status: 200, headers: { etag: "\"etag-1\"" } }));
-      }
-      if (info.path === "/storage/v1/uploads/upload_mime/complete" && info.method === "POST") {
-        return Promise.resolve(json({
-          key: "assets/logo",
-          size_bytes: 11,
-          sha256: null,
-          visibility: "public",
-          content_type: "image/svg+xml",
-          url: "https://pr-test.run402.com/_blob/assets/logo",
-          immutable_url: null,
-        }));
-      }
-      return mockFetch(input, init);
-    };
+    globalThis.fetch = applyMockFetch({ onPlanBody: (b) => { planBody = b; } });
     captureStart();
     try {
-      await run("put", [
-        file,
-        "--project", "prj_test123",
-        "--key", "assets/logo",
-        "--content-type", "image/svg+xml",
-        "--no-resume",
-      ]);
+      await run("put", [file, "--project", "prj_test123", "--key", "assets/logo", "--content-type", "image/svg+xml"]);
     } finally {
       captureStop();
       globalThis.fetch = prevFetch;
     }
-
-    assert.equal(initBody?.content_type, "image/svg+xml");
-    assert.equal(initBody?.key, "assets/logo");
+    const entry = planBody?.spec?.assets?.put?.[0];
+    assert.equal(entry?.content_type, "image/svg+xml");
+    assert.equal(entry?.key, "assets/logo");
   });
 
-  it("blob put sends required object and part checksums by default (GH-308, GH-312, GH-314)", async () => {
+  it("blob put sends SHA-256 digest in the apply plan body (GH-308)", async () => {
     const { run } = await import("./cli/lib/assets.mjs");
     const file = join(tempDir, "checksum-upload.txt");
     writeFileSync(file, "hello world");
-    let initBody = null;
-    let completeBody = null;
-    let putHeaders = null;
     const expectedSha = createHash("sha256").update("hello world").digest("hex");
-    const expectedPartChecksum = createHash("sha256").update("hello world").digest("base64");
+    let planBody = null;
     const prevFetch = globalThis.fetch;
-    globalThis.fetch = (input, init) => {
-      const info = requestInfo(input, init);
-      calls.push(info);
-      if (info.path === "/storage/v1/uploads" && info.method === "POST") {
-        initBody = JSON.parse(String(info.init.body));
-        return Promise.resolve(json({
-          upload_id: "upload_checksum",
-          mode: "multipart",
-          part_count: 1,
-          parts: [{ part_number: 1, url: "https://s3.example.test/upload_checksum/p1", byte_start: 0, byte_end: 10 }],
-        }, 201));
-      }
-      if (info.url === "https://s3.example.test/upload_checksum/p1" && info.method === "PUT") {
-        putHeaders = info.init.headers ?? {};
-        return Promise.resolve(new Response("", { status: 200, headers: { etag: "\"etag-1\"" } }));
-      }
-      if (info.path === "/storage/v1/uploads/upload_checksum/complete" && info.method === "POST") {
-        completeBody = JSON.parse(String(info.init.body));
-        return Promise.resolve(json({
-          key: "checksum-upload.txt",
-          size_bytes: 11,
-          sha256: expectedSha,
-          visibility: "public",
-          content_type: "text/plain",
-          url: "https://pr-test.run402.com/_blob/checksum-upload.txt",
-          immutable_url: null,
-        }));
-      }
-      return mockFetch(input, init);
-    };
+    globalThis.fetch = applyMockFetch({ onPlanBody: (b) => { planBody = b; } });
+    captureStart();
+    try {
+      await run("put", [file, "--project", "prj_test123"]);
+    } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+    const entry = planBody?.spec?.assets?.put?.[0];
+    assert.equal(entry?.sha256, expectedSha);
+  });
+
+  it("blob put routes through /apply/v1/plans, not legacy /storage/v1/uploads (v2.1.0)", async () => {
+    const { run } = await import("./cli/lib/assets.mjs");
+    const file = join(tempDir, "route-check.txt");
+    writeFileSync(file, "abcdefghi");
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = applyMockFetch();
+    captureStart();
+    try {
+      await run("put", [file, "--project", "prj_test123", "--concurrency", "2"]);
+    } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+    const paths = calls.map((c) => c.path);
+    assert.ok(paths.some((p) => p === "/apply/v1/plans"), "must call /apply/v1/plans");
+    assert.ok(!paths.some((p) => p.startsWith("/storage/v1/uploads")), "must not call legacy /storage/v1/uploads");
+  });
+
+  it("blob put does not create resume state files (v2.1.0 substrate change)", async () => {
+    const stateHome = mkdtempSync(join(tmpdir(), "run402-blob-home-"));
+    const prevHome = process.env.HOME;
+    process.env.HOME = stateHome;
+    const { run } = await import("./cli/lib/assets.mjs?no-state");
+    const file = join(tempDir, "state-upload.txt");
+    writeFileSync(file, "hello state");
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = applyMockFetch();
+    captureStart();
+    try {
+      await run("put", [file, "--project", "prj_test123"]);
+    } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+      if (prevHome === undefined) delete process.env.HOME;
+      else process.env.HOME = prevHome;
+      rmSync(stateHome, { recursive: true, force: true });
+    }
+    const stateDir = join(stateHome, ".run402", "uploads");
+    assert.equal(existsSync(stateDir), false, "v2.1.0 must not create ~/.run402/uploads state files");
+  });
+
+  it("blob put accepts --no-resume without error (backward compatibility)", async () => {
+    const { run } = await import("./cli/lib/assets.mjs");
+    const file = join(tempDir, "compat-upload.txt");
+    writeFileSync(file, "compat");
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = applyMockFetch();
     captureStart();
     try {
       await run("put", [file, "--project", "prj_test123", "--no-resume"]);
@@ -1051,228 +1081,33 @@ describe("numeric flag validation", () => {
       captureStop();
       globalThis.fetch = prevFetch;
     }
-
-    assert.equal(initBody?.sha256, expectedSha);
-    assert.equal(initBody?.immutable, false);
-    assert.equal(putHeaders?.["x-amz-checksum-sha256"], expectedPartChecksum);
-    assert.deepEqual(completeBody?.parts, [
-      { part_number: 1, etag: "\"etag-1\"", sha256: expectedSha },
-    ]);
+    assert.ok(calls.some((c) => c.path === "/apply/v1/plans"), "--no-resume is ignored; apply route is still used");
   });
 
-  it("blob put does not complete multipart uploads until every in-flight part settles (GH-315)", async () => {
+  it("blob put surfaces apply-plan gateway errors as structured JSON (v2.1.0)", async () => {
     const { run } = await import("./cli/lib/assets.mjs");
-    const file = join(tempDir, "concurrency-upload.txt");
-    writeFileSync(file, "abcdefghi");
-    let part2Resolved = false;
-    let completeBeforePart2 = false;
-    const prevFetch = globalThis.fetch;
-    globalThis.fetch = (input, init) => {
-      const info = requestInfo(input, init);
-      calls.push(info);
-      if (info.path === "/storage/v1/uploads" && info.method === "POST") {
-        return Promise.resolve(json({
-          upload_id: "upload_concurrency",
-          mode: "multipart",
-          part_count: 3,
-          parts: [
-            { part_number: 1, url: "https://s3.example.test/upload_concurrency/p1", byte_start: 0, byte_end: 2 },
-            { part_number: 2, url: "https://s3.example.test/upload_concurrency/p2", byte_start: 3, byte_end: 5 },
-            { part_number: 3, url: "https://s3.example.test/upload_concurrency/p3", byte_start: 6, byte_end: 8 },
-          ],
-        }, 201));
-      }
-      if (info.url === "https://s3.example.test/upload_concurrency/p2" && info.method === "PUT") {
-        return new Promise((resolve) => {
-          setTimeout(() => {
-            part2Resolved = true;
-            resolve(new Response("", { status: 200, headers: { etag: "\"etag-2\"" } }));
-          }, 100);
-        });
-      }
-      if (info.url.startsWith("https://s3.example.test/upload_concurrency/p") && info.method === "PUT") {
-        const partNumber = info.url.endsWith("/p1") ? "1" : "3";
-        return Promise.resolve(new Response("", { status: 200, headers: { etag: `"etag-${partNumber}"` } }));
-      }
-      if (info.path === "/storage/v1/uploads/upload_concurrency/complete" && info.method === "POST") {
-        completeBeforePart2 = !part2Resolved;
-        return Promise.resolve(json({
-          key: "concurrency-upload.txt",
-          size_bytes: 9,
-          sha256: createHash("sha256").update("abcdefghi").digest("hex"),
-          visibility: "public",
-          content_type: "text/plain",
-          url: "https://pr-test.run402.com/_blob/concurrency-upload.txt",
-          immutable_url: null,
-        }));
-      }
-      return mockFetch(input, init);
-    };
-    captureStart();
-    try {
-      await run("put", [file, "--project", "prj_test123", "--concurrency", "2", "--no-resume"]);
-    } finally {
-      captureStop();
-      globalThis.fetch = prevFetch;
-    }
-
-    assert.equal(completeBeforePart2, false, "complete must wait for all in-flight parts");
-  });
-
-  it("blob resumable state is private, checksum-bearing, and does not persist presigned URLs (GH-316, GH-317)", async () => {
-    const stateHome = mkdtempSync(join(tmpdir(), "run402-blob-home-"));
-    const prevHome = process.env.HOME;
-    process.env.HOME = stateHome;
-    const { run } = await import("./cli/lib/assets.mjs?state-private");
-    const file = join(tempDir, "state-upload.txt");
-    writeFileSync(file, "hello state");
-    const expectedSha = createHash("sha256").update("hello state").digest("hex");
-    const prevFetch = globalThis.fetch;
-    globalThis.fetch = (input, init) => {
-      const info = requestInfo(input, init);
-      calls.push(info);
-      if (info.path === "/storage/v1/uploads" && info.method === "POST") {
-        return Promise.resolve(json({
-          upload_id: "upload_state",
-          mode: "multipart",
-          part_count: 1,
-          parts: [{ part_number: 1, url: "https://s3.example.test/upload_state/p1", byte_start: 0, byte_end: 10 }],
-        }, 201));
-      }
-      if (info.url === "https://s3.example.test/upload_state/p1" && info.method === "PUT") {
-        return Promise.resolve(new Response("denied", { status: 403, statusText: "Forbidden" }));
-      }
-      return mockFetch(input, init);
-    };
-
-    try {
-      const err = await expectExit1(() => run("put", [file, "--project", "prj_test123"]));
-      assert.match(err.message, /Part 1 PUT failed/);
-
-      const stateDir = join(stateHome, ".run402", "uploads");
-      const files = readdirSync(stateDir).filter((name) => name.endsWith(".json"));
-      assert.deepEqual(files, ["upload_state.json"]);
-      assert.equal(statSync(stateDir).mode & 0o777, 0o700);
-      const statePath = join(stateDir, "upload_state.json");
-      assert.equal(statSync(statePath).mode & 0o777, 0o600);
-      const raw = readFileSync(statePath, "utf8");
-      assert.equal(raw.includes("https://s3.example.test"), false, "state must not persist presigned URLs");
-      const state = JSON.parse(raw);
-      assert.equal(state.sha256, expectedSha);
-      assert.equal(state.file_size, 11);
-      assert.equal(typeof state.file_mtime_ms, "number");
-    } finally {
-      globalThis.fetch = prevFetch;
-      if (prevHome === undefined) delete process.env.HOME;
-      else process.env.HOME = prevHome;
-      rmSync(stateHome, { recursive: true, force: true });
-    }
-  });
-
-  it("blob put discards cached upload sessions when the local file changed (GH-316)", async () => {
-    const stateHome = mkdtempSync(join(tmpdir(), "run402-blob-home-"));
-    const prevHome = process.env.HOME;
-    process.env.HOME = stateHome;
-    const { run } = await import("./cli/lib/assets.mjs?state-fingerprint");
-    const stateDir = join(stateHome, ".run402", "uploads");
-    const file = join(tempDir, "state-changed.txt");
-    writeFileSync(file, "new file");
-    const absFile = join(tempDir, "state-changed.txt");
-    const staleState = {
-      upload_id: "upload_stale",
-      project_id: "prj_test123",
-      local_path: absFile,
-      key: "state-changed.txt",
-      mode: "multipart",
-      part_size_bytes: 3,
-      part_count: 1,
-      file_size: 999,
-      file_mtime_ms: 1,
-      parts_done: {},
-      sha256: "0".repeat(64),
-    };
-    rmSync(stateDir, { recursive: true, force: true });
-    writeFileSync(file, "new file");
-    const prevFetch = globalThis.fetch;
-    let fetchedStale = false;
-    let initUploadId = null;
-    globalThis.fetch = (input, init) => {
-      const info = requestInfo(input, init);
-      calls.push(info);
-      if (info.path === "/storage/v1/uploads/upload_stale" && info.method === "GET") {
-        fetchedStale = true;
-        return Promise.resolve(json({ upload_id: "upload_stale", status: "active" }));
-      }
-      if (info.path === "/storage/v1/uploads" && info.method === "POST") {
-        initUploadId = "upload_fresh";
-        return Promise.resolve(json({
-          upload_id: "upload_fresh",
-          mode: "single",
-          part_count: 1,
-          parts: [{ part_number: 1, url: "https://s3.example.test/upload_fresh/p1", byte_start: 0, byte_end: 7 }],
-        }, 201));
-      }
-      if (info.url === "https://s3.example.test/upload_fresh/p1" && info.method === "PUT") {
-        return Promise.resolve(new Response("", { status: 200, headers: { etag: "\"etag-fresh\"" } }));
-      }
-      if (info.path === "/storage/v1/uploads/upload_fresh/complete" && info.method === "POST") {
-        return Promise.resolve(json({
-          key: "state-changed.txt",
-          size_bytes: 8,
-          sha256: createHash("sha256").update("new file").digest("hex"),
-          visibility: "public",
-          content_type: "text/plain",
-          url: "https://pr-test.run402.com/_blob/state-changed.txt",
-          immutable_url: null,
-        }));
-      }
-      return mockFetch(input, init);
-    };
-
-    try {
-      rmSync(stateDir, { recursive: true, force: true });
-      mkdirSync(stateDir, { recursive: true, mode: 0o700 });
-      writeFileSync(join(stateDir, "upload_stale.json"), JSON.stringify(staleState, null, 2), { mode: 0o600 });
-      captureStart();
-      await run("put", [file, "--project", "prj_test123"]);
-      captureStop();
-      assert.equal(fetchedStale, false, "changed-file state should be discarded before polling stale session");
-      assert.equal(initUploadId, "upload_fresh");
-      assert.equal(existsSync(join(stateDir, "upload_stale.json")), false);
-    } finally {
-      captureStop();
-      globalThis.fetch = prevFetch;
-      if (prevHome === undefined) delete process.env.HOME;
-      else process.env.HOME = prevHome;
-      rmSync(stateHome, { recursive: true, force: true });
-    }
-  });
-
-  it("blob put surfaces upload-init gateway errors as structured JSON (GH-186)", async () => {
-    const { run } = await import("./cli/lib/assets.mjs");
-    const file = join(tempDir, "upload-init-fails.txt");
+    const file = join(tempDir, "apply-fails.txt");
     writeFileSync(file, "hello");
     const prevFetch = globalThis.fetch;
     globalThis.fetch = (input, init) => {
       const info = requestInfo(input, init);
       calls.push(info);
-      if (info.path === "/storage/v1/uploads" && info.method === "POST") {
+      if (info.path === "/apply/v1/plans" && info.method === "POST") {
         return Promise.resolve(json({
           error: "Invalid apikey",
           message: "Invalid apikey",
           code: "INVALID_AUTH",
-          trace_id: "trc_init",
+          trace_id: "trc_plan",
         }, 401));
       }
       return mockFetch(input, init);
     };
-    const err = await expectExit1(() =>
-      run("put", [file, "--project", "prj_test123", "--concurrency", "1"]));
+    const err = await expectExit1(() => run("put", [file, "--project", "prj_test123"]));
     globalThis.fetch = prevFetch;
 
     assert.equal(err.http, 401);
     assert.equal(err.code, "INVALID_AUTH");
-    assert.equal(err.trace_id, "trc_init");
+    assert.equal(err.trace_id, "trc_plan");
     assert.ok(!/\\\"code\\\"/.test(err.message ?? ""), `message should not contain stringified JSON: ${err.message}`);
   });
 

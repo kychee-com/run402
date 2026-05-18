@@ -171,6 +171,13 @@ describe("CLI integration (live API, no mocks)", { timeout: 180_000 }, () => {
         assert.ok(true, "tier already active (expected for pre-funded wallet)");
         return;
       }
+      // Tier-aware: if the wallet is on hobby/team with usage above prototype caps,
+      // downgrade is refused — that's fine for this test, the wallet IS active.
+      if (msg.includes("Cannot downgrade") || msg.includes("exceeds new tier limits")) {
+        captureStop();
+        assert.ok(true, "wallet on higher tier; cannot downgrade to prototype (expected)");
+        return;
+      }
       throw err;
     }
     captureStop();
@@ -187,7 +194,12 @@ describe("CLI integration (live API, no mocks)", { timeout: 180_000 }, () => {
     await run("status", []);
     captureStop();
     const out = captured();
-    assert.ok(out.includes("prototype"), `Expected 'prototype' in: ${out}`);
+    // Tier-aware: accept any of the valid tier names — the wallet may be on
+    // prototype/hobby/team depending on prior runs and account state.
+    assert.ok(
+      out.includes("prototype") || out.includes("hobby") || out.includes("team"),
+      `Expected an active tier in: ${out}`,
+    );
   });
 
   // ── Projects ──────────────────────────────────────────────────────────
@@ -529,6 +541,11 @@ describe("CLI integration (live API, no mocks)", { timeout: 180_000 }, () => {
       if (msg.includes("already active") || msg.includes("renew")) {
         captureStop();
         assert.ok(true, "tier already active or renewed (expected for pre-funded wallet)");
+        return;
+      }
+      if (msg.includes("Cannot downgrade") || msg.includes("exceeds new tier limits")) {
+        captureStop();
+        assert.ok(true, "wallet on higher tier; cannot downgrade to prototype (expected)");
         return;
       }
       throw err;

@@ -12,6 +12,14 @@ export type {
   TranslateResult,
   ModerateResult,
 } from "./ai.js";
+export { assets } from "./assets.js";
+export type {
+  AssetPutOptions,
+  AssetPutSource,
+  AssetPutSourceInput,
+  AssetRef,
+  AssetVisibility,
+} from "./assets.js";
 export { bytes, isRequest, json, routedHttp, text } from "./routed-http.js";
 export type {
   RoutedHttpHeaderList,

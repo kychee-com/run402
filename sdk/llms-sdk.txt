@@ -561,7 +561,7 @@ The trigger only fills omitted or explicit `null` owner values; it does not over
 A separate package. Imported _inside_ a deployed serverless function, not by the SDK. Auto-bundled at deploy time (don't list `@run402/functions` in `--deps`). See <https://www.npmjs.com/package/@run402/functions> for full details.
 
 ```ts
-import { db, adminDb, getUser, email, ai } from "@run402/functions";
+import { db, adminDb, getUser, email, ai, assets } from "@run402/functions";
 
 export default async (req: Request) => {
   const user = await getUser(req);
@@ -577,6 +577,7 @@ export default async (req: Request) => {
 - **`adminDb()`** — bypass RLS. Routes to `/admin/v1/rest/*`.
 - **`adminDb().sql(query, params?)`** — raw parameterized SQL.
 - **`ai.generateImage({ prompt, aspect? })`** — project-billed runtime image generation for deployed functions. `aspect` is `"square" | "landscape" | "portrait"`; result is `{ image, content_type, aspect }` with base64 image bytes. Uses `RUN402_SERVICE_KEY` against `/ai/v1/generate-image`, not the wallet/x402 `/generate-image/v1` endpoint. Gateway rate limits and spend caps are project-owned; public routed functions should add app auth or their own rate limiting before calling it.
+- **`assets.put(key, source, opts?)`** — runtime asset upload through `/apply/v1/service-asset-put`. Uses `RUN402_SERVICE_KEY`, shares the deploy-time CAS/activation substrate, and returns an SDK-compatible `AssetRef`.
 
 The helper makes raw `fetch()` calls to the project's own gateway endpoints using ambient request context (`RUN402_PROJECT_ID` / `RUN402_SERVICE_KEY` baked at deploy time). It does NOT use `@run402/sdk`.
 

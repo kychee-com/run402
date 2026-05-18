@@ -427,7 +427,7 @@ The deploy response surfaces:
 The one place to write code, not commands. Built-in helpers are auto-bundled:
 
 ```ts
-import { db, adminDb, getUser, email, ai } from "@run402/functions";
+import { db, adminDb, getUser, email, ai, assets } from "@run402/functions";
 
 export default async (req: Request) => {
   const user = await getUser(req);
@@ -451,6 +451,7 @@ export default async (req: Request) => {
 - **`adminDb()`** — bypass RLS. Use only for audit logs, cron cleanup, webhook handlers, platform-authored writes.
 - **`adminDb().sql(query, params?)`** — raw parameterized SQL. Always bypass.
 - **`ai.generateImage({ prompt, aspect? })`** — live image generation from deployed functions, billed/rate-limited against the project billing account through `RUN402_SERVICE_KEY`. Aspects: `square`, `landscape`, `portrait`; result: `{ image, content_type, aspect }`. For public routed functions, authenticate/rate-limit app users before calling it.
+- **`assets.put(key, source, opts?)`** — upload runtime bytes through the same CAS-backed apply substrate as deploy-time assets. `source` is a string, `Uint8Array`, or `{ content | bytes }`; returns an SDK-compatible `AssetRef`.
 
 Fluent surface on both `db(req).from(t)` and `adminDb().from(t)`:
 - Reads: `.select()`, `.eq()`, `.neq()`, `.gt()`, `.lt()`, `.gte()`, `.lte()`, `.like()`, `.ilike()`, `.in()`, `.order()`, `.limit()`, `.offset()`

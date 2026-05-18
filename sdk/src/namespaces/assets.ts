@@ -344,6 +344,11 @@ export class Assets {
     const immutable = opts.immutable ?? true;
     const visibility = opts.visibility ?? "public";
 
+    // Check credentials early so callers get ProjectNotFound rather than a
+    // generic error from inside the apply flow.
+    const projectKeys = await this.client.getProject(projectId);
+    if (!projectKeys) throw new ProjectNotFound(projectId, "uploading asset");
+
     // v1.48 unified-apply: route through the apply hero. Bytes upload via
     // /content/v1/plans (CAS substrate) and the asset slice promotes in the
     // activation transaction of /apply/v1/plans/:id/commit. The legacy
