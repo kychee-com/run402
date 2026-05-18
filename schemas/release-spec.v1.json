@@ -39,6 +39,9 @@
     "site": {
       "$ref": "#/$defs/site"
     },
+    "assets": {
+      "$ref": "#/$defs/assets"
+    },
     "subdomains": {
       "$ref": "#/$defs/subdomains"
     },
@@ -388,6 +391,73 @@
         },
         "contentType": { "type": "string" },
         "integrity": { "type": "string" }
+      }
+    },
+    "assets": {
+      "type": "object",
+      "description": "v1.48 unified-apply asset slice. Per-key assets are committed inside the same activation transaction as functions/site/secrets so a release flips atomically.",
+      "additionalProperties": false,
+      "properties": {
+        "put": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/assetPutEntry" }
+        },
+        "delete": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Asset keys to remove at activation."
+        },
+        "sync": { "$ref": "#/$defs/assetSync" }
+      }
+    },
+    "assetPutEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["key"],
+      "properties": {
+        "key": {
+          "type": "string",
+          "description": "Asset key under the project's asset namespace (no leading slash)."
+        },
+        "source": {
+          "$ref": "#/$defs/fileEntry",
+          "description": "SDK-input form. Mutually exclusive with sha256/size_bytes; the SDK normalizer hashes + uploads via /content/v1/plans."
+        },
+        "sha256": {
+          "type": "string",
+          "description": "Pre-uploaded CAS reference (wire form). Mutually exclusive with source."
+        },
+        "size_bytes": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Required when using the wire form (sha256 set)."
+        },
+        "content_type": { "type": "string" },
+        "visibility": { "enum": ["public", "private"] },
+        "immutable": { "type": "boolean" }
+      }
+    },
+    "assetSync": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["prefix", "prune"],
+      "properties": {
+        "prefix": {
+          "type": "string",
+          "description": "Prefix under which destructive sync operates."
+        },
+        "prune": { "const": true },
+        "confirm": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["base_revision", "delete_set_digest", "expected_delete_count"],
+          "properties": {
+            "base_revision": { "type": "string" },
+            "delete_set_digest": { "type": "string" },
+            "expected_delete_count": { "type": "integer", "minimum": 0 }
+          },
+          "description": "Confirmation token echoed back from a prior plan; required to commit a destructive sync."
+        }
       }
     }
   }

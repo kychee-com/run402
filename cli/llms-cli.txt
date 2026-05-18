@@ -859,7 +859,7 @@ Other AssetRef fields for advanced use:
 
 **Agent loop pattern (mutable URL only):** if you must use a stable mutable URL across re-uploads, `run402 cdn wait-fresh <mutable-url> --sha <new-sha>` blocks until the CDN serves the new SHA. **Don't call wait-fresh on immutable URLs** — they're correct from the moment of upload.
 
-Resume: state is persisted to `~/.run402/uploads/<upload_id>.json` with restrictive permissions (directory 0700, files 0600). The state is bound to project, local path, destination key, size, and mtime, and it does not persist presigned part URLs. Ctrl-C mid-upload and re-run the same `blob put` command — it picks up where it left off when the local file still matches. Pass `--no-resume` to start fresh.
+Resume: removed in v2.1.0. The CLI now delegates to `sdk.assets.put`, which routes through the unified-apply hero (`apply/v1/plans → content/v1/plans → S3 PUT → commit`). The `--concurrency` and `--no-resume` flags are accepted for backward compatibility but ignored — resume semantics now live at the apply-plan level (24h plan TTL).
 
 Private blobs (`--private`): no CDN URL returned; read via authenticated gateway path `GET /storage/v1/blob/<key>` with apikey, or via `run402 assets sign` for time-boxed external sharing.
 
@@ -870,45 +870,28 @@ Content-Type: `blob put` infers MIME from the destination key extension. Use `--
 #### Uploading from Node/agent code
 
 ```javascript
-import { run402 } from "@run402/sdk/node";
+import { run402, dir } from "@run402/sdk/node";
 
 const client = run402();
 
-// 1. Init through the SDK. The gateway returns presigned part URLs.
-const init = await client.assets.initUploadSession(projectId, {
-  key: "uploads/report.pdf",
-  size_bytes: buf.length,
-  content_type: "application/pdf",
-  sha256: objectSha256Hex,
-});
-
-// 2. PUT each part URL (bytes go direct to S3, NOT through the gateway).
-//    Send x-amz-checksum-sha256 unless the presigned URL already encodes it.
-const etags = [];
-for (const part of init.parts) {
-  const body = buf.slice(part.byte_start, part.byte_end + 1);
-  const partSha256Hex = sha256Hex(body);
-  const partChecksumBase64 = sha256Base64(body);
-  const headers = new URL(part.url).searchParams.has("x-amz-checksum-sha256")
-    ? {}
-    : { "x-amz-checksum-sha256": partChecksumBase64 };
-  const res = await fetch(part.url, {
-    method: "PUT",
-    headers,
-    body,
-  });
-  etags.push({ part_number: part.part_number, etag: res.headers.get("etag"), sha256: partSha256Hex });
-}
-
-// 3. Complete through the SDK.
-const asset = await client.assets.completeUploadSession(
-  projectId,
-  init.upload_id,
-  { parts: etags },
-  { contentType: "application/pdf" },
-);
-
+// Single key — bytes/string source.
+const asset = await client.assets.put(projectId, "uploads/report.pdf", { bytes });
 // asset.cdnUrl is the preferred content-addressed URL for public blobs.
+
+// Whole directory in one apply (atomic with site/functions/secrets if combined).
+const manifest = await client.assets.uploadDir("./assets", {
+  project: projectId,
+  prefix: "static/",
+});
+console.log(manifest.byKey["static/logo.png"].cdn_url);
+
+// Or as part of a release apply (assets promote inside the same activation
+// transaction that flips live_release_id).
+await client.deploy.apply({
+  project: projectId,
+  assets: { put: [{ key: "static/logo.png", source: bytes }] },
+  site: dir("./dist"),
+});
 ```
 
 ### sites

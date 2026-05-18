@@ -251,6 +251,48 @@ export const deploySchema = {
       z.object({ public_paths: sitePublicPaths }).strict(),
     ])
     .optional(),
+  assets: z
+    .object({
+      put: z
+        .array(
+          z
+            .object({
+              key: z.string().describe("Asset key (path under the project's asset namespace, no leading slash)."),
+              source: fileEntry.optional().describe("Source bytes (SDK-input form). Mutually exclusive with sha256."),
+              sha256: z.string().optional().describe("Pre-uploaded CAS reference (wire form). Mutually exclusive with source."),
+              size_bytes: z.number().int().optional().describe("Required when using the wire form (sha256)."),
+              content_type: z.string().optional(),
+              visibility: z.enum(["public", "private"]).optional(),
+              immutable: z.boolean().optional(),
+            })
+            .strict(),
+        )
+        .optional()
+        .describe("Per-key asset puts. Pass either { source } for the SDK to hash/upload, or { sha256, size_bytes } when bytes are already in CAS."),
+      delete: z.array(z.string()).optional().describe("Asset keys to remove in the activation transaction."),
+      sync: z
+        .object({
+          prefix: z.string().describe("Prefix under which sync operates. Required."),
+          prune: z.literal(true).describe("Must be true to declare destructive sync intent."),
+          confirm: z
+            .object({
+              base_revision: z.string(),
+              delete_set_digest: z.string(),
+              expected_delete_count: z.number().int(),
+            })
+            .strict()
+            .optional()
+            .describe("Confirmation token echoed back from a prior plan; required to commit a destructive sync."),
+        })
+        .strict()
+        .optional()
+        .describe("Declarative sync. With prune: true and no confirm, the plan returns an asset_sync block with the values to echo back."),
+    })
+    .strict()
+    .optional()
+    .describe(
+      "v1.48 unified-apply assets slice. Asset writes promote inside the same activation transaction as functions/site/secrets so a release flips atomically.",
+    ),
   subdomains: z
     .object({
       set: z.array(z.string()).optional(),
@@ -313,6 +355,27 @@ type DeployArgs = {
     | { replace: FileMapInput; public_paths?: SitePublicPathsSpec }
     | { patch: { put?: FileMapInput; delete?: string[] }; public_paths?: SitePublicPathsSpec }
     | { public_paths: SitePublicPathsSpec };
+  assets?: {
+    put?: Array<{
+      key: string;
+      source?: z.infer<typeof fileEntry>;
+      sha256?: string;
+      size_bytes?: number;
+      content_type?: string;
+      visibility?: "public" | "private";
+      immutable?: boolean;
+    }>;
+    delete?: string[];
+    sync?: {
+      prefix: string;
+      prune: true;
+      confirm?: {
+        base_revision: string;
+        delete_set_digest: string;
+        expected_delete_count: number;
+      };
+    };
+  };
   subdomains?: ReleaseSpec["subdomains"];
   routes?: ReleaseSpec["routes"];
   idempotency_key?: string;

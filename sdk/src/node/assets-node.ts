@@ -15,11 +15,9 @@
 import { Assets } from "../namespaces/assets.js";
 import { Deploy } from "../namespaces/deploy.js";
 import { LocalError } from "../errors.js";
-import { createHash } from "node:crypto";
-import { readFile } from "node:fs/promises";
 import type { Client } from "../kernel.js";
 import type {
-  AssetPutEntry,
+  AssetPutEntryInput,
   AssetSpec,
   AssetSyncPruneConfirm,
   ContentSource,
@@ -88,104 +86,43 @@ export function dir(path: string, opts: DirOptions = {}): LocalDirRef {
 }
 
 // ───────────────────────────────────────────────────────────────────────────
-// Asset slice normalization (SDK input → wire)
+// Asset slice input building (SDK input → AssetPutEntryInput)
 // ───────────────────────────────────────────────────────────────────────────
 
 /**
- * Normalize one disk entry into a wire-shaped `AssetPutEntry`. Reads the
- * file once, streams SHA-256, captures size, infers content_type from
- * extension via the existing `guessContentType` table. Defaults
- * `immutable: true` and `visibility: "public"`.
- */
-async function entryFromFile(
-  absolutePath: string,
-  key: string,
-  contentType: string,
-): Promise<AssetPutEntry> {
-  const buf = await readFile(absolutePath);
-  const sha = createHash("sha256").update(buf).digest("hex");
-  return {
-    key,
-    sha256: sha,
-    size_bytes: buf.length,
-    content_type: contentType,
-    visibility: "public",
-    immutable: true,
-  };
-}
-
-/**
- * Normalize one in-memory `ContentSource` into a wire-shaped entry.
- * Buffers the bytes (compatible with Uint8Array, ArrayBuffer, Blob,
- * string). Streams aren't supported here yet — pass a Blob or pre-read.
- */
-async function entryFromContent(
-  key: string,
-  source: ContentSource,
-  contentType?: string,
-  immutable?: boolean,
-  visibility?: "public" | "private",
-): Promise<AssetPutEntry> {
-  const bytes = await readContentSourceBytes(source);
-  const sha = createHash("sha256").update(bytes).digest("hex");
-  return {
-    key,
-    sha256: sha,
-    size_bytes: bytes.length,
-    content_type: contentType ?? "application/octet-stream",
-    visibility: visibility ?? "public",
-    immutable: immutable ?? true,
-  };
-}
-
-async function readContentSourceBytes(src: ContentSource): Promise<Uint8Array> {
-  if (typeof src === "string") return new TextEncoder().encode(src);
-  if (src instanceof Uint8Array) return src;
-  if (src instanceof ArrayBuffer) return new Uint8Array(src);
-  if (typeof Blob !== "undefined" && src instanceof Blob) {
-    return new Uint8Array(await src.arrayBuffer());
-  }
-  if (typeof src === "object" && src !== null && "data" in src) {
-    return readContentSourceBytes((src as { data: ContentSource }).data);
-  }
-  if (typeof src === "object" && src !== null && "__source" in src) {
-    const fs = src as FsFileSource;
-    if (fs.__source === "fs-file") {
-      return await readFile(fs.path);
-    }
-  }
-  throw new LocalError(
-    "Unsupported ContentSource for asset put (Streams not yet supported; pass a Blob or pre-read bytes)",
-    "normalizing asset entry",
-  );
-}
-
-/**
- * Walk a `LocalDirRef`, hash every file, and return wire-shaped
- * `AssetPutEntry[]`. The prefix is applied to relative keys.
+ * Walk a `LocalDirRef` and emit `AssetPutEntryInput[]` carrying a
+ * `ContentSource` per file (rather than a pre-computed SHA). The actual
+ * hashing + byte-reader registration happens inside the SDK's
+ * `normalizeAssetSlice` pipeline so the bytes are uploaded via the shared
+ * `byteReaders` map (v1.48 unified-apply). Returning wire-shaped entries
+ * here would skip byte-reader registration and the deploy would fail with
+ * `Missing bytes for sha=<...>` at upload time.
  *
- * This is the single normalization point — uploadDir/syncDir/prepareDir
- * /putMany all funnel through here so the wire submission carries
- * normalized entries only (gateway rejects LocalDirRef objects).
+ * The prefix is applied to relative keys. content_type/visibility/immutable
+ * are left to the normalizer's defaults (visibility=public, immutable=true,
+ * content_type derived from extension).
  */
-export async function entriesFromLocalDir(ref: LocalDirRef): Promise<AssetPutEntry[]> {
+export async function entriesFromLocalDir(ref: LocalDirRef): Promise<AssetPutEntryInput[]> {
   const fileSetOpts: FileSetFromDirOptions = {
     ignore: ref.ignore,
     includeSensitive: ref.includeSensitive,
   };
   const fileSet = await fileSetFromDir(ref.path, fileSetOpts);
-  const entries: AssetPutEntry[] = [];
+  const entries: AssetPutEntryInput[] = [];
   for (const [relPath, source] of Object.entries(fileSet)) {
     const key = applyPrefix(ref.prefix, relPath);
     if (typeof source === "object" && source !== null && "__source" in source) {
       const fs = source as FsFileSource;
       if (fs.__source === "fs-file") {
-        const contentType = fs.contentType ?? "application/octet-stream";
-        entries.push(await entryFromFile(fs.path, key, contentType));
+        entries.push({
+          key,
+          source: fs,
+          content_type: fs.contentType,
+        });
         continue;
       }
     }
-    entries.push(await entryFromContent(key, source));
+    entries.push({ key, source });
   }
   return entries;
 }
@@ -242,91 +179,39 @@ export interface AssetManifest {
   pruned?: string[];
 }
 
-function buildAssetManifest(
-  releaseResult: DeployResult,
-  entries: AssetPutEntry[],
+/**
+ * Build an `AssetManifest` from a `DeployResult`. The gateway plan
+ * response is the authoritative source — `result.assets` is populated by
+ * `buildAssetManifestFromPlanEntries` in deploy.ts from
+ * `plan.asset_entries[].asset_ref`. Throws if the result has no `assets`
+ * (which would mean the gateway didn't echo asset_entries — older
+ * gateway pre-v1.48 or a release-only apply where the spec carried no
+ * assets slice).
+ */
+function manifestFromResult(
+  result: DeployResult,
   pruned: string[] | undefined,
   durationMs: number,
 ): AssetManifest {
-  const projectPublicId =
-    (releaseResult.urls as unknown as { project_public_id?: string })?.project_public_id ?? "";
-  return buildManifestFromEntries(entries, projectPublicId, pruned, durationMs);
-}
-
-function buildManifestFromEntries(
-  entries: AssetPutEntry[],
-  projectPublicId: string,
-  pruned: string[] | undefined,
-  durationMs: number,
-): AssetManifest {
-  const list: AssetManifestEntry[] = [];
-  const byKey: Record<string, AssetManifestEntry> = Object.create(null);
-  const manifest: Record<string, AssetManifestEntry> = Object.create(null);
-  for (const entry of entries) {
-    const e = buildEntryFromAssetPut(entry, projectPublicId);
-    list.push(e);
-    byKey[entry.key] = e;
-    manifest[entry.key] = e;
+  if (!result.assets) {
+    throw new LocalError(
+      "Deploy result missing `assets` — gateway plan response did not include asset_entries. Requires gateway v1.48+.",
+      "building asset manifest",
+    );
   }
-  const result: AssetManifest = {
-    list,
-    byKey,
-    manifest,
+  const out: AssetManifest = {
+    list: result.assets.list,
+    byKey: result.assets.byKey,
+    manifest: result.assets.manifest,
     totals: {
-      files: entries.length,
-      // Byte counts come from the activation-transaction promote
-      // response; the SDK doesn't yet thread them through DeployResult
-      // (the gateway plan-response enrichment is a separate follow-up).
-      // Placeholder 0 keeps the shape stable.
-      bytes_uploaded: 0,
-      bytes_reused: 0,
+      files: result.assets.totals?.files ?? result.assets.list.length,
+      bytes_uploaded: result.assets.totals?.bytes_uploaded ?? 0,
+      bytes_reused: result.assets.totals?.bytes_reused ?? 0,
       duration_ms: durationMs,
     },
   };
-  if (pruned) result.pruned = pruned;
-  return result;
-}
-
-/**
- * Build an `AssetManifestEntry` from an `AssetPutEntry` and the
- * project's public id. The URL form mirrors the gateway's
- * `buildAssetRefForPlan` — deterministic from `(project_public_id, key,
- * content_sha256)`. Private assets return null for all public URL
- * fields per the visibility-aware URL matrix (design D6/D8).
- */
-function buildEntryFromAssetPut(
-  entry: AssetPutEntry,
-  projectPublicId: string,
-): AssetManifestEntry {
-  const visibility = entry.visibility ?? "public";
-  const immutable = entry.immutable ?? true;
-  const isPublic = visibility === "public";
-  const suffix = entry.sha256.slice(0, 8);
-  const dotIdx = entry.key.lastIndexOf(".");
-  const suffixedKey =
-    dotIdx > 0
-      ? `${entry.key.slice(0, dotIdx)}-${suffix}${entry.key.slice(dotIdx)}`
-      : `${entry.key}-${suffix}`;
-  const host = projectPublicId ? `pr-${projectPublicId}.run402.com` : "";
-  const url = isPublic && host ? `https://${host}/_blob/${entry.key}` : null;
-  const immutableUrl = isPublic && immutable && host
-    ? `https://${host}/_blob/${suffixedKey}`
-    : null;
-  const contentDigest = `sha-256=:${Buffer.from(entry.sha256, "hex").toString("base64")}:`;
-  return {
-    key: entry.key,
-    sha256: entry.sha256,
-    size_bytes: entry.size_bytes,
-    content_type: entry.content_type ?? "application/octet-stream",
-    visibility,
-    url,
-    immutable_url: immutableUrl,
-    cdn_url: url,
-    cdn_immutable_url: immutableUrl,
-    sri: null,
-    etag: `"sha256-${entry.sha256}"`,
-    content_digest: contentDigest,
-  };
+  if (pruned) out.pruned = pruned;
+  return out;
 }
 
 // ───────────────────────────────────────────────────────────────────────────
@@ -419,7 +304,7 @@ export class NodeAssets extends Assets {
       { project: opts.project, assets: { put: entries } },
       { onEvent: opts.onEvent },
     );
-    return buildAssetManifest(result, entries, undefined, Date.now() - start);
+    return manifestFromResult(result, undefined, Date.now() - start);
   }
 
   /**
@@ -448,7 +333,7 @@ export class NodeAssets extends Assets {
         { project: opts.project, assets: { put: entries } },
         { onEvent: opts.onEvent },
       );
-      return buildAssetManifest(result, entries, undefined, Date.now() - start);
+      return manifestFromResult(result, undefined, Date.now() - start);
     }
     if (!opts.prefix) {
       throw new LocalError(
@@ -503,9 +388,8 @@ export class NodeAssets extends Assets {
       },
       { onEvent: opts.onEvent },
     );
-    return buildAssetManifest(
+    return manifestFromResult(
       result,
-      entries,
       // pruned[] is populated by the activation transaction (gateway-
       // side asset slice promotion). Without the enriched plan response
       // (follow-up), we don't yet have the materialized list here.
@@ -539,15 +423,52 @@ export class NodeAssets extends Assets {
         "preparing asset directory",
       );
     }
-    // Plan-only via the engine. The result's URLs are best-effort
-    // built locally until the gateway plan-response enrichment lands.
-    const plan = await this.applyEngine().plan(
+    // Plan-only via the engine — the gateway resolves URLs at plan time
+    // (URLs are deterministic from `(project_public_id, key,
+    // content_sha256)` per design D8). The caller renders HTML against
+    // these resolved URLs, then calls `apply()` with the returned
+    // `applySlice` to commit. We return the original input entries (with
+    // sources retained) as the applySlice so the SDK normalizer can
+    // register byte readers when the caller commits.
+    const { plan } = await this.applyEngine().plan(
       { project: opts.project, assets: { put: entries } } as ReleaseSpec,
       { dryRun: true },
     );
-    void plan; // referenced for type-check; consumed by URL-enrich follow-up
+    const planEntries = plan.asset_entries ?? [];
+    const list: AssetManifestEntry[] = [];
+    const byKey: Record<string, AssetManifestEntry> = Object.create(null);
+    const manifest: Record<string, AssetManifestEntry> = Object.create(null);
+    for (const entry of planEntries) {
+      const e: AssetManifestEntry = {
+        key: entry.key,
+        sha256: entry.sha256,
+        size_bytes: entry.size_bytes,
+        content_type: entry.content_type,
+        visibility: entry.visibility,
+        url: entry.asset_ref.url,
+        immutable_url: entry.asset_ref.immutable_url,
+        cdn_url: entry.asset_ref.cdn_url,
+        cdn_immutable_url: entry.asset_ref.cdn_immutable_url,
+        sri: entry.asset_ref.sri,
+        etag: entry.asset_ref.etag,
+        content_digest: entry.asset_ref.content_digest,
+      };
+      list.push(e);
+      byKey[entry.key] = e;
+      manifest[entry.key] = e;
+    }
     return {
-      manifest: buildManifestFromEntries(entries, "", undefined, Date.now() - start),
+      manifest: {
+        list,
+        byKey,
+        manifest,
+        totals: {
+          files: planEntries.length,
+          bytes_uploaded: 0,
+          bytes_reused: 0,
+          duration_ms: Date.now() - start,
+        },
+      },
       applySlice: { put: entries },
     };
   }
@@ -569,23 +490,18 @@ export class NodeAssets extends Assets {
         "uploading asset batch",
       );
     }
-    const entries: AssetPutEntry[] = [];
-    for (const item of items) {
-      entries.push(
-        await entryFromContent(
-          item.key,
-          item.source,
-          item.contentType,
-          item.immutable,
-          item.visibility,
-        ),
-      );
-    }
+    const entries: AssetPutEntryInput[] = items.map((item) => ({
+      key: item.key,
+      source: item.source,
+      content_type: item.contentType,
+      visibility: item.visibility,
+      immutable: item.immutable,
+    }));
     const result = await this.applyEngine().apply(
       { project: opts.project, assets: { put: entries } },
       { onEvent: opts.onEvent },
     );
-    return buildAssetManifest(result, entries, undefined, Date.now() - start);
+    return manifestFromResult(result, undefined, Date.now() - start);
   }
 
   /**

@@ -340,135 +340,108 @@ export class Assets {
 
     const contentType = opts.contentType ?? guessContentType(key);
     // v1.45 default: `immutable: true`. The agent-DX surface (cdnUrl, sri,
-    // scriptTag/linkTag/imgTag) only works for content-addressed uploads,
-    // so the default reaches for the best path. Pass `{ immutable: false }`
-    // explicitly when you specifically want a non-content-hashed URL
+    // scriptTag/linkTag/imgTag) only works for content-addressed uploads.
     const immutable = opts.immutable ?? true;
-    const sha256 = await sha256Hex(bytes);
+    const visibility = opts.visibility ?? "public";
 
-    // 1. Init upload — gateway returns presigned S3 URLs for each part.
-    const init = await this.initUploadSession(projectId, {
-      key,
-      size_bytes: sizeBytes,
-      content_type: contentType,
-      visibility: opts.visibility ?? "public",
-      immutable,
-      sha256,
+    // v1.48 unified-apply: route through the apply hero. Bytes upload via
+    // /content/v1/plans (CAS substrate) and the asset slice promotes in the
+    // activation transaction of /apply/v1/plans/:id/commit. The legacy
+    // /storage/v1/uploads* flow is gone (gateway returns 404).
+    const { Deploy } = await import("./deploy.js");
+    const deploy = new Deploy(this.client);
+    const result = await deploy.apply({
+      project: projectId,
+      assets: {
+        put: [
+          {
+            key,
+            source: bytes,
+            content_type: contentType,
+            visibility,
+            immutable,
+          },
+        ],
+      },
     });
 
-    // 2. PUT each part directly to S3 via the presigned URL.
-    const partEtags: Array<{ etag: string; sha256: string }> = new Array(init.part_count);
-    for (const part of init.parts) {
-      const partBytes = bytes.subarray(part.byte_start, part.byte_end + 1);
-      const checksum = await sha256HexAndBase64(partBytes);
-      const putRes = await this.client.fetch(part.url, {
-        method: "PUT",
-        headers: checksumHeadersForPresignedUrl(part.url, checksum.base64),
-        body: partBytes as BodyInit,
-      });
-      if (!putRes.ok) {
-        const errText = await putRes.text().catch(() => "");
-        throw new ApiError(
-          `Part ${part.part_number} PUT failed (HTTP ${putRes.status} ${putRes.statusText})${errText ? ": " + errText.slice(0, 200) : ""}`,
-          putRes.status,
-          errText,
-          "uploading blob part",
-        );
-      }
-      partEtags[part.part_number - 1] = {
-        etag: (putRes.headers.get("etag") ?? "").replace(/^"|"$/g, ""),
-        sha256: checksum.hex,
-      };
+    // The plan response's asset_entries[].asset_ref is threaded into
+    // result.assets.byKey by buildAssetManifestFromPlanEntries in deploy.ts.
+    const entry = result.assets?.byKey[key];
+    if (!entry) {
+      throw new LocalError(
+        `apply succeeded but result.assets.byKey["${key}"] is missing. Gateway plan response did not include an asset_entries entry for the key — likely an older gateway version pre-v1.48.`,
+        "uploading asset",
+      );
     }
 
-    // 3. Complete upload — gateway finalizes (commits multipart, writes DB row).
-    const completeBody = init.mode === "multipart"
-      ? { parts: partEtags.map((e, i) => ({ part_number: i + 1, etag: `"${e.etag}"`, sha256: e.sha256 })) }
-      : {};
-    return this.completeUploadSession(projectId, init.upload_id, completeBody, {
-      contentType,
-    });
+    // Widen AssetManifestEntry → BlobPutResult (AssetRef shape with
+    // scriptTag/linkTag/imgTag emitters). The integrity fields and CDN
+    // envelope are derived from the same SHA the gateway resolved.
+    const sha = entry.sha256;
+    const completion: UploadCompleteResponse = {
+      key: entry.key,
+      size_bytes: entry.size_bytes,
+      sha256: sha,
+      visibility: entry.visibility,
+      url: entry.url,
+      immutable_url: entry.immutable_url,
+      content_type: entry.content_type,
+      cdn_url: entry.cdn_url,
+      cdn_immutable_url: entry.cdn_immutable_url,
+      immutable_suffix: null,
+    };
+    return buildAssetRef(completion, contentType);
   }
 
   /**
-   * Initialize a low-level upload session. This is the gateway half of
-   * `blobs.put`, exposed for CLI-style resumable streaming uploaders that need
-   * to manage local files, part concurrency, and cached session state.
+   * @deprecated REMOVED in v2.1.0. The /storage/v1/uploads* substrate was
+   * dropped in gateway v1.48; all bytes flow through /content/v1/plans now.
+   * Migrate to `r.project(id).apply({ assets: { put: [{ key, source, ... }] } })`
+   * for single-asset uploads or `r.assets.uploadDir/syncDir/prepareDir/putMany`
+   * for batches. For low-level resumable control, use `r.project(id).apply.plan`
+   * and the returned `byteReaders` map.
    */
   async initUploadSession(
-    projectId: string,
-    opts: BlobUploadInitOptions,
+    _projectId: string,
+    _opts: BlobUploadInitOptions,
   ): Promise<BlobUploadInitResult> {
-    validateSha256Hex(opts.sha256, "sha256", "initializing upload");
-
-    const project = await this.client.getProject(projectId);
-    if (!project) throw new ProjectNotFound(projectId, "initializing upload");
-
-    return this.client.request<BlobUploadInitResult>("/storage/v1/uploads", {
-      method: "POST",
-      headers: {
-        apikey: project.service_key,
-        Authorization: `Bearer ${project.service_key}`,
-      },
-      body: {
-        key: opts.key,
-        size_bytes: opts.size_bytes,
-        content_type: opts.content_type,
-        visibility: opts.visibility ?? "public",
-        immutable: opts.immutable ?? false,
-        sha256: opts.sha256,
-      },
-      context: "initializing upload",
-    });
-  }
-
-  /** Fetch a low-level upload session's current status for resumable uploads. */
-  async getUploadSession(
-    projectId: string,
-    uploadId: string,
-  ): Promise<BlobUploadStatusResult> {
-    const project = await this.client.getProject(projectId);
-    if (!project) throw new ProjectNotFound(projectId, "fetching upload session");
-
-    return this.client.request<BlobUploadStatusResult>(
-      `/storage/v1/uploads/${encodeURIComponent(uploadId)}`,
-      {
-        headers: {
-          apikey: project.service_key,
-          Authorization: `Bearer ${project.service_key}`,
-        },
-        context: "fetching upload session",
-      },
+    throw new LocalError(
+      "Assets.initUploadSession was removed in v2.1.0 (gateway v1.48 dropped /storage/v1/uploads). " +
+        "Use `r.project(id).apply({ assets: { put: [{ key, source, ... }] } })` for single-asset uploads, " +
+        "or `r.assets.uploadDir/syncDir/prepareDir/putMany` for batches.",
+      "initializing upload",
     );
   }
 
   /**
-   * Complete a low-level upload session and return the same AssetRef shape as
-   * `blobs.put`. Single PUT sessions may omit `parts`.
+   * @deprecated REMOVED in v2.1.0 — see {@link initUploadSession}.
+   */
+  async getUploadSession(
+    _projectId: string,
+    _uploadId: string,
+  ): Promise<BlobUploadStatusResult> {
+    throw new LocalError(
+      "Assets.getUploadSession was removed in v2.1.0 (gateway v1.48 dropped /storage/v1/uploads). " +
+        "Low-level resumable upload sessions are no longer a public surface; the apply engine handles retries.",
+      "fetching upload session",
+    );
+  }
+
+  /**
+   * @deprecated REMOVED in v2.1.0 — see {@link initUploadSession}.
    */
   async completeUploadSession(
-    projectId: string,
-    uploadId: string,
-    opts: BlobUploadCompleteOptions = {},
-    extra: { contentType?: string } = {},
+    _projectId: string,
+    _uploadId: string,
+    _opts: BlobUploadCompleteOptions = {},
+    _extra: { contentType?: string } = {},
   ): Promise<BlobUploadCompleteResult> {
-    const project = await this.client.getProject(projectId);
-    if (!project) throw new ProjectNotFound(projectId, "completing upload");
-
-    const completion = await this.client.request<UploadCompleteResponse>(
-      `/storage/v1/uploads/${encodeURIComponent(uploadId)}/complete`,
-      {
-        method: "POST",
-        headers: {
-          apikey: project.service_key,
-          Authorization: `Bearer ${project.service_key}`,
-        },
-        body: opts.parts ? { parts: opts.parts } : {},
-        context: "completing upload",
-      },
+    throw new LocalError(
+      "Assets.completeUploadSession was removed in v2.1.0 (gateway v1.48 dropped /storage/v1/uploads/:id/complete). " +
+        "Use `r.project(id).apply` — the apply hero's activation transaction promotes staged uploads to CAS automatically.",
+      "completing upload",
     );
-
-    return buildAssetRef(completion, extra.contentType ?? completion.content_type ?? "application/octet-stream");
   }
 
   /**

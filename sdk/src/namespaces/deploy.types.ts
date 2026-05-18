@@ -102,7 +102,13 @@ export interface ReleaseSpec {
  *   inventory mutates between commit and activation.
  */
 export interface AssetSpec {
-  put?: AssetPutEntry[];
+  /** Accept either the wire-shaped {@link AssetPutEntry} (`sha256` +
+   *  `size_bytes` set, byte upload already happened or about to happen via
+   *  pre-uploaded CAS) OR the SDK-input shape {@link AssetPutEntryInput}
+   *  (carries `source: ContentSource`; the SDK normalizer hashes the
+   *  bytes, registers a byte-reader, and emits wire-shaped entries before
+   *  submission). The two forms can be mixed in the same array. */
+  put?: (AssetPutEntry | AssetPutEntryInput)[];
   delete?: string[];
   sync?: {
     prefix: string;
@@ -128,6 +134,30 @@ export interface AssetPutEntry {
   /** Defaults to `true`. Immutable puts populate `internal.asset_versions`
    *  so older content-hashed URLs survive future key mutation/delete (per
    *  the visibility-aware URL matrix). */
+  immutable?: boolean;
+}
+
+/**
+ * SDK-input shape for an asset put. Carries a `ContentSource` rather than
+ * a pre-computed `sha256` / `size_bytes`; the SDK normalizer hashes the
+ * source, registers a byte-reader in the apply's `byteReaders` map (keyed
+ * by SHA), and emits a wire-shaped {@link AssetPutEntry} before the spec
+ * is sent to `/apply/v1/plans`. The `source` field NEVER reaches the
+ * gateway.
+ *
+ * Discriminated from {@link AssetPutEntry} by the presence of `source`
+ * and the absence of `sha256`. Either form may appear in
+ * `AssetSpec.put`.
+ */
+export interface AssetPutEntryInput {
+  key: string;
+  /** Bytes to upload. Accepts every shape `resolveContent` accepts —
+   *  `string`, `Uint8Array`, `ArrayBuffer`, `Blob`, `FsFileSource`,
+   *  `ReadableStream`, `{ data, contentType }` wrapper, `{ content }`,
+   *  `{ bytes }`. */
+  source: ContentSource;
+  content_type?: string;
+  visibility?: "public" | "private";
   immutable?: boolean;
 }
 
@@ -1835,6 +1865,16 @@ export interface NormalizedReleaseSpec {
   subdomains?: SubdomainsSpec;
   routes?: ReleaseRoutesSpec;
   checks?: SmokeCheck[];
+  /** v1.48 unified-apply: post-normalization asset slice. `put` entries
+   *  are wire-shaped `AssetPutEntry[]` (no `source` field — the SDK
+   *  normalizer stripped them after registering byte-readers). */
+  assets?: NormalizedAssetSpec;
+}
+
+export interface NormalizedAssetSpec {
+  put?: AssetPutEntry[];
+  delete?: string[];
+  sync?: { prefix: string; prune: true; confirm?: AssetSyncPruneConfirm };
 }
 
 export interface NormalizedDatabaseSpec {
@@ -1939,6 +1979,67 @@ export interface DeployResult {
   diff: DeployDiff;
   /** Structured plan warnings that were observed before commit. */
   warnings: WarningEntry[];
+  /** v1.48 unified-apply: present when the spec carried an `assets` slice.
+   *  Built from the plan response's `asset_entries[].asset_ref` (gateway-
+   *  authoritative URLs) plus the realised `content.upload.*` event stream
+   *  for `totals.bytes_uploaded` / `bytes_reused`. `undefined` for release-
+   *  only applies. */
+  assets?: AssetManifest;
+}
+
+/**
+ * Batch result envelope for the assets slice. Mirrors the @run402/sdk/node
+ * `AssetManifest` shape exposed from the Node entry; defined on the
+ * isomorphic side so consumers reading `DeployResult.assets` get a typed
+ * shape without importing the Node entry.
+ *
+ * `byKey` and `manifest` MUST be constructed with `Object.create(null)`
+ * (design D9) so attacker-controlled or filesystem-derived keys like
+ * `__proto__` / `constructor` / `toString` don't collide with prototype
+ * properties.
+ */
+export interface AssetManifest {
+  /** Iteration order = submission order. */
+  list: AssetManifestEntry[];
+  /** Null-prototype object indexed by asset key. */
+  byKey: Record<string, AssetManifestEntry>;
+  /** Null-prototype object, JSON-serializable, suitable for writing to
+   *  disk as a `asset-manifest.json` artifact. */
+  manifest: Record<string, AssetManifestEntry>;
+  totals: {
+    files: number;
+    bytes_uploaded: number;
+    bytes_reused: number;
+    duration_ms: number;
+  };
+  /** Populated when the apply carried `assets.sync.prune: true`. */
+  pruned?: string[];
+}
+
+export interface AssetManifestEntry {
+  key: string;
+  sha256: string;
+  size_bytes: number;
+  content_type: string;
+  visibility: "public" | "private";
+  /** Mutable public URL (alias for the deprecated `url` field). */
+  url: string | null;
+  /** Content-hashed immutable URL. Null when the entry is private or
+   *  `immutable: false`. */
+  immutable_url: string | null;
+  /** CDN-form of the mutable URL (auto-subdomain). Alias maintained for
+   *  parity with single-asset `AssetRef`. */
+  cdn_url: string | null;
+  /** CDN-form of the immutable URL. The recommended URL for generated
+   *  HTML/CSS/JS — pair with `sri`. */
+  cdn_immutable_url: string | null;
+  /** Browser SRI form: `sha256-<base64>`. Null on non-immutable / private
+   *  uploads. */
+  sri: string | null;
+  /** Strong ETag `"sha256-<hex>"`. */
+  etag: string | null;
+  /** RFC 9530 `Content-Digest` value `sha-256=:<base64>:`. */
+  content_digest: string | null;
 }
 
 // ─── Apply / start / low-level options ───────────────────────────────────────

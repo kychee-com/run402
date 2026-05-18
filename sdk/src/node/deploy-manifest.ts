@@ -7,6 +7,9 @@ import {
 import { LocalError } from "../errors.js";
 import { ROUTE_HTTP_METHODS } from "../namespaces/deploy.types.js";
 import type {
+  AssetPutEntryInput,
+  AssetSpec,
+  AssetSyncPruneConfirm,
   ContentRef,
   ContentSource,
   DatabaseSpec,
@@ -30,6 +33,7 @@ const MANIFEST_FIELDS = new Set([
   "secrets",
   "functions",
   "site",
+  "assets",
   "subdomains",
   "routes",
   "checks",
@@ -58,6 +62,22 @@ const MANIFEST_SITE_FIELDS = new Set(["replace", "patch", "public_paths"]);
 const MANIFEST_SITE_PATCH_FIELDS = new Set(["put", "delete"]);
 const MANIFEST_SITE_PUBLIC_PATHS_FIELDS = new Set(["mode", "replace"]);
 const MANIFEST_PUBLIC_STATIC_PATH_FIELDS = new Set(["asset", "cache_class"]);
+const MANIFEST_ASSETS_FIELDS = new Set(["put", "delete", "sync"]);
+const MANIFEST_ASSETS_PUT_ENTRY_FIELDS = new Set([
+  "key",
+  "source",
+  "sha256",
+  "size_bytes",
+  "content_type",
+  "visibility",
+  "immutable",
+]);
+const MANIFEST_ASSETS_SYNC_FIELDS = new Set(["prefix", "prune", "confirm"]);
+const MANIFEST_ASSETS_SYNC_CONFIRM_FIELDS = new Set([
+  "base_revision",
+  "delete_set_digest",
+  "expected_delete_count",
+]);
 const MANIFEST_ROUTES_FIELDS = new Set(["replace"]);
 const MANIFEST_ROUTE_ENTRY_FIELDS = new Set(["pattern", "methods", "target", "acknowledge_readonly"]);
 const MANIFEST_FUNCTION_ROUTE_TARGET_FIELDS = new Set(["type", "name"]);
@@ -114,8 +134,32 @@ export type DeployManifestSiteSpec =
   | { patch: { put?: DeployManifestFileSet; delete?: string[] }; replace?: never; public_paths?: SitePublicPathsSpec }
   | { public_paths: SitePublicPathsSpec; replace?: never; patch?: never };
 
+export interface DeployManifestAssetPutEntry {
+  key: string;
+  /** SDK-input form. Either:
+   *  - `source` = ContentSource (string / Uint8Array / { path }) — the
+   *    SDK normalizer hashes + uploads via /content/v1/plans
+   *  - `sha256` + `size_bytes` = wire form (bytes already in CAS) */
+  source?: DeployManifestFileEntry;
+  sha256?: string;
+  size_bytes?: number;
+  content_type?: string;
+  visibility?: "public" | "private";
+  immutable?: boolean;
+}
+
+export interface DeployManifestAssetSpec {
+  put?: DeployManifestAssetPutEntry[];
+  delete?: string[];
+  sync?: {
+    prefix: string;
+    prune: true;
+    confirm?: AssetSyncPruneConfirm;
+  };
+}
+
 export interface DeployManifestInput
-  extends Omit<ReleaseSpec, "project" | "database" | "functions" | "site"> {
+  extends Omit<ReleaseSpec, "project" | "database" | "functions" | "site" | "assets"> {
   /** JSON Schema metadata for editors. Stripped before deploy planning. */
   $schema?: string;
   /** SDK-native project field. `project_id` is also accepted for MCP/CLI parity. */
@@ -125,6 +169,7 @@ export interface DeployManifestInput
   database?: DeployManifestDatabaseSpec;
   functions?: DeployManifestFunctionsSpec;
   site?: DeployManifestSiteSpec;
+  assets?: DeployManifestAssetSpec;
   /** CLI/MCP manifest idempotency key, returned separately for deploy options. */
   idempotency_key?: string;
   /** JS-friendly alias for `idempotency_key`. */
@@ -215,6 +260,9 @@ export async function normalizeDeployManifest(
   }
   if (manifest.site !== undefined) {
     spec.site = mapSite(manifest.site, opts);
+  }
+  if (manifest.assets !== undefined) {
+    spec.assets = mapAssets(manifest.assets, opts);
   }
 
   const idempotencyKey = resolveIdempotencyKey(manifest);
@@ -535,6 +583,133 @@ function mapSitePublicPaths(value: unknown): SitePublicPathsSpec {
         : { asset: entry.asset, cache_class: entry.cache_class };
   }
   return { mode: "explicit", replace };
+}
+
+function mapAssets(
+  assets: DeployManifestAssetSpec,
+  opts: NormalizeDeployManifestOptions,
+): AssetSpec {
+  assertPlainRecord(assets, "Deploy manifest assets");
+  assertKnownFields(assets, "Deploy manifest assets", MANIFEST_ASSETS_FIELDS);
+  const out: AssetSpec = {};
+
+  if (assets.put !== undefined) {
+    if (!Array.isArray(assets.put)) {
+      throw new LocalError(
+        "Deploy manifest assets.put must be an array of put entries",
+        CONTEXT,
+      );
+    }
+    const put: (AssetPutEntryInput)[] = [];
+    for (let idx = 0; idx < assets.put.length; idx++) {
+      const rawEntry = assets.put[idx];
+      const label = `Deploy manifest assets.put[${idx}]`;
+      assertPlainRecord(rawEntry, label);
+      assertKnownFields(rawEntry, label, MANIFEST_ASSETS_PUT_ENTRY_FIELDS);
+      const entry = rawEntry as unknown as DeployManifestAssetPutEntry;
+      if (typeof entry.key !== "string" || entry.key.length === 0) {
+        throw new LocalError(`${label}.key is required and must be a non-empty string`, CONTEXT);
+      }
+      const hasSource = entry.source !== undefined;
+      const hasSha = entry.sha256 !== undefined;
+      if (hasSource === hasSha) {
+        throw new LocalError(
+          `${label} must include exactly one of \`source\` or \`sha256\``,
+          CONTEXT,
+        );
+      }
+      if (hasSource) {
+        const source = fileEntryToContentSource(entry.source!, opts, `${label}.source`);
+        const input: AssetPutEntryInput = {
+          key: entry.key,
+          source,
+        };
+        if (entry.content_type !== undefined) input.content_type = entry.content_type;
+        if (entry.visibility !== undefined) input.visibility = entry.visibility;
+        if (entry.immutable !== undefined) input.immutable = entry.immutable;
+        put.push(input);
+      } else {
+        if (typeof entry.size_bytes !== "number") {
+          throw new LocalError(
+            `${label}.size_bytes is required when using the wire form (sha256 set)`,
+            CONTEXT,
+          );
+        }
+        // Wire shape — typed as AssetPutEntryInput but the SDK's
+        // normalizeAssetSlice accepts the wire form too (it discriminates
+        // on the presence of `source`).
+        const wire = {
+          key: entry.key,
+          sha256: entry.sha256,
+          size_bytes: entry.size_bytes,
+          content_type: entry.content_type,
+          visibility: entry.visibility,
+          immutable: entry.immutable,
+        } as unknown as AssetPutEntryInput;
+        put.push(wire);
+      }
+    }
+    out.put = put;
+  }
+
+  if (assets.delete !== undefined) {
+    if (!Array.isArray(assets.delete)) {
+      throw new LocalError(
+        "Deploy manifest assets.delete must be an array of keys",
+        CONTEXT,
+      );
+    }
+    out.delete = [...assets.delete];
+  }
+
+  if (assets.sync !== undefined) {
+    assertPlainRecord(assets.sync, "Deploy manifest assets.sync");
+    assertKnownFields(assets.sync, "Deploy manifest assets.sync", MANIFEST_ASSETS_SYNC_FIELDS);
+    const rawSync = assets.sync as unknown as { prefix: unknown; prune: unknown; confirm?: unknown };
+    if (typeof rawSync.prefix !== "string" || rawSync.prefix.length === 0) {
+      throw new LocalError(
+        "Deploy manifest assets.sync.prefix is required",
+        CONTEXT,
+      );
+    }
+    if (rawSync.prune !== true) {
+      throw new LocalError(
+        "Deploy manifest assets.sync.prune must be `true`",
+        CONTEXT,
+      );
+    }
+    const sync: NonNullable<AssetSpec["sync"]> = {
+      prefix: rawSync.prefix,
+      prune: true,
+    };
+    if (rawSync.confirm !== undefined) {
+      assertPlainRecord(rawSync.confirm, "Deploy manifest assets.sync.confirm");
+      assertKnownFields(
+        rawSync.confirm,
+        "Deploy manifest assets.sync.confirm",
+        MANIFEST_ASSETS_SYNC_CONFIRM_FIELDS,
+      );
+      const confirm = rawSync.confirm as Record<string, unknown>;
+      if (
+        typeof confirm.base_revision !== "string" ||
+        typeof confirm.delete_set_digest !== "string" ||
+        typeof confirm.expected_delete_count !== "number"
+      ) {
+        throw new LocalError(
+          "Deploy manifest assets.sync.confirm requires base_revision (string), delete_set_digest (string), expected_delete_count (number)",
+          CONTEXT,
+        );
+      }
+      sync.confirm = {
+        base_revision: confirm.base_revision,
+        delete_set_digest: confirm.delete_set_digest,
+        expected_delete_count: confirm.expected_delete_count,
+      };
+    }
+    out.sync = sync;
+  }
+
+  return out;
 }
 
 function mapRoutes(routes: unknown): ReleaseRoutesSpec {

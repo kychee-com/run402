@@ -19,20 +19,13 @@
  */
 
 import {
-  createReadStream,
   statSync,
   readFileSync,
-  writeFileSync,
   mkdirSync,
-  chmodSync,
   existsSync,
-  unlinkSync,
-  readdirSync,
   createWriteStream,
 } from "node:fs";
-import { createHash } from "node:crypto";
-import { basename, dirname, join, resolve as resolvePath } from "node:path";
-import { homedir } from "node:os";
+import { basename, dirname, resolve as resolvePath } from "node:path";
 import { pipeline } from "node:stream/promises";
 
 import { resolveProjectId } from "./config.mjs";
@@ -55,10 +48,7 @@ Options:
   --key <dest>        Destination key (put only; defaults to file basename)
   --content-type <mime>  MIME override for blob put (defaults to extension inference)
   --private           Upload as private (not served by CDN; apikey required to read)
-  --immutable         Adds a content-hash suffix to the URL so overwrites produce distinct URLs.
-                      Requires computing SHA-256 over the file (CLI does this automatically).
-  --concurrency N     Concurrent part PUTs (default 4)
-  --no-resume         Start fresh; ignore any cached state
+  --immutable         Append a content-hash suffix to the URL so overwrites produce distinct URLs.
   --json              NDJSON progress events (for agent consumption)
   --prefix <p>        Prefix filter (ls only)
   --limit <n>         Max results (ls only; default 100, max 1000)
@@ -72,6 +62,11 @@ Examples:
   run402 assets ls --project prj_abc123 --prefix images/
   run402 assets rm images/logo.png --project prj_abc123
   run402 assets sign images/logo.png --project prj_abc123 --ttl 600
+
+Note: as of v2.1.0, the CLI delegates to sdk.assets.put which routes through
+the unified-apply hero. The pre-v2.1.0 --concurrency and --no-resume flags
+are still accepted for backward compatibility but are ignored; resume
+semantics now live at the apply-plan level (24h plan TTL).
 `;
 
 const SUB_HELP = {
@@ -89,15 +84,13 @@ Options:
   --content-type <mime>  MIME override; defaults to inferring from the destination key extension
   --private           Upload as private (not served by CDN; apikey required to read)
   --immutable         Append content-hash suffix so overwrites produce distinct URLs
-  --concurrency N     Concurrent part PUTs for multipart uploads (default 4)
-  --no-resume         Ignore any cached resumable-upload state and start fresh
   --json              Emit NDJSON progress events on stdout (for agent consumption)
 
 Examples:
   run402 assets put ./artifact.tgz --project prj_abc123
   run402 assets put ./dist/**/*.png --project prj_abc123 --key assets/
   run402 assets put ./asset --project prj_abc123 --key assets/logo --content-type image/svg+xml
-  run402 assets put huge.bin --project prj_abc123 --immutable --concurrency 8
+  run402 assets put huge.bin --project prj_abc123 --immutable
 `,
   get: `run402 assets get — Download a blob by key
 
@@ -185,10 +178,6 @@ Examples:
 `,
 };
 
-function uploadStateDir() {
-  return join(homedir(), ".run402", "uploads");
-}
-
 function die(msg, exit_code = 1) {
   fail({ code: "BAD_USAGE", message: msg, exit_code });
 }
@@ -255,173 +244,34 @@ function parseContentTypeFlag(name, value) {
   return raw;
 }
 
-async function sha256File(filePath) {
-  const h = createHash("sha256");
-  const stream = createReadStream(filePath);
-  for await (const chunk of stream) h.update(chunk);
-  return h.digest("hex");
-}
-
-function sha256BufferHexAndBase64(body) {
-  const digest = createHash("sha256").update(body).digest();
-  return {
-    hex: digest.toString("hex"),
-    base64: digest.toString("base64"),
-  };
-}
-
-function checksumHeadersForPresignedUrl(url, checksumBase64) {
-  let urlHasChecksum = false;
-  try {
-    urlHasChecksum = new URL(url).searchParams.has("x-amz-checksum-sha256");
-  } catch {
-    urlHasChecksum = false;
-  }
-  return urlHasChecksum ? {} : { "x-amz-checksum-sha256": checksumBase64 };
-}
-
-function loadState(uploadId) {
-  const path = join(uploadStateDir(), `${uploadId}.json`);
-  if (!existsSync(path)) return null;
-  try { return JSON.parse(readFileSync(path, "utf8")); }
-  catch { return null; }
-}
-
-function saveState(state) {
-  const dir = uploadStateDir();
-  mkdirSync(dir, { recursive: true, mode: 0o700 });
-  chmodSync(dir, 0o700);
-  const diskState = { ...state };
-  delete diskState.parts;
-  const path = join(dir, `${state.upload_id}.json`);
-  writeFileSync(path, JSON.stringify(diskState, null, 2), { mode: 0o600 });
-  chmodSync(path, 0o600);
-}
-
-function removeState(uploadId) {
-  const path = join(uploadStateDir(), `${uploadId}.json`);
-  if (existsSync(path)) unlinkSync(path);
-}
-
-function fileFingerprint(stat) {
-  return {
-    file_size: stat.size,
-    file_mtime_ms: stat.mtimeMs,
-  };
-}
-
-function stateMatchesFile(state, fingerprint) {
-  return state.file_size === fingerprint.file_size &&
-    typeof state.file_mtime_ms === "number" &&
-    state.file_mtime_ms === fingerprint.file_mtime_ms;
-}
-
-function findResumableStateForFile(projectId, localPath, key, fingerprint) {
-  const dir = uploadStateDir();
-  if (!existsSync(dir)) return null;
-  for (const f of readdirSync(dir)) {
-    if (!f.endsWith(".json")) continue;
-    try {
-      const s = JSON.parse(readFileSync(join(dir, f), "utf8"));
-      if (s.project_id === projectId && s.local_path === localPath && s.key === key) {
-        if (stateMatchesFile(s, fingerprint)) return s;
-        removeState(s.upload_id);
-      }
-    } catch { /* ignore */ }
-  }
-  return null;
-}
-
 // ---------------------------------------------------------------------------
 // put
 // ---------------------------------------------------------------------------
 
 async function putOne(projectId, filePath, opts) {
   const stat = statSync(filePath);
-  const size = stat.size;
-  const fingerprint = fileFingerprint(stat);
+  if (!stat.isFile()) {
+    die(`Not a regular file: ${filePath}`);
+  }
   const destKey = computeDestKey(filePath, opts.key);
-  const absLocal = resolvePath(filePath);
 
-  const sha256 = await sha256File(filePath);
-
-  // Attempt to resume
-  let state = opts.resume
-    ? findResumableStateForFile(projectId, absLocal, destKey, fingerprint)
-    : null;
-  let initRes;
-  if (state) {
-    // Re-poll the session; if it's still active, resume. Otherwise start fresh.
-    const poll = await getSdk().assets.getUploadSession(projectId, state.upload_id);
-    if (poll.status === "active") {
-      log(opts, { event: "resume", upload_id: state.upload_id, key: destKey });
-      initRes = {
-        upload_id: state.upload_id,
-        mode: poll.mode ?? state.mode,
-        parts: poll.parts ?? state.parts ?? [],
-        part_count: poll.part_count ?? state.part_count,
-        part_size_bytes: poll.part_size_bytes ?? state.part_size_bytes,
-      };
-    } else {
-      removeState(state.upload_id);
-      state = null;
-    }
-  }
-
-  if (!state) {
-    initRes = await getSdk().assets.initUploadSession(projectId, {
-      key: destKey,
-      size_bytes: size,
-      content_type: opts.contentType ?? guessContentType(destKey),
-      visibility: opts.private ? "private" : "public",
-      immutable: opts.immutable,
-      sha256,
-    });
-    state = {
-      upload_id: initRes.upload_id,
-      project_id: projectId,
-      local_path: absLocal,
-      key: destKey,
-      mode: initRes.mode,
-      part_size_bytes: initRes.part_size_bytes,
-      part_count: initRes.part_count,
-      parts: initRes.parts,
-      parts_done: {},
-      sha256,
-      ...fingerprint,
-      started_at: new Date().toISOString(),
-    };
-    if (opts.resume) saveState(state);
-  }
-
-  // Upload parts with concurrency limit. For single-PUT mode part_count=1 and
-  // this loop runs once.
-  const etags = Array(initRes.part_count);
-  for (const pn of Object.keys(state.parts_done || {})) {
-    const pd = state.parts_done[pn];
-    // Legacy resume state stored just the etag string; new code stores
-    // { etag, sha256 }. Normalize on load.
-    etags[parseInt(pn, 10) - 1] = typeof pd === "string" ? { etag: pd, sha256: undefined } : pd;
-  }
-
-  const todo = initRes.parts.filter((p) => !(state.parts_done || {})[String(p.part_number)]);
-  await withConcurrency(todo, opts.concurrency, async (part) => {
-    const { etag, sha256: partSha256 } = await putPart(filePath, part);
-    etags[part.part_number - 1] = { etag, sha256: partSha256 };
-    state.parts_done[String(part.part_number)] = { etag, sha256: partSha256 };
-    if (opts.resume) saveState(state);
-    log(opts, { event: "part", upload_id: state.upload_id, part_number: part.part_number, etag, sha256: partSha256 });
-  });
-
-  // Complete
-  const body = initRes.mode === "multipart"
-    ? { parts: etags.map((e, i) => ({ part_number: i + 1, etag: e.etag, sha256: e.sha256 })) }
-    : {};
-  const result = await getSdk().assets.completeUploadSession(projectId, state.upload_id, body, {
+  // v2.1.0: the legacy /storage/v1/uploads* session API is gone. The CLI
+  // now delegates to `sdk.assets.put`, which routes through the
+  // unified-apply hero (apply/v1/plans -> content/v1/plans -> S3 PUT ->
+  // commit).
+  //
+  // Trade-off vs v2.0.x: resumable uploads via persisted state under
+  // ~/.run402/uploads/ are no longer supported. Resume semantics now live
+  // at the apply-plan level (24h plan TTL); a future CLI redesign can
+  // expose that. The --concurrency and --no-resume flags are accepted but
+  // ignored — the SDK upload paths handle parallelism internally.
+  log(opts, { event: "start", key: destKey, size_bytes: stat.size });
+  const bytes = new Uint8Array(readFileSync(filePath));
+  const result = await getSdk().assets.put(projectId, destKey, { bytes }, {
     contentType: opts.contentType ?? guessContentType(destKey),
+    visibility: opts.private ? "private" : "public",
+    immutable: opts.immutable,
   });
-
-  removeState(state.upload_id);
   log(opts, { event: "done", ...result });
   return result;
 }
@@ -430,40 +280,6 @@ function computeDestKey(filePath, keyOpt) {
   if (!keyOpt) return basename(filePath);
   if (keyOpt.endsWith("/")) return keyOpt + basename(filePath);
   return keyOpt;
-}
-
-async function putPart(filePath, part) {
-  const start = part.byte_start ?? 0;
-  const end = part.byte_end ?? (statSync(filePath).size - 1);
-  const stream = createReadStream(filePath, { start, end });
-  const chunks = [];
-  for await (const c of stream) chunks.push(c);
-  const body = Buffer.concat(chunks);
-  const checksum = sha256BufferHexAndBase64(body);
-
-  const res = await fetch(part.url, {
-    method: "PUT",
-    headers: checksumHeadersForPresignedUrl(part.url, checksum.base64),
-    body,
-  });
-  if (!res.ok) {
-    const errBody = await res.text().catch(() => "");
-    throw new Error(`Part ${part.part_number} PUT failed: ${res.status} ${res.statusText}${errBody ? " — " + errBody.slice(0, 200) : ""}`);
-  }
-  const etag = res.headers.get("etag") ?? "";
-  return { etag, sha256: checksum.hex };
-}
-
-async function withConcurrency(items, limit, worker) {
-  let index = 0;
-  const workerCount = Math.min(limit, items.length);
-  async function runWorker() {
-    while (index < items.length) {
-      const item = items[index++];
-      await worker(item);
-    }
-  }
-  await Promise.all(Array.from({ length: workerCount }, runWorker));
 }
 
 async function put(projectId, argv) {

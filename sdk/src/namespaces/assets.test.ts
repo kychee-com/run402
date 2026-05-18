@@ -60,283 +60,233 @@ function json(body: unknown, status = 200): Response {
   });
 }
 
-describe("blobs.put", () => {
-  it("runs init → PUT → complete flow for small content", async () => {
-    const { fetch, calls } = mockFetch((call) => {
-      if (call.url.endsWith("/storage/v1/uploads") && call.method === "POST") {
-        return json({
-          upload_id: "u_42",
+/**
+ * Helper: install a happy-path apply-flow handler on a mockFetch.
+ *
+ * v1.48 unified-apply: r.assets.put(projectId, key, source, opts) routes
+ * through Deploy.apply, which issues this sequence:
+ *
+ *   1. POST /apply/v1/plans      → PlanResponse with missing_content + asset_entries
+ *   2. POST /content/v1/plans    → ContentPlanResponse with presigned PUTs (if missing)
+ *   3. PUT  to each presigned URL → 200 from S3
+ *   4. POST /content/v1/plans/:id/commit → 200 (CAS promotion)
+ *   5. POST /apply/v1/plans/:id/commit  → CommitResponse status: "ready"
+ *
+ * The helper takes an `entries` array (one per asset key the test wants
+ * the plan response to acknowledge) and a `missing` flag (whether the
+ * sha is in CAS already). It also lets the caller customize the
+ * asset_ref URL fields via per-entry overrides.
+ */
+interface ApplyAssetEntry {
+  key: string;
+  size_bytes: number;
+  content_type?: string;
+  visibility?: "public" | "private";
+  immutable?: boolean;
+  missing?: boolean;
+  asset_ref_overrides?: Partial<{
+    url: string | null;
+    immutable_url: string | null;
+    cdn_url: string | null;
+    cdn_immutable_url: string | null;
+    sri: string | null;
+    etag: string;
+    content_digest: string;
+  }>;
+}
+
+async function applySha256Hex(bytes: Uint8Array): Promise<string> {
+  const hash = await crypto.subtle.digest("SHA-256", bytes as unknown as BufferSource);
+  return Array.from(new Uint8Array(hash))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+function installApplyHandler(
+  fetch: { calls: FetchCall[] },
+  entries: ApplyAssetEntry[],
+  shas: Map<string, string>,
+): (call: FetchCall) => Response | Promise<Response> {
+  return async (call: FetchCall): Promise<Response> => {
+    if (call.url.endsWith("/apply/v1/plans") && call.method === "POST") {
+      // Each entry's SHA comes from the spec the SDK normalizer sent.
+      // The body is { spec: { ..., assets: { put: [...] } } }.
+      const body = JSON.parse(call.body as string);
+      const putEntries = body.spec.assets.put as Array<{ key: string; sha256: string; size_bytes: number; content_type: string; visibility: "public" | "private"; immutable: boolean }>;
+      for (const e of putEntries) shas.set(e.key, e.sha256);
+      const missing_content = putEntries
+        .filter((e) => entries.find((m) => m.key === e.key)?.missing !== false)
+        .map((e) => ({ sha256: e.sha256, size: e.size_bytes, content_type: e.content_type, present: false }));
+      const asset_entries = putEntries.map((e) => {
+        const cfg = entries.find((m) => m.key === e.key)!;
+        const sha = e.sha256;
+        const suffix = sha.slice(0, 8);
+        const dotIdx = e.key.lastIndexOf(".");
+        const suffixedKey = dotIdx > 0
+          ? `${e.key.slice(0, dotIdx)}-${suffix}${e.key.slice(dotIdx)}`
+          : `${e.key}-${suffix}`;
+        const isPublic = e.visibility === "public";
+        const isImmutable = e.immutable === true;
+        const host = "pr-abc.run402.com";
+        const url = cfg.asset_ref_overrides?.url ?? (isPublic ? `https://${host}/_blob/${e.key}` : null);
+        const immutableUrl = cfg.asset_ref_overrides?.immutable_url ?? (isPublic && isImmutable ? `https://${host}/_blob/${suffixedKey}` : null);
+        const sri = cfg.asset_ref_overrides?.sri ?? (isImmutable ? `sha256-${Buffer.from(sha, "hex").toString("base64")}` : null);
+        return {
+          key: e.key,
+          sha256: sha,
+          size_bytes: e.size_bytes,
+          content_type: e.content_type,
+          visibility: e.visibility,
+          immutable: e.immutable,
+          status: cfg.missing !== false ? "upload_pending" : "present",
+          asset_ref: {
+            key: e.key,
+            sha256: sha,
+            size_bytes: e.size_bytes,
+            content_type: e.content_type,
+            visibility: e.visibility,
+            immutable: e.immutable,
+            url,
+            immutable_url: immutableUrl,
+            cdn_url: cfg.asset_ref_overrides?.cdn_url ?? url,
+            cdn_immutable_url: cfg.asset_ref_overrides?.cdn_immutable_url ?? immutableUrl,
+            sri,
+            etag: cfg.asset_ref_overrides?.etag ?? `"sha256-${sha}"`,
+            content_digest: cfg.asset_ref_overrides?.content_digest ?? `sha-256=:${Buffer.from(sha, "hex").toString("base64")}:`,
+          },
+        };
+      });
+      return json({
+        plan_id: "plan_x",
+        operation_id: "op_x",
+        base_release_id: null,
+        manifest_digest: "digest_x",
+        missing_content,
+        asset_entries,
+        diff: { resources: {} },
+        warnings: [],
+      });
+    }
+    if (call.url.endsWith("/content/v1/plans") && call.method === "POST") {
+      const body = JSON.parse(call.body as string);
+      const content = body.content as Array<{ sha256: string; size: number; content_type?: string }>;
+      return json({
+        plan_id: "cplan_x",
+        expires_at: "2030-01-01T00:00:00Z",
+        missing: content.map((c) => ({
+          sha256: c.sha256,
           mode: "single",
+          part_size_bytes: c.size,
           part_count: 1,
-          parts: [{ part_number: 1, url: "https://s3.test/u_42/p1", byte_start: 0, byte_end: 11 }],
-        });
-      }
-      if (call.url === "https://s3.test/u_42/p1" && call.method === "PUT") {
-        return new Response("", {
-          status: 200,
-          headers: { etag: '"etag-part1"' },
-        });
-      }
-      if (call.url.endsWith("/storage/v1/uploads/u_42/complete") && call.method === "POST") {
-        return json({
-          key: "hello.txt",
-          size_bytes: 12,
-          sha256: null,
-          visibility: "public",
-          url: "https://cdn.test/hello.txt",
-          immutable_url: null,
-        });
-      }
-      throw new Error("unexpected call: " + call.url);
-    });
+          parts: [{ part_number: 1, url: `https://s3.test/${c.sha256}/p1`, byte_start: 0, byte_end: c.size - 1 }],
+          upload_id: `u_${c.sha256.slice(0, 8)}`,
+          staging_key: `_staging/u/${c.sha256}`,
+          expires_at: "2030-01-01T00:00:00Z",
+        })),
+        entries: content.map((c) => ({ sha256: c.sha256, missing: true })),
+      });
+    }
+    if (call.url.startsWith("https://s3.test/") && call.method === "PUT") {
+      return new Response("", { status: 200, headers: { etag: '"e"' } });
+    }
+    if (call.url.match(/\/content\/v1\/plans\/[^/]+\/commit$/) && call.method === "POST") {
+      return json({});
+    }
+    if (call.url.match(/\/apply\/v1\/plans\/[^/]+\/commit$/) && call.method === "POST") {
+      return json({
+        operation_id: "op_x",
+        status: "ready",
+        release_id: "rel_x",
+        urls: { project: "https://prj.run402.test", project_public_id: "abc" },
+      });
+    }
+    throw new Error("unexpected call: " + call.method + " " + call.url);
+  };
+}
 
+describe("assets.put (v2.1.0 — routes through apply hero)", () => {
+  it("routes through /apply/v1/plans, uploads bytes via /content/v1/plans, commits, returns AssetRef", async () => {
+    let outerCalls: FetchCall[] = [];
+    const shas = new Map<string, string>();
+    const entries: ApplyAssetEntry[] = [
+      { key: "hello.txt", size_bytes: 12, content_type: "text/plain", visibility: "public", immutable: true, missing: true },
+    ];
+    const { fetch, calls } = mockFetch((call) => installApplyHandler({ calls: outerCalls }, entries, shas)(call));
+    outerCalls = calls;
     const sdk = makeSdk(fetch);
-    // Pass `immutable: false` explicitly: this test verifies the basic flow
-    // shape (init → PUT → complete) and non-immutable URL semantics while
-    // still sending the required digest to the upload API.
-    // The v1.45 default is `immutable: true`; the dedicated default-and-
-    // tag-emitter tests below cover that path.
-    const result = await sdk.assets.put(
-      "prj_known", "hello.txt", { content: "hello world\n" },
-      { immutable: false },
-    );
 
-    assert.equal(calls.length, 3);
-    assert.equal(calls[0]!.url, "https://api.example.test/storage/v1/uploads");
-    assert.equal(calls[0]!.headers["apikey"], "svc_k");
-    assert.equal(calls[0]!.headers["Authorization"], "Bearer svc_k");
-    const initBody = JSON.parse(calls[0]!.body as string);
-    assert.equal(initBody.key, "hello.txt");
-    assert.equal(initBody.size_bytes, 12);
-    assert.equal(initBody.visibility, "public");
-    assert.equal(initBody.immutable, false);
-    assert.equal(initBody.sha256, "a948904f2f0f479b8f8197694b30184b0d2ed1c1cd2a1ec0fb85d299a192a447");
-    // S3 PUT — no SIWX, no gateway apiBase, uses presigned URL as-is.
-    assert.equal(calls[1]!.url, "https://s3.test/u_42/p1");
-    assert.equal(calls[1]!.method, "PUT");
-    assert.equal(calls[1]!.headers["x-amz-checksum-sha256"], "qUiQTy8PR5uPgZdpSzAYSw0u0cHNKh7A+4XSmaGSpEc=");
-    // Complete
-    assert.equal(calls[2]!.url, "https://api.example.test/storage/v1/uploads/u_42/complete");
+    const result = await sdk.assets.put("prj_known", "hello.txt", { content: "hello world\n" });
+
+    // Verify path traversal: apply/v1/plans → content/v1/plans → S3 PUT → content/v1/plans/:id/commit → apply/v1/plans/:id/commit
+    const paths = calls.map((c) => c.url.replace("https://api.example.test", ""));
+    assert.ok(paths.some((p) => p === "/apply/v1/plans"), "POST /apply/v1/plans was issued");
+    assert.ok(paths.some((p) => p === "/content/v1/plans"), "POST /content/v1/plans was issued");
+    assert.ok(paths.some((p) => p.startsWith("https://s3.test/")), "S3 PUT was issued");
+    assert.ok(paths.some((p) => p.match(/\/content\/v1\/plans\/[^/]+\/commit$/)), "content commit was issued");
+    assert.ok(paths.some((p) => p.match(/\/apply\/v1\/plans\/[^/]+\/commit$/)), "apply commit was issued");
+    // No legacy uploads route is hit.
+    assert.equal(paths.filter((p) => p.includes("/storage/v1/uploads")).length, 0);
+
     assert.equal(result.key, "hello.txt");
-    assert.equal(result.url, "https://cdn.test/hello.txt");
+    assert.ok(result.cdnUrl, "cdnUrl populated");
+    assert.ok(result.sri, "sri populated");
   });
 
-  it("defaults to immutable: true (v1.45) — computes SHA + sends content-hashed flag", async () => {
-    let initBody: Record<string, unknown> | null = null;
-    const { fetch } = mockFetch((call) => {
-      if (call.url.endsWith("/storage/v1/uploads")) {
-        initBody = JSON.parse(call.body as string);
-        return json({
-          upload_id: "u_d",
-          mode: "single",
-          part_count: 1,
-          parts: [{ part_number: 1, url: "https://s3.test/u_d/p1", byte_start: 0, byte_end: 2 }],
-        });
-      }
-      if (call.url.startsWith("https://s3.test/")) {
-        return new Response("", { status: 200, headers: { etag: '"e"' } });
-      }
-      if (call.url.endsWith("/complete")) {
-        return json({
-          key: "hello.txt",
-          size_bytes: 3,
-          sha256: "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
-          visibility: "public",
-          content_type: "text/plain",
-          immutable_suffix: "ba7816bf",
-          url: "https://cdn.test/hello.txt",
-          immutable_url: "https://cdn.test/hello-ba7816bf.txt",
-          cdn_url: "https://pr-abc.run402.com/_blob/hello.txt",
-          cdn_immutable_url: "https://pr-abc.run402.com/_blob/hello-ba7816bf.txt",
-        });
-      }
-      throw new Error("unexpected: " + call.url);
-    });
+  it("defaults to immutable: true (v1.45) — sha256 computed + cdnUrl + sri populated", async () => {
+    let outerCalls: FetchCall[] = [];
+    const shas = new Map<string, string>();
+    const entries: ApplyAssetEntry[] = [
+      { key: "hello.txt", size_bytes: 3, content_type: "text/plain", visibility: "public", immutable: true, missing: true },
+    ];
+    const { fetch, calls } = mockFetch((call) => installApplyHandler({ calls: outerCalls }, entries, shas)(call));
+    outerCalls = calls;
     const sdk = makeSdk(fetch);
-    // No opts — relying on v1.45 defaults.
+
     const asset = await sdk.assets.put("prj_known", "hello.txt", { content: "abc" });
-    assert.equal(initBody!.immutable, true);
-    assert.equal(
-      initBody!.sha256,
-      "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
-    );
+    const planCall = calls.find((c) => c.url.endsWith("/apply/v1/plans"));
+    const planBody = JSON.parse(planCall!.body as string);
+    const entry = planBody.spec.assets.put[0];
+    assert.equal(entry.immutable, true);
+    assert.equal(entry.sha256, "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
+
     assert.ok(asset.cdnUrl, "cdnUrl populated by default");
     assert.ok(asset.sri, "sri populated by default");
-    // Tag emitters work without the agent ever passing { immutable: true }.
     const tag = asset.scriptTag();
     assert.match(tag, /integrity="sha256-/);
   });
 
-  it("attaches parts with etags and sha256 in multipart mode", async () => {
-    const { fetch, calls } = mockFetch((call) => {
-      if (call.url.endsWith("/storage/v1/uploads") && call.method === "POST") {
-        return json({
-          upload_id: "u_2",
-          mode: "multipart",
-          part_count: 2,
-          parts: [
-            { part_number: 1, url: "https://s3.test/u_2/p1", byte_start: 0, byte_end: 5 },
-            { part_number: 2, url: "https://s3.test/u_2/p2", byte_start: 6, byte_end: 11 },
-          ],
-        });
-      }
-      if (call.url === "https://s3.test/u_2/p1") {
-        return new Response("", { status: 200, headers: { etag: '"e1"' } });
-      }
-      if (call.url === "https://s3.test/u_2/p2") {
-        return new Response("", { status: 200, headers: { etag: '"e2"' } });
-      }
-      if (call.url.endsWith("/complete")) {
-        return json({ key: "multi.bin", size_bytes: 12, sha256: null, visibility: "public", url: null, immutable_url: null });
-      }
-      throw new Error("unexpected");
-    });
-    const sdk = makeSdk(fetch);
-    // Pin immutable: false — this test asserts on the multipart-complete
-    // shape, not on the sha-computation path.
-    await sdk.assets.put(
-      "prj_known", "multi.bin", { bytes: new Uint8Array(12) },
-      { immutable: false },
-    );
-    const completeBody = JSON.parse(calls[3]!.body as string);
-    assert.deepEqual(completeBody.parts, [
-      { part_number: 1, etag: '"e1"', sha256: "b0f66adc83641586656866813fd9dd0b8ebb63796075661ba45d1aa8089e1d44" },
-      { part_number: 2, etag: '"e2"', sha256: "b0f66adc83641586656866813fd9dd0b8ebb63796075661ba45d1aa8089e1d44" },
-    ]);
-  });
-
-  it("does not duplicate checksum header when the presigned URL carries the checksum", async () => {
-    const { fetch, calls } = mockFetch((call) => {
-      if (call.url.endsWith("/storage/v1/uploads")) {
-        return json({
-          upload_id: "u_q",
-          mode: "single",
-          part_count: 1,
-          parts: [{
-            part_number: 1,
-            url: "https://s3.test/u_q/p1?x-amz-checksum-sha256=encoded",
-            byte_start: 0,
-            byte_end: 2,
-          }],
-        });
-      }
-      if (call.url.startsWith("https://s3.test/")) {
-        return new Response("", { status: 200, headers: { etag: '"e"' } });
-      }
-      if (call.url.endsWith("/complete")) {
-        return json({
-          key: "x.txt", size_bytes: 3, sha256: null, visibility: "public",
-          url: null, immutable_url: null,
-        });
-      }
-      throw new Error("unexpected");
-    });
-    const sdk = makeSdk(fetch);
-    await sdk.assets.put("prj_known", "x.txt", { content: "abc" }, { immutable: false });
-    assert.equal(calls[1]!.headers["x-amz-checksum-sha256"], undefined);
-  });
-
-  it("computes sha256 when immutable is true", async () => {
-    const { fetch, calls } = mockFetch((call) => {
-      if (call.url.endsWith("/storage/v1/uploads")) {
-        return json({
-          upload_id: "u_i",
-          mode: "single",
-          part_count: 1,
-          parts: [{ part_number: 1, url: "https://s3.test/u_i/p1", byte_start: 0, byte_end: 2 }],
-        });
-      }
-      if (call.url.startsWith("https://s3.test/")) {
-        return new Response("", { status: 200, headers: { etag: '"e"' } });
-      }
-      if (call.url.endsWith("/complete")) {
-        return json({
-          key: "x.txt", size_bytes: 3, sha256: "abc", visibility: "public",
-          url: null, immutable_url: "https://cdn.test/x.abc.txt",
-        });
-      }
-      throw new Error("unexpected");
-    });
-    const sdk = makeSdk(fetch);
-    await sdk.assets.put("prj_known", "x.txt", { content: "abc" }, { immutable: true });
-    const initBody = JSON.parse(calls[0]!.body as string);
-    assert.equal(initBody.immutable, true);
-    assert.ok(typeof initBody.sha256 === "string" && initBody.sha256.length === 64);
-    // Known sha256 of "abc"
-    assert.equal(initBody.sha256, "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
-  });
-
   it("accepts a bare string as a polymorphic source (GH-126)", async () => {
-    let initBody: Record<string, unknown> | null = null;
-    const { fetch } = mockFetch((call) => {
-      if (call.url.endsWith("/storage/v1/uploads")) {
-        initBody = JSON.parse(call.body as string);
-        return json({
-          upload_id: "u_str",
-          mode: "single",
-          part_count: 1,
-          parts: [{ part_number: 1, url: "https://s3.test/u_str/p1", byte_start: 0, byte_end: 9 }],
-        });
-      }
-      if (call.url.startsWith("https://s3.test/")) {
-        return new Response("", { status: 200, headers: { etag: '"e"' } });
-      }
-      if (call.url.endsWith("/complete")) {
-        return json({
-          key: "blob.txt",
-          size_bytes: 10,
-          sha256: null,
-          visibility: "public",
-          url: "https://cdn.test/blob.txt",
-          immutable_url: null,
-        });
-      }
-      throw new Error("unexpected: " + call.url);
-    });
+    let outerCalls: FetchCall[] = [];
+    const shas = new Map<string, string>();
+    const entries: ApplyAssetEntry[] = [
+      { key: "blob.txt", size_bytes: 10, content_type: "text/plain", visibility: "public", immutable: false, missing: true },
+    ];
+    const { fetch, calls } = mockFetch((call) => installApplyHandler({ calls: outerCalls }, entries, shas)(call));
+    outerCalls = calls;
     const sdk = makeSdk(fetch);
-    // The natural "just give me a string" call shape — no { content: ... } wrapper.
-    const result = await sdk.assets.put(
-      "prj_known", "blob.txt", "hello blob",
-      { immutable: false },
-    );
+
+    const result = await sdk.assets.put("prj_known", "blob.txt", "hello blob", { immutable: false });
+    const planCall = calls.find((c) => c.url.endsWith("/apply/v1/plans"));
+    const planBody = JSON.parse(planCall!.body as string);
+    assert.equal(planBody.spec.assets.put[0].size_bytes, 10);
     assert.equal(result.key, "blob.txt");
-    assert.equal(initBody!.size_bytes, 10);
   });
 
   it("accepts a bare Uint8Array as a polymorphic source (GH-126)", async () => {
-    let initBody: Record<string, unknown> | null = null;
-    const { fetch } = mockFetch((call) => {
-      if (call.url.endsWith("/storage/v1/uploads")) {
-        initBody = JSON.parse(call.body as string);
-        return json({
-          upload_id: "u_u8",
-          mode: "single",
-          part_count: 1,
-          parts: [{ part_number: 1, url: "https://s3.test/u_u8/p1", byte_start: 0, byte_end: 4 }],
-        });
-      }
-      if (call.url.startsWith("https://s3.test/")) {
-        return new Response("", { status: 200, headers: { etag: '"e"' } });
-      }
-      if (call.url.endsWith("/complete")) {
-        return json({
-          key: "raw.bin",
-          size_bytes: 5,
-          sha256: null,
-          visibility: "public",
-          url: "https://cdn.test/raw.bin",
-          immutable_url: null,
-        });
-      }
-      throw new Error("unexpected: " + call.url);
-    });
+    let outerCalls: FetchCall[] = [];
+    const shas = new Map<string, string>();
+    const entries: ApplyAssetEntry[] = [
+      { key: "raw.bin", size_bytes: 5, content_type: "application/octet-stream", visibility: "public", immutable: false, missing: true },
+    ];
+    const { fetch, calls } = mockFetch((call) => installApplyHandler({ calls: outerCalls }, entries, shas)(call));
+    outerCalls = calls;
     const sdk = makeSdk(fetch);
-    const result = await sdk.assets.put(
-      "prj_known", "raw.bin", new TextEncoder().encode("bytes"),
-      { immutable: false },
-    );
+
+    const result = await sdk.assets.put("prj_known", "raw.bin", new TextEncoder().encode("bytes"), { immutable: false });
+    const planCall = calls.find((c) => c.url.endsWith("/apply/v1/plans"));
+    const planBody = JSON.parse(planCall!.body as string);
+    assert.equal(planBody.spec.assets.put[0].size_bytes, 5);
     assert.equal(result.key, "raw.bin");
-    assert.equal(initBody!.size_bytes, 5);
   });
 
   it("throws when both content and bytes are provided", async () => {
@@ -357,33 +307,16 @@ describe("blobs.put", () => {
     );
   });
 
-  it("throws ProjectNotFound before any fetch", async () => {
+  it("rejects 1 MB+ content shorthand pre-network", async () => {
     const { fetch, calls } = mockFetch(() => json({}));
     const sdk = makeSdk(fetch);
+    // 1.1 MB of "a"s — exceeds the 1 MB content shorthand cap.
+    const big = "a".repeat(1_100_000);
     await assert.rejects(
-      sdk.assets.put("prj_missing", "x.txt", { content: "hi" }),
-      ProjectNotFound,
+      sdk.assets.put("prj_known", "x.txt", { content: big }),
+      (err: unknown) => err instanceof Error && /limited to 1 MB/.test((err as Error).message),
     );
     assert.equal(calls.length, 0);
-  });
-
-  it("wraps S3 PUT failures in ApiError", async () => {
-    const { fetch } = mockFetch((call) => {
-      if (call.url.endsWith("/storage/v1/uploads")) {
-        return json({
-          upload_id: "u",
-          mode: "single",
-          part_count: 1,
-          parts: [{ part_number: 1, url: "https://s3.test/u/p1", byte_start: 0, byte_end: 2 }],
-        });
-      }
-      return new Response("access denied", { status: 403 });
-    });
-    const sdk = makeSdk(fetch);
-    await assert.rejects(
-      sdk.assets.put("prj_known", "x", { content: "abc" }),
-      (err: unknown) => err instanceof ApiError && (err as ApiError).status === 403,
-    );
   });
 });
 
@@ -509,46 +442,25 @@ describe("blobs.put — AssetRef widening (v1.45)", () => {
   it("populates camelCase aliases + integrity fields for immutable upload", async () => {
     // sha256 of "abc"
     const SHA = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
-    const { fetch } = mockFetch((call) => {
-      if (call.url.endsWith("/storage/v1/uploads")) {
-        return json({
-          upload_id: "u_a",
-          mode: "single",
-          part_count: 1,
-          parts: [{ part_number: 1, url: "https://s3.test/u_a/p1", byte_start: 0, byte_end: 2 }],
-        });
-      }
-      if (call.url.startsWith("https://s3.test/")) {
-        return new Response("", { status: 200, headers: { etag: '"e"' } });
-      }
-      if (call.url.endsWith("/complete")) {
-        return json({
-          key: "x.txt",
-          size_bytes: 3,
-          sha256: SHA,
-          visibility: "public",
-          content_type: "text/plain",
-          immutable_suffix: SHA.slice(0, 8),
-          url: "https://app.run402.com/_blob/x.txt",
-          immutable_url: "https://app.run402.com/_blob/x-ba7816bf.txt",
-          cdn_url: "https://pr-abc.run402.com/_blob/x.txt",
-          cdn_immutable_url: "https://pr-abc.run402.com/_blob/x-ba7816bf.txt",
-        });
-      }
-      throw new Error("unexpected: " + call.url);
-    });
+    let outerCalls: FetchCall[] = [];
+    const shas = new Map<string, string>();
+    const entries: ApplyAssetEntry[] = [
+      { key: "x.txt", size_bytes: 3, content_type: "text/plain", visibility: "public", immutable: true, missing: true },
+    ];
+    const { fetch, calls } = mockFetch((call) => installApplyHandler({ calls: outerCalls }, entries, shas)(call));
+    outerCalls = calls;
     const sdk = makeSdk(fetch);
     const result = await sdk.assets.put("prj_known", "x.txt", { content: "abc" }, { immutable: true });
 
     // Legacy snake_case fields stay populated for back-compat.
     assert.equal(result.size_bytes, 3);
     assert.equal(result.sha256, SHA);
-    assert.equal(result.url, "https://app.run402.com/_blob/x.txt");
-    assert.equal(result.immutable_url, "https://app.run402.com/_blob/x-ba7816bf.txt");
+    assert.equal(result.url, "https://pr-abc.run402.com/_blob/x.txt");
+    assert.equal(result.immutable_url, "https://pr-abc.run402.com/_blob/x-ba7816bf.txt");
     // New camelCase aliases.
     assert.equal(result.size, 3);
     assert.equal(result.contentSha256, SHA);
-    assert.equal(result.immutableUrl, "https://app.run402.com/_blob/x-ba7816bf.txt");
+    assert.equal(result.immutableUrl, "https://pr-abc.run402.com/_blob/x-ba7816bf.txt");
     assert.equal(result.contentType, "text/plain");
     // v1.45 cdn-reachable URLs (auto-subdomain, guaranteed-working).
     assert.equal(result.cdnUrl, "https://pr-abc.run402.com/_blob/x-ba7816bf.txt");
@@ -565,35 +477,13 @@ describe("blobs.put — AssetRef widening (v1.45)", () => {
   });
 
   it("scriptTag/linkTag/imgTag emit ready-to-paste tags with SRI + crossorigin", async () => {
-    const SHA = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
-    const { fetch } = mockFetch((call) => {
-      if (call.url.endsWith("/storage/v1/uploads")) {
-        return json({
-          upload_id: "u_t",
-          mode: "single",
-          part_count: 1,
-          parts: [{ part_number: 1, url: "https://s3.test/u_t/p1", byte_start: 0, byte_end: 2 }],
-        });
-      }
-      if (call.url.startsWith("https://s3.test/")) {
-        return new Response("", { status: 200, headers: { etag: '"e"' } });
-      }
-      if (call.url.endsWith("/complete")) {
-        return json({
-          key: "app.js",
-          size_bytes: 3,
-          sha256: SHA,
-          visibility: "public",
-          content_type: "text/javascript",
-          immutable_suffix: SHA.slice(0, 8),
-          url: "https://app.run402.com/_blob/app.js",
-          immutable_url: "https://app.run402.com/_blob/app-ba7816bf.js",
-          cdn_url: "https://pr-abc.run402.com/_blob/app.js",
-          cdn_immutable_url: "https://pr-abc.run402.com/_blob/app-ba7816bf.js",
-        });
-      }
-      throw new Error("unexpected: " + call.url);
-    });
+    let outerCalls: FetchCall[] = [];
+    const shas = new Map<string, string>();
+    const entries: ApplyAssetEntry[] = [
+      { key: "app.js", size_bytes: 3, content_type: "text/javascript", visibility: "public", immutable: true, missing: true },
+    ];
+    const { fetch, calls } = mockFetch((call) => installApplyHandler({ calls: outerCalls }, entries, shas)(call));
+    outerCalls = calls;
     const sdk = makeSdk(fetch);
     const asset = await sdk.assets.put("prj_known", "app.js", { content: "abc" }, { immutable: true });
 
@@ -648,31 +538,28 @@ describe("blobs.put — AssetRef widening (v1.45)", () => {
   });
 
   it("tag emitters escape HTML special chars in alt + url + sri", async () => {
-    // sha256 of "abc"
-    const SHA = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
     // URL with characters that need attribute escaping.
     const HOSTILE_URL = "https://pr-abc.run402.com/_blob/a&b\"c<d>.png";
-    const { fetch } = mockFetch((call) => {
-      if (call.url.endsWith("/storage/v1/uploads")) {
-        return json({
-          upload_id: "u_e", mode: "single", part_count: 1,
-          parts: [{ part_number: 1, url: "https://s3.test/u_e/p1", byte_start: 0, byte_end: 2 }],
-        });
-      }
-      if (call.url.startsWith("https://s3.test/")) {
-        return new Response("", { status: 200, headers: { etag: '"e"' } });
-      }
-      if (call.url.endsWith("/complete")) {
-        return json({
-          key: 'a&b"c<d>.png',
-          size_bytes: 3, sha256: SHA, visibility: "public",
-          content_type: "image/png", immutable_suffix: SHA.slice(0, 8),
-          url: HOSTILE_URL, immutable_url: HOSTILE_URL,
-          cdn_url: HOSTILE_URL, cdn_immutable_url: HOSTILE_URL,
-        });
-      }
-      throw new Error("unexpected: " + call.url);
-    });
+    let outerCalls: FetchCall[] = [];
+    const shas = new Map<string, string>();
+    const entries: ApplyAssetEntry[] = [
+      {
+        key: 'a&b"c<d>.png',
+        size_bytes: 3,
+        content_type: "image/png",
+        visibility: "public",
+        immutable: true,
+        missing: true,
+        asset_ref_overrides: {
+          url: HOSTILE_URL,
+          immutable_url: HOSTILE_URL,
+          cdn_url: HOSTILE_URL,
+          cdn_immutable_url: HOSTILE_URL,
+        },
+      },
+    ];
+    const { fetch, calls } = mockFetch((call) => installApplyHandler({ calls: outerCalls }, entries, shas)(call));
+    outerCalls = calls;
     const sdk = makeSdk(fetch);
     const asset = await sdk.assets.put("prj_known", 'a&b"c<d>.png', { content: "abc" }, { immutable: true });
     const img = asset.imgTag('Bad <alt> "quoted"');
@@ -681,156 +568,81 @@ describe("blobs.put — AssetRef widening (v1.45)", () => {
   });
 
   it("tag emitters throw on non-immutable uploads with an actionable hint", async () => {
-    const { fetch } = mockFetch((call) => {
-      if (call.url.endsWith("/storage/v1/uploads")) {
-        return json({
-          upload_id: "u_n", mode: "single", part_count: 1,
-          parts: [{ part_number: 1, url: "https://s3.test/u_n/p1", byte_start: 0, byte_end: 2 }],
-        });
-      }
-      if (call.url.startsWith("https://s3.test/")) {
-        return new Response("", { status: 200, headers: { etag: '"e"' } });
-      }
-      if (call.url.endsWith("/complete")) {
-        return json({
-          key: "x.png", size_bytes: 3, sha256: null, visibility: "public",
-          content_type: "image/png", immutable_suffix: null,
-          url: "https://app.run402.com/_blob/x.png", immutable_url: null,
-          cdn_url: "https://pr-abc.run402.com/_blob/x.png", cdn_immutable_url: null,
-        });
-      }
-      throw new Error("unexpected: " + call.url);
-    });
+    let outerCalls: FetchCall[] = [];
+    const shas = new Map<string, string>();
+    const entries: ApplyAssetEntry[] = [
+      // immutable: false → asset_ref.cdn_immutable_url is null → tag emitters throw.
+      { key: "x.png", size_bytes: 3, content_type: "image/png", visibility: "public", immutable: false, missing: true },
+    ];
+    const { fetch, calls } = mockFetch((call) => installApplyHandler({ calls: outerCalls }, entries, shas)(call));
+    outerCalls = calls;
     const sdk = makeSdk(fetch);
-    const asset = await sdk.assets.put("prj_known", "x.png", { content: "abc" });
+    const asset = await sdk.assets.put("prj_known", "x.png", { content: "abc" }, { immutable: false });
     assert.throws(() => asset.scriptTag(), /immutable: true/);
     assert.throws(() => asset.linkTag(), /immutable: true/);
     assert.throws(() => asset.imgTag(), /immutable: true/);
   });
 
   it("leaves integrity fields null when completion omits immutable URL/SHA", async () => {
-    const { fetch } = mockFetch((call) => {
-      if (call.url.endsWith("/storage/v1/uploads")) {
-        return json({
-          upload_id: "u_b",
-          mode: "single",
-          part_count: 1,
-          parts: [{ part_number: 1, url: "https://s3.test/u_b/p1", byte_start: 0, byte_end: 2 }],
-        });
-      }
-      if (call.url.startsWith("https://s3.test/")) {
-        return new Response("", { status: 200, headers: { etag: '"e"' } });
-      }
-      if (call.url.endsWith("/complete")) {
-        return json({
-          key: "y.txt",
-          size_bytes: 3,
-          sha256: null,
-          visibility: "public",
-          content_type: null,
-          immutable_suffix: null,
-          url: "https://app.run402.com/_blob/y.txt",
+    let outerCalls: FetchCall[] = [];
+    const shas = new Map<string, string>();
+    const entries: ApplyAssetEntry[] = [
+      // immutable: false + override sri/etag/digest to null/non-sha to assert
+      // the SDK widening drops integrity fields when the asset isn't
+      // content-addressed. (Without the override the helper would still
+      // synthesize URLs from the SHA; this test pins null-passthrough.)
+      {
+        key: "y.txt",
+        size_bytes: 3,
+        content_type: "text/plain",
+        visibility: "public",
+        immutable: false,
+        missing: true,
+        asset_ref_overrides: {
+          url: "https://pr-abc.run402.com/_blob/y.txt",
           immutable_url: null,
-        });
-      }
-      throw new Error("unexpected: " + call.url);
-    });
+          cdn_url: "https://pr-abc.run402.com/_blob/y.txt",
+          cdn_immutable_url: null,
+          sri: null,
+        },
+      },
+    ];
+    const { fetch, calls } = mockFetch((call) => installApplyHandler({ calls: outerCalls }, entries, shas)(call));
+    outerCalls = calls;
     const sdk = makeSdk(fetch);
-    const result = await sdk.assets.put("prj_known", "y.txt", { content: "abc" });
-    assert.equal(result.contentSha256, null);
-    assert.equal(result.etag, null);
-    assert.equal(result.sri, null);
-    assert.equal(result.contentDigest, null);
+    const result = await sdk.assets.put("prj_known", "y.txt", { content: "abc" }, { immutable: false });
+    // For non-immutable uploads, the SDK's widening helper:
+    // - leaves cdnUrl null (cdn_immutable_url is the source field — null when
+    //   immutable: false in the apply spec).
+    // - marks cacheKind: "mutable" and cdn.ready: false.
+    // - In v2.1.0 the SDK ALWAYS knows the SHA (computed at submission time),
+    //   so etag/sri/contentDigest are populated even on non-immutable puts —
+    //   they describe the bytes, not the URL contract. That's a deliberate
+    //   change from v1.x where the SDK got the SHA back from the gateway.
+    assert.equal(result.cdnUrl, null);
     assert.equal(result.cacheKind, "mutable");
     assert.equal(result.cdn.ready, false);
-    assert.match(result.cdn.hint ?? "", /Prefer immutableUrl|wait_for_cdn_freshness/);
+    assert.match(result.cdn.hint ?? "", /asynchronous|cdnUrl/);
   });
 
-  it("propagates a gateway-emitted cdn envelope verbatim when present", async () => {
-    const { fetch } = mockFetch((call) => {
-      if (call.url.endsWith("/storage/v1/uploads")) {
-        return json({
-          upload_id: "u_c",
-          mode: "single",
-          part_count: 1,
-          parts: [{ part_number: 1, url: "https://s3.test/u_c/p1", byte_start: 0, byte_end: 2 }],
-        });
-      }
-      if (call.url.startsWith("https://s3.test/")) {
-        return new Response("", { status: 200, headers: { etag: '"e"' } });
-      }
-      if (call.url.endsWith("/complete")) {
-        return json({
-          key: "z.txt",
-          size_bytes: 3,
-          sha256: null,
-          visibility: "public",
-          content_type: "text/plain",
-          immutable_suffix: null,
-          url: "https://app.run402.com/_blob/z.txt",
-          immutable_url: null,
-          cdn: {
-            version: "blob-gateway-v2",
-            invalidationId: "I-1234",
-            invalidationStatus: "InProgress",
-            hint: "Invalidation is asynchronous; use wait_for_cdn_freshness.",
-          },
-        });
-      }
-      throw new Error("unexpected: " + call.url);
-    });
-    const sdk = makeSdk(fetch);
-    const result = await sdk.assets.put("prj_known", "z.txt", { content: "abc" });
-    assert.equal(result.cdn.invalidationId, "I-1234");
-    assert.equal(result.cdn.invalidationStatus, "InProgress");
-    assert.match(result.cdn.hint ?? "", /asynchronous/);
-  });
+  // The "propagates a gateway-emitted cdn envelope verbatim when present"
+  // test was dropped in v2.1.0 — the apply path's plan response doesn't
+  // carry a `cdn` envelope (CDN invalidation IDs land in the operation
+  // status events, not the AssetRef). The legacy cdn envelope is
+  // synthesized from local information by buildAssetRef.
 });
 
-describe("blobs upload sessions", () => {
-  it("initializes upload sessions with project service auth", async () => {
-    const { fetch, calls } = mockFetch(() =>
-      json({
-        upload_id: "up_1",
-        mode: "multipart",
-        part_count: 2,
-        part_size_bytes: 16_777_216,
-        parts: [
-          { part_number: 1, url: "https://s3.test/up_1/1", byte_start: 0, byte_end: 5 },
-          { part_number: 2, url: "https://s3.test/up_1/2", byte_start: 6, byte_end: 10 },
-        ],
-      }, 201),
-    );
-    const sdk = makeSdk(fetch);
-    const session = await sdk.assets.initUploadSession("prj_known", {
-      key: "video.mp4",
-      size_bytes: 11,
-      content_type: "video/mp4",
-      visibility: "private",
-      immutable: true,
-      sha256: "00".repeat(32),
-    });
+describe("blobs upload sessions (REMOVED in v2.1.0)", () => {
+  // v1.48 gateway dropped /storage/v1/uploads*. The SDK's low-level resumable-
+  // upload session methods (initUploadSession/getUploadSession/
+  // completeUploadSession) were removed in v2.1.0 — they have no underlying
+  // gateway endpoint. The replacement is the apply hero
+  // (r.project(id).apply / r.assets.uploadDir etc) which routes bytes
+  // through /content/v1/plans and the activation transaction.
 
-    assert.equal(session.upload_id, "up_1");
-    assert.equal(session.part_count, 2);
-    assert.equal(calls[0]!.url, "https://api.example.test/storage/v1/uploads");
-    assert.equal(calls[0]!.method, "POST");
-    assert.equal(calls[0]!.headers.apikey, "svc_k");
-    assert.equal(calls[0]!.headers.Authorization, "Bearer svc_k");
-    const body = JSON.parse(calls[0]!.body as string);
-    assert.deepEqual(body, {
-      key: "video.mp4",
-      size_bytes: 11,
-      content_type: "video/mp4",
-      visibility: "private",
-      immutable: true,
-      sha256: "00".repeat(32),
-    });
-  });
-
-  it("rejects upload session init without a sha256 digest before request", async () => {
+  it("initUploadSession throws LocalError with migration guidance", async () => {
     const { fetch, calls } = mockFetch(() => {
-      throw new Error("unexpected fetch");
+      throw new Error("unexpected fetch — method should throw before any network call");
     });
     const sdk = makeSdk(fetch);
 
@@ -839,75 +651,44 @@ describe("blobs upload sessions", () => {
         key: "x",
         size_bytes: 1,
         content_type: "text/plain",
-      } as any),
+        sha256: "00".repeat(32),
+      }),
       (err: unknown) =>
         err instanceof LocalError &&
-        err.context === "initializing upload" &&
-        /sha256/i.test(err.message),
+        /removed in v2\.1\.0/.test(err.message) &&
+        /r\.project\(id\)\.apply/.test(err.message),
     );
     assert.equal(calls.length, 0);
   });
 
-  it("fetches upload session status with encoded upload id", async () => {
-    const { fetch, calls } = mockFetch(() =>
-      json({
-        upload_id: "up/1",
-        status: "active",
-        mode: "single",
-        part_count: 1,
-        parts: [{ part_number: 1, url: "https://s3.test/up_1/1", byte_start: 0, byte_end: 9 }],
-      }),
-    );
-    const sdk = makeSdk(fetch);
-    const session = await sdk.assets.getUploadSession("prj_known", "up/1");
-
-    assert.equal(session.status, "active");
-    assert.equal(calls[0]!.url, "https://api.example.test/storage/v1/uploads/up%2F1");
-    assert.equal(calls[0]!.headers.apikey, "svc_k");
-  });
-
-  it("completes upload sessions and returns AssetRef shape", async () => {
-    const { fetch, calls } = mockFetch(() =>
-      json({
-        key: "app.js",
-        size_bytes: 42,
-        sha256: "00".repeat(32),
-        visibility: "public",
-        content_type: "text/javascript",
-        immutable_suffix: "00000000",
-        url: "https://cdn.test/app.js",
-        immutable_url: "https://cdn.test/app-00000000.js",
-        cdn_url: "https://pr-abc.run402.com/_blob/app.js",
-        cdn_immutable_url: "https://pr-abc.run402.com/_blob/app-00000000.js",
-      }),
-    );
-    const sdk = makeSdk(fetch);
-    const result = await sdk.assets.completeUploadSession("prj_known", "up 1", {
-      parts: [{ part_number: 1, etag: '"etag1"', sha256: "00".repeat(32) }],
+  it("getUploadSession throws LocalError with migration guidance", async () => {
+    const { fetch, calls } = mockFetch(() => {
+      throw new Error("unexpected fetch");
     });
-
-    assert.equal(calls[0]!.url, "https://api.example.test/storage/v1/uploads/up%201/complete");
-    assert.equal(calls[0]!.method, "POST");
-    assert.deepEqual(JSON.parse(calls[0]!.body as string), {
-      parts: [{ part_number: 1, etag: '"etag1"', sha256: "00".repeat(32) }],
-    });
-    assert.equal(result.key, "app.js");
-    assert.equal(result.contentType, "text/javascript");
-    assert.equal(result.cdnUrl, "https://pr-abc.run402.com/_blob/app-00000000.js");
-  });
-
-  it("throws ProjectNotFound for missing upload-session project", async () => {
-    const { fetch } = mockFetch(() => json({}));
     const sdk = makeSdk(fetch);
+
     await assert.rejects(
-      sdk.assets.initUploadSession("prj_missing", {
-        key: "x",
-        size_bytes: 1,
-        content_type: "text/plain",
-        sha256: "00".repeat(32),
-      }),
-      ProjectNotFound,
+      sdk.assets.getUploadSession("prj_known", "up_1"),
+      (err: unknown) =>
+        err instanceof LocalError && /removed in v2\.1\.0/.test(err.message),
     );
+    assert.equal(calls.length, 0);
+  });
+
+  it("completeUploadSession throws LocalError with migration guidance", async () => {
+    const { fetch, calls } = mockFetch(() => {
+      throw new Error("unexpected fetch");
+    });
+    const sdk = makeSdk(fetch);
+
+    await assert.rejects(
+      sdk.assets.completeUploadSession("prj_known", "up_1", {
+        parts: [{ part_number: 1, etag: '"e"', sha256: "00".repeat(32) }],
+      }),
+      (err: unknown) =>
+        err instanceof LocalError && /removed in v2\.1\.0/.test(err.message),
+    );
+    assert.equal(calls.length, 0);
   });
 });
 

@@ -358,7 +358,7 @@ function assertNoopLike(result: Record<string, any>): void {
 
 async function removeBlobKey(key: string): Promise<void> {
   try {
-    await r.blobs.rm(projectId, key);
+    await r.assets.rm(projectId, key);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     if (!message.includes("404") && !message.includes("not found")) throw err;
@@ -401,15 +401,34 @@ before(async () => {
   sdkModule = await import("./sdk/src/node/index.ts");
   r = sdkModule.run402({ apiBase: API });
 
+  // Tier-aware before-hook: provision at whichever tier the wallet is
+  // currently active on. We try to set/refresh prototype (the minimal tier
+  // the test fixtures fit into), but fall back to the existing tier if the
+  // wallet is on hobby/team and the downgrade would exceed quota.
+  let activeTier: string = "prototype";
   try {
     await r.tier.set("prototype");
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    if (!message.includes("already active")) throw err;
+    if (message.includes("already active")) {
+      // prototype is active; nothing to do
+    } else if (message.includes("Cannot downgrade") || message.includes("exceeds new tier limits")) {
+      // Wallet is on a higher tier with usage above prototype caps —
+      // proceed at the current tier instead of downgrading.
+      const status = await r.tier.status();
+      if (status.tier && typeof status.tier === "string") {
+        activeTier = status.tier;
+        console.error(`[before] wallet on higher tier (${activeTier}); proceeding without downgrade`);
+      } else {
+        throw err;
+      }
+    } else {
+      throw err;
+    }
   }
 
   const project = await r.projects.provision({
-    tier: "prototype",
+    tier: activeTier as "prototype" | "hobby" | "team",
     name: `fullstack-integ-${RUN_ID}`,
   });
   projectId = project.project_id;
@@ -476,11 +495,11 @@ describe("Run402 full-stack integration (live API, no mocks)", { timeout: 900_00
   it("plans missing required secrets, sets them, and deploys the representative release", async () => {
     initialSpec = await buildInitialSpec();
 
-    const dryRun = await r.deploy.plan(initialSpec, { dryRun: true });
+    const dryRun = await r._applyEngine.plan(initialSpec, { dryRun: true });
     assertHasMissingSecretWarning(dryRun.plan);
 
     await assert.rejects(
-      r.deploy.apply(initialSpec, { maxRetries: 0 }),
+      r._applyEngine.apply(initialSpec, { maxRetries: 0 }),
       (err: unknown) => {
         const text = err instanceof Error ? err.message : JSON.stringify(err);
         return text.includes("MISSING_REQUIRED_SECRET") || text.includes("FULLSTACK_TEST_SECRET");
@@ -493,7 +512,7 @@ describe("Run402 full-stack integration (live API, no mocks)", { timeout: 900_00
     assert.ok(secretList.secrets.some((secret: any) => secret.key === "FULLSTACK_TEST_SECRET"));
 
     const events: Array<Record<string, unknown>> = [];
-    const result = await r.deploy.apply(initialSpec, {
+    const result = await r._applyEngine.apply(initialSpec, {
       idempotencyKey: `fullstack-${RUN_ID}-initial`,
       onEvent: (event: Record<string, unknown>) => events.push(event),
     });
@@ -546,7 +565,7 @@ describe("Run402 full-stack integration (live API, no mocks)", { timeout: 900_00
 
   it("verifies static route aliases, deploy diagnostics, and method-scoped route failure", async () => {
     assert.match(await fetchTextOkAt(routeBase, "/readme"), /RUN402_FULLSTACK_DOCS_MARKER/);
-    const resolved = await r.deploy.resolve({ project: projectId, url: `${routeBase}/readme`, method: "GET" });
+    const resolved = await r._applyEngine.resolve({ project: projectId, url: `${routeBase}/readme`, method: "GET" });
     assert.equal(resolved.authorized, true);
     assert.equal(resolved.result, 200);
 
@@ -648,14 +667,14 @@ describe("Run402 full-stack integration (live API, no mocks)", { timeout: 900_00
   it("uploads blobs, diagnoses CDN state, and exercises in-function storage", async () => {
     const sdkKey = `fullstack/sdk-${RUN_ID}.txt`;
     createdBlobKeys.add(sdkKey);
-    const asset = await r.blobs.put(projectId, sdkKey, "RUN402_FULLSTACK_BLOB_MARKER", {
+    const asset = await r.assets.put(projectId, sdkKey, "RUN402_FULLSTACK_BLOB_MARKER", {
       contentType: "text/plain; charset=utf-8",
     });
     const assetUrl = asset.cdnUrl ?? asset.immutableUrl ?? asset.url;
     assert.ok(assetUrl, "blob upload should return a retrievable URL");
     assert.match(await fetchTextOk(assetUrl), /RUN402_FULLSTACK_BLOB_MARKER/);
 
-    const diagnose = await r.blobs.diagnoseUrl(projectId, assetUrl);
+    const diagnose = await r.assets.diagnoseUrl(projectId, assetUrl);
     assert.ok(diagnose.key === sdkKey || diagnose.key.startsWith(`fullstack/sdk-${RUN_ID}-`));
     assert.equal(diagnose.expectedSha256, asset.contentSha256);
 
@@ -705,12 +724,15 @@ describe("Run402 full-stack integration (live API, no mocks)", { timeout: 900_00
   });
 
   it("fetches active and by-id release inventories with full-stack resource metadata", async () => {
-    const active = await r.deploy.getActiveRelease({ project: projectId, siteLimit: 50 });
+    const active = await r._applyEngine.getActiveRelease({ project: projectId, siteLimit: 50 });
     assertInventory("active", active);
-    assert.equal(active.release_id, firstReleaseId);
+    // v1.48 unified-apply: assets.put creates intermediate releases, so the
+    // active release may be newer than the initial deploy. Just assert it's
+    // a valid release id; the by-id lookup below still pins firstReleaseId.
+    assert.ok(active.release_id.startsWith("rel_"));
     assert.ok(Array.isArray(active.warnings ?? []));
 
-    const byId = await r.deploy.getRelease({ project: projectId, releaseId: firstReleaseId, siteLimit: 50 });
+    const byId = await r._applyEngine.getRelease({ project: projectId, releaseId: firstReleaseId, siteLimit: 50 });
     assertInventory("by-id", byId);
     assert.equal(byId.release_id, firstReleaseId);
 
@@ -725,7 +747,7 @@ describe("Run402 full-stack integration (live API, no mocks)", { timeout: 900_00
   });
 
   it("reapplies the unchanged fixture and asserts idempotent/no-op behavior", async () => {
-    const result = await r.deploy.apply(initialSpec, {
+    const result = await r._applyEngine.apply(initialSpec, {
       idempotencyKey: `fullstack-${RUN_ID}-unchanged`,
     });
     assert.ok(result.release_id.startsWith("rel_"));
@@ -735,14 +757,14 @@ describe("Run402 full-stack integration (live API, no mocks)", { timeout: 900_00
 
   it("applies a small site patch and verifies release diff/static observability", async () => {
     const previousReleaseId = firstReleaseId;
-    const changed = await r.deploy.apply(buildChangedSpec(), {
+    const changed = await r._applyEngine.apply(buildChangedSpec(), {
       idempotencyKey: `fullstack-${RUN_ID}-changed`,
     });
     changedReleaseId = changed.release_id;
     publicBase = choosePublicBase(changed.urls);
     assert.ok(changedReleaseId.startsWith("rel_"));
 
-    const diff = await r.deploy.diff({
+    const diff = await r._applyEngine.diff({
       project: projectId,
       from: previousReleaseId,
       to: changedReleaseId,
@@ -766,7 +788,7 @@ describe("Run402 full-stack integration (live API, no mocks)", { timeout: 900_00
       await removeBlobKey(key);
       createdBlobKeys.delete(key);
     }
-    const listed = await r.blobs.ls(projectId, { prefix: "fullstack/" });
+    const listed = await r.assets.ls(projectId, { prefix: "fullstack/" });
     assert.equal((listed.blobs ?? []).some((blob: any) => createdBlobKeys.has(blob.key)), false);
   });
 });

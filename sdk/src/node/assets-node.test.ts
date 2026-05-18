@@ -9,8 +9,6 @@ import assert from "node:assert/strict";
 import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { createHash } from "node:crypto";
-
 import {
   dir,
   NodeAssets,
@@ -45,7 +43,13 @@ describe("dir(path) — synchronous LocalDirRef factory (design D12)", () => {
   });
 });
 
-describe("entriesFromLocalDir() — directory walk → wire-shaped entries", () => {
+describe("entriesFromLocalDir() — directory walk → AssetPutEntryInput[]", () => {
+  // v2.1.0: entriesFromLocalDir returns AssetPutEntryInput[] (with `source`
+  // field carrying an FsFileSource or in-memory ContentSource). The SHA is
+  // computed inside the SDK's normalizeAssetSlice pipeline so byte readers
+  // get registered for upload. Returning wire-shaped entries here would
+  // skip byte-reader registration and the deploy would fail at upload time.
+
   let tempDir: string;
 
   beforeEach(() => {
@@ -56,7 +60,7 @@ describe("entriesFromLocalDir() — directory walk → wire-shaped entries", () 
     rmSync(tempDir, { recursive: true, force: true });
   });
 
-  it("walks a flat directory and produces one AssetPutEntry per file", async () => {
+  it("walks a flat directory and produces one AssetPutEntryInput per file", async () => {
     writeFileSync(join(tempDir, "a.txt"), "hello");
     writeFileSync(join(tempDir, "b.json"), `{"k":1}`);
     const ref = dir(tempDir);
@@ -66,10 +70,11 @@ describe("entriesFromLocalDir() — directory walk → wire-shaped entries", () 
     const b = entries.find((e) => e.key === "b.json");
     assert.ok(a, "a.txt entry present");
     assert.ok(b, "b.json entry present");
-    assert.equal(a!.sha256, createHash("sha256").update("hello").digest("hex"));
-    assert.equal(a!.size_bytes, 5);
-    assert.equal(a!.visibility, "public");
-    assert.equal(a!.immutable, true);
+    // The `source` field carries an FsFileSource — bytes get read by the
+    // SDK normalizer at submission time.
+    const aSrc = a!.source as { __source: string; path: string };
+    assert.equal(aSrc.__source, "fs-file");
+    assert.match(aSrc.path, /a\.txt$/);
   });
 
   it("applies the prefix option to every key", async () => {
@@ -164,22 +169,26 @@ describe("three-schema fidelity — SDK input vs wire (design D3/D12)", () => {
     // network call.
   });
 
-  it("entriesFromLocalDir produces wire-shaped AssetPutEntry[] with no LocalDirRef leakage", async () => {
+  it("entriesFromLocalDir produces AssetPutEntryInput[] (SDK-input shape with `source`)", async () => {
     const ref = dir(tempDir);
     const entries = await entriesFromLocalDir(ref);
-    // The output is the wire shape — each entry has exactly the fields
-    // the gateway expects: key, sha256, size_bytes, content_type,
-    // visibility, immutable. No __source field, no path field.
+    // v2.1.0: entries carry `source: ContentSource` (an FsFileSource for
+    // disk-walked files). The SDK normalizer hashes + registers byte
+    // readers + emits the wire shape (key, sha256, size_bytes, ...). The
+    // entry itself never carries `sha256` or `size_bytes` — those are
+    // computed inside normalizeAssetSlice.
     for (const entry of entries) {
       const e = entry as unknown as Record<string, unknown>;
       assert.equal(typeof e.key, "string");
-      assert.match(e.sha256 as string, /^[0-9a-f]{64}$/);
-      assert.equal(typeof e.size_bytes, "number");
-      assert.equal(typeof e.content_type, "string");
-      assert.ok(e.visibility === "public" || e.visibility === "private");
-      assert.equal(typeof e.immutable, "boolean");
-      assert.equal(e.__source, undefined, "LocalDirRef.__source must NOT leak to the wire entry");
-      assert.equal(e.path, undefined, "LocalDirRef.path must NOT leak to the wire entry");
+      assert.equal(typeof e.source, "object");
+      assert.ok(e.source !== null);
+      const src = e.source as { __source: string; path: string };
+      assert.equal(src.__source, "fs-file");
+      assert.equal(typeof src.path, "string");
+      // The pre-resolved wire fields must NOT appear on AssetPutEntryInput
+      // — they're computed by the SDK normalizer at submission time.
+      assert.equal(e.sha256, undefined, "AssetPutEntryInput must not carry sha256");
+      assert.equal(e.size_bytes, undefined, "AssetPutEntryInput must not carry size_bytes");
     }
   });
 

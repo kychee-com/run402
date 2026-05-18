@@ -39,6 +39,9 @@ import {
 import type {
   ApplyOptions,
   ActiveReleaseInventory,
+  AssetPutEntry,
+  AssetPutEntryInput,
+  AssetSpec,
   CommitResponse,
   ContentPlanResponse,
   ContentRef,
@@ -56,6 +59,7 @@ import type {
   FsFileSource,
   GatewayDeployError,
   MissingContent,
+  NormalizedAssetSpec,
   NormalizedDatabaseSpec,
   NormalizedFunctionSpec,
   NormalizedFunctionsSpec,
@@ -567,7 +571,17 @@ async function applyOnce(
   emit({ type: "commit.phase", phase: "validate", status: "started" });
   const { planId } = requirePersistedPlan(plan, "applying deploy");
   const commit = await commitInternal(client, planId, opts.idempotencyKey);
-  return await pollUntilReady(client, commit, plan.diff, plan.warnings, emit, spec.project);
+  const result = await pollUntilReady(client, commit, plan.diff, plan.warnings, emit, spec.project);
+
+  // v1.48 unified-apply: thread the plan response's `asset_entries[]` back
+  // into DeployResult.assets so callers reading `result.assets.byKey[key]`
+  // get the gateway-authoritative `AssetRef` envelope (URLs, SRI, etag).
+  // Release-only applies leave `result.assets` undefined.
+  if (plan.asset_entries && plan.asset_entries.length > 0) {
+    result.assets = buildAssetManifestFromPlanEntries(plan.asset_entries);
+  }
+
+  return result;
 }
 
 function normalizeApplyMaxRetries(value: number | undefined): number {
@@ -1833,8 +1847,10 @@ const RELEASE_SPEC_FIELDS = new Set([
   "subdomains",
   "routes",
   "checks",
+  "assets", // v1.48 unified-apply
 ]);
 const DEPLOYABLE_SPEC_FIELDS = [
+  "assets", // v1.48 unified-apply
   "database",
   "site",
   "functions",
@@ -2314,8 +2330,16 @@ function hasDeployableContent(spec: Record<string, unknown>): boolean {
     hasSecretsContent(spec.secrets) ||
     hasSubdomainsContent(spec.subdomains) ||
     hasRecordEntries(spec.routes) ||
-    hasArrayEntries(spec.checks)
+    hasArrayEntries(spec.checks) ||
+    hasAssetsContent(spec.assets)
   );
+}
+
+function hasAssetsContent(assets: unknown): boolean {
+  if (!isRecord(assets)) return false;
+  if (hasArrayEntries(assets.put)) return true;
+  if (hasArrayEntries(assets.delete)) return true;
+  return isRecord(assets.sync);
 }
 
 function hasDatabaseContent(database: unknown): boolean {
@@ -2752,6 +2776,14 @@ async function normalizeReleaseSpec(
     }
   }
 
+  // v1.48 unified-apply: asset slice normalization. Mirrors the site
+  // branch — for each `put` entry with a `source`, hash the bytes and
+  // register a byte-reader; emit the wire-shaped `AssetPutEntry[]`.
+  // Cross-kind SHA dedup is automatic via the shared `byteReaders` map.
+  if (spec.assets) {
+    normalized.assets = await normalizeAssetSlice(spec.assets, remember);
+  }
+
   return { normalized, byteReaders };
 }
 
@@ -2803,6 +2835,192 @@ async function normalizeFileSet(
     }
     out[path] = remember(resolved);
   }
+  return out;
+}
+
+// ─── Asset manifest assembly from plan response (v1.48 unified-apply) ───────
+
+/**
+ * Build a {@link AssetManifest} from the plan response's `asset_entries[]`
+ * array. Each entry's `asset_ref` carries gateway-authoritative URLs that
+ * mirror the AssetRef envelope `Assets.put` returns for the single-entry
+ * case. Keys are stored in null-prototype objects (design D9) so
+ * attacker-controlled or filesystem-derived keys (`__proto__`,
+ * `constructor`, `toString`) don't collide with prototype properties.
+ *
+ * Totals are placeholders here (`bytes_uploaded: 0`, `bytes_reused: 0`,
+ * `duration_ms: 0`); upstream callers that need realised values back-fill
+ * them from the realised `content.upload.*` event stream. The shape stays
+ * stable so consumers can rely on the keys being present.
+ */
+function buildAssetManifestFromPlanEntries(
+  entries: NonNullable<PlanResponse["asset_entries"]>,
+): NonNullable<DeployResult["assets"]> {
+  const list: NonNullable<DeployResult["assets"]>["list"] = [];
+  const byKey: NonNullable<DeployResult["assets"]>["byKey"] = Object.create(null);
+  const manifest: NonNullable<DeployResult["assets"]>["manifest"] = Object.create(null);
+  for (const entry of entries) {
+    const e: NonNullable<DeployResult["assets"]>["list"][number] = {
+      key: entry.key,
+      sha256: entry.sha256,
+      size_bytes: entry.size_bytes,
+      content_type: entry.content_type,
+      visibility: entry.visibility,
+      url: entry.asset_ref.url,
+      immutable_url: entry.asset_ref.immutable_url,
+      cdn_url: entry.asset_ref.cdn_url,
+      cdn_immutable_url: entry.asset_ref.cdn_immutable_url,
+      sri: entry.asset_ref.sri,
+      etag: entry.asset_ref.etag,
+      content_digest: entry.asset_ref.content_digest,
+    };
+    list.push(e);
+    byKey[entry.key] = e;
+    manifest[entry.key] = e;
+  }
+  return {
+    list,
+    byKey,
+    manifest,
+    totals: { files: entries.length, bytes_uploaded: 0, bytes_reused: 0, duration_ms: 0 },
+  };
+}
+
+// ─── Asset slice normalization (v1.48 unified-apply) ─────────────────────────
+
+/**
+ * Type guard: distinguish the SDK-input shape (`AssetPutEntryInput` with
+ * `source: ContentSource`) from the wire shape (`AssetPutEntry` with
+ * `sha256` already computed). The two forms can be mixed in the same
+ * `assets.put` array — the normalizer handles both branches.
+ */
+function isAssetPutEntryInput(
+  entry: AssetPutEntry | AssetPutEntryInput,
+): entry is AssetPutEntryInput {
+  return (
+    typeof (entry as AssetPutEntryInput).source !== "undefined" &&
+    typeof (entry as AssetPutEntry).sha256 === "undefined"
+  );
+}
+
+/**
+ * Normalize the assets slice per design D3 (three-schema fidelity). For
+ * each `put` entry:
+ *
+ * 1. If it's an `AssetPutEntryInput` (has `source`): call `resolveContent`
+ *    to hash the bytes, register a byte-reader via `remember()`, and emit
+ *    a wire-shaped `AssetPutEntry` (no `source` field).
+ * 2. If it's already an `AssetPutEntry` (has `sha256`): pass through.
+ *
+ * Validates per-spec invariants before any network call: duplicate keys
+ * in `put`, key in both `put` and `delete`, empty manifest (only the
+ * assets slice was set and it had no `put`/`delete`/`sync` content).
+ *
+ * `spec.assets.delete` and `spec.assets.sync` pass through unchanged.
+ */
+async function normalizeAssetSlice(
+  slice: AssetSpec,
+  remember: (r: ResolvedContent) => ContentRef,
+): Promise<NormalizedAssetSpec> {
+  const out: NormalizedAssetSpec = {};
+
+  if (slice.put && slice.put.length > 0) {
+    const seenKeys = new Set<string>();
+    const put: AssetPutEntry[] = [];
+    for (let idx = 0; idx < slice.put.length; idx++) {
+      const entry = slice.put[idx]!;
+      if (!entry.key || typeof entry.key !== "string") {
+        throw new Run402DeployError(
+          `assets.put[${idx}] missing required \`key\``,
+          {
+            code: "INVALID_SPEC",
+            phase: "validate",
+            resource: `assets.put[${idx}]`,
+            retryable: false,
+            fix: { action: "set_field", path: `assets.put[${idx}].key` },
+            context: "validating spec",
+          },
+        );
+      }
+      if (seenKeys.has(entry.key)) {
+        throw new Run402DeployError(
+          `assets.put contains duplicate key \`${entry.key}\``,
+          {
+            code: "ASSET_DUPLICATE_KEY_IN_PUT",
+            phase: "validate",
+            resource: `assets.put[${idx}]`,
+            retryable: false,
+            fix: { action: "set_field", path: `assets.put[${idx}].key` },
+            context: "validating spec",
+          },
+        );
+      }
+      seenKeys.add(entry.key);
+
+      if (isAssetPutEntryInput(entry)) {
+        const label = `assets.put[${idx}] (${entry.key})`;
+        const resolved = await resolveContent(entry.source, label);
+        if (!resolved.ref.contentType) {
+          resolved.ref.contentType = entry.content_type ?? guessContentType(entry.key);
+        }
+        const ref = remember(resolved);
+        put.push({
+          key: entry.key,
+          sha256: ref.sha256,
+          size_bytes: ref.size,
+          content_type: entry.content_type ?? ref.contentType ?? "application/octet-stream",
+          visibility: entry.visibility ?? "public",
+          immutable: entry.immutable ?? true,
+        });
+      } else {
+        // Wire-shaped entry — pass through verbatim. The caller is
+        // responsible for ensuring the bytes are already in CAS (or will
+        // be uploaded out-of-band).
+        put.push({
+          key: entry.key,
+          sha256: entry.sha256,
+          size_bytes: entry.size_bytes,
+          content_type: entry.content_type ?? "application/octet-stream",
+          visibility: entry.visibility ?? "public",
+          immutable: entry.immutable ?? true,
+        });
+      }
+    }
+    out.put = put;
+  }
+
+  if (slice.delete && slice.delete.length > 0) {
+    out.delete = [...slice.delete];
+  }
+
+  // Cross-slice invariant: a key may not be both `put` and `delete`-d.
+  if (out.put && out.delete) {
+    const putKeys = new Set(out.put.map((e) => e.key));
+    for (const k of out.delete) {
+      if (putKeys.has(k)) {
+        throw new Run402DeployError(
+          `assets.put and assets.delete both reference key \`${k}\``,
+          {
+            code: "ASSET_KEY_IN_PUT_AND_DELETE",
+            phase: "validate",
+            resource: `assets`,
+            retryable: false,
+            fix: { action: "remove_field", path: `assets.delete[\`${k}\`]` },
+            context: "validating spec",
+          },
+        );
+      }
+    }
+  }
+
+  if (slice.sync) {
+    out.sync = {
+      prefix: slice.sync.prefix,
+      prune: slice.sync.prune,
+      ...(slice.sync.confirm ? { confirm: slice.sync.confirm } : {}),
+    };
+  }
+
   return out;
 }
 
