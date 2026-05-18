@@ -539,6 +539,24 @@ function requireNonEmptyStringQueryOption(
 
 // ─── Internal pipeline ───────────────────────────────────────────────────────
 
+/**
+ * Compute the sorted set of slice kinds the spec carried. Surfaces on
+ * `commit.phase` and `ready` events so agents can group per-phase
+ * telemetry by slice category. `assets` slice → `"asset"`; any of
+ * `database` / `functions` / `site` → `"release"`. Order is stable
+ * (release before asset).
+ */
+function deriveSliceKinds(spec: ReleaseSpec): ("release" | "asset")[] {
+  // Guard against non-object spec — the validate phase throws below
+  // (INVALID_SPEC), but this is called before validation in applyOnce so
+  // we must not blow up first.
+  if (!spec || typeof spec !== "object") return [];
+  const set = new Set<"release" | "asset">();
+  if (spec.database || spec.functions || spec.site) set.add("release");
+  if (spec.assets) set.add("asset");
+  return [...set].sort((a, b) => (a === "release" ? -1 : 1));
+}
+
 async function applyOnce(
   client: Client,
   spec: ReleaseSpec,
@@ -546,6 +564,7 @@ async function applyOnce(
   emit: (event: DeployEvent) => void,
 ): Promise<DeployResult> {
   const allowWarningCodes = normalizeAllowWarningCodes(opts.allowWarningCodes);
+  const sliceKinds = deriveSliceKinds(spec);
   emit({ type: "plan.started" });
   const { plan, byteReaders } = await planInternal(client, spec, opts.idempotencyKey);
   emit({ type: "plan.diff", diff: plan.diff });
@@ -568,10 +587,15 @@ async function applyOnce(
 
   await uploadMissing(client, spec.project, plan.missing_content, byteReaders, emit);
 
-  emit({ type: "commit.phase", phase: "validate", status: "started" });
+  emit({
+    type: "commit.phase",
+    phase: "validate",
+    status: "started",
+    ...(sliceKinds.length > 0 ? { slice_kinds: sliceKinds } : {}),
+  });
   const { planId } = requirePersistedPlan(plan, "applying deploy");
   const commit = await commitInternal(client, planId, opts.idempotencyKey);
-  const result = await pollUntilReady(client, commit, plan.diff, plan.warnings, emit, spec.project);
+  const result = await pollUntilReady(client, commit, plan.diff, plan.warnings, emit, spec.project, sliceKinds);
 
   // v1.48 unified-apply: thread the plan response's `asset_entries[]` back
   // into DeployResult.assets so callers reading `result.assets.byKey[key]`
@@ -1253,6 +1277,7 @@ async function uploadMissing(
       label: reader?.label ?? p.sha256,
       sha256: p.sha256,
       reason: "present",
+      ...(reader?.slice ? { slice_kind: reader.slice } : {}),
     });
   }
 
@@ -1318,6 +1343,7 @@ async function uploadMissing(
       sha256: session.sha256,
       done,
       total,
+      ...(reader.slice ? { slice_kind: reader.slice } : {}),
     });
   }
 
@@ -1486,6 +1512,7 @@ async function pollUntilReady(
   warnings: PlanResponse["warnings"],
   emit: (event: DeployEvent) => void,
   projectId: string | undefined,
+  sliceKinds: ("release" | "asset")[] = [],
 ): Promise<DeployResult> {
   if (commit.status === "failed") {
     throw translateGatewayError(commit.error, "commit", null, commit.operation_id);
@@ -1503,7 +1530,12 @@ async function pollUntilReady(
         },
       );
     }
-    emit({ type: "ready", releaseId: commit.release_id, urls: commit.urls });
+    emit({
+      type: "ready",
+      releaseId: commit.release_id,
+      urls: commit.urls,
+      ...(sliceKinds.length > 0 ? { slice_kinds: sliceKinds } : {}),
+    });
     return {
       release_id: commit.release_id,
       operation_id: commit.operation_id,
@@ -1518,7 +1550,7 @@ async function pollUntilReady(
     `/apply/v1/operations/${encodeURIComponent(commit.operation_id)}`,
     { headers: opHeaders, context: "fetching deploy operation" },
   );
-  return await pollSnapshotUntilReady(client, initialSnapshot, diff, warnings, emit, projectId);
+  return await pollSnapshotUntilReady(client, initialSnapshot, diff, warnings, emit, projectId, sliceKinds);
 }
 
 async function pollSnapshotUntilReady(
@@ -1528,7 +1560,16 @@ async function pollSnapshotUntilReady(
   warnings: PlanResponse["warnings"],
   emit: (event: DeployEvent) => void,
   projectId: string | undefined,
+  sliceKinds: ("release" | "asset")[] = [],
 ): Promise<DeployResult> {
+  // Helper to spread slice_kinds onto every commit.phase / ready emit so
+  // agents grouping per-slice telemetry don't need to track the apply's
+  // spec separately. The low-level commit/upload helpers that pass no
+  // sliceKinds get an empty array → field is omitted from events.
+  const withSliceKinds = <T extends { type: string }>(ev: T): T =>
+    sliceKinds.length > 0
+      ? ({ ...ev, slice_kinds: sliceKinds } as T)
+      : ev;
   let snapshot = initial;
   const opHeaders = projectId ? await apikeyHeaders(client, projectId) : {};
   let lastPhaseEmitted: OperationStatus | null = null;
@@ -1569,7 +1610,7 @@ async function pollSnapshotUntilReady(
     if (!prev || prev.type !== "commit.phase") return;
     if (prev.status !== "started") return;
     if (nextPhase !== undefined && prev.phase === nextPhase) return;
-    emit({ type: "commit.phase", phase: prev.phase, status: closeStatus });
+    emit(withSliceKinds({ type: "commit.phase", phase: prev.phase, status: closeStatus }));
   };
 
   while (true) {
@@ -1577,7 +1618,7 @@ async function pollSnapshotUntilReady(
       const ev = phaseFor(snapshot.status);
       if (ev) {
         if (ev.type === "commit.phase") closePreviousPhase(ev.phase);
-        emit(ev);
+        emit(withSliceKinds(ev));
         lastPhaseEmitted = snapshot.status;
       }
       // If `ev` is null (status not in the phase map, e.g. "ready"), leave
@@ -1599,7 +1640,7 @@ async function pollSnapshotUntilReady(
         );
       }
       closePreviousPhase();
-      emit({ type: "ready", releaseId: snapshot.release_id, urls: snapshot.urls });
+      emit(withSliceKinds({ type: "ready", releaseId: snapshot.release_id, urls: snapshot.urls }));
       return {
         release_id: snapshot.release_id,
         operation_id: snapshot.operation_id,
@@ -1710,12 +1751,18 @@ async function startInternal(
     });
   }
 
+  const sliceKinds = deriveSliceKinds(spec);
   const resultPromise: Promise<DeployResult> = (async () => {
     await uploadMissing(client, spec.project, plan.missing_content, byteReaders, emit);
-    emit({ type: "commit.phase", phase: "validate", status: "started" });
+    emit({
+      type: "commit.phase",
+      phase: "validate",
+      status: "started",
+      ...(sliceKinds.length > 0 ? { slice_kinds: sliceKinds } : {}),
+    });
     const { planId } = requirePersistedPlan(plan, "starting deploy");
     const commit = await commitInternal(client, planId, opts.idempotencyKey);
-    return await pollUntilReady(client, commit, plan.diff, plan.warnings, emit, spec.project);
+    return await pollUntilReady(client, commit, plan.diff, plan.warnings, emit, spec.project, sliceKinds);
   })();
   // Avoid an unhandled-rejection at construction time. Consumers must call
   // .result() to actually observe the error.
@@ -1829,6 +1876,11 @@ export interface ByteReader {
   (): Promise<Uint8Array>;
   label?: string;
   contentType?: string;
+  /** Which spec slice category registered this byte reader. Set by the
+   *  slice-tagged `remember` in `normalizeReleaseSpec` and surfaces on
+   *  `content.upload.*` events so callers can group telemetry by slice.
+   *  Cross-kind CAS dedup escalates the value to `"mixed"`. */
+  slice?: "release" | "asset" | "mixed";
 }
 
 interface ResolvedContent {
@@ -2691,26 +2743,40 @@ async function normalizeReleaseSpec(
   byteReaders: Map<string, ByteReader>;
 }> {
   const byteReaders = new Map<string, ByteReader>();
-  const remember = (resolved: ResolvedContent): ContentRef => {
-    // Propagate the final content-type onto the deferred reader so the CAS
-    // upload session can declare it correctly. Callers may set
-    // ref.contentType *after* resolveContent returns (e.g. normalizeFileSet
-    // sets it from the path extension), so do this at remember time.
-    if (resolved.ref.contentType && !resolved.reader.contentType) {
-      resolved.reader.contentType = resolved.ref.contentType;
-    }
-    if (!byteReaders.has(resolved.ref.sha256)) {
-      byteReaders.set(resolved.ref.sha256, resolved.reader);
-    } else {
-      // Already remembered — but if the existing reader has no contentType
-      // and we just learned it, fill it in.
-      const existing = byteReaders.get(resolved.ref.sha256)!;
-      if (resolved.ref.contentType && !existing.contentType) {
-        existing.contentType = resolved.ref.contentType;
+  // Slice-tagged `remember`. Each slice category creates its own remember
+  // closure so the registered reader carries `reader.slice = "release" |
+  // "asset"`. On cross-kind dedup (same SHA from both a release-bound
+  // slice and the asset slice) the value escalates to `"mixed"`. This
+  // value surfaces on `content.upload.*` events so agents can group
+  // upload telemetry by slice kind.
+  const makeRemember = (slice: "release" | "asset") =>
+    (resolved: ResolvedContent): ContentRef => {
+      // Propagate the final content-type onto the deferred reader so the CAS
+      // upload session can declare it correctly. Callers may set
+      // ref.contentType *after* resolveContent returns (e.g. normalizeFileSet
+      // sets it from the path extension), so do this at remember time.
+      if (resolved.ref.contentType && !resolved.reader.contentType) {
+        resolved.reader.contentType = resolved.ref.contentType;
       }
-    }
-    return resolved.ref;
-  };
+      if (!byteReaders.has(resolved.ref.sha256)) {
+        resolved.reader.slice = slice;
+        byteReaders.set(resolved.ref.sha256, resolved.reader);
+      } else {
+        // Already remembered — but if the existing reader has no contentType
+        // and we just learned it, fill it in. Also escalate slice tag when
+        // the second registration comes from a different kind.
+        const existing = byteReaders.get(resolved.ref.sha256)!;
+        if (resolved.ref.contentType && !existing.contentType) {
+          existing.contentType = resolved.ref.contentType;
+        }
+        if (existing.slice && existing.slice !== slice && existing.slice !== "mixed") {
+          existing.slice = "mixed";
+        }
+      }
+      return resolved.ref;
+    };
+  const rememberRelease = makeRemember("release");
+  const rememberAsset = makeRemember("asset");
 
   const normalized: NormalizedReleaseSpec = { project: spec.project };
   if (spec.base) normalized.base = spec.base;
@@ -2730,7 +2796,7 @@ async function normalizeReleaseSpec(
     if (spec.database.migrations && spec.database.migrations.length > 0) {
       db.migrations = await Promise.all(
         spec.database.migrations.map(async (m) =>
-          normalizeMigration(client, spec.project, m, remember),
+          normalizeMigration(client, spec.project, m, rememberRelease),
         ),
       );
     }
@@ -2740,12 +2806,12 @@ async function normalizeReleaseSpec(
   if (spec.functions) {
     const fns: NormalizedFunctionsSpec = {};
     if (spec.functions.replace) {
-      fns.replace = await normalizeFunctionMap(spec.functions.replace, remember);
+      fns.replace = await normalizeFunctionMap(spec.functions.replace, rememberRelease);
     }
     if (spec.functions.patch) {
       fns.patch = {};
       if (spec.functions.patch.set) {
-        fns.patch.set = await normalizeFunctionMap(spec.functions.patch.set, remember);
+        fns.patch.set = await normalizeFunctionMap(spec.functions.patch.set, rememberRelease);
       }
       if (spec.functions.patch.delete) fns.patch.delete = spec.functions.patch.delete;
     }
@@ -2756,7 +2822,7 @@ async function normalizeReleaseSpec(
     const publicPaths =
       "public_paths" in spec.site ? spec.site.public_paths : undefined;
     if ("replace" in spec.site && spec.site.replace) {
-      const map = await normalizeFileSet(spec.site.replace, remember);
+      const map = await normalizeFileSet(spec.site.replace, rememberRelease);
       normalized.site = {
         replace: map,
         ...(publicPaths ? { public_paths: publicPaths } : {}),
@@ -2764,7 +2830,7 @@ async function normalizeReleaseSpec(
     } else if ("patch" in spec.site && spec.site.patch) {
       const patch: { put?: Record<string, ContentRef>; delete?: string[] } = {};
       if (spec.site.patch.put) {
-        patch.put = await normalizeFileSet(spec.site.patch.put, remember);
+        patch.put = await normalizeFileSet(spec.site.patch.put, rememberRelease);
       }
       if (spec.site.patch.delete) patch.delete = spec.site.patch.delete;
       normalized.site = {
@@ -2781,7 +2847,7 @@ async function normalizeReleaseSpec(
   // register a byte-reader; emit the wire-shaped `AssetPutEntry[]`.
   // Cross-kind SHA dedup is automatic via the shared `byteReaders` map.
   if (spec.assets) {
-    normalized.assets = await normalizeAssetSlice(spec.assets, remember);
+    normalized.assets = await normalizeAssetSlice(spec.assets, rememberAsset);
   }
 
   return { normalized, byteReaders };

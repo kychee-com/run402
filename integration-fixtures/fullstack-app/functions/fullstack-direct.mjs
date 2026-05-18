@@ -1,17 +1,4 @@
-import { adminDb, db, getUser, email, ai } from "@run402/functions";
-// `assets` is a 2.1.1+ addition; older deployments of @run402/functions
-// don't have it. Detect at module load so the bundler doesn't fail on
-// older gateway-bundled images. Once 2.1.1 is the deployed runtime, this
-// reduces to a static import.
-let assets = null;
-try {
-  const mod = await import("@run402/functions");
-  if (mod && typeof mod.assets === "object" && typeof mod.assets.put === "function") {
-    assets = mod.assets;
-  }
-} catch {
-  assets = null;
-}
+import { adminDb, db, getUser, email, ai, assets } from "@run402/functions";
 
 const JSON_HEADERS = { "content-type": "application/json; charset=utf-8" };
 
@@ -57,12 +44,6 @@ function transientMessage(err) {
 }
 
 async function uploadFromFunction() {
-  if (!assets || typeof assets.put !== "function") {
-    return {
-      status: "skipped",
-      reason: "@run402/functions runtime does not yet export `assets` (pre-2.1.1)",
-    };
-  }
   const stamp = Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 8);
   const key = `fullstack/fn-${stamp}.txt`;
   const body = `run402 function upload ${stamp}`;

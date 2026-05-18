@@ -805,12 +805,15 @@ describe("SDK surface alignment", () => {
 describe("CLI/MCP SDK-boundary guard", () => {
   it("keeps production interface code from bypassing the SDK for gateway calls", () => {
     const allowlist = new Map<string, RegExp[]>([
-      ["cli/lib/assets.mjs", [/\bfetch\(part\.url\b/]], // presigned S3 PUT, not a Run402 gateway call
+      // The v2.1.0 unified-apply pipeline removed every presigned-PUT
+      // call in cli/lib/assets.mjs and src/tools/assets-put.ts — both now
+      // delegate to `sdk.assets.put` (which routes through the apply
+      // hero). Those allowlist entries are kept out so a regression that
+      // reintroduces raw HTTP from a tool file fails the guard.
       ["cli/lib/allowance.mjs", [/\bfetch\(TEMPO_RPC\b/]], // Tempo faucet/RPC
       ["cli/lib/init.mjs", [/\bfetch\(TEMPO_RPC\b/]], // Tempo faucet/RPC
       ["cli/lib/ci.mjs", [/\bfetch\(`https:\/\/api\.github\.com\/repos\//]], // GitHub repository lookup
       ["src/tools/init.ts", [/\bfetch\(TEMPO_RPC\b/]], // Tempo faucet/RPC
-      ["src/tools/assets-put.ts", [/\bfetch\(part\.url\b/]], // presigned S3 PUT, not a Run402 gateway call
     ]);
 
     const violations: string[] = [];

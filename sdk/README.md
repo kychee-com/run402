@@ -130,6 +130,30 @@ const logo = await (await r.project(projectId)).assets.put("logo.png", { bytes }
 
 `immutable: true` is the default since v1.45. The SDK always computes and sends the object SHA-256; pass `false` only when you specifically need mutable URL/cache semantics.
 
+### Mixed apply — site + assets in one atomic activation
+
+Drop a per-key asset put into the same release as your site files. Both promote inside the same activation transaction that flips `live_release_id`, so the asset URLs are live the moment the new release is. Source shorthand: bare strings, `Uint8Array`, or any other `ContentSource` (Blob, FsFileSource from `fileSetFromDir`, `{ data, contentType? }` wrapper). The SDK normalizer hashes once and dedups across slices — same SHA in `site` and `assets` uploads as a single byte stream.
+
+```ts
+import { run402, fileSetFromDir } from "@run402/sdk/node";
+const r = run402();
+const p = await r.project(projectId);
+
+const imageBytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47]);
+const siteFiles = await fileSetFromDir("./dist");
+const result = await p.apply({
+  site: { replace: siteFiles },
+  assets: {
+    put: [
+      { key: "static/logo.png", source: imageBytes, content_type: "image/png" },
+      { key: "static/styles.css", source: "/* inline css */" },
+    ],
+  },
+});
+const logo = result.assets?.byKey["static/logo.png"];
+console.log(logo?.cdn_url);   // hot the moment the release activates
+```
+
 For bulk asset uploads, use the Node-only helpers `uploadDir` (additive), `syncDir` (destructive with explicit `prune: true` + confirmation token), and `prepareDir` (returns `{ manifest, applySlice }` so the agent can render HTML against resolved URLs before committing in one apply transaction):
 
 ```ts

@@ -1942,6 +1942,11 @@ export type DeployEvent =
       label: string;
       sha256: string;
       reason: "present" | "satisfied_by_plan";
+      /** Which spec slice(s) contributed this SHA. `"release"` for
+       *  database / functions / site / migrations; `"asset"` for the v1.48
+       *  unified-apply asset slice; `"mixed"` when the same SHA was
+       *  registered by both kinds (cross-kind CAS dedup). */
+      slice_kind?: "release" | "asset" | "mixed";
     }
   | {
       type: "content.upload.progress";
@@ -1949,6 +1954,7 @@ export type DeployEvent =
       sha256: string;
       done: number;
       total: number;
+      slice_kind?: "release" | "asset" | "mixed";
     }
   | {
       type: "commit.phase";
@@ -1961,6 +1967,10 @@ export type DeployEvent =
         | "activate"
         | "ready";
       status: "started" | "done" | "failed";
+      /** Sorted list of slice kinds the apply's spec carried. Useful for
+       *  agents grouping per-phase telemetry by slice category. Stable
+       *  across phase transitions of the same apply. */
+      slice_kinds?: ("release" | "asset")[];
     }
   | {
       type: "log";
@@ -1968,7 +1978,12 @@ export type DeployEvent =
       stream: "stdout" | "stderr";
       line: string;
     }
-  | { type: "ready"; releaseId: string; urls: Record<string, string> };
+  | {
+      type: "ready";
+      releaseId: string;
+      urls: Record<string, string>;
+      slice_kinds?: ("release" | "asset")[];
+    };
 
 export interface DeployResult {
   release_id: string;
