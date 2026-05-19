@@ -1,0 +1,77 @@
+{
+  "$schema": "https://run402.com/schemas/release-spec.v1.json",
+  "project_id": "prj_REPLACE_ME",
+  "base": { "release": "current" },
+
+  "database": {
+    "migrations": [
+      {
+        "id": "001_init",
+        "sql": "CREATE TABLE IF NOT EXISTS items (id bigserial PRIMARY KEY, title text NOT NULL, created_at timestamptz NOT NULL DEFAULT NOW());"
+      }
+    ],
+    "expose": {
+      "version": "1",
+      "tables": [{ "name": "items", "expose": true, "policy": "public_read_authenticated_write" }]
+    }
+  },
+
+  "secrets": {
+    "require": ["OPENAI_API_KEY"]
+  },
+
+  "functions": {
+    "replace": {
+      "api": {
+        "runtime": "node22",
+        "source": {
+          "data": "ZXhwb3J0IGRlZmF1bHQgYXN5bmMgKHJlcSkgPT4gbmV3IFJlc3BvbnNlKEpTT04uc3RyaW5naWZ5KHsgb2s6IHRydWUgfSksIHsgaGVhZGVyczogeyAiY29udGVudC10eXBlIjogImFwcGxpY2F0aW9uL2pzb24iIH0gfSk7",
+          "encoding": "base64",
+          "contentType": "text/javascript"
+        },
+        "config": { "timeoutSeconds": 30, "memoryMb": 256 }
+      }
+    }
+  },
+
+  "site": {
+    "replace": {
+      "index.html": {
+        "data": "PCFkb2N0eXBlIGh0bWw+CjxodG1sPgo8aGVhZD48dGl0bGUgPmhlbGxvPC90aXRsZT48L2hlYWQ+Cjxib2R5PgogIDxoMT5oZWxsbzwvaDE+CiAgPHNjcmlwdCBzcmM9Ii9zdGF0aWMvYXBwLmpzIj48L3NjcmlwdD4KPC9ib2R5Pgo8L2h0bWw+Cg==",
+        "encoding": "base64",
+        "contentType": "text/html; charset=utf-8"
+      }
+    },
+    "public_paths": { "mode": "implicit" }
+  },
+
+  "assets": {
+    "put": [
+      {
+        "key": "static/app.js",
+        "source": "console.log('hello from app.js');\n",
+        "content_type": "text/javascript",
+        "visibility": "public",
+        "immutable": true
+      }
+    ],
+    "delete": [],
+    "sync": {
+      "prefix": "static/",
+      "prune": true,
+      "confirm": {
+        "base_revision": "REPLACE_WITH_SHA256_FROM_PRIOR_PLAN",
+        "delete_set_digest": "REPLACE_WITH_SHA256_FROM_PRIOR_PLAN",
+        "expected_delete_count": 0
+      }
+    }
+  },
+
+  "subdomains": { "set": ["my-app"] },
+
+  "routes": {
+    "replace": [
+      { "pattern": "/api/*", "methods": ["GET", "POST"], "target": { "type": "function", "name": "api" } }
+    ]
+  }
+}
