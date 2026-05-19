@@ -113,7 +113,7 @@ export const ai = {
       throw new Error("Invalid image aspect: must be square, landscape, or portrait");
     }
 
-    const res = await fetch(config.API_BASE + "/ai/v1/generate-image", {
+    const res = await fetch(config.API_BASE + "/generate-image/v1", {
       method: "POST",
       headers: {
         Authorization: "Bearer " + config.SERVICE_KEY,

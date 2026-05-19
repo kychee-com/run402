@@ -33,6 +33,7 @@ const API =
   process.env.RUN402_API_BASE ??
   "https://api.run402.com";
 const EMAIL_TO = process.env.RUN402_FULLSTACK_EMAIL_TO;
+const EMAIL_TEMPLATE = process.env.RUN402_FULLSTACK_EMAIL_TEMPLATE;
 const RUN_ID = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 const SUBDOMAIN = `fs-${RUN_ID}`;
 const TEST_SECRET_VALUE = `fullstack-secret-${RUN_ID}`;
@@ -662,6 +663,16 @@ describe("Run402 full-stack integration (live API, no mocks)", { timeout: 900_00
 
     const options = await fetch(`${routeBase}/api/fullstack`, { method: "OPTIONS" });
     assert.equal(options.status, 204);
+
+    // Gap 3: adminDb().from() — PostgREST /admin/v1/rest/* bypass path
+    const adminFrom = await directFunctionJson({
+      headers: apiHeaders("service"),
+      body: { action: "admin-db-from" },
+    });
+    assert.equal(adminFrom.ok, true);
+    const adminFromRows = rowsFromSql(adminFrom.rows);
+    assert.ok(adminFromRows.length > 0, "adminDb().from() should return seeded rows");
+    assert.ok(adminFromRows.some((row) => row.marker === "RUN402_FULLSTACK_SEED_ALPHA"), "adminDb().from() should see rows bypassing RLS");
   });
 
   it("uploads blobs, diagnoses CDN state, and exercises in-function storage", async () => {
@@ -747,6 +758,58 @@ describe("Run402 full-stack integration (live API, no mocks)", { timeout: 900_00
     } else {
       assert.ok(aiResult.reason);
     }
+
+    // Gap 1: ai.translate() — /ai/v1/translate
+    const translateResult = await directFunctionJson({
+      headers: apiHeaders("service"),
+      body: { action: "ai-translate" },
+    });
+    assert.ok(["ok", "skipped"].includes(String(translateResult.status)));
+    if (translateResult.status === "ok") {
+      assert.equal(translateResult.to, "es");
+      assert.equal(translateResult.has_text, true);
+    } else {
+      assert.ok(translateResult.reason);
+    }
+
+    // Gap 2: ai.generateImage() — /generate-image/v1
+    const generateImageResult = await directFunctionJson({
+      headers: apiHeaders("service"),
+      body: { action: "ai-generate-image" },
+    });
+    assert.ok(["ok", "skipped"].includes(String(generateImageResult.status)));
+    if (generateImageResult.status === "ok") {
+      assert.equal(generateImageResult.aspect, "square");
+      assert.equal(generateImageResult.has_image, true);
+      assert.ok(String(generateImageResult.content_type).startsWith("image/"));
+    } else {
+      assert.ok(generateImageResult.reason);
+    }
+
+    // Gap 4: email.send() with template — /mailboxes/v1/:id/messages with template body
+    const emailTemplateResult = await directFunctionJson({
+      headers: apiHeaders("service"),
+      body: { action: "email-template" },
+    });
+    if (EMAIL_TO && EMAIL_TEMPLATE) {
+      assert.equal(emailTemplateResult.status, "sent");
+      assert.ok(emailTemplateResult.id);
+    } else {
+      assert.equal(emailTemplateResult.status, "skipped");
+    }
+
+    // Gap 5: routedHttp helpers — callable in function runtime, produce correct RoutedHttpResponseV1 shape
+    const routedHttpResult = await directFunctionJson({
+      headers: apiHeaders("service"),
+      body: { action: "routedhttp" },
+    });
+    assert.equal(routedHttpResult.ok, true);
+    assert.equal((routedHttpResult.json as any)?.contentType, "application/json; charset=utf-8");
+    assert.equal((routedHttpResult.json as any)?.status, 200);
+    assert.ok(((routedHttpResult.json as any)?.bodySize ?? 0) > 0);
+    assert.equal((routedHttpResult.text as any)?.contentType, "text/plain; charset=utf-8");
+    assert.equal((routedHttpResult.text as any)?.status, 200);
+    assert.equal((routedHttpResult.bytes as any)?.bodySize, 3);
   });
 
   it("fetches active and by-id release inventories with full-stack resource metadata", async () => {

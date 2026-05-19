@@ -13,6 +13,91 @@ mock.module("./config.js", {
 
 const { ai } = await import("./ai.js");
 
+describe("ai.translate", () => {
+  let lastFetchUrl = "";
+  let lastFetchOpts: RequestInit = {};
+
+  beforeEach(() => {
+    lastFetchUrl = "";
+    lastFetchOpts = {};
+    mock.method(globalThis, "fetch", async (url: string, opts: RequestInit) => {
+      lastFetchUrl = url;
+      lastFetchOpts = opts;
+      return new Response(JSON.stringify({ text: "Hola mundo", from: "en", to: "es" }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+  });
+
+  it("posts to /ai/v1/translate with service credentials", async () => {
+    const result = await ai.translate("Hello world", "es", { from: "en", context: "greeting" });
+
+    assert.equal(lastFetchUrl, "https://test.run402.com/ai/v1/translate");
+    assert.equal(lastFetchOpts.method, "POST");
+    const headers = lastFetchOpts.headers as Record<string, string>;
+    assert.equal(headers.Authorization, "Bearer sk_test");
+    assert.equal(headers["Content-Type"], "application/json");
+    assert.deepEqual(JSON.parse(lastFetchOpts.body as string), {
+      text: "Hello world",
+      to: "es",
+      from: "en",
+      context: "greeting",
+    });
+    assert.deepEqual(result, { text: "Hola mundo", from: "en", to: "es" });
+  });
+
+  it("omits optional from/context when not provided", async () => {
+    await ai.translate("Hello", "fr");
+    assert.deepEqual(JSON.parse(lastFetchOpts.body as string), { text: "Hello", to: "fr" });
+  });
+
+  it("throws on non-ok response", async () => {
+    mock.method(globalThis, "fetch", async () =>
+      new Response(JSON.stringify({ error: "quota exceeded" }), { status: 429 }),
+    );
+    await assert.rejects(
+      async () => { await ai.translate("x", "es"); },
+      /Translation failed \(429\)/,
+    );
+  });
+});
+
+describe("ai.moderate", () => {
+  it("posts to /ai/v1/moderate with service credentials", async () => {
+    let lastFetchUrl = "";
+    let lastFetchOpts: RequestInit = {};
+    mock.method(globalThis, "fetch", async (url: string, opts: RequestInit) => {
+      lastFetchUrl = url;
+      lastFetchOpts = opts;
+      return new Response(JSON.stringify({ flagged: false, categories: {} }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+
+    const result = await ai.moderate("some text to check");
+
+    assert.equal(lastFetchUrl, "https://test.run402.com/ai/v1/moderate");
+    assert.equal(lastFetchOpts.method, "POST");
+    const headers = lastFetchOpts.headers as Record<string, string>;
+    assert.equal(headers.Authorization, "Bearer sk_test");
+    assert.equal(headers["Content-Type"], "application/json");
+    assert.deepEqual(JSON.parse(lastFetchOpts.body as string), { text: "some text to check" });
+    assert.deepEqual(result, { flagged: false, categories: {} });
+  });
+
+  it("throws on non-ok response", async () => {
+    mock.method(globalThis, "fetch", async () =>
+      new Response(JSON.stringify({ error: "rate limited" }), { status: 429 }),
+    );
+    await assert.rejects(
+      async () => { await ai.moderate("x"); },
+      /Moderation failed \(429\)/,
+    );
+  });
+});
+
 describe("ai.generateImage", () => {
   let lastFetchUrl = "";
   let lastFetchOpts: RequestInit = {};
@@ -40,7 +125,7 @@ describe("ai.generateImage", () => {
       aspect: "landscape",
     });
 
-    assert.equal(lastFetchUrl, "https://test.run402.com/ai/v1/generate-image");
+    assert.equal(lastFetchUrl, "https://test.run402.com/generate-image/v1");
     assert.equal(lastFetchOpts.method, "POST");
     const headers = lastFetchOpts.headers as Record<string, string>;
     assert.equal(headers.Authorization, "Bearer sk_test");

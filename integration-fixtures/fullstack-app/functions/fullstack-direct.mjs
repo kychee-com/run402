@@ -1,4 +1,4 @@
-import { adminDb, db, getUser, email, ai, assets } from "@run402/functions";
+import { adminDb, db, getUser, email, ai, assets, routedHttp } from "@run402/functions";
 
 const JSON_HEADERS = { "content-type": "application/json; charset=utf-8" };
 
@@ -140,6 +140,91 @@ async function handleAi() {
   }
 }
 
+async function handleAiTranslate() {
+  try {
+    const result = await ai.translate("hello", "es");
+    return json({
+      ok: true,
+      status: "ok",
+      to: result.to,
+      has_text: typeof result.text === "string" && result.text.length > 0,
+    });
+  } catch (err) {
+    const transient = transientMessage(err);
+    if (transient) return json({ ok: true, status: "skipped", reason: transient });
+    throw err;
+  }
+}
+
+async function handleAiGenerateImage() {
+  try {
+    const result = await ai.generateImage({ prompt: "a blue circle on white background", aspect: "square" });
+    return json({
+      ok: true,
+      status: "ok",
+      aspect: result.aspect,
+      content_type: result.content_type,
+      has_image: typeof result.image === "string" && result.image.length > 0,
+    });
+  } catch (err) {
+    const transient = transientMessage(err);
+    if (transient) return json({ ok: true, status: "skipped", reason: transient });
+    throw err;
+  }
+}
+
+async function handleAdminDbFrom() {
+  const rows = await adminDb().from("fs_items").select("id,marker").limit(2);
+  return json({ ok: true, rows });
+}
+
+async function handleEmailTemplate() {
+  const to = process.env.FULLSTACK_EMAIL_TO;
+  const template = process.env.FULLSTACK_EMAIL_TEMPLATE;
+  if (!to) {
+    return json({ ok: true, status: "skipped", reason: "RUN402_FULLSTACK_EMAIL_TO not configured" });
+  }
+  if (!template) {
+    return json({ ok: true, status: "skipped", reason: "RUN402_FULLSTACK_EMAIL_TEMPLATE not configured" });
+  }
+  try {
+    const result = await email.send({
+      to,
+      template,
+      variables: { name: "Integration Test" },
+      from_name: "Run402 Integration",
+    });
+    return json({ ok: true, status: "sent", id: result.id ?? null });
+  } catch (err) {
+    const transient = transientMessage(err);
+    if (transient) return json({ ok: true, status: "skipped", reason: transient });
+    throw err;
+  }
+}
+
+function handleRoutedHttp() {
+  const jsonResponse = routedHttp.json({ hello: "world" });
+  const textResponse = routedHttp.text("hello text");
+  const bytesResponse = routedHttp.bytes(new Uint8Array([1, 2, 3]));
+  return json({
+    ok: true,
+    json: {
+      status: jsonResponse.status,
+      contentType: jsonResponse.headers?.find(([n]) => n === "content-type")?.[1],
+      bodySize: jsonResponse.body?.size,
+    },
+    text: {
+      status: textResponse.status,
+      contentType: textResponse.headers?.find(([n]) => n === "content-type")?.[1],
+      bodySize: textResponse.body?.size,
+    },
+    bytes: {
+      status: bytesResponse.status,
+      bodySize: bytesResponse.body?.size,
+    },
+  });
+}
+
 export default async function handler(req) {
   if (req.method === "GET") {
     return json({ ok: true, keyKind: keyKind(req), user: publicUser(getUser(req)) });
@@ -157,6 +242,16 @@ export default async function handler(req) {
       return handleEmail();
     case "ai":
       return handleAi();
+    case "ai-translate":
+      return handleAiTranslate();
+    case "ai-generate-image":
+      return handleAiGenerateImage();
+    case "admin-db-from":
+      return handleAdminDbFrom();
+    case "email-template":
+      return handleEmailTemplate();
+    case "routedhttp":
+      return handleRoutedHttp();
     case "storage": {
       const result = await uploadFromFunction();
       return json({ ok: true, status: result.status, asset: result, reason: result.reason });
