@@ -1,6 +1,8 @@
-Publish the four npm packages in this monorepo (`run402-mcp`, `run402` CLI, `@run402/sdk`, `@run402/functions`). Run each step in order, stopping on any failure.
+Publish the three npm packages in this monorepo (`run402-mcp`, `run402` CLI, `@run402/sdk`). Run each step in order, stopping on any failure.
 
-**Default behavior is lockstep** — all four packages bumped to the same version. The skill prompts you in the version-bump step if you want to bump only a subset.
+> **`@run402/functions` is no longer published from this repo.** Its source moved to the private gateway monorepo (`kychee-com/run402-private` at `packages/functions/`) so it can co-evolve with the gateway code that calls it. Publish that package from there. Run `/publish-functions` in the private repo, or `cd packages/functions && npm publish`.
+
+**Default behavior is lockstep** — all three packages bumped to the same version. The skill prompts you in the version-bump step if you want to bump only a subset.
 
 ## Pre-publish checks
 
@@ -13,22 +15,21 @@ Publish the four npm packages in this monorepo (`run402-mcp`, `run402` CLI, `@ru
 
 **Step 1 — pick the bump kind.** Ask the user: patch, minor, or major.
 
-**Step 2 — pick which packages.** Ask the user: *"Bump which packages? [all | comma-separated subset of mcp,cli,sdk,functions]"* — default `all`.
+**Step 2 — pick which packages.** Ask the user: *"Bump which packages? [all | comma-separated subset of mcp,cli,sdk]"* — default `all`.
 
-- `all` → lockstep release. All four packages bumped to the same new version. This is the recommended default; "Run402 v1.46.0" should mean one thing.
-- Comma-separated subset (e.g., `functions` or `mcp,cli`) → selective release. Only the listed packages are bumped and published; the others retain their current published versions. The selected set is brought back into sync at the chosen target version.
-- Reject any tokens not in `mcp,cli,sdk,functions,all`.
+- `all` → lockstep release. All three packages bumped to the same new version. This is the recommended default; "Run402 v1.46.0" should mean one thing.
+- Comma-separated subset (e.g., `mcp,cli`) → selective release. Only the listed packages are bumped and published; the others retain their current published versions. The selected set is brought back into sync at the chosen target version.
+- Reject any tokens not in `mcp,cli,sdk,all`. If the user asks for `functions`, redirect: "That package is now published from the private repo (`kychee-com/run402-private`). Run `/publish-functions` there."
 
 **Step 3 — compute the target version.** Read the *highest* current version across the selected packages (in case they've diverged), apply the bump kind, get one target version. Apply that exact target version to every selected package.
 
-The four packages and their `package.json` files:
+The three packages and their `package.json` files:
 
 | ID | npm name | path |
 |---|---|---|
 | `mcp` | `run402-mcp` | `package.json` (root) |
 | `cli` | `run402` | `cli/package.json` |
 | `sdk` | `@run402/sdk` | `sdk/package.json` |
-| `functions` | `@run402/functions` | `functions/package.json` |
 
 **Step 4 — apply the bumps.**
 
@@ -54,14 +55,13 @@ For lockstep (`all`), the commit message is `chore: bump version to v<target>`.
 
 Run these in sequence. If any check fails, stop and fix the root cause. Do **not** `npm publish`.
 
-Pack the four tarballs (skip any package not in the selected set):
+Pack the three tarballs (skip any package not in the selected set):
 
 ```
 SMOKE=/tmp/smoke-<new_version> && rm -rf $SMOKE && mkdir $SMOKE
 npm pack --pack-destination $SMOKE                # mcp
 (cd cli && npm pack --pack-destination $SMOKE)    # cli
 (cd sdk && npm pack --pack-destination $SMOKE)    # sdk
-(cd functions && npm pack --pack-destination $SMOKE)  # functions
 ```
 
 1. **CLI** — extract, install, check `--version`:
@@ -87,12 +87,6 @@ npm pack --pack-destination $SMOKE                # mcp
    (cd $SMOKE/sdk/package && node -e "import('./dist/index.js').then(m => console.log('OK iso', typeof m.Run402)).catch(e => { console.error('FAIL', e.message); process.exit(1) })")
    ```
 
-4. **Functions** (`@run402/functions`) — run the dedicated tarball smoke script. It builds, packs in its own scratch, installs, exports-checks, exercises `getUser()` end-to-end with a signed JWT, and verifies the deprecated `run402-functions` import path is NOT resolvable:
-   ```
-   node functions/test/smoke-tarball.mjs
-   ```
-   Expect `✓ All smoke checks passed`. The script exits non-zero on any failure. **This catches the jsonwebtoken bundling regression class** (e.g., if `auth.ts` reverts to `createRequire`, or if `jsonwebtoken` is dropped from runtime deps).
-
 ## Publish
 
 Skip any step whose package was NOT in the selected set from the version-bump prompt.
@@ -114,19 +108,9 @@ Skip any step whose package was NOT in the selected set from the version-bump pr
    ```
    The SDK's `prepack` script copies `core/dist/*.js` and `core/dist/*.d.ts` into `core-dist/` so the published tarball is self-contained. The SDK ships two entry points: `@run402/sdk` (isomorphic — works in Node, Deno, Bun, V8 isolates) and `@run402/sdk/node` (Node defaults: keystore + allowance + x402-wrapped fetch).
 
-4. **Functions** (`@run402/functions`):
-   ```
-   cd functions && npm publish
-   ```
-   The package has `publishConfig.access: public` set in `package.json`, so no `--access public` flag is needed. The published tarball contains `dist/` only (the source tests are excluded via the `files` allowlist).
+4. **OpenClaw skill**: No registry publish needed. The OpenClaw skill is distributed as a directory copy and uses `run402-mcp` via npx. Confirm to the user that OpenClaw is automatically up to date since its SKILL.md `install` field points to the `run402-mcp` npm package.
 
-5. **First-time deprecation of `run402-functions`** — IF this is the first `@run402/functions` release (i.e., before this run, the previously-published `run402-functions` package was the canonical name), run:
-   ```
-   npm deprecate run402-functions@"*" "renamed to @run402/functions; install @run402/functions instead"
-   ```
-   This step is idempotent — safe to re-run on subsequent publishes. Verify with `npm view run402-functions deprecated` showing the message.
-
-6. **OpenClaw skill**: No registry publish needed. The OpenClaw skill is distributed as a directory copy and uses `run402-mcp` via npx. Confirm to the user that OpenClaw is automatically up to date since its SKILL.md `install` field points to the `run402-mcp` npm package.
+5. **`@run402/functions` is NOT published here.** Skip it. That package ships from `kychee-com/run402-private` at `packages/functions/`. The gateway and the in-function helpers live in the same monorepo there so they can be tested together. Run `/publish-functions` in the private repo when you need to ship a new `@run402/functions` version. The npm package on the registry stays at the same name — only the source of truth moved.
 
 ## Post-publish
 
@@ -156,7 +140,6 @@ Skip any step whose package was NOT in the selected set from the version-bump pr
    - https://www.npmjs.com/package/run402-mcp
    - https://www.npmjs.com/package/run402
    - https://www.npmjs.com/package/@run402/sdk
-   - https://www.npmjs.com/package/@run402/functions
 
 ## Twitter summary
 
