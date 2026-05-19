@@ -691,35 +691,29 @@ describe("Run402 full-stack integration (live API, no mocks)", { timeout: 900_00
     assert.match(await fetchTextOk(url), /run402 function upload/);
   });
 
-  it(
-    "preserves the old immutable URL after re-uploading the same key with new bytes (design D16)",
-    { skip: "Gateway-side serving bug: v1 immutable URL 404s after v2 put. The size_bytes ACTIVATION_FAILED bug was fixed in 2026-05-18 commit a4dd7e3f; this is a separate serving-side gap (blob_url_refs row for v1 isn't surviving the v2 INSERT/UPDATE on internal.blobs). Tracked outside this change; restore the assertion after the gateway fix lands." },
-    async () => {
-      // INTENT: When the same key is re-uploaded with new bytes, the OLD
-      // immutable URL (with v1's SHA suffix) must keep serving v1's bytes
-      // per design D16. promoteStagedAssetSlice's applyOneAssetPut inserts
-      // a new blob_url_refs row at v2's suffixed public_url_key (different
-      // PK from v1's); the v1 row should be left untouched. Empirically v1
-      // 404s, so something on the serving side (CDN-origin SELECT, an
-      // ON-UPDATE trigger, or a CASCADE we haven't found yet) is wiping or
-      // revoking it.
-      const key = `fullstack/retention-${RUN_ID}.txt`;
-      createdBlobKeys.add(key);
-      const v1 = await r.assets.put(projectId, key, "retention v1 marker", {
-        contentType: "text/plain; charset=utf-8",
-      });
-      const v2 = await r.assets.put(projectId, key, "retention v2 marker", {
-        contentType: "text/plain; charset=utf-8",
-      });
-      const v1Url = v1.cdnUrl ?? v1.immutableUrl;
-      const v2Url = v2.cdnUrl ?? v2.immutableUrl;
-      assert.ok(v1Url);
-      assert.ok(v2Url);
-      assert.notEqual(v1Url, v2Url);
-      assert.match(await fetchTextOk(v2Url), /retention v2 marker/);
-      assert.match(await fetchTextOk(v1Url), /retention v1 marker/);
-    },
-  );
+  it("preserves the old immutable URL after re-uploading the same key with new bytes (design D16)", async () => {
+    // Re-uploading the same key with new bytes produces a new immutable URL
+    // (with v2's SHA suffix) AND must leave the old immutable URL (with v1's
+    // SHA suffix) serving v1's bytes for `asset_versions.retained_until` —
+    // design D16. The gateway inserts a fresh `blob_url_refs` row at v2's
+    // public_url_key without touching v1's row; the CDN-origin resolver finds
+    // each by `(project_id, public_url_key)`.
+    const key = `fullstack/retention-${RUN_ID}.txt`;
+    createdBlobKeys.add(key);
+    const v1 = await r.assets.put(projectId, key, "retention v1 marker", {
+      contentType: "text/plain; charset=utf-8",
+    });
+    const v2 = await r.assets.put(projectId, key, "retention v2 marker", {
+      contentType: "text/plain; charset=utf-8",
+    });
+    const v1Url = v1.cdnUrl ?? v1.immutableUrl;
+    const v2Url = v2.cdnUrl ?? v2.immutableUrl;
+    assert.ok(v1Url);
+    assert.ok(v2Url);
+    assert.notEqual(v1Url, v2Url);
+    assert.match(await fetchTextOk(v2Url), /retention v2 marker/);
+    assert.match(await fetchTextOk(v1Url), /retention v1 marker/);
+  });
 
   it("observes runtime secrets and exercises email plus AI helper paths", async () => {
     const secret = await directFunctionJson({
