@@ -81,7 +81,12 @@ core/      ← Node-only primitives (keystore, allowance, SIWE signing, config p
               Imported by sdk/src/node via ../../../core/dist/; not an npm package.
 
 functions/ ← @run402/functions in-function helper (db, adminDb, getUser, email, ai, assets).
-              Auto-bundled into deployed function zips at deploy time;
+              Treated as platform code, not a library: the gateway bundles its own
+              installed copy via esbuild alias at deploy time (not a per-deploy npm
+              install). A gateway redeploy propagates runtime fixes to all future
+              function deployments without users needing to redeploy their functions.
+              The npm package (@run402/functions) is published for TypeScript types
+              and local editor autocomplete only — not the runtime bundling source.
               also installable for local TypeScript autocomplete.
 ```
 
@@ -153,7 +158,7 @@ Core functions return `null` or throw — they never call `process.exit()`. Each
 - **`ai.generateImage({ prompt, aspect? })`** — project-billed runtime image generation from deployed functions. Uses the project service key and `/ai/v1/generate-image`, not the wallet/x402 `/generate-image/v1` endpoint. Supported aspects are `square`, `landscape`, and `portrait`; result shape is `{ image, content_type, aspect }`. Gateway rate limits and spend caps apply to the project billing account; routed public functions still own app auth and abuse limits.
 - **`assets.put(key, source, opts?)`** — in-function asset upload through the service-key `/apply/v1/service-asset-put` path. Uses the same CAS/activation substrate as deploy-time assets and returns SDK-compatible `AssetRef` snake_case + camelCase fields.
 - **`routedHttp`** — non-framework helpers for the `run402.routed_http.v1` same-origin browser ingress contract. Direct `/functions/v1/:name` remains API-key protected; routed function code owns app auth, CSRF, CORS/`OPTIONS`, cookies, redirects, cache headers, and spoofed forwarding-header hygiene.
-- This library is auto-bundled into deployed function zips alongside any user-declared `--deps` (npm-installed and esbuild-bundled at deploy time, native binaries rejected). Also installable in your editor for full TypeScript autocomplete.
+- The gateway bundles its own installed copy of this library into every function zip via esbuild `alias` at deploy time — it is **platform code, not a user dependency**. User-declared `--deps` are npm-installed and esbuild-bundled separately. Native binaries are rejected. Publish to npm (`@run402/functions`) for API/type changes that affect user editors; runtime fixes (wrong URLs, logic bugs) only need a gateway redeploy. Also installable locally for full TypeScript autocomplete.
 
 ### MCP Server (`src/`)
 
