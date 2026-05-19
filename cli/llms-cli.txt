@@ -877,6 +877,15 @@ Other AssetRef fields for advanced use:
 - `cacheKind` — `"immutable" | "mutable" | "private"`.
 - `cdn.{version,invalidationId,invalidationStatus,ready,hint}` — CloudFront invalidation envelope; `cdn.ready === true` for immutable uploads.
 
+Image-variant fields (v1.49+, `@run402/functions@2.3.0+`, populated for image MIMEs ≥ 320×320):
+- `width_px`, `height_px` — display-oriented dimensions (post-EXIF rotate).
+- `blurhash` — ~30-byte LQIP placeholder; decode client-side with the `blurhash` npm package to render a placeholder before the real image is ready (eliminates CLS).
+- `variant_spec_version` — pins URL identity to the encoder generation. Bumping (gateway-side) produces new URLs without invalidating older ones.
+- `display_url` / `display_immutable_url` — browser-displayable URL. For jpeg/png/webp/avif sources this equals `cdn_url`. For **HEIC/HEIF** sources this points at a JPEG `display_jpeg` variant so `<img src>` renders correctly without HEIC-specific app code. HEIC source bytes are preserved verbatim in CAS (uploaded SHA == stored SHA).
+- `variants.thumb` / `variants.medium` / `variants.large` — three WebP variants (320w / 800w / 1920w), each with `url`, `cdn_url`, `width_px`, `height_px`, `format: "webp"`, `sha256`. Use `variants.thumb.cdn_url` in MediaPicker-style admin grids to avoid downloading full-res originals.
+- `variants.display_jpeg` — only present for HEIC/HEIF sources. Full-res JPEG, quality 90, sRGB-converted.
+- Encoder errors surface as HTTP 422 `IMAGE_DECODE_FAILED`, 413 `IMAGE_INPUT_TOO_LARGE` (>40 MP or >12000 px any axis), 504 `IMAGE_ENCODE_TIMEOUT`, 429 `TOO_MANY_ENCODES_QUEUED` (encoder semaphore full — retry after 2s).
+
 **Agent loop pattern (mutable URL only):** if you must use a stable mutable URL across re-uploads, `run402 cdn wait-fresh <mutable-url> --sha <new-sha>` blocks until the CDN serves the new SHA. **Don't call wait-fresh on immutable URLs** — they're correct from the moment of upload.
 
 Resume: removed in v2.1.0. The CLI now delegates to `sdk.assets.put`, which routes through the unified-apply hero (`apply/v1/plans → content/v1/plans → S3 PUT → commit`). The `--concurrency` and `--no-resume` flags are accepted for backward compatibility but ignored — resume semantics now live at the apply-plan level (24h plan TTL).
