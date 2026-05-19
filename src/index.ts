@@ -270,7 +270,7 @@ server.tool(
 
 server.tool(
   "assets_put",
-  "Upload a blob (file or inline content) to project storage via direct-to-S3. Accepts local_path (any size up to 5 TiB) or content (≤ 1 MB inline). Public blobs get a CDN URL; private blobs require authenticated reads. Use `immutable: true` to produce a content-addressed URL that never needs cache invalidation.",
+  "Upload a blob (file or inline content) to project storage via direct-to-S3. Accepts local_path (any size up to 5 TiB) or content (≤ 1 MB inline). Public blobs get a CDN URL; private blobs require authenticated reads. Use `immutable: true` to produce a content-addressed URL that never needs cache invalidation. For image uploads (jpeg/png/webp/heic/heif), the gateway also returns width_px/height_px/blurhash/display_url and a `variants` map (thumb 320w, medium 800w, large 1920w WebP — plus display_jpeg for HEIC sources) so apps can render responsive thumbnails without re-encoding client-side. See the SDK docs for the full AssetRef shape.",
   blobPutSchema,
   async (args) => handleBlobPut(args),
 );

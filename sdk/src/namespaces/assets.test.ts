@@ -93,6 +93,26 @@ interface ApplyAssetEntry {
     etag: string;
     content_digest: string;
   }>;
+  /**
+   * v1.49+ image-variant overrides. When set, the mocked plan-response
+   * `asset_ref` carries the listed fields (so the SDK widening flow can be
+   * exercised end-to-end against image responses). When absent (default),
+   * the asset_ref omits all image fields — emulating a non-image upload.
+   */
+  image?: {
+    width_px?: number;
+    height_px?: number;
+    blurhash?: string;
+    variant_spec_version?: string;
+    display_url?: string;
+    display_immutable_url?: string;
+    variants?: {
+      thumb?: { url: string; cdn_url: string; width_px: number; height_px: number; format: "webp" | "jpeg"; sha256: string };
+      medium?: { url: string; cdn_url: string; width_px: number; height_px: number; format: "webp" | "jpeg"; sha256: string };
+      large?: { url: string; cdn_url: string; width_px: number; height_px: number; format: "webp" | "jpeg"; sha256: string };
+      display_jpeg?: { url: string; cdn_url: string; width_px: number; height_px: number; format: "webp" | "jpeg"; sha256: string };
+    };
+  };
 }
 
 async function applySha256Hex(bytes: Uint8Array): Promise<string> {
@@ -131,6 +151,37 @@ function installApplyHandler(
         const url = cfg.asset_ref_overrides?.url ?? (isPublic ? `https://${host}/_blob/${e.key}` : null);
         const immutableUrl = cfg.asset_ref_overrides?.immutable_url ?? (isPublic && isImmutable ? `https://${host}/_blob/${suffixedKey}` : null);
         const sri = cfg.asset_ref_overrides?.sri ?? (isImmutable ? `sha256-${Buffer.from(sha, "hex").toString("base64")}` : null);
+        const asset_ref: Record<string, unknown> = {
+          key: e.key,
+          sha256: sha,
+          size_bytes: e.size_bytes,
+          content_type: e.content_type,
+          visibility: e.visibility,
+          immutable: e.immutable,
+          url,
+          immutable_url: immutableUrl,
+          cdn_url: cfg.asset_ref_overrides?.cdn_url ?? url,
+          cdn_immutable_url: cfg.asset_ref_overrides?.cdn_immutable_url ?? immutableUrl,
+          sri,
+          etag: cfg.asset_ref_overrides?.etag ?? `"sha256-${sha}"`,
+          content_digest: cfg.asset_ref_overrides?.content_digest ?? `sha-256=:${Buffer.from(sha, "hex").toString("base64")}:`,
+        };
+        // v1.49+ image-variant fields. Only emit when the fixture
+        // declared an `image` override — non-image uploads keep the
+        // pre-v1.49 shape.
+        if (cfg.image) {
+          if (cfg.image.width_px !== undefined) asset_ref.width_px = cfg.image.width_px;
+          if (cfg.image.height_px !== undefined) asset_ref.height_px = cfg.image.height_px;
+          if (cfg.image.blurhash !== undefined) asset_ref.blurhash = cfg.image.blurhash;
+          if (cfg.image.variant_spec_version !== undefined) {
+            asset_ref.variant_spec_version = cfg.image.variant_spec_version;
+          }
+          if (cfg.image.display_url !== undefined) asset_ref.display_url = cfg.image.display_url;
+          if (cfg.image.display_immutable_url !== undefined) {
+            asset_ref.display_immutable_url = cfg.image.display_immutable_url;
+          }
+          if (cfg.image.variants !== undefined) asset_ref.variants = cfg.image.variants;
+        }
         return {
           key: e.key,
           sha256: sha,
@@ -139,21 +190,7 @@ function installApplyHandler(
           visibility: e.visibility,
           immutable: e.immutable,
           status: cfg.missing !== false ? "upload_pending" : "present",
-          asset_ref: {
-            key: e.key,
-            sha256: sha,
-            size_bytes: e.size_bytes,
-            content_type: e.content_type,
-            visibility: e.visibility,
-            immutable: e.immutable,
-            url,
-            immutable_url: immutableUrl,
-            cdn_url: cfg.asset_ref_overrides?.cdn_url ?? url,
-            cdn_immutable_url: cfg.asset_ref_overrides?.cdn_immutable_url ?? immutableUrl,
-            sri,
-            etag: cfg.asset_ref_overrides?.etag ?? `"sha256-${sha}"`,
-            content_digest: cfg.asset_ref_overrides?.content_digest ?? `sha-256=:${Buffer.from(sha, "hex").toString("base64")}:`,
-          },
+          asset_ref,
         };
       });
       return json({
@@ -822,3 +859,319 @@ describe("blobs.waitFresh", () => {
     }
   });
 });
+
+// ─── v1.49+ image variants ───────────────────────────────────────────────────
+
+/**
+ * Helper: run `sdk.assets.put` with an asset_ref that carries the image
+ * fields described by `image`. Returns the widened AssetRef.
+ */
+async function putWithImageOverrides(
+  key: string,
+  image: ApplyAssetEntry["image"],
+  opts: { contentType?: string } = {},
+) {
+  let outerCalls: FetchCall[] = [];
+  const shas = new Map<string, string>();
+  const entries: ApplyAssetEntry[] = [
+    {
+      key,
+      size_bytes: 16,
+      content_type: opts.contentType ?? "image/jpeg",
+      visibility: "public",
+      immutable: true,
+      missing: true,
+      image,
+    },
+  ];
+  const { fetch, calls } = mockFetch((call) => installApplyHandler({ calls: outerCalls }, entries, shas)(call));
+  outerCalls = calls;
+  const sdk = makeSdk(fetch);
+  // Bytes content doesn't have to match the "real" image — the SDK just
+  // SHA-256s whatever we hand it and the mock plan handler accepts that SHA.
+  return sdk.assets.put("prj_known", key, new Uint8Array([1, 2, 3, 4]), {
+    contentType: opts.contentType ?? "image/jpeg",
+  });
+}
+
+describe("assets.put — v1.49 image-variant widening", () => {
+  it("(JPEG with variants) populates width/height/blurhash/variants + thumbUrl points at thumb cdn_url", async () => {
+    const ref = await putWithImageOverrides(
+      "hero.jpg",
+      {
+        width_px: 4032,
+        height_px: 3024,
+        blurhash: "LEHV6nWB2yk8pyo0adR*.7kCMdnj",
+        variant_spec_version: "v1",
+        display_url: "https://pr-abc.run402.com/_blob/hero-3a7fc02e.jpg",
+        display_immutable_url: "https://pr-abc.run402.com/_blob/hero-3a7fc02e.jpg",
+        variants: {
+          thumb: { url: "https://h/_blob/hero-3a7fc02e-v1-thumb-9b21fa.webp", cdn_url: "https://cdn/_blob/hero-3a7fc02e-v1-thumb-9b21fa.webp", width_px: 320, height_px: 240, format: "webp", sha256: "9b21fa" + "0".repeat(58) },
+          medium: { url: "https://h/_blob/hero-3a7fc02e-v1-medium-ab19c4.webp", cdn_url: "https://cdn/_blob/hero-3a7fc02e-v1-medium-ab19c4.webp", width_px: 800, height_px: 600, format: "webp", sha256: "ab19c4" + "0".repeat(58) },
+          large: { url: "https://h/_blob/hero-3a7fc02e-v1-large-7e2c11.webp", cdn_url: "https://cdn/_blob/hero-3a7fc02e-v1-large-7e2c11.webp", width_px: 1920, height_px: 1440, format: "webp", sha256: "7e2c11" + "0".repeat(58) },
+        },
+      },
+    );
+
+    assert.equal(ref.width_px, 4032);
+    assert.equal(ref.height_px, 3024);
+    assert.equal(ref.blurhash, "LEHV6nWB2yk8pyo0adR*.7kCMdnj");
+    assert.equal(ref.variant_spec_version, "v1");
+    assert.ok(ref.variants, "variants populated");
+    assert.equal(ref.variants!.thumb!.format, "webp");
+    assert.equal(ref.variants!.thumb!.width_px, 320);
+    // Convenience getters: thumbUrl should be the thumb cdn_url for a
+    // ref with variants; displayUrl should be the gateway display_url.
+    assert.equal(ref.thumbUrl, "https://cdn/_blob/hero-3a7fc02e-v1-thumb-9b21fa.webp");
+    assert.equal(ref.displayUrl, "https://pr-abc.run402.com/_blob/hero-3a7fc02e.jpg");
+  });
+
+  it("(HEIC) displayUrl differs from cdn_url and is the JPEG variant", async () => {
+    const ref = await putWithImageOverrides(
+      "photo.heic",
+      {
+        width_px: 4032,
+        height_px: 3024,
+        blurhash: "LEHV6nWB",
+        variant_spec_version: "v1",
+        display_url: "https://pr-abc.run402.com/_blob/photo-abcd1234-v1-display-deadbeef.jpg",
+        display_immutable_url: "https://pr-abc.run402.com/_blob/photo-abcd1234-v1-display-deadbeef.jpg",
+        variants: {
+          thumb: { url: "https://h/_blob/t.webp", cdn_url: "https://cdn/_blob/t.webp", width_px: 320, height_px: 240, format: "webp", sha256: "1".repeat(64) },
+          medium: { url: "https://h/_blob/m.webp", cdn_url: "https://cdn/_blob/m.webp", width_px: 800, height_px: 600, format: "webp", sha256: "2".repeat(64) },
+          large: { url: "https://h/_blob/l.webp", cdn_url: "https://cdn/_blob/l.webp", width_px: 1920, height_px: 1440, format: "webp", sha256: "3".repeat(64) },
+          display_jpeg: { url: "https://h/_blob/dj.jpg", cdn_url: "https://cdn/_blob/dj.jpg", width_px: 4032, height_px: 3024, format: "jpeg", sha256: "4".repeat(64) },
+        },
+      },
+      { contentType: "image/heic" },
+    );
+
+    // For HEIC sources cdn_url is the HEIC bytes (browsers can't render)
+    // and display_url is the JPEG transcode (browsers can).
+    assert.notEqual(ref.cdnUrl, ref.displayUrl);
+    assert.match(ref.displayUrl!, /\.jpg$/);
+    assert.equal(ref.variants!.display_jpeg!.format, "jpeg");
+  });
+
+  it("(sub-320 PNG, no variants) populates dimensions + blurhash but thumbUrl falls back to displayUrl", async () => {
+    const ref = await putWithImageOverrides(
+      "icon.png",
+      {
+        width_px: 200,
+        height_px: 200,
+        blurhash: "L00000",
+        variant_spec_version: "v1",
+        display_url: "https://pr-abc.run402.com/_blob/icon-abc.png",
+        display_immutable_url: "https://pr-abc.run402.com/_blob/icon-abc.png",
+        // No `variants` — sub-320 sources skip the WebP set per gateway D3.
+      },
+      { contentType: "image/png" },
+    );
+
+    assert.equal(ref.width_px, 200);
+    assert.equal(ref.blurhash, "L00000");
+    assert.equal(ref.variants, undefined);
+    // No thumb variant — thumbUrl should fall through to displayUrl
+    // (which IS the renderable URL at this small size).
+    assert.equal(ref.thumbUrl, ref.displayUrl);
+    assert.equal(ref.thumbUrl, "https://pr-abc.run402.com/_blob/icon-abc.png");
+  });
+
+  it("(non-image, e.g. PDF) thumbUrl and displayUrl are undefined — TypeScript narrows accordingly", async () => {
+    // No `image` override = gateway omits all image fields, mirroring
+    // the wire shape for a PDF / JSON / video upload.
+    const ref = await putWithImageOverrides("doc.pdf", undefined, { contentType: "application/pdf" });
+
+    assert.equal(ref.width_px, undefined);
+    assert.equal(ref.height_px, undefined);
+    assert.equal(ref.blurhash, undefined);
+    assert.equal(ref.variants, undefined);
+    assert.equal(ref.thumbUrl, undefined);
+    assert.equal(ref.displayUrl, undefined);
+  });
+});
+
+describe("assets.put — v1.49 imgTag (HEIC-aware, opportunistic width/height)", () => {
+  it("(JPEG) src is cdn_url (display_url === cdn_url for non-HEIC) + width/height emitted", async () => {
+    const ref = await putWithImageOverrides(
+      "hero.jpg",
+      {
+        width_px: 1600,
+        height_px: 1200,
+        variant_spec_version: "v1",
+        // Gateway sets display_url === cdn_url for non-HEIC images.
+        display_url: ref_cdnImmutableLike("hero", "jpg"),
+        display_immutable_url: ref_cdnImmutableLike("hero", "jpg"),
+      },
+    );
+
+    const tag = ref.imgTag("Hero");
+    assert.match(tag, /<img /);
+    assert.match(tag, /alt="Hero"/);
+    assert.match(tag, /width="1600"/);
+    assert.match(tag, /height="1200"/);
+    assert.match(tag, /loading="lazy"/);
+    assert.match(tag, /decoding="async"/);
+  });
+
+  it("(HEIC) src is display_url, not cdn_url (cdn_url serves unrenderable HEIC bytes)", async () => {
+    const ref = await putWithImageOverrides(
+      "photo.heic",
+      {
+        width_px: 4032,
+        height_px: 3024,
+        variant_spec_version: "v1",
+        display_url: "https://pr-abc.run402.com/_blob/photo-abcd1234-v1-display-deadbeef.jpg",
+        display_immutable_url: "https://pr-abc.run402.com/_blob/photo-abcd1234-v1-display-deadbeef.jpg",
+      },
+      { contentType: "image/heic" },
+    );
+
+    const tag = ref.imgTag();
+    // src must be the JPEG transcode URL, not the HEIC cdn_url
+    assert.match(tag, /src="https:\/\/pr-abc\.run402\.com\/_blob\/photo-abcd1234-v1-display-deadbeef\.jpg"/);
+    assert.doesNotMatch(tag, /\.heic"/);
+  });
+
+  it("(non-image) no width/height attrs, no throw", async () => {
+    const ref = await putWithImageOverrides("doc.pdf", undefined, { contentType: "application/pdf" });
+
+    const tag = ref.imgTag();
+    assert.match(tag, /<img /);
+    assert.doesNotMatch(tag, /width="/);
+    assert.doesNotMatch(tag, /height="/);
+  });
+});
+
+describe("assets.put — v1.49 imgTagWithSrcSet (foolproof guards + <picture> output)", () => {
+  function jpegRef() {
+    return putWithImageOverrides(
+      "hero.jpg",
+      {
+        width_px: 4032,
+        height_px: 3024,
+        variant_spec_version: "v1",
+        display_url: ref_cdnImmutableLike("hero", "jpg"),
+        display_immutable_url: ref_cdnImmutableLike("hero", "jpg"),
+        variants: {
+          thumb: { url: "https://h/_blob/t.webp", cdn_url: "https://cdn/_blob/t.webp", width_px: 320, height_px: 240, format: "webp", sha256: "1".repeat(64) },
+          medium: { url: "https://h/_blob/m.webp", cdn_url: "https://cdn/_blob/m.webp", width_px: 800, height_px: 600, format: "webp", sha256: "2".repeat(64) },
+          large: { url: "https://h/_blob/l.webp", cdn_url: "https://cdn/_blob/l.webp", width_px: 1920, height_px: 1440, format: "webp", sha256: "3".repeat(64) },
+        },
+      },
+    );
+  }
+
+  it("throws when called with no opts", async () => {
+    const ref = await jpegRef();
+    assert.throws(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      () => (ref as any).imgTagWithSrcSet(),
+      (err: unknown) => err instanceof LocalError && /requires opts\.sizes/.test(err.message),
+    );
+  });
+
+  it("throws when opts.sizes is the empty string", async () => {
+    const ref = await jpegRef();
+    assert.throws(
+      () => ref.imgTagWithSrcSet({ sizes: "" }),
+      (err: unknown) => err instanceof LocalError && /requires opts\.sizes/.test(err.message),
+    );
+  });
+
+  it("throws when opts.sizes is whitespace-only", async () => {
+    const ref = await jpegRef();
+    assert.throws(
+      () => ref.imgTagWithSrcSet({ sizes: "   " }),
+      (err: unknown) => err instanceof LocalError && /requires opts\.sizes/.test(err.message),
+    );
+  });
+
+  it("throws on a non-image ref (no variants)", async () => {
+    const ref = await putWithImageOverrides("doc.pdf", undefined, { contentType: "application/pdf" });
+    assert.throws(
+      () => ref.imgTagWithSrcSet({ sizes: "100vw" }),
+      (err: unknown) => err instanceof LocalError && /Use imgTag\(\) instead/.test(err.message),
+    );
+  });
+
+  it("throws on a sub-320 image ref (image fields present, variants absent)", async () => {
+    const ref = await putWithImageOverrides(
+      "icon.png",
+      {
+        width_px: 200,
+        height_px: 200,
+        variant_spec_version: "v1",
+        display_url: "https://cdn/_blob/icon.png",
+        display_immutable_url: "https://cdn/_blob/icon.png",
+      },
+      { contentType: "image/png" },
+    );
+    assert.throws(
+      () => ref.imgTagWithSrcSet({ sizes: "100vw" }),
+      (err: unknown) => err instanceof LocalError && /Use imgTag\(\) instead/.test(err.message),
+    );
+  });
+
+  it("(JPEG) emits the expected <picture> HTML with WebP-only source, srcset, sizes, and <img> fallback", async () => {
+    const ref = await jpegRef();
+    const html = ref.imgTagWithSrcSet({
+      alt: "Hero",
+      sizes: "(max-width: 800px) 100vw, 1920px",
+    });
+
+    assert.match(html, /^<picture>/);
+    assert.match(html, /<\/picture>$/);
+    assert.match(html, /<source type="image\/webp"/);
+    assert.match(html, /srcset="https:\/\/cdn\/_blob\/t\.webp 320w, https:\/\/cdn\/_blob\/m\.webp 800w, https:\/\/cdn\/_blob\/l\.webp 1920w"/);
+    assert.match(html, /sizes="\(max-width: 800px\) 100vw, 1920px"/);
+    assert.match(html, /<img /);
+    assert.match(html, /alt="Hero"/);
+    assert.match(html, /width="4032"/);
+    assert.match(html, /height="3024"/);
+    assert.match(html, /loading="lazy"/);
+    assert.match(html, /decoding="async"/);
+  });
+
+  it("(HEIC) <img src> is display_url, not cdn_url (HEIC bytes are unrenderable)", async () => {
+    const ref = await putWithImageOverrides(
+      "photo.heic",
+      {
+        width_px: 4032,
+        height_px: 3024,
+        variant_spec_version: "v1",
+        display_url: "https://pr-abc.run402.com/_blob/photo-abcd1234-v1-display-deadbeef.jpg",
+        display_immutable_url: "https://pr-abc.run402.com/_blob/photo-abcd1234-v1-display-deadbeef.jpg",
+        variants: {
+          thumb: { url: "https://h/_blob/t.webp", cdn_url: "https://cdn/_blob/t.webp", width_px: 320, height_px: 240, format: "webp", sha256: "1".repeat(64) },
+          medium: { url: "https://h/_blob/m.webp", cdn_url: "https://cdn/_blob/m.webp", width_px: 800, height_px: 600, format: "webp", sha256: "2".repeat(64) },
+          large: { url: "https://h/_blob/l.webp", cdn_url: "https://cdn/_blob/l.webp", width_px: 1920, height_px: 1440, format: "webp", sha256: "3".repeat(64) },
+          display_jpeg: { url: "https://h/_blob/dj.jpg", cdn_url: "https://cdn/_blob/dj.jpg", width_px: 4032, height_px: 3024, format: "jpeg", sha256: "4".repeat(64) },
+        },
+      },
+      { contentType: "image/heic" },
+    );
+
+    const html = ref.imgTagWithSrcSet({ sizes: "100vw" });
+    assert.match(html, /src="https:\/\/pr-abc\.run402\.com\/_blob\/photo-abcd1234-v1-display-deadbeef\.jpg"/);
+    assert.doesNotMatch(html, /src="[^"]*\.heic"/);
+  });
+
+  it("never emits an AVIF <source> element (footgun deferred)", async () => {
+    const ref = await jpegRef();
+    const html = ref.imgTagWithSrcSet({ sizes: "100vw" });
+    assert.doesNotMatch(html, /image\/avif/);
+  });
+
+  it("loading: 'eager' override propagates to the <img>", async () => {
+    const ref = await jpegRef();
+    const html = ref.imgTagWithSrcSet({ sizes: "100vw", loading: "eager" });
+    assert.match(html, /loading="eager"/);
+    assert.doesNotMatch(html, /loading="lazy"/);
+  });
+});
+
+/** Build a synthetic immutable CDN URL for the test fixtures. */
+function ref_cdnImmutableLike(stem: string, ext: string): string {
+  return `https://pr-abc.run402.com/_blob/${stem}-deadbeef.${ext}`;
+}

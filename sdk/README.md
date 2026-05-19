@@ -130,6 +130,52 @@ const logo = await (await r.project(projectId)).assets.put("logo.png", { bytes }
 
 `immutable: true` is the default since v1.45. The SDK always computes and sends the object SHA-256; pass `false` only when you specifically need mutable URL/cache semantics.
 
+### Image variants (v1.49)
+
+Image uploads (jpeg/png/webp/heic/heif) trigger automatic generation of three WebP variants — `thumb` 320w, `medium` 800w, `large` 1920w — plus dimensions, a blurhash placeholder, and (for HEIC/HEIF sources) a JPEG display variant. Everything ships on the returned `AssetRef`:
+
+```ts
+const p = await r.project(projectId);
+const ref = await p.assets.put("hero.jpg", bytes, { contentType: "image/jpeg" });
+
+// Image-conditional fields, undefined on non-image AssetRefs:
+ref.width_px;                       // 4032 — display-oriented (post-EXIF rotate)
+ref.height_px;                      // 3024
+ref.blurhash;                       // "LEHV6nWB2yk8pyo0adR*.7kCMdnj" — decode client-side for LQIP
+ref.variants?.thumb?.cdn_url;       // 320w WebP — for grid thumbnails
+ref.variants?.medium?.cdn_url;      // 800w WebP — for cards
+ref.variants?.large?.cdn_url;       // 1920w WebP — for heroes
+
+// SDK convenience fields, also undefined on non-images:
+ref.thumbUrl;                       // = variants.thumb.cdn_url ?? displayUrl (single-field thumbnail)
+ref.displayUrl;                     // = display_url ?? cdn_url (browser-renderable for any image)
+
+// Render with responsive srcset (sizes is required):
+const html = ref.imgTagWithSrcSet({
+  alt: "Hero",
+  sizes: "(max-width: 800px) 100vw, 1920px",
+});
+// → <picture>
+//     <source type="image/webp" srcset="<thumb> 320w, <medium> 800w, <large> 1920w" sizes="…">
+//     <img src="<display_url>" alt="Hero" width="4032" height="3024" loading="lazy" decoding="async">
+//   </picture>
+
+// Quick thumbnail (TypeScript narrows thumbUrl on non-images):
+// <img src={ref.thumbUrl} alt={ref.key} loading="lazy" />
+```
+
+HEIC/HEIF uploads (from iPhones) preserve the source bytes verbatim — `cdn_url` serves the original HEIC, and a JPEG display variant is generated automatically and surfaced at `display_url`. The `imgTag` / `imgTagWithSrcSet` helpers default the `<img src>` to `displayUrl` so apps render correctly without HEIC-specific code.
+
+Foolproof guards keep non-images from rendering broken layouts:
+
+- `thumbUrl` and `displayUrl` are `undefined` (not a fallback to `cdn_url`) on non-image AssetRefs — TypeScript narrows them, so a `<img src={pdfRef.thumbUrl}>` is a compile error rather than a broken thumbnail at runtime.
+- `imgTagWithSrcSet` throws at call time when `opts.sizes` is missing or empty (browsers over-fetch the largest candidate without it), AND when the AssetRef has no `variants` (use `imgTag()` instead — see the error message). No silent fallback.
+- `imgTag` opportunistically emits `width`/`height` attributes when present (eliminates CLS) and silently omits them on non-image refs.
+
+Variants apply to BOTH write paths — single-shot `r.assets.put(...)` AND the unified apply hero `r.project(id).apply({ assets: { put: [...] } })` return the same `AssetRef` shape with variants populated.
+
+AVIF was deferred from v1 — `<picture>` browsers select sources by `type` precedence, not best size, so a single 1920w AVIF would be picked for thumbnails by AVIF-capable browsers. AVIF, if it returns, will land at all three sizes simultaneously or via a separate `imgTagHero()` helper.
+
 ### Mixed apply — site + assets in one atomic activation
 
 Drop a per-key asset put into the same release as your site files. Both promote inside the same activation transaction that flips `live_release_id`, so the asset URLs are live the moment the new release is. Source shorthand: bare strings, `Uint8Array`, or any other `ContentSource` (Blob, FsFileSource from `fileSetFromDir`, `{ data, contentType? }` wrapper). The SDK normalizer hashes once and dedups across slices — same SHA in `site` and `assets` uploads as a single byte stream.

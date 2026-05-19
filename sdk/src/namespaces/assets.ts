@@ -125,6 +125,16 @@ interface UploadCompleteResponse {
    *  (and `ready: true` for immutable uploads). When absent (current
    *  gateway), the SDK fills in safe defaults from local information. */
   cdn?: Partial<BlobCdnEnvelope>;
+  // v1.49+ image-variant fields. Present only for image MIMEs against a
+  // v1.49+ gateway; absent for non-images, sub-320 images, and older
+  // gateway versions.
+  width_px?: number;
+  height_px?: number;
+  blurhash?: string;
+  variant_spec_version?: string;
+  display_url?: string;
+  display_immutable_url?: string;
+  variants?: BlobPutResult["variants"];
 }
 
 function escapeHtmlAttr(s: string): string {
@@ -214,6 +224,28 @@ function buildAssetRef(
     return { url: cdnUrl, sri };
   }
 
+  // v1.49+ image-variant convenience computation. The gateway signals
+  // "this is an image" by populating `variant_spec_version` (always) or
+  // `width_px` (always for image MIMEs, even sub-320). For non-images both
+  // are absent. We thread this signal into `thumbUrl` / `displayUrl` so
+  // TypeScript narrows correctly: non-image refs return `undefined` from
+  // both getters and a picker can't accidentally `<img src={pdfRef.thumbUrl}>`.
+  const isImage =
+    resp.variant_spec_version !== undefined || resp.width_px !== undefined;
+  // Source dimensions are display-oriented (gateway runs EXIF auto-rotate).
+  const widthPx = resp.width_px;
+  const heightPx = resp.height_px;
+  const variants = resp.variants;
+  // For non-HEIC images, gateway sets display_url === cdn_url. For HEIC it
+  // points to the JPEG transcode. For sub-320 images that have no `variants`,
+  // display_url is still populated.
+  const displayUrl = isImage
+    ? resp.display_url ?? resp.cdn_url ?? undefined
+    : undefined;
+  const thumbUrl = isImage
+    ? variants?.thumb?.cdn_url ?? displayUrl
+    : undefined;
+
   return {
     key: resp.key,
     size_bytes: resp.size_bytes,
@@ -232,6 +264,23 @@ function buildAssetRef(
     contentDigest,
     cacheKind,
     cdn,
+
+    // v1.49+ image-variant fields. Only set when present on the wire — we
+    // intentionally omit (vs. setting to `undefined` explicitly) so the
+    // shape is byte-identical to pre-v1.49 for non-images.
+    ...(resp.width_px !== undefined ? { width_px: resp.width_px } : {}),
+    ...(resp.height_px !== undefined ? { height_px: resp.height_px } : {}),
+    ...(resp.blurhash !== undefined ? { blurhash: resp.blurhash } : {}),
+    ...(resp.variant_spec_version !== undefined
+      ? { variant_spec_version: resp.variant_spec_version }
+      : {}),
+    ...(resp.display_url !== undefined ? { display_url: resp.display_url } : {}),
+    ...(resp.display_immutable_url !== undefined
+      ? { display_immutable_url: resp.display_immutable_url }
+      : {}),
+    ...(variants !== undefined ? { variants } : {}),
+    ...(thumbUrl !== undefined ? { thumbUrl } : {}),
+    ...(displayUrl !== undefined ? { displayUrl } : {}),
 
     scriptTag(opts) {
       // Default `defer: true` — modern best practice. Defer prevents
@@ -278,9 +327,91 @@ function buildAssetRef(
       // so it's still stable across re-deploys. Agents who need
       // byte-level integrity for images should verify Content-Digest
       // server-side.
-      const { url } = requireImmutable("imgTag");
+      //
+      // v1.49+ HEIC handling: when the source is HEIC/HEIF, `cdn_url`
+      // serves the original (unrenderable) HEIC bytes and `display_url`
+      // serves a generated JPEG transcode. We default `<img src>` to
+      // `display_url ?? cdn_url` so HEIC uploads render without the
+      // caller knowing about it. For non-HEIC images `display_url ===
+      // cdn_url`, so this is a no-op there.
+      const { url: immutableCdnUrl } = requireImmutable("imgTag");
+      const src = displayUrl ?? immutableCdnUrl;
       const a = alt ?? "";
-      return `<img src="${escapeHtmlAttr(url)}" alt="${escapeHtmlAttr(a)}" loading="lazy" decoding="async">`;
+      const attrs: string[] = [`src="${escapeHtmlAttr(src)}"`, `alt="${escapeHtmlAttr(a)}"`];
+      // v1.49+ width/height emission. When both dimensions are known
+      // the browser reserves layout space and avoids Cumulative Layout
+      // Shift. Skip silently when either is missing (non-image, sub-320
+      // pre-v1.49 source, etc.) — `imgTag` never errors on absence.
+      if (widthPx !== undefined && heightPx !== undefined) {
+        attrs.push(`width="${widthPx}"`);
+        attrs.push(`height="${heightPx}"`);
+      }
+      attrs.push(`loading="lazy"`, `decoding="async"`);
+      return `<img ${attrs.join(" ")}>`;
+    },
+
+    imgTagWithSrcSet(opts) {
+      // Hard guard #1: opts.sizes must be a non-empty string. Without
+      // it, browsers conservatively download the largest candidate in
+      // srcset (defeating the variant set). Default-to-100vw would be
+      // wrong for any grid layout, so we throw and force the caller to
+      // think about sizes once instead of shipping a silent footgun.
+      if (
+        !opts ||
+        typeof opts.sizes !== "string" ||
+        opts.sizes.trim() === ""
+      ) {
+        throw new LocalError(
+          `imgTagWithSrcSet requires opts.sizes (e.g. '(max-width: 800px) 100vw, 1920px') — browsers over-fetch the largest srcset candidate without it.`,
+          "rendering responsive image",
+        );
+      }
+      // Hard guard #2: variants must include all three WebP sizes.
+      // Non-image refs, sub-320 images, and pre-v1.49 uploads land here
+      // with `variants` undefined or missing one of the three. Silent
+      // fallback would render a busted layout (no srcset, no responsive
+      // benefit) with no diagnostic, so we throw and tell the caller to
+      // use `imgTag()` instead.
+      const thumb = variants?.thumb;
+      const medium = variants?.medium;
+      const large = variants?.large;
+      if (!thumb || !medium || !large) {
+        throw new LocalError(
+          `imgTagWithSrcSet called on an AssetRef without variants. Variants are generated only for image MIMEs ≥320×320 against a v1.49+ gateway. Use imgTag() instead for non-image refs, sub-320 images, or older gateway responses.`,
+          "rendering responsive image",
+        );
+      }
+      // The <img> fallback must use display_url for HEIC sources
+      // (browsers can't render HEIC bytes). For non-HEIC images
+      // display_url === cdn_url. cdnUrl from the AssetRef widening is
+      // the immutable form; here we prefer display_url which the
+      // gateway already pinned to the right variant.
+      const fallbackSrc = displayUrl ?? cdnUrl ?? "";
+      const altAttr = `alt="${escapeHtmlAttr(opts.alt ?? "")}"`;
+      const loadingAttr = `loading="${opts.loading === "eager" ? "eager" : "lazy"}"`;
+      const srcset = [
+        `${thumb.cdn_url} ${thumb.width_px}w`,
+        `${medium.cdn_url} ${medium.width_px}w`,
+        `${large.cdn_url} ${large.width_px}w`,
+      ].join(", ");
+      const sizes = opts.sizes;
+      const imgAttrs: string[] = [
+        `src="${escapeHtmlAttr(fallbackSrc)}"`,
+        altAttr,
+      ];
+      // AVIF deferred from v1: <picture> picks sources by type
+      // precedence, not best size. A single 1920w AVIF would be picked
+      // for thumbnails by AVIF-capable browsers, defeating the variant
+      // set. AVIF, if it returns, will land at all three sizes or via
+      // a dedicated imgTagHero() helper.
+      if (widthPx !== undefined && heightPx !== undefined) {
+        imgAttrs.push(`width="${widthPx}"`);
+        imgAttrs.push(`height="${heightPx}"`);
+      }
+      imgAttrs.push(loadingAttr, `decoding="async"`);
+      const sourceLine = `<source type="image/webp" srcset="${escapeHtmlAttr(srcset)}" sizes="${escapeHtmlAttr(sizes)}">`;
+      const imgLine = `<img ${imgAttrs.join(" ")}>`;
+      return `<picture>${sourceLine}${imgLine}</picture>`;
     },
   };
 }
@@ -383,6 +514,11 @@ export class Assets {
     // Widen AssetManifestEntry → BlobPutResult (AssetRef shape with
     // scriptTag/linkTag/imgTag emitters). The integrity fields and CDN
     // envelope are derived from the same SHA the gateway resolved.
+    // v1.49+: image-variant fields (width_px/height_px/blurhash/variants/
+    // display_url/display_immutable_url/variant_spec_version) are
+    // threaded through `AssetManifestEntry` by
+    // `buildAssetManifestFromPlanEntries` in deploy.ts. They're optional
+    // and absent for non-image MIMEs.
     const sha = entry.sha256;
     const completion: UploadCompleteResponse = {
       key: entry.key,
@@ -395,6 +531,19 @@ export class Assets {
       cdn_url: entry.cdn_url,
       cdn_immutable_url: entry.cdn_immutable_url,
       immutable_suffix: null,
+      // v1.49+ image-variant pass-through. Only set when present so the
+      // shape stays bytewise-identical to pre-v1.49 for non-images.
+      ...(entry.width_px !== undefined ? { width_px: entry.width_px } : {}),
+      ...(entry.height_px !== undefined ? { height_px: entry.height_px } : {}),
+      ...(entry.blurhash !== undefined ? { blurhash: entry.blurhash } : {}),
+      ...(entry.variant_spec_version !== undefined
+        ? { variant_spec_version: entry.variant_spec_version }
+        : {}),
+      ...(entry.display_url !== undefined ? { display_url: entry.display_url } : {}),
+      ...(entry.display_immutable_url !== undefined
+        ? { display_immutable_url: entry.display_immutable_url }
+        : {}),
+      ...(entry.variants !== undefined ? { variants: entry.variants } : {}),
     };
     return buildAssetRef(completion, contentType);
   }

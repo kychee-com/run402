@@ -189,4 +189,128 @@ describe("assets_put tool", () => {
     assert.match(result.content[0]!.text, /regular file/);
     assert.equal(fetchCalled, false);
   });
+
+  it("(v1.49) surfaces image variant fields in the human output when the gateway returns them", async () => {
+    // Image fixture: tiny "JPEG" content stub. The mock injects v1.49
+    // image fields directly into the plan response; the SDK widens
+    // them through and the MCP handler should surface them.
+    const localPath = join(tempDir, "hero.jpg");
+    writeFileSync(localPath, "fake-jpeg-bytes");
+
+    globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+      const url = input instanceof Request ? input.url : String(input);
+      const method = init?.method ?? "GET";
+
+      if (url.endsWith("/apply/v1/plans") && method === "POST") {
+        const body = JSON.parse(init!.body as string);
+        const entry = body.spec.assets.put[0];
+        const sha = entry.sha256;
+        return new Response(
+          JSON.stringify({
+            plan_id: "plan_img",
+            operation_id: "op_img",
+            base_release_id: null,
+            manifest_digest: "digest_img",
+            missing_content: [{ sha256: sha, size: entry.size_bytes, content_type: entry.content_type, present: false }],
+            asset_entries: [
+              {
+                key: entry.key,
+                sha256: sha,
+                size_bytes: entry.size_bytes,
+                content_type: entry.content_type,
+                visibility: entry.visibility,
+                immutable: entry.immutable,
+                status: "upload_pending",
+                asset_ref: {
+                  key: entry.key,
+                  sha256: sha,
+                  size_bytes: entry.size_bytes,
+                  content_type: entry.content_type,
+                  visibility: entry.visibility,
+                  immutable: entry.immutable,
+                  url: `https://pr-abc.run402.com/_blob/${entry.key}`,
+                  immutable_url: `https://pr-abc.run402.com/_blob/${entry.key}-${sha.slice(0, 8)}.jpg`,
+                  cdn_url: `https://pr-abc.run402.com/_blob/${entry.key}`,
+                  cdn_immutable_url: `https://pr-abc.run402.com/_blob/${entry.key}-${sha.slice(0, 8)}.jpg`,
+                  sri: `sha256-${Buffer.from(sha, "hex").toString("base64")}`,
+                  etag: `"sha256-${sha}"`,
+                  content_digest: `sha-256=:${Buffer.from(sha, "hex").toString("base64")}:`,
+                  // v1.49+ image-variant fields
+                  width_px: 4032,
+                  height_px: 3024,
+                  blurhash: "LEHV6nWB2yk8pyo0adR*.7kCMdnj",
+                  variant_spec_version: "v1",
+                  display_url: `https://pr-abc.run402.com/_blob/${entry.key}-${sha.slice(0, 8)}.jpg`,
+                  display_immutable_url: `https://pr-abc.run402.com/_blob/${entry.key}-${sha.slice(0, 8)}.jpg`,
+                  variants: {
+                    thumb: { url: "https://h/_blob/t.webp", cdn_url: "https://cdn/_blob/t.webp", width_px: 320, height_px: 240, format: "webp", sha256: "1".repeat(64) },
+                    medium: { url: "https://h/_blob/m.webp", cdn_url: "https://cdn/_blob/m.webp", width_px: 800, height_px: 600, format: "webp", sha256: "2".repeat(64) },
+                    large: { url: "https://h/_blob/l.webp", cdn_url: "https://cdn/_blob/l.webp", width_px: 1920, height_px: 1440, format: "webp", sha256: "3".repeat(64) },
+                  },
+                },
+              },
+            ],
+            diff: { resources: {} },
+            warnings: [],
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      }
+      if (url.endsWith("/content/v1/plans") && method === "POST") {
+        const body = JSON.parse(init!.body as string);
+        const content = body.content as Array<{ sha256: string; size: number }>;
+        return new Response(
+          JSON.stringify({
+            plan_id: "cplan_img",
+            expires_at: "2030-01-01T00:00:00Z",
+            missing: content.map((c) => ({
+              sha256: c.sha256,
+              mode: "single",
+              part_size_bytes: c.size,
+              part_count: 1,
+              parts: [{ part_number: 1, url: `https://s3.test/${c.sha256}/p1`, byte_start: 0, byte_end: c.size - 1 }],
+              upload_id: `u_${c.sha256.slice(0, 8)}`,
+              staging_key: `_staging/u/${c.sha256}`,
+              expires_at: "2030-01-01T00:00:00Z",
+            })),
+            entries: content.map((c) => ({ sha256: c.sha256, missing: true })),
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      }
+      if (url.startsWith("https://s3.test/") && method === "PUT") {
+        return new Response("", { status: 200, headers: { etag: '"e"' } });
+      }
+      if (url.match(/\/content\/v1\/plans\/[^/]+\/commit$/) && method === "POST") {
+        return new Response(JSON.stringify({}), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      if (url.match(/\/apply\/v1\/plans\/[^/]+\/commit$/) && method === "POST") {
+        return new Response(
+          JSON.stringify({
+            operation_id: "op_img",
+            status: "ready",
+            release_id: "rel_img",
+            urls: { project: "https://prj.run402.test", project_public_id: "abc" },
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      }
+      return new Response(JSON.stringify({ error: "unexpected request", url, method }), { status: 500 });
+    }) as typeof fetch;
+
+    const result = await handleBlobPut({
+      project_id: "prj_test",
+      key: "hero.jpg",
+      local_path: localPath,
+      content_type: "image/jpeg",
+    });
+
+    assert.equal(result.isError, undefined, `expected success; got: ${result.content[0]?.text}`);
+    const text = result.content[0]!.text;
+    assert.match(text, /Dimensions: 4032×3024/);
+    assert.match(text, /Blurhash: LEHV6nWB2yk8pyo0adR\*\.7kCMdnj/);
+    assert.match(text, /Variants:.*thumb \(320w WebP\)/);
+    assert.match(text, /medium \(800w WebP\)/);
+    assert.match(text, /large \(1920w WebP\)/);
+  });
 });

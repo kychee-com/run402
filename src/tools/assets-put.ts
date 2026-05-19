@@ -61,6 +61,27 @@ export async function handleBlobPut(args: Args): Promise<{ content: Array<{ type
     if (result.url) lines.push(`URL: ${result.url}`);
     if (result.immutable_url) lines.push(`Immutable URL: ${result.immutable_url}`);
     if (result.sha256) lines.push(`SHA-256: ${result.sha256}`);
+    // v1.49+ image-variant fields. Present only for image MIMEs uploaded
+    // against a v1.49+ gateway; absent for non-images. We surface them so
+    // the LLM can directly read the dimensions / variant URLs from the
+    // tool output without a separate roundtrip.
+    if (result.width_px !== undefined && result.height_px !== undefined) {
+      lines.push(`Dimensions: ${result.width_px}×${result.height_px}`);
+    }
+    if (result.blurhash) lines.push(`Blurhash: ${result.blurhash}`);
+    if (result.display_url && result.display_url !== result.cdnUrl) {
+      // Only print when display_url differs (HEIC sources); for non-HEIC
+      // images display_url === cdn_url and the existing URL line covers it.
+      lines.push(`Display URL: ${result.display_url}`);
+    }
+    if (result.variants) {
+      const kinds: string[] = [];
+      if (result.variants.thumb) kinds.push(`thumb (${result.variants.thumb.width_px}w WebP)`);
+      if (result.variants.medium) kinds.push(`medium (${result.variants.medium.width_px}w WebP)`);
+      if (result.variants.large) kinds.push(`large (${result.variants.large.width_px}w WebP)`);
+      if (result.variants.display_jpeg) kinds.push(`display_jpeg (${result.variants.display_jpeg.width_px}w JPEG)`);
+      if (kinds.length > 0) lines.push(`Variants: ${kinds.join(", ")}`);
+    }
 
     return { content: [{ type: "text", text: lines.join("\n") }] };
   } catch (err) {

@@ -2929,20 +2929,36 @@ function buildAssetManifestFromPlanEntries(
   let bytesUploaded = 0;
   let bytesReused = 0;
   for (const entry of entries) {
+    const ref = entry.asset_ref;
     const e: NonNullable<DeployResult["assets"]>["list"][number] = {
       key: entry.key,
       sha256: entry.sha256,
       size_bytes: entry.size_bytes,
       content_type: entry.content_type,
       visibility: entry.visibility,
-      url: entry.asset_ref.url,
-      immutable_url: entry.asset_ref.immutable_url,
-      cdn_url: entry.asset_ref.cdn_url,
-      cdn_immutable_url: entry.asset_ref.cdn_immutable_url,
-      sri: entry.asset_ref.sri,
-      etag: entry.asset_ref.etag,
-      content_digest: entry.asset_ref.content_digest,
+      url: ref.url,
+      immutable_url: ref.immutable_url,
+      cdn_url: ref.cdn_url,
+      cdn_immutable_url: ref.cdn_immutable_url,
+      sri: ref.sri,
+      etag: ref.etag,
+      content_digest: ref.content_digest,
     };
+    // v1.49+ image-variant pass-through. Only emitted when the gateway
+    // returned them (image MIMEs ≥320×320; HEIC/HEIF sources also include
+    // `display_jpeg`). Pre-v1.49 plan responses omit these fields entirely
+    // and the manifest entry stays bytewise-identical to before.
+    if (ref.width_px !== undefined) e.width_px = ref.width_px;
+    if (ref.height_px !== undefined) e.height_px = ref.height_px;
+    if (ref.blurhash !== undefined) e.blurhash = ref.blurhash;
+    if (ref.variant_spec_version !== undefined) {
+      e.variant_spec_version = ref.variant_spec_version;
+    }
+    if (ref.display_url !== undefined) e.display_url = ref.display_url;
+    if (ref.display_immutable_url !== undefined) {
+      e.display_immutable_url = ref.display_immutable_url;
+    }
+    if (ref.variants !== undefined) e.variants = ref.variants;
     list.push(e);
     byKey[entry.key] = e;
     manifest[entry.key] = e;

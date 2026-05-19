@@ -1300,6 +1300,16 @@ export interface AssetEntryPlanResult {
   asset_ref: ResolvedAssetRef;
 }
 
+/** Wire-shape variant entry returned by the gateway plan response (v1.49+). */
+export interface ResolvedAssetVariant {
+  url: string;
+  cdn_url: string;
+  width_px: number;
+  height_px: number;
+  format: "webp" | "jpeg";
+  sha256: string;
+}
+
 export interface ResolvedAssetRef {
   key: string;
   sha256: string;
@@ -1314,6 +1324,21 @@ export interface ResolvedAssetRef {
   sri: string | null;
   etag: string;
   content_digest: string;
+
+  // v1.49+ image-variant fields. All optional — gateway omits for non-image
+  // MIMEs and pre-v1.49 versions.
+  width_px?: number;
+  height_px?: number;
+  blurhash?: string;
+  variant_spec_version?: string;
+  display_url?: string;
+  display_immutable_url?: string;
+  variants?: {
+    thumb?: ResolvedAssetVariant;
+    medium?: ResolvedAssetVariant;
+    large?: ResolvedAssetVariant;
+    display_jpeg?: ResolvedAssetVariant;
+  };
 }
 
 export interface AssetSyncPlanBlock {
@@ -2055,6 +2080,21 @@ export interface AssetManifestEntry {
   etag: string | null;
   /** RFC 9530 `Content-Digest` value `sha-256=:<base64>:`. */
   content_digest: string | null;
+
+  // v1.49+ image-variant fields, threaded from `ResolvedAssetRef`. All
+  // optional — present only for image MIMEs against a v1.49+ gateway.
+  width_px?: number;
+  height_px?: number;
+  blurhash?: string;
+  variant_spec_version?: string;
+  display_url?: string;
+  display_immutable_url?: string;
+  variants?: {
+    thumb?: ResolvedAssetVariant;
+    medium?: ResolvedAssetVariant;
+    large?: ResolvedAssetVariant;
+    display_jpeg?: ResolvedAssetVariant;
+  };
 }
 
 // ─── Apply / start / low-level options ───────────────────────────────────────
