@@ -679,14 +679,15 @@ Inside GitHub Actions, `deploy apply` automatically uses OIDC credentials when `
 
 ### functions
 Node 22 runtime. Must export `default async (req: Request) => Response`.
-Built-in helper: `import { db, adminDb, email, ai, getUser } from '@run402/functions'`
+Built-in helper: `import { db, adminDb, email, ai, assets, getUser } from '@run402/functions'`
 - `db(req)` — caller-context DB client. Forwards the caller's `Authorization` header to PostgREST; RLS policies apply to the caller's role. Routes to `/rest/v1/*`. Use this by default.
 - `adminDb()` — BYPASSRLS DB client. Uses the project's service_key. Routes to `/admin/v1/rest/*` (the gateway rejects `role=service_role` on `/rest/v1/*`). Use ONLY when the function acts on behalf of the platform, not the caller — audit logs, webhook handlers, cron cleanup.
 - `getUser(req)` — verify caller's JWT, returns `{ id, role }` or `null`
 - `email.send(opts)` — send email from the project's mailbox (see email section below)
 - `ai.generateImage({ prompt, aspect? })` — live image generation from deployed functions using project billing authority, not local allowance/x402 signing. Aspects: `square`, `landscape`, `portrait`; result: `{ image, content_type, aspect }`. Add app auth/rate limits before calling it from public routed functions.
+- `assets.put(key, source, opts?)` — upload bytes to the project's blob store from inside a deployed function. Uses the same CAS substrate as deploy-time assets. `source` is a string, `Uint8Array`, or `{ content | bytes }` object. Options: `contentType`, `visibility` (`"public"` | `"private"`, default `"public"`), `immutable` (default `true`). Returns an `AssetRef` with `url`, `immutableUrl`, `cdnUrl`, `sha256`, `size_bytes`, etc. (camelCase aliases included). Use for user-uploaded content, generated images, runtime-produced files.
 
-**TypeScript types**: `npm install @run402/functions` to get full autocomplete for `db(req)`, `adminDb()`, `getUser()`, `email.send()`, `ai.translate()`, and `ai.generateImage()`. Works in any Node.js/TypeScript project (Astro, Next.js, plain TS). For static site generation, use `adminDb().from()` at build time with `RUN402_SERVICE_KEY` + `RUN402_PROJECT_ID` in your `.env`.
+**TypeScript types**: `npm install @run402/functions` to get full autocomplete for `db(req)`, `adminDb()`, `getUser()`, `email.send()`, `ai.translate()`, `ai.generateImage()`, and `assets.put()`. Works in any Node.js/TypeScript project (Astro, Next.js, plain TS). For static site generation, use `adminDb().from()` at build time with `RUN402_SERVICE_KEY` + `RUN402_PROJECT_ID` in your `.env`.
 
 #### db(req).from(table) — caller-context, RLS applies
 
