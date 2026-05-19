@@ -729,31 +729,19 @@ describe("Run402 full-stack integration (live API, no mocks)", { timeout: 900_00
     assert.match(await fetchTextOk(v1Url), /retention v1 marker/);
   });
 
-  it("(v1.49 image variants) JPEG upload preserves source bytes and parity holds across write paths", async () => {
+  it("(v1.49 image variants) JPEG upload returns variants + dimensions + blurhash, and r.assets.put / apply produce parity refs", async () => {
     // Asserts the v2.3 client surface against the v1.49 gateway encoder.
-    // Uploads the same JPEG bytes via two write paths and asserts:
-    //   1. Source bytes preserved verbatim and served correctly (always)
-    //   2. AssetRef SHAPE is identical across paths (variants present XOR
-    //      absent on both — parity contract)
-    //   3. If variant fields are populated, the deterministic per-SHA
-    //      variant content matches across paths
+    // Uploads the same JPEG bytes via two write paths and asserts the
+    // returned AssetRefs have all variant fields populated and parity
+    // holds across paths.
     //
-    // KNOWN GATEWAY-SIDE GAP (as of v1.49): the plan-response builder
-    // (`buildAssetRefForPlan` at
-    // packages/gateway/src/services/apply-v1.ts:2900) is called WITHOUT
-    // the `image: AssetImageData` argument for the wallet-apply route, so
-    // the response's `asset_ref` envelope omits variant fields even
-    // though variants ARE generated and stored at commit time. r.assets.put
-    // (v2.1+) and r.project(id).apply BOTH route through the wallet-apply
-    // hero, so neither surfaces variants today. The service-key path
-    // (POST /apply/v1/service-asset-put), used by @run402/functions,
-    // does surface them — that exit point is exercised by the gateway-
-    // side test suite in run402-private.
-    //
-    // This test asserts parity (which IS guaranteed by sharing the path)
-    // and forward-compatibility: when the gateway threads image_data
-    // through to the plan response, the asserts in the `if (haveVariants)`
-    // branch will kick in automatically.
+    // This test is a CONTRACT assertion, not a soft "if present" probe.
+    // The v1.49 gateway change ships variant generation on both write
+    // paths (parent change Section 4 service-key + Section 5 wallet-apply).
+    // If this test fails, the gateway is failing to surface variants
+    // through the API even though they're encoded server-side — that's a
+    // real product gap that blocks every SDK consumer of variants. Don't
+    // weaken the test to match a broken production state.
     const FIXTURES = join(ROOT, "integration-fixtures", "image-variants");
     const jpegBytes = new Uint8Array(readFileSync(join(FIXTURES, "source.jpg")));
     const putKey = `fullstack/image-variants/put-${RUN_ID}.jpg`;
@@ -766,8 +754,26 @@ describe("Run402 full-stack integration (live API, no mocks)", { timeout: 900_00
       contentType: "image/jpeg",
     });
 
-    // Unconditional: source bytes preserved verbatim. cdn_url (or its
-    // immutable form) serves the JPEG source.
+    // All v1.49 fields populated on the put path.
+    assert.equal(putRef.variant_spec_version, "v1", "variant_spec_version must be v1");
+    assert.ok(typeof putRef.width_px === "number" && putRef.width_px === 640, `width_px should be 640, got ${putRef.width_px}`);
+    assert.ok(typeof putRef.height_px === "number" && putRef.height_px === 480, `height_px should be 480, got ${putRef.height_px}`);
+    assert.ok(typeof putRef.blurhash === "string" && putRef.blurhash.length > 0, "blurhash should be a non-empty string");
+    assert.ok(putRef.variants, "variants map must be populated for a ≥320 image");
+    assert.ok(putRef.variants.thumb, "variants.thumb must be present");
+    assert.ok(putRef.variants.medium, "variants.medium must be present");
+    assert.ok(putRef.variants.large, "variants.large must be present");
+    assert.equal(putRef.variants.thumb?.format, "webp");
+    assert.equal(putRef.variants.medium?.format, "webp");
+    assert.equal(putRef.variants.large?.format, "webp");
+    assert.equal(putRef.variants.display_jpeg, undefined, "non-HEIC sources must NOT include display_jpeg");
+    // Non-HEIC: display_url should equal cdn_url (browser-renderable directly).
+    assert.equal(putRef.display_url, putRef.cdnUrl ?? putRef.cdn_immutable_url ?? undefined, "non-HEIC display_url should equal cdn_url");
+    // SDK convenience getters are present for image refs.
+    assert.equal(putRef.thumbUrl, putRef.variants.thumb?.cdn_url);
+    assert.equal(putRef.displayUrl, putRef.display_url);
+
+    // The source bytes are preserved verbatim and served at cdn_url.
     const putCdnUrl = putRef.cdnUrl ?? putRef.cdn_immutable_url;
     assert.ok(putCdnUrl, "JPEG upload must return a cdn_url");
     await eventually("JPEG source served at cdn_url", async () => {
@@ -775,6 +781,14 @@ describe("Run402 full-stack integration (live API, no mocks)", { timeout: 900_00
       assert.equal(res.status, 200);
       const ctype = res.headers.get("content-type") ?? "";
       assert.ok(ctype.includes("image/jpeg"), `cdn_url should serve image/jpeg, got '${ctype}'`);
+    });
+
+    // The variant URL is actually served by the CDN.
+    await eventually("thumb cdn fetch", async () => {
+      const res = await fetch(putRef.variants!.thumb!.cdn_url, { headers: { "cache-control": "no-cache" } });
+      assert.equal(res.status, 200, `thumb cdn_url returned ${res.status}`);
+      const ctype = res.headers.get("content-type") ?? "";
+      assert.ok(ctype.includes("image/webp"), `thumb Content-Type should be image/webp, got '${ctype}'`);
     });
 
     // Path B: wallet-apply via r.project(id).apply.
@@ -789,75 +803,35 @@ describe("Run402 full-stack integration (live API, no mocks)", { timeout: 900_00
     const applyRef = applyResult.assets?.byKey[applyKey];
     assert.ok(applyRef, "apply path must return a populated AssetManifestEntry for the key");
 
-    // Parity contract: both paths produce the same shape. If variants
-    // are present on one, they must be present on the other (and vice
-    // versa). This is guaranteed today because both paths route through
-    // the wallet-apply hero, but the test pins the contract.
-    const putHasVariants = Boolean(putRef.variants?.thumb);
-    const applyHasVariants = Boolean(applyRef.variants?.thumb);
-    assert.equal(
-      applyHasVariants,
-      putHasVariants,
-      "variant presence must be identical across write paths (parity contract)",
-    );
-
-    if (putHasVariants && applyHasVariants) {
-      // Forward-compatible branch: enabled when the gateway threads
-      // image_data into the plan response. Today these asserts are
-      // skipped because both refs land in the else branch.
-      assert.equal(putRef.variant_spec_version, "v1");
-      assert.equal(applyRef.variant_spec_version, "v1");
-      assert.equal(putRef.width_px, 640);
-      assert.equal(putRef.height_px, 480);
-      assert.equal(applyRef.width_px, putRef.width_px);
-      assert.equal(applyRef.height_px, putRef.height_px);
-      assert.ok(typeof putRef.blurhash === "string" && putRef.blurhash.length > 0);
-      assert.equal(applyRef.blurhash, putRef.blurhash);
-      assert.equal(putRef.variants!.thumb!.format, "webp");
-      assert.equal(putRef.variants!.medium!.format, "webp");
-      assert.equal(putRef.variants!.large!.format, "webp");
-      // Deterministic variant SHAs verify the encoder isn't double-running.
-      assert.equal(applyRef.variants!.thumb!.sha256, putRef.variants!.thumb!.sha256);
-      assert.equal(applyRef.variants!.medium!.sha256, putRef.variants!.medium!.sha256);
-      assert.equal(applyRef.variants!.large!.sha256, putRef.variants!.large!.sha256);
-      // SDK convenience getters.
-      assert.equal(putRef.thumbUrl, putRef.variants!.thumb!.cdn_url);
-      assert.equal(putRef.displayUrl, putRef.display_url);
-      // Non-HEIC: display_url should equal cdn_url.
-      assert.equal(putRef.display_url, putRef.cdnUrl ?? putRef.cdn_immutable_url ?? undefined);
-      // The variant URL is actually served by the CDN.
-      await eventually("thumb cdn fetch", async () => {
-        const res = await fetch(putRef.variants!.thumb!.cdn_url, { headers: { "cache-control": "no-cache" } });
-        assert.equal(res.status, 200, `thumb cdn_url returned ${res.status}`);
-        const ctype = res.headers.get("content-type") ?? "";
-        assert.ok(ctype.includes("image/webp"), `thumb Content-Type should be image/webp, got '${ctype}'`);
-      });
-    } else {
-      // Current production reality: gateway emits variants at commit
-      // time but doesn't surface them in the plan-response asset_ref
-      // for the wallet-apply route. Both paths land here.
-      assert.equal(putRef.variants, undefined);
-      assert.equal(applyRef.variants, undefined);
-      assert.equal(applyRef.variant_spec_version, putRef.variant_spec_version);
-      assert.equal(applyRef.width_px, putRef.width_px);
-      assert.equal(applyRef.height_px, putRef.height_px);
-      assert.equal(applyRef.blurhash, putRef.blurhash);
-    }
+    // Parity: the two refs differ in URL paths (different keys) but agree on
+    // every image-variant field that's content-derived.
+    assert.equal(applyRef.variant_spec_version, putRef.variant_spec_version);
+    assert.equal(applyRef.width_px, putRef.width_px);
+    assert.equal(applyRef.height_px, putRef.height_px);
+    assert.equal(applyRef.blurhash, putRef.blurhash, "blurhash should match across paths for identical source bytes");
+    assert.ok(applyRef.variants, "apply path must also populate variants");
+    // Variant SHAs (content of the encoded variants) are deterministic per
+    // source SHA + spec version, so cross-path equality verifies the
+    // encoder isn't running twice or producing different bytes.
+    assert.equal(applyRef.variants!.thumb?.sha256, putRef.variants.thumb?.sha256, "thumb variant sha256 should match across paths");
+    assert.equal(applyRef.variants!.medium?.sha256, putRef.variants.medium?.sha256, "medium variant sha256 should match across paths");
+    assert.equal(applyRef.variants!.large?.sha256, putRef.variants.large?.sha256, "large variant sha256 should match across paths");
+    // Variant dimensions are also deterministic across paths.
+    assert.equal(applyRef.variants!.thumb?.width_px, putRef.variants.thumb?.width_px);
+    assert.equal(applyRef.variants!.medium?.width_px, putRef.variants.medium?.width_px);
+    assert.equal(applyRef.variants!.large?.width_px, putRef.variants.large?.width_px);
   });
 
-  it("(v1.49 image variants) HEIC upload preserves source bytes and parity holds across write paths", async () => {
-    // HEIC source: cdn_url MUST serve the original HEIC bytes verbatim
-    // (audit-friendly; uploaded SHA == stored SHA). This is the
-    // unconditional contract.
+  it("(v1.49 image variants) HEIC upload preserves source bytes, surfaces display_jpeg, and parity holds across write paths", async () => {
+    // HEIC source: cdn_url serves the original HEIC bytes (audit-friendly),
+    // display_url serves a generated JPEG transcode (browser-renderable).
+    // variants.display_jpeg is HEIC-only.
     //
-    // Variant generation for HEIC is currently gated on the gateway's
-    // sharp+libheif decoder reaching musl Alpine; today (parent change
-    // task 1.2) the encoder catches HEIC pixel-decode failures and
-    // returns a source-only EncodedVariantSet (no blurhash, no
-    // variants). So the post-source assertions are conditional:
-    // either BOTH paths populate variants (future state when HEIC decoder
-    // ships) OR BOTH paths return the absent-variants shape (today).
-    // Either way, parity across write paths must hold.
+    // This test is a CONTRACT assertion. The v1.49 gateway change ships
+    // HEIC decode + display_jpeg generation (parent change Section 2).
+    // If this test fails, the gateway is failing to deliver on a shipped
+    // requirement — that's a real product gap. Don't weaken the test to
+    // match a broken production state.
     const FIXTURES = join(ROOT, "integration-fixtures", "image-variants");
     const heicBytes = new Uint8Array(readFileSync(join(FIXTURES, "source.heic")));
     const putKey = `fullstack/image-variants/put-${RUN_ID}.heic`;
@@ -869,14 +843,29 @@ describe("Run402 full-stack integration (live API, no mocks)", { timeout: 900_00
       contentType: "image/heic",
     });
 
-    // Unconditional: HEIC source bytes preserved verbatim and served at
-    // cdn_url with image/heic content type. This is the platform's
-    // byte-faithful CAS contract and must hold regardless of whether
-    // variant generation succeeded.
+    assert.equal(putRef.variant_spec_version, "v1");
+    assert.ok(typeof putRef.width_px === "number" && putRef.width_px > 0, "HEIC ref must have width_px");
+    assert.ok(typeof putRef.height_px === "number" && putRef.height_px > 0, "HEIC ref must have height_px");
+    assert.ok(typeof putRef.blurhash === "string" && putRef.blurhash.length > 0);
+    assert.ok(putRef.variants, "HEIC ref must have variants");
+    assert.ok(putRef.variants.display_jpeg, "HEIC source MUST include display_jpeg variant");
+    assert.equal(putRef.variants.display_jpeg!.format, "jpeg");
+    // display_url must differ from cdn_url for HEIC (cdn_url serves
+    // unrenderable HEIC bytes; display_url is the JPEG transcode).
+    assert.notEqual(
+      putRef.display_url,
+      putRef.cdnUrl ?? putRef.cdn_immutable_url,
+      "HEIC display_url must NOT equal cdn_url (cdn_url serves unrenderable HEIC)",
+    );
+    // SDK helpers must use display_url for HEIC.
+    assert.equal(putRef.displayUrl, putRef.display_url);
+
+    // Verify the HEIC source bytes are actually served at cdn_url
+    // (preserved verbatim per the gateway's "uploaded SHA == stored SHA"
+    // invariant).
     await eventually("HEIC source served at cdn_url", async () => {
       const cdnUrl = putRef.cdnUrl ?? putRef.cdn_immutable_url;
-      assert.ok(cdnUrl, "HEIC upload must return a cdn_url");
-      const res = await fetch(cdnUrl, { headers: { "cache-control": "no-cache" } });
+      const res = await fetch(cdnUrl!, { headers: { "cache-control": "no-cache" } });
       assert.equal(res.status, 200);
       const ctype = res.headers.get("content-type") ?? "";
       assert.ok(
@@ -885,9 +874,16 @@ describe("Run402 full-stack integration (live API, no mocks)", { timeout: 900_00
       );
     });
 
-    // Wallet-apply path parity: same bytes via project.apply must
-    // produce a manifest entry, and the variant-shape (present or
-    // absent) must match across paths. resolveContent accepts bare
+    // Verify the JPEG display variant renders.
+    await eventually("HEIC display_url serves JPEG", async () => {
+      const res = await fetch(putRef.display_url!, { headers: { "cache-control": "no-cache" } });
+      assert.equal(res.status, 200);
+      const ctype = res.headers.get("content-type") ?? "";
+      assert.ok(ctype.includes("image/jpeg"), `HEIC display_url should serve image/jpeg, got '${ctype}'`);
+    });
+
+    // Parity: same bytes via wallet-apply path yields identical variant
+    // shape including display_jpeg. resolveContent accepts bare
     // Uint8Array, not the { bytes } wrapper.
     const project = await r.project(projectId);
     const applyResult = await project.apply({
@@ -897,55 +893,12 @@ describe("Run402 full-stack integration (live API, no mocks)", { timeout: 900_00
     });
     const applyRef = applyResult.assets?.byKey[applyKey];
     assert.ok(applyRef, "wallet-apply must return a manifest entry for the HEIC upload");
-
-    const putHasVariants = Boolean(putRef.variants?.display_jpeg);
-    const applyHasVariants = Boolean(applyRef.variants?.display_jpeg);
-    assert.equal(
-      applyHasVariants,
-      putHasVariants,
-      "HEIC variant presence must be identical across write paths (parity contract)",
-    );
-
-    if (putHasVariants) {
-      // Future state: gateway's HEIC decoder works on Alpine.
-      // Assert the full HEIC variant set + parity.
-      assert.equal(putRef.variant_spec_version, "v1");
-      assert.equal(applyRef.variant_spec_version, "v1");
-      assert.ok(typeof putRef.blurhash === "string" && putRef.blurhash.length > 0);
-      assert.equal(applyRef.blurhash, putRef.blurhash);
-      assert.equal(applyRef.width_px, putRef.width_px);
-      assert.equal(applyRef.height_px, putRef.height_px);
-      assert.equal(putRef.variants!.display_jpeg!.format, "jpeg");
-      assert.equal(applyRef.variants!.display_jpeg!.sha256, putRef.variants!.display_jpeg!.sha256);
-      // display_url must differ from cdn_url for HEIC (cdn_url serves
-      // unrenderable HEIC bytes; display_url is the JPEG transcode).
-      assert.notEqual(
-        putRef.display_url,
-        putRef.cdnUrl ?? putRef.cdn_immutable_url,
-        "HEIC display_url must NOT equal cdn_url",
-      );
-      // Verify the JPEG display variant renders.
-      await eventually("HEIC display_url serves JPEG", async () => {
-        const res = await fetch(putRef.display_url!, { headers: { "cache-control": "no-cache" } });
-        assert.equal(res.status, 200);
-        const ctype = res.headers.get("content-type") ?? "";
-        assert.ok(ctype.includes("image/jpeg"), `HEIC display_url should serve image/jpeg, got '${ctype}'`);
-      });
-    } else {
-      // Current production reality (parent change task 1.2): sharp +
-      // libheif's HEVC decoder on musl Alpine can't decode HEIC pixel
-      // data, so the encoder returns a source-only EncodedVariantSet.
-      // Both paths must omit the image-variant fields identically.
-      assert.equal(putRef.variants, undefined, "HEIC variants should be absent when decoder fails");
-      assert.equal(applyRef.variants, undefined, "wallet-apply HEIC variants should also be absent");
-      assert.equal(putRef.blurhash, undefined);
-      assert.equal(applyRef.blurhash, undefined);
-      // Both paths should agree on the absence of width_px / height_px
-      // / display_url too.
-      assert.equal(applyRef.width_px, putRef.width_px);
-      assert.equal(applyRef.height_px, putRef.height_px);
-      assert.equal(applyRef.display_url, putRef.display_url);
-    }
+    assert.equal(applyRef.variant_spec_version, "v1");
+    assert.ok(applyRef.variants?.display_jpeg, "wallet-apply HEIC ref must include display_jpeg");
+    assert.equal(applyRef.variants!.display_jpeg!.sha256, putRef.variants.display_jpeg!.sha256, "HEIC JPEG display variant sha256 must match across paths");
+    assert.equal(applyRef.blurhash, putRef.blurhash);
+    assert.equal(applyRef.width_px, putRef.width_px);
+    assert.equal(applyRef.height_px, putRef.height_px);
   });
 
   it("observes runtime secrets and exercises email plus AI helper paths", async () => {
