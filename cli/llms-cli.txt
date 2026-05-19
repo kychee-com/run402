@@ -862,7 +862,10 @@ run402 cdn wait-fresh https://app.run402.com/_blob/avatar.png --sha ba78... --ti
 const asset = await client.assets.put(projectId, key, { bytes });  // v1.45 defaults to immutable: true
 html += asset.scriptTag();             // <script src=... defer integrity=... crossorigin></script>
 html += asset.linkTag();               // <link rel="stylesheet" href=... integrity=... crossorigin>
-html += asset.imgTag("Company logo");  // <img src=... alt="Company logo" loading="lazy" decoding="async">
+html += asset.imgTag("Company logo");  // <img src=... alt="Company logo" width=... height=... loading="lazy" decoding="async">
+html += asset.imgTagWithSrcSet({ alt: "Hero", sizes: "(max-width: 800px) 100vw, 1920px" });
+// → <picture><source type="image/webp" srcset="<thumb> 320w, <medium> 800w, <large> 1920w" sizes="…">
+//             <img src="<display_url>" alt="Hero" width="…" height="…" loading="lazy" decoding="async"></picture>
 ```
 
 `immutable: true` is the default since v1.45 — the SDK computes the SHA-256 client-side and the gateway returns a content-addressed URL paired with SRI. The resulting URL never needs cache invalidation, never breaks on re-deploys, never needs `cdn wait-fresh` follow-up. The SDK and CLI always compute and send the object SHA-256 because upload sessions require it; pass `{ immutable: false }` only when you need mutable URL/cache semantics. In that case the tag emitters throw because there's no immutable URL/SRI to bind. The tag emitters also bake in modern best-practice attributes — `defer` on `<script>`, `loading="lazy"` + `decoding="async"` on `<img>` — so the agent doesn't have to remember.
@@ -877,13 +880,17 @@ Other AssetRef fields for advanced use:
 - `cacheKind` — `"immutable" | "mutable" | "private"`.
 - `cdn.{version,invalidationId,invalidationStatus,ready,hint}` — CloudFront invalidation envelope; `cdn.ready === true` for immutable uploads.
 
-Image-variant fields (v1.49+, `@run402/functions@2.3.0+`, populated for image MIMEs ≥ 320×320):
-- `width_px`, `height_px` — display-oriented dimensions (post-EXIF rotate).
-- `blurhash` — ~30-byte LQIP placeholder; decode client-side with the `blurhash` npm package to render a placeholder before the real image is ready (eliminates CLS).
+Image-variant fields (v1.49+ gateway, `@run402/sdk@2.3.0+`, populated for image MIMEs ≥ 320×320):
+- `width_px`, `height_px` — display-oriented dimensions (post-EXIF rotate). `imgTag` emits these as `<img width height>` attributes when present (eliminates CLS).
+- `blurhash` — ~30-byte LQIP placeholder; decode client-side with the `blurhash` npm package to render a placeholder before the real image is ready.
 - `variant_spec_version` — pins URL identity to the encoder generation. Bumping (gateway-side) produces new URLs without invalidating older ones.
-- `display_url` / `display_immutable_url` — browser-displayable URL. For jpeg/png/webp/avif sources this equals `cdn_url`. For **HEIC/HEIF** sources this points at a JPEG `display_jpeg` variant so `<img src>` renders correctly without HEIC-specific app code. HEIC source bytes are preserved verbatim in CAS (uploaded SHA == stored SHA).
+- `display_url` / `display_immutable_url` — browser-displayable URL. For jpeg/png/webp/avif sources this equals `cdn_url`. For **HEIC/HEIF** sources this points at a JPEG `display_jpeg` variant so `<img src>` renders correctly without HEIC-specific app code. HEIC source bytes are preserved verbatim in CAS (uploaded SHA == stored SHA). The `imgTag` / `imgTagWithSrcSet` helpers default `<img src>` to `display_url` so HEIC just works.
 - `variants.thumb` / `variants.medium` / `variants.large` — three WebP variants (320w / 800w / 1920w), each with `url`, `cdn_url`, `width_px`, `height_px`, `format: "webp"`, `sha256`. Use `variants.thumb.cdn_url` in MediaPicker-style admin grids to avoid downloading full-res originals.
 - `variants.display_jpeg` — only present for HEIC/HEIF sources. Full-res JPEG, quality 90, sRGB-converted.
+- `thumbUrl` (SDK convenience, v2.3+) — `variants.thumb.cdn_url ?? displayUrl` for image refs; **`undefined` for non-image AssetRefs**. Single field for grid thumbnails — TypeScript narrows so `<img src={pdfRef.thumbUrl}>` is a compile error rather than a broken thumbnail at runtime.
+- `displayUrl` (SDK convenience, v2.3+) — `display_url ?? cdn_url` for image refs; **`undefined` for non-images**. Use for hero / single-image render paths.
+- `imgTagWithSrcSet(opts)` (SDK helper, v2.3+) — emits `<picture>` with WebP-only `<source>` (three sizes) and `display_url` as the `<img>` fallback. Throws at call time on missing `opts.sizes` (browsers over-fetch the largest candidate without it) OR missing `variants` (use `imgTag()` instead — no silent fallback). AVIF deferred from v1 (`<picture>` type-precedence footgun: AVIF must land at all three sizes simultaneously or via a separate `imgTagHero()` helper).
+- Both write paths produce identical `AssetRef` shapes: `r.assets.put(...)` and `r.project(id).apply({ assets: { put: [...] } })`. Pickers can use either entry point.
 - Encoder errors surface as HTTP 422 `IMAGE_DECODE_FAILED`, 413 `IMAGE_INPUT_TOO_LARGE` (>40 MP or >12000 px any axis), 504 `IMAGE_ENCODE_TIMEOUT`, 429 `TOO_MANY_ENCODES_QUEUED` (encoder semaphore full — retry after 2s).
 
 **Agent loop pattern (mutable URL only):** if you must use a stable mutable URL across re-uploads, `run402 cdn wait-fresh <mutable-url> --sha <new-sha>` blocks until the CDN serves the new SHA. **Don't call wait-fresh on immutable URLs** — they're correct from the moment of upload.
