@@ -333,6 +333,7 @@ run402 assets put ./logo.png    --json
 run402 assets put ./app.js      --json
 run402 assets put ./styles.css  --json
 run402 assets put ./asset       --key assets/logo --content-type image/svg+xml --json
+run402 assets put ./hero.jpg    --meta uploaded_by=agent_abc --meta tags=hero,banner --exif-policy strip --json
 ```
 
 Each response includes:
@@ -343,19 +344,30 @@ Each response includes:
 | `sri` | `sha256-<base64>` for `<script integrity="…">` if you build tags by hand |
 | `etag` | Strong `"sha256-<hex>"` ETag |
 | `cache_kind` | `immutable` / `mutable` / `private` |
+| `metadata` (v1.50) | Echo of your `--meta` bag, or `null` |
+| `image_format` (v1.50) | Decoded format (`jpeg`/`png`/`webp`/…) or `null` for non-images |
+| `image_info` (v1.50) | `has_alpha`, `color_space`, `animated`, `frame_count`, `bit_depth`, `orientation` |
+| `image_exif` (v1.50) | EXIF block (`null` when stripped or no EXIF) |
+| `image_exif_policy` (v1.50) | `keep` or `strip`, echoing the applied policy |
 
 Immutable upload is the default since v1.45 — the SDK computes the SHA-256 client-side and pairs the URL with SRI. The browser refuses execution on byte mismatch. No invalidation choreography.
 
 `blob put` infers MIME type from the destination key. Use `--content-type <mime>` for extensionless assets, unusual file types, or deliberate overrides.
 
+**v1.50 `--meta` coercion:** pure digits become a number, `true`/`false` become a boolean, values containing `,` become a `string[]`, everything else is a string. ≤4 KB serialized; bad shapes are rejected client-side with `INVALID_ASSET_METADATA` before any HTTP call.
+
 ### List, fetch, remove, sign
 
 ```bash
 run402 assets ls --prefix images/
+run402 assets ls --sort createdAt:desc --filter is_image=true --filter min_width=320 --filter format=webp
+run402 assets ls --filter uploaded_by=agent_abc --filter tag=hero
 run402 assets get images/logo.png --output /tmp/logo.png
 run402 assets rm images/old.png
 run402 assets sign secrets/report.pdf --ttl 3600    # presigned URL for private blobs
 ```
+
+`--sort` (v1.50) takes `key:asc` (default), `createdAt:asc`, or `createdAt:desc`. Cursors are sort-pinned — cross-sort reuse returns `INVALID_CURSOR_FOR_SORT`. `--filter k=v` is repeatable; allowed keys: `uploaded_by`, `tag`, `format`, `is_image`, `min_width`/`max_width`/`min_height`/`max_height`. Unknown keys are rejected client-side with `INVALID_FILTER_KEY`.
 
 ### Diagnose a stale CDN
 

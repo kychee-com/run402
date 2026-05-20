@@ -49,17 +49,24 @@ Options:
   --content-type <mime>  MIME override for blob put (defaults to extension inference)
   --private           Upload as private (not served by CDN; apikey required to read)
   --immutable         Append a content-hash suffix to the URL so overwrites produce distinct URLs.
+  --meta <k=v>        v1.50: attach caller-supplied metadata to the upload (repeatable). Number
+                      coercion on pure digits; comma-split into string[]; "true"/"false" → boolean.
+  --exif-policy keep|strip  v1.50: EXIF retention policy for image uploads (default keep).
   --json              NDJSON progress events (for agent consumption)
   --prefix <p>        Prefix filter (ls only)
   --limit <n>         Max results (ls only; default 100, max 1000)
+  --sort <key>        v1.50 ls only: key:asc | createdAt:asc | createdAt:desc (default key:asc).
+  --filter <k=v>      v1.50 ls only: media-picker filter (repeatable). Keys: uploaded_by, tag,
+                      format, is_image, min_width, max_width, min_height, max_height.
   --ttl <seconds>     Signed-URL TTL (sign only; default 3600, min 60, max 604800)
 
 Examples:
   run402 assets put ./artifact.tgz --project prj_abc123
+  run402 assets put ./hero.jpg --project prj_abc123 --meta uploaded_by=agent_abc --meta tags=hero,banner --exif-policy strip
   run402 assets put ./dist/**/*.png --project prj_abc123 --key assets/
   run402 assets put huge.bin --project prj_abc123 --immutable
   run402 assets get images/logo.png --output /tmp/logo.png --project prj_abc123
-  run402 assets ls --project prj_abc123 --prefix images/
+  run402 assets ls --project prj_abc123 --prefix images/ --sort createdAt:desc --filter is_image=true --filter min_width=320
   run402 assets rm images/logo.png --project prj_abc123
   run402 assets sign images/logo.png --project prj_abc123 --ttl 600
 
@@ -84,6 +91,14 @@ Options:
   --content-type <mime>  MIME override; defaults to inferring from the destination key extension
   --private           Upload as private (not served by CDN; apikey required to read)
   --immutable         Append content-hash suffix so overwrites produce distinct URLs
+  --meta <k=v>        v1.50: attach metadata (repeatable). Coercion rules:
+                        - pure digits (with optional '-' / '.') → number
+                        - 'true' / 'false' → boolean
+                        - value containing ',' → string[]
+                        - everything else → string
+                      Examples: --meta uploaded_by=agent_abc --meta version=3 --meta tags=hero,banner
+  --exif-policy keep|strip  v1.50: EXIF retention policy. Default 'keep'. 'strip' discards EXIF
+                      from the stored bytes and the image_exif response field.
   --json              Emit NDJSON progress events on stdout (for agent consumption)
 
 Examples:
@@ -91,6 +106,7 @@ Examples:
   run402 assets put ./dist/**/*.png --project prj_abc123 --key assets/
   run402 assets put ./asset --project prj_abc123 --key assets/logo --content-type image/svg+xml
   run402 assets put huge.bin --project prj_abc123 --immutable
+  run402 assets put ./hero.jpg --project prj_abc123 --meta uploaded_by=agent_abc --meta tags=hero,banner --exif-policy strip
 `,
   get: `run402 assets get — Download a blob by key
 
@@ -116,10 +132,20 @@ Options:
   --project <id>      Project ID (defaults to active project)
   --prefix <p>        Only list keys starting with this prefix
   --limit <n>         Max results (default 100, max 1000)
+  --sort <key>        v1.50: key:asc (default) | createdAt:asc | createdAt:desc.
+                      Cursor is sort-pinned — reusing a 'createdAt:*' cursor with 'key:asc'
+                      (or vice versa) returns 400 INVALID_CURSOR_FOR_SORT.
+  --filter <k=v>      v1.50: media-picker filter (repeatable). Allowed keys:
+                        - uploaded_by, tag, format (exact string match)
+                        - is_image (true|false)
+                        - min_width, max_width, min_height, max_height (non-negative int)
+                      Unknown keys are rejected client-side with INVALID_FILTER_KEY.
 
 Examples:
   run402 assets ls --project prj_abc123
   run402 assets ls --project prj_abc123 --prefix images/ --limit 500
+  run402 assets ls --project prj_abc123 --sort createdAt:desc --filter is_image=true --filter min_width=320
+  run402 assets ls --project prj_abc123 --filter uploaded_by=agent_abc --filter tag=hero
 `,
   rm: `run402 assets rm — Delete a blob
 
@@ -184,7 +210,11 @@ function die(msg, exit_code = 1) {
 
 function parseArgs(rawArgs) {
   const args = normalizeArgv(rawArgs);
-  const valueFlags = ["--project", "--key", "--content-type", "--concurrency", "--prefix", "--limit", "--output", "-o", "--ttl"];
+  const valueFlags = [
+    "--project", "--key", "--content-type", "--concurrency", "--prefix",
+    "--limit", "--output", "-o", "--ttl",
+    "--meta", "--exif-policy", "--sort", "--filter",
+  ];
   assertKnownFlags(args, [
     "--project",
     "--key",
@@ -199,12 +229,17 @@ function parseArgs(rawArgs) {
     "--output",
     "-o",
     "--ttl",
+    "--meta",
+    "--exif-policy",
+    "--sort",
+    "--filter",
     "--help",
     "-h",
   ], valueFlags);
   const out = { positional: [], project: null, key: null, private: false, immutable: false,
                  concurrency: 4, resume: true, json: false, prefix: null, limit: null,
-                 output: null, ttl: null, contentType: null };
+                 output: null, ttl: null, contentType: null,
+                 metadata: null, exifPolicy: null, sort: null, filter: null };
   for (let i = 0; i < args.length; i++) {
     const a = args[i];
     if (a === "--project") out.project = args[++i];
@@ -219,9 +254,144 @@ function parseArgs(rawArgs) {
     else if (a === "--limit") out.limit = parseIntegerFlag("--limit", args[++i], { min: 1, max: 1000 });
     else if (a === "--output" || a === "-o") out.output = args[++i];
     else if (a === "--ttl") out.ttl = parseIntegerFlag("--ttl", args[++i], { min: 60, max: 604800 });
+    // v1.50: repeatable --meta key=value (number-coerce on pure digits,
+    // comma-split into string[] when value contains ',', "true"/"false"
+    // → boolean, else string). Multiple --meta flags accumulate into a
+    // single flat metadata object.
+    else if (a === "--meta") {
+      if (out.metadata === null) out.metadata = {};
+      applyMetaFlag(out.metadata, args[++i]);
+    }
+    else if (a === "--exif-policy") out.exifPolicy = parseExifPolicyFlag(args[++i]);
+    // v1.50: ls --sort and repeatable --filter k=v.
+    else if (a === "--sort") out.sort = parseSortFlag(args[++i]);
+    else if (a === "--filter") {
+      if (out.filter === null) out.filter = {};
+      applyFilterFlag(out.filter, args[++i]);
+    }
     else if (!a.startsWith("--")) out.positional.push(a);
   }
   return out;
+}
+
+/** v1.50: parse a single `--meta key=value` token. Coerces value:
+ *    - numeric digits (with optional leading `-` / decimal) → number
+ *    - "true" / "false" → boolean
+ *    - commas → string[] (each segment stays a string; agents wanting
+ *      mixed-type arrays should use the SDK directly)
+ *    - everything else → string
+ */
+function applyMetaFlag(metadata, raw) {
+  if (typeof raw !== "string") {
+    fail({ code: "BAD_FLAG", message: "--meta requires a key=value argument" });
+  }
+  const eq = raw.indexOf("=");
+  if (eq <= 0) {
+    fail({
+      code: "BAD_FLAG",
+      message: `--meta requires key=value form, got: ${raw}`,
+      details: { flag: "--meta", value: raw },
+    });
+  }
+  const key = raw.slice(0, eq).trim();
+  if (key.length === 0) {
+    fail({
+      code: "BAD_FLAG",
+      message: `--meta key must be non-empty, got: ${raw}`,
+      details: { flag: "--meta", value: raw },
+    });
+  }
+  const rawValue = raw.slice(eq + 1);
+  metadata[key] = coerceMetaValue(rawValue);
+}
+
+function coerceMetaValue(value) {
+  if (value.includes(",")) {
+    return value.split(",").map((s) => s);
+  }
+  if (value === "true") return true;
+  if (value === "false") return false;
+  if (value.length > 0 && /^-?(?:\d+(?:\.\d+)?|\.\d+)$/.test(value)) {
+    const n = Number(value);
+    if (Number.isFinite(n)) return n;
+  }
+  return value;
+}
+
+function parseExifPolicyFlag(raw) {
+  if (raw !== "keep" && raw !== "strip") {
+    fail({
+      code: "BAD_FLAG",
+      message: `--exif-policy must be 'keep' or 'strip', got: ${raw}`,
+      details: { flag: "--exif-policy", value: raw },
+    });
+  }
+  return raw;
+}
+
+const VALID_SORTS = new Set(["key:asc", "createdAt:asc", "createdAt:desc"]);
+function parseSortFlag(raw) {
+  if (typeof raw !== "string" || !VALID_SORTS.has(raw)) {
+    fail({
+      code: "BAD_FLAG",
+      message: `--sort must be one of: ${[...VALID_SORTS].join(", ")} — got: ${raw}`,
+      details: { flag: "--sort", value: raw },
+    });
+  }
+  return raw;
+}
+
+const VALID_FILTER_KEYS = new Set([
+  "uploaded_by", "tag", "format", "is_image",
+  "min_width", "max_width", "min_height", "max_height",
+]);
+function applyFilterFlag(filter, raw) {
+  if (typeof raw !== "string") {
+    fail({ code: "BAD_FLAG", message: "--filter requires a key=value argument" });
+  }
+  const eq = raw.indexOf("=");
+  if (eq <= 0) {
+    fail({
+      code: "BAD_FLAG",
+      message: `--filter requires key=value form, got: ${raw}`,
+      details: { flag: "--filter", value: raw },
+    });
+  }
+  const key = raw.slice(0, eq).trim();
+  const value = raw.slice(eq + 1);
+  if (!VALID_FILTER_KEYS.has(key)) {
+    fail({
+      code: "BAD_FLAG",
+      message: `--filter key ${key} not in: ${[...VALID_FILTER_KEYS].join(", ")}`,
+      details: { flag: "--filter", key },
+    });
+  }
+  if (key === "is_image") {
+    if (value !== "true" && value !== "false") {
+      fail({
+        code: "BAD_FLAG",
+        message: `--filter is_image must be 'true' or 'false', got: ${value}`,
+      });
+    }
+    filter[key] = value === "true";
+  } else if (key === "min_width" || key === "max_width" || key === "min_height" || key === "max_height") {
+    const n = Number(value);
+    if (!Number.isSafeInteger(n) || n < 0) {
+      fail({
+        code: "BAD_FLAG",
+        message: `--filter ${key} must be a non-negative integer, got: ${value}`,
+      });
+    }
+    filter[key] = n;
+  } else {
+    if (value.length === 0) {
+      fail({
+        code: "BAD_FLAG",
+        message: `--filter ${key} must be a non-empty string`,
+      });
+    }
+    filter[key] = value;
+  }
 }
 
 function parseContentTypeFlag(name, value) {
@@ -271,6 +441,12 @@ async function putOne(projectId, filePath, opts) {
     contentType: opts.contentType ?? guessContentType(destKey),
     visibility: opts.private ? "private" : "public",
     immutable: opts.immutable,
+    // v1.50: thread caller-supplied metadata + EXIF policy through. The
+    // SDK validates each value with the same error code (INVALID_ASSET_
+    // METADATA / INVALID_EXIF_POLICY) the gateway returns, so a bad
+    // --meta / --exif-policy fails fast without an HTTP roundtrip.
+    ...(opts.metadata ? { metadata: opts.metadata } : {}),
+    ...(opts.exifPolicy ? { exifPolicy: opts.exifPolicy } : {}),
   });
   log(opts, { event: "done", ...result });
   return result;
@@ -345,6 +521,12 @@ async function ls(projectId, argv) {
     const data = await getSdk().assets.ls(resolvedId, {
       prefix: opts.prefix ?? undefined,
       limit: opts.limit ?? undefined,
+      // v1.50: forward sort + filter to the SDK. Cursor stays absent for
+      // first-page calls; agents pass `--cursor` for follow-ups but the
+      // cursor is sort-pinned by the gateway so it doesn't accept a
+      // separate `--cursor` flag here yet.
+      ...(opts.sort ? { sort: opts.sort } : {}),
+      ...(opts.filter ? { filter: opts.filter } : {}),
     });
     console.log(JSON.stringify(data, null, 2));
   } catch (err) {

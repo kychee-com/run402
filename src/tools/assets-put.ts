@@ -15,6 +15,8 @@ export const blobPutSchema = {
   content_type: z.string().optional().describe("MIME type (auto-detected from file extension if omitted)."),
   visibility: z.enum(["public", "private"]).optional().describe("Default: public. Public blobs get a CDN URL; private blobs require authenticated reads."),
   immutable: z.boolean().optional().describe("When true, the returned URL includes a content-hash suffix so overwrites produce distinct URLs. CLI auto-computes sha256."),
+  metadata: z.record(z.union([z.string(), z.number(), z.boolean(), z.array(z.string())])).optional().describe("v1.50: caller-provided flat metadata stored alongside the asset. Object with string / number / boolean / string[] leaves; ≤4 KB serialized. Nested objects rejected with INVALID_ASSET_METADATA (HTTP 400)."),
+  exif_policy: z.enum(["keep", "strip"]).optional().describe("v1.50: EXIF retention policy for image uploads. Default 'keep'. 'strip' discards EXIF from the stored bytes and the image_exif response field."),
 };
 
 type Args = {
@@ -25,6 +27,8 @@ type Args = {
   content_type?: string;
   visibility?: "public" | "private";
   immutable?: boolean;
+  metadata?: Record<string, string | number | boolean | string[]>;
+  exif_policy?: "keep" | "strip";
 };
 
 export async function handleBlobPut(args: Args): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
@@ -53,6 +57,8 @@ export async function handleBlobPut(args: Args): Promise<{ content: Array<{ type
       contentType: args.content_type,
       visibility: args.visibility,
       immutable: args.immutable,
+      metadata: args.metadata,
+      exifPolicy: args.exif_policy,
     });
 
     const lines: string[] = [
@@ -82,9 +88,32 @@ export async function handleBlobPut(args: Args): Promise<{ content: Array<{ type
       if (result.variants.display_jpeg) kinds.push(`display_jpeg (${result.variants.display_jpeg.width_px}w JPEG)`);
       if (kinds.length > 0) lines.push(`Variants: ${kinds.join(", ")}`);
     }
+    // v1.50: surface metadata + EXIF policy + intrinsic image info so an
+    // agent can keep reasoning about the upload without a follow-up roundtrip.
+    if (result.image_format) lines.push(`Image format: ${result.image_format}`);
+    if (result.image_info) lines.push(`Image info: ${summarizeRecord(result.image_info)}`);
+    if (result.image_exif_policy) lines.push(`EXIF policy: ${result.image_exif_policy}`);
+    if (result.image_exif) lines.push(`EXIF: ${summarizeRecord(result.image_exif)}`);
+    if (result.metadata && Object.keys(result.metadata).length > 0) {
+      lines.push(`Metadata: ${JSON.stringify(result.metadata)}`);
+    }
 
     return { content: [{ type: "text", text: lines.join("\n") }] };
   } catch (err) {
     return mapSdkError(err, "uploading blob");
   }
+}
+
+function summarizeRecord(rec: Record<string, unknown>): string {
+  const keys = Object.keys(rec);
+  if (keys.length === 0) return "{}";
+  const parts: string[] = [];
+  for (const k of keys.slice(0, 6)) {
+    const v = rec[k];
+    if (v === null || v === undefined) parts.push(`${k}=null`);
+    else if (typeof v === "object") parts.push(`${k}={…}`);
+    else parts.push(`${k}=${String(v)}`);
+  }
+  if (keys.length > parts.length) parts.push(`…(+${keys.length - parts.length} more)`);
+  return parts.join(", ");
 }

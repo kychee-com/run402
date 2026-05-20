@@ -835,23 +835,34 @@ Direct-to-S3 asset storage. Works for any size from 1 byte up to 5 TiB. No bucke
 
 For bulk directory work, use `run402 deploy apply` with an `assets` slice in the manifest (see [Unified Deploy](#unified-deploy)) — additive batches via `assets: { put: [...] }`, declarative sync with confirm-token semantics via `assets: { put: [...], sync: { prefix, prune: true, confirm? } }`. There is no `run402 assets sync` subcommand — the apply path is the canonical bulk surface so a single transaction can stage HTML + new asset URLs together.
 
-- `run402 assets put <file> [files...] [--project <id>] [--key <dest>] [--content-type <mime>] [--private] [--immutable] [--concurrency N] [--no-resume] [--json]`
+- `run402 assets put <file> [files...] [--project <id>] [--key <dest>] [--content-type <mime>] [--private] [--immutable] [--meta <k=v>] [--exif-policy keep|strip] [--concurrency N] [--no-resume] [--json]`
 - `run402 assets get <key> --output <file> [--project <id>]`
-- `run402 assets ls [--project <id>] [--prefix <p>] [--limit <n>]`
+- `run402 assets ls [--project <id>] [--prefix <p>] [--limit <n>] [--sort key:asc|createdAt:asc|createdAt:desc] [--filter <k=v> ...]`
 - `run402 assets rm <key> [--project <id>]`
 - `run402 assets sign <key> [--project <id>] [--ttl <seconds>]` — signed URL TTL must be an integer from 60 to 604800 seconds.
 - `run402 assets diagnose <url> [--project <id>]` — inspect live CDN state for a public URL
 - `run402 cdn wait-fresh <url> --sha <hex> [--timeout <secs>] [--project <id>]` — poll a mutable URL until it serves the expected SHA-256
 
+`put` flags (v1.50):
+- `--meta key=value` — repeatable. Attach caller-supplied metadata to the asset. Coercion: pure digits (with optional `-` / `.`) become a number, `true`/`false` become a boolean, values containing `,` become a `string[]`, everything else is a string. Total serialized size ≤ 4 KB; nested objects are not expressible from the CLI. Rejected client-side with `INVALID_ASSET_METADATA` when the resulting bag is structurally invalid.
+- `--exif-policy keep|strip` — EXIF retention policy for image uploads. Default `keep`. `strip` discards EXIF bytes from the stored object and the `image_exif` response field. Other values are rejected with `INVALID_EXIF_POLICY`.
+
+`ls` flags (v1.50):
+- `--sort key:asc|createdAt:asc|createdAt:desc` — result ordering. Default `key:asc` (legacy bare-key cursor). The `createdAt:*` variants use a base64url JSON `{s, ts, key}` cursor; reusing a cursor across sort keys returns `400 INVALID_CURSOR_FOR_SORT`.
+- `--filter key=value` — repeatable media-picker filter. Allowed keys: `uploaded_by`, `tag`, `format`, `is_image` (`true`/`false`), `min_width`, `max_width`, `min_height`, `max_height` (non-negative ints). Unknown keys are rejected client-side with `INVALID_FILTER_KEY`.
+
 Examples:
 
 ```
 run402 assets put ./artifact.tgz --project prj_abc123
+run402 assets put ./hero.jpg --project prj_abc123 --meta uploaded_by=agent_abc --meta version=3 --meta tags=hero,banner --exif-policy strip
 run402 assets put ./dist/**/*.png --project prj_abc123 --key assets/
 run402 assets put ./asset --project prj_abc123 --key assets/logo --content-type image/svg+xml
 run402 assets put huge.bin --project prj_abc123 --immutable
 run402 assets get images/logo.png --output /tmp/logo.png --project prj_abc123
 run402 assets ls --project prj_abc123 --prefix images/
+run402 assets ls --project prj_abc123 --sort createdAt:desc --filter is_image=true --filter min_width=320 --filter format=webp
+run402 assets ls --project prj_abc123 --filter uploaded_by=agent_abc --filter tag=hero
 run402 assets diagnose https://app.run402.com/_blob/avatar.png --project prj_abc123
 run402 cdn wait-fresh https://app.run402.com/_blob/avatar.png --sha ba78... --timeout 120
 ```
@@ -892,6 +903,22 @@ Image-variant fields (v1.49+ gateway, `@run402/sdk@2.3.0+`, populated for image 
 - `imgTagWithSrcSet(opts)` (SDK helper, v2.3+) — emits `<picture>` with WebP-only `<source>` (three sizes) and `display_url` as the `<img>` fallback. Throws at call time on missing `opts.sizes` (browsers over-fetch the largest candidate without it) OR missing `variants` (use `imgTag()` instead — no silent fallback). AVIF deferred from v1 (`<picture>` type-precedence footgun: AVIF must land at all three sizes simultaneously or via a separate `imgTagHero()` helper).
 - Both write paths produce identical `AssetRef` shapes: `r.assets.put(...)` and `r.project(id).apply({ assets: { put: [...] } })`. Pickers can use either entry point.
 - Encoder errors surface as HTTP 422 `IMAGE_DECODE_FAILED`, 413 `IMAGE_INPUT_TOO_LARGE` (>40 MP or >12000 px any axis), 504 `IMAGE_ENCODE_TIMEOUT`, 429 `TOO_MANY_ENCODES_QUEUED` (encoder semaphore full — retry after 2s).
+
+Metadata + EXIF policy + intrinsics fields (v1.50+ gateway, `@run402/sdk@2.4.0+`):
+- `metadata` — caller-provided flat metadata bag. Values are `string | number | boolean | string[]`. Total ≤ 4 KB serialized. `null` when none was set. Nested objects are rejected client-side with `INVALID_ASSET_METADATA` so a bad upload never reaches the gateway.
+- `image_format` — decoded image format (`jpeg`/`png`/`webp`/`avif`/`heic`/`tiff`/`svg`/`bmp`). `null` for non-image rows.
+- `image_info` — server-extracted intrinsics: `has_alpha`, `color_space`, `animated`, `frame_count`, `bit_depth`, `orientation`. `null` for non-image rows. Future gateway versions may add keys — treat as opaque.
+- `image_exif` — server-extracted EXIF block. `null` for non-image rows, for stripped uploads (`image_exif_policy === "strip"`), and for image formats without EXIF (SVG/BMP).
+- `image_exif_policy` — echo of the EXIF policy actually applied: `"keep"` (default) or `"strip"`. `null` for non-image rows.
+- These fields ride alongside the v1.49 `width_px` / `height_px` / `blurhash` / `variants` additions — same FLAT shape, NOT wrapped under `image: {}`.
+
+Typed errors a caller can branch on (`catch (e) { if (e.code === "...") }`):
+- `INVALID_ASSET_METADATA` (HTTP 400 or `LocalError` pre-network)
+- `INVALID_EXIF_POLICY` (HTTP 400 or `LocalError` pre-network)
+- `INVALID_FILTER_KEY` (HTTP 400 or `LocalError` pre-network)
+- `INVALID_SORT` (HTTP 400 or `LocalError` pre-network)
+- `INVALID_CURSOR_FOR_SORT` (HTTP 400 — cross-sort cursor reuse)
+- `IMAGE_DECODE_FAILED` (HTTP 422 — no partial row written)
 
 **Agent loop pattern (mutable URL only):** if you must use a stable mutable URL across re-uploads, `run402 cdn wait-fresh <mutable-url> --sha <new-sha>` blocks until the CDN serves the new SHA. **Don't call wait-fresh on immutable URLs** — they're correct from the moment of upload.
 

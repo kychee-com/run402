@@ -259,7 +259,7 @@ export default async (req: Request) => {
 - **`adminDb()`** — bypasses RLS. Use only for audit logs, cron cleanup, webhook handlers, platform-authored writes.
 - **`adminDb().sql(query, params?)`** — raw parameterized SQL, always bypasses RLS.
 - **`ai.generateImage({ prompt, aspect? })`** — live image generation from deployed functions, billed/rate-limited against the project billing account through `RUN402_SERVICE_KEY`. Aspects: `square`, `landscape`, `portrait`; result: `{ image, content_type, aspect }`. For public routed functions, authenticate/rate-limit app users before calling it.
-- **`assets.put(key, source, opts?)`** — upload runtime bytes through the same CAS-backed apply substrate as deploy-time assets. `source` is a string, `Uint8Array`, or `{ content | bytes }`; returns an SDK-compatible `AssetRef`.
+- **`assets.put(key, source, opts?)`** — upload runtime bytes through the same CAS-backed apply substrate as deploy-time assets. `source` is a string, `Uint8Array`, or `{ content | bytes }`; returns an SDK-compatible `AssetRef`. v1.50 `opts` accept `metadata` (flat bag, ≤4 KB, leaves `string | number | boolean | string[]`) and `exifPolicy` (`"keep"` | `"strip"`); the returned `AssetRef` includes `image_format`, `image_info`, `image_exif`, and `image_exif_policy` for image MIMEs.
 
 Fluent surface on both `db(req).from(t)` and `adminDb().from(t)`:
 - Reads: `.select()`, `.eq()`, `.neq()`, `.gt()`, `.lt()`, `.gte()`, `.lte()`, `.like()`, `.ilike()`, `.in()`, `.order()`, `.limit()`, `.offset()`
@@ -283,9 +283,9 @@ For TypeScript autocomplete, `npm install @run402/functions` in your editor's pr
 
 ### Blob storage (content-addressed CDN)
 
-- **`assets_put`** — upload (any size, up to 5 TiB). Returns an `AssetRef` with `cdn_url`, `sri`, `etag`, `cache_kind`.
+- **`assets_put`** — upload (any size, up to 5 TiB). Returns an `AssetRef` with `cdn_url`, `sri`, `etag`, `cache_kind`. v1.50: accepts `metadata` (flat bag with `string | number | boolean | string[]` leaves, ≤4 KB) and `exif_policy` (`"keep"` | `"strip"`); response includes `image_format`, `image_info`, `image_exif`, and `image_exif_policy` for image MIMEs. Bad shapes throw `INVALID_ASSET_METADATA` / `INVALID_EXIF_POLICY` before the HTTP call.
 - **`assets_get`** — download to a local file (no context-window bloat).
-- **`assets_ls`** — keyset-paginated list with prefix filter.
+- **`assets_ls`** — keyset-paginated list with prefix filter. v1.50: accepts `sort` (`key:asc` default, `createdAt:asc`, `createdAt:desc`) and `filter` (keys: `uploaded_by`, `tag`, `format`, `is_image`, `min_width`/`max_width`/`min_height`/`max_height`). Cursor is sort-pinned — cross-sort reuse returns `INVALID_CURSOR_FOR_SORT`.
 - **`assets_rm`** — delete.
 - **`assets_sign`** — time-boxed presigned GET URL for a private blob.
 - **`diagnose_public_url`** — live CDN state for a public URL — expected vs observed SHA, cache headers, invalidation status.

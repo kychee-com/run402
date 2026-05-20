@@ -9,6 +9,38 @@
 export type BlobVisibility = "public" | "private";
 
 /**
+ * v1.50: caller-provided asset metadata. Flat, scalar-or-string-array leaves
+ * only; total serialized size ≤ 4 KB. Nested objects / unknown leaf shapes are
+ * rejected client-side with `INVALID_ASSET_METADATA` before any HTTP call.
+ */
+export type AssetMetadataValue = string | number | boolean | string[];
+export type AssetMetadata = Record<string, AssetMetadataValue>;
+
+/**
+ * v1.50: EXIF retention policy applied to image uploads. `"keep"` preserves
+ * caller-supplied EXIF (default; same as historical behavior); `"strip"`
+ * directs the gateway to discard EXIF from the stored bytes and the
+ * `image_exif` field returned by `assets.ls` / `assets.put`.
+ */
+export type ExifPolicy = "keep" | "strip";
+
+/**
+ * v1.50: extracted intrinsic image format. `null` for non-image uploads. The
+ * gateway populates this only when the source MIME (or sniffed signature)
+ * matches a known image codec. Unknown formats fail the upload with HTTP 422
+ * `IMAGE_DECODE_FAILED` (no partial row is written).
+ */
+export type AssetImageFormat =
+  | "jpeg"
+  | "png"
+  | "webp"
+  | "avif"
+  | "heic"
+  | "tiff"
+  | "svg"
+  | "bmp";
+
+/**
  * Source for an upload.
  *
  * Polymorphic — pass any of:
@@ -45,6 +77,20 @@ export interface BlobPutOptions {
    * and the tag emitters throw with an "immutable: true required" hint.
    */
   immutable?: boolean;
+  /**
+   * v1.50: caller-provided metadata stored alongside the asset row. Flat
+   * object with `string | number | boolean | string[]` leaves; ≤4 KB
+   * serialized. Nested objects, undefined-leaf values, or non-allowed leaf
+   * types are rejected client-side with `INVALID_ASSET_METADATA` before any
+   * HTTP call. The same `code` is returned by the gateway if a server-side
+   * check rejects a structurally valid value (HTTP 400).
+   */
+  metadata?: AssetMetadata;
+  /**
+   * v1.50: EXIF retention policy. Default `"keep"`. Invalid values are
+   * rejected client-side with `INVALID_EXIF_POLICY` before any HTTP call.
+   */
+  exifPolicy?: ExifPolicy;
 }
 
 /** One presigned upload part returned by the Run402 blob upload session API. */
@@ -380,6 +426,32 @@ export interface AssetRef {
     /** Default `"lazy"`. Pass `"eager"` for above-the-fold heroes. */
     loading?: "lazy" | "eager";
   }): string;
+
+  // ---- v1.50+ metadata + EXIF policy + image intrinsics --------------------
+  // Flat shape — NOT wrapped under `image: {}`. Same naming convention as the
+  // v1.49 `width_px` / `height_px` / `blurhash` / `variants` additions. All
+  // fields below are `null` (not undefined) for non-image uploads to keep
+  // the JSON inventory wire-shape stable; only `metadata` is non-null when
+  // the caller supplied one on a non-image upload.
+
+  /** Caller-supplied flat metadata (≤4 KB serialized; leaves are
+   *  `string | number | boolean | string[]`). `null` when no metadata was
+   *  set on the upload. */
+  metadata: AssetMetadata | null;
+  /** Decoded image format (`jpeg`/`png`/`webp`/`avif`/`heic`/`tiff`/`svg`/
+   *  `bmp`). `null` for non-image uploads. */
+  image_format: string | null;
+  /** Server-extracted intrinsic image info. Known keys: `has_alpha`,
+   *  `color_space`, `animated`, `frame_count`, `bit_depth`, `orientation`.
+   *  Future gateway versions may emit additional keys — treat as opaque. */
+  image_info: Record<string, unknown> | null;
+  /** Server-extracted EXIF block. `null` for non-image uploads, for images
+   *  whose EXIF was stripped (`image_exif_policy: "strip"`), and for image
+   *  formats that do not carry EXIF (e.g. SVG, BMP). */
+  image_exif: Record<string, unknown> | null;
+  /** Echo of the EXIF policy actually applied to the stored bytes. `null`
+   *  for non-image uploads. */
+  image_exif_policy: ExifPolicy | null;
 }
 
 /**
@@ -456,13 +528,72 @@ export interface BlobWaitFreshResult {
   vantage: "gateway-us-east-1";
 }
 
+/**
+ * v1.50: sort key for {@link BlobLsOptions.sort}. Cursor semantics differ
+ * per sort — the gateway returns a sort-pinned cursor that cannot be reused
+ * with a different `sort` value (HTTP 400 `INVALID_CURSOR_FOR_SORT`).
+ */
+export type AssetSortKey = "key:asc" | "createdAt:asc" | "createdAt:desc";
+
+/**
+ * v1.50: media-picker filter keys for {@link BlobLsOptions.filter}. All
+ * snake_case to match the wire-level query parameters. Unknown keys are
+ * rejected client-side with `INVALID_FILTER_KEY` before any HTTP call.
+ */
+export interface AssetFilter {
+  /** Match `uploaded_by` exactly. */
+  uploaded_by?: string;
+  /** Match a metadata `tags` array element (case-sensitive). */
+  tag?: string;
+  /** Match the decoded image format exactly (e.g. `"webp"`). */
+  format?: string;
+  /** Restrict to image uploads (`image_format` non-null) when true; to
+   *  non-image uploads when false. Omit to include both. */
+  is_image?: boolean;
+  /** Width range filter, inclusive. */
+  min_width?: number;
+  max_width?: number;
+  /** Height range filter, inclusive. */
+  min_height?: number;
+  max_height?: number;
+}
+
+/** v1.50: documented filter keys. Used by the client-side validator to
+ *  reject unknown keys before any HTTP call. */
+export const ASSET_FILTER_KEYS: ReadonlySet<string> = new Set([
+  "uploaded_by",
+  "tag",
+  "format",
+  "is_image",
+  "min_width",
+  "max_width",
+  "min_height",
+  "max_height",
+]);
+
+/** v1.50: documented sort keys. */
+export const ASSET_SORT_KEYS: ReadonlyArray<AssetSortKey> = [
+  "key:asc",
+  "createdAt:asc",
+  "createdAt:desc",
+];
+
 export interface BlobLsOptions {
   /** Filter: only return blobs whose key starts with this prefix. */
   prefix?: string;
   /** Max results. Server default 100, max 1000. */
   limit?: number;
-  /** Pagination cursor from a previous response's `next_cursor`. */
+  /** Pagination cursor from a previous response's `next_cursor`. Cursor
+   *  is sort-pinned (v1.50): reusing a `createdAt:*` cursor with `key:asc`
+   *  (or vice versa) returns HTTP 400 `INVALID_CURSOR_FOR_SORT`. */
   cursor?: string;
+  /** v1.50: sort key. Default `"key:asc"` (legacy bare-key cursor). The
+   *  `createdAt:*` variants use a base64url JSON cursor `{s, ts, key}`.
+   *  Invalid values are rejected client-side with `INVALID_SORT`. */
+  sort?: AssetSortKey;
+  /** v1.50: media-picker filter. Unknown keys are rejected client-side
+   *  with `INVALID_FILTER_KEY` before any HTTP call. */
+  filter?: AssetFilter;
 }
 
 export interface BlobSummary {
@@ -471,6 +602,28 @@ export interface BlobSummary {
   content_type: string | null;
   visibility: BlobVisibility;
   created_at: string;
+
+  // v1.50+ metadata + EXIF policy + image intrinsics (flat shape; mirrors
+  // AssetRef). `null` for non-image uploads (except `metadata`, which
+  // tracks caller-provided values regardless of MIME).
+
+  /** Caller-supplied flat metadata. `null` when no metadata was set. */
+  metadata?: AssetMetadata | null;
+  /** Decoded image format. `null` for non-image rows. */
+  image_format?: string | null;
+  /** Server-extracted intrinsic image info. `null` for non-image rows. */
+  image_info?: Record<string, unknown> | null;
+  /** Server-extracted EXIF block. `null` for non-image rows, stripped EXIF,
+   *  and image formats that do not carry EXIF. */
+  image_exif?: Record<string, unknown> | null;
+  /** Echo of the EXIF policy actually applied. `null` for non-image rows. */
+  image_exif_policy?: ExifPolicy | null;
+  /** v1.49+: display-oriented pixel width when known. */
+  width_px?: number;
+  /** v1.49+: display-oriented pixel height when known. */
+  height_px?: number;
+  /** v1.49+: LQIP blurhash when known. */
+  blurhash?: string;
 }
 
 export interface BlobLsResult {

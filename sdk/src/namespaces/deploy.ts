@@ -79,6 +79,10 @@ import type {
   StartOptions,
   WarningEntry,
 } from "./deploy.types.js";
+import {
+  assertAssetMetadata,
+  assertExifPolicy,
+} from "./assets-validation.js";
 import type { TierStatusResult } from "./tier.js";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -3011,6 +3015,14 @@ function buildAssetManifestFromPlanEntries(
       e.display_immutable_url = ref.display_immutable_url;
     }
     if (ref.variants !== undefined) e.variants = ref.variants;
+    // v1.50 pass-through: metadata + EXIF policy + image intrinsics.
+    // Pre-v1.50 plan responses omit them; the manifest entry stays
+    // bytewise-identical to before for older gateways.
+    if (ref.metadata !== undefined) e.metadata = ref.metadata;
+    if (ref.image_format !== undefined) e.image_format = ref.image_format;
+    if (ref.image_info !== undefined) e.image_info = ref.image_info;
+    if (ref.image_exif !== undefined) e.image_exif = ref.image_exif;
+    if (ref.image_exif_policy !== undefined) e.image_exif_policy = ref.image_exif_policy;
     list.push(e);
     byKey[entry.key] = e;
     manifest[entry.key] = e;
@@ -3105,32 +3117,57 @@ async function normalizeAssetSlice(
       }
       seenKeys.add(entry.key);
 
-      if (isAssetPutEntryInput(entry)) {
-        const label = `assets.put[${idx}] (${entry.key})`;
-        const resolved = await resolveContent(entry.source, label);
+      // v1.50: validate caller-supplied metadata / EXIF policy on BOTH
+      // shapes BEFORE any HTTP traffic. Throws LocalError with the
+      // canonical gateway code (INVALID_ASSET_METADATA / INVALID_EXIF_
+      // POLICY) so consumers see the same `e.code` whether the rejection
+      // was local or remote.
+      const inputShape = isAssetPutEntryInput(entry) ? entry : null;
+      const wireShape = inputShape ? null : (entry as AssetPutEntry);
+      const callerMetadata = inputShape?.metadata ?? wireShape?.metadata;
+      const callerExifPolicy = inputShape?.exifPolicy ?? wireShape?.exif_policy;
+      if (callerMetadata !== undefined) {
+        assertAssetMetadata(callerMetadata, "validating asset metadata");
+      }
+      if (callerExifPolicy !== undefined) {
+        assertExifPolicy(callerExifPolicy, "validating asset EXIF policy");
+      }
+
+      if (inputShape) {
+        const label = `assets.put[${idx}] (${inputShape.key})`;
+        const resolved = await resolveContent(inputShape.source, label);
         if (!resolved.ref.contentType) {
-          resolved.ref.contentType = entry.content_type ?? guessContentType(entry.key);
+          resolved.ref.contentType = inputShape.content_type ?? guessContentType(inputShape.key);
         }
         const ref = remember(resolved);
         put.push({
-          key: entry.key,
+          key: inputShape.key,
           sha256: ref.sha256,
           size_bytes: ref.size,
-          content_type: entry.content_type ?? ref.contentType ?? "application/octet-stream",
-          visibility: entry.visibility ?? "public",
-          immutable: entry.immutable ?? true,
+          content_type: inputShape.content_type ?? ref.contentType ?? "application/octet-stream",
+          visibility: inputShape.visibility ?? "public",
+          immutable: inputShape.immutable ?? true,
+          // v1.50: thread metadata + exif_policy onto the wire-shape. The
+          // SDK input field is camelCase (`exifPolicy`); the wire field is
+          // snake_case (`exif_policy`).
+          ...(inputShape.metadata !== undefined ? { metadata: inputShape.metadata } : {}),
+          ...(inputShape.exifPolicy !== undefined ? { exif_policy: inputShape.exifPolicy } : {}),
         });
       } else {
         // Wire-shaped entry — pass through verbatim. The caller is
         // responsible for ensuring the bytes are already in CAS (or will
         // be uploaded out-of-band).
+        const w = wireShape as AssetPutEntry;
         put.push({
-          key: entry.key,
-          sha256: entry.sha256,
-          size_bytes: entry.size_bytes,
-          content_type: entry.content_type ?? "application/octet-stream",
-          visibility: entry.visibility ?? "public",
-          immutable: entry.immutable ?? true,
+          key: w.key,
+          sha256: w.sha256,
+          size_bytes: w.size_bytes,
+          content_type: w.content_type ?? "application/octet-stream",
+          visibility: w.visibility ?? "public",
+          immutable: w.immutable ?? true,
+          // v1.50 wire-shape passthrough (no camelCase conversion needed).
+          ...(w.metadata !== undefined ? { metadata: w.metadata } : {}),
+          ...(w.exif_policy !== undefined ? { exif_policy: w.exif_policy } : {}),
         });
       }
     }

@@ -212,8 +212,37 @@ export class LocalError extends Run402Error {
   static readonly DEFAULT_RETRYABLE = false;
   readonly kind = "local_error" as const;
   readonly cause?: unknown;
-  constructor(message: string, context: string, cause?: unknown) {
-    super(message, null, null, context);
+  /**
+   * @param message Human-readable error message.
+   * @param context Short verb phrase identifying the operation (used for triage).
+   * @param opts Optional. Pass a raw `unknown` for back-compat (treated as `cause`),
+   *   or an options bag `{ cause?, code?, details? }` to thread a stable error
+   *   `code` (mirrors a gateway error code so client-side validators throw with
+   *   the same `code` field consumers branch on).
+   */
+  constructor(
+    message: string,
+    context: string,
+    opts?: unknown | { cause?: unknown; code?: string; details?: unknown },
+  ) {
+    const bag =
+      opts && typeof opts === "object" && !Array.isArray(opts) &&
+      ("cause" in (opts as object) ||
+        "code" in (opts as object) ||
+        "details" in (opts as object))
+        ? (opts as { cause?: unknown; code?: string; details?: unknown })
+        : null;
+    const code = bag?.code;
+    const details = bag?.details;
+    const cause = bag ? bag.cause : opts;
+    const envelope: Record<string, unknown> | null =
+      code !== undefined || details !== undefined
+        ? {
+            ...(code !== undefined ? { code } : {}),
+            ...(details !== undefined ? { details } : {}),
+          }
+        : null;
+    super(message, null, envelope, context);
     if (cause !== undefined) this.cause = cause;
   }
 }

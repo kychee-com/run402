@@ -27,6 +27,10 @@ import type {
   ReleaseSpec,
 } from "../namespaces/deploy.types.js";
 import { fileSetFromDir, type FileSetFromDirOptions } from "./files.js";
+import {
+  assertAssetMetadata,
+  assertExifPolicy,
+} from "../namespaces/assets-validation.js";
 
 // ───────────────────────────────────────────────────────────────────────────
 // dir(path) — synchronous SDK-input-only directory reference
@@ -132,6 +136,42 @@ function applyPrefix(prefix: string | undefined, relPath: string): string {
   return prefix.endsWith("/") ? `${prefix}${relPath}` : `${prefix}/${relPath}`;
 }
 
+/**
+ * v1.50: apply per-call default metadata + EXIF policy to every entry walked
+ * from a directory. Validates the defaults ONCE up front (fail fast) so a
+ * malformed metadata bag or invalid exifPolicy throws before any byte-reader
+ * is registered. Returns a new entries array with the per-call defaults
+ * merged onto each entry that does not already carry its own value (entry-
+ * level values always win).
+ */
+function applyAssetEntryDefaults(
+  entries: AssetPutEntryInput[],
+  defaults: {
+    metadata?: Record<string, string | number | boolean | string[]>;
+    exifPolicy?: "keep" | "strip";
+  },
+  context: string,
+): AssetPutEntryInput[] {
+  if (defaults.metadata !== undefined) {
+    assertAssetMetadata(defaults.metadata, context);
+  }
+  if (defaults.exifPolicy !== undefined) {
+    assertExifPolicy(defaults.exifPolicy, context);
+  }
+  if (defaults.metadata === undefined && defaults.exifPolicy === undefined) {
+    return entries;
+  }
+  return entries.map((e) => ({
+    ...e,
+    ...(e.metadata === undefined && defaults.metadata !== undefined
+      ? { metadata: defaults.metadata }
+      : {}),
+    ...(e.exifPolicy === undefined && defaults.exifPolicy !== undefined
+      ? { exifPolicy: defaults.exifPolicy }
+      : {}),
+  }));
+}
+
 // ───────────────────────────────────────────────────────────────────────────
 // AssetManifest — the batch result envelope
 // ───────────────────────────────────────────────────────────────────────────
@@ -224,6 +264,11 @@ export interface PutManyItem {
   contentType?: string;
   visibility?: "public" | "private";
   immutable?: boolean;
+  /** v1.50: per-item caller-provided metadata. Same shape and validation
+   *  as {@link AssetPutEntryInput.metadata}. */
+  metadata?: Record<string, string | number | boolean | string[]>;
+  /** v1.50: per-item EXIF policy override. */
+  exifPolicy?: "keep" | "strip";
 }
 
 export interface UploadDirOptions extends DirOptions {
@@ -231,6 +276,13 @@ export interface UploadDirOptions extends DirOptions {
   project: string;
   /** Optional progress callback. */
   onEvent?: (event: DeployEvent) => void;
+  /** v1.50: default metadata applied to every entry walked from the
+   *  directory. Per-call default — entries that need per-key metadata
+   *  should use {@link NodeAssets.putMany} instead. */
+  metadata?: Record<string, string | number | boolean | string[]>;
+  /** v1.50: default EXIF policy applied to every entry walked from the
+   *  directory. */
+  exifPolicy?: "keep" | "strip";
 }
 
 export interface SyncDirOptions extends UploadDirOptions {
@@ -300,8 +352,18 @@ export class NodeAssets extends Assets {
         "uploading asset directory",
       );
     }
+    // v1.50: apply per-call default metadata + EXIF policy to every entry
+    // walked from the directory. The deploy normalizer validates each
+    // entry's metadata/exifPolicy individually and would surface
+    // INVALID_ASSET_METADATA / INVALID_EXIF_POLICY before any HTTP call,
+    // but for a per-call default we want to fail fast (once) rather than
+    // re-validate per entry.
+    const decoratedEntries = applyAssetEntryDefaults(entries, {
+      metadata: opts.metadata,
+      exifPolicy: opts.exifPolicy,
+    }, "uploading asset directory");
     const result = await this.applyEngine().apply(
-      { project: opts.project, assets: { put: entries } },
+      { project: opts.project, assets: { put: decoratedEntries } },
       { onEvent: opts.onEvent },
     );
     return manifestFromResult(result, undefined, Date.now() - start);
@@ -326,7 +388,11 @@ export class NodeAssets extends Assets {
       ignore: opts.ignore,
       includeSensitive: opts.includeSensitive,
     });
-    const entries = await entriesFromLocalDir(ref);
+    const entries = applyAssetEntryDefaults(
+      await entriesFromLocalDir(ref),
+      { metadata: opts.metadata, exifPolicy: opts.exifPolicy },
+      "syncing asset directory",
+    );
     if (!opts.prune) {
       // Additive sync — same path as uploadDir.
       const result = await this.applyEngine().apply(
@@ -496,6 +562,12 @@ export class NodeAssets extends Assets {
       content_type: item.contentType,
       visibility: item.visibility,
       immutable: item.immutable,
+      // v1.50: per-item metadata + exifPolicy passthrough. The deploy
+      // normalizer validates each value individually with the same
+      // `INVALID_ASSET_METADATA` / `INVALID_EXIF_POLICY` codes the
+      // gateway would return.
+      ...(item.metadata !== undefined ? { metadata: item.metadata } : {}),
+      ...(item.exifPolicy !== undefined ? { exifPolicy: item.exifPolicy } : {}),
     }));
     const result = await this.applyEngine().apply(
       { project: opts.project, assets: { put: entries } },

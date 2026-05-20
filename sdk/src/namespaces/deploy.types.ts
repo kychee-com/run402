@@ -135,6 +135,14 @@ export interface AssetPutEntry {
    *  so older content-hashed URLs survive future key mutation/delete (per
    *  the visibility-aware URL matrix). */
   immutable?: boolean;
+  /** v1.50 wire: caller-provided flat metadata stored alongside the asset.
+   *  Validated client-side (≤4 KB serialized; leaves are
+   *  `string | number | boolean | string[]`). */
+  metadata?: Record<string, string | number | boolean | string[]>;
+  /** v1.50 wire: EXIF retention policy applied to image uploads. Defaults
+   *  to `"keep"`. Invalid values are rejected client-side with
+   *  `INVALID_EXIF_POLICY`. */
+  exif_policy?: "keep" | "strip";
 }
 
 /**
@@ -159,6 +167,16 @@ export interface AssetPutEntryInput {
   content_type?: string;
   visibility?: "public" | "private";
   immutable?: boolean;
+  /** v1.50: caller-provided flat metadata stored alongside the asset.
+   *  Validated client-side (≤4 KB serialized; leaves are
+   *  `string | number | boolean | string[]`). Rejected with
+   *  `INVALID_ASSET_METADATA` for nested objects / non-allowed leaves. */
+  metadata?: Record<string, string | number | boolean | string[]>;
+  /** v1.50: EXIF retention policy applied to image uploads. Default
+   *  `"keep"`. Invalid values are rejected client-side with
+   *  `INVALID_EXIF_POLICY`. The normalizer converts this camelCase input
+   *  to the wire-shape `exif_policy`. */
+  exifPolicy?: "keep" | "strip";
 }
 
 export interface AssetSyncPruneConfirm {
@@ -1339,6 +1357,17 @@ export interface ResolvedAssetRef {
     large?: ResolvedAssetVariant;
     display_jpeg?: ResolvedAssetVariant;
   };
+
+  // v1.50+ asset metadata + EXIF policy + image intrinsics. Flat shape —
+  // NOT wrapped under `image: {}`. Optional on the wire (pre-v1.50
+  // gateways omit them); the SDK widens to `null` in the public-facing
+  // {@link AssetRef} envelope so consumers do not need to distinguish
+  // "omitted" from "explicitly null".
+  metadata?: Record<string, string | number | boolean | string[]> | null;
+  image_format?: string | null;
+  image_info?: Record<string, unknown> | null;
+  image_exif?: Record<string, unknown> | null;
+  image_exif_policy?: "keep" | "strip" | null;
 }
 
 export interface AssetSyncPlanBlock {
@@ -2095,6 +2124,15 @@ export interface AssetManifestEntry {
     large?: ResolvedAssetVariant;
     display_jpeg?: ResolvedAssetVariant;
   };
+
+  // v1.50+ asset metadata + EXIF policy + image intrinsics. Flat shape;
+  // threaded from `ResolvedAssetRef`. Optional on the wire (pre-v1.50
+  // gateways omit them).
+  metadata?: Record<string, string | number | boolean | string[]> | null;
+  image_format?: string | null;
+  image_info?: Record<string, unknown> | null;
+  image_exif?: Record<string, unknown> | null;
+  image_exif_policy?: "keep" | "strip" | null;
 }
 
 // ─── Apply / start / low-level options ───────────────────────────────────────

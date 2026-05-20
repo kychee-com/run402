@@ -29,6 +29,13 @@ import type {
   BlobWaitFreshOptions,
   BlobWaitFreshResult,
 } from "./assets.types.js";
+import {
+  appendAssetFilterTo,
+  assertAssetFilter,
+  assertAssetMetadata,
+  assertAssetSortKey,
+  assertExifPolicy,
+} from "./assets-validation.js";
 
 function encodeKey(key: string): string {
   return key.split("/").map(encodeURIComponent).join("/");
@@ -135,6 +142,15 @@ interface UploadCompleteResponse {
   display_url?: string;
   display_immutable_url?: string;
   variants?: BlobPutResult["variants"];
+  // v1.50+ metadata + EXIF policy + image intrinsics. Optional on the
+  // wire; absent for pre-v1.50 gateways. The SDK widens to `null` in the
+  // public envelope so consumers do not have to distinguish "omitted"
+  // from "explicitly null".
+  metadata?: Record<string, string | number | boolean | string[]> | null;
+  image_format?: string | null;
+  image_info?: Record<string, unknown> | null;
+  image_exif?: Record<string, unknown> | null;
+  image_exif_policy?: "keep" | "strip" | null;
 }
 
 function escapeHtmlAttr(s: string): string {
@@ -246,6 +262,16 @@ function buildAssetRef(
     ? variants?.thumb?.cdn_url ?? displayUrl
     : undefined;
 
+  // v1.50: widen each new field to a nullable property. Pre-v1.50 gateways
+  // omit them; widening to `null` (instead of optional `undefined`) keeps
+  // the consumer JSON shape stable and lets callers branch on
+  // `result.image_format === null` without an extra existence check.
+  const metadataField = resp.metadata ?? null;
+  const imageFormatField = resp.image_format ?? null;
+  const imageInfoField = resp.image_info ?? null;
+  const imageExifField = resp.image_exif ?? null;
+  const imageExifPolicyField = resp.image_exif_policy ?? null;
+
   return {
     key: resp.key,
     size_bytes: resp.size_bytes,
@@ -281,6 +307,16 @@ function buildAssetRef(
     ...(variants !== undefined ? { variants } : {}),
     ...(thumbUrl !== undefined ? { thumbUrl } : {}),
     ...(displayUrl !== undefined ? { displayUrl } : {}),
+
+    // v1.50: metadata + EXIF policy + image intrinsics (flat shape).
+    // Always present in the envelope; `null` for non-image uploads (and
+    // for pre-v1.50 gateway responses where the fields are absent on the
+    // wire).
+    metadata: metadataField,
+    image_format: imageFormatField,
+    image_info: imageInfoField,
+    image_exif: imageExifField,
+    image_exif_policy: imageExifPolicyField,
 
     scriptTag(opts) {
       // Default `defer: true` — modern best practice. Defer prevents
@@ -475,6 +511,17 @@ export class Assets {
     const immutable = opts.immutable ?? true;
     const visibility = opts.visibility ?? "public";
 
+    // v1.50: validate caller-supplied metadata + EXIF policy BEFORE any
+    // HTTP call. Errors throw LocalError with `code` set to the canonical
+    // gateway error code so consumers can branch on `e.code` regardless of
+    // whether the rejection happened locally or remotely.
+    if (opts.metadata !== undefined) {
+      assertAssetMetadata(opts.metadata, "uploading asset");
+    }
+    if (opts.exifPolicy !== undefined) {
+      assertExifPolicy(opts.exifPolicy, "uploading asset");
+    }
+
     // Check credentials early so callers get ProjectNotFound rather than a
     // generic error from inside the apply flow.
     const projectKeys = await this.client.getProject(projectId);
@@ -496,6 +543,8 @@ export class Assets {
             content_type: contentType,
             visibility,
             immutable,
+            ...(opts.metadata !== undefined ? { metadata: opts.metadata } : {}),
+            ...(opts.exifPolicy !== undefined ? { exifPolicy: opts.exifPolicy } : {}),
           },
         ],
       },
@@ -544,6 +593,14 @@ export class Assets {
         ? { display_immutable_url: entry.display_immutable_url }
         : {}),
       ...(entry.variants !== undefined ? { variants: entry.variants } : {}),
+      // v1.50 metadata + EXIF policy + image intrinsics pass-through.
+      ...(entry.metadata !== undefined ? { metadata: entry.metadata } : {}),
+      ...(entry.image_format !== undefined ? { image_format: entry.image_format } : {}),
+      ...(entry.image_info !== undefined ? { image_info: entry.image_info } : {}),
+      ...(entry.image_exif !== undefined ? { image_exif: entry.image_exif } : {}),
+      ...(entry.image_exif_policy !== undefined
+        ? { image_exif_policy: entry.image_exif_policy }
+        : {}),
     };
     return buildAssetRef(completion, contentType);
   }
@@ -729,10 +786,18 @@ export class Assets {
     return res;
   }
 
-  /** List blobs with optional prefix + pagination. */
+  /** List blobs with optional prefix + pagination + (v1.50) sort + filter.
+   *  Unknown filter keys, invalid sort values, and other structural issues
+   *  are rejected client-side BEFORE any HTTP call. */
   async ls(projectId: string, opts: BlobLsOptions = {}): Promise<BlobLsResult> {
     if (opts.limit !== undefined) {
       assertPositiveSafeInteger(opts.limit, "limit", "listing blobs");
+    }
+    if (opts.sort !== undefined) {
+      assertAssetSortKey(opts.sort, "listing blobs");
+    }
+    if (opts.filter !== undefined) {
+      assertAssetFilter(opts.filter, "listing blobs");
     }
 
     const project = await this.client.getProject(projectId);
@@ -742,6 +807,8 @@ export class Assets {
     if (opts.prefix) qs.set("prefix", opts.prefix);
     if (opts.limit !== undefined) qs.set("limit", String(opts.limit));
     if (opts.cursor) qs.set("cursor", opts.cursor);
+    if (opts.sort) qs.set("sort", opts.sort);
+    if (opts.filter) appendAssetFilterTo(qs, opts.filter);
     const query = qs.toString();
     const path = `/storage/v1/blobs${query ? "?" + query : ""}`;
 

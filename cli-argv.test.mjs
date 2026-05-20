@@ -1158,3 +1158,123 @@ describe("project-id heuristic", () => {
     assert.equal(calls.length, 0);
   });
 });
+
+describe("v1.50 assets — --meta / --exif-policy / --sort / --filter argv (issue #393)", () => {
+  it("blob put threads --meta + --exif-policy onto the apply plan entry", async () => {
+    const { run } = await import("./cli/lib/assets.mjs");
+    const file = join(tempDir, "v150-hero.jpg");
+    writeFileSync(file, "fake-jpeg-bytes");
+    let planBody = null;
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = applyMockFetch({ onPlanBody: (b) => { planBody = b; } });
+    captureStart();
+    try {
+      await run("put", [
+        file,
+        "--project", "prj_test123",
+        "--meta", "uploaded_by=agent_abc",
+        "--meta", "version=3",
+        "--meta", "published=true",
+        "--meta", "tags=hero,banner",
+        "--exif-policy", "strip",
+      ]);
+    } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+    const entry = planBody?.spec?.assets?.put?.[0];
+    assert.deepEqual(entry?.metadata, {
+      uploaded_by: "agent_abc",
+      version: 3,
+      published: true,
+      tags: ["hero", "banner"],
+    }, "metadata coercion: string + number + boolean + string[]");
+    assert.equal(entry?.exif_policy, "strip");
+    assert.equal(entry?.exifPolicy, undefined, "camelCase SDK-input field must not leak to wire");
+  });
+
+  it("blob put rejects nested --meta value form before any network call", async () => {
+    const { run } = await import("./cli/lib/assets.mjs");
+    const file = join(tempDir, "v150-bad-meta.txt");
+    writeFileSync(file, "irrelevant");
+    // The CLI does not allow nested objects in --meta — only scalar / string[].
+    // Passing a key with no value (`--meta key=`) is allowed but coerces to
+    // empty string; an outright nested object can only be smuggled in via
+    // the SDK (which the SDK validator catches with INVALID_ASSET_METADATA).
+    // What we can verify here: bad form (no '=') is rejected with BAD_FLAG.
+    const err = await expectExit1(() => run("put", [
+      file, "--project", "prj_test123", "--meta", "uploaded_by_only",
+    ]));
+    assert.equal(err.code, "BAD_FLAG");
+    assert.match(err.message, /--meta requires key=value/);
+    assert.equal(calls.length, 0);
+  });
+
+  it("blob put rejects invalid --exif-policy before any network call", async () => {
+    const { run } = await import("./cli/lib/assets.mjs");
+    const file = join(tempDir, "v150-bad-exif.txt");
+    writeFileSync(file, "x");
+    const err = await expectExit1(() => run("put", [
+      file, "--project", "prj_test123", "--exif-policy", "drop",
+    ]));
+    assert.equal(err.code, "BAD_FLAG");
+    assert.match(err.message, /--exif-policy must be 'keep' or 'strip'/);
+    assert.equal(calls.length, 0);
+  });
+
+  it("assets ls --sort + --filter serialize into the request query", async () => {
+    const { run } = await import("./cli/lib/assets.mjs");
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = mockFetch;
+    captureStart();
+    try {
+      await run("ls", [
+        "--project", "prj_test123",
+        "--sort", "createdAt:desc",
+        "--filter", "is_image=true",
+        "--filter", "min_width=320",
+        "--filter", "format=webp",
+      ]);
+    } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+    const lsCall = calls.find((c) => c.path.startsWith("/storage/v1/blobs"));
+    assert.ok(lsCall, "ls call should hit /storage/v1/blobs");
+    const u = new URL(lsCall.url);
+    assert.equal(u.searchParams.get("sort"), "createdAt:desc");
+    assert.equal(u.searchParams.get("filter[is_image]"), "true");
+    assert.equal(u.searchParams.get("filter[min_width]"), "320");
+    assert.equal(u.searchParams.get("filter[format]"), "webp");
+  });
+
+  it("assets ls rejects invalid --sort before any network call", async () => {
+    const { run } = await import("./cli/lib/assets.mjs");
+    const err = await expectExit1(() => run("ls", [
+      "--project", "prj_test123", "--sort", "size:asc",
+    ]));
+    assert.equal(err.code, "BAD_FLAG");
+    assert.match(err.message, /--sort must be one of/);
+    assert.equal(calls.length, 0);
+  });
+
+  it("assets ls rejects unknown --filter key before any network call", async () => {
+    const { run } = await import("./cli/lib/assets.mjs");
+    const err = await expectExit1(() => run("ls", [
+      "--project", "prj_test123", "--filter", "uploadedBy=agent_abc",
+    ]));
+    assert.equal(err.code, "BAD_FLAG");
+    assert.match(err.message, /uploadedBy/);
+    assert.equal(calls.length, 0);
+  });
+
+  it("assets ls rejects non-boolean --filter is_image before network", async () => {
+    const { run } = await import("./cli/lib/assets.mjs");
+    const err = await expectExit1(() => run("ls", [
+      "--project", "prj_test123", "--filter", "is_image=yes",
+    ]));
+    assert.equal(err.code, "BAD_FLAG");
+    assert.match(err.message, /is_image must be 'true' or 'false'/);
+    assert.equal(calls.length, 0);
+  });
+});

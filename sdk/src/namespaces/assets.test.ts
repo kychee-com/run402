@@ -1175,3 +1175,153 @@ describe("assets.put — v1.49 imgTagWithSrcSet (foolproof guards + <picture> ou
 function ref_cdnImmutableLike(stem: string, ext: string): string {
   return `https://pr-abc.run402.com/_blob/${stem}-deadbeef.${ext}`;
 }
+
+// ---------------------------------------------------------------------------
+// v1.50 — metadata + EXIF policy + media-picker queries
+// ---------------------------------------------------------------------------
+
+describe("assets.put — v1.50 metadata + exifPolicy round-trip", () => {
+  it("threads validated metadata + exifPolicy onto the wire AssetPutEntry", async () => {
+    let outerCalls: FetchCall[] = [];
+    const shas = new Map<string, string>();
+    const entries: ApplyAssetEntry[] = [
+      { key: "hero.jpg", size_bytes: 9, content_type: "image/jpeg", visibility: "public", immutable: true, missing: true },
+    ];
+    const { fetch, calls } = mockFetch((call) =>
+      installApplyHandler({ calls: outerCalls }, entries, shas)(call),
+    );
+    outerCalls = calls;
+    const sdk = makeSdk(fetch);
+
+    await sdk.assets.put(
+      "prj_known",
+      "hero.jpg",
+      new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9]),
+      {
+        contentType: "image/jpeg",
+        metadata: { uploaded_by: "agent_abc", tags: ["hero", "banner"] },
+        exifPolicy: "strip",
+      },
+    );
+    const planCall = calls.find((c) => c.url.endsWith("/apply/v1/plans"))!;
+    const planBody = JSON.parse(planCall.body as string);
+    const entry = planBody.spec.assets.put[0];
+    assert.deepEqual(entry.metadata, { uploaded_by: "agent_abc", tags: ["hero", "banner"] });
+    assert.equal(entry.exif_policy, "strip");
+    // The camelCase SDK-input field MUST be stripped from the wire shape.
+    assert.equal(entry.exifPolicy, undefined);
+  });
+
+  it("rejects nested metadata with INVALID_ASSET_METADATA before any HTTP call", async () => {
+    const { fetch, calls } = mockFetch(() => {
+      throw new Error("unexpected fetch");
+    });
+    const sdk = makeSdk(fetch);
+    await assert.rejects(
+      sdk.assets.put("prj_known", "x.txt", { content: "x" }, {
+        metadata: { nested: { not: "allowed" } } as unknown as Record<string, string>,
+      }),
+      (err: unknown) =>
+        err instanceof LocalError && (err as LocalError).code === "INVALID_ASSET_METADATA",
+    );
+    assert.equal(calls.length, 0);
+  });
+
+  it("rejects invalid exifPolicy with INVALID_EXIF_POLICY before any HTTP call", async () => {
+    const { fetch, calls } = mockFetch(() => {
+      throw new Error("unexpected fetch");
+    });
+    const sdk = makeSdk(fetch);
+    await assert.rejects(
+      sdk.assets.put("prj_known", "x.txt", { content: "x" }, {
+        exifPolicy: "drop" as unknown as "keep",
+      }),
+      (err: unknown) =>
+        err instanceof LocalError && (err as LocalError).code === "INVALID_EXIF_POLICY",
+    );
+    assert.equal(calls.length, 0);
+  });
+});
+
+describe("assets.ls — v1.50 sort + filter surface", () => {
+  it("serializes documented sort + filter into the query string", async () => {
+    const { fetch, calls } = mockFetch(() => json({ blobs: [], next_cursor: null }));
+    const sdk = makeSdk(fetch);
+    await sdk.assets.ls("prj_known", {
+      sort: "createdAt:desc",
+      filter: {
+        uploaded_by: "agent_abc",
+        is_image: true,
+        min_width: 320,
+        format: "webp",
+      },
+    });
+    const u = new URL(calls[0]!.url);
+    assert.equal(u.pathname, "/storage/v1/blobs");
+    assert.equal(u.searchParams.get("sort"), "createdAt:desc");
+    assert.equal(u.searchParams.get("filter[uploaded_by]"), "agent_abc");
+    assert.equal(u.searchParams.get("filter[is_image]"), "true");
+    assert.equal(u.searchParams.get("filter[min_width]"), "320");
+    assert.equal(u.searchParams.get("filter[format]"), "webp");
+  });
+
+  it("rejects unknown filter keys with INVALID_FILTER_KEY before any HTTP call", async () => {
+    const { fetch, calls } = mockFetch(() => {
+      throw new Error("unexpected fetch");
+    });
+    const sdk = makeSdk(fetch);
+    await assert.rejects(
+      sdk.assets.ls("prj_known", {
+        filter: { uploadedBy: "x" } as unknown as Record<string, never>,
+      }),
+      (err: unknown) =>
+        err instanceof LocalError && (err as LocalError).code === "INVALID_FILTER_KEY",
+    );
+    assert.equal(calls.length, 0);
+  });
+
+  it("rejects invalid sort with INVALID_SORT before any HTTP call", async () => {
+    const { fetch, calls } = mockFetch(() => {
+      throw new Error("unexpected fetch");
+    });
+    const sdk = makeSdk(fetch);
+    await assert.rejects(
+      sdk.assets.ls("prj_known", { sort: "size:asc" as unknown as "key:asc" }),
+      (err: unknown) =>
+        err instanceof LocalError && (err as LocalError).code === "INVALID_SORT",
+    );
+    assert.equal(calls.length, 0);
+  });
+
+  it("threads new ls response fields (metadata + image_format + image_info + image_exif + image_exif_policy) through", async () => {
+    const responseRow = {
+      key: "hero.jpg",
+      size_bytes: 1234,
+      content_type: "image/jpeg",
+      visibility: "public",
+      created_at: "2026-05-20T00:00:00Z",
+      metadata: { uploaded_by: "agent_abc", tags: ["hero"] },
+      image_format: "jpeg",
+      image_info: { has_alpha: false, color_space: "srgb", orientation: 1 },
+      image_exif: { Make: "Canon" },
+      image_exif_policy: "keep",
+      width_px: 1920,
+      height_px: 1080,
+      blurhash: "L9AB*A%MfQ%M-;ofWBay~qof%Mt7",
+    };
+    const { fetch } = mockFetch(() =>
+      json({ blobs: [responseRow], next_cursor: null }),
+    );
+    const sdk = makeSdk(fetch);
+    const data = await sdk.assets.ls("prj_known");
+    const row = data.blobs[0]!;
+    assert.deepEqual(row.metadata, { uploaded_by: "agent_abc", tags: ["hero"] });
+    assert.equal(row.image_format, "jpeg");
+    assert.deepEqual(row.image_info, { has_alpha: false, color_space: "srgb", orientation: 1 });
+    assert.deepEqual(row.image_exif, { Make: "Canon" });
+    assert.equal(row.image_exif_policy, "keep");
+    assert.equal(row.width_px, 1920);
+    assert.equal(row.height_px, 1080);
+    assert.equal(row.blurhash, "L9AB*A%MfQ%M-;ofWBay~qof%Mt7");
+  });
+});
