@@ -1,0 +1,48 @@
+---
+/**
+ * <Image> component for @run402/astro.
+ *
+ * Consumes an AssetRef from the build-time registry (populated by the
+ * `run402()` integration's Vite plugin during `buildStart`) and emits a
+ * <picture> with the WebP variant ladder, an <img> fallback (or HEIC
+ * display_jpeg fallback), width/height attributes for CLS prevention, and
+ * a blurhash placeholder via inline background-image.
+ *
+ * USAGE
+ *
+ * ```astro
+ * ---
+ * import { Image } from '@run402/astro/Image.astro';
+ * ---
+ * <Image src="./images/hero.jpg" alt="Sunset over the Pacific" sizes="100vw" />
+ * ```
+ *
+ * The `src` prop is a string path relative to THIS .astro file. The Vite
+ * plugin rewrites it to an absolute filesystem path at build time so this
+ * component can look up the registry by absolute path. Users do not see
+ * the rewrite; their source remains the relative-path form.
+ */
+import { buildPictureHtml } from "./picture-builder.js";
+import { getAssetRef } from "./registry.js";
+import { MissingAssetRefError } from "./errors.js";
+import type { ImageProps } from "./types.js";
+
+interface Props extends ImageProps {}
+
+const props = Astro.props as Props;
+
+const ref = getAssetRef(props.src);
+if (!ref) {
+  throw new MissingAssetRefError(props.src, props.src);
+}
+
+const { html, warnings } = buildPictureHtml({ ref, props });
+for (const w of warnings) {
+  // Astro's logger isn't trivially accessible from a component, so warn
+  // via stderr. The build aggregates these in the run log.
+  // eslint-disable-next-line no-console
+  console.warn(`[run402-astro] ${w}`);
+}
+---
+
+<Fragment set:html={html} />

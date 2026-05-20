@@ -1,0 +1,37 @@
+---
+import { Image } from "@run402/astro/Image.astro";
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width" />
+    <title>@run402/astro fixture</title>
+  </head>
+  <body>
+    <h1>@run402/astro fixture</h1>
+
+    <!-- JPEG: variant happy path -->
+    <section>
+      <h2>Hero (JPEG)</h2>
+      <Image src="../images/hero.jpg" alt="Hero" sizes="100vw" priority />
+    </section>
+
+    <!-- HEIC: display_jpeg fallback path -->
+    <section>
+      <h2>Team photo (HEIC)</h2>
+      <Image
+        src="../images/photo.heic"
+        alt="Team retreat"
+        sizes="(min-width: 768px) 50vw, 100vw"
+      />
+    </section>
+
+    <!-- Sub-320 PNG: single-<img> fallback path -->
+    <section>
+      <h2>Icon (sub-320 PNG)</h2>
+      <Image src="../images/icon.png" alt="App icon" />
+    </section>
+  </body>
+</html>

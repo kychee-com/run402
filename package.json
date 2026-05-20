@@ -18,7 +18,8 @@
   ],
   "workspaces": [
     "cli",
-    "sdk"
+    "sdk",
+    "astro"
   ],
   "scripts": {
     "build:core": "rm -rf core/dist && tsc -p core/tsconfig.json",

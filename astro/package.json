@@ -1,0 +1,71 @@
+{
+  "name": "@run402/astro",
+  "version": "0.1.0",
+  "description": "Astro integration + <Image> component for Run402. One-line wiring for pre-encoded image variants (3-width WebP ladder + HEIC display_jpeg + blurhash + width/height) with zero runtime function cost.",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./Image.astro": "./src/Image.astro"
+  },
+  "files": [
+    "dist",
+    "src/Image.astro",
+    "!dist/*.test.*",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "test": "node --experimental-test-module-mocks --test --import tsx src/resolver.test.ts src/cache.test.ts src/scanner.test.ts src/uploader.test.ts src/component.test.ts"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "peerDependencies": {
+    "astro": ">=5 <7",
+    "@run402/sdk": ">=2.3"
+  },
+  "peerDependenciesMeta": {
+    "@run402/sdk": {
+      "optional": true
+    },
+    "astro": {
+      "optional": true
+    }
+  },
+  "dependencies": {
+    "blurhash": "^2.0.5"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.20.0",
+    "typescript": "^5.5.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kychee-com/run402.git",
+    "directory": "astro"
+  },
+  "homepage": "https://run402.com",
+  "bugs": "https://github.com/kychee-com/run402/issues",
+  "author": "Kychee Technologies",
+  "license": "MIT",
+  "keywords": [
+    "run402",
+    "astro",
+    "astro-integration",
+    "image",
+    "image-optimization",
+    "webp",
+    "heic",
+    "blurhash",
+    "responsive-images"
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
+}
