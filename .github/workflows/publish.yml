@@ -110,13 +110,18 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Run full test suite
-        run: npm test
-
       - name: Build all packages
+        # MUST run before tests: sync.test.ts and the CLI e2e tests import
+        # the compiled sdk/dist/index.js + cli/sdk/dist/ artifacts to
+        # validate surface drift. On a clean CI runner those paths don't
+        # exist until build runs. (Locally tests pass because the previous
+        # build is still in place.)
         # `npm run build` runs build:core + build:sdk + tsc (mcp) and stages
         # the per-package core-dist / sdk/dist mirrors that prepack uses.
         run: npm run build
+
+      - name: Run full test suite
+        run: npm test
 
       - name: Bump version (lockstep)
         id: bump
@@ -146,13 +151,6 @@ jobs:
 
       - name: Sync lockfile to reflect new versions
         run: npm install --package-lock-only
-
-      - name: Rebuild after bump
-        # The bump updated package.json files but didn't touch dist/ — the
-        # version string is read from package.json at runtime by the CLI's
-        # --version flag, so we re-run build to refresh any embedded
-        # version metadata in declaration files.
-        run: npm run build
 
       - name: Tarball smoke test
         run: |
