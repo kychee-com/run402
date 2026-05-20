@@ -210,6 +210,7 @@ export function createVitePlugin(state: VitePluginState): MinimalVitePlugin {
 
       const summary = await uploadAll(uniquePaths, state.client, state.cache, {
         prefix: state.prefix,
+        projectId: state.projectId,
         log: (e) => emitUploadEvent(e, state.verbose),
       });
 

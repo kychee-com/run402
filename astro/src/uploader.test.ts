@@ -112,6 +112,69 @@ describe("uploader", () => {
     assert.equal(attempts, 3);
   });
 
+  it("uses batched putMany when client exposes it and projectId is set", async () => {
+    // kychee-com/run402-private#408 follow-up: ONE plan + ONE commit
+    // for all cache-miss files instead of N per-file plans. Verifies
+    // putMany is called exactly once with all items.
+    const p1 = join(root, "images", "a.jpg");
+    const p2 = join(root, "images", "b.jpg");
+    const p3 = join(root, "images", "c.jpg");
+    writeFileSync(p1, Buffer.from([0xff, 0xd8, 1]));
+    writeFileSync(p2, Buffer.from([0xff, 0xd8, 2]));
+    writeFileSync(p3, Buffer.from([0xff, 0xd8, 3]));
+
+    let putManyCalls = 0;
+    let perCallPut = 0;
+    const client: ProjectAssetsClient = {
+      assets: {
+        put: async () => {
+          perCallPut++;
+          return fakeAssetRef();
+        },
+        putMany: async (items, _opts) => {
+          putManyCalls++;
+          return {
+            byKey: Object.fromEntries(
+              items.map((item) => [item.key, fakeAssetRef({ key: item.key })]),
+            ),
+          };
+        },
+      },
+    };
+
+    const cache = new BuildCache(root);
+    const summary = await uploadAll([p1, p2, p3], client, cache, {
+      projectId: "prj_test",
+    });
+
+    assert.equal(putManyCalls, 1, "putMany must be called exactly once");
+    assert.equal(perCallPut, 0, "per-file put must NOT be called when batched path is available");
+    assert.equal(summary.uploaded, 3);
+    assert.equal(summary.fromCache, 0);
+  });
+
+  it("falls back to per-file put when client lacks putMany OR projectId is unset", async () => {
+    // When projectId is omitted, even a putMany-capable client falls
+    // back to per-file. Keeps the legacy path available for tests and
+    // mocked clients.
+    const cache = new BuildCache(root);
+    let perCallPut = 0;
+    const client: ProjectAssetsClient = {
+      assets: {
+        put: async () => {
+          perCallPut++;
+          return fakeAssetRef();
+        },
+        putMany: async () => {
+          throw new Error("putMany should not be called");
+        },
+      },
+    };
+    const summary = await uploadAll([img], client, cache);
+    assert.equal(perCallPut, 1);
+    assert.equal(summary.uploaded, 1);
+  });
+
   it("retries on BASE_RELEASE_CONFLICT then succeeds (kychee-com/run402-private#408)", async () => {
     // Apply-substrate race: another deploy activated a new release
     // between plan and commit. With concurrency=1 the retry should

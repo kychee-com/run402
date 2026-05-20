@@ -155,7 +155,12 @@ function createClientLazy(
   projectId: string,
   userCredentials: unknown,
 ): import("./uploader.js").ProjectAssetsClient {
-  let real: { assets: { put: (...args: unknown[]) => Promise<unknown> } } | null = null;
+  let real:
+    | {
+        projectAssets: { put: (...args: unknown[]) => Promise<unknown> };
+        topAssets?: { putMany?: (...args: unknown[]) => Promise<unknown> };
+      }
+    | null = null;
   const get = async () => {
     if (real) return real;
     // The SDK is an optional peer dependency — type-resolved at the
@@ -165,7 +170,10 @@ function createClientLazy(
     // pull the v1.49-aware SDK).
     const sdkModuleId = "@run402/sdk/node";
     const sdk = (await import(/* @vite-ignore */ sdkModuleId)) as {
-      run402?: (opts?: { credentials?: unknown }) => unknown;
+      run402?: (opts?: { credentials?: unknown }) => {
+        project?: (id: string) => Promise<unknown>;
+        assets?: { putMany?: (...args: unknown[]) => Promise<unknown> };
+      };
       githubActionsCredentials?: (opts: { projectId: string }) => unknown;
     };
     const factory = sdk.run402;
@@ -200,16 +208,29 @@ function createClientLazy(
     const project = (await projectAccessor.call(r, projectId)) as {
       assets: { put: (...args: unknown[]) => Promise<unknown> };
     };
-    real = project;
-    return project;
+    // v0.2.2: also keep a reference to the TOP-LEVEL r.assets — that's
+    // where putMany lives (per `@run402/sdk/node` v2.3+; project-scoped
+    // assets only exposes `put`). Used by the uploader's batched path
+    // when `projectId` is supplied in UploaderOptions.
+    const topAssets = (r as { assets?: { putMany?: (...args: unknown[]) => Promise<unknown> } }).assets;
+    real = { projectAssets: project.assets, topAssets };
+    return real;
   };
   return {
     assets: {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       put: (async (...args: unknown[]) => {
         const client = await get();
-        return client.assets.put(...args);
+        return client.projectAssets.put(...args);
       }) as unknown as import("./uploader.js").ProjectAssetsClient["assets"]["put"],
+      putMany: (async (...args: unknown[]) => {
+        const client = await get();
+        if (typeof client.topAssets?.putMany !== "function") {
+          throw new Error(
+            "@run402/sdk/node client missing `assets.putMany` — bump @run402/sdk to ^2.3 for batched uploads.",
+          );
+        }
+        return client.topAssets.putMany(...args);
+      }) as unknown as NonNullable<import("./uploader.js").ProjectAssetsClient["assets"]["putMany"]>,
     },
   };
 }
