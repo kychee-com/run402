@@ -155,9 +155,22 @@ jobs:
             echo "$STRAY_TS"
             exit 1
           fi
-          # Scratch install + entry-point import must succeed:
+          # Scratch install verifies the package's own deps + peers resolve.
           (cd "$SMOKE/extract/package" && npm install --omit=dev)
-          node -e "import('$SMOKE/extract/package/dist/index.js').then(m => { if (typeof m.run402 !== 'function') { console.error('run402 export is not a function'); process.exit(1); } console.log('Smoke OK'); }).catch(e => { console.error('Import failed:', e.message); process.exit(1); })"
+          # Static structural validation. We deliberately do NOT
+          # `import('./dist/index.js')` in vanilla Node — the module
+          # re-exports `<Image>` from `./Image.astro`, and Node has no
+          # loader for `.astro`. This is expected; only Astro/Vite
+          # consumers can evaluate this module. So smoke-test the file
+          # structure + the static export list via grep, which catches
+          # packaging regressions (wrong main path, missing export,
+          # broken re-export specifier) without requiring an Astro build.
+          grep -q "^export function run402" "$SMOKE/extract/package/dist/index.js" \
+            || (echo "Missing run402 export from dist/index.js" && exit 1)
+          grep -q "^export { default as Image } from" "$SMOKE/extract/package/dist/index.js" \
+            || (echo "Missing Image re-export from dist/index.js" && exit 1)
+          grep -q "buildPictureHtml" "$SMOKE/extract/package/dist/Image.astro" \
+            || (echo "Image.astro missing expected import" && exit 1)
 
       - name: Publish to npm
         if: ${{ !inputs.dry_run }}
