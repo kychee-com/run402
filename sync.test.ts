@@ -232,6 +232,7 @@ const SURFACE: Capability[] = [
   { id: "ci_list_bindings",  endpoint: "GET /ci/v1/bindings",                               mcp: "ci_list_bindings",  cli: "ci:list",          openclaw: "ci:list" },
   { id: "ci_get_binding",    endpoint: "GET /ci/v1/bindings/:id",                           mcp: "ci_get_binding",    cli: null,               openclaw: null },
   { id: "ci_revoke_binding", endpoint: "POST /ci/v1/bindings/:id/revoke",                   mcp: "ci_revoke_binding", cli: "ci:revoke",        openclaw: "ci:revoke" },
+  { id: "ci_set_asset_scopes", endpoint: "POST /ci/v1/bindings/:id/asset-scopes",            mcp: null,                cli: "ci:set-asset-scopes", openclaw: "ci:set-asset-scopes" },
 
   // ── Marketplace ──────────────────────────────────────────────────────────
   { id: "browse_apps",       endpoint: "GET /apps/v1",                              mcp: "browse_apps",   cli: "apps:browse",   openclaw: "apps:browse" },
@@ -436,6 +437,7 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   ci_list_bindings: "ci.listBindings",
   ci_get_binding: "ci.getBinding",
   ci_revoke_binding: "ci.revokeBinding",
+  ci_set_asset_scopes: "ci.setAssetKeyScopes",
 
   // Marketplace
   browse_apps: "apps.browse",
