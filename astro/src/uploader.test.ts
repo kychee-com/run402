@@ -112,6 +112,30 @@ describe("uploader", () => {
     assert.equal(attempts, 3);
   });
 
+  it("retries on BASE_RELEASE_CONFLICT then succeeds (kychee-com/run402-private#408)", async () => {
+    // Apply-substrate race: another deploy activated a new release
+    // between plan and commit. With concurrency=1 the retry should
+    // succeed on attempt 2 (no other in-flight ops to lose to).
+    const cache = new BuildCache(root);
+    let attempts = 0;
+    const { client } = makeClient(async () => {
+      attempts++;
+      if (attempts === 1) {
+        const err = new Error(
+          "Another deploy activated release 'rel_X' since this operation was planned against base 'rel_Y'. Re-plan and retry.",
+        );
+        (err as unknown as { code: string; retryAfter: number }).code =
+          "BASE_RELEASE_CONFLICT";
+        (err as unknown as { code: string; retryAfter: number }).retryAfter = 0.01;
+        throw err;
+      }
+      return fakeAssetRef();
+    });
+    const summary = await uploadAll([img], client, cache, { maxRetries: 3 });
+    assert.equal(summary.uploaded, 1);
+    assert.equal(attempts, 2);
+  });
+
   it("throws GatewayUploadError after exhausting retries", async () => {
     const cache = new BuildCache(root);
     const { client } = makeClient(async () => {

@@ -84,13 +84,38 @@ export interface UploaderSummary {
   durationMs: number;
 }
 
-const DEFAULT_CONCURRENCY = 4;
+// v0.2.1 (closes kychee-com/run402-private#408): default concurrency
+// dropped from 4 → 1 because every `client.assets.put` routes through
+// the apply substrate (per SDK ≥2.1) — each put is its own
+// plan-against-base + commit. Parallel puts race on the same base
+// release and ALL but the first throw BASE_RELEASE_CONFLICT, so
+// concurrency=4 made every multi-file `assetsDir` build fail on the
+// first race. Serial puts (concurrency=1) plan against the LATEST
+// committed release each time, no conflict possible.
+//
+// The per-image gateway encoder is already 2-concurrent internally
+// (IMAGE_VARIANTS_MAX_CONCURRENCY in services/encoder-semaphore.ts),
+// so client-side concurrency >1 doesn't speed up the actual encode
+// work — it just contends on the apply pipeline. Net wall-clock
+// impact of concurrency=1 vs 4 is small for the apply path; encode
+// time is the bottleneck either way.
+//
+// Future v0.3 could pivot to the SDK's batched
+// `assets.uploadDir(path)` for ONE plan covering all files. For now,
+// concurrency=1 + retry is the simplest correct fix.
+const DEFAULT_CONCURRENCY = 1;
 const DEFAULT_PREFIX = "astro/";
 const DEFAULT_MAX_RETRIES = 3;
 
 const RETRYABLE_CODES = new Set([
   "TOO_MANY_ENCODES_QUEUED",
   "TOO_MANY_UPLOADS_IN_FLIGHT",
+  // Apply-substrate race: another deploy activated a new release
+  // between this op's plan and commit. Retrying re-plans against the
+  // now-latest base, which will succeed (assuming concurrency=1 within
+  // this build — other builds running against the same project are a
+  // different cross-build race we'd need backoff-with-jitter for).
+  "BASE_RELEASE_CONFLICT",
 ]);
 
 export async function uploadAll(

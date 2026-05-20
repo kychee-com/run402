@@ -160,13 +160,16 @@ export function createVitePlugin(state: VitePluginState): MinimalVitePlugin {
         discovery.push(...scan.references);
       }
 
-      if (discovery.length === 0) {
-        return;
-      }
-
-      // Resolve every reference. Resolver throws typed errors with file
-      // + path context for any unrecoverable case (leading slash, missing
-      // file, unsupported extension).
+      // Resolve every <Image>-discovered reference. Resolver throws
+      // typed errors with file + path context for any unrecoverable
+      // case (leading slash, missing file, unsupported extension).
+      //
+      // v0.2.1: do NOT early-return on `discovery.length === 0` here.
+      // That early-return was correct in v0.1.x when the only upload
+      // path was template scanning, but v0.2's `assetsDir` walk runs
+      // independently — a pure-data-driven consumer with no <Image>
+      // template literals still expects the manifest to be emitted.
+      // Closes kychee-com/run402-private#407.
       const refMap = state.refMap;
       const publicDirRefs = state.publicDirRefs;
       const publicDir = pathResolve(state.projectRoot, "public");
@@ -194,6 +197,9 @@ export function createVitePlugin(state: VitePluginState): MinimalVitePlugin {
           state.manifestKeyByAbsPath.set(absFile, key);
         }
       }
+
+      // Combined no-work check — both upload paths empty.
+      if (uniquePaths.size === 0) return;
 
       if (state.dryRun) {
         await emitDryRunReport(uniquePaths);
