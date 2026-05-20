@@ -121,6 +121,16 @@ jobs:
         run: npm run build
 
       - name: Run full test suite
+        # Workflow has `id-token: write`, so GitHub injects
+        # ACTIONS_ID_TOKEN_REQUEST_URL / _TOKEN. The CLI's `deploy apply`
+        # detects those vars as "running in GitHub Actions CI" and takes
+        # the OIDC-federation code path — which calls a real token-exchange
+        # endpoint not handled by the e2e mockFetch. Unset them on the test
+        # step ONLY; the publish steps below still need them to mint the
+        # OIDC token for the npm Trusted Publisher exchange.
+        env:
+          ACTIONS_ID_TOKEN_REQUEST_URL: ""
+          ACTIONS_ID_TOKEN_REQUEST_TOKEN: ""
         run: npm test
 
       - name: Bump version (lockstep)
