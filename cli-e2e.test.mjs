@@ -818,10 +818,31 @@ function capturedStderr() {
 
 // ─── Setup & teardown ────────────────────────────────────────────────────────
 
+// Snapshot of ambient GitHub-Actions OIDC env vars at file load. When this
+// test runs inside a workflow that has `permissions: id-token: write`,
+// GitHub injects ACTIONS_ID_TOKEN_REQUEST_URL / _TOKEN and sets
+// GITHUB_ACTIONS=true. The CLI's `deploy apply` reads those (see
+// `hasGithubActionsOidcEnv` in cli/lib/deploy-v2.mjs) and takes the
+// CI-OIDC token-exchange path — which calls a real endpoint not handled by
+// this file's mockFetch, breaking every `deploy apply` test. The dedicated
+// CI test file (cli-deploy-ci.test.mjs) sets these env vars deliberately;
+// everything in this file expects them absent. `before()` deletes them and
+// `after()` restores the original values.
+const _originalGithubActionsEnv = {
+  GITHUB_ACTIONS: process.env.GITHUB_ACTIONS,
+  ACTIONS_ID_TOKEN_REQUEST_URL: process.env.ACTIONS_ID_TOKEN_REQUEST_URL,
+  ACTIONS_ID_TOKEN_REQUEST_TOKEN: process.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN,
+};
+
 before(async () => {
   globalThis.fetch = mockFetch;
   // Override process.exit to throw
   process.exit = (code) => { throw new Error(`process.exit(${code})`); };
+  // Isolate from any ambient GitHub-Actions OIDC env — see comment on
+  // _originalGithubActionsEnv above.
+  delete process.env.GITHUB_ACTIONS;
+  delete process.env.ACTIONS_ID_TOKEN_REQUEST_URL;
+  delete process.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN;
 });
 
 after(async () => {
@@ -831,6 +852,10 @@ after(async () => {
   process.exit = originalExit;
   delete process.env.RUN402_CONFIG_DIR;
   delete process.env.RUN402_API_BASE;
+  for (const [key, value] of Object.entries(_originalGithubActionsEnv)) {
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
+  }
   rmSync(tempDir, { recursive: true, force: true });
 });
 

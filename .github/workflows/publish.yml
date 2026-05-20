@@ -121,19 +121,7 @@ jobs:
         run: npm run build
 
       - name: Run full test suite
-        # Workflow has `id-token: write`, so GitHub injects
-        # ACTIONS_ID_TOKEN_REQUEST_URL / _TOKEN. The CLI's `deploy apply`
-        # detects those vars as "running in GitHub Actions CI" and takes
-        # the OIDC-federation code path — which calls a real token-exchange
-        # endpoint not handled by the e2e mockFetch. `env: VAR: ""` sets the
-        # var to an empty string but keeps it defined (and some code paths
-        # see them via different channels); using shell `unset` actually
-        # removes them from the process env before npm test forks. The
-        # publish steps below still inherit the workflow-level OIDC env
-        # because they don't run through this shell.
-        run: |
-          unset ACTIONS_ID_TOKEN_REQUEST_URL ACTIONS_ID_TOKEN_REQUEST_TOKEN GITHUB_ACTIONS
-          npm test
+        run: npm test
 
       - name: Bump version (lockstep)
         id: bump

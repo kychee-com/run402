@@ -104,6 +104,19 @@ function captureStop() {
   console.error = originalError;
 }
 
+// Clear every env var in originalEnv. Use this between tests so each one
+// starts in a known clean state regardless of the ambient process env
+// (notably: GITHUB_ACTIONS=true + ACTIONS_ID_TOKEN_REQUEST_* injected by
+// any workflow that has `permissions: id-token: write`). Tests that need
+// the OIDC env set its values explicitly.
+function clearEnv() {
+  for (const key of Object.keys(originalEnv)) {
+    delete process.env[key];
+  }
+}
+
+// Restore the ambient env state captured at file load. Run once on `after`
+// so this file doesn't leak its mutations to whatever runs next.
 function restoreEnv() {
   for (const [key, value] of Object.entries(originalEnv)) {
     if (value === undefined) delete process.env[key];
@@ -130,7 +143,7 @@ after(() => {
 beforeEach(() => {
   calls = [];
   captureStop();
-  restoreEnv();
+  clearEnv();
 });
 
 describe("deploy apply GitHub Actions OIDC", () => {
