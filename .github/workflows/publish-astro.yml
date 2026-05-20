@@ -1,0 +1,202 @@
+# Publish @run402/astro to npm via Trusted Publisher OIDC.
+#
+# Triggered manually via `gh workflow run publish-astro.yml -f bump=<patch|minor|major>`.
+# Per the /publish-astro skill, this is the canonical publish path for the
+# Astro integration package as of 0.1.1+. Version 0.1.0 was published manually
+# with an OTP token (a one-time bootstrap; npm requires the package to exist
+# before a Trusted Publisher can be configured).
+#
+# WHY OIDC INSTEAD OF STORED TOKENS:
+# No npm token stored as a GitHub Secret. The job exchanges its short-lived
+# GitHub OIDC token for an even-shorter-lived npm publish credential at the
+# moment of publish. npm verifies the exchange against the Trusted Publisher
+# configuration on the package's npm settings (org `kychee-com`, repo
+# `run402`, this workflow file). If any of those match-claims diverge, the
+# exchange fails. Forking the repo, copying the workflow into a different
+# repo, or running an unauthorized branch all fail the npm-side check.
+#
+# WHY id-token: write:
+# Required for GitHub to mint the OIDC token. WITHOUT this permission the
+# token isn't issued and `npm publish` falls back to looking for a stored
+# auth token — which doesn't exist here, so the publish would 401.
+#
+# WHY contents: write:
+# Used to commit the version bump back to main + push the v<x.y.z>-astro tag.
+# The default GITHUB_TOKEN has this permission when the workflow declares it.
+
+name: Publish @run402/astro
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: 'Version bump kind'
+        required: true
+        default: 'patch'
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+      dry_run:
+        description: 'Dry run (build + smoke test only; no publish, no commit, no tag)'
+        type: boolean
+        default: false
+
+# Only one publish at a time per main branch. A second invocation queues
+# behind any in-flight publish so the version-bump commits stay ordered.
+concurrency:
+  group: publish-astro
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Bump, smoke, publish, tag
+    runs-on: ubuntu-latest
+    # Restrict to main. Workflow_dispatch can target any branch in the UI,
+    # but we want the canonical published commit to come from main.
+    if: github.ref == 'refs/heads/main'
+
+    permissions:
+      contents: write
+      id-token: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # Need history depth for `npm version` to look sane and for the
+          # commit-then-push step to operate against the current HEAD.
+          fetch-depth: 0
+          # Use the default GITHUB_TOKEN for the push back. Repo settings
+          # must allow Actions to push to main (Settings → Actions → General
+          # → Workflow permissions → Read and write).
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          # registry-url tells setup-node to write a project-level .npmrc
+          # that points at npmjs.org. Required for OIDC token exchange.
+          # Without this, `npm publish` may resolve to a different default
+          # registry on the runner.
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Configure git for commit + push
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint + type-check
+        run: npx tsc --noEmit -p astro
+
+      - name: Run unit tests
+        run: npm test --workspace=astro
+
+      - name: Build
+        run: npm run build --workspace=astro
+
+      - name: Bump version
+        id: bump
+        run: |
+          set -euo pipefail
+          cd astro
+          CUR=$(node -p "require('./package.json').version")
+          # `npm version <kind> --no-git-tag-version` modifies package.json
+          # in place and writes the new version to stdout (with a leading
+          # `v` we strip).
+          npm version "${{ inputs.bump }}" --no-git-tag-version >/dev/null
+          NEW=$(node -p "require('./package.json').version")
+          echo "Bumping @run402/astro: $CUR → $NEW"
+          echo "old=$CUR" >> "$GITHUB_OUTPUT"
+          echo "new=$NEW" >> "$GITHUB_OUTPUT"
+
+      - name: Sync lockfile to reflect new version
+        run: npm install --package-lock-only
+
+      - name: Tarball smoke test
+        run: |
+          set -euo pipefail
+          NEW="${{ steps.bump.outputs.new }}"
+          SMOKE=/tmp/smoke-astro
+          rm -rf "$SMOKE" && mkdir "$SMOKE"
+          (cd astro && npm pack --pack-destination "$SMOKE")
+          mkdir "$SMOKE/extract"
+          tar xzf "$SMOKE/run402-astro-$NEW.tgz" -C "$SMOKE/extract"
+          # Required artifacts:
+          test -f "$SMOKE/extract/package/src/Image.astro" || (echo "Missing Image.astro" && exit 1)
+          test -f "$SMOKE/extract/package/dist/index.js" || (echo "Missing dist/index.js" && exit 1)
+          test -f "$SMOKE/extract/package/dist/index.d.ts" || (echo "Missing dist/index.d.ts" && exit 1)
+          test -f "$SMOKE/extract/package/README.md" || (echo "Missing README" && exit 1)
+          # No stray TS sources (only .d.ts types allowed):
+          STRAY_TS=$(find "$SMOKE/extract/package" -name "*.ts" -not -name "*.d.ts" -print 2>/dev/null || true)
+          if [ -n "$STRAY_TS" ]; then
+            echo "Stray .ts files in tarball:"
+            echo "$STRAY_TS"
+            exit 1
+          fi
+          # Scratch install + entry-point import must succeed:
+          (cd "$SMOKE/extract/package" && npm install --omit=dev)
+          node -e "import('$SMOKE/extract/package/dist/index.js').then(m => { if (typeof m.run402 !== 'function') { console.error('run402 export is not a function'); process.exit(1); } console.log('Smoke OK'); }).catch(e => { console.error('Import failed:', e.message); process.exit(1); })"
+
+      - name: Publish to npm
+        if: ${{ !inputs.dry_run }}
+        run: |
+          cd astro
+          # --provenance is optional under OIDC (provenance is generated
+          # implicitly), but the flag makes the intent explicit and would
+          # cause the publish to fail loudly if OIDC isn't actually wired
+          # — which is exactly what we want during the first few CI runs.
+          # --access public is redundant (the package is already public from
+          # 0.1.0) but harmless and self-documenting.
+          npm publish --access public --provenance
+
+      - name: Commit version bump
+        if: ${{ !inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          git add astro/package.json package-lock.json
+          git commit -m "chore(astro): bump @run402/astro to v${{ steps.bump.outputs.new }}"
+          git push origin main
+
+      - name: Tag and push
+        if: ${{ !inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          git tag "v${{ steps.bump.outputs.new }}-astro"
+          git push origin "v${{ steps.bump.outputs.new }}-astro"
+
+      - name: Create GitHub release
+        if: ${{ !inputs.dry_run }}
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.bump.outputs.new }}-astro
+          name: '@run402/astro v${{ steps.bump.outputs.new }}'
+          generate_release_notes: true
+          # Compare from the previous astro tag to scope release notes to
+          # this package's commits, not the whole repo's.
+          target_commitish: main
+
+      - name: Summary
+        run: |
+          NEW="${{ steps.bump.outputs.new }}"
+          OLD="${{ steps.bump.outputs.old }}"
+          DRY="${{ inputs.dry_run }}"
+          {
+            echo "## @run402/astro publish summary"
+            echo ""
+            echo "- **Bump:** \`${{ inputs.bump }}\` ($OLD → $NEW)"
+            echo "- **Dry run:** $DRY"
+            if [ "$DRY" = "true" ]; then
+              echo ""
+              echo "_Dry run — no publish, no commit, no tag was made._"
+            else
+              echo "- **npm:** https://www.npmjs.com/package/@run402/astro/v/$NEW"
+              echo "- **Tag:** \`v$NEW-astro\`"
+              echo "- **Provenance attestation:** auto-generated via OIDC"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
