@@ -30,7 +30,23 @@ export default defineConfig({
 
 Set `RUN402_PROJECT_ID` in your environment (or pass `run402({ projectId: 'prj_...' })`).
 
-In CI, the integration auto-detects GitHub OIDC credentials when the workflow has `id-token: write` permission and a Run402 CI binding for the project.
+In CI, the integration auto-detects GitHub OIDC credentials when `GITHUB_ACTIONS=true` is set (which GitHub Actions sets automatically) and the workflow has `id-token: write` permission plus a Run402 CI binding for the project. No additional configuration needed for the GitHub-hosted case.
+
+For non-GitHub CI (GitLab, CircleCI, etc.), or to wire a custom credential provider, pass `credentials` explicitly:
+
+```js
+import { githubActionsCredentials } from '@run402/sdk/node';
+// or your own credential factory
+
+export default defineConfig({
+  integrations: [run402({
+    projectId: 'prj_...',
+    credentials: yourCustomCredentialProvider,
+  })],
+});
+```
+
+Locally (no `GITHUB_ACTIONS`), the SDK's `NodeCredentialsProvider` reads `~/.config/run402/projects.json` — same as the rest of the Run402 SDK / CLI tooling.
 
 ## Use
 

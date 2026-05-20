@@ -67,6 +67,24 @@ export interface Run402AstroOptions {
    * Same effect as setting `RUN402_ASTRO_VERBOSE=true` in the environment.
    */
   verbose?: boolean;
+  /**
+   * Override the SDK's credential resolution. Pass a value compatible
+   * with `@run402/sdk/node`'s `run402({ credentials })` option (typically
+   * the result of one of the SDK's credential factories like
+   * `githubActionsCredentials({ projectId })`).
+   *
+   * In v0.1.5+ the integration AUTO-DETECTS `GITHUB_ACTIONS=true` and
+   * uses `githubActionsCredentials({ projectId })` so most users never
+   * need to set this option. The escape hatch is here for power users
+   * running in non-GitHub CI environments, with custom credential
+   * providers (vault-backed, mTLS), or with test fixtures that need to
+   * inject a stub client.
+   *
+   * Local (no `GITHUB_ACTIONS`) without this option set: the SDK falls
+   * back to its own `NodeCredentialsProvider`, which reads the
+   * developer's `~/.config/run402/projects.json` keystore.
+   */
+  credentials?: unknown;
 }
 
 /** Props accepted by the `<Image>` component. */

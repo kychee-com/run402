@@ -82,7 +82,7 @@ export function run402(options: Run402AstroOptions = {}): AstroIntegration {
         // The client is real network I/O — we don't want to construct it
         // during config:setup if the user is in dry-run mode.
         if (!dryRun && projectId) {
-          state.client = createClientLazy(projectId);
+          state.client = createClientLazy(projectId, options.credentials);
         }
 
         updateConfig({
@@ -100,11 +100,26 @@ export function run402(options: Run402AstroOptions = {}): AstroIntegration {
  * `state.client`. The Vite plugin's `buildStart` is the only consumer; by
  * then npm has resolved `@run402/sdk` and the credential chain can run.
  *
+ * **Credential resolution order** (v0.1.5):
+ *   1. If `userCredentials` was passed via `run402({ credentials: ... })`
+ *      → use it as-is. Power-user escape hatch for non-GitHub CI,
+ *      vault-backed providers, or test fixtures.
+ *   2. Else if `process.env.GITHUB_ACTIONS === "true"` → use
+ *      `githubActionsCredentials({ projectId })`. This is what the
+ *      README has always claimed; v0.1.5 makes the claim true.
+ *      Closes kychee-com/run402-private#402.
+ *   3. Else → bare `run402()`. The SDK's own `NodeCredentialsProvider`
+ *      reads the developer's `~/.config/run402/projects.json` keystore
+ *      (laptop / dev path).
+ *
  * Using a Proxy lets us keep `state.client` typed as `ProjectAssetsClient`
  * without forcing the SDK import to resolve at config:setup time (which
  * matters in dry-run + in environments where the SDK install is slow).
  */
-function createClientLazy(projectId: string): import("./uploader.js").ProjectAssetsClient {
+function createClientLazy(
+  projectId: string,
+  userCredentials: unknown,
+): import("./uploader.js").ProjectAssetsClient {
   let real: { assets: { put: (...args: unknown[]) => Promise<unknown> } } | null = null;
   const get = async () => {
     if (real) return real;
@@ -115,7 +130,8 @@ function createClientLazy(projectId: string): import("./uploader.js").ProjectAss
     // pull the v1.49-aware SDK).
     const sdkModuleId = "@run402/sdk/node";
     const sdk = (await import(/* @vite-ignore */ sdkModuleId)) as {
-      run402?: (opts?: unknown) => unknown;
+      run402?: (opts?: { credentials?: unknown }) => unknown;
+      githubActionsCredentials?: (opts: { projectId: string }) => unknown;
     };
     const factory = sdk.run402;
     if (typeof factory !== "function") {
@@ -123,7 +139,25 @@ function createClientLazy(projectId: string): import("./uploader.js").ProjectAss
         "@run402/sdk/node does not export run402() — is the SDK installed and up to date?",
       );
     }
-    const r = factory();
+
+    // Resolve credentials per the documented order above.
+    let credentials = userCredentials;
+    if (credentials === undefined && process.env.GITHUB_ACTIONS === "true") {
+      if (typeof sdk.githubActionsCredentials !== "function") {
+        throw new Error(
+          "@run402/sdk/node does not export githubActionsCredentials() — bump @run402/sdk to a version with GitHub Actions OIDC support (≥2.2).",
+        );
+      }
+      credentials = sdk.githubActionsCredentials({ projectId });
+      // Visible at the start of every CI run — lets operators verify the
+      // OIDC path is being taken rather than the laptop-keystore path.
+      process.stderr.write(
+        `[run402-astro] GitHub Actions detected — using OIDC credentials for project ${projectId}\n`,
+      );
+    }
+
+    const r =
+      credentials !== undefined ? factory({ credentials }) : factory();
     const projectAccessor = (r as { project?: (id: string) => Promise<unknown> }).project;
     if (typeof projectAccessor !== "function") {
       throw new Error("@run402/sdk/node client missing `.project()` — bump @run402/sdk to ^2.3");
