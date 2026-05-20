@@ -2,6 +2,59 @@
 
 One-line Astro integration for Run402 image variants. Drop `<Image>` into your templates and get the v1.49 WebP variant ladder, HEIC `display_jpeg`, blurhash placeholder, and CDN-served immutable URLs - zero runtime function cost.
 
+## Before you start
+
+Four prerequisites must be true before `astro build` produces working `<picture>` markup. If any of these is missing, the build fails with an actionable error pointing at the exact CLI command to run — but skimming this checklist first saves a round-trip.
+
+### 1. Project ID is set
+
+```sh
+# Either env var:
+export RUN402_PROJECT_ID="prj_..."
+
+# Or pass via the integration:
+# astro.config.mjs → run402({ projectId: 'prj_...' })
+```
+
+### 2. Auth path matches your environment
+
+The integration auto-detects which path you're on:
+
+```sh
+# Locally — provisions ~/.config/run402/projects.json
+run402 login <project-id>
+
+# In CI (GitHub Actions) — workflow needs id-token: write AND a Run402 binding for the repo
+run402 ci link github --project <project-id> --repo <owner/repo>
+```
+
+GitHub Actions detection is automatic when `GITHUB_ACTIONS=true` is set (which GitHub sets for you). For non-GitHub CI, pass an explicit `credentials` provider via `run402({ credentials: ... })`.
+
+### 3. CI binding has asset_key_scopes for your prefix
+
+CI bindings are closed-by-default for the `spec.assets` slice. Grant the integration's default `astro/` prefix once per binding:
+
+```sh
+run402 ci list --project <project-id>                # find the binding id
+run402 ci set-asset-scopes <binding-id> 'astro/*'    # grant the prefix
+```
+
+If you customized `assetPrefix` in `run402({ assetPrefix: 'my-app/' })`, grant `'my-app/*'` instead. **Local-laptop wallet deploys skip this check; only CI sessions hit it.**
+
+### 4. Image CSS uses `height: auto` (or `aspect-ratio`)
+
+The `<Image>` component emits explicit `width`/`height` HTML attributes from the source's intrinsic dimensions to prevent cumulative layout shift (CLS). Pair this with `height: auto` (or `aspect-ratio: <w>/<h>`) in your CSS, otherwise responsive `width: 100%` rules will stretch images vertically:
+
+```css
+/* In your global stylesheet — required for any responsive <Image> usage */
+img {
+  max-width: 100%;
+  height: auto;
+}
+```
+
+This is the same CLS-prevention contract as Next.js's `<Image>`. v0.1.x doesn't check this at build time; it's docs-only because consumer CSS can be arbitrarily complex.
+
 ## Why
 
 Run402 v1.49 pre-encodes 3 WebP variants (320w / 800w / 1920w) + a display-friendly JPEG for HEIC sources + a blurhash placeholder for every image uploaded via the assets slice. Variants serve from CloudFront like any other static URL. This package wires that pipeline into Astro's build: walk your `<Image>` references, upload each unique source, render `<picture>` markup that consumes the variants.
@@ -28,9 +81,7 @@ export default defineConfig({
 });
 ```
 
-Set `RUN402_PROJECT_ID` in your environment (or pass `run402({ projectId: 'prj_...' })`).
-
-In CI, the integration auto-detects GitHub OIDC credentials when `GITHUB_ACTIONS=true` is set (which GitHub Actions sets automatically) and the workflow has `id-token: write` permission plus a Run402 CI binding for the project. No additional configuration needed for the GitHub-hosted case.
+Set `RUN402_PROJECT_ID` in your environment (or pass `run402({ projectId: 'prj_...' })`). See the "Before you start" section above for the full credential + binding setup.
 
 For non-GitHub CI (GitLab, CircleCI, etc.), or to wire a custom credential provider, pass `credentials` explicitly:
 

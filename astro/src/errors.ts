@@ -82,11 +82,86 @@ export class GatewayUploadError extends Error {
     absolutePath: string,
     gatewayStatus?: number,
   ) {
-    super(`${code} while uploading ${absolutePath}: ${message}`);
+    // v0.1.6 (closes kychee-com/run402-private#405): append a code-specific
+    // remediation hint so the operator sees the exact CLI command to run
+    // instead of having to grep docs or file an issue. Adapter consumers
+    // hit these errors deep in a Vite plugin output stream where context
+    // is otherwise hard to come by.
+    super(`${code} while uploading ${absolutePath}: ${message}${hintForCode(code, gatewayStatus)}`);
     this.name = "GatewayUploadError";
     this.code = code;
     this.absolutePath = absolutePath;
     this.gatewayStatus = gatewayStatus;
+  }
+}
+
+/**
+ * Per-error-code remediation hint appended to GatewayUploadError messages.
+ * Each hint names the exact `run402` CLI command (or step) to take.
+ *
+ * Stays in sync with the four prerequisites documented in the README
+ * "Before you start" section. If you change one, change the other.
+ */
+function hintForCode(code: string, gatewayStatus: number | undefined): string {
+  switch (code) {
+    case "PROJECT_NOT_FOUND":
+      return (
+        "\n\n  Auth path doesn't recognize this project.\n" +
+        "    - Locally: run402 login <project-id>\n" +
+        "                (provisions ~/.config/run402/projects.json)\n" +
+        "    - In CI:   confirm GITHUB_ACTIONS=true AND the workflow has\n" +
+        "               permissions: id-token: write, then verify a binding exists with\n" +
+        "               run402 ci list --project <project-id>\n" +
+        "  See @run402/astro README → 'Before you start' #2."
+      );
+    case "CI_ASSET_SCOPE_DENIED":
+      return (
+        "\n\n  CI binding's asset_key_scopes don't permit this prefix (closed by default).\n" +
+        "    run402 ci list --project <project-id>             # find the binding id\n" +
+        "    run402 ci set-asset-scopes <binding-id> 'astro/*' # grant the integration's prefix\n" +
+        "  Local-laptop wallet deploys skip this check; only CI sessions hit it.\n" +
+        "  See @run402/astro README → 'Before you start' #3."
+      );
+    case "FORBIDDEN":
+      // The SDK envelope-maps the gateway's CI_ASSET_SCOPE_DENIED to a
+      // generic FORBIDDEN for some endpoints. If the gateway message
+      // mentioned asset_key_scopes, treat it the same.
+      if (gatewayStatus === 403) {
+        return (
+          "\n\n  HTTP 403 from the gateway. If the underlying message mentions\n" +
+          "  asset_key_scopes, the CI binding hasn't been granted the integration's prefix:\n" +
+          "    run402 ci list --project <project-id>\n" +
+          "    run402 ci set-asset-scopes <binding-id> 'astro/*'\n" +
+          "  Otherwise, verify the project exists and the workflow's binding is for this repo.\n" +
+          "  See @run402/astro README → 'Before you start' #2 and #3."
+        );
+      }
+      return "";
+    case "IMAGE_DECODE_FAILED":
+      return (
+        "\n\n  Source bytes failed to decode as an image. The file may be corrupt,\n" +
+        "  not actually an image despite its extension, or use an encoding the gateway's\n" +
+        "  libvips/libheif build doesn't support. Verify with `file <path>` and `identify <path>`."
+      );
+    case "IMAGE_INPUT_TOO_LARGE":
+      return (
+        "\n\n  Source exceeds the 40 MP pixel cap or 12000-px-per-axis cap. Resize before upload\n" +
+        "  or override the gateway-side IMAGE_VARIANTS_MAX_PIXELS / IMAGE_VARIANTS_MAX_DIM."
+      );
+    case "QUOTA_EXCEEDED":
+      return (
+        "\n\n  Storage quota hit. Project tier caps storage_bytes; bump the tier or delete\n" +
+        "  unused blobs. The error envelope's details.caused_by_variant_shas (if present)\n" +
+        "  names which variant SHAs put you over."
+      );
+    case "TOO_MANY_ENCODES_QUEUED":
+      return (
+        "\n\n  Gateway encoder queue is full (default 4 deep, 2 concurrent). The integration\n" +
+        "  retries up to 3 times with backoff; if you'\\''re hitting this on every build,\n" +
+        "  reduce the integration's `concurrency` option or stagger builds across runners."
+      );
+    default:
+      return "";
   }
 }
 
