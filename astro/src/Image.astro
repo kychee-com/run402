@@ -2,26 +2,52 @@
 /**
  * <Image> component for @run402/astro.
  *
- * Consumes an AssetRef from the build-time registry (populated by the
- * `run402()` integration's Vite plugin during `buildStart`) and emits a
- * <picture> with the WebP variant ladder, an <img> fallback (or HEIC
- * display_jpeg fallback), width/height attributes for CLS prevention, and
- * a blurhash placeholder via inline background-image.
+ * Consumes an AssetRef from the build-time registry and emits a <picture>
+ * with the WebP variant ladder, an <img> fallback (or HEIC display_jpeg
+ * fallback), width/height attributes for CLS prevention, and a blurhash
+ * placeholder via inline background-image.
  *
  * USAGE
  *
  * ```astro
  * ---
- * import { Image } from '@run402/astro/Image.astro';
+ * import Image from '@run402/astro/Image.astro';
  * ---
  * <Image src="./images/hero.jpg" alt="Sunset over the Pacific" sizes="100vw" />
  * ```
  *
  * The `src` prop is a string path relative to THIS .astro file. The Vite
- * plugin rewrites it to an absolute filesystem path at build time so this
- * component can look up the registry by absolute path. Users do not see
- * the rewrite; their source remains the relative-path form.
+ * plugin rewrites it to an absolute filesystem path during the `load(id)`
+ * hook on `.astro` files (BEFORE Astro's compiler runs), so this component
+ * sees an absolute path at render time. Users do not see the rewrite;
+ * their source remains the relative-path form.
+ *
+ * REGISTRY: TWO LAYERS, by design.
+ *
+ * Module-level singletons (registry.ts) work inside `astro dev`, where
+ * build and render share the same JS realm. They DO NOT work for
+ * `astro build`, because Astro spawns separate SSR / static-render
+ * realms per page — each realm gets a fresh, empty copy of every
+ * imported module, including registry.ts. The Vite plugin's
+ * buildStart populates registry in the build realm; the render realm
+ * sees an empty Map and the component throws MissingAssetRefError.
+ *
+ * The fix (kychee-com/run402-private#401): a `virtual:run402-assetmap`
+ * Vite virtual module that the plugin populates with the AssetRef map
+ * as a JS literal during build. Vite bundles the literal into every
+ * realm's output, so each render realm has the same baked-in data.
+ *
+ * The component reads from BOTH:
+ *   1. virtualEntries — production-build path, baked-in literal Map
+ *      from the bundled virtual module.
+ *   2. getAssetRef(absPath) — dev-mode path, the module-level singleton
+ *      populated in-realm by the Vite plugin's buildStart hook (which
+ *      runs once at dev-server start in the SAME realm as renders).
+ *
+ * Whichever has the data wins. In `astro build`, virtualEntries does;
+ * in `astro dev`, the singleton does. Either way the lookup succeeds.
  */
+import virtualEntries from "virtual:run402-assetmap";
 import { buildPictureHtml } from "./picture-builder.js";
 import { getAssetRef } from "./registry.js";
 import { MissingAssetRefError } from "./errors.js";
@@ -31,7 +57,7 @@ interface Props extends ImageProps {}
 
 const props = Astro.props as Props;
 
-const ref = getAssetRef(props.src);
+const ref = virtualEntries.get(props.src) ?? getAssetRef(props.src);
 if (!ref) {
   throw new MissingAssetRefError(props.src, props.src);
 }

@@ -75,6 +75,7 @@ export function run402(options: Run402AstroOptions = {}): AstroIntegration {
           verbose,
           refMap: new Map(),
           publicDirRefs: new Set(),
+          virtualEntries: new Map(),
         };
 
         // Lazily initialize the SDK client at the moment we know we need it.
