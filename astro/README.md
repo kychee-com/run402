@@ -36,7 +36,7 @@ In CI, the integration auto-detects GitHub OIDC credentials when the workflow ha
 
 ```astro
 ---
-import { Image } from '@run402/astro';
+import Image from '@run402/astro/Image.astro';
 ---
 <Image src="./images/hero.jpg" alt="Sunset over the Pacific" sizes="100vw" priority />
 
@@ -45,15 +45,7 @@ import { Image } from '@run402/astro';
 
 `src` is resolved relative to the importing `.astro` file. TypeScript path aliases (`@/*`) also work if you have them in `tsconfig.json`.
 
-**Alternative subpath import** also works if you prefer being explicit about the `.astro` component file:
-
-```astro
----
-import Image from '@run402/astro/Image.astro';
----
-```
-
-(Note: subpath form uses default-import syntax because `.astro` files only have a default export. Both forms resolve to the same component.)
+**Note on the import shape.** `.astro` components have a single default export, so `import Image from '@run402/astro/Image.astro'` (default-import, subpath) is the only correct form. There is no `import { Image } from '@run402/astro'` named export — anything imported from `@run402/astro` must evaluate cleanly under vanilla Node so it can be loaded from `astro.config.mjs` before Vite is alive, and a top-level re-export of an `.astro` module breaks that boundary.
 
 ## Generated HTML
 

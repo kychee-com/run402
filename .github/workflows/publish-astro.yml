@@ -167,8 +167,16 @@ jobs:
           # broken re-export specifier) without requiring an Astro build.
           grep -q "^export function run402" "$SMOKE/extract/package/dist/index.js" \
             || (echo "Missing run402 export from dist/index.js" && exit 1)
-          grep -q "^export { default as Image } from" "$SMOKE/extract/package/dist/index.js" \
-            || (echo "Missing Image re-export from dist/index.js" && exit 1)
+          # Critical invariant: vanilla Node MUST be able to evaluate
+          # dist/index.js without an Astro/Vite resolver. The Astro CLI
+          # loads astro.config.mjs via Node BEFORE Vite is alive — any
+          # top-level .astro reference from this entry point dies with
+          # "Unknown file extension." kychee-com/run402-private#400 is
+          # the regression this check now prevents. (We don't grep for
+          # ".astro" in the source because JSDoc / comment text often
+          # mentions it legitimately; the actual runtime import is the
+          # only authoritative test.)
+          node -e "import('$SMOKE/extract/package/dist/index.js').then(m => { if (typeof m.run402 !== 'function') { console.error('run402 export is not a function'); process.exit(1); } console.log('Smoke OK'); }).catch(e => { console.error('Import failed:', e.message); process.exit(1); })"
           grep -q "buildPictureHtml" "$SMOKE/extract/package/dist/Image.astro" \
             || (echo "Image.astro missing expected import" && exit 1)
 

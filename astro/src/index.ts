@@ -1,18 +1,26 @@
 /**
  * `@run402/astro` — Astro integration for Run402 image variants.
  *
- * Exports:
+ * Exports from this module (pure JS, safe to import from astro.config.mjs):
  *   - `run402(options?)` — the Astro integration factory. Add to
  *     `astro.config.mjs` `integrations: [run402()]`.
- *   - `Image` — re-export of the `.astro` component file. Users import it
- *     via `import { Image } from '@run402/astro'` and use it directly in
- *     templates.
  *   - Types: `Run402AstroOptions`, `ImageProps`, `AssetRef`, `AssetVariant`.
  *
- * The integration is intentionally small. The real work lives in the Vite
- * plugin (image discovery, upload, source rewriting, public/ exclusion);
- * this module just wires the plugin into Astro's lifecycle and validates
- * configuration up front.
+ * The `<Image>` Astro component is shipped as a separate subpath:
+ *
+ *     import Image from '@run402/astro/Image.astro';
+ *
+ * Why subpath: this entry point must evaluate cleanly under vanilla
+ * Node (Astro CLI loads `astro.config.mjs` BEFORE Vite is alive, so
+ * any top-level `.astro` reference from here dies with "Unknown file
+ * extension"). The component file is reached only by Vite/Astro's
+ * plugin pipeline once Vite is running, which knows how to compile
+ * `.astro` source.
+ *
+ * The integration itself is intentionally small. The real work lives
+ * in the Vite plugin (image discovery, upload, source rewriting,
+ * public/ exclusion); this module just wires the plugin into Astro's
+ * lifecycle and validates configuration up front.
  */
 
 import { BuildCache } from "./cache.js";
@@ -143,21 +151,37 @@ function configRootToPath(root: URL | string | undefined): string {
   return String(root);
 }
 
-// Named re-export of the <Image> component so consumers can either:
-//   - import { Image } from '@run402/astro'                — ergonomic, matches React/Next conventions
-//   - import Image from '@run402/astro/Image.astro'        — explicit subpath form
+// <Image> is intentionally NOT re-exported from this module.
 //
-// Both forms resolve to the SAME `.astro` component shipped under
-// `dist/Image.astro`. The subpath form was the only thing that worked
-// in v0.1.1 (and was documented inconsistently — see kychee-com/
-// run402-private#399). v0.1.2 makes both forms work and aligns docs to
-// the named form.
+// We tried in v0.1.2 (kychee-com/run402-private#399):
 //
-// The tsc-side `*.astro` ambient declaration in `astro-modules.d.ts`
-// lets this re-export type-check; at runtime Vite/Astro resolves the
-// `./Image.astro` specifier against `dist/Image.astro` per the
-// package's exports map.
-export { default as Image } from "./Image.astro";
+//     export { default as Image } from "./Image.astro";
+//
+// That broke the entire package (kychee-com/run402-private#400). The
+// Astro CLI loads `astro.config.mjs` via Node's ESM loader BEFORE Vite
+// is alive. The user's config does `import { run402 } from
+// '@run402/astro'`. Node evaluates this module top-to-bottom, hits the
+// `export ... from "./Image.astro"` statement, has no loader for the
+// `.astro` extension, and dies. Vite's `noExternal` / Astro's compiler
+// plugin can't help because they aren't reachable yet — the config
+// itself hasn't loaded.
+//
+// The correct boundary: the integration entry point (this file) must
+// stay pure-JS so Node can evaluate it at config-load time. The Astro
+// component is reached only after Vite is up, via the subpath import:
+//
+//     import Image from '@run402/astro/Image.astro';
+//
+// That subpath is declared in the package's `exports` map and resolved
+// by Vite/Astro's plugin pipeline. `.astro` files have a single default
+// export, so the `import Image` (default) form is the only correct
+// shape regardless.
+//
+// If a future v0.2 pivots to the import-based pattern
+// (`import hero from './hero.jpg'`), the integration entry point STILL
+// stays pure-JS — the Vite plugin claims image imports in `load`,
+// which is also after Vite is alive. The config-load constraint
+// applies to anything imported from `'@run402/astro'`.
 
 // Type re-exports for consumers.
 export type { AssetRef, AssetVariant, ImageProps, Run402AstroOptions } from "./types.js";
