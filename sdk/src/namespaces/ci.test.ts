@@ -474,6 +474,22 @@ describe("assertCiDeployableSpec", () => {
     );
   });
 
+  it("accepts assets in CI preflight because the gateway enforces asset_key_scopes", () => {
+    // Regression test for kychee-com/run402-private#403 — v1.48
+    // unified-apply added the assets slice and the gateway's
+    // V1_CI_DEPLOY_SPEC_ALLOWLIST permits it (gated per-entry by the
+    // binding's asset_key_scopes). The SDK pre-validation used to omit
+    // `assets` from its allowed-keys set, which broke every CI consumer
+    // of `client.assets.put` (including @run402/astro).
+    assert.doesNotThrow(() => assertCiDeployableSpec({ project: "prj_abc", assets: null }));
+    assert.doesNotThrow(() =>
+      assertCiDeployableSpec({
+        project: "prj_abc",
+        assets: { put: [{ key: "astro/hero.jpg", content_sha256: "a".repeat(64) }] },
+      }),
+    );
+  });
+
   it("rejects forbidden fields by property presence, including empty containers", () => {
     for (const field of ["secrets", "subdomains", "checks"]) {
       assert.throws(

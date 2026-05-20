@@ -49,6 +49,13 @@ const CI_DEPLOY_SPEC_ALLOWED_KEYS = new Set([
   "site",
   "base",
   "routes",
+  // v1.48 unified-apply added the `assets` slice and the gateway's
+  // V1_CI_DEPLOY_SPEC_ALLOWLIST permits it (gated per-entry by the
+  // binding's `asset_key_scopes`). This SDK-side allowlist used to omit
+  // it, which made the local pre-validation reject CI asset uploads
+  // before the gateway ever saw them. Closes
+  // kychee-com/run402-private#403.
+  "assets",
 ]);
 
 export class Ci {
@@ -390,7 +397,7 @@ export function assertCiDeployableSpec(specOrPlanBody: ReleaseSpec | PlanRequest
       }
       throwCiDeploySpecError(
         key,
-        `CI deploy cannot ship spec.${key}; only project, database, functions, site, routes, and base:{release:"current"} are allowed.`,
+        `CI deploy cannot ship spec.${key}; only project, database, functions, site, routes, assets, and base:{release:"current"} are allowed.`,
       );
     }
   }
