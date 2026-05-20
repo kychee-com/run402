@@ -86,6 +86,7 @@ import type {
 } from "./namespaces/assets.types.js";
 import type {
   ContractCallOptions,
+  ContractDeployOptions,
   ContractReadOptions,
   ProvisionWalletOptions,
 } from "./namespaces/contracts.js";
@@ -382,6 +383,9 @@ class ScopedContracts {
   }
   call(opts: ContractCallOptions): Promise<unknown> {
     return this.parent.contracts.call(this.projectId, opts);
+  }
+  deploy(opts: ContractDeployOptions): Promise<unknown> {
+    return this.parent.contracts.deploy(this.projectId, opts);
   }
   callStatus(callId: string): Promise<unknown> {
     return this.parent.contracts.callStatus(this.projectId, callId);
