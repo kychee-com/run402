@@ -130,6 +130,53 @@ export class Ci {
     );
   }
 
+  /**
+   * Replace the asset_key_scopes on an existing CI binding.
+   *
+   * The gateway gates `spec.assets` (in plan / commit / direct uploads
+   * routed through CI sessions) by per-binding scopes (closed-by-default).
+   * Existing bindings created before v1.48 — and every binding created
+   * via `createBinding()`, which doesn't yet accept the parameter —
+   * default to no scopes, blocking `client.assets.put` under CI auth.
+   * This method grants scopes after the fact.
+   *
+   * Scope strings:
+   *   - `"astro/*"` — wildcard prefix; matches every key under `astro/`.
+   *     Use this when the consumer uploads under a known prefix
+   *     (the @run402/astro integration uses `astro/` by default).
+   *   - `"astro/hero.jpg"` — exact key match. Most callers want the
+   *     wildcard form.
+   *
+   * Authorization: same as revokeBinding — the caller's SIWE wallet
+   * must match the binding's project owner. Idempotent: passing the
+   * same scope list twice is a no-op (returns the same row).
+   */
+  async setAssetKeyScopes(
+    bindingId: string,
+    assetKeyScopes: readonly string[],
+  ): Promise<CiBindingRow> {
+    if (!bindingId) {
+      throw new LocalError(
+        "ci.setAssetKeyScopes requires a binding id",
+        "updating CI binding asset_key_scopes",
+      );
+    }
+    if (!Array.isArray(assetKeyScopes)) {
+      throw new LocalError(
+        "ci.setAssetKeyScopes requires asset_key_scopes as an array",
+        "updating CI binding asset_key_scopes",
+      );
+    }
+    return this.client.request<CiBindingRow>(
+      `/ci/v1/bindings/${encodeURIComponent(bindingId)}/asset-scopes`,
+      {
+        method: "POST",
+        body: { asset_key_scopes: assetKeyScopes },
+        context: "updating CI binding asset_key_scopes",
+      },
+    );
+  }
+
   async exchangeToken(input: CiTokenExchangeInput): Promise<CiTokenExchangeResponse> {
     if (!input?.project_id || !input.subject_token) {
       throw new LocalError(

@@ -23,11 +23,13 @@ Usage:
   run402 ci link github [--project <id>] [--manifest <path>] [--repo <owner/repo>] [--branch <name> | --environment <name>] [--repository-id <id>] [--workflow <path>] [--expires-at <iso>] [--route-scope <pattern> ...] [--force]
   run402 ci list [--project <id>]
   run402 ci revoke <binding_id>
+  run402 ci set-asset-scopes <binding_id> <scope1> [<scope2> ...]
 
 Subcommands:
-  link github   Link this repo/branch or environment for GitHub Actions deploys
-  list          List CI bindings for a project
-  revoke        Revoke a CI binding
+  link github          Link this repo/branch or environment for GitHub Actions deploys
+  list                 List CI bindings for a project
+  revoke               Revoke a CI binding
+  set-asset-scopes     Grant or replace asset_key_scopes on an existing binding
 `;
 
 const SUB_HELP = {
@@ -63,6 +65,25 @@ Usage:
 
 Usage:
   run402 ci revoke <binding_id>
+`,
+  "set-asset-scopes": `run402 ci set-asset-scopes — Grant or replace asset_key_scopes
+
+Usage:
+  run402 ci set-asset-scopes <binding_id> <scope1> [<scope2> ...]
+
+Examples:
+  run402 ci set-asset-scopes cib_abc astro/*
+  run402 ci set-asset-scopes cib_abc astro/* uploads/*
+
+Notes:
+  - Replaces ALL existing asset_key_scopes with the provided list.
+  - Scope strings: 'astro/*' (wildcard prefix) or 'astro/hero.jpg' (exact).
+  - Required by CI consumers of client.assets.put (e.g., @run402/astro) on
+    bindings created before v1.48 or via createBinding without scopes —
+    those default to closed (no scopes), so spec.assets is rejected with
+    HTTP 403 CI_ASSET_SCOPE_DENIED.
+  - Same SIWE-wallet authorization as revoke: caller's wallet must own
+    the binding's project.
 `,
 };
 
@@ -392,6 +413,34 @@ async function revoke(args) {
   }
 }
 
+async function setAssetScopes(args) {
+  const positional = args.filter((arg) => !arg.startsWith("--"));
+  const [bindingId, ...scopes] = positional;
+  if (!bindingId) {
+    fail({
+      code: "BAD_USAGE",
+      message: "Missing <binding_id>.",
+      hint: "run402 ci set-asset-scopes <binding_id> <scope1> [<scope2> ...]",
+    });
+  }
+  if (scopes.length === 0) {
+    fail({
+      code: "BAD_USAGE",
+      message: "Missing scope(s). At least one scope is required.",
+      hint: "run402 ci set-asset-scopes <binding_id> astro/*",
+    });
+  }
+  try {
+    const binding = await getSdk({ disablePaidFetch: true }).ci.setAssetKeyScopes(
+      bindingId,
+      scopes,
+    );
+    console.log(JSON.stringify({ status: "ok", binding }, null, 2));
+  } catch (err) {
+    reportSdkError(err);
+  }
+}
+
 export async function run(sub, args) {
   if (!sub || sub === "--help" || sub === "-h") {
     console.log(HELP);
@@ -405,6 +454,7 @@ export async function run(sub, args) {
     case "link": await linkGithub(args); break;
     case "list": await list(args); break;
     case "revoke": await revoke(args); break;
+    case "set-asset-scopes": await setAssetScopes(args); break;
     default:
       console.error(`Unknown subcommand: ${sub}\n`);
       console.log(HELP);
