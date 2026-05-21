@@ -362,6 +362,18 @@ export interface I18nSpec {
   detect?: I18nDetectSource[];
 }
 
+/** Materialized form of `I18nSpec` as it appears on release inventory
+ *  reads (`releases/active`, `releases/:id`). Same shape as `I18nSpec`
+ *  but with `detect` always populated — the gateway materializes the
+ *  default `["accept-language"]` when the spec omitted it, and preserves
+ *  `[]` verbatim. Use this when reading deployed state; use `I18nSpec`
+ *  when constructing a `ReleaseSpec`. */
+export interface ReleaseInventoryI18n {
+  defaultLocale: string;
+  locales: string[];
+  detect: I18nDetectSource[];
+}
+
 export const ROUTE_HTTP_METHODS = [
   "GET",
   "HEAD",
@@ -1640,6 +1652,14 @@ export interface ReleaseInventoryBase<
   subdomains: { names: string[] };
   routes: MaterializedRoutes;
   migrations_applied: MigrationAppliedEntry[];
+  /** Capability `routed-locale-context`. The materialized i18n slice on
+   *  this release, or `null` when the release has no i18n (clean base or
+   *  cleared via `i18n: null`). Gives callers a positive readback after
+   *  a deploy — `apply()` not throwing is necessary but not sufficient
+   *  verification. Older gateways predating the inventory-i18n change
+   *  may omit the field entirely; treat `undefined` as "unknown, fetch
+   *  on a newer gateway" rather than as "no slice". */
+  i18n?: ReleaseInventoryI18n | null;
   warnings?: DeployObservabilityWarningEntry[];
 }
 

@@ -4806,6 +4806,56 @@ describe("Deploy release observability", () => {
     }
   });
 
+  // Capability `routed-locale-context`. Surfaces the gateway's i18n
+  // readback on `ReleaseInventoryBase` so callers can verify a deploy
+  // shipped the spec.i18n they intended — `apply()` not throwing is
+  // necessary but not sufficient. See run402#395 comment for context.
+  it("surfaces the i18n slice on the active release inventory", async () => {
+    const w = makeWiring();
+    const activeInventory = {
+      ...inventory,
+      release_id: "rel_active",
+      state_kind: "current_live",
+      i18n: {
+        defaultLocale: "en",
+        locales: ["en", "es", "fr"],
+        detect: ["cookie:wl_locale", "accept-language"],
+      },
+    };
+    w.setHandler((req) => {
+      if (req.path === "/apply/v1/releases/active?site_limit=1") return activeInventory;
+      throw new Error(`unexpected ${req.path}`);
+    });
+
+    const deploy = new Deploy(w.client);
+    const result = await deploy.getActiveRelease({ project: "prj_test", siteLimit: 1 });
+
+    assert.deepEqual(result.i18n, {
+      defaultLocale: "en",
+      locales: ["en", "es", "fr"],
+      detect: ["cookie:wl_locale", "accept-language"],
+    });
+  });
+
+  it("preserves null i18n on the active release inventory", async () => {
+    const w = makeWiring();
+    const activeInventory = {
+      ...inventory,
+      release_id: "rel_active",
+      state_kind: "current_live",
+      i18n: null,
+    };
+    w.setHandler((req) => {
+      if (req.path === "/apply/v1/releases/active?site_limit=1") return activeInventory;
+      throw new Error(`unexpected ${req.path}`);
+    });
+
+    const deploy = new Deploy(w.client);
+    const result = await deploy.getActiveRelease({ project: "prj_test", siteLimit: 1 });
+
+    assert.equal(result.i18n, null);
+  });
+
   it("diffs release targets with encoded selectors, limit, and project apikey auth", async () => {
     const w = makeWiring();
     const diff = {
