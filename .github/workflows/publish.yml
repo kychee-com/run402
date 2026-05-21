@@ -222,7 +222,7 @@ jobs:
 
       - name: Create GitHub release
         if: ${{ !inputs.dry_run }}
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: v${{ steps.bump.outputs.new }}
           name: 'v${{ steps.bump.outputs.new }}'
