@@ -1,6 +1,6 @@
 {
   "name": "@run402/sdk",
-  "version": "2.9.0",
+  "version": "2.10.0",
   "description": "Typed TypeScript client for the Run402 API. Kernel shared by the run402-mcp server, the run402 CLI, and user-deployed run402 functions.",
   "type": "module",
   "main": "dist/index.js",
@@ -37,10 +37,18 @@
     "viem": "^2.47.1"
   },
   "peerDependenciesMeta": {
-    "@x402/evm": { "optional": true },
-    "@x402/fetch": { "optional": true },
-    "mppx": { "optional": true },
-    "viem": { "optional": true }
+    "@x402/evm": {
+      "optional": true
+    },
+    "@x402/fetch": {
+      "optional": true
+    },
+    "mppx": {
+      "optional": true
+    },
+    "viem": {
+      "optional": true
+    }
   },
   "engines": {
     "node": ">=22"
