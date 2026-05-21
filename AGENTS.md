@@ -8,17 +8,18 @@ This file is the single source of truth for AI coding agents working in this rep
 
 run402 is a developer platform that ships Postgres databases, content-addressed CDN storage, static site hosting, Node 22 serverless functions, email, image generation, and KMS-backed Ethereum signing — provisioned by AI agents and paid for autonomously via x402 USDC on Base, MPP pathUSD on Tempo, or Stripe credits. Prototype tier is free on testnet.
 
-This monorepo ships **five interfaces**:
+This monorepo ships **six interfaces**:
 
 - **SDK** (`sdk/`) — typed TypeScript client for the run402 API. Used by external integrators, MCP/CLI/OpenClaw, and (eventually) inside deployed functions. Published as `@run402/sdk` on npm. Two entry points: root (isomorphic — works in Node 22, Deno, Bun, V8 isolates) and `/node` (zero-config Node defaults — keystore + allowance + x402).
 - **MCP server** (root `src/`) — published as `run402-mcp` on npm. Each tool is a thin shim over an SDK call. Read by Claude Desktop / Cursor / Cline / Claude Code.
 - **CLI** (`cli/`) — standalone CLI published as `run402` on npm. Each subcommand is a thin shim over an SDK call; argv parsing and JSON output stay at the CLI edge.
 - **Functions library** — in-function helper imported _inside_ deployed serverless functions. Exposes `db(req)`, `adminDb()`, `getUser()`, `email`, `ai`, and `assets`. Published as `@run402/functions` on npm. **Source lives in the private gateway monorepo** (`kychee-com/run402-private` at `packages/functions/`) so it can co-evolve with the gateway code that bundles it. Distinct from the SDK: this is the request-scoped, in-function shape; the SDK is the typed external client. The two are complementary, not redundant.
 - **OpenClaw skill** (`openclaw/`) — script-based skill for OpenClaw agents, re-exports from CLI modules.
+- **Astro integration** (`astro/`) — framework integration that wires the SDK into Astro's build pipeline. Ships an `<Image>` component (build-time scan + variant rewrite), an `assetsDir`/manifest pattern for data-driven sites, and runtime helpers (`resolveVariants`, `renderPicture`) for the recommended **AssetRef-persistence pattern** where consumers store the full `AssetRef` returned by `r.assets.put` in their data rows. Published as `@run402/astro` on npm.
 
-Workspace layout: `package.json` declares `cli` and `sdk` as npm workspaces, and `pnpm-workspace.yaml` mirrors that set for pnpm-based hosts. `core/` is shared internal code, not an npm package. `@run402/functions` is NOT a workspace of this repo — its source lives in the private gateway monorepo so the gateway and the in-function helpers it bundles can change atomically in one commit.
+Workspace layout: `package.json` declares `cli`, `sdk`, and `astro` as npm workspaces; `pnpm-workspace.yaml` lists only `cli` and `sdk` for pnpm-based hosts (astro is npm-only today). `core/` is shared internal code, not an npm package. `@run402/functions` is NOT a workspace of this repo — its source lives in the private gateway monorepo so the gateway and the in-function helpers it bundles can change atomically in one commit.
 
-The three packages in this repo (`run402-mcp`, `run402`, `@run402/sdk`) release in lockstep via the `/publish` skill at the same version (the skill also supports per-package selection for off-cycle patches). MCP, CLI, OpenClaw, and the Node SDK all share the request kernel via `@run402/sdk`. `@run402/functions` is published separately from the private repo via its own `/publish-functions` skill, but ships at the same npm name. `core/` holds filesystem primitives (keystore, allowance, SIWE signing) that the Node SDK provider wraps.
+The three packages in this repo (`run402-mcp`, `run402`, `@run402/sdk`) release in lockstep via the `/publish` skill at the same version (the skill also supports per-package selection for off-cycle patches). MCP, CLI, OpenClaw, and the Node SDK all share the request kernel via `@run402/sdk`. `@run402/astro` is a sibling integration on its own release cadence via the `/publish-astro` skill — not part of the kernel lockstep. `@run402/functions` is published separately from the private repo via its own `/publish-functions` skill, but ships at the same npm name. `core/` holds filesystem primitives (keystore, allowance, SIWE signing) that the Node SDK provider wraps.
 
 ## Build & Test Commands
 
@@ -192,6 +193,19 @@ Quick reference of the public surface (full API lives in the private repo's `pac
 - **`openclaw/scripts/config.mjs`** — Re-exports from `cli/lib/config.mjs`
 - **`openclaw/scripts/*.mjs`** — Thin shims: `export { run } from "../../cli/lib/<name>.mjs"`
 - **`openclaw/scripts/init.mjs`** — Calls CLI's `run()` at top level (executable script)
+
+### Astro integration (`astro/`)
+
+Sibling framework package — wires `@run402/sdk` into Astro's build pipeline. Independent release cadence from the SDK/CLI/MCP lockstep.
+
+- **`src/index.ts`** — `run402(options?)` integration factory. Pure JS (must evaluate cleanly in vanilla Node so `astro.config.mjs` can load it before Vite is alive). Wires the Vite plugin into Astro's lifecycle and validates configuration up front.
+- **`src/vite-plugin.ts`** — Scans `.astro` templates for `<Image>` references, dedupes by absolute path, uploads sources via the SDK's `assets.put`, and rewrites the component HTML with v1.49 variant URLs + blurhash.
+- **`src/Image.astro`** — Component that emits the `<picture>` markup. Shipped as a separate subpath export (`@run402/astro/Image.astro`) because root must stay pure JS.
+- **`src/manifest.ts`** — Runtime helpers for the `assetsDir` data-driven path: `resolveVariants(manifest, key)` (build-time manifest lookup) and `renderPicture(ref, opts)` (HTML emitter). The renderer also serves the recommended **AssetRef-persistence pattern**: consumers persist the full `AssetRef` returned by `r.assets.put` in their data rows and call `renderPicture(row.image, opts)` directly with no manifest lookup, no cache, and no synchronization layer. See [`astro/README.md`](astro/README.md) "Data-driven consumers" for the schema-shift example and trade-offs.
+- **`src/picture-builder.ts`** — Pure HTML builder shared by the `.astro` component and the runtime `renderPicture` helper, so both paths emit identical CLS-safe markup.
+- **Three entry points:** root (integration factory + types), `/Image.astro` (the component), `/manifest` (runtime helpers).
+
+Published via OIDC Trusted Publisher (`.github/workflows/publish-astro.yml`) — triggered by the `/publish-astro` skill. Bumps independently of `run402-mcp` / `run402` / `@run402/sdk`.
 
 ### Tool Pattern
 

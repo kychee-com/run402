@@ -61,7 +61,7 @@ This is the same CLS-prevention contract as Next.js's `<Image>`. v0.1.x doesn't 
 
 **Static-template sites** (hero on the home page, logos in nav, hand-authored landing pages). Image references are string literals in `.astro` templates. Use `<Image src="./images/hero.jpg" alt="...">`. The integration scans your templates at build time, uploads each unique source, and rewrites the markup to consume v1.49 variants. See the **Use** section below.
 
-**Data-driven sites** (CMS-backed content, DB-backed seeds, MDX collections with frontmatter images, admin-editable pages). Image URLs live in runtime values — JSONB rows, content collection entries, fetch responses. There are no `<Image>` candidates for a build-time scan. Use the **`assetsDir` + manifest** pattern: walk a directory of source images at build time, upload them all, emit a JSON manifest, and look up variants at render time. See the **Data-driven consumers** section below.
+**Data-driven sites** (CMS-backed content, DB-backed seeds, MDX collections with frontmatter images, admin-editable pages). Image references live in runtime values — JSONB rows, content collection entries, fetch responses. There are no `<Image>` candidates for a build-time scan. Two patterns cover this shape: **persist the full `AssetRef` returned by `r.assets.put`** in your data row (recommended whenever you control the schema — no manifest, no lookup, no cache), or use the **`assetsDir` + manifest** pattern when the data shape isn't yours to change. See the **Data-driven consumers** section below.
 
 A real Astro site usually has both. Set both options; they share the same upload pipeline, the same cache, the same CDN.
 
@@ -126,7 +126,62 @@ import Image from '@run402/astro/Image.astro';
 
 ## Data-driven consumers (v0.2+)
 
-For sites where image URLs live in runtime values (CMS, DB-backed content, JSON seeds), set `assetsDir` in `astro.config.mjs`:
+For sites where image references live in runtime values (CMS-backed content, DB-backed seeds, JSON content, MDX frontmatter, admin-uploaded media), there are two patterns. **Pick AssetRef persistence whenever you control the data shape**; reach for the build-time manifest when you don't, or when you have data-driven keys to surface inside `.astro` templates.
+
+### Persistence pattern: store the AssetRef, not the URL (recommended)
+
+`r.assets.put` already returns the full v1.49 `AssetRef` — `cdn_url`, intrinsic `width_px` / `height_px`, `blurhash`, the WebP variant ladder, the HEIC `display_jpeg` when present. **Persist the whole ref in the same row as everything else about the asset**, instead of keeping only the URL string. At render time the row IS the variant data: no manifest, no lookup, no cache, no synchronization layer between the row and the manifest. The row is internally consistent with what gets rendered.
+
+This pattern covers both runtime-uploaded media (admin MediaPicker calling `r.assets.put` directly) and static seed data (a build step that walks `assetsDir` and writes the resolved ref into the seed JSON instead of, or alongside, the URL string).
+
+**Schema shift.**
+
+Before — URL string + manifest lookup at render time:
+
+```ts
+// row in DB / seed JSON
+type Section = { bg_image: string };  // "/assets/hero.jpg"
+
+// render
+const section = await db.sections.findOne(...);
+const key = section.bg_image.replace(/^\/assets\//, '');
+const ref = resolveVariants(manifest, key);
+const html = ref
+  ? renderPicture(ref, { alt, sizes: '100vw' })
+  : `<img src="${section.bg_image}" alt="${alt}">`;
+```
+
+After — full `AssetRef` stored on write:
+
+```ts
+// row in DB / seed JSON — what r.assets.put returned
+type Section = { bg_image: AssetRef };
+//   { cdn_url, width_px, height_px, blurhash, variants: { thumb, medium, large, display_jpeg? }, ... }
+
+// render — no manifest, no lookup, no cache
+const section = await db.sections.findOne(...);
+const html = renderPicture(section.bg_image, { alt, sizes: '100vw' });
+```
+
+The MediaPicker / admin upload flow already has the AssetRef in hand — it's the return value of `r.assets.put`. Today's code typically drops everything except `cdn_url`; the persistence pattern is "save what `put()` returned, render directly from it."
+
+**Trade-offs.**
+
+- **Row size grows by ~600–1000 bytes per image.** Most of that is the variants ladder (3–4 entries × ~150 bytes each). For JSONB columns and content-collection JSON this is rarely an issue; for narrow indexed text columns it matters more.
+- **Immutable URLs are content-addressed.** Re-uploading to the same key while old refs remain embedded in rows will not refresh those rows — they continue serving old bytes. Either upload to a fresh key on each edit (the typical pattern), or rewrite the row at upload time so its embedded ref points at the new content.
+- **Migrating existing string-URL rows is one-shot and mechanical.** If you already use `assetsDir`, the build-time manifest already contains the canonical ref for every seeded image: a small script walks your rows, looks each URL up with `resolveVariants(manifest, key)`, and writes the ref back. After that runs once, the runtime manifest lookup is dead code. For URLs that aren't in the manifest (admin uploads from before this pattern landed), re-call `r.assets.put(key, source)` with the source bytes — CAS dedup makes this idempotent (same bytes → same ref) and you get the full AssetRef back without a duplicate upload.
+
+### Build-time manifest pattern
+
+Useful when:
+
+- The data shape is not yours to change (a CMS that only stores strings; a schema owned by another team).
+- You're writing the one-shot migration described above (read URL → look up ref → write ref back).
+- You have data-driven keys that need to be resolved from `<Image>` markup in static `.astro` templates.
+
+For new data-driven consumers, prefer the persistence pattern above — it has fewer moving parts and no stale-after-edit problem.
+
+Set `assetsDir` in `astro.config.mjs`:
 
 ```js
 export default defineConfig({
@@ -188,9 +243,13 @@ function renderHeroImage(imageUrl: string, alt: string): string {
 }
 ```
 
-`renderPicture` produces the same `<picture>` HTML the static `<Image>` component does, with the same CLS-prevention contract (#4 in **Before you start**). No Vite or Astro runtime dependency — safe to import from any SSR / SSG / API-route module.
+`renderPicture` produces the same `<picture>` HTML the static `<Image>` component does, with the same CLS-prevention contract (#4 in **Before you start**). No Vite or Astro runtime dependency — safe to import from any SSR / SSG / API-route module. It accepts any `AssetRef`, whether resolved from the manifest or read straight off a row, so the persistence pattern and the manifest pattern share the same renderer.
 
 **Combining both paths.** Set BOTH `assetsDir` and use `<Image>` for static-template images. The integration deduplicates by absolute path + CAS dedup at the gateway, so an image referenced via both paths uploads once.
+
+### Bulk admin UIs
+
+If you need to list every asset uploaded to a project (admin gallery, "show me everything in this prefix" media browser), the build-time manifest is the wrong tool — it only covers what `assetsDir` walked at build time, doesn't include runtime uploads, and can't paginate or filter. Use `r.assets.ls(projectId, { prefix, limit?, cursor?, sort?, filter? })` from the SDK instead; it's the storage list endpoint with v1.50 pagination, sort, and media-picker filters.
 
 ## Generated HTML
 
