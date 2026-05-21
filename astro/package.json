@@ -1,6 +1,6 @@
 {
   "name": "@run402/astro",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "description": "Astro integration + <Image> component for Run402. One-line wiring for pre-encoded image variants (3-width WebP ladder + HEIC display_jpeg + blurhash + width/height) with zero runtime function cost.",
   "type": "module",
   "main": "dist/index.js",
