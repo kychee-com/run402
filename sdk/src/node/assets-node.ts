@@ -24,6 +24,7 @@ import type {
   DeployEvent,
   DeployResult,
   FsFileSource,
+  LocalDirRef,
   ReleaseSpec,
 } from "../namespaces/deploy.types.js";
 import { fileSetFromDir, type FileSetFromDirOptions } from "./files.js";
@@ -37,21 +38,18 @@ import {
 // ───────────────────────────────────────────────────────────────────────────
 
 /**
- * SDK-input-only marker for "walk this directory at submission time."
- * Returned by {@link dir}; normalized into wire-shaped `AssetPutEntry[]`
- * (or `FileSet` for the site slice) by the SDK before any plan request.
+ * SDK-input-only marker for "walk this directory at submission time." The
+ * canonical type now lives in `deploy.types.ts` so the isomorphic SDK can
+ * reference it from `SiteSpec` / `AssetSpec` without a dependency on this
+ * Node-only module. Re-exported here for backwards compatibility with
+ * `@run402/sdk/node` callers (and to keep `dir()` co-located with its
+ * return type).
  *
  * The gateway never sees a `LocalDirRef` — submitting one in a JSON body
  * is rejected with HTTP 400 `INVALID_WIRE_SCHEMA`. The kind discriminator
  * `"local-dir"` is stable for type-narrowing.
  */
-export interface LocalDirRef {
-  readonly __source: "local-dir";
-  readonly path: string;
-  readonly prefix?: string;
-  readonly ignore?: ReadonlyArray<string>;
-  readonly includeSensitive?: boolean;
-}
+export type { LocalDirRef };
 
 export interface DirOptions {
   /** Optional key prefix applied to every walked entry. `"static/"` →
@@ -71,13 +69,19 @@ export interface DirOptions {
  * actual filesystem walk happens at `apply()` submission time per design
  * D12 ("dir(path) returns synchronous LocalDirRef; SDK-input-only").
  *
+ * Accepted as `site.replace` and `site.patch.put` on `r.project(p).apply`.
+ * For assets, use `r.project(p).assets.uploadDir(path)` /
+ * `syncDir` / `prepareDir` — those wrap a `LocalDirRef` walk into the
+ * unified-apply pipeline with directory-specific options (prune, prepare,
+ * progress events).
+ *
  * @example
  *   import { dir, run402 } from "@run402/sdk/node";
  *   const r = run402();
  *   await r.project(p).apply({
- *     site:   dir("./dist"),
- *     assets: dir("./assets", { prefix: "static/" }),
+ *     site: dir("./dist"),
  *   });
+ *   await r.project(p).assets.uploadDir("./assets", { prefix: "static/" });
  */
 export function dir(path: string, opts: DirOptions = {}): LocalDirRef {
   return {

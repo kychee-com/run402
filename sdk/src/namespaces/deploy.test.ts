@@ -32,6 +32,7 @@ import type {
 } from "./deploy.types.js";
 import { ApiError, LocalError, NetworkError, Run402DeployError } from "../errors.js";
 import { fileSetFromDir } from "../node/files.js";
+import { dir } from "../node/assets-node.js";
 
 interface RecordedRequest {
   path: string;
@@ -2905,6 +2906,143 @@ describe("Deploy.apply (byte source normalization)", () => {
         site: { replace: fileSet },
       });
       assert(JSON.stringify(plannedSpec).includes(expected));
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("walks a LocalDirRef passed as site.replace (regression: kychee-com/run402-private#409)", async () => {
+    // Before the fix, `site: { replace: dir(path) }` threw INVALID_SPEC /
+    // resource:'prefix' / "Unsupported byte source for prefix" because
+    // normalizeFileSet iterated the LocalDirRef's own keys (__source, path,
+    // prefix, ignore, includeSensitive) as if they were a FileSet — the
+    // `prefix: undefined` value fell through every resolveContent branch.
+    const w = makeWiring();
+    const root = mkdtempSync(join(tmpdir(), "run402-deploy-localdir-"));
+    try {
+      const html = "<title>local-dir</title>";
+      writeFileSync(join(root, "index.html"), html);
+      const expected = shaHex(html);
+
+      let plannedSpec: unknown;
+      w.setHandler((req) => {
+        if (req.path === "/apply/v1/plans") {
+          plannedSpec = req.body;
+          return {
+            plan_id: "p",
+            operation_id: "o",
+            base_release_id: null,
+            manifest_digest: "x",
+            missing_content: [],
+            diff: {},
+          } satisfies PlanResponse;
+        }
+        if (req.path.endsWith("/commit")) {
+          return {
+            operation_id: "o",
+            status: "ready",
+            release_id: "r",
+            urls: {},
+          } satisfies CommitResponse;
+        }
+        throw new Error(`unexpected ${req.path}`);
+      });
+
+      const deploy = new Deploy(w.client);
+      await deploy.apply({
+        project: "prj_test",
+        site: { replace: dir(root) },
+      });
+      const sent = JSON.stringify(plannedSpec);
+      assert(sent.includes(expected), "manifest contains the SHA-256 of the walked file");
+      assert(sent.includes("index.html"), "wire payload references the relative path, not 'path' / 'prefix' from LocalDirRef");
+      assert(!sent.includes("__source"), "LocalDirRef internals must not leak to the wire");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("walks a LocalDirRef passed as site.patch.put (regression: kychee-com/run402-private#409)", async () => {
+    const w = makeWiring();
+    const root = mkdtempSync(join(tmpdir(), "run402-deploy-localdir-patch-"));
+    try {
+      const css = "body{color:red}";
+      writeFileSync(join(root, "styles.css"), css);
+      const expected = shaHex(css);
+
+      let plannedSpec: unknown;
+      w.setHandler((req) => {
+        if (req.path === "/apply/v1/plans") {
+          plannedSpec = req.body;
+          return {
+            plan_id: "p",
+            operation_id: "o",
+            base_release_id: null,
+            manifest_digest: "x",
+            missing_content: [],
+            diff: {},
+          } satisfies PlanResponse;
+        }
+        if (req.path.endsWith("/commit")) {
+          return {
+            operation_id: "o",
+            status: "ready",
+            release_id: "r",
+            urls: {},
+          } satisfies CommitResponse;
+        }
+        throw new Error(`unexpected ${req.path}`);
+      });
+
+      const deploy = new Deploy(w.client);
+      await deploy.apply({
+        project: "prj_test",
+        site: { patch: { put: dir(root) } },
+      });
+      const sent = JSON.stringify(plannedSpec);
+      assert(sent.includes(expected), "manifest contains the SHA-256 of the walked patch file");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("respects LocalDirRef.prefix when walking site.replace (regression: kychee-com/run402-private#409)", async () => {
+    const w = makeWiring();
+    const root = mkdtempSync(join(tmpdir(), "run402-deploy-localdir-prefix-"));
+    try {
+      writeFileSync(join(root, "index.html"), "<title>p</title>");
+
+      let plannedSpec: unknown;
+      w.setHandler((req) => {
+        if (req.path === "/apply/v1/plans") {
+          plannedSpec = req.body;
+          return {
+            plan_id: "p",
+            operation_id: "o",
+            base_release_id: null,
+            manifest_digest: "x",
+            missing_content: [],
+            diff: {},
+          } satisfies PlanResponse;
+        }
+        if (req.path.endsWith("/commit")) {
+          return {
+            operation_id: "o",
+            status: "ready",
+            release_id: "r",
+            urls: {},
+          } satisfies CommitResponse;
+        }
+        throw new Error(`unexpected ${req.path}`);
+      });
+
+      const deploy = new Deploy(w.client);
+      await deploy.apply({
+        project: "prj_test",
+        site: { replace: dir(root, { prefix: "static/" }) },
+      });
+      const sent = JSON.stringify(plannedSpec);
+      assert(sent.includes("static/index.html"), "prefix is applied to the walked relative path");
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

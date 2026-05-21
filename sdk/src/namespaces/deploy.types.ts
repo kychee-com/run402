@@ -59,6 +59,25 @@ export interface ContentRef {
  *  SDK) or already-resolved `ContentRef` objects (from a prior upload). */
 export type FileSet = Record<string, ContentSource>;
 
+/**
+ * SDK-input sentinel for "walk this directory at submission time." Produced
+ * by `dir(path)` from `@run402/sdk/node`. Carried in the public `SiteSpec`
+ * types so editors autocomplete `site: { replace: dir("./dist") }` without
+ * a cast. The normalizer expands it to a `FileSet` before any plan request;
+ * it never leaves the client.
+ *
+ * The structural shape (not a class) lets the deploy normalizer detect it
+ * in the isomorphic SDK without importing the Node-only `assets-node`
+ * module that creates it.
+ */
+export interface LocalDirRef {
+  readonly __source: "local-dir";
+  readonly path: string;
+  readonly prefix?: string;
+  readonly ignore?: ReadonlyArray<string>;
+  readonly includeSensitive?: boolean;
+}
+
 // ─── ReleaseSpec ─────────────────────────────────────────────────────────────
 
 /** Caller-facing spec passed to `r.deploy.apply(spec)`. */
@@ -276,8 +295,8 @@ export type SitePublicPathsSpec =
   | { mode: "explicit"; replace: Record<string, PublicStaticPathSpec> };
 
 export type SiteSpec =
-  | { replace: FileSet; patch?: never; public_paths?: SitePublicPathsSpec }
-  | { patch: { put?: FileSet; delete?: string[] }; replace?: never; public_paths?: SitePublicPathsSpec }
+  | { replace: FileSet | LocalDirRef; patch?: never; public_paths?: SitePublicPathsSpec }
+  | { patch: { put?: FileSet | LocalDirRef; delete?: string[] }; replace?: never; public_paths?: SitePublicPathsSpec }
   | { public_paths: SitePublicPathsSpec; replace?: never; patch?: never };
 
 export interface SubdomainsSpec {

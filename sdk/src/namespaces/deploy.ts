@@ -58,6 +58,7 @@ import type {
   FileSet,
   FsFileSource,
   GatewayDeployError,
+  LocalDirRef,
   MissingContent,
   NormalizedAssetSpec,
   NormalizedDatabaseSpec,
@@ -3079,11 +3080,18 @@ async function normalizeFunction(
 }
 
 async function normalizeFileSet(
-  set: FileSet,
+  set: FileSet | LocalDirRef,
   remember: (r: ResolvedContent) => ContentRef,
 ): Promise<Record<string, ContentRef>> {
+  // `dir(path)` produces a LocalDirRef sentinel that is documented as a
+  // valid site.replace / site.patch.put input. Expand it to a plain FileSet
+  // before iterating — otherwise Object.entries would walk the sentinel's
+  // own keys (__source, path, prefix, ignore, …) and feed each value to
+  // resolveContent, throwing "Unsupported byte source for prefix" on the
+  // first `undefined` option (kychee-com/run402-private#409).
+  const fileSet = isLocalDirRef(set) ? await expandLocalDirRef(set) : set;
   const out: Record<string, ContentRef> = {};
-  for (const [path, source] of Object.entries(set)) {
+  for (const [path, source] of Object.entries(fileSet)) {
     const resolved = await resolveContent(source, path);
     if (!resolved.ref.contentType) {
       resolved.ref.contentType = guessContentType(path);
@@ -3091,6 +3099,46 @@ async function normalizeFileSet(
     out[path] = remember(resolved);
   }
   return out;
+}
+
+function isLocalDirRef(source: unknown): source is LocalDirRef {
+  return (
+    typeof source === "object" &&
+    source !== null &&
+    (source as { __source?: unknown }).__source === "local-dir" &&
+    typeof (source as { path?: unknown }).path === "string"
+  );
+}
+
+async function expandLocalDirRef(ref: LocalDirRef): Promise<FileSet> {
+  // Lazy import — keeps the root SDK V8-isolate-safe. The site slice's
+  // LocalDirRef branch is Node-only by construction (the walker reads
+  // from disk).
+  let walker: typeof import("../node/files.js");
+  try {
+    walker = (await import("../node/files.js")) as typeof import("../node/files.js");
+  } catch {
+    throw new Run402DeployError(
+      "site dir() is only supported in Node runtimes (received a LocalDirRef in a non-Node environment)",
+      {
+        code: "INVALID_SPEC",
+        resource: "site.replace",
+        retryable: false,
+        context: "normalizing byte sources",
+      },
+    );
+  }
+  const fileSet = await walker.fileSetFromDir(ref.path, {
+    ignore: ref.ignore,
+    includeSensitive: ref.includeSensitive,
+  });
+  if (!ref.prefix) return fileSet;
+  const prefixed: Record<string, FileSet[string]> = {};
+  const sep = ref.prefix.endsWith("/") ? "" : "/";
+  for (const [relPath, source] of Object.entries(fileSet)) {
+    prefixed[`${ref.prefix}${sep}${relPath}`] = source;
+  }
+  return prefixed;
 }
 
 // ─── Asset manifest assembly from plan response (v1.48 unified-apply) ───────
