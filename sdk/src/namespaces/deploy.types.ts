@@ -282,6 +282,77 @@ export interface FunctionSpec {
   /** 5-field cron expression. Pass `null` to remove an existing schedule;
    *  omit to leave it unchanged in `patch` mode. */
   schedule?: string | null;
+  /**
+   * v1.51+: when `true`, the Run402 gateway rejects callers without a
+   * valid project user JWT with `401` before invoking the function.
+   * Independent from `requireRole` — set `requireRole` alone to imply
+   * authentication, or set `requireAuth: true` alone for a session
+   * check with no DB lookup.
+   *
+   * When the gate passes, the gateway injects `x-run402-user-id` into
+   * the request. In-function code reads it with `getUserId(req)` from
+   * `@run402/functions`.
+   *
+   * Gateway is authoritative — the SDK does not validate shape (use
+   * the canonical `INVALID_SPEC` envelope from the gateway at plan
+   * time for typos).
+   */
+  requireAuth?: boolean;
+  /**
+   * v1.51+: declarative application-role gate. When set, the gateway
+   * resolves the caller's role from the project-schema table named in
+   * `table` (FK column `idColumn` matches the JWT `sub`, role string
+   * read from `roleColumn`) and rejects callers whose role is not in
+   * `allowed` with `403`. Lookup is RLS-bypass (the gateway is the
+   * trusted intermediary). Per-`(projectId, userId)` cache with
+   * configurable TTL.
+   *
+   * `requireRole` implies authentication — no valid JWT → `401` (the
+   * same envelope as `requireAuth`). All `requireRole` blocks in a
+   * single release must share the same `(table, idColumn, roleColumn)`
+   * triple (gateway rejects mixed tables at plan time).
+   *
+   * When the gate passes, the gateway injects both `x-run402-user-id`
+   * AND `x-run402-user-role` into the request. In-function code reads
+   * them with `getUserId(req)` / `getRole(req)` from
+   * `@run402/functions`.
+   *
+   * Pass `null` in `patch.set` to remove an existing gate; omit to
+   * leave it unchanged.
+   */
+  requireRole?: RequireRoleSpec | null;
+}
+
+/**
+ * v1.51+: declarative role-gate descriptor for `FunctionSpec.requireRole`.
+ *
+ * The gateway runs a `SELECT roleColumn FROM <project_schema>.table WHERE
+ * idColumn = $jwt.sub` lookup (RLS-bypass), byte-equality-checks the
+ * result against `allowed`, and caches the answer per
+ * `(projectId, userId)` for `cacheTtl` seconds.
+ *
+ * Identifiers are unquoted; schema-qualified names (e.g. `"public.members"`)
+ * are rejected at plan time with `INVALID_SPEC`. The project schema is
+ * resolved server-side from the project record — do not include it here.
+ */
+export interface RequireRoleSpec {
+  /** Project-schema table holding role rows (e.g., `"members"`).
+   *  Unqualified. */
+  table: string;
+  /** Column in `table` that matches the JWT `sub` claim (the user id).
+   *  Typically `"user_id"`. */
+  idColumn: string;
+  /** Column in `table` holding the role string. Typically `"role"`. */
+  roleColumn: string;
+  /** Allowed role values. Case-sensitive byte equality. Non-empty.
+   *  Multi-element arrays permit any matching role (OR semantics). */
+  allowed: string[];
+  /** Cache TTL in seconds for the resolved role per
+   *  `(projectId, userId)`. Default `60`. Max `600`. Set `0` to disable
+   *  caching (fresh lookup on every request) — use for high-stakes
+   *  operations where instant demotion matters. A demoted user retains
+   *  the cached role until expiry; demotion is NOT broadcast. */
+  cacheTtl?: number;
 }
 
 export interface PublicStaticPathSpec {
@@ -2058,6 +2129,10 @@ export interface NormalizedFunctionSpec {
   entrypoint?: string;
   config?: { timeoutSeconds?: number; memoryMb?: number };
   schedule?: string | null;
+  /** v1.51+ — see `FunctionSpec.requireAuth`. */
+  requireAuth?: boolean;
+  /** v1.51+ — see `FunctionSpec.requireRole`. */
+  requireRole?: RequireRoleSpec | null;
 }
 
 export type NormalizedSiteSpec =

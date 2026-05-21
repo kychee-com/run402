@@ -538,6 +538,7 @@ export default async (req: Request) => {
 - **`adminDb().sql(query, params?)`** — raw parameterized SQL. Always bypass.
 - **`ai.generateImage({ prompt, aspect? })`** — live image generation from deployed functions, billed/rate-limited against the project billing account through `RUN402_SERVICE_KEY`. Aspects: `square`, `landscape`, `portrait`; result: `{ image, content_type, aspect }`. For public routed functions, authenticate/rate-limit app users before calling it.
 - **`assets.put(key, source, opts?)`** — upload runtime bytes through the same CAS-backed apply substrate as deploy-time assets. `source` is a string, `Uint8Array`, or `{ content | bytes }`; returns an SDK-compatible `AssetRef`.
+- **`getUserId(req)` / `getRole(req)`** (v1.51+, `@run402/functions` 2.5+) — typed reads of the `x-run402-user-id` / `x-run402-user-role` headers the gateway injects when a `FunctionSpec.requireAuth` / `requireRole` gate passed. Both return `string | null`. Use these inside a gated function instead of re-decoding the JWT — the gate already verified the caller and resolved the application role. `getRole(req)` is non-null only when `requireRole` ran (the value is guaranteed to be in `requireRole.allowed`). The JWT `role` from `getUser(req)` is the system role (`anon`/`authenticated`/…), NOT the app role — don't conflate them. See "Function-level auth gates" below for the deploy-spec side.
 
 Fluent surface on both `db(req).from(t)` and `adminDb().from(t)`:
 - Reads: `.select()`, `.eq()`, `.neq()`, `.gt()`, `.lt()`, `.gte()`, `.lte()`, `.like()`, `.ilike()`, `.in()`, `.order()`, `.limit()`, `.offset()`
@@ -545,6 +546,75 @@ Fluent surface on both `db(req).from(t)` and `adminDb().from(t)`:
 - Column narrowing on writes: `.insert({…}).select("id, title")`
 
 For TypeScript autocomplete in your editor: `npm install @run402/functions` in your project. Also works at build time for static-site generation if you set `RUN402_SERVICE_KEY` + `RUN402_PROJECT_ID` in `.env`.
+
+### Function-level auth gates (v1.51+)
+
+Skip the hand-rolled "decode JWT → query members table → return 403" boilerplate. Declare the gate on your `FunctionSpec` and the gateway enforces it before invoking the function. Unauthorized callers get `401`/`403` without your code running, and the gateway injects the resolved identity into request headers your function can trust.
+
+Two independent fields on `FunctionSpec`:
+
+- **`requireAuth: true`** — gateway rejects callers without a valid project user JWT with `401`. No DB lookup.
+- **`requireRole: { table, idColumn, roleColumn, allowed[], cacheTtl? }`** — gateway resolves the caller's role from the project-schema table (RLS-bypass — the gateway is the trusted intermediary, not the caller) and rejects callers whose role is not in `allowed` with `403`. Implies authentication.
+
+Declare in your deploy manifest and run `run402 deploy apply --manifest run402.deploy.json`:
+
+```json
+{
+  "project_id": "prj_...",
+  "functions": {
+    "patch": {
+      "set": {
+        "list-my-items": {
+          "source": { "path": "functions/list.ts" },
+          "requireAuth": true
+        },
+        "delete-content": {
+          "source": { "path": "functions/delete.ts" },
+          "requireRole": {
+            "table": "members",
+            "idColumn": "user_id",
+            "roleColumn": "role",
+            "allowed": ["admin"],
+            "cacheTtl": 60
+          }
+        },
+        "moderate-content": {
+          "source": { "path": "functions/moderate.ts" },
+          "requireRole": {
+            "table": "members",
+            "idColumn": "user_id",
+            "roleColumn": "role",
+            "allowed": ["admin", "moderator"]
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+Reading the gate result inside the function:
+
+```ts
+import { getUserId, getRole } from "@run402/functions";
+
+export default async (req: Request): Promise<Response> => {
+  const userId = getUserId(req);   // string | null
+  const role = getRole(req);       // string | null
+  // For a gated function reached through the gateway:
+  //   getUserId is non-null whenever any gate ran;
+  //   getRole is non-null whenever requireRole ran (one of `allowed`).
+  return Response.json({ actor: userId, role });
+};
+```
+
+Rules and footnotes:
+
+- **One role table per release.** All `requireRole` blocks in a single release must share the same `(table, idColumn, roleColumn)` triple. Different `allowed` sets are fine; different tables are rejected at plan time with `INVALID_SPEC`.
+- **Unqualified identifiers.** Schema-qualified names (e.g. `"public.members"`) are rejected. The project schema is resolved server-side.
+- **Deploy-time validation.** Missing table or column at activation fails with `DEPLOY_INVALID_ROLE_GATE` (422) *before* flipping the live release. `run402 deploy apply` surfaces the error envelope on stderr.
+- **Cache TTL.** Default 60s, max 600s. A demoted user keeps the cached role until expiry — for instant revocation, set `cacheTtl: 0` (fresh lookup per request).
+- **Gate applies to both** routed (`/your/route`) and direct (`POST /functions/v1/:name` with API key) invocation. Direct invocation still requires the API key at the edge; the gate runs after API-key auth, against the user JWT.
 
 ### Calling a function from the browser
 

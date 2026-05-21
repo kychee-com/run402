@@ -546,7 +546,60 @@ Create a manifest file `app.json` (use the `project_id` from provision):
 
 `project_id` is required (from `run402 projects provision`). All other fields are optional; omitted top-level sections are carried forward from the current release. The adapter is strict: only top-level `$schema` metadata is ignored; typo fields such as `subdomain`, `site.replcae`, `functions.replace.my-fn.deps`, or `functions.replace.my-fn.config.schedule` fail before planning.
 
-Function specs accept `runtime: "node22"`, exactly one code source (`source`, or `files` plus `entrypoint`), `config.timeoutSeconds`, `config.memoryMb`, and a sibling `schedule`. Omit `schedule` in patch mode to leave it unchanged; set it to `null` to remove the schedule. Unified deploy manifests do not accept `deps`; bundle dependencies into the function files or use `run402 functions deploy --deps`.
+Function specs accept `runtime: "node22"`, exactly one code source (`source`, or `files` plus `entrypoint`), `config.timeoutSeconds`, `config.memoryMb`, a sibling `schedule`, and the v1.51+ auth-gate fields `requireAuth` / `requireRole` (see "Function-level auth gates" below). Omit `schedule` in patch mode to leave it unchanged; set it to `null` to remove the schedule. Unified deploy manifests do not accept `deps`; bundle dependencies into the function files or use `run402 functions deploy --deps`.
+
+**Function-level auth gates (v1.51+).** Two optional declarative fields on each function spec:
+
+- `requireAuth: true` — gateway rejects callers without a valid project user JWT with `401`. No DB lookup. Independent from `requireRole`.
+- `requireRole: { table, idColumn, roleColumn, allowed[], cacheTtl? } | null` — gateway resolves the caller's role from the project-schema table (RLS-bypass) and rejects callers whose role is not in `allowed` with `403`. Implies authentication (no JWT → 401). Pass `null` in patch mode to remove an existing gate. `cacheTtl` is seconds; default 60, max 600, 0 disables caching (use for instant-revocation paths).
+
+When a gate passes, the gateway injects `x-run402-user-id` (always when any gate ran) and `x-run402-user-role` (only when `requireRole` ran) into the request. In-function code reads them with `getUserId(req)` / `getRole(req)` from `@run402/functions` 2.5+.
+
+Worked example — manifest fragment:
+
+```json
+{
+  "functions": {
+    "patch": {
+      "set": {
+        "list-my-items": {
+          "source": { "path": "functions/list.ts" },
+          "requireAuth": true
+        },
+        "delete-content": {
+          "source": { "path": "functions/delete.ts" },
+          "requireRole": {
+            "table": "members",
+            "idColumn": "user_id",
+            "roleColumn": "role",
+            "allowed": ["admin"],
+            "cacheTtl": 60
+          }
+        },
+        "moderate-content": {
+          "source": { "path": "functions/moderate.ts" },
+          "requireRole": {
+            "table": "members",
+            "idColumn": "user_id",
+            "roleColumn": "role",
+            "allowed": ["admin", "moderator"]
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+Validation rules:
+
+- **One role table per release.** All `requireRole` blocks in a single release must share the same `(table, idColumn, roleColumn)` triple. Different `allowed` sets are fine; different tables are rejected at plan time with the canonical `INVALID_SPEC` envelope.
+- **Unqualified identifiers only.** Schema-qualified names (e.g. `"public.members"`) are rejected with `INVALID_SPEC`. The project schema is resolved server-side.
+- **`cacheTtl` range.** `0 ≤ cacheTtl ≤ 600`; out-of-range rejected with `INVALID_SPEC`.
+- **Empty `allowed`.** Rejected with `INVALID_SPEC` — set the role values explicitly.
+- **Deploy-time validation.** Missing table or column at activation fails with `DEPLOY_INVALID_ROLE_GATE` (HTTP 422) *before* flipping the live release. `run402 deploy apply` surfaces the structured envelope on stderr.
+
+The gate applies to both routed (`/your/route`) and direct (`POST /functions/v1/:name` with API key plus user JWT) invocation. Direct invocation still requires the API key at the edge; the gate runs after API-key auth, against the user JWT.
 
 **Binary files (images, fonts, PDFs)**: Set `"encoding": "base64"` and provide base64-encoded data. MIME types are auto-detected from the file extension (`.png` → `image/png`, `.woff2` → `font/woff2`, etc.). Text files use `"encoding": "utf-8"` (the default — can be omitted).
 
@@ -732,7 +785,9 @@ Node 22 runtime. Must export `default async (req: Request) => Response`.
 Built-in helper: `import { db, adminDb, email, ai, assets, getUser } from '@run402/functions'`
 - `db(req)` — caller-context DB client. Forwards the caller's `Authorization` header to PostgREST; RLS policies apply to the caller's role. Routes to `/rest/v1/*`. Use this by default.
 - `adminDb()` — BYPASSRLS DB client. Uses the project's service_key. Routes to `/admin/v1/rest/*` (the gateway rejects `role=service_role` on `/rest/v1/*`). Use ONLY when the function acts on behalf of the platform, not the caller — audit logs, webhook handlers, cron cleanup.
-- `getUser(req)` — verify caller's JWT, returns `{ id, role }` or `null`
+- `getUser(req)` — verify caller's JWT, returns `{ id, role, email }` or `null`. The `role` is the JWT system role (`anon`/`authenticated`/`project_admin`), NOT the application role from a `requireRole` gate.
+- `getUserId(req)` (v1.51+) — read the gateway-injected `x-run402-user-id` header. Non-null when a `requireAuth` or `requireRole` gate ran successfully. Use this inside a gated function instead of re-decoding the JWT.
+- `getRole(req)` (v1.51+) — read the gateway-injected `x-run402-user-role` header. Non-null only when a `requireRole` gate ran. The value is guaranteed to be in `requireRole.allowed`.
 - `email.send(opts)` — send email from the project's mailbox (see email section below)
 - `ai.generateImage({ prompt, aspect? })` — live image generation from deployed functions using project billing authority, not local allowance/x402 signing. Aspects: `square`, `landscape`, `portrait`; result: `{ image, content_type, aspect }`. Add app auth/rate limits before calling it from public routed functions.
 - `assets.put(key, source, opts?)` — upload bytes to the project's blob store from inside a deployed function. Uses the same CAS substrate as deploy-time assets. `source` is a string, `Uint8Array`, or `{ content | bytes }` object. Options: `contentType`, `visibility` (`"public"` | `"private"`, default `"public"`), `immutable` (default `true`). Returns an `AssetRef` with `url`, `immutableUrl`, `cdnUrl`, `sha256`, `size_bytes`, etc. (camelCase aliases included). Use for user-uploaded content, generated images, runtime-produced files.

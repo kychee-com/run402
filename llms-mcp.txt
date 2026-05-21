@@ -221,10 +221,68 @@ export default async (req: Request) => {
 - **`adminDb().sql(query, params?)`** — raw parameterized SQL, always bypass RLS.
 - **`ai.generateImage({ prompt, aspect? })`** — live image generation from deployed functions, billed/rate-limited against the project billing account through `RUN402_SERVICE_KEY`. Aspects: `square`, `landscape`, `portrait`; result: `{ image, content_type, aspect }`. For public routed functions, authenticate/rate-limit app users before calling it.
 - **`assets.put(key, source, opts?)`** — upload runtime bytes through the same CAS-backed apply substrate as deploy-time assets. `source` is a string, `Uint8Array`, or `{ content | bytes }`; returns an SDK-compatible `AssetRef`.
+- **`getUserId(req)` / `getRole(req)`** (v1.51+, `@run402/functions` 2.5+) — typed reads of the `x-run402-user-id` / `x-run402-user-role` headers the gateway injects when a `FunctionSpec.requireAuth` / `requireRole` gate passes. Both return `string | null`. Use inside a gated function instead of re-decoding the JWT. The JWT `role` from `getUser(req)` is the system role (`anon`/`authenticated`/…), NOT the app role — don't conflate them. See "Function-level auth gates" below for declaring the gate on the deploy spec.
 
 Fluent surface on both: `.select() / .eq() / .neq() / .gt() / .lt() / .gte() / .lte() / .like() / .ilike() / .in() / .order() / .limit() / .offset()` for reads; `.insert(obj | obj[]) / .update(obj) / .delete()` for writes (chain with `.eq()` to scope; return arrays of affected rows).
 
 For TypeScript autocomplete, `npm install @run402/functions` in your editor's project. Same package also works at build time for static-site generation if you set `RUN402_SERVICE_KEY` + `RUN402_PROJECT_ID` in `.env`.
+
+### Function-level auth gates (v1.51+)
+
+Declare auth requirements directly on each function spec — the gateway enforces them before invoking the function, so unauthorized callers get `401`/`403` without your code running, and the gateway injects the resolved identity into trustworthy request headers.
+
+Two independent optional fields on each `FunctionSpec` inside `deploy`'s `spec.functions.replace` / `spec.functions.patch.set`:
+
+- **`requireAuth: true`** — gateway rejects callers without a valid project user JWT with `401`. No DB lookup. Independent from `requireRole`.
+- **`requireRole: { table, idColumn, roleColumn, allowed[], cacheTtl? } | null`** — gateway resolves the caller's role from the project-schema table (RLS-bypass — the gateway is the trusted intermediary) and rejects callers whose role is not in `allowed` with `403`. Implies authentication. Pass `null` in patch mode to remove an existing gate. `cacheTtl` is seconds; default 60, max 600, 0 disables caching (use for instant-revocation paths).
+
+Worked spec fragment for the `deploy` tool — three common shapes:
+
+```json
+{
+  "spec": {
+    "functions": {
+      "patch": {
+        "set": {
+          "list-my-items": {
+            "source": { "data": "/* … */", "encoding": "utf-8" },
+            "requireAuth": true
+          },
+          "delete-content": {
+            "source": { "data": "/* … */", "encoding": "utf-8" },
+            "requireRole": {
+              "table": "members",
+              "idColumn": "user_id",
+              "roleColumn": "role",
+              "allowed": ["admin"],
+              "cacheTtl": 60
+            }
+          },
+          "moderate-content": {
+            "source": { "data": "/* … */", "encoding": "utf-8" },
+            "requireRole": {
+              "table": "members",
+              "idColumn": "user_id",
+              "roleColumn": "role",
+              "allowed": ["admin", "moderator"]
+            }
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+Validation rules (gateway-authoritative):
+
+- **One role table per release.** All `requireRole` blocks in a single release must share the same `(table, idColumn, roleColumn)` triple. Different `allowed` sets are fine; different tables are rejected at plan time with the canonical `INVALID_SPEC` envelope.
+- **Unqualified identifiers only.** Schema-qualified names (e.g. `"public.members"`) are rejected with `INVALID_SPEC`. The project schema is resolved server-side.
+- **`cacheTtl` range.** `0 ≤ cacheTtl ≤ 600`. Out-of-range → `INVALID_SPEC`.
+- **Empty `allowed`.** Rejected with `INVALID_SPEC`.
+- **Deploy-time validation.** Missing table or column at activation fails with `DEPLOY_INVALID_ROLE_GATE` (HTTP 422) *before* flipping the live release. The `deploy` tool surfaces the structured envelope.
+
+The gate applies to **both** routed (`/your/route`) and direct (`POST /functions/v1/:name` with API key plus user JWT) invocation. Direct invocation still requires the API key at the edge; the gate runs after API-key auth, against the user JWT.
 
 ## Tools by category
 
