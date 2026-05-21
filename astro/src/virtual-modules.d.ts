@@ -13,7 +13,7 @@ declare module "virtual:run402-assetmap" {
   const entries: Map<string, import("./types.js").AssetRef>;
   export default entries;
   /**
-   * v0.2.3+: build-time manifest, populated when the integration has
+   * v0.2.4+: build-time manifest, populated when the integration has
    * `assetsDir` configured. Same shape as `dist/_assets-manifest.json`
    * the file emission writes at `closeBundle`; available to consumers
    * via `getBuildTimeManifest()` from `@run402/astro/build-manifest`.

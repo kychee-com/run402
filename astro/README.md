@@ -247,7 +247,7 @@ function renderHeroImage(imageUrl: string, alt: string): string {
 
 **Combining both paths.** Set BOTH `assetsDir` and use `<Image>` for static-template images. The integration deduplicates by absolute path + CAS dedup at the gateway, so an image referenced via both paths uploads once.
 
-### Reading the manifest during `astro build` (v0.2.3+)
+### Reading the manifest during `astro build` (v0.2.4+)
 
 The manifest JSON is written at `closeBundle` time — *after* Astro renders pages. If your bake step needs the manifest during page render (e.g. you're emitting `<picture>` HTML directly into `dist/index.html` from a typed seed), you can't read the file from disk in `.astro` frontmatter because it doesn't exist yet. Use `getBuildTimeManifest()` from `@run402/astro/build-manifest` instead — it returns the same shape, sourced from the integration's virtual module:
 

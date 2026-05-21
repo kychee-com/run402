@@ -275,7 +275,7 @@ export function createVitePlugin(state: VitePluginState): MinimalVitePlugin {
       //   - default: Map<absolutePath, AssetRef> — used by Image.astro at
       //     SSR-render time, keyed by the absolute file path the source-
       //     rewrite step substituted.
-      //   - manifest: AssetManifest | null (v0.2.3+) — same shape as the
+      //   - manifest: AssetManifest | null (v0.2.4+) — same shape as the
       //     file emitted at closeBundle, keyed by path relative to
       //     `assetsDir`. Used by `@run402/astro/build-manifest`'s
       //     `getBuildTimeManifest()` for build-time-bake consumers that
