@@ -154,6 +154,14 @@ export interface ImageProps {
   class?: string;
   /** LQIP placeholder strategy. Default: `"blurhash"`. */
   placeholder?: "blurhash" | "color" | "none";
+  /**
+   * Extra attributes spliced onto the outer wrapper element (`<picture>`,
+   * or the fallback `<img>` when no variants exist). Useful for app-specific
+   * hooks the integration doesn't model: `data-*` instrumentation, custom
+   * `id`, `role`, etc. Keys must match `[a-zA-Z][a-zA-Z0-9-]*`; invalid
+   * keys are dropped. Values are HTML-attribute-escaped.
+   */
+  pictureAttrs?: Record<string, string>;
 }
 
 /** Build-cache entry shape for `node_modules/.run402/assetMap.json`. */

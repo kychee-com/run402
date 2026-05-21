@@ -101,4 +101,12 @@ describe("renderPicture", () => {
     assert.match(html, /class="hero-img"/);
     assert.doesNotMatch(html, /background-image/);
   });
+
+  it("threads pictureAttrs through to the <picture> wrapper", () => {
+    const html = renderPicture(jpegRef, {
+      alt: "hero",
+      pictureAttrs: { "data-hero-picture": "", "data-hero-aspect": "21/9" },
+    });
+    assert.match(html, /^<picture data-hero-picture="" data-hero-aspect="21\/9">/);
+  });
 });

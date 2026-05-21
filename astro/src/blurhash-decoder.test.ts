@@ -15,6 +15,8 @@
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 
 import {
   averageColorFromBlurhash,
@@ -98,5 +100,24 @@ describe("blurhash helpers", () => {
   it("rejects length-mismatched blurhash strings", () => {
     // First char "L" → sizeFlag=21 → 3*3 components → length must be 4+18=22
     assert.throws(() => decodeBlurhashToDataUri("LXXXXXX"), /length mismatch/);
+  });
+});
+
+describe("package.json exports", () => {
+  it("publishes `./blurhash` as a public subpath (regression guard for run402-private#414)", () => {
+    const pkgPath = fileURLToPath(new URL("../package.json", import.meta.url));
+    const pkg = JSON.parse(readFileSync(pkgPath, "utf8")) as {
+      exports: Record<string, { types?: string; import?: string } | string>;
+    };
+    const entry = pkg.exports["./blurhash"];
+    assert.ok(entry, "package.json `exports` is missing the `./blurhash` subpath");
+    assert.equal(
+      typeof entry === "object" ? entry.import : entry,
+      "./dist/blurhash-decoder.js",
+    );
+    assert.equal(
+      typeof entry === "object" ? entry.types : undefined,
+      "./dist/blurhash-decoder.d.ts",
+    );
   });
 });

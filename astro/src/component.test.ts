@@ -195,4 +195,58 @@ describe("buildPictureHtml", () => {
     });
     assert.match(html, /sizes="\(min-width: 768px\) 50vw, 100vw"/);
   });
+
+  it("pictureAttrs splices data-* attrs onto the <picture> element", () => {
+    const { html } = buildPictureHtml({
+      ref: jpegRef,
+      props: {
+        ...baseProps,
+        pictureAttrs: { "data-hero-picture": "", "data-hero-aspect": "21/9" },
+      },
+    });
+    assert.match(html, /^<picture data-hero-picture="" data-hero-aspect="21\/9">/);
+    // None of the inner elements should pick up the attrs.
+    assert.doesNotMatch(html, /<source[^>]*data-hero/);
+    assert.doesNotMatch(html, /<img[^>]*data-hero/);
+  });
+
+  it("pictureAttrs values are HTML-attribute-escaped", () => {
+    const { html } = buildPictureHtml({
+      ref: jpegRef,
+      props: { ...baseProps, pictureAttrs: { "data-meta": 'A "tricky" <value>' } },
+    });
+    assert.match(html, /data-meta="A &quot;tricky&quot; &lt;value&gt;"/);
+  });
+
+  it("pictureAttrs silently drops keys outside the safe HTML attribute pattern", () => {
+    const { html } = buildPictureHtml({
+      ref: jpegRef,
+      props: {
+        ...baseProps,
+        pictureAttrs: {
+          // Valid — kept.
+          "data-keep": "yes",
+          // Invalid — would let a value break out of the tag.
+          "evil onclick": "alert(1)",
+          'evil"': "x",
+          "1leading-digit": "x",
+        },
+      },
+    });
+    assert.match(html, /<picture data-keep="yes">/);
+    assert.doesNotMatch(html, /onclick/);
+    assert.doesNotMatch(html, /alert/);
+    assert.doesNotMatch(html, /leading-digit/);
+  });
+
+  it("pictureAttrs lands on the <img> when the source falls back (sub-320)", () => {
+    const { html } = buildPictureHtml({
+      ref: subSmallRef,
+      props: { ...baseProps, pictureAttrs: { "data-hero-picture": "" } },
+    });
+    // No <picture> wrapper in the fallback path — attrs go on the <img>.
+    assert.doesNotMatch(html, /<picture/);
+    assert.match(html, /^<img/);
+    assert.match(html, /data-hero-picture=""/);
+  });
 });

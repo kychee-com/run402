@@ -85,6 +85,15 @@ export interface RenderPictureOptions {
   class?: string;
   /** LQIP placeholder strategy. Default: `"blurhash"`. */
   placeholder?: "blurhash" | "color" | "none";
+  /**
+   * Extra attributes spliced onto the outer wrapper element (`<picture>`,
+   * or the fallback `<img>` when the source has no variants). Useful for
+   * app-specific hooks the integration doesn't model: `data-*`
+   * instrumentation, custom `id`, `role`, etc. Keys must match
+   * `[a-zA-Z][a-zA-Z0-9-]*`; invalid keys are dropped. Values are
+   * HTML-attribute-escaped.
+   */
+  pictureAttrs?: Record<string, string>;
 }
 
 /**
@@ -132,6 +141,7 @@ export function renderPicture(ref: AssetRef, options: RenderPictureOptions): str
     ...(options.height !== undefined && { height: options.height }),
     ...(options.class !== undefined && { class: options.class }),
     ...(options.placeholder !== undefined && { placeholder: options.placeholder }),
+    ...(options.pictureAttrs !== undefined && { pictureAttrs: options.pictureAttrs }),
   };
   return buildPictureHtml({ ref, props }).html;
 }

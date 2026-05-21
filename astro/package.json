@@ -18,6 +18,10 @@
     "./build-manifest": {
       "types": "./dist/build-manifest.d.ts",
       "import": "./dist/build-manifest.js"
+    },
+    "./blurhash": {
+      "types": "./dist/blurhash-decoder.d.ts",
+      "import": "./dist/blurhash-decoder.js"
     }
   },
   "files": [

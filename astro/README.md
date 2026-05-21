@@ -245,6 +245,31 @@ function renderHeroImage(imageUrl: string, alt: string): string {
 
 `renderPicture` produces the same `<picture>` HTML the static `<Image>` component does, with the same CLS-prevention contract (#4 in **Before you start**). No Vite or Astro runtime dependency — safe to import from any SSR / SSG / API-route module. It accepts any `AssetRef`, whether resolved from the manifest or read straight off a row, so the persistence pattern and the manifest pattern share the same renderer.
 
+**Attaching app-specific attrs to the `<picture>` element (v0.2.5+).** Pass `pictureAttrs` to splice `data-*`, `id`, `role`, or any other HTML attribute onto the outer wrapper without forking the renderer:
+
+```ts
+renderPicture(ref, {
+  alt,
+  sizes: '100vw',
+  priority: true,
+  pictureAttrs: { 'data-hero-picture': '', 'data-hero-aspect': '21/9' },
+});
+// → <picture data-hero-picture="" data-hero-aspect="21/9">…</picture>
+```
+
+Keys are validated against `[a-zA-Z][a-zA-Z0-9-]*` and silently dropped if invalid; values are HTML-attribute-escaped. When the source falls back to a single `<img>` (sub-320 / no variants), the attrs land on the `<img>` instead — the wrapper-most element either way.
+
+**Decoding a blurhash on your own (v0.2.5+).** If you're emitting custom `<picture>` markup that bypasses `renderPicture` entirely, the LQIP helpers ship as a subpath export:
+
+```ts
+import { decodeBlurhashToDataUri, averageColorFromBlurhash } from '@run402/astro/blurhash';
+
+const lqip = ref.blurhash ? decodeBlurhashToDataUri(ref.blurhash) : null;
+// → 'data:image/png;base64,…'  (32×32 PNG, ≈600 bytes)
+```
+
+Both functions are pure over the blurhash string — no I/O, no Vite virtual modules, byte-equivalent to Wolt's `blurhash@2.0.5` reference (see `blurhash-decoder.test.ts`). Closes [run402-private#414](https://github.com/kychee-com/run402-private/issues/414).
+
 **Combining both paths.** Set BOTH `assetsDir` and use `<Image>` for static-template images. The integration deduplicates by absolute path + CAS dedup at the gateway, so an image referenced via both paths uploads once.
 
 ### Reading the manifest during `astro build` (v0.2.4+)
@@ -338,6 +363,7 @@ For sources smaller than 320 pixels on either axis (logos, icons), the component
 | `height` | `number` | source height | Override height; width auto-recomputed preserving aspect ratio. |
 | `class` | `string` | — | Passthrough to `<img>`. |
 | `placeholder` | `"blurhash" \| "color" \| "none"` | `"blurhash"` | LQIP strategy. |
+| `pictureAttrs` | `Record<string, string>` | — | v0.2.5+. Extra attributes on the outer `<picture>` (or fallback `<img>`). Keys must match `[a-zA-Z][a-zA-Z0-9-]*`; values escaped. |
 
 ## Integration options
 

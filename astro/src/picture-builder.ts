@@ -50,6 +50,11 @@ export function buildPictureHtml(input: BuildPictureInput): BuildPictureOutput {
   // Class passthrough.
   const classAttr = props.class ? ` class="${escapeAttr(props.class)}"` : "";
 
+  // Caller-supplied attrs for the outer wrapper element. Goes on
+  // <picture> in the variant path; on the <img> in the no-variant
+  // fallback (the <img> IS the outer element when there's no wrapper).
+  const wrapperAttrs = formatExtraAttrs(props.pictureAttrs);
+
   // Variants: if no variants present OR neither thumb/medium/large are set,
   // we emit a single <img> (sub-320 / decode-failed fallback).
   const variants = ref.variants;
@@ -79,7 +84,7 @@ export function buildPictureHtml(input: BuildPictureInput): BuildPictureOutput {
     return {
       html:
         `<img src="${escapeAttr(fallbackSrc)}" alt="${altAttr}"${dim}${styleAttr}${classAttr} ` +
-        `loading="${loadingAttr}"${fetchPriorityAttr} />`,
+        `loading="${loadingAttr}"${fetchPriorityAttr}${wrapperAttrs} />`,
       warnings,
     };
   }
@@ -98,13 +103,30 @@ export function buildPictureHtml(input: BuildPictureInput): BuildPictureOutput {
 
   return {
     html:
-      `<picture>` +
+      `<picture${wrapperAttrs}>` +
       `<source type="image/webp" srcset="${srcsetAttr}" sizes="${sizesAttr}" />` +
       `<img src="${escapeAttr(fallbackSrc)}" alt="${altAttr}"${dim}${styleAttr}${classAttr} ` +
       `loading="${loadingAttr}"${fetchPriorityAttr} />` +
       `</picture>`,
     warnings,
   };
+}
+
+/**
+ * Serialize a `Record<string, string>` of extra attributes into the
+ * `' k1="v1" k2="v2"'` form. Skips keys that don't match the safe
+ * HTML attribute name pattern (defends against a typo or
+ * untrusted-input footgun that could break out of the tag). Values
+ * are HTML-attribute-escaped.
+ */
+function formatExtraAttrs(attrs: Record<string, string> | undefined): string {
+  if (!attrs) return "";
+  let out = "";
+  for (const [key, value] of Object.entries(attrs)) {
+    if (!/^[a-zA-Z][a-zA-Z0-9-]*$/.test(key)) continue;
+    out += ` ${key}="${escapeAttr(value)}"`;
+  }
+  return out;
 }
 
 function pickFallbackSrc(ref: AssetRef): string {
