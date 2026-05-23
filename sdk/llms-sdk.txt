@@ -1228,7 +1228,7 @@ declare const slug: string;
 declare const title: string;
 declare const html: string;
 
-await db().from("pages").upsert({ slug, title, html });
+await db().from("pages").insert({ slug, title, html });
 await cache.invalidate(`/${slug}`);   // sub-second freshness
 ```
 
