@@ -1,0 +1,137 @@
+---
+/**
+ * `<Run402Picture asset={...}>` — capability `astro-ssr-runtime`.
+ *
+ * Renders a `<picture>` element from a stored `AssetRef` (the JSONB
+ * value returned by `assets.put` at admin upload time and stored on
+ * a DB row like `pages.hero_asset`).
+ *
+ * Props:
+ *   - `asset` (required): AssetRef object with `variants`, `display_url`,
+ *     `cdn_url`, `width_px`, `height_px`, optional `blurhash`
+ *   - `alt` (required): alt text
+ *   - `sizes` (optional): srcset `sizes` attribute (default `100vw`)
+ *   - `loading` (optional): `'lazy' | 'eager'` (default `'lazy'`,
+ *     overridden to `'eager'` when `priority` is true)
+ *   - `priority` (optional): boolean — sets `fetchpriority="high"` +
+ *     `loading="eager"`. Use for above-fold hero images.
+ *   - `class` (optional): className passed to the wrapping `<picture>`
+ *
+ * Runtime safety:
+ *   - Missing required variants → safe single `<img>` fallback using
+ *     whatever URL is present (`asset.cdn_url` or `asset.url`).
+ *   - URL scheme validation: non-HTTPS, non-relative URLs are skipped
+ *     and replaced with an empty src (the browser will then render
+ *     the alt text). A console.warn fires with the offending URL.
+ *
+ * @see openspec/changes/astro-ssr-runtime/specs/astro-ssr-runtime/spec.md
+ */
+
+interface AssetVariant {
+  url?: string;
+  cdn_url?: string;
+  width_px?: number;
+  height_px?: number;
+  format?: string;
+  sha256?: string;
+}
+
+interface AssetRef {
+  key?: string;
+  sha256?: string;
+  size_bytes?: number;
+  content_type?: string;
+  url?: string;
+  cdn_url?: string;
+  display_url?: string;
+  immutable_url?: string;
+  cdn_immutable_url?: string;
+  width_px?: number;
+  height_px?: number;
+  blurhash?: string;
+  variant_spec_version?: string;
+  variants?: {
+    thumb?: AssetVariant;
+    medium?: AssetVariant;
+    large?: AssetVariant;
+    display_jpeg?: AssetVariant;
+  };
+}
+
+interface Props {
+  asset: AssetRef;
+  alt: string;
+  sizes?: string;
+  loading?: "lazy" | "eager";
+  priority?: boolean;
+  class?: string;
+}
+
+const { asset, alt, sizes = "100vw", loading: loadingProp, priority = false, class: className } = Astro.props as Props;
+
+// URL safety: only allow `https:`, `http:` (for local dev), or relative
+// paths. Reject `javascript:`, `data:`, `vbscript:`, etc.
+function safeUrl(u: string | undefined): string {
+  if (!u) return "";
+  if (u.startsWith("https://") || u.startsWith("http://")) return u;
+  if (u.startsWith("/") || u.startsWith("./") || u.startsWith("../")) return u;
+  // Unsafe scheme — emit warning and drop.
+  console.warn(`[Run402Picture] dropping unsafe URL: ${u.slice(0, 80)}...`);
+  return "";
+}
+
+// Resolve URLs.
+const thumbUrl = safeUrl(asset.variants?.thumb?.cdn_url ?? asset.variants?.thumb?.url);
+const mediumUrl = safeUrl(asset.variants?.medium?.cdn_url ?? asset.variants?.medium?.url);
+const largeUrl = safeUrl(asset.variants?.large?.cdn_url ?? asset.variants?.large?.url);
+const displayJpegUrl = safeUrl(asset.variants?.display_jpeg?.cdn_url ?? asset.variants?.display_jpeg?.url);
+const fallbackUrl = safeUrl(asset.display_url ?? asset.cdn_url ?? asset.url) || displayJpegUrl;
+
+const hasFullVariantSet = Boolean(thumbUrl && mediumUrl && largeUrl);
+const loading = loadingProp ?? (priority ? "eager" : "lazy");
+const fetchpriority = priority ? "high" : undefined;
+const width = asset.width_px;
+const height = asset.height_px;
+
+const srcsetWebp = [
+  thumbUrl ? `${thumbUrl} 320w` : null,
+  mediumUrl ? `${mediumUrl} 800w` : null,
+  largeUrl ? `${largeUrl} 1920w` : null,
+].filter(Boolean).join(", ");
+
+// Blurhash placeholder — emit as inline-styled wrapper. v1.5 may swap
+// to a server-rendered decoded data-URI; for now we emit the raw hash
+// as a data-attribute that client JS can decode.
+const blurhash = asset.blurhash;
+---
+
+{hasFullVariantSet ? (
+  <picture class={className} data-blurhash={blurhash}>
+    <source type="image/webp" srcset={srcsetWebp} sizes={sizes} />
+    <img
+      src={fallbackUrl}
+      alt={alt}
+      width={width}
+      height={height}
+      loading={loading}
+      fetchpriority={fetchpriority}
+      decoding={priority ? "sync" : "async"}
+    />
+  </picture>
+) : fallbackUrl ? (
+  <img
+    src={fallbackUrl}
+    alt={alt}
+    class={className}
+    width={width}
+    height={height}
+    loading={loading}
+    fetchpriority={fetchpriority}
+    decoding={priority ? "sync" : "async"}
+    data-blurhash={blurhash}
+  />
+) : (
+  <span class={className} role="img" aria-label={alt} data-r402-picture-missing="true">
+    {alt}
+  </span>
+)}

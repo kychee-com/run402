@@ -1,6 +1,6 @@
 {
   "name": "@run402/astro",
-  "version": "0.2.5",
+  "version": "0.3.0-alpha.1",
   "description": "Astro integration + <Image> component for Run402. One-line wiring for pre-encoded image variants (3-width WebP ladder + HEIC display_jpeg + blurhash + width/height) with zero runtime function cost.",
   "type": "module",
   "main": "dist/index.js",
@@ -22,7 +22,20 @@
     "./blurhash": {
       "types": "./dist/blurhash-decoder.d.ts",
       "import": "./dist/blurhash-decoder.js"
-    }
+    },
+    "./ssr-adapter": {
+      "types": "./dist/ssr-adapter.d.ts",
+      "import": "./dist/ssr-adapter.js"
+    },
+    "./ssr-detectors": {
+      "types": "./dist/ssr-detectors.d.ts",
+      "import": "./dist/ssr-detectors.js"
+    },
+    "./runtime/server": {
+      "types": "./dist/runtime/server.d.ts",
+      "import": "./dist/runtime/server.js"
+    },
+    "./components/Run402Picture.astro": "./dist/components/Run402Picture.astro"
   },
   "files": [
     "dist",
@@ -30,15 +43,16 @@
     "README.md"
   ],
   "scripts": {
-    "build": "tsc && cp src/Image.astro dist/Image.astro",
+    "build": "tsc && cp src/Image.astro dist/Image.astro && mkdir -p dist/components && cp src/components/Run402Picture.astro dist/components/Run402Picture.astro",
     "test": "node --experimental-test-module-mocks --test --import tsx src/resolver.test.ts src/cache.test.ts src/scanner.test.ts src/uploader.test.ts src/component.test.ts src/manifest.test.ts src/blurhash-decoder.test.ts src/build-manifest.test.ts"
   },
   "engines": {
     "node": ">=18"
   },
   "peerDependencies": {
-    "astro": ">=5 <7",
-    "@run402/sdk": ">=2.3"
+    "@run402/functions": "*",
+    "@run402/sdk": ">=2.3",
+    "astro": ">=5 <7"
   },
   "peerDependenciesMeta": {
     "@run402/sdk": {
@@ -46,10 +60,14 @@
     },
     "astro": {
       "optional": true
+    },
+    "@run402/functions": {
+      "optional": true
     }
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
+    "astro": "^5.18.1",
     "tsx": "^4.20.0",
     "typescript": "^5.5.0"
   },

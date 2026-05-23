@@ -31,6 +31,29 @@ import type { VitePluginState } from "./vite-plugin.js";
 import { createVitePlugin } from "./vite-plugin.js";
 import type { Run402AstroOptions } from "./types.js";
 
+// Capability `astro-ssr-runtime` (v0.3.0-alpha+). Additive SSR adapter
+// re-exports. These compose with the existing image integration:
+//
+//   ```ts
+//   // astro.config.mjs
+//   import { defineConfig } from 'astro/config';
+//   import { run402, createRun402Adapter } from '@run402/astro';
+//
+//   export default defineConfig({
+//     output: 'server',
+//     integrations: [run402()],
+//     adapter: createRun402Adapter(),
+//   });
+//   ```
+//
+// The v1.0 release will collapse this into a single default-exported
+// `run402(): AstroUserConfig` factory. v0.3.x ships the building blocks
+// so adopters can start using SSR while we settle the preset shape.
+export { createRun402Adapter } from "./ssr-adapter.js";
+export type { CreateRun402AdapterOptions, Run402AdapterManifest } from "./ssr-adapter.js";
+export { detectDynamicImage, detectServerIslands, detectSessionsApi, Run402AstroDetectorError } from "./ssr-detectors.js";
+export type { DetectorError } from "./ssr-detectors.js";
+
 // Astro's integration type lives at `astro` (peer dep). We import via a
 // `type` import so the package can be type-checked without astro being
 // resolvable — the runtime never touches it.
