@@ -47,6 +47,7 @@ Commands:
   agent       Manage agent identity (contact info)
   service     Run402 service health and availability (status, health)
   cache       Inspect and invalidate the SSR origin cache (inspect, invalidate)
+  doctor      Health and config diagnostics (machine-readable with --json)
 
 Run 'run402 <command> --help' for detailed usage of each command.
 
@@ -229,6 +230,11 @@ switch (cmd) {
   }
   case "cache": {
     const { run } = await import("./lib/cache.mjs");
+    await run(sub, rest);
+    break;
+  }
+  case "doctor": {
+    const { run } = await import("./lib/doctor.mjs");
     await run(sub, rest);
     break;
   }
