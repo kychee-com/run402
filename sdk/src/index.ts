@@ -301,6 +301,7 @@ export type * from "./namespaces/allowance.js";
 export type * from "./namespaces/apps.js";
 export type * from "./namespaces/auth.js";
 export type * from "./namespaces/billing.js";
+export type * from "./namespaces/cache.js";
 export type * from "./namespaces/assets.types.js";
 export type * from "./namespaces/ci.types.js";
 export type * from "./namespaces/contracts.js";

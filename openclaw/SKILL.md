@@ -616,6 +616,44 @@ Rules and footnotes:
 - **Cache TTL.** Default 60s, max 600s. A demoted user keeps the cached role until expiry — for instant revocation, set `cacheTtl: 0` (fresh lookup per request).
 - **Gate applies to both** routed (`/your/route`) and direct (`POST /functions/v1/:name` with API key) invocation. Direct invocation still requires the API key at the edge; the gate runs after API-key auth, against the user JWT.
 
+### Astro SSR runtime + ISR cache (v1.52+)
+
+For Astro apps, scaffold with `run402 init astro` (sets up `astro.config.mjs` with the `@run402/astro` 1.0+ preset, `[slug].astro` SSR template wired to the DB, layouts, `.env.example`). Run `run402 dev` to start `astro dev` with project credentials in scope.
+
+Functions opt into the SSR class declaratively:
+
+```json
+{
+  "functions": {
+    "ssr": {
+      "class": "ssr",
+      "code": { "data": "...", "encoding": "base64" }
+    }
+  }
+}
+```
+
+The gateway provisions SnapStart-enabled Lambda and reverse-validates the published version before activation. Failure ships the function anyway and surfaces `DEPLOY_FUNCTION_SSR_SNAPSTART_VALIDATION_FAILED` as a non-blocking warning.
+
+**Cache is bypass-by-default.** SSR responses only get cached when `Cache-Control` explicitly allows it AND no `Set-Cookie` AND no auth-taint flag — `getUser()` / `getUserId()` / `getRole()` from `@run402/functions` 2.5+ automatically taint per-request caching so personalized renders never get stored.
+
+**Invalidate from the CLI:**
+
+- `run402 cache invalidate https://eagles.kychon.com/the-guys` — single URL
+- `run402 cache invalidate https://eagles.kychon.com/blog --prefix` — path prefix
+- `run402 cache invalidate https://eagles.kychon.com --all` — all rows for the host
+- `run402 cache inspect https://eagles.kychon.com/the-guys` — peek at cache state
+
+Host ownership is server-validated; cross-project hosts throw `R402_CACHE_INVALIDATION_HOST_FORBIDDEN`. Writes are generation-guarded: in-flight MISS renders started before an invalidate cannot overwrite the freshly-cleared state.
+
+**Agent-DX shortcuts:**
+
+- `run402 doctor` — 5 health checks (credentials, allowance, project, network, SDK build), `--json` for machine-readable output, exit 1 on fail.
+- `run402 dev` — runs `npx astro dev` with `.env.local` + Run402 credentials in scope.
+- `run402 logs --request-id req_XYZ` — fetch logs for a specific request id across every function in the project (parallel scan, timestamp-ascending merge).
+
+Reference: [`astro/README.md`](../astro/README.md) (top section), [`cli/llms-cli.txt`](../cli/llms-cli.txt) (R402_* SSR Runtime Error Codes section).
+
 ### Calling a function from the browser
 
 Agent-side calls should use `run402 functions invoke`; this direct `fetch()`

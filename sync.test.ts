@@ -61,7 +61,7 @@ function parseSubcommands(filePath: string): string[] {
 /** Parse CLI commands as "module:subcommand" pairs */
 function parseCliCommands(): string[] {
   const cmds: string[] = [];
-  for (const mod of ["allowance", "tier", "projects", "image", "storage", "assets", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "apps", "email", "message", "agent", "ai", "auth", "sender-domain", "billing", "contracts", "webhooks", "service", "deploy", "ci"]) {
+  for (const mod of ["allowance", "tier", "projects", "image", "storage", "assets", "cache", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "apps", "email", "message", "agent", "ai", "auth", "sender-domain", "billing", "contracts", "webhooks", "service", "deploy", "ci"]) {
     for (const sub of parseSubcommands(join(__dirname, "cli/lib", `${mod}.mjs`))) {
       cmds.push(`${mod}:${sub}`);
     }
@@ -71,13 +71,16 @@ function parseCliCommands(): string[] {
   }
   if (existsSync(join(__dirname, "cli/lib/init.mjs"))) cmds.push("init");
   if (existsSync(join(__dirname, "cli/lib/status.mjs"))) cmds.push("status");
+  if (existsSync(join(__dirname, "cli/lib/doctor.mjs"))) cmds.push("doctor");
+  if (existsSync(join(__dirname, "cli/lib/dev.mjs"))) cmds.push("dev");
+  if (existsSync(join(__dirname, "cli/lib/logs.mjs"))) cmds.push("logs");
   return cmds.sort();
 }
 
 /** Parse OpenClaw commands as "module:subcommand" pairs */
 function parseOpenClawCommands(): string[] {
   const cmds: string[] = [];
-  for (const mod of ["allowance", "tier", "projects", "image", "storage", "assets", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "apps", "email", "message", "agent", "ai", "auth", "sender-domain", "billing", "contracts", "webhooks", "service", "deploy", "ci"]) {
+  for (const mod of ["allowance", "tier", "projects", "image", "storage", "assets", "cache", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "apps", "email", "message", "agent", "ai", "auth", "sender-domain", "billing", "contracts", "webhooks", "service", "deploy", "ci"]) {
     for (const sub of parseSubcommands(join(__dirname, "openclaw/scripts", `${mod}.mjs`))) {
       cmds.push(`${mod}:${sub}`);
     }
@@ -87,6 +90,9 @@ function parseOpenClawCommands(): string[] {
   }
   if (existsSync(join(__dirname, "openclaw/scripts/init.mjs"))) cmds.push("init");
   if (existsSync(join(__dirname, "openclaw/scripts/status.mjs"))) cmds.push("status");
+  if (existsSync(join(__dirname, "openclaw/scripts/doctor.mjs"))) cmds.push("doctor");
+  if (existsSync(join(__dirname, "openclaw/scripts/dev.mjs"))) cmds.push("dev");
+  if (existsSync(join(__dirname, "openclaw/scripts/logs.mjs"))) cmds.push("logs");
   return cmds.sort();
 }
 
@@ -155,6 +161,16 @@ const SURFACE: Capability[] = [
   // ── Init / status (local-only) ──────────────────────────────────────────
   { id: "init",              endpoint: "(local)",                              mcp: "init",                          cli: "init",                openclaw: "init" },
   { id: "status",            endpoint: "(local)",                              mcp: "status",                        cli: "status",              openclaw: "status" },
+
+  // ── SSR Runtime DX (v1.52, local-only / CLI-only) ──────────────────────
+  // doctor / dev / logs are agent-DX shortcuts: no MCP/SDK tool, just CLI parity with OpenClaw.
+  { id: "doctor",            endpoint: "(local)",                              mcp: null,                            cli: "doctor",              openclaw: "doctor" },
+  { id: "dev",               endpoint: "(local)",                              mcp: null,                            cli: "dev",                 openclaw: "dev" },
+  { id: "logs",              endpoint: "GET /functions/v1/:name/logs (filtered)", mcp: null,                         cli: "logs",                openclaw: "logs" },
+
+  // ── SSR origin cache (v1.52) ────────────────────────────────────────────
+  { id: "cache_invalidate",  endpoint: "POST /cache/v1/invalidate",            mcp: null,                            cli: "cache:invalidate",    openclaw: "cache:invalidate" },
+  { id: "cache_inspect",     endpoint: "GET /cache/v1/inspect",                mcp: null,                            cli: "cache:inspect",       openclaw: "cache:inspect" },
 
   // ── Project lifecycle ────────────────────────────────────────────────────
   { id: "get_quote",         endpoint: "POST /projects/v1/quote",                mcp: "get_quote",                    cli: "projects:quote",      openclaw: "projects:quote" },
@@ -363,6 +379,15 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   // Local-only compound flows — MCP handlers compose SDK calls internally.
   init: null,
   status: null,
+
+  // SSR Runtime DX (v1.52) — local/CLI-only; no MCP, no SDK
+  doctor: null,
+  dev: null,
+  logs: null,
+
+  // SSR origin cache (v1.52)
+  cache_invalidate: "cache.invalidate",
+  cache_inspect: "cache.inspect",
 
   // Project lifecycle
   get_quote: "projects.getQuote",
@@ -789,6 +814,12 @@ describe("SDK surface alignment", () => {
       "_applyEngine.status",
       // CI token exchange is intentionally credential-helper-only in v1.
       "ci.exchangeToken",
+      // ─── SSR origin cache (v1.52) — flag-variants of `run402 cache invalidate` ─
+      // Single-URL form is the canonical CLI; prefix/all/many are SDK-side
+      // convenience methods that share the same CLI verb with flags.
+      "cache.invalidatePrefix",
+      "cache.invalidateAll",
+      "cache.invalidateMany",
     ]);
 
     const sdkMethods = await listSdkMethods();

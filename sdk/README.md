@@ -54,7 +54,7 @@ const r = new Run402({
 
 The `CredentialsProvider` interface has two required methods (`getAuth`, `getProject`) plus optional ones (`saveProject`, `removeProject`, `setActiveProject`, `readAllowance`, `saveAllowance`, …) for hosts that want full sticky-default behavior.
 
-## Namespaces (21)
+## Namespaces (22)
 
 | Namespace | Highlights |
 |---|---|
@@ -64,6 +64,7 @@ The `CredentialsProvider` interface has two required methods (`getAuth`, `getPro
 | `ci` | GitHub Actions OIDC federation over `/ci/v1/*`: `createBinding`, `listBindings`, `getBinding`, `revokeBinding`, `exchangeToken`; plus canonical delegation helpers. `createBinding` accepts `asset_key_scopes` for per-key CI write authorization. |
 | `r.project(id).sites` | `deployDir` — Node entry only (`@run402/sdk/node`); thin wrapper over `r.project(id).apply({ site: dir(...) })` |
 | `r.project(id).assets` | `put` (single asset), `putMany`, `uploadDir` (Node, additive), `syncDir` (Node, destructive only with `prune: true` + confirm token), `prepareDir` (returns `{ manifest, applySlice }` for pre-commit URL injection), `get`, `ls`, `rm`, `sign`, `diagnoseUrl`, `waitFresh`, `diff`. Returns `AssetRef` (single) or `AssetManifest` (batch). |
+| `cache` (v1.52+) | SSR origin ISR cache: `invalidate(url)`, `invalidatePrefix({ host, prefix })`, `invalidateAll({ host })`, `invalidateMany(urls)`, `inspect(url)`. Project-scoped (host ownership validated server-side; cross-project hosts throw `R402_CACHE_INVALIDATION_HOST_FORBIDDEN`). Generation-guarded — in-flight MISS renders started before an invalidate cannot overwrite the freshly-cleared state. |
 | `functions` | `deploy`, `invoke`, `logs`, `update`, `list`, `delete` |
 | `jobs` | `submit`, `get`, `logs`, `cancel` for fixed platform-managed jobs |
 | `secrets` | `set`, `list`, `delete` |

@@ -410,6 +410,37 @@ Rules and footnotes:
 - **Cache TTL.** Default 60s, max 600s. A demoted user keeps the cached role until expiry — for instant revocation, set `cacheTtl: 0` (fresh lookup per request).
 - **Gate applies to both** routed (`/your/route`) and direct (`POST /functions/v1/:name` with API key) invocation. Direct invocation still requires the API key at the edge; the gate runs after API-key auth, against the user JWT.
 
+### Astro SSR runtime + ISR cache (v1.52+)
+
+Authoring Astro apps on Run402 uses the `@run402/astro` 1.0+ preset (one-line `export default run402();` in `astro.config.mjs`). The preset wires SnapStart-enabled AWS Lambda SSR with an origin ISR cache. Per-function opt-in is declarative in the release spec:
+
+```json
+{
+  "functions": {
+    "ssr": {
+      "class": "ssr",
+      "code": { "data": "...", "encoding": "base64" }
+    }
+  }
+}
+```
+
+The gateway provisions SnapStart and reverse-validates the published version before activation; failure surfaces as a non-blocking `DEPLOY_FUNCTION_SSR_SNAPSTART_VALIDATION_FAILED` warning.
+
+**Cache behavior is bypass-by-default.** SSR responses only get stored when `Cache-Control` explicitly allows it AND no `Set-Cookie` AND no auth-taint flag — `getUser()` / `getUserId()` / `getRole()` from `@run402/functions` 2.5+ automatically taint per-request caching so personalized renders never get stored. Payment primitives (the `withPaymentTaint()` helper) taint the same way.
+
+**Invalidation is project-scoped and sub-second.** The MCP-exposed surface is the SDK's `cache` namespace (no direct MCP tool yet; use `mcp__run402_sdk` via the SDK or `mcp__shell` to run `run402 cache invalidate`):
+
+- `r.cache.invalidate(url)` — single URL
+- `r.cache.invalidatePrefix({ host, prefix })` — path prefix on a host
+- `r.cache.invalidateAll({ host })` — all rows for a host
+- `r.cache.invalidateMany(urls)` — multiple URLs in one round-trip
+- `r.cache.inspect(url)` — returns `{ status: 'HIT' | 'MISS', cachedAt, expiresAt, contentSha256, writtenUnderGeneration }`
+
+Host ownership is server-validated — cross-project invalidation throws `R402_CACHE_INVALIDATION_HOST_FORBIDDEN` (403). Writes are generation-guarded: an in-flight MISS render started before an invalidate cannot overwrite the freshly-cleared state.
+
+Reference: [`astro/README.md`](./astro/README.md) (top section), [`cli/llms-cli.txt`](./cli/llms-cli.txt) (R402_* SSR Runtime Error Codes section).
+
 ## Tools by category
 
 ### Database
