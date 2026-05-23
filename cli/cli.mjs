@@ -46,6 +46,7 @@ Commands:
   contracts   KMS contract wallets ($0.04/day rental + $0.000005/sign)
   agent       Manage agent identity (contact info)
   service     Run402 service health and availability (status, health)
+  cache       Inspect and invalidate the SSR origin cache (inspect, invalidate)
 
 Run 'run402 <command> --help' for detailed usage of each command.
 
@@ -223,6 +224,11 @@ switch (cmd) {
   }
   case "service": {
     const { run } = await import("./lib/service.mjs");
+    await run(sub, rest);
+    break;
+  }
+  case "cache": {
+    const { run } = await import("./lib/cache.mjs");
     await run(sub, rest);
     break;
   }

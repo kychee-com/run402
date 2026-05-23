@@ -12,6 +12,7 @@ import { Projects } from "./namespaces/projects.js";
 import { Assets } from "./namespaces/assets.js";
 import { Functions } from "./namespaces/functions.js";
 import { Secrets } from "./namespaces/secrets.js";
+import { Cache } from "./namespaces/cache.js";
 import { Subdomains } from "./namespaces/subdomains.js";
 import { Domains } from "./namespaces/domains.js";
 import { Sites } from "./namespaces/sites.js";
@@ -51,6 +52,7 @@ export class Run402 {
   readonly assets: Assets;
   readonly functions: Functions;
   readonly secrets: Secrets;
+  readonly cache: Cache;
   readonly subdomains: Subdomains;
   readonly domains: Domains;
   readonly sites: Sites;
@@ -118,6 +120,7 @@ export class Run402 {
     this.assets = new Assets(client);
     this.functions = new Functions(client);
     this.secrets = new Secrets(client);
+    this.cache = new Cache(client);
     this.subdomains = new Subdomains(client);
     this.domains = new Domains(client);
     this.sites = new Sites(client);
