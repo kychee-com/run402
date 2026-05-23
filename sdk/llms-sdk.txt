@@ -1182,24 +1182,37 @@ inspect(url: string | URL, opts?: { locale?, releaseId? }): Promise<CacheInspect
 
 `CacheInvalidateResult`:
 ```ts
-{
+interface CacheInvalidateResult {
   deleted: number;
-  generation: string;      // post-increment per-(project, host) counter, as string for bigint safety
+  // post-increment per-(project, host) counter, as string for bigint safety
+  generation: string;
   host: string;
-  path?: string;           // populated on single-URL form
-  results?: Array<{ host, deleted, generation }>;  // populated on invalidateMany
+  // populated on single-URL form
+  path?: string;
+  // populated on invalidateMany
+  results?: Array<{ host: string; deleted: number; generation: string }>;
 }
 ```
 
 `CacheInspectResult`:
 ```ts
-{
-  status: "HIT" | "MISS";   // NEVER "BYPASS" — inspect doesn't issue a request
-  host?, path?, search?, method?, locale?, releaseId?,
-  cachedAt?: ISO8601 string;
-  expiresAt?: ISO8601 string;
+interface CacheInspectResult {
+  // NEVER "BYPASS" — inspect doesn't issue a request
+  status: "HIT" | "MISS";
+  url?: string;
+  host?: string;
+  path?: string;
+  search?: string;
+  method?: string;
+  locale?: string;
+  releaseId?: string;
+  // ISO8601
+  cachedAt?: string;
+  // ISO8601
+  expiresAt?: string;
   writtenUnderGeneration?: string;
-  contentSha256?: string;   // hex
+  // hex
+  contentSha256?: string;
   headers?: Record<string, string | string[]>;
 }
 ```
@@ -1211,6 +1224,10 @@ Project-scoped. Cross-project absolute URLs throw `R402_CACHE_INVALIDATION_HOST_
 ```ts
 import { db, cache } from "@run402/functions";
 
+declare const slug: string;
+declare const title: string;
+declare const html: string;
+
 await db().from("pages").upsert({ slug, title, html });
 await cache.invalidate(`/${slug}`);   // sub-second freshness
 ```
@@ -1219,6 +1236,8 @@ await cache.invalidate(`/${slug}`);   // sub-second freshness
 
 ```ts
 import { cache } from "@run402/functions";
+
+declare const slug: string;
 
 await cache.invalidate(new URL(`https://eagles.kychon.com/${slug}`));
 ```
