@@ -380,6 +380,11 @@
             "pattern": "^(accept-language|cookie:[!#$%&'*+\\-.^_`|~0-9A-Za-z]+)$"
           },
           "description": "Walked in order; first match wins. Defaults to ['accept-language'] when omitted, max 10 entries; [] is allowed and means 'always default'. Sources: 'accept-language' and 'cookie:<name>' (RFC 6265 cookie-name grammar)."
+        },
+        "unknownLocalePolicy": {
+          "type": "string",
+          "enum": ["reject", "pass-through"],
+          "description": "What to do when a detect-source signal does not match locales[]. 'reject' (default, backwards-compatible) falls through to the next detect source then to defaultLocale. 'pass-through' returns the lowercased, trimmed signal value verbatim — letting the consumer's app DB decide whether translations exist for the tag. Capability i18n-unknown-locale-policy (issue #413)."
         }
       }
     },
